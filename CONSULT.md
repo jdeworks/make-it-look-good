@@ -55,6 +55,7 @@ Run through this checklist against their code. Note every issue you find.
 - [ ] Is there a layout container with max-width and centered content?
 - [ ] Are sections separated with consistent vertical rhythm?
 - [ ] Does the page have a `min-h-screen` wrapper with a background color? (Prevents white body bleed)
+- [ ] Is there horizontal overflow at any breakpoint? (Check for elements wider than viewport — common with absolute positioning or fixed-width elements)
 
 **Responsive & Mobile**
 - [ ] Does the layout work at 320px? At 768px? At 1024px+?
@@ -71,6 +72,7 @@ Run through this checklist against their code. Note every issue you find.
 - [ ] Is line height between 1.4–1.6 for body text?
 - [ ] Is line length constrained to 45–75 characters? (Look for `max-width` on text containers)
 - [ ] Are more than 2 typefaces used?
+- [ ] Are web fonts loaded with `font-display: swap`? Is there a `<link rel="preconnect">` for the font CDN?
 
 **Color & Contrast**
 - [ ] Does text meet 4.5:1 contrast ratio against its background?
@@ -97,6 +99,7 @@ Run through this checklist against their code. Note every issue you find.
 - [ ] Does the navigation have `aria-label` and `aria-current="page"` on the active item?
 - [ ] Do images have `alt` text?
 - [ ] Is the heading hierarchy logical? (`<h1>` → `<h2>` → `<h3>`, not skipping levels)
+- [ ] If HTML contains `<script>` tags: warn the user. Scripts execute in the preview tool's sandboxed iframe. Flag any scripts that make network requests or access cookies.
 
 **Hierarchy & Structure**
 - [ ] Is there a clear visual hierarchy? (Can you tell what's most important in 2 seconds?)
@@ -154,16 +157,16 @@ When there's no existing code or visuals, ask these questions. **Ask only what's
    - Mobile-first consumers (touch targets critical, thumb zones)
 
 3. **What's the design vibe?** (This matters — don't default to "clean blue SaaS" every time. Push for personality.)
-   - **Clean** — balanced, professional, standard Tailwind look (rounded-xl, subtle shadows, system sans)
-   - **Minimalist** — stripped back, no shadows, hairline borders, light font weights, lots of whitespace
-   - **Bold** — sharp/zero-radius corners, heavy font weights, offset shadows, uppercase headings, high contrast
-   - **Playful** — big rounded corners (16-24px), colorful shadows, bouncy hover animations, generous spacing
-   - **Glass/Modern** — frosted glass cards (backdrop-blur), gradient backgrounds, translucent surfaces
-   - **Editorial/Premium** — serif headings (Playfair Display), no shadows, fine borders, elegant spacing, muted palette
-   - **Dark & technical** — dark backgrounds, monospace accents, terminal feel
+   - **Clean** — balanced, professional, standard Tailwind look (rounded-xl, subtle shadows, system sans). The safe default.
+   - **Minimalist** — stripped back, no shadows, hairline borders, light font weights (300), lots of whitespace, uppercase labels. Think Apple, Muji, Scandinavian.
+   - **Playful** — big rounded corners (16-24px), colorful shadows, bouncy hover animations, generous spacing, pill-shaped buttons. Think Duolingo, Slack.
+   - **Editorial** — serif headings (Playfair Display), no shadows, fine borders, elegant spacing, muted palette, uppercase button labels. Think Medium, premium brands. *(Available for: form, landing; other elements use clean as base and apply editorial characteristics.)*
+   - **Dark & technical** — dark backgrounds, monospace accents, terminal feel. This is a color scheme applied on top of any personality — use the dark mode toggle in the preview tool.
    - Match existing brand: ___ (ask for colors, fonts, logo)
 
-   *Why this matters:* A default blue-gray SaaS layout is technically correct but has zero personality. Users' brands are different — a children's app needs Playful, a law firm needs Editorial, a developer tool needs Bold or Dark. The design vibe affects border-radius, shadow style, font weight, hover animations, spacing density, and color temperature. Don't just change the accent color — change the visual character.
+   *Why this matters:* A default blue-gray SaaS layout is technically correct but has zero personality. Users' brands are different — a children's app needs Playful, a law firm needs Editorial, a productivity tool needs Clean or Minimalist. The design vibe affects border-radius, shadow style, font weight, hover animations, spacing density, and color temperature. Don't just change the accent color — change the visual character.
+
+   *Personality presets:* Every element in `docs/presets/` has at least clean, minimalist, and playful variants as structurally different HTML. Check `docs/presets/index.json` for availability. If a personality file doesn't exist for a specific element, use the clean variant as base and apply the personality's visual characteristics manually.
 
 4. **What's your tech stack?**
    - Plain HTML + CSS (will suggest Tailwind CDN)
@@ -175,7 +178,14 @@ When there's no existing code or visuals, ask these questions. **Ask only what's
 
 ### Ask If Relevant
 
-5. **Do you need dark mode?**
+5. **How data-dense is the UI?**
+   - Light — few items, generous whitespace (landing pages, forms, portfolios)
+   - Medium — standard content (most SaaS, dashboards with 4-6 cards)
+   - Dense — lots of data visible at once (analytics, spreadsheets, admin tables)
+
+   *Affects:* Spacing system (4px compact vs 8px generous), base font size (14px for dense, 16px for standard), line height, card padding. Dense UIs can use `text-sm` for data; light UIs should use `text-base` or larger.
+
+6. **Do you need dark mode?**
    - No — light only
    - Yes — toggle button (user-controlled, store preference in `localStorage`)
    - Yes — follow OS preference (`prefers-color-scheme: dark`, CSS-only)
@@ -227,6 +237,7 @@ Based on what you learned in Step 1, read the relevant files. **Read the minimum
 | **E-commerce** | `components/cards.md`, `layout/grid-systems.md`, `components/buttons.md` | `color/color-psychology.md`, `components/forms.md` |
 | **Mobile App** | `interaction/touch-targets.md`, `components/navigation.md`, `responsive/mobile-first.md` | `interaction/micro-interactions.md`, `interaction/loading-states.md` |
 | **Internal Tool** | `components/tables-and-lists.md`, `components/forms.md`, `layout/spacing-system.md` | `components/navigation.md`, `components/feedback.md` |
+| **Portfolio** | `typography/font-pairing.md`, `layout/visual-hierarchy.md`, `layout/whitespace.md` | `color/color-systems.md`, `interaction/animation-timing.md` |
 | **Email Template** | `typography/readability.md`, `color/contrast-and-accessibility.md`, `components/buttons.md` | `layout/spacing-system.md` |
 
 ### By Pain Point
@@ -260,13 +271,12 @@ If the user is unsure about their design vibe (intake question 3), point them to
 
 Templates live in `docs/presets/{element}/{personality}.html`. Each element can have multiple personality variants with genuinely different HTML structures (not just CSS changes):
 
-| Personality | Visual Character | Best For |
-|------------|-----------------|----------|
-| **clean** | Standard Tailwind, rounded-xl, subtle shadows, system sans | Safe default, B2B SaaS, internal tools |
-| **minimalist** | No shadows, hairline borders, light fonts, extreme whitespace | Luxury, editorial, Japanese-inspired, portfolios |
-| **playful** | Big rounded corners, colorful shadows, bouncy animations, zigzag layouts | Consumer apps, children's products, social platforms |
-| **glass** | Frosted blur surfaces, gradient backgrounds, translucent borders | Modern SaaS, creative tools, product showcases |
-| **editorial** | Serif headings (Playfair Display), no shadows, fine borders, muted palette | Publishing, blogs, law firms, premium brands |
+| Personality | Visual Character | Best For | Availability |
+|------------|-----------------|----------|-------------|
+| **clean** | Standard Tailwind, rounded-xl, subtle shadows, system sans | Safe default, B2B SaaS, internal tools | All 27 elements |
+| **minimalist** | No shadows, hairline borders, light fonts (300), extreme whitespace | Luxury, Japanese-inspired, portfolios, Scandinavian | All 27 elements |
+| **playful** | Big rounded corners (16-24px), colorful shadows, bouncy animations | Consumer apps, children's products, social platforms | All 27 elements |
+| **editorial** | Serif headings (Playfair Display), no shadows, fine borders, muted palette | Publishing, blogs, law firms, premium brands | form, landing only (use clean + serif for others) |
 
 ### Using Personality Templates
 
@@ -310,7 +320,17 @@ Adapt your output format to match the user's tech stack and situation.
 
 ### 3a. Design Tokens
 
-Always provide design tokens first — they apply regardless of framework. Present them in whichever format matches the user's stack:
+Always provide design tokens first — they apply regardless of framework. Present them in whichever format matches the user's stack.
+
+**Adapt tokens to the chosen personality and brand.** The blue-600 defaults below are a fallback. If the user provided brand colors (intake question 8) or chose a personality, replace the primary color. If using a personality template, extract the primary color from the template's HTML. Personality also affects non-color tokens:
+
+| Token | Clean | Minimalist | Playful | Editorial |
+|-------|-------|-----------|---------|-----------|
+| Border radius | 8-12px | 2-4px | 16-24px | 1-2px |
+| Shadow | subtle | none | colorful, multi-layer | none |
+| Heading weight | 600-700 | 300 | 800 | 400-700 |
+| Hover effect | color change | opacity fade | scale + lift | opacity/underline |
+| Transition | 150ms ease | 200ms ease-out | 300ms bouncy | 200ms ease |
 
 **CSS custom properties** (default, works everywhere):
 ```css
@@ -404,6 +424,10 @@ Generate code in the user's framework/language:
 - Responsive: works at 320px, 768px, 1024px+
 - Accessible: 4.5:1 contrast, 44px targets, visible focus states, semantic elements
 - Consistent: spacing from a scale, type from a scale, colors from a palette
+- Dark mode: `dark:` variants on all elements if user requested it (intake question 6)
+- Performance: `loading="lazy"` on below-fold images, `<link rel="preconnect">` for font CDNs, `font-display: swap` for web fonts. See `typography/web-font-loading.md`
+
+**For multi-page apps:** use a shared shell snippet (shell-sidebar or shell-marketing) as the consistent frame. Only the content area changes between pages. Reference the `project` preset in `docs/presets/` for a multi-page example with Dashboard, Team, and Settings views.
 
 ### 3c. Preview
 
@@ -460,6 +484,12 @@ Generate this as a markdown document. Fill in only the sections relevant to the 
 - Breakpoints: [values]
 - Container max-width: [value]
 - Mobile behavior: [stacking, reflow, etc.]
+
+### Dark Mode
+- Strategy: [none / OS preference / toggle / both]
+- Dark surface: `#hex` (e.g., slate-800 for cards, slate-900 for bg)
+- Dark text: `#hex` (e.g., slate-100 for primary, slate-400 for secondary)
+- Contrast verified: [Yes/No]
 
 ## Issues Found
 [Only include if auditing existing code]
@@ -660,6 +690,11 @@ Common user feedback and how to respond:
 | "The font is weird" | Switch to system-ui or Inter — safe defaults that work everywhere |
 | "It doesn't look professional" | Tighten spacing, reduce border-radius (rounded-lg → rounded-md), mute colors, use system fonts |
 | "Make it pop more" | Increase size contrast between heading and body, add visual weight to CTAs, use whitespace to create focus |
+| "It doesn't work on my phone" | Check responsive breakpoints, sidebar collapse, grid columns, touch targets, padding scaling |
+| "The text is hard to read" | Check contrast ratio (4.5:1), font size (≥16px body), line height (1.4-1.6), line length (≤75ch) |
+| "It loads slowly" | Add `loading="lazy"` on images, `<link rel="preconnect">` for fonts, subset web fonts, use system fonts as fallback |
+| "I want it darker/lighter" | Adjust the overall color scheme — toggle dark mode, or shift the neutral scale (warmer stones vs cooler slates) |
+| "It all looks the same" | Switch personality (minimalist → playful, or vice versa). Change the primary color via color theme. Vary spacing density. |
 
 ### Screenshot Tools
 - **Preview Tool** — paste HTML into the make-it-look-good preview tool for quick visual check

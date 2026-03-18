@@ -37,7 +37,7 @@ Not every section is required, but **Concrete Rules** and **CSS/Implementation P
 - **Update `research/sources.md`** when adding new sources to any file
 - **Update `README.md`** index when adding new knowledge files
 - **Cross-reference related files** using relative links: `[topic](../folder/file.md)`
-- **Every snippet needs:** metadata comment header (snippet name, category, rationale, tags, dark-mode, frameworks), consistent design tokens (blue-600 primary, slate neutrals), and an entry in `snippets/_index.md`
+- **Every snippet in `snippets/` needs:** metadata comment header (snippet name, category, rationale, tags, dark-mode, frameworks), consistent design tokens (blue-600 primary, slate neutrals), and an entry in `snippets/_index.md`. Note: the `docs/presets/` personality variants use different color palettes appropriate to their personality (rose for playful, indigo for editorial, etc.)
 
 ## Design Consultation Workflow
 - **`CONSULT.md`** is the LLM consultation playbook — read it to run an interactive design consultation
