@@ -267,7 +267,57 @@
       padding: 4px;
     }
 
-    .presets-menu.open { display: block; }
+    .presets-menu.open { display: flex; flex-direction: column; }
+
+    .presets-search {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      padding: 6px;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .presets-search input {
+      width: 100%;
+      padding: 6px 8px 6px 30px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 13px;
+      font-family: var(--font);
+      color: var(--text);
+      background: var(--bg);
+      outline: none;
+    }
+
+    .presets-search input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(37,99,235,0.15);
+    }
+
+    .presets-search input::placeholder { color: #94a3b8; }
+
+    .presets-search svg {
+      position: absolute;
+      left: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      pointer-events: none;
+    }
+
+    .presets-list {
+      overflow-y: auto;
+      flex: 1;
+      padding: 4px;
+    }
+
+    .presets-empty {
+      padding: 16px 12px;
+      text-align: center;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
 
     .presets-menu button {
       display: block;
@@ -335,13 +385,18 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
           Templates
         </button>
-        <div class="presets-menu" id="presetsMenu" style="max-height:70vh;overflow-y:auto;min-width:220px;">
-          <div style="padding:4px 12px 2px;font-size:10px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.08em;">Layouts</div>
+        <div class="presets-menu" id="presetsMenu" style="max-height:70vh;min-width:260px;">
+          <div class="presets-search">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="presetSearch" placeholder="Search templates..." autocomplete="off" />
+          </div>
+          <div class="presets-list" id="presetsList">
+          <div class="preset-group" style="padding:4px 12px 2px;font-size:10px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.08em;">Layouts</div>
           <button onclick="loadPreset('snippetShellSidebar')">App Shell (Sidebar + Topbar)</button>
           <button onclick="loadPreset('snippetShellMarketing')">Marketing Page</button>
           <button onclick="loadPreset('snippetShellDashboard')">Dashboard</button>
           <button onclick="loadPreset('snippetShellForm')">Centered Form</button>
-          <div style="padding:6px 12px 2px;font-size:10px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.08em;border-top:1px solid var(--border);margin-top:4px;">Components</div>
+          <div class="preset-group" style="padding:6px 12px 2px;font-size:10px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.08em;border-top:1px solid var(--border);margin-top:4px;">Components</div>
           <button onclick="loadPreset('snippetHero')">Hero Section</button>
           <button onclick="loadPreset('snippetStatsRow')">Stats Row</button>
           <button onclick="loadPreset('snippetDataTable')">Data Table</button>
@@ -353,7 +408,7 @@
           <button onclick="loadPreset('snippetPagination')">Pagination</button>
           <button onclick="loadPreset('snippetDropdown')">Dropdown Menu</button>
           <button onclick="loadPreset('snippetAvatars')">Avatar Group</button>
-          <div style="padding:6px 12px 2px;font-size:10px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.08em;border-top:1px solid var(--border);margin-top:4px;">Before → After</div>
+          <div class="preset-group" style="padding:6px 12px 2px;font-size:10px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.08em;border-top:1px solid var(--border);margin-top:4px;">Before → After</div>
           <button onclick="loadPreset('dashboardBefore')">Dashboard — Before</button>
           <button onclick="loadPreset('dashboard')">Dashboard — After</button>
           <button onclick="loadPreset('landingBefore')">Landing Page — Before</button>
@@ -364,15 +419,16 @@
           <button onclick="loadPreset('cards')">Card Grid — After</button>
           <button onclick="loadPreset('projectBefore')">Multi-Page App — Before</button>
           <button onclick="loadPreset('project')">Multi-Page App — After</button>
-          <div style="padding:6px 12px 2px;font-size:10px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.08em;border-top:1px solid var(--border);margin-top:4px;">Full Pages</div>
+          <div class="preset-group" style="padding:6px 12px 2px;font-size:10px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.08em;border-top:1px solid var(--border);margin-top:4px;">Full Pages</div>
           <button onclick="loadPreset('pricing')">SaaS Pricing</button>
           <button onclick="loadPreset('portfolio')">Portfolio (Dark)</button>
           <button onclick="loadPreset('restaurant')">Restaurant (Warm)</button>
           <button onclick="loadPreset('statuspage')">Status Page</button>
-          <div style="padding:6px 12px 2px;font-size:10px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.08em;border-top:1px solid var(--border);margin-top:4px;">Edge Cases</div>
+          <div class="preset-group" style="padding:6px 12px 2px;font-size:10px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.08em;border-top:1px solid var(--border);margin-top:4px;">Edge Cases</div>
           <button onclick="loadPreset('deploy')">Deploy Monitor (CLI→UI)</button>
           <button onclick="loadPreset('buttons')">Button System</button>
           <button onclick="loadPreset('osslanding')">OSS Landing (MD→Page)</button>
+          </div>
         </div>
       </div>
     </div>
@@ -4863,13 +4919,76 @@ function switchProjectPage(page) {
 
     function togglePresets() {
       const menu = document.getElementById('presetsMenu');
+      const isOpening = !menu.classList.contains('open');
       menu.classList.toggle('open');
+      if (isOpening) {
+        const input = document.getElementById('presetSearch');
+        input.value = '';
+        filterPresets('');
+        setTimeout(() => input.focus(), 50);
+      }
     }
 
     function loadPreset(name) {
       editor.value = presets[name];
       document.getElementById('presetsMenu').classList.remove('open');
       updatePreview();
+    }
+
+    // --- Preset search/filter ---
+    const presetSearch = document.getElementById('presetSearch');
+    presetSearch.addEventListener('input', (e) => filterPresets(e.target.value));
+    presetSearch.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        document.getElementById('presetsMenu').classList.remove('open');
+      }
+      if (e.key === 'Enter') {
+        // Load first visible preset
+        const first = document.querySelector('#presetsList button:not([style*="display: none"])');
+        if (first) first.click();
+      }
+    });
+
+    function filterPresets(query) {
+      const q = query.toLowerCase().trim();
+      const list = document.getElementById('presetsList');
+      const buttons = list.querySelectorAll('button');
+      const groups = list.querySelectorAll('.preset-group');
+      let anyVisible = false;
+
+      buttons.forEach(btn => {
+        const text = btn.textContent.toLowerCase();
+        const match = !q || text.includes(q);
+        btn.style.display = match ? '' : 'none';
+        if (match) anyVisible = true;
+      });
+
+      // Hide group headers if all their buttons are hidden
+      groups.forEach(group => {
+        let next = group.nextElementSibling;
+        let groupHasVisible = false;
+        while (next && !next.classList.contains('preset-group')) {
+          if (next.tagName === 'BUTTON' && next.style.display !== 'none') {
+            groupHasVisible = true;
+          }
+          next = next.nextElementSibling;
+        }
+        group.style.display = groupHasVisible ? '' : 'none';
+      });
+
+      // Show empty state
+      let empty = list.querySelector('.presets-empty');
+      if (!anyVisible) {
+        if (!empty) {
+          empty = document.createElement('div');
+          empty.className = 'presets-empty';
+          list.appendChild(empty);
+        }
+        empty.textContent = 'No templates match "' + query + '"';
+        empty.style.display = '';
+      } else if (empty) {
+        empty.style.display = 'none';
+      }
     }
 
     // Close presets menu on outside click
