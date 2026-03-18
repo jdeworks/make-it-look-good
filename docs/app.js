@@ -3,6 +3,7 @@ const preview = document.getElementById('preview');
 const viewportLabel = document.getElementById('viewportLabel');
 const darkBtn = document.getElementById('darkBtn');
 const toast = document.getElementById('toast');
+const editorHighlight = document.getElementById('editorHighlight');
 let darkMode = false;
 let debounceTimer;
 let currentViewport = 'full';
@@ -132,6 +133,7 @@ const darkVariantCSS = '@custom-variant dark (&:where(.dark, .dark *));';
 
 function updatePreview() {
   const html = editor.value;
+  updateHighlight();
   const darkClass = darkMode ? ' class="dark"' : '';
 
   // Build source map for inspect mode
@@ -190,15 +192,45 @@ function debouncedUpdate() {
 
 let userEdited = false;
 
+// --- Flat template list for prev/next navigation ---
+function getTemplateList() {
+  if (!manifestData) return [];
+  const list = [];
+  for (const cat of manifestData.categories) {
+    for (const elName of cat.elements) {
+      if (manifestData.elements[elName]) list.push(elName);
+    }
+  }
+  return list;
+}
+
+function navigateTemplate(dir) {
+  if (!currentElement || !manifestData) return;
+  const list = getTemplateList();
+  const idx = list.indexOf(currentElement);
+  if (idx === -1) return;
+  const newIdx = (idx + dir + list.length) % list.length;
+  const newElement = list[newIdx];
+  const pers = Object.keys(manifestData.elements[newElement].personalities).filter(p => p !== 'before');
+  loadPreset(newElement, pers.includes('clean') ? 'clean' : pers[0]);
+}
+
+function updateTemplateNav() {
+  const nav = document.getElementById('templateNav');
+  nav.style.display = currentElement ? 'flex' : 'none';
+}
+
 function updateTemplateName() {
   const el = document.getElementById('templateName');
   if (!currentPresetName || !manifestData) {
     el.textContent = '';
+    updateTemplateNav();
     return;
   }
   const info = manifestData.elements[currentPresetName];
   const label = info ? info.label : currentPresetName;
   el.textContent = label + (userEdited ? ' *' : '');
+  updateTemplateNav();
 }
 
 editor.addEventListener('input', () => {
@@ -689,6 +721,14 @@ editor.addEventListener('keydown', (e) => {
   }
 });
 
+// --- Keyboard shortcuts ---
+document.addEventListener('keydown', (e) => {
+  // Left/right arrow keys navigate templates (when not typing in editor/search)
+  if (document.activeElement === editor || document.activeElement === presetSearch) return;
+  if (e.key === 'ArrowLeft' && currentElement) { e.preventDefault(); navigateTemplate(-1); }
+  if (e.key === 'ArrowRight' && currentElement) { e.preventDefault(); navigateTemplate(1); }
+});
+
 
 // --- Draggable divider ---
 const divider = document.getElementById('divider');
@@ -753,15 +793,12 @@ function setMobileTab(tab) {
   }
 }
 
-// On mobile, default to 320px viewport and preview tab
+// On mobile, default to full width viewport and preview tab
 function initMobile() {
   if (window.innerWidth <= 768) {
-    currentViewport = 320;
-    preview.style.width = '320px';
-    viewportLabel.textContent = '320px';
-    document.querySelectorAll('.mobile-viewports .btn').forEach((b, i) => {
-      b.classList.toggle('active', i === 0);
-    });
+    currentViewport = 'full';
+    preview.style.width = '100%';
+    viewportLabel.textContent = 'Full width';
   }
 }
 
@@ -902,6 +939,17 @@ const inspectorAgentScript = `
 })();
 <\/script>`;
 
+// Scroll editor textarea to show a given character offset, centered vertically
+function scrollEditorToOffset(offset) {
+  // Use a temporary mirror div to measure the exact scroll position
+  const text = editor.value.substring(0, offset);
+  const lines = text.split('\n').length - 1;
+  const cs = getComputedStyle(editor);
+  const lineHeight = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.5 || 18;
+  const targetScroll = lines * lineHeight - editor.clientHeight / 3;
+  editor.scrollTo({ top: Math.max(0, targetScroll), behavior: 'smooth' });
+}
+
 // Parent-side message handler
 window.addEventListener('message', function(e) {
   if (e.source !== preview.contentWindow) return;
@@ -916,12 +964,7 @@ window.addEventListener('message', function(e) {
     if (info) {
       editor.focus();
       editor.setSelectionRange(info.start, info.end);
-      // Scroll textarea to show selection
-      const text = editor.value.substring(0, info.start);
-      const lines = text.split('\n').length - 1;
-      const lineHeight = parseFloat(getComputedStyle(editor).lineHeight) || 18;
-      const targetScroll = lines * lineHeight - editor.clientHeight / 3;
-      editor.scrollTop = Math.max(0, targetScroll);
+      scrollEditorToOffset(info.start);
     }
   }
 
@@ -932,16 +975,127 @@ window.addEventListener('message', function(e) {
   if (e.data.type === 'select' && sourceMap) {
     const info = sourceMap.get(e.data.milgId);
     if (info) {
+      // Exit inspect mode so the user can edit the selected code without
+      // hover events changing the selection as the mouse moves
+      inspectMode = false;
+      document.getElementById('inspectBtn').classList.remove('active');
+      // Tell the iframe to stop highlighting
+      preview.contentWindow.postMessage({ channel: 'milg-inspector', type: 'set-inspect-mode', enabled: false }, '*');
+
       editor.focus();
       editor.setSelectionRange(info.start, info.end);
-      const text = editor.value.substring(0, info.start);
-      const lines = text.split('\n').length - 1;
-      const lineHeight = parseFloat(getComputedStyle(editor).lineHeight) || 18;
-      const targetScroll = lines * lineHeight - editor.clientHeight / 3;
-      editor.scrollTop = Math.max(0, targetScroll);
+      scrollEditorToOffset(info.start);
     }
   }
 });
+
+// --- HTML Syntax Highlighting ---
+function escapeHtml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function highlightHtml(code) {
+  // Tokenize HTML for syntax highlighting
+  let result = '';
+  let i = 0;
+  const len = code.length;
+
+  while (i < len) {
+    // HTML comment
+    if (code.substring(i, i + 4) === '<!--') {
+      const end = code.indexOf('-->', i + 4);
+      const commentEnd = end === -1 ? len : end + 3;
+      result += '<span class="hl-comment">' + escapeHtml(code.substring(i, commentEnd)) + '</span>';
+      i = commentEnd;
+      continue;
+    }
+
+    // Closing tag
+    if (code[i] === '<' && i + 1 < len && code[i + 1] === '/') {
+      const end = code.indexOf('>', i);
+      if (end !== -1) {
+        result += '<span class="hl-tag">' + escapeHtml(code.substring(i, end + 1)) + '</span>';
+        i = end + 1;
+        continue;
+      }
+    }
+
+    // Opening tag
+    if (code[i] === '<' && i + 1 < len && /[a-zA-Z!]/.test(code[i + 1])) {
+      // Find tag name
+      let j = i + 1;
+      while (j < len && /[a-zA-Z0-9-]/.test(code[j])) j++;
+      result += '<span class="hl-tag">' + escapeHtml(code.substring(i, j)) + '</span>';
+      i = j;
+
+      // Parse attributes until >
+      while (i < len && code[i] !== '>') {
+        // Whitespace
+        if (/\s/.test(code[i])) {
+          result += code[i];
+          i++;
+          continue;
+        }
+        // Self-closing slash
+        if (code[i] === '/' && i + 1 < len && code[i + 1] === '>') {
+          result += '<span class="hl-tag">/&gt;</span>';
+          i += 2;
+          break;
+        }
+        // Attribute name
+        let attrStart = i;
+        while (i < len && code[i] !== '=' && code[i] !== '>' && !/\s/.test(code[i])) i++;
+        if (i > attrStart) {
+          result += '<span class="hl-attr">' + escapeHtml(code.substring(attrStart, i)) + '</span>';
+        }
+        // = sign
+        if (code[i] === '=') {
+          result += '=';
+          i++;
+          // Attribute value
+          if (i < len && (code[i] === '"' || code[i] === "'")) {
+            const quote = code[i];
+            let valEnd = code.indexOf(quote, i + 1);
+            if (valEnd === -1) valEnd = len - 1;
+            result += '<span class="hl-str">' + escapeHtml(code.substring(i, valEnd + 1)) + '</span>';
+            i = valEnd + 1;
+          } else {
+            // Unquoted value
+            let valStart = i;
+            while (i < len && code[i] !== '>' && !/\s/.test(code[i])) i++;
+            result += '<span class="hl-str">' + escapeHtml(code.substring(valStart, i)) + '</span>';
+          }
+        }
+      }
+      // Closing >
+      if (i < len && code[i] === '>') {
+        result += '<span class="hl-tag">&gt;</span>';
+        i++;
+      }
+      continue;
+    }
+
+    // Regular text
+    result += escapeHtml(code[i]);
+    i++;
+  }
+  return result;
+}
+
+function updateHighlight() {
+  const code = editor.value;
+  // Add a trailing newline so the highlight div matches textarea height
+  editorHighlight.innerHTML = highlightHtml(code) + '\n';
+}
+
+// Sync scroll position between textarea and highlight overlay
+editor.addEventListener('scroll', () => {
+  editorHighlight.scrollTop = editor.scrollTop;
+  editorHighlight.scrollLeft = editor.scrollLeft;
+});
+
+// Update highlight on input
+editor.addEventListener('input', updateHighlight);
 
 // --- Init ---
 initMobile();

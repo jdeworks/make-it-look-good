@@ -18,6 +18,14 @@
           Templates
         </button>
         <span class="template-name" id="templateName"></span>
+        <div class="template-nav" id="templateNav" style="display:none;">
+          <button class="btn btn-icon btn-nav" onclick="navigateTemplate(-1)" title="Previous template" id="prevTemplateBtn">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <button class="btn btn-icon btn-nav" onclick="navigateTemplate(1)" title="Next template" id="nextTemplateBtn">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 6 15 12 9 18"/></svg>
+          </button>
+        </div>
         <div class="presets-menu" id="presetsMenu" style="max-height:70vh;min-width:260px;">
           <div class="presets-search">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -28,14 +36,6 @@
           </div>
         </div>
       </div>
-    </div>
-
-    <!-- Mobile viewport buttons (hidden on desktop, shown on mobile) -->
-    <div class="mobile-viewports viewport-group" style="display:none;gap:2px;">
-      <button class="btn active" onclick="setViewport(320, event)" title="Extra small">xs</button>
-      <button class="btn" onclick="setViewport(640, event)" title="Small">sm</button>
-      <button class="btn" onclick="setViewport(1024, event)" title="Wide">wide</button>
-      <button class="btn" onclick="setViewport('full', event)" title="Full width">full</button>
     </div>
 
     <div class="header-center">
@@ -56,7 +56,7 @@
     </div>
 
     <div class="header-right">
-      <button class="btn btn-icon" onclick="toggleInspect()" title="Inspect elements (hover to highlight)" id="inspectBtn">
+      <button class="btn btn-icon hide-mobile" onclick="toggleInspect()" title="Inspect elements (hover to highlight)" id="inspectBtn">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 12L3 3"/><path d="M3 3v6h6"/><circle cx="15" cy="15" r="7"/></svg>
       </button>
       <button class="btn btn-icon" onclick="toggleDarkMode()" title="Toggle dark mode in preview" id="darkBtn">
@@ -82,7 +82,8 @@
       <div class="editor-header">
         <span>HTML</span>
       </div>
-      <div class="editor" style="flex:1;display:flex;">
+      <div class="editor editor-wrap" style="flex:1;">
+        <div class="editor-highlight" id="editorHighlight" aria-hidden="true"></div>
         <textarea id="editor" placeholder="Paste your HTML here...&#10;&#10;Tailwind CSS is available in the preview.&#10;Just use Tailwind classes like:&#10;&#10;<div class=&quot;p-8 max-w-md mx-auto&quot;>&#10;  <h1 class=&quot;text-2xl font-bold&quot;>Hello</h1>&#10;</div>" spellcheck="false"></textarea>
       </div>
     </div>
