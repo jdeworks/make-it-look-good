@@ -54,7 +54,16 @@ Run through this checklist against their code. Note every issue you find.
 - [ ] Are spacing values from a scale (4, 8, 12, 16, 24, 32, 48) or random (13, 17, 22)?
 - [ ] Is there a layout container with max-width and centered content?
 - [ ] Are sections separated with consistent vertical rhythm?
-- [ ] On mobile: does it stack properly or break?
+- [ ] Does the page have a `min-h-screen` wrapper with a background color? (Prevents white body bleed)
+
+**Responsive & Mobile**
+- [ ] Does the layout work at 320px? At 768px? At 1024px+?
+- [ ] Do sidebars collapse to off-canvas on mobile? (Fixed sidebars eat >50% of mobile screen)
+- [ ] Do grids reduce columns on smaller screens? (`grid-cols-1 sm:grid-cols-2 lg:grid-cols-3`)
+- [ ] Do flex rows wrap or stack on mobile? (`flex-col sm:flex-row`)
+- [ ] Are paddings responsive? (`p-4 sm:p-6 lg:p-8`, not a fixed `p-8`)
+- [ ] Do tables have `overflow-x-auto` on their container?
+- [ ] Is navigation mobile-appropriate? (Hamburger + off-canvas, not just squished links)
 
 **Typography**
 - [ ] Is body text ≥16px? (Check for `font-size: 12px` or `text-xs` on body text — common mistake)
