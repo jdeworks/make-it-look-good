@@ -4887,13 +4887,22 @@ function switchProjectPage(page) {
         showToast('Nothing to share — add some HTML first');
         return;
       }
+      // Check if content matches a preset exactly
+      let presetName = null;
+      for (const [name, content] of Object.entries(presets)) {
+        if (content === html) { presetName = name; break; }
+      }
       try {
-        const encoded = btoa(unescape(encodeURIComponent(html)));
-        const url = window.location.origin + window.location.pathname + '#' + encoded;
+        let fragment;
+        if (presetName) {
+          fragment = 'preset:' + presetName;
+        } else {
+          fragment = 'code:' + btoa(unescape(encodeURIComponent(html)));
+        }
+        const url = window.location.origin + window.location.pathname + '#' + fragment;
         navigator.clipboard.writeText(url).then(() => {
-          showToast('Link copied to clipboard');
+          showToast(presetName ? 'Preset link copied' : 'Link copied to clipboard');
         }).catch(() => {
-          // Fallback: show URL in prompt
           prompt('Copy this link:', url);
         });
       } catch (e) {
@@ -4911,22 +4920,72 @@ function switchProjectPage(page) {
     // --- Load from URL hash ---
     function loadFromHash() {
       const hash = window.location.hash.slice(1);
-      if (hash) {
-        try {
-          const decoded = decodeURIComponent(escape(atob(hash)));
-          // Show confirmation banner for shared content
-          const banner = document.createElement('div');
-          banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:999;background:#fef3c7;border-bottom:1px solid #f59e0b;padding:10px 16px;display:flex;align-items:center;justify-content:center;gap:12px;font-size:13px;font-family:var(--font);color:#92400e;';
-          banner.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
-            + '<span>This preview was loaded from a shared link. Shared content runs in a sandboxed iframe but may contain scripts.</span>'
-            + '<button style="background:#92400e;color:white;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:12px;white-space:nowrap;" onclick="this.parentElement.remove()">Dismiss</button>';
-          document.body.prepend(banner);
-          editor.value = decoded;
+      if (!hash) return;
+
+      // Preset link — trusted, load directly
+      if (hash.startsWith('preset:')) {
+        const name = hash.slice(7);
+        if (presets[name]) {
+          editor.value = presets[name];
           updatePreview();
-        } catch (e) {
-          // Invalid hash, ignore
         }
+        return;
       }
+
+      // Custom code link — decode and check before loading
+      let decoded;
+      const raw = hash.startsWith('code:') ? hash.slice(5) : hash; // back-compat with old links
+      try {
+        decoded = decodeURIComponent(escape(atob(raw)));
+      } catch (e) {
+        return; // invalid hash
+      }
+
+      const hasScripts = /<script[\s>]/i.test(decoded);
+      showTrustDialog(decoded, hasScripts);
+    }
+
+    function showTrustDialog(html, hasScripts) {
+      const overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:999;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;padding:16px;';
+      const card = document.createElement('div');
+      card.style.cssText = 'background:white;border-radius:12px;padding:24px;max-width:480px;width:100%;font-family:var(--font);box-shadow:0 20px 60px rgba(0,0,0,0.3);';
+
+      const iconColor = hasScripts ? '#dc2626' : '#f59e0b';
+      const iconBg = hasScripts ? '#fef2f2' : '#fffbeb';
+      const title = hasScripts ? 'Shared content contains scripts' : 'Load shared content?';
+      const desc = hasScripts
+        ? 'This shared link includes <code>&lt;script&gt;</code> tags that will execute code in a sandboxed iframe. Only load this if you trust the person who sent it.'
+        : 'This shared link contains HTML from an external source. It will be rendered in a sandboxed iframe.';
+
+      card.innerHTML = ''
+        + '<div style="display:flex;align-items:start;gap:12px;">'
+        + '  <div style="width:40px;height:40px;border-radius:8px;background:' + iconBg + ';display:flex;align-items:center;justify-content:center;flex-shrink:0;">'
+        + '    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="' + iconColor + '" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
+        + '  </div>'
+        + '  <div>'
+        + '    <h3 style="margin:0 0 4px;font-size:16px;font-weight:600;color:#0f172a;">' + title + '</h3>'
+        + '    <p style="margin:0;font-size:14px;color:#475569;line-height:1.5;">' + desc + '</p>'
+        + '  </div>'
+        + '</div>'
+        + '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px;">'
+        + '  <button id="trust-cancel" style="padding:8px 16px;border:1px solid #e2e8f0;border-radius:8px;background:white;color:#475569;font-size:14px;font-family:var(--font);cursor:pointer;">Cancel</button>'
+        + '  <button id="trust-load" style="padding:8px 16px;border:none;border-radius:8px;background:' + (hasScripts ? '#dc2626' : '#2563eb') + ';color:white;font-size:14px;font-weight:500;font-family:var(--font);cursor:pointer;">' + (hasScripts ? 'I trust this — load anyway' : 'Load preview') + '</button>'
+        + '</div>';
+
+      overlay.appendChild(card);
+      document.body.appendChild(overlay);
+
+      card.querySelector('#trust-cancel').onclick = function() {
+        overlay.remove();
+        // Clear hash so it doesn't re-prompt on reload
+        history.replaceState(null, '', window.location.pathname);
+      };
+      card.querySelector('#trust-load').onclick = function() {
+        overlay.remove();
+        editor.value = html;
+        updatePreview();
+      };
     }
 
     // --- Tab key support ---
