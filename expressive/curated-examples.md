@@ -783,6 +783,23 @@ Choosing a design approach:
    └─ Showcase / portfolio (performance secondary) → Immersive (WebGL, heavy animation)
 ```
 
+## Related Templates
+
+Each design approach has dedicated presets in `docs/presets/` with clean, minimalist, and playful personality variants:
+
+| Design Approach | Template Preset | Primary Color |
+|---|---|---|
+| Dark Premium / Developer | [`devtool-landing/`](../docs/presets/devtool-landing/) | cyan |
+| Minimal Editorial | [`editorial-blog/`](../docs/presets/editorial-blog/) | slate |
+| Friendly SaaS / Bento | [`saas-features/`](../docs/presets/saas-features/) | violet |
+| Immersive / Scroll-Storytelling | [`scroll-story/`](../docs/presets/scroll-story/) | emerald |
+| Bold Creative / Agency | [`agency-landing/`](../docs/presets/agency-landing/) | blue |
+| E-commerce / Product-Focused | [`product-page/`](../docs/presets/product-page/) | sky |
+| Documentation | [`docs-site/`](../docs/presets/docs-site/) | indigo |
+| Event / Conference | [`event-page/`](../docs/presets/event-page/) | amber |
+| Personal / Portfolio | [`personal-hero/`](../docs/presets/personal-hero/), [`jdeworks-personal/`](../docs/presets/jdeworks-personal/) | blue, violet |
+| Product Launch | [`product-launch/`](../docs/presets/product-launch/) | indigo |
+
 ## Sources & Inspiration
 
 ### Design Galleries

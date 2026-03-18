@@ -277,5 +277,5 @@ Which button type should I use?
 - [Contrast & Accessibility](../color/contrast-and-accessibility.md) — contrast ratio requirements
 - [Spacing System](../layout/spacing-system.md) — padding and gap values
 
-## Related Snippets
-- [`btn-system.html`](../snippets/btn-system.html) — All emphasis levels × sizes × states as copy-paste Tailwind
+## Related Presets
+- [`buttons/`](../docs/presets/buttons/) — All emphasis levels × sizes × states as copy-paste Tailwind (clean, minimalist, playful variants)

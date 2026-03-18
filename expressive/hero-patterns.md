@@ -167,6 +167,13 @@ Choosing a hero type:
    └─ Always stack CTAs vertically on mobile (flex-col sm:flex-row)
 ```
 
+## Related Templates
+- [`personal-hero/`](../docs/presets/personal-hero/) — Personal site with staggered reveal hero
+- [`agency-landing/`](../docs/presets/agency-landing/) — Agency with gradient mesh hero
+- [`product-launch/`](../docs/presets/product-launch/) — Product launch with gradient text hero
+- [`devtool-landing/`](../docs/presets/devtool-landing/) — Developer tool with gradient mesh + terminal hero
+- [`event-page/`](../docs/presets/event-page/) — Event with bold date hero
+
 ## Sources
 - [NN/g — How Users Read on the Web](https://www.nngroup.com/articles/how-users-read-on-the-web/)
 - [Peep Laja — Above the Fold](https://cxl.com/blog/above-the-fold/)

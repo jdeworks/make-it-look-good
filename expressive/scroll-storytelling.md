@@ -158,6 +158,10 @@ Adding scroll storytelling:
    └─ Keyboard nav → Ensure all content reachable without scrolling
 ```
 
+## Related Templates
+- [`scroll-story/`](../docs/presets/scroll-story/) — Scroll-triggered portfolio with IntersectionObserver reveals
+- [`jdeworks-personal/`](../docs/presets/jdeworks-personal/) — Personalized scroll-driven portfolio
+
 ## Sources
 - [MDN — Scroll-driven animations](https://developer.mozilla.org/en-US/docs/Web/CSS/animation-timeline)
 - [web.dev — Scroll-driven animations](https://developer.chrome.com/docs/css-ui/scroll-driven-animations)

@@ -182,6 +182,12 @@ Adding purposeful motion:
    └─ Always: @media (prefers-reduced-motion: reduce) { animation: none; }
 ```
 
+## Related Templates
+- [`scroll-story/`](../docs/presets/scroll-story/) — IntersectionObserver scroll reveals with staggered cascade
+- [`saas-features/`](../docs/presets/saas-features/) — Bouncy hover interactions on bento cards (playful variant)
+- [`devtool-landing/`](../docs/presets/devtool-landing/) — Glow card hover effects (clean variant)
+- [`agency-landing/`](../docs/presets/agency-landing/) — Service row expand on hover, image zoom
+
 ## Sources
 - [Material Design 3 — Motion principles](https://m3.material.io/styles/motion/overview)
 - [Apple HIG — Motion](https://developer.apple.com/design/human-interface-guidelines/motion)

@@ -237,9 +237,7 @@ Building a form?
 - [Apple HIG — Text Fields](https://developer.apple.com/design/human-interface-guidelines/text-fields)
 - [HTML autocomplete attribute](https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/autocomplete) — MDN
 
-## Related Snippets
-- [`form-login.html`](../snippets/form-login.html) — Login form ([React](../snippets/react/form-login.jsx), [Vue](../snippets/vue/form-login.vue))
-- [`form-signup.html`](../snippets/form-signup.html) — Signup with password strength ([React](../snippets/react/form-signup.jsx), [Vue](../snippets/vue/form-signup.vue))
-- [`form-settings.html`](../snippets/form-settings.html) — Grouped settings with toggles
-- [`form-search-bar.html`](../snippets/form-search-bar.html) — Search with filter dropdown ([React](../snippets/react/form-search-bar.jsx), [Vue](../snippets/vue/form-search-bar.vue))
-- [`form-contact.html`](../snippets/form-contact.html) — Contact form
+## Related Presets
+- [`shell-form/`](../docs/presets/shell-form/) — Login form ([React](../docs/presets/shell-form/react.jsx), [Vue](../docs/presets/shell-form/vue.vue), [Svelte](../docs/presets/shell-form/svelte.svelte))
+- [`form/`](../docs/presets/form/) — Signup with password strength ([React](../docs/presets/form/react.jsx), [Vue](../docs/presets/form/vue.vue), [Svelte](../docs/presets/form/svelte.svelte))
+- Search bar — [React](../docs/presets/hero/react-search.jsx), [Vue](../docs/presets/hero/vue-search.vue), [Svelte](../docs/presets/hero/svelte-search.svelte)

@@ -221,8 +221,7 @@ Designing a card component?
 - [Adrian Roselli — Block Links](https://adrianroselli.com/2020/02/block-links-cards-clickable-regions-etc.html) — a11y pitfalls of clickable cards
 - [Refactoring UI](https://www.refactoringui.com/) — card styling and shadow techniques
 
-## Related Snippets
-- [`data-card-grid.html`](../snippets/data-card-grid.html) — Responsive product/content card grid
-- [`content-pricing-cards.html`](../snippets/content-pricing-cards.html) — 3-tier pricing cards
-- [`content-testimonials.html`](../snippets/content-testimonials.html) — Testimonial cards row
-- [`content-stats-row.html`](../snippets/content-stats-row.html) — Stat cards with trend indicators
+## Related Presets
+- [`card-grid/`](../docs/presets/card-grid/) — Responsive product/content card grid
+- [`pricing-cards/`](../docs/presets/pricing-cards/) — 3-tier pricing cards
+- [`stats-row/`](../docs/presets/stats-row/) — Stat cards with trend indicators

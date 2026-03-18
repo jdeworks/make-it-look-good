@@ -5,7 +5,7 @@
 <!-- LLM ROUTING — If you are an AI assistant helping someone with UI/UX design:
 IMPORTANT: The active branch is "dev". Fetch files from the dev branch, not main.
 1. Read CONSULT.md — it contains the full design consultation workflow
-2. Read snippets/_index.md — copy-paste component library with composition recipes
+2. Read docs/presets/_index.md — preset library with personality variants and composition recipes
 3. Read workflows/quick-reference.md — critical design numbers at a glance
 4. Read ONLY the knowledge files relevant to the user's question (see Step 2 in CONSULT.md)
 Do NOT read the entire repo. Each file is self-contained, 200-400 lines. -->
@@ -14,7 +14,7 @@ Do NOT read the entire repo. Each file is self-contained, 200-400 lines. -->
 
 **Design consultation?** Read [`CONSULT.md`](CONSULT.md) — it routes you through intake → knowledge files → code generation → design review notes.
 
-**Need a component?** Read [`snippets/_index.md`](snippets/_index.md) — 34 HTML+Tailwind snippets with React, Vue, and Svelte variants.
+**Need a component?** Read [`docs/presets/_index.md`](docs/presets/_index.md) — 38+ HTML+Tailwind presets with personality variants and React, Vue, and Svelte framework files.
 
 **Quick number lookup?** Read [`workflows/quick-reference.md`](workflows/quick-reference.md) — contrast ratios, spacing scales, timing values.
 
@@ -32,14 +32,14 @@ A repo you point your AI assistant at to get **actually good** UI/UX output. Ins
 Tell your AI: *"Read CONSULT.md from the dev branch of github.com/jdeworks/make-it-look-good, then help me design a dashboard"*
 
 **Option 2 — Grab a snippet:**
-Tell your AI: *"Read snippets/_index.md from the dev branch of github.com/jdeworks/make-it-look-good and give me a sidebar + data table layout"*
+Tell your AI: *"Read docs/presets/_index.md from the dev branch of github.com/jdeworks/make-it-look-good and give me a sidebar + data table layout"*
 
 **Option 3 — Review existing design:**
 Tell your AI: *"Read CONSULT.md from the dev branch of github.com/jdeworks/make-it-look-good, then audit this code: [paste your code]"*
 
 ### Preview Tool
 
-Paste any HTML+Tailwind into the [live preview tool](https://jdeworks.github.io/make-it-look-good/) to see it rendered instantly. Toggle mobile/tablet/desktop views, dark mode, and share via URL. Includes 97 prebuilt templates across 30 elements with multiple design personalities.
+Paste any HTML+Tailwind into the [live preview tool](https://jdeworks.github.io/make-it-look-good/) to see it rendered instantly. Toggle mobile/tablet/desktop views, dark mode, and share via URL. Includes 121 prebuilt templates across 38 elements with multiple design personalities.
 
 ### Before & After Examples
 
@@ -59,20 +59,20 @@ Click any "After" link — personality buttons appear in the preview header to s
 
 ## What's Inside
 
-### Snippet Library — [`snippets/_index.md`](snippets/_index.md)
+### Preset Library — [`docs/presets/_index.md`](docs/presets/_index.md)
 
-34 copy-paste HTML+Tailwind components. Interactive ones also have React, Vue, and Svelte variants.
+38+ presets with multiple personality variants (Clean, Minimalist, Playful). Interactive components also have React, Vue, and Svelte framework files.
 
 | Category | Examples |
 |----------|---------|
 | **Layout Shells** | App shell, marketing page, dashboard, centered form |
-| **Navigation** | Topbar, sidebar, tabs, pagination, dropdown, breadcrumbs, bottom nav |
-| **Content** | Hero, feature grid, pricing cards, testimonials, stats, accordion, avatars |
-| **Data** | Sortable table, card grid, detail view |
-| **Forms** | Login, signup, settings, search bar, contact |
-| **Feedback** | Toast, alert banner, modal, loading skeleton |
+| **Components** | Hero, tabs, accordion, pagination, dropdown, avatars, data table |
+| **Full Pages** | Pricing, portfolio, restaurant, status page |
+| **Before → After** | Dashboard, landing page, form, card grid, multi-page app |
+| **Expressive** | Personal site, agency landing, product launch, editorial blog, SaaS features, scroll story, product page, devtool landing, docs site, event page, personalized portfolio |
+| **Edge Cases** | Deploy monitor, button system, OSS landing |
 
-All snippets: dark mode, WCAG AA contrast, 44px touch targets, responsive. [Composition recipes](snippets/_index.md#composition-recipes) show how to combine them into full pages.
+All presets: dark mode, WCAG AA contrast, 44px touch targets, responsive. [Composition recipes](docs/presets/_index.md#composition-recipes) show how to combine them into full pages.
 
 ### Knowledge Files — 44 topics
 

@@ -5,7 +5,7 @@ This repo is a design knowledge base. You are here to help a user with UI/UX des
 ## How to Use
 
 1. **Design consultation** → Read `CONSULT.md` and follow the steps in order
-2. **Need a component** → Read `snippets/_index.md` for the snippet index and composition recipes
+2. **Need a component** → Read `docs/presets/_index.md` for the preset index and composition recipes
 3. **Quick number lookup** → Read `workflows/quick-reference.md`
 4. **Specific topic** → Read only the relevant file from the list below (each is 200-400 lines, self-contained)
 
@@ -13,14 +13,14 @@ This repo is a design knowledge base. You are here to help a user with UI/UX des
 
 - **Match the user's tech stack** — detect React/Vue/Svelte/plain HTML and output in their format
 - **Read only what's needed** — don't load the entire repo, pick the 2-4 files relevant to the task
-- **Use snippets as starting points** — when a relevant snippet exists in `snippets/`, customize it rather than generating from scratch
+- **Use presets as starting points** — when a relevant preset exists in `docs/presets/`, customize it rather than generating from scratch
 - **Always generate Design Review Notes** (Step 4 in CONSULT.md) — structured markdown with issues, decisions, tokens, and checklist
 
 ## File Map
 
 - `CONSULT.md` — Full consultation playbook (start here for any design task)
-- `snippets/_index.md` — Component snippet index with composition recipes
-- `snippets/FRAMEWORKS.md` — React/Vue/Svelte/Angular conversion guide
+- `docs/presets/_index.md` — Component preset index with composition recipes
+- `docs/presets/FRAMEWORKS.md` — React/Vue/Svelte/Angular conversion guide
 - `workflows/quick-reference.md` — Critical design numbers cheat sheet
 - `workflows/new-project-checklist.md` — New project setup guide
 - `workflows/design-review-checklist.md` — Design audit checklist

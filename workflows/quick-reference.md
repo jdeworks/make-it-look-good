@@ -98,23 +98,27 @@
 | Chips/tags | **full (9999px)** or **4–8px** | Material Design 3 |
 | Avatars | **full (50%)** | Common practice |
 
-## Quick Snippet Lookup
+## Quick Preset Lookup
 
-Need a starting point? Grab a snippet from [`snippets/_index.md`](../snippets/_index.md):
+Need a starting point? Grab a preset from [`docs/presets/_index.md`](../docs/presets/_index.md):
 
-| I need a... | Snippet |
-|-------------|---------|
-| Dashboard layout | `shell-dashboard.html` |
-| Landing page | `shell-marketing-page.html` + `content-hero.html` |
-| Login / signup page | `shell-centered-form.html` + `form-login.html` |
-| Settings page | `shell-sidebar-topbar.html` + `form-settings.html` |
-| Data browser | `shell-sidebar-topbar.html` + `data-table.html` |
-| Sidebar nav | `nav-sidebar.html` |
-| Toast notifications | `feedback-toast.html` |
-| Confirmation dialog | `feedback-modal.html` |
-| Loading placeholder | `feedback-loading-skeleton.html` |
+| I need a... | Preset |
+|-------------|--------|
+| Dashboard layout | `docs/presets/shell-dashboard/` |
+| Landing page | `docs/presets/shell-marketing/` + `docs/presets/hero/` |
+| Login / signup page | `docs/presets/shell-form/` |
+| Data browser | `docs/presets/shell-sidebar/` + `docs/presets/data-table/` |
+| Pricing page | `docs/presets/pricing/` |
+| Portfolio | `docs/presets/portfolio/` or `docs/presets/personal-hero/` |
+| Blog / editorial | `docs/presets/editorial-blog/` |
+| SaaS features | `docs/presets/saas-features/` |
+| Developer tool | `docs/presets/devtool-landing/` |
+| Event / conference | `docs/presets/event-page/` |
+| Documentation site | `docs/presets/docs-site/` |
+| Product page | `docs/presets/product-page/` |
+| Scroll-driven story | `docs/presets/scroll-story/` |
 
-React and Vue variants available for interactive components — see [`snippets/FRAMEWORKS.md`](../snippets/FRAMEWORKS.md).
+Each preset has clean, minimalist, and playful personality variants. React and Vue variants available for interactive components — see [`docs/presets/FRAMEWORKS.md`](../docs/presets/FRAMEWORKS.md).
 
 ## Sources
 - [WCAG 2.2](https://www.w3.org/TR/WCAG22/)

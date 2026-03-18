@@ -126,6 +126,12 @@ Building visual identity:
    └─ Crop any section → Is the source recognizable? If no, signature isn't strong enough.
 ```
 
+## Related Templates
+- [`editorial-blog/`](../docs/presets/editorial-blog/) — Serif headings, extreme whitespace, content-first identity
+- [`agency-landing/`](../docs/presets/agency-landing/) — Bold creative brand identity
+- [`devtool-landing/`](../docs/presets/devtool-landing/) — Dark premium tech identity
+- [`jdeworks-personal/`](../docs/presets/jdeworks-personal/) — Personalized visual identity
+
 ## Sources
 - Müller-Brockmann, J. (1981). *Grid Systems in Graphic Design*
 - [Refactoring UI — Building Your Color Palette](https://www.refactoringui.com/)

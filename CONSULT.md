@@ -290,30 +290,46 @@ Templates live in `docs/presets/{element}/{personality}.html`. Each element can 
 3. Use it as the HTML starting point — customize content, colors, and branding
 4. The color theme switcher in the preview tool lets users explore color variations on any personality
 
-### Snippet Index
+### Preset Index
 
-Also check [`snippets/_index.md`](snippets/_index.md) for component-level snippets and composition recipes.
+Also check [`docs/presets/_index.md`](docs/presets/_index.md) for component presets and composition recipes.
 
 ### By Project Type
 
-| Project Type | Shell Snippet | Component Snippets |
+| Project Type | Shell Preset | Component Presets |
 |---|---|---|
-| **Dashboard** | `shell-dashboard` | `content-stats-row`, `data-table`, `nav-sidebar` |
-| **Landing Page** | `shell-marketing-page` | `content-hero`, `content-feature-grid`, `content-pricing-cards`, `content-cta-section` |
-| **Form / Wizard** | `shell-centered-form` | `form-signup` or `form-settings` |
-| **Internal Tool** | `shell-sidebar-topbar` | `data-table`, `form-settings`, `feedback-toast` |
-| **Login / Signup** | `shell-centered-form` | `form-login` or `form-signup` |
-| **Data Browser** | `shell-sidebar-topbar` | `form-search-bar`, `data-table` or `data-card-grid` |
-| **E-commerce** | `shell-marketing-page` | `data-card-grid`, `form-search-bar`, `content-hero` |
+| **Dashboard** | `shell-dashboard/` | `stats-row/`, `data-table/` |
+| **Landing Page** | `shell-marketing/` | `hero/`, `feature-grid/`, `pricing-cards/` |
+| **Form / Wizard** | `shell-form/` | `form/` |
+| **Internal Tool** | `shell-sidebar/` | `data-table/`, `tabs/` |
+| **Login / Signup** | `shell-form/` | — |
+| **Data Browser** | `shell-sidebar/` | `data-table/` or `card-grid/` |
+| **E-commerce** | `shell-marketing/` | `card-grid/`, `hero/` |
+
+### By Design Approach
+
+For expressive or personality-driven projects, pick a starting template:
+
+| Design Approach | Best For | Template Preset |
+|---|---|---|
+| Dark Premium / Dev | Dev tools, APIs, CLI tools | `devtool-landing/` or `product-launch/` |
+| Minimal Editorial | Blogs, content-first sites, magazines | `editorial-blog/` |
+| Friendly SaaS / Bento | Consumer SaaS, feature showcases | `saas-features/` |
+| Immersive / Scroll | Portfolios, case studies, showcases | `scroll-story/` |
+| Bold Creative | Agencies, studios, creative brands | `agency-landing/` |
+| E-commerce / Product | Product pages, launches | `product-page/` |
+| Documentation | Technical docs, API refs, guides | `docs-site/` |
+| Event / Conference | Events, meetups, launches | `event-page/` |
+| Personal / Portfolio | Personal sites, developer portfolios | `personal-hero/` or `jdeworks-personal/` |
 
 ### Framework-Aware Selection
 
-If the user's stack is **React** or **Vue**, check if a framework variant exists in `snippets/react/` or `snippets/vue/` for interactive components. See [`snippets/FRAMEWORKS.md`](snippets/FRAMEWORKS.md) for the full list. For Svelte, Angular, or other frameworks, use the HTML snippet and follow the conversion guide.
+If the user's stack is **React**, **Vue**, or **Svelte**, check if a framework variant exists in the preset directory. See [`docs/presets/FRAMEWORKS.md`](docs/presets/FRAMEWORKS.md) for the full list. For Angular or other frameworks, use the HTML preset and follow the conversion guide.
 
-### Using Snippets
+### Using Presets
 
-1. Start with the appropriate **shell** snippet as the page layout
-2. Drop **component snippets** into the shell's content area
+1. Start with the appropriate **shell** preset or **full-page** template
+2. Drop **component presets** into the shell's content area
 3. Customize colors, content, and branding for the user's project
 4. Add interactivity (state, events) if using a framework variant
 
@@ -396,7 +412,7 @@ export const tokens = {
 
 ### 3b. Implementation
 
-**When a relevant snippet exists in `snippets/`**, use it as base code. Customize colors, content, and branding for the user's project rather than generating from scratch. If the user's framework has a variant in `snippets/react/` or `snippets/vue/`, use that version. For other frameworks, start from the HTML snippet and convert per `snippets/FRAMEWORKS.md`.
+**When a relevant preset exists in `docs/presets/`**, use it as base code. Customize colors, content, and branding for the user's project rather than generating from scratch. If the user's framework has a variant (`.jsx`, `.vue`, `.svelte`) in the preset directory, use that version. For other frameworks, start from the HTML preset and convert per `docs/presets/FRAMEWORKS.md`.
 
 Generate code in the user's framework/language:
 
@@ -673,6 +689,83 @@ Layout: Single column, max-width 600px, table-based for compatibility
 Spacing: Generous (20-30px between sections), padding via table cells
 Components: Header with logo, CTA button (not link), footer with unsubscribe
 Dark mode: Include dark mode meta tag + inverted-colors-safe palette
+```
+
+### Editorial Blog
+```
+Colors: Minimal — grayscale with one accent color
+Typography: Playfair Display for headings, Inter or system for body, 18px body
+Layout: Single column, 640-720px max-width, extreme whitespace (96-128px sections)
+Spacing: 8px base, very generous
+Components: Article with pull quote, byline, related articles, newsletter CTA
+Dark mode: Optional
+Template: docs/presets/editorial-blog/
+```
+
+### SaaS Feature Showcase
+```
+Colors: Violet/blue primary, warm accents per feature
+Typography: Inter or Sora, 16px body, bold headings
+Layout: Bento grid (4-col with spanning), responsive collapse
+Spacing: 8px base, generous cards
+Components: Bento features, testimonials, email signup, pricing
+Dark mode: Yes
+Template: docs/presets/saas-features/
+```
+
+### Developer Tool Landing
+```
+Colors: Dark slate-950 base, cyan/blue accent, high-saturation glow
+Typography: Space Grotesk headings, JetBrains Mono for code, 16px body
+Layout: Full-width hero with gradient mesh, centered content
+Spacing: 8px base, generous (py-24/py-32 sections)
+Components: Terminal code block, feature grid, pricing, testimonials
+Dark mode: Always dark
+Template: docs/presets/devtool-landing/
+```
+
+### Documentation Site
+```
+Colors: Indigo primary, neutral sidebar
+Typography: Inter or system, JetBrains Mono for code, 16px body
+Layout: Sidebar nav + content + optional TOC, responsive collapse
+Spacing: 4px base, moderate density
+Components: Sidebar nav, breadcrumbs, code blocks, callout boxes, tables
+Dark mode: Yes (users expect it)
+Template: docs/presets/docs-site/
+```
+
+### Event / Conference
+```
+Colors: Amber/orange primary (or brand), gradient CTAs
+Typography: Space Grotesk or bold sans-serif, 16px body
+Layout: Full-width hero, speaker grid, timeline schedule
+Spacing: 8px base, generous
+Components: Speaker cards, schedule timeline, ticket tiers, sponsors
+Dark mode: Optional
+Template: docs/presets/event-page/
+```
+
+### Product Page (E-commerce)
+```
+Colors: Product-derived palette, dark/light section alternation
+Typography: Inter or system, 16px body
+Layout: Full-bleed hero, spec grid, feature sections
+Spacing: 8px base, section-based
+Components: Product image, specs, features, reviews, related products
+Dark mode: Optional
+Template: docs/presets/product-page/
+```
+
+### Scroll-Driven Portfolio
+```
+Colors: Emerald/brand accent, gradient reveals
+Typography: Space Grotesk, 16px body
+Layout: Full-viewport sections, scroll-triggered reveals
+Spacing: Full-screen sections (min-h-screen)
+Components: Hero, project showcases, about, contact CTA
+Dark mode: Yes
+Template: docs/presets/scroll-story/ or docs/presets/jdeworks-personal/
 ```
 
 ---

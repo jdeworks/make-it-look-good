@@ -192,5 +192,5 @@ Should I use a modal?
 - [Material Design 3 — Dialogs](https://m3.material.io/components/dialogs/overview)
 - Related: [Forms](forms.md), [Buttons](buttons.md), [Feedback](feedback.md)
 
-## Related Snippets
-- [`feedback-modal.html`](../snippets/feedback-modal.html) — Modal dialog with backdrop + focus trap ([React](../snippets/react/feedback-modal.jsx), [Vue](../snippets/vue/feedback-modal.vue))
+## Related Presets
+- Modal dialog — [React](../docs/presets/dropdown/react-modal.jsx), [Vue](../docs/presets/dropdown/vue-modal.vue), [Svelte](../docs/presets/dropdown/svelte-modal.svelte)

@@ -246,9 +246,9 @@ What type of product?
 - [WAI-ARIA — Navigation Landmark](https://www.w3.org/WAI/ARIA/apd/practices/landmark-regions/)
 - Luke Wroblewski — *Mobile First* (2011)
 
-## Related Snippets
-- [`nav-topbar.html`](../snippets/nav-topbar.html) — Horizontal nav with logo + links + CTA ([React](../snippets/react/nav-topbar.jsx), [Vue](../snippets/vue/nav-topbar.vue))
-- [`nav-sidebar.html`](../snippets/nav-sidebar.html) — Vertical sidebar with icons + sections ([React](../snippets/react/nav-sidebar.jsx), [Vue](../snippets/vue/nav-sidebar.vue))
-- [`nav-sidebar-collapsed.html`](../snippets/nav-sidebar-collapsed.html) — Icon-only 56px sidebar
-- [`nav-bottom-mobile.html`](../snippets/nav-bottom-mobile.html) — Bottom nav bar for mobile ([React](../snippets/react/nav-bottom-mobile.jsx), [Vue](../snippets/vue/nav-bottom-mobile.vue))
-- [`nav-breadcrumbs.html`](../snippets/nav-breadcrumbs.html) — Breadcrumb trail
+## Related Presets
+- [`shell-marketing/`](../docs/presets/shell-marketing/) — Horizontal nav with logo + links + CTA ([React](../docs/presets/shell-marketing/react.jsx), [Vue](../docs/presets/shell-marketing/vue.vue), [Svelte](../docs/presets/shell-marketing/svelte.svelte))
+- [`shell-sidebar/`](../docs/presets/shell-sidebar/) — Vertical sidebar with icons + sections ([React](../docs/presets/shell-sidebar/react.jsx), [Vue](../docs/presets/shell-sidebar/vue.vue), [Svelte](../docs/presets/shell-sidebar/svelte.svelte))
+- [`tabs/`](../docs/presets/tabs/) — Horizontal tabs ([React](../docs/presets/tabs/react.jsx), [Vue](../docs/presets/tabs/vue.vue))
+- [`pagination/`](../docs/presets/pagination/) — Page navigation ([React](../docs/presets/pagination/react.jsx), [Vue](../docs/presets/pagination/vue.vue))
+- [`dropdown/`](../docs/presets/dropdown/) — Dropdown menu ([React](../docs/presets/dropdown/react.jsx), [Vue](../docs/presets/dropdown/vue.vue))

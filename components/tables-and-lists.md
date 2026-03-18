@@ -216,7 +216,6 @@ Row separators?
 - [Nielsen Norman Group — Comparison Tables](https://www.nngroup.com/articles/comparison-tables/)
 - [Inclusive Components — Data Tables](https://inclusive-components.design/data-tables/)
 
-## Related Snippets
-- [`data-table.html`](../snippets/data-table.html) — Sortable data table with status badges ([React](../snippets/react/data-table.jsx), [Vue](../snippets/vue/data-table.vue))
-- [`data-card-grid.html`](../snippets/data-card-grid.html) — Responsive card grid (mobile-friendly table alternative)
-- [`data-detail-view.html`](../snippets/data-detail-view.html) — Key-value detail view
+## Related Presets
+- [`data-table/`](../docs/presets/data-table/) — Sortable data table with status badges ([React](../docs/presets/data-table/react.jsx), [Vue](../docs/presets/data-table/vue.vue), [Svelte](../docs/presets/data-table/svelte.svelte))
+- [`card-grid/`](../docs/presets/card-grid/) — Responsive card grid (mobile-friendly table alternative)

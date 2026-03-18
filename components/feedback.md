@@ -216,8 +216,6 @@ What feedback pattern should I use?
 - [Adrian Roselli — Defining Toast Messages](https://adrianroselli.com/2020/01/defining-toast-messages.html)
 - [Nielsen Norman Group — Response Time Limits](https://www.nngroup.com/articles/response-times-3-important-limits/) — 100ms/1s/10s thresholds
 
-## Related Snippets
-- [`feedback-toast.html`](../snippets/feedback-toast.html) — Toast notifications: success/error/warning/info ([React](../snippets/react/feedback-toast.jsx), [Vue](../snippets/vue/feedback-toast.vue))
-- [`feedback-alert-banner.html`](../snippets/feedback-alert-banner.html) — Dismissible full-width alert banners
-- [`feedback-loading-skeleton.html`](../snippets/feedback-loading-skeleton.html) — Skeleton loading placeholders
-- [`content-empty-state.html`](../snippets/content-empty-state.html) — Empty state with icon + message + action
+## Related Presets
+- Toast notifications — [React](../docs/presets/stats-row/react-toast.jsx), [Vue](../docs/presets/stats-row/vue-toast.vue)
+- Modal dialog — [React](../docs/presets/dropdown/react-modal.jsx), [Vue](../docs/presets/dropdown/vue-modal.vue), [Svelte](../docs/presets/dropdown/svelte-modal.svelte)
