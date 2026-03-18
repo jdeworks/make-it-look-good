@@ -55,6 +55,7 @@ Not every section is required, but **Concrete Rules** and **CSS/Implementation P
 - `interaction/` — Animation timing, micro-interactions, touch targets, loading states
 - `responsive/` — Mobile-first, breakpoints, fluid typography, responsive patterns
 - `systems/` — Design tokens, Material Design 3, Apple HIG, building a system
+- `expressive/` — Visual identity, hero patterns, scroll storytelling, purposeful motion
 - `heuristics/` — Nielsen's 10 heuristics, UX frameworks
 - `components/` — Concrete component patterns (buttons, forms, cards, etc.)
 - `snippets/` — Copy-paste-ready HTML+Tailwind component snippets (see `snippets/_index.md`)

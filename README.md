@@ -74,7 +74,7 @@ Click any "After" link — personality buttons appear in the preview header to s
 
 All snippets: dark mode, WCAG AA contrast, 44px touch targets, responsive. [Composition recipes](snippets/_index.md#composition-recipes) show how to combine them into full pages.
 
-### Knowledge Files — 31 topics
+### Knowledge Files — 35 topics
 
 | Area | Topics |
 |------|--------|
@@ -85,6 +85,7 @@ All snippets: dark mode, WCAG AA contrast, 44px touch targets, responsive. [Comp
 | **Interaction** | [Animation timing](interaction/animation-timing.md), [Micro-interactions](interaction/micro-interactions.md), [Touch targets](interaction/touch-targets.md), [Loading states](interaction/loading-states.md) |
 | **Responsive** | [Mobile-first](responsive/mobile-first.md), [Breakpoints](responsive/breakpoints.md), [Fluid typography](responsive/fluid-typography.md), [Patterns](responsive/responsive-patterns.md) |
 | **Systems** | [Design tokens](systems/design-tokens.md), [Material Design 3](systems/material-design-3.md), [Apple HIG](systems/apple-hig.md), [Building a system](systems/building-a-system.md) |
+| **Expressive** | [Visual identity](expressive/visual-identity.md), [Hero patterns](expressive/hero-patterns.md), [Scroll storytelling](expressive/scroll-storytelling.md), [Purposeful motion](expressive/purposeful-motion.md) |
 | **Heuristics** | [Nielsen's 10](heuristics/nielsen-10.md), [UX frameworks](heuristics/ux-frameworks.md) |
 | **Components** | [Buttons](components/buttons.md), [Forms](components/forms.md), [Cards](components/cards.md), [Navigation](components/navigation.md), [Modals](components/modals-and-dialogs.md), [Tables](components/tables-and-lists.md), [Feedback](components/feedback.md) |
 

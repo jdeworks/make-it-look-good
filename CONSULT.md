@@ -237,7 +237,10 @@ Based on what you learned in Step 1, read the relevant files. **Read the minimum
 | **E-commerce** | `components/cards.md`, `layout/grid-systems.md`, `components/buttons.md` | `color/color-psychology.md`, `components/forms.md` |
 | **Mobile App** | `interaction/touch-targets.md`, `components/navigation.md`, `responsive/mobile-first.md` | `interaction/micro-interactions.md`, `interaction/loading-states.md` |
 | **Internal Tool** | `components/tables-and-lists.md`, `components/forms.md`, `layout/spacing-system.md` | `components/navigation.md`, `components/feedback.md` |
-| **Portfolio** | `typography/font-pairing.md`, `layout/visual-hierarchy.md`, `layout/whitespace.md` | `color/color-systems.md`, `interaction/animation-timing.md` |
+| **Portfolio** | `typography/font-pairing.md`, `layout/visual-hierarchy.md`, `expressive/visual-identity.md` | `expressive/hero-patterns.md`, `expressive/purposeful-motion.md`, `layout/whitespace.md` |
+| **Personal Site** | `expressive/visual-identity.md`, `expressive/hero-patterns.md`, `typography/font-pairing.md` | `expressive/purposeful-motion.md`, `expressive/scroll-storytelling.md` |
+| **Company Landing** | `expressive/hero-patterns.md`, `expressive/visual-identity.md`, `layout/visual-hierarchy.md` | `expressive/purposeful-motion.md`, `color/color-psychology.md` |
+| **Product Launch** | `expressive/hero-patterns.md`, `expressive/scroll-storytelling.md`, `expressive/purposeful-motion.md` | `expressive/visual-identity.md`, `interaction/animation-timing.md` |
 | **Email Template** | `typography/readability.md`, `color/contrast-and-accessibility.md`, `components/buttons.md` | `layout/spacing-system.md` |
 
 ### By Pain Point
@@ -250,6 +253,8 @@ Based on what you learned in Step 1, read the relevant files. **Read the minimum
 | "Not accessible" | `color/contrast-and-accessibility.md`, `color/color-blind-safety.md`, `interaction/touch-targets.md` |
 | "Looks dated" | `typography/type-scale.md`, `color/color-systems.md`, `layout/whitespace.md` |
 | "Too cluttered" | `layout/whitespace.md`, `foundations/cognitive-load.md`, `layout/visual-hierarchy.md` |
+| "Looks generic / forgettable" | `expressive/visual-identity.md`, `expressive/hero-patterns.md`, `expressive/purposeful-motion.md` |
+| "Needs more personality" | `expressive/visual-identity.md`, `expressive/purposeful-motion.md`, `typography/font-pairing.md` |
 
 ### Always Read (Every Consultation)
 
