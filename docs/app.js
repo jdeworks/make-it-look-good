@@ -2,7 +2,7 @@ const preview = document.getElementById('preview');
 const viewportLabel = document.getElementById('viewportLabel');
 const darkBtn = document.getElementById('darkBtn');
 const toast = document.getElementById('toast');
-let darkMode = false;
+let darkMode = localStorage.getItem('milg-dark') === 'true';
 let debounceTimer;
 let currentViewport = 'full';
 let currentPresetName = null;
@@ -19,7 +19,7 @@ function initMonaco() {
   monacoEditor = monaco.editor.create(document.getElementById('editorContainer'), {
     value: '',
     language: 'html',
-    theme: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'vs-dark' : 'vs',
+    theme: darkMode ? 'vs-dark' : 'vs',
     minimap: { enabled: false },
     fontSize: 13,
     fontFamily: "var(--mono), 'JetBrains Mono', 'Fira Code', monospace",
@@ -32,10 +32,8 @@ function initMonaco() {
     padding: { top: 8 },
   });
 
-  // Follow OS dark mode preference
-  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-    monaco.editor.setTheme(e.matches ? 'vs-dark' : 'vs');
-  });
+  // Sync editor theme with current dark mode state
+  if (darkMode) monaco.editor.setTheme('vs-dark');
 
   monacoEditor.onDidChangeModelContent(() => {
     if (suppressChangeEvent) return;
@@ -351,8 +349,9 @@ function setViewport(size, e) {
 // --- Dark mode ---
 function toggleDarkMode() {
   darkMode = !darkMode;
-  // Sync both desktop and mobile dark buttons
+  localStorage.setItem('milg-dark', darkMode);
   document.querySelectorAll('#darkBtn, #darkBtnMobile').forEach(b => b.classList.toggle('active', darkMode));
+  if (monacoEditor) monaco.editor.setTheme(darkMode ? 'vs-dark' : 'vs');
   updatePreview();
 }
 
@@ -1212,6 +1211,10 @@ window.addEventListener('message', function(e) {
 
 // --- Init ---
 function startApp() {
+  // Restore dark mode button state from localStorage
+  if (darkMode) {
+    document.querySelectorAll('#darkBtn, #darkBtnMobile').forEach(b => b.classList.add('active'));
+  }
   initMonaco();
   initMobile();
   loadFromHash().then(() => {
