@@ -7,20 +7,60 @@ let darkMode = false;
 let debounceTimer;
 let currentViewport = 'full';
 let currentPresetName = null;
-let currentThemeIndex = 0;
 let currentStyleIndex = 0;
 let originalPresetHtml = '';
 
-const colorThemes = [
-  { name: 'Ocean',    primary: 'blue',    neutral: 'slate',   swatch: '#2563eb', destructive: 'red',    success: 'green',  warning: 'amber' },
-  { name: 'Amethyst', primary: 'violet',  neutral: 'slate',   swatch: '#7c3aed', destructive: 'red',    success: 'emerald',warning: 'amber' },
-  { name: 'Midnight', primary: 'indigo',  neutral: 'gray',    swatch: '#4f46e5', destructive: 'rose',   success: 'emerald',warning: 'amber' },
-  { name: 'Forest',   primary: 'emerald', neutral: 'zinc',    swatch: '#059669', destructive: 'red',    success: 'teal',   warning: 'amber' },
-  { name: 'Teal',     primary: 'teal',    neutral: 'neutral', swatch: '#0d9488', destructive: 'rose',   success: 'emerald',warning: 'orange' },
-  { name: 'Rose',     primary: 'rose',    neutral: 'gray',    swatch: '#e11d48', destructive: 'orange', success: 'emerald',warning: 'amber' },
-  { name: 'Ember',    primary: 'orange',  neutral: 'stone',   swatch: '#ea580c', destructive: 'red',    success: 'emerald',warning: 'yellow' },
-  { name: 'Berry',    primary: 'fuchsia', neutral: 'zinc',    swatch: '#c026d3', destructive: 'red',    success: 'emerald',warning: 'amber' },
-];
+const tailwindColors = {
+  slate:   { swatch: '#64748b', neutral: 'slate' },
+  gray:    { swatch: '#6b7280', neutral: 'gray' },
+  zinc:    { swatch: '#71717a', neutral: 'zinc' },
+  neutral: { swatch: '#737373', neutral: 'neutral' },
+  stone:   { swatch: '#78716c', neutral: 'stone' },
+  red:     { swatch: '#ef4444', neutral: 'slate' },
+  orange:  { swatch: '#f97316', neutral: 'stone' },
+  amber:   { swatch: '#f59e0b', neutral: 'stone' },
+  yellow:  { swatch: '#eab308', neutral: 'stone' },
+  lime:    { swatch: '#84cc16', neutral: 'zinc' },
+  green:   { swatch: '#22c55e', neutral: 'slate' },
+  emerald: { swatch: '#10b981', neutral: 'zinc' },
+  teal:    { swatch: '#14b8a6', neutral: 'neutral' },
+  cyan:    { swatch: '#06b6d4', neutral: 'slate' },
+  sky:     { swatch: '#0ea5e9', neutral: 'slate' },
+  blue:    { swatch: '#3b82f6', neutral: 'slate' },
+  indigo:  { swatch: '#6366f1', neutral: 'gray' },
+  violet:  { swatch: '#8b5cf6', neutral: 'slate' },
+  purple:  { swatch: '#a855f7', neutral: 'zinc' },
+  fuchsia: { swatch: '#d946ef', neutral: 'zinc' },
+  pink:    { swatch: '#ec4899', neutral: 'gray' },
+  rose:    { swatch: '#f43f5e', neutral: 'gray' },
+};
+
+// Semantic color defaults per primary — avoids primary clashing with destructive/success/warning
+function getSemanticColors(primary) {
+  const defaults = { destructive: 'red', success: 'green', warning: 'amber' };
+  if (primary === 'red') defaults.destructive = 'rose';
+  if (primary === 'rose') defaults.destructive = 'red';
+  if (primary === 'green') defaults.success = 'emerald';
+  if (primary === 'emerald') defaults.success = 'teal';
+  if (primary === 'teal') defaults.success = 'emerald';
+  if (primary === 'amber') defaults.warning = 'yellow';
+  if (primary === 'yellow') defaults.warning = 'orange';
+  if (primary === 'orange') defaults.destructive = 'red';
+  return defaults;
+}
+
+// Legacy compat — convert color name to theme-like object
+function colorToTheme(colorName) {
+  const info = tailwindColors[colorName] || tailwindColors.blue;
+  const semantic = getSemanticColors(colorName);
+  return {
+    name: colorName,
+    primary: colorName,
+    neutral: info.neutral,
+    swatch: info.swatch,
+    ...semantic,
+  };
+}
 
 // Primary colors now come from manifestData.elements[name].primaryColor via getElementPrimary()
 
@@ -329,6 +369,8 @@ function applyColorTheme(html, fromPrimary, toPrimary, fromNeutral, toNeutral, t
   return result;
 }
 
+let currentColorName = 'blue';
+
 function renderThemeSwatches(element, personality) {
   const container = document.getElementById('themeSwatches');
   container.innerHTML = '';
@@ -338,31 +380,33 @@ function renderThemeSwatches(element, personality) {
     return;
   }
   container.style.display = 'flex';
-  colorThemes.forEach((theme, index) => {
+  currentColorName = primary;
+
+  // Render all Tailwind color swatches (skip neutral grays)
+  const colorNames = Object.keys(tailwindColors).filter(c => !['slate','gray','zinc','neutral','stone'].includes(c));
+  for (const name of colorNames) {
+    const info = tailwindColors[name];
     const btn = document.createElement('button');
-    const isOriginal = theme.primary === primary;
-    btn.className = 'theme-swatch' + (isOriginal ? ' active' : '');
-    btn.style.backgroundColor = theme.swatch;
-    btn.title = theme.name;
-    btn.setAttribute('aria-label', theme.name + ' color theme');
-    btn.onclick = () => selectTheme(index);
+    btn.className = 'theme-swatch' + (name === primary ? ' active' : '');
+    btn.style.backgroundColor = info.swatch;
+    btn.title = name;
+    btn.setAttribute('aria-label', name + ' color theme');
+    btn.onclick = () => selectTheme(name);
     container.appendChild(btn);
-  });
-  currentThemeIndex = colorThemes.findIndex(t => t.primary === primary);
-  if (currentThemeIndex === -1) currentThemeIndex = 0;
+  }
 }
 
-function selectTheme(index) {
+function selectTheme(colorName) {
   if (!currentElement) return;
-  currentThemeIndex = index;
+  currentColorName = colorName;
   const fromPrimary = getElementPrimary(currentElement, currentPersonality);
   const fromNeutral = presetNeutralMap[currentElement] || 'slate';
-  const theme = colorThemes[index];
+  const theme = colorToTheme(colorName);
   const themed = applyColorTheme(originalPresetHtml, fromPrimary, theme.primary, fromNeutral, theme.neutral, theme);
   editor.value = themed;
   updatePreview();
-  document.querySelectorAll('.theme-swatch').forEach((btn, i) => {
-    btn.classList.toggle('active', i === index);
+  document.querySelectorAll('.theme-swatch').forEach(btn => {
+    btn.classList.toggle('active', btn.title === colorName);
   });
 }
 
@@ -427,8 +471,7 @@ async function loadPreset(element, personality) {
   currentPresetName = element;
   userEdited = false;
   const primary = getElementPrimary(element, personality);
-  currentThemeIndex = colorThemes.findIndex(t => t.primary === primary);
-  if (currentThemeIndex === -1) currentThemeIndex = 0;
+  currentColorName = primary;
   originalPresetHtml = html;
   editor.value = html;
   document.getElementById('presetsMenu').classList.remove('open');
