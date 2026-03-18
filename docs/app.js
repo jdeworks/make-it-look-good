@@ -732,6 +732,36 @@ try {
   if (saved) editorPanel.style.setProperty('--editor-width', saved + '%');
 } catch(e) {}
 
+// --- Mobile tab switching ---
+function setMobileTab(tab) {
+  const htmlTab = document.getElementById('mobileTabHtml');
+  const previewTab = document.getElementById('mobileTabPreview');
+  if (tab === 'html') {
+    htmlTab.classList.add('active');
+    previewTab.classList.remove('active');
+    editorPanel.classList.add('mobile-visible');
+    document.querySelector('.preview-panel').classList.add('mobile-hidden');
+  } else {
+    previewTab.classList.add('active');
+    htmlTab.classList.remove('active');
+    editorPanel.classList.remove('mobile-visible');
+    document.querySelector('.preview-panel').classList.remove('mobile-hidden');
+    updatePreview();
+  }
+}
+
+// On mobile, default to 320px viewport and preview tab
+function initMobile() {
+  if (window.innerWidth <= 768) {
+    setViewport(320);
+    // Ensure mobile viewport xs button is active
+    document.querySelectorAll('.mobile-viewports .btn').forEach((b, i) => {
+      b.classList.toggle('active', i === 0);
+    });
+  }
+}
+
+
 // --- Inspect Mode ---
 let inspectMode = false;
 let sourceMap = null;
@@ -910,6 +940,7 @@ window.addEventListener('message', function(e) {
 });
 
 // --- Init ---
+initMobile();
 loadFromHash().then(() => {
   if (!editor.value) {
     updatePreview();

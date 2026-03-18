@@ -410,18 +410,69 @@
       transform: translateY(0);
     }
 
+    /* Mobile tab bar (hidden on desktop) */
+    .mobile-tabs {
+      display: none;
+    }
+    .mobile-tab {
+      flex: 1;
+      padding: 8px 0;
+      border: none;
+      background: var(--bg);
+      color: var(--text-secondary);
+      font-size: 13px;
+      font-weight: 600;
+      font-family: var(--font);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.15s ease;
+    }
+    .mobile-tab.active {
+      color: var(--primary);
+      border-bottom-color: var(--primary);
+    }
+
     /* Mobile layout */
     @media (max-width: 768px) {
-      .main { flex-direction: column; }
-      .editor-panel {
-        width: 100%;
-        height: 40%;
-        border-right: none;
-        border-bottom: 1px solid var(--border);
-      }
-      .preview-panel { height: 60%; }
       .header { padding: 6px 8px; }
-      .viewport-group { display: none; }
+      .header-center { display: none; }
       .hide-mobile { display: none; }
       .divider { display: none; }
+
+      /* Show mobile viewport buttons in header-left */
+      .mobile-viewports { display: flex !important; }
+
+      /* Tab bar visible */
+      .mobile-tabs {
+        display: flex;
+        border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+      }
+
+      /* Tab-based panel switching */
+      .main { flex-direction: column; }
+      .editor-panel {
+        width: 100% !important;
+        height: 100%;
+        border-right: none;
+        display: none;
+      }
+      .editor-panel.mobile-visible {
+        display: flex;
+      }
+      .preview-panel {
+        height: 100%;
+        display: flex;
+      }
+      .preview-panel.mobile-hidden {
+        display: none;
+      }
+
+      /* Hide sub-headers on mobile — controls are in the header/tabs */
+      .editor-header { display: none; }
+      .preview-header { display: none; }
+
+      /* Shorten logo on small screens */
+      .logo { font-size: 13px; }
+      .logo span { display: none; }
     }
