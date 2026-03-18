@@ -153,13 +153,17 @@ When there's no existing code or visuals, ask these questions. **Ask only what's
    - Developers (information-dense OK, keyboard shortcuts expected)
    - Mobile-first consumers (touch targets critical, thumb zones)
 
-3. **What's the design vibe?**
-   - Clean & minimal (lots of whitespace, muted palette)
-   - Bold & vibrant (saturated colors, strong CTAs)
-   - Corporate & trustworthy (blue-heavy, structured, formal)
-   - Playful & friendly (rounded corners, warm colors, illustrations)
-   - Dark & technical (dark backgrounds, monospace accents)
+3. **What's the design vibe?** (This matters — don't default to "clean blue SaaS" every time. Push for personality.)
+   - **Clean** — balanced, professional, standard Tailwind look (rounded-xl, subtle shadows, system sans)
+   - **Minimalist** — stripped back, no shadows, hairline borders, light font weights, lots of whitespace
+   - **Bold** — sharp/zero-radius corners, heavy font weights, offset shadows, uppercase headings, high contrast
+   - **Playful** — big rounded corners (16-24px), colorful shadows, bouncy hover animations, generous spacing
+   - **Glass/Modern** — frosted glass cards (backdrop-blur), gradient backgrounds, translucent surfaces
+   - **Editorial/Premium** — serif headings (Playfair Display), no shadows, fine borders, elegant spacing, muted palette
+   - **Dark & technical** — dark backgrounds, monospace accents, terminal feel
    - Match existing brand: ___ (ask for colors, fonts, logo)
+
+   *Why this matters:* A default blue-gray SaaS layout is technically correct but has zero personality. Users' brands are different — a children's app needs Playful, a law firm needs Editorial, a developer tool needs Bold or Dark. The design vibe affects border-radius, shadow style, font weight, hover animations, spacing density, and color temperature. Don't just change the accent color — change the visual character.
 
 4. **What's your tech stack?**
    - Plain HTML + CSS (will suggest Tailwind CDN)
