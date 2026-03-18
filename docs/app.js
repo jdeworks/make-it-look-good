@@ -351,7 +351,8 @@ function setViewport(size, e) {
 // --- Dark mode ---
 function toggleDarkMode() {
   darkMode = !darkMode;
-  darkBtn.classList.toggle('active', darkMode);
+  // Sync both desktop and mobile dark buttons
+  document.querySelectorAll('#darkBtn, #darkBtnMobile').forEach(b => b.classList.toggle('active', darkMode));
   updatePreview();
 }
 
@@ -361,12 +362,13 @@ let preFullscreenViewport = null;
 function toggleFullscreen() {
   const entering = !document.body.classList.contains('fullscreen-preview');
   document.body.classList.toggle('fullscreen-preview');
-  document.getElementById('fullscreenBtn').classList.toggle('active', entering);
+  document.querySelectorAll('#fullscreenBtn, #fullscreenBtnMobile').forEach(b => b.classList.toggle('active', entering));
   if (entering) {
     preFullscreenViewport = currentViewport;
     preview.style.width = '100%';
     currentViewport = 'full';
-    showToast('Press Esc to exit fullscreen');
+    const isMobile = window.innerWidth <= 768;
+    showToast(isMobile ? 'Double-tap to exit fullscreen' : 'Press Esc to exit fullscreen');
   } else if (preFullscreenViewport !== null) {
     if (preFullscreenViewport === 'full') {
       preview.style.width = '100%';
@@ -377,6 +379,20 @@ function toggleFullscreen() {
     preFullscreenViewport = null;
   }
 }
+
+// Double-tap to exit fullscreen (touch devices)
+let lastTap = 0;
+document.addEventListener('touchend', function(e) {
+  if (!document.body.classList.contains('fullscreen-preview')) return;
+  const now = Date.now();
+  if (now - lastTap < 350) {
+    e.preventDefault();
+    toggleFullscreen();
+    lastTap = 0;
+  } else {
+    lastTap = now;
+  }
+}, { passive: false });
 
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape' && document.body.classList.contains('fullscreen-preview')) {
