@@ -1308,6 +1308,7 @@ document.querySelectorAll('form').forEach(function(f) {
     /* Price switch animation */
     .price-value { transition: opacity 150ms ease-in-out; }
   </style>
+<div class="min-h-screen bg-white dark:bg-slate-900">
 <!-- ========== STICKY NAV ========== -->
   <nav class="sticky top-0 z-50 bg-white/80 dark:bg-slate-900/80 backdrop-blur-lg border-b border-slate-200/80 dark:border-slate-700/80">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16">
@@ -1562,7 +1563,8 @@ document.querySelectorAll('form').forEach(function(f) {
     });
   }
   <\/script>
-  </main>`,
+  </main>
+</div>`,
 
       portfolio: `<style type="text/tailwindcss">
     @theme {
@@ -1734,6 +1736,7 @@ document.querySelectorAll('form').forEach(function(f) {
       --font-sans: 'Inter', sans-serif;
     }
   </style>
+<div class="min-h-screen bg-white dark:bg-slate-900">
 <!-- ========== NAVIGATION ========== -->
   <nav class="sticky top-0 z-50 bg-amber-50/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-amber-200/50 dark:border-slate-700/50">
     <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16">
@@ -1913,13 +1916,15 @@ document.querySelectorAll('form').forEach(function(f) {
         <p class="text-amber-700 dark:text-amber-300 text-sm">All items made fresh daily. Ask about allergen info and seasonal specials.</p>
       </div>
     </div>
-  </section>`,
+  </section>
+</div>`,
 
       statuspage: `<style type="text/tailwindcss">
     @theme {
       --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
     }
   </style>
+<div class="min-h-screen bg-slate-50 dark:bg-slate-900">
 <!-- Header -->
   <header class="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
     <div class="max-w-4xl mx-auto px-4 sm:px-6 py-6">
@@ -2161,7 +2166,8 @@ document.querySelectorAll('form').forEach(function(f) {
       <p>Powered by <span class="font-semibold text-slate-700 dark:text-slate-300">Acme Cloud</span></p>
       <p class="tabular-nums">Last updated: Mar 17, 2026 at 2:15 PM UTC</p>
     </div>
-  </footer>`,
+  </footer>
+</div>`,
 
       deploy: `<style type="text/tailwindcss">
     @theme {
@@ -2169,6 +2175,7 @@ document.querySelectorAll('form').forEach(function(f) {
       --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
     }
   </style>
+<div class="min-h-screen bg-slate-50 dark:bg-slate-900">
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
 
     <!-- Header -->
@@ -2397,7 +2404,8 @@ document.querySelectorAll('form').forEach(function(f) {
       </div>
     </footer>
 
-  </div>`,
+  </div>
+</div>`,
 
       buttons: `<style>
     /* ─── Design Tokens ─── */
@@ -2661,6 +2669,7 @@ document.querySelectorAll('form').forEach(function(f) {
         .bar-make { width: 100%; }
         .bar-grunt { width: 100%; }
     </style>
+<div class="min-h-screen bg-slate-950">
 <!-- Navigation -->
     <nav class="fixed top-0 left-0 right-0 z-50 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800/50">
         <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
@@ -2853,7 +2862,8 @@ document.querySelectorAll('form').forEach(function(f) {
                 </a>
             </div>
         </div>
-    </section>`,
+    </section>
+</div>`,
       snippetShellSidebar: `<!-- App Shell: 240px sidebar + topbar + content area -->
 <!-- Replace navigation items and content slot with your own -->
 <div class="min-h-screen bg-slate-50 dark:bg-slate-900">
@@ -4609,10 +4619,15 @@ function showPage(page) {
 <\/script>`,
 
       project: `<div class="flex h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100">
+  <!-- Mobile overlay -->
+  <div class="fixed inset-0 bg-slate-900/50 z-20 lg:hidden hidden" id="proj-overlay" onclick="document.getElementById('proj-sidebar').classList.add('-translate-x-full');this.classList.add('hidden');"></div>
   <!-- Sidebar -->
-  <aside class="w-60 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 flex flex-col shrink-0">
-    <div class="h-16 flex items-center px-6 border-b border-slate-200 dark:border-slate-700">
+  <aside id="proj-sidebar" class="fixed inset-y-0 left-0 z-30 w-60 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 flex flex-col shrink-0 transition-transform duration-200 -translate-x-full lg:translate-x-0 lg:static lg:z-auto">
+    <div class="h-16 flex items-center justify-between px-6 border-b border-slate-200 dark:border-slate-700">
       <span class="text-lg font-bold text-slate-900 dark:text-white">MyApp</span>
+      <button class="lg:hidden p-1 -mr-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300" onclick="document.getElementById('proj-sidebar').classList.add('-translate-x-full');document.getElementById('proj-overlay').classList.add('hidden');" aria-label="Close menu">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
     </div>
     <nav class="flex-1 overflow-y-auto p-3 space-y-1" aria-label="Main navigation">
       <a href="#" onclick="switchProjectPage('dash'); return false" data-nav="dash" class="flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg min-h-11 bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 transition-colors" aria-current="page">
@@ -4631,10 +4646,18 @@ function showPage(page) {
   </aside>
 
   <!-- Main content -->
-  <div class="flex-1 overflow-auto">
+  <div class="flex-1 overflow-auto lg:ml-0">
+    <!-- Mobile top bar -->
+    <div class="lg:hidden sticky top-0 z-10 h-14 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center px-4 gap-3">
+      <button class="p-2 -ml-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg min-h-11 min-w-11 flex items-center justify-center" onclick="document.getElementById('proj-sidebar').classList.remove('-translate-x-full');document.getElementById('proj-overlay').classList.remove('hidden');" aria-label="Open menu">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <span class="text-sm font-semibold text-slate-900 dark:text-white">MyApp</span>
+    </div>
+
     <!-- Dashboard Page -->
     <div id="page-dash">
-      <div class="p-6 lg:p-8 max-w-6xl">
+      <div class="p-4 sm:p-6 lg:p-8 max-w-6xl">
         <h1 class="text-2xl font-semibold text-slate-900 dark:text-white">Dashboard</h1>
         <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Your business at a glance</p>
 
@@ -4714,12 +4737,12 @@ function showPage(page) {
 
     <!-- Team Page -->
     <div id="page-team" style="display:none">
-      <div class="p-6 lg:p-8 max-w-6xl">
+      <div class="p-4 sm:p-6 lg:p-8 max-w-6xl">
         <h1 class="text-2xl font-semibold text-slate-900 dark:text-white">Team Members</h1>
         <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Manage your team and roles</p>
 
         <div class="space-y-3 mt-6">
-          <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 flex items-center justify-between">
+          <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div class="flex items-center gap-3">
               <div class="w-10 h-10 rounded-full bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 flex items-center justify-center text-sm font-semibold shrink-0">AJ</div>
               <div>
@@ -4732,7 +4755,7 @@ function showPage(page) {
               <span class="inline-flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400"><span class="w-1.5 h-1.5 bg-green-500 rounded-full"></span>Online</span>
             </div>
           </div>
-          <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 flex items-center justify-between">
+          <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div class="flex items-center gap-3">
               <div class="w-10 h-10 rounded-full bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300 flex items-center justify-center text-sm font-semibold shrink-0">BS</div>
               <div>
@@ -4745,7 +4768,7 @@ function showPage(page) {
               <span class="inline-flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400"><span class="w-1.5 h-1.5 bg-green-500 rounded-full"></span>Online</span>
             </div>
           </div>
-          <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 flex items-center justify-between">
+          <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div class="flex items-center gap-3">
               <div class="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 flex items-center justify-center text-sm font-semibold shrink-0">CD</div>
               <div>
@@ -4764,7 +4787,7 @@ function showPage(page) {
 
     <!-- Settings Page -->
     <div id="page-settings" style="display:none">
-      <div class="p-6 lg:p-8 max-w-2xl">
+      <div class="p-4 sm:p-6 lg:p-8 max-w-2xl">
         <h1 class="text-2xl font-semibold text-slate-900 dark:text-white">Settings</h1>
         <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Manage your account preferences</p>
 
