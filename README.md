@@ -39,7 +39,7 @@ Tell your AI: *"Read CONSULT.md from the dev branch of github.com/jdeworks/make-
 
 ### Preview Tool
 
-Paste any HTML+Tailwind into the [live preview tool](https://jdeworks.github.io/make-it-look-good/) to see it rendered instantly. Toggle mobile/tablet/desktop views, dark mode, and share via URL. Includes 88 prebuilt templates across 27 elements with multiple design personalities.
+Paste any HTML+Tailwind into the [live preview tool](https://jdeworks.github.io/make-it-look-good/) to see it rendered instantly. Toggle mobile/tablet/desktop views, dark mode, and share via URL. Includes 91 prebuilt templates across 28 elements with multiple design personalities.
 
 ### Before & After Examples
 

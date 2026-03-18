@@ -217,11 +217,11 @@ editor.addEventListener('input', () => {
 });
 
 // --- Viewport ---
-function setViewport(size) {
+function setViewport(size, e) {
   currentViewport = size;
   const btns = document.querySelectorAll('.viewport-group .btn');
   btns.forEach(b => b.classList.remove('active'));
-  event.currentTarget.classList.add('active');
+  if (e && e.currentTarget) e.currentTarget.classList.add('active');
 
   if (size === 'full') {
     preview.style.width = '100%';
