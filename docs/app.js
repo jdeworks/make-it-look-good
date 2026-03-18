@@ -198,6 +198,9 @@ function updatePreview() {
     'document.querySelectorAll("form").forEach(function(f) {\n' +
     '  f.addEventListener("submit", function(e) { e.preventDefault(); });\n' +
     '});\n' +
+    'document.addEventListener("keydown", function(e) {\n' +
+    '  if (e.key === "Escape") parent.postMessage("milg-escape", "*");\n' +
+    '});\n' +
     '</' + 'script>\n' +
     '</body>\n</html>';
   preview.srcdoc = srcdoc;
@@ -313,6 +316,13 @@ function toggleFullscreen() {
 
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape' && document.body.classList.contains('fullscreen-preview')) {
+    toggleFullscreen();
+  }
+});
+
+// Listen for Esc from inside the iframe (iframe posts message to parent)
+window.addEventListener('message', function(e) {
+  if (e.source === preview.contentWindow && e.data === 'milg-escape' && document.body.classList.contains('fullscreen-preview')) {
     toggleFullscreen();
   }
 });
