@@ -501,9 +501,17 @@
     let currentViewport = 'full';
 
     // --- Preview rendering ---
+    const darkVariantCSS = '@custom-variant dark (&:where(.dark, .dark *));';
+
     function updatePreview() {
       const html = editor.value;
       const darkClass = darkMode ? ' class="dark"' : '';
+      // Inject dark variant override into any preset tailwindcss style blocks
+      // so each block uses class-based dark mode, not prefers-color-scheme
+      const processedHtml = html.replace(
+        /<style type="text\/tailwindcss">/gi,
+        '<style type="text/tailwindcss">\n    ' + darkVariantCSS
+      );
       const srcdoc = `<!DOCTYPE html>
 <html lang="en"${darkClass}>
 <head>
@@ -511,14 +519,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"><\/script>
   <style type="text/tailwindcss">
-    @custom-variant dark (&:where(.dark, .dark *));
+    ${darkVariantCSS}
   </style>
   <style>
     body { margin: 0; }
   </style>
 </head>
 <body>
-${html}
+${processedHtml}
 <script>
 document.addEventListener('click', function(e) {
   var a = e.target.closest('a');
@@ -983,7 +991,8 @@ document.querySelectorAll('form').forEach(function(f) {
 
 </div>`,
 
-      form: `<div class="w-full max-w-md mx-auto mt-8 sm:mt-12 px-4">
+      form: `<div class="min-h-screen bg-slate-50 dark:bg-slate-900">
+<div class="w-full max-w-md mx-auto pt-8 sm:pt-12 pb-12 px-4">
   <div class="bg-white dark:bg-slate-800 rounded-xl shadow-md border border-slate-200 dark:border-slate-700 p-6 sm:p-8">
     <div class="mb-6">
       <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Create account</h2>
@@ -1091,6 +1100,7 @@ document.querySelectorAll('form').forEach(function(f) {
       </p>
     </form>
   </div>
+</div>
 </div>`,
 
       cards: `<!-- E-commerce product card grid — redesigned following make-it-look-good knowledge base -->
@@ -2413,47 +2423,23 @@ document.querySelectorAll('form').forEach(function(f) {
     /* ─── Design Tokens ─── */
     :root {
       /* Primary (Emerald) */
-      --btn-primary-bg: #059669;        /* emerald-600 */
-      --btn-primary-hover: #047857;     /* emerald-700 */
-      --btn-primary-active: #065f46;    /* emerald-800 */
+      --btn-primary-bg: #059669;
+      --btn-primary-hover: #047857;
+      --btn-primary-active: #065f46;
       --btn-primary-text: #ffffff;
 
       /* Danger (Red) */
-      --btn-danger-bg: #dc2626;         /* red-600 */
-      --btn-danger-hover: #b91c1c;      /* red-700 */
-      --btn-danger-active: #991b1b;     /* red-800 */
+      --btn-danger-bg: #dc2626;
+      --btn-danger-hover: #b91c1c;
+      --btn-danger-active: #991b1b;
       --btn-danger-text: #ffffff;
 
       /* Neutral */
       --btn-disabled-opacity: 0.4;
-      --btn-border-color: #059669;
-
-      /* Sizing */
-      --btn-height-sm: 36px;
-      --btn-height-md: 44px;
-      --btn-height-lg: 52px;
-      --btn-min-touch: 44px;
-
-      /* Typography */
-      --btn-font-sm: 0.875rem;          /* 14px */
-      --btn-font-md: 1rem;              /* 16px */
-      --btn-font-lg: 1.125rem;          /* 18px */
-      --btn-font-weight: 600;
-
-      /* Spacing */
-      --btn-px-sm: 0.75rem;             /* 12px */
-      --btn-px-md: 1.25rem;             /* 20px */
-      --btn-px-lg: 1.75rem;             /* 28px */
-      --btn-gap: 0.5rem;                /* 8px */
 
       /* Motion */
       --btn-transition: 150ms ease-in-out;
       --btn-spinner-speed: 600ms;
-
-      /* Focus */
-      --btn-focus-ring-width: 3px;
-      --btn-focus-ring-offset: 2px;
-      --btn-focus-ring-color: #10b981;  /* emerald-500 */
     }
 
     /* ─── Spinner Animation ─── */
@@ -2464,9 +2450,7 @@ document.querySelectorAll('form').forEach(function(f) {
       animation: spin var(--btn-spinner-speed) linear infinite;
     }
     @media (prefers-reduced-motion: reduce) {
-      .btn-spinner {
-        animation: none;
-      }
+      .btn-spinner { animation: none; }
     }
 
     /* ─── Section Dividers ─── */
@@ -2474,35 +2458,49 @@ document.querySelectorAll('form').forEach(function(f) {
       border-top: 1px solid #e5e7eb;
       margin: 3rem 0;
     }
-  </style>
-<div class="max-w-5xl mx-auto px-6 py-12">
+    .dark .section-divider {
+      border-top-color: #334155;
+    }
 
-    <!-- ════════════════════════════════════════════ -->
-    <!-- Header                                       -->
-    <!-- ════════════════════════════════════════════ -->
+    /* ─── Tooltip ─── */
+    .icon-btn-wrap { position: relative; }
+    .icon-btn-tooltip {
+      position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+      padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 500;
+      white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity 150ms;
+      background: #1e293b; color: #f8fafc;
+    }
+    .dark .icon-btn-tooltip { background: #f1f5f9; color: #0f172a; }
+    .icon-btn-wrap:hover .icon-btn-tooltip,
+    .icon-btn-wrap:focus-within .icon-btn-tooltip { opacity: 1; }
+  </style>
+<div class="min-h-screen bg-white dark:bg-slate-900">
+<div class="max-w-5xl mx-auto px-4 sm:px-6 py-12">
+
+    <!-- Header -->
     <header class="mb-12">
-      <h1 class="text-4xl font-bold tracking-tight text-gray-900">Button System</h1>
-      <p class="mt-2 text-lg text-gray-500">E-commerce component library &middot; 3 emphasis levels &times; 4 states &times; 3 sizes</p>
-      <p class="mt-1 text-sm text-gray-400">Primary color: emerald-600 (<code class="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono">#059669</code>) &middot; Min touch target: 44px &middot; WCAG AA compliant</p>
+      <h1 class="text-4xl font-bold tracking-tight text-gray-900 dark:text-white">Button System</h1>
+      <p class="mt-2 text-lg text-gray-500 dark:text-gray-400">E-commerce component library &middot; 6 variants &times; 4 states &times; 3 sizes</p>
+      <p class="mt-1 text-sm text-gray-400 dark:text-gray-500">Primary color: emerald-600 (<code class="bg-gray-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-xs font-mono">#059669</code>) &middot; Min touch target: 44px &middot; WCAG AA compliant</p>
     </header>
 
     <!-- ════════════════════════════════════════════ -->
     <!-- 1. Primary Buttons (Filled)                  -->
     <!-- ════════════════════════════════════════════ -->
     <section>
-      <h2 class="text-2xl font-semibold text-gray-900 mb-1">1. Primary Buttons</h2>
-      <p class="text-sm text-gray-500 mb-6">Filled green &middot; High emphasis &middot; One per visual section maximum</p>
+      <h2 class="text-2xl font-semibold text-gray-900 dark:text-white mb-1">1. Primary Buttons</h2>
+      <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">Filled green &middot; High emphasis &middot; One per visual section maximum</p>
 
       <!-- Small -->
-      <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Small (36px visible / 44px touch target)</h3>
+      <h3 class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Small (36px visible / 44px touch target)</h3>
       <div class="flex flex-wrap items-center gap-4 mb-6">
-        <button class="inline-flex items-center justify-center rounded-lg bg-emerald-600 text-white text-sm font-semibold px-3 py-1.5 min-h-[36px] transition-all duration-150 ease-in-out hover:bg-emerald-700 active:bg-emerald-800 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 cursor-pointer">
+        <button class="inline-flex items-center justify-center rounded-lg bg-emerald-600 text-white text-sm font-semibold px-3 py-1.5 min-h-[36px] transition-all duration-150 ease-in-out hover:bg-emerald-700 active:bg-emerald-800 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 dark:focus:ring-offset-slate-900 cursor-pointer">
           Default
         </button>
         <button class="inline-flex items-center justify-center rounded-lg bg-emerald-700 text-white text-sm font-semibold px-3 py-1.5 min-h-[36px] shadow-md cursor-pointer">
           Hover
         </button>
-        <button class="inline-flex items-center justify-center rounded-lg bg-emerald-600 text-white text-sm font-semibold px-3 py-1.5 min-h-[36px] ring-2 ring-offset-2 ring-emerald-500">
+        <button class="inline-flex items-center justify-center rounded-lg bg-emerald-600 text-white text-sm font-semibold px-3 py-1.5 min-h-[36px] ring-2 ring-offset-2 ring-emerald-500 dark:ring-offset-slate-900">
           Focus
         </button>
         <button disabled class="inline-flex items-center justify-center rounded-lg bg-emerald-600 text-white text-sm font-semibold px-3 py-1.5 min-h-[36px] opacity-40 cursor-not-allowed">
@@ -2514,15 +2512,15 @@ document.querySelectorAll('form').forEach(function(f) {
       </div>
 
       <!-- Medium -->
-      <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Medium (44px &mdash; default)</h3>
+      <h3 class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Medium (44px &mdash; default)</h3>
       <div class="flex flex-wrap items-center gap-4 mb-6">
-        <button class="inline-flex items-center justify-center rounded-lg bg-emerald-600 text-white text-base font-semibold px-5 py-2.5 min-h-[44px] transition-all duration-150 ease-in-out hover:bg-emerald-700 active:bg-emerald-800 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 cursor-pointer">
+        <button class="inline-flex items-center justify-center rounded-lg bg-emerald-600 text-white text-base font-semibold px-5 py-2.5 min-h-[44px] transition-all duration-150 ease-in-out hover:bg-emerald-700 active:bg-emerald-800 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 dark:focus:ring-offset-slate-900 cursor-pointer">
           Add to Cart
         </button>
         <button class="inline-flex items-center justify-center rounded-lg bg-emerald-700 text-white text-base font-semibold px-5 py-2.5 min-h-[44px] shadow-md cursor-pointer">
           Add to Cart
         </button>
-        <button class="inline-flex items-center justify-center rounded-lg bg-emerald-600 text-white text-base font-semibold px-5 py-2.5 min-h-[44px] ring-2 ring-offset-2 ring-emerald-500">
+        <button class="inline-flex items-center justify-center rounded-lg bg-emerald-600 text-white text-base font-semibold px-5 py-2.5 min-h-[44px] ring-2 ring-offset-2 ring-emerald-500 dark:ring-offset-slate-900">
           Add to Cart
         </button>
         <button disabled class="inline-flex items-center justify-center rounded-lg bg-emerald-600 text-white text-base font-semibold px-5 py-2.5 min-h-[44px] opacity-40 cursor-not-allowed">
@@ -2534,15 +2532,15 @@ document.querySelectorAll('form').forEach(function(f) {
       </div>
 
       <!-- Large -->
-      <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Large (52px &mdash; hero CTAs, checkout)</h3>
+      <h3 class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Large (52px &mdash; hero CTAs, checkout)</h3>
       <div class="flex flex-wrap items-center gap-4 mb-4">
-        <button class="inline-flex items-center justify-center rounded-lg bg-emerald-600 text-white text-lg font-semibold px-7 py-3.5 min-h-[52px] transition-all duration-150 ease-in-out hover:bg-emerald-700 active:bg-emerald-800 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 cursor-pointer">
+        <button class="inline-flex items-center justify-center rounded-lg bg-emerald-600 text-white text-lg font-semibold px-7 py-3.5 min-h-[52px] transition-all duration-150 ease-in-out hover:bg-emerald-700 active:bg-emerald-800 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 dark:focus:ring-offset-slate-900 cursor-pointer">
           Proceed to Checkout
         </button>
         <button class="inline-flex items-center justify-center rounded-lg bg-emerald-700 text-white text-lg font-semibold px-7 py-3.5 min-h-[52px] shadow-md cursor-pointer">
           Proceed to Checkout
         </button>
-        <button class="inline-flex items-center justify-center rounded-lg bg-emerald-600 text-white text-lg font-semibold px-7 py-3.5 min-h-[52px] ring-2 ring-offset-2 ring-emerald-500">
+        <button class="inline-flex items-center justify-center rounded-lg bg-emerald-600 text-white text-lg font-semibold px-7 py-3.5 min-h-[52px] ring-2 ring-offset-2 ring-emerald-500 dark:ring-offset-slate-900">
           Proceed to Checkout
         </button>
         <button disabled class="inline-flex items-center justify-center rounded-lg bg-emerald-600 text-white text-lg font-semibold px-7 py-3.5 min-h-[52px] opacity-40 cursor-not-allowed">
@@ -2553,7 +2551,7 @@ document.querySelectorAll('form').forEach(function(f) {
         </button>
       </div>
 
-      <div class="flex items-start gap-2 text-xs text-gray-400 mt-2 mb-2">
+      <div class="flex items-start gap-2 text-xs text-gray-400 dark:text-gray-500 mt-2 mb-2">
         <span class="shrink-0 mt-px">State labels:</span>
         <span class="flex flex-wrap gap-x-4 gap-y-1">
           <span>Default</span>
@@ -2564,8 +2562,8 @@ document.querySelectorAll('form').forEach(function(f) {
         </span>
       </div>
 
-      <p class="text-sm text-gray-500 bg-gray-50 rounded-lg px-4 py-3 mt-4">
-        <strong>When to use:</strong> The primary button is for the single most important action on the screen &mdash; "Add to Cart," "Place Order," "Sign Up." Limit to one primary button per visual section. If you need two actions, pair a primary with a secondary.
+      <p class="text-sm text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-slate-800 rounded-lg px-4 py-3 mt-4">
+        <strong class="text-gray-700 dark:text-gray-300">When to use:</strong> The primary button is for the single most important action on the screen &mdash; "Add to Cart," "Place Order," "Sign Up." Limit to one primary button per visual section.
       </p>
     </section>
 
@@ -2575,71 +2573,346 @@ document.querySelectorAll('form').forEach(function(f) {
     <!-- 2. Secondary Buttons (Outlined)              -->
     <!-- ════════════════════════════════════════════ -->
     <section>
-      <h2 class="text-2xl font-semibold text-gray-900 mb-1">2. Secondary Buttons</h2>
-      <p class="text-sm text-gray-500 mb-6">Outlined &middot; Medium emphasis &middot; Supporting actions</p>
+      <h2 class="text-2xl font-semibold text-gray-900 dark:text-white mb-1">2. Secondary Buttons</h2>
+      <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">Outlined &middot; Medium emphasis &middot; Supporting actions</p>
 
       <!-- Small -->
-      <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Small</h3>
+      <h3 class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Small</h3>
       <div class="flex flex-wrap items-center gap-4 mb-6">
-        <button class="inline-flex items-center justify-center rounded-lg border-2 border-emerald-600 text-emerald-600 bg-transparent text-sm font-semibold px-3 py-1.5 min-h-[36px] transition-all duration-150 ease-in-out hover:bg-emerald-50 active:bg-emerald-100 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 cursor-pointer">
+        <button class="inline-flex items-center justify-center rounded-lg border-2 border-emerald-600 text-emerald-600 dark:text-emerald-400 dark:border-emerald-500 bg-transparent text-sm font-semibold px-3 py-1.5 min-h-[36px] transition-all duration-150 ease-in-out hover:bg-emerald-50 dark:hover:bg-emerald-900/30 active:bg-emerald-100 dark:active:bg-emerald-900/50 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 dark:focus:ring-offset-slate-900 cursor-pointer">
           Default
         </button>
-        <button class="inline-flex items-center justify-center rounded-lg border-2 border-emerald-600 text-emerald-700 bg-emerald-50 text-sm font-semibold px-3 py-1.5 min-h-[36px] cursor-pointer">
+        <button class="inline-flex items-center justify-center rounded-lg border-2 border-emerald-600 dark:border-emerald-500 text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 text-sm font-semibold px-3 py-1.5 min-h-[36px] cursor-pointer">
           Hover
         </button>
-        <button class="inline-flex items-center justify-center rounded-lg border-2 border-emerald-600 text-emerald-600 bg-transparent text-sm font-semibold px-3 py-1.5 min-h-[36px] ring-2 ring-offset-2 ring-emerald-500">
+        <button class="inline-flex items-center justify-center rounded-lg border-2 border-emerald-600 dark:border-emerald-500 text-emerald-600 dark:text-emerald-400 bg-transparent text-sm font-semibold px-3 py-1.5 min-h-[36px] ring-2 ring-offset-2 ring-emerald-500 dark:ring-offset-slate-900">
           Focus
         </button>
-        <button disabled class="inline-flex items-center justify-center rounded-lg border-2 border-emerald-600 text-emerald-600 bg-transparent text-sm font-semibold px-3 py-1.5 min-h-[36px] opacity-40 cursor-not-allowed">
+        <button disabled class="inline-flex items-center justify-center rounded-lg border-2 border-emerald-600 dark:border-emerald-500 text-emerald-600 dark:text-emerald-400 bg-transparent text-sm font-semibold px-3 py-1.5 min-h-[36px] opacity-40 cursor-not-allowed">
           Disabled
-        </button>
-        <button disabled aria-busy="true" aria-label="Loading" class="inline-flex items-center justify-center rounded-lg border-2 border-emerald-600 text-emerald-600 bg-transparent text-sm font-semibold px-3 py-1.5 min-h-[36px] min-w-[88px] cursor-not-allowed">
-          <svg class="btn-spinner h-4 w-4 text-emerald-600" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-dasharray="32" stroke-dashoffset="12" opacity="0.7"/></svg>
         </button>
       </div>
 
       <!-- Medium -->
-      <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Medium</h3>
+      <h3 class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Medium</h3>
       <div class="flex flex-wrap items-center gap-4 mb-6">
-        <button class="inline-flex items-center justify-center rounded-lg border-2 border-emerald-600 text-emerald-600 bg-transparent text-base font-semibold px-5 py-2.5 min-h-[44px] transition-all duration-150 ease-in-out hover:bg-emerald-50 active:bg-emerald-100 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 cursor-pointer">
+        <button class="inline-flex items-center justify-center rounded-lg border-2 border-emerald-600 dark:border-emerald-500 text-emerald-600 dark:text-emerald-400 bg-transparent text-base font-semibold px-5 py-2.5 min-h-[44px] transition-all duration-150 ease-in-out hover:bg-emerald-50 dark:hover:bg-emerald-900/30 active:bg-emerald-100 dark:active:bg-emerald-900/50 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 dark:focus:ring-offset-slate-900 cursor-pointer">
           View Details
         </button>
-        <button class="inline-flex items-center justify-center rounded-lg border-2 border-emerald-600 text-emerald-700 bg-emerald-50 text-base font-semibold px-5 py-2.5 min-h-[44px] cursor-pointer">
+        <button class="inline-flex items-center justify-center rounded-lg border-2 border-emerald-600 dark:border-emerald-500 text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 text-base font-semibold px-5 py-2.5 min-h-[44px] cursor-pointer">
           View Details
         </button>
-        <button class="inline-flex items-center justify-center rounded-lg border-2 border-emerald-600 text-emerald-600 bg-transparent text-base font-semibold px-5 py-2.5 min-h-[44px] ring-2 ring-offset-2 ring-emerald-500">
+        <button class="inline-flex items-center justify-center rounded-lg border-2 border-emerald-600 dark:border-emerald-500 text-emerald-600 dark:text-emerald-400 bg-transparent text-base font-semibold px-5 py-2.5 min-h-[44px] ring-2 ring-offset-2 ring-emerald-500 dark:ring-offset-slate-900">
           View Details
         </button>
-        <button disabled class="inline-flex items-center justify-center rounded-lg border-2 border-emerald-600 text-emerald-600 bg-transparent text-base font-semibold px-5 py-2.5 min-h-[44px] opacity-40 cursor-not-allowed">
+        <button disabled class="inline-flex items-center justify-center rounded-lg border-2 border-emerald-600 dark:border-emerald-500 text-emerald-600 dark:text-emerald-400 bg-transparent text-base font-semibold px-5 py-2.5 min-h-[44px] opacity-40 cursor-not-allowed">
           View Details
-        </button>
-        <button disabled aria-busy="true" aria-label="Loading details" class="inline-flex items-center justify-center rounded-lg border-2 border-emerald-600 text-emerald-600 bg-transparent text-base font-semibold px-5 py-2.5 min-h-[44px] min-w-[130px] cursor-not-allowed">
-          <svg class="btn-spinner h-5 w-5 text-emerald-600" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-dasharray="32" stroke-dashoffset="12" opacity="0.7"/></svg>
         </button>
       </div>
 
       <!-- Large -->
-      <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Large</h3>
+      <h3 class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Large</h3>
       <div class="flex flex-wrap items-center gap-4 mb-4">
-        <button class="inline-flex items-center justify-center rounded-lg border-2 border-emerald-600 text-emerald-600 bg-transparent text-lg font-semibold px-7 py-3.5 min-h-[52px] transition-all duration-150 ease-in-out hover:bg-emerald-50 active:bg-emerald-100 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 cursor-pointer">
+        <button class="inline-flex items-center justify-center rounded-lg border-2 border-emerald-600 dark:border-emerald-500 text-emerald-600 dark:text-emerald-400 bg-transparent text-lg font-semibold px-7 py-3.5 min-h-[52px] transition-all duration-150 ease-in-out hover:bg-emerald-50 dark:hover:bg-emerald-900/30 active:bg-emerald-100 dark:active:bg-emerald-900/50 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 dark:focus:ring-offset-slate-900 cursor-pointer">
           Continue Shopping
         </button>
-        <button class="inline-flex items-center justify-center rounded-lg border-2 border-emerald-600 text-emerald-700 bg-emerald-50 text-lg font-semibold px-7 py-3.5 min-h-[52px] cursor-pointer">
+        <button class="inline-flex items-center justify-center rounded-lg border-2 border-emerald-600 dark:border-emerald-500 text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 text-lg font-semibold px-7 py-3.5 min-h-[52px] cursor-pointer">
           Continue Shopping
         </button>
-        <button class="inline-flex items-center justify-center rounded-lg border-2 border-emerald-600 text-emerald-600 bg-transparent text-lg font-semibold px-7 py-3.5 min-h-[52px] ring-2 ring-offset-2 ring-emerald-500">
+        <button disabled class="inline-flex items-center justify-center rounded-lg border-2 border-emerald-600 dark:border-emerald-500 text-emerald-600 dark:text-emerald-400 bg-transparent text-lg font-semibold px-7 py-3.5 min-h-[52px] opacity-40 cursor-not-allowed">
           Continue Shopping
-        </button>
-        <button disabled class="inline-flex items-center justify-center rounded-lg border-2 border-emerald-600 text-emerald-600 bg-transparent text-lg font-semibold px-7 py-3.5 min-h-[52px] opacity-40 cursor-not-allowed">
-          Continue Shopping
-        </button>
-        <button disabled aria-busy="true" aria-label="Loading" class="inline-flex items-center justify-center rounded-lg border-2 border-emerald-600 text-emerald-600 bg-transparent text-lg font-semibold px-7 py-3.5 min-h-[52px] min-w-[200px] cursor-not-allowed">
-          <svg class="btn-spinner h-5 w-5 text-emerald-600" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-dasharray="32" stroke-dashoffset="12" opacity="0.7"/></svg>
         </button>
       </div>
 
-      <p class="text-sm text-gray-500 bg-gray-50 rounded-lg px-4 py-3 mt-4">
-        <strong>When to use:</strong> Secondary buttons pair with primary buttons as the less-important option. "Continue Shopping" next to "Checkout," or "Save for Later" next to "Add to Cart." They can also stand alone for medium-priority actions like "View Details" or "Compare."
+      <p class="text-sm text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-slate-800 rounded-lg px-4 py-3 mt-4">
+        <strong class="text-gray-700 dark:text-gray-300">When to use:</strong> Secondary buttons pair with primary buttons as the less-important option. "Continue Shopping" next to "Checkout," or "Save for Later" next to "Add to Cart."
+      </p>
+    </section>
+
+    <div class="section-divider"></div>
+
+    <!-- ════════════════════════════════════════════ -->
+    <!-- 3. Destructive Buttons (Red)                 -->
+    <!-- ════════════════════════════════════════════ -->
+    <section>
+      <h2 class="text-2xl font-semibold text-gray-900 dark:text-white mb-1">3. Destructive Buttons</h2>
+      <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">Red filled &middot; Irreversible or dangerous actions</p>
+
+      <!-- Small -->
+      <h3 class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Small</h3>
+      <div class="flex flex-wrap items-center gap-4 mb-6">
+        <button class="inline-flex items-center justify-center rounded-lg bg-red-600 text-white text-sm font-semibold px-3 py-1.5 min-h-[36px] transition-all duration-150 ease-in-out hover:bg-red-700 active:bg-red-800 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 dark:focus:ring-offset-slate-900 cursor-pointer">
+          Remove
+        </button>
+        <button class="inline-flex items-center justify-center rounded-lg bg-red-700 text-white text-sm font-semibold px-3 py-1.5 min-h-[36px] shadow-md cursor-pointer">
+          Hover
+        </button>
+        <button class="inline-flex items-center justify-center rounded-lg bg-red-600 text-white text-sm font-semibold px-3 py-1.5 min-h-[36px] ring-2 ring-offset-2 ring-red-500 dark:ring-offset-slate-900">
+          Focus
+        </button>
+        <button disabled class="inline-flex items-center justify-center rounded-lg bg-red-600 text-white text-sm font-semibold px-3 py-1.5 min-h-[36px] opacity-40 cursor-not-allowed">
+          Disabled
+        </button>
+      </div>
+
+      <!-- Medium -->
+      <h3 class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Medium</h3>
+      <div class="flex flex-wrap items-center gap-4 mb-6">
+        <button class="inline-flex items-center justify-center rounded-lg bg-red-600 text-white text-base font-semibold px-5 py-2.5 min-h-[44px] transition-all duration-150 ease-in-out hover:bg-red-700 active:bg-red-800 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 dark:focus:ring-offset-slate-900 cursor-pointer gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0 1 16.138 21H7.862a2 2 0 0 1-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v3M4 7h16"/></svg>
+          Delete Item
+        </button>
+        <button class="inline-flex items-center justify-center rounded-lg bg-red-700 text-white text-base font-semibold px-5 py-2.5 min-h-[44px] shadow-md cursor-pointer gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0 1 16.138 21H7.862a2 2 0 0 1-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v3M4 7h16"/></svg>
+          Delete Item
+        </button>
+        <button disabled class="inline-flex items-center justify-center rounded-lg bg-red-600 text-white text-base font-semibold px-5 py-2.5 min-h-[44px] opacity-40 cursor-not-allowed gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0 1 16.138 21H7.862a2 2 0 0 1-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v3M4 7h16"/></svg>
+          Delete Item
+        </button>
+      </div>
+
+      <!-- Large -->
+      <h3 class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Large</h3>
+      <div class="flex flex-wrap items-center gap-4 mb-4">
+        <button class="inline-flex items-center justify-center rounded-lg bg-red-600 text-white text-lg font-semibold px-7 py-3.5 min-h-[52px] transition-all duration-150 ease-in-out hover:bg-red-700 active:bg-red-800 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 dark:focus:ring-offset-slate-900 cursor-pointer">
+          Delete Account
+        </button>
+        <button class="inline-flex items-center justify-center rounded-lg bg-red-700 text-white text-lg font-semibold px-7 py-3.5 min-h-[52px] shadow-md cursor-pointer">
+          Delete Account
+        </button>
+        <button disabled class="inline-flex items-center justify-center rounded-lg bg-red-600 text-white text-lg font-semibold px-7 py-3.5 min-h-[52px] opacity-40 cursor-not-allowed">
+          Delete Account
+        </button>
+      </div>
+
+      <p class="text-sm text-gray-500 dark:text-gray-400 bg-red-50 dark:bg-red-900/20 rounded-lg px-4 py-3 mt-4">
+        <strong class="text-red-700 dark:text-red-400">When to use:</strong> Destructive buttons are for permanent or hard-to-undo actions &mdash; "Delete Account," "Remove Item," "Cancel Subscription." Always pair with a confirmation step.
+      </p>
+    </section>
+
+    <div class="section-divider"></div>
+
+    <!-- ════════════════════════════════════════════ -->
+    <!-- 4. Ghost Buttons (Text only)                 -->
+    <!-- ════════════════════════════════════════════ -->
+    <section>
+      <h2 class="text-2xl font-semibold text-gray-900 dark:text-white mb-1">4. Ghost Buttons</h2>
+      <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">No border, text + hover background &middot; Low emphasis &middot; Tertiary actions</p>
+
+      <!-- Small -->
+      <h3 class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Small</h3>
+      <div class="flex flex-wrap items-center gap-4 mb-6">
+        <button class="inline-flex items-center justify-center rounded-lg text-gray-600 dark:text-gray-400 text-sm font-semibold px-3 py-1.5 min-h-[36px] transition-all duration-150 ease-in-out hover:bg-gray-100 dark:hover:bg-slate-800 hover:text-gray-900 dark:hover:text-white active:bg-gray-200 dark:active:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 dark:focus:ring-offset-slate-900 cursor-pointer">
+          Cancel
+        </button>
+        <button class="inline-flex items-center justify-center rounded-lg text-gray-900 dark:text-white bg-gray-100 dark:bg-slate-800 text-sm font-semibold px-3 py-1.5 min-h-[36px] cursor-pointer">
+          Hover
+        </button>
+        <button class="inline-flex items-center justify-center rounded-lg text-gray-600 dark:text-gray-400 text-sm font-semibold px-3 py-1.5 min-h-[36px] ring-2 ring-offset-2 ring-emerald-500 dark:ring-offset-slate-900">
+          Focus
+        </button>
+        <button disabled class="inline-flex items-center justify-center rounded-lg text-gray-600 dark:text-gray-400 text-sm font-semibold px-3 py-1.5 min-h-[36px] opacity-40 cursor-not-allowed">
+          Disabled
+        </button>
+      </div>
+
+      <!-- Medium -->
+      <h3 class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Medium</h3>
+      <div class="flex flex-wrap items-center gap-4 mb-6">
+        <button class="inline-flex items-center justify-center rounded-lg text-gray-600 dark:text-gray-400 text-base font-semibold px-5 py-2.5 min-h-[44px] transition-all duration-150 ease-in-out hover:bg-gray-100 dark:hover:bg-slate-800 hover:text-gray-900 dark:hover:text-white active:bg-gray-200 dark:active:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 dark:focus:ring-offset-slate-900 cursor-pointer">
+          Cancel
+        </button>
+        <button class="inline-flex items-center justify-center rounded-lg text-emerald-600 dark:text-emerald-400 text-base font-semibold px-5 py-2.5 min-h-[44px] transition-all duration-150 ease-in-out hover:bg-emerald-50 dark:hover:bg-emerald-900/30 active:bg-emerald-100 dark:active:bg-emerald-900/50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 dark:focus:ring-offset-slate-900 cursor-pointer">
+          Learn More
+        </button>
+        <button class="inline-flex items-center justify-center rounded-lg text-red-600 dark:text-red-400 text-base font-semibold px-5 py-2.5 min-h-[44px] transition-all duration-150 ease-in-out hover:bg-red-50 dark:hover:bg-red-900/30 active:bg-red-100 dark:active:bg-red-900/50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 dark:focus:ring-offset-slate-900 cursor-pointer">
+          Remove
+        </button>
+      </div>
+
+      <!-- Large -->
+      <h3 class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Large</h3>
+      <div class="flex flex-wrap items-center gap-4 mb-4">
+        <button class="inline-flex items-center justify-center rounded-lg text-gray-600 dark:text-gray-400 text-lg font-semibold px-7 py-3.5 min-h-[52px] transition-all duration-150 ease-in-out hover:bg-gray-100 dark:hover:bg-slate-800 hover:text-gray-900 dark:hover:text-white active:bg-gray-200 dark:active:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 dark:focus:ring-offset-slate-900 cursor-pointer">
+          Skip for Now
+        </button>
+        <button class="inline-flex items-center justify-center rounded-lg text-gray-900 dark:text-white bg-gray-100 dark:bg-slate-800 text-lg font-semibold px-7 py-3.5 min-h-[52px] cursor-pointer">
+          Skip for Now
+        </button>
+      </div>
+
+      <p class="text-sm text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-slate-800 rounded-lg px-4 py-3 mt-4">
+        <strong class="text-gray-700 dark:text-gray-300">When to use:</strong> Ghost buttons are for the least important actions &mdash; "Cancel," "Skip," "Learn More." They reduce visual clutter when many actions are present, like in toolbars or table rows.
+      </p>
+    </section>
+
+    <div class="section-divider"></div>
+
+    <!-- ════════════════════════════════════════════ -->
+    <!-- 5. Icon Buttons                              -->
+    <!-- ════════════════════════════════════════════ -->
+    <section>
+      <h2 class="text-2xl font-semibold text-gray-900 dark:text-white mb-1">5. Icon Buttons</h2>
+      <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">Icon-only with tooltip &middot; Compact actions for toolbars and table rows</p>
+
+      <!-- Small (36px) -->
+      <h3 class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Small (36px)</h3>
+      <div class="flex flex-wrap items-center gap-4 mb-6">
+        <div class="icon-btn-wrap">
+          <button class="inline-flex items-center justify-center rounded-lg w-9 h-9 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800 hover:text-gray-900 dark:hover:text-white transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 dark:focus:ring-offset-slate-900 cursor-pointer" aria-label="Edit">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5m-1.414-9.414a2 2 0 1 1 2.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+          </button>
+          <span class="icon-btn-tooltip">Edit</span>
+        </div>
+        <div class="icon-btn-wrap">
+          <button class="inline-flex items-center justify-center rounded-lg w-9 h-9 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800 hover:text-gray-900 dark:hover:text-white transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 dark:focus:ring-offset-slate-900 cursor-pointer" aria-label="Copy">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          </button>
+          <span class="icon-btn-tooltip">Copy</span>
+        </div>
+        <div class="icon-btn-wrap">
+          <button class="inline-flex items-center justify-center rounded-lg w-9 h-9 text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-700 dark:hover:text-red-300 transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 dark:focus:ring-offset-slate-900 cursor-pointer" aria-label="Delete">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0 1 16.138 21H7.862a2 2 0 0 1-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v3M4 7h16"/></svg>
+          </button>
+          <span class="icon-btn-tooltip">Delete</span>
+        </div>
+      </div>
+
+      <!-- Medium (44px) -->
+      <h3 class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Medium (44px &mdash; default)</h3>
+      <div class="flex flex-wrap items-center gap-4 mb-6">
+        <div class="icon-btn-wrap">
+          <button class="inline-flex items-center justify-center rounded-lg w-11 h-11 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800 hover:text-gray-900 dark:hover:text-white transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 dark:focus:ring-offset-slate-900 cursor-pointer" aria-label="Settings">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+          </button>
+          <span class="icon-btn-tooltip">Settings</span>
+        </div>
+        <div class="icon-btn-wrap">
+          <button class="inline-flex items-center justify-center rounded-lg w-11 h-11 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800 hover:text-gray-900 dark:hover:text-white transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 dark:focus:ring-offset-slate-900 cursor-pointer" aria-label="Notifications">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          </button>
+          <span class="icon-btn-tooltip">Notifications</span>
+        </div>
+        <div class="icon-btn-wrap">
+          <button class="inline-flex items-center justify-center rounded-lg w-11 h-11 bg-emerald-600 text-white hover:bg-emerald-700 transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 dark:focus:ring-offset-slate-900 cursor-pointer" aria-label="Add new">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+          </button>
+          <span class="icon-btn-tooltip">Add New</span>
+        </div>
+        <div class="icon-btn-wrap">
+          <button class="inline-flex items-center justify-center rounded-lg w-11 h-11 bg-red-600 text-white hover:bg-red-700 transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 dark:focus:ring-offset-slate-900 cursor-pointer" aria-label="Delete">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0 1 16.138 21H7.862a2 2 0 0 1-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v3M4 7h16"/></svg>
+          </button>
+          <span class="icon-btn-tooltip">Delete</span>
+        </div>
+      </div>
+
+      <!-- Large (52px) -->
+      <h3 class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Large (52px)</h3>
+      <div class="flex flex-wrap items-center gap-4 mb-4">
+        <div class="icon-btn-wrap">
+          <button class="inline-flex items-center justify-center rounded-xl w-[52px] h-[52px] text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800 hover:text-gray-900 dark:hover:text-white transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 dark:focus:ring-offset-slate-900 cursor-pointer" aria-label="Menu">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+          </button>
+          <span class="icon-btn-tooltip">Menu</span>
+        </div>
+        <div class="icon-btn-wrap">
+          <button class="inline-flex items-center justify-center rounded-xl w-[52px] h-[52px] bg-emerald-600 text-white hover:bg-emerald-700 transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 dark:focus:ring-offset-slate-900 cursor-pointer" aria-label="Add new">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+          </button>
+          <span class="icon-btn-tooltip">Add New</span>
+        </div>
+      </div>
+
+      <p class="text-sm text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-slate-800 rounded-lg px-4 py-3 mt-4">
+        <strong class="text-gray-700 dark:text-gray-300">When to use:</strong> Icon buttons save space in toolbars, table rows, and dense UIs. Always include an <code class="bg-gray-100 dark:bg-slate-700 px-1.5 py-0.5 rounded text-xs">aria-label</code> and a visible tooltip on hover.
+      </p>
+    </section>
+
+    <div class="section-divider"></div>
+
+    <!-- ════════════════════════════════════════════ -->
+    <!-- 6. Button Group                              -->
+    <!-- ════════════════════════════════════════════ -->
+    <section>
+      <h2 class="text-2xl font-semibold text-gray-900 dark:text-white mb-1">6. Button Group</h2>
+      <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">Connected buttons &middot; Segmented controls and multi-action bars</p>
+
+      <h3 class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Segmented Control</h3>
+      <div class="flex flex-wrap gap-6 mb-6">
+        <div class="inline-flex rounded-lg border border-gray-300 dark:border-slate-600 overflow-hidden" role="group" aria-label="View options">
+          <button class="inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold min-h-[44px] bg-emerald-600 text-white border-r border-emerald-700 cursor-pointer">
+            List
+          </button>
+          <button class="inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold min-h-[44px] bg-white dark:bg-slate-800 text-gray-700 dark:text-gray-300 border-r border-gray-300 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors cursor-pointer">
+            Grid
+          </button>
+          <button class="inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold min-h-[44px] bg-white dark:bg-slate-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors cursor-pointer">
+            Board
+          </button>
+        </div>
+      </div>
+
+      <h3 class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Action Bar</h3>
+      <div class="flex flex-wrap gap-6 mb-4">
+        <div class="inline-flex rounded-lg border border-gray-300 dark:border-slate-600 overflow-hidden" role="group" aria-label="Actions">
+          <button class="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold min-h-[44px] bg-white dark:bg-slate-800 text-gray-700 dark:text-gray-300 border-r border-gray-300 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors cursor-pointer">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 1 1 3.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+            Edit
+          </button>
+          <button class="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold min-h-[44px] bg-white dark:bg-slate-800 text-gray-700 dark:text-gray-300 border-r border-gray-300 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors cursor-pointer">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            Copy
+          </button>
+          <button class="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold min-h-[44px] bg-white dark:bg-slate-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors cursor-pointer">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0 1 16.138 21H7.862a2 2 0 0 1-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v3M4 7h16"/></svg>
+            Delete
+          </button>
+        </div>
+      </div>
+
+      <p class="text-sm text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-slate-800 rounded-lg px-4 py-3 mt-4">
+        <strong class="text-gray-700 dark:text-gray-300">When to use:</strong> Button groups work for related actions like view switching (List/Grid/Board), pagination, or multi-action bars on selected items.
+      </p>
+    </section>
+
+    <div class="section-divider"></div>
+
+    <!-- ════════════════════════════════════════════ -->
+    <!-- 7. Loading State                             -->
+    <!-- ════════════════════════════════════════════ -->
+    <section>
+      <h2 class="text-2xl font-semibold text-gray-900 dark:text-white mb-1">7. Loading State</h2>
+      <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">Button with spinner &middot; Shows processing state while preserving width</p>
+
+      <div class="flex flex-wrap items-center gap-4 mb-6">
+        <!-- Primary loading -->
+        <button disabled aria-busy="true" aria-label="Saving changes" class="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 text-white text-base font-semibold px-5 py-2.5 min-h-[44px] min-w-[160px] cursor-not-allowed">
+          <svg class="btn-spinner h-5 w-5" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-dasharray="32" stroke-dashoffset="12" opacity="0.7"/></svg>
+          Saving...
+        </button>
+
+        <!-- Secondary loading -->
+        <button disabled aria-busy="true" aria-label="Loading" class="inline-flex items-center justify-center gap-2 rounded-lg border-2 border-emerald-600 dark:border-emerald-500 text-emerald-600 dark:text-emerald-400 bg-transparent text-base font-semibold px-5 py-2.5 min-h-[44px] min-w-[140px] cursor-not-allowed">
+          <svg class="btn-spinner h-5 w-5" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-dasharray="32" stroke-dashoffset="12" opacity="0.7"/></svg>
+          Loading...
+        </button>
+
+        <!-- Destructive loading -->
+        <button disabled aria-busy="true" aria-label="Deleting" class="inline-flex items-center justify-center gap-2 rounded-lg bg-red-600 text-white text-base font-semibold px-5 py-2.5 min-h-[44px] min-w-[140px] cursor-not-allowed">
+          <svg class="btn-spinner h-5 w-5" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-dasharray="32" stroke-dashoffset="12" opacity="0.7"/></svg>
+          Deleting...
+        </button>
+
+        <!-- Icon-only loading -->
+        <button disabled aria-busy="true" aria-label="Loading" class="inline-flex items-center justify-center rounded-lg w-11 h-11 bg-emerald-600 text-white cursor-not-allowed">
+          <svg class="btn-spinner h-5 w-5" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-dasharray="32" stroke-dashoffset="12" opacity="0.7"/></svg>
+        </button>
+      </div>
+
+      <p class="text-sm text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-slate-800 rounded-lg px-4 py-3 mt-4">
+        <strong class="text-gray-700 dark:text-gray-300">Implementation notes:</strong> Always set <code class="bg-gray-100 dark:bg-slate-700 px-1.5 py-0.5 rounded text-xs">disabled</code>, <code class="bg-gray-100 dark:bg-slate-700 px-1.5 py-0.5 rounded text-xs">aria-busy="true"</code>, and <code class="bg-gray-100 dark:bg-slate-700 px-1.5 py-0.5 rounded text-xs">min-width</code> to prevent layout shift. Show label text alongside the spinner when space permits.
       </p>
     </section>
 
