@@ -474,7 +474,8 @@
     <div class="preview-panel">
       <div class="preview-header">
         <span>Preview</span>
-        <div id="themeSwatches" style="display:none;align-items:center;gap:5px;"></div>
+        <div id="personalityButtons" style="display:none;align-items:center;gap:3px;"></div>
+        <div id="themeSwatches" style="display:none;align-items:center;gap:5px;border-left:1px solid var(--border);padding-left:8px;margin-left:4px;"></div>
         <div id="styleButtons" style="display:none;align-items:center;gap:3px;border-left:1px solid var(--border);padding-left:8px;margin-left:4px;"></div>
         <span id="viewportLabel" style="font-weight:400; text-transform:none; letter-spacing:normal;">Full width</span>
       </div>
@@ -512,18 +513,7 @@
       { name: 'Berry',    primary: 'fuchsia', neutral: 'zinc',    swatch: '#c026d3', destructive: 'red',    success: 'emerald',warning: 'amber' },
     ];
 
-    const presetPrimaryMap = {
-      dashboard: 'blue', landing: 'rose', form: 'blue', cards: 'violet',
-      pricing: 'indigo', portfolio: 'emerald', restaurant: 'amber',
-      statuspage: 'blue', deploy: 'blue', buttons: 'blue', osslanding: 'violet',
-      project: 'indigo',
-      snippetShellSidebar: 'blue', snippetShellMarketing: 'blue',
-      snippetShellDashboard: 'blue', snippetShellForm: 'blue',
-      snippetHero: 'blue', snippetStatsRow: 'blue', snippetDataTable: 'blue',
-      snippetCardGrid: 'blue', snippetPricing: 'blue', snippetFeatureGrid: 'blue',
-      snippetTabs: 'blue', snippetAccordion: 'blue', snippetPagination: 'blue',
-      snippetDropdown: 'blue', snippetAvatars: 'blue',
-    };
+    // Primary colors now come from manifestData.elements[name].primaryColor via getElementPrimary()
 
     const presetNeutralMap = {
       restaurant: 'stone',
@@ -543,20 +533,6 @@ button,[role="button"]{font-weight:400!important;letter-spacing:0.06em;text-tran
 button[class*="bg-blue"],button[class*="bg-indigo"],button[class*="bg-teal"],button[class*="bg-emerald"],button[class*="bg-violet"],button[class*="bg-rose"],button[class*="bg-orange"],button[class*="bg-fuchsia"]{background:currentColor!important;color:white!important;opacity:0.8}
 button:hover,a:hover,[role="button"]:hover{opacity:0.5;transition:opacity 250ms ease-out}
 nav,aside,[class*="border-b"],[class*="border-r"]{border-color:rgba(0,0,0,0.04)!important}
-` },
-      { name: 'Bold', label: 'Bold', css: `/* Bold — High Impact */
-[class*="rounded-lg"],[class*="rounded-xl"],[class*="rounded-2xl"],[class*="rounded-3xl"]{border-radius:0!important}
-[class*="rounded-md"]{border-radius:0!important}
-h1,h2,h3{font-weight:900!important;letter-spacing:-0.04em;text-transform:uppercase}
-h4,h5,h6{font-weight:800!important;letter-spacing:-0.02em;text-transform:uppercase}
-[class*="shadow-sm"],[class*="shadow-md"]{box-shadow:6px 6px 0px currentColor!important;opacity:0.9}
-[class*="shadow-lg"],[class*="shadow-xl"]{box-shadow:8px 8px 0px currentColor!important}
-[class*="rounded-lg"]:not(button):not(input):not(select):not(textarea),[class*="rounded-xl"]:not(button):not(input):not(select):not(textarea),[class*="rounded-2xl"]:not(button):not(input):not(select):not(textarea),[class*="rounded-3xl"]:not(button):not(input):not(select):not(textarea),.border:not(nav):not(aside):not(header){border-width:2px!important;border-color:#0f172a!important}
-button,[role="button"]{font-weight:800!important;text-transform:uppercase;letter-spacing:0.06em;border:2.5px solid currentColor!important;border-radius:0!important}
-button:hover,[role="button"]:hover{transform:translate(-3px,-3px);box-shadow:5px 5px 0px currentColor!important}
-button,a,[role="button"]{transition:transform 80ms ease-out,box-shadow 80ms ease-out!important}
-hr,[class*="divide-"]>*+*{border-color:#0f172a!important;border-width:2px!important}
-input,select,textarea{border-radius:0!important;border-width:2px!important;border-color:#0f172a!important}
 ` },
       { name: 'Playful', label: 'Playful', css: `/* Playful — Fun Energy */
 [class*="rounded-md"],[class*="rounded-lg"]{border-radius:16px!important}
@@ -657,6 +633,9 @@ document.querySelectorAll('form').forEach(function(f) {
     editor.addEventListener('input', () => {
       if (currentPresetName) {
         currentPresetName = null;
+        currentElement = null;
+        currentPersonality = null;
+        document.getElementById('personalityButtons').style.display = 'none';
         document.getElementById('themeSwatches').style.display = 'none';
         document.getElementById('styleButtons').style.display = 'none';
       }
@@ -687,35 +666,41 @@ document.querySelectorAll('form').forEach(function(f) {
     }
 
     // --- Templates (loaded from presets/ directory) ---
-    const presets = {};
     const presetCache = {};
-    let presetManifest = null;
+    let manifestData = null;
+    let currentElement = null;
+    let currentPersonality = null;
 
-    async function fetchPreset(name) {
-      if (presetCache[name]) return presetCache[name];
+    async function fetchPreset(element, personality) {
+      const key = element + '/' + personality;
+      if (presetCache[key]) return presetCache[key];
       try {
-        const resp = await fetch('presets/' + name + '.html');
-        if (!resp.ok) throw new Error('Not found: ' + name);
+        const resp = await fetch('presets/' + element + '/' + personality + '.html');
+        if (!resp.ok) throw new Error('Not found: ' + key);
         const html = await resp.text();
-        presetCache[name] = html;
-        presets[name] = html; // back-compat for shareDesign
+        presetCache[key] = html;
         return html;
       } catch(e) {
-        console.error('Failed to load preset:', name, e);
+        console.error('Failed to load preset:', key);
         return '';
       }
     }
 
     async function loadManifest() {
-      if (presetManifest) return presetManifest;
+      if (manifestData) return manifestData;
       try {
         const resp = await fetch('presets/index.json');
-        presetManifest = await resp.json();
-        return presetManifest;
+        manifestData = await resp.json();
+        return manifestData;
       } catch(e) {
-        console.error('Failed to load preset manifest:', e);
+        console.error('Failed to load manifest:', e);
         return null;
       }
+    }
+
+    function getElementPrimary(element) {
+      if (manifestData && manifestData.elements[element]) return manifestData.elements[element].primaryColor;
+      return 'blue';
     }
 
     let menuBuilt = false;
@@ -734,22 +719,25 @@ document.querySelectorAll('form').forEach(function(f) {
         group.textContent = cat.label;
         list.appendChild(group);
 
-        cat.presets.forEach(p => {
-          if (p.before) {
-            // Before/After pair
+        cat.elements.forEach(elName => {
+          const el = manifest.elements[elName];
+          if (!el) return;
+          const hasBefore = el.personalities.includes('before');
+
+          if (hasBefore) {
             const btnBefore = document.createElement('button');
-            btnBefore.textContent = p.label + ' \u2014 Before';
-            btnBefore.onclick = () => loadPreset(p.before);
+            btnBefore.textContent = el.label + ' \u2014 Before';
+            btnBefore.onclick = () => loadPreset(elName, 'before');
             list.appendChild(btnBefore);
 
             const btnAfter = document.createElement('button');
-            btnAfter.textContent = p.label + ' \u2014 After';
-            btnAfter.onclick = () => loadPreset(p.after);
+            btnAfter.textContent = el.label + ' \u2014 After';
+            btnAfter.onclick = () => loadPreset(elName, 'clean');
             list.appendChild(btnAfter);
           } else {
             const btn = document.createElement('button');
-            btn.textContent = p.label;
-            btn.onclick = () => loadPreset(p.name);
+            btn.textContent = el.label;
+            btn.onclick = () => loadPreset(elName, 'clean');
             list.appendChild(btn);
           }
         });
@@ -811,18 +799,18 @@ document.querySelectorAll('form').forEach(function(f) {
       return result;
     }
 
-    function renderThemeSwatches(presetName) {
+    function renderThemeSwatches(element) {
       const container = document.getElementById('themeSwatches');
       container.innerHTML = '';
-      if (!presetName || !presetPrimaryMap[presetName]) {
+      const primary = getElementPrimary(element);
+      if (!element || !primary) {
         container.style.display = 'none';
         return;
       }
       container.style.display = 'flex';
-      const presetPrimary = presetPrimaryMap[presetName];
       colorThemes.forEach((theme, index) => {
         const btn = document.createElement('button');
-        const isOriginal = theme.primary === presetPrimary;
+        const isOriginal = theme.primary === primary;
         btn.className = 'theme-swatch' + (isOriginal ? ' active' : '');
         btn.style.backgroundColor = theme.swatch;
         btn.title = theme.name;
@@ -830,15 +818,15 @@ document.querySelectorAll('form').forEach(function(f) {
         btn.onclick = () => selectTheme(index);
         container.appendChild(btn);
       });
-      currentThemeIndex = colorThemes.findIndex(t => t.primary === presetPrimary);
+      currentThemeIndex = colorThemes.findIndex(t => t.primary === primary);
       if (currentThemeIndex === -1) currentThemeIndex = 0;
     }
 
     function selectTheme(index) {
-      if (!currentPresetName) return;
+      if (!currentElement) return;
       currentThemeIndex = index;
-      const fromPrimary = presetPrimaryMap[currentPresetName];
-      const fromNeutral = presetNeutralMap[currentPresetName] || 'slate';
+      const fromPrimary = getElementPrimary(currentElement);
+      const fromNeutral = presetNeutralMap[currentElement] || 'slate';
       const theme = colorThemes[index];
       const themed = applyColorTheme(originalPresetHtml, fromPrimary, theme.primary, fromNeutral, theme.neutral, theme);
       editor.value = themed;
@@ -874,18 +862,50 @@ document.querySelectorAll('form').forEach(function(f) {
       });
     }
 
-    async function loadPreset(name) {
-      const html = await fetchPreset(name);
+    function renderPersonalityButtons(element, activePersonality) {
+      const container = document.getElementById('personalityButtons');
+      container.innerHTML = '';
+      if (!manifestData || !manifestData.elements[element]) {
+        container.style.display = 'none';
+        return;
+      }
+      const personalities = manifestData.elements[element].personalities.filter(p => p !== 'before');
+      if (personalities.length <= 1) {
+        container.style.display = 'none';
+        return;
+      }
+      container.style.display = 'flex';
+      for (const pers of personalities) {
+        const btn = document.createElement('button');
+        btn.className = 'style-btn' + (pers === activePersonality ? ' active' : '');
+        btn.textContent = pers.charAt(0).toUpperCase() + pers.slice(1);
+        btn.onclick = () => loadPreset(element, pers);
+        container.appendChild(btn);
+      }
+    }
+
+    async function loadPreset(element, personality) {
+      personality = personality || 'clean';
+      const html = await fetchPreset(element, personality);
       if (!html) return;
-      currentPresetName = name;
-      currentThemeIndex = colorThemes.findIndex(t => t.primary === (presetPrimaryMap[name] || 'blue'));
+      currentElement = element;
+      currentPersonality = personality;
+      currentPresetName = element;
+      const primary = getElementPrimary(element);
+      currentThemeIndex = colorThemes.findIndex(t => t.primary === primary);
       if (currentThemeIndex === -1) currentThemeIndex = 0;
       originalPresetHtml = html;
       editor.value = html;
       document.getElementById('presetsMenu').classList.remove('open');
-      renderThemeSwatches(name);
-      currentStyleIndex = 0;
-      renderStyleButtons(name);
+      renderPersonalityButtons(element, personality);
+      if (personality === 'before') {
+        document.getElementById('themeSwatches').style.display = 'none';
+        document.getElementById('styleButtons').style.display = 'none';
+      } else {
+        renderThemeSwatches(element);
+        currentStyleIndex = 0;
+        renderStyleButtons(element);
+      }
       updatePreview();
     }
 
@@ -960,21 +980,18 @@ document.querySelectorAll('form').forEach(function(f) {
         showToast('Nothing to share — add some HTML first');
         return;
       }
-      // Check if content matches a preset exactly
-      let presetName = null;
-      for (const [name, content] of Object.entries(presets)) {
-        if (content === html) { presetName = name; break; }
-      }
+      // Check if content matches current loaded preset
+      const isPreset = currentElement && currentPersonality && html === originalPresetHtml;
       try {
         let fragment;
-        if (presetName) {
-          fragment = 'preset:' + presetName;
+        if (isPreset) {
+          fragment = 'preset:' + currentElement + '/' + currentPersonality;
         } else {
           fragment = 'code:' + btoa(unescape(encodeURIComponent(html)));
         }
         const url = window.location.origin + window.location.pathname + '#' + fragment;
         navigator.clipboard.writeText(url).then(() => {
-          showToast(presetName ? 'Preset link copied' : 'Link copied to clipboard');
+          showToast(isPreset ? 'Preset link copied' : 'Link copied to clipboard');
         }).catch(() => {
           prompt('Copy this link:', url);
         });
@@ -997,8 +1014,12 @@ document.querySelectorAll('form').forEach(function(f) {
 
       // Preset link — trusted, load directly
       if (hash.startsWith('preset:')) {
-        const name = hash.slice(7);
-        await loadPreset(name);
+        const path = hash.slice(7);
+        const parts = path.split('/');
+        const element = parts[0];
+        const personality = parts[1] || 'clean';
+        await loadManifest();
+        await loadPreset(element, personality);
         return;
       }
 
