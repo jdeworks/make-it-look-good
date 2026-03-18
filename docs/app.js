@@ -347,7 +347,7 @@ function setViewport(size, e) {
 // --- Dark mode ---
 function applyDarkMode() {
   document.body.classList.toggle('dark-ui', darkMode);
-  document.querySelectorAll('#darkBtn, #darkBtnMobile').forEach(b => b.classList.toggle('active', darkMode));
+  document.querySelectorAll('#darkBtn').forEach(b => b.classList.toggle('active', darkMode));
   if (monacoEditor) monaco.editor.setTheme(darkMode ? 'vs-dark' : 'vs');
 }
 

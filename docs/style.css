@@ -35,10 +35,11 @@
       overflow: hidden;
     }
 
-    /* Header — single row on desktop, two rows on mobile */
+    /* Header — left/center/right on desktop */
     .header {
       display: flex;
       align-items: center;
+      justify-content: space-between;
       padding: 8px 16px;
       border-bottom: 1px solid var(--border);
       background: var(--bg);
@@ -46,16 +47,14 @@
       gap: 8px;
     }
 
-    .header-row-1 {
-      display: contents;
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
     }
 
-    .header-row-2 {
-      display: contents;
-    }
-
-    /* On desktop, row-2 right buttons are hidden (dark/fullscreen are in row-1) */
-    .header-row-2-right { display: none; }
+    /* Mobile fullscreen button hidden on desktop */
+    .show-mobile-only { display: none; }
 
     .logo {
       font-size: 14px;
@@ -518,32 +517,21 @@
     /* Mobile layout */
     @media (max-width: 768px) {
       .header {
-        flex-direction: column;
-        align-items: stretch;
-        padding: 0;
-        gap: 0;
-      }
-      .header-row-1 {
-        display: flex;
-        align-items: center;
+        flex-wrap: wrap;
         padding: 6px 10px;
+        gap: 6px;
       }
-      .header-row-2 {
-        display: flex;
-        align-items: center;
-        padding: 2px 10px 6px;
-        gap: 8px;
+      /* Logo takes full first row */
+      .header-left {
+        width: 100%;
       }
-      .hide-mobile { display: none !important; }
-      .divider { display: none; }
-
-      /* Show row-2 dark/fullscreen buttons on mobile */
-      .header-row-2-right {
-        display: flex;
-        align-items: center;
-        gap: 4px;
+      /* Templates + right buttons fill second row */
+      .header-right {
         margin-left: auto;
       }
+      .hide-mobile { display: none !important; }
+      .show-mobile-only { display: inline-flex !important; }
+      .divider { display: none; }
 
       /* Tab bar visible */
       .mobile-tabs {
