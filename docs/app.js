@@ -32,8 +32,6 @@ function initMonaco() {
     padding: { top: 8 },
   });
 
-  // Sync editor theme with current dark mode state
-  if (darkMode) monaco.editor.setTheme('vs-dark');
 
   monacoEditor.onDidChangeModelContent(() => {
     if (suppressChangeEvent) return;
@@ -347,11 +345,16 @@ function setViewport(size, e) {
 }
 
 // --- Dark mode ---
+function applyDarkMode() {
+  document.body.classList.toggle('dark-ui', darkMode);
+  document.querySelectorAll('#darkBtn, #darkBtnMobile').forEach(b => b.classList.toggle('active', darkMode));
+  if (monacoEditor) monaco.editor.setTheme(darkMode ? 'vs-dark' : 'vs');
+}
+
 function toggleDarkMode() {
   darkMode = !darkMode;
   localStorage.setItem('milg-dark', darkMode);
-  document.querySelectorAll('#darkBtn, #darkBtnMobile').forEach(b => b.classList.toggle('active', darkMode));
-  if (monacoEditor) monaco.editor.setTheme(darkMode ? 'vs-dark' : 'vs');
+  applyDarkMode();
   updatePreview();
 }
 
@@ -905,7 +908,7 @@ function showTrustDialog(html, hasScripts) {
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;z-index:999;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;padding:16px;';
   const card = document.createElement('div');
-  card.style.cssText = 'background:white;border-radius:12px;padding:24px;max-width:480px;width:100%;font-family:var(--font);box-shadow:0 20px 60px rgba(0,0,0,0.3);';
+  card.style.cssText = 'background:var(--bg);border-radius:12px;padding:24px;max-width:480px;width:100%;font-family:var(--font);box-shadow:0 20px 60px rgba(0,0,0,0.3);color:var(--text);';
 
   const iconColor = hasScripts ? '#dc2626' : '#f59e0b';
   const iconBg = hasScripts ? '#fef2f2' : '#fffbeb';
@@ -920,12 +923,12 @@ function showTrustDialog(html, hasScripts) {
     + '    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="' + iconColor + '" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
     + '  </div>'
     + '  <div>'
-    + '    <h3 style="margin:0 0 4px;font-size:16px;font-weight:600;color:#0f172a;">' + title + '</h3>'
-    + '    <p style="margin:0;font-size:14px;color:#475569;line-height:1.5;">' + desc + '</p>'
+    + '    <h3 style="margin:0 0 4px;font-size:16px;font-weight:600;color:var(--text);">' + title + '</h3>'
+    + '    <p style="margin:0;font-size:14px;color:var(--text-secondary);line-height:1.5;">' + desc + '</p>'
     + '  </div>'
     + '</div>'
     + '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px;">'
-    + '  <button id="trust-cancel" style="padding:8px 16px;border:1px solid #e2e8f0;border-radius:8px;background:white;color:#475569;font-size:14px;font-family:var(--font);cursor:pointer;">Cancel</button>'
+    + '  <button id="trust-cancel" style="padding:8px 16px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text-secondary);font-size:14px;font-family:var(--font);cursor:pointer;">Cancel</button>'
     + '  <button id="trust-load" style="padding:8px 16px;border:none;border-radius:8px;background:' + (hasScripts ? '#dc2626' : '#2563eb') + ';color:white;font-size:14px;font-weight:500;font-family:var(--font);cursor:pointer;">' + (hasScripts ? 'I trust this — load anyway' : 'Load preview') + '</button>'
     + '</div>';
 
@@ -1211,10 +1214,7 @@ window.addEventListener('message', function(e) {
 
 // --- Init ---
 function startApp() {
-  // Restore dark mode button state from localStorage
-  if (darkMode) {
-    document.querySelectorAll('#darkBtn, #darkBtnMobile').forEach(b => b.classList.add('active'));
-  }
+  applyDarkMode();
   initMonaco();
   initMobile();
   loadFromHash().then(() => {
