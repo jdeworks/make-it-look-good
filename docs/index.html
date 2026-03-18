@@ -426,7 +426,7 @@
         <span id="viewportLabel" style="font-weight:400; text-transform:none; letter-spacing:normal;">Full width</span>
       </div>
       <div class="preview-container">
-        <iframe id="preview" src="about:blank" sandbox="allow-scripts allow-same-origin" title="Design preview"></iframe>
+        <iframe id="preview" src="about:blank" sandbox="allow-scripts" title="Design preview"></iframe>
       </div>
     </div>
   </div>
@@ -4100,7 +4100,7 @@ function toggleAccordionMulti(btn) {
 
   <!-- Menu -->
   <div
-    class="absolute left-0 z-50 mt-2 w-56 origin-top-left rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-lg ring-1 ring-black/5 hidden"
+    class="absolute right-0 z-50 mt-2 w-56 origin-top-right rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-lg ring-1 ring-black/5 hidden"
     role="menu"
     aria-orientation="vertical"
     aria-labelledby="dropdown-trigger"
@@ -4914,6 +4914,13 @@ function switchProjectPage(page) {
       if (hash) {
         try {
           const decoded = decodeURIComponent(escape(atob(hash)));
+          // Show confirmation banner for shared content
+          const banner = document.createElement('div');
+          banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:999;background:#fef3c7;border-bottom:1px solid #f59e0b;padding:10px 16px;display:flex;align-items:center;justify-content:center;gap:12px;font-size:13px;font-family:var(--font);color:#92400e;';
+          banner.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
+            + '<span>This preview was loaded from a shared link. Shared content runs in a sandboxed iframe but may contain scripts.</span>'
+            + '<button style="background:#92400e;color:white;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:12px;white-space:nowrap;" onclick="this.parentElement.remove()">Dismiss</button>';
+          document.body.prepend(banner);
           editor.value = decoded;
           updatePreview();
         } catch (e) {
