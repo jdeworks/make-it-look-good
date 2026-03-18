@@ -305,8 +305,10 @@ function toggleDarkMode() {
 
 // --- Fullscreen preview ---
 function toggleFullscreen() {
+  const entering = !document.body.classList.contains('fullscreen-preview');
   document.body.classList.toggle('fullscreen-preview');
-  document.getElementById('fullscreenBtn').classList.toggle('active', document.body.classList.contains('fullscreen-preview'));
+  document.getElementById('fullscreenBtn').classList.toggle('active', entering);
+  if (entering) showToast('Press Esc to exit fullscreen');
 }
 
 document.addEventListener('keydown', function(e) {
