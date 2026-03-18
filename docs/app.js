@@ -1,15 +1,77 @@
-const editor = document.getElementById('editor');
 const preview = document.getElementById('preview');
 const viewportLabel = document.getElementById('viewportLabel');
 const darkBtn = document.getElementById('darkBtn');
 const toast = document.getElementById('toast');
-const editorHighlight = document.getElementById('editorHighlight');
 let darkMode = false;
 let debounceTimer;
 let currentViewport = 'full';
 let currentPresetName = null;
 let currentStyleIndex = 0;
 let originalPresetHtml = '';
+
+// --- CodeMirror editor ---
+let cmView = null;
+
+function initCodeMirror() {
+  const { EditorView, basicSetup, html, oneDark, EditorState, keymap } = window._cmModules;
+  const updateListener = EditorView.updateListener.of(update => {
+    if (update.docChanged) {
+      if (currentPresetName && !userEdited) {
+        userEdited = true;
+        updateTemplateName();
+      }
+      if (currentElement) {
+        currentElement = null;
+        currentPersonality = null;
+        currentPresetName = null;
+        originalPresetHtml = '';
+        currentStyleIndex = 0;
+        userEdited = false;
+        document.getElementById('personalityButtons').style.display = 'none';
+        document.getElementById('themeSwatches').style.display = 'none';
+        document.getElementById('styleButtons').style.display = 'none';
+        updateTemplateName();
+      }
+      debouncedUpdate();
+    }
+  });
+
+  cmView = new EditorView({
+    state: EditorState.create({
+      doc: '',
+      extensions: [
+        basicSetup,
+        html(),
+        oneDark,
+        updateListener,
+        EditorView.lineWrapping,
+        EditorView.theme({
+          '&': { height: '100%', fontSize: '13px' },
+          '.cm-scroller': { overflow: 'auto', fontFamily: 'var(--mono)' },
+          '.cm-content': { minHeight: '100%' },
+        }),
+      ],
+    }),
+    parent: document.getElementById('editorContainer'),
+  });
+}
+
+// Compatibility layer — replaces editor.value usage
+const editor = {
+  get value() { return cmView ? cmView.state.doc.toString() : ''; },
+  set value(v) {
+    if (!cmView) return;
+    cmView.dispatch({
+      changes: { from: 0, to: cmView.state.doc.length, insert: v },
+    });
+  },
+  focus() { if (cmView) cmView.focus(); },
+  setSelectionRange(start, end) {
+    if (!cmView) return;
+    cmView.dispatch({ selection: { anchor: start, head: end } });
+    cmView.focus();
+  },
+};
 
 const tailwindColors = {
   slate:   { swatch: '#64748b', neutral: 'slate' },
@@ -159,7 +221,6 @@ const darkVariantCSS = '@custom-variant dark (&:where(.dark, .dark *));';
 
 function updatePreview() {
   const html = editor.value;
-  updateHighlight();
   const darkClass = darkMode ? ' class="dark"' : '';
 
   // Build source map for inspect mode
@@ -260,25 +321,7 @@ function updateTemplateName() {
   updateTemplateNav();
 }
 
-editor.addEventListener('input', () => {
-  if (currentPresetName && !userEdited) {
-    userEdited = true;
-    updateTemplateName();
-  }
-  if (currentElement) {
-    currentElement = null;
-    currentPersonality = null;
-    currentPresetName = null;
-    originalPresetHtml = '';
-    currentStyleIndex = 0;
-    userEdited = false;
-    document.getElementById('personalityButtons').style.display = 'none';
-    document.getElementById('themeSwatches').style.display = 'none';
-    document.getElementById('styleButtons').style.display = 'none';
-    updateTemplateName();
-  }
-  debouncedUpdate();
-});
+// Input handling is done via CodeMirror's updateListener in initCodeMirror()
 
 // --- Viewport ---
 function setViewport(size, e) {
@@ -1056,15 +1099,12 @@ const inspectorAgentScript = `
 })();
 <\/script>`;
 
-// Scroll editor textarea to show a given character offset, centered vertically
+// Scroll editor to show a given character offset, centered vertically
 function scrollEditorToOffset(offset) {
-  // Use a temporary mirror div to measure the exact scroll position
-  const text = editor.value.substring(0, offset);
-  const lines = text.split('\n').length - 1;
-  const cs = getComputedStyle(editor);
-  const lineHeight = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.5 || 18;
-  const targetScroll = lines * lineHeight - editor.clientHeight / 3;
-  editor.scrollTo({ top: Math.max(0, targetScroll), behavior: 'smooth' });
+  if (!cmView) return;
+  cmView.dispatch({
+    effects: window._cmModules.EditorView.scrollIntoView(offset, { y: 'center' }),
+  });
 }
 
 // Parent-side message handler
@@ -1106,115 +1146,8 @@ window.addEventListener('message', function(e) {
   }
 });
 
-// --- HTML Syntax Highlighting ---
-function escapeHtml(str) {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-function highlightHtml(code) {
-  // Tokenize HTML for syntax highlighting
-  let result = '';
-  let i = 0;
-  const len = code.length;
-
-  while (i < len) {
-    // HTML comment
-    if (code.substring(i, i + 4) === '<!--') {
-      const end = code.indexOf('-->', i + 4);
-      const commentEnd = end === -1 ? len : end + 3;
-      result += '<span class="hl-comment">' + escapeHtml(code.substring(i, commentEnd)) + '</span>';
-      i = commentEnd;
-      continue;
-    }
-
-    // Closing tag
-    if (code[i] === '<' && i + 1 < len && code[i + 1] === '/') {
-      const end = code.indexOf('>', i);
-      if (end !== -1) {
-        result += '<span class="hl-tag">' + escapeHtml(code.substring(i, end + 1)) + '</span>';
-        i = end + 1;
-        continue;
-      }
-    }
-
-    // Opening tag
-    if (code[i] === '<' && i + 1 < len && /[a-zA-Z!]/.test(code[i + 1])) {
-      // Find tag name
-      let j = i + 1;
-      while (j < len && /[a-zA-Z0-9-]/.test(code[j])) j++;
-      result += '<span class="hl-tag">' + escapeHtml(code.substring(i, j)) + '</span>';
-      i = j;
-
-      // Parse attributes until >
-      while (i < len && code[i] !== '>') {
-        // Whitespace
-        if (/\s/.test(code[i])) {
-          result += code[i];
-          i++;
-          continue;
-        }
-        // Self-closing slash
-        if (code[i] === '/' && i + 1 < len && code[i + 1] === '>') {
-          result += '<span class="hl-tag">/&gt;</span>';
-          i += 2;
-          break;
-        }
-        // Attribute name
-        let attrStart = i;
-        while (i < len && code[i] !== '=' && code[i] !== '>' && !/\s/.test(code[i])) i++;
-        if (i > attrStart) {
-          result += '<span class="hl-attr">' + escapeHtml(code.substring(attrStart, i)) + '</span>';
-        }
-        // = sign
-        if (code[i] === '=') {
-          result += '=';
-          i++;
-          // Attribute value
-          if (i < len && (code[i] === '"' || code[i] === "'")) {
-            const quote = code[i];
-            let valEnd = code.indexOf(quote, i + 1);
-            if (valEnd === -1) valEnd = len - 1;
-            result += '<span class="hl-str">' + escapeHtml(code.substring(i, valEnd + 1)) + '</span>';
-            i = valEnd + 1;
-          } else {
-            // Unquoted value
-            let valStart = i;
-            while (i < len && code[i] !== '>' && !/\s/.test(code[i])) i++;
-            result += '<span class="hl-str">' + escapeHtml(code.substring(valStart, i)) + '</span>';
-          }
-        }
-      }
-      // Closing >
-      if (i < len && code[i] === '>') {
-        result += '<span class="hl-tag">&gt;</span>';
-        i++;
-      }
-      continue;
-    }
-
-    // Regular text
-    result += escapeHtml(code[i]);
-    i++;
-  }
-  return result;
-}
-
-function updateHighlight() {
-  const code = editor.value;
-  // Add a trailing newline so the highlight div matches textarea height
-  editorHighlight.innerHTML = highlightHtml(code) + '\n';
-}
-
-// Sync scroll position between textarea and highlight overlay
-editor.addEventListener('scroll', () => {
-  editorHighlight.scrollTop = editor.scrollTop;
-  editorHighlight.scrollLeft = editor.scrollLeft;
-});
-
-// Update highlight on input
-editor.addEventListener('input', updateHighlight);
-
 // --- Init ---
+initCodeMirror();
 initMobile();
 loadFromHash().then(() => {
   if (!editor.value) {

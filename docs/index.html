@@ -6,6 +6,16 @@
   <title>make-it-look-good — Live Preview</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='2' y='2' width='12' height='12' rx='2' fill='%232563eb'/><rect x='18' y='2' width='12' height='12' rx='2' fill='%2393c5fd'/><rect x='2' y='18' width='12' height='12' rx='2' fill='%2393c5fd'/><rect x='18' y='18' width='12' height='12' rx='2' fill='%232563eb'/></svg>">
   <link rel="stylesheet" href="style.css">
+  <script type="module">
+    import { EditorView, basicSetup } from 'https://esm.sh/codemirror@6.0.1';
+    import { html } from 'https://esm.sh/@codemirror/lang-html@6.4.9';
+    import { oneDark } from 'https://esm.sh/@codemirror/theme-one-dark@6.1.2';
+    import { EditorState } from 'https://esm.sh/@codemirror/state@6.5.2';
+    import { keymap } from 'https://esm.sh/@codemirror/view@6.36.5';
+
+    // Expose to global scope for app.js
+    window._cmModules = { EditorView, basicSetup, html, oneDark, EditorState, keymap };
+  </script>
 </head>
 <body>
 
@@ -88,10 +98,7 @@
       <div class="editor-header">
         <span>HTML</span>
       </div>
-      <div class="editor editor-wrap" style="flex:1;">
-        <div class="editor-highlight" id="editorHighlight" aria-hidden="true"></div>
-        <textarea id="editor" placeholder="Paste your HTML here...&#10;&#10;Tailwind CSS is available in the preview.&#10;Just use Tailwind classes like:&#10;&#10;<div class=&quot;p-8 max-w-md mx-auto&quot;>&#10;  <h1 class=&quot;text-2xl font-bold&quot;>Hello</h1>&#10;</div>" spellcheck="false"></textarea>
-      </div>
+      <div id="editorContainer" style="flex:1;overflow:hidden;"></div>
     </div>
 
     <div class="divider" id="divider"></div>
