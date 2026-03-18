@@ -39,20 +39,21 @@ Tell your AI: *"Read CONSULT.md from the dev branch of github.com/jdeworks/make-
 
 ### Preview Tool
 
-Paste any HTML+Tailwind into the [live preview tool](https://jdeworks.github.io/make-it-look-good/) to see it rendered instantly. Toggle mobile/tablet/desktop views, dark mode, and share via URL. Includes 20+ prebuilt templates to try.
+Paste any HTML+Tailwind into the [live preview tool](https://jdeworks.github.io/make-it-look-good/) to see it rendered instantly. Toggle mobile/tablet/desktop views, dark mode, and share via URL. Includes 88 prebuilt templates across 27 elements with multiple design personalities.
 
 ### Before & After Examples
 
-The [`templates/`](templates/) folder shows realistic transformations:
+Each "before" shows a typical MVP. Each "after" is a structurally different redesign — not just CSS tweaks but genuinely different layouts. Multiple personalities (Clean, Minimalist, Playful, Editorial) show how the same content can look completely different.
 
-| Example | What it demonstrates |
-|---------|---------------------|
-| [Dashboard before](templates/dashboard-before.html) → [after](templates/dashboard-after.html) | Spacing system, visual hierarchy, proper table design |
-| [Landing page before](templates/landing-before.html) → [after](templates/landing-after.html) | Type scale, color system, section rhythm |
-| [Form before](templates/form-before.html) → [after](templates/form-after.html) | Input sizing, label placement, validation |
-| [Card grid before](templates/card-grid-before.html) → [after](templates/card-grid-after.html) | Consistent padding, responsive grid, visual balance |
+| Example | Personalities | Try it |
+|---------|--------------|--------|
+| Dashboard | Clean, Minimalist, Playful | [Before](https://jdeworks.github.io/make-it-look-good/#preset:dashboard/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:dashboard/clean) |
+| Landing Page | Clean, Minimalist, Playful, Editorial | [Before](https://jdeworks.github.io/make-it-look-good/#preset:landing/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:landing/clean) |
+| Form | Clean, Minimalist, Playful, Editorial | [Before](https://jdeworks.github.io/make-it-look-good/#preset:form/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:form/clean) |
+| Card Grid | Clean, Minimalist, Playful | [Before](https://jdeworks.github.io/make-it-look-good/#preset:cards/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:cards/clean) |
+| Multi-Page App | Clean, Minimalist, Playful | [Before](https://jdeworks.github.io/make-it-look-good/#preset:project/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:project/clean) |
 
-Paste the "before" into the preview tool, then the "after" — see the difference design knowledge makes.
+Click any "After" link — personality buttons appear in the preview header to switch between variants. Color swatches let you recolor with 8 different palettes. Style buttons apply CSS overlays (Minimalist, Playful, Glass, Editorial).
 
 ---
 
