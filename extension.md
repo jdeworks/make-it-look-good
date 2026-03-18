@@ -5,7 +5,7 @@
 ## Current Setup (as of latest)
 
 - **`docs/index.html`** — ~1150 lines, the tool UI and JS logic
-- **`docs/presets/{element}/{personality}.html`** — 91 preset files across 28 elements
+- **`docs/presets/{element}/{personality}.html`** — 97 preset files across 30 elements
 - **`docs/presets/index.json`** — manifest with categories, elements, personalities, primaryColors
 - Left panel: `<textarea>` with HTML source code
 - Right panel: `<iframe>` rendering HTML with Tailwind CSS v4 (browser CDN)

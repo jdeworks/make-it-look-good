@@ -1,0 +1,386 @@
+<style type="text/tailwindcss">
+    @theme {
+        --font-sans: 'Sora', ui-sans-serif, system-ui, sans-serif;
+        --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+    }
+</style>
+<style>
+    @keyframes gradient-shift {
+        0%, 100% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+    }
+    .animated-gradient {
+        background: linear-gradient(135deg, #fff1f2, #fce7f3, #fdf4ff, #ede9fe, #fce7f3, #fff1f2);
+        background-size: 300% 300%;
+        animation: gradient-shift 8s ease infinite;
+    }
+    .dark .animated-gradient {
+        background: linear-gradient(135deg, #0f172a, #1e1b4b, #2e1065, #1e1b4b, #0f172a);
+        background-size: 300% 300%;
+        animation: gradient-shift 8s ease infinite;
+    }
+    .glass {
+        background: rgba(255, 255, 255, 0.6);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+    }
+    .dark .glass {
+        background: rgba(30, 27, 75, 0.4);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+    }
+    .bounce-card {
+        transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease;
+    }
+    .bounce-card:hover {
+        transform: translateY(-6px);
+    }
+    .gradient-text-playful {
+        background: linear-gradient(135deg, #e11d48, #ec4899, #f43f5e);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .animated-gradient { animation: none; }
+        .bounce-card, .bounce-card:hover { transition: none; transform: none; }
+        .animate-pulse { animation: none; }
+        .animate-bounce { animation: none; }
+    }
+</style>
+<div class="min-h-screen bg-rose-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+    <!-- Navigation -->
+    <nav class="fixed top-0 left-0 right-0 z-50 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-rose-100 dark:border-slate-800">
+        <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+            <a href="#hero" class="text-xl font-extrabold tracking-tight gradient-text-playful">Launchpad</a>
+            <div class="hidden md:flex items-center gap-2 text-sm">
+                <a href="#features" class="font-medium text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white px-3 py-2 rounded-full hover:bg-rose-100 dark:hover:bg-slate-800 transition-colors min-h-[44px] inline-flex items-center">Features</a>
+                <a href="#how-it-works" class="font-medium text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white px-3 py-2 rounded-full hover:bg-rose-100 dark:hover:bg-slate-800 transition-colors min-h-[44px] inline-flex items-center">How It Works</a>
+                <a href="#pricing" class="font-medium text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white px-3 py-2 rounded-full hover:bg-rose-100 dark:hover:bg-slate-800 transition-colors min-h-[44px] inline-flex items-center">Pricing</a>
+                <a href="#cta" class="inline-flex items-center bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white px-5 py-2.5 rounded-full transition-all text-sm font-bold shadow-lg shadow-rose-500/25 min-h-[44px]">
+                    Try It Free
+                </a>
+            </div>
+            <button onclick="document.getElementById('plPlayMobile').classList.toggle('hidden')" class="md:hidden min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-slate-500 hover:bg-rose-100 dark:hover:bg-slate-800 transition-colors" aria-label="Toggle menu">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+            </button>
+        </div>
+        <div id="plPlayMobile" class="hidden md:hidden border-t border-rose-100 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl">
+            <div class="px-6 py-4 flex flex-col gap-1 text-sm">
+                <a href="#features" class="py-3 px-3 font-medium text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-xl hover:bg-rose-50 dark:hover:bg-slate-800 transition-colors min-h-[44px] flex items-center">Features</a>
+                <a href="#how-it-works" class="py-3 px-3 font-medium text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-xl hover:bg-rose-50 dark:hover:bg-slate-800 transition-colors min-h-[44px] flex items-center">How It Works</a>
+                <a href="#pricing" class="py-3 px-3 font-medium text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-xl hover:bg-rose-50 dark:hover:bg-slate-800 transition-colors min-h-[44px] flex items-center">Pricing</a>
+                <a href="#cta" class="mt-2 py-3 px-3 bg-gradient-to-r from-rose-500 to-pink-500 text-white font-bold rounded-xl text-center min-h-[44px] flex items-center justify-center">Try It Free</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section id="hero" class="animated-gradient relative overflow-hidden">
+        <!-- Decorative blobs -->
+        <div class="absolute top-20 right-10 w-72 h-72 bg-rose-300/20 dark:bg-rose-500/10 rounded-full blur-3xl"></div>
+        <div class="absolute bottom-20 left-20 w-56 h-56 bg-pink-300/20 dark:bg-pink-500/10 rounded-full blur-3xl"></div>
+        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-fuchsia-300/10 dark:bg-fuchsia-500/5 rounded-full blur-3xl"></div>
+
+        <div class="relative max-w-7xl mx-auto px-6 pt-40 pb-28 text-center">
+            <!-- Badge -->
+            <div class="inline-flex items-center gap-2 bg-rose-100 dark:bg-rose-900/30 border border-rose-200 dark:border-rose-800 rounded-full px-4 py-1.5 mb-8 text-sm font-bold text-rose-600 dark:text-rose-400">
+                <span class="w-2 h-2 bg-rose-500 rounded-full animate-pulse"></span>
+                We're live! &#127881;
+            </div>
+
+            <!-- Title -->
+            <h1 class="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-extrabold tracking-tight mb-6 leading-tight">
+                Your next big<br>
+                <span class="gradient-text-playful">launch starts here</span>
+            </h1>
+
+            <!-- Subheadline -->
+            <p class="text-lg sm:text-xl text-slate-500 dark:text-slate-400 max-w-2xl mx-auto mb-10 leading-relaxed">
+                The friendliest platform for shipping products fast. No DevOps degree required. Your inbox will thank you.
+            </p>
+
+            <!-- Email signup pill -->
+            <div class="flex flex-col sm:flex-row items-center justify-center gap-3 max-w-md mx-auto mb-8">
+                <input type="email" placeholder="you@awesome.com" class="w-full sm:flex-1 bg-white dark:bg-slate-900 border-2 border-rose-200 dark:border-slate-700 rounded-full px-6 py-3.5 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-rose-400 dark:focus:border-rose-500 focus:ring-2 focus:ring-rose-200 dark:focus:ring-rose-500/20 min-h-[44px]">
+                <button class="w-full sm:w-auto bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white font-bold px-8 py-3.5 rounded-full transition-all text-sm shadow-xl shadow-rose-500/25 min-h-[44px] whitespace-nowrap">
+                    Try it &mdash; it's free!
+                </button>
+            </div>
+
+            <!-- Social proof -->
+            <p class="text-sm text-slate-500 dark:text-slate-400">
+                Join <span class="font-bold text-rose-600 dark:text-rose-400">2,000+</span> happy developers
+            </p>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="bg-white dark:bg-slate-900 py-24 sm:py-32">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="text-center mb-16">
+                <h2 class="text-3xl sm:text-4xl font-extrabold mb-4">Packed with goodies</h2>
+                <p class="text-slate-500 dark:text-slate-400 text-lg max-w-2xl mx-auto">Everything you need, nothing you don't. Let's keep things simple.</p>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- Feature 1 -->
+                <div class="glass border border-rose-100 dark:border-slate-700/50 rounded-3xl p-7 bounce-card">
+                    <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-rose-400 to-pink-500 flex items-center justify-center mb-5">
+                        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                    </div>
+                    <h3 class="text-lg font-bold mb-2">Blazing Fast</h3>
+                    <p class="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">Deploy in seconds, not minutes. Our edge network keeps your app snappy everywhere.</p>
+                </div>
+
+                <!-- Feature 2 -->
+                <div class="glass border border-pink-100 dark:border-slate-700/50 rounded-3xl p-7 bounce-card">
+                    <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-pink-400 to-rose-500 flex items-center justify-center mb-5">
+                        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                    </div>
+                    <h3 class="text-lg font-bold mb-2">Safe & Sound</h3>
+                    <p class="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">SSL, DDoS protection, and SOC 2 compliance baked in. Sleep soundly at night.</p>
+                </div>
+
+                <!-- Feature 3 -->
+                <div class="glass border border-fuchsia-100 dark:border-slate-700/50 rounded-3xl p-7 bounce-card">
+                    <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-fuchsia-400 to-pink-500 flex items-center justify-center mb-5">
+                        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                    </div>
+                    <h3 class="text-lg font-bold mb-2">Team Friendly</h3>
+                    <p class="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">Preview deploys, shared environments, and collaboration tools your team will love.</p>
+                </div>
+
+                <!-- Feature 4 -->
+                <div class="glass border border-rose-100 dark:border-slate-700/50 rounded-3xl p-7 bounce-card">
+                    <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-rose-400 to-pink-500 flex items-center justify-center mb-5">
+                        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                    </div>
+                    <h3 class="text-lg font-bold mb-2">Analytics Built In</h3>
+                    <p class="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">Beautiful dashboards that actually make sense. Track what matters, skip the noise.</p>
+                </div>
+
+                <!-- Feature 5 -->
+                <div class="glass border border-pink-100 dark:border-slate-700/50 rounded-3xl p-7 bounce-card">
+                    <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-pink-400 to-rose-500 flex items-center justify-center mb-5">
+                        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+                    </div>
+                    <h3 class="text-lg font-bold mb-2">50+ Integrations</h3>
+                    <p class="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">GitHub, Slack, Jira, and all your favorites. Connect everything in a few clicks.</p>
+                </div>
+
+                <!-- Feature 6 -->
+                <div class="glass border border-fuchsia-100 dark:border-slate-700/50 rounded-3xl p-7 bounce-card">
+                    <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-fuchsia-400 to-pink-500 flex items-center justify-center mb-5">
+                        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    </div>
+                    <h3 class="text-lg font-bold mb-2">Global by Default</h3>
+                    <p class="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">30+ regions worldwide. Your app is fast no matter where your users are. Magic!</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works -->
+    <section id="how-it-works" class="py-24 sm:py-32">
+        <div class="max-w-3xl mx-auto px-6">
+            <div class="text-center mb-16">
+                <h2 class="text-3xl sm:text-4xl font-extrabold mb-4">Easy as 1-2-3</h2>
+                <p class="text-slate-500 dark:text-slate-400 text-lg">Seriously, it's that simple.</p>
+            </div>
+
+            <div class="space-y-8">
+                <!-- Step 1 -->
+                <div class="glass border border-rose-100 dark:border-slate-700/50 rounded-3xl p-8 bounce-card flex gap-6 items-start">
+                    <div class="flex-shrink-0 w-12 h-12 rounded-2xl bg-gradient-to-br from-rose-400 to-pink-500 flex items-center justify-center text-lg font-extrabold text-white">1</div>
+                    <div>
+                        <h3 class="text-xl font-bold mb-2">Connect your repo</h3>
+                        <p class="text-slate-500 dark:text-slate-400 leading-relaxed">Link GitHub, GitLab, or Bitbucket. We detect your framework automatically and set everything up.</p>
+                    </div>
+                </div>
+
+                <!-- Step 2 -->
+                <div class="glass border border-pink-100 dark:border-slate-700/50 rounded-3xl p-8 bounce-card flex gap-6 items-start">
+                    <div class="flex-shrink-0 w-12 h-12 rounded-2xl bg-gradient-to-br from-pink-400 to-rose-500 flex items-center justify-center text-lg font-extrabold text-white">2</div>
+                    <div>
+                        <h3 class="text-xl font-bold mb-2">Push your code</h3>
+                        <p class="text-slate-500 dark:text-slate-400 leading-relaxed">Every push triggers a build. Preview URLs for PRs, staging environments for branches. It just works.</p>
+                    </div>
+                </div>
+
+                <!-- Step 3 -->
+                <div class="glass border border-fuchsia-100 dark:border-slate-700/50 rounded-3xl p-8 bounce-card flex gap-6 items-start">
+                    <div class="flex-shrink-0 w-12 h-12 rounded-2xl bg-gradient-to-br from-fuchsia-400 to-pink-500 flex items-center justify-center text-lg font-extrabold text-white">3</div>
+                    <div>
+                        <h3 class="text-xl font-bold mb-2">Watch it fly</h3>
+                        <p class="text-slate-500 dark:text-slate-400 leading-relaxed">Your app is live on the edge in seconds. Monitor, scale, and celebrate. You've earned it!</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Pricing -->
+    <section id="pricing" class="bg-white dark:bg-slate-900 py-24 sm:py-32">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="text-center mb-16">
+                <h2 class="text-3xl sm:text-4xl font-extrabold mb-4">Pick your plan</h2>
+                <p class="text-slate-500 dark:text-slate-400 text-lg max-w-2xl mx-auto">Start free, upgrade when you're ready. No surprises, no gotchas.</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+                <!-- Starter -->
+                <div class="glass border border-rose-100 dark:border-slate-700/50 rounded-3xl p-8 bounce-card">
+                    <h3 class="text-lg font-bold mb-1">Starter</h3>
+                    <p class="text-slate-500 dark:text-slate-400 text-sm mb-6">For passion projects</p>
+                    <div class="mb-6">
+                        <span class="text-4xl font-extrabold">$0</span>
+                        <span class="text-slate-500 text-sm">/month</span>
+                    </div>
+                    <ul class="space-y-3 mb-8 text-sm text-slate-500 dark:text-slate-400">
+                        <li class="flex items-center gap-3">
+                            <span class="text-rose-500 text-lg">&#10003;</span>
+                            3 projects
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <span class="text-rose-500 text-lg">&#10003;</span>
+                            1 GB bandwidth
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <span class="text-rose-500 text-lg">&#10003;</span>
+                            Community support
+                        </li>
+                    </ul>
+                    <a href="#" class="block text-center border-2 border-rose-200 dark:border-slate-700 hover:border-rose-300 dark:hover:border-slate-500 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white font-bold px-6 py-3 rounded-full transition-all text-sm min-h-[44px] leading-[44px]">Get Started</a>
+                </div>
+
+                <!-- Pro (Popular) -->
+                <div class="bg-gradient-to-br from-rose-500 to-pink-500 rounded-3xl p-8 bounce-card text-white relative shadow-xl shadow-rose-500/25">
+                    <div class="absolute -top-3 left-1/2 -translate-x-1/2 bg-white text-rose-600 text-xs font-extrabold px-4 py-1 rounded-full shadow-md">Best Value &#10024;</div>
+                    <h3 class="text-lg font-bold mb-1">Pro</h3>
+                    <p class="text-rose-100 text-sm mb-6">For growing teams</p>
+                    <div class="mb-6">
+                        <span class="text-4xl font-extrabold">$29</span>
+                        <span class="text-rose-100 text-sm">/month</span>
+                    </div>
+                    <ul class="space-y-3 mb-8 text-sm text-rose-100">
+                        <li class="flex items-center gap-3">
+                            <span class="text-white text-lg">&#10003;</span>
+                            Unlimited projects
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <span class="text-white text-lg">&#10003;</span>
+                            100 GB bandwidth
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <span class="text-white text-lg">&#10003;</span>
+                            Priority support
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <span class="text-white text-lg">&#10003;</span>
+                            Custom domains
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <span class="text-white text-lg">&#10003;</span>
+                            Analytics dashboard
+                        </li>
+                    </ul>
+                    <a href="#" class="block text-center bg-white hover:bg-rose-50 text-rose-600 font-extrabold px-6 py-3 rounded-full transition-colors text-sm shadow-lg min-h-[44px] leading-[44px]">Start Free Trial</a>
+                </div>
+
+                <!-- Enterprise -->
+                <div class="glass border border-rose-100 dark:border-slate-700/50 rounded-3xl p-8 bounce-card">
+                    <h3 class="text-lg font-bold mb-1">Enterprise</h3>
+                    <p class="text-slate-500 dark:text-slate-400 text-sm mb-6">For big teams</p>
+                    <div class="mb-6">
+                        <span class="text-4xl font-extrabold">Custom</span>
+                    </div>
+                    <ul class="space-y-3 mb-8 text-sm text-slate-500 dark:text-slate-400">
+                        <li class="flex items-center gap-3">
+                            <span class="text-rose-500 text-lg">&#10003;</span>
+                            Everything in Pro
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <span class="text-rose-500 text-lg">&#10003;</span>
+                            Unlimited bandwidth
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <span class="text-rose-500 text-lg">&#10003;</span>
+                            SSO & SAML
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <span class="text-rose-500 text-lg">&#10003;</span>
+                            Dedicated support
+                        </li>
+                    </ul>
+                    <a href="#" class="block text-center border-2 border-rose-200 dark:border-slate-700 hover:border-rose-300 dark:hover:border-slate-500 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white font-bold px-6 py-3 rounded-full transition-all text-sm min-h-[44px] leading-[44px]">Let's Talk</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Final CTA -->
+    <section id="cta" class="animated-gradient relative overflow-hidden py-24 sm:py-32">
+        <div class="absolute top-10 left-10 w-40 h-40 bg-rose-300/20 dark:bg-rose-500/10 rounded-full blur-3xl"></div>
+        <div class="absolute bottom-10 right-10 w-56 h-56 bg-pink-300/20 dark:bg-pink-500/10 rounded-full blur-3xl"></div>
+        <div class="relative max-w-3xl mx-auto px-6 text-center">
+            <h2 class="text-3xl sm:text-4xl md:text-5xl font-extrabold mb-6">Ready to launch something amazing?</h2>
+            <p class="text-lg text-slate-500 dark:text-slate-400 mb-10 max-w-xl mx-auto">Join the party. Start free, scale when you're ready. No credit card needed.</p>
+            <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
+                <a href="#" class="bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white font-extrabold px-10 py-4 rounded-full transition-all text-sm shadow-xl shadow-rose-500/25 min-h-[44px]">
+                    Get Started Free
+                </a>
+                <a href="#" class="border-2 border-rose-200 dark:border-slate-700 hover:border-rose-300 dark:hover:border-slate-500 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white font-bold px-10 py-4 rounded-full transition-all text-sm min-h-[44px]">
+                    Book a Demo
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="bg-white dark:bg-slate-900 border-t border-rose-100 dark:border-slate-800 py-16">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-8 mb-12">
+                <div>
+                    <h4 class="text-sm font-bold mb-4">Product</h4>
+                    <ul class="space-y-3 text-sm text-slate-500 dark:text-slate-400">
+                        <li><a href="#" class="hover:text-slate-900 dark:hover:text-white transition-colors">Features</a></li>
+                        <li><a href="#" class="hover:text-slate-900 dark:hover:text-white transition-colors">Pricing</a></li>
+                        <li><a href="#" class="hover:text-slate-900 dark:hover:text-white transition-colors">Changelog</a></li>
+                        <li><a href="#" class="hover:text-slate-900 dark:hover:text-white transition-colors">Docs</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="text-sm font-bold mb-4">Company</h4>
+                    <ul class="space-y-3 text-sm text-slate-500 dark:text-slate-400">
+                        <li><a href="#" class="hover:text-slate-900 dark:hover:text-white transition-colors">About</a></li>
+                        <li><a href="#" class="hover:text-slate-900 dark:hover:text-white transition-colors">Blog</a></li>
+                        <li><a href="#" class="hover:text-slate-900 dark:hover:text-white transition-colors">Careers</a></li>
+                        <li><a href="#" class="hover:text-slate-900 dark:hover:text-white transition-colors">Contact</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="text-sm font-bold mb-4">Resources</h4>
+                    <ul class="space-y-3 text-sm text-slate-500 dark:text-slate-400">
+                        <li><a href="#" class="hover:text-slate-900 dark:hover:text-white transition-colors">Documentation</a></li>
+                        <li><a href="#" class="hover:text-slate-900 dark:hover:text-white transition-colors">API Reference</a></li>
+                        <li><a href="#" class="hover:text-slate-900 dark:hover:text-white transition-colors">Status</a></li>
+                        <li><a href="#" class="hover:text-slate-900 dark:hover:text-white transition-colors">Community</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="text-sm font-bold mb-4">Legal</h4>
+                    <ul class="space-y-3 text-sm text-slate-500 dark:text-slate-400">
+                        <li><a href="#" class="hover:text-slate-900 dark:hover:text-white transition-colors">Privacy</a></li>
+                        <li><a href="#" class="hover:text-slate-900 dark:hover:text-white transition-colors">Terms</a></li>
+                        <li><a href="#" class="hover:text-slate-900 dark:hover:text-white transition-colors">Security</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="border-t border-rose-100 dark:border-slate-800 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <span class="gradient-text-playful font-extrabold text-lg">Launchpad</span>
+                <p class="text-sm text-slate-400 dark:text-slate-500">&copy; 2026 Launchpad. Made with &#10084;&#65039;</p>
+            </div>
+        </div>
+    </footer>
+</div>
