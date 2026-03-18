@@ -1,0 +1,287 @@
+<style type="text/tailwindcss">
+    @theme {
+      --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    }
+  </style>
+<style>
+    /* Smooth toggle animation */
+    .toggle-slider {
+      transition: transform 200ms ease-in-out;
+    }
+    /* FAQ animation */
+    details summary::-webkit-details-marker { display: none; }
+    details summary::marker { display: none; content: ""; }
+    details[open] .faq-icon { transform: rotate(45deg); }
+    .faq-icon { transition: transform 200ms ease-in-out; }
+    /* Price switch animation */
+    .price-value { transition: opacity 150ms ease-in-out; }
+  </style>
+<div class="min-h-screen bg-white dark:bg-slate-900">
+<!-- ========== STICKY NAV ========== -->
+  <nav class="sticky top-0 z-50 bg-white/80 dark:bg-slate-900/80 backdrop-blur-lg border-b border-slate-200/80 dark:border-slate-700/80" aria-label="Main navigation">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16">
+      <!-- Logo -->
+      <a href="#" class="flex items-center gap-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 rounded-md">
+        <svg class="w-8 h-8 text-indigo-500" viewBox="0 0 32 32" fill="none">
+          <rect width="32" height="32" rx="8" fill="currentColor"/>
+          <path d="M9 16l4 4 10-10" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="text-xl font-bold tracking-tight text-slate-900 dark:text-white">Planly</span>
+      </a>
+
+      <!-- Nav links (desktop) -->
+      <div class="hidden md:flex items-center gap-1">
+        <a href="#" class="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white font-medium px-3 py-2 rounded-md transition-colors duration-150 text-sm min-h-11 inline-flex items-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500">Product</a>
+        <a href="#" class="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white font-medium px-3 py-2 rounded-md transition-colors duration-150 text-sm min-h-11 inline-flex items-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500">Features</a>
+        <a href="#pricing" class="text-indigo-600 font-medium px-3 py-2 rounded-md transition-colors duration-150 text-sm min-h-11 inline-flex items-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500" aria-current="page">Pricing</a>
+        <a href="#" class="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white font-medium px-3 py-2 rounded-md transition-colors duration-150 text-sm min-h-11 inline-flex items-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500">Docs</a>
+      </div>
+
+      <!-- CTA -->
+      <div class="flex items-center gap-3">
+        <button onclick="document.getElementById('pricingMobileMenu').classList.toggle('hidden')" class="md:hidden min-h-11 min-w-11 flex items-center justify-center text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500" aria-label="Toggle menu">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <a href="#" class="hidden sm:inline-flex text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white px-3 py-2 rounded-md transition-colors duration-150 min-h-11 items-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500">Sign in</a>
+        <a href="#" class="inline-flex items-center justify-center bg-indigo-500 hover:bg-indigo-600 text-white font-medium text-sm px-4 py-2 rounded-lg transition-colors duration-150 min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500">Start Free Trial</a>
+      </div>
+    </div>
+    <!-- Mobile menu -->
+    <div id="pricingMobileMenu" class="hidden md:hidden border-t border-slate-200/80 dark:border-slate-700/80 bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg">
+      <div class="px-4 py-3 flex flex-col gap-1">
+        <a href="#" class="py-3 px-3 text-slate-600 dark:text-slate-400 font-medium rounded-md hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors min-h-11 flex items-center">Product</a>
+        <a href="#" class="py-3 px-3 text-slate-600 dark:text-slate-400 font-medium rounded-md hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors min-h-11 flex items-center">Features</a>
+        <a href="#pricing" class="py-3 px-3 text-indigo-600 font-medium rounded-md hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors min-h-11 flex items-center" aria-current="page">Pricing</a>
+        <a href="#" class="py-3 px-3 text-slate-600 dark:text-slate-400 font-medium rounded-md hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors min-h-11 flex items-center">Docs</a>
+      </div>
+    </div>
+  </nav>
+
+  <main>
+
+    <!-- ========== PRICING HERO ========== -->
+    <section id="pricing" class="pt-16 pb-8 sm:pt-24 sm:pb-12">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+        <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight text-slate-900 dark:text-white">
+          Simple, transparent pricing
+        </h1>
+        <p class="mt-4 text-lg sm:text-xl text-slate-600 dark:text-slate-400 max-w-2xl mx-auto leading-relaxed">
+          No hidden fees. No surprises. Pick the plan that fits your team and start shipping faster today.
+        </p>
+
+        <!-- Billing Toggle -->
+        <div class="mt-10 flex items-center justify-center gap-3">
+          <span id="label-monthly" class="text-sm font-medium text-slate-900 dark:text-white">Monthly</span>
+          <button
+            id="billing-toggle"
+            type="button"
+            role="switch"
+            aria-checked="false"
+            aria-label="Toggle annual billing"
+            class="relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-slate-300 transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500"
+            onclick="toggleBilling()"
+          >
+            <span class="toggle-slider pointer-events-none inline-block h-5.5 w-5.5 translate-x-0 rounded-full bg-white shadow-md ring-0 mt-[1px] ml-[1px]"></span>
+          </button>
+          <span id="label-annual" class="text-sm font-medium text-slate-500">
+            Annual
+            <span class="ml-1.5 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-400">Save 20%</span>
+          </span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== PRICING CARDS ========== -->
+    <section class="pb-16 sm:pb-24">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8 max-w-5xl mx-auto items-start">
+
+          <!-- FREE TIER -->
+          <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-8 flex flex-col">
+            <div>
+              <h3 class="text-lg font-semibold text-slate-900 dark:text-white">Free</h3>
+              <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">For individuals and small projects</p>
+            </div>
+            <div class="mt-6">
+              <span class="text-5xl font-bold tracking-tight text-slate-900 dark:text-white">$0</span>
+              <span class="text-base text-slate-500 dark:text-slate-400 ml-1">/month</span>
+            </div>
+            <a href="#" class="mt-8 inline-flex items-center justify-center w-full min-h-12 px-4 py-3 rounded-lg text-sm font-semibold border-2 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 hover:border-slate-400 transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500">
+              Get Started
+            </a>
+            <ul class="mt-8 space-y-4 flex-1">
+              <li class="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-300">
+                <svg class="w-5 h-5 text-teal-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                Up to 3 projects
+              </li>
+              <li class="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-300">
+                <svg class="w-5 h-5 text-teal-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                Up to 5 team members
+              </li>
+              <li class="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-300">
+                <svg class="w-5 h-5 text-teal-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                Basic task management
+              </li>
+              <li class="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-300">
+                <svg class="w-5 h-5 text-teal-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                Kanban boards
+              </li>
+              <li class="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-300">
+                <svg class="w-5 h-5 text-teal-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                Community support
+              </li>
+            </ul>
+          </div>
+
+          <!-- PRO TIER (Highlighted) -->
+          <div class="rounded-xl border-2 border-indigo-500 bg-white dark:bg-slate-800 p-8 flex flex-col relative shadow-lg md:-mt-4 md:mb-[-1rem]">
+            <div class="absolute -top-3.5 left-1/2 -translate-x-1/2">
+              <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-indigo-500 text-white tracking-wide uppercase">Most Popular</span>
+            </div>
+            <div>
+              <h3 class="text-lg font-semibold text-slate-900 dark:text-white">Pro</h3>
+              <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">For growing teams that need more power</p>
+            </div>
+            <div class="mt-6">
+              <span class="text-5xl font-bold tracking-tight text-slate-900 dark:text-white price-value" data-monthly="29" data-annual="23">$29</span>
+              <span class="text-base text-slate-500 dark:text-slate-400 ml-1">/month</span>
+              <div class="mt-1 h-5">
+                <span class="annual-note text-sm text-teal-600 font-medium hidden">Billed annually ($276/yr)</span>
+              </div>
+            </div>
+            <a href="#" class="mt-8 inline-flex items-center justify-center w-full min-h-12 px-4 py-3 rounded-lg text-sm font-semibold bg-indigo-500 text-white hover:bg-indigo-600 transition-colors duration-150 shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500">
+              Start Free Trial
+            </a>
+            <ul class="mt-8 space-y-4 flex-1">
+              <li class="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-300">
+                <svg class="w-5 h-5 text-teal-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                Unlimited projects
+              </li>
+              <li class="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-300">
+                <svg class="w-5 h-5 text-teal-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                Up to 50 team members
+              </li>
+              <li class="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-300">
+                <svg class="w-5 h-5 text-teal-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                Advanced task management
+              </li>
+              <li class="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-300">
+                <svg class="w-5 h-5 text-teal-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                Timeline &amp; Gantt charts
+              </li>
+              <li class="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-300">
+                <svg class="w-5 h-5 text-teal-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                Custom workflows
+              </li>
+              <li class="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-300">
+                <svg class="w-5 h-5 text-teal-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                Integrations (Slack, GitHub, Figma)
+              </li>
+              <li class="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-300">
+                <svg class="w-5 h-5 text-teal-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                Priority email support
+              </li>
+              <li class="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-300">
+                <svg class="w-5 h-5 text-teal-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                Advanced analytics
+              </li>
+            </ul>
+          </div>
+
+          <!-- ENTERPRISE TIER -->
+          <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-8 flex flex-col">
+            <div>
+              <h3 class="text-lg font-semibold text-slate-900 dark:text-white">Enterprise</h3>
+              <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">For organizations that need full control</p>
+            </div>
+            <div class="mt-6">
+              <span class="text-5xl font-bold tracking-tight text-slate-900 dark:text-white price-value" data-monthly="99" data-annual="79">$99</span>
+              <span class="text-base text-slate-500 dark:text-slate-400 ml-1">/month</span>
+              <div class="mt-1 h-5">
+                <span class="annual-note text-sm text-teal-600 font-medium hidden">Billed annually ($948/yr)</span>
+              </div>
+            </div>
+            <a href="#" class="mt-8 inline-flex items-center justify-center w-full min-h-12 px-4 py-3 rounded-lg text-sm font-semibold border-2 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 hover:border-slate-400 transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500">
+              Contact Sales
+            </a>
+            <ul class="mt-8 space-y-4 flex-1">
+              <li class="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-300">
+                <svg class="w-5 h-5 text-teal-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                Everything in Pro
+              </li>
+              <li class="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-300">
+                <svg class="w-5 h-5 text-teal-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                Unlimited team members
+              </li>
+              <li class="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-300">
+                <svg class="w-5 h-5 text-teal-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                SSO &amp; SAML authentication
+              </li>
+              <li class="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-300">
+                <svg class="w-5 h-5 text-teal-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                Custom roles &amp; permissions
+              </li>
+              <li class="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-300">
+                <svg class="w-5 h-5 text-teal-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                Audit log &amp; compliance
+              </li>
+              <li class="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-300">
+                <svg class="w-5 h-5 text-teal-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                Custom API limits
+              </li>
+              <li class="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-300">
+                <svg class="w-5 h-5 text-teal-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                Dedicated account manager
+              </li>
+              <li class="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-300">
+                <svg class="w-5 h-5 text-teal-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                99.9% uptime SLA
+              </li>
+              <li class="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-300">
+                <svg class="w-5 h-5 text-teal-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                Priority phone &amp; Slack support
+              </li>
+              <li class="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-300">
+                <svg class="w-5 h-5 text-teal-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                On-premise deployment option
+              </li>
+            </ul>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+  <script>
+  function toggleBilling() {
+    const btn = document.getElementById('billing-toggle');
+    const isAnnual = btn.getAttribute('aria-checked') === 'true';
+    btn.setAttribute('aria-checked', !isAnnual);
+    const slider = btn.querySelector('.toggle-slider');
+    const labelM = document.getElementById('label-monthly');
+    const labelA = document.getElementById('label-annual');
+    if (!isAnnual) {
+      btn.classList.remove('bg-slate-300');
+      btn.classList.add('bg-indigo-600');
+      slider.style.transform = 'translateX(1.25rem)';
+      labelM.classList.replace('text-slate-900', 'text-slate-500');
+      labelA.querySelector('span').classList.replace('text-slate-500', 'text-slate-900') || (labelA.style.color = '#0f172a');
+    } else {
+      btn.classList.remove('bg-indigo-600');
+      btn.classList.add('bg-slate-300');
+      slider.style.transform = 'translateX(0)';
+      labelM.classList.replace('text-slate-500', 'text-slate-900');
+      labelA.querySelector('span') && labelA.querySelector('span').classList.replace('text-slate-900', 'text-slate-500');
+    }
+    document.querySelectorAll('.price-value').forEach(el => {
+      const price = !isAnnual ? el.dataset.annual : el.dataset.monthly;
+      el.style.opacity = '0';
+      setTimeout(() => { el.textContent = '$' + price; el.style.opacity = '1'; }, 150);
+    });
+    document.querySelectorAll('.annual-note').forEach(el => {
+      el.classList.toggle('hidden', isAnnual);
+    });
+  }
+  </script>
+  </main>
+</div>

@@ -1,0 +1,159 @@
+<!-- Cards: Bento Glass | Inspired by Apple Store bento, glassmorphism -->
+<!-- Stack: HTML + Tailwind CSS | Dark mode: inverted (default=dark) | Responsive: yes -->
+<style>
+  .glass { background: rgba(0,0,0,0.04); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(0,0,0,0.08); }
+  .dark .glass { background: rgba(0,0,0,0.04); border-color: rgba(255,255,255,0.12); }
+  .light-mode .glass { background: rgba(0,0,0,0.04); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(0,0,0,0.08); }
+  .card-hover { transition: transform 0.2s ease, box-shadow 0.2s ease; }
+  .card-hover:hover { transform: translateY(-4px); }
+  .card-hover:hover .add-btn { opacity: 1; }
+  .add-btn { opacity: 0; transition: opacity 0.2s ease; }
+  @media (hover: none) { .add-btn { opacity: 1; } }
+</style>
+
+<div id="bentoRoot" class="min-h-screen bg-white dark:bg-slate-950 text-slate-900 dark:text-white">
+  <!-- Ambient glow -->
+  <div class="fixed inset-0 pointer-events-none overflow-hidden z-0">
+    <div class="absolute top-1/4 left-1/4 w-96 h-96 bg-violet-500/5 dark:bg-violet-500/20 rounded-full" style="filter:blur(120px)"></div>
+    <div class="absolute bottom-1/4 right-1/4 w-80 h-80 bg-fuchsia-500/5 dark:bg-fuchsia-500/15 rounded-full" style="filter:blur(100px)"></div>
+  </div>
+
+  <div class="relative z-10">
+    <!-- Header -->
+    <header class="flex items-center justify-between px-6 sm:px-10 py-5">
+      <h1 class="text-lg font-bold tracking-tight">TechShop</h1>
+      <div class="flex items-center gap-4">
+        <button class="min-h-11 min-w-11 flex items-center justify-center text-slate-600 dark:text-white/70 hover:text-white transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 rounded-lg" aria-label="Cart">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z"/></svg>
+          <span class="ml-1 text-xs font-bold bg-violet-600 text-white rounded-full w-5 h-5 flex items-center justify-center">3</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Category pills -->
+    <nav aria-label="Product categories" class="px-6 sm:px-10 pb-6 overflow-x-auto flex gap-2 scrollbar-hide">
+      <button class="shrink-0 px-4 py-2 text-sm font-medium rounded-full bg-violet-600 text-white min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600">All</button>
+      <button class="shrink-0 px-4 py-2 text-sm font-medium rounded-full glass text-slate-600 dark:text-white/70 hover:text-white transition-colors min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600">Audio</button>
+      <button class="shrink-0 px-4 py-2 text-sm font-medium rounded-full glass text-slate-600 dark:text-white/70 hover:text-white transition-colors min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600">Peripherals</button>
+      <button class="shrink-0 px-4 py-2 text-sm font-medium rounded-full glass text-slate-600 dark:text-white/70 hover:text-white transition-colors min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600">Accessories</button>
+      <button class="shrink-0 px-4 py-2 text-sm font-medium rounded-full glass text-slate-600 dark:text-white/70 hover:text-white transition-colors min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600">Lighting</button>
+    </nav>
+
+    <!-- Bento grid -->
+    <main>
+    <div class="px-6 sm:px-10 pb-16">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-6xl mx-auto">
+
+        <!-- Row 1: featured (2-col) + regular -->
+        <div class="sm:col-span-2 glass rounded-2xl overflow-hidden card-hover relative group">
+          <div class="aspect-[2/1] sm:aspect-[2.5/1] bg-gradient-to-br from-violet-600 to-fuchsia-600 flex items-center justify-center">
+            <span class="text-slate-400 dark:text-white/40 text-sm">Wireless Headphones</span>
+          </div>
+          <div class="p-5 flex items-center justify-between">
+            <div>
+              <h3 class="font-bold text-lg">Wireless Headphones</h3>
+              <p class="text-sm text-slate-500 dark:text-white/50 mt-1">Premium sound, 30hr battery</p>
+            </div>
+            <span class="text-xl font-bold tabular-nums">$89.99</span>
+          </div>
+          <button class="add-btn absolute top-4 right-4 w-10 h-10 min-h-11 min-w-11 rounded-full bg-violet-600 hover:bg-violet-500 text-white flex items-center justify-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600" aria-label="Add to cart">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14m-7-7h14"/></svg>
+          </button>
+        </div>
+
+        <div class="glass rounded-2xl overflow-hidden card-hover relative group">
+          <div class="aspect-[4/3] bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center">
+            <span class="text-slate-400 dark:text-white/40 text-sm">Mechanical Keyboard</span>
+          </div>
+          <div class="p-5">
+            <h3 class="font-bold">Mechanical Keyboard</h3>
+            <p class="text-sm text-slate-500 dark:text-white/50 mt-1">Cherry MX, RGB</p>
+            <span class="text-lg font-bold mt-2 block tabular-nums">$129.00</span>
+          </div>
+          <button class="add-btn absolute top-4 right-4 w-10 h-10 min-h-11 min-w-11 rounded-full bg-violet-600 hover:bg-violet-500 text-white flex items-center justify-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600" aria-label="Add to cart">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14m-7-7h14"/></svg>
+          </button>
+        </div>
+
+        <!-- Row 2: 3 equal -->
+        <div class="glass rounded-2xl overflow-hidden card-hover relative group">
+          <div class="aspect-[4/3] bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
+            <span class="text-slate-400 dark:text-white/40 text-sm">USB-C Hub</span>
+          </div>
+          <div class="p-5">
+            <h3 class="font-bold">USB-C Hub</h3>
+            <p class="text-sm text-slate-500 dark:text-white/50 mt-1">7-in-1 adapter</p>
+            <span class="text-lg font-bold mt-2 block tabular-nums">$45.00</span>
+          </div>
+          <button class="add-btn absolute top-4 right-4 w-10 h-10 min-h-11 min-w-11 rounded-full bg-violet-600 hover:bg-violet-500 text-white flex items-center justify-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600" aria-label="Add to cart">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14m-7-7h14"/></svg>
+          </button>
+        </div>
+
+        <div class="glass rounded-2xl overflow-hidden card-hover relative group">
+          <div class="aspect-[4/3] bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
+            <span class="text-slate-400 dark:text-white/40 text-sm">Desk Lamp</span>
+          </div>
+          <div class="p-5">
+            <h3 class="font-bold">Desk Lamp</h3>
+            <p class="text-sm text-slate-500 dark:text-white/50 mt-1">LED, 5 brightness levels</p>
+            <span class="text-lg font-bold mt-2 block tabular-nums">$35.50</span>
+          </div>
+          <button class="add-btn absolute top-4 right-4 w-10 h-10 min-h-11 min-w-11 rounded-full bg-violet-600 hover:bg-violet-500 text-white flex items-center justify-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600" aria-label="Add to cart">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14m-7-7h14"/></svg>
+          </button>
+        </div>
+
+        <div class="glass rounded-2xl overflow-hidden card-hover relative group">
+          <div class="aspect-[4/3] bg-gradient-to-br from-rose-500 to-pink-600 flex items-center justify-center">
+            <span class="text-slate-400 dark:text-white/40 text-sm">Webcam HD</span>
+          </div>
+          <div class="p-5">
+            <h3 class="font-bold">Webcam HD</h3>
+            <p class="text-sm text-slate-500 dark:text-white/50 mt-1">1080p, autofocus, mic</p>
+            <span class="text-lg font-bold mt-2 block tabular-nums">$59.99</span>
+          </div>
+          <button class="add-btn absolute top-4 right-4 w-10 h-10 min-h-11 min-w-11 rounded-full bg-violet-600 hover:bg-violet-500 text-white flex items-center justify-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600" aria-label="Add to cart">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14m-7-7h14"/></svg>
+          </button>
+        </div>
+
+        <!-- Row 3: regular + featured (2-col) -->
+        <div class="glass rounded-2xl overflow-hidden card-hover relative group">
+          <div class="aspect-[4/3] bg-gradient-to-br from-slate-500 to-slate-700 flex items-center justify-center">
+            <span class="text-slate-400 dark:text-white/40 text-sm">Monitor Stand</span>
+          </div>
+          <div class="p-5">
+            <h3 class="font-bold">Monitor Stand</h3>
+            <p class="text-sm text-slate-500 dark:text-white/50 mt-1">Ergonomic riser + drawer</p>
+            <span class="text-lg font-bold mt-2 block tabular-nums">$42.00</span>
+          </div>
+          <button class="add-btn absolute top-4 right-4 w-10 h-10 min-h-11 min-w-11 rounded-full bg-violet-600 hover:bg-violet-500 text-white flex items-center justify-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600" aria-label="Add to cart">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14m-7-7h14"/></svg>
+          </button>
+        </div>
+
+        <div class="sm:col-span-2 glass rounded-2xl overflow-hidden card-hover relative group">
+          <div class="grid grid-cols-2 gap-0">
+            <div class="aspect-square sm:aspect-auto bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center p-6">
+              <span class="text-slate-400 dark:text-white/40 text-sm">Wireless Mouse + Cable Organizer</span>
+            </div>
+            <div class="p-6 flex flex-col justify-center">
+              <h3 class="font-bold text-lg mb-1">Bundle Deal</h3>
+              <p class="text-sm text-slate-500 dark:text-white/50 mb-1">Wireless Mouse + Cable Organizer</p>
+              <p class="text-xs text-slate-400 dark:text-white/40 mb-3">Ergonomic silent mouse paired with silicone desk clips</p>
+              <div class="flex items-center gap-3">
+                <span class="text-xl font-bold tabular-nums">$42.98</span>
+                <span class="text-sm text-slate-400 dark:text-white/40 line-through tabular-nums">$42.98</span>
+              </div>
+            </div>
+          </div>
+          <button class="add-btn absolute top-4 right-4 w-10 h-10 min-h-11 min-w-11 rounded-full bg-violet-600 hover:bg-violet-500 text-white flex items-center justify-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600" aria-label="Add to cart">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14m-7-7h14"/></svg>
+          </button>
+        </div>
+
+      </div>
+    </main>
+  </div>
+</div>
