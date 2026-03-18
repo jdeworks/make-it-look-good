@@ -243,7 +243,12 @@ function navigateTemplate(dir) {
 
 function updateTemplateNav() {
   const nav = document.getElementById('templateNav');
-  nav.style.display = currentElement ? 'flex' : 'none';
+  const presetsBtn = document.getElementById('presetsBtn');
+  const hasNav = !!currentElement;
+  nav.style.display = hasNav ? 'flex' : 'none';
+  // Restore full border-radius on Templates button when nav arrows are hidden
+  presetsBtn.style.borderRadius = hasNav ? '' : '';
+  presetsBtn.classList.toggle('has-nav', hasNav);
 }
 
 function updateTemplateName() {
