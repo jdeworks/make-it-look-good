@@ -549,10 +549,10 @@
     ];
 
     const presetPrimaryMap = {
-      dashboard: 'blue', landing: 'blue', form: 'blue', cards: 'blue',
+      dashboard: 'blue', landing: 'rose', form: 'blue', cards: 'violet',
       pricing: 'indigo', portfolio: 'emerald', restaurant: 'amber',
       statuspage: 'blue', deploy: 'blue', buttons: 'blue', osslanding: 'violet',
-      project: 'teal',
+      project: 'indigo',
       snippetShellSidebar: 'blue', snippetShellMarketing: 'blue',
       snippetShellDashboard: 'blue', snippetShellForm: 'blue',
       snippetHero: 'blue', snippetStatsRow: 'blue', snippetDataTable: 'blue',
@@ -726,730 +726,476 @@ document.querySelectorAll('form').forEach(function(f) {
 
     // --- Templates ---
     const presets = {
-      dashboard: `<!-- Dashboard Redesign: Sidebar + topbar + stat cards + table -->
-<!-- Stack: HTML + Tailwind CSS | Dark mode: yes | Responsive: yes -->
-<div class="min-h-screen bg-slate-50 dark:bg-slate-900">
-
+      dashboard: `<!-- BOLD STYLE: Sharp corners, font-weight 900, 2px dark borders, offset block shadows, high contrast -->
+<style>
+  .bold-dash * { box-sizing: border-box; }
+  .bold-dash { font-family: 'Inter', system-ui, sans-serif; }
+  @media (max-width: 768px) {
+    .bold-dash .sidebar { display: none !important; }
+    .bold-dash .mobile-header { display: flex !important; }
+    .bold-dash .stats-grid { grid-template-columns: 1fr 1fr !important; }
+  }
+</style>
+<div class="bold-dash flex min-h-screen bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
   <!-- Sidebar -->
-  <aside class="fixed inset-y-0 left-0 w-60 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 flex flex-col z-30 transition-transform duration-200 -translate-x-full lg:translate-x-0" id="dash-sidebar">
-    <div class="h-16 flex items-center px-6 border-b border-slate-200 dark:border-slate-700 shrink-0">
-      <span class="text-lg font-bold text-slate-900 dark:text-white">AppName</span>
+  <nav class="sidebar w-60 bg-white dark:bg-slate-900 border-r-2 border-slate-900 dark:border-slate-100 p-6 flex-shrink-0 hidden md:block" aria-label="Main">
+    <div class="text-xl font-black uppercase tracking-wider mb-8 border-b-4 border-slate-900 dark:border-white pb-3">AppName</div>
+    <a href="#" aria-current="page" class="block py-3 px-4 text-sm font-bold uppercase tracking-wide bg-slate-900 text-white dark:bg-white dark:text-slate-900 border-2 border-slate-900 dark:border-white mb-2 min-h-11 flex items-center transition-transform duration-150 hover:-translate-y-0.5" style="box-shadow:4px 4px 0 #0f172a;">Dashboard</a>
+    <a href="#" class="block py-3 px-4 text-sm font-bold uppercase tracking-wide border-2 border-transparent hover:border-slate-900 dark:hover:border-white mb-2 min-h-11 flex items-center transition-all duration-150">Users</a>
+    <a href="#" class="block py-3 px-4 text-sm font-bold uppercase tracking-wide border-2 border-transparent hover:border-slate-900 dark:hover:border-white mb-2 min-h-11 flex items-center transition-all duration-150">Products</a>
+    <a href="#" class="block py-3 px-4 text-sm font-bold uppercase tracking-wide border-2 border-transparent hover:border-slate-900 dark:hover:border-white mb-2 min-h-11 flex items-center transition-all duration-150">Orders</a>
+    <a href="#" class="block py-3 px-4 text-sm font-bold uppercase tracking-wide border-2 border-transparent hover:border-slate-900 dark:hover:border-white mb-2 min-h-11 flex items-center transition-all duration-150">Settings</a>
+    <a href="#" class="block py-3 px-4 text-sm font-bold uppercase tracking-wide border-2 border-transparent hover:border-slate-900 dark:hover:border-white min-h-11 flex items-center transition-all duration-150">Reports</a>
+  </nav>
+
+  <!-- Main -->
+  <main class="flex-1 p-4 sm:p-6 lg:p-8 max-w-6xl">
+    <!-- Mobile Header -->
+    <div class="mobile-header hidden items-center justify-between mb-6 border-b-4 border-slate-900 dark:border-white pb-3">
+      <span class="text-lg font-black uppercase tracking-wider">AppName</span>
+      <button aria-label="Menu" class="min-h-11 min-w-11 flex items-center justify-center border-2 border-slate-900 dark:border-white font-black text-lg">&#9776;</button>
     </div>
-    <nav class="flex-1 overflow-y-auto p-4 space-y-1" aria-label="Main navigation">
-      <a href="#" class="flex items-center gap-3 px-3 py-2.5 text-sm font-medium bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-lg min-h-11" aria-current="page">
-        <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-        Dashboard
-      </a>
-      <a href="#" class="flex items-center gap-3 px-3 py-2.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white rounded-lg transition-colors min-h-11">
-        <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-        Users
-      </a>
-      <a href="#" class="flex items-center gap-3 px-3 py-2.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white rounded-lg transition-colors min-h-11">
-        <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
-        Products
-      </a>
-      <a href="#" class="flex items-center gap-3 px-3 py-2.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white rounded-lg transition-colors min-h-11">
-        <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2"/></svg>
-        Orders
-      </a>
-      <a href="#" class="flex items-center gap-3 px-3 py-2.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white rounded-lg transition-colors min-h-11">
-        <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
-        Settings
-      </a>
-      <a href="#" class="flex items-center gap-3 px-3 py-2.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white rounded-lg transition-colors min-h-11">
-        <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6m6 0h6m-6 0V9a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v10m6 0v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4"/></svg>
-        Reports
-      </a>
+
+    <h1 class="text-3xl sm:text-4xl font-black uppercase tracking-tight mb-8" style="font-weight:900;">Dashboard</h1>
+
+    <!-- Stats -->
+    <div class="stats-grid grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div class="bg-white dark:bg-slate-900 border-2 border-slate-900 dark:border-slate-100 p-5 transition-transform duration-150 hover:-translate-y-1" style="box-shadow:4px 4px 0 #0f172a;">
+        <div class="text-xs font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-1">Revenue</div>
+        <div class="text-2xl font-black" style="font-variant-numeric:tabular-nums;">$24,500</div>
+      </div>
+      <div class="bg-white dark:bg-slate-900 border-2 border-slate-900 dark:border-slate-100 p-5 transition-transform duration-150 hover:-translate-y-1" style="box-shadow:4px 4px 0 #0f172a;">
+        <div class="text-xs font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-1">Users</div>
+        <div class="text-2xl font-black" style="font-variant-numeric:tabular-nums;">1,240</div>
+      </div>
+      <div class="bg-white dark:bg-slate-900 border-2 border-slate-900 dark:border-slate-100 p-5 transition-transform duration-150 hover:-translate-y-1" style="box-shadow:4px 4px 0 #0f172a;">
+        <div class="text-xs font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-1">Orders</div>
+        <div class="text-2xl font-black" style="font-variant-numeric:tabular-nums;">356</div>
+      </div>
+      <div class="bg-white dark:bg-slate-900 border-2 border-slate-900 dark:border-slate-100 p-5 transition-transform duration-150 hover:-translate-y-1" style="box-shadow:4px 4px 0 #0f172a;">
+        <div class="text-xs font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-1">Conversion</div>
+        <div class="text-2xl font-black" style="font-variant-numeric:tabular-nums;">3.2%</div>
+      </div>
+    </div>
+
+    <!-- Table -->
+    <div class="bg-white dark:bg-slate-900 border-2 border-slate-900 dark:border-slate-100" style="box-shadow:6px 6px 0 #0f172a;">
+      <div class="px-5 py-4 border-b-2 border-slate-900 dark:border-slate-100">
+        <h2 class="text-lg font-black uppercase tracking-wide">Recent Orders</h2>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm" aria-label="Recent orders">
+          <thead>
+            <tr class="border-b-2 border-slate-900 dark:border-slate-100 bg-slate-50 dark:bg-slate-800">
+              <th class="text-left px-5 py-3 text-xs font-black uppercase tracking-widest" scope="col">Order</th>
+              <th class="text-left px-5 py-3 text-xs font-black uppercase tracking-widest" scope="col">Customer</th>
+              <th class="text-right px-5 py-3 text-xs font-black uppercase tracking-widest" scope="col">Amount</th>
+              <th class="text-left px-5 py-3 text-xs font-black uppercase tracking-widest" scope="col">Status</th>
+              <th class="text-left px-5 py-3 text-xs font-black uppercase tracking-widest" scope="col">Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors duration-100">
+              <td class="px-5 py-3 font-bold">#1042</td><td class="px-5 py-3">Sarah Chen</td>
+              <td class="px-5 py-3 text-right" style="font-variant-numeric:tabular-nums;">$240.00</td>
+              <td class="px-5 py-3"><span class="bg-green-900 text-green-100 dark:bg-green-200 dark:text-green-900 text-xs font-black uppercase px-2 py-1">Completed</span></td>
+              <td class="px-5 py-3">Mar 15</td>
+            </tr>
+            <tr class="border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors duration-100">
+              <td class="px-5 py-3 font-bold">#1041</td><td class="px-5 py-3">James Wilson</td>
+              <td class="px-5 py-3 text-right" style="font-variant-numeric:tabular-nums;">$125.50</td>
+              <td class="px-5 py-3"><span class="bg-yellow-900 text-yellow-100 dark:bg-yellow-200 dark:text-yellow-900 text-xs font-black uppercase px-2 py-1">Pending</span></td>
+              <td class="px-5 py-3">Mar 15</td>
+            </tr>
+            <tr class="border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors duration-100">
+              <td class="px-5 py-3 font-bold">#1040</td><td class="px-5 py-3">Maria Garcia</td>
+              <td class="px-5 py-3 text-right" style="font-variant-numeric:tabular-nums;">$89.99</td>
+              <td class="px-5 py-3"><span class="bg-green-900 text-green-100 dark:bg-green-200 dark:text-green-900 text-xs font-black uppercase px-2 py-1">Completed</span></td>
+              <td class="px-5 py-3">Mar 14</td>
+            </tr>
+            <tr class="border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors duration-100">
+              <td class="px-5 py-3 font-bold">#1039</td><td class="px-5 py-3">Alex Thompson</td>
+              <td class="px-5 py-3 text-right" style="font-variant-numeric:tabular-nums;">$312.00</td>
+              <td class="px-5 py-3"><span class="bg-red-900 text-red-100 dark:bg-red-200 dark:text-red-900 text-xs font-black uppercase px-2 py-1">Cancelled</span></td>
+              <td class="px-5 py-3">Mar 14</td>
+            </tr>
+            <tr class="hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors duration-100">
+              <td class="px-5 py-3 font-bold">#1038</td><td class="px-5 py-3">Priya Patel</td>
+              <td class="px-5 py-3 text-right" style="font-variant-numeric:tabular-nums;">$67.25</td>
+              <td class="px-5 py-3"><span class="bg-green-900 text-green-100 dark:bg-green-200 dark:text-green-900 text-xs font-black uppercase px-2 py-1">Completed</span></td>
+              <td class="px-5 py-3">Mar 13</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>`,
+
+      landing: `<!-- PLAYFUL STYLE: 16-24px rounded corners, rose primary, bouncy transitions, colorful dual-tone shadows, generous spacing -->
+<style>
+  .playful * { box-sizing: border-box; }
+  .playful { font-family: 'Inter', system-ui, sans-serif; }
+  .playful .bounce-hover { transition: transform 300ms cubic-bezier(0.34,1.56,0.64,1), box-shadow 300ms cubic-bezier(0.34,1.56,0.64,1); }
+  .playful .bounce-hover:hover { transform: translateY(-6px) scale(1.02); }
+  .playful .card-tilt:hover { transform: translateY(-4px) rotate(-1deg) scale(1.01); }
+  .playful .card-tilt:nth-child(2):hover { transform: translateY(-4px) rotate(1deg) scale(1.01); }
+  .playful .card-tilt { transition: transform 300ms cubic-bezier(0.34,1.56,0.64,1), box-shadow 300ms cubic-bezier(0.34,1.56,0.64,1); }
+  @media (max-width: 640px) { .playful .feat-grid { grid-template-columns: 1fr !important; } }
+</style>
+<div class="playful min-h-screen bg-rose-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+  <!-- Nav -->
+  <header class="flex items-center justify-between px-6 sm:px-8 py-5">
+    <div class="text-2xl font-extrabold text-rose-600 dark:text-rose-400 tracking-tight">TaskFlow</div>
+    <nav class="hidden sm:flex items-center gap-2" aria-label="Main">
+      <a href="#" class="px-4 py-2 rounded-2xl text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-rose-100 dark:hover:bg-slate-800 transition-colors duration-200 min-h-11 inline-flex items-center">Features</a>
+      <a href="#" class="px-4 py-2 rounded-2xl text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-rose-100 dark:hover:bg-slate-800 transition-colors duration-200 min-h-11 inline-flex items-center">Pricing</a>
+      <a href="#" class="px-4 py-2 rounded-2xl text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-rose-100 dark:hover:bg-slate-800 transition-colors duration-200 min-h-11 inline-flex items-center">About</a>
+      <a href="#" class="bounce-hover px-6 py-2.5 rounded-2xl text-sm font-bold bg-rose-500 text-white hover:bg-rose-600 min-h-11 inline-flex items-center" style="box-shadow:0 4px 14px rgba(244,63,94,0.35), 0 2px 6px rgba(99,102,241,0.2);">Sign Up</a>
     </nav>
-  </aside>
+  </header>
 
-  <!-- Sidebar overlay (mobile) -->
-  <div class="fixed inset-0 bg-slate-900/50 z-20 lg:hidden hidden" id="dash-overlay" onclick="document.getElementById('dash-sidebar').classList.add('-translate-x-full');this.classList.add('hidden')"></div>
+  <!-- Hero -->
+  <section class="text-center px-6 py-16 sm:py-24 lg:py-32 max-w-4xl mx-auto">
+    <span class="inline-block bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-300 text-sm font-bold px-5 py-2 rounded-full mb-6 tracking-wide">NEW: Team Analytics</span>
+    <h1 class="text-4xl sm:text-5xl lg:text-6xl font-extrabold leading-tight tracking-tight mb-6">
+      Project Management<br><span class="text-rose-500 dark:text-rose-400">for Happy Teams</span>
+    </h1>
+    <p class="text-lg sm:text-xl text-slate-600 dark:text-slate-400 max-w-2xl mx-auto mb-10 leading-relaxed">TaskFlow helps teams organize their work, track progress, and collaborate more effectively. All the tools you need from start to finish.</p>
+    <div class="flex flex-col sm:flex-row gap-4 justify-center">
+      <a href="#" class="bounce-hover px-8 py-4 rounded-2xl text-base font-bold bg-rose-500 text-white hover:bg-rose-600 min-h-12 inline-flex items-center justify-center" style="box-shadow:0 6px 20px rgba(244,63,94,0.4), 0 3px 8px rgba(99,102,241,0.2);">Try it free &rarr;</a>
+      <a href="#" class="bounce-hover px-8 py-4 rounded-2xl text-base font-bold border-2 border-rose-300 dark:border-rose-700 text-rose-600 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-slate-800 min-h-12 inline-flex items-center justify-center">Watch Demo</a>
+    </div>
+  </section>
 
-  <!-- Main wrapper -->
-  <div class="lg:ml-60 flex flex-col min-h-screen">
-
-    <!-- Top bar -->
-    <header class="h-16 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between px-4 lg:px-8 sticky top-0 z-10">
-      <button class="lg:hidden p-2 -ml-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg min-h-11 min-w-11" onclick="document.getElementById('dash-sidebar').classList.remove('-translate-x-full');document.getElementById('dash-overlay').classList.remove('hidden')" aria-label="Open menu">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
-      </button>
-      <div class="flex-1"></div>
-      <div class="flex items-center gap-2">
-        <div class="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white text-sm font-medium">U</div>
+  <!-- Features -->
+  <section class="px-6 sm:px-8 py-12 sm:py-16 max-w-6xl mx-auto">
+    <h2 class="text-3xl font-extrabold text-center mb-12">Everything you need</h2>
+    <div class="feat-grid grid grid-cols-1 sm:grid-cols-3 gap-6" style="grid-template-columns:repeat(3,1fr);">
+      <div class="card-tilt bg-white dark:bg-slate-900 rounded-3xl p-8" style="box-shadow:0 8px 24px rgba(244,63,94,0.12), 0 4px 12px rgba(99,102,241,0.08);">
+        <div class="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-900/40 flex items-center justify-center text-2xl mb-5">&#9776;</div>
+        <h3 class="text-lg font-bold mb-2">Task Boards</h3>
+        <p class="text-base text-slate-600 dark:text-slate-400 leading-relaxed">Organize work visually with customizable kanban boards. Drag and drop tasks to track progress.</p>
       </div>
-    </header>
-
-    <!-- Dashboard content -->
-    <main class="flex-1 p-4 lg:p-8">
-      <div class="max-w-7xl">
-        <div class="mb-8">
-          <h1 class="text-2xl font-semibold text-slate-900 dark:text-white">Dashboard</h1>
-        </div>
-
-        <!-- Stats Row -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
-            <p class="text-sm font-medium text-slate-500 dark:text-slate-400">Revenue</p>
-            <p class="text-2xl font-semibold text-slate-900 dark:text-white mt-1 tabular-nums">$24,500</p>
-          </div>
-          <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
-            <p class="text-sm font-medium text-slate-500 dark:text-slate-400">Users</p>
-            <p class="text-2xl font-semibold text-slate-900 dark:text-white mt-1 tabular-nums">1,240</p>
-          </div>
-          <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
-            <p class="text-sm font-medium text-slate-500 dark:text-slate-400">Orders</p>
-            <p class="text-2xl font-semibold text-slate-900 dark:text-white mt-1 tabular-nums">356</p>
-          </div>
-          <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
-            <p class="text-sm font-medium text-slate-500 dark:text-slate-400">Conversion</p>
-            <p class="text-2xl font-semibold text-slate-900 dark:text-white mt-1 tabular-nums">3.2%</p>
-          </div>
-        </div>
-
-        <!-- Recent Orders Table -->
-        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
-          <div class="px-6 py-5 border-b border-slate-200 dark:border-slate-700">
-            <h2 class="text-lg font-semibold text-slate-900 dark:text-white">Recent Orders</h2>
-          </div>
-          <div class="overflow-x-auto">
-            <table class="w-full">
-              <thead>
-                <tr class="border-b border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-700/30">
-                  <th scope="col" class="text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider px-6 py-3">Order</th>
-                  <th scope="col" class="text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider px-6 py-3">Customer</th>
-                  <th scope="col" class="text-right text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider px-6 py-3">Amount</th>
-                  <th scope="col" class="text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider px-6 py-3">Status</th>
-                  <th scope="col" class="text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider px-6 py-3">Date</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
-                <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
-                  <td class="px-6 py-4 text-sm font-medium text-slate-900 dark:text-white">#1042</td>
-                  <td class="px-6 py-4 text-sm text-slate-700 dark:text-slate-300">Sarah Chen</td>
-                  <td class="px-6 py-4 text-sm text-slate-900 dark:text-white text-right font-medium tabular-nums">$240.00</td>
-                  <td class="px-6 py-4">
-                    <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400">
-                      <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3"/></svg>
-                      Completed
-                    </span>
-                  </td>
-                  <td class="px-6 py-4 text-sm text-slate-500 dark:text-slate-400">Mar 15</td>
-                </tr>
-                <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
-                  <td class="px-6 py-4 text-sm font-medium text-slate-900 dark:text-white">#1041</td>
-                  <td class="px-6 py-4 text-sm text-slate-700 dark:text-slate-300">James Wilson</td>
-                  <td class="px-6 py-4 text-sm text-slate-900 dark:text-white text-right font-medium tabular-nums">$125.50</td>
-                  <td class="px-6 py-4">
-                    <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
-                      <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3"/></svg>
-                      Pending
-                    </span>
-                  </td>
-                  <td class="px-6 py-4 text-sm text-slate-500 dark:text-slate-400">Mar 15</td>
-                </tr>
-                <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
-                  <td class="px-6 py-4 text-sm font-medium text-slate-900 dark:text-white">#1040</td>
-                  <td class="px-6 py-4 text-sm text-slate-700 dark:text-slate-300">Maria Garcia</td>
-                  <td class="px-6 py-4 text-sm text-slate-900 dark:text-white text-right font-medium tabular-nums">$89.99</td>
-                  <td class="px-6 py-4">
-                    <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400">
-                      <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3"/></svg>
-                      Completed
-                    </span>
-                  </td>
-                  <td class="px-6 py-4 text-sm text-slate-500 dark:text-slate-400">Mar 14</td>
-                </tr>
-                <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
-                  <td class="px-6 py-4 text-sm font-medium text-slate-900 dark:text-white">#1039</td>
-                  <td class="px-6 py-4 text-sm text-slate-700 dark:text-slate-300">Alex Thompson</td>
-                  <td class="px-6 py-4 text-sm text-slate-900 dark:text-white text-right font-medium tabular-nums">$312.00</td>
-                  <td class="px-6 py-4">
-                    <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400">
-                      <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3"/></svg>
-                      Cancelled
-                    </span>
-                  </td>
-                  <td class="px-6 py-4 text-sm text-slate-500 dark:text-slate-400">Mar 14</td>
-                </tr>
-                <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
-                  <td class="px-6 py-4 text-sm font-medium text-slate-900 dark:text-white">#1038</td>
-                  <td class="px-6 py-4 text-sm text-slate-700 dark:text-slate-300">Priya Patel</td>
-                  <td class="px-6 py-4 text-sm text-slate-900 dark:text-white text-right font-medium tabular-nums">$67.25</td>
-                  <td class="px-6 py-4">
-                    <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400">
-                      <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3"/></svg>
-                      Completed
-                    </span>
-                  </td>
-                  <td class="px-6 py-4 text-sm text-slate-500 dark:text-slate-400">Mar 13</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
+      <div class="card-tilt bg-white dark:bg-slate-900 rounded-3xl p-8" style="box-shadow:0 8px 24px rgba(99,102,241,0.12), 0 4px 12px rgba(244,63,94,0.08);">
+        <div class="w-12 h-12 rounded-2xl bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center text-2xl mb-5">&#128172;</div>
+        <h3 class="text-lg font-bold mb-2">Team Chat</h3>
+        <p class="text-base text-slate-600 dark:text-slate-400 leading-relaxed">Communicate directly within the platform. Create channels for different projects.</p>
       </div>
-    </main>
+      <div class="card-tilt bg-white dark:bg-slate-900 rounded-3xl p-8" style="box-shadow:0 8px 24px rgba(244,63,94,0.12), 0 4px 12px rgba(99,102,241,0.08);">
+        <div class="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-900/40 flex items-center justify-center text-2xl mb-5">&#9201;</div>
+        <h3 class="text-lg font-bold mb-2">Time Tracking</h3>
+        <p class="text-base text-slate-600 dark:text-slate-400 leading-relaxed">Track time spent on tasks automatically or manually. Generate detailed reports.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Social Proof -->
+  <section class="px-6 sm:px-8 py-12 sm:py-16 max-w-4xl mx-auto">
+    <h2 class="text-2xl font-extrabold text-center mb-8">Trusted by teams everywhere</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+      <div class="card-tilt bg-white dark:bg-slate-900 rounded-3xl p-8" style="box-shadow:0 6px 18px rgba(244,63,94,0.1), 0 3px 8px rgba(99,102,241,0.06);">
+        <p class="text-base text-slate-700 dark:text-slate-300 leading-relaxed mb-4">"TaskFlow changed how we work. We shipped 40% faster after switching."</p>
+        <div class="text-sm font-bold text-rose-600 dark:text-rose-400">Mike R., Engineering Lead</div>
+      </div>
+      <div class="card-tilt bg-white dark:bg-slate-900 rounded-3xl p-8" style="box-shadow:0 6px 18px rgba(99,102,241,0.1), 0 3px 8px rgba(244,63,94,0.06);">
+        <p class="text-base text-slate-700 dark:text-slate-300 leading-relaxed mb-4">"Finally a tool that doesn't get in the way."</p>
+        <div class="text-sm font-bold text-indigo-600 dark:text-indigo-400">Lisa T., Product Manager</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="text-center px-6 py-16 sm:py-20">
+    <h2 class="text-3xl font-extrabold mb-4">Ready to get started?</h2>
+    <p class="text-lg text-slate-600 dark:text-slate-400 mb-8">Join thousands of teams already using TaskFlow.</p>
+    <a href="#" class="bounce-hover inline-flex items-center px-10 py-4 rounded-2xl text-lg font-bold bg-rose-500 text-white hover:bg-rose-600 min-h-12" style="box-shadow:0 8px 24px rgba(244,63,94,0.4), 0 4px 12px rgba(99,102,241,0.2);">Sign Up Free &rarr;</a>
+  </section>
+
+  <!-- Footer -->
+  <footer class="px-6 sm:px-8 py-8 border-t border-rose-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 max-w-6xl mx-auto">
+    <span class="text-sm text-slate-500 dark:text-slate-400 font-medium">TaskFlow 2026</span>
+    <nav class="flex gap-6" aria-label="Footer">
+      <a href="#" class="text-sm text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors duration-200 min-h-11 inline-flex items-center">Privacy</a>
+      <a href="#" class="text-sm text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors duration-200 min-h-11 inline-flex items-center">Terms</a>
+      <a href="#" class="text-sm text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors duration-200 min-h-11 inline-flex items-center">Contact</a>
+    </nav>
+  </footer>
+</div>`,
+
+      form: `<!-- MINIMALIST STYLE: No shadows, 4px radius, font-weight 300, hairline borders, lots of whitespace, ghost buttons, Scandinavian feel -->
+<style>
+  .minimal * { box-sizing: border-box; }
+  .minimal { font-family: 'Inter', system-ui, sans-serif; }
+  .minimal input, .minimal select { font-size: 16px; }
+  @media (max-width: 480px) {
+    .minimal .name-row, .minimal .addr-row, .minimal .select-row { flex-direction: column !important; }
+  }
+</style>
+<div class="minimal min-h-screen bg-white dark:bg-slate-950 flex items-start justify-center py-12 sm:py-20 px-4">
+  <div class="w-full max-w-lg">
+    <!-- Header -->
+    <div class="mb-12 text-center">
+      <h1 class="text-3xl sm:text-4xl font-light text-slate-800 dark:text-slate-200 tracking-tight mb-3" style="font-weight:300;">Create Account</h1>
+      <p class="text-base text-slate-400 dark:text-slate-500 font-light">Join us. It only takes a minute.</p>
+    </div>
+
+    <form class="flex flex-col gap-6">
+      <!-- Personal Info Section -->
+      <fieldset class="flex flex-col gap-5 border-0 p-0 m-0">
+        <legend class="text-xs font-medium uppercase tracking-[0.15em] text-slate-400 dark:text-slate-500 mb-2">Personal Information</legend>
+
+        <div class="name-row flex gap-4" style="flex-direction:row;">
+          <div class="flex-1 flex flex-col gap-1.5">
+            <label for="m-fname" class="text-xs font-medium uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">First name</label>
+            <input id="m-fname" type="text" autocomplete="given-name" class="h-11 px-3 bg-transparent border rounded text-base text-slate-800 dark:text-slate-200 placeholder-slate-300 dark:placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-slate-400 dark:focus:ring-slate-500 transition-all duration-150 w-full" style="border-color:rgba(0,0,0,0.06); border-radius:4px;" placeholder="Jane">
+          </div>
+          <div class="flex-1 flex flex-col gap-1.5">
+            <label for="m-lname" class="text-xs font-medium uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Last name</label>
+            <input id="m-lname" type="text" autocomplete="family-name" class="h-11 px-3 bg-transparent border rounded text-base text-slate-800 dark:text-slate-200 placeholder-slate-300 dark:placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-slate-400 dark:focus:ring-slate-500 transition-all duration-150 w-full" style="border-color:rgba(0,0,0,0.06); border-radius:4px;" placeholder="Doe">
+          </div>
+        </div>
+
+        <div class="flex flex-col gap-1.5">
+          <label for="m-email" class="text-xs font-medium uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Email address</label>
+          <input id="m-email" type="email" autocomplete="email" class="h-11 px-3 bg-transparent border rounded text-base text-slate-800 dark:text-slate-200 placeholder-slate-300 dark:placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-slate-400 dark:focus:ring-slate-500 transition-all duration-150 w-full" style="border-color:rgba(0,0,0,0.06); border-radius:4px;" placeholder="jane@example.com">
+        </div>
+
+        <div class="flex flex-col gap-1.5">
+          <label for="m-phone" class="text-xs font-medium uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Phone <span class="text-slate-300 dark:text-slate-600 normal-case tracking-normal">(optional)</span></label>
+          <input id="m-phone" type="tel" autocomplete="tel" class="h-11 px-3 bg-transparent border rounded text-base text-slate-800 dark:text-slate-200 placeholder-slate-300 dark:placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-slate-400 dark:focus:ring-slate-500 transition-all duration-150 w-full" style="border-color:rgba(0,0,0,0.06); border-radius:4px;" placeholder="+1 (555) 000-0000">
+        </div>
+      </fieldset>
+
+      <!-- Divider -->
+      <div class="border-t w-full" style="border-color:rgba(0,0,0,0.04);"></div>
+
+      <!-- Security Section -->
+      <fieldset class="flex flex-col gap-5 border-0 p-0 m-0">
+        <legend class="text-xs font-medium uppercase tracking-[0.15em] text-slate-400 dark:text-slate-500 mb-2">Security</legend>
+
+        <div class="flex flex-col gap-1.5">
+          <label for="m-pass" class="text-xs font-medium uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Password</label>
+          <input id="m-pass" type="password" autocomplete="new-password" class="h-11 px-3 bg-transparent border rounded text-base text-slate-800 dark:text-slate-200 placeholder-slate-300 dark:placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-slate-400 dark:focus:ring-slate-500 transition-all duration-150 w-full" style="border-color:rgba(0,0,0,0.06); border-radius:4px;" placeholder="At least 8 characters">
+        </div>
+
+        <div class="flex flex-col gap-1.5">
+          <label for="m-pass2" class="text-xs font-medium uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Confirm password</label>
+          <input id="m-pass2" type="password" autocomplete="new-password" class="h-11 px-3 bg-transparent border rounded text-base text-slate-800 dark:text-slate-200 placeholder-slate-300 dark:placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-slate-400 dark:focus:ring-slate-500 transition-all duration-150 w-full" style="border-color:rgba(0,0,0,0.06); border-radius:4px;" placeholder="Repeat your password">
+        </div>
+      </fieldset>
+
+      <!-- Divider -->
+      <div class="border-t w-full" style="border-color:rgba(0,0,0,0.04);"></div>
+
+      <!-- Address Section -->
+      <fieldset class="flex flex-col gap-5 border-0 p-0 m-0">
+        <legend class="text-xs font-medium uppercase tracking-[0.15em] text-slate-400 dark:text-slate-500 mb-2">Address <span class="text-slate-300 dark:text-slate-600 normal-case tracking-normal">(optional)</span></legend>
+
+        <div class="flex flex-col gap-1.5">
+          <label for="m-company" class="text-xs font-medium uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Company <span class="text-slate-300 dark:text-slate-600 normal-case tracking-normal">(optional)</span></label>
+          <input id="m-company" type="text" autocomplete="organization" class="h-11 px-3 bg-transparent border rounded text-base text-slate-800 dark:text-slate-200 placeholder-slate-300 dark:placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-slate-400 dark:focus:ring-slate-500 transition-all duration-150 w-full" style="border-color:rgba(0,0,0,0.06); border-radius:4px;">
+        </div>
+
+        <div class="flex flex-col gap-1.5">
+          <label for="m-address" class="text-xs font-medium uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Street address</label>
+          <input id="m-address" type="text" autocomplete="street-address" class="h-11 px-3 bg-transparent border rounded text-base text-slate-800 dark:text-slate-200 placeholder-slate-300 dark:placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-slate-400 dark:focus:ring-slate-500 transition-all duration-150 w-full" style="border-color:rgba(0,0,0,0.06); border-radius:4px;">
+        </div>
+
+        <div class="addr-row flex gap-4" style="flex-direction:row;">
+          <div class="flex-1 flex flex-col gap-1.5">
+            <label for="m-city" class="text-xs font-medium uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">City</label>
+            <input id="m-city" type="text" autocomplete="address-level2" class="h-11 px-3 bg-transparent border rounded text-base text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-slate-400 dark:focus:ring-slate-500 transition-all duration-150 w-full" style="border-color:rgba(0,0,0,0.06); border-radius:4px;">
+          </div>
+          <div class="w-28 flex flex-col gap-1.5">
+            <label for="m-zip" class="text-xs font-medium uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">ZIP</label>
+            <input id="m-zip" type="text" autocomplete="postal-code" class="h-11 px-3 bg-transparent border rounded text-base text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-slate-400 dark:focus:ring-slate-500 transition-all duration-150 w-full" style="border-color:rgba(0,0,0,0.06); border-radius:4px;">
+          </div>
+        </div>
+
+        <div class="select-row flex gap-4" style="flex-direction:row;">
+          <div class="flex-1 flex flex-col gap-1.5">
+            <label for="m-country" class="text-xs font-medium uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Country</label>
+            <select id="m-country" autocomplete="country" class="h-11 px-3 bg-transparent border rounded text-base text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-slate-400 dark:focus:ring-slate-500 transition-all duration-150 w-full appearance-none" style="border-color:rgba(0,0,0,0.06); border-radius:4px;">
+              <option value="">Select</option><option>United States</option><option>Canada</option><option>United Kingdom</option>
+            </select>
+          </div>
+          <div class="flex-1 flex flex-col gap-1.5">
+            <label for="m-state" class="text-xs font-medium uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">State</label>
+            <select id="m-state" class="h-11 px-3 bg-transparent border rounded text-base text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-slate-400 dark:focus:ring-slate-500 transition-all duration-150 w-full appearance-none" style="border-color:rgba(0,0,0,0.06); border-radius:4px;">
+              <option value="">Select</option><option>California</option><option>New York</option><option>Texas</option>
+            </select>
+          </div>
+        </div>
+      </fieldset>
+
+      <!-- Terms -->
+      <label class="flex items-center gap-3 cursor-pointer min-h-11">
+        <input type="checkbox" class="w-5 h-5 rounded border accent-slate-700 dark:accent-slate-300" style="border-color:rgba(0,0,0,0.1); border-radius:4px;">
+        <span class="text-sm text-slate-500 dark:text-slate-400 font-light">I agree to the <a href="#" class="underline underline-offset-2 hover:text-slate-800 dark:hover:text-slate-200 transition-colors">terms and conditions</a></span>
+      </label>
+
+      <!-- Buttons -->
+      <div class="flex flex-col sm:flex-row gap-3 pt-4">
+        <button type="submit" class="h-11 px-8 text-sm font-medium uppercase tracking-[0.12em] text-slate-800 dark:text-slate-200 bg-transparent border rounded hover:bg-slate-50 dark:hover:bg-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-400 transition-all duration-150" style="border-color:rgba(0,0,0,0.12); border-radius:4px;">Create Account</button>
+      </div>
+
+      <p class="text-sm text-slate-300 dark:text-slate-600 font-light text-center mt-4">Already have an account? <a href="#" class="text-slate-500 dark:text-slate-400 underline underline-offset-2">Sign in</a></p>
+    </form>
   </div>
 </div>`,
 
-      landing: `<!-- TaskFlow Landing Page — Redesigned -->
-<!-- Stack: HTML + Tailwind CSS (v4 CDN) | Dark mode: class-based -->
-
-<div class="min-h-screen bg-white dark:bg-slate-900">
-
+      cards: `<!-- GLASS STYLE: Frosted glass cards, gradient background (blue→purple→pink), translucent borders, soft glow, violet primary -->
+<style>
+  .glass * { box-sizing: border-box; }
+  .glass { font-family: 'Inter', system-ui, sans-serif; }
+  .glass-card {
+    background: rgba(255,255,255,0.55);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 1rem;
+    transition: transform 250ms cubic-bezier(0,0,0.2,1), box-shadow 250ms cubic-bezier(0,0,0.2,1);
+  }
+  .glass-card:hover { transform: translateY(-4px); box-shadow: 0 12px 40px rgba(124,58,237,0.2), 0 4px 12px rgba(0,0,0,0.08); }
+  @media (prefers-color-scheme: dark) {
+    .glass-card { background: rgba(30,30,50,0.6); border-color: rgba(255,255,255,0.1); }
+    .glass-card:hover { box-shadow: 0 12px 40px rgba(167,139,250,0.25), 0 4px 12px rgba(0,0,0,0.3); }
+    .glass-bg { background: linear-gradient(135deg, #1e1b4b 0%, #312e81 30%, #4c1d95 60%, #831843 100%) !important; }
+  }
+  .dark .glass-card { background: rgba(30,30,50,0.6); border-color: rgba(255,255,255,0.1); }
+  .dark .glass-card:hover { box-shadow: 0 12px 40px rgba(167,139,250,0.25), 0 4px 12px rgba(0,0,0,0.3); }
+  .dark .glass-bg { background: linear-gradient(135deg, #1e1b4b 0%, #312e81 30%, #4c1d95 60%, #831843 100%) !important; }
+  @media (max-width: 640px) {
+    .glass .prod-grid { grid-template-columns: 1fr !important; }
+  }
+</style>
+<div class="glass glass-bg min-h-screen px-4 sm:px-8 py-8 sm:py-12" style="background: linear-gradient(135deg, #dbeafe 0%, #c4b5fd 30%, #e9d5ff 60%, #fce7f3 100%);">
   <!-- Header -->
-  <header class="sticky top-0 z-40 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-700">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="flex items-center justify-between h-16">
-        <!-- Logo -->
-        <a href="#" class="text-lg font-bold text-slate-900 dark:text-white">TaskFlow</a>
-
-        <!-- Desktop Nav -->
-        <nav class="hidden md:flex items-center gap-1" aria-label="Main navigation">
-          <a href="#features" class="px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-md transition-colors duration-150">Features</a>
-          <a href="#testimonials" class="px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-md transition-colors duration-150">Testimonials</a>
-          <a href="#pricing" class="px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-md transition-colors duration-150">Pricing</a>
-          <a href="#" class="px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-md transition-colors duration-150">About</a>
-        </nav>
-
-        <!-- CTA + Mobile toggle -->
-        <div class="flex items-center gap-3">
-          <a href="#" class="hidden sm:inline-flex bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded-lg text-sm transition-colors duration-150 min-h-11 items-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">Sign Up Free</a>
-          <button class="md:hidden p-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg min-h-11 min-w-11 transition-colors duration-150" aria-label="Open menu" onclick="document.getElementById('mobile-menu').classList.toggle('hidden')">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
-          </button>
-        </div>
-      </div>
-
-      <!-- Mobile menu -->
-      <div class="md:hidden hidden pb-4 border-t border-slate-200 dark:border-slate-700 mt-2 pt-4" id="mobile-menu">
-        <nav class="flex flex-col gap-1" aria-label="Mobile navigation">
-          <a href="#features" class="px-3 py-2.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg min-h-11 flex items-center">Features</a>
-          <a href="#testimonials" class="px-3 py-2.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg min-h-11 flex items-center">Testimonials</a>
-          <a href="#pricing" class="px-3 py-2.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg min-h-11 flex items-center">Pricing</a>
-          <a href="#" class="px-3 py-2.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg min-h-11 flex items-center">About</a>
-          <a href="#" class="mt-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2.5 rounded-lg text-sm text-center transition-colors duration-150 min-h-11 flex items-center justify-center">Sign Up Free</a>
-        </nav>
-      </div>
+  <header class="max-w-6xl mx-auto mb-8 sm:mb-12 flex items-center justify-between">
+    <div class="glass-card px-5 py-3 inline-flex items-center gap-3">
+      <div class="w-8 h-8 rounded-lg bg-violet-500 flex items-center justify-center text-white font-bold text-sm">S</div>
+      <span class="text-lg font-bold text-slate-800 dark:text-white">Shop</span>
+    </div>
+    <div class="glass-card px-2 py-1 inline-flex items-center gap-1">
+      <button class="min-h-11 px-4 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-white/30 transition-colors duration-150">Home</button>
+      <button class="min-h-11 px-4 rounded-xl text-sm font-semibold text-violet-700 dark:text-violet-300 bg-white/40 dark:bg-white/10">Products</button>
+      <button class="min-h-11 px-4 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-white/30 transition-colors duration-150">Cart</button>
     </div>
   </header>
 
-  <main>
-    <!-- Hero Section -->
-    <section class="py-16 md:py-24 lg:py-32 bg-white dark:bg-slate-900">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="max-w-3xl mx-auto text-center">
-          <h1 class="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-slate-900 dark:text-white leading-tight">
-            Project Management<br class="hidden sm:inline" /> for Modern Teams
-          </h1>
-          <p class="mt-6 text-lg sm:text-xl leading-8 text-slate-600 dark:text-slate-300 max-w-2xl mx-auto">
-            TaskFlow helps teams organize their work, track progress, and collaborate more effectively. Whether you're a small startup or an enterprise team, TaskFlow scales with your needs.
-          </p>
-          <div class="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
-            <a
-              href="#"
-              class="w-full sm:w-auto inline-flex items-center justify-center rounded-lg bg-blue-600 px-6 py-3 text-base font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 transition-colors duration-150 min-h-11"
-            >
-              Try it free
-              <svg class="ml-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                <path fill-rule="evenodd" d="M3 10a.75.75 0 0 1 .75-.75h10.638L11.23 6.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 1 1-1.04-1.08l3.158-2.96H3.75A.75.75 0 0 1 3 10Z" clip-rule="evenodd" />
-              </svg>
-            </a>
-            <a
-              href="#features"
-              class="w-full sm:w-auto inline-flex items-center justify-center rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-6 py-3 text-base font-semibold text-slate-700 dark:text-slate-200 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 transition-colors duration-150 min-h-11"
-            >
-              See how it works
-            </a>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Features Section -->
-    <section id="features" class="py-12 md:py-16 lg:py-20 bg-slate-50 dark:bg-slate-800/50">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="max-w-2xl mx-auto text-center mb-12 lg:mb-16">
-          <h2 class="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 dark:text-white">
-            Everything your team needs
-          </h2>
-          <p class="mt-4 text-lg text-slate-600 dark:text-slate-300">
-            All the tools you need to manage projects from start to finish.
-          </p>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          <!-- Feature 1: Task Boards -->
-          <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 sm:p-8 shadow-sm">
-            <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900/40">
-              <svg class="h-6 w-6 text-blue-600 dark:text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125Z" />
-              </svg>
-            </div>
-            <h3 class="mt-5 text-lg font-semibold text-slate-900 dark:text-white">Task Boards</h3>
-            <p class="mt-2 text-base leading-7 text-slate-600 dark:text-slate-300">
-              Organize work visually with customizable kanban boards. Drag and drop tasks between columns to track progress from backlog to done.
-            </p>
-          </div>
-
-          <!-- Feature 2: Team Chat -->
-          <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 sm:p-8 shadow-sm">
-            <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900/40">
-              <svg class="h-6 w-6 text-blue-600 dark:text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 0 1-.825-.242m9.345-8.334a2.126 2.126 0 0 0-.476-.095 48.64 48.64 0 0 0-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0 0 11.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155" />
-              </svg>
-            </div>
-            <h3 class="mt-5 text-lg font-semibold text-slate-900 dark:text-white">Team Chat</h3>
-            <p class="mt-2 text-base leading-7 text-slate-600 dark:text-slate-300">
-              Communicate with your team directly within the platform. Create channels for different projects and keep conversations organized.
-            </p>
-          </div>
-
-          <!-- Feature 3: Time Tracking -->
-          <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 sm:p-8 shadow-sm">
-            <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900/40">
-              <svg class="h-6 w-6 text-blue-600 dark:text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-              </svg>
-            </div>
-            <h3 class="mt-5 text-lg font-semibold text-slate-900 dark:text-white">Time Tracking</h3>
-            <p class="mt-2 text-base leading-7 text-slate-600 dark:text-slate-300">
-              Track time spent on tasks automatically or manually. Generate reports to understand where your team's effort is going.
-            </p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Testimonials Section -->
-    <section id="testimonials" class="py-12 md:py-16 lg:py-20 bg-white dark:bg-slate-900">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="max-w-2xl mx-auto text-center mb-12 lg:mb-16">
-          <h2 class="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 dark:text-white">
-            Trusted by teams everywhere
-          </h2>
-          <p class="mt-4 text-lg text-slate-600 dark:text-slate-300">
-            See what our customers have to say about their experience.
-          </p>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-          <!-- Testimonial 1 -->
-          <figure class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 sm:p-8 shadow-sm">
-            <svg class="h-8 w-8 text-slate-300 dark:text-slate-600 mb-4" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M4.583 17.321C3.553 16.227 3 15 3 13.011c0-3.5 2.457-6.637 6.03-8.188l.893 1.378c-3.335 1.804-3.987 4.145-4.247 5.621.537-.278 1.24-.375 1.929-.311 1.804.167 3.226 1.648 3.226 3.489a3.5 3.5 0 0 1-3.5 3.5 3.871 3.871 0 0 1-2.748-1.179Zm10 0C13.553 16.227 13 15 13 13.011c0-3.5 2.457-6.637 6.03-8.188l.893 1.378c-3.335 1.804-3.987 4.145-4.247 5.621.537-.278 1.24-.375 1.929-.311 1.804.167 3.226 1.648 3.226 3.489a3.5 3.5 0 0 1-3.5 3.5 3.871 3.871 0 0 1-2.748-1.179Z" />
-            </svg>
-            <blockquote class="text-base leading-7 text-slate-700 dark:text-slate-200">
-              TaskFlow changed how we work. We shipped 40% faster after switching. The workflow automation alone was worth the investment.
-            </blockquote>
-            <figcaption class="mt-6 flex items-center gap-4">
-              <div class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/40 text-sm font-semibold text-blue-600 dark:text-blue-400" aria-hidden="true">
-                MR
-              </div>
-              <div>
-                <p class="text-sm font-semibold text-slate-900 dark:text-white">Mike R.</p>
-                <p class="text-sm text-slate-500 dark:text-slate-400">Engineering Lead</p>
-              </div>
-            </figcaption>
-          </figure>
-
-          <!-- Testimonial 2 -->
-          <figure class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 sm:p-8 shadow-sm">
-            <svg class="h-8 w-8 text-slate-300 dark:text-slate-600 mb-4" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M4.583 17.321C3.553 16.227 3 15 3 13.011c0-3.5 2.457-6.637 6.03-8.188l.893 1.378c-3.335 1.804-3.987 4.145-4.247 5.621.537-.278 1.24-.375 1.929-.311 1.804.167 3.226 1.648 3.226 3.489a3.5 3.5 0 0 1-3.5 3.5 3.871 3.871 0 0 1-2.748-1.179Zm10 0C13.553 16.227 13 15 13 13.011c0-3.5 2.457-6.637 6.03-8.188l.893 1.378c-3.335 1.804-3.987 4.145-4.247 5.621.537-.278 1.24-.375 1.929-.311 1.804.167 3.226 1.648 3.226 3.489a3.5 3.5 0 0 1-3.5 3.5 3.871 3.871 0 0 1-2.748-1.179Z" />
-            </svg>
-            <blockquote class="text-base leading-7 text-slate-700 dark:text-slate-200">
-              Finally a tool that doesn't get in the way. Clean interface, fast performance, and everything just works the way you'd expect.
-            </blockquote>
-            <figcaption class="mt-6 flex items-center gap-4">
-              <div class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/40 text-sm font-semibold text-blue-600 dark:text-blue-400" aria-hidden="true">
-                LT
-              </div>
-              <div>
-                <p class="text-sm font-semibold text-slate-900 dark:text-white">Lisa T.</p>
-                <p class="text-sm text-slate-500 dark:text-slate-400">Product Manager</p>
-              </div>
-            </figcaption>
-          </figure>
-        </div>
-      </div>
-    </section>
-
-    <!-- CTA Section -->
-    <section class="py-12 md:py-16 lg:py-20">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-700 dark:to-indigo-700 px-6 py-12 sm:px-12 sm:py-16 lg:px-16 lg:py-20 text-center shadow-lg">
-          <h2 class="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-white">
-            Ready to get started?
-          </h2>
-          <p class="mx-auto mt-4 max-w-2xl text-base sm:text-lg leading-7 text-blue-100">
-            Join thousands of teams already shipping faster with TaskFlow. Start your free trial today -- no credit card required.
-          </p>
-          <div class="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
-            <a
-              href="#"
-              class="w-full sm:w-auto inline-flex items-center justify-center rounded-lg bg-white px-6 py-3 text-base font-semibold text-blue-600 shadow-sm hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white transition-colors duration-150 min-h-11"
-            >
-              Sign up free
-              <svg class="ml-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                <path fill-rule="evenodd" d="M3 10a.75.75 0 0 1 .75-.75h10.638L11.23 6.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 1 1-1.04-1.08l3.158-2.96H3.75A.75.75 0 0 1 3 10Z" clip-rule="evenodd" />
-              </svg>
-            </a>
-            <a
-              href="#"
-              class="w-full sm:w-auto inline-flex items-center justify-center rounded-lg border border-white/30 bg-white/10 backdrop-blur-sm px-6 py-3 text-base font-semibold text-white hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white transition-colors duration-150 min-h-11"
-            >
-              Talk to sales
-            </a>
-          </div>
-        </div>
-      </div>
-    </section>
-  </main>
-
-  <!-- Footer -->
-  <footer class="bg-slate-900 dark:bg-slate-950 text-slate-400 py-12 md:py-16">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="flex flex-col sm:flex-row justify-between gap-8">
-        <div>
-          <p class="text-sm font-semibold text-white mb-4">TaskFlow</p>
-          <p class="text-sm max-w-xs">Project management for modern teams. Organize, track, and ship faster.</p>
-        </div>
-        <div class="flex gap-8 sm:gap-12">
-          <div>
-            <h3 class="text-sm font-semibold text-white mb-4">Product</h3>
-            <ul class="space-y-3">
-              <li><a href="#features" class="text-sm hover:text-white transition-colors duration-150">Features</a></li>
-              <li><a href="#pricing" class="text-sm hover:text-white transition-colors duration-150">Pricing</a></li>
-            </ul>
-          </div>
-          <div>
-            <h3 class="text-sm font-semibold text-white mb-4">Legal</h3>
-            <ul class="space-y-3">
-              <li><a href="#" class="text-sm hover:text-white transition-colors duration-150">Privacy</a></li>
-              <li><a href="#" class="text-sm hover:text-white transition-colors duration-150">Terms</a></li>
-              <li><a href="#" class="text-sm hover:text-white transition-colors duration-150">Contact</a></li>
-            </ul>
-          </div>
-        </div>
-      </div>
-      <div class="mt-12 pt-8 border-t border-slate-800 text-sm text-center">
-        &copy; 2026 TaskFlow. All rights reserved.
-      </div>
-    </div>
-  </footer>
-
-</div>`,
-
-      form: `<div class="min-h-screen bg-slate-50 dark:bg-slate-900">
-<div class="w-full max-w-md mx-auto pt-8 sm:pt-12 pb-12 px-4">
-  <div class="bg-white dark:bg-slate-800 rounded-xl shadow-md border border-slate-200 dark:border-slate-700 p-6 sm:p-8">
-    <div class="mb-6">
-      <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Create account</h2>
-      <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Fill in your details to get started.</p>
-    </div>
-
-    <form class="space-y-4" aria-label="Create account" novalidate>
-      <!-- Name fields: side-by-side on desktop, stacked on mobile -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label for="signup-first-name" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">First name</label>
-          <input
-            type="text"
-            id="signup-first-name"
-            name="given_name"
-            autocomplete="given-name"
-            required
-            placeholder="Jane"
-            class="w-full border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2.5 text-base bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none min-h-11 transition-colors"
-          />
-        </div>
-        <div>
-          <label for="signup-last-name" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Last name</label>
-          <input
-            type="text"
-            id="signup-last-name"
-            name="family_name"
-            autocomplete="family-name"
-            required
-            placeholder="Doe"
-            class="w-full border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2.5 text-base bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none min-h-11 transition-colors"
-          />
-        </div>
-      </div>
-
-      <!-- Email -->
-      <div>
-        <label for="signup-email" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Email</label>
-        <input
-          type="email"
-          id="signup-email"
-          name="email"
-          autocomplete="email"
-          required
-          placeholder="you@example.com"
-          class="w-full border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2.5 text-base bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none min-h-11 transition-colors"
-        />
-      </div>
-
-      <!-- Password -->
-      <div>
-        <label for="signup-password" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Password</label>
-        <input
-          type="password"
-          id="signup-password"
-          name="password"
-          autocomplete="new-password"
-          required
-          placeholder="Create a password"
-          aria-describedby="password-hint"
-          class="w-full border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2.5 text-base bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none min-h-11 transition-colors"
-        />
-        <p id="password-hint" class="mt-1.5 text-xs text-slate-500 dark:text-slate-400">Must be at least 8 characters with a number and a symbol.</p>
-      </div>
-
-      <!-- Confirm Password -->
-      <div>
-        <label for="signup-confirm-password" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Confirm password</label>
-        <input
-          type="password"
-          id="signup-confirm-password"
-          name="confirm_password"
-          autocomplete="new-password"
-          required
-          placeholder="Repeat your password"
-          class="w-full border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2.5 text-base bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none min-h-11 transition-colors"
-        />
-      </div>
-
-      <!-- Terms checkbox -->
-      <div class="flex items-start gap-3 min-h-11 py-1">
-        <input
-          type="checkbox"
-          id="signup-terms"
-          name="terms"
-          required
-          class="mt-0.5 h-5 w-5 rounded border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-700 cursor-pointer shrink-0"
-        />
-        <label for="signup-terms" class="text-sm text-slate-600 dark:text-slate-400 cursor-pointer select-none">
-          I agree to the <a href="#" class="font-medium text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300 underline underline-offset-2">Terms of Service</a> and <a href="#" class="font-medium text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300 underline underline-offset-2">Privacy Policy</a>
-        </label>
-      </div>
-
-      <!-- Submit -->
-      <button
-        type="submit"
-        class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-medium px-4 py-2.5 rounded-lg text-base transition-colors min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 dark:bg-blue-500 dark:hover:bg-blue-600 dark:active:bg-blue-700"
-      >
-        Create account
-      </button>
-
-      <p class="text-center text-sm text-slate-500 dark:text-slate-400">
-        Already have an account?
-        <a href="#" class="font-medium text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300">Sign in</a>
-      </p>
-    </form>
+  <!-- Title -->
+  <div class="max-w-6xl mx-auto mb-8">
+    <h1 class="text-3xl sm:text-4xl font-extrabold text-slate-800 dark:text-white tracking-tight mb-2">Our Products</h1>
+    <p class="text-base text-slate-600 dark:text-slate-300">Discover premium tech essentials.</p>
   </div>
-</div>
-</div>`,
 
-      cards: `<!-- E-commerce product card grid — redesigned following make-it-look-good knowledge base -->
+  <!-- Product Grid -->
+  <div class="prod-grid max-w-6xl mx-auto grid gap-6" style="grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));">
 
-<div class="bg-slate-50 dark:bg-slate-900 min-h-screen">
-
-  <!-- Container with max-width -->
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
-
-    <!-- Header section -->
-    <div class="flex flex-col gap-6 mb-8">
-      <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-        <div>
-          <h1 class="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">Our Products</h1>
-          <p class="mt-1 text-base text-slate-600 dark:text-slate-400">Quality tech accessories for your workspace</p>
-        </div>
-        <span class="text-sm text-slate-500 dark:text-slate-400">Showing 6 products</span>
-      </div>
-
-      <!-- Search and filter bar -->
-      <div class="flex flex-col sm:flex-row gap-3">
-        <form class="flex-1" role="search" aria-label="Search products">
-          <div class="relative flex items-center">
-            <svg class="absolute left-3 h-5 w-5 text-slate-400 dark:text-slate-500 pointer-events-none" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-            </svg>
-            <label for="product-search" class="sr-only">Search products</label>
-            <input
-              type="search"
-              id="product-search"
-              name="q"
-              placeholder="Search products..."
-              class="w-full border border-slate-300 dark:border-slate-600 rounded-lg pl-10 pr-4 py-2.5 text-base bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none min-h-11 transition-colors"
-            />
-          </div>
-        </form>
-        <div class="relative">
-          <label for="category-filter" class="sr-only">Filter by category</label>
-          <select
-            id="category-filter"
-            name="category"
-            class="appearance-none w-full sm:w-auto border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-sm font-medium text-slate-700 dark:text-slate-200 pl-4 pr-10 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none cursor-pointer min-h-11 transition-colors"
-          >
-            <option value="all">All Categories</option>
-            <option value="audio">Audio</option>
-            <option value="peripherals">Peripherals</option>
-            <option value="accessories">Accessories</option>
-            <option value="lighting">Lighting</option>
-          </select>
-          <svg class="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 dark:text-slate-500 pointer-events-none" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-          </svg>
+    <article class="glass-card overflow-hidden flex flex-col">
+      <img src="https://picsum.photos/seed/prod1/400/200" class="w-full aspect-video object-cover" alt="Wireless Headphones">
+      <div class="p-5 flex-1 flex flex-col gap-2">
+        <span class="text-xs font-semibold uppercase tracking-wider text-violet-600 dark:text-violet-300">Audio</span>
+        <h3 class="text-lg font-bold text-slate-800 dark:text-white">Wireless Headphones</h3>
+        <p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed flex-1">Premium sound quality with active noise cancellation and 30-hour battery life.</p>
+        <div class="flex items-center justify-between mt-3">
+          <span class="text-xl font-bold text-slate-800 dark:text-white" style="font-variant-numeric:tabular-nums;">$89.99</span>
+          <button class="min-h-11 px-5 py-2 rounded-xl text-sm font-semibold text-white bg-violet-500 hover:bg-violet-600 transition-colors duration-150" style="box-shadow:0 4px 14px rgba(124,58,237,0.3);">Add to Cart</button>
         </div>
       </div>
-    </div>
+    </article>
 
-    <!-- Product card grid: 1 col mobile, 2 col tablet, 3 col desktop, 4 col wide -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+    <article class="glass-card overflow-hidden flex flex-col">
+      <img src="https://picsum.photos/seed/prod2/400/200" class="w-full aspect-video object-cover" alt="Mechanical Keyboard">
+      <div class="p-5 flex-1 flex flex-col gap-2">
+        <span class="text-xs font-semibold uppercase tracking-wider text-violet-600 dark:text-violet-300">Input</span>
+        <h3 class="text-lg font-bold text-slate-800 dark:text-white">Mechanical Keyboard</h3>
+        <p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed flex-1">Cherry MX switches with RGB backlighting.</p>
+        <div class="flex items-center justify-between mt-3">
+          <span class="text-xl font-bold text-slate-800 dark:text-white" style="font-variant-numeric:tabular-nums;">$129.00</span>
+          <button class="min-h-11 px-5 py-2 rounded-xl text-sm font-semibold text-white bg-violet-500 hover:bg-violet-600 transition-colors duration-150" style="box-shadow:0 4px 14px rgba(124,58,237,0.3);">Add to Cart</button>
+        </div>
+      </div>
+    </article>
 
-      <!-- Card 1: Wireless Headphones -->
-      <article class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden group hover:shadow-lg hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-200 flex flex-col">
-        <div class="aspect-[4/3] overflow-hidden">
-          <img
-            src="https://picsum.photos/seed/prod1/400/300"
-            alt="Wireless Headphones — over-ear design with cushioned earpads"
-            class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-          />
+    <article class="glass-card overflow-hidden flex flex-col">
+      <img src="https://picsum.photos/seed/prod3/400/200" class="w-full aspect-video object-cover" alt="USB-C Hub">
+      <div class="p-5 flex-1 flex flex-col gap-2">
+        <span class="text-xs font-semibold uppercase tracking-wider text-violet-600 dark:text-violet-300">Accessories</span>
+        <h3 class="text-lg font-bold text-slate-800 dark:text-white">USB-C Hub</h3>
+        <p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed flex-1">7-in-1 adapter with HDMI, USB 3.0, and SD card reader.</p>
+        <div class="flex items-center justify-between mt-3">
+          <span class="text-xl font-bold text-slate-800 dark:text-white" style="font-variant-numeric:tabular-nums;">$45.00</span>
+          <button class="min-h-11 px-5 py-2 rounded-xl text-sm font-semibold text-white bg-violet-500 hover:bg-violet-600 transition-colors duration-150" style="box-shadow:0 4px 14px rgba(124,58,237,0.3);">Add to Cart</button>
         </div>
-        <div class="p-5 flex flex-col flex-1 gap-1.5">
-          <span class="text-xs font-semibold uppercase tracking-wide text-blue-600 dark:text-blue-400">Audio</span>
-          <h3 class="text-base font-semibold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Wireless Headphones</h3>
-          <p class="text-sm text-slate-500 dark:text-slate-400 line-clamp-2">Premium sound quality with active noise cancellation and 30-hour battery life.</p>
-          <div class="mt-auto pt-4 flex items-center justify-between">
-            <span class="text-lg font-semibold text-slate-900 dark:text-white tabular-nums">$89.99</span>
-            <button class="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-medium px-4 py-2 rounded-lg text-sm transition-colors min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z"/></svg>
-              Add to cart
-            </button>
-          </div>
-        </div>
-      </article>
+      </div>
+    </article>
 
-      <!-- Card 2: Mechanical Keyboard -->
-      <article class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden group hover:shadow-lg hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-200 flex flex-col">
-        <div class="aspect-[4/3] overflow-hidden">
-          <img
-            src="https://picsum.photos/seed/prod2/400/300"
-            alt="Mechanical Keyboard with RGB backlighting and Cherry MX switches"
-            class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-          />
+    <article class="glass-card overflow-hidden flex flex-col">
+      <img src="https://picsum.photos/seed/prod4/400/200" class="w-full aspect-video object-cover" alt="Desk Lamp">
+      <div class="p-5 flex-1 flex flex-col gap-2">
+        <span class="text-xs font-semibold uppercase tracking-wider text-violet-600 dark:text-violet-300">Lighting</span>
+        <h3 class="text-lg font-bold text-slate-800 dark:text-white">Desk Lamp</h3>
+        <p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed flex-1">Adjustable LED with 5 brightness levels.</p>
+        <div class="flex items-center justify-between mt-3">
+          <span class="text-xl font-bold text-slate-800 dark:text-white" style="font-variant-numeric:tabular-nums;">$35.50</span>
+          <button class="min-h-11 px-5 py-2 rounded-xl text-sm font-semibold text-white bg-violet-500 hover:bg-violet-600 transition-colors duration-150" style="box-shadow:0 4px 14px rgba(124,58,237,0.3);">Add to Cart</button>
         </div>
-        <div class="p-5 flex flex-col flex-1 gap-1.5">
-          <span class="text-xs font-semibold uppercase tracking-wide text-blue-600 dark:text-blue-400">Peripherals</span>
-          <h3 class="text-base font-semibold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Mechanical Keyboard</h3>
-          <p class="text-sm text-slate-500 dark:text-slate-400 line-clamp-2">Cherry MX switches with customizable RGB backlighting and full N-key rollover.</p>
-          <div class="mt-auto pt-4 flex items-center justify-between">
-            <span class="text-lg font-semibold text-slate-900 dark:text-white tabular-nums">$129.00</span>
-            <button class="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-medium px-4 py-2 rounded-lg text-sm transition-colors min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z"/></svg>
-              Add to cart
-            </button>
-          </div>
-        </div>
-      </article>
+      </div>
+    </article>
 
-      <!-- Card 3: USB-C Hub -->
-      <article class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden group hover:shadow-lg hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-200 flex flex-col">
-        <div class="aspect-[4/3] overflow-hidden">
-          <img
-            src="https://picsum.photos/seed/prod3/400/300"
-            alt="USB-C Hub with multiple ports including HDMI and SD card reader"
-            class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-          />
+    <article class="glass-card overflow-hidden flex flex-col">
+      <img src="https://picsum.photos/seed/prod5/400/200" class="w-full aspect-video object-cover" alt="Webcam HD">
+      <div class="p-5 flex-1 flex flex-col gap-2">
+        <span class="text-xs font-semibold uppercase tracking-wider text-violet-600 dark:text-violet-300">Video</span>
+        <h3 class="text-lg font-bold text-slate-800 dark:text-white">Webcam HD</h3>
+        <p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed flex-1">1080p with autofocus and built-in microphone.</p>
+        <div class="flex items-center justify-between mt-3">
+          <span class="text-xl font-bold text-slate-800 dark:text-white" style="font-variant-numeric:tabular-nums;">$59.99</span>
+          <button class="min-h-11 px-5 py-2 rounded-xl text-sm font-semibold text-white bg-violet-500 hover:bg-violet-600 transition-colors duration-150" style="box-shadow:0 4px 14px rgba(124,58,237,0.3);">Add to Cart</button>
         </div>
-        <div class="p-5 flex flex-col flex-1 gap-1.5">
-          <span class="text-xs font-semibold uppercase tracking-wide text-blue-600 dark:text-blue-400">Accessories</span>
-          <h3 class="text-base font-semibold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">USB-C Hub</h3>
-          <p class="text-sm text-slate-500 dark:text-slate-400 line-clamp-2">7-in-1 adapter with HDMI, USB 3.0, and SD card reader. Compatible with all USB-C devices.</p>
-          <div class="mt-auto pt-4 flex items-center justify-between">
-            <span class="text-lg font-semibold text-slate-900 dark:text-white tabular-nums">$45.00</span>
-            <button class="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-medium px-4 py-2 rounded-lg text-sm transition-colors min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z"/></svg>
-              Add to cart
-            </button>
-          </div>
-        </div>
-      </article>
+      </div>
+    </article>
 
-      <!-- Card 4: Desk Lamp -->
-      <article class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden group hover:shadow-lg hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-200 flex flex-col">
-        <div class="aspect-[4/3] overflow-hidden">
-          <img
-            src="https://picsum.photos/seed/prod4/400/300"
-            alt="Adjustable LED desk lamp with flexible arm"
-            class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-          />
+    <article class="glass-card overflow-hidden flex flex-col">
+      <img src="https://picsum.photos/seed/prod6/400/200" class="w-full aspect-video object-cover" alt="Monitor Stand">
+      <div class="p-5 flex-1 flex flex-col gap-2">
+        <span class="text-xs font-semibold uppercase tracking-wider text-violet-600 dark:text-violet-300">Ergonomics</span>
+        <h3 class="text-lg font-bold text-slate-800 dark:text-white">Monitor Stand</h3>
+        <p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed flex-1">Ergonomic riser with storage drawer.</p>
+        <div class="flex items-center justify-between mt-3">
+          <span class="text-xl font-bold text-slate-800 dark:text-white" style="font-variant-numeric:tabular-nums;">$42.00</span>
+          <button class="min-h-11 px-5 py-2 rounded-xl text-sm font-semibold text-white bg-violet-500 hover:bg-violet-600 transition-colors duration-150" style="box-shadow:0 4px 14px rgba(124,58,237,0.3);">Add to Cart</button>
         </div>
-        <div class="p-5 flex flex-col flex-1 gap-1.5">
-          <span class="text-xs font-semibold uppercase tracking-wide text-blue-600 dark:text-blue-400">Lighting</span>
-          <h3 class="text-base font-semibold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Desk Lamp</h3>
-          <p class="text-sm text-slate-500 dark:text-slate-400 line-clamp-2">Adjustable LED with 5 brightness levels and 3 color temperatures for any workspace.</p>
-          <div class="mt-auto pt-4 flex items-center justify-between">
-            <span class="text-lg font-semibold text-slate-900 dark:text-white tabular-nums">$35.50</span>
-            <button class="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-medium px-4 py-2 rounded-lg text-sm transition-colors min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z"/></svg>
-              Add to cart
-            </button>
-          </div>
-        </div>
-      </article>
+      </div>
+    </article>
 
-      <!-- Card 5: Webcam HD -->
-      <article class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden group hover:shadow-lg hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-200 flex flex-col">
-        <div class="aspect-[4/3] overflow-hidden">
-          <img
-            src="https://picsum.photos/seed/prod5/400/300"
-            alt="HD webcam with built-in microphone and privacy cover"
-            class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-          />
+    <article class="glass-card overflow-hidden flex flex-col">
+      <img src="https://picsum.photos/seed/prod7/400/200" class="w-full aspect-video object-cover" alt="Wireless Mouse">
+      <div class="p-5 flex-1 flex flex-col gap-2">
+        <span class="text-xs font-semibold uppercase tracking-wider text-violet-600 dark:text-violet-300">Input</span>
+        <h3 class="text-lg font-bold text-slate-800 dark:text-white">Wireless Mouse</h3>
+        <p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed flex-1">Ergonomic design with silent clicks.</p>
+        <div class="flex items-center justify-between mt-3">
+          <span class="text-xl font-bold text-slate-800 dark:text-white" style="font-variant-numeric:tabular-nums;">$29.99</span>
+          <button class="min-h-11 px-5 py-2 rounded-xl text-sm font-semibold text-white bg-violet-500 hover:bg-violet-600 transition-colors duration-150" style="box-shadow:0 4px 14px rgba(124,58,237,0.3);">Add to Cart</button>
         </div>
-        <div class="p-5 flex flex-col flex-1 gap-1.5">
-          <span class="text-xs font-semibold uppercase tracking-wide text-blue-600 dark:text-blue-400">Peripherals</span>
-          <h3 class="text-base font-semibold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Webcam HD</h3>
-          <p class="text-sm text-slate-500 dark:text-slate-400 line-clamp-2">1080p with autofocus, built-in noise-cancelling microphone, and privacy shutter.</p>
-          <div class="mt-auto pt-4 flex items-center justify-between">
-            <span class="text-lg font-semibold text-slate-900 dark:text-white tabular-nums">$59.99</span>
-            <button class="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-medium px-4 py-2 rounded-lg text-sm transition-colors min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z"/></svg>
-              Add to cart
-            </button>
-          </div>
-        </div>
-      </article>
+      </div>
+    </article>
 
-      <!-- Card 6: Monitor Stand -->
-      <article class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden group hover:shadow-lg hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-200 flex flex-col">
-        <div class="aspect-[4/3] overflow-hidden">
-          <img
-            src="https://picsum.photos/seed/prod6/400/300"
-            alt="Ergonomic monitor riser with built-in storage drawer"
-            class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-          />
+    <article class="glass-card overflow-hidden flex flex-col">
+      <img src="https://picsum.photos/seed/prod8/400/200" class="w-full aspect-video object-cover" alt="Cable Organizer">
+      <div class="p-5 flex-1 flex flex-col gap-2">
+        <span class="text-xs font-semibold uppercase tracking-wider text-violet-600 dark:text-violet-300">Desk</span>
+        <h3 class="text-lg font-bold text-slate-800 dark:text-white">Cable Organizer</h3>
+        <p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed flex-1">Silicone clips for a tidy desk setup.</p>
+        <div class="flex items-center justify-between mt-3">
+          <span class="text-xl font-bold text-slate-800 dark:text-white" style="font-variant-numeric:tabular-nums;">$12.99</span>
+          <button class="min-h-11 px-5 py-2 rounded-xl text-sm font-semibold text-white bg-violet-500 hover:bg-violet-600 transition-colors duration-150" style="box-shadow:0 4px 14px rgba(124,58,237,0.3);">Add to Cart</button>
         </div>
-        <div class="p-5 flex flex-col flex-1 gap-1.5">
-          <span class="text-xs font-semibold uppercase tracking-wide text-blue-600 dark:text-blue-400">Accessories</span>
-          <h3 class="text-base font-semibold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Monitor Stand</h3>
-          <p class="text-sm text-slate-500 dark:text-slate-400 line-clamp-2">Ergonomic riser with storage drawer and cable management for a tidy desk setup.</p>
-          <div class="mt-auto pt-4 flex items-center justify-between">
-            <span class="text-lg font-semibold text-slate-900 dark:text-white tabular-nums">$42.00</span>
-            <button class="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-medium px-4 py-2 rounded-lg text-sm transition-colors min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z"/></svg>
-              Add to cart
-            </button>
-          </div>
-        </div>
-      </article>
-
-    </div>
+      </div>
+    </article>
   </div>
 </div>`,
 
@@ -5044,237 +4790,173 @@ function showPage(page) {
 }
 <\/script>`,
 
-      project: `<div class="flex h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100">
-  <!-- Mobile overlay -->
-  <div class="fixed inset-0 bg-slate-900/50 z-20 lg:hidden hidden" id="proj-overlay" onclick="document.getElementById('proj-sidebar').classList.add('-translate-x-full');this.classList.add('hidden');"></div>
+      project: `<!-- EDITORIAL STYLE: Playfair Display serif headings, font-weight 400, no shadows, 2px radius, uppercase button labels, wide letter-spacing, muted slate-700 buttons, elegant vertical rhythm, indigo accent -->
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap');
+  .editorial * { box-sizing: border-box; }
+  .editorial { font-family: 'Inter', system-ui, sans-serif; }
+  .editorial h1, .editorial h2, .editorial h3, .editorial .serif { font-family: 'Playfair Display', Georgia, serif; }
+  .editorial .active-nav { border-left: 2px solid #4338ca; background: rgba(67,56,202,0.04); }
+  @media (max-width: 768px) {
+    .editorial .sidebar-nav { display: none !important; }
+    .editorial .mobile-nav { display: flex !important; }
+    .editorial .stat-grid { grid-template-columns: 1fr !important; }
+  }
+</style>
+<div class="editorial flex min-h-screen bg-stone-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200">
   <!-- Sidebar -->
-  <aside id="proj-sidebar" class="fixed inset-y-0 left-0 z-30 w-60 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 flex flex-col shrink-0 transition-transform duration-200 -translate-x-full lg:translate-x-0 lg:static lg:z-auto">
-    <div class="h-16 flex items-center justify-between px-6 border-b border-slate-200 dark:border-slate-700">
-      <span class="text-lg font-bold text-slate-900 dark:text-white">MyApp</span>
-      <button class="lg:hidden p-1 -mr-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300" onclick="document.getElementById('proj-sidebar').classList.add('-translate-x-full');document.getElementById('proj-overlay').classList.add('hidden');" aria-label="Close menu">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
-      </button>
+  <nav class="sidebar-nav w-56 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 p-6 flex-shrink-0 hidden md:flex flex-col" aria-label="Main">
+    <div class="serif text-xl font-normal text-slate-800 dark:text-slate-200 mb-10 tracking-tight" style="font-weight:400;">MyApp</div>
+    <a href="#" onclick="showPage('dash'); return false" aria-current="page" class="active-nav block py-3 px-4 text-sm font-medium text-indigo-700 dark:text-indigo-300 mb-1 min-h-11 flex items-center transition-colors duration-150" style="border-radius:2px;">Dashboard</a>
+    <a href="#" onclick="showPage('team'); return false" class="block py-3 px-4 text-sm font-medium text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 mb-1 min-h-11 flex items-center transition-colors duration-150" style="border-radius:2px;">Team</a>
+    <a href="#" onclick="showPage('settings'); return false" class="block py-3 px-4 text-sm font-medium text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 mb-1 min-h-11 flex items-center transition-colors duration-150" style="border-radius:2px;">Settings</a>
+    <div class="mt-auto pt-8 border-t border-slate-100 dark:border-slate-800">
+      <p class="text-xs text-slate-400 dark:text-slate-500 italic serif">Crafted with care</p>
     </div>
-    <nav class="flex-1 overflow-y-auto p-3 space-y-1" aria-label="Main navigation">
-      <a href="#" onclick="switchProjectPage('dash'); return false" data-nav="dash" class="flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg min-h-11 bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 transition-colors" aria-current="page">
-        <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-        Dashboard
-      </a>
-      <a href="#" onclick="switchProjectPage('team'); return false" data-nav="team" class="flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg min-h-11 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white transition-colors">
-        <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-        Team
-      </a>
-      <a href="#" onclick="switchProjectPage('settings'); return false" data-nav="settings" class="flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg min-h-11 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white transition-colors">
-        <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
-        Settings
-      </a>
-    </nav>
-  </aside>
+  </nav>
 
-  <!-- Main content -->
-  <div class="flex-1 overflow-auto lg:ml-0">
-    <!-- Mobile top bar -->
-    <div class="lg:hidden sticky top-0 z-10 h-14 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center px-4 gap-3">
-      <button class="p-2 -ml-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg min-h-11 min-w-11 flex items-center justify-center" onclick="document.getElementById('proj-sidebar').classList.remove('-translate-x-full');document.getElementById('proj-overlay').classList.remove('hidden');" aria-label="Open menu">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
-      </button>
-      <span class="text-sm font-semibold text-slate-900 dark:text-white">MyApp</span>
+  <!-- Main -->
+  <div class="flex-1 overflow-auto">
+    <!-- Mobile Nav -->
+    <div class="mobile-nav hidden items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+      <span class="serif text-lg text-slate-800 dark:text-slate-200">MyApp</span>
+      <div class="flex gap-1">
+        <button onclick="showPage('dash')" class="min-h-11 px-3 py-2 text-xs font-medium uppercase tracking-wider text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/20" style="border-radius:2px;">Dashboard</button>
+        <button onclick="showPage('team')" class="min-h-11 px-3 py-2 text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800" style="border-radius:2px;">Team</button>
+        <button onclick="showPage('settings')" class="min-h-11 px-3 py-2 text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800" style="border-radius:2px;">Settings</button>
+      </div>
     </div>
 
     <!-- Dashboard Page -->
-    <div id="page-dash">
-      <div class="p-4 sm:p-6 lg:p-8 max-w-7xl">
-        <h1 class="text-2xl font-semibold text-slate-900 dark:text-white">Dashboard</h1>
-        <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Your business at a glance</p>
+    <div id="page-dash" class="p-6 sm:p-8 lg:p-10 max-w-5xl">
+      <div class="mb-10">
+        <h1 class="text-3xl sm:text-4xl font-normal tracking-tight mb-2" style="font-weight:400; line-height:1.2;">Dashboard</h1>
+        <p class="text-base text-slate-500 dark:text-slate-400">An overview of your business at a glance.</p>
+      </div>
 
-        <!-- Stats Row -->
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
-          <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
-            <p class="text-sm font-medium text-slate-500 dark:text-slate-400">Revenue</p>
-            <p class="text-2xl font-semibold text-slate-900 dark:text-white mt-1">$12,340</p>
-            <p class="text-sm mt-2 flex items-center gap-1">
-              <span class="text-green-600 dark:text-green-400 flex items-center gap-0.5 font-medium">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M7 17l5-5 5 5"/></svg>
-                +12.5%
-              </span>
-              <span class="text-slate-400 dark:text-slate-500">vs last month</span>
-            </p>
-          </div>
-          <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
-            <p class="text-sm font-medium text-slate-500 dark:text-slate-400">Users</p>
-            <p class="text-2xl font-semibold text-slate-900 dark:text-white mt-1">847</p>
-            <p class="text-sm mt-2 flex items-center gap-1">
-              <span class="text-green-600 dark:text-green-400 flex items-center gap-0.5 font-medium">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M7 17l5-5 5 5"/></svg>
-                +8.2%
-              </span>
-              <span class="text-slate-400 dark:text-slate-500">vs last month</span>
-            </p>
-          </div>
-          <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
-            <p class="text-sm font-medium text-slate-500 dark:text-slate-400">Orders</p>
-            <p class="text-2xl font-semibold text-slate-900 dark:text-white mt-1">156</p>
-            <p class="text-sm mt-2 flex items-center gap-1">
-              <span class="text-red-600 dark:text-red-400 flex items-center gap-0.5 font-medium">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 7l-5 5-5-5"/></svg>
-                -3.1%
-              </span>
-              <span class="text-slate-400 dark:text-slate-500">vs last month</span>
-            </p>
-          </div>
+      <!-- Stats -->
+      <div class="stat-grid grid grid-cols-3 gap-6 mb-10" style="grid-template-columns:repeat(3,1fr);">
+        <div class="border-t-2 border-indigo-600 dark:border-indigo-400 pt-5">
+          <div class="text-xs font-medium uppercase tracking-[0.15em] text-slate-400 dark:text-slate-500 mb-2">Revenue</div>
+          <div class="serif text-3xl font-normal text-slate-800 dark:text-slate-100" style="font-variant-numeric:tabular-nums; font-weight:400;">$12,340</div>
         </div>
+        <div class="border-t-2 border-indigo-600 dark:border-indigo-400 pt-5">
+          <div class="text-xs font-medium uppercase tracking-[0.15em] text-slate-400 dark:text-slate-500 mb-2">Users</div>
+          <div class="serif text-3xl font-normal text-slate-800 dark:text-slate-100" style="font-variant-numeric:tabular-nums; font-weight:400;">847</div>
+        </div>
+        <div class="border-t-2 border-indigo-600 dark:border-indigo-400 pt-5">
+          <div class="text-xs font-medium uppercase tracking-[0.15em] text-slate-400 dark:text-slate-500 mb-2">Orders</div>
+          <div class="serif text-3xl font-normal text-slate-800 dark:text-slate-100" style="font-variant-numeric:tabular-nums; font-weight:400;">156</div>
+        </div>
+      </div>
 
-        <!-- Data Table -->
-        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 mt-6">
-          <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-700">
-            <h2 class="text-lg font-semibold text-slate-900 dark:text-white">Recent Orders</h2>
-          </div>
-          <div class="overflow-x-auto">
-            <table class="w-full">
-              <thead>
-                <tr class="border-b border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-700/30">
-                  <th class="text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider px-6 py-3">Order</th>
-                  <th class="text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider px-6 py-3">Status</th>
-                  <th class="text-right text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider px-6 py-3">Amount</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
-                <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
-                  <td class="px-6 py-4 text-sm font-medium text-slate-900 dark:text-white">#1042</td>
-                  <td class="px-6 py-4"><span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400">Paid</span></td>
-                  <td class="px-6 py-4 text-sm text-slate-900 dark:text-white text-right font-medium tabular-nums">$250.00</td>
-                </tr>
-                <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
-                  <td class="px-6 py-4 text-sm font-medium text-slate-900 dark:text-white">#1041</td>
-                  <td class="px-6 py-4"><span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">Pending</span></td>
-                  <td class="px-6 py-4 text-sm text-slate-900 dark:text-white text-right font-medium tabular-nums">$180.00</td>
-                </tr>
-                <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
-                  <td class="px-6 py-4 text-sm font-medium text-slate-900 dark:text-white">#1040</td>
-                  <td class="px-6 py-4"><span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400">Failed</span></td>
-                  <td class="px-6 py-4 text-sm text-slate-900 dark:text-white text-right font-medium tabular-nums">$95.00</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+      <!-- Table -->
+      <div class="border border-slate-200 dark:border-slate-800" style="border-radius:2px;">
+        <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800">
+          <h2 class="text-xl font-normal tracking-tight" style="font-weight:400;">Recent Orders</h2>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm" aria-label="Recent orders">
+            <thead><tr class="border-b border-slate-200 dark:border-slate-800">
+              <th class="text-left px-6 py-3 text-xs font-medium uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500" scope="col">Name</th>
+              <th class="text-left px-6 py-3 text-xs font-medium uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500" scope="col">Status</th>
+              <th class="text-right px-6 py-3 text-xs font-medium uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500" scope="col">Amount</th>
+            </tr></thead>
+            <tbody>
+              <tr class="border-b border-slate-100 dark:border-slate-800/50">
+                <td class="px-6 py-4 text-slate-700 dark:text-slate-300">Order #1042</td>
+                <td class="px-6 py-4"><span class="text-xs font-medium uppercase tracking-wider text-emerald-700 dark:text-emerald-400">Paid</span></td>
+                <td class="px-6 py-4 text-right text-slate-700 dark:text-slate-300" style="font-variant-numeric:tabular-nums;">$250</td>
+              </tr>
+              <tr class="border-b border-slate-100 dark:border-slate-800/50">
+                <td class="px-6 py-4 text-slate-700 dark:text-slate-300">Order #1041</td>
+                <td class="px-6 py-4"><span class="text-xs font-medium uppercase tracking-wider text-amber-700 dark:text-amber-400">Pending</span></td>
+                <td class="px-6 py-4 text-right text-slate-700 dark:text-slate-300" style="font-variant-numeric:tabular-nums;">$180</td>
+              </tr>
+              <tr>
+                <td class="px-6 py-4 text-slate-700 dark:text-slate-300">Order #1040</td>
+                <td class="px-6 py-4"><span class="text-xs font-medium uppercase tracking-wider text-red-700 dark:text-red-400">Failed</span></td>
+                <td class="px-6 py-4 text-right text-slate-700 dark:text-slate-300" style="font-variant-numeric:tabular-nums;">$95</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
 
     <!-- Team Page -->
-    <div id="page-team" style="display:none">
-      <div class="p-4 sm:p-6 lg:p-8 max-w-7xl">
-        <h1 class="text-2xl font-semibold text-slate-900 dark:text-white">Team Members</h1>
-        <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Manage your team and roles</p>
-
-        <div class="space-y-3 mt-6">
-          <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div class="flex items-center gap-3">
-              <div class="w-10 h-10 rounded-full bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 flex items-center justify-center text-sm font-semibold shrink-0">AJ</div>
-              <div>
-                <p class="text-sm font-semibold text-slate-900 dark:text-white">Alice Johnson</p>
-                <p class="text-sm text-slate-500 dark:text-slate-400">Engineering Lead</p>
-              </div>
-            </div>
-            <div class="flex items-center gap-3">
-              <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400">Admin</span>
-              <span class="inline-flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400"><span class="w-1.5 h-1.5 bg-green-500 rounded-full"></span>Online</span>
-            </div>
+    <div id="page-team" style="display:none" class="p-6 sm:p-8 lg:p-10 max-w-5xl">
+      <div class="mb-10">
+        <h1 class="text-3xl sm:text-4xl font-normal tracking-tight mb-2" style="font-weight:400; line-height:1.2;">Team Members</h1>
+        <p class="text-base text-slate-500 dark:text-slate-400">Your collaborators and their roles.</p>
+      </div>
+      <div class="flex flex-col gap-4">
+        <div class="flex items-center justify-between py-5 px-6 border border-slate-200 dark:border-slate-800" style="border-radius:2px;">
+          <div>
+            <div class="text-base font-medium text-slate-800 dark:text-slate-200">Alice Johnson</div>
+            <div class="text-sm text-slate-400 dark:text-slate-500">Engineering Lead</div>
           </div>
-          <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div class="flex items-center gap-3">
-              <div class="w-10 h-10 rounded-full bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300 flex items-center justify-center text-sm font-semibold shrink-0">BS</div>
-              <div>
-                <p class="text-sm font-semibold text-slate-900 dark:text-white">Bob Smith</p>
-                <p class="text-sm text-slate-500 dark:text-slate-400">Designer</p>
-              </div>
-            </div>
-            <div class="flex items-center gap-3">
-              <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">Member</span>
-              <span class="inline-flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400"><span class="w-1.5 h-1.5 bg-green-500 rounded-full"></span>Online</span>
-            </div>
+          <button class="min-h-11 px-5 py-2 text-xs font-medium uppercase tracking-[0.12em] bg-slate-700 dark:bg-slate-200 text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-300 transition-colors duration-150" style="border-radius:2px;">Message</button>
+        </div>
+        <div class="flex items-center justify-between py-5 px-6 border border-slate-200 dark:border-slate-800" style="border-radius:2px;">
+          <div>
+            <div class="text-base font-medium text-slate-800 dark:text-slate-200">Bob Smith</div>
+            <div class="text-sm text-slate-400 dark:text-slate-500">Designer</div>
           </div>
-          <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div class="flex items-center gap-3">
-              <div class="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 flex items-center justify-center text-sm font-semibold shrink-0">CD</div>
-              <div>
-                <p class="text-sm font-semibold text-slate-900 dark:text-white">Carol Davis</p>
-                <p class="text-sm text-slate-500 dark:text-slate-400">Product Manager</p>
-              </div>
-            </div>
-            <div class="flex items-center gap-3">
-              <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">Member</span>
-              <span class="inline-flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500"><span class="w-1.5 h-1.5 bg-slate-300 dark:bg-slate-600 rounded-full"></span>Offline</span>
-            </div>
+          <button class="min-h-11 px-5 py-2 text-xs font-medium uppercase tracking-[0.12em] bg-slate-700 dark:bg-slate-200 text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-300 transition-colors duration-150" style="border-radius:2px;">Message</button>
+        </div>
+        <div class="flex items-center justify-between py-5 px-6 border border-slate-200 dark:border-slate-800" style="border-radius:2px;">
+          <div>
+            <div class="text-base font-medium text-slate-800 dark:text-slate-200">Carol Davis</div>
+            <div class="text-sm text-slate-400 dark:text-slate-500">Product Manager</div>
           </div>
+          <button class="min-h-11 px-5 py-2 text-xs font-medium uppercase tracking-[0.12em] bg-slate-700 dark:bg-slate-200 text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-300 transition-colors duration-150" style="border-radius:2px;">Message</button>
         </div>
       </div>
     </div>
 
     <!-- Settings Page -->
-    <div id="page-settings" style="display:none">
-      <div class="p-4 sm:p-6 lg:p-8 max-w-2xl">
-        <h1 class="text-2xl font-semibold text-slate-900 dark:text-white">Settings</h1>
-        <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Manage your account preferences</p>
-
-        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 mt-6">
-          <!-- Profile Section -->
-          <div class="px-6 py-5 border-b border-slate-200 dark:border-slate-700">
-            <h2 class="text-base font-semibold text-slate-900 dark:text-white">Profile</h2>
-          </div>
-          <div class="p-6 space-y-4">
-            <div class="flex flex-col gap-1.5">
-              <label for="displayName" class="text-sm font-medium text-slate-700 dark:text-slate-300">Display Name</label>
-              <input id="displayName" type="text" value="John Doe" class="w-full h-11 px-3 border border-slate-300 dark:border-slate-600 rounded-lg text-base bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-colors">
-            </div>
-            <div class="flex flex-col gap-1.5">
-              <label for="email" class="text-sm font-medium text-slate-700 dark:text-slate-300">Email</label>
-              <input id="email" type="email" value="john@example.com" class="w-full h-11 px-3 border border-slate-300 dark:border-slate-600 rounded-lg text-base bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-colors">
-            </div>
-            <div class="flex flex-col gap-1.5">
-              <label for="timezone" class="text-sm font-medium text-slate-700 dark:text-slate-300">Timezone</label>
-              <select id="timezone" class="w-full h-11 px-3 border border-slate-300 dark:border-slate-600 rounded-lg text-base bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-colors">
-                <option>UTC-8 Pacific</option>
-                <option>UTC-5 Eastern</option>
-              </select>
-            </div>
-          </div>
-
-          <!-- Notifications Section -->
-          <div class="px-6 py-5 border-t border-b border-slate-200 dark:border-slate-700">
-            <h2 class="text-base font-semibold text-slate-900 dark:text-white">Notifications</h2>
-          </div>
-          <div class="p-6">
-            <label class="flex items-center gap-3 cursor-pointer">
-              <input type="checkbox" checked class="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-teal-600 focus:ring-teal-500 focus:ring-2">
-              <span class="text-sm text-slate-700 dark:text-slate-300">Enable email notifications</span>
-            </label>
-          </div>
-
-          <!-- Actions -->
-          <div class="px-6 py-4 bg-slate-50 dark:bg-slate-700/30 border-t border-slate-200 dark:border-slate-700 rounded-b-xl flex justify-end gap-3">
-            <button class="inline-flex items-center h-10 px-4 rounded-lg border border-slate-300 dark:border-slate-600 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors min-h-11">Cancel</button>
-            <button class="inline-flex items-center h-10 px-4 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium transition-colors min-h-11 focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 dark:focus:ring-offset-slate-800">Save Changes</button>
-          </div>
-        </div>
+    <div id="page-settings" style="display:none" class="p-6 sm:p-8 lg:p-10 max-w-xl">
+      <div class="mb-10">
+        <h1 class="text-3xl sm:text-4xl font-normal tracking-tight mb-2" style="font-weight:400; line-height:1.2;">Settings</h1>
+        <p class="text-base text-slate-500 dark:text-slate-400">Manage your account preferences.</p>
       </div>
+      <form class="flex flex-col gap-6">
+        <div class="flex flex-col gap-1.5">
+          <label for="ed-name" class="text-xs font-medium uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">Display Name</label>
+          <input id="ed-name" type="text" value="John Doe" autocomplete="name" class="h-11 px-4 border border-slate-200 dark:border-slate-700 bg-transparent text-base text-slate-800 dark:text-slate-200 focus:outline-none focus:border-indigo-500 dark:focus:border-indigo-400 transition-colors duration-150 w-full" style="border-radius:2px;">
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <label for="ed-email" class="text-xs font-medium uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">Email</label>
+          <input id="ed-email" type="email" value="john@example.com" autocomplete="email" class="h-11 px-4 border border-slate-200 dark:border-slate-700 bg-transparent text-base text-slate-800 dark:text-slate-200 focus:outline-none focus:border-indigo-500 dark:focus:border-indigo-400 transition-colors duration-150 w-full" style="border-radius:2px;">
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <label for="ed-tz" class="text-xs font-medium uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">Timezone</label>
+          <select id="ed-tz" class="h-11 px-4 border border-slate-200 dark:border-slate-700 bg-transparent text-base text-slate-800 dark:text-slate-200 focus:outline-none focus:border-indigo-500 dark:focus:border-indigo-400 transition-colors duration-150 w-full appearance-none" style="border-radius:2px;">
+            <option>UTC-8 Pacific</option><option>UTC-5 Eastern</option>
+          </select>
+        </div>
+        <label class="flex items-center gap-3 min-h-11 cursor-pointer">
+          <input type="checkbox" checked class="w-5 h-5 accent-indigo-600 dark:accent-indigo-400" style="border-radius:2px;">
+          <span class="text-sm text-slate-600 dark:text-slate-400">Enable notifications</span>
+        </label>
+        <div class="pt-4 border-t border-slate-100 dark:border-slate-800">
+          <button type="submit" class="min-h-11 px-6 py-2.5 text-xs font-medium uppercase tracking-[0.12em] bg-slate-700 dark:bg-slate-200 text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-300 transition-colors duration-150" style="border-radius:2px;">Save Changes</button>
+        </div>
+      </form>
     </div>
   </div>
 </div>
 
 <script>
-function switchProjectPage(page) {
+function showPage(page) {
   document.getElementById('page-dash').style.display = page === 'dash' ? '' : 'none';
   document.getElementById('page-team').style.display = page === 'team' ? '' : 'none';
   document.getElementById('page-settings').style.display = page === 'settings' ? '' : 'none';
-  var links = document.querySelectorAll('[data-nav]');
-  links.forEach(function(l) {
-    l.className = 'flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg min-h-11 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white transition-colors';
-    l.removeAttribute('aria-current');
-  });
-  var active = document.querySelector('[data-nav="' + page + '"]');
-  active.className = 'flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg min-h-11 bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 transition-colors';
-  active.setAttribute('aria-current', 'page');
+  var links = document.querySelectorAll('.sidebar-nav a');
+  links.forEach(function(l) { l.className = 'block py-3 px-4 text-sm font-medium text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 mb-1 min-h-11 flex items-center transition-colors duration-150'; l.style.borderRadius = '2px'; l.removeAttribute('aria-current'); });
+  var idx = page === 'dash' ? 0 : page === 'team' ? 1 : 2;
+  if (links[idx]) { links[idx].className = 'active-nav block py-3 px-4 text-sm font-medium text-indigo-700 dark:text-indigo-300 mb-1 min-h-11 flex items-center transition-colors duration-150'; links[idx].style.borderRadius = '2px'; links[idx].setAttribute('aria-current', 'page'); }
 }
 <\/script>`,
 
