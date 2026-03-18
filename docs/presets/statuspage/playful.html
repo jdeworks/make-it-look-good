@@ -1,0 +1,161 @@
+<style type="text/tailwindcss">
+    @theme {
+      --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    }
+  </style>
+<style>
+    @keyframes bounce-dot { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+    .status-bounce { animation: bounce-dot 1.5s ease-in-out infinite; }
+    @media (prefers-reduced-motion: reduce) { .status-bounce { animation: none; } }
+    .bounce-card { transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
+    .bounce-card:hover { transform: translateY(-4px); }
+  </style>
+<div class="min-h-screen bg-rose-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+  <!-- Header -->
+  <header class="bg-white dark:bg-slate-900 border-b border-rose-100 dark:border-slate-800">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 py-6">
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 bg-gradient-to-br from-rose-400 to-pink-500 rounded-2xl flex items-center justify-center">
+            <svg class="w-5 h-5 text-white" viewBox="0 0 32 32" fill="none"><path d="M8 16l4-6h8l4 6-4 6h-8l-4-6z" fill="currentColor"/></svg>
+          </div>
+          <div>
+            <h1 class="text-xl font-bold tracking-tight">Acme Cloud</h1>
+            <p class="text-sm text-slate-500 dark:text-slate-400">System Status</p>
+          </div>
+        </div>
+        <a href="#subscribe" class="text-sm font-medium text-rose-600 dark:text-rose-400 hover:text-rose-700 transition-colors hidden sm:inline-flex items-center gap-1.5 min-h-11 rounded">Subscribe to updates</a>
+      </div>
+      <!-- Overall status banner -->
+      <div class="flex items-center gap-3 px-5 py-4 rounded-2xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/50">
+        <span class="w-3 h-3 rounded-full bg-amber-400 status-bounce"></span>
+        <p class="text-sm font-semibold text-amber-800 dark:text-amber-200">Heads up! Some services are having a rough day</p>
+        <span class="text-sm text-amber-600 dark:text-amber-400 ml-auto hidden sm:inline">1 degraded, 1 in maintenance</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-4xl mx-auto px-4 sm:px-6 py-8 space-y-8">
+
+    <!-- Stats -->
+    <section aria-label="System metrics">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 bounce-card shadow-sm border border-rose-100 dark:border-slate-800">
+          <p class="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">Uptime</p>
+          <p class="text-3xl font-bold tabular-nums">99.97<span class="text-lg font-semibold text-slate-400">%</span></p>
+        </div>
+        <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 bounce-card shadow-sm border border-rose-100 dark:border-slate-800">
+          <p class="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">Response Time</p>
+          <p class="text-3xl font-bold tabular-nums">142<span class="text-lg font-semibold text-slate-400 ml-0.5">ms</span></p>
+        </div>
+        <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 bounce-card shadow-sm border border-rose-100 dark:border-slate-800">
+          <p class="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">Active Connections</p>
+          <p class="text-3xl font-bold tabular-nums">1,847</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Services -->
+    <section aria-label="Service status">
+      <h2 class="text-base font-bold mb-3">Services</h2>
+      <div class="bg-white dark:bg-slate-900 rounded-2xl border border-rose-100 dark:border-slate-800 divide-y divide-rose-50 dark:divide-slate-800 overflow-hidden">
+        <div class="flex items-center justify-between px-5 py-4 gap-4">
+          <span class="text-sm font-medium">API Gateway</span>
+          <div class="flex items-center gap-3 text-sm">
+            <span class="text-slate-500 dark:text-slate-400 tabular-nums hidden sm:inline">45ms</span>
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
+              <span class="w-2 h-2 rounded-full bg-green-500 status-bounce"></span> Operational
+            </span>
+          </div>
+        </div>
+        <div class="flex items-center justify-between px-5 py-4 gap-4">
+          <span class="text-sm font-medium">Database Primary</span>
+          <div class="flex items-center gap-3 text-sm">
+            <span class="text-slate-500 dark:text-slate-400 tabular-nums hidden sm:inline">12ms</span>
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
+              <span class="w-2 h-2 rounded-full bg-green-500 status-bounce"></span> Operational
+            </span>
+          </div>
+        </div>
+        <div class="flex items-center justify-between px-5 py-4 gap-4 bg-amber-50/50 dark:bg-amber-900/10">
+          <span class="text-sm font-medium">Cache Layer</span>
+          <div class="flex items-center gap-3 text-sm">
+            <span class="text-amber-600 dark:text-amber-400 font-medium tabular-nums hidden sm:inline">89ms</span>
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+              <span class="w-2 h-2 rounded-full bg-amber-500 status-bounce"></span> Degraded
+            </span>
+          </div>
+        </div>
+        <div class="flex items-center justify-between px-5 py-4 gap-4">
+          <span class="text-sm font-medium">Search Index</span>
+          <div class="flex items-center gap-3 text-sm">
+            <span class="text-slate-500 dark:text-slate-400 tabular-nums hidden sm:inline">34ms</span>
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
+              <span class="w-2 h-2 rounded-full bg-green-500 status-bounce"></span> Operational
+            </span>
+          </div>
+        </div>
+        <div class="flex items-center justify-between px-5 py-4 gap-4 bg-blue-50/50 dark:bg-blue-900/10">
+          <span class="text-sm font-medium">File Storage</span>
+          <div class="flex items-center gap-3 text-sm">
+            <span class="text-slate-400 hidden sm:inline">&mdash;</span>
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
+              <span class="w-2 h-2 rounded-full bg-blue-500 status-bounce"></span> Maintenance
+            </span>
+          </div>
+        </div>
+        <div class="flex items-center justify-between px-5 py-4 gap-4">
+          <span class="text-sm font-medium">Email Service</span>
+          <div class="flex items-center gap-3 text-sm">
+            <span class="text-slate-500 dark:text-slate-400 tabular-nums hidden sm:inline">156ms</span>
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
+              <span class="w-2 h-2 rounded-full bg-green-500 status-bounce"></span> Operational
+            </span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Incidents -->
+    <section aria-label="Active incidents">
+      <h2 class="text-base font-bold mb-3">Active Incidents</h2>
+      <div class="space-y-4">
+        <div class="bg-white dark:bg-slate-900 rounded-2xl border-2 border-amber-200 dark:border-amber-700/50 p-5 bounce-card">
+          <div class="flex flex-wrap items-center gap-2 mb-2">
+            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">Warning</span>
+            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">Investigating</span>
+          </div>
+          <h3 class="text-base font-bold mb-1">Cache Layer Elevated Latency</h3>
+          <p class="text-sm text-slate-500 dark:text-slate-400 tabular-nums">INC-2847 &middot; Started Mar 17, 2026 at 1:22 PM UTC</p>
+        </div>
+        <div class="bg-white dark:bg-slate-900 rounded-2xl border-2 border-blue-200 dark:border-blue-700/50 p-5 bounce-card">
+          <div class="flex flex-wrap items-center gap-2 mb-2">
+            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">Info</span>
+            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">In Progress</span>
+          </div>
+          <h3 class="text-base font-bold mb-1">File Storage Scheduled Maintenance</h3>
+          <p class="text-sm text-slate-500 dark:text-slate-400 tabular-nums">INC-2846 &middot; Started Mar 17, 2026 at 10:00 AM UTC</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Subscribe -->
+    <section id="subscribe" aria-label="Subscribe to updates" class="bg-white dark:bg-slate-900 rounded-2xl border border-rose-100 dark:border-slate-800 p-6 sm:p-8">
+      <h2 class="text-base font-bold mb-1">Stay in the loop!</h2>
+      <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">Get notified when services are disrupted or restored.</p>
+      <form class="flex flex-col sm:flex-row gap-3" onsubmit="event.preventDefault(); this.querySelector('button').textContent = 'Subscribed!'; this.querySelector('button').disabled = true;">
+        <label for="email-input" class="sr-only">Email address</label>
+        <input id="email-input" type="email" required placeholder="you@example.com" class="flex-1 h-11 px-4 rounded-xl border border-rose-200 dark:border-slate-700 text-sm dark:bg-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition-shadow">
+        <button type="submit" class="h-11 px-6 rounded-full bg-gradient-to-r from-rose-500 to-pink-500 text-white text-sm font-bold hover:from-rose-600 hover:to-pink-600 transition-all cursor-pointer shadow-lg shadow-rose-500/25 shrink-0">Subscribe</button>
+      </form>
+    </section>
+
+  </main>
+
+  <footer class="border-t border-rose-100 dark:border-slate-800 bg-white dark:bg-slate-900 mt-4">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-slate-500 dark:text-slate-400">
+      <p>Powered by <span class="font-bold text-slate-700 dark:text-slate-300">Acme Cloud</span></p>
+      <p class="tabular-nums">Last updated: Mar 17, 2026 at 2:15 PM UTC</p>
+    </div>
+  </footer>
+</div>

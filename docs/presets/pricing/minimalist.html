@@ -1,0 +1,158 @@
+<style type="text/tailwindcss">
+    @theme {
+      --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    }
+  </style>
+<style>
+    .toggle-slider { transition: transform 200ms ease-in-out; }
+    .price-value { transition: opacity 150ms ease-in-out; }
+  </style>
+<div class="min-h-screen bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+  <!-- Nav -->
+  <nav class="sticky top-0 z-50 bg-white/90 dark:bg-slate-950/90 backdrop-blur-md border-b border-slate-100 dark:border-slate-800/50" aria-label="Main navigation">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16">
+      <a href="#" class="text-lg font-light tracking-widest uppercase text-slate-900 dark:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 rounded">Planly</a>
+      <div class="hidden md:flex items-center gap-8">
+        <a href="#" class="text-sm font-light text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors min-h-11 inline-flex items-center">Product</a>
+        <a href="#" class="text-sm font-light text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors min-h-11 inline-flex items-center">Features</a>
+        <a href="#pricing" class="text-sm font-normal text-slate-900 dark:text-white min-h-11 inline-flex items-center" aria-current="page">Pricing</a>
+        <a href="#" class="text-sm font-light text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors min-h-11 inline-flex items-center">Docs</a>
+      </div>
+      <div class="flex items-center gap-4">
+        <button onclick="document.getElementById('minPricingMobile').classList.toggle('hidden')" class="md:hidden min-h-11 min-w-11 flex items-center justify-center text-slate-500 hover:text-slate-900 dark:hover:text-white rounded" aria-label="Toggle menu">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <a href="#" class="hidden sm:inline-flex text-sm font-light text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors min-h-11 items-center">Sign in</a>
+        <a href="#" class="inline-flex items-center justify-center border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-sm font-normal px-5 py-2 rounded-lg hover:border-slate-500 dark:hover:border-slate-500 transition-colors min-h-11">Start Free Trial</a>
+      </div>
+    </div>
+    <div id="minPricingMobile" class="hidden md:hidden border-t border-slate-100 dark:border-slate-800/50 bg-white/95 dark:bg-slate-950/95 backdrop-blur-md">
+      <div class="px-4 py-3 flex flex-col gap-1">
+        <a href="#" class="py-3 px-3 text-sm font-light text-slate-500 dark:text-slate-400 min-h-11 flex items-center">Product</a>
+        <a href="#" class="py-3 px-3 text-sm font-light text-slate-500 dark:text-slate-400 min-h-11 flex items-center">Features</a>
+        <a href="#pricing" class="py-3 px-3 text-sm font-normal text-slate-900 dark:text-white min-h-11 flex items-center" aria-current="page">Pricing</a>
+        <a href="#" class="py-3 px-3 text-sm font-light text-slate-500 dark:text-slate-400 min-h-11 flex items-center">Docs</a>
+      </div>
+    </div>
+  </nav>
+
+  <main>
+    <!-- Hero -->
+    <section id="pricing" class="pt-20 pb-10 sm:pt-32 sm:pb-16">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+        <h1 class="text-4xl sm:text-5xl font-light tracking-tight">Simple, transparent pricing</h1>
+        <p class="mt-6 text-lg font-light text-slate-500 dark:text-slate-400 max-w-xl mx-auto leading-relaxed">No hidden fees. No surprises. Pick the plan that fits your team.</p>
+        <!-- Billing Toggle -->
+        <div class="mt-12 flex items-center justify-center gap-3">
+          <span id="label-monthly" class="text-sm font-normal text-slate-900 dark:text-white">Monthly</span>
+          <button id="billing-toggle" type="button" role="switch" aria-checked="false" aria-label="Toggle annual billing" class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500" onclick="toggleBilling()">
+            <span class="toggle-slider pointer-events-none inline-block h-4 w-4 translate-x-0.5 rounded-full bg-slate-900 dark:bg-white ring-0 mt-[3px]"></span>
+          </button>
+          <span id="label-annual" class="text-sm font-light text-slate-500 dark:text-slate-400">Annual <span class="ml-1 text-xs text-slate-500 dark:text-slate-400">Save 20%</span></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Pricing Cards -->
+    <section class="pb-20 sm:pb-32">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-0 max-w-4xl mx-auto border-t border-slate-200 dark:border-slate-800">
+
+          <!-- Free -->
+          <div class="border-b md:border-b-0 md:border-r border-slate-200 dark:border-slate-800 p-8 sm:p-10 flex flex-col">
+            <h3 class="text-sm font-light tracking-widest uppercase text-slate-500 dark:text-slate-400">Free</h3>
+            <p class="mt-1 text-sm font-light text-slate-500 dark:text-slate-400">For individuals and small projects</p>
+            <div class="mt-8">
+              <span class="text-5xl font-light tabular-nums">$0</span>
+              <span class="text-sm font-light text-slate-500 dark:text-slate-400 ml-1">/month</span>
+            </div>
+            <a href="#" class="mt-8 inline-flex items-center justify-center w-full min-h-11 px-4 py-2 text-sm font-normal border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg hover:border-slate-500 dark:hover:border-slate-500 transition-colors">Get Started</a>
+            <ul class="mt-8 space-y-3 flex-1">
+              <li class="text-sm font-light text-slate-500 dark:text-slate-400">Up to 3 projects</li>
+              <li class="text-sm font-light text-slate-500 dark:text-slate-400">Up to 5 team members</li>
+              <li class="text-sm font-light text-slate-500 dark:text-slate-400">Basic task management</li>
+              <li class="text-sm font-light text-slate-500 dark:text-slate-400">Kanban boards</li>
+              <li class="text-sm font-light text-slate-500 dark:text-slate-400">Community support</li>
+            </ul>
+          </div>
+
+          <!-- Pro -->
+          <div class="border-b md:border-b-0 md:border-r border-slate-200 dark:border-slate-800 p-8 sm:p-10 flex flex-col relative">
+            <div class="absolute top-0 left-0 right-0 h-px bg-slate-900 dark:bg-white"></div>
+            <h3 class="text-sm font-normal tracking-widest uppercase text-slate-900 dark:text-white">Pro</h3>
+            <p class="mt-1 text-sm font-light text-slate-500 dark:text-slate-400">For growing teams that need more power</p>
+            <div class="mt-8">
+              <span class="text-5xl font-light tabular-nums price-value" data-monthly="29" data-annual="23">$29</span>
+              <span class="text-sm font-light text-slate-500 dark:text-slate-400 ml-1">/month</span>
+              <div class="mt-1 h-5"><span class="annual-note text-xs font-light text-slate-500 dark:text-slate-400 hidden">Billed annually ($276/yr)</span></div>
+            </div>
+            <a href="#" class="mt-8 inline-flex items-center justify-center w-full min-h-11 px-4 py-2 text-sm font-normal border border-slate-900 dark:border-white text-slate-900 dark:text-white rounded-lg hover:bg-slate-900 hover:text-white dark:hover:bg-white dark:hover:text-slate-900 transition-colors">Start Free Trial</a>
+            <ul class="mt-8 space-y-3 flex-1">
+              <li class="text-sm font-light">Unlimited projects</li>
+              <li class="text-sm font-light">Up to 50 team members</li>
+              <li class="text-sm font-light">Advanced task management</li>
+              <li class="text-sm font-light">Timeline &amp; Gantt charts</li>
+              <li class="text-sm font-light">Custom workflows</li>
+              <li class="text-sm font-light">Integrations (Slack, GitHub, Figma)</li>
+              <li class="text-sm font-light">Priority email support</li>
+              <li class="text-sm font-light">Advanced analytics</li>
+            </ul>
+          </div>
+
+          <!-- Enterprise -->
+          <div class="p-8 sm:p-10 flex flex-col">
+            <h3 class="text-sm font-light tracking-widest uppercase text-slate-500 dark:text-slate-400">Enterprise</h3>
+            <p class="mt-1 text-sm font-light text-slate-500 dark:text-slate-400">For organizations that need full control</p>
+            <div class="mt-8">
+              <span class="text-5xl font-light tabular-nums price-value" data-monthly="99" data-annual="79">$99</span>
+              <span class="text-sm font-light text-slate-500 dark:text-slate-400 ml-1">/month</span>
+              <div class="mt-1 h-5"><span class="annual-note text-xs font-light text-slate-500 dark:text-slate-400 hidden">Billed annually ($948/yr)</span></div>
+            </div>
+            <a href="#" class="mt-8 inline-flex items-center justify-center w-full min-h-11 px-4 py-2 text-sm font-normal border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg hover:border-slate-500 dark:hover:border-slate-500 transition-colors">Contact Sales</a>
+            <ul class="mt-8 space-y-3 flex-1">
+              <li class="text-sm font-light text-slate-500 dark:text-slate-400">Everything in Pro</li>
+              <li class="text-sm font-light text-slate-500 dark:text-slate-400">Unlimited team members</li>
+              <li class="text-sm font-light text-slate-500 dark:text-slate-400">SSO &amp; SAML authentication</li>
+              <li class="text-sm font-light text-slate-500 dark:text-slate-400">Custom roles &amp; permissions</li>
+              <li class="text-sm font-light text-slate-500 dark:text-slate-400">Audit log &amp; compliance</li>
+              <li class="text-sm font-light text-slate-500 dark:text-slate-400">Custom API limits</li>
+              <li class="text-sm font-light text-slate-500 dark:text-slate-400">Dedicated account manager</li>
+              <li class="text-sm font-light text-slate-500 dark:text-slate-400">99.9% uptime SLA</li>
+              <li class="text-sm font-light text-slate-500 dark:text-slate-400">Priority phone &amp; Slack support</li>
+              <li class="text-sm font-light text-slate-500 dark:text-slate-400">On-premise deployment option</li>
+            </ul>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+  <script>
+  function toggleBilling() {
+    const btn = document.getElementById('billing-toggle');
+    const isAnnual = btn.getAttribute('aria-checked') === 'true';
+    btn.setAttribute('aria-checked', !isAnnual);
+    const slider = btn.querySelector('.toggle-slider');
+    const labelM = document.getElementById('label-monthly');
+    const labelA = document.getElementById('label-annual');
+    if (!isAnnual) {
+      btn.classList.replace('bg-slate-100', 'bg-slate-900'); btn.classList.replace('dark:bg-slate-800', 'dark:bg-white');
+      slider.style.transform = 'translateX(1.25rem)';
+      slider.classList.replace('bg-slate-900', 'bg-white'); slider.classList.replace('dark:bg-white', 'dark:bg-slate-900');
+      labelM.classList.replace('text-slate-900', 'text-slate-500'); labelM.classList.replace('font-normal', 'font-light');
+    } else {
+      btn.classList.replace('bg-slate-900', 'bg-slate-100'); btn.classList.replace('dark:bg-white', 'dark:bg-slate-800');
+      slider.style.transform = 'translateX(0.125rem)';
+      slider.classList.replace('bg-white', 'bg-slate-900'); slider.classList.replace('dark:bg-slate-900', 'dark:bg-white');
+      labelM.classList.replace('text-slate-500', 'text-slate-900'); labelM.classList.replace('font-light', 'font-normal');
+    }
+    document.querySelectorAll('.price-value').forEach(el => {
+      const price = !isAnnual ? el.dataset.annual : el.dataset.monthly;
+      el.style.opacity = '0';
+      setTimeout(() => { el.textContent = '$' + price; el.style.opacity = '1'; }, 150);
+    });
+    document.querySelectorAll('.annual-note').forEach(el => { el.classList.toggle('hidden', isAnnual); });
+  }
+  <\/script>
+  </main>
+</div>
