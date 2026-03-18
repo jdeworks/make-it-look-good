@@ -529,8 +529,8 @@
 h1,h2,h3,h4,h5,h6{font-weight:300!important;letter-spacing:0.02em}
 h1{font-size:2.25em!important}
 p,span,li,td,th{opacity:0.75}
-button,[role="button"]{font-weight:400!important;letter-spacing:0.06em;text-transform:uppercase;font-size:0.82em!important;border:1px solid rgba(0,0,0,0.1)!important;background:transparent!important;color:inherit!important}
-button[class*="bg-blue"],button[class*="bg-indigo"],button[class*="bg-teal"],button[class*="bg-emerald"],button[class*="bg-violet"],button[class*="bg-rose"],button[class*="bg-orange"],button[class*="bg-fuchsia"]{background:currentColor!important;color:white!important;opacity:0.8}
+button:not([class*="bg-"]),[role="button"]:not([class*="bg-"]){font-weight:400!important;letter-spacing:0.06em;text-transform:uppercase;font-size:0.82em!important;border:1px solid rgba(0,0,0,0.1)!important;background:transparent!important;color:inherit!important}
+button[class*="bg-"],[role="button"][class*="bg-"]{font-weight:400!important;letter-spacing:0.06em;text-transform:uppercase;font-size:0.82em!important;opacity:0.85}
 button:hover,a:hover,[role="button"]:hover{opacity:0.5;transition:opacity 250ms ease-out}
 nav,aside,[class*="border-b"],[class*="border-r"]{border-color:rgba(0,0,0,0.04)!important}
 ` },
@@ -886,6 +886,7 @@ document.querySelectorAll('form').forEach(function(f) {
 
     async function loadPreset(element, personality) {
       personality = personality || 'clean';
+      await loadManifest();
       const html = await fetchPreset(element, personality);
       if (!html) return;
       currentElement = element;
