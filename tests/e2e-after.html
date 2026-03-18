@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Team Pulse - Employee Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <style type="text/tailwindcss">
+    @theme {
+      --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    }
+  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-slate-100 font-sans text-slate-900 text-sm leading-relaxed">
+  <div class="flex min-h-screen">
+
+    <!-- Sidebar -->
+    <aside class="hidden md:flex md:flex-col w-60 bg-slate-900 text-slate-300 fixed inset-y-0 left-0 z-30">
+      <!-- Logo -->
+      <div class="flex items-center h-16 px-5 border-b border-slate-700/50">
+        <svg class="w-7 h-7 text-blue-500 mr-2.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        <span class="text-base font-bold text-white tracking-tight">TeamPulse</span>
+      </div>
+
+      <!-- Nav -->
+      <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+        <a href="#" class="flex items-center h-10 px-3 rounded-md text-sm font-medium text-white bg-blue-600/20 border-l-[3px] border-blue-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400">
+          <svg class="w-5 h-5 mr-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          Dashboard
+        </a>
+        <a href="#" class="flex items-center h-10 px-3 rounded-md text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors border-l-[3px] border-transparent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400">
+          <svg class="w-5 h-5 mr-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Team Members
+        </a>
+        <a href="#" class="flex items-center h-10 px-3 rounded-md text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors border-l-[3px] border-transparent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400">
+          <svg class="w-5 h-5 mr-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          Projects
+        </a>
+        <a href="#" class="flex items-center h-10 px-3 rounded-md text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors border-l-[3px] border-transparent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400">
+          <svg class="w-5 h-5 mr-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          Reports
+        </a>
+        <a href="#" class="flex items-center h-10 px-3 rounded-md text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors border-l-[3px] border-transparent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400">
+          <svg class="w-5 h-5 mr-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          Time Tracking
+        </a>
+
+        <!-- Settings separator -->
+        <div class="pt-4 mt-4 border-t border-slate-700/50">
+          <p class="px-3 mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Settings</p>
+        </div>
+
+        <a href="#" class="flex items-center h-10 px-3 rounded-md text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors border-l-[3px] border-transparent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400">
+          <svg class="w-5 h-5 mr-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          Company
+        </a>
+        <a href="#" class="flex items-center h-10 px-3 rounded-md text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors border-l-[3px] border-transparent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400">
+          <svg class="w-5 h-5 mr-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+          Integrations
+        </a>
+        <a href="#" class="flex items-center h-10 px-3 rounded-md text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors border-l-[3px] border-transparent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400">
+          <svg class="w-5 h-5 mr-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+          Billing
+        </a>
+        <a href="#" class="flex items-center h-10 px-3 rounded-md text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors border-l-[3px] border-transparent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400">
+          <svg class="w-5 h-5 mr-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          My Account
+        </a>
+      </nav>
+    </aside>
+
+    <!-- Mobile sidebar toggle -->
+    <button id="mobile-menu-btn" class="md:hidden fixed top-3 left-3 z-40 p-2 rounded-lg bg-slate-900 text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500" aria-label="Open menu">
+      <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+
+    <!-- Main content area -->
+    <div class="flex-1 md:ml-60 flex flex-col min-h-screen">
+
+      <!-- Header -->
+      <header class="sticky top-0 z-20 bg-white border-b border-slate-200 h-16 flex items-center justify-between px-6 shrink-0">
+        <h1 class="text-xl font-semibold text-slate-900">Dashboard</h1>
+        <div class="flex items-center gap-3">
+          <button class="relative p-2 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500" aria-label="Notifications">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <span class="absolute -top-0.5 -right-0.5 flex items-center justify-center w-5 h-5 text-[11px] font-bold text-white bg-red-500 rounded-full">3</span>
+          </button>
+          <div class="flex items-center gap-2 pl-3 border-l border-slate-200">
+            <div class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-semibold">S</div>
+            <span class="text-sm font-medium text-slate-700 hidden sm:inline">Sarah</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- Content -->
+      <main class="flex-1 p-6 space-y-6 overflow-y-auto">
+
+        <!-- Quick Actions -->
+        <div class="flex flex-wrap items-center gap-3">
+          <button class="inline-flex items-center justify-center h-11 px-5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500">
+            <svg class="w-4 h-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add Member
+          </button>
+          <button class="inline-flex items-center justify-center h-11 px-5 border border-slate-300 text-slate-700 text-sm font-medium rounded-lg bg-white hover:bg-slate-50 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500">
+            Generate Report
+          </button>
+          <button class="inline-flex items-center justify-center h-11 px-5 border border-slate-300 text-slate-700 text-sm font-medium rounded-lg bg-white hover:bg-slate-50 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500">
+            Export CSV
+          </button>
+        </div>
+
+        <!-- Stat Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+            <p class="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Total Employees</p>
+            <p class="text-[28px] font-bold text-slate-900 leading-tight">247</p>
+            <p class="text-[13px] text-green-600 font-medium mt-1 flex items-center gap-1">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+              12 this month
+            </p>
+          </div>
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+            <p class="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Active Now</p>
+            <p class="text-[28px] font-bold text-slate-900 leading-tight">183</p>
+            <p class="text-[13px] text-green-600 font-medium mt-1 flex items-center gap-1">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+              74%
+            </p>
+          </div>
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+            <p class="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Avg Hours/Week</p>
+            <p class="text-[28px] font-bold text-slate-900 leading-tight">38.5</p>
+            <p class="text-[13px] text-red-600 font-medium mt-1 flex items-center gap-1">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              1.2 hrs
+            </p>
+          </div>
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+            <p class="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Open Projects</p>
+            <p class="text-[28px] font-bold text-slate-900 leading-tight">23</p>
+            <p class="text-[13px] text-slate-500 font-medium mt-1 flex items-center gap-1">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Same as last week
+            </p>
+          </div>
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+            <p class="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Satisfaction</p>
+            <p class="text-[28px] font-bold text-slate-900 leading-tight">4.2/5</p>
+            <p class="text-[13px] text-green-600 font-medium mt-1 flex items-center gap-1">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+              0.3
+            </p>
+          </div>
+        </div>
+
+        <!-- Charts -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div class="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm p-6 flex items-center justify-center min-h-[200px]">
+            <div class="text-center text-slate-400">
+              <svg class="w-10 h-10 mx-auto mb-2 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+              <p class="text-sm font-medium">Team Activity Chart (Last 30 Days)</p>
+            </div>
+          </div>
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6 flex items-center justify-center min-h-[200px]">
+            <div class="text-center text-slate-400">
+              <svg class="w-10 h-10 mx-auto mb-2 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
+              <p class="text-sm font-medium">Department Distribution</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tabs + Search -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm">
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 px-4 gap-4">
+            <div class="flex -mb-px overflow-x-auto" role="tablist">
+              <button role="tab" aria-selected="true" class="h-10 px-4 text-sm font-medium text-blue-600 border-b-2 border-blue-600 whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-500">All Members</button>
+              <button role="tab" class="h-10 px-4 text-sm font-medium text-slate-500 border-b-2 border-transparent hover:text-slate-700 whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-500">Active</button>
+              <button role="tab" class="h-10 px-4 text-sm font-medium text-slate-500 border-b-2 border-transparent hover:text-slate-700 whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-500">Away</button>
+              <button role="tab" class="h-10 px-4 text-sm font-medium text-slate-500 border-b-2 border-transparent hover:text-slate-700 whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-500">Offline</button>
+            </div>
+            <div class="relative mb-4 sm:mb-0">
+              <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" placeholder="Search team members..." class="h-11 w-full sm:w-80 pl-10 pr-4 border border-slate-300 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 bg-white focus:outline-2 focus:outline-blue-500 focus:border-blue-500 transition-colors">
+            </div>
+          </div>
+
+          <!-- Table -->
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="bg-slate-50 border-b border-slate-200">
+                  <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 h-12">Name</th>
+                  <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 h-12">Department</th>
+                  <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 h-12">Role</th>
+                  <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 h-12">Status</th>
+                  <th class="text-right text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 h-12">Hours This Week</th>
+                  <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 h-12">Last Active</th>
+                  <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 h-12">Actions</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                <tr class="hover:bg-slate-50 transition-colors">
+                  <td class="px-4 h-12 font-medium text-slate-900 whitespace-nowrap">Alice Johnson</td>
+                  <td class="px-4 h-12 text-slate-600 whitespace-nowrap">Engineering</td>
+                  <td class="px-4 h-12 text-slate-600 whitespace-nowrap">Senior Developer</td>
+                  <td class="px-4 h-12 whitespace-nowrap">
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700">
+                      <span aria-hidden="true">&#9679;</span> Active
+                    </span>
+                  </td>
+                  <td class="px-4 h-12 text-right tabular-nums text-slate-700">42.5</td>
+                  <td class="px-4 h-12 text-slate-500 whitespace-nowrap">Just now</td>
+                  <td class="px-4 h-12 whitespace-nowrap">
+                    <div class="flex items-center gap-2">
+                      <button class="inline-flex items-center justify-center h-8 px-3 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500">View</button>
+                      <button class="inline-flex items-center justify-center h-8 px-3 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500">Edit</button>
+                      <button class="inline-flex items-center justify-center h-8 px-3 text-xs font-medium text-red-600 bg-white border border-red-200 rounded-md hover:bg-red-50 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500">Remove</button>
+                    </div>
+                  </td>
+                </tr>
+                <tr class="hover:bg-slate-50 transition-colors">
+                  <td class="px-4 h-12 font-medium text-slate-900 whitespace-nowrap">Bob Smith</td>
+                  <td class="px-4 h-12 text-slate-600 whitespace-nowrap">Design</td>
+                  <td class="px-4 h-12 text-slate-600 whitespace-nowrap">UI/UX Designer</td>
+                  <td class="px-4 h-12 whitespace-nowrap">
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700">
+                      <span aria-hidden="true">&#9684;</span> Away
+                    </span>
+                  </td>
+                  <td class="px-4 h-12 text-right tabular-nums text-slate-700">35.0</td>
+                  <td class="px-4 h-12 text-slate-500 whitespace-nowrap">2 hours ago</td>
+                  <td class="px-4 h-12 whitespace-nowrap">
+                    <div class="flex items-center gap-2">
+                      <button class="inline-flex items-center justify-center h-8 px-3 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500">View</button>
+                      <button class="inline-flex items-center justify-center h-8 px-3 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500">Edit</button>
+                      <button class="inline-flex items-center justify-center h-8 px-3 text-xs font-medium text-red-600 bg-white border border-red-200 rounded-md hover:bg-red-50 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500">Remove</button>
+                    </div>
+                  </td>
+                </tr>
+                <tr class="hover:bg-slate-50 transition-colors">
+                  <td class="px-4 h-12 font-medium text-slate-900 whitespace-nowrap">Carol Williams</td>
+                  <td class="px-4 h-12 text-slate-600 whitespace-nowrap">Marketing</td>
+                  <td class="px-4 h-12 text-slate-600 whitespace-nowrap">Content Manager</td>
+                  <td class="px-4 h-12 whitespace-nowrap">
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700">
+                      <span aria-hidden="true">&#9679;</span> Active
+                    </span>
+                  </td>
+                  <td class="px-4 h-12 text-right tabular-nums text-slate-700">38.0</td>
+                  <td class="px-4 h-12 text-slate-500 whitespace-nowrap">5 min ago</td>
+                  <td class="px-4 h-12 whitespace-nowrap">
+                    <div class="flex items-center gap-2">
+                      <button class="inline-flex items-center justify-center h-8 px-3 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500">View</button>
+                      <button class="inline-flex items-center justify-center h-8 px-3 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500">Edit</button>
+                      <button class="inline-flex items-center justify-center h-8 px-3 text-xs font-medium text-red-600 bg-white border border-red-200 rounded-md hover:bg-red-50 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500">Remove</button>
+                    </div>
+                  </td>
+                </tr>
+                <tr class="hover:bg-slate-50 transition-colors">
+                  <td class="px-4 h-12 font-medium text-slate-900 whitespace-nowrap">Dave Brown</td>
+                  <td class="px-4 h-12 text-slate-600 whitespace-nowrap">Engineering</td>
+                  <td class="px-4 h-12 text-slate-600 whitespace-nowrap">DevOps Engineer</td>
+                  <td class="px-4 h-12 whitespace-nowrap">
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
+                      <span aria-hidden="true">&#9675;</span> Offline
+                    </span>
+                  </td>
+                  <td class="px-4 h-12 text-right tabular-nums text-slate-700">40.0</td>
+                  <td class="px-4 h-12 text-slate-500 whitespace-nowrap">Yesterday</td>
+                  <td class="px-4 h-12 whitespace-nowrap">
+                    <div class="flex items-center gap-2">
+                      <button class="inline-flex items-center justify-center h-8 px-3 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500">View</button>
+                      <button class="inline-flex items-center justify-center h-8 px-3 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500">Edit</button>
+                      <button class="inline-flex items-center justify-center h-8 px-3 text-xs font-medium text-red-600 bg-white border border-red-200 rounded-md hover:bg-red-50 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500">Remove</button>
+                    </div>
+                  </td>
+                </tr>
+                <tr class="hover:bg-slate-50 transition-colors">
+                  <td class="px-4 h-12 font-medium text-slate-900 whitespace-nowrap">Eve Davis</td>
+                  <td class="px-4 h-12 text-slate-600 whitespace-nowrap">Product</td>
+                  <td class="px-4 h-12 text-slate-600 whitespace-nowrap">Product Manager</td>
+                  <td class="px-4 h-12 whitespace-nowrap">
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700">
+                      <span aria-hidden="true">&#9679;</span> Active
+                    </span>
+                  </td>
+                  <td class="px-4 h-12 text-right tabular-nums text-slate-700">45.0</td>
+                  <td class="px-4 h-12 text-slate-500 whitespace-nowrap">Just now</td>
+                  <td class="px-4 h-12 whitespace-nowrap">
+                    <div class="flex items-center gap-2">
+                      <button class="inline-flex items-center justify-center h-8 px-3 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500">View</button>
+                      <button class="inline-flex items-center justify-center h-8 px-3 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500">Edit</button>
+                      <button class="inline-flex items-center justify-center h-8 px-3 text-xs font-medium text-red-600 bg-white border border-red-200 rounded-md hover:bg-red-50 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500">Remove</button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </main>
+    </div>
+  </div>
+</body>
+</html>

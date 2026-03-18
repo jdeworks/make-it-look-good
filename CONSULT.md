@@ -1,0 +1,633 @@
+# Design Consultation Playbook
+
+> **Purpose:** This file turns the make-it-look-good knowledge base into an interactive design consultation. Read this file first, then follow the steps in order. Works whether the user brings existing code, a vague idea, a screenshot, or anything in between.
+
+---
+
+## Step 0: Classify the Input
+
+Before asking anything, figure out what the user brought. This determines your entire workflow.
+
+### Input Types
+
+| What They Brought | How to Detect | Workflow |
+|---|---|---|
+| **Existing code** (HTML, JSX, Vue SFC, Svelte, etc.) | Code blocks, file paths, or "here's my component" | → Step 1A (Audit) → Step 2 → Step 3 → Step 4 |
+| **Screenshot or mockup** | Image attachment, Figma link, "here's what it looks like" | → Step 1B (Visual Audit) → Step 2 → Step 3 → Step 4 |
+| **Vague idea** ("make me a dashboard", "I need a landing page") | No code, no visuals, just a description | → Step 1C (Intake) → Step 2 → Step 3 → Step 4 |
+| **Plain text / data** ("here's my CLI output", "here are my API fields") | Raw text, JSON, CSV, terminal output | → Step 1D (Structure) → Step 2 → Step 3 → Step 4 |
+| **Existing design they want improved** | "Make this look better", "this looks amateur" | → Step 1A (Audit) → Step 2 → Step 3 → Step 4 |
+
+### Detect the Tech Stack
+
+Look for clues in whatever they provide:
+
+| Signal | Stack | Output Format |
+|---|---|---|
+| `className=`, `useState`, `<Component />`, `.jsx`/`.tsx` | React | JSX with className strings |
+| `v-bind`, `v-for`, `:class`, `.vue` | Vue | Vue SFC `<template>` block |
+| `{#if}`, `{#each}`, `bind:`, `.svelte` | Svelte | Svelte component |
+| `@apply`, `@layer` | Tailwind (already using) | Tailwind classes (match their version) |
+| `style={{ }}`, inline styles | React with inline styles | Keep inline style pattern or suggest Tailwind |
+| `styled.div`, `css\`\`` | CSS-in-JS (styled-components, emotion) | Styled-components or suggest migration |
+| `class=""` with custom CSS, `<style>` blocks | Plain HTML + CSS | Plain HTML + CSS or suggest Tailwind |
+| Bootstrap classes (`btn btn-primary`, `col-md-6`) | Bootstrap | Bootstrap classes or suggest migration |
+| Material UI (`<Button variant="contained">`) | MUI | MUI component props |
+| No code at all | Unknown | Default to HTML + Tailwind |
+
+**Critical rule:** Match the user's stack. Don't hand someone using React + styled-components a plain HTML file with Tailwind classes. Meet them where they are.
+
+If you're unsure, ask: *"What's your tech stack? (React, Vue, plain HTML, etc.) And are you using any CSS framework like Tailwind or Bootstrap?"*
+
+---
+
+## Step 1A: Audit Existing Code
+
+When the user brings existing code, **read it carefully before suggesting changes.** Generate a design review first.
+
+### What to Look For
+
+Run through this checklist against their code. Note every issue you find.
+
+**Spacing & Layout**
+- [ ] Is there a consistent spacing system? (Look for recurring padding/margin values)
+- [ ] Are spacing values from a scale (4, 8, 12, 16, 24, 32, 48) or random (13, 17, 22)?
+- [ ] Is there a layout container with max-width and centered content?
+- [ ] Are sections separated with consistent vertical rhythm?
+- [ ] On mobile: does it stack properly or break?
+
+**Typography**
+- [ ] Is body text ≥16px? (Check for `font-size: 12px` or `text-xs` on body text — common mistake)
+- [ ] Is there a clear heading hierarchy? (h1 > h2 > h3 in size)
+- [ ] Is line height between 1.4–1.6 for body text?
+- [ ] Is line length constrained to 45–75 characters? (Look for `max-width` on text containers)
+- [ ] Are more than 2 typefaces used?
+
+**Color & Contrast**
+- [ ] Does text meet 4.5:1 contrast ratio against its background?
+- [ ] Is there a consistent color palette or random hex values scattered?
+- [ ] Are interactive elements (links, buttons) visually distinct?
+- [ ] Is color used as the _only_ indicator for anything? (Error = red only, no icon/text)
+- [ ] Are there any low-contrast situations? (gray on white, light blue on white)
+
+**Interactive Elements**
+- [ ] Are click/touch targets at least 44×44px?
+- [ ] Do buttons have hover/focus states?
+- [ ] Are form labels associated with inputs? (`for`/`htmlFor` attribute)
+- [ ] Are form labels visible? (Not placeholder-only)
+- [ ] Is there visual feedback for actions? (Loading states, success/error messages)
+
+**Hierarchy & Structure**
+- [ ] Is there a clear visual hierarchy? (Can you tell what's most important in 2 seconds?)
+- [ ] Are related items grouped visually? (Gestalt proximity)
+- [ ] Is there a clear primary action on each screen/section?
+- [ ] Are secondary actions visually subordinate to the primary?
+
+**Component-Specific**
+- [ ] Cards: consistent padding, single primary action, clear content hierarchy?
+- [ ] Tables: right-aligned numbers, adequate row height, header distinction?
+- [ ] Navigation: ≤7 items, clear active state, mobile-appropriate pattern?
+- [ ] Forms: single column, labels above, grouped into logical sections?
+- [ ] Modals: max ~600px wide, trap focus, clear dismiss action?
+
+### Output the Design Review Notes
+
+After auditing, generate a **Design Review Notes** document (see Step 4 for the full template). This is the most important output — it gives the user a persistent record of what to fix and why.
+
+---
+
+## Step 1B: Visual Audit (Screenshots / Mockups)
+
+When the user provides a screenshot or image:
+
+1. Describe what you see — layout, colors, typography, spacing
+2. Run the same checklist from Step 1A, noting what you can observe visually
+3. Call out anything you can't assess from the image alone (e.g., "I can't tell if those targets are 44px — can you confirm?")
+4. Note the approximate tech stack if visible (browser chrome suggests web, device frame suggests native)
+5. Proceed to generate Design Review Notes (Step 4)
+
+---
+
+## Step 1C: Intake Questions (Starting from Scratch)
+
+When there's no existing code or visuals, ask these questions. **Ask only what's needed** — if someone says "I need a contact form," don't ask about dashboards.
+
+### Required
+
+1. **What are you building?**
+   - Dashboard / admin panel
+   - Landing page / marketing site
+   - Form / multi-step wizard
+   - Content site / blog
+   - E-commerce / product listing
+   - Mobile app (React Native / Flutter)
+   - Internal tool
+   - Email template
+   - Portfolio / personal site
+   - Other: ___
+
+2. **Who uses it?**
+   - General public (all ages, devices, accessibility critical)
+   - Business users (desktop-heavy, data-dense, efficiency matters)
+   - Developers (information-dense OK, keyboard shortcuts expected)
+   - Mobile-first consumers (touch targets critical, thumb zones)
+
+3. **What's the design vibe?**
+   - Clean & minimal (lots of whitespace, muted palette)
+   - Bold & vibrant (saturated colors, strong CTAs)
+   - Corporate & trustworthy (blue-heavy, structured, formal)
+   - Playful & friendly (rounded corners, warm colors, illustrations)
+   - Dark & technical (dark backgrounds, monospace accents)
+   - Match existing brand: ___ (ask for colors, fonts, logo)
+
+4. **What's your tech stack?**
+   - Plain HTML + CSS (will suggest Tailwind CDN)
+   - React / Next.js
+   - Vue / Nuxt
+   - Svelte / SvelteKit
+   - React Native / Flutter
+   - Other: ___
+
+### Ask If Relevant
+
+5. **What components do you need?** (List the specific ones)
+
+6. **Existing brand constraints?** (Colors, fonts, logo, existing design system)
+
+7. **Any specific pain points?**
+   - "It looks amateur" → focus on spacing, type scale, color system
+   - "It's hard to use" → focus on hierarchy, cognitive load, touch targets
+   - "It's inconsistent" → focus on design tokens, spacing system
+   - "It's not accessible" → focus on contrast, targets, screen reader
+
+---
+
+## Step 1D: Structure Raw Content
+
+When the user brings plain text, data, or non-visual content:
+
+1. **Identify the data shape** — Is it a list? Table? Key-value pairs? Nested hierarchy?
+2. **Identify the use case** — Is this for displaying to end users? Admin view? Report?
+3. **Suggest a component pattern:**
+   - List of items → card grid or data table
+   - Key-value pairs → detail/summary view or definition list
+   - Nested data → tree view or accordion
+   - Time series → chart or timeline
+   - Status/metrics → stat cards or dashboard
+4. **Ask what actions users need** — View only? Edit? Filter? Sort? Compare?
+5. Proceed to Step 2 (Knowledge File Selection) with the identified pattern
+
+---
+
+## Step 2: Knowledge File Selection Matrix
+
+Based on what you learned in Step 1, read the relevant files. **Read the minimum set needed.**
+
+### By Project Type
+
+| Project Type | Always Read | Also Read |
+|---|---|---|
+| **Dashboard** | `layout/grid-systems.md`, `layout/spacing-system.md`, `components/navigation.md`, `components/tables-and-lists.md` | `color/color-systems.md`, `typography/type-scale.md` |
+| **Landing Page** | `layout/visual-hierarchy.md`, `typography/type-scale.md`, `components/buttons.md` | `color/color-psychology.md`, `interaction/animation-timing.md` |
+| **Form / Wizard** | `components/forms.md`, `layout/spacing-system.md`, `components/buttons.md` | `components/feedback.md`, `interaction/touch-targets.md` |
+| **Content Site** | `typography/readability.md`, `typography/type-scale.md`, `layout/whitespace.md` | `typography/font-pairing.md`, `responsive/fluid-typography.md` |
+| **E-commerce** | `components/cards.md`, `layout/grid-systems.md`, `components/buttons.md` | `color/color-psychology.md`, `components/forms.md` |
+| **Mobile App** | `interaction/touch-targets.md`, `components/navigation.md`, `responsive/mobile-first.md` | `interaction/micro-interactions.md`, `interaction/loading-states.md` |
+| **Internal Tool** | `components/tables-and-lists.md`, `components/forms.md`, `layout/spacing-system.md` | `components/navigation.md`, `components/feedback.md` |
+| **Email Template** | `typography/readability.md`, `color/contrast-and-accessibility.md`, `components/buttons.md` | `layout/spacing-system.md` |
+
+### By Pain Point
+
+| Pain Point | Read These |
+|---|---|
+| "Looks amateur" | `layout/spacing-system.md`, `typography/type-scale.md`, `color/color-systems.md` |
+| "Hard to use" | `layout/visual-hierarchy.md`, `foundations/cognitive-load.md`, `interaction/touch-targets.md` |
+| "Inconsistent" | `layout/spacing-system.md`, `systems/design-tokens.md` |
+| "Not accessible" | `color/contrast-and-accessibility.md`, `color/color-blind-safety.md`, `interaction/touch-targets.md` |
+| "Looks dated" | `typography/type-scale.md`, `color/color-systems.md`, `layout/whitespace.md` |
+| "Too cluttered" | `layout/whitespace.md`, `foundations/cognitive-load.md`, `layout/visual-hierarchy.md` |
+
+### Always Read (Every Consultation)
+
+- `workflows/quick-reference.md` — critical numbers at a glance
+
+---
+
+## Step 2.5: Select Starting Snippets
+
+Before generating code from scratch, check if a snippet from [`snippets/_index.md`](snippets/_index.md) can serve as a starting point. This saves time and ensures design consistency.
+
+### By Project Type
+
+| Project Type | Shell Snippet | Component Snippets |
+|---|---|---|
+| **Dashboard** | `shell-dashboard` | `content-stats-row`, `data-table`, `nav-sidebar` |
+| **Landing Page** | `shell-marketing-page` | `content-hero`, `content-feature-grid`, `content-pricing-cards`, `content-cta-section` |
+| **Form / Wizard** | `shell-centered-form` | `form-signup` or `form-settings` |
+| **Internal Tool** | `shell-sidebar-topbar` | `data-table`, `form-settings`, `feedback-toast` |
+| **Login / Signup** | `shell-centered-form` | `form-login` or `form-signup` |
+| **Data Browser** | `shell-sidebar-topbar` | `form-search-bar`, `data-table` or `data-card-grid` |
+| **E-commerce** | `shell-marketing-page` | `data-card-grid`, `form-search-bar`, `content-hero` |
+
+### Framework-Aware Selection
+
+If the user's stack is **React** or **Vue**, check if a framework variant exists in `snippets/react/` or `snippets/vue/` for interactive components. See [`snippets/FRAMEWORKS.md`](snippets/FRAMEWORKS.md) for the full list. For Svelte, Angular, or other frameworks, use the HTML snippet and follow the conversion guide.
+
+### Using Snippets
+
+1. Start with the appropriate **shell** snippet as the page layout
+2. Drop **component snippets** into the shell's content area
+3. Customize colors, content, and branding for the user's project
+4. Add interactivity (state, events) if using a framework variant
+
+---
+
+## Step 3: Generate Output
+
+Adapt your output format to match the user's tech stack and situation.
+
+### 3a. Design Tokens
+
+Always provide design tokens first — they apply regardless of framework. Present them in whichever format matches the user's stack:
+
+**CSS custom properties** (default, works everywhere):
+```css
+:root {
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-secondary: #64748b;
+  --color-success: #16a34a;
+  --color-error: #dc2626;
+  --color-warning: #d97706;
+  --color-surface: #ffffff;
+  --color-surface-alt: #f8fafc;
+  --color-text: #0f172a;
+  --color-text-secondary: #475569;
+  --color-border: #e2e8f0;
+
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  --space-1: 0.25rem;  --space-2: 0.5rem;   --space-3: 0.75rem;
+  --space-4: 1rem;     --space-6: 1.5rem;    --space-8: 2rem;
+  --space-12: 3rem;    --space-16: 4rem;
+
+  --radius-sm: 0.25rem;  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;  --radius-full: 9999px;
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+  --shadow-md: 0 4px 6px rgba(0,0,0,0.07);
+  --shadow-lg: 0 10px 15px rgba(0,0,0,0.1);
+
+  --duration-fast: 150ms;
+  --duration-normal: 200ms;
+  --duration-slow: 300ms;
+}
+```
+
+**Tailwind config** (if using Tailwind):
+```js
+// tailwind.config.js additions — or use @theme in Tailwind v4
+theme: {
+  extend: {
+    colors: {
+      primary: { DEFAULT: '#2563eb', hover: '#1d4ed8' },
+      // ...
+    }
+  }
+}
+```
+
+**JavaScript object** (for CSS-in-JS, React Native, etc.):
+```js
+export const tokens = {
+  color: { primary: '#2563eb', primaryHover: '#1d4ed8', /* ... */ },
+  space: { 1: '4px', 2: '8px', 3: '12px', 4: '16px', 6: '24px', 8: '32px' },
+  radius: { sm: '4px', md: '8px', lg: '12px' },
+};
+```
+
+### 3b. Implementation
+
+**When a relevant snippet exists in `snippets/`**, use it as base code. Customize colors, content, and branding for the user's project rather than generating from scratch. If the user's framework has a variant in `snippets/react/` or `snippets/vue/`, use that version. For other frameworks, start from the HTML snippet and convert per `snippets/FRAMEWORKS.md`.
+
+Generate code in the user's framework/language:
+
+**Plain HTML + Tailwind** (default for unknown stack):
+- Include Tailwind v4 CDN: `<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>`
+- Self-contained, single file
+- Semantic HTML (`<header>`, `<main>`, `<nav>`, `<section>`)
+
+**React / JSX:**
+- Use `className` (not `class`)
+- Respect their styling approach (Tailwind classes, CSS modules, styled-components, inline styles)
+- If they use TypeScript, include proper types
+- Export as a named component
+
+**Vue SFC:**
+- Use `<template>` / `<script setup>` / `<style scoped>` structure
+- Use their styling approach (Tailwind, scoped CSS, etc.)
+
+**Svelte:**
+- Use `<script>` / markup / `<style>` structure
+- Use their styling approach
+
+**CSS-only** (if they just want styling help):
+- Provide CSS that targets their existing HTML structure
+- Use their existing class naming convention if visible
+- Don't restructure their HTML unless the structure itself is the problem
+
+**For any framework, always ensure:**
+- Responsive: works at 320px, 768px, 1024px+
+- Accessible: 4.5:1 contrast, 44px targets, visible focus states, semantic elements
+- Consistent: spacing from a scale, type from a scale, colors from a palette
+
+### 3c. Preview
+
+After generating code, help the user see it:
+
+- **Plain HTML / Tailwind** → suggest the make-it-look-good preview tool or pasting into a browser
+- **React** → suggest running their dev server, or extracting the JSX into a standalone HTML file for preview
+- **Any framework** → if they want a quick visual check, offer to generate a standalone HTML + Tailwind version of the same design for the preview tool, clearly labeled as "preview-only — use the [framework] code in your project"
+
+---
+
+## Step 4: Design Review Notes
+
+**This is the most important deliverable.** Whether you audited existing code or designed from scratch, always generate a structured design review document. The user should save this alongside their code as a persistent reference.
+
+### Template
+
+Generate this as a markdown document. Fill in only the sections relevant to the consultation — don't include sections with nothing to say.
+
+````markdown
+# Design Review Notes
+
+> Generated from [make-it-look-good](https://github.com/jdeworks/make-it-look-good) knowledge base
+
+## Overview
+- **What:** [Brief description of what was reviewed/designed]
+- **Stack:** [Tech stack detected or stated]
+- **Date:** [Current date]
+
+## Design Decisions
+
+### Color Palette
+- Primary: `#hex` — [why this color]
+- Secondary: `#hex` — [why]
+- Neutrals: [palette used]
+- Semantic: success `#hex`, error `#hex`, warning `#hex`
+- Contrast ratios verified: [Yes/No, specifics]
+
+### Typography
+- Heading font: [font name] — [why]
+- Body font: [font name] — [why]
+- Scale: [ratio used, e.g., 1.25 Major Third]
+- Body size: [size]px, line height: [value]
+- Max line length: [value]
+
+### Spacing System
+- Base unit: [4px / 8px]
+- Scale used: [list values, e.g., 4, 8, 12, 16, 24, 32, 48, 64]
+- Component padding: [pattern]
+- Section spacing: [pattern]
+
+### Layout
+- Grid: [system used]
+- Breakpoints: [values]
+- Container max-width: [value]
+- Mobile behavior: [stacking, reflow, etc.]
+
+## Issues Found
+[Only include if auditing existing code]
+
+### Critical (Fix These First)
+- [ ] **[Issue]** — [What's wrong, where, and why it matters]
+  - Fix: [Specific change to make]
+  - Reference: [link to relevant knowledge file]
+
+### Important (Fix Soon)
+- [ ] **[Issue]** — [What, where, why]
+  - Fix: [Specific change]
+  - Reference: [knowledge file]
+
+### Nice to Have
+- [ ] **[Issue]** — [What, where, why]
+  - Fix: [Specific change]
+  - Reference: [knowledge file]
+
+## What's Working Well
+[Call out things the existing design does right — reinforces good patterns]
+- [Good thing 1]
+- [Good thing 2]
+
+## Implementation Checklist
+[Actionable next steps in priority order]
+- [ ] [Step 1 — highest impact change]
+- [ ] [Step 2]
+- [ ] [Step 3]
+- [ ] ...
+
+## Tokens & Values Quick Reference
+[Paste the final token values here for easy copy-paste]
+
+```css
+:root {
+  /* final tokens */
+}
+```
+
+## Knowledge Files Referenced
+- `[file]` — [what was used from it]
+- `[file]` — [what was used from it]
+````
+
+### What Makes Good Review Notes
+
+- **Specificity over generality** — "Change `padding: 10px` to `padding: 16px` on `.card`" not "improve spacing"
+- **Explain _why_** — "16px aligns to the 4px spacing scale and matches the gap between form fields" not just "use 16px"
+- **Prioritize** — Critical issues first (accessibility violations, broken layouts), cosmetic tweaks last
+- **Acknowledge what's good** — If the existing code has good structure, say so. Users need to know what _not_ to change
+- **Include the numbers** — Contrast ratios, pixel values, timing values. This is a reference document, not a vibes document
+- **Make it actionable** — Every issue should have a concrete fix, not just a description of the problem
+
+---
+
+## Step 5: Tailwind Class Quick Reference
+
+For users working with Tailwind. Skip this section if they're using a different framework.
+
+### Spacing Scale (4px base)
+
+| Token | Tailwind | Pixels | Use For |
+|-------|----------|--------|---------|
+| space-1 | `p-1`, `m-1`, `gap-1` | 4px | Icon-to-text gap |
+| space-2 | `p-2`, `m-2`, `gap-2` | 8px | Compact inner padding, target spacing |
+| space-3 | `p-3`, `m-3`, `gap-3` | 12px | Default inner padding |
+| space-4 | `p-4`, `m-4`, `gap-4` | 16px | Card padding, form field spacing |
+| space-6 | `p-6`, `m-6`, `gap-6` | 24px | Section padding, card body |
+| space-8 | `p-8`, `m-8`, `gap-8` | 32px | Section separation |
+| space-12 | `p-12`, `m-12`, `gap-12` | 48px | Page section spacing |
+| space-16 | `p-16`, `m-16`, `gap-16` | 64px | Hero padding, major breaks |
+
+### Type Scale
+
+| Level | Tailwind | Size | Use For |
+|-------|----------|------|---------|
+| Caption | `text-xs` | 12px | Timestamps, metadata |
+| Small | `text-sm` | 14px | Secondary text, labels |
+| Body | `text-base` | 16px | Default body text |
+| Large | `text-lg` | 18px | Lead paragraphs |
+| Heading 4 | `text-xl` | 20px | Sub-section headings |
+| Heading 3 | `text-2xl` | 24px | Section headings |
+| Heading 2 | `text-3xl` | 30px | Page headings |
+| Heading 1 | `text-4xl` | 36px | Hero headings |
+| Display | `text-5xl` | 48px | Landing page hero |
+
+### Touch Targets & Interactive
+
+| Rule | Tailwind |
+|------|----------|
+| 44×44px minimum | `min-h-11 min-w-11` |
+| 48×48px recommended | `min-h-12 min-w-12` |
+| 8px spacing between targets | `gap-2` |
+| Button padding | `px-4 py-2` (minimum `px-3 py-2`) |
+| Focus ring | `focus:ring-2 focus:ring-blue-500 focus:outline-none` |
+| Transition | `transition-colors duration-150` |
+
+### Colors (Accessibility-Safe Defaults)
+
+| Role | Light Mode | Dark Mode | Tailwind |
+|------|-----------|-----------|----------|
+| Text primary | `#0f172a` | `#f1f5f9` | `text-slate-900 dark:text-slate-100` |
+| Text secondary | `#475569` | `#94a3b8` | `text-slate-600 dark:text-slate-400` |
+| Background | `#ffffff` | `#0f172a` | `bg-white dark:bg-slate-900` |
+| Surface | `#f8fafc` | `#1e293b` | `bg-slate-50 dark:bg-slate-800` |
+| Border | `#e2e8f0` | `#334155` | `border-slate-200 dark:border-slate-700` |
+| Primary | `#2563eb` | `#3b82f6` | `bg-blue-600 dark:bg-blue-500` |
+| Error | `#dc2626` | `#f87171` | `text-red-600 dark:text-red-400` |
+| Success | `#16a34a` | `#4ade80` | `text-green-600 dark:text-green-400` |
+
+### Common Component Patterns
+
+| Pattern | Tailwind Classes |
+|---------|-----------------|
+| Card | `bg-white rounded-lg shadow-sm border border-slate-200 p-6` |
+| Section spacing | `py-12 md:py-16 lg:py-20` |
+| Container | `max-w-7xl mx-auto px-4 sm:px-6 lg:px-8` |
+| Button (primary) | `bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg transition-colors duration-150 min-h-11` |
+| Button (secondary) | `border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium px-4 py-2 rounded-lg transition-colors duration-150 min-h-11` |
+| Input field | `w-full border border-slate-300 rounded-lg px-3 py-2 text-base focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none min-h-11` |
+| Nav link | `text-slate-600 hover:text-slate-900 font-medium px-3 py-2 rounded-md transition-colors duration-150` |
+| Badge | `inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium` |
+
+---
+
+## Step 6: Design Profiles
+
+Preset starting points for common project types. Use these as defaults, then customize based on intake answers.
+
+### SaaS Dashboard
+```
+Colors: Blue primary (#2563eb), slate neutrals
+Typography: Inter or system-ui, 14px base for dense data
+Layout: Sidebar nav (240px), 12-column grid, 16px gutters
+Spacing: 4px base, compact (py-1.5 for table rows)
+Components: Sidebar, data table, stat cards, charts, breadcrumbs
+Dark mode: Yes (users often prefer it)
+```
+
+### Landing Page
+```
+Colors: Brand primary, high-contrast CTA (often orange/green on blue)
+Typography: Display font for headings, 18px body, generous line height (1.6)
+Layout: Single column hero, alternating left-right sections, full-width
+Spacing: 8px base, generous (py-16 to py-24 between sections)
+Components: Hero, feature grid, testimonials, pricing cards, CTA, footer
+Dark mode: Optional
+```
+
+### Form / Internal Tool
+```
+Colors: Neutral palette, blue for interactive, red for errors
+Typography: System-ui, 16px base, clear label hierarchy
+Layout: Single column forms (max-w-lg), sidebar for navigation
+Spacing: 4px base, moderate (gap-4 between fields, gap-8 between sections)
+Components: Input fields, selects, radio/checkbox, validation, buttons
+Dark mode: Match OS preference
+```
+
+### Card Grid (E-commerce, Content)
+```
+Colors: Minimal chrome, product images are the hero
+Typography: 16px body, bold prices, truncated titles (line-clamp-2)
+Layout: Responsive grid (1 col mobile, 2-3 tablet, 4 desktop), gap-4 to gap-6
+Spacing: 4px base, consistent card padding (p-4)
+Components: Product cards, filters sidebar, pagination, search
+Dark mode: Usually no (images look better on white)
+```
+
+### Email Template
+```
+Colors: Brand colors, high contrast (email clients vary wildly)
+Typography: System fonts only (16px body, 22-28px headings)
+Layout: Single column, max-width 600px, table-based for compatibility
+Spacing: Generous (20-30px between sections), padding via table cells
+Components: Header with logo, CTA button (not link), footer with unsubscribe
+Dark mode: Include dark mode meta tag + inverted-colors-safe palette
+```
+
+---
+
+## Step 7: Iteration & Visual Feedback
+
+### Iteration Loop
+1. Classify input → 2. Audit or intake → 3. Read knowledge files → 4. Generate design review notes + code → 5. User previews → 6. User gives feedback → 7. Adjust → 8. Repeat from 5
+
+### Handling Feedback
+Common user feedback and how to respond:
+
+| Feedback | What to Adjust |
+|---|---|
+| "Too much whitespace" | Reduce section spacing by one step (e.g., `py-16` → `py-12`), but don't go below readable minimums |
+| "Feels cramped" | Increase spacing by one step, add more margin between sections |
+| "The blue is too bright" | Shift to a darker shade (600→700) or reduce saturation |
+| "It looks boring" | Add one accent color, increase contrast between heading/body sizes, add subtle shadows |
+| "Too many colors" | Reduce to primary + neutral + one semantic color, use shades instead of hues |
+| "The font is weird" | Switch to system-ui or Inter — safe defaults that work everywhere |
+| "It doesn't look professional" | Tighten spacing, reduce border-radius (rounded-lg → rounded-md), mute colors, use system fonts |
+| "Make it pop more" | Increase size contrast between heading and body, add visual weight to CTAs, use whitespace to create focus |
+
+### Screenshot Tools
+- **Preview Tool** — paste HTML into the make-it-look-good preview tool for quick visual check
+- **Browser DevTools** — responsive mode for testing breakpoints
+- **LLM screenshot** — if the platform supports it (Claude desktop, Cursor, etc.), take one to review
+
+---
+
+## Templates
+
+Before/after examples are available in `templates/` for reference:
+- `templates/dashboard-before.html` / `dashboard-after.html`
+- `templates/landing-before.html` / `landing-after.html`
+- `templates/form-before.html` / `form-after.html`
+- `templates/card-grid-before.html` / `card-grid-after.html`
+
+Use these to show users what "good design" looks like compared to typical MVP output.
+
+## Validated Test Cases
+
+The `tests/` directory contains end-to-end validations of this consultation flow with real code:
+
+| Test Case | Input Stack | What It Proves |
+|---|---|---|
+| `test-case-1-react-settings` | React + inline styles | Flow works for React, outputs JSX (no forced Tailwind migration) |
+| `test-case-2-barebones-html` | Plain HTML + CSS | Flow works for bare HTML, suggests Tailwind CDN, full redesign |
+| `test-case-3-vue-dashboard` | Vue 3 SFC + scoped CSS | Flow works for Vue, outputs Vue SFC (preserves `<style scoped>`) |
+
+Each test case has:
+- **Input file** — realistic "old" code a real user would bring
+- **Review file** (`*-review.md`) — the design review notes generated by following this playbook
+- **After file** — the improved code in the user's original framework
+
+Use these to calibrate your output quality and verify the flow works.
