@@ -14,7 +14,7 @@
 
 ### [Step 2.5 / Personality] Glass personality is documented but does not exist
 CONSULT.md Step 2.5 lists "glass" as a personality with description "Frosted blur surfaces, gradient backgrounds, translucent borders" and marks it as suitable for "Modern SaaS, creative tools, product showcases." Step 1C question 3 also lists "Glass/Modern" as a design vibe option. However, **zero glass preset files exist** anywhere in `docs/presets/`. An LLM following the flow would try to load `docs/presets/{element}/glass.html`, fail, and either hallucinate a glass design or fall back silently.
-- [ ] Either create glass personality presets for at least the core elements (dashboard, landing, form, cards, shell-sidebar, hero), OR remove "glass" from CONSULT.md Step 1C question 3 and the Step 2.5 personality table
+- [x] Removed Glass from CONSULT.md for at least the core elements (dashboard, landing, form, cards, shell-sidebar, hero), OR remove "glass" from CONSULT.md Step 1C question 3 and the Step 2.5 personality table
 
 ### [Step 2.5 / Personality] Editorial personality barely exists (2 of 27 elements)
 CONSULT.md lists "editorial" as a full personality option. Only `form/editorial.html` and `landing/editorial.html` exist. An LLM asked to build an editorial dashboard, card grid, or shell has no preset to start from.
@@ -22,11 +22,11 @@ CONSULT.md lists "editorial" as a full personality option. Only `form/editorial.
 
 ### [Step 1C / Personality] Bold personality listed in intake but has zero presets
 Step 1C question 3 lists "Bold — sharp/zero-radius corners, heavy font weights, offset shadows, uppercase headings, high contrast" as a design vibe option. There are **no bold personality presets** at all. The recent commit message "remove Bold style" confirms it was deliberately removed, but the intake question still offers it.
-- [ ] Remove "Bold" from Step 1C question 3, OR re-create bold presets. If removing, update the description of other personalities to cover the bold use cases (e.g., note that "clean" with zero-radius and heavy weights can achieve a bold look)
+- [x] Removed Bold from Step 1C question 3, OR re-create bold presets. If removing, update the description of other personalities to cover the bold use cases (e.g., note that "clean" with zero-radius and heavy weights can achieve a bold look)
 
 ### [Step 1A / Audit] No guidance on script safety or XSS in user-submitted HTML
 When auditing existing code that gets loaded into the preview tool (which uses `srcdoc` + `sandbox="allow-scripts"`), there is no checklist item for checking whether user code contains `<script>` tags that could cause issues. The preview tool sandboxes scripts but CONSULT.md doesn't tell the LLM to warn users about script content or sanitization.
-- [ ] Add a checklist item under "Semantic HTML & Accessibility" in Step 1A: "Does the HTML contain inline `<script>` tags? If loading in the preview tool, scripts execute in the sandbox. Warn the user if scripts make network requests or modify `document.cookie`"
+- [x] Added script safety check & Accessibility" in Step 1A: "Does the HTML contain inline `<script>` tags? If loading in the preview tool, scripts execute in the sandbox. Warn the user if scripts make network requests or modify `document.cookie`"
 
 ---
 
@@ -34,15 +34,15 @@ When auditing existing code that gets loaded into the preview tool (which uses `
 
 ### [Step 2.5] No guidance on how personality affects design tokens
 CONSULT.md tells the LLM to select a personality and load the template, but Step 3a (Design Tokens) always shows the same blue-600/slate defaults. There is no mapping from personality to token values. An LLM would generate playful HTML but provide clean tokens.
-- [ ] Add a personality-to-token table in Step 3a showing how border-radius, shadow style, font weight, animation timing, and spacing density change per personality. Example: playful = rounded-2xl, shadow-lg with color, font-bold headings, 300ms bouncy transitions; minimalist = rounded-none or rounded-sm, no shadows, font-light headings, 150ms subtle transitions
+- [x] Added personality-to-token table in Step 3a showing how border-radius, shadow style, font weight, animation timing, and spacing density change per personality. Example: playful = rounded-2xl, shadow-lg with color, font-bold headings, 300ms bouncy transitions; minimalist = rounded-none or rounded-sm, no shadows, font-light headings, 150ms subtle transitions
 
 ### [Step 2.5] Personality table doesn't match actual preset availability
 The personality table in Step 2.5 shows 5 personalities (clean, minimalist, playful, glass, editorial). The actual presets are almost exclusively clean/minimalist/playful. The index.json has some elements with only clean, and the "before" variants are separate. An LLM consulting the table gets a false picture.
-- [ ] Add a note: "Not all personalities are available for all elements. Check `docs/presets/index.json` for the actual manifest. If a personality file doesn't exist for the requested element, use the 'clean' variant as base and apply the personality's visual characteristics manually"
+- [x] Added availability note are available for all elements. Check `docs/presets/index.json` for the actual manifest. If a personality file doesn't exist for the requested element, use the 'clean' variant as base and apply the personality's visual characteristics manually"
 
 ### [Step 1C] No question about content volume or data density
 The intake asks what they're building and who uses it, but never asks "How much content/data will be on screen?" A dashboard with 3 metrics and a dashboard with 50 rows of data need fundamentally different spacing, font sizes, and layout approaches. The Design Profiles (Step 6) hint at this (14px base for dashboards) but the intake doesn't surface it.
-- [ ] Add intake question: "How data-dense is this? (a) Light — few items, generous whitespace (b) Medium — standard content amount (c) Dense — lots of data/metrics/rows visible at once." Use this to adjust spacing system (4px compact vs 8px generous) and base font size
+- [x] Added data density question is this? (a) Light — few items, generous whitespace (b) Medium — standard content amount (c) Dense — lots of data/metrics/rows visible at once." Use this to adjust spacing system (4px compact vs 8px generous) and base font size
 
 ### [Step 2] Knowledge file matrix is missing several files
 The Step 2 matrix doesn't reference these existing files anywhere:

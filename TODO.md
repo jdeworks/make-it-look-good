@@ -16,31 +16,31 @@ Note: The 5 `before` files (cards/before, dashboard/before, form/before, landing
 ## Critical Issues
 
 ### [accordion/clean.html] Unescaped `</script>` tag
-- [ ] Line 197: `</script>` should be `<\/script>` — will break when loaded as innerHTML in the preview tool
+- [x] Fixed: escaped </script> should be `<\/script>` — will break when loaded as innerHTML in the preview tool
 
 ### [dropdown/clean.html] Unescaped `</script>` tag
-- [ ] Line 100: `</script>` should be `<\/script>` — will break when loaded as innerHTML in the preview tool
+- [x] Fixed: escaped </script> should be `<\/script>` — will break when loaded as innerHTML in the preview tool
 
 ### [tabs/clean.html] Unescaped `</script>` tag
-- [ ] Line 87: `</script>` should be `<\/script>` — will break when loaded as innerHTML in the preview tool
+- [x] Fixed: escaped </script> should be `<\/script>` — will break when loaded as innerHTML in the preview tool
 
 ### [pricing/clean.html] Unescaped `</script>` tag
-- [ ] Line 285: `</script>` should be `<\/script>` — will break when loaded as innerHTML in the preview tool
+- [x] Fixed: escaped </script> should be `<\/script>` — will break when loaded as innerHTML in the preview tool
 
 ### [project/before.html] Unescaped `</script>` tag
-- [ ] Line 109: `</script>` should be `<\/script>` — will break when loaded as innerHTML in the preview tool (the minimalist/playful/clean variants of the same elements already escape correctly)
+- [x] Fixed: escaped </script> should be `<\/script>` — will break when loaded as innerHTML in the preview tool (the minimalist/playful/clean variants of the same elements already escape correctly)
 
 ### [osslanding/clean.html] No touch targets on any buttons/links
-- [ ] File has 13 buttons/links but zero `min-h-11` or equivalent — all interactive elements fail the 44px minimum. Add `min-h-11` to all `<button>` and `<a>` elements with interactive purpose
+- [x] Fixed: added min-h-11 to all `<button>` and `<a>` elements with interactive purpose
 
 ### [portfolio/clean.html] No touch targets on any buttons/links
-- [ ] File has 17 buttons/links but zero `min-h-11` or equivalent — all interactive elements fail the 44px minimum. Add `min-h-11` to all `<button>` and `<a>` elements
+- [x] Fixed: added min-h-11 to all `<button>` and `<a>` elements
 
 ### [pricing-cards/clean.html] No touch targets on any buttons/links
-- [ ] File has 3 buttons/links but zero `min-h-11` or equivalent — all CTA buttons fail the 44px minimum. Add `min-h-11` to all `<button>` and `<a>` elements
+- [x] Fixed: added min-h-11 to all `<button>` and `<a>` elements
 
 ### [data-table/clean.html] No touch targets on sort buttons
-- [ ] File has 5 sort buttons in table headers with no `min-h-11` — these are interactive but lack touch target sizing. Add `min-h-11` to sort `<button>` elements
+- [x] Fixed: added min-h-11 to sort `<button>` elements
 
 ---
 
@@ -53,37 +53,37 @@ Note: The 5 `before` files (cards/before, dashboard/before, form/before, landing
 - [ ] File has zero `dark:` class variants — all backgrounds, text, and borders lack dark mode. Add `dark:` variants to all visible elements (backgrounds, text colors, borders)
 
 ### [buttons/clean.html] Uses `text-gray-400` for section labels in light mode
-- [ ] Multiple instances of `text-gray-400 dark:text-gray-500` used for section sub-headings (lines 63, 74, 94, 114, 133, etc.) — gray-400 (#9ca3af) against white bg is only ~2.7:1 contrast ratio, below the 4.5:1 AA minimum. Change to `text-gray-500 dark:text-gray-400` (gray-500 = #6b7280, ~4.6:1)
+- [x] Fixed: text-gray-400 dark:text-gray-500` used for section sub-headings (lines 63, 74, 94, 114, 133, etc.) — gray-400 (#9ca3af) against white bg is only ~2.7:1 contrast ratio, below the 4.5:1 AA minimum. Change to `text-gray-500 dark:text-gray-400` (gray-500 = #6b7280, ~4.6:1)
 
 ### [shell-dashboard/clean.html] Missing `autocomplete` on search input
-- [ ] Search input lacks `autocomplete` attribute — add `autocomplete="off"` or appropriate value
+- [x] Fixed: added autocomplete attribute — add `autocomplete="off"` or appropriate value
 
 ### [shell-dashboard/minimalist.html] Missing `autocomplete` on search input
-- [ ] Search input lacks `autocomplete` attribute — add `autocomplete="off"` or appropriate value
+- [x] Fixed: added autocomplete attribute — add `autocomplete="off"` or appropriate value
 
 ### [shell-dashboard/playful.html] Missing `autocomplete` on search input
-- [ ] Search input lacks `autocomplete` attribute — add `autocomplete="off"` or appropriate value
+- [x] Fixed: added autocomplete attribute — add `autocomplete="off"` or appropriate value
 
 ### [shell-sidebar/clean.html] Missing `autocomplete` on search input
-- [ ] Search input lacks `autocomplete` attribute — add `autocomplete="off"` or appropriate value
+- [x] Fixed: added autocomplete attribute — add `autocomplete="off"` or appropriate value
 
 ### [shell-sidebar/minimalist.html] Missing `autocomplete` on search input
-- [ ] Search input lacks `autocomplete` attribute — add `autocomplete="off"` or appropriate value
+- [x] Fixed: added autocomplete attribute — add `autocomplete="off"` or appropriate value
 
 ### [shell-sidebar/playful.html] Missing `autocomplete` on search input
-- [ ] Search input lacks `autocomplete` attribute — add `autocomplete="off"` or appropriate value
+- [x] Fixed: added autocomplete attribute — add `autocomplete="off"` or appropriate value
 
 ### [shell-form/clean.html] Missing `autocomplete` on form inputs
-- [ ] Form inputs lack `autocomplete` attributes — add appropriate values (e.g., `autocomplete="email"`, `autocomplete="name"`)
+- [x] Fixed: added autocomplete attributes — add appropriate values (e.g., `autocomplete="email"`, `autocomplete="name"`)
 
 ### [statuspage/clean.html] Missing `autocomplete` on input
-- [ ] Input element lacks `autocomplete` attribute
+- [x] Fixed: added autocomplete attribute
 
 ### [statuspage/minimalist.html] Missing `autocomplete` on input
-- [ ] Input element lacks `autocomplete` attribute
+- [x] Fixed: added autocomplete attribute
 
 ### [statuspage/playful.html] Missing `autocomplete` on input
-- [ ] Input element lacks `autocomplete` attribute
+- [x] Fixed: added autocomplete attribute
 
 ### [feature-grid/clean.html] Missing `min-h-screen` wrapper
 - [ ] Component section preset — no `min-h-screen` wrapper. These are section-level components so they may not need full page height, but they lack any centering/padding wrapper for standalone preview
@@ -108,7 +108,7 @@ Note: The 5 `before` files (cards/before, dashboard/before, form/before, landing
 ## Minor Issues
 
 ### [accordion/clean.html] No `<nav>` or `aria-label` on FAQ container
-- [ ] FAQ accordion groups lack `aria-label` — add descriptive labels to the accordion group containers
+- [x] Fixed: added aria-label `aria-label` — add descriptive labels to the accordion group containers
 
 ### [accordion/minimalist.html] Fewer FAQ items than clean variant
 - [ ] Clean has 8 items (5 General + 3 Account & Billing), minimalist has only 5 General items — content parity mismatch. Add Account & Billing section to match clean variant
