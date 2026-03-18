@@ -303,6 +303,18 @@ function toggleDarkMode() {
   updatePreview();
 }
 
+// --- Fullscreen preview ---
+function toggleFullscreen() {
+  document.body.classList.toggle('fullscreen-preview');
+  document.getElementById('fullscreenBtn').classList.toggle('active', document.body.classList.contains('fullscreen-preview'));
+}
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape' && document.body.classList.contains('fullscreen-preview')) {
+    toggleFullscreen();
+  }
+});
+
 // --- Templates (loaded from presets/ directory) ---
 const presetCache = {};
 let manifestData = null;
@@ -664,18 +676,30 @@ function shareDesign() {
     showToast('Nothing to share — add some HTML first');
     return;
   }
-  // Check if content matches current loaded preset
-  const isPreset = currentElement && currentPersonality && html === originalPresetHtml;
   try {
     let fragment;
-    if (isPreset) {
-      fragment = 'preset:' + currentElement + '/' + currentPersonality;
+    let label;
+    if (currentElement && currentPersonality && !userEdited) {
+      // Share as config — encodes element, personality, color, style
+      let cfg = currentElement + '/' + currentPersonality;
+      const defaultColor = getElementPrimary(currentElement, currentPersonality);
+      if (currentColorName && currentColorName !== defaultColor) {
+        cfg += '/' + currentColorName;
+      }
+      if (currentStyleIndex > 0) {
+        // Pad color slot if needed
+        if (!cfg.includes('/', cfg.indexOf('/') + 1)) cfg += '/' + defaultColor;
+        cfg += '/' + visualStyles[currentStyleIndex].name.toLowerCase();
+      }
+      fragment = 'preset:' + cfg;
+      label = 'Preset link copied';
     } else {
       fragment = 'code:' + btoa(unescape(encodeURIComponent(html)));
+      label = 'Link copied to clipboard';
     }
     const url = window.location.origin + window.location.pathname + '#' + fragment;
     navigator.clipboard.writeText(url).then(() => {
-      showToast(isPreset ? 'Preset link copied' : 'Link copied to clipboard');
+      showToast(label);
     }).catch(() => {
       prompt('Copy this link:', url);
     });
@@ -697,13 +721,25 @@ async function loadFromHash() {
   if (!hash) return;
 
   // Preset link — trusted, load directly
+  // Format: preset:element/personality[/color][/style]
   if (hash.startsWith('preset:')) {
     const path = hash.slice(7);
     const parts = path.split('/');
     const element = parts[0];
     const personality = parts[1] || 'clean';
+    const color = parts[2] || null;
+    const style = parts[3] || null;
     await loadManifest();
     await loadPreset(element, personality);
+    // Apply color theme if specified
+    if (color && tailwindColors[color]) {
+      selectTheme(color);
+    }
+    // Apply style if specified
+    if (style) {
+      const idx = visualStyles.findIndex(s => s.name.toLowerCase() === style);
+      if (idx >= 0) selectStyle(idx);
+    }
     return;
   }
 
