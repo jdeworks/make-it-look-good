@@ -335,6 +335,22 @@
       box-shadow: 0 0 0 2px var(--bg);
     }
 
+    .pers-btn {
+      padding: 3px 10px;
+      border: 1.5px solid var(--primary);
+      border-radius: 9999px;
+      background: var(--bg);
+      color: var(--primary);
+      font-size: 11px;
+      font-weight: 600;
+      font-family: var(--font);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+    .pers-btn:hover { background: var(--primary); color: white; }
+    .pers-btn.active { background: var(--primary); color: white; }
+
     .style-btn {
       padding: 3px 8px;
       border: 1px solid var(--border);
@@ -348,7 +364,7 @@
       white-space: nowrap;
     }
     .style-btn:hover { border-color: #94a3b8; }
-    .style-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+    .style-btn.active { background: var(--text); color: var(--bg); border-color: var(--text); }
 
     .presets-menu button {
       display: block;
@@ -476,7 +492,9 @@
         <span>Preview</span>
         <div id="personalityButtons" style="display:none;align-items:center;gap:3px;"></div>
         <div id="themeSwatches" style="display:none;align-items:center;gap:5px;border-left:1px solid var(--border);padding-left:8px;margin-left:4px;"></div>
-        <div id="styleButtons" style="display:none;align-items:center;gap:3px;border-left:1px solid var(--border);padding-left:8px;margin-left:4px;"></div>
+        <div id="styleButtons" style="display:none;align-items:center;gap:3px;border-left:1px solid var(--border);padding-left:8px;margin-left:4px;">
+          <span style="font-size:9px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.08em;margin-right:2px;">Style</span>
+        </div>
         <span id="viewportLabel" style="font-weight:400; text-transform:none; letter-spacing:normal;">Full width</span>
       </div>
       <div class="preview-container">
@@ -838,7 +856,10 @@ document.querySelectorAll('form').forEach(function(f) {
 
     function renderStyleButtons(presetName) {
       const container = document.getElementById('styleButtons');
+      // Keep the "Style" label span, clear only buttons
+      const label = container.querySelector('span');
       container.innerHTML = '';
+      if (label) container.appendChild(label);
       if (!presetName) {
         container.style.display = 'none';
         return;
@@ -877,7 +898,7 @@ document.querySelectorAll('form').forEach(function(f) {
       container.style.display = 'flex';
       for (const pers of personalities) {
         const btn = document.createElement('button');
-        btn.className = 'style-btn' + (pers === activePersonality ? ' active' : '');
+        btn.className = 'pers-btn' + (pers === activePersonality ? ' active' : '');
         btn.textContent = pers.charAt(0).toUpperCase() + pers.slice(1);
         btn.onclick = () => loadPreset(element, pers);
         container.appendChild(btn);
