@@ -11,67 +11,66 @@ let originalPresetHtml = '';
 let inspectMode = false;
 let sourceMap = null;
 
-// --- CodeMirror editor ---
-let cmView = null;
+// --- Monaco editor ---
+let monacoEditor = null;
+let suppressChangeEvent = false;
 
-function initCodeMirror() {
-  const { EditorView, basicSetup, html, oneDark, EditorState } = window._cmModules;
-  const updateListener = EditorView.updateListener.of(update => {
-    if (update.docChanged) {
-      if (currentPresetName && !userEdited) {
-        userEdited = true;
-        updateTemplateName();
-      }
-      if (currentElement) {
-        currentElement = null;
-        currentPersonality = null;
-        currentPresetName = null;
-        originalPresetHtml = '';
-        currentStyleIndex = 0;
-        userEdited = false;
-        document.getElementById('personalityButtons').style.display = 'none';
-        document.getElementById('themeSwatches').style.display = 'none';
-        document.getElementById('styleButtons').style.display = 'none';
-        updateTemplateName();
-      }
-      debouncedUpdate();
-    }
+function initMonaco() {
+  monacoEditor = monaco.editor.create(document.getElementById('editorContainer'), {
+    value: '',
+    language: 'html',
+    theme: 'vs-dark',
+    minimap: { enabled: false },
+    fontSize: 13,
+    fontFamily: "var(--mono), 'JetBrains Mono', 'Fira Code', monospace",
+    wordWrap: 'on',
+    lineNumbers: 'on',
+    scrollBeyondLastLine: false,
+    automaticLayout: true,
+    tabSize: 2,
+    renderWhitespace: 'none',
+    padding: { top: 8 },
   });
 
-  cmView = new EditorView({
-    state: EditorState.create({
-      doc: '',
-      extensions: [
-        basicSetup,
-        html(),
-        oneDark,
-        updateListener,
-        EditorView.lineWrapping,
-        EditorView.theme({
-          '&': { height: '100%', fontSize: '13px' },
-          '.cm-scroller': { overflow: 'auto', fontFamily: 'var(--mono)' },
-          '.cm-content': { minHeight: '100%' },
-        }),
-      ],
-    }),
-    parent: document.getElementById('editorContainer'),
+  monacoEditor.onDidChangeModelContent(() => {
+    if (suppressChangeEvent) return;
+    if (currentPresetName && !userEdited) {
+      userEdited = true;
+      updateTemplateName();
+    }
+    if (currentElement) {
+      currentElement = null;
+      currentPersonality = null;
+      currentPresetName = null;
+      originalPresetHtml = '';
+      currentStyleIndex = 0;
+      userEdited = false;
+      document.getElementById('personalityButtons').style.display = 'none';
+      document.getElementById('themeSwatches').style.display = 'none';
+      document.getElementById('styleButtons').style.display = 'none';
+      updateTemplateName();
+    }
+    debouncedUpdate();
   });
 }
 
 // Compatibility layer — replaces editor.value usage
 const editor = {
-  get value() { return cmView ? cmView.state.doc.toString() : ''; },
+  get value() { return monacoEditor ? monacoEditor.getValue() : ''; },
   set value(v) {
-    if (!cmView) return;
-    cmView.dispatch({
-      changes: { from: 0, to: cmView.state.doc.length, insert: v },
-    });
+    if (!monacoEditor) return;
+    suppressChangeEvent = true;
+    monacoEditor.setValue(v);
+    suppressChangeEvent = false;
   },
-  focus() { if (cmView) cmView.focus(); },
+  focus() { if (monacoEditor) monacoEditor.focus(); },
   setSelectionRange(start, end) {
-    if (!cmView) return;
-    cmView.dispatch({ selection: { anchor: start, head: end } });
-    cmView.focus();
+    if (!monacoEditor) return;
+    const model = monacoEditor.getModel();
+    const startPos = model.getPositionAt(start);
+    const endPos = model.getPositionAt(end);
+    monacoEditor.setSelection({ startLineNumber: startPos.lineNumber, startColumn: startPos.column, endLineNumber: endPos.lineNumber, endColumn: endPos.column });
+    monacoEditor.focus();
   },
 };
 
@@ -1145,10 +1144,10 @@ const inspectorAgentScript = `
 
 // Scroll editor to show a given character offset, centered vertically
 function scrollEditorToOffset(offset) {
-  if (!cmView) return;
-  cmView.dispatch({
-    effects: window._cmModules.EditorView.scrollIntoView(offset, { y: 'center' }),
-  });
+  if (!monacoEditor) return;
+  const model = monacoEditor.getModel();
+  const pos = model.getPositionAt(offset);
+  monacoEditor.revealPositionInCenter(pos);
 }
 
 // Parent-side message handler
@@ -1192,7 +1191,7 @@ window.addEventListener('message', function(e) {
 
 // --- Init ---
 function startApp() {
-  initCodeMirror();
+  initMonaco();
   initMobile();
   loadFromHash().then(() => {
     if (!editor.value) {
@@ -1201,9 +1200,9 @@ function startApp() {
   });
 }
 
-// CodeMirror modules load async via <script type="module"> — wait for them
-if (window._cmModules) {
+// Monaco loads async via require() — wait for it
+if (window._monacoReady) {
   startApp();
 } else {
-  window.addEventListener('cm-ready', startApp);
+  window.addEventListener('monaco-ready', startApp);
 }
