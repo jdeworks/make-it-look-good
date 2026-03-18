@@ -224,9 +224,12 @@ editor.addEventListener('input', () => {
 // --- Viewport ---
 function setViewport(size, e) {
   currentViewport = size;
-  const btns = document.querySelectorAll('.viewport-group .btn');
-  btns.forEach(b => b.classList.remove('active'));
-  if (e && e.currentTarget) e.currentTarget.classList.add('active');
+  // Scope active state to the group containing the clicked button
+  if (e && e.currentTarget) {
+    const group = e.currentTarget.closest('.viewport-group');
+    if (group) group.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+    e.currentTarget.classList.add('active');
+  }
 
   if (size === 'full') {
     preview.style.width = '100%';
@@ -753,8 +756,9 @@ function setMobileTab(tab) {
 // On mobile, default to 320px viewport and preview tab
 function initMobile() {
   if (window.innerWidth <= 768) {
-    setViewport(320);
-    // Ensure mobile viewport xs button is active
+    currentViewport = 320;
+    preview.style.width = '320px';
+    viewportLabel.textContent = '320px';
     document.querySelectorAll('.mobile-viewports .btn').forEach((b, i) => {
       b.classList.toggle('active', i === 0);
     });

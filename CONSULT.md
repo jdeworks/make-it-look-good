@@ -278,9 +278,9 @@ Templates live in `docs/presets/{element}/{personality}.html`. Each element can 
 
 | Personality | Visual Character | Best For | Availability |
 |------------|-----------------|----------|-------------|
-| **clean** | Standard Tailwind, rounded-xl, subtle shadows, system sans | Safe default, B2B SaaS, internal tools | All 28 elements |
-| **minimalist** | No shadows, hairline borders, light fonts (300), extreme whitespace | Luxury, Japanese-inspired, portfolios, Scandinavian | All 28 elements |
-| **playful** | Big rounded corners (16-24px), colorful shadows, bouncy animations | Consumer apps, children's products, social platforms | All 28 elements |
+| **clean** | Standard Tailwind, rounded-xl, subtle shadows, system sans | Safe default, B2B SaaS, internal tools | All 30 elements |
+| **minimalist** | No shadows, hairline borders, light fonts (300), extreme whitespace | Luxury, Japanese-inspired, portfolios, Scandinavian | All 30 elements |
+| **playful** | Big rounded corners (16-24px), colorful shadows, bouncy animations | Consumer apps, children's products, social platforms | All 30 elements |
 | **editorial** | Serif headings (Playfair Display), no shadows, fine borders, muted palette | Publishing, blogs, law firms, premium brands | form, landing only (use clean + serif for others) |
 
 ### Using Personality Templates

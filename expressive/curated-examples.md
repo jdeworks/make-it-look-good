@@ -5,7 +5,7 @@
 ## Core Principles
 
 1. **Design approach comes before technology** — pick the visual personality first, then choose the CSS techniques that serve it
-2. **Every great site constrains itself** — Stripe uses 2 gradients, not 20. Linear uses one accent color on dark. Constraint creates coherence.
+2. **Every great site constrains itself** — the best dark UIs use 2 gradients, not 20. The best editorial sites use one accent color. Constraint creates coherence.
 3. **Copy the system, not the surface** — the spacing scale, the color ratio, the type hierarchy matter more than the exact gradient
 4. **Techniques combine** — dark premium sites use gradient mesh + glow + stagger. Editorial sites use whitespace + type scale + no decoration. Know which techniques cluster together.
 5. **Performance is part of the design** — a 4-second load with WebGL destroys the experience. Choose techniques appropriate to the project scope.
@@ -13,12 +13,6 @@
 ---
 
 ## Design Approach 1: Dark Premium / Developer Aesthetic
-
-### Real Examples
-- **stripe.com** — gradient mesh hero, layered depth with overlapping cards, animated code blocks
-- **linear.app** — near-black UI (#0A0A0F) with single color accents (violet-500), grid dot animations using `steps(1, end)`, keyboard shortcut hints
-- **vercel.com** — glow effects via radial gradients, Geist mono font for code, radial gradient backgrounds fading to transparent
-- **brittanychiang.com** — dark navy (#0a192f), emerald accents (#64ffda), sticky sidebar + scrolling content, project cards with hover glow
 
 ### What Makes It Work
 - Background: near-black (not pure #000 — use #0A0A0F, #0a192f, or slate-950)
@@ -30,7 +24,7 @@
 
 ### Replicable Patterns
 
-#### Gradient Mesh Hero (Stripe-style)
+#### Gradient Mesh Hero
 ```css
 .hero-gradient {
   background:
@@ -41,7 +35,7 @@
 }
 ```
 
-#### Single-Accent Dark UI (Linear-style)
+#### Single-Accent Dark UI
 ```css
 :root {
   --bg-primary: #0A0A0F;
@@ -65,7 +59,7 @@
 }
 ```
 
-#### Hover Glow Card (Brittany Chiang-style)
+#### Hover Glow Card
 ```css
 .project-card {
   background: rgba(255, 255, 255, 0.03);
@@ -86,11 +80,6 @@ See also: [visual-identity.md](visual-identity.md) for building a cohesive dark 
 
 ## Design Approach 2: Minimal Editorial / Typography-First
 
-### Real Examples
-- **rauno.me** — manifesto-style intro, system font stack, strict 8px spacing scale, zero decoration, content is the design
-- **leerob.com** — single column (max-w-2xl), conversational inline links, blog-first layout, near-zero visual complexity
-- **apple.com** — SF Pro, edge-to-edge imagery, "large image + headline + 2 CTAs" pattern, extreme whitespace between sections
-
 ### What Makes It Work
 - Maximum content width: 640–720px (max-w-2xl) for reading comfort
 - Type scale does all the heavy lifting — h1 at 48–72px, body at 16–18px, no decorative elements needed
@@ -101,7 +90,7 @@ See also: [visual-identity.md](visual-identity.md) for building a cohesive dark 
 
 ### Replicable Patterns
 
-#### Manifesto Layout (Rauno-style)
+#### Manifesto Layout
 ```css
 .editorial-page {
   max-width: 640px;
@@ -137,7 +126,7 @@ See also: [visual-identity.md](visual-identity.md) for building a cohesive dark 
 }
 ```
 
-#### Large Image + Headline + CTAs (Apple-style)
+#### Large Image + Headline + CTAs
 ```html
 <section class="py-32 text-center">
   <img src="product.jpg" alt="Product"
@@ -159,11 +148,6 @@ See also: [../typography/type-scale.md](../typography/type-scale.md), [../layout
 
 ## Design Approach 3: Friendly / Approachable SaaS
 
-### Real Examples
-- **notion.com** — custom mascot illustrations, bento grid feature layout, saturated color blocks (yellow, pink, blue), conversational headline tone
-- **slack.com** — playful copy with clarity, delightful micro-interactions, aubergine brand color with bright accents
-- **mailchimp.com** — educational structure, helpful microcopy in forms, Freddie mascot, yellow brand with illustrative warmth
-
 ### What Makes It Work
 - Rounded corners everywhere (12–16px on cards, fully rounded on avatars/icons)
 - Warm or saturated brand colors — not corporate blue, but yellow, pink, purple
@@ -174,7 +158,7 @@ See also: [../typography/type-scale.md](../typography/type-scale.md), [../layout
 
 ### Replicable Patterns
 
-#### Bento Grid Features (Notion-style)
+#### Bento Grid Features
 ```css
 .bento-grid {
   display: grid;
@@ -235,11 +219,6 @@ See also: [../components/cards.md](../components/cards.md), [hero-patterns.md](h
 ---
 
 ## Design Approach 4: Immersive / Scroll-Storytelling
-
-### Real Examples
-- **sumairha.com** — WebGL fluid background, custom cursor system (8px dot + 40px ring), staggered cascade reveal with delays 80–360ms, preloader as narrative gateway
-- **Cappen** (awwwards.com) — scroll-triggered layer animations, modular section systems, each scroll position reveals a new composition
-- **apple.com/airpods-pro** — scroll-driven product photography, specs revealed on scroll, parallax depth layers
 
 ### What Makes It Work
 - Scroll position drives everything: content reveals, parallax, transforms
@@ -358,11 +337,6 @@ See also: [scroll-storytelling.md](scroll-storytelling.md), [purposeful-motion.m
 
 ## Design Approach 5: Bold Creative / Agency
 
-### Real Examples
-- **Grit Pictures** — torn edges via `clip-path`, collage details, monochrome palette with single highlight color
-- **Ragged Edge** (raggededge.com) — large-scale typography (clamp(3rem, 8vw, 10rem)), high-contrast black/white, full-bleed images
-- **Award-winning agency sites** — horizontal scroll sections, oversized sans-serif headings, mix-blend-mode overlays
-
 ### What Makes It Work
 - Typography IS the design — headings at 80–160px, often with negative letter-spacing (-0.04em)
 - High contrast: pure black on white or white on black, no grays in between
@@ -435,11 +409,6 @@ See also: [scroll-storytelling.md](scroll-storytelling.md), [purposeful-motion.m
 ---
 
 ## Design Approach 6: E-commerce / Product-Focused
-
-### Real Examples
-- **apple.com product pages** — full-bleed product photos on white/black, minimal text, scroll-triggered spec reveals, "tile grid" feature comparisons
-- **Stripe product pages** — animated code snippets, interactive demos, alternating light/dark sections
-- **Aesop** (aesop.com) — large product photography, muted earth tones, typography-driven product descriptions
 
 ### What Makes It Work
 - Product image is the hero — full-bleed, high resolution, minimal surrounding UI
@@ -549,7 +518,7 @@ body        { font-family: var(--font-body); }
 
 **Note:** Clash Display and Satoshi are from [fontshare.com](https://www.fontshare.com/) (free for personal and commercial use) — not Google Fonts.
 
-See also: [../typography/font-pairing.md](../typography/font-pairing.md), [../typography/web-fonts.md](../typography/web-fonts.md).
+See also: [../typography/font-pairing.md](../typography/font-pairing.md), [../typography/web-font-loading.md](../typography/web-font-loading.md).
 
 ---
 
@@ -814,17 +783,25 @@ Choosing a design approach:
    └─ Showcase / portfolio (performance secondary) → Immersive (WebGL, heavy animation)
 ```
 
-## Sources
+## Sources & Inspiration
 
-- Stripe.com design analysis — gradient mesh, layered card depth, animated code
-- Linear.app changelog and design system — dark UI conventions, `steps()` animation
-- Vercel.com — Geist font family, radial glow effects
-- brittanychiang.com — portfolio layout patterns, hover glow cards
-- rauno.me — minimal editorial, system font stack, 8px grid
-- Notion.com — bento grid layout, illustrative SaaS design
-- Apple Human Interface Guidelines — whitespace, typography scale, product photography
-- [Awwwards](https://www.awwwards.com/) — curated immersive and creative site examples
-- [Fontshare](https://www.fontshare.com/) — Clash Display, Satoshi, General Sans
+### Design Galleries
+- [Awwwards](https://www.awwwards.com/) — curated award-winning web design, searchable by category
+- [Muzli](https://muz.li/) — design inspiration feed, portfolio roundups
+- [Godly](https://godly.website/) — curated web design inspiration
+
+### Inspiration by Approach
+The CSS techniques in this file are generic patterns found across modern web design. For reference, sites known for excelling at each approach:
+- **Dark Premium:** Stripe, Linear, Vercel, Arc Browser — gradient meshes, glow effects, monospace type
+- **Minimal Editorial:** Rauno Freiberg, Lee Robinson, Apple — system fonts, extreme whitespace, content-first
+- **Friendly SaaS:** Notion, Slack, Mailchimp — illustrations, bento grids, conversational tone
+- **Immersive:** Awwwards SOTD winners, creative portfolios — WebGL, custom cursors, scroll-driven reveals
+- **Bold Creative:** Agency portfolios on Awwwards — oversized type, clip-paths, mix-blend-mode
+- **Product-Focused:** Apple product pages, Aesop — full-bleed imagery, scroll-driven specs
+
+### Tools
+- [Fontshare](https://www.fontshare.com/) — Clash Display, Satoshi, General Sans (free)
 - [Google Fonts](https://fonts.google.com/) — all listed font pairings
-- [Picsum Photos](https://picsum.photos/) — placeholder image API documentation
-- [Placehold.co](https://placehold.co/) — placeholder image service documentation
+- [Picsum Photos](https://picsum.photos/) — placeholder image API
+- [Placehold.co](https://placehold.co/) — labeled placeholder images
+- [Unsplash](https://unsplash.com/) — free photography (attribution appreciated)
