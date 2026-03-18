@@ -246,9 +246,38 @@ Based on what you learned in Step 1, read the relevant files. **Read the minimum
 
 ---
 
-## Step 2.5: Select Starting Snippets
+## Step 2.5: Select Starting Snippets & Personality
 
-Before generating code from scratch, check if a snippet from [`snippets/_index.md`](snippets/_index.md) can serve as a starting point. This saves time and ensures design consistency.
+Before generating code from scratch, check the **live preview tool** for starting points. The preview tool at `docs/index.html` has templates organized by element and personality.
+
+### Show the User Examples
+
+If the user is unsure about their design vibe (intake question 3), point them to the preview tool:
+
+> *"Take a look at the [live preview tool](docs/index.html) — try loading the same template in different personalities (Clean, Minimalist, Playful, Glass, Editorial) to see which direction feels right for your project. Tell me which one resonates and we'll build from there."*
+
+### Personality → Template Mapping
+
+Templates live in `docs/presets/{element}/{personality}.html`. Each element can have multiple personality variants with genuinely different HTML structures (not just CSS changes):
+
+| Personality | Visual Character | Best For |
+|------------|-----------------|----------|
+| **clean** | Standard Tailwind, rounded-xl, subtle shadows, system sans | Safe default, B2B SaaS, internal tools |
+| **minimalist** | No shadows, hairline borders, light fonts, extreme whitespace | Luxury, editorial, Japanese-inspired, portfolios |
+| **playful** | Big rounded corners, colorful shadows, bouncy animations, zigzag layouts | Consumer apps, children's products, social platforms |
+| **glass** | Frosted blur surfaces, gradient backgrounds, translucent borders | Modern SaaS, creative tools, product showcases |
+| **editorial** | Serif headings (Playfair Display), no shadows, fine borders, muted palette | Publishing, blogs, law firms, premium brands |
+
+### Using Personality Templates
+
+1. Based on intake question 3 (design vibe), select the matching personality
+2. Load the template from `docs/presets/{element}/{personality}.html`
+3. Use it as the HTML starting point — customize content, colors, and branding
+4. The color theme switcher in the preview tool lets users explore color variations on any personality
+
+### Snippet Index
+
+Also check [`snippets/_index.md`](snippets/_index.md) for component-level snippets and composition recipes.
 
 ### By Project Type
 
