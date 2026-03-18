@@ -3,6 +3,7 @@
 > Evidence-based design knowledge base for LLMs and developers. Concrete guidance with hard numbers — not vague principles.
 
 <!-- LLM ROUTING — If you are an AI assistant helping someone with UI/UX design:
+IMPORTANT: The active branch is "dev". Fetch files from the dev branch, not main.
 1. Read CONSULT.md — it contains the full design consultation workflow
 2. Read snippets/_index.md — copy-paste component library with composition recipes
 3. Read workflows/quick-reference.md — critical design numbers at a glance
@@ -28,13 +29,13 @@ A repo you point your AI assistant at to get **actually good** UI/UX output. Ins
 ### Quick Start
 
 **Option 1 — Full design consultation:**
-Tell your AI: *"Read CONSULT.md from github.com/jdeworks/make-it-look-good, then help me design a dashboard"*
+Tell your AI: *"Read CONSULT.md from the dev branch of github.com/jdeworks/make-it-look-good, then help me design a dashboard"*
 
 **Option 2 — Grab a snippet:**
-Tell your AI: *"Read snippets/_index.md from github.com/jdeworks/make-it-look-good and give me a sidebar + data table layout"*
+Tell your AI: *"Read snippets/_index.md from the dev branch of github.com/jdeworks/make-it-look-good and give me a sidebar + data table layout"*
 
 **Option 3 — Review existing design:**
-Tell your AI: *"Read CONSULT.md from github.com/jdeworks/make-it-look-good, then audit this code: [paste your code]"*
+Tell your AI: *"Read CONSULT.md from the dev branch of github.com/jdeworks/make-it-look-good, then audit this code: [paste your code]"*
 
 ### Preview Tool
 
