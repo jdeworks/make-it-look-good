@@ -133,9 +133,20 @@ const darkVariantCSS = '@custom-variant dark (&:where(.dark, .dark *));';
 function updatePreview() {
   const html = editor.value;
   const darkClass = darkMode ? ' class="dark"' : '';
+
+  // Build source map for inspect mode
+  let bodyHtml;
+  if (inspectMode) {
+    const mapped = buildSourceMap(html);
+    bodyHtml = mapped.annotatedHtml;
+    sourceMap = mapped.sourceMap;
+  } else {
+    bodyHtml = html;
+    sourceMap = null;
+  }
+
   // Inject dark variant override into any preset tailwindcss style blocks
-  // so each block uses class-based dark mode, not prefers-color-scheme
-  const processedHtml = html.replace(
+  const processedHtml = bodyHtml.replace(
     /<style type="text\/tailwindcss">/gi,
     '<style type="text/tailwindcss">\n    ' + darkVariantCSS
   );
@@ -155,6 +166,7 @@ body { margin: 0; }
 </head>
 <body>
 ${processedHtml}
+${inspectMode ? inspectorAgentScript : ''}
 <script>
 document.addEventListener('click', function(e) {
   var a = e.target.closest('a');
@@ -714,6 +726,180 @@ try {
   const saved = localStorage.getItem('milg-split');
   if (saved) editorPanel.style.setProperty('--editor-width', saved + '%');
 } catch(e) {}
+
+// --- Inspect Mode ---
+let inspectMode = false;
+let sourceMap = null;
+
+function toggleInspect() {
+  inspectMode = !inspectMode;
+  document.getElementById('inspectBtn').classList.toggle('active', inspectMode);
+  updatePreview();
+  if (!inspectMode) {
+    editor.setSelectionRange(0, 0);
+  }
+}
+
+// Source-map indexer: injects data-milg-id into opening tags, returns annotated HTML + map
+function buildSourceMap(html) {
+  const map = new Map();
+  let id = 0;
+  let result = '';
+  let i = 0;
+  const len = html.length;
+
+  while (i < len) {
+    // Skip <script> and <style> block contents
+    const lower5 = html.substring(i, i + 7).toLowerCase();
+    if (lower5.startsWith('<script') || lower5.startsWith('<style')) {
+      const tagName = lower5.startsWith('<script') ? 'script' : 'style';
+      const closingTag = '</' + tagName;
+      // Find end of opening tag
+      let openEnd = html.indexOf('>', i);
+      if (openEnd === -1) { result += html.substring(i); break; }
+      // Inject ID into this tag
+      const tagStart = i;
+      const currentId = id++;
+      result += html.substring(i, openEnd) + ' data-milg-id="' + currentId + '"' + '>';
+      map.set(currentId, { start: tagStart, end: openEnd + 1 });
+      i = openEnd + 1;
+      // Skip to closing tag
+      let closeIdx = html.toLowerCase().indexOf(closingTag, i);
+      if (closeIdx === -1) { result += html.substring(i); break; }
+      let closeEnd = html.indexOf('>', closeIdx);
+      if (closeEnd === -1) closeEnd = html.length;
+      result += html.substring(i, closeEnd + 1);
+      i = closeEnd + 1;
+      continue;
+    }
+
+    if (html[i] === '<' && i + 1 < len && html[i + 1] !== '/' && html[i + 1] !== '!') {
+      // Opening tag
+      const tagStart = i;
+      let j = i + 1;
+      // Get tag name
+      while (j < len && /[a-zA-Z0-9-]/.test(html[j])) j++;
+      // Find end of tag (handle quoted attributes)
+      let inQuote = null;
+      while (j < len) {
+        if (inQuote) {
+          if (html[j] === inQuote) inQuote = null;
+        } else {
+          if (html[j] === '"' || html[j] === "'") inQuote = html[j];
+          else if (html[j] === '>') break;
+        }
+        j++;
+      }
+      if (j >= len) { result += html.substring(i); break; }
+      const currentId = id++;
+      result += html.substring(i, j) + ' data-milg-id="' + currentId + '">';
+      map.set(currentId, { start: tagStart, end: j + 1 });
+      i = j + 1;
+    } else {
+      result += html[i];
+      i++;
+    }
+  }
+  return { annotatedHtml: result, sourceMap: map };
+}
+
+const inspectorAgentScript = `
+<script>
+(function() {
+  var CHAN = 'milg-inspector';
+  var overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;pointer-events:none;z-index:99999;border:2px solid #3b82f6;background:rgba(59,130,246,0.08);transition:all 120ms ease-out;display:none;border-radius:3px;';
+  document.body.appendChild(overlay);
+  var enabled = false;
+  var lastId = -1;
+
+  window.addEventListener('message', function(e) {
+    if (!e.data || e.data.channel !== CHAN) return;
+    if (e.data.type === 'set-inspect-mode') {
+      enabled = e.data.enabled;
+      if (!enabled) { overlay.style.display = 'none'; lastId = -1; }
+    }
+  });
+
+  document.addEventListener('mousemove', function(e) {
+    if (!enabled) return;
+    var el = e.target;
+    while (el && el !== document.body && !el.hasAttribute('data-milg-id')) el = el.parentElement;
+    if (!el || !el.hasAttribute('data-milg-id')) { overlay.style.display = 'none'; lastId = -1; return; }
+    var id = parseInt(el.getAttribute('data-milg-id'));
+    if (id === lastId) return;
+    lastId = id;
+    var rect = el.getBoundingClientRect();
+    overlay.style.display = 'block';
+    overlay.style.top = rect.top + 'px';
+    overlay.style.left = rect.left + 'px';
+    overlay.style.width = rect.width + 'px';
+    overlay.style.height = rect.height + 'px';
+    parent.postMessage({channel: CHAN, type: 'hover', milgId: id}, '*');
+  });
+
+  document.body.addEventListener('mouseleave', function() {
+    if (!enabled) return;
+    overlay.style.display = 'none';
+    lastId = -1;
+    parent.postMessage({channel: CHAN, type: 'hover-end'}, '*');
+  });
+
+  document.addEventListener('click', function(e) {
+    if (!enabled) return;
+    var el = e.target;
+    while (el && el !== document.body && !el.hasAttribute('data-milg-id')) el = el.parentElement;
+    if (el && el.hasAttribute('data-milg-id')) {
+      e.preventDefault();
+      e.stopPropagation();
+      parent.postMessage({channel: CHAN, type: 'select', milgId: parseInt(el.getAttribute('data-milg-id'))}, '*');
+    }
+  }, true);
+
+  parent.postMessage({channel: CHAN, type: 'inspector-ready'}, '*');
+})();
+<\\/script>`;
+
+// Parent-side message handler
+window.addEventListener('message', function(e) {
+  if (e.source !== preview.contentWindow) return;
+  if (!e.data || e.data.channel !== 'milg-inspector') return;
+
+  if (e.data.type === 'inspector-ready' && inspectMode) {
+    preview.contentWindow.postMessage({ channel: 'milg-inspector', type: 'set-inspect-mode', enabled: true }, '*');
+  }
+
+  if (e.data.type === 'hover' && sourceMap) {
+    const info = sourceMap.get(e.data.milgId);
+    if (info) {
+      editor.focus();
+      editor.setSelectionRange(info.start, info.end);
+      // Scroll textarea to show selection
+      const text = editor.value.substring(0, info.start);
+      const lines = text.split('\n').length - 1;
+      const lineHeight = parseFloat(getComputedStyle(editor).lineHeight) || 18;
+      const targetScroll = lines * lineHeight - editor.clientHeight / 3;
+      editor.scrollTop = Math.max(0, targetScroll);
+    }
+  }
+
+  if (e.data.type === 'hover-end') {
+    editor.setSelectionRange(0, 0);
+  }
+
+  if (e.data.type === 'select' && sourceMap) {
+    const info = sourceMap.get(e.data.milgId);
+    if (info) {
+      editor.focus();
+      editor.setSelectionRange(info.start, info.end);
+      const text = editor.value.substring(0, info.start);
+      const lines = text.split('\n').length - 1;
+      const lineHeight = parseFloat(getComputedStyle(editor).lineHeight) || 18;
+      const targetScroll = lines * lineHeight - editor.clientHeight / 3;
+      editor.scrollTop = Math.max(0, targetScroll);
+    }
+  }
+});
 
 // --- Init ---
 loadFromHash().then(() => {
