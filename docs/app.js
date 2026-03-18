@@ -19,7 +19,7 @@ function initMonaco() {
   monacoEditor = monaco.editor.create(document.getElementById('editorContainer'), {
     value: '',
     language: 'html',
-    theme: 'vs-dark',
+    theme: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'vs-dark' : 'vs',
     minimap: { enabled: false },
     fontSize: 13,
     fontFamily: "var(--mono), 'JetBrains Mono', 'Fira Code', monospace",
@@ -30,6 +30,11 @@ function initMonaco() {
     tabSize: 2,
     renderWhitespace: 'none',
     padding: { top: 8 },
+  });
+
+  // Follow OS dark mode preference
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+    monaco.editor.setTheme(e.matches ? 'vs-dark' : 'vs');
   });
 
   monacoEditor.onDidChangeModelContent(() => {
