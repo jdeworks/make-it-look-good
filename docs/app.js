@@ -15,7 +15,7 @@ let sourceMap = null;
 let cmView = null;
 
 function initCodeMirror() {
-  const { EditorView, basicSetup, html, oneDark, EditorState, keymap } = window._cmModules;
+  const { EditorView, basicSetup, html, oneDark, EditorState } = window._cmModules;
   const updateListener = EditorView.updateListener.of(update => {
     if (update.docChanged) {
       if (currentPresetName && !userEdited) {
