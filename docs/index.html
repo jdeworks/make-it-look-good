@@ -716,8 +716,12 @@ document.querySelectorAll('form').forEach(function(f) {
       }
     }
 
-    function getElementPrimary(element) {
-      if (manifestData && manifestData.elements[element]) return manifestData.elements[element].primaryColor;
+    function getElementPrimary(element, personality) {
+      personality = personality || currentPersonality || 'clean';
+      if (manifestData && manifestData.elements[element]) {
+        const pers = manifestData.elements[element].personalities;
+        if (pers && pers[personality]) return pers[personality].primaryColor || 'blue';
+      }
       return 'blue';
     }
 
@@ -740,7 +744,8 @@ document.querySelectorAll('form').forEach(function(f) {
         cat.elements.forEach(elName => {
           const el = manifest.elements[elName];
           if (!el) return;
-          const hasBefore = el.personalities.includes('before');
+          const persNames = Object.keys(el.personalities);
+          const hasBefore = persNames.includes('before');
 
           if (hasBefore) {
             const btnBefore = document.createElement('button');
@@ -817,10 +822,10 @@ document.querySelectorAll('form').forEach(function(f) {
       return result;
     }
 
-    function renderThemeSwatches(element) {
+    function renderThemeSwatches(element, personality) {
       const container = document.getElementById('themeSwatches');
       container.innerHTML = '';
-      const primary = getElementPrimary(element);
+      const primary = getElementPrimary(element, personality);
       if (!element || !primary) {
         container.style.display = 'none';
         return;
@@ -843,7 +848,7 @@ document.querySelectorAll('form').forEach(function(f) {
     function selectTheme(index) {
       if (!currentElement) return;
       currentThemeIndex = index;
-      const fromPrimary = getElementPrimary(currentElement);
+      const fromPrimary = getElementPrimary(currentElement, currentPersonality);
       const fromNeutral = presetNeutralMap[currentElement] || 'slate';
       const theme = colorThemes[index];
       const themed = applyColorTheme(originalPresetHtml, fromPrimary, theme.primary, fromNeutral, theme.neutral, theme);
@@ -890,7 +895,7 @@ document.querySelectorAll('form').forEach(function(f) {
         container.style.display = 'none';
         return;
       }
-      const personalities = manifestData.elements[element].personalities.filter(p => p !== 'before');
+      const personalities = Object.keys(manifestData.elements[element].personalities).filter(p => p !== 'before');
       if (personalities.length <= 1) {
         container.style.display = 'none';
         return;
@@ -913,7 +918,7 @@ document.querySelectorAll('form').forEach(function(f) {
       currentElement = element;
       currentPersonality = personality;
       currentPresetName = element;
-      const primary = getElementPrimary(element);
+      const primary = getElementPrimary(element, personality);
       currentThemeIndex = colorThemes.findIndex(t => t.primary === primary);
       if (currentThemeIndex === -1) currentThemeIndex = 0;
       originalPresetHtml = html;
@@ -926,7 +931,7 @@ document.querySelectorAll('form').forEach(function(f) {
         currentStyleIndex = 0;
       } else {
         renderPersonalityButtons(element, personality);
-        renderThemeSwatches(element);
+        renderThemeSwatches(element, personality);
         currentStyleIndex = 0;
         renderStyleButtons(element);
       }
