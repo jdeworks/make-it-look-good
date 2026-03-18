@@ -1,6 +1,6 @@
 # E2E Test: Raw JSON Data → Status Page UI
 
-> Generated from [make-it-look-good](https://github.com/jens/make-it-look-good) knowledge base
+> Generated from [make-it-look-good](https://github.com/jdeworks/make-it-look-good) knowledge base
 
 ## Overview
 - **What:** Public-facing system status page built from raw API JSON data

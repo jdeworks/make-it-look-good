@@ -1,6 +1,6 @@
 # E2E: Dark Developer Portfolio — Full CONSULT.md Flow
 
-> Generated from [make-it-look-good](https://github.com/jens/make-it-look-good) knowledge base
+> Generated from [make-it-look-good](https://github.com/jdeworks/make-it-look-good) knowledge base
 
 ## Step 0 — Classify Input
 

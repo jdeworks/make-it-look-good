@@ -161,7 +161,7 @@ Focus states:    ring-2 ring-indigo-500 ring-offset-2 on all interactive element
 
 # Design Review Notes
 
-> Generated from [make-it-look-good](https://github.com/jens/make-it-look-good) knowledge base
+> Generated from [make-it-look-good](https://github.com/jdeworks/make-it-look-good) knowledge base
 
 ## Overview
 - **What:** Pricing page for "Planly" — project management SaaS tool. Three tiers (Free, Pro, Enterprise), billing toggle, feature comparison, FAQ.

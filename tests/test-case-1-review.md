@@ -1,6 +1,6 @@
 # Design Review Notes
 
-> Generated from [make-it-look-good](https://github.com/jens/make-it-look-good) knowledge base
+> Generated from [make-it-look-good](https://github.com/jdeworks/make-it-look-good) knowledge base
 
 ## Overview
 - **What:** React settings page component with inline styles

@@ -1,6 +1,6 @@
 # Design Review Notes
 
-> Generated from [make-it-look-good](https://github.com/jens/make-it-look-good) knowledge base
+> Generated from [make-it-look-good](https://github.com/jdeworks/make-it-look-good) knowledge base
 
 ## Overview
 - **What:** "TeamPulse" employee dashboard — sidebar, stat cards, chart placeholders, tabbed user table

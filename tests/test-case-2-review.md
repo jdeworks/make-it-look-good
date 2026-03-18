@@ -1,6 +1,6 @@
 # Design Review Notes
 
-> Generated from [make-it-look-good](https://github.com/jens/make-it-look-good) knowledge base
+> Generated from [make-it-look-good](https://github.com/jdeworks/make-it-look-good) knowledge base
 
 ## Overview
 - **What:** Barebones HTML landing page + signup form for "TaskFlow"
