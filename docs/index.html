@@ -538,14 +538,14 @@
     let originalPresetHtml = '';
 
     const colorThemes = [
-      { name: 'Ocean',    primary: 'blue',    neutral: 'slate',   swatch: '#2563eb' },
-      { name: 'Amethyst', primary: 'violet',  neutral: 'slate',   swatch: '#7c3aed' },
-      { name: 'Midnight', primary: 'indigo',  neutral: 'gray',    swatch: '#4f46e5' },
-      { name: 'Forest',   primary: 'emerald', neutral: 'zinc',    swatch: '#059669' },
-      { name: 'Teal',     primary: 'teal',    neutral: 'neutral', swatch: '#0d9488' },
-      { name: 'Rose',     primary: 'rose',    neutral: 'gray',    swatch: '#e11d48' },
-      { name: 'Ember',    primary: 'orange',  neutral: 'stone',   swatch: '#ea580c' },
-      { name: 'Berry',    primary: 'fuchsia', neutral: 'zinc',    swatch: '#c026d3' },
+      { name: 'Ocean',    primary: 'blue',    neutral: 'slate',   swatch: '#2563eb', destructive: 'red',    success: 'green',  warning: 'amber' },
+      { name: 'Amethyst', primary: 'violet',  neutral: 'slate',   swatch: '#7c3aed', destructive: 'red',    success: 'emerald',warning: 'amber' },
+      { name: 'Midnight', primary: 'indigo',  neutral: 'gray',    swatch: '#4f46e5', destructive: 'rose',   success: 'emerald',warning: 'amber' },
+      { name: 'Forest',   primary: 'emerald', neutral: 'zinc',    swatch: '#059669', destructive: 'red',    success: 'teal',   warning: 'amber' },
+      { name: 'Teal',     primary: 'teal',    neutral: 'neutral', swatch: '#0d9488', destructive: 'rose',   success: 'emerald',warning: 'orange' },
+      { name: 'Rose',     primary: 'rose',    neutral: 'gray',    swatch: '#e11d48', destructive: 'orange', success: 'emerald',warning: 'amber' },
+      { name: 'Ember',    primary: 'orange',  neutral: 'stone',   swatch: '#ea580c', destructive: 'red',    success: 'emerald',warning: 'yellow' },
+      { name: 'Berry',    primary: 'fuchsia', neutral: 'zinc',    swatch: '#c026d3', destructive: 'red',    success: 'emerald',warning: 'amber' },
     ];
 
     const presetPrimaryMap = {
@@ -5058,18 +5058,41 @@ function showPage(page) {
       }
     }
 
-    function applyColorTheme(html, fromPrimary, toPrimary, fromNeutral, toNeutral) {
+    function applyColorTheme(html, fromPrimary, toPrimary, fromNeutral, toNeutral, theme) {
       let result = html;
-      if (fromPrimary !== toPrimary) {
-        const shades = ['50','100','200','300','400','500','600','700','800','900','950'];
+      const shades = ['50','100','200','300','400','500','600','700','800','900','950'];
+      function replaceColor(from, to) {
+        if (from === to) return;
         for (const shade of shades) {
-          result = result.replace(new RegExp('(\\b|-)' + fromPrimary + '-' + shade + '\\b', 'g'), '$1' + toPrimary + '-' + shade);
+          result = result.replace(new RegExp('(\\b|-)' + from + '-' + shade + '\\b', 'g'), '$1' + to + '-' + shade);
         }
       }
-      if (fromNeutral && toNeutral && fromNeutral !== toNeutral) {
-        const shades = ['50','100','200','300','400','500','600','700','800','900','950'];
-        for (const shade of shades) {
-          result = result.replace(new RegExp('(\\b|-)' + fromNeutral + '-' + shade + '\\b', 'g'), '$1' + toNeutral + '-' + shade);
+      // Primary color
+      replaceColor(fromPrimary, toPrimary);
+      // Neutral scale
+      if (fromNeutral && toNeutral) replaceColor(fromNeutral, toNeutral);
+      // Semantic colors — remap to avoid clashes with new primary
+      // Use temp placeholders to prevent chain replacements (e.g., red→orange→stone)
+      if (theme) {
+        const semanticMap = [
+          ['red', theme.destructive],
+          ['green', theme.success],
+          ['amber', theme.warning],
+        ];
+        const needsRemap = semanticMap.filter(([from, to]) => from !== to);
+        if (needsRemap.length > 0) {
+          // Step 1: replace originals with placeholders
+          for (const [from, to] of needsRemap) {
+            for (const shade of shades) {
+              result = result.replace(new RegExp('(\\b|-)' + from + '-' + shade + '\\b', 'g'), '$1__MILG_' + to.toUpperCase() + '_' + shade + '__');
+            }
+          }
+          // Step 2: replace placeholders with final values
+          for (const [from, to] of needsRemap) {
+            for (const shade of shades) {
+              result = result.replace(new RegExp('__MILG_' + to.toUpperCase() + '_' + shade + '__', 'g'), to + '-' + shade);
+            }
+          }
         }
       }
       return result;
@@ -5104,7 +5127,7 @@ function showPage(page) {
       const fromPrimary = presetPrimaryMap[currentPresetName];
       const fromNeutral = presetNeutralMap[currentPresetName] || 'slate';
       const theme = colorThemes[index];
-      const themed = applyColorTheme(originalPresetHtml, fromPrimary, theme.primary, fromNeutral, theme.neutral);
+      const themed = applyColorTheme(originalPresetHtml, fromPrimary, theme.primary, fromNeutral, theme.neutral, theme);
       editor.value = themed;
       updatePreview();
       document.querySelectorAll('.theme-swatch').forEach((btn, i) => {
