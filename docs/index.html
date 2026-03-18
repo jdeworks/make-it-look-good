@@ -335,6 +335,21 @@
       box-shadow: 0 0 0 2px var(--bg);
     }
 
+    .style-btn {
+      padding: 3px 8px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--bg);
+      color: var(--text-secondary);
+      font-size: 11px;
+      font-family: var(--font);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+    .style-btn:hover { border-color: #94a3b8; }
+    .style-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+
     .presets-menu button {
       display: block;
       width: 100%;
@@ -496,6 +511,7 @@
       <div class="preview-header">
         <span>Preview</span>
         <div id="themeSwatches" style="display:none;align-items:center;gap:5px;"></div>
+        <div id="styleButtons" style="display:none;align-items:center;gap:3px;border-left:1px solid var(--border);padding-left:8px;margin-left:4px;"></div>
         <span id="viewportLabel" style="font-weight:400; text-transform:none; letter-spacing:normal;">Full width</span>
       </div>
       <div class="preview-container">
@@ -518,6 +534,7 @@
     let currentViewport = 'full';
     let currentPresetName = null;
     let currentThemeIndex = 0;
+    let currentStyleIndex = 0;
     let originalPresetHtml = '';
 
     const colorThemes = [
@@ -550,6 +567,82 @@
       restaurant: 'stone',
     };
 
+    const visualStyles = [
+      { name: 'Clean', label: 'Clean', css: '' },
+      { name: 'Minimalist', label: 'Minimal', css: `/* Minimalist — Quiet Precision */
+[class*="shadow"]{box-shadow:none!important}
+[class*="border"]{border-color:rgba(0,0,0,0.06)!important}
+[class*="rounded-lg"],[class*="rounded-xl"],[class*="rounded-2xl"],[class*="rounded-3xl"]{border-radius:4px!important}
+[class*="rounded-full"]{border-radius:9999px!important}
+h1,h2,h3,h4,h5,h6{font-weight:300!important;letter-spacing:0.02em}
+h1{font-size:2.25em!important}
+p,span,li,td,th{opacity:0.75}
+button,[role="button"]{font-weight:400!important;letter-spacing:0.06em;text-transform:uppercase;font-size:0.82em!important;border:1px solid rgba(0,0,0,0.1)!important;background:transparent!important;color:inherit!important}
+button[class*="bg-blue"],button[class*="bg-indigo"],button[class*="bg-teal"],button[class*="bg-emerald"],button[class*="bg-violet"],button[class*="bg-rose"],button[class*="bg-orange"],button[class*="bg-fuchsia"]{background:currentColor!important;color:white!important;opacity:0.8}
+button:hover,a:hover,[role="button"]:hover{opacity:0.5;transition:opacity 250ms ease-out}
+nav,aside,[class*="border-b"],[class*="border-r"]{border-color:rgba(0,0,0,0.04)!important}
+` },
+      { name: 'Bold', label: 'Bold', css: `/* Bold — High Impact */
+[class*="rounded-lg"],[class*="rounded-xl"],[class*="rounded-2xl"],[class*="rounded-3xl"]{border-radius:0!important}
+[class*="rounded-md"]{border-radius:0!important}
+h1,h2,h3{font-weight:900!important;letter-spacing:-0.04em;text-transform:uppercase}
+h4,h5,h6{font-weight:800!important;letter-spacing:-0.02em;text-transform:uppercase}
+[class*="shadow-sm"],[class*="shadow-md"]{box-shadow:6px 6px 0px currentColor!important;opacity:0.9}
+[class*="shadow-lg"],[class*="shadow-xl"]{box-shadow:8px 8px 0px currentColor!important}
+[class*="border"]{border-width:2px!important;border-color:#0f172a!important}
+button,[role="button"]{font-weight:800!important;text-transform:uppercase;letter-spacing:0.06em;border:2.5px solid currentColor!important;border-radius:0!important}
+button:hover,[role="button"]:hover{transform:translate(-3px,-3px);box-shadow:5px 5px 0px currentColor!important}
+button,a,[role="button"]{transition:transform 80ms ease-out,box-shadow 80ms ease-out!important}
+hr,[class*="divide-"]>*+*{border-color:#0f172a!important;border-width:2px!important}
+input,select,textarea{border-radius:0!important;border-width:2px!important;border-color:#0f172a!important}
+` },
+      { name: 'Playful', label: 'Playful', css: `/* Playful — Fun Energy */
+[class*="rounded-md"],[class*="rounded-lg"]{border-radius:16px!important}
+[class*="rounded-xl"],[class*="rounded-2xl"],[class*="rounded-3xl"]{border-radius:24px!important}
+[class*="shadow-sm"],[class*="shadow-md"]{box-shadow:0 4px 14px rgba(99,102,241,0.18),0 2px 6px rgba(244,63,94,0.12)!important}
+[class*="shadow-lg"],[class*="shadow-xl"]{box-shadow:0 10px 30px rgba(99,102,241,0.22),0 4px 12px rgba(244,63,94,0.14)!important}
+button,a,[role="button"],article,[class*="card"],input,select,textarea{transition:transform 300ms cubic-bezier(0.34,1.56,0.64,1),box-shadow 300ms cubic-bezier(0.34,1.56,0.64,1)!important}
+button:hover,[role="button"]:hover{transform:scale(1.07) translateY(-3px)!important}
+article:hover,[class*="bg-white"]:not(body):not(main):not(nav):not(header):not(aside):hover{transform:translateY(-6px) rotate(-0.5deg);box-shadow:0 12px 30px rgba(99,102,241,0.2)!important}
+h1,h2,h3{font-weight:800!important;letter-spacing:-0.01em}
+h1::after{content:'';display:inline}
+input,select,textarea{border-radius:14px!important}
+button:active,[role="button"]:active{transform:scale(0.95)!important;transition-duration:80ms!important}
+[class*="gap-4"]{gap:1.5rem!important}[class*="gap-6"]{gap:2rem!important}
+[class*="p-4"]{padding:1.5rem!important}[class*="p-5"]{padding:1.75rem!important}[class*="p-6"]{padding:2rem!important}
+` },
+      { name: 'Glass', label: 'Glass', css: `/* Glass — Frosted Modern */
+body{background:linear-gradient(135deg,#dbeafe 0%,#ede9fe 35%,#fce7f3 65%,#e0f2fe 100%)!important;min-height:100vh}
+[class*="bg-white"]{background:rgba(255,255,255,0.55)!important;-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);border:1px solid rgba(255,255,255,0.4)!important;box-shadow:0 4px 24px rgba(0,0,0,0.04),inset 0 1px 0 rgba(255,255,255,0.6)!important}
+[class*="bg-slate-50"],[class*="bg-gray-50"],[class*="bg-zinc-50"]{background:rgba(248,250,252,0.4)!important;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+[class*="shadow-sm"],[class*="shadow-md"],[class*="shadow-lg"],[class*="shadow-xl"]{box-shadow:0 4px 20px rgba(0,0,0,0.05),inset 0 1px 0 rgba(255,255,255,0.5)!important}
+[class*="rounded-lg"]{border-radius:14px!important}
+[class*="rounded-xl"],[class*="rounded-2xl"]{border-radius:18px!important}
+[class*="border"]{border-color:rgba(255,255,255,0.35)!important}
+input,select,textarea{background:rgba(255,255,255,0.45)!important;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.4)!important;border-radius:12px!important}
+button:hover,[role="button"]:hover{box-shadow:0 0 24px rgba(99,102,241,0.18),0 6px 20px rgba(0,0,0,0.06)!important;transition:box-shadow 250ms ease-out,transform 250ms ease-out;transform:translateY(-1px)}
+nav,aside,header{-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);background:rgba(255,255,255,0.65)!important}
+` },
+      { name: 'Editorial', label: 'Editorial', css: `/* Editorial — Refined Type */
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap');
+h1,h2,h3,h4,h5,h6{font-family:'Playfair Display',Georgia,'Times New Roman',serif!important;letter-spacing:-0.02em;line-height:1.15}
+h1{font-weight:400!important;font-size:2.75em!important;letter-spacing:-0.03em}
+h2{font-weight:700!important}
+h3,h4,h5,h6{font-weight:700!important}
+[class*="shadow"]{box-shadow:none!important}
+[class*="border"]{border-color:#e2e8f0!important}
+[class*="rounded-lg"],[class*="rounded-xl"],[class*="rounded-2xl"],[class*="rounded-3xl"],[class*="rounded-md"]{border-radius:2px!important}
+button,[role="button"]{font-weight:400!important;letter-spacing:0.1em;text-transform:uppercase;font-size:0.78em!important;border-radius:1px!important;padding-top:0.75rem!important;padding-bottom:0.75rem!important}
+a:hover{text-decoration:underline!important;text-underline-offset:4px;text-decoration-thickness:1px}
+button:hover,[role="button"]:hover{opacity:0.75;transition:opacity 200ms ease}
+p{line-height:1.75!important}
+body{letter-spacing:0.005em}
+[class*="bg-blue-600"],[class*="bg-indigo-600"],[class*="bg-violet-600"],[class*="bg-teal-600"],[class*="bg-emerald-600"],[class*="bg-rose-600"],[class*="bg-orange-600"],[class*="bg-fuchsia-600"]{background-color:#334155!important}
+[class*="bg-blue-600"]:hover,[class*="bg-indigo-600"]:hover,[class*="bg-violet-600"]:hover,[class*="bg-teal-600"]:hover,[class*="bg-emerald-600"]:hover{background-color:#1e293b!important}
+input,select,textarea{border-radius:1px!important}
+` },
+    ];
+
     // --- Preview rendering ---
     const darkVariantCSS = '@custom-variant dark (&:where(.dark, .dark *));';
 
@@ -574,6 +667,7 @@
   <style>
     body { margin: 0; }
   </style>
+  ${visualStyles[currentStyleIndex].css ? '<style>' + visualStyles[currentStyleIndex].css + '</style>' : ''}
 </head>
 <body>
 ${processedHtml}
@@ -602,6 +696,7 @@ document.querySelectorAll('form').forEach(function(f) {
       if (currentPresetName) {
         currentPresetName = null;
         document.getElementById('themeSwatches').style.display = 'none';
+        document.getElementById('styleButtons').style.display = 'none';
       }
       debouncedUpdate();
     });
@@ -5337,6 +5432,32 @@ function switchProjectPage(page) {
       });
     }
 
+    function renderStyleButtons(presetName) {
+      const container = document.getElementById('styleButtons');
+      container.innerHTML = '';
+      if (!presetName) {
+        container.style.display = 'none';
+        return;
+      }
+      container.style.display = 'flex';
+      visualStyles.forEach((style, index) => {
+        const btn = document.createElement('button');
+        btn.className = 'style-btn' + (index === 0 ? ' active' : '');
+        btn.textContent = style.label;
+        btn.title = style.name;
+        btn.onclick = () => selectStyle(index);
+        container.appendChild(btn);
+      });
+    }
+
+    function selectStyle(index) {
+      currentStyleIndex = index;
+      updatePreview();
+      document.querySelectorAll('.style-btn').forEach((btn, i) => {
+        btn.classList.toggle('active', i === index);
+      });
+    }
+
     function loadPreset(name) {
       currentPresetName = name;
       currentThemeIndex = colorThemes.findIndex(t => t.primary === (presetPrimaryMap[name] || 'blue'));
@@ -5345,6 +5466,8 @@ function switchProjectPage(page) {
       editor.value = presets[name];
       document.getElementById('presetsMenu').classList.remove('open');
       renderThemeSwatches(name);
+      currentStyleIndex = 0;
+      renderStyleButtons(name);
       updatePreview();
     }
 
