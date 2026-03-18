@@ -8,6 +8,8 @@ let currentViewport = 'full';
 let currentPresetName = null;
 let currentStyleIndex = 0;
 let originalPresetHtml = '';
+let inspectMode = false;
+let sourceMap = null;
 
 // --- CodeMirror editor ---
 let cmView = null;
@@ -484,19 +486,70 @@ async function togglePresets() {
   }
 }
 
+// Gradient companion map — secondary colors commonly paired with each primary in gradients
+// When switching primary, companion gets remapped to a shade of the new primary for coherent gradients
+const gradientCompanions = {
+  rose: ['pink', 'fuchsia'],
+  pink: ['rose', 'fuchsia'],
+  fuchsia: ['pink', 'purple'],
+  purple: ['violet', 'fuchsia'],
+  violet: ['purple', 'indigo'],
+  indigo: ['violet', 'blue'],
+  blue: ['indigo', 'sky'],
+  sky: ['blue', 'cyan'],
+  cyan: ['sky', 'teal'],
+  teal: ['cyan', 'emerald'],
+  emerald: ['teal', 'green'],
+  green: ['emerald', 'lime'],
+  lime: ['green', 'yellow'],
+  yellow: ['lime', 'amber'],
+  amber: ['yellow', 'orange'],
+  orange: ['amber', 'red'],
+  red: ['orange', 'rose'],
+};
+
+// Get the companion color for a target primary (one step away on the color wheel)
+function getCompanion(color) {
+  const neighbors = gradientCompanions[color];
+  return neighbors ? neighbors[0] : color;
+}
+
 function applyColorTheme(html, fromPrimary, toPrimary, fromNeutral, toNeutral, theme) {
   let result = html;
   const shades = ['50','100','200','300','400','500','600','700','800','900','950'];
 
-  // --- 1. Replace Tailwind class names (e.g. blue-600 → rose-600) ---
-  function replaceColor(from, to) {
-    if (from === to) return;
+  // --- 1. Collect all secondary colors used in gradients alongside the primary ---
+  const fromCompanions = gradientCompanions[fromPrimary] || [];
+  const toCompanion = getCompanion(toPrimary);
+
+  // Use placeholders to avoid chain replacements (e.g. rose→red, then pink→rose)
+  function replaceColorToPlaceholder(from, placeholder) {
+    if (from === toPrimary) return; // skip if already the target
     for (const shade of shades) {
-      result = result.replace(new RegExp('(\\b|-)' + from + '-' + shade + '\\b', 'g'), '$1' + to + '-' + shade);
+      result = result.replace(new RegExp('(\\b|-)' + from + '-' + shade + '\\b', 'g'), '$1__MILG_' + placeholder + '_' + shade + '__');
     }
   }
-  replaceColor(fromPrimary, toPrimary);
-  if (fromNeutral && toNeutral) replaceColor(fromNeutral, toNeutral);
+  function resolvePlaceholder(placeholder, to) {
+    for (const shade of shades) {
+      result = result.replace(new RegExp('__MILG_' + placeholder + '_' + shade + '__', 'g'), to + '-' + shade);
+    }
+  }
+
+  // Replace primary and its gradient companions via placeholders
+  replaceColorToPlaceholder(fromPrimary, 'PRIMARY');
+  for (const comp of fromCompanions) {
+    if (comp !== fromPrimary && comp !== toPrimary) {
+      replaceColorToPlaceholder(comp, 'COMPANION');
+    }
+  }
+  resolvePlaceholder('PRIMARY', toPrimary);
+  resolvePlaceholder('COMPANION', toCompanion);
+
+  if (fromNeutral && toNeutral && fromNeutral !== toNeutral) {
+    for (const shade of shades) {
+      result = result.replace(new RegExp('(\\b|-)' + fromNeutral + '-' + shade + '\\b', 'g'), '$1' + toNeutral + '-' + shade);
+    }
+  }
 
   // --- 2. Replace inline rgba() and hex values in <style> blocks and arbitrary Tailwind values ---
   function replaceInlineColors(from, to) {
@@ -529,6 +582,9 @@ function applyColorTheme(html, fromPrimary, toPrimary, fromNeutral, toNeutral, t
     }
   }
   replaceInlineColors(fromPrimary, toPrimary);
+  for (const comp of fromCompanions) {
+    if (comp !== fromPrimary) replaceInlineColors(comp, toCompanion);
+  }
 
   // --- 3. Semantic colors — remap to avoid clashes with new primary ---
   if (theme) {
@@ -869,22 +925,11 @@ function showTrustDialog(html, hasScripts) {
   };
 }
 
-// --- Tab key support ---
-editor.addEventListener('keydown', (e) => {
-  if (e.key === 'Tab') {
-    e.preventDefault();
-    const start = editor.selectionStart;
-    const end = editor.selectionEnd;
-    editor.value = editor.value.substring(0, start) + '  ' + editor.value.substring(end);
-    editor.selectionStart = editor.selectionEnd = start + 2;
-    debouncedUpdate();
-  }
-});
-
 // --- Keyboard shortcuts ---
 document.addEventListener('keydown', (e) => {
   // Left/right arrow keys navigate templates (when not typing in editor/search)
-  if (document.activeElement === editor || document.activeElement === presetSearch) return;
+  const editorContainer = document.getElementById('editorContainer');
+  if ((editorContainer && editorContainer.contains(document.activeElement)) || document.activeElement === presetSearch) return;
   if (e.key === 'ArrowLeft' && currentElement) { e.preventDefault(); navigateTemplate(-1); }
   if (e.key === 'ArrowRight' && currentElement) { e.preventDefault(); navigateTemplate(1); }
 });
@@ -964,8 +1009,7 @@ function initMobile() {
 
 
 // --- Inspect Mode ---
-let inspectMode = false;
-let sourceMap = null;
+// (inspectMode and sourceMap declared at top of file)
 
 function toggleInspect() {
   inspectMode = !inspectMode;
