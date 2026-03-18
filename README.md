@@ -74,7 +74,7 @@ Click any "After" link — personality buttons appear in the preview header to s
 
 All snippets: dark mode, WCAG AA contrast, 44px touch targets, responsive. [Composition recipes](snippets/_index.md#composition-recipes) show how to combine them into full pages.
 
-### Knowledge Files — 35 topics
+### Knowledge Files — 43 topics
 
 | Area | Topics |
 |------|--------|

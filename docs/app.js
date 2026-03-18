@@ -209,9 +209,14 @@ editor.addEventListener('input', () => {
   if (currentElement) {
     currentElement = null;
     currentPersonality = null;
+    currentPresetName = null;
+    originalPresetHtml = '';
+    currentStyleIndex = 0;
+    userEdited = false;
     document.getElementById('personalityButtons').style.display = 'none';
     document.getElementById('themeSwatches').style.display = 'none';
     document.getElementById('styleButtons').style.display = 'none';
+    updateTemplateName();
   }
   debouncedUpdate();
 });
@@ -792,7 +797,10 @@ function buildSourceMap(html) {
       }
       if (j >= len) { result += html.substring(i); break; }
       const currentId = id++;
-      result += html.substring(i, j) + ' data-milg-id="' + currentId + '">';
+      // Handle self-closing tags: insert attribute before the />, not after
+      let insertPos = j;
+      if (j > 0 && html[j - 1] === '/') insertPos = j - 1;
+      result += html.substring(i, insertPos) + ' data-milg-id="' + currentId + '"' + html.substring(insertPos, j + 1);
       map.set(currentId, { start: tagStart, end: j + 1 });
       i = j + 1;
     } else {
@@ -858,7 +866,7 @@ const inspectorAgentScript = `
 
   parent.postMessage({channel: CHAN, type: 'inspector-ready'}, '*');
 })();
-<\\/script>`;
+<\/script>`;
 
 // Parent-side message handler
 window.addEventListener('message', function(e) {

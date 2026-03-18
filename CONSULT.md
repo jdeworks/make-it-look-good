@@ -193,11 +193,11 @@ When there's no existing code or visuals, ask these questions. **Ask only what's
 
    *Implementation notes:* Dark mode with Tailwind uses the `dark:` variant on every element (`bg-white dark:bg-slate-800`, `text-slate-900 dark:text-white`). The `<html>` element gets a `class="dark"` attribute. Ask how the user activates it — some projects use a toggle button that sets the class via JS and stores the preference; others use a CSS media query. The approach affects how you write the code.
 
-6. **What components do you need?** (List the specific ones)
+7. **What components do you need?** (List the specific ones)
 
-7. **Existing brand constraints?** (Colors, fonts, logo, existing design system)
+8. **Existing brand constraints?** (Colors, fonts, logo, existing design system)
 
-8. **Any specific pain points?**
+9. **Any specific pain points?**
    - "It looks amateur" → focus on spacing, type scale, color system
    - "It's hard to use" → focus on hierarchy, cognitive load, touch targets
    - "It's inconsistent" → focus on design tokens, spacing system
@@ -270,7 +270,7 @@ Before generating code from scratch, check the **live preview tool** for startin
 
 If the user is unsure about their design vibe (intake question 3), point them to the preview tool:
 
-> *"Take a look at the [live preview tool](docs/index.html) — try loading the same template in different personalities (Clean, Minimalist, Playful, Glass, Editorial) to see which direction feels right for your project. Tell me which one resonates and we'll build from there."*
+> *"Take a look at the [live preview tool](docs/index.html) — try loading the same template in different personalities (Clean, Minimalist, Playful) to see which direction feels right for your project. You can also try the Style buttons (Glass, Editorial) for CSS overlays on any personality. Tell me which one resonates and we'll build from there."*
 
 ### Personality → Template Mapping
 
@@ -278,9 +278,9 @@ Templates live in `docs/presets/{element}/{personality}.html`. Each element can 
 
 | Personality | Visual Character | Best For | Availability |
 |------------|-----------------|----------|-------------|
-| **clean** | Standard Tailwind, rounded-xl, subtle shadows, system sans | Safe default, B2B SaaS, internal tools | All 27 elements |
-| **minimalist** | No shadows, hairline borders, light fonts (300), extreme whitespace | Luxury, Japanese-inspired, portfolios, Scandinavian | All 27 elements |
-| **playful** | Big rounded corners (16-24px), colorful shadows, bouncy animations | Consumer apps, children's products, social platforms | All 27 elements |
+| **clean** | Standard Tailwind, rounded-xl, subtle shadows, system sans | Safe default, B2B SaaS, internal tools | All 28 elements |
+| **minimalist** | No shadows, hairline borders, light fonts (300), extreme whitespace | Luxury, Japanese-inspired, portfolios, Scandinavian | All 28 elements |
+| **playful** | Big rounded corners (16-24px), colorful shadows, bouncy animations | Consumer apps, children's products, social platforms | All 28 elements |
 | **editorial** | Serif headings (Playfair Display), no shadows, fine borders, muted palette | Publishing, blogs, law firms, premium brands | form, landing only (use clean + serif for others) |
 
 ### Using Personality Templates
