@@ -75,7 +75,19 @@ Run through this checklist against their code. Note every issue you find.
 - [ ] Do buttons have hover/focus states?
 - [ ] Are form labels associated with inputs? (`for`/`htmlFor` attribute)
 - [ ] Are form labels visible? (Not placeholder-only)
+- [ ] Do form inputs have `autocomplete` attributes? (Reduces friction by ~30%)
 - [ ] Is there visual feedback for actions? (Loading states, success/error messages)
+
+**Dark Mode**
+- [ ] Does the design support dark mode? (Check for `dark:` variants or a dark color scheme)
+- [ ] If yes: are all backgrounds, text, borders, and form elements covered?
+- [ ] If no: should it? (Ask the user — see intake question 5)
+
+**Semantic HTML & Accessibility**
+- [ ] Are semantic elements used? (`<nav>`, `<main>`, `<header>`, `<footer>`, `<article>`, `<section>`)
+- [ ] Does the navigation have `aria-label` and `aria-current="page"` on the active item?
+- [ ] Do images have `alt` text?
+- [ ] Is the heading hierarchy logical? (`<h1>` → `<h2>` → `<h3>`, not skipping levels)
 
 **Hierarchy & Structure**
 - [ ] Is there a clear visual hierarchy? (Can you tell what's most important in 2 seconds?)
@@ -87,7 +99,7 @@ Run through this checklist against their code. Note every issue you find.
 - [ ] Cards: consistent padding, single primary action, clear content hierarchy?
 - [ ] Tables: right-aligned numbers, adequate row height, header distinction?
 - [ ] Navigation: ≤7 items, clear active state, mobile-appropriate pattern?
-- [ ] Forms: single column, labels above, grouped into logical sections?
+- [ ] Forms: single column, labels above, grouped into logical sections, `autocomplete` attributes?
 - [ ] Modals: max ~600px wide, trap focus, clear dismiss action?
 
 ### Output the Design Review Notes
@@ -150,11 +162,19 @@ When there's no existing code or visuals, ask these questions. **Ask only what's
 
 ### Ask If Relevant
 
-5. **What components do you need?** (List the specific ones)
+5. **Do you need dark mode?**
+   - No — light only
+   - Yes — toggle button (user-controlled, store preference in `localStorage`)
+   - Yes — follow OS preference (`prefers-color-scheme: dark`, CSS-only)
+   - Yes — both (OS default + user override toggle)
 
-6. **Existing brand constraints?** (Colors, fonts, logo, existing design system)
+   *Implementation notes:* Dark mode with Tailwind uses the `dark:` variant on every element (`bg-white dark:bg-slate-800`, `text-slate-900 dark:text-white`). The `<html>` element gets a `class="dark"` attribute. Ask how the user activates it — some projects use a toggle button that sets the class via JS and stores the preference; others use a CSS media query. The approach affects how you write the code.
 
-7. **Any specific pain points?**
+6. **What components do you need?** (List the specific ones)
+
+7. **Existing brand constraints?** (Colors, fonts, logo, existing design system)
+
+8. **Any specific pain points?**
    - "It looks amateur" → focus on spacing, type scale, color system
    - "It's hard to use" → focus on hierarchy, cognitive load, touch targets
    - "It's inconsistent" → focus on design tokens, spacing system
@@ -314,6 +334,7 @@ export const tokens = {
 Generate code in the user's framework/language:
 
 **Plain HTML + Tailwind** (default for unknown stack):
+- This knowledge base primarily uses [Tailwind CSS](https://tailwindcss.com) for all snippets and examples — it's the default output format when the user's stack is unknown or when they're starting from scratch
 - Include Tailwind v4 CDN: `<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>`
 - Self-contained, single file
 - Semantic HTML (`<header>`, `<main>`, `<nav>`, `<section>`)
