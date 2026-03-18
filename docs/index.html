@@ -319,6 +319,22 @@
       color: var(--text-secondary);
     }
 
+    .theme-swatch {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      cursor: pointer;
+      transition: border-color 0.15s, transform 0.15s;
+      padding: 0;
+      flex-shrink: 0;
+    }
+    .theme-swatch:hover { transform: scale(1.15); }
+    .theme-swatch.active {
+      border-color: var(--text);
+      box-shadow: 0 0 0 2px var(--bg);
+    }
+
     .presets-menu button {
       display: block;
       width: 100%;
@@ -479,6 +495,7 @@
     <div class="preview-panel">
       <div class="preview-header">
         <span>Preview</span>
+        <div id="themeSwatches" style="display:none;align-items:center;gap:5px;"></div>
         <span id="viewportLabel" style="font-weight:400; text-transform:none; letter-spacing:normal;">Full width</span>
       </div>
       <div class="preview-container">
@@ -499,6 +516,39 @@
     let darkMode = false;
     let debounceTimer;
     let currentViewport = 'full';
+    let currentPresetName = null;
+    let currentThemeIndex = 0;
+    let originalPresetHtml = '';
+
+    const colorThemes = [
+      { name: 'Ocean',    primary: 'blue',    neutral: 'slate',   swatch: '#2563eb' },
+      { name: 'Amethyst', primary: 'violet',  neutral: 'slate',   swatch: '#7c3aed' },
+      { name: 'Midnight', primary: 'indigo',  neutral: 'gray',    swatch: '#4f46e5' },
+      { name: 'Forest',   primary: 'emerald', neutral: 'zinc',    swatch: '#059669' },
+      { name: 'Teal',     primary: 'teal',    neutral: 'neutral', swatch: '#0d9488' },
+      { name: 'Rose',     primary: 'rose',    neutral: 'gray',    swatch: '#e11d48' },
+      { name: 'Ember',    primary: 'orange',  neutral: 'stone',   swatch: '#ea580c' },
+      { name: 'Berry',    primary: 'fuchsia', neutral: 'zinc',    swatch: '#c026d3' },
+    ];
+
+    const presetPrimaryMap = {
+      dashboard: 'blue', landing: 'blue', form: 'blue', cards: 'blue',
+      pricing: 'indigo', portfolio: 'emerald', restaurant: 'amber',
+      statuspage: 'blue', deploy: 'blue', buttons: 'blue', osslanding: 'violet',
+      project: 'teal',
+      snippetShellSidebar: 'blue', snippetShellMarketing: 'blue',
+      snippetShellDashboard: 'blue', snippetShellForm: 'blue',
+      snippetHero: 'blue', snippetStatsRow: 'blue', snippetDataTable: 'blue',
+      snippetCardGrid: 'blue', snippetPricing: 'blue', snippetFeatureGrid: 'blue',
+      snippetTabs: 'blue', snippetAccordion: 'blue', snippetPagination: 'blue',
+      snippetDropdown: 'blue', snippetAvatars: 'blue',
+      dashboardBefore: 'blue', landingBefore: 'blue', formBefore: 'blue',
+      projectBefore: 'blue', cardsBefore: 'blue',
+    };
+
+    const presetNeutralMap = {
+      restaurant: 'stone',
+    };
 
     // --- Preview rendering ---
     const darkVariantCSS = '@custom-variant dark (&:where(.dark, .dark *));';
@@ -548,7 +598,13 @@ document.querySelectorAll('form').forEach(function(f) {
       debounceTimer = setTimeout(updatePreview, 300);
     }
 
-    editor.addEventListener('input', debouncedUpdate);
+    editor.addEventListener('input', () => {
+      if (currentPresetName) {
+        currentPresetName = null;
+        document.getElementById('themeSwatches').style.display = 'none';
+      }
+      debouncedUpdate();
+    });
 
     // --- Viewport ---
     function setViewport(size) {
@@ -5227,9 +5283,68 @@ function switchProjectPage(page) {
       }
     }
 
+    function applyColorTheme(html, fromPrimary, toPrimary, fromNeutral, toNeutral) {
+      let result = html;
+      if (fromPrimary !== toPrimary) {
+        const shades = ['50','100','200','300','400','500','600','700','800','900','950'];
+        for (const shade of shades) {
+          result = result.replace(new RegExp('(\\b|-)' + fromPrimary + '-' + shade + '\\b', 'g'), '$1' + toPrimary + '-' + shade);
+        }
+      }
+      if (fromNeutral && toNeutral && fromNeutral !== toNeutral) {
+        const shades = ['50','100','200','300','400','500','600','700','800','900','950'];
+        for (const shade of shades) {
+          result = result.replace(new RegExp('(\\b|-)' + fromNeutral + '-' + shade + '\\b', 'g'), '$1' + toNeutral + '-' + shade);
+        }
+      }
+      return result;
+    }
+
+    function renderThemeSwatches(presetName) {
+      const container = document.getElementById('themeSwatches');
+      container.innerHTML = '';
+      if (!presetName || !presetPrimaryMap[presetName]) {
+        container.style.display = 'none';
+        return;
+      }
+      container.style.display = 'flex';
+      const presetPrimary = presetPrimaryMap[presetName];
+      colorThemes.forEach((theme, index) => {
+        const btn = document.createElement('button');
+        const isOriginal = theme.primary === presetPrimary;
+        btn.className = 'theme-swatch' + (isOriginal ? ' active' : '');
+        btn.style.backgroundColor = theme.swatch;
+        btn.title = theme.name;
+        btn.setAttribute('aria-label', theme.name + ' color theme');
+        btn.onclick = () => selectTheme(index);
+        container.appendChild(btn);
+      });
+      currentThemeIndex = colorThemes.findIndex(t => t.primary === presetPrimary);
+      if (currentThemeIndex === -1) currentThemeIndex = 0;
+    }
+
+    function selectTheme(index) {
+      if (!currentPresetName) return;
+      currentThemeIndex = index;
+      const fromPrimary = presetPrimaryMap[currentPresetName];
+      const fromNeutral = presetNeutralMap[currentPresetName] || 'slate';
+      const theme = colorThemes[index];
+      const themed = applyColorTheme(originalPresetHtml, fromPrimary, theme.primary, fromNeutral, theme.neutral);
+      editor.value = themed;
+      updatePreview();
+      document.querySelectorAll('.theme-swatch').forEach((btn, i) => {
+        btn.classList.toggle('active', i === index);
+      });
+    }
+
     function loadPreset(name) {
+      currentPresetName = name;
+      currentThemeIndex = colorThemes.findIndex(t => t.primary === (presetPrimaryMap[name] || 'blue'));
+      if (currentThemeIndex === -1) currentThemeIndex = 0;
+      originalPresetHtml = presets[name];
       editor.value = presets[name];
       document.getElementById('presetsMenu').classList.remove('open');
+      renderThemeSwatches(name);
       updatePreview();
     }
 
@@ -5343,8 +5458,7 @@ function switchProjectPage(page) {
       if (hash.startsWith('preset:')) {
         const name = hash.slice(7);
         if (presets[name]) {
-          editor.value = presets[name];
-          updatePreview();
+          loadPreset(name);
         }
         return;
       }
