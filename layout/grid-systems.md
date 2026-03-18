@@ -35,6 +35,27 @@
 | Narrow text/article | 720px |
 | Wide dashboard/admin | 1440px |
 | Full-bleed (hero, banner) | 100% (no max) |
+| Settings/forms inside apps | 448–560px (`max-w-md` to `max-w-xl`) |
+| Text-heavy content inside apps | 65ch (`max-w-prose`) |
+
+### Container Strategy Inside App Shells
+
+The `margin-inline: auto` pattern works for full-page marketing sites. But inside a sidebar + main layout, the main area (`1fr`) needs its own width strategy. On a 1920px monitor with a 240px sidebar, the main area is ~1680px — without constraints, content stretches unreadably wide.
+
+**By content type (hybrid approach — use different strategies in the same app):**
+
+| Content Type | Max Width | Alignment | Example |
+|-------------|-----------|-----------|---------|
+| Dashboard overview (stats, charts) | 1280–1440px | Left-aligned or centered | `max-w-7xl` |
+| Data tables | No max-width | Full width of main area | Let tables use horizontal space |
+| Settings / forms | 448–560px | Left-aligned | `max-w-md` or `max-w-xl` |
+| Text content / docs | 65ch | Left-aligned or centered | `max-w-prose` |
+
+**Left-aligned vs centered inside app shells:**
+- **Left-aligned** (GitHub, Linear, Jira) — content starts at the left edge of the main area with padding. Extra space accumulates on the right. Most common in production apps. Works because users scan F-pattern (left-to-right) and the content edge stays consistent relative to the sidebar.
+- **Centered** (Stripe, Vercel, Notion) — content centered within the main area via `mx-auto`. Looks polished on wide screens but creates equal gaps on both sides. Better for SaaS dashboards and document-centric apps.
+
+**The empty right space is not a bug** — on ultrawide screens (2560px+), even with a sidebar, the main area can be 2300px. Without a max-width, stat cards become absurdly wide and table rows are unreadable. The empty space is intentional whitespace that prevents this.
 
 ### Grid vs Flexbox Decision
 | Scenario | Use |
