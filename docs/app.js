@@ -307,11 +307,26 @@ function toggleDarkMode() {
 }
 
 // --- Fullscreen preview ---
+let preFullscreenViewport = null;
+
 function toggleFullscreen() {
   const entering = !document.body.classList.contains('fullscreen-preview');
   document.body.classList.toggle('fullscreen-preview');
   document.getElementById('fullscreenBtn').classList.toggle('active', entering);
-  if (entering) showToast('Press Esc to exit fullscreen');
+  if (entering) {
+    preFullscreenViewport = currentViewport;
+    preview.style.width = '100%';
+    currentViewport = 'full';
+    showToast('Press Esc to exit fullscreen');
+  } else if (preFullscreenViewport !== null) {
+    if (preFullscreenViewport === 'full') {
+      preview.style.width = '100%';
+    } else {
+      preview.style.width = preFullscreenViewport + 'px';
+    }
+    currentViewport = preFullscreenViewport;
+    preFullscreenViewport = null;
+  }
 }
 
 document.addEventListener('keydown', function(e) {
