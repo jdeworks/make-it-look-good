@@ -159,10 +159,7 @@ ${processedHtml}
 document.addEventListener('click', function(e) {
   var a = e.target.closest('a');
   if (a) {
-var href = a.getAttribute('href');
-if (!href || href === '' || href.charAt(0) === '#') {
-  e.preventDefault();
-}
+    e.preventDefault();
   }
 });
 document.querySelectorAll('form').forEach(function(f) {
