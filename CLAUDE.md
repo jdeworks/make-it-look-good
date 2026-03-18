@@ -44,8 +44,7 @@ Not every section is required, but **Concrete Rules** and **CSS/Implementation P
 - **Step 0 in CONSULT.md classifies the input** — existing code (any framework), screenshot, vague idea, or raw data — and routes to the right workflow
 - **Match the user's tech stack** — don't output Tailwind HTML to someone using React + styled-components. Detect the framework and output code in their format
 - **Always generate Design Review Notes** (Step 4 in CONSULT.md) — a structured markdown document with issues found, design decisions, tokens, and an implementation checklist. This is the primary deliverable
-- **`docs/index.html`** is a live preview tool (GitHub Pages) — paste HTML + Tailwind to preview designs
-- **`templates/`** contains before/after HTML examples showing MVP vs properly designed versions
+- **`docs/index.html`** is a live preview tool (GitHub Pages) — paste HTML + Tailwind to preview designs. Includes before/after examples in the Templates menu.
 
 ## Directory Structure
 - `foundations/` — Cognitive/psychological principles (Gestalt, Hick's Law, Fitts's Law, etc.)

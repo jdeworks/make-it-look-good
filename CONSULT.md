@@ -708,15 +708,16 @@ Common user feedback and how to respond:
 
 ---
 
-## Templates
+## Before/After Examples
 
-Before/after examples are available in `templates/` for reference:
-- `templates/dashboard-before.html` / `dashboard-after.html`
-- `templates/landing-before.html` / `landing-after.html`
-- `templates/form-before.html` / `form-after.html`
-- `templates/card-grid-before.html` / `card-grid-after.html`
+The preview tool includes before/after examples for key UI patterns. Use these to show users what "good design" looks like compared to typical MVP output:
+- Dashboard: [Before](docs/index.html#preset:dashboard/before) → [After](docs/index.html#preset:dashboard/clean)
+- Landing Page: [Before](docs/index.html#preset:landing/before) → [After](docs/index.html#preset:landing/clean)
+- Form: [Before](docs/index.html#preset:form/before) → [After](docs/index.html#preset:form/clean)
+- Card Grid: [Before](docs/index.html#preset:cards/before) → [After](docs/index.html#preset:cards/clean)
+- Multi-Page App: [Before](docs/index.html#preset:project/before) → [After](docs/index.html#preset:project/clean)
 
-Use these to show users what "good design" looks like compared to typical MVP output.
+Each "after" has multiple personality variants (Clean, Minimalist, Playful) accessible via the personality buttons in the preview header.
 
 ## Validated Test Cases
 
