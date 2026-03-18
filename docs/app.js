@@ -139,9 +139,25 @@ function debouncedUpdate() {
   debounceTimer = setTimeout(updatePreview, 300);
 }
 
+let userEdited = false;
+
+function updateTemplateName() {
+  const el = document.getElementById('templateName');
+  if (!currentPresetName || !manifestData) {
+    el.textContent = '';
+    return;
+  }
+  const info = manifestData.elements[currentPresetName];
+  const label = info ? info.label : currentPresetName;
+  el.textContent = label + (userEdited ? ' *' : '');
+}
+
 editor.addEventListener('input', () => {
-  if (currentPresetName) {
-    currentPresetName = null;
+  if (currentPresetName && !userEdited) {
+    userEdited = true;
+    updateTemplateName();
+  }
+  if (currentElement) {
     currentElement = null;
     currentPersonality = null;
     document.getElementById('personalityButtons').style.display = 'none';
@@ -409,12 +425,14 @@ async function loadPreset(element, personality) {
   currentElement = element;
   currentPersonality = personality;
   currentPresetName = element;
+  userEdited = false;
   const primary = getElementPrimary(element, personality);
   currentThemeIndex = colorThemes.findIndex(t => t.primary === primary);
   if (currentThemeIndex === -1) currentThemeIndex = 0;
   originalPresetHtml = html;
   editor.value = html;
   document.getElementById('presetsMenu').classList.remove('open');
+  updateTemplateName();
   if (personality === 'before') {
     document.getElementById('personalityButtons').style.display = 'none';
     document.getElementById('themeSwatches').style.display = 'none';
