@@ -1191,10 +1191,19 @@ window.addEventListener('message', function(e) {
 });
 
 // --- Init ---
-initCodeMirror();
-initMobile();
-loadFromHash().then(() => {
-  if (!editor.value) {
-    updatePreview();
-  }
-});
+function startApp() {
+  initCodeMirror();
+  initMobile();
+  loadFromHash().then(() => {
+    if (!editor.value) {
+      updatePreview();
+    }
+  });
+}
+
+// CodeMirror modules load async via <script type="module"> — wait for them
+if (window._cmModules) {
+  startApp();
+} else {
+  window.addEventListener('cm-ready', startApp);
+}
