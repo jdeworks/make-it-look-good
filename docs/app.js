@@ -178,36 +178,28 @@ function updatePreview() {
     /<style type="text\/tailwindcss">/gi,
     '<style type="text/tailwindcss">\n    ' + darkVariantCSS
   );
-  const srcdoc = `<!DOCTYPE html>
-<html lang="en"${darkClass}>
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"><\/script>
-  <style type="text/tailwindcss">
-${darkVariantCSS}
-  </style>
-  <style>
-body { margin: 0; }
-  </style>
-  ${visualStyles[currentStyleIndex].css ? '<style>' + visualStyles[currentStyleIndex].css + '</style>' : ''}
-</head>
-<body>
-${processedHtml}
-${inspectMode ? inspectorAgentScript : ''}
-<script>
-document.addEventListener('click', function(e) {
-  var a = e.target.closest('a');
-  if (a) {
-    e.preventDefault();
-  }
-});
-document.querySelectorAll('form').forEach(function(f) {
-  f.addEventListener('submit', function(e) { e.preventDefault(); });
-});
-<\/script>
-</body>
-</html>`;
+  // Build srcdoc by concatenation to avoid </script> inside a template literal
+  // breaking the HTML parser's script detection
+  const srcdoc = '<!DOCTYPE html>\n<html lang="en"' + darkClass + '>\n<head>\n' +
+    '  <meta charset="UTF-8">\n' +
+    '  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n' +
+    '  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>\n' +
+    '  <style type="text/tailwindcss">\n' + darkVariantCSS + '\n  </style>\n' +
+    '  <style>\nbody { margin: 0; }\n  </style>\n' +
+    (visualStyles[currentStyleIndex].css ? '  <style>' + visualStyles[currentStyleIndex].css + '</style>\n' : '') +
+    '</head>\n<body>\n' +
+    processedHtml + '\n' +
+    (inspectMode ? inspectorAgentScript : '') + '\n' +
+    '<script>\n' +
+    'document.addEventListener("click", function(e) {\n' +
+    '  var a = e.target.closest("a");\n' +
+    '  if (a) { e.preventDefault(); }\n' +
+    '});\n' +
+    'document.querySelectorAll("form").forEach(function(f) {\n' +
+    '  f.addEventListener("submit", function(e) { e.preventDefault(); });\n' +
+    '});\n' +
+    '</' + 'script>\n' +
+    '</body>\n</html>';
   preview.srcdoc = srcdoc;
 }
 
