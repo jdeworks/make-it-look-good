@@ -270,7 +270,7 @@ Before generating code from scratch, check the **live preview tool** for startin
 
 If the user is unsure about their design vibe (intake question 3), point them to the preview tool:
 
-> *"Take a look at the [live preview tool](docs/index.html) — try loading the same template in different personalities (Clean, Minimalist, Playful) to see which direction feels right for your project. You can also try the Style buttons (Glass, Editorial) for CSS overlays on any personality. Tell me which one resonates and we'll build from there."*
+> *"Take a look at the [live preview tool](docs/index.html) — try loading the same template in different personalities (Clean, Minimalist, Playful) to see which direction feels right for your project. You can also try the Effect buttons (Hushed, Bouncy, Frosted, Serif) for CSS overlays on any personality. Tell me which one resonates and we'll build from there."*
 
 ### Personality → Template Mapping
 

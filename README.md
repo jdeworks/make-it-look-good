@@ -53,7 +53,7 @@ Each "before" shows a typical MVP. Each "after" is a structurally different rede
 | Card Grid | Clean, Minimalist, Playful | [Before](https://jdeworks.github.io/make-it-look-good/#preset:cards/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:cards/clean) |
 | Multi-Page App | Clean, Minimalist, Playful | [Before](https://jdeworks.github.io/make-it-look-good/#preset:project/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:project/clean) |
 
-Click any "After" link — personality buttons appear in the preview header to switch between variants. Color swatches let you recolor with 8 different palettes. Style buttons apply CSS overlays (Minimalist, Playful, Glass, Editorial).
+Click any "After" link — personality buttons appear in the preview header to switch between variants. Color swatches let you recolor with any Tailwind palette. Effect buttons apply CSS overlays (Hushed, Bouncy, Frosted, Serif).
 
 ---
 
