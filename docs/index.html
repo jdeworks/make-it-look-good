@@ -1049,6 +1049,37 @@ ${html}
       </div>
     </section>
 
+  <script>
+  function toggleBilling() {
+    const btn = document.getElementById('billing-toggle');
+    const isAnnual = btn.getAttribute('aria-checked') === 'true';
+    btn.setAttribute('aria-checked', !isAnnual);
+    const slider = btn.querySelector('.toggle-slider');
+    const labelM = document.getElementById('label-monthly');
+    const labelA = document.getElementById('label-annual');
+    if (!isAnnual) {
+      btn.classList.remove('bg-slate-300');
+      btn.classList.add('bg-indigo-600');
+      slider.style.transform = 'translateX(1.25rem)';
+      labelM.classList.replace('text-slate-900', 'text-slate-500');
+      labelA.querySelector('span').classList.replace('text-slate-500', 'text-slate-900') || (labelA.style.color = '#0f172a');
+    } else {
+      btn.classList.remove('bg-indigo-600');
+      btn.classList.add('bg-slate-300');
+      slider.style.transform = 'translateX(0)';
+      labelM.classList.replace('text-slate-500', 'text-slate-900');
+      labelA.querySelector('span') && labelA.querySelector('span').classList.replace('text-slate-900', 'text-slate-500');
+    }
+    document.querySelectorAll('.price-value').forEach(el => {
+      const price = !isAnnual ? el.dataset.annual : el.dataset.monthly;
+      el.style.opacity = '0';
+      setTimeout(() => { el.textContent = '$' + price; el.style.opacity = '1'; }, 150);
+    });
+    document.querySelectorAll('.annual-note').forEach(el => {
+      el.classList.toggle('hidden', isAnnual);
+    });
+  }
+  <\/script>
   </main>`,
 
       portfolio: `<style type="text/tailwindcss">
@@ -3367,7 +3398,7 @@ document.querySelectorAll('[role="tablist"]').forEach(tablist => {
     if (next) { e.preventDefault(); next.click(); next.focus(); }
   });
 });
-</script>`,
+<\/script>`,
       snippetAccordion: `<!-- Accordion: FAQ-style with chevron rotation, single-open behavior -->
 <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-200 dark:divide-slate-700" id="accordion-group">
 
@@ -3456,7 +3487,7 @@ function toggleAccordion(btn) {
     if (panel) panel.classList.remove('hidden');
   }
 }
-</script>`,
+<\/script>`,
       snippetPagination: `<!-- Pagination: Previous/Next + page numbers + ellipsis + results count -->
 <nav class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 px-4 sm:px-6 py-3" aria-label="Pagination">
   <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -3584,7 +3615,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'ArrowDown') { e.preventDefault(); items[(idx + 1) % items.length].focus(); }
   if (e.key === 'ArrowUp') { e.preventDefault(); items[(idx - 1 + items.length) % items.length].focus(); }
 });
-</script>`,
+<\/script>`,
       snippetAvatars: `<!-- Avatar Group: Overlapping avatars with initials fallback, status dots, +N more -->
 <div class="flex flex-col gap-6">
 
