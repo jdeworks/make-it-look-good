@@ -606,6 +606,17 @@ function applyColorTheme(html, fromPrimary, toPrimary, fromNeutral, toNeutral, t
         'g'
       );
       result = result.replace(rgbaCompact, 'rgba(' + tr[0] + ',' + tr[1] + ',' + tr[2] + ',');
+      // rgb(R, G, B) without alpha — spaced and compact forms
+      const rgbPattern = new RegExp(
+        'rgb\\(\\s*' + fr[0] + '\\s*,\\s*' + fr[1] + '\\s*,\\s*' + fr[2] + '\\s*\\)',
+        'g'
+      );
+      result = result.replace(rgbPattern, 'rgb(' + tr[0] + ',' + tr[1] + ',' + tr[2] + ')');
+      const rgbCompact = new RegExp(
+        'rgb\\(' + fr[0] + ',' + fr[1] + ',' + fr[2] + '\\)',
+        'g'
+      );
+      result = result.replace(rgbCompact, 'rgb(' + tr[0] + ',' + tr[1] + ',' + tr[2] + ')');
       // Hex values — convert RGB to hex and replace
       const fromHex = '#' + fr.map(c => c.toString(16).padStart(2, '0')).join('');
       const toHex = '#' + tr.map(c => c.toString(16).padStart(2, '0')).join('');
