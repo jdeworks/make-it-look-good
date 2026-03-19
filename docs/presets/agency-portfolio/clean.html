@@ -1,0 +1,346 @@
+<!-- Agency Portfolio: Clean | Inspired by nographism.com — giant logo hero with scroll-shrink, -->
+<!-- two-column services, horizontal marquee, project cards, alternating light/dark sections -->
+<!-- Stack: HTML + Tailwind CSS | Dark mode: yes | Responsive: yes -->
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+  /* Logo — always fixed, JS interpolates size/position on scroll */
+  .hero-logo {
+    position: fixed;
+    z-index: 50;
+    line-height: 0.95;
+    letter-spacing: -0.03em;
+    pointer-events: none;
+    transform-origin: top left;
+    will-change: transform;
+  }
+
+  /* Horizontal marquee ticker */
+  @keyframes marquee {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+  .marquee-track {
+    display: flex;
+    width: max-content;
+    animation: marquee 20s linear infinite;
+  }
+  .marquee-track:hover { animation-play-state: paused; }
+
+  /* Scroll reveal */
+  .scroll-reveal {
+    opacity: 0;
+    transform: translateY(40px);
+    transition: opacity 0.7s ease-out, transform 0.7s ease-out;
+  }
+  .scroll-reveal.revealed {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .scroll-reveal:nth-child(2) { transition-delay: 100ms; }
+  .scroll-reveal:nth-child(3) { transition-delay: 200ms; }
+  .scroll-reveal:nth-child(4) { transition-delay: 300ms; }
+
+  /* Service list hover */
+  .service-item {
+    transition: padding-left 0.3s ease, color 0.3s ease;
+  }
+  .service-item:hover {
+    padding-left: 1rem;
+  }
+
+  /* Project card image zoom */
+  .project-card img {
+    transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .project-card:hover img {
+    transform: scale(1.05);
+  }
+</style>
+
+<div class="min-h-screen bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+
+  <!-- Header (visible after scroll, fixed top-right) -->
+  <header id="agencyHeader" class="fixed top-0 right-0 z-40 p-4 md:p-6 flex items-center gap-3 pointer-events-none opacity-0 transition-opacity duration-500">
+    <nav class="pointer-events-auto flex items-center gap-4 sm:gap-6" aria-label="Main navigation">
+      <a href="#work" class="text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Work</a>
+      <a href="#services" class="text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Services</a>
+      <a href="#about" class="text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">About</a>
+      <a href="#contact" class="inline-flex items-center px-5 py-2.5 text-sm font-medium bg-teal-700 dark:bg-teal-600 text-white rounded-full hover:bg-teal-600 dark:hover:bg-teal-500 transition-colors min-h-11">Contact</a>
+    </nav>
+  </header>
+
+  <!-- Logo (fixed, JS-driven scroll interpolation) -->
+  <h1 id="heroLogo" class="hero-logo text-slate-900 dark:text-white" aria-label="Studio Name">
+    Studio Name<span class="text-teal-600 dark:text-teal-400 align-super text-[0.25em]">&reg;</span>
+  </h1>
+
+  <!-- Hero: Intro -->
+  <section class="min-h-screen flex flex-col justify-between px-4 sm:px-8 md:px-10 pt-10 md:pt-12 pb-8 md:pb-12">
+    <!-- Spacer that matches the logo's initial size so content flows below it -->
+    <div id="logoSpacer" aria-hidden="true"></div>
+
+    <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-8 mt-auto">
+      <div class="max-w-md">
+        <p class="text-base sm:text-lg leading-relaxed text-slate-600 dark:text-slate-400">
+          A digital studio specialized in UX/UI design and bespoke web development.
+          We create tailor-made experiences optimized for impact.
+        </p>
+        <a href="#contact" class="inline-flex items-center px-6 py-3 mt-8 text-sm font-medium uppercase tracking-wider bg-teal-700 dark:bg-teal-600 text-white rounded-full hover:bg-teal-600 dark:hover:bg-teal-500 transition-colors min-h-11">
+          Request a quote
+        </a>
+      </div>
+
+      <nav class="flex items-center gap-6 sm:gap-8 text-sm" aria-label="Page sections">
+        <a href="#work" class="text-slate-900 dark:text-white font-medium underline underline-offset-4 decoration-1">Work</a>
+        <a href="#services" class="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Services</a>
+        <a href="#about" class="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">About</a>
+        <a href="#contact" class="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Contact</a>
+      </nav>
+    </div>
+  </section>
+
+  <!-- Services Section (lavender background) -->
+  <section id="services" class="bg-blue-100/60 dark:bg-slate-900 py-16 md:py-24 lg:py-32 px-4 sm:px-8 md:px-10">
+    <div class="max-w-6xl mx-auto">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-x-16 lg:gap-x-24">
+        <!-- Design column -->
+        <div class="scroll-reveal">
+          <h2 class="text-3xl sm:text-4xl font-light tracking-tight mb-8 md:mb-12 text-slate-900 dark:text-white">Design</h2>
+          <div class="divide-y divide-slate-300 dark:divide-slate-700">
+            <div class="service-item py-4 text-base text-slate-700 dark:text-slate-300 cursor-default">Art direction</div>
+            <div class="service-item py-4 text-base text-slate-700 dark:text-slate-300 cursor-default">UX/UI Design</div>
+            <div class="service-item py-4 text-base text-slate-700 dark:text-slate-300 cursor-default">Motion Design</div>
+            <div class="service-item py-4 text-base text-slate-700 dark:text-slate-300 cursor-default">Design Systems</div>
+            <div class="service-item py-4 text-base text-slate-700 dark:text-slate-300 cursor-default">Content strategy</div>
+            <div class="service-item py-4 text-base text-slate-700 dark:text-slate-300 cursor-default">Usability testing</div>
+          </div>
+        </div>
+
+        <!-- Development column -->
+        <div class="scroll-reveal mt-12 md:mt-0">
+          <h2 class="text-3xl sm:text-4xl font-light tracking-tight mb-8 md:mb-12 text-slate-900 dark:text-white">Development</h2>
+          <div class="divide-y divide-slate-300 dark:divide-slate-700">
+            <div class="service-item py-4 text-base text-slate-700 dark:text-slate-300 cursor-default">Front-end development</div>
+            <div class="service-item py-4 text-base text-slate-700 dark:text-slate-300 cursor-default">Back-end development</div>
+            <div class="service-item py-4 text-base text-slate-700 dark:text-slate-300 cursor-default">E-Commerce platforms</div>
+            <div class="service-item py-4 text-base text-slate-700 dark:text-slate-300 cursor-default">CMS integration</div>
+            <div class="service-item py-4 text-base text-slate-700 dark:text-slate-300 cursor-default">API development</div>
+            <div class="service-item py-4 text-base text-slate-700 dark:text-slate-300 cursor-default">Performance & SEO</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Horizontal marquee ticker -->
+  <section class="overflow-hidden py-10 md:py-14 bg-white dark:bg-slate-950 border-y border-slate-200 dark:border-slate-800">
+    <div class="marquee-track">
+      <span class="text-5xl sm:text-7xl md:text-8xl font-semibold tracking-tighter text-slate-900 dark:text-white whitespace-nowrap px-6">No shortcuts</span>
+      <span class="text-5xl sm:text-7xl md:text-8xl font-semibold tracking-tighter text-teal-600/30 dark:text-teal-400/30 whitespace-nowrap px-6" aria-hidden="true">&bull;</span>
+      <span class="text-5xl sm:text-7xl md:text-8xl font-semibold tracking-tighter text-slate-900 dark:text-white whitespace-nowrap px-6">No templates</span>
+      <span class="text-5xl sm:text-7xl md:text-8xl font-semibold tracking-tighter text-teal-600/30 dark:text-teal-400/30 whitespace-nowrap px-6" aria-hidden="true">&bull;</span>
+      <span class="text-5xl sm:text-7xl md:text-8xl font-semibold tracking-tighter text-slate-900 dark:text-white whitespace-nowrap px-6">No compromises</span>
+      <span class="text-5xl sm:text-7xl md:text-8xl font-semibold tracking-tighter text-teal-600/30 dark:text-teal-400/30 whitespace-nowrap px-6" aria-hidden="true">&bull;</span>
+      <!-- Duplicate for seamless loop -->
+      <span class="text-5xl sm:text-7xl md:text-8xl font-semibold tracking-tighter text-slate-900 dark:text-white whitespace-nowrap px-6" aria-hidden="true">No shortcuts</span>
+      <span class="text-5xl sm:text-7xl md:text-8xl font-semibold tracking-tighter text-teal-600/30 dark:text-teal-400/30 whitespace-nowrap px-6" aria-hidden="true">&bull;</span>
+      <span class="text-5xl sm:text-7xl md:text-8xl font-semibold tracking-tighter text-slate-900 dark:text-white whitespace-nowrap px-6" aria-hidden="true">No templates</span>
+      <span class="text-5xl sm:text-7xl md:text-8xl font-semibold tracking-tighter text-teal-600/30 dark:text-teal-400/30 whitespace-nowrap px-6" aria-hidden="true">&bull;</span>
+      <span class="text-5xl sm:text-7xl md:text-8xl font-semibold tracking-tighter text-slate-900 dark:text-white whitespace-nowrap px-6" aria-hidden="true">No compromises</span>
+      <span class="text-5xl sm:text-7xl md:text-8xl font-semibold tracking-tighter text-teal-600/30 dark:text-teal-400/30 whitespace-nowrap px-6" aria-hidden="true">&bull;</span>
+    </div>
+  </section>
+
+  <!-- Featured statement -->
+  <section class="py-16 md:py-24 lg:py-32 px-4 sm:px-8 md:px-10">
+    <div class="max-w-4xl mx-auto">
+      <h2 class="text-3xl sm:text-4xl md:text-5xl font-light tracking-tight leading-tight text-slate-900 dark:text-white scroll-reveal">
+        Eye-catching designs and easy&#8209;to&#8209;manage websites built for results.
+      </h2>
+    </div>
+  </section>
+
+  <!-- Work / Projects Grid -->
+  <section id="work" class="py-16 md:py-24 lg:py-32 px-4 sm:px-8 md:px-10 bg-white dark:bg-slate-950">
+    <div class="max-w-6xl mx-auto">
+      <h2 class="text-xs font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-10 md:mb-16 scroll-reveal">Selected projects</h2>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
+        <!-- Project 1 -->
+        <a href="#" class="project-card group scroll-reveal block">
+          <div class="aspect-[4/3] rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-800 mb-4">
+            <div class="w-full h-full bg-gradient-to-br from-teal-100 to-blue-100 dark:from-teal-900/40 dark:to-blue-900/40 flex items-center justify-center">
+              <span class="text-4xl font-light text-teal-700/40 dark:text-teal-400/40">01</span>
+            </div>
+          </div>
+          <h3 class="text-lg font-semibold group-hover:text-teal-700 dark:group-hover:text-teal-400 transition-colors">Fintech Dashboard</h3>
+          <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">UX/UI Design &middot; Development</p>
+        </a>
+
+        <!-- Project 2 -->
+        <a href="#" class="project-card group scroll-reveal block md:mt-16">
+          <div class="aspect-[4/3] rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-800 mb-4">
+            <div class="w-full h-full bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-900/40 dark:to-indigo-900/40 flex items-center justify-center">
+              <span class="text-4xl font-light text-blue-700/40 dark:text-blue-400/40">02</span>
+            </div>
+          </div>
+          <h3 class="text-lg font-semibold group-hover:text-teal-700 dark:group-hover:text-teal-400 transition-colors">Luxury Watch Brand</h3>
+          <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Art direction &middot; E-Commerce</p>
+        </a>
+
+        <!-- Project 3 -->
+        <a href="#" class="project-card group scroll-reveal block">
+          <div class="aspect-[4/3] rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-800 mb-4">
+            <div class="w-full h-full bg-gradient-to-br from-amber-50 to-orange-100 dark:from-amber-900/40 dark:to-orange-900/40 flex items-center justify-center">
+              <span class="text-4xl font-light text-amber-700/40 dark:text-amber-400/40">03</span>
+            </div>
+          </div>
+          <h3 class="text-lg font-semibold group-hover:text-teal-700 dark:group-hover:text-teal-400 transition-colors">Health & Wellness App</h3>
+          <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">UX Research &middot; Mobile Design</p>
+        </a>
+
+        <!-- Project 4 -->
+        <a href="#" class="project-card group scroll-reveal block md:mt-16">
+          <div class="aspect-[4/3] rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-800 mb-4">
+            <div class="w-full h-full bg-gradient-to-br from-rose-50 to-pink-100 dark:from-rose-900/40 dark:to-pink-900/40 flex items-center justify-center">
+              <span class="text-4xl font-light text-rose-700/40 dark:text-rose-400/40">04</span>
+            </div>
+          </div>
+          <h3 class="text-lg font-semibold group-hover:text-teal-700 dark:group-hover:text-teal-400 transition-colors">Creative Agency Rebrand</h3>
+          <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Branding &middot; Web Design</p>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- About / Team Section (dark) -->
+  <section id="about" class="py-16 md:py-24 lg:py-32 px-4 sm:px-8 md:px-10 bg-slate-900 dark:bg-slate-900 text-white">
+    <div class="max-w-4xl mx-auto">
+      <h2 class="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-10 scroll-reveal">About us</h2>
+      <p class="text-2xl sm:text-3xl md:text-4xl font-light leading-snug tracking-tight scroll-reveal">
+        We are a small team of designers and developers who believe great work comes from deep collaboration, not assembly lines.
+      </p>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-8 mt-16 md:mt-24">
+        <div class="scroll-reveal">
+          <p class="text-4xl font-semibold tabular-nums text-teal-400">50+</p>
+          <p class="text-sm text-slate-400 mt-2">Projects delivered</p>
+        </div>
+        <div class="scroll-reveal">
+          <p class="text-4xl font-semibold tabular-nums text-teal-400">8</p>
+          <p class="text-sm text-slate-400 mt-2">Years of experience</p>
+        </div>
+        <div class="scroll-reveal">
+          <p class="text-4xl font-semibold tabular-nums text-teal-400">100%</p>
+          <p class="text-sm text-slate-400 mt-2">Client satisfaction</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Contact CTA -->
+  <section id="contact" class="py-16 md:py-24 lg:py-32 px-4 sm:px-8 md:px-10 bg-white dark:bg-slate-950">
+    <div class="max-w-4xl mx-auto text-center scroll-reveal">
+      <h2 class="text-3xl sm:text-4xl md:text-5xl font-light tracking-tight text-slate-900 dark:text-white mb-8">Have a project in mind?</h2>
+      <a href="#" class="inline-flex items-center px-8 py-4 text-base font-medium bg-teal-700 dark:bg-teal-600 text-white rounded-full hover:bg-teal-600 dark:hover:bg-teal-500 transition-colors min-h-11">
+        Let's talk
+        <svg class="ml-2 w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </a>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="py-10 md:py-14 px-4 sm:px-8 md:px-10 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950">
+    <div class="max-w-6xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+      <div>
+        <p class="text-base font-semibold text-slate-900 dark:text-white">Studio Name<span class="text-teal-600 dark:text-teal-400 text-xs align-super">&reg;</span></p>
+        <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">&copy; 2026 All rights reserved.</p>
+      </div>
+      <nav class="flex items-center gap-6 text-sm text-slate-500 dark:text-slate-400" aria-label="Footer links">
+        <a href="#" class="hover:text-slate-900 dark:hover:text-white transition-colors">Instagram</a>
+        <a href="#" class="hover:text-slate-900 dark:hover:text-white transition-colors">LinkedIn</a>
+        <a href="#" class="hover:text-slate-900 dark:hover:text-white transition-colors">Dribbble</a>
+      </nav>
+    </div>
+  </footer>
+</div>
+
+<script>
+// --- Logo scroll-shrink: one element, fixed, interpolated ---
+var logo = document.getElementById('heroLogo');
+var spacer = document.getElementById('logoSpacer');
+var header = document.getElementById('agencyHeader');
+var isMd = window.innerWidth >= 768;
+
+// Start/end positions and sizes
+var startX = isMd ? 40 : 16;   // px from left (matches px-4 / md:px-10)
+var startY = isMd ? 48 : 40;   // px from top (matches pt-10 / md:pt-12)
+var endX = isMd ? 40 : 24;     // final fixed position
+var endY = isMd ? 32 : 24;
+var startSize = Math.min(window.innerWidth * 0.12, 144); // clamp(2.5rem, 12vw, 9rem) ≈ 12vw
+startSize = Math.max(startSize, 40);
+var endSize = 18; // 1.125rem
+var scrollRange = window.innerHeight * 0.35; // animation completes over 35vh of scroll
+
+// Set initial logo size and spacer
+logo.style.fontSize = startSize + 'px';
+logo.style.fontWeight = '600';
+logo.style.left = startX + 'px';
+logo.style.top = startY + 'px';
+spacer.style.height = (startSize * 0.95 + 16) + 'px'; // line-height 0.95 + margin
+
+var lastProgress = -1;
+
+function onScroll() {
+  var t = Math.min(Math.max(window.scrollY / scrollRange, 0), 1);
+  // Ease out cubic for smoother deceleration
+  var ease = 1 - Math.pow(1 - t, 3);
+
+  // Only update DOM if progress changed meaningfully
+  var rounded = Math.round(ease * 1000);
+  if (rounded === lastProgress) return;
+  lastProgress = rounded;
+
+  var size = startSize + (endSize - startSize) * ease;
+  var x = startX + (endX - startX) * ease;
+  var y = startY + (endY - startY) * ease;
+
+  logo.style.fontSize = size + 'px';
+  logo.style.left = x + 'px';
+  logo.style.top = y + 'px';
+  logo.style.fontWeight = ease > 0.5 ? '500' : '600';
+  logo.style.mixBlendMode = ease > 0.8 ? 'difference' : 'normal';
+  logo.style.color = ease > 0.8 ? 'white' : '';
+
+  // Show header nav after logo has mostly shrunk
+  header.style.opacity = ease > 0.6 ? '1' : '0';
+  header.style.pointerEvents = ease > 0.6 ? 'auto' : 'none';
+}
+
+window.addEventListener('scroll', onScroll, { passive: true });
+window.addEventListener('resize', function() {
+  isMd = window.innerWidth >= 768;
+  startX = isMd ? 40 : 16;
+  startY = isMd ? 48 : 40;
+  endX = isMd ? 40 : 24;
+  endY = isMd ? 32 : 24;
+  startSize = Math.max(Math.min(window.innerWidth * 0.12, 144), 40);
+  scrollRange = window.innerHeight * 0.35;
+  spacer.style.height = (startSize * 0.95 + 16) + 'px';
+  lastProgress = -1;
+  onScroll();
+});
+onScroll();
+
+// --- Scroll reveal ---
+var reveals = document.querySelectorAll('.scroll-reveal');
+var revealObserver = new IntersectionObserver(function(entries) {
+  entries.forEach(function(entry) {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('revealed');
+      revealObserver.unobserve(entry.target);
+    }
+  });
+}, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+reveals.forEach(function(el) { revealObserver.observe(el); });
+</script>

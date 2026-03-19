@@ -491,12 +491,64 @@
       border-bottom-color: var(--primary);
     }
 
+    /* Mobile preview toolbar (hidden on desktop) */
+    .mobile-preview-toolbar {
+      display: none;
+      background: var(--bg-alt);
+    }
+    .mobile-toolbar-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      width: 100%;
+      padding: 6px 12px;
+      border: none;
+      background: none;
+      color: var(--text-secondary);
+      font-size: 11px;
+      font-family: var(--font);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      cursor: pointer;
+      min-height: 32px;
+    }
+    .mobile-toolbar-toggle:active {
+      background: var(--border);
+    }
+    .mobile-toolbar-chevron {
+      transition: transform 0.2s ease;
+    }
+    .mobile-toolbar-toggle[aria-expanded="true"] .mobile-toolbar-chevron {
+      transform: rotate(180deg);
+    }
+    .mobile-toolbar-content {
+      display: none;
+      flex-direction: column;
+      gap: 8px;
+      padding: 0 10px 10px;
+    }
+    .mobile-toolbar-content.open {
+      display: flex;
+    }
+    .mobile-toolbar-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+    .mobile-toolbar-row:empty {
+      display: none;
+    }
+
     /* Fullscreen preview mode */
     body.fullscreen-preview .header,
     body.fullscreen-preview .mobile-tabs,
     body.fullscreen-preview .editor-panel,
     body.fullscreen-preview .divider,
-    body.fullscreen-preview .preview-header {
+    body.fullscreen-preview .preview-header,
+    body.fullscreen-preview .mobile-preview-toolbar {
       display: none !important;
     }
     body.fullscreen-preview .preview-panel {
@@ -562,6 +614,18 @@
       /* Hide sub-headers on mobile — controls are in the header/tabs */
       .editor-header { display: none; }
       .preview-header { display: none; }
+
+      /* Mobile preview toolbar visible only when it has controls */
+      .mobile-preview-toolbar.has-controls {
+        display: flex;
+        flex-direction: column;
+        border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+      }
+      /* Hide when editor is visible (HTML tab active) */
+      .preview-panel.mobile-hidden .mobile-preview-toolbar {
+        display: none;
+      }
 
       /* Shorten logo on small screens */
       .logo { font-size: 13px; }

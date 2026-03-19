@@ -110,6 +110,9 @@ Need a starting point? Grab a preset from [`docs/presets/_index.md`](../docs/pre
 | Data browser | `docs/presets/shell-sidebar/` + `docs/presets/data-table/` |
 | Pricing page | `docs/presets/pricing/` |
 | Portfolio | `docs/presets/portfolio/` or `docs/presets/personal-hero/` |
+| Agency portfolio | `docs/presets/agency-portfolio/` (scroll-shrink logo, marquee, project grid) |
+| App / fintech showcase | `docs/presets/app-showcase/` (dark hero, phone mockup, stacking cards) |
+| Education / content landing | `docs/presets/scroll-reveal-landing/` (sky gradient, line-by-line reveal) |
 | Blog / editorial | `docs/presets/editorial-blog/` |
 | SaaS features | `docs/presets/saas-features/` |
 | Developer tool | `docs/presets/devtool-landing/` |

@@ -50,6 +50,7 @@ function initMonaco() {
       document.getElementById('themeSwatches').style.display = 'none';
       document.getElementById('styleButtons').style.display = 'none';
       updateTemplateName();
+      syncMobileToolbar();
     }
     debouncedUpdate();
   });
@@ -264,6 +265,12 @@ function updatePreview() {
     'document.addEventListener("keydown", function(e) {\n' +
     '  if (e.key === "Escape") parent.postMessage("milg-escape", "*");\n' +
     '});\n' +
+    'var _lastTap = 0;\n' +
+    'document.addEventListener("touchend", function(e) {\n' +
+    '  var now = Date.now();\n' +
+    '  if (now - _lastTap < 350) { parent.postMessage("milg-double-tap", "*"); _lastTap = 0; }\n' +
+    '  else { _lastTap = now; }\n' +
+    '});\n' +
     '</' + 'script>\n' +
     '</body>\n</html>';
   preview.srcdoc = srcdoc;
@@ -404,7 +411,11 @@ document.addEventListener('keydown', function(e) {
 
 // Listen for Esc from inside the iframe (iframe posts message to parent)
 window.addEventListener('message', function(e) {
-  if (e.source === preview.contentWindow && e.data === 'milg-escape' && document.body.classList.contains('fullscreen-preview')) {
+  if (e.source !== preview.contentWindow) return;
+  if (e.data === 'milg-escape' && document.body.classList.contains('fullscreen-preview')) {
+    toggleFullscreen();
+  }
+  if (e.data === 'milg-double-tap' && document.body.classList.contains('fullscreen-preview')) {
     toggleFullscreen();
   }
 });
@@ -671,6 +682,7 @@ function selectTheme(colorName) {
   document.querySelectorAll('.theme-swatch').forEach(btn => {
     btn.classList.toggle('active', btn.title === colorName);
   });
+  syncMobileToolbar();
 }
 
 function renderStyleButtons(presetName) {
@@ -700,6 +712,7 @@ function selectStyle(index) {
   document.querySelectorAll('.style-btn').forEach((btn, i) => {
     btn.classList.toggle('active', i === index);
   });
+  syncMobileToolbar();
 }
 
 function renderPersonalityButtons(element, activePersonality) {
@@ -750,6 +763,7 @@ async function loadPreset(element, personality) {
     currentStyleIndex = 0;
     renderStyleButtons(element);
   }
+  syncMobileToolbar();
   updatePreview();
 }
 
@@ -1211,6 +1225,76 @@ window.addEventListener('message', function(e) {
     }
   }
 });
+
+// --- Mobile preview toolbar ---
+function toggleMobileToolbar() {
+  const toggle = document.getElementById('mobileToolbarToggle');
+  const content = document.getElementById('mobileToolbarContent');
+  const isOpen = content.classList.contains('open');
+  content.classList.toggle('open');
+  toggle.setAttribute('aria-expanded', !isOpen);
+}
+
+// Sync desktop controls into mobile toolbar containers
+// We recreate buttons with fresh onclick handlers (cloneNode does NOT copy .onclick)
+function syncMobileToolbar() {
+  const mobilePers = document.getElementById('mobilePersonalityButtons');
+  const mobileTheme = document.getElementById('mobileThemeSwatches');
+  const mobileStyle = document.getElementById('mobileStyleButtons');
+  if (!mobilePers || !mobileTheme || !mobileStyle) return;
+
+  // Personality buttons — recreate with direct onclick
+  const desktopPers = document.getElementById('personalityButtons');
+  mobilePers.innerHTML = '';
+  if (desktopPers && desktopPers.style.display !== 'none' && currentElement) {
+    var personalities = Object.keys(manifestData.elements[currentElement].personalities).filter(function(p) { return p !== 'before'; });
+    personalities.forEach(function(pers) {
+      var btn = document.createElement('button');
+      btn.className = 'pers-btn' + (pers === currentPersonality ? ' active' : '');
+      btn.textContent = pers.charAt(0).toUpperCase() + pers.slice(1);
+      btn.onclick = function() { loadPreset(currentElement, pers); };
+      mobilePers.appendChild(btn);
+    });
+  }
+
+  // Theme swatches — recreate with direct onclick
+  const desktopTheme = document.getElementById('themeSwatches');
+  mobileTheme.innerHTML = '';
+  if (desktopTheme && desktopTheme.style.display !== 'none') {
+    var colorNames = Object.keys(tailwindColors).filter(function(c) { return !['slate','gray','zinc','neutral','stone'].includes(c); });
+    colorNames.forEach(function(name) {
+      var btn = document.createElement('button');
+      btn.className = 'theme-swatch' + (name === currentColorName ? ' active' : '');
+      btn.style.backgroundColor = tailwindColors[name].swatch;
+      btn.title = name;
+      btn.setAttribute('aria-label', name + ' color theme');
+      btn.onclick = function() { selectTheme(name); };
+      mobileTheme.appendChild(btn);
+    });
+  }
+
+  // Style/effect buttons — recreate with direct onclick
+  const desktopStyle = document.getElementById('styleButtons');
+  mobileStyle.innerHTML = '';
+  if (desktopStyle && desktopStyle.style.display !== 'none') {
+    var label = document.createElement('span');
+    label.style.cssText = 'font-size:9px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.08em;margin-right:2px;';
+    label.textContent = 'Effect';
+    mobileStyle.appendChild(label);
+    visualStyles.forEach(function(style, index) {
+      var btn = document.createElement('button');
+      btn.className = 'style-btn' + (index === currentStyleIndex ? ' active' : '');
+      btn.textContent = style.label;
+      btn.title = style.name;
+      btn.onclick = function() { selectStyle(index); };
+      mobileStyle.appendChild(btn);
+    });
+  }
+
+  // Show/hide the toolbar toggle based on whether there are any controls
+  var hasControls = mobilePers.children.length > 0 || mobileTheme.children.length > 0 || mobileStyle.children.length > 0;
+  document.getElementById('mobilePreviewToolbar').classList.toggle('has-controls', hasControls);
+}
 
 // --- Init ---
 function startApp() {

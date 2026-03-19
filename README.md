@@ -69,7 +69,7 @@ Click any "After" link — personality buttons appear in the preview header to s
 | **Components** | Hero, tabs, accordion, pagination, dropdown, avatars, data table |
 | **Full Pages** | Pricing, portfolio, restaurant, status page |
 | **Before → After** | Dashboard, landing page, form, card grid, multi-page app |
-| **Expressive** | Personal site, agency landing, product launch, editorial blog, SaaS features, scroll story, product page, devtool landing, docs site, event page, personalized portfolio |
+| **Expressive** | Personal site, agency landing, agency portfolio, app showcase, scroll reveal landing, product launch, editorial blog, SaaS features, scroll story, product page, devtool landing, docs site, event page, personalized portfolio |
 | **Edge Cases** | Deploy monitor, button system, OSS landing |
 
 All presets: dark mode, WCAG AA contrast, 44px touch targets, responsive. [Composition recipes](docs/presets/_index.md#composition-recipes) show how to combine them into full pages.
@@ -85,7 +85,7 @@ All presets: dark mode, WCAG AA contrast, 44px touch targets, responsive. [Compo
 | **Interaction** | [Animation timing](interaction/animation-timing.md), [Micro-interactions](interaction/micro-interactions.md), [Touch targets](interaction/touch-targets.md), [Loading states](interaction/loading-states.md) |
 | **Responsive** | [Mobile-first](responsive/mobile-first.md), [Breakpoints](responsive/breakpoints.md), [Fluid typography](responsive/fluid-typography.md), [Patterns](responsive/responsive-patterns.md) |
 | **Systems** | [Design tokens](systems/design-tokens.md), [Material Design 3](systems/material-design-3.md), [Apple HIG](systems/apple-hig.md), [Building a system](systems/building-a-system.md) |
-| **Expressive** | [Visual identity](expressive/visual-identity.md), [Hero patterns](expressive/hero-patterns.md), [Scroll storytelling](expressive/scroll-storytelling.md), [Purposeful motion](expressive/purposeful-motion.md), [Curated examples](expressive/curated-examples.md) |
+| **Expressive** | [Visual identity](expressive/visual-identity.md), [Hero patterns](expressive/hero-patterns.md), [Scroll storytelling](expressive/scroll-storytelling.md), [Purposeful motion](expressive/purposeful-motion.md), [Scroll effect patterns](expressive/scroll-effect-patterns.md), [Curated examples](expressive/curated-examples.md) |
 | **Heuristics** | [Nielsen's 10](heuristics/nielsen-10.md), [UX frameworks](heuristics/ux-frameworks.md) |
 | **Components** | [Buttons](components/buttons.md), [Forms](components/forms.md), [Cards](components/cards.md), [Navigation](components/navigation.md), [Modals](components/modals-and-dialogs.md), [Tables](components/tables-and-lists.md), [Feedback](components/feedback.md) |
 

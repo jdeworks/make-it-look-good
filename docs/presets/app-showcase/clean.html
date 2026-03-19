@@ -1,0 +1,444 @@
+<!-- App Showcase: Clean | Warm dark hero with phone mockup, stacking feature cards, scroll-driven reveals -->
+<!-- Stack: HTML + Tailwind CSS v4 | Dark mode: yes | Responsive: yes -->
+<!-- Inspired by fintech app landing pages with warm brown/orange palette -->
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital@1&display=swap');
+  .font-body { font-family: 'Inter', system-ui, sans-serif; }
+  .font-accent { font-family: 'Playfair Display', Georgia, serif; font-style: italic; }
+
+  :root {
+    --hero-bg: rgb(21, 11, 7);
+    --accent: rgb(255, 135, 102);
+    --cream: rgb(245, 236, 230);
+    --cream-light: rgb(255, 251, 248);
+    --brown-text: rgb(62, 39, 28);
+    --brown-muted: rgb(130, 100, 82);
+  }
+
+  .scroll-reveal {
+    opacity: 0; transform: translateY(28px);
+    transition: opacity 0.7s cubic-bezier(.22,1,.36,1), transform 0.7s cubic-bezier(.22,1,.36,1);
+  }
+  .scroll-reveal.revealed { opacity: 1; transform: translateY(0); }
+
+  .hero-phone {
+    transition: transform 0.1s linear, opacity 0.1s linear;
+  }
+
+  .side-card {
+    transition: transform 0.1s linear, opacity 0.1s linear, filter 0.1s linear;
+  }
+
+  .feature-card {
+    will-change: transform;
+    box-shadow: 0 -4px 30px rgba(21, 11, 7, 0.08);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .scroll-reveal { opacity: 1; transform: none; transition: none; }
+    .hero-phone, .side-card { transition: none; }
+  }
+</style>
+
+<div class="min-h-screen font-body" style="background: var(--cream-light);">
+
+  <!-- Sticky Nav -->
+  <nav id="appNav" class="fixed top-0 left-0 right-0 z-50 transition-all duration-300" style="background: transparent;">
+    <div class="max-w-6xl mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
+      <a href="#" class="text-lg font-bold tracking-tight text-white dark:text-white" id="navLogo">
+        <svg class="w-7 h-7 inline-block mr-1.5 -mt-0.5" viewBox="0 0 28 28" fill="none">
+          <rect width="28" height="28" rx="8" fill="currentColor" fill-opacity="0.15"/>
+          <path d="M8 14l4 4 8-8" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        PayFlow
+      </a>
+      <div class="hidden sm:flex items-center gap-7">
+        <a href="#features" class="text-sm text-white/70 hover:text-white transition-colors min-h-11 inline-flex items-center nav-link">Features</a>
+        <a href="#brands" class="text-sm text-white/70 hover:text-white transition-colors min-h-11 inline-flex items-center nav-link">For Brands</a>
+        <a href="#stats" class="text-sm text-white/70 hover:text-white transition-colors min-h-11 inline-flex items-center nav-link">Results</a>
+        <a href="#cta" class="text-sm font-semibold px-5 py-2.5 rounded-full min-h-11 inline-flex items-center transition-all nav-cta" style="background: var(--accent); color: var(--hero-bg);">Get Started</a>
+      </div>
+      <button onclick="document.getElementById('appMobileMenu').classList.toggle('hidden')" class="sm:hidden min-h-11 min-w-[44px] flex items-center justify-center text-white rounded-lg" aria-label="Menu">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+    </div>
+    <div id="appMobileMenu" class="hidden sm:hidden px-5 pb-4 space-y-1" style="background: var(--hero-bg);">
+      <a href="#features" class="block text-sm text-white/70 hover:text-white min-h-11 flex items-center px-3 rounded-lg">Features</a>
+      <a href="#brands" class="block text-sm text-white/70 hover:text-white min-h-11 flex items-center px-3 rounded-lg">For Brands</a>
+      <a href="#stats" class="block text-sm text-white/70 hover:text-white min-h-11 flex items-center px-3 rounded-lg">Results</a>
+      <a href="#cta" class="block text-sm font-semibold text-center min-h-11 flex items-center justify-center px-3 rounded-full" style="background: var(--accent); color: var(--hero-bg);">Get Started</a>
+    </div>
+  </nav>
+
+  <!-- Hero: text only, full viewport height so phone section is below the fold -->
+  <section id="hero" class="relative min-h-screen flex flex-col items-center justify-center px-5 pt-24 pb-12" style="background: var(--hero-bg);">
+    <div class="text-center max-w-3xl mx-auto z-10 relative">
+      <p class="scroll-reveal text-xs sm:text-sm font-semibold tracking-[0.2em] uppercase mb-4 sm:mb-5" style="color: var(--accent);">Next-Gen Payments Platform</p>
+      <h1 class="scroll-reveal text-3xl sm:text-5xl lg:text-6xl font-bold text-white leading-tight mb-5 sm:mb-6">
+        Powering engagement where <span class="font-accent font-normal" style="color: var(--accent);">money</span> moves.
+      </h1>
+      <p class="scroll-reveal text-sm sm:text-base text-white/60 max-w-md mx-auto mb-7">Turn every transaction into a brand moment. Reach customers at the point of payment with personalized offers.</p>
+      <div class="scroll-reveal flex flex-col sm:flex-row gap-3 justify-center">
+        <a href="#cta" class="text-sm font-semibold px-7 py-3 rounded-full min-h-11 inline-flex items-center justify-center transition-transform hover:scale-105" style="background: var(--accent); color: var(--hero-bg);">Request a Demo</a>
+        <a href="#features" class="text-sm font-medium px-7 py-3 rounded-full min-h-11 inline-flex items-center justify-center border border-white/20 text-white/80 hover:bg-white/5 transition-colors">Learn More</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Phone Scroll Zone: separate section, NO overflow-hidden, so sticky works -->
+  <section id="phoneScrollZone" class="relative pt-[30vh]" style="height: 330vh; background: var(--hero-bg);">
+      <!-- Side cards (static, blur on initial view) -->
+      <div class="side-card absolute top-8 sm:top-6 -left-4 sm:left-8 lg:left-16 w-48 sm:w-56 h-72 sm:h-80 rounded-2xl opacity-50" id="sideCardL" style="background: linear-gradient(135deg, rgba(255,135,102,0.15), rgba(255,200,170,0.08)); filter: blur(6px); transform: translateX(60px);">
+        <div class="p-5 space-y-3">
+          <div class="w-10 h-10 rounded-xl" style="background: var(--accent); opacity: 0.3;"></div>
+          <div class="h-3 w-3/4 rounded" style="background: rgba(255,255,255,0.15);"></div>
+          <div class="h-3 w-1/2 rounded" style="background: rgba(255,255,255,0.1);"></div>
+          <div class="h-20 w-full rounded-xl mt-4" style="background: rgba(255,255,255,0.06);"></div>
+        </div>
+      </div>
+      <div class="side-card absolute top-8 sm:top-6 -right-4 sm:right-8 lg:right-16 w-48 sm:w-56 h-72 sm:h-80 rounded-2xl opacity-50" id="sideCardR" style="background: linear-gradient(225deg, rgba(255,135,102,0.12), rgba(180,140,120,0.08)); filter: blur(6px); transform: translateX(-60px);">
+        <div class="p-5 space-y-3">
+          <div class="w-10 h-10 rounded-xl" style="background: var(--accent); opacity: 0.3;"></div>
+          <div class="h-3 w-2/3 rounded" style="background: rgba(255,255,255,0.15);"></div>
+          <div class="h-3 w-1/3 rounded" style="background: rgba(255,255,255,0.1);"></div>
+          <div class="h-20 w-full rounded-xl mt-4" style="background: rgba(255,255,255,0.06);"></div>
+        </div>
+      </div>
+
+      <!-- Sticky Phone: stays on screen while scroll zone has runway -->
+      <div class="sticky top-[15vh] flex justify-center z-20" id="heroPhone">
+        <div class="relative w-52 sm:w-64 h-[340px] sm:h-[420px] rounded-[2rem] border-[3px] border-white/10 overflow-hidden" style="background: rgb(30, 18, 12);">
+          <!-- Notch -->
+          <div class="absolute top-0 left-1/2 -translate-x-1/2 w-24 h-6 rounded-b-2xl z-10" style="background: rgb(30, 18, 12);"></div>
+          <!-- Scrolling screen: stacked screens, translateY driven by page scroll -->
+          <div class="absolute inset-3 top-8 rounded-2xl overflow-hidden" id="phoneScreenClip">
+            <div id="phoneScreens" class="relative" style="transition: transform 0.15s ease-out;">
+              <!-- Screen 1: Payment success -->
+              <div class="phone-screen flex flex-col items-center justify-center text-center p-4" style="height: 280px; background: linear-gradient(180deg, rgb(28, 60, 38), rgb(22, 45, 30));">
+                <svg class="w-12 h-12 mb-3" viewBox="0 0 48 48" fill="none">
+                  <circle cx="24" cy="24" r="22" stroke="#4ade80" stroke-width="3" fill="rgba(74,222,128,0.1)"/>
+                  <path d="M15 24l6 6 12-12" stroke="#4ade80" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <p class="text-white text-xs font-medium mb-1">Payment Successful</p>
+                <p class="text-2xl font-bold text-white mb-3">$42.50</p>
+                <div class="w-full rounded-xl p-3 space-y-2" style="background: rgba(255,255,255,0.08);">
+                  <div class="flex justify-between text-[10px]"><span class="text-white/50">To</span><span class="text-white/80">Morning Brew Coffee</span></div>
+                  <div class="flex justify-between text-[10px]"><span class="text-white/50">Reward</span><span style="color: #4ade80;" class="font-medium">+$2.10 cashback</span></div>
+                </div>
+              </div>
+              <!-- Screen 2: Scratch card reward -->
+              <div class="phone-screen flex flex-col items-center justify-center text-center p-4" style="height: 280px; background: linear-gradient(180deg, rgb(37,99,235), rgb(29,78,216));">
+                <div class="w-16 h-16 rounded-2xl mb-4 flex items-center justify-center" style="background: rgba(255,255,255,0.15);">
+                  <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M21 11.25v8.25a1.5 1.5 0 01-1.5 1.5H5.25a1.5 1.5 0 01-1.5-1.5v-8.25M12 4.875A2.625 2.625 0 109.375 7.5H12m0-2.625V7.5m0-2.625A2.625 2.625 0 1114.625 7.5H12m0 0V21m-8.625-9.75h18c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125h-18c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"/></svg>
+                </div>
+                <p class="text-white text-xs font-medium mb-1">You won a scratch card!</p>
+                <p class="text-lg font-bold text-white mb-4">Tap to reveal</p>
+                <div class="w-3/4 h-20 rounded-xl" style="background: repeating-linear-gradient(45deg, rgba(255,255,255,0.1), rgba(255,255,255,0.1) 10px, rgba(255,255,255,0.05) 10px, rgba(255,255,255,0.05) 20px);"></div>
+              </div>
+              <!-- Screen 3: Offer listing -->
+              <div class="phone-screen flex flex-col p-4" style="height: 280px; background: linear-gradient(180deg, rgb(255,251,248), rgb(245,236,230));">
+                <p class="text-xs font-semibold mb-3" style="color: var(--brown-text);">Personalized Offers</p>
+                <div class="space-y-2.5 flex-1">
+                  <div class="flex items-center gap-3 p-2.5 rounded-xl bg-white">
+                    <div class="w-9 h-9 rounded-lg flex-shrink-0" style="background: var(--accent);"></div>
+                    <div class="flex-1 min-w-0"><p class="text-[11px] font-semibold truncate" style="color: var(--brown-text);">20% off your next ride</p><p class="text-[10px]" style="color: var(--brown-muted);">Uber &middot; Expires in 3d</p></div>
+                  </div>
+                  <div class="flex items-center gap-3 p-2.5 rounded-xl bg-white">
+                    <div class="w-9 h-9 rounded-lg flex-shrink-0 bg-emerald-500"></div>
+                    <div class="flex-1 min-w-0"><p class="text-[11px] font-semibold truncate" style="color: var(--brown-text);">Buy 1 Get 1 Free</p><p class="text-[10px]" style="color: var(--brown-muted);">Starbucks &middot; Expires in 7d</p></div>
+                  </div>
+                  <div class="flex items-center gap-3 p-2.5 rounded-xl bg-white">
+                    <div class="w-9 h-9 rounded-lg flex-shrink-0 bg-violet-500"></div>
+                    <div class="flex-1 min-w-0"><p class="text-[11px] font-semibold truncate" style="color: var(--brown-text);">$10 cashback on $50+</p><p class="text-[10px]" style="color: var(--brown-muted);">Amazon &middot; Expires in 5d</p></div>
+                  </div>
+                </div>
+              </div>
+              <!-- Screen 4: Loyalty dashboard -->
+              <div class="phone-screen flex flex-col items-center justify-center text-center p-4" style="height: 280px; background: linear-gradient(180deg, var(--hero-bg), rgb(35, 22, 15));">
+                <p class="text-white/50 text-[10px] uppercase tracking-widest mb-2">Loyalty Points</p>
+                <p class="text-4xl font-bold text-white mb-1">4,280</p>
+                <p class="text-xs mb-4" style="color: var(--accent);">Gold Member</p>
+                <div class="w-full h-2 rounded-full overflow-hidden" style="background: rgba(255,255,255,0.1);">
+                  <div class="h-full rounded-full w-[72%]" style="background: var(--accent);"></div>
+                </div>
+                <p class="text-white/40 text-[10px] mt-2">720 pts to Platinum</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Subtle gradient fade to cream at bottom -->
+    <div class="absolute bottom-0 left-0 right-0 h-48 z-30 pointer-events-none" style="background: linear-gradient(to top, var(--cream-light) 0%, transparent 100%); opacity: 0.7;"></div>
+  </section>
+
+  <!-- Stacking Feature Cards -->
+  <section id="features" class="relative z-20 -mt-16">
+
+    <!-- Feature 1 -->
+    <div class="sticky top-0 min-h-screen flex items-center feature-card" id="brands" style="background: var(--cream); z-index: 1;">
+      <div class="max-w-6xl mx-auto px-5 sm:px-8 py-16 sm:py-20 grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 items-center w-full">
+        <div class="scroll-reveal order-2 lg:order-1">
+          <p class="text-xs font-semibold tracking-[0.2em] uppercase mb-3" style="color: var(--accent);">For Brands</p>
+          <h2 class="text-2xl sm:text-4xl font-bold leading-tight mb-4" style="color: var(--brown-text);">
+            Add <span class="font-accent font-normal" style="color: var(--accent);">value</span> to your marketing efforts
+          </h2>
+          <p class="text-sm sm:text-base leading-relaxed mb-6" style="color: var(--brown-muted);">Place targeted offers directly in the payment flow. Customers see your brand at the moment of highest intent — when they're already spending.</p>
+          <a href="#cta" class="inline-flex items-center min-h-11 px-6 py-2.5 rounded-full text-sm font-semibold transition-transform hover:scale-105" style="background: var(--brown-text); color: var(--cream);">
+            Explore for Brands
+            <svg class="w-4 h-4 ml-2" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </a>
+        </div>
+        <div class="order-1 lg:order-2 flex justify-center scroll-reveal">
+          <div class="w-60 sm:w-72 rounded-3xl p-6 sm:p-8 flex items-center justify-center" style="background: var(--cream-light);">
+            <div class="w-44 sm:w-52 h-[300px] sm:h-[360px] rounded-[1.8rem] border-[3px] border-stone-200 dark:border-stone-700 overflow-hidden" style="background: white;">
+              <div class="h-6 flex items-center justify-center" style="background: var(--brown-text);"><div class="w-16 h-3 rounded-full bg-black/30"></div></div>
+              <div class="p-3 space-y-3">
+                <div class="rounded-xl p-3" style="background: var(--cream);">
+                  <div class="text-[10px] font-semibold" style="color: var(--brown-text);">Featured Offer</div>
+                  <div class="flex items-center gap-2 mt-2">
+                    <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background: var(--accent);"><svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a4 4 0 00-4 4v1H5a1 1 0 00-.994.884l-1 9A1 1 0 004 18h12a1 1 0 00.994-1.116l-1-9A1 1 0 0015 7h-1V6a4 4 0 00-4-4zm2 5V6a2 2 0 10-4 0v1h4z"/></svg></div>
+                    <div><div class="text-[10px] font-semibold" style="color: var(--brown-text);">15% Off Next Order</div><div class="text-[9px]" style="color: var(--brown-muted);">Valid for 7 days</div></div>
+                  </div>
+                </div>
+                <div class="space-y-2">
+                  <div class="h-2 w-full rounded" style="background: var(--cream);"></div>
+                  <div class="h-2 w-2/3 rounded" style="background: var(--cream);"></div>
+                </div>
+                <div class="rounded-xl p-3 mt-2" style="background: var(--cream);">
+                  <div class="text-[10px] font-medium" style="color: var(--brown-text);">Campaign Performance</div>
+                  <div class="flex gap-1 mt-2 items-end h-12">
+                    <div class="flex-1 rounded-t" style="height: 40%; background: var(--accent); opacity: 0.4;"></div>
+                    <div class="flex-1 rounded-t" style="height: 60%; background: var(--accent); opacity: 0.5;"></div>
+                    <div class="flex-1 rounded-t" style="height: 45%; background: var(--accent); opacity: 0.6;"></div>
+                    <div class="flex-1 rounded-t" style="height: 80%; background: var(--accent); opacity: 0.7;"></div>
+                    <div class="flex-1 rounded-t" style="height: 100%; background: var(--accent);"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Feature 2 -->
+    <div class="sticky top-0 min-h-screen flex items-center feature-card" style="background: var(--cream-light); z-index: 2;">
+      <div class="max-w-6xl mx-auto px-5 sm:px-8 py-16 sm:py-20 grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 items-center w-full">
+        <div class="scroll-reveal order-2 lg:order-1">
+          <p class="text-xs font-semibold tracking-[0.2em] uppercase mb-3" style="color: var(--accent);">Monetize</p>
+          <h2 class="text-2xl sm:text-4xl font-bold leading-tight mb-4" style="color: var(--brown-text);">
+            Convert traffic into incremental <span class="font-accent font-normal" style="color: var(--accent);">revenue</span>
+          </h2>
+          <p class="text-sm sm:text-base leading-relaxed mb-6" style="color: var(--brown-muted);">Our AI-driven matching engine pairs the right offer with the right customer at checkout. Average lift of 3.2x over traditional display ads.</p>
+          <a href="#cta" class="inline-flex items-center min-h-11 px-6 py-2.5 rounded-full text-sm font-semibold transition-transform hover:scale-105" style="background: var(--brown-text); color: var(--cream);">
+            See Revenue Tools
+            <svg class="w-4 h-4 ml-2" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </a>
+        </div>
+        <div class="order-1 lg:order-2 flex justify-center scroll-reveal">
+          <div class="w-60 sm:w-72 rounded-3xl p-6 sm:p-8 flex items-center justify-center" style="background: rgb(238, 228, 220);">
+            <div class="w-44 sm:w-52 h-[300px] sm:h-[360px] rounded-[1.8rem] border-[3px] border-stone-200 dark:border-stone-700 overflow-hidden" style="background: white;">
+              <div class="h-6 flex items-center justify-center" style="background: var(--brown-text);"><div class="w-16 h-3 rounded-full bg-black/30"></div></div>
+              <div class="p-3 space-y-3">
+                <div class="text-center py-3">
+                  <div class="text-[10px]" style="color: var(--brown-muted);">Monthly Revenue</div>
+                  <div class="text-xl font-bold" style="color: var(--brown-text);">$48,290</div>
+                  <div class="text-[10px] font-medium" style="color: #16a34a;">+23% vs last month</div>
+                </div>
+                <div class="rounded-xl p-3" style="background: var(--cream);">
+                  <div class="flex justify-between mb-2"><span class="text-[10px]" style="color: var(--brown-muted);">Active Offers</span><span class="text-[10px] font-semibold" style="color: var(--brown-text);">127</span></div>
+                  <div class="flex justify-between mb-2"><span class="text-[10px]" style="color: var(--brown-muted);">Conversion Rate</span><span class="text-[10px] font-semibold" style="color: var(--brown-text);">4.8%</span></div>
+                  <div class="flex justify-between"><span class="text-[10px]" style="color: var(--brown-muted);">Avg. Order Value</span><span class="text-[10px] font-semibold" style="color: var(--brown-text);">$67.30</span></div>
+                </div>
+                <div class="rounded-lg h-8 flex items-center justify-center text-[10px] font-semibold" style="background: var(--accent); color: white;">View Full Report</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Feature 3 -->
+    <div class="sticky top-0 min-h-screen flex items-center feature-card" style="background: var(--cream); z-index: 3;">
+      <div class="max-w-6xl mx-auto px-5 sm:px-8 py-16 sm:py-20 grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 items-center w-full">
+        <div class="scroll-reveal order-2 lg:order-1">
+          <p class="text-xs font-semibold tracking-[0.2em] uppercase mb-3" style="color: var(--accent);">For Banks</p>
+          <h2 class="text-2xl sm:text-4xl font-bold leading-tight mb-4" style="color: var(--brown-text);">
+            Build <span class="font-accent font-normal" style="color: var(--accent);">loyalty</span> programs that drive growth
+          </h2>
+          <p class="text-sm sm:text-base leading-relaxed mb-6" style="color: var(--brown-muted);">Give your cardholders a reason to stay. White-label our platform into your banking app and launch cashback programs in weeks, not quarters.</p>
+          <a href="#cta" class="inline-flex items-center min-h-11 px-6 py-2.5 rounded-full text-sm font-semibold transition-transform hover:scale-105" style="background: var(--brown-text); color: var(--cream);">
+            Partner With Us
+            <svg class="w-4 h-4 ml-2" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </a>
+        </div>
+        <div class="order-1 lg:order-2 flex justify-center scroll-reveal">
+          <div class="w-60 sm:w-72 rounded-3xl p-6 sm:p-8 flex items-center justify-center" style="background: var(--cream-light);">
+            <div class="w-44 sm:w-52 h-[300px] sm:h-[360px] rounded-[1.8rem] border-[3px] border-stone-200 dark:border-stone-700 overflow-hidden" style="background: white;">
+              <div class="h-6 flex items-center justify-center" style="background: var(--brown-text);"><div class="w-16 h-3 rounded-full bg-black/30"></div></div>
+              <div class="p-3 space-y-3">
+                <div class="flex items-center gap-2 p-2 rounded-xl" style="background: var(--cream);">
+                  <div class="w-8 h-8 rounded-full flex items-center justify-center" style="background: var(--accent);"><svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg></div>
+                  <div><div class="text-[10px] font-semibold" style="color: var(--brown-text);">Gold Rewards</div><div class="text-[9px]" style="color: var(--brown-muted);">2,450 points</div></div>
+                </div>
+                <div class="space-y-2">
+                  <div class="flex items-center gap-2 p-2 rounded-lg" style="background: rgba(74,222,128,0.08);">
+                    <div class="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center"><svg class="w-3 h-3 text-green-600" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg></div>
+                    <div class="text-[9px]" style="color: var(--brown-text);">+$3.20 earned at Whole Foods</div>
+                  </div>
+                  <div class="flex items-center gap-2 p-2 rounded-lg" style="background: rgba(74,222,128,0.08);">
+                    <div class="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center"><svg class="w-3 h-3 text-green-600" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg></div>
+                    <div class="text-[9px]" style="color: var(--brown-text);">+$1.50 earned at Shell</div>
+                  </div>
+                  <div class="flex items-center gap-2 p-2 rounded-lg" style="background: rgba(74,222,128,0.08);">
+                    <div class="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center"><svg class="w-3 h-3 text-green-600" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg></div>
+                    <div class="text-[9px]" style="color: var(--brown-text);">+$5.00 earned at Nike</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- Stats Section -->
+  <section id="stats" class="relative z-30 py-20 sm:py-28 px-5 sm:px-8" style="background: var(--hero-bg);">
+    <div class="max-w-5xl mx-auto">
+      <p class="scroll-reveal text-center text-xs font-semibold tracking-[0.2em] uppercase mb-10" style="color: var(--accent);">By the Numbers</p>
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8">
+        <div class="scroll-reveal text-center">
+          <div class="text-3xl sm:text-5xl font-bold text-white mb-1">12M+</div>
+          <div class="text-xs sm:text-sm text-white/50">Active Users</div>
+        </div>
+        <div class="scroll-reveal text-center">
+          <div class="text-3xl sm:text-5xl font-bold text-white mb-1">3.2x</div>
+          <div class="text-xs sm:text-sm text-white/50">Higher Conversion</div>
+        </div>
+        <div class="scroll-reveal text-center">
+          <div class="text-3xl sm:text-5xl font-bold text-white mb-1">$2.1B</div>
+          <div class="text-xs sm:text-sm text-white/50">Processed Annually</div>
+        </div>
+        <div class="scroll-reveal text-center">
+          <div class="text-3xl sm:text-5xl font-bold text-white mb-1">340+</div>
+          <div class="text-xs sm:text-sm text-white/50">Brand Partners</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA Section -->
+  <section id="cta" class="relative z-30 py-20 sm:py-28 px-5 sm:px-8 text-center" style="background: var(--cream-light);">
+    <div class="max-w-2xl mx-auto scroll-reveal">
+      <h2 class="text-2xl sm:text-4xl lg:text-5xl font-bold leading-tight mb-5" style="color: var(--brown-text);">
+        Ready to transform your <span class="font-accent font-normal" style="color: var(--accent);">payments</span> experience?
+      </h2>
+      <p class="text-sm sm:text-base mb-8" style="color: var(--brown-muted);">Join hundreds of brands and financial institutions already using PayFlow to engage customers at the point of transaction.</p>
+      <div class="flex flex-col sm:flex-row gap-3 justify-center">
+        <a href="#" class="inline-flex items-center justify-center min-h-11 px-8 py-3 rounded-full text-sm font-semibold transition-transform hover:scale-105" style="background: var(--brown-text); color: var(--cream);">Schedule a Demo</a>
+        <a href="#" class="inline-flex items-center justify-center min-h-11 px-8 py-3 rounded-full text-sm font-semibold border-2 transition-colors hover:bg-stone-100" style="border-color: var(--brown-text); color: var(--brown-text);">Read Case Studies</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="relative z-30 py-12 px-5 sm:px-8 border-t" style="background: var(--cream); border-color: rgba(62,39,28,0.1);">
+    <div class="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-6">
+      <div class="text-sm font-bold" style="color: var(--brown-text);">
+        <svg class="w-6 h-6 inline-block mr-1 -mt-0.5" viewBox="0 0 28 28" fill="none"><rect width="28" height="28" rx="8" fill="currentColor" fill-opacity="0.1"/><path d="M8 14l4 4 8-8" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        PayFlow
+      </div>
+      <div class="flex gap-6">
+        <a href="#" class="text-xs min-h-11 inline-flex items-center transition-colors hover:opacity-70" style="color: var(--brown-muted);">Privacy</a>
+        <a href="#" class="text-xs min-h-11 inline-flex items-center transition-colors hover:opacity-70" style="color: var(--brown-muted);">Terms</a>
+        <a href="#" class="text-xs min-h-11 inline-flex items-center transition-colors hover:opacity-70" style="color: var(--brown-muted);">Contact</a>
+      </div>
+      <p class="text-xs" style="color: var(--brown-muted);">&copy; 2026 PayFlow, Inc.</p>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+(function() {
+  // Scroll reveal observer
+  const revealEls = document.querySelectorAll('.scroll-reveal');
+  const revealObs = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('revealed'); revealObs.unobserve(e.target); } });
+  }, { threshold: 0.15 });
+  revealEls.forEach(el => revealObs.observe(el));
+
+  // Phone screen scroll + hero effects + nav state
+  var hero = document.getElementById('hero');
+  var phoneScreens = document.getElementById('phoneScreens');
+  var phoneZone = document.getElementById('phoneScrollZone');
+  var cardL = document.getElementById('sideCardL');
+  var cardR = document.getElementById('sideCardR');
+  var nav = document.getElementById('appNav');
+  var navLogo = document.getElementById('navLogo');
+  var navLinks = document.querySelectorAll('.nav-link');
+
+  // Measure phone screens
+  var screens = document.querySelectorAll('.phone-screen');
+  var screenCount = screens.length;
+  var screenH = 280; // matches the height set in style
+
+  function onScroll() {
+    var scrollY = window.scrollY;
+    var heroH = hero.offsetHeight;
+
+    // --- Phone screen scrolling ---
+    // The phone scroll zone is 200vh tall. Map scroll within that zone to screen index.
+    var zoneTop = phoneZone.offsetTop;
+    var zoneH = phoneZone.offsetHeight;
+    var zoneProgress = Math.min(Math.max((scrollY - zoneTop) / (zoneH - window.innerHeight), 0), 1);
+    // Map progress to total screen strip offset
+    var totalStripH = screenCount * screenH;
+    var clipH = screenH; // visible area height
+    var maxOffset = totalStripH - clipH;
+    var offset = zoneProgress * maxOffset;
+    if (phoneScreens) {
+      phoneScreens.style.transform = 'translateY(-' + offset + 'px)';
+    }
+
+    // --- Side cards: spread + unblur as user scrolls into zone ---
+    var cardProgress = Math.min(zoneProgress * 3, 1); // faster than phone scroll
+    if (cardL) {
+      cardL.style.transform = 'translateX(' + (60 - cardProgress * 120) + 'px)';
+      cardL.style.filter = 'blur(' + (6 - cardProgress * 6) + 'px)';
+      cardL.style.opacity = (0.5 + cardProgress * 0.4).toString();
+    }
+    if (cardR) {
+      cardR.style.transform = 'translateX(' + (-60 + cardProgress * 120) + 'px)';
+      cardR.style.filter = 'blur(' + (6 - cardProgress * 6) + 'px)';
+      cardR.style.opacity = (0.5 + cardProgress * 0.4).toString();
+    }
+
+    // --- Nav: transparent → solid dark → solid cream past hero ---
+    var scrolled = scrollY > 60;
+    nav.style.background = scrolled ? 'rgba(21,11,7,0.95)' : 'transparent';
+    nav.style.backdropFilter = scrolled ? 'blur(12px)' : 'none';
+    nav.style.borderBottom = scrolled ? '1px solid rgba(255,255,255,0.06)' : 'none';
+
+    // Past dark area = hero + phone zone
+    var darkEnd = phoneZone.offsetTop + phoneZone.offsetHeight - 100;
+    var pastHero = scrollY > darkEnd;
+    if (pastHero) {
+      nav.style.background = 'rgba(255,251,248,0.95)';
+      nav.style.borderBottom = '1px solid rgba(62,39,28,0.08)';
+      navLogo.style.color = 'var(--brown-text)';
+      navLinks.forEach(function(l) { l.style.color = 'var(--brown-muted)'; });
+    } else {
+      navLogo.style.color = 'white';
+      navLinks.forEach(function(l) { l.style.color = 'rgba(255,255,255,0.7)'; });
+    }
+  }
+
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+})();
+</script>

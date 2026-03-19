@@ -1,12 +1,15 @@
 # Preset & Component Library
 
-> **Copy-paste-ready HTML+Tailwind components and full-page templates.** Each preset has multiple personality variants (Clean, Minimalist, Playful) as structurally different HTML — not just CSS changes. Interactive components also have React, Vue, and Svelte versions.
+> **Copy-paste-ready HTML+Tailwind components and full-page templates.** Each preset has multiple personality variants (Clean, Minimalist, Playful) as structurally different HTML — not just CSS changes.
 
 ## Framework Support
 
-Presets are **HTML+Tailwind by default** (works in any framework). Interactive components also have **React** (`.jsx`), **Vue** (`.vue`), and **Svelte 5** (`.svelte`) versions in their preset directory.
+**HTML is the single source of truth.** To use in React, Vue, Svelte, or Angular:
+1. Copy the HTML preset
+2. Apply attribute changes from [FRAMEWORKS.md](FRAMEWORKS.md)
+3. Add interactivity using the behavior recipes in FRAMEWORKS.md
 
-See [FRAMEWORKS.md](FRAMEWORKS.md) for conversion guides to Angular or any other framework.
+Pre-built framework files (`.jsx`, `.vue`, `.svelte`) only exist for components with **complex interactive logic** — state machines, keyboard navigation, form validation. Presentational components don't need separate framework files; the LLM converts them on the fly.
 
 ---
 
@@ -25,19 +28,19 @@ Start here. Everything builds on these.
 
 | Preset | Description | Frameworks |
 |--------|-------------|:----------:|
-| [`tabs/`](tabs/) | Horizontal tabs with content panels | [React](tabs/react.jsx) [Vue](tabs/vue.vue) |
-| [`pagination/`](pagination/) | Page navigation with prev/next + numbers | [React](pagination/react.jsx) [Vue](pagination/vue.vue) |
+| [`tabs/`](tabs/) | Horizontal tabs with content panels | [React](tabs/react.jsx) [Vue](tabs/vue.vue) [Svelte](tabs/svelte.svelte) |
+| [`pagination/`](pagination/) | Page navigation with prev/next + numbers | [React](pagination/react.jsx) [Vue](pagination/vue.vue) [Svelte](pagination/svelte.svelte) |
 | [`dropdown/`](dropdown/) | Dropdown menu with items + outside click | [React](dropdown/react.jsx) [Vue](dropdown/vue.vue) |
 
 ## Content Sections
 
 | Preset | Description | Frameworks |
 |--------|-------------|:----------:|
-| [`hero/`](hero/) | Centered hero with heading + subtext + CTAs | HTML only |
-| [`feature-grid/`](feature-grid/) | 3-column feature cards with icons | HTML only |
-| [`pricing-cards/`](pricing-cards/) | 3-tier pricing (Free / Pro / Enterprise) | HTML only |
-| [`stats-row/`](stats-row/) | 4 stat cards with trend indicators | HTML only |
-| [`accordion/`](accordion/) | FAQ-style collapsible accordion | [React](accordion/react.jsx) [Vue](accordion/vue.vue) |
+| [`hero/`](hero/) | Centered hero with heading + subtext + CTAs | HTML + [FRAMEWORKS.md](FRAMEWORKS.md) |
+| [`feature-grid/`](feature-grid/) | 3-column feature cards with icons | HTML + [FRAMEWORKS.md](FRAMEWORKS.md) |
+| [`pricing-cards/`](pricing-cards/) | 3-tier pricing (Free / Pro / Enterprise) | HTML + [FRAMEWORKS.md](FRAMEWORKS.md) |
+| [`stats-row/`](stats-row/) | 4 stat cards with trend indicators | HTML + [FRAMEWORKS.md](FRAMEWORKS.md) |
+| [`accordion/`](accordion/) | FAQ-style collapsible accordion | [React](accordion/react.jsx) [Vue](accordion/vue.vue) [Svelte](accordion/svelte.svelte) |
 | [`avatars/`](avatars/) | Overlapping avatars with +N indicator | [React](avatars/react.jsx) [Vue](avatars/vue.vue) |
 
 ## Data Display
@@ -54,12 +57,13 @@ Start here. Everything builds on these.
 | [`form/`](form/) | Signup form with password strength | [React](form/react.jsx) [Vue](form/vue.vue) [Svelte](form/svelte.svelte) |
 | [`shell-form/`](shell-form/) | Login form (centered layout) | [React](shell-form/react.jsx) [Vue](shell-form/vue.vue) [Svelte](shell-form/svelte.svelte) |
 
-## Feedback
+## Feedback (interactive variants only)
 
 | Preset | Description | Frameworks |
 |--------|-------------|:----------:|
 | [`dropdown/`](dropdown/) (modal) | Modal dialog with backdrop + focus trap | [React](dropdown/react-modal.jsx) [Vue](dropdown/vue-modal.vue) [Svelte](dropdown/svelte-modal.svelte) |
-| [`stats-row/`](stats-row/) (toast) | Toast notifications (success/error/warning/info) | [React](stats-row/react-toast.jsx) [Vue](stats-row/vue-toast.vue) |
+| [`stats-row/`](stats-row/) (toast) | Toast notifications (auto-dismiss, stack) | [React](stats-row/react-toast.jsx) [Vue](stats-row/vue-toast.vue) |
+| [`hero/`](hero/) (search) | Debounced search with filter dropdown | [React](hero/react-search.jsx) [Vue](hero/vue-search.vue) [Svelte](hero/svelte-search.svelte) |
 
 ## Buttons
 
@@ -92,6 +96,9 @@ Start here. Everything builds on these.
 |--------|-------------|-----------------|
 | [`personal-hero/`](personal-hero/) | Personal portfolio site | Clean personal branding |
 | [`agency-landing/`](agency-landing/) | Creative agency landing | Bold Creative / Agency |
+| [`agency-portfolio/`](agency-portfolio/) | Agency portfolio with scroll-shrink logo | Typographic / Scroll-Driven Agency |
+| [`app-showcase/`](app-showcase/) | Dark app showcase with phone mockup + stacking cards | Dark Warm / App-Centric Scroll |
+| [`scroll-reveal-landing/`](scroll-reveal-landing/) | Sky gradient hero with line-by-line text reveal | Airy / Scroll-Reveal Education |
 | [`product-launch/`](product-launch/) | Product launch page | Dark Premium / Product |
 | [`editorial-blog/`](editorial-blog/) | Long-form blog / editorial | Minimal Editorial / Typography-First |
 | [`saas-features/`](saas-features/) | SaaS feature showcase | Friendly SaaS / Bento |

@@ -161,7 +161,7 @@ When there's no existing code or visuals, ask these questions. **Ask only what's
    - **Minimalist** — stripped back, no shadows, hairline borders, light font weights (300), lots of whitespace, uppercase labels. Think Apple, Muji, Scandinavian.
    - **Playful** — big rounded corners (16-24px), colorful shadows, bouncy hover animations, generous spacing, pill-shaped buttons. Think Duolingo, Slack.
    - **Editorial** — serif headings (Playfair Display), no shadows, fine borders, elegant spacing, muted palette, uppercase button labels. Think Medium, premium brands. *(Available for: form, landing; other elements use clean as base and apply editorial characteristics.)*
-   - **Dark & technical** — dark backgrounds, monospace accents, terminal feel. This is a color scheme applied on top of any personality — use the dark mode toggle in the preview tool.
+   - **Dark & technical** — dark backgrounds, monospace accents, terminal feel. **Important: "dark" is a MODE, not a personality.** Always ask for a base personality (clean, minimalist, playful, editorial) first, then apply dark mode on top. Use the dark mode toggle in the preview tool.
    - Match existing brand: ___ (ask for colors, fonts, logo)
 
    *Why this matters:* A default blue-gray SaaS layout is technically correct but has zero personality. Users' brands are different — a children's app needs Playful, a law firm needs Editorial, a productivity tool needs Clean or Minimalist. The design vibe affects border-radius, shadow style, font weight, hover animations, spacing density, and color temperature. Don't just change the accent color — change the visual character.
@@ -237,10 +237,10 @@ Based on what you learned in Step 1, read the relevant files. **Read the minimum
 | **E-commerce** | `components/cards.md`, `layout/grid-systems.md`, `components/buttons.md` | `color/color-psychology.md`, `components/forms.md` |
 | **Mobile App** | `interaction/touch-targets.md`, `components/navigation.md`, `responsive/mobile-first.md` | `interaction/micro-interactions.md`, `interaction/loading-states.md` |
 | **Internal Tool** | `components/tables-and-lists.md`, `components/forms.md`, `layout/spacing-system.md` | `components/navigation.md`, `components/feedback.md` |
-| **Portfolio** | `typography/font-pairing.md`, `layout/visual-hierarchy.md`, `expressive/visual-identity.md` | `expressive/hero-patterns.md`, `expressive/purposeful-motion.md`, `layout/whitespace.md` |
-| **Personal Site** | `expressive/visual-identity.md`, `expressive/hero-patterns.md`, `typography/font-pairing.md` | `expressive/purposeful-motion.md`, `expressive/scroll-storytelling.md` |
-| **Company Landing** | `expressive/hero-patterns.md`, `expressive/visual-identity.md`, `layout/visual-hierarchy.md` | `expressive/purposeful-motion.md`, `color/color-psychology.md` |
-| **Product Launch** | `expressive/hero-patterns.md`, `expressive/scroll-storytelling.md`, `expressive/purposeful-motion.md` | `expressive/visual-identity.md`, `interaction/animation-timing.md` |
+| **Portfolio** | `typography/font-pairing.md`, `layout/visual-hierarchy.md`, `expressive/visual-identity.md` | `expressive/hero-patterns.md`, `expressive/purposeful-motion.md`, `expressive/scroll-effect-patterns.md`, `layout/whitespace.md` |
+| **Personal Site** | `expressive/visual-identity.md`, `expressive/hero-patterns.md`, `typography/font-pairing.md` | `expressive/purposeful-motion.md`, `expressive/scroll-effect-patterns.md`, `expressive/scroll-storytelling.md` |
+| **Company Landing** | `expressive/hero-patterns.md`, `expressive/visual-identity.md`, `layout/visual-hierarchy.md` | `expressive/purposeful-motion.md`, `expressive/scroll-effect-patterns.md`, `color/color-psychology.md` |
+| **Product Launch** | `expressive/hero-patterns.md`, `expressive/scroll-storytelling.md`, `expressive/purposeful-motion.md` | `expressive/visual-identity.md`, `expressive/scroll-effect-patterns.md`, `interaction/animation-timing.md` |
 | **Email Template** | `typography/readability.md`, `color/contrast-and-accessibility.md`, `components/buttons.md` | `layout/spacing-system.md` |
 
 ### By Pain Point
@@ -294,21 +294,29 @@ Templates live in `docs/presets/{element}/{personality}.html`. Each element can 
 
 Also check [`docs/presets/_index.md`](docs/presets/_index.md) for component presets and composition recipes.
 
+### Routing Priority
+
+**Check the user's design intent first.** If they used words like "premium," "unique," "not generic," "personality," "stand out," "expressive," or described a specific visual style — skip the generic project-type table and go straight to **By Design Approach** below. The project-type table produces safe, standard layouts; the design-approach table produces distinctive, memorable ones.
+
 ### By Project Type
+
+Use this table for standard app UIs where the user hasn't expressed a strong design preference:
 
 | Project Type | Shell Preset | Component Presets |
 |---|---|---|
 | **Dashboard** | `shell-dashboard/` | `stats-row/`, `data-table/` |
-| **Landing Page** | `shell-marketing/` | `hero/`, `feature-grid/`, `pricing-cards/` |
+| **Landing Page** | `shell-marketing/` | `hero/`, `feature-grid/`, `pricing-cards/`. *For premium/expressive landing pages, see Design Approach table: `product-launch/`, `saas-features/`, `agency-landing/`* |
+| **Multi-Page App** | `shell-sidebar/` | See `project/` preset for a complete before/after example with Dashboard, Team, and Settings views |
 | **Form / Wizard** | `shell-form/` | `form/` |
 | **Internal Tool** | `shell-sidebar/` | `data-table/`, `tabs/` |
 | **Login / Signup** | `shell-form/` | — |
 | **Data Browser** | `shell-sidebar/` | `data-table/` or `card-grid/` |
-| **E-commerce** | `shell-marketing/` | `card-grid/`, `hero/` |
+| **E-commerce** | `shell-marketing/` | `card-grid/`, `hero/`. *For product pages, see `product-page/` in Design Approach table* |
+| **Portfolio / Personal Site** | Use expressive templates: `personal-hero/`, `jdeworks-personal/`, or `scroll-story/` | See Design Approach table below |
 
 ### By Design Approach
 
-For expressive or personality-driven projects, pick a starting template:
+For expressive, personality-driven, or creative projects, pick a starting template directly. Also check **Step 6 Design Profiles** for full token/component specs for each approach:
 
 | Design Approach | Best For | Template Preset |
 |---|---|---|
@@ -317,6 +325,9 @@ For expressive or personality-driven projects, pick a starting template:
 | Friendly SaaS / Bento | Consumer SaaS, feature showcases | `saas-features/` |
 | Immersive / Scroll | Portfolios, case studies, showcases | `scroll-story/` |
 | Bold Creative | Agencies, studios, creative brands | `agency-landing/` |
+| Typographic / Scroll-Driven Agency | Agency portfolios, studios with scroll effects | `agency-portfolio/` |
+| Dark Warm / App-Centric | Fintech, app showcases, phone-first products | `app-showcase/` |
+| Airy / Scroll-Reveal | Education, wellness, content platforms | `scroll-reveal-landing/` |
 | E-commerce / Product | Product pages, launches | `product-page/` |
 | Documentation | Technical docs, API refs, guides | `docs-site/` |
 | Event / Conference | Events, meetups, launches | `event-page/` |
@@ -766,6 +777,18 @@ Spacing: Full-screen sections (min-h-screen)
 Components: Hero, project showcases, about, contact CTA
 Dark mode: Yes
 Template: docs/presets/scroll-story/ or docs/presets/jdeworks-personal/
+```
+
+### Agency Portfolio (Typographic / Scroll-Driven)
+```
+Colors: Teal primary (#3C6269), lavender accent (#CDD5FA), slate neutrals
+Typography: System sans / Inter, 18px body, giant display logo (12vw hero)
+Layout: Full-height hero with scroll-shrink logo, two-column services, offset project grid
+Spacing: 8px base, very generous (py-24/py-32 sections)
+Components: Scroll-shrink logo, horizontal marquee, service list, project cards, stats, CTA
+Scroll effects: Logo interpolates from giant to small fixed (single element), reveal animations
+Dark mode: Yes
+Template: docs/presets/agency-portfolio/
 ```
 
 ---
