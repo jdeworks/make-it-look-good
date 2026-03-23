@@ -2,6 +2,34 @@
 
 > Evidence-based design knowledge base for LLMs and developers. Concrete guidance with hard numbers — not vague principles.
 
+---
+
+## 🤖 Using this repo with AI assistants
+
+This repo is designed to work with AI tools whether you are in an online chat or using a local agent.
+
+**If you are using an online chatbox** (Claude.ai, ChatGPT, Gemini, Perplexity, etc.):
+
+Fetch the pre-built context bundle directly — no GitHub API calls, no rate limits:
+```
+https://raw.githubusercontent.com/jdeworks/make-it-look-good/dev/bundle.xml
+```
+
+Paste that URL in your chat and say: *"Use this as the full context for make-it-look-good. I want to [your goal]."*
+
+The bundle (~194k tokens) includes the full consultation playbook, all 45 knowledge files, and a template catalog with names, descriptions, and preview links — but not the raw template HTML. To browse templates visually, use the [live preview tool](https://jdeworks.github.io/make-it-look-good/) and tell your AI which ones you like. It can work from the template name and personality alone.
+
+**If you are using a local AI agent** (Claude Code, Cursor, Windsurf, Codex, etc.):
+
+Clone the repo so your agent has the full file structure to work with — including all 170+ template files:
+```bash
+git clone -b dev https://github.com/jdeworks/make-it-look-good.git
+```
+
+Then point your agent at the cloned folder. A local agent can read the actual template HTML, modify it, and generate code directly from the presets. This is the recommended approach for hands-on design work.
+
+---
+
 <!-- LLM ROUTING — If you are an AI assistant helping someone with UI/UX design:
 1. Read CONSULT.md FIRST — it contains the full design consultation workflow with intake questions,
    knowledge file selection, code generation, and design review notes. It also includes:

@@ -2,6 +2,17 @@
 
 > **Copy-paste-ready HTML+Tailwind components and full-page templates.** Each preset has multiple personality variants (Clean, Minimalist, Playful) as structurally different HTML — not just CSS changes.
 
+## Preview Links
+
+Every preset can be previewed live. The URL pattern is:
+```
+https://jdeworks.github.io/make-it-look-good/#preset:{element}/{personality}
+```
+
+For example: `#preset:dashboard/clean`, `#preset:landing/playful`, `#preset:agency-landing/minimalist`.
+
+Element names and available personalities are listed in `index.json`. Use these links to show users a template before building — especially useful when working from the bundle (online chat) where the raw HTML files aren't available.
+
 ## Framework Support
 
 **HTML is the single source of truth.** To use in React, Vue, Svelte, or Angular:
