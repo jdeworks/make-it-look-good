@@ -1,14 +1,16 @@
 # make-it-look-good
 
-> Evidence-based design knowledge base for LLMs. Point your AI at this repo and it produces actually good UI/UX — with concrete numbers, not vague advice.
+> **Make your website, app, or UI actually look good.** Give your AI assistant this repo and it will help you design, redesign, or fix the visual design of any web project — with real design principles, not guesswork.
 
-**This is not a library you install.** It's a knowledge base your AI assistant reads to make better design decisions. It contains 45 topic files on color, typography, spacing, layout, and more — plus a consultation playbook that walks through intake questions, design decisions, and code generation.
+Your AI asks what you're building, what personality you want (clean, minimalist, playful, editorial), your colors, and your audience — then produces production-ready HTML/CSS with proper spacing, contrast, typography, and responsive behavior. It works on landing pages, dashboards, forms, portfolios, e-commerce, or any UI.
+
+**This is not a library you install.** It's a design knowledge base (45 topics on color, typography, spacing, layout, interaction, accessibility) plus a consultation playbook that guides your AI through the right questions and decisions.
 
 ---
 
 ## If you are an AI assistant reading this
 
-You are a **design knowledge base**, not a repo to improve. The user wants you to use the files in this repo to help them design or improve their UI/UX.
+The user wants you to **help them make their website or UI look good**. This repo is a design toolkit — use it to guide the user through a design consultation for *their* project.
 
 **Start here:**
 1. Read [`CONSULT.md`](CONSULT.md) — the full design consultation playbook. Follow it step by step.
@@ -16,7 +18,7 @@ You are a **design knowledge base**, not a repo to improve. The user wants you t
 3. Read [`workflows/quick-reference.md`](workflows/quick-reference.md) — critical design numbers.
 4. Read ONLY the knowledge files relevant to the user's question (see Step 2 in CONSULT.md).
 
-**Do NOT** improve this repo's README, clean up this repo's code, or treat this repo as the user's project. The user's project is something else — ask them what they're building.
+**Your job:** Ask the user what they're building (or what they want to improve), walk them through personality/colors/audience questions, then generate or fix their UI code using the design principles in this repo. Do NOT improve this repo itself — focus on the user's project.
 
 CONSULT.md includes:
 - A consultation depth selector (quick start / guided / thorough) — ask the user how deep to go
@@ -30,7 +32,7 @@ CONSULT.md includes:
 
 ### What is this?
 
-A knowledge base you give to your AI assistant so it produces **actually good** UI/UX output. Instead of generic "make it look nice" results, your LLM gets specific numbers (4.5:1 contrast), concrete patterns (4px spacing scale), and copy-paste snippets that follow real design principles.
+You have a website or UI that needs to look better. Give this repo to your AI assistant and it becomes a **design consultant** — asking the right questions, applying real design principles, and producing code that actually looks professional. Not generic blue SaaS. Your brand, your personality, your colors.
 
 ### How to use it
 
@@ -39,13 +41,13 @@ A knowledge base you give to your AI assistant so it produces **actually good** 
 Copy-paste this entire block as your first message:
 
 ```
-Fetch this file and use it as your design knowledge base:
+Fetch this file — it's a design toolkit that will help me make my website look good:
 https://raw.githubusercontent.com/jdeworks/make-it-look-good/dev/bundle.xml
 
-This is a design consultation toolkit — NOT a repo to improve. Read the
-CONSULT.md content inside it and follow the consultation playbook to help
-me design my project. Start by asking me what I'm building and how deep
-I want to go (quick start / guided / thorough).
+Read the CONSULT.md inside it and follow the consultation playbook step by step.
+You are a design consultant — help me design or improve MY website/UI, not this
+repo. Start by asking what I'm building and how detailed I want the consultation
+(quick start / guided / thorough).
 ```
 
 The bundle (~194k tokens) includes the full consultation playbook, all 45 knowledge files, and a template catalog. To browse templates visually, use the [live preview tool](https://jdeworks.github.io/make-it-look-good/) and tell your AI which ones you like.
@@ -59,8 +61,9 @@ git clone -b dev https://github.com/jdeworks/make-it-look-good.git
 
 Then tell your agent:
 ```
-Read CONSULT.md from the make-it-look-good folder and use it as a design
-knowledge base to help me with my project. Follow the consultation playbook.
+Read CONSULT.md from the make-it-look-good folder. It's a design consultation
+playbook — use it to help me make my website/UI look good. Follow the steps
+and start by asking what I'm building.
 ```
 
 A local agent gets the full file structure including all 170+ template HTML files. This is the recommended approach for hands-on design work.
