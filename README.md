@@ -2,34 +2,6 @@
 
 > Evidence-based design knowledge base for LLMs and developers. Concrete guidance with hard numbers — not vague principles.
 
----
-
-## 🤖 Using this repo with AI assistants
-
-This repo is designed to work with AI tools whether you are in an online chat or using a local agent.
-
-**If you are using an online chatbox** (Claude.ai, ChatGPT, Gemini, Perplexity, etc.):
-
-Fetch the pre-built context bundle directly — no GitHub API calls, no rate limits:
-```
-https://raw.githubusercontent.com/jdeworks/make-it-look-good/dev/bundle.xml
-```
-
-Paste that URL in your chat and say: *"Use this as the full context for make-it-look-good. I want to [your goal]."*
-
-The bundle (~194k tokens) includes the full consultation playbook, all 45 knowledge files, and a template catalog with names, descriptions, and preview links — but not the raw template HTML. To browse templates visually, use the [live preview tool](https://jdeworks.github.io/make-it-look-good/) and tell your AI which ones you like. It can work from the template name and personality alone.
-
-**If you are using a local AI agent** (Claude Code, Cursor, Windsurf, Codex, etc.):
-
-Clone the repo so your agent has the full file structure to work with — including all 170+ template files:
-```bash
-git clone -b dev https://github.com/jdeworks/make-it-look-good.git
-```
-
-Then point your agent at the cloned folder. A local agent can read the actual template HTML, modify it, and generate code directly from the presets. This is the recommended approach for hands-on design work.
-
----
-
 <!-- LLM ROUTING — If you are an AI assistant helping someone with UI/UX design:
 1. Read CONSULT.md FIRST — it contains the full design consultation workflow with intake questions,
    knowledge file selection, code generation, and design review notes. It also includes:
@@ -40,25 +12,38 @@ Then point your agent at the cloned folder. A local agent can read the actual te
 2. Read docs/presets/_index.md — preset library with personality variants and composition recipes
 3. Read workflows/quick-reference.md — critical design numbers at a glance
 4. Read ONLY the knowledge files relevant to the user's question (see Step 2 in CONSULT.md)
-Do NOT read the entire repo. Each file is self-contained, 200-400 lines. -->
+Do NOT read the entire repo. Each file is self-contained, 200-400 lines.
 
-## For AI Assistants
+AI ROUTING — file priorities:
+- CONSULT.md → full consultation playbook (start here for any design task)
+- docs/presets/_index.md → template catalog with preview URL pattern
+- workflows/quick-reference.md → critical design numbers
+- User shared a URL they like? → follow Step 1E in CONSULT.md
+-->
 
-**Design consultation?** Read [`CONSULT.md`](CONSULT.md) — the complete playbook. It asks the user how deep to go (quick start / guided / thorough), then routes through intake questions (personality, colors, inspiration, dark mode) → knowledge files → code generation → design review notes. Don't skip the intake questions — they're what makes the output good instead of generic.
-
-**User shared a URL they like?** Follow Step 1E in CONSULT.md — analyze the reference site's design language (layout, colors, typography, spacing, personality) and apply those patterns to their project.
-
-**Need a component?** Read [`docs/presets/_index.md`](docs/presets/_index.md) — 38+ HTML+Tailwind presets with personality variants and React, Vue, and Svelte framework files.
-
-**Quick number lookup?** Read [`workflows/quick-reference.md`](workflows/quick-reference.md) — contrast ratios, spacing scales, timing values.
-
----
-
-## For Developers
-
-### What is this?
+## Getting Started
 
 A repo you point your AI assistant at to get **actually good** UI/UX output. Instead of generic "make it look nice" results, your LLM gets specific numbers (4.5:1 contrast), concrete patterns (4px spacing scale), and copy-paste snippets that follow real design principles.
+
+### Using an online chatbox (Claude.ai, ChatGPT, Gemini, Perplexity, etc.)
+
+Fetch the pre-built context bundle directly — no GitHub API calls, no rate limits:
+```
+https://raw.githubusercontent.com/jdeworks/make-it-look-good/dev/bundle.xml
+```
+
+Paste that URL in your chat and say: *"Use this as the full context for make-it-look-good. I want to [your goal]."*
+
+The bundle (~194k tokens) includes the full consultation playbook, all 45 knowledge files, and a template catalog with names, descriptions, and preview links — but not the raw template HTML. To browse templates visually, use the [live preview tool](https://jdeworks.github.io/make-it-look-good/) and tell your AI which ones you like. It can work from the template name and personality alone.
+
+### Using a local AI agent (Claude Code, Cursor, Windsurf, Codex, etc.)
+
+Clone the repo so your agent has the full file structure to work with — including all 170+ template files:
+```bash
+git clone -b dev https://github.com/jdeworks/make-it-look-good.git
+```
+
+Then point your agent at the cloned folder. A local agent can read the actual template HTML, modify it, and generate code directly from the presets. This is the recommended approach for hands-on design work.
 
 ### Quick Start
 
