@@ -12,8 +12,10 @@ Before asking anything, figure out what the user brought. This determines your e
 
 | What They Brought | How to Detect | Workflow |
 |---|---|---|
+| **Repo link or "make it look good"** | GitHub URL, "make it look good", "redesign my project" | → Step 1C (Intake — ask ALL required questions) → Step 1A (Audit repo code) → Step 2 → Step 3 → Step 4 |
 | **Existing code** (HTML, JSX, Vue SFC, Svelte, etc.) | Code blocks, file paths, or "here's my component" | → Step 1A (Audit) → Step 2 → Step 3 → Step 4 |
 | **Screenshot or mockup** | Image attachment, Figma link, "here's what it looks like" | → Step 1B (Visual Audit) → Step 2 → Step 3 → Step 4 |
+| **Reference URL** ("I want it to look like this site") | URL to a site they admire, "make it feel like stripe.com" | → Step 1E (Analyze Reference) → Step 1C (Intake) → Step 2 → Step 3 → Step 4 |
 | **Vague idea** ("make me a dashboard", "I need a landing page") | No code, no visuals, just a description | → Step 1C (Intake) → Step 2 → Step 3 → Step 4 |
 | **Plain text / data** ("here's my CLI output", "here are my API fields") | Raw text, JSON, CSV, terminal output | → Step 1D (Structure) → Step 2 → Step 3 → Step 4 |
 | **Existing design they want improved** | "Make this look better", "this looks amateur" | → Step 1A (Audit) → Step 2 → Step 3 → Step 4 |
@@ -136,7 +138,28 @@ When the user provides a screenshot or image:
 
 When there's no existing code or visuals, ask these questions. **Ask only what's needed** — if someone says "I need a contact form," don't ask about dashboards.
 
-### Required
+### First: Set the Consultation Depth
+
+Before diving into design questions, gauge how much guidance the user wants. **Ask this first** (or infer from context):
+
+> **How detailed should we go?**
+> - **Quick start** — I'll pick sensible defaults based on your project type and get you working code fast. You can steer from there. *(Best for: experienced developers, "just make it not ugly," tight deadlines)*
+> - **Guided** — I'll walk you through the key decisions (personality, colors, layout) with options to pick from, explaining trade-offs briefly. *(Best for: most people — you get real choices without a design degree)*
+> - **Thorough** — Full consultation with reasoning behind every decision, alternative approaches, and detailed design review notes. *(Best for: learning, client work where you need to justify choices, complex projects)*
+
+**How to adapt based on depth:**
+
+| Depth | Questions to ask | Explanation level | Output |
+|---|---|---|---|
+| **Quick start** | Only #1 (what), #4 (stack). Infer the rest from project type. | Minimal — just state what you chose | Code + brief token summary |
+| **Guided** | All required (#1–7). Batch into 1-2 messages. | Brief — one sentence per decision | Code + design review notes |
+| **Thorough** | All required + all relevant. One topic at a time. | Detailed — why each choice, alternatives considered | Code + full design review notes + token reference |
+
+> **Minimum questions rule (Guided & Thorough):** Questions 1–7 below are ALL required. Do NOT skip personality (3), colors (5), inspiration (6), or dark mode (7) — these are the questions users most want to answer and that most affect the output. You may batch them into a single message, but you must get answers before proceeding to code.
+>
+> **Quick start exception:** If the user picks quick start (or says "don't ask questions, just do it" or "use defaults"), pick reasonable defaults AND state what you chose so they can course-correct. Always state the personality, primary color, and dark mode choice you defaulted to.
+
+### Required (Always Ask — Guided & Thorough)
 
 1. **What are you building?**
    - Dashboard / admin panel
@@ -144,10 +167,12 @@ When there's no existing code or visuals, ask these questions. **Ask only what's
    - Form / multi-step wizard
    - Content site / blog
    - E-commerce / product listing
+   - Photo gallery / image-heavy site
    - Mobile app (React Native / Flutter)
    - Internal tool
    - Email template
    - Portfolio / personal site
+   - Full project / existing codebase (point me at the repo or paste code)
    - Other: ___
 
 2. **Who uses it?**
@@ -156,7 +181,7 @@ When there's no existing code or visuals, ask these questions. **Ask only what's
    - Developers (information-dense OK, keyboard shortcuts expected)
    - Mobile-first consumers (touch targets critical, thumb zones)
 
-3. **What's the design vibe?** (This matters — don't default to "clean blue SaaS" every time. Push for personality.)
+3. **What's the design personality?** (This matters — don't default to "clean blue SaaS" every time. Push for personality. Show the options.)
    - **Clean** — balanced, professional, standard Tailwind look (rounded-xl, subtle shadows, system sans). The safe default.
    - **Minimalist** — stripped back, no shadows, hairline borders, light font weights (300), lots of whitespace, uppercase labels. Think Apple, Muji, Scandinavian.
    - **Playful** — big rounded corners (16-24px), colorful shadows, bouncy hover animations, generous spacing, pill-shaped buttons. Think Duolingo, Slack.
@@ -176,16 +201,30 @@ When there's no existing code or visuals, ask these questions. **Ask only what's
    - React Native / Flutter
    - Other: ___
 
-### Ask If Relevant
+5. **Colors — do you have brand colors or preferences?** (Don't skip this. The primary color alone changes the entire feel.)
+   - Specific brand colors: ___ (hex values, Tailwind palette names, or "like Stripe's blue")
+   - General direction: warm (amber, orange, rose), cool (blue, cyan, teal), neutral (slate, gray), bold (violet, fuchsia, emerald)
+   - No preference — pick something that fits the personality
 
-5. **How data-dense is the UI?**
-   - Light — few items, generous whitespace (landing pages, forms, portfolios)
-   - Medium — standard content (most SaaS, dashboards with 4-6 cards)
-   - Dense — lots of data visible at once (analytics, spreadsheets, admin tables)
+   *Why this matters:* Color is the single fastest way to make a design feel intentional vs. generic. Even users who say "I don't care about colors" have opinions when they see the output. Asking upfront avoids a revision cycle.
 
-   *Affects:* Spacing system (4px compact vs 8px generous), base font size (14px for dense, 16px for standard), line height, card padding. Dense UIs can use `text-sm` for data; light UIs should use `text-base` or larger.
+6. **Any sites or pages you like the look of?** (Inspiration is the fastest shortcut to a good result.)
+   - Share a link — even a single page that "feels right." I'll identify what makes it work (layout rhythm, color temperature, typography choices, image treatment, whitespace) and apply those principles to your project.
+   - Describe what caught your eye — "I like how Stripe shows code examples inline" or "the way Aesop's site lets the product photos breathe" is enough.
+   - Reference one of our presets — if you've seen the [preview tool](https://jdeworks.github.io/make-it-look-good/), tell me which template or personality resonated and what you'd change.
+   - No inspiration — that's fine, I'll work from the personality and project type.
 
-6. **Do you need dark mode?**
+   *Why this matters:* A perfume brand, a photo portfolio, and a SaaS dashboard all need completely different visual treatment — even if they're all "minimalist." Inspiration links tell me about image treatment (full-bleed hero vs. contained grid), content rhythm (editorial scroll vs. dense grid), whitespace ratios, and typography tone in a way that personality labels alone can't capture. One good reference link saves 3 rounds of "not quite what I meant."
+
+   *What to look for in their reference:*
+   - **Layout pattern** — single column editorial? Bento grid? Full-bleed sections? Masonry gallery?
+   - **Image treatment** — hero images, product photography style, aspect ratios, overlays, spacing around images
+   - **Typography tone** — bold/geometric, elegant/serif, neutral/system, monospace/technical
+   - **Density** — how much breathing room between elements
+   - **Color temperature** — warm, cool, neutral, high-contrast, muted
+   - **Special touches** — scroll effects, hover reveals, micro-animations, asymmetric layouts
+
+7. **Do you need dark mode?**
    - No — light only
    - Yes — toggle button (user-controlled, store preference in `localStorage`)
    - Yes — follow OS preference (`prefers-color-scheme: dark`, CSS-only)
@@ -193,15 +232,31 @@ When there's no existing code or visuals, ask these questions. **Ask only what's
 
    *Implementation notes:* Dark mode with Tailwind uses the `dark:` variant on every element (`bg-white dark:bg-slate-800`, `text-slate-900 dark:text-white`). The `<html>` element gets a `class="dark"` attribute. Ask how the user activates it — some projects use a toggle button that sets the class via JS and stores the preference; others use a CSS media query. The approach affects how you write the code.
 
-7. **What components do you need?** (List the specific ones)
+### Ask If Relevant
 
-8. **Existing brand constraints?** (Colors, fonts, logo, existing design system)
+8. **How image/content-heavy is your site?** (Ask if the project involves product photos, galleries, portfolios, or visual storytelling.)
+   - **Text-first** — the content is mostly text, images are supporting (blogs, docs, dashboards)
+   - **Balanced** — mix of text and imagery (landing pages, most SaaS, e-commerce listings)
+   - **Image-dominant** — photos/visuals are the primary content (galleries, portfolios, fashion, food, luxury products)
 
-9. **Any specific pain points?**
-   - "It looks amateur" → focus on spacing, type scale, color system
-   - "It's hard to use" → focus on hierarchy, cognitive load, touch targets
-   - "It's inconsistent" → focus on design tokens, spacing system
-   - "It's not accessible" → focus on contrast, targets, screen reader
+   *Affects:* Image-dominant sites need: generous whitespace to let images breathe, careful aspect ratio control (`aspect-ratio: 3/4` for portraits, `16/9` for landscapes), `object-fit: cover` with consistent containers, lazy loading, responsive `srcset`, and minimal UI chrome competing with visuals. For product photography sites (perfume, fashion, food), the layout itself should feel like a curated display — think gallery walls, not data grids. Consider masonry layouts, full-bleed hero sections, and letting single hero images fill the viewport.
+
+9. **How data-dense is the UI?**
+   - Light — few items, generous whitespace (landing pages, forms, portfolios)
+   - Medium — standard content (most SaaS, dashboards with 4-6 cards)
+   - Dense — lots of data visible at once (analytics, spreadsheets, admin tables)
+
+   *Affects:* Spacing system (4px compact vs 8px generous), base font size (14px for dense, 16px for standard), line height, card padding. Dense UIs can use `text-sm` for data; light UIs should use `text-base` or larger.
+
+10. **What components do you need?** (List the specific ones)
+
+11. **Existing brand constraints beyond colors?** (Fonts, logo, existing design system)
+
+12. **Any specific pain points?** (What's wrong with what you have now?)
+    - "It looks amateur" → focus on spacing, type scale, color system
+    - "It's hard to use" → focus on hierarchy, cognitive load, touch targets
+    - "It's inconsistent" → focus on design tokens, spacing system
+    - "It's not accessible" → focus on contrast, targets, screen reader
 
 ---
 
@@ -219,6 +274,84 @@ When the user brings plain text, data, or non-visual content:
    - Status/metrics → stat cards or dashboard
 4. **Ask what actions users need** — View only? Edit? Filter? Sort? Compare?
 5. Proceed to Step 2 (Knowledge File Selection) with the identified pattern
+
+---
+
+## Step 1E: Analyze a Reference Website
+
+When the user provides a URL as inspiration (from intake question 6) or wants you to analyze an existing site and create a template based on it. This workflow captures the **design language** of a site — layout patterns, color palette, typography, spacing, personality — and translates it into the make-it-look-good format.
+
+### 1. Gather Visual & Structural Data
+
+If you have access to screenshot/scraping tools (e.g., `shot-scraper`, browser automation, or built-in web tools), capture:
+
+**Screenshots** (desktop + mobile):
+```bash
+shot-scraper "$URL" -o /tmp/site-desktop.png --width 1280 --height 900 --wait 2000
+shot-scraper "$URL" -o /tmp/site-mobile.png --width 375 --height 812 --wait 2000
+```
+
+**Scrolled screenshots** (to capture scroll effects):
+```bash
+shot-scraper "$URL" -o /tmp/site-scrolled1.png --width 1280 --height 900 --wait 2000 -j "window.scrollTo(0, 800)"
+shot-scraper "$URL" -o /tmp/site-scrolled2.png --width 1280 --height 900 --wait 3000 -j "window.scrollTo(0, 2500)"
+```
+
+**Design token extraction** (automated):
+```bash
+shot-scraper javascript "$URL" "
+(() => {
+  const els = document.querySelectorAll('*');
+  const colors = new Set(), bgColors = new Set(), fonts = new Set(), sizes = new Set(), radii = new Set();
+  els.forEach(el => {
+    const s = getComputedStyle(el);
+    if (s.color !== 'rgba(0, 0, 0, 0)') colors.add(s.color);
+    if (s.backgroundColor !== 'rgba(0, 0, 0, 0)') bgColors.add(s.backgroundColor);
+    fonts.add(s.fontFamily); sizes.add(s.fontSize); radii.add(s.borderRadius);
+  });
+  const headings = [...document.querySelectorAll('h1,h2,h3,h4,h5,h6')].map(h => ({
+    tag: h.tagName, text: h.textContent.trim().slice(0, 60),
+    fontSize: getComputedStyle(h).fontSize, fontWeight: getComputedStyle(h).fontWeight,
+    fontFamily: getComputedStyle(h).fontFamily
+  }));
+  return {
+    title: document.title,
+    textColors: [...colors].slice(0, 20), bgColors: [...bgColors].slice(0, 20),
+    fontFamilies: [...fonts], fontSizes: [...sizes],
+    borderRadii: [...radii].filter(r => r !== '0px'),
+    headings: headings.slice(0, 10),
+    bodyFontSize: getComputedStyle(document.body).fontSize,
+    bodyLineHeight: getComputedStyle(document.body).lineHeight,
+    bodyFontFamily: getComputedStyle(document.body).fontFamily
+  };
+})()"
+```
+
+**If you don't have screenshot tools:** Use `WebFetch` to get the page HTML, or ask the user for a screenshot. Many LLM environments support reading images — ask the user to paste one.
+
+### 2. Analyze the Design
+
+Whether you have screenshots, HTML, or just a URL the user describes, analyze:
+
+- **Layout structure** — header, hero, sections, sidebar, footer, grid patterns
+- **Color palette** — map colors to nearest Tailwind palette. Identify primary, secondary, accent, neutrals
+- **Typography** — font families, heading scale, body size, weights
+- **Spacing patterns** — padding density, section spacing, component gaps
+- **Component patterns** — cards, buttons, nav, forms, tables
+- **Visual personality** — which personality does it match? (clean, minimalist, playful, editorial, or a blend)
+- **Distinctive features** — what makes this design memorable? Gradients, animations, unusual layouts, bold typography, image treatment?
+- **Scroll effects** — compare initial and scrolled views for parallax, sticky headers, reveal effects, shrinking logos
+- **Dark mode** — is the site light, dark, or both?
+
+### 3. Apply to the User's Project
+
+Cross-reference the reference site's design choices against the knowledge base:
+- Does it follow the spacing scale? Adapt good patterns, fix deviations
+- Are contrast ratios accessible? (4.5:1 minimum)
+- Are touch targets adequate? (44px minimum)
+- Is typography within best practice ranges?
+
+Then use the extracted patterns to inform Steps 2–4. The reference site is an input to the design process, not a thing to copy — capture the **design language**, not the content or branding.
 
 ---
 
