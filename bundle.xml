@@ -15286,82 +15286,91 @@ Not every section is required, but **Concrete Rules** and **CSS/Implementation P
 <file path="README.md">
 # make-it-look-good
 
-> Evidence-based design knowledge base for LLMs and developers. Concrete guidance with hard numbers — not vague principles.
+> Evidence-based design knowledge base for LLMs. Point your AI at this repo and it produces actually good UI/UX — with concrete numbers, not vague advice.
 
-<!-- LLM ROUTING — If you are an AI assistant helping someone with UI/UX design:
-1. Read CONSULT.md FIRST — it contains the full design consultation workflow with intake questions,
-   knowledge file selection, code generation, and design review notes. It also includes:
-   - A consultation depth selector (quick start / guided / thorough) — ask the user how deep to go
-   - Required questions about personality, colors, inspiration, and dark mode — don't skip these
-   - Website analysis workflow (Step 1E) for when users share reference URLs
-   - Test cases in tests/ prove this flow produces high-quality results across 12 scenarios
-2. Read docs/presets/_index.md — preset library with personality variants and composition recipes
-3. Read workflows/quick-reference.md — critical design numbers at a glance
-4. Read ONLY the knowledge files relevant to the user's question (see Step 2 in CONSULT.md)
-Do NOT read the entire repo. Each file is self-contained, 200-400 lines.
+**This is not a library you install.** It's a knowledge base your AI assistant reads to make better design decisions. It contains 45 topic files on color, typography, spacing, layout, and more — plus a consultation playbook that walks through intake questions, design decisions, and code generation.
 
-AI ROUTING — file priorities:
-- CONSULT.md → full consultation playbook (start here for any design task)
-- docs/presets/_index.md → template catalog with preview URL pattern
-- workflows/quick-reference.md → critical design numbers
-- User shared a URL they like? → follow Step 1E in CONSULT.md
--->
+---
 
-## Getting Started
+## If you are an AI assistant reading this
 
-A repo you point your AI assistant at to get **actually good** UI/UX output. Instead of generic "make it look nice" results, your LLM gets specific numbers (4.5:1 contrast), concrete patterns (4px spacing scale), and copy-paste snippets that follow real design principles.
+You are a **design knowledge base**, not a repo to improve. The user wants you to use the files in this repo to help them design or improve their UI/UX.
 
-### Using an online chatbox (Claude.ai, ChatGPT, Gemini, Perplexity, etc.)
+**Start here:**
+1. Read [`CONSULT.md`](CONSULT.md) — the full design consultation playbook. Follow it step by step.
+2. Read [`docs/presets/_index.md`](docs/presets/_index.md) — template catalog with preview links.
+3. Read [`workflows/quick-reference.md`](workflows/quick-reference.md) — critical design numbers.
+4. Read ONLY the knowledge files relevant to the user's question (see Step 2 in CONSULT.md).
 
-Fetch the pre-built context bundle directly — no GitHub API calls, no rate limits:
+**Do NOT** improve this repo's README, clean up this repo's code, or treat this repo as the user's project. The user's project is something else — ask them what they're building.
+
+CONSULT.md includes:
+- A consultation depth selector (quick start / guided / thorough) — ask the user how deep to go
+- Required intake questions about personality, colors, inspiration, and dark mode — don't skip these
+- Website analysis workflow (Step 1E) for when users share reference URLs
+- Template catalog with preview links at `https://jdeworks.github.io/make-it-look-good/#preset:{element}/{personality}`
+
+---
+
+## For Developers
+
+### What is this?
+
+A knowledge base you give to your AI assistant so it produces **actually good** UI/UX output. Instead of generic "make it look nice" results, your LLM gets specific numbers (4.5:1 contrast), concrete patterns (4px spacing scale), and copy-paste snippets that follow real design principles.
+
+### How to use it
+
+**Option A — Online chat** (Claude.ai, ChatGPT, Gemini, Perplexity, etc.)
+
+Copy-paste this entire block as your first message:
+
 ```
+Fetch this file and use it as your design knowledge base:
 https://raw.githubusercontent.com/jdeworks/make-it-look-good/dev/bundle.xml
+
+This is a design consultation toolkit — NOT a repo to improve. Read the
+CONSULT.md content inside it and follow the consultation playbook to help
+me design my project. Start by asking me what I'm building and how deep
+I want to go (quick start / guided / thorough).
 ```
 
-Paste that URL in your chat and say: *"Use this as the full context for make-it-look-good. I want to [your goal]."*
+The bundle (~194k tokens) includes the full consultation playbook, all 45 knowledge files, and a template catalog. To browse templates visually, use the [live preview tool](https://jdeworks.github.io/make-it-look-good/) and tell your AI which ones you like.
 
-The bundle (~194k tokens) includes the full consultation playbook, all 45 knowledge files, and a template catalog with names, descriptions, and preview links — but not the raw template HTML. To browse templates visually, use the [live preview tool](https://jdeworks.github.io/make-it-look-good/) and tell your AI which ones you like. It can work from the template name and personality alone.
+**Option B — Local AI agent** (Claude Code, Cursor, Windsurf, Codex, etc.)
 
-### Using a local AI agent (Claude Code, Cursor, Windsurf, Codex, etc.)
-
-Clone the repo so your agent has the full file structure to work with — including all 170+ template files:
+Clone and point your agent at the folder:
 ```bash
 git clone -b dev https://github.com/jdeworks/make-it-look-good.git
 ```
 
-Then point your agent at the cloned folder. A local agent can read the actual template HTML, modify it, and generate code directly from the presets. This is the recommended approach for hands-on design work.
-
-### Quick Start
-
-The simplest way — just point your AI at the repo and tell it what to make look good:
-
+Then tell your agent:
 ```
-make it look good: https://github.com/jdeworks/make-it-look-good
+Read CONSULT.md from the make-it-look-good folder and use it as a design
+knowledge base to help me with my project. Follow the consultation playbook.
 ```
 
-That's it. Your AI reads the consultation playbook and asks how deep you want to go — from a quick "just make it not ugly" to a full guided consultation with personality, colors, inspiration links, and reasoning behind every choice. Works for a full project or a single component.
+A local agent gets the full file structure including all 170+ template HTML files. This is the recommended approach for hands-on design work.
 
-**Quick start** — sensible defaults, minimal questions, fast code:
-```
-Read CONSULT.md from github.com/jdeworks/make-it-look-good — quick start for my project
-```
+**Option C — Quick prompts** (if your AI already has the repo loaded)
 
-**Guided** — walks you through personality, colors, inspiration, and key decisions:
+Guided consultation (asks about personality, colors, audience):
 ```
-Read CONSULT.md from github.com/jdeworks/make-it-look-good, then run a design consultation for my project
+Follow the CONSULT.md playbook to run a design consultation for my project.
 ```
 
-**Review existing code** — audit what you have and fix it:
+Audit existing code:
 ```
-Read CONSULT.md from github.com/jdeworks/make-it-look-good, then audit and fix this code: [paste your code]
-```
-
-**Grab a component**:
-```
-Read docs/presets/_index.md from github.com/jdeworks/make-it-look-good and give me a hero + pricing cards layout
+Follow CONSULT.md Step 1A to audit this code, then generate design review notes: [paste your code]
 ```
 
-> **Tip:** Share a link to a site you like the look of. Even one reference ("I want it to feel like aesop.com") saves multiple rounds of back-and-forth and gets you dramatically better results.
+Grab a component:
+```
+Look at docs/presets/_index.md and give me a hero + pricing cards layout.
+```
+
+> **Tip:** Share a link to a site you like the look of. Even one reference ("I want it to feel like aesop.com") dramatically improves results.
+
+---
 
 ### Preview Tool
 
