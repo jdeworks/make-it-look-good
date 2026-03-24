@@ -41,7 +41,7 @@
   }
 </style>
 
-<div class="min-h-screen font-body overflow-x-hidden" style="background: var(--cream-light);">
+<div class="min-h-screen font-body" style="background: var(--cream-light); overflow-x: clip;">
 
   <!-- Sticky Nav -->
   <nav id="appNav" class="fixed top-0 left-0 right-0 z-50 transition-all duration-300" style="background: transparent;">
@@ -385,20 +385,27 @@
   // Measure phone screens
   var screens = document.querySelectorAll('.phone-screen');
   var screenCount = screens.length;
-  var screenH = 280; // matches the height set in style
+  var clipEl = document.getElementById('phoneScreenClip');
+
+  // Size each screen to exactly fill the visible clip area
+  function measureAndSize() {
+    var clipH = clipEl ? clipEl.offsetHeight : 280;
+    screens.forEach(function(s) { s.style.height = clipH + 'px'; });
+    return clipH;
+  }
+  var clipH = measureAndSize();
+  window.addEventListener('resize', function() { clipH = measureAndSize(); });
 
   function onScroll() {
     var scrollY = window.scrollY;
     var heroH = hero.offsetHeight;
 
     // --- Phone screen scrolling ---
-    // The phone scroll zone is 200vh tall. Map scroll within that zone to screen index.
     var zoneTop = phoneZone.offsetTop;
     var zoneH = phoneZone.offsetHeight;
     var zoneProgress = Math.min(Math.max((scrollY - zoneTop) / (zoneH - window.innerHeight), 0), 1);
     // Map progress to total screen strip offset
-    var totalStripH = screenCount * screenH;
-    var clipH = screenH; // visible area height
+    var totalStripH = screenCount * clipH;
     var maxOffset = totalStripH - clipH;
     var offset = zoneProgress * maxOffset;
     if (phoneScreens) {

@@ -194,7 +194,11 @@ body{background:linear-gradient(135deg,#dbeafe 0%,#ede9fe 35%,#fce7f3 65%,#e0f2f
 [class*="shadow-sm"],[class*="shadow-md"],[class*="shadow-lg"],[class*="shadow-xl"]{box-shadow:0 4px 20px rgba(0,0,0,0.05),inset 0 1px 0 rgba(255,255,255,0.5)!important}
 [class*="rounded-lg"]{border-radius:14px!important}
 [class*="rounded-xl"],[class*="rounded-2xl"]{border-radius:18px!important}
-[class*="border"]{border-color:rgba(255,255,255,0.35)!important}
+[class*="border-slate-200"],[class*="border-gray-200"],[class*="border-zinc-200"]{border-color:rgba(255,255,255,0.35)!important}
+[class*="divide-slate"],[class*="divide-gray"],[class*="divide-zinc"]{--tw-divide-opacity:0.3}
+[class*="border-t"]:not([class*="border-t-0"]){border-color:rgba(100,116,139,0.2)!important}
+[class*="text-slate-500"],[class*="text-gray-500"],[class*="text-zinc-500"]{color:rgb(51,65,85)!important}
+[class*="text-slate-400"],[class*="text-gray-400"]{color:rgb(71,85,105)!important}
 input,select,textarea{background:rgba(255,255,255,0.45)!important;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.4)!important;border-radius:12px!important}
 button:hover,[role="button"]:hover{box-shadow:0 0 24px rgba(99,102,241,0.18),0 6px 20px rgba(0,0,0,0.06)!important;transition:box-shadow 250ms ease-out,transform 250ms ease-out;transform:translateY(-1px)}
 nav,aside,header{-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);background:rgba(255,255,255,0.65)!important}
@@ -270,6 +274,16 @@ function updatePreview() {
     '  var now = Date.now();\n' +
     '  if (now - _lastTap < 350) { parent.postMessage("milg-double-tap", "*"); _lastTap = 0; }\n' +
     '  else { _lastTap = now; }\n' +
+    '});\n' +
+    '</' + 'script>\n' +
+    '<script>\n' +
+    'window.addEventListener("message", function(e) {\n' +
+    '  if (e.data && e.data.type === "milg-run-contrast") {\n' +
+    '    var s = document.createElement("script");\n' +
+    '    s.textContent = ' + JSON.stringify(contrastCheckerScript) + ';\n' +
+    '    document.body.appendChild(s);\n' +
+    '    s.remove();\n' +
+    '  }\n' +
     '});\n' +
     '</' + 'script>\n' +
     '</body>\n</html>';
@@ -1305,6 +1319,208 @@ function syncMobileToolbar() {
   // Show/hide the toolbar toggle based on whether there are any controls
   var hasControls = mobilePers.children.length > 0 || mobileTheme.children.length > 0 || mobileStyle.children.length > 0;
   document.getElementById('mobilePreviewToolbar').classList.toggle('has-controls', hasControls);
+}
+
+// --- Contrast / Accessibility Checker ---
+// Lightweight WCAG contrast checker that runs inside the preview iframe.
+// Walks visible text nodes, computes effective fg/bg colors, reports failures.
+
+const contrastCheckerScript = `
+(function() {
+  function parseColor(str) {
+    if (!str || str === 'transparent' || str === 'rgba(0, 0, 0, 0)') return null;
+    var m = str.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)(?:,\\s*([\\d.]+))?\\)/);
+    if (!m) return null;
+    return { r: +m[1], g: +m[2], b: +m[3], a: m[4] !== undefined ? +m[4] : 1 };
+  }
+
+  function blendOnWhite(c) {
+    if (!c) return { r: 255, g: 255, b: 255 };
+    var a = c.a;
+    return { r: Math.round(c.r * a + 255 * (1 - a)), g: Math.round(c.g * a + 255 * (1 - a)), b: Math.round(c.b * a + 255 * (1 - a)) };
+  }
+
+  function getEffectiveBg(el) {
+    var node = el;
+    var layers = [];
+    while (node && node !== document.documentElement) {
+      var bg = getComputedStyle(node).backgroundColor;
+      var c = parseColor(bg);
+      if (c && c.a > 0) layers.push(c);
+      if (c && c.a >= 1) break;
+      node = node.parentElement;
+    }
+    var result = { r: 255, g: 255, b: 255 };
+    for (var i = layers.length - 1; i >= 0; i--) {
+      var l = layers[i];
+      var a = l.a;
+      result = { r: Math.round(l.r * a + result.r * (1 - a)), g: Math.round(l.g * a + result.g * (1 - a)), b: Math.round(l.b * a + result.b * (1 - a)) };
+    }
+    return result;
+  }
+
+  function luminance(c) {
+    var rs = c.r / 255, gs = c.g / 255, bs = c.b / 255;
+    var r = rs <= 0.03928 ? rs / 12.92 : Math.pow((rs + 0.055) / 1.055, 2.4);
+    var g = gs <= 0.03928 ? gs / 12.92 : Math.pow((gs + 0.055) / 1.055, 2.4);
+    var b = bs <= 0.03928 ? bs / 12.92 : Math.pow((bs + 0.055) / 1.055, 2.4);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  }
+
+  function contrastRatio(c1, c2) {
+    var l1 = luminance(c1), l2 = luminance(c2);
+    var lighter = Math.max(l1, l2), darker = Math.min(l1, l2);
+    return (lighter + 0.05) / (darker + 0.05);
+  }
+
+  function isVisible(el) {
+    var s = getComputedStyle(el);
+    if (s.display === 'none' || s.visibility === 'hidden' || s.opacity === '0') return false;
+    var r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
+  }
+
+  var issues = [];
+  var checked = 0;
+  var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
+  var node;
+  var seen = new Set();
+
+  while (node = walker.nextNode()) {
+    if (!node.textContent.trim()) continue;
+    var el = node.parentElement;
+    if (!el || !isVisible(el)) continue;
+    if (seen.has(el)) continue;
+    seen.add(el);
+    checked++;
+
+    var style = getComputedStyle(el);
+    var fg = parseColor(style.color);
+    if (!fg) continue;
+    var fgBlended = blendOnWhite(fg);
+    var bg = getEffectiveBg(el);
+    var ratio = contrastRatio(fgBlended, bg);
+    var fontSize = parseFloat(style.fontSize);
+    var fontWeight = parseInt(style.fontWeight) || 400;
+    var isLarge = fontSize >= 24 || (fontSize >= 18.66 && fontWeight >= 700);
+    var threshold = isLarge ? 3 : 4.5;
+
+    if (ratio < threshold) {
+      var tag = el.tagName.toLowerCase();
+      var text = node.textContent.trim().substring(0, 40);
+      var cls = el.className ? el.className.toString().substring(0, 60) : '';
+      issues.push({
+        text: text,
+        ratio: Math.round(ratio * 100) / 100,
+        needed: threshold,
+        tag: tag,
+        cls: cls,
+        fg: 'rgb(' + fgBlended.r + ',' + fgBlended.g + ',' + fgBlended.b + ')',
+        bg: 'rgb(' + bg.r + ',' + bg.g + ',' + bg.b + ')',
+        fontSize: Math.round(fontSize),
+        isLarge: isLarge
+      });
+    }
+  }
+
+  // Also check for invisible color palette: count unique primary-ish colors used
+  var allClasses = document.body.innerHTML;
+  var colorClasses = allClasses.match(/(?:text|bg|border|ring|divide)-(?:red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\\d+/g) || [];
+  var focusOnlyColors = [];
+  var colorSet = new Set(colorClasses);
+  var nonFocusColors = (allClasses.replace(/focus-visible:[^"\\s]*/g, '').replace(/focus:[^"\\s]*/g, '')).match(/(?:text|bg|border|ring|divide)-(?:red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\\d+/g) || [];
+  var nonFocusSet = new Set(nonFocusColors);
+  if (colorSet.size > 0 && nonFocusSet.size === 0) {
+    focusOnlyColors.push('Primary colors only used in focus states — palette changes will be invisible');
+  }
+
+  parent.postMessage({ type: 'milg-contrast-result', issues: issues, checked: checked, focusOnlyColors: focusOnlyColors }, '*');
+})();
+`;
+
+function runContrastCheck() {
+  const btn = document.getElementById('contrastBtn');
+  btn.classList.add('active');
+
+  // Listen for result from iframe
+  function onResult(e) {
+    if (!e.data || e.data.type !== 'milg-contrast-result') return;
+    window.removeEventListener('message', onResult);
+    btn.classList.remove('active');
+    showContrastResults(e.data);
+  }
+  window.addEventListener('message', onResult);
+
+  // Send message to iframe to run the check
+  preview.contentWindow.postMessage({ type: 'milg-run-contrast' }, '*');
+
+  // Timeout fallback
+  setTimeout(() => {
+    window.removeEventListener('message', onResult);
+    btn.classList.remove('active');
+  }, 5000);
+}
+
+function showContrastResults(data) {
+  const { issues, checked, focusOnlyColors } = data;
+  const totalIssues = issues.length + focusOnlyColors.length;
+
+  if (totalIssues === 0) {
+    showToast('Contrast check passed — ' + checked + ' text elements checked, all meet WCAG AA');
+    return;
+  }
+
+  // Build a results panel
+  let html = '<div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;" onclick="if(event.target===this)this.remove()">';
+  html += '<div style="background:white;border-radius:12px;max-width:600px;width:100%;max-height:80vh;overflow-y:auto;box-shadow:0 25px 50px rgba(0,0,0,0.25);">';
+  html += '<div style="padding:20px 24px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;">';
+  html += '<div><h2 style="margin:0;font-size:16px;font-weight:600;color:#0f172a;">Accessibility Check</h2>';
+  html += '<p style="margin:4px 0 0;font-size:13px;color:#64748b;">' + checked + ' text elements checked</p></div>';
+
+  if (issues.length > 0) {
+    html += '<span style="background:#fef2f2;color:#dc2626;font-size:12px;font-weight:600;padding:4px 10px;border-radius:99px;">' + issues.length + ' contrast issue' + (issues.length > 1 ? 's' : '') + '</span>';
+  } else {
+    html += '<span style="background:#f0fdf4;color:#16a34a;font-size:12px;font-weight:600;padding:4px 10px;border-radius:99px;">Contrast OK</span>';
+  }
+  html += '</div>';
+
+  html += '<div style="padding:16px 24px;">';
+
+  // Focus-only warnings
+  for (const warn of focusOnlyColors) {
+    html += '<div style="padding:12px;margin-bottom:12px;background:#fefce8;border:1px solid #fde68a;border-radius:8px;font-size:13px;color:#92400e;">';
+    html += '<strong>Warning:</strong> ' + warn;
+    html += '</div>';
+  }
+
+  // Contrast issues
+  for (const issue of issues) {
+    html += '<div style="padding:12px;margin-bottom:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">';
+    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">';
+    html += '<span style="display:inline-block;width:18px;height:18px;border-radius:4px;border:1px solid #e2e8f0;background:' + issue.fg + ';flex-shrink:0;" title="Text color"></span>';
+    html += '<span style="font-size:12px;color:#94a3b8;">on</span>';
+    html += '<span style="display:inline-block;width:18px;height:18px;border-radius:4px;border:1px solid #e2e8f0;background:' + issue.bg + ';flex-shrink:0;" title="Background color"></span>';
+    html += '<span style="font-size:13px;font-weight:600;color:' + (issue.ratio < issue.needed ? '#dc2626' : '#16a34a') + ';">' + issue.ratio + ':1</span>';
+    html += '<span style="font-size:12px;color:#94a3b8;">(need ' + issue.needed + ':1)</span>';
+    html += '</div>';
+    html += '<div style="font-size:13px;color:#334155;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">&lt;' + issue.tag + '&gt; "' + issue.text + '"</div>';
+    if (issue.cls) html += '<div style="font-size:11px;color:#94a3b8;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">class="' + issue.cls + '"</div>';
+    html += '</div>';
+  }
+
+  if (totalIssues === 0) {
+    html += '<p style="text-align:center;color:#16a34a;font-size:14px;">All text elements pass WCAG AA contrast requirements.</p>';
+  }
+
+  html += '</div>';
+  html += '<div style="padding:12px 24px;border-top:1px solid #e2e8f0;text-align:right;">';
+  html += '<button onclick="this.closest(\'div[style*=fixed]\'  ).remove()" style="padding:8px 16px;border-radius:8px;border:1px solid #e2e8f0;background:white;font-size:13px;cursor:pointer;font-weight:500;">Close</button>';
+  html += '</div></div></div>';
+
+  // Insert into the page
+  const container = document.createElement('div');
+  container.innerHTML = html;
+  document.body.appendChild(container.firstChild);
 }
 
 // --- Init ---
