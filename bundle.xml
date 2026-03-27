@@ -13654,6 +13654,1046 @@ All presets assume Tailwind CSS is available. Setup per framework:
 For Tailwind v4, add `@import "tailwindcss"` to your main CSS file. No `tailwind.config.js` needed for default setup.
 </file>
 
+<file path="expressive/hero-patterns.md">
+# Hero Section Patterns
+
+> **TL;DR:** A hero has 3 seconds to communicate what the page is about and why the visitor should care. Lead with a clear value proposition (5-8 words), support with 1 sentence, and include exactly 1 primary CTA. The hero type (centered, split, editorial, immersive) should match the content's intent, not just look impressive.
+
+## Core Principles
+
+1. **The hero IS the first impression** — 94% of first impressions are design-related. The hero sets the emotional tone for the entire page.
+2. **Clarity beats creativity** — a clever hero that confuses is worse than a simple hero that communicates. Lead with what you do, not how clever you are.
+3. **One action, not a menu** — the hero should funnel attention to a single primary CTA. Secondary actions can exist but must be visually subordinate.
+4. **Visual hierarchy in 3 layers** — headline (what), subheadline (why), CTA (what to do). Each layer is distinct in size and weight.
+5. **Performance affects perception** — a hero that loads in 1s feels premium. A hero that loads in 4s feels broken. Optimize images and defer non-critical assets.
+
+## Concrete Rules
+
+### Hero Anatomy
+| Element | Sizing | Purpose |
+|---------|--------|---------|
+| Headline | text-4xl to text-7xl (36-72px) | The value proposition. 5-8 words max |
+| Subheadline | text-lg to text-xl (18-20px) | Supporting context. 1-2 sentences max |
+| Primary CTA | min-h-[48px], text-base to text-lg | The ONE thing you want them to do |
+| Secondary CTA | text-sm to text-base, ghost/outlined | Alternative action (lower priority) |
+| Visual | Full-bleed or constrained | Product screenshot, illustration, or gradient |
+
+### Hero Types by Intent
+| Type | Layout | Best For |
+|------|--------|----------|
+| Centered | Text centered, CTAs below, visual below or bg | SaaS landing, product launch, app download |
+| Split (50/50) | Text left, visual right (or reversed) | Product demos, portfolios, agency pages |
+| Editorial | Large serif headline, minimal visual | Publishing, editorial, personal brand |
+| Immersive | Full-viewport visual, text overlay | Photography, luxury brands, experiences |
+| Card-stack | Multiple overlapping cards/panels | Feature highlights, multi-product pages |
+
+### Headline Sizing by Viewport
+| Viewport | Headline Size | Line Height |
+|----------|--------------|-------------|
+| Mobile (320-639px) | text-3xl to text-4xl (30-36px) | 1.1-1.2 |
+| Tablet (640-1023px) | text-4xl to text-5xl (36-48px) | 1.1 |
+| Desktop (1024px+) | text-5xl to text-7xl (48-72px) | 1.05-1.1 |
+
+### Spacing Rules
+- **Headline to subheadline:** 16-24px (mt-4 to mt-6)
+- **Subheadline to CTA:** 24-40px (mt-6 to mt-10)
+- **Hero section padding:** 80-160px vertical (py-20 to py-40)
+- **Max content width:** 640px for centered text (max-w-2xl)
+
+## CSS/Implementation Patterns
+
+### Centered Hero (Most Common)
+```html
+<section class="relative py-24 sm:py-32 lg:py-40">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="max-w-2xl mx-auto text-center">
+      <h1 class="text-4xl sm:text-5xl lg:text-7xl font-bold tracking-tight text-slate-900 dark:text-white leading-[1.1]">
+        Ship products<br>
+        <span class="text-indigo-600 dark:text-indigo-400">people love</span>
+      </h1>
+      <p class="mt-6 text-lg sm:text-xl text-slate-600 dark:text-slate-300 max-w-xl mx-auto">
+        The design platform that helps teams build beautiful, accessible interfaces in half the time.
+      </p>
+      <div class="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
+        <a href="#" class="w-full sm:w-auto rounded-xl bg-indigo-600 px-8 py-4 text-base font-semibold text-white hover:bg-indigo-500 transition-colors">
+          Start free trial
+        </a>
+        <a href="#" class="w-full sm:w-auto rounded-xl border border-slate-300 dark:border-slate-600 px-8 py-4 text-base font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+          Watch demo
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+```
+
+### Split Hero with Product Visual
+```html
+<section class="py-20 lg:py-32">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+      <div>
+        <h1 class="text-4xl sm:text-5xl font-bold tracking-tight text-slate-900 dark:text-white leading-[1.1]">
+          Analytics that<br>actually make sense
+        </h1>
+        <p class="mt-6 text-lg text-slate-600 dark:text-slate-300">
+          Stop drowning in dashboards. Get the 3 metrics that matter, updated in real time.
+        </p>
+        <div class="mt-8 flex flex-wrap gap-4">
+          <a href="#" class="rounded-lg bg-slate-900 dark:bg-white px-6 py-3 text-sm font-semibold text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-100 transition-colors">
+            Get started
+          </a>
+        </div>
+      </div>
+      <div class="relative">
+        <div class="aspect-[4/3] rounded-2xl bg-gradient-to-br from-indigo-100 to-violet-100 dark:from-indigo-900/30 dark:to-violet-900/30 border border-slate-200 dark:border-slate-700 shadow-xl"></div>
+      </div>
+    </div>
+  </div>
+</section>
+```
+
+### Editorial Hero (Type-Driven)
+```html
+<section class="py-32 sm:py-40">
+  <div class="max-w-4xl mx-auto px-4 sm:px-6">
+    <h1 class="text-5xl sm:text-6xl lg:text-8xl font-light tracking-tight text-slate-900 dark:text-white leading-[1.05]" style="font-family: 'Playfair Display', serif">
+      Design is not<br>just what it looks like.
+    </h1>
+    <p class="mt-8 text-xl text-slate-500 dark:text-slate-400 max-w-2xl">
+      It's how it works. We help companies build products that feel as good as they function.
+    </p>
+    <div class="mt-12 flex items-center gap-6">
+      <a href="#" class="text-base font-medium text-slate-900 dark:text-white border-b-2 border-slate-900 dark:border-white pb-1 hover:border-indigo-600 dark:hover:border-indigo-400 transition-colors">
+        Explore our work
+      </a>
+    </div>
+  </div>
+</section>
+```
+
+### Immersive Hero (Full Viewport)
+```html
+<section class="relative min-h-screen flex items-center justify-center overflow-hidden">
+  <!-- Background -->
+  <div class="absolute inset-0 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900"></div>
+  <!-- Content -->
+  <div class="relative z-10 max-w-3xl mx-auto px-4 text-center">
+    <h1 class="text-4xl sm:text-6xl lg:text-7xl font-bold text-white tracking-tight leading-[1.1]">
+      Experience design<br>without limits
+    </h1>
+    <p class="mt-6 text-lg sm:text-xl text-slate-300 max-w-xl mx-auto">
+      Immersive creative tools for the next generation of digital experiences.
+    </p>
+    <div class="mt-10">
+      <a href="#" class="inline-flex rounded-full bg-white px-8 py-4 text-base font-semibold text-slate-900 hover:bg-slate-100 transition-colors">
+        Enter the experience
+      </a>
+    </div>
+  </div>
+</section>
+```
+
+## Common Mistakes
+
+1. **Headline too long** — over 10 words in a hero headline and the user skims past it. 5-8 words. Cut ruthlessly.
+2. **Two equal CTAs** — "Sign Up" and "Learn More" at the same visual weight. Make one clearly primary.
+3. **Hero too tall on mobile** — a min-h-screen hero with large text can push all useful content below the fold on mobile. Use py-24 instead.
+4. **Stock photo hero** — generic stock photos actively hurt credibility. A solid gradient or abstract shape is better than a fake team photo.
+5. **Autoplaying video background** — most users find it distracting, it kills performance, and it doesn't work on mobile Safari. Use a static image with a play button instead.
+6. **Text over busy images without overlay** — white text on a photo needs a dark overlay (bg-black/50 minimum) for readability.
+
+## Decision Tree
+
+```
+Choosing a hero type:
+├─ What are you showing?
+│  ├─ A product/app → Split hero with screenshot or Centered + visual below
+│  ├─ A service/brand → Centered or Editorial (type-driven)
+│  ├─ A portfolio/creative work → Immersive or Editorial
+│  └─ An experience/event → Immersive (full viewport)
+├─ What's the headline length?
+│  ├─ 3-5 words → Can go very large (text-7xl+), editorial works well
+│  ├─ 5-8 words → Standard sizing (text-5xl-6xl)
+│  └─ 8+ words → Needs careful line breaking, consider split layout
+├─ How many CTAs?
+│  ├─ 1 → Center it. Make it big.
+│  ├─ 2 → Primary (filled) + Secondary (outlined/ghost). Clear hierarchy.
+│  └─ 3+ → Rethink. A hero is not a navigation menu.
+└─ Mobile considerations:
+   └─ Always stack CTAs vertically on mobile (flex-col sm:flex-row)
+```
+
+## Related Templates
+- [`personal-hero/`](../docs/presets/personal-hero/) — Personal site with staggered reveal hero
+- [`agency-landing/`](../docs/presets/agency-landing/) — Agency with gradient mesh hero
+- [`product-launch/`](../docs/presets/product-launch/) — Product launch with gradient text hero
+- [`devtool-landing/`](../docs/presets/devtool-landing/) — Developer tool with gradient mesh + terminal hero
+- [`event-page/`](../docs/presets/event-page/) — Event with bold date hero
+
+## Sources
+- [NN/g — How Users Read on the Web](https://www.nngroup.com/articles/how-users-read-on-the-web/)
+- [Peep Laja — Above the Fold](https://cxl.com/blog/above-the-fold/)
+- [web.dev — LCP Optimization](https://web.dev/lcp/)
+- Cross-reference: [Visual Hierarchy](../layout/visual-hierarchy.md), [Type Scale](../typography/type-scale.md), [Animation Timing](../interaction/animation-timing.md)
+</file>
+
+<file path="expressive/purposeful-motion.md">
+# Purposeful Motion
+
+> **TL;DR:** Motion in expressive pages differs from utility UI animation. Use motion to guide attention (draw the eye), establish hierarchy (what matters most moves first), and create emotional resonance (motion that matches the brand's energy). Limit to 2-3 motion techniques per page. Motion should explain, reveal, or delight — never decorate.
+
+## Core Principles
+
+1. **Motion is a hierarchy tool** — the first thing to animate gets the most attention. Use motion order to guide the user's eye: headline → subheadline → CTA → supporting content.
+2. **Restraint creates impact** — a single well-timed animation in a sea of stillness is memorable. Animation everywhere is noise.
+3. **Motion should match brand energy** — a luxury brand uses slow, graceful fades. A gaming startup uses fast, bouncy springs. The motion IS the personality.
+4. **Motion must serve the narrative** — on expressive pages, motion reveals the story. Elements appear as they become relevant, creating a sense of progression.
+5. **Performance is feel** — 60fps motion feels premium. Janky motion feels broken. Only animate `transform` and `opacity`.
+
+## Concrete Rules
+
+### Motion Techniques by Purpose
+| Purpose | Technique | Duration | Easing |
+|---------|-----------|----------|--------|
+| Draw attention | Fade + slide in | 400-600ms | ease-out (decelerate) |
+| Establish hierarchy | Staggered reveal | 200ms each, 80-120ms stagger | ease-out |
+| Create delight | Scale bounce | 300-500ms | spring (0.34, 1.56, 0.64, 1) |
+| Show progression | Counter/number roll | 600-1000ms | ease-in-out |
+| Ambient atmosphere | Slow float/pulse | 3-6s, infinite | ease-in-out |
+| Entrance drama | Large slide + fade | 600-800ms | cubic-bezier(0.16, 1, 0.3, 1) |
+
+### Stagger Choreography Rules
+- **Maximum elements in a stagger group:** 5-7
+- **Stagger delay:** 80-120ms per element
+- **Total stagger duration:** max 800ms
+- **Direction:** match reading order (top-to-bottom, left-to-right in LTR)
+- **First element:** always the headline or most important element
+
+### Motion Budget Per Page
+| Page Type | Max Motion Techniques | Max Animated Elements per Viewport |
+|-----------|----------------------|-----------------------------------|
+| Landing page | 3 | 5-7 |
+| Portfolio piece | 2-3 | 3-5 |
+| Product page | 2 | 4-6 |
+| Personal site | 2-3 | 3-5 |
+
+### Speed by Brand Energy
+| Brand Energy | Enter Duration | Hover Duration | Easing Character |
+|-------------|---------------|----------------|-----------------|
+| Calm/luxury | 600-800ms | 300ms | Gentle ease-out |
+| Professional | 300-500ms | 200ms | Standard ease-out |
+| Energetic | 200-400ms | 150ms | Bouncy spring |
+| Dramatic | 600-1000ms | 200ms | Strong deceleration |
+
+## CSS/Implementation Patterns
+
+### Staggered Hero Reveal
+```html
+<style>
+  @keyframes heroReveal {
+    from { opacity: 0; transform: translateY(32px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .hero-stagger > * {
+    opacity: 0;
+    animation: heroReveal 500ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  .hero-stagger > *:nth-child(1) { animation-delay: 0ms; }
+  .hero-stagger > *:nth-child(2) { animation-delay: 100ms; }
+  .hero-stagger > *:nth-child(3) { animation-delay: 200ms; }
+  .hero-stagger > *:nth-child(4) { animation-delay: 300ms; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hero-stagger > * { opacity: 1; animation: none; }
+  }
+</style>
+
+<section class="py-32">
+  <div class="hero-stagger max-w-2xl mx-auto text-center">
+    <span class="text-sm font-semibold text-indigo-600 uppercase tracking-wider">Introducing</span>
+    <h1 class="mt-4 text-5xl font-bold tracking-tight">Build faster, ship sooner</h1>
+    <p class="mt-6 text-lg text-slate-600">The platform that turns ideas into products.</p>
+    <div class="mt-10">
+      <a href="#" class="rounded-xl bg-indigo-600 px-8 py-4 text-white font-semibold">Get started</a>
+    </div>
+  </div>
+</section>
+```
+
+### Ambient Background Motion
+```css
+/* Slow floating gradient — adds atmosphere without distraction */
+@keyframes gradientShift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+.ambient-bg {
+  background: linear-gradient(-45deg, #dbeafe, #ede9fe, #fce7f3, #e0f2fe);
+  background-size: 400% 400%;
+  animation: gradientShift 8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ambient-bg { animation: none; background-position: 0% 50%; }
+}
+```
+
+### Number Counter Animation
+```html
+<style>
+  @property --num {
+    syntax: '<integer>';
+    initial-value: 0;
+    inherits: false;
+  }
+  .counter {
+    --num: 0;
+    animation: countUp 1s ease-in-out forwards;
+    counter-reset: num var(--num);
+  }
+  .counter::after { content: counter(num); }
+  @keyframes countUp { to { --num: 2847; } }
+</style>
+
+<span class="counter text-4xl font-bold tabular-nums"></span>
+```
+
+### Hover Micro-Motion for Cards
+```html
+<article class="group rounded-2xl border border-slate-200 dark:border-slate-700 p-6 transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-lg hover:shadow-slate-200/50 dark:hover:shadow-slate-900/50">
+  <div class="overflow-hidden rounded-xl">
+    <div class="aspect-[16/9] bg-slate-100 dark:bg-slate-800 transition-transform duration-500 ease-out group-hover:scale-105"></div>
+  </div>
+  <h3 class="mt-4 text-lg font-semibold">Card Title</h3>
+  <p class="mt-2 text-sm text-slate-600 dark:text-slate-400">Card description goes here.</p>
+</article>
+```
+
+### Scroll-Triggered Reveal (Intersection Observer)
+```html
+<style>
+  .reveal { opacity: 0; transform: translateY(24px); transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
+  .reveal.in-view { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) {
+    .reveal { opacity: 1; transform: none; transition: none; }
+  }
+</style>
+
+<div class="reveal">Revealed content</div>
+
+<script>
+const obs = new IntersectionObserver(
+  entries => entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in-view'); obs.unobserve(e.target); } }),
+  { threshold: 0.15 }
+);
+document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
+</script>
+```
+
+## Common Mistakes
+
+1. **Animating everything** — if every element fades, slides, and bounces, nothing has impact. Pick 3-5 elements per viewport to animate.
+2. **Same animation for every element** — using the same fade-up for headlines, images, and buttons. Vary the technique: headlines slide, images scale, buttons fade.
+3. **Ignoring reduced motion** — roughly 25% of users prefer reduced motion. Wrap all animations in a `prefers-reduced-motion` check.
+4. **Animation on repeat visits** — entrance animations are great the first time. On return visits or quick navigation, they feel like barriers. Consider only animating on first viewport intersection.
+5. **Slow, dramatic animations on utility elements** — a 800ms animation on a form field is painful. Reserve dramatic timing for hero elements and key moments.
+6. **Animating layout properties** — `width`, `height`, `top`, `left`, `margin` trigger expensive reflows. Only animate `transform` and `opacity`.
+
+## Decision Tree
+
+```
+Adding purposeful motion:
+├─ What's the goal?
+│  ├─ Guide attention → Staggered reveal (headline → sub → CTA)
+│  ├─ Create atmosphere → Ambient background motion (slow, subtle)
+│  ├─ Show data → Counter animation or chart reveal
+│  ├─ Encourage interaction → Hover micro-motion on interactive elements
+│  └─ Tell a story → Scroll-triggered progressive reveal
+├─ Brand energy?
+│  ├─ Calm → Longer duration (500-800ms), gentle easing
+│  ├─ Energetic → Shorter (200-400ms), spring easing
+│  └─ Dramatic → Long initial (600-1000ms), strong deceleration
+├─ How many motion elements per viewport?
+│  ├─ 1-3 → Perfect. Each one gets attention.
+│  ├─ 4-5 → OK if staggered properly.
+│  └─ 6+ → Too many. Cut to the most important.
+└─ Accessibility:
+   └─ Always: @media (prefers-reduced-motion: reduce) { animation: none; }
+```
+
+## Related Templates
+- [`scroll-story/`](../docs/presets/scroll-story/) — IntersectionObserver scroll reveals with staggered cascade
+- [`saas-features/`](../docs/presets/saas-features/) — Bouncy hover interactions on bento cards (playful variant)
+- [`devtool-landing/`](../docs/presets/devtool-landing/) — Glow card hover effects (clean variant)
+- [`agency-landing/`](../docs/presets/agency-landing/) — Service row expand on hover, image zoom
+
+## Sources
+- [Material Design 3 — Motion principles](https://m3.material.io/styles/motion/overview)
+- [Apple HIG — Motion](https://developer.apple.com/design/human-interface-guidelines/motion)
+- [Stripe.com](https://stripe.com) — exemplar of purposeful motion in product pages
+- Cross-reference: [Animation Timing](../interaction/animation-timing.md), [Micro-Interactions](../interaction/micro-interactions.md), [Visual Identity](visual-identity.md)
+</file>
+
+<file path="expressive/scroll-storytelling.md">
+# Scroll-Based Storytelling
+
+> **TL;DR:** Scroll storytelling uses scroll position as a timeline to reveal content progressively. Use CSS `scroll-snap`, `position: sticky`, and `@keyframes` with `animation-timeline: scroll()` for native scroll-driven animations. Keep each "scene" viewport-height sized, limit to 3-5 scroll scenes per page, and always provide a skip/nav option for users who don't want to scroll.
+
+## Core Principles
+
+1. **Scroll is a timeline, not a decoration** — each scroll position should reveal new information. If removing the scroll effect doesn't lose meaning, the effect is decorative, not narrative.
+2. **Progressive disclosure builds anticipation** — reveal information in a logical sequence. Don't show everything at once and animate it for no reason.
+3. **One idea per viewport** — each scroll "scene" should communicate one concept. Cramming multiple ideas into a sticky section creates cognitive overload.
+4. **The user controls the pace** — scroll-driven animation lets users speed up, slow down, or reverse. This is fundamentally different from auto-playing animation.
+5. **Performance is non-negotiable** — scroll-triggered layout shifts, heavy JS scroll listeners, or janky animations destroy the experience. Use CSS scroll-driven animations or IntersectionObserver, not scroll event listeners.
+
+## Concrete Rules
+
+### Scroll Scene Sizing
+| Parameter | Value | Rationale |
+|-----------|-------|-----------|
+| Scene height | 100vh (1 viewport) | Each scene fills the screen, creating clear transitions |
+| Sticky section height | 200-500vh scroll distance | 200vh = fast transition, 500vh = slow, detailed reveal |
+| Number of scenes | 3-5 per page | More than 5 causes fatigue. Users lose patience. |
+| Skip option | Always present | Users must be able to jump to content without scrolling through every scene |
+
+### Animation Trigger Points
+| Technique | CSS/JS | Use For |
+|-----------|--------|---------|
+| Scroll snap | `scroll-snap-type: y mandatory` | Full-viewport scene transitions |
+| Sticky + progress | `position: sticky` + scroll distance | Sections that transform as you scroll |
+| IntersectionObserver | JS | Reveal-on-enter animations |
+| `animation-timeline: scroll()` | CSS | Native scroll-driven animations (modern browsers) |
+
+### Timing and Distance
+- **Reveal animations:** trigger at 20-30% viewport intersection (threshold: 0.2-0.3)
+- **Sticky transform distance:** 200-300vh for a single transformation sequence
+- **Fade-in distance:** 10-20% of viewport height (not too fast, not too slow)
+- **Parallax ratio:** foreground 1:1, midground 0.5:1, background 0.2:1
+
+## CSS/Implementation Patterns
+
+### Scroll-Snap Sections
+```html
+<div class="h-screen overflow-y-scroll snap-y snap-mandatory">
+  <section class="h-screen snap-start flex items-center justify-center">
+    <h2 class="text-5xl font-bold">Scene One</h2>
+  </section>
+  <section class="h-screen snap-start flex items-center justify-center bg-slate-900 text-white">
+    <h2 class="text-5xl font-bold">Scene Two</h2>
+  </section>
+  <section class="h-screen snap-start flex items-center justify-center">
+    <h2 class="text-5xl font-bold">Scene Three</h2>
+  </section>
+</div>
+```
+
+### Sticky Section with Content Swap
+```html
+<!-- The sticky container stays fixed while scroll distance passes -->
+<div class="relative" style="height: 300vh">
+  <div class="sticky top-0 h-screen flex items-center justify-center overflow-hidden">
+    <div class="max-w-2xl mx-auto px-4 text-center">
+      <h2 class="text-4xl font-bold text-slate-900 dark:text-white">
+        How it works
+      </h2>
+      <p class="mt-4 text-lg text-slate-600 dark:text-slate-300">
+        Scroll to explore each step
+      </p>
+    </div>
+  </div>
+</div>
+```
+
+### CSS Scroll-Driven Animation (Modern)
+```css
+/* Fade in and slide up as element enters viewport */
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(40px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.reveal-on-scroll {
+  animation: fadeSlideIn linear both;
+  animation-timeline: view();
+  animation-range: entry 0% entry 40%;
+}
+```
+```html
+<div class="reveal-on-scroll">
+  <h3 class="text-2xl font-bold">This fades in on scroll</h3>
+</div>
+```
+
+### IntersectionObserver Reveal (Broad Support)
+```html
+<style>
+  .scroll-reveal { opacity: 0; transform: translateY(24px); transition: opacity 0.6s ease-out, transform 0.6s ease-out; }
+  .scroll-reveal.visible { opacity: 1; transform: translateY(0); }
+</style>
+
+<div class="scroll-reveal">Content that reveals on scroll</div>
+
+<script>
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.2 });
+document.querySelectorAll('.scroll-reveal').forEach(el => observer.observe(el));
+</script>
+```
+
+### Horizontal Scroll Inside Vertical Page
+```html
+<section class="relative" style="height: 400vh">
+  <div class="sticky top-0 h-screen flex items-center overflow-hidden">
+    <div class="flex gap-8 px-8" id="hscroll-track" style="transform: translateX(0)">
+      <div class="w-[80vw] flex-shrink-0 rounded-2xl bg-slate-100 dark:bg-slate-800 p-12">
+        <h3 class="text-2xl font-bold">Panel 1</h3>
+      </div>
+      <div class="w-[80vw] flex-shrink-0 rounded-2xl bg-slate-100 dark:bg-slate-800 p-12">
+        <h3 class="text-2xl font-bold">Panel 2</h3>
+      </div>
+      <div class="w-[80vw] flex-shrink-0 rounded-2xl bg-slate-100 dark:bg-slate-800 p-12">
+        <h3 class="text-2xl font-bold">Panel 3</h3>
+      </div>
+    </div>
+  </div>
+</section>
+```
+
+## Common Mistakes
+
+1. **Scroll-jacking** — overriding the browser's native scroll behavior (changing scroll speed, direction, or snapping aggressively). Users hate losing control of scroll.
+2. **No skip option** — forcing users through a 5-scene scroll sequence to reach the CTA. Always provide navigation or a "skip to content" link.
+3. **Heavy JS scroll listeners** — attaching animation logic to `scroll` events causes jank. Use IntersectionObserver, CSS `animation-timeline`, or `requestAnimationFrame` with throttling.
+4. **Too many scroll scenes** — 3-5 is the sweet spot. More than 5 and users feel trapped in a never-ending scroll sequence.
+5. **Scroll effects on every element** — if everything fades in on scroll, nothing feels special. Use reveal animations on 3-5 key elements per viewport.
+6. **No mobile fallback** — complex scroll effects often break on touch devices. Simplify to basic reveals on mobile, keep full effects for desktop.
+7. **Content unreachable without JavaScript** — scroll-driven layouts must be readable if JS fails. Use progressive enhancement.
+
+## Decision Tree
+
+```
+Adding scroll storytelling:
+├─ Is the content sequential/narrative?
+│  ├─ Yes → Scroll storytelling adds value
+│  └─ No → Use standard page layout instead
+├─ How many "scenes"?
+│  ├─ 1-2 → Simple reveal-on-scroll is enough
+│  ├─ 3-5 → Sticky sections with content swap
+│  └─ 6+ → Too many. Consolidate or use a different pattern.
+├─ Technical approach:
+│  ├─ Simple fade-in → CSS animation-timeline: view() or IntersectionObserver
+│  ├─ Sticky transformations → position: sticky + scroll distance calculation
+│  ├─ Full-page snapping → scroll-snap-type: y mandatory
+│  └─ Horizontal scroll → Sticky container + translateX based on scroll %
+├─ Mobile:
+│  ├─ Simplify → Reduce to basic reveals, remove parallax
+│  └─ Skip option → Always provide a way to bypass
+└─ Accessibility:
+   ├─ prefers-reduced-motion → Disable all scroll animations
+   └─ Keyboard nav → Ensure all content reachable without scrolling
+```
+
+## Related Templates
+- [`scroll-story/`](../docs/presets/scroll-story/) — Scroll-triggered portfolio with IntersectionObserver reveals
+- [`jdeworks-personal/`](../docs/presets/jdeworks-personal/) — Personalized scroll-driven portfolio
+
+## Sources
+- [MDN — Scroll-driven animations](https://developer.mozilla.org/en-US/docs/Web/CSS/animation-timeline)
+- [web.dev — Scroll-driven animations](https://developer.chrome.com/docs/css-ui/scroll-driven-animations)
+- [NN/g — Scrolljacking](https://www.nngroup.com/articles/scrolljacking-101/)
+- Cross-reference: [Animation Timing](../interaction/animation-timing.md), [Visual Hierarchy](../layout/visual-hierarchy.md)
+</file>
+
+<file path="expressive/visual-identity.md">
+# Visual Identity Systems
+
+> **TL;DR:** A strong visual identity comes from constraints, not features. Pick 1 signature element (bold typography, a distinctive color, an unusual layout rhythm) and apply it consistently. The screenshot test: if someone sees one section out of context, they should recognize your site.
+
+## Core Principles
+
+1. **Identity comes from deliberate constraints** — limiting your palette, type choices, and layout patterns creates recognition. Generic sites use everything; distinctive sites use less, but intentionally.
+2. **One signature element carries the design** — oversized type, a bold accent color, a consistent geometric motif, or an unusual grid. Not all at once.
+3. **Consistency is the multiplier** — a signature element used once is a novelty. Used across every section, it becomes identity.
+4. **Contrast creates emphasis** — the signature element works because everything else is restrained. A bold headline only feels bold next to quiet body text.
+5. **Identity transcends pages** — the visual language should feel cohesive whether the user is on the hero, an about page, or a pricing table.
+
+## Concrete Rules
+
+### The Identity Stack
+| Layer | What to Define | Example |
+|-------|---------------|---------|
+| Color | 1 primary + 1 accent + 1 neutral scale | Indigo-600 primary, amber-400 accent, slate neutrals |
+| Typography | 1 display font + 1 body font (max) | Clash Display for headings, Inter for body |
+| Shape language | Consistent corner radius + border style | All rounded-2xl, or all sharp corners |
+| Spacing rhythm | Consistent section spacing multiple | 80px between sections, 32px within |
+| Signature motif | 1 recurring visual element | Diagonal lines, dots, gradient borders |
+
+### Type-Driven Identity
+| Approach | Font Style | When to Use |
+|----------|-----------|-------------|
+| Bold authority | 800-900 weight, tight tracking (-0.03em) | Tech startups, SaaS, bold brands |
+| Elegant editorial | Serif display (400 weight), generous spacing | Luxury, editorial, publishing |
+| Friendly approachable | Rounded sans-serif, loose tracking | Consumer apps, creative tools |
+| Minimal modern | Light weight (300), wide tracking (0.05em+) | Design agencies, portfolios |
+
+### Color Identity Rules
+- **Primary usage:** 60% neutral, 30% primary, 10% accent (the 60-30-10 rule)
+- **Accent sparingly:** accent color on max 2 elements per viewport (CTA button + one highlight)
+- **Dark mode identity:** keep the same signature color relationships, don't just invert
+- **Gradient identity:** if using gradients, use the same gradient direction and stops everywhere
+
+### Spacing for Personality
+| Personality | Section Gap | Component Gap | Padding |
+|-------------|------------|---------------|---------|
+| Dense/editorial | 48-64px | 16-24px | 16-24px |
+| Standard/clean | 80-96px | 24-32px | 24-32px |
+| Spacious/luxury | 120-160px | 32-48px | 32-48px |
+| Dramatic | 160-240px | 48-64px | 48-80px |
+
+## CSS/Implementation Patterns
+
+### Signature Typography System
+```css
+/* Display font for identity */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&display=swap');
+
+.heading-display {
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+```
+```html
+<!-- Tailwind: identity through type scale -->
+<h1 class="text-5xl sm:text-7xl font-bold tracking-tighter leading-none">
+  Build something<br>
+  <span class="text-indigo-500">extraordinary</span>
+</h1>
+```
+
+### Signature Shape Language
+```html
+<!-- Consistent rounded style across all components -->
+<div class="rounded-3xl bg-white p-8 shadow-sm"> <!-- Card -->
+<button class="rounded-2xl px-6 py-3"> <!-- Button -->
+<img class="rounded-2xl"> <!-- Image -->
+<input class="rounded-xl"> <!-- Input -->
+```
+
+### Signature Color Accent
+```html
+<!-- Accent used sparingly for maximum impact -->
+<div class="border-l-4 border-amber-400 pl-6"> <!-- Pull quote -->
+<span class="bg-amber-400/20 text-amber-700 px-2 py-0.5 rounded"> <!-- Badge -->
+<div class="bg-gradient-to-r from-amber-400 to-orange-500 h-1 w-16"> <!-- Decorative bar -->
+```
+
+### Signature Motif (Diagonal Lines)
+```html
+<!-- Repeating motif as section separator -->
+<div class="relative py-24">
+  <div class="absolute inset-0 opacity-5"
+       style="background: repeating-linear-gradient(
+         -45deg, transparent, transparent 10px,
+         currentColor 10px, currentColor 11px
+       )"></div>
+  <div class="relative z-10"><!-- Content --></div>
+</div>
+```
+
+## Common Mistakes
+
+1. **Using 3+ display fonts** — one display font creates identity. Three create chaos. Max: 1 display + 1 body.
+2. **Inconsistent radius** — mixing rounded-lg, rounded-xl, and rounded-full randomly destroys cohesion. Pick one radius and use it everywhere.
+3. **Signature element only on hero** — if your bold type only appears in the hero and the rest is generic, there's no identity. Carry it through.
+4. **Too many accent colors** — one accent color at 10% usage is a brand. Three accent colors is a birthday party.
+5. **Copying trends without integration** — glassmorphism cards with gradient text with animated borders. Pick one effect and own it.
+6. **No negative space** — identity needs breathing room. Dense layouts feel generic because nothing stands out.
+
+## Decision Tree
+
+```
+Building visual identity:
+├─ What's the personality?
+│  ├─ Bold/confident → Heavy type (700-900), tight tracking, strong colors
+│  ├─ Elegant/refined → Serif display, generous whitespace, muted palette
+│  ├─ Playful/creative → Rounded shapes, colorful accents, bouncy motion
+│  └─ Minimal/modern → Light type, wide tracking, restrained palette
+├─ Pick ONE signature element:
+│  ├─ Typography → Distinctive display font, use it on every heading
+│  ├─ Color → Bold accent, use sparingly across all sections
+│  ├─ Shape → Consistent geometry (sharp, rounded, organic), apply everywhere
+│  └─ Motif → Visual pattern (lines, dots, gradients), repeat as separator/accent
+├─ Apply the 60-30-10 rule:
+│  ├─ 60% neutral background/text
+│  ├─ 30% primary color
+│  └─ 10% accent/signature element
+└─ The screenshot test:
+   └─ Crop any section → Is the source recognizable? If no, signature isn't strong enough.
+```
+
+## Related Templates
+- [`editorial-blog/`](../docs/presets/editorial-blog/) — Serif headings, extreme whitespace, content-first identity
+- [`agency-landing/`](../docs/presets/agency-landing/) — Bold creative brand identity
+- [`devtool-landing/`](../docs/presets/devtool-landing/) — Dark premium tech identity
+- [`jdeworks-personal/`](../docs/presets/jdeworks-personal/) — Personalized visual identity
+
+## Sources
+- Müller-Brockmann, J. (1981). *Grid Systems in Graphic Design*
+- [Refactoring UI — Building Your Color Palette](https://www.refactoringui.com/)
+- [Typewolf — Font Recommendations](https://www.typewolf.com/)
+- [Laws of UX — Aesthetic-Usability Effect](https://lawsofux.com/aesthetic-usability-effect/)
+- Cross-reference: [Color Systems](../color/color-systems.md), [Type Scale](../typography/type-scale.md), [Spacing System](../layout/spacing-system.md)
+</file>
+
+<file path="workflows/quick-reference.md">
+# Quick Reference — Critical Design Numbers
+
+> **TL;DR:** The ~25 most important numbers in UI/UX design. Bookmark this file for fast lookups.
+
+## Color & Contrast
+| Rule | Value | Standard |
+|------|-------|----------|
+| Normal text contrast (AA) | **4.5:1** minimum | WCAG 2.2 |
+| Large text contrast (AA) | **3:1** minimum | WCAG 2.2 |
+| Normal text contrast (AAA) | **7:1** minimum | WCAG 2.2 |
+| Large text threshold | **18pt** (24px) or **14pt bold** (18.5px) | WCAG 2.2 |
+| UI component contrast | **3:1** minimum against adjacent colors | WCAG 2.2 |
+| Focus indicator contrast | **3:1** minimum | WCAG 2.2 |
+
+## Typography
+| Rule | Value | Source |
+|------|-------|--------|
+| Body text size (web) | **16px** minimum | Browser default, accessibility best practice |
+| Line height (body text) | **1.4–1.6** | WCAG 2.2 (1.5 recommended) |
+| Line length (measure) | **45–75 characters** (ideal: 66) | Bringhurst, Butterick |
+| Paragraph spacing | **0.75em–1em** below | Butterick |
+| Heading scale ratio | **1.200–1.333** (minor third to perfect fourth) | Modular scale |
+| Maximum font weights per page | **2–3** | Performance + visual clarity |
+| Maximum typefaces per page | **2** (1 serif + 1 sans, or 2 from same superfamily) | Typography best practice |
+
+## Spacing & Layout
+| Rule | Value | Source |
+|------|-------|--------|
+| Base spacing unit | **4px** or **8px** | Material Design, most systems |
+| Spacing scale | **4, 8, 12, 16, 24, 32, 48, 64, 96** (px) | 4px base system |
+| Content max-width | **1200–1440px** | Common practice |
+| Readable content width | **600–800px** (matches 45–75ch) | Readability research |
+| Minimum padding (mobile) | **16px** horizontal | Material Design |
+| Grid columns (desktop) | **12** | Bootstrap, Material, most systems |
+| Grid columns (tablet) | **8** | Material Design |
+| Grid columns (mobile) | **4** | Material Design |
+| Grid gutter | **16–24px** | Common practice |
+
+## Touch & Interaction
+| Rule | Value | Standard |
+|------|-------|----------|
+| Minimum touch target | **44×44px** (CSS) / **48×48dp** | WCAG 2.2 / Material Design |
+| Minimum touch target spacing | **8px** between targets | WCAG 2.2 |
+| Click target (desktop) | **24×24px** minimum | WCAG 2.2 |
+| System response time | **<400ms** for perceived immediacy | Doherty Threshold |
+| Hover transition duration | **150–200ms** | Material Design |
+| Enter/appear animation | **200–300ms** | Material Design |
+| Exit/disappear animation | **150–200ms** | Material Design |
+| Maximum animation duration | **500ms** (users perceive as slow beyond this) | UX research |
+| Loading spinner delay | **300ms–1s** before showing | Nielsen |
+| Skeleton screen | Show **immediately** for loads >300ms | UX best practice |
+
+## Reading & Scanning
+| Rule | Value | Source |
+|------|-------|--------|
+| Users who scan vs. read | **79%** scan, only **16%** read word-by-word | Nielsen Norman Group |
+| Word count reduction benefit | Cut to **50%** → **58%** usability improvement | Nielsen Norman Group |
+| Scannable layout benefit | Headings + bullets + highlights → **47%** improvement | Nielsen Norman Group |
+| Combined writing improvements | Concise + scannable + objective → **124%** improvement | Nielsen Norman Group |
+
+## Responsive Breakpoints
+| Breakpoint | Value | Typical Use |
+|------------|-------|-------------|
+| Small mobile | **320px** | Minimum supported width |
+| Mobile | **480px** | Large phones |
+| Tablet | **768px** | Portrait tablets |
+| Desktop | **1024px** | Landscape tablets, small laptops |
+| Large desktop | **1280px** | Standard desktops |
+| Extra large | **1536px** | Large monitors |
+
+## Hick's Law — Choice Limits
+| Rule | Value | Source |
+|------|-------|--------|
+| Navigation items | **5–7** top-level items | Hick's Law, Miller's Law |
+| Form fields per step | **5–7** visible fields | Cognitive load research |
+| Options in a dropdown | **≤15** before search is needed | UX best practice |
+| Actions in a context menu | **≤10** | UX best practice |
+
+## Z-Index Scale
+| Layer | Value | Use |
+|-------|-------|-----|
+| Base | **0** | Default content |
+| Dropdown | **100** | Dropdowns, tooltips |
+| Sticky | **200** | Sticky headers |
+| Overlay | **300** | Modal backdrops |
+| Modal | **400** | Modal dialogs |
+| Popover | **500** | Popovers above modals |
+| Toast | **600** | Toast notifications |
+| Maximum | **999** | System-level (skip links, etc.) |
+
+## Border Radius
+| Element | Value | Source |
+|---------|-------|--------|
+| Buttons | **4–8px** | Most design systems |
+| Cards | **8–12px** | Material Design 3 |
+| Input fields | **4–8px** | Common practice |
+| Modals | **12–16px** | Material Design 3 |
+| Chips/tags | **full (9999px)** or **4–8px** | Material Design 3 |
+| Avatars | **full (50%)** | Common practice |
+
+## Quick Preset Lookup
+
+Need a starting point? Grab a preset from [`docs/presets/_index.md`](../docs/presets/_index.md):
+
+| I need a... | Preset |
+|-------------|--------|
+| Dashboard layout | `docs/presets/shell-dashboard/` |
+| Landing page | `docs/presets/shell-marketing/` + `docs/presets/hero/` |
+| Login / signup page | `docs/presets/shell-form/` |
+| Data browser | `docs/presets/shell-sidebar/` + `docs/presets/data-table/` |
+| Pricing page | `docs/presets/pricing/` |
+| Portfolio | `docs/presets/portfolio/` or `docs/presets/personal-hero/` |
+| Agency portfolio | `docs/presets/agency-portfolio/` (scroll-shrink logo, marquee, project grid) |
+| App / fintech showcase | `docs/presets/app-showcase/` (dark hero, phone mockup, stacking cards) |
+| Education / content landing | `docs/presets/scroll-reveal-landing/` (sky gradient, line-by-line reveal) |
+| Blog / editorial | `docs/presets/editorial-blog/` |
+| SaaS features | `docs/presets/saas-features/` |
+| Developer tool | `docs/presets/devtool-landing/` |
+| Event / conference | `docs/presets/event-page/` |
+| Documentation site | `docs/presets/docs-site/` |
+| Product page | `docs/presets/product-page/` |
+| Scroll-driven story | `docs/presets/scroll-story/` |
+
+Each preset has clean, minimalist, and playful personality variants. React and Vue variants available for interactive components — see [`docs/presets/FRAMEWORKS.md`](../docs/presets/FRAMEWORKS.md).
+
+## Sources
+- [WCAG 2.2](https://www.w3.org/TR/WCAG22/)
+- [Material Design 3](https://m3.material.io)
+- [Laws of UX](https://lawsofux.com)
+- [Nielsen Norman Group](https://www.nngroup.com)
+- [Butterick's Practical Typography](https://practicaltypography.com)
+- [The Elements of Typographic Style (Bringhurst)](https://en.wikipedia.org/wiki/The_Elements_of_Typographic_Style)
+</file>
+
+<file path="docs/presets/_index.md">
+# Preset & Component Library
+
+> **Copy-paste-ready HTML+Tailwind components and full-page templates.** Each preset has multiple personality variants (Clean, Minimalist, Playful) as structurally different HTML — not just CSS changes.
+
+## Preview Links
+
+Every preset can be previewed live. The URL pattern is:
+```
+https://jdeworks.github.io/make-it-look-good/#preset:{element}/{personality}
+```
+
+For example: `#preset:dashboard/clean`, `#preset:landing/playful`, `#preset:agency-landing/minimalist`.
+
+Element names and available personalities are listed in `index.json`. Use these links to show users a template before building — especially useful when working from the bundle (online chat) where the raw HTML files aren't available.
+
+## Framework Support
+
+**HTML is the single source of truth.** To use in React, Vue, Svelte, or Angular:
+1. Copy the HTML preset
+2. Apply attribute changes from [FRAMEWORKS.md](FRAMEWORKS.md)
+3. Add interactivity using the behavior recipes in FRAMEWORKS.md
+
+Pre-built framework files (`.jsx`, `.vue`, `.svelte`) only exist for components with **complex interactive logic** — state machines, keyboard navigation, form validation. Presentational components don't need separate framework files; the LLM converts them on the fly.
+
+---
+
+## Layout Shells
+
+Start here. Everything builds on these.
+
+| Preset | Description | Frameworks |
+|--------|-------------|:----------:|
+| [`shell-sidebar/`](shell-sidebar/) | App shell: 240px sidebar + topbar + content area | [React](shell-sidebar/react.jsx) [Vue](shell-sidebar/vue.vue) [Svelte](shell-sidebar/svelte.svelte) |
+| [`shell-marketing/`](shell-marketing/) | Header + hero slot + sections + footer | [React](shell-marketing/react.jsx) [Vue](shell-marketing/vue.vue) [Svelte](shell-marketing/svelte.svelte) |
+| [`shell-form/`](shell-form/) | Centered card on gray background (login/signup) | [React](shell-form/react.jsx) [Vue](shell-form/vue.vue) [Svelte](shell-form/svelte.svelte) |
+| [`shell-dashboard/`](shell-dashboard/) | Sidebar + topbar + stat cards + table (composed) | HTML only |
+
+## Navigation Components
+
+| Preset | Description | Frameworks |
+|--------|-------------|:----------:|
+| [`tabs/`](tabs/) | Horizontal tabs with content panels | [React](tabs/react.jsx) [Vue](tabs/vue.vue) [Svelte](tabs/svelte.svelte) |
+| [`pagination/`](pagination/) | Page navigation with prev/next + numbers | [React](pagination/react.jsx) [Vue](pagination/vue.vue) [Svelte](pagination/svelte.svelte) |
+| [`dropdown/`](dropdown/) | Dropdown menu with items + outside click | [React](dropdown/react.jsx) [Vue](dropdown/vue.vue) |
+
+## Content Sections
+
+| Preset | Description | Frameworks |
+|--------|-------------|:----------:|
+| [`hero/`](hero/) | Centered hero with heading + subtext + CTAs | HTML + [FRAMEWORKS.md](FRAMEWORKS.md) |
+| [`feature-grid/`](feature-grid/) | 3-column feature cards with icons | HTML + [FRAMEWORKS.md](FRAMEWORKS.md) |
+| [`pricing-cards/`](pricing-cards/) | 3-tier pricing (Free / Pro / Enterprise) | HTML + [FRAMEWORKS.md](FRAMEWORKS.md) |
+| [`stats-row/`](stats-row/) | 4 stat cards with trend indicators | HTML + [FRAMEWORKS.md](FRAMEWORKS.md) |
+| [`accordion/`](accordion/) | FAQ-style collapsible accordion | [React](accordion/react.jsx) [Vue](accordion/vue.vue) [Svelte](accordion/svelte.svelte) |
+| [`avatars/`](avatars/) | Overlapping avatars with +N indicator | [React](avatars/react.jsx) [Vue](avatars/vue.vue) |
+
+## Data Display
+
+| Preset | Description | Frameworks |
+|--------|-------------|:----------:|
+| [`data-table/`](data-table/) | Data table with sorting + status badges | [React](data-table/react.jsx) [Vue](data-table/vue.vue) [Svelte](data-table/svelte.svelte) |
+| [`card-grid/`](card-grid/) | Responsive product/content card grid | HTML only |
+
+## Forms
+
+| Preset | Description | Frameworks |
+|--------|-------------|:----------:|
+| [`form/`](form/) | Signup form with password strength | [React](form/react.jsx) [Vue](form/vue.vue) [Svelte](form/svelte.svelte) |
+| [`shell-form/`](shell-form/) | Login form (centered layout) | [React](shell-form/react.jsx) [Vue](shell-form/vue.vue) [Svelte](shell-form/svelte.svelte) |
+
+## Feedback (interactive variants only)
+
+| Preset | Description | Frameworks |
+|--------|-------------|:----------:|
+| [`dropdown/`](dropdown/) (modal) | Modal dialog with backdrop + focus trap | [React](dropdown/react-modal.jsx) [Vue](dropdown/vue-modal.vue) [Svelte](dropdown/svelte-modal.svelte) |
+| [`stats-row/`](stats-row/) (toast) | Toast notifications (auto-dismiss, stack) | [React](stats-row/react-toast.jsx) [Vue](stats-row/vue-toast.vue) |
+| [`hero/`](hero/) (search) | Debounced search with filter dropdown | [React](hero/react-search.jsx) [Vue](hero/vue-search.vue) [Svelte](hero/svelte-search.svelte) |
+
+## Buttons
+
+| Preset | Description | Frameworks |
+|--------|-------------|:----------:|
+| [`buttons/`](buttons/) | All emphasis levels x sizes x states | HTML only |
+
+## Full Pages
+
+| Preset | Description |
+|--------|-------------|
+| [`pricing/`](pricing/) | SaaS pricing page |
+| [`portfolio/`](portfolio/) | Portfolio (dark theme) |
+| [`restaurant/`](restaurant/) | Restaurant (warm theme) |
+| [`statuspage/`](statuspage/) | Status page |
+
+## Before → After Examples
+
+| Preset | Personalities |
+|--------|--------------|
+| [`dashboard/`](dashboard/) | before, clean, minimalist, playful |
+| [`landing/`](landing/) | before, clean, minimalist, playful, editorial |
+| [`form/`](form/) | before, clean, minimalist, playful, editorial |
+| [`cards/`](cards/) | before, clean, minimalist, playful |
+| [`project/`](project/) | before, clean, minimalist, playful |
+
+## Expressive Templates
+
+| Preset | Description | Design Approach |
+|--------|-------------|-----------------|
+| [`personal-hero/`](personal-hero/) | Personal portfolio site | Clean personal branding |
+| [`agency-landing/`](agency-landing/) | Creative agency landing | Bold Creative / Agency |
+| [`agency-portfolio/`](agency-portfolio/) | Agency portfolio with scroll-shrink logo | Typographic / Scroll-Driven Agency |
+| [`app-showcase/`](app-showcase/) | Dark app showcase with phone mockup + stacking cards | Dark Warm / App-Centric Scroll |
+| [`scroll-reveal-landing/`](scroll-reveal-landing/) | Sky gradient hero with line-by-line text reveal | Airy / Scroll-Reveal Education |
+| [`product-launch/`](product-launch/) | Product launch page | Dark Premium / Product |
+| [`editorial-blog/`](editorial-blog/) | Long-form blog / editorial | Minimal Editorial / Typography-First |
+| [`saas-features/`](saas-features/) | SaaS feature showcase | Friendly SaaS / Bento |
+| [`scroll-story/`](scroll-story/) | Scroll-triggered portfolio | Immersive / Scroll-Storytelling |
+| [`product-page/`](product-page/) | E-commerce product page | E-commerce / Product-Focused |
+| [`devtool-landing/`](devtool-landing/) | Developer tool landing | Dark Premium / Developer |
+| [`docs-site/`](docs-site/) | Documentation site | Documentation / Reference |
+| [`event-page/`](event-page/) | Event/conference landing | Event / Conference |
+| [`jdeworks-personal/`](jdeworks-personal/) | Personalized "This is Me" portfolio | Scroll-Driven Storytelling |
+
+## Edge Cases
+
+| Preset | Description |
+|--------|-------------|
+| [`deploy/`](deploy/) | Deploy monitor |
+| [`osslanding/`](osslanding/) | OSS landing page |
+
+---
+
+## Composition Recipes
+
+Combine presets to build full pages:
+
+### Dashboard
+```
+shell-dashboard/ (includes sidebar + topbar + stats + table)
+```
+Or build custom: `shell-sidebar/` → add `stats-row/` + `data-table/` in content area.
+
+### Landing Page
+```
+shell-marketing/
+  └ Add hero section from: hero/
+  └ Add sections: feature-grid/
+  └ Add sections: pricing-cards/
+```
+
+### Login / Signup Page
+```
+shell-form/ (centered login form)
+```
+
+### Settings Page
+```
+shell-sidebar/ layout
+  └ In content area: form elements
+```
+
+### Data Browser
+```
+shell-sidebar/ layout
+  └ In content area: search bar + data-table/
+```
+
+---
+
+## Design Tokens (Consistent Across All Presets)
+
+| Token | Value | Tailwind |
+|-------|-------|----------|
+| Primary | `#2563eb` | `blue-600` |
+| Primary hover | `#1d4ed8` | `blue-700` |
+| Text primary | `#0f172a` / `#f1f5f9` | `slate-900` / `slate-100` |
+| Text secondary | `#475569` / `#94a3b8` | `slate-600` / `slate-400` |
+| Background | `#ffffff` / `#0f172a` | `white` / `slate-900` |
+| Surface | `#f8fafc` / `#1e293b` | `slate-50` / `slate-800` |
+| Border | `#e2e8f0` / `#334155` | `slate-200` / `slate-700` |
+| Success | `#16a34a` | `green-600` |
+| Error | `#dc2626` | `red-600` |
+| Warning | `#d97706` | `amber-600` |
+| Border radius | `8px` (cards), `8px` (buttons), `8px` (inputs) | `rounded-lg` |
+| Touch target | 44px minimum | `min-h-11` |
+
+Note: Expressive templates use different primary colors appropriate to their personality (rose for playful, indigo for editorial, etc.). See `index.json` for per-preset color mappings.
+
+## Preset Format
+
+Each preset directory contains:
+- `clean.html` — Standard Tailwind, balanced, professional
+- `minimalist.html` — Stripped back, hairline borders, light font weights
+- `playful.html` — Big rounded corners, colorful shadows, bouncy animations
+- `react.jsx` (optional) — React component variant for interactive components
+- `vue.vue` (optional) — Vue SFC variant
+- `svelte.svelte` (optional) — Svelte 5 component variant
+- Some presets also have `before.html` and/or `editorial.html` variants
+
+All presets are:
+- **Tailwind v4** classes only
+- **Self-contained** (inline SVG icons, no external deps except Google Fonts for display variants)
+- **Responsive** (320px → 768px → 1024px+)
+- **Dark mode** via `dark:` classes
+- **WCAG AA** contrast, 44px touch targets, semantic HTML
+- **Realistic content** (not lorem ipsum)
+</file>
+
 <file path="docs/analyzer-snippet.js">
 // make-it-look-good — Design Extraction Snippet
 // Run this in the browser console on any page, or use as a bookmarklet.
@@ -14718,1044 +15758,831 @@ For Tailwind v4, add `@import "tailwindcss"` to your main CSS file. No `tailwind
 }
 </file>
 
-<file path="expressive/hero-patterns.md">
-# Hero Section Patterns
+<file path="expressive/curated-examples.md">
+# What Makes Great Sites Great — Curated Examples
 
-> **TL;DR:** A hero has 3 seconds to communicate what the page is about and why the visitor should care. Lead with a clear value proposition (5-8 words), support with 1 sentence, and include exactly 1 primary CTA. The hero type (centered, split, editorial, immersive) should match the content's intent, not just look impressive.
-
-## Core Principles
-
-1. **The hero IS the first impression** — 94% of first impressions are design-related. The hero sets the emotional tone for the entire page.
-2. **Clarity beats creativity** — a clever hero that confuses is worse than a simple hero that communicates. Lead with what you do, not how clever you are.
-3. **One action, not a menu** — the hero should funnel attention to a single primary CTA. Secondary actions can exist but must be visually subordinate.
-4. **Visual hierarchy in 3 layers** — headline (what), subheadline (why), CTA (what to do). Each layer is distinct in size and weight.
-5. **Performance affects perception** — a hero that loads in 1s feels premium. A hero that loads in 4s feels broken. Optimize images and defer non-critical assets.
-
-## Concrete Rules
-
-### Hero Anatomy
-| Element | Sizing | Purpose |
-|---------|--------|---------|
-| Headline | text-4xl to text-7xl (36-72px) | The value proposition. 5-8 words max |
-| Subheadline | text-lg to text-xl (18-20px) | Supporting context. 1-2 sentences max |
-| Primary CTA | min-h-[48px], text-base to text-lg | The ONE thing you want them to do |
-| Secondary CTA | text-sm to text-base, ghost/outlined | Alternative action (lower priority) |
-| Visual | Full-bleed or constrained | Product screenshot, illustration, or gradient |
-
-### Hero Types by Intent
-| Type | Layout | Best For |
-|------|--------|----------|
-| Centered | Text centered, CTAs below, visual below or bg | SaaS landing, product launch, app download |
-| Split (50/50) | Text left, visual right (or reversed) | Product demos, portfolios, agency pages |
-| Editorial | Large serif headline, minimal visual | Publishing, editorial, personal brand |
-| Immersive | Full-viewport visual, text overlay | Photography, luxury brands, experiences |
-| Card-stack | Multiple overlapping cards/panels | Feature highlights, multi-product pages |
-
-### Headline Sizing by Viewport
-| Viewport | Headline Size | Line Height |
-|----------|--------------|-------------|
-| Mobile (320-639px) | text-3xl to text-4xl (30-36px) | 1.1-1.2 |
-| Tablet (640-1023px) | text-4xl to text-5xl (36-48px) | 1.1 |
-| Desktop (1024px+) | text-5xl to text-7xl (48-72px) | 1.05-1.1 |
-
-### Spacing Rules
-- **Headline to subheadline:** 16-24px (mt-4 to mt-6)
-- **Subheadline to CTA:** 24-40px (mt-6 to mt-10)
-- **Hero section padding:** 80-160px vertical (py-20 to py-40)
-- **Max content width:** 640px for centered text (max-w-2xl)
-
-## CSS/Implementation Patterns
-
-### Centered Hero (Most Common)
-```html
-<section class="relative py-24 sm:py-32 lg:py-40">
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div class="max-w-2xl mx-auto text-center">
-      <h1 class="text-4xl sm:text-5xl lg:text-7xl font-bold tracking-tight text-slate-900 dark:text-white leading-[1.1]">
-        Ship products<br>
-        <span class="text-indigo-600 dark:text-indigo-400">people love</span>
-      </h1>
-      <p class="mt-6 text-lg sm:text-xl text-slate-600 dark:text-slate-300 max-w-xl mx-auto">
-        The design platform that helps teams build beautiful, accessible interfaces in half the time.
-      </p>
-      <div class="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
-        <a href="#" class="w-full sm:w-auto rounded-xl bg-indigo-600 px-8 py-4 text-base font-semibold text-white hover:bg-indigo-500 transition-colors">
-          Start free trial
-        </a>
-        <a href="#" class="w-full sm:w-auto rounded-xl border border-slate-300 dark:border-slate-600 px-8 py-4 text-base font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-          Watch demo
-        </a>
-      </div>
-    </div>
-  </div>
-</section>
-```
-
-### Split Hero with Product Visual
-```html
-<section class="py-20 lg:py-32">
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div class="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
-      <div>
-        <h1 class="text-4xl sm:text-5xl font-bold tracking-tight text-slate-900 dark:text-white leading-[1.1]">
-          Analytics that<br>actually make sense
-        </h1>
-        <p class="mt-6 text-lg text-slate-600 dark:text-slate-300">
-          Stop drowning in dashboards. Get the 3 metrics that matter, updated in real time.
-        </p>
-        <div class="mt-8 flex flex-wrap gap-4">
-          <a href="#" class="rounded-lg bg-slate-900 dark:bg-white px-6 py-3 text-sm font-semibold text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-100 transition-colors">
-            Get started
-          </a>
-        </div>
-      </div>
-      <div class="relative">
-        <div class="aspect-[4/3] rounded-2xl bg-gradient-to-br from-indigo-100 to-violet-100 dark:from-indigo-900/30 dark:to-violet-900/30 border border-slate-200 dark:border-slate-700 shadow-xl"></div>
-      </div>
-    </div>
-  </div>
-</section>
-```
-
-### Editorial Hero (Type-Driven)
-```html
-<section class="py-32 sm:py-40">
-  <div class="max-w-4xl mx-auto px-4 sm:px-6">
-    <h1 class="text-5xl sm:text-6xl lg:text-8xl font-light tracking-tight text-slate-900 dark:text-white leading-[1.05]" style="font-family: 'Playfair Display', serif">
-      Design is not<br>just what it looks like.
-    </h1>
-    <p class="mt-8 text-xl text-slate-500 dark:text-slate-400 max-w-2xl">
-      It's how it works. We help companies build products that feel as good as they function.
-    </p>
-    <div class="mt-12 flex items-center gap-6">
-      <a href="#" class="text-base font-medium text-slate-900 dark:text-white border-b-2 border-slate-900 dark:border-white pb-1 hover:border-indigo-600 dark:hover:border-indigo-400 transition-colors">
-        Explore our work
-      </a>
-    </div>
-  </div>
-</section>
-```
-
-### Immersive Hero (Full Viewport)
-```html
-<section class="relative min-h-screen flex items-center justify-center overflow-hidden">
-  <!-- Background -->
-  <div class="absolute inset-0 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900"></div>
-  <!-- Content -->
-  <div class="relative z-10 max-w-3xl mx-auto px-4 text-center">
-    <h1 class="text-4xl sm:text-6xl lg:text-7xl font-bold text-white tracking-tight leading-[1.1]">
-      Experience design<br>without limits
-    </h1>
-    <p class="mt-6 text-lg sm:text-xl text-slate-300 max-w-xl mx-auto">
-      Immersive creative tools for the next generation of digital experiences.
-    </p>
-    <div class="mt-10">
-      <a href="#" class="inline-flex rounded-full bg-white px-8 py-4 text-base font-semibold text-slate-900 hover:bg-slate-100 transition-colors">
-        Enter the experience
-      </a>
-    </div>
-  </div>
-</section>
-```
-
-## Common Mistakes
-
-1. **Headline too long** — over 10 words in a hero headline and the user skims past it. 5-8 words. Cut ruthlessly.
-2. **Two equal CTAs** — "Sign Up" and "Learn More" at the same visual weight. Make one clearly primary.
-3. **Hero too tall on mobile** — a min-h-screen hero with large text can push all useful content below the fold on mobile. Use py-24 instead.
-4. **Stock photo hero** — generic stock photos actively hurt credibility. A solid gradient or abstract shape is better than a fake team photo.
-5. **Autoplaying video background** — most users find it distracting, it kills performance, and it doesn't work on mobile Safari. Use a static image with a play button instead.
-6. **Text over busy images without overlay** — white text on a photo needs a dark overlay (bg-black/50 minimum) for readability.
-
-## Decision Tree
-
-```
-Choosing a hero type:
-├─ What are you showing?
-│  ├─ A product/app → Split hero with screenshot or Centered + visual below
-│  ├─ A service/brand → Centered or Editorial (type-driven)
-│  ├─ A portfolio/creative work → Immersive or Editorial
-│  └─ An experience/event → Immersive (full viewport)
-├─ What's the headline length?
-│  ├─ 3-5 words → Can go very large (text-7xl+), editorial works well
-│  ├─ 5-8 words → Standard sizing (text-5xl-6xl)
-│  └─ 8+ words → Needs careful line breaking, consider split layout
-├─ How many CTAs?
-│  ├─ 1 → Center it. Make it big.
-│  ├─ 2 → Primary (filled) + Secondary (outlined/ghost). Clear hierarchy.
-│  └─ 3+ → Rethink. A hero is not a navigation menu.
-└─ Mobile considerations:
-   └─ Always stack CTAs vertically on mobile (flex-col sm:flex-row)
-```
-
-## Related Templates
-- [`personal-hero/`](../docs/presets/personal-hero/) — Personal site with staggered reveal hero
-- [`agency-landing/`](../docs/presets/agency-landing/) — Agency with gradient mesh hero
-- [`product-launch/`](../docs/presets/product-launch/) — Product launch with gradient text hero
-- [`devtool-landing/`](../docs/presets/devtool-landing/) — Developer tool with gradient mesh + terminal hero
-- [`event-page/`](../docs/presets/event-page/) — Event with bold date hero
-
-## Sources
-- [NN/g — How Users Read on the Web](https://www.nngroup.com/articles/how-users-read-on-the-web/)
-- [Peep Laja — Above the Fold](https://cxl.com/blog/above-the-fold/)
-- [web.dev — LCP Optimization](https://web.dev/lcp/)
-- Cross-reference: [Visual Hierarchy](../layout/visual-hierarchy.md), [Type Scale](../typography/type-scale.md), [Animation Timing](../interaction/animation-timing.md)
-</file>
-
-<file path="expressive/purposeful-motion.md">
-# Purposeful Motion
-
-> **TL;DR:** Motion in expressive pages differs from utility UI animation. Use motion to guide attention (draw the eye), establish hierarchy (what matters most moves first), and create emotional resonance (motion that matches the brand's energy). Limit to 2-3 motion techniques per page. Motion should explain, reveal, or delight — never decorate.
+> **TL;DR:** Study real sites by *design approach*, not brand name. Each approach has specific CSS techniques that make it work — gradient meshes for dark premium, extreme whitespace for editorial, bento grids for friendly SaaS. This file catalogs six approaches with real URLs, replicable patterns, and copy-paste CSS. Also includes placeholder image services, font pairings, and a CSS techniques catalog.
 
 ## Core Principles
 
-1. **Motion is a hierarchy tool** — the first thing to animate gets the most attention. Use motion order to guide the user's eye: headline → subheadline → CTA → supporting content.
-2. **Restraint creates impact** — a single well-timed animation in a sea of stillness is memorable. Animation everywhere is noise.
-3. **Motion should match brand energy** — a luxury brand uses slow, graceful fades. A gaming startup uses fast, bouncy springs. The motion IS the personality.
-4. **Motion must serve the narrative** — on expressive pages, motion reveals the story. Elements appear as they become relevant, creating a sense of progression.
-5. **Performance is feel** — 60fps motion feels premium. Janky motion feels broken. Only animate `transform` and `opacity`.
+1. **Design approach comes before technology** — pick the visual personality first, then choose the CSS techniques that serve it
+2. **Every great site constrains itself** — the best dark UIs use 2 gradients, not 20. The best editorial sites use one accent color. Constraint creates coherence.
+3. **Copy the system, not the surface** — the spacing scale, the color ratio, the type hierarchy matter more than the exact gradient
+4. **Techniques combine** — dark premium sites use gradient mesh + glow + stagger. Editorial sites use whitespace + type scale + no decoration. Know which techniques cluster together.
+5. **Performance is part of the design** — a 4-second load with WebGL destroys the experience. Choose techniques appropriate to the project scope.
 
-## Concrete Rules
+---
 
-### Motion Techniques by Purpose
-| Purpose | Technique | Duration | Easing |
-|---------|-----------|----------|--------|
-| Draw attention | Fade + slide in | 400-600ms | ease-out (decelerate) |
-| Establish hierarchy | Staggered reveal | 200ms each, 80-120ms stagger | ease-out |
-| Create delight | Scale bounce | 300-500ms | spring (0.34, 1.56, 0.64, 1) |
-| Show progression | Counter/number roll | 600-1000ms | ease-in-out |
-| Ambient atmosphere | Slow float/pulse | 3-6s, infinite | ease-in-out |
-| Entrance drama | Large slide + fade | 600-800ms | cubic-bezier(0.16, 1, 0.3, 1) |
+## Design Approach 1: Dark Premium / Developer Aesthetic
 
-### Stagger Choreography Rules
-- **Maximum elements in a stagger group:** 5-7
-- **Stagger delay:** 80-120ms per element
-- **Total stagger duration:** max 800ms
-- **Direction:** match reading order (top-to-bottom, left-to-right in LTR)
-- **First element:** always the headline or most important element
+### What Makes It Work
+- Background: near-black (not pure #000 — use #0A0A0F, #0a192f, or slate-950)
+- One or two accent colors maximum, high saturation against the dark field
+- Subtle light sources: radial gradients positioned behind content create depth
+- Monospace font for technical credibility (Geist Mono, JetBrains Mono, Fira Code)
+- Generous padding (py-24 / py-32) — dark backgrounds amplify spaciousness
+- Card borders at ~8% white opacity, not solid lines
 
-### Motion Budget Per Page
-| Page Type | Max Motion Techniques | Max Animated Elements per Viewport |
-|-----------|----------------------|-----------------------------------|
-| Landing page | 3 | 5-7 |
-| Portfolio piece | 2-3 | 3-5 |
-| Product page | 2 | 4-6 |
-| Personal site | 2-3 | 3-5 |
+### Replicable Patterns
 
-### Speed by Brand Energy
-| Brand Energy | Enter Duration | Hover Duration | Easing Character |
-|-------------|---------------|----------------|-----------------|
-| Calm/luxury | 600-800ms | 300ms | Gentle ease-out |
-| Professional | 300-500ms | 200ms | Standard ease-out |
-| Energetic | 200-400ms | 150ms | Bouncy spring |
-| Dramatic | 600-1000ms | 200ms | Strong deceleration |
-
-## CSS/Implementation Patterns
-
-### Staggered Hero Reveal
-```html
-<style>
-  @keyframes heroReveal {
-    from { opacity: 0; transform: translateY(32px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-  .hero-stagger > * {
-    opacity: 0;
-    animation: heroReveal 500ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  }
-  .hero-stagger > *:nth-child(1) { animation-delay: 0ms; }
-  .hero-stagger > *:nth-child(2) { animation-delay: 100ms; }
-  .hero-stagger > *:nth-child(3) { animation-delay: 200ms; }
-  .hero-stagger > *:nth-child(4) { animation-delay: 300ms; }
-
-  @media (prefers-reduced-motion: reduce) {
-    .hero-stagger > * { opacity: 1; animation: none; }
-  }
-</style>
-
-<section class="py-32">
-  <div class="hero-stagger max-w-2xl mx-auto text-center">
-    <span class="text-sm font-semibold text-indigo-600 uppercase tracking-wider">Introducing</span>
-    <h1 class="mt-4 text-5xl font-bold tracking-tight">Build faster, ship sooner</h1>
-    <p class="mt-6 text-lg text-slate-600">The platform that turns ideas into products.</p>
-    <div class="mt-10">
-      <a href="#" class="rounded-xl bg-indigo-600 px-8 py-4 text-white font-semibold">Get started</a>
-    </div>
-  </div>
-</section>
-```
-
-### Ambient Background Motion
+#### Gradient Mesh Hero
 ```css
-/* Slow floating gradient — adds atmosphere without distraction */
-@keyframes gradientShift {
-  0%, 100% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-}
-
-.ambient-bg {
-  background: linear-gradient(-45deg, #dbeafe, #ede9fe, #fce7f3, #e0f2fe);
-  background-size: 400% 400%;
-  animation: gradientShift 8s ease-in-out infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .ambient-bg { animation: none; background-position: 0% 50%; }
+.hero-gradient {
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(120, 119, 198, 0.3), transparent),
+    radial-gradient(ellipse 60% 80% at 80% 50%, rgba(78, 67, 118, 0.15), transparent),
+    radial-gradient(ellipse 50% 60% at 20% 60%, rgba(54, 79, 199, 0.12), transparent),
+    #0f0f1a;
 }
 ```
 
-### Number Counter Animation
-```html
-<style>
-  @property --num {
-    syntax: '<integer>';
-    initial-value: 0;
-    inherits: false;
-  }
-  .counter {
-    --num: 0;
-    animation: countUp 1s ease-in-out forwards;
-    counter-reset: num var(--num);
-  }
-  .counter::after { content: counter(num); }
-  @keyframes countUp { to { --num: 2847; } }
-</style>
-
-<span class="counter text-4xl font-bold tabular-nums"></span>
-```
-
-### Hover Micro-Motion for Cards
-```html
-<article class="group rounded-2xl border border-slate-200 dark:border-slate-700 p-6 transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-lg hover:shadow-slate-200/50 dark:hover:shadow-slate-900/50">
-  <div class="overflow-hidden rounded-xl">
-    <div class="aspect-[16/9] bg-slate-100 dark:bg-slate-800 transition-transform duration-500 ease-out group-hover:scale-105"></div>
-  </div>
-  <h3 class="mt-4 text-lg font-semibold">Card Title</h3>
-  <p class="mt-2 text-sm text-slate-600 dark:text-slate-400">Card description goes here.</p>
-</article>
-```
-
-### Scroll-Triggered Reveal (Intersection Observer)
-```html
-<style>
-  .reveal { opacity: 0; transform: translateY(24px); transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
-  .reveal.in-view { opacity: 1; transform: none; }
-  @media (prefers-reduced-motion: reduce) {
-    .reveal { opacity: 1; transform: none; transition: none; }
-  }
-</style>
-
-<div class="reveal">Revealed content</div>
-
-<script>
-const obs = new IntersectionObserver(
-  entries => entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in-view'); obs.unobserve(e.target); } }),
-  { threshold: 0.15 }
-);
-document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
-</script>
-```
-
-## Common Mistakes
-
-1. **Animating everything** — if every element fades, slides, and bounces, nothing has impact. Pick 3-5 elements per viewport to animate.
-2. **Same animation for every element** — using the same fade-up for headlines, images, and buttons. Vary the technique: headlines slide, images scale, buttons fade.
-3. **Ignoring reduced motion** — roughly 25% of users prefer reduced motion. Wrap all animations in a `prefers-reduced-motion` check.
-4. **Animation on repeat visits** — entrance animations are great the first time. On return visits or quick navigation, they feel like barriers. Consider only animating on first viewport intersection.
-5. **Slow, dramatic animations on utility elements** — a 800ms animation on a form field is painful. Reserve dramatic timing for hero elements and key moments.
-6. **Animating layout properties** — `width`, `height`, `top`, `left`, `margin` trigger expensive reflows. Only animate `transform` and `opacity`.
-
-## Decision Tree
-
-```
-Adding purposeful motion:
-├─ What's the goal?
-│  ├─ Guide attention → Staggered reveal (headline → sub → CTA)
-│  ├─ Create atmosphere → Ambient background motion (slow, subtle)
-│  ├─ Show data → Counter animation or chart reveal
-│  ├─ Encourage interaction → Hover micro-motion on interactive elements
-│  └─ Tell a story → Scroll-triggered progressive reveal
-├─ Brand energy?
-│  ├─ Calm → Longer duration (500-800ms), gentle easing
-│  ├─ Energetic → Shorter (200-400ms), spring easing
-│  └─ Dramatic → Long initial (600-1000ms), strong deceleration
-├─ How many motion elements per viewport?
-│  ├─ 1-3 → Perfect. Each one gets attention.
-│  ├─ 4-5 → OK if staggered properly.
-│  └─ 6+ → Too many. Cut to the most important.
-└─ Accessibility:
-   └─ Always: @media (prefers-reduced-motion: reduce) { animation: none; }
-```
-
-## Related Templates
-- [`scroll-story/`](../docs/presets/scroll-story/) — IntersectionObserver scroll reveals with staggered cascade
-- [`saas-features/`](../docs/presets/saas-features/) — Bouncy hover interactions on bento cards (playful variant)
-- [`devtool-landing/`](../docs/presets/devtool-landing/) — Glow card hover effects (clean variant)
-- [`agency-landing/`](../docs/presets/agency-landing/) — Service row expand on hover, image zoom
-
-## Sources
-- [Material Design 3 — Motion principles](https://m3.material.io/styles/motion/overview)
-- [Apple HIG — Motion](https://developer.apple.com/design/human-interface-guidelines/motion)
-- [Stripe.com](https://stripe.com) — exemplar of purposeful motion in product pages
-- Cross-reference: [Animation Timing](../interaction/animation-timing.md), [Micro-Interactions](../interaction/micro-interactions.md), [Visual Identity](visual-identity.md)
-</file>
-
-<file path="expressive/scroll-storytelling.md">
-# Scroll-Based Storytelling
-
-> **TL;DR:** Scroll storytelling uses scroll position as a timeline to reveal content progressively. Use CSS `scroll-snap`, `position: sticky`, and `@keyframes` with `animation-timeline: scroll()` for native scroll-driven animations. Keep each "scene" viewport-height sized, limit to 3-5 scroll scenes per page, and always provide a skip/nav option for users who don't want to scroll.
-
-## Core Principles
-
-1. **Scroll is a timeline, not a decoration** — each scroll position should reveal new information. If removing the scroll effect doesn't lose meaning, the effect is decorative, not narrative.
-2. **Progressive disclosure builds anticipation** — reveal information in a logical sequence. Don't show everything at once and animate it for no reason.
-3. **One idea per viewport** — each scroll "scene" should communicate one concept. Cramming multiple ideas into a sticky section creates cognitive overload.
-4. **The user controls the pace** — scroll-driven animation lets users speed up, slow down, or reverse. This is fundamentally different from auto-playing animation.
-5. **Performance is non-negotiable** — scroll-triggered layout shifts, heavy JS scroll listeners, or janky animations destroy the experience. Use CSS scroll-driven animations or IntersectionObserver, not scroll event listeners.
-
-## Concrete Rules
-
-### Scroll Scene Sizing
-| Parameter | Value | Rationale |
-|-----------|-------|-----------|
-| Scene height | 100vh (1 viewport) | Each scene fills the screen, creating clear transitions |
-| Sticky section height | 200-500vh scroll distance | 200vh = fast transition, 500vh = slow, detailed reveal |
-| Number of scenes | 3-5 per page | More than 5 causes fatigue. Users lose patience. |
-| Skip option | Always present | Users must be able to jump to content without scrolling through every scene |
-
-### Animation Trigger Points
-| Technique | CSS/JS | Use For |
-|-----------|--------|---------|
-| Scroll snap | `scroll-snap-type: y mandatory` | Full-viewport scene transitions |
-| Sticky + progress | `position: sticky` + scroll distance | Sections that transform as you scroll |
-| IntersectionObserver | JS | Reveal-on-enter animations |
-| `animation-timeline: scroll()` | CSS | Native scroll-driven animations (modern browsers) |
-
-### Timing and Distance
-- **Reveal animations:** trigger at 20-30% viewport intersection (threshold: 0.2-0.3)
-- **Sticky transform distance:** 200-300vh for a single transformation sequence
-- **Fade-in distance:** 10-20% of viewport height (not too fast, not too slow)
-- **Parallax ratio:** foreground 1:1, midground 0.5:1, background 0.2:1
-
-## CSS/Implementation Patterns
-
-### Scroll-Snap Sections
-```html
-<div class="h-screen overflow-y-scroll snap-y snap-mandatory">
-  <section class="h-screen snap-start flex items-center justify-center">
-    <h2 class="text-5xl font-bold">Scene One</h2>
-  </section>
-  <section class="h-screen snap-start flex items-center justify-center bg-slate-900 text-white">
-    <h2 class="text-5xl font-bold">Scene Two</h2>
-  </section>
-  <section class="h-screen snap-start flex items-center justify-center">
-    <h2 class="text-5xl font-bold">Scene Three</h2>
-  </section>
-</div>
-```
-
-### Sticky Section with Content Swap
-```html
-<!-- The sticky container stays fixed while scroll distance passes -->
-<div class="relative" style="height: 300vh">
-  <div class="sticky top-0 h-screen flex items-center justify-center overflow-hidden">
-    <div class="max-w-2xl mx-auto px-4 text-center">
-      <h2 class="text-4xl font-bold text-slate-900 dark:text-white">
-        How it works
-      </h2>
-      <p class="mt-4 text-lg text-slate-600 dark:text-slate-300">
-        Scroll to explore each step
-      </p>
-    </div>
-  </div>
-</div>
-```
-
-### CSS Scroll-Driven Animation (Modern)
+#### Single-Accent Dark UI
 ```css
-/* Fade in and slide up as element enters viewport */
-@keyframes fadeSlideIn {
-  from { opacity: 0; transform: translateY(40px); }
-  to   { opacity: 1; transform: translateY(0); }
+:root {
+  --bg-primary: #0A0A0F;
+  --bg-surface: #13131A;
+  --border: rgba(255, 255, 255, 0.08);
+  --text-primary: #EDEDEF;
+  --text-secondary: #8A8A9A;
+  --accent: #8B5CF6; /* violet-500 */
 }
 
-.reveal-on-scroll {
-  animation: fadeSlideIn linear both;
-  animation-timeline: view();
-  animation-range: entry 0% entry 40%;
+.card-dark {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  transition: border-color 200ms ease-out;
+}
+
+.card-dark:hover {
+  border-color: rgba(139, 92, 246, 0.3);
 }
 ```
-```html
-<div class="reveal-on-scroll">
-  <h3 class="text-2xl font-bold">This fades in on scroll</h3>
-</div>
+
+#### Hover Glow Card
+```css
+.project-card {
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  padding: 24px;
+  transition: box-shadow 250ms ease-out, background 250ms ease-out;
+}
+
+.project-card:hover {
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: 0 0 30px rgba(100, 255, 218, 0.07);
+}
 ```
 
-### IntersectionObserver Reveal (Broad Support)
+See also: [visual-identity.md](visual-identity.md) for building a cohesive dark palette.
+
+---
+
+## Design Approach 2: Minimal Editorial / Typography-First
+
+### What Makes It Work
+- Maximum content width: 640–720px (max-w-2xl) for reading comfort
+- Type scale does all the heavy lifting — h1 at 48–72px, body at 16–18px, no decorative elements needed
+- System font stack or a single high-quality typeface — no font pairing complexity
+- Whitespace as primary design element: 96–128px between sections
+- Links are inline and conversational, not button-styled
+- Color used sparingly: one accent for links/interactive, everything else is gray scale
+
+### Replicable Patterns
+
+#### Manifesto Layout
+```css
+.editorial-page {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 64px 24px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 16px;
+  line-height: 1.7;
+  color: #1a1a1a;
+}
+
+.editorial-page h1 {
+  font-size: 2rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin-bottom: 16px;
+}
+
+.editorial-page p + p {
+  margin-top: 24px;
+}
+
+.editorial-page a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: #a0a0a0;
+  transition: text-decoration-color 150ms ease;
+}
+
+.editorial-page a:hover {
+  text-decoration-color: currentColor;
+}
+```
+
+#### Large Image + Headline + CTAs
 ```html
-<style>
-  .scroll-reveal { opacity: 0; transform: translateY(24px); transition: opacity 0.6s ease-out, transform 0.6s ease-out; }
-  .scroll-reveal.visible { opacity: 1; transform: translateY(0); }
-</style>
+<section class="py-32 text-center">
+  <img src="product.jpg" alt="Product"
+       class="w-full max-w-5xl mx-auto mb-16" />
+  <h2 class="text-5xl md:text-7xl font-semibold tracking-tight mb-6">
+    A headline that says one thing.
+  </h2>
+  <p class="text-xl text-gray-500 mb-8">A single line of supporting text.</p>
+  <div class="flex justify-center gap-4">
+    <a href="#" class="text-blue-600 text-xl hover:underline">Learn more &rsaquo;</a>
+    <a href="#" class="text-blue-600 text-xl hover:underline">Buy &rsaquo;</a>
+  </div>
+</section>
+```
 
-<div class="scroll-reveal">Content that reveals on scroll</div>
+See also: [../typography/type-scale.md](../typography/type-scale.md), [../layout/whitespace.md](../layout/whitespace.md).
 
-<script>
+---
+
+## Design Approach 3: Friendly / Approachable SaaS
+
+### What Makes It Work
+- Rounded corners everywhere (12–16px on cards, fully rounded on avatars/icons)
+- Warm or saturated brand colors — not corporate blue, but yellow, pink, purple
+- Conversational tone in headlines: "Write, plan, share." not "Enterprise Collaboration Platform"
+- Illustrations over stock photos — custom illustrations convey personality
+- Bento grid layout for features: unequal grid cells create visual interest
+- Generous padding with soft shadows (no hard borders)
+
+### Replicable Patterns
+
+#### Bento Grid Features
+```css
+.bento-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-template-rows: auto;
+  gap: 16px;
+  padding: 0 24px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* Spanning variations */
+.bento-card              { grid-column: span 1; }
+.bento-card--wide        { grid-column: span 2; }
+.bento-card--full        { grid-column: span 4; }
+.bento-card--tall        { grid-row: span 2; }
+
+.bento-card {
+  background: #fff;
+  border-radius: 16px;
+  padding: 32px;
+  overflow: hidden;
+  border: 1px solid #e5e5e5;
+}
+
+/* Color block variants */
+.bento-card--yellow { background: #FFF3CD; }
+.bento-card--pink   { background: #FCE4EC; }
+.bento-card--blue   { background: #E3F2FD; }
+
+@media (max-width: 768px) {
+  .bento-grid { grid-template-columns: 1fr; }
+  .bento-card--wide,
+  .bento-card--full { grid-column: span 1; }
+}
+```
+
+#### Friendly Card with Soft Shadow
+```css
+.saas-card {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 32px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04),
+              0 6px 24px rgba(0, 0, 0, 0.06);
+  transition: transform 200ms ease-out, box-shadow 200ms ease-out;
+}
+
+.saas-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04),
+              0 12px 32px rgba(0, 0, 0, 0.08);
+}
+```
+
+See also: [../components/cards.md](../components/cards.md), [hero-patterns.md](hero-patterns.md).
+
+---
+
+## Design Approach 4: Immersive / Scroll-Storytelling
+
+### What Makes It Work
+- Scroll position drives everything: content reveals, parallax, transforms
+- Preloader sets mood and manages expectations (3–5s is acceptable here)
+- Custom cursor replaces default pointer, creating an "experience" feeling
+- Staggered reveals: elements cascade in 80–360ms delay intervals
+- Full-viewport sections (min-h-screen) — each scroll stop is a complete composition
+- Performance budget: limit WebGL/canvas to hero; use CSS for the rest
+
+### Replicable Patterns
+
+#### Scroll-Triggered Fade-In
+```css
+.reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 600ms cubic-bezier(0.0, 0.0, 0.2, 1),
+              transform 600ms cubic-bezier(0.0, 0.0, 0.2, 1);
+}
+
+.reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+```
+
+```js
 const observer = new IntersectionObserver((entries) => {
-  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
-}, { threshold: 0.2 });
-document.querySelectorAll('.scroll-reveal').forEach(el => observer.observe(el));
-</script>
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('is-visible');
+      observer.unobserve(entry.target);
+    }
+  });
+}, { threshold: 0.15 });
+
+document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
 ```
 
-### Horizontal Scroll Inside Vertical Page
+#### Staggered Cascade Reveal
+```css
+.cascade-item {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 500ms ease-out, transform 500ms ease-out;
+}
+
+.cascade-item.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Stagger delays — 80ms apart, capped at ~360ms */
+.cascade-item:nth-child(1) { transition-delay: 0ms; }
+.cascade-item:nth-child(2) { transition-delay: 80ms; }
+.cascade-item:nth-child(3) { transition-delay: 160ms; }
+.cascade-item:nth-child(4) { transition-delay: 240ms; }
+.cascade-item:nth-child(5) { transition-delay: 360ms; }
+```
+
+#### Custom Cursor (Dot + Ring)
+```css
+.cursor-dot {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 8px;
+  height: 8px;
+  background: #fff;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 9999;
+  transition: transform 100ms ease-out;
+  mix-blend-mode: difference;
+}
+
+.cursor-ring {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 40px;
+  height: 40px;
+  border: 1.5px solid rgba(255, 255, 255, 0.5);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 9998;
+  transition: transform 250ms ease-out, width 200ms ease, height 200ms ease;
+  mix-blend-mode: difference;
+}
+
+/* Expand ring on hovering interactive elements */
+.cursor-ring.is-hovering {
+  width: 64px;
+  height: 64px;
+}
+```
+
+```js
+const dot = document.querySelector('.cursor-dot');
+const ring = document.querySelector('.cursor-ring');
+
+document.addEventListener('mousemove', (e) => {
+  dot.style.transform = `translate(${e.clientX - 4}px, ${e.clientY - 4}px)`;
+  ring.style.transform = `translate(${e.clientX - 20}px, ${e.clientY - 20}px)`;
+});
+
+document.querySelectorAll('a, button').forEach(el => {
+  el.addEventListener('mouseenter', () => ring.classList.add('is-hovering'));
+  el.addEventListener('mouseleave', () => ring.classList.remove('is-hovering'));
+});
+```
+
+See also: [scroll-storytelling.md](scroll-storytelling.md), [purposeful-motion.md](purposeful-motion.md), [../interaction/animation-timing.md](../interaction/animation-timing.md).
+
+---
+
+## Design Approach 5: Bold Creative / Agency
+
+### What Makes It Work
+- Typography IS the design — headings at 80–160px, often with negative letter-spacing (-0.04em)
+- High contrast: pure black on white or white on black, no grays in between
+- Unconventional layouts: horizontal scroll, overlapping elements, asymmetric grids
+- Clip-path for non-rectangular shapes (torn edges, diagonal cuts, organic blobs)
+- `mix-blend-mode: difference` or `exclusion` for text over images
+- Cursor and scroll interactions are part of the brand expression
+
+### Replicable Patterns
+
+#### Oversized Typography
+```css
+.hero-headline {
+  font-size: clamp(3rem, 10vw, 10rem);
+  font-weight: 900;
+  line-height: 0.9;
+  letter-spacing: -0.04em;
+  text-transform: uppercase;
+}
+```
+
+#### Torn Edge Section Divider (Clip-path)
+```css
+.torn-edge {
+  clip-path: polygon(
+    0% 0%, 100% 0%, 100% 85%,
+    95% 88%, 90% 85%, 85% 90%,
+    80% 86%, 75% 92%, 70% 87%,
+    65% 90%, 60% 85%, 55% 91%,
+    50% 86%, 45% 89%, 40% 84%,
+    35% 90%, 30% 86%, 25% 92%,
+    20% 87%, 15% 90%, 10% 85%,
+    5% 88%, 0% 85%
+  );
+}
+```
+
+#### Horizontal Scroll Section
 ```html
-<section class="relative" style="height: 400vh">
-  <div class="sticky top-0 h-screen flex items-center overflow-hidden">
-    <div class="flex gap-8 px-8" id="hscroll-track" style="transform: translateX(0)">
-      <div class="w-[80vw] flex-shrink-0 rounded-2xl bg-slate-100 dark:bg-slate-800 p-12">
-        <h3 class="text-2xl font-bold">Panel 1</h3>
-      </div>
-      <div class="w-[80vw] flex-shrink-0 rounded-2xl bg-slate-100 dark:bg-slate-800 p-12">
-        <h3 class="text-2xl font-bold">Panel 2</h3>
-      </div>
-      <div class="w-[80vw] flex-shrink-0 rounded-2xl bg-slate-100 dark:bg-slate-800 p-12">
-        <h3 class="text-2xl font-bold">Panel 3</h3>
-      </div>
-    </div>
+<section class="overflow-x-auto overflow-y-hidden">
+  <div class="flex gap-6 px-6 py-12" style="width: max-content;">
+    <div class="w-[80vw] max-w-lg flex-shrink-0">Card 1</div>
+    <div class="w-[80vw] max-w-lg flex-shrink-0">Card 2</div>
+    <div class="w-[80vw] max-w-lg flex-shrink-0">Card 3</div>
+    <div class="w-[80vw] max-w-lg flex-shrink-0">Card 4</div>
   </div>
 </section>
 ```
 
-## Common Mistakes
-
-1. **Scroll-jacking** — overriding the browser's native scroll behavior (changing scroll speed, direction, or snapping aggressively). Users hate losing control of scroll.
-2. **No skip option** — forcing users through a 5-scene scroll sequence to reach the CTA. Always provide navigation or a "skip to content" link.
-3. **Heavy JS scroll listeners** — attaching animation logic to `scroll` events causes jank. Use IntersectionObserver, CSS `animation-timeline`, or `requestAnimationFrame` with throttling.
-4. **Too many scroll scenes** — 3-5 is the sweet spot. More than 5 and users feel trapped in a never-ending scroll sequence.
-5. **Scroll effects on every element** — if everything fades in on scroll, nothing feels special. Use reveal animations on 3-5 key elements per viewport.
-6. **No mobile fallback** — complex scroll effects often break on touch devices. Simplify to basic reveals on mobile, keep full effects for desktop.
-7. **Content unreachable without JavaScript** — scroll-driven layouts must be readable if JS fails. Use progressive enhancement.
-
-## Decision Tree
-
-```
-Adding scroll storytelling:
-├─ Is the content sequential/narrative?
-│  ├─ Yes → Scroll storytelling adds value
-│  └─ No → Use standard page layout instead
-├─ How many "scenes"?
-│  ├─ 1-2 → Simple reveal-on-scroll is enough
-│  ├─ 3-5 → Sticky sections with content swap
-│  └─ 6+ → Too many. Consolidate or use a different pattern.
-├─ Technical approach:
-│  ├─ Simple fade-in → CSS animation-timeline: view() or IntersectionObserver
-│  ├─ Sticky transformations → position: sticky + scroll distance calculation
-│  ├─ Full-page snapping → scroll-snap-type: y mandatory
-│  └─ Horizontal scroll → Sticky container + translateX based on scroll %
-├─ Mobile:
-│  ├─ Simplify → Reduce to basic reveals, remove parallax
-│  └─ Skip option → Always provide a way to bypass
-└─ Accessibility:
-   ├─ prefers-reduced-motion → Disable all scroll animations
-   └─ Keyboard nav → Ensure all content reachable without scrolling
-```
-
-## Related Templates
-- [`scroll-story/`](../docs/presets/scroll-story/) — Scroll-triggered portfolio with IntersectionObserver reveals
-- [`jdeworks-personal/`](../docs/presets/jdeworks-personal/) — Personalized scroll-driven portfolio
-
-## Sources
-- [MDN — Scroll-driven animations](https://developer.mozilla.org/en-US/docs/Web/CSS/animation-timeline)
-- [web.dev — Scroll-driven animations](https://developer.chrome.com/docs/css-ui/scroll-driven-animations)
-- [NN/g — Scrolljacking](https://www.nngroup.com/articles/scrolljacking-101/)
-- Cross-reference: [Animation Timing](../interaction/animation-timing.md), [Visual Hierarchy](../layout/visual-hierarchy.md)
-</file>
-
-<file path="expressive/visual-identity.md">
-# Visual Identity Systems
-
-> **TL;DR:** A strong visual identity comes from constraints, not features. Pick 1 signature element (bold typography, a distinctive color, an unusual layout rhythm) and apply it consistently. The screenshot test: if someone sees one section out of context, they should recognize your site.
-
-## Core Principles
-
-1. **Identity comes from deliberate constraints** — limiting your palette, type choices, and layout patterns creates recognition. Generic sites use everything; distinctive sites use less, but intentionally.
-2. **One signature element carries the design** — oversized type, a bold accent color, a consistent geometric motif, or an unusual grid. Not all at once.
-3. **Consistency is the multiplier** — a signature element used once is a novelty. Used across every section, it becomes identity.
-4. **Contrast creates emphasis** — the signature element works because everything else is restrained. A bold headline only feels bold next to quiet body text.
-5. **Identity transcends pages** — the visual language should feel cohesive whether the user is on the hero, an about page, or a pricing table.
-
-## Concrete Rules
-
-### The Identity Stack
-| Layer | What to Define | Example |
-|-------|---------------|---------|
-| Color | 1 primary + 1 accent + 1 neutral scale | Indigo-600 primary, amber-400 accent, slate neutrals |
-| Typography | 1 display font + 1 body font (max) | Clash Display for headings, Inter for body |
-| Shape language | Consistent corner radius + border style | All rounded-2xl, or all sharp corners |
-| Spacing rhythm | Consistent section spacing multiple | 80px between sections, 32px within |
-| Signature motif | 1 recurring visual element | Diagonal lines, dots, gradient borders |
-
-### Type-Driven Identity
-| Approach | Font Style | When to Use |
-|----------|-----------|-------------|
-| Bold authority | 800-900 weight, tight tracking (-0.03em) | Tech startups, SaaS, bold brands |
-| Elegant editorial | Serif display (400 weight), generous spacing | Luxury, editorial, publishing |
-| Friendly approachable | Rounded sans-serif, loose tracking | Consumer apps, creative tools |
-| Minimal modern | Light weight (300), wide tracking (0.05em+) | Design agencies, portfolios |
-
-### Color Identity Rules
-- **Primary usage:** 60% neutral, 30% primary, 10% accent (the 60-30-10 rule)
-- **Accent sparingly:** accent color on max 2 elements per viewport (CTA button + one highlight)
-- **Dark mode identity:** keep the same signature color relationships, don't just invert
-- **Gradient identity:** if using gradients, use the same gradient direction and stops everywhere
-
-### Spacing for Personality
-| Personality | Section Gap | Component Gap | Padding |
-|-------------|------------|---------------|---------|
-| Dense/editorial | 48-64px | 16-24px | 16-24px |
-| Standard/clean | 80-96px | 24-32px | 24-32px |
-| Spacious/luxury | 120-160px | 32-48px | 32-48px |
-| Dramatic | 160-240px | 48-64px | 48-80px |
-
-## CSS/Implementation Patterns
-
-### Signature Typography System
+#### Mix-Blend Text Over Image
 ```css
-/* Display font for identity */
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&display=swap');
+.blend-overlay {
+  position: relative;
+}
 
-.heading-display {
-  font-family: 'Space Grotesk', sans-serif;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  line-height: 1.1;
+.blend-overlay h2 {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(3rem, 8vw, 8rem);
+  font-weight: 900;
+  color: #fff;
+  mix-blend-mode: difference;
+  pointer-events: none;
 }
 ```
+
+---
+
+## Design Approach 6: E-commerce / Product-Focused
+
+### What Makes It Work
+- Product image is the hero — full-bleed, high resolution, minimal surrounding UI
+- Dark/light section alternation creates visual rhythm and section separation
+- Specs and features revealed progressively on scroll (not dumped as a list)
+- Minimal navigation on product pages — focused on conversion
+- Color palette often derived from the product itself
+- Interactive demos > static screenshots
+
+### Replicable Patterns
+
+#### Dark/Light Section Alternation
 ```html
-<!-- Tailwind: identity through type scale -->
-<h1 class="text-5xl sm:text-7xl font-bold tracking-tighter leading-none">
-  Build something<br>
-  <span class="text-indigo-500">extraordinary</span>
-</h1>
+<section class="bg-white text-gray-900 py-24 px-6">
+  <div class="max-w-6xl mx-auto"><!-- Light section content --></div>
+</section>
+
+<section class="bg-gray-950 text-white py-24 px-6">
+  <div class="max-w-6xl mx-auto"><!-- Dark section content --></div>
+</section>
+
+<section class="bg-gray-50 text-gray-900 py-24 px-6">
+  <div class="max-w-6xl mx-auto"><!-- Light section content --></div>
+</section>
 ```
 
-### Signature Shape Language
+#### Product Hero (Full-bleed)
 ```html
-<!-- Consistent rounded style across all components -->
-<div class="rounded-3xl bg-white p-8 shadow-sm"> <!-- Card -->
-<button class="rounded-2xl px-6 py-3"> <!-- Button -->
-<img class="rounded-2xl"> <!-- Image -->
-<input class="rounded-xl"> <!-- Input -->
+<section class="relative bg-black min-h-screen flex items-center justify-center">
+  <img src="product-hero.jpg" alt="Product Name"
+       class="w-full max-w-4xl object-contain" />
+  <div class="absolute bottom-16 left-1/2 -translate-x-1/2 text-center text-white">
+    <h1 class="text-5xl font-semibold tracking-tight mb-2">Product Name</h1>
+    <p class="text-xl text-gray-400 mb-6">One line that captures it.</p>
+    <a href="#" class="inline-block bg-blue-600 text-white px-8 py-3 rounded-full
+                       text-lg font-medium hover:bg-blue-500 transition-colors">
+      Buy
+    </a>
+  </div>
+</section>
 ```
 
-### Signature Color Accent
+---
+
+## Placeholder Image Services
+
+For prototyping and wireframing — use these to get realistic imagery without assets.
+
+| Service | URL Format | Best For |
+|---------|-----------|----------|
+| Picsum Photos | `https://picsum.photos/seed/{seed}/{width}/{height}` | Seeded random photos, consistent across loads |
+| Unsplash Source | `https://images.unsplash.com/{photo-id}?w={width}&h={height}&fit=crop` | Real photography (direct URLs for known IDs) |
+| Placehold.co | `https://placehold.co/{width}x{height}/{bg}/{text}` | Solid color with text label |
+
+### Tips
+- **Picsum** supports filters: `?grayscale` and `?blur=N` (1–10). Always use `seed/` for consistent results across page loads.
+- **Placehold.co** hex colors omit the `#`: `https://placehold.co/600x400/1e293b/e2e8f0` (slate-800 bg, slate-200 text).
+- **Unsplash** direct URLs work without API keys if you know the photo ID. For search, you need an API key.
+
+### Quick Copy Examples
 ```html
-<!-- Accent used sparingly for maximum impact -->
-<div class="border-l-4 border-amber-400 pl-6"> <!-- Pull quote -->
-<span class="bg-amber-400/20 text-amber-700 px-2 py-0.5 rounded"> <!-- Badge -->
-<div class="bg-gradient-to-r from-amber-400 to-orange-500 h-1 w-16"> <!-- Decorative bar -->
+<!-- Consistent hero image -->
+<img src="https://picsum.photos/seed/hero/1200/600" alt="Hero" />
+
+<!-- Grayscale placeholder for editorial -->
+<img src="https://picsum.photos/seed/editorial/800/400?grayscale" alt="Article" />
+
+<!-- Labeled wireframe box -->
+<img src="https://placehold.co/400x300/f1f5f9/64748b?text=Feature+Image" alt="Feature" />
+
+<!-- Square avatar -->
+<img src="https://picsum.photos/seed/avatar1/80/80" alt="User" class="rounded-full" />
 ```
 
-### Signature Motif (Diagonal Lines)
+---
+
+## Free Font Pairings for Identity
+
+All available on [Google Fonts](https://fonts.google.com). Load only the weights you use.
+
+| Personality | Display Font | Body Font | Example Use |
+|-------------|-------------|-----------|-------------|
+| Bold / Tech | Space Grotesk (700) | Inter (400) | Startups, dev tools, SaaS dashboards |
+| Elegant / Editorial | Playfair Display (400) | Source Serif Pro (400) | Luxury brands, publishing, magazines |
+| Friendly / Rounded | Sora (800) | DM Sans (400) | Consumer apps, creative tools, social |
+| Minimal / Modern | Inter (300) | Inter (400) | Ultra-clean, Scandinavian, minimal SaaS |
+| Expressive / Creative | Clash Display or Satoshi | General Sans | Agencies, portfolios, studios |
+
+### Loading Pattern
 ```html
-<!-- Repeating motif as section separator -->
-<div class="relative py-24">
-  <div class="absolute inset-0 opacity-5"
-       style="background: repeating-linear-gradient(
-         -45deg, transparent, transparent 10px,
-         currentColor 10px, currentColor 11px
-       )"></div>
-  <div class="relative z-10"><!-- Content --></div>
-</div>
+<!-- Only load what you need — 2 families, 2-3 weights max -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700&family=Inter:wght@400;500&display=swap"
+      rel="stylesheet" />
 ```
+
+```css
+:root {
+  --font-display: 'Space Grotesk', sans-serif;
+  --font-body: 'Inter', sans-serif;
+}
+
+h1, h2, h3 { font-family: var(--font-display); }
+body        { font-family: var(--font-body); }
+```
+
+**Note:** Clash Display and Satoshi are from [fontshare.com](https://www.fontshare.com/) (free for personal and commercial use) — not Google Fonts.
+
+See also: [../typography/font-pairing.md](../typography/font-pairing.md), [../typography/web-font-loading.md](../typography/web-font-loading.md).
+
+---
+
+## CSS Techniques Catalog
+
+Every technique below is copy-paste-ready. Combine them to build any of the design approaches above.
+
+### 1. Gradient Mesh Background
+```css
+.gradient-mesh {
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(120, 119, 198, 0.3), transparent),
+    radial-gradient(ellipse 60% 80% at 80% 50%, rgba(78, 67, 118, 0.15), transparent),
+    radial-gradient(ellipse 50% 60% at 20% 60%, rgba(54, 79, 199, 0.12), transparent),
+    #0f0f1a;
+}
+```
+**How it works:** Layer 3–4 `radial-gradient` ellipses at different positions and sizes. Each has a single color fading to `transparent`. The stacking creates organic color blending.
+
+### 2. Glow Effects
+```css
+/* Ambient glow behind a card */
+.glow-card {
+  box-shadow:
+    0 0 15px rgba(139, 92, 246, 0.15),
+    0 0 45px rgba(139, 92, 246, 0.08);
+}
+
+/* Button glow on hover */
+.glow-button {
+  transition: box-shadow 200ms ease-out;
+}
+.glow-button:hover {
+  box-shadow:
+    0 0 20px rgba(59, 130, 246, 0.4),
+    0 0 60px rgba(59, 130, 246, 0.15);
+}
+```
+
+### 3. Glassmorphism
+```css
+.glass {
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+}
+
+/* Light mode variant */
+.glass-light {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 16px;
+}
+```
+**Caveat:** `backdrop-filter` is GPU-intensive. Avoid on large areas or many overlapping elements.
+
+### 4. Gradient Text
+```css
+.gradient-text {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+```
+**Accessibility note:** Gradient text cannot be selected with high contrast mode. Use on decorative headings only, not body text or links. Always ensure the lightest gradient stop meets 4.5:1 contrast against the background.
+
+### 5. Custom Cursor
+```css
+/* Hide default cursor on the container */
+.custom-cursor-area {
+  cursor: none;
+}
+
+.cursor-dot {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 8px;
+  height: 8px;
+  background: #fff;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 9999;
+  mix-blend-mode: difference;
+}
+```
+```js
+const dot = document.querySelector('.cursor-dot');
+window.addEventListener('mousemove', (e) => {
+  dot.style.transform = `translate(${e.clientX - 4}px, ${e.clientY - 4}px)`;
+});
+```
+**Accessibility:** Always keep `cursor: auto` on form inputs and interactive elements. Custom cursors should enhance, not replace core usability. Hide on touch devices.
+
+### 6. Hover Glow on Cards
+```css
+.card-hover-glow {
+  background: var(--bg-surface, #1a1a2e);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 24px;
+  transition: box-shadow 250ms ease-out, border-color 250ms ease-out;
+}
+
+.card-hover-glow:hover {
+  border-color: rgba(139, 92, 246, 0.3);
+  box-shadow: 0 0 30px rgba(139, 92, 246, 0.08);
+}
+```
+
+### 7. Scroll-Triggered Fade-In
+```css
+.fade-in {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 500ms cubic-bezier(0, 0, 0.2, 1),
+              transform 500ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.fade-in.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+```
+```js
+const observer = new IntersectionObserver(
+  (entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('is-visible');
+        observer.unobserve(entry.target);
+      }
+    });
+  },
+  { threshold: 0.15, rootMargin: '0px 0px -50px 0px' }
+);
+
+document.querySelectorAll('.fade-in').forEach((el) => observer.observe(el));
+```
+
+See also: [../interaction/animation-timing.md](../interaction/animation-timing.md) for duration/easing rules.
+
+### 8. Staggered Animation (nth-child Delays)
+```css
+.stagger-item {
+  opacity: 0;
+  transform: translateY(16px);
+  animation: staggerIn 400ms cubic-bezier(0, 0, 0.2, 1) forwards;
+}
+
+.stagger-item:nth-child(1) { animation-delay: 0ms; }
+.stagger-item:nth-child(2) { animation-delay: 50ms; }
+.stagger-item:nth-child(3) { animation-delay: 100ms; }
+.stagger-item:nth-child(4) { animation-delay: 150ms; }
+.stagger-item:nth-child(5) { animation-delay: 200ms; }
+.stagger-item:nth-child(6) { animation-delay: 250ms; }
+
+@keyframes staggerIn {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+```
+**Rule:** 30–50ms between items, cap total stagger at ~400ms. After that, batch remaining items at the cap delay.
+
+### 9. Dark/Light Section Alternation
+```css
+.section-light {
+  background: #ffffff;
+  color: #0f172a;
+  padding: 96px 24px;
+}
+
+.section-dark {
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 96px 24px;
+}
+
+.section-muted {
+  background: #f8fafc;
+  color: #0f172a;
+  padding: 96px 24px;
+}
+```
+**Pattern:** Alternate light/dark/muted to create visual rhythm. Each section is a self-contained composition with its own max-width container inside.
+
+### 10. Bento Grid Layout
+```css
+.bento {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.bento > :nth-child(1) { grid-column: span 2; grid-row: span 2; }
+.bento > :nth-child(2) { grid-column: span 2; }
+.bento > :nth-child(3) { grid-column: span 1; }
+.bento > :nth-child(4) { grid-column: span 1; }
+.bento > :nth-child(5) { grid-column: span 4; }
+
+.bento > * {
+  background: #fff;
+  border-radius: 16px;
+  padding: 24px;
+  border: 1px solid #e5e7eb;
+  min-height: 180px;
+}
+
+@media (max-width: 768px) {
+  .bento {
+    grid-template-columns: 1fr;
+  }
+  .bento > * {
+    grid-column: span 1 !important;
+    grid-row: span 1 !important;
+  }
+}
+```
+**Tip:** The visual interest comes from *unequal* cell sizes. One cell spanning 2x2 among 1x1 cells creates the bento effect. Don't make all cells the same size.
+
+---
 
 ## Common Mistakes
 
-1. **Using 3+ display fonts** — one display font creates identity. Three create chaos. Max: 1 display + 1 body.
-2. **Inconsistent radius** — mixing rounded-lg, rounded-xl, and rounded-full randomly destroys cohesion. Pick one radius and use it everywhere.
-3. **Signature element only on hero** — if your bold type only appears in the hero and the rest is generic, there's no identity. Carry it through.
-4. **Too many accent colors** — one accent color at 10% usage is a brand. Three accent colors is a birthday party.
-5. **Copying trends without integration** — glassmorphism cards with gradient text with animated borders. Pick one effect and own it.
-6. **No negative space** — identity needs breathing room. Dense layouts feel generic because nothing stands out.
+1. **Mixing design approaches** — dark premium gradients on a friendly SaaS page creates visual confusion. Pick one approach and commit.
+2. **Overloading techniques** — gradient mesh + glassmorphism + custom cursor + stagger animations all at once. Choose 2–3 techniques max.
+3. **Ignoring performance on immersive sites** — WebGL backgrounds on mobile will drain battery and drop frames. Use CSS-only fallbacks with `@media (hover: hover)`.
+4. **Pure black backgrounds** — #000000 is harsh. Use #0A0A0F, #0f0f1a, or slate-950 (#020617) for dark themes.
+5. **Placeholder images in production** — Picsum and Placehold.co are for prototyping only. Replace with real assets before shipping.
+6. **Too many font weights** — each weight is a network request. Load 2–3 weights maximum per family.
+7. **Custom cursors on touch devices** — there is no hover cursor on mobile. Gate custom cursor JS behind `@media (hover: hover)` or `matchMedia`.
+8. **Gradient text on body copy** — gradient text is decorative. It reduces readability and breaks in high-contrast mode. Use on headings only.
 
 ## Decision Tree
 
 ```
-Building visual identity:
-├─ What's the personality?
-│  ├─ Bold/confident → Heavy type (700-900), tight tracking, strong colors
-│  ├─ Elegant/refined → Serif display, generous whitespace, muted palette
-│  ├─ Playful/creative → Rounded shapes, colorful accents, bouncy motion
-│  └─ Minimal/modern → Light type, wide tracking, restrained palette
-├─ Pick ONE signature element:
-│  ├─ Typography → Distinctive display font, use it on every heading
-│  ├─ Color → Bold accent, use sparingly across all sections
-│  ├─ Shape → Consistent geometry (sharp, rounded, organic), apply everywhere
-│  └─ Motif → Visual pattern (lines, dots, gradients), repeat as separator/accent
-├─ Apply the 60-30-10 rule:
-│  ├─ 60% neutral background/text
-│  ├─ 30% primary color
-│  └─ 10% accent/signature element
-└─ The screenshot test:
-   └─ Crop any section → Is the source recognizable? If no, signature isn't strong enough.
+Choosing a design approach:
+├─ What's the product?
+│  ├─ Developer tool / API / technical product → Dark Premium
+│  ├─ Blog / personal site / content-first → Minimal Editorial
+│  ├─ Consumer SaaS / productivity tool → Friendly SaaS
+│  ├─ Portfolio / creative showcase → Immersive or Bold Creative
+│  ├─ Agency / studio → Bold Creative
+│  └─ E-commerce / physical product → Product-Focused
+├─ What's the audience expectation?
+│  ├─ "This should feel premium/fast" → Dark Premium
+│  ├─ "This should feel trustworthy/clear" → Minimal Editorial or Friendly SaaS
+│  ├─ "This should feel like an experience" → Immersive
+│  └─ "This should feel bold/memorable" → Bold Creative
+└─ What's the performance budget?
+   ├─ Must be fast / low bandwidth → Minimal Editorial (zero JS, system fonts)
+   ├─ Standard web app → Friendly SaaS or Dark Premium (CSS-only techniques)
+   └─ Showcase / portfolio (performance secondary) → Immersive (WebGL, heavy animation)
 ```
 
 ## Related Templates
-- [`editorial-blog/`](../docs/presets/editorial-blog/) — Serif headings, extreme whitespace, content-first identity
-- [`agency-landing/`](../docs/presets/agency-landing/) — Bold creative brand identity
-- [`devtool-landing/`](../docs/presets/devtool-landing/) — Dark premium tech identity
-- [`jdeworks-personal/`](../docs/presets/jdeworks-personal/) — Personalized visual identity
 
-## Sources
-- Müller-Brockmann, J. (1981). *Grid Systems in Graphic Design*
-- [Refactoring UI — Building Your Color Palette](https://www.refactoringui.com/)
-- [Typewolf — Font Recommendations](https://www.typewolf.com/)
-- [Laws of UX — Aesthetic-Usability Effect](https://lawsofux.com/aesthetic-usability-effect/)
-- Cross-reference: [Color Systems](../color/color-systems.md), [Type Scale](../typography/type-scale.md), [Spacing System](../layout/spacing-system.md)
-</file>
-
-<file path="workflows/quick-reference.md">
-# Quick Reference — Critical Design Numbers
-
-> **TL;DR:** The ~25 most important numbers in UI/UX design. Bookmark this file for fast lookups.
-
-## Color & Contrast
-| Rule | Value | Standard |
-|------|-------|----------|
-| Normal text contrast (AA) | **4.5:1** minimum | WCAG 2.2 |
-| Large text contrast (AA) | **3:1** minimum | WCAG 2.2 |
-| Normal text contrast (AAA) | **7:1** minimum | WCAG 2.2 |
-| Large text threshold | **18pt** (24px) or **14pt bold** (18.5px) | WCAG 2.2 |
-| UI component contrast | **3:1** minimum against adjacent colors | WCAG 2.2 |
-| Focus indicator contrast | **3:1** minimum | WCAG 2.2 |
-
-## Typography
-| Rule | Value | Source |
-|------|-------|--------|
-| Body text size (web) | **16px** minimum | Browser default, accessibility best practice |
-| Line height (body text) | **1.4–1.6** | WCAG 2.2 (1.5 recommended) |
-| Line length (measure) | **45–75 characters** (ideal: 66) | Bringhurst, Butterick |
-| Paragraph spacing | **0.75em–1em** below | Butterick |
-| Heading scale ratio | **1.200–1.333** (minor third to perfect fourth) | Modular scale |
-| Maximum font weights per page | **2–3** | Performance + visual clarity |
-| Maximum typefaces per page | **2** (1 serif + 1 sans, or 2 from same superfamily) | Typography best practice |
-
-## Spacing & Layout
-| Rule | Value | Source |
-|------|-------|--------|
-| Base spacing unit | **4px** or **8px** | Material Design, most systems |
-| Spacing scale | **4, 8, 12, 16, 24, 32, 48, 64, 96** (px) | 4px base system |
-| Content max-width | **1200–1440px** | Common practice |
-| Readable content width | **600–800px** (matches 45–75ch) | Readability research |
-| Minimum padding (mobile) | **16px** horizontal | Material Design |
-| Grid columns (desktop) | **12** | Bootstrap, Material, most systems |
-| Grid columns (tablet) | **8** | Material Design |
-| Grid columns (mobile) | **4** | Material Design |
-| Grid gutter | **16–24px** | Common practice |
-
-## Touch & Interaction
-| Rule | Value | Standard |
-|------|-------|----------|
-| Minimum touch target | **44×44px** (CSS) / **48×48dp** | WCAG 2.2 / Material Design |
-| Minimum touch target spacing | **8px** between targets | WCAG 2.2 |
-| Click target (desktop) | **24×24px** minimum | WCAG 2.2 |
-| System response time | **<400ms** for perceived immediacy | Doherty Threshold |
-| Hover transition duration | **150–200ms** | Material Design |
-| Enter/appear animation | **200–300ms** | Material Design |
-| Exit/disappear animation | **150–200ms** | Material Design |
-| Maximum animation duration | **500ms** (users perceive as slow beyond this) | UX research |
-| Loading spinner delay | **300ms–1s** before showing | Nielsen |
-| Skeleton screen | Show **immediately** for loads >300ms | UX best practice |
-
-## Reading & Scanning
-| Rule | Value | Source |
-|------|-------|--------|
-| Users who scan vs. read | **79%** scan, only **16%** read word-by-word | Nielsen Norman Group |
-| Word count reduction benefit | Cut to **50%** → **58%** usability improvement | Nielsen Norman Group |
-| Scannable layout benefit | Headings + bullets + highlights → **47%** improvement | Nielsen Norman Group |
-| Combined writing improvements | Concise + scannable + objective → **124%** improvement | Nielsen Norman Group |
-
-## Responsive Breakpoints
-| Breakpoint | Value | Typical Use |
-|------------|-------|-------------|
-| Small mobile | **320px** | Minimum supported width |
-| Mobile | **480px** | Large phones |
-| Tablet | **768px** | Portrait tablets |
-| Desktop | **1024px** | Landscape tablets, small laptops |
-| Large desktop | **1280px** | Standard desktops |
-| Extra large | **1536px** | Large monitors |
-
-## Hick's Law — Choice Limits
-| Rule | Value | Source |
-|------|-------|--------|
-| Navigation items | **5–7** top-level items | Hick's Law, Miller's Law |
-| Form fields per step | **5–7** visible fields | Cognitive load research |
-| Options in a dropdown | **≤15** before search is needed | UX best practice |
-| Actions in a context menu | **≤10** | UX best practice |
-
-## Z-Index Scale
-| Layer | Value | Use |
-|-------|-------|-----|
-| Base | **0** | Default content |
-| Dropdown | **100** | Dropdowns, tooltips |
-| Sticky | **200** | Sticky headers |
-| Overlay | **300** | Modal backdrops |
-| Modal | **400** | Modal dialogs |
-| Popover | **500** | Popovers above modals |
-| Toast | **600** | Toast notifications |
-| Maximum | **999** | System-level (skip links, etc.) |
-
-## Border Radius
-| Element | Value | Source |
-|---------|-------|--------|
-| Buttons | **4–8px** | Most design systems |
-| Cards | **8–12px** | Material Design 3 |
-| Input fields | **4–8px** | Common practice |
-| Modals | **12–16px** | Material Design 3 |
-| Chips/tags | **full (9999px)** or **4–8px** | Material Design 3 |
-| Avatars | **full (50%)** | Common practice |
-
-## Quick Preset Lookup
-
-Need a starting point? Grab a preset from [`docs/presets/_index.md`](../docs/presets/_index.md):
-
-| I need a... | Preset |
-|-------------|--------|
-| Dashboard layout | `docs/presets/shell-dashboard/` |
-| Landing page | `docs/presets/shell-marketing/` + `docs/presets/hero/` |
-| Login / signup page | `docs/presets/shell-form/` |
-| Data browser | `docs/presets/shell-sidebar/` + `docs/presets/data-table/` |
-| Pricing page | `docs/presets/pricing/` |
-| Portfolio | `docs/presets/portfolio/` or `docs/presets/personal-hero/` |
-| Agency portfolio | `docs/presets/agency-portfolio/` (scroll-shrink logo, marquee, project grid) |
-| App / fintech showcase | `docs/presets/app-showcase/` (dark hero, phone mockup, stacking cards) |
-| Education / content landing | `docs/presets/scroll-reveal-landing/` (sky gradient, line-by-line reveal) |
-| Blog / editorial | `docs/presets/editorial-blog/` |
-| SaaS features | `docs/presets/saas-features/` |
-| Developer tool | `docs/presets/devtool-landing/` |
-| Event / conference | `docs/presets/event-page/` |
-| Documentation site | `docs/presets/docs-site/` |
-| Product page | `docs/presets/product-page/` |
-| Scroll-driven story | `docs/presets/scroll-story/` |
-
-Each preset has clean, minimalist, and playful personality variants. React and Vue variants available for interactive components — see [`docs/presets/FRAMEWORKS.md`](../docs/presets/FRAMEWORKS.md).
-
-## Sources
-- [WCAG 2.2](https://www.w3.org/TR/WCAG22/)
-- [Material Design 3](https://m3.material.io)
-- [Laws of UX](https://lawsofux.com)
-- [Nielsen Norman Group](https://www.nngroup.com)
-- [Butterick's Practical Typography](https://practicaltypography.com)
-- [The Elements of Typographic Style (Bringhurst)](https://en.wikipedia.org/wiki/The_Elements_of_Typographic_Style)
-</file>
-
-<file path="docs/presets/_index.md">
-# Preset & Component Library
-
-> **Copy-paste-ready HTML+Tailwind components and full-page templates.** Each preset has multiple personality variants (Clean, Minimalist, Playful) as structurally different HTML — not just CSS changes.
-
-## Preview Links
-
-Every preset can be previewed live. The URL pattern is:
-```
-https://jdeworks.github.io/make-it-look-good/#preset:{element}/{personality}
-```
-
-For example: `#preset:dashboard/clean`, `#preset:landing/playful`, `#preset:agency-landing/minimalist`.
-
-Element names and available personalities are listed in `index.json`. Use these links to show users a template before building — especially useful when working from the bundle (online chat) where the raw HTML files aren't available.
-
-## Framework Support
-
-**HTML is the single source of truth.** To use in React, Vue, Svelte, or Angular:
-1. Copy the HTML preset
-2. Apply attribute changes from [FRAMEWORKS.md](FRAMEWORKS.md)
-3. Add interactivity using the behavior recipes in FRAMEWORKS.md
-
-Pre-built framework files (`.jsx`, `.vue`, `.svelte`) only exist for components with **complex interactive logic** — state machines, keyboard navigation, form validation. Presentational components don't need separate framework files; the LLM converts them on the fly.
-
----
-
-## Layout Shells
-
-Start here. Everything builds on these.
-
-| Preset | Description | Frameworks |
-|--------|-------------|:----------:|
-| [`shell-sidebar/`](shell-sidebar/) | App shell: 240px sidebar + topbar + content area | [React](shell-sidebar/react.jsx) [Vue](shell-sidebar/vue.vue) [Svelte](shell-sidebar/svelte.svelte) |
-| [`shell-marketing/`](shell-marketing/) | Header + hero slot + sections + footer | [React](shell-marketing/react.jsx) [Vue](shell-marketing/vue.vue) [Svelte](shell-marketing/svelte.svelte) |
-| [`shell-form/`](shell-form/) | Centered card on gray background (login/signup) | [React](shell-form/react.jsx) [Vue](shell-form/vue.vue) [Svelte](shell-form/svelte.svelte) |
-| [`shell-dashboard/`](shell-dashboard/) | Sidebar + topbar + stat cards + table (composed) | HTML only |
-
-## Navigation Components
-
-| Preset | Description | Frameworks |
-|--------|-------------|:----------:|
-| [`tabs/`](tabs/) | Horizontal tabs with content panels | [React](tabs/react.jsx) [Vue](tabs/vue.vue) [Svelte](tabs/svelte.svelte) |
-| [`pagination/`](pagination/) | Page navigation with prev/next + numbers | [React](pagination/react.jsx) [Vue](pagination/vue.vue) [Svelte](pagination/svelte.svelte) |
-| [`dropdown/`](dropdown/) | Dropdown menu with items + outside click | [React](dropdown/react.jsx) [Vue](dropdown/vue.vue) |
-
-## Content Sections
-
-| Preset | Description | Frameworks |
-|--------|-------------|:----------:|
-| [`hero/`](hero/) | Centered hero with heading + subtext + CTAs | HTML + [FRAMEWORKS.md](FRAMEWORKS.md) |
-| [`feature-grid/`](feature-grid/) | 3-column feature cards with icons | HTML + [FRAMEWORKS.md](FRAMEWORKS.md) |
-| [`pricing-cards/`](pricing-cards/) | 3-tier pricing (Free / Pro / Enterprise) | HTML + [FRAMEWORKS.md](FRAMEWORKS.md) |
-| [`stats-row/`](stats-row/) | 4 stat cards with trend indicators | HTML + [FRAMEWORKS.md](FRAMEWORKS.md) |
-| [`accordion/`](accordion/) | FAQ-style collapsible accordion | [React](accordion/react.jsx) [Vue](accordion/vue.vue) [Svelte](accordion/svelte.svelte) |
-| [`avatars/`](avatars/) | Overlapping avatars with +N indicator | [React](avatars/react.jsx) [Vue](avatars/vue.vue) |
-
-## Data Display
-
-| Preset | Description | Frameworks |
-|--------|-------------|:----------:|
-| [`data-table/`](data-table/) | Data table with sorting + status badges | [React](data-table/react.jsx) [Vue](data-table/vue.vue) [Svelte](data-table/svelte.svelte) |
-| [`card-grid/`](card-grid/) | Responsive product/content card grid | HTML only |
-
-## Forms
-
-| Preset | Description | Frameworks |
-|--------|-------------|:----------:|
-| [`form/`](form/) | Signup form with password strength | [React](form/react.jsx) [Vue](form/vue.vue) [Svelte](form/svelte.svelte) |
-| [`shell-form/`](shell-form/) | Login form (centered layout) | [React](shell-form/react.jsx) [Vue](shell-form/vue.vue) [Svelte](shell-form/svelte.svelte) |
-
-## Feedback (interactive variants only)
-
-| Preset | Description | Frameworks |
-|--------|-------------|:----------:|
-| [`dropdown/`](dropdown/) (modal) | Modal dialog with backdrop + focus trap | [React](dropdown/react-modal.jsx) [Vue](dropdown/vue-modal.vue) [Svelte](dropdown/svelte-modal.svelte) |
-| [`stats-row/`](stats-row/) (toast) | Toast notifications (auto-dismiss, stack) | [React](stats-row/react-toast.jsx) [Vue](stats-row/vue-toast.vue) |
-| [`hero/`](hero/) (search) | Debounced search with filter dropdown | [React](hero/react-search.jsx) [Vue](hero/vue-search.vue) [Svelte](hero/svelte-search.svelte) |
-
-## Buttons
-
-| Preset | Description | Frameworks |
-|--------|-------------|:----------:|
-| [`buttons/`](buttons/) | All emphasis levels x sizes x states | HTML only |
-
-## Full Pages
-
-| Preset | Description |
-|--------|-------------|
-| [`pricing/`](pricing/) | SaaS pricing page |
-| [`portfolio/`](portfolio/) | Portfolio (dark theme) |
-| [`restaurant/`](restaurant/) | Restaurant (warm theme) |
-| [`statuspage/`](statuspage/) | Status page |
-
-## Before → After Examples
-
-| Preset | Personalities |
-|--------|--------------|
-| [`dashboard/`](dashboard/) | before, clean, minimalist, playful |
-| [`landing/`](landing/) | before, clean, minimalist, playful, editorial |
-| [`form/`](form/) | before, clean, minimalist, playful, editorial |
-| [`cards/`](cards/) | before, clean, minimalist, playful |
-| [`project/`](project/) | before, clean, minimalist, playful |
-
-## Expressive Templates
-
-| Preset | Description | Design Approach |
-|--------|-------------|-----------------|
-| [`personal-hero/`](personal-hero/) | Personal portfolio site | Clean personal branding |
-| [`agency-landing/`](agency-landing/) | Creative agency landing | Bold Creative / Agency |
-| [`agency-portfolio/`](agency-portfolio/) | Agency portfolio with scroll-shrink logo | Typographic / Scroll-Driven Agency |
-| [`app-showcase/`](app-showcase/) | Dark app showcase with phone mockup + stacking cards | Dark Warm / App-Centric Scroll |
-| [`scroll-reveal-landing/`](scroll-reveal-landing/) | Sky gradient hero with line-by-line text reveal | Airy / Scroll-Reveal Education |
-| [`product-launch/`](product-launch/) | Product launch page | Dark Premium / Product |
-| [`editorial-blog/`](editorial-blog/) | Long-form blog / editorial | Minimal Editorial / Typography-First |
-| [`saas-features/`](saas-features/) | SaaS feature showcase | Friendly SaaS / Bento |
-| [`scroll-story/`](scroll-story/) | Scroll-triggered portfolio | Immersive / Scroll-Storytelling |
-| [`product-page/`](product-page/) | E-commerce product page | E-commerce / Product-Focused |
-| [`devtool-landing/`](devtool-landing/) | Developer tool landing | Dark Premium / Developer |
-| [`docs-site/`](docs-site/) | Documentation site | Documentation / Reference |
-| [`event-page/`](event-page/) | Event/conference landing | Event / Conference |
-| [`jdeworks-personal/`](jdeworks-personal/) | Personalized "This is Me" portfolio | Scroll-Driven Storytelling |
-
-## Edge Cases
-
-| Preset | Description |
-|--------|-------------|
-| [`deploy/`](deploy/) | Deploy monitor |
-| [`osslanding/`](osslanding/) | OSS landing page |
-
----
-
-## Composition Recipes
-
-Combine presets to build full pages:
-
-### Dashboard
-```
-shell-dashboard/ (includes sidebar + topbar + stats + table)
-```
-Or build custom: `shell-sidebar/` → add `stats-row/` + `data-table/` in content area.
-
-### Landing Page
-```
-shell-marketing/
-  └ Add hero section from: hero/
-  └ Add sections: feature-grid/
-  └ Add sections: pricing-cards/
-```
-
-### Login / Signup Page
-```
-shell-form/ (centered login form)
-```
-
-### Settings Page
-```
-shell-sidebar/ layout
-  └ In content area: form elements
-```
-
-### Data Browser
-```
-shell-sidebar/ layout
-  └ In content area: search bar + data-table/
-```
-
----
-
-## Design Tokens (Consistent Across All Presets)
-
-| Token | Value | Tailwind |
-|-------|-------|----------|
-| Primary | `#2563eb` | `blue-600` |
-| Primary hover | `#1d4ed8` | `blue-700` |
-| Text primary | `#0f172a` / `#f1f5f9` | `slate-900` / `slate-100` |
-| Text secondary | `#475569` / `#94a3b8` | `slate-600` / `slate-400` |
-| Background | `#ffffff` / `#0f172a` | `white` / `slate-900` |
-| Surface | `#f8fafc` / `#1e293b` | `slate-50` / `slate-800` |
-| Border | `#e2e8f0` / `#334155` | `slate-200` / `slate-700` |
-| Success | `#16a34a` | `green-600` |
-| Error | `#dc2626` | `red-600` |
-| Warning | `#d97706` | `amber-600` |
-| Border radius | `8px` (cards), `8px` (buttons), `8px` (inputs) | `rounded-lg` |
-| Touch target | 44px minimum | `min-h-11` |
-
-Note: Expressive templates use different primary colors appropriate to their personality (rose for playful, indigo for editorial, etc.). See `index.json` for per-preset color mappings.
-
-## Preset Format
-
-Each preset directory contains:
-- `clean.html` — Standard Tailwind, balanced, professional
-- `minimalist.html` — Stripped back, hairline borders, light font weights
-- `playful.html` — Big rounded corners, colorful shadows, bouncy animations
-- `react.jsx` (optional) — React component variant for interactive components
-- `vue.vue` (optional) — Vue SFC variant
-- `svelte.svelte` (optional) — Svelte 5 component variant
-- Some presets also have `before.html` and/or `editorial.html` variants
-
-All presets are:
-- **Tailwind v4** classes only
-- **Self-contained** (inline SVG icons, no external deps except Google Fonts for display variants)
-- **Responsive** (320px → 768px → 1024px+)
-- **Dark mode** via `dark:` classes
-- **WCAG AA** contrast, 44px touch targets, semantic HTML
-- **Realistic content** (not lorem ipsum)
+Each design approach has dedicated presets in `docs/presets/` with clean, minimalist, and playful personality variants:
+
+| Design Approach | Template Preset | Primary Color |
+|---|---|---|
+| Dark Premium / Developer | [`devtool-landing/`](../docs/presets/devtool-landing/) | cyan |
+| Minimal Editorial | [`editorial-blog/`](../docs/presets/editorial-blog/) | slate |
+| Friendly SaaS / Bento | [`saas-features/`](../docs/presets/saas-features/) | violet |
+| Immersive / Scroll-Storytelling | [`scroll-story/`](../docs/presets/scroll-story/) | emerald |
+| Bold Creative / Agency | [`agency-landing/`](../docs/presets/agency-landing/) | blue |
+| E-commerce / Product-Focused | [`product-page/`](../docs/presets/product-page/) | sky |
+| Documentation | [`docs-site/`](../docs/presets/docs-site/) | indigo |
+| Event / Conference | [`event-page/`](../docs/presets/event-page/) | amber |
+| Personal / Portfolio | [`personal-hero/`](../docs/presets/personal-hero/), [`jdeworks-personal/`](../docs/presets/jdeworks-personal/) | blue, violet |
+| Product Launch | [`product-launch/`](../docs/presets/product-launch/) | indigo |
+
+## Sources & Inspiration
+
+### Design Galleries
+- [Awwwards](https://www.awwwards.com/) — curated award-winning web design, searchable by category
+- [Muzli](https://muz.li/) — design inspiration feed, portfolio roundups
+- [Godly](https://godly.website/) — curated web design inspiration
+
+### Inspiration by Approach
+The CSS techniques in this file are generic patterns found across modern web design. For reference, sites known for excelling at each approach:
+- **Dark Premium:** Stripe, Linear, Vercel, Arc Browser — gradient meshes, glow effects, monospace type
+- **Minimal Editorial:** Rauno Freiberg, Lee Robinson, Apple — system fonts, extreme whitespace, content-first
+- **Friendly SaaS:** Notion, Slack, Mailchimp — illustrations, bento grids, conversational tone
+- **Immersive:** Awwwards SOTD winners, creative portfolios — WebGL, custom cursors, scroll-driven reveals
+- **Bold Creative:** Agency portfolios on Awwwards — oversized type, clip-paths, mix-blend-mode
+- **Product-Focused:** Apple product pages, Aesop — full-bleed imagery, scroll-driven specs
+
+### Tools
+- [Fontshare](https://www.fontshare.com/) — Clash Display, Satoshi, General Sans (free)
+- [Google Fonts](https://fonts.google.com/) — all listed font pairings
+- [Picsum Photos](https://picsum.photos/) — placeholder image API
+- [Placehold.co](https://placehold.co/) — labeled placeholder images
+- [Unsplash](https://unsplash.com/) — free photography (attribution appreciated)
 </file>
 
 <file path="docs/analyzer.js">
@@ -17007,831 +17834,70 @@ All presets are:
 })();
 </file>
 
-<file path="expressive/curated-examples.md">
-# What Makes Great Sites Great — Curated Examples
+<file path="CLAUDE.md">
+# CLAUDE.md — make-it-look-good
 
-> **TL;DR:** Study real sites by *design approach*, not brand name. Each approach has specific CSS techniques that make it work — gradient meshes for dark premium, extreme whitespace for editorial, bento grids for friendly SaaS. This file catalogs six approaches with real URLs, replicable patterns, and copy-paste CSS. Also includes placeholder image services, font pairings, and a CSS techniques catalog.
+## Quick Start
+- **Design consultation** → Read `CONSULT.md` and follow the steps
+- **Need a component** → Read `docs/presets/_index.md` for presets and composition recipes
+- **Quick number lookup** → Read `workflows/quick-reference.md`
+- **Read only what's needed** — each knowledge file is self-contained (~200-400 lines)
 
+## Purpose
+This repo is a **design knowledge base for LLMs**. When an LLM needs to make UI/UX decisions, it reads files from this repo to get concrete, evidence-based guidance with hard numbers.
+
+## CSS Framework
+All presets and examples use **[Tailwind CSS](https://tailwindcss.com)** as the default styling framework. When the user's stack is unknown, output Tailwind classes. For the preview tool, Tailwind v4 is loaded via CDN (`@tailwindcss/browser@4`). Match the user's stack if they use something else — see CONSULT.md Step 0.
+
+## File Format Convention
+Every knowledge file follows this template:
+
+```
+# {Topic Title}
+> **TL;DR:** {2-3 sentence actionable summary}
 ## Core Principles
-
-1. **Design approach comes before technology** — pick the visual personality first, then choose the CSS techniques that serve it
-2. **Every great site constrains itself** — the best dark UIs use 2 gradients, not 20. The best editorial sites use one accent color. Constraint creates coherence.
-3. **Copy the system, not the surface** — the spacing scale, the color ratio, the type hierarchy matter more than the exact gradient
-4. **Techniques combine** — dark premium sites use gradient mesh + glow + stagger. Editorial sites use whitespace + type scale + no decoration. Know which techniques cluster together.
-5. **Performance is part of the design** — a 4-second load with WebGL destroys the experience. Choose techniques appropriate to the project scope.
-
----
-
-## Design Approach 1: Dark Premium / Developer Aesthetic
-
-### What Makes It Work
-- Background: near-black (not pure #000 — use #0A0A0F, #0a192f, or slate-950)
-- One or two accent colors maximum, high saturation against the dark field
-- Subtle light sources: radial gradients positioned behind content create depth
-- Monospace font for technical credibility (Geist Mono, JetBrains Mono, Fira Code)
-- Generous padding (py-24 / py-32) — dark backgrounds amplify spaciousness
-- Card borders at ~8% white opacity, not solid lines
-
-### Replicable Patterns
-
-#### Gradient Mesh Hero
-```css
-.hero-gradient {
-  background:
-    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(120, 119, 198, 0.3), transparent),
-    radial-gradient(ellipse 60% 80% at 80% 50%, rgba(78, 67, 118, 0.15), transparent),
-    radial-gradient(ellipse 50% 60% at 20% 60%, rgba(54, 79, 199, 0.12), transparent),
-    #0f0f1a;
-}
-```
-
-#### Single-Accent Dark UI
-```css
-:root {
-  --bg-primary: #0A0A0F;
-  --bg-surface: #13131A;
-  --border: rgba(255, 255, 255, 0.08);
-  --text-primary: #EDEDEF;
-  --text-secondary: #8A8A9A;
-  --accent: #8B5CF6; /* violet-500 */
-}
-
-.card-dark {
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 24px;
-  transition: border-color 200ms ease-out;
-}
-
-.card-dark:hover {
-  border-color: rgba(139, 92, 246, 0.3);
-}
-```
-
-#### Hover Glow Card
-```css
-.project-card {
-  background: rgba(255, 255, 255, 0.03);
-  border-radius: 8px;
-  padding: 24px;
-  transition: box-shadow 250ms ease-out, background 250ms ease-out;
-}
-
-.project-card:hover {
-  background: rgba(255, 255, 255, 0.05);
-  box-shadow: 0 0 30px rgba(100, 255, 218, 0.07);
-}
-```
-
-See also: [visual-identity.md](visual-identity.md) for building a cohesive dark palette.
-
----
-
-## Design Approach 2: Minimal Editorial / Typography-First
-
-### What Makes It Work
-- Maximum content width: 640–720px (max-w-2xl) for reading comfort
-- Type scale does all the heavy lifting — h1 at 48–72px, body at 16–18px, no decorative elements needed
-- System font stack or a single high-quality typeface — no font pairing complexity
-- Whitespace as primary design element: 96–128px between sections
-- Links are inline and conversational, not button-styled
-- Color used sparingly: one accent for links/interactive, everything else is gray scale
-
-### Replicable Patterns
-
-#### Manifesto Layout
-```css
-.editorial-page {
-  max-width: 640px;
-  margin: 0 auto;
-  padding: 64px 24px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  font-size: 16px;
-  line-height: 1.7;
-  color: #1a1a1a;
-}
-
-.editorial-page h1 {
-  font-size: 2rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  margin-bottom: 16px;
-}
-
-.editorial-page p + p {
-  margin-top: 24px;
-}
-
-.editorial-page a {
-  color: inherit;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  text-decoration-color: #a0a0a0;
-  transition: text-decoration-color 150ms ease;
-}
-
-.editorial-page a:hover {
-  text-decoration-color: currentColor;
-}
-```
-
-#### Large Image + Headline + CTAs
-```html
-<section class="py-32 text-center">
-  <img src="product.jpg" alt="Product"
-       class="w-full max-w-5xl mx-auto mb-16" />
-  <h2 class="text-5xl md:text-7xl font-semibold tracking-tight mb-6">
-    A headline that says one thing.
-  </h2>
-  <p class="text-xl text-gray-500 mb-8">A single line of supporting text.</p>
-  <div class="flex justify-center gap-4">
-    <a href="#" class="text-blue-600 text-xl hover:underline">Learn more &rsaquo;</a>
-    <a href="#" class="text-blue-600 text-xl hover:underline">Buy &rsaquo;</a>
-  </div>
-</section>
-```
-
-See also: [../typography/type-scale.md](../typography/type-scale.md), [../layout/whitespace.md](../layout/whitespace.md).
-
----
-
-## Design Approach 3: Friendly / Approachable SaaS
-
-### What Makes It Work
-- Rounded corners everywhere (12–16px on cards, fully rounded on avatars/icons)
-- Warm or saturated brand colors — not corporate blue, but yellow, pink, purple
-- Conversational tone in headlines: "Write, plan, share." not "Enterprise Collaboration Platform"
-- Illustrations over stock photos — custom illustrations convey personality
-- Bento grid layout for features: unequal grid cells create visual interest
-- Generous padding with soft shadows (no hard borders)
-
-### Replicable Patterns
-
-#### Bento Grid Features
-```css
-.bento-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  grid-template-rows: auto;
-  gap: 16px;
-  padding: 0 24px;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-/* Spanning variations */
-.bento-card              { grid-column: span 1; }
-.bento-card--wide        { grid-column: span 2; }
-.bento-card--full        { grid-column: span 4; }
-.bento-card--tall        { grid-row: span 2; }
-
-.bento-card {
-  background: #fff;
-  border-radius: 16px;
-  padding: 32px;
-  overflow: hidden;
-  border: 1px solid #e5e5e5;
-}
-
-/* Color block variants */
-.bento-card--yellow { background: #FFF3CD; }
-.bento-card--pink   { background: #FCE4EC; }
-.bento-card--blue   { background: #E3F2FD; }
-
-@media (max-width: 768px) {
-  .bento-grid { grid-template-columns: 1fr; }
-  .bento-card--wide,
-  .bento-card--full { grid-column: span 1; }
-}
-```
-
-#### Friendly Card with Soft Shadow
-```css
-.saas-card {
-  background: #ffffff;
-  border-radius: 16px;
-  padding: 32px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04),
-              0 6px 24px rgba(0, 0, 0, 0.06);
-  transition: transform 200ms ease-out, box-shadow 200ms ease-out;
-}
-
-.saas-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04),
-              0 12px 32px rgba(0, 0, 0, 0.08);
-}
-```
-
-See also: [../components/cards.md](../components/cards.md), [hero-patterns.md](hero-patterns.md).
-
----
-
-## Design Approach 4: Immersive / Scroll-Storytelling
-
-### What Makes It Work
-- Scroll position drives everything: content reveals, parallax, transforms
-- Preloader sets mood and manages expectations (3–5s is acceptable here)
-- Custom cursor replaces default pointer, creating an "experience" feeling
-- Staggered reveals: elements cascade in 80–360ms delay intervals
-- Full-viewport sections (min-h-screen) — each scroll stop is a complete composition
-- Performance budget: limit WebGL/canvas to hero; use CSS for the rest
-
-### Replicable Patterns
-
-#### Scroll-Triggered Fade-In
-```css
-.reveal {
-  opacity: 0;
-  transform: translateY(24px);
-  transition: opacity 600ms cubic-bezier(0.0, 0.0, 0.2, 1),
-              transform 600ms cubic-bezier(0.0, 0.0, 0.2, 1);
-}
-
-.reveal.is-visible {
-  opacity: 1;
-  transform: translateY(0);
-}
-```
-
-```js
-const observer = new IntersectionObserver((entries) => {
-  entries.forEach(entry => {
-    if (entry.isIntersecting) {
-      entry.target.classList.add('is-visible');
-      observer.unobserve(entry.target);
-    }
-  });
-}, { threshold: 0.15 });
-
-document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
-```
-
-#### Staggered Cascade Reveal
-```css
-.cascade-item {
-  opacity: 0;
-  transform: translateY(20px);
-  transition: opacity 500ms ease-out, transform 500ms ease-out;
-}
-
-.cascade-item.is-visible {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-/* Stagger delays — 80ms apart, capped at ~360ms */
-.cascade-item:nth-child(1) { transition-delay: 0ms; }
-.cascade-item:nth-child(2) { transition-delay: 80ms; }
-.cascade-item:nth-child(3) { transition-delay: 160ms; }
-.cascade-item:nth-child(4) { transition-delay: 240ms; }
-.cascade-item:nth-child(5) { transition-delay: 360ms; }
-```
-
-#### Custom Cursor (Dot + Ring)
-```css
-.cursor-dot {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 8px;
-  height: 8px;
-  background: #fff;
-  border-radius: 50%;
-  pointer-events: none;
-  z-index: 9999;
-  transition: transform 100ms ease-out;
-  mix-blend-mode: difference;
-}
-
-.cursor-ring {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 40px;
-  height: 40px;
-  border: 1.5px solid rgba(255, 255, 255, 0.5);
-  border-radius: 50%;
-  pointer-events: none;
-  z-index: 9998;
-  transition: transform 250ms ease-out, width 200ms ease, height 200ms ease;
-  mix-blend-mode: difference;
-}
-
-/* Expand ring on hovering interactive elements */
-.cursor-ring.is-hovering {
-  width: 64px;
-  height: 64px;
-}
-```
-
-```js
-const dot = document.querySelector('.cursor-dot');
-const ring = document.querySelector('.cursor-ring');
-
-document.addEventListener('mousemove', (e) => {
-  dot.style.transform = `translate(${e.clientX - 4}px, ${e.clientY - 4}px)`;
-  ring.style.transform = `translate(${e.clientX - 20}px, ${e.clientY - 20}px)`;
-});
-
-document.querySelectorAll('a, button').forEach(el => {
-  el.addEventListener('mouseenter', () => ring.classList.add('is-hovering'));
-  el.addEventListener('mouseleave', () => ring.classList.remove('is-hovering'));
-});
-```
-
-See also: [scroll-storytelling.md](scroll-storytelling.md), [purposeful-motion.md](purposeful-motion.md), [../interaction/animation-timing.md](../interaction/animation-timing.md).
-
----
-
-## Design Approach 5: Bold Creative / Agency
-
-### What Makes It Work
-- Typography IS the design — headings at 80–160px, often with negative letter-spacing (-0.04em)
-- High contrast: pure black on white or white on black, no grays in between
-- Unconventional layouts: horizontal scroll, overlapping elements, asymmetric grids
-- Clip-path for non-rectangular shapes (torn edges, diagonal cuts, organic blobs)
-- `mix-blend-mode: difference` or `exclusion` for text over images
-- Cursor and scroll interactions are part of the brand expression
-
-### Replicable Patterns
-
-#### Oversized Typography
-```css
-.hero-headline {
-  font-size: clamp(3rem, 10vw, 10rem);
-  font-weight: 900;
-  line-height: 0.9;
-  letter-spacing: -0.04em;
-  text-transform: uppercase;
-}
-```
-
-#### Torn Edge Section Divider (Clip-path)
-```css
-.torn-edge {
-  clip-path: polygon(
-    0% 0%, 100% 0%, 100% 85%,
-    95% 88%, 90% 85%, 85% 90%,
-    80% 86%, 75% 92%, 70% 87%,
-    65% 90%, 60% 85%, 55% 91%,
-    50% 86%, 45% 89%, 40% 84%,
-    35% 90%, 30% 86%, 25% 92%,
-    20% 87%, 15% 90%, 10% 85%,
-    5% 88%, 0% 85%
-  );
-}
-```
-
-#### Horizontal Scroll Section
-```html
-<section class="overflow-x-auto overflow-y-hidden">
-  <div class="flex gap-6 px-6 py-12" style="width: max-content;">
-    <div class="w-[80vw] max-w-lg flex-shrink-0">Card 1</div>
-    <div class="w-[80vw] max-w-lg flex-shrink-0">Card 2</div>
-    <div class="w-[80vw] max-w-lg flex-shrink-0">Card 3</div>
-    <div class="w-[80vw] max-w-lg flex-shrink-0">Card 4</div>
-  </div>
-</section>
-```
-
-#### Mix-Blend Text Over Image
-```css
-.blend-overlay {
-  position: relative;
-}
-
-.blend-overlay h2 {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: clamp(3rem, 8vw, 8rem);
-  font-weight: 900;
-  color: #fff;
-  mix-blend-mode: difference;
-  pointer-events: none;
-}
-```
-
----
-
-## Design Approach 6: E-commerce / Product-Focused
-
-### What Makes It Work
-- Product image is the hero — full-bleed, high resolution, minimal surrounding UI
-- Dark/light section alternation creates visual rhythm and section separation
-- Specs and features revealed progressively on scroll (not dumped as a list)
-- Minimal navigation on product pages — focused on conversion
-- Color palette often derived from the product itself
-- Interactive demos > static screenshots
-
-### Replicable Patterns
-
-#### Dark/Light Section Alternation
-```html
-<section class="bg-white text-gray-900 py-24 px-6">
-  <div class="max-w-6xl mx-auto"><!-- Light section content --></div>
-</section>
-
-<section class="bg-gray-950 text-white py-24 px-6">
-  <div class="max-w-6xl mx-auto"><!-- Dark section content --></div>
-</section>
-
-<section class="bg-gray-50 text-gray-900 py-24 px-6">
-  <div class="max-w-6xl mx-auto"><!-- Light section content --></div>
-</section>
-```
-
-#### Product Hero (Full-bleed)
-```html
-<section class="relative bg-black min-h-screen flex items-center justify-center">
-  <img src="product-hero.jpg" alt="Product Name"
-       class="w-full max-w-4xl object-contain" />
-  <div class="absolute bottom-16 left-1/2 -translate-x-1/2 text-center text-white">
-    <h1 class="text-5xl font-semibold tracking-tight mb-2">Product Name</h1>
-    <p class="text-xl text-gray-400 mb-6">One line that captures it.</p>
-    <a href="#" class="inline-block bg-blue-600 text-white px-8 py-3 rounded-full
-                       text-lg font-medium hover:bg-blue-500 transition-colors">
-      Buy
-    </a>
-  </div>
-</section>
-```
-
----
-
-## Placeholder Image Services
-
-For prototyping and wireframing — use these to get realistic imagery without assets.
-
-| Service | URL Format | Best For |
-|---------|-----------|----------|
-| Picsum Photos | `https://picsum.photos/seed/{seed}/{width}/{height}` | Seeded random photos, consistent across loads |
-| Unsplash Source | `https://images.unsplash.com/{photo-id}?w={width}&h={height}&fit=crop` | Real photography (direct URLs for known IDs) |
-| Placehold.co | `https://placehold.co/{width}x{height}/{bg}/{text}` | Solid color with text label |
-
-### Tips
-- **Picsum** supports filters: `?grayscale` and `?blur=N` (1–10). Always use `seed/` for consistent results across page loads.
-- **Placehold.co** hex colors omit the `#`: `https://placehold.co/600x400/1e293b/e2e8f0` (slate-800 bg, slate-200 text).
-- **Unsplash** direct URLs work without API keys if you know the photo ID. For search, you need an API key.
-
-### Quick Copy Examples
-```html
-<!-- Consistent hero image -->
-<img src="https://picsum.photos/seed/hero/1200/600" alt="Hero" />
-
-<!-- Grayscale placeholder for editorial -->
-<img src="https://picsum.photos/seed/editorial/800/400?grayscale" alt="Article" />
-
-<!-- Labeled wireframe box -->
-<img src="https://placehold.co/400x300/f1f5f9/64748b?text=Feature+Image" alt="Feature" />
-
-<!-- Square avatar -->
-<img src="https://picsum.photos/seed/avatar1/80/80" alt="User" class="rounded-full" />
-```
-
----
-
-## Free Font Pairings for Identity
-
-All available on [Google Fonts](https://fonts.google.com). Load only the weights you use.
-
-| Personality | Display Font | Body Font | Example Use |
-|-------------|-------------|-----------|-------------|
-| Bold / Tech | Space Grotesk (700) | Inter (400) | Startups, dev tools, SaaS dashboards |
-| Elegant / Editorial | Playfair Display (400) | Source Serif Pro (400) | Luxury brands, publishing, magazines |
-| Friendly / Rounded | Sora (800) | DM Sans (400) | Consumer apps, creative tools, social |
-| Minimal / Modern | Inter (300) | Inter (400) | Ultra-clean, Scandinavian, minimal SaaS |
-| Expressive / Creative | Clash Display or Satoshi | General Sans | Agencies, portfolios, studios |
-
-### Loading Pattern
-```html
-<!-- Only load what you need — 2 families, 2-3 weights max -->
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700&family=Inter:wght@400;500&display=swap"
-      rel="stylesheet" />
-```
-
-```css
-:root {
-  --font-display: 'Space Grotesk', sans-serif;
-  --font-body: 'Inter', sans-serif;
-}
-
-h1, h2, h3 { font-family: var(--font-display); }
-body        { font-family: var(--font-body); }
-```
-
-**Note:** Clash Display and Satoshi are from [fontshare.com](https://www.fontshare.com/) (free for personal and commercial use) — not Google Fonts.
-
-See also: [../typography/font-pairing.md](../typography/font-pairing.md), [../typography/web-font-loading.md](../typography/web-font-loading.md).
-
----
-
-## CSS Techniques Catalog
-
-Every technique below is copy-paste-ready. Combine them to build any of the design approaches above.
-
-### 1. Gradient Mesh Background
-```css
-.gradient-mesh {
-  background:
-    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(120, 119, 198, 0.3), transparent),
-    radial-gradient(ellipse 60% 80% at 80% 50%, rgba(78, 67, 118, 0.15), transparent),
-    radial-gradient(ellipse 50% 60% at 20% 60%, rgba(54, 79, 199, 0.12), transparent),
-    #0f0f1a;
-}
-```
-**How it works:** Layer 3–4 `radial-gradient` ellipses at different positions and sizes. Each has a single color fading to `transparent`. The stacking creates organic color blending.
-
-### 2. Glow Effects
-```css
-/* Ambient glow behind a card */
-.glow-card {
-  box-shadow:
-    0 0 15px rgba(139, 92, 246, 0.15),
-    0 0 45px rgba(139, 92, 246, 0.08);
-}
-
-/* Button glow on hover */
-.glow-button {
-  transition: box-shadow 200ms ease-out;
-}
-.glow-button:hover {
-  box-shadow:
-    0 0 20px rgba(59, 130, 246, 0.4),
-    0 0 60px rgba(59, 130, 246, 0.15);
-}
-```
-
-### 3. Glassmorphism
-```css
-.glass {
-  background: rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
-}
-
-/* Light mode variant */
-.glass-light {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  border-radius: 16px;
-}
-```
-**Caveat:** `backdrop-filter` is GPU-intensive. Avoid on large areas or many overlapping elements.
-
-### 4. Gradient Text
-```css
-.gradient-text {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-```
-**Accessibility note:** Gradient text cannot be selected with high contrast mode. Use on decorative headings only, not body text or links. Always ensure the lightest gradient stop meets 4.5:1 contrast against the background.
-
-### 5. Custom Cursor
-```css
-/* Hide default cursor on the container */
-.custom-cursor-area {
-  cursor: none;
-}
-
-.cursor-dot {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 8px;
-  height: 8px;
-  background: #fff;
-  border-radius: 50%;
-  pointer-events: none;
-  z-index: 9999;
-  mix-blend-mode: difference;
-}
-```
-```js
-const dot = document.querySelector('.cursor-dot');
-window.addEventListener('mousemove', (e) => {
-  dot.style.transform = `translate(${e.clientX - 4}px, ${e.clientY - 4}px)`;
-});
-```
-**Accessibility:** Always keep `cursor: auto` on form inputs and interactive elements. Custom cursors should enhance, not replace core usability. Hide on touch devices.
-
-### 6. Hover Glow on Cards
-```css
-.card-hover-glow {
-  background: var(--bg-surface, #1a1a2e);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 12px;
-  padding: 24px;
-  transition: box-shadow 250ms ease-out, border-color 250ms ease-out;
-}
-
-.card-hover-glow:hover {
-  border-color: rgba(139, 92, 246, 0.3);
-  box-shadow: 0 0 30px rgba(139, 92, 246, 0.08);
-}
-```
-
-### 7. Scroll-Triggered Fade-In
-```css
-.fade-in {
-  opacity: 0;
-  transform: translateY(20px);
-  transition: opacity 500ms cubic-bezier(0, 0, 0.2, 1),
-              transform 500ms cubic-bezier(0, 0, 0.2, 1);
-}
-
-.fade-in.is-visible {
-  opacity: 1;
-  transform: translateY(0);
-}
-```
-```js
-const observer = new IntersectionObserver(
-  (entries) => {
-    entries.forEach((entry) => {
-      if (entry.isIntersecting) {
-        entry.target.classList.add('is-visible');
-        observer.unobserve(entry.target);
-      }
-    });
-  },
-  { threshold: 0.15, rootMargin: '0px 0px -50px 0px' }
-);
-
-document.querySelectorAll('.fade-in').forEach((el) => observer.observe(el));
-```
-
-See also: [../interaction/animation-timing.md](../interaction/animation-timing.md) for duration/easing rules.
-
-### 8. Staggered Animation (nth-child Delays)
-```css
-.stagger-item {
-  opacity: 0;
-  transform: translateY(16px);
-  animation: staggerIn 400ms cubic-bezier(0, 0, 0.2, 1) forwards;
-}
-
-.stagger-item:nth-child(1) { animation-delay: 0ms; }
-.stagger-item:nth-child(2) { animation-delay: 50ms; }
-.stagger-item:nth-child(3) { animation-delay: 100ms; }
-.stagger-item:nth-child(4) { animation-delay: 150ms; }
-.stagger-item:nth-child(5) { animation-delay: 200ms; }
-.stagger-item:nth-child(6) { animation-delay: 250ms; }
-
-@keyframes staggerIn {
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-```
-**Rule:** 30–50ms between items, cap total stagger at ~400ms. After that, batch remaining items at the cap delay.
-
-### 9. Dark/Light Section Alternation
-```css
-.section-light {
-  background: #ffffff;
-  color: #0f172a;
-  padding: 96px 24px;
-}
-
-.section-dark {
-  background: #0f172a;
-  color: #e2e8f0;
-  padding: 96px 24px;
-}
-
-.section-muted {
-  background: #f8fafc;
-  color: #0f172a;
-  padding: 96px 24px;
-}
-```
-**Pattern:** Alternate light/dark/muted to create visual rhythm. Each section is a self-contained composition with its own max-width container inside.
-
-### 10. Bento Grid Layout
-```css
-.bento {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.bento > :nth-child(1) { grid-column: span 2; grid-row: span 2; }
-.bento > :nth-child(2) { grid-column: span 2; }
-.bento > :nth-child(3) { grid-column: span 1; }
-.bento > :nth-child(4) { grid-column: span 1; }
-.bento > :nth-child(5) { grid-column: span 4; }
-
-.bento > * {
-  background: #fff;
-  border-radius: 16px;
-  padding: 24px;
-  border: 1px solid #e5e7eb;
-  min-height: 180px;
-}
-
-@media (max-width: 768px) {
-  .bento {
-    grid-template-columns: 1fr;
-  }
-  .bento > * {
-    grid-column: span 1 !important;
-    grid-row: span 1 !important;
-  }
-}
-```
-**Tip:** The visual interest comes from *unequal* cell sizes. One cell spanning 2x2 among 1x1 cells creates the bento effect. Don't make all cells the same size.
-
----
-
+## Concrete Rules
+## CSS/Implementation Patterns
 ## Common Mistakes
-
-1. **Mixing design approaches** — dark premium gradients on a friendly SaaS page creates visual confusion. Pick one approach and commit.
-2. **Overloading techniques** — gradient mesh + glassmorphism + custom cursor + stagger animations all at once. Choose 2–3 techniques max.
-3. **Ignoring performance on immersive sites** — WebGL backgrounds on mobile will drain battery and drop frames. Use CSS-only fallbacks with `@media (hover: hover)`.
-4. **Pure black backgrounds** — #000000 is harsh. Use #0A0A0F, #0f0f1a, or slate-950 (#020617) for dark themes.
-5. **Placeholder images in production** — Picsum and Placehold.co are for prototyping only. Replace with real assets before shipping.
-6. **Too many font weights** — each weight is a network request. Load 2–3 weights maximum per family.
-7. **Custom cursors on touch devices** — there is no hover cursor on mobile. Gate custom cursor JS behind `@media (hover: hover)` or `matchMedia`.
-8. **Gradient text on body copy** — gradient text is decorative. It reduces readability and breaks in high-contrast mode. Use on headings only.
-
 ## Decision Tree
-
-```
-Choosing a design approach:
-├─ What's the product?
-│  ├─ Developer tool / API / technical product → Dark Premium
-│  ├─ Blog / personal site / content-first → Minimal Editorial
-│  ├─ Consumer SaaS / productivity tool → Friendly SaaS
-│  ├─ Portfolio / creative showcase → Immersive or Bold Creative
-│  ├─ Agency / studio → Bold Creative
-│  └─ E-commerce / physical product → Product-Focused
-├─ What's the audience expectation?
-│  ├─ "This should feel premium/fast" → Dark Premium
-│  ├─ "This should feel trustworthy/clear" → Minimal Editorial or Friendly SaaS
-│  ├─ "This should feel like an experience" → Immersive
-│  └─ "This should feel bold/memorable" → Bold Creative
-└─ What's the performance budget?
-   ├─ Must be fast / low bandwidth → Minimal Editorial (zero JS, system fonts)
-   ├─ Standard web app → Friendly SaaS or Dark Premium (CSS-only techniques)
-   └─ Showcase / portfolio (performance secondary) → Immersive (WebGL, heavy animation)
+## Sources
 ```
 
-## Related Templates
+Not every section is required, but **Concrete Rules** and **CSS/Implementation Patterns** are mandatory — every file must have actionable specifics.
 
-Each design approach has dedicated presets in `docs/presets/` with clean, minimalist, and playful personality variants:
+## Maintenance Rules
+- **One file per focused topic** — don't merge topics; create new files instead
+- **Flat folders** (max 1 level deep) — no nested subdirectories within topic folders (exception: `docs/presets/` contains per-preset directories with framework variants)
+- **Concrete numbers over vague principles** — "4.5:1 contrast ratio" not "ensure sufficient contrast"
+- **Markdown only** — no JSON/YAML data files unless tooling specifically requires it
+- **research/ is gitignored** — only `research/sources.md` (bibliography) is committed
+- **Update `research/sources.md`** when adding new sources to any file
+- **Update `README.md`** index when adding new knowledge files
+- **Cross-reference related files** using relative links: `[topic](../folder/file.md)`
+- **Every preset in `docs/presets/` needs:** consistent design tokens (blue-600 primary default, slate neutrals), dark mode support, responsive design, and an entry in `docs/presets/index.json`. Personality variants use different color palettes appropriate to their personality (rose for playful, indigo for editorial, etc.)
 
-| Design Approach | Template Preset | Primary Color |
-|---|---|---|
-| Dark Premium / Developer | [`devtool-landing/`](../docs/presets/devtool-landing/) | cyan |
-| Minimal Editorial | [`editorial-blog/`](../docs/presets/editorial-blog/) | slate |
-| Friendly SaaS / Bento | [`saas-features/`](../docs/presets/saas-features/) | violet |
-| Immersive / Scroll-Storytelling | [`scroll-story/`](../docs/presets/scroll-story/) | emerald |
-| Bold Creative / Agency | [`agency-landing/`](../docs/presets/agency-landing/) | blue |
-| E-commerce / Product-Focused | [`product-page/`](../docs/presets/product-page/) | sky |
-| Documentation | [`docs-site/`](../docs/presets/docs-site/) | indigo |
-| Event / Conference | [`event-page/`](../docs/presets/event-page/) | amber |
-| Personal / Portfolio | [`personal-hero/`](../docs/presets/personal-hero/), [`jdeworks-personal/`](../docs/presets/jdeworks-personal/) | blue, violet |
-| Product Launch | [`product-launch/`](../docs/presets/product-launch/) | indigo |
+## Design Consultation Workflow
+- **`CONSULT.md`** is the LLM consultation playbook — read it to run an interactive design consultation
+- **Step 0 in CONSULT.md classifies the input** — existing code (any framework), screenshot, vague idea, or raw data — and routes to the right workflow
+- **Match the user's tech stack** — don't output Tailwind HTML to someone using React + styled-components. Detect the framework and output code in their format
+- **Always generate Design Review Notes** (Step 4 in CONSULT.md) — a structured markdown document with issues found, design decisions, tokens, and an implementation checklist. This is the primary deliverable
+- **`docs/index.html`** is a live preview tool (GitHub Pages) — paste HTML + Tailwind to preview designs. Includes before/after examples in the Templates menu.
 
-## Sources & Inspiration
-
-### Design Galleries
-- [Awwwards](https://www.awwwards.com/) — curated award-winning web design, searchable by category
-- [Muzli](https://muz.li/) — design inspiration feed, portfolio roundups
-- [Godly](https://godly.website/) — curated web design inspiration
-
-### Inspiration by Approach
-The CSS techniques in this file are generic patterns found across modern web design. For reference, sites known for excelling at each approach:
-- **Dark Premium:** Stripe, Linear, Vercel, Arc Browser — gradient meshes, glow effects, monospace type
-- **Minimal Editorial:** Rauno Freiberg, Lee Robinson, Apple — system fonts, extreme whitespace, content-first
-- **Friendly SaaS:** Notion, Slack, Mailchimp — illustrations, bento grids, conversational tone
-- **Immersive:** Awwwards SOTD winners, creative portfolios — WebGL, custom cursors, scroll-driven reveals
-- **Bold Creative:** Agency portfolios on Awwwards — oversized type, clip-paths, mix-blend-mode
-- **Product-Focused:** Apple product pages, Aesop — full-bleed imagery, scroll-driven specs
-
-### Tools
-- [Fontshare](https://www.fontshare.com/) — Clash Display, Satoshi, General Sans (free)
-- [Google Fonts](https://fonts.google.com/) — all listed font pairings
-- [Picsum Photos](https://picsum.photos/) — placeholder image API
-- [Placehold.co](https://placehold.co/) — labeled placeholder images
-- [Unsplash](https://unsplash.com/) — free photography (attribution appreciated)
+## Directory Structure
+- `foundations/` — Cognitive/psychological principles (Gestalt, Hick's Law, Fitts's Law, etc.)
+- `color/` — Color theory, accessibility, psychology, color-blind safety
+- `typography/` — Type scales, font pairing, readability, web font loading
+- `layout/` — Spacing systems, visual hierarchy, grids, whitespace
+- `interaction/` — Animation timing, micro-interactions, touch targets, loading states
+- `responsive/` — Mobile-first, breakpoints, fluid typography, responsive patterns
+- `systems/` — Design tokens, Material Design 3, Apple HIG, building a system
+- `expressive/` — Visual identity, hero patterns, scroll storytelling, purposeful motion
+- `heuristics/` — Nielsen's 10 heuristics, UX frameworks
+- `components/` — Concrete component patterns (buttons, forms, cards, etc.)
+- `docs/presets/` — Copy-paste-ready HTML+Tailwind presets with personality variants (see `docs/presets/_index.md`)
+  - Each preset dir has `clean.html`, `minimalist.html`, `playful.html` (and optionally `react.jsx`, `vue.vue`, `svelte.svelte`)
+- `workflows/` — Cross-cutting decision guides and checklists
+- `research/` — Raw research data (gitignored except sources.md)
 </file>
 
 <file path="docs/analyzer.html">
@@ -17886,7 +17952,9 @@ The CSS techniques in this file are generic patterns found across modern web des
         </div>
         <div class="guide-step">
           <div class="guide-step-num">2</div>
-          <div>Open browser DevTools with <code>F12</code> and go to the <strong>Console</strong> tab</div>
+          <div>Open browser DevTools with <code>F12</code> and go to the <strong>Console</strong> tab.
+            <span style="display:block;font-size:12px;color:var(--text-secondary);margin-top:4px">Tip: undock DevTools into a separate window (click <code>⋮</code> → dock side → <strong>undock</strong>) so the page viewport stays at its real size. Docked DevTools shrink the page, which can skew layout and touch-target measurements.</span>
+          </div>
         </div>
         <div class="guide-step">
           <div class="guide-step-num">3</div>
@@ -18000,72 +18068,6 @@ The CSS techniques in this file are generic patterns found across modern web des
   <script src="analyzer.js"></script>
 </body>
 </html>
-</file>
-
-<file path="CLAUDE.md">
-# CLAUDE.md — make-it-look-good
-
-## Quick Start
-- **Design consultation** → Read `CONSULT.md` and follow the steps
-- **Need a component** → Read `docs/presets/_index.md` for presets and composition recipes
-- **Quick number lookup** → Read `workflows/quick-reference.md`
-- **Read only what's needed** — each knowledge file is self-contained (~200-400 lines)
-
-## Purpose
-This repo is a **design knowledge base for LLMs**. When an LLM needs to make UI/UX decisions, it reads files from this repo to get concrete, evidence-based guidance with hard numbers.
-
-## CSS Framework
-All presets and examples use **[Tailwind CSS](https://tailwindcss.com)** as the default styling framework. When the user's stack is unknown, output Tailwind classes. For the preview tool, Tailwind v4 is loaded via CDN (`@tailwindcss/browser@4`). Match the user's stack if they use something else — see CONSULT.md Step 0.
-
-## File Format Convention
-Every knowledge file follows this template:
-
-```
-# {Topic Title}
-> **TL;DR:** {2-3 sentence actionable summary}
-## Core Principles
-## Concrete Rules
-## CSS/Implementation Patterns
-## Common Mistakes
-## Decision Tree
-## Sources
-```
-
-Not every section is required, but **Concrete Rules** and **CSS/Implementation Patterns** are mandatory — every file must have actionable specifics.
-
-## Maintenance Rules
-- **One file per focused topic** — don't merge topics; create new files instead
-- **Flat folders** (max 1 level deep) — no nested subdirectories within topic folders (exception: `docs/presets/` contains per-preset directories with framework variants)
-- **Concrete numbers over vague principles** — "4.5:1 contrast ratio" not "ensure sufficient contrast"
-- **Markdown only** — no JSON/YAML data files unless tooling specifically requires it
-- **research/ is gitignored** — only `research/sources.md` (bibliography) is committed
-- **Update `research/sources.md`** when adding new sources to any file
-- **Update `README.md`** index when adding new knowledge files
-- **Cross-reference related files** using relative links: `[topic](../folder/file.md)`
-- **Every preset in `docs/presets/` needs:** consistent design tokens (blue-600 primary default, slate neutrals), dark mode support, responsive design, and an entry in `docs/presets/index.json`. Personality variants use different color palettes appropriate to their personality (rose for playful, indigo for editorial, etc.)
-
-## Design Consultation Workflow
-- **`CONSULT.md`** is the LLM consultation playbook — read it to run an interactive design consultation
-- **Step 0 in CONSULT.md classifies the input** — existing code (any framework), screenshot, vague idea, or raw data — and routes to the right workflow
-- **Match the user's tech stack** — don't output Tailwind HTML to someone using React + styled-components. Detect the framework and output code in their format
-- **Always generate Design Review Notes** (Step 4 in CONSULT.md) — a structured markdown document with issues found, design decisions, tokens, and an implementation checklist. This is the primary deliverable
-- **`docs/index.html`** is a live preview tool (GitHub Pages) — paste HTML + Tailwind to preview designs. Includes before/after examples in the Templates menu.
-
-## Directory Structure
-- `foundations/` — Cognitive/psychological principles (Gestalt, Hick's Law, Fitts's Law, etc.)
-- `color/` — Color theory, accessibility, psychology, color-blind safety
-- `typography/` — Type scales, font pairing, readability, web font loading
-- `layout/` — Spacing systems, visual hierarchy, grids, whitespace
-- `interaction/` — Animation timing, micro-interactions, touch targets, loading states
-- `responsive/` — Mobile-first, breakpoints, fluid typography, responsive patterns
-- `systems/` — Design tokens, Material Design 3, Apple HIG, building a system
-- `expressive/` — Visual identity, hero patterns, scroll storytelling, purposeful motion
-- `heuristics/` — Nielsen's 10 heuristics, UX frameworks
-- `components/` — Concrete component patterns (buttons, forms, cards, etc.)
-- `docs/presets/` — Copy-paste-ready HTML+Tailwind presets with personality variants (see `docs/presets/_index.md`)
-  - Each preset dir has `clean.html`, `minimalist.html`, `playful.html` (and optionally `react.jsx`, `vue.vue`, `svelte.svelte`)
-- `workflows/` — Cross-cutting decision guides and checklists
-- `research/` — Raw research data (gitignored except sources.md)
 </file>
 
 <file path="docs/presets/index.json">
