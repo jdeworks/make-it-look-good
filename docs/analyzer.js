@@ -181,7 +181,7 @@
       var fontWeight = parseInt(style.fontWeight) || 400;
       var isLarge = fontSize >= 24 || (fontSize >= 18.66 && fontWeight >= 700);
       var threshold = isLarge ? 3 : 4.5;
-      if (ratio < threshold + 1) {
+      if (ratio < 7.5) {
         contrastPairs.push({ fg: rgbStr(fgBlended), bg: rgbStr(bg), ratio: Math.round(ratio * 100) / 100, needed: threshold, passes: ratio >= threshold, fontSize: Math.round(fontSize), fontWeight: fontWeight, isLarge: isLarge, text: node.textContent.trim().substring(0, 50), selector: cssSelector(el) });
       }
       var elWidth = el.getBoundingClientRect().width;
@@ -483,6 +483,89 @@
     return { w: parseInt(parts[0]) || 1280, h: parseInt(parts[1]) || 900 };
   }
 
+  function detectExclusionPatterns(data) {
+    // Analyze extracted data for patterns that suggest decorative/non-functional elements
+    var patterns = [];
+    var pairs = data.colors.contrastPairs || [];
+
+    // Pattern: clusters of 1:1 contrast (unparseable backgrounds)
+    var uncertainCount = pairs.filter(function(p) { return p.ratio <= 1.01 && p.fg === p.bg; }).length;
+    if (uncertainCount >= 3) {
+      patterns.push({ label: 'Undetermined backgrounds (' + uncertainCount + ' elements)', selector: '', type: 'uncertain', count: uncertainCount });
+    }
+
+    // Pattern: elements with mock/demo/preview in class names
+    var contrastSelectors = pairs.map(function(p) { return p.selector || ''; });
+    var touchSelectors = (data.interaction.touchTargets || []).map(function(t) { return t.selector || ''; });
+    var allSelectors = contrastSelectors.concat(touchSelectors);
+    var mockCount = allSelectors.filter(function(s) { return /mock|demo|preview|screenshot/i.test(s); }).length;
+    if (mockCount >= 2) {
+      patterns.push({ label: 'Mock/demo UI (' + mockCount + ' elements)', selector: "[class*='mock'], .demo, .preview, .screenshot", type: 'mock', count: mockCount });
+    }
+
+    // Pattern: footer links flagged for touch targets
+    var footerTargets = (data.interaction.touchTargets || []).filter(function(t) { return /footer/i.test(t.selector || ''); }).length;
+    if (footerTargets >= 3) {
+      patterns.push({ label: 'Footer links (' + footerTargets + ' touch targets)', selector: 'footer', type: 'footer', count: footerTargets });
+    }
+
+    return patterns;
+  }
+
+  function renderExclusionSuggestions(patterns) {
+    if (patterns.length === 0) return '';
+    var html = '<div class="exclusion-suggestions" id="exclusionSuggestions">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+    html += '<strong style="font-size:13px">Detected patterns you might want to exclude:</strong>';
+    html += '<button onclick="document.getElementById(\'exclusionSuggestions\').style.display=\'none\'" style="background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:16px">&times;</button>';
+    html += '</div>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">';
+    patterns.forEach(function(p) {
+      html += '<button type="button" class="exclude-tag" data-selector="' + p.selector.replace(/"/g, '&quot;') + '" data-type="' + p.type + '" onclick="window.__milgToggleExclude(this)">' + p.label + '</button>';
+    });
+    html += '</div>';
+    html += '<button class="btn btn-primary" style="font-size:12px;padding:6px 14px;min-height:36px" onclick="window.__milgRerunWithExcludes()">Re-score with exclusions</button>';
+    html += '</div>';
+    return html;
+  }
+
+  // Global handlers for exclusion suggestion buttons
+  window.__milgToggleExclude = function(btn) { btn.classList.toggle('active'); };
+  window.__milgRerunWithExcludes = function() {
+    if (!lastRawData) return;
+    var active = document.querySelectorAll('#exclusionSuggestions .exclude-tag.active');
+    var selectors = [];
+    active.forEach(function(btn) { if (btn.dataset.selector) selectors.push(btn.dataset.selector); });
+    if (selectors.length === 0) { showToast('Select patterns to exclude first'); return; }
+    // Store exclude selector and re-run via iframe if URL mode, or re-score if snippet
+    // For now, mark matched contrast pairs as excluded and re-score
+    var exclude = selectors.join(', ');
+    // Re-filter contrast pairs by checking selectors
+    var filtered = JSON.parse(JSON.stringify(lastRawData));
+    filtered.colors.contrastPairs = filtered.colors.contrastPairs.filter(function(p) {
+      // Remove pairs matching excluded types
+      var sel = p.selector || '';
+      for (var i = 0; i < active.length; i++) {
+        var type = active[i].dataset.type;
+        if (type === 'uncertain' && p.ratio <= 1.01 && p.fg === p.bg) return false;
+        if (type === 'mock' && /mock|demo|preview|screenshot/i.test(sel)) return false;
+        if (type === 'footer' && /footer/i.test(sel)) return false;
+      }
+      return true;
+    });
+    filtered.interaction.touchTargets = filtered.interaction.touchTargets.filter(function(t) {
+      var sel = t.selector || '';
+      for (var i = 0; i < active.length; i++) {
+        var type = active[i].dataset.type;
+        if (type === 'mock' && /mock|demo|preview|screenshot/i.test(sel)) return false;
+        if (type === 'footer' && /footer/i.test(sel)) return false;
+      }
+      return true;
+    });
+    runAnalysis(filtered);
+    showToast('Re-scored with ' + active.length + ' exclusion(s)');
+  };
+
   function runAnalysis(data) {
     lastRawData = data;
     // Apply selected profile
@@ -492,7 +575,11 @@
     var reportContainer = document.getElementById('reportContainer');
     var inputSection = document.getElementById('inputSection');
 
-    reportContainer.innerHTML = MilgReport.renderReport(reportData);
+    // Detect exclusion patterns and prepend suggestions
+    var patterns = detectExclusionPatterns(data);
+    var suggestionsHtml = renderExclusionSuggestions(patterns);
+
+    reportContainer.innerHTML = suggestionsHtml + MilgReport.renderReport(reportData);
     reportContainer.classList.add('visible');
     inputSection.style.display = 'none';
     document.getElementById('reportActions').style.display = 'flex';

@@ -1460,7 +1460,7 @@ const analyzePreviewScript = `
     var fontWeight = parseInt(style.fontWeight) || 400;
     var isLarge = fontSize >= 24 || (fontSize >= 18.66 && fontWeight >= 700);
     var threshold = isLarge ? 3 : 4.5;
-    if (ratio < threshold + 1) {
+    if (ratio < 7.5) {
       contrastPairs.push({ fg: rgbStr(fgB), bg: rgbStr(bg), ratio: Math.round(ratio * 100) / 100, needed: threshold, passes: ratio >= threshold, fontSize: Math.round(fontSize), fontWeight: fontWeight, isLarge: isLarge, text: node.textContent.trim().substring(0, 50), selector: cssSelector(el) });
     }
     var charWidth = fontSize * 0.5;

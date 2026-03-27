@@ -328,7 +328,8 @@
     var isLarge = fontSize >= 24 || (fontSize >= 18.66 && fontWeight >= 700);
     var threshold = isLarge ? 3 : 4.5;
 
-    if (ratio < threshold + 1) { // Collect near-misses too
+    // Collect all pairs up to AAA+buffer (7.5) so profile switching works
+    if (ratio < 7.5) {
       contrastPairs.push({
         fg: rgbStr(fgBlended), bg: rgbStr(bg),
         ratio: Math.round(ratio * 100) / 100,
