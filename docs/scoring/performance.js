@@ -1,0 +1,82 @@
+// Scoring Module: Performance
+// Weight: 5%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scorePerformance(data) {
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+  var perf = data.performance || {};
+
+  // Font loading
+  var fontIssues = perf.fontLoading || [];
+  if (fontIssues.length > 0) {
+    checks++;
+    findings.push({
+      severity: 'warning',
+      title: fontIssues.length + ' web font(s) without font-display: swap',
+      detail: 'Fonts with display:auto or display:block cause invisible text (FOIT) while loading',
+      fix: 'Add font-display: swap (or optional) to @font-face rules. This shows fallback text immediately.',
+      presetRef: null
+    });
+  } else {
+    checks++;
+    passed++;
+  }
+
+  // Render-blocking resources
+  var rb = perf.renderBlocking || {};
+  checks++;
+  var blockingCount = (rb.cssInHead || 0) + (rb.jsInHead || 0);
+  if (blockingCount <= 3) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: blockingCount + ' render-blocking resources in <head>',
+      detail: (rb.cssInHead || 0) + ' CSS files, ' + (rb.jsInHead || 0) + ' sync JS scripts',
+      fix: 'Defer non-critical CSS with media="print" onload hack. Add async/defer to scripts.',
+      presetRef: null
+    });
+  }
+
+  // DOM complexity
+  checks++;
+  var domSize = perf.domSize || 0;
+  if (domSize <= 1500) {
+    passed++;
+  } else {
+    findings.push({
+      severity: domSize > 3000 ? 'warning' : 'info',
+      title: domSize + ' DOM elements (' + (domSize > 3000 ? 'excessive' : 'large') + ')',
+      detail: 'Large DOMs slow rendering, increase memory, and hurt interaction responsiveness',
+      fix: 'Consider lazy loading sections, virtualizing long lists, or simplifying markup.',
+      presetRef: null
+    });
+  }
+
+  // DOM depth
+  checks++;
+  var depth = perf.domDepth || 0;
+  if (depth <= 32) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'info',
+      title: 'DOM nesting depth: ' + depth + ' levels (recommended: ≤32)',
+      detail: 'Deep nesting increases CSS selector matching time and layout complexity',
+      fix: 'Flatten nested containers where possible. Avoid wrapping divs that serve no purpose.',
+      presetRef: null
+    });
+  }
+
+  var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
+  return { score: score, findings: findings, weight: 5, label: 'Performance', icon: 'cognitive' };
+}
+
+
+  S.register("performance", scorePerformance, 5, "Performance", "cognitive");
+})();

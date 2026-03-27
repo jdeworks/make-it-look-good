@@ -1,0 +1,123 @@
+// Scoring Module: Accessibility
+// Weight: 15%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreAccessibility(data) {
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+  var a11y = data.accessibility;
+
+  // Semantic elements
+  checks++;
+  var semantic = a11y.semanticElements || {};
+  var hasMain = (semantic.main || 0) > 0;
+  var hasNav = (semantic.nav || 0) > 0;
+  var hasHeader = (semantic.header || 0) > 0;
+  var semanticCount = [hasMain, hasNav, hasHeader].filter(Boolean).length;
+  if (semanticCount >= 2) {
+    passed++;
+  } else {
+    findings.push({
+      severity: semanticCount === 0 ? 'error' : 'warning',
+      title: 'Missing semantic HTML elements',
+      detail: 'Found: ' + (hasHeader ? 'header ' : '') + (hasNav ? 'nav ' : '') + (hasMain ? 'main ' : '') + (semantic.footer ? 'footer' : ''),
+      fix: 'Use <header>, <nav>, <main>, <footer> for page structure. Screen readers rely on these landmarks.',
+      presetRef: 'All presets use semantic HTML landmarks'
+    });
+  }
+
+  // Heading hierarchy
+  checks++;
+  var headingOrder = a11y.headingHierarchy || [];
+  var hierarchyBroken = false;
+  for (var i = 1; i < headingOrder.length; i++) {
+    var prev = parseInt(headingOrder[i - 1].charAt(1));
+    var curr = parseInt(headingOrder[i].charAt(1));
+    if (curr > prev + 1) { hierarchyBroken = true; break; }
+  }
+  if (!hierarchyBroken) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'Heading hierarchy has gaps (e.g., h1 → h3)',
+      detail: 'Heading order: ' + headingOrder.join(' → '),
+      fix: 'Use headings in order: h1 → h2 → h3. Never skip levels. Style with classes instead of heading tags.',
+      presetRef: null
+    });
+  }
+
+  // Images with alt
+  checks++;
+  if (a11y.imagesWithoutAlt === 0) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'error',
+      title: a11y.imagesWithoutAlt + ' image(s) missing alt text',
+      detail: 'Screen readers cannot describe these images to users',
+      fix: 'Add alt="description" to all <img> tags. Use alt="" for decorative images.',
+      presetRef: null
+    });
+  }
+
+  // Image sizing (performance impact)
+  var imgIssues = (data.performance && data.performance.imageSizing) || [];
+  var noDimensions = imgIssues.filter(function(i) { return i.issues.indexOf('no-dimensions') !== -1; });
+  var lazyAbove = imgIssues.filter(function(i) { return i.issues.indexOf('lazy-above-fold') !== -1; });
+  var oversized = imgIssues.filter(function(i) { return i.issues.some(function(x) { return x.indexOf('oversized') === 0; }); });
+  if (noDimensions.length > 0) {
+    findings.push({ severity: 'warning', title: noDimensions.length + ' image(s) without explicit dimensions', detail: 'Missing width/height causes layout shift (CLS) when images load', fix: 'Add width and height attributes to all <img> tags, or use CSS aspect-ratio.', presetRef: null });
+  }
+  if (lazyAbove.length > 0) {
+    findings.push({ severity: 'error', title: lazyAbove.length + ' above-fold image(s) with lazy loading', detail: 'lazy loading on visible images delays LCP (Largest Contentful Paint)', fix: 'Remove loading="lazy" from images visible in the initial viewport. Use it only for below-fold images.', presetRef: null });
+  }
+  if (oversized.length > 0) {
+    findings.push({ severity: 'info', title: oversized.length + ' image(s) may be oversized for their display size', detail: 'Serving images much larger than their display size wastes bandwidth', fix: 'Resize images to 2x their display size (for retina). Use srcset for responsive images.', presetRef: null });
+  }
+
+  // Form labels
+  checks++;
+  var forms = a11y.formLabels || {};
+  if (forms.total === 0 || forms.withoutLabel === 0) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'error',
+      title: forms.withoutLabel + ' of ' + forms.total + ' form inputs missing labels',
+      detail: 'Unlabeled inputs are unusable for screen reader users',
+      fix: 'Use <label for="id"> or wrap the input in a <label>. Add aria-label for icon-only inputs.',
+      presetRef: 'Form presets always pair inputs with visible labels'
+    });
+  }
+
+  // Focus indicators
+  checks++;
+  var focusIndicators = a11y.focusIndicators || [];
+  var hasAnyFocus = focusIndicators.some(function(f) {
+    return f.outlineStyle !== 'none' && f.outlineWidth !== '0px';
+  });
+  var hasFocusVisibleCSS = a11y.hasFocusVisibleCSS || false;
+  if (hasAnyFocus || hasFocusVisibleCSS || focusIndicators.length === 0) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'error',
+      title: 'No visible focus indicators found',
+      detail: 'Keyboard users cannot see which element is focused',
+      fix: 'Ensure focus-visible styles exist. In Tailwind: focus-visible:ring-2 focus-visible:ring-blue-500',
+      presetRef: 'All interactive presets include focus-visible ring styles'
+    });
+  }
+
+  var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
+  return { score: score, findings: findings, weight: 15, label: 'Accessibility', icon: 'a11y' };
+}
+
+
+  S.register("accessibility", scoreAccessibility, 15, "Accessibility", "a11y");
+})();
