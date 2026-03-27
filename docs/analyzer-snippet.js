@@ -358,16 +358,38 @@
   // --- Output ---
   var json = JSON.stringify(data, null, 2);
 
-  // Try to copy to clipboard
+  // Copy to clipboard — multiple fallback strategies
+  function copyFallback() {
+    // Fallback 1: execCommand with temporary textarea
+    var ta = document.createElement('textarea');
+    ta.value = json;
+    ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      var ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      if (ok) {
+        console.log('%c✓ Design data copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+        return;
+      }
+    } catch(e) {
+      document.body.removeChild(ta);
+    }
+    // Fallback 2: log the full JSON to console so user can right-click → Copy string
+    console.log('%c⚠ Could not copy to clipboard automatically. Right-click the JSON below → "Copy string contents":', 'color: #b45309; font-weight: bold;');
+    console.log(json);
+    // Also store for easy access
+    console.log('%cOr type: copy(window.__milgData_json)', 'color: #64748b;');
+    window.__milgData_json = json;
+  }
+
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(json).then(function() {
       console.log('%c✓ Design data copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-    }).catch(function() {
-      // Fallback
-      prompt('Copy this JSON (Ctrl+A, Ctrl+C):', json);
-    });
+    }).catch(copyFallback);
   } else {
-    prompt('Copy this JSON (Ctrl+A, Ctrl+C):', json);
+    copyFallback();
   }
 
   console.log('%cmake-it-look-good extraction complete', 'color: #3b82f6; font-weight: bold;');
