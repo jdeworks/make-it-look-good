@@ -64,7 +64,9 @@ window.MilgReport = (function() {
     // --- Category cards ---
     html += '<div class="report-categories">';
     report.categories.forEach(function(cat) {
-      html += '<div class="report-card">';
+      var catId = 'findings-' + cat.icon;
+      var hasFindings = cat.findings.length > 0;
+      html += '<div class="report-card' + (hasFindings ? ' report-card-clickable' : '') + '"' + (hasFindings ? ' onclick="document.getElementById(\'' + catId + '\').scrollIntoView({behavior:\'smooth\',block:\'start\'})"' : '') + '>';
       html += '<div class="report-card-header">';
       html += '<div class="report-card-icon" style="color:' + scoreColor(cat.score) + '">' + (categoryIcons[cat.icon] || '') + '</div>';
       html += '<div class="report-card-title">';
@@ -101,7 +103,7 @@ window.MilgReport = (function() {
     report.categories.forEach(function(cat) {
       if (cat.findings.length === 0) return;
 
-      html += '<div class="report-finding-group">';
+      html += '<div class="report-finding-group" id="findings-' + cat.icon + '">';
       html += '<h3>' + (categoryIcons[cat.icon] || '') + ' ' + cat.label + '</h3>';
 
       cat.findings.forEach(function(f) {

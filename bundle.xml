@@ -12194,302 +12194,6 @@ Row separators?
 - [`card-grid/`](../docs/presets/card-grid/) — Responsive card grid (mobile-friendly table alternative)
 </file>
 
-<file path="docs/analyzer-report.js">
-// make-it-look-good — Report Renderers
-// HTML report, markdown export, gauge SVG, progress bars
-
-window.MilgReport = (function() {
-  "use strict";
-
-  // --- Report Rendering ---
-  var categoryIcons = {
-    contrast: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2v20"/><path d="M12 2a10 10 0 0 1 0 20"/></svg>',
-    type: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>',
-    spacing: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>',
-    touch: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 11V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v0"/><path d="M14 10V4a2 2 0 0 0-2-2 2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>',
-    a11y: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="4" r="2"/><path d="M6 8h12"/><path d="M12 8v8"/><path d="M9 20l3-4 3 4"/></svg>',
-    responsive: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>',
-    consistency: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l9 4.5v5c0 4.1-3.6 8-9 10.5-5.4-2.5-9-6.4-9-10.5v-5L12 3z"/></svg>',
-    cognitive: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a8 8 0 0 0-8 8c0 3.4 2.1 6.3 5 7.5V20h6v-2.5c2.9-1.2 5-4.1 5-7.5a8 8 0 0 0-8-8z"/><line x1="10" y1="22" x2="14" y2="22"/></svg>'
-  };
-
-  function scoreColor(score) {
-    if (score >= 90) return '#16a34a';
-    if (score >= 70) return '#ca8a04';
-    if (score >= 50) return '#ea580c';
-    return '#dc2626';
-  }
-
-  function gradeColor(grade) {
-    return { A: '#16a34a', B: '#65a30d', C: '#ca8a04', D: '#ea580c', F: '#dc2626' }[grade] || '#64748b';
-  }
-
-  function severityBadge(severity) {
-    var colors = {
-      error: 'background:#fef2f2;color:#dc2626;border:1px solid #fecaca',
-      warning: 'background:#fffbeb;color:#b45309;border:1px solid #fed7aa',
-      info: 'background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe'
-    };
-    return '<span style="display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;' + (colors[severity] || colors.info) + '">' + severity + '</span>';
-  }
-
-  function renderReport(report) {
-    var html = '';
-
-    // --- Header ---
-    html += '<div class="report-header">';
-    html += '<div class="report-header-info">';
-    html += '<h1>Design Analysis Report</h1>';
-    var reportUrl = report.meta.url || 'Pasted HTML';
-    if (/^https?:\/\//.test(reportUrl)) {
-      html += '<p class="report-url"><a href="' + escapeHtml(reportUrl) + '" target="_blank" rel="noopener" style="color:var(--primary);text-decoration:underline">' + escapeHtml(reportUrl) + '</a></p>';
-    } else {
-      html += '<p class="report-url">' + escapeHtml(reportUrl) + '</p>';
-    }
-    var ctxType = (report.raw.context && report.raw.context.pageType) || 'unknown';
-    var ctxLabel = { marketing: 'Marketing / Landing', pricing: 'Pricing Page', form: 'Form Page', app: 'Application', content: 'Content Page', component: 'Component / Snippet', unknown: 'General' }[ctxType] || ctxType;
-    html += '<p class="report-timestamp">' + new Date(report.meta.timestamp).toLocaleString() + ' &middot; ' + report.meta.viewportWidth + '&times;' + report.meta.viewportHeight + 'px &middot; Detected: ' + ctxLabel + '</p>';
-    html += '</div>';
-
-    // Overall score gauge
-    html += '<div class="report-gauge">';
-    html += renderGauge(report.overall, report.grade);
-    html += '<div class="report-grade-label">' + report.gradeLabel + '</div>';
-    html += '</div>';
-    html += '</div>';
-
-    // --- Category cards ---
-    html += '<div class="report-categories">';
-    report.categories.forEach(function(cat) {
-      html += '<div class="report-card">';
-      html += '<div class="report-card-header">';
-      html += '<div class="report-card-icon" style="color:' + scoreColor(cat.score) + '">' + (categoryIcons[cat.icon] || '') + '</div>';
-      html += '<div class="report-card-title">';
-      html += '<h3>' + cat.label + '</h3>';
-      html += '<span class="report-card-weight">' + cat.weight + '% weight</span>';
-      html += '</div>';
-      html += '<div class="report-card-score" style="color:' + scoreColor(cat.score) + '">' + cat.score + '</div>';
-      html += '</div>';
-      html += renderProgressBar(cat.score);
-
-      // Finding count
-      var errors = cat.findings.filter(function(f) { return f.severity === 'error'; }).length;
-      var warnings = cat.findings.filter(function(f) { return f.severity === 'warning'; }).length;
-      var infos = cat.findings.filter(function(f) { return f.severity === 'info'; }).length;
-
-      if (cat.findings.length > 0) {
-        html += '<div class="report-card-counts">';
-        if (errors > 0) html += '<span class="count-error">' + errors + ' error' + (errors > 1 ? 's' : '') + '</span>';
-        if (warnings > 0) html += '<span class="count-warning">' + warnings + ' warning' + (warnings > 1 ? 's' : '') + '</span>';
-        if (infos > 0) html += '<span class="count-info">' + infos + ' info</span>';
-        html += '</div>';
-      } else {
-        html += '<div class="report-card-counts"><span class="count-pass">All checks passed</span></div>';
-      }
-
-      html += '</div>';
-    });
-    html += '</div>';
-
-    // --- Detailed findings ---
-    html += '<div class="report-findings">';
-    html += '<h2>Detailed Findings</h2>';
-
-    report.categories.forEach(function(cat) {
-      if (cat.findings.length === 0) return;
-
-      html += '<div class="report-finding-group">';
-      html += '<h3>' + (categoryIcons[cat.icon] || '') + ' ' + cat.label + '</h3>';
-
-      cat.findings.forEach(function(f) {
-        html += '<div class="report-finding severity-' + f.severity + '">';
-        html += '<div class="finding-header">';
-        html += severityBadge(f.severity);
-        html += '<span class="finding-title">' + escapeHtml(f.title) + '</span>';
-        html += '</div>';
-        if (f.detail) html += '<p class="finding-detail">' + escapeHtml(f.detail) + '</p>';
-
-        html += '<div class="finding-fix">';
-        html += '<strong>Fix:</strong> ' + escapeHtml(f.fix);
-        html += '</div>';
-
-        if (f.presetRef) {
-          html += '<div class="finding-preset">';
-          html += '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> ';
-          html += escapeHtml(f.presetRef);
-          html += '</div>';
-        }
-
-        html += '</div>';
-      });
-
-      html += '</div>';
-    });
-
-    html += '</div>';
-
-    // --- Extracted data summary ---
-    html += '<div class="report-summary">';
-    html += '<h2>Design Token Summary</h2>';
-    html += '<div class="summary-grid">';
-
-    // Color palette
-    html += '<div class="summary-section">';
-    html += '<h4>Color Palette</h4>';
-    html += '<div class="color-swatches">';
-    var bgColors = (report.raw.colors.bgColors || []).slice(0, 8);
-    bgColors.forEach(function(c) {
-      html += '<div class="color-swatch" style="background:' + c.value + '" title="' + c.value + ' (' + c.count + ' uses)"></div>';
-    });
-    html += '</div>';
-    html += '<div class="color-swatches" style="margin-top:4px">';
-    var textColors = (report.raw.colors.textColors || []).slice(0, 8);
-    textColors.forEach(function(c) {
-      html += '<div class="color-swatch" style="background:' + c.value + '" title="' + c.value + ' (' + c.count + ' uses)"></div>';
-    });
-    html += '</div>';
-    html += '</div>';
-
-    // Typography
-    html += '<div class="summary-section">';
-    html += '<h4>Typography</h4>';
-    html += '<div class="summary-list">';
-    html += '<div>Body: ' + escapeHtml(report.raw.typography.bodyFontSize) + ' / ' + escapeHtml(report.raw.typography.bodyLineHeight) + '</div>';
-    html += '<div>Families: ' + escapeHtml((report.raw.typography.fontFamilies || []).join(', ')) + '</div>';
-    var headings = report.raw.typography.headings || [];
-    if (headings.length > 0) {
-      html += '<div>Headings: ' + headings.map(function(h) { return h.tag + '=' + h.fontSize; }).join(', ') + '</div>';
-    }
-    html += '</div>';
-    html += '</div>';
-
-    // Spacing
-    html += '<div class="summary-section">';
-    html += '<h4>Spacing</h4>';
-    html += '<div class="summary-list">';
-    html += '<div>Max content width: ' + escapeHtml(report.raw.spacing.maxContentWidth) + '</div>';
-    var topPaddings = (report.raw.spacing.paddings || []).slice(0, 5);
-    html += '<div>Common paddings: ' + topPaddings.map(function(p) { return p.value; }).join(', ') + '</div>';
-    html += '</div>';
-    html += '</div>';
-
-    // Structure
-    html += '<div class="summary-section">';
-    html += '<h4>Structure</h4>';
-    html += '<div class="summary-list">';
-    html += '<div>Elements: ' + report.raw.structure.totalElements + '</div>';
-    html += '<div>Framework: ' + report.raw.structure.cssFramework + '</div>';
-    html += '<div>Responsive: ' + (report.raw.structure.responsiveClasses ? 'Yes' : 'No') + '</div>';
-    html += '<div>Dark mode: ' + (report.raw.structure.darkModeClasses ? 'Yes' : 'No') + '</div>';
-    html += '</div>';
-    html += '</div>';
-
-    html += '</div>';
-    html += '</div>';
-
-    // --- Methodology note ---
-    html += '<div class="report-methodology">';
-    html += '<h2>About this Report</h2>';
-    html += '<p>This report checks <strong>computed styles</strong> against concrete, evidence-based rules from WCAG 2.2, Material Design, and typography research. ';
-    html += 'It does not use AI — every finding is a deterministic comparison of measured values against documented thresholds.</p>';
-    html += '<p><strong>What it catches well:</strong> contrast ratios, font sizes, touch targets, spacing grid adherence, semantic HTML, heading hierarchy — anything with a hard number.</p>';
-    html += '<p><strong>What it cannot judge:</strong> visual balance, color harmony, whether a layout "feels right", design personality, or context-dependent choices (e.g., a 14px caption is fine but 14px body text is not).</p>';
-    html += '<p>For a full design review with context-aware judgment, use this report as input for a <a href="index.html" style="color:var(--primary)">design consultation</a> — the findings give an AI or human reviewer concrete data to work from.</p>';
-    html += '</div>';
-
-    return html;
-  }
-
-  // --- Markdown Export ---
-  function renderMarkdown(report) {
-    var lines = [];
-    lines.push('# Design Analysis Report');
-    lines.push('');
-    lines.push('**URL:** ' + (report.meta.url || 'Pasted HTML'));
-    lines.push('**Date:** ' + new Date(report.meta.timestamp).toLocaleString());
-    lines.push('**Viewport:** ' + report.meta.viewportWidth + '×' + report.meta.viewportHeight + 'px');
-    lines.push('**Overall Score:** ' + report.overall + '/100 (' + report.grade + ' — ' + report.gradeLabel + ')');
-    lines.push('');
-
-    lines.push('## Category Scores');
-    lines.push('');
-    lines.push('| Category | Score | Weight | Issues |');
-    lines.push('|----------|-------|--------|--------|');
-    report.categories.forEach(function(cat) {
-      var errors = cat.findings.filter(function(f) { return f.severity === 'error'; }).length;
-      var warnings = cat.findings.filter(function(f) { return f.severity === 'warning'; }).length;
-      var issues = [];
-      if (errors > 0) issues.push(errors + ' error' + (errors > 1 ? 's' : ''));
-      if (warnings > 0) issues.push(warnings + ' warning' + (warnings > 1 ? 's' : ''));
-      lines.push('| ' + cat.label + ' | ' + cat.score + '/100 | ' + cat.weight + '% | ' + (issues.length > 0 ? issues.join(', ') : 'All passed') + ' |');
-    });
-    lines.push('');
-
-    lines.push('## Detailed Findings');
-    lines.push('');
-    report.categories.forEach(function(cat) {
-      if (cat.findings.length === 0) return;
-      lines.push('### ' + cat.label);
-      lines.push('');
-      cat.findings.forEach(function(f) {
-        var icon = f.severity === 'error' ? '❌' : f.severity === 'warning' ? '⚠️' : 'ℹ️';
-        lines.push('- ' + icon + ' **[' + f.severity + ']** ' + f.title);
-        if (f.detail) lines.push('  - ' + f.detail);
-        lines.push('  - **Fix:** ' + f.fix);
-        if (f.presetRef) lines.push('  - **Example:** ' + f.presetRef);
-        lines.push('');
-      });
-    });
-
-    lines.push('## Design Token Summary');
-    lines.push('');
-    lines.push('- **Body font:** ' + report.raw.typography.bodyFontSize + ' / ' + report.raw.typography.bodyLineHeight);
-    lines.push('- **Font families:** ' + (report.raw.typography.fontFamilies || []).join(', '));
-    var headings = report.raw.typography.headings || [];
-    if (headings.length > 0) {
-      lines.push('- **Headings:** ' + headings.map(function(h) { return h.tag + '=' + h.fontSize; }).join(', '));
-    }
-    lines.push('- **Max content width:** ' + report.raw.spacing.maxContentWidth);
-    lines.push('- **Elements:** ' + report.raw.structure.totalElements);
-    lines.push('- **Framework:** ' + report.raw.structure.cssFramework);
-    lines.push('- **Responsive:** ' + (report.raw.structure.responsiveClasses ? 'Yes' : 'No'));
-    lines.push('- **Dark mode:** ' + (report.raw.structure.darkModeClasses ? 'Yes' : 'No'));
-    lines.push('');
-
-    lines.push('---');
-    lines.push('*Generated by [make-it-look-good](https://github.com/jdeworks/make-it-look-good) Design Analyzer — rule-based scoring, no AI.*');
-
-    return lines.join('\n');
-  }
-
-  function renderGauge(score, grade) {
-    var color = gradeColor(grade);
-    var circumference = 2 * Math.PI * 54;
-    var offset = circumference - (score / 100) * circumference;
-    return '<svg width="120" height="120" viewBox="0 0 120 120">' +
-      '<circle cx="60" cy="60" r="54" fill="none" stroke="var(--border)" stroke-width="8"/>' +
-      '<circle cx="60" cy="60" r="54" fill="none" stroke="' + color + '" stroke-width="8" ' +
-      'stroke-dasharray="' + circumference + '" stroke-dashoffset="' + offset + '" ' +
-      'stroke-linecap="round" transform="rotate(-90 60 60)" style="transition:stroke-dashoffset 0.8s ease"/>' +
-      '<text x="60" y="55" text-anchor="middle" font-size="32" font-weight="700" fill="' + color + '">' + score + '</text>' +
-      '<text x="60" y="75" text-anchor="middle" font-size="14" font-weight="600" fill="' + color + '">' + grade + '</text>' +
-      '</svg>';
-  }
-
-  function renderProgressBar(score) {
-    var color = scoreColor(score);
-    return '<div class="progress-bar"><div class="progress-fill" style="width:' + score + '%;background:' + color + '"></div></div>';
-  }
-
-  function escapeHtml(str) {
-    if (!str) return '';
-    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  }
-
-  return { renderReport: renderReport, renderMarkdown: renderMarkdown };
-})();
-</file>
-
 <file path="docs/analyzer-scoring.js">
 // make-it-look-good — Scoring Engine
 // Pure functions: no DOM access, operates on extracted JSON data
@@ -14588,6 +14292,304 @@ All presets assume Tailwind CSS is available. Setup per framework:
 | Plain HTML (CDN) | `<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>` |
 
 For Tailwind v4, add `@import "tailwindcss"` to your main CSS file. No `tailwind.config.js` needed for default setup.
+</file>
+
+<file path="docs/analyzer-report.js">
+// make-it-look-good — Report Renderers
+// HTML report, markdown export, gauge SVG, progress bars
+
+window.MilgReport = (function() {
+  "use strict";
+
+  // --- Report Rendering ---
+  var categoryIcons = {
+    contrast: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2v20"/><path d="M12 2a10 10 0 0 1 0 20"/></svg>',
+    type: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>',
+    spacing: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>',
+    touch: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 11V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v0"/><path d="M14 10V4a2 2 0 0 0-2-2 2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>',
+    a11y: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="4" r="2"/><path d="M6 8h12"/><path d="M12 8v8"/><path d="M9 20l3-4 3 4"/></svg>',
+    responsive: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>',
+    consistency: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l9 4.5v5c0 4.1-3.6 8-9 10.5-5.4-2.5-9-6.4-9-10.5v-5L12 3z"/></svg>',
+    cognitive: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a8 8 0 0 0-8 8c0 3.4 2.1 6.3 5 7.5V20h6v-2.5c2.9-1.2 5-4.1 5-7.5a8 8 0 0 0-8-8z"/><line x1="10" y1="22" x2="14" y2="22"/></svg>'
+  };
+
+  function scoreColor(score) {
+    if (score >= 90) return '#16a34a';
+    if (score >= 70) return '#ca8a04';
+    if (score >= 50) return '#ea580c';
+    return '#dc2626';
+  }
+
+  function gradeColor(grade) {
+    return { A: '#16a34a', B: '#65a30d', C: '#ca8a04', D: '#ea580c', F: '#dc2626' }[grade] || '#64748b';
+  }
+
+  function severityBadge(severity) {
+    var colors = {
+      error: 'background:#fef2f2;color:#dc2626;border:1px solid #fecaca',
+      warning: 'background:#fffbeb;color:#b45309;border:1px solid #fed7aa',
+      info: 'background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe'
+    };
+    return '<span style="display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;' + (colors[severity] || colors.info) + '">' + severity + '</span>';
+  }
+
+  function renderReport(report) {
+    var html = '';
+
+    // --- Header ---
+    html += '<div class="report-header">';
+    html += '<div class="report-header-info">';
+    html += '<h1>Design Analysis Report</h1>';
+    var reportUrl = report.meta.url || 'Pasted HTML';
+    if (/^https?:\/\//.test(reportUrl)) {
+      html += '<p class="report-url"><a href="' + escapeHtml(reportUrl) + '" target="_blank" rel="noopener" style="color:var(--primary);text-decoration:underline">' + escapeHtml(reportUrl) + '</a></p>';
+    } else {
+      html += '<p class="report-url">' + escapeHtml(reportUrl) + '</p>';
+    }
+    var ctxType = (report.raw.context && report.raw.context.pageType) || 'unknown';
+    var ctxLabel = { marketing: 'Marketing / Landing', pricing: 'Pricing Page', form: 'Form Page', app: 'Application', content: 'Content Page', component: 'Component / Snippet', unknown: 'General' }[ctxType] || ctxType;
+    html += '<p class="report-timestamp">' + new Date(report.meta.timestamp).toLocaleString() + ' &middot; ' + report.meta.viewportWidth + '&times;' + report.meta.viewportHeight + 'px &middot; Detected: ' + ctxLabel + '</p>';
+    html += '</div>';
+
+    // Overall score gauge
+    html += '<div class="report-gauge">';
+    html += renderGauge(report.overall, report.grade);
+    html += '<div class="report-grade-label">' + report.gradeLabel + '</div>';
+    html += '</div>';
+    html += '</div>';
+
+    // --- Category cards ---
+    html += '<div class="report-categories">';
+    report.categories.forEach(function(cat) {
+      var catId = 'findings-' + cat.icon;
+      var hasFindings = cat.findings.length > 0;
+      html += '<div class="report-card' + (hasFindings ? ' report-card-clickable' : '') + '"' + (hasFindings ? ' onclick="document.getElementById(\'' + catId + '\').scrollIntoView({behavior:\'smooth\',block:\'start\'})"' : '') + '>';
+      html += '<div class="report-card-header">';
+      html += '<div class="report-card-icon" style="color:' + scoreColor(cat.score) + '">' + (categoryIcons[cat.icon] || '') + '</div>';
+      html += '<div class="report-card-title">';
+      html += '<h3>' + cat.label + '</h3>';
+      html += '<span class="report-card-weight">' + cat.weight + '% weight</span>';
+      html += '</div>';
+      html += '<div class="report-card-score" style="color:' + scoreColor(cat.score) + '">' + cat.score + '</div>';
+      html += '</div>';
+      html += renderProgressBar(cat.score);
+
+      // Finding count
+      var errors = cat.findings.filter(function(f) { return f.severity === 'error'; }).length;
+      var warnings = cat.findings.filter(function(f) { return f.severity === 'warning'; }).length;
+      var infos = cat.findings.filter(function(f) { return f.severity === 'info'; }).length;
+
+      if (cat.findings.length > 0) {
+        html += '<div class="report-card-counts">';
+        if (errors > 0) html += '<span class="count-error">' + errors + ' error' + (errors > 1 ? 's' : '') + '</span>';
+        if (warnings > 0) html += '<span class="count-warning">' + warnings + ' warning' + (warnings > 1 ? 's' : '') + '</span>';
+        if (infos > 0) html += '<span class="count-info">' + infos + ' info</span>';
+        html += '</div>';
+      } else {
+        html += '<div class="report-card-counts"><span class="count-pass">All checks passed</span></div>';
+      }
+
+      html += '</div>';
+    });
+    html += '</div>';
+
+    // --- Detailed findings ---
+    html += '<div class="report-findings">';
+    html += '<h2>Detailed Findings</h2>';
+
+    report.categories.forEach(function(cat) {
+      if (cat.findings.length === 0) return;
+
+      html += '<div class="report-finding-group" id="findings-' + cat.icon + '">';
+      html += '<h3>' + (categoryIcons[cat.icon] || '') + ' ' + cat.label + '</h3>';
+
+      cat.findings.forEach(function(f) {
+        html += '<div class="report-finding severity-' + f.severity + '">';
+        html += '<div class="finding-header">';
+        html += severityBadge(f.severity);
+        html += '<span class="finding-title">' + escapeHtml(f.title) + '</span>';
+        html += '</div>';
+        if (f.detail) html += '<p class="finding-detail">' + escapeHtml(f.detail) + '</p>';
+
+        html += '<div class="finding-fix">';
+        html += '<strong>Fix:</strong> ' + escapeHtml(f.fix);
+        html += '</div>';
+
+        if (f.presetRef) {
+          html += '<div class="finding-preset">';
+          html += '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> ';
+          html += escapeHtml(f.presetRef);
+          html += '</div>';
+        }
+
+        html += '</div>';
+      });
+
+      html += '</div>';
+    });
+
+    html += '</div>';
+
+    // --- Extracted data summary ---
+    html += '<div class="report-summary">';
+    html += '<h2>Design Token Summary</h2>';
+    html += '<div class="summary-grid">';
+
+    // Color palette
+    html += '<div class="summary-section">';
+    html += '<h4>Color Palette</h4>';
+    html += '<div class="color-swatches">';
+    var bgColors = (report.raw.colors.bgColors || []).slice(0, 8);
+    bgColors.forEach(function(c) {
+      html += '<div class="color-swatch" style="background:' + c.value + '" title="' + c.value + ' (' + c.count + ' uses)"></div>';
+    });
+    html += '</div>';
+    html += '<div class="color-swatches" style="margin-top:4px">';
+    var textColors = (report.raw.colors.textColors || []).slice(0, 8);
+    textColors.forEach(function(c) {
+      html += '<div class="color-swatch" style="background:' + c.value + '" title="' + c.value + ' (' + c.count + ' uses)"></div>';
+    });
+    html += '</div>';
+    html += '</div>';
+
+    // Typography
+    html += '<div class="summary-section">';
+    html += '<h4>Typography</h4>';
+    html += '<div class="summary-list">';
+    html += '<div>Body: ' + escapeHtml(report.raw.typography.bodyFontSize) + ' / ' + escapeHtml(report.raw.typography.bodyLineHeight) + '</div>';
+    html += '<div>Families: ' + escapeHtml((report.raw.typography.fontFamilies || []).join(', ')) + '</div>';
+    var headings = report.raw.typography.headings || [];
+    if (headings.length > 0) {
+      html += '<div>Headings: ' + headings.map(function(h) { return h.tag + '=' + h.fontSize; }).join(', ') + '</div>';
+    }
+    html += '</div>';
+    html += '</div>';
+
+    // Spacing
+    html += '<div class="summary-section">';
+    html += '<h4>Spacing</h4>';
+    html += '<div class="summary-list">';
+    html += '<div>Max content width: ' + escapeHtml(report.raw.spacing.maxContentWidth) + '</div>';
+    var topPaddings = (report.raw.spacing.paddings || []).slice(0, 5);
+    html += '<div>Common paddings: ' + topPaddings.map(function(p) { return p.value; }).join(', ') + '</div>';
+    html += '</div>';
+    html += '</div>';
+
+    // Structure
+    html += '<div class="summary-section">';
+    html += '<h4>Structure</h4>';
+    html += '<div class="summary-list">';
+    html += '<div>Elements: ' + report.raw.structure.totalElements + '</div>';
+    html += '<div>Framework: ' + report.raw.structure.cssFramework + '</div>';
+    html += '<div>Responsive: ' + (report.raw.structure.responsiveClasses ? 'Yes' : 'No') + '</div>';
+    html += '<div>Dark mode: ' + (report.raw.structure.darkModeClasses ? 'Yes' : 'No') + '</div>';
+    html += '</div>';
+    html += '</div>';
+
+    html += '</div>';
+    html += '</div>';
+
+    // --- Methodology note ---
+    html += '<div class="report-methodology">';
+    html += '<h2>About this Report</h2>';
+    html += '<p>This report checks <strong>computed styles</strong> against concrete, evidence-based rules from WCAG 2.2, Material Design, and typography research. ';
+    html += 'It does not use AI — every finding is a deterministic comparison of measured values against documented thresholds.</p>';
+    html += '<p><strong>What it catches well:</strong> contrast ratios, font sizes, touch targets, spacing grid adherence, semantic HTML, heading hierarchy — anything with a hard number.</p>';
+    html += '<p><strong>What it cannot judge:</strong> visual balance, color harmony, whether a layout "feels right", design personality, or context-dependent choices (e.g., a 14px caption is fine but 14px body text is not).</p>';
+    html += '<p>For a full design review with context-aware judgment, use this report as input for a <a href="index.html" style="color:var(--primary)">design consultation</a> — the findings give an AI or human reviewer concrete data to work from.</p>';
+    html += '</div>';
+
+    return html;
+  }
+
+  // --- Markdown Export ---
+  function renderMarkdown(report) {
+    var lines = [];
+    lines.push('# Design Analysis Report');
+    lines.push('');
+    lines.push('**URL:** ' + (report.meta.url || 'Pasted HTML'));
+    lines.push('**Date:** ' + new Date(report.meta.timestamp).toLocaleString());
+    lines.push('**Viewport:** ' + report.meta.viewportWidth + '×' + report.meta.viewportHeight + 'px');
+    lines.push('**Overall Score:** ' + report.overall + '/100 (' + report.grade + ' — ' + report.gradeLabel + ')');
+    lines.push('');
+
+    lines.push('## Category Scores');
+    lines.push('');
+    lines.push('| Category | Score | Weight | Issues |');
+    lines.push('|----------|-------|--------|--------|');
+    report.categories.forEach(function(cat) {
+      var errors = cat.findings.filter(function(f) { return f.severity === 'error'; }).length;
+      var warnings = cat.findings.filter(function(f) { return f.severity === 'warning'; }).length;
+      var issues = [];
+      if (errors > 0) issues.push(errors + ' error' + (errors > 1 ? 's' : ''));
+      if (warnings > 0) issues.push(warnings + ' warning' + (warnings > 1 ? 's' : ''));
+      lines.push('| ' + cat.label + ' | ' + cat.score + '/100 | ' + cat.weight + '% | ' + (issues.length > 0 ? issues.join(', ') : 'All passed') + ' |');
+    });
+    lines.push('');
+
+    lines.push('## Detailed Findings');
+    lines.push('');
+    report.categories.forEach(function(cat) {
+      if (cat.findings.length === 0) return;
+      lines.push('### ' + cat.label);
+      lines.push('');
+      cat.findings.forEach(function(f) {
+        var icon = f.severity === 'error' ? '❌' : f.severity === 'warning' ? '⚠️' : 'ℹ️';
+        lines.push('- ' + icon + ' **[' + f.severity + ']** ' + f.title);
+        if (f.detail) lines.push('  - ' + f.detail);
+        lines.push('  - **Fix:** ' + f.fix);
+        if (f.presetRef) lines.push('  - **Example:** ' + f.presetRef);
+        lines.push('');
+      });
+    });
+
+    lines.push('## Design Token Summary');
+    lines.push('');
+    lines.push('- **Body font:** ' + report.raw.typography.bodyFontSize + ' / ' + report.raw.typography.bodyLineHeight);
+    lines.push('- **Font families:** ' + (report.raw.typography.fontFamilies || []).join(', '));
+    var headings = report.raw.typography.headings || [];
+    if (headings.length > 0) {
+      lines.push('- **Headings:** ' + headings.map(function(h) { return h.tag + '=' + h.fontSize; }).join(', '));
+    }
+    lines.push('- **Max content width:** ' + report.raw.spacing.maxContentWidth);
+    lines.push('- **Elements:** ' + report.raw.structure.totalElements);
+    lines.push('- **Framework:** ' + report.raw.structure.cssFramework);
+    lines.push('- **Responsive:** ' + (report.raw.structure.responsiveClasses ? 'Yes' : 'No'));
+    lines.push('- **Dark mode:** ' + (report.raw.structure.darkModeClasses ? 'Yes' : 'No'));
+    lines.push('');
+
+    lines.push('---');
+    lines.push('*Generated by [make-it-look-good](https://github.com/jdeworks/make-it-look-good) Design Analyzer — rule-based scoring, no AI.*');
+
+    return lines.join('\n');
+  }
+
+  function renderGauge(score, grade) {
+    var color = gradeColor(grade);
+    var circumference = 2 * Math.PI * 54;
+    var offset = circumference - (score / 100) * circumference;
+    return '<svg width="120" height="120" viewBox="0 0 120 120">' +
+      '<circle cx="60" cy="60" r="54" fill="none" stroke="var(--border)" stroke-width="8"/>' +
+      '<circle cx="60" cy="60" r="54" fill="none" stroke="' + color + '" stroke-width="8" ' +
+      'stroke-dasharray="' + circumference + '" stroke-dashoffset="' + offset + '" ' +
+      'stroke-linecap="round" transform="rotate(-90 60 60)" style="transition:stroke-dashoffset 0.8s ease"/>' +
+      '<text x="60" y="55" text-anchor="middle" font-size="32" font-weight="700" fill="' + color + '">' + score + '</text>' +
+      '<text x="60" y="75" text-anchor="middle" font-size="14" font-weight="600" fill="' + color + '">' + grade + '</text>' +
+      '</svg>';
+  }
+
+  function renderProgressBar(score) {
+    var color = scoreColor(score);
+    return '<div class="progress-bar"><div class="progress-fill" style="width:' + score + '%;background:' + color + '"></div></div>';
+  }
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  return { renderReport: renderReport, renderMarkdown: renderMarkdown };
+})();
 </file>
 
 <file path="expressive/hero-patterns.md">
@@ -17370,6 +17372,16 @@ Not every section is required, but **Concrete Rules** and **CSS/Implementation P
   margin-bottom: 2px;
 }
 
+.report-url a {
+  color: var(--primary);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.report-url a:hover {
+  color: var(--primary-hover);
+}
+
 .report-timestamp {
   font-size: 12px;
   color: var(--text-secondary);
@@ -17401,6 +17413,21 @@ Not every section is required, but **Concrete Rules** and **CSS/Implementation P
   border-radius: var(--radius);
   padding: 16px;
   box-shadow: var(--shadow);
+}
+
+.report-card-clickable {
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.report-card-clickable:hover {
+  border-color: var(--primary);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.12);
+}
+
+/* Scroll target offset for sticky headers */
+.report-finding-group {
+  scroll-margin-top: 24px;
 }
 
 .report-card-header {
@@ -17869,6 +17896,62 @@ Not every section is required, but **Concrete Rules** and **CSS/Implementation P
 </html>
 </file>
 
+<file path="docs/presets/index.json">
+{
+  "categories": [
+    { "label": "Layouts", "elements": ["shell-sidebar", "shell-marketing", "shell-dashboard", "shell-form"] },
+    { "label": "Components", "elements": ["hero", "stats-row", "data-table", "card-grid", "pricing-cards", "feature-grid", "tabs", "accordion", "pagination", "dropdown", "avatars"] },
+    { "label": "Before → After", "elements": ["dashboard", "landing", "form", "cards", "project"] },
+    { "label": "Full Pages", "elements": ["pricing", "portfolio", "restaurant", "statuspage"] },
+    { "label": "Expressive", "elements": ["personal-hero", "agency-landing", "agency-portfolio", "app-showcase", "scroll-reveal-landing", "product-launch", "editorial-blog", "saas-features", "scroll-story", "product-page", "devtool-landing", "docs-site", "event-page", "jdeworks-personal"] },
+    { "label": "Edge Cases", "elements": ["deploy", "buttons", "osslanding"] }
+  ],
+  "elements": {
+    "dashboard": { "label": "Dashboard", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "landing": { "label": "Landing Page", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
+    "form": { "label": "Form", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
+    "cards": { "label": "Card Grid", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "project": { "label": "Multi-Page App", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
+    "pricing": { "label": "SaaS Pricing", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "portfolio": { "label": "Portfolio (Dark)", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "restaurant": { "label": "Restaurant (Warm)", "personalities": { "clean": { "primaryColor": "amber" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "statuspage": { "label": "Status Page", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "deploy": { "label": "Deploy Monitor", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "buttons": { "label": "Button System", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "osslanding": { "label": "OSS Landing", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "shell-sidebar": { "label": "App Shell (Sidebar)", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "shell-marketing": { "label": "Marketing Page", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "shell-dashboard": { "label": "Dashboard Shell", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "shell-form": { "label": "Centered Form", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "hero": { "label": "Hero Section", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "stats-row": { "label": "Stats Row", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "data-table": { "label": "Data Table", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "card-grid": { "label": "Card Grid", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "pricing-cards": { "label": "Pricing Cards", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "feature-grid": { "label": "Feature Grid", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "tabs": { "label": "Tabs", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "accordion": { "label": "Accordion", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "pagination": { "label": "Pagination", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "dropdown": { "label": "Dropdown Menu", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "avatars": { "label": "Avatar Group", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "personal-hero": { "label": "Personal Site", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "agency-landing": { "label": "Agency Landing", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "product-launch": { "label": "Product Launch", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "editorial-blog": { "label": "Editorial Blog", "personalities": { "clean": { "primaryColor": "slate" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "saas-features": { "label": "SaaS Features", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "scroll-story": { "label": "Scroll Story", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "product-page": { "label": "Product Page", "personalities": { "clean": { "primaryColor": "sky" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "devtool-landing": { "label": "DevTool Landing", "personalities": { "clean": { "primaryColor": "cyan" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "docs-site": { "label": "Docs Site", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "event-page": { "label": "Event Page", "personalities": { "clean": { "primaryColor": "amber" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "jdeworks-personal": { "label": "JDE Personal", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "agency-portfolio": { "label": "Agency Portfolio", "personalities": { "clean": { "primaryColor": "teal" } } },
+    "app-showcase": { "label": "App Showcase", "personalities": { "clean": { "primaryColor": "orange" } } },
+    "scroll-reveal-landing": { "label": "Scroll Reveal Landing", "personalities": { "clean": { "primaryColor": "sky" } } }
+  }
+}
+</file>
+
 <file path="docs/analyzer.js">
 // make-it-look-good — Design Analyzer (UI + Extraction)
 // Depends on: analyzer-scoring.js (MilgScoring), analyzer-report.js (MilgReport)
@@ -18269,41 +18352,70 @@ Not every section is required, but **Concrete Rules** and **CSS/Implementation P
   }
 
   // --- URL Fetch via CORS proxy ---
-  function fetchViaProxy(url, callback) {
-    // Try direct fetch first (works for same-origin and CORS-enabled sites)
-    fetch(url, { mode: 'cors', redirect: 'follow' })
-      .then(function(r) {
-        if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
-        return r.text();
-      })
-      .then(function(html) { callback(html, null); })
+  function proxyUrl(url) {
+    return 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
+  }
+
+  function fetchWithProxy(url) {
+    return fetch(url, { mode: 'cors', redirect: 'follow' })
+      .then(function(r) { if (r.ok) return r.text(); throw new Error(r.status); })
       .catch(function() {
-        // Fallback: try CORS proxies
+        // Try proxies in order
         var proxies = [
           'https://corsproxy.io/?' + encodeURIComponent(url),
           'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url),
           'https://api.allorigins.win/raw?url=' + encodeURIComponent(url)
         ];
-        tryProxy(proxies, 0, callback);
+        return proxies.reduce(function(chain, purl) {
+          return chain.catch(function() {
+            return fetch(purl).then(function(r) {
+              if (!r.ok) throw new Error(r.status);
+              return r.text();
+            }).then(function(t) {
+              if (!t || t.length < 50) throw new Error('empty');
+              return t;
+            });
+          });
+        }, Promise.reject());
       });
   }
 
-  function tryProxy(proxies, idx, callback) {
-    if (idx >= proxies.length) {
-      callback(null, 'All CORS proxies failed. The site may block external access.');
-      return;
-    }
-    fetch(proxies[idx])
-      .then(function(r) {
-        if (!r.ok) throw new Error(r.status);
-        return r.text();
-      })
+  function fetchViaProxy(url, callback) {
+    fetchWithProxy(url)
       .then(function(html) {
-        if (!html || html.length < 100) throw new Error('Empty response');
-        callback(html, null);
+        // Resolve base URL for relative paths
+        var baseUrl;
+        try { var u = new URL(url); baseUrl = u.origin + u.pathname.replace(/\/[^/]*$/, '/'); } catch(e) { baseUrl = url; }
+
+        // Find and inline linked stylesheets so CSS works inside srcdoc iframe
+        var cssLinks = [];
+        var linkRegex = /<link[^>]+rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*>/gi;
+        var altRegex = /<link[^>]+href=["']([^"']+)["'][^>]*rel=["']stylesheet["'][^>]*>/gi;
+        var m;
+        while (m = linkRegex.exec(html)) cssLinks.push(m[1]);
+        while (m = altRegex.exec(html)) { if (cssLinks.indexOf(m[1]) === -1) cssLinks.push(m[1]); }
+
+        if (cssLinks.length === 0) { callback(html, null); return; }
+
+        // Fetch all CSS files and inline them
+        Promise.all(cssLinks.map(function(href) {
+          var cssUrl = href.startsWith('http') ? href : (href.startsWith('/') ? new URL(url).origin + href : baseUrl + href);
+          return fetchWithProxy(cssUrl).catch(function() { return '/* failed: ' + href + ' */'; });
+        })).then(function(cssTexts) {
+          // Remove original link tags and inject inlined styles
+          var processed = html.replace(/<link[^>]+rel=["']stylesheet["'][^>]*>/gi, '');
+          processed = processed.replace(/<link[^>]+href=["'][^"']+\.css[^"']*["'][^>]*rel=["']stylesheet["'][^>]*>/gi, '');
+          var styleBlock = '<style>' + cssTexts.join('\n') + '</style>';
+          if (/<\/head>/i.test(processed)) {
+            processed = processed.replace(/<\/head>/i, styleBlock + '</head>');
+          } else {
+            processed = styleBlock + processed;
+          }
+          callback(processed, null);
+        });
       })
-      .catch(function() {
-        tryProxy(proxies, idx + 1, callback);
+      .catch(function(e) {
+        callback(null, e.message || 'All CORS proxies failed');
       });
   }
 
@@ -18346,8 +18458,8 @@ Not every section is required, but **Concrete Rules** and **CSS/Implementation P
     if (sourceUrl) html = injectBaseTag(html, sourceUrl);
     var srcdoc;
     if (isFullDoc) {
-      // Full documents need more time for external resources to load
-      var extractScript = '<script>setTimeout(function(){(' + extractFromDocument.toString() + ')()}, 3000);</' + 'script>';
+      // Wait for window load (CSS/fonts loaded), then extra delay for rendering
+      var extractScript = '<script>window.addEventListener("load",function(){setTimeout(function(){(' + extractFromDocument.toString() + ')()},1000)});setTimeout(function(){(' + extractFromDocument.toString() + ')()},8000);</' + 'script>';
       if (/<\/body>/i.test(html)) {
         srcdoc = html.replace(/<\/body>/i, extractScript + '</body>');
       } else {
@@ -18408,62 +18520,6 @@ Not every section is required, but **Concrete Rules** and **CSS/Implementation P
     init();
   }
 })();
-</file>
-
-<file path="docs/presets/index.json">
-{
-  "categories": [
-    { "label": "Layouts", "elements": ["shell-sidebar", "shell-marketing", "shell-dashboard", "shell-form"] },
-    { "label": "Components", "elements": ["hero", "stats-row", "data-table", "card-grid", "pricing-cards", "feature-grid", "tabs", "accordion", "pagination", "dropdown", "avatars"] },
-    { "label": "Before → After", "elements": ["dashboard", "landing", "form", "cards", "project"] },
-    { "label": "Full Pages", "elements": ["pricing", "portfolio", "restaurant", "statuspage"] },
-    { "label": "Expressive", "elements": ["personal-hero", "agency-landing", "agency-portfolio", "app-showcase", "scroll-reveal-landing", "product-launch", "editorial-blog", "saas-features", "scroll-story", "product-page", "devtool-landing", "docs-site", "event-page", "jdeworks-personal"] },
-    { "label": "Edge Cases", "elements": ["deploy", "buttons", "osslanding"] }
-  ],
-  "elements": {
-    "dashboard": { "label": "Dashboard", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "landing": { "label": "Landing Page", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
-    "form": { "label": "Form", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
-    "cards": { "label": "Card Grid", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "project": { "label": "Multi-Page App", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
-    "pricing": { "label": "SaaS Pricing", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "portfolio": { "label": "Portfolio (Dark)", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "restaurant": { "label": "Restaurant (Warm)", "personalities": { "clean": { "primaryColor": "amber" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "statuspage": { "label": "Status Page", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "deploy": { "label": "Deploy Monitor", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "buttons": { "label": "Button System", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "osslanding": { "label": "OSS Landing", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "shell-sidebar": { "label": "App Shell (Sidebar)", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "shell-marketing": { "label": "Marketing Page", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "shell-dashboard": { "label": "Dashboard Shell", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "shell-form": { "label": "Centered Form", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "hero": { "label": "Hero Section", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "stats-row": { "label": "Stats Row", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "data-table": { "label": "Data Table", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "card-grid": { "label": "Card Grid", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "pricing-cards": { "label": "Pricing Cards", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "feature-grid": { "label": "Feature Grid", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "tabs": { "label": "Tabs", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "accordion": { "label": "Accordion", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "pagination": { "label": "Pagination", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "dropdown": { "label": "Dropdown Menu", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "avatars": { "label": "Avatar Group", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "personal-hero": { "label": "Personal Site", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "agency-landing": { "label": "Agency Landing", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "product-launch": { "label": "Product Launch", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "editorial-blog": { "label": "Editorial Blog", "personalities": { "clean": { "primaryColor": "slate" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "saas-features": { "label": "SaaS Features", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "scroll-story": { "label": "Scroll Story", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "product-page": { "label": "Product Page", "personalities": { "clean": { "primaryColor": "sky" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "devtool-landing": { "label": "DevTool Landing", "personalities": { "clean": { "primaryColor": "cyan" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "docs-site": { "label": "Docs Site", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "event-page": { "label": "Event Page", "personalities": { "clean": { "primaryColor": "amber" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "jdeworks-personal": { "label": "JDE Personal", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "agency-portfolio": { "label": "Agency Portfolio", "personalities": { "clean": { "primaryColor": "teal" } } },
-    "app-showcase": { "label": "App Showcase", "personalities": { "clean": { "primaryColor": "orange" } } },
-    "scroll-reveal-landing": { "label": "Scroll Reveal Landing", "personalities": { "clean": { "primaryColor": "sky" } } }
-  }
-}
 </file>
 
 <file path="CONSULT.md">

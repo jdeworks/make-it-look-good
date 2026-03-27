@@ -397,41 +397,70 @@
   }
 
   // --- URL Fetch via CORS proxy ---
-  function fetchViaProxy(url, callback) {
-    // Try direct fetch first (works for same-origin and CORS-enabled sites)
-    fetch(url, { mode: 'cors', redirect: 'follow' })
-      .then(function(r) {
-        if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
-        return r.text();
-      })
-      .then(function(html) { callback(html, null); })
+  function proxyUrl(url) {
+    return 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
+  }
+
+  function fetchWithProxy(url) {
+    return fetch(url, { mode: 'cors', redirect: 'follow' })
+      .then(function(r) { if (r.ok) return r.text(); throw new Error(r.status); })
       .catch(function() {
-        // Fallback: try CORS proxies
+        // Try proxies in order
         var proxies = [
           'https://corsproxy.io/?' + encodeURIComponent(url),
           'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url),
           'https://api.allorigins.win/raw?url=' + encodeURIComponent(url)
         ];
-        tryProxy(proxies, 0, callback);
+        return proxies.reduce(function(chain, purl) {
+          return chain.catch(function() {
+            return fetch(purl).then(function(r) {
+              if (!r.ok) throw new Error(r.status);
+              return r.text();
+            }).then(function(t) {
+              if (!t || t.length < 50) throw new Error('empty');
+              return t;
+            });
+          });
+        }, Promise.reject());
       });
   }
 
-  function tryProxy(proxies, idx, callback) {
-    if (idx >= proxies.length) {
-      callback(null, 'All CORS proxies failed. The site may block external access.');
-      return;
-    }
-    fetch(proxies[idx])
-      .then(function(r) {
-        if (!r.ok) throw new Error(r.status);
-        return r.text();
-      })
+  function fetchViaProxy(url, callback) {
+    fetchWithProxy(url)
       .then(function(html) {
-        if (!html || html.length < 100) throw new Error('Empty response');
-        callback(html, null);
+        // Resolve base URL for relative paths
+        var baseUrl;
+        try { var u = new URL(url); baseUrl = u.origin + u.pathname.replace(/\/[^/]*$/, '/'); } catch(e) { baseUrl = url; }
+
+        // Find and inline linked stylesheets so CSS works inside srcdoc iframe
+        var cssLinks = [];
+        var linkRegex = /<link[^>]+rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*>/gi;
+        var altRegex = /<link[^>]+href=["']([^"']+)["'][^>]*rel=["']stylesheet["'][^>]*>/gi;
+        var m;
+        while (m = linkRegex.exec(html)) cssLinks.push(m[1]);
+        while (m = altRegex.exec(html)) { if (cssLinks.indexOf(m[1]) === -1) cssLinks.push(m[1]); }
+
+        if (cssLinks.length === 0) { callback(html, null); return; }
+
+        // Fetch all CSS files and inline them
+        Promise.all(cssLinks.map(function(href) {
+          var cssUrl = href.startsWith('http') ? href : (href.startsWith('/') ? new URL(url).origin + href : baseUrl + href);
+          return fetchWithProxy(cssUrl).catch(function() { return '/* failed: ' + href + ' */'; });
+        })).then(function(cssTexts) {
+          // Remove original link tags and inject inlined styles
+          var processed = html.replace(/<link[^>]+rel=["']stylesheet["'][^>]*>/gi, '');
+          processed = processed.replace(/<link[^>]+href=["'][^"']+\.css[^"']*["'][^>]*rel=["']stylesheet["'][^>]*>/gi, '');
+          var styleBlock = '<style>' + cssTexts.join('\n') + '</style>';
+          if (/<\/head>/i.test(processed)) {
+            processed = processed.replace(/<\/head>/i, styleBlock + '</head>');
+          } else {
+            processed = styleBlock + processed;
+          }
+          callback(processed, null);
+        });
       })
-      .catch(function() {
-        tryProxy(proxies, idx + 1, callback);
+      .catch(function(e) {
+        callback(null, e.message || 'All CORS proxies failed');
       });
   }
 
@@ -474,8 +503,8 @@
     if (sourceUrl) html = injectBaseTag(html, sourceUrl);
     var srcdoc;
     if (isFullDoc) {
-      // Full documents need more time for external resources to load
-      var extractScript = '<script>setTimeout(function(){(' + extractFromDocument.toString() + ')()}, 3000);</' + 'script>';
+      // Wait for window load (CSS/fonts loaded), then extra delay for rendering
+      var extractScript = '<script>window.addEventListener("load",function(){setTimeout(function(){(' + extractFromDocument.toString() + ')()},1000)});setTimeout(function(){(' + extractFromDocument.toString() + ')()},8000);</' + 'script>';
       if (/<\/body>/i.test(html)) {
         srcdoc = html.replace(/<\/body>/i, extractScript + '</body>');
       } else {
