@@ -386,12 +386,18 @@
       if (lastRawData) runAnalysis(lastRawData);
     });
 
+    // Profile info toggle
+    document.getElementById('profileInfoBtn').addEventListener('click', function() {
+      var el = document.getElementById('profileExplanation');
+      el.style.display = el.style.display === 'none' ? 'block' : 'none';
+    });
+
     // New analysis
     newAnalysisBtn.addEventListener('click', function() {
       reportContainer.classList.remove('visible');
       reportContainer.innerHTML = '';
       inputSection.style.display = '';
-      document.getElementById('reportActions').style.display = 'none';
+      document.getElementById('reportActions').style.display = 'none'; document.getElementById('profileExplanation').style.display = 'none';
       pasteInput.value = '';
       htmlInput.value = '';
       urlInput.value = '';
@@ -467,6 +473,15 @@
   }
 
   var lastRawData = null; // Store raw data for re-scoring with different profiles
+
+  function getSelectedViewport() {
+    var sel = document.getElementById('viewportSelect');
+    if (!sel) return { w: 1280, h: 900 };
+    var val = sel.value;
+    if (val === 'current') return { w: window.innerWidth, h: window.innerHeight };
+    var parts = val.split('x');
+    return { w: parseInt(parts[0]) || 1280, h: parseInt(parts[1]) || 900 };
+  }
 
   function runAnalysis(data) {
     lastRawData = data;
@@ -569,7 +584,9 @@
 
   function analyzeHtmlInIframe(html, callback, sourceUrl, excludeSelector) {
     var iframe = document.createElement('iframe');
-    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
+    // Use viewport from selector or default
+    var vp = getSelectedViewport();
+    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + vp.w + 'px;height:' + vp.h + 'px;border:none;';
     iframe.sandbox = 'allow-scripts allow-same-origin';
     document.body.appendChild(iframe);
 
