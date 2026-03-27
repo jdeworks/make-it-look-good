@@ -733,6 +733,16 @@
     html += '</div>';
     html += '</div>';
 
+    // --- Methodology note ---
+    html += '<div class="report-methodology">';
+    html += '<h2>About this Report</h2>';
+    html += '<p>This report checks <strong>computed styles</strong> against concrete, evidence-based rules from WCAG 2.2, Material Design, and typography research. ';
+    html += 'It does not use AI — every finding is a deterministic comparison of measured values against documented thresholds.</p>';
+    html += '<p><strong>What it catches well:</strong> contrast ratios, font sizes, touch targets, spacing grid adherence, semantic HTML, heading hierarchy — anything with a hard number.</p>';
+    html += '<p><strong>What it cannot judge:</strong> visual balance, color harmony, whether a layout "feels right", design personality, or context-dependent choices (e.g., a 14px caption is fine but 14px body text is not).</p>';
+    html += '<p>For a full design review with context-aware judgment, use this report as input for a <a href="index.html" style="color:var(--primary)">design consultation</a> — the findings give an AI or human reviewer concrete data to work from.</p>';
+    html += '</div>';
+
     return html;
   }
 
