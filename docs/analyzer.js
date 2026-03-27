@@ -248,6 +248,36 @@
       });
     }
 
+    // Adjacent interactive element spacing (buttons/links too close together)
+    var adjacentIssues = (data.interaction && data.interaction.adjacentIssues) || [];
+    if (adjacentIssues.length > 0) {
+      checks++;
+      var touching = adjacentIssues.filter(function(a) { return a.gap < 2; });
+      var tooClose = adjacentIssues.filter(function(a) { return a.gap >= 2 && a.gap < 8; });
+
+      touching.forEach(function(a) {
+        findings.push({
+          severity: 'error',
+          title: 'Interactive elements touching (' + a.gap + 'px gap)',
+          detail: '"' + a.textA + '" and "' + a.textB + '" (' + a.direction + ')',
+          fix: 'Add at least 8px gap between interactive elements. In Tailwind: gap-2 on the parent flex/grid container.',
+          presetRef: 'Button presets use gap-2 (8px) or gap-3 (12px) between buttons'
+        });
+      });
+
+      tooClose.forEach(function(a) {
+        findings.push({
+          severity: 'warning',
+          title: 'Interactive elements only ' + a.gap + 'px apart (recommended: ≥8px)',
+          detail: '"' + a.textA + '" and "' + a.textB + '" (' + a.direction + ')',
+          fix: 'Increase gap to at least 8px to prevent mis-taps. In Tailwind: gap-2 on the parent.',
+          presetRef: null
+        });
+      });
+
+      if (touching.length === 0 && tooClose.length === 0) passed++;
+    }
+
     var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
     return { score: score, findings: findings, weight: 15, label: 'Spacing & Layout', icon: 'spacing' };
   }
@@ -256,15 +286,55 @@
     var findings = [];
     var targets = data.interaction.touchTargets || [];
 
+    // Viewport-aware thresholds:
+    // Desktop (>= 1024px): 24×24px minimum click target (WCAG), warn < 32px
+    // Touch/mobile (< 1024px): 44×44px minimum tap target (WCAG 2.5.8)
+    var vw = (data.meta && data.meta.viewportWidth) || 1280;
+    var isDesktop = vw >= 1024;
+    var minSize = isDesktop ? 24 : 44;
+    var warnSize = isDesktop ? 32 : 44;
+    var context = isDesktop ? 'desktop' : 'touch/mobile';
+    var issueCount = 0;
+
     targets.forEach(function(t) {
-      findings.push({
-        severity: 'error',
-        title: t.element + ' is ' + t.width + '×' + t.height + 'px (minimum: 44×44px)',
-        detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-        fix: 'Increase to 44×44px minimum. Add padding: min-h-[44px] min-w-[44px] or py-3 px-4',
-        presetRef: 'Button presets use py-3 px-6 (48px height)'
-      });
+      var w = t.width, h = t.height;
+      var minDim = Math.min(w, h);
+
+      if (minDim < minSize) {
+        issueCount++;
+        findings.push({
+          severity: 'error',
+          title: t.element + ' is ' + w + '×' + h + 'px (minimum for ' + context + ': ' + minSize + 'px)',
+          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+          fix: isDesktop
+            ? 'Desktop click targets need at least 24×24px. Increase padding or min-height/min-width.'
+            : 'Touch targets need 44×44px minimum. Add min-h-[44px] min-w-[44px] or py-3 px-4',
+          presetRef: isDesktop ? null : 'Button presets use py-3 px-6 (48px height)'
+        });
+      } else if (minDim < warnSize && isDesktop) {
+        findings.push({
+          severity: 'warning',
+          title: t.element + ' is ' + w + '×' + h + 'px (recommended for desktop: ≥32px)',
+          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+          fix: 'While 24px meets minimum, 32px+ improves click comfort. Consider adding padding.',
+          presetRef: null
+        });
+      }
     });
+
+    // Also flag targets that pass the current threshold but would fail on touch
+    if (isDesktop && targets.length > 0) {
+      var touchFails = targets.filter(function(t) { return Math.min(t.width, t.height) < 44; });
+      if (touchFails.length > 0) {
+        findings.push({
+          severity: 'info',
+          title: touchFails.length + ' element(s) below 44px touch target (analyzed at ' + vw + 'px desktop viewport)',
+          detail: 'These meet desktop minimums but would fail on touch devices. Consider responsive sizing if the site is also used on mobile.',
+          fix: 'For responsive touch support: add touch-target sizing at mobile breakpoints, e.g. sm:min-h-[44px]',
+          presetRef: null
+        });
+      }
+    }
 
     // Transitions / animation duration
     var transitions = data.interaction.transitions || [];
@@ -281,8 +351,10 @@
       }
     });
 
-    // Score: 100 if no touch target issues, deduct per issue
-    var score = Math.max(0, 100 - (targets.length * 8) - (findings.length - targets.length) * 5);
+    // Score: deduct per error, less per warning
+    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+    var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+    var score = Math.max(0, 100 - (errors * 10) - (warnings * 3));
     return { score: score, findings: findings, weight: 15, label: 'Touch & Interaction', icon: 'touch' };
   }
 
@@ -841,11 +913,21 @@
 
   // This runs inside an iframe to extract data — mirrors analyzer-snippet.js logic
   function extractFromDocument() {
+    var _parseCanvas = document.createElement('canvas');
+    _parseCanvas.width = 1; _parseCanvas.height = 1;
+    var _parseCtx = _parseCanvas.getContext('2d', { willReadFrequently: true });
     function parseColor(str) {
       if (!str || str === 'transparent' || str === 'rgba(0, 0, 0, 0)') return null;
       var m = str.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
-      if (!m) return null;
-      return { r: +m[1], g: +m[2], b: +m[3], a: m[4] !== undefined ? +m[4] : 1 };
+      if (m) return { r: +m[1], g: +m[2], b: +m[3], a: m[4] !== undefined ? +m[4] : 1 };
+      if (/\/\s*0\s*\)/.test(str)) return null;
+      _parseCtx.clearRect(0, 0, 1, 1);
+      _parseCtx.fillStyle = 'rgba(0,0,0,0)';
+      _parseCtx.fillStyle = str;
+      _parseCtx.fillRect(0, 0, 1, 1);
+      var d = _parseCtx.getImageData(0, 0, 1, 1).data;
+      if (d[3] === 0) return null;
+      return { r: d[0], g: d[1], b: d[2], a: Math.round(d[3] / 255 * 100) / 100 };
     }
     function blendOnWhite(c) {
       if (!c) return { r: 255, g: 255, b: 255 };

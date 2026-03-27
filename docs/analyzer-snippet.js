@@ -7,11 +7,26 @@
   'use strict';
 
   // --- Color utilities ---
+  // Canvas-based color parser: handles rgb, rgba, hsl, oklch, oklab, color() — anything the browser supports
+  var _parseCanvas = document.createElement('canvas');
+  _parseCanvas.width = 1; _parseCanvas.height = 1;
+  var _parseCtx = _parseCanvas.getContext('2d', { willReadFrequently: true });
+
   function parseColor(str) {
     if (!str || str === 'transparent' || str === 'rgba(0, 0, 0, 0)') return null;
+    // Fast path for rgb/rgba
     var m = str.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
-    if (!m) return null;
-    return { r: +m[1], g: +m[2], b: +m[3], a: m[4] !== undefined ? +m[4] : 1 };
+    if (m) return { r: +m[1], g: +m[2], b: +m[3], a: m[4] !== undefined ? +m[4] : 1 };
+    // Check for explicit zero alpha in any format
+    if (/\/\s*0\s*\)/.test(str)) return null;
+    // Canvas fallback for oklch, oklab, hsl, color(), etc.
+    _parseCtx.clearRect(0, 0, 1, 1);
+    _parseCtx.fillStyle = 'rgba(0,0,0,0)';
+    _parseCtx.fillStyle = str;
+    _parseCtx.fillRect(0, 0, 1, 1);
+    var d = _parseCtx.getImageData(0, 0, 1, 1).data;
+    if (d[3] === 0) return null;
+    return { r: d[0], g: d[1], b: d[2], a: Math.round(d[3] / 255 * 100) / 100 };
   }
 
   function blendOnWhite(c) {
@@ -305,6 +320,49 @@
   // Keep worst 40
   touchTargetIssues.sort(function(a, b) { return (a.width * a.height) - (b.width * b.height); });
   data.interaction.touchTargets = touchTargetIssues.slice(0, 40);
+
+  // Adjacent interactive element spacing
+  // Check actual pixel distance between neighboring buttons/links
+  var adjacentIssues = [];
+  var interactiveRects = [];
+  interactive.forEach(function(el) {
+    if (!isVisible(el)) return;
+    var rect = el.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
+    interactiveRects.push({ el: el, rect: rect });
+  });
+  for (var i = 0; i < interactiveRects.length && adjacentIssues.length < 20; i++) {
+    for (var j = i + 1; j < interactiveRects.length && adjacentIssues.length < 20; j++) {
+      var a = interactiveRects[i].rect;
+      var b = interactiveRects[j].rect;
+      // Only check elements that are visually near each other (within 2px)
+      var hGap = Math.max(0, Math.max(b.left - a.right, a.left - b.right));
+      var vGap = Math.max(0, Math.max(b.top - a.bottom, a.top - b.bottom));
+      // They must be on roughly the same row or column
+      var sameRow = a.top < b.bottom && b.top < a.bottom;
+      var sameCol = a.left < b.right && b.left < a.right;
+      if (sameRow && hGap < 8 && hGap >= 0) {
+        adjacentIssues.push({
+          gap: Math.round(hGap),
+          direction: 'horizontal',
+          elementA: cssSelector(interactiveRects[i].el),
+          elementB: cssSelector(interactiveRects[j].el),
+          textA: (interactiveRects[i].el.textContent || '').trim().substring(0, 30),
+          textB: (interactiveRects[j].el.textContent || '').trim().substring(0, 30)
+        });
+      } else if (sameCol && vGap < 8 && vGap >= 0) {
+        adjacentIssues.push({
+          gap: Math.round(vGap),
+          direction: 'vertical',
+          elementA: cssSelector(interactiveRects[i].el),
+          elementB: cssSelector(interactiveRects[j].el),
+          textA: (interactiveRects[i].el.textContent || '').trim().substring(0, 30),
+          textB: (interactiveRects[j].el.textContent || '').trim().substring(0, 30)
+        });
+      }
+    }
+  }
+  data.interaction.adjacentIssues = adjacentIssues;
 
   // Transitions
   var transitionSet = new Set();

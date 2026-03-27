@@ -1333,11 +1333,21 @@ function syncMobileToolbar() {
 
 const analyzePreviewScript = `
 (function() {
+  var _pc = document.createElement('canvas');
+  _pc.width = 1; _pc.height = 1;
+  var _px = _pc.getContext('2d', { willReadFrequently: true });
   function parseColor(str) {
     if (!str || str === 'transparent' || str === 'rgba(0, 0, 0, 0)') return null;
     var m = str.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)(?:,\\s*([\\d.]+))?\\)/);
-    if (!m) return null;
-    return { r: +m[1], g: +m[2], b: +m[3], a: m[4] !== undefined ? +m[4] : 1 };
+    if (m) return { r: +m[1], g: +m[2], b: +m[3], a: m[4] !== undefined ? +m[4] : 1 };
+    if (/\\/\\s*0\\s*\\)/.test(str)) return null;
+    _px.clearRect(0, 0, 1, 1);
+    _px.fillStyle = 'rgba(0,0,0,0)';
+    _px.fillStyle = str;
+    _px.fillRect(0, 0, 1, 1);
+    var d = _px.getImageData(0, 0, 1, 1).data;
+    if (d[3] === 0) return null;
+    return { r: d[0], g: d[1], b: d[2], a: Math.round(d[3] / 255 * 100) / 100 };
   }
   function blendOnWhite(c) {
     if (!c) return { r: 255, g: 255, b: 255 };
