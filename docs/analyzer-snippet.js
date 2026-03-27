@@ -13,12 +13,15 @@
   var _parseCtx = _parseCanvas.getContext('2d', { willReadFrequently: true });
 
   function parseColor(str) {
-    if (!str || str === 'transparent' || str === 'rgba(0, 0, 0, 0)') return null;
-    // Fast path for rgb/rgba
+    if (!str || str === 'transparent' || str === 'rgba(0, 0, 0, 0)' || str === 'rgba(0, 0, 0, 0)') return null;
+    // Fast path: comma-separated rgb(r, g, b) / rgba(r, g, b, a)
     var m = str.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
     if (m) return { r: +m[1], g: +m[2], b: +m[3], a: m[4] !== undefined ? +m[4] : 1 };
+    // Fast path: space-separated rgb(r g b) / rgb(r g b / a) (modern CSS)
+    var m2 = str.match(/rgba?\((\d+)\s+(\d+)\s+(\d+)(?:\s*\/\s*([\d.]+%?))?\)/);
+    if (m2) { var a = m2[4] !== undefined ? (m2[4].indexOf('%') !== -1 ? parseFloat(m2[4]) / 100 : +m2[4]) : 1; return { r: +m2[1], g: +m2[2], b: +m2[3], a: a }; }
     // Check for explicit zero alpha in any format
-    if (/\/\s*0\s*\)/.test(str)) return null;
+    if (/\/\s*0\s*[\)%]/.test(str)) return null;
     // Canvas fallback for oklch, oklab, hsl, color(), etc.
     _parseCtx.clearRect(0, 0, 1, 1);
     _parseCtx.fillStyle = 'rgba(0,0,0,0)';
@@ -123,11 +126,43 @@
     structure: {
       totalElements: 0, darkModeClasses: false, responsiveClasses: false,
       tailwindDetected: false, cssFramework: 'unknown'
-    }
+    },
+    context: { pageType: 'unknown', decorativeSelectors: [] }
   };
 
   var allElements = document.body.querySelectorAll('*');
   data.structure.totalElements = allElements.length;
+
+  // --- Page context detection ---
+  // Identify decorative/mock elements that shouldn't be scored
+  var decorativeSelector = '[aria-hidden="true"], [role="img"], [role="presentation"], .mock, .mock-ui, [class*="mock-"], .demo, .screenshot, .preview, [data-decorative]';
+  var decorativeEls = new Set();
+  document.querySelectorAll(decorativeSelector).forEach(function(el) {
+    decorativeEls.add(el);
+    el.querySelectorAll('*').forEach(function(child) { decorativeEls.add(child); });
+  });
+  // Also detect pointer-events:none containers (visual-only)
+  allElements.forEach(function(el) {
+    if (getComputedStyle(el).pointerEvents === 'none' && el.querySelectorAll('a,button,input').length > 0) {
+      decorativeEls.add(el);
+      el.querySelectorAll('*').forEach(function(child) { decorativeEls.add(child); });
+    }
+  });
+
+  function isDecorative(el) { return decorativeEls.has(el); }
+
+  // Page type heuristics
+  var hasHero = !!document.querySelector('.hero, [class*="hero"], section:first-of-type h1');
+  var hasPricing = !!document.querySelector('[class*="pricing"], [class*="price"], .plan, .tier');
+  var formCount = document.querySelectorAll('form').length;
+  var navLinks = document.querySelectorAll('nav a').length;
+  var sectionCount = document.querySelectorAll('section').length;
+  if (hasPricing) data.context.pageType = 'pricing';
+  else if (formCount > 0 && data.structure.totalElements < 80) data.context.pageType = 'form';
+  else if (hasHero && sectionCount >= 3) data.context.pageType = 'marketing';
+  else if (navLinks > 10) data.context.pageType = 'app';
+  else if (sectionCount >= 2) data.context.pageType = 'content';
+  else data.context.pageType = 'component';
 
   // Detect CSS framework
   var htmlStr = document.body.innerHTML;
@@ -170,7 +205,7 @@
   while (node = walker.nextNode()) {
     if (!node.textContent.trim()) continue;
     var el = node.parentElement;
-    if (!el || !isVisible(el)) continue;
+    if (!el || !isVisible(el) || isDecorative(el)) continue;
     if (seenForContrast.has(el)) continue;
     seenForContrast.add(el);
 
@@ -302,7 +337,7 @@
   var interactive = document.querySelectorAll('a, button, input, select, textarea, [role="button"], [tabindex]');
   var touchTargetIssues = [];
   interactive.forEach(function(el) {
-    if (!isVisible(el)) return;
+    if (!isVisible(el) || isDecorative(el)) return;
     var rect = el.getBoundingClientRect();
     var w = Math.round(rect.width);
     var h = Math.round(rect.height);
@@ -321,47 +356,44 @@
   touchTargetIssues.sort(function(a, b) { return (a.width * a.height) - (b.width * b.height); });
   data.interaction.touchTargets = touchTargetIssues.slice(0, 40);
 
-  // Adjacent interactive element spacing
-  // Check actual pixel distance between neighboring buttons/links
+  // Adjacent interactive element spacing — siblings only
+  // Group interactive elements by parent, then check gaps between adjacent siblings
   var adjacentIssues = [];
-  var interactiveRects = [];
+  var parentGroups = new Map();
   interactive.forEach(function(el) {
     if (!isVisible(el)) return;
+    // Skip decorative/mock elements
+    if (el.closest('[aria-hidden="true"]') || el.closest('[role="img"]') || el.closest('.mock, .mock-ui, [class*="mock-"]')) return;
+    if (el.hasAttribute('tabindex') && el.getAttribute('tabindex') === '-1') return;
     var rect = el.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return;
-    interactiveRects.push({ el: el, rect: rect });
+    var parent = el.parentElement;
+    if (!parent) return;
+    if (!parentGroups.has(parent)) parentGroups.set(parent, []);
+    parentGroups.get(parent).push({ el: el, rect: rect });
   });
-  for (var i = 0; i < interactiveRects.length && adjacentIssues.length < 20; i++) {
-    for (var j = i + 1; j < interactiveRects.length && adjacentIssues.length < 20; j++) {
-      var a = interactiveRects[i].rect;
-      var b = interactiveRects[j].rect;
-      // Only check elements that are visually near each other (within 2px)
-      var hGap = Math.max(0, Math.max(b.left - a.right, a.left - b.right));
-      var vGap = Math.max(0, Math.max(b.top - a.bottom, a.top - b.bottom));
-      // They must be on roughly the same row or column
+  parentGroups.forEach(function(children) {
+    if (children.length < 2) return;
+    // Sort by position (left-to-right, top-to-bottom)
+    children.sort(function(a, b) { return a.rect.left - b.rect.left || a.rect.top - b.rect.top; });
+    for (var i = 0; i < children.length - 1 && adjacentIssues.length < 15; i++) {
+      var a = children[i].rect;
+      var b = children[i + 1].rect;
       var sameRow = a.top < b.bottom && b.top < a.bottom;
       var sameCol = a.left < b.right && b.left < a.right;
-      if (sameRow && hGap < 8 && hGap >= 0) {
-        adjacentIssues.push({
-          gap: Math.round(hGap),
-          direction: 'horizontal',
-          elementA: cssSelector(interactiveRects[i].el),
-          elementB: cssSelector(interactiveRects[j].el),
-          textA: (interactiveRects[i].el.textContent || '').trim().substring(0, 30),
-          textB: (interactiveRects[j].el.textContent || '').trim().substring(0, 30)
-        });
-      } else if (sameCol && vGap < 8 && vGap >= 0) {
-        adjacentIssues.push({
-          gap: Math.round(vGap),
-          direction: 'vertical',
-          elementA: cssSelector(interactiveRects[i].el),
-          elementB: cssSelector(interactiveRects[j].el),
-          textA: (interactiveRects[i].el.textContent || '').trim().substring(0, 30),
-          textB: (interactiveRects[j].el.textContent || '').trim().substring(0, 30)
-        });
+      if (sameRow) {
+        var hGap = Math.round(Math.max(0, b.left - a.right));
+        if (hGap < 8) {
+          adjacentIssues.push({ gap: hGap, direction: 'horizontal', elementA: cssSelector(children[i].el), elementB: cssSelector(children[i + 1].el), textA: (children[i].el.textContent || '').trim().substring(0, 30), textB: (children[i + 1].el.textContent || '').trim().substring(0, 30) });
+        }
+      } else if (sameCol) {
+        var vGap = Math.round(Math.max(0, b.top - a.bottom));
+        if (vGap < 8) {
+          adjacentIssues.push({ gap: vGap, direction: 'vertical', elementA: cssSelector(children[i].el), elementB: cssSelector(children[i + 1].el), textA: (children[i].el.textContent || '').trim().substring(0, 30), textB: (children[i + 1].el.textContent || '').trim().substring(0, 30) });
+        }
       }
     }
-  }
+  });
   data.interaction.adjacentIssues = adjacentIssues;
 
   // Transitions
