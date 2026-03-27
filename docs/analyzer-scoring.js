@@ -32,7 +32,9 @@ window.MilgScoring = (function() {
   function scoreContrast(data) {
     var findings = [];
     var pairs = data.colors.contrastPairs || [];
-    var failures = pairs.filter(function(p) { return !p.passes; });
+    // Separate uncertain results (1:1 ratio usually means bg couldn't be determined — gradient, SVG, etc.)
+    var uncertain = pairs.filter(function(p) { return !p.passes && p.ratio <= 1.01 && p.fg === p.bg; });
+    var failures = pairs.filter(function(p) { return !p.passes && !(p.ratio <= 1.01 && p.fg === p.bg); });
     var nearMisses = pairs.filter(function(p) { return p.passes && p.ratio < p.needed + 0.5; });
 
     failures.forEach(function(p) {
@@ -47,6 +49,16 @@ window.MilgScoring = (function() {
       });
     });
 
+    if (uncertain.length > 0) {
+      findings.push({
+        severity: 'info',
+        title: uncertain.length + ' element(s) with undetermined contrast (background could not be resolved)',
+        detail: 'These elements may use gradients, images, SVGs, or complex CSS that the analyzer cannot parse. Check manually: ' + uncertain.slice(0, 3).map(function(p) { return '"' + p.text + '"'; }).join(', '),
+        fix: 'Verify these elements have sufficient contrast visually. The analyzer reports 1:1 when the effective background cannot be computed.',
+        presetRef: null
+      });
+    }
+
     nearMisses.forEach(function(p) {
       findings.push({
         severity: 'warning',
@@ -57,7 +69,8 @@ window.MilgScoring = (function() {
       });
     });
 
-    var total = pairs.length || 1;
+    // Don't count uncertain results as failures in the score
+    var total = (pairs.length - uncertain.length) || 1;
     var passing = total - failures.length;
     var score = Math.round((passing / total) * 100);
 

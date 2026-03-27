@@ -98,18 +98,18 @@
     data.structure.darkModeClasses = /class="[^"]*dark:/.test(htmlStr) || document.body.classList.contains('dark-ui') || document.body.classList.contains('dark-mode') || document.documentElement.classList.contains('dark') || Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r.cssText && r.cssText.indexOf('prefers-color-scheme') !== -1; }); } catch(e) { return false; } });
     data.structure.responsiveClasses = /class="[^"]*(?:sm:|md:|lg:|xl:)/.test(htmlStr) || Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r instanceof CSSMediaRule && /max-width|min-width/.test(r.conditionText || ''); }); } catch(e) { return false; } });
 
-    // Decorative element detection (mirrors snippet logic)
+    // Decorative element detection
     var decorativeEls = new Set();
-    document.querySelectorAll('[aria-hidden="true"], [role="img"], [role="presentation"], .mock, .mock-ui, [class*="mock-"], .demo, .screenshot, .preview, [data-decorative]').forEach(function(el) {
-      decorativeEls.add(el);
-      el.querySelectorAll('*').forEach(function(child) { decorativeEls.add(child); });
-    });
-    allElements.forEach(function(el) {
-      if (getComputedStyle(el).pointerEvents === 'none' && el.querySelectorAll('a,button,input').length > 0) {
+    var defaultExclude = '[aria-hidden="true"], [role="img"], [role="presentation"], [data-decorative]';
+    // User-defined exclude selector (passed via window.__milgExclude)
+    var userExclude = window.__milgExclude || '';
+    var fullExclude = userExclude ? defaultExclude + ', ' + userExclude : defaultExclude;
+    try {
+      document.querySelectorAll(fullExclude).forEach(function(el) {
         decorativeEls.add(el);
         el.querySelectorAll('*').forEach(function(child) { decorativeEls.add(child); });
-      }
-    });
+      });
+    } catch(e) { /* invalid selector — ignore */ }
     function isDecorative(el) { return decorativeEls.has(el); }
 
     // Page context
@@ -315,13 +315,14 @@
           return;
         }
         urlStatus.textContent = 'Rendering and analyzing...';
+        var exclude = window.__milgCombinedExclude || (document.getElementById('excludeSelector').value || '').trim();
         analyzeHtmlInIframe(html, function(data) {
           analyzeUrlBtn.disabled = false;
           analyzeUrlBtn.textContent = 'Analyze URL';
           urlStatus.style.display = 'none';
           data.meta.url = url;
           runAnalysis(data);
-        }, url);
+        }, url, exclude);
       });
     });
 
@@ -329,6 +330,27 @@
     urlInput.addEventListener('keydown', function(e) {
       if (e.key === 'Enter') { e.preventDefault(); analyzeUrlBtn.click(); }
     });
+
+    // Exclude preset tags — toggle on click, build selector
+    document.querySelectorAll('.exclude-tag').forEach(function(tag) {
+      tag.addEventListener('click', function() {
+        tag.classList.toggle('active');
+        syncExcludeSelector();
+      });
+    });
+
+    function syncExcludeSelector() {
+      var parts = [];
+      document.querySelectorAll('.exclude-tag.active').forEach(function(tag) {
+        parts.push(tag.dataset.selector);
+      });
+      var custom = (document.getElementById('excludeSelector').value || '').trim();
+      if (custom) parts.push(custom);
+      // Store combined selector for use by analyze handlers
+      window.__milgCombinedExclude = parts.join(', ');
+    }
+
+    document.getElementById('excludeSelector').addEventListener('input', syncExcludeSelector);
 
     // New analysis
     newAnalysisBtn.addEventListener('click', function() {
@@ -505,7 +527,7 @@
     } catch(e) { return html; }
   }
 
-  function analyzeHtmlInIframe(html, callback, sourceUrl) {
+  function analyzeHtmlInIframe(html, callback, sourceUrl, excludeSelector) {
     var iframe = document.createElement('iframe');
     iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
     iframe.sandbox = 'allow-scripts allow-same-origin';
@@ -526,10 +548,12 @@
     var isFullDoc = /<html[\s>]/i.test(html) || /<!DOCTYPE/i.test(html);
     // Inject <base> tag so relative CSS/image/font URLs resolve to the original domain
     if (sourceUrl) html = injectBaseTag(html, sourceUrl);
+    // Pass exclude selector to extraction context
+    var excludeVar = excludeSelector ? '<script>window.__milgExclude=' + JSON.stringify(excludeSelector) + ';</' + 'script>' : '';
     var srcdoc;
     if (isFullDoc) {
       // Wait for window load (CSS/fonts loaded), then extra delay for rendering
-      var extractScript = '<script>window.addEventListener("load",function(){setTimeout(function(){(' + extractFromDocument.toString() + ')()},1000)});setTimeout(function(){(' + extractFromDocument.toString() + ')()},8000);</' + 'script>';
+      var extractScript = excludeVar + '<script>window.addEventListener("load",function(){setTimeout(function(){(' + extractFromDocument.toString() + ')()},1000)});setTimeout(function(){(' + extractFromDocument.toString() + ')()},8000);</' + 'script>';
       if (/<\/body>/i.test(html)) {
         srcdoc = html.replace(/<\/body>/i, extractScript + '</body>');
       } else {
@@ -540,7 +564,7 @@
         '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
         '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
         '<style>body{margin:0}</style></head><body>' +
-        html +
+        html + excludeVar +
         '<script>setTimeout(function(){(' + extractFromDocument.toString() + ')()}, 1500);</' + 'script>' +
         '</body></html>';
     }

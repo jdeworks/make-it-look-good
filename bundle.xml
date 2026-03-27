@@ -12229,7 +12229,9 @@ window.MilgScoring = (function() {
   function scoreContrast(data) {
     var findings = [];
     var pairs = data.colors.contrastPairs || [];
-    var failures = pairs.filter(function(p) { return !p.passes; });
+    // Separate uncertain results (1:1 ratio usually means bg couldn't be determined — gradient, SVG, etc.)
+    var uncertain = pairs.filter(function(p) { return !p.passes && p.ratio <= 1.01 && p.fg === p.bg; });
+    var failures = pairs.filter(function(p) { return !p.passes && !(p.ratio <= 1.01 && p.fg === p.bg); });
     var nearMisses = pairs.filter(function(p) { return p.passes && p.ratio < p.needed + 0.5; });
 
     failures.forEach(function(p) {
@@ -12244,6 +12246,16 @@ window.MilgScoring = (function() {
       });
     });
 
+    if (uncertain.length > 0) {
+      findings.push({
+        severity: 'info',
+        title: uncertain.length + ' element(s) with undetermined contrast (background could not be resolved)',
+        detail: 'These elements may use gradients, images, SVGs, or complex CSS that the analyzer cannot parse. Check manually: ' + uncertain.slice(0, 3).map(function(p) { return '"' + p.text + '"'; }).join(', '),
+        fix: 'Verify these elements have sufficient contrast visually. The analyzer reports 1:1 when the effective background cannot be computed.',
+        presetRef: null
+      });
+    }
+
     nearMisses.forEach(function(p) {
       findings.push({
         severity: 'warning',
@@ -12254,7 +12266,8 @@ window.MilgScoring = (function() {
       });
     });
 
-    var total = pairs.length || 1;
+    // Don't count uncertain results as failures in the score
+    var total = (pairs.length - uncertain.length) || 1;
     var passing = total - failures.length;
     var score = Math.round((passing / total) * 100);
 
@@ -17112,6 +17125,23 @@ Not every section is required, but **Concrete Rules** and **CSS/Implementation P
   overflow-x: auto;
 }
 
+/* Exclude tags */
+.exclude-tag {
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  background: var(--bg);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: all 0.15s;
+  min-height: 32px;
+}
+
+.exclude-tag:hover { border-color: var(--text-secondary); }
+.exclude-tag.active { background: var(--text); color: var(--bg); border-color: var(--text); }
+
 /* URL input */
 #urlInput:focus {
   border-color: var(--primary);
@@ -17764,6 +17794,24 @@ Not every section is required, but **Concrete Rules** and **CSS/Implementation P
         <label for="urlInput" class="sr-only">Website URL</label>
         <input type="url" id="urlInput" placeholder="https://example.com" style="width:100%;padding:12px 16px;border:1px solid var(--border);border-radius:var(--radius);font-size:15px;font-family:var(--font);color:var(--text);background:var(--bg);outline:none;min-height:44px;" />
       </div>
+      <details style="margin-top:12px" id="excludeDetails">
+        <summary style="font-size:13px;color:var(--text-secondary);cursor:pointer;user-select:none">Skip elements from analysis (optional)</summary>
+        <div style="margin-top:8px">
+          <p style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;line-height:1.4">Elements you skip (and everything inside them) won't be scored. Useful for decorative UI mockups, screenshots, or third-party widgets.</p>
+          <div id="excludePresets" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+            <button type="button" class="exclude-tag" data-selector="[class*='mock']">Mock UI</button>
+            <button type="button" class="exclude-tag" data-selector=".demo, .preview, .screenshot">Demos</button>
+            <button type="button" class="exclude-tag" data-selector="footer">Footer</button>
+            <button type="button" class="exclude-tag" data-selector="iframe">Iframes</button>
+            <button type="button" class="exclude-tag" data-selector="svg">SVGs</button>
+            <button type="button" class="exclude-tag" data-selector=".sidebar, aside">Sidebar</button>
+            <button type="button" class="exclude-tag" data-selector=".ad, .ads, [class*='advert']">Ads</button>
+            <button type="button" class="exclude-tag" data-selector=".cookie, [class*='cookie'], [class*='consent']">Cookie banners</button>
+          </div>
+          <label for="excludeSelector" style="font-size:12px;color:var(--text-secondary)">Or type a CSS selector:</label>
+          <input type="text" id="excludeSelector" placeholder="e.g. .hero-image, #chat-widget" style="width:100%;padding:8px 12px;margin-top:4px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;font-family:var(--mono);color:var(--text);background:var(--bg);outline:none;min-height:44px;" />
+        </div>
+      </details>
       <div class="input-actions" style="margin-top:12px">
         <button class="btn btn-primary" id="analyzeUrlBtn">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -19042,18 +19090,18 @@ Use these to calibrate your output quality and verify the flow works.
     data.structure.darkModeClasses = /class="[^"]*dark:/.test(htmlStr) || document.body.classList.contains('dark-ui') || document.body.classList.contains('dark-mode') || document.documentElement.classList.contains('dark') || Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r.cssText && r.cssText.indexOf('prefers-color-scheme') !== -1; }); } catch(e) { return false; } });
     data.structure.responsiveClasses = /class="[^"]*(?:sm:|md:|lg:|xl:)/.test(htmlStr) || Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r instanceof CSSMediaRule && /max-width|min-width/.test(r.conditionText || ''); }); } catch(e) { return false; } });
 
-    // Decorative element detection (mirrors snippet logic)
+    // Decorative element detection
     var decorativeEls = new Set();
-    document.querySelectorAll('[aria-hidden="true"], [role="img"], [role="presentation"], .mock, .mock-ui, [class*="mock-"], .demo, .screenshot, .preview, [data-decorative]').forEach(function(el) {
-      decorativeEls.add(el);
-      el.querySelectorAll('*').forEach(function(child) { decorativeEls.add(child); });
-    });
-    allElements.forEach(function(el) {
-      if (getComputedStyle(el).pointerEvents === 'none' && el.querySelectorAll('a,button,input').length > 0) {
+    var defaultExclude = '[aria-hidden="true"], [role="img"], [role="presentation"], [data-decorative]';
+    // User-defined exclude selector (passed via window.__milgExclude)
+    var userExclude = window.__milgExclude || '';
+    var fullExclude = userExclude ? defaultExclude + ', ' + userExclude : defaultExclude;
+    try {
+      document.querySelectorAll(fullExclude).forEach(function(el) {
         decorativeEls.add(el);
         el.querySelectorAll('*').forEach(function(child) { decorativeEls.add(child); });
-      }
-    });
+      });
+    } catch(e) { /* invalid selector — ignore */ }
     function isDecorative(el) { return decorativeEls.has(el); }
 
     // Page context
@@ -19259,13 +19307,14 @@ Use these to calibrate your output quality and verify the flow works.
           return;
         }
         urlStatus.textContent = 'Rendering and analyzing...';
+        var exclude = window.__milgCombinedExclude || (document.getElementById('excludeSelector').value || '').trim();
         analyzeHtmlInIframe(html, function(data) {
           analyzeUrlBtn.disabled = false;
           analyzeUrlBtn.textContent = 'Analyze URL';
           urlStatus.style.display = 'none';
           data.meta.url = url;
           runAnalysis(data);
-        }, url);
+        }, url, exclude);
       });
     });
 
@@ -19273,6 +19322,27 @@ Use these to calibrate your output quality and verify the flow works.
     urlInput.addEventListener('keydown', function(e) {
       if (e.key === 'Enter') { e.preventDefault(); analyzeUrlBtn.click(); }
     });
+
+    // Exclude preset tags — toggle on click, build selector
+    document.querySelectorAll('.exclude-tag').forEach(function(tag) {
+      tag.addEventListener('click', function() {
+        tag.classList.toggle('active');
+        syncExcludeSelector();
+      });
+    });
+
+    function syncExcludeSelector() {
+      var parts = [];
+      document.querySelectorAll('.exclude-tag.active').forEach(function(tag) {
+        parts.push(tag.dataset.selector);
+      });
+      var custom = (document.getElementById('excludeSelector').value || '').trim();
+      if (custom) parts.push(custom);
+      // Store combined selector for use by analyze handlers
+      window.__milgCombinedExclude = parts.join(', ');
+    }
+
+    document.getElementById('excludeSelector').addEventListener('input', syncExcludeSelector);
 
     // New analysis
     newAnalysisBtn.addEventListener('click', function() {
@@ -19449,7 +19519,7 @@ Use these to calibrate your output quality and verify the flow works.
     } catch(e) { return html; }
   }
 
-  function analyzeHtmlInIframe(html, callback, sourceUrl) {
+  function analyzeHtmlInIframe(html, callback, sourceUrl, excludeSelector) {
     var iframe = document.createElement('iframe');
     iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
     iframe.sandbox = 'allow-scripts allow-same-origin';
@@ -19470,10 +19540,12 @@ Use these to calibrate your output quality and verify the flow works.
     var isFullDoc = /<html[\s>]/i.test(html) || /<!DOCTYPE/i.test(html);
     // Inject <base> tag so relative CSS/image/font URLs resolve to the original domain
     if (sourceUrl) html = injectBaseTag(html, sourceUrl);
+    // Pass exclude selector to extraction context
+    var excludeVar = excludeSelector ? '<script>window.__milgExclude=' + JSON.stringify(excludeSelector) + ';</' + 'script>' : '';
     var srcdoc;
     if (isFullDoc) {
       // Wait for window load (CSS/fonts loaded), then extra delay for rendering
-      var extractScript = '<script>window.addEventListener("load",function(){setTimeout(function(){(' + extractFromDocument.toString() + ')()},1000)});setTimeout(function(){(' + extractFromDocument.toString() + ')()},8000);</' + 'script>';
+      var extractScript = excludeVar + '<script>window.addEventListener("load",function(){setTimeout(function(){(' + extractFromDocument.toString() + ')()},1000)});setTimeout(function(){(' + extractFromDocument.toString() + ')()},8000);</' + 'script>';
       if (/<\/body>/i.test(html)) {
         srcdoc = html.replace(/<\/body>/i, extractScript + '</body>');
       } else {
@@ -19484,7 +19556,7 @@ Use these to calibrate your output quality and verify the flow works.
         '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
         '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
         '<style>body{margin:0}</style></head><body>' +
-        html +
+        html + excludeVar +
         '<script>setTimeout(function(){(' + extractFromDocument.toString() + ')()}, 1500);</' + 'script>' +
         '</body></html>';
     }
