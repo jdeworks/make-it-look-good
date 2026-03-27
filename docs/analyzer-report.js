@@ -43,7 +43,12 @@ window.MilgReport = (function() {
     html += '<div class="report-header">';
     html += '<div class="report-header-info">';
     html += '<h1>Design Analysis Report</h1>';
-    html += '<p class="report-url">' + escapeHtml(report.meta.url || 'Pasted HTML') + '</p>';
+    var reportUrl = report.meta.url || 'Pasted HTML';
+    if (/^https?:\/\//.test(reportUrl)) {
+      html += '<p class="report-url"><a href="' + escapeHtml(reportUrl) + '" target="_blank" rel="noopener" style="color:var(--primary);text-decoration:underline">' + escapeHtml(reportUrl) + '</a></p>';
+    } else {
+      html += '<p class="report-url">' + escapeHtml(reportUrl) + '</p>';
+    }
     var ctxType = (report.raw.context && report.raw.context.pageType) || 'unknown';
     var ctxLabel = { marketing: 'Marketing / Landing', pricing: 'Pricing Page', form: 'Form Page', app: 'Application', content: 'Content Page', component: 'Component / Snippet', unknown: 'General' }[ctxType] || ctxType;
     html += '<p class="report-timestamp">' + new Date(report.meta.timestamp).toLocaleString() + ' &middot; ' + report.meta.viewportWidth + '&times;' + report.meta.viewportHeight + 'px &middot; Detected: ' + ctxLabel + '</p>';

@@ -296,7 +296,7 @@
           urlStatus.style.display = 'none';
           data.meta.url = url;
           runAnalysis(data);
-        });
+        }, url);
       });
     });
 
@@ -435,7 +435,23 @@
       });
   }
 
-  function analyzeHtmlInIframe(html, callback) {
+  // Inject a <base> tag so relative URLs (CSS, images, fonts) resolve to the original domain
+  function injectBaseTag(html, url) {
+    if (!url || url === 'Pasted HTML') return html;
+    try {
+      var base = new URL(url);
+      var baseHref = base.origin + base.pathname.replace(/\/[^/]*$/, '/');
+      var baseTag = '<base href="' + baseHref + '">';
+      // Insert after <head> if present
+      if (/<head[\s>]/i.test(html)) {
+        return html.replace(/<head([^>]*)>/i, '<head$1>' + baseTag);
+      }
+      // Otherwise prepend
+      return baseTag + html;
+    } catch(e) { return html; }
+  }
+
+  function analyzeHtmlInIframe(html, callback, sourceUrl) {
     var iframe = document.createElement('iframe');
     iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
     iframe.sandbox = 'allow-scripts allow-same-origin';
@@ -454,6 +470,8 @@
     // If the pasted HTML is a full document (has <html> or <head>), use it as-is
     // and just append the extraction script. Otherwise wrap in a basic document.
     var isFullDoc = /<html[\s>]/i.test(html) || /<!DOCTYPE/i.test(html);
+    // Inject <base> tag so relative CSS/image/font URLs resolve to the original domain
+    if (sourceUrl) html = injectBaseTag(html, sourceUrl);
     var srcdoc;
     if (isFullDoc) {
       // Full documents need more time for external resources to load

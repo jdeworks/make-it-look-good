@@ -12240,7 +12240,12 @@ window.MilgReport = (function() {
     html += '<div class="report-header">';
     html += '<div class="report-header-info">';
     html += '<h1>Design Analysis Report</h1>';
-    html += '<p class="report-url">' + escapeHtml(report.meta.url || 'Pasted HTML') + '</p>';
+    var reportUrl = report.meta.url || 'Pasted HTML';
+    if (/^https?:\/\//.test(reportUrl)) {
+      html += '<p class="report-url"><a href="' + escapeHtml(reportUrl) + '" target="_blank" rel="noopener" style="color:var(--primary);text-decoration:underline">' + escapeHtml(reportUrl) + '</a></p>';
+    } else {
+      html += '<p class="report-url">' + escapeHtml(reportUrl) + '</p>';
+    }
     var ctxType = (report.raw.context && report.raw.context.pageType) || 'unknown';
     var ctxLabel = { marketing: 'Marketing / Landing', pricing: 'Pricing Page', form: 'Form Page', app: 'Application', content: 'Content Page', component: 'Component / Snippet', unknown: 'General' }[ctxType] || ctxType;
     html += '<p class="report-timestamp">' + new Date(report.meta.timestamp).toLocaleString() + ' &middot; ' + report.meta.viewportWidth + '&times;' + report.meta.viewportHeight + 'px &middot; Detected: ' + ctxLabel + '</p>';
@@ -17675,6 +17680,195 @@ Not every section is required, but **Concrete Rules** and **CSS/Implementation P
 }
 </file>
 
+<file path="docs/analyzer.html">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>make-it-look-good — Design Analyzer</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='2' y='2' width='12' height='12' rx='2' fill='%232563eb'/><rect x='18' y='2' width='12' height='12' rx='2' fill='%2393c5fd'/><rect x='2' y='18' width='12' height='12' rx='2' fill='%2393c5fd'/><rect x='18' y='18' width='12' height='12' rx='2' fill='%232563eb'/></svg>">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="analyzer.css">
+</head>
+<body class="analyzer-body">
+
+  <!-- Header -->
+  <header class="header">
+    <div class="header-left">
+      <a href="index.html" class="logo" style="text-decoration:none">make-it-look-good <span>analyzer</span></a>
+    </div>
+    <nav class="header-right" aria-label="Site navigation">
+      <a href="index.html" class="btn hide-mobile" style="text-decoration:none">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Editor
+      </a>
+      <button class="btn btn-icon" id="darkBtn" title="Toggle dark mode" aria-label="Toggle dark mode">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+    </nav>
+  </header>
+
+  <main>
+  <!-- Input Section -->
+  <div class="input-section" id="inputSection">
+    <div class="input-hero">
+      <h1>Design Analyzer</h1>
+      <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
+    </div>
+
+    <!-- Tabs -->
+    <div class="input-tabs">
+      <button class="tab-btn active" data-tab="tabUrl">Enter URL <span style="font-size:10px;opacity:0.7;margin-left:2px">(mobile-friendly)</span></button>
+      <button class="tab-btn" data-tab="tabSnippet">Console Snippet <span style="font-size:10px;opacity:0.7;margin-left:2px">(most accurate)</span></button>
+      <button class="tab-btn" data-tab="tabHtml">Paste HTML <span style="font-size:10px;opacity:0.7;margin-left:2px">(approximate)</span></button>
+    </div>
+
+    <!-- Tab 0: URL fetch -->
+    <div class="tab-content active" id="tabUrl">
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;line-height:1.5;">
+        Enter a URL to analyze. The page is fetched via a CORS proxy and rendered in a hidden iframe with its CSS.
+        Works on phone — no console needed.
+      </p>
+      <div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;line-height:1.5;padding:8px 12px;background:var(--bg-alt);border:1px solid var(--border);border-radius:var(--radius);">
+        <strong style="color:var(--text)">Limitations:</strong> Pages behind login, localhost, and some sites that block proxies won't work. Use the Console Snippet tab for those.
+      </div>
+      <div class="input-area">
+        <label for="urlInput" class="sr-only">Website URL</label>
+        <input type="url" id="urlInput" placeholder="https://example.com" style="width:100%;padding:12px 16px;border:1px solid var(--border);border-radius:var(--radius);font-size:15px;font-family:var(--font);color:var(--text);background:var(--bg);outline:none;min-height:44px;" />
+      </div>
+      <div class="input-actions" style="margin-top:12px">
+        <button class="btn btn-primary" id="analyzeUrlBtn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          Analyze URL
+        </button>
+      </div>
+      <div id="urlStatus" style="margin-top:12px;font-size:13px;color:var(--text-secondary);display:none"></div>
+    </div>
+
+    <!-- Tab 1: Snippet extraction -->
+    <div class="tab-content" id="tabSnippet">
+      <div class="guide-steps">
+        <div class="guide-step">
+          <div class="guide-step-num">1</div>
+          <div>Open the website you want to analyze (works with <strong>any URL</strong> including <code>localhost</code> and pages behind login)</div>
+        </div>
+        <div class="guide-step">
+          <div class="guide-step-num">2</div>
+          <div>Open browser DevTools with <code>F12</code> and go to the <strong>Console</strong> tab.
+            <span style="display:block;font-size:12px;color:var(--text-secondary);margin-top:4px">Tip: undock DevTools into a separate window (click <code>⋮</code> → dock side → <strong>undock</strong>) so the page viewport stays at its real size. Docked DevTools shrink the page, which can skew layout and touch-target measurements.</span>
+          </div>
+        </div>
+        <div class="guide-step">
+          <div class="guide-step-num">3</div>
+          <div>Copy the extraction snippet below and <strong>paste it into the console</strong>, then press Enter. It extracts design tokens and copies JSON to your clipboard automatically.</div>
+        </div>
+        <div class="guide-step">
+          <div class="guide-step-num">4</div>
+          <div>Come back here and <strong>paste the JSON</strong> into the box below, then click Analyze.
+            <span style="display:block;font-size:12px;color:var(--text-secondary);margin-top:4px">If auto-copy didn't work, the console will show the JSON — type <code>copy(window.__milgData_json)</code> to copy it manually.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="snippet-section">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <h2 style="font-size:14px">Extraction Snippet</h2>
+          <button class="btn" id="copySnippetBtn">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            Copy snippet
+          </button>
+        </div>
+        <div class="snippet-box">
+          <div class="snippet-header">
+            <span>JavaScript</span>
+          </div>
+          <pre class="snippet-code" id="snippetCode">Loading...</pre>
+        </div>
+      </div>
+
+      <div class="console-tip" style="margin-top:20px;">
+        <strong>Quick HTML grab (with CSS):</strong> If you just want to copy the page for the "Paste HTML" tab, run this in the console:<br>
+        <code style="display:block;margin-top:6px;padding:6px 8px;word-break:break-all;white-space:pre-wrap">(async()=>{let c='';for(const s of document.styleSheets){try{c+=Array.from(s.cssRules).map(r=>r.cssText).join('\n')}catch(e){if(s.href){try{const r=await fetch(s.href);c+=await r.text()}catch(e2){}}}}const h=document.documentElement.cloneNode(true);h.querySelectorAll('script').forEach(s=>s.remove());h.querySelectorAll('link[rel=stylesheet]').forEach(l=>l.remove());const st=document.createElement('style');st.textContent=c;h.querySelector('head').appendChild(st);copy(h.outerHTML);console.log('%c✓ HTML + CSS copied!','color:#16a34a;font-weight:bold;font-size:14px')})()</code>
+        <span style="color:var(--text-secondary);font-size:12px;display:block;margin-top:4px">This inlines all CSS (including external stylesheets) into the HTML and removes scripts. Works behind logins, on SPAs, localhost — everywhere.</span>
+      </div>
+
+      <div style="margin-top:24px;">
+        <h2 style="font-size:14px;font-weight:600;margin-bottom:8px;">Paste extracted JSON</h2>
+        <div class="input-area">
+          <label for="pasteInput" class="sr-only">Extracted JSON data</label>
+          <textarea id="pasteInput" placeholder='Paste the JSON data copied by the snippet here...&#10;&#10;It should start with { "meta": { ... }'></textarea>
+        </div>
+        <div class="input-actions">
+          <button class="btn btn-primary" id="analyzeBtn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a8 8 0 0 0-8 8c0 3.4 2.1 6.3 5 7.5V20h6v-2.5c2.9-1.2 5-4.1 5-7.5a8 8 0 0 0-8-8z"/><line x1="10" y1="22" x2="14" y2="22"/></svg>
+            Analyze
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 2: Paste HTML -->
+    <div class="tab-content" id="tabHtml">
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;line-height:1.5;padding:10px 14px;background:var(--bg-alt);border:1px solid var(--border);border-radius:var(--radius);">
+        <strong style="color:var(--text)">Approximate mode.</strong>
+        This renders HTML in an iframe and reads computed styles. External fonts, images, and some CSS (relative URLs, @import chains) won't load — scores may differ from the live site.
+        Use the "Extract from Site" tab for accurate results.
+      </div>
+
+      <div class="console-tip" style="margin-bottom:16px;">
+        <strong>Grab page with CSS inlined:</strong> Open DevTools console (<code>F12</code>) and run:<br>
+        <code style="display:block;margin-top:6px;padding:6px 8px;word-break:break-all;white-space:pre-wrap">(async()=>{let c='';for(const s of document.styleSheets){try{c+=Array.from(s.cssRules).map(r=>r.cssText).join('\n')}catch(e){if(s.href){try{const r=await fetch(s.href);c+=await r.text()}catch(e2){}}}}const h=document.documentElement.cloneNode(true);h.querySelectorAll('script').forEach(s=>s.remove());h.querySelectorAll('link[rel=stylesheet]').forEach(l=>l.remove());const st=document.createElement('style');st.textContent=c;h.querySelector('head').appendChild(st);copy(h.outerHTML);console.log('%c✓ HTML + CSS copied!','color:#16a34a;font-weight:bold;font-size:14px')})()</code>
+        <span style="color:var(--text-secondary);font-size:12px;display:block;margin-top:4px">Inlines all external CSS into the HTML and strips scripts. Works behind logins, on SPAs, localhost.</span>
+      </div>
+
+      <div class="input-area">
+        <label for="htmlInput" class="sr-only">HTML source code</label>
+        <textarea id="htmlInput" placeholder='Paste HTML here...&#10;&#10;<div class="p-8 max-w-4xl mx-auto">&#10;  <h1 class="text-3xl font-bold">...</h1>&#10;</div>'></textarea>
+      </div>
+      <div class="input-actions">
+        <button class="btn btn-primary" id="analyzeHtmlBtn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a8 8 0 0 0-8 8c0 3.4 2.1 6.3 5 7.5V20h6v-2.5c2.9-1.2 5-4.1 5-7.5a8 8 0 0 0-8-8z"/><line x1="10" y1="22" x2="14" y2="22"/></svg>
+          Analyze HTML
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Report actions (shown when report is visible) -->
+  <div class="report-actions" id="reportActions">
+    <button class="btn" id="newAnalysisBtn">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      New Analysis
+    </button>
+    <button class="btn" id="copyMdBtn">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+      Copy Markdown
+    </button>
+    <button class="btn" id="markdownBtn">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+      Download .md
+    </button>
+    <button class="btn" id="printBtn">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+      Print / Save PDF
+    </button>
+  </div>
+
+  <!-- Report container -->
+  <div class="report-container" id="reportContainer"></div>
+  </main>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+  <script src="analyzer-scoring.js"></script>
+  <script src="analyzer-report.js"></script>
+  <script src="analyzer.js"></script>
+</body>
+</html>
+</file>
+
 <file path="docs/analyzer.js">
 // make-it-look-good — Design Analyzer (UI + Extraction)
 // Depends on: analyzer-scoring.js (MilgScoring), analyzer-report.js (MilgReport)
@@ -17974,7 +18168,7 @@ Not every section is required, but **Concrete Rules** and **CSS/Implementation P
           urlStatus.style.display = 'none';
           data.meta.url = url;
           runAnalysis(data);
-        });
+        }, url);
       });
     });
 
@@ -18113,7 +18307,23 @@ Not every section is required, but **Concrete Rules** and **CSS/Implementation P
       });
   }
 
-  function analyzeHtmlInIframe(html, callback) {
+  // Inject a <base> tag so relative URLs (CSS, images, fonts) resolve to the original domain
+  function injectBaseTag(html, url) {
+    if (!url || url === 'Pasted HTML') return html;
+    try {
+      var base = new URL(url);
+      var baseHref = base.origin + base.pathname.replace(/\/[^/]*$/, '/');
+      var baseTag = '<base href="' + baseHref + '">';
+      // Insert after <head> if present
+      if (/<head[\s>]/i.test(html)) {
+        return html.replace(/<head([^>]*)>/i, '<head$1>' + baseTag);
+      }
+      // Otherwise prepend
+      return baseTag + html;
+    } catch(e) { return html; }
+  }
+
+  function analyzeHtmlInIframe(html, callback, sourceUrl) {
     var iframe = document.createElement('iframe');
     iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
     iframe.sandbox = 'allow-scripts allow-same-origin';
@@ -18132,6 +18342,8 @@ Not every section is required, but **Concrete Rules** and **CSS/Implementation P
     // If the pasted HTML is a full document (has <html> or <head>), use it as-is
     // and just append the extraction script. Otherwise wrap in a basic document.
     var isFullDoc = /<html[\s>]/i.test(html) || /<!DOCTYPE/i.test(html);
+    // Inject <base> tag so relative CSS/image/font URLs resolve to the original domain
+    if (sourceUrl) html = injectBaseTag(html, sourceUrl);
     var srcdoc;
     if (isFullDoc) {
       // Full documents need more time for external resources to load
@@ -18196,195 +18408,6 @@ Not every section is required, but **Concrete Rules** and **CSS/Implementation P
     init();
   }
 })();
-</file>
-
-<file path="docs/analyzer.html">
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>make-it-look-good — Design Analyzer</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='2' y='2' width='12' height='12' rx='2' fill='%232563eb'/><rect x='18' y='2' width='12' height='12' rx='2' fill='%2393c5fd'/><rect x='2' y='18' width='12' height='12' rx='2' fill='%2393c5fd'/><rect x='18' y='18' width='12' height='12' rx='2' fill='%232563eb'/></svg>">
-  <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="analyzer.css">
-</head>
-<body class="analyzer-body">
-
-  <!-- Header -->
-  <header class="header">
-    <div class="header-left">
-      <a href="index.html" class="logo" style="text-decoration:none">make-it-look-good <span>analyzer</span></a>
-    </div>
-    <nav class="header-right" aria-label="Site navigation">
-      <a href="index.html" class="btn hide-mobile" style="text-decoration:none">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-        Editor
-      </a>
-      <button class="btn btn-icon" id="darkBtn" title="Toggle dark mode" aria-label="Toggle dark mode">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-      </button>
-    </nav>
-  </header>
-
-  <main>
-  <!-- Input Section -->
-  <div class="input-section" id="inputSection">
-    <div class="input-hero">
-      <h1>Design Analyzer</h1>
-      <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
-    </div>
-
-    <!-- Tabs -->
-    <div class="input-tabs">
-      <button class="tab-btn active" data-tab="tabUrl">Enter URL <span style="font-size:10px;opacity:0.7;margin-left:2px">(mobile-friendly)</span></button>
-      <button class="tab-btn" data-tab="tabSnippet">Console Snippet <span style="font-size:10px;opacity:0.7;margin-left:2px">(most accurate)</span></button>
-      <button class="tab-btn" data-tab="tabHtml">Paste HTML <span style="font-size:10px;opacity:0.7;margin-left:2px">(approximate)</span></button>
-    </div>
-
-    <!-- Tab 0: URL fetch -->
-    <div class="tab-content active" id="tabUrl">
-      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;line-height:1.5;">
-        Enter a URL to analyze. The page is fetched via a CORS proxy and rendered in a hidden iframe with its CSS.
-        Works on phone — no console needed.
-      </p>
-      <div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;line-height:1.5;padding:8px 12px;background:var(--bg-alt);border:1px solid var(--border);border-radius:var(--radius);">
-        <strong style="color:var(--text)">Limitations:</strong> Pages behind login, localhost, and some sites that block proxies won't work. Use the Console Snippet tab for those.
-      </div>
-      <div class="input-area">
-        <label for="urlInput" class="sr-only">Website URL</label>
-        <input type="url" id="urlInput" placeholder="https://example.com" style="width:100%;padding:12px 16px;border:1px solid var(--border);border-radius:var(--radius);font-size:15px;font-family:var(--font);color:var(--text);background:var(--bg);outline:none;min-height:44px;" />
-      </div>
-      <div class="input-actions" style="margin-top:12px">
-        <button class="btn btn-primary" id="analyzeUrlBtn">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          Analyze URL
-        </button>
-      </div>
-      <div id="urlStatus" style="margin-top:12px;font-size:13px;color:var(--text-secondary);display:none"></div>
-    </div>
-
-    <!-- Tab 1: Snippet extraction -->
-    <div class="tab-content" id="tabSnippet">
-      <div class="guide-steps">
-        <div class="guide-step">
-          <div class="guide-step-num">1</div>
-          <div>Open the website you want to analyze (works with <strong>any URL</strong> including <code>localhost</code> and pages behind login)</div>
-        </div>
-        <div class="guide-step">
-          <div class="guide-step-num">2</div>
-          <div>Open browser DevTools with <code>F12</code> and go to the <strong>Console</strong> tab.
-            <span style="display:block;font-size:12px;color:var(--text-secondary);margin-top:4px">Tip: undock DevTools into a separate window (click <code>⋮</code> → dock side → <strong>undock</strong>) so the page viewport stays at its real size. Docked DevTools shrink the page, which can skew layout and touch-target measurements.</span>
-          </div>
-        </div>
-        <div class="guide-step">
-          <div class="guide-step-num">3</div>
-          <div>Copy the extraction snippet below and <strong>paste it into the console</strong>, then press Enter. It extracts design tokens and copies JSON to your clipboard automatically.</div>
-        </div>
-        <div class="guide-step">
-          <div class="guide-step-num">4</div>
-          <div>Come back here and <strong>paste the JSON</strong> into the box below, then click Analyze.
-            <span style="display:block;font-size:12px;color:var(--text-secondary);margin-top:4px">If auto-copy didn't work, the console will show the JSON — type <code>copy(window.__milgData_json)</code> to copy it manually.</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="snippet-section">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-          <h2 style="font-size:14px">Extraction Snippet</h2>
-          <button class="btn" id="copySnippetBtn">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-            Copy snippet
-          </button>
-        </div>
-        <div class="snippet-box">
-          <div class="snippet-header">
-            <span>JavaScript</span>
-          </div>
-          <pre class="snippet-code" id="snippetCode">Loading...</pre>
-        </div>
-      </div>
-
-      <div class="console-tip" style="margin-top:20px;">
-        <strong>Quick HTML grab (with CSS):</strong> If you just want to copy the page for the "Paste HTML" tab, run this in the console:<br>
-        <code style="display:block;margin-top:6px;padding:6px 8px;word-break:break-all;white-space:pre-wrap">(async()=>{let c='';for(const s of document.styleSheets){try{c+=Array.from(s.cssRules).map(r=>r.cssText).join('\n')}catch(e){if(s.href){try{const r=await fetch(s.href);c+=await r.text()}catch(e2){}}}}const h=document.documentElement.cloneNode(true);h.querySelectorAll('script').forEach(s=>s.remove());h.querySelectorAll('link[rel=stylesheet]').forEach(l=>l.remove());const st=document.createElement('style');st.textContent=c;h.querySelector('head').appendChild(st);copy(h.outerHTML);console.log('%c✓ HTML + CSS copied!','color:#16a34a;font-weight:bold;font-size:14px')})()</code>
-        <span style="color:var(--text-secondary);font-size:12px;display:block;margin-top:4px">This inlines all CSS (including external stylesheets) into the HTML and removes scripts. Works behind logins, on SPAs, localhost — everywhere.</span>
-      </div>
-
-      <div style="margin-top:24px;">
-        <h2 style="font-size:14px;font-weight:600;margin-bottom:8px;">Paste extracted JSON</h2>
-        <div class="input-area">
-          <label for="pasteInput" class="sr-only">Extracted JSON data</label>
-          <textarea id="pasteInput" placeholder='Paste the JSON data copied by the snippet here...&#10;&#10;It should start with { "meta": { ... }'></textarea>
-        </div>
-        <div class="input-actions">
-          <button class="btn btn-primary" id="analyzeBtn">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a8 8 0 0 0-8 8c0 3.4 2.1 6.3 5 7.5V20h6v-2.5c2.9-1.2 5-4.1 5-7.5a8 8 0 0 0-8-8z"/><line x1="10" y1="22" x2="14" y2="22"/></svg>
-            Analyze
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Tab 2: Paste HTML -->
-    <div class="tab-content" id="tabHtml">
-      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;line-height:1.5;padding:10px 14px;background:var(--bg-alt);border:1px solid var(--border);border-radius:var(--radius);">
-        <strong style="color:var(--text)">Approximate mode.</strong>
-        This renders HTML in an iframe and reads computed styles. External fonts, images, and some CSS (relative URLs, @import chains) won't load — scores may differ from the live site.
-        Use the "Extract from Site" tab for accurate results.
-      </div>
-
-      <div class="console-tip" style="margin-bottom:16px;">
-        <strong>Grab page with CSS inlined:</strong> Open DevTools console (<code>F12</code>) and run:<br>
-        <code style="display:block;margin-top:6px;padding:6px 8px;word-break:break-all;white-space:pre-wrap">(async()=>{let c='';for(const s of document.styleSheets){try{c+=Array.from(s.cssRules).map(r=>r.cssText).join('\n')}catch(e){if(s.href){try{const r=await fetch(s.href);c+=await r.text()}catch(e2){}}}}const h=document.documentElement.cloneNode(true);h.querySelectorAll('script').forEach(s=>s.remove());h.querySelectorAll('link[rel=stylesheet]').forEach(l=>l.remove());const st=document.createElement('style');st.textContent=c;h.querySelector('head').appendChild(st);copy(h.outerHTML);console.log('%c✓ HTML + CSS copied!','color:#16a34a;font-weight:bold;font-size:14px')})()</code>
-        <span style="color:var(--text-secondary);font-size:12px;display:block;margin-top:4px">Inlines all external CSS into the HTML and strips scripts. Works behind logins, on SPAs, localhost.</span>
-      </div>
-
-      <div class="input-area">
-        <label for="htmlInput" class="sr-only">HTML source code</label>
-        <textarea id="htmlInput" placeholder='Paste HTML here...&#10;&#10;<div class="p-8 max-w-4xl mx-auto">&#10;  <h1 class="text-3xl font-bold">...</h1>&#10;</div>'></textarea>
-      </div>
-      <div class="input-actions">
-        <button class="btn btn-primary" id="analyzeHtmlBtn">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a8 8 0 0 0-8 8c0 3.4 2.1 6.3 5 7.5V20h6v-2.5c2.9-1.2 5-4.1 5-7.5a8 8 0 0 0-8-8z"/><line x1="10" y1="22" x2="14" y2="22"/></svg>
-          Analyze HTML
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Report actions (shown when report is visible) -->
-  <div class="report-actions" id="reportActions">
-    <button class="btn" id="newAnalysisBtn">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-      New Analysis
-    </button>
-    <button class="btn" id="copyMdBtn">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-      Copy Markdown
-    </button>
-    <button class="btn" id="markdownBtn">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-      Download .md
-    </button>
-    <button class="btn" id="printBtn">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-      Print / Save PDF
-    </button>
-  </div>
-
-  <!-- Report container -->
-  <div class="report-container" id="reportContainer"></div>
-  </main>
-
-  <!-- Toast -->
-  <div class="toast" id="toast"></div>
-
-  <script src="analyzer-scoring.js"></script>
-  <script src="analyzer-report.js"></script>
-  <script src="analyzer.js"></script>
-</body>
-</html>
 </file>
 
 <file path="docs/presets/index.json">
