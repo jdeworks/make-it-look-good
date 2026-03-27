@@ -98,6 +98,31 @@
     data.structure.darkModeClasses = /class="[^"]*dark:/.test(htmlStr) || document.body.classList.contains('dark-ui') || document.body.classList.contains('dark-mode') || document.documentElement.classList.contains('dark') || Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r.cssText && r.cssText.indexOf('prefers-color-scheme') !== -1; }); } catch(e) { return false; } });
     data.structure.responsiveClasses = /class="[^"]*(?:sm:|md:|lg:|xl:)/.test(htmlStr) || Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r instanceof CSSMediaRule && /max-width|min-width/.test(r.conditionText || ''); }); } catch(e) { return false; } });
 
+    // Decorative element detection (mirrors snippet logic)
+    var decorativeEls = new Set();
+    document.querySelectorAll('[aria-hidden="true"], [role="img"], [role="presentation"], .mock, .mock-ui, [class*="mock-"], .demo, .screenshot, .preview, [data-decorative]').forEach(function(el) {
+      decorativeEls.add(el);
+      el.querySelectorAll('*').forEach(function(child) { decorativeEls.add(child); });
+    });
+    allElements.forEach(function(el) {
+      if (getComputedStyle(el).pointerEvents === 'none' && el.querySelectorAll('a,button,input').length > 0) {
+        decorativeEls.add(el);
+        el.querySelectorAll('*').forEach(function(child) { decorativeEls.add(child); });
+      }
+    });
+    function isDecorative(el) { return decorativeEls.has(el); }
+
+    // Page context
+    data.context = { pageType: 'unknown' };
+    var hasHero = !!document.querySelector('.hero, [class*="hero"], section:first-of-type h1');
+    var hasPricing = !!document.querySelector('[class*="pricing"], [class*="price"], .plan, .tier');
+    var formCount = document.querySelectorAll('form').length;
+    var sectionCount = document.querySelectorAll('section').length;
+    if (hasPricing) data.context.pageType = 'pricing';
+    else if (formCount > 0 && data.structure.totalElements < 80) data.context.pageType = 'form';
+    else if (hasHero && sectionCount >= 3) data.context.pageType = 'marketing';
+    else if (sectionCount >= 2) data.context.pageType = 'content';
+
     var bodyStyle = getComputedStyle(document.body);
     data.typography.bodyFontSize = bodyStyle.fontSize;
     data.typography.bodyLineHeight = bodyStyle.lineHeight;
@@ -114,7 +139,7 @@
     while (node = walker.nextNode()) {
       if (!node.textContent.trim()) continue;
       var el = node.parentElement;
-      if (!el || !isVisible(el)) continue;
+      if (!el || !isVisible(el) || isDecorative(el)) continue;
       if (seenForContrast.has(el)) continue;
       seenForContrast.add(el);
       var style = getComputedStyle(el);
@@ -180,7 +205,7 @@
     var interactive = document.querySelectorAll('a,button,input,select,textarea,[role="button"],[tabindex]');
     var touchIssues = [];
     interactive.forEach(function(el) {
-      if (!isVisible(el)) return;
+      if (!isVisible(el) || isDecorative(el)) return;
       var rect = el.getBoundingClientRect();
       var w = Math.round(rect.width), h = Math.round(rect.height);
       if (w < 44 || h < 44) touchIssues.push({ element: el.tagName.toLowerCase(), width: w, height: h, text: (el.textContent || el.getAttribute('aria-label') || '').trim().substring(0, 40), selector: cssSelector(el), passes: false });
