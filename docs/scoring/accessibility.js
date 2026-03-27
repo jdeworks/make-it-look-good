@@ -172,6 +172,31 @@ function scoreAccessibility(data) {
     });
   }
 
+  // ARIA audit
+  var ariaIssues = data.accessibility.ariaIssues || [];
+  var btnNoTabindex = ariaIssues.filter(function(a) { return a.type === 'button-no-tabindex'; });
+  var hiddenFocusable = ariaIssues.filter(function(a) { return a.type === 'hidden-focusable'; });
+  if (btnNoTabindex.length > 0) {
+    findings.push({
+      severity: 'error',
+      title: btnNoTabindex.length + ' element(s) with role="button" but no tabindex',
+      detail: 'Non-button elements with role="button" must be keyboard-focusable',
+      fix: 'Add tabindex="0" and a keydown handler for Enter/Space to elements with role="button", or use a real <button> element.',
+      presetRef: null,
+      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
+    });
+  }
+  if (hiddenFocusable.length > 0) {
+    findings.push({
+      severity: 'error',
+      title: hiddenFocusable.length + ' focusable element(s) inside aria-hidden containers',
+      detail: 'Screen readers skip aria-hidden content, but keyboard focus can still reach these elements — creating a confusing experience',
+      fix: 'Add tabindex="-1" to focusable elements inside aria-hidden containers, or restructure to keep them outside.',
+      presetRef: null,
+      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
+    });
+  }
+
   var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
   return { score: score, findings: findings, weight: 15, label: 'Accessibility', icon: 'a11y' };
 }

@@ -810,6 +810,73 @@
     });
   } catch(e) {}
 
+  // --- Element overflow detection ---
+  data.layout.overflowElements = 0;
+  for (var oi = 0; oi < allElements.length && oi < 500; oi++) {
+    var oel = allElements[oi];
+    if (!isVisible(oel) || isDecorative(oel)) continue;
+    if (oel.scrollWidth > oel.clientWidth + 2 && oel.clientWidth > 0) {
+      data.layout.overflowElements++;
+    }
+  }
+
+  // --- Letter spacing issues ---
+  data.typography.letterSpacingIssues = 0;
+  for (var li = 0; li < allElements.length && li < 500; li++) {
+    var lel = allElements[li];
+    if (!isVisible(lel) || isDecorative(lel) || lel.tagName === 'SCRIPT' || lel.tagName === 'STYLE') continue;
+    var ls = getComputedStyle(lel).letterSpacing;
+    if (ls && ls !== 'normal') {
+      var lsEm = parseFloat(ls) / parseFloat(getComputedStyle(lel).fontSize);
+      if (lsEm < -0.03 || (lsEm > 0.15 && parseFloat(getComputedStyle(lel).fontSize) >= 14)) {
+        data.typography.letterSpacingIssues++;
+      }
+    }
+  }
+
+  // --- ARIA audit ---
+  data.accessibility.ariaIssues = [];
+  // role="button" without keyboard handler
+  document.querySelectorAll('[role="button"]:not(button):not(a)').forEach(function(el) {
+    if (!el.hasAttribute('tabindex')) {
+      data.accessibility.ariaIssues.push({ type: 'button-no-tabindex', selector: cssSelector(el) });
+    }
+  });
+  // aria-hidden on focusable elements
+  document.querySelectorAll('[aria-hidden="true"] a, [aria-hidden="true"] button, [aria-hidden="true"] input, [aria-hidden="true"] [tabindex]').forEach(function(el) {
+    if (isVisible(el)) {
+      data.accessibility.ariaIssues.push({ type: 'hidden-focusable', selector: cssSelector(el) });
+    }
+  });
+  if (data.accessibility.ariaIssues.length > 20) data.accessibility.ariaIssues = data.accessibility.ariaIssues.slice(0, 20);
+
+  // --- Image responsive sizing ---
+  data.performance.nonResponsiveImages = 0;
+  document.querySelectorAll('img').forEach(function(img) {
+    if (!isVisible(img)) return;
+    var s = getComputedStyle(img);
+    var hasMaxWidth = s.maxWidth === '100%' || s.maxWidth === 'none';
+    var hasAutoHeight = s.height === 'auto';
+    if (img.naturalWidth > 0 && img.naturalWidth > img.clientWidth + 10) {
+      if (s.maxWidth !== '100%' && s.width !== '100%' && !s.width.endsWith('%')) {
+        data.performance.nonResponsiveImages++;
+      }
+    }
+  });
+
+  // --- CLS (Chromium only) ---
+  data.performance.cls = null;
+  try {
+    if (window.PerformanceObserver) {
+      var clsEntries = performance.getEntriesByType ? performance.getEntriesByType('layout-shift') : [];
+      if (clsEntries.length > 0) {
+        var clsValue = 0;
+        clsEntries.forEach(function(e) { if (!e.hadRecentInput) clsValue += e.value; });
+        data.performance.cls = Math.round(clsValue * 1000) / 1000;
+      }
+    }
+  } catch(e) {}
+
   // --- Output ---
   var json = JSON.stringify(data, null, 2);
 

@@ -14138,133 +14138,6 @@ function scoreVisualConsistency(data) {
 })();
 </file>
 
-<file path="docs/scoring/contrast.js">
-// Scoring Module: Color & Contrast
-// Weight: 20%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function parseRgb(str) {
-  var m = str.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
-  if (!m) m = str.match(/rgb\((\d+)\s+(\d+)\s+(\d+)\)/);
-  if (!m) return null;
-  return { r: +m[1], g: +m[2], b: +m[3] };
-}
-
-function applyFilterToColor(c, filterStr) {
-  if (!c || !filterStr) return c;
-  var r = c.r, g = c.g, b = c.b;
-  var re = /brightness\(([\d.]+)\)|contrast\(([\d.]+)\)|opacity\(([\d.]+)\)/g;
-  var m;
-  while ((m = re.exec(filterStr)) !== null) {
-    if (m[1] !== undefined) {
-      var br = parseFloat(m[1]);
-      r = Math.min(255, Math.round(r * br));
-      g = Math.min(255, Math.round(g * br));
-      b = Math.min(255, Math.round(b * br));
-    } else if (m[2] !== undefined) {
-      var ct = parseFloat(m[2]);
-      r = Math.min(255, Math.max(0, Math.round(((r - 128) * ct) + 128)));
-      g = Math.min(255, Math.max(0, Math.round(((g - 128) * ct) + 128)));
-      b = Math.min(255, Math.max(0, Math.round(((b - 128) * ct) + 128)));
-    }
-    // opacity affects alpha, not RGB channels for contrast purposes
-  }
-  return { r: r, g: g, b: b };
-}
-
-function luminance(c) {
-  var rs = c.r / 255, gs = c.g / 255, bs = c.b / 255;
-  var r = rs <= 0.03928 ? rs / 12.92 : Math.pow((rs + 0.055) / 1.055, 2.4);
-  var g = gs <= 0.03928 ? gs / 12.92 : Math.pow((gs + 0.055) / 1.055, 2.4);
-  var b = bs <= 0.03928 ? bs / 12.92 : Math.pow((bs + 0.055) / 1.055, 2.4);
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
-
-function contrastRatio(c1, c2) {
-  var l1 = luminance(c1), l2 = luminance(c2);
-  return Math.round(((Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)) * 100) / 100;
-}
-
-function scoreContrast(data) {
-  var profile = S.getProfile(data);
-  var findings = [];
-  var pairs = data.colors.contrastPairs || [];
-
-  // Re-evaluate each pair against profile thresholds
-  var profilePairs = pairs.map(function(p) {
-    var needed = p.isLarge ? profile.contrastLarge : profile.contrast;
-    var ratio = p.ratio;
-
-    // If a CSS filter is present, re-compute contrast with adjusted bg
-    if (p.filter) {
-      var bgParsed = parseRgb(p.bg);
-      if (bgParsed) {
-        var adjustedBg = applyFilterToColor(bgParsed, p.filter);
-        var fgParsed = parseRgb(p.fg);
-        if (fgParsed) {
-          ratio = contrastRatio(fgParsed, adjustedBg);
-        }
-      }
-    }
-
-    var passes = ratio >= needed;
-    return { ratio: ratio, needed: needed, passes: passes, isLarge: p.isLarge, text: p.text, fontSize: p.fontSize, selector: p.selector, fg: p.fg, bg: p.bg, filter: p.filter || '' };
-  });
-
-  // Separate uncertain results (1:1 ratio usually means bg couldn't be determined — gradient, SVG, etc.)
-  var uncertain = profilePairs.filter(function(p) { return !p.passes && p.ratio <= 1.01 && p.fg === p.bg; });
-  var failures = profilePairs.filter(function(p) { return !p.passes && !(p.ratio <= 1.01 && p.fg === p.bg); });
-  var nearMisses = profilePairs.filter(function(p) { return p.passes && p.ratio < p.needed + 0.5; });
-
-  failures.forEach(function(p) {
-    findings.push({
-      severity: 'error',
-      title: 'Text fails contrast ' + p.ratio + ':1 (needs ' + p.needed + ':1)',
-      detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector,
-      fix: p.isLarge
-        ? 'Large text needs ' + profile.contrastLarge + ':1 minimum. Darken the text or lighten the background.'
-        : 'Normal text needs ' + profile.contrast + ':1 minimum. Use a darker text color or lighter background.',
-      presetRef: 'All presets use text-slate-600+ on white backgrounds (8:1+ ratio)',
-      source: p.isLarge ? 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' : 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
-    });
-  });
-
-  if (uncertain.length > 0) {
-    findings.push({
-      severity: 'info',
-      title: uncertain.length + ' element(s) with undetermined contrast (background could not be resolved)',
-      detail: 'These elements may use gradients, images, SVGs, or complex CSS that the analyzer cannot parse. Check manually: ' + uncertain.slice(0, 3).map(function(p) { return '"' + p.text + '"'; }).join(', '),
-      fix: 'Verify these elements have sufficient contrast visually. The analyzer reports 1:1 when the effective background cannot be computed.',
-      presetRef: null
-    });
-  }
-
-  nearMisses.forEach(function(p) {
-    findings.push({
-      severity: 'warning',
-      title: 'Text barely passes contrast ' + p.ratio + ':1 (needs ' + p.needed + ':1)',
-      detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector,
-      fix: 'Consider increasing contrast for better readability. Aim for 7:1 (AAA) where possible.',
-      presetRef: null
-    });
-  });
-
-  // Don't count uncertain results as failures in the score
-  var total = (profilePairs.length - uncertain.length) || 1;
-  var passing = total - failures.length;
-  var score = Math.round((passing / total) * 100);
-
-  return { score: score, findings: findings, weight: 20, label: 'Color & Contrast', icon: 'contrast' };
-}
-
-
-  S.register("contrast", scoreContrast, 20, "Color & Contrast", "contrast");
-})();
-</file>
-
 <file path="docs/scoring/performance.js">
 // Scoring Module: Performance
 // Weight: 5%
@@ -14375,6 +14248,37 @@ function scorePerformance(data) {
         source: 'Web.dev — https://web.dev/articles/serve-images-webp'
       });
     }
+  }
+
+  // CLS (Cumulative Layout Shift)
+  if (data.performance && data.performance.cls !== null && data.performance.cls !== undefined) {
+    checks++;
+    var cls = data.performance.cls;
+    if (cls <= 0.1) {
+      passed++;
+    } else {
+      findings.push({
+        severity: cls > 0.25 ? 'error' : 'warning',
+        title: 'CLS (Cumulative Layout Shift): ' + cls + ' (' + (cls > 0.25 ? 'poor' : 'needs improvement') + ')',
+        detail: 'Layout shifts disrupt user reading and cause mis-clicks. Target: < 0.1.',
+        fix: 'Add explicit width/height to images and ads. Use min-height on dynamic content areas. Avoid inserting content above existing content.',
+        presetRef: null,
+        source: 'Web Vitals — https://web.dev/articles/cls'
+      });
+    }
+  }
+
+  // Non-responsive images
+  var nri = (data.performance && data.performance.nonResponsiveImages) || 0;
+  if (nri > 0) {
+    findings.push({
+      severity: 'warning',
+      title: nri + ' image(s) without responsive sizing',
+      detail: 'Images without max-width: 100% can overflow their containers on small screens',
+      fix: 'Add max-width: 100% and height: auto to all images. In Tailwind: class="max-w-full h-auto".',
+      presetRef: null,
+      source: 'MDN — https://developer.mozilla.org/en-US/docs/Learn/HTML/Multimedia_and_embedding/Responsive_images'
+    });
   }
 
   var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
@@ -14750,6 +14654,23 @@ function scoreSpacing(data) {
     if (touching.length === 0 && tooClose.length === 0) passed++;
   }
 
+  // Element overflow
+  var overflows = (data.layout && data.layout.overflowElements) || 0;
+  if (overflows > 0) {
+    checks++;
+    findings.push({
+      severity: overflows > 5 ? 'warning' : 'info',
+      title: overflows + ' element(s) with horizontal overflow',
+      detail: 'Content extends beyond its container, causing horizontal scroll or clipping',
+      fix: 'Add overflow-x: hidden or overflow: auto to the container element. Check for fixed-width children inside flexible containers.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
+    });
+  } else {
+    checks++;
+    passed++;
+  }
+
   var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
   return { score: score, findings: findings, weight: 15, label: 'Spacing & Layout', icon: 'spacing' };
 }
@@ -14978,6 +14899,19 @@ function scoreTypography(data) {
       checks++;
       passed++;
     }
+  }
+
+  // Letter spacing
+  var lsIssues = (data.typography && data.typography.letterSpacingIssues) || 0;
+  if (lsIssues > 0) {
+    findings.push({
+      severity: 'info',
+      title: lsIssues + ' element(s) with extreme letter-spacing',
+      detail: 'Very tight (< -0.03em) or very loose (> 0.15em) letter spacing reduces readability',
+      fix: 'Keep letter-spacing between -0.02em and 0.1em for body text. Tighter spacing is acceptable for large headings.',
+      presetRef: null,
+      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/letterspacing.html'
+    });
   }
 
   // Max 2 typefaces
@@ -16219,12 +16153,164 @@ function scoreAccessibility(data) {
     });
   }
 
+  // ARIA audit
+  var ariaIssues = data.accessibility.ariaIssues || [];
+  var btnNoTabindex = ariaIssues.filter(function(a) { return a.type === 'button-no-tabindex'; });
+  var hiddenFocusable = ariaIssues.filter(function(a) { return a.type === 'hidden-focusable'; });
+  if (btnNoTabindex.length > 0) {
+    findings.push({
+      severity: 'error',
+      title: btnNoTabindex.length + ' element(s) with role="button" but no tabindex',
+      detail: 'Non-button elements with role="button" must be keyboard-focusable',
+      fix: 'Add tabindex="0" and a keydown handler for Enter/Space to elements with role="button", or use a real <button> element.',
+      presetRef: null,
+      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
+    });
+  }
+  if (hiddenFocusable.length > 0) {
+    findings.push({
+      severity: 'error',
+      title: hiddenFocusable.length + ' focusable element(s) inside aria-hidden containers',
+      detail: 'Screen readers skip aria-hidden content, but keyboard focus can still reach these elements — creating a confusing experience',
+      fix: 'Add tabindex="-1" to focusable elements inside aria-hidden containers, or restructure to keep them outside.',
+      presetRef: null,
+      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
+    });
+  }
+
   var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
   return { score: score, findings: findings, weight: 15, label: 'Accessibility', icon: 'a11y' };
 }
 
 
   S.register("accessibility", scoreAccessibility, 15, "Accessibility", "a11y");
+})();
+</file>
+
+<file path="docs/scoring/contrast.js">
+// Scoring Module: Color & Contrast
+// Weight: 20%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function parseRgb(str) {
+  var m = str.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+  if (!m) m = str.match(/rgb\((\d+)\s+(\d+)\s+(\d+)\)/);
+  if (!m) return null;
+  return { r: +m[1], g: +m[2], b: +m[3] };
+}
+
+function applyFilterToColor(c, filterStr) {
+  if (!c || !filterStr) return c;
+  var r = c.r, g = c.g, b = c.b;
+  var re = /brightness\(([\d.]+)\)|contrast\(([\d.]+)\)|opacity\(([\d.]+)\)/g;
+  var m;
+  while ((m = re.exec(filterStr)) !== null) {
+    if (m[1] !== undefined) {
+      var br = parseFloat(m[1]);
+      r = Math.min(255, Math.round(r * br));
+      g = Math.min(255, Math.round(g * br));
+      b = Math.min(255, Math.round(b * br));
+    } else if (m[2] !== undefined) {
+      var ct = parseFloat(m[2]);
+      r = Math.min(255, Math.max(0, Math.round(((r - 128) * ct) + 128)));
+      g = Math.min(255, Math.max(0, Math.round(((g - 128) * ct) + 128)));
+      b = Math.min(255, Math.max(0, Math.round(((b - 128) * ct) + 128)));
+    }
+    // opacity affects alpha, not RGB channels for contrast purposes
+  }
+  return { r: r, g: g, b: b };
+}
+
+function luminance(c) {
+  var rs = c.r / 255, gs = c.g / 255, bs = c.b / 255;
+  var r = rs <= 0.03928 ? rs / 12.92 : Math.pow((rs + 0.055) / 1.055, 2.4);
+  var g = gs <= 0.03928 ? gs / 12.92 : Math.pow((gs + 0.055) / 1.055, 2.4);
+  var b = bs <= 0.03928 ? bs / 12.92 : Math.pow((bs + 0.055) / 1.055, 2.4);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function contrastRatio(c1, c2) {
+  var l1 = luminance(c1), l2 = luminance(c2);
+  return Math.round(((Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)) * 100) / 100;
+}
+
+function scoreContrast(data) {
+  var profile = S.getProfile(data);
+  var findings = [];
+  var pairs = data.colors.contrastPairs || [];
+
+  // Re-evaluate each pair against profile thresholds
+  var profilePairs = pairs.map(function(p) {
+    var needed = p.isLarge ? profile.contrastLarge : profile.contrast;
+    var ratio = p.ratio;
+
+    // If a CSS filter is present, re-compute contrast with adjusted bg
+    if (p.filter) {
+      var bgParsed = parseRgb(p.bg);
+      if (bgParsed) {
+        var adjustedBg = applyFilterToColor(bgParsed, p.filter);
+        var fgParsed = parseRgb(p.fg);
+        if (fgParsed) {
+          ratio = contrastRatio(fgParsed, adjustedBg);
+        }
+      }
+    }
+
+    var passes = ratio >= needed;
+    return { ratio: ratio, needed: needed, passes: passes, isLarge: p.isLarge, text: p.text, fontSize: p.fontSize, selector: p.selector, fg: p.fg, bg: p.bg, filter: p.filter || '' };
+  });
+
+  // Separate uncertain results (1:1 ratio usually means bg couldn't be determined — gradient, SVG, etc.)
+  var uncertain = profilePairs.filter(function(p) { return !p.passes && p.ratio <= 1.01 && p.fg === p.bg; });
+  var failures = profilePairs.filter(function(p) { return !p.passes && !(p.ratio <= 1.01 && p.fg === p.bg); });
+  var nearMisses = profilePairs.filter(function(p) { return p.passes && p.ratio < p.needed + 0.5; });
+
+  failures.forEach(function(p) {
+    findings.push({
+      severity: 'error',
+      title: 'Text fails contrast ' + p.ratio + ':1 (needs ' + p.needed + ':1)',
+      detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector,
+      fix: p.isLarge
+        ? 'Large text needs ' + profile.contrastLarge + ':1 minimum. Darken the text or lighten the background.'
+        : 'Normal text needs ' + profile.contrast + ':1 minimum. Use a darker text color or lighter background.',
+      presetRef: 'All presets use text-slate-600+ on white backgrounds (8:1+ ratio)',
+      source: p.isLarge ? 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' : 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
+    });
+  });
+
+  if (uncertain.length > 0) {
+    findings.push({
+      severity: 'info',
+      title: uncertain.length + ' element(s) with undetermined contrast (background could not be resolved)',
+      detail: 'These elements may use gradients, images, SVGs, or complex CSS that the analyzer cannot parse. Check manually: ' + uncertain.slice(0, 3).map(function(p) { return '"' + p.text + '"'; }).join(', '),
+      fix: 'Verify these elements have sufficient contrast visually. The analyzer reports 1:1 when the effective background cannot be computed.',
+      presetRef: null
+    });
+  }
+
+  nearMisses.forEach(function(p) {
+    findings.push({
+      severity: 'warning',
+      title: 'Text barely passes contrast ' + p.ratio + ':1 (needs ' + p.needed + ':1)',
+      detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector,
+      fix: 'Consider increasing contrast for better readability. Aim for 7:1 (AAA) where possible.',
+      presetRef: null
+    });
+  });
+
+  // Don't count uncertain results as failures in the score
+  var total = (profilePairs.length - uncertain.length) || 1;
+  var passing = total - failures.length;
+  var score = Math.round((passing / total) * 100);
+
+  return { score: score, findings: findings, weight: 20, label: 'Color & Contrast', icon: 'contrast' };
+}
+
+
+  S.register("contrast", scoreContrast, 20, "Color & Contrast", "contrast");
 })();
 </file>
 
@@ -17234,6 +17320,72 @@ The CSS techniques in this file are generic patterns found across modern web des
 - [Unsplash](https://unsplash.com/) — free photography (attribution appreciated)
 </file>
 
+<file path="CLAUDE.md">
+# CLAUDE.md — make-it-look-good
+
+## Quick Start
+- **Design consultation** → Read `CONSULT.md` and follow the steps
+- **Need a component** → Read `docs/presets/_index.md` for presets and composition recipes
+- **Quick number lookup** → Read `workflows/quick-reference.md`
+- **Read only what's needed** — each knowledge file is self-contained (~200-400 lines)
+
+## Purpose
+This repo is a **design knowledge base for LLMs**. When an LLM needs to make UI/UX decisions, it reads files from this repo to get concrete, evidence-based guidance with hard numbers.
+
+## CSS Framework
+All presets and examples use **[Tailwind CSS](https://tailwindcss.com)** as the default styling framework. When the user's stack is unknown, output Tailwind classes. For the preview tool, Tailwind v4 is loaded via CDN (`@tailwindcss/browser@4`). Match the user's stack if they use something else — see CONSULT.md Step 0.
+
+## File Format Convention
+Every knowledge file follows this template:
+
+```
+# {Topic Title}
+> **TL;DR:** {2-3 sentence actionable summary}
+## Core Principles
+## Concrete Rules
+## CSS/Implementation Patterns
+## Common Mistakes
+## Decision Tree
+## Sources
+```
+
+Not every section is required, but **Concrete Rules** and **CSS/Implementation Patterns** are mandatory — every file must have actionable specifics.
+
+## Maintenance Rules
+- **One file per focused topic** — don't merge topics; create new files instead
+- **Flat folders** (max 1 level deep) — no nested subdirectories within topic folders (exception: `docs/presets/` contains per-preset directories with framework variants)
+- **Concrete numbers over vague principles** — "4.5:1 contrast ratio" not "ensure sufficient contrast"
+- **Markdown only** — no JSON/YAML data files unless tooling specifically requires it
+- **research/ is gitignored** — only `research/sources.md` (bibliography) is committed
+- **Update `research/sources.md`** when adding new sources to any file
+- **Update `README.md`** index when adding new knowledge files
+- **Cross-reference related files** using relative links: `[topic](../folder/file.md)`
+- **Every preset in `docs/presets/` needs:** consistent design tokens (blue-600 primary default, slate neutrals), dark mode support, responsive design, and an entry in `docs/presets/index.json`. Personality variants use different color palettes appropriate to their personality (rose for playful, indigo for editorial, etc.)
+
+## Design Consultation Workflow
+- **`CONSULT.md`** is the LLM consultation playbook — read it to run an interactive design consultation
+- **Step 0 in CONSULT.md classifies the input** — existing code (any framework), screenshot, vague idea, or raw data — and routes to the right workflow
+- **Match the user's tech stack** — don't output Tailwind HTML to someone using React + styled-components. Detect the framework and output code in their format
+- **Always generate Design Review Notes** (Step 4 in CONSULT.md) — a structured markdown document with issues found, design decisions, tokens, and an implementation checklist. This is the primary deliverable
+- **`docs/index.html`** is a live preview tool (GitHub Pages) — paste HTML + Tailwind to preview designs. Includes before/after examples in the Templates menu.
+
+## Directory Structure
+- `foundations/` — Cognitive/psychological principles (Gestalt, Hick's Law, Fitts's Law, etc.)
+- `color/` — Color theory, accessibility, psychology, color-blind safety
+- `typography/` — Type scales, font pairing, readability, web font loading
+- `layout/` — Spacing systems, visual hierarchy, grids, whitespace
+- `interaction/` — Animation timing, micro-interactions, touch targets, loading states
+- `responsive/` — Mobile-first, breakpoints, fluid typography, responsive patterns
+- `systems/` — Design tokens, Material Design 3, Apple HIG, building a system
+- `expressive/` — Visual identity, hero patterns, scroll storytelling, purposeful motion
+- `heuristics/` — Nielsen's 10 heuristics, UX frameworks
+- `components/` — Concrete component patterns (buttons, forms, cards, etc.)
+- `docs/presets/` — Copy-paste-ready HTML+Tailwind presets with personality variants (see `docs/presets/_index.md`)
+  - Each preset dir has `clean.html`, `minimalist.html`, `playful.html` (and optionally `react.jsx`, `vue.vue`, `svelte.svelte`)
+- `workflows/` — Cross-cutting decision guides and checklists
+- `research/` — Raw research data (gitignored except sources.md)
+</file>
+
 <file path="docs/analyzer-report.js">
 // make-it-look-good — Report Renderers
 // HTML report, markdown export, gauge SVG, progress bars
@@ -17551,72 +17703,6 @@ window.MilgReport = (function() {
 
   return { renderReport: renderReport, renderMarkdown: renderMarkdown };
 })();
-</file>
-
-<file path="CLAUDE.md">
-# CLAUDE.md — make-it-look-good
-
-## Quick Start
-- **Design consultation** → Read `CONSULT.md` and follow the steps
-- **Need a component** → Read `docs/presets/_index.md` for presets and composition recipes
-- **Quick number lookup** → Read `workflows/quick-reference.md`
-- **Read only what's needed** — each knowledge file is self-contained (~200-400 lines)
-
-## Purpose
-This repo is a **design knowledge base for LLMs**. When an LLM needs to make UI/UX decisions, it reads files from this repo to get concrete, evidence-based guidance with hard numbers.
-
-## CSS Framework
-All presets and examples use **[Tailwind CSS](https://tailwindcss.com)** as the default styling framework. When the user's stack is unknown, output Tailwind classes. For the preview tool, Tailwind v4 is loaded via CDN (`@tailwindcss/browser@4`). Match the user's stack if they use something else — see CONSULT.md Step 0.
-
-## File Format Convention
-Every knowledge file follows this template:
-
-```
-# {Topic Title}
-> **TL;DR:** {2-3 sentence actionable summary}
-## Core Principles
-## Concrete Rules
-## CSS/Implementation Patterns
-## Common Mistakes
-## Decision Tree
-## Sources
-```
-
-Not every section is required, but **Concrete Rules** and **CSS/Implementation Patterns** are mandatory — every file must have actionable specifics.
-
-## Maintenance Rules
-- **One file per focused topic** — don't merge topics; create new files instead
-- **Flat folders** (max 1 level deep) — no nested subdirectories within topic folders (exception: `docs/presets/` contains per-preset directories with framework variants)
-- **Concrete numbers over vague principles** — "4.5:1 contrast ratio" not "ensure sufficient contrast"
-- **Markdown only** — no JSON/YAML data files unless tooling specifically requires it
-- **research/ is gitignored** — only `research/sources.md` (bibliography) is committed
-- **Update `research/sources.md`** when adding new sources to any file
-- **Update `README.md`** index when adding new knowledge files
-- **Cross-reference related files** using relative links: `[topic](../folder/file.md)`
-- **Every preset in `docs/presets/` needs:** consistent design tokens (blue-600 primary default, slate neutrals), dark mode support, responsive design, and an entry in `docs/presets/index.json`. Personality variants use different color palettes appropriate to their personality (rose for playful, indigo for editorial, etc.)
-
-## Design Consultation Workflow
-- **`CONSULT.md`** is the LLM consultation playbook — read it to run an interactive design consultation
-- **Step 0 in CONSULT.md classifies the input** — existing code (any framework), screenshot, vague idea, or raw data — and routes to the right workflow
-- **Match the user's tech stack** — don't output Tailwind HTML to someone using React + styled-components. Detect the framework and output code in their format
-- **Always generate Design Review Notes** (Step 4 in CONSULT.md) — a structured markdown document with issues found, design decisions, tokens, and an implementation checklist. This is the primary deliverable
-- **`docs/index.html`** is a live preview tool (GitHub Pages) — paste HTML + Tailwind to preview designs. Includes before/after examples in the Templates menu.
-
-## Directory Structure
-- `foundations/` — Cognitive/psychological principles (Gestalt, Hick's Law, Fitts's Law, etc.)
-- `color/` — Color theory, accessibility, psychology, color-blind safety
-- `typography/` — Type scales, font pairing, readability, web font loading
-- `layout/` — Spacing systems, visual hierarchy, grids, whitespace
-- `interaction/` — Animation timing, micro-interactions, touch targets, loading states
-- `responsive/` — Mobile-first, breakpoints, fluid typography, responsive patterns
-- `systems/` — Design tokens, Material Design 3, Apple HIG, building a system
-- `expressive/` — Visual identity, hero patterns, scroll storytelling, purposeful motion
-- `heuristics/` — Nielsen's 10 heuristics, UX frameworks
-- `components/` — Concrete component patterns (buttons, forms, cards, etc.)
-- `docs/presets/` — Copy-paste-ready HTML+Tailwind presets with personality variants (see `docs/presets/_index.md`)
-  - Each preset dir has `clean.html`, `minimalist.html`, `playful.html` (and optionally `react.jsx`, `vue.vue`, `svelte.svelte`)
-- `workflows/` — Cross-cutting decision guides and checklists
-- `research/` — Raw research data (gitignored except sources.md)
 </file>
 
 <file path="docs/presets/index.json">
@@ -19475,6 +19561,73 @@ Use these to calibrate your output quality and verify the flow works.
         });
       } catch(e) { return false; }
     });
+  } catch(e) {}
+
+  // --- Element overflow detection ---
+  data.layout.overflowElements = 0;
+  for (var oi = 0; oi < allElements.length && oi < 500; oi++) {
+    var oel = allElements[oi];
+    if (!isVisible(oel) || isDecorative(oel)) continue;
+    if (oel.scrollWidth > oel.clientWidth + 2 && oel.clientWidth > 0) {
+      data.layout.overflowElements++;
+    }
+  }
+
+  // --- Letter spacing issues ---
+  data.typography.letterSpacingIssues = 0;
+  for (var li = 0; li < allElements.length && li < 500; li++) {
+    var lel = allElements[li];
+    if (!isVisible(lel) || isDecorative(lel) || lel.tagName === 'SCRIPT' || lel.tagName === 'STYLE') continue;
+    var ls = getComputedStyle(lel).letterSpacing;
+    if (ls && ls !== 'normal') {
+      var lsEm = parseFloat(ls) / parseFloat(getComputedStyle(lel).fontSize);
+      if (lsEm < -0.03 || (lsEm > 0.15 && parseFloat(getComputedStyle(lel).fontSize) >= 14)) {
+        data.typography.letterSpacingIssues++;
+      }
+    }
+  }
+
+  // --- ARIA audit ---
+  data.accessibility.ariaIssues = [];
+  // role="button" without keyboard handler
+  document.querySelectorAll('[role="button"]:not(button):not(a)').forEach(function(el) {
+    if (!el.hasAttribute('tabindex')) {
+      data.accessibility.ariaIssues.push({ type: 'button-no-tabindex', selector: cssSelector(el) });
+    }
+  });
+  // aria-hidden on focusable elements
+  document.querySelectorAll('[aria-hidden="true"] a, [aria-hidden="true"] button, [aria-hidden="true"] input, [aria-hidden="true"] [tabindex]').forEach(function(el) {
+    if (isVisible(el)) {
+      data.accessibility.ariaIssues.push({ type: 'hidden-focusable', selector: cssSelector(el) });
+    }
+  });
+  if (data.accessibility.ariaIssues.length > 20) data.accessibility.ariaIssues = data.accessibility.ariaIssues.slice(0, 20);
+
+  // --- Image responsive sizing ---
+  data.performance.nonResponsiveImages = 0;
+  document.querySelectorAll('img').forEach(function(img) {
+    if (!isVisible(img)) return;
+    var s = getComputedStyle(img);
+    var hasMaxWidth = s.maxWidth === '100%' || s.maxWidth === 'none';
+    var hasAutoHeight = s.height === 'auto';
+    if (img.naturalWidth > 0 && img.naturalWidth > img.clientWidth + 10) {
+      if (s.maxWidth !== '100%' && s.width !== '100%' && !s.width.endsWith('%')) {
+        data.performance.nonResponsiveImages++;
+      }
+    }
+  });
+
+  // --- CLS (Chromium only) ---
+  data.performance.cls = null;
+  try {
+    if (window.PerformanceObserver) {
+      var clsEntries = performance.getEntriesByType ? performance.getEntriesByType('layout-shift') : [];
+      if (clsEntries.length > 0) {
+        var clsValue = 0;
+        clsEntries.forEach(function(e) { if (!e.hadRecentInput) clsValue += e.value; });
+        data.performance.cls = Math.round(clsValue * 1000) / 1000;
+      }
+    }
   } catch(e) {}
 
   // --- Output ---

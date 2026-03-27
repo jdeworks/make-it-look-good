@@ -107,6 +107,23 @@ function scoreSpacing(data) {
     if (touching.length === 0 && tooClose.length === 0) passed++;
   }
 
+  // Element overflow
+  var overflows = (data.layout && data.layout.overflowElements) || 0;
+  if (overflows > 0) {
+    checks++;
+    findings.push({
+      severity: overflows > 5 ? 'warning' : 'info',
+      title: overflows + ' element(s) with horizontal overflow',
+      detail: 'Content extends beyond its container, causing horizontal scroll or clipping',
+      fix: 'Add overflow-x: hidden or overflow: auto to the container element. Check for fixed-width children inside flexible containers.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
+    });
+  } else {
+    checks++;
+    passed++;
+  }
+
   var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
   return { score: score, findings: findings, weight: 15, label: 'Spacing & Layout', icon: 'spacing' };
 }
