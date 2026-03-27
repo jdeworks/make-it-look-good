@@ -87,9 +87,9 @@
       </div>
 
       <div class="console-tip" style="margin-top:20px;">
-        <strong>Quick HTML grab:</strong> If you just want to copy the page HTML for the "Paste HTML" tab, run this in the console:<br>
-        <code style="display:block;margin-top:6px;padding:6px 8px;word-break:break-all">copy(document.documentElement.outerHTML)</code>
-        <span style="color:var(--text-secondary);font-size:12px;display:block;margin-top:4px">This copies the full rendered HTML (including dynamically loaded content) to your clipboard. Works behind logins, on SPAs, everywhere.</span>
+        <strong>Quick HTML grab (with CSS):</strong> If you just want to copy the page for the "Paste HTML" tab, run this in the console:<br>
+        <code style="display:block;margin-top:6px;padding:6px 8px;word-break:break-all;white-space:pre-wrap">(async()=>{let c='';for(const s of document.styleSheets){try{c+=Array.from(s.cssRules).map(r=>r.cssText).join('\n')}catch(e){if(s.href){try{const r=await fetch(s.href);c+=await r.text()}catch(e2){}}}}const h=document.documentElement.cloneNode(true);h.querySelectorAll('script').forEach(s=>s.remove());h.querySelectorAll('link[rel=stylesheet]').forEach(l=>l.remove());const st=document.createElement('style');st.textContent=c;h.querySelector('head').appendChild(st);copy(h.outerHTML);console.log('%c✓ HTML + CSS copied!','color:#16a34a;font-weight:bold;font-size:14px')})()</code>
+        <span style="color:var(--text-secondary);font-size:12px;display:block;margin-top:4px">This inlines all CSS (including external stylesheets) into the HTML and removes scripts. Works behind logins, on SPAs, localhost — everywhere.</span>
       </div>
 
       <div style="margin-top:24px;">
@@ -109,14 +109,14 @@
     <!-- Tab 2: Paste HTML -->
     <div class="tab-content" id="tabHtml">
       <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;line-height:1.5;">
-        Paste raw HTML source code. The analyzer will render it with Tailwind CSS and extract design tokens.
-        This is an approximation — external CSS/fonts won't load. For best results, use the snippet extraction.
+        Paste HTML source code. The analyzer renders it in an iframe and extracts computed styles.
+        For best results, use the console snippet below to grab HTML with CSS inlined.
       </p>
 
       <div class="console-tip" style="margin-bottom:16px;">
-        <strong>Grab rendered HTML from any page:</strong> Open DevTools console (<code>F12</code>) and run:<br>
-        <code style="display:block;margin-top:6px;padding:6px 8px;word-break:break-all">copy(document.documentElement.outerHTML)</code>
-        <span style="color:var(--text-secondary);font-size:12px;display:block;margin-top:4px">This copies the full DOM including dynamically loaded content, SPA state, and content behind login walls.</span>
+        <strong>Grab page with CSS inlined:</strong> Open DevTools console (<code>F12</code>) and run:<br>
+        <code style="display:block;margin-top:6px;padding:6px 8px;word-break:break-all;white-space:pre-wrap">(async()=>{let c='';for(const s of document.styleSheets){try{c+=Array.from(s.cssRules).map(r=>r.cssText).join('\n')}catch(e){if(s.href){try{const r=await fetch(s.href);c+=await r.text()}catch(e2){}}}}const h=document.documentElement.cloneNode(true);h.querySelectorAll('script').forEach(s=>s.remove());h.querySelectorAll('link[rel=stylesheet]').forEach(l=>l.remove());const st=document.createElement('style');st.textContent=c;h.querySelector('head').appendChild(st);copy(h.outerHTML);console.log('%c✓ HTML + CSS copied!','color:#16a34a;font-weight:bold;font-size:14px')})()</code>
+        <span style="color:var(--text-secondary);font-size:12px;display:block;margin-top:4px">Inlines all external CSS into the HTML and strips scripts. Works behind logins, on SPAs, localhost.</span>
       </div>
 
       <div class="input-area">

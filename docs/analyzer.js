@@ -1076,13 +1076,27 @@
     }
     window.addEventListener('message', onResult);
 
-    var srcdoc = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">' +
-      '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
-      '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
-      '<style>body{margin:0}</style></head><body>' +
-      html +
-      '<script>setTimeout(function(){(' + extractFromDocument.toString() + ')()}, 1500);</' + 'script>' +
-      '</body></html>';
+    // If the pasted HTML is a full document (has <html> or <head>), use it as-is
+    // and just append the extraction script. Otherwise wrap in a basic document.
+    var isFullDoc = /<html[\s>]/i.test(html) || /<!DOCTYPE/i.test(html);
+    var srcdoc;
+    if (isFullDoc) {
+      // Inject extraction script before </body>
+      var extractScript = '<script>setTimeout(function(){(' + extractFromDocument.toString() + ')()}, 1500);</' + 'script>';
+      if (/<\/body>/i.test(html)) {
+        srcdoc = html.replace(/<\/body>/i, extractScript + '</body>');
+      } else {
+        srcdoc = html + extractScript;
+      }
+    } else {
+      srcdoc = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">' +
+        '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+        '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
+        '<style>body{margin:0}</style></head><body>' +
+        html +
+        '<script>setTimeout(function(){(' + extractFromDocument.toString() + ')()}, 1500);</' + 'script>' +
+        '</body></html>';
+    }
     iframe.srcdoc = srcdoc;
 
     // Timeout fallback
