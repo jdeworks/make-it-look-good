@@ -122,8 +122,14 @@
   } else if (/class="[^"]*(?:col-md|col-sm|btn-primary|container-fluid)/.test(htmlStr)) {
     data.structure.cssFramework = 'bootstrap';
   }
-  data.structure.darkModeClasses = /class="[^"]*dark:/.test(htmlStr);
-  data.structure.responsiveClasses = /class="[^"]*(?:sm:|md:|lg:|xl:)/.test(htmlStr);
+  // Dark mode: check Tailwind dark: classes, .dark-ui/.dark-mode body classes, or prefers-color-scheme in stylesheets
+  data.structure.darkModeClasses = /class="[^"]*dark:/.test(htmlStr)
+    || document.body.classList.contains('dark-ui') || document.body.classList.contains('dark-mode')
+    || document.documentElement.classList.contains('dark')
+    || Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r.cssText && r.cssText.indexOf('prefers-color-scheme') !== -1; }); } catch(e) { return false; } });
+  // Responsive: check Tailwind responsive classes OR CSS @media queries in stylesheets
+  data.structure.responsiveClasses = /class="[^"]*(?:sm:|md:|lg:|xl:)/.test(htmlStr)
+    || Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r instanceof CSSMediaRule && /max-width|min-width/.test(r.conditionText || ''); }); } catch(e) { return false; } });
 
   // --- Typography & Colors ---
   var fontSizeMap = {};
@@ -180,7 +186,7 @@
     var range = document.createRange();
     range.selectNodeContents(el);
     var textLen = node.textContent.trim().length;
-    if (textLen > data.typography.maxLineLength.chars && el.tagName !== 'SCRIPT' && el.tagName !== 'STYLE') {
+    if (textLen > data.typography.maxLineLength.chars && el.tagName !== 'SCRIPT' && el.tagName !== 'STYLE' && !el.closest('pre') && !el.closest('code')) {
       // Approximate character count per line using element width and font metrics
       var elWidth = el.getBoundingClientRect().width;
       var charWidth = fontSize * 0.5; // rough average

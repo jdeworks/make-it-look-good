@@ -1399,8 +1399,8 @@ const analyzePreviewScript = `
   data.structure.totalElements = allElements.length;
   var htmlStr = document.body.innerHTML;
   if (/class="[^"]*(?:sm:|md:|lg:|xl:)/.test(htmlStr) || /class="[^"]*(?:flex|grid|text-|bg-|p-|m-)/.test(htmlStr)) { data.structure.tailwindDetected = true; data.structure.cssFramework = 'tailwind'; }
-  data.structure.darkModeClasses = /class="[^"]*dark:/.test(htmlStr);
-  data.structure.responsiveClasses = /class="[^"]*(?:sm:|md:|lg:|xl:)/.test(htmlStr);
+  data.structure.darkModeClasses = /class="[^"]*dark:/.test(htmlStr) || document.body.classList.contains('dark-ui') || document.body.classList.contains('dark-mode') || document.documentElement.classList.contains('dark') || Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r.cssText && r.cssText.indexOf('prefers-color-scheme') !== -1; }); } catch(e) { return false; } });
+  data.structure.responsiveClasses = /class="[^"]*(?:sm:|md:|lg:|xl:)/.test(htmlStr) || Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r instanceof CSSMediaRule && /max-width|min-width/.test(r.conditionText || ''); }); } catch(e) { return false; } });
 
   var bodyStyle = getComputedStyle(document.body);
   data.typography.bodyFontSize = bodyStyle.fontSize;
@@ -1434,7 +1434,7 @@ const analyzePreviewScript = `
     }
     var charWidth = fontSize * 0.5;
     var charsPerLine = Math.round(el.getBoundingClientRect().width / charWidth);
-    if (charsPerLine > data.typography.maxLineLength.chars && el.tagName !== 'SCRIPT' && el.tagName !== 'STYLE') {
+    if (charsPerLine > data.typography.maxLineLength.chars && el.tagName !== 'SCRIPT' && el.tagName !== 'STYLE' && !el.closest('pre') && !el.closest('code')) {
       data.typography.maxLineLength = { chars: charsPerLine, element: cssSelector(el) };
     }
   }
