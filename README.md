@@ -93,6 +93,20 @@ Look at docs/presets/_index.md and give me a hero + pricing cards layout.
 
 Paste any HTML+Tailwind into the [live preview tool](https://jdeworks.github.io/make-it-look-good/) to see it rendered instantly. Toggle mobile/tablet/desktop views, dark mode, and share via URL. Includes 121 prebuilt templates across 38 elements with multiple design personalities.
 
+### Design Analyzer
+
+Score any website against evidence-based design rules with the [Design Analyzer](https://jdeworks.github.io/make-it-look-good/analyzer.html). It checks contrast ratios, typography, spacing, touch targets, accessibility, responsive design, and more — no AI, just math against WCAG, Material Design, and typography research.
+
+Three ways to analyze:
+
+| Method | Best for | How |
+|--------|----------|-----|
+| **Enter URL** | Phone, quick checks | Paste a URL — fetched via CORS proxy, scored automatically |
+| **Console Snippet** | Most accurate, localhost, behind login | Copy snippet → run in DevTools console → paste JSON |
+| **Paste HTML** | Static mockups | Paste HTML source, rendered in iframe |
+
+Features: page context detection (marketing vs. app vs. form), viewport-aware touch targets (desktop vs. mobile thresholds), decorative element filtering (skips mock UIs), markdown export for sharing with AI or teammates, PDF print.
+
 ### Before & After Examples
 
 Each "before" shows a typical MVP. Each "after" is a structurally different redesign — not just CSS tweaks but genuinely different layouts. Multiple personalities (Clean, Minimalist, Playful, Editorial) show how the same content can look completely different.

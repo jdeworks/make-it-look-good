@@ -408,8 +408,9 @@
       .catch(function() {
         // Fallback: try CORS proxies
         var proxies = [
-          'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
-          'https://corsproxy.io/?' + encodeURIComponent(url)
+          'https://corsproxy.io/?' + encodeURIComponent(url),
+          'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url),
+          'https://api.allorigins.win/raw?url=' + encodeURIComponent(url)
         ];
         tryProxy(proxies, 0, callback);
       });
@@ -455,8 +456,8 @@
     var isFullDoc = /<html[\s>]/i.test(html) || /<!DOCTYPE/i.test(html);
     var srcdoc;
     if (isFullDoc) {
-      // Inject extraction script before </body>
-      var extractScript = '<script>setTimeout(function(){(' + extractFromDocument.toString() + ')()}, 1500);</' + 'script>';
+      // Full documents need more time for external resources to load
+      var extractScript = '<script>setTimeout(function(){(' + extractFromDocument.toString() + ')()}, 3000);</' + 'script>';
       if (/<\/body>/i.test(html)) {
         srcdoc = html.replace(/<\/body>/i, extractScript + '</body>');
       } else {
@@ -488,7 +489,7 @@
           structure: { totalElements: 0, darkModeClasses: false, responsiveClasses: false, tailwindDetected: false, cssFramework: 'unknown' }
         });
       }
-    }, 8000);
+    }, isFullDoc ? 15000 : 8000);
   }
 
   function loadSnippet(codeEl) {
