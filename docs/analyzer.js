@@ -267,6 +267,44 @@
       });
     });
 
+    // Analyze URL
+    var analyzeUrlBtn = document.getElementById('analyzeUrlBtn');
+    var urlInput = document.getElementById('urlInput');
+    var urlStatus = document.getElementById('urlStatus');
+
+    analyzeUrlBtn.addEventListener('click', function() {
+      var url = (urlInput.value || '').trim();
+      if (!url) { showToast('Enter a URL first'); return; }
+      if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+
+      analyzeUrlBtn.disabled = true;
+      analyzeUrlBtn.textContent = 'Fetching...';
+      urlStatus.style.display = 'block';
+      urlStatus.textContent = 'Fetching page via CORS proxy...';
+
+      fetchViaProxy(url, function(html, err) {
+        if (err || !html) {
+          analyzeUrlBtn.disabled = false;
+          analyzeUrlBtn.textContent = 'Analyze URL';
+          urlStatus.innerHTML = '<span style="color:#dc2626">Could not fetch: ' + (err || 'empty response') + '</span><br><span style="font-size:12px">Try the Console Snippet tab for pages behind login, localhost, or sites that block proxies.</span>';
+          return;
+        }
+        urlStatus.textContent = 'Rendering and analyzing...';
+        analyzeHtmlInIframe(html, function(data) {
+          analyzeUrlBtn.disabled = false;
+          analyzeUrlBtn.textContent = 'Analyze URL';
+          urlStatus.style.display = 'none';
+          data.meta.url = url;
+          runAnalysis(data);
+        });
+      });
+    });
+
+    // Allow Enter key in URL input
+    urlInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') { e.preventDefault(); analyzeUrlBtn.click(); }
+    });
+
     // New analysis
     newAnalysisBtn.addEventListener('click', function() {
       reportContainer.classList.remove('visible');
@@ -275,6 +313,8 @@
       document.getElementById('reportActions').style.display = 'none';
       pasteInput.value = '';
       htmlInput.value = '';
+      urlInput.value = '';
+      urlStatus.style.display = 'none';
       reportData = null;
       // Clear hash so refreshing doesn't reload old report
       if (location.hash) history.replaceState(null, '', location.pathname + location.search);
@@ -354,6 +394,44 @@
     reportContainer.classList.add('visible');
     inputSection.style.display = 'none';
     document.getElementById('reportActions').style.display = 'flex';
+  }
+
+  // --- URL Fetch via CORS proxy ---
+  function fetchViaProxy(url, callback) {
+    // Try direct fetch first (works for same-origin and CORS-enabled sites)
+    fetch(url, { mode: 'cors', redirect: 'follow' })
+      .then(function(r) {
+        if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+        return r.text();
+      })
+      .then(function(html) { callback(html, null); })
+      .catch(function() {
+        // Fallback: try CORS proxies
+        var proxies = [
+          'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
+          'https://corsproxy.io/?' + encodeURIComponent(url)
+        ];
+        tryProxy(proxies, 0, callback);
+      });
+  }
+
+  function tryProxy(proxies, idx, callback) {
+    if (idx >= proxies.length) {
+      callback(null, 'All CORS proxies failed. The site may block external access.');
+      return;
+    }
+    fetch(proxies[idx])
+      .then(function(r) {
+        if (!r.ok) throw new Error(r.status);
+        return r.text();
+      })
+      .then(function(html) {
+        if (!html || html.length < 100) throw new Error('Empty response');
+        callback(html, null);
+      })
+      .catch(function() {
+        tryProxy(proxies, idx + 1, callback);
+      });
   }
 
   function analyzeHtmlInIframe(html, callback) {
