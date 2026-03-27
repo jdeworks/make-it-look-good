@@ -15521,6 +15521,718 @@ The CSS techniques in this file are generic patterns found across modern web des
 - [Unsplash](https://unsplash.com/) — free photography (attribution appreciated)
 </file>
 
+<file path="docs/analyzer.css">
+/* Analyzer — inherits vars from style.css */
+
+.analyzer-body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  /* Override style.css body which sets overflow:hidden + height:100vh for the editor */
+  overflow: auto !important;
+  height: auto !important;
+}
+
+/* Screen reader only */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Focus indicators */
+.analyzer-body .btn:focus-visible,
+.analyzer-body .tab-btn:focus-visible,
+.analyzer-body textarea:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Fix touch targets — minimum 44px height */
+.analyzer-body .btn {
+  min-height: 44px;
+}
+
+.analyzer-body .btn-icon {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+/* Fix contrast on step numbers — use darker blue */
+.guide-step-num {
+  background: #1d4ed8 !important;
+}
+
+/* Fix contrast on primary buttons — use darker blue */
+.analyzer-body .btn-primary {
+  background: #2563eb;
+  border-color: #2563eb;
+}
+.analyzer-body .btn-primary:hover {
+  background: #1d4ed8;
+}
+
+/* Fix tab button min height + contrast */
+.tab-btn {
+  min-height: 44px;
+}
+.tab-btn.active {
+  color: #2563eb;
+  border-bottom-color: #2563eb;
+}
+
+/* Fix logo touch target */
+.analyzer-body .logo {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Snippet code should not affect line-length scoring */
+.snippet-code {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* --- Input section --- */
+.input-section {
+  max-width: 800px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 32px 24px 64px;
+}
+
+.input-hero {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.input-hero h1 {
+  font-size: 28px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.input-hero p {
+  font-size: 15px;
+  color: var(--text-secondary);
+  max-width: 520px;
+  margin: 0 auto;
+  line-height: 1.5;
+}
+
+/* Tabs */
+.input-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 20px;
+  gap: 0;
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 10px 16px;
+  border: none;
+  background: none;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font);
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s ease;
+}
+
+.tab-btn:hover { color: var(--text); }
+.tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* Input areas */
+.input-area textarea {
+  width: 100%;
+  min-height: 180px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-family: var(--mono);
+  color: var(--text);
+  background: var(--bg);
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.input-area textarea:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+.input-area textarea::placeholder { color: var(--text-secondary); }
+
+.input-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.input-actions .btn-primary {
+  flex: 1;
+  justify-content: center;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* Snippet section */
+.snippet-section {
+  margin-top: 24px;
+}
+
+.snippet-section h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.snippet-section p {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+.snippet-box {
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.snippet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.snippet-header span {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.snippet-code {
+  padding: 12px 16px;
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--text-secondary);
+  max-height: 200px;
+  overflow-y: auto;
+  white-space: pre;
+  line-height: 1.5;
+}
+
+/* Quick guide */
+.guide-steps {
+  margin-top: 24px;
+  counter-reset: step;
+}
+
+.guide-step {
+  display: flex;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.guide-step:last-child { border-bottom: none; }
+
+.guide-step-num {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: white;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.guide-step code {
+  background: var(--bg-alt);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: var(--mono);
+  border: 1px solid var(--border);
+}
+
+.guide-step strong { font-weight: 600; }
+
+/* Console tips */
+.console-tip {
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  margin-top: 16px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.console-tip code {
+  background: var(--bg);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 12px;
+  border: 1px solid var(--border);
+}
+
+.console-tip strong { font-weight: 600; }
+
+/* --- Report --- */
+.report-container {
+  display: none;
+  max-width: 900px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 32px 24px 64px;
+}
+
+.report-container.visible { display: block; }
+
+/* Report actions bar */
+.report-actions {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  max-width: 900px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 24px 16px;
+}
+
+/* Report header */
+.report-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 24px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.report-header-info h1 {
+  font-size: 24px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.report-url {
+  font-size: 14px;
+  color: var(--primary);
+  word-break: break-all;
+  margin-bottom: 2px;
+}
+
+.report-timestamp {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.report-gauge {
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.report-grade-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+/* Category cards */
+.report-categories {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 32px;
+}
+
+.report-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: var(--shadow);
+}
+
+.report-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.report-card-icon {
+  flex-shrink: 0;
+  display: flex;
+}
+
+.report-card-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.report-card-title h3 {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.report-card-weight {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.report-card-score {
+  font-size: 24px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.progress-bar {
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.6s ease;
+}
+
+.report-card-counts {
+  display: flex;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.count-error { color: #dc2626; font-weight: 600; }
+.count-warning { color: #b45309; font-weight: 600; }
+.count-info { color: #2563eb; font-weight: 600; }
+.count-pass { color: #16a34a; font-weight: 600; }
+
+/* Findings */
+.report-findings {
+  margin-bottom: 32px;
+}
+
+.report-findings > h2 {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+.report-finding-group {
+  margin-bottom: 24px;
+}
+
+.report-finding-group > h3 {
+  font-size: 15px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  color: var(--text);
+}
+
+.report-finding-group > h3 svg {
+  flex-shrink: 0;
+}
+
+.report-finding {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  margin-bottom: 8px;
+}
+
+.report-finding.severity-error { border-left: 3px solid #dc2626; }
+.report-finding.severity-warning { border-left: 3px solid #f59e0b; }
+.report-finding.severity-info { border-left: 3px solid #3b82f6; }
+
+.finding-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.finding-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.finding-detail {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 4px 0;
+  line-height: 1.5;
+}
+
+.finding-fix {
+  font-size: 13px;
+  margin-top: 6px;
+  padding: 8px 10px;
+  background: var(--bg-alt);
+  border-radius: 6px;
+  line-height: 1.5;
+}
+
+.finding-preset {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Summary */
+.report-summary {
+  border-top: 1px solid var(--border);
+  padding-top: 24px;
+}
+
+.report-summary > h2 {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.summary-section {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+
+.summary-section h4 {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.color-swatches {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.color-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  cursor: default;
+}
+
+.summary-list {
+  font-size: 13px;
+  line-height: 1.8;
+  word-break: break-word;
+}
+
+/* Methodology note */
+.report-methodology {
+  border-top: 1px solid var(--border);
+  padding-top: 24px;
+  margin-top: 16px;
+}
+
+.report-methodology h2 {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.report-methodology p {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 8px;
+}
+
+.report-methodology strong {
+  color: var(--text);
+}
+
+/* --- Print / PDF --- */
+@media print {
+  body, .analyzer-body {
+    background: white !important;
+    color: #0f172a !important;
+  }
+
+  .header, .input-section, .report-actions, .toast,
+  #newAnalysisBtn, #printBtn, .guide-steps,
+  .snippet-section, .console-tip {
+    display: none !important;
+  }
+
+  .report-container {
+    display: block !important;
+    padding: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .report-header { break-after: avoid; }
+  .report-categories { break-inside: avoid; }
+  .report-finding-group { break-inside: avoid; }
+  .summary-grid { break-inside: avoid; }
+
+  .report-card {
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: none !important;
+  }
+
+  .report-finding {
+    border: 1px solid #e2e8f0 !important;
+  }
+
+  .report-finding.severity-error { border-left: 3px solid #dc2626 !important; }
+  .report-finding.severity-warning { border-left: 3px solid #f59e0b !important; }
+  .report-finding.severity-info { border-left: 3px solid #3b82f6 !important; }
+
+  a { color: #2563eb !important; }
+
+  .finding-fix {
+    background: #f8fafc !important;
+    border: 1px solid #e2e8f0;
+  }
+
+  .report-findings { break-before: page; }
+  .report-summary { break-before: page; }
+}
+
+/* --- Responsive --- */
+@media (max-width: 640px) {
+  .input-section { padding: 20px 16px 48px; }
+  .input-hero h1 { font-size: 22px; }
+  .report-container { padding: 20px 16px 48px; }
+  .report-header { flex-direction: column; text-align: center; gap: 16px; }
+  .report-categories { grid-template-columns: 1fr; }
+  .summary-grid { grid-template-columns: 1fr; }
+  .report-actions { flex-wrap: wrap; }
+}
+</file>
+
+<file path="CLAUDE.md">
+# CLAUDE.md — make-it-look-good
+
+## Quick Start
+- **Design consultation** → Read `CONSULT.md` and follow the steps
+- **Need a component** → Read `docs/presets/_index.md` for presets and composition recipes
+- **Quick number lookup** → Read `workflows/quick-reference.md`
+- **Read only what's needed** — each knowledge file is self-contained (~200-400 lines)
+
+## Purpose
+This repo is a **design knowledge base for LLMs**. When an LLM needs to make UI/UX decisions, it reads files from this repo to get concrete, evidence-based guidance with hard numbers.
+
+## CSS Framework
+All presets and examples use **[Tailwind CSS](https://tailwindcss.com)** as the default styling framework. When the user's stack is unknown, output Tailwind classes. For the preview tool, Tailwind v4 is loaded via CDN (`@tailwindcss/browser@4`). Match the user's stack if they use something else — see CONSULT.md Step 0.
+
+## File Format Convention
+Every knowledge file follows this template:
+
+```
+# {Topic Title}
+> **TL;DR:** {2-3 sentence actionable summary}
+## Core Principles
+## Concrete Rules
+## CSS/Implementation Patterns
+## Common Mistakes
+## Decision Tree
+## Sources
+```
+
+Not every section is required, but **Concrete Rules** and **CSS/Implementation Patterns** are mandatory — every file must have actionable specifics.
+
+## Maintenance Rules
+- **One file per focused topic** — don't merge topics; create new files instead
+- **Flat folders** (max 1 level deep) — no nested subdirectories within topic folders (exception: `docs/presets/` contains per-preset directories with framework variants)
+- **Concrete numbers over vague principles** — "4.5:1 contrast ratio" not "ensure sufficient contrast"
+- **Markdown only** — no JSON/YAML data files unless tooling specifically requires it
+- **research/ is gitignored** — only `research/sources.md` (bibliography) is committed
+- **Update `research/sources.md`** when adding new sources to any file
+- **Update `README.md`** index when adding new knowledge files
+- **Cross-reference related files** using relative links: `[topic](../folder/file.md)`
+- **Every preset in `docs/presets/` needs:** consistent design tokens (blue-600 primary default, slate neutrals), dark mode support, responsive design, and an entry in `docs/presets/index.json`. Personality variants use different color palettes appropriate to their personality (rose for playful, indigo for editorial, etc.)
+
+## Design Consultation Workflow
+- **`CONSULT.md`** is the LLM consultation playbook — read it to run an interactive design consultation
+- **Step 0 in CONSULT.md classifies the input** — existing code (any framework), screenshot, vague idea, or raw data — and routes to the right workflow
+- **Match the user's tech stack** — don't output Tailwind HTML to someone using React + styled-components. Detect the framework and output code in their format
+- **Always generate Design Review Notes** (Step 4 in CONSULT.md) — a structured markdown document with issues found, design decisions, tokens, and an implementation checklist. This is the primary deliverable
+- **`docs/index.html`** is a live preview tool (GitHub Pages) — paste HTML + Tailwind to preview designs. Includes before/after examples in the Templates menu.
+
+## Directory Structure
+- `foundations/` — Cognitive/psychological principles (Gestalt, Hick's Law, Fitts's Law, etc.)
+- `color/` — Color theory, accessibility, psychology, color-blind safety
+- `typography/` — Type scales, font pairing, readability, web font loading
+- `layout/` — Spacing systems, visual hierarchy, grids, whitespace
+- `interaction/` — Animation timing, micro-interactions, touch targets, loading states
+- `responsive/` — Mobile-first, breakpoints, fluid typography, responsive patterns
+- `systems/` — Design tokens, Material Design 3, Apple HIG, building a system
+- `expressive/` — Visual identity, hero patterns, scroll storytelling, purposeful motion
+- `heuristics/` — Nielsen's 10 heuristics, UX frameworks
+- `components/` — Concrete component patterns (buttons, forms, cards, etc.)
+- `docs/presets/` — Copy-paste-ready HTML+Tailwind presets with personality variants (see `docs/presets/_index.md`)
+  - Each preset dir has `clean.html`, `minimalist.html`, `playful.html` (and optionally `react.jsx`, `vue.vue`, `svelte.svelte`)
+- `workflows/` — Cross-cutting decision guides and checklists
+- `research/` — Raw research data (gitignored except sources.md)
+</file>
+
 <file path="docs/analyzer-snippet.js">
 // make-it-look-good — Design Extraction Snippet
 // Run this in the browser console on any page, or use as a bookmarklet.
@@ -15992,736 +16704,6 @@ The CSS techniques in this file are generic patterns found across modern web des
   // Also store on window for debugging
   window.__milgData = data;
 })();
-</file>
-
-<file path="docs/analyzer.css">
-/* Analyzer — inherits vars from style.css */
-
-.analyzer-body {
-  font-family: var(--font);
-  background: var(--bg);
-  color: var(--text);
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  /* Override style.css body which sets overflow:hidden + height:100vh for the editor */
-  overflow: auto !important;
-  height: auto !important;
-}
-
-/* Screen reader only */
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-/* Focus indicators */
-.analyzer-body .btn:focus-visible,
-.analyzer-body .tab-btn:focus-visible,
-.analyzer-body textarea:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
-}
-
-/* Fix touch targets — minimum 44px height */
-.analyzer-body .btn {
-  min-height: 44px;
-}
-
-.analyzer-body .btn-icon {
-  min-width: 44px;
-  min-height: 44px;
-}
-
-/* Fix contrast on step numbers — use darker blue */
-.guide-step-num {
-  background: #1d4ed8 !important;
-}
-
-/* Fix contrast on primary buttons — use darker blue */
-.analyzer-body .btn-primary {
-  background: #2563eb;
-  border-color: #2563eb;
-}
-.analyzer-body .btn-primary:hover {
-  background: #1d4ed8;
-}
-
-/* Fix tab button min height + contrast */
-.tab-btn {
-  min-height: 44px;
-}
-.tab-btn.active {
-  color: #2563eb;
-  border-bottom-color: #2563eb;
-}
-
-/* Fix logo touch target */
-.analyzer-body .logo {
-  min-height: 44px;
-  display: inline-flex;
-  align-items: center;
-}
-
-/* Snippet code should not affect line-length scoring */
-.snippet-code {
-  max-width: 100%;
-  overflow-x: auto;
-}
-
-/* --- Input section --- */
-.input-section {
-  max-width: 800px;
-  width: 100%;
-  margin: 0 auto;
-  padding: 32px 24px 64px;
-}
-
-.input-hero {
-  text-align: center;
-  margin-bottom: 32px;
-}
-
-.input-hero h1 {
-  font-size: 28px;
-  font-weight: 700;
-  margin-bottom: 8px;
-}
-
-.input-hero p {
-  font-size: 15px;
-  color: var(--text-secondary);
-  max-width: 520px;
-  margin: 0 auto;
-  line-height: 1.5;
-}
-
-/* Tabs */
-.input-tabs {
-  display: flex;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 20px;
-  gap: 0;
-}
-
-.tab-btn {
-  flex: 1;
-  padding: 10px 16px;
-  border: none;
-  background: none;
-  font-size: 13px;
-  font-weight: 600;
-  font-family: var(--font);
-  color: var(--text-secondary);
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  transition: all 0.15s ease;
-}
-
-.tab-btn:hover { color: var(--text); }
-.tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
-
-.tab-content { display: none; }
-.tab-content.active { display: block; }
-
-/* Input areas */
-.input-area textarea {
-  width: 100%;
-  min-height: 180px;
-  padding: 12px 16px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  font-size: 13px;
-  font-family: var(--mono);
-  color: var(--text);
-  background: var(--bg);
-  resize: vertical;
-  outline: none;
-  transition: border-color 0.15s;
-}
-
-.input-area textarea:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
-}
-
-.input-area textarea::placeholder { color: var(--text-secondary); }
-
-.input-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.input-actions .btn-primary {
-  flex: 1;
-  justify-content: center;
-  padding: 10px 20px;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-/* Snippet section */
-.snippet-section {
-  margin-top: 24px;
-}
-
-.snippet-section h3 {
-  font-size: 14px;
-  font-weight: 600;
-  margin-bottom: 8px;
-}
-
-.snippet-section p {
-  font-size: 13px;
-  color: var(--text-secondary);
-  line-height: 1.5;
-  margin-bottom: 12px;
-}
-
-.snippet-box {
-  background: var(--bg-alt);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-
-.snippet-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg);
-}
-
-.snippet-header span {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.snippet-code {
-  padding: 12px 16px;
-  font-size: 11px;
-  font-family: var(--mono);
-  color: var(--text-secondary);
-  max-height: 200px;
-  overflow-y: auto;
-  white-space: pre;
-  line-height: 1.5;
-}
-
-/* Quick guide */
-.guide-steps {
-  margin-top: 24px;
-  counter-reset: step;
-}
-
-.guide-step {
-  display: flex;
-  gap: 12px;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--border);
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.guide-step:last-child { border-bottom: none; }
-
-.guide-step-num {
-  flex-shrink: 0;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background: var(--primary);
-  color: white;
-  font-size: 12px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.guide-step code {
-  background: var(--bg-alt);
-  padding: 1px 6px;
-  border-radius: 4px;
-  font-size: 12px;
-  font-family: var(--mono);
-  border: 1px solid var(--border);
-}
-
-.guide-step strong { font-weight: 600; }
-
-/* Bookmarklet */
-.bookmarklet-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  background: var(--primary);
-  color: white;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 600;
-  text-decoration: none;
-  cursor: grab;
-  margin-top: 8px;
-}
-
-.bookmarklet-link:hover { background: var(--primary-hover); }
-
-/* Console tips */
-.console-tip {
-  background: var(--bg-alt);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 12px 16px;
-  margin-top: 16px;
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.console-tip code {
-  background: var(--bg);
-  padding: 1px 6px;
-  border-radius: 4px;
-  font-family: var(--mono);
-  font-size: 12px;
-  border: 1px solid var(--border);
-}
-
-.console-tip strong { font-weight: 600; }
-
-/* --- Report --- */
-.report-container {
-  display: none;
-  max-width: 900px;
-  width: 100%;
-  margin: 0 auto;
-  padding: 32px 24px 64px;
-}
-
-.report-container.visible { display: block; }
-
-/* Report actions bar */
-.report-actions {
-  display: none;
-  align-items: center;
-  gap: 8px;
-  max-width: 900px;
-  width: 100%;
-  margin: 0 auto;
-  padding: 0 24px 16px;
-}
-
-/* Report header */
-.report-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-bottom: 24px;
-  margin-bottom: 24px;
-  border-bottom: 1px solid var(--border);
-}
-
-.report-header-info h1 {
-  font-size: 24px;
-  font-weight: 700;
-  margin-bottom: 4px;
-}
-
-.report-url {
-  font-size: 14px;
-  color: var(--primary);
-  word-break: break-all;
-  margin-bottom: 2px;
-}
-
-.report-timestamp {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.report-gauge {
-  text-align: center;
-  flex-shrink: 0;
-}
-
-.report-grade-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  margin-top: 4px;
-}
-
-/* Category cards */
-.report-categories {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px;
-  margin-bottom: 32px;
-}
-
-.report-card {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 16px;
-  box-shadow: var(--shadow);
-}
-
-.report-card-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.report-card-icon {
-  flex-shrink: 0;
-  display: flex;
-}
-
-.report-card-title {
-  flex: 1;
-  min-width: 0;
-}
-
-.report-card-title h3 {
-  font-size: 13px;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.report-card-weight {
-  font-size: 11px;
-  color: var(--text-secondary);
-}
-
-.report-card-score {
-  font-size: 24px;
-  font-weight: 700;
-  flex-shrink: 0;
-}
-
-.progress-bar {
-  height: 4px;
-  background: var(--border);
-  border-radius: 2px;
-  overflow: hidden;
-  margin-bottom: 8px;
-}
-
-.progress-fill {
-  height: 100%;
-  border-radius: 2px;
-  transition: width 0.6s ease;
-}
-
-.report-card-counts {
-  display: flex;
-  gap: 8px;
-  font-size: 11px;
-}
-
-.count-error { color: #dc2626; font-weight: 600; }
-.count-warning { color: #b45309; font-weight: 600; }
-.count-info { color: #2563eb; font-weight: 600; }
-.count-pass { color: #16a34a; font-weight: 600; }
-
-/* Findings */
-.report-findings {
-  margin-bottom: 32px;
-}
-
-.report-findings > h2 {
-  font-size: 18px;
-  font-weight: 700;
-  margin-bottom: 16px;
-}
-
-.report-finding-group {
-  margin-bottom: 24px;
-}
-
-.report-finding-group > h3 {
-  font-size: 15px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-  color: var(--text);
-}
-
-.report-finding-group > h3 svg {
-  flex-shrink: 0;
-}
-
-.report-finding {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 12px 16px;
-  margin-bottom: 8px;
-}
-
-.report-finding.severity-error { border-left: 3px solid #dc2626; }
-.report-finding.severity-warning { border-left: 3px solid #f59e0b; }
-.report-finding.severity-info { border-left: 3px solid #3b82f6; }
-
-.finding-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-
-.finding-title {
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.finding-detail {
-  font-size: 13px;
-  color: var(--text-secondary);
-  margin: 4px 0;
-  line-height: 1.5;
-}
-
-.finding-fix {
-  font-size: 13px;
-  margin-top: 6px;
-  padding: 8px 10px;
-  background: var(--bg-alt);
-  border-radius: 6px;
-  line-height: 1.5;
-}
-
-.finding-preset {
-  font-size: 12px;
-  color: var(--text-secondary);
-  margin-top: 6px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-/* Summary */
-.report-summary {
-  border-top: 1px solid var(--border);
-  padding-top: 24px;
-}
-
-.report-summary > h2 {
-  font-size: 18px;
-  font-weight: 700;
-  margin-bottom: 16px;
-}
-
-.summary-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 16px;
-}
-
-.summary-section {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 16px;
-}
-
-.summary-section h4 {
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-secondary);
-  margin-bottom: 8px;
-}
-
-.color-swatches {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-
-.color-swatch {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  cursor: default;
-}
-
-.summary-list {
-  font-size: 13px;
-  line-height: 1.8;
-  word-break: break-word;
-}
-
-/* Methodology note */
-.report-methodology {
-  border-top: 1px solid var(--border);
-  padding-top: 24px;
-  margin-top: 16px;
-}
-
-.report-methodology h2 {
-  font-size: 18px;
-  font-weight: 700;
-  margin-bottom: 12px;
-}
-
-.report-methodology p {
-  font-size: 13px;
-  color: var(--text-secondary);
-  line-height: 1.6;
-  margin-bottom: 8px;
-}
-
-.report-methodology strong {
-  color: var(--text);
-}
-
-/* --- Print / PDF --- */
-@media print {
-  body, .analyzer-body {
-    background: white !important;
-    color: #0f172a !important;
-  }
-
-  .header, .input-section, .report-actions, .toast,
-  #newAnalysisBtn, #printBtn, .guide-steps,
-  .snippet-section, .bookmarklet-link, .console-tip {
-    display: none !important;
-  }
-
-  .report-container {
-    display: block !important;
-    padding: 0 !important;
-    max-width: 100% !important;
-  }
-
-  .report-header { break-after: avoid; }
-  .report-categories { break-inside: avoid; }
-  .report-finding-group { break-inside: avoid; }
-  .summary-grid { break-inside: avoid; }
-
-  .report-card {
-    border: 1px solid #e2e8f0 !important;
-    box-shadow: none !important;
-  }
-
-  .report-finding {
-    border: 1px solid #e2e8f0 !important;
-  }
-
-  .report-finding.severity-error { border-left: 3px solid #dc2626 !important; }
-  .report-finding.severity-warning { border-left: 3px solid #f59e0b !important; }
-  .report-finding.severity-info { border-left: 3px solid #3b82f6 !important; }
-
-  a { color: #2563eb !important; }
-
-  .finding-fix {
-    background: #f8fafc !important;
-    border: 1px solid #e2e8f0;
-  }
-
-  .report-findings { break-before: page; }
-  .report-summary { break-before: page; }
-}
-
-/* --- Responsive --- */
-@media (max-width: 640px) {
-  .input-section { padding: 20px 16px 48px; }
-  .input-hero h1 { font-size: 22px; }
-  .report-container { padding: 20px 16px 48px; }
-  .report-header { flex-direction: column; text-align: center; gap: 16px; }
-  .report-categories { grid-template-columns: 1fr; }
-  .summary-grid { grid-template-columns: 1fr; }
-  .report-actions { flex-wrap: wrap; }
-}
-</file>
-
-<file path="CLAUDE.md">
-# CLAUDE.md — make-it-look-good
-
-## Quick Start
-- **Design consultation** → Read `CONSULT.md` and follow the steps
-- **Need a component** → Read `docs/presets/_index.md` for presets and composition recipes
-- **Quick number lookup** → Read `workflows/quick-reference.md`
-- **Read only what's needed** — each knowledge file is self-contained (~200-400 lines)
-
-## Purpose
-This repo is a **design knowledge base for LLMs**. When an LLM needs to make UI/UX decisions, it reads files from this repo to get concrete, evidence-based guidance with hard numbers.
-
-## CSS Framework
-All presets and examples use **[Tailwind CSS](https://tailwindcss.com)** as the default styling framework. When the user's stack is unknown, output Tailwind classes. For the preview tool, Tailwind v4 is loaded via CDN (`@tailwindcss/browser@4`). Match the user's stack if they use something else — see CONSULT.md Step 0.
-
-## File Format Convention
-Every knowledge file follows this template:
-
-```
-# {Topic Title}
-> **TL;DR:** {2-3 sentence actionable summary}
-## Core Principles
-## Concrete Rules
-## CSS/Implementation Patterns
-## Common Mistakes
-## Decision Tree
-## Sources
-```
-
-Not every section is required, but **Concrete Rules** and **CSS/Implementation Patterns** are mandatory — every file must have actionable specifics.
-
-## Maintenance Rules
-- **One file per focused topic** — don't merge topics; create new files instead
-- **Flat folders** (max 1 level deep) — no nested subdirectories within topic folders (exception: `docs/presets/` contains per-preset directories with framework variants)
-- **Concrete numbers over vague principles** — "4.5:1 contrast ratio" not "ensure sufficient contrast"
-- **Markdown only** — no JSON/YAML data files unless tooling specifically requires it
-- **research/ is gitignored** — only `research/sources.md` (bibliography) is committed
-- **Update `research/sources.md`** when adding new sources to any file
-- **Update `README.md`** index when adding new knowledge files
-- **Cross-reference related files** using relative links: `[topic](../folder/file.md)`
-- **Every preset in `docs/presets/` needs:** consistent design tokens (blue-600 primary default, slate neutrals), dark mode support, responsive design, and an entry in `docs/presets/index.json`. Personality variants use different color palettes appropriate to their personality (rose for playful, indigo for editorial, etc.)
-
-## Design Consultation Workflow
-- **`CONSULT.md`** is the LLM consultation playbook — read it to run an interactive design consultation
-- **Step 0 in CONSULT.md classifies the input** — existing code (any framework), screenshot, vague idea, or raw data — and routes to the right workflow
-- **Match the user's tech stack** — don't output Tailwind HTML to someone using React + styled-components. Detect the framework and output code in their format
-- **Always generate Design Review Notes** (Step 4 in CONSULT.md) — a structured markdown document with issues found, design decisions, tokens, and an implementation checklist. This is the primary deliverable
-- **`docs/index.html`** is a live preview tool (GitHub Pages) — paste HTML + Tailwind to preview designs. Includes before/after examples in the Templates menu.
-
-## Directory Structure
-- `foundations/` — Cognitive/psychological principles (Gestalt, Hick's Law, Fitts's Law, etc.)
-- `color/` — Color theory, accessibility, psychology, color-blind safety
-- `typography/` — Type scales, font pairing, readability, web font loading
-- `layout/` — Spacing systems, visual hierarchy, grids, whitespace
-- `interaction/` — Animation timing, micro-interactions, touch targets, loading states
-- `responsive/` — Mobile-first, breakpoints, fluid typography, responsive patterns
-- `systems/` — Design tokens, Material Design 3, Apple HIG, building a system
-- `expressive/` — Visual identity, hero patterns, scroll storytelling, purposeful motion
-- `heuristics/` — Nielsen's 10 heuristics, UX frameworks
-- `components/` — Concrete component patterns (buttons, forms, cards, etc.)
-- `docs/presets/` — Copy-paste-ready HTML+Tailwind presets with personality variants (see `docs/presets/_index.md`)
-  - Each preset dir has `clean.html`, `minimalist.html`, `playful.html` (and optionally `react.jsx`, `vue.vue`, `svelte.svelte`)
-- `workflows/` — Cross-cutting decision guides and checklists
-- `research/` — Raw research data (gitignored except sources.md)
 </file>
 
 <file path="docs/analyzer.js">
@@ -17898,6 +17880,8 @@ Not every section is required, but **Concrete Rules** and **CSS/Implementation P
       pasteInput.value = '';
       htmlInput.value = '';
       reportData = null;
+      // Clear hash so refreshing doesn't reload old report
+      if (location.hash) history.replaceState(null, '', location.pathname + location.search);
     });
 
     // Markdown export (download)
@@ -18052,21 +18036,6 @@ Not every section is required, but **Concrete Rules** and **CSS/Implementation P
     setTimeout(function() { t.classList.remove('show'); }, 3000);
   }
 
-  // --- Bookmarklet generator ---
-  window.generateBookmarklet = function() {
-    fetch('analyzer-snippet.js')
-      .then(function(r) { return r.text(); })
-      .then(function(text) {
-        var bookmarklet = 'javascript:' + encodeURIComponent(text);
-        var el = document.getElementById('bookmarkletLink');
-        if (el) {
-          el.href = bookmarklet;
-          el.style.display = 'inline-flex';
-          showToast('Drag the link to your bookmarks bar!');
-        }
-      });
-  };
-
   // Boot
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
@@ -18147,16 +18116,10 @@ Not every section is required, but **Concrete Rules** and **CSS/Implementation P
       <div class="snippet-section">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
           <h2 style="font-size:14px">Extraction Snippet</h2>
-          <div style="display:flex;gap:6px;">
-            <button class="btn" id="copySnippetBtn">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-              Copy snippet
-            </button>
-            <button class="btn" onclick="generateBookmarklet()">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-              Bookmarklet
-            </button>
-          </div>
+          <button class="btn" id="copySnippetBtn">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            Copy snippet
+          </button>
         </div>
         <div class="snippet-box">
           <div class="snippet-header">
@@ -18164,10 +18127,6 @@ Not every section is required, but **Concrete Rules** and **CSS/Implementation P
           </div>
           <pre class="snippet-code" id="snippetCode">Loading...</pre>
         </div>
-        <a href="#" id="bookmarkletLink" class="bookmarklet-link" style="display:none" title="Drag this to your bookmarks bar">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
-          Analyze Design
-        </a>
       </div>
 
       <div class="console-tip" style="margin-top:20px;">

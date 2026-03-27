@@ -1171,6 +1171,8 @@
       pasteInput.value = '';
       htmlInput.value = '';
       reportData = null;
+      // Clear hash so refreshing doesn't reload old report
+      if (location.hash) history.replaceState(null, '', location.pathname + location.search);
     });
 
     // Markdown export (download)
@@ -1324,21 +1326,6 @@
     t.classList.add('show');
     setTimeout(function() { t.classList.remove('show'); }, 3000);
   }
-
-  // --- Bookmarklet generator ---
-  window.generateBookmarklet = function() {
-    fetch('analyzer-snippet.js')
-      .then(function(r) { return r.text(); })
-      .then(function(text) {
-        var bookmarklet = 'javascript:' + encodeURIComponent(text);
-        var el = document.getElementById('bookmarkletLink');
-        if (el) {
-          el.href = bookmarklet;
-          el.style.display = 'inline-flex';
-          showToast('Drag the link to your bookmarks bar!');
-        }
-      });
-  };
 
   // Boot
   if (document.readyState === 'loading') {
