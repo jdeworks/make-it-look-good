@@ -16092,165 +16092,6 @@ All presets are:
 - **Realistic content** (not lorem ipsum)
 </file>
 
-<file path="docs/scoring/contrast.js">
-// Scoring Module: Color & Contrast
-// Weight: 20%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function parseRgb(str) {
-  var m = str.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
-  if (!m) m = str.match(/rgb\((\d+)\s+(\d+)\s+(\d+)\)/);
-  if (!m) return null;
-  return { r: +m[1], g: +m[2], b: +m[3] };
-}
-
-function applyFilterToColor(c, filterStr) {
-  if (!c || !filterStr) return c;
-  var r = c.r, g = c.g, b = c.b;
-  var re = /brightness\(([\d.]+)\)|contrast\(([\d.]+)\)|opacity\(([\d.]+)\)/g;
-  var m;
-  while ((m = re.exec(filterStr)) !== null) {
-    if (m[1] !== undefined) {
-      var br = parseFloat(m[1]);
-      r = Math.min(255, Math.round(r * br));
-      g = Math.min(255, Math.round(g * br));
-      b = Math.min(255, Math.round(b * br));
-    } else if (m[2] !== undefined) {
-      var ct = parseFloat(m[2]);
-      r = Math.min(255, Math.max(0, Math.round(((r - 128) * ct) + 128)));
-      g = Math.min(255, Math.max(0, Math.round(((g - 128) * ct) + 128)));
-      b = Math.min(255, Math.max(0, Math.round(((b - 128) * ct) + 128)));
-    }
-    // opacity affects alpha, not RGB channels for contrast purposes
-  }
-  return { r: r, g: g, b: b };
-}
-
-function luminance(c) {
-  var rs = c.r / 255, gs = c.g / 255, bs = c.b / 255;
-  var r = rs <= 0.03928 ? rs / 12.92 : Math.pow((rs + 0.055) / 1.055, 2.4);
-  var g = gs <= 0.03928 ? gs / 12.92 : Math.pow((gs + 0.055) / 1.055, 2.4);
-  var b = bs <= 0.03928 ? bs / 12.92 : Math.pow((bs + 0.055) / 1.055, 2.4);
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
-
-function contrastRatio(c1, c2) {
-  var l1 = luminance(c1), l2 = luminance(c2);
-  return Math.round(((Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)) * 100) / 100;
-}
-
-// APCA contrast (Lc value)
-// Simplified APCA-W3 calculation
-function sRGBtoY(rgb) {
-  // Linearize sRGB
-  function lin(v) { v = v / 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
-  return 0.2126729 * lin(rgb.r) + 0.7151522 * lin(rgb.g) + 0.0721750 * lin(rgb.b);
-}
-
-function apcaContrast(txtRgb, bgRgb) {
-  var txtY = sRGBtoY(txtRgb);
-  var bgY = sRGBtoY(bgRgb);
-  // Clamp
-  if (txtY < 0) txtY = 0;
-  if (bgY < 0) bgY = 0;
-  // SAPC power curve
-  var normBG = Math.pow(bgY, 0.56);
-  var normTXT = Math.pow(txtY, 0.57);
-  var rawContrast;
-  if (bgY > txtY) {
-    rawContrast = (normBG - normTXT) * 1.14;
-  } else {
-    rawContrast = (normBG - normTXT) * 1.14;
-  }
-  // Scale and clamp
-  if (Math.abs(rawContrast) < 0.1) return 0;
-  return Math.round(rawContrast * 100);
-}
-
-function scoreContrast(data) {
-  var profile = S.getProfile(data);
-  var findings = [];
-  var pairs = data.colors.contrastPairs || [];
-
-  // Re-evaluate each pair against profile thresholds
-  var profilePairs = pairs.map(function(p) {
-    var needed = p.isLarge ? profile.contrastLarge : profile.contrast;
-    var ratio = p.ratio;
-
-    // If a CSS filter is present, re-compute contrast with adjusted bg
-    if (p.filter) {
-      var bgParsed = parseRgb(p.bg);
-      if (bgParsed) {
-        var adjustedBg = applyFilterToColor(bgParsed, p.filter);
-        var fgParsed = parseRgb(p.fg);
-        if (fgParsed) {
-          ratio = contrastRatio(fgParsed, adjustedBg);
-        }
-      }
-    }
-
-    var passes = ratio >= needed;
-    return { ratio: ratio, needed: needed, passes: passes, isLarge: p.isLarge, text: p.text, fontSize: p.fontSize, selector: p.selector, fg: p.fg, bg: p.bg, filter: p.filter || '' };
-  });
-
-  // Separate uncertain results (1:1 ratio usually means bg couldn't be determined — gradient, SVG, etc.)
-  var uncertain = profilePairs.filter(function(p) { return !p.passes && p.ratio <= 1.01 && p.fg === p.bg; });
-  var failures = profilePairs.filter(function(p) { return !p.passes && !(p.ratio <= 1.01 && p.fg === p.bg); });
-  var nearMisses = profilePairs.filter(function(p) { return p.passes && p.ratio < p.needed + 0.5; });
-
-  failures.forEach(function(p) {
-    var apcaVal = '';
-    var fgP = parseRgb(p.fg);
-    var bgP = parseRgb(p.bg);
-    if (fgP && bgP) { apcaVal = ' (APCA: Lc ' + apcaContrast(fgP, bgP) + ')'; }
-    findings.push({
-      severity: 'error',
-      title: 'Text fails contrast ' + p.ratio + ':1 (needs ' + p.needed + ':1)',
-      detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector + apcaVal,
-      fix: p.isLarge
-        ? 'Large text needs ' + profile.contrastLarge + ':1 minimum. Darken the text or lighten the background.'
-        : 'Normal text needs ' + profile.contrast + ':1 minimum. Use a darker text color or lighter background.',
-      presetRef: 'All presets use text-slate-600+ on white backgrounds (8:1+ ratio)',
-      source: p.isLarge ? 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' : 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
-    });
-  });
-
-  if (uncertain.length > 0) {
-    findings.push({
-      severity: 'info',
-      title: uncertain.length + ' element(s) with undetermined contrast (background could not be resolved)',
-      detail: 'These elements may use gradients, images, SVGs, or complex CSS that the analyzer cannot parse. Check manually: ' + uncertain.slice(0, 3).map(function(p) { return '"' + p.text + '"'; }).join(', '),
-      fix: 'Verify these elements have sufficient contrast visually. The analyzer reports 1:1 when the effective background cannot be computed.',
-      presetRef: null
-    });
-  }
-
-  nearMisses.forEach(function(p) {
-    findings.push({
-      severity: 'warning',
-      title: 'Text barely passes contrast ' + p.ratio + ':1 (needs ' + p.needed + ':1)',
-      detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector,
-      fix: 'Consider increasing contrast for better readability. Aim for 7:1 (AAA) where possible.',
-      presetRef: null
-    });
-  });
-
-  // Don't count uncertain results as failures in the score
-  var total = (profilePairs.length - uncertain.length) || 1;
-  var passing = total - failures.length;
-  var score = Math.round((passing / total) * 100);
-
-  return { score: score, findings: findings, weight: 20, label: 'Color & Contrast', icon: 'contrast' };
-}
-
-
-  S.register("contrast", scoreContrast, 20, "Color & Contrast", "contrast");
-})();
-</file>
-
 <file path="docs/scoring/responsive.js">
 // Scoring Module: Responsive Design
 // Weight: 10%
@@ -17215,6 +17056,165 @@ The CSS techniques in this file are generic patterns found across modern web des
 - [Unsplash](https://unsplash.com/) — free photography (attribution appreciated)
 </file>
 
+<file path="docs/scoring/contrast.js">
+// Scoring Module: Color & Contrast
+// Weight: 20%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function parseRgb(str) {
+  var m = str.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+  if (!m) m = str.match(/rgb\((\d+)\s+(\d+)\s+(\d+)\)/);
+  if (!m) return null;
+  return { r: +m[1], g: +m[2], b: +m[3] };
+}
+
+function applyFilterToColor(c, filterStr) {
+  if (!c || !filterStr) return c;
+  var r = c.r, g = c.g, b = c.b;
+  var re = /brightness\(([\d.]+)\)|contrast\(([\d.]+)\)|opacity\(([\d.]+)\)/g;
+  var m;
+  while ((m = re.exec(filterStr)) !== null) {
+    if (m[1] !== undefined) {
+      var br = parseFloat(m[1]);
+      r = Math.min(255, Math.round(r * br));
+      g = Math.min(255, Math.round(g * br));
+      b = Math.min(255, Math.round(b * br));
+    } else if (m[2] !== undefined) {
+      var ct = parseFloat(m[2]);
+      r = Math.min(255, Math.max(0, Math.round(((r - 128) * ct) + 128)));
+      g = Math.min(255, Math.max(0, Math.round(((g - 128) * ct) + 128)));
+      b = Math.min(255, Math.max(0, Math.round(((b - 128) * ct) + 128)));
+    }
+    // opacity affects alpha, not RGB channels for contrast purposes
+  }
+  return { r: r, g: g, b: b };
+}
+
+function luminance(c) {
+  var rs = c.r / 255, gs = c.g / 255, bs = c.b / 255;
+  var r = rs <= 0.03928 ? rs / 12.92 : Math.pow((rs + 0.055) / 1.055, 2.4);
+  var g = gs <= 0.03928 ? gs / 12.92 : Math.pow((gs + 0.055) / 1.055, 2.4);
+  var b = bs <= 0.03928 ? bs / 12.92 : Math.pow((bs + 0.055) / 1.055, 2.4);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function contrastRatio(c1, c2) {
+  var l1 = luminance(c1), l2 = luminance(c2);
+  return Math.round(((Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)) * 100) / 100;
+}
+
+// APCA contrast (Lc value)
+// Simplified APCA-W3 calculation
+function sRGBtoY(rgb) {
+  // Linearize sRGB
+  function lin(v) { v = v / 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
+  return 0.2126729 * lin(rgb.r) + 0.7151522 * lin(rgb.g) + 0.0721750 * lin(rgb.b);
+}
+
+function apcaContrast(txtRgb, bgRgb) {
+  var txtY = sRGBtoY(txtRgb);
+  var bgY = sRGBtoY(bgRgb);
+  // Clamp
+  if (txtY < 0) txtY = 0;
+  if (bgY < 0) bgY = 0;
+  // SAPC power curve
+  var normBG = Math.pow(bgY, 0.56);
+  var normTXT = Math.pow(txtY, 0.57);
+  var rawContrast;
+  if (bgY > txtY) {
+    rawContrast = (normBG - normTXT) * 1.14;
+  } else {
+    rawContrast = (normBG - normTXT) * 1.14;
+  }
+  // Scale and clamp
+  if (Math.abs(rawContrast) < 0.1) return 0;
+  return Math.round(rawContrast * 100);
+}
+
+function scoreContrast(data) {
+  var profile = S.getProfile(data);
+  var findings = [];
+  var pairs = data.colors.contrastPairs || [];
+
+  // Re-evaluate each pair against profile thresholds
+  var profilePairs = pairs.map(function(p) {
+    var needed = p.isLarge ? profile.contrastLarge : profile.contrast;
+    var ratio = p.ratio;
+
+    // If a CSS filter is present, re-compute contrast with adjusted bg
+    if (p.filter) {
+      var bgParsed = parseRgb(p.bg);
+      if (bgParsed) {
+        var adjustedBg = applyFilterToColor(bgParsed, p.filter);
+        var fgParsed = parseRgb(p.fg);
+        if (fgParsed) {
+          ratio = contrastRatio(fgParsed, adjustedBg);
+        }
+      }
+    }
+
+    var passes = ratio >= needed;
+    return { ratio: ratio, needed: needed, passes: passes, isLarge: p.isLarge, text: p.text, fontSize: p.fontSize, selector: p.selector, fg: p.fg, bg: p.bg, filter: p.filter || '' };
+  });
+
+  // Separate uncertain results (1:1 ratio usually means bg couldn't be determined — gradient, SVG, etc.)
+  var uncertain = profilePairs.filter(function(p) { return !p.passes && p.ratio <= 1.01 && p.fg === p.bg; });
+  var failures = profilePairs.filter(function(p) { return !p.passes && !(p.ratio <= 1.01 && p.fg === p.bg); });
+  var nearMisses = profilePairs.filter(function(p) { return p.passes && p.ratio < p.needed + 0.5; });
+
+  failures.forEach(function(p) {
+    var apcaVal = '';
+    var fgP = parseRgb(p.fg);
+    var bgP = parseRgb(p.bg);
+    if (fgP && bgP) { apcaVal = ' (APCA: Lc ' + apcaContrast(fgP, bgP) + ')'; }
+    findings.push({
+      severity: 'error',
+      title: 'Text fails contrast ' + p.ratio + ':1 (needs ' + p.needed + ':1)',
+      detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector + apcaVal,
+      fix: p.isLarge
+        ? 'Large text needs ' + profile.contrastLarge + ':1 minimum. Darken the text or lighten the background.'
+        : 'Normal text needs ' + profile.contrast + ':1 minimum. Use a darker text color or lighter background.',
+      presetRef: 'All presets use text-slate-600+ on white backgrounds (8:1+ ratio)',
+      source: p.isLarge ? 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' : 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
+    });
+  });
+
+  if (uncertain.length > 0) {
+    findings.push({
+      severity: 'info',
+      title: uncertain.length + ' element(s) with undetermined contrast (background could not be resolved)',
+      detail: 'These elements may use gradients, images, SVGs, or complex CSS that the analyzer cannot parse. Check manually: ' + uncertain.slice(0, 3).map(function(p) { return '"' + p.text + '"'; }).join(', '),
+      fix: 'Verify these elements have sufficient contrast visually. The analyzer reports 1:1 when the effective background cannot be computed.',
+      presetRef: null
+    });
+  }
+
+  nearMisses.forEach(function(p) {
+    findings.push({
+      severity: 'warning',
+      title: 'Text barely passes contrast ' + p.ratio + ':1 (needs ' + p.needed + ':1)',
+      detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector,
+      fix: 'Consider increasing contrast for better readability. Aim for 7:1 (AAA) where possible.',
+      presetRef: null
+    });
+  });
+
+  // Don't count uncertain results as failures in the score
+  var total = (profilePairs.length - uncertain.length) || 1;
+  var passing = total - failures.length;
+  var score = Math.round((passing / total) * 100);
+
+  return { score: score, findings: findings, weight: 20, label: 'Color & Contrast', icon: 'contrast' };
+}
+
+
+  S.register("contrast", scoreContrast, 20, "Color & Contrast", "contrast");
+})();
+</file>
+
 <file path="docs/scoring/performance.js">
 // Scoring Module: Performance
 // Weight: 5%
@@ -17804,241 +17804,6 @@ Not every section is required, but **Concrete Rules** and **CSS/Implementation P
 - `research/` — Raw research data (gitignored except sources.md)
 </file>
 
-<file path="docs/scoring/accessibility.js">
-// Scoring Module: Accessibility
-// Weight: 15%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreAccessibility(data) {
-  var findings = [];
-  var checks = 0;
-  var passed = 0;
-  var a11y = data.accessibility;
-
-  // Semantic elements
-  checks++;
-  var semantic = a11y.semanticElements || {};
-  var hasMain = (semantic.main || 0) > 0;
-  var hasNav = (semantic.nav || 0) > 0;
-  var hasHeader = (semantic.header || 0) > 0;
-  var semanticCount = [hasMain, hasNav, hasHeader].filter(Boolean).length;
-  if (semanticCount >= 2) {
-    passed++;
-  } else {
-    findings.push({
-      severity: semanticCount === 0 ? 'error' : 'warning',
-      title: 'Missing semantic HTML elements',
-      detail: 'Found: ' + (hasHeader ? 'header ' : '') + (hasNav ? 'nav ' : '') + (hasMain ? 'main ' : '') + (semantic.footer ? 'footer' : ''),
-      fix: 'Use <header>, <nav>, <main>, <footer> for page structure. Screen readers rely on these landmarks.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships',
-      presetRef: 'All presets use semantic HTML landmarks'
-    });
-  }
-
-  // Heading hierarchy
-  checks++;
-  var headingOrder = a11y.headingHierarchy || [];
-  var hierarchyBroken = false;
-  for (var i = 1; i < headingOrder.length; i++) {
-    var prev = parseInt(headingOrder[i - 1].charAt(1));
-    var curr = parseInt(headingOrder[i].charAt(1));
-    if (curr > prev + 1) { hierarchyBroken = true; break; }
-  }
-  if (!hierarchyBroken) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: 'Heading hierarchy has gaps (e.g., h1 → h3)',
-      detail: 'Heading order: ' + headingOrder.join(' → '),
-      fix: 'Use headings in order: h1 → h2 → h3. Never skip levels. Style with classes instead of heading tags.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships',
-      presetRef: null
-    });
-  }
-
-  // Images with alt
-  checks++;
-  if (a11y.imagesWithoutAlt === 0) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'error',
-      title: a11y.imagesWithoutAlt + ' image(s) missing alt text',
-      detail: 'Screen readers cannot describe these images to users',
-      fix: 'Add alt="description" to all <img> tags. Use alt="" for decorative images.', source: 'WCAG 2.2 §1.1.1 — https://www.w3.org/TR/WCAG22/#non-text-content',
-      presetRef: null
-    });
-  }
-
-  // Image sizing (performance impact)
-  var imgIssues = (data.performance && data.performance.imageSizing) || [];
-  var noDimensions = imgIssues.filter(function(i) { return i.issues.indexOf('no-dimensions') !== -1; });
-  var lazyAbove = imgIssues.filter(function(i) { return i.issues.indexOf('lazy-above-fold') !== -1; });
-  var oversized = imgIssues.filter(function(i) { return i.issues.some(function(x) { return x.indexOf('oversized') === 0; }); });
-  if (noDimensions.length > 0) {
-    findings.push({ severity: 'warning', title: noDimensions.length + ' image(s) without explicit dimensions', detail: 'Missing width/height causes layout shift (CLS) when images load', fix: 'Add width and height attributes to all <img> tags, or use CSS aspect-ratio.', presetRef: null });
-  }
-  if (lazyAbove.length > 0) {
-    findings.push({ severity: 'error', title: lazyAbove.length + ' above-fold image(s) with lazy loading', detail: 'lazy loading on visible images delays LCP (Largest Contentful Paint)', fix: 'Remove loading="lazy" from images visible in the initial viewport. Use it only for below-fold images.', presetRef: null });
-  }
-  if (oversized.length > 0) {
-    findings.push({ severity: 'info', title: oversized.length + ' image(s) may be oversized for their display size', detail: 'Serving images much larger than their display size wastes bandwidth', fix: 'Resize images to 2x their display size (for retina). Use srcset for responsive images.', presetRef: null });
-  }
-
-  // Form labels
-  checks++;
-  var forms = a11y.formLabels || {};
-  if (forms.total === 0 || forms.withoutLabel === 0) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'error',
-      title: forms.withoutLabel + ' of ' + forms.total + ' form inputs missing labels',
-      detail: 'Unlabeled inputs are unusable for screen reader users',
-      fix: 'Use <label for="id"> or wrap the input in a <label>. Add aria-label for icon-only inputs.',
-      presetRef: 'Form presets always pair inputs with visible labels'
-    });
-  }
-
-  // Focus indicators
-  checks++;
-  var focusIndicators = a11y.focusIndicators || [];
-  var hasAnyFocus = focusIndicators.some(function(f) {
-    return f.outlineStyle !== 'none' && f.outlineWidth !== '0px';
-  });
-  var hasFocusVisibleCSS = a11y.hasFocusVisibleCSS || false;
-  if (hasAnyFocus || hasFocusVisibleCSS || focusIndicators.length === 0) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'error',
-      title: 'No visible focus indicators found',
-      detail: 'Keyboard users cannot see which element is focused',
-      fix: 'Ensure focus-visible styles exist. In Tailwind: focus-visible:ring-2 focus-visible:ring-blue-500', source: 'WCAG 2.2 §2.4.7 — https://www.w3.org/TR/WCAG22/#focus-visible',
-      presetRef: 'All interactive presets include focus-visible ring styles'
-    });
-  }
-
-  // Language attribute
-  checks++;
-  if (data.accessibility.langAttribute) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'error',
-      title: 'Missing lang attribute on <html>',
-      detail: 'Screen readers need the language to pronounce content correctly',
-      fix: 'Add lang="en" (or appropriate language) to the <html> element.',
-      presetRef: null,
-      source: 'WCAG 2.2 §3.1.1 — https://www.w3.org/TR/WCAG22/#language-of-page'
-    });
-  }
-
-  // Skip navigation link
-  if (data.structure && data.structure.totalElements > 50) {
-    checks++;
-    if (data.accessibility.hasSkipLink) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: 'No skip navigation link found',
-        detail: 'Keyboard users must tab through all navigation before reaching main content',
-        fix: 'Add a visually hidden skip link as the first focusable element: <a href="#main" class="sr-only focus:not-sr-only">Skip to content</a>',
-        presetRef: null,
-        source: 'WCAG 2.2 §2.4.1 — https://www.w3.org/TR/WCAG22/#bypass-blocks'
-      });
-    }
-  }
-
-  // Bad link texts
-  var badLinks = data.accessibility.badLinkTexts || [];
-  if (badLinks.length > 0) {
-    findings.push({
-      severity: 'warning',
-      title: badLinks.length + ' link(s) with non-descriptive text',
-      detail: 'Found: ' + badLinks.slice(0, 5).map(function(l) { return '"' + l.text + '"'; }).join(', '),
-      fix: 'Replace generic text like "click here" or "read more" with descriptive link text that makes sense out of context.',
-      presetRef: null,
-      source: 'WCAG 2.2 §2.4.4 — https://www.w3.org/TR/WCAG22/#link-purpose-in-context'
-    });
-  }
-
-  // Missing autocomplete on common fields
-  var missingAC = data.accessibility.missingAutocomplete || 0;
-  if (missingAC > 0) {
-    findings.push({
-      severity: 'info',
-      title: missingAC + ' form field(s) missing autocomplete attribute',
-      detail: 'Autocomplete helps users fill forms faster and reduces errors',
-      fix: 'Add autocomplete="name", autocomplete="email", etc. to common input fields.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.3.5 — https://www.w3.org/TR/WCAG22/#identify-input-purpose'
-    });
-  }
-
-  // ARIA audit
-  var ariaIssues = data.accessibility.ariaIssues || [];
-  var btnNoTabindex = ariaIssues.filter(function(a) { return a.type === 'button-no-tabindex'; });
-  var hiddenFocusable = ariaIssues.filter(function(a) { return a.type === 'hidden-focusable'; });
-  if (btnNoTabindex.length > 0) {
-    findings.push({
-      severity: 'error',
-      title: btnNoTabindex.length + ' element(s) with role="button" but no tabindex',
-      detail: 'Non-button elements with role="button" must be keyboard-focusable',
-      fix: 'Add tabindex="0" and a keydown handler for Enter/Space to elements with role="button", or use a real <button> element.',
-      presetRef: null,
-      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
-    });
-  }
-  if (hiddenFocusable.length > 0) {
-    findings.push({
-      severity: 'error',
-      title: hiddenFocusable.length + ' focusable element(s) inside aria-hidden containers',
-      detail: 'Screen readers skip aria-hidden content, but keyboard focus can still reach these elements — creating a confusing experience',
-      fix: 'Add tabindex="-1" to focusable elements inside aria-hidden containers, or restructure to keep them outside.',
-      presetRef: null,
-      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
-    });
-  }
-
-  // Color-only indicators
-  var colorOnly = data.accessibility.colorOnlyIndicators || 0;
-  if (colorOnly > 0) {
-    findings.push({
-      severity: 'warning',
-      title: colorOnly + ' status element(s) may rely on color alone',
-      detail: 'Elements with error/success/warning classes but no icon or text prefix',
-      fix: 'Add an icon (✓, ✗, ⚠) or text label ("Error:", "Success:") alongside color to convey status. Color-blind users cannot distinguish red from green.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.1 — https://www.w3.org/TR/WCAG22/#use-of-color'
-    });
-  }
-
-  // Auto-playing media
-  var autoPlay = data.accessibility.autoPlayMedia || 0;
-  if (autoPlay > 0) {
-    findings.push({
-      severity: 'error',
-      title: autoPlay + ' auto-playing media element(s) without muted attribute',
-      detail: 'Unexpected audio disrupts users, especially those using screen readers',
-      fix: 'Add the muted attribute to auto-playing videos, or remove autoplay entirely. Let users choose to play media.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.2 — https://www.w3.org/TR/WCAG22/#audio-control'
-    });
-  }
-
-  var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
-  return { score: score, findings: findings, weight: 15, label: 'Accessibility', icon: 'a11y' };
-}
-
-
-  S.register("accessibility", scoreAccessibility, 15, "Accessibility", "a11y");
-})();
-</file>
-
 <file path="docs/analyzer-report.js">
 // make-it-look-good — Report Renderers
 // HTML report, markdown export, gauge SVG, progress bars
@@ -18358,6 +18123,297 @@ window.MilgReport = (function() {
 })();
 </file>
 
+<file path="docs/scoring/accessibility.js">
+// Scoring Module: Accessibility
+// Weight: 15%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreAccessibility(data) {
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+  var a11y = data.accessibility;
+
+  // Semantic elements
+  checks++;
+  var semantic = a11y.semanticElements || {};
+  var hasMain = (semantic.main || 0) > 0;
+  var hasNav = (semantic.nav || 0) > 0;
+  var hasHeader = (semantic.header || 0) > 0;
+  var semanticCount = [hasMain, hasNav, hasHeader].filter(Boolean).length;
+  if (semanticCount >= 2) {
+    passed++;
+  } else {
+    findings.push({
+      severity: semanticCount === 0 ? 'error' : 'warning',
+      title: 'Missing semantic HTML elements',
+      detail: 'Found: ' + (hasHeader ? 'header ' : '') + (hasNav ? 'nav ' : '') + (hasMain ? 'main ' : '') + (semantic.footer ? 'footer' : ''),
+      fix: 'Use <header>, <nav>, <main>, <footer> for page structure. Screen readers rely on these landmarks.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships',
+      presetRef: 'All presets use semantic HTML landmarks'
+    });
+  }
+
+  // Heading hierarchy
+  checks++;
+  var headingOrder = a11y.headingHierarchy || [];
+  var hierarchyBroken = false;
+  for (var i = 1; i < headingOrder.length; i++) {
+    var prev = parseInt(headingOrder[i - 1].charAt(1));
+    var curr = parseInt(headingOrder[i].charAt(1));
+    if (curr > prev + 1) { hierarchyBroken = true; break; }
+  }
+  if (!hierarchyBroken) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'Heading hierarchy has gaps (e.g., h1 → h3)',
+      detail: 'Heading order: ' + headingOrder.join(' → '),
+      fix: 'Use headings in order: h1 → h2 → h3. Never skip levels. Style with classes instead of heading tags.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships',
+      presetRef: null
+    });
+  }
+
+  // Images with alt
+  checks++;
+  if (a11y.imagesWithoutAlt === 0) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'error',
+      title: a11y.imagesWithoutAlt + ' image(s) missing alt text',
+      detail: 'Screen readers cannot describe these images to users',
+      fix: 'Add alt="description" to all <img> tags. Use alt="" for decorative images.', source: 'WCAG 2.2 §1.1.1 — https://www.w3.org/TR/WCAG22/#non-text-content',
+      presetRef: null
+    });
+  }
+
+  // Image sizing (performance impact)
+  var imgIssues = (data.performance && data.performance.imageSizing) || [];
+  var noDimensions = imgIssues.filter(function(i) { return i.issues.indexOf('no-dimensions') !== -1; });
+  var lazyAbove = imgIssues.filter(function(i) { return i.issues.indexOf('lazy-above-fold') !== -1; });
+  var oversized = imgIssues.filter(function(i) { return i.issues.some(function(x) { return x.indexOf('oversized') === 0; }); });
+  if (noDimensions.length > 0) {
+    findings.push({ severity: 'warning', title: noDimensions.length + ' image(s) without explicit dimensions', detail: 'Missing width/height causes layout shift (CLS) when images load', fix: 'Add width and height attributes to all <img> tags, or use CSS aspect-ratio.', presetRef: null });
+  }
+  if (lazyAbove.length > 0) {
+    findings.push({ severity: 'error', title: lazyAbove.length + ' above-fold image(s) with lazy loading', detail: 'lazy loading on visible images delays LCP (Largest Contentful Paint)', fix: 'Remove loading="lazy" from images visible in the initial viewport. Use it only for below-fold images.', presetRef: null });
+  }
+  if (oversized.length > 0) {
+    findings.push({ severity: 'info', title: oversized.length + ' image(s) may be oversized for their display size', detail: 'Serving images much larger than their display size wastes bandwidth', fix: 'Resize images to 2x their display size (for retina). Use srcset for responsive images.', presetRef: null });
+  }
+
+  // Form labels
+  checks++;
+  var forms = a11y.formLabels || {};
+  if (forms.total === 0 || forms.withoutLabel === 0) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'error',
+      title: forms.withoutLabel + ' of ' + forms.total + ' form inputs missing labels',
+      detail: 'Unlabeled inputs are unusable for screen reader users',
+      fix: 'Use <label for="id"> or wrap the input in a <label>. Add aria-label for icon-only inputs.',
+      presetRef: 'Form presets always pair inputs with visible labels'
+    });
+  }
+
+  // Focus indicators
+  checks++;
+  var focusIndicators = a11y.focusIndicators || [];
+  var hasAnyFocus = focusIndicators.some(function(f) {
+    return f.outlineStyle !== 'none' && f.outlineWidth !== '0px';
+  });
+  var hasFocusVisibleCSS = a11y.hasFocusVisibleCSS || false;
+  if (hasAnyFocus || hasFocusVisibleCSS || focusIndicators.length === 0) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'error',
+      title: 'No visible focus indicators found',
+      detail: 'Keyboard users cannot see which element is focused',
+      fix: 'Ensure focus-visible styles exist. In Tailwind: focus-visible:ring-2 focus-visible:ring-blue-500', source: 'WCAG 2.2 §2.4.7 — https://www.w3.org/TR/WCAG22/#focus-visible',
+      presetRef: 'All interactive presets include focus-visible ring styles'
+    });
+  }
+
+  // Language attribute
+  checks++;
+  if (data.accessibility.langAttribute) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'error',
+      title: 'Missing lang attribute on <html>',
+      detail: 'Screen readers need the language to pronounce content correctly',
+      fix: 'Add lang="en" (or appropriate language) to the <html> element.',
+      presetRef: null,
+      source: 'WCAG 2.2 §3.1.1 — https://www.w3.org/TR/WCAG22/#language-of-page'
+    });
+  }
+
+  // Skip navigation link
+  if (data.structure && data.structure.totalElements > 50) {
+    checks++;
+    if (data.accessibility.hasSkipLink) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: 'No skip navigation link found',
+        detail: 'Keyboard users must tab through all navigation before reaching main content',
+        fix: 'Add a visually hidden skip link as the first focusable element: <a href="#main" class="sr-only focus:not-sr-only">Skip to content</a>',
+        presetRef: null,
+        source: 'WCAG 2.2 §2.4.1 — https://www.w3.org/TR/WCAG22/#bypass-blocks'
+      });
+    }
+  }
+
+  // Bad link texts
+  var badLinks = data.accessibility.badLinkTexts || [];
+  if (badLinks.length > 0) {
+    findings.push({
+      severity: 'warning',
+      title: badLinks.length + ' link(s) with non-descriptive text',
+      detail: 'Found: ' + badLinks.slice(0, 5).map(function(l) { return '"' + l.text + '"'; }).join(', '),
+      fix: 'Replace generic text like "click here" or "read more" with descriptive link text that makes sense out of context.',
+      presetRef: null,
+      source: 'WCAG 2.2 §2.4.4 — https://www.w3.org/TR/WCAG22/#link-purpose-in-context'
+    });
+  }
+
+  // Missing autocomplete on common fields
+  var missingAC = data.accessibility.missingAutocomplete || 0;
+  if (missingAC > 0) {
+    findings.push({
+      severity: 'info',
+      title: missingAC + ' form field(s) missing autocomplete attribute',
+      detail: 'Autocomplete helps users fill forms faster and reduces errors',
+      fix: 'Add autocomplete="name", autocomplete="email", etc. to common input fields.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.3.5 — https://www.w3.org/TR/WCAG22/#identify-input-purpose'
+    });
+  }
+
+  // ARIA audit
+  var ariaIssues = data.accessibility.ariaIssues || [];
+  var btnNoTabindex = ariaIssues.filter(function(a) { return a.type === 'button-no-tabindex'; });
+  var hiddenFocusable = ariaIssues.filter(function(a) { return a.type === 'hidden-focusable'; });
+  if (btnNoTabindex.length > 0) {
+    findings.push({
+      severity: 'error',
+      title: btnNoTabindex.length + ' element(s) with role="button" but no tabindex',
+      detail: 'Non-button elements with role="button" must be keyboard-focusable',
+      fix: 'Add tabindex="0" and a keydown handler for Enter/Space to elements with role="button", or use a real <button> element.',
+      presetRef: null,
+      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
+    });
+  }
+  if (hiddenFocusable.length > 0) {
+    findings.push({
+      severity: 'error',
+      title: hiddenFocusable.length + ' focusable element(s) inside aria-hidden containers',
+      detail: 'Screen readers skip aria-hidden content, but keyboard focus can still reach these elements — creating a confusing experience',
+      fix: 'Add tabindex="-1" to focusable elements inside aria-hidden containers, or restructure to keep them outside.',
+      presetRef: null,
+      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
+    });
+  }
+
+  // Color-only indicators
+  var colorOnly = data.accessibility.colorOnlyIndicators || 0;
+  if (colorOnly > 0) {
+    findings.push({
+      severity: 'warning',
+      title: colorOnly + ' status element(s) may rely on color alone',
+      detail: 'Elements with error/success/warning classes but no icon or text prefix',
+      fix: 'Add an icon (✓, ✗, ⚠) or text label ("Error:", "Success:") alongside color to convey status. Color-blind users cannot distinguish red from green.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.1 — https://www.w3.org/TR/WCAG22/#use-of-color'
+    });
+  }
+
+  // Auto-playing media
+  var autoPlay = data.accessibility.autoPlayMedia || 0;
+  if (autoPlay > 0) {
+    findings.push({
+      severity: 'error',
+      title: autoPlay + ' auto-playing media element(s) without muted attribute',
+      detail: 'Unexpected audio disrupts users, especially those using screen readers',
+      fix: 'Add the muted attribute to auto-playing videos, or remove autoplay entirely. Let users choose to play media.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.2 — https://www.w3.org/TR/WCAG22/#audio-control'
+    });
+  }
+
+  var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
+  return { score: score, findings: findings, weight: 15, label: 'Accessibility', icon: 'a11y' };
+}
+
+
+  S.register("accessibility", scoreAccessibility, 15, "Accessibility", "a11y");
+})();
+</file>
+
+<file path="docs/presets/index.json">
+{
+  "categories": [
+    { "label": "Layouts", "elements": ["shell-sidebar", "shell-marketing", "shell-dashboard", "shell-form"] },
+    { "label": "Components", "elements": ["hero", "stats-row", "data-table", "card-grid", "pricing-cards", "feature-grid", "tabs", "accordion", "pagination", "dropdown", "avatars"] },
+    { "label": "Before → After", "elements": ["dashboard", "landing", "form", "cards", "project"] },
+    { "label": "Full Pages", "elements": ["pricing", "portfolio", "restaurant", "statuspage"] },
+    { "label": "Expressive", "elements": ["personal-hero", "agency-landing", "agency-portfolio", "app-showcase", "scroll-reveal-landing", "product-launch", "editorial-blog", "saas-features", "scroll-story", "product-page", "devtool-landing", "docs-site", "event-page", "jdeworks-personal"] },
+    { "label": "Edge Cases", "elements": ["deploy", "buttons", "osslanding"] }
+  ],
+  "elements": {
+    "dashboard": { "label": "Dashboard", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "landing": { "label": "Landing Page", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
+    "form": { "label": "Form", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
+    "cards": { "label": "Card Grid", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "project": { "label": "Multi-Page App", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
+    "pricing": { "label": "SaaS Pricing", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "portfolio": { "label": "Portfolio (Dark)", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "restaurant": { "label": "Restaurant (Warm)", "personalities": { "clean": { "primaryColor": "amber" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "statuspage": { "label": "Status Page", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "deploy": { "label": "Deploy Monitor", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "buttons": { "label": "Button System", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "osslanding": { "label": "OSS Landing", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "shell-sidebar": { "label": "App Shell (Sidebar)", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "shell-marketing": { "label": "Marketing Page", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "shell-dashboard": { "label": "Dashboard Shell", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "shell-form": { "label": "Centered Form", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "hero": { "label": "Hero Section", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "stats-row": { "label": "Stats Row", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "data-table": { "label": "Data Table", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "card-grid": { "label": "Card Grid", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "pricing-cards": { "label": "Pricing Cards", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "feature-grid": { "label": "Feature Grid", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "tabs": { "label": "Tabs", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "accordion": { "label": "Accordion", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "pagination": { "label": "Pagination", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "dropdown": { "label": "Dropdown Menu", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "avatars": { "label": "Avatar Group", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "personal-hero": { "label": "Personal Site", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "agency-landing": { "label": "Agency Landing", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "product-launch": { "label": "Product Launch", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "editorial-blog": { "label": "Editorial Blog", "personalities": { "clean": { "primaryColor": "slate" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "saas-features": { "label": "SaaS Features", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "scroll-story": { "label": "Scroll Story", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "product-page": { "label": "Product Page", "personalities": { "clean": { "primaryColor": "sky" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "devtool-landing": { "label": "DevTool Landing", "personalities": { "clean": { "primaryColor": "cyan" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "docs-site": { "label": "Docs Site", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "event-page": { "label": "Event Page", "personalities": { "clean": { "primaryColor": "amber" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "jdeworks-personal": { "label": "JDE Personal", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "agency-portfolio": { "label": "Agency Portfolio", "personalities": { "clean": { "primaryColor": "teal" } } },
+    "app-showcase": { "label": "App Showcase", "personalities": { "clean": { "primaryColor": "orange" } } },
+    "scroll-reveal-landing": { "label": "Scroll Reveal Landing", "personalities": { "clean": { "primaryColor": "sky" } } }
+  }
+}
+</file>
+
 <file path="docs/ANALYZER-TODO.md">
 # Analyzer TODO
 
@@ -18535,62 +18591,6 @@ Low priority — the analyzer's value is evidence-based scoring, not AI opinions
 - [ ] **Dark mode extraction:** Toggle `.dark` class, re-extract, merge findings. Shows issues specific to dark mode.
 - [ ] **Hover/focus state simulation:** Use `el.matches(':hover')` — can't simulate directly, but can check stylesheet rules for `:hover`/`:focus` selectors and verify they exist.
 - [ ] **iFrame content:** Detect iframes and optionally extract from them (same-origin only).
-</file>
-
-<file path="docs/presets/index.json">
-{
-  "categories": [
-    { "label": "Layouts", "elements": ["shell-sidebar", "shell-marketing", "shell-dashboard", "shell-form"] },
-    { "label": "Components", "elements": ["hero", "stats-row", "data-table", "card-grid", "pricing-cards", "feature-grid", "tabs", "accordion", "pagination", "dropdown", "avatars"] },
-    { "label": "Before → After", "elements": ["dashboard", "landing", "form", "cards", "project"] },
-    { "label": "Full Pages", "elements": ["pricing", "portfolio", "restaurant", "statuspage"] },
-    { "label": "Expressive", "elements": ["personal-hero", "agency-landing", "agency-portfolio", "app-showcase", "scroll-reveal-landing", "product-launch", "editorial-blog", "saas-features", "scroll-story", "product-page", "devtool-landing", "docs-site", "event-page", "jdeworks-personal"] },
-    { "label": "Edge Cases", "elements": ["deploy", "buttons", "osslanding"] }
-  ],
-  "elements": {
-    "dashboard": { "label": "Dashboard", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "landing": { "label": "Landing Page", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
-    "form": { "label": "Form", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
-    "cards": { "label": "Card Grid", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "project": { "label": "Multi-Page App", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
-    "pricing": { "label": "SaaS Pricing", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "portfolio": { "label": "Portfolio (Dark)", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "restaurant": { "label": "Restaurant (Warm)", "personalities": { "clean": { "primaryColor": "amber" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "statuspage": { "label": "Status Page", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "deploy": { "label": "Deploy Monitor", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "buttons": { "label": "Button System", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "osslanding": { "label": "OSS Landing", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "shell-sidebar": { "label": "App Shell (Sidebar)", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "shell-marketing": { "label": "Marketing Page", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "shell-dashboard": { "label": "Dashboard Shell", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "shell-form": { "label": "Centered Form", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "hero": { "label": "Hero Section", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "stats-row": { "label": "Stats Row", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "data-table": { "label": "Data Table", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "card-grid": { "label": "Card Grid", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "pricing-cards": { "label": "Pricing Cards", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "feature-grid": { "label": "Feature Grid", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "tabs": { "label": "Tabs", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "accordion": { "label": "Accordion", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "pagination": { "label": "Pagination", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "dropdown": { "label": "Dropdown Menu", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "avatars": { "label": "Avatar Group", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "personal-hero": { "label": "Personal Site", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "agency-landing": { "label": "Agency Landing", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "product-launch": { "label": "Product Launch", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "editorial-blog": { "label": "Editorial Blog", "personalities": { "clean": { "primaryColor": "slate" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "saas-features": { "label": "SaaS Features", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "scroll-story": { "label": "Scroll Story", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "product-page": { "label": "Product Page", "personalities": { "clean": { "primaryColor": "sky" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "devtool-landing": { "label": "DevTool Landing", "personalities": { "clean": { "primaryColor": "cyan" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "docs-site": { "label": "Docs Site", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "event-page": { "label": "Event Page", "personalities": { "clean": { "primaryColor": "amber" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "jdeworks-personal": { "label": "JDE Personal", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "agency-portfolio": { "label": "Agency Portfolio", "personalities": { "clean": { "primaryColor": "teal" } } },
-    "app-showcase": { "label": "App Showcase", "personalities": { "clean": { "primaryColor": "orange" } } },
-    "scroll-reveal-landing": { "label": "Scroll Reveal Landing", "personalities": { "clean": { "primaryColor": "sky" } } }
-  }
-}
 </file>
 
 <file path="CONSULT.md">
