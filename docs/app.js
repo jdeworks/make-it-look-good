@@ -284,6 +284,12 @@ function updatePreview() {
     '    document.body.appendChild(s);\n' +
     '    s.remove();\n' +
     '  }\n' +
+    '  if (e.data && e.data.type === "milg-run-analyzer") {\n' +
+    '    var s = document.createElement("script");\n' +
+    '    s.textContent = ' + JSON.stringify(analyzePreviewScript) + ';\n' +
+    '    document.body.appendChild(s);\n' +
+    '    s.remove();\n' +
+    '  }\n' +
     '});\n' +
     '</' + 'script>\n' +
     '</body>\n</html>';
@@ -1319,6 +1325,208 @@ function syncMobileToolbar() {
   // Show/hide the toolbar toggle based on whether there are any controls
   var hasControls = mobilePers.children.length > 0 || mobileTheme.children.length > 0 || mobileStyle.children.length > 0;
   document.getElementById('mobilePreviewToolbar').classList.toggle('has-controls', hasControls);
+}
+
+// --- Analyze Current Preview ---
+// Extracts design data from the preview iframe and opens the analyzer with it.
+// The extraction script is a module-level constant so updatePreview() can embed it.
+
+const analyzePreviewScript = `
+(function() {
+  function parseColor(str) {
+    if (!str || str === 'transparent' || str === 'rgba(0, 0, 0, 0)') return null;
+    var m = str.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)(?:,\\s*([\\d.]+))?\\)/);
+    if (!m) return null;
+    return { r: +m[1], g: +m[2], b: +m[3], a: m[4] !== undefined ? +m[4] : 1 };
+  }
+  function blendOnWhite(c) {
+    if (!c) return { r: 255, g: 255, b: 255 };
+    var a = c.a;
+    return { r: Math.round(c.r * a + 255 * (1 - a)), g: Math.round(c.g * a + 255 * (1 - a)), b: Math.round(c.b * a + 255 * (1 - a)) };
+  }
+  function getEffectiveBg(el) {
+    var node = el, layers = [];
+    while (node && node !== document.documentElement) {
+      var bg = getComputedStyle(node).backgroundColor;
+      var c = parseColor(bg);
+      if (c && c.a > 0) layers.push(c);
+      if (c && c.a >= 1) break;
+      node = node.parentElement;
+    }
+    var result = { r: 255, g: 255, b: 255 };
+    for (var i = layers.length - 1; i >= 0; i--) {
+      var l = layers[i], a = l.a;
+      result = { r: Math.round(l.r * a + result.r * (1 - a)), g: Math.round(l.g * a + result.g * (1 - a)), b: Math.round(l.b * a + result.b * (1 - a)) };
+    }
+    return result;
+  }
+  function luminance(c) {
+    var rs = c.r / 255, gs = c.g / 255, bs = c.b / 255;
+    var r = rs <= 0.03928 ? rs / 12.92 : Math.pow((rs + 0.055) / 1.055, 2.4);
+    var g = gs <= 0.03928 ? gs / 12.92 : Math.pow((gs + 0.055) / 1.055, 2.4);
+    var b = bs <= 0.03928 ? bs / 12.92 : Math.pow((bs + 0.055) / 1.055, 2.4);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  }
+  function contrastRatio(c1, c2) {
+    var l1 = luminance(c1), l2 = luminance(c2);
+    return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+  }
+  function rgbStr(c) { return 'rgb(' + c.r + ',' + c.g + ',' + c.b + ')'; }
+  function isVisible(el) {
+    var s = getComputedStyle(el);
+    if (s.display === 'none' || s.visibility === 'hidden' || s.opacity === '0') return false;
+    var r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
+  }
+  function cssSelector(el) {
+    if (el.id) return '#' + el.id;
+    var tag = el.tagName.toLowerCase();
+    var cls = el.className && typeof el.className === 'string' ? '.' + el.className.trim().split(/\\s+/).slice(0, 2).join('.') : '';
+    return tag + cls;
+  }
+
+  var data = {
+    meta: { title: document.title || 'Editor Preview', url: 'Editor Preview', viewportWidth: window.innerWidth, viewportHeight: window.innerHeight, timestamp: new Date().toISOString(), version: 1 },
+    colors: { textColors: [], bgColors: [], contrastPairs: [] },
+    typography: { bodyFontSize: '', bodyLineHeight: '', bodyFontFamily: '', fontFamilies: [], fontSizes: [], fontWeights: [], headings: [], lineHeights: [], maxLineLength: { chars: 0, element: '' } },
+    spacing: { paddings: [], margins: [], gaps: [], maxContentWidth: '', bodyPaddingHorizontal: '' },
+    interaction: { touchTargets: [], transitions: [] },
+    accessibility: { semanticElements: {}, headingHierarchy: [], imagesWithoutAlt: 0, formLabels: { total: 0, withLabel: 0, withoutLabel: 0 }, focusIndicators: [] },
+    structure: { totalElements: 0, darkModeClasses: false, responsiveClasses: false, tailwindDetected: false, cssFramework: 'unknown' }
+  };
+
+  var allElements = document.body.querySelectorAll('*');
+  data.structure.totalElements = allElements.length;
+  var htmlStr = document.body.innerHTML;
+  if (/class="[^"]*(?:sm:|md:|lg:|xl:)/.test(htmlStr) || /class="[^"]*(?:flex|grid|text-|bg-|p-|m-)/.test(htmlStr)) { data.structure.tailwindDetected = true; data.structure.cssFramework = 'tailwind'; }
+  data.structure.darkModeClasses = /class="[^"]*dark:/.test(htmlStr);
+  data.structure.responsiveClasses = /class="[^"]*(?:sm:|md:|lg:|xl:)/.test(htmlStr);
+
+  var bodyStyle = getComputedStyle(document.body);
+  data.typography.bodyFontSize = bodyStyle.fontSize;
+  data.typography.bodyLineHeight = bodyStyle.lineHeight;
+  data.typography.bodyFontFamily = bodyStyle.fontFamily;
+  data.spacing.bodyPaddingHorizontal = bodyStyle.paddingLeft;
+
+  var fontSizeMap = {}, fontWeightMap = {}, fontFamilySet = new Set(), lineHeightMap = {};
+  var textColorMap = {}, bgColorMap = {}, paddingMap = {}, marginMap = {}, gapMap = {};
+  var maxContentW = 0, contrastPairs = [];
+  var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
+  var node, seen = new Set();
+  while (node = walker.nextNode()) {
+    if (!node.textContent.trim()) continue;
+    var el = node.parentElement;
+    if (!el || !isVisible(el)) continue;
+    if (seen.has(el)) continue;
+    seen.add(el);
+    var style = getComputedStyle(el);
+    var fg = parseColor(style.color);
+    if (!fg) continue;
+    var fgB = blendOnWhite(fg);
+    var bg = getEffectiveBg(el);
+    var ratio = contrastRatio(fgB, bg);
+    var fontSize = parseFloat(style.fontSize);
+    var fontWeight = parseInt(style.fontWeight) || 400;
+    var isLarge = fontSize >= 24 || (fontSize >= 18.66 && fontWeight >= 700);
+    var threshold = isLarge ? 3 : 4.5;
+    if (ratio < threshold + 1) {
+      contrastPairs.push({ fg: rgbStr(fgB), bg: rgbStr(bg), ratio: Math.round(ratio * 100) / 100, needed: threshold, passes: ratio >= threshold, fontSize: Math.round(fontSize), fontWeight: fontWeight, isLarge: isLarge, text: node.textContent.trim().substring(0, 50), selector: cssSelector(el) });
+    }
+    var charWidth = fontSize * 0.5;
+    var charsPerLine = Math.round(el.getBoundingClientRect().width / charWidth);
+    if (charsPerLine > data.typography.maxLineLength.chars && el.tagName !== 'SCRIPT' && el.tagName !== 'STYLE') {
+      data.typography.maxLineLength = { chars: charsPerLine, element: cssSelector(el) };
+    }
+  }
+  contrastPairs.sort(function(a, b) { return a.ratio - b.ratio; });
+  data.colors.contrastPairs = contrastPairs.slice(0, 50);
+
+  for (var i = 0; i < allElements.length; i++) {
+    var el = allElements[i];
+    if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE' || el.tagName === 'NOSCRIPT') continue;
+    if (!isVisible(el)) continue;
+    var s = getComputedStyle(el);
+    fontSizeMap[s.fontSize] = (fontSizeMap[s.fontSize] || 0) + 1;
+    fontWeightMap[s.fontWeight] = (fontWeightMap[s.fontWeight] || 0) + 1;
+    fontFamilySet.add(s.fontFamily.split(',')[0].trim().replace(/['"]/g, ''));
+    var lh = s.lineHeight;
+    if (lh !== 'normal') { var lhR = parseFloat(lh) / parseFloat(s.fontSize); lineHeightMap[Math.round(lhR * 100) / 100] = (lineHeightMap[Math.round(lhR * 100) / 100] || 0) + 1; }
+    if (s.color) textColorMap[s.color] = (textColorMap[s.color] || 0) + 1;
+    var bgColor = s.backgroundColor;
+    if (bgColor && bgColor !== 'rgba(0, 0, 0, 0)' && bgColor !== 'transparent') bgColorMap[bgColor] = (bgColorMap[bgColor] || 0) + 1;
+    [s.paddingTop, s.paddingRight, s.paddingBottom, s.paddingLeft].filter(function(v) { return v !== '0px'; }).forEach(function(v) { paddingMap[v] = (paddingMap[v] || 0) + 1; });
+    [s.marginTop, s.marginRight, s.marginBottom, s.marginLeft].filter(function(v) { return v !== '0px' && v !== 'auto'; }).forEach(function(v) { marginMap[v] = (marginMap[v] || 0) + 1; });
+    if (s.gap && s.gap !== 'normal' && s.gap !== '0px') gapMap[s.gap] = (gapMap[s.gap] || 0) + 1;
+    var w = el.getBoundingClientRect().width;
+    if (w > maxContentW && w < window.innerWidth * 0.95) maxContentW = w;
+  }
+  function mapToSorted(map) { return Object.keys(map).map(function(k) { return { value: k, count: map[k] }; }).sort(function(a, b) { return b.count - a.count; }).slice(0, 30); }
+  data.typography.fontSizes = mapToSorted(fontSizeMap);
+  data.typography.fontWeights = mapToSorted(fontWeightMap);
+  data.typography.fontFamilies = Array.from(fontFamilySet).slice(0, 10);
+  data.typography.lineHeights = mapToSorted(lineHeightMap);
+  data.colors.textColors = mapToSorted(textColorMap);
+  data.colors.bgColors = mapToSorted(bgColorMap);
+  data.spacing.paddings = mapToSorted(paddingMap);
+  data.spacing.margins = mapToSorted(marginMap);
+  data.spacing.gaps = mapToSorted(gapMap);
+  data.spacing.maxContentWidth = Math.round(maxContentW) + 'px';
+
+  document.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(function(h) {
+    var hs = getComputedStyle(h);
+    data.typography.headings.push({ tag: h.tagName.toLowerCase(), text: h.textContent.trim().substring(0, 60), fontSize: hs.fontSize, fontWeight: hs.fontWeight, lineHeight: hs.lineHeight, fontFamily: hs.fontFamily.split(',')[0].trim().replace(/['"]/g, '') });
+    data.accessibility.headingHierarchy.push(h.tagName.toLowerCase());
+  });
+
+  var interactive = document.querySelectorAll('a,button,input,select,textarea,[role="button"],[tabindex]');
+  var touchIssues = [];
+  interactive.forEach(function(el) {
+    if (!isVisible(el)) return;
+    var rect = el.getBoundingClientRect();
+    var w = Math.round(rect.width), h = Math.round(rect.height);
+    if (w < 44 || h < 44) touchIssues.push({ element: el.tagName.toLowerCase(), width: w, height: h, text: (el.textContent || el.getAttribute('aria-label') || '').trim().substring(0, 40), selector: cssSelector(el), passes: false });
+  });
+  touchIssues.sort(function(a, b) { return (a.width * a.height) - (b.width * b.height); });
+  data.interaction.touchTargets = touchIssues.slice(0, 40);
+  var transitionSet = new Set();
+  for (var i = 0; i < allElements.length && transitionSet.size < 20; i++) { var t = getComputedStyle(allElements[i]).transitionDuration; if (t && t !== '0s') transitionSet.add(t); }
+  data.interaction.transitions = Array.from(transitionSet);
+  data.accessibility.semanticElements = { header: document.querySelectorAll('header').length, nav: document.querySelectorAll('nav').length, main: document.querySelectorAll('main').length, footer: document.querySelectorAll('footer').length, section: document.querySelectorAll('section').length, article: document.querySelectorAll('article').length, aside: document.querySelectorAll('aside').length };
+  var noAlt = 0; document.querySelectorAll('img').forEach(function(img) { if (!img.hasAttribute('alt')) noAlt++; }); data.accessibility.imagesWithoutAlt = noAlt;
+  var inputs = document.querySelectorAll('input:not([type="hidden"]):not([type="submit"]):not([type="button"]),select,textarea');
+  var labeled = 0;
+  inputs.forEach(function(inp) { data.accessibility.formLabels.total++; if ((inp.id && document.querySelector('label[for="' + inp.id + '"]')) || inp.closest('label') || inp.getAttribute('aria-label') || inp.getAttribute('aria-labelledby')) labeled++; });
+  data.accessibility.formLabels.withLabel = labeled;
+  data.accessibility.formLabels.withoutLabel = data.accessibility.formLabels.total - labeled;
+  Array.from(interactive).slice(0, 10).forEach(function(el) { if (!isVisible(el)) return; var s = getComputedStyle(el); data.accessibility.focusIndicators.push({ element: cssSelector(el), outlineStyle: s.outlineStyle, outlineWidth: s.outlineWidth, outlineColor: s.outlineColor, outlineOffset: s.outlineOffset }); });
+
+  parent.postMessage({ type: 'milg-analyzer-preview', data: data }, '*');
+})();
+`;
+
+function analyzeCurrentPreview() {
+  const btn = document.getElementById('analyzePreviewBtn');
+  btn.classList.add('active');
+
+  function onResult(e) {
+    if (!e.data || e.data.type !== 'milg-analyzer-preview') return;
+    window.removeEventListener('message', onResult);
+    btn.classList.remove('active');
+
+    // Encode data and open analyzer
+    var json = JSON.stringify(e.data.data);
+    var encoded = btoa(encodeURIComponent(json));
+    window.open('analyzer.html#data=' + encoded, '_blank');
+  }
+  window.addEventListener('message', onResult);
+
+  // Inject extraction script into the iframe
+  preview.contentWindow.postMessage({ type: 'milg-run-analyzer' }, '*');
+
+  setTimeout(function() {
+    window.removeEventListener('message', onResult);
+    btn.classList.remove('active');
+  }, 5000);
 }
 
 // --- Contrast / Accessibility Checker ---
