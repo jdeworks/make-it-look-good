@@ -95,7 +95,7 @@ Paste any HTML+Tailwind into the [live preview tool](https://jdeworks.github.io/
 
 ### Design Analyzer
 
-Score any website against evidence-based design rules with the [Design Analyzer](https://jdeworks.github.io/make-it-look-good/analyzer.html). It checks contrast ratios, typography, spacing, touch targets, accessibility, responsive design, and more — no AI, just math against WCAG, Material Design, and typography research.
+Score any website against evidence-based design rules with the [Design Analyzer](https://jdeworks.github.io/make-it-look-good/analyzer.html). **~60 checks across 14 scoring modules** — no AI, just math against WCAG 2.2, Material Design, NNGroup research, and typography best practices. Every finding links to its source.
 
 Three ways to analyze:
 
@@ -105,7 +105,9 @@ Three ways to analyze:
 | **Console Snippet** | Most accurate, localhost, behind login | Copy snippet → run in DevTools console → paste JSON |
 | **Paste HTML** | Static mockups | Paste HTML source, rendered in iframe |
 
-Features: page context detection (marketing vs. app vs. form), viewport-aware touch targets (desktop vs. mobile thresholds), decorative element filtering (skips mock UIs), markdown export for sharing with AI or teammates, PDF print.
+Scoring modules: Color & Contrast (WCAG + APCA), Typography, Spacing & Layout, Touch & Interaction, Accessibility, Responsive Design, Visual Consistency, Cognitive Load, Layout Quality, Performance, Readability, Motion & Animation, Visual Balance.
+
+Features: 5 audience profiles (General, WCAG AAA, Elderly, Low Vision, Motor Impairment), page context detection, gradient/background-image/CSS-filter contrast resolution, decorative element filtering, post-analysis exclusion suggestions, extraction caching, dark mode report, viewport size selection, markdown/PDF export.
 
 ### Before & After Examples
 

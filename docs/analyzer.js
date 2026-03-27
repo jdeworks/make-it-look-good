@@ -352,6 +352,66 @@
         }
         urlStatus.textContent = 'Rendering and analyzing...';
         var exclude = window.__milgCombinedExclude || (document.getElementById('excludeSelector').value || '').trim();
+        var isDeepScan = document.getElementById('deepScanCheck') && document.getElementById('deepScanCheck').checked;
+        if (isDeepScan) {
+          var viewports = [{w:1280,h:900,label:'Desktop'},{w:768,h:1024,label:'Tablet'},{w:375,h:812,label:'Phone'}];
+          var deepResults = [];
+          var vpIdx = 0;
+          (function nextVP() {
+            if (vpIdx >= viewports.length) {
+              var primary = deepResults[0] || deepResults[1] || deepResults[2];
+              if (!primary) {
+                analyzeUrlBtn.disabled = false;
+                analyzeUrlBtn.textContent = 'Analyze URL';
+                urlStatus.innerHTML = '<span style="color:#dc2626">Deep scan failed — no viewport returned data.</span>';
+                return;
+              }
+              primary.deepScan = { viewports: deepResults.map(function(r, i) {
+                return r ? {
+                  label: viewports[i].label, width: viewports[i].w,
+                  touchTargets: (r.interaction.touchTargets || []).length,
+                  contrastFails: (r.colors.contrastPairs || []).filter(function(p) { return !p.passes; }).length,
+                  overflow: r.structure.hasHorizontalOverflow || false
+                } : { label: viewports[i].label, width: viewports[i].w, error: true };
+              })};
+              // Dark mode test
+              var htmlHasDark = /class="[^"]*dark:/.test(html) || /prefers-color-scheme/.test(html) || /\.dark\s*\{/.test(html) || /data-theme/.test(html);
+              if (htmlHasDark) {
+                urlStatus.textContent = 'Testing dark mode...';
+                var darkHtml = html.replace(/<html([^>]*)>/i, '<html$1 class="dark" data-theme="dark" style="color-scheme:dark">');
+                deepScanInIframe(darkHtml, url, exclude, 1280, 900, function(darkData) {
+                  if (darkData) {
+                    primary.deepScan.darkMode = {
+                      contrastFails: (darkData.colors.contrastPairs || []).filter(function(p) { return !p.passes; }).length,
+                      contrastTotal: (darkData.colors.contrastPairs || []).length,
+                      tested: true
+                    };
+                  }
+                  analyzeUrlBtn.disabled = false;
+                  analyzeUrlBtn.textContent = 'Analyze URL';
+                  urlStatus.style.display = 'none';
+                  primary.meta.url = url;
+                  runAnalysis(primary);
+                });
+              } else {
+                analyzeUrlBtn.disabled = false;
+                analyzeUrlBtn.textContent = 'Analyze URL';
+                urlStatus.style.display = 'none';
+                primary.meta.url = url;
+                runAnalysis(primary);
+              }
+              return;
+            }
+            var vp = viewports[vpIdx];
+            urlStatus.textContent = 'Deep scan: ' + vp.label + ' (' + vp.w + 'px)...';
+            deepScanInIframe(html, url, exclude, vp.w, vp.h, function(data) {
+              deepResults.push(data);
+              vpIdx++;
+              nextVP();
+            });
+          })();
+          return;
+        }
         analyzeHtmlInIframe(html, function(data) {
           analyzeUrlBtn.disabled = false;
           analyzeUrlBtn.textContent = 'Analyze URL';
@@ -587,6 +647,52 @@
     runAnalysis(filtered);
     showToast('Re-scored with ' + active.length + ' exclusion(s)');
   };
+
+  function deepScanInIframe(html, url, exclude, vpWidth, vpHeight, callback) {
+    var iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + vpWidth + 'px;height:' + vpHeight + 'px;border:none;';
+    iframe.sandbox = 'allow-scripts allow-same-origin';
+    document.body.appendChild(iframe);
+
+    var msgType = 'milg-deep-' + vpWidth;
+    var handled = false;
+    function onResult(e) {
+      if (!e.data || e.data.type !== msgType) return;
+      if (handled) return;
+      handled = true;
+      window.removeEventListener('message', onResult);
+      if (iframe.parentNode) document.body.removeChild(iframe);
+      callback(e.data.data);
+    }
+    window.addEventListener('message', onResult);
+
+    var processed = url ? injectBaseTag(html, url) : html;
+    var excludeVar = exclude ? '<script>window.__milgExclude=' + JSON.stringify(exclude) + ';</' + 'script>' : '';
+    var isFullDoc = /<html[\s>]/i.test(processed) || /<!DOCTYPE/i.test(processed);
+
+    var extractStr = extractFromDocument.toString().replace(/milg-analyzer-result/g, msgType);
+    var extractScript = excludeVar + '<script>window.addEventListener("load",function(){setTimeout(function(){(' + extractStr + ')()},1000)});setTimeout(function(){(' + extractStr + ')()},8000);</' + 'script>';
+
+    var srcdoc;
+    if (isFullDoc) {
+      if (/<\/body>/i.test(processed)) {
+        srcdoc = processed.replace(/<\/body>/i, extractScript + '</body>');
+      } else {
+        srcdoc = processed + extractScript;
+      }
+    } else {
+      srcdoc = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script><style>body{margin:0}</style></head><body>' + processed + extractScript + '</body></html>';
+    }
+    iframe.srcdoc = srcdoc;
+
+    setTimeout(function() {
+      if (handled) return;
+      handled = true;
+      window.removeEventListener('message', onResult);
+      if (iframe.parentNode) document.body.removeChild(iframe);
+      callback(null);
+    }, 15000);
+  }
 
   function runAnalysis(data) {
     lastRawData = data;
