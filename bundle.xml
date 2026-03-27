@@ -61,11 +61,14 @@ docs/
     index.json
   scoring/
     accessibility.js
+    balance.js
     cognitive.js
     consistency.js
     contrast.js
+    filters.js
     layout.js
     performance.js
+    readability.js
     registry.js
     responsive.js
     spacing.js
@@ -895,6 +898,238 @@ What type of element needs contrast checking?
 - [WCAG 2.2 — Success Criterion 1.4.6 Contrast (Enhanced)](https://www.w3.org/WAI/WCAG22/Understanding/contrast-enhanced)
 - [WCAG 2.2 — Success Criterion 1.4.11 Non-text Contrast](https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast)
 - [WebAIM — Contrast and Color Accessibility](https://webaim.org/articles/contrast/)
+</file>
+
+<file path="docs/scoring/balance.js">
+// Scoring Module: Visual Weight Balance
+// Weight: 3%
+// Source: Ngo et al. 2003 — balance correlates with preference (r=0.67)
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+  function scoreBalance(data) {
+    var findings = [];
+    var checks = 0;
+    var passed = 0;
+
+    // We use alignment edges as a proxy for content distribution
+    var edges = (data.layout && data.layout.alignmentEdges) || [];
+    var vw = (data.meta && data.meta.viewportWidth) || 1280;
+
+    if (edges.length >= 10) {
+      checks++;
+
+      // Count elements in left half vs right half
+      var leftCount = 0;
+      var rightCount = 0;
+      var midpoint = vw / 2;
+
+      edges.forEach(function(edge) {
+        if (edge < midpoint) leftCount++;
+        else rightCount++;
+      });
+
+      var total = leftCount + rightCount;
+      var ratio = total > 0 ? Math.max(leftCount, rightCount) / Math.min(leftCount || 1, rightCount || 1) : 1;
+
+      if (ratio <= 2) {
+        passed++;
+      } else if (ratio <= 3) {
+        findings.push({
+          severity: 'info',
+          title: 'Content distribution is ' + Math.round(leftCount / total * 100) + '% left / ' + Math.round(rightCount / total * 100) + '% right',
+          detail: 'Moderate imbalance — may be intentional (sidebar layout) or indicate uneven content distribution',
+          fix: 'If using a sidebar layout, this is expected. Otherwise, distribute content more evenly or use a centered layout.',
+          presetRef: null,
+          source: 'Ngo et al. 2003 — Visual balance and aesthetic preference'
+        });
+      } else {
+        findings.push({
+          severity: 'warning',
+          title: 'Content heavily weighted to one side (' + Math.round(leftCount / total * 100) + '% / ' + Math.round(rightCount / total * 100) + '%)',
+          detail: 'Strong left-right imbalance can feel visually unstable unless intentional',
+          fix: 'Consider centering the main content or balancing sections with complementary elements on the lighter side.',
+          presetRef: null,
+          source: 'Ngo et al. 2003 — Visual balance and aesthetic preference'
+        });
+      }
+    }
+
+    var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
+    return { score: score, findings: findings, weight: 3, label: 'Visual Balance', icon: 'consistency' };
+  }
+
+  S.register("balance", scoreBalance, 3, "Visual Balance", "consistency");
+})();
+</file>
+
+<file path="docs/scoring/filters.js">
+// Scoring Module: Motion, Animation & Filters
+// Weight: 3%
+// Sources: WCAG 2.2 §2.3.3, CSS Filter Effects spec
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+  function scoreFilters(data) {
+    var findings = [];
+    var checks = 0;
+    var passed = 0;
+    var anim = data.animation || {};
+
+    // prefers-reduced-motion support
+    checks++;
+    if (anim.hasReducedMotion) {
+      passed++;
+    } else if (anim.keyframeCount > 0 || (data.interaction && data.interaction.transitions && data.interaction.transitions.length > 2)) {
+      findings.push({
+        severity: 'warning',
+        title: 'No prefers-reduced-motion support detected',
+        detail: (anim.keyframeCount || 0) + ' @keyframes rules found. Users with vestibular disorders need the option to reduce motion.',
+        fix: 'Add @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }',
+        presetRef: null,
+        source: 'WCAG 2.2 §2.3.3 — https://www.w3.org/TR/WCAG22/#animation-from-interactions'
+      });
+    } else {
+      passed++; // No significant animations, no need for reduced-motion
+    }
+
+    // Hidden elements waiting for scroll-reveal
+    if (anim.hiddenElements > 0) {
+      checks++;
+      if (anim.hiddenElements <= 5) {
+        passed++;
+        findings.push({
+          severity: 'info',
+          title: anim.hiddenElements + ' element(s) with opacity:0 + transition (likely scroll-reveal)',
+          detail: 'These elements are invisible at scan time. Their contrast/sizing was not checked.',
+          fix: 'This is normal for scroll-reveal animations. Run the snippet after scrolling the full page for complete analysis.',
+          presetRef: null
+        });
+      } else {
+        findings.push({
+          severity: 'warning',
+          title: anim.hiddenElements + ' hidden elements waiting for animation trigger',
+          detail: 'A large portion of the page is invisible at load time. This may affect perceived loading speed and SEO.',
+          fix: 'Consider showing initial content without animation, then enhancing with scroll effects. Ensure content is accessible without JS.',
+          presetRef: null,
+          source: 'WCAG 2.2 §2.3.3 — https://www.w3.org/TR/WCAG22/#animation-from-interactions'
+        });
+      }
+    }
+
+    // Scroll-reveal library detection
+    var patterns = anim.scrollRevealPatterns || [];
+    if (patterns.length > 0) {
+      var totalReveal = patterns.reduce(function(s, p) { return s + p.count; }, 0);
+      findings.push({
+        severity: 'info',
+        title: 'Scroll-reveal library detected: ' + totalReveal + ' animated element(s)',
+        detail: 'Libraries found: ' + patterns.map(function(p) { return p.selector + ' (' + p.count + ')'; }).join(', '),
+        fix: 'Ensure scroll-reveal animations respect prefers-reduced-motion and that content is visible without JavaScript.',
+        presetRef: null
+      });
+    }
+
+    var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
+    return { score: score, findings: findings, weight: 3, label: 'Motion & Animation', icon: 'cognitive' };
+  }
+
+  S.register("filters", scoreFilters, 3, "Motion & Animation", "cognitive");
+})();
+</file>
+
+<file path="docs/scoring/readability.js">
+// Scoring Module: Readability & Scanability
+// Weight: 5%
+// Sources: Coleman-Liau Index, NNGroup scanning research
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+  function scoreReadability(data) {
+    var findings = [];
+    var checks = 0;
+    var passed = 0;
+
+    // Extract text content from the raw data
+    // We use heading count and element count as proxies since we don't have raw text in extracted data
+    var headings = (data.typography && data.typography.headings) || [];
+    var totalElements = (data.structure && data.structure.totalElements) || 0;
+
+    // Scanability: heading frequency
+    // Good rule: 1 heading per ~100-150 elements of content
+    if (totalElements > 50) {
+      checks++;
+      var headingRatio = headings.length / (totalElements / 100);
+      if (headingRatio >= 0.5 && headingRatio <= 5) {
+        passed++;
+      } else if (headingRatio < 0.5) {
+        findings.push({
+          severity: 'warning',
+          title: 'Low heading density: ' + headings.length + ' headings for ' + totalElements + ' elements',
+          detail: 'Content without headings is harder to scan. 79% of users scan rather than read (NNGroup)',
+          fix: 'Add descriptive headings to break content into scannable sections. Aim for a heading every 2-3 paragraphs.',
+          presetRef: null,
+          source: 'NNGroup scanning research — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+        });
+      }
+    }
+
+    // Heading descriptiveness: check if headings are too short (likely generic)
+    if (headings.length > 0) {
+      checks++;
+      var shortHeadings = headings.filter(function(h) {
+        return h.text && h.text.length < 3;
+      });
+      if (shortHeadings.length === 0) {
+        passed++;
+      } else {
+        findings.push({
+          severity: 'info',
+          title: shortHeadings.length + ' heading(s) with very short text (< 3 chars)',
+          detail: 'Short headings like numbers or icons don\'t help users scan. Use descriptive text.',
+          fix: 'Replace generic headings with descriptive ones that summarize the section content.',
+          presetRef: null,
+          source: 'NNGroup — https://www.nngroup.com/articles/headings-pickup-lines/'
+        });
+      }
+    }
+
+    // Font size variety as readability signal
+    // Too many sizes = visual noise, harder to establish reading rhythm
+    var fontSizes = (data.typography && data.typography.fontSizes) || [];
+    var smallTextCount = fontSizes.filter(function(f) {
+      return parseFloat(f.value) < 12;
+    }).reduce(function(sum, f) { return sum + f.count; }, 0);
+
+    if (smallTextCount > 0 && totalElements > 20) {
+      checks++;
+      var smallRatio = smallTextCount / totalElements;
+      if (smallRatio < 0.05) {
+        passed++;
+      } else {
+        findings.push({
+          severity: 'warning',
+          title: smallTextCount + ' element(s) with text smaller than 12px',
+          detail: 'Text below 12px is difficult to read for most users and nearly impossible for elderly or low-vision users',
+          fix: 'Increase small text to at least 12px. Consider if the information is important enough to display — if not, remove it.',
+          presetRef: null,
+          source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text'
+        });
+      }
+    }
+
+    var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
+    return { score: score, findings: findings, weight: 5, label: 'Readability', icon: 'type' };
+  }
+
+  S.register("readability", scoreReadability, 5, "Readability", "type");
+})();
 </file>
 
 <file path="foundations/aesthetic-usability.md">
@@ -13004,12 +13239,51 @@ function scoreTouchTargets(data) {
 ## Scoring Module Ideas
 
 Each would be a new file in `docs/scoring/`:
-- [ ] `readability.js` — Flesch-Kincaid, sentence length, passive voice detection
+- [ ] `readability.js` — Coleman-Liau index (no syllable counting), scanability (paragraph length, heading frequency, list usage)
 - [ ] `images.js` — Alt text quality (not just present/absent), decorative image detection
 - [ ] `forms.js` — Input types, autocomplete, validation patterns, label quality
 - [ ] `navigation.js` — Nav depth, breadcrumbs, skip links, landmark completeness
-- [ ] `motion.js` — prefers-reduced-motion respect, animation duration audit
+- [ ] `motion.js` — prefers-reduced-motion respect, animation audit, scroll-triggered detection, keyframe analysis
 - [ ] `seo.js` — Meta tags, heading structure, canonical URL, OG tags
+- [ ] `filters.js` — CSS filter impact on contrast (brightness, contrast, opacity math adjustments)
+- [ ] `balance.js` — Visual weight balance (left-right quadrant density, per Ngo et al. 2003)
+
+## Extension: LLM API Integration (future, opt-in)
+
+**Default: off.** Only visible when user provides an API key (OpenRouter for free models, or direct Anthropic/OpenAI key). On the settings/config page, not the main flow.
+
+**What LLMs are good at** (soft judgment, context):
+- "Does this hero section convey the right tone?"
+- "Is the copy clear for the target audience?"
+- "Does the color palette feel appropriate for a medical site?"
+- Summarizing findings into plain-language recommendations
+
+**What LLMs are NOT good at** (hard facts):
+- Contrast ratios, pixel measurements, spacing values — the rule engine does this better
+- LLMs hallucinate numbers and can't reliably compute WCAG ratios
+
+**Implementation notes:**
+- LLM receives the extracted JSON + rule-engine findings as context
+- Adds a "Design Review" section to the report with soft suggestions
+- Clearly labeled as "AI-generated suggestions" separate from evidence-based findings
+- Could also use LLM to generate the HTML extraction (fetch page → ask LLM to extract), but snippet is more accurate
+- Low priority — the analyzer's value is evidence-based scoring, not AI opinions
+
+## Animation & Keyframe Analysis
+
+**Problem:** Pages with scroll-reveal animations, CSS keyframes, and intersection-observer triggers may have elements that aren't visible at extraction time. The analyzer scans a static snapshot — it misses:
+- Elements with `opacity: 0` waiting for scroll-trigger
+- Elements translated off-screen (`transform: translateY(100px)`)
+- Content that loads lazily via JS
+- Carousel slides that aren't the active slide
+
+**Approaches to investigate:**
+- [ ] Detect CSS `@keyframes` rules and `animation` properties — flag elements with animations as "may change state"
+- [ ] Detect `opacity: 0` + `transition`/`animation` combo — likely scroll-reveal, skip from contrast checks
+- [ ] Scroll the page before extraction: `window.scrollTo(0, document.body.scrollHeight)` then back, triggering intersection observers
+- [ ] Detect intersection-observer usage via checking for `data-aos`, `[class*="animate"]`, `.wow`, `.reveal` patterns
+- [ ] For the snippet: add a "scroll to reveal" option that scrolls the full page before extracting
+- [ ] Mark findings with "element may be in pre-animation state" when transform/opacity suggests hidden-until-scroll
 </file>
 
 <file path="expressive/scroll-effect-patterns.md">
@@ -17628,6 +17902,35 @@ Not every section is required, but **Concrete Rules** and **CSS/Implementation P
   })(document.body, 0);
   data.performance.domDepth = maxDepth;
 
+  // --- Animation & scroll-reveal detection ---
+  data.animation = { hiddenElements: 0, keyframeCount: 0, hasReducedMotion: false, scrollRevealPatterns: [] };
+  // Count elements that appear to be in pre-animation state (opacity:0 + transition/animation)
+  var hiddenAnimated = 0;
+  for (var ai = 0; ai < allElements.length; ai++) {
+    var ael = allElements[ai];
+    var as = getComputedStyle(ael);
+    if (as.opacity === '0' && (as.transitionProperty !== 'none' || as.animationName !== 'none')) {
+      hiddenAnimated++;
+    }
+  }
+  data.animation.hiddenElements = hiddenAnimated;
+  // Count @keyframes rules
+  try {
+    Array.from(document.styleSheets).forEach(function(ss) {
+      try {
+        Array.from(ss.cssRules).forEach(function(r) {
+          if (r instanceof CSSKeyframesRule) data.animation.keyframeCount++;
+          if (r instanceof CSSMediaRule && /prefers-reduced-motion/.test(r.conditionText || '')) data.animation.hasReducedMotion = true;
+        });
+      } catch(e) {}
+    });
+  } catch(e) {}
+  // Detect common scroll-reveal library patterns
+  var revealClasses = ['[data-aos]', '.wow', '.reveal', '[class*="animate-on-scroll"]', '[class*="scroll-reveal"]', '.fade-in', '.slide-up'];
+  revealClasses.forEach(function(sel) {
+    try { var count = document.querySelectorAll(sel).length; if (count > 0) data.animation.scrollRevealPatterns.push({ selector: sel, count: count }); } catch(e) {}
+  });
+
   // --- Output ---
   var json = JSON.stringify(data, null, 2);
 
@@ -20050,6 +20353,9 @@ Sources: [research/sources.md](research/sources.md)
   <script src="scoring/cognitive.js"></script>
   <script src="scoring/layout.js"></script>
   <script src="scoring/performance.js"></script>
+  <script src="scoring/readability.js"></script>
+  <script src="scoring/filters.js"></script>
+  <script src="scoring/balance.js"></script>
   <!-- Report rendering + UI -->
   <script src="analyzer-report.js"></script>
   <script src="analyzer.js"></script>

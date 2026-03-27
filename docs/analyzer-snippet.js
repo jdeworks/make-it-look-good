@@ -655,6 +655,35 @@
   })(document.body, 0);
   data.performance.domDepth = maxDepth;
 
+  // --- Animation & scroll-reveal detection ---
+  data.animation = { hiddenElements: 0, keyframeCount: 0, hasReducedMotion: false, scrollRevealPatterns: [] };
+  // Count elements that appear to be in pre-animation state (opacity:0 + transition/animation)
+  var hiddenAnimated = 0;
+  for (var ai = 0; ai < allElements.length; ai++) {
+    var ael = allElements[ai];
+    var as = getComputedStyle(ael);
+    if (as.opacity === '0' && (as.transitionProperty !== 'none' || as.animationName !== 'none')) {
+      hiddenAnimated++;
+    }
+  }
+  data.animation.hiddenElements = hiddenAnimated;
+  // Count @keyframes rules
+  try {
+    Array.from(document.styleSheets).forEach(function(ss) {
+      try {
+        Array.from(ss.cssRules).forEach(function(r) {
+          if (r instanceof CSSKeyframesRule) data.animation.keyframeCount++;
+          if (r instanceof CSSMediaRule && /prefers-reduced-motion/.test(r.conditionText || '')) data.animation.hasReducedMotion = true;
+        });
+      } catch(e) {}
+    });
+  } catch(e) {}
+  // Detect common scroll-reveal library patterns
+  var revealClasses = ['[data-aos]', '.wow', '.reveal', '[class*="animate-on-scroll"]', '[class*="scroll-reveal"]', '.fade-in', '.slide-up'];
+  revealClasses.forEach(function(sel) {
+    try { var count = document.querySelectorAll(sel).length; if (count > 0) data.animation.scrollRevealPatterns.push({ selector: sel, count: count }); } catch(e) {}
+  });
+
   // --- Output ---
   var json = JSON.stringify(data, null, 2);
 
