@@ -524,6 +524,16 @@
     var w = Math.round(rect.width);
     var h = Math.round(rect.height);
     var passes = w >= 44 && h >= 44;
+    // If element fails, check if wrapped in a larger clickable parent
+    if (!passes) {
+      var clickParent = el.closest('label, a');
+      if (clickParent && clickParent !== el) {
+        var parentRect = clickParent.getBoundingClientRect();
+        if (Math.round(parentRect.width) >= 44 && Math.round(parentRect.height) >= 44) {
+          passes = true; // Parent provides adequate click area
+        }
+      }
+    }
     if (!passes) {
       touchTargetIssues.push({
         element: el.tagName.toLowerCase(),
@@ -734,6 +744,9 @@
   revealClasses.forEach(function(sel) {
     try { var count = document.querySelectorAll(sel).length; if (count > 0) data.animation.scrollRevealPatterns.push({ selector: sel, count: count }); } catch(e) {}
   });
+  if (data.animation.scrollRevealPatterns.length > 0 && !window.__milgScrolled) {
+    console.log('%c⚠ Scroll-reveal elements detected. For complete analysis, scroll the full page first, then re-run the snippet.', 'color: #b45309; font-weight: bold;');
+  }
 
   // --- Accessibility extras ---
   data.accessibility.langAttribute = document.documentElement.getAttribute('lang') || '';
@@ -996,6 +1009,12 @@
       if (tel.scrollWidth > tel.clientWidth + 2) data.structure.truncatedElements++;
     }
   }
+
+  // --- Auto-playing media ---
+  data.accessibility.autoPlayMedia = 0;
+  document.querySelectorAll('video[autoplay]:not([muted]), audio[autoplay]:not([muted])').forEach(function(el) {
+    data.accessibility.autoPlayMedia++;
+  });
 
   // Clean up measurement span
   document.body.removeChild(_measureSpan);

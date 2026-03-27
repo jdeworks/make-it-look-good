@@ -38,7 +38,7 @@ Low priority — the analyzer's value is evidence-based scoring, not AI opinions
 - [x] Count @keyframes rules — implemented
 - [x] Detect prefers-reduced-motion support — implemented
 - [x] Detect scroll-reveal library patterns (AOS, wow.js) — implemented
-- [ ] Scroll page before extraction to trigger intersection observers
+- [x] Scroll page before extraction to trigger intersection observers
 - [x] Mark findings with "element may be in pre-animation state"
 - [x] Detect `transform: translateY()` off-screen elements
 
@@ -53,7 +53,7 @@ Low priority — the analyzer's value is evidence-based scoring, not AI opinions
 - [x] **CSS filters on ancestors:** Walk parent chain checking for `filter: brightness(X) contrast(Y)`. Adjust RGB mathematically before computing ratio. brightness(0.5) halves each channel. contrast(2) doubles distance from 128. (research §3)
 - [ ] **Semi-transparent overlays:** Current blending is correct but doesn't handle backdrop-filter or mix-blend-mode. Flag these as "uncertain" rather than computing wrong values.
 - [ ] **Dark mode variant testing:** Automatically test dark: variant contrast by toggling `.dark` class before extraction. Currently only tests the active mode.
-- [ ] **APCA (Advanced Perceptual Contrast Algorithm):** Add as alternative metric alongside WCAG. More accurate for large/small text. Library: `apca-w3` (~5KB). Source: https://github.com/Myndex/SAPC-APCA
+- [x] **APCA (Advanced Perceptual Contrast Algorithm):** Add as alternative metric alongside WCAG. More accurate for large/small text. Library: `apca-w3` (~5KB). Source: https://github.com/Myndex/SAPC-APCA
 
 ### typography.js — Typography (15%)
 **Current:** Body font size, line height, line length, heading scale, font weight count, family count.
@@ -77,7 +77,7 @@ Low priority — the analyzer's value is evidence-based scoring, not AI opinions
 **Current:** Viewport-aware thresholds (24px desktop / 44px mobile), profile-aware, desktop touch note.
 **To improve:**
 - [x] **Responsive CSS detection for touch:** When site has `@media` queries, note that touch targets may have different sizes at mobile breakpoints. Don't error if responsive classes exist.
-- [ ] **Padding-inclusive measurement:** Some elements have small visible size but larger clickable area via padding. Check if the padding box (not just content box) meets the threshold.
+- [x] **Padding-inclusive measurement:** Some elements have small visible size but larger clickable area via padding. Check if the padding box (not just content box) meets the threshold.
 - [ ] **Overlapping targets:** Check if any interactive elements overlap each other (absolute positioning causing stacking).
 - [ ] **Click density mapping:** Identify areas with many small targets clustered together (e.g., tag clouds, icon grids) and flag the group, not each individual element.
 - [ ] **Hover state detection:** Check if interactive elements have `:hover` styles defined (computed style can't detect this directly — need to check stylesheet rules).

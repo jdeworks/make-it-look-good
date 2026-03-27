@@ -47,6 +47,34 @@ function contrastRatio(c1, c2) {
   return Math.round(((Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)) * 100) / 100;
 }
 
+// APCA contrast (Lc value)
+// Simplified APCA-W3 calculation
+function sRGBtoY(rgb) {
+  // Linearize sRGB
+  function lin(v) { v = v / 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
+  return 0.2126729 * lin(rgb.r) + 0.7151522 * lin(rgb.g) + 0.0721750 * lin(rgb.b);
+}
+
+function apcaContrast(txtRgb, bgRgb) {
+  var txtY = sRGBtoY(txtRgb);
+  var bgY = sRGBtoY(bgRgb);
+  // Clamp
+  if (txtY < 0) txtY = 0;
+  if (bgY < 0) bgY = 0;
+  // SAPC power curve
+  var normBG = Math.pow(bgY, 0.56);
+  var normTXT = Math.pow(txtY, 0.57);
+  var rawContrast;
+  if (bgY > txtY) {
+    rawContrast = (normBG - normTXT) * 1.14;
+  } else {
+    rawContrast = (normBG - normTXT) * 1.14;
+  }
+  // Scale and clamp
+  if (Math.abs(rawContrast) < 0.1) return 0;
+  return Math.round(rawContrast * 100);
+}
+
 function scoreContrast(data) {
   var profile = S.getProfile(data);
   var findings = [];
@@ -79,10 +107,14 @@ function scoreContrast(data) {
   var nearMisses = profilePairs.filter(function(p) { return p.passes && p.ratio < p.needed + 0.5; });
 
   failures.forEach(function(p) {
+    var apcaVal = '';
+    var fgP = parseRgb(p.fg);
+    var bgP = parseRgb(p.bg);
+    if (fgP && bgP) { apcaVal = ' (APCA: Lc ' + apcaContrast(fgP, bgP) + ')'; }
     findings.push({
       severity: 'error',
       title: 'Text fails contrast ' + p.ratio + ':1 (needs ' + p.needed + ':1)',
-      detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector,
+      detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector + apcaVal,
       fix: p.isLarge
         ? 'Large text needs ' + profile.contrastLarge + ':1 minimum. Darken the text or lighten the background.'
         : 'Normal text needs ' + profile.contrast + ':1 minimum. Use a darker text color or lighter background.',

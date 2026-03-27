@@ -210,6 +210,19 @@ function scoreAccessibility(data) {
     });
   }
 
+  // Auto-playing media
+  var autoPlay = data.accessibility.autoPlayMedia || 0;
+  if (autoPlay > 0) {
+    findings.push({
+      severity: 'error',
+      title: autoPlay + ' auto-playing media element(s) without muted attribute',
+      detail: 'Unexpected audio disrupts users, especially those using screen readers',
+      fix: 'Add the muted attribute to auto-playing videos, or remove autoplay entirely. Let users choose to play media.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.2 — https://www.w3.org/TR/WCAG22/#audio-control'
+    });
+  }
+
   var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
   return { score: score, findings: findings, weight: 15, label: 'Accessibility', icon: 'a11y' };
 }
