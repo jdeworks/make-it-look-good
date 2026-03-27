@@ -32,6 +32,109 @@
     return { r: d[0], g: d[1], b: d[2], a: Math.round(d[3] / 255 * 100) / 100 };
   }
 
+  // Gradient color sampler: renders a CSS gradient to canvas and samples the center pixel
+  var _gradCanvas = document.createElement('canvas');
+  var _gradCtx = _gradCanvas.getContext('2d', { willReadFrequently: true });
+
+  function getGradientColor(el) {
+    var bgImage = getComputedStyle(el).backgroundImage;
+    if (!bgImage || bgImage === 'none' || bgImage.indexOf('gradient') === -1) return null;
+
+    var rect = el.getBoundingClientRect();
+    var w = Math.round(rect.width) || 1;
+    var h = Math.round(rect.height) || 1;
+    // Cap canvas size to avoid performance issues
+    var scale = 1;
+    if (w > 200 || h > 200) scale = Math.min(200 / w, 200 / h);
+    var cw = Math.max(1, Math.round(w * scale));
+    var ch = Math.max(1, Math.round(h * scale));
+    _gradCanvas.width = cw;
+    _gradCanvas.height = ch;
+
+    // Try radial-gradient: just extract the first color stop
+    if (bgImage.indexOf('radial-gradient') !== -1) {
+      var radialStops = bgImage.match(/(?:rgba?\([^)]+\)|#[0-9a-fA-F]{3,8})/g);
+      if (radialStops && radialStops.length > 0) {
+        var fc = parseColor(radialStops[0]);
+        if (fc && fc.a > 0) return { r: fc.r, g: fc.g, b: fc.b, a: fc.a };
+      }
+      return null;
+    }
+
+    // Parse linear-gradient
+    // Browsers normalize computed style to: linear-gradient(Xdeg, color stop%, color stop%, ...)
+    var angleMatch = bgImage.match(/linear-gradient\(\s*(\d+(?:\.\d+)?)deg/);
+    if (!angleMatch) {
+      // Try keyword directions or no angle (defaults to 180deg)
+      var dirMatch = bgImage.match(/linear-gradient\(\s*to\s+(top|bottom|left|right)/);
+      var angleDeg = 180; // default: top to bottom
+      if (dirMatch) {
+        var dirMap = { 'top': 0, 'bottom': 180, 'left': 270, 'right': 90 };
+        angleDeg = dirMap[dirMatch[1]] || 180;
+      } else if (!bgImage.match(/linear-gradient\(\s*\d/)) {
+        // No angle specified at all, default 180
+        angleDeg = 180;
+      } else {
+        return null;
+      }
+    } else {
+      angleDeg = parseFloat(angleMatch[1]);
+    }
+
+    // Extract color stops: match color values followed by optional percentage
+    var stopRegex = /(rgba?\([^)]+\)|#[0-9a-fA-F]{3,8})\s*([\d.]+%)?/g;
+    var stops = [];
+    var match;
+    while ((match = stopRegex.exec(bgImage)) !== null) {
+      var color = parseColor(match[1]);
+      if (!color) continue;
+      var pos = match[2] ? parseFloat(match[2]) / 100 : null;
+      stops.push({ color: color, pos: pos });
+    }
+    if (stops.length < 2) return null;
+
+    // Fill in missing positions: first=0, last=1, interpolate between
+    if (stops[0].pos === null) stops[0].pos = 0;
+    if (stops[stops.length - 1].pos === null) stops[stops.length - 1].pos = 1;
+    for (var i = 1; i < stops.length - 1; i++) {
+      if (stops[i].pos === null) {
+        // Find next stop with a position
+        var prev = i - 1;
+        var next = i + 1;
+        while (next < stops.length && stops[next].pos === null) next++;
+        stops[i].pos = stops[prev].pos + (stops[next].pos - stops[prev].pos) * ((i - prev) / (next - prev));
+      }
+    }
+
+    // Convert CSS angle to canvas gradient coordinates
+    // CSS angles: 0deg = bottom-to-top, 90deg = left-to-right, 180deg = top-to-bottom
+    var rad = (angleDeg - 90) * Math.PI / 180;
+    var diagLen = Math.sqrt(cw * cw + ch * ch) / 2;
+    var cx = cw / 2, cy = ch / 2;
+    var dx = Math.cos(rad) * diagLen;
+    var dy = Math.sin(rad) * diagLen;
+
+    try {
+      var grad = _gradCtx.createLinearGradient(cx - dx, cy - dy, cx + dx, cy + dy);
+      for (var i = 0; i < stops.length; i++) {
+        var sc = stops[i].color;
+        var rgba = 'rgba(' + sc.r + ',' + sc.g + ',' + sc.b + ',' + sc.a + ')';
+        grad.addColorStop(Math.max(0, Math.min(1, stops[i].pos)), rgba);
+      }
+      _gradCtx.fillStyle = grad;
+      _gradCtx.fillRect(0, 0, cw, ch);
+
+      // Sample center pixel
+      var px = Math.round(cw / 2);
+      var py = Math.round(ch / 2);
+      var d = _gradCtx.getImageData(Math.min(px, cw - 1), Math.min(py, ch - 1), 1, 1).data;
+      if (d[3] === 0) return null;
+      return { r: d[0], g: d[1], b: d[2], a: Math.round(d[3] / 255 * 100) / 100 };
+    } catch(e) {
+      return null;
+    }
+  }
+
   function blendOnWhite(c) {
     if (!c) return { r: 255, g: 255, b: 255 };
     var a = c.a;
@@ -48,6 +151,10 @@
     while (node && node !== document.documentElement) {
       var bg = getComputedStyle(node).backgroundColor;
       var c = parseColor(bg);
+      if (!c || c.a === 0) {
+        // backgroundColor is transparent — check for gradient
+        c = getGradientColor(node);
+      }
       if (c && c.a > 0) layers.push(c);
       if (c && c.a >= 1) break;
       node = node.parentElement;
@@ -423,6 +530,33 @@
     if (!img.hasAttribute('alt')) noAlt++;
   });
   data.accessibility.imagesWithoutAlt = noAlt;
+
+  // Image sizing issues
+  data.performance = { imageSizing: [] };
+  images.forEach(function(img) {
+    if (!isVisible(img)) return;
+    var issues = [];
+    // Missing explicit dimensions (causes CLS)
+    if (!img.hasAttribute('width') && !img.hasAttribute('height') && !img.style.width && !img.style.height) {
+      var s = getComputedStyle(img);
+      if (s.width === 'auto' || s.height === 'auto' || (!s.aspectRatio || s.aspectRatio === 'auto')) {
+        issues.push('no-dimensions');
+      }
+    }
+    // Lazy loading on likely above-fold image
+    if (img.hasAttribute('loading') && img.getAttribute('loading') === 'lazy') {
+      var rect = img.getBoundingClientRect();
+      if (rect.top < window.innerHeight) issues.push('lazy-above-fold');
+    }
+    // Oversized: natural size much larger than display size
+    if (img.naturalWidth > 0 && img.width > 0) {
+      var ratio = img.naturalWidth / img.width;
+      if (ratio > 2.5) issues.push('oversized-' + Math.round(ratio) + 'x');
+    }
+    if (issues.length > 0) {
+      data.performance.imageSizing.push({ src: (img.src || '').substring(0, 80), issues: issues, selector: cssSelector(img) });
+    }
+  });
 
   // Form labels
   var inputs = document.querySelectorAll('input:not([type="hidden"]):not([type="submit"]):not([type="button"]), select, textarea');

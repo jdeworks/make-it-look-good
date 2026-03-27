@@ -39,11 +39,40 @@
       var a = c.a;
       return { r: Math.round(c.r * a + 255 * (1 - a)), g: Math.round(c.g * a + 255 * (1 - a)), b: Math.round(c.b * a + 255 * (1 - a)) };
     }
+    // Simplified gradient sampler for iframe extractor
+    var _gc = document.createElement('canvas'); _gc.width = 1; _gc.height = 1;
+    var _gx = _gc.getContext('2d', { willReadFrequently: true });
+    function getGradientBg(el) {
+      var bgi = getComputedStyle(el).backgroundImage;
+      if (!bgi || bgi === 'none' || bgi.indexOf('gradient') === -1) return null;
+      // For radial: extract first color stop
+      if (bgi.indexOf('radial') !== -1) {
+        var rs = bgi.match(/(?:rgba?\([^)]+\)|#[0-9a-fA-F]{3,8})/g);
+        if (rs && rs.length > 0) { var fc = parseColor(rs[0]); if (fc && fc.a > 0) return fc; }
+        return null;
+      }
+      // For linear: parse stops and sample center via canvas
+      var stops = []; var sr = /(rgba?\([^)]+\)|#[0-9a-fA-F]{3,8})\s*([\d.]+%)?/g; var m;
+      while ((m = sr.exec(bgi)) !== null) { var sc = parseColor(m[1]); if (sc) stops.push({ c: sc, p: m[2] ? parseFloat(m[2]) / 100 : null }); }
+      if (stops.length < 2) return null;
+      if (stops[0].p === null) stops[0].p = 0;
+      if (stops[stops.length - 1].p === null) stops[stops.length - 1].p = 1;
+      // Interpolate center color (p=0.5)
+      for (var i = 0; i < stops.length - 1; i++) {
+        if (stops[i].p <= 0.5 && stops[i + 1].p >= 0.5) {
+          var t = (stops[i + 1].p - stops[i].p) > 0 ? (0.5 - stops[i].p) / (stops[i + 1].p - stops[i].p) : 0;
+          var a = stops[i].c, b = stops[i + 1].c;
+          return { r: Math.round(a.r + (b.r - a.r) * t), g: Math.round(a.g + (b.g - a.g) * t), b: Math.round(a.b + (b.b - a.b) * t), a: 1 };
+        }
+      }
+      return stops[0].c;
+    }
     function getEffectiveBg(el) {
       var node = el, layers = [];
       while (node && node !== document.documentElement) {
         var bg = getComputedStyle(node).backgroundColor;
         var c = parseColor(bg);
+        if (!c || c.a === 0) c = getGradientBg(node);
         if (c && c.a > 0) layers.push(c);
         if (c && c.a >= 1) break;
         node = node.parentElement;
@@ -352,6 +381,11 @@
 
     document.getElementById('excludeSelector').addEventListener('input', syncExcludeSelector);
 
+    // Profile selector — re-score when changed
+    document.getElementById('profileSelect').addEventListener('change', function() {
+      if (lastRawData) runAnalysis(lastRawData);
+    });
+
     // New analysis
     newAnalysisBtn.addEventListener('click', function() {
       reportContainer.classList.remove('visible');
@@ -432,7 +466,13 @@
     });
   }
 
+  var lastRawData = null; // Store raw data for re-scoring with different profiles
+
   function runAnalysis(data) {
+    lastRawData = data;
+    // Apply selected profile
+    var profile = document.getElementById('profileSelect');
+    if (profile) data.profile = profile.value;
     reportData = MilgScoring.runScoring(data);
     var reportContainer = document.getElementById('reportContainer');
     var inputSection = document.getElementById('inputSection');
