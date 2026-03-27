@@ -56,8 +56,8 @@ These require re-rendering the page and are best offered as an explicit "deep sc
 
 - [x] **Multi-viewport testing** — Spawn 3 parallel iframes at 375/768/1280px, merge results. Architecture ready, ~2-4s. See `research/multi-viewport-dark-mode.md`
 - [x] **Dark mode class toggle** — Toggle `.dark` on html, re-extract colors. ~95% reliable for Tailwind/class-based sites.
-- [ ] **Dark mode media query rewriting** — Extract `prefers-color-scheme: dark` rules from stylesheets, inject unconditionally. ~80-90% reliable. See research.
-- [ ] **Scroll before extraction** — Auto-scroll full page to trigger intersection observers. Console warning already implemented for manual use.
+- [x] **Dark mode media query rewriting** — Extract `prefers-color-scheme: dark` rules from stylesheets, inject unconditionally. ~80-90% reliable. See research.
+- [x] **Scroll before extraction** — Auto-scroll full page to trigger intersection observers. Console warning already implemented for manual use.
 
 ## Future: LLM Integration (opt-in)
 

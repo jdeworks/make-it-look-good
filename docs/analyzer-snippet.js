@@ -6,6 +6,33 @@
 (function() {
   'use strict';
 
+  // --- Auto-scroll option ---
+  // To scroll the page before extraction (triggers lazy loading + intersection observers):
+  // Run: window.__milgScrollFirst = true   then paste the snippet.
+  // The snippet will scroll the full page, wait for content to load, then extract.
+  if (window.__milgScrollFirst && !window.__milgScrollDone) {
+    window.__milgScrollDone = true;
+    console.log('%c⏳ Scrolling page to trigger lazy loading and intersection observers...', 'color: #3b82f6; font-weight: bold;');
+    var _scrollH = document.body.scrollHeight;
+    var _pos = 0;
+    var _step = Math.max(window.innerHeight * 0.8, 400);
+    var _si = setInterval(function() {
+      _pos += _step;
+      window.scrollTo(0, _pos);
+      if (_pos >= _scrollH) {
+        clearInterval(_si);
+        setTimeout(function() { window.scrollTo(0, 0); }, 300);
+        // Wait for newly loaded content, then user must re-run snippet
+        setTimeout(function() {
+          console.log('%c✓ Scroll complete! Page content should now be fully loaded.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+          console.log('%cRe-run the snippet now for complete analysis.', 'color: #3b82f6;');
+          window.__milgScrollFirst = false;
+        }, 1500);
+      }
+    }, 150);
+    return; // Exit — re-run snippet after scroll completes
+  }
+
   // --- Color utilities ---
   // Canvas-based color parser: handles rgb, rgba, hsl, oklch, oklab, color() — anything the browser supports
   var _parseCanvas = document.createElement('canvas');

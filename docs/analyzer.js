@@ -378,7 +378,11 @@
               var htmlHasDark = /class="[^"]*dark:/.test(html) || /prefers-color-scheme/.test(html) || /\.dark\s*\{/.test(html) || /data-theme/.test(html);
               if (htmlHasDark) {
                 urlStatus.textContent = 'Testing dark mode...';
+                // Class toggle for Tailwind/class-based dark mode
                 var darkHtml = html.replace(/<html([^>]*)>/i, '<html$1 class="dark" data-theme="dark" style="color-scheme:dark">');
+                // Media query rewriting: extract prefers-color-scheme:dark rules and inject unconditionally
+                // This handles sites that use @media (prefers-color-scheme: dark) instead of class-based dark mode
+                darkHtml = darkHtml.replace(/<\/head>/i, '<script>setTimeout(function(){try{Array.from(document.styleSheets).forEach(function(ss){try{var darkRules=[];Array.from(ss.cssRules).forEach(function(r){if(r instanceof CSSMediaRule&&/prefers-color-scheme:\\s*dark/.test(r.conditionText||"")){Array.from(r.cssRules).forEach(function(inner){darkRules.push(inner.cssText)})}});if(darkRules.length>0){var s=document.createElement("style");s.textContent=darkRules.join("\\n");document.head.appendChild(s)}}catch(e){}});}catch(e){}},100);</' + 'script></head>');
                 deepScanInIframe(darkHtml, url, exclude, 1280, 900, function(darkData) {
                   if (darkData) {
                     primary.deepScan.darkMode = {
@@ -671,7 +675,9 @@
     var isFullDoc = /<html[\s>]/i.test(processed) || /<!DOCTYPE/i.test(processed);
 
     var extractStr = extractFromDocument.toString().replace(/milg-analyzer-result/g, msgType);
-    var extractScript = excludeVar + '<script>window.addEventListener("load",function(){setTimeout(function(){(' + extractStr + ')()},1000)});setTimeout(function(){(' + extractStr + ')()},8000);</' + 'script>';
+    // Auto-scroll inside iframe to trigger intersection observers before extracting
+    var scrollScript = 'window.scrollTo(0,document.body.scrollHeight);setTimeout(function(){window.scrollTo(0,0)},300);';
+    var extractScript = excludeVar + '<script>window.addEventListener("load",function(){' + scrollScript + 'setTimeout(function(){(' + extractStr + ')()},1500)});setTimeout(function(){(' + extractStr + ')()},8000);</' + 'script>';
 
     var srcdoc;
     if (isFullDoc) {
