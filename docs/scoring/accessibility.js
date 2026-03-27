@@ -114,6 +114,64 @@ function scoreAccessibility(data) {
     });
   }
 
+  // Language attribute
+  checks++;
+  if (data.accessibility.langAttribute) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'error',
+      title: 'Missing lang attribute on <html>',
+      detail: 'Screen readers need the language to pronounce content correctly',
+      fix: 'Add lang="en" (or appropriate language) to the <html> element.',
+      presetRef: null,
+      source: 'WCAG 2.2 §3.1.1 — https://www.w3.org/TR/WCAG22/#language-of-page'
+    });
+  }
+
+  // Skip navigation link
+  if (data.structure && data.structure.totalElements > 50) {
+    checks++;
+    if (data.accessibility.hasSkipLink) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: 'No skip navigation link found',
+        detail: 'Keyboard users must tab through all navigation before reaching main content',
+        fix: 'Add a visually hidden skip link as the first focusable element: <a href="#main" class="sr-only focus:not-sr-only">Skip to content</a>',
+        presetRef: null,
+        source: 'WCAG 2.2 §2.4.1 — https://www.w3.org/TR/WCAG22/#bypass-blocks'
+      });
+    }
+  }
+
+  // Bad link texts
+  var badLinks = data.accessibility.badLinkTexts || [];
+  if (badLinks.length > 0) {
+    findings.push({
+      severity: 'warning',
+      title: badLinks.length + ' link(s) with non-descriptive text',
+      detail: 'Found: ' + badLinks.slice(0, 5).map(function(l) { return '"' + l.text + '"'; }).join(', '),
+      fix: 'Replace generic text like "click here" or "read more" with descriptive link text that makes sense out of context.',
+      presetRef: null,
+      source: 'WCAG 2.2 §2.4.4 — https://www.w3.org/TR/WCAG22/#link-purpose-in-context'
+    });
+  }
+
+  // Missing autocomplete on common fields
+  var missingAC = data.accessibility.missingAutocomplete || 0;
+  if (missingAC > 0) {
+    findings.push({
+      severity: 'info',
+      title: missingAC + ' form field(s) missing autocomplete attribute',
+      detail: 'Autocomplete helps users fill forms faster and reduces errors',
+      fix: 'Add autocomplete="name", autocomplete="email", etc. to common input fields.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.3.5 — https://www.w3.org/TR/WCAG22/#identify-input-purpose'
+    });
+  }
+
   var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
   return { score: score, findings: findings, weight: 15, label: 'Accessibility', icon: 'a11y' };
 }

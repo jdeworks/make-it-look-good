@@ -685,6 +685,98 @@
     try { var count = document.querySelectorAll(sel).length; if (count > 0) data.animation.scrollRevealPatterns.push({ selector: sel, count: count }); } catch(e) {}
   });
 
+  // --- Accessibility extras ---
+  data.accessibility.langAttribute = document.documentElement.getAttribute('lang') || '';
+  data.accessibility.hasSkipLink = !!document.querySelector('a[href^="#main"], a[href^="#content"], a.skip-link, a.skip-nav, [class*="skip"]');
+
+  var badLinkTexts = [];
+  document.querySelectorAll('a').forEach(function(a) {
+    if (!isVisible(a) || isDecorative(a)) return;
+    var text = (a.textContent || '').trim().toLowerCase();
+    if (['click here', 'here', 'read more', 'learn more', 'more', 'link'].indexOf(text) !== -1) {
+      badLinkTexts.push({ text: text, selector: cssSelector(a) });
+    }
+  });
+  data.accessibility.badLinkTexts = badLinkTexts.slice(0, 10);
+
+  // Detect autocomplete on common form fields
+  var formFields = document.querySelectorAll('input[type="email"], input[type="tel"], input[name*="name"], input[name*="address"]');
+  var missingAutocomplete = 0;
+  formFields.forEach(function(f) { if (!f.getAttribute('autocomplete')) missingAutocomplete++; });
+  data.accessibility.missingAutocomplete = missingAutocomplete;
+
+  // --- Responsive extras ---
+  // Viewport meta
+  var vpMeta = document.querySelector('meta[name="viewport"]');
+  data.structure.viewportMeta = vpMeta ? vpMeta.getAttribute('content') : '';
+  data.structure.blocksZoom = vpMeta ? /user-scalable\s*=\s*no/i.test(vpMeta.getAttribute('content') || '') : false;
+  // Horizontal overflow
+  data.structure.hasHorizontalOverflow = document.documentElement.scrollWidth > document.documentElement.clientWidth;
+
+  // --- Performance extras ---
+  // Third-party scripts
+  var ownHost = location.hostname;
+  var thirdPartyScripts = 0;
+  document.querySelectorAll('script[src]').forEach(function(s) {
+    try { if (new URL(s.src).hostname !== ownHost) thirdPartyScripts++; } catch(e) {}
+  });
+  data.performance.thirdPartyScripts = thirdPartyScripts;
+
+  // Image formats
+  var imgFormats = { modern: 0, legacy: 0 };
+  document.querySelectorAll('img[src]').forEach(function(img) {
+    var src = (img.src || '').toLowerCase();
+    if (/\.(webp|avif)/.test(src)) imgFormats.modern++;
+    else if (/\.(jpg|jpeg|png|gif|bmp)/.test(src)) imgFormats.legacy++;
+  });
+  data.performance.imageFormats = imgFormats;
+
+  // --- Consistency extras ---
+  // Border radius values
+  var radiusMap = {};
+  for (var ci = 0; ci < allElements.length && ci < 1000; ci++) {
+    var cel = allElements[ci];
+    if (!isVisible(cel) || isDecorative(cel)) continue;
+    var cr = getComputedStyle(cel).borderRadius;
+    if (cr && cr !== '0px') radiusMap[cr] = (radiusMap[cr] || 0) + 1;
+  }
+  data.layout.borderRadii = Object.keys(radiusMap).map(function(k) { return { value: k, count: radiusMap[k] }; }).sort(function(a, b) { return b.count - a.count; }).slice(0, 15);
+
+  // --- Readability extras ---
+  // Paragraph text extraction for readability scoring
+  var paragraphs = document.querySelectorAll('main p, article p, section p, .content p');
+  if (paragraphs.length === 0) paragraphs = document.querySelectorAll('p');
+  var textBlocks = [];
+  paragraphs.forEach(function(p) {
+    if (!isVisible(p) || isDecorative(p)) return;
+    var text = (p.textContent || '').trim();
+    if (text.length > 20) textBlocks.push({ text: text, wordCount: text.split(/\s+/).length, charCount: text.length });
+  });
+  data.readability = {
+    textBlocks: textBlocks.slice(0, 30),
+    totalWords: textBlocks.reduce(function(s, b) { return s + b.wordCount; }, 0),
+    totalChars: textBlocks.reduce(function(s, b) { return s + b.charCount; }, 0),
+    paragraphCount: textBlocks.length,
+    hasLists: document.querySelectorAll('main ul, main ol, article ul, article ol').length > 0 || document.querySelectorAll('ul, ol').length > 3
+  };
+
+  // --- Responsive touch note data ---
+  // Check if site has responsive CSS that might adjust touch targets at mobile
+  data.interaction.hasResponsiveTargetCSS = false;
+  try {
+    Array.from(document.styleSheets).some(function(ss) {
+      try {
+        return Array.from(ss.cssRules).some(function(r) {
+          if (r instanceof CSSMediaRule && /max-width|min-width/.test(r.conditionText || '')) {
+            var text = r.cssText || '';
+            return /min-height|padding|height.*4[4-8]|height.*rem/.test(text);
+          }
+          return false;
+        });
+      } catch(e) { return false; }
+    });
+  } catch(e) {}
+
   // --- Output ---
   var json = JSON.stringify(data, null, 2);
 

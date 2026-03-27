@@ -12594,6 +12594,24 @@ function scoreVisualConsistency(data) {
     });
   }
 
+  // Border radius consistency
+  var radii = (data.layout && data.layout.borderRadii) || [];
+  if (radii.length > 0) {
+    checks++;
+    if (radii.length <= 4) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: radii.length + ' distinct border-radius values (recommend 2-4)',
+        detail: 'Values: ' + radii.slice(0, 6).map(function(r) { return r.value + ' (' + r.count + 'x)'; }).join(', '),
+        fix: 'Standardize border-radius to 2-4 values in your design tokens. In Tailwind: rounded-sm (2px), rounded (4px), rounded-lg (8px), rounded-xl (12px).',
+        presetRef: null,
+        source: 'Material Design 3 — https://m3.material.io/styles/shape/overview'
+      });
+    }
+  }
+
   var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
   return { score: score, findings: findings, weight: 5, label: 'Visual Consistency', icon: 'consistency' };
 }
@@ -12853,6 +12871,42 @@ function scorePerformance(data) {
     });
   }
 
+  // Third-party scripts
+  if (data.performance && data.performance.thirdPartyScripts !== undefined) {
+    checks++;
+    var tpCount = data.performance.thirdPartyScripts;
+    if (tpCount <= 5) {
+      passed++;
+    } else {
+      findings.push({
+        severity: tpCount > 10 ? 'warning' : 'info',
+        title: tpCount + ' third-party scripts loaded',
+        detail: 'Each third-party script adds latency, potential blocking, and privacy concerns',
+        fix: 'Audit third-party scripts. Remove unused ones, defer non-critical ones, consider self-hosting critical libraries.',
+        presetRef: null,
+        source: 'Web Vitals — https://web.dev/articles/optimizing-third-party-javascript'
+      });
+    }
+  }
+
+  // Image format audit
+  var imgFmt = (data.performance && data.performance.imageFormats) || {};
+  if (imgFmt.legacy > 0) {
+    checks++;
+    if (imgFmt.modern >= imgFmt.legacy) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: imgFmt.legacy + ' image(s) use legacy formats (JPEG/PNG)',
+        detail: imgFmt.modern + ' use modern formats (WebP/AVIF). Modern formats are 25-50% smaller.',
+        fix: 'Convert images to WebP or AVIF. Use <picture> with format fallbacks for broad browser support.',
+        presetRef: null,
+        source: 'Web.dev — https://web.dev/articles/serve-images-webp'
+      });
+    }
+  }
+
   var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
   return { score: score, findings: findings, weight: 5, label: 'Performance', icon: 'cognitive' };
 }
@@ -12942,6 +12996,58 @@ function scorePerformance(data) {
           source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text'
         });
       }
+    }
+
+    // Coleman-Liau readability index
+    var rd = data.readability || {};
+    if (rd.totalWords >= 50 && rd.paragraphCount >= 2) {
+      checks++;
+      // Coleman-Liau: 0.0588 * L - 0.296 * S - 15.8
+      // L = avg letters per 100 words, S = avg sentences per 100 words
+      var L = (rd.totalChars / rd.totalWords) * 100;
+      var sentenceCount = 0;
+      (rd.textBlocks || []).forEach(function(b) {
+        sentenceCount += (b.text.match(/[.!?]+/g) || []).length;
+      });
+      var S_val = (sentenceCount / rd.totalWords) * 100;
+      var cli = Math.round(0.0588 * L - 0.296 * S_val - 15.8);
+      if (cli >= 6 && cli <= 12) {
+        passed++;
+      } else {
+        findings.push({
+          severity: cli > 14 ? 'warning' : 'info',
+          title: 'Reading level: grade ' + cli + ' (Coleman-Liau Index)',
+          detail: cli > 12 ? 'Content may be too complex for a general audience' : 'Content may be overly simple for the target audience',
+          fix: cli > 12 ? 'Shorten sentences, use simpler words, break complex ideas into steps. Aim for grade 8-10 for general audiences.' : 'This reading level is appropriate for broad accessibility.',
+          presetRef: null,
+          source: 'Coleman-Liau Index — https://en.wikipedia.org/wiki/Coleman%E2%80%93Liau_index'
+        });
+      }
+    }
+
+    // Paragraph length audit
+    var longParagraphs = (rd.textBlocks || []).filter(function(b) { return b.wordCount > 150; });
+    if (longParagraphs.length > 0) {
+      findings.push({
+        severity: 'warning',
+        title: longParagraphs.length + ' paragraph(s) exceed 150 words',
+        detail: 'Long paragraphs reduce scanability. Ideal: 40-80 words per paragraph.',
+        fix: 'Break long paragraphs into shorter ones. Use subheadings, bullet lists, or callout boxes to chunk content.',
+        presetRef: null,
+        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+      });
+    }
+
+    // List usage for scanability
+    if (rd.totalWords >= 100 && !rd.hasLists) {
+      findings.push({
+        severity: 'info',
+        title: 'No lists found in content area',
+        detail: 'Lists improve scanability by 47% compared to wall-of-text (NNGroup)',
+        fix: 'Convert sequences, features, or steps into <ul>/<ol> lists where appropriate.',
+        presetRef: null,
+        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+      });
     }
 
     var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
@@ -13106,6 +13212,49 @@ function scoreResponsive(data) {
     passed++; // Can't determine, give benefit of doubt
   }
 
+  // Viewport meta audit
+  if (data.structure && data.structure.viewportMeta !== undefined) {
+    checks++;
+    var vpContent = data.structure.viewportMeta;
+    if (!vpContent) {
+      findings.push({
+        severity: 'error',
+        title: 'Missing viewport meta tag',
+        detail: 'Without a viewport meta tag, mobile browsers render at desktop width',
+        fix: 'Add <meta name="viewport" content="width=device-width, initial-scale=1.0"> to <head>.',
+        presetRef: null,
+        source: 'MDN — https://developer.mozilla.org/en-US/docs/Web/HTML/Viewport_meta_tag'
+      });
+    } else if (data.structure.blocksZoom) {
+      findings.push({
+        severity: 'error',
+        title: 'Viewport blocks user zoom (user-scalable=no)',
+        detail: 'Preventing zoom is an accessibility barrier for low-vision users',
+        fix: 'Remove user-scalable=no from the viewport meta tag.',
+        presetRef: null,
+        source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text'
+      });
+    } else {
+      passed++;
+    }
+  }
+
+  // Horizontal overflow
+  if (data.structure && data.structure.hasHorizontalOverflow) {
+    checks++;
+    findings.push({
+      severity: 'warning',
+      title: 'Page has horizontal overflow (horizontal scrollbar)',
+      detail: 'Content extends beyond viewport width — common responsive design failure',
+      fix: 'Find elements with fixed widths wider than the viewport. Add overflow-x: hidden to body or fix the overflowing element.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
+    });
+  } else if (data.structure && data.structure.hasHorizontalOverflow === false) {
+    checks++;
+    passed++;
+  }
+
   var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
   return { score: score, findings: findings, weight: 10, label: 'Responsive Design', icon: 'responsive' };
 }
@@ -13175,6 +13324,17 @@ function scoreTouchTargets(data) {
         presetRef: null
       });
     }
+  }
+
+  // Note when responsive CSS exists that might fix touch targets on mobile
+  if (isDesktop && data.interaction && data.interaction.hasResponsiveTargetCSS) {
+    findings.push({
+      severity: 'info',
+      title: 'Responsive CSS detected that may adjust target sizes at mobile breakpoints',
+      detail: 'This site has media queries with height/padding rules. Touch targets may be correctly sized on mobile devices.',
+      fix: 'Verify by testing at mobile viewport. Use the viewport selector to re-scan at 375px width.',
+      presetRef: null
+    });
   }
 
   // Transitions / animation duration
@@ -14570,6 +14730,64 @@ function scoreAccessibility(data) {
     });
   }
 
+  // Language attribute
+  checks++;
+  if (data.accessibility.langAttribute) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'error',
+      title: 'Missing lang attribute on <html>',
+      detail: 'Screen readers need the language to pronounce content correctly',
+      fix: 'Add lang="en" (or appropriate language) to the <html> element.',
+      presetRef: null,
+      source: 'WCAG 2.2 §3.1.1 — https://www.w3.org/TR/WCAG22/#language-of-page'
+    });
+  }
+
+  // Skip navigation link
+  if (data.structure && data.structure.totalElements > 50) {
+    checks++;
+    if (data.accessibility.hasSkipLink) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: 'No skip navigation link found',
+        detail: 'Keyboard users must tab through all navigation before reaching main content',
+        fix: 'Add a visually hidden skip link as the first focusable element: <a href="#main" class="sr-only focus:not-sr-only">Skip to content</a>',
+        presetRef: null,
+        source: 'WCAG 2.2 §2.4.1 — https://www.w3.org/TR/WCAG22/#bypass-blocks'
+      });
+    }
+  }
+
+  // Bad link texts
+  var badLinks = data.accessibility.badLinkTexts || [];
+  if (badLinks.length > 0) {
+    findings.push({
+      severity: 'warning',
+      title: badLinks.length + ' link(s) with non-descriptive text',
+      detail: 'Found: ' + badLinks.slice(0, 5).map(function(l) { return '"' + l.text + '"'; }).join(', '),
+      fix: 'Replace generic text like "click here" or "read more" with descriptive link text that makes sense out of context.',
+      presetRef: null,
+      source: 'WCAG 2.2 §2.4.4 — https://www.w3.org/TR/WCAG22/#link-purpose-in-context'
+    });
+  }
+
+  // Missing autocomplete on common fields
+  var missingAC = data.accessibility.missingAutocomplete || 0;
+  if (missingAC > 0) {
+    findings.push({
+      severity: 'info',
+      title: missingAC + ' form field(s) missing autocomplete attribute',
+      detail: 'Autocomplete helps users fill forms faster and reduces errors',
+      fix: 'Add autocomplete="name", autocomplete="email", etc. to common input fields.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.3.5 — https://www.w3.org/TR/WCAG22/#identify-input-purpose'
+    });
+  }
+
   var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
   return { score: score, findings: findings, weight: 15, label: 'Accessibility', icon: 'a11y' };
 }
@@ -14912,185 +15130,6 @@ function scoreTypography(data) {
 
   S.register("typography", scoreTypography, 15, "Typography", "type");
 })();
-</file>
-
-<file path="docs/ANALYZER-TODO.md">
-# Analyzer TODO
-
-## Recently Fixed
-- [x] General vs WCAG AAA shows no difference — Fixed: snippet now captures all pairs up to 7.5:1 ratio
-- [x] Two-step exclusion flow — Fixed: post-analysis exclusion suggestions with detected patterns
-- [x] Gradient contrast — Fixed: canvas-based sampling in all extractors
-- [x] Persona profiles — Fixed: 5 profiles with evidence-based thresholds
-- [x] Modular architecture — Fixed: scoring/ directory with 13 independent modules
-
-## Open Issues
-
-- [ ] **Touch targets on responsive sites** — Desktop scan flags small elements that may be larger at mobile breakpoints. Add note when responsive CSS is detected: "This site uses responsive breakpoints — touch targets may be correctly sized on mobile."
-- [ ] **URL link in report** — Some users report the URL isn't clickable. May need to test across browsers.
-- [ ] **Extraction data caching** — Store last extraction in sessionStorage so profile/exclusion changes don't require re-fetch
-- [ ] **Report comparison** — Show score delta when re-scoring with different profile or exclusions
-- [ ] **Dark mode on report** — Severity badges use hardcoded colors. Should respect dark-ui class.
-
-## P2 Features (research complete, implementation pending)
-
-- [ ] **Background image contrast** — Canvas sampling with CORS fallback (see research/analyzer-p2-research.md §1)
-- [ ] **CSS filter contrast math** — Apply brightness()/contrast()/opacity() adjustments to RGB before ratio calc (see research §3)
-- [ ] **Coleman-Liau readability** — Full implementation with text extraction from `<p>` elements (see research §4)
-- [ ] **Scanability scoring** — Paragraph length, heading frequency, list usage, wall-of-text detection (see research §5)
-- [ ] **LCP estimation** — PerformanceObserver in Chromium, heuristic fallback (see research/analyzer-roadmap.md §4.4)
-
-## Extension: LLM API Integration (future, opt-in)
-
-**Default: off.** Only visible when user provides an API key (OpenRouter for free models, or direct Anthropic/OpenAI key).
-
-**What LLMs are good at** (soft judgment): tone, copy clarity, color palette appropriateness, summarizing findings.
-**What LLMs are NOT good at** (hard facts): contrast ratios, pixel measurements — rule engine is better.
-
-Low priority — the analyzer's value is evidence-based scoring, not AI opinions.
-
-## Animation & Keyframe Analysis
-
-- [x] Detect `opacity: 0` + transition combo (scroll-reveal state) — implemented
-- [x] Count @keyframes rules — implemented
-- [x] Detect prefers-reduced-motion support — implemented
-- [x] Detect scroll-reveal library patterns (AOS, wow.js) — implemented
-- [ ] Scroll page before extraction to trigger intersection observers
-- [ ] Mark findings with "element may be in pre-animation state"
-- [ ] Detect `transform: translateY()` off-screen elements
-
----
-
-## Module Optimization Research & Detection Improvements
-
-### contrast.js — Color & Contrast (20%)
-**Current:** Walks DOM parents for backgroundColor, canvas fallback for oklch/oklab, gradient sampling.
-**To improve:**
-- [ ] **Background images:** Draw bg-image to canvas, sample pixels at text position. Needs background-size/position math. CORS limitation for cross-origin images. (research/analyzer-p2-research.md §1)
-- [ ] **CSS filters on ancestors:** Walk parent chain checking for `filter: brightness(X) contrast(Y)`. Adjust RGB mathematically before computing ratio. brightness(0.5) halves each channel. contrast(2) doubles distance from 128. (research §3)
-- [ ] **Semi-transparent overlays:** Current blending is correct but doesn't handle backdrop-filter or mix-blend-mode. Flag these as "uncertain" rather than computing wrong values.
-- [ ] **Dark mode variant testing:** Automatically test dark: variant contrast by toggling `.dark` class before extraction. Currently only tests the active mode.
-- [ ] **APCA (Advanced Perceptual Contrast Algorithm):** Add as alternative metric alongside WCAG. More accurate for large/small text. Library: `apca-w3` (~5KB). Source: https://github.com/Myndex/SAPC-APCA
-
-### typography.js — Typography (15%)
-**Current:** Body font size, line height, line length, heading scale, font weight count, family count.
-**To improve:**
-- [ ] **Actual character-per-line measurement:** Current uses `element.width / (fontSize * 0.5)` which is a rough estimate. Better: create a temporary `<span>` with representative text, measure its width, divide element width by character width.
-- [ ] **Font loading performance:** Check for `font-display: optional` vs `swap` vs `block`. Measure if custom fonts are subset or full. Source: https://web.dev/articles/font-best-practices
-- [ ] **Vertical rhythm detection:** Check if line heights create a consistent baseline grid. All spacings should be multiples of the base line height.
-- [ ] **Letter spacing audit:** Detect `letter-spacing` values that reduce readability (too tight < -0.02em or too loose > 0.1em for body text).
-- [ ] **Paragraph spacing:** Check `margin-bottom` on `<p>` elements. Should be 0.75-1em. Source: Butterick's Practical Typography.
-
-### spacing.js — Spacing & Layout (15%)
-**Current:** 4px grid adherence, content max-width, body padding, adjacent element spacing.
-**To improve:**
-- [ ] **Nested spacing consistency:** Check if spacing increases predictably from component → section → page level. Gestalt proximity principle.
-- [ ] **Container padding audit:** Verify cards, modals, sections have consistent internal padding (not some 12px and others 24px in the same design).
-- [ ] **Overflow detection:** Check if any elements overflow their containers (`scrollWidth > clientWidth`). Common on mobile.
-- [ ] **Negative margin detection:** Flag negative margins as potential layout fragility.
-- [ ] **Gap vs margin consistency:** Check if the same spacing is achieved via gap in some places and margin in others (should be consistent).
-
-### touch.js — Touch & Interaction (15%)
-**Current:** Viewport-aware thresholds (24px desktop / 44px mobile), profile-aware, desktop touch note.
-**To improve:**
-- [ ] **Responsive CSS detection for touch:** When site has `@media` queries, note that touch targets may have different sizes at mobile breakpoints. Don't error if responsive classes exist.
-- [ ] **Padding-inclusive measurement:** Some elements have small visible size but larger clickable area via padding. Check if the padding box (not just content box) meets the threshold.
-- [ ] **Overlapping targets:** Check if any interactive elements overlap each other (absolute positioning causing stacking).
-- [ ] **Click density mapping:** Identify areas with many small targets clustered together (e.g., tag clouds, icon grids) and flag the group, not each individual element.
-- [ ] **Hover state detection:** Check if interactive elements have `:hover` styles defined (computed style can't detect this directly — need to check stylesheet rules).
-
-### accessibility.js — Accessibility (15%)
-**Current:** Semantic HTML, heading hierarchy, alt text, form labels, focus indicators.
-**To improve:**
-- [ ] **ARIA role audit:** Check for common ARIA mistakes (role="button" without keyboard handler, aria-hidden on focusable elements).
-- [ ] **Color-only indicators:** Detect if status/error states rely solely on color (e.g., red text without an icon or label). Source: WCAG §1.4.1.
-- [ ] **Link text quality:** Flag links with "click here", "read more", "learn more" as non-descriptive. Source: WCAG §2.4.4.
-- [ ] **Skip navigation link:** Check for `<a href="#main-content">` or similar skip link as first focusable element. Source: WCAG §2.4.1.
-- [ ] **Language attribute:** Check `<html lang="...">` is set. Source: WCAG §3.1.1.
-- [ ] **Autocomplete attributes:** Check if common form fields (name, email, phone, address) have appropriate `autocomplete` values. Source: WCAG §1.3.5.
-
-### responsive.js — Responsive Design (10%)
-**Current:** Checks for Tailwind responsive classes or CSS @media queries, dark mode detection.
-**To improve:**
-- [ ] **Viewport meta tag audit:** Check for `width=device-width` and absence of `user-scalable=no` (which blocks pinch-to-zoom). Source: WCAG §1.4.4.
-- [ ] **Horizontal overflow detection:** Check `document.documentElement.scrollWidth > viewport.width`. Common responsive failure.
-- [ ] **Image responsive sizing:** Check if images use `max-width: 100%` or `width: 100%; height: auto`. Images that overflow containers on small screens.
-- [ ] **Fixed-width element detection:** Find elements with hardcoded pixel widths that don't flex (e.g., `width: 800px` without max-width).
-- [ ] **Text truncation audit:** Detect `text-overflow: ellipsis` on elements — content may be hidden on small screens.
-
-### consistency.js — Visual Consistency (5%)
-**Current:** Color count, font size count, page-context scaling.
-**To improve:**
-- [ ] **Border radius consistency:** Cluster border-radius values and flag when too many distinct values exist (e.g., 4px, 6px, 8px, 10px, 12px — should be 2-3 values max).
-- [ ] **Shadow consistency:** Same approach for box-shadow — cluster and flag inconsistency.
-- [ ] **Color distance analysis:** Check if similar-but-not-identical colors exist (e.g., #333 and #2d2d2d used for the same purpose). Use CIEDE2000 for perceptual distance.
-- [ ] **Icon sizing consistency:** Check if SVG/icon elements use consistent sizing across the page.
-
-### cognitive.js — Cognitive Load (5%)
-**Current:** Heading count, form field count.
-**To improve:**
-- [ ] **Decision point counting:** Count visible CTAs, buttons, links per section. Hick's Law: decision time increases logarithmically with choices. Source: https://lawsofux.com/hicks-law/
-- [ ] **Information density heuristic:** Elements-per-viewport-height as a density metric. Too dense = overwhelming. Source: cognitive load research.
-- [ ] **Modal/popup detection:** Count elements with `position: fixed` or `z-index > 100` that might be modals. Multiple modals = bad UX.
-- [ ] **Input complexity:** For forms, check if placeholder is used instead of label (bad for memory), if required fields are marked, if inline validation exists.
-
-### layout.js — Layout Quality (5%)
-**Current:** Whitespace rhythm (section gap variance), alignment consistency, H1-to-body ratio.
-**To improve:**
-- [ ] **Grid structure detection:** Detect if the page uses a consistent grid (12-col, 8-col, etc.) by analyzing element widths as fractions of container width.
-- [ ] **Proximity grouping audit:** Check if related elements (e.g., label + input, image + caption) have tighter spacing than unrelated elements. Gestalt proximity.
-- [ ] **Full-bleed detection:** Identify sections that break out of the content container (full-width backgrounds, hero images).
-- [ ] **Sticky element audit:** Check for `position: sticky` elements and verify they have appropriate z-index.
-
-### performance.js — Performance (5%)
-**Current:** Font loading, render-blocking resources, DOM size, DOM depth.
-**To improve:**
-- [ ] **CLS detection:** Use `PerformanceObserver` with `layout-shift` entries (Chromium only). Source: https://web.dev/articles/cls
-- [ ] **Image format audit:** Check if images use modern formats (WebP, AVIF) vs legacy (JPEG, PNG). Available from `<img>` src extension.
-- [ ] **Third-party script count:** Count `<script>` tags with external domains. Flag when > 5.
-- [ ] **Inline CSS size:** Measure total bytes of `<style>` blocks. Large inline CSS delays rendering.
-- [ ] **Critical CSS detection:** Check if above-fold styles are inlined and below-fold CSS is deferred.
-
-### readability.js — Readability (5%)
-**Current:** Heading density, short heading detection, small text audit.
-**To improve:**
-- [ ] **Coleman-Liau readability index:** Full implementation. Formula: `0.0588 * L - 0.296 * S - 15.8` where L = avg letters per 100 words, S = avg sentences per 100 words. No syllable counting needed.
-- [ ] **Paragraph length audit:** Flag paragraphs > 150 words. Ideal: 40-80 words. Source: NNGroup.
-- [ ] **List usage detection:** Pages with long text blocks but no lists score lower. Lists improve scanability by 47% (NNGroup).
-- [ ] **Text extraction from main content:** Filter out nav, footer, sidebar text to only score the main content area.
-- [ ] **Reading level appropriateness by audience:** General audience = grade 8-10. Professional = grade 12+. Elderly = grade 6-8.
-
-### filters.js — Motion & Animation (3%)
-**Current:** prefers-reduced-motion check, hidden scroll-reveal elements, library detection.
-**To improve:**
-- [ ] **Animation duration audit:** Extract all `animation-duration` values from computed styles and @keyframes. Flag durations > 1s.
-- [ ] **Parallax detection:** Check for `background-attachment: fixed` or `transform: translateZ()` patterns that indicate parallax scrolling.
-- [ ] **Auto-playing media:** Detect `<video autoplay>` or `<audio autoplay>` without `muted`. Source: WCAG §1.4.2.
-- [ ] **Flash/strobe detection:** Check if any animation rapidly alternates between high-contrast states (> 3 flashes per second). Source: WCAG §2.3.1.
-
-### balance.js — Visual Balance (3%)
-**Current:** Left-right content distribution from alignment edges.
-**To improve:**
-- [ ] **Top-bottom balance:** Check if content density is evenly distributed vertically or heavily top-loaded.
-- [ ] **Visual weight by color:** Dark/saturated elements carry more visual weight than light/muted ones. Weight the area calculation by element darkness.
-- [ ] **Whitespace ratio:** Calculate ratio of empty space to content area. Too little = cramped, too much = sparse. Sweet spot: 40-60% whitespace.
-- [ ] **F-pattern support:** For text-heavy pages, check if content aligns to a strong left edge with decreasing engagement rightward (expected F-pattern).
-
----
-
-## Extraction Script Improvements
-
-### Performance
-- [ ] **Element limit:** Cap DOM traversal at 2000 elements for performance on very large pages
-- [ ] **Batched getComputedStyle:** Reading computed styles is expensive. Batch reads to minimize layout thrashing.
-- [ ] **Web Worker extraction:** Move the heavy extraction to a Web Worker to avoid blocking the main thread (requires restructuring since Workers can't access DOM — would need to serialize DOM data first).
-
-### Accuracy
-- [ ] **Scroll-before-extract mode:** Option in snippet to scroll the full page before extracting, triggering intersection observers and lazy loading.
-- [ ] **Multi-viewport extraction:** Run extraction at multiple viewport widths (375px, 768px, 1280px) and merge findings. Shows which issues are viewport-specific.
-- [ ] **Dark mode extraction:** Toggle `.dark` class, re-extract, merge findings. Shows issues specific to dark mode.
-- [ ] **Hover/focus state simulation:** Use `el.matches(':hover')` — can't simulate directly, but can check stylesheet rules for `:hover`/`:focus` selectors and verify they exist.
-- [ ] **iFrame content:** Detect iframes and optionally extract from them (same-origin only).
 </file>
 
 <file path="expressive/hero-patterns.md">
@@ -16131,6 +16170,185 @@ All presets are:
 - **Dark mode** via `dark:` classes
 - **WCAG AA** contrast, 44px touch targets, semantic HTML
 - **Realistic content** (not lorem ipsum)
+</file>
+
+<file path="docs/ANALYZER-TODO.md">
+# Analyzer TODO
+
+## Recently Fixed
+- [x] General vs WCAG AAA shows no difference — Fixed: snippet now captures all pairs up to 7.5:1 ratio
+- [x] Two-step exclusion flow — Fixed: post-analysis exclusion suggestions with detected patterns
+- [x] Gradient contrast — Fixed: canvas-based sampling in all extractors
+- [x] Persona profiles — Fixed: 5 profiles with evidence-based thresholds
+- [x] Modular architecture — Fixed: scoring/ directory with 13 independent modules
+
+## Open Issues
+
+- [ ] **Touch targets on responsive sites** — Desktop scan flags small elements that may be larger at mobile breakpoints. Add note when responsive CSS is detected: "This site uses responsive breakpoints — touch targets may be correctly sized on mobile."
+- [ ] **URL link in report** — Some users report the URL isn't clickable. May need to test across browsers.
+- [ ] **Extraction data caching** — Store last extraction in sessionStorage so profile/exclusion changes don't require re-fetch
+- [ ] **Report comparison** — Show score delta when re-scoring with different profile or exclusions
+- [ ] **Dark mode on report** — Severity badges use hardcoded colors. Should respect dark-ui class.
+
+## P2 Features (research complete, implementation pending)
+
+- [ ] **Background image contrast** — Canvas sampling with CORS fallback (see research/analyzer-p2-research.md §1)
+- [ ] **CSS filter contrast math** — Apply brightness()/contrast()/opacity() adjustments to RGB before ratio calc (see research §3)
+- [ ] **Coleman-Liau readability** — Full implementation with text extraction from `<p>` elements (see research §4)
+- [ ] **Scanability scoring** — Paragraph length, heading frequency, list usage, wall-of-text detection (see research §5)
+- [ ] **LCP estimation** — PerformanceObserver in Chromium, heuristic fallback (see research/analyzer-roadmap.md §4.4)
+
+## Extension: LLM API Integration (future, opt-in)
+
+**Default: off.** Only visible when user provides an API key (OpenRouter for free models, or direct Anthropic/OpenAI key).
+
+**What LLMs are good at** (soft judgment): tone, copy clarity, color palette appropriateness, summarizing findings.
+**What LLMs are NOT good at** (hard facts): contrast ratios, pixel measurements — rule engine is better.
+
+Low priority — the analyzer's value is evidence-based scoring, not AI opinions.
+
+## Animation & Keyframe Analysis
+
+- [x] Detect `opacity: 0` + transition combo (scroll-reveal state) — implemented
+- [x] Count @keyframes rules — implemented
+- [x] Detect prefers-reduced-motion support — implemented
+- [x] Detect scroll-reveal library patterns (AOS, wow.js) — implemented
+- [ ] Scroll page before extraction to trigger intersection observers
+- [ ] Mark findings with "element may be in pre-animation state"
+- [ ] Detect `transform: translateY()` off-screen elements
+
+---
+
+## Module Optimization Research & Detection Improvements
+
+### contrast.js — Color & Contrast (20%)
+**Current:** Walks DOM parents for backgroundColor, canvas fallback for oklch/oklab, gradient sampling.
+**To improve:**
+- [ ] **Background images:** Draw bg-image to canvas, sample pixels at text position. Needs background-size/position math. CORS limitation for cross-origin images. (research/analyzer-p2-research.md §1)
+- [ ] **CSS filters on ancestors:** Walk parent chain checking for `filter: brightness(X) contrast(Y)`. Adjust RGB mathematically before computing ratio. brightness(0.5) halves each channel. contrast(2) doubles distance from 128. (research §3)
+- [ ] **Semi-transparent overlays:** Current blending is correct but doesn't handle backdrop-filter or mix-blend-mode. Flag these as "uncertain" rather than computing wrong values.
+- [ ] **Dark mode variant testing:** Automatically test dark: variant contrast by toggling `.dark` class before extraction. Currently only tests the active mode.
+- [ ] **APCA (Advanced Perceptual Contrast Algorithm):** Add as alternative metric alongside WCAG. More accurate for large/small text. Library: `apca-w3` (~5KB). Source: https://github.com/Myndex/SAPC-APCA
+
+### typography.js — Typography (15%)
+**Current:** Body font size, line height, line length, heading scale, font weight count, family count.
+**To improve:**
+- [ ] **Actual character-per-line measurement:** Current uses `element.width / (fontSize * 0.5)` which is a rough estimate. Better: create a temporary `<span>` with representative text, measure its width, divide element width by character width.
+- [ ] **Font loading performance:** Check for `font-display: optional` vs `swap` vs `block`. Measure if custom fonts are subset or full. Source: https://web.dev/articles/font-best-practices
+- [ ] **Vertical rhythm detection:** Check if line heights create a consistent baseline grid. All spacings should be multiples of the base line height.
+- [ ] **Letter spacing audit:** Detect `letter-spacing` values that reduce readability (too tight < -0.02em or too loose > 0.1em for body text).
+- [ ] **Paragraph spacing:** Check `margin-bottom` on `<p>` elements. Should be 0.75-1em. Source: Butterick's Practical Typography.
+
+### spacing.js — Spacing & Layout (15%)
+**Current:** 4px grid adherence, content max-width, body padding, adjacent element spacing.
+**To improve:**
+- [ ] **Nested spacing consistency:** Check if spacing increases predictably from component → section → page level. Gestalt proximity principle.
+- [ ] **Container padding audit:** Verify cards, modals, sections have consistent internal padding (not some 12px and others 24px in the same design).
+- [ ] **Overflow detection:** Check if any elements overflow their containers (`scrollWidth > clientWidth`). Common on mobile.
+- [ ] **Negative margin detection:** Flag negative margins as potential layout fragility.
+- [ ] **Gap vs margin consistency:** Check if the same spacing is achieved via gap in some places and margin in others (should be consistent).
+
+### touch.js — Touch & Interaction (15%)
+**Current:** Viewport-aware thresholds (24px desktop / 44px mobile), profile-aware, desktop touch note.
+**To improve:**
+- [ ] **Responsive CSS detection for touch:** When site has `@media` queries, note that touch targets may have different sizes at mobile breakpoints. Don't error if responsive classes exist.
+- [ ] **Padding-inclusive measurement:** Some elements have small visible size but larger clickable area via padding. Check if the padding box (not just content box) meets the threshold.
+- [ ] **Overlapping targets:** Check if any interactive elements overlap each other (absolute positioning causing stacking).
+- [ ] **Click density mapping:** Identify areas with many small targets clustered together (e.g., tag clouds, icon grids) and flag the group, not each individual element.
+- [ ] **Hover state detection:** Check if interactive elements have `:hover` styles defined (computed style can't detect this directly — need to check stylesheet rules).
+
+### accessibility.js — Accessibility (15%)
+**Current:** Semantic HTML, heading hierarchy, alt text, form labels, focus indicators.
+**To improve:**
+- [ ] **ARIA role audit:** Check for common ARIA mistakes (role="button" without keyboard handler, aria-hidden on focusable elements).
+- [ ] **Color-only indicators:** Detect if status/error states rely solely on color (e.g., red text without an icon or label). Source: WCAG §1.4.1.
+- [ ] **Link text quality:** Flag links with "click here", "read more", "learn more" as non-descriptive. Source: WCAG §2.4.4.
+- [ ] **Skip navigation link:** Check for `<a href="#main-content">` or similar skip link as first focusable element. Source: WCAG §2.4.1.
+- [ ] **Language attribute:** Check `<html lang="...">` is set. Source: WCAG §3.1.1.
+- [ ] **Autocomplete attributes:** Check if common form fields (name, email, phone, address) have appropriate `autocomplete` values. Source: WCAG §1.3.5.
+
+### responsive.js — Responsive Design (10%)
+**Current:** Checks for Tailwind responsive classes or CSS @media queries, dark mode detection.
+**To improve:**
+- [ ] **Viewport meta tag audit:** Check for `width=device-width` and absence of `user-scalable=no` (which blocks pinch-to-zoom). Source: WCAG §1.4.4.
+- [ ] **Horizontal overflow detection:** Check `document.documentElement.scrollWidth > viewport.width`. Common responsive failure.
+- [ ] **Image responsive sizing:** Check if images use `max-width: 100%` or `width: 100%; height: auto`. Images that overflow containers on small screens.
+- [ ] **Fixed-width element detection:** Find elements with hardcoded pixel widths that don't flex (e.g., `width: 800px` without max-width).
+- [ ] **Text truncation audit:** Detect `text-overflow: ellipsis` on elements — content may be hidden on small screens.
+
+### consistency.js — Visual Consistency (5%)
+**Current:** Color count, font size count, page-context scaling.
+**To improve:**
+- [ ] **Border radius consistency:** Cluster border-radius values and flag when too many distinct values exist (e.g., 4px, 6px, 8px, 10px, 12px — should be 2-3 values max).
+- [ ] **Shadow consistency:** Same approach for box-shadow — cluster and flag inconsistency.
+- [ ] **Color distance analysis:** Check if similar-but-not-identical colors exist (e.g., #333 and #2d2d2d used for the same purpose). Use CIEDE2000 for perceptual distance.
+- [ ] **Icon sizing consistency:** Check if SVG/icon elements use consistent sizing across the page.
+
+### cognitive.js — Cognitive Load (5%)
+**Current:** Heading count, form field count.
+**To improve:**
+- [ ] **Decision point counting:** Count visible CTAs, buttons, links per section. Hick's Law: decision time increases logarithmically with choices. Source: https://lawsofux.com/hicks-law/
+- [ ] **Information density heuristic:** Elements-per-viewport-height as a density metric. Too dense = overwhelming. Source: cognitive load research.
+- [ ] **Modal/popup detection:** Count elements with `position: fixed` or `z-index > 100` that might be modals. Multiple modals = bad UX.
+- [ ] **Input complexity:** For forms, check if placeholder is used instead of label (bad for memory), if required fields are marked, if inline validation exists.
+
+### layout.js — Layout Quality (5%)
+**Current:** Whitespace rhythm (section gap variance), alignment consistency, H1-to-body ratio.
+**To improve:**
+- [ ] **Grid structure detection:** Detect if the page uses a consistent grid (12-col, 8-col, etc.) by analyzing element widths as fractions of container width.
+- [ ] **Proximity grouping audit:** Check if related elements (e.g., label + input, image + caption) have tighter spacing than unrelated elements. Gestalt proximity.
+- [ ] **Full-bleed detection:** Identify sections that break out of the content container (full-width backgrounds, hero images).
+- [ ] **Sticky element audit:** Check for `position: sticky` elements and verify they have appropriate z-index.
+
+### performance.js — Performance (5%)
+**Current:** Font loading, render-blocking resources, DOM size, DOM depth.
+**To improve:**
+- [ ] **CLS detection:** Use `PerformanceObserver` with `layout-shift` entries (Chromium only). Source: https://web.dev/articles/cls
+- [ ] **Image format audit:** Check if images use modern formats (WebP, AVIF) vs legacy (JPEG, PNG). Available from `<img>` src extension.
+- [ ] **Third-party script count:** Count `<script>` tags with external domains. Flag when > 5.
+- [ ] **Inline CSS size:** Measure total bytes of `<style>` blocks. Large inline CSS delays rendering.
+- [ ] **Critical CSS detection:** Check if above-fold styles are inlined and below-fold CSS is deferred.
+
+### readability.js — Readability (5%)
+**Current:** Heading density, short heading detection, small text audit.
+**To improve:**
+- [ ] **Coleman-Liau readability index:** Full implementation. Formula: `0.0588 * L - 0.296 * S - 15.8` where L = avg letters per 100 words, S = avg sentences per 100 words. No syllable counting needed.
+- [ ] **Paragraph length audit:** Flag paragraphs > 150 words. Ideal: 40-80 words. Source: NNGroup.
+- [ ] **List usage detection:** Pages with long text blocks but no lists score lower. Lists improve scanability by 47% (NNGroup).
+- [ ] **Text extraction from main content:** Filter out nav, footer, sidebar text to only score the main content area.
+- [ ] **Reading level appropriateness by audience:** General audience = grade 8-10. Professional = grade 12+. Elderly = grade 6-8.
+
+### filters.js — Motion & Animation (3%)
+**Current:** prefers-reduced-motion check, hidden scroll-reveal elements, library detection.
+**To improve:**
+- [ ] **Animation duration audit:** Extract all `animation-duration` values from computed styles and @keyframes. Flag durations > 1s.
+- [ ] **Parallax detection:** Check for `background-attachment: fixed` or `transform: translateZ()` patterns that indicate parallax scrolling.
+- [ ] **Auto-playing media:** Detect `<video autoplay>` or `<audio autoplay>` without `muted`. Source: WCAG §1.4.2.
+- [ ] **Flash/strobe detection:** Check if any animation rapidly alternates between high-contrast states (> 3 flashes per second). Source: WCAG §2.3.1.
+
+### balance.js — Visual Balance (3%)
+**Current:** Left-right content distribution from alignment edges.
+**To improve:**
+- [ ] **Top-bottom balance:** Check if content density is evenly distributed vertically or heavily top-loaded.
+- [ ] **Visual weight by color:** Dark/saturated elements carry more visual weight than light/muted ones. Weight the area calculation by element darkness.
+- [ ] **Whitespace ratio:** Calculate ratio of empty space to content area. Too little = cramped, too much = sparse. Sweet spot: 40-60% whitespace.
+- [ ] **F-pattern support:** For text-heavy pages, check if content aligns to a strong left edge with decreasing engagement rightward (expected F-pattern).
+
+---
+
+## Extraction Script Improvements
+
+### Performance
+- [ ] **Element limit:** Cap DOM traversal at 2000 elements for performance on very large pages
+- [ ] **Batched getComputedStyle:** Reading computed styles is expensive. Batch reads to minimize layout thrashing.
+- [ ] **Web Worker extraction:** Move the heavy extraction to a Web Worker to avoid blocking the main thread (requires restructuring since Workers can't access DOM — would need to serialize DOM data first).
+
+### Accuracy
+- [ ] **Scroll-before-extract mode:** Option in snippet to scroll the full page before extracting, triggering intersection observers and lazy loading.
+- [ ] **Multi-viewport extraction:** Run extraction at multiple viewport widths (375px, 768px, 1280px) and merge findings. Shows which issues are viewport-specific.
+- [ ] **Dark mode extraction:** Toggle `.dark` class, re-extract, merge findings. Shows issues specific to dark mode.
+- [ ] **Hover/focus state simulation:** Use `el.matches(':hover')` — can't simulate directly, but can check stylesheet rules for `:hover`/`:focus` selectors and verify they exist.
+- [ ] **iFrame content:** Detect iframes and optionally extract from them (same-origin only).
 </file>
 
 <file path="expressive/curated-examples.md">
@@ -17341,6 +17559,62 @@ Not every section is required, but **Concrete Rules** and **CSS/Implementation P
 - `research/` — Raw research data (gitignored except sources.md)
 </file>
 
+<file path="docs/presets/index.json">
+{
+  "categories": [
+    { "label": "Layouts", "elements": ["shell-sidebar", "shell-marketing", "shell-dashboard", "shell-form"] },
+    { "label": "Components", "elements": ["hero", "stats-row", "data-table", "card-grid", "pricing-cards", "feature-grid", "tabs", "accordion", "pagination", "dropdown", "avatars"] },
+    { "label": "Before → After", "elements": ["dashboard", "landing", "form", "cards", "project"] },
+    { "label": "Full Pages", "elements": ["pricing", "portfolio", "restaurant", "statuspage"] },
+    { "label": "Expressive", "elements": ["personal-hero", "agency-landing", "agency-portfolio", "app-showcase", "scroll-reveal-landing", "product-launch", "editorial-blog", "saas-features", "scroll-story", "product-page", "devtool-landing", "docs-site", "event-page", "jdeworks-personal"] },
+    { "label": "Edge Cases", "elements": ["deploy", "buttons", "osslanding"] }
+  ],
+  "elements": {
+    "dashboard": { "label": "Dashboard", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "landing": { "label": "Landing Page", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
+    "form": { "label": "Form", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
+    "cards": { "label": "Card Grid", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "project": { "label": "Multi-Page App", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
+    "pricing": { "label": "SaaS Pricing", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "portfolio": { "label": "Portfolio (Dark)", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "restaurant": { "label": "Restaurant (Warm)", "personalities": { "clean": { "primaryColor": "amber" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "statuspage": { "label": "Status Page", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "deploy": { "label": "Deploy Monitor", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "buttons": { "label": "Button System", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "osslanding": { "label": "OSS Landing", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "shell-sidebar": { "label": "App Shell (Sidebar)", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "shell-marketing": { "label": "Marketing Page", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "shell-dashboard": { "label": "Dashboard Shell", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "shell-form": { "label": "Centered Form", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "hero": { "label": "Hero Section", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "stats-row": { "label": "Stats Row", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "data-table": { "label": "Data Table", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "card-grid": { "label": "Card Grid", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "pricing-cards": { "label": "Pricing Cards", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "feature-grid": { "label": "Feature Grid", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "tabs": { "label": "Tabs", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "accordion": { "label": "Accordion", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "pagination": { "label": "Pagination", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "dropdown": { "label": "Dropdown Menu", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "avatars": { "label": "Avatar Group", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "personal-hero": { "label": "Personal Site", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "agency-landing": { "label": "Agency Landing", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "product-launch": { "label": "Product Launch", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "editorial-blog": { "label": "Editorial Blog", "personalities": { "clean": { "primaryColor": "slate" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "saas-features": { "label": "SaaS Features", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "scroll-story": { "label": "Scroll Story", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "product-page": { "label": "Product Page", "personalities": { "clean": { "primaryColor": "sky" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "devtool-landing": { "label": "DevTool Landing", "personalities": { "clean": { "primaryColor": "cyan" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "docs-site": { "label": "Docs Site", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "event-page": { "label": "Event Page", "personalities": { "clean": { "primaryColor": "amber" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "jdeworks-personal": { "label": "JDE Personal", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "agency-portfolio": { "label": "Agency Portfolio", "personalities": { "clean": { "primaryColor": "teal" } } },
+    "app-showcase": { "label": "App Showcase", "personalities": { "clean": { "primaryColor": "orange" } } },
+    "scroll-reveal-landing": { "label": "Scroll Reveal Landing", "personalities": { "clean": { "primaryColor": "sky" } } }
+  }
+}
+</file>
+
 <file path="docs/analyzer-snippet.js">
 // make-it-look-good — Design Extraction Snippet
 // Run this in the browser console on any page, or use as a bookmarklet.
@@ -18028,6 +18302,98 @@ Not every section is required, but **Concrete Rules** and **CSS/Implementation P
   revealClasses.forEach(function(sel) {
     try { var count = document.querySelectorAll(sel).length; if (count > 0) data.animation.scrollRevealPatterns.push({ selector: sel, count: count }); } catch(e) {}
   });
+
+  // --- Accessibility extras ---
+  data.accessibility.langAttribute = document.documentElement.getAttribute('lang') || '';
+  data.accessibility.hasSkipLink = !!document.querySelector('a[href^="#main"], a[href^="#content"], a.skip-link, a.skip-nav, [class*="skip"]');
+
+  var badLinkTexts = [];
+  document.querySelectorAll('a').forEach(function(a) {
+    if (!isVisible(a) || isDecorative(a)) return;
+    var text = (a.textContent || '').trim().toLowerCase();
+    if (['click here', 'here', 'read more', 'learn more', 'more', 'link'].indexOf(text) !== -1) {
+      badLinkTexts.push({ text: text, selector: cssSelector(a) });
+    }
+  });
+  data.accessibility.badLinkTexts = badLinkTexts.slice(0, 10);
+
+  // Detect autocomplete on common form fields
+  var formFields = document.querySelectorAll('input[type="email"], input[type="tel"], input[name*="name"], input[name*="address"]');
+  var missingAutocomplete = 0;
+  formFields.forEach(function(f) { if (!f.getAttribute('autocomplete')) missingAutocomplete++; });
+  data.accessibility.missingAutocomplete = missingAutocomplete;
+
+  // --- Responsive extras ---
+  // Viewport meta
+  var vpMeta = document.querySelector('meta[name="viewport"]');
+  data.structure.viewportMeta = vpMeta ? vpMeta.getAttribute('content') : '';
+  data.structure.blocksZoom = vpMeta ? /user-scalable\s*=\s*no/i.test(vpMeta.getAttribute('content') || '') : false;
+  // Horizontal overflow
+  data.structure.hasHorizontalOverflow = document.documentElement.scrollWidth > document.documentElement.clientWidth;
+
+  // --- Performance extras ---
+  // Third-party scripts
+  var ownHost = location.hostname;
+  var thirdPartyScripts = 0;
+  document.querySelectorAll('script[src]').forEach(function(s) {
+    try { if (new URL(s.src).hostname !== ownHost) thirdPartyScripts++; } catch(e) {}
+  });
+  data.performance.thirdPartyScripts = thirdPartyScripts;
+
+  // Image formats
+  var imgFormats = { modern: 0, legacy: 0 };
+  document.querySelectorAll('img[src]').forEach(function(img) {
+    var src = (img.src || '').toLowerCase();
+    if (/\.(webp|avif)/.test(src)) imgFormats.modern++;
+    else if (/\.(jpg|jpeg|png|gif|bmp)/.test(src)) imgFormats.legacy++;
+  });
+  data.performance.imageFormats = imgFormats;
+
+  // --- Consistency extras ---
+  // Border radius values
+  var radiusMap = {};
+  for (var ci = 0; ci < allElements.length && ci < 1000; ci++) {
+    var cel = allElements[ci];
+    if (!isVisible(cel) || isDecorative(cel)) continue;
+    var cr = getComputedStyle(cel).borderRadius;
+    if (cr && cr !== '0px') radiusMap[cr] = (radiusMap[cr] || 0) + 1;
+  }
+  data.layout.borderRadii = Object.keys(radiusMap).map(function(k) { return { value: k, count: radiusMap[k] }; }).sort(function(a, b) { return b.count - a.count; }).slice(0, 15);
+
+  // --- Readability extras ---
+  // Paragraph text extraction for readability scoring
+  var paragraphs = document.querySelectorAll('main p, article p, section p, .content p');
+  if (paragraphs.length === 0) paragraphs = document.querySelectorAll('p');
+  var textBlocks = [];
+  paragraphs.forEach(function(p) {
+    if (!isVisible(p) || isDecorative(p)) return;
+    var text = (p.textContent || '').trim();
+    if (text.length > 20) textBlocks.push({ text: text, wordCount: text.split(/\s+/).length, charCount: text.length });
+  });
+  data.readability = {
+    textBlocks: textBlocks.slice(0, 30),
+    totalWords: textBlocks.reduce(function(s, b) { return s + b.wordCount; }, 0),
+    totalChars: textBlocks.reduce(function(s, b) { return s + b.charCount; }, 0),
+    paragraphCount: textBlocks.length,
+    hasLists: document.querySelectorAll('main ul, main ol, article ul, article ol').length > 0 || document.querySelectorAll('ul, ol').length > 3
+  };
+
+  // --- Responsive touch note data ---
+  // Check if site has responsive CSS that might adjust touch targets at mobile
+  data.interaction.hasResponsiveTargetCSS = false;
+  try {
+    Array.from(document.styleSheets).some(function(ss) {
+      try {
+        return Array.from(ss.cssRules).some(function(r) {
+          if (r instanceof CSSMediaRule && /max-width|min-width/.test(r.conditionText || '')) {
+            var text = r.cssText || '';
+            return /min-height|padding|height.*4[4-8]|height.*rem/.test(text);
+          }
+          return false;
+        });
+      } catch(e) { return false; }
+    });
+  } catch(e) {}
 
   // --- Output ---
   var json = JSON.stringify(data, null, 2);
@@ -19063,62 +19429,6 @@ Each test case has:
 - **After file** — the improved code in the user's original framework
 
 Use these to calibrate your output quality and verify the flow works.
-</file>
-
-<file path="docs/presets/index.json">
-{
-  "categories": [
-    { "label": "Layouts", "elements": ["shell-sidebar", "shell-marketing", "shell-dashboard", "shell-form"] },
-    { "label": "Components", "elements": ["hero", "stats-row", "data-table", "card-grid", "pricing-cards", "feature-grid", "tabs", "accordion", "pagination", "dropdown", "avatars"] },
-    { "label": "Before → After", "elements": ["dashboard", "landing", "form", "cards", "project"] },
-    { "label": "Full Pages", "elements": ["pricing", "portfolio", "restaurant", "statuspage"] },
-    { "label": "Expressive", "elements": ["personal-hero", "agency-landing", "agency-portfolio", "app-showcase", "scroll-reveal-landing", "product-launch", "editorial-blog", "saas-features", "scroll-story", "product-page", "devtool-landing", "docs-site", "event-page", "jdeworks-personal"] },
-    { "label": "Edge Cases", "elements": ["deploy", "buttons", "osslanding"] }
-  ],
-  "elements": {
-    "dashboard": { "label": "Dashboard", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "landing": { "label": "Landing Page", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
-    "form": { "label": "Form", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
-    "cards": { "label": "Card Grid", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "project": { "label": "Multi-Page App", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
-    "pricing": { "label": "SaaS Pricing", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "portfolio": { "label": "Portfolio (Dark)", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "restaurant": { "label": "Restaurant (Warm)", "personalities": { "clean": { "primaryColor": "amber" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "statuspage": { "label": "Status Page", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "deploy": { "label": "Deploy Monitor", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "buttons": { "label": "Button System", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "osslanding": { "label": "OSS Landing", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "shell-sidebar": { "label": "App Shell (Sidebar)", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "shell-marketing": { "label": "Marketing Page", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "shell-dashboard": { "label": "Dashboard Shell", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "shell-form": { "label": "Centered Form", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "hero": { "label": "Hero Section", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "stats-row": { "label": "Stats Row", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "data-table": { "label": "Data Table", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "card-grid": { "label": "Card Grid", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "pricing-cards": { "label": "Pricing Cards", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "feature-grid": { "label": "Feature Grid", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "tabs": { "label": "Tabs", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "accordion": { "label": "Accordion", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "pagination": { "label": "Pagination", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "dropdown": { "label": "Dropdown Menu", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "avatars": { "label": "Avatar Group", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "personal-hero": { "label": "Personal Site", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "agency-landing": { "label": "Agency Landing", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "product-launch": { "label": "Product Launch", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "editorial-blog": { "label": "Editorial Blog", "personalities": { "clean": { "primaryColor": "slate" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "saas-features": { "label": "SaaS Features", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "scroll-story": { "label": "Scroll Story", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "product-page": { "label": "Product Page", "personalities": { "clean": { "primaryColor": "sky" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "devtool-landing": { "label": "DevTool Landing", "personalities": { "clean": { "primaryColor": "cyan" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "docs-site": { "label": "Docs Site", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "event-page": { "label": "Event Page", "personalities": { "clean": { "primaryColor": "amber" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "jdeworks-personal": { "label": "JDE Personal", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "agency-portfolio": { "label": "Agency Portfolio", "personalities": { "clean": { "primaryColor": "teal" } } },
-    "app-showcase": { "label": "App Showcase", "personalities": { "clean": { "primaryColor": "orange" } } },
-    "scroll-reveal-landing": { "label": "Scroll Reveal Landing", "personalities": { "clean": { "primaryColor": "sky" } } }
-  }
-}
 </file>
 
 <file path="docs/analyzer.css">
