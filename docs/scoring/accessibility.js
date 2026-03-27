@@ -25,7 +25,7 @@ function scoreAccessibility(data) {
       severity: semanticCount === 0 ? 'error' : 'warning',
       title: 'Missing semantic HTML elements',
       detail: 'Found: ' + (hasHeader ? 'header ' : '') + (hasNav ? 'nav ' : '') + (hasMain ? 'main ' : '') + (semantic.footer ? 'footer' : ''),
-      fix: 'Use <header>, <nav>, <main>, <footer> for page structure. Screen readers rely on these landmarks.',
+      fix: 'Use <header>, <nav>, <main>, <footer> for page structure. Screen readers rely on these landmarks.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships',
       presetRef: 'All presets use semantic HTML landmarks'
     });
   }
@@ -46,7 +46,7 @@ function scoreAccessibility(data) {
       severity: 'warning',
       title: 'Heading hierarchy has gaps (e.g., h1 → h3)',
       detail: 'Heading order: ' + headingOrder.join(' → '),
-      fix: 'Use headings in order: h1 → h2 → h3. Never skip levels. Style with classes instead of heading tags.',
+      fix: 'Use headings in order: h1 → h2 → h3. Never skip levels. Style with classes instead of heading tags.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships',
       presetRef: null
     });
   }
@@ -60,7 +60,7 @@ function scoreAccessibility(data) {
       severity: 'error',
       title: a11y.imagesWithoutAlt + ' image(s) missing alt text',
       detail: 'Screen readers cannot describe these images to users',
-      fix: 'Add alt="description" to all <img> tags. Use alt="" for decorative images.',
+      fix: 'Add alt="description" to all <img> tags. Use alt="" for decorative images.', source: 'WCAG 2.2 §1.1.1 — https://www.w3.org/TR/WCAG22/#non-text-content',
       presetRef: null
     });
   }
@@ -109,7 +109,7 @@ function scoreAccessibility(data) {
       severity: 'error',
       title: 'No visible focus indicators found',
       detail: 'Keyboard users cannot see which element is focused',
-      fix: 'Ensure focus-visible styles exist. In Tailwind: focus-visible:ring-2 focus-visible:ring-blue-500',
+      fix: 'Ensure focus-visible styles exist. In Tailwind: focus-visible:ring-2 focus-visible:ring-blue-500', source: 'WCAG 2.2 §2.4.7 — https://www.w3.org/TR/WCAG22/#focus-visible',
       presetRef: 'All interactive presets include focus-visible ring styles'
     });
   }

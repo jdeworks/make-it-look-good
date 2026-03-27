@@ -22,7 +22,7 @@ function scoreTypography(data) {
       title: 'Body font size is ' + bodySize + 'px (minimum: ' + profile.bodyFontMin + 'px)',
       detail: 'Small body text reduces readability, especially on mobile',
       fix: 'Set body font-size to at least ' + profile.bodyFontMin + 'px. In Tailwind: text-base (16px) or text-lg (18px)',
-      presetRef: 'All presets use text-base (16px) or larger for body text'
+      presetRef: 'All presets use text-base (16px) or larger for body text', source: 'WCAG 2.2 / NNGroup — https://www.w3.org/TR/WCAG22/#text-spacing'
     });
   }
 

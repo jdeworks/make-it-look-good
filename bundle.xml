@@ -897,49 +897,6 @@ What type of element needs contrast checking?
 - [WebAIM — Contrast and Color Accessibility](https://webaim.org/articles/contrast/)
 </file>
 
-<file path="docs/ANALYZER-TODO.md">
-# Analyzer TODO
-
-## Open Issues (from user testing)
-
-- [ ] **General vs WCAG AAA shows no difference** — The scoring contrast check re-evaluates pairs but the extraction already filters by the original 4.5:1 threshold. Need to collect ALL contrast pairs (not just failures + near-misses) so AAA mode can find elements that pass AA but fail AAA.
-- [ ] **Exclude element suggestions don't appear on report page** — The exclude presets (Mock UI, Footer, etc.) only show on the input page. Need a "re-analyze with exclusions" option on the report page, or show detected patterns after first analysis (two-step flow).
-- [ ] **Two-step analysis flow** — Extract first → show detected patterns → user confirms exclusions → score. Currently exclusions must be set before analysis.
-- [ ] **URL link in report still not clickable for some users** — May be a CSS specificity issue or the `a` tag inside `.report-url` needs more explicit styles.
-
-## P2 Features (research in progress)
-
-- [ ] Background image contrast — Canvas sampling with CORS fallback
-- [ ] SVG text contrast — Read `fill` attribute, find background from sibling shapes
-- [ ] CSS filter contrast impact — Mathematical adjustment for brightness/contrast/opacity filters
-- [ ] Readability scoring (Flesch-Kincaid) — Syllable counting, extract main content text
-- [ ] LCP estimation — PerformanceObserver or heuristic (largest visible element)
-
-## P3 Features (need more research)
-
-- [ ] Reading pattern detection (Z/F/scanning) — Heuristic from DOM layout
-- [ ] Visual weight balance — Quadrant density analysis
-- [ ] Orphaned element detection — Elements far from their visual group
-
-## Architecture / UX
-
-- [ ] **Post-analysis exclusion editor** — After scoring, show: "We detected X elements with .mock-* classes. Exclude and re-score?"
-- [ ] **Extraction data caching** — Store last extraction in sessionStorage so profile/exclusion changes don't require re-fetch
-- [ ] **Report comparison** — Show before/after when re-scoring with different profile or exclusions
-- [ ] **Share report via URL** — Compress and encode report data in hash for sharing (already partially works via #data=)
-- [ ] **Dark mode on report** — Report uses hardcoded light colors for severity badges. Should respect dark-ui class.
-
-## Scoring Module Ideas
-
-Each would be a new file in `docs/scoring/`:
-- [ ] `readability.js` — Flesch-Kincaid, sentence length, passive voice detection
-- [ ] `images.js` — Alt text quality (not just present/absent), decorative image detection
-- [ ] `forms.js` — Input types, autocomplete, validation patterns, label quality
-- [ ] `navigation.js` — Nav depth, breadcrumbs, skip links, landmark completeness
-- [ ] `motion.js` — prefers-reduced-motion respect, animation duration audit
-- [ ] `seo.js` — Meta tags, heading structure, canonical URL, OG tags
-</file>
-
 <file path="foundations/aesthetic-usability.md">
 # Aesthetic-Usability Effect
 
@@ -12490,7 +12447,7 @@ function scoreAccessibility(data) {
       severity: semanticCount === 0 ? 'error' : 'warning',
       title: 'Missing semantic HTML elements',
       detail: 'Found: ' + (hasHeader ? 'header ' : '') + (hasNav ? 'nav ' : '') + (hasMain ? 'main ' : '') + (semantic.footer ? 'footer' : ''),
-      fix: 'Use <header>, <nav>, <main>, <footer> for page structure. Screen readers rely on these landmarks.',
+      fix: 'Use <header>, <nav>, <main>, <footer> for page structure. Screen readers rely on these landmarks.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships',
       presetRef: 'All presets use semantic HTML landmarks'
     });
   }
@@ -12511,7 +12468,7 @@ function scoreAccessibility(data) {
       severity: 'warning',
       title: 'Heading hierarchy has gaps (e.g., h1 → h3)',
       detail: 'Heading order: ' + headingOrder.join(' → '),
-      fix: 'Use headings in order: h1 → h2 → h3. Never skip levels. Style with classes instead of heading tags.',
+      fix: 'Use headings in order: h1 → h2 → h3. Never skip levels. Style with classes instead of heading tags.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships',
       presetRef: null
     });
   }
@@ -12525,7 +12482,7 @@ function scoreAccessibility(data) {
       severity: 'error',
       title: a11y.imagesWithoutAlt + ' image(s) missing alt text',
       detail: 'Screen readers cannot describe these images to users',
-      fix: 'Add alt="description" to all <img> tags. Use alt="" for decorative images.',
+      fix: 'Add alt="description" to all <img> tags. Use alt="" for decorative images.', source: 'WCAG 2.2 §1.1.1 — https://www.w3.org/TR/WCAG22/#non-text-content',
       presetRef: null
     });
   }
@@ -12574,7 +12531,7 @@ function scoreAccessibility(data) {
       severity: 'error',
       title: 'No visible focus indicators found',
       detail: 'Keyboard users cannot see which element is focused',
-      fix: 'Ensure focus-visible styles exist. In Tailwind: focus-visible:ring-2 focus-visible:ring-blue-500',
+      fix: 'Ensure focus-visible styles exist. In Tailwind: focus-visible:ring-2 focus-visible:ring-blue-500', source: 'WCAG 2.2 §2.4.7 — https://www.w3.org/TR/WCAG22/#focus-visible',
       presetRef: 'All interactive presets include focus-visible ring styles'
     });
   }
@@ -12737,7 +12694,8 @@ function scoreContrast(data) {
       fix: p.isLarge
         ? 'Large text needs ' + profile.contrastLarge + ':1 minimum. Darken the text or lighten the background.'
         : 'Normal text needs ' + profile.contrast + ':1 minimum. Use a darker text color or lighter background.',
-      presetRef: 'All presets use text-slate-600+ on white backgrounds (8:1+ ratio)'
+      presetRef: 'All presets use text-slate-600+ on white backgrounds (8:1+ ratio)',
+      source: p.isLarge ? 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' : 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
     });
   });
 
@@ -13162,7 +13120,7 @@ function scoreSpacing(data) {
       title: 'Only ' + Math.round(gridRatio * 100) + '% of spacing is on a 4px grid',
       detail: 'Inconsistent spacing makes layouts feel unpolished',
       fix: 'Align spacing to 4px increments: 4, 8, 12, 16, 24, 32, 48, 64px',
-      presetRef: 'All presets use Tailwind spacing scale (4px base unit)'
+      presetRef: 'All presets use Tailwind spacing scale (4px base unit)', source: 'Material Design spacing — https://m3.material.io/foundations/layout/applying-layout'
     });
   }
 
@@ -13352,7 +13310,7 @@ function scoreTypography(data) {
       title: 'Body font size is ' + bodySize + 'px (minimum: ' + profile.bodyFontMin + 'px)',
       detail: 'Small body text reduces readability, especially on mobile',
       fix: 'Set body font-size to at least ' + profile.bodyFontMin + 'px. In Tailwind: text-base (16px) or text-lg (18px)',
-      presetRef: 'All presets use text-base (16px) or larger for body text'
+      presetRef: 'All presets use text-base (16px) or larger for body text', source: 'WCAG 2.2 / NNGroup — https://www.w3.org/TR/WCAG22/#text-spacing'
     });
   }
 
@@ -13470,6 +13428,49 @@ function scoreTypography(data) {
 
   S.register("typography", scoreTypography, 15, "Typography", "type");
 })();
+</file>
+
+<file path="docs/ANALYZER-TODO.md">
+# Analyzer TODO
+
+## Open Issues (from user testing)
+
+- [ ] **General vs WCAG AAA shows no difference** — The scoring contrast check re-evaluates pairs but the extraction already filters by the original 4.5:1 threshold. Need to collect ALL contrast pairs (not just failures + near-misses) so AAA mode can find elements that pass AA but fail AAA.
+- [ ] **Exclude element suggestions don't appear on report page** — The exclude presets (Mock UI, Footer, etc.) only show on the input page. Need a "re-analyze with exclusions" option on the report page, or show detected patterns after first analysis (two-step flow).
+- [ ] **Two-step analysis flow** — Extract first → show detected patterns → user confirms exclusions → score. Currently exclusions must be set before analysis.
+- [ ] **URL link in report still not clickable for some users** — May be a CSS specificity issue or the `a` tag inside `.report-url` needs more explicit styles.
+
+## P2 Features (research in progress)
+
+- [ ] Background image contrast — Canvas sampling with CORS fallback
+- [ ] SVG text contrast — Read `fill` attribute, find background from sibling shapes
+- [ ] CSS filter contrast impact — Mathematical adjustment for brightness/contrast/opacity filters
+- [ ] Readability scoring (Flesch-Kincaid) — Syllable counting, extract main content text
+- [ ] LCP estimation — PerformanceObserver or heuristic (largest visible element)
+
+## P3 Features (need more research)
+
+- [ ] Reading pattern detection (Z/F/scanning) — Heuristic from DOM layout
+- [ ] Visual weight balance — Quadrant density analysis
+- [ ] Orphaned element detection — Elements far from their visual group
+
+## Architecture / UX
+
+- [ ] **Post-analysis exclusion editor** — After scoring, show: "We detected X elements with .mock-* classes. Exclude and re-score?"
+- [ ] **Extraction data caching** — Store last extraction in sessionStorage so profile/exclusion changes don't require re-fetch
+- [ ] **Report comparison** — Show before/after when re-scoring with different profile or exclusions
+- [ ] **Share report via URL** — Compress and encode report data in hash for sharing (already partially works via #data=)
+- [ ] **Dark mode on report** — Report uses hardcoded light colors for severity badges. Should respect dark-ui class.
+
+## Scoring Module Ideas
+
+Each would be a new file in `docs/scoring/`:
+- [ ] `readability.js` — Flesch-Kincaid, sentence length, passive voice detection
+- [ ] `images.js` — Alt text quality (not just present/absent), decorative image detection
+- [ ] `forms.js` — Input types, autocomplete, validation patterns, label quality
+- [ ] `navigation.js` — Nav depth, breadcrumbs, skip links, landmark completeness
+- [ ] `motion.js` — prefers-reduced-motion respect, animation duration audit
+- [ ] `seo.js` — Meta tags, heading structure, canonical URL, OG tags
 </file>
 
 <file path="expressive/scroll-effect-patterns.md">
@@ -15889,6 +15890,19 @@ window.MilgReport = (function() {
           html += '</div>';
         }
 
+        if (f.source) {
+          var srcParts = f.source.split(' — ');
+          var srcLabel = srcParts[0];
+          var srcUrl = srcParts[1] || '';
+          html += '<div class="finding-source">';
+          if (srcUrl) {
+            html += '<a href="' + escapeHtml(srcUrl) + '" target="_blank" rel="noopener">' + escapeHtml(srcLabel) + '</a>';
+          } else {
+            html += escapeHtml(srcLabel);
+          }
+          html += '</div>';
+        }
+
         html += '</div>';
       });
 
@@ -16006,6 +16020,10 @@ window.MilgReport = (function() {
         if (f.detail) lines.push('  - ' + f.detail);
         lines.push('  - **Fix:** ' + f.fix);
         if (f.presetRef) lines.push('  - **Example:** ' + f.presetRef);
+        if (f.source) {
+          var sp = f.source.split(' — ');
+          lines.push('  - **Source:** [' + sp[0] + '](' + (sp[1] || '') + ')');
+        }
         lines.push('');
       });
     });
@@ -17657,820 +17675,6 @@ Not every section is required, but **Concrete Rules** and **CSS/Implementation P
 })();
 </file>
 
-<file path="docs/analyzer.css">
-/* Analyzer — inherits vars from style.css */
-
-.analyzer-body {
-  font-family: var(--font);
-  background: var(--bg);
-  color: var(--text);
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  /* Override style.css body which sets overflow:hidden + height:100vh for the editor */
-  overflow: auto !important;
-  height: auto !important;
-}
-
-/* Screen reader only */
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-/* Focus indicators */
-.analyzer-body .btn:focus-visible,
-.analyzer-body .tab-btn:focus-visible,
-.analyzer-body textarea:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
-}
-
-/* Fix touch targets — minimum 44px height */
-.analyzer-body .btn {
-  min-height: 44px;
-}
-
-.analyzer-body .btn-icon {
-  min-width: 44px;
-  min-height: 44px;
-}
-
-/* Fix contrast on step numbers — use darker blue */
-.guide-step-num {
-  background: #1d4ed8 !important;
-}
-
-/* Fix contrast on primary buttons — use darker blue */
-.analyzer-body .btn-primary {
-  background: #2563eb;
-  border-color: #2563eb;
-}
-.analyzer-body .btn-primary:hover {
-  background: #1d4ed8;
-}
-
-/* Fix tab button min height + contrast */
-.tab-btn {
-  min-height: 44px;
-}
-.tab-btn.active {
-  color: #2563eb;
-  border-bottom-color: #2563eb;
-}
-
-/* Fix logo touch target */
-.analyzer-body .logo {
-  min-height: 44px;
-  display: inline-flex;
-  align-items: center;
-}
-
-/* Snippet code should not affect line-length scoring */
-.snippet-code {
-  max-width: 100%;
-  overflow-x: auto;
-}
-
-/* Exclude tags */
-.exclude-tag {
-  padding: 5px 12px;
-  border: 1px solid var(--border);
-  border-radius: 99px;
-  background: var(--bg);
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-family: var(--font);
-  cursor: pointer;
-  transition: all 0.15s;
-  min-height: 32px;
-}
-
-.exclude-tag:hover { border-color: var(--text-secondary); }
-.exclude-tag.active { background: var(--text); color: var(--bg); border-color: var(--text); }
-
-/* Persona selector */
-.persona-selector {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.persona-selector select {
-  min-height: 44px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--font);
-}
-
-/* URL input */
-#urlInput:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
-}
-
-/* --- Input section --- */
-.input-section {
-  max-width: 800px;
-  width: 100%;
-  margin: 0 auto;
-  padding: 32px 24px 64px;
-}
-
-.input-hero {
-  text-align: center;
-  margin-bottom: 32px;
-}
-
-.input-hero h1 {
-  font-size: 28px;
-  font-weight: 700;
-  margin-bottom: 8px;
-}
-
-.input-hero p {
-  font-size: 15px;
-  color: var(--text-secondary);
-  max-width: 520px;
-  margin: 0 auto;
-  line-height: 1.5;
-}
-
-/* Tabs */
-.input-tabs {
-  display: flex;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 20px;
-  gap: 0;
-}
-
-.tab-btn {
-  flex: 1;
-  padding: 10px 16px;
-  border: none;
-  background: none;
-  font-size: 13px;
-  font-weight: 600;
-  font-family: var(--font);
-  color: var(--text-secondary);
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  transition: all 0.15s ease;
-}
-
-.tab-btn:hover { color: var(--text); }
-.tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
-
-.tab-content { display: none; }
-.tab-content.active { display: block; }
-
-/* Input areas */
-.input-area textarea {
-  width: 100%;
-  min-height: 180px;
-  padding: 12px 16px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  font-size: 13px;
-  font-family: var(--mono);
-  color: var(--text);
-  background: var(--bg);
-  resize: vertical;
-  outline: none;
-  transition: border-color 0.15s;
-}
-
-.input-area textarea:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
-}
-
-.input-area textarea::placeholder { color: var(--text-secondary); }
-
-.input-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.input-actions .btn-primary {
-  flex: 1;
-  justify-content: center;
-  padding: 10px 20px;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-/* Snippet section */
-.snippet-section {
-  margin-top: 24px;
-}
-
-.snippet-section h3 {
-  font-size: 14px;
-  font-weight: 600;
-  margin-bottom: 8px;
-}
-
-.snippet-section p {
-  font-size: 13px;
-  color: var(--text-secondary);
-  line-height: 1.5;
-  margin-bottom: 12px;
-}
-
-.snippet-box {
-  background: var(--bg-alt);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-
-.snippet-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg);
-}
-
-.snippet-header span {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.snippet-code {
-  padding: 12px 16px;
-  font-size: 11px;
-  font-family: var(--mono);
-  color: var(--text-secondary);
-  max-height: 200px;
-  overflow-y: auto;
-  white-space: pre;
-  line-height: 1.5;
-}
-
-/* Quick guide */
-.guide-steps {
-  margin-top: 24px;
-  counter-reset: step;
-}
-
-.guide-step {
-  display: flex;
-  gap: 12px;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--border);
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.guide-step:last-child { border-bottom: none; }
-
-.guide-step-num {
-  flex-shrink: 0;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background: var(--primary);
-  color: white;
-  font-size: 12px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.guide-step code {
-  background: var(--bg-alt);
-  padding: 1px 6px;
-  border-radius: 4px;
-  font-size: 12px;
-  font-family: var(--mono);
-  border: 1px solid var(--border);
-}
-
-.guide-step strong { font-weight: 600; }
-
-/* Console tips */
-.console-tip {
-  background: var(--bg-alt);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 12px 16px;
-  margin-top: 16px;
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.console-tip code {
-  background: var(--bg);
-  padding: 1px 6px;
-  border-radius: 4px;
-  font-family: var(--mono);
-  font-size: 12px;
-  border: 1px solid var(--border);
-}
-
-.console-tip strong { font-weight: 600; }
-
-/* --- Report --- */
-.report-container {
-  display: none;
-  max-width: 900px;
-  width: 100%;
-  margin: 0 auto;
-  padding: 32px 24px 64px;
-}
-
-.report-container.visible { display: block; }
-
-/* Report controls bar */
-.report-controls {
-  display: none;
-  flex-direction: column;
-  gap: 8px;
-  max-width: 900px;
-  width: 100%;
-  margin: 0 auto;
-  padding: 0 24px 16px;
-}
-
-.report-controls-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.report-controls-row:last-child {
-  padding-top: 4px;
-  border-top: 1px solid var(--border);
-}
-
-/* Profile explanation panel */
-.profile-explanation {
-  background: var(--bg-alt);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 16px;
-  position: relative;
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.profile-explanation h4 {
-  font-size: 14px;
-  font-weight: 600;
-  margin-bottom: 8px;
-}
-
-.profile-explanation p {
-  color: var(--text-secondary);
-  margin-bottom: 10px;
-}
-
-.profile-explanation table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
-}
-
-.profile-explanation th,
-.profile-explanation td {
-  text-align: left;
-  padding: 4px 8px;
-  border-bottom: 1px solid var(--border);
-}
-
-.profile-explanation th {
-  font-weight: 600;
-  color: var(--text-secondary);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
-.profile-explanation-close {
-  position: absolute;
-  top: 8px;
-  right: 12px;
-  background: none;
-  border: none;
-  font-size: 18px;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: 4px;
-}
-
-/* Legacy compat */
-.report-actions {
-  display: none;
-  align-items: center;
-  gap: 8px;
-  max-width: 900px;
-  width: 100%;
-  margin: 0 auto;
-  padding: 0 24px 16px;
-}
-
-/* Report header */
-.report-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-bottom: 24px;
-  margin-bottom: 24px;
-  border-bottom: 1px solid var(--border);
-}
-
-.report-header-info h1 {
-  font-size: 24px;
-  font-weight: 700;
-  margin-bottom: 4px;
-}
-
-.report-url {
-  font-size: 14px;
-  color: var(--primary);
-  word-break: break-all;
-  margin-bottom: 2px;
-}
-
-.report-url a {
-  color: var(--primary);
-  text-decoration: underline;
-  cursor: pointer;
-}
-
-.report-url a:hover {
-  color: var(--primary-hover);
-}
-
-.report-timestamp {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.report-gauge {
-  text-align: center;
-  flex-shrink: 0;
-}
-
-.report-grade-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  margin-top: 4px;
-}
-
-/* Category cards */
-.report-categories {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px;
-  margin-bottom: 32px;
-}
-
-.report-card {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 16px;
-  box-shadow: var(--shadow);
-}
-
-.report-card-clickable {
-  cursor: pointer;
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-
-.report-card-clickable:hover {
-  border-color: var(--primary);
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.12);
-}
-
-/* Scroll target offset for sticky headers */
-.report-finding-group {
-  scroll-margin-top: 24px;
-}
-
-.report-card-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.report-card-icon {
-  flex-shrink: 0;
-  display: flex;
-}
-
-.report-card-title {
-  flex: 1;
-  min-width: 0;
-}
-
-.report-card-title h3 {
-  font-size: 13px;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.report-card-weight {
-  font-size: 11px;
-  color: var(--text-secondary);
-}
-
-.report-card-score {
-  font-size: 24px;
-  font-weight: 700;
-  flex-shrink: 0;
-}
-
-.progress-bar {
-  height: 4px;
-  background: var(--border);
-  border-radius: 2px;
-  overflow: hidden;
-  margin-bottom: 8px;
-}
-
-.progress-fill {
-  height: 100%;
-  border-radius: 2px;
-  transition: width 0.6s ease;
-}
-
-.report-card-counts {
-  display: flex;
-  gap: 8px;
-  font-size: 11px;
-}
-
-.count-error { color: #dc2626; font-weight: 600; }
-.count-warning { color: #b45309; font-weight: 600; }
-.count-info { color: #2563eb; font-weight: 600; }
-.count-pass { color: #16a34a; font-weight: 600; }
-
-/* Findings */
-.report-findings {
-  margin-bottom: 32px;
-}
-
-.report-findings > h2 {
-  font-size: 18px;
-  font-weight: 700;
-  margin-bottom: 16px;
-}
-
-.report-finding-group {
-  margin-bottom: 24px;
-}
-
-.report-finding-group > h3 {
-  font-size: 15px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-  color: var(--text);
-}
-
-.report-finding-group > h3 svg {
-  flex-shrink: 0;
-}
-
-.report-finding {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 12px 16px;
-  margin-bottom: 8px;
-}
-
-.report-finding.severity-error { border-left: 3px solid #dc2626; }
-.report-finding.severity-warning { border-left: 3px solid #f59e0b; }
-.report-finding.severity-info { border-left: 3px solid #3b82f6; }
-
-.finding-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-
-.finding-title {
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.finding-detail {
-  font-size: 13px;
-  color: var(--text-secondary);
-  margin: 4px 0;
-  line-height: 1.5;
-}
-
-.finding-fix {
-  font-size: 13px;
-  margin-top: 6px;
-  padding: 8px 10px;
-  background: var(--bg-alt);
-  border-radius: 6px;
-  line-height: 1.5;
-}
-
-.finding-preset {
-  font-size: 12px;
-  color: var(--text-secondary);
-  margin-top: 6px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-/* Summary */
-.report-summary {
-  border-top: 1px solid var(--border);
-  padding-top: 24px;
-}
-
-.report-summary > h2 {
-  font-size: 18px;
-  font-weight: 700;
-  margin-bottom: 16px;
-}
-
-.summary-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 16px;
-}
-
-.summary-section {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 16px;
-}
-
-.summary-section h4 {
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-secondary);
-  margin-bottom: 8px;
-}
-
-.color-swatches {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-
-.color-swatch {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  cursor: default;
-}
-
-.summary-list {
-  font-size: 13px;
-  line-height: 1.8;
-  word-break: break-word;
-}
-
-/* Methodology note */
-.report-methodology {
-  border-top: 1px solid var(--border);
-  padding-top: 24px;
-  margin-top: 16px;
-}
-
-.report-methodology h2 {
-  font-size: 18px;
-  font-weight: 700;
-  margin-bottom: 12px;
-}
-
-.report-methodology p {
-  font-size: 13px;
-  color: var(--text-secondary);
-  line-height: 1.6;
-  margin-bottom: 8px;
-}
-
-.report-methodology strong {
-  color: var(--text);
-}
-
-/* --- Print / PDF --- */
-@media print {
-  body, .analyzer-body {
-    background: white !important;
-    color: #0f172a !important;
-  }
-
-  .header, .input-section, .report-controls, .report-actions, .toast,
-  #newAnalysisBtn, #printBtn, .guide-steps,
-  .snippet-section, .console-tip {
-    display: none !important;
-  }
-
-  .report-container {
-    display: block !important;
-    padding: 0 !important;
-    max-width: 100% !important;
-  }
-
-  .report-header { break-after: avoid; }
-  .report-categories { break-inside: avoid; }
-  .report-finding-group { break-inside: avoid; }
-  .summary-grid { break-inside: avoid; }
-
-  .report-card {
-    border: 1px solid #e2e8f0 !important;
-    box-shadow: none !important;
-  }
-
-  .report-finding {
-    border: 1px solid #e2e8f0 !important;
-  }
-
-  .report-finding.severity-error { border-left: 3px solid #dc2626 !important; }
-  .report-finding.severity-warning { border-left: 3px solid #f59e0b !important; }
-  .report-finding.severity-info { border-left: 3px solid #3b82f6 !important; }
-
-  a { color: #2563eb !important; }
-
-  .finding-fix {
-    background: #f8fafc !important;
-    border: 1px solid #e2e8f0;
-  }
-
-  .report-findings { break-before: page; }
-  .report-summary { break-before: page; }
-}
-
-/* --- Responsive --- */
-@media (max-width: 640px) {
-  .input-section { padding: 16px 16px 48px; }
-  .input-hero h1 { font-size: 22px; }
-  .input-hero p { font-size: 14px; }
-
-  /* Tabs: hide subtitle text on mobile, stack if needed */
-  .tab-btn span { display: none; }
-  .input-tabs { gap: 0; }
-  .tab-btn { font-size: 13px; padding: 10px 8px; }
-
-  /* Report */
-  .report-container { padding: 16px 16px 48px; }
-  .report-header { flex-direction: column; text-align: center; gap: 16px; }
-  .report-categories { grid-template-columns: 1fr 1fr; gap: 8px; }
-  .report-card { padding: 12px; }
-  .report-card-score { font-size: 20px; }
-  .summary-grid { grid-template-columns: 1fr; }
-
-  /* Action buttons: full width stacked */
-  .report-controls { padding: 0 16px 12px; }
-  .report-controls-row { flex-direction: column; gap: 6px; }
-  .report-controls-row .btn { justify-content: center; width: 100%; }
-  .persona-selector { width: 100%; flex-wrap: wrap; }
-  .persona-selector select { flex: 1; }
-  .profile-explanation table { font-size: 11px; }
-  .report-actions { flex-direction: column; gap: 8px; padding: 0 16px 12px; }
-  .report-actions .btn { justify-content: center; }
-
-  /* Findings */
-  .report-finding { padding: 10px 12px; }
-  .finding-title { font-size: 12px; }
-
-  /* Hide Editor link on mobile analyzer */
-  .analyzer-body .hide-mobile { display: none !important; }
-}
-</file>
-
 <file path="CONSULT.md">
 # Design Consultation Playbook
 
@@ -19516,6 +18720,834 @@ Use these to calibrate your output quality and verify the flow works.
 }
 </file>
 
+<file path="docs/analyzer.css">
+/* Analyzer — inherits vars from style.css */
+
+.analyzer-body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  /* Override style.css body which sets overflow:hidden + height:100vh for the editor */
+  overflow: auto !important;
+  height: auto !important;
+}
+
+/* Screen reader only */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Focus indicators */
+.analyzer-body .btn:focus-visible,
+.analyzer-body .tab-btn:focus-visible,
+.analyzer-body textarea:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Fix touch targets — minimum 44px height */
+.analyzer-body .btn {
+  min-height: 44px;
+}
+
+.analyzer-body .btn-icon {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+/* Fix contrast on step numbers — use darker blue */
+.guide-step-num {
+  background: #1d4ed8 !important;
+}
+
+/* Fix contrast on primary buttons — use darker blue */
+.analyzer-body .btn-primary {
+  background: #2563eb;
+  border-color: #2563eb;
+}
+.analyzer-body .btn-primary:hover {
+  background: #1d4ed8;
+}
+
+/* Fix tab button min height + contrast */
+.tab-btn {
+  min-height: 44px;
+}
+.tab-btn.active {
+  color: #2563eb;
+  border-bottom-color: #2563eb;
+}
+
+/* Fix logo touch target */
+.analyzer-body .logo {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Snippet code should not affect line-length scoring */
+.snippet-code {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* Exclude tags */
+.exclude-tag {
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  background: var(--bg);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: all 0.15s;
+  min-height: 32px;
+}
+
+.exclude-tag:hover { border-color: var(--text-secondary); }
+.exclude-tag.active { background: var(--text); color: var(--bg); border-color: var(--text); }
+
+/* Persona selector */
+.persona-selector {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.persona-selector select {
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+}
+
+/* URL input */
+#urlInput:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+/* --- Input section --- */
+.input-section {
+  max-width: 800px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 32px 24px 64px;
+}
+
+.input-hero {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.input-hero h1 {
+  font-size: 28px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.input-hero p {
+  font-size: 15px;
+  color: var(--text-secondary);
+  max-width: 520px;
+  margin: 0 auto;
+  line-height: 1.5;
+}
+
+/* Tabs */
+.input-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 20px;
+  gap: 0;
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 10px 16px;
+  border: none;
+  background: none;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font);
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s ease;
+}
+
+.tab-btn:hover { color: var(--text); }
+.tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* Input areas */
+.input-area textarea {
+  width: 100%;
+  min-height: 180px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-family: var(--mono);
+  color: var(--text);
+  background: var(--bg);
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.input-area textarea:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+.input-area textarea::placeholder { color: var(--text-secondary); }
+
+.input-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.input-actions .btn-primary {
+  flex: 1;
+  justify-content: center;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* Snippet section */
+.snippet-section {
+  margin-top: 24px;
+}
+
+.snippet-section h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.snippet-section p {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+.snippet-box {
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.snippet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.snippet-header span {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.snippet-code {
+  padding: 12px 16px;
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--text-secondary);
+  max-height: 200px;
+  overflow-y: auto;
+  white-space: pre;
+  line-height: 1.5;
+}
+
+/* Quick guide */
+.guide-steps {
+  margin-top: 24px;
+  counter-reset: step;
+}
+
+.guide-step {
+  display: flex;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.guide-step:last-child { border-bottom: none; }
+
+.guide-step-num {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: white;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.guide-step code {
+  background: var(--bg-alt);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: var(--mono);
+  border: 1px solid var(--border);
+}
+
+.guide-step strong { font-weight: 600; }
+
+/* Console tips */
+.console-tip {
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  margin-top: 16px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.console-tip code {
+  background: var(--bg);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 12px;
+  border: 1px solid var(--border);
+}
+
+.console-tip strong { font-weight: 600; }
+
+/* --- Report --- */
+.report-container {
+  display: none;
+  max-width: 900px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 32px 24px 64px;
+}
+
+.report-container.visible { display: block; }
+
+/* Report controls bar */
+.report-controls {
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 900px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 24px 16px;
+}
+
+.report-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.report-controls-row:last-child {
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+/* Profile explanation panel */
+.profile-explanation {
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  position: relative;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.profile-explanation h4 {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.profile-explanation p {
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+
+.profile-explanation table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.profile-explanation th,
+.profile-explanation td {
+  text-align: left;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.profile-explanation th {
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.profile-explanation-close {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  background: none;
+  border: none;
+  font-size: 18px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px;
+}
+
+/* Legacy compat */
+.report-actions {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  max-width: 900px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 24px 16px;
+}
+
+/* Report header */
+.report-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 24px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.report-header-info h1 {
+  font-size: 24px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.report-url {
+  font-size: 14px;
+  color: var(--primary);
+  word-break: break-all;
+  margin-bottom: 2px;
+}
+
+.report-url a {
+  color: var(--primary);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.report-url a:hover {
+  color: var(--primary-hover);
+}
+
+.report-timestamp {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.report-gauge {
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.report-grade-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+/* Category cards */
+.report-categories {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 32px;
+}
+
+.report-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: var(--shadow);
+}
+
+.report-card-clickable {
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.report-card-clickable:hover {
+  border-color: var(--primary);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.12);
+}
+
+/* Scroll target offset for sticky headers */
+.report-finding-group {
+  scroll-margin-top: 24px;
+}
+
+.report-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.report-card-icon {
+  flex-shrink: 0;
+  display: flex;
+}
+
+.report-card-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.report-card-title h3 {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.report-card-weight {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.report-card-score {
+  font-size: 24px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.progress-bar {
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.6s ease;
+}
+
+.report-card-counts {
+  display: flex;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.count-error { color: #dc2626; font-weight: 600; }
+.count-warning { color: #b45309; font-weight: 600; }
+.count-info { color: #2563eb; font-weight: 600; }
+.count-pass { color: #16a34a; font-weight: 600; }
+
+/* Findings */
+.report-findings {
+  margin-bottom: 32px;
+}
+
+.report-findings > h2 {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+.report-finding-group {
+  margin-bottom: 24px;
+}
+
+.report-finding-group > h3 {
+  font-size: 15px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  color: var(--text);
+}
+
+.report-finding-group > h3 svg {
+  flex-shrink: 0;
+}
+
+.report-finding {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  margin-bottom: 8px;
+}
+
+.report-finding.severity-error { border-left: 3px solid #dc2626; }
+.report-finding.severity-warning { border-left: 3px solid #f59e0b; }
+.report-finding.severity-info { border-left: 3px solid #3b82f6; }
+
+.finding-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.finding-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.finding-detail {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 4px 0;
+  line-height: 1.5;
+}
+
+.finding-fix {
+  font-size: 13px;
+  margin-top: 6px;
+  padding: 8px 10px;
+  background: var(--bg-alt);
+  border-radius: 6px;
+  line-height: 1.5;
+}
+
+.finding-preset {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.finding-source {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+.finding-source a {
+  color: var(--text-secondary);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+}
+
+.finding-source a:hover { color: var(--primary); }
+
+/* Summary */
+.report-summary {
+  border-top: 1px solid var(--border);
+  padding-top: 24px;
+}
+
+.report-summary > h2 {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.summary-section {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+
+.summary-section h4 {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.color-swatches {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.color-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  cursor: default;
+}
+
+.summary-list {
+  font-size: 13px;
+  line-height: 1.8;
+  word-break: break-word;
+}
+
+/* Methodology note */
+.report-methodology {
+  border-top: 1px solid var(--border);
+  padding-top: 24px;
+  margin-top: 16px;
+}
+
+.report-methodology h2 {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.report-methodology p {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 8px;
+}
+
+.report-methodology strong {
+  color: var(--text);
+}
+
+/* --- Print / PDF --- */
+@media print {
+  body, .analyzer-body {
+    background: white !important;
+    color: #0f172a !important;
+  }
+
+  .header, .input-section, .report-controls, .report-actions, .toast,
+  #newAnalysisBtn, #printBtn, .guide-steps,
+  .snippet-section, .console-tip {
+    display: none !important;
+  }
+
+  .report-container {
+    display: block !important;
+    padding: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .report-header { break-after: avoid; }
+  .report-categories { break-inside: avoid; }
+  .report-finding-group { break-inside: avoid; }
+  .summary-grid { break-inside: avoid; }
+
+  .report-card {
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: none !important;
+  }
+
+  .report-finding {
+    border: 1px solid #e2e8f0 !important;
+  }
+
+  .report-finding.severity-error { border-left: 3px solid #dc2626 !important; }
+  .report-finding.severity-warning { border-left: 3px solid #f59e0b !important; }
+  .report-finding.severity-info { border-left: 3px solid #3b82f6 !important; }
+
+  a { color: #2563eb !important; }
+
+  .finding-fix {
+    background: #f8fafc !important;
+    border: 1px solid #e2e8f0;
+  }
+
+  .report-findings { break-before: page; }
+  .report-summary { break-before: page; }
+}
+
+/* --- Responsive --- */
+@media (max-width: 640px) {
+  .input-section { padding: 16px 16px 48px; }
+  .input-hero h1 { font-size: 22px; }
+  .input-hero p { font-size: 14px; }
+
+  /* Tabs: hide subtitle text on mobile, stack if needed */
+  .tab-btn span { display: none; }
+  .input-tabs { gap: 0; }
+  .tab-btn { font-size: 13px; padding: 10px 8px; }
+
+  /* Report */
+  .report-container { padding: 16px 16px 48px; }
+  .report-header { flex-direction: column; text-align: center; gap: 16px; }
+  .report-categories { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .report-card { padding: 12px; }
+  .report-card-score { font-size: 20px; }
+  .summary-grid { grid-template-columns: 1fr; }
+
+  /* Action buttons: full width stacked */
+  .report-controls { padding: 0 16px 12px; }
+  .report-controls-row { flex-direction: column; gap: 6px; }
+  .report-controls-row .btn { justify-content: center; width: 100%; }
+  .persona-selector { width: 100%; flex-wrap: wrap; }
+  .persona-selector select { flex: 1; }
+  .profile-explanation table { font-size: 11px; }
+  .report-actions { flex-direction: column; gap: 8px; padding: 0 16px 12px; }
+  .report-actions .btn { justify-content: center; }
+
+  /* Findings */
+  .report-finding { padding: 10px 12px; }
+  .finding-title { font-size: 12px; }
+
+  /* Hide Editor link on mobile analyzer */
+  .analyzer-body .hide-mobile { display: none !important; }
+}
+</file>
+
 <file path="docs/analyzer.html">
 <!DOCTYPE html>
 <html lang="en">
@@ -19722,16 +19754,30 @@ Use these to calibrate your output quality and verify the flow works.
     <!-- Profile explanation (hidden by default) -->
     <div class="profile-explanation" id="profileExplanation" style="display:none">
       <button class="profile-explanation-close" onclick="document.getElementById('profileExplanation').style.display='none'" aria-label="Close">&times;</button>
-      <h4>Audience Profiles</h4>
-      <p>Each profile adjusts the scoring thresholds. Switching re-scores instantly — no re-scanning needed.</p>
+      <h4>Audience Profiles — Evidence-Based Thresholds</h4>
+      <p>Each profile adjusts scoring thresholds based on published accessibility research. Switching re-scores instantly.</p>
       <table>
         <tr><th></th><th>Contrast</th><th>Font min</th><th>Touch target</th><th>Key change</th></tr>
         <tr><td><strong>General</strong></td><td>4.5:1</td><td>16px</td><td>24px / 44px</td><td>WCAG AA baseline</td></tr>
-        <tr><td><strong>WCAG AAA</strong></td><td>7:1</td><td>16px</td><td>24px / 44px</td><td>Stricter contrast only</td></tr>
-        <tr><td><strong>Elderly (65+)</strong></td><td>7:1</td><td>18px</td><td>48px always</td><td>Bigger everything, no thin fonts</td></tr>
+        <tr><td><strong>WCAG AAA</strong></td><td>7:1</td><td>16px</td><td>24px / 44px</td><td>Enhanced contrast</td></tr>
+        <tr><td><strong>Elderly (65+)</strong></td><td>7:1</td><td>18px</td><td>48px always</td><td>Larger text/targets, no thin fonts</td></tr>
         <tr><td><strong>Low Vision</strong></td><td>7:1</td><td>18px</td><td>44px always</td><td>High contrast + larger text</td></tr>
         <tr><td><strong>Motor Impairment</strong></td><td>4.5:1</td><td>16px</td><td>48px always</td><td>Larger targets, 12px spacing</td></tr>
       </table>
+      <details style="margin-top:10px">
+        <summary style="font-size:12px;color:var(--text-secondary);cursor:pointer">Sources</summary>
+        <ul style="font-size:11px;color:var(--text-secondary);margin-top:6px;padding-left:18px;line-height:1.6">
+          <li><strong>Contrast 4.5:1 / 7:1</strong> — <a href="https://www.w3.org/TR/WCAG22/#contrast-minimum" target="_blank" rel="noopener">WCAG 2.2 §1.4.3</a> (AA) and <a href="https://www.w3.org/TR/WCAG22/#contrast-enhanced" target="_blank" rel="noopener">§1.4.6</a> (AAA)</li>
+          <li><strong>Touch target 44px</strong> — <a href="https://www.w3.org/TR/WCAG22/#target-size-minimum" target="_blank" rel="noopener">WCAG 2.2 §2.5.8</a>; 48dp from <a href="https://m3.material.io/foundations/layout/applying-layout" target="_blank" rel="noopener">Material Design 3</a></li>
+          <li><strong>Click target 24px</strong> — <a href="https://www.w3.org/TR/WCAG22/#target-size-minimum" target="_blank" rel="noopener">WCAG 2.2 §2.5.8</a> minimum for non-inline targets</li>
+          <li><strong>16px body text</strong> — Browser default; <a href="https://www.nngroup.com/articles/let-users-control-font-size/" target="_blank" rel="noopener">NNGroup research</a> on minimum legibility</li>
+          <li><strong>18px for elderly</strong> — <a href="https://www.w3.org/WAI/older-users/" target="_blank" rel="noopener">W3C WAI Older Users</a> and <a href="https://www.w3.org/TR/WCAG22/#dfn-large-scale" target="_blank" rel="noopener">WCAG large text definition</a> (18pt = 24px, 14pt bold = 18.5px)</li>
+          <li><strong>48px targets for motor/elderly</strong> — <a href="https://m3.material.io/foundations/layout/applying-layout" target="_blank" rel="noopener">Material Design 3</a> (48dp); <a href="https://developer.apple.com/design/human-interface-guidelines/accessibility" target="_blank" rel="noopener">Apple HIG</a> (44pt)</li>
+          <li><strong>12px target spacing</strong> — <a href="https://www.w3.org/TR/WCAG22/#target-size-minimum" target="_blank" rel="noopener">WCAG 2.2 §2.5.8</a> spacing exception; Motor impairment research via <a href="https://www.w3.org/WAI/GL/task-forces/coga/" target="_blank" rel="noopener">COGA Task Force</a></li>
+          <li><strong>Line height 1.4–1.6</strong> — <a href="https://www.w3.org/TR/WCAG22/#text-spacing" target="_blank" rel="noopener">WCAG 2.2 §1.4.12</a> (1.5× minimum); <a href="https://practicaltypography.com/line-spacing.html" target="_blank" rel="noopener">Butterick's Practical Typography</a></li>
+          <li><strong>No thin fonts for elderly</strong> — <a href="https://www.w3.org/WAI/older-users/developing/" target="_blank" rel="noopener">W3C WAI Developing for Older Users</a>: avoid font-weight below 400</li>
+        </ul>
+      </details>
     </div>
     <!-- Bottom row: export actions -->
     <div class="report-controls-row">

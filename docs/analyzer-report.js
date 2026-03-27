@@ -125,6 +125,19 @@ window.MilgReport = (function() {
           html += '</div>';
         }
 
+        if (f.source) {
+          var srcParts = f.source.split(' — ');
+          var srcLabel = srcParts[0];
+          var srcUrl = srcParts[1] || '';
+          html += '<div class="finding-source">';
+          if (srcUrl) {
+            html += '<a href="' + escapeHtml(srcUrl) + '" target="_blank" rel="noopener">' + escapeHtml(srcLabel) + '</a>';
+          } else {
+            html += escapeHtml(srcLabel);
+          }
+          html += '</div>';
+        }
+
         html += '</div>';
       });
 
@@ -242,6 +255,10 @@ window.MilgReport = (function() {
         if (f.detail) lines.push('  - ' + f.detail);
         lines.push('  - **Fix:** ' + f.fix);
         if (f.presetRef) lines.push('  - **Example:** ' + f.presetRef);
+        if (f.source) {
+          var sp = f.source.split(' — ');
+          lines.push('  - **Source:** [' + sp[0] + '](' + (sp[1] || '') + ')');
+        }
         lines.push('');
       });
     });

@@ -30,7 +30,8 @@ function scoreContrast(data) {
       fix: p.isLarge
         ? 'Large text needs ' + profile.contrastLarge + ':1 minimum. Darken the text or lighten the background.'
         : 'Normal text needs ' + profile.contrast + ':1 minimum. Use a darker text color or lighter background.',
-      presetRef: 'All presets use text-slate-600+ on white backgrounds (8:1+ ratio)'
+      presetRef: 'All presets use text-slate-600+ on white backgrounds (8:1+ ratio)',
+      source: p.isLarge ? 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' : 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
     });
   });
 

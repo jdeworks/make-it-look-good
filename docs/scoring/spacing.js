@@ -40,7 +40,7 @@ function scoreSpacing(data) {
       title: 'Only ' + Math.round(gridRatio * 100) + '% of spacing is on a 4px grid',
       detail: 'Inconsistent spacing makes layouts feel unpolished',
       fix: 'Align spacing to 4px increments: 4, 8, 12, 16, 24, 32, 48, 64px',
-      presetRef: 'All presets use Tailwind spacing scale (4px base unit)'
+      presetRef: 'All presets use Tailwind spacing scale (4px base unit)', source: 'Material Design spacing — https://m3.material.io/foundations/layout/applying-layout'
     });
   }
 
