@@ -39,8 +39,8 @@ Low priority — the analyzer's value is evidence-based scoring, not AI opinions
 - [x] Detect prefers-reduced-motion support — implemented
 - [x] Detect scroll-reveal library patterns (AOS, wow.js) — implemented
 - [ ] Scroll page before extraction to trigger intersection observers
-- [ ] Mark findings with "element may be in pre-animation state"
-- [ ] Detect `transform: translateY()` off-screen elements
+- [x] Mark findings with "element may be in pre-animation state"
+- [x] Detect `transform: translateY()` off-screen elements
 
 ---
 
@@ -58,7 +58,7 @@ Low priority — the analyzer's value is evidence-based scoring, not AI opinions
 ### typography.js — Typography (15%)
 **Current:** Body font size, line height, line length, heading scale, font weight count, family count.
 **To improve:**
-- [ ] **Actual character-per-line measurement:** Current uses `element.width / (fontSize * 0.5)` which is a rough estimate. Better: create a temporary `<span>` with representative text, measure its width, divide element width by character width.
+- [x] **Actual character-per-line measurement:** Current uses `element.width / (fontSize * 0.5)` which is a rough estimate. Better: create a temporary `<span>` with representative text, measure its width, divide element width by character width.
 - [ ] **Font loading performance:** Check for `font-display: optional` vs `swap` vs `block`. Measure if custom fonts are subset or full. Source: https://web.dev/articles/font-best-practices
 - [ ] **Vertical rhythm detection:** Check if line heights create a consistent baseline grid. All spacings should be multiples of the base line height.
 - [x] **Letter spacing audit:** Detect `letter-spacing` values that reduce readability (too tight < -0.02em or too loose > 0.1em for body text).
@@ -98,8 +98,8 @@ Low priority — the analyzer's value is evidence-based scoring, not AI opinions
 - [x] **Viewport meta tag audit:** Check for `width=device-width` and absence of `user-scalable=no` (which blocks pinch-to-zoom). Source: WCAG §1.4.4.
 - [x] **Horizontal overflow detection:** Check `document.documentElement.scrollWidth > viewport.width`. Common responsive failure.
 - [x] **Image responsive sizing:** Check if images use `max-width: 100%` or `width: 100%; height: auto`. Images that overflow containers on small screens.
-- [ ] **Fixed-width element detection:** Find elements with hardcoded pixel widths that don't flex (e.g., `width: 800px` without max-width).
-- [ ] **Text truncation audit:** Detect `text-overflow: ellipsis` on elements — content may be hidden on small screens.
+- [x] **Fixed-width element detection:** Find elements with hardcoded pixel widths that don't flex (e.g., `width: 800px` without max-width).
+- [x] **Text truncation audit:** Detect `text-overflow: ellipsis` on elements — content may be hidden on small screens.
 
 ### consistency.js — Visual Consistency (5%)
 **Current:** Color count, font size count, page-context scaling.

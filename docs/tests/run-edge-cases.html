@@ -1,0 +1,179 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Edge Case Test Runner</title>
+<style>body{font-family:system-ui;padding:20px;font-size:13px;max-width:1400px;margin:0 auto}table{border-collapse:collapse;width:100%;margin:12px 0}td,th{border:1px solid #ddd;padding:5px 7px;text-align:left;font-size:11px}th{background:#f5f5f5;font-weight:600}.pass{color:#16a34a}.warn{color:#b45309}.fail{color:#dc2626}h1{font-size:20px}h2{font-size:16px;margin-top:20px}.status{color:#666;margin:8px 0}</style>
+</head><body>
+<h1>Edge Case Test Runner</h1>
+<p class="status" id="status">Loading modules...</p>
+<div id="output"></div>
+
+<script src="../scoring/registry.js"></script>
+<script src="../scoring/contrast.js"></script>
+<script src="../scoring/typography.js"></script>
+<script src="../scoring/spacing.js"></script>
+<script src="../scoring/touch.js"></script>
+<script src="../scoring/accessibility.js"></script>
+<script src="../scoring/responsive.js"></script>
+<script src="../scoring/consistency.js"></script>
+<script src="../scoring/cognitive.js"></script>
+<script src="../scoring/layout.js"></script>
+<script src="../scoring/performance.js"></script>
+<script src="../scoring/readability.js"></script>
+<script src="../scoring/filters.js"></script>
+<script src="../scoring/balance.js"></script>
+<script src="../analyzer-snippet.js"></script>
+<script>
+// Load the snippet as a string for injection
+var snippetSrc = '';
+fetch('../analyzer-snippet.js').then(function(r){return r.text()}).then(function(t){snippetSrc=t;runTests()});
+
+var TESTS = [
+  { file: 'edge-contrast.html', name: 'Contrast Edge Cases', expect: {
+    contrast: { maxScore: 70, mustFindTexts: ['gradient', 'Light gray'] },
+    note: 'Should detect gradient bg, flag light gray, pass dark text'
+  }},
+  { file: 'edge-a11y.html', name: 'Accessibility Edge Cases', expect: {
+    accessibility: { maxScore: 40 },
+    note: 'Missing lang, no skip link, bad links, ARIA issues, missing labels, color-only'
+  }},
+  { file: 'edge-layout.html', name: 'Layout & Spacing Edge Cases', expect: {
+    spacing: { maxScore: 80 },
+    note: 'Off-grid spacing, overflow, negative margins, fixed widths'
+  }},
+  { file: 'edge-performance.html', name: 'Performance & Motion Edge Cases', expect: {
+    note: 'Render-blocking, legacy images, scroll-reveal, no prefers-reduced-motion'
+  }},
+  { file: 'edge-readability.html', name: 'Readability Edge Cases', expect: {
+    readability: { maxScore: 60 },
+    note: 'Long paragraphs, complex vocabulary, no lists, small text'
+  }}
+];
+
+var status = document.getElementById('status');
+var output = document.getElementById('output');
+
+function analyzeFile(file) {
+  return new Promise(function(resolve) {
+    var iframe = document.createElement('iframe');
+    iframe.style.cssText = 'width:1280px;height:900px;border:none;position:absolute;top:-9999px;left:-9999px;';
+    document.body.appendChild(iframe);
+
+    var msgId = 'edge-' + file.replace(/\W/g, '');
+    function onMsg(e) {
+      if (!e.data || e.data.type !== msgId) return;
+      window.removeEventListener('message', onMsg);
+      document.body.removeChild(iframe);
+      resolve(e.data.data);
+    }
+    window.addEventListener('message', onMsg);
+
+    fetch(file).then(function(r){return r.text()}).then(function(html) {
+      // Inject extraction snippet that posts results back
+      var modified = snippetSrc.replace(
+        /window\.__milgData = data;/,
+        'parent.postMessage({type:"' + msgId + '",data:data},"*");'
+      ).replace(
+        /navigator\.clipboard[\s\S]*?window\.__milgData = data;/,
+        'parent.postMessage({type:"' + msgId + '",data:data},"*");'
+      );
+      // Actually just use a simple extraction inline
+      var script = '<script>setTimeout(function(){' +
+        'var data={meta:{url:"test:' + file + '",viewportWidth:1280,viewportHeight:900,timestamp:new Date().toISOString(),version:1},' +
+        'colors:{textColors:[],bgColors:[],contrastPairs:[]},typography:{bodyFontSize:getComputedStyle(document.body).fontSize,bodyLineHeight:getComputedStyle(document.body).lineHeight,bodyFontFamily:"",fontFamilies:[],fontSizes:[],fontWeights:[],headings:[],lineHeights:[],maxLineLength:{chars:0,element:""},paragraphSpacing:[],letterSpacingIssues:0},spacing:{paddings:[],margins:[],gaps:[],maxContentWidth:"",bodyPaddingHorizontal:"",negativeMargins:0,containerPaddings:[]},layout:{sectionGaps:[],alignmentEdges:[],visualHierarchy:{},borderRadii:[],overflowElements:0},interaction:{touchTargets:[],transitions:[]},accessibility:{semanticElements:{header:document.querySelectorAll("header").length,nav:document.querySelectorAll("nav").length,main:document.querySelectorAll("main").length,footer:document.querySelectorAll("footer").length},headingHierarchy:[],imagesWithoutAlt:0,formLabels:{total:0,withLabel:0,withoutLabel:0},focusIndicators:[],langAttribute:document.documentElement.getAttribute("lang")||"",hasSkipLink:!!document.querySelector("a[href^=\\"#main\\"],a[href^=\\"#content\\"]"),badLinkTexts:[],missingAutocomplete:0,ariaIssues:[],colorOnlyIndicators:0},structure:{totalElements:document.body.querySelectorAll("*").length,darkModeClasses:false,responsiveClasses:false,tailwindDetected:false,cssFramework:"unknown",viewportMeta:document.querySelector("meta[name=viewport]")?document.querySelector("meta[name=viewport]").getAttribute("content"):"",blocksZoom:false,hasHorizontalOverflow:document.documentElement.scrollWidth>document.documentElement.clientWidth,fixedWidthElements:0,truncatedElements:0},context:{pageType:"unknown"},performance:{imageSizing:[],fontLoading:[],renderBlocking:{cssInHead:document.querySelectorAll("head link[rel=stylesheet]").length,jsInHead:document.querySelectorAll("head script:not([async]):not([defer])").length},domSize:document.body.querySelectorAll("*").length,domDepth:0,thirdPartyScripts:0,imageFormats:{modern:0,legacy:0},cls:null,nonResponsiveImages:0},readability:{textBlocks:[],totalWords:0,totalChars:0,paragraphCount:0,hasLists:document.querySelectorAll("ul,ol").length>0},animation:{hiddenElements:0,keyframeCount:0,hasReducedMotion:false,scrollRevealPatterns:[]}};' +
+        // Contrast pairs
+        'function parseC(s){if(!s||s==="transparent"||s==="rgba(0, 0, 0, 0)")return null;var m=s.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)/);if(m)return{r:+m[1],g:+m[2],b:+m[3],a:1};return null}' +
+        'function blend(c){if(!c)return{r:255,g:255,b:255};return c}' +
+        'function getBg(el){var n=el;while(n&&n!==document.documentElement){var c=parseC(getComputedStyle(n).backgroundColor);if(c)return c;n=n.parentElement}return{r:255,g:255,b:255}}' +
+        'function lum(c){var R=c.r/255,G=c.g/255,B=c.b/255;R=R<=0.03928?R/12.92:Math.pow((R+0.055)/1.055,2.4);G=G<=0.03928?G/12.92:Math.pow((G+0.055)/1.055,2.4);B=B<=0.03928?B/12.92:Math.pow((B+0.055)/1.055,2.4);return 0.2126*R+0.7152*G+0.0722*B}' +
+        'function cr(a,b){return(Math.max(lum(a),lum(b))+0.05)/(Math.min(lum(a),lum(b))+0.05)}' +
+        'function vis(el){var s=getComputedStyle(el);if(s.display==="none"||s.visibility==="hidden"||s.opacity==="0")return false;var r=el.getBoundingClientRect();return r.width>0&&r.height>0}' +
+        'var w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,null,false);var nd,seen=new Set();' +
+        'while(nd=w.nextNode()){if(!nd.textContent.trim())continue;var el=nd.parentElement;if(!el||!vis(el)||seen.has(el))continue;seen.add(el);var st=getComputedStyle(el);var fg=parseC(st.color);if(!fg)continue;var bg=getBg(el);var ratio=cr(fg,bg);var fs=parseFloat(st.fontSize);var fw=parseInt(st.fontWeight)||400;var isL=fs>=24||(fs>=18.66&&fw>=700);var th=isL?3:4.5;if(ratio<7.5){data.colors.contrastPairs.push({fg:"rgb("+fg.r+","+fg.g+","+fg.b+")",bg:"rgb("+bg.r+","+bg.g+","+bg.b+")",ratio:Math.round(ratio*100)/100,needed:th,passes:ratio>=th,fontSize:Math.round(fs),fontWeight:fw,isLarge:isL,text:nd.textContent.trim().substring(0,30),selector:el.tagName.toLowerCase()})}}' +
+        // Headings
+        'document.querySelectorAll("h1,h2,h3,h4,h5,h6").forEach(function(h){data.typography.headings.push({tag:h.tagName.toLowerCase(),fontSize:getComputedStyle(h).fontSize,fontWeight:getComputedStyle(h).fontWeight,lineHeight:getComputedStyle(h).lineHeight,fontFamily:"",text:h.textContent.trim().substring(0,30)});data.accessibility.headingHierarchy.push(h.tagName.toLowerCase())});' +
+        // Images
+        'var noAlt=0;document.querySelectorAll("img").forEach(function(i){if(!i.hasAttribute("alt"))noAlt++});data.accessibility.imagesWithoutAlt=noAlt;' +
+        // Bad links
+        'document.querySelectorAll("a").forEach(function(a){if(!vis(a))return;var t=(a.textContent||"").trim().toLowerCase();if(["click here","here","read more","learn more","more","link"].indexOf(t)!==-1)data.accessibility.badLinkTexts.push({text:t,selector:""})});' +
+        // ARIA
+        'document.querySelectorAll("[role=button]:not(button):not(a)").forEach(function(el){if(!el.hasAttribute("tabindex"))data.accessibility.ariaIssues.push({type:"button-no-tabindex"})});' +
+        'document.querySelectorAll("[aria-hidden=true] a,[aria-hidden=true] button").forEach(function(el){if(vis(el))data.accessibility.ariaIssues.push({type:"hidden-focusable"})});' +
+        // Forms
+        'document.querySelectorAll("input:not([type=hidden]):not([type=submit])").forEach(function(inp){data.accessibility.formLabels.total++;if((inp.id&&document.querySelector("label[for="+inp.id+"]"))||inp.closest("label")||inp.getAttribute("aria-label"))data.accessibility.formLabels.withLabel++;else data.accessibility.formLabels.withoutLabel++});' +
+        // Color-only
+        'document.querySelectorAll("[class*=error],[class*=success],[class*=warning]").forEach(function(el){if(!vis(el))return;var hasIcon=el.querySelector("svg,img");var t=(el.textContent||"").trim();if(!hasIcon&&!/^(error|warning|success)\\s*[:!]/i.test(t)&&t.length>0&&t.length<200)data.accessibility.colorOnlyIndicators++});' +
+        // Autocomplete
+        'document.querySelectorAll("input[type=email],input[type=tel]").forEach(function(f){if(!f.getAttribute("autocomplete"))data.accessibility.missingAutocomplete++});' +
+        // Touch targets
+        'document.querySelectorAll("a,button,input").forEach(function(el){if(!vis(el))return;var r=el.getBoundingClientRect();if(Math.round(r.width)<44||Math.round(r.height)<44)data.interaction.touchTargets.push({element:el.tagName.toLowerCase(),width:Math.round(r.width),height:Math.round(r.height),text:(el.textContent||"").trim().substring(0,30),selector:"",passes:false})});' +
+        // Readability
+        'document.querySelectorAll("p").forEach(function(p){if(!vis(p))return;var t=(p.textContent||"").trim();if(t.length>20){data.readability.textBlocks.push({text:t,wordCount:t.split(/\\s+/).length,charCount:t.length});data.readability.totalWords+=t.split(/\\s+/).length;data.readability.totalChars+=t.length;data.readability.paragraphCount++}});' +
+        // Animations
+        'var allEls=document.body.querySelectorAll("*");for(var i=0;i<allEls.length;i++){var as=getComputedStyle(allEls[i]);if(as.opacity==="0"&&(as.transitionProperty!=="none"||as.animationName!=="none"))data.animation.hiddenElements++}' +
+        'try{Array.from(document.styleSheets).forEach(function(ss){try{Array.from(ss.cssRules).forEach(function(r){if(r instanceof CSSKeyframesRule)data.animation.keyframeCount++;if(r instanceof CSSMediaRule&&/prefers-reduced-motion/.test(r.conditionText||""))data.animation.hasReducedMotion=true})}catch(e){}})}catch(e){}' +
+        'var revealSels=["[data-aos]",".wow",".scroll-reveal"];revealSels.forEach(function(sel){try{var c=document.querySelectorAll(sel).length;if(c>0)data.animation.scrollRevealPatterns.push({selector:sel,count:c})}catch(e){}});' +
+        // Negative margins
+        'for(var ni=0;ni<allEls.length&&ni<500;ni++){var ns=getComputedStyle(allEls[ni]);if(parseFloat(ns.marginTop)<0||parseFloat(ns.marginLeft)<0||parseFloat(ns.marginBottom)<0||parseFloat(ns.marginRight)<0)data.spacing.negativeMargins++}' +
+        'parent.postMessage({type:"' + msgId + '",data:data},"*");' +
+        '},2000);</' + 'script>';
+
+      var isFullDoc = /<html/i.test(html);
+      if (isFullDoc && /<\/body>/i.test(html)) {
+        iframe.srcdoc = html.replace(/<\/body>/i, script + '</body>');
+      } else {
+        iframe.srcdoc = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"></head><body>' + html + script + '</body></html>';
+      }
+    });
+
+    setTimeout(function() { window.removeEventListener('message', onMsg); if (iframe.parentNode) document.body.removeChild(iframe); resolve(null); }, 8000);
+  });
+}
+
+function runTests() {
+  (async function() {
+    var allHtml = '';
+
+    for (var i = 0; i < TESTS.length; i++) {
+      var test = TESTS[i];
+      status.textContent = 'Testing: ' + test.name + ' (' + (i+1) + '/' + TESTS.length + ')';
+      var data = await analyzeFile(test.file);
+
+      allHtml += '<h2>' + test.name + '</h2>';
+      if (!data) { allHtml += '<p class="fail">TIMEOUT — extraction failed</p>'; continue; }
+
+      var report = MilgScoring.runScoring(data);
+      allHtml += '<p>Score: <strong class="' + (report.overall >= 80 ? 'pass' : report.overall >= 50 ? 'warn' : 'fail') + '">' + report.overall + '/100 (' + report.grade + ')</strong> — ' + (test.expect.note || '') + '</p>';
+
+      // Show all findings
+      allHtml += '<table><tr><th>Module</th><th>Score</th><th>Findings</th></tr>';
+      report.categories.forEach(function(c) {
+        if (c.findings.length === 0 && c.score === 100) return; // skip perfect modules
+        var cls = c.score >= 80 ? 'pass' : c.score >= 50 ? 'warn' : 'fail';
+        var details = c.findings.map(function(f) {
+          var icon = f.severity === 'error' ? '❌' : f.severity === 'warning' ? '⚠️' : 'ℹ️';
+          return icon + ' ' + f.title;
+        }).join('<br>');
+        allHtml += '<tr><td><strong>' + c.label + '</strong></td><td class="' + cls + '">' + c.score + '</td><td style="font-size:10px">' + (details || 'All passed') + '</td></tr>';
+      });
+      allHtml += '</table>';
+
+      // Validate expectations
+      if (test.expect.contrast && test.expect.contrast.maxScore) {
+        var contrastCat = report.categories.find(function(c) { return c.icon === 'contrast'; });
+        if (contrastCat && contrastCat.score > test.expect.contrast.maxScore) {
+          allHtml += '<p class="fail">EXPECTATION FAILED: Contrast score ' + contrastCat.score + ' > expected max ' + test.expect.contrast.maxScore + '</p>';
+        }
+      }
+      if (test.expect.accessibility && test.expect.accessibility.maxScore) {
+        var a11yCat = report.categories.find(function(c) { return c.icon === 'a11y'; });
+        if (a11yCat && a11yCat.score > test.expect.accessibility.maxScore) {
+          allHtml += '<p class="fail">EXPECTATION FAILED: A11y score ' + a11yCat.score + ' > expected max ' + test.expect.accessibility.maxScore + '</p>';
+        }
+      }
+    }
+
+    status.textContent = 'Done — ' + TESTS.length + ' edge case suites tested';
+    output.innerHTML = allHtml;
+  })();
+}
+</script></body></html>

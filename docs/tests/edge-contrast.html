@@ -1,0 +1,56 @@
+<!-- Edge Case: Contrast Detection -->
+<!-- Tests: gradient bg, bg-image, oklch colors, CSS filters, semi-transparent overlays, 1:1 uncertain -->
+<style>
+  body { font-family: system-ui; margin: 0; padding: 24px; }
+  .section { margin-bottom: 32px; padding: 16px; border: 1px solid #e5e7eb; border-radius: 8px; }
+  h2 { font-size: 18px; margin-bottom: 12px; }
+</style>
+
+<div class="section">
+  <h2>1. Gradient background (should detect, not 1:1)</h2>
+  <div style="background: linear-gradient(135deg, #1e40af, #7c3aed); color: white; padding: 24px; border-radius: 8px;">
+    <p style="font-size: 16px;">White text on blue-to-purple gradient — should compute real contrast</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>2. Solid color — clear pass</h2>
+  <p style="color: #1e293b; background: #ffffff; padding: 12px;">Dark text on white — 15:1 ratio, clear pass</p>
+</div>
+
+<div class="section">
+  <h2>3. Solid color — clear fail</h2>
+  <p style="color: #d1d5db; background: #f9fafb; padding: 12px;">Light gray on near-white — ~1.4:1, should fail</p>
+</div>
+
+<div class="section">
+  <h2>4. Near-miss (4.3:1)</h2>
+  <p style="color: #6b7280; background: #ffffff; padding: 12px;">Medium gray on white — ~4.6:1, near miss for AAA</p>
+</div>
+
+<div class="section">
+  <h2>5. CSS filter: brightness</h2>
+  <div style="filter: brightness(0.7); background: white; padding: 16px;">
+    <p style="color: #9ca3af;">Gray text inside brightness(0.7) filter — adjusted contrast should differ from raw</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>6. Semi-transparent overlay</h2>
+  <div style="position: relative; background: #1e40af; padding: 24px; border-radius: 8px;">
+    <div style="position: absolute; inset: 0; background: rgba(255,255,255,0.5); border-radius: 8px;"></div>
+    <p style="position: relative; color: #1e293b; z-index: 1;">Text on blue with 50% white overlay — effective bg is light blue</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>7. Large text (lower threshold)</h2>
+  <p style="font-size: 24px; font-weight: 700; color: #9ca3af; background: white; padding: 12px;">Large bold text — only needs 3:1</p>
+</div>
+
+<div class="section">
+  <h2>8. oklch color (Tailwind v4)</h2>
+  <div style="background: oklch(0.208 0.042 265.755); color: oklch(0.985 0.002 247.839); padding: 16px; border-radius: 8px;">
+    <p>Light text on dark oklch background — should parse via canvas</p>
+  </div>
+</div>

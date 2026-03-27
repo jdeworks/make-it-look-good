@@ -1,0 +1,73 @@
+<!-- Edge Case: Performance & Motion -->
+<!-- Tests: font loading, render blocking, DOM size, third-party scripts, images, CLS, animations -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Render-blocking CSS (no media attribute) -->
+<link rel="stylesheet" href="data:text/css,body{margin:0}">
+<link rel="stylesheet" href="data:text/css,.x{color:red}">
+<link rel="stylesheet" href="data:text/css,.y{color:blue}">
+<link rel="stylesheet" href="data:text/css,.z{color:green}">
+<!-- Render-blocking JS (no async/defer) -->
+<script>var x=1;</script>
+<script>var y=2;</script>
+<style>
+body{font-family:system-ui;padding:24px}
+.section{margin-bottom:24px;padding:16px;border:1px solid #e5e7eb;border-radius:8px}
+h2{font-size:16px;margin-bottom:8px}
+/* Animation keyframes */
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideUp { from { transform: translateY(20px); } to { transform: translateY(0); } }
+@keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+/* No prefers-reduced-motion support — should flag */
+.animated { animation: fadeIn 0.3s ease; }
+.scroll-reveal { opacity: 0; transition: opacity 0.5s, transform 0.5s; transform: translateY(30px); }
+</style>
+</head><body>
+<main>
+
+<section class="section">
+  <h1>Edge Case: Performance & Motion</h1>
+</section>
+
+<section class="section">
+  <h2>1. Render-blocking resources</h2>
+  <p>This page has 4 render-blocking CSS files and 2 sync JS scripts in &lt;head&gt;</p>
+</section>
+
+<section class="section">
+  <h2>2. Legacy images (no WebP/AVIF)</h2>
+  <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" width="100" height="60" alt="PNG image">
+  <img src="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//AP//AP//AP//AP//AP//AP//AP//AP//AP//AP//AP//AP//" width="100" height="60" alt="JPEG image">
+  <!-- Image without dimensions (CLS risk) -->
+  <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" alt="No dimensions set">
+</section>
+
+<section class="section">
+  <h2>3. Scroll-reveal elements (opacity: 0 + transition)</h2>
+  <div class="scroll-reveal">This element is hidden waiting for scroll trigger</div>
+  <div class="scroll-reveal">Another hidden element</div>
+  <div class="scroll-reveal">Third hidden element</div>
+  <div data-aos="fade-up">AOS scroll reveal element</div>
+</section>
+
+<section class="section">
+  <h2>4. Long animation (> 500ms)</h2>
+  <div style="transition: all 0.8s ease;">Transition 800ms</div>
+  <div style="animation: pulse 2s infinite;">Pulse animation 2s</div>
+</section>
+
+<section class="section">
+  <h2>5. Keyframes (3 defined, no prefers-reduced-motion)</h2>
+  <div class="animated">Animated element</div>
+  <p>This page defines 3 @keyframes rules but has no @media (prefers-reduced-motion) support.</p>
+</section>
+
+<section class="section">
+  <h2>6. Above-fold image with lazy loading (bad for LCP)</h2>
+  <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='300'%3E%3Crect fill='%23e5e7eb' width='600' height='300'/%3E%3Ctext x='300' y='150' text-anchor='middle' fill='%23999' font-size='20'%3EHero Image%3C/text%3E%3C/svg%3E" width="600" height="300" alt="Hero image" loading="lazy">
+</section>
+
+</main>
+</body></html>

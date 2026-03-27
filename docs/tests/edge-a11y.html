@@ -1,0 +1,66 @@
+<!-- Edge Case: Accessibility Checks -->
+<!-- Tests: semantic HTML, headings, alt text, labels, focus, lang, skip link, ARIA, link text, autocomplete, color-only -->
+<html><!-- intentionally missing lang attribute -->
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>body{font-family:system-ui;margin:0;padding:24px}.section{margin-bottom:24px;padding:16px;border:1px solid #e5e7eb;border-radius:8px}h2{font-size:16px;margin-bottom:8px}</style>
+</head><body>
+<!-- No skip link -->
+
+<div class="section">
+  <h2>1. Missing semantic HTML (no header/nav/main/footer)</h2>
+  <p>This page uses only divs — no semantic landmarks.</p>
+</div>
+
+<div class="section">
+  <h2>2. Heading hierarchy gap (h2 → h4, skipping h3)</h2>
+  <h4>This h4 follows an h2 — hierarchy broken</h4>
+</div>
+
+<div class="section">
+  <h2>3. Images without alt</h2>
+  <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='60'%3E%3Crect fill='%23ddd' width='100' height='60'/%3E%3C/svg%3E" width="100" height="60">
+  <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='60'%3E%3Crect fill='%23ccc' width='100' height='60'/%3E%3C/svg%3E" width="100" height="60" alt="Has alt text">
+</div>
+
+<div class="section">
+  <h2>4. Form labels missing</h2>
+  <input type="text" placeholder="No label">
+  <label for="good-input">Has label:</label>
+  <input type="text" id="good-input">
+</div>
+
+<div class="section">
+  <h2>5. Focus indicators removed</h2>
+  <button style="outline:none;border:1px solid #ccc;padding:8px 16px;cursor:pointer">No focus ring</button>
+</div>
+
+<div class="section">
+  <h2>6. Bad link text</h2>
+  <a href="#">Click here</a> |
+  <a href="#">Read more</a> |
+  <a href="#">Learn more</a> |
+  <a href="#">here</a>
+</div>
+
+<div class="section">
+  <h2>7. ARIA issues</h2>
+  <div role="button" style="padding:8px 16px;background:#3b82f6;color:white;display:inline-block;border-radius:4px;cursor:pointer">role=button without tabindex</div>
+  <div aria-hidden="true">
+    <a href="#">Focusable link inside aria-hidden</a>
+    <button>Focusable button inside aria-hidden</button>
+  </div>
+</div>
+
+<div class="section">
+  <h2>8. Missing autocomplete</h2>
+  <input type="email" name="email" placeholder="Email without autocomplete">
+  <input type="tel" name="phone" placeholder="Phone without autocomplete">
+</div>
+
+<div class="section">
+  <h2>9. Color-only indicators</h2>
+  <span class="error" style="color:#dc2626">Something went wrong</span>
+  <span class="success" style="color:#16a34a">All good</span>
+  <span class="warning" style="color:#f59e0b">Caution needed</span>
+</div>
+</body></html>

@@ -36,18 +36,20 @@
         passed++;
         findings.push({
           severity: 'info',
-          title: anim.hiddenElements + ' element(s) with opacity:0 + transition (likely scroll-reveal)',
-          detail: 'These elements are invisible at scan time. Their contrast/sizing was not checked.',
+          title: anim.hiddenElements + ' element(s) with opacity:0 + transition (pre-animation state)',
+          detail: 'These elements are invisible at scan time (pre-animation state). Their contrast/sizing was not checked.',
           fix: 'This is normal for scroll-reveal animations. Run the snippet after scrolling the full page for complete analysis.',
-          presetRef: null
+          presetRef: null,
+          preAnimationState: true
         });
       } else {
         findings.push({
           severity: 'warning',
-          title: anim.hiddenElements + ' hidden elements waiting for animation trigger',
-          detail: 'A large portion of the page is invisible at load time. This may affect perceived loading speed and SEO.',
+          title: anim.hiddenElements + ' hidden elements waiting for animation trigger (pre-animation state)',
+          detail: 'A large portion of the page is invisible at load time (pre-animation state). This may affect perceived loading speed and SEO.',
           fix: 'Consider showing initial content without animation, then enhancing with scroll effects. Ensure content is accessible without JS.',
           presetRef: null,
+          preAnimationState: true,
           source: 'WCAG 2.2 §2.3.3 — https://www.w3.org/TR/WCAG22/#animation-from-interactions'
         });
       }

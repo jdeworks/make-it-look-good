@@ -100,6 +100,31 @@ function scoreResponsive(data) {
     passed++;
   }
 
+  // Fixed-width elements
+  var fixedW = (data.structure && data.structure.fixedWidthElements) || 0;
+  if (fixedW > 0) {
+    findings.push({
+      severity: fixedW > 3 ? 'warning' : 'info',
+      title: fixedW + ' element(s) with fixed pixel widths > 300px',
+      detail: 'Fixed-width elements may overflow on smaller screens',
+      fix: 'Use max-width instead of width, or percentage/viewport units. In Tailwind: max-w-full or w-full.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
+    });
+  }
+
+  // Text truncation
+  var truncated = (data.structure && data.structure.truncatedElements) || 0;
+  if (truncated > 3) {
+    findings.push({
+      severity: 'info',
+      title: truncated + ' element(s) with truncated text (ellipsis)',
+      detail: 'Content is being cut off — may hide important information on smaller screens',
+      fix: 'Consider allowing text to wrap, expanding the container, or using a tooltip to show full content.',
+      presetRef: null
+    });
+  }
+
   var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
   return { score: score, findings: findings, weight: 10, label: 'Responsive Design', icon: 'responsive' };
 }

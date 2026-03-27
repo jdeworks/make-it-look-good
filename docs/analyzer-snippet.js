@@ -12,6 +12,12 @@
   _parseCanvas.width = 1; _parseCanvas.height = 1;
   var _parseCtx = _parseCanvas.getContext('2d', { willReadFrequently: true });
 
+  // Reusable span for measuring actual character widths
+  var _measureSpan = document.createElement('span');
+  _measureSpan.style.cssText = 'position:absolute;top:-9999px;left:-9999px;visibility:hidden;white-space:nowrap;';
+  _measureSpan.textContent = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  document.body.appendChild(_measureSpan);
+
   function parseColor(str) {
     if (!str || str === 'transparent' || str === 'rgba(0, 0, 0, 0)' || str === 'rgba(0, 0, 0, 0)') return null;
     // Fast path: comma-separated rgb(r, g, b) / rgba(r, g, b, a)
@@ -379,9 +385,11 @@
     range.selectNodeContents(el);
     var textLen = node.textContent.trim().length;
     if (textLen > data.typography.maxLineLength.chars && el.tagName !== 'SCRIPT' && el.tagName !== 'STYLE' && !el.closest('pre') && !el.closest('code')) {
-      // Approximate character count per line using element width and font metrics
+      // Measure actual character width using the hidden span
       var elWidth = el.getBoundingClientRect().width;
-      var charWidth = fontSize * 0.5; // rough average
+      _measureSpan.style.fontSize = style.fontSize;
+      _measureSpan.style.fontFamily = style.fontFamily;
+      var charWidth = _measureSpan.getBoundingClientRect().width / 36;
       var charsPerLine = Math.round(elWidth / charWidth);
       if (charsPerLine > data.typography.maxLineLength.chars) {
         data.typography.maxLineLength = { chars: charsPerLine, element: cssSelector(el) };
@@ -699,6 +707,15 @@
     if (as.opacity === '0' && (as.transitionProperty !== 'none' || as.animationName !== 'none')) {
       hiddenAnimated++;
     }
+    // Also detect off-screen transforms
+    if (as.transform && as.transform !== 'none' && as.opacity !== '0') {
+      var matrix = as.transform;
+      // Check for translateY values > 50px (likely scroll-reveal)
+      var translateMatch = matrix.match(/matrix\([^,]+,[^,]+,[^,]+,[^,]+,[^,]+,\s*([-\d.]+)\)/);
+      if (translateMatch && Math.abs(parseFloat(translateMatch[1])) > 50) {
+        hiddenAnimated++;
+      }
+    }
   }
   data.animation.hiddenElements = hiddenAnimated;
   // Count @keyframes rules
@@ -955,6 +972,33 @@
       data.accessibility.colorOnlyIndicators++;
     }
   });
+
+  // --- Fixed-width elements ---
+  data.structure.fixedWidthElements = 0;
+  for (var fi = 0; fi < allElements.length && fi < 500; fi++) {
+    var fel = allElements[fi];
+    if (!isVisible(fel) || isDecorative(fel) || fel.tagName === 'IMG') continue;
+    var fs = getComputedStyle(fel);
+    var w = fs.width;
+    if (w && w.endsWith('px') && parseFloat(w) > 300 && !fs.maxWidth.endsWith('%') && fs.maxWidth !== '100%') {
+      var parentW = fel.parentElement ? fel.parentElement.getBoundingClientRect().width : window.innerWidth;
+      if (parseFloat(w) > parentW * 0.8) data.structure.fixedWidthElements++;
+    }
+  }
+
+  // --- Text truncation ---
+  data.structure.truncatedElements = 0;
+  for (var ti = 0; ti < allElements.length && ti < 500; ti++) {
+    var tel = allElements[ti];
+    if (!isVisible(tel) || isDecorative(tel)) continue;
+    var ts = getComputedStyle(tel);
+    if (ts.textOverflow === 'ellipsis' || ts.overflow === 'hidden' && ts.whiteSpace === 'nowrap') {
+      if (tel.scrollWidth > tel.clientWidth + 2) data.structure.truncatedElements++;
+    }
+  }
+
+  // Clean up measurement span
+  document.body.removeChild(_measureSpan);
 
   // --- Output ---
   var json = JSON.stringify(data, null, 2);

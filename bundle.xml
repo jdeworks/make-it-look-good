@@ -74,6 +74,13 @@ docs/
     spacing.js
     touch.js
     typography.js
+  tests/
+    edge-a11y.html
+    edge-contrast.html
+    edge-layout.html
+    edge-performance.html
+    edge-readability.html
+    run-edge-cases.html
   analyzer-report.js
   analyzer-snippet.js
   ANALYZER-TODO.md
@@ -899,6 +906,554 @@ What type of element needs contrast checking?
 - [WCAG 2.2 — Success Criterion 1.4.6 Contrast (Enhanced)](https://www.w3.org/WAI/WCAG22/Understanding/contrast-enhanced)
 - [WCAG 2.2 — Success Criterion 1.4.11 Non-text Contrast](https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast)
 - [WebAIM — Contrast and Color Accessibility](https://webaim.org/articles/contrast/)
+</file>
+
+<file path="docs/tests/edge-a11y.html">
+<!-- Edge Case: Accessibility Checks -->
+<!-- Tests: semantic HTML, headings, alt text, labels, focus, lang, skip link, ARIA, link text, autocomplete, color-only -->
+<html><!-- intentionally missing lang attribute -->
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>body{font-family:system-ui;margin:0;padding:24px}.section{margin-bottom:24px;padding:16px;border:1px solid #e5e7eb;border-radius:8px}h2{font-size:16px;margin-bottom:8px}</style>
+</head><body>
+<!-- No skip link -->
+
+<div class="section">
+  <h2>1. Missing semantic HTML (no header/nav/main/footer)</h2>
+  <p>This page uses only divs — no semantic landmarks.</p>
+</div>
+
+<div class="section">
+  <h2>2. Heading hierarchy gap (h2 → h4, skipping h3)</h2>
+  <h4>This h4 follows an h2 — hierarchy broken</h4>
+</div>
+
+<div class="section">
+  <h2>3. Images without alt</h2>
+  <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='60'%3E%3Crect fill='%23ddd' width='100' height='60'/%3E%3C/svg%3E" width="100" height="60">
+  <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='60'%3E%3Crect fill='%23ccc' width='100' height='60'/%3E%3C/svg%3E" width="100" height="60" alt="Has alt text">
+</div>
+
+<div class="section">
+  <h2>4. Form labels missing</h2>
+  <input type="text" placeholder="No label">
+  <label for="good-input">Has label:</label>
+  <input type="text" id="good-input">
+</div>
+
+<div class="section">
+  <h2>5. Focus indicators removed</h2>
+  <button style="outline:none;border:1px solid #ccc;padding:8px 16px;cursor:pointer">No focus ring</button>
+</div>
+
+<div class="section">
+  <h2>6. Bad link text</h2>
+  <a href="#">Click here</a> |
+  <a href="#">Read more</a> |
+  <a href="#">Learn more</a> |
+  <a href="#">here</a>
+</div>
+
+<div class="section">
+  <h2>7. ARIA issues</h2>
+  <div role="button" style="padding:8px 16px;background:#3b82f6;color:white;display:inline-block;border-radius:4px;cursor:pointer">role=button without tabindex</div>
+  <div aria-hidden="true">
+    <a href="#">Focusable link inside aria-hidden</a>
+    <button>Focusable button inside aria-hidden</button>
+  </div>
+</div>
+
+<div class="section">
+  <h2>8. Missing autocomplete</h2>
+  <input type="email" name="email" placeholder="Email without autocomplete">
+  <input type="tel" name="phone" placeholder="Phone without autocomplete">
+</div>
+
+<div class="section">
+  <h2>9. Color-only indicators</h2>
+  <span class="error" style="color:#dc2626">Something went wrong</span>
+  <span class="success" style="color:#16a34a">All good</span>
+  <span class="warning" style="color:#f59e0b">Caution needed</span>
+</div>
+</body></html>
+</file>
+
+<file path="docs/tests/edge-contrast.html">
+<!-- Edge Case: Contrast Detection -->
+<!-- Tests: gradient bg, bg-image, oklch colors, CSS filters, semi-transparent overlays, 1:1 uncertain -->
+<style>
+  body { font-family: system-ui; margin: 0; padding: 24px; }
+  .section { margin-bottom: 32px; padding: 16px; border: 1px solid #e5e7eb; border-radius: 8px; }
+  h2 { font-size: 18px; margin-bottom: 12px; }
+</style>
+
+<div class="section">
+  <h2>1. Gradient background (should detect, not 1:1)</h2>
+  <div style="background: linear-gradient(135deg, #1e40af, #7c3aed); color: white; padding: 24px; border-radius: 8px;">
+    <p style="font-size: 16px;">White text on blue-to-purple gradient — should compute real contrast</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>2. Solid color — clear pass</h2>
+  <p style="color: #1e293b; background: #ffffff; padding: 12px;">Dark text on white — 15:1 ratio, clear pass</p>
+</div>
+
+<div class="section">
+  <h2>3. Solid color — clear fail</h2>
+  <p style="color: #d1d5db; background: #f9fafb; padding: 12px;">Light gray on near-white — ~1.4:1, should fail</p>
+</div>
+
+<div class="section">
+  <h2>4. Near-miss (4.3:1)</h2>
+  <p style="color: #6b7280; background: #ffffff; padding: 12px;">Medium gray on white — ~4.6:1, near miss for AAA</p>
+</div>
+
+<div class="section">
+  <h2>5. CSS filter: brightness</h2>
+  <div style="filter: brightness(0.7); background: white; padding: 16px;">
+    <p style="color: #9ca3af;">Gray text inside brightness(0.7) filter — adjusted contrast should differ from raw</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>6. Semi-transparent overlay</h2>
+  <div style="position: relative; background: #1e40af; padding: 24px; border-radius: 8px;">
+    <div style="position: absolute; inset: 0; background: rgba(255,255,255,0.5); border-radius: 8px;"></div>
+    <p style="position: relative; color: #1e293b; z-index: 1;">Text on blue with 50% white overlay — effective bg is light blue</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>7. Large text (lower threshold)</h2>
+  <p style="font-size: 24px; font-weight: 700; color: #9ca3af; background: white; padding: 12px;">Large bold text — only needs 3:1</p>
+</div>
+
+<div class="section">
+  <h2>8. oklch color (Tailwind v4)</h2>
+  <div style="background: oklch(0.208 0.042 265.755); color: oklch(0.985 0.002 247.839); padding: 16px; border-radius: 8px;">
+    <p>Light text on dark oklch background — should parse via canvas</p>
+  </div>
+</div>
+</file>
+
+<file path="docs/tests/edge-layout.html">
+<!-- Edge Case: Layout, Spacing, Touch, Typography -->
+<!-- Tests: spacing grid, overflow, negative margins, touch targets, line length, fixed widths, truncation -->
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+body{font-family:system-ui;margin:0;padding:24px}
+.section{margin-bottom:24px;padding:16px;border:1px solid #e5e7eb;border-radius:8px}
+h2{font-size:16px;margin-bottom:8px}
+</style>
+</head><body>
+<header><nav><a href="#">Home</a></nav></header>
+<main>
+
+<section class="section">
+  <h1>Edge Case: Layout & Spacing</h1>
+</section>
+
+<section class="section">
+  <h2>1. Off-grid spacing (5px, 7px, 13px, 22px)</h2>
+  <div style="padding: 5px;">5px padding (not on 4px grid)</div>
+  <div style="margin-top: 7px;">7px margin</div>
+  <div style="padding: 13px;">13px padding</div>
+  <div style="margin-top: 22px;">22px margin</div>
+</section>
+
+<section class="section">
+  <h2>2. Element overflow</h2>
+  <div style="width: 200px; overflow: hidden; border: 1px solid #ccc;">
+    <div style="width: 400px; background: #fee2e2; padding: 8px;">This div overflows its container — 400px inside 200px</div>
+  </div>
+</section>
+
+<section class="section">
+  <h2>3. Negative margins</h2>
+  <div style="margin-top: -12px; background: #fef3c7; padding: 8px;">margin-top: -12px</div>
+  <div style="margin-left: -8px; background: #dbeafe; padding: 8px;">margin-left: -8px</div>
+  <div style="margin-bottom: -16px; background: #dcfce7; padding: 8px;">margin-bottom: -16px</div>
+  <div style="margin-right: -4px; background: #f3e8ff; padding: 8px;">margin-right: -4px</div>
+  <div style="margin-top: -10px; background: #ffe4e6; padding: 8px;">margin-top: -10px</div>
+  <div style="margin-left: -6px; background: #e0f2fe; padding: 8px;">margin-left: -6px</div>
+</section>
+
+<section class="section">
+  <h2>4. Small touch targets</h2>
+  <a href="#" style="font-size:12px;display:inline-block;">Tiny link (no padding)</a>
+  <button style="font-size:10px;padding:2px 4px;border:1px solid #ccc;">Tiny button</button>
+  <a href="#" style="padding:12px 24px;display:inline-block;background:#3b82f6;color:white;border-radius:4px;">Good size button</a>
+</section>
+
+<section class="section">
+  <h2>5. Extreme line length</h2>
+  <p style="max-width:none;">This is a very long paragraph with no max-width constraint. On a wide screen, the line length will exceed 75 characters significantly, making it hard for the eye to track back to the beginning of the next line. The ideal line length is 45-75 characters, with 66 being the sweet spot according to Bringhurst. This paragraph deliberately exceeds that to trigger the line length check in the typography scoring module.</p>
+</section>
+
+<section class="section">
+  <h2>6. Fixed-width element</h2>
+  <div style="width: 800px; background: #f1f5f9; padding: 16px; border-radius: 8px;">
+    This div is fixed at 800px — will overflow on mobile
+  </div>
+</section>
+
+<section class="section">
+  <h2>7. Truncated text</h2>
+  <div style="width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 1px solid #ccc; padding: 4px;">
+    This text is truncated because it's too long for the container
+  </div>
+  <div style="width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 1px solid #ccc; padding: 4px;">
+    Another truncated line
+  </div>
+  <div style="width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 1px solid #ccc; padding: 4px;">
+    And a third one too
+  </div>
+  <div style="width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 1px solid #ccc; padding: 4px;">
+    Fourth truncated piece
+  </div>
+</section>
+
+<section class="section">
+  <h2>8. Inconsistent container padding</h2>
+  <div style="padding: 12px; background: #f9fafb; margin-bottom: 8px;">Card with 12px padding</div>
+  <div style="padding: 24px; background: #f9fafb; margin-bottom: 8px;">Card with 24px padding</div>
+  <div style="padding: 16px; background: #f9fafb; margin-bottom: 8px;">Card with 16px padding</div>
+  <div style="padding: 32px; background: #f9fafb; margin-bottom: 8px;">Card with 32px padding</div>
+  <div style="padding: 20px; background: #f9fafb;">Card with 20px padding</div>
+</section>
+
+</main>
+</body></html>
+</file>
+
+<file path="docs/tests/edge-performance.html">
+<!-- Edge Case: Performance & Motion -->
+<!-- Tests: font loading, render blocking, DOM size, third-party scripts, images, CLS, animations -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Render-blocking CSS (no media attribute) -->
+<link rel="stylesheet" href="data:text/css,body{margin:0}">
+<link rel="stylesheet" href="data:text/css,.x{color:red}">
+<link rel="stylesheet" href="data:text/css,.y{color:blue}">
+<link rel="stylesheet" href="data:text/css,.z{color:green}">
+<!-- Render-blocking JS (no async/defer) -->
+<script>var x=1;</script>
+<script>var y=2;</script>
+<style>
+body{font-family:system-ui;padding:24px}
+.section{margin-bottom:24px;padding:16px;border:1px solid #e5e7eb;border-radius:8px}
+h2{font-size:16px;margin-bottom:8px}
+/* Animation keyframes */
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideUp { from { transform: translateY(20px); } to { transform: translateY(0); } }
+@keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+/* No prefers-reduced-motion support — should flag */
+.animated { animation: fadeIn 0.3s ease; }
+.scroll-reveal { opacity: 0; transition: opacity 0.5s, transform 0.5s; transform: translateY(30px); }
+</style>
+</head><body>
+<main>
+
+<section class="section">
+  <h1>Edge Case: Performance & Motion</h1>
+</section>
+
+<section class="section">
+  <h2>1. Render-blocking resources</h2>
+  <p>This page has 4 render-blocking CSS files and 2 sync JS scripts in &lt;head&gt;</p>
+</section>
+
+<section class="section">
+  <h2>2. Legacy images (no WebP/AVIF)</h2>
+  <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" width="100" height="60" alt="PNG image">
+  <img src="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//AP//AP//AP//AP//AP//AP//AP//AP//AP//AP//AP//AP//" width="100" height="60" alt="JPEG image">
+  <!-- Image without dimensions (CLS risk) -->
+  <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" alt="No dimensions set">
+</section>
+
+<section class="section">
+  <h2>3. Scroll-reveal elements (opacity: 0 + transition)</h2>
+  <div class="scroll-reveal">This element is hidden waiting for scroll trigger</div>
+  <div class="scroll-reveal">Another hidden element</div>
+  <div class="scroll-reveal">Third hidden element</div>
+  <div data-aos="fade-up">AOS scroll reveal element</div>
+</section>
+
+<section class="section">
+  <h2>4. Long animation (> 500ms)</h2>
+  <div style="transition: all 0.8s ease;">Transition 800ms</div>
+  <div style="animation: pulse 2s infinite;">Pulse animation 2s</div>
+</section>
+
+<section class="section">
+  <h2>5. Keyframes (3 defined, no prefers-reduced-motion)</h2>
+  <div class="animated">Animated element</div>
+  <p>This page defines 3 @keyframes rules but has no @media (prefers-reduced-motion) support.</p>
+</section>
+
+<section class="section">
+  <h2>6. Above-fold image with lazy loading (bad for LCP)</h2>
+  <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='300'%3E%3Crect fill='%23e5e7eb' width='600' height='300'/%3E%3Ctext x='300' y='150' text-anchor='middle' fill='%23999' font-size='20'%3EHero Image%3C/text%3E%3C/svg%3E" width="600" height="300" alt="Hero image" loading="lazy">
+</section>
+
+</main>
+</body></html>
+</file>
+
+<file path="docs/tests/edge-readability.html">
+<!-- Edge Case: Readability & Typography -->
+<!-- Tests: heading density, small text, Coleman-Liau, paragraph length, lists, letter spacing, paragraph spacing, visual hierarchy -->
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>body{font-family:system-ui;margin:0;padding:24px;line-height:1.6}.section{margin-bottom:32px;padding:16px;border:1px solid #e5e7eb;border-radius:8px}</style>
+</head><body>
+<main>
+
+<section class="section">
+  <h1>Edge Case: Readability</h1>
+</section>
+
+<section class="section">
+  <h2>1. Long paragraph (> 150 words)</h2>
+  <p>This is an intentionally long paragraph designed to test the paragraph length checker. It contains many sentences that go on and on, covering multiple topics without any natural breaks. The reader must track through all of this text without the benefit of subheadings, bullet points, or any other visual chunking mechanism. Research from the Nielsen Norman Group shows that users scan web content rather than reading it word-by-word. When paragraphs exceed 150 words, they become walls of text that most users will skip entirely. The ideal paragraph length for web content is 40-80 words. By breaking content into smaller chunks and using descriptive subheadings, you can improve scanability by up to 47%. This paragraph deliberately exceeds the 150-word threshold to verify that the analyzer correctly flags it. It keeps going to make absolutely sure we cross that boundary with plenty of margin. Additional sentences are added here to pad the word count even further beyond what would be considered good practice for web writing.</p>
+</section>
+
+<section class="section">
+  <h2>2. Complex vocabulary (high Coleman-Liau grade)</h2>
+  <p>The anthropomorphization of computational algorithms demonstrates an epistemological predisposition toward reductionist interpretations of neurobiological phenomena. Notwithstanding the aforementioned methodological constraints, the interdisciplinary synthesis of psycholinguistic and neurocognitive paradigms necessitates a comprehensive reconceptualization of established theoretical frameworks.</p>
+  <p>Furthermore, the juxtaposition of phenomenological and empiricist perspectives illuminates the inherent contradictions within contemporary epistemological discourse, thereby undermining the foundational assumptions of positivist methodologies.</p>
+</section>
+
+<section class="section">
+  <h2>3. No content lists (wall of text)</h2>
+  <p>Feature one is great because it does something useful. Feature two is also important for different reasons. Feature three helps with a specific problem. Feature four addresses another need entirely. These should really be in a list for better scanability.</p>
+</section>
+
+<section class="section">
+  <h2>4. With proper lists</h2>
+  <p>Our key features include:</p>
+  <ul>
+    <li>Feature one — does something useful</li>
+    <li>Feature two — important for different reasons</li>
+    <li>Feature three — helps with a specific problem</li>
+    <li>Feature four — addresses another need</li>
+  </ul>
+</section>
+
+<section class="section">
+  <h2>5. Very small text</h2>
+  <p style="font-size:9px">This text is only 9px — nearly impossible to read</p>
+  <p style="font-size:10px">This is 10px — too small for most users</p>
+  <p style="font-size:11px">This is 11px — still below the 12px minimum</p>
+</section>
+
+<section class="section">
+  <h2>6. Extreme letter spacing</h2>
+  <p style="letter-spacing: -0.05em;">Extremely tight letter spacing (-0.05em) — hard to read</p>
+  <p style="letter-spacing: 0.3em;">Extremely loose letter spacing (0.3em) — hard to read</p>
+  <p style="letter-spacing: -0.01em;">Acceptable negative spacing (-0.01em)</p>
+</section>
+
+<section class="section">
+  <h2>7. Inconsistent paragraph spacing</h2>
+  <p style="margin-bottom: 4px;">Very tight paragraph spacing (4px)</p>
+  <p style="margin-bottom: 4px;">Second paragraph with tight spacing</p>
+  <p style="margin-bottom: 4px;">Third paragraph with tight spacing</p>
+</section>
+
+<section class="section">
+  <h2>8. Good readability (control)</h2>
+  <p>This paragraph has good readability. It uses clear, simple language at a comfortable reading level. Sentences are short and direct. The font size is 16px with proper line height.</p>
+  <p>A second paragraph with adequate spacing shows proper paragraph breaks. The content flows naturally and is easy to scan.</p>
+</section>
+
+</main>
+</body></html>
+</file>
+
+<file path="docs/tests/run-edge-cases.html">
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Edge Case Test Runner</title>
+<style>body{font-family:system-ui;padding:20px;font-size:13px;max-width:1400px;margin:0 auto}table{border-collapse:collapse;width:100%;margin:12px 0}td,th{border:1px solid #ddd;padding:5px 7px;text-align:left;font-size:11px}th{background:#f5f5f5;font-weight:600}.pass{color:#16a34a}.warn{color:#b45309}.fail{color:#dc2626}h1{font-size:20px}h2{font-size:16px;margin-top:20px}.status{color:#666;margin:8px 0}</style>
+</head><body>
+<h1>Edge Case Test Runner</h1>
+<p class="status" id="status">Loading modules...</p>
+<div id="output"></div>
+
+<script src="../scoring/registry.js"></script>
+<script src="../scoring/contrast.js"></script>
+<script src="../scoring/typography.js"></script>
+<script src="../scoring/spacing.js"></script>
+<script src="../scoring/touch.js"></script>
+<script src="../scoring/accessibility.js"></script>
+<script src="../scoring/responsive.js"></script>
+<script src="../scoring/consistency.js"></script>
+<script src="../scoring/cognitive.js"></script>
+<script src="../scoring/layout.js"></script>
+<script src="../scoring/performance.js"></script>
+<script src="../scoring/readability.js"></script>
+<script src="../scoring/filters.js"></script>
+<script src="../scoring/balance.js"></script>
+<script src="../analyzer-snippet.js"></script>
+<script>
+// Load the snippet as a string for injection
+var snippetSrc = '';
+fetch('../analyzer-snippet.js').then(function(r){return r.text()}).then(function(t){snippetSrc=t;runTests()});
+
+var TESTS = [
+  { file: 'edge-contrast.html', name: 'Contrast Edge Cases', expect: {
+    contrast: { maxScore: 70, mustFindTexts: ['gradient', 'Light gray'] },
+    note: 'Should detect gradient bg, flag light gray, pass dark text'
+  }},
+  { file: 'edge-a11y.html', name: 'Accessibility Edge Cases', expect: {
+    accessibility: { maxScore: 40 },
+    note: 'Missing lang, no skip link, bad links, ARIA issues, missing labels, color-only'
+  }},
+  { file: 'edge-layout.html', name: 'Layout & Spacing Edge Cases', expect: {
+    spacing: { maxScore: 80 },
+    note: 'Off-grid spacing, overflow, negative margins, fixed widths'
+  }},
+  { file: 'edge-performance.html', name: 'Performance & Motion Edge Cases', expect: {
+    note: 'Render-blocking, legacy images, scroll-reveal, no prefers-reduced-motion'
+  }},
+  { file: 'edge-readability.html', name: 'Readability Edge Cases', expect: {
+    readability: { maxScore: 60 },
+    note: 'Long paragraphs, complex vocabulary, no lists, small text'
+  }}
+];
+
+var status = document.getElementById('status');
+var output = document.getElementById('output');
+
+function analyzeFile(file) {
+  return new Promise(function(resolve) {
+    var iframe = document.createElement('iframe');
+    iframe.style.cssText = 'width:1280px;height:900px;border:none;position:absolute;top:-9999px;left:-9999px;';
+    document.body.appendChild(iframe);
+
+    var msgId = 'edge-' + file.replace(/\W/g, '');
+    function onMsg(e) {
+      if (!e.data || e.data.type !== msgId) return;
+      window.removeEventListener('message', onMsg);
+      document.body.removeChild(iframe);
+      resolve(e.data.data);
+    }
+    window.addEventListener('message', onMsg);
+
+    fetch(file).then(function(r){return r.text()}).then(function(html) {
+      // Inject extraction snippet that posts results back
+      var modified = snippetSrc.replace(
+        /window\.__milgData = data;/,
+        'parent.postMessage({type:"' + msgId + '",data:data},"*");'
+      ).replace(
+        /navigator\.clipboard[\s\S]*?window\.__milgData = data;/,
+        'parent.postMessage({type:"' + msgId + '",data:data},"*");'
+      );
+      // Actually just use a simple extraction inline
+      var script = '<script>setTimeout(function(){' +
+        'var data={meta:{url:"test:' + file + '",viewportWidth:1280,viewportHeight:900,timestamp:new Date().toISOString(),version:1},' +
+        'colors:{textColors:[],bgColors:[],contrastPairs:[]},typography:{bodyFontSize:getComputedStyle(document.body).fontSize,bodyLineHeight:getComputedStyle(document.body).lineHeight,bodyFontFamily:"",fontFamilies:[],fontSizes:[],fontWeights:[],headings:[],lineHeights:[],maxLineLength:{chars:0,element:""},paragraphSpacing:[],letterSpacingIssues:0},spacing:{paddings:[],margins:[],gaps:[],maxContentWidth:"",bodyPaddingHorizontal:"",negativeMargins:0,containerPaddings:[]},layout:{sectionGaps:[],alignmentEdges:[],visualHierarchy:{},borderRadii:[],overflowElements:0},interaction:{touchTargets:[],transitions:[]},accessibility:{semanticElements:{header:document.querySelectorAll("header").length,nav:document.querySelectorAll("nav").length,main:document.querySelectorAll("main").length,footer:document.querySelectorAll("footer").length},headingHierarchy:[],imagesWithoutAlt:0,formLabels:{total:0,withLabel:0,withoutLabel:0},focusIndicators:[],langAttribute:document.documentElement.getAttribute("lang")||"",hasSkipLink:!!document.querySelector("a[href^=\\"#main\\"],a[href^=\\"#content\\"]"),badLinkTexts:[],missingAutocomplete:0,ariaIssues:[],colorOnlyIndicators:0},structure:{totalElements:document.body.querySelectorAll("*").length,darkModeClasses:false,responsiveClasses:false,tailwindDetected:false,cssFramework:"unknown",viewportMeta:document.querySelector("meta[name=viewport]")?document.querySelector("meta[name=viewport]").getAttribute("content"):"",blocksZoom:false,hasHorizontalOverflow:document.documentElement.scrollWidth>document.documentElement.clientWidth,fixedWidthElements:0,truncatedElements:0},context:{pageType:"unknown"},performance:{imageSizing:[],fontLoading:[],renderBlocking:{cssInHead:document.querySelectorAll("head link[rel=stylesheet]").length,jsInHead:document.querySelectorAll("head script:not([async]):not([defer])").length},domSize:document.body.querySelectorAll("*").length,domDepth:0,thirdPartyScripts:0,imageFormats:{modern:0,legacy:0},cls:null,nonResponsiveImages:0},readability:{textBlocks:[],totalWords:0,totalChars:0,paragraphCount:0,hasLists:document.querySelectorAll("ul,ol").length>0},animation:{hiddenElements:0,keyframeCount:0,hasReducedMotion:false,scrollRevealPatterns:[]}};' +
+        // Contrast pairs
+        'function parseC(s){if(!s||s==="transparent"||s==="rgba(0, 0, 0, 0)")return null;var m=s.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)/);if(m)return{r:+m[1],g:+m[2],b:+m[3],a:1};return null}' +
+        'function blend(c){if(!c)return{r:255,g:255,b:255};return c}' +
+        'function getBg(el){var n=el;while(n&&n!==document.documentElement){var c=parseC(getComputedStyle(n).backgroundColor);if(c)return c;n=n.parentElement}return{r:255,g:255,b:255}}' +
+        'function lum(c){var R=c.r/255,G=c.g/255,B=c.b/255;R=R<=0.03928?R/12.92:Math.pow((R+0.055)/1.055,2.4);G=G<=0.03928?G/12.92:Math.pow((G+0.055)/1.055,2.4);B=B<=0.03928?B/12.92:Math.pow((B+0.055)/1.055,2.4);return 0.2126*R+0.7152*G+0.0722*B}' +
+        'function cr(a,b){return(Math.max(lum(a),lum(b))+0.05)/(Math.min(lum(a),lum(b))+0.05)}' +
+        'function vis(el){var s=getComputedStyle(el);if(s.display==="none"||s.visibility==="hidden"||s.opacity==="0")return false;var r=el.getBoundingClientRect();return r.width>0&&r.height>0}' +
+        'var w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,null,false);var nd,seen=new Set();' +
+        'while(nd=w.nextNode()){if(!nd.textContent.trim())continue;var el=nd.parentElement;if(!el||!vis(el)||seen.has(el))continue;seen.add(el);var st=getComputedStyle(el);var fg=parseC(st.color);if(!fg)continue;var bg=getBg(el);var ratio=cr(fg,bg);var fs=parseFloat(st.fontSize);var fw=parseInt(st.fontWeight)||400;var isL=fs>=24||(fs>=18.66&&fw>=700);var th=isL?3:4.5;if(ratio<7.5){data.colors.contrastPairs.push({fg:"rgb("+fg.r+","+fg.g+","+fg.b+")",bg:"rgb("+bg.r+","+bg.g+","+bg.b+")",ratio:Math.round(ratio*100)/100,needed:th,passes:ratio>=th,fontSize:Math.round(fs),fontWeight:fw,isLarge:isL,text:nd.textContent.trim().substring(0,30),selector:el.tagName.toLowerCase()})}}' +
+        // Headings
+        'document.querySelectorAll("h1,h2,h3,h4,h5,h6").forEach(function(h){data.typography.headings.push({tag:h.tagName.toLowerCase(),fontSize:getComputedStyle(h).fontSize,fontWeight:getComputedStyle(h).fontWeight,lineHeight:getComputedStyle(h).lineHeight,fontFamily:"",text:h.textContent.trim().substring(0,30)});data.accessibility.headingHierarchy.push(h.tagName.toLowerCase())});' +
+        // Images
+        'var noAlt=0;document.querySelectorAll("img").forEach(function(i){if(!i.hasAttribute("alt"))noAlt++});data.accessibility.imagesWithoutAlt=noAlt;' +
+        // Bad links
+        'document.querySelectorAll("a").forEach(function(a){if(!vis(a))return;var t=(a.textContent||"").trim().toLowerCase();if(["click here","here","read more","learn more","more","link"].indexOf(t)!==-1)data.accessibility.badLinkTexts.push({text:t,selector:""})});' +
+        // ARIA
+        'document.querySelectorAll("[role=button]:not(button):not(a)").forEach(function(el){if(!el.hasAttribute("tabindex"))data.accessibility.ariaIssues.push({type:"button-no-tabindex"})});' +
+        'document.querySelectorAll("[aria-hidden=true] a,[aria-hidden=true] button").forEach(function(el){if(vis(el))data.accessibility.ariaIssues.push({type:"hidden-focusable"})});' +
+        // Forms
+        'document.querySelectorAll("input:not([type=hidden]):not([type=submit])").forEach(function(inp){data.accessibility.formLabels.total++;if((inp.id&&document.querySelector("label[for="+inp.id+"]"))||inp.closest("label")||inp.getAttribute("aria-label"))data.accessibility.formLabels.withLabel++;else data.accessibility.formLabels.withoutLabel++});' +
+        // Color-only
+        'document.querySelectorAll("[class*=error],[class*=success],[class*=warning]").forEach(function(el){if(!vis(el))return;var hasIcon=el.querySelector("svg,img");var t=(el.textContent||"").trim();if(!hasIcon&&!/^(error|warning|success)\\s*[:!]/i.test(t)&&t.length>0&&t.length<200)data.accessibility.colorOnlyIndicators++});' +
+        // Autocomplete
+        'document.querySelectorAll("input[type=email],input[type=tel]").forEach(function(f){if(!f.getAttribute("autocomplete"))data.accessibility.missingAutocomplete++});' +
+        // Touch targets
+        'document.querySelectorAll("a,button,input").forEach(function(el){if(!vis(el))return;var r=el.getBoundingClientRect();if(Math.round(r.width)<44||Math.round(r.height)<44)data.interaction.touchTargets.push({element:el.tagName.toLowerCase(),width:Math.round(r.width),height:Math.round(r.height),text:(el.textContent||"").trim().substring(0,30),selector:"",passes:false})});' +
+        // Readability
+        'document.querySelectorAll("p").forEach(function(p){if(!vis(p))return;var t=(p.textContent||"").trim();if(t.length>20){data.readability.textBlocks.push({text:t,wordCount:t.split(/\\s+/).length,charCount:t.length});data.readability.totalWords+=t.split(/\\s+/).length;data.readability.totalChars+=t.length;data.readability.paragraphCount++}});' +
+        // Animations
+        'var allEls=document.body.querySelectorAll("*");for(var i=0;i<allEls.length;i++){var as=getComputedStyle(allEls[i]);if(as.opacity==="0"&&(as.transitionProperty!=="none"||as.animationName!=="none"))data.animation.hiddenElements++}' +
+        'try{Array.from(document.styleSheets).forEach(function(ss){try{Array.from(ss.cssRules).forEach(function(r){if(r instanceof CSSKeyframesRule)data.animation.keyframeCount++;if(r instanceof CSSMediaRule&&/prefers-reduced-motion/.test(r.conditionText||""))data.animation.hasReducedMotion=true})}catch(e){}})}catch(e){}' +
+        'var revealSels=["[data-aos]",".wow",".scroll-reveal"];revealSels.forEach(function(sel){try{var c=document.querySelectorAll(sel).length;if(c>0)data.animation.scrollRevealPatterns.push({selector:sel,count:c})}catch(e){}});' +
+        // Negative margins
+        'for(var ni=0;ni<allEls.length&&ni<500;ni++){var ns=getComputedStyle(allEls[ni]);if(parseFloat(ns.marginTop)<0||parseFloat(ns.marginLeft)<0||parseFloat(ns.marginBottom)<0||parseFloat(ns.marginRight)<0)data.spacing.negativeMargins++}' +
+        'parent.postMessage({type:"' + msgId + '",data:data},"*");' +
+        '},2000);</' + 'script>';
+
+      var isFullDoc = /<html/i.test(html);
+      if (isFullDoc && /<\/body>/i.test(html)) {
+        iframe.srcdoc = html.replace(/<\/body>/i, script + '</body>');
+      } else {
+        iframe.srcdoc = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"></head><body>' + html + script + '</body></html>';
+      }
+    });
+
+    setTimeout(function() { window.removeEventListener('message', onMsg); if (iframe.parentNode) document.body.removeChild(iframe); resolve(null); }, 8000);
+  });
+}
+
+function runTests() {
+  (async function() {
+    var allHtml = '';
+
+    for (var i = 0; i < TESTS.length; i++) {
+      var test = TESTS[i];
+      status.textContent = 'Testing: ' + test.name + ' (' + (i+1) + '/' + TESTS.length + ')';
+      var data = await analyzeFile(test.file);
+
+      allHtml += '<h2>' + test.name + '</h2>';
+      if (!data) { allHtml += '<p class="fail">TIMEOUT — extraction failed</p>'; continue; }
+
+      var report = MilgScoring.runScoring(data);
+      allHtml += '<p>Score: <strong class="' + (report.overall >= 80 ? 'pass' : report.overall >= 50 ? 'warn' : 'fail') + '">' + report.overall + '/100 (' + report.grade + ')</strong> — ' + (test.expect.note || '') + '</p>';
+
+      // Show all findings
+      allHtml += '<table><tr><th>Module</th><th>Score</th><th>Findings</th></tr>';
+      report.categories.forEach(function(c) {
+        if (c.findings.length === 0 && c.score === 100) return; // skip perfect modules
+        var cls = c.score >= 80 ? 'pass' : c.score >= 50 ? 'warn' : 'fail';
+        var details = c.findings.map(function(f) {
+          var icon = f.severity === 'error' ? '❌' : f.severity === 'warning' ? '⚠️' : 'ℹ️';
+          return icon + ' ' + f.title;
+        }).join('<br>');
+        allHtml += '<tr><td><strong>' + c.label + '</strong></td><td class="' + cls + '">' + c.score + '</td><td style="font-size:10px">' + (details || 'All passed') + '</td></tr>';
+      });
+      allHtml += '</table>';
+
+      // Validate expectations
+      if (test.expect.contrast && test.expect.contrast.maxScore) {
+        var contrastCat = report.categories.find(function(c) { return c.icon === 'contrast'; });
+        if (contrastCat && contrastCat.score > test.expect.contrast.maxScore) {
+          allHtml += '<p class="fail">EXPECTATION FAILED: Contrast score ' + contrastCat.score + ' > expected max ' + test.expect.contrast.maxScore + '</p>';
+        }
+      }
+      if (test.expect.accessibility && test.expect.accessibility.maxScore) {
+        var a11yCat = report.categories.find(function(c) { return c.icon === 'a11y'; });
+        if (a11yCat && a11yCat.score > test.expect.accessibility.maxScore) {
+          allHtml += '<p class="fail">EXPECTATION FAILED: A11y score ' + a11yCat.score + ' > expected max ' + test.expect.accessibility.maxScore + '</p>';
+        }
+      }
+    }
+
+    status.textContent = 'Done — ' + TESTS.length + ' edge case suites tested';
+    output.innerHTML = allHtml;
+  })();
+}
+</script></body></html>
 </file>
 
 <file path="foundations/aesthetic-usability.md">
@@ -12581,18 +13136,20 @@ function scoreCognitiveLoad(data) {
         passed++;
         findings.push({
           severity: 'info',
-          title: anim.hiddenElements + ' element(s) with opacity:0 + transition (likely scroll-reveal)',
-          detail: 'These elements are invisible at scan time. Their contrast/sizing was not checked.',
+          title: anim.hiddenElements + ' element(s) with opacity:0 + transition (pre-animation state)',
+          detail: 'These elements are invisible at scan time (pre-animation state). Their contrast/sizing was not checked.',
           fix: 'This is normal for scroll-reveal animations. Run the snippet after scrolling the full page for complete analysis.',
-          presetRef: null
+          presetRef: null,
+          preAnimationState: true
         });
       } else {
         findings.push({
           severity: 'warning',
-          title: anim.hiddenElements + ' hidden elements waiting for animation trigger',
-          detail: 'A large portion of the page is invisible at load time. This may affect perceived loading speed and SEO.',
+          title: anim.hiddenElements + ' hidden elements waiting for animation trigger (pre-animation state)',
+          detail: 'A large portion of the page is invisible at load time (pre-animation state). This may affect perceived loading speed and SEO.',
           fix: 'Consider showing initial content without animation, then enhancing with scroll effects. Ensure content is accessible without JS.',
           presetRef: null,
+          preAnimationState: true,
           source: 'WCAG 2.2 §2.3.3 — https://www.w3.org/TR/WCAG22/#animation-from-interactions'
         });
       }
@@ -14498,6 +15055,31 @@ function scoreResponsive(data) {
     passed++;
   }
 
+  // Fixed-width elements
+  var fixedW = (data.structure && data.structure.fixedWidthElements) || 0;
+  if (fixedW > 0) {
+    findings.push({
+      severity: fixedW > 3 ? 'warning' : 'info',
+      title: fixedW + ' element(s) with fixed pixel widths > 300px',
+      detail: 'Fixed-width elements may overflow on smaller screens',
+      fix: 'Use max-width instead of width, or percentage/viewport units. In Tailwind: max-w-full or w-full.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
+    });
+  }
+
+  // Text truncation
+  var truncated = (data.structure && data.structure.truncatedElements) || 0;
+  if (truncated > 3) {
+    findings.push({
+      severity: 'info',
+      title: truncated + ' element(s) with truncated text (ellipsis)',
+      detail: 'Content is being cut off — may hide important information on smaller screens',
+      fix: 'Consider allowing text to wrap, expanding the container, or using a tooltip to show full content.',
+      presetRef: null
+    });
+  }
+
   var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
   return { score: score, findings: findings, weight: 10, label: 'Responsive Design', icon: 'responsive' };
 }
@@ -15774,529 +16356,6 @@ function scoreContrast(data) {
 })();
 </file>
 
-<file path="docs/scoring/performance.js">
-// Scoring Module: Performance
-// Weight: 5%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scorePerformance(data) {
-  var findings = [];
-  var checks = 0;
-  var passed = 0;
-  var perf = data.performance || {};
-
-  // Font loading
-  var fontIssues = perf.fontLoading || [];
-  if (fontIssues.length > 0) {
-    checks++;
-    findings.push({
-      severity: 'warning',
-      title: fontIssues.length + ' web font(s) without font-display: swap',
-      detail: 'Fonts with display:auto or display:block cause invisible text (FOIT) while loading',
-      fix: 'Add font-display: swap (or optional) to @font-face rules. This shows fallback text immediately.',
-      presetRef: null
-    });
-  } else {
-    checks++;
-    passed++;
-  }
-
-  // Render-blocking resources
-  var rb = perf.renderBlocking || {};
-  checks++;
-  var blockingCount = (rb.cssInHead || 0) + (rb.jsInHead || 0);
-  if (blockingCount <= 3) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: blockingCount + ' render-blocking resources in <head>',
-      detail: (rb.cssInHead || 0) + ' CSS files, ' + (rb.jsInHead || 0) + ' sync JS scripts',
-      fix: 'Defer non-critical CSS with media="print" onload hack. Add async/defer to scripts.',
-      presetRef: null
-    });
-  }
-
-  // DOM complexity
-  checks++;
-  var domSize = perf.domSize || 0;
-  if (domSize <= 1500) {
-    passed++;
-  } else {
-    findings.push({
-      severity: domSize > 3000 ? 'warning' : 'info',
-      title: domSize + ' DOM elements (' + (domSize > 3000 ? 'excessive' : 'large') + ')',
-      detail: 'Large DOMs slow rendering, increase memory, and hurt interaction responsiveness',
-      fix: 'Consider lazy loading sections, virtualizing long lists, or simplifying markup.',
-      presetRef: null
-    });
-  }
-
-  // DOM depth
-  checks++;
-  var depth = perf.domDepth || 0;
-  if (depth <= 32) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'info',
-      title: 'DOM nesting depth: ' + depth + ' levels (recommended: ≤32)',
-      detail: 'Deep nesting increases CSS selector matching time and layout complexity',
-      fix: 'Flatten nested containers where possible. Avoid wrapping divs that serve no purpose.',
-      presetRef: null
-    });
-  }
-
-  // Third-party scripts
-  if (data.performance && data.performance.thirdPartyScripts !== undefined) {
-    checks++;
-    var tpCount = data.performance.thirdPartyScripts;
-    if (tpCount <= 5) {
-      passed++;
-    } else {
-      findings.push({
-        severity: tpCount > 10 ? 'warning' : 'info',
-        title: tpCount + ' third-party scripts loaded',
-        detail: 'Each third-party script adds latency, potential blocking, and privacy concerns',
-        fix: 'Audit third-party scripts. Remove unused ones, defer non-critical ones, consider self-hosting critical libraries.',
-        presetRef: null,
-        source: 'Web Vitals — https://web.dev/articles/optimizing-third-party-javascript'
-      });
-    }
-  }
-
-  // Image format audit
-  var imgFmt = (data.performance && data.performance.imageFormats) || {};
-  if (imgFmt.legacy > 0) {
-    checks++;
-    if (imgFmt.modern >= imgFmt.legacy) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: imgFmt.legacy + ' image(s) use legacy formats (JPEG/PNG)',
-        detail: imgFmt.modern + ' use modern formats (WebP/AVIF). Modern formats are 25-50% smaller.',
-        fix: 'Convert images to WebP or AVIF. Use <picture> with format fallbacks for broad browser support.',
-        presetRef: null,
-        source: 'Web.dev — https://web.dev/articles/serve-images-webp'
-      });
-    }
-  }
-
-  // CLS (Cumulative Layout Shift)
-  if (data.performance && data.performance.cls !== null && data.performance.cls !== undefined) {
-    checks++;
-    var cls = data.performance.cls;
-    if (cls <= 0.1) {
-      passed++;
-    } else {
-      findings.push({
-        severity: cls > 0.25 ? 'error' : 'warning',
-        title: 'CLS (Cumulative Layout Shift): ' + cls + ' (' + (cls > 0.25 ? 'poor' : 'needs improvement') + ')',
-        detail: 'Layout shifts disrupt user reading and cause mis-clicks. Target: < 0.1.',
-        fix: 'Add explicit width/height to images and ads. Use min-height on dynamic content areas. Avoid inserting content above existing content.',
-        presetRef: null,
-        source: 'Web Vitals — https://web.dev/articles/cls'
-      });
-    }
-  }
-
-  // LCP
-  var lcp = data.performance && data.performance.lcp;
-  if (lcp) {
-    checks++;
-    if (lcp.time <= 2500) {
-      passed++;
-    } else {
-      findings.push({
-        severity: lcp.time > 4000 ? 'error' : 'warning',
-        title: 'LCP: ' + (lcp.time / 1000).toFixed(1) + 's (' + (lcp.time > 4000 ? 'poor' : 'needs improvement') + ')',
-        detail: 'Largest element: <' + lcp.element + '>. Target: < 2.5s.',
-        fix: 'Optimize the largest visible element. For images: preload, use WebP, set fetchpriority="high". For text: ensure fonts load with font-display:swap.',
-        presetRef: null,
-        source: 'Web Vitals — https://web.dev/articles/lcp'
-      });
-    }
-  }
-
-  // LCP lazy loading (heuristic)
-  if (data.performance && data.performance.lcpLazyLoaded) {
-    findings.push({
-      severity: 'error',
-      title: 'LCP image uses loading="lazy"',
-      detail: 'Lazy loading the largest visible image delays LCP significantly',
-      fix: 'Remove loading="lazy" from the hero/LCP image. Only lazy-load below-fold images.',
-      presetRef: null,
-      source: 'Web Vitals — https://web.dev/articles/lcp'
-    });
-  }
-
-  // Non-responsive images
-  var nri = (data.performance && data.performance.nonResponsiveImages) || 0;
-  if (nri > 0) {
-    findings.push({
-      severity: 'warning',
-      title: nri + ' image(s) without responsive sizing',
-      detail: 'Images without max-width: 100% can overflow their containers on small screens',
-      fix: 'Add max-width: 100% and height: auto to all images. In Tailwind: class="max-w-full h-auto".',
-      presetRef: null,
-      source: 'MDN — https://developer.mozilla.org/en-US/docs/Learn/HTML/Multimedia_and_embedding/Responsive_images'
-    });
-  }
-
-  var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
-  return { score: score, findings: findings, weight: 5, label: 'Performance', icon: 'cognitive' };
-}
-
-
-  S.register("performance", scorePerformance, 5, "Performance", "cognitive");
-})();
-</file>
-
-<file path="docs/scoring/spacing.js">
-// Scoring Module: Spacing & Layout
-// Weight: 15%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreSpacing(data) {
-  var profile = S.getProfile(data);
-  var findings = [];
-  var checks = 0;
-  var passed = 0;
-
-  // 4px grid adherence — check if spacing values are multiples of 4
-  checks++;
-  var allSpacing = [].concat(data.spacing.paddings || [], data.spacing.margins || [], data.spacing.gaps || []);
-  var onGrid = 0;
-  var offGrid = 0;
-  allSpacing.forEach(function(s) {
-    var px = parseFloat(s.value);
-    if (isNaN(px) || px === 0) return;
-    if (Math.round(px) % 4 === 0) onGrid += s.count;
-    else offGrid += s.count;
-  });
-  var gridRatio = (onGrid + offGrid) > 0 ? onGrid / (onGrid + offGrid) : 1;
-  if (gridRatio >= 0.7) {
-    passed++;
-    if (gridRatio < 0.85) {
-      findings.push({
-        severity: 'info',
-        title: Math.round(gridRatio * 100) + '% of spacing values on 4px grid',
-        detail: 'Good adherence — a few values could be rounded to the nearest 4px increment',
-        fix: 'Use Tailwind spacing utilities (p-1=4px, p-2=8px, p-3=12px, p-4=16px, ...)',
-        presetRef: null
-      });
-    }
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: 'Only ' + Math.round(gridRatio * 100) + '% of spacing is on a 4px grid',
-      detail: 'Inconsistent spacing makes layouts feel unpolished',
-      fix: 'Align spacing to 4px increments: 4, 8, 12, 16, 24, 32, 48, 64px',
-      presetRef: 'All presets use Tailwind spacing scale (4px base unit)', source: 'Material Design spacing — https://m3.material.io/foundations/layout/applying-layout'
-    });
-  }
-
-  // Content max-width
-  checks++;
-  var maxW = parseFloat(data.spacing.maxContentWidth);
-  if (maxW > 0 && maxW <= 1500) {
-    passed++;
-  } else if (maxW > 1500) {
-    findings.push({
-      severity: 'warning',
-      title: 'Content width is ' + Math.round(maxW) + 'px (recommended: 1200–1440px)',
-      detail: 'Very wide content is harder to scan and looks stretched on large monitors',
-      fix: 'Add a max-width container. In Tailwind: max-w-7xl (1280px) or max-w-screen-xl',
-      presetRef: 'Dashboard presets use max-w-7xl containers'
-    });
-  } else {
-    passed++; // No max width data or narrow — fine
-  }
-
-  // Mobile padding >= 16px
-  checks++;
-  var bodyPad = parseFloat(data.spacing.bodyPaddingHorizontal);
-  if (bodyPad >= 14 || isNaN(bodyPad) || bodyPad === 0) {
-    passed++; // 0 is OK if inner containers have padding
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: 'Body horizontal padding is ' + bodyPad + 'px (minimum: 16px)',
-      detail: 'Content touching screen edges feels cramped on mobile',
-      fix: 'Add px-4 (16px) padding to the body or main container',
-      presetRef: null
-    });
-  }
-
-  // Adjacent interactive element spacing (buttons/links too close together)
-  var adjacentIssues = (data.interaction && data.interaction.adjacentIssues) || [];
-  if (adjacentIssues.length > 0) {
-    checks++;
-    var minSpacing = profile.targetSpacing;
-    var touching = adjacentIssues.filter(function(a) { return a.gap < 2; });
-    var tooClose = adjacentIssues.filter(function(a) { return a.gap >= 2 && a.gap < minSpacing; });
-
-    touching.forEach(function(a) {
-      findings.push({
-        severity: 'error',
-        title: 'Interactive elements touching (' + a.gap + 'px gap)',
-        detail: '"' + a.textA + '" and "' + a.textB + '" (' + a.direction + ')',
-        fix: 'Add at least ' + minSpacing + 'px gap between interactive elements. In Tailwind: gap-' + (minSpacing / 4) + ' on the parent flex/grid container.',
-        presetRef: 'Button presets use gap-2 (8px) or gap-3 (12px) between buttons'
-      });
-    });
-
-    tooClose.forEach(function(a) {
-      findings.push({
-        severity: 'warning',
-        title: 'Interactive elements only ' + a.gap + 'px apart (recommended: ≥' + minSpacing + 'px)',
-        detail: '"' + a.textA + '" and "' + a.textB + '" (' + a.direction + ')',
-        fix: 'Increase gap to at least ' + minSpacing + 'px to prevent mis-taps. In Tailwind: gap-' + (minSpacing / 4) + ' on the parent.',
-        presetRef: null
-      });
-    });
-
-    if (touching.length === 0 && tooClose.length === 0) passed++;
-  }
-
-  // Element overflow
-  var overflows = (data.layout && data.layout.overflowElements) || 0;
-  if (overflows > 0) {
-    checks++;
-    findings.push({
-      severity: overflows > 5 ? 'warning' : 'info',
-      title: overflows + ' element(s) with horizontal overflow',
-      detail: 'Content extends beyond its container, causing horizontal scroll or clipping',
-      fix: 'Add overflow-x: hidden or overflow: auto to the container element. Check for fixed-width children inside flexible containers.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
-    });
-  } else {
-    checks++;
-    passed++;
-  }
-
-  // Negative margins
-  var negMargins = (data.spacing && data.spacing.negativeMargins) || 0;
-  if (negMargins > 5) {
-    findings.push({
-      severity: 'info',
-      title: negMargins + ' element(s) use negative margins',
-      detail: 'Negative margins can cause overlapping content and layout fragility',
-      fix: 'Consider using CSS grid/flexbox gap, transform, or absolute positioning instead of negative margins where possible.',
-      presetRef: null,
-      source: 'CSS best practices'
-    });
-  }
-
-  // Container padding consistency
-  var cPaddings = (data.spacing && data.spacing.containerPaddings) || [];
-  if (cPaddings.length >= 4) {
-    findings.push({
-      severity: 'info',
-      title: cPaddings.length + ' distinct container padding values',
-      detail: 'Values: ' + cPaddings.slice(0, 5).map(function(p) { return p.value + ' (' + p.count + 'x)'; }).join(', '),
-      fix: 'Standardize container padding to 2-3 values. In Tailwind: p-4 (16px), p-6 (24px), p-8 (32px).',
-      presetRef: null,
-      source: 'Gestalt proximity — https://lawsofux.com/law-of-proximity/'
-    });
-  }
-
-  var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
-  return { score: score, findings: findings, weight: 15, label: 'Spacing & Layout', icon: 'spacing' };
-}
-
-
-  S.register("spacing", scoreSpacing, 15, "Spacing & Layout", "spacing");
-})();
-</file>
-
-<file path="docs/scoring/typography.js">
-// Scoring Module: Typography
-// Weight: 15%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreTypography(data) {
-  var profile = S.getProfile(data);
-  var findings = [];
-  var checks = 0;
-  var passed = 0;
-
-  // Body font size check against profile minimum
-  checks++;
-  var bodySize = parseFloat(data.typography.bodyFontSize);
-  if (bodySize >= profile.bodyFontMin) {
-    passed++;
-  } else if (bodySize > 0) {
-    findings.push({
-      severity: 'error',
-      title: 'Body font size is ' + bodySize + 'px (minimum: ' + profile.bodyFontMin + 'px)',
-      detail: 'Small body text reduces readability, especially on mobile',
-      fix: 'Set body font-size to at least ' + profile.bodyFontMin + 'px. In Tailwind: text-base (16px) or text-lg (18px)',
-      presetRef: 'All presets use text-base (16px) or larger for body text', source: 'WCAG 2.2 / NNGroup — https://www.w3.org/TR/WCAG22/#text-spacing'
-    });
-  }
-
-  // Line height check against profile range
-  checks++;
-  var bodyLH = data.typography.bodyLineHeight;
-  var bodyLHRatio = 0;
-  if (bodyLH && bodyLH !== 'normal') {
-    bodyLHRatio = parseFloat(bodyLH) / bodySize;
-  }
-  var lhPassMin = profile.lineHeightMin - 0.05;
-  var lhPassMax = profile.lineHeightMax + 0.1;
-  if (bodyLHRatio >= lhPassMin && bodyLHRatio <= lhPassMax) {
-    passed++;
-  } else if (bodyLHRatio > 0) {
-    findings.push({
-      severity: bodyLHRatio < 1.2 || bodyLHRatio > 2 ? 'error' : 'warning',
-      title: 'Body line-height is ' + (Math.round(bodyLHRatio * 100) / 100) + ' (ideal: ' + profile.lineHeightMin + '–' + profile.lineHeightMax + ')',
-      detail: bodyLHRatio < profile.lineHeightMin ? 'Text feels cramped and hard to read' : 'Text feels too loose and wastes vertical space',
-      fix: bodyLHRatio < profile.lineHeightMin ? 'Increase line-height. In Tailwind: leading-relaxed (1.625) or leading-normal (1.5)' : 'Decrease line-height. In Tailwind: leading-normal (1.5)',
-      presetRef: null
-    });
-  }
-
-  // Line length 45-75 characters
-  checks++;
-  var maxChars = data.typography.maxLineLength ? data.typography.maxLineLength.chars : 0;
-  if (maxChars > 0 && maxChars <= 80) {
-    passed++;
-  } else if (maxChars > 80) {
-    findings.push({
-      severity: maxChars > 100 ? 'error' : 'warning',
-      title: 'Line length ~' + maxChars + ' characters (ideal: 45–75)',
-      detail: 'Long lines make it hard for the eye to track back to the next line',
-      fix: 'Constrain content width with max-w-prose (65ch) or max-w-2xl (672px)',
-      presetRef: 'Editorial presets use max-w-prose for reading content'
-    });
-  }
-
-  // Heading scale — check if headings have a consistent ratio
-  checks++;
-  var headings = data.typography.headings || [];
-  if (headings.length >= 2) {
-    var sizes = headings.map(function(h) { return parseFloat(h.fontSize); }).filter(function(s) { return s > 0; });
-    var uniqueSizes = Array.from(new Set(sizes)).sort(function(a, b) { return b - a; });
-    if (uniqueSizes.length >= 2) {
-      var ratio = uniqueSizes[0] / uniqueSizes[uniqueSizes.length - 1];
-      if (ratio >= 1.5 && ratio <= 4) {
-        passed++;
-      } else {
-        findings.push({
-          severity: 'warning',
-          title: 'Heading scale ratio is ' + (Math.round(ratio * 100) / 100) + ' (ideal: 1.5–3.5)',
-          detail: ratio < 1.5 ? 'Headings are too similar in size — weak hierarchy' : 'Heading sizes vary too wildly — use a modular scale',
-          fix: 'Use a modular scale (1.200 minor third or 1.250 major third). In Tailwind: text-4xl > text-2xl > text-xl > text-base',
-          presetRef: null
-        });
-      }
-    } else { passed++; } // Only one heading size — acceptable
-  } else { passed++; } // No headings to check
-
-  // Max 2-3 font weights
-  checks++;
-  var fontWeights = data.typography.fontWeights || [];
-  var weightCount = fontWeights.length;
-  if (weightCount <= 4) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: 'Using ' + weightCount + ' font weights (recommended: 2–3)',
-      detail: 'Too many weights create visual noise and increase font loading time',
-      fix: 'Consolidate to 400 (regular), 500/600 (medium), 700 (bold)',
-      presetRef: null
-    });
-  }
-
-  // Profile-specific: minimum font weight (e.g., elderly profile forbids light/thin)
-  if (profile.fontWeightMin > 0 && fontWeights.length > 0) {
-    var lightWeights = fontWeights.filter(function(w) { return parseInt(w) < profile.fontWeightMin; });
-    if (lightWeights.length > 0) {
-      checks++;
-      findings.push({
-        severity: 'warning',
-        title: 'Font weight(s) ' + lightWeights.join(', ') + ' below minimum ' + profile.fontWeightMin + ' for this audience',
-        detail: 'Light and thin font weights reduce readability for users who need higher legibility',
-        fix: 'Use font-weight ' + profile.fontWeightMin + ' (regular) or heavier. Avoid font-weight 100–300.',
-        presetRef: null
-      });
-    } else {
-      checks++;
-      passed++;
-    }
-  }
-
-  // Letter spacing
-  var lsIssues = (data.typography && data.typography.letterSpacingIssues) || 0;
-  if (lsIssues > 0) {
-    findings.push({
-      severity: 'info',
-      title: lsIssues + ' element(s) with extreme letter-spacing',
-      detail: 'Very tight (< -0.03em) or very loose (> 0.15em) letter spacing reduces readability',
-      fix: 'Keep letter-spacing between -0.02em and 0.1em for body text. Tighter spacing is acceptable for large headings.',
-      presetRef: null,
-      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/letterspacing.html'
-    });
-  }
-
-  // Paragraph spacing
-  var pSpacing = (data.typography && data.typography.paragraphSpacing) || [];
-  if (pSpacing.length >= 3) {
-    checks++;
-    var bodyPx = parseFloat(data.typography.bodyFontSize) || 16;
-    var avgSpacing = pSpacing.reduce(function(s,v){return s+v},0) / pSpacing.length;
-    var spacingEm = avgSpacing / bodyPx;
-    if (spacingEm >= 0.5 && spacingEm <= 1.5) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: 'Paragraph spacing is ' + (Math.round(spacingEm * 100) / 100) + 'em (ideal: 0.75–1em)',
-        detail: spacingEm < 0.5 ? 'Paragraphs feel cramped' : 'Paragraph spacing may be too generous',
-        fix: 'Set paragraph margin-bottom to 0.75em–1em. In Tailwind: space-y-4 on the container or mb-4 on paragraphs.',
-        presetRef: null,
-        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/space-between-paragraphs.html'
-      });
-    }
-  }
-
-  // Max 2 typefaces
-  checks++;
-  var familyCount = (data.typography.fontFamilies || []).length;
-  if (familyCount <= 3) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: 'Using ' + familyCount + ' font families (recommended: max 2)',
-      detail: 'Too many typefaces make the design feel inconsistent',
-      fix: 'Use 1 sans-serif + 1 serif (or monospace for code). In Tailwind: font-sans + font-serif',
-      presetRef: null
-    });
-  }
-
-  var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
-  return { score: score, findings: findings, weight: 15, label: 'Typography', icon: 'type' };
-}
-
-
-  S.register("typography", scoreTypography, 15, "Typography", "type");
-})();
-</file>
-
 <file path="expressive/curated-examples.md">
 # What Makes Great Sites Great — Curated Examples
 
@@ -17124,6 +17183,595 @@ The CSS techniques in this file are generic patterns found across modern web des
 - [Unsplash](https://unsplash.com/) — free photography (attribution appreciated)
 </file>
 
+<file path="docs/scoring/performance.js">
+// Scoring Module: Performance
+// Weight: 5%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scorePerformance(data) {
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+  var perf = data.performance || {};
+
+  // Font loading
+  var fontIssues = perf.fontLoading || [];
+  if (fontIssues.length > 0) {
+    checks++;
+    findings.push({
+      severity: 'warning',
+      title: fontIssues.length + ' web font(s) without font-display: swap',
+      detail: 'Fonts with display:auto or display:block cause invisible text (FOIT) while loading',
+      fix: 'Add font-display: swap (or optional) to @font-face rules. This shows fallback text immediately.',
+      presetRef: null
+    });
+  } else {
+    checks++;
+    passed++;
+  }
+
+  // Render-blocking resources
+  var rb = perf.renderBlocking || {};
+  checks++;
+  var blockingCount = (rb.cssInHead || 0) + (rb.jsInHead || 0);
+  if (blockingCount <= 3) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: blockingCount + ' render-blocking resources in <head>',
+      detail: (rb.cssInHead || 0) + ' CSS files, ' + (rb.jsInHead || 0) + ' sync JS scripts',
+      fix: 'Defer non-critical CSS with media="print" onload hack. Add async/defer to scripts.',
+      presetRef: null
+    });
+  }
+
+  // DOM complexity
+  checks++;
+  var domSize = perf.domSize || 0;
+  if (domSize <= 1500) {
+    passed++;
+  } else {
+    findings.push({
+      severity: domSize > 3000 ? 'warning' : 'info',
+      title: domSize + ' DOM elements (' + (domSize > 3000 ? 'excessive' : 'large') + ')',
+      detail: 'Large DOMs slow rendering, increase memory, and hurt interaction responsiveness',
+      fix: 'Consider lazy loading sections, virtualizing long lists, or simplifying markup.',
+      presetRef: null
+    });
+  }
+
+  // DOM depth
+  checks++;
+  var depth = perf.domDepth || 0;
+  if (depth <= 32) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'info',
+      title: 'DOM nesting depth: ' + depth + ' levels (recommended: ≤32)',
+      detail: 'Deep nesting increases CSS selector matching time and layout complexity',
+      fix: 'Flatten nested containers where possible. Avoid wrapping divs that serve no purpose.',
+      presetRef: null
+    });
+  }
+
+  // Third-party scripts
+  if (data.performance && data.performance.thirdPartyScripts !== undefined) {
+    checks++;
+    var tpCount = data.performance.thirdPartyScripts;
+    if (tpCount <= 5) {
+      passed++;
+    } else {
+      findings.push({
+        severity: tpCount > 10 ? 'warning' : 'info',
+        title: tpCount + ' third-party scripts loaded',
+        detail: 'Each third-party script adds latency, potential blocking, and privacy concerns',
+        fix: 'Audit third-party scripts. Remove unused ones, defer non-critical ones, consider self-hosting critical libraries.',
+        presetRef: null,
+        source: 'Web Vitals — https://web.dev/articles/optimizing-third-party-javascript'
+      });
+    }
+  }
+
+  // Image format audit
+  var imgFmt = (data.performance && data.performance.imageFormats) || {};
+  if (imgFmt.legacy > 0) {
+    checks++;
+    if (imgFmt.modern >= imgFmt.legacy) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: imgFmt.legacy + ' image(s) use legacy formats (JPEG/PNG)',
+        detail: imgFmt.modern + ' use modern formats (WebP/AVIF). Modern formats are 25-50% smaller.',
+        fix: 'Convert images to WebP or AVIF. Use <picture> with format fallbacks for broad browser support.',
+        presetRef: null,
+        source: 'Web.dev — https://web.dev/articles/serve-images-webp'
+      });
+    }
+  }
+
+  // CLS (Cumulative Layout Shift)
+  if (data.performance && data.performance.cls !== null && data.performance.cls !== undefined) {
+    checks++;
+    var cls = data.performance.cls;
+    if (cls <= 0.1) {
+      passed++;
+    } else {
+      findings.push({
+        severity: cls > 0.25 ? 'error' : 'warning',
+        title: 'CLS (Cumulative Layout Shift): ' + cls + ' (' + (cls > 0.25 ? 'poor' : 'needs improvement') + ')',
+        detail: 'Layout shifts disrupt user reading and cause mis-clicks. Target: < 0.1.',
+        fix: 'Add explicit width/height to images and ads. Use min-height on dynamic content areas. Avoid inserting content above existing content.',
+        presetRef: null,
+        source: 'Web Vitals — https://web.dev/articles/cls'
+      });
+    }
+  }
+
+  // LCP
+  var lcp = data.performance && data.performance.lcp;
+  if (lcp) {
+    checks++;
+    if (lcp.time <= 2500) {
+      passed++;
+    } else {
+      findings.push({
+        severity: lcp.time > 4000 ? 'error' : 'warning',
+        title: 'LCP: ' + (lcp.time / 1000).toFixed(1) + 's (' + (lcp.time > 4000 ? 'poor' : 'needs improvement') + ')',
+        detail: 'Largest element: <' + lcp.element + '>. Target: < 2.5s.',
+        fix: 'Optimize the largest visible element. For images: preload, use WebP, set fetchpriority="high". For text: ensure fonts load with font-display:swap.',
+        presetRef: null,
+        source: 'Web Vitals — https://web.dev/articles/lcp'
+      });
+    }
+  }
+
+  // LCP lazy loading (heuristic)
+  if (data.performance && data.performance.lcpLazyLoaded) {
+    findings.push({
+      severity: 'error',
+      title: 'LCP image uses loading="lazy"',
+      detail: 'Lazy loading the largest visible image delays LCP significantly',
+      fix: 'Remove loading="lazy" from the hero/LCP image. Only lazy-load below-fold images.',
+      presetRef: null,
+      source: 'Web Vitals — https://web.dev/articles/lcp'
+    });
+  }
+
+  // Non-responsive images
+  var nri = (data.performance && data.performance.nonResponsiveImages) || 0;
+  if (nri > 0) {
+    findings.push({
+      severity: 'warning',
+      title: nri + ' image(s) without responsive sizing',
+      detail: 'Images without max-width: 100% can overflow their containers on small screens',
+      fix: 'Add max-width: 100% and height: auto to all images. In Tailwind: class="max-w-full h-auto".',
+      presetRef: null,
+      source: 'MDN — https://developer.mozilla.org/en-US/docs/Learn/HTML/Multimedia_and_embedding/Responsive_images'
+    });
+  }
+
+  var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
+  return { score: score, findings: findings, weight: 5, label: 'Performance', icon: 'cognitive' };
+}
+
+
+  S.register("performance", scorePerformance, 5, "Performance", "cognitive");
+})();
+</file>
+
+<file path="docs/scoring/spacing.js">
+// Scoring Module: Spacing & Layout
+// Weight: 15%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreSpacing(data) {
+  var profile = S.getProfile(data);
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+
+  // 4px grid adherence — check if spacing values are multiples of 4
+  checks++;
+  var allSpacing = [].concat(data.spacing.paddings || [], data.spacing.margins || [], data.spacing.gaps || []);
+  var onGrid = 0;
+  var offGrid = 0;
+  allSpacing.forEach(function(s) {
+    var px = parseFloat(s.value);
+    if (isNaN(px) || px === 0) return;
+    if (Math.round(px) % 4 === 0) onGrid += s.count;
+    else offGrid += s.count;
+  });
+  var gridRatio = (onGrid + offGrid) > 0 ? onGrid / (onGrid + offGrid) : 1;
+  if (gridRatio >= 0.7) {
+    passed++;
+    if (gridRatio < 0.85) {
+      findings.push({
+        severity: 'info',
+        title: Math.round(gridRatio * 100) + '% of spacing values on 4px grid',
+        detail: 'Good adherence — a few values could be rounded to the nearest 4px increment',
+        fix: 'Use Tailwind spacing utilities (p-1=4px, p-2=8px, p-3=12px, p-4=16px, ...)',
+        presetRef: null
+      });
+    }
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'Only ' + Math.round(gridRatio * 100) + '% of spacing is on a 4px grid',
+      detail: 'Inconsistent spacing makes layouts feel unpolished',
+      fix: 'Align spacing to 4px increments: 4, 8, 12, 16, 24, 32, 48, 64px',
+      presetRef: 'All presets use Tailwind spacing scale (4px base unit)', source: 'Material Design spacing — https://m3.material.io/foundations/layout/applying-layout'
+    });
+  }
+
+  // Content max-width
+  checks++;
+  var maxW = parseFloat(data.spacing.maxContentWidth);
+  if (maxW > 0 && maxW <= 1500) {
+    passed++;
+  } else if (maxW > 1500) {
+    findings.push({
+      severity: 'warning',
+      title: 'Content width is ' + Math.round(maxW) + 'px (recommended: 1200–1440px)',
+      detail: 'Very wide content is harder to scan and looks stretched on large monitors',
+      fix: 'Add a max-width container. In Tailwind: max-w-7xl (1280px) or max-w-screen-xl',
+      presetRef: 'Dashboard presets use max-w-7xl containers'
+    });
+  } else {
+    passed++; // No max width data or narrow — fine
+  }
+
+  // Mobile padding >= 16px
+  checks++;
+  var bodyPad = parseFloat(data.spacing.bodyPaddingHorizontal);
+  if (bodyPad >= 14 || isNaN(bodyPad) || bodyPad === 0) {
+    passed++; // 0 is OK if inner containers have padding
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'Body horizontal padding is ' + bodyPad + 'px (minimum: 16px)',
+      detail: 'Content touching screen edges feels cramped on mobile',
+      fix: 'Add px-4 (16px) padding to the body or main container',
+      presetRef: null
+    });
+  }
+
+  // Adjacent interactive element spacing (buttons/links too close together)
+  var adjacentIssues = (data.interaction && data.interaction.adjacentIssues) || [];
+  if (adjacentIssues.length > 0) {
+    checks++;
+    var minSpacing = profile.targetSpacing;
+    var touching = adjacentIssues.filter(function(a) { return a.gap < 2; });
+    var tooClose = adjacentIssues.filter(function(a) { return a.gap >= 2 && a.gap < minSpacing; });
+
+    touching.forEach(function(a) {
+      findings.push({
+        severity: 'error',
+        title: 'Interactive elements touching (' + a.gap + 'px gap)',
+        detail: '"' + a.textA + '" and "' + a.textB + '" (' + a.direction + ')',
+        fix: 'Add at least ' + minSpacing + 'px gap between interactive elements. In Tailwind: gap-' + (minSpacing / 4) + ' on the parent flex/grid container.',
+        presetRef: 'Button presets use gap-2 (8px) or gap-3 (12px) between buttons'
+      });
+    });
+
+    tooClose.forEach(function(a) {
+      findings.push({
+        severity: 'warning',
+        title: 'Interactive elements only ' + a.gap + 'px apart (recommended: ≥' + minSpacing + 'px)',
+        detail: '"' + a.textA + '" and "' + a.textB + '" (' + a.direction + ')',
+        fix: 'Increase gap to at least ' + minSpacing + 'px to prevent mis-taps. In Tailwind: gap-' + (minSpacing / 4) + ' on the parent.',
+        presetRef: null
+      });
+    });
+
+    if (touching.length === 0 && tooClose.length === 0) passed++;
+  }
+
+  // Element overflow
+  var overflows = (data.layout && data.layout.overflowElements) || 0;
+  if (overflows > 0) {
+    checks++;
+    findings.push({
+      severity: overflows > 5 ? 'warning' : 'info',
+      title: overflows + ' element(s) with horizontal overflow',
+      detail: 'Content extends beyond its container, causing horizontal scroll or clipping',
+      fix: 'Add overflow-x: hidden or overflow: auto to the container element. Check for fixed-width children inside flexible containers.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
+    });
+  } else {
+    checks++;
+    passed++;
+  }
+
+  // Negative margins
+  var negMargins = (data.spacing && data.spacing.negativeMargins) || 0;
+  if (negMargins > 5) {
+    findings.push({
+      severity: 'info',
+      title: negMargins + ' element(s) use negative margins',
+      detail: 'Negative margins can cause overlapping content and layout fragility',
+      fix: 'Consider using CSS grid/flexbox gap, transform, or absolute positioning instead of negative margins where possible.',
+      presetRef: null,
+      source: 'CSS best practices'
+    });
+  }
+
+  // Container padding consistency
+  var cPaddings = (data.spacing && data.spacing.containerPaddings) || [];
+  if (cPaddings.length >= 4) {
+    findings.push({
+      severity: 'info',
+      title: cPaddings.length + ' distinct container padding values',
+      detail: 'Values: ' + cPaddings.slice(0, 5).map(function(p) { return p.value + ' (' + p.count + 'x)'; }).join(', '),
+      fix: 'Standardize container padding to 2-3 values. In Tailwind: p-4 (16px), p-6 (24px), p-8 (32px).',
+      presetRef: null,
+      source: 'Gestalt proximity — https://lawsofux.com/law-of-proximity/'
+    });
+  }
+
+  var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
+  return { score: score, findings: findings, weight: 15, label: 'Spacing & Layout', icon: 'spacing' };
+}
+
+
+  S.register("spacing", scoreSpacing, 15, "Spacing & Layout", "spacing");
+})();
+</file>
+
+<file path="docs/scoring/typography.js">
+// Scoring Module: Typography
+// Weight: 15%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreTypography(data) {
+  var profile = S.getProfile(data);
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+
+  // Body font size check against profile minimum
+  checks++;
+  var bodySize = parseFloat(data.typography.bodyFontSize);
+  if (bodySize >= profile.bodyFontMin) {
+    passed++;
+  } else if (bodySize > 0) {
+    findings.push({
+      severity: 'error',
+      title: 'Body font size is ' + bodySize + 'px (minimum: ' + profile.bodyFontMin + 'px)',
+      detail: 'Small body text reduces readability, especially on mobile',
+      fix: 'Set body font-size to at least ' + profile.bodyFontMin + 'px. In Tailwind: text-base (16px) or text-lg (18px)',
+      presetRef: 'All presets use text-base (16px) or larger for body text', source: 'WCAG 2.2 / NNGroup — https://www.w3.org/TR/WCAG22/#text-spacing'
+    });
+  }
+
+  // Line height check against profile range
+  checks++;
+  var bodyLH = data.typography.bodyLineHeight;
+  var bodyLHRatio = 0;
+  if (bodyLH && bodyLH !== 'normal') {
+    bodyLHRatio = parseFloat(bodyLH) / bodySize;
+  }
+  var lhPassMin = profile.lineHeightMin - 0.05;
+  var lhPassMax = profile.lineHeightMax + 0.1;
+  if (bodyLHRatio >= lhPassMin && bodyLHRatio <= lhPassMax) {
+    passed++;
+  } else if (bodyLHRatio > 0) {
+    findings.push({
+      severity: bodyLHRatio < 1.2 || bodyLHRatio > 2 ? 'error' : 'warning',
+      title: 'Body line-height is ' + (Math.round(bodyLHRatio * 100) / 100) + ' (ideal: ' + profile.lineHeightMin + '–' + profile.lineHeightMax + ')',
+      detail: bodyLHRatio < profile.lineHeightMin ? 'Text feels cramped and hard to read' : 'Text feels too loose and wastes vertical space',
+      fix: bodyLHRatio < profile.lineHeightMin ? 'Increase line-height. In Tailwind: leading-relaxed (1.625) or leading-normal (1.5)' : 'Decrease line-height. In Tailwind: leading-normal (1.5)',
+      presetRef: null
+    });
+  }
+
+  // Line length 45-75 characters
+  checks++;
+  var maxChars = data.typography.maxLineLength ? data.typography.maxLineLength.chars : 0;
+  if (maxChars > 0 && maxChars <= 80) {
+    passed++;
+  } else if (maxChars > 80) {
+    findings.push({
+      severity: maxChars > 100 ? 'error' : 'warning',
+      title: 'Line length ~' + maxChars + ' characters (ideal: 45–75)',
+      detail: 'Long lines make it hard for the eye to track back to the next line',
+      fix: 'Constrain content width with max-w-prose (65ch) or max-w-2xl (672px)',
+      presetRef: 'Editorial presets use max-w-prose for reading content'
+    });
+  }
+
+  // Heading scale — check if headings have a consistent ratio
+  checks++;
+  var headings = data.typography.headings || [];
+  if (headings.length >= 2) {
+    var sizes = headings.map(function(h) { return parseFloat(h.fontSize); }).filter(function(s) { return s > 0; });
+    var uniqueSizes = Array.from(new Set(sizes)).sort(function(a, b) { return b - a; });
+    if (uniqueSizes.length >= 2) {
+      var ratio = uniqueSizes[0] / uniqueSizes[uniqueSizes.length - 1];
+      if (ratio >= 1.5 && ratio <= 4) {
+        passed++;
+      } else {
+        findings.push({
+          severity: 'warning',
+          title: 'Heading scale ratio is ' + (Math.round(ratio * 100) / 100) + ' (ideal: 1.5–3.5)',
+          detail: ratio < 1.5 ? 'Headings are too similar in size — weak hierarchy' : 'Heading sizes vary too wildly — use a modular scale',
+          fix: 'Use a modular scale (1.200 minor third or 1.250 major third). In Tailwind: text-4xl > text-2xl > text-xl > text-base',
+          presetRef: null
+        });
+      }
+    } else { passed++; } // Only one heading size — acceptable
+  } else { passed++; } // No headings to check
+
+  // Max 2-3 font weights
+  checks++;
+  var fontWeights = data.typography.fontWeights || [];
+  var weightCount = fontWeights.length;
+  if (weightCount <= 4) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'Using ' + weightCount + ' font weights (recommended: 2–3)',
+      detail: 'Too many weights create visual noise and increase font loading time',
+      fix: 'Consolidate to 400 (regular), 500/600 (medium), 700 (bold)',
+      presetRef: null
+    });
+  }
+
+  // Profile-specific: minimum font weight (e.g., elderly profile forbids light/thin)
+  if (profile.fontWeightMin > 0 && fontWeights.length > 0) {
+    var lightWeights = fontWeights.filter(function(w) { return parseInt(w) < profile.fontWeightMin; });
+    if (lightWeights.length > 0) {
+      checks++;
+      findings.push({
+        severity: 'warning',
+        title: 'Font weight(s) ' + lightWeights.join(', ') + ' below minimum ' + profile.fontWeightMin + ' for this audience',
+        detail: 'Light and thin font weights reduce readability for users who need higher legibility',
+        fix: 'Use font-weight ' + profile.fontWeightMin + ' (regular) or heavier. Avoid font-weight 100–300.',
+        presetRef: null
+      });
+    } else {
+      checks++;
+      passed++;
+    }
+  }
+
+  // Letter spacing
+  var lsIssues = (data.typography && data.typography.letterSpacingIssues) || 0;
+  if (lsIssues > 0) {
+    findings.push({
+      severity: 'info',
+      title: lsIssues + ' element(s) with extreme letter-spacing',
+      detail: 'Very tight (< -0.03em) or very loose (> 0.15em) letter spacing reduces readability',
+      fix: 'Keep letter-spacing between -0.02em and 0.1em for body text. Tighter spacing is acceptable for large headings.',
+      presetRef: null,
+      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/letterspacing.html'
+    });
+  }
+
+  // Paragraph spacing
+  var pSpacing = (data.typography && data.typography.paragraphSpacing) || [];
+  if (pSpacing.length >= 3) {
+    checks++;
+    var bodyPx = parseFloat(data.typography.bodyFontSize) || 16;
+    var avgSpacing = pSpacing.reduce(function(s,v){return s+v},0) / pSpacing.length;
+    var spacingEm = avgSpacing / bodyPx;
+    if (spacingEm >= 0.5 && spacingEm <= 1.5) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: 'Paragraph spacing is ' + (Math.round(spacingEm * 100) / 100) + 'em (ideal: 0.75–1em)',
+        detail: spacingEm < 0.5 ? 'Paragraphs feel cramped' : 'Paragraph spacing may be too generous',
+        fix: 'Set paragraph margin-bottom to 0.75em–1em. In Tailwind: space-y-4 on the container or mb-4 on paragraphs.',
+        presetRef: null,
+        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/space-between-paragraphs.html'
+      });
+    }
+  }
+
+  // Max 2 typefaces
+  checks++;
+  var familyCount = (data.typography.fontFamilies || []).length;
+  if (familyCount <= 3) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'Using ' + familyCount + ' font families (recommended: max 2)',
+      detail: 'Too many typefaces make the design feel inconsistent',
+      fix: 'Use 1 sans-serif + 1 serif (or monospace for code). In Tailwind: font-sans + font-serif',
+      presetRef: null
+    });
+  }
+
+  var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
+  return { score: score, findings: findings, weight: 15, label: 'Typography', icon: 'type' };
+}
+
+
+  S.register("typography", scoreTypography, 15, "Typography", "type");
+})();
+</file>
+
+<file path="CLAUDE.md">
+# CLAUDE.md — make-it-look-good
+
+## Quick Start
+- **Design consultation** → Read `CONSULT.md` and follow the steps
+- **Need a component** → Read `docs/presets/_index.md` for presets and composition recipes
+- **Quick number lookup** → Read `workflows/quick-reference.md`
+- **Read only what's needed** — each knowledge file is self-contained (~200-400 lines)
+
+## Purpose
+This repo is a **design knowledge base for LLMs**. When an LLM needs to make UI/UX decisions, it reads files from this repo to get concrete, evidence-based guidance with hard numbers.
+
+## CSS Framework
+All presets and examples use **[Tailwind CSS](https://tailwindcss.com)** as the default styling framework. When the user's stack is unknown, output Tailwind classes. For the preview tool, Tailwind v4 is loaded via CDN (`@tailwindcss/browser@4`). Match the user's stack if they use something else — see CONSULT.md Step 0.
+
+## File Format Convention
+Every knowledge file follows this template:
+
+```
+# {Topic Title}
+> **TL;DR:** {2-3 sentence actionable summary}
+## Core Principles
+## Concrete Rules
+## CSS/Implementation Patterns
+## Common Mistakes
+## Decision Tree
+## Sources
+```
+
+Not every section is required, but **Concrete Rules** and **CSS/Implementation Patterns** are mandatory — every file must have actionable specifics.
+
+## Maintenance Rules
+- **One file per focused topic** — don't merge topics; create new files instead
+- **Flat folders** (max 1 level deep) — no nested subdirectories within topic folders (exception: `docs/presets/` contains per-preset directories with framework variants)
+- **Concrete numbers over vague principles** — "4.5:1 contrast ratio" not "ensure sufficient contrast"
+- **Markdown only** — no JSON/YAML data files unless tooling specifically requires it
+- **research/ is gitignored** — only `research/sources.md` (bibliography) is committed
+- **Update `research/sources.md`** when adding new sources to any file
+- **Update `README.md`** index when adding new knowledge files
+- **Cross-reference related files** using relative links: `[topic](../folder/file.md)`
+- **Every preset in `docs/presets/` needs:** consistent design tokens (blue-600 primary default, slate neutrals), dark mode support, responsive design, and an entry in `docs/presets/index.json`. Personality variants use different color palettes appropriate to their personality (rose for playful, indigo for editorial, etc.)
+
+## Design Consultation Workflow
+- **`CONSULT.md`** is the LLM consultation playbook — read it to run an interactive design consultation
+- **Step 0 in CONSULT.md classifies the input** — existing code (any framework), screenshot, vague idea, or raw data — and routes to the right workflow
+- **Match the user's tech stack** — don't output Tailwind HTML to someone using React + styled-components. Detect the framework and output code in their format
+- **Always generate Design Review Notes** (Step 4 in CONSULT.md) — a structured markdown document with issues found, design decisions, tokens, and an implementation checklist. This is the primary deliverable
+- **`docs/index.html`** is a live preview tool (GitHub Pages) — paste HTML + Tailwind to preview designs. Includes before/after examples in the Templates menu.
+
+## Directory Structure
+- `foundations/` — Cognitive/psychological principles (Gestalt, Hick's Law, Fitts's Law, etc.)
+- `color/` — Color theory, accessibility, psychology, color-blind safety
+- `typography/` — Type scales, font pairing, readability, web font loading
+- `layout/` — Spacing systems, visual hierarchy, grids, whitespace
+- `interaction/` — Animation timing, micro-interactions, touch targets, loading states
+- `responsive/` — Mobile-first, breakpoints, fluid typography, responsive patterns
+- `systems/` — Design tokens, Material Design 3, Apple HIG, building a system
+- `expressive/` — Visual identity, hero patterns, scroll storytelling, purposeful motion
+- `heuristics/` — Nielsen's 10 heuristics, UX frameworks
+- `components/` — Concrete component patterns (buttons, forms, cards, etc.)
+- `docs/presets/` — Copy-paste-ready HTML+Tailwind presets with personality variants (see `docs/presets/_index.md`)
+  - Each preset dir has `clean.html`, `minimalist.html`, `playful.html` (and optionally `react.jsx`, `vue.vue`, `svelte.svelte`)
+- `workflows/` — Cross-cutting decision guides and checklists
+- `research/` — Raw research data (gitignored except sources.md)
+</file>
+
 <file path="docs/scoring/accessibility.js">
 // Scoring Module: Accessibility
 // Weight: 15%
@@ -17344,251 +17992,6 @@ function scoreAccessibility(data) {
 
   S.register("accessibility", scoreAccessibility, 15, "Accessibility", "a11y");
 })();
-</file>
-
-<file path="docs/ANALYZER-TODO.md">
-# Analyzer TODO
-
-## Recently Fixed
-- [x] General vs WCAG AAA shows no difference — Fixed: snippet now captures all pairs up to 7.5:1 ratio
-- [x] Two-step exclusion flow — Fixed: post-analysis exclusion suggestions with detected patterns
-- [x] Gradient contrast — Fixed: canvas-based sampling in all extractors
-- [x] Persona profiles — Fixed: 5 profiles with evidence-based thresholds
-- [x] Modular architecture — Fixed: scoring/ directory with 13 independent modules
-
-## Open Issues
-
-- [ ] **Touch targets on responsive sites** — Desktop scan flags small elements that may be larger at mobile breakpoints. Add note when responsive CSS is detected: "This site uses responsive breakpoints — touch targets may be correctly sized on mobile."
-- [ ] **URL link in report** — Some users report the URL isn't clickable. May need to test across browsers.
-- [x] **Extraction data caching** — Store last extraction in sessionStorage so profile/exclusion changes don't require re-fetch
-- [ ] **Report comparison** — Show score delta when re-scoring with different profile or exclusions
-- [x] **Dark mode on report** — Severity badges use hardcoded colors. Should respect dark-ui class.
-
-## P2 Features (research complete, implementation pending)
-
-- [x] **Background image contrast** — Canvas sampling with CORS fallback (see research/analyzer-p2-research.md §1)
-- [x] **CSS filter contrast math** — Apply brightness()/contrast()/opacity() adjustments to RGB before ratio calc (see research §3)
-- [x] **Coleman-Liau readability** — Full implementation with text extraction from `<p>` elements (see research §4)
-- [x] **Scanability scoring** — Paragraph length, heading frequency, list usage, wall-of-text detection (see research §5)
-- [x] **LCP estimation** — PerformanceObserver in Chromium, heuristic fallback (see research/analyzer-roadmap.md §4.4)
-
-## Extension: LLM API Integration (future, opt-in)
-
-**Default: off.** Only visible when user provides an API key (OpenRouter for free models, or direct Anthropic/OpenAI key).
-
-**What LLMs are good at** (soft judgment): tone, copy clarity, color palette appropriateness, summarizing findings.
-**What LLMs are NOT good at** (hard facts): contrast ratios, pixel measurements — rule engine is better.
-
-Low priority — the analyzer's value is evidence-based scoring, not AI opinions.
-
-## Animation & Keyframe Analysis
-
-- [x] Detect `opacity: 0` + transition combo (scroll-reveal state) — implemented
-- [x] Count @keyframes rules — implemented
-- [x] Detect prefers-reduced-motion support — implemented
-- [x] Detect scroll-reveal library patterns (AOS, wow.js) — implemented
-- [ ] Scroll page before extraction to trigger intersection observers
-- [ ] Mark findings with "element may be in pre-animation state"
-- [ ] Detect `transform: translateY()` off-screen elements
-
----
-
-## Module Optimization Research & Detection Improvements
-
-### contrast.js — Color & Contrast (20%)
-**Current:** Walks DOM parents for backgroundColor, canvas fallback for oklch/oklab, gradient sampling.
-**To improve:**
-- [x] **Background images:** Draw bg-image to canvas, sample pixels at text position. Needs background-size/position math. CORS limitation for cross-origin images. (research/analyzer-p2-research.md §1)
-- [x] **CSS filters on ancestors:** Walk parent chain checking for `filter: brightness(X) contrast(Y)`. Adjust RGB mathematically before computing ratio. brightness(0.5) halves each channel. contrast(2) doubles distance from 128. (research §3)
-- [ ] **Semi-transparent overlays:** Current blending is correct but doesn't handle backdrop-filter or mix-blend-mode. Flag these as "uncertain" rather than computing wrong values.
-- [ ] **Dark mode variant testing:** Automatically test dark: variant contrast by toggling `.dark` class before extraction. Currently only tests the active mode.
-- [ ] **APCA (Advanced Perceptual Contrast Algorithm):** Add as alternative metric alongside WCAG. More accurate for large/small text. Library: `apca-w3` (~5KB). Source: https://github.com/Myndex/SAPC-APCA
-
-### typography.js — Typography (15%)
-**Current:** Body font size, line height, line length, heading scale, font weight count, family count.
-**To improve:**
-- [ ] **Actual character-per-line measurement:** Current uses `element.width / (fontSize * 0.5)` which is a rough estimate. Better: create a temporary `<span>` with representative text, measure its width, divide element width by character width.
-- [ ] **Font loading performance:** Check for `font-display: optional` vs `swap` vs `block`. Measure if custom fonts are subset or full. Source: https://web.dev/articles/font-best-practices
-- [ ] **Vertical rhythm detection:** Check if line heights create a consistent baseline grid. All spacings should be multiples of the base line height.
-- [x] **Letter spacing audit:** Detect `letter-spacing` values that reduce readability (too tight < -0.02em or too loose > 0.1em for body text).
-- [x] **Paragraph spacing:** Check `margin-bottom` on `<p>` elements. Should be 0.75-1em. Source: Butterick's Practical Typography.
-
-### spacing.js — Spacing & Layout (15%)
-**Current:** 4px grid adherence, content max-width, body padding, adjacent element spacing.
-**To improve:**
-- [ ] **Nested spacing consistency:** Check if spacing increases predictably from component → section → page level. Gestalt proximity principle.
-- [x] **Container padding audit:** Verify cards, modals, sections have consistent internal padding (not some 12px and others 24px in the same design).
-- [x] **Overflow detection:** Check if any elements overflow their containers (`scrollWidth > clientWidth`). Common on mobile.
-- [x] **Negative margin detection:** Flag negative margins as potential layout fragility.
-- [ ] **Gap vs margin consistency:** Check if the same spacing is achieved via gap in some places and margin in others (should be consistent).
-
-### touch.js — Touch & Interaction (15%)
-**Current:** Viewport-aware thresholds (24px desktop / 44px mobile), profile-aware, desktop touch note.
-**To improve:**
-- [x] **Responsive CSS detection for touch:** When site has `@media` queries, note that touch targets may have different sizes at mobile breakpoints. Don't error if responsive classes exist.
-- [ ] **Padding-inclusive measurement:** Some elements have small visible size but larger clickable area via padding. Check if the padding box (not just content box) meets the threshold.
-- [ ] **Overlapping targets:** Check if any interactive elements overlap each other (absolute positioning causing stacking).
-- [ ] **Click density mapping:** Identify areas with many small targets clustered together (e.g., tag clouds, icon grids) and flag the group, not each individual element.
-- [ ] **Hover state detection:** Check if interactive elements have `:hover` styles defined (computed style can't detect this directly — need to check stylesheet rules).
-
-### accessibility.js — Accessibility (15%)
-**Current:** Semantic HTML, heading hierarchy, alt text, form labels, focus indicators.
-**To improve:**
-- [x] **ARIA role audit:** Check for common ARIA mistakes (role="button" without keyboard handler, aria-hidden on focusable elements).
-- [x] **Color-only indicators:** Detect if status/error states rely solely on color (e.g., red text without an icon or label). Source: WCAG §1.4.1.
-- [x] **Link text quality:** Flag links with "click here", "read more", "learn more" as non-descriptive. Source: WCAG §2.4.4.
-- [x] **Skip navigation link:** Check for `<a href="#main-content">` or similar skip link as first focusable element. Source: WCAG §2.4.1.
-- [x] **Language attribute:** Check `<html lang="...">` is set. Source: WCAG §3.1.1.
-- [x] **Autocomplete attributes:** Check if common form fields (name, email, phone, address) have appropriate `autocomplete` values. Source: WCAG §1.3.5.
-
-### responsive.js — Responsive Design (10%)
-**Current:** Checks for Tailwind responsive classes or CSS @media queries, dark mode detection.
-**To improve:**
-- [x] **Viewport meta tag audit:** Check for `width=device-width` and absence of `user-scalable=no` (which blocks pinch-to-zoom). Source: WCAG §1.4.4.
-- [x] **Horizontal overflow detection:** Check `document.documentElement.scrollWidth > viewport.width`. Common responsive failure.
-- [x] **Image responsive sizing:** Check if images use `max-width: 100%` or `width: 100%; height: auto`. Images that overflow containers on small screens.
-- [ ] **Fixed-width element detection:** Find elements with hardcoded pixel widths that don't flex (e.g., `width: 800px` without max-width).
-- [ ] **Text truncation audit:** Detect `text-overflow: ellipsis` on elements — content may be hidden on small screens.
-
-### consistency.js — Visual Consistency (5%)
-**Current:** Color count, font size count, page-context scaling.
-**To improve:**
-- [ ] **Border radius consistency:** Cluster border-radius values and flag when too many distinct values exist (e.g., 4px, 6px, 8px, 10px, 12px — should be 2-3 values max).
-- [ ] **Shadow consistency:** Same approach for box-shadow — cluster and flag inconsistency.
-- [ ] **Color distance analysis:** Check if similar-but-not-identical colors exist (e.g., #333 and #2d2d2d used for the same purpose). Use CIEDE2000 for perceptual distance.
-- [ ] **Icon sizing consistency:** Check if SVG/icon elements use consistent sizing across the page.
-
-### cognitive.js — Cognitive Load (5%)
-**Current:** Heading count, form field count.
-**To improve:**
-- [ ] **Decision point counting:** Count visible CTAs, buttons, links per section. Hick's Law: decision time increases logarithmically with choices. Source: https://lawsofux.com/hicks-law/
-- [ ] **Information density heuristic:** Elements-per-viewport-height as a density metric. Too dense = overwhelming. Source: cognitive load research.
-- [ ] **Modal/popup detection:** Count elements with `position: fixed` or `z-index > 100` that might be modals. Multiple modals = bad UX.
-- [ ] **Input complexity:** For forms, check if placeholder is used instead of label (bad for memory), if required fields are marked, if inline validation exists.
-
-### layout.js — Layout Quality (5%)
-**Current:** Whitespace rhythm (section gap variance), alignment consistency, H1-to-body ratio.
-**To improve:**
-- [ ] **Grid structure detection:** Detect if the page uses a consistent grid (12-col, 8-col, etc.) by analyzing element widths as fractions of container width.
-- [ ] **Proximity grouping audit:** Check if related elements (e.g., label + input, image + caption) have tighter spacing than unrelated elements. Gestalt proximity.
-- [ ] **Full-bleed detection:** Identify sections that break out of the content container (full-width backgrounds, hero images).
-- [ ] **Sticky element audit:** Check for `position: sticky` elements and verify they have appropriate z-index.
-
-### performance.js — Performance (5%)
-**Current:** Font loading, render-blocking resources, DOM size, DOM depth.
-**To improve:**
-- [x] **CLS detection:** Use `PerformanceObserver` with `layout-shift` entries (Chromium only). Source: https://web.dev/articles/cls
-- [ ] **Image format audit:** Check if images use modern formats (WebP, AVIF) vs legacy (JPEG, PNG). Available from `<img>` src extension.
-- [x] **Third-party script count:** Count `<script>` tags with external domains. Flag when > 5.
-- [ ] **Inline CSS size:** Measure total bytes of `<style>` blocks. Large inline CSS delays rendering.
-- [ ] **Critical CSS detection:** Check if above-fold styles are inlined and below-fold CSS is deferred.
-
-### readability.js — Readability (5%)
-**Current:** Heading density, short heading detection, small text audit.
-**To improve:**
-- [ ] **Coleman-Liau readability index:** Full implementation. Formula: `0.0588 * L - 0.296 * S - 15.8` where L = avg letters per 100 words, S = avg sentences per 100 words. No syllable counting needed.
-- [ ] **Paragraph length audit:** Flag paragraphs > 150 words. Ideal: 40-80 words. Source: NNGroup.
-- [ ] **List usage detection:** Pages with long text blocks but no lists score lower. Lists improve scanability by 47% (NNGroup).
-- [ ] **Text extraction from main content:** Filter out nav, footer, sidebar text to only score the main content area.
-- [ ] **Reading level appropriateness by audience:** General audience = grade 8-10. Professional = grade 12+. Elderly = grade 6-8.
-
-### filters.js — Motion & Animation (3%)
-**Current:** prefers-reduced-motion check, hidden scroll-reveal elements, library detection.
-**To improve:**
-- [ ] **Animation duration audit:** Extract all `animation-duration` values from computed styles and @keyframes. Flag durations > 1s.
-- [ ] **Parallax detection:** Check for `background-attachment: fixed` or `transform: translateZ()` patterns that indicate parallax scrolling.
-- [ ] **Auto-playing media:** Detect `<video autoplay>` or `<audio autoplay>` without `muted`. Source: WCAG §1.4.2.
-- [ ] **Flash/strobe detection:** Check if any animation rapidly alternates between high-contrast states (> 3 flashes per second). Source: WCAG §2.3.1.
-
-### balance.js — Visual Balance (3%)
-**Current:** Left-right content distribution from alignment edges.
-**To improve:**
-- [ ] **Top-bottom balance:** Check if content density is evenly distributed vertically or heavily top-loaded.
-- [ ] **Visual weight by color:** Dark/saturated elements carry more visual weight than light/muted ones. Weight the area calculation by element darkness.
-- [ ] **Whitespace ratio:** Calculate ratio of empty space to content area. Too little = cramped, too much = sparse. Sweet spot: 40-60% whitespace.
-- [ ] **F-pattern support:** For text-heavy pages, check if content aligns to a strong left edge with decreasing engagement rightward (expected F-pattern).
-
----
-
-## Extraction Script Improvements
-
-### Performance
-- [ ] **Element limit:** Cap DOM traversal at 2000 elements for performance on very large pages
-- [ ] **Batched getComputedStyle:** Reading computed styles is expensive. Batch reads to minimize layout thrashing.
-- [ ] **Web Worker extraction:** Move the heavy extraction to a Web Worker to avoid blocking the main thread (requires restructuring since Workers can't access DOM — would need to serialize DOM data first).
-
-### Accuracy
-- [ ] **Scroll-before-extract mode:** Option in snippet to scroll the full page before extracting, triggering intersection observers and lazy loading.
-- [ ] **Multi-viewport extraction:** Run extraction at multiple viewport widths (375px, 768px, 1280px) and merge findings. Shows which issues are viewport-specific.
-- [ ] **Dark mode extraction:** Toggle `.dark` class, re-extract, merge findings. Shows issues specific to dark mode.
-- [ ] **Hover/focus state simulation:** Use `el.matches(':hover')` — can't simulate directly, but can check stylesheet rules for `:hover`/`:focus` selectors and verify they exist.
-- [ ] **iFrame content:** Detect iframes and optionally extract from them (same-origin only).
-</file>
-
-<file path="CLAUDE.md">
-# CLAUDE.md — make-it-look-good
-
-## Quick Start
-- **Design consultation** → Read `CONSULT.md` and follow the steps
-- **Need a component** → Read `docs/presets/_index.md` for presets and composition recipes
-- **Quick number lookup** → Read `workflows/quick-reference.md`
-- **Read only what's needed** — each knowledge file is self-contained (~200-400 lines)
-
-## Purpose
-This repo is a **design knowledge base for LLMs**. When an LLM needs to make UI/UX decisions, it reads files from this repo to get concrete, evidence-based guidance with hard numbers.
-
-## CSS Framework
-All presets and examples use **[Tailwind CSS](https://tailwindcss.com)** as the default styling framework. When the user's stack is unknown, output Tailwind classes. For the preview tool, Tailwind v4 is loaded via CDN (`@tailwindcss/browser@4`). Match the user's stack if they use something else — see CONSULT.md Step 0.
-
-## File Format Convention
-Every knowledge file follows this template:
-
-```
-# {Topic Title}
-> **TL;DR:** {2-3 sentence actionable summary}
-## Core Principles
-## Concrete Rules
-## CSS/Implementation Patterns
-## Common Mistakes
-## Decision Tree
-## Sources
-```
-
-Not every section is required, but **Concrete Rules** and **CSS/Implementation Patterns** are mandatory — every file must have actionable specifics.
-
-## Maintenance Rules
-- **One file per focused topic** — don't merge topics; create new files instead
-- **Flat folders** (max 1 level deep) — no nested subdirectories within topic folders (exception: `docs/presets/` contains per-preset directories with framework variants)
-- **Concrete numbers over vague principles** — "4.5:1 contrast ratio" not "ensure sufficient contrast"
-- **Markdown only** — no JSON/YAML data files unless tooling specifically requires it
-- **research/ is gitignored** — only `research/sources.md` (bibliography) is committed
-- **Update `research/sources.md`** when adding new sources to any file
-- **Update `README.md`** index when adding new knowledge files
-- **Cross-reference related files** using relative links: `[topic](../folder/file.md)`
-- **Every preset in `docs/presets/` needs:** consistent design tokens (blue-600 primary default, slate neutrals), dark mode support, responsive design, and an entry in `docs/presets/index.json`. Personality variants use different color palettes appropriate to their personality (rose for playful, indigo for editorial, etc.)
-
-## Design Consultation Workflow
-- **`CONSULT.md`** is the LLM consultation playbook — read it to run an interactive design consultation
-- **Step 0 in CONSULT.md classifies the input** — existing code (any framework), screenshot, vague idea, or raw data — and routes to the right workflow
-- **Match the user's tech stack** — don't output Tailwind HTML to someone using React + styled-components. Detect the framework and output code in their format
-- **Always generate Design Review Notes** (Step 4 in CONSULT.md) — a structured markdown document with issues found, design decisions, tokens, and an implementation checklist. This is the primary deliverable
-- **`docs/index.html`** is a live preview tool (GitHub Pages) — paste HTML + Tailwind to preview designs. Includes before/after examples in the Templates menu.
-
-## Directory Structure
-- `foundations/` — Cognitive/psychological principles (Gestalt, Hick's Law, Fitts's Law, etc.)
-- `color/` — Color theory, accessibility, psychology, color-blind safety
-- `typography/` — Type scales, font pairing, readability, web font loading
-- `layout/` — Spacing systems, visual hierarchy, grids, whitespace
-- `interaction/` — Animation timing, micro-interactions, touch targets, loading states
-- `responsive/` — Mobile-first, breakpoints, fluid typography, responsive patterns
-- `systems/` — Design tokens, Material Design 3, Apple HIG, building a system
-- `expressive/` — Visual identity, hero patterns, scroll storytelling, purposeful motion
-- `heuristics/` — Nielsen's 10 heuristics, UX frameworks
-- `components/` — Concrete component patterns (buttons, forms, cards, etc.)
-- `docs/presets/` — Copy-paste-ready HTML+Tailwind presets with personality variants (see `docs/presets/_index.md`)
-  - Each preset dir has `clean.html`, `minimalist.html`, `playful.html` (and optionally `react.jsx`, `vue.vue`, `svelte.svelte`)
-- `workflows/` — Cross-cutting decision guides and checklists
-- `research/` — Raw research data (gitignored except sources.md)
 </file>
 
 <file path="docs/analyzer-report.js">
@@ -17908,6 +18311,185 @@ window.MilgReport = (function() {
 
   return { renderReport: renderReport, renderMarkdown: renderMarkdown };
 })();
+</file>
+
+<file path="docs/ANALYZER-TODO.md">
+# Analyzer TODO
+
+## Recently Fixed
+- [x] General vs WCAG AAA shows no difference — Fixed: snippet now captures all pairs up to 7.5:1 ratio
+- [x] Two-step exclusion flow — Fixed: post-analysis exclusion suggestions with detected patterns
+- [x] Gradient contrast — Fixed: canvas-based sampling in all extractors
+- [x] Persona profiles — Fixed: 5 profiles with evidence-based thresholds
+- [x] Modular architecture — Fixed: scoring/ directory with 13 independent modules
+
+## Open Issues
+
+- [ ] **Touch targets on responsive sites** — Desktop scan flags small elements that may be larger at mobile breakpoints. Add note when responsive CSS is detected: "This site uses responsive breakpoints — touch targets may be correctly sized on mobile."
+- [ ] **URL link in report** — Some users report the URL isn't clickable. May need to test across browsers.
+- [x] **Extraction data caching** — Store last extraction in sessionStorage so profile/exclusion changes don't require re-fetch
+- [ ] **Report comparison** — Show score delta when re-scoring with different profile or exclusions
+- [x] **Dark mode on report** — Severity badges use hardcoded colors. Should respect dark-ui class.
+
+## P2 Features (research complete, implementation pending)
+
+- [x] **Background image contrast** — Canvas sampling with CORS fallback (see research/analyzer-p2-research.md §1)
+- [x] **CSS filter contrast math** — Apply brightness()/contrast()/opacity() adjustments to RGB before ratio calc (see research §3)
+- [x] **Coleman-Liau readability** — Full implementation with text extraction from `<p>` elements (see research §4)
+- [x] **Scanability scoring** — Paragraph length, heading frequency, list usage, wall-of-text detection (see research §5)
+- [x] **LCP estimation** — PerformanceObserver in Chromium, heuristic fallback (see research/analyzer-roadmap.md §4.4)
+
+## Extension: LLM API Integration (future, opt-in)
+
+**Default: off.** Only visible when user provides an API key (OpenRouter for free models, or direct Anthropic/OpenAI key).
+
+**What LLMs are good at** (soft judgment): tone, copy clarity, color palette appropriateness, summarizing findings.
+**What LLMs are NOT good at** (hard facts): contrast ratios, pixel measurements — rule engine is better.
+
+Low priority — the analyzer's value is evidence-based scoring, not AI opinions.
+
+## Animation & Keyframe Analysis
+
+- [x] Detect `opacity: 0` + transition combo (scroll-reveal state) — implemented
+- [x] Count @keyframes rules — implemented
+- [x] Detect prefers-reduced-motion support — implemented
+- [x] Detect scroll-reveal library patterns (AOS, wow.js) — implemented
+- [ ] Scroll page before extraction to trigger intersection observers
+- [x] Mark findings with "element may be in pre-animation state"
+- [x] Detect `transform: translateY()` off-screen elements
+
+---
+
+## Module Optimization Research & Detection Improvements
+
+### contrast.js — Color & Contrast (20%)
+**Current:** Walks DOM parents for backgroundColor, canvas fallback for oklch/oklab, gradient sampling.
+**To improve:**
+- [x] **Background images:** Draw bg-image to canvas, sample pixels at text position. Needs background-size/position math. CORS limitation for cross-origin images. (research/analyzer-p2-research.md §1)
+- [x] **CSS filters on ancestors:** Walk parent chain checking for `filter: brightness(X) contrast(Y)`. Adjust RGB mathematically before computing ratio. brightness(0.5) halves each channel. contrast(2) doubles distance from 128. (research §3)
+- [ ] **Semi-transparent overlays:** Current blending is correct but doesn't handle backdrop-filter or mix-blend-mode. Flag these as "uncertain" rather than computing wrong values.
+- [ ] **Dark mode variant testing:** Automatically test dark: variant contrast by toggling `.dark` class before extraction. Currently only tests the active mode.
+- [ ] **APCA (Advanced Perceptual Contrast Algorithm):** Add as alternative metric alongside WCAG. More accurate for large/small text. Library: `apca-w3` (~5KB). Source: https://github.com/Myndex/SAPC-APCA
+
+### typography.js — Typography (15%)
+**Current:** Body font size, line height, line length, heading scale, font weight count, family count.
+**To improve:**
+- [x] **Actual character-per-line measurement:** Current uses `element.width / (fontSize * 0.5)` which is a rough estimate. Better: create a temporary `<span>` with representative text, measure its width, divide element width by character width.
+- [ ] **Font loading performance:** Check for `font-display: optional` vs `swap` vs `block`. Measure if custom fonts are subset or full. Source: https://web.dev/articles/font-best-practices
+- [ ] **Vertical rhythm detection:** Check if line heights create a consistent baseline grid. All spacings should be multiples of the base line height.
+- [x] **Letter spacing audit:** Detect `letter-spacing` values that reduce readability (too tight < -0.02em or too loose > 0.1em for body text).
+- [x] **Paragraph spacing:** Check `margin-bottom` on `<p>` elements. Should be 0.75-1em. Source: Butterick's Practical Typography.
+
+### spacing.js — Spacing & Layout (15%)
+**Current:** 4px grid adherence, content max-width, body padding, adjacent element spacing.
+**To improve:**
+- [ ] **Nested spacing consistency:** Check if spacing increases predictably from component → section → page level. Gestalt proximity principle.
+- [x] **Container padding audit:** Verify cards, modals, sections have consistent internal padding (not some 12px and others 24px in the same design).
+- [x] **Overflow detection:** Check if any elements overflow their containers (`scrollWidth > clientWidth`). Common on mobile.
+- [x] **Negative margin detection:** Flag negative margins as potential layout fragility.
+- [ ] **Gap vs margin consistency:** Check if the same spacing is achieved via gap in some places and margin in others (should be consistent).
+
+### touch.js — Touch & Interaction (15%)
+**Current:** Viewport-aware thresholds (24px desktop / 44px mobile), profile-aware, desktop touch note.
+**To improve:**
+- [x] **Responsive CSS detection for touch:** When site has `@media` queries, note that touch targets may have different sizes at mobile breakpoints. Don't error if responsive classes exist.
+- [ ] **Padding-inclusive measurement:** Some elements have small visible size but larger clickable area via padding. Check if the padding box (not just content box) meets the threshold.
+- [ ] **Overlapping targets:** Check if any interactive elements overlap each other (absolute positioning causing stacking).
+- [ ] **Click density mapping:** Identify areas with many small targets clustered together (e.g., tag clouds, icon grids) and flag the group, not each individual element.
+- [ ] **Hover state detection:** Check if interactive elements have `:hover` styles defined (computed style can't detect this directly — need to check stylesheet rules).
+
+### accessibility.js — Accessibility (15%)
+**Current:** Semantic HTML, heading hierarchy, alt text, form labels, focus indicators.
+**To improve:**
+- [x] **ARIA role audit:** Check for common ARIA mistakes (role="button" without keyboard handler, aria-hidden on focusable elements).
+- [x] **Color-only indicators:** Detect if status/error states rely solely on color (e.g., red text without an icon or label). Source: WCAG §1.4.1.
+- [x] **Link text quality:** Flag links with "click here", "read more", "learn more" as non-descriptive. Source: WCAG §2.4.4.
+- [x] **Skip navigation link:** Check for `<a href="#main-content">` or similar skip link as first focusable element. Source: WCAG §2.4.1.
+- [x] **Language attribute:** Check `<html lang="...">` is set. Source: WCAG §3.1.1.
+- [x] **Autocomplete attributes:** Check if common form fields (name, email, phone, address) have appropriate `autocomplete` values. Source: WCAG §1.3.5.
+
+### responsive.js — Responsive Design (10%)
+**Current:** Checks for Tailwind responsive classes or CSS @media queries, dark mode detection.
+**To improve:**
+- [x] **Viewport meta tag audit:** Check for `width=device-width` and absence of `user-scalable=no` (which blocks pinch-to-zoom). Source: WCAG §1.4.4.
+- [x] **Horizontal overflow detection:** Check `document.documentElement.scrollWidth > viewport.width`. Common responsive failure.
+- [x] **Image responsive sizing:** Check if images use `max-width: 100%` or `width: 100%; height: auto`. Images that overflow containers on small screens.
+- [x] **Fixed-width element detection:** Find elements with hardcoded pixel widths that don't flex (e.g., `width: 800px` without max-width).
+- [x] **Text truncation audit:** Detect `text-overflow: ellipsis` on elements — content may be hidden on small screens.
+
+### consistency.js — Visual Consistency (5%)
+**Current:** Color count, font size count, page-context scaling.
+**To improve:**
+- [ ] **Border radius consistency:** Cluster border-radius values and flag when too many distinct values exist (e.g., 4px, 6px, 8px, 10px, 12px — should be 2-3 values max).
+- [ ] **Shadow consistency:** Same approach for box-shadow — cluster and flag inconsistency.
+- [ ] **Color distance analysis:** Check if similar-but-not-identical colors exist (e.g., #333 and #2d2d2d used for the same purpose). Use CIEDE2000 for perceptual distance.
+- [ ] **Icon sizing consistency:** Check if SVG/icon elements use consistent sizing across the page.
+
+### cognitive.js — Cognitive Load (5%)
+**Current:** Heading count, form field count.
+**To improve:**
+- [ ] **Decision point counting:** Count visible CTAs, buttons, links per section. Hick's Law: decision time increases logarithmically with choices. Source: https://lawsofux.com/hicks-law/
+- [ ] **Information density heuristic:** Elements-per-viewport-height as a density metric. Too dense = overwhelming. Source: cognitive load research.
+- [ ] **Modal/popup detection:** Count elements with `position: fixed` or `z-index > 100` that might be modals. Multiple modals = bad UX.
+- [ ] **Input complexity:** For forms, check if placeholder is used instead of label (bad for memory), if required fields are marked, if inline validation exists.
+
+### layout.js — Layout Quality (5%)
+**Current:** Whitespace rhythm (section gap variance), alignment consistency, H1-to-body ratio.
+**To improve:**
+- [ ] **Grid structure detection:** Detect if the page uses a consistent grid (12-col, 8-col, etc.) by analyzing element widths as fractions of container width.
+- [ ] **Proximity grouping audit:** Check if related elements (e.g., label + input, image + caption) have tighter spacing than unrelated elements. Gestalt proximity.
+- [ ] **Full-bleed detection:** Identify sections that break out of the content container (full-width backgrounds, hero images).
+- [ ] **Sticky element audit:** Check for `position: sticky` elements and verify they have appropriate z-index.
+
+### performance.js — Performance (5%)
+**Current:** Font loading, render-blocking resources, DOM size, DOM depth.
+**To improve:**
+- [x] **CLS detection:** Use `PerformanceObserver` with `layout-shift` entries (Chromium only). Source: https://web.dev/articles/cls
+- [ ] **Image format audit:** Check if images use modern formats (WebP, AVIF) vs legacy (JPEG, PNG). Available from `<img>` src extension.
+- [x] **Third-party script count:** Count `<script>` tags with external domains. Flag when > 5.
+- [ ] **Inline CSS size:** Measure total bytes of `<style>` blocks. Large inline CSS delays rendering.
+- [ ] **Critical CSS detection:** Check if above-fold styles are inlined and below-fold CSS is deferred.
+
+### readability.js — Readability (5%)
+**Current:** Heading density, short heading detection, small text audit.
+**To improve:**
+- [ ] **Coleman-Liau readability index:** Full implementation. Formula: `0.0588 * L - 0.296 * S - 15.8` where L = avg letters per 100 words, S = avg sentences per 100 words. No syllable counting needed.
+- [ ] **Paragraph length audit:** Flag paragraphs > 150 words. Ideal: 40-80 words. Source: NNGroup.
+- [ ] **List usage detection:** Pages with long text blocks but no lists score lower. Lists improve scanability by 47% (NNGroup).
+- [ ] **Text extraction from main content:** Filter out nav, footer, sidebar text to only score the main content area.
+- [ ] **Reading level appropriateness by audience:** General audience = grade 8-10. Professional = grade 12+. Elderly = grade 6-8.
+
+### filters.js — Motion & Animation (3%)
+**Current:** prefers-reduced-motion check, hidden scroll-reveal elements, library detection.
+**To improve:**
+- [ ] **Animation duration audit:** Extract all `animation-duration` values from computed styles and @keyframes. Flag durations > 1s.
+- [ ] **Parallax detection:** Check for `background-attachment: fixed` or `transform: translateZ()` patterns that indicate parallax scrolling.
+- [ ] **Auto-playing media:** Detect `<video autoplay>` or `<audio autoplay>` without `muted`. Source: WCAG §1.4.2.
+- [ ] **Flash/strobe detection:** Check if any animation rapidly alternates between high-contrast states (> 3 flashes per second). Source: WCAG §2.3.1.
+
+### balance.js — Visual Balance (3%)
+**Current:** Left-right content distribution from alignment edges.
+**To improve:**
+- [ ] **Top-bottom balance:** Check if content density is evenly distributed vertically or heavily top-loaded.
+- [ ] **Visual weight by color:** Dark/saturated elements carry more visual weight than light/muted ones. Weight the area calculation by element darkness.
+- [ ] **Whitespace ratio:** Calculate ratio of empty space to content area. Too little = cramped, too much = sparse. Sweet spot: 40-60% whitespace.
+- [ ] **F-pattern support:** For text-heavy pages, check if content aligns to a strong left edge with decreasing engagement rightward (expected F-pattern).
+
+---
+
+## Extraction Script Improvements
+
+### Performance
+- [ ] **Element limit:** Cap DOM traversal at 2000 elements for performance on very large pages
+- [ ] **Batched getComputedStyle:** Reading computed styles is expensive. Batch reads to minimize layout thrashing.
+- [ ] **Web Worker extraction:** Move the heavy extraction to a Web Worker to avoid blocking the main thread (requires restructuring since Workers can't access DOM — would need to serialize DOM data first).
+
+### Accuracy
+- [ ] **Scroll-before-extract mode:** Option in snippet to scroll the full page before extracting, triggering intersection observers and lazy loading.
+- [ ] **Multi-viewport extraction:** Run extraction at multiple viewport widths (375px, 768px, 1280px) and merge findings. Shows which issues are viewport-specific.
+- [ ] **Dark mode extraction:** Toggle `.dark` class, re-extract, merge findings. Shows issues specific to dark mode.
+- [ ] **Hover/focus state simulation:** Use `el.matches(':hover')` — can't simulate directly, but can check stylesheet rules for `:hover`/`:focus` selectors and verify they exist.
+- [ ] **iFrame content:** Detect iframes and optionally extract from them (same-origin only).
 </file>
 
 <file path="docs/presets/index.json">
@@ -18970,6 +19552,12 @@ Use these to calibrate your output quality and verify the flow works.
   _parseCanvas.width = 1; _parseCanvas.height = 1;
   var _parseCtx = _parseCanvas.getContext('2d', { willReadFrequently: true });
 
+  // Reusable span for measuring actual character widths
+  var _measureSpan = document.createElement('span');
+  _measureSpan.style.cssText = 'position:absolute;top:-9999px;left:-9999px;visibility:hidden;white-space:nowrap;';
+  _measureSpan.textContent = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  document.body.appendChild(_measureSpan);
+
   function parseColor(str) {
     if (!str || str === 'transparent' || str === 'rgba(0, 0, 0, 0)' || str === 'rgba(0, 0, 0, 0)') return null;
     // Fast path: comma-separated rgb(r, g, b) / rgba(r, g, b, a)
@@ -19337,9 +19925,11 @@ Use these to calibrate your output quality and verify the flow works.
     range.selectNodeContents(el);
     var textLen = node.textContent.trim().length;
     if (textLen > data.typography.maxLineLength.chars && el.tagName !== 'SCRIPT' && el.tagName !== 'STYLE' && !el.closest('pre') && !el.closest('code')) {
-      // Approximate character count per line using element width and font metrics
+      // Measure actual character width using the hidden span
       var elWidth = el.getBoundingClientRect().width;
-      var charWidth = fontSize * 0.5; // rough average
+      _measureSpan.style.fontSize = style.fontSize;
+      _measureSpan.style.fontFamily = style.fontFamily;
+      var charWidth = _measureSpan.getBoundingClientRect().width / 36;
       var charsPerLine = Math.round(elWidth / charWidth);
       if (charsPerLine > data.typography.maxLineLength.chars) {
         data.typography.maxLineLength = { chars: charsPerLine, element: cssSelector(el) };
@@ -19657,6 +20247,15 @@ Use these to calibrate your output quality and verify the flow works.
     if (as.opacity === '0' && (as.transitionProperty !== 'none' || as.animationName !== 'none')) {
       hiddenAnimated++;
     }
+    // Also detect off-screen transforms
+    if (as.transform && as.transform !== 'none' && as.opacity !== '0') {
+      var matrix = as.transform;
+      // Check for translateY values > 50px (likely scroll-reveal)
+      var translateMatch = matrix.match(/matrix\([^,]+,[^,]+,[^,]+,[^,]+,[^,]+,\s*([-\d.]+)\)/);
+      if (translateMatch && Math.abs(parseFloat(translateMatch[1])) > 50) {
+        hiddenAnimated++;
+      }
+    }
   }
   data.animation.hiddenElements = hiddenAnimated;
   // Count @keyframes rules
@@ -19913,6 +20512,33 @@ Use these to calibrate your output quality and verify the flow works.
       data.accessibility.colorOnlyIndicators++;
     }
   });
+
+  // --- Fixed-width elements ---
+  data.structure.fixedWidthElements = 0;
+  for (var fi = 0; fi < allElements.length && fi < 500; fi++) {
+    var fel = allElements[fi];
+    if (!isVisible(fel) || isDecorative(fel) || fel.tagName === 'IMG') continue;
+    var fs = getComputedStyle(fel);
+    var w = fs.width;
+    if (w && w.endsWith('px') && parseFloat(w) > 300 && !fs.maxWidth.endsWith('%') && fs.maxWidth !== '100%') {
+      var parentW = fel.parentElement ? fel.parentElement.getBoundingClientRect().width : window.innerWidth;
+      if (parseFloat(w) > parentW * 0.8) data.structure.fixedWidthElements++;
+    }
+  }
+
+  // --- Text truncation ---
+  data.structure.truncatedElements = 0;
+  for (var ti = 0; ti < allElements.length && ti < 500; ti++) {
+    var tel = allElements[ti];
+    if (!isVisible(tel) || isDecorative(tel)) continue;
+    var ts = getComputedStyle(tel);
+    if (ts.textOverflow === 'ellipsis' || ts.overflow === 'hidden' && ts.whiteSpace === 'nowrap') {
+      if (tel.scrollWidth > tel.clientWidth + 2) data.structure.truncatedElements++;
+    }
+  }
+
+  // Clean up measurement span
+  document.body.removeChild(_measureSpan);
 
   // --- Output ---
   var json = JSON.stringify(data, null, 2);
