@@ -80,6 +80,7 @@ docs/
   analyzer.css
   analyzer.html
   analyzer.js
+  test-sites.html
 expressive/
   curated-examples.md
   hero-patterns.md
@@ -898,6 +899,120 @@ What type of element needs contrast checking?
 - [WCAG 2.2 — Success Criterion 1.4.6 Contrast (Enhanced)](https://www.w3.org/WAI/WCAG22/Understanding/contrast-enhanced)
 - [WCAG 2.2 — Success Criterion 1.4.11 Non-text Contrast](https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast)
 - [WebAIM — Contrast and Color Accessibility](https://webaim.org/articles/contrast/)
+</file>
+
+<file path="docs/test-sites.html">
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Analyzer — Test Suite</title>
+<style>body{font-family:system-ui;padding:20px;font-size:13px;max-width:1400px;margin:0 auto}table{border-collapse:collapse;width:100%;margin:12px 0}td,th{border:1px solid #ddd;padding:5px 7px;text-align:left;font-size:11px}th{background:#f5f5f5;font-weight:600}.pass{color:#16a34a}.warn{color:#b45309}.fail{color:#dc2626}h1{font-size:20px}.status{font-size:14px;color:#666;margin:8px 0}details{margin-top:16px}summary{cursor:pointer;font-weight:600}</style>
+</head><body>
+<h1>Analyzer Test Suite</h1>
+<p class="status" id="status">Loading...</p>
+<div id="output"></div>
+
+<script src="scoring/registry.js"></script>
+<script src="scoring/contrast.js"></script>
+<script src="scoring/typography.js"></script>
+<script src="scoring/spacing.js"></script>
+<script src="scoring/touch.js"></script>
+<script src="scoring/accessibility.js"></script>
+<script src="scoring/responsive.js"></script>
+<script src="scoring/consistency.js"></script>
+<script src="scoring/cognitive.js"></script>
+<script src="scoring/layout.js"></script>
+<script src="scoring/performance.js"></script>
+<script src="scoring/readability.js"></script>
+<script src="scoring/filters.js"></script>
+<script src="scoring/balance.js"></script>
+<script>
+var PRESETS = [
+  'dashboard/clean', 'hero/clean', 'data-table/clean', 'form/clean',
+  'landing/clean', 'pricing/clean', 'landing/playful', 'landing/editorial',
+  'shell-sidebar/clean', 'card-grid/clean'
+];
+
+var status = document.getElementById('status');
+var output = document.getElementById('output');
+
+function analyzePreset(name) {
+  return new Promise(function(resolve) {
+    var msgId = 'test-' + name.replace('/', '-');
+    var iframe = document.createElement('iframe');
+    iframe.style.cssText = 'width:1280px;height:900px;border:none;position:absolute;top:-9999px;left:-9999px;';
+    document.body.appendChild(iframe);
+
+    function onMsg(e) {
+      if (!e.data || e.data.type !== msgId) return;
+      window.removeEventListener('message', onMsg);
+      document.body.removeChild(iframe);
+      resolve(e.data.data);
+    }
+    window.addEventListener('message', onMsg);
+
+    fetch('presets/' + name + '.html').then(function(r) { return r.text(); }).then(function(html) {
+      iframe.srcdoc = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+        '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
+        '<style>body{margin:0}</style></head><body>' + html +
+        '<script>setTimeout(function(){' +
+        'var _pc=document.createElement("canvas");_pc.width=1;_pc.height=1;var _px=_pc.getContext("2d",{willReadFrequently:true});' +
+        'function parseColor(s){if(!s||s==="transparent"||s==="rgba(0, 0, 0, 0)")return null;var m=s.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)(?:,\\s*([\\d.]+))?\\)/);if(m)return{r:+m[1],g:+m[2],b:+m[3],a:m[4]!==undefined?+m[4]:1};var m2=s.match(/rgba?\\((\\d+)\\s+(\\d+)\\s+(\\d+)(?:\\s*\\/\\s*([\\d.]+%?))\\)?/);if(m2){var a=m2[4]!==undefined?(m2[4].indexOf("%")!==-1?parseFloat(m2[4])/100:+m2[4]):1;return{r:+m2[1],g:+m2[2],b:+m2[3],a:a}}_px.clearRect(0,0,1,1);_px.fillStyle="rgba(0,0,0,0)";_px.fillStyle=s;_px.fillRect(0,0,1,1);var d=_px.getImageData(0,0,1,1).data;if(d[3]===0)return null;return{r:d[0],g:d[1],b:d[2],a:Math.round(d[3]/255*100)/100}}' +
+        'function blend(c){if(!c)return{r:255,g:255,b:255};var a=c.a;return{r:Math.round(c.r*a+255*(1-a)),g:Math.round(c.g*a+255*(1-a)),b:Math.round(c.b*a+255*(1-a))}}' +
+        'function getBg(el){var n=el,l=[];while(n&&n!==document.documentElement){var c=parseColor(getComputedStyle(n).backgroundColor);if(c&&c.a>0)l.push(c);if(c&&c.a>=1)break;n=n.parentElement}var r={r:255,g:255,b:255};for(var i=l.length-1;i>=0;i--){var x=l[i],a=x.a;r={r:Math.round(x.r*a+r.r*(1-a)),g:Math.round(x.g*a+r.g*(1-a)),b:Math.round(x.b*a+r.b*(1-a))}}return r}' +
+        'function lum(c){var R=c.r/255,G=c.g/255,B=c.b/255;R=R<=0.03928?R/12.92:Math.pow((R+0.055)/1.055,2.4);G=G<=0.03928?G/12.92:Math.pow((G+0.055)/1.055,2.4);B=B<=0.03928?B/12.92:Math.pow((B+0.055)/1.055,2.4);return 0.2126*R+0.7152*G+0.0722*B}' +
+        'function cr(a,b){var l1=lum(a),l2=lum(b);return(Math.max(l1,l2)+0.05)/(Math.min(l1,l2)+0.05)}' +
+        'function vis(el){var s=getComputedStyle(el);if(s.display==="none"||s.visibility==="hidden"||s.opacity==="0")return false;var r=el.getBoundingClientRect();return r.width>0&&r.height>0}' +
+        'var data={meta:{url:"preset:' + name + '",viewportWidth:1280,viewportHeight:900,timestamp:new Date().toISOString(),version:1},' +
+        'colors:{textColors:[],bgColors:[],contrastPairs:[]},typography:{bodyFontSize:getComputedStyle(document.body).fontSize,bodyLineHeight:getComputedStyle(document.body).lineHeight,bodyFontFamily:getComputedStyle(document.body).fontFamily,fontFamilies:[],fontSizes:[],fontWeights:[],headings:[],lineHeights:[],maxLineLength:{chars:0,element:""}},spacing:{paddings:[],margins:[],gaps:[],maxContentWidth:"",bodyPaddingHorizontal:""},layout:{sectionGaps:[],alignmentEdges:[],visualHierarchy:{},borderRadii:[]},interaction:{touchTargets:[],transitions:[]},accessibility:{semanticElements:{header:document.querySelectorAll("header").length,nav:document.querySelectorAll("nav").length,main:document.querySelectorAll("main").length,footer:document.querySelectorAll("footer").length},headingHierarchy:[],imagesWithoutAlt:0,formLabels:{total:0,withLabel:0,withoutLabel:0},focusIndicators:[],langAttribute:document.documentElement.getAttribute("lang")||"",hasSkipLink:false,badLinkTexts:[],missingAutocomplete:0,ariaIssues:[]},structure:{totalElements:document.body.querySelectorAll("*").length,darkModeClasses:/class="[^"]*dark:/.test(document.body.innerHTML),responsiveClasses:/class="[^"]*(?:sm:|md:|lg:|xl:)/.test(document.body.innerHTML),tailwindDetected:true,cssFramework:"tailwind",viewportMeta:"width=device-width",blocksZoom:false,hasHorizontalOverflow:false},context:{pageType:"component"},performance:{imageSizing:[],fontLoading:[],renderBlocking:{cssInHead:1,jsInHead:0},domSize:document.body.querySelectorAll("*").length,domDepth:0,thirdPartyScripts:0,imageFormats:{modern:0,legacy:0}},readability:{textBlocks:[],totalWords:0,totalChars:0,paragraphCount:0,hasLists:document.querySelectorAll("ul,ol").length>0},animation:{hiddenElements:0,keyframeCount:0,hasReducedMotion:false,scrollRevealPatterns:[]}};' +
+        'var fails=0,total=0;var w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,null,false);var nd,seen=new Set();while(nd=w.nextNode()){if(!nd.textContent.trim())continue;var el=nd.parentElement;if(!el||!vis(el)||seen.has(el))continue;seen.add(el);var st=getComputedStyle(el);var fg=parseColor(st.color);if(!fg)continue;var fgB=blend(fg);var bg=getBg(el);var ratio=cr(fgB,bg);var fs=parseFloat(st.fontSize);var fw=parseInt(st.fontWeight)||400;var isL=fs>=24||(fs>=18.66&&fw>=700);var th=isL?3:4.5;total++;if(ratio<7.5){data.colors.contrastPairs.push({fg:"rgb("+fgB.r+","+fgB.g+","+fgB.b+")",bg:"rgb("+bg.r+","+bg.g+","+bg.b+")",ratio:Math.round(ratio*100)/100,needed:th,passes:ratio>=th,fontSize:Math.round(fs),fontWeight:fw,isLarge:isL,text:nd.textContent.trim().substring(0,30),selector:el.tagName.toLowerCase()})}}' +
+        'document.querySelectorAll("h1,h2,h3,h4").forEach(function(h){data.typography.headings.push({tag:h.tagName.toLowerCase(),fontSize:getComputedStyle(h).fontSize,fontWeight:getComputedStyle(h).fontWeight,lineHeight:getComputedStyle(h).lineHeight,fontFamily:"",text:h.textContent.trim().substring(0,30)});data.accessibility.headingHierarchy.push(h.tagName.toLowerCase())});' +
+        'parent.postMessage({type:"' + msgId + '",data:data},"*");' +
+        '},2500);</' + 'script></body></html>';
+    });
+
+    setTimeout(function() { window.removeEventListener('message', onMsg); if (iframe.parentNode) document.body.removeChild(iframe); resolve(null); }, 10000);
+  });
+}
+
+(async function() {
+  var moduleCount = MilgScoring.runScoring({meta:{},colors:{contrastPairs:[]},typography:{},spacing:{},layout:{},interaction:{},accessibility:{},structure:{},performance:{},readability:{},animation:{},context:{}}).categories.length;
+  status.textContent = moduleCount + ' modules loaded. Testing ' + PRESETS.length + ' presets...';
+
+  var html = '<table><tr><th>Preset</th><th>Score</th><th>Grade</th><th>Contrast</th><th>Typo</th><th>Space</th><th>Touch</th><th>A11y</th><th>Resp</th><th>Consist</th><th>Cogn</th><th>Layout</th><th>Perf</th><th>Read</th><th>Motion</th><th>Balance</th></tr>';
+
+  var scores = [];
+  for (var i = 0; i < PRESETS.length; i++) {
+    var name = PRESETS[i];
+    status.textContent = 'Testing ' + name + '... (' + (i + 1) + '/' + PRESETS.length + ')';
+    var data = await analyzePreset(name);
+
+    if (!data) {
+      html += '<tr><td>' + name + '</td><td colspan="14" class="fail">TIMEOUT</td></tr>';
+      continue;
+    }
+
+    var report = MilgScoring.runScoring(data);
+    scores.push(report.overall);
+    var cls = report.overall >= 80 ? 'pass' : report.overall >= 60 ? 'warn' : 'fail';
+    html += '<tr><td><strong>' + name + '</strong></td><td class="' + cls + '"><strong>' + report.overall + '</strong></td><td>' + report.grade + '</td>';
+    report.categories.forEach(function(c) {
+      var ccls = c.score >= 80 ? 'pass' : c.score >= 50 ? 'warn' : 'fail';
+      html += '<td class="' + ccls + '">' + c.score + '</td>';
+    });
+    html += '</tr>';
+  }
+
+  html += '</table>';
+
+  var avg = scores.length > 0 ? Math.round(scores.reduce(function(a, b) { return a + b; }, 0) / scores.length) : 0;
+  var min = scores.length > 0 ? Math.min.apply(null, scores) : 0;
+  var max = scores.length > 0 ? Math.max.apply(null, scores) : 0;
+  html += '<p><strong>Average: ' + avg + ' | Min: ' + min + ' | Max: ' + max + ' | Tested: ' + scores.length + '/' + PRESETS.length + '</strong></p>';
+
+  status.textContent = 'Done — ' + scores.length + ' presets scored. Avg: ' + avg;
+  output.innerHTML = html;
+})();
+</script></body></html>
 </file>
 
 <file path="foundations/aesthetic-usability.md">
@@ -14138,158 +14253,6 @@ function scoreVisualConsistency(data) {
 })();
 </file>
 
-<file path="docs/scoring/performance.js">
-// Scoring Module: Performance
-// Weight: 5%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scorePerformance(data) {
-  var findings = [];
-  var checks = 0;
-  var passed = 0;
-  var perf = data.performance || {};
-
-  // Font loading
-  var fontIssues = perf.fontLoading || [];
-  if (fontIssues.length > 0) {
-    checks++;
-    findings.push({
-      severity: 'warning',
-      title: fontIssues.length + ' web font(s) without font-display: swap',
-      detail: 'Fonts with display:auto or display:block cause invisible text (FOIT) while loading',
-      fix: 'Add font-display: swap (or optional) to @font-face rules. This shows fallback text immediately.',
-      presetRef: null
-    });
-  } else {
-    checks++;
-    passed++;
-  }
-
-  // Render-blocking resources
-  var rb = perf.renderBlocking || {};
-  checks++;
-  var blockingCount = (rb.cssInHead || 0) + (rb.jsInHead || 0);
-  if (blockingCount <= 3) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: blockingCount + ' render-blocking resources in <head>',
-      detail: (rb.cssInHead || 0) + ' CSS files, ' + (rb.jsInHead || 0) + ' sync JS scripts',
-      fix: 'Defer non-critical CSS with media="print" onload hack. Add async/defer to scripts.',
-      presetRef: null
-    });
-  }
-
-  // DOM complexity
-  checks++;
-  var domSize = perf.domSize || 0;
-  if (domSize <= 1500) {
-    passed++;
-  } else {
-    findings.push({
-      severity: domSize > 3000 ? 'warning' : 'info',
-      title: domSize + ' DOM elements (' + (domSize > 3000 ? 'excessive' : 'large') + ')',
-      detail: 'Large DOMs slow rendering, increase memory, and hurt interaction responsiveness',
-      fix: 'Consider lazy loading sections, virtualizing long lists, or simplifying markup.',
-      presetRef: null
-    });
-  }
-
-  // DOM depth
-  checks++;
-  var depth = perf.domDepth || 0;
-  if (depth <= 32) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'info',
-      title: 'DOM nesting depth: ' + depth + ' levels (recommended: ≤32)',
-      detail: 'Deep nesting increases CSS selector matching time and layout complexity',
-      fix: 'Flatten nested containers where possible. Avoid wrapping divs that serve no purpose.',
-      presetRef: null
-    });
-  }
-
-  // Third-party scripts
-  if (data.performance && data.performance.thirdPartyScripts !== undefined) {
-    checks++;
-    var tpCount = data.performance.thirdPartyScripts;
-    if (tpCount <= 5) {
-      passed++;
-    } else {
-      findings.push({
-        severity: tpCount > 10 ? 'warning' : 'info',
-        title: tpCount + ' third-party scripts loaded',
-        detail: 'Each third-party script adds latency, potential blocking, and privacy concerns',
-        fix: 'Audit third-party scripts. Remove unused ones, defer non-critical ones, consider self-hosting critical libraries.',
-        presetRef: null,
-        source: 'Web Vitals — https://web.dev/articles/optimizing-third-party-javascript'
-      });
-    }
-  }
-
-  // Image format audit
-  var imgFmt = (data.performance && data.performance.imageFormats) || {};
-  if (imgFmt.legacy > 0) {
-    checks++;
-    if (imgFmt.modern >= imgFmt.legacy) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: imgFmt.legacy + ' image(s) use legacy formats (JPEG/PNG)',
-        detail: imgFmt.modern + ' use modern formats (WebP/AVIF). Modern formats are 25-50% smaller.',
-        fix: 'Convert images to WebP or AVIF. Use <picture> with format fallbacks for broad browser support.',
-        presetRef: null,
-        source: 'Web.dev — https://web.dev/articles/serve-images-webp'
-      });
-    }
-  }
-
-  // CLS (Cumulative Layout Shift)
-  if (data.performance && data.performance.cls !== null && data.performance.cls !== undefined) {
-    checks++;
-    var cls = data.performance.cls;
-    if (cls <= 0.1) {
-      passed++;
-    } else {
-      findings.push({
-        severity: cls > 0.25 ? 'error' : 'warning',
-        title: 'CLS (Cumulative Layout Shift): ' + cls + ' (' + (cls > 0.25 ? 'poor' : 'needs improvement') + ')',
-        detail: 'Layout shifts disrupt user reading and cause mis-clicks. Target: < 0.1.',
-        fix: 'Add explicit width/height to images and ads. Use min-height on dynamic content areas. Avoid inserting content above existing content.',
-        presetRef: null,
-        source: 'Web Vitals — https://web.dev/articles/cls'
-      });
-    }
-  }
-
-  // Non-responsive images
-  var nri = (data.performance && data.performance.nonResponsiveImages) || 0;
-  if (nri > 0) {
-    findings.push({
-      severity: 'warning',
-      title: nri + ' image(s) without responsive sizing',
-      detail: 'Images without max-width: 100% can overflow their containers on small screens',
-      fix: 'Add max-width: 100% and height: auto to all images. In Tailwind: class="max-w-full h-auto".',
-      presetRef: null,
-      source: 'MDN — https://developer.mozilla.org/en-US/docs/Learn/HTML/Multimedia_and_embedding/Responsive_images'
-    });
-  }
-
-  var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
-  return { score: score, findings: findings, weight: 5, label: 'Performance', icon: 'cognitive' };
-}
-
-
-  S.register("performance", scorePerformance, 5, "Performance", "cognitive");
-})();
-</file>
-
 <file path="docs/scoring/readability.js">
 // Scoring Module: Readability & Scanability
 // Weight: 5%
@@ -14544,142 +14507,6 @@ function scoreResponsive(data) {
 })();
 </file>
 
-<file path="docs/scoring/spacing.js">
-// Scoring Module: Spacing & Layout
-// Weight: 15%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreSpacing(data) {
-  var profile = S.getProfile(data);
-  var findings = [];
-  var checks = 0;
-  var passed = 0;
-
-  // 4px grid adherence — check if spacing values are multiples of 4
-  checks++;
-  var allSpacing = [].concat(data.spacing.paddings || [], data.spacing.margins || [], data.spacing.gaps || []);
-  var onGrid = 0;
-  var offGrid = 0;
-  allSpacing.forEach(function(s) {
-    var px = parseFloat(s.value);
-    if (isNaN(px) || px === 0) return;
-    if (Math.round(px) % 4 === 0) onGrid += s.count;
-    else offGrid += s.count;
-  });
-  var gridRatio = (onGrid + offGrid) > 0 ? onGrid / (onGrid + offGrid) : 1;
-  if (gridRatio >= 0.7) {
-    passed++;
-    if (gridRatio < 0.85) {
-      findings.push({
-        severity: 'info',
-        title: Math.round(gridRatio * 100) + '% of spacing values on 4px grid',
-        detail: 'Good adherence — a few values could be rounded to the nearest 4px increment',
-        fix: 'Use Tailwind spacing utilities (p-1=4px, p-2=8px, p-3=12px, p-4=16px, ...)',
-        presetRef: null
-      });
-    }
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: 'Only ' + Math.round(gridRatio * 100) + '% of spacing is on a 4px grid',
-      detail: 'Inconsistent spacing makes layouts feel unpolished',
-      fix: 'Align spacing to 4px increments: 4, 8, 12, 16, 24, 32, 48, 64px',
-      presetRef: 'All presets use Tailwind spacing scale (4px base unit)', source: 'Material Design spacing — https://m3.material.io/foundations/layout/applying-layout'
-    });
-  }
-
-  // Content max-width
-  checks++;
-  var maxW = parseFloat(data.spacing.maxContentWidth);
-  if (maxW > 0 && maxW <= 1500) {
-    passed++;
-  } else if (maxW > 1500) {
-    findings.push({
-      severity: 'warning',
-      title: 'Content width is ' + Math.round(maxW) + 'px (recommended: 1200–1440px)',
-      detail: 'Very wide content is harder to scan and looks stretched on large monitors',
-      fix: 'Add a max-width container. In Tailwind: max-w-7xl (1280px) or max-w-screen-xl',
-      presetRef: 'Dashboard presets use max-w-7xl containers'
-    });
-  } else {
-    passed++; // No max width data or narrow — fine
-  }
-
-  // Mobile padding >= 16px
-  checks++;
-  var bodyPad = parseFloat(data.spacing.bodyPaddingHorizontal);
-  if (bodyPad >= 14 || isNaN(bodyPad) || bodyPad === 0) {
-    passed++; // 0 is OK if inner containers have padding
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: 'Body horizontal padding is ' + bodyPad + 'px (minimum: 16px)',
-      detail: 'Content touching screen edges feels cramped on mobile',
-      fix: 'Add px-4 (16px) padding to the body or main container',
-      presetRef: null
-    });
-  }
-
-  // Adjacent interactive element spacing (buttons/links too close together)
-  var adjacentIssues = (data.interaction && data.interaction.adjacentIssues) || [];
-  if (adjacentIssues.length > 0) {
-    checks++;
-    var minSpacing = profile.targetSpacing;
-    var touching = adjacentIssues.filter(function(a) { return a.gap < 2; });
-    var tooClose = adjacentIssues.filter(function(a) { return a.gap >= 2 && a.gap < minSpacing; });
-
-    touching.forEach(function(a) {
-      findings.push({
-        severity: 'error',
-        title: 'Interactive elements touching (' + a.gap + 'px gap)',
-        detail: '"' + a.textA + '" and "' + a.textB + '" (' + a.direction + ')',
-        fix: 'Add at least ' + minSpacing + 'px gap between interactive elements. In Tailwind: gap-' + (minSpacing / 4) + ' on the parent flex/grid container.',
-        presetRef: 'Button presets use gap-2 (8px) or gap-3 (12px) between buttons'
-      });
-    });
-
-    tooClose.forEach(function(a) {
-      findings.push({
-        severity: 'warning',
-        title: 'Interactive elements only ' + a.gap + 'px apart (recommended: ≥' + minSpacing + 'px)',
-        detail: '"' + a.textA + '" and "' + a.textB + '" (' + a.direction + ')',
-        fix: 'Increase gap to at least ' + minSpacing + 'px to prevent mis-taps. In Tailwind: gap-' + (minSpacing / 4) + ' on the parent.',
-        presetRef: null
-      });
-    });
-
-    if (touching.length === 0 && tooClose.length === 0) passed++;
-  }
-
-  // Element overflow
-  var overflows = (data.layout && data.layout.overflowElements) || 0;
-  if (overflows > 0) {
-    checks++;
-    findings.push({
-      severity: overflows > 5 ? 'warning' : 'info',
-      title: overflows + ' element(s) with horizontal overflow',
-      detail: 'Content extends beyond its container, causing horizontal scroll or clipping',
-      fix: 'Add overflow-x: hidden or overflow: auto to the container element. Check for fixed-width children inside flexible containers.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
-    });
-  } else {
-    checks++;
-    passed++;
-  }
-
-  var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
-  return { score: score, findings: findings, weight: 15, label: 'Spacing & Layout', icon: 'spacing' };
-}
-
-
-  S.register("spacing", scoreSpacing, 15, "Spacing & Layout", "spacing");
-})();
-</file>
-
 <file path="docs/scoring/touch.js">
 // Scoring Module: Touch & Interaction
 // Weight: 15%
@@ -14777,164 +14604,6 @@ function scoreTouchTargets(data) {
 
 
   S.register("touch", scoreTouchTargets, 15, "Touch & Interaction", "touch");
-})();
-</file>
-
-<file path="docs/scoring/typography.js">
-// Scoring Module: Typography
-// Weight: 15%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreTypography(data) {
-  var profile = S.getProfile(data);
-  var findings = [];
-  var checks = 0;
-  var passed = 0;
-
-  // Body font size check against profile minimum
-  checks++;
-  var bodySize = parseFloat(data.typography.bodyFontSize);
-  if (bodySize >= profile.bodyFontMin) {
-    passed++;
-  } else if (bodySize > 0) {
-    findings.push({
-      severity: 'error',
-      title: 'Body font size is ' + bodySize + 'px (minimum: ' + profile.bodyFontMin + 'px)',
-      detail: 'Small body text reduces readability, especially on mobile',
-      fix: 'Set body font-size to at least ' + profile.bodyFontMin + 'px. In Tailwind: text-base (16px) or text-lg (18px)',
-      presetRef: 'All presets use text-base (16px) or larger for body text', source: 'WCAG 2.2 / NNGroup — https://www.w3.org/TR/WCAG22/#text-spacing'
-    });
-  }
-
-  // Line height check against profile range
-  checks++;
-  var bodyLH = data.typography.bodyLineHeight;
-  var bodyLHRatio = 0;
-  if (bodyLH && bodyLH !== 'normal') {
-    bodyLHRatio = parseFloat(bodyLH) / bodySize;
-  }
-  var lhPassMin = profile.lineHeightMin - 0.05;
-  var lhPassMax = profile.lineHeightMax + 0.1;
-  if (bodyLHRatio >= lhPassMin && bodyLHRatio <= lhPassMax) {
-    passed++;
-  } else if (bodyLHRatio > 0) {
-    findings.push({
-      severity: bodyLHRatio < 1.2 || bodyLHRatio > 2 ? 'error' : 'warning',
-      title: 'Body line-height is ' + (Math.round(bodyLHRatio * 100) / 100) + ' (ideal: ' + profile.lineHeightMin + '–' + profile.lineHeightMax + ')',
-      detail: bodyLHRatio < profile.lineHeightMin ? 'Text feels cramped and hard to read' : 'Text feels too loose and wastes vertical space',
-      fix: bodyLHRatio < profile.lineHeightMin ? 'Increase line-height. In Tailwind: leading-relaxed (1.625) or leading-normal (1.5)' : 'Decrease line-height. In Tailwind: leading-normal (1.5)',
-      presetRef: null
-    });
-  }
-
-  // Line length 45-75 characters
-  checks++;
-  var maxChars = data.typography.maxLineLength ? data.typography.maxLineLength.chars : 0;
-  if (maxChars > 0 && maxChars <= 80) {
-    passed++;
-  } else if (maxChars > 80) {
-    findings.push({
-      severity: maxChars > 100 ? 'error' : 'warning',
-      title: 'Line length ~' + maxChars + ' characters (ideal: 45–75)',
-      detail: 'Long lines make it hard for the eye to track back to the next line',
-      fix: 'Constrain content width with max-w-prose (65ch) or max-w-2xl (672px)',
-      presetRef: 'Editorial presets use max-w-prose for reading content'
-    });
-  }
-
-  // Heading scale — check if headings have a consistent ratio
-  checks++;
-  var headings = data.typography.headings || [];
-  if (headings.length >= 2) {
-    var sizes = headings.map(function(h) { return parseFloat(h.fontSize); }).filter(function(s) { return s > 0; });
-    var uniqueSizes = Array.from(new Set(sizes)).sort(function(a, b) { return b - a; });
-    if (uniqueSizes.length >= 2) {
-      var ratio = uniqueSizes[0] / uniqueSizes[uniqueSizes.length - 1];
-      if (ratio >= 1.5 && ratio <= 4) {
-        passed++;
-      } else {
-        findings.push({
-          severity: 'warning',
-          title: 'Heading scale ratio is ' + (Math.round(ratio * 100) / 100) + ' (ideal: 1.5–3.5)',
-          detail: ratio < 1.5 ? 'Headings are too similar in size — weak hierarchy' : 'Heading sizes vary too wildly — use a modular scale',
-          fix: 'Use a modular scale (1.200 minor third or 1.250 major third). In Tailwind: text-4xl > text-2xl > text-xl > text-base',
-          presetRef: null
-        });
-      }
-    } else { passed++; } // Only one heading size — acceptable
-  } else { passed++; } // No headings to check
-
-  // Max 2-3 font weights
-  checks++;
-  var fontWeights = data.typography.fontWeights || [];
-  var weightCount = fontWeights.length;
-  if (weightCount <= 4) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: 'Using ' + weightCount + ' font weights (recommended: 2–3)',
-      detail: 'Too many weights create visual noise and increase font loading time',
-      fix: 'Consolidate to 400 (regular), 500/600 (medium), 700 (bold)',
-      presetRef: null
-    });
-  }
-
-  // Profile-specific: minimum font weight (e.g., elderly profile forbids light/thin)
-  if (profile.fontWeightMin > 0 && fontWeights.length > 0) {
-    var lightWeights = fontWeights.filter(function(w) { return parseInt(w) < profile.fontWeightMin; });
-    if (lightWeights.length > 0) {
-      checks++;
-      findings.push({
-        severity: 'warning',
-        title: 'Font weight(s) ' + lightWeights.join(', ') + ' below minimum ' + profile.fontWeightMin + ' for this audience',
-        detail: 'Light and thin font weights reduce readability for users who need higher legibility',
-        fix: 'Use font-weight ' + profile.fontWeightMin + ' (regular) or heavier. Avoid font-weight 100–300.',
-        presetRef: null
-      });
-    } else {
-      checks++;
-      passed++;
-    }
-  }
-
-  // Letter spacing
-  var lsIssues = (data.typography && data.typography.letterSpacingIssues) || 0;
-  if (lsIssues > 0) {
-    findings.push({
-      severity: 'info',
-      title: lsIssues + ' element(s) with extreme letter-spacing',
-      detail: 'Very tight (< -0.03em) or very loose (> 0.15em) letter spacing reduces readability',
-      fix: 'Keep letter-spacing between -0.02em and 0.1em for body text. Tighter spacing is acceptable for large headings.',
-      presetRef: null,
-      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/letterspacing.html'
-    });
-  }
-
-  // Max 2 typefaces
-  checks++;
-  var familyCount = (data.typography.fontFamilies || []).length;
-  if (familyCount <= 3) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: 'Using ' + familyCount + ' font families (recommended: max 2)',
-      detail: 'Too many typefaces make the design feel inconsistent',
-      fix: 'Use 1 sans-serif + 1 serif (or monospace for code). In Tailwind: font-sans + font-serif',
-      presetRef: null
-    });
-  }
-
-  var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
-  return { score: score, findings: findings, weight: 15, label: 'Typography', icon: 'type' };
-}
-
-
-  S.register("typography", scoreTypography, 15, "Typography", "type");
 })();
 </file>
 
@@ -15978,215 +15647,6 @@ All presets are:
 - **Realistic content** (not lorem ipsum)
 </file>
 
-<file path="docs/scoring/accessibility.js">
-// Scoring Module: Accessibility
-// Weight: 15%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreAccessibility(data) {
-  var findings = [];
-  var checks = 0;
-  var passed = 0;
-  var a11y = data.accessibility;
-
-  // Semantic elements
-  checks++;
-  var semantic = a11y.semanticElements || {};
-  var hasMain = (semantic.main || 0) > 0;
-  var hasNav = (semantic.nav || 0) > 0;
-  var hasHeader = (semantic.header || 0) > 0;
-  var semanticCount = [hasMain, hasNav, hasHeader].filter(Boolean).length;
-  if (semanticCount >= 2) {
-    passed++;
-  } else {
-    findings.push({
-      severity: semanticCount === 0 ? 'error' : 'warning',
-      title: 'Missing semantic HTML elements',
-      detail: 'Found: ' + (hasHeader ? 'header ' : '') + (hasNav ? 'nav ' : '') + (hasMain ? 'main ' : '') + (semantic.footer ? 'footer' : ''),
-      fix: 'Use <header>, <nav>, <main>, <footer> for page structure. Screen readers rely on these landmarks.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships',
-      presetRef: 'All presets use semantic HTML landmarks'
-    });
-  }
-
-  // Heading hierarchy
-  checks++;
-  var headingOrder = a11y.headingHierarchy || [];
-  var hierarchyBroken = false;
-  for (var i = 1; i < headingOrder.length; i++) {
-    var prev = parseInt(headingOrder[i - 1].charAt(1));
-    var curr = parseInt(headingOrder[i].charAt(1));
-    if (curr > prev + 1) { hierarchyBroken = true; break; }
-  }
-  if (!hierarchyBroken) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: 'Heading hierarchy has gaps (e.g., h1 → h3)',
-      detail: 'Heading order: ' + headingOrder.join(' → '),
-      fix: 'Use headings in order: h1 → h2 → h3. Never skip levels. Style with classes instead of heading tags.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships',
-      presetRef: null
-    });
-  }
-
-  // Images with alt
-  checks++;
-  if (a11y.imagesWithoutAlt === 0) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'error',
-      title: a11y.imagesWithoutAlt + ' image(s) missing alt text',
-      detail: 'Screen readers cannot describe these images to users',
-      fix: 'Add alt="description" to all <img> tags. Use alt="" for decorative images.', source: 'WCAG 2.2 §1.1.1 — https://www.w3.org/TR/WCAG22/#non-text-content',
-      presetRef: null
-    });
-  }
-
-  // Image sizing (performance impact)
-  var imgIssues = (data.performance && data.performance.imageSizing) || [];
-  var noDimensions = imgIssues.filter(function(i) { return i.issues.indexOf('no-dimensions') !== -1; });
-  var lazyAbove = imgIssues.filter(function(i) { return i.issues.indexOf('lazy-above-fold') !== -1; });
-  var oversized = imgIssues.filter(function(i) { return i.issues.some(function(x) { return x.indexOf('oversized') === 0; }); });
-  if (noDimensions.length > 0) {
-    findings.push({ severity: 'warning', title: noDimensions.length + ' image(s) without explicit dimensions', detail: 'Missing width/height causes layout shift (CLS) when images load', fix: 'Add width and height attributes to all <img> tags, or use CSS aspect-ratio.', presetRef: null });
-  }
-  if (lazyAbove.length > 0) {
-    findings.push({ severity: 'error', title: lazyAbove.length + ' above-fold image(s) with lazy loading', detail: 'lazy loading on visible images delays LCP (Largest Contentful Paint)', fix: 'Remove loading="lazy" from images visible in the initial viewport. Use it only for below-fold images.', presetRef: null });
-  }
-  if (oversized.length > 0) {
-    findings.push({ severity: 'info', title: oversized.length + ' image(s) may be oversized for their display size', detail: 'Serving images much larger than their display size wastes bandwidth', fix: 'Resize images to 2x their display size (for retina). Use srcset for responsive images.', presetRef: null });
-  }
-
-  // Form labels
-  checks++;
-  var forms = a11y.formLabels || {};
-  if (forms.total === 0 || forms.withoutLabel === 0) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'error',
-      title: forms.withoutLabel + ' of ' + forms.total + ' form inputs missing labels',
-      detail: 'Unlabeled inputs are unusable for screen reader users',
-      fix: 'Use <label for="id"> or wrap the input in a <label>. Add aria-label for icon-only inputs.',
-      presetRef: 'Form presets always pair inputs with visible labels'
-    });
-  }
-
-  // Focus indicators
-  checks++;
-  var focusIndicators = a11y.focusIndicators || [];
-  var hasAnyFocus = focusIndicators.some(function(f) {
-    return f.outlineStyle !== 'none' && f.outlineWidth !== '0px';
-  });
-  var hasFocusVisibleCSS = a11y.hasFocusVisibleCSS || false;
-  if (hasAnyFocus || hasFocusVisibleCSS || focusIndicators.length === 0) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'error',
-      title: 'No visible focus indicators found',
-      detail: 'Keyboard users cannot see which element is focused',
-      fix: 'Ensure focus-visible styles exist. In Tailwind: focus-visible:ring-2 focus-visible:ring-blue-500', source: 'WCAG 2.2 §2.4.7 — https://www.w3.org/TR/WCAG22/#focus-visible',
-      presetRef: 'All interactive presets include focus-visible ring styles'
-    });
-  }
-
-  // Language attribute
-  checks++;
-  if (data.accessibility.langAttribute) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'error',
-      title: 'Missing lang attribute on <html>',
-      detail: 'Screen readers need the language to pronounce content correctly',
-      fix: 'Add lang="en" (or appropriate language) to the <html> element.',
-      presetRef: null,
-      source: 'WCAG 2.2 §3.1.1 — https://www.w3.org/TR/WCAG22/#language-of-page'
-    });
-  }
-
-  // Skip navigation link
-  if (data.structure && data.structure.totalElements > 50) {
-    checks++;
-    if (data.accessibility.hasSkipLink) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: 'No skip navigation link found',
-        detail: 'Keyboard users must tab through all navigation before reaching main content',
-        fix: 'Add a visually hidden skip link as the first focusable element: <a href="#main" class="sr-only focus:not-sr-only">Skip to content</a>',
-        presetRef: null,
-        source: 'WCAG 2.2 §2.4.1 — https://www.w3.org/TR/WCAG22/#bypass-blocks'
-      });
-    }
-  }
-
-  // Bad link texts
-  var badLinks = data.accessibility.badLinkTexts || [];
-  if (badLinks.length > 0) {
-    findings.push({
-      severity: 'warning',
-      title: badLinks.length + ' link(s) with non-descriptive text',
-      detail: 'Found: ' + badLinks.slice(0, 5).map(function(l) { return '"' + l.text + '"'; }).join(', '),
-      fix: 'Replace generic text like "click here" or "read more" with descriptive link text that makes sense out of context.',
-      presetRef: null,
-      source: 'WCAG 2.2 §2.4.4 — https://www.w3.org/TR/WCAG22/#link-purpose-in-context'
-    });
-  }
-
-  // Missing autocomplete on common fields
-  var missingAC = data.accessibility.missingAutocomplete || 0;
-  if (missingAC > 0) {
-    findings.push({
-      severity: 'info',
-      title: missingAC + ' form field(s) missing autocomplete attribute',
-      detail: 'Autocomplete helps users fill forms faster and reduces errors',
-      fix: 'Add autocomplete="name", autocomplete="email", etc. to common input fields.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.3.5 — https://www.w3.org/TR/WCAG22/#identify-input-purpose'
-    });
-  }
-
-  // ARIA audit
-  var ariaIssues = data.accessibility.ariaIssues || [];
-  var btnNoTabindex = ariaIssues.filter(function(a) { return a.type === 'button-no-tabindex'; });
-  var hiddenFocusable = ariaIssues.filter(function(a) { return a.type === 'hidden-focusable'; });
-  if (btnNoTabindex.length > 0) {
-    findings.push({
-      severity: 'error',
-      title: btnNoTabindex.length + ' element(s) with role="button" but no tabindex',
-      detail: 'Non-button elements with role="button" must be keyboard-focusable',
-      fix: 'Add tabindex="0" and a keydown handler for Enter/Space to elements with role="button", or use a real <button> element.',
-      presetRef: null,
-      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
-    });
-  }
-  if (hiddenFocusable.length > 0) {
-    findings.push({
-      severity: 'error',
-      title: hiddenFocusable.length + ' focusable element(s) inside aria-hidden containers',
-      detail: 'Screen readers skip aria-hidden content, but keyboard focus can still reach these elements — creating a confusing experience',
-      fix: 'Add tabindex="-1" to focusable elements inside aria-hidden containers, or restructure to keep them outside.',
-      presetRef: null,
-      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
-    });
-  }
-
-  var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
-  return { score: score, findings: findings, weight: 15, label: 'Accessibility', icon: 'a11y' };
-}
-
-
-  S.register("accessibility", scoreAccessibility, 15, "Accessibility", "a11y");
-})();
-</file>
-
 <file path="docs/scoring/contrast.js">
 // Scoring Module: Color & Contrast
 // Weight: 20%
@@ -16314,6 +15774,452 @@ function scoreContrast(data) {
 })();
 </file>
 
+<file path="docs/scoring/performance.js">
+// Scoring Module: Performance
+// Weight: 5%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scorePerformance(data) {
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+  var perf = data.performance || {};
+
+  // Font loading
+  var fontIssues = perf.fontLoading || [];
+  if (fontIssues.length > 0) {
+    checks++;
+    findings.push({
+      severity: 'warning',
+      title: fontIssues.length + ' web font(s) without font-display: swap',
+      detail: 'Fonts with display:auto or display:block cause invisible text (FOIT) while loading',
+      fix: 'Add font-display: swap (or optional) to @font-face rules. This shows fallback text immediately.',
+      presetRef: null
+    });
+  } else {
+    checks++;
+    passed++;
+  }
+
+  // Render-blocking resources
+  var rb = perf.renderBlocking || {};
+  checks++;
+  var blockingCount = (rb.cssInHead || 0) + (rb.jsInHead || 0);
+  if (blockingCount <= 3) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: blockingCount + ' render-blocking resources in <head>',
+      detail: (rb.cssInHead || 0) + ' CSS files, ' + (rb.jsInHead || 0) + ' sync JS scripts',
+      fix: 'Defer non-critical CSS with media="print" onload hack. Add async/defer to scripts.',
+      presetRef: null
+    });
+  }
+
+  // DOM complexity
+  checks++;
+  var domSize = perf.domSize || 0;
+  if (domSize <= 1500) {
+    passed++;
+  } else {
+    findings.push({
+      severity: domSize > 3000 ? 'warning' : 'info',
+      title: domSize + ' DOM elements (' + (domSize > 3000 ? 'excessive' : 'large') + ')',
+      detail: 'Large DOMs slow rendering, increase memory, and hurt interaction responsiveness',
+      fix: 'Consider lazy loading sections, virtualizing long lists, or simplifying markup.',
+      presetRef: null
+    });
+  }
+
+  // DOM depth
+  checks++;
+  var depth = perf.domDepth || 0;
+  if (depth <= 32) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'info',
+      title: 'DOM nesting depth: ' + depth + ' levels (recommended: ≤32)',
+      detail: 'Deep nesting increases CSS selector matching time and layout complexity',
+      fix: 'Flatten nested containers where possible. Avoid wrapping divs that serve no purpose.',
+      presetRef: null
+    });
+  }
+
+  // Third-party scripts
+  if (data.performance && data.performance.thirdPartyScripts !== undefined) {
+    checks++;
+    var tpCount = data.performance.thirdPartyScripts;
+    if (tpCount <= 5) {
+      passed++;
+    } else {
+      findings.push({
+        severity: tpCount > 10 ? 'warning' : 'info',
+        title: tpCount + ' third-party scripts loaded',
+        detail: 'Each third-party script adds latency, potential blocking, and privacy concerns',
+        fix: 'Audit third-party scripts. Remove unused ones, defer non-critical ones, consider self-hosting critical libraries.',
+        presetRef: null,
+        source: 'Web Vitals — https://web.dev/articles/optimizing-third-party-javascript'
+      });
+    }
+  }
+
+  // Image format audit
+  var imgFmt = (data.performance && data.performance.imageFormats) || {};
+  if (imgFmt.legacy > 0) {
+    checks++;
+    if (imgFmt.modern >= imgFmt.legacy) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: imgFmt.legacy + ' image(s) use legacy formats (JPEG/PNG)',
+        detail: imgFmt.modern + ' use modern formats (WebP/AVIF). Modern formats are 25-50% smaller.',
+        fix: 'Convert images to WebP or AVIF. Use <picture> with format fallbacks for broad browser support.',
+        presetRef: null,
+        source: 'Web.dev — https://web.dev/articles/serve-images-webp'
+      });
+    }
+  }
+
+  // CLS (Cumulative Layout Shift)
+  if (data.performance && data.performance.cls !== null && data.performance.cls !== undefined) {
+    checks++;
+    var cls = data.performance.cls;
+    if (cls <= 0.1) {
+      passed++;
+    } else {
+      findings.push({
+        severity: cls > 0.25 ? 'error' : 'warning',
+        title: 'CLS (Cumulative Layout Shift): ' + cls + ' (' + (cls > 0.25 ? 'poor' : 'needs improvement') + ')',
+        detail: 'Layout shifts disrupt user reading and cause mis-clicks. Target: < 0.1.',
+        fix: 'Add explicit width/height to images and ads. Use min-height on dynamic content areas. Avoid inserting content above existing content.',
+        presetRef: null,
+        source: 'Web Vitals — https://web.dev/articles/cls'
+      });
+    }
+  }
+
+  // Non-responsive images
+  var nri = (data.performance && data.performance.nonResponsiveImages) || 0;
+  if (nri > 0) {
+    findings.push({
+      severity: 'warning',
+      title: nri + ' image(s) without responsive sizing',
+      detail: 'Images without max-width: 100% can overflow their containers on small screens',
+      fix: 'Add max-width: 100% and height: auto to all images. In Tailwind: class="max-w-full h-auto".',
+      presetRef: null,
+      source: 'MDN — https://developer.mozilla.org/en-US/docs/Learn/HTML/Multimedia_and_embedding/Responsive_images'
+    });
+  }
+
+  var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
+  return { score: score, findings: findings, weight: 5, label: 'Performance', icon: 'cognitive' };
+}
+
+
+  S.register("performance", scorePerformance, 5, "Performance", "cognitive");
+})();
+</file>
+
+<file path="docs/scoring/spacing.js">
+// Scoring Module: Spacing & Layout
+// Weight: 15%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreSpacing(data) {
+  var profile = S.getProfile(data);
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+
+  // 4px grid adherence — check if spacing values are multiples of 4
+  checks++;
+  var allSpacing = [].concat(data.spacing.paddings || [], data.spacing.margins || [], data.spacing.gaps || []);
+  var onGrid = 0;
+  var offGrid = 0;
+  allSpacing.forEach(function(s) {
+    var px = parseFloat(s.value);
+    if (isNaN(px) || px === 0) return;
+    if (Math.round(px) % 4 === 0) onGrid += s.count;
+    else offGrid += s.count;
+  });
+  var gridRatio = (onGrid + offGrid) > 0 ? onGrid / (onGrid + offGrid) : 1;
+  if (gridRatio >= 0.7) {
+    passed++;
+    if (gridRatio < 0.85) {
+      findings.push({
+        severity: 'info',
+        title: Math.round(gridRatio * 100) + '% of spacing values on 4px grid',
+        detail: 'Good adherence — a few values could be rounded to the nearest 4px increment',
+        fix: 'Use Tailwind spacing utilities (p-1=4px, p-2=8px, p-3=12px, p-4=16px, ...)',
+        presetRef: null
+      });
+    }
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'Only ' + Math.round(gridRatio * 100) + '% of spacing is on a 4px grid',
+      detail: 'Inconsistent spacing makes layouts feel unpolished',
+      fix: 'Align spacing to 4px increments: 4, 8, 12, 16, 24, 32, 48, 64px',
+      presetRef: 'All presets use Tailwind spacing scale (4px base unit)', source: 'Material Design spacing — https://m3.material.io/foundations/layout/applying-layout'
+    });
+  }
+
+  // Content max-width
+  checks++;
+  var maxW = parseFloat(data.spacing.maxContentWidth);
+  if (maxW > 0 && maxW <= 1500) {
+    passed++;
+  } else if (maxW > 1500) {
+    findings.push({
+      severity: 'warning',
+      title: 'Content width is ' + Math.round(maxW) + 'px (recommended: 1200–1440px)',
+      detail: 'Very wide content is harder to scan and looks stretched on large monitors',
+      fix: 'Add a max-width container. In Tailwind: max-w-7xl (1280px) or max-w-screen-xl',
+      presetRef: 'Dashboard presets use max-w-7xl containers'
+    });
+  } else {
+    passed++; // No max width data or narrow — fine
+  }
+
+  // Mobile padding >= 16px
+  checks++;
+  var bodyPad = parseFloat(data.spacing.bodyPaddingHorizontal);
+  if (bodyPad >= 14 || isNaN(bodyPad) || bodyPad === 0) {
+    passed++; // 0 is OK if inner containers have padding
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'Body horizontal padding is ' + bodyPad + 'px (minimum: 16px)',
+      detail: 'Content touching screen edges feels cramped on mobile',
+      fix: 'Add px-4 (16px) padding to the body or main container',
+      presetRef: null
+    });
+  }
+
+  // Adjacent interactive element spacing (buttons/links too close together)
+  var adjacentIssues = (data.interaction && data.interaction.adjacentIssues) || [];
+  if (adjacentIssues.length > 0) {
+    checks++;
+    var minSpacing = profile.targetSpacing;
+    var touching = adjacentIssues.filter(function(a) { return a.gap < 2; });
+    var tooClose = adjacentIssues.filter(function(a) { return a.gap >= 2 && a.gap < minSpacing; });
+
+    touching.forEach(function(a) {
+      findings.push({
+        severity: 'error',
+        title: 'Interactive elements touching (' + a.gap + 'px gap)',
+        detail: '"' + a.textA + '" and "' + a.textB + '" (' + a.direction + ')',
+        fix: 'Add at least ' + minSpacing + 'px gap between interactive elements. In Tailwind: gap-' + (minSpacing / 4) + ' on the parent flex/grid container.',
+        presetRef: 'Button presets use gap-2 (8px) or gap-3 (12px) between buttons'
+      });
+    });
+
+    tooClose.forEach(function(a) {
+      findings.push({
+        severity: 'warning',
+        title: 'Interactive elements only ' + a.gap + 'px apart (recommended: ≥' + minSpacing + 'px)',
+        detail: '"' + a.textA + '" and "' + a.textB + '" (' + a.direction + ')',
+        fix: 'Increase gap to at least ' + minSpacing + 'px to prevent mis-taps. In Tailwind: gap-' + (minSpacing / 4) + ' on the parent.',
+        presetRef: null
+      });
+    });
+
+    if (touching.length === 0 && tooClose.length === 0) passed++;
+  }
+
+  // Element overflow
+  var overflows = (data.layout && data.layout.overflowElements) || 0;
+  if (overflows > 0) {
+    checks++;
+    findings.push({
+      severity: overflows > 5 ? 'warning' : 'info',
+      title: overflows + ' element(s) with horizontal overflow',
+      detail: 'Content extends beyond its container, causing horizontal scroll or clipping',
+      fix: 'Add overflow-x: hidden or overflow: auto to the container element. Check for fixed-width children inside flexible containers.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
+    });
+  } else {
+    checks++;
+    passed++;
+  }
+
+  var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
+  return { score: score, findings: findings, weight: 15, label: 'Spacing & Layout', icon: 'spacing' };
+}
+
+
+  S.register("spacing", scoreSpacing, 15, "Spacing & Layout", "spacing");
+})();
+</file>
+
+<file path="docs/scoring/typography.js">
+// Scoring Module: Typography
+// Weight: 15%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreTypography(data) {
+  var profile = S.getProfile(data);
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+
+  // Body font size check against profile minimum
+  checks++;
+  var bodySize = parseFloat(data.typography.bodyFontSize);
+  if (bodySize >= profile.bodyFontMin) {
+    passed++;
+  } else if (bodySize > 0) {
+    findings.push({
+      severity: 'error',
+      title: 'Body font size is ' + bodySize + 'px (minimum: ' + profile.bodyFontMin + 'px)',
+      detail: 'Small body text reduces readability, especially on mobile',
+      fix: 'Set body font-size to at least ' + profile.bodyFontMin + 'px. In Tailwind: text-base (16px) or text-lg (18px)',
+      presetRef: 'All presets use text-base (16px) or larger for body text', source: 'WCAG 2.2 / NNGroup — https://www.w3.org/TR/WCAG22/#text-spacing'
+    });
+  }
+
+  // Line height check against profile range
+  checks++;
+  var bodyLH = data.typography.bodyLineHeight;
+  var bodyLHRatio = 0;
+  if (bodyLH && bodyLH !== 'normal') {
+    bodyLHRatio = parseFloat(bodyLH) / bodySize;
+  }
+  var lhPassMin = profile.lineHeightMin - 0.05;
+  var lhPassMax = profile.lineHeightMax + 0.1;
+  if (bodyLHRatio >= lhPassMin && bodyLHRatio <= lhPassMax) {
+    passed++;
+  } else if (bodyLHRatio > 0) {
+    findings.push({
+      severity: bodyLHRatio < 1.2 || bodyLHRatio > 2 ? 'error' : 'warning',
+      title: 'Body line-height is ' + (Math.round(bodyLHRatio * 100) / 100) + ' (ideal: ' + profile.lineHeightMin + '–' + profile.lineHeightMax + ')',
+      detail: bodyLHRatio < profile.lineHeightMin ? 'Text feels cramped and hard to read' : 'Text feels too loose and wastes vertical space',
+      fix: bodyLHRatio < profile.lineHeightMin ? 'Increase line-height. In Tailwind: leading-relaxed (1.625) or leading-normal (1.5)' : 'Decrease line-height. In Tailwind: leading-normal (1.5)',
+      presetRef: null
+    });
+  }
+
+  // Line length 45-75 characters
+  checks++;
+  var maxChars = data.typography.maxLineLength ? data.typography.maxLineLength.chars : 0;
+  if (maxChars > 0 && maxChars <= 80) {
+    passed++;
+  } else if (maxChars > 80) {
+    findings.push({
+      severity: maxChars > 100 ? 'error' : 'warning',
+      title: 'Line length ~' + maxChars + ' characters (ideal: 45–75)',
+      detail: 'Long lines make it hard for the eye to track back to the next line',
+      fix: 'Constrain content width with max-w-prose (65ch) or max-w-2xl (672px)',
+      presetRef: 'Editorial presets use max-w-prose for reading content'
+    });
+  }
+
+  // Heading scale — check if headings have a consistent ratio
+  checks++;
+  var headings = data.typography.headings || [];
+  if (headings.length >= 2) {
+    var sizes = headings.map(function(h) { return parseFloat(h.fontSize); }).filter(function(s) { return s > 0; });
+    var uniqueSizes = Array.from(new Set(sizes)).sort(function(a, b) { return b - a; });
+    if (uniqueSizes.length >= 2) {
+      var ratio = uniqueSizes[0] / uniqueSizes[uniqueSizes.length - 1];
+      if (ratio >= 1.5 && ratio <= 4) {
+        passed++;
+      } else {
+        findings.push({
+          severity: 'warning',
+          title: 'Heading scale ratio is ' + (Math.round(ratio * 100) / 100) + ' (ideal: 1.5–3.5)',
+          detail: ratio < 1.5 ? 'Headings are too similar in size — weak hierarchy' : 'Heading sizes vary too wildly — use a modular scale',
+          fix: 'Use a modular scale (1.200 minor third or 1.250 major third). In Tailwind: text-4xl > text-2xl > text-xl > text-base',
+          presetRef: null
+        });
+      }
+    } else { passed++; } // Only one heading size — acceptable
+  } else { passed++; } // No headings to check
+
+  // Max 2-3 font weights
+  checks++;
+  var fontWeights = data.typography.fontWeights || [];
+  var weightCount = fontWeights.length;
+  if (weightCount <= 4) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'Using ' + weightCount + ' font weights (recommended: 2–3)',
+      detail: 'Too many weights create visual noise and increase font loading time',
+      fix: 'Consolidate to 400 (regular), 500/600 (medium), 700 (bold)',
+      presetRef: null
+    });
+  }
+
+  // Profile-specific: minimum font weight (e.g., elderly profile forbids light/thin)
+  if (profile.fontWeightMin > 0 && fontWeights.length > 0) {
+    var lightWeights = fontWeights.filter(function(w) { return parseInt(w) < profile.fontWeightMin; });
+    if (lightWeights.length > 0) {
+      checks++;
+      findings.push({
+        severity: 'warning',
+        title: 'Font weight(s) ' + lightWeights.join(', ') + ' below minimum ' + profile.fontWeightMin + ' for this audience',
+        detail: 'Light and thin font weights reduce readability for users who need higher legibility',
+        fix: 'Use font-weight ' + profile.fontWeightMin + ' (regular) or heavier. Avoid font-weight 100–300.',
+        presetRef: null
+      });
+    } else {
+      checks++;
+      passed++;
+    }
+  }
+
+  // Letter spacing
+  var lsIssues = (data.typography && data.typography.letterSpacingIssues) || 0;
+  if (lsIssues > 0) {
+    findings.push({
+      severity: 'info',
+      title: lsIssues + ' element(s) with extreme letter-spacing',
+      detail: 'Very tight (< -0.03em) or very loose (> 0.15em) letter spacing reduces readability',
+      fix: 'Keep letter-spacing between -0.02em and 0.1em for body text. Tighter spacing is acceptable for large headings.',
+      presetRef: null,
+      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/letterspacing.html'
+    });
+  }
+
+  // Max 2 typefaces
+  checks++;
+  var familyCount = (data.typography.fontFamilies || []).length;
+  if (familyCount <= 3) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'Using ' + familyCount + ' font families (recommended: max 2)',
+      detail: 'Too many typefaces make the design feel inconsistent',
+      fix: 'Use 1 sans-serif + 1 serif (or monospace for code). In Tailwind: font-sans + font-serif',
+      presetRef: null
+    });
+  }
+
+  var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
+  return { score: score, findings: findings, weight: 15, label: 'Typography', icon: 'type' };
+}
+
+
+  S.register("typography", scoreTypography, 15, "Typography", "type");
+})();
+</file>
+
 <file path="docs/ANALYZER-TODO.md">
 # Analyzer TODO
 
@@ -16328,16 +16234,16 @@ function scoreContrast(data) {
 
 - [ ] **Touch targets on responsive sites** — Desktop scan flags small elements that may be larger at mobile breakpoints. Add note when responsive CSS is detected: "This site uses responsive breakpoints — touch targets may be correctly sized on mobile."
 - [ ] **URL link in report** — Some users report the URL isn't clickable. May need to test across browsers.
-- [ ] **Extraction data caching** — Store last extraction in sessionStorage so profile/exclusion changes don't require re-fetch
+- [x] **Extraction data caching** — Store last extraction in sessionStorage so profile/exclusion changes don't require re-fetch
 - [ ] **Report comparison** — Show score delta when re-scoring with different profile or exclusions
-- [ ] **Dark mode on report** — Severity badges use hardcoded colors. Should respect dark-ui class.
+- [x] **Dark mode on report** — Severity badges use hardcoded colors. Should respect dark-ui class.
 
 ## P2 Features (research complete, implementation pending)
 
-- [ ] **Background image contrast** — Canvas sampling with CORS fallback (see research/analyzer-p2-research.md §1)
-- [ ] **CSS filter contrast math** — Apply brightness()/contrast()/opacity() adjustments to RGB before ratio calc (see research §3)
-- [ ] **Coleman-Liau readability** — Full implementation with text extraction from `<p>` elements (see research §4)
-- [ ] **Scanability scoring** — Paragraph length, heading frequency, list usage, wall-of-text detection (see research §5)
+- [x] **Background image contrast** — Canvas sampling with CORS fallback (see research/analyzer-p2-research.md §1)
+- [x] **CSS filter contrast math** — Apply brightness()/contrast()/opacity() adjustments to RGB before ratio calc (see research §3)
+- [x] **Coleman-Liau readability** — Full implementation with text extraction from `<p>` elements (see research §4)
+- [x] **Scanability scoring** — Paragraph length, heading frequency, list usage, wall-of-text detection (see research §5)
 - [ ] **LCP estimation** — PerformanceObserver in Chromium, heuristic fallback (see research/analyzer-roadmap.md §4.4)
 
 ## Extension: LLM API Integration (future, opt-in)
@@ -16366,8 +16272,8 @@ Low priority — the analyzer's value is evidence-based scoring, not AI opinions
 ### contrast.js — Color & Contrast (20%)
 **Current:** Walks DOM parents for backgroundColor, canvas fallback for oklch/oklab, gradient sampling.
 **To improve:**
-- [ ] **Background images:** Draw bg-image to canvas, sample pixels at text position. Needs background-size/position math. CORS limitation for cross-origin images. (research/analyzer-p2-research.md §1)
-- [ ] **CSS filters on ancestors:** Walk parent chain checking for `filter: brightness(X) contrast(Y)`. Adjust RGB mathematically before computing ratio. brightness(0.5) halves each channel. contrast(2) doubles distance from 128. (research §3)
+- [x] **Background images:** Draw bg-image to canvas, sample pixels at text position. Needs background-size/position math. CORS limitation for cross-origin images. (research/analyzer-p2-research.md §1)
+- [x] **CSS filters on ancestors:** Walk parent chain checking for `filter: brightness(X) contrast(Y)`. Adjust RGB mathematically before computing ratio. brightness(0.5) halves each channel. contrast(2) doubles distance from 128. (research §3)
 - [ ] **Semi-transparent overlays:** Current blending is correct but doesn't handle backdrop-filter or mix-blend-mode. Flag these as "uncertain" rather than computing wrong values.
 - [ ] **Dark mode variant testing:** Automatically test dark: variant contrast by toggling `.dark` class before extraction. Currently only tests the active mode.
 - [ ] **APCA (Advanced Perceptual Contrast Algorithm):** Add as alternative metric alongside WCAG. More accurate for large/small text. Library: `apca-w3` (~5KB). Source: https://github.com/Myndex/SAPC-APCA
@@ -16378,7 +16284,7 @@ Low priority — the analyzer's value is evidence-based scoring, not AI opinions
 - [ ] **Actual character-per-line measurement:** Current uses `element.width / (fontSize * 0.5)` which is a rough estimate. Better: create a temporary `<span>` with representative text, measure its width, divide element width by character width.
 - [ ] **Font loading performance:** Check for `font-display: optional` vs `swap` vs `block`. Measure if custom fonts are subset or full. Source: https://web.dev/articles/font-best-practices
 - [ ] **Vertical rhythm detection:** Check if line heights create a consistent baseline grid. All spacings should be multiples of the base line height.
-- [ ] **Letter spacing audit:** Detect `letter-spacing` values that reduce readability (too tight < -0.02em or too loose > 0.1em for body text).
+- [x] **Letter spacing audit:** Detect `letter-spacing` values that reduce readability (too tight < -0.02em or too loose > 0.1em for body text).
 - [ ] **Paragraph spacing:** Check `margin-bottom` on `<p>` elements. Should be 0.75-1em. Source: Butterick's Practical Typography.
 
 ### spacing.js — Spacing & Layout (15%)
@@ -16386,14 +16292,14 @@ Low priority — the analyzer's value is evidence-based scoring, not AI opinions
 **To improve:**
 - [ ] **Nested spacing consistency:** Check if spacing increases predictably from component → section → page level. Gestalt proximity principle.
 - [ ] **Container padding audit:** Verify cards, modals, sections have consistent internal padding (not some 12px and others 24px in the same design).
-- [ ] **Overflow detection:** Check if any elements overflow their containers (`scrollWidth > clientWidth`). Common on mobile.
+- [x] **Overflow detection:** Check if any elements overflow their containers (`scrollWidth > clientWidth`). Common on mobile.
 - [ ] **Negative margin detection:** Flag negative margins as potential layout fragility.
 - [ ] **Gap vs margin consistency:** Check if the same spacing is achieved via gap in some places and margin in others (should be consistent).
 
 ### touch.js — Touch & Interaction (15%)
 **Current:** Viewport-aware thresholds (24px desktop / 44px mobile), profile-aware, desktop touch note.
 **To improve:**
-- [ ] **Responsive CSS detection for touch:** When site has `@media` queries, note that touch targets may have different sizes at mobile breakpoints. Don't error if responsive classes exist.
+- [x] **Responsive CSS detection for touch:** When site has `@media` queries, note that touch targets may have different sizes at mobile breakpoints. Don't error if responsive classes exist.
 - [ ] **Padding-inclusive measurement:** Some elements have small visible size but larger clickable area via padding. Check if the padding box (not just content box) meets the threshold.
 - [ ] **Overlapping targets:** Check if any interactive elements overlap each other (absolute positioning causing stacking).
 - [ ] **Click density mapping:** Identify areas with many small targets clustered together (e.g., tag clouds, icon grids) and flag the group, not each individual element.
@@ -16402,19 +16308,19 @@ Low priority — the analyzer's value is evidence-based scoring, not AI opinions
 ### accessibility.js — Accessibility (15%)
 **Current:** Semantic HTML, heading hierarchy, alt text, form labels, focus indicators.
 **To improve:**
-- [ ] **ARIA role audit:** Check for common ARIA mistakes (role="button" without keyboard handler, aria-hidden on focusable elements).
+- [x] **ARIA role audit:** Check for common ARIA mistakes (role="button" without keyboard handler, aria-hidden on focusable elements).
 - [ ] **Color-only indicators:** Detect if status/error states rely solely on color (e.g., red text without an icon or label). Source: WCAG §1.4.1.
-- [ ] **Link text quality:** Flag links with "click here", "read more", "learn more" as non-descriptive. Source: WCAG §2.4.4.
-- [ ] **Skip navigation link:** Check for `<a href="#main-content">` or similar skip link as first focusable element. Source: WCAG §2.4.1.
-- [ ] **Language attribute:** Check `<html lang="...">` is set. Source: WCAG §3.1.1.
-- [ ] **Autocomplete attributes:** Check if common form fields (name, email, phone, address) have appropriate `autocomplete` values. Source: WCAG §1.3.5.
+- [x] **Link text quality:** Flag links with "click here", "read more", "learn more" as non-descriptive. Source: WCAG §2.4.4.
+- [x] **Skip navigation link:** Check for `<a href="#main-content">` or similar skip link as first focusable element. Source: WCAG §2.4.1.
+- [x] **Language attribute:** Check `<html lang="...">` is set. Source: WCAG §3.1.1.
+- [x] **Autocomplete attributes:** Check if common form fields (name, email, phone, address) have appropriate `autocomplete` values. Source: WCAG §1.3.5.
 
 ### responsive.js — Responsive Design (10%)
 **Current:** Checks for Tailwind responsive classes or CSS @media queries, dark mode detection.
 **To improve:**
-- [ ] **Viewport meta tag audit:** Check for `width=device-width` and absence of `user-scalable=no` (which blocks pinch-to-zoom). Source: WCAG §1.4.4.
-- [ ] **Horizontal overflow detection:** Check `document.documentElement.scrollWidth > viewport.width`. Common responsive failure.
-- [ ] **Image responsive sizing:** Check if images use `max-width: 100%` or `width: 100%; height: auto`. Images that overflow containers on small screens.
+- [x] **Viewport meta tag audit:** Check for `width=device-width` and absence of `user-scalable=no` (which blocks pinch-to-zoom). Source: WCAG §1.4.4.
+- [x] **Horizontal overflow detection:** Check `document.documentElement.scrollWidth > viewport.width`. Common responsive failure.
+- [x] **Image responsive sizing:** Check if images use `max-width: 100%` or `width: 100%; height: auto`. Images that overflow containers on small screens.
 - [ ] **Fixed-width element detection:** Find elements with hardcoded pixel widths that don't flex (e.g., `width: 800px` without max-width).
 - [ ] **Text truncation audit:** Detect `text-overflow: ellipsis` on elements — content may be hidden on small screens.
 
@@ -16445,9 +16351,9 @@ Low priority — the analyzer's value is evidence-based scoring, not AI opinions
 ### performance.js — Performance (5%)
 **Current:** Font loading, render-blocking resources, DOM size, DOM depth.
 **To improve:**
-- [ ] **CLS detection:** Use `PerformanceObserver` with `layout-shift` entries (Chromium only). Source: https://web.dev/articles/cls
+- [x] **CLS detection:** Use `PerformanceObserver` with `layout-shift` entries (Chromium only). Source: https://web.dev/articles/cls
 - [ ] **Image format audit:** Check if images use modern formats (WebP, AVIF) vs legacy (JPEG, PNG). Available from `<img>` src extension.
-- [ ] **Third-party script count:** Count `<script>` tags with external domains. Flag when > 5.
+- [x] **Third-party script count:** Count `<script>` tags with external domains. Flag when > 5.
 - [ ] **Inline CSS size:** Measure total bytes of `<style>` blocks. Large inline CSS delays rendering.
 - [ ] **Critical CSS detection:** Check if above-fold styles are inlined and below-fold CSS is deferred.
 
@@ -17318,6 +17224,215 @@ The CSS techniques in this file are generic patterns found across modern web des
 - [Picsum Photos](https://picsum.photos/) — placeholder image API
 - [Placehold.co](https://placehold.co/) — labeled placeholder images
 - [Unsplash](https://unsplash.com/) — free photography (attribution appreciated)
+</file>
+
+<file path="docs/scoring/accessibility.js">
+// Scoring Module: Accessibility
+// Weight: 15%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreAccessibility(data) {
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+  var a11y = data.accessibility;
+
+  // Semantic elements
+  checks++;
+  var semantic = a11y.semanticElements || {};
+  var hasMain = (semantic.main || 0) > 0;
+  var hasNav = (semantic.nav || 0) > 0;
+  var hasHeader = (semantic.header || 0) > 0;
+  var semanticCount = [hasMain, hasNav, hasHeader].filter(Boolean).length;
+  if (semanticCount >= 2) {
+    passed++;
+  } else {
+    findings.push({
+      severity: semanticCount === 0 ? 'error' : 'warning',
+      title: 'Missing semantic HTML elements',
+      detail: 'Found: ' + (hasHeader ? 'header ' : '') + (hasNav ? 'nav ' : '') + (hasMain ? 'main ' : '') + (semantic.footer ? 'footer' : ''),
+      fix: 'Use <header>, <nav>, <main>, <footer> for page structure. Screen readers rely on these landmarks.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships',
+      presetRef: 'All presets use semantic HTML landmarks'
+    });
+  }
+
+  // Heading hierarchy
+  checks++;
+  var headingOrder = a11y.headingHierarchy || [];
+  var hierarchyBroken = false;
+  for (var i = 1; i < headingOrder.length; i++) {
+    var prev = parseInt(headingOrder[i - 1].charAt(1));
+    var curr = parseInt(headingOrder[i].charAt(1));
+    if (curr > prev + 1) { hierarchyBroken = true; break; }
+  }
+  if (!hierarchyBroken) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'Heading hierarchy has gaps (e.g., h1 → h3)',
+      detail: 'Heading order: ' + headingOrder.join(' → '),
+      fix: 'Use headings in order: h1 → h2 → h3. Never skip levels. Style with classes instead of heading tags.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships',
+      presetRef: null
+    });
+  }
+
+  // Images with alt
+  checks++;
+  if (a11y.imagesWithoutAlt === 0) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'error',
+      title: a11y.imagesWithoutAlt + ' image(s) missing alt text',
+      detail: 'Screen readers cannot describe these images to users',
+      fix: 'Add alt="description" to all <img> tags. Use alt="" for decorative images.', source: 'WCAG 2.2 §1.1.1 — https://www.w3.org/TR/WCAG22/#non-text-content',
+      presetRef: null
+    });
+  }
+
+  // Image sizing (performance impact)
+  var imgIssues = (data.performance && data.performance.imageSizing) || [];
+  var noDimensions = imgIssues.filter(function(i) { return i.issues.indexOf('no-dimensions') !== -1; });
+  var lazyAbove = imgIssues.filter(function(i) { return i.issues.indexOf('lazy-above-fold') !== -1; });
+  var oversized = imgIssues.filter(function(i) { return i.issues.some(function(x) { return x.indexOf('oversized') === 0; }); });
+  if (noDimensions.length > 0) {
+    findings.push({ severity: 'warning', title: noDimensions.length + ' image(s) without explicit dimensions', detail: 'Missing width/height causes layout shift (CLS) when images load', fix: 'Add width and height attributes to all <img> tags, or use CSS aspect-ratio.', presetRef: null });
+  }
+  if (lazyAbove.length > 0) {
+    findings.push({ severity: 'error', title: lazyAbove.length + ' above-fold image(s) with lazy loading', detail: 'lazy loading on visible images delays LCP (Largest Contentful Paint)', fix: 'Remove loading="lazy" from images visible in the initial viewport. Use it only for below-fold images.', presetRef: null });
+  }
+  if (oversized.length > 0) {
+    findings.push({ severity: 'info', title: oversized.length + ' image(s) may be oversized for their display size', detail: 'Serving images much larger than their display size wastes bandwidth', fix: 'Resize images to 2x their display size (for retina). Use srcset for responsive images.', presetRef: null });
+  }
+
+  // Form labels
+  checks++;
+  var forms = a11y.formLabels || {};
+  if (forms.total === 0 || forms.withoutLabel === 0) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'error',
+      title: forms.withoutLabel + ' of ' + forms.total + ' form inputs missing labels',
+      detail: 'Unlabeled inputs are unusable for screen reader users',
+      fix: 'Use <label for="id"> or wrap the input in a <label>. Add aria-label for icon-only inputs.',
+      presetRef: 'Form presets always pair inputs with visible labels'
+    });
+  }
+
+  // Focus indicators
+  checks++;
+  var focusIndicators = a11y.focusIndicators || [];
+  var hasAnyFocus = focusIndicators.some(function(f) {
+    return f.outlineStyle !== 'none' && f.outlineWidth !== '0px';
+  });
+  var hasFocusVisibleCSS = a11y.hasFocusVisibleCSS || false;
+  if (hasAnyFocus || hasFocusVisibleCSS || focusIndicators.length === 0) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'error',
+      title: 'No visible focus indicators found',
+      detail: 'Keyboard users cannot see which element is focused',
+      fix: 'Ensure focus-visible styles exist. In Tailwind: focus-visible:ring-2 focus-visible:ring-blue-500', source: 'WCAG 2.2 §2.4.7 — https://www.w3.org/TR/WCAG22/#focus-visible',
+      presetRef: 'All interactive presets include focus-visible ring styles'
+    });
+  }
+
+  // Language attribute
+  checks++;
+  if (data.accessibility.langAttribute) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'error',
+      title: 'Missing lang attribute on <html>',
+      detail: 'Screen readers need the language to pronounce content correctly',
+      fix: 'Add lang="en" (or appropriate language) to the <html> element.',
+      presetRef: null,
+      source: 'WCAG 2.2 §3.1.1 — https://www.w3.org/TR/WCAG22/#language-of-page'
+    });
+  }
+
+  // Skip navigation link
+  if (data.structure && data.structure.totalElements > 50) {
+    checks++;
+    if (data.accessibility.hasSkipLink) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: 'No skip navigation link found',
+        detail: 'Keyboard users must tab through all navigation before reaching main content',
+        fix: 'Add a visually hidden skip link as the first focusable element: <a href="#main" class="sr-only focus:not-sr-only">Skip to content</a>',
+        presetRef: null,
+        source: 'WCAG 2.2 §2.4.1 — https://www.w3.org/TR/WCAG22/#bypass-blocks'
+      });
+    }
+  }
+
+  // Bad link texts
+  var badLinks = data.accessibility.badLinkTexts || [];
+  if (badLinks.length > 0) {
+    findings.push({
+      severity: 'warning',
+      title: badLinks.length + ' link(s) with non-descriptive text',
+      detail: 'Found: ' + badLinks.slice(0, 5).map(function(l) { return '"' + l.text + '"'; }).join(', '),
+      fix: 'Replace generic text like "click here" or "read more" with descriptive link text that makes sense out of context.',
+      presetRef: null,
+      source: 'WCAG 2.2 §2.4.4 — https://www.w3.org/TR/WCAG22/#link-purpose-in-context'
+    });
+  }
+
+  // Missing autocomplete on common fields
+  var missingAC = data.accessibility.missingAutocomplete || 0;
+  if (missingAC > 0) {
+    findings.push({
+      severity: 'info',
+      title: missingAC + ' form field(s) missing autocomplete attribute',
+      detail: 'Autocomplete helps users fill forms faster and reduces errors',
+      fix: 'Add autocomplete="name", autocomplete="email", etc. to common input fields.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.3.5 — https://www.w3.org/TR/WCAG22/#identify-input-purpose'
+    });
+  }
+
+  // ARIA audit
+  var ariaIssues = data.accessibility.ariaIssues || [];
+  var btnNoTabindex = ariaIssues.filter(function(a) { return a.type === 'button-no-tabindex'; });
+  var hiddenFocusable = ariaIssues.filter(function(a) { return a.type === 'hidden-focusable'; });
+  if (btnNoTabindex.length > 0) {
+    findings.push({
+      severity: 'error',
+      title: btnNoTabindex.length + ' element(s) with role="button" but no tabindex',
+      detail: 'Non-button elements with role="button" must be keyboard-focusable',
+      fix: 'Add tabindex="0" and a keydown handler for Enter/Space to elements with role="button", or use a real <button> element.',
+      presetRef: null,
+      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
+    });
+  }
+  if (hiddenFocusable.length > 0) {
+    findings.push({
+      severity: 'error',
+      title: hiddenFocusable.length + ' focusable element(s) inside aria-hidden containers',
+      detail: 'Screen readers skip aria-hidden content, but keyboard focus can still reach these elements — creating a confusing experience',
+      fix: 'Add tabindex="-1" to focusable elements inside aria-hidden containers, or restructure to keep them outside.',
+      presetRef: null,
+      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
+    });
+  }
+
+  var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
+  return { score: score, findings: findings, weight: 15, label: 'Accessibility', icon: 'a11y' };
+}
+
+
+  S.register("accessibility", scoreAccessibility, 15, "Accessibility", "a11y");
+})();
 </file>
 
 <file path="CLAUDE.md">

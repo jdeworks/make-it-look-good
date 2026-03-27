@@ -11,16 +11,16 @@
 
 - [ ] **Touch targets on responsive sites** — Desktop scan flags small elements that may be larger at mobile breakpoints. Add note when responsive CSS is detected: "This site uses responsive breakpoints — touch targets may be correctly sized on mobile."
 - [ ] **URL link in report** — Some users report the URL isn't clickable. May need to test across browsers.
-- [ ] **Extraction data caching** — Store last extraction in sessionStorage so profile/exclusion changes don't require re-fetch
+- [x] **Extraction data caching** — Store last extraction in sessionStorage so profile/exclusion changes don't require re-fetch
 - [ ] **Report comparison** — Show score delta when re-scoring with different profile or exclusions
-- [ ] **Dark mode on report** — Severity badges use hardcoded colors. Should respect dark-ui class.
+- [x] **Dark mode on report** — Severity badges use hardcoded colors. Should respect dark-ui class.
 
 ## P2 Features (research complete, implementation pending)
 
-- [ ] **Background image contrast** — Canvas sampling with CORS fallback (see research/analyzer-p2-research.md §1)
-- [ ] **CSS filter contrast math** — Apply brightness()/contrast()/opacity() adjustments to RGB before ratio calc (see research §3)
-- [ ] **Coleman-Liau readability** — Full implementation with text extraction from `<p>` elements (see research §4)
-- [ ] **Scanability scoring** — Paragraph length, heading frequency, list usage, wall-of-text detection (see research §5)
+- [x] **Background image contrast** — Canvas sampling with CORS fallback (see research/analyzer-p2-research.md §1)
+- [x] **CSS filter contrast math** — Apply brightness()/contrast()/opacity() adjustments to RGB before ratio calc (see research §3)
+- [x] **Coleman-Liau readability** — Full implementation with text extraction from `<p>` elements (see research §4)
+- [x] **Scanability scoring** — Paragraph length, heading frequency, list usage, wall-of-text detection (see research §5)
 - [ ] **LCP estimation** — PerformanceObserver in Chromium, heuristic fallback (see research/analyzer-roadmap.md §4.4)
 
 ## Extension: LLM API Integration (future, opt-in)
@@ -49,8 +49,8 @@ Low priority — the analyzer's value is evidence-based scoring, not AI opinions
 ### contrast.js — Color & Contrast (20%)
 **Current:** Walks DOM parents for backgroundColor, canvas fallback for oklch/oklab, gradient sampling.
 **To improve:**
-- [ ] **Background images:** Draw bg-image to canvas, sample pixels at text position. Needs background-size/position math. CORS limitation for cross-origin images. (research/analyzer-p2-research.md §1)
-- [ ] **CSS filters on ancestors:** Walk parent chain checking for `filter: brightness(X) contrast(Y)`. Adjust RGB mathematically before computing ratio. brightness(0.5) halves each channel. contrast(2) doubles distance from 128. (research §3)
+- [x] **Background images:** Draw bg-image to canvas, sample pixels at text position. Needs background-size/position math. CORS limitation for cross-origin images. (research/analyzer-p2-research.md §1)
+- [x] **CSS filters on ancestors:** Walk parent chain checking for `filter: brightness(X) contrast(Y)`. Adjust RGB mathematically before computing ratio. brightness(0.5) halves each channel. contrast(2) doubles distance from 128. (research §3)
 - [ ] **Semi-transparent overlays:** Current blending is correct but doesn't handle backdrop-filter or mix-blend-mode. Flag these as "uncertain" rather than computing wrong values.
 - [ ] **Dark mode variant testing:** Automatically test dark: variant contrast by toggling `.dark` class before extraction. Currently only tests the active mode.
 - [ ] **APCA (Advanced Perceptual Contrast Algorithm):** Add as alternative metric alongside WCAG. More accurate for large/small text. Library: `apca-w3` (~5KB). Source: https://github.com/Myndex/SAPC-APCA
@@ -61,7 +61,7 @@ Low priority — the analyzer's value is evidence-based scoring, not AI opinions
 - [ ] **Actual character-per-line measurement:** Current uses `element.width / (fontSize * 0.5)` which is a rough estimate. Better: create a temporary `<span>` with representative text, measure its width, divide element width by character width.
 - [ ] **Font loading performance:** Check for `font-display: optional` vs `swap` vs `block`. Measure if custom fonts are subset or full. Source: https://web.dev/articles/font-best-practices
 - [ ] **Vertical rhythm detection:** Check if line heights create a consistent baseline grid. All spacings should be multiples of the base line height.
-- [ ] **Letter spacing audit:** Detect `letter-spacing` values that reduce readability (too tight < -0.02em or too loose > 0.1em for body text).
+- [x] **Letter spacing audit:** Detect `letter-spacing` values that reduce readability (too tight < -0.02em or too loose > 0.1em for body text).
 - [ ] **Paragraph spacing:** Check `margin-bottom` on `<p>` elements. Should be 0.75-1em. Source: Butterick's Practical Typography.
 
 ### spacing.js — Spacing & Layout (15%)
@@ -69,14 +69,14 @@ Low priority — the analyzer's value is evidence-based scoring, not AI opinions
 **To improve:**
 - [ ] **Nested spacing consistency:** Check if spacing increases predictably from component → section → page level. Gestalt proximity principle.
 - [ ] **Container padding audit:** Verify cards, modals, sections have consistent internal padding (not some 12px and others 24px in the same design).
-- [ ] **Overflow detection:** Check if any elements overflow their containers (`scrollWidth > clientWidth`). Common on mobile.
+- [x] **Overflow detection:** Check if any elements overflow their containers (`scrollWidth > clientWidth`). Common on mobile.
 - [ ] **Negative margin detection:** Flag negative margins as potential layout fragility.
 - [ ] **Gap vs margin consistency:** Check if the same spacing is achieved via gap in some places and margin in others (should be consistent).
 
 ### touch.js — Touch & Interaction (15%)
 **Current:** Viewport-aware thresholds (24px desktop / 44px mobile), profile-aware, desktop touch note.
 **To improve:**
-- [ ] **Responsive CSS detection for touch:** When site has `@media` queries, note that touch targets may have different sizes at mobile breakpoints. Don't error if responsive classes exist.
+- [x] **Responsive CSS detection for touch:** When site has `@media` queries, note that touch targets may have different sizes at mobile breakpoints. Don't error if responsive classes exist.
 - [ ] **Padding-inclusive measurement:** Some elements have small visible size but larger clickable area via padding. Check if the padding box (not just content box) meets the threshold.
 - [ ] **Overlapping targets:** Check if any interactive elements overlap each other (absolute positioning causing stacking).
 - [ ] **Click density mapping:** Identify areas with many small targets clustered together (e.g., tag clouds, icon grids) and flag the group, not each individual element.
@@ -85,19 +85,19 @@ Low priority — the analyzer's value is evidence-based scoring, not AI opinions
 ### accessibility.js — Accessibility (15%)
 **Current:** Semantic HTML, heading hierarchy, alt text, form labels, focus indicators.
 **To improve:**
-- [ ] **ARIA role audit:** Check for common ARIA mistakes (role="button" without keyboard handler, aria-hidden on focusable elements).
+- [x] **ARIA role audit:** Check for common ARIA mistakes (role="button" without keyboard handler, aria-hidden on focusable elements).
 - [ ] **Color-only indicators:** Detect if status/error states rely solely on color (e.g., red text without an icon or label). Source: WCAG §1.4.1.
-- [ ] **Link text quality:** Flag links with "click here", "read more", "learn more" as non-descriptive. Source: WCAG §2.4.4.
-- [ ] **Skip navigation link:** Check for `<a href="#main-content">` or similar skip link as first focusable element. Source: WCAG §2.4.1.
-- [ ] **Language attribute:** Check `<html lang="...">` is set. Source: WCAG §3.1.1.
-- [ ] **Autocomplete attributes:** Check if common form fields (name, email, phone, address) have appropriate `autocomplete` values. Source: WCAG §1.3.5.
+- [x] **Link text quality:** Flag links with "click here", "read more", "learn more" as non-descriptive. Source: WCAG §2.4.4.
+- [x] **Skip navigation link:** Check for `<a href="#main-content">` or similar skip link as first focusable element. Source: WCAG §2.4.1.
+- [x] **Language attribute:** Check `<html lang="...">` is set. Source: WCAG §3.1.1.
+- [x] **Autocomplete attributes:** Check if common form fields (name, email, phone, address) have appropriate `autocomplete` values. Source: WCAG §1.3.5.
 
 ### responsive.js — Responsive Design (10%)
 **Current:** Checks for Tailwind responsive classes or CSS @media queries, dark mode detection.
 **To improve:**
-- [ ] **Viewport meta tag audit:** Check for `width=device-width` and absence of `user-scalable=no` (which blocks pinch-to-zoom). Source: WCAG §1.4.4.
-- [ ] **Horizontal overflow detection:** Check `document.documentElement.scrollWidth > viewport.width`. Common responsive failure.
-- [ ] **Image responsive sizing:** Check if images use `max-width: 100%` or `width: 100%; height: auto`. Images that overflow containers on small screens.
+- [x] **Viewport meta tag audit:** Check for `width=device-width` and absence of `user-scalable=no` (which blocks pinch-to-zoom). Source: WCAG §1.4.4.
+- [x] **Horizontal overflow detection:** Check `document.documentElement.scrollWidth > viewport.width`. Common responsive failure.
+- [x] **Image responsive sizing:** Check if images use `max-width: 100%` or `width: 100%; height: auto`. Images that overflow containers on small screens.
 - [ ] **Fixed-width element detection:** Find elements with hardcoded pixel widths that don't flex (e.g., `width: 800px` without max-width).
 - [ ] **Text truncation audit:** Detect `text-overflow: ellipsis` on elements — content may be hidden on small screens.
 
@@ -128,9 +128,9 @@ Low priority — the analyzer's value is evidence-based scoring, not AI opinions
 ### performance.js — Performance (5%)
 **Current:** Font loading, render-blocking resources, DOM size, DOM depth.
 **To improve:**
-- [ ] **CLS detection:** Use `PerformanceObserver` with `layout-shift` entries (Chromium only). Source: https://web.dev/articles/cls
+- [x] **CLS detection:** Use `PerformanceObserver` with `layout-shift` entries (Chromium only). Source: https://web.dev/articles/cls
 - [ ] **Image format audit:** Check if images use modern formats (WebP, AVIF) vs legacy (JPEG, PNG). Available from `<img>` src extension.
-- [ ] **Third-party script count:** Count `<script>` tags with external domains. Flag when > 5.
+- [x] **Third-party script count:** Count `<script>` tags with external domains. Flag when > 5.
 - [ ] **Inline CSS size:** Measure total bytes of `<style>` blocks. Large inline CSS delays rendering.
 - [ ] **Critical CSS detection:** Check if above-fold styles are inlined and below-fold CSS is deferred.
 

@@ -1,0 +1,111 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Analyzer — Test Suite</title>
+<style>body{font-family:system-ui;padding:20px;font-size:13px;max-width:1400px;margin:0 auto}table{border-collapse:collapse;width:100%;margin:12px 0}td,th{border:1px solid #ddd;padding:5px 7px;text-align:left;font-size:11px}th{background:#f5f5f5;font-weight:600}.pass{color:#16a34a}.warn{color:#b45309}.fail{color:#dc2626}h1{font-size:20px}.status{font-size:14px;color:#666;margin:8px 0}details{margin-top:16px}summary{cursor:pointer;font-weight:600}</style>
+</head><body>
+<h1>Analyzer Test Suite</h1>
+<p class="status" id="status">Loading...</p>
+<div id="output"></div>
+
+<script src="scoring/registry.js"></script>
+<script src="scoring/contrast.js"></script>
+<script src="scoring/typography.js"></script>
+<script src="scoring/spacing.js"></script>
+<script src="scoring/touch.js"></script>
+<script src="scoring/accessibility.js"></script>
+<script src="scoring/responsive.js"></script>
+<script src="scoring/consistency.js"></script>
+<script src="scoring/cognitive.js"></script>
+<script src="scoring/layout.js"></script>
+<script src="scoring/performance.js"></script>
+<script src="scoring/readability.js"></script>
+<script src="scoring/filters.js"></script>
+<script src="scoring/balance.js"></script>
+<script>
+var PRESETS = [
+  'dashboard/clean', 'hero/clean', 'data-table/clean', 'form/clean',
+  'landing/clean', 'pricing/clean', 'landing/playful', 'landing/editorial',
+  'shell-sidebar/clean', 'card-grid/clean'
+];
+
+var status = document.getElementById('status');
+var output = document.getElementById('output');
+
+function analyzePreset(name) {
+  return new Promise(function(resolve) {
+    var msgId = 'test-' + name.replace('/', '-');
+    var iframe = document.createElement('iframe');
+    iframe.style.cssText = 'width:1280px;height:900px;border:none;position:absolute;top:-9999px;left:-9999px;';
+    document.body.appendChild(iframe);
+
+    function onMsg(e) {
+      if (!e.data || e.data.type !== msgId) return;
+      window.removeEventListener('message', onMsg);
+      document.body.removeChild(iframe);
+      resolve(e.data.data);
+    }
+    window.addEventListener('message', onMsg);
+
+    fetch('presets/' + name + '.html').then(function(r) { return r.text(); }).then(function(html) {
+      iframe.srcdoc = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+        '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
+        '<style>body{margin:0}</style></head><body>' + html +
+        '<script>setTimeout(function(){' +
+        'var _pc=document.createElement("canvas");_pc.width=1;_pc.height=1;var _px=_pc.getContext("2d",{willReadFrequently:true});' +
+        'function parseColor(s){if(!s||s==="transparent"||s==="rgba(0, 0, 0, 0)")return null;var m=s.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)(?:,\\s*([\\d.]+))?\\)/);if(m)return{r:+m[1],g:+m[2],b:+m[3],a:m[4]!==undefined?+m[4]:1};var m2=s.match(/rgba?\\((\\d+)\\s+(\\d+)\\s+(\\d+)(?:\\s*\\/\\s*([\\d.]+%?))\\)?/);if(m2){var a=m2[4]!==undefined?(m2[4].indexOf("%")!==-1?parseFloat(m2[4])/100:+m2[4]):1;return{r:+m2[1],g:+m2[2],b:+m2[3],a:a}}_px.clearRect(0,0,1,1);_px.fillStyle="rgba(0,0,0,0)";_px.fillStyle=s;_px.fillRect(0,0,1,1);var d=_px.getImageData(0,0,1,1).data;if(d[3]===0)return null;return{r:d[0],g:d[1],b:d[2],a:Math.round(d[3]/255*100)/100}}' +
+        'function blend(c){if(!c)return{r:255,g:255,b:255};var a=c.a;return{r:Math.round(c.r*a+255*(1-a)),g:Math.round(c.g*a+255*(1-a)),b:Math.round(c.b*a+255*(1-a))}}' +
+        'function getBg(el){var n=el,l=[];while(n&&n!==document.documentElement){var c=parseColor(getComputedStyle(n).backgroundColor);if(c&&c.a>0)l.push(c);if(c&&c.a>=1)break;n=n.parentElement}var r={r:255,g:255,b:255};for(var i=l.length-1;i>=0;i--){var x=l[i],a=x.a;r={r:Math.round(x.r*a+r.r*(1-a)),g:Math.round(x.g*a+r.g*(1-a)),b:Math.round(x.b*a+r.b*(1-a))}}return r}' +
+        'function lum(c){var R=c.r/255,G=c.g/255,B=c.b/255;R=R<=0.03928?R/12.92:Math.pow((R+0.055)/1.055,2.4);G=G<=0.03928?G/12.92:Math.pow((G+0.055)/1.055,2.4);B=B<=0.03928?B/12.92:Math.pow((B+0.055)/1.055,2.4);return 0.2126*R+0.7152*G+0.0722*B}' +
+        'function cr(a,b){var l1=lum(a),l2=lum(b);return(Math.max(l1,l2)+0.05)/(Math.min(l1,l2)+0.05)}' +
+        'function vis(el){var s=getComputedStyle(el);if(s.display==="none"||s.visibility==="hidden"||s.opacity==="0")return false;var r=el.getBoundingClientRect();return r.width>0&&r.height>0}' +
+        'var data={meta:{url:"preset:' + name + '",viewportWidth:1280,viewportHeight:900,timestamp:new Date().toISOString(),version:1},' +
+        'colors:{textColors:[],bgColors:[],contrastPairs:[]},typography:{bodyFontSize:getComputedStyle(document.body).fontSize,bodyLineHeight:getComputedStyle(document.body).lineHeight,bodyFontFamily:getComputedStyle(document.body).fontFamily,fontFamilies:[],fontSizes:[],fontWeights:[],headings:[],lineHeights:[],maxLineLength:{chars:0,element:""}},spacing:{paddings:[],margins:[],gaps:[],maxContentWidth:"",bodyPaddingHorizontal:""},layout:{sectionGaps:[],alignmentEdges:[],visualHierarchy:{},borderRadii:[]},interaction:{touchTargets:[],transitions:[]},accessibility:{semanticElements:{header:document.querySelectorAll("header").length,nav:document.querySelectorAll("nav").length,main:document.querySelectorAll("main").length,footer:document.querySelectorAll("footer").length},headingHierarchy:[],imagesWithoutAlt:0,formLabels:{total:0,withLabel:0,withoutLabel:0},focusIndicators:[],langAttribute:document.documentElement.getAttribute("lang")||"",hasSkipLink:false,badLinkTexts:[],missingAutocomplete:0,ariaIssues:[]},structure:{totalElements:document.body.querySelectorAll("*").length,darkModeClasses:/class="[^"]*dark:/.test(document.body.innerHTML),responsiveClasses:/class="[^"]*(?:sm:|md:|lg:|xl:)/.test(document.body.innerHTML),tailwindDetected:true,cssFramework:"tailwind",viewportMeta:"width=device-width",blocksZoom:false,hasHorizontalOverflow:false},context:{pageType:"component"},performance:{imageSizing:[],fontLoading:[],renderBlocking:{cssInHead:1,jsInHead:0},domSize:document.body.querySelectorAll("*").length,domDepth:0,thirdPartyScripts:0,imageFormats:{modern:0,legacy:0}},readability:{textBlocks:[],totalWords:0,totalChars:0,paragraphCount:0,hasLists:document.querySelectorAll("ul,ol").length>0},animation:{hiddenElements:0,keyframeCount:0,hasReducedMotion:false,scrollRevealPatterns:[]}};' +
+        'var fails=0,total=0;var w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,null,false);var nd,seen=new Set();while(nd=w.nextNode()){if(!nd.textContent.trim())continue;var el=nd.parentElement;if(!el||!vis(el)||seen.has(el))continue;seen.add(el);var st=getComputedStyle(el);var fg=parseColor(st.color);if(!fg)continue;var fgB=blend(fg);var bg=getBg(el);var ratio=cr(fgB,bg);var fs=parseFloat(st.fontSize);var fw=parseInt(st.fontWeight)||400;var isL=fs>=24||(fs>=18.66&&fw>=700);var th=isL?3:4.5;total++;if(ratio<7.5){data.colors.contrastPairs.push({fg:"rgb("+fgB.r+","+fgB.g+","+fgB.b+")",bg:"rgb("+bg.r+","+bg.g+","+bg.b+")",ratio:Math.round(ratio*100)/100,needed:th,passes:ratio>=th,fontSize:Math.round(fs),fontWeight:fw,isLarge:isL,text:nd.textContent.trim().substring(0,30),selector:el.tagName.toLowerCase()})}}' +
+        'document.querySelectorAll("h1,h2,h3,h4").forEach(function(h){data.typography.headings.push({tag:h.tagName.toLowerCase(),fontSize:getComputedStyle(h).fontSize,fontWeight:getComputedStyle(h).fontWeight,lineHeight:getComputedStyle(h).lineHeight,fontFamily:"",text:h.textContent.trim().substring(0,30)});data.accessibility.headingHierarchy.push(h.tagName.toLowerCase())});' +
+        'parent.postMessage({type:"' + msgId + '",data:data},"*");' +
+        '},2500);</' + 'script></body></html>';
+    });
+
+    setTimeout(function() { window.removeEventListener('message', onMsg); if (iframe.parentNode) document.body.removeChild(iframe); resolve(null); }, 10000);
+  });
+}
+
+(async function() {
+  var moduleCount = MilgScoring.runScoring({meta:{},colors:{contrastPairs:[]},typography:{},spacing:{},layout:{},interaction:{},accessibility:{},structure:{},performance:{},readability:{},animation:{},context:{}}).categories.length;
+  status.textContent = moduleCount + ' modules loaded. Testing ' + PRESETS.length + ' presets...';
+
+  var html = '<table><tr><th>Preset</th><th>Score</th><th>Grade</th><th>Contrast</th><th>Typo</th><th>Space</th><th>Touch</th><th>A11y</th><th>Resp</th><th>Consist</th><th>Cogn</th><th>Layout</th><th>Perf</th><th>Read</th><th>Motion</th><th>Balance</th></tr>';
+
+  var scores = [];
+  for (var i = 0; i < PRESETS.length; i++) {
+    var name = PRESETS[i];
+    status.textContent = 'Testing ' + name + '... (' + (i + 1) + '/' + PRESETS.length + ')';
+    var data = await analyzePreset(name);
+
+    if (!data) {
+      html += '<tr><td>' + name + '</td><td colspan="14" class="fail">TIMEOUT</td></tr>';
+      continue;
+    }
+
+    var report = MilgScoring.runScoring(data);
+    scores.push(report.overall);
+    var cls = report.overall >= 80 ? 'pass' : report.overall >= 60 ? 'warn' : 'fail';
+    html += '<tr><td><strong>' + name + '</strong></td><td class="' + cls + '"><strong>' + report.overall + '</strong></td><td>' + report.grade + '</td>';
+    report.categories.forEach(function(c) {
+      var ccls = c.score >= 80 ? 'pass' : c.score >= 50 ? 'warn' : 'fail';
+      html += '<td class="' + ccls + '">' + c.score + '</td>';
+    });
+    html += '</tr>';
+  }
+
+  html += '</table>';
+
+  var avg = scores.length > 0 ? Math.round(scores.reduce(function(a, b) { return a + b; }, 0) / scores.length) : 0;
+  var min = scores.length > 0 ? Math.min.apply(null, scores) : 0;
+  var max = scores.length > 0 ? Math.max.apply(null, scores) : 0;
+  html += '<p><strong>Average: ' + avg + ' | Min: ' + min + ' | Max: ' + max + ' | Tested: ' + scores.length + '/' + PRESETS.length + '</strong></p>';
+
+  status.textContent = 'Done — ' + scores.length + ' presets scored. Avg: ' + avg;
+  output.innerHTML = html;
+})();
+</script></body></html>
