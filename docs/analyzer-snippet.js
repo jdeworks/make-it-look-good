@@ -145,6 +145,28 @@
     };
   }
 
+  function getBgImageColor(el) {
+    var bgi = getComputedStyle(el).backgroundImage;
+    if (!bgi || bgi === 'none' || bgi.indexOf('url(') === -1 || bgi.indexOf('gradient') !== -1) return null;
+    var urlMatch = bgi.match(/url\(["']?([^"')]+)["']?\)/);
+    if (!urlMatch) return null;
+    try {
+      var img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.src = urlMatch[1];
+      if (!img.complete || img.naturalWidth === 0) return null;
+      var c = document.createElement('canvas');
+      c.width = img.naturalWidth; c.height = img.naturalHeight;
+      var ctx = c.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      var sx = Math.round(img.naturalWidth / 2);
+      var sy = Math.round(img.naturalHeight / 2);
+      var d = ctx.getImageData(sx, sy, 1, 1).data;
+      if (d[3] === 0) return null;
+      return { r: d[0], g: d[1], b: d[2], a: Math.round(d[3] / 255 * 100) / 100 };
+    } catch(e) { return null; }
+  }
+
   function getEffectiveBg(el) {
     var node = el;
     var layers = [];
@@ -155,6 +177,7 @@
         // backgroundColor is transparent — check for gradient
         c = getGradientColor(node);
       }
+      if (!c || c.a === 0) c = getBgImageColor(node);
       if (c && c.a > 0) layers.push(c);
       if (c && c.a >= 1) break;
       node = node.parentElement;
@@ -328,6 +351,15 @@
     var isLarge = fontSize >= 24 || (fontSize >= 18.66 && fontWeight >= 700);
     var threshold = isLarge ? 3 : 4.5;
 
+    // Check for CSS filters on ancestors that affect contrast
+    var filterAncestor = el;
+    var filterValue = '';
+    while (filterAncestor && filterAncestor !== document.documentElement) {
+      var f = getComputedStyle(filterAncestor).filter;
+      if (f && f !== 'none') { filterValue = f; break; }
+      filterAncestor = filterAncestor.parentElement;
+    }
+
     // Collect all pairs up to AAA+buffer (7.5) so profile switching works
     if (ratio < 7.5) {
       contrastPairs.push({
@@ -337,7 +369,8 @@
         passes: ratio >= threshold,
         fontSize: Math.round(fontSize), fontWeight: fontWeight, isLarge: isLarge,
         text: node.textContent.trim().substring(0, 50),
-        selector: cssSelector(el)
+        selector: cssSelector(el),
+        filter: filterValue
       });
     }
 

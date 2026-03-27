@@ -16,24 +16,28 @@ window.MilgReport = (function() {
     cognitive: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a8 8 0 0 0-8 8c0 3.4 2.1 6.3 5 7.5V20h6v-2.5c2.9-1.2 5-4.1 5-7.5a8 8 0 0 0-8-8z"/><line x1="10" y1="22" x2="14" y2="22"/></svg>'
   };
 
+  function isDarkUi() {
+    return document.body && document.body.classList.contains('dark-ui');
+  }
+
   function scoreColor(score) {
-    if (score >= 90) return '#16a34a';
-    if (score >= 70) return '#ca8a04';
-    if (score >= 50) return '#ea580c';
-    return '#dc2626';
+    var dark = isDarkUi();
+    if (score >= 90) return dark ? '#4ade80' : '#16a34a';
+    if (score >= 70) return dark ? '#facc15' : '#ca8a04';
+    if (score >= 50) return dark ? '#fb923c' : '#ea580c';
+    return dark ? '#f87171' : '#dc2626';
   }
 
   function gradeColor(grade) {
-    return { A: '#16a34a', B: '#65a30d', C: '#ca8a04', D: '#ea580c', F: '#dc2626' }[grade] || '#64748b';
+    var dark = isDarkUi();
+    var light = { A: '#16a34a', B: '#65a30d', C: '#ca8a04', D: '#ea580c', F: '#dc2626' };
+    var darkC = { A: '#4ade80', B: '#a3e635', C: '#facc15', D: '#fb923c', F: '#f87171' };
+    return (dark ? darkC : light)[grade] || '#64748b';
   }
 
   function severityBadge(severity) {
-    var colors = {
-      error: 'background:#fef2f2;color:#dc2626;border:1px solid #fecaca',
-      warning: 'background:#fffbeb;color:#b45309;border:1px solid #fed7aa',
-      info: 'background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe'
-    };
-    return '<span style="display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;' + (colors[severity] || colors.info) + '">' + severity + '</span>';
+    var cls = 'severity-badge-' + (severity || 'info');
+    return '<span class="' + cls + '" style="display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px">' + severity + '</span>';
   }
 
   function renderReport(report) {

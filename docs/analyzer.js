@@ -181,8 +181,15 @@
       var fontWeight = parseInt(style.fontWeight) || 400;
       var isLarge = fontSize >= 24 || (fontSize >= 18.66 && fontWeight >= 700);
       var threshold = isLarge ? 3 : 4.5;
+      var filterAncestor = el;
+      var filterValue = '';
+      while (filterAncestor && filterAncestor !== document.documentElement) {
+        var f = getComputedStyle(filterAncestor).filter;
+        if (f && f !== 'none') { filterValue = f; break; }
+        filterAncestor = filterAncestor.parentElement;
+      }
       if (ratio < 7.5) {
-        contrastPairs.push({ fg: rgbStr(fgBlended), bg: rgbStr(bg), ratio: Math.round(ratio * 100) / 100, needed: threshold, passes: ratio >= threshold, fontSize: Math.round(fontSize), fontWeight: fontWeight, isLarge: isLarge, text: node.textContent.trim().substring(0, 50), selector: cssSelector(el) });
+        contrastPairs.push({ fg: rgbStr(fgBlended), bg: rgbStr(bg), ratio: Math.round(ratio * 100) / 100, needed: threshold, passes: ratio >= threshold, fontSize: Math.round(fontSize), fontWeight: fontWeight, isLarge: isLarge, text: node.textContent.trim().substring(0, 50), selector: cssSelector(el), filter: filterValue });
       }
       var elWidth = el.getBoundingClientRect().width;
       var charWidth = fontSize * 0.5;
@@ -470,6 +477,21 @@
         runAnalysis(e.data.data);
       }
     });
+
+    // Check for cached extraction data and offer to resume
+    try {
+      var cached = sessionStorage.getItem('milg-last-extraction');
+      if (cached && !location.hash.startsWith('#data=')) {
+        var data = JSON.parse(cached);
+        if (data.meta && data.meta.url) {
+          var resumeDiv = document.createElement('div');
+          resumeDiv.style.cssText = 'padding:10px 14px;background:var(--bg-alt);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:16px;font-size:13px;display:flex;align-items:center;justify-content:space-between;gap:8px';
+          resumeDiv.innerHTML = '<span>Previous analysis available: <strong>' + (data.meta.url || '').substring(0, 50) + '</strong></span><button class="btn btn-primary" style="font-size:12px;padding:6px 12px;min-height:36px" onclick="this.parentElement.remove()">Resume</button>';
+          resumeDiv.querySelector('button').addEventListener('click', function() { resumeDiv.remove(); runAnalysis(data); });
+          document.getElementById('inputSection').prepend(resumeDiv);
+        }
+      }
+    } catch(e) {}
   }
 
   var lastRawData = null; // Store raw data for re-scoring with different profiles
@@ -568,6 +590,7 @@
 
   function runAnalysis(data) {
     lastRawData = data;
+    try { sessionStorage.setItem('milg-last-extraction', JSON.stringify(data)); } catch(e) {}
     // Apply selected profile
     var profile = document.getElementById('profileSelect');
     if (profile) data.profile = profile.value;

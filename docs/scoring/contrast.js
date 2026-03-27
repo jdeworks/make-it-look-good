@@ -5,6 +5,48 @@
   "use strict";
   var S = window.MilgScoring;
 
+function parseRgb(str) {
+  var m = str.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+  if (!m) m = str.match(/rgb\((\d+)\s+(\d+)\s+(\d+)\)/);
+  if (!m) return null;
+  return { r: +m[1], g: +m[2], b: +m[3] };
+}
+
+function applyFilterToColor(c, filterStr) {
+  if (!c || !filterStr) return c;
+  var r = c.r, g = c.g, b = c.b;
+  var re = /brightness\(([\d.]+)\)|contrast\(([\d.]+)\)|opacity\(([\d.]+)\)/g;
+  var m;
+  while ((m = re.exec(filterStr)) !== null) {
+    if (m[1] !== undefined) {
+      var br = parseFloat(m[1]);
+      r = Math.min(255, Math.round(r * br));
+      g = Math.min(255, Math.round(g * br));
+      b = Math.min(255, Math.round(b * br));
+    } else if (m[2] !== undefined) {
+      var ct = parseFloat(m[2]);
+      r = Math.min(255, Math.max(0, Math.round(((r - 128) * ct) + 128)));
+      g = Math.min(255, Math.max(0, Math.round(((g - 128) * ct) + 128)));
+      b = Math.min(255, Math.max(0, Math.round(((b - 128) * ct) + 128)));
+    }
+    // opacity affects alpha, not RGB channels for contrast purposes
+  }
+  return { r: r, g: g, b: b };
+}
+
+function luminance(c) {
+  var rs = c.r / 255, gs = c.g / 255, bs = c.b / 255;
+  var r = rs <= 0.03928 ? rs / 12.92 : Math.pow((rs + 0.055) / 1.055, 2.4);
+  var g = gs <= 0.03928 ? gs / 12.92 : Math.pow((gs + 0.055) / 1.055, 2.4);
+  var b = bs <= 0.03928 ? bs / 12.92 : Math.pow((bs + 0.055) / 1.055, 2.4);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function contrastRatio(c1, c2) {
+  var l1 = luminance(c1), l2 = luminance(c2);
+  return Math.round(((Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)) * 100) / 100;
+}
+
 function scoreContrast(data) {
   var profile = S.getProfile(data);
   var findings = [];
@@ -13,8 +55,22 @@ function scoreContrast(data) {
   // Re-evaluate each pair against profile thresholds
   var profilePairs = pairs.map(function(p) {
     var needed = p.isLarge ? profile.contrastLarge : profile.contrast;
-    var passes = p.ratio >= needed;
-    return { ratio: p.ratio, needed: needed, passes: passes, isLarge: p.isLarge, text: p.text, fontSize: p.fontSize, selector: p.selector, fg: p.fg, bg: p.bg };
+    var ratio = p.ratio;
+
+    // If a CSS filter is present, re-compute contrast with adjusted bg
+    if (p.filter) {
+      var bgParsed = parseRgb(p.bg);
+      if (bgParsed) {
+        var adjustedBg = applyFilterToColor(bgParsed, p.filter);
+        var fgParsed = parseRgb(p.fg);
+        if (fgParsed) {
+          ratio = contrastRatio(fgParsed, adjustedBg);
+        }
+      }
+    }
+
+    var passes = ratio >= needed;
+    return { ratio: ratio, needed: needed, passes: passes, isLarge: p.isLarge, text: p.text, fontSize: p.fontSize, selector: p.selector, fg: p.fg, bg: p.bg, filter: p.filter || '' };
   });
 
   // Separate uncertain results (1:1 ratio usually means bg couldn't be determined — gradient, SVG, etc.)
