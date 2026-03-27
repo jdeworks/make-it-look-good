@@ -367,7 +367,8 @@
     var hasAnyFocus = focusIndicators.some(function(f) {
       return f.outlineStyle !== 'none' && f.outlineWidth !== '0px';
     });
-    if (hasAnyFocus || focusIndicators.length === 0) {
+    var hasFocusVisibleCSS = a11y.hasFocusVisibleCSS || false;
+    if (hasAnyFocus || hasFocusVisibleCSS || focusIndicators.length === 0) {
       passed++;
     } else {
       findings.push({
@@ -1012,6 +1013,7 @@
     data.accessibility.formLabels.withLabel = labeled;
     data.accessibility.formLabels.withoutLabel = data.accessibility.formLabels.total - labeled;
     Array.from(interactive).slice(0, 10).forEach(function(el) { if (!isVisible(el)) return; var s = getComputedStyle(el); data.accessibility.focusIndicators.push({ element: cssSelector(el), outlineStyle: s.outlineStyle, outlineWidth: s.outlineWidth, outlineColor: s.outlineColor, outlineOffset: s.outlineOffset }); });
+    data.accessibility.hasFocusVisibleCSS = Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r.selectorText && r.selectorText.indexOf('focus-visible') !== -1; }); } catch(e) { return false; } });
 
     parent.postMessage({ type: 'milg-analyzer-result', data: data }, '*');
   }
@@ -1089,7 +1091,7 @@
       reportData = null;
     });
 
-    // Markdown export
+    // Markdown export (download)
     document.getElementById('markdownBtn').addEventListener('click', function() {
       if (!reportData) return;
       var md = renderMarkdown(reportData);
@@ -1101,6 +1103,25 @@
       a.click();
       URL.revokeObjectURL(url);
       showToast('Markdown report downloaded');
+    });
+
+    // Copy markdown to clipboard
+    document.getElementById('copyMdBtn').addEventListener('click', function() {
+      if (!reportData) return;
+      var md = renderMarkdown(reportData);
+      navigator.clipboard.writeText(md).then(function() {
+        showToast('Markdown copied to clipboard');
+      }).catch(function() {
+        // Fallback
+        var ta = document.createElement('textarea');
+        ta.value = md;
+        ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        showToast('Markdown copied to clipboard');
+      });
     });
 
     // Print/PDF

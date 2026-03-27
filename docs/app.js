@@ -1499,6 +1499,7 @@ const analyzePreviewScript = `
   data.accessibility.formLabels.withLabel = labeled;
   data.accessibility.formLabels.withoutLabel = data.accessibility.formLabels.total - labeled;
   Array.from(interactive).slice(0, 10).forEach(function(el) { if (!isVisible(el)) return; var s = getComputedStyle(el); data.accessibility.focusIndicators.push({ element: cssSelector(el), outlineStyle: s.outlineStyle, outlineWidth: s.outlineWidth, outlineColor: s.outlineColor, outlineOffset: s.outlineOffset }); });
+  data.accessibility.hasFocusVisibleCSS = Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r.selectorText && r.selectorText.indexOf('focus-visible') !== -1; }); } catch(e) { return false; } });
 
   parent.postMessage({ type: 'milg-analyzer-preview', data: data }, '*');
 })();

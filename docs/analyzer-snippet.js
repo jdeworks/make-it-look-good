@@ -360,6 +360,10 @@
       outlineOffset: s.outlineOffset
     });
   });
+  // Also check if stylesheets contain focus-visible rules (can't detect via getComputedStyle)
+  data.accessibility.hasFocusVisibleCSS = Array.from(document.styleSheets).some(function(ss) {
+    try { return Array.from(ss.cssRules).some(function(r) { return r.selectorText && r.selectorText.indexOf('focus-visible') !== -1; }); } catch(e) { return false; }
+  });
 
   // --- Output ---
   var json = JSON.stringify(data, null, 2);
