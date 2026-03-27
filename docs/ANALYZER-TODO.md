@@ -21,7 +21,7 @@
 - [x] **CSS filter contrast math** — Apply brightness()/contrast()/opacity() adjustments to RGB before ratio calc (see research §3)
 - [x] **Coleman-Liau readability** — Full implementation with text extraction from `<p>` elements (see research §4)
 - [x] **Scanability scoring** — Paragraph length, heading frequency, list usage, wall-of-text detection (see research §5)
-- [ ] **LCP estimation** — PerformanceObserver in Chromium, heuristic fallback (see research/analyzer-roadmap.md §4.4)
+- [x] **LCP estimation** — PerformanceObserver in Chromium, heuristic fallback (see research/analyzer-roadmap.md §4.4)
 
 ## Extension: LLM API Integration (future, opt-in)
 
@@ -62,15 +62,15 @@ Low priority — the analyzer's value is evidence-based scoring, not AI opinions
 - [ ] **Font loading performance:** Check for `font-display: optional` vs `swap` vs `block`. Measure if custom fonts are subset or full. Source: https://web.dev/articles/font-best-practices
 - [ ] **Vertical rhythm detection:** Check if line heights create a consistent baseline grid. All spacings should be multiples of the base line height.
 - [x] **Letter spacing audit:** Detect `letter-spacing` values that reduce readability (too tight < -0.02em or too loose > 0.1em for body text).
-- [ ] **Paragraph spacing:** Check `margin-bottom` on `<p>` elements. Should be 0.75-1em. Source: Butterick's Practical Typography.
+- [x] **Paragraph spacing:** Check `margin-bottom` on `<p>` elements. Should be 0.75-1em. Source: Butterick's Practical Typography.
 
 ### spacing.js — Spacing & Layout (15%)
 **Current:** 4px grid adherence, content max-width, body padding, adjacent element spacing.
 **To improve:**
 - [ ] **Nested spacing consistency:** Check if spacing increases predictably from component → section → page level. Gestalt proximity principle.
-- [ ] **Container padding audit:** Verify cards, modals, sections have consistent internal padding (not some 12px and others 24px in the same design).
+- [x] **Container padding audit:** Verify cards, modals, sections have consistent internal padding (not some 12px and others 24px in the same design).
 - [x] **Overflow detection:** Check if any elements overflow their containers (`scrollWidth > clientWidth`). Common on mobile.
-- [ ] **Negative margin detection:** Flag negative margins as potential layout fragility.
+- [x] **Negative margin detection:** Flag negative margins as potential layout fragility.
 - [ ] **Gap vs margin consistency:** Check if the same spacing is achieved via gap in some places and margin in others (should be consistent).
 
 ### touch.js — Touch & Interaction (15%)
@@ -86,7 +86,7 @@ Low priority — the analyzer's value is evidence-based scoring, not AI opinions
 **Current:** Semantic HTML, heading hierarchy, alt text, form labels, focus indicators.
 **To improve:**
 - [x] **ARIA role audit:** Check for common ARIA mistakes (role="button" without keyboard handler, aria-hidden on focusable elements).
-- [ ] **Color-only indicators:** Detect if status/error states rely solely on color (e.g., red text without an icon or label). Source: WCAG §1.4.1.
+- [x] **Color-only indicators:** Detect if status/error states rely solely on color (e.g., red text without an icon or label). Source: WCAG §1.4.1.
 - [x] **Link text quality:** Flag links with "click here", "read more", "learn more" as non-descriptive. Source: WCAG §2.4.4.
 - [x] **Skip navigation link:** Check for `<a href="#main-content">` or similar skip link as first focusable element. Source: WCAG §2.4.1.
 - [x] **Language attribute:** Check `<html lang="...">` is set. Source: WCAG §3.1.1.

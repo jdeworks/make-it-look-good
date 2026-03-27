@@ -877,6 +877,85 @@
     }
   } catch(e) {}
 
+  // --- Paragraph spacing ---
+  var pSpacings = [];
+  document.querySelectorAll('p').forEach(function(p) {
+    if (!isVisible(p) || isDecorative(p)) return;
+    var mb = parseFloat(getComputedStyle(p).marginBottom);
+    if (mb > 0) pSpacings.push(mb);
+  });
+  data.typography.paragraphSpacing = pSpacings;
+
+  // --- Negative margins ---
+  data.spacing.negativeMargins = 0;
+  for (var ni = 0; ni < allElements.length && ni < 500; ni++) {
+    var nel = allElements[ni];
+    if (!isVisible(nel)) continue;
+    var ns = getComputedStyle(nel);
+    if (parseFloat(ns.marginTop) < 0 || parseFloat(ns.marginRight) < 0 || parseFloat(ns.marginBottom) < 0 || parseFloat(ns.marginLeft) < 0) {
+      data.spacing.negativeMargins++;
+    }
+  }
+
+  // --- LCP estimation ---
+  data.performance.lcp = null;
+  try {
+    var lcpEntries = performance.getEntriesByType ? performance.getEntriesByType('largest-contentful-paint') : [];
+    if (lcpEntries.length > 0) {
+      var lastLcp = lcpEntries[lcpEntries.length - 1];
+      data.performance.lcp = { time: Math.round(lastLcp.startTime), element: lastLcp.element ? lastLcp.element.tagName.toLowerCase() : 'unknown', size: lastLcp.size || 0 };
+    }
+  } catch(e) {}
+  // Heuristic: find largest visible element above fold
+  if (!data.performance.lcp) {
+    var largestArea = 0, lcpTag = '';
+    document.querySelectorAll('img, h1, h2, video, [class*="hero"]').forEach(function(el) {
+      if (!isVisible(el)) return;
+      var r = el.getBoundingClientRect();
+      if (r.top < window.innerHeight) {
+        var area = r.width * r.height;
+        if (area > largestArea) { largestArea = area; lcpTag = el.tagName.toLowerCase(); }
+      }
+    });
+    if (lcpTag) {
+      data.performance.lcpHeuristic = { element: lcpTag, area: Math.round(largestArea) };
+      // Check if LCP image is lazy loaded (bad)
+      if (lcpTag === 'img') {
+        var lcpImg = document.querySelector('img');
+        document.querySelectorAll('img').forEach(function(img) {
+          var r = img.getBoundingClientRect();
+          if (r.width * r.height >= largestArea * 0.9 && r.top < window.innerHeight) lcpImg = img;
+        });
+        if (lcpImg && lcpImg.getAttribute('loading') === 'lazy') {
+          data.performance.lcpLazyLoaded = true;
+        }
+      }
+    }
+  }
+
+  // --- Container padding consistency ---
+  var containerPaddings = {};
+  document.querySelectorAll('section, article, [class*="card"], [class*="panel"], [class*="box"], .container').forEach(function(el) {
+    if (!isVisible(el) || isDecorative(el)) return;
+    var s = getComputedStyle(el);
+    var pad = s.paddingLeft;
+    if (pad && pad !== '0px') containerPaddings[pad] = (containerPaddings[pad] || 0) + 1;
+  });
+  data.spacing.containerPaddings = Object.keys(containerPaddings).map(function(k) { return { value: k, count: containerPaddings[k] }; }).sort(function(a, b) { return b.count - a.count; }).slice(0, 10);
+
+  // --- Color-only indicators ---
+  data.accessibility.colorOnlyIndicators = 0;
+  document.querySelectorAll('[class*="error"], [class*="success"], [class*="warning"], [class*="danger"], [class*="alert"]').forEach(function(el) {
+    if (!isVisible(el) || isDecorative(el)) return;
+    // Check if the element has an icon (svg, img, or icon class) or uses text like "Error:"
+    var hasIcon = el.querySelector('svg, img, [class*="icon"]');
+    var text = (el.textContent || '').trim();
+    var hasTextIndicator = /^(error|warning|success|info|danger|alert|note)\s*[:!]/i.test(text);
+    if (!hasIcon && !hasTextIndicator && text.length > 0 && text.length < 200) {
+      data.accessibility.colorOnlyIndicators++;
+    }
+  });
+
   // --- Output ---
   var json = JSON.stringify(data, null, 2);
 

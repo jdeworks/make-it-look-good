@@ -197,6 +197,19 @@ function scoreAccessibility(data) {
     });
   }
 
+  // Color-only indicators
+  var colorOnly = data.accessibility.colorOnlyIndicators || 0;
+  if (colorOnly > 0) {
+    findings.push({
+      severity: 'warning',
+      title: colorOnly + ' status element(s) may rely on color alone',
+      detail: 'Elements with error/success/warning classes but no icon or text prefix',
+      fix: 'Add an icon (✓, ✗, ⚠) or text label ("Error:", "Success:") alongside color to convey status. Color-blind users cannot distinguish red from green.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.1 — https://www.w3.org/TR/WCAG22/#use-of-color'
+    });
+  }
+
   var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
   return { score: score, findings: findings, weight: 15, label: 'Accessibility', icon: 'a11y' };
 }

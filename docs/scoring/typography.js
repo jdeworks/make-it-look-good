@@ -131,6 +131,27 @@ function scoreTypography(data) {
     });
   }
 
+  // Paragraph spacing
+  var pSpacing = (data.typography && data.typography.paragraphSpacing) || [];
+  if (pSpacing.length >= 3) {
+    checks++;
+    var bodyPx = parseFloat(data.typography.bodyFontSize) || 16;
+    var avgSpacing = pSpacing.reduce(function(s,v){return s+v},0) / pSpacing.length;
+    var spacingEm = avgSpacing / bodyPx;
+    if (spacingEm >= 0.5 && spacingEm <= 1.5) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: 'Paragraph spacing is ' + (Math.round(spacingEm * 100) / 100) + 'em (ideal: 0.75–1em)',
+        detail: spacingEm < 0.5 ? 'Paragraphs feel cramped' : 'Paragraph spacing may be too generous',
+        fix: 'Set paragraph margin-bottom to 0.75em–1em. In Tailwind: space-y-4 on the container or mb-4 on paragraphs.',
+        presetRef: null,
+        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/space-between-paragraphs.html'
+      });
+    }
+  }
+
   // Max 2 typefaces
   checks++;
   var familyCount = (data.typography.fontFamilies || []).length;

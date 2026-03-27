@@ -127,6 +127,36 @@ function scorePerformance(data) {
     }
   }
 
+  // LCP
+  var lcp = data.performance && data.performance.lcp;
+  if (lcp) {
+    checks++;
+    if (lcp.time <= 2500) {
+      passed++;
+    } else {
+      findings.push({
+        severity: lcp.time > 4000 ? 'error' : 'warning',
+        title: 'LCP: ' + (lcp.time / 1000).toFixed(1) + 's (' + (lcp.time > 4000 ? 'poor' : 'needs improvement') + ')',
+        detail: 'Largest element: <' + lcp.element + '>. Target: < 2.5s.',
+        fix: 'Optimize the largest visible element. For images: preload, use WebP, set fetchpriority="high". For text: ensure fonts load with font-display:swap.',
+        presetRef: null,
+        source: 'Web Vitals — https://web.dev/articles/lcp'
+      });
+    }
+  }
+
+  // LCP lazy loading (heuristic)
+  if (data.performance && data.performance.lcpLazyLoaded) {
+    findings.push({
+      severity: 'error',
+      title: 'LCP image uses loading="lazy"',
+      detail: 'Lazy loading the largest visible image delays LCP significantly',
+      fix: 'Remove loading="lazy" from the hero/LCP image. Only lazy-load below-fold images.',
+      presetRef: null,
+      source: 'Web Vitals — https://web.dev/articles/lcp'
+    });
+  }
+
   // Non-responsive images
   var nri = (data.performance && data.performance.nonResponsiveImages) || 0;
   if (nri > 0) {

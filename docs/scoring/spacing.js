@@ -124,6 +124,32 @@ function scoreSpacing(data) {
     passed++;
   }
 
+  // Negative margins
+  var negMargins = (data.spacing && data.spacing.negativeMargins) || 0;
+  if (negMargins > 5) {
+    findings.push({
+      severity: 'info',
+      title: negMargins + ' element(s) use negative margins',
+      detail: 'Negative margins can cause overlapping content and layout fragility',
+      fix: 'Consider using CSS grid/flexbox gap, transform, or absolute positioning instead of negative margins where possible.',
+      presetRef: null,
+      source: 'CSS best practices'
+    });
+  }
+
+  // Container padding consistency
+  var cPaddings = (data.spacing && data.spacing.containerPaddings) || [];
+  if (cPaddings.length >= 4) {
+    findings.push({
+      severity: 'info',
+      title: cPaddings.length + ' distinct container padding values',
+      detail: 'Values: ' + cPaddings.slice(0, 5).map(function(p) { return p.value + ' (' + p.count + 'x)'; }).join(', '),
+      fix: 'Standardize container padding to 2-3 values. In Tailwind: p-4 (16px), p-6 (24px), p-8 (32px).',
+      presetRef: null,
+      source: 'Gestalt proximity — https://lawsofux.com/law-of-proximity/'
+    });
+  }
+
   var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
   return { score: score, findings: findings, weight: 15, label: 'Spacing & Layout', icon: 'spacing' };
 }
