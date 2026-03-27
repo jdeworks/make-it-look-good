@@ -729,6 +729,162 @@ window.MilgScoring = (function() {
     return { score: score, findings: findings, weight: 5, label: 'Cognitive Load', icon: 'cognitive' };
   }
 
+  function scoreLayout(data) {
+    var findings = [];
+    var checks = 0;
+    var passed = 0;
+    var layout = data.layout || {};
+
+    // Whitespace rhythm: check if section gaps are consistent
+    var gaps = layout.sectionGaps || [];
+    if (gaps.length >= 2) {
+      checks++;
+      var avg = gaps.reduce(function(s, g) { return s + g; }, 0) / gaps.length;
+      var variance = gaps.reduce(function(s, g) { return s + Math.pow(g - avg, 2); }, 0) / gaps.length;
+      var stdDev = Math.sqrt(variance);
+      var cv = avg > 0 ? stdDev / avg : 0; // coefficient of variation
+      if (cv < 0.3) {
+        passed++;
+      } else {
+        findings.push({
+          severity: cv > 0.6 ? 'warning' : 'info',
+          title: 'Inconsistent spacing between sections (CV: ' + Math.round(cv * 100) + '%)',
+          detail: 'Gaps range from ' + Math.min.apply(null, gaps) + 'px to ' + Math.max.apply(null, gaps) + 'px (avg ' + Math.round(avg) + 'px)',
+          fix: 'Use consistent spacing between major sections. Pick one value (e.g. 64px or 96px) and use it everywhere.',
+          presetRef: null
+        });
+      }
+    }
+
+    // Alignment consistency: cluster left edges and find near-misses
+    var edges = layout.alignmentEdges || [];
+    if (edges.length >= 5) {
+      checks++;
+      // Cluster edges within 3px
+      var clusters = [];
+      var sorted = edges.slice().sort(function(a, b) { return a - b; });
+      var current = [sorted[0]];
+      for (var i = 1; i < sorted.length; i++) {
+        if (sorted[i] - sorted[i - 1] <= 3) {
+          current.push(sorted[i]);
+        } else {
+          clusters.push(current);
+          current = [sorted[i]];
+        }
+      }
+      clusters.push(current);
+      // Find near-miss clusters (4-8px apart — probably misaligned)
+      var nearMisses = 0;
+      for (var i = 1; i < clusters.length; i++) {
+        var gap = clusters[i][0] - clusters[i - 1][clusters[i - 1].length - 1];
+        if (gap > 3 && gap <= 8) nearMisses++;
+      }
+      if (nearMisses === 0) {
+        passed++;
+      } else {
+        findings.push({
+          severity: 'info',
+          title: nearMisses + ' near-miss alignment(s) detected (elements 4-8px off)',
+          detail: clusters.length + ' distinct alignment edges found across ' + edges.length + ' elements',
+          fix: 'Elements that are almost aligned should be exactly aligned. Check container padding and margin consistency.',
+          presetRef: null
+        });
+      }
+    }
+
+    // Visual hierarchy: heading-to-body ratios
+    var vh = layout.visualHierarchy || {};
+    if (vh.h1ToBody > 0) {
+      checks++;
+      if (vh.h1ToBody >= 2 && vh.h1ToBody <= 4) {
+        passed++;
+      } else {
+        findings.push({
+          severity: 'info',
+          title: 'H1 is ' + vh.h1ToBody + 'x body text (ideal: 2-4x)',
+          detail: vh.h1ToBody < 2 ? 'H1 doesn\'t stand out enough from body text' : 'H1 may be too large relative to body text',
+          fix: 'H1 should be 2-4x the body font size for clear hierarchy. At 16px body, H1 should be 32-64px.',
+          presetRef: null
+        });
+      }
+    }
+
+    var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
+    return { score: score, findings: findings, weight: 5, label: 'Layout Quality', icon: 'spacing' };
+  }
+
+  function scorePerformance(data) {
+    var findings = [];
+    var checks = 0;
+    var passed = 0;
+    var perf = data.performance || {};
+
+    // Font loading
+    var fontIssues = perf.fontLoading || [];
+    if (fontIssues.length > 0) {
+      checks++;
+      findings.push({
+        severity: 'warning',
+        title: fontIssues.length + ' web font(s) without font-display: swap',
+        detail: 'Fonts with display:auto or display:block cause invisible text (FOIT) while loading',
+        fix: 'Add font-display: swap (or optional) to @font-face rules. This shows fallback text immediately.',
+        presetRef: null
+      });
+    } else {
+      checks++;
+      passed++;
+    }
+
+    // Render-blocking resources
+    var rb = perf.renderBlocking || {};
+    checks++;
+    var blockingCount = (rb.cssInHead || 0) + (rb.jsInHead || 0);
+    if (blockingCount <= 3) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'warning',
+        title: blockingCount + ' render-blocking resources in <head>',
+        detail: (rb.cssInHead || 0) + ' CSS files, ' + (rb.jsInHead || 0) + ' sync JS scripts',
+        fix: 'Defer non-critical CSS with media="print" onload hack. Add async/defer to scripts.',
+        presetRef: null
+      });
+    }
+
+    // DOM complexity
+    checks++;
+    var domSize = perf.domSize || 0;
+    if (domSize <= 1500) {
+      passed++;
+    } else {
+      findings.push({
+        severity: domSize > 3000 ? 'warning' : 'info',
+        title: domSize + ' DOM elements (' + (domSize > 3000 ? 'excessive' : 'large') + ')',
+        detail: 'Large DOMs slow rendering, increase memory, and hurt interaction responsiveness',
+        fix: 'Consider lazy loading sections, virtualizing long lists, or simplifying markup.',
+        presetRef: null
+      });
+    }
+
+    // DOM depth
+    checks++;
+    var depth = perf.domDepth || 0;
+    if (depth <= 32) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: 'DOM nesting depth: ' + depth + ' levels (recommended: ≤32)',
+        detail: 'Deep nesting increases CSS selector matching time and layout complexity',
+        fix: 'Flatten nested containers where possible. Avoid wrapping divs that serve no purpose.',
+        presetRef: null
+      });
+    }
+
+    var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
+    return { score: score, findings: findings, weight: 5, label: 'Performance', icon: 'cognitive' };
+  }
+
   function runScoring(data) {
     var categories = [
       scoreContrast(data),
@@ -738,7 +894,9 @@ window.MilgScoring = (function() {
       scoreAccessibility(data),
       scoreResponsive(data),
       scoreVisualConsistency(data),
-      scoreCognitiveLoad(data)
+      scoreCognitiveLoad(data),
+      scoreLayout(data),
+      scorePerformance(data)
     ];
 
     var totalWeight = 0;

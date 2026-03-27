@@ -222,6 +222,7 @@
       headings: [], lineHeights: [], maxLineLength: { chars: 0, element: '' }
     },
     spacing: { paddings: [], margins: [], gaps: [], maxContentWidth: '', bodyPaddingHorizontal: '' },
+    layout: { sectionGaps: [], alignmentEdges: [], visualHierarchy: {} },
     interaction: { touchTargets: [], transitions: [] },
     accessibility: {
       semanticElements: {},
@@ -440,6 +441,38 @@
     data.accessibility.headingHierarchy.push(h.tagName.toLowerCase());
   });
 
+  // --- Layout analysis ---
+  // Whitespace rhythm: measure gaps between top-level sections
+  var sections = document.querySelectorAll('section, [class*="section"], main > div, main > article');
+  var sectionGaps = [];
+  var sortedSections = Array.from(sections).filter(function(s) { return isVisible(s) && !isDecorative(s); })
+    .sort(function(a, b) { return a.getBoundingClientRect().top - b.getBoundingClientRect().top; });
+  for (var si = 1; si < sortedSections.length; si++) {
+    var gap = Math.round(sortedSections[si].getBoundingClientRect().top - sortedSections[si - 1].getBoundingClientRect().bottom);
+    if (gap >= 0) sectionGaps.push(gap);
+  }
+  data.layout.sectionGaps = sectionGaps;
+
+  // Alignment consistency: collect left edges of major block elements
+  var alignTargets = document.querySelectorAll('h1,h2,h3,h4,p,ul,ol,table,form,img,figure,blockquote');
+  var leftEdges = [];
+  Array.from(alignTargets).forEach(function(el) {
+    if (!isVisible(el) || isDecorative(el)) return;
+    var r = el.getBoundingClientRect();
+    if (r.width > 50) leftEdges.push(Math.round(r.left));
+  });
+  data.layout.alignmentEdges = leftEdges;
+
+  // Visual hierarchy: heading size to body size ratios
+  var bodyFS = parseFloat(data.typography.bodyFontSize) || 16;
+  var h1Sizes = data.typography.headings.filter(function(h) { return h.tag === 'h1'; }).map(function(h) { return parseFloat(h.fontSize); });
+  var h2Sizes = data.typography.headings.filter(function(h) { return h.tag === 'h2'; }).map(function(h) { return parseFloat(h.fontSize); });
+  data.layout.visualHierarchy = {
+    h1ToBody: h1Sizes.length > 0 ? Math.round((h1Sizes[0] / bodyFS) * 100) / 100 : 0,
+    h2ToBody: h2Sizes.length > 0 ? Math.round((h2Sizes[0] / bodyFS) * 100) / 100 : 0,
+    bodySize: bodyFS
+  };
+
   // --- Touch targets ---
   var interactive = document.querySelectorAll('a, button, input, select, textarea, [role="button"], [tabindex]');
   var touchTargetIssues = [];
@@ -588,6 +621,39 @@
   data.accessibility.hasFocusVisibleCSS = Array.from(document.styleSheets).some(function(ss) {
     try { return Array.from(ss.cssRules).some(function(r) { return r.selectorText && r.selectorText.indexOf('focus-visible') !== -1; }); } catch(e) { return false; }
   });
+
+  // --- Font loading analysis ---
+  data.performance.fontLoading = [];
+  try {
+    Array.from(document.styleSheets).forEach(function(ss) {
+      try {
+        Array.from(ss.cssRules).forEach(function(r) {
+          if (r instanceof CSSFontFaceRule) {
+            var display = r.style.fontDisplay || 'auto';
+            if (display === 'auto' || display === 'block') {
+              data.performance.fontLoading.push({ family: r.style.fontFamily, display: display });
+            }
+          }
+        });
+      } catch(e) {}
+    });
+  } catch(e) {}
+
+  // --- Render-blocking resources ---
+  data.performance.renderBlocking = {
+    cssInHead: document.querySelectorAll('head link[rel="stylesheet"]:not([media="print"])').length,
+    jsInHead: document.querySelectorAll('head script:not([async]):not([defer]):not([type="module"])').length
+  };
+
+  // --- DOM complexity ---
+  data.performance.domSize = allElements.length;
+  var maxDepth = 0;
+  (function walkDepth(el, d) {
+    if (d > maxDepth) maxDepth = d;
+    if (d > 50) return;
+    Array.from(el.children || []).forEach(function(c) { walkDepth(c, d + 1); });
+  })(document.body, 0);
+  data.performance.domDepth = maxDepth;
 
   // --- Output ---
   var json = JSON.stringify(data, null, 2);
