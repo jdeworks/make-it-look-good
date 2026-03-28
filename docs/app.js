@@ -1563,33 +1563,63 @@ function startApp() {
   applyDarkMode();
   initMonaco();
   initMobile();
-  loadFromHash().then(async () => {
-    var editorVal = editor.value;
-    if (!editorVal || editorVal.trim().length === 0) {
-      // No hash preset and editor empty — load a random template
-      try {
-        var manifest = await loadManifest();
-        if (manifest && manifest.elements) {
-          var elements = Object.keys(manifest.elements);
-          var preferred = ['landing', 'dashboard', 'cards', 'form', 'project'];
-          var pick = preferred.find(function(p) { return elements.indexOf(p) !== -1; });
-          if (!pick) pick = elements[Math.floor(Math.random() * elements.length)];
-          var pers = manifest.elements[pick].personalities || {};
-          var persNames = Array.isArray(pers) ? pers : Object.keys(pers);
-          var randomPers = persNames.indexOf('clean') !== -1 ? 'clean' : (persNames[0] || 'clean');
-          console.log('[milg] Auto-loading template:', pick + '/' + randomPers);
-          await loadPreset(pick, randomPers);
-          console.log('[milg] Template loaded, editor has', editor.value.length, 'chars');
-        } else {
-          console.warn('[milg] No manifest data — showing empty preview');
-          updatePreview();
-        }
-      } catch(e) {
-        console.warn('[milg] Failed to auto-load template:', e);
-        updatePreview();
-      }
-    }
+  loadFromHash().then(function() {
+    // Check after a short delay to ensure Monaco has settled
+    setTimeout(function() { autoLoadTemplate(); }, 300);
   });
+}
+
+// Auto-load a template if the editor is empty (no hash preset, first visit)
+async function autoLoadTemplate() {
+  var val = editor.value;
+  if (val && val.trim().length > 0) return; // Already has content
+
+  console.log('[milg] Editor empty, auto-loading template...');
+  try {
+    var manifest = await loadManifest();
+    if (!manifest || !manifest.elements) {
+      console.warn('[milg] No manifest — empty preview');
+      updatePreview();
+      return;
+    }
+    var elements = Object.keys(manifest.elements);
+    var preferred = ['landing', 'dashboard', 'cards', 'form', 'project'];
+    var pick = preferred.find(function(p) { return elements.indexOf(p) !== -1; }) || elements[0];
+    var pers = manifest.elements[pick].personalities || {};
+    var persNames = Array.isArray(pers) ? pers : Object.keys(pers);
+    var personality = persNames.indexOf('clean') !== -1 ? 'clean' : (persNames[0] || 'clean');
+
+    console.log('[milg] Loading:', pick + '/' + personality);
+
+    // Fetch the HTML directly as a fallback that always works
+    var html = await fetchPreset(pick, personality);
+    if (html && html.length > 10) {
+      _fallbackValue = html; // Always set fallback
+      if (monacoEditor) {
+        suppressChangeEvent = true;
+        monacoEditor.setValue(html);
+        suppressChangeEvent = false;
+      }
+      currentElement = pick;
+      currentPersonality = personality;
+      currentPresetName = pick;
+      originalPresetHtml = html;
+      userEdited = false;
+      updateTemplateName();
+      try { renderPersonalityButtons(pick, personality); } catch(e) {}
+      try { renderThemeSwatches(pick, personality); } catch(e) {}
+      try { renderStyleButtons(pick); } catch(e) {}
+      try { syncMobileToolbar(); } catch(e) {}
+      updatePreview();
+      console.log('[milg] Template loaded:', pick + '/' + personality, html.length, 'chars');
+    } else {
+      console.warn('[milg] Fetch returned empty for', pick + '/' + personality);
+      updatePreview();
+    }
+  } catch(e) {
+    console.warn('[milg] Auto-load failed:', e);
+    updatePreview();
+  }
 }
 
 // Monaco loads async via require() — wait for it, with timeout fallback
