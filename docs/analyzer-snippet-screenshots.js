@@ -1008,6 +1008,28 @@
     }
   });
 
+  // --- Font smoothing detection (for low-vision profile) ---
+  data.typography.fontSmoothingAntialiased = false;
+  try {
+    var bodySmooth = getComputedStyle(document.body).webkitFontSmoothing || '';
+    if (bodySmooth === 'antialiased') data.typography.fontSmoothingAntialiased = true;
+    if (!data.typography.fontSmoothingAntialiased) {
+      Array.from(document.styleSheets).some(function(ss) {
+        try { return Array.from(ss.cssRules).some(function(r) { return r.cssText && r.cssText.indexOf('font-smoothing') !== -1 && r.cssText.indexOf('antialiased') !== -1; }); } catch(e) { return false; }
+      }) && (data.typography.fontSmoothingAntialiased = true);
+    }
+  } catch(e) {}
+
+  // --- Background images behind text (for low-vision profile) ---
+  data.accessibility.bgImageBehindText = 0;
+  document.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, td, th, span, a, label').forEach(function(el) {
+    if (!isVisible(el) || isDecorative(el)) return;
+    var bgi = getComputedStyle(el).backgroundImage;
+    if (bgi && bgi !== 'none' && bgi.indexOf('url(') !== -1 && el.textContent.trim().length > 10) {
+      data.accessibility.bgImageBehindText++;
+    }
+  });
+
   // --- Fixed-width elements ---
   data.structure.fixedWidthElements = 0;
   for (var fi = 0; fi < allElements.length && fi < 500; fi++) {

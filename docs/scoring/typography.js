@@ -48,16 +48,17 @@ function scoreTypography(data) {
     });
   }
 
-  // Line length 45-75 characters
+  // Line length (profile-aware: elderly 65, children 55, default 75)
   checks++;
   var maxChars = data.typography.maxLineLength ? data.typography.maxLineLength.chars : 0;
-  if (maxChars > 0 && maxChars <= 80) {
+  var lineLimit = profile.maxLineLength || 75;
+  if (maxChars > 0 && maxChars <= lineLimit + 5) {
     passed++;
-  } else if (maxChars > 80) {
+  } else if (maxChars > lineLimit + 5) {
     findings.push({
-      severity: maxChars > 100 ? 'error' : 'warning',
-      title: 'Line length ~' + maxChars + ' characters (ideal: 45–75)',
-      detail: 'Long lines make it hard for the eye to track back to the next line',
+      severity: maxChars > lineLimit + 25 ? 'error' : 'warning',
+      title: 'Line length ~' + maxChars + ' characters (max for this audience: ' + lineLimit + ')',
+      detail: lineLimit < 70 ? 'Shorter lines improve readability for this audience.' : 'Long lines make it hard for the eye to track back to the next line.',
       fix: 'Constrain content width with max-w-prose (65ch) or max-w-2xl (672px)',
       presetRef: 'Editorial presets use max-w-prose for reading content',
       source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-length.html'

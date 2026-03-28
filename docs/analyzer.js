@@ -337,6 +337,11 @@
     data.accessibility.formLabels.withoutLabel = data.accessibility.formLabels.total - labeled;
     Array.from(interactive).slice(0, 10).forEach(function(el) { if (!isVisible(el)) return; var s = getComputedStyle(el); data.accessibility.focusIndicators.push({ element: cssSelector(el), outlineStyle: s.outlineStyle, outlineWidth: s.outlineWidth, outlineColor: s.outlineColor, outlineOffset: s.outlineOffset }); });
     data.accessibility.hasFocusVisibleCSS = Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r.selectorText && r.selectorText.indexOf('focus-visible') !== -1; }); } catch(e) { return false; } });
+    // Font smoothing + bg image behind text (profile-specific)
+    data.typography.fontSmoothingAntialiased = false;
+    try { var bs = getComputedStyle(document.body).webkitFontSmoothing; if (bs === 'antialiased') data.typography.fontSmoothingAntialiased = true; } catch(e) {}
+    data.accessibility.bgImageBehindText = 0;
+    document.querySelectorAll('p,h1,h2,h3,h4,h5,h6,li,span').forEach(function(el) { if (!isVisible(el)) return; var bgi = getComputedStyle(el).backgroundImage; if (bgi && bgi !== 'none' && bgi.indexOf('url(') !== -1 && el.textContent.trim().length > 10) data.accessibility.bgImageBehindText++; });
 
     parent.postMessage({ type: 'milg-analyzer-result', data: data }, '*');
     // Trigger screenshot capture if configured (function injected by parent)

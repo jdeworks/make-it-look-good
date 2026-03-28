@@ -224,6 +224,47 @@ function scoreAccessibility(data) {
     });
   }
 
+  // Profile-specific: font smoothing warning (low_vision)
+  if (profile.warnFontSmoothing && data.typography && data.typography.fontSmoothingAntialiased) {
+    checks++;
+    findings.push({
+      severity: 'warning',
+      title: '-webkit-font-smoothing: antialiased detected',
+      detail: 'Antialiased font smoothing thins fonts on macOS, reducing legibility for low-vision users.',
+      fix: 'Remove -webkit-font-smoothing: antialiased or use auto instead.',
+      source: 'Low Vision TF — https://www.w3.org/WAI/GL/low-vision-a11y-tf/'
+    });
+  }
+
+  // Profile-specific: background images behind text (low_vision)
+  if (profile.warnBackgroundImage && data.accessibility && data.accessibility.bgImageBehindText) {
+    checks++;
+    findings.push({
+      severity: 'warning',
+      title: data.accessibility.bgImageBehindText + ' element(s) with background images behind text',
+      detail: 'Background textures/patterns reduce text legibility for low-vision users.',
+      fix: 'Use solid backgrounds behind text, or add a semi-transparent overlay.',
+      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
+    });
+  }
+
+  // Profile-specific: outline:none without focus replacement (motor_impairment)
+  if (profile.warnOutlineNone && a11y.focusIndicators) {
+    var outlineNone = a11y.focusIndicators.filter(function(f) {
+      return f.outlineStyle === 'none' && !a11y.hasFocusVisibleCSS;
+    }).length;
+    if (outlineNone > 0) {
+      checks++;
+      findings.push({
+        severity: 'error',
+        title: outlineNone + ' element(s) with outline:none and no :focus-visible replacement',
+        detail: 'Removing focus outlines without providing alternative styling makes keyboard navigation impossible.',
+        fix: 'Never use outline:none without a :focus-visible replacement. Use focus-visible:ring-2 in Tailwind.',
+        source: 'WCAG 2.2 §2.4.7 — https://www.w3.org/TR/WCAG22/#focus-visible'
+      });
+    }
+  }
+
   var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
   return { score: score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Accessibility', icon: 'a11y' };
 }

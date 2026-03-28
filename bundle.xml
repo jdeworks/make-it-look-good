@@ -18571,6 +18571,28 @@ function scoreLayout(data) {
     }
   });
 
+  // --- Font smoothing detection (for low-vision profile) ---
+  data.typography.fontSmoothingAntialiased = false;
+  try {
+    var bodySmooth = getComputedStyle(document.body).webkitFontSmoothing || '';
+    if (bodySmooth === 'antialiased') data.typography.fontSmoothingAntialiased = true;
+    if (!data.typography.fontSmoothingAntialiased) {
+      Array.from(document.styleSheets).some(function(ss) {
+        try { return Array.from(ss.cssRules).some(function(r) { return r.cssText && r.cssText.indexOf('font-smoothing') !== -1 && r.cssText.indexOf('antialiased') !== -1; }); } catch(e) { return false; }
+      }) && (data.typography.fontSmoothingAntialiased = true);
+    }
+  } catch(e) {}
+
+  // --- Background images behind text (for low-vision profile) ---
+  data.accessibility.bgImageBehindText = 0;
+  document.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, td, th, span, a, label').forEach(function(el) {
+    if (!isVisible(el) || isDecorative(el)) return;
+    var bgi = getComputedStyle(el).backgroundImage;
+    if (bgi && bgi !== 'none' && bgi.indexOf('url(') !== -1 && el.textContent.trim().length > 10) {
+      data.accessibility.bgImageBehindText++;
+    }
+  });
+
   // --- Fixed-width elements ---
   data.structure.fixedWidthElements = 0;
   for (var fi = 0; fi < allElements.length && fi < 500; fi++) {
@@ -19444,16 +19466,17 @@ function scoreTypography(data) {
     });
   }
 
-  // Line length 45-75 characters
+  // Line length (profile-aware: elderly 65, children 55, default 75)
   checks++;
   var maxChars = data.typography.maxLineLength ? data.typography.maxLineLength.chars : 0;
-  if (maxChars > 0 && maxChars <= 80) {
+  var lineLimit = profile.maxLineLength || 75;
+  if (maxChars > 0 && maxChars <= lineLimit + 5) {
     passed++;
-  } else if (maxChars > 80) {
+  } else if (maxChars > lineLimit + 5) {
     findings.push({
-      severity: maxChars > 100 ? 'error' : 'warning',
-      title: 'Line length ~' + maxChars + ' characters (ideal: 45–75)',
-      detail: 'Long lines make it hard for the eye to track back to the next line',
+      severity: maxChars > lineLimit + 25 ? 'error' : 'warning',
+      title: 'Line length ~' + maxChars + ' characters (max for this audience: ' + lineLimit + ')',
+      detail: lineLimit < 70 ? 'Shorter lines improve readability for this audience.' : 'Long lines make it hard for the eye to track back to the next line.',
       fix: 'Constrain content width with max-w-prose (65ch) or max-w-2xl (672px)',
       presetRef: 'Editorial presets use max-w-prose for reading content',
       source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-length.html'
@@ -19803,6 +19826,47 @@ function scoreAccessibility(data) {
       presetRef: null,
       source: 'WCAG 2.2 §1.4.2 — https://www.w3.org/TR/WCAG22/#audio-control'
     });
+  }
+
+  // Profile-specific: font smoothing warning (low_vision)
+  if (profile.warnFontSmoothing && data.typography && data.typography.fontSmoothingAntialiased) {
+    checks++;
+    findings.push({
+      severity: 'warning',
+      title: '-webkit-font-smoothing: antialiased detected',
+      detail: 'Antialiased font smoothing thins fonts on macOS, reducing legibility for low-vision users.',
+      fix: 'Remove -webkit-font-smoothing: antialiased or use auto instead.',
+      source: 'Low Vision TF — https://www.w3.org/WAI/GL/low-vision-a11y-tf/'
+    });
+  }
+
+  // Profile-specific: background images behind text (low_vision)
+  if (profile.warnBackgroundImage && data.accessibility && data.accessibility.bgImageBehindText) {
+    checks++;
+    findings.push({
+      severity: 'warning',
+      title: data.accessibility.bgImageBehindText + ' element(s) with background images behind text',
+      detail: 'Background textures/patterns reduce text legibility for low-vision users.',
+      fix: 'Use solid backgrounds behind text, or add a semi-transparent overlay.',
+      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
+    });
+  }
+
+  // Profile-specific: outline:none without focus replacement (motor_impairment)
+  if (profile.warnOutlineNone && a11y.focusIndicators) {
+    var outlineNone = a11y.focusIndicators.filter(function(f) {
+      return f.outlineStyle === 'none' && !a11y.hasFocusVisibleCSS;
+    }).length;
+    if (outlineNone > 0) {
+      checks++;
+      findings.push({
+        severity: 'error',
+        title: outlineNone + ' element(s) with outline:none and no :focus-visible replacement',
+        detail: 'Removing focus outlines without providing alternative styling makes keyboard navigation impossible.',
+        fix: 'Never use outline:none without a :focus-visible replacement. Use focus-visible:ring-2 in Tailwind.',
+        source: 'WCAG 2.2 §2.4.7 — https://www.w3.org/TR/WCAG22/#focus-visible'
+      });
+    }
   }
 
   var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
@@ -23885,6 +23949,29 @@ body.dark-ui .severity-badge-info {
     }
   });
 
+  // --- Font smoothing detection (for low-vision profile) ---
+  data.typography.fontSmoothingAntialiased = false;
+  try {
+    var bodySmooth = getComputedStyle(document.body).webkitFontSmoothing || getComputedStyle(document.body)['-webkit-font-smoothing'] || '';
+    if (bodySmooth === 'antialiased') data.typography.fontSmoothingAntialiased = true;
+    if (!data.typography.fontSmoothingAntialiased) {
+      // Check via stylesheets
+      Array.from(document.styleSheets).some(function(ss) {
+        try { return Array.from(ss.cssRules).some(function(r) { return r.cssText && r.cssText.indexOf('font-smoothing') !== -1 && r.cssText.indexOf('antialiased') !== -1; }); } catch(e) { return false; }
+      }) && (data.typography.fontSmoothingAntialiased = true);
+    }
+  } catch(e) {}
+
+  // --- Background images behind text (for low-vision profile) ---
+  data.accessibility.bgImageBehindText = 0;
+  document.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, td, th, span, a, label').forEach(function(el) {
+    if (!isVisible(el) || isDecorative(el)) return;
+    var bgi = getComputedStyle(el).backgroundImage;
+    if (bgi && bgi !== 'none' && bgi.indexOf('url(') !== -1 && el.textContent.trim().length > 10) {
+      data.accessibility.bgImageBehindText++;
+    }
+  });
+
   // --- Fixed-width elements ---
   data.structure.fixedWidthElements = 0;
   for (var fi = 0; fi < allElements.length && fi < 500; fi++) {
@@ -24634,6 +24721,11 @@ body.dark-ui .severity-badge-info {
     data.accessibility.formLabels.withoutLabel = data.accessibility.formLabels.total - labeled;
     Array.from(interactive).slice(0, 10).forEach(function(el) { if (!isVisible(el)) return; var s = getComputedStyle(el); data.accessibility.focusIndicators.push({ element: cssSelector(el), outlineStyle: s.outlineStyle, outlineWidth: s.outlineWidth, outlineColor: s.outlineColor, outlineOffset: s.outlineOffset }); });
     data.accessibility.hasFocusVisibleCSS = Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r.selectorText && r.selectorText.indexOf('focus-visible') !== -1; }); } catch(e) { return false; } });
+    // Font smoothing + bg image behind text (profile-specific)
+    data.typography.fontSmoothingAntialiased = false;
+    try { var bs = getComputedStyle(document.body).webkitFontSmoothing; if (bs === 'antialiased') data.typography.fontSmoothingAntialiased = true; } catch(e) {}
+    data.accessibility.bgImageBehindText = 0;
+    document.querySelectorAll('p,h1,h2,h3,h4,h5,h6,li,span').forEach(function(el) { if (!isVisible(el)) return; var bgi = getComputedStyle(el).backgroundImage; if (bgi && bgi !== 'none' && bgi.indexOf('url(') !== -1 && el.textContent.trim().length > 10) data.accessibility.bgImageBehindText++; });
 
     parent.postMessage({ type: 'milg-analyzer-result', data: data }, '*');
     // Trigger screenshot capture if configured (function injected by parent)
