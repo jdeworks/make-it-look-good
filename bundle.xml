@@ -22089,7 +22089,9 @@ window.MilgReport = (function() {
     report.categories.forEach(function(cat) {
       var catId = 'findings-' + cat.icon;
       var hasFindings = cat.findings.length > 0;
-      html += '<div class="report-card' + (hasFindings ? ' report-card-clickable' : '') + '"' + (hasFindings ? ' onclick="document.getElementById(\'' + catId + '\').scrollIntoView({behavior:\'smooth\',block:\'start\'})"' : '') + '>';
+      // All cards are clickable — scroll to findings if present, otherwise to passed checks
+      var scrollTarget = hasFindings ? catId : 'passed-checks';
+      html += '<div class="report-card report-card-clickable" onclick="var el=document.getElementById(\'' + scrollTarget + '\');if(el){el.scrollIntoView({behavior:\'smooth\',block:\'start\'});if(!el.open&&el.tagName===\'DETAILS\')el.open=true;}">';
       html += '<div class="report-card-header">';
       html += '<div class="report-card-icon" style="color:' + scoreColor(cat.score) + '">' + (categoryIcons[cat.icon] || '') + '</div>';
       html += '<div class="report-card-title">';
@@ -22269,7 +22271,7 @@ window.MilgReport = (function() {
     var passedCategories = report.categories.filter(function(cat) { return cat.passed > 0 || cat.findings.length === 0; });
     if (passedCategories.length > 0) {
       html += '<div class="report-findings" style="margin-top:16px">';
-      html += '<details>';
+      html += '<details id="passed-checks">';
       html += '<summary style="cursor:pointer;font-size:18px;font-weight:700;padding:8px 0">Passed Checks</summary>';
 
       passedCategories.forEach(function(cat) {
@@ -26486,6 +26488,16 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
   function fetchViaProxy(url, callback) {
     fetchWithProxy(url)
       .then(function(html) {
+        // Detect proxy error pages (Cloudflare challenges, 4xx/5xx error pages)
+        if (html && (
+          /class="no-js.*oldie"/i.test(html.substring(0, 500)) || // Cloudflare error template
+          /cf-error-details|cf-wrapper|cloudflare/i.test(html.substring(0, 2000)) ||
+          /Access Denied|403 Forbidden|Just a moment/i.test(html.substring(0, 1000))
+        )) {
+          callback(null, 'The site returned an error/challenge page (likely blocking proxy access). Use the Console Snippet tab instead.');
+          return;
+        }
+
         // Resolve base URL for relative paths
         var baseUrl;
         try { var u = new URL(url); baseUrl = u.origin + u.pathname.replace(/\/[^/]*$/, '/'); } catch(e) { baseUrl = url; }

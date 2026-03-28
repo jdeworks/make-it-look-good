@@ -1199,6 +1199,16 @@
   function fetchViaProxy(url, callback) {
     fetchWithProxy(url)
       .then(function(html) {
+        // Detect proxy error pages (Cloudflare challenges, 4xx/5xx error pages)
+        if (html && (
+          /class="no-js.*oldie"/i.test(html.substring(0, 500)) || // Cloudflare error template
+          /cf-error-details|cf-wrapper|cloudflare/i.test(html.substring(0, 2000)) ||
+          /Access Denied|403 Forbidden|Just a moment/i.test(html.substring(0, 1000))
+        )) {
+          callback(null, 'The site returned an error/challenge page (likely blocking proxy access). Use the Console Snippet tab instead.');
+          return;
+        }
+
         // Resolve base URL for relative paths
         var baseUrl;
         try { var u = new URL(url); baseUrl = u.origin + u.pathname.replace(/\/[^/]*$/, '/'); } catch(e) { baseUrl = url; }

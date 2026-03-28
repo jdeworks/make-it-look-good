@@ -100,7 +100,9 @@ window.MilgReport = (function() {
     report.categories.forEach(function(cat) {
       var catId = 'findings-' + cat.icon;
       var hasFindings = cat.findings.length > 0;
-      html += '<div class="report-card' + (hasFindings ? ' report-card-clickable' : '') + '"' + (hasFindings ? ' onclick="document.getElementById(\'' + catId + '\').scrollIntoView({behavior:\'smooth\',block:\'start\'})"' : '') + '>';
+      // All cards are clickable — scroll to findings if present, otherwise to passed checks
+      var scrollTarget = hasFindings ? catId : 'passed-checks';
+      html += '<div class="report-card report-card-clickable" onclick="var el=document.getElementById(\'' + scrollTarget + '\');if(el){el.scrollIntoView({behavior:\'smooth\',block:\'start\'});if(!el.open&&el.tagName===\'DETAILS\')el.open=true;}">';
       html += '<div class="report-card-header">';
       html += '<div class="report-card-icon" style="color:' + scoreColor(cat.score) + '">' + (categoryIcons[cat.icon] || '') + '</div>';
       html += '<div class="report-card-title">';
@@ -280,7 +282,7 @@ window.MilgReport = (function() {
     var passedCategories = report.categories.filter(function(cat) { return cat.passed > 0 || cat.findings.length === 0; });
     if (passedCategories.length > 0) {
       html += '<div class="report-findings" style="margin-top:16px">';
-      html += '<details>';
+      html += '<details id="passed-checks">';
       html += '<summary style="cursor:pointer;font-size:18px;font-weight:700;padding:8px 0">Passed Checks</summary>';
 
       passedCategories.forEach(function(cat) {
