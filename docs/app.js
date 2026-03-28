@@ -278,12 +278,6 @@ function updatePreview() {
     '</' + 'script>\n' +
     '<script>\n' +
     'window.addEventListener("message", function(e) {\n' +
-    '  if (e.data && e.data.type === "milg-run-contrast") {\n' +
-    '    var s = document.createElement("script");\n' +
-    '    s.textContent = ' + JSON.stringify(contrastCheckerScript) + ';\n' +
-    '    document.body.appendChild(s);\n' +
-    '    s.remove();\n' +
-    '  }\n' +
     '  if (e.data && e.data.type === "milg-run-analyzer") {\n' +
     '    var s = document.createElement("script");\n' +
     '    s.textContent = ' + JSON.stringify(analyzePreviewScript) + ';\n' +
