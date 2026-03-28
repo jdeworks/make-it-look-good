@@ -184,23 +184,113 @@ window.MilgReport = (function() {
     html += '</div>';
 
     // --- Passed checks ---
-    var passedCategories = report.categories.filter(function(cat) { return cat.findings.length === 0 || cat.passed > 0; });
+    // Check descriptions per category (what was checked and passed)
+    var checkDescriptions = {
+      contrast: [
+        { title: 'Text contrast ratio meets threshold', detail: 'All text elements have sufficient contrast against their backgrounds.', source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' },
+        { title: 'No undetermined contrast issues', detail: 'All background colors could be resolved (no complex gradients or images blocking analysis).' }
+      ],
+      type: [
+        { title: 'Body font size adequate', detail: 'Body text meets the minimum font size for this audience profile.', source: 'NNGroup — https://www.nngroup.com/articles/let-users-control-font-size/' },
+        { title: 'Line height within range', detail: 'Body line-height provides comfortable reading spacing.', source: 'WCAG 2.2 §1.4.12 — https://www.w3.org/TR/WCAG22/#text-spacing' },
+        { title: 'Line length under limit', detail: 'Content width constrains lines to a readable character count.', source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-length.html' },
+        { title: 'Heading scale consistent', detail: 'Headings follow a logical size progression from H1 down.' },
+        { title: 'Font weight count reasonable', detail: 'Uses 2-4 font weights, avoiding visual noise.' },
+        { title: 'Font family count under limit', detail: 'Uses 1-3 font families for visual consistency.' }
+      ],
+      spacing: [
+        { title: 'Spacing on 4px grid', detail: 'Spacing values align to a consistent base unit.', source: 'Material Design — https://m3.material.io/foundations/layout/applying-layout' },
+        { title: 'Content width constrained', detail: 'Content doesn\'t stretch to excessive widths.' },
+        { title: 'Body padding adequate', detail: 'Content has proper edge padding, not touching screen sides.' },
+        { title: 'No element overflow', detail: 'No content extends beyond its container boundaries.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' }
+      ],
+      touch: [
+        { title: 'Interactive targets properly sized', detail: 'Buttons, links, and inputs meet minimum target size requirements.', source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum' },
+        { title: 'Transition durations appropriate', detail: 'Animations stay under 500ms for snappy interaction.', source: 'NNGroup — https://www.nngroup.com/articles/animation-usability/' }
+      ],
+      a11y: [
+        { title: 'Semantic HTML landmarks present', detail: 'Page uses header, nav, main, and/or footer elements.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships' },
+        { title: 'Heading hierarchy intact', detail: 'Headings follow sequential order without gaps.' },
+        { title: 'Images have alt text', detail: 'All img elements include alt attributes.', source: 'WCAG 2.2 §1.1.1 — https://www.w3.org/TR/WCAG22/#non-text-content' },
+        { title: 'Form inputs labeled', detail: 'All form fields have associated labels.' },
+        { title: 'Focus indicators visible', detail: 'Interactive elements show visible focus styling.', source: 'WCAG 2.2 §2.4.7 — https://www.w3.org/TR/WCAG22/#focus-visible' },
+        { title: 'Language attribute set', detail: 'HTML element has a lang attribute for screen readers.', source: 'WCAG 2.2 §3.1.1 — https://www.w3.org/TR/WCAG22/#language-of-page' }
+      ],
+      responsive: [
+        { title: 'Responsive breakpoints detected', detail: 'CSS media queries or responsive utility classes are present.' },
+        { title: 'Viewport meta tag correct', detail: 'Proper viewport configuration for mobile rendering.', source: 'MDN — https://developer.mozilla.org/en-US/docs/Web/HTML/Viewport_meta_tag' },
+        { title: 'No horizontal overflow', detail: 'Page content fits within viewport width.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' }
+      ],
+      consistency: [
+        { title: 'Color palette coherent', detail: 'Number of unique colors is within expected range for page complexity.' },
+        { title: 'Font size scale consistent', detail: 'Uses a limited set of font sizes from a type scale.' }
+      ],
+      cognitive: [
+        { title: 'Content chunking appropriate', detail: 'Page sections and headings are within cognitive load limits.', source: 'Hick\'s Law — https://lawsofux.com/hicks-law/' },
+        { title: 'Form complexity manageable', detail: 'Visible form fields stay within recommended limits.', source: 'Miller\'s Law — https://lawsofux.com/millers-law/' }
+      ]
+    };
+
+    var passedCategories = report.categories.filter(function(cat) { return cat.passed > 0 || cat.findings.length === 0; });
     if (passedCategories.length > 0) {
-      html += '<details class="report-passed">';
-      html += '<summary style="cursor:pointer;font-size:16px;font-weight:600;padding:8px 0;color:var(--text-secondary)">Passed Checks</summary>';
-      html += '<div style="margin-top:8px">';
+      html += '<div class="report-findings" style="margin-top:16px">';
+      html += '<details>';
+      html += '<summary style="cursor:pointer;font-size:18px;font-weight:700;padding:8px 0">Passed Checks</summary>';
+
       passedCategories.forEach(function(cat) {
         var passCount = cat.passed || 0;
         if (cat.findings.length === 0) passCount = cat.checks || 1;
         if (passCount <= 0) return;
-        html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">';
-        html += '<span class="count-pass" style="cursor:default">' + passCount + '</span>';
-        html += '<span style="font-size:13px;font-weight:600">' + cat.label + '</span>';
-        html += '<span style="font-size:12px;color:var(--text-secondary)">' + (cat.findings.length === 0 ? 'All checks passed' : passCount + ' of ' + (cat.checks || passCount) + ' checks passed') + '</span>';
+
+        var failedTitles = {};
+        cat.findings.forEach(function(f) { failedTitles[f.title.substring(0, 30)] = true; });
+
+        html += '<div class="report-finding-group">';
+        html += '<h3>' + (categoryIcons[cat.icon] || '') + ' ' + cat.label + ' <span style="font-size:12px;color:var(--text-secondary);font-weight:400">(' + passCount + ' passed)</span></h3>';
+
+        // Show check descriptions that weren't in the failures
+        var descs = checkDescriptions[cat.icon] || [];
+        var shown = 0;
+        descs.forEach(function(desc) {
+          // Skip if a similar title appears in failures
+          var isFailure = cat.findings.some(function(f) {
+            return f.title.toLowerCase().indexOf(desc.title.toLowerCase().substring(0, 15)) !== -1;
+          });
+          if (isFailure) return;
+          if (shown >= passCount) return;
+
+          html += '<div class="report-finding severity-pass" style="border-left:3px solid #16a34a">';
+          html += '<div class="finding-header">';
+          html += severityBadge('pass');
+          html += '<span class="finding-title">' + escapeHtml(desc.title) + '</span>';
+          html += '</div>';
+          html += '<p class="finding-detail">' + escapeHtml(desc.detail) + '</p>';
+          if (desc.source) {
+            var sp = desc.source.split(' — ');
+            html += '<div class="finding-source">';
+            if (sp[1]) html += '<a href="' + escapeHtml(sp[1]) + '" target="_blank" rel="noopener">' + escapeHtml(sp[0]) + '</a>';
+            else html += escapeHtml(sp[0]);
+            html += '</div>';
+          }
+          html += '</div>';
+          shown++;
+        });
+
+        // If we have more passes than descriptions, show a summary
+        if (shown < passCount) {
+          html += '<div class="report-finding severity-pass" style="border-left:3px solid #16a34a">';
+          html += '<div class="finding-header">';
+          html += severityBadge('pass');
+          html += '<span class="finding-title">' + (passCount - shown) + ' additional check(s) passed</span>';
+          html += '</div>';
+          html += '</div>';
+        }
+
         html += '</div>';
       });
-      html += '</div>';
+
       html += '</details>';
+      html += '</div>';
     }
 
     // --- Extracted data summary ---
