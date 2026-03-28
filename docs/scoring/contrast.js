@@ -198,8 +198,19 @@ function scoreContrast(data) {
   var passing = total - failures.length;
   var score = Math.max(0, 100 - (failures.length * 10) - (nearMisses.length * 3));
 
-  var checks = total;
-  var passed = passing;
+  // Add baseline checks
+  var checks = Math.max(total, 1);
+  var passed = Math.max(passing, 0);
+  // Text existence check
+  if (pairs.length === 0 && (data.structure && data.structure.totalElements > 20)) {
+    findings.push({
+      severity: 'info',
+      title: 'No text contrast pairs found to check',
+      detail: 'The page may use images for text, or text may not be visible at scan time.',
+      fix: 'Ensure text is rendered as real HTML text, not embedded in images.',
+      source: 'WCAG 2.2 §1.4.5 — https://www.w3.org/TR/WCAG22/#images-of-text'
+    });
+  }
   return { score: score, findings: findings, checks: checks, passed: passed, weight: 20, label: 'Color & Contrast', icon: 'contrast' };
 }
 

@@ -190,46 +190,90 @@ window.MilgReport = (function() {
     var checkDescriptions = {
       contrast: [
         { title: 'Text contrast ratio meets threshold', detail: 'All text elements have sufficient contrast against their backgrounds.', source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' },
-        { title: 'No undetermined contrast issues', detail: 'All background colors could be resolved (no complex gradients or images blocking analysis).' }
+        { title: 'No undetermined contrast issues', detail: 'All background colors could be resolved (no complex gradients or images blocking analysis).', source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' },
+        { title: 'Text uses real HTML (not images)', detail: 'Text is rendered as selectable HTML, not embedded in images.', source: 'WCAG 2.2 §1.4.5 — https://www.w3.org/TR/WCAG22/#images-of-text' },
+        { title: 'CVD-safe color palette', detail: 'Color pairs remain distinguishable under color vision deficiency simulation.', source: 'Machado et al. 2009 — https://www.inf.ufrgs.br/~oliveira/pubs_files/CVD_Simulation/CVD_Simulation.html' }
       ],
       type: [
-        { title: 'Body font size adequate', detail: 'Body text meets the minimum font size for this audience profile.', source: 'NNGroup — https://www.nngroup.com/articles/let-users-control-font-size/' },
+        { title: 'Body font size adequate', detail: 'Body text meets the minimum font size for this audience.', source: 'NNGroup — https://www.nngroup.com/articles/let-users-control-font-size/' },
         { title: 'Line height within range', detail: 'Body line-height provides comfortable reading spacing.', source: 'WCAG 2.2 §1.4.12 — https://www.w3.org/TR/WCAG22/#text-spacing' },
         { title: 'Line length under limit', detail: 'Content width constrains lines to a readable character count.', source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-length.html' },
-        { title: 'Heading scale consistent', detail: 'Headings follow a logical size progression from H1 down.' },
-        { title: 'Font weight count reasonable', detail: 'Uses 2-4 font weights, avoiding visual noise.' },
-        { title: 'Font family count under limit', detail: 'Uses 1-3 font families for visual consistency.' }
+        { title: 'Heading scale consistent', detail: 'Headings follow a logical size progression from H1 down.', source: 'Modular type scales — https://typescale.com/' },
+        { title: 'Font weight count reasonable', detail: 'Uses 2-4 font weights, avoiding visual noise.', source: 'Google Fonts — https://fonts.google.com/knowledge/using_type/choosing_reliable_typefaces' },
+        { title: 'Font family count under limit', detail: 'Uses 1-3 font families for visual consistency.', source: 'Butterick\'s Practical Typography — https://practicaltypography.com/summary-of-key-rules.html' },
+        { title: 'Paragraph spacing appropriate', detail: 'Paragraphs have comfortable spacing between them.', source: 'Butterick\'s Practical Typography — https://practicaltypography.com/space-between-paragraphs.html' }
       ],
       spacing: [
         { title: 'Spacing on 4px grid', detail: 'Spacing values align to a consistent base unit.', source: 'Material Design — https://m3.material.io/foundations/layout/applying-layout' },
-        { title: 'Content width constrained', detail: 'Content doesn\'t stretch to excessive widths.' },
-        { title: 'Body padding adequate', detail: 'Content has proper edge padding, not touching screen sides.' },
-        { title: 'No element overflow', detail: 'No content extends beyond its container boundaries.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' }
+        { title: 'Content width constrained', detail: 'Content doesn\'t stretch to excessive widths.', source: 'NNGroup — https://www.nngroup.com/articles/utilize-available-screen-space/' },
+        { title: 'Body padding adequate', detail: 'Content has proper edge padding, not touching screen sides.', source: 'Material Design — https://m3.material.io/foundations/layout/applying-layout' },
+        { title: 'No element overflow', detail: 'No content extends beyond its container boundaries.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' },
+        { title: 'Interactive element spacing adequate', detail: 'Buttons and links have enough gap between them to prevent mis-clicks.', source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum' }
       ],
       touch: [
-        { title: 'Interactive targets properly sized', detail: 'Buttons, links, and inputs meet minimum target size requirements.', source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum' },
-        { title: 'Transition durations appropriate', detail: 'Animations stay under 500ms for snappy interaction.', source: 'NNGroup — https://www.nngroup.com/articles/animation-usability/' }
+        { title: 'Interactive targets properly sized', detail: 'Buttons, links, and inputs meet minimum target size.', source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum' },
+        { title: 'Transition durations appropriate', detail: 'Animations stay under 500ms for responsive feel.', source: 'NNGroup — https://www.nngroup.com/articles/animation-usability/' },
+        { title: 'Touch-friendly on mobile', detail: 'Elements would pass touch target requirements on mobile viewports.', source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout' }
       ],
       a11y: [
-        { title: 'Semantic HTML landmarks present', detail: 'Page uses header, nav, main, and/or footer elements.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships' },
-        { title: 'Heading hierarchy intact', detail: 'Headings follow sequential order without gaps.' },
-        { title: 'Images have alt text', detail: 'All img elements include alt attributes.', source: 'WCAG 2.2 §1.1.1 — https://www.w3.org/TR/WCAG22/#non-text-content' },
-        { title: 'Form inputs labeled', detail: 'All form fields have associated labels.' },
-        { title: 'Focus indicators visible', detail: 'Interactive elements show visible focus styling.', source: 'WCAG 2.2 §2.4.7 — https://www.w3.org/TR/WCAG22/#focus-visible' },
-        { title: 'Language attribute set', detail: 'HTML element has a lang attribute for screen readers.', source: 'WCAG 2.2 §3.1.1 — https://www.w3.org/TR/WCAG22/#language-of-page' }
+        { title: 'Semantic HTML landmarks', detail: 'Page uses header, nav, main, and/or footer elements.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships' },
+        { title: 'Heading hierarchy intact', detail: 'Headings follow sequential order without gaps (h1 → h2 → h3).', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships' },
+        { title: 'Images have alt text', detail: 'All img elements include alt attributes for screen readers.', source: 'WCAG 2.2 §1.1.1 — https://www.w3.org/TR/WCAG22/#non-text-content' },
+        { title: 'Form inputs labeled', detail: 'All form fields have associated labels or aria-label.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships' },
+        { title: 'Focus indicators visible', detail: 'Interactive elements show visible focus styling for keyboard users.', source: 'WCAG 2.2 §2.4.7 — https://www.w3.org/TR/WCAG22/#focus-visible' },
+        { title: 'Language attribute set', detail: 'HTML element has a lang attribute for correct pronunciation.', source: 'WCAG 2.2 §3.1.1 — https://www.w3.org/TR/WCAG22/#language-of-page' },
+        { title: 'Skip navigation link', detail: 'Keyboard users can skip past navigation to reach main content.', source: 'WCAG 2.2 §2.4.1 — https://www.w3.org/TR/WCAG22/#bypass-blocks' },
+        { title: 'Descriptive link text', detail: 'Links use meaningful text instead of "click here" or "read more".', source: 'WCAG 2.2 §2.4.4 — https://www.w3.org/TR/WCAG22/#link-purpose-in-context' },
+        { title: 'No color-only indicators', detail: 'Status information uses icons or text in addition to color.', source: 'WCAG 2.2 §1.4.1 — https://www.w3.org/TR/WCAG22/#use-of-color' }
       ],
       responsive: [
-        { title: 'Responsive breakpoints detected', detail: 'CSS media queries or responsive utility classes are present.' },
+        { title: 'Responsive breakpoints detected', detail: 'CSS media queries or responsive utility classes are present.', source: 'NNGroup — https://www.nngroup.com/articles/responsive-web-design-definition/' },
+        { title: 'Dark mode support', detail: 'Page supports dark color scheme.', source: 'Apple HIG — https://developer.apple.com/design/human-interface-guidelines/dark-mode' },
         { title: 'Viewport meta tag correct', detail: 'Proper viewport configuration for mobile rendering.', source: 'MDN — https://developer.mozilla.org/en-US/docs/Web/HTML/Viewport_meta_tag' },
-        { title: 'No horizontal overflow', detail: 'Page content fits within viewport width.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' }
+        { title: 'User zoom not blocked', detail: 'Viewport doesn\'t prevent pinch-to-zoom.', source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text' },
+        { title: 'No horizontal overflow', detail: 'Page content fits within viewport width.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' },
+        { title: 'No fixed-width elements', detail: 'Elements use flexible widths that adapt to screen size.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' }
       ],
       consistency: [
-        { title: 'Color palette coherent', detail: 'Number of unique colors is within expected range for page complexity.' },
-        { title: 'Font size scale consistent', detail: 'Uses a limited set of font sizes from a type scale.' }
+        { title: 'Color palette coherent', detail: 'Number of unique colors is within expected range.', source: 'Material Design 3 — https://m3.material.io/styles/color/roles' },
+        { title: 'Font size scale consistent', detail: 'Uses a limited set of font sizes from a type scale.', source: 'Modular type scales — https://typescale.com/' },
+        { title: 'Border radius consistent', detail: 'Uses 2-4 standard border-radius values.', source: 'Material Design 3 — https://m3.material.io/styles/shape/overview' },
+        { title: 'Line height consistent', detail: 'Uses a small set of line-height values across the page.', source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-spacing.html' },
+        { title: 'Dark mode supported', detail: 'Page provides a dark color scheme option.', source: 'Apple HIG — https://developer.apple.com/design/human-interface-guidelines/dark-mode' }
       ],
       cognitive: [
-        { title: 'Content chunking appropriate', detail: 'Page sections and headings are within cognitive load limits.', source: 'Hick\'s Law — https://lawsofux.com/hicks-law/' },
-        { title: 'Form complexity manageable', detail: 'Visible form fields stay within recommended limits.', source: 'Miller\'s Law — https://lawsofux.com/millers-law/' }
+        { title: 'Content sections well-organized', detail: 'Page sections and headings are within cognitive load limits.', source: 'Hick\'s Law — https://lawsofux.com/hicks-law/' },
+        { title: 'Form complexity manageable', detail: 'Visible form fields stay within recommended limits.', source: 'Miller\'s Law — https://lawsofux.com/millers-law/' },
+        { title: 'Navigation count appropriate', detail: 'Top-level navigation items are within working memory limits.', source: 'Cowan (2001) — https://doi.org/10.1017/S0140525X01003922' },
+        { title: 'Reading level appropriate', detail: 'Content reading level matches the target audience.', source: 'WCAG 2.2 §3.1.5 — https://www.w3.org/TR/WCAG22/#reading-level' },
+        { title: 'Visual complexity manageable', detail: 'Number of unique colors doesn\'t overwhelm the user.', source: 'Material Design 3 — https://m3.material.io/styles/color/roles' },
+        { title: 'Heading hierarchy supports scanning', detail: 'Headings follow a logical order for easy content navigation.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships' }
+      ],
+      layout: [
+        { title: 'Section spacing consistent', detail: 'Gaps between major sections use uniform spacing.', source: 'Gestalt similarity — https://lawsofux.com/law-of-similarity/' },
+        { title: 'Alignment grid clean', detail: 'Elements share consistent alignment edges without jagged offsets.', source: 'Gestalt continuity — https://lawsofux.com/law-of-common-region/' },
+        { title: 'H1 visual hierarchy clear', detail: 'H1 stands out from body text at 2-4x size.', source: 'Modular type scales — https://typescale.com/' },
+        { title: 'H2 visual hierarchy appropriate', detail: 'H2 is clearly distinct from both H1 and body text.', source: 'Modular type scales — https://typescale.com/' },
+        { title: 'Border radius standardized', detail: 'Uses a consistent set of border-radius values.', source: 'Material Design 3 — https://m3.material.io/styles/shape/overview' },
+        { title: 'Page density manageable', detail: 'Element count is within comfortable range for the page type.', source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/' }
+      ],
+      readability: [
+        { title: 'Heading density adequate', detail: 'Headings break content into scannable sections.', source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/' },
+        { title: 'Headings are descriptive', detail: 'Heading text is long enough to be meaningful (not just icons/numbers).', source: 'NNGroup — https://www.nngroup.com/articles/headings-pickup-lines/' },
+        { title: 'No tiny text', detail: 'All text is at least 12px for readability.', source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text' },
+        { title: 'Reading level appropriate', detail: 'Coleman-Liau index indicates content matches target audience.', source: 'Coleman-Liau Index — https://en.wikipedia.org/wiki/Coleman%E2%80%93Liau_index' },
+        { title: 'Paragraph length manageable', detail: 'No paragraphs exceed 150 words.', source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/' },
+        { title: 'Lists used for scanability', detail: 'Content uses lists to break up sequences and improve scanning.', source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/' }
+      ],
+      performance: [
+        { title: 'Web fonts use font-display', detail: 'Font loading doesn\'t block text rendering.', source: 'Web.dev — https://web.dev/articles/font-display' },
+        { title: 'Render-blocking resources limited', detail: 'Few CSS/JS files block initial page render.', source: 'Web.dev — https://web.dev/articles/render-blocking-resources' },
+        { title: 'DOM size reasonable', detail: 'Page has a manageable number of DOM elements.', source: 'Chrome DevTools — https://developer.chrome.com/docs/lighthouse/performance/dom-size' },
+        { title: 'DOM nesting depth OK', detail: 'HTML nesting doesn\'t exceed recommended depth.', source: 'Chrome DevTools — https://developer.chrome.com/docs/lighthouse/performance/dom-size' },
+        { title: 'Third-party scripts limited', detail: 'External script count is within reasonable bounds.', source: 'Web.dev — https://web.dev/articles/optimizing-third-party-javascript' },
+        { title: 'Modern image formats used', detail: 'Images use WebP or AVIF for smaller file sizes.', source: 'Web.dev — https://web.dev/articles/serve-images-webp' },
+        { title: 'CLS within target', detail: 'Cumulative Layout Shift is below 0.1 threshold.', source: 'Web Vitals — https://web.dev/articles/cls' },
+        { title: 'LCP within target', detail: 'Largest Contentful Paint is below 2.5s threshold.', source: 'Web Vitals — https://web.dev/articles/lcp' }
       ]
     };
 

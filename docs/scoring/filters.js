@@ -69,9 +69,42 @@
       });
     }
 
+    // Transition count: too many or too few
+    var transitions = (data.interaction && data.interaction.transitions) || [];
+    if (transitions.length > 0) {
+      checks++;
+      if (transitions.length <= 8) {
+        passed++;
+      } else {
+        findings.push({
+          severity: 'info',
+          title: transitions.length + ' unique transition durations (recommend ≤5)',
+          detail: 'Using many different durations creates inconsistent motion feel.',
+          fix: 'Standardize to 2-3 durations: fast (150ms), normal (300ms), slow (500ms).',
+          source: 'Material Design motion — https://m3.material.io/styles/motion/overview'
+        });
+      }
+    }
+
+    // Keyframe animation count
+    if (anim.keyframeCount > 0) {
+      checks++;
+      if (anim.keyframeCount <= 10) {
+        passed++;
+      } else {
+        findings.push({
+          severity: 'info',
+          title: anim.keyframeCount + ' @keyframes rules (high count)',
+          detail: 'Many animations can cause performance issues and visual overwhelm.',
+          fix: 'Review if all animations serve a purpose. Remove decorative animations.',
+          source: 'NNGroup — https://www.nngroup.com/articles/animation-usability/'
+        });
+      }
+    }
+
     var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+    var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+    var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
     return { score: score, findings: findings, checks: checks, passed: passed, weight: 3, label: 'Motion & Animation', icon: 'cognitive' };
   }
 

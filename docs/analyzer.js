@@ -1326,51 +1326,33 @@
 
   // --- Screenshot capture script (injected into iframes after extraction) ---
   function buildScreenshotScript(msgType) {
-    // This runs inside the iframe. Loads modern-screenshot via CDN, captures
-    // the full page (or viewport sections for tall pages) as WebP at 0.5x scale.
+    // Runs inside iframe. Loads modern-screenshot, captures page as viewport-height
+    // sections at 0.5x scale as WebP. Always multi-section for reliability.
     return '(function(){' +
       'var s=document.createElement("script");' +
       's.src="' + SCREENSHOT_CDN + '";' +
       's.onload=function(){' +
         'var ms=window.modernScreenshot;' +
         'if(!ms||!ms.domToCanvas){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*");return}' +
-        'var body=document.body;' +
-        'var totalH=Math.max(body.scrollHeight,document.documentElement.scrollHeight);' +
-        'var vw=window.innerWidth||1280;' +
-        // Cap at 32000px to stay within canvas limits at 0.5x scale
-        'var captureH=Math.min(totalH,32000);' +
-        // For pages under ~8000px, capture full page in one shot
-        // For taller pages, capture viewport-height sections
+        'var totalH=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);' +
         'var vh=window.innerHeight||900;' +
-        'if(captureH<=vh*3){' +
-          // Single full-page capture
-          'ms.domToCanvas(document.documentElement,{scale:0.5}).then(function(c){' +
-            'c.toBlob(function(b){' +
-              'if(!b){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*");return}' +
-              'var r=new FileReader();' +
-              'r.onloadend=function(){parent.postMessage({type:"' + msgType + '",screenshots:[r.result]},"*")};' +
-              'r.readAsDataURL(b)' +
-            '},"image/webp",0.7)' +
-          '}).catch(function(){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")});' +
-        '}else{' +
-          // Multi-section capture for tall pages
-          'var shots=[];var y=0;var secH=vh;' +
-          'function next(){' +
-            'if(y>=captureH||shots.length>=5){parent.postMessage({type:"' + msgType + '",screenshots:shots},"*");return}' +
-            'window.scrollTo(0,y);' +
-            'setTimeout(function(){' +
-              'ms.domToCanvas(document.documentElement,{scale:0.5,width:vw,height:Math.min(secH,captureH-y)}).then(function(c){' +
-                'c.toBlob(function(b){' +
-                  'if(!b){y+=secH;next();return}' +
-                  'var r=new FileReader();' +
-                  'r.onloadend=function(){shots.push(r.result);y+=secH;next()};' +
-                  'r.readAsDataURL(b)' +
-                '},"image/webp",0.7)' +
-              '}).catch(function(){y+=secH;next()})' +
-            '},150)' +
-          '}' +
-          'next()' +
+        'var captureH=Math.min(totalH,vh*5);' + // max 5 viewports
+        'var shots=[];var y=0;' +
+        'function next(){' +
+          'if(y>=captureH||shots.length>=5){parent.postMessage({type:"' + msgType + '",screenshots:shots},"*");return}' +
+          'window.scrollTo(0,y);' +
+          'setTimeout(function(){' +
+            'ms.domToCanvas(document.documentElement,{scale:0.5}).then(function(c){' +
+              'c.toBlob(function(b){' +
+                'if(!b){y+=vh;next();return}' +
+                'var r=new FileReader();' +
+                'r.onloadend=function(){shots.push(r.result);y+=vh;next()};' +
+                'r.readAsDataURL(b)' +
+              '},"image/webp",0.7)' +
+            '}).catch(function(){y+=vh;next()})' +
+          '},200)' +
         '}' +
+        'next()' +
       '};' +
       's.onerror=function(){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")};' +
       'document.head.appendChild(s)' +

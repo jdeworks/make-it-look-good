@@ -5711,42 +5711,6 @@ Choosing a responsive pattern?
 - Ethan Marcotte (2011). "Responsive Web Design." A Book Apart.
 </file>
 
-<file path="scripts/build-screenshot-snippet.sh">
-#!/usr/bin/env bash
-# Downloads modern-screenshot and inlines it into the screenshot snippet.
-# This creates a version that works on ALL sites regardless of CSP.
-# Usage: ./scripts/build-screenshot-snippet.sh
-#
-# The output file (analyzer-snippet-screenshots-inline.js) can be used
-# instead of the CDN-loading version on CSP-restricted sites.
-
-set -euo pipefail
-
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ROOT_DIR="$(dirname "$SCRIPT_DIR")"
-SNIPPET="$ROOT_DIR/docs/analyzer-snippet-screenshots.js"
-OUTPUT="$ROOT_DIR/docs/analyzer-snippet-screenshots-inline.js"
-LIB_URL="https://cdn.jsdelivr.net/npm/modern-screenshot@4.6.8/dist/index.js"
-
-echo "Downloading modern-screenshot..."
-LIB_CODE=$(curl -sL "$LIB_URL")
-if [ -z "$LIB_CODE" ] || [ ${#LIB_CODE} -lt 1000 ]; then
-  echo "ERROR: Failed to download library"
-  exit 1
-fi
-echo "Downloaded: ${#LIB_CODE} bytes"
-
-# Read the snippet and replace the CDN loading block with inline code
-echo "Building inline snippet..."
-cat "$SNIPPET" | sed '/try {$/,/var _msLoaded = Promise.reject(); }$/c\
-  // Inline modern-screenshot library (29KB, bypasses all CSP restrictions)\
-  '"$(echo "$LIB_CODE" | sed 's/[&/\]/\\&/g; s/$/\\/')"'
-  var _msLoaded = Promise.resolve();' > "$OUTPUT"
-
-echo "Output: $OUTPUT ($(wc -c < "$OUTPUT") bytes)"
-echo "This version works on ALL sites regardless of CSP."
-</file>
-
 <file path="systems/apple-hig.md">
 # Apple Human Interface Guidelines
 
@@ -14623,6 +14587,42 @@ main = "worker.js"
 compatibility_date = "2024-09-01"
 </file>
 
+<file path="scripts/build-screenshot-snippet.sh">
+#!/usr/bin/env bash
+# Downloads modern-screenshot and inlines it into the screenshot snippet.
+# This creates a version that works on ALL sites regardless of CSP.
+# Usage: ./scripts/build-screenshot-snippet.sh
+#
+# The output file (analyzer-snippet-screenshots-inline.js) can be used
+# instead of the CDN-loading version on CSP-restricted sites.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+SNIPPET="$ROOT_DIR/docs/analyzer-snippet-screenshots.js"
+OUTPUT="$ROOT_DIR/docs/analyzer-snippet-screenshots-inline.js"
+LIB_URL="https://cdn.jsdelivr.net/npm/modern-screenshot@4.6.8/dist/index.js"
+
+echo "Downloading modern-screenshot..."
+LIB_CODE=$(curl -sL "$LIB_URL")
+if [ -z "$LIB_CODE" ] || [ ${#LIB_CODE} -lt 1000 ]; then
+  echo "ERROR: Failed to download library"
+  exit 1
+fi
+echo "Downloaded: ${#LIB_CODE} bytes"
+
+# Read the snippet and replace the CDN loading block with inline code
+echo "Building inline snippet..."
+cat "$SNIPPET" | sed '/try {$/,/var _msLoaded = Promise.reject(); }$/c\
+  // Inline modern-screenshot library (29KB, bypasses all CSP restrictions)\
+  '"$(echo "$LIB_CODE" | sed 's/[&/\]/\\&/g; s/$/\\/')"'
+  var _msLoaded = Promise.resolve();' > "$OUTPUT"
+
+echo "Output: $OUTPUT ($(wc -c < "$OUTPUT") bytes)"
+echo "This version works on ALL sites regardless of CSP."
+</file>
+
 <file path="scripts/inject-proxy.sh">
 #!/usr/bin/env bash
 # Reads PROXY_URL from .env and injects it (base64-encoded) into docs/analyzer.js
@@ -15621,6 +15621,62 @@ All presets assume Tailwind CSS is available. Setup per framework:
 For Tailwind v4, add `@import "tailwindcss"` to your main CSS file. No `tailwind.config.js` needed for default setup.
 </file>
 
+<file path="docs/presets/index.json">
+{
+  "categories": [
+    { "label": "Layouts", "elements": ["shell-sidebar", "shell-marketing", "shell-dashboard", "shell-form"] },
+    { "label": "Components", "elements": ["hero", "stats-row", "data-table", "card-grid", "pricing-cards", "feature-grid", "tabs", "accordion", "pagination", "dropdown", "avatars"] },
+    { "label": "Before → After", "elements": ["dashboard", "landing", "form", "cards", "project"] },
+    { "label": "Full Pages", "elements": ["pricing", "portfolio", "restaurant", "statuspage"] },
+    { "label": "Expressive", "elements": ["personal-hero", "agency-landing", "agency-portfolio", "app-showcase", "scroll-reveal-landing", "product-launch", "editorial-blog", "saas-features", "scroll-story", "product-page", "devtool-landing", "docs-site", "event-page", "jdeworks-personal"] },
+    { "label": "Edge Cases", "elements": ["deploy", "buttons", "osslanding"] }
+  ],
+  "elements": {
+    "dashboard": { "label": "Dashboard", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "landing": { "label": "Landing Page", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
+    "form": { "label": "Form", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
+    "cards": { "label": "Card Grid", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "project": { "label": "Multi-Page App", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
+    "pricing": { "label": "SaaS Pricing", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "portfolio": { "label": "Portfolio (Dark)", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "restaurant": { "label": "Restaurant (Warm)", "personalities": { "clean": { "primaryColor": "amber" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "statuspage": { "label": "Status Page", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "deploy": { "label": "Deploy Monitor", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "buttons": { "label": "Button System", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "osslanding": { "label": "OSS Landing", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "shell-sidebar": { "label": "App Shell (Sidebar)", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "shell-marketing": { "label": "Marketing Page", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "shell-dashboard": { "label": "Dashboard Shell", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "shell-form": { "label": "Centered Form", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "hero": { "label": "Hero Section", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "stats-row": { "label": "Stats Row", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "data-table": { "label": "Data Table", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "card-grid": { "label": "Card Grid", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "pricing-cards": { "label": "Pricing Cards", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "feature-grid": { "label": "Feature Grid", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "tabs": { "label": "Tabs", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "accordion": { "label": "Accordion", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "pagination": { "label": "Pagination", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "dropdown": { "label": "Dropdown Menu", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "avatars": { "label": "Avatar Group", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "personal-hero": { "label": "Personal Site", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "agency-landing": { "label": "Agency Landing", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "product-launch": { "label": "Product Launch", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "editorial-blog": { "label": "Editorial Blog", "personalities": { "clean": { "primaryColor": "slate" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "saas-features": { "label": "SaaS Features", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "scroll-story": { "label": "Scroll Story", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "product-page": { "label": "Product Page", "personalities": { "clean": { "primaryColor": "sky" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "devtool-landing": { "label": "DevTool Landing", "personalities": { "clean": { "primaryColor": "cyan" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "docs-site": { "label": "Docs Site", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "event-page": { "label": "Event Page", "personalities": { "clean": { "primaryColor": "amber" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "jdeworks-personal": { "label": "JDE Personal", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "agency-portfolio": { "label": "Agency Portfolio", "personalities": { "clean": { "primaryColor": "teal" } } },
+    "app-showcase": { "label": "App Showcase", "personalities": { "clean": { "primaryColor": "orange" } } },
+    "scroll-reveal-landing": { "label": "Scroll Reveal Landing", "personalities": { "clean": { "primaryColor": "sky" } } }
+  }
+}
+</file>
+
 <file path="docs/scoring/registry.js">
 // Scoring Module Registry
 // Each module calls MilgScoring.register() to add its scoring function.
@@ -15748,490 +15804,6 @@ window.MilgScoring = (function() {
     CVD_MATRICES: CVD_MATRICES,
     PROFILES: PROFILES
   };
-})();
-</file>
-
-<file path="workflows/quick-reference.md">
-# Quick Reference — Critical Design Numbers
-
-> **TL;DR:** The ~25 most important numbers in UI/UX design. Bookmark this file for fast lookups.
-
-## Color & Contrast
-| Rule | Value | Standard |
-|------|-------|----------|
-| Normal text contrast (AA) | **4.5:1** minimum | WCAG 2.2 |
-| Large text contrast (AA) | **3:1** minimum | WCAG 2.2 |
-| Normal text contrast (AAA) | **7:1** minimum | WCAG 2.2 |
-| Large text threshold | **18pt** (24px) or **14pt bold** (18.5px) | WCAG 2.2 |
-| UI component contrast | **3:1** minimum against adjacent colors | WCAG 2.2 |
-| Focus indicator contrast | **3:1** minimum | WCAG 2.2 |
-
-## Typography
-| Rule | Value | Source |
-|------|-------|--------|
-| Body text size (web) | **16px** minimum | Browser default, accessibility best practice |
-| Line height (body text) | **1.4–1.6** | WCAG 2.2 (1.5 recommended) |
-| Line length (measure) | **45–75 characters** (ideal: 66) | Bringhurst, Butterick |
-| Paragraph spacing | **0.75em–1em** below | Butterick |
-| Heading scale ratio | **1.200–1.333** (minor third to perfect fourth) | Modular scale |
-| Maximum font weights per page | **2–3** | Performance + visual clarity |
-| Maximum typefaces per page | **2** (1 serif + 1 sans, or 2 from same superfamily) | Typography best practice |
-
-## Spacing & Layout
-| Rule | Value | Source |
-|------|-------|--------|
-| Base spacing unit | **4px** or **8px** | Material Design, most systems |
-| Spacing scale | **4, 8, 12, 16, 24, 32, 48, 64, 96** (px) | 4px base system |
-| Content max-width | **1200–1440px** | Common practice |
-| Readable content width | **600–800px** (matches 45–75ch) | Readability research |
-| Minimum padding (mobile) | **16px** horizontal | Material Design |
-| Grid columns (desktop) | **12** | Bootstrap, Material, most systems |
-| Grid columns (tablet) | **8** | Material Design |
-| Grid columns (mobile) | **4** | Material Design |
-| Grid gutter | **16–24px** | Common practice |
-
-## Touch & Interaction
-| Rule | Value | Standard |
-|------|-------|----------|
-| Minimum touch target | **44×44px** (CSS) / **48×48dp** | WCAG 2.2 / Material Design |
-| Minimum touch target spacing | **8px** between targets | WCAG 2.2 |
-| Click target (desktop) | **24×24px** minimum | WCAG 2.2 |
-| System response time | **<400ms** for perceived immediacy | Doherty Threshold |
-| Hover transition duration | **150–200ms** | Material Design |
-| Enter/appear animation | **200–300ms** | Material Design |
-| Exit/disappear animation | **150–200ms** | Material Design |
-| Maximum animation duration | **500ms** (users perceive as slow beyond this) | UX research |
-| Loading spinner delay | **300ms–1s** before showing | Nielsen |
-| Skeleton screen | Show **immediately** for loads >300ms | UX best practice |
-
-## Reading & Scanning
-| Rule | Value | Source |
-|------|-------|--------|
-| Users who scan vs. read | **79%** scan, only **16%** read word-by-word | Nielsen Norman Group |
-| Word count reduction benefit | Cut to **50%** → **58%** usability improvement | Nielsen Norman Group |
-| Scannable layout benefit | Headings + bullets + highlights → **47%** improvement | Nielsen Norman Group |
-| Combined writing improvements | Concise + scannable + objective → **124%** improvement | Nielsen Norman Group |
-
-## Responsive Breakpoints
-| Breakpoint | Value | Typical Use |
-|------------|-------|-------------|
-| Small mobile | **320px** | Minimum supported width |
-| Mobile | **480px** | Large phones |
-| Tablet | **768px** | Portrait tablets |
-| Desktop | **1024px** | Landscape tablets, small laptops |
-| Large desktop | **1280px** | Standard desktops |
-| Extra large | **1536px** | Large monitors |
-
-## Hick's Law — Choice Limits
-| Rule | Value | Source |
-|------|-------|--------|
-| Navigation items | **5–7** top-level items | Hick's Law, Miller's Law |
-| Form fields per step | **5–7** visible fields | Cognitive load research |
-| Options in a dropdown | **≤15** before search is needed | UX best practice |
-| Actions in a context menu | **≤10** | UX best practice |
-
-## Z-Index Scale
-| Layer | Value | Use |
-|-------|-------|-----|
-| Base | **0** | Default content |
-| Dropdown | **100** | Dropdowns, tooltips |
-| Sticky | **200** | Sticky headers |
-| Overlay | **300** | Modal backdrops |
-| Modal | **400** | Modal dialogs |
-| Popover | **500** | Popovers above modals |
-| Toast | **600** | Toast notifications |
-| Maximum | **999** | System-level (skip links, etc.) |
-
-## Border Radius
-| Element | Value | Source |
-|---------|-------|--------|
-| Buttons | **4–8px** | Most design systems |
-| Cards | **8–12px** | Material Design 3 |
-| Input fields | **4–8px** | Common practice |
-| Modals | **12–16px** | Material Design 3 |
-| Chips/tags | **full (9999px)** or **4–8px** | Material Design 3 |
-| Avatars | **full (50%)** | Common practice |
-
-## Quick Preset Lookup
-
-Need a starting point? Grab a preset from [`docs/presets/_index.md`](../docs/presets/_index.md):
-
-| I need a... | Preset |
-|-------------|--------|
-| Dashboard layout | `docs/presets/shell-dashboard/` |
-| Landing page | `docs/presets/shell-marketing/` + `docs/presets/hero/` |
-| Login / signup page | `docs/presets/shell-form/` |
-| Data browser | `docs/presets/shell-sidebar/` + `docs/presets/data-table/` |
-| Pricing page | `docs/presets/pricing/` |
-| Portfolio | `docs/presets/portfolio/` or `docs/presets/personal-hero/` |
-| Agency portfolio | `docs/presets/agency-portfolio/` (scroll-shrink logo, marquee, project grid) |
-| App / fintech showcase | `docs/presets/app-showcase/` (dark hero, phone mockup, stacking cards) |
-| Education / content landing | `docs/presets/scroll-reveal-landing/` (sky gradient, line-by-line reveal) |
-| Blog / editorial | `docs/presets/editorial-blog/` |
-| SaaS features | `docs/presets/saas-features/` |
-| Developer tool | `docs/presets/devtool-landing/` |
-| Event / conference | `docs/presets/event-page/` |
-| Documentation site | `docs/presets/docs-site/` |
-| Product page | `docs/presets/product-page/` |
-| Scroll-driven story | `docs/presets/scroll-story/` |
-
-Each preset has clean, minimalist, and playful personality variants. React and Vue variants available for interactive components — see [`docs/presets/FRAMEWORKS.md`](../docs/presets/FRAMEWORKS.md).
-
-## Sources
-- [WCAG 2.2](https://www.w3.org/TR/WCAG22/)
-- [Material Design 3](https://m3.material.io)
-- [Laws of UX](https://lawsofux.com)
-- [Nielsen Norman Group](https://www.nngroup.com)
-- [Butterick's Practical Typography](https://practicaltypography.com)
-- [The Elements of Typographic Style (Bringhurst)](https://en.wikipedia.org/wiki/The_Elements_of_Typographic_Style)
-</file>
-
-<file path=".gitignore">
-# Research directory (raw/intermediate data stays local)
-research/*
-!research/sources.md
-
-# Node (puppeteer used for screenshots only, not part of project)
-node_modules/
-package.json
-package-lock.json
-
-# Local environment (proxy URL etc.)
-.env
-
-# Claude Code commands (local skills, not shared)
-.claude/
-</file>
-
-<file path="docs/presets/_index.md">
-# Preset & Component Library
-
-> **Copy-paste-ready HTML+Tailwind components and full-page templates.** Each preset has multiple personality variants (Clean, Minimalist, Playful) as structurally different HTML — not just CSS changes.
-
-## Preview Links
-
-Every preset can be previewed live. The URL pattern is:
-```
-https://jdeworks.github.io/make-it-look-good/#preset:{element}/{personality}
-```
-
-For example: `#preset:dashboard/clean`, `#preset:landing/playful`, `#preset:agency-landing/minimalist`.
-
-Element names and available personalities are listed in `index.json`. Use these links to show users a template before building — especially useful when working from the bundle (online chat) where the raw HTML files aren't available.
-
-## Framework Support
-
-**HTML is the single source of truth.** To use in React, Vue, Svelte, or Angular:
-1. Copy the HTML preset
-2. Apply attribute changes from [FRAMEWORKS.md](FRAMEWORKS.md)
-3. Add interactivity using the behavior recipes in FRAMEWORKS.md
-
-Pre-built framework files (`.jsx`, `.vue`, `.svelte`) only exist for components with **complex interactive logic** — state machines, keyboard navigation, form validation. Presentational components don't need separate framework files; the LLM converts them on the fly.
-
----
-
-## Layout Shells
-
-Start here. Everything builds on these.
-
-| Preset | Description | Frameworks |
-|--------|-------------|:----------:|
-| [`shell-sidebar/`](shell-sidebar/) | App shell: 240px sidebar + topbar + content area | [React](shell-sidebar/react.jsx) [Vue](shell-sidebar/vue.vue) [Svelte](shell-sidebar/svelte.svelte) |
-| [`shell-marketing/`](shell-marketing/) | Header + hero slot + sections + footer | [React](shell-marketing/react.jsx) [Vue](shell-marketing/vue.vue) [Svelte](shell-marketing/svelte.svelte) |
-| [`shell-form/`](shell-form/) | Centered card on gray background (login/signup) | [React](shell-form/react.jsx) [Vue](shell-form/vue.vue) [Svelte](shell-form/svelte.svelte) |
-| [`shell-dashboard/`](shell-dashboard/) | Sidebar + topbar + stat cards + table (composed) | HTML only |
-
-## Navigation Components
-
-| Preset | Description | Frameworks |
-|--------|-------------|:----------:|
-| [`tabs/`](tabs/) | Horizontal tabs with content panels | [React](tabs/react.jsx) [Vue](tabs/vue.vue) [Svelte](tabs/svelte.svelte) |
-| [`pagination/`](pagination/) | Page navigation with prev/next + numbers | [React](pagination/react.jsx) [Vue](pagination/vue.vue) [Svelte](pagination/svelte.svelte) |
-| [`dropdown/`](dropdown/) | Dropdown menu with items + outside click | [React](dropdown/react.jsx) [Vue](dropdown/vue.vue) |
-
-## Content Sections
-
-| Preset | Description | Frameworks |
-|--------|-------------|:----------:|
-| [`hero/`](hero/) | Centered hero with heading + subtext + CTAs | HTML + [FRAMEWORKS.md](FRAMEWORKS.md) |
-| [`feature-grid/`](feature-grid/) | 3-column feature cards with icons | HTML + [FRAMEWORKS.md](FRAMEWORKS.md) |
-| [`pricing-cards/`](pricing-cards/) | 3-tier pricing (Free / Pro / Enterprise) | HTML + [FRAMEWORKS.md](FRAMEWORKS.md) |
-| [`stats-row/`](stats-row/) | 4 stat cards with trend indicators | HTML + [FRAMEWORKS.md](FRAMEWORKS.md) |
-| [`accordion/`](accordion/) | FAQ-style collapsible accordion | [React](accordion/react.jsx) [Vue](accordion/vue.vue) [Svelte](accordion/svelte.svelte) |
-| [`avatars/`](avatars/) | Overlapping avatars with +N indicator | [React](avatars/react.jsx) [Vue](avatars/vue.vue) |
-
-## Data Display
-
-| Preset | Description | Frameworks |
-|--------|-------------|:----------:|
-| [`data-table/`](data-table/) | Data table with sorting + status badges | [React](data-table/react.jsx) [Vue](data-table/vue.vue) [Svelte](data-table/svelte.svelte) |
-| [`card-grid/`](card-grid/) | Responsive product/content card grid | HTML only |
-
-## Forms
-
-| Preset | Description | Frameworks |
-|--------|-------------|:----------:|
-| [`form/`](form/) | Signup form with password strength | [React](form/react.jsx) [Vue](form/vue.vue) [Svelte](form/svelte.svelte) |
-| [`shell-form/`](shell-form/) | Login form (centered layout) | [React](shell-form/react.jsx) [Vue](shell-form/vue.vue) [Svelte](shell-form/svelte.svelte) |
-
-## Feedback (interactive variants only)
-
-| Preset | Description | Frameworks |
-|--------|-------------|:----------:|
-| [`dropdown/`](dropdown/) (modal) | Modal dialog with backdrop + focus trap | [React](dropdown/react-modal.jsx) [Vue](dropdown/vue-modal.vue) [Svelte](dropdown/svelte-modal.svelte) |
-| [`stats-row/`](stats-row/) (toast) | Toast notifications (auto-dismiss, stack) | [React](stats-row/react-toast.jsx) [Vue](stats-row/vue-toast.vue) |
-| [`hero/`](hero/) (search) | Debounced search with filter dropdown | [React](hero/react-search.jsx) [Vue](hero/vue-search.vue) [Svelte](hero/svelte-search.svelte) |
-
-## Buttons
-
-| Preset | Description | Frameworks |
-|--------|-------------|:----------:|
-| [`buttons/`](buttons/) | All emphasis levels x sizes x states | HTML only |
-
-## Full Pages
-
-| Preset | Description |
-|--------|-------------|
-| [`pricing/`](pricing/) | SaaS pricing page |
-| [`portfolio/`](portfolio/) | Portfolio (dark theme) |
-| [`restaurant/`](restaurant/) | Restaurant (warm theme) |
-| [`statuspage/`](statuspage/) | Status page |
-
-## Before → After Examples
-
-| Preset | Personalities |
-|--------|--------------|
-| [`dashboard/`](dashboard/) | before, clean, minimalist, playful |
-| [`landing/`](landing/) | before, clean, minimalist, playful, editorial |
-| [`form/`](form/) | before, clean, minimalist, playful, editorial |
-| [`cards/`](cards/) | before, clean, minimalist, playful |
-| [`project/`](project/) | before, clean, minimalist, playful |
-
-## Expressive Templates
-
-| Preset | Description | Design Approach |
-|--------|-------------|-----------------|
-| [`personal-hero/`](personal-hero/) | Personal portfolio site | Clean personal branding |
-| [`agency-landing/`](agency-landing/) | Creative agency landing | Bold Creative / Agency |
-| [`agency-portfolio/`](agency-portfolio/) | Agency portfolio with scroll-shrink logo | Typographic / Scroll-Driven Agency |
-| [`app-showcase/`](app-showcase/) | Dark app showcase with phone mockup + stacking cards | Dark Warm / App-Centric Scroll |
-| [`scroll-reveal-landing/`](scroll-reveal-landing/) | Sky gradient hero with line-by-line text reveal | Airy / Scroll-Reveal Education |
-| [`product-launch/`](product-launch/) | Product launch page | Dark Premium / Product |
-| [`editorial-blog/`](editorial-blog/) | Long-form blog / editorial | Minimal Editorial / Typography-First |
-| [`saas-features/`](saas-features/) | SaaS feature showcase | Friendly SaaS / Bento |
-| [`scroll-story/`](scroll-story/) | Scroll-triggered portfolio | Immersive / Scroll-Storytelling |
-| [`product-page/`](product-page/) | E-commerce product page | E-commerce / Product-Focused |
-| [`devtool-landing/`](devtool-landing/) | Developer tool landing | Dark Premium / Developer |
-| [`docs-site/`](docs-site/) | Documentation site | Documentation / Reference |
-| [`event-page/`](event-page/) | Event/conference landing | Event / Conference |
-| [`jdeworks-personal/`](jdeworks-personal/) | Personalized "This is Me" portfolio | Scroll-Driven Storytelling |
-
-## Edge Cases
-
-| Preset | Description |
-|--------|-------------|
-| [`deploy/`](deploy/) | Deploy monitor |
-| [`osslanding/`](osslanding/) | OSS landing page |
-
----
-
-## Composition Recipes
-
-Combine presets to build full pages:
-
-### Dashboard
-```
-shell-dashboard/ (includes sidebar + topbar + stats + table)
-```
-Or build custom: `shell-sidebar/` → add `stats-row/` + `data-table/` in content area.
-
-### Landing Page
-```
-shell-marketing/
-  └ Add hero section from: hero/
-  └ Add sections: feature-grid/
-  └ Add sections: pricing-cards/
-```
-
-### Login / Signup Page
-```
-shell-form/ (centered login form)
-```
-
-### Settings Page
-```
-shell-sidebar/ layout
-  └ In content area: form elements
-```
-
-### Data Browser
-```
-shell-sidebar/ layout
-  └ In content area: search bar + data-table/
-```
-
----
-
-## Design Tokens (Consistent Across All Presets)
-
-| Token | Value | Tailwind |
-|-------|-------|----------|
-| Primary | `#2563eb` | `blue-600` |
-| Primary hover | `#1d4ed8` | `blue-700` |
-| Text primary | `#0f172a` / `#f1f5f9` | `slate-900` / `slate-100` |
-| Text secondary | `#475569` / `#94a3b8` | `slate-600` / `slate-400` |
-| Background | `#ffffff` / `#0f172a` | `white` / `slate-900` |
-| Surface | `#f8fafc` / `#1e293b` | `slate-50` / `slate-800` |
-| Border | `#e2e8f0` / `#334155` | `slate-200` / `slate-700` |
-| Success | `#16a34a` | `green-600` |
-| Error | `#dc2626` | `red-600` |
-| Warning | `#d97706` | `amber-600` |
-| Border radius | `8px` (cards), `8px` (buttons), `8px` (inputs) | `rounded-lg` |
-| Touch target | 44px minimum | `min-h-11` |
-
-Note: Expressive templates use different primary colors appropriate to their personality (rose for playful, indigo for editorial, etc.). See `index.json` for per-preset color mappings.
-
-## Preset Format
-
-Each preset directory contains:
-- `clean.html` — Standard Tailwind, balanced, professional
-- `minimalist.html` — Stripped back, hairline borders, light font weights
-- `playful.html` — Big rounded corners, colorful shadows, bouncy animations
-- `react.jsx` (optional) — React component variant for interactive components
-- `vue.vue` (optional) — Vue SFC variant
-- `svelte.svelte` (optional) — Svelte 5 component variant
-- Some presets also have `before.html` and/or `editorial.html` variants
-
-All presets are:
-- **Tailwind v4** classes only
-- **Self-contained** (inline SVG icons, no external deps except Google Fonts for display variants)
-- **Responsive** (320px → 768px → 1024px+)
-- **Dark mode** via `dark:` classes
-- **WCAG AA** contrast, 44px touch targets, semantic HTML
-- **Realistic content** (not lorem ipsum)
-</file>
-
-<file path="docs/presets/index.json">
-{
-  "categories": [
-    { "label": "Layouts", "elements": ["shell-sidebar", "shell-marketing", "shell-dashboard", "shell-form"] },
-    { "label": "Components", "elements": ["hero", "stats-row", "data-table", "card-grid", "pricing-cards", "feature-grid", "tabs", "accordion", "pagination", "dropdown", "avatars"] },
-    { "label": "Before → After", "elements": ["dashboard", "landing", "form", "cards", "project"] },
-    { "label": "Full Pages", "elements": ["pricing", "portfolio", "restaurant", "statuspage"] },
-    { "label": "Expressive", "elements": ["personal-hero", "agency-landing", "agency-portfolio", "app-showcase", "scroll-reveal-landing", "product-launch", "editorial-blog", "saas-features", "scroll-story", "product-page", "devtool-landing", "docs-site", "event-page", "jdeworks-personal"] },
-    { "label": "Edge Cases", "elements": ["deploy", "buttons", "osslanding"] }
-  ],
-  "elements": {
-    "dashboard": { "label": "Dashboard", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "landing": { "label": "Landing Page", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
-    "form": { "label": "Form", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
-    "cards": { "label": "Card Grid", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "project": { "label": "Multi-Page App", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
-    "pricing": { "label": "SaaS Pricing", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "portfolio": { "label": "Portfolio (Dark)", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "restaurant": { "label": "Restaurant (Warm)", "personalities": { "clean": { "primaryColor": "amber" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "statuspage": { "label": "Status Page", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "deploy": { "label": "Deploy Monitor", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "buttons": { "label": "Button System", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "osslanding": { "label": "OSS Landing", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "shell-sidebar": { "label": "App Shell (Sidebar)", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "shell-marketing": { "label": "Marketing Page", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "shell-dashboard": { "label": "Dashboard Shell", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "shell-form": { "label": "Centered Form", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "hero": { "label": "Hero Section", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "stats-row": { "label": "Stats Row", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "data-table": { "label": "Data Table", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "card-grid": { "label": "Card Grid", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "pricing-cards": { "label": "Pricing Cards", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "feature-grid": { "label": "Feature Grid", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "tabs": { "label": "Tabs", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "accordion": { "label": "Accordion", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "pagination": { "label": "Pagination", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "dropdown": { "label": "Dropdown Menu", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "avatars": { "label": "Avatar Group", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "personal-hero": { "label": "Personal Site", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "agency-landing": { "label": "Agency Landing", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "product-launch": { "label": "Product Launch", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "editorial-blog": { "label": "Editorial Blog", "personalities": { "clean": { "primaryColor": "slate" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "saas-features": { "label": "SaaS Features", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "scroll-story": { "label": "Scroll Story", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "product-page": { "label": "Product Page", "personalities": { "clean": { "primaryColor": "sky" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "devtool-landing": { "label": "DevTool Landing", "personalities": { "clean": { "primaryColor": "cyan" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "docs-site": { "label": "Docs Site", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "event-page": { "label": "Event Page", "personalities": { "clean": { "primaryColor": "amber" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "jdeworks-personal": { "label": "JDE Personal", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "agency-portfolio": { "label": "Agency Portfolio", "personalities": { "clean": { "primaryColor": "teal" } } },
-    "app-showcase": { "label": "App Showcase", "personalities": { "clean": { "primaryColor": "orange" } } },
-    "scroll-reveal-landing": { "label": "Scroll Reveal Landing", "personalities": { "clean": { "primaryColor": "sky" } } }
-  }
-}
-</file>
-
-<file path="docs/scoring/balance.js">
-// Scoring Module: Visual Weight Balance
-// Weight: 3%
-// Source: Ngo et al. 2003 — balance correlates with preference (r=0.67)
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-  function scoreBalance(data) {
-    var findings = [];
-    var checks = 0;
-    var passed = 0;
-
-    // We use alignment edges as a proxy for content distribution
-    var edges = (data.layout && data.layout.alignmentEdges) || [];
-    var vw = (data.meta && data.meta.viewportWidth) || 1280;
-
-    if (edges.length >= 10) {
-      checks++;
-
-      // Count elements in left half vs right half
-      var leftCount = 0;
-      var rightCount = 0;
-      var midpoint = vw / 2;
-
-      edges.forEach(function(edge) {
-        if (edge < midpoint) leftCount++;
-        else rightCount++;
-      });
-
-      var total = leftCount + rightCount;
-      var ratio = total > 0 ? Math.max(leftCount, rightCount) / Math.min(leftCount || 1, rightCount || 1) : 1;
-
-      if (ratio <= 2) {
-        passed++;
-      } else if (ratio <= 3) {
-        passed++; // Info findings don't reduce score
-        findings.push({
-          severity: 'info',
-          title: 'Content distribution is ' + Math.round(leftCount / total * 100) + '% left / ' + Math.round(rightCount / total * 100) + '% right',
-          detail: 'Moderate imbalance — may be intentional (sidebar layout) or indicate uneven content distribution',
-          fix: 'If using a sidebar layout, this is expected. Otherwise, distribute content more evenly or use a centered layout.',
-          presetRef: null,
-          source: 'Ngo et al. 2003 — Visual balance and aesthetic preference'
-        });
-      } else {
-        findings.push({
-          severity: 'warning',
-          title: 'Content heavily weighted to one side (' + Math.round(leftCount / total * 100) + '% / ' + Math.round(rightCount / total * 100) + '%)',
-          detail: 'Strong left-right imbalance can feel visually unstable unless intentional',
-          fix: 'Consider centering the main content or balancing sections with complementary elements on the lighter side.',
-          presetRef: null,
-          source: 'Ngo et al. 2003 — Visual balance and aesthetic preference'
-        });
-      }
-    }
-
-    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-    return { score: score, findings: findings, checks: checks, passed: passed, weight: 3, label: 'Visual Balance', icon: 'consistency' };
-  }
-
-  S.register("balance", scoreBalance, 3, "Visual Balance", "consistency");
 })();
 </file>
 
@@ -17062,6 +16634,473 @@ The CSS techniques in this file are generic patterns found across modern web des
 - [Unsplash](https://unsplash.com/) — free photography (attribution appreciated)
 </file>
 
+<file path="workflows/quick-reference.md">
+# Quick Reference — Critical Design Numbers
+
+> **TL;DR:** The ~25 most important numbers in UI/UX design. Bookmark this file for fast lookups.
+
+## Color & Contrast
+| Rule | Value | Standard |
+|------|-------|----------|
+| Normal text contrast (AA) | **4.5:1** minimum | WCAG 2.2 |
+| Large text contrast (AA) | **3:1** minimum | WCAG 2.2 |
+| Normal text contrast (AAA) | **7:1** minimum | WCAG 2.2 |
+| Large text threshold | **18pt** (24px) or **14pt bold** (18.5px) | WCAG 2.2 |
+| UI component contrast | **3:1** minimum against adjacent colors | WCAG 2.2 |
+| Focus indicator contrast | **3:1** minimum | WCAG 2.2 |
+
+## Typography
+| Rule | Value | Source |
+|------|-------|--------|
+| Body text size (web) | **16px** minimum | Browser default, accessibility best practice |
+| Line height (body text) | **1.4–1.6** | WCAG 2.2 (1.5 recommended) |
+| Line length (measure) | **45–75 characters** (ideal: 66) | Bringhurst, Butterick |
+| Paragraph spacing | **0.75em–1em** below | Butterick |
+| Heading scale ratio | **1.200–1.333** (minor third to perfect fourth) | Modular scale |
+| Maximum font weights per page | **2–3** | Performance + visual clarity |
+| Maximum typefaces per page | **2** (1 serif + 1 sans, or 2 from same superfamily) | Typography best practice |
+
+## Spacing & Layout
+| Rule | Value | Source |
+|------|-------|--------|
+| Base spacing unit | **4px** or **8px** | Material Design, most systems |
+| Spacing scale | **4, 8, 12, 16, 24, 32, 48, 64, 96** (px) | 4px base system |
+| Content max-width | **1200–1440px** | Common practice |
+| Readable content width | **600–800px** (matches 45–75ch) | Readability research |
+| Minimum padding (mobile) | **16px** horizontal | Material Design |
+| Grid columns (desktop) | **12** | Bootstrap, Material, most systems |
+| Grid columns (tablet) | **8** | Material Design |
+| Grid columns (mobile) | **4** | Material Design |
+| Grid gutter | **16–24px** | Common practice |
+
+## Touch & Interaction
+| Rule | Value | Standard |
+|------|-------|----------|
+| Minimum touch target | **44×44px** (CSS) / **48×48dp** | WCAG 2.2 / Material Design |
+| Minimum touch target spacing | **8px** between targets | WCAG 2.2 |
+| Click target (desktop) | **24×24px** minimum | WCAG 2.2 |
+| System response time | **<400ms** for perceived immediacy | Doherty Threshold |
+| Hover transition duration | **150–200ms** | Material Design |
+| Enter/appear animation | **200–300ms** | Material Design |
+| Exit/disappear animation | **150–200ms** | Material Design |
+| Maximum animation duration | **500ms** (users perceive as slow beyond this) | UX research |
+| Loading spinner delay | **300ms–1s** before showing | Nielsen |
+| Skeleton screen | Show **immediately** for loads >300ms | UX best practice |
+
+## Reading & Scanning
+| Rule | Value | Source |
+|------|-------|--------|
+| Users who scan vs. read | **79%** scan, only **16%** read word-by-word | Nielsen Norman Group |
+| Word count reduction benefit | Cut to **50%** → **58%** usability improvement | Nielsen Norman Group |
+| Scannable layout benefit | Headings + bullets + highlights → **47%** improvement | Nielsen Norman Group |
+| Combined writing improvements | Concise + scannable + objective → **124%** improvement | Nielsen Norman Group |
+
+## Responsive Breakpoints
+| Breakpoint | Value | Typical Use |
+|------------|-------|-------------|
+| Small mobile | **320px** | Minimum supported width |
+| Mobile | **480px** | Large phones |
+| Tablet | **768px** | Portrait tablets |
+| Desktop | **1024px** | Landscape tablets, small laptops |
+| Large desktop | **1280px** | Standard desktops |
+| Extra large | **1536px** | Large monitors |
+
+## Hick's Law — Choice Limits
+| Rule | Value | Source |
+|------|-------|--------|
+| Navigation items | **5–7** top-level items | Hick's Law, Miller's Law |
+| Form fields per step | **5–7** visible fields | Cognitive load research |
+| Options in a dropdown | **≤15** before search is needed | UX best practice |
+| Actions in a context menu | **≤10** | UX best practice |
+
+## Z-Index Scale
+| Layer | Value | Use |
+|-------|-------|-----|
+| Base | **0** | Default content |
+| Dropdown | **100** | Dropdowns, tooltips |
+| Sticky | **200** | Sticky headers |
+| Overlay | **300** | Modal backdrops |
+| Modal | **400** | Modal dialogs |
+| Popover | **500** | Popovers above modals |
+| Toast | **600** | Toast notifications |
+| Maximum | **999** | System-level (skip links, etc.) |
+
+## Border Radius
+| Element | Value | Source |
+|---------|-------|--------|
+| Buttons | **4–8px** | Most design systems |
+| Cards | **8–12px** | Material Design 3 |
+| Input fields | **4–8px** | Common practice |
+| Modals | **12–16px** | Material Design 3 |
+| Chips/tags | **full (9999px)** or **4–8px** | Material Design 3 |
+| Avatars | **full (50%)** | Common practice |
+
+## Quick Preset Lookup
+
+Need a starting point? Grab a preset from [`docs/presets/_index.md`](../docs/presets/_index.md):
+
+| I need a... | Preset |
+|-------------|--------|
+| Dashboard layout | `docs/presets/shell-dashboard/` |
+| Landing page | `docs/presets/shell-marketing/` + `docs/presets/hero/` |
+| Login / signup page | `docs/presets/shell-form/` |
+| Data browser | `docs/presets/shell-sidebar/` + `docs/presets/data-table/` |
+| Pricing page | `docs/presets/pricing/` |
+| Portfolio | `docs/presets/portfolio/` or `docs/presets/personal-hero/` |
+| Agency portfolio | `docs/presets/agency-portfolio/` (scroll-shrink logo, marquee, project grid) |
+| App / fintech showcase | `docs/presets/app-showcase/` (dark hero, phone mockup, stacking cards) |
+| Education / content landing | `docs/presets/scroll-reveal-landing/` (sky gradient, line-by-line reveal) |
+| Blog / editorial | `docs/presets/editorial-blog/` |
+| SaaS features | `docs/presets/saas-features/` |
+| Developer tool | `docs/presets/devtool-landing/` |
+| Event / conference | `docs/presets/event-page/` |
+| Documentation site | `docs/presets/docs-site/` |
+| Product page | `docs/presets/product-page/` |
+| Scroll-driven story | `docs/presets/scroll-story/` |
+
+Each preset has clean, minimalist, and playful personality variants. React and Vue variants available for interactive components — see [`docs/presets/FRAMEWORKS.md`](../docs/presets/FRAMEWORKS.md).
+
+## Sources
+- [WCAG 2.2](https://www.w3.org/TR/WCAG22/)
+- [Material Design 3](https://m3.material.io)
+- [Laws of UX](https://lawsofux.com)
+- [Nielsen Norman Group](https://www.nngroup.com)
+- [Butterick's Practical Typography](https://practicaltypography.com)
+- [The Elements of Typographic Style (Bringhurst)](https://en.wikipedia.org/wiki/The_Elements_of_Typographic_Style)
+</file>
+
+<file path=".gitignore">
+# Research directory (raw/intermediate data stays local)
+research/*
+!research/sources.md
+
+# Node (puppeteer used for screenshots only, not part of project)
+node_modules/
+package.json
+package-lock.json
+
+# Local environment (proxy URL etc.)
+.env
+
+# Claude Code commands (local skills, not shared)
+.claude/
+</file>
+
+<file path="docs/presets/_index.md">
+# Preset & Component Library
+
+> **Copy-paste-ready HTML+Tailwind components and full-page templates.** Each preset has multiple personality variants (Clean, Minimalist, Playful) as structurally different HTML — not just CSS changes.
+
+## Preview Links
+
+Every preset can be previewed live. The URL pattern is:
+```
+https://jdeworks.github.io/make-it-look-good/#preset:{element}/{personality}
+```
+
+For example: `#preset:dashboard/clean`, `#preset:landing/playful`, `#preset:agency-landing/minimalist`.
+
+Element names and available personalities are listed in `index.json`. Use these links to show users a template before building — especially useful when working from the bundle (online chat) where the raw HTML files aren't available.
+
+## Framework Support
+
+**HTML is the single source of truth.** To use in React, Vue, Svelte, or Angular:
+1. Copy the HTML preset
+2. Apply attribute changes from [FRAMEWORKS.md](FRAMEWORKS.md)
+3. Add interactivity using the behavior recipes in FRAMEWORKS.md
+
+Pre-built framework files (`.jsx`, `.vue`, `.svelte`) only exist for components with **complex interactive logic** — state machines, keyboard navigation, form validation. Presentational components don't need separate framework files; the LLM converts them on the fly.
+
+---
+
+## Layout Shells
+
+Start here. Everything builds on these.
+
+| Preset | Description | Frameworks |
+|--------|-------------|:----------:|
+| [`shell-sidebar/`](shell-sidebar/) | App shell: 240px sidebar + topbar + content area | [React](shell-sidebar/react.jsx) [Vue](shell-sidebar/vue.vue) [Svelte](shell-sidebar/svelte.svelte) |
+| [`shell-marketing/`](shell-marketing/) | Header + hero slot + sections + footer | [React](shell-marketing/react.jsx) [Vue](shell-marketing/vue.vue) [Svelte](shell-marketing/svelte.svelte) |
+| [`shell-form/`](shell-form/) | Centered card on gray background (login/signup) | [React](shell-form/react.jsx) [Vue](shell-form/vue.vue) [Svelte](shell-form/svelte.svelte) |
+| [`shell-dashboard/`](shell-dashboard/) | Sidebar + topbar + stat cards + table (composed) | HTML only |
+
+## Navigation Components
+
+| Preset | Description | Frameworks |
+|--------|-------------|:----------:|
+| [`tabs/`](tabs/) | Horizontal tabs with content panels | [React](tabs/react.jsx) [Vue](tabs/vue.vue) [Svelte](tabs/svelte.svelte) |
+| [`pagination/`](pagination/) | Page navigation with prev/next + numbers | [React](pagination/react.jsx) [Vue](pagination/vue.vue) [Svelte](pagination/svelte.svelte) |
+| [`dropdown/`](dropdown/) | Dropdown menu with items + outside click | [React](dropdown/react.jsx) [Vue](dropdown/vue.vue) |
+
+## Content Sections
+
+| Preset | Description | Frameworks |
+|--------|-------------|:----------:|
+| [`hero/`](hero/) | Centered hero with heading + subtext + CTAs | HTML + [FRAMEWORKS.md](FRAMEWORKS.md) |
+| [`feature-grid/`](feature-grid/) | 3-column feature cards with icons | HTML + [FRAMEWORKS.md](FRAMEWORKS.md) |
+| [`pricing-cards/`](pricing-cards/) | 3-tier pricing (Free / Pro / Enterprise) | HTML + [FRAMEWORKS.md](FRAMEWORKS.md) |
+| [`stats-row/`](stats-row/) | 4 stat cards with trend indicators | HTML + [FRAMEWORKS.md](FRAMEWORKS.md) |
+| [`accordion/`](accordion/) | FAQ-style collapsible accordion | [React](accordion/react.jsx) [Vue](accordion/vue.vue) [Svelte](accordion/svelte.svelte) |
+| [`avatars/`](avatars/) | Overlapping avatars with +N indicator | [React](avatars/react.jsx) [Vue](avatars/vue.vue) |
+
+## Data Display
+
+| Preset | Description | Frameworks |
+|--------|-------------|:----------:|
+| [`data-table/`](data-table/) | Data table with sorting + status badges | [React](data-table/react.jsx) [Vue](data-table/vue.vue) [Svelte](data-table/svelte.svelte) |
+| [`card-grid/`](card-grid/) | Responsive product/content card grid | HTML only |
+
+## Forms
+
+| Preset | Description | Frameworks |
+|--------|-------------|:----------:|
+| [`form/`](form/) | Signup form with password strength | [React](form/react.jsx) [Vue](form/vue.vue) [Svelte](form/svelte.svelte) |
+| [`shell-form/`](shell-form/) | Login form (centered layout) | [React](shell-form/react.jsx) [Vue](shell-form/vue.vue) [Svelte](shell-form/svelte.svelte) |
+
+## Feedback (interactive variants only)
+
+| Preset | Description | Frameworks |
+|--------|-------------|:----------:|
+| [`dropdown/`](dropdown/) (modal) | Modal dialog with backdrop + focus trap | [React](dropdown/react-modal.jsx) [Vue](dropdown/vue-modal.vue) [Svelte](dropdown/svelte-modal.svelte) |
+| [`stats-row/`](stats-row/) (toast) | Toast notifications (auto-dismiss, stack) | [React](stats-row/react-toast.jsx) [Vue](stats-row/vue-toast.vue) |
+| [`hero/`](hero/) (search) | Debounced search with filter dropdown | [React](hero/react-search.jsx) [Vue](hero/vue-search.vue) [Svelte](hero/svelte-search.svelte) |
+
+## Buttons
+
+| Preset | Description | Frameworks |
+|--------|-------------|:----------:|
+| [`buttons/`](buttons/) | All emphasis levels x sizes x states | HTML only |
+
+## Full Pages
+
+| Preset | Description |
+|--------|-------------|
+| [`pricing/`](pricing/) | SaaS pricing page |
+| [`portfolio/`](portfolio/) | Portfolio (dark theme) |
+| [`restaurant/`](restaurant/) | Restaurant (warm theme) |
+| [`statuspage/`](statuspage/) | Status page |
+
+## Before → After Examples
+
+| Preset | Personalities |
+|--------|--------------|
+| [`dashboard/`](dashboard/) | before, clean, minimalist, playful |
+| [`landing/`](landing/) | before, clean, minimalist, playful, editorial |
+| [`form/`](form/) | before, clean, minimalist, playful, editorial |
+| [`cards/`](cards/) | before, clean, minimalist, playful |
+| [`project/`](project/) | before, clean, minimalist, playful |
+
+## Expressive Templates
+
+| Preset | Description | Design Approach |
+|--------|-------------|-----------------|
+| [`personal-hero/`](personal-hero/) | Personal portfolio site | Clean personal branding |
+| [`agency-landing/`](agency-landing/) | Creative agency landing | Bold Creative / Agency |
+| [`agency-portfolio/`](agency-portfolio/) | Agency portfolio with scroll-shrink logo | Typographic / Scroll-Driven Agency |
+| [`app-showcase/`](app-showcase/) | Dark app showcase with phone mockup + stacking cards | Dark Warm / App-Centric Scroll |
+| [`scroll-reveal-landing/`](scroll-reveal-landing/) | Sky gradient hero with line-by-line text reveal | Airy / Scroll-Reveal Education |
+| [`product-launch/`](product-launch/) | Product launch page | Dark Premium / Product |
+| [`editorial-blog/`](editorial-blog/) | Long-form blog / editorial | Minimal Editorial / Typography-First |
+| [`saas-features/`](saas-features/) | SaaS feature showcase | Friendly SaaS / Bento |
+| [`scroll-story/`](scroll-story/) | Scroll-triggered portfolio | Immersive / Scroll-Storytelling |
+| [`product-page/`](product-page/) | E-commerce product page | E-commerce / Product-Focused |
+| [`devtool-landing/`](devtool-landing/) | Developer tool landing | Dark Premium / Developer |
+| [`docs-site/`](docs-site/) | Documentation site | Documentation / Reference |
+| [`event-page/`](event-page/) | Event/conference landing | Event / Conference |
+| [`jdeworks-personal/`](jdeworks-personal/) | Personalized "This is Me" portfolio | Scroll-Driven Storytelling |
+
+## Edge Cases
+
+| Preset | Description |
+|--------|-------------|
+| [`deploy/`](deploy/) | Deploy monitor |
+| [`osslanding/`](osslanding/) | OSS landing page |
+
+---
+
+## Composition Recipes
+
+Combine presets to build full pages:
+
+### Dashboard
+```
+shell-dashboard/ (includes sidebar + topbar + stats + table)
+```
+Or build custom: `shell-sidebar/` → add `stats-row/` + `data-table/` in content area.
+
+### Landing Page
+```
+shell-marketing/
+  └ Add hero section from: hero/
+  └ Add sections: feature-grid/
+  └ Add sections: pricing-cards/
+```
+
+### Login / Signup Page
+```
+shell-form/ (centered login form)
+```
+
+### Settings Page
+```
+shell-sidebar/ layout
+  └ In content area: form elements
+```
+
+### Data Browser
+```
+shell-sidebar/ layout
+  └ In content area: search bar + data-table/
+```
+
+---
+
+## Design Tokens (Consistent Across All Presets)
+
+| Token | Value | Tailwind |
+|-------|-------|----------|
+| Primary | `#2563eb` | `blue-600` |
+| Primary hover | `#1d4ed8` | `blue-700` |
+| Text primary | `#0f172a` / `#f1f5f9` | `slate-900` / `slate-100` |
+| Text secondary | `#475569` / `#94a3b8` | `slate-600` / `slate-400` |
+| Background | `#ffffff` / `#0f172a` | `white` / `slate-900` |
+| Surface | `#f8fafc` / `#1e293b` | `slate-50` / `slate-800` |
+| Border | `#e2e8f0` / `#334155` | `slate-200` / `slate-700` |
+| Success | `#16a34a` | `green-600` |
+| Error | `#dc2626` | `red-600` |
+| Warning | `#d97706` | `amber-600` |
+| Border radius | `8px` (cards), `8px` (buttons), `8px` (inputs) | `rounded-lg` |
+| Touch target | 44px minimum | `min-h-11` |
+
+Note: Expressive templates use different primary colors appropriate to their personality (rose for playful, indigo for editorial, etc.). See `index.json` for per-preset color mappings.
+
+## Preset Format
+
+Each preset directory contains:
+- `clean.html` — Standard Tailwind, balanced, professional
+- `minimalist.html` — Stripped back, hairline borders, light font weights
+- `playful.html` — Big rounded corners, colorful shadows, bouncy animations
+- `react.jsx` (optional) — React component variant for interactive components
+- `vue.vue` (optional) — Vue SFC variant
+- `svelte.svelte` (optional) — Svelte 5 component variant
+- Some presets also have `before.html` and/or `editorial.html` variants
+
+All presets are:
+- **Tailwind v4** classes only
+- **Self-contained** (inline SVG icons, no external deps except Google Fonts for display variants)
+- **Responsive** (320px → 768px → 1024px+)
+- **Dark mode** via `dark:` classes
+- **WCAG AA** contrast, 44px touch targets, semantic HTML
+- **Realistic content** (not lorem ipsum)
+</file>
+
+<file path="docs/scoring/balance.js">
+// Scoring Module: Visual Weight Balance
+// Weight: 3%
+// Source: Ngo et al. 2003 — balance correlates with preference (r=0.67)
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+  function scoreBalance(data) {
+    var findings = [];
+    var checks = 0;
+    var passed = 0;
+
+    // We use alignment edges as a proxy for content distribution
+    var edges = (data.layout && data.layout.alignmentEdges) || [];
+    var vw = (data.meta && data.meta.viewportWidth) || 1280;
+
+    if (edges.length >= 10) {
+      checks++;
+
+      // Count elements in left half vs right half
+      var leftCount = 0;
+      var rightCount = 0;
+      var midpoint = vw / 2;
+
+      edges.forEach(function(edge) {
+        if (edge < midpoint) leftCount++;
+        else rightCount++;
+      });
+
+      var total = leftCount + rightCount;
+      var ratio = total > 0 ? Math.max(leftCount, rightCount) / Math.min(leftCount || 1, rightCount || 1) : 1;
+
+      if (ratio <= 2) {
+        passed++;
+      } else if (ratio <= 3) {
+        passed++; // Info findings don't reduce score
+        findings.push({
+          severity: 'info',
+          title: 'Content distribution is ' + Math.round(leftCount / total * 100) + '% left / ' + Math.round(rightCount / total * 100) + '% right',
+          detail: 'Moderate imbalance — may be intentional (sidebar layout) or indicate uneven content distribution',
+          fix: 'If using a sidebar layout, this is expected. Otherwise, distribute content more evenly or use a centered layout.',
+          presetRef: null,
+          source: 'Ngo et al. 2003 — Visual balance and aesthetic preference'
+        });
+      } else {
+        findings.push({
+          severity: 'warning',
+          title: 'Content heavily weighted to one side (' + Math.round(leftCount / total * 100) + '% / ' + Math.round(rightCount / total * 100) + '%)',
+          detail: 'Strong left-right imbalance can feel visually unstable unless intentional',
+          fix: 'Consider centering the main content or balancing sections with complementary elements on the lighter side.',
+          presetRef: null,
+          source: 'Ngo et al. 2003 — Visual balance and aesthetic preference'
+        });
+      }
+    }
+
+    // Content centering: is the primary content centered or justified?
+    if (edges.length >= 5) {
+      checks++;
+      var meanEdge = edges.reduce(function(s,v){return s+v},0) / edges.length;
+      var centered = Math.abs(meanEdge - vw * 0.1) < vw * 0.15; // within 15% of typical left margin
+      if (centered || meanEdge > 10) {
+        passed++;
+      } else {
+        findings.push({
+          severity: 'info',
+          title: 'Content appears flush to the left edge (mean position: ' + Math.round(meanEdge) + 'px)',
+          detail: 'Content without proper margins can feel unbalanced.',
+          fix: 'Add container padding or centering. In Tailwind: mx-auto px-4.',
+          source: 'Gestalt proximity — https://lawsofux.com/law-of-proximity/'
+        });
+      }
+    }
+
+    // Vertical rhythm: check if section gaps are present
+    var sectionGaps = (data.layout && data.layout.sectionGaps) || [];
+    if (sectionGaps.length >= 2) {
+      checks++;
+      var minGap = Math.min.apply(null, sectionGaps);
+      var maxGap = Math.max.apply(null, sectionGaps);
+      if (minGap >= 16 && maxGap / (minGap || 1) <= 3) {
+        passed++;
+      } else if (minGap < 8) {
+        findings.push({
+          severity: 'warning',
+          title: 'Sections have very tight spacing (minimum gap: ' + minGap + 'px)',
+          detail: 'Sections need breathing room. Tight spacing makes content feel cramped.',
+          fix: 'Use consistent section spacing: 48-96px between major sections.',
+          source: 'Gestalt similarity — https://lawsofux.com/law-of-similarity/'
+        });
+      } else {
+        passed++;
+      }
+    }
+
+    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+    var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+    var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+    return { score: score, findings: findings, checks: checks, passed: passed, weight: 3, label: 'Visual Balance', icon: 'consistency' };
+  }
+
+  S.register("balance", scoreBalance, 3, "Visual Balance", "consistency");
+})();
+</file>
+
 <file path="proxy/README.md">
 # CORS Proxy Worker
 
@@ -17596,6 +17635,69 @@ function scoreCognitiveLoad(data) {
     }
   }
 
+  // Unique color count as cognitive noise indicator
+  var textColors = (data.colors && data.colors.textColors) || [];
+  var bgColors = (data.colors && data.colors.bgColors) || [];
+  if (textColors.length + bgColors.length > 0) {
+    checks++;
+    var uniqueColors = textColors.length + bgColors.length;
+    if (uniqueColors <= 30) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: uniqueColors + ' unique colors — high visual complexity',
+        detail: 'Many distinct colors increase cognitive load and make the page harder to parse.',
+        fix: 'Consolidate to a systematic palette: primary + neutral + 3 semantic colors.',
+        source: 'Material Design 3 — https://m3.material.io/styles/color/roles'
+      });
+    }
+  }
+
+  // Interactive element density
+  var touchTargets = (data.interaction && data.interaction.touchTargets) || [];
+  var totalElements = (data.structure && data.structure.totalElements) || 100;
+  if (totalElements > 30) {
+    checks++;
+    // Count all interactive elements (touch issues + those that passed)
+    var interactiveCount = touchTargets.length + Math.round(totalElements * 0.1); // rough estimate
+    var density = interactiveCount / totalElements;
+    if (density < 0.4) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: 'High interactive element density',
+        detail: 'Many clickable elements relative to content can overwhelm users.',
+        fix: 'Group related actions. Use progressive disclosure to hide secondary actions.',
+        source: 'Hick\'s Law — https://lawsofux.com/hicks-law/'
+      });
+    }
+  }
+
+  // Consistent heading hierarchy (cognitive predictability)
+  var headingHierarchy = (data.accessibility && data.accessibility.headingHierarchy) || [];
+  if (headingHierarchy.length >= 2) {
+    checks++;
+    var hierarchyBroken = false;
+    for (var hi = 1; hi < headingHierarchy.length; hi++) {
+      var prevLevel = parseInt(headingHierarchy[hi - 1].charAt(1));
+      var currLevel = parseInt(headingHierarchy[hi].charAt(1));
+      if (currLevel > prevLevel + 1) { hierarchyBroken = true; break; }
+    }
+    if (!hierarchyBroken) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'warning',
+        title: 'Heading hierarchy gaps break mental model',
+        detail: 'Skipped heading levels (e.g., h1 → h3) make it harder for users to understand content structure.',
+        fix: 'Use headings in order: h1 → h2 → h3. Don\'t skip levels.',
+        source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
+      });
+    }
+  }
+
   var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
   var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
   var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
@@ -17676,6 +17778,39 @@ function scoreVisualConsistency(data) {
         fix: 'Standardize border-radius to 2-4 values in your design tokens. In Tailwind: rounded-sm (2px), rounded (4px), rounded-lg (8px), rounded-xl (12px).',
         presetRef: null,
         source: 'Material Design 3 — https://m3.material.io/styles/shape/overview'
+      });
+    }
+  }
+
+  // Line height consistency
+  var lineHeights = (data.typography && data.typography.lineHeights) || [];
+  if (lineHeights.length > 0) {
+    checks++;
+    if (lineHeights.length <= 5) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: lineHeights.length + ' distinct line-height values (recommend 2-4)',
+        detail: 'Consistent line-height creates visual rhythm across the page.',
+        fix: 'Standardize to 2-3 line-heights: tight (1.25), normal (1.5), relaxed (1.75).',
+        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-spacing.html'
+      });
+    }
+  }
+
+  // Dark mode support consistency
+  if (data.structure) {
+    checks++;
+    if (data.structure.darkModeClasses) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: 'No dark mode support detected',
+        detail: 'Dark mode is expected by ~80% of users (Android settings data).',
+        fix: 'Add dark mode with dark: variants in Tailwind or prefers-color-scheme media query.',
+        source: 'Apple HIG — https://developer.apple.com/design/human-interface-guidelines/dark-mode'
       });
     }
   }
@@ -17763,9 +17898,42 @@ function scoreVisualConsistency(data) {
       });
     }
 
+    // Transition count: too many or too few
+    var transitions = (data.interaction && data.interaction.transitions) || [];
+    if (transitions.length > 0) {
+      checks++;
+      if (transitions.length <= 8) {
+        passed++;
+      } else {
+        findings.push({
+          severity: 'info',
+          title: transitions.length + ' unique transition durations (recommend ≤5)',
+          detail: 'Using many different durations creates inconsistent motion feel.',
+          fix: 'Standardize to 2-3 durations: fast (150ms), normal (300ms), slow (500ms).',
+          source: 'Material Design motion — https://m3.material.io/styles/motion/overview'
+        });
+      }
+    }
+
+    // Keyframe animation count
+    if (anim.keyframeCount > 0) {
+      checks++;
+      if (anim.keyframeCount <= 10) {
+        passed++;
+      } else {
+        findings.push({
+          severity: 'info',
+          title: anim.keyframeCount + ' @keyframes rules (high count)',
+          detail: 'Many animations can cause performance issues and visual overwhelm.',
+          fix: 'Review if all animations serve a purpose. Remove decorative animations.',
+          source: 'NNGroup — https://www.nngroup.com/articles/animation-usability/'
+        });
+      }
+    }
+
     var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+    var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+    var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
     return { score: score, findings: findings, checks: checks, passed: passed, weight: 3, label: 'Motion & Animation', icon: 'cognitive' };
   }
 
@@ -19580,6 +19748,416 @@ function scoreTouchTargets(data) {
 })();
 </file>
 
+<file path="docs/scoring/contrast.js">
+// Scoring Module: Color & Contrast
+// Weight: 20%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function parseRgb(str) {
+  var m = str.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+  if (!m) m = str.match(/rgb\((\d+)\s+(\d+)\s+(\d+)\)/);
+  if (!m) return null;
+  return { r: +m[1], g: +m[2], b: +m[3] };
+}
+
+function applyFilterToColor(c, filterStr) {
+  if (!c || !filterStr) return c;
+  var r = c.r, g = c.g, b = c.b;
+  var re = /brightness\(([\d.]+)\)|contrast\(([\d.]+)\)|opacity\(([\d.]+)\)/g;
+  var m;
+  while ((m = re.exec(filterStr)) !== null) {
+    if (m[1] !== undefined) {
+      var br = parseFloat(m[1]);
+      r = Math.min(255, Math.round(r * br));
+      g = Math.min(255, Math.round(g * br));
+      b = Math.min(255, Math.round(b * br));
+    } else if (m[2] !== undefined) {
+      var ct = parseFloat(m[2]);
+      r = Math.min(255, Math.max(0, Math.round(((r - 128) * ct) + 128)));
+      g = Math.min(255, Math.max(0, Math.round(((g - 128) * ct) + 128)));
+      b = Math.min(255, Math.max(0, Math.round(((b - 128) * ct) + 128)));
+    }
+    // opacity affects alpha, not RGB channels for contrast purposes
+  }
+  return { r: r, g: g, b: b };
+}
+
+function luminance(c) {
+  var rs = c.r / 255, gs = c.g / 255, bs = c.b / 255;
+  var r = rs <= 0.03928 ? rs / 12.92 : Math.pow((rs + 0.055) / 1.055, 2.4);
+  var g = gs <= 0.03928 ? gs / 12.92 : Math.pow((gs + 0.055) / 1.055, 2.4);
+  var b = bs <= 0.03928 ? bs / 12.92 : Math.pow((bs + 0.055) / 1.055, 2.4);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function contrastRatio(c1, c2) {
+  var l1 = luminance(c1), l2 = luminance(c2);
+  return Math.round(((Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)) * 100) / 100;
+}
+
+// APCA contrast (Lc value)
+// Simplified APCA-W3 calculation
+function sRGBtoY(rgb) {
+  // Linearize sRGB
+  function lin(v) { v = v / 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
+  return 0.2126729 * lin(rgb.r) + 0.7151522 * lin(rgb.g) + 0.0721750 * lin(rgb.b);
+}
+
+function apcaContrast(txtRgb, bgRgb) {
+  var txtY = sRGBtoY(txtRgb);
+  var bgY = sRGBtoY(bgRgb);
+  // Clamp
+  if (txtY < 0) txtY = 0;
+  if (bgY < 0) bgY = 0;
+  // SAPC power curve
+  var normBG = Math.pow(bgY, 0.56);
+  var normTXT = Math.pow(txtY, 0.57);
+  var rawContrast;
+  if (bgY > txtY) {
+    rawContrast = (normBG - normTXT) * 1.14;
+  } else {
+    rawContrast = (normBG - normTXT) * 1.14;
+  }
+  // Scale and clamp
+  if (Math.abs(rawContrast) < 0.1) return 0;
+  return Math.round(rawContrast * 100);
+}
+
+function scoreContrast(data) {
+  var profile = S.getProfile(data);
+  var findings = [];
+  var pairs = data.colors.contrastPairs || [];
+
+  // Re-evaluate each pair against profile thresholds
+  var profilePairs = pairs.map(function(p) {
+    var needed = p.isLarge ? profile.contrastLarge : profile.contrast;
+    var ratio = p.ratio;
+
+    // If a CSS filter is present, re-compute contrast with adjusted bg
+    if (p.filter) {
+      var bgParsed = parseRgb(p.bg);
+      if (bgParsed) {
+        var adjustedBg = applyFilterToColor(bgParsed, p.filter);
+        var fgParsed = parseRgb(p.fg);
+        if (fgParsed) {
+          ratio = contrastRatio(fgParsed, adjustedBg);
+        }
+      }
+    }
+
+    var passes = ratio >= needed;
+    return { ratio: ratio, needed: needed, passes: passes, isLarge: p.isLarge, text: p.text, fontSize: p.fontSize, selector: p.selector, fg: p.fg, bg: p.bg, filter: p.filter || '' };
+  });
+
+  // Separate uncertain results (1:1 ratio usually means bg couldn't be determined — gradient, SVG, etc.)
+  var uncertain = profilePairs.filter(function(p) { return !p.passes && p.ratio <= 1.01 && p.fg === p.bg; });
+  var failures = profilePairs.filter(function(p) { return !p.passes && !(p.ratio <= 1.01 && p.fg === p.bg); });
+  var nearMisses = profilePairs.filter(function(p) { return p.passes && p.ratio < p.needed + 0.5; });
+
+  failures.forEach(function(p) {
+    var apcaVal = '';
+    var fgP = parseRgb(p.fg);
+    var bgP = parseRgb(p.bg);
+    if (fgP && bgP) { apcaVal = ' (APCA: Lc ' + apcaContrast(fgP, bgP) + ')'; }
+    findings.push({
+      severity: 'error',
+      title: 'Text fails contrast ' + p.ratio + ':1 (needs ' + p.needed + ':1)',
+      detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector + apcaVal,
+      fix: p.isLarge
+        ? 'Large text needs ' + profile.contrastLarge + ':1 minimum. Darken the text or lighten the background.'
+        : 'Normal text needs ' + profile.contrast + ':1 minimum. Use a darker text color or lighter background.',
+      presetRef: 'All presets use text-slate-600+ on white backgrounds (8:1+ ratio)',
+      source: p.isLarge ? 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' : 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
+    });
+  });
+
+  if (uncertain.length > 0) {
+    findings.push({
+      severity: 'info',
+      title: uncertain.length + ' element(s) with undetermined contrast (background could not be resolved)',
+      detail: 'These elements may use gradients, images, SVGs, or complex CSS that the analyzer cannot parse. Check manually: ' + uncertain.slice(0, 3).map(function(p) { return '"' + p.text + '"'; }).join(', '),
+      fix: 'Verify these elements have sufficient contrast visually. The analyzer reports 1:1 when the effective background cannot be computed.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
+    });
+  }
+
+  nearMisses.forEach(function(p) {
+    findings.push({
+      severity: 'info',
+      title: 'Text passes contrast but close to threshold: ' + p.ratio + ':1 (needs ' + p.needed + ':1)',
+      detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector,
+      fix: 'Passes AA but consider increasing for AAA (7:1). Slight changes in background could cause failure.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.6 — https://www.w3.org/TR/WCAG22/#contrast-enhanced'
+    });
+  });
+
+  // CVD palette safety check (color_blind profile)
+  if (profile.checkCVD && pairs.length > 0) {
+    var uniqueColors = {};
+    pairs.forEach(function(p) {
+      if (p.fg) uniqueColors[p.fg] = true;
+      if (p.bg) uniqueColors[p.bg] = true;
+    });
+    var colorList = Object.keys(uniqueColors).map(function(c) { return parseRgb(c); }).filter(Boolean);
+    var cvdTypes = ['protanopia', 'deuteranopia', 'tritanopia'];
+    var cvdIssues = {};
+    cvdTypes.forEach(function(type) { cvdIssues[type] = 0; });
+
+    // Check all color pairs through CVD simulation
+    for (var ci = 0; ci < colorList.length && ci < 20; ci++) {
+      for (var cj = ci + 1; cj < colorList.length && cj < 20; cj++) {
+        var origRatio = contrastRatio(colorList[ci], colorList[cj]);
+        if (origRatio < 2) continue; // Skip colors already too similar
+        cvdTypes.forEach(function(type) {
+          var matrix = S.CVD_MATRICES[type];
+          var simA = S.simulateCVD(colorList[ci], matrix);
+          var simB = S.simulateCVD(colorList[cj], matrix);
+          var simRatio = contrastRatio(simA, simB);
+          if (simRatio < 1.5 && origRatio >= 2) cvdIssues[type]++;
+        });
+      }
+    }
+
+    var totalCvdIssues = cvdIssues.protanopia + cvdIssues.deuteranopia + cvdIssues.tritanopia;
+    if (totalCvdIssues > 0) {
+      var cvdDetails = cvdTypes.filter(function(t) { return cvdIssues[t] > 0; }).map(function(t) { return t + ': ' + cvdIssues[t] + ' pair(s)'; }).join(', ');
+      findings.push({
+        severity: totalCvdIssues > 3 ? 'error' : 'warning',
+        title: totalCvdIssues + ' color pair(s) become indistinguishable under color vision deficiency',
+        detail: cvdDetails + '. These colors look distinct to typical vision but collapse for ~8% of men.',
+        fix: 'Add non-color indicators (icons, patterns, text labels) alongside color. Avoid red-green as the only differentiator.',
+        source: 'WCAG 2.2 §1.4.1 — https://www.w3.org/TR/WCAG22/#use-of-color'
+      });
+    } else if (colorList.length >= 3) {
+      findings.push({
+        severity: 'info',
+        title: 'Color palette passes CVD simulation (' + colorList.length + ' colors checked)',
+        detail: 'All color pairs remain distinguishable under protanopia, deuteranopia, and tritanopia simulation.',
+        fix: 'No action needed. This palette is CVD-safe.',
+        source: 'Machado et al. 2009 — https://www.inf.ufrgs.br/~oliveira/pubs_files/CVD_Simulation/CVD_Simulation.html'
+      });
+    }
+  }
+
+  // Don't count uncertain results as failures in the score
+  var total = (profilePairs.length - uncertain.length) || 1;
+  var passing = total - failures.length;
+  var score = Math.max(0, 100 - (failures.length * 10) - (nearMisses.length * 3));
+
+  // Add baseline checks
+  var checks = Math.max(total, 1);
+  var passed = Math.max(passing, 0);
+  // Text existence check
+  if (pairs.length === 0 && (data.structure && data.structure.totalElements > 20)) {
+    findings.push({
+      severity: 'info',
+      title: 'No text contrast pairs found to check',
+      detail: 'The page may use images for text, or text may not be visible at scan time.',
+      fix: 'Ensure text is rendered as real HTML text, not embedded in images.',
+      source: 'WCAG 2.2 §1.4.5 — https://www.w3.org/TR/WCAG22/#images-of-text'
+    });
+  }
+  return { score: score, findings: findings, checks: checks, passed: passed, weight: 20, label: 'Color & Contrast', icon: 'contrast' };
+}
+
+
+  S.register("contrast", scoreContrast, 20, "Color & Contrast", "contrast");
+})();
+</file>
+
+<file path="docs/scoring/typography.js">
+// Scoring Module: Typography
+// Weight: 15%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreTypography(data) {
+  var profile = S.getProfile(data);
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+
+  // Body font size check against profile minimum
+  checks++;
+  var bodySize = parseFloat(data.typography.bodyFontSize);
+  if (bodySize >= profile.bodyFontMin) {
+    passed++;
+  } else if (bodySize > 0) {
+    findings.push({
+      severity: 'error',
+      title: 'Body font size is ' + bodySize + 'px (minimum: ' + profile.bodyFontMin + 'px)',
+      detail: 'Small body text reduces readability, especially on mobile',
+      fix: 'Set body font-size to at least ' + profile.bodyFontMin + 'px. In Tailwind: text-base (16px) or text-lg (18px)',
+      presetRef: 'All presets use text-base (16px) or larger for body text', source: 'WCAG 2.2 / NNGroup — https://www.w3.org/TR/WCAG22/#text-spacing'
+    });
+  }
+
+  // Line height check against profile range
+  checks++;
+  var bodyLH = data.typography.bodyLineHeight;
+  var bodyLHRatio = 0;
+  if (bodyLH && bodyLH !== 'normal') {
+    bodyLHRatio = parseFloat(bodyLH) / bodySize;
+  }
+  var lhPassMin = profile.lineHeightMin - 0.05;
+  var lhPassMax = profile.lineHeightMax + 0.1;
+  if (bodyLHRatio >= lhPassMin && bodyLHRatio <= lhPassMax) {
+    passed++;
+  } else if (bodyLHRatio > 0) {
+    findings.push({
+      severity: bodyLHRatio < 1.2 || bodyLHRatio > 2 ? 'error' : 'warning',
+      title: 'Body line-height is ' + (Math.round(bodyLHRatio * 100) / 100) + ' (ideal: ' + profile.lineHeightMin + '–' + profile.lineHeightMax + ')',
+      detail: bodyLHRatio < profile.lineHeightMin ? 'Text feels cramped and hard to read' : 'Text feels too loose and wastes vertical space',
+      fix: bodyLHRatio < profile.lineHeightMin ? 'Increase line-height. In Tailwind: leading-relaxed (1.625) or leading-normal (1.5)' : 'Decrease line-height. In Tailwind: leading-normal (1.5)',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.12 — https://www.w3.org/TR/WCAG22/#text-spacing'
+    });
+  }
+
+  // Line length (profile-aware: elderly 65, children 55, default 75)
+  checks++;
+  var maxChars = data.typography.maxLineLength ? data.typography.maxLineLength.chars : 0;
+  var lineLimit = profile.maxLineLength || 75;
+  if (maxChars > 0 && maxChars <= lineLimit + 5) {
+    passed++;
+  } else if (maxChars > lineLimit + 5) {
+    findings.push({
+      severity: maxChars > lineLimit + 25 ? 'error' : 'warning',
+      title: 'Line length ~' + maxChars + ' characters (max for this audience: ' + lineLimit + ')',
+      detail: lineLimit < 70 ? 'Shorter lines improve readability for this audience.' : 'Long lines make it hard for the eye to track back to the next line.',
+      fix: 'Constrain content width with max-w-prose (65ch) or max-w-2xl (672px)',
+      presetRef: 'Editorial presets use max-w-prose for reading content',
+      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-length.html'
+    });
+  }
+
+  // Heading scale — check if headings have a consistent ratio
+  checks++;
+  var headings = data.typography.headings || [];
+  if (headings.length >= 2) {
+    var sizes = headings.map(function(h) { return parseFloat(h.fontSize); }).filter(function(s) { return s > 0; });
+    var uniqueSizes = Array.from(new Set(sizes)).sort(function(a, b) { return b - a; });
+    if (uniqueSizes.length >= 2) {
+      var ratio = uniqueSizes[0] / uniqueSizes[uniqueSizes.length - 1];
+      if (ratio >= 1.5 && ratio <= 4) {
+        passed++;
+      } else {
+        findings.push({
+          severity: 'warning',
+          title: 'Heading scale ratio is ' + (Math.round(ratio * 100) / 100) + ' (ideal: 1.5–3.5)',
+          detail: ratio < 1.5 ? 'Headings are too similar in size — weak hierarchy' : 'Heading sizes vary too wildly — use a modular scale',
+          fix: 'Use a modular scale (1.200 minor third or 1.250 major third). In Tailwind: text-4xl > text-2xl > text-xl > text-base',
+          presetRef: null,
+          source: 'Modular type scales — https://typescale.com/'
+        });
+      }
+    } else { passed++; } // Only one heading size — acceptable
+  } else { passed++; } // No headings to check
+
+  // Max 2-3 font weights
+  checks++;
+  var fontWeights = data.typography.fontWeights || [];
+  var weightCount = fontWeights.length;
+  if (weightCount <= 4) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'Using ' + weightCount + ' font weights (recommended: 2–3)',
+      detail: 'Too many weights create visual noise and increase font loading time',
+      fix: 'Consolidate to 400 (regular), 500/600 (medium), 700 (bold)',
+      presetRef: null,
+      source: 'Google Fonts best practices — https://fonts.google.com/knowledge/using_type/choosing_reliable_typefaces'
+    });
+  }
+
+  // Profile-specific: minimum font weight (e.g., elderly profile forbids light/thin)
+  if (profile.fontWeightMin > 0 && fontWeights.length > 0) {
+    var lightWeights = fontWeights.filter(function(w) { return parseInt(w) < profile.fontWeightMin; });
+    if (lightWeights.length > 0) {
+      checks++;
+      findings.push({
+        severity: 'warning',
+        title: 'Font weight(s) ' + lightWeights.join(', ') + ' below minimum ' + profile.fontWeightMin + ' for this audience',
+        detail: 'Light and thin font weights reduce readability for users who need higher legibility',
+        fix: 'Use font-weight ' + profile.fontWeightMin + ' (regular) or heavier. Avoid font-weight 100–300.',
+        presetRef: null,
+        source: 'W3C WAI Older Users — https://www.w3.org/WAI/older-users/developing/'
+      });
+    } else {
+      checks++;
+      passed++;
+    }
+  }
+
+  // Letter spacing
+  var lsIssues = (data.typography && data.typography.letterSpacingIssues) || 0;
+  if (lsIssues > 0) {
+    findings.push({
+      severity: 'info',
+      title: lsIssues + ' element(s) with extreme letter-spacing',
+      detail: 'Very tight (< -0.03em) or very loose (> 0.15em) letter spacing reduces readability',
+      fix: 'Keep letter-spacing between -0.02em and 0.1em for body text. Tighter spacing is acceptable for large headings.',
+      presetRef: null,
+      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/letterspacing.html'
+    });
+  }
+
+  // Paragraph spacing
+  var pSpacing = (data.typography && data.typography.paragraphSpacing) || [];
+  if (pSpacing.length >= 3) {
+    checks++;
+    var bodyPx = parseFloat(data.typography.bodyFontSize) || 16;
+    var avgSpacing = pSpacing.reduce(function(s,v){return s+v},0) / pSpacing.length;
+    var spacingEm = avgSpacing / bodyPx;
+    if (spacingEm >= 0.5 && spacingEm <= 1.5) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: 'Paragraph spacing is ' + (Math.round(spacingEm * 100) / 100) + 'em (ideal: 0.75–1em)',
+        detail: spacingEm < 0.5 ? 'Paragraphs feel cramped' : 'Paragraph spacing may be too generous',
+        fix: 'Set paragraph margin-bottom to 0.75em–1em. In Tailwind: space-y-4 on the container or mb-4 on paragraphs.',
+        presetRef: null,
+        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/space-between-paragraphs.html'
+      });
+    }
+  }
+
+  // Max 2 typefaces
+  checks++;
+  var familyCount = (data.typography.fontFamilies || []).length;
+  if (familyCount <= 3) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'Using ' + familyCount + ' font families (recommended: max 2)',
+      detail: 'Too many typefaces make the design feel inconsistent',
+      fix: 'Use 1 sans-serif + 1 serif (or monospace for code). In Tailwind: font-sans + font-serif',
+      presetRef: null,
+      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/summary-of-key-rules.html'
+    });
+  }
+
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+  return { score: score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Typography', icon: 'type' };
+}
+
+
+  S.register("typography", scoreTypography, 15, "Typography", "type");
+})();
+</file>
+
 <file path="docs/analyzer-snippet-screenshots.js">
 // make-it-look-good — Design Extraction Snippet (with screenshots)
 // Run this in the browser console on any page.
@@ -20789,405 +21367,6 @@ function scoreTouchTargets(data) {
 })();
 </file>
 
-<file path="docs/scoring/contrast.js">
-// Scoring Module: Color & Contrast
-// Weight: 20%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function parseRgb(str) {
-  var m = str.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
-  if (!m) m = str.match(/rgb\((\d+)\s+(\d+)\s+(\d+)\)/);
-  if (!m) return null;
-  return { r: +m[1], g: +m[2], b: +m[3] };
-}
-
-function applyFilterToColor(c, filterStr) {
-  if (!c || !filterStr) return c;
-  var r = c.r, g = c.g, b = c.b;
-  var re = /brightness\(([\d.]+)\)|contrast\(([\d.]+)\)|opacity\(([\d.]+)\)/g;
-  var m;
-  while ((m = re.exec(filterStr)) !== null) {
-    if (m[1] !== undefined) {
-      var br = parseFloat(m[1]);
-      r = Math.min(255, Math.round(r * br));
-      g = Math.min(255, Math.round(g * br));
-      b = Math.min(255, Math.round(b * br));
-    } else if (m[2] !== undefined) {
-      var ct = parseFloat(m[2]);
-      r = Math.min(255, Math.max(0, Math.round(((r - 128) * ct) + 128)));
-      g = Math.min(255, Math.max(0, Math.round(((g - 128) * ct) + 128)));
-      b = Math.min(255, Math.max(0, Math.round(((b - 128) * ct) + 128)));
-    }
-    // opacity affects alpha, not RGB channels for contrast purposes
-  }
-  return { r: r, g: g, b: b };
-}
-
-function luminance(c) {
-  var rs = c.r / 255, gs = c.g / 255, bs = c.b / 255;
-  var r = rs <= 0.03928 ? rs / 12.92 : Math.pow((rs + 0.055) / 1.055, 2.4);
-  var g = gs <= 0.03928 ? gs / 12.92 : Math.pow((gs + 0.055) / 1.055, 2.4);
-  var b = bs <= 0.03928 ? bs / 12.92 : Math.pow((bs + 0.055) / 1.055, 2.4);
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
-
-function contrastRatio(c1, c2) {
-  var l1 = luminance(c1), l2 = luminance(c2);
-  return Math.round(((Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)) * 100) / 100;
-}
-
-// APCA contrast (Lc value)
-// Simplified APCA-W3 calculation
-function sRGBtoY(rgb) {
-  // Linearize sRGB
-  function lin(v) { v = v / 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
-  return 0.2126729 * lin(rgb.r) + 0.7151522 * lin(rgb.g) + 0.0721750 * lin(rgb.b);
-}
-
-function apcaContrast(txtRgb, bgRgb) {
-  var txtY = sRGBtoY(txtRgb);
-  var bgY = sRGBtoY(bgRgb);
-  // Clamp
-  if (txtY < 0) txtY = 0;
-  if (bgY < 0) bgY = 0;
-  // SAPC power curve
-  var normBG = Math.pow(bgY, 0.56);
-  var normTXT = Math.pow(txtY, 0.57);
-  var rawContrast;
-  if (bgY > txtY) {
-    rawContrast = (normBG - normTXT) * 1.14;
-  } else {
-    rawContrast = (normBG - normTXT) * 1.14;
-  }
-  // Scale and clamp
-  if (Math.abs(rawContrast) < 0.1) return 0;
-  return Math.round(rawContrast * 100);
-}
-
-function scoreContrast(data) {
-  var profile = S.getProfile(data);
-  var findings = [];
-  var pairs = data.colors.contrastPairs || [];
-
-  // Re-evaluate each pair against profile thresholds
-  var profilePairs = pairs.map(function(p) {
-    var needed = p.isLarge ? profile.contrastLarge : profile.contrast;
-    var ratio = p.ratio;
-
-    // If a CSS filter is present, re-compute contrast with adjusted bg
-    if (p.filter) {
-      var bgParsed = parseRgb(p.bg);
-      if (bgParsed) {
-        var adjustedBg = applyFilterToColor(bgParsed, p.filter);
-        var fgParsed = parseRgb(p.fg);
-        if (fgParsed) {
-          ratio = contrastRatio(fgParsed, adjustedBg);
-        }
-      }
-    }
-
-    var passes = ratio >= needed;
-    return { ratio: ratio, needed: needed, passes: passes, isLarge: p.isLarge, text: p.text, fontSize: p.fontSize, selector: p.selector, fg: p.fg, bg: p.bg, filter: p.filter || '' };
-  });
-
-  // Separate uncertain results (1:1 ratio usually means bg couldn't be determined — gradient, SVG, etc.)
-  var uncertain = profilePairs.filter(function(p) { return !p.passes && p.ratio <= 1.01 && p.fg === p.bg; });
-  var failures = profilePairs.filter(function(p) { return !p.passes && !(p.ratio <= 1.01 && p.fg === p.bg); });
-  var nearMisses = profilePairs.filter(function(p) { return p.passes && p.ratio < p.needed + 0.5; });
-
-  failures.forEach(function(p) {
-    var apcaVal = '';
-    var fgP = parseRgb(p.fg);
-    var bgP = parseRgb(p.bg);
-    if (fgP && bgP) { apcaVal = ' (APCA: Lc ' + apcaContrast(fgP, bgP) + ')'; }
-    findings.push({
-      severity: 'error',
-      title: 'Text fails contrast ' + p.ratio + ':1 (needs ' + p.needed + ':1)',
-      detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector + apcaVal,
-      fix: p.isLarge
-        ? 'Large text needs ' + profile.contrastLarge + ':1 minimum. Darken the text or lighten the background.'
-        : 'Normal text needs ' + profile.contrast + ':1 minimum. Use a darker text color or lighter background.',
-      presetRef: 'All presets use text-slate-600+ on white backgrounds (8:1+ ratio)',
-      source: p.isLarge ? 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' : 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
-    });
-  });
-
-  if (uncertain.length > 0) {
-    findings.push({
-      severity: 'info',
-      title: uncertain.length + ' element(s) with undetermined contrast (background could not be resolved)',
-      detail: 'These elements may use gradients, images, SVGs, or complex CSS that the analyzer cannot parse. Check manually: ' + uncertain.slice(0, 3).map(function(p) { return '"' + p.text + '"'; }).join(', '),
-      fix: 'Verify these elements have sufficient contrast visually. The analyzer reports 1:1 when the effective background cannot be computed.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
-    });
-  }
-
-  nearMisses.forEach(function(p) {
-    findings.push({
-      severity: 'info',
-      title: 'Text passes contrast but close to threshold: ' + p.ratio + ':1 (needs ' + p.needed + ':1)',
-      detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector,
-      fix: 'Passes AA but consider increasing for AAA (7:1). Slight changes in background could cause failure.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.6 — https://www.w3.org/TR/WCAG22/#contrast-enhanced'
-    });
-  });
-
-  // CVD palette safety check (color_blind profile)
-  if (profile.checkCVD && pairs.length > 0) {
-    var uniqueColors = {};
-    pairs.forEach(function(p) {
-      if (p.fg) uniqueColors[p.fg] = true;
-      if (p.bg) uniqueColors[p.bg] = true;
-    });
-    var colorList = Object.keys(uniqueColors).map(function(c) { return parseRgb(c); }).filter(Boolean);
-    var cvdTypes = ['protanopia', 'deuteranopia', 'tritanopia'];
-    var cvdIssues = {};
-    cvdTypes.forEach(function(type) { cvdIssues[type] = 0; });
-
-    // Check all color pairs through CVD simulation
-    for (var ci = 0; ci < colorList.length && ci < 20; ci++) {
-      for (var cj = ci + 1; cj < colorList.length && cj < 20; cj++) {
-        var origRatio = contrastRatio(colorList[ci], colorList[cj]);
-        if (origRatio < 2) continue; // Skip colors already too similar
-        cvdTypes.forEach(function(type) {
-          var matrix = S.CVD_MATRICES[type];
-          var simA = S.simulateCVD(colorList[ci], matrix);
-          var simB = S.simulateCVD(colorList[cj], matrix);
-          var simRatio = contrastRatio(simA, simB);
-          if (simRatio < 1.5 && origRatio >= 2) cvdIssues[type]++;
-        });
-      }
-    }
-
-    var totalCvdIssues = cvdIssues.protanopia + cvdIssues.deuteranopia + cvdIssues.tritanopia;
-    if (totalCvdIssues > 0) {
-      var cvdDetails = cvdTypes.filter(function(t) { return cvdIssues[t] > 0; }).map(function(t) { return t + ': ' + cvdIssues[t] + ' pair(s)'; }).join(', ');
-      findings.push({
-        severity: totalCvdIssues > 3 ? 'error' : 'warning',
-        title: totalCvdIssues + ' color pair(s) become indistinguishable under color vision deficiency',
-        detail: cvdDetails + '. These colors look distinct to typical vision but collapse for ~8% of men.',
-        fix: 'Add non-color indicators (icons, patterns, text labels) alongside color. Avoid red-green as the only differentiator.',
-        source: 'WCAG 2.2 §1.4.1 — https://www.w3.org/TR/WCAG22/#use-of-color'
-      });
-    } else if (colorList.length >= 3) {
-      findings.push({
-        severity: 'info',
-        title: 'Color palette passes CVD simulation (' + colorList.length + ' colors checked)',
-        detail: 'All color pairs remain distinguishable under protanopia, deuteranopia, and tritanopia simulation.',
-        fix: 'No action needed. This palette is CVD-safe.',
-        source: 'Machado et al. 2009 — https://www.inf.ufrgs.br/~oliveira/pubs_files/CVD_Simulation/CVD_Simulation.html'
-      });
-    }
-  }
-
-  // Don't count uncertain results as failures in the score
-  var total = (profilePairs.length - uncertain.length) || 1;
-  var passing = total - failures.length;
-  var score = Math.max(0, 100 - (failures.length * 10) - (nearMisses.length * 3));
-
-  var checks = total;
-  var passed = passing;
-  return { score: score, findings: findings, checks: checks, passed: passed, weight: 20, label: 'Color & Contrast', icon: 'contrast' };
-}
-
-
-  S.register("contrast", scoreContrast, 20, "Color & Contrast", "contrast");
-})();
-</file>
-
-<file path="docs/scoring/typography.js">
-// Scoring Module: Typography
-// Weight: 15%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreTypography(data) {
-  var profile = S.getProfile(data);
-  var findings = [];
-  var checks = 0;
-  var passed = 0;
-
-  // Body font size check against profile minimum
-  checks++;
-  var bodySize = parseFloat(data.typography.bodyFontSize);
-  if (bodySize >= profile.bodyFontMin) {
-    passed++;
-  } else if (bodySize > 0) {
-    findings.push({
-      severity: 'error',
-      title: 'Body font size is ' + bodySize + 'px (minimum: ' + profile.bodyFontMin + 'px)',
-      detail: 'Small body text reduces readability, especially on mobile',
-      fix: 'Set body font-size to at least ' + profile.bodyFontMin + 'px. In Tailwind: text-base (16px) or text-lg (18px)',
-      presetRef: 'All presets use text-base (16px) or larger for body text', source: 'WCAG 2.2 / NNGroup — https://www.w3.org/TR/WCAG22/#text-spacing'
-    });
-  }
-
-  // Line height check against profile range
-  checks++;
-  var bodyLH = data.typography.bodyLineHeight;
-  var bodyLHRatio = 0;
-  if (bodyLH && bodyLH !== 'normal') {
-    bodyLHRatio = parseFloat(bodyLH) / bodySize;
-  }
-  var lhPassMin = profile.lineHeightMin - 0.05;
-  var lhPassMax = profile.lineHeightMax + 0.1;
-  if (bodyLHRatio >= lhPassMin && bodyLHRatio <= lhPassMax) {
-    passed++;
-  } else if (bodyLHRatio > 0) {
-    findings.push({
-      severity: bodyLHRatio < 1.2 || bodyLHRatio > 2 ? 'error' : 'warning',
-      title: 'Body line-height is ' + (Math.round(bodyLHRatio * 100) / 100) + ' (ideal: ' + profile.lineHeightMin + '–' + profile.lineHeightMax + ')',
-      detail: bodyLHRatio < profile.lineHeightMin ? 'Text feels cramped and hard to read' : 'Text feels too loose and wastes vertical space',
-      fix: bodyLHRatio < profile.lineHeightMin ? 'Increase line-height. In Tailwind: leading-relaxed (1.625) or leading-normal (1.5)' : 'Decrease line-height. In Tailwind: leading-normal (1.5)',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.12 — https://www.w3.org/TR/WCAG22/#text-spacing'
-    });
-  }
-
-  // Line length (profile-aware: elderly 65, children 55, default 75)
-  checks++;
-  var maxChars = data.typography.maxLineLength ? data.typography.maxLineLength.chars : 0;
-  var lineLimit = profile.maxLineLength || 75;
-  if (maxChars > 0 && maxChars <= lineLimit + 5) {
-    passed++;
-  } else if (maxChars > lineLimit + 5) {
-    findings.push({
-      severity: maxChars > lineLimit + 25 ? 'error' : 'warning',
-      title: 'Line length ~' + maxChars + ' characters (max for this audience: ' + lineLimit + ')',
-      detail: lineLimit < 70 ? 'Shorter lines improve readability for this audience.' : 'Long lines make it hard for the eye to track back to the next line.',
-      fix: 'Constrain content width with max-w-prose (65ch) or max-w-2xl (672px)',
-      presetRef: 'Editorial presets use max-w-prose for reading content',
-      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-length.html'
-    });
-  }
-
-  // Heading scale — check if headings have a consistent ratio
-  checks++;
-  var headings = data.typography.headings || [];
-  if (headings.length >= 2) {
-    var sizes = headings.map(function(h) { return parseFloat(h.fontSize); }).filter(function(s) { return s > 0; });
-    var uniqueSizes = Array.from(new Set(sizes)).sort(function(a, b) { return b - a; });
-    if (uniqueSizes.length >= 2) {
-      var ratio = uniqueSizes[0] / uniqueSizes[uniqueSizes.length - 1];
-      if (ratio >= 1.5 && ratio <= 4) {
-        passed++;
-      } else {
-        findings.push({
-          severity: 'warning',
-          title: 'Heading scale ratio is ' + (Math.round(ratio * 100) / 100) + ' (ideal: 1.5–3.5)',
-          detail: ratio < 1.5 ? 'Headings are too similar in size — weak hierarchy' : 'Heading sizes vary too wildly — use a modular scale',
-          fix: 'Use a modular scale (1.200 minor third or 1.250 major third). In Tailwind: text-4xl > text-2xl > text-xl > text-base',
-          presetRef: null,
-          source: 'Modular type scales — https://typescale.com/'
-        });
-      }
-    } else { passed++; } // Only one heading size — acceptable
-  } else { passed++; } // No headings to check
-
-  // Max 2-3 font weights
-  checks++;
-  var fontWeights = data.typography.fontWeights || [];
-  var weightCount = fontWeights.length;
-  if (weightCount <= 4) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: 'Using ' + weightCount + ' font weights (recommended: 2–3)',
-      detail: 'Too many weights create visual noise and increase font loading time',
-      fix: 'Consolidate to 400 (regular), 500/600 (medium), 700 (bold)',
-      presetRef: null,
-      source: 'Google Fonts best practices — https://fonts.google.com/knowledge/using_type/choosing_reliable_typefaces'
-    });
-  }
-
-  // Profile-specific: minimum font weight (e.g., elderly profile forbids light/thin)
-  if (profile.fontWeightMin > 0 && fontWeights.length > 0) {
-    var lightWeights = fontWeights.filter(function(w) { return parseInt(w) < profile.fontWeightMin; });
-    if (lightWeights.length > 0) {
-      checks++;
-      findings.push({
-        severity: 'warning',
-        title: 'Font weight(s) ' + lightWeights.join(', ') + ' below minimum ' + profile.fontWeightMin + ' for this audience',
-        detail: 'Light and thin font weights reduce readability for users who need higher legibility',
-        fix: 'Use font-weight ' + profile.fontWeightMin + ' (regular) or heavier. Avoid font-weight 100–300.',
-        presetRef: null,
-        source: 'W3C WAI Older Users — https://www.w3.org/WAI/older-users/developing/'
-      });
-    } else {
-      checks++;
-      passed++;
-    }
-  }
-
-  // Letter spacing
-  var lsIssues = (data.typography && data.typography.letterSpacingIssues) || 0;
-  if (lsIssues > 0) {
-    findings.push({
-      severity: 'info',
-      title: lsIssues + ' element(s) with extreme letter-spacing',
-      detail: 'Very tight (< -0.03em) or very loose (> 0.15em) letter spacing reduces readability',
-      fix: 'Keep letter-spacing between -0.02em and 0.1em for body text. Tighter spacing is acceptable for large headings.',
-      presetRef: null,
-      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/letterspacing.html'
-    });
-  }
-
-  // Paragraph spacing
-  var pSpacing = (data.typography && data.typography.paragraphSpacing) || [];
-  if (pSpacing.length >= 3) {
-    checks++;
-    var bodyPx = parseFloat(data.typography.bodyFontSize) || 16;
-    var avgSpacing = pSpacing.reduce(function(s,v){return s+v},0) / pSpacing.length;
-    var spacingEm = avgSpacing / bodyPx;
-    if (spacingEm >= 0.5 && spacingEm <= 1.5) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: 'Paragraph spacing is ' + (Math.round(spacingEm * 100) / 100) + 'em (ideal: 0.75–1em)',
-        detail: spacingEm < 0.5 ? 'Paragraphs feel cramped' : 'Paragraph spacing may be too generous',
-        fix: 'Set paragraph margin-bottom to 0.75em–1em. In Tailwind: space-y-4 on the container or mb-4 on paragraphs.',
-        presetRef: null,
-        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/space-between-paragraphs.html'
-      });
-    }
-  }
-
-  // Max 2 typefaces
-  checks++;
-  var familyCount = (data.typography.fontFamilies || []).length;
-  if (familyCount <= 3) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: 'Using ' + familyCount + ' font families (recommended: max 2)',
-      detail: 'Too many typefaces make the design feel inconsistent',
-      fix: 'Use 1 sans-serif + 1 serif (or monospace for code). In Tailwind: font-sans + font-serif',
-      presetRef: null,
-      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/summary-of-key-rules.html'
-    });
-  }
-
-  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-  return { score: score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Typography', icon: 'type' };
-}
-
-
-  S.register("typography", scoreTypography, 15, "Typography", "type");
-})();
-</file>
-
 <file path="docs/ANALYZER-TODO.md">
 # Analyzer TODO
 
@@ -22000,46 +22179,90 @@ window.MilgReport = (function() {
     var checkDescriptions = {
       contrast: [
         { title: 'Text contrast ratio meets threshold', detail: 'All text elements have sufficient contrast against their backgrounds.', source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' },
-        { title: 'No undetermined contrast issues', detail: 'All background colors could be resolved (no complex gradients or images blocking analysis).' }
+        { title: 'No undetermined contrast issues', detail: 'All background colors could be resolved (no complex gradients or images blocking analysis).', source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' },
+        { title: 'Text uses real HTML (not images)', detail: 'Text is rendered as selectable HTML, not embedded in images.', source: 'WCAG 2.2 §1.4.5 — https://www.w3.org/TR/WCAG22/#images-of-text' },
+        { title: 'CVD-safe color palette', detail: 'Color pairs remain distinguishable under color vision deficiency simulation.', source: 'Machado et al. 2009 — https://www.inf.ufrgs.br/~oliveira/pubs_files/CVD_Simulation/CVD_Simulation.html' }
       ],
       type: [
-        { title: 'Body font size adequate', detail: 'Body text meets the minimum font size for this audience profile.', source: 'NNGroup — https://www.nngroup.com/articles/let-users-control-font-size/' },
+        { title: 'Body font size adequate', detail: 'Body text meets the minimum font size for this audience.', source: 'NNGroup — https://www.nngroup.com/articles/let-users-control-font-size/' },
         { title: 'Line height within range', detail: 'Body line-height provides comfortable reading spacing.', source: 'WCAG 2.2 §1.4.12 — https://www.w3.org/TR/WCAG22/#text-spacing' },
         { title: 'Line length under limit', detail: 'Content width constrains lines to a readable character count.', source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-length.html' },
-        { title: 'Heading scale consistent', detail: 'Headings follow a logical size progression from H1 down.' },
-        { title: 'Font weight count reasonable', detail: 'Uses 2-4 font weights, avoiding visual noise.' },
-        { title: 'Font family count under limit', detail: 'Uses 1-3 font families for visual consistency.' }
+        { title: 'Heading scale consistent', detail: 'Headings follow a logical size progression from H1 down.', source: 'Modular type scales — https://typescale.com/' },
+        { title: 'Font weight count reasonable', detail: 'Uses 2-4 font weights, avoiding visual noise.', source: 'Google Fonts — https://fonts.google.com/knowledge/using_type/choosing_reliable_typefaces' },
+        { title: 'Font family count under limit', detail: 'Uses 1-3 font families for visual consistency.', source: 'Butterick\'s Practical Typography — https://practicaltypography.com/summary-of-key-rules.html' },
+        { title: 'Paragraph spacing appropriate', detail: 'Paragraphs have comfortable spacing between them.', source: 'Butterick\'s Practical Typography — https://practicaltypography.com/space-between-paragraphs.html' }
       ],
       spacing: [
         { title: 'Spacing on 4px grid', detail: 'Spacing values align to a consistent base unit.', source: 'Material Design — https://m3.material.io/foundations/layout/applying-layout' },
-        { title: 'Content width constrained', detail: 'Content doesn\'t stretch to excessive widths.' },
-        { title: 'Body padding adequate', detail: 'Content has proper edge padding, not touching screen sides.' },
-        { title: 'No element overflow', detail: 'No content extends beyond its container boundaries.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' }
+        { title: 'Content width constrained', detail: 'Content doesn\'t stretch to excessive widths.', source: 'NNGroup — https://www.nngroup.com/articles/utilize-available-screen-space/' },
+        { title: 'Body padding adequate', detail: 'Content has proper edge padding, not touching screen sides.', source: 'Material Design — https://m3.material.io/foundations/layout/applying-layout' },
+        { title: 'No element overflow', detail: 'No content extends beyond its container boundaries.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' },
+        { title: 'Interactive element spacing adequate', detail: 'Buttons and links have enough gap between them to prevent mis-clicks.', source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum' }
       ],
       touch: [
-        { title: 'Interactive targets properly sized', detail: 'Buttons, links, and inputs meet minimum target size requirements.', source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum' },
-        { title: 'Transition durations appropriate', detail: 'Animations stay under 500ms for snappy interaction.', source: 'NNGroup — https://www.nngroup.com/articles/animation-usability/' }
+        { title: 'Interactive targets properly sized', detail: 'Buttons, links, and inputs meet minimum target size.', source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum' },
+        { title: 'Transition durations appropriate', detail: 'Animations stay under 500ms for responsive feel.', source: 'NNGroup — https://www.nngroup.com/articles/animation-usability/' },
+        { title: 'Touch-friendly on mobile', detail: 'Elements would pass touch target requirements on mobile viewports.', source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout' }
       ],
       a11y: [
-        { title: 'Semantic HTML landmarks present', detail: 'Page uses header, nav, main, and/or footer elements.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships' },
-        { title: 'Heading hierarchy intact', detail: 'Headings follow sequential order without gaps.' },
-        { title: 'Images have alt text', detail: 'All img elements include alt attributes.', source: 'WCAG 2.2 §1.1.1 — https://www.w3.org/TR/WCAG22/#non-text-content' },
-        { title: 'Form inputs labeled', detail: 'All form fields have associated labels.' },
-        { title: 'Focus indicators visible', detail: 'Interactive elements show visible focus styling.', source: 'WCAG 2.2 §2.4.7 — https://www.w3.org/TR/WCAG22/#focus-visible' },
-        { title: 'Language attribute set', detail: 'HTML element has a lang attribute for screen readers.', source: 'WCAG 2.2 §3.1.1 — https://www.w3.org/TR/WCAG22/#language-of-page' }
+        { title: 'Semantic HTML landmarks', detail: 'Page uses header, nav, main, and/or footer elements.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships' },
+        { title: 'Heading hierarchy intact', detail: 'Headings follow sequential order without gaps (h1 → h2 → h3).', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships' },
+        { title: 'Images have alt text', detail: 'All img elements include alt attributes for screen readers.', source: 'WCAG 2.2 §1.1.1 — https://www.w3.org/TR/WCAG22/#non-text-content' },
+        { title: 'Form inputs labeled', detail: 'All form fields have associated labels or aria-label.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships' },
+        { title: 'Focus indicators visible', detail: 'Interactive elements show visible focus styling for keyboard users.', source: 'WCAG 2.2 §2.4.7 — https://www.w3.org/TR/WCAG22/#focus-visible' },
+        { title: 'Language attribute set', detail: 'HTML element has a lang attribute for correct pronunciation.', source: 'WCAG 2.2 §3.1.1 — https://www.w3.org/TR/WCAG22/#language-of-page' },
+        { title: 'Skip navigation link', detail: 'Keyboard users can skip past navigation to reach main content.', source: 'WCAG 2.2 §2.4.1 — https://www.w3.org/TR/WCAG22/#bypass-blocks' },
+        { title: 'Descriptive link text', detail: 'Links use meaningful text instead of "click here" or "read more".', source: 'WCAG 2.2 §2.4.4 — https://www.w3.org/TR/WCAG22/#link-purpose-in-context' },
+        { title: 'No color-only indicators', detail: 'Status information uses icons or text in addition to color.', source: 'WCAG 2.2 §1.4.1 — https://www.w3.org/TR/WCAG22/#use-of-color' }
       ],
       responsive: [
-        { title: 'Responsive breakpoints detected', detail: 'CSS media queries or responsive utility classes are present.' },
+        { title: 'Responsive breakpoints detected', detail: 'CSS media queries or responsive utility classes are present.', source: 'NNGroup — https://www.nngroup.com/articles/responsive-web-design-definition/' },
+        { title: 'Dark mode support', detail: 'Page supports dark color scheme.', source: 'Apple HIG — https://developer.apple.com/design/human-interface-guidelines/dark-mode' },
         { title: 'Viewport meta tag correct', detail: 'Proper viewport configuration for mobile rendering.', source: 'MDN — https://developer.mozilla.org/en-US/docs/Web/HTML/Viewport_meta_tag' },
-        { title: 'No horizontal overflow', detail: 'Page content fits within viewport width.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' }
+        { title: 'User zoom not blocked', detail: 'Viewport doesn\'t prevent pinch-to-zoom.', source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text' },
+        { title: 'No horizontal overflow', detail: 'Page content fits within viewport width.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' },
+        { title: 'No fixed-width elements', detail: 'Elements use flexible widths that adapt to screen size.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' }
       ],
       consistency: [
-        { title: 'Color palette coherent', detail: 'Number of unique colors is within expected range for page complexity.' },
-        { title: 'Font size scale consistent', detail: 'Uses a limited set of font sizes from a type scale.' }
+        { title: 'Color palette coherent', detail: 'Number of unique colors is within expected range.', source: 'Material Design 3 — https://m3.material.io/styles/color/roles' },
+        { title: 'Font size scale consistent', detail: 'Uses a limited set of font sizes from a type scale.', source: 'Modular type scales — https://typescale.com/' },
+        { title: 'Border radius consistent', detail: 'Uses 2-4 standard border-radius values.', source: 'Material Design 3 — https://m3.material.io/styles/shape/overview' },
+        { title: 'Line height consistent', detail: 'Uses a small set of line-height values across the page.', source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-spacing.html' },
+        { title: 'Dark mode supported', detail: 'Page provides a dark color scheme option.', source: 'Apple HIG — https://developer.apple.com/design/human-interface-guidelines/dark-mode' }
       ],
       cognitive: [
-        { title: 'Content chunking appropriate', detail: 'Page sections and headings are within cognitive load limits.', source: 'Hick\'s Law — https://lawsofux.com/hicks-law/' },
-        { title: 'Form complexity manageable', detail: 'Visible form fields stay within recommended limits.', source: 'Miller\'s Law — https://lawsofux.com/millers-law/' }
+        { title: 'Content sections well-organized', detail: 'Page sections and headings are within cognitive load limits.', source: 'Hick\'s Law — https://lawsofux.com/hicks-law/' },
+        { title: 'Form complexity manageable', detail: 'Visible form fields stay within recommended limits.', source: 'Miller\'s Law — https://lawsofux.com/millers-law/' },
+        { title: 'Navigation count appropriate', detail: 'Top-level navigation items are within working memory limits.', source: 'Cowan (2001) — https://doi.org/10.1017/S0140525X01003922' },
+        { title: 'Reading level appropriate', detail: 'Content reading level matches the target audience.', source: 'WCAG 2.2 §3.1.5 — https://www.w3.org/TR/WCAG22/#reading-level' },
+        { title: 'Visual complexity manageable', detail: 'Number of unique colors doesn\'t overwhelm the user.', source: 'Material Design 3 — https://m3.material.io/styles/color/roles' },
+        { title: 'Heading hierarchy supports scanning', detail: 'Headings follow a logical order for easy content navigation.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships' }
+      ],
+      layout: [
+        { title: 'Section spacing consistent', detail: 'Gaps between major sections use uniform spacing.', source: 'Gestalt similarity — https://lawsofux.com/law-of-similarity/' },
+        { title: 'Alignment grid clean', detail: 'Elements share consistent alignment edges without jagged offsets.', source: 'Gestalt continuity — https://lawsofux.com/law-of-common-region/' },
+        { title: 'H1 visual hierarchy clear', detail: 'H1 stands out from body text at 2-4x size.', source: 'Modular type scales — https://typescale.com/' },
+        { title: 'H2 visual hierarchy appropriate', detail: 'H2 is clearly distinct from both H1 and body text.', source: 'Modular type scales — https://typescale.com/' },
+        { title: 'Border radius standardized', detail: 'Uses a consistent set of border-radius values.', source: 'Material Design 3 — https://m3.material.io/styles/shape/overview' },
+        { title: 'Page density manageable', detail: 'Element count is within comfortable range for the page type.', source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/' }
+      ],
+      readability: [
+        { title: 'Heading density adequate', detail: 'Headings break content into scannable sections.', source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/' },
+        { title: 'Headings are descriptive', detail: 'Heading text is long enough to be meaningful (not just icons/numbers).', source: 'NNGroup — https://www.nngroup.com/articles/headings-pickup-lines/' },
+        { title: 'No tiny text', detail: 'All text is at least 12px for readability.', source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text' },
+        { title: 'Reading level appropriate', detail: 'Coleman-Liau index indicates content matches target audience.', source: 'Coleman-Liau Index — https://en.wikipedia.org/wiki/Coleman%E2%80%93Liau_index' },
+        { title: 'Paragraph length manageable', detail: 'No paragraphs exceed 150 words.', source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/' },
+        { title: 'Lists used for scanability', detail: 'Content uses lists to break up sequences and improve scanning.', source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/' }
+      ],
+      performance: [
+        { title: 'Web fonts use font-display', detail: 'Font loading doesn\'t block text rendering.', source: 'Web.dev — https://web.dev/articles/font-display' },
+        { title: 'Render-blocking resources limited', detail: 'Few CSS/JS files block initial page render.', source: 'Web.dev — https://web.dev/articles/render-blocking-resources' },
+        { title: 'DOM size reasonable', detail: 'Page has a manageable number of DOM elements.', source: 'Chrome DevTools — https://developer.chrome.com/docs/lighthouse/performance/dom-size' },
+        { title: 'DOM nesting depth OK', detail: 'HTML nesting doesn\'t exceed recommended depth.', source: 'Chrome DevTools — https://developer.chrome.com/docs/lighthouse/performance/dom-size' },
+        { title: 'Third-party scripts limited', detail: 'External script count is within reasonable bounds.', source: 'Web.dev — https://web.dev/articles/optimizing-third-party-javascript' },
+        { title: 'Modern image formats used', detail: 'Images use WebP or AVIF for smaller file sizes.', source: 'Web.dev — https://web.dev/articles/serve-images-webp' },
+        { title: 'CLS within target', detail: 'Cumulative Layout Shift is below 0.1 threshold.', source: 'Web Vitals — https://web.dev/articles/cls' },
+        { title: 'LCP within target', detail: 'Largest Contentful Paint is below 2.5s threshold.', source: 'Web Vitals — https://web.dev/articles/lcp' }
       ]
     };
 
@@ -26335,51 +26558,33 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
 
   // --- Screenshot capture script (injected into iframes after extraction) ---
   function buildScreenshotScript(msgType) {
-    // This runs inside the iframe. Loads modern-screenshot via CDN, captures
-    // the full page (or viewport sections for tall pages) as WebP at 0.5x scale.
+    // Runs inside iframe. Loads modern-screenshot, captures page as viewport-height
+    // sections at 0.5x scale as WebP. Always multi-section for reliability.
     return '(function(){' +
       'var s=document.createElement("script");' +
       's.src="' + SCREENSHOT_CDN + '";' +
       's.onload=function(){' +
         'var ms=window.modernScreenshot;' +
         'if(!ms||!ms.domToCanvas){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*");return}' +
-        'var body=document.body;' +
-        'var totalH=Math.max(body.scrollHeight,document.documentElement.scrollHeight);' +
-        'var vw=window.innerWidth||1280;' +
-        // Cap at 32000px to stay within canvas limits at 0.5x scale
-        'var captureH=Math.min(totalH,32000);' +
-        // For pages under ~8000px, capture full page in one shot
-        // For taller pages, capture viewport-height sections
+        'var totalH=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);' +
         'var vh=window.innerHeight||900;' +
-        'if(captureH<=vh*3){' +
-          // Single full-page capture
-          'ms.domToCanvas(document.documentElement,{scale:0.5}).then(function(c){' +
-            'c.toBlob(function(b){' +
-              'if(!b){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*");return}' +
-              'var r=new FileReader();' +
-              'r.onloadend=function(){parent.postMessage({type:"' + msgType + '",screenshots:[r.result]},"*")};' +
-              'r.readAsDataURL(b)' +
-            '},"image/webp",0.7)' +
-          '}).catch(function(){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")});' +
-        '}else{' +
-          // Multi-section capture for tall pages
-          'var shots=[];var y=0;var secH=vh;' +
-          'function next(){' +
-            'if(y>=captureH||shots.length>=5){parent.postMessage({type:"' + msgType + '",screenshots:shots},"*");return}' +
-            'window.scrollTo(0,y);' +
-            'setTimeout(function(){' +
-              'ms.domToCanvas(document.documentElement,{scale:0.5,width:vw,height:Math.min(secH,captureH-y)}).then(function(c){' +
-                'c.toBlob(function(b){' +
-                  'if(!b){y+=secH;next();return}' +
-                  'var r=new FileReader();' +
-                  'r.onloadend=function(){shots.push(r.result);y+=secH;next()};' +
-                  'r.readAsDataURL(b)' +
-                '},"image/webp",0.7)' +
-              '}).catch(function(){y+=secH;next()})' +
-            '},150)' +
-          '}' +
-          'next()' +
+        'var captureH=Math.min(totalH,vh*5);' + // max 5 viewports
+        'var shots=[];var y=0;' +
+        'function next(){' +
+          'if(y>=captureH||shots.length>=5){parent.postMessage({type:"' + msgType + '",screenshots:shots},"*");return}' +
+          'window.scrollTo(0,y);' +
+          'setTimeout(function(){' +
+            'ms.domToCanvas(document.documentElement,{scale:0.5}).then(function(c){' +
+              'c.toBlob(function(b){' +
+                'if(!b){y+=vh;next();return}' +
+                'var r=new FileReader();' +
+                'r.onloadend=function(){shots.push(r.result);y+=vh;next()};' +
+                'r.readAsDataURL(b)' +
+              '},"image/webp",0.7)' +
+            '}).catch(function(){y+=vh;next()})' +
+          '},200)' +
         '}' +
+        'next()' +
       '};' +
       's.onerror=function(){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")};' +
       'document.head.appendChild(s)' +

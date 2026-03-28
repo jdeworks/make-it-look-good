@@ -98,6 +98,69 @@ function scoreCognitiveLoad(data) {
     }
   }
 
+  // Unique color count as cognitive noise indicator
+  var textColors = (data.colors && data.colors.textColors) || [];
+  var bgColors = (data.colors && data.colors.bgColors) || [];
+  if (textColors.length + bgColors.length > 0) {
+    checks++;
+    var uniqueColors = textColors.length + bgColors.length;
+    if (uniqueColors <= 30) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: uniqueColors + ' unique colors — high visual complexity',
+        detail: 'Many distinct colors increase cognitive load and make the page harder to parse.',
+        fix: 'Consolidate to a systematic palette: primary + neutral + 3 semantic colors.',
+        source: 'Material Design 3 — https://m3.material.io/styles/color/roles'
+      });
+    }
+  }
+
+  // Interactive element density
+  var touchTargets = (data.interaction && data.interaction.touchTargets) || [];
+  var totalElements = (data.structure && data.structure.totalElements) || 100;
+  if (totalElements > 30) {
+    checks++;
+    // Count all interactive elements (touch issues + those that passed)
+    var interactiveCount = touchTargets.length + Math.round(totalElements * 0.1); // rough estimate
+    var density = interactiveCount / totalElements;
+    if (density < 0.4) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: 'High interactive element density',
+        detail: 'Many clickable elements relative to content can overwhelm users.',
+        fix: 'Group related actions. Use progressive disclosure to hide secondary actions.',
+        source: 'Hick\'s Law — https://lawsofux.com/hicks-law/'
+      });
+    }
+  }
+
+  // Consistent heading hierarchy (cognitive predictability)
+  var headingHierarchy = (data.accessibility && data.accessibility.headingHierarchy) || [];
+  if (headingHierarchy.length >= 2) {
+    checks++;
+    var hierarchyBroken = false;
+    for (var hi = 1; hi < headingHierarchy.length; hi++) {
+      var prevLevel = parseInt(headingHierarchy[hi - 1].charAt(1));
+      var currLevel = parseInt(headingHierarchy[hi].charAt(1));
+      if (currLevel > prevLevel + 1) { hierarchyBroken = true; break; }
+    }
+    if (!hierarchyBroken) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'warning',
+        title: 'Heading hierarchy gaps break mental model',
+        detail: 'Skipped heading levels (e.g., h1 → h3) make it harder for users to understand content structure.',
+        fix: 'Use headings in order: h1 → h2 → h3. Don\'t skip levels.',
+        source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
+      });
+    }
+  }
+
   var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
   var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
   var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
