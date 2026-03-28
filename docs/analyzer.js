@@ -1115,10 +1115,15 @@
     var hasLimitedContent = elCount < 20 || contentWidth < 100;
     // JS-dependent pages: have HTML elements but almost no visible text/headings
     var isJsDependent = elCount > 20 && contrastPairCount < 3 && headingCount < 1;
-    if (hasLimitedContent || isJsDependent) {
+    // Also flag pages with very few text colors (likely unstyled/broken render)
+    var textColorCount = (data.colors && data.colors.textColors) ? data.colors.textColors.length : 0;
+    var isBareBones = elCount > 5 && elCount < 50 && textColorCount <= 2 && contentWidth < 200;
+    if (hasLimitedContent || isJsDependent || isBareBones) {
       var reason = hasLimitedContent
         ? 'Limited content detected (' + elCount + ' elements)'
-        : 'This page requires JavaScript to render (' + elCount + ' elements but almost no visible text)';
+        : isJsDependent
+        ? 'This page requires JavaScript to render (' + elCount + ' elements but almost no visible text)'
+        : 'Page appears incomplete or improperly loaded (' + elCount + ' elements, ' + textColorCount + ' text colors)';
       warningHtml = '<div style="padding:16px 20px;background:#fffbeb;border:2px solid #f59e0b;border-radius:var(--radius);margin-bottom:16px;font-size:14px;line-height:1.6">' +
         '<div style="display:flex;align-items:flex-start;gap:12px">' +
         '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#b45309" stroke-width="2" style="flex-shrink:0;margin-top:2px"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>' +

@@ -58,9 +58,12 @@ function initMonaco() {
 }
 
 // Compatibility layer — replaces editor.value usage
+// _fallbackValue stores content when Monaco isn't available (mobile)
+var _fallbackValue = '';
 const editor = {
-  get value() { return monacoEditor ? monacoEditor.getValue() : ''; },
+  get value() { return monacoEditor ? monacoEditor.getValue() : _fallbackValue; },
   set value(v) {
+    _fallbackValue = v;
     if (!monacoEditor) return;
     suppressChangeEvent = true;
     monacoEditor.setValue(v);
@@ -1561,25 +1564,28 @@ function startApp() {
   initMonaco();
   initMobile();
   loadFromHash().then(async () => {
-    if (!editor.value) {
+    var editorVal = editor.value;
+    if (!editorVal || editorVal.trim().length === 0) {
       // No hash preset and editor empty — load a random template
       try {
-        await loadManifest();
-        if (manifestData && manifestData.elements) {
-          var elements = Object.keys(manifestData.elements);
-          // Prefer well-known presets that look good as demos
+        var manifest = await loadManifest();
+        if (manifest && manifest.elements) {
+          var elements = Object.keys(manifest.elements);
           var preferred = ['landing', 'dashboard', 'cards', 'form', 'project'];
           var pick = preferred.find(function(p) { return elements.indexOf(p) !== -1; });
           if (!pick) pick = elements[Math.floor(Math.random() * elements.length)];
-          var pers = manifestData.elements[pick].personalities || {};
+          var pers = manifest.elements[pick].personalities || {};
           var persNames = Array.isArray(pers) ? pers : Object.keys(pers);
           var randomPers = persNames.indexOf('clean') !== -1 ? 'clean' : (persNames[0] || 'clean');
+          console.log('[milg] Auto-loading template:', pick + '/' + randomPers);
           await loadPreset(pick, randomPers);
+          console.log('[milg] Template loaded, editor has', editor.value.length, 'chars');
         } else {
+          console.warn('[milg] No manifest data — showing empty preview');
           updatePreview();
         }
       } catch(e) {
-        console.warn('Failed to auto-load template:', e);
+        console.warn('[milg] Failed to auto-load template:', e);
         updatePreview();
       }
     }
