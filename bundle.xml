@@ -82,6 +82,7 @@ docs/
     edge-performance.html
     edge-readability.html
     run-edge-cases.html
+    test-scoring.html
   analyzer-report.js
   analyzer-snippet-screenshots.js
   analyzer-snippet.js
@@ -915,6 +916,284 @@ What type of element needs contrast checking?
 - [WCAG 2.2 — Success Criterion 1.4.6 Contrast (Enhanced)](https://www.w3.org/WAI/WCAG22/Understanding/contrast-enhanced)
 - [WCAG 2.2 — Success Criterion 1.4.11 Non-text Contrast](https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast)
 - [WebAIM — Contrast and Color Accessibility](https://webaim.org/articles/contrast/)
+</file>
+
+<file path="docs/tests/test-scoring.html">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scoring Module Tests</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; background: #f8fafc; }
+    h1 { font-size: 20px; margin-bottom: 16px; }
+    .test { padding: 8px 12px; margin: 4px 0; border-radius: 6px; font-size: 13px; font-family: monospace; }
+    .pass { background: #f0fdf4; border: 1px solid #bbf7d0; color: #16a34a; }
+    .fail { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; }
+    .summary { margin-top: 16px; padding: 12px; border-radius: 8px; font-weight: 600; font-size: 15px; }
+    .summary.all-pass { background: #f0fdf4; color: #16a34a; border: 2px solid #16a34a; }
+    .summary.has-fail { background: #fef2f2; color: #dc2626; border: 2px solid #dc2626; }
+    #results { max-width: 800px; }
+  </style>
+</head>
+<body>
+  <h1>Scoring Module Tests</h1>
+  <div id="results">Loading modules...</div>
+
+  <!-- Load scoring modules -->
+  <script src="../scoring/registry.js"></script>
+  <script src="../scoring/contrast.js"></script>
+  <script src="../scoring/typography.js"></script>
+  <script src="../scoring/spacing.js"></script>
+  <script src="../scoring/touch.js"></script>
+  <script src="../scoring/accessibility.js"></script>
+  <script src="../scoring/responsive.js"></script>
+  <script src="../scoring/consistency.js"></script>
+  <script src="../scoring/cognitive.js"></script>
+  <script src="../scoring/layout.js"></script>
+  <script src="../scoring/performance.js"></script>
+  <script src="../scoring/readability.js"></script>
+  <script src="../scoring/filters.js"></script>
+  <script src="../scoring/balance.js"></script>
+
+  <script>
+    var results = [];
+    var passed = 0;
+    var failed = 0;
+
+    function assert(name, condition, detail) {
+      if (condition) {
+        results.push({ name: name, pass: true });
+        passed++;
+      } else {
+        results.push({ name: name, pass: false, detail: detail || 'assertion failed' });
+        failed++;
+      }
+    }
+
+    // --- Minimal valid extraction data ---
+    function makeData(overrides) {
+      var base = {
+        meta: { title: 'Test', url: 'https://test.com', viewportWidth: 1280, viewportHeight: 900, timestamp: new Date().toISOString(), version: 1 },
+        colors: { textColors: [{ value: '#000', count: 10 }], bgColors: [{ value: '#fff', count: 10 }], contrastPairs: [] },
+        typography: { bodyFontSize: '16px', bodyLineHeight: '24px', bodyFontFamily: 'sans-serif', fontFamilies: ['sans-serif'], fontSizes: [{ value: '16px', count: 10 }], fontWeights: [{ value: '400', count: 10 }, { value: '700', count: 5 }], headings: [{ tag: 'h1', text: 'Test', fontSize: '32px', fontWeight: '700', lineHeight: '40px', fontFamily: 'sans-serif' }], lineHeights: [{ value: 1.5, count: 10 }], maxLineLength: { chars: 65, element: 'p' } },
+        spacing: { paddings: [{ value: '16px', count: 10 }], margins: [{ value: '16px', count: 10 }], gaps: [{ value: '16px', count: 5 }], maxContentWidth: '1200px', bodyPaddingHorizontal: '16px' },
+        layout: { sectionGaps: [64, 64, 64], alignmentEdges: [16, 16, 16, 16, 16], visualHierarchy: { h1ToBody: 2, h2ToBody: 1.5, bodySize: 16 }, borderRadii: [{ value: '8px', count: 10 }] },
+        interaction: { touchTargets: [], transitions: ['0.15s'], adjacentIssues: [] },
+        accessibility: { semanticElements: { header: 1, nav: 1, main: 1, footer: 1, section: 3, article: 0, aside: 0 }, headingHierarchy: ['h1', 'h2', 'h3'], imagesWithoutAlt: 0, formLabels: { total: 2, withLabel: 2, withoutLabel: 0 }, focusIndicators: [{ element: 'button', outlineStyle: 'solid', outlineWidth: '2px', outlineColor: 'blue', outlineOffset: '2px' }], hasFocusVisibleCSS: true, langAttribute: true, hasSkipLink: true, badLinkTexts: [], missingAutocomplete: 0, ariaIssues: [], colorOnlyIndicators: 0, autoPlayMedia: 0, navItemCount: 5 },
+        structure: { totalElements: 100, darkModeClasses: true, responsiveClasses: true, tailwindDetected: true, cssFramework: 'tailwind', viewportMeta: 'width=device-width, initial-scale=1.0', blocksZoom: false, hasHorizontalOverflow: false, fixedWidthElements: 0, truncatedElements: 0 },
+        context: { pageType: 'content' },
+        animation: { keyframeCount: 0, hasReducedMotion: true, hiddenElements: 0, scrollRevealPatterns: [] },
+        performance: { fontLoading: [], renderBlocking: { cssInHead: 1, jsInHead: 0 }, domSize: 100, domDepth: 8, thirdPartyScripts: 2, imageFormats: { modern: 3, legacy: 0 }, cls: 0.02, lcp: { time: 1500, element: 'img', size: 50000 }, nonResponsiveImages: 0 },
+        readability: { gradeLevel: 8 }
+      };
+      if (overrides) {
+        Object.keys(overrides).forEach(function(k) {
+          if (typeof overrides[k] === 'object' && !Array.isArray(overrides[k]) && base[k]) {
+            Object.keys(overrides[k]).forEach(function(k2) { base[k][k2] = overrides[k][k2]; });
+          } else {
+            base[k] = overrides[k];
+          }
+        });
+      }
+      return base;
+    }
+
+    // =========================================================
+    // TEST 1: All modules run without errors on valid data
+    // =========================================================
+    (function() {
+      var profiles = ['general', 'wcag_aaa', 'elderly', 'low_vision', 'motor_impairment', 'color_blind', 'children', 'cognitive'];
+      profiles.forEach(function(profile) {
+        try {
+          var data = makeData({ profile: profile });
+          var result = MilgScoring.runScoring(data);
+          assert('runScoring(' + profile + ') completes', result && typeof result.overall === 'number', 'result: ' + JSON.stringify(result && result.overall));
+          assert('runScoring(' + profile + ') score 0-100', result.overall >= 0 && result.overall <= 100, 'score: ' + result.overall);
+          assert('runScoring(' + profile + ') has categories', result.categories && result.categories.length > 0, 'categories: ' + (result.categories && result.categories.length));
+
+          // Check all categories have required fields
+          result.categories.forEach(function(cat) {
+            assert(profile + '/' + cat.label + ' has score', typeof cat.score === 'number' && cat.score >= 0 && cat.score <= 100, 'score: ' + cat.score);
+            assert(profile + '/' + cat.label + ' has findings array', Array.isArray(cat.findings), 'findings: ' + typeof cat.findings);
+            assert(profile + '/' + cat.label + ' has checks count', typeof cat.checks === 'number' || cat.checks === undefined, 'checks: ' + cat.checks);
+          });
+        } catch(e) {
+          assert('runScoring(' + profile + ') no error', false, e.message + ' at ' + (e.stack || '').split('\n')[1]);
+        }
+      });
+    })();
+
+    // =========================================================
+    // TEST 2: Good data should score well (>= 80)
+    // =========================================================
+    (function() {
+      var data = makeData();
+      var result = MilgScoring.runScoring(data);
+      assert('Good data scores >= 80', result.overall >= 80, 'score: ' + result.overall);
+      assert('Good data grade A or B', result.grade === 'A' || result.grade === 'B', 'grade: ' + result.grade);
+    })();
+
+    // =========================================================
+    // TEST 3: Contrast failures lower score
+    // =========================================================
+    (function() {
+      var data = makeData({
+        colors: {
+          textColors: [{ value: '#999', count: 5 }],
+          bgColors: [{ value: '#fff', count: 5 }],
+          contrastPairs: [
+            { fg: 'rgb(153,153,153)', bg: 'rgb(255,255,255)', ratio: 2.85, needed: 4.5, passes: false, fontSize: 16, fontWeight: 400, isLarge: false, text: 'Low contrast text', selector: 'p', filter: '' },
+            { fg: 'rgb(153,153,153)', bg: 'rgb(255,255,255)', ratio: 2.85, needed: 4.5, passes: false, fontSize: 16, fontWeight: 400, isLarge: false, text: 'Another low contrast', selector: 'span', filter: '' }
+          ]
+        }
+      });
+      var result = MilgScoring.runScoring(data);
+      var contrastCat = result.categories.find(function(c) { return c.label === 'Color & Contrast'; });
+      assert('Contrast failures produce errors', contrastCat.findings.some(function(f) { return f.severity === 'error'; }), 'findings: ' + contrastCat.findings.length);
+      assert('Contrast score < 100', contrastCat.score < 100, 'score: ' + contrastCat.score);
+    })();
+
+    // =========================================================
+    // TEST 4: Touch target issues
+    // =========================================================
+    (function() {
+      var data = makeData({
+        interaction: {
+          touchTargets: [
+            { element: 'button', width: 20, height: 20, text: 'Tiny button', selector: 'button.tiny', passes: false, isButton: true, linkContext: 'button' },
+            { element: 'a', width: 30, height: 15, text: 'Footer link', selector: 'a', passes: false, isButton: false, linkContext: 'footer' },
+            { element: 'a', width: 50, height: 12, text: 'Inline link', selector: 'a', passes: false, isButton: false, linkContext: 'inline' }
+          ],
+          transitions: ['0.2s']
+        }
+      });
+      var result = MilgScoring.runScoring(data);
+      var touchCat = result.categories.find(function(c) { return c.label === 'Touch & Interaction'; });
+      var errors = touchCat.findings.filter(function(f) { return f.severity === 'error'; });
+      var infos = touchCat.findings.filter(function(f) { return f.severity === 'info'; });
+      assert('Button gets error', errors.some(function(f) { return f.title.indexOf('button') !== -1; }), 'errors: ' + errors.map(function(f){return f.title}).join('; '));
+      assert('Footer link gets info or error', touchCat.findings.some(function(f) { return f.title.indexOf('Footer') !== -1; }), 'findings: ' + touchCat.findings.map(function(f){return f.title}).join('; '));
+      assert('Inline link gets info (exempt)', infos.some(function(f) { return f.title.indexOf('Inline') !== -1 || f.title.indexOf('inline') !== -1; }), 'infos: ' + infos.map(function(f){return f.title}).join('; '));
+    })();
+
+    // =========================================================
+    // TEST 5: Profile differentiation
+    // =========================================================
+    (function() {
+      var data = makeData({
+        typography: { bodyFontSize: '15px', bodyLineHeight: '22px', bodyFontFamily: 'sans-serif', fontFamilies: ['sans-serif'], fontSizes: [{ value: '15px', count: 10 }], fontWeights: [{ value: '400', count: 10 }], headings: [{ tag: 'h1', text: 'Test', fontSize: '32px', fontWeight: '700', lineHeight: '40px', fontFamily: 'sans-serif' }], lineHeights: [{ value: 1.47, count: 10 }], maxLineLength: { chars: 70, element: 'p' } }
+      });
+      var generalResult = MilgScoring.runScoring(makeData(Object.assign({}, data, { profile: 'general' })));
+      var elderlyResult = MilgScoring.runScoring(makeData(Object.assign({}, data, { profile: 'elderly' })));
+      var childResult = MilgScoring.runScoring(makeData(Object.assign({}, data, { profile: 'children' })));
+
+      assert('Elderly scores lower than general for 15px font', elderlyResult.overall <= generalResult.overall, 'elderly: ' + elderlyResult.overall + ' general: ' + generalResult.overall);
+      assert('Children scores different from general', childResult.overall !== generalResult.overall || childResult.categories.some(function(c, i) { return c.findings.length !== generalResult.categories[i].findings.length; }), 'findings differ');
+    })();
+
+    // =========================================================
+    // TEST 6: CVD simulation (color_blind profile)
+    // =========================================================
+    (function() {
+      var data = makeData({
+        profile: 'color_blind',
+        colors: {
+          textColors: [{ value: 'rgb(255,0,0)', count: 3 }, { value: 'rgb(0,128,0)', count: 3 }],
+          bgColors: [{ value: 'rgb(255,255,255)', count: 10 }],
+          contrastPairs: [
+            { fg: 'rgb(255,0,0)', bg: 'rgb(255,255,255)', ratio: 4, needed: 4.5, passes: false, fontSize: 16, fontWeight: 400, isLarge: false, text: 'Red text', selector: 'span.red', filter: '' },
+            { fg: 'rgb(0,128,0)', bg: 'rgb(255,255,255)', ratio: 4.6, needed: 4.5, passes: true, fontSize: 16, fontWeight: 400, isLarge: false, text: 'Green text', selector: 'span.green', filter: '' }
+          ]
+        }
+      });
+      try {
+        var result = MilgScoring.runScoring(data);
+        assert('CVD profile runs without error', true);
+        var contrastCat = result.categories.find(function(c) { return c.label === 'Color & Contrast'; });
+        assert('CVD has contrast findings', contrastCat.findings.length > 0, 'findings: ' + contrastCat.findings.length);
+      } catch(e) {
+        assert('CVD profile no error', false, e.message);
+      }
+    })();
+
+    // =========================================================
+    // TEST 7: Cognitive profile checks
+    // =========================================================
+    (function() {
+      var data = makeData({
+        profile: 'cognitive',
+        accessibility: {
+          semanticElements: { header: 1, nav: 1, main: 1, footer: 1 },
+          headingHierarchy: ['h1', 'h2', 'h3'], imagesWithoutAlt: 0,
+          formLabels: { total: 0, withLabel: 0, withoutLabel: 0 },
+          focusIndicators: [], hasFocusVisibleCSS: true, langAttribute: true,
+          hasSkipLink: true, badLinkTexts: [], missingAutocomplete: 0,
+          ariaIssues: [], colorOnlyIndicators: 0, autoPlayMedia: 0,
+          navItemCount: 12 // exceeds max 5 for cognitive
+        },
+        readability: { gradeLevel: 12 } // exceeds max 8 for cognitive
+      });
+      var result = MilgScoring.runScoring(data);
+      var cogCat = result.categories.find(function(c) { return c.label === 'Cognitive Load'; });
+      assert('Cognitive profile flags high nav count', cogCat.findings.some(function(f) { return f.title.indexOf('navigation') !== -1; }), 'findings: ' + cogCat.findings.map(function(f){return f.title}).join('; '));
+      assert('Cognitive profile flags high reading level', cogCat.findings.some(function(f) { return f.title.indexOf('Reading level') !== -1 || f.title.indexOf('reading') !== -1; }), 'findings: ' + cogCat.findings.map(function(f){return f.title}).join('; '));
+    })();
+
+    // =========================================================
+    // TEST 8: All modules return checks/passed
+    // =========================================================
+    (function() {
+      var data = makeData();
+      var result = MilgScoring.runScoring(data);
+      result.categories.forEach(function(cat) {
+        assert(cat.label + ' has checks count', cat.checks !== undefined && cat.checks >= 0, 'checks: ' + cat.checks);
+      });
+    })();
+
+    // =========================================================
+    // TEST 9: Registry utilities
+    // =========================================================
+    (function() {
+      // parseColor
+      var c = MilgScoring.parseColor('rgb(255, 0, 0)');
+      assert('parseColor rgb()', c && c.r === 255 && c.g === 0 && c.b === 0, JSON.stringify(c));
+
+      var c2 = MilgScoring.parseColor('rgba(0, 128, 255, 0.5)');
+      assert('parseColor rgba()', c2 && c2.r === 0 && c2.g === 128 && c2.b === 255 && c2.a === 0.5, JSON.stringify(c2));
+
+      // contrastRatio
+      var ratio = MilgScoring.contrastRatio({ r: 0, g: 0, b: 0 }, { r: 255, g: 255, b: 255 });
+      assert('contrastRatio black/white = 21', Math.abs(ratio - 21) < 0.1, 'ratio: ' + ratio);
+
+      // CVD simulation
+      var sim = MilgScoring.simulateCVD({ r: 255, g: 0, b: 0 }, MilgScoring.CVD_MATRICES.protanopia);
+      assert('CVD simulation produces valid color', sim && sim.r >= 0 && sim.r <= 255 && sim.g >= 0 && sim.b >= 0, JSON.stringify(sim));
+      assert('CVD protanopia dims red', sim.r < 200, 'r: ' + sim.r); // red looks much darker/different under protanopia
+    })();
+
+    // =========================================================
+    // RENDER RESULTS
+    // =========================================================
+    var html = '';
+    results.forEach(function(r) {
+      html += '<div class="test ' + (r.pass ? 'pass' : 'fail') + '">';
+      html += (r.pass ? '✓' : '✗') + ' ' + r.name;
+      if (!r.pass && r.detail) html += ' — <strong>' + r.detail + '</strong>';
+      html += '</div>';
+    });
+    html += '<div class="summary ' + (failed === 0 ? 'all-pass' : 'has-fail') + '">';
+    html += passed + ' passed, ' + failed + ' failed';
+    html += '</div>';
+    document.getElementById('results').innerHTML = html;
+
+    // Also log for CI
+    console.log('Scoring tests: ' + passed + ' passed, ' + failed + ' failed');
+    if (failed > 0) console.error('FAILURES:', results.filter(function(r) { return !r.pass; }).map(function(r) { return r.name + ': ' + r.detail; }));
+  </script>
+</body>
+</html>
 </file>
 
 <file path="foundations/aesthetic-usability.md">
@@ -17117,6 +17396,62 @@ Not every section is required, but **Concrete Rules** and **CSS/Implementation P
 - `research/` — Raw research data (gitignored except sources.md)
 </file>
 
+<file path="docs/presets/index.json">
+{
+  "categories": [
+    { "label": "Layouts", "elements": ["shell-sidebar", "shell-marketing", "shell-dashboard", "shell-form"] },
+    { "label": "Components", "elements": ["hero", "stats-row", "data-table", "card-grid", "pricing-cards", "feature-grid", "tabs", "accordion", "pagination", "dropdown", "avatars"] },
+    { "label": "Before → After", "elements": ["dashboard", "landing", "form", "cards", "project"] },
+    { "label": "Full Pages", "elements": ["pricing", "portfolio", "restaurant", "statuspage"] },
+    { "label": "Expressive", "elements": ["personal-hero", "agency-landing", "agency-portfolio", "app-showcase", "scroll-reveal-landing", "product-launch", "editorial-blog", "saas-features", "scroll-story", "product-page", "devtool-landing", "docs-site", "event-page", "jdeworks-personal"] },
+    { "label": "Edge Cases", "elements": ["deploy", "buttons", "osslanding"] }
+  ],
+  "elements": {
+    "dashboard": { "label": "Dashboard", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "landing": { "label": "Landing Page", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
+    "form": { "label": "Form", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
+    "cards": { "label": "Card Grid", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "project": { "label": "Multi-Page App", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
+    "pricing": { "label": "SaaS Pricing", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "portfolio": { "label": "Portfolio (Dark)", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "restaurant": { "label": "Restaurant (Warm)", "personalities": { "clean": { "primaryColor": "amber" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "statuspage": { "label": "Status Page", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "deploy": { "label": "Deploy Monitor", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "buttons": { "label": "Button System", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "osslanding": { "label": "OSS Landing", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "shell-sidebar": { "label": "App Shell (Sidebar)", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "shell-marketing": { "label": "Marketing Page", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "shell-dashboard": { "label": "Dashboard Shell", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "shell-form": { "label": "Centered Form", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "hero": { "label": "Hero Section", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "stats-row": { "label": "Stats Row", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "data-table": { "label": "Data Table", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "card-grid": { "label": "Card Grid", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "pricing-cards": { "label": "Pricing Cards", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "feature-grid": { "label": "Feature Grid", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "tabs": { "label": "Tabs", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "accordion": { "label": "Accordion", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "pagination": { "label": "Pagination", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "dropdown": { "label": "Dropdown Menu", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "avatars": { "label": "Avatar Group", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "personal-hero": { "label": "Personal Site", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "agency-landing": { "label": "Agency Landing", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "product-launch": { "label": "Product Launch", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "editorial-blog": { "label": "Editorial Blog", "personalities": { "clean": { "primaryColor": "slate" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "saas-features": { "label": "SaaS Features", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "scroll-story": { "label": "Scroll Story", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "product-page": { "label": "Product Page", "personalities": { "clean": { "primaryColor": "sky" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "devtool-landing": { "label": "DevTool Landing", "personalities": { "clean": { "primaryColor": "cyan" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "docs-site": { "label": "Docs Site", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "event-page": { "label": "Event Page", "personalities": { "clean": { "primaryColor": "amber" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "jdeworks-personal": { "label": "JDE Personal", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "agency-portfolio": { "label": "Agency Portfolio", "personalities": { "clean": { "primaryColor": "teal" } } },
+    "app-showcase": { "label": "App Showcase", "personalities": { "clean": { "primaryColor": "orange" } } },
+    "scroll-reveal-landing": { "label": "Scroll Reveal Landing", "personalities": { "clean": { "primaryColor": "sky" } } }
+  }
+}
+</file>
+
 <file path="docs/scoring/cognitive.js">
 // Scoring Module: Cognitive Load
 // Weight: 5%
@@ -17558,62 +17893,6 @@ function scoreLayout(data) {
 
   S.register("layout", scoreLayout, 5, "Layout Quality", "spacing");
 })();
-</file>
-
-<file path="docs/presets/index.json">
-{
-  "categories": [
-    { "label": "Layouts", "elements": ["shell-sidebar", "shell-marketing", "shell-dashboard", "shell-form"] },
-    { "label": "Components", "elements": ["hero", "stats-row", "data-table", "card-grid", "pricing-cards", "feature-grid", "tabs", "accordion", "pagination", "dropdown", "avatars"] },
-    { "label": "Before → After", "elements": ["dashboard", "landing", "form", "cards", "project"] },
-    { "label": "Full Pages", "elements": ["pricing", "portfolio", "restaurant", "statuspage"] },
-    { "label": "Expressive", "elements": ["personal-hero", "agency-landing", "agency-portfolio", "app-showcase", "scroll-reveal-landing", "product-launch", "editorial-blog", "saas-features", "scroll-story", "product-page", "devtool-landing", "docs-site", "event-page", "jdeworks-personal"] },
-    { "label": "Edge Cases", "elements": ["deploy", "buttons", "osslanding"] }
-  ],
-  "elements": {
-    "dashboard": { "label": "Dashboard", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "landing": { "label": "Landing Page", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
-    "form": { "label": "Form", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
-    "cards": { "label": "Card Grid", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "project": { "label": "Multi-Page App", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
-    "pricing": { "label": "SaaS Pricing", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "portfolio": { "label": "Portfolio (Dark)", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "restaurant": { "label": "Restaurant (Warm)", "personalities": { "clean": { "primaryColor": "amber" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "statuspage": { "label": "Status Page", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "deploy": { "label": "Deploy Monitor", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "buttons": { "label": "Button System", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "osslanding": { "label": "OSS Landing", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "shell-sidebar": { "label": "App Shell (Sidebar)", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "shell-marketing": { "label": "Marketing Page", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "shell-dashboard": { "label": "Dashboard Shell", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "shell-form": { "label": "Centered Form", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "hero": { "label": "Hero Section", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "stats-row": { "label": "Stats Row", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "data-table": { "label": "Data Table", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "card-grid": { "label": "Card Grid", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "pricing-cards": { "label": "Pricing Cards", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "feature-grid": { "label": "Feature Grid", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "tabs": { "label": "Tabs", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "accordion": { "label": "Accordion", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "pagination": { "label": "Pagination", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "dropdown": { "label": "Dropdown Menu", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "avatars": { "label": "Avatar Group", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "personal-hero": { "label": "Personal Site", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "agency-landing": { "label": "Agency Landing", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "product-launch": { "label": "Product Launch", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "editorial-blog": { "label": "Editorial Blog", "personalities": { "clean": { "primaryColor": "slate" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "saas-features": { "label": "SaaS Features", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "scroll-story": { "label": "Scroll Story", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "product-page": { "label": "Product Page", "personalities": { "clean": { "primaryColor": "sky" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "devtool-landing": { "label": "DevTool Landing", "personalities": { "clean": { "primaryColor": "cyan" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "docs-site": { "label": "Docs Site", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "event-page": { "label": "Event Page", "personalities": { "clean": { "primaryColor": "amber" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "jdeworks-personal": { "label": "JDE Personal", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "agency-portfolio": { "label": "Agency Portfolio", "personalities": { "clean": { "primaryColor": "teal" } } },
-    "app-showcase": { "label": "App Showcase", "personalities": { "clean": { "primaryColor": "orange" } } },
-    "scroll-reveal-landing": { "label": "Scroll Reveal Landing", "personalities": { "clean": { "primaryColor": "sky" } } }
-  }
-}
 </file>
 
 <file path="docs/scoring/responsive.js">
@@ -18105,153 +18384,6 @@ function scoreSpacing(data) {
 
 
   S.register("spacing", scoreSpacing, 15, "Spacing & Layout", "spacing");
-})();
-</file>
-
-<file path="docs/scoring/touch.js">
-// Scoring Module: Touch & Interaction
-// Weight: 15%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreTouchTargets(data) {
-  var profile = S.getProfile(data);
-  var findings = [];
-  var targets = data.interaction.touchTargets || [];
-
-  // Viewport-aware thresholds, adjusted by profile:
-  var vw = (data.meta && data.meta.viewportWidth) || 1280;
-  var isDesktop = vw >= 1024;
-  var minSize = isDesktop ? profile.touchTargetDesktop : profile.touchTarget;
-  var warnSize = isDesktop ? profile.touchTargetDesktopWarn : profile.touchTarget;
-  var context = isDesktop ? 'desktop' : 'touch/mobile';
-  var issueCount = 0;
-
-  targets.forEach(function(t) {
-    var w = t.width, h = t.height;
-    var minDim = Math.min(w, h);
-
-    // WCAG 2.5.8 exception: inline text links are exempt from target size requirements.
-    // Detect by checking if element is an <a> without button-like styling (no bg, no border, no padding > 4px)
-    var isInlineLink = t.element === 'a' && !t.isButton;
-
-    if (minDim < minSize) {
-      issueCount++;
-      var ctx = t.linkContext || (isInlineLink ? 'inline' : 'button');
-
-      if (ctx === 'inline') {
-        // True inline text links (inside <p>, <blockquote>, etc.) — WCAG 2.5.8 exempt
-        findings.push({
-          severity: 'info',
-          title: 'Inline text link ' + w + '×' + h + 'px — exempt from target size',
-          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-          fix: 'Inline text links in paragraphs are exempt per WCAG 2.5.8. Consider adding padding for better usability.',
-          source: 'WCAG 2.2 §2.5.8 inline exception — https://www.w3.org/TR/WCAG22/#target-size-minimum'
-        });
-      } else if (ctx === 'footer') {
-        // Footer links — relaxed but still error below hard minimum (16px)
-        var footerHardMin = isDesktop ? 16 : 24;
-        findings.push({
-          severity: minDim < footerHardMin ? 'error' : 'info',
-          title: 'Footer link ' + w + '×' + h + 'px' + (minDim < footerHardMin ? ' (too small even for footer — min ' + footerHardMin + 'px)' : ' (below ' + minSize + 'px, relaxed for footer)'),
-          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-          fix: minDim < footerHardMin
-            ? 'Even footer links need at least ' + footerHardMin + 'px height. Add padding to increase click area.'
-            : 'Footer links have relaxed sizing expectations. Consider padding for touch accessibility.',
-          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
-        });
-      } else if (ctx === 'nav') {
-        // Navigation links — should be properly sized
-        findings.push({
-          severity: 'error',
-          title: 'Nav link ' + w + '×' + h + 'px (minimum: ' + minSize + 'px)',
-          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-          fix: 'Navigation links need adequate sizing. Add padding: py-2 px-4 (min-height ' + minSize + 'px).',
-          presetRef: 'Navigation presets use min-height 44px on nav links',
-          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
-        });
-      } else {
-        // Buttons, styled links, other interactive elements
-        findings.push({
-          severity: 'error',
-          title: t.element + ' is ' + w + '×' + h + 'px (minimum for ' + context + ': ' + minSize + 'px)',
-          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-          fix: isDesktop
-            ? 'Click targets need at least ' + minSize + '×' + minSize + 'px. Increase padding or min-height/min-width.'
-            : 'Touch targets need ' + minSize + '×' + minSize + 'px minimum. Add min-h-[' + minSize + 'px] min-w-[' + minSize + 'px] or increase padding.',
-          presetRef: isDesktop ? null : 'Button presets use py-3 px-6 (48px height)',
-          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
-        });
-      }
-    } else if (minDim < warnSize && isDesktop && !isInlineLink) {
-      findings.push({
-        severity: 'warning',
-        title: t.element + ' is ' + w + '×' + h + 'px (recommended for desktop: ≥' + warnSize + 'px)',
-        detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-        fix: 'While ' + minSize + 'px meets minimum, ' + warnSize + 'px+ improves click comfort. Consider adding padding.',
-        presetRef: null,
-        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
-      });
-    }
-  });
-
-  // Also flag targets that pass the current threshold but would fail on touch
-  if (isDesktop && targets.length > 0) {
-    var touchMin = profile.touchTarget;
-    var touchFails = targets.filter(function(t) { return Math.min(t.width, t.height) < touchMin; });
-    if (touchFails.length > 0) {
-      findings.push({
-        severity: 'info',
-        title: touchFails.length + ' element(s) below ' + touchMin + 'px touch target (analyzed at ' + vw + 'px desktop viewport)',
-        detail: 'These meet desktop minimums but would fail on touch devices. Consider responsive sizing if the site is also used on mobile.',
-        fix: 'For responsive touch support: add touch-target sizing at mobile breakpoints, e.g. sm:min-h-[' + touchMin + 'px]',
-        presetRef: null,
-        source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout'
-      });
-    }
-  }
-
-  // Note when responsive CSS exists that might fix touch targets on mobile
-  if (isDesktop && data.interaction && data.interaction.hasResponsiveTargetCSS) {
-    findings.push({
-      severity: 'info',
-      title: 'Responsive CSS detected that may adjust target sizes at mobile breakpoints',
-      detail: 'This site has media queries with height/padding rules. Touch targets may be correctly sized on mobile devices.',
-      fix: 'Verify by testing at mobile viewport. Use the viewport selector to re-scan at 375px width.',
-      presetRef: null
-    });
-  }
-
-  // Transitions / animation duration
-  var transitions = data.interaction.transitions || [];
-  transitions.forEach(function(t) {
-    var ms = parseFloat(t) * 1000;
-    if (ms > 500) {
-      findings.push({
-        severity: 'warning',
-        title: 'Transition duration ' + ms + 'ms exceeds 500ms maximum',
-        detail: 'Users perceive animations longer than 500ms as sluggish',
-        fix: 'Keep transitions under 500ms. Enter: 200–300ms, Exit: 150–200ms. In Tailwind: duration-200 or duration-300',
-        presetRef: null,
-        source: 'NNGroup animation — https://www.nngroup.com/articles/animation-usability/'
-      });
-    }
-  });
-
-  // Score: deduct per error, less per warning
-  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var totalTargets = targets.length || 1;
-  var checks = totalTargets;
-  var passed = totalTargets - errors - warnings;
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 3));
-  return { score: score, findings: findings, checks: checks, passed: Math.max(0, passed), weight: 15, label: 'Touch & Interaction', icon: 'touch' };
-}
-
-
-  S.register("touch", scoreTouchTargets, 15, "Touch & Interaction", "touch");
 })();
 </file>
 
@@ -19446,6 +19578,153 @@ function scoreTouchTargets(data) {
     window.__milgData = data;
     window.__milgData_json = json;
   }
+})();
+</file>
+
+<file path="docs/scoring/touch.js">
+// Scoring Module: Touch & Interaction
+// Weight: 15%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreTouchTargets(data) {
+  var profile = S.getProfile(data);
+  var findings = [];
+  var targets = data.interaction.touchTargets || [];
+
+  // Viewport-aware thresholds, adjusted by profile:
+  var vw = (data.meta && data.meta.viewportWidth) || 1280;
+  var isDesktop = vw >= 1024;
+  var minSize = isDesktop ? profile.touchTargetDesktop : profile.touchTarget;
+  var warnSize = isDesktop ? profile.touchTargetDesktopWarn : profile.touchTarget;
+  var context = isDesktop ? 'desktop' : 'touch/mobile';
+  var issueCount = 0;
+
+  targets.forEach(function(t) {
+    var w = t.width, h = t.height;
+    var minDim = Math.min(w, h);
+
+    // WCAG 2.5.8 exception: inline text links are exempt from target size requirements.
+    // Detect by checking if element is an <a> without button-like styling (no bg, no border, no padding > 4px)
+    var isInlineLink = t.element === 'a' && !t.isButton;
+
+    if (minDim < minSize) {
+      issueCount++;
+      var ctx = t.linkContext || (isInlineLink ? 'inline' : 'button');
+
+      if (ctx === 'inline') {
+        // True inline text links (inside <p>, <blockquote>, etc.) — WCAG 2.5.8 exempt
+        findings.push({
+          severity: 'info',
+          title: 'Inline text link ' + w + '×' + h + 'px — exempt from target size',
+          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+          fix: 'Inline text links in paragraphs are exempt per WCAG 2.5.8. Consider adding padding for better usability.',
+          source: 'WCAG 2.2 §2.5.8 inline exception — https://www.w3.org/TR/WCAG22/#target-size-minimum'
+        });
+      } else if (ctx === 'footer') {
+        // Footer links — relaxed but still error below hard minimum (16px)
+        var footerHardMin = isDesktop ? 16 : 24;
+        findings.push({
+          severity: minDim < footerHardMin ? 'error' : 'info',
+          title: 'Footer link ' + w + '×' + h + 'px' + (minDim < footerHardMin ? ' (too small even for footer — min ' + footerHardMin + 'px)' : ' (below ' + minSize + 'px, relaxed for footer)'),
+          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+          fix: minDim < footerHardMin
+            ? 'Even footer links need at least ' + footerHardMin + 'px height. Add padding to increase click area.'
+            : 'Footer links have relaxed sizing expectations. Consider padding for touch accessibility.',
+          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
+        });
+      } else if (ctx === 'nav') {
+        // Navigation links — should be properly sized
+        findings.push({
+          severity: 'error',
+          title: 'Nav link ' + w + '×' + h + 'px (minimum: ' + minSize + 'px)',
+          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+          fix: 'Navigation links need adequate sizing. Add padding: py-2 px-4 (min-height ' + minSize + 'px).',
+          presetRef: 'Navigation presets use min-height 44px on nav links',
+          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
+        });
+      } else {
+        // Buttons, styled links, other interactive elements
+        findings.push({
+          severity: 'error',
+          title: t.element + ' is ' + w + '×' + h + 'px (minimum for ' + context + ': ' + minSize + 'px)',
+          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+          fix: isDesktop
+            ? 'Click targets need at least ' + minSize + '×' + minSize + 'px. Increase padding or min-height/min-width.'
+            : 'Touch targets need ' + minSize + '×' + minSize + 'px minimum. Add min-h-[' + minSize + 'px] min-w-[' + minSize + 'px] or increase padding.',
+          presetRef: isDesktop ? null : 'Button presets use py-3 px-6 (48px height)',
+          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
+        });
+      }
+    } else if (minDim < warnSize && isDesktop && !isInlineLink) {
+      findings.push({
+        severity: 'warning',
+        title: t.element + ' is ' + w + '×' + h + 'px (recommended for desktop: ≥' + warnSize + 'px)',
+        detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+        fix: 'While ' + minSize + 'px meets minimum, ' + warnSize + 'px+ improves click comfort. Consider adding padding.',
+        presetRef: null,
+        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
+      });
+    }
+  });
+
+  // Also flag targets that pass the current threshold but would fail on touch
+  if (isDesktop && targets.length > 0) {
+    var touchMin = profile.touchTarget;
+    var touchFails = targets.filter(function(t) { return Math.min(t.width, t.height) < touchMin; });
+    if (touchFails.length > 0) {
+      findings.push({
+        severity: 'info',
+        title: touchFails.length + ' element(s) below ' + touchMin + 'px touch target (analyzed at ' + vw + 'px desktop viewport)',
+        detail: 'These meet desktop minimums but would fail on touch devices. Consider responsive sizing if the site is also used on mobile.',
+        fix: 'For responsive touch support: add touch-target sizing at mobile breakpoints, e.g. sm:min-h-[' + touchMin + 'px]',
+        presetRef: null,
+        source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout'
+      });
+    }
+  }
+
+  // Note when responsive CSS exists that might fix touch targets on mobile
+  if (isDesktop && data.interaction && data.interaction.hasResponsiveTargetCSS) {
+    findings.push({
+      severity: 'info',
+      title: 'Responsive CSS detected that may adjust target sizes at mobile breakpoints',
+      detail: 'This site has media queries with height/padding rules. Touch targets may be correctly sized on mobile devices.',
+      fix: 'Verify by testing at mobile viewport. Use the viewport selector to re-scan at 375px width.',
+      presetRef: null
+    });
+  }
+
+  // Transitions / animation duration
+  var transitions = data.interaction.transitions || [];
+  transitions.forEach(function(t) {
+    var ms = parseFloat(t) * 1000;
+    if (ms > 500) {
+      findings.push({
+        severity: 'warning',
+        title: 'Transition duration ' + ms + 'ms exceeds 500ms maximum',
+        detail: 'Users perceive animations longer than 500ms as sluggish',
+        fix: 'Keep transitions under 500ms. Enter: 200–300ms, Exit: 150–200ms. In Tailwind: duration-200 or duration-300',
+        presetRef: null,
+        source: 'NNGroup animation — https://www.nngroup.com/articles/animation-usability/'
+      });
+    }
+  });
+
+  // Score: deduct per error, less per warning
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var totalTargets = targets.length || 1;
+  var checks = totalTargets;
+  var passed = totalTargets - errors - warnings;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 3));
+  return { score: score, findings: findings, checks: checks, passed: Math.max(0, passed), weight: 15, label: 'Touch & Interaction', icon: 'touch' };
+}
+
+
+  S.register("touch", scoreTouchTargets, 15, "Touch & Interaction", "touch");
 })();
 </file>
 
@@ -20844,6 +21123,7 @@ Use these to calibrate your output quality and verify the flow works.
   var S = window.MilgScoring;
 
 function scoreAccessibility(data) {
+  var profile = S.getProfile(data);
   var findings = [];
   var checks = 0;
   var passed = 0;
@@ -22054,6 +22334,54 @@ Sources: [research/sources.md](research/sources.md)
 /* Viewport select hidden during deep scan */
 .viewport-row.hidden {
   display: none !important;
+}
+
+/* Analysis history */
+.history-section {
+  margin-top: 24px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-alt);
+}
+
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  margin: 4px 0;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+  border: 1px solid transparent;
+}
+
+.history-item:hover {
+  background: var(--bg);
+  border-color: var(--border);
+}
+
+.history-score {
+  font-size: 18px;
+  font-weight: 700;
+  min-width: 36px;
+  text-align: right;
+}
+
+.history-url {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-date {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
 }
 
 /* URL input */
@@ -25177,6 +25505,14 @@ body.dark-ui .severity-badge-info {
         }
       }
     } catch(e) {}
+
+    // Render analysis history
+    var historyHtml = renderHistoryList();
+    if (historyHtml) {
+      var historyContainer = document.createElement('div');
+      historyContainer.innerHTML = historyHtml;
+      document.getElementById('inputSection').appendChild(historyContainer);
+    }
   }
 
   var lastRawData = null; // Store raw data for re-scoring with different profiles
@@ -25381,6 +25717,64 @@ body.dark-ui .severity-badge-info {
 
   var _originalRawData = null; // Original data before exclusions
 
+  // --- Analysis history (localStorage, max 10) ---
+  var HISTORY_KEY = 'milg-analysis-history';
+  var HISTORY_MAX = 10;
+
+  function saveToHistory(data, score, grade) {
+    try {
+      var history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+      var entry = {
+        url: (data.meta && data.meta.url) || 'Unknown',
+        timestamp: new Date().toISOString(),
+        score: score,
+        grade: grade,
+        profile: data.profile || 'general'
+      };
+      // Store extraction data (without screenshots to save space)
+      var stored = JSON.parse(JSON.stringify(data, function(k, v) {
+        if (k === 'screenshots' || k === 'viewportData') return undefined;
+        return v;
+      }));
+      entry.data = stored;
+      history.unshift(entry);
+      if (history.length > HISTORY_MAX) history = history.slice(0, HISTORY_MAX);
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+    } catch(e) { /* quota exceeded or parse error — skip */ }
+  }
+
+  function getHistory() {
+    try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch(e) { return []; }
+  }
+
+  function renderHistoryList() {
+    var history = getHistory();
+    if (history.length === 0) return '';
+    var html = '<div class="history-section">';
+    html += '<h3 style="font-size:14px;font-weight:600;margin-bottom:8px">Recent Analyses <span style="font-size:11px;color:var(--text-secondary);font-weight:400">(max ' + HISTORY_MAX + ', stored locally)</span></h3>';
+    history.forEach(function(entry, idx) {
+      var date = new Date(entry.timestamp);
+      var dateStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      var urlShort = (entry.url || '').replace(/^https?:\/\//, '').substring(0, 40);
+      html += '<div class="history-item" onclick="window.__milgLoadHistory(' + idx + ')" title="Click to reload this analysis">';
+      html += '<span class="history-score" style="color:' + (entry.score >= 80 ? '#16a34a' : entry.score >= 60 ? '#ca8a04' : '#dc2626') + '">' + entry.score + '</span>';
+      html += '<span class="history-url">' + urlShort + '</span>';
+      html += '<span class="history-date">' + dateStr + '</span>';
+      html += '</div>';
+    });
+    html += '<p style="font-size:11px;color:var(--text-secondary);margin-top:6px">Oldest removed after ' + HISTORY_MAX + ' scans. Export JSON to keep permanently.</p>';
+    html += '</div>';
+    return html;
+  }
+
+  window.__milgLoadHistory = function(idx) {
+    var history = getHistory();
+    if (history[idx] && history[idx].data) {
+      runAnalysis(history[idx].data);
+      showToast('Loaded: ' + (history[idx].url || 'analysis'));
+    }
+  };
+
   function runAnalysis(data, skipExclusionDetection) {
     lastRawData = data;
     if (!_originalRawData || !skipExclusionDetection) _originalRawData = data;
@@ -25409,6 +25803,11 @@ body.dark-ui .severity-badge-info {
     reportContainer.classList.add('visible');
     inputSection.style.display = 'none';
     document.getElementById('reportActions').style.display = 'flex';
+
+    // Save to history (skip re-scores from exclusions)
+    if (!skipExclusionDetection) {
+      saveToHistory(data, reportData.overall, reportData.grade);
+    }
   }
 
   window.__milgResetExclusions = function() {

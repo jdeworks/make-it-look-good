@@ -6,6 +6,7 @@
   var S = window.MilgScoring;
 
 function scoreAccessibility(data) {
+  var profile = S.getProfile(data);
   var findings = [];
   var checks = 0;
   var passed = 0;

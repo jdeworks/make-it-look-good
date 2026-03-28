@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scoring Module Tests</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; background: #f8fafc; }
+    h1 { font-size: 20px; margin-bottom: 16px; }
+    .test { padding: 8px 12px; margin: 4px 0; border-radius: 6px; font-size: 13px; font-family: monospace; }
+    .pass { background: #f0fdf4; border: 1px solid #bbf7d0; color: #16a34a; }
+    .fail { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; }
+    .summary { margin-top: 16px; padding: 12px; border-radius: 8px; font-weight: 600; font-size: 15px; }
+    .summary.all-pass { background: #f0fdf4; color: #16a34a; border: 2px solid #16a34a; }
+    .summary.has-fail { background: #fef2f2; color: #dc2626; border: 2px solid #dc2626; }
+    #results { max-width: 800px; }
+  </style>
+</head>
+<body>
+  <h1>Scoring Module Tests</h1>
+  <div id="results">Loading modules...</div>
+
+  <!-- Load scoring modules -->
+  <script src="../scoring/registry.js"></script>
+  <script src="../scoring/contrast.js"></script>
+  <script src="../scoring/typography.js"></script>
+  <script src="../scoring/spacing.js"></script>
+  <script src="../scoring/touch.js"></script>
+  <script src="../scoring/accessibility.js"></script>
+  <script src="../scoring/responsive.js"></script>
+  <script src="../scoring/consistency.js"></script>
+  <script src="../scoring/cognitive.js"></script>
+  <script src="../scoring/layout.js"></script>
+  <script src="../scoring/performance.js"></script>
+  <script src="../scoring/readability.js"></script>
+  <script src="../scoring/filters.js"></script>
+  <script src="../scoring/balance.js"></script>
+
+  <script>
+    var results = [];
+    var passed = 0;
+    var failed = 0;
+
+    function assert(name, condition, detail) {
+      if (condition) {
+        results.push({ name: name, pass: true });
+        passed++;
+      } else {
+        results.push({ name: name, pass: false, detail: detail || 'assertion failed' });
+        failed++;
+      }
+    }
+
+    // --- Minimal valid extraction data ---
+    function makeData(overrides) {
+      var base = {
+        meta: { title: 'Test', url: 'https://test.com', viewportWidth: 1280, viewportHeight: 900, timestamp: new Date().toISOString(), version: 1 },
+        colors: { textColors: [{ value: '#000', count: 10 }], bgColors: [{ value: '#fff', count: 10 }], contrastPairs: [] },
+        typography: { bodyFontSize: '16px', bodyLineHeight: '24px', bodyFontFamily: 'sans-serif', fontFamilies: ['sans-serif'], fontSizes: [{ value: '16px', count: 10 }], fontWeights: [{ value: '400', count: 10 }, { value: '700', count: 5 }], headings: [{ tag: 'h1', text: 'Test', fontSize: '32px', fontWeight: '700', lineHeight: '40px', fontFamily: 'sans-serif' }], lineHeights: [{ value: 1.5, count: 10 }], maxLineLength: { chars: 65, element: 'p' } },
+        spacing: { paddings: [{ value: '16px', count: 10 }], margins: [{ value: '16px', count: 10 }], gaps: [{ value: '16px', count: 5 }], maxContentWidth: '1200px', bodyPaddingHorizontal: '16px' },
+        layout: { sectionGaps: [64, 64, 64], alignmentEdges: [16, 16, 16, 16, 16], visualHierarchy: { h1ToBody: 2, h2ToBody: 1.5, bodySize: 16 }, borderRadii: [{ value: '8px', count: 10 }] },
+        interaction: { touchTargets: [], transitions: ['0.15s'], adjacentIssues: [] },
+        accessibility: { semanticElements: { header: 1, nav: 1, main: 1, footer: 1, section: 3, article: 0, aside: 0 }, headingHierarchy: ['h1', 'h2', 'h3'], imagesWithoutAlt: 0, formLabels: { total: 2, withLabel: 2, withoutLabel: 0 }, focusIndicators: [{ element: 'button', outlineStyle: 'solid', outlineWidth: '2px', outlineColor: 'blue', outlineOffset: '2px' }], hasFocusVisibleCSS: true, langAttribute: true, hasSkipLink: true, badLinkTexts: [], missingAutocomplete: 0, ariaIssues: [], colorOnlyIndicators: 0, autoPlayMedia: 0, navItemCount: 5 },
+        structure: { totalElements: 100, darkModeClasses: true, responsiveClasses: true, tailwindDetected: true, cssFramework: 'tailwind', viewportMeta: 'width=device-width, initial-scale=1.0', blocksZoom: false, hasHorizontalOverflow: false, fixedWidthElements: 0, truncatedElements: 0 },
+        context: { pageType: 'content' },
+        animation: { keyframeCount: 0, hasReducedMotion: true, hiddenElements: 0, scrollRevealPatterns: [] },
+        performance: { fontLoading: [], renderBlocking: { cssInHead: 1, jsInHead: 0 }, domSize: 100, domDepth: 8, thirdPartyScripts: 2, imageFormats: { modern: 3, legacy: 0 }, cls: 0.02, lcp: { time: 1500, element: 'img', size: 50000 }, nonResponsiveImages: 0 },
+        readability: { gradeLevel: 8 }
+      };
+      if (overrides) {
+        Object.keys(overrides).forEach(function(k) {
+          if (typeof overrides[k] === 'object' && !Array.isArray(overrides[k]) && base[k]) {
+            Object.keys(overrides[k]).forEach(function(k2) { base[k][k2] = overrides[k][k2]; });
+          } else {
+            base[k] = overrides[k];
+          }
+        });
+      }
+      return base;
+    }
+
+    // =========================================================
+    // TEST 1: All modules run without errors on valid data
+    // =========================================================
+    (function() {
+      var profiles = ['general', 'wcag_aaa', 'elderly', 'low_vision', 'motor_impairment', 'color_blind', 'children', 'cognitive'];
+      profiles.forEach(function(profile) {
+        try {
+          var data = makeData({ profile: profile });
+          var result = MilgScoring.runScoring(data);
+          assert('runScoring(' + profile + ') completes', result && typeof result.overall === 'number', 'result: ' + JSON.stringify(result && result.overall));
+          assert('runScoring(' + profile + ') score 0-100', result.overall >= 0 && result.overall <= 100, 'score: ' + result.overall);
+          assert('runScoring(' + profile + ') has categories', result.categories && result.categories.length > 0, 'categories: ' + (result.categories && result.categories.length));
+
+          // Check all categories have required fields
+          result.categories.forEach(function(cat) {
+            assert(profile + '/' + cat.label + ' has score', typeof cat.score === 'number' && cat.score >= 0 && cat.score <= 100, 'score: ' + cat.score);
+            assert(profile + '/' + cat.label + ' has findings array', Array.isArray(cat.findings), 'findings: ' + typeof cat.findings);
+            assert(profile + '/' + cat.label + ' has checks count', typeof cat.checks === 'number' || cat.checks === undefined, 'checks: ' + cat.checks);
+          });
+        } catch(e) {
+          assert('runScoring(' + profile + ') no error', false, e.message + ' at ' + (e.stack || '').split('\n')[1]);
+        }
+      });
+    })();
+
+    // =========================================================
+    // TEST 2: Good data should score well (>= 80)
+    // =========================================================
+    (function() {
+      var data = makeData();
+      var result = MilgScoring.runScoring(data);
+      assert('Good data scores >= 80', result.overall >= 80, 'score: ' + result.overall);
+      assert('Good data grade A or B', result.grade === 'A' || result.grade === 'B', 'grade: ' + result.grade);
+    })();
+
+    // =========================================================
+    // TEST 3: Contrast failures lower score
+    // =========================================================
+    (function() {
+      var data = makeData({
+        colors: {
+          textColors: [{ value: '#999', count: 5 }],
+          bgColors: [{ value: '#fff', count: 5 }],
+          contrastPairs: [
+            { fg: 'rgb(153,153,153)', bg: 'rgb(255,255,255)', ratio: 2.85, needed: 4.5, passes: false, fontSize: 16, fontWeight: 400, isLarge: false, text: 'Low contrast text', selector: 'p', filter: '' },
+            { fg: 'rgb(153,153,153)', bg: 'rgb(255,255,255)', ratio: 2.85, needed: 4.5, passes: false, fontSize: 16, fontWeight: 400, isLarge: false, text: 'Another low contrast', selector: 'span', filter: '' }
+          ]
+        }
+      });
+      var result = MilgScoring.runScoring(data);
+      var contrastCat = result.categories.find(function(c) { return c.label === 'Color & Contrast'; });
+      assert('Contrast failures produce errors', contrastCat.findings.some(function(f) { return f.severity === 'error'; }), 'findings: ' + contrastCat.findings.length);
+      assert('Contrast score < 100', contrastCat.score < 100, 'score: ' + contrastCat.score);
+    })();
+
+    // =========================================================
+    // TEST 4: Touch target issues
+    // =========================================================
+    (function() {
+      var data = makeData({
+        interaction: {
+          touchTargets: [
+            { element: 'button', width: 20, height: 20, text: 'Tiny button', selector: 'button.tiny', passes: false, isButton: true, linkContext: 'button' },
+            { element: 'a', width: 30, height: 15, text: 'Footer link', selector: 'a', passes: false, isButton: false, linkContext: 'footer' },
+            { element: 'a', width: 50, height: 12, text: 'Inline link', selector: 'a', passes: false, isButton: false, linkContext: 'inline' }
+          ],
+          transitions: ['0.2s']
+        }
+      });
+      var result = MilgScoring.runScoring(data);
+      var touchCat = result.categories.find(function(c) { return c.label === 'Touch & Interaction'; });
+      var errors = touchCat.findings.filter(function(f) { return f.severity === 'error'; });
+      var infos = touchCat.findings.filter(function(f) { return f.severity === 'info'; });
+      assert('Button gets error', errors.some(function(f) { return f.title.indexOf('button') !== -1; }), 'errors: ' + errors.map(function(f){return f.title}).join('; '));
+      assert('Footer link gets info or error', touchCat.findings.some(function(f) { return f.title.indexOf('Footer') !== -1; }), 'findings: ' + touchCat.findings.map(function(f){return f.title}).join('; '));
+      assert('Inline link gets info (exempt)', infos.some(function(f) { return f.title.indexOf('Inline') !== -1 || f.title.indexOf('inline') !== -1; }), 'infos: ' + infos.map(function(f){return f.title}).join('; '));
+    })();
+
+    // =========================================================
+    // TEST 5: Profile differentiation
+    // =========================================================
+    (function() {
+      var data = makeData({
+        typography: { bodyFontSize: '15px', bodyLineHeight: '22px', bodyFontFamily: 'sans-serif', fontFamilies: ['sans-serif'], fontSizes: [{ value: '15px', count: 10 }], fontWeights: [{ value: '400', count: 10 }], headings: [{ tag: 'h1', text: 'Test', fontSize: '32px', fontWeight: '700', lineHeight: '40px', fontFamily: 'sans-serif' }], lineHeights: [{ value: 1.47, count: 10 }], maxLineLength: { chars: 70, element: 'p' } }
+      });
+      var generalResult = MilgScoring.runScoring(makeData(Object.assign({}, data, { profile: 'general' })));
+      var elderlyResult = MilgScoring.runScoring(makeData(Object.assign({}, data, { profile: 'elderly' })));
+      var childResult = MilgScoring.runScoring(makeData(Object.assign({}, data, { profile: 'children' })));
+
+      assert('Elderly scores lower than general for 15px font', elderlyResult.overall <= generalResult.overall, 'elderly: ' + elderlyResult.overall + ' general: ' + generalResult.overall);
+      assert('Children scores different from general', childResult.overall !== generalResult.overall || childResult.categories.some(function(c, i) { return c.findings.length !== generalResult.categories[i].findings.length; }), 'findings differ');
+    })();
+
+    // =========================================================
+    // TEST 6: CVD simulation (color_blind profile)
+    // =========================================================
+    (function() {
+      var data = makeData({
+        profile: 'color_blind',
+        colors: {
+          textColors: [{ value: 'rgb(255,0,0)', count: 3 }, { value: 'rgb(0,128,0)', count: 3 }],
+          bgColors: [{ value: 'rgb(255,255,255)', count: 10 }],
+          contrastPairs: [
+            { fg: 'rgb(255,0,0)', bg: 'rgb(255,255,255)', ratio: 4, needed: 4.5, passes: false, fontSize: 16, fontWeight: 400, isLarge: false, text: 'Red text', selector: 'span.red', filter: '' },
+            { fg: 'rgb(0,128,0)', bg: 'rgb(255,255,255)', ratio: 4.6, needed: 4.5, passes: true, fontSize: 16, fontWeight: 400, isLarge: false, text: 'Green text', selector: 'span.green', filter: '' }
+          ]
+        }
+      });
+      try {
+        var result = MilgScoring.runScoring(data);
+        assert('CVD profile runs without error', true);
+        var contrastCat = result.categories.find(function(c) { return c.label === 'Color & Contrast'; });
+        assert('CVD has contrast findings', contrastCat.findings.length > 0, 'findings: ' + contrastCat.findings.length);
+      } catch(e) {
+        assert('CVD profile no error', false, e.message);
+      }
+    })();
+
+    // =========================================================
+    // TEST 7: Cognitive profile checks
+    // =========================================================
+    (function() {
+      var data = makeData({
+        profile: 'cognitive',
+        accessibility: {
+          semanticElements: { header: 1, nav: 1, main: 1, footer: 1 },
+          headingHierarchy: ['h1', 'h2', 'h3'], imagesWithoutAlt: 0,
+          formLabels: { total: 0, withLabel: 0, withoutLabel: 0 },
+          focusIndicators: [], hasFocusVisibleCSS: true, langAttribute: true,
+          hasSkipLink: true, badLinkTexts: [], missingAutocomplete: 0,
+          ariaIssues: [], colorOnlyIndicators: 0, autoPlayMedia: 0,
+          navItemCount: 12 // exceeds max 5 for cognitive
+        },
+        readability: { gradeLevel: 12 } // exceeds max 8 for cognitive
+      });
+      var result = MilgScoring.runScoring(data);
+      var cogCat = result.categories.find(function(c) { return c.label === 'Cognitive Load'; });
+      assert('Cognitive profile flags high nav count', cogCat.findings.some(function(f) { return f.title.indexOf('navigation') !== -1; }), 'findings: ' + cogCat.findings.map(function(f){return f.title}).join('; '));
+      assert('Cognitive profile flags high reading level', cogCat.findings.some(function(f) { return f.title.indexOf('Reading level') !== -1 || f.title.indexOf('reading') !== -1; }), 'findings: ' + cogCat.findings.map(function(f){return f.title}).join('; '));
+    })();
+
+    // =========================================================
+    // TEST 8: All modules return checks/passed
+    // =========================================================
+    (function() {
+      var data = makeData();
+      var result = MilgScoring.runScoring(data);
+      result.categories.forEach(function(cat) {
+        assert(cat.label + ' has checks count', cat.checks !== undefined && cat.checks >= 0, 'checks: ' + cat.checks);
+      });
+    })();
+
+    // =========================================================
+    // TEST 9: Registry utilities
+    // =========================================================
+    (function() {
+      // parseColor
+      var c = MilgScoring.parseColor('rgb(255, 0, 0)');
+      assert('parseColor rgb()', c && c.r === 255 && c.g === 0 && c.b === 0, JSON.stringify(c));
+
+      var c2 = MilgScoring.parseColor('rgba(0, 128, 255, 0.5)');
+      assert('parseColor rgba()', c2 && c2.r === 0 && c2.g === 128 && c2.b === 255 && c2.a === 0.5, JSON.stringify(c2));
+
+      // contrastRatio
+      var ratio = MilgScoring.contrastRatio({ r: 0, g: 0, b: 0 }, { r: 255, g: 255, b: 255 });
+      assert('contrastRatio black/white = 21', Math.abs(ratio - 21) < 0.1, 'ratio: ' + ratio);
+
+      // CVD simulation
+      var sim = MilgScoring.simulateCVD({ r: 255, g: 0, b: 0 }, MilgScoring.CVD_MATRICES.protanopia);
+      assert('CVD simulation produces valid color', sim && sim.r >= 0 && sim.r <= 255 && sim.g >= 0 && sim.b >= 0, JSON.stringify(sim));
+      assert('CVD protanopia dims red', sim.r < 200, 'r: ' + sim.r); // red looks much darker/different under protanopia
+    })();
+
+    // =========================================================
+    // RENDER RESULTS
+    // =========================================================
+    var html = '';
+    results.forEach(function(r) {
+      html += '<div class="test ' + (r.pass ? 'pass' : 'fail') + '">';
+      html += (r.pass ? '✓' : '✗') + ' ' + r.name;
+      if (!r.pass && r.detail) html += ' — <strong>' + r.detail + '</strong>';
+      html += '</div>';
+    });
+    html += '<div class="summary ' + (failed === 0 ? 'all-pass' : 'has-fail') + '">';
+    html += passed + ' passed, ' + failed + ' failed';
+    html += '</div>';
+    document.getElementById('results').innerHTML = html;
+
+    // Also log for CI
+    console.log('Scoring tests: ' + passed + ' passed, ' + failed + ' failed');
+    if (failed > 0) console.error('FAILURES:', results.filter(function(r) { return !r.pass; }).map(function(r) { return r.name + ': ' + r.detail; }));
+  </script>
+</body>
+</html>

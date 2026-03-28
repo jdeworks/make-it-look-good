@@ -743,6 +743,14 @@
         }
       }
     } catch(e) {}
+
+    // Render analysis history
+    var historyHtml = renderHistoryList();
+    if (historyHtml) {
+      var historyContainer = document.createElement('div');
+      historyContainer.innerHTML = historyHtml;
+      document.getElementById('inputSection').appendChild(historyContainer);
+    }
   }
 
   var lastRawData = null; // Store raw data for re-scoring with different profiles
@@ -947,6 +955,64 @@
 
   var _originalRawData = null; // Original data before exclusions
 
+  // --- Analysis history (localStorage, max 10) ---
+  var HISTORY_KEY = 'milg-analysis-history';
+  var HISTORY_MAX = 10;
+
+  function saveToHistory(data, score, grade) {
+    try {
+      var history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+      var entry = {
+        url: (data.meta && data.meta.url) || 'Unknown',
+        timestamp: new Date().toISOString(),
+        score: score,
+        grade: grade,
+        profile: data.profile || 'general'
+      };
+      // Store extraction data (without screenshots to save space)
+      var stored = JSON.parse(JSON.stringify(data, function(k, v) {
+        if (k === 'screenshots' || k === 'viewportData') return undefined;
+        return v;
+      }));
+      entry.data = stored;
+      history.unshift(entry);
+      if (history.length > HISTORY_MAX) history = history.slice(0, HISTORY_MAX);
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+    } catch(e) { /* quota exceeded or parse error — skip */ }
+  }
+
+  function getHistory() {
+    try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch(e) { return []; }
+  }
+
+  function renderHistoryList() {
+    var history = getHistory();
+    if (history.length === 0) return '';
+    var html = '<div class="history-section">';
+    html += '<h3 style="font-size:14px;font-weight:600;margin-bottom:8px">Recent Analyses <span style="font-size:11px;color:var(--text-secondary);font-weight:400">(max ' + HISTORY_MAX + ', stored locally)</span></h3>';
+    history.forEach(function(entry, idx) {
+      var date = new Date(entry.timestamp);
+      var dateStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      var urlShort = (entry.url || '').replace(/^https?:\/\//, '').substring(0, 40);
+      html += '<div class="history-item" onclick="window.__milgLoadHistory(' + idx + ')" title="Click to reload this analysis">';
+      html += '<span class="history-score" style="color:' + (entry.score >= 80 ? '#16a34a' : entry.score >= 60 ? '#ca8a04' : '#dc2626') + '">' + entry.score + '</span>';
+      html += '<span class="history-url">' + urlShort + '</span>';
+      html += '<span class="history-date">' + dateStr + '</span>';
+      html += '</div>';
+    });
+    html += '<p style="font-size:11px;color:var(--text-secondary);margin-top:6px">Oldest removed after ' + HISTORY_MAX + ' scans. Export JSON to keep permanently.</p>';
+    html += '</div>';
+    return html;
+  }
+
+  window.__milgLoadHistory = function(idx) {
+    var history = getHistory();
+    if (history[idx] && history[idx].data) {
+      runAnalysis(history[idx].data);
+      showToast('Loaded: ' + (history[idx].url || 'analysis'));
+    }
+  };
+
   function runAnalysis(data, skipExclusionDetection) {
     lastRawData = data;
     if (!_originalRawData || !skipExclusionDetection) _originalRawData = data;
@@ -975,6 +1041,11 @@
     reportContainer.classList.add('visible');
     inputSection.style.display = 'none';
     document.getElementById('reportActions').style.display = 'flex';
+
+    // Save to history (skip re-scores from exclusions)
+    if (!skipExclusionDetection) {
+      saveToHistory(data, reportData.overall, reportData.grade);
+    }
   }
 
   window.__milgResetExclusions = function() {
