@@ -30,6 +30,18 @@ function scoreTouchTargets(data) {
       issueCount++;
       var ctx = t.linkContext || (isInlineLink ? 'inline' : 'button');
 
+      // On desktop, determine severity based on how far below threshold:
+      // - ≥20px (just 4px short of 24px) → info (barely noticeable with mouse)
+      // - ≥16px → warning (small but usable with mouse)
+      // - <16px → error (genuinely too small even for mouse)
+      // On mobile, all failures are errors (fingers need the full 44px)
+      function desktopSeverity(dim) {
+        if (!isDesktop) return 'error';
+        if (dim >= 20) return 'info';
+        if (dim >= 16) return 'warning';
+        return 'error';
+      }
+
       if (ctx === 'inline') {
         // True inline text links (inside <p>, <blockquote>, etc.) — WCAG 2.5.8 exempt
         findings.push({
@@ -53,8 +65,9 @@ function scoreTouchTargets(data) {
         });
       } else if (ctx === 'nav') {
         // Navigation links — should be properly sized
+        var navSev = desktopSeverity(minDim);
         findings.push({
-          severity: 'error',
+          severity: navSev,
           title: 'Nav link ' + w + '×' + h + 'px (minimum: ' + minSize + 'px)',
           detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
           fix: 'Navigation links need adequate sizing. Add padding: py-2 px-4 (min-height ' + minSize + 'px).',
@@ -63,12 +76,15 @@ function scoreTouchTargets(data) {
         });
       } else {
         // Buttons, styled links, other interactive elements
+        var sev = desktopSeverity(minDim);
         findings.push({
-          severity: 'error',
-          title: t.element + ' is ' + w + '×' + h + 'px (minimum for ' + context + ': ' + minSize + 'px)',
+          severity: sev,
+          title: t.element + ' is ' + w + '×' + h + 'px (' + (isDesktop ? 'desktop min: ' + minSize + 'px' : 'touch min: ' + minSize + 'px') + ')',
           detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
           fix: isDesktop
-            ? 'Click targets need at least ' + minSize + '×' + minSize + 'px. Increase padding or min-height/min-width.'
+            ? (sev === 'info'
+              ? 'Slightly below ' + minSize + 'px desktop minimum — usable with mouse but consider adding padding.'
+              : 'Click targets need at least ' + minSize + '×' + minSize + 'px. Increase padding or min-height/min-width.')
             : 'Touch targets need ' + minSize + '×' + minSize + 'px minimum. Add min-h-[' + minSize + 'px] min-w-[' + minSize + 'px] or increase padding.',
           presetRef: isDesktop ? null : 'Button presets use py-3 px-6 (48px height)',
           source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
