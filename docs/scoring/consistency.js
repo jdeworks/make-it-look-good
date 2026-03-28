@@ -31,7 +31,8 @@ function scoreVisualConsistency(data) {
       title: totalUnique + ' unique colors detected (recommend < ' + colorLimit + ' for this page type)',
       detail: textColors + ' text colors, ' + bgColors + ' background colors',
       fix: 'Consolidate to a systematic color palette: 1 primary + 1 neutral + 3 semantic (error, warning, success)',
-      presetRef: 'Presets use a single primary color with slate neutrals'
+      presetRef: 'Presets use a single primary color with slate neutrals',
+      source: 'Material Design 3 — https://m3.material.io/styles/color/roles'
     });
   }
 
@@ -46,7 +47,8 @@ function scoreVisualConsistency(data) {
       title: fontSizes + ' unique font sizes (recommend ≤' + fontSizeLimit + ' from a type scale)',
       detail: 'A consistent type scale creates visual rhythm',
       fix: 'Use a modular scale: text-sm, text-base, text-lg, text-xl, text-2xl, text-3xl, text-4xl',
-      presetRef: null
+      presetRef: null,
+      source: 'Modular type scales — https://typescale.com/'
     });
   }
 

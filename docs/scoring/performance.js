@@ -20,7 +20,8 @@ function scorePerformance(data) {
       title: fontIssues.length + ' web font(s) without font-display: swap',
       detail: 'Fonts with display:auto or display:block cause invisible text (FOIT) while loading',
       fix: 'Add font-display: swap (or optional) to @font-face rules. This shows fallback text immediately.',
-      presetRef: null
+      presetRef: null,
+      source: 'Web.dev — https://web.dev/articles/font-display'
     });
   } else {
     checks++;
@@ -39,7 +40,8 @@ function scorePerformance(data) {
       title: blockingCount + ' render-blocking resources in <head>',
       detail: (rb.cssInHead || 0) + ' CSS files, ' + (rb.jsInHead || 0) + ' sync JS scripts',
       fix: 'Defer non-critical CSS with media="print" onload hack. Add async/defer to scripts.',
-      presetRef: null
+      presetRef: null,
+      source: 'Web.dev — https://web.dev/articles/render-blocking-resources'
     });
   }
 
@@ -54,7 +56,8 @@ function scorePerformance(data) {
       title: domSize + ' DOM elements (' + (domSize > 3000 ? 'excessive' : 'large') + ')',
       detail: 'Large DOMs slow rendering, increase memory, and hurt interaction responsiveness',
       fix: 'Consider lazy loading sections, virtualizing long lists, or simplifying markup.',
-      presetRef: null
+      presetRef: null,
+      source: 'Chrome DevTools — https://developer.chrome.com/docs/lighthouse/performance/dom-size'
     });
   }
 
@@ -69,7 +72,8 @@ function scorePerformance(data) {
       title: 'DOM nesting depth: ' + depth + ' levels (recommended: ≤32)',
       detail: 'Deep nesting increases CSS selector matching time and layout complexity',
       fix: 'Flatten nested containers where possible. Avoid wrapping divs that serve no purpose.',
-      presetRef: null
+      presetRef: null,
+      source: 'Chrome DevTools — https://developer.chrome.com/docs/lighthouse/performance/dom-size'
     });
   }
 

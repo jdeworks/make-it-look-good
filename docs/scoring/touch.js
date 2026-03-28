@@ -31,7 +31,8 @@ function scoreTouchTargets(data) {
         fix: isDesktop
           ? 'Click targets need at least ' + minSize + '×' + minSize + 'px. Increase padding or min-height/min-width.'
           : 'Touch targets need ' + minSize + '×' + minSize + 'px minimum. Add min-h-[' + minSize + 'px] min-w-[' + minSize + 'px] or increase padding.',
-        presetRef: isDesktop ? null : 'Button presets use py-3 px-6 (48px height)'
+        presetRef: isDesktop ? null : 'Button presets use py-3 px-6 (48px height)',
+        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
       });
     } else if (minDim < warnSize && isDesktop) {
       findings.push({
@@ -39,7 +40,8 @@ function scoreTouchTargets(data) {
         title: t.element + ' is ' + w + '×' + h + 'px (recommended for desktop: ≥' + warnSize + 'px)',
         detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
         fix: 'While ' + minSize + 'px meets minimum, ' + warnSize + 'px+ improves click comfort. Consider adding padding.',
-        presetRef: null
+        presetRef: null,
+        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
       });
     }
   });
@@ -54,7 +56,8 @@ function scoreTouchTargets(data) {
         title: touchFails.length + ' element(s) below ' + touchMin + 'px touch target (analyzed at ' + vw + 'px desktop viewport)',
         detail: 'These meet desktop minimums but would fail on touch devices. Consider responsive sizing if the site is also used on mobile.',
         fix: 'For responsive touch support: add touch-target sizing at mobile breakpoints, e.g. sm:min-h-[' + touchMin + 'px]',
-        presetRef: null
+        presetRef: null,
+        source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout'
       });
     }
   }
@@ -80,7 +83,8 @@ function scoreTouchTargets(data) {
         title: 'Transition duration ' + ms + 'ms exceeds 500ms maximum',
         detail: 'Users perceive animations longer than 500ms as sluggish',
         fix: 'Keep transitions under 500ms. Enter: 200–300ms, Exit: 150–200ms. In Tailwind: duration-200 or duration-300',
-        presetRef: null
+        presetRef: null,
+        source: 'NNGroup animation — https://www.nngroup.com/articles/animation-usability/'
       });
     }
   });

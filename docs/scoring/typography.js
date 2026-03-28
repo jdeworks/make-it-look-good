@@ -43,7 +43,8 @@ function scoreTypography(data) {
       title: 'Body line-height is ' + (Math.round(bodyLHRatio * 100) / 100) + ' (ideal: ' + profile.lineHeightMin + '–' + profile.lineHeightMax + ')',
       detail: bodyLHRatio < profile.lineHeightMin ? 'Text feels cramped and hard to read' : 'Text feels too loose and wastes vertical space',
       fix: bodyLHRatio < profile.lineHeightMin ? 'Increase line-height. In Tailwind: leading-relaxed (1.625) or leading-normal (1.5)' : 'Decrease line-height. In Tailwind: leading-normal (1.5)',
-      presetRef: null
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.12 — https://www.w3.org/TR/WCAG22/#text-spacing'
     });
   }
 
@@ -58,7 +59,8 @@ function scoreTypography(data) {
       title: 'Line length ~' + maxChars + ' characters (ideal: 45–75)',
       detail: 'Long lines make it hard for the eye to track back to the next line',
       fix: 'Constrain content width with max-w-prose (65ch) or max-w-2xl (672px)',
-      presetRef: 'Editorial presets use max-w-prose for reading content'
+      presetRef: 'Editorial presets use max-w-prose for reading content',
+      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-length.html'
     });
   }
 
@@ -78,7 +80,8 @@ function scoreTypography(data) {
           title: 'Heading scale ratio is ' + (Math.round(ratio * 100) / 100) + ' (ideal: 1.5–3.5)',
           detail: ratio < 1.5 ? 'Headings are too similar in size — weak hierarchy' : 'Heading sizes vary too wildly — use a modular scale',
           fix: 'Use a modular scale (1.200 minor third or 1.250 major third). In Tailwind: text-4xl > text-2xl > text-xl > text-base',
-          presetRef: null
+          presetRef: null,
+          source: 'Modular type scales — https://typescale.com/'
         });
       }
     } else { passed++; } // Only one heading size — acceptable
@@ -96,7 +99,8 @@ function scoreTypography(data) {
       title: 'Using ' + weightCount + ' font weights (recommended: 2–3)',
       detail: 'Too many weights create visual noise and increase font loading time',
       fix: 'Consolidate to 400 (regular), 500/600 (medium), 700 (bold)',
-      presetRef: null
+      presetRef: null,
+      source: 'Google Fonts best practices — https://fonts.google.com/knowledge/using_type/choosing_reliable_typefaces'
     });
   }
 
@@ -110,7 +114,8 @@ function scoreTypography(data) {
         title: 'Font weight(s) ' + lightWeights.join(', ') + ' below minimum ' + profile.fontWeightMin + ' for this audience',
         detail: 'Light and thin font weights reduce readability for users who need higher legibility',
         fix: 'Use font-weight ' + profile.fontWeightMin + ' (regular) or heavier. Avoid font-weight 100–300.',
-        presetRef: null
+        presetRef: null,
+        source: 'W3C WAI Older Users — https://www.w3.org/WAI/older-users/developing/'
       });
     } else {
       checks++;
@@ -163,7 +168,8 @@ function scoreTypography(data) {
       title: 'Using ' + familyCount + ' font families (recommended: max 2)',
       detail: 'Too many typefaces make the design feel inconsistent',
       fix: 'Use 1 sans-serif + 1 serif (or monospace for code). In Tailwind: font-sans + font-serif',
-      presetRef: null
+      presetRef: null,
+      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/summary-of-key-rules.html'
     });
   }
 

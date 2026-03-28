@@ -129,7 +129,8 @@ function scoreContrast(data) {
       title: uncertain.length + ' element(s) with undetermined contrast (background could not be resolved)',
       detail: 'These elements may use gradients, images, SVGs, or complex CSS that the analyzer cannot parse. Check manually: ' + uncertain.slice(0, 3).map(function(p) { return '"' + p.text + '"'; }).join(', '),
       fix: 'Verify these elements have sufficient contrast visually. The analyzer reports 1:1 when the effective background cannot be computed.',
-      presetRef: null
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
     });
   }
 
@@ -139,7 +140,8 @@ function scoreContrast(data) {
       title: 'Text barely passes contrast ' + p.ratio + ':1 (needs ' + p.needed + ':1)',
       detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector,
       fix: 'Consider increasing contrast for better readability. Aim for 7:1 (AAA) where possible.',
-      presetRef: null
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.6 — https://www.w3.org/TR/WCAG22/#contrast-enhanced'
     });
   });
 

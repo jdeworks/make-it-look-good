@@ -21,7 +21,8 @@ function scoreResponsive(data) {
       title: 'No responsive breakpoint classes detected',
       detail: struct.cssFramework === 'tailwind' ? 'No sm:/md:/lg: prefixes found' : 'No responsive utilities detected',
       fix: 'Add responsive variants. In Tailwind: sm:flex, md:grid-cols-2, lg:px-8',
-      presetRef: 'All presets include mobile-first responsive design'
+      presetRef: 'All presets include mobile-first responsive design',
+      source: 'NNGroup mobile — https://www.nngroup.com/articles/responsive-web-design-definition/'
     });
   }
 
@@ -35,7 +36,8 @@ function scoreResponsive(data) {
       title: 'No dark mode support detected',
       detail: 'dark: class variants not found',
       fix: 'Add dark mode variants. In Tailwind: dark:bg-slate-900 dark:text-slate-100',
-      presetRef: 'All presets include dark: variants'
+      presetRef: 'All presets include dark: variants',
+      source: 'Apple HIG — https://developer.apple.com/design/human-interface-guidelines/dark-mode'
     });
   }
 
@@ -121,7 +123,8 @@ function scoreResponsive(data) {
       title: truncated + ' element(s) with truncated text (ellipsis)',
       detail: 'Content is being cut off — may hide important information on smaller screens',
       fix: 'Consider allowing text to wrap, expanding the container, or using a tooltip to show full content.',
-      presetRef: null
+      presetRef: null,
+      source: 'NNGroup — https://www.nngroup.com/articles/truncation-and-progressive-disclosure/'
     });
   }
 

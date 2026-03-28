@@ -114,6 +114,7 @@
       colors: { textColors: [], bgColors: [], contrastPairs: [] },
       typography: { bodyFontSize: '', bodyLineHeight: '', bodyFontFamily: '', fontFamilies: [], fontSizes: [], fontWeights: [], headings: [], lineHeights: [], maxLineLength: { chars: 0, element: '' } },
       spacing: { paddings: [], margins: [], gaps: [], maxContentWidth: '', bodyPaddingHorizontal: '' },
+      layout: { sectionGaps: [], alignmentEdges: [], visualHierarchy: {} },
       interaction: { touchTargets: [], transitions: [] },
       accessibility: { semanticElements: {}, headingHierarchy: [], imagesWithoutAlt: 0, formLabels: { total: 0, withLabel: 0, withoutLabel: 0 }, focusIndicators: [] },
       structure: { totalElements: 0, darkModeClasses: false, responsiveClasses: false, tailwindDetected: false, cssFramework: 'unknown' }
@@ -238,6 +239,34 @@
       data.accessibility.headingHierarchy.push(h.tagName.toLowerCase());
     });
 
+    // Layout: section gaps, alignment edges, visual hierarchy
+    var sections = document.querySelectorAll('section, [class*="section"], main > div, article');
+    var sortedSections = Array.from(sections).filter(function(el) { return isVisible(el); }).sort(function(a, b) { return a.getBoundingClientRect().top - b.getBoundingClientRect().top; });
+    var sectionGaps = [];
+    for (var si = 1; si < sortedSections.length; si++) {
+      var gapVal = Math.round(sortedSections[si].getBoundingClientRect().top - sortedSections[si - 1].getBoundingClientRect().bottom);
+      if (gapVal >= 0) sectionGaps.push(gapVal);
+    }
+    data.layout.sectionGaps = sectionGaps;
+
+    var alignTargets = document.querySelectorAll('h1,h2,h3,h4,p,ul,ol,table,form,img,figure,blockquote');
+    var leftEdges = [];
+    Array.from(alignTargets).forEach(function(el) {
+      if (!isVisible(el) || isDecorative(el)) return;
+      var r = el.getBoundingClientRect();
+      if (r.width > 50) leftEdges.push(Math.round(r.left));
+    });
+    data.layout.alignmentEdges = leftEdges;
+
+    var bodyFS = parseFloat(data.typography.bodyFontSize) || 16;
+    var h1Sizes = data.typography.headings.filter(function(h) { return h.tag === 'h1'; }).map(function(h) { return parseFloat(h.fontSize); });
+    var h2Sizes = data.typography.headings.filter(function(h) { return h.tag === 'h2'; }).map(function(h) { return parseFloat(h.fontSize); });
+    data.layout.visualHierarchy = {
+      h1ToBody: h1Sizes.length > 0 ? Math.round((h1Sizes[0] / bodyFS) * 100) / 100 : 0,
+      h2ToBody: h2Sizes.length > 0 ? Math.round((h2Sizes[0] / bodyFS) * 100) / 100 : 0,
+      bodySize: bodyFS
+    };
+
     var interactive = document.querySelectorAll('a,button,input,select,textarea,[role="button"],[tabindex]');
     var touchIssues = [];
     interactive.forEach(function(el) {
@@ -342,46 +371,65 @@
       analyzeUrlBtn.textContent = 'Fetching...';
       urlStatus.style.display = 'block';
       urlStatus.textContent = 'Fetching page via CORS proxy...';
+      showProgress(5, 'Fetching page...');
 
       fetchViaProxy(url, function(html, err) {
         if (err || !html) {
           analyzeUrlBtn.disabled = false;
           analyzeUrlBtn.textContent = 'Analyze URL';
           urlStatus.innerHTML = '<span style="color:#dc2626">Could not fetch: ' + (err || 'empty response') + '</span><br><span style="font-size:12px">Try the Console Snippet tab for pages behind login, localhost, or sites that block proxies.</span>';
+          hideProgress();
           return;
         }
         urlStatus.textContent = 'Rendering and analyzing...';
+        showProgress(20, 'Rendering page...');
         var exclude = window.__milgCombinedExclude || (document.getElementById('excludeSelector').value || '').trim();
         var isDeepScan = document.getElementById('deepScanCheck') && document.getElementById('deepScanCheck').checked;
         if (isDeepScan) {
-          var viewports = [{w:1280,h:900,label:'Desktop'},{w:768,h:1024,label:'Tablet'},{w:375,h:812,label:'Phone'}];
+          // Build viewport list: current + presets, skip duplicates
+          var curW = window.innerWidth, curH = window.innerHeight;
+          var presets = [{w:1280,h:900,label:'Desktop'},{w:768,h:1024,label:'Tablet'},{w:375,h:812,label:'Phone'}];
+          var viewports = [{w:curW,h:curH,label:'Current (' + curW + '×' + curH + ')'}];
+          presets.forEach(function(p) {
+            // Skip if current window is within 50px of a preset
+            if (Math.abs(curW - p.w) < 50 && Math.abs(curH - p.h) < 50) return;
+            viewports.push(p);
+          });
           var deepResults = [];
+          var deepRawResults = []; // Store full data per viewport for switching
           var vpIdx = 0;
+          var totalSteps = viewports.length + 1; // +1 for dark mode test
           (function nextVP() {
             if (vpIdx >= viewports.length) {
-              var primary = deepResults[0] || deepResults[1] || deepResults[2];
+              // Find primary: use current viewport (index 0)
+              var primary = deepRawResults[0];
+              for (var pi = 0; pi < deepRawResults.length && !primary; pi++) primary = deepRawResults[pi];
               if (!primary) {
                 analyzeUrlBtn.disabled = false;
                 analyzeUrlBtn.textContent = 'Analyze URL';
                 urlStatus.innerHTML = '<span style="color:#dc2626">Deep scan failed — no viewport returned data.</span>';
+                hideProgress();
                 return;
               }
-              primary.deepScan = { viewports: deepResults.map(function(r, i) {
-                return r ? {
-                  label: viewports[i].label, width: viewports[i].w,
-                  touchTargets: (r.interaction.touchTargets || []).length,
-                  contrastFails: (r.colors.contrastPairs || []).filter(function(p) { return !p.passes; }).length,
-                  overflow: r.structure.hasHorizontalOverflow || false
-                } : { label: viewports[i].label, width: viewports[i].w, error: true };
-              })};
+              primary.deepScan = {
+                viewports: deepRawResults.map(function(r, i) {
+                  return r ? {
+                    label: viewports[i].label, width: viewports[i].w,
+                    touchTargets: (r.interaction.touchTargets || []).length,
+                    contrastFails: (r.colors.contrastPairs || []).filter(function(p) { return !p.passes; }).length,
+                    overflow: r.structure.hasHorizontalOverflow || false
+                  } : { label: viewports[i].label, width: viewports[i].w, error: true };
+                }),
+                viewportData: deepRawResults.map(function(r, i) {
+                  return r ? { label: viewports[i].label, width: viewports[i].w, data: r } : null;
+                }).filter(Boolean)
+              };
               // Dark mode test
               var htmlHasDark = /class="[^"]*dark:/.test(html) || /prefers-color-scheme/.test(html) || /\.dark\s*\{/.test(html) || /data-theme/.test(html);
               if (htmlHasDark) {
                 urlStatus.textContent = 'Testing dark mode...';
-                // Class toggle for Tailwind/class-based dark mode
+                showProgress(Math.round(80 + 15 * (vpIdx / totalSteps)), 'Testing dark mode...');
                 var darkHtml = html.replace(/<html([^>]*)>/i, '<html$1 class="dark" data-theme="dark" style="color-scheme:dark">');
-                // Media query rewriting: extract prefers-color-scheme:dark rules and inject unconditionally
-                // This handles sites that use @media (prefers-color-scheme: dark) instead of class-based dark mode
                 darkHtml = darkHtml.replace(/<\/head>/i, '<script>setTimeout(function(){try{Array.from(document.styleSheets).forEach(function(ss){try{var darkRules=[];Array.from(ss.cssRules).forEach(function(r){if(r instanceof CSSMediaRule&&/prefers-color-scheme:\\s*dark/.test(r.conditionText||"")){Array.from(r.cssRules).forEach(function(inner){darkRules.push(inner.cssText)})}});if(darkRules.length>0){var s=document.createElement("style");s.textContent=darkRules.join("\\n");document.head.appendChild(s)}}catch(e){}});}catch(e){}},100);</' + 'script></head>');
                 deepScanInIframe(darkHtml, url, exclude, 1280, 900, function(darkData) {
                   if (darkData) {
@@ -394,6 +442,8 @@
                   analyzeUrlBtn.disabled = false;
                   analyzeUrlBtn.textContent = 'Analyze URL';
                   urlStatus.style.display = 'none';
+                  showProgress(100, 'Done!');
+                  setTimeout(hideProgress, 500);
                   primary.meta.url = url;
                   runAnalysis(primary);
                 });
@@ -401,25 +451,32 @@
                 analyzeUrlBtn.disabled = false;
                 analyzeUrlBtn.textContent = 'Analyze URL';
                 urlStatus.style.display = 'none';
+                showProgress(100, 'Done!');
+                setTimeout(hideProgress, 500);
                 primary.meta.url = url;
                 runAnalysis(primary);
               }
               return;
             }
             var vp = viewports[vpIdx];
+            var pct = 20 + Math.round(60 * (vpIdx / totalSteps));
             urlStatus.textContent = 'Deep scan: ' + vp.label + ' (' + vp.w + 'px)...';
+            showProgress(pct, 'Scanning ' + vp.label + '...');
             deepScanInIframe(html, url, exclude, vp.w, vp.h, function(data) {
-              deepResults.push(data);
+              deepRawResults.push(data);
               vpIdx++;
               nextVP();
             });
           })();
           return;
         }
+        showProgress(40, 'Analyzing styles...');
         analyzeHtmlInIframe(html, function(data) {
           analyzeUrlBtn.disabled = false;
           analyzeUrlBtn.textContent = 'Analyze URL';
           urlStatus.style.display = 'none';
+          showProgress(100, 'Done!');
+          setTimeout(hideProgress, 500);
           data.meta.url = url;
           runAnalysis(data);
         }, url, exclude);
@@ -430,6 +487,15 @@
     urlInput.addEventListener('keydown', function(e) {
       if (e.key === 'Enter') { e.preventDefault(); analyzeUrlBtn.click(); }
     });
+
+    // Deep scan checkbox — toggle viewport row visibility
+    var deepScanCheck = document.getElementById('deepScanCheck');
+    var viewportRow = document.getElementById('viewportRow');
+    if (deepScanCheck && viewportRow) {
+      deepScanCheck.addEventListener('change', function() {
+        viewportRow.classList.toggle('hidden', deepScanCheck.checked);
+      });
+    }
 
     // Exclude preset tags — toggle on click, build selector
     document.querySelectorAll('.exclude-tag').forEach(function(tag) {
@@ -652,6 +718,19 @@
     showToast('Re-scored with ' + active.length + ' exclusion(s)');
   };
 
+  // Viewport switching for deep scan results
+  window.__milgSwitchViewport = function(idx) {
+    if (!lastRawData || !lastRawData.deepScan || !lastRawData.deepScan.viewportData) return;
+    var vpData = lastRawData.deepScan.viewportData[idx];
+    if (!vpData || !vpData.data) { showToast('No data for this viewport'); return; }
+    // Re-run analysis with this viewport's data, preserving deep scan metadata
+    var switchedData = JSON.parse(JSON.stringify(vpData.data));
+    switchedData.deepScan = lastRawData.deepScan;
+    switchedData.meta.url = lastRawData.meta.url;
+    runAnalysis(switchedData);
+    showToast('Showing results for ' + vpData.label);
+  };
+
   function deepScanInIframe(html, url, exclude, vpWidth, vpHeight, callback) {
     var iframe = document.createElement('iframe');
     iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + vpWidth + 'px;height:' + vpHeight + 'px;border:none;';
@@ -729,11 +808,11 @@
     return fetch(url, { mode: 'cors', redirect: 'follow' })
       .then(function(r) { if (r.ok) return r.text(); throw new Error(r.status); })
       .catch(function() {
-        // Try proxies in order
+        // Try proxies in order (allorigins most reliable, corsproxy rate-limited)
         var proxies = [
-          'https://corsproxy.io/?' + encodeURIComponent(url),
+          'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
           'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url),
-          'https://api.allorigins.win/raw?url=' + encodeURIComponent(url)
+          'https://corsproxy.io/?' + encodeURIComponent(url)
         ];
         return proxies.reduce(function(chain, purl) {
           return chain.catch(function() {
@@ -865,6 +944,22 @@
         });
       }
     }, isFullDoc ? 15000 : 8000);
+  }
+
+  // --- Progress bar helpers ---
+  function showProgress(pct, label) {
+    var el = document.getElementById('analysisProgress');
+    var fill = document.getElementById('progressFill');
+    var lbl = document.getElementById('progressLabel');
+    if (!el) return;
+    el.style.display = 'block';
+    fill.style.width = Math.min(pct, 100) + '%';
+    if (label) lbl.textContent = label;
+  }
+
+  function hideProgress() {
+    var el = document.getElementById('analysisProgress');
+    if (el) el.style.display = 'none';
   }
 
   function loadSnippet(codeEl) {

@@ -64,7 +64,8 @@
         title: 'Scroll-reveal library detected: ' + totalReveal + ' animated element(s)',
         detail: 'Libraries found: ' + patterns.map(function(p) { return p.selector + ' (' + p.count + ')'; }).join(', '),
         fix: 'Ensure scroll-reveal animations respect prefers-reduced-motion and that content is visible without JavaScript.',
-        presetRef: null
+        presetRef: null,
+        source: 'WCAG 2.2 §2.3.3 — https://www.w3.org/TR/WCAG22/#animation-from-interactions'
       });
     }
 

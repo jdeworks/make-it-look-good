@@ -23,7 +23,8 @@ function scoreCognitiveLoad(data) {
       title: headingCount + ' headings on page — consider chunking content',
       detail: 'Hick\'s Law: more choices = slower decisions',
       fix: 'Break content into tabs, accordions, or separate pages. Keep 5–7 top-level sections.',
-      presetRef: 'Tab and accordion presets for progressive disclosure'
+      presetRef: 'Tab and accordion presets for progressive disclosure',
+      source: 'Hick\'s Law — https://lawsofux.com/hicks-law/'
     });
   }
 
@@ -38,7 +39,8 @@ function scoreCognitiveLoad(data) {
       title: formFields + ' form fields visible (recommended: 5–7 per step)',
       detail: 'Long forms have high abandonment rates',
       fix: 'Break into multi-step form with 3–5 fields per step. Show a progress indicator.',
-      presetRef: 'Form presets demonstrate multi-step patterns'
+      presetRef: 'Form presets demonstrate multi-step patterns',
+      source: 'Miller\'s Law / Baymard Institute — https://lawsofux.com/millers-law/'
     });
   }
 

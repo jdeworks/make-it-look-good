@@ -55,7 +55,8 @@ function scoreSpacing(data) {
       title: 'Content width is ' + Math.round(maxW) + 'px (recommended: 1200–1440px)',
       detail: 'Very wide content is harder to scan and looks stretched on large monitors',
       fix: 'Add a max-width container. In Tailwind: max-w-7xl (1280px) or max-w-screen-xl',
-      presetRef: 'Dashboard presets use max-w-7xl containers'
+      presetRef: 'Dashboard presets use max-w-7xl containers',
+      source: 'NNGroup — https://www.nngroup.com/articles/utilize-available-screen-space/'
     });
   } else {
     passed++; // No max width data or narrow — fine
@@ -72,7 +73,8 @@ function scoreSpacing(data) {
       title: 'Body horizontal padding is ' + bodyPad + 'px (minimum: 16px)',
       detail: 'Content touching screen edges feels cramped on mobile',
       fix: 'Add px-4 (16px) padding to the body or main container',
-      presetRef: null
+      presetRef: null,
+      source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout'
     });
   }
 
@@ -90,7 +92,8 @@ function scoreSpacing(data) {
         title: 'Interactive elements touching (' + a.gap + 'px gap)',
         detail: '"' + a.textA + '" and "' + a.textB + '" (' + a.direction + ')',
         fix: 'Add at least ' + minSpacing + 'px gap between interactive elements. In Tailwind: gap-' + (minSpacing / 4) + ' on the parent flex/grid container.',
-        presetRef: 'Button presets use gap-2 (8px) or gap-3 (12px) between buttons'
+        presetRef: 'Button presets use gap-2 (8px) or gap-3 (12px) between buttons',
+        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
       });
     });
 
@@ -100,7 +103,8 @@ function scoreSpacing(data) {
         title: 'Interactive elements only ' + a.gap + 'px apart (recommended: ≥' + minSpacing + 'px)',
         detail: '"' + a.textA + '" and "' + a.textB + '" (' + a.direction + ')',
         fix: 'Increase gap to at least ' + minSpacing + 'px to prevent mis-taps. In Tailwind: gap-' + (minSpacing / 4) + ' on the parent.',
-        presetRef: null
+        presetRef: null,
+        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
       });
     });
 

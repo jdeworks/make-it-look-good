@@ -12521,7 +12521,8 @@ function scoreCognitiveLoad(data) {
       title: headingCount + ' headings on page — consider chunking content',
       detail: 'Hick\'s Law: more choices = slower decisions',
       fix: 'Break content into tabs, accordions, or separate pages. Keep 5–7 top-level sections.',
-      presetRef: 'Tab and accordion presets for progressive disclosure'
+      presetRef: 'Tab and accordion presets for progressive disclosure',
+      source: 'Hick\'s Law — https://lawsofux.com/hicks-law/'
     });
   }
 
@@ -12536,7 +12537,8 @@ function scoreCognitiveLoad(data) {
       title: formFields + ' form fields visible (recommended: 5–7 per step)',
       detail: 'Long forms have high abandonment rates',
       fix: 'Break into multi-step form with 3–5 fields per step. Show a progress indicator.',
-      presetRef: 'Form presets demonstrate multi-step patterns'
+      presetRef: 'Form presets demonstrate multi-step patterns',
+      source: 'Miller\'s Law / Baymard Institute — https://lawsofux.com/millers-law/'
     });
   }
 
@@ -12579,16 +12581,17 @@ function scoreLayout(data) {
         title: 'Inconsistent spacing between sections (CV: ' + Math.round(cv * 100) + '%)',
         detail: 'Gaps range from ' + Math.min.apply(null, gaps) + 'px to ' + Math.max.apply(null, gaps) + 'px (avg ' + Math.round(avg) + 'px)',
         fix: 'Use consistent spacing between major sections. Pick one value (e.g. 64px or 96px) and use it everywhere.',
-        presetRef: null
+        presetRef: null,
+        source: 'Gestalt similarity — https://lawsofux.com/law-of-similarity/'
       });
     }
   }
 
-  // Alignment consistency: cluster left edges and find near-misses
+  // Alignment consistency: cluster left edges and find near-misses ("jagged" alignment)
   var edges = layout.alignmentEdges || [];
   if (edges.length >= 5) {
     checks++;
-    // Cluster edges within 3px
+    // Cluster edges within 3px (considered aligned)
     var clusters = [];
     var sorted = edges.slice().sort(function(a, b) { return a - b; });
     var current = [sorted[0]];
@@ -12601,21 +12604,39 @@ function scoreLayout(data) {
       }
     }
     clusters.push(current);
-    // Find near-miss clusters (4-8px apart — probably misaligned)
+    // Find near-miss clusters (4-12px apart — elements on same axis but jagged)
     var nearMisses = 0;
+    var jaggedExamples = [];
     for (var i = 1; i < clusters.length; i++) {
-      var gap = clusters[i][0] - clusters[i - 1][clusters[i - 1].length - 1];
-      if (gap > 3 && gap <= 8) nearMisses++;
+      var prevAvg = Math.round(clusters[i - 1].reduce(function(s,v){return s+v},0) / clusters[i - 1].length);
+      var currAvg = Math.round(clusters[i].reduce(function(s,v){return s+v},0) / clusters[i].length);
+      var gap = currAvg - prevAvg;
+      if (gap > 3 && gap <= 12) {
+        nearMisses++;
+        jaggedExamples.push(prevAvg + 'px → ' + currAvg + 'px (' + gap + 'px off)');
+      }
     }
-    if (nearMisses === 0) {
+    // Also check how many unique clusters there are relative to element count
+    var clusterRatio = clusters.length / edges.length;
+    if (nearMisses === 0 && clusterRatio < 0.5) {
       passed++;
-    } else {
+    } else if (nearMisses > 0) {
+      findings.push({
+        severity: nearMisses >= 3 ? 'warning' : 'info',
+        title: nearMisses + ' jagged alignment(s) — elements on same axis but ' + (nearMisses >= 3 ? 'noticeably' : 'slightly') + ' off',
+        detail: clusters.length + ' alignment edges across ' + edges.length + ' elements. ' + (jaggedExamples.length > 0 ? 'Offsets: ' + jaggedExamples.slice(0, 3).join(', ') : ''),
+        fix: 'Elements that share a visual axis should be exactly aligned. Check that container padding, margin, and grid column widths are consistent. In Tailwind: use consistent px-4/px-6 and grid/flex alignment.',
+        presetRef: null,
+        source: 'Gestalt continuity — https://lawsofux.com/law-of-common-region/'
+      });
+    } else if (clusterRatio >= 0.5) {
       findings.push({
         severity: 'info',
-        title: nearMisses + ' near-miss alignment(s) detected (elements 4-8px off)',
-        detail: clusters.length + ' distinct alignment edges found across ' + edges.length + ' elements',
-        fix: 'Elements that are almost aligned should be exactly aligned. Check container padding and margin consistency.',
-        presetRef: null
+        title: 'Weak alignment grid — ' + clusters.length + ' distinct left edges across ' + edges.length + ' elements',
+        detail: 'A well-aligned layout typically has 2-4 dominant alignment edges. High variance suggests inconsistent margins/padding.',
+        fix: 'Establish a consistent alignment grid. Use the same container padding and let content flow within columns.',
+        presetRef: null,
+        source: 'Gestalt continuity — https://lawsofux.com/law-of-common-region/'
       });
     }
   }
@@ -12632,7 +12653,8 @@ function scoreLayout(data) {
         title: 'H1 is ' + vh.h1ToBody + 'x body text (ideal: 2-4x)',
         detail: vh.h1ToBody < 2 ? 'H1 doesn\'t stand out enough from body text' : 'H1 may be too large relative to body text',
         fix: 'H1 should be 2-4x the body font size for clear hierarchy. At 16px body, H1 should be 32-64px.',
-        presetRef: null
+        presetRef: null,
+        source: 'Modular type scales — https://typescale.com/'
       });
     }
   }
@@ -14685,7 +14707,8 @@ function scoreVisualConsistency(data) {
       title: totalUnique + ' unique colors detected (recommend < ' + colorLimit + ' for this page type)',
       detail: textColors + ' text colors, ' + bgColors + ' background colors',
       fix: 'Consolidate to a systematic color palette: 1 primary + 1 neutral + 3 semantic (error, warning, success)',
-      presetRef: 'Presets use a single primary color with slate neutrals'
+      presetRef: 'Presets use a single primary color with slate neutrals',
+      source: 'Material Design 3 — https://m3.material.io/styles/color/roles'
     });
   }
 
@@ -14700,7 +14723,8 @@ function scoreVisualConsistency(data) {
       title: fontSizes + ' unique font sizes (recommend ≤' + fontSizeLimit + ' from a type scale)',
       detail: 'A consistent type scale creates visual rhythm',
       fix: 'Use a modular scale: text-sm, text-base, text-lg, text-xl, text-2xl, text-3xl, text-4xl',
-      presetRef: null
+      presetRef: null,
+      source: 'Modular type scales — https://typescale.com/'
     });
   }
 
@@ -14798,7 +14822,8 @@ function scoreVisualConsistency(data) {
         title: 'Scroll-reveal library detected: ' + totalReveal + ' animated element(s)',
         detail: 'Libraries found: ' + patterns.map(function(p) { return p.selector + ' (' + p.count + ')'; }).join(', '),
         fix: 'Ensure scroll-reveal animations respect prefers-reduced-motion and that content is visible without JavaScript.',
-        presetRef: null
+        presetRef: null,
+        source: 'WCAG 2.2 §2.3.3 — https://www.w3.org/TR/WCAG22/#animation-from-interactions'
       });
     }
 
@@ -14986,7 +15011,8 @@ function scoreTouchTargets(data) {
         fix: isDesktop
           ? 'Click targets need at least ' + minSize + '×' + minSize + 'px. Increase padding or min-height/min-width.'
           : 'Touch targets need ' + minSize + '×' + minSize + 'px minimum. Add min-h-[' + minSize + 'px] min-w-[' + minSize + 'px] or increase padding.',
-        presetRef: isDesktop ? null : 'Button presets use py-3 px-6 (48px height)'
+        presetRef: isDesktop ? null : 'Button presets use py-3 px-6 (48px height)',
+        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
       });
     } else if (minDim < warnSize && isDesktop) {
       findings.push({
@@ -14994,7 +15020,8 @@ function scoreTouchTargets(data) {
         title: t.element + ' is ' + w + '×' + h + 'px (recommended for desktop: ≥' + warnSize + 'px)',
         detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
         fix: 'While ' + minSize + 'px meets minimum, ' + warnSize + 'px+ improves click comfort. Consider adding padding.',
-        presetRef: null
+        presetRef: null,
+        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
       });
     }
   });
@@ -15009,7 +15036,8 @@ function scoreTouchTargets(data) {
         title: touchFails.length + ' element(s) below ' + touchMin + 'px touch target (analyzed at ' + vw + 'px desktop viewport)',
         detail: 'These meet desktop minimums but would fail on touch devices. Consider responsive sizing if the site is also used on mobile.',
         fix: 'For responsive touch support: add touch-target sizing at mobile breakpoints, e.g. sm:min-h-[' + touchMin + 'px]',
-        presetRef: null
+        presetRef: null,
+        source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout'
       });
     }
   }
@@ -15035,7 +15063,8 @@ function scoreTouchTargets(data) {
         title: 'Transition duration ' + ms + 'ms exceeds 500ms maximum',
         detail: 'Users perceive animations longer than 500ms as sluggish',
         fix: 'Keep transitions under 500ms. Enter: 200–300ms, Exit: 150–200ms. In Tailwind: duration-200 or duration-300',
-        presetRef: null
+        presetRef: null,
+        source: 'NNGroup animation — https://www.nngroup.com/articles/animation-usability/'
       });
     }
   });
@@ -16116,7 +16145,8 @@ function scoreResponsive(data) {
       title: 'No responsive breakpoint classes detected',
       detail: struct.cssFramework === 'tailwind' ? 'No sm:/md:/lg: prefixes found' : 'No responsive utilities detected',
       fix: 'Add responsive variants. In Tailwind: sm:flex, md:grid-cols-2, lg:px-8',
-      presetRef: 'All presets include mobile-first responsive design'
+      presetRef: 'All presets include mobile-first responsive design',
+      source: 'NNGroup mobile — https://www.nngroup.com/articles/responsive-web-design-definition/'
     });
   }
 
@@ -16130,7 +16160,8 @@ function scoreResponsive(data) {
       title: 'No dark mode support detected',
       detail: 'dark: class variants not found',
       fix: 'Add dark mode variants. In Tailwind: dark:bg-slate-900 dark:text-slate-100',
-      presetRef: 'All presets include dark: variants'
+      presetRef: 'All presets include dark: variants',
+      source: 'Apple HIG — https://developer.apple.com/design/human-interface-guidelines/dark-mode'
     });
   }
 
@@ -16216,7 +16247,8 @@ function scoreResponsive(data) {
       title: truncated + ' element(s) with truncated text (ellipsis)',
       detail: 'Content is being cut off — may hide important information on smaller screens',
       fix: 'Consider allowing text to wrap, expanding the container, or using a tooltip to show full content.',
-      presetRef: null
+      presetRef: null,
+      source: 'NNGroup — https://www.nngroup.com/articles/truncation-and-progressive-disclosure/'
     });
   }
 
@@ -17188,7 +17220,8 @@ function scoreContrast(data) {
       title: uncertain.length + ' element(s) with undetermined contrast (background could not be resolved)',
       detail: 'These elements may use gradients, images, SVGs, or complex CSS that the analyzer cannot parse. Check manually: ' + uncertain.slice(0, 3).map(function(p) { return '"' + p.text + '"'; }).join(', '),
       fix: 'Verify these elements have sufficient contrast visually. The analyzer reports 1:1 when the effective background cannot be computed.',
-      presetRef: null
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
     });
   }
 
@@ -17198,7 +17231,8 @@ function scoreContrast(data) {
       title: 'Text barely passes contrast ' + p.ratio + ':1 (needs ' + p.needed + ':1)',
       detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector,
       fix: 'Consider increasing contrast for better readability. Aim for 7:1 (AAA) where possible.',
-      presetRef: null
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.6 — https://www.w3.org/TR/WCAG22/#contrast-enhanced'
     });
   });
 
@@ -17238,7 +17272,8 @@ function scorePerformance(data) {
       title: fontIssues.length + ' web font(s) without font-display: swap',
       detail: 'Fonts with display:auto or display:block cause invisible text (FOIT) while loading',
       fix: 'Add font-display: swap (or optional) to @font-face rules. This shows fallback text immediately.',
-      presetRef: null
+      presetRef: null,
+      source: 'Web.dev — https://web.dev/articles/font-display'
     });
   } else {
     checks++;
@@ -17257,7 +17292,8 @@ function scorePerformance(data) {
       title: blockingCount + ' render-blocking resources in <head>',
       detail: (rb.cssInHead || 0) + ' CSS files, ' + (rb.jsInHead || 0) + ' sync JS scripts',
       fix: 'Defer non-critical CSS with media="print" onload hack. Add async/defer to scripts.',
-      presetRef: null
+      presetRef: null,
+      source: 'Web.dev — https://web.dev/articles/render-blocking-resources'
     });
   }
 
@@ -17272,7 +17308,8 @@ function scorePerformance(data) {
       title: domSize + ' DOM elements (' + (domSize > 3000 ? 'excessive' : 'large') + ')',
       detail: 'Large DOMs slow rendering, increase memory, and hurt interaction responsiveness',
       fix: 'Consider lazy loading sections, virtualizing long lists, or simplifying markup.',
-      presetRef: null
+      presetRef: null,
+      source: 'Chrome DevTools — https://developer.chrome.com/docs/lighthouse/performance/dom-size'
     });
   }
 
@@ -17287,7 +17324,8 @@ function scorePerformance(data) {
       title: 'DOM nesting depth: ' + depth + ' levels (recommended: ≤32)',
       detail: 'Deep nesting increases CSS selector matching time and layout complexity',
       fix: 'Flatten nested containers where possible. Avoid wrapping divs that serve no purpose.',
-      presetRef: null
+      presetRef: null,
+      source: 'Chrome DevTools — https://developer.chrome.com/docs/lighthouse/performance/dom-size'
     });
   }
 
@@ -17455,7 +17493,8 @@ function scoreSpacing(data) {
       title: 'Content width is ' + Math.round(maxW) + 'px (recommended: 1200–1440px)',
       detail: 'Very wide content is harder to scan and looks stretched on large monitors',
       fix: 'Add a max-width container. In Tailwind: max-w-7xl (1280px) or max-w-screen-xl',
-      presetRef: 'Dashboard presets use max-w-7xl containers'
+      presetRef: 'Dashboard presets use max-w-7xl containers',
+      source: 'NNGroup — https://www.nngroup.com/articles/utilize-available-screen-space/'
     });
   } else {
     passed++; // No max width data or narrow — fine
@@ -17472,7 +17511,8 @@ function scoreSpacing(data) {
       title: 'Body horizontal padding is ' + bodyPad + 'px (minimum: 16px)',
       detail: 'Content touching screen edges feels cramped on mobile',
       fix: 'Add px-4 (16px) padding to the body or main container',
-      presetRef: null
+      presetRef: null,
+      source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout'
     });
   }
 
@@ -17490,7 +17530,8 @@ function scoreSpacing(data) {
         title: 'Interactive elements touching (' + a.gap + 'px gap)',
         detail: '"' + a.textA + '" and "' + a.textB + '" (' + a.direction + ')',
         fix: 'Add at least ' + minSpacing + 'px gap between interactive elements. In Tailwind: gap-' + (minSpacing / 4) + ' on the parent flex/grid container.',
-        presetRef: 'Button presets use gap-2 (8px) or gap-3 (12px) between buttons'
+        presetRef: 'Button presets use gap-2 (8px) or gap-3 (12px) between buttons',
+        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
       });
     });
 
@@ -17500,7 +17541,8 @@ function scoreSpacing(data) {
         title: 'Interactive elements only ' + a.gap + 'px apart (recommended: ≥' + minSpacing + 'px)',
         detail: '"' + a.textA + '" and "' + a.textB + '" (' + a.direction + ')',
         fix: 'Increase gap to at least ' + minSpacing + 'px to prevent mis-taps. In Tailwind: gap-' + (minSpacing / 4) + ' on the parent.',
-        presetRef: null
+        presetRef: null,
+        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
       });
     });
 
@@ -17605,7 +17647,8 @@ function scoreTypography(data) {
       title: 'Body line-height is ' + (Math.round(bodyLHRatio * 100) / 100) + ' (ideal: ' + profile.lineHeightMin + '–' + profile.lineHeightMax + ')',
       detail: bodyLHRatio < profile.lineHeightMin ? 'Text feels cramped and hard to read' : 'Text feels too loose and wastes vertical space',
       fix: bodyLHRatio < profile.lineHeightMin ? 'Increase line-height. In Tailwind: leading-relaxed (1.625) or leading-normal (1.5)' : 'Decrease line-height. In Tailwind: leading-normal (1.5)',
-      presetRef: null
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.12 — https://www.w3.org/TR/WCAG22/#text-spacing'
     });
   }
 
@@ -17620,7 +17663,8 @@ function scoreTypography(data) {
       title: 'Line length ~' + maxChars + ' characters (ideal: 45–75)',
       detail: 'Long lines make it hard for the eye to track back to the next line',
       fix: 'Constrain content width with max-w-prose (65ch) or max-w-2xl (672px)',
-      presetRef: 'Editorial presets use max-w-prose for reading content'
+      presetRef: 'Editorial presets use max-w-prose for reading content',
+      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-length.html'
     });
   }
 
@@ -17640,7 +17684,8 @@ function scoreTypography(data) {
           title: 'Heading scale ratio is ' + (Math.round(ratio * 100) / 100) + ' (ideal: 1.5–3.5)',
           detail: ratio < 1.5 ? 'Headings are too similar in size — weak hierarchy' : 'Heading sizes vary too wildly — use a modular scale',
           fix: 'Use a modular scale (1.200 minor third or 1.250 major third). In Tailwind: text-4xl > text-2xl > text-xl > text-base',
-          presetRef: null
+          presetRef: null,
+          source: 'Modular type scales — https://typescale.com/'
         });
       }
     } else { passed++; } // Only one heading size — acceptable
@@ -17658,7 +17703,8 @@ function scoreTypography(data) {
       title: 'Using ' + weightCount + ' font weights (recommended: 2–3)',
       detail: 'Too many weights create visual noise and increase font loading time',
       fix: 'Consolidate to 400 (regular), 500/600 (medium), 700 (bold)',
-      presetRef: null
+      presetRef: null,
+      source: 'Google Fonts best practices — https://fonts.google.com/knowledge/using_type/choosing_reliable_typefaces'
     });
   }
 
@@ -17672,7 +17718,8 @@ function scoreTypography(data) {
         title: 'Font weight(s) ' + lightWeights.join(', ') + ' below minimum ' + profile.fontWeightMin + ' for this audience',
         detail: 'Light and thin font weights reduce readability for users who need higher legibility',
         fix: 'Use font-weight ' + profile.fontWeightMin + ' (regular) or heavier. Avoid font-weight 100–300.',
-        presetRef: null
+        presetRef: null,
+        source: 'W3C WAI Older Users — https://www.w3.org/WAI/older-users/developing/'
       });
     } else {
       checks++;
@@ -17725,7 +17772,8 @@ function scoreTypography(data) {
       title: 'Using ' + familyCount + ' font families (recommended: max 2)',
       detail: 'Too many typefaces make the design feel inconsistent',
       fix: 'Use 1 sans-serif + 1 serif (or monospace for code). In Tailwind: font-sans + font-serif',
-      presetRef: null
+      presetRef: null,
+      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/summary-of-key-rules.html'
     });
   }
 
@@ -17934,13 +17982,13 @@ function scoreAccessibility(data) {
   var lazyAbove = imgIssues.filter(function(i) { return i.issues.indexOf('lazy-above-fold') !== -1; });
   var oversized = imgIssues.filter(function(i) { return i.issues.some(function(x) { return x.indexOf('oversized') === 0; }); });
   if (noDimensions.length > 0) {
-    findings.push({ severity: 'warning', title: noDimensions.length + ' image(s) without explicit dimensions', detail: 'Missing width/height causes layout shift (CLS) when images load', fix: 'Add width and height attributes to all <img> tags, or use CSS aspect-ratio.', presetRef: null });
+    findings.push({ severity: 'warning', title: noDimensions.length + ' image(s) without explicit dimensions', detail: 'Missing width/height causes layout shift (CLS) when images load', fix: 'Add width and height attributes to all <img> tags, or use CSS aspect-ratio.', presetRef: null, source: 'Web Vitals — https://web.dev/articles/cls' });
   }
   if (lazyAbove.length > 0) {
-    findings.push({ severity: 'error', title: lazyAbove.length + ' above-fold image(s) with lazy loading', detail: 'lazy loading on visible images delays LCP (Largest Contentful Paint)', fix: 'Remove loading="lazy" from images visible in the initial viewport. Use it only for below-fold images.', presetRef: null });
+    findings.push({ severity: 'error', title: lazyAbove.length + ' above-fold image(s) with lazy loading', detail: 'lazy loading on visible images delays LCP (Largest Contentful Paint)', fix: 'Remove loading="lazy" from images visible in the initial viewport. Use it only for below-fold images.', presetRef: null, source: 'Web Vitals — https://web.dev/articles/lcp' });
   }
   if (oversized.length > 0) {
-    findings.push({ severity: 'info', title: oversized.length + ' image(s) may be oversized for their display size', detail: 'Serving images much larger than their display size wastes bandwidth', fix: 'Resize images to 2x their display size (for retina). Use srcset for responsive images.', presetRef: null });
+    findings.push({ severity: 'info', title: oversized.length + ' image(s) may be oversized for their display size', detail: 'Serving images much larger than their display size wastes bandwidth', fix: 'Resize images to 2x their display size (for retina). Use srcset for responsive images.', presetRef: null, source: 'MDN — https://developer.mozilla.org/en-US/docs/Learn/HTML/Multimedia_and_embedding/Responsive_images' });
   }
 
   // Form labels
@@ -17954,7 +18002,8 @@ function scoreAccessibility(data) {
       title: forms.withoutLabel + ' of ' + forms.total + ' form inputs missing labels',
       detail: 'Unlabeled inputs are unusable for screen reader users',
       fix: 'Use <label for="id"> or wrap the input in a <label>. Add aria-label for icon-only inputs.',
-      presetRef: 'Form presets always pair inputs with visible labels'
+      presetRef: 'Form presets always pair inputs with visible labels',
+      source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
     });
   }
 
@@ -18326,15 +18375,16 @@ window.MilgReport = (function() {
       if (ds.viewports && ds.viewports.length > 0) {
         html += '<h4 style="font-size:13px;margin-bottom:8px">Multi-Viewport Comparison</h4>';
         html += '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px">';
-        html += '<tr><th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border)">Viewport</th><th style="padding:4px 8px;border-bottom:1px solid var(--border)">Touch Issues</th><th style="padding:4px 8px;border-bottom:1px solid var(--border)">Contrast Fails</th><th style="padding:4px 8px;border-bottom:1px solid var(--border)">Overflow</th></tr>';
-        ds.viewports.forEach(function(vp) {
+        html += '<tr><th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border)">Viewport</th><th style="padding:4px 8px;border-bottom:1px solid var(--border)">Touch Issues</th><th style="padding:4px 8px;border-bottom:1px solid var(--border)">Contrast Fails</th><th style="padding:4px 8px;border-bottom:1px solid var(--border)">Overflow</th><th style="padding:4px 8px;border-bottom:1px solid var(--border)"></th></tr>';
+        ds.viewports.forEach(function(vp, idx) {
           if (vp.error) {
-            html += '<tr><td style="padding:4px 8px">' + escapeHtml(vp.label) + ' (' + vp.width + 'px)</td><td colspan="3" style="padding:4px 8px;color:#dc2626">Extraction failed</td></tr>';
+            html += '<tr><td style="padding:4px 8px">' + escapeHtml(vp.label) + ' (' + vp.width + 'px)</td><td colspan="4" style="padding:4px 8px;color:#dc2626">Extraction failed</td></tr>';
           } else {
             html += '<tr><td style="padding:4px 8px">' + escapeHtml(vp.label) + ' (' + vp.width + 'px)</td>';
             html += '<td style="padding:4px 8px;text-align:center">' + (vp.touchTargets || 0) + '</td>';
             html += '<td style="padding:4px 8px;text-align:center">' + (vp.contrastFails || 0) + '</td>';
-            html += '<td style="padding:4px 8px;text-align:center">' + (vp.overflow ? 'Yes' : 'No') + '</td></tr>';
+            html += '<td style="padding:4px 8px;text-align:center">' + (vp.overflow ? 'Yes' : 'No') + '</td>';
+            html += '<td style="padding:4px 8px;text-align:center"><button class="btn" style="font-size:11px;padding:3px 10px;min-height:28px" onclick="window.__milgSwitchViewport(' + idx + ')">View report</button></td></tr>';
           }
         });
         html += '</table>';
@@ -19676,7 +19726,7 @@ Use these to calibrate your output quality and verify the flow works.
 .persona-selector {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .persona-selector select {
@@ -19686,6 +19736,43 @@ Use these to calibrate your output quality and verify the flow works.
   background: var(--bg);
   color: var(--text);
   font-family: var(--font);
+}
+
+.persona-selector .btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Analysis progress bar */
+.analysis-progress {
+  margin-top: 12px;
+}
+
+.analysis-progress-bar {
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.analysis-progress-fill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 3px;
+  width: 0%;
+  transition: width 0.4s ease;
+}
+
+.analysis-progress-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* Viewport select hidden during deep scan */
+.viewport-row.hidden {
+  display: none !important;
 }
 
 /* URL input */
@@ -21863,13 +21950,13 @@ Sources: [research/sources.md](research/sources.md)
         <label for="urlInput" class="sr-only">Website URL</label>
         <input type="url" id="urlInput" placeholder="https://example.com" style="width:100%;padding:12px 16px;border:1px solid var(--border);border-radius:var(--radius);font-size:15px;font-family:var(--font);color:var(--text);background:var(--bg);outline:none;min-height:44px;" />
       </div>
-      <div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap">
+      <div class="viewport-row" id="viewportRow" style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap">
         <label style="font-size:12px;color:var(--text-secondary);white-space:nowrap">Viewport:</label>
         <select id="viewportSelect" class="btn" style="padding:4px 24px 4px 8px;font-size:12px;appearance:auto;cursor:pointer;min-height:36px">
-          <option value="current">Current window size</option>
+          <option value="current" selected>Current window size</option>
           <option value="375x812">Phone (375×812)</option>
           <option value="768x1024">Tablet (768×1024)</option>
-          <option value="1280x900" selected>Desktop (1280×900)</option>
+          <option value="1280x900">Desktop (1280×900)</option>
           <option value="1920x1080">Large (1920×1080)</option>
         </select>
       </div>
@@ -21904,6 +21991,12 @@ Sources: [research/sources.md](research/sources.md)
         </button>
       </div>
       <div id="urlStatus" style="margin-top:12px;font-size:13px;color:var(--text-secondary);display:none"></div>
+      <div class="analysis-progress" id="analysisProgress" style="display:none">
+        <div class="analysis-progress-bar">
+          <div class="analysis-progress-fill" id="progressFill"></div>
+        </div>
+        <div class="analysis-progress-label" id="progressLabel">Preparing...</div>
+      </div>
     </div>
 
     <!-- Tab 1: Snippet extraction -->
@@ -22001,7 +22094,7 @@ Sources: [research/sources.md](research/sources.md)
     <!-- Top row: audience selector + new analysis -->
     <div class="report-controls-row">
       <div class="persona-selector">
-        <label for="profileSelect" style="font-size:12px;color:var(--text-secondary);white-space:nowrap">Audience:</label>
+        <label for="profileSelect" style="font-size:13px;color:var(--text-secondary);white-space:nowrap;font-weight:600">Audience:</label>
         <select id="profileSelect" class="btn" style="padding:6px 28px 6px 10px;font-size:13px;appearance:auto;cursor:pointer">
           <option value="general">General (WCAG AA)</option>
           <option value="wcag_aaa">Strict (WCAG AAA)</option>
@@ -22009,7 +22102,7 @@ Sources: [research/sources.md](research/sources.md)
           <option value="low_vision">Low Vision</option>
           <option value="motor_impairment">Motor Impairment</option>
         </select>
-        <button class="btn btn-icon" id="profileInfoBtn" title="What do these profiles do?" aria-label="Profile info" style="padding:6px;min-width:32px;min-height:32px">?</button>
+        <button class="btn btn-icon" id="profileInfoBtn" title="What do these profiles do?" aria-label="Profile info" style="padding:6px;min-width:44px;min-height:44px;font-size:15px;font-weight:700">?</button>
       </div>
       <button class="btn" id="newAnalysisBtn">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -22207,6 +22300,7 @@ Sources: [research/sources.md](research/sources.md)
       colors: { textColors: [], bgColors: [], contrastPairs: [] },
       typography: { bodyFontSize: '', bodyLineHeight: '', bodyFontFamily: '', fontFamilies: [], fontSizes: [], fontWeights: [], headings: [], lineHeights: [], maxLineLength: { chars: 0, element: '' } },
       spacing: { paddings: [], margins: [], gaps: [], maxContentWidth: '', bodyPaddingHorizontal: '' },
+      layout: { sectionGaps: [], alignmentEdges: [], visualHierarchy: {} },
       interaction: { touchTargets: [], transitions: [] },
       accessibility: { semanticElements: {}, headingHierarchy: [], imagesWithoutAlt: 0, formLabels: { total: 0, withLabel: 0, withoutLabel: 0 }, focusIndicators: [] },
       structure: { totalElements: 0, darkModeClasses: false, responsiveClasses: false, tailwindDetected: false, cssFramework: 'unknown' }
@@ -22331,6 +22425,34 @@ Sources: [research/sources.md](research/sources.md)
       data.accessibility.headingHierarchy.push(h.tagName.toLowerCase());
     });
 
+    // Layout: section gaps, alignment edges, visual hierarchy
+    var sections = document.querySelectorAll('section, [class*="section"], main > div, article');
+    var sortedSections = Array.from(sections).filter(function(el) { return isVisible(el); }).sort(function(a, b) { return a.getBoundingClientRect().top - b.getBoundingClientRect().top; });
+    var sectionGaps = [];
+    for (var si = 1; si < sortedSections.length; si++) {
+      var gapVal = Math.round(sortedSections[si].getBoundingClientRect().top - sortedSections[si - 1].getBoundingClientRect().bottom);
+      if (gapVal >= 0) sectionGaps.push(gapVal);
+    }
+    data.layout.sectionGaps = sectionGaps;
+
+    var alignTargets = document.querySelectorAll('h1,h2,h3,h4,p,ul,ol,table,form,img,figure,blockquote');
+    var leftEdges = [];
+    Array.from(alignTargets).forEach(function(el) {
+      if (!isVisible(el) || isDecorative(el)) return;
+      var r = el.getBoundingClientRect();
+      if (r.width > 50) leftEdges.push(Math.round(r.left));
+    });
+    data.layout.alignmentEdges = leftEdges;
+
+    var bodyFS = parseFloat(data.typography.bodyFontSize) || 16;
+    var h1Sizes = data.typography.headings.filter(function(h) { return h.tag === 'h1'; }).map(function(h) { return parseFloat(h.fontSize); });
+    var h2Sizes = data.typography.headings.filter(function(h) { return h.tag === 'h2'; }).map(function(h) { return parseFloat(h.fontSize); });
+    data.layout.visualHierarchy = {
+      h1ToBody: h1Sizes.length > 0 ? Math.round((h1Sizes[0] / bodyFS) * 100) / 100 : 0,
+      h2ToBody: h2Sizes.length > 0 ? Math.round((h2Sizes[0] / bodyFS) * 100) / 100 : 0,
+      bodySize: bodyFS
+    };
+
     var interactive = document.querySelectorAll('a,button,input,select,textarea,[role="button"],[tabindex]');
     var touchIssues = [];
     interactive.forEach(function(el) {
@@ -22435,46 +22557,65 @@ Sources: [research/sources.md](research/sources.md)
       analyzeUrlBtn.textContent = 'Fetching...';
       urlStatus.style.display = 'block';
       urlStatus.textContent = 'Fetching page via CORS proxy...';
+      showProgress(5, 'Fetching page...');
 
       fetchViaProxy(url, function(html, err) {
         if (err || !html) {
           analyzeUrlBtn.disabled = false;
           analyzeUrlBtn.textContent = 'Analyze URL';
           urlStatus.innerHTML = '<span style="color:#dc2626">Could not fetch: ' + (err || 'empty response') + '</span><br><span style="font-size:12px">Try the Console Snippet tab for pages behind login, localhost, or sites that block proxies.</span>';
+          hideProgress();
           return;
         }
         urlStatus.textContent = 'Rendering and analyzing...';
+        showProgress(20, 'Rendering page...');
         var exclude = window.__milgCombinedExclude || (document.getElementById('excludeSelector').value || '').trim();
         var isDeepScan = document.getElementById('deepScanCheck') && document.getElementById('deepScanCheck').checked;
         if (isDeepScan) {
-          var viewports = [{w:1280,h:900,label:'Desktop'},{w:768,h:1024,label:'Tablet'},{w:375,h:812,label:'Phone'}];
+          // Build viewport list: current + presets, skip duplicates
+          var curW = window.innerWidth, curH = window.innerHeight;
+          var presets = [{w:1280,h:900,label:'Desktop'},{w:768,h:1024,label:'Tablet'},{w:375,h:812,label:'Phone'}];
+          var viewports = [{w:curW,h:curH,label:'Current (' + curW + '×' + curH + ')'}];
+          presets.forEach(function(p) {
+            // Skip if current window is within 50px of a preset
+            if (Math.abs(curW - p.w) < 50 && Math.abs(curH - p.h) < 50) return;
+            viewports.push(p);
+          });
           var deepResults = [];
+          var deepRawResults = []; // Store full data per viewport for switching
           var vpIdx = 0;
+          var totalSteps = viewports.length + 1; // +1 for dark mode test
           (function nextVP() {
             if (vpIdx >= viewports.length) {
-              var primary = deepResults[0] || deepResults[1] || deepResults[2];
+              // Find primary: use current viewport (index 0)
+              var primary = deepRawResults[0];
+              for (var pi = 0; pi < deepRawResults.length && !primary; pi++) primary = deepRawResults[pi];
               if (!primary) {
                 analyzeUrlBtn.disabled = false;
                 analyzeUrlBtn.textContent = 'Analyze URL';
                 urlStatus.innerHTML = '<span style="color:#dc2626">Deep scan failed — no viewport returned data.</span>';
+                hideProgress();
                 return;
               }
-              primary.deepScan = { viewports: deepResults.map(function(r, i) {
-                return r ? {
-                  label: viewports[i].label, width: viewports[i].w,
-                  touchTargets: (r.interaction.touchTargets || []).length,
-                  contrastFails: (r.colors.contrastPairs || []).filter(function(p) { return !p.passes; }).length,
-                  overflow: r.structure.hasHorizontalOverflow || false
-                } : { label: viewports[i].label, width: viewports[i].w, error: true };
-              })};
+              primary.deepScan = {
+                viewports: deepRawResults.map(function(r, i) {
+                  return r ? {
+                    label: viewports[i].label, width: viewports[i].w,
+                    touchTargets: (r.interaction.touchTargets || []).length,
+                    contrastFails: (r.colors.contrastPairs || []).filter(function(p) { return !p.passes; }).length,
+                    overflow: r.structure.hasHorizontalOverflow || false
+                  } : { label: viewports[i].label, width: viewports[i].w, error: true };
+                }),
+                viewportData: deepRawResults.map(function(r, i) {
+                  return r ? { label: viewports[i].label, width: viewports[i].w, data: r } : null;
+                }).filter(Boolean)
+              };
               // Dark mode test
               var htmlHasDark = /class="[^"]*dark:/.test(html) || /prefers-color-scheme/.test(html) || /\.dark\s*\{/.test(html) || /data-theme/.test(html);
               if (htmlHasDark) {
                 urlStatus.textContent = 'Testing dark mode...';
-                // Class toggle for Tailwind/class-based dark mode
+                showProgress(Math.round(80 + 15 * (vpIdx / totalSteps)), 'Testing dark mode...');
                 var darkHtml = html.replace(/<html([^>]*)>/i, '<html$1 class="dark" data-theme="dark" style="color-scheme:dark">');
-                // Media query rewriting: extract prefers-color-scheme:dark rules and inject unconditionally
-                // This handles sites that use @media (prefers-color-scheme: dark) instead of class-based dark mode
                 darkHtml = darkHtml.replace(/<\/head>/i, '<script>setTimeout(function(){try{Array.from(document.styleSheets).forEach(function(ss){try{var darkRules=[];Array.from(ss.cssRules).forEach(function(r){if(r instanceof CSSMediaRule&&/prefers-color-scheme:\\s*dark/.test(r.conditionText||"")){Array.from(r.cssRules).forEach(function(inner){darkRules.push(inner.cssText)})}});if(darkRules.length>0){var s=document.createElement("style");s.textContent=darkRules.join("\\n");document.head.appendChild(s)}}catch(e){}});}catch(e){}},100);</' + 'script></head>');
                 deepScanInIframe(darkHtml, url, exclude, 1280, 900, function(darkData) {
                   if (darkData) {
@@ -22487,6 +22628,8 @@ Sources: [research/sources.md](research/sources.md)
                   analyzeUrlBtn.disabled = false;
                   analyzeUrlBtn.textContent = 'Analyze URL';
                   urlStatus.style.display = 'none';
+                  showProgress(100, 'Done!');
+                  setTimeout(hideProgress, 500);
                   primary.meta.url = url;
                   runAnalysis(primary);
                 });
@@ -22494,25 +22637,32 @@ Sources: [research/sources.md](research/sources.md)
                 analyzeUrlBtn.disabled = false;
                 analyzeUrlBtn.textContent = 'Analyze URL';
                 urlStatus.style.display = 'none';
+                showProgress(100, 'Done!');
+                setTimeout(hideProgress, 500);
                 primary.meta.url = url;
                 runAnalysis(primary);
               }
               return;
             }
             var vp = viewports[vpIdx];
+            var pct = 20 + Math.round(60 * (vpIdx / totalSteps));
             urlStatus.textContent = 'Deep scan: ' + vp.label + ' (' + vp.w + 'px)...';
+            showProgress(pct, 'Scanning ' + vp.label + '...');
             deepScanInIframe(html, url, exclude, vp.w, vp.h, function(data) {
-              deepResults.push(data);
+              deepRawResults.push(data);
               vpIdx++;
               nextVP();
             });
           })();
           return;
         }
+        showProgress(40, 'Analyzing styles...');
         analyzeHtmlInIframe(html, function(data) {
           analyzeUrlBtn.disabled = false;
           analyzeUrlBtn.textContent = 'Analyze URL';
           urlStatus.style.display = 'none';
+          showProgress(100, 'Done!');
+          setTimeout(hideProgress, 500);
           data.meta.url = url;
           runAnalysis(data);
         }, url, exclude);
@@ -22523,6 +22673,15 @@ Sources: [research/sources.md](research/sources.md)
     urlInput.addEventListener('keydown', function(e) {
       if (e.key === 'Enter') { e.preventDefault(); analyzeUrlBtn.click(); }
     });
+
+    // Deep scan checkbox — toggle viewport row visibility
+    var deepScanCheck = document.getElementById('deepScanCheck');
+    var viewportRow = document.getElementById('viewportRow');
+    if (deepScanCheck && viewportRow) {
+      deepScanCheck.addEventListener('change', function() {
+        viewportRow.classList.toggle('hidden', deepScanCheck.checked);
+      });
+    }
 
     // Exclude preset tags — toggle on click, build selector
     document.querySelectorAll('.exclude-tag').forEach(function(tag) {
@@ -22745,6 +22904,19 @@ Sources: [research/sources.md](research/sources.md)
     showToast('Re-scored with ' + active.length + ' exclusion(s)');
   };
 
+  // Viewport switching for deep scan results
+  window.__milgSwitchViewport = function(idx) {
+    if (!lastRawData || !lastRawData.deepScan || !lastRawData.deepScan.viewportData) return;
+    var vpData = lastRawData.deepScan.viewportData[idx];
+    if (!vpData || !vpData.data) { showToast('No data for this viewport'); return; }
+    // Re-run analysis with this viewport's data, preserving deep scan metadata
+    var switchedData = JSON.parse(JSON.stringify(vpData.data));
+    switchedData.deepScan = lastRawData.deepScan;
+    switchedData.meta.url = lastRawData.meta.url;
+    runAnalysis(switchedData);
+    showToast('Showing results for ' + vpData.label);
+  };
+
   function deepScanInIframe(html, url, exclude, vpWidth, vpHeight, callback) {
     var iframe = document.createElement('iframe');
     iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + vpWidth + 'px;height:' + vpHeight + 'px;border:none;';
@@ -22822,11 +22994,11 @@ Sources: [research/sources.md](research/sources.md)
     return fetch(url, { mode: 'cors', redirect: 'follow' })
       .then(function(r) { if (r.ok) return r.text(); throw new Error(r.status); })
       .catch(function() {
-        // Try proxies in order
+        // Try proxies in order (allorigins most reliable, corsproxy rate-limited)
         var proxies = [
-          'https://corsproxy.io/?' + encodeURIComponent(url),
+          'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
           'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url),
-          'https://api.allorigins.win/raw?url=' + encodeURIComponent(url)
+          'https://corsproxy.io/?' + encodeURIComponent(url)
         ];
         return proxies.reduce(function(chain, purl) {
           return chain.catch(function() {
@@ -22958,6 +23130,22 @@ Sources: [research/sources.md](research/sources.md)
         });
       }
     }, isFullDoc ? 15000 : 8000);
+  }
+
+  // --- Progress bar helpers ---
+  function showProgress(pct, label) {
+    var el = document.getElementById('analysisProgress');
+    var fill = document.getElementById('progressFill');
+    var lbl = document.getElementById('progressLabel');
+    if (!el) return;
+    el.style.display = 'block';
+    fill.style.width = Math.min(pct, 100) + '%';
+    if (label) lbl.textContent = label;
+  }
+
+  function hideProgress() {
+    var el = document.getElementById('analysisProgress');
+    if (el) el.style.display = 'none';
   }
 
   function loadSnippet(codeEl) {

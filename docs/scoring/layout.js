@@ -27,16 +27,17 @@ function scoreLayout(data) {
         title: 'Inconsistent spacing between sections (CV: ' + Math.round(cv * 100) + '%)',
         detail: 'Gaps range from ' + Math.min.apply(null, gaps) + 'px to ' + Math.max.apply(null, gaps) + 'px (avg ' + Math.round(avg) + 'px)',
         fix: 'Use consistent spacing between major sections. Pick one value (e.g. 64px or 96px) and use it everywhere.',
-        presetRef: null
+        presetRef: null,
+        source: 'Gestalt similarity — https://lawsofux.com/law-of-similarity/'
       });
     }
   }
 
-  // Alignment consistency: cluster left edges and find near-misses
+  // Alignment consistency: cluster left edges and find near-misses ("jagged" alignment)
   var edges = layout.alignmentEdges || [];
   if (edges.length >= 5) {
     checks++;
-    // Cluster edges within 3px
+    // Cluster edges within 3px (considered aligned)
     var clusters = [];
     var sorted = edges.slice().sort(function(a, b) { return a - b; });
     var current = [sorted[0]];
@@ -49,21 +50,39 @@ function scoreLayout(data) {
       }
     }
     clusters.push(current);
-    // Find near-miss clusters (4-8px apart — probably misaligned)
+    // Find near-miss clusters (4-12px apart — elements on same axis but jagged)
     var nearMisses = 0;
+    var jaggedExamples = [];
     for (var i = 1; i < clusters.length; i++) {
-      var gap = clusters[i][0] - clusters[i - 1][clusters[i - 1].length - 1];
-      if (gap > 3 && gap <= 8) nearMisses++;
+      var prevAvg = Math.round(clusters[i - 1].reduce(function(s,v){return s+v},0) / clusters[i - 1].length);
+      var currAvg = Math.round(clusters[i].reduce(function(s,v){return s+v},0) / clusters[i].length);
+      var gap = currAvg - prevAvg;
+      if (gap > 3 && gap <= 12) {
+        nearMisses++;
+        jaggedExamples.push(prevAvg + 'px → ' + currAvg + 'px (' + gap + 'px off)');
+      }
     }
-    if (nearMisses === 0) {
+    // Also check how many unique clusters there are relative to element count
+    var clusterRatio = clusters.length / edges.length;
+    if (nearMisses === 0 && clusterRatio < 0.5) {
       passed++;
-    } else {
+    } else if (nearMisses > 0) {
+      findings.push({
+        severity: nearMisses >= 3 ? 'warning' : 'info',
+        title: nearMisses + ' jagged alignment(s) — elements on same axis but ' + (nearMisses >= 3 ? 'noticeably' : 'slightly') + ' off',
+        detail: clusters.length + ' alignment edges across ' + edges.length + ' elements. ' + (jaggedExamples.length > 0 ? 'Offsets: ' + jaggedExamples.slice(0, 3).join(', ') : ''),
+        fix: 'Elements that share a visual axis should be exactly aligned. Check that container padding, margin, and grid column widths are consistent. In Tailwind: use consistent px-4/px-6 and grid/flex alignment.',
+        presetRef: null,
+        source: 'Gestalt continuity — https://lawsofux.com/law-of-common-region/'
+      });
+    } else if (clusterRatio >= 0.5) {
       findings.push({
         severity: 'info',
-        title: nearMisses + ' near-miss alignment(s) detected (elements 4-8px off)',
-        detail: clusters.length + ' distinct alignment edges found across ' + edges.length + ' elements',
-        fix: 'Elements that are almost aligned should be exactly aligned. Check container padding and margin consistency.',
-        presetRef: null
+        title: 'Weak alignment grid — ' + clusters.length + ' distinct left edges across ' + edges.length + ' elements',
+        detail: 'A well-aligned layout typically has 2-4 dominant alignment edges. High variance suggests inconsistent margins/padding.',
+        fix: 'Establish a consistent alignment grid. Use the same container padding and let content flow within columns.',
+        presetRef: null,
+        source: 'Gestalt continuity — https://lawsofux.com/law-of-common-region/'
       });
     }
   }
@@ -80,7 +99,8 @@ function scoreLayout(data) {
         title: 'H1 is ' + vh.h1ToBody + 'x body text (ideal: 2-4x)',
         detail: vh.h1ToBody < 2 ? 'H1 doesn\'t stand out enough from body text' : 'H1 may be too large relative to body text',
         fix: 'H1 should be 2-4x the body font size for clear hierarchy. At 16px body, H1 should be 32-64px.',
-        presetRef: null
+        presetRef: null,
+        source: 'Modular type scales — https://typescale.com/'
       });
     }
   }
