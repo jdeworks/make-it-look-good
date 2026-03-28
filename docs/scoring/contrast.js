@@ -136,10 +136,10 @@ function scoreContrast(data) {
 
   nearMisses.forEach(function(p) {
     findings.push({
-      severity: 'warning',
-      title: 'Text barely passes contrast ' + p.ratio + ':1 (needs ' + p.needed + ':1)',
+      severity: 'info',
+      title: 'Text passes contrast but close to threshold: ' + p.ratio + ':1 (needs ' + p.needed + ':1)',
       detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector,
-      fix: 'Consider increasing contrast for better readability. Aim for 7:1 (AAA) where possible.',
+      fix: 'Passes AA but consider increasing for AAA (7:1). Slight changes in background could cause failure.',
       presetRef: null,
       source: 'WCAG 2.2 §1.4.6 — https://www.w3.org/TR/WCAG22/#contrast-enhanced'
     });

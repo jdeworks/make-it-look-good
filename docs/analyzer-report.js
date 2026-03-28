@@ -65,6 +65,34 @@ window.MilgReport = (function() {
     html += '</div>';
     html += '</div>';
 
+    // --- Deep scan viewport bar (at top) ---
+    if (report.raw.deepScan && report.raw.deepScan.viewports && report.raw.deepScan.viewports.length > 0) {
+      html += '<div class="report-viewport-bar">';
+      html += '<span style="font-size:12px;color:var(--text-secondary);font-weight:600">Viewports analyzed:</span> ';
+      report.raw.deepScan.viewports.forEach(function(vp, idx) {
+        var status = vp.error ? '✗' : '✓';
+        html += '<span class="viewport-tag' + (vp.error ? ' viewport-error' : '') + '" title="' + escapeHtml(vp.label) + '">' + status + ' ' + vp.width + 'px</span>';
+      });
+      html += '</div>';
+    }
+
+    // --- Screenshots (collapsible, before scores) ---
+    if (report.raw.screenshots && report.raw.screenshots.length > 0) {
+      html += '<details class="report-screenshots">';
+      html += '<summary style="cursor:pointer;font-size:14px;font-weight:600;padding:8px 0;color:var(--text-secondary)">Page Screenshots (' + report.raw.screenshots.length + ')</summary>';
+      html += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;margin-bottom:16px">';
+      report.raw.screenshots.forEach(function(src, idx) {
+        html += '<div class="screenshot-thumb" style="flex:1;min-width:200px;max-width:400px">';
+        if (report.raw.screenshots.length > 1) {
+          html += '<div style="padding:4px 8px;font-size:10px;color:var(--text-secondary);border-bottom:1px solid var(--border);background:var(--bg-alt)">Section ' + (idx + 1) + '</div>';
+        }
+        html += '<img src="' + src + '" alt="Page screenshot ' + (idx + 1) + '" class="screenshot-img" style="width:100%;display:block;cursor:zoom-in" onclick="window.__milgZoomScreenshot(this)" loading="lazy">';
+        html += '</div>';
+      });
+      html += '</div>';
+      html += '</details>';
+    }
+
     // --- Category cards ---
     html += '<div class="report-categories">';
     report.categories.forEach(function(cat) {
@@ -213,25 +241,6 @@ window.MilgReport = (function() {
     html += '</div>';
     html += '</div>';
 
-    // --- Screenshots ---
-    if (report.raw.screenshots && report.raw.screenshots.length > 0) {
-      html += '<div class="report-summary" style="margin-top:16px">';
-      html += '<details open>';
-      html += '<summary style="cursor:pointer;font-size:18px;font-weight:700;padding:8px 0">Page Screenshots</summary>';
-      html += '<div style="display:flex;flex-direction:column;gap:12px;margin-top:12px">';
-      report.raw.screenshots.forEach(function(src, idx) {
-        html += '<div style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">';
-        if (report.raw.screenshots.length > 1) {
-          html += '<div style="padding:6px 12px;font-size:11px;color:var(--text-secondary);border-bottom:1px solid var(--border);background:var(--bg-alt)">Section ' + (idx + 1) + ' of ' + report.raw.screenshots.length + '</div>';
-        }
-        html += '<img src="' + src + '" alt="Page screenshot ' + (idx + 1) + '" style="width:100%;display:block" loading="lazy">';
-        html += '</div>';
-      });
-      html += '</div>';
-      html += '</details>';
-      html += '</div>';
-    }
-
     // --- Methodology note ---
     html += '<div class="report-methodology">';
     html += '<h2>About this Report</h2>';
@@ -372,6 +381,18 @@ window.MilgReport = (function() {
         }
         lines.push('');
       }
+    }
+
+    // Screenshots (as inline base64 images in markdown)
+    if (report.raw.screenshots && report.raw.screenshots.length > 0) {
+      lines.push('## Page Screenshots');
+      lines.push('');
+      report.raw.screenshots.forEach(function(src, idx) {
+        lines.push('### Screenshot ' + (idx + 1));
+        lines.push('');
+        lines.push('![Page screenshot ' + (idx + 1) + '](' + src + ')');
+        lines.push('');
+      });
     }
 
     lines.push('---');

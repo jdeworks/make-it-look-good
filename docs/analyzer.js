@@ -287,7 +287,11 @@
       if (!isVisible(el) || isDecorative(el)) return;
       var rect = el.getBoundingClientRect();
       var w = Math.round(rect.width), h = Math.round(rect.height);
-      if (w < 44 || h < 44) touchIssues.push({ element: el.tagName.toLowerCase(), width: w, height: h, text: (el.textContent || el.getAttribute('aria-label') || '').trim().substring(0, 40), selector: cssSelector(el), passes: false });
+      if (w < 44 || h < 44) {
+        var isBtn = false;
+        if (el.tagName === 'A') { var ls = getComputedStyle(el); isBtn = (ls.backgroundColor !== 'rgba(0, 0, 0, 0)' && ls.backgroundColor !== 'transparent') || (ls.borderStyle !== 'none' && ls.borderWidth !== '0px') || parseFloat(ls.paddingTop) > 4 || parseFloat(ls.paddingBottom) > 4; }
+        touchIssues.push({ element: el.tagName.toLowerCase(), width: w, height: h, text: (el.textContent || el.getAttribute('aria-label') || '').trim().substring(0, 40), selector: cssSelector(el), passes: false, isButton: isBtn || el.tagName !== 'A' });
+      }
     });
     touchIssues.sort(function(a, b) { return (a.width * a.height) - (b.width * b.height); });
     data.interaction.touchTargets = touchIssues.slice(0, 40);
@@ -720,7 +724,16 @@
     // For now, mark matched contrast pairs as excluded and re-score
     var exclude = selectors.join(', ');
     // Re-filter contrast pairs by checking selectors
-    var filtered = JSON.parse(JSON.stringify(lastRawData));
+    // Clone data for re-scoring — break circular refs from deepScan.viewportData
+    var filtered = JSON.parse(JSON.stringify(lastRawData, function(key, val) {
+      if (key === 'viewportData') return undefined; // skip circular viewport refs
+      return val;
+    }));
+    // Restore viewportData reference (not cloned, just re-attached)
+    if (lastRawData.deepScan && lastRawData.deepScan.viewportData) {
+      if (!filtered.deepScan) filtered.deepScan = {};
+      filtered.deepScan.viewportData = lastRawData.deepScan.viewportData;
+    }
     filtered.colors.contrastPairs = filtered.colors.contrastPairs.filter(function(p) {
       // Remove pairs matching excluded types
       var sel = p.selector || '';
@@ -743,6 +756,42 @@
     });
     runAnalysis(filtered);
     showToast('Re-scored with ' + active.length + ' exclusion(s)');
+  };
+
+  // Screenshot zoom lightbox
+  window.__milgZoomScreenshot = function(img) {
+    var rect = img.getBoundingClientRect();
+    var overlay = document.createElement('div');
+    overlay.className = 'screenshot-overlay';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0);z-index:9999;cursor:zoom-out;display:flex;align-items:center;justify-content:center;transition:background 300ms ease';
+
+    var zoomed = document.createElement('img');
+    zoomed.src = img.src;
+    zoomed.alt = img.alt;
+    zoomed.style.cssText = 'position:fixed;top:' + rect.top + 'px;left:' + rect.left + 'px;width:' + rect.width + 'px;height:' + rect.height + 'px;object-fit:contain;transition:all 300ms ease;border-radius:4px;box-shadow:0 8px 32px rgba(0,0,0,0.3)';
+
+    overlay.appendChild(zoomed);
+    document.body.appendChild(overlay);
+
+    // Animate to full screen (maintain aspect ratio)
+    requestAnimationFrame(function() {
+      overlay.style.background = 'rgba(0,0,0,0.9)';
+      zoomed.style.top = '0';
+      zoomed.style.left = '0';
+      zoomed.style.width = '100vw';
+      zoomed.style.height = '100vh';
+    });
+
+    function close() {
+      zoomed.style.top = rect.top + 'px';
+      zoomed.style.left = rect.left + 'px';
+      zoomed.style.width = rect.width + 'px';
+      zoomed.style.height = rect.height + 'px';
+      overlay.style.background = 'rgba(0,0,0,0)';
+      setTimeout(function() { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); }, 300);
+    }
+    overlay.addEventListener('click', close);
+    document.addEventListener('keydown', function onKey(e) { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); } });
   };
 
   // Viewport switching for deep scan results
@@ -808,7 +857,7 @@
 
   function runAnalysis(data) {
     lastRawData = data;
-    try { sessionStorage.setItem('milg-last-extraction', JSON.stringify(data)); } catch(e) {}
+    try { sessionStorage.setItem('milg-last-extraction', JSON.stringify(data, function(k, v) { return k === 'viewportData' ? undefined : v; })); } catch(e) {}
     // Apply selected profile
     var profile = document.getElementById('profileSelect');
     if (profile) data.profile = profile.value;
@@ -964,8 +1013,8 @@
           finish(data);
           return;
         }
-        // Extraction done — now capture screenshots inside the iframe
-        iframe.contentWindow.postMessage({ type: 'milg-start-capture' }, '*');
+        // Extraction done — trigger screenshot capture inside the iframe
+        try { iframe.contentWindow.__milgCaptureScreenshots(); } catch(e) { /* will timeout */ }
         // Store data, wait for screenshots
         iframe._milgData = data;
       }
@@ -984,7 +1033,8 @@
     // Pass exclude selector to extraction context
     var excludeVar = excludeSelector ? '<script>window.__milgExclude=' + JSON.stringify(excludeSelector) + ';</' + 'script>' : '';
     // Screenshot capture script: listens for start-capture message, loads library, captures
-    var screenshotScript = captureScreenshots ? '<script>window.addEventListener("message",function(e){if(e.data&&e.data.type==="milg-start-capture"){' + buildScreenshotScript('milg-screenshots-result') + '}});</' + 'script>' : '';
+    // Screenshot script: runs automatically after extraction posts its result
+    var screenshotScript = captureScreenshots ? '<script>window.__milgCaptureScreenshots=function(){' + buildScreenshotScript('milg-screenshots-result') + '};</' + 'script>' : '';
     var srcdoc;
     if (isFullDoc) {
       // Wait for window load (CSS/fonts loaded), then extra delay for rendering
@@ -1095,11 +1145,16 @@
     if (el) el.style.display = 'none';
   }
 
+  var _snippetCache = {};
   function loadSnippet(codeEl, withScreenshots) {
     var file = withScreenshots ? 'analyzer-snippet-screenshots.js' : 'analyzer-snippet.js';
+    if (_snippetCache[file]) {
+      codeEl.textContent = _snippetCache[file];
+      return;
+    }
     fetch(file)
       .then(function(r) { return r.text(); })
-      .then(function(text) { codeEl.textContent = text; })
+      .then(function(text) { _snippetCache[file] = text; codeEl.textContent = text; })
       .catch(function() { codeEl.textContent = '// Failed to load snippet — copy from ' + file; });
   }
 

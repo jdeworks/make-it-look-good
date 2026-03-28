@@ -22,19 +22,35 @@ function scoreTouchTargets(data) {
     var w = t.width, h = t.height;
     var minDim = Math.min(w, h);
 
+    // WCAG 2.5.8 exception: inline text links are exempt from target size requirements.
+    // Detect by checking if element is an <a> without button-like styling (no bg, no border, no padding > 4px)
+    var isInlineLink = t.element === 'a' && !t.isButton;
+
     if (minDim < minSize) {
       issueCount++;
-      findings.push({
-        severity: 'error',
-        title: t.element + ' is ' + w + '×' + h + 'px (minimum for ' + context + ': ' + minSize + 'px)',
-        detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-        fix: isDesktop
-          ? 'Click targets need at least ' + minSize + '×' + minSize + 'px. Increase padding or min-height/min-width.'
-          : 'Touch targets need ' + minSize + '×' + minSize + 'px minimum. Add min-h-[' + minSize + 'px] min-w-[' + minSize + 'px] or increase padding.',
-        presetRef: isDesktop ? null : 'Button presets use py-3 px-6 (48px height)',
-        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
-      });
-    } else if (minDim < warnSize && isDesktop) {
+      if (isInlineLink) {
+        // Inline links get info severity, not error — they're exempt per WCAG 2.5.8
+        findings.push({
+          severity: 'info',
+          title: 'Inline link ' + w + '×' + h + 'px — exempt from target size (WCAG exception)',
+          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+          fix: 'Inline text links are exempt from minimum target size. Consider adding padding for better usability.',
+          presetRef: null,
+          source: 'WCAG 2.2 §2.5.8 inline exception — https://www.w3.org/TR/WCAG22/#target-size-minimum'
+        });
+      } else {
+        findings.push({
+          severity: 'error',
+          title: t.element + ' is ' + w + '×' + h + 'px (minimum for ' + context + ': ' + minSize + 'px)',
+          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+          fix: isDesktop
+            ? 'Click targets need at least ' + minSize + '×' + minSize + 'px. Increase padding or min-height/min-width.'
+            : 'Touch targets need ' + minSize + '×' + minSize + 'px minimum. Add min-h-[' + minSize + 'px] min-w-[' + minSize + 'px] or increase padding.',
+          presetRef: isDesktop ? null : 'Button presets use py-3 px-6 (48px height)',
+          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
+        });
+      }
+    } else if (minDim < warnSize && isDesktop && !isInlineLink) {
       findings.push({
         severity: 'warning',
         title: t.element + ' is ' + w + '×' + h + 'px (recommended for desktop: ≥' + warnSize + 'px)',

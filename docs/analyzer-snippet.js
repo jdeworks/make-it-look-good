@@ -562,12 +562,22 @@
       }
     }
     if (!passes) {
+      // Detect if link looks like a button (has bg, border, or padding — not just inline text)
+      var isBtn = false;
+      if (el.tagName === 'A') {
+        var ls = getComputedStyle(el);
+        var hasBg = ls.backgroundColor !== 'rgba(0, 0, 0, 0)' && ls.backgroundColor !== 'transparent';
+        var hasBorder = ls.borderStyle !== 'none' && ls.borderWidth !== '0px';
+        var hasPad = parseFloat(ls.paddingTop) > 4 || parseFloat(ls.paddingBottom) > 4;
+        isBtn = hasBg || hasBorder || hasPad;
+      }
       touchTargetIssues.push({
         element: el.tagName.toLowerCase(),
         width: w, height: h,
         text: (el.textContent || el.getAttribute('aria-label') || '').trim().substring(0, 40),
         selector: cssSelector(el),
-        passes: false
+        passes: false,
+        isButton: isBtn || el.tagName !== 'A'
       });
     }
   });
