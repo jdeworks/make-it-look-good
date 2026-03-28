@@ -10,7 +10,7 @@
   // with a base64-encoded URL (kept out of git via repository secrets).
   // Fork users: deploy your own worker (see proxy/README.md) and set the
   // PROXY_URL secret in your repo's Settings > Secrets > Actions.
-  var _pe = '__PROXY_ENCODED__';
+  var _pe = 'aHR0cHM6Ly9taWxnLWNvcnMtcHJveHkuamRld29ya3Mud29ya2Vycy5kZXY=';
   var CORS_PROXY_URL = (_pe.indexOf('__') === 0) ? '' : (function() {
     try { return atob(_pe); } catch(e) { return ''; }
   })();
