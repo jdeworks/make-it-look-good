@@ -6,14 +6,13 @@
   var S = window.MilgScoring;
 
 function scoreCognitiveLoad(data) {
+  var profile = S.getProfile(data);
   var findings = [];
   var checks = 0;
   var passed = 0;
 
-  // Navigation items <= 7
+  // Heading count as proxy for section complexity
   checks++;
-  var navs = document.querySelectorAll ? null : null; // We don't have DOM access, infer from data
-  // Check heading count as proxy for section complexity
   var headingCount = (data.typography.headings || []).length;
   if (headingCount <= 15) {
     passed++;
@@ -42,6 +41,61 @@ function scoreCognitiveLoad(data) {
       presetRef: 'Form presets demonstrate multi-step patterns',
       source: 'Miller\'s Law / Baymard Institute — https://lawsofux.com/millers-law/'
     });
+  }
+
+  // Navigation item count (profile-aware)
+  if (profile.maxNavItems > 0 && data.accessibility && data.accessibility.semanticElements) {
+    var navCount = data.accessibility.navItemCount || 0;
+    if (navCount > 0) {
+      checks++;
+      if (navCount <= profile.maxNavItems) {
+        passed++;
+      } else {
+        findings.push({
+          severity: 'warning',
+          title: navCount + ' top-level navigation items (recommended: ≤' + profile.maxNavItems + ' for this audience)',
+          detail: 'Working memory holds 4±1 items. More nav items increase cognitive load and decision time.',
+          fix: 'Reduce to ' + profile.maxNavItems + ' top-level items. Group less-used links under "More" or a hamburger menu.',
+          source: 'Cowan (2001) working memory — https://doi.org/10.1017/S0140525X01003922'
+        });
+      }
+    }
+  }
+
+  // Reading level (profile-aware)
+  if (profile.readingGradeLevel > 0 && data.readability && data.readability.gradeLevel > 0) {
+    checks++;
+    var grade = data.readability.gradeLevel;
+    if (grade <= profile.readingGradeLevel) {
+      passed++;
+    } else {
+      findings.push({
+        severity: grade > profile.readingGradeLevel + 3 ? 'error' : 'warning',
+        title: 'Reading level is grade ' + Math.round(grade) + ' (maximum for this audience: grade ' + profile.readingGradeLevel + ')',
+        detail: 'Content may be too complex for the target audience. Lower grade level = more accessible.',
+        fix: 'Use shorter sentences, simpler words, and active voice. Aim for grade ' + profile.readingGradeLevel + ' or lower.',
+        source: 'WCAG 2.2 §3.1.5 — https://www.w3.org/TR/WCAG22/#reading-level'
+      });
+    }
+  }
+
+  // Reduced motion requirement (profile-aware)
+  if (profile.requireReducedMotion) {
+    var anim = data.animation || {};
+    if (anim.keyframeCount > 0 || (data.interaction && data.interaction.transitions && data.interaction.transitions.length > 2)) {
+      checks++;
+      if (anim.hasReducedMotion) {
+        passed++;
+      } else {
+        findings.push({
+          severity: 'warning',
+          title: 'Animations present without prefers-reduced-motion support',
+          detail: 'This audience profile requires motion reduction options. ' + (anim.keyframeCount || 0) + ' keyframe rules found.',
+          fix: 'Add @media (prefers-reduced-motion: reduce) to disable or reduce animations.',
+          source: 'WCAG 2.2 §2.3.3 — https://www.w3.org/TR/WCAG22/#animation-from-interactions'
+        });
+      }
+    }
   }
 
   var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;

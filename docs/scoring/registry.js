@@ -9,11 +9,14 @@ window.MilgScoring = (function() {
 
   // --- User Persona Profiles ---
   var PROFILES = {
-    general: { contrast: 4.5, contrastLarge: 3, bodyFontMin: 16, lineHeightMin: 1.4, lineHeightMax: 1.6, touchTarget: 44, touchTargetDesktop: 24, touchTargetDesktopWarn: 32, targetSpacing: 8, fontWeightMin: 0 },
-    elderly: { contrast: 7, contrastLarge: 4.5, bodyFontMin: 18, lineHeightMin: 1.6, lineHeightMax: 1.8, touchTarget: 48, touchTargetDesktop: 48, touchTargetDesktopWarn: 48, targetSpacing: 8, fontWeightMin: 400 },
-    low_vision: { contrast: 7, contrastLarge: 4.5, bodyFontMin: 18, lineHeightMin: 1.5, lineHeightMax: 1.7, touchTarget: 44, touchTargetDesktop: 44, touchTargetDesktopWarn: 44, targetSpacing: 8, fontWeightMin: 0 },
-    motor_impairment: { contrast: 4.5, contrastLarge: 3, bodyFontMin: 16, lineHeightMin: 1.4, lineHeightMax: 1.6, touchTarget: 48, touchTargetDesktop: 48, touchTargetDesktopWarn: 48, targetSpacing: 12, fontWeightMin: 0 },
-    wcag_aaa: { contrast: 7, contrastLarge: 4.5, bodyFontMin: 16, lineHeightMin: 1.4, lineHeightMax: 1.6, touchTarget: 44, touchTargetDesktop: 24, touchTargetDesktopWarn: 32, targetSpacing: 8, fontWeightMin: 0 }
+    general:          { contrast: 4.5, contrastLarge: 3,   bodyFontMin: 16, lineHeightMin: 1.4, lineHeightMax: 1.6, touchTarget: 44, touchTargetDesktop: 24, touchTargetDesktopWarn: 32, targetSpacing: 8,  fontWeightMin: 0,   maxNavItems: 0, maxLineLength: 75, readingGradeLevel: 0, requireReducedMotion: false, checkCVD: false },
+    wcag_aaa:         { contrast: 7,   contrastLarge: 4.5, bodyFontMin: 16, lineHeightMin: 1.4, lineHeightMax: 1.6, touchTarget: 44, touchTargetDesktop: 24, touchTargetDesktopWarn: 32, targetSpacing: 8,  fontWeightMin: 0,   maxNavItems: 0, maxLineLength: 75, readingGradeLevel: 0, requireReducedMotion: false, checkCVD: false },
+    elderly:          { contrast: 7,   contrastLarge: 4.5, bodyFontMin: 18, lineHeightMin: 1.6, lineHeightMax: 1.8, touchTarget: 48, touchTargetDesktop: 48, touchTargetDesktopWarn: 48, targetSpacing: 12, fontWeightMin: 400, maxNavItems: 7, maxLineLength: 65, readingGradeLevel: 0, requireReducedMotion: true,  checkCVD: false },
+    low_vision:       { contrast: 7,   contrastLarge: 4.5, bodyFontMin: 18, lineHeightMin: 1.5, lineHeightMax: 1.7, touchTarget: 44, touchTargetDesktop: 44, touchTargetDesktopWarn: 44, targetSpacing: 12, fontWeightMin: 300, maxNavItems: 0, maxLineLength: 0,  readingGradeLevel: 0, requireReducedMotion: false, checkCVD: false, warnFontSmoothing: true, warnBackgroundImage: true, iconMinSize: 32 },
+    motor_impairment: { contrast: 4.5, contrastLarge: 3,   bodyFontMin: 16, lineHeightMin: 1.4, lineHeightMax: 1.6, touchTarget: 48, touchTargetDesktop: 48, touchTargetDesktopWarn: 48, targetSpacing: 12, fontWeightMin: 0,   maxNavItems: 0, maxLineLength: 0,  readingGradeLevel: 0, requireReducedMotion: false, checkCVD: false, warnOutlineNone: true },
+    color_blind:      { contrast: 4.5, contrastLarge: 3,   bodyFontMin: 16, lineHeightMin: 1.4, lineHeightMax: 1.6, touchTarget: 44, touchTargetDesktop: 24, touchTargetDesktopWarn: 32, targetSpacing: 8,  fontWeightMin: 0,   maxNavItems: 0, maxLineLength: 0,  readingGradeLevel: 0, requireReducedMotion: false, checkCVD: true },
+    children:         { contrast: 4.5, contrastLarge: 3,   bodyFontMin: 18, lineHeightMin: 1.5, lineHeightMax: 1.8, touchTarget: 48, touchTargetDesktop: 44, touchTargetDesktopWarn: 48, targetSpacing: 16, fontWeightMin: 400, maxNavItems: 5, maxLineLength: 55, readingGradeLevel: 5, requireReducedMotion: false, checkCVD: false },
+    cognitive:        { contrast: 4.5, contrastLarge: 3,   bodyFontMin: 16, lineHeightMin: 1.5, lineHeightMax: 1.7, touchTarget: 44, touchTargetDesktop: 24, touchTargetDesktopWarn: 32, targetSpacing: 8,  fontWeightMin: 0,   maxNavItems: 5, maxLineLength: 65, readingGradeLevel: 8, requireReducedMotion: true,  checkCVD: false }
   };
 
   function getProfile(data) {
@@ -79,13 +82,46 @@ window.MilgScoring = (function() {
     };
   }
 
+  // Standardized scoring: errors=-10, warnings=-3, info=0 (industry standard per Cypress/axe-core)
+  function scoreFromFindings(findings, baseChecks) {
+    var errors = 0, warnings = 0;
+    findings.forEach(function(f) {
+      if (f.severity === 'error') errors++;
+      else if (f.severity === 'warning') warnings++;
+    });
+    // If module provides a checks-based score, use it; otherwise deduction-based
+    if (baseChecks !== undefined && baseChecks > 0) {
+      var passed = baseChecks - errors - warnings;
+      return Math.max(0, Math.round((Math.max(0, passed) / baseChecks) * 100));
+    }
+    return Math.max(0, 100 - (errors * 10) - (warnings * 3));
+  }
+
+  // CVD simulation matrices (Machado et al. 2009, severity 1.0)
+  var CVD_MATRICES = {
+    protanopia:   [0.567, 0.433, 0.000, 0.558, 0.442, 0.000, 0.000, 0.242, 0.758],
+    deuteranopia: [0.625, 0.375, 0.000, 0.700, 0.300, 0.000, 0.000, 0.300, 0.700],
+    tritanopia:   [0.950, 0.050, 0.000, 0.000, 0.433, 0.567, 0.000, 0.475, 0.525]
+  };
+
+  function simulateCVD(rgb, matrix) {
+    return {
+      r: Math.round(Math.min(255, Math.max(0, rgb.r * matrix[0] + rgb.g * matrix[1] + rgb.b * matrix[2]))),
+      g: Math.round(Math.min(255, Math.max(0, rgb.r * matrix[3] + rgb.g * matrix[4] + rgb.b * matrix[5]))),
+      b: Math.round(Math.min(255, Math.max(0, rgb.r * matrix[6] + rgb.g * matrix[7] + rgb.b * matrix[8])))
+    };
+  }
+
   return {
     register: register,
     runScoring: runScoring,
     getProfile: getProfile,
+    scoreFromFindings: scoreFromFindings,
     parseColor: parseColor,
     luminance: luminance,
     contrastRatio: contrastRatio,
+    simulateCVD: simulateCVD,
+    CVD_MATRICES: CVD_MATRICES,
     PROFILES: PROFILES
   };
 })();

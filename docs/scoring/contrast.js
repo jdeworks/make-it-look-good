@@ -145,10 +145,58 @@ function scoreContrast(data) {
     });
   });
 
+  // CVD palette safety check (color_blind profile)
+  if (profile.checkCVD && pairs.length > 0) {
+    var uniqueColors = {};
+    pairs.forEach(function(p) {
+      if (p.fg) uniqueColors[p.fg] = true;
+      if (p.bg) uniqueColors[p.bg] = true;
+    });
+    var colorList = Object.keys(uniqueColors).map(function(c) { return parseRgb(c); }).filter(Boolean);
+    var cvdTypes = ['protanopia', 'deuteranopia', 'tritanopia'];
+    var cvdIssues = {};
+    cvdTypes.forEach(function(type) { cvdIssues[type] = 0; });
+
+    // Check all color pairs through CVD simulation
+    for (var ci = 0; ci < colorList.length && ci < 20; ci++) {
+      for (var cj = ci + 1; cj < colorList.length && cj < 20; cj++) {
+        var origRatio = contrastRatio(colorList[ci], colorList[cj]);
+        if (origRatio < 2) continue; // Skip colors already too similar
+        cvdTypes.forEach(function(type) {
+          var matrix = S.CVD_MATRICES[type];
+          var simA = S.simulateCVD(colorList[ci], matrix);
+          var simB = S.simulateCVD(colorList[cj], matrix);
+          var simRatio = contrastRatio(simA, simB);
+          if (simRatio < 1.5 && origRatio >= 2) cvdIssues[type]++;
+        });
+      }
+    }
+
+    var totalCvdIssues = cvdIssues.protanopia + cvdIssues.deuteranopia + cvdIssues.tritanopia;
+    if (totalCvdIssues > 0) {
+      var cvdDetails = cvdTypes.filter(function(t) { return cvdIssues[t] > 0; }).map(function(t) { return t + ': ' + cvdIssues[t] + ' pair(s)'; }).join(', ');
+      findings.push({
+        severity: totalCvdIssues > 3 ? 'error' : 'warning',
+        title: totalCvdIssues + ' color pair(s) become indistinguishable under color vision deficiency',
+        detail: cvdDetails + '. These colors look distinct to typical vision but collapse for ~8% of men.',
+        fix: 'Add non-color indicators (icons, patterns, text labels) alongside color. Avoid red-green as the only differentiator.',
+        source: 'WCAG 2.2 §1.4.1 — https://www.w3.org/TR/WCAG22/#use-of-color'
+      });
+    } else if (colorList.length >= 3) {
+      findings.push({
+        severity: 'info',
+        title: 'Color palette passes CVD simulation (' + colorList.length + ' colors checked)',
+        detail: 'All color pairs remain distinguishable under protanopia, deuteranopia, and tritanopia simulation.',
+        fix: 'No action needed. This palette is CVD-safe.',
+        source: 'Machado et al. 2009 — https://www.inf.ufrgs.br/~oliveira/pubs_files/CVD_Simulation/CVD_Simulation.html'
+      });
+    }
+  }
+
   // Don't count uncertain results as failures in the score
   var total = (profilePairs.length - uncertain.length) || 1;
   var passing = total - failures.length;
-  var score = Math.round((passing / total) * 100);
+  var score = Math.max(0, 100 - (failures.length * 10) - (nearMisses.length * 3));
 
   var checks = total;
   var passed = passing;

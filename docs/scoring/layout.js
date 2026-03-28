@@ -105,6 +105,60 @@ function scoreLayout(data) {
     }
   }
 
+  // H2-to-body ratio (secondary hierarchy)
+  if (vh.h2ToBody > 0) {
+    checks++;
+    if (vh.h2ToBody >= 1.3 && vh.h2ToBody <= 2.5) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: 'H2 is ' + vh.h2ToBody + 'x body text (ideal: 1.3-2.5x)',
+        detail: vh.h2ToBody < 1.3 ? 'H2 is too close to body text size — weak sub-section hierarchy' : 'H2 may be too large, competing with H1',
+        fix: 'H2 should be clearly smaller than H1 but distinct from body. At 16px body, H2 should be 20-40px.',
+        presetRef: null,
+        source: 'Modular type scales — https://typescale.com/'
+      });
+    }
+  }
+
+  // Border radius consistency (moved from consistency to layout)
+  var radii = layout.borderRadii || [];
+  if (radii.length > 0) {
+    checks++;
+    if (radii.length <= 4) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: radii.length + ' distinct border-radius values (recommend 2-4)',
+        detail: 'Values: ' + radii.slice(0, 6).map(function(r) { return r.value + ' (' + r.count + 'x)'; }).join(', '),
+        fix: 'Standardize border-radius to 2-4 values. In Tailwind: rounded-sm, rounded, rounded-lg, rounded-xl.',
+        presetRef: null,
+        source: 'Material Design 3 — https://m3.material.io/styles/shape/overview'
+      });
+    }
+  }
+
+  // Content-to-whitespace balance (if we have element count and viewport)
+  if (data.structure && data.structure.totalElements > 10) {
+    var elCount = data.structure.totalElements;
+    checks++;
+    // Very sparse or very dense pages
+    if (elCount > 3000) {
+      findings.push({
+        severity: 'info',
+        title: 'Dense page (' + elCount + ' elements) — may feel cluttered',
+        detail: 'High element density can overwhelm users. Consider progressive disclosure.',
+        fix: 'Break content into sections, use collapsible panels, or paginate.',
+        presetRef: null,
+        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+      });
+    } else {
+      passed++;
+    }
+  }
+
   var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
   return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Layout Quality', icon: 'spacing' };
 }

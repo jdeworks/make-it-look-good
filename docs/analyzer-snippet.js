@@ -635,6 +635,16 @@
     aside: document.querySelectorAll('aside').length
   };
 
+  // Count top-level nav items (for cognitive load / profile checks)
+  var navEls = document.querySelectorAll('nav');
+  var navItemCount = 0;
+  navEls.forEach(function(nav) {
+    // Count direct child links/buttons (top-level nav items)
+    var topLinks = nav.querySelectorAll(':scope > a, :scope > ul > li > a, :scope > ol > li > a, :scope > button, :scope > ul > li > button');
+    navItemCount += topLinks.length;
+  });
+  data.accessibility.navItemCount = navItemCount;
+
   // Images without alt
   var images = document.querySelectorAll('img');
   var noAlt = 0;
