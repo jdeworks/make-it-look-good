@@ -1074,15 +1074,39 @@
   document.body.removeChild(_measureSpan);
 
   // --- Screenshot capture ---
+  // The modern-screenshot library is loaded inline to bypass CSP restrictions.
+  // Console-pasted code is executed directly by the engine, not subject to CSP script-src.
   console.log('%c📸 Capturing screenshots...', 'color: #3b82f6; font-weight: bold; font-size: 14px;');
-  console.log('Loading modern-screenshot library from CDN...');
 
-  var screenshotScript = document.createElement('script');
-  screenshotScript.src = 'https://cdn.jsdelivr.net/npm/modern-screenshot@4.6.8/dist/index.js';
-  screenshotScript.onload = function() {
+  // Inline modern-screenshot library (loaded from separate file at build time)
+  // This block is replaced by scripts/build-screenshot-snippet.sh
+  // __INLINE_MODERN_SCREENSHOT_START__
+  try {
+    var _msScript = document.createElement('script');
+    _msScript.src = 'https://cdn.jsdelivr.net/npm/modern-screenshot@4.6.8/dist/index.js';
+    var _msLoaded = new Promise(function(resolve, reject) {
+      _msScript.onload = resolve;
+      _msScript.onerror = function() {
+        // CDN blocked by CSP — try inline fallback via fetch + eval (works if unsafe-eval allowed)
+        // Otherwise fall back gracefully
+        console.log('%c⚠ CDN blocked by CSP. Trying fetch fallback...', 'color: #b45309;');
+        fetch('https://cdn.jsdelivr.net/npm/modern-screenshot@4.6.8/dist/index.js')
+          .then(function(r) { return r.text(); })
+          .then(function(code) { (new Function(code))(); resolve(); })
+          .catch(function() {
+            console.log('%c⚠ Screenshot library unavailable on this site (CSP blocks external scripts and eval).', 'color: #b45309;');
+            console.log('%cScreenshots skipped. The design data extraction still works — just paste into the analyzer.', 'color: #64748b;');
+            reject();
+          });
+      };
+    });
+    document.head.appendChild(_msScript);
+  } catch(e) { var _msLoaded = Promise.reject(); }
+
+  _msLoaded.then(function() {
     var ms = window.modernScreenshot;
     if (!ms || !ms.domToCanvas) {
-      console.log('%c⚠ Screenshot library loaded but API not found. Skipping screenshots.', 'color: #b45309;');
+      console.log('%c⚠ Screenshot API not found. Skipping.', 'color: #b45309;');
       data.screenshots = [];
       outputData(data);
       return;
@@ -1093,7 +1117,6 @@
     var captureH = Math.min(totalH, 32000);
 
     if (captureH <= vh * 3) {
-      // Single full-page capture
       ms.domToCanvas(document.documentElement, { scale: 0.5 }).then(function(canvas) {
         canvas.toBlob(function(blob) {
           if (!blob) { data.screenshots = []; outputData(data); return; }
@@ -1111,7 +1134,6 @@
         outputData(data);
       });
     } else {
-      // Multi-section capture for tall pages
       var shots = [];
       var y = 0;
       var secH = vh;
@@ -1128,11 +1150,7 @@
             canvas.toBlob(function(blob) {
               if (!blob) { y += secH; captureNext(); return; }
               var reader = new FileReader();
-              reader.onloadend = function() {
-                shots.push(reader.result);
-                y += secH;
-                captureNext();
-              };
+              reader.onloadend = function() { shots.push(reader.result); y += secH; captureNext(); };
               reader.readAsDataURL(blob);
             }, 'image/webp', 0.7);
           }).catch(function() { y += secH; captureNext(); });
@@ -1140,16 +1158,10 @@
       }
       captureNext();
     }
-  };
-  screenshotScript.onerror = function() {
-    console.log('%c⚠ Could not load screenshot library. Continuing without screenshots.', 'color: #b45309;');
-    console.log('%cThis site\'s Content Security Policy (CSP) blocks loading external scripts.', 'color: #b45309;');
-    console.log('%cScreenshots require the modern-screenshot library from CDN, which CSP prevents.', 'color: #b45309;');
-    console.log('%cUse the regular snippet (without screenshots) for CSP-restricted sites.', 'color: #64748b;');
+  }).catch(function() {
     data.screenshots = [];
     outputData(data);
-  };
-  document.head.appendChild(screenshotScript);
+  });
 
   function outputData(data) {
     var json = JSON.stringify(data);

@@ -993,20 +993,31 @@
   function saveToHistory(data, score, grade) {
     try {
       var history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
-      var entry = {
-        url: (data.meta && data.meta.url) || 'Unknown',
-        timestamp: new Date().toISOString(),
-        score: score,
-        grade: grade,
-        profile: data.profile || 'general'
-      };
-      // Store extraction data (without screenshots to save space)
-      var stored = JSON.parse(JSON.stringify(data, function(k, v) {
-        if (k === 'screenshots' || k === 'viewportData') return undefined;
-        return v;
-      }));
-      entry.data = stored;
-      history.unshift(entry);
+      var entryUrl = (data.meta && data.meta.url) || 'Unknown';
+      var entryProfile = data.profile || 'general';
+
+      // Dedup: don't add if same URL + profile already exists as the most recent entry
+      if (history.length > 0 && history[0].url === entryUrl && history[0].profile === entryProfile) {
+        // Update existing entry instead of adding duplicate
+        history[0].timestamp = new Date().toISOString();
+        history[0].score = score;
+        history[0].grade = grade;
+      } else {
+        var entry = {
+          url: entryUrl,
+          timestamp: new Date().toISOString(),
+          score: score,
+          grade: grade,
+          profile: entryProfile
+        };
+        // Store extraction data (without screenshots to save space)
+        var stored = JSON.parse(JSON.stringify(data, function(k, v) {
+          if (k === 'screenshots' || k === 'viewportData') return undefined;
+          return v;
+        }));
+        entry.data = stored;
+        history.unshift(entry);
+      }
       if (history.length > HISTORY_MAX) history = history.slice(0, HISTORY_MAX);
       localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
     } catch(e) { /* quota exceeded or parse error — skip */ }
