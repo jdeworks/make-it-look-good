@@ -668,13 +668,9 @@
       showToast('Analysis JSON exported');
     });
 
-    // Import JSON — load a previously exported analysis
+    // Import JSON — load a previously exported analysis (report action bar + drop zone)
     var importFileInput = document.getElementById('importJsonFile');
-    document.getElementById('importJsonBtn').addEventListener('click', function() {
-      importFileInput.click();
-    });
-    importFileInput.addEventListener('change', function() {
-      var file = importFileInput.files[0];
+    function handleImportFile(file) {
       if (!file) return;
       var reader = new FileReader();
       reader.onload = function() {
@@ -688,6 +684,24 @@
         }
       };
       reader.readAsText(file);
+    }
+
+    // Drop zone (Import tab)
+    var dropzone = document.getElementById('importDropzone');
+    var dropFileInput = document.getElementById('importDropFile');
+    if (dropzone) {
+      dropzone.addEventListener('click', function() { dropFileInput.click(); });
+      dropFileInput.addEventListener('change', function() { handleImportFile(dropFileInput.files[0]); dropFileInput.value = ''; });
+      dropzone.addEventListener('dragover', function(e) { e.preventDefault(); dropzone.classList.add('dragover'); });
+      dropzone.addEventListener('dragleave', function() { dropzone.classList.remove('dragover'); });
+      dropzone.addEventListener('drop', function(e) { e.preventDefault(); dropzone.classList.remove('dragover'); if (e.dataTransfer.files.length > 0) handleImportFile(e.dataTransfer.files[0]); });
+    }
+    document.getElementById('importJsonBtn').addEventListener('click', function() {
+      importFileInput.click();
+    });
+    importFileInput.addEventListener('change', function() {
+      handleImportFile(importFileInput.files[0]);
+      reader.readAsText(file);
       importFileInput.value = '';
     });
 
@@ -698,8 +712,21 @@
       applyDarkMode();
     });
 
-    // Check for data from editor "Analyze preview" button
-    if (location.hash === '#preview') {
+    // Check for HTML from editor "Analyze preview" button — auto-analyze with screenshots
+    if (location.hash === '#analyze-html') {
+      try {
+        var previewHtml = sessionStorage.getItem('milg-preview-html');
+        if (previewHtml) {
+          sessionStorage.removeItem('milg-preview-html');
+          analyzeHtmlInIframe(previewHtml, function(data) {
+            data.meta.url = 'Editor Preview';
+            runAnalysis(data);
+          }, null, null, true); // true = capture screenshots
+        }
+      } catch(e) {
+        console.error('Failed to analyze preview HTML:', e);
+      }
+    } else if (location.hash === '#preview') {
       try {
         var previewJson = sessionStorage.getItem('milg-preview-data');
         if (previewJson) {

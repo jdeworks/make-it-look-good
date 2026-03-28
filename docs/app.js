@@ -1540,35 +1540,20 @@ function analyzeCurrentPreview() {
   const btn = document.getElementById('analyzePreviewBtn');
   btn.classList.add('active');
 
-  function onResult(e) {
-    if (!e.data || e.data.type !== 'milg-analyzer-preview') return;
-    window.removeEventListener('message', onResult);
-    btn.classList.remove('active');
+  try {
+    // Grab the preview iframe's HTML content directly
+    var previewDoc = preview.contentDocument;
+    if (!previewDoc) { btn.classList.remove('active'); alert('Cannot access preview content.'); return; }
+    var html = previewDoc.documentElement.outerHTML;
 
-    // Store data in sessionStorage and open analyzer (avoids URL length limits)
-    var json = JSON.stringify(e.data.data);
-    try {
-      sessionStorage.setItem('milg-preview-data', json);
-      window.open('analyzer.html#preview', '_blank');
-    } catch(err) {
-      // Fallback: try hash encoding for small data
-      try {
-        var encoded = btoa(encodeURIComponent(json));
-        window.open('analyzer.html#data=' + encoded, '_blank');
-      } catch(e2) {
-        alert('Data too large for preview analysis. Use the Console Snippet tab on the analyzer page.');
-      }
-    }
+    // Store HTML in sessionStorage and open analyzer with auto-analyze flag
+    sessionStorage.setItem('milg-preview-html', html);
+    window.open('analyzer.html#analyze-html', '_blank');
+    btn.classList.remove('active');
+  } catch(e) {
+    btn.classList.remove('active');
+    alert('Could not read preview: ' + e.message);
   }
-  window.addEventListener('message', onResult);
-
-  // Inject extraction script into the iframe
-  preview.contentWindow.postMessage({ type: 'milg-run-analyzer' }, '*');
-
-  setTimeout(function() {
-    window.removeEventListener('message', onResult);
-    btn.classList.remove('active');
-  }, 8000);
 }
 
 // --- Contrast / Accessibility Checker ---
