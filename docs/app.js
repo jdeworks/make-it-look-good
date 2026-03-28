@@ -1583,8 +1583,11 @@ async function autoLoadTemplate() {
       return;
     }
     var elements = Object.keys(manifest.elements);
-    var preferred = ['landing', 'dashboard', 'cards', 'form', 'project'];
-    var pick = preferred.find(function(p) { return elements.indexOf(p) !== -1; }) || elements[0];
+    // Pick a random template from preferred list (shuffle first)
+    var preferred = ['landing', 'dashboard', 'cards', 'form', 'project', 'pricing', 'portfolio'];
+    var available = preferred.filter(function(p) { return elements.indexOf(p) !== -1; });
+    if (available.length === 0) available = elements;
+    var pick = available[Math.floor(Math.random() * available.length)];
     var pers = manifest.elements[pick].personalities || {};
     var persNames = Array.isArray(pers) ? pers : Object.keys(pers);
     var personality = persNames.indexOf('clean') !== -1 ? 'clean' : (persNames[0] || 'clean');
