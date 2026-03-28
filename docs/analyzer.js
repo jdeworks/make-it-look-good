@@ -1073,6 +1073,19 @@
     var reportContainer = document.getElementById('reportContainer');
     var inputSection = document.getElementById('inputSection');
 
+    // Detect empty/blocked pages (Cloudflare challenge, JS-only apps, etc.)
+    var warningHtml = '';
+    var elCount = (data.structure && data.structure.totalElements) || 0;
+    var contentWidth = parseFloat(data.spacing && data.spacing.maxContentWidth) || 0;
+    if (elCount < 20 || contentWidth < 100) {
+      warningHtml = '<div style="padding:12px 16px;background:#fffbeb;border:1px solid #fed7aa;border-radius:var(--radius);margin-bottom:12px;font-size:13px;line-height:1.5">' +
+        '<strong style="color:#b45309">Limited content detected (' + elCount + ' elements)</strong><br>' +
+        '<span style="color:#92400e">This page may be blocked by Cloudflare, require JavaScript to render, or need authentication. ' +
+        'The high scores above reflect the lack of content to check, not the quality of the design.</span><br>' +
+        '<span style="color:#92400e">For accurate results, use the <strong>Console Snippet</strong> tab — it runs in your browser with the fully rendered page.</span>' +
+        '</div>';
+    }
+
     // Detect exclusion patterns (use original data so they persist after re-scoring)
     var suggestionsHtml = '';
     if (!skipExclusionDetection) {
@@ -1086,7 +1099,7 @@
         '</div>';
     }
 
-    reportContainer.innerHTML = suggestionsHtml + MilgReport.renderReport(reportData);
+    reportContainer.innerHTML = warningHtml + suggestionsHtml + MilgReport.renderReport(reportData);
     reportContainer.classList.add('visible');
     inputSection.style.display = 'none';
     document.getElementById('reportActions').style.display = 'flex';

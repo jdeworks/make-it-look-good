@@ -1143,6 +1143,9 @@
   };
   screenshotScript.onerror = function() {
     console.log('%c⚠ Could not load screenshot library. Continuing without screenshots.', 'color: #b45309;');
+    console.log('%cThis site\'s Content Security Policy (CSP) blocks loading external scripts.', 'color: #b45309;');
+    console.log('%cScreenshots require the modern-screenshot library from CDN, which CSP prevents.', 'color: #b45309;');
+    console.log('%cUse the regular snippet (without screenshots) for CSP-restricted sites.', 'color: #64748b;');
     data.screenshots = [];
     outputData(data);
   };
