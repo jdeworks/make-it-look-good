@@ -53,33 +53,58 @@
       var a = c.a;
       return { r: Math.round(c.r * a + 255 * (1 - a)), g: Math.round(c.g * a + 255 * (1 - a)), b: Math.round(c.b * a + 255 * (1 - a)) };
     }
-    // Simplified gradient sampler for iframe extractor
-    var _gc = document.createElement('canvas'); _gc.width = 1; _gc.height = 1;
+    // Gradient sampler for iframe extractor — handles multiple backgrounds + alpha
+    var _gc = document.createElement('canvas'); _gc.width = 100; _gc.height = 100;
     var _gx = _gc.getContext('2d', { willReadFrequently: true });
+    function splitGrads(bgi) {
+      var layers = [], depth = 0, start = 0;
+      for (var i = 0; i < bgi.length; i++) {
+        if (bgi[i] === '(') depth++;
+        else if (bgi[i] === ')') depth--;
+        else if (bgi[i] === ',' && depth === 0) { layers.push(bgi.substring(start, i).trim()); start = i + 1; }
+      }
+      layers.push(bgi.substring(start).trim());
+      return layers.filter(function(l) { return l.indexOf('gradient') !== -1; });
+    }
     function getGradientBg(el) {
       var bgi = getComputedStyle(el).backgroundImage;
       if (!bgi || bgi === 'none' || bgi.indexOf('gradient') === -1) return null;
-      // For radial: extract first color stop
-      if (bgi.indexOf('radial') !== -1) {
-        var rs = bgi.match(/(?:rgba?\([^)]+\)|#[0-9a-fA-F]{3,8})/g);
-        if (rs && rs.length > 0) { var fc = parseColor(rs[0]); if (fc && fc.a > 0) return fc; }
-        return null;
-      }
-      // For linear: parse stops and sample center via canvas
-      var stops = []; var sr = /(rgba?\([^)]+\)|#[0-9a-fA-F]{3,8})\s*([\d.]+%)?/g; var m;
-      while ((m = sr.exec(bgi)) !== null) { var sc = parseColor(m[1]); if (sc) stops.push({ c: sc, p: m[2] ? parseFloat(m[2]) / 100 : null }); }
-      if (stops.length < 2) return null;
-      if (stops[0].p === null) stops[0].p = 0;
-      if (stops[stops.length - 1].p === null) stops[stops.length - 1].p = 1;
-      // Interpolate center color (p=0.5)
-      for (var i = 0; i < stops.length - 1; i++) {
-        if (stops[i].p <= 0.5 && stops[i + 1].p >= 0.5) {
-          var t = (stops[i + 1].p - stops[i].p) > 0 ? (0.5 - stops[i].p) / (stops[i + 1].p - stops[i].p) : 0;
-          var a = stops[i].c, b = stops[i + 1].c;
-          return { r: Math.round(a.r + (b.r - a.r) * t), g: Math.round(a.g + (b.g - a.g) * t), b: Math.round(a.b + (b.b - a.b) * t), a: 1 };
+      var layers = splitGrads(bgi);
+      if (layers.length === 0) return null;
+      _gc.width = 100; _gc.height = 100;
+      _gx.clearRect(0, 0, 100, 100);
+      // Render bottom-to-top (CSS: first = top)
+      for (var li = layers.length - 1; li >= 0; li--) {
+        var layer = layers[li];
+        if (layer.indexOf('radial') !== -1) {
+          var rs = layer.match(/(?:rgba?\([^)]+\)|hsla?\([^)]+\)|#[0-9a-fA-F]{3,8})/g);
+          if (rs && rs.length > 0) { var fc = parseColor(rs[0]); if (fc && fc.a > 0) { _gx.fillStyle = 'rgba(' + fc.r + ',' + fc.g + ',' + fc.b + ',' + fc.a + ')'; _gx.fillRect(0, 0, 100, 100); } }
+          continue;
         }
+        // Linear gradient — extract stops from THIS layer only
+        var sr = /(rgba?\([^)]+\)|hsla?\([^)]+\)|#[0-9a-fA-F]{3,8})\s*([\d.]+%)?/g;
+        var stops = [], m;
+        while ((m = sr.exec(layer)) !== null) { var sc = parseColor(m[1]); if (sc) stops.push({ c: sc, p: m[2] ? parseFloat(m[2]) / 100 : null }); }
+        if (stops.length === 0) continue;
+        if (stops.length === 1) { _gx.fillStyle = 'rgba(' + stops[0].c.r + ',' + stops[0].c.g + ',' + stops[0].c.b + ',' + stops[0].c.a + ')'; _gx.fillRect(0, 0, 100, 100); continue; }
+        if (stops[0].p === null) stops[0].p = 0;
+        if (stops[stops.length - 1].p === null) stops[stops.length - 1].p = 1;
+        var angleMatch = layer.match(/linear-gradient\(\s*(\d+(?:\.\d+)?)deg/);
+        var deg = angleMatch ? parseFloat(angleMatch[1]) : 180;
+        var rad = (deg - 90) * Math.PI / 180;
+        var diag = Math.sqrt(100 * 100 + 100 * 100) / 2;
+        var dx = Math.cos(rad) * diag, dy = Math.sin(rad) * diag;
+        try {
+          var grad = _gx.createLinearGradient(50 - dx, 50 - dy, 50 + dx, 50 + dy);
+          for (var si = 0; si < stops.length; si++) { var c = stops[si].c; grad.addColorStop(Math.max(0, Math.min(1, stops[si].p || 0)), 'rgba(' + c.r + ',' + c.g + ',' + c.b + ',' + c.a + ')'); }
+          _gx.fillStyle = grad;
+          _gx.fillRect(0, 0, 100, 100);
+        } catch(e) {}
       }
-      return stops[0].c;
+      // Sample center pixel from composited result
+      var d = _gx.getImageData(50, 50, 1, 1).data;
+      if (d[3] === 0) return null;
+      return { r: d[0], g: d[1], b: d[2], a: Math.round(d[3] / 255 * 100) / 100 };
     }
     function getEffectiveBg(el) {
       var node = el, layers = [];
@@ -611,6 +636,45 @@
     // Print/PDF
     printBtn.addEventListener('click', function() {
       window.print();
+    });
+
+    // Export JSON — save analysis data for re-import or sharing
+    document.getElementById('exportJsonBtn').addEventListener('click', function() {
+      if (!lastRawData) return;
+      var exportData = JSON.parse(JSON.stringify(lastRawData, function(k, v) { return k === 'viewportData' ? undefined : v; }));
+      var json = JSON.stringify(exportData, null, 2);
+      var blob = new Blob([json], { type: 'application/json' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      var siteName = (exportData.meta && exportData.meta.url) || 'analysis';
+      a.download = 'milg-report-' + siteName.replace(/[^a-z0-9]/gi, '-').substring(0, 40) + '.json';
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('Analysis JSON exported');
+    });
+
+    // Import JSON — load a previously exported analysis
+    var importFileInput = document.getElementById('importJsonFile');
+    document.getElementById('importJsonBtn').addEventListener('click', function() {
+      importFileInput.click();
+    });
+    importFileInput.addEventListener('change', function() {
+      var file = importFileInput.files[0];
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function() {
+        try {
+          var data = JSON.parse(reader.result);
+          if (!data.meta || !data.colors) throw new Error('Invalid format');
+          runAnalysis(data);
+          showToast('Analysis imported: ' + (data.meta.url || 'unknown'));
+        } catch(e) {
+          showToast('Invalid JSON: ' + e.message);
+        }
+      };
+      reader.readAsText(file);
+      importFileInput.value = '';
     });
 
     // Dark mode toggle

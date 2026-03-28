@@ -69,78 +69,114 @@
   var _gradCanvas = document.createElement('canvas');
   var _gradCtx = _gradCanvas.getContext('2d', { willReadFrequently: true });
 
+  // Split backgroundImage into individual gradient layers (CSS order: first = topmost)
+  function splitGradients(bgImage) {
+    var layers = [];
+    var depth = 0, start = 0;
+    for (var i = 0; i < bgImage.length; i++) {
+      if (bgImage[i] === '(') depth++;
+      else if (bgImage[i] === ')') depth--;
+      else if (bgImage[i] === ',' && depth === 0) {
+        layers.push(bgImage.substring(start, i).trim());
+        start = i + 1;
+      }
+    }
+    layers.push(bgImage.substring(start).trim());
+    return layers.filter(function(l) { return l.indexOf('gradient') !== -1; });
+  }
+
   function getGradientColor(el) {
     var bgImage = getComputedStyle(el).backgroundImage;
     if (!bgImage || bgImage === 'none' || bgImage.indexOf('gradient') === -1) return null;
 
+    // Split multiple backgrounds — CSS stacks them: first = topmost layer
+    var gradientLayers = splitGradients(bgImage);
+    if (gradientLayers.length === 0) return null;
+
     var rect = el.getBoundingClientRect();
     var w = Math.round(rect.width) || 1;
     var h = Math.round(rect.height) || 1;
-    // Cap canvas size to avoid performance issues
     var scale = 1;
     if (w > 200 || h > 200) scale = Math.min(200 / w, 200 / h);
     var cw = Math.max(1, Math.round(w * scale));
     var ch = Math.max(1, Math.round(h * scale));
     _gradCanvas.width = cw;
     _gradCanvas.height = ch;
+    _gradCtx.clearRect(0, 0, cw, ch);
 
-    // Try radial-gradient: just extract the first color stop
-    if (bgImage.indexOf('radial-gradient') !== -1) {
-      var radialStops = bgImage.match(/(?:rgba?\([^)]+\)|#[0-9a-fA-F]{3,8})/g);
-      if (radialStops && radialStops.length > 0) {
-        var fc = parseColor(radialStops[0]);
-        if (fc && fc.a > 0) return { r: fc.r, g: fc.g, b: fc.b, a: fc.a };
-      }
-      return null;
+    // Render layers bottom-to-top (last = bottom, first = top) so they composite correctly
+    for (var li = gradientLayers.length - 1; li >= 0; li--) {
+      var layer = gradientLayers[li];
+      if (!renderGradientLayer(layer, cw, ch)) continue;
     }
 
-    // Parse linear-gradient
-    // Browsers normalize computed style to: linear-gradient(Xdeg, color stop%, color stop%, ...)
-    var angleMatch = bgImage.match(/linear-gradient\(\s*(\d+(?:\.\d+)?)deg/);
-    if (!angleMatch) {
-      // Try keyword directions or no angle (defaults to 180deg)
-      var dirMatch = bgImage.match(/linear-gradient\(\s*to\s+(top|bottom|left|right)/);
-      var angleDeg = 180; // default: top to bottom
+    // Sample center pixel from composited result
+    var px = Math.round(cw / 2);
+    var py = Math.round(ch / 2);
+    var d = _gradCtx.getImageData(Math.min(px, cw - 1), Math.min(py, ch - 1), 1, 1).data;
+    if (d[3] === 0) return null;
+    return { r: d[0], g: d[1], b: d[2], a: Math.round(d[3] / 255 * 100) / 100 };
+  }
+
+  function renderGradientLayer(layer, cw, ch) {
+    // Radial gradient: extract first color stop only
+    if (layer.indexOf('radial-gradient') !== -1) {
+      var radialStops = layer.match(/(?:rgba?\([^)]+\)|hsla?\([^)]+\)|#[0-9a-fA-F]{3,8})/g);
+      if (radialStops && radialStops.length > 0) {
+        var fc = parseColor(radialStops[0]);
+        if (fc && fc.a > 0) {
+          _gradCtx.fillStyle = 'rgba(' + fc.r + ',' + fc.g + ',' + fc.b + ',' + fc.a + ')';
+          _gradCtx.fillRect(0, 0, cw, ch);
+          return true;
+        }
+      }
+      return false;
+    }
+
+    // Linear gradient
+    var angleMatch = layer.match(/linear-gradient\(\s*(\d+(?:\.\d+)?)deg/);
+    var angleDeg = 180;
+    if (angleMatch) {
+      angleDeg = parseFloat(angleMatch[1]);
+    } else {
+      var dirMatch = layer.match(/linear-gradient\(\s*to\s+(top|bottom|left|right)/);
       if (dirMatch) {
         var dirMap = { 'top': 0, 'bottom': 180, 'left': 270, 'right': 90 };
         angleDeg = dirMap[dirMatch[1]] || 180;
-      } else if (!bgImage.match(/linear-gradient\(\s*\d/)) {
-        // No angle specified at all, default 180
-        angleDeg = 180;
-      } else {
-        return null;
       }
-    } else {
-      angleDeg = parseFloat(angleMatch[1]);
     }
 
-    // Extract color stops: match color values followed by optional percentage
-    var stopRegex = /(rgba?\([^)]+\)|#[0-9a-fA-F]{3,8})\s*([\d.]+%)?/g;
+    // Extract color stops from THIS layer only
+    var stopRegex = /(rgba?\([^)]+\)|hsla?\([^)]+\)|#[0-9a-fA-F]{3,8})\s*([\d.]+%)?/g;
     var stops = [];
     var match;
-    while ((match = stopRegex.exec(bgImage)) !== null) {
+    while ((match = stopRegex.exec(layer)) !== null) {
       var color = parseColor(match[1]);
       if (!color) continue;
       var pos = match[2] ? parseFloat(match[2]) / 100 : null;
       stops.push({ color: color, pos: pos });
     }
-    if (stops.length < 2) return null;
+    if (stops.length < 2) {
+      // Solid color gradient (same color for all stops)
+      if (stops.length === 1) {
+        _gradCtx.fillStyle = 'rgba(' + stops[0].color.r + ',' + stops[0].color.g + ',' + stops[0].color.b + ',' + stops[0].color.a + ')';
+        _gradCtx.fillRect(0, 0, cw, ch);
+        return true;
+      }
+      return false;
+    }
 
-    // Fill in missing positions: first=0, last=1, interpolate between
+    // Fill in missing positions
     if (stops[0].pos === null) stops[0].pos = 0;
     if (stops[stops.length - 1].pos === null) stops[stops.length - 1].pos = 1;
     for (var i = 1; i < stops.length - 1; i++) {
       if (stops[i].pos === null) {
-        // Find next stop with a position
-        var prev = i - 1;
-        var next = i + 1;
+        var prev = i - 1, next = i + 1;
         while (next < stops.length && stops[next].pos === null) next++;
         stops[i].pos = stops[prev].pos + (stops[next].pos - stops[prev].pos) * ((i - prev) / (next - prev));
       }
     }
 
-    // Convert CSS angle to canvas gradient coordinates
-    // CSS angles: 0deg = bottom-to-top, 90deg = left-to-right, 180deg = top-to-bottom
     var rad = (angleDeg - 90) * Math.PI / 180;
     var diagLen = Math.sqrt(cw * cw + ch * ch) / 2;
     var cx = cw / 2, cy = ch / 2;
@@ -151,20 +187,13 @@
       var grad = _gradCtx.createLinearGradient(cx - dx, cy - dy, cx + dx, cy + dy);
       for (var i = 0; i < stops.length; i++) {
         var sc = stops[i].color;
-        var rgba = 'rgba(' + sc.r + ',' + sc.g + ',' + sc.b + ',' + sc.a + ')';
-        grad.addColorStop(Math.max(0, Math.min(1, stops[i].pos)), rgba);
+        grad.addColorStop(Math.max(0, Math.min(1, stops[i].pos)), 'rgba(' + sc.r + ',' + sc.g + ',' + sc.b + ',' + sc.a + ')');
       }
       _gradCtx.fillStyle = grad;
       _gradCtx.fillRect(0, 0, cw, ch);
-
-      // Sample center pixel
-      var px = Math.round(cw / 2);
-      var py = Math.round(ch / 2);
-      var d = _gradCtx.getImageData(Math.min(px, cw - 1), Math.min(py, ch - 1), 1, 1).data;
-      if (d[3] === 0) return null;
-      return { r: d[0], g: d[1], b: d[2], a: Math.round(d[3] / 255 * 100) / 100 };
+      return true;
     } catch(e) {
-      return null;
+      return false;
     }
   }
 
