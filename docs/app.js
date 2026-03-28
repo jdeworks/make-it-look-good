@@ -1765,9 +1765,23 @@ function startApp() {
   applyDarkMode();
   initMonaco();
   initMobile();
-  loadFromHash().then(() => {
+  loadFromHash().then(async () => {
     if (!editor.value) {
-      updatePreview();
+      // No hash preset and editor empty — load a random template so the page isn't blank
+      try {
+        await loadManifest();
+        if (manifestData && manifestData.elements) {
+          var elements = Object.keys(manifestData.elements);
+          var randomEl = elements[Math.floor(Math.random() * elements.length)];
+          var pers = manifestData.elements[randomEl].personalities || [];
+          var randomPers = pers.includes('clean') ? 'clean' : (pers[0] || 'clean');
+          await loadPreset(randomEl, randomPers);
+        } else {
+          updatePreview();
+        }
+      } catch(e) {
+        updatePreview();
+      }
     }
   });
 }
