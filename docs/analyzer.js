@@ -5,10 +5,15 @@
   "use strict";
 
   // --- Configuration ---
-  // Self-hosted CORS proxy (Cloudflare Worker). Fork users: deploy your own and change this URL.
-  // Set to '' to skip and use only third-party fallback proxies.
-  // Deploy instructions: see proxy/README.md
-  var CORS_PROXY_URL = '';  // e.g. 'https://milg-cors-proxy.your-subdomain.workers.dev'
+  // Self-hosted CORS proxy (Cloudflare Worker).
+  // The placeholder __PROXY_ENCODED__ is replaced at deploy time by GitHub Actions
+  // with a base64-encoded URL (kept out of git via repository secrets).
+  // Fork users: deploy your own worker (see proxy/README.md) and set the
+  // PROXY_URL secret in your repo's Settings > Secrets > Actions.
+  var _pe = '__PROXY_ENCODED__';
+  var CORS_PROXY_URL = (_pe.indexOf('__') === 0) ? '' : (function() {
+    try { return atob(_pe); } catch(e) { return ''; }
+  })();
 
   // --- State ---
   var reportData = null;
