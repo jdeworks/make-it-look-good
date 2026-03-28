@@ -1571,8 +1571,9 @@ function startApp() {
           var preferred = ['landing', 'dashboard', 'cards', 'form', 'project'];
           var pick = preferred.find(function(p) { return elements.indexOf(p) !== -1; });
           if (!pick) pick = elements[Math.floor(Math.random() * elements.length)];
-          var pers = manifestData.elements[pick].personalities || [];
-          var randomPers = pers.includes('clean') ? 'clean' : (pers[0] || 'clean');
+          var pers = manifestData.elements[pick].personalities || {};
+          var persNames = Array.isArray(pers) ? pers : Object.keys(pers);
+          var randomPers = persNames.indexOf('clean') !== -1 ? 'clean' : (persNames[0] || 'clean');
           await loadPreset(pick, randomPers);
         } else {
           updatePreview();
