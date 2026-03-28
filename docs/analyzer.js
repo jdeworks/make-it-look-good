@@ -811,31 +811,59 @@
   }
 
   // --- URL Fetch via CORS proxy ---
+  // Remembers which proxy worked so subsequent requests (CSS files etc.) skip failed ones
+  var _lastWorkingProxy = -1; // -1 = direct, 0+ = proxy index
+
+  function buildProxyList() {
+    var proxies = [];
+    if (CORS_PROXY_URL) proxies.push(CORS_PROXY_URL + '?url=');
+    proxies.push(
+      'https://api.allorigins.win/raw?url=',
+      'https://api.codetabs.com/v1/proxy?quest=',
+      'https://corsproxy.io/?'
+    );
+    return proxies;
+  }
+
   function fetchWithProxy(url) {
+    var proxies = buildProxyList();
+
+    // If we already know which proxy works, try it first
+    if (_lastWorkingProxy >= 0 && _lastWorkingProxy < proxies.length) {
+      return fetch(proxies[_lastWorkingProxy] + encodeURIComponent(url))
+        .then(function(r) { if (!r.ok) throw new Error(r.status); return r.text(); })
+        .then(function(t) { if (!t || t.length < 50) throw new Error('empty'); return t; })
+        .catch(function() {
+          // Last working proxy failed — reset and try full chain
+          _lastWorkingProxy = -1;
+          return fetchWithProxyFull(url, proxies);
+        });
+    }
+
+    return fetchWithProxyFull(url, proxies);
+  }
+
+  function fetchWithProxyFull(url, proxies) {
+    // Try direct fetch first
     return fetch(url, { mode: 'cors', redirect: 'follow' })
       .then(function(r) { if (r.ok) return r.text(); throw new Error(r.status); })
+      .then(function(t) { _lastWorkingProxy = -1; return t; })
       .catch(function() {
-        // Build proxy chain: self-hosted worker first, then third-party fallbacks
-        var proxies = [];
-        if (CORS_PROXY_URL) {
-          proxies.push(CORS_PROXY_URL + '?url=' + encodeURIComponent(url));
-        }
-        proxies.push(
-          'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
-          'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url),
-          'https://corsproxy.io/?' + encodeURIComponent(url)
-        );
-        return proxies.reduce(function(chain, purl) {
-          return chain.catch(function() {
-            return fetch(purl).then(function(r) {
+        // Try proxies in order, remember which one works
+        var chain = Promise.reject();
+        proxies.forEach(function(proxyBase, idx) {
+          chain = chain.catch(function() {
+            return fetch(proxyBase + encodeURIComponent(url)).then(function(r) {
               if (!r.ok) throw new Error(r.status);
               return r.text();
             }).then(function(t) {
               if (!t || t.length < 50) throw new Error('empty');
+              _lastWorkingProxy = idx;
               return t;
             });
           });
-        }, Promise.reject());
+        });
+        return chain;
       });
   }
 
