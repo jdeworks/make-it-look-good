@@ -4,6 +4,12 @@
 (function() {
   "use strict";
 
+  // --- Configuration ---
+  // Self-hosted CORS proxy (Cloudflare Worker). Fork users: deploy your own and change this URL.
+  // Set to '' to skip and use only third-party fallback proxies.
+  // Deploy instructions: see proxy/README.md
+  var CORS_PROXY_URL = '';  // e.g. 'https://milg-cors-proxy.your-subdomain.workers.dev'
+
   // --- State ---
   var reportData = null;
   var darkMode = localStorage.getItem('milg-dark') === 'true';
@@ -800,20 +806,20 @@
   }
 
   // --- URL Fetch via CORS proxy ---
-  function proxyUrl(url) {
-    return 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
-  }
-
   function fetchWithProxy(url) {
     return fetch(url, { mode: 'cors', redirect: 'follow' })
       .then(function(r) { if (r.ok) return r.text(); throw new Error(r.status); })
       .catch(function() {
-        // Try proxies in order (allorigins most reliable, corsproxy rate-limited)
-        var proxies = [
+        // Build proxy chain: self-hosted worker first, then third-party fallbacks
+        var proxies = [];
+        if (CORS_PROXY_URL) {
+          proxies.push(CORS_PROXY_URL + '?url=' + encodeURIComponent(url));
+        }
+        proxies.push(
           'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
           'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url),
           'https://corsproxy.io/?' + encodeURIComponent(url)
-        ];
+        );
         return proxies.reduce(function(chain, purl) {
           return chain.catch(function() {
             return fetch(purl).then(function(r) {

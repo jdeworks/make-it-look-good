@@ -115,6 +115,10 @@ layout/
   spacing-system.md
   visual-hierarchy.md
   whitespace.md
+proxy/
+  README.md
+  worker.js
+  wrangler.toml
 research/
   sources.md
 responsive/
@@ -4606,6 +4610,178 @@ How much whitespace do I need?
 - [Material Design 3 — Layout Spacing](https://m3.material.io/foundations/layout/understanding-layout/spacing)
 - [Butterick's Practical Typography — Space](https://practicaltypography.com/space-above-and-below.html)
 - Related: [Spacing System](spacing-system.md), [Grid Systems](grid-systems.md), [Visual Hierarchy](visual-hierarchy.md)
+</file>
+
+<file path="proxy/README.md">
+# CORS Proxy Worker
+
+A lightweight Cloudflare Worker that proxies HTTP requests with CORS headers, used by the Design Analyzer's URL input mode.
+
+## Why
+
+Browsers block cross-origin requests (CORS). To fetch and analyze external websites from a client-side app, we need a proxy that adds `Access-Control-Allow-Origin: *` headers.
+
+## Deploy your own
+
+1. [Sign up for Cloudflare](https://dash.cloudflare.com/sign-up) (free, no credit card)
+2. Install Wrangler: `npm install -g wrangler`
+3. Login: `wrangler login`
+4. Deploy:
+   ```bash
+   cd proxy
+   npx wrangler deploy
+   ```
+5. Copy the `*.workers.dev` URL from the output
+6. Update `CORS_PROXY_URL` in `docs/analyzer.js` with your URL
+
+## Free tier limits
+
+- **100,000 requests/day** (resets at midnight UTC)
+- 10ms CPU time per request
+- Hard stop when exceeded (returns 5XX until reset)
+- $5/month paid plan gives 10M requests/month if you outgrow free tier
+
+## Safety features
+
+- Only GET requests allowed
+- Only http/https URLs (no file://, ftp://, etc.)
+- SSRF protection: blocks localhost, private IPs, .local domains
+- 10 MB max response size
+- Custom User-Agent for transparency
+
+## Configuration
+
+Edit `worker.js` to customize:
+
+- `ALLOWED_ORIGINS` — restrict to your domain (default: `'*'`)
+- `MAX_RESPONSE_SIZE` — max proxied response (default: 10 MB)
+- `USER_AGENT` — the User-Agent sent to target servers
+</file>
+
+<file path="proxy/worker.js">
+// make-it-look-good — CORS Proxy Worker
+// Deploy: cd proxy && npx wrangler deploy
+// Free tier: 100K requests/day on Cloudflare Workers
+
+const MAX_RESPONSE_SIZE = 10 * 1024 * 1024; // 10 MB
+const ALLOWED_SCHEMES = ['http:', 'https:'];
+const USER_AGENT = 'MilgAnalyzer/1.0 (design-analyzer; +https://github.com/jdeworks/make-it-look-good)';
+
+// Allowed origin patterns — restrict to your GitHub Pages domain in production
+// Set to '*' for development or if you want any origin to use the proxy
+const ALLOWED_ORIGINS = '*';
+
+function corsHeaders(origin) {
+  return {
+    'Access-Control-Allow-Origin': ALLOWED_ORIGINS === '*' ? '*' : (origin || '*'),
+    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Allow-Headers': '*',
+    'Access-Control-Max-Age': '86400',
+  };
+}
+
+function errorResponse(status, message, origin) {
+  return new Response(JSON.stringify({ error: message }), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      ...corsHeaders(origin),
+    },
+  });
+}
+
+export default {
+  async fetch(request) {
+    const origin = request.headers.get('Origin') || '';
+
+    // Handle CORS preflight
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: corsHeaders(origin) });
+    }
+
+    // Only GET allowed
+    if (request.method !== 'GET') {
+      return errorResponse(405, 'Only GET requests are allowed', origin);
+    }
+
+    // Parse target URL from query parameter
+    const reqUrl = new URL(request.url);
+    const target = reqUrl.searchParams.get('url');
+
+    if (!target) {
+      return errorResponse(400, 'Missing ?url= parameter', origin);
+    }
+
+    // Validate URL scheme
+    let targetUrl;
+    try {
+      targetUrl = new URL(target);
+    } catch {
+      return errorResponse(400, 'Invalid URL: ' + target, origin);
+    }
+
+    if (!ALLOWED_SCHEMES.includes(targetUrl.protocol)) {
+      return errorResponse(400, 'Only http/https URLs are allowed', origin);
+    }
+
+    // Block private/local IPs to prevent SSRF
+    const hostname = targetUrl.hostname;
+    if (
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === '0.0.0.0' ||
+      hostname === '::1' ||
+      hostname.endsWith('.local') ||
+      /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(hostname)
+    ) {
+      return errorResponse(403, 'Private/local URLs are not allowed', origin);
+    }
+
+    // Fetch the target
+    try {
+      const resp = await fetch(targetUrl.href, {
+        headers: {
+          'User-Agent': USER_AGENT,
+          'Accept': 'text/html,text/css,application/xhtml+xml,*/*',
+          'Accept-Language': 'en-US,en;q=0.9',
+        },
+        redirect: 'follow',
+      });
+
+      if (!resp.ok) {
+        return errorResponse(resp.status, 'Target returned ' + resp.status + ' ' + resp.statusText, origin);
+      }
+
+      // Read body and check size
+      const body = await resp.arrayBuffer();
+
+      if (body.byteLength > MAX_RESPONSE_SIZE) {
+        return errorResponse(413, 'Response too large (' + Math.round(body.byteLength / 1024 / 1024) + ' MB, max ' + (MAX_RESPONSE_SIZE / 1024 / 1024) + ' MB)', origin);
+      }
+
+      // Return with CORS headers
+      const responseHeaders = new Headers(corsHeaders(origin));
+      responseHeaders.set('Content-Type', resp.headers.get('Content-Type') || 'text/html; charset=utf-8');
+
+      // Pass through cache headers if present
+      const cacheControl = resp.headers.get('Cache-Control');
+      if (cacheControl) responseHeaders.set('Cache-Control', cacheControl);
+
+      return new Response(body, {
+        status: 200,
+        headers: responseHeaders,
+      });
+    } catch (err) {
+      return errorResponse(502, 'Failed to fetch target: ' + (err.message || 'unknown error'), origin);
+    }
+  },
+};
+</file>
+
+<file path="proxy/wrangler.toml">
+name = "milg-cors-proxy"
+main = "worker.js"
+compatibility_date = "2024-09-01"
 </file>
 
 <file path="research/sources.md">
@@ -12495,179 +12671,6 @@ Row separators?
 })();
 </file>
 
-<file path="docs/scoring/cognitive.js">
-// Scoring Module: Cognitive Load
-// Weight: 5%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreCognitiveLoad(data) {
-  var findings = [];
-  var checks = 0;
-  var passed = 0;
-
-  // Navigation items <= 7
-  checks++;
-  var navs = document.querySelectorAll ? null : null; // We don't have DOM access, infer from data
-  // Check heading count as proxy for section complexity
-  var headingCount = (data.typography.headings || []).length;
-  if (headingCount <= 15) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'info',
-      title: headingCount + ' headings on page — consider chunking content',
-      detail: 'Hick\'s Law: more choices = slower decisions',
-      fix: 'Break content into tabs, accordions, or separate pages. Keep 5–7 top-level sections.',
-      presetRef: 'Tab and accordion presets for progressive disclosure',
-      source: 'Hick\'s Law — https://lawsofux.com/hicks-law/'
-    });
-  }
-
-  // Form fields per step
-  checks++;
-  var formFields = data.accessibility.formLabels ? data.accessibility.formLabels.total : 0;
-  if (formFields <= 7 || formFields === 0) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: formFields + ' form fields visible (recommended: 5–7 per step)',
-      detail: 'Long forms have high abandonment rates',
-      fix: 'Break into multi-step form with 3–5 fields per step. Show a progress indicator.',
-      presetRef: 'Form presets demonstrate multi-step patterns',
-      source: 'Miller\'s Law / Baymard Institute — https://lawsofux.com/millers-law/'
-    });
-  }
-
-  var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
-  return { score: score, findings: findings, weight: 5, label: 'Cognitive Load', icon: 'cognitive' };
-}
-
-
-  S.register("cognitive", scoreCognitiveLoad, 5, "Cognitive Load", "cognitive");
-})();
-</file>
-
-<file path="docs/scoring/layout.js">
-// Scoring Module: Layout Quality
-// Weight: 5%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreLayout(data) {
-  var findings = [];
-  var checks = 0;
-  var passed = 0;
-  var layout = data.layout || {};
-
-  // Whitespace rhythm: check if section gaps are consistent
-  var gaps = layout.sectionGaps || [];
-  if (gaps.length >= 2) {
-    checks++;
-    var avg = gaps.reduce(function(s, g) { return s + g; }, 0) / gaps.length;
-    var variance = gaps.reduce(function(s, g) { return s + Math.pow(g - avg, 2); }, 0) / gaps.length;
-    var stdDev = Math.sqrt(variance);
-    var cv = avg > 0 ? stdDev / avg : 0; // coefficient of variation
-    if (cv < 0.3) {
-      passed++;
-    } else {
-      findings.push({
-        severity: cv > 0.6 ? 'warning' : 'info',
-        title: 'Inconsistent spacing between sections (CV: ' + Math.round(cv * 100) + '%)',
-        detail: 'Gaps range from ' + Math.min.apply(null, gaps) + 'px to ' + Math.max.apply(null, gaps) + 'px (avg ' + Math.round(avg) + 'px)',
-        fix: 'Use consistent spacing between major sections. Pick one value (e.g. 64px or 96px) and use it everywhere.',
-        presetRef: null,
-        source: 'Gestalt similarity — https://lawsofux.com/law-of-similarity/'
-      });
-    }
-  }
-
-  // Alignment consistency: cluster left edges and find near-misses ("jagged" alignment)
-  var edges = layout.alignmentEdges || [];
-  if (edges.length >= 5) {
-    checks++;
-    // Cluster edges within 3px (considered aligned)
-    var clusters = [];
-    var sorted = edges.slice().sort(function(a, b) { return a - b; });
-    var current = [sorted[0]];
-    for (var i = 1; i < sorted.length; i++) {
-      if (sorted[i] - sorted[i - 1] <= 3) {
-        current.push(sorted[i]);
-      } else {
-        clusters.push(current);
-        current = [sorted[i]];
-      }
-    }
-    clusters.push(current);
-    // Find near-miss clusters (4-12px apart — elements on same axis but jagged)
-    var nearMisses = 0;
-    var jaggedExamples = [];
-    for (var i = 1; i < clusters.length; i++) {
-      var prevAvg = Math.round(clusters[i - 1].reduce(function(s,v){return s+v},0) / clusters[i - 1].length);
-      var currAvg = Math.round(clusters[i].reduce(function(s,v){return s+v},0) / clusters[i].length);
-      var gap = currAvg - prevAvg;
-      if (gap > 3 && gap <= 12) {
-        nearMisses++;
-        jaggedExamples.push(prevAvg + 'px → ' + currAvg + 'px (' + gap + 'px off)');
-      }
-    }
-    // Also check how many unique clusters there are relative to element count
-    var clusterRatio = clusters.length / edges.length;
-    if (nearMisses === 0 && clusterRatio < 0.5) {
-      passed++;
-    } else if (nearMisses > 0) {
-      findings.push({
-        severity: nearMisses >= 3 ? 'warning' : 'info',
-        title: nearMisses + ' jagged alignment(s) — elements on same axis but ' + (nearMisses >= 3 ? 'noticeably' : 'slightly') + ' off',
-        detail: clusters.length + ' alignment edges across ' + edges.length + ' elements. ' + (jaggedExamples.length > 0 ? 'Offsets: ' + jaggedExamples.slice(0, 3).join(', ') : ''),
-        fix: 'Elements that share a visual axis should be exactly aligned. Check that container padding, margin, and grid column widths are consistent. In Tailwind: use consistent px-4/px-6 and grid/flex alignment.',
-        presetRef: null,
-        source: 'Gestalt continuity — https://lawsofux.com/law-of-common-region/'
-      });
-    } else if (clusterRatio >= 0.5) {
-      findings.push({
-        severity: 'info',
-        title: 'Weak alignment grid — ' + clusters.length + ' distinct left edges across ' + edges.length + ' elements',
-        detail: 'A well-aligned layout typically has 2-4 dominant alignment edges. High variance suggests inconsistent margins/padding.',
-        fix: 'Establish a consistent alignment grid. Use the same container padding and let content flow within columns.',
-        presetRef: null,
-        source: 'Gestalt continuity — https://lawsofux.com/law-of-common-region/'
-      });
-    }
-  }
-
-  // Visual hierarchy: heading-to-body ratios
-  var vh = layout.visualHierarchy || {};
-  if (vh.h1ToBody > 0) {
-    checks++;
-    if (vh.h1ToBody >= 2 && vh.h1ToBody <= 4) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: 'H1 is ' + vh.h1ToBody + 'x body text (ideal: 2-4x)',
-        detail: vh.h1ToBody < 2 ? 'H1 doesn\'t stand out enough from body text' : 'H1 may be too large relative to body text',
-        fix: 'H1 should be 2-4x the body font size for clear hierarchy. At 16px body, H1 should be 32-64px.',
-        presetRef: null,
-        source: 'Modular type scales — https://typescale.com/'
-      });
-    }
-  }
-
-  var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
-  return { score: score, findings: findings, weight: 5, label: 'Layout Quality', icon: 'spacing' };
-}
-
-
-  S.register("layout", scoreLayout, 5, "Layout Quality", "spacing");
-})();
-</file>
-
 <file path="docs/scoring/registry.js">
 // Scoring Module Registry
 // Each module calls MilgScoring.register() to add its scoring function.
@@ -14673,165 +14676,176 @@ All presets assume Tailwind CSS is available. Setup per framework:
 For Tailwind v4, add `@import "tailwindcss"` to your main CSS file. No `tailwind.config.js` needed for default setup.
 </file>
 
-<file path="docs/scoring/consistency.js">
-// Scoring Module: Visual Consistency
+<file path="docs/scoring/cognitive.js">
+// Scoring Module: Cognitive Load
 // Weight: 5%
 
 (function() {
   "use strict";
   var S = window.MilgScoring;
 
-function scoreVisualConsistency(data) {
+function scoreCognitiveLoad(data) {
   var findings = [];
   var checks = 0;
   var passed = 0;
 
-  // Scale thresholds by page complexity
-  var pageType = (data.context && data.context.pageType) || 'unknown';
-  var elCount = (data.structure && data.structure.totalElements) || 100;
-  // Marketing/content pages legitimately use more colors and font sizes
-  var colorLimit = elCount > 200 ? 35 : elCount > 100 ? 25 : 20;
-  var fontSizeLimit = elCount > 200 ? 12 : elCount > 100 ? 10 : 8;
-  if (pageType === 'marketing' || pageType === 'pricing') { colorLimit += 10; fontSizeLimit += 3; }
-
-  // Color palette coherence — how many unique text/bg colors?
+  // Navigation items <= 7
   checks++;
-  var textColors = (data.colors.textColors || []).length;
-  var bgColors = (data.colors.bgColors || []).length;
-  var totalUnique = textColors + bgColors;
-  if (totalUnique <= colorLimit) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: totalUnique + ' unique colors detected (recommend < ' + colorLimit + ' for this page type)',
-      detail: textColors + ' text colors, ' + bgColors + ' background colors',
-      fix: 'Consolidate to a systematic color palette: 1 primary + 1 neutral + 3 semantic (error, warning, success)',
-      presetRef: 'Presets use a single primary color with slate neutrals',
-      source: 'Material Design 3 — https://m3.material.io/styles/color/roles'
-    });
-  }
-
-  // Font size consistency — too many unique sizes?
-  checks++;
-  var fontSizes = (data.typography.fontSizes || []).length;
-  if (fontSizes <= fontSizeLimit) {
+  var navs = document.querySelectorAll ? null : null; // We don't have DOM access, infer from data
+  // Check heading count as proxy for section complexity
+  var headingCount = (data.typography.headings || []).length;
+  if (headingCount <= 15) {
     passed++;
   } else {
     findings.push({
       severity: 'info',
-      title: fontSizes + ' unique font sizes (recommend ≤' + fontSizeLimit + ' from a type scale)',
-      detail: 'A consistent type scale creates visual rhythm',
-      fix: 'Use a modular scale: text-sm, text-base, text-lg, text-xl, text-2xl, text-3xl, text-4xl',
-      presetRef: null,
-      source: 'Modular type scales — https://typescale.com/'
+      title: headingCount + ' headings on page — consider chunking content',
+      detail: 'Hick\'s Law: more choices = slower decisions',
+      fix: 'Break content into tabs, accordions, or separate pages. Keep 5–7 top-level sections.',
+      presetRef: 'Tab and accordion presets for progressive disclosure',
+      source: 'Hick\'s Law — https://lawsofux.com/hicks-law/'
     });
   }
 
-  // Border radius consistency
-  var radii = (data.layout && data.layout.borderRadii) || [];
-  if (radii.length > 0) {
-    checks++;
-    if (radii.length <= 4) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: radii.length + ' distinct border-radius values (recommend 2-4)',
-        detail: 'Values: ' + radii.slice(0, 6).map(function(r) { return r.value + ' (' + r.count + 'x)'; }).join(', '),
-        fix: 'Standardize border-radius to 2-4 values in your design tokens. In Tailwind: rounded-sm (2px), rounded (4px), rounded-lg (8px), rounded-xl (12px).',
-        presetRef: null,
-        source: 'Material Design 3 — https://m3.material.io/styles/shape/overview'
-      });
-    }
+  // Form fields per step
+  checks++;
+  var formFields = data.accessibility.formLabels ? data.accessibility.formLabels.total : 0;
+  if (formFields <= 7 || formFields === 0) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: formFields + ' form fields visible (recommended: 5–7 per step)',
+      detail: 'Long forms have high abandonment rates',
+      fix: 'Break into multi-step form with 3–5 fields per step. Show a progress indicator.',
+      presetRef: 'Form presets demonstrate multi-step patterns',
+      source: 'Miller\'s Law / Baymard Institute — https://lawsofux.com/millers-law/'
+    });
   }
 
   var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
-  return { score: score, findings: findings, weight: 5, label: 'Visual Consistency', icon: 'consistency' };
+  return { score: score, findings: findings, weight: 5, label: 'Cognitive Load', icon: 'cognitive' };
 }
 
 
-  S.register("consistency", scoreVisualConsistency, 5, "Visual Consistency", "consistency");
+  S.register("cognitive", scoreCognitiveLoad, 5, "Cognitive Load", "cognitive");
 })();
 </file>
 
-<file path="docs/scoring/filters.js">
-// Scoring Module: Motion, Animation & Filters
-// Weight: 3%
-// Sources: WCAG 2.2 §2.3.3, CSS Filter Effects spec
+<file path="docs/scoring/layout.js">
+// Scoring Module: Layout Quality
+// Weight: 5%
 
 (function() {
   "use strict";
   var S = window.MilgScoring;
 
-  function scoreFilters(data) {
-    var findings = [];
-    var checks = 0;
-    var passed = 0;
-    var anim = data.animation || {};
+function scoreLayout(data) {
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+  var layout = data.layout || {};
 
-    // prefers-reduced-motion support
+  // Whitespace rhythm: check if section gaps are consistent
+  var gaps = layout.sectionGaps || [];
+  if (gaps.length >= 2) {
     checks++;
-    if (anim.hasReducedMotion) {
+    var avg = gaps.reduce(function(s, g) { return s + g; }, 0) / gaps.length;
+    var variance = gaps.reduce(function(s, g) { return s + Math.pow(g - avg, 2); }, 0) / gaps.length;
+    var stdDev = Math.sqrt(variance);
+    var cv = avg > 0 ? stdDev / avg : 0; // coefficient of variation
+    if (cv < 0.3) {
       passed++;
-    } else if (anim.keyframeCount > 0 || (data.interaction && data.interaction.transitions && data.interaction.transitions.length > 2)) {
-      findings.push({
-        severity: 'warning',
-        title: 'No prefers-reduced-motion support detected',
-        detail: (anim.keyframeCount || 0) + ' @keyframes rules found. Users with vestibular disorders need the option to reduce motion.',
-        fix: 'Add @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }',
-        presetRef: null,
-        source: 'WCAG 2.2 §2.3.3 — https://www.w3.org/TR/WCAG22/#animation-from-interactions'
-      });
     } else {
-      passed++; // No significant animations, no need for reduced-motion
-    }
-
-    // Hidden elements waiting for scroll-reveal
-    if (anim.hiddenElements > 0) {
-      checks++;
-      if (anim.hiddenElements <= 5) {
-        passed++;
-        findings.push({
-          severity: 'info',
-          title: anim.hiddenElements + ' element(s) with opacity:0 + transition (pre-animation state)',
-          detail: 'These elements are invisible at scan time (pre-animation state). Their contrast/sizing was not checked.',
-          fix: 'This is normal for scroll-reveal animations. Run the snippet after scrolling the full page for complete analysis.',
-          presetRef: null,
-          preAnimationState: true
-        });
-      } else {
-        findings.push({
-          severity: 'warning',
-          title: anim.hiddenElements + ' hidden elements waiting for animation trigger (pre-animation state)',
-          detail: 'A large portion of the page is invisible at load time (pre-animation state). This may affect perceived loading speed and SEO.',
-          fix: 'Consider showing initial content without animation, then enhancing with scroll effects. Ensure content is accessible without JS.',
-          presetRef: null,
-          preAnimationState: true,
-          source: 'WCAG 2.2 §2.3.3 — https://www.w3.org/TR/WCAG22/#animation-from-interactions'
-        });
-      }
-    }
-
-    // Scroll-reveal library detection
-    var patterns = anim.scrollRevealPatterns || [];
-    if (patterns.length > 0) {
-      var totalReveal = patterns.reduce(function(s, p) { return s + p.count; }, 0);
       findings.push({
-        severity: 'info',
-        title: 'Scroll-reveal library detected: ' + totalReveal + ' animated element(s)',
-        detail: 'Libraries found: ' + patterns.map(function(p) { return p.selector + ' (' + p.count + ')'; }).join(', '),
-        fix: 'Ensure scroll-reveal animations respect prefers-reduced-motion and that content is visible without JavaScript.',
+        severity: cv > 0.6 ? 'warning' : 'info',
+        title: 'Inconsistent spacing between sections (CV: ' + Math.round(cv * 100) + '%)',
+        detail: 'Gaps range from ' + Math.min.apply(null, gaps) + 'px to ' + Math.max.apply(null, gaps) + 'px (avg ' + Math.round(avg) + 'px)',
+        fix: 'Use consistent spacing between major sections. Pick one value (e.g. 64px or 96px) and use it everywhere.',
         presetRef: null,
-        source: 'WCAG 2.2 §2.3.3 — https://www.w3.org/TR/WCAG22/#animation-from-interactions'
+        source: 'Gestalt similarity — https://lawsofux.com/law-of-similarity/'
       });
     }
-
-    var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
-    return { score: score, findings: findings, weight: 3, label: 'Motion & Animation', icon: 'cognitive' };
   }
 
-  S.register("filters", scoreFilters, 3, "Motion & Animation", "cognitive");
+  // Alignment consistency: cluster left edges and find near-misses ("jagged" alignment)
+  var edges = layout.alignmentEdges || [];
+  if (edges.length >= 5) {
+    checks++;
+    // Cluster edges within 3px (considered aligned)
+    var clusters = [];
+    var sorted = edges.slice().sort(function(a, b) { return a - b; });
+    var current = [sorted[0]];
+    for (var i = 1; i < sorted.length; i++) {
+      if (sorted[i] - sorted[i - 1] <= 3) {
+        current.push(sorted[i]);
+      } else {
+        clusters.push(current);
+        current = [sorted[i]];
+      }
+    }
+    clusters.push(current);
+    // Find near-miss clusters (4-12px apart — elements on same axis but jagged)
+    var nearMisses = 0;
+    var jaggedExamples = [];
+    for (var i = 1; i < clusters.length; i++) {
+      var prevAvg = Math.round(clusters[i - 1].reduce(function(s,v){return s+v},0) / clusters[i - 1].length);
+      var currAvg = Math.round(clusters[i].reduce(function(s,v){return s+v},0) / clusters[i].length);
+      var gap = currAvg - prevAvg;
+      if (gap > 3 && gap <= 12) {
+        nearMisses++;
+        jaggedExamples.push(prevAvg + 'px → ' + currAvg + 'px (' + gap + 'px off)');
+      }
+    }
+    // Also check how many unique clusters there are relative to element count
+    var clusterRatio = clusters.length / edges.length;
+    if (nearMisses === 0 && clusterRatio < 0.5) {
+      passed++;
+    } else if (nearMisses > 0) {
+      findings.push({
+        severity: nearMisses >= 3 ? 'warning' : 'info',
+        title: nearMisses + ' jagged alignment(s) — elements on same axis but ' + (nearMisses >= 3 ? 'noticeably' : 'slightly') + ' off',
+        detail: clusters.length + ' alignment edges across ' + edges.length + ' elements. ' + (jaggedExamples.length > 0 ? 'Offsets: ' + jaggedExamples.slice(0, 3).join(', ') : ''),
+        fix: 'Elements that share a visual axis should be exactly aligned. Check that container padding, margin, and grid column widths are consistent. In Tailwind: use consistent px-4/px-6 and grid/flex alignment.',
+        presetRef: null,
+        source: 'Gestalt continuity — https://lawsofux.com/law-of-common-region/'
+      });
+    } else if (clusterRatio >= 0.5) {
+      findings.push({
+        severity: 'info',
+        title: 'Weak alignment grid — ' + clusters.length + ' distinct left edges across ' + edges.length + ' elements',
+        detail: 'A well-aligned layout typically has 2-4 dominant alignment edges. High variance suggests inconsistent margins/padding.',
+        fix: 'Establish a consistent alignment grid. Use the same container padding and let content flow within columns.',
+        presetRef: null,
+        source: 'Gestalt continuity — https://lawsofux.com/law-of-common-region/'
+      });
+    }
+  }
+
+  // Visual hierarchy: heading-to-body ratios
+  var vh = layout.visualHierarchy || {};
+  if (vh.h1ToBody > 0) {
+    checks++;
+    if (vh.h1ToBody >= 2 && vh.h1ToBody <= 4) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: 'H1 is ' + vh.h1ToBody + 'x body text (ideal: 2-4x)',
+        detail: vh.h1ToBody < 2 ? 'H1 doesn\'t stand out enough from body text' : 'H1 may be too large relative to body text',
+        fix: 'H1 should be 2-4x the body font size for clear hierarchy. At 16px body, H1 should be 32-64px.',
+        presetRef: null,
+        source: 'Modular type scales — https://typescale.com/'
+      });
+    }
+  }
+
+  var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
+  return { score: score, findings: findings, weight: 5, label: 'Layout Quality', icon: 'spacing' };
+}
+
+
+  S.register("layout", scoreLayout, 5, "Layout Quality", "spacing");
 })();
 </file>
 
@@ -14974,110 +14988,6 @@ function scoreVisualConsistency(data) {
   }
 
   S.register("readability", scoreReadability, 5, "Readability", "type");
-})();
-</file>
-
-<file path="docs/scoring/touch.js">
-// Scoring Module: Touch & Interaction
-// Weight: 15%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreTouchTargets(data) {
-  var profile = S.getProfile(data);
-  var findings = [];
-  var targets = data.interaction.touchTargets || [];
-
-  // Viewport-aware thresholds, adjusted by profile:
-  var vw = (data.meta && data.meta.viewportWidth) || 1280;
-  var isDesktop = vw >= 1024;
-  var minSize = isDesktop ? profile.touchTargetDesktop : profile.touchTarget;
-  var warnSize = isDesktop ? profile.touchTargetDesktopWarn : profile.touchTarget;
-  var context = isDesktop ? 'desktop' : 'touch/mobile';
-  var issueCount = 0;
-
-  targets.forEach(function(t) {
-    var w = t.width, h = t.height;
-    var minDim = Math.min(w, h);
-
-    if (minDim < minSize) {
-      issueCount++;
-      findings.push({
-        severity: 'error',
-        title: t.element + ' is ' + w + '×' + h + 'px (minimum for ' + context + ': ' + minSize + 'px)',
-        detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-        fix: isDesktop
-          ? 'Click targets need at least ' + minSize + '×' + minSize + 'px. Increase padding or min-height/min-width.'
-          : 'Touch targets need ' + minSize + '×' + minSize + 'px minimum. Add min-h-[' + minSize + 'px] min-w-[' + minSize + 'px] or increase padding.',
-        presetRef: isDesktop ? null : 'Button presets use py-3 px-6 (48px height)',
-        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
-      });
-    } else if (minDim < warnSize && isDesktop) {
-      findings.push({
-        severity: 'warning',
-        title: t.element + ' is ' + w + '×' + h + 'px (recommended for desktop: ≥' + warnSize + 'px)',
-        detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-        fix: 'While ' + minSize + 'px meets minimum, ' + warnSize + 'px+ improves click comfort. Consider adding padding.',
-        presetRef: null,
-        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
-      });
-    }
-  });
-
-  // Also flag targets that pass the current threshold but would fail on touch
-  if (isDesktop && targets.length > 0) {
-    var touchMin = profile.touchTarget;
-    var touchFails = targets.filter(function(t) { return Math.min(t.width, t.height) < touchMin; });
-    if (touchFails.length > 0) {
-      findings.push({
-        severity: 'info',
-        title: touchFails.length + ' element(s) below ' + touchMin + 'px touch target (analyzed at ' + vw + 'px desktop viewport)',
-        detail: 'These meet desktop minimums but would fail on touch devices. Consider responsive sizing if the site is also used on mobile.',
-        fix: 'For responsive touch support: add touch-target sizing at mobile breakpoints, e.g. sm:min-h-[' + touchMin + 'px]',
-        presetRef: null,
-        source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout'
-      });
-    }
-  }
-
-  // Note when responsive CSS exists that might fix touch targets on mobile
-  if (isDesktop && data.interaction && data.interaction.hasResponsiveTargetCSS) {
-    findings.push({
-      severity: 'info',
-      title: 'Responsive CSS detected that may adjust target sizes at mobile breakpoints',
-      detail: 'This site has media queries with height/padding rules. Touch targets may be correctly sized on mobile devices.',
-      fix: 'Verify by testing at mobile viewport. Use the viewport selector to re-scan at 375px width.',
-      presetRef: null
-    });
-  }
-
-  // Transitions / animation duration
-  var transitions = data.interaction.transitions || [];
-  transitions.forEach(function(t) {
-    var ms = parseFloat(t) * 1000;
-    if (ms > 500) {
-      findings.push({
-        severity: 'warning',
-        title: 'Transition duration ' + ms + 'ms exceeds 500ms maximum',
-        detail: 'Users perceive animations longer than 500ms as sluggish',
-        fix: 'Keep transitions under 500ms. Enter: 200–300ms, Exit: 150–200ms. In Tailwind: duration-200 or duration-300',
-        presetRef: null,
-        source: 'NNGroup animation — https://www.nngroup.com/articles/animation-usability/'
-      });
-    }
-  });
-
-  // Score: deduct per error, less per warning
-  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 3));
-  return { score: score, findings: findings, weight: 15, label: 'Touch & Interaction', icon: 'touch' };
-}
-
-
-  S.register("touch", scoreTouchTargets, 15, "Touch & Interaction", "touch");
 })();
 </file>
 
@@ -16121,143 +16031,269 @@ All presets are:
 - **Realistic content** (not lorem ipsum)
 </file>
 
-<file path="docs/scoring/responsive.js">
-// Scoring Module: Responsive Design
-// Weight: 10%
+<file path="docs/scoring/consistency.js">
+// Scoring Module: Visual Consistency
+// Weight: 5%
 
 (function() {
   "use strict";
   var S = window.MilgScoring;
 
-function scoreResponsive(data) {
+function scoreVisualConsistency(data) {
   var findings = [];
   var checks = 0;
   var passed = 0;
-  var struct = data.structure;
 
-  // Responsive classes
+  // Scale thresholds by page complexity
+  var pageType = (data.context && data.context.pageType) || 'unknown';
+  var elCount = (data.structure && data.structure.totalElements) || 100;
+  // Marketing/content pages legitimately use more colors and font sizes
+  var colorLimit = elCount > 200 ? 35 : elCount > 100 ? 25 : 20;
+  var fontSizeLimit = elCount > 200 ? 12 : elCount > 100 ? 10 : 8;
+  if (pageType === 'marketing' || pageType === 'pricing') { colorLimit += 10; fontSizeLimit += 3; }
+
+  // Color palette coherence — how many unique text/bg colors?
   checks++;
-  if (struct.responsiveClasses) {
+  var textColors = (data.colors.textColors || []).length;
+  var bgColors = (data.colors.bgColors || []).length;
+  var totalUnique = textColors + bgColors;
+  if (totalUnique <= colorLimit) {
     passed++;
   } else {
     findings.push({
       severity: 'warning',
-      title: 'No responsive breakpoint classes detected',
-      detail: struct.cssFramework === 'tailwind' ? 'No sm:/md:/lg: prefixes found' : 'No responsive utilities detected',
-      fix: 'Add responsive variants. In Tailwind: sm:flex, md:grid-cols-2, lg:px-8',
-      presetRef: 'All presets include mobile-first responsive design',
-      source: 'NNGroup mobile — https://www.nngroup.com/articles/responsive-web-design-definition/'
+      title: totalUnique + ' unique colors detected (recommend < ' + colorLimit + ' for this page type)',
+      detail: textColors + ' text colors, ' + bgColors + ' background colors',
+      fix: 'Consolidate to a systematic color palette: 1 primary + 1 neutral + 3 semantic (error, warning, success)',
+      presetRef: 'Presets use a single primary color with slate neutrals',
+      source: 'Material Design 3 — https://m3.material.io/styles/color/roles'
     });
   }
 
-  // Dark mode
+  // Font size consistency — too many unique sizes?
   checks++;
-  if (struct.darkModeClasses) {
+  var fontSizes = (data.typography.fontSizes || []).length;
+  if (fontSizes <= fontSizeLimit) {
     passed++;
   } else {
     findings.push({
       severity: 'info',
-      title: 'No dark mode support detected',
-      detail: 'dark: class variants not found',
-      fix: 'Add dark mode variants. In Tailwind: dark:bg-slate-900 dark:text-slate-100',
-      presetRef: 'All presets include dark: variants',
-      source: 'Apple HIG — https://developer.apple.com/design/human-interface-guidelines/dark-mode'
+      title: fontSizes + ' unique font sizes (recommend ≤' + fontSizeLimit + ' from a type scale)',
+      detail: 'A consistent type scale creates visual rhythm',
+      fix: 'Use a modular scale: text-sm, text-base, text-lg, text-xl, text-2xl, text-3xl, text-4xl',
+      presetRef: null,
+      source: 'Modular type scales — https://typescale.com/'
     });
   }
 
-  // Viewport width check — if analyzed on desktop, check if content is flexible
-  checks++;
-  var vw = data.meta.viewportWidth;
-  var maxContent = parseFloat(data.spacing.maxContentWidth);
-  if (maxContent > 0 && (maxContent <= vw * 0.95 || struct.responsiveClasses)) {
-    passed++;
-  } else if (!struct.responsiveClasses && maxContent > vw * 0.95) {
-    findings.push({
-      severity: 'warning',
-      title: 'Content fills entire viewport width without constraints',
-      detail: 'Content may not reflow well on smaller screens',
-      fix: 'Use responsive containers and flexible layouts',
-      presetRef: null
-    });
-  } else {
-    passed++; // Can't determine, give benefit of doubt
-  }
-
-  // Viewport meta audit
-  if (data.structure && data.structure.viewportMeta !== undefined) {
+  // Border radius consistency
+  var radii = (data.layout && data.layout.borderRadii) || [];
+  if (radii.length > 0) {
     checks++;
-    var vpContent = data.structure.viewportMeta;
-    if (!vpContent) {
-      findings.push({
-        severity: 'error',
-        title: 'Missing viewport meta tag',
-        detail: 'Without a viewport meta tag, mobile browsers render at desktop width',
-        fix: 'Add <meta name="viewport" content="width=device-width, initial-scale=1.0"> to <head>.',
-        presetRef: null,
-        source: 'MDN — https://developer.mozilla.org/en-US/docs/Web/HTML/Viewport_meta_tag'
-      });
-    } else if (data.structure.blocksZoom) {
-      findings.push({
-        severity: 'error',
-        title: 'Viewport blocks user zoom (user-scalable=no)',
-        detail: 'Preventing zoom is an accessibility barrier for low-vision users',
-        fix: 'Remove user-scalable=no from the viewport meta tag.',
-        presetRef: null,
-        source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text'
-      });
-    } else {
+    if (radii.length <= 4) {
       passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: radii.length + ' distinct border-radius values (recommend 2-4)',
+        detail: 'Values: ' + radii.slice(0, 6).map(function(r) { return r.value + ' (' + r.count + 'x)'; }).join(', '),
+        fix: 'Standardize border-radius to 2-4 values in your design tokens. In Tailwind: rounded-sm (2px), rounded (4px), rounded-lg (8px), rounded-xl (12px).',
+        presetRef: null,
+        source: 'Material Design 3 — https://m3.material.io/styles/shape/overview'
+      });
     }
   }
 
-  // Horizontal overflow
-  if (data.structure && data.structure.hasHorizontalOverflow) {
-    checks++;
-    findings.push({
-      severity: 'warning',
-      title: 'Page has horizontal overflow (horizontal scrollbar)',
-      detail: 'Content extends beyond viewport width — common responsive design failure',
-      fix: 'Find elements with fixed widths wider than the viewport. Add overflow-x: hidden to body or fix the overflowing element.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
-    });
-  } else if (data.structure && data.structure.hasHorizontalOverflow === false) {
-    checks++;
-    passed++;
-  }
-
-  // Fixed-width elements
-  var fixedW = (data.structure && data.structure.fixedWidthElements) || 0;
-  if (fixedW > 0) {
-    findings.push({
-      severity: fixedW > 3 ? 'warning' : 'info',
-      title: fixedW + ' element(s) with fixed pixel widths > 300px',
-      detail: 'Fixed-width elements may overflow on smaller screens',
-      fix: 'Use max-width instead of width, or percentage/viewport units. In Tailwind: max-w-full or w-full.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
-    });
-  }
-
-  // Text truncation
-  var truncated = (data.structure && data.structure.truncatedElements) || 0;
-  if (truncated > 3) {
-    findings.push({
-      severity: 'info',
-      title: truncated + ' element(s) with truncated text (ellipsis)',
-      detail: 'Content is being cut off — may hide important information on smaller screens',
-      fix: 'Consider allowing text to wrap, expanding the container, or using a tooltip to show full content.',
-      presetRef: null,
-      source: 'NNGroup — https://www.nngroup.com/articles/truncation-and-progressive-disclosure/'
-    });
-  }
-
   var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
-  return { score: score, findings: findings, weight: 10, label: 'Responsive Design', icon: 'responsive' };
+  return { score: score, findings: findings, weight: 5, label: 'Visual Consistency', icon: 'consistency' };
 }
 
 
-  S.register("responsive", scoreResponsive, 10, "Responsive Design", "responsive");
+  S.register("consistency", scoreVisualConsistency, 5, "Visual Consistency", "consistency");
+})();
+</file>
+
+<file path="docs/scoring/filters.js">
+// Scoring Module: Motion, Animation & Filters
+// Weight: 3%
+// Sources: WCAG 2.2 §2.3.3, CSS Filter Effects spec
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+  function scoreFilters(data) {
+    var findings = [];
+    var checks = 0;
+    var passed = 0;
+    var anim = data.animation || {};
+
+    // prefers-reduced-motion support
+    checks++;
+    if (anim.hasReducedMotion) {
+      passed++;
+    } else if (anim.keyframeCount > 0 || (data.interaction && data.interaction.transitions && data.interaction.transitions.length > 2)) {
+      findings.push({
+        severity: 'warning',
+        title: 'No prefers-reduced-motion support detected',
+        detail: (anim.keyframeCount || 0) + ' @keyframes rules found. Users with vestibular disorders need the option to reduce motion.',
+        fix: 'Add @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }',
+        presetRef: null,
+        source: 'WCAG 2.2 §2.3.3 — https://www.w3.org/TR/WCAG22/#animation-from-interactions'
+      });
+    } else {
+      passed++; // No significant animations, no need for reduced-motion
+    }
+
+    // Hidden elements waiting for scroll-reveal
+    if (anim.hiddenElements > 0) {
+      checks++;
+      if (anim.hiddenElements <= 5) {
+        passed++;
+        findings.push({
+          severity: 'info',
+          title: anim.hiddenElements + ' element(s) with opacity:0 + transition (pre-animation state)',
+          detail: 'These elements are invisible at scan time (pre-animation state). Their contrast/sizing was not checked.',
+          fix: 'This is normal for scroll-reveal animations. Run the snippet after scrolling the full page for complete analysis.',
+          presetRef: null,
+          preAnimationState: true
+        });
+      } else {
+        findings.push({
+          severity: 'warning',
+          title: anim.hiddenElements + ' hidden elements waiting for animation trigger (pre-animation state)',
+          detail: 'A large portion of the page is invisible at load time (pre-animation state). This may affect perceived loading speed and SEO.',
+          fix: 'Consider showing initial content without animation, then enhancing with scroll effects. Ensure content is accessible without JS.',
+          presetRef: null,
+          preAnimationState: true,
+          source: 'WCAG 2.2 §2.3.3 — https://www.w3.org/TR/WCAG22/#animation-from-interactions'
+        });
+      }
+    }
+
+    // Scroll-reveal library detection
+    var patterns = anim.scrollRevealPatterns || [];
+    if (patterns.length > 0) {
+      var totalReveal = patterns.reduce(function(s, p) { return s + p.count; }, 0);
+      findings.push({
+        severity: 'info',
+        title: 'Scroll-reveal library detected: ' + totalReveal + ' animated element(s)',
+        detail: 'Libraries found: ' + patterns.map(function(p) { return p.selector + ' (' + p.count + ')'; }).join(', '),
+        fix: 'Ensure scroll-reveal animations respect prefers-reduced-motion and that content is visible without JavaScript.',
+        presetRef: null,
+        source: 'WCAG 2.2 §2.3.3 — https://www.w3.org/TR/WCAG22/#animation-from-interactions'
+      });
+    }
+
+    var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
+    return { score: score, findings: findings, weight: 3, label: 'Motion & Animation', icon: 'cognitive' };
+  }
+
+  S.register("filters", scoreFilters, 3, "Motion & Animation", "cognitive");
+})();
+</file>
+
+<file path="docs/scoring/touch.js">
+// Scoring Module: Touch & Interaction
+// Weight: 15%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreTouchTargets(data) {
+  var profile = S.getProfile(data);
+  var findings = [];
+  var targets = data.interaction.touchTargets || [];
+
+  // Viewport-aware thresholds, adjusted by profile:
+  var vw = (data.meta && data.meta.viewportWidth) || 1280;
+  var isDesktop = vw >= 1024;
+  var minSize = isDesktop ? profile.touchTargetDesktop : profile.touchTarget;
+  var warnSize = isDesktop ? profile.touchTargetDesktopWarn : profile.touchTarget;
+  var context = isDesktop ? 'desktop' : 'touch/mobile';
+  var issueCount = 0;
+
+  targets.forEach(function(t) {
+    var w = t.width, h = t.height;
+    var minDim = Math.min(w, h);
+
+    if (minDim < minSize) {
+      issueCount++;
+      findings.push({
+        severity: 'error',
+        title: t.element + ' is ' + w + '×' + h + 'px (minimum for ' + context + ': ' + minSize + 'px)',
+        detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+        fix: isDesktop
+          ? 'Click targets need at least ' + minSize + '×' + minSize + 'px. Increase padding or min-height/min-width.'
+          : 'Touch targets need ' + minSize + '×' + minSize + 'px minimum. Add min-h-[' + minSize + 'px] min-w-[' + minSize + 'px] or increase padding.',
+        presetRef: isDesktop ? null : 'Button presets use py-3 px-6 (48px height)',
+        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
+      });
+    } else if (minDim < warnSize && isDesktop) {
+      findings.push({
+        severity: 'warning',
+        title: t.element + ' is ' + w + '×' + h + 'px (recommended for desktop: ≥' + warnSize + 'px)',
+        detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+        fix: 'While ' + minSize + 'px meets minimum, ' + warnSize + 'px+ improves click comfort. Consider adding padding.',
+        presetRef: null,
+        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
+      });
+    }
+  });
+
+  // Also flag targets that pass the current threshold but would fail on touch
+  if (isDesktop && targets.length > 0) {
+    var touchMin = profile.touchTarget;
+    var touchFails = targets.filter(function(t) { return Math.min(t.width, t.height) < touchMin; });
+    if (touchFails.length > 0) {
+      findings.push({
+        severity: 'info',
+        title: touchFails.length + ' element(s) below ' + touchMin + 'px touch target (analyzed at ' + vw + 'px desktop viewport)',
+        detail: 'These meet desktop minimums but would fail on touch devices. Consider responsive sizing if the site is also used on mobile.',
+        fix: 'For responsive touch support: add touch-target sizing at mobile breakpoints, e.g. sm:min-h-[' + touchMin + 'px]',
+        presetRef: null,
+        source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout'
+      });
+    }
+  }
+
+  // Note when responsive CSS exists that might fix touch targets on mobile
+  if (isDesktop && data.interaction && data.interaction.hasResponsiveTargetCSS) {
+    findings.push({
+      severity: 'info',
+      title: 'Responsive CSS detected that may adjust target sizes at mobile breakpoints',
+      detail: 'This site has media queries with height/padding rules. Touch targets may be correctly sized on mobile devices.',
+      fix: 'Verify by testing at mobile viewport. Use the viewport selector to re-scan at 375px width.',
+      presetRef: null
+    });
+  }
+
+  // Transitions / animation duration
+  var transitions = data.interaction.transitions || [];
+  transitions.forEach(function(t) {
+    var ms = parseFloat(t) * 1000;
+    if (ms > 500) {
+      findings.push({
+        severity: 'warning',
+        title: 'Transition duration ' + ms + 'ms exceeds 500ms maximum',
+        detail: 'Users perceive animations longer than 500ms as sluggish',
+        fix: 'Keep transitions under 500ms. Enter: 200–300ms, Exit: 150–200ms. In Tailwind: duration-200 or duration-300',
+        presetRef: null,
+        source: 'NNGroup animation — https://www.nngroup.com/articles/animation-usability/'
+      });
+    }
+  });
+
+  // Score: deduct per error, less per warning
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 3));
+  return { score: score, findings: findings, weight: 15, label: 'Touch & Interaction', icon: 'touch' };
+}
+
+
+  S.register("touch", scoreTouchTargets, 15, "Touch & Interaction", "touch");
 })();
 </file>
 
@@ -17088,6 +17124,268 @@ The CSS techniques in this file are generic patterns found across modern web des
 - [Unsplash](https://unsplash.com/) — free photography (attribution appreciated)
 </file>
 
+<file path="docs/scoring/responsive.js">
+// Scoring Module: Responsive Design
+// Weight: 10%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreResponsive(data) {
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+  var struct = data.structure;
+
+  // Responsive classes
+  checks++;
+  if (struct.responsiveClasses) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'No responsive breakpoint classes detected',
+      detail: struct.cssFramework === 'tailwind' ? 'No sm:/md:/lg: prefixes found' : 'No responsive utilities detected',
+      fix: 'Add responsive variants. In Tailwind: sm:flex, md:grid-cols-2, lg:px-8',
+      presetRef: 'All presets include mobile-first responsive design',
+      source: 'NNGroup mobile — https://www.nngroup.com/articles/responsive-web-design-definition/'
+    });
+  }
+
+  // Dark mode
+  checks++;
+  if (struct.darkModeClasses) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'info',
+      title: 'No dark mode support detected',
+      detail: 'dark: class variants not found',
+      fix: 'Add dark mode variants. In Tailwind: dark:bg-slate-900 dark:text-slate-100',
+      presetRef: 'All presets include dark: variants',
+      source: 'Apple HIG — https://developer.apple.com/design/human-interface-guidelines/dark-mode'
+    });
+  }
+
+  // Viewport width check — if analyzed on desktop, check if content is flexible
+  checks++;
+  var vw = data.meta.viewportWidth;
+  var maxContent = parseFloat(data.spacing.maxContentWidth);
+  if (maxContent > 0 && (maxContent <= vw * 0.95 || struct.responsiveClasses)) {
+    passed++;
+  } else if (!struct.responsiveClasses && maxContent > vw * 0.95) {
+    findings.push({
+      severity: 'warning',
+      title: 'Content fills entire viewport width without constraints',
+      detail: 'Content may not reflow well on smaller screens',
+      fix: 'Use responsive containers and flexible layouts',
+      presetRef: null
+    });
+  } else {
+    passed++; // Can't determine, give benefit of doubt
+  }
+
+  // Viewport meta audit
+  if (data.structure && data.structure.viewportMeta !== undefined) {
+    checks++;
+    var vpContent = data.structure.viewportMeta;
+    if (!vpContent) {
+      findings.push({
+        severity: 'error',
+        title: 'Missing viewport meta tag',
+        detail: 'Without a viewport meta tag, mobile browsers render at desktop width',
+        fix: 'Add <meta name="viewport" content="width=device-width, initial-scale=1.0"> to <head>.',
+        presetRef: null,
+        source: 'MDN — https://developer.mozilla.org/en-US/docs/Web/HTML/Viewport_meta_tag'
+      });
+    } else if (data.structure.blocksZoom) {
+      findings.push({
+        severity: 'error',
+        title: 'Viewport blocks user zoom (user-scalable=no)',
+        detail: 'Preventing zoom is an accessibility barrier for low-vision users',
+        fix: 'Remove user-scalable=no from the viewport meta tag.',
+        presetRef: null,
+        source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text'
+      });
+    } else {
+      passed++;
+    }
+  }
+
+  // Horizontal overflow
+  if (data.structure && data.structure.hasHorizontalOverflow) {
+    checks++;
+    findings.push({
+      severity: 'warning',
+      title: 'Page has horizontal overflow (horizontal scrollbar)',
+      detail: 'Content extends beyond viewport width — common responsive design failure',
+      fix: 'Find elements with fixed widths wider than the viewport. Add overflow-x: hidden to body or fix the overflowing element.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
+    });
+  } else if (data.structure && data.structure.hasHorizontalOverflow === false) {
+    checks++;
+    passed++;
+  }
+
+  // Fixed-width elements
+  var fixedW = (data.structure && data.structure.fixedWidthElements) || 0;
+  if (fixedW > 0) {
+    findings.push({
+      severity: fixedW > 3 ? 'warning' : 'info',
+      title: fixedW + ' element(s) with fixed pixel widths > 300px',
+      detail: 'Fixed-width elements may overflow on smaller screens',
+      fix: 'Use max-width instead of width, or percentage/viewport units. In Tailwind: max-w-full or w-full.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
+    });
+  }
+
+  // Text truncation
+  var truncated = (data.structure && data.structure.truncatedElements) || 0;
+  if (truncated > 3) {
+    findings.push({
+      severity: 'info',
+      title: truncated + ' element(s) with truncated text (ellipsis)',
+      detail: 'Content is being cut off — may hide important information on smaller screens',
+      fix: 'Consider allowing text to wrap, expanding the container, or using a tooltip to show full content.',
+      presetRef: null,
+      source: 'NNGroup — https://www.nngroup.com/articles/truncation-and-progressive-disclosure/'
+    });
+  }
+
+  var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
+  return { score: score, findings: findings, weight: 10, label: 'Responsive Design', icon: 'responsive' };
+}
+
+
+  S.register("responsive", scoreResponsive, 10, "Responsive Design", "responsive");
+})();
+</file>
+
+<file path="CLAUDE.md">
+# CLAUDE.md — make-it-look-good
+
+## Quick Start
+- **Design consultation** → Read `CONSULT.md` and follow the steps
+- **Need a component** → Read `docs/presets/_index.md` for presets and composition recipes
+- **Quick number lookup** → Read `workflows/quick-reference.md`
+- **Read only what's needed** — each knowledge file is self-contained (~200-400 lines)
+
+## Purpose
+This repo is a **design knowledge base for LLMs**. When an LLM needs to make UI/UX decisions, it reads files from this repo to get concrete, evidence-based guidance with hard numbers.
+
+## CSS Framework
+All presets and examples use **[Tailwind CSS](https://tailwindcss.com)** as the default styling framework. When the user's stack is unknown, output Tailwind classes. For the preview tool, Tailwind v4 is loaded via CDN (`@tailwindcss/browser@4`). Match the user's stack if they use something else — see CONSULT.md Step 0.
+
+## File Format Convention
+Every knowledge file follows this template:
+
+```
+# {Topic Title}
+> **TL;DR:** {2-3 sentence actionable summary}
+## Core Principles
+## Concrete Rules
+## CSS/Implementation Patterns
+## Common Mistakes
+## Decision Tree
+## Sources
+```
+
+Not every section is required, but **Concrete Rules** and **CSS/Implementation Patterns** are mandatory — every file must have actionable specifics.
+
+## Maintenance Rules
+- **One file per focused topic** — don't merge topics; create new files instead
+- **Flat folders** (max 1 level deep) — no nested subdirectories within topic folders (exception: `docs/presets/` contains per-preset directories with framework variants)
+- **Concrete numbers over vague principles** — "4.5:1 contrast ratio" not "ensure sufficient contrast"
+- **Markdown only** — no JSON/YAML data files unless tooling specifically requires it
+- **research/ is gitignored** — only `research/sources.md` (bibliography) is committed
+- **Update `research/sources.md`** when adding new sources to any file
+- **Update `README.md`** index when adding new knowledge files
+- **Cross-reference related files** using relative links: `[topic](../folder/file.md)`
+- **Every preset in `docs/presets/` needs:** consistent design tokens (blue-600 primary default, slate neutrals), dark mode support, responsive design, and an entry in `docs/presets/index.json`. Personality variants use different color palettes appropriate to their personality (rose for playful, indigo for editorial, etc.)
+
+## Design Consultation Workflow
+- **`CONSULT.md`** is the LLM consultation playbook — read it to run an interactive design consultation
+- **Step 0 in CONSULT.md classifies the input** — existing code (any framework), screenshot, vague idea, or raw data — and routes to the right workflow
+- **Match the user's tech stack** — don't output Tailwind HTML to someone using React + styled-components. Detect the framework and output code in their format
+- **Always generate Design Review Notes** (Step 4 in CONSULT.md) — a structured markdown document with issues found, design decisions, tokens, and an implementation checklist. This is the primary deliverable
+- **`docs/index.html`** is a live preview tool (GitHub Pages) — paste HTML + Tailwind to preview designs. Includes before/after examples in the Templates menu.
+
+## Directory Structure
+- `foundations/` — Cognitive/psychological principles (Gestalt, Hick's Law, Fitts's Law, etc.)
+- `color/` — Color theory, accessibility, psychology, color-blind safety
+- `typography/` — Type scales, font pairing, readability, web font loading
+- `layout/` — Spacing systems, visual hierarchy, grids, whitespace
+- `interaction/` — Animation timing, micro-interactions, touch targets, loading states
+- `responsive/` — Mobile-first, breakpoints, fluid typography, responsive patterns
+- `systems/` — Design tokens, Material Design 3, Apple HIG, building a system
+- `expressive/` — Visual identity, hero patterns, scroll storytelling, purposeful motion
+- `heuristics/` — Nielsen's 10 heuristics, UX frameworks
+- `components/` — Concrete component patterns (buttons, forms, cards, etc.)
+- `docs/presets/` — Copy-paste-ready HTML+Tailwind presets with personality variants (see `docs/presets/_index.md`)
+  - Each preset dir has `clean.html`, `minimalist.html`, `playful.html` (and optionally `react.jsx`, `vue.vue`, `svelte.svelte`)
+- `workflows/` — Cross-cutting decision guides and checklists
+- `research/` — Raw research data (gitignored except sources.md)
+</file>
+
+<file path="docs/presets/index.json">
+{
+  "categories": [
+    { "label": "Layouts", "elements": ["shell-sidebar", "shell-marketing", "shell-dashboard", "shell-form"] },
+    { "label": "Components", "elements": ["hero", "stats-row", "data-table", "card-grid", "pricing-cards", "feature-grid", "tabs", "accordion", "pagination", "dropdown", "avatars"] },
+    { "label": "Before → After", "elements": ["dashboard", "landing", "form", "cards", "project"] },
+    { "label": "Full Pages", "elements": ["pricing", "portfolio", "restaurant", "statuspage"] },
+    { "label": "Expressive", "elements": ["personal-hero", "agency-landing", "agency-portfolio", "app-showcase", "scroll-reveal-landing", "product-launch", "editorial-blog", "saas-features", "scroll-story", "product-page", "devtool-landing", "docs-site", "event-page", "jdeworks-personal"] },
+    { "label": "Edge Cases", "elements": ["deploy", "buttons", "osslanding"] }
+  ],
+  "elements": {
+    "dashboard": { "label": "Dashboard", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "landing": { "label": "Landing Page", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
+    "form": { "label": "Form", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
+    "cards": { "label": "Card Grid", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "project": { "label": "Multi-Page App", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
+    "pricing": { "label": "SaaS Pricing", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "portfolio": { "label": "Portfolio (Dark)", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "restaurant": { "label": "Restaurant (Warm)", "personalities": { "clean": { "primaryColor": "amber" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "statuspage": { "label": "Status Page", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "deploy": { "label": "Deploy Monitor", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "buttons": { "label": "Button System", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "osslanding": { "label": "OSS Landing", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "shell-sidebar": { "label": "App Shell (Sidebar)", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "shell-marketing": { "label": "Marketing Page", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "shell-dashboard": { "label": "Dashboard Shell", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "shell-form": { "label": "Centered Form", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "hero": { "label": "Hero Section", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "stats-row": { "label": "Stats Row", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "data-table": { "label": "Data Table", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "card-grid": { "label": "Card Grid", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "pricing-cards": { "label": "Pricing Cards", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "feature-grid": { "label": "Feature Grid", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "tabs": { "label": "Tabs", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "accordion": { "label": "Accordion", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "pagination": { "label": "Pagination", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "dropdown": { "label": "Dropdown Menu", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "avatars": { "label": "Avatar Group", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "personal-hero": { "label": "Personal Site", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "agency-landing": { "label": "Agency Landing", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "product-launch": { "label": "Product Launch", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "editorial-blog": { "label": "Editorial Blog", "personalities": { "clean": { "primaryColor": "slate" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "saas-features": { "label": "SaaS Features", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "scroll-story": { "label": "Scroll Story", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "product-page": { "label": "Product Page", "personalities": { "clean": { "primaryColor": "sky" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "devtool-landing": { "label": "DevTool Landing", "personalities": { "clean": { "primaryColor": "cyan" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "docs-site": { "label": "Docs Site", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "event-page": { "label": "Event Page", "personalities": { "clean": { "primaryColor": "amber" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "jdeworks-personal": { "label": "JDE Personal", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "agency-portfolio": { "label": "Agency Portfolio", "personalities": { "clean": { "primaryColor": "teal" } } },
+    "app-showcase": { "label": "App Showcase", "personalities": { "clean": { "primaryColor": "orange" } } },
+    "scroll-reveal-landing": { "label": "Scroll Reveal Landing", "personalities": { "clean": { "primaryColor": "sky" } } }
+  }
+}
+</file>
+
 <file path="docs/scoring/contrast.js">
 // Scoring Module: Color & Contrast
 // Weight: 20%
@@ -17784,128 +18082,6 @@ function scoreTypography(data) {
 
   S.register("typography", scoreTypography, 15, "Typography", "type");
 })();
-</file>
-
-<file path="CLAUDE.md">
-# CLAUDE.md — make-it-look-good
-
-## Quick Start
-- **Design consultation** → Read `CONSULT.md` and follow the steps
-- **Need a component** → Read `docs/presets/_index.md` for presets and composition recipes
-- **Quick number lookup** → Read `workflows/quick-reference.md`
-- **Read only what's needed** — each knowledge file is self-contained (~200-400 lines)
-
-## Purpose
-This repo is a **design knowledge base for LLMs**. When an LLM needs to make UI/UX decisions, it reads files from this repo to get concrete, evidence-based guidance with hard numbers.
-
-## CSS Framework
-All presets and examples use **[Tailwind CSS](https://tailwindcss.com)** as the default styling framework. When the user's stack is unknown, output Tailwind classes. For the preview tool, Tailwind v4 is loaded via CDN (`@tailwindcss/browser@4`). Match the user's stack if they use something else — see CONSULT.md Step 0.
-
-## File Format Convention
-Every knowledge file follows this template:
-
-```
-# {Topic Title}
-> **TL;DR:** {2-3 sentence actionable summary}
-## Core Principles
-## Concrete Rules
-## CSS/Implementation Patterns
-## Common Mistakes
-## Decision Tree
-## Sources
-```
-
-Not every section is required, but **Concrete Rules** and **CSS/Implementation Patterns** are mandatory — every file must have actionable specifics.
-
-## Maintenance Rules
-- **One file per focused topic** — don't merge topics; create new files instead
-- **Flat folders** (max 1 level deep) — no nested subdirectories within topic folders (exception: `docs/presets/` contains per-preset directories with framework variants)
-- **Concrete numbers over vague principles** — "4.5:1 contrast ratio" not "ensure sufficient contrast"
-- **Markdown only** — no JSON/YAML data files unless tooling specifically requires it
-- **research/ is gitignored** — only `research/sources.md` (bibliography) is committed
-- **Update `research/sources.md`** when adding new sources to any file
-- **Update `README.md`** index when adding new knowledge files
-- **Cross-reference related files** using relative links: `[topic](../folder/file.md)`
-- **Every preset in `docs/presets/` needs:** consistent design tokens (blue-600 primary default, slate neutrals), dark mode support, responsive design, and an entry in `docs/presets/index.json`. Personality variants use different color palettes appropriate to their personality (rose for playful, indigo for editorial, etc.)
-
-## Design Consultation Workflow
-- **`CONSULT.md`** is the LLM consultation playbook — read it to run an interactive design consultation
-- **Step 0 in CONSULT.md classifies the input** — existing code (any framework), screenshot, vague idea, or raw data — and routes to the right workflow
-- **Match the user's tech stack** — don't output Tailwind HTML to someone using React + styled-components. Detect the framework and output code in their format
-- **Always generate Design Review Notes** (Step 4 in CONSULT.md) — a structured markdown document with issues found, design decisions, tokens, and an implementation checklist. This is the primary deliverable
-- **`docs/index.html`** is a live preview tool (GitHub Pages) — paste HTML + Tailwind to preview designs. Includes before/after examples in the Templates menu.
-
-## Directory Structure
-- `foundations/` — Cognitive/psychological principles (Gestalt, Hick's Law, Fitts's Law, etc.)
-- `color/` — Color theory, accessibility, psychology, color-blind safety
-- `typography/` — Type scales, font pairing, readability, web font loading
-- `layout/` — Spacing systems, visual hierarchy, grids, whitespace
-- `interaction/` — Animation timing, micro-interactions, touch targets, loading states
-- `responsive/` — Mobile-first, breakpoints, fluid typography, responsive patterns
-- `systems/` — Design tokens, Material Design 3, Apple HIG, building a system
-- `expressive/` — Visual identity, hero patterns, scroll storytelling, purposeful motion
-- `heuristics/` — Nielsen's 10 heuristics, UX frameworks
-- `components/` — Concrete component patterns (buttons, forms, cards, etc.)
-- `docs/presets/` — Copy-paste-ready HTML+Tailwind presets with personality variants (see `docs/presets/_index.md`)
-  - Each preset dir has `clean.html`, `minimalist.html`, `playful.html` (and optionally `react.jsx`, `vue.vue`, `svelte.svelte`)
-- `workflows/` — Cross-cutting decision guides and checklists
-- `research/` — Raw research data (gitignored except sources.md)
-</file>
-
-<file path="docs/presets/index.json">
-{
-  "categories": [
-    { "label": "Layouts", "elements": ["shell-sidebar", "shell-marketing", "shell-dashboard", "shell-form"] },
-    { "label": "Components", "elements": ["hero", "stats-row", "data-table", "card-grid", "pricing-cards", "feature-grid", "tabs", "accordion", "pagination", "dropdown", "avatars"] },
-    { "label": "Before → After", "elements": ["dashboard", "landing", "form", "cards", "project"] },
-    { "label": "Full Pages", "elements": ["pricing", "portfolio", "restaurant", "statuspage"] },
-    { "label": "Expressive", "elements": ["personal-hero", "agency-landing", "agency-portfolio", "app-showcase", "scroll-reveal-landing", "product-launch", "editorial-blog", "saas-features", "scroll-story", "product-page", "devtool-landing", "docs-site", "event-page", "jdeworks-personal"] },
-    { "label": "Edge Cases", "elements": ["deploy", "buttons", "osslanding"] }
-  ],
-  "elements": {
-    "dashboard": { "label": "Dashboard", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "landing": { "label": "Landing Page", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
-    "form": { "label": "Form", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
-    "cards": { "label": "Card Grid", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "project": { "label": "Multi-Page App", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
-    "pricing": { "label": "SaaS Pricing", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "portfolio": { "label": "Portfolio (Dark)", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "restaurant": { "label": "Restaurant (Warm)", "personalities": { "clean": { "primaryColor": "amber" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "statuspage": { "label": "Status Page", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "deploy": { "label": "Deploy Monitor", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "buttons": { "label": "Button System", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "osslanding": { "label": "OSS Landing", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "shell-sidebar": { "label": "App Shell (Sidebar)", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "shell-marketing": { "label": "Marketing Page", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "shell-dashboard": { "label": "Dashboard Shell", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "shell-form": { "label": "Centered Form", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "hero": { "label": "Hero Section", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "stats-row": { "label": "Stats Row", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "data-table": { "label": "Data Table", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "card-grid": { "label": "Card Grid", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "pricing-cards": { "label": "Pricing Cards", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "feature-grid": { "label": "Feature Grid", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "tabs": { "label": "Tabs", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "accordion": { "label": "Accordion", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "pagination": { "label": "Pagination", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "dropdown": { "label": "Dropdown Menu", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "avatars": { "label": "Avatar Group", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "personal-hero": { "label": "Personal Site", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "agency-landing": { "label": "Agency Landing", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "product-launch": { "label": "Product Launch", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "editorial-blog": { "label": "Editorial Blog", "personalities": { "clean": { "primaryColor": "slate" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "saas-features": { "label": "SaaS Features", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "scroll-story": { "label": "Scroll Story", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "product-page": { "label": "Product Page", "personalities": { "clean": { "primaryColor": "sky" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "devtool-landing": { "label": "DevTool Landing", "personalities": { "clean": { "primaryColor": "cyan" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "docs-site": { "label": "Docs Site", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "event-page": { "label": "Event Page", "personalities": { "clean": { "primaryColor": "amber" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "jdeworks-personal": { "label": "JDE Personal", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "agency-portfolio": { "label": "Agency Portfolio", "personalities": { "clean": { "primaryColor": "teal" } } },
-    "app-showcase": { "label": "App Showcase", "personalities": { "clean": { "primaryColor": "orange" } } },
-    "scroll-reveal-landing": { "label": "Scroll Reveal Landing", "personalities": { "clean": { "primaryColor": "sky" } } }
-  }
-}
 </file>
 
 <file path="docs/scoring/accessibility.js">
@@ -20670,7 +20846,7 @@ Three ways to analyze:
 
 Scoring modules: Color & Contrast (WCAG + APCA), Typography, Spacing & Layout, Touch & Interaction, Accessibility, Responsive Design, Visual Consistency, Cognitive Load, Layout Quality, Performance, Readability, Motion & Animation, Visual Balance.
 
-Features: 5 audience profiles (General, WCAG AAA, Elderly, Low Vision, Motor Impairment), page context detection, gradient/background-image/CSS-filter contrast resolution, decorative element filtering, post-analysis exclusion suggestions, extraction caching, dark mode report, viewport size selection, markdown/PDF export.
+Features: 5 audience profiles (General, WCAG AAA, Elderly, Low Vision, Motor Impairment), page context detection, gradient/background-image/CSS-filter contrast resolution, decorative element filtering, post-analysis exclusion suggestions, extraction caching, dark mode report, viewport size selection, deep scan (multi-viewport + dark mode), progress bar, markdown/PDF export. Self-hostable CORS proxy (Cloudflare Worker, free tier 100K req/day) — see [`proxy/README.md`](proxy/README.md).
 
 ### Before & After Examples
 
@@ -22190,6 +22366,12 @@ Sources: [research/sources.md](research/sources.md)
 (function() {
   "use strict";
 
+  // --- Configuration ---
+  // Self-hosted CORS proxy (Cloudflare Worker). Fork users: deploy your own and change this URL.
+  // Set to '' to skip and use only third-party fallback proxies.
+  // Deploy instructions: see proxy/README.md
+  var CORS_PROXY_URL = '';  // e.g. 'https://milg-cors-proxy.your-subdomain.workers.dev'
+
   // --- State ---
   var reportData = null;
   var darkMode = localStorage.getItem('milg-dark') === 'true';
@@ -22986,20 +23168,20 @@ Sources: [research/sources.md](research/sources.md)
   }
 
   // --- URL Fetch via CORS proxy ---
-  function proxyUrl(url) {
-    return 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
-  }
-
   function fetchWithProxy(url) {
     return fetch(url, { mode: 'cors', redirect: 'follow' })
       .then(function(r) { if (r.ok) return r.text(); throw new Error(r.status); })
       .catch(function() {
-        // Try proxies in order (allorigins most reliable, corsproxy rate-limited)
-        var proxies = [
+        // Build proxy chain: self-hosted worker first, then third-party fallbacks
+        var proxies = [];
+        if (CORS_PROXY_URL) {
+          proxies.push(CORS_PROXY_URL + '?url=' + encodeURIComponent(url));
+        }
+        proxies.push(
           'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
           'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url),
           'https://corsproxy.io/?' + encodeURIComponent(url)
-        ];
+        );
         return proxies.reduce(function(chain, purl) {
           return chain.catch(function() {
             return fetch(purl).then(function(r) {

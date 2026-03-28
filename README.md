@@ -107,7 +107,7 @@ Three ways to analyze:
 
 Scoring modules: Color & Contrast (WCAG + APCA), Typography, Spacing & Layout, Touch & Interaction, Accessibility, Responsive Design, Visual Consistency, Cognitive Load, Layout Quality, Performance, Readability, Motion & Animation, Visual Balance.
 
-Features: 5 audience profiles (General, WCAG AAA, Elderly, Low Vision, Motor Impairment), page context detection, gradient/background-image/CSS-filter contrast resolution, decorative element filtering, post-analysis exclusion suggestions, extraction caching, dark mode report, viewport size selection, markdown/PDF export.
+Features: 5 audience profiles (General, WCAG AAA, Elderly, Low Vision, Motor Impairment), page context detection, gradient/background-image/CSS-filter contrast resolution, decorative element filtering, post-analysis exclusion suggestions, extraction caching, dark mode report, viewport size selection, deep scan (multi-viewport + dark mode), progress bar, markdown/PDF export. Self-hostable CORS proxy (Cloudflare Worker, free tier 100K req/day) — see [`proxy/README.md`](proxy/README.md).
 
 ### Before & After Examples
 
