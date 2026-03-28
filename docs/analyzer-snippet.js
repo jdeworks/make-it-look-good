@@ -592,13 +592,28 @@
     }
     if (!passes) {
       // Detect if link looks like a button (has bg, border, or padding — not just inline text)
-      var isBtn = false;
+      // Determine link context: nav links are functional buttons, footer links are relaxed,
+      // only paragraph-inline links get the WCAG 2.5.8 inline exemption
+      var linkContext = 'button'; // default: treat as button
       if (el.tagName === 'A') {
-        var ls = getComputedStyle(el);
-        var hasBg = ls.backgroundColor !== 'rgba(0, 0, 0, 0)' && ls.backgroundColor !== 'transparent';
-        var hasBorder = ls.borderStyle !== 'none' && ls.borderWidth !== '0px';
-        var hasPad = parseFloat(ls.paddingTop) > 4 || parseFloat(ls.paddingBottom) > 4;
-        isBtn = hasBg || hasBorder || hasPad;
+        var inNav = !!el.closest('nav');
+        var inFooter = !!el.closest('footer');
+        var inParagraph = !!el.closest('p, blockquote, figcaption, caption, td, th, dd');
+        if (inNav) {
+          linkContext = 'nav'; // navigation links — always need proper sizing
+        } else if (inFooter) {
+          linkContext = 'footer'; // footer links — relaxed expectations
+        } else if (inParagraph) {
+          linkContext = 'inline'; // true inline links — WCAG exempt
+        } else {
+          // Check CSS for button-like styling
+          var ls = getComputedStyle(el);
+          var hasBg = ls.backgroundColor !== 'rgba(0, 0, 0, 0)' && ls.backgroundColor !== 'transparent';
+          var hasBorder = ls.borderStyle !== 'none' && ls.borderWidth !== '0px';
+          var hasPad = parseFloat(ls.paddingTop) > 4 || parseFloat(ls.paddingBottom) > 4;
+          if (hasBg || hasBorder || hasPad) linkContext = 'button';
+          else linkContext = 'standalone'; // standalone link, not clearly inline
+        }
       }
       touchTargetIssues.push({
         element: el.tagName.toLowerCase(),
@@ -606,7 +621,8 @@
         text: (el.textContent || el.getAttribute('aria-label') || '').trim().substring(0, 40),
         selector: cssSelector(el),
         passes: false,
-        isButton: isBtn || el.tagName !== 'A'
+        isButton: el.tagName !== 'A' || linkContext === 'button' || linkContext === 'nav',
+        linkContext: linkContext
       });
     }
   });

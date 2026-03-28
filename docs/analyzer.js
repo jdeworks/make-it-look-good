@@ -313,9 +313,14 @@
       var rect = el.getBoundingClientRect();
       var w = Math.round(rect.width), h = Math.round(rect.height);
       if (w < 44 || h < 44) {
-        var isBtn = false;
-        if (el.tagName === 'A') { var ls = getComputedStyle(el); isBtn = (ls.backgroundColor !== 'rgba(0, 0, 0, 0)' && ls.backgroundColor !== 'transparent') || (ls.borderStyle !== 'none' && ls.borderWidth !== '0px') || parseFloat(ls.paddingTop) > 4 || parseFloat(ls.paddingBottom) > 4; }
-        touchIssues.push({ element: el.tagName.toLowerCase(), width: w, height: h, text: (el.textContent || el.getAttribute('aria-label') || '').trim().substring(0, 40), selector: cssSelector(el), passes: false, isButton: isBtn || el.tagName !== 'A' });
+        var linkCtx = 'button';
+        if (el.tagName === 'A') {
+          if (el.closest('nav')) linkCtx = 'nav';
+          else if (el.closest('footer')) linkCtx = 'footer';
+          else if (el.closest('p, blockquote, figcaption, td, th, dd')) linkCtx = 'inline';
+          else { var ls = getComputedStyle(el); if ((ls.backgroundColor !== 'rgba(0, 0, 0, 0)' && ls.backgroundColor !== 'transparent') || (ls.borderStyle !== 'none' && ls.borderWidth !== '0px') || parseFloat(ls.paddingTop) > 4 || parseFloat(ls.paddingBottom) > 4) linkCtx = 'button'; else linkCtx = 'standalone'; }
+        }
+        touchIssues.push({ element: el.tagName.toLowerCase(), width: w, height: h, text: (el.textContent || el.getAttribute('aria-label') || '').trim().substring(0, 40), selector: cssSelector(el), passes: false, isButton: el.tagName !== 'A' || linkCtx === 'button' || linkCtx === 'nav', linkContext: linkCtx });
       }
     });
     touchIssues.sort(function(a, b) { return (a.width * a.height) - (b.width * b.height); });

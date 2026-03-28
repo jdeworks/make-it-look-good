@@ -28,17 +28,38 @@ function scoreTouchTargets(data) {
 
     if (minDim < minSize) {
       issueCount++;
-      if (isInlineLink) {
-        // Inline links get info severity, not error — they're exempt per WCAG 2.5.8
+      var ctx = t.linkContext || (isInlineLink ? 'inline' : 'button');
+
+      if (ctx === 'inline') {
+        // True inline text links (inside <p>, <blockquote>, etc.) — WCAG 2.5.8 exempt
         findings.push({
           severity: 'info',
-          title: 'Inline link ' + w + '×' + h + 'px — exempt from target size (WCAG exception)',
+          title: 'Inline text link ' + w + '×' + h + 'px — exempt from target size',
           detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-          fix: 'Inline text links are exempt from minimum target size. Consider adding padding for better usability.',
-          presetRef: null,
+          fix: 'Inline text links in paragraphs are exempt per WCAG 2.5.8. Consider adding padding for better usability.',
           source: 'WCAG 2.2 §2.5.8 inline exception — https://www.w3.org/TR/WCAG22/#target-size-minimum'
         });
+      } else if (ctx === 'footer') {
+        // Footer links — relaxed, info severity
+        findings.push({
+          severity: 'info',
+          title: 'Footer link ' + w + '×' + h + 'px (below ' + minSize + 'px)',
+          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+          fix: 'Footer links are typically smaller. Consider increasing padding for touch accessibility.',
+          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
+        });
+      } else if (ctx === 'nav') {
+        // Navigation links — should be properly sized
+        findings.push({
+          severity: 'error',
+          title: 'Nav link ' + w + '×' + h + 'px (minimum: ' + minSize + 'px)',
+          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+          fix: 'Navigation links need adequate sizing. Add padding: py-2 px-4 (min-height ' + minSize + 'px).',
+          presetRef: 'Navigation presets use min-height 44px on nav links',
+          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
+        });
       } else {
+        // Buttons, styled links, other interactive elements
         findings.push({
           severity: 'error',
           title: t.element + ' is ' + w + '×' + h + 'px (minimum for ' + context + ': ' + minSize + 'px)',

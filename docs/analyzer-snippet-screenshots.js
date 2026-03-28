@@ -539,13 +539,22 @@
       }
     }
     if (!passes) {
-      var isBtn = false;
+      var linkContext = 'button';
       if (el.tagName === 'A') {
-        var ls = getComputedStyle(el);
-        var hasBg = ls.backgroundColor !== 'rgba(0, 0, 0, 0)' && ls.backgroundColor !== 'transparent';
-        var hasBorder = ls.borderStyle !== 'none' && ls.borderWidth !== '0px';
-        var hasPad = parseFloat(ls.paddingTop) > 4 || parseFloat(ls.paddingBottom) > 4;
-        isBtn = hasBg || hasBorder || hasPad;
+        var inNav = !!el.closest('nav');
+        var inFooter = !!el.closest('footer');
+        var inParagraph = !!el.closest('p, blockquote, figcaption, caption, td, th, dd');
+        if (inNav) linkContext = 'nav';
+        else if (inFooter) linkContext = 'footer';
+        else if (inParagraph) linkContext = 'inline';
+        else {
+          var ls = getComputedStyle(el);
+          var hasBg = ls.backgroundColor !== 'rgba(0, 0, 0, 0)' && ls.backgroundColor !== 'transparent';
+          var hasBorder = ls.borderStyle !== 'none' && ls.borderWidth !== '0px';
+          var hasPad = parseFloat(ls.paddingTop) > 4 || parseFloat(ls.paddingBottom) > 4;
+          if (hasBg || hasBorder || hasPad) linkContext = 'button';
+          else linkContext = 'standalone';
+        }
       }
       touchTargetIssues.push({
         element: el.tagName.toLowerCase(),
@@ -553,7 +562,8 @@
         text: (el.textContent || el.getAttribute('aria-label') || '').trim().substring(0, 40),
         selector: cssSelector(el),
         passes: false,
-        isButton: isBtn || el.tagName !== 'A'
+        isButton: el.tagName !== 'A' || linkContext === 'button' || linkContext === 'nav',
+        linkContext: linkContext
       });
     }
   });
