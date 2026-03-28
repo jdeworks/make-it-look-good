@@ -82,6 +82,7 @@ docs/
     edge-performance.html
     edge-readability.html
     run-edge-cases.html
+    test-presets-rendered.html
     test-scoring.html
   analyzer-report.js
   analyzer-snippet-screenshots.js
@@ -2581,6 +2582,251 @@ Row separators?
 ## Related Presets
 - [`data-table/`](../docs/presets/data-table/) — Sortable data table with status badges ([React](../docs/presets/data-table/react.jsx), [Vue](../docs/presets/data-table/vue.vue), [Svelte](../docs/presets/data-table/svelte.svelte))
 - [`card-grid/`](../docs/presets/card-grid/) — Responsive card grid (mobile-friendly table alternative)
+</file>
+
+<file path="docs/tests/test-presets-rendered.html">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Preset Test Runner (Browser-Rendered)</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; background: #f8fafc; }
+    h1 { font-size: 20px; margin-bottom: 4px; }
+    .subtitle { font-size: 13px; color: #64748b; margin-bottom: 16px; }
+    #status { font-size: 13px; color: #3b82f6; margin-bottom: 12px; }
+    #progress { width: 100%; height: 6px; background: #e2e8f0; border-radius: 3px; margin-bottom: 16px; }
+    #progressFill { height: 100%; background: #3b82f6; border-radius: 3px; width: 0%; transition: width 0.3s; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { text-align: left; padding: 6px 8px; border-bottom: 2px solid #e2e8f0; font-size: 11px; color: #64748b; text-transform: uppercase; }
+    td { padding: 5px 8px; border-bottom: 1px solid #f1f5f9; }
+    .score { font-weight: 700; font-size: 14px; }
+    .score-a { color: #16a34a; } .score-b { color: #65a30d; } .score-c { color: #ca8a04; }
+    .score-d { color: #ea580c; } .score-f { color: #dc2626; }
+    .issues { font-size: 11px; color: #dc2626; }
+    .cat-scores { font-size: 10px; color: #64748b; }
+    .summary { margin-top: 16px; padding: 12px; border-radius: 8px; font-weight: 600; }
+    .summary.done { background: #f0fdf4; color: #16a34a; border: 2px solid #16a34a; }
+    #downloadBtn { margin-top: 12px; padding: 8px 16px; border: 1px solid #e2e8f0; background: white; border-radius: 6px; cursor: pointer; font-size: 13px; }
+    #downloadBtn:hover { background: #f8fafc; }
+  </style>
+</head>
+<body>
+  <h1>Preset Test Runner (Browser-Rendered)</h1>
+  <p class="subtitle">Renders each preset in a real iframe with Tailwind CSS, runs full extraction + scoring. This is the ground truth.</p>
+  <div id="status">Loading manifest...</div>
+  <div id="progress"><div id="progressFill"></div></div>
+  <table>
+    <thead><tr><th>Preset</th><th>Score</th><th>Grade</th><th>Errors</th><th>Warnings</th><th>Infos</th><th>Category Scores</th></tr></thead>
+    <tbody id="results"></tbody>
+  </table>
+  <div id="summaryDiv"></div>
+  <button id="downloadBtn" style="display:none" onclick="downloadResults()">Download Results (.md)</button>
+
+  <!-- Load scoring modules -->
+  <script src="../scoring/registry.js"></script>
+  <script src="../scoring/contrast.js"></script>
+  <script src="../scoring/typography.js"></script>
+  <script src="../scoring/spacing.js"></script>
+  <script src="../scoring/touch.js"></script>
+  <script src="../scoring/accessibility.js"></script>
+  <script src="../scoring/responsive.js"></script>
+  <script src="../scoring/consistency.js"></script>
+  <script src="../scoring/cognitive.js"></script>
+  <script src="../scoring/layout.js"></script>
+  <script src="../scoring/performance.js"></script>
+  <script src="../scoring/readability.js"></script>
+  <script src="../scoring/filters.js"></script>
+  <script src="../scoring/balance.js"></script>
+
+  <script>
+    // Use the same extractFromDocument as the analyzer
+    var analyzerScript = null;
+    var allResults = [];
+    var totalTests = 0;
+    var completed = 0;
+
+    async function loadAnalyzerExtractor() {
+      // Load analyzer.js and extract the extractFromDocument function
+      var resp = await fetch('../analyzer.js');
+      var code = await resp.text();
+      // Extract the function between 'function extractFromDocument()' and the closing
+      var match = code.match(/function extractFromDocument\(\)\s*\{/);
+      if (!match) { console.error('Could not find extractFromDocument'); return null; }
+      var start = code.indexOf(match[0]);
+      // Find matching closing brace
+      var depth = 0; var end = start;
+      for (var i = start; i < code.length; i++) {
+        if (code[i] === '{') depth++;
+        if (code[i] === '}') { depth--; if (depth === 0) { end = i + 1; break; } }
+      }
+      return code.substring(start, end);
+    }
+
+    async function run() {
+      var statusEl = document.getElementById('status');
+      var progressFill = document.getElementById('progressFill');
+      var resultsBody = document.getElementById('results');
+
+      // Load manifest
+      var resp = await fetch('../presets/index.json');
+      var manifest = await resp.json();
+      var elements = Object.keys(manifest.elements);
+
+      // Load the extraction function
+      var extractFn = await loadAnalyzerExtractor();
+      if (!extractFn) { statusEl.textContent = 'ERROR: Could not load extraction function'; return; }
+
+      // Build test list
+      var tests = [];
+      for (var ei = 0; ei < elements.length; ei++) {
+        var el = elements[ei];
+        var pers = Object.keys(manifest.elements[el].personalities || {});
+        for (var pi = 0; pi < pers.length; pi++) {
+          tests.push({ element: el, personality: pers[pi] });
+        }
+      }
+      totalTests = tests.length;
+      statusEl.textContent = 'Running ' + totalTests + ' tests...';
+
+      // Run tests sequentially (each needs an iframe)
+      for (var ti = 0; ti < tests.length; ti++) {
+        var test = tests[ti];
+        var name = test.element + '/' + test.personality;
+        statusEl.textContent = 'Testing ' + name + ' (' + (ti + 1) + '/' + totalTests + ')...';
+        progressFill.style.width = Math.round(((ti + 1) / totalTests) * 100) + '%';
+
+        try {
+          var data = await extractInIframe(test.element, test.personality, extractFn);
+          if (!data) {
+            addResult(resultsBody, name, null, 'Extraction failed');
+            continue;
+          }
+          data.profile = 'general';
+          data.meta.isFragment = true; // Presets are fragments
+          var report = MilgScoring.runScoring(data);
+          addResult(resultsBody, name, report, null);
+          allResults.push({ name: name, overall: report.overall, grade: report.grade, categories: report.categories.map(function(c) { return { label: c.label, score: c.score, errors: c.findings.filter(function(f){return f.severity==='error'}).length, warnings: c.findings.filter(function(f){return f.severity==='warning'}).length, infos: c.findings.filter(function(f){return f.severity==='info'}).length }; }) });
+        } catch(e) {
+          addResult(resultsBody, name, null, e.message);
+        }
+      }
+
+      // Summary
+      var avg = Math.round(allResults.reduce(function(s, r) { return s + r.overall; }, 0) / allResults.length);
+      var min = Math.min.apply(null, allResults.map(function(r) { return r.overall; }));
+      var max = Math.max.apply(null, allResults.map(function(r) { return r.overall; }));
+      var beforeResults = allResults.filter(function(r) { return r.name.endsWith('/before'); });
+      var cleanResults = allResults.filter(function(r) { return r.name.endsWith('/clean'); });
+      var beforeAvg = beforeResults.length > 0 ? Math.round(beforeResults.reduce(function(s,r){return s+r.overall},0)/beforeResults.length) : 'N/A';
+      var cleanAvg = cleanResults.length > 0 ? Math.round(cleanResults.reduce(function(s,r){return s+r.overall},0)/cleanResults.length) : 'N/A';
+
+      statusEl.textContent = 'Done! ' + allResults.length + ' presets tested.';
+      document.getElementById('summaryDiv').innerHTML = '<div class="summary done">Average: ' + avg + ' | Min: ' + min + ' | Max: ' + max + ' | Before avg: ' + beforeAvg + ' | Clean avg: ' + cleanAvg + '</div>';
+      document.getElementById('downloadBtn').style.display = 'inline-block';
+    }
+
+    function extractInIframe(element, personality, extractFn) {
+      return new Promise(function(resolve) {
+        fetch('../presets/' + element + '/' + personality + '.html')
+          .then(function(r) { if (!r.ok) throw new Error('Not found'); return r.text(); })
+          .then(function(html) {
+            var iframe = document.createElement('iframe');
+            iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
+            iframe.sandbox = 'allow-scripts allow-same-origin';
+            document.body.appendChild(iframe);
+
+            var handled = false;
+            function onMsg(e) {
+              if (!e.data || e.data.type !== 'milg-test-result') return;
+              if (handled) return;
+              handled = true;
+              window.removeEventListener('message', onMsg);
+              if (iframe.parentNode) document.body.removeChild(iframe);
+              resolve(e.data.data);
+            }
+            window.addEventListener('message', onMsg);
+
+            // Build srcdoc with Tailwind + extraction
+            var modifiedExtract = extractFn.replace(/milg-analyzer-result/g, 'milg-test-result');
+            var srcdoc = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">' +
+              '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+              '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
+              '<style>body{margin:0}</style></head><body>' +
+              '<script>window.__milgIsFragment=true;</' + 'script>' +
+              html +
+              '<script>setTimeout(function(){(' + modifiedExtract + ')()}, 2000);</' + 'script>' +
+              '</body></html>';
+            iframe.srcdoc = srcdoc;
+
+            // Timeout
+            setTimeout(function() {
+              if (handled) return;
+              handled = true;
+              window.removeEventListener('message', onMsg);
+              if (iframe.parentNode) document.body.removeChild(iframe);
+              resolve(null);
+            }, 10000);
+          })
+          .catch(function() { resolve(null); });
+      });
+    }
+
+    function addResult(tbody, name, report, error) {
+      var tr = document.createElement('tr');
+      if (error) {
+        tr.innerHTML = '<td>' + name + '</td><td colspan="6" style="color:#dc2626">' + error + '</td>';
+      } else {
+        var errors = 0, warnings = 0, infos = 0;
+        report.categories.forEach(function(c) {
+          c.findings.forEach(function(f) {
+            if (f.severity === 'error') errors++;
+            else if (f.severity === 'warning') warnings++;
+            else infos++;
+          });
+        });
+        var scoreClass = 'score-' + report.grade.toLowerCase();
+        var catScores = report.categories.map(function(c) { return c.label.substring(0, 8) + ':' + c.score; }).join(' | ');
+        tr.innerHTML = '<td>' + name + '</td>' +
+          '<td class="score ' + scoreClass + '">' + report.overall + '</td>' +
+          '<td>' + report.grade + '</td>' +
+          '<td>' + (errors > 0 ? '<span class="issues">' + errors + '</span>' : '0') + '</td>' +
+          '<td>' + (warnings > 0 ? '<span style="color:#b45309">' + warnings + '</span>' : '0') + '</td>' +
+          '<td>' + infos + '</td>' +
+          '<td class="cat-scores">' + catScores + '</td>';
+      }
+      tbody.appendChild(tr);
+    }
+
+    function downloadResults() {
+      var lines = ['# Preset Test Results (Browser-Rendered)', '', '| Preset | Score | Grade | Errors | Warnings |', '|--------|-------|-------|--------|----------|'];
+      allResults.forEach(function(r) {
+        var e = 0, w = 0;
+        r.categories.forEach(function(c) { e += c.errors; w += c.warnings; });
+        lines.push('| ' + r.name + ' | ' + r.overall + ' | ' + r.grade + ' | ' + e + ' | ' + w + ' |');
+      });
+      lines.push('', '## Category Breakdown', '');
+      allResults.forEach(function(r) {
+        lines.push('### ' + r.name + ' (Score: ' + r.overall + ')');
+        r.categories.forEach(function(c) {
+          if (c.errors > 0 || c.warnings > 0 || c.infos > 0) {
+            lines.push('- ' + c.label + ': ' + c.score + ' (' + c.errors + 'E ' + c.warnings + 'W ' + c.infos + 'I)');
+          }
+        });
+        lines.push('');
+      });
+      var blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'preset-test-rendered-' + new Date().toISOString().split('T')[0] + '.md';
+      a.click();
+    }
+
+    run();
+  </script>
+</body>
+</html>
 </file>
 
 <file path="expressive/curated-examples.md">
@@ -25454,7 +25700,7 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
     }
 
     var data = {
-      meta: { title: document.title, url: location.href, viewportWidth: window.innerWidth, viewportHeight: window.innerHeight, timestamp: new Date().toISOString(), version: 1 },
+      meta: { title: document.title, url: location.href, viewportWidth: window.innerWidth, viewportHeight: window.innerHeight, timestamp: new Date().toISOString(), version: 1, isFragment: !!window.__milgIsFragment },
       colors: { textColors: [], bgColors: [], contrastPairs: [] },
       typography: { bodyFontSize: '', bodyLineHeight: '', bodyFontFamily: '', fontFamilies: [], fontSizes: [], fontWeights: [], headings: [], lineHeights: [], maxLineLength: { chars: 0, element: '' } },
       spacing: { paddings: [], margins: [], gaps: [], maxContentWidth: '', bodyPaddingHorizontal: '' },
@@ -26646,14 +26892,15 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
     var isFullDoc = /<html[\s>]/i.test(html) || /<!DOCTYPE/i.test(html);
     // Inject <base> tag so relative CSS/image/font URLs resolve to the original domain
     if (sourceUrl) html = injectBaseTag(html, sourceUrl);
-    // Pass exclude selector to extraction context
+    // Pass context to extraction
     var excludeVar = excludeSelector ? '<script>window.__milgExclude=' + JSON.stringify(excludeSelector) + ';</' + 'script>' : '';
+    var fragmentVar = !isFullDoc ? '<script>window.__milgIsFragment=true;</' + 'script>' : '';
     // Screenshot capture: script that auto-runs after extraction, loads CDN library, captures page
     var screenshotScript = captureScreenshots ? '<script>window.__milgDoScreenshots=function(){' + buildScreenshotScript('milg-screenshots-result') + '};</' + 'script>' : '';
     var srcdoc;
     if (isFullDoc) {
       // Wait for window load (CSS/fonts loaded), then extra delay for rendering
-      var extractScript = excludeVar + screenshotScript + '<script>window.addEventListener("load",function(){setTimeout(function(){(' + extractFromDocument.toString() + ')()},1000)});setTimeout(function(){(' + extractFromDocument.toString() + ')()},8000);</' + 'script>';
+      var extractScript = excludeVar + fragmentVar + screenshotScript + '<script>window.addEventListener("load",function(){setTimeout(function(){(' + extractFromDocument.toString() + ')()},1000)});setTimeout(function(){(' + extractFromDocument.toString() + ')()},8000);</' + 'script>';
       if (/<\/body>/i.test(html)) {
         srcdoc = html.replace(/<\/body>/i, extractScript + '</body>');
       } else {
@@ -26664,7 +26911,7 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
         '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
         '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
         '<style>body{margin:0}</style></head><body>' +
-        html + excludeVar + screenshotScript +
+        html + excludeVar + fragmentVar + screenshotScript +
         '<script>setTimeout(function(){(' + extractFromDocument.toString() + ')()}, 1500);</' + 'script>' +
         '</body></html>';
     }
