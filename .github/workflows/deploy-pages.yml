@@ -37,11 +37,11 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Inject proxy URL
-        if: ${{ vars.PROXY_URL != '' || secrets.PROXY_URL != '' }}
+        env:
+          PROXY_ENCODED: ${{ secrets.PROXY_URL }}
         run: |
-          ENCODED="${{ secrets.PROXY_URL }}"
-          if [ -n "$ENCODED" ]; then
-            sed -i "s|__PROXY_ENCODED__|${ENCODED}|g" docs/analyzer.js
+          if [ -n "$PROXY_ENCODED" ]; then
+            sed -i "s|__PROXY_ENCODED__|${PROXY_ENCODED}|g" docs/analyzer.js
             echo "Proxy URL injected"
           else
             echo "No PROXY_URL secret set — using third-party proxy fallbacks"

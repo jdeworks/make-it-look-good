@@ -169,76 +169,6 @@ README.md
 <files>
 This section contains the contents of the repository's files.
 
-<file path=".github/workflows/deploy-pages.yml">
-# Deploy docs/ to GitHub Pages with secrets injected
-# The PROXY_URL secret is base64-encoded and replaces __PROXY_ENCODED__ in analyzer.js
-# This keeps the actual worker URL out of the git history.
-#
-# Setup:
-#   1. Deploy your Cloudflare Worker (see proxy/README.md)
-#   2. Base64-encode the URL: echo -n "https://your-worker.workers.dev" | base64
-#   3. Add PROXY_URL as a repository secret (Settings > Secrets > Actions)
-#      with the base64-encoded value
-#   4. Change Pages build source to "GitHub Actions" in Settings > Pages
-#
-# If PROXY_URL secret is not set, the analyzer falls back to third-party proxies.
-
-name: Deploy to GitHub Pages
-
-on:
-  push:
-    branches: [dev]
-    paths:
-      - 'docs/**'
-      - '.github/workflows/deploy-pages.yml'
-  workflow_dispatch:
-
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: false
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Inject proxy URL
-        if: ${{ vars.PROXY_URL != '' || secrets.PROXY_URL != '' }}
-        run: |
-          ENCODED="${{ secrets.PROXY_URL }}"
-          if [ -n "$ENCODED" ]; then
-            sed -i "s|__PROXY_ENCODED__|${ENCODED}|g" docs/analyzer.js
-            echo "Proxy URL injected"
-          else
-            echo "No PROXY_URL secret set — using third-party proxy fallbacks"
-          fi
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: docs
-
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
-</file>
-
 <file path="color/color-blind-safety.md">
 # Color-Blind Safety
 
@@ -10843,6 +10773,76 @@ Starting a new project?
 - "Design Systems" by Alla Kholmatova (Smashing Magazine, 2017)
 </file>
 
+<file path=".github/workflows/deploy-pages.yml">
+# Deploy docs/ to GitHub Pages with secrets injected
+# The PROXY_URL secret is base64-encoded and replaces __PROXY_ENCODED__ in analyzer.js
+# This keeps the actual worker URL out of the git history.
+#
+# Setup:
+#   1. Deploy your Cloudflare Worker (see proxy/README.md)
+#   2. Base64-encode the URL: echo -n "https://your-worker.workers.dev" | base64
+#   3. Add PROXY_URL as a repository secret (Settings > Secrets > Actions)
+#      with the base64-encoded value
+#   4. Change Pages build source to "GitHub Actions" in Settings > Pages
+#
+# If PROXY_URL secret is not set, the analyzer falls back to third-party proxies.
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - 'docs/**'
+      - '.github/workflows/deploy-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Inject proxy URL
+        env:
+          PROXY_ENCODED: ${{ secrets.PROXY_URL }}
+        run: |
+          if [ -n "$PROXY_ENCODED" ]; then
+            sed -i "s|__PROXY_ENCODED__|${PROXY_ENCODED}|g" docs/analyzer.js
+            echo "Proxy URL injected"
+          else
+            echo "No PROXY_URL secret set — using third-party proxy fallbacks"
+          fi
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+</file>
+
 <file path="components/buttons.md">
 # Buttons
 
@@ -13685,259 +13685,6 @@ requestAnimationFrame(function() {
 - `docs/presets/agency-portfolio/` — reference implementation of pattern 3
 </file>
 
-<file path="proxy/README.md">
-# CORS Proxy Worker
-
-A lightweight Cloudflare Worker that proxies HTTP requests with CORS headers, used by the Design Analyzer's URL input mode.
-
-## Why
-
-Browsers block cross-origin requests (CORS). To fetch and analyze external websites from a client-side app, we need a proxy that adds `Access-Control-Allow-Origin: *` headers. This self-hosted worker replaces dependency on third-party CORS proxies.
-
-## Deploy your own
-
-### 1. Deploy the Worker
-
-1. [Sign up for Cloudflare](https://dash.cloudflare.com/sign-up) (free, no credit card)
-2. Install Wrangler (Cloudflare's CLI): `npm install -g wrangler`
-3. Login: `wrangler login`
-4. Deploy:
-   ```bash
-   cd proxy
-   npx wrangler deploy
-   ```
-5. Copy the `*.workers.dev` URL from the output (e.g. `https://milg-cors-proxy.your-sub.workers.dev`)
-6. **Set `ALLOWED_ORIGINS`** in `worker.js` to your GitHub Pages domain:
-   ```js
-   const ALLOWED_ORIGINS = ['https://yourusername.github.io'];
-   ```
-   Then redeploy: `npx wrangler deploy`
-
-### 2. Connect to the Analyzer (via GitHub Actions)
-
-The proxy URL is **not hardcoded in the repo** — it's injected at deploy time via a GitHub repository secret.
-
-1. Base64-encode your worker URL:
-   ```bash
-   echo -n "https://milg-cors-proxy.your-sub.workers.dev" | base64
-   ```
-2. Go to your repo's **Settings > Secrets and variables > Actions**
-3. Add a new secret named `PROXY_URL` with the base64 value
-4. Go to **Settings > Pages** and change **Build and deployment** source to **GitHub Actions**
-5. Push to the `dev` branch — the workflow at `.github/workflows/deploy-pages.yml` will inject the URL and deploy
-
-If the `PROXY_URL` secret is not set, the analyzer gracefully falls back to third-party proxies (allorigins, codetabs, corsproxy.io).
-
-## Free tier limits
-
-- **100,000 requests/day** (resets at midnight UTC)
-- 10ms CPU time per request
-- **Hard stop** when exceeded (returns 5XX until reset — no surprise bills)
-- $5/month paid plan gives 10M requests/month if you outgrow free tier
-
-## Safety features
-
-- **Origin checking** — only browsers on your domain can use the proxy (unforgeable by browsers)
-- **Per-IP rate limiting** — 30 requests/minute per IP address
-- **SSRF protection** — blocks localhost, private IPs, .local domains
-- Only GET requests, only http/https URLs
-- 10 MB max response size
-- Custom User-Agent for transparency
-
-## Configuration
-
-Edit `worker.js` to customize:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ALLOWED_ORIGINS` | `null` (any) | Array of allowed Origin domains, or `null` for any |
-| `RATE_LIMIT` | `30` | Max requests per IP per minute |
-| `MAX_RESPONSE_SIZE` | `10 MB` | Max proxied response body |
-| `USER_AGENT` | `MilgAnalyzer/1.0` | User-Agent sent to target servers |
-
-## How the URL stays out of git
-
-```
-Git repo (public)
-  └── docs/analyzer.js contains: __PROXY_ENCODED__ (placeholder)
-
-GitHub Actions (on push to dev)
-  └── Reads PROXY_URL secret, replaces placeholder, deploys to Pages
-
-Deployed site (public, but URL is base64-encoded in JS)
-  └── Runtime: atob() decodes → fetch to your worker
-```
-
-The URL is visible in the browser's Network tab (unavoidable for any client-side app), but:
-- Not in the git history (scrapers/bots can't find it by searching the repo)
-- Not as a plain string in the deployed JS (stops automated URL pattern matching)
-- Rate-limited and origin-locked in the worker itself (caps abuse even if found)
-</file>
-
-<file path="proxy/worker.js">
-// make-it-look-good — CORS Proxy Worker
-// Deploy: cd proxy && npx wrangler deploy
-// Free tier: 100K requests/day on Cloudflare Workers
-
-const MAX_RESPONSE_SIZE = 10 * 1024 * 1024; // 10 MB
-const ALLOWED_SCHEMES = ['http:', 'https:'];
-const USER_AGENT = 'MilgAnalyzer/1.0 (design-analyzer; +https://github.com/jdeworks/make-it-look-good)';
-
-// Rate limit: requests per IP per minute
-const RATE_LIMIT = 30;
-const RATE_WINDOW_MS = 60 * 1000;
-
-// Allowed origins — set to your GitHub Pages domain(s) in production.
-// Browsers cannot spoof Origin headers, so this reliably blocks hotlinking.
-// Example: ['https://yourusername.github.io', 'http://localhost:3000']
-// Set to null to allow any origin (development only).
-const ALLOWED_ORIGINS = null;
-
-// In-memory rate limiting (per-isolate, resets on cold start — good enough for abuse prevention)
-const rateCounts = new Map();
-
-function checkRateLimit(ip) {
-  const now = Date.now();
-  const bucket = Math.floor(now / RATE_WINDOW_MS);
-  const key = ip + ':' + bucket;
-
-  // Clean old entries periodically
-  if (rateCounts.size > 10000) {
-    for (const [k, v] of rateCounts) {
-      if (v.bucket < bucket) rateCounts.delete(k);
-    }
-  }
-
-  const entry = rateCounts.get(key);
-  if (!entry) {
-    rateCounts.set(key, { bucket, count: 1 });
-    return true;
-  }
-  entry.count++;
-  return entry.count <= RATE_LIMIT;
-}
-
-function corsHeaders(origin) {
-  const allowOrigin = ALLOWED_ORIGINS === null ? '*' : (origin || '*');
-  return {
-    'Access-Control-Allow-Origin': allowOrigin,
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
-    'Access-Control-Allow-Headers': '*',
-    'Access-Control-Max-Age': '86400',
-  };
-}
-
-function errorResponse(status, message, origin) {
-  return new Response(JSON.stringify({ error: message }), {
-    status,
-    headers: {
-      'Content-Type': 'application/json',
-      ...corsHeaders(origin),
-    },
-  });
-}
-
-export default {
-  async fetch(request) {
-    const origin = request.headers.get('Origin') || '';
-    const ip = request.headers.get('cf-connecting-ip') || 'unknown';
-
-    // Handle CORS preflight
-    if (request.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: corsHeaders(origin) });
-    }
-
-    // Only GET allowed
-    if (request.method !== 'GET') {
-      return errorResponse(405, 'Only GET requests are allowed', origin);
-    }
-
-    // Origin check — blocks other websites from using this proxy via their browsers
-    if (ALLOWED_ORIGINS !== null) {
-      if (!origin || !ALLOWED_ORIGINS.includes(origin)) {
-        return errorResponse(403, 'Origin not allowed', origin);
-      }
-    }
-
-    // Rate limit per IP
-    if (!checkRateLimit(ip)) {
-      return errorResponse(429, 'Rate limited — max ' + RATE_LIMIT + ' requests per minute', origin);
-    }
-
-    // Parse target URL from query parameter
-    const reqUrl = new URL(request.url);
-    const target = reqUrl.searchParams.get('url');
-
-    if (!target) {
-      return errorResponse(400, 'Missing ?url= parameter', origin);
-    }
-
-    // Validate URL scheme
-    let targetUrl;
-    try {
-      targetUrl = new URL(target);
-    } catch {
-      return errorResponse(400, 'Invalid URL: ' + target, origin);
-    }
-
-    if (!ALLOWED_SCHEMES.includes(targetUrl.protocol)) {
-      return errorResponse(400, 'Only http/https URLs are allowed', origin);
-    }
-
-    // Block private/local IPs to prevent SSRF
-    const hostname = targetUrl.hostname;
-    if (
-      hostname === 'localhost' ||
-      hostname === '127.0.0.1' ||
-      hostname === '0.0.0.0' ||
-      hostname === '::1' ||
-      hostname.endsWith('.local') ||
-      /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(hostname)
-    ) {
-      return errorResponse(403, 'Private/local URLs are not allowed', origin);
-    }
-
-    // Fetch the target
-    try {
-      const resp = await fetch(targetUrl.href, {
-        headers: {
-          'User-Agent': USER_AGENT,
-          'Accept': 'text/html,text/css,application/xhtml+xml,*/*',
-          'Accept-Language': 'en-US,en;q=0.9',
-        },
-        redirect: 'follow',
-      });
-
-      if (!resp.ok) {
-        return errorResponse(resp.status, 'Target returned ' + resp.status + ' ' + resp.statusText, origin);
-      }
-
-      // Read body and check size
-      const body = await resp.arrayBuffer();
-
-      if (body.byteLength > MAX_RESPONSE_SIZE) {
-        return errorResponse(413, 'Response too large (' + Math.round(body.byteLength / 1024 / 1024) + ' MB, max ' + (MAX_RESPONSE_SIZE / 1024 / 1024) + ' MB)', origin);
-      }
-
-      // Return with CORS headers
-      const responseHeaders = new Headers(corsHeaders(origin));
-      responseHeaders.set('Content-Type', resp.headers.get('Content-Type') || 'text/html; charset=utf-8');
-
-      // Pass through cache headers if present
-      const cacheControl = resp.headers.get('Cache-Control');
-      if (cacheControl) responseHeaders.set('Cache-Control', cacheControl);
-
-      return new Response(body, {
-        status: 200,
-        headers: responseHeaders,
-      });
-    } catch (err) {
-      return errorResponse(502, 'Failed to fetch target: ' + (err.message || 'unknown error'), origin);
-    }
-  },
-};
-</file>
-
 <file path="proxy/wrangler.toml">
 name = "milg-cors-proxy"
 main = "worker.js"
@@ -15846,6 +15593,258 @@ Building visual identity:
 - [Typewolf — Font Recommendations](https://www.typewolf.com/)
 - [Laws of UX — Aesthetic-Usability Effect](https://lawsofux.com/aesthetic-usability-effect/)
 - Cross-reference: [Color Systems](../color/color-systems.md), [Type Scale](../typography/type-scale.md), [Spacing System](../layout/spacing-system.md)
+</file>
+
+<file path="proxy/README.md">
+# CORS Proxy Worker
+
+A lightweight Cloudflare Worker that proxies HTTP requests with CORS headers, used by the Design Analyzer's URL input mode.
+
+## Why
+
+Browsers block cross-origin requests (CORS). To fetch and analyze external websites from a client-side app, we need a proxy that adds `Access-Control-Allow-Origin: *` headers. This self-hosted worker replaces dependency on third-party CORS proxies.
+
+## Deploy your own
+
+### 1. Deploy the Worker
+
+1. [Sign up for Cloudflare](https://dash.cloudflare.com/sign-up) (free, no credit card)
+2. Install Wrangler (Cloudflare's CLI): `npm install -g wrangler`
+3. Login: `wrangler login`
+4. Deploy:
+   ```bash
+   cd proxy
+   npx wrangler deploy
+   ```
+5. Copy the `*.workers.dev` URL from the output (e.g. `https://milg-cors-proxy.your-sub.workers.dev`)
+6. **Set `ALLOWED_ORIGINS`** in `worker.js` to your GitHub Pages domain:
+   ```js
+   const ALLOWED_ORIGINS = ['https://yourusername.github.io'];
+   ```
+   Then redeploy: `npx wrangler deploy`
+
+### 2. Connect to the Analyzer (via GitHub Actions)
+
+The proxy URL is **not hardcoded in the repo** — it's injected at deploy time via a GitHub repository secret.
+
+1. Base64-encode your worker URL:
+   ```bash
+   echo -n "https://milg-cors-proxy.your-sub.workers.dev" | base64
+   ```
+2. Go to your repo's **Settings > Secrets and variables > Actions**
+3. Add a new secret named `PROXY_URL` with the base64 value
+4. Go to **Settings > Pages** and change **Build and deployment** source to **GitHub Actions**
+5. Push to the `dev` branch — the workflow at `.github/workflows/deploy-pages.yml` will inject the URL and deploy
+
+If the `PROXY_URL` secret is not set, the analyzer gracefully falls back to third-party proxies (allorigins, codetabs, corsproxy.io).
+
+## Free tier limits
+
+- **100,000 requests/day** (resets at midnight UTC)
+- 10ms CPU time per request
+- **Hard stop** when exceeded (returns 5XX until reset — no surprise bills)
+- $5/month paid plan gives 10M requests/month if you outgrow free tier
+
+## Safety features
+
+- **Origin checking** — only browsers on your domain can use the proxy (unforgeable by browsers)
+- **Per-IP rate limiting** — 30 requests/minute per IP address
+- **SSRF protection** — blocks localhost, private IPs, .local domains
+- Only GET requests, only http/https URLs
+- 10 MB max response size
+- Custom User-Agent for transparency
+
+## Configuration
+
+Edit `worker.js` to customize:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ALLOWED_ORIGINS` | `null` (any) | Array of allowed Origin domains, or `null` for any |
+| `RATE_LIMIT` | `30` | Max requests per IP per minute |
+| `MAX_RESPONSE_SIZE` | `10 MB` | Max proxied response body |
+| `USER_AGENT` | `MilgAnalyzer/1.0` | User-Agent sent to target servers |
+
+## How the URL stays out of git
+
+```
+Git repo (public)
+  └── docs/analyzer.js contains: __PROXY_ENCODED__ (placeholder)
+
+GitHub Actions (on push to dev)
+  └── Reads PROXY_URL secret, replaces placeholder, deploys to Pages
+
+Deployed site (public, but URL is base64-encoded in JS)
+  └── Runtime: atob() decodes → fetch to your worker
+```
+
+The URL is visible in the browser's Network tab (unavoidable for any client-side app), but:
+- Not in the git history (scrapers/bots can't find it by searching the repo)
+- Not as a plain string in the deployed JS (stops automated URL pattern matching)
+- Rate-limited and origin-locked in the worker itself (caps abuse even if found)
+</file>
+
+<file path="proxy/worker.js">
+// make-it-look-good — CORS Proxy Worker
+// Deploy: cd proxy && npx wrangler deploy
+// Free tier: 100K requests/day on Cloudflare Workers
+
+const MAX_RESPONSE_SIZE = 10 * 1024 * 1024; // 10 MB
+const ALLOWED_SCHEMES = ['http:', 'https:'];
+const USER_AGENT = 'MilgAnalyzer/1.0 (design-analyzer; +https://github.com/jdeworks/make-it-look-good)';
+
+// Rate limit: requests per IP per minute
+const RATE_LIMIT = 30;
+const RATE_WINDOW_MS = 60 * 1000;
+
+// Allowed origins — browsers cannot spoof Origin headers, so this reliably blocks hotlinking.
+// Add 'http://localhost:3000' etc. for local dev if needed.
+// Set to null to allow any origin (development only).
+const ALLOWED_ORIGINS = ['https://jdeworks.github.io'];
+
+// In-memory rate limiting (per-isolate, resets on cold start — good enough for abuse prevention)
+const rateCounts = new Map();
+
+function checkRateLimit(ip) {
+  const now = Date.now();
+  const bucket = Math.floor(now / RATE_WINDOW_MS);
+  const key = ip + ':' + bucket;
+
+  // Clean old entries periodically
+  if (rateCounts.size > 10000) {
+    for (const [k, v] of rateCounts) {
+      if (v.bucket < bucket) rateCounts.delete(k);
+    }
+  }
+
+  const entry = rateCounts.get(key);
+  if (!entry) {
+    rateCounts.set(key, { bucket, count: 1 });
+    return true;
+  }
+  entry.count++;
+  return entry.count <= RATE_LIMIT;
+}
+
+function corsHeaders(origin) {
+  const allowOrigin = ALLOWED_ORIGINS === null ? '*' : (origin || '*');
+  return {
+    'Access-Control-Allow-Origin': allowOrigin,
+    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Allow-Headers': '*',
+    'Access-Control-Max-Age': '86400',
+  };
+}
+
+function errorResponse(status, message, origin) {
+  return new Response(JSON.stringify({ error: message }), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      ...corsHeaders(origin),
+    },
+  });
+}
+
+export default {
+  async fetch(request) {
+    const origin = request.headers.get('Origin') || '';
+    const ip = request.headers.get('cf-connecting-ip') || 'unknown';
+
+    // Handle CORS preflight
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: corsHeaders(origin) });
+    }
+
+    // Only GET allowed
+    if (request.method !== 'GET') {
+      return errorResponse(405, 'Only GET requests are allowed', origin);
+    }
+
+    // Origin check — blocks other websites from using this proxy via their browsers
+    if (ALLOWED_ORIGINS !== null) {
+      if (!origin || !ALLOWED_ORIGINS.includes(origin)) {
+        return errorResponse(403, 'Origin not allowed', origin);
+      }
+    }
+
+    // Rate limit per IP
+    if (!checkRateLimit(ip)) {
+      return errorResponse(429, 'Rate limited — max ' + RATE_LIMIT + ' requests per minute', origin);
+    }
+
+    // Parse target URL from query parameter
+    const reqUrl = new URL(request.url);
+    const target = reqUrl.searchParams.get('url');
+
+    if (!target) {
+      return errorResponse(400, 'Missing ?url= parameter', origin);
+    }
+
+    // Validate URL scheme
+    let targetUrl;
+    try {
+      targetUrl = new URL(target);
+    } catch {
+      return errorResponse(400, 'Invalid URL: ' + target, origin);
+    }
+
+    if (!ALLOWED_SCHEMES.includes(targetUrl.protocol)) {
+      return errorResponse(400, 'Only http/https URLs are allowed', origin);
+    }
+
+    // Block private/local IPs to prevent SSRF
+    const hostname = targetUrl.hostname;
+    if (
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === '0.0.0.0' ||
+      hostname === '::1' ||
+      hostname.endsWith('.local') ||
+      /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(hostname)
+    ) {
+      return errorResponse(403, 'Private/local URLs are not allowed', origin);
+    }
+
+    // Fetch the target
+    try {
+      const resp = await fetch(targetUrl.href, {
+        headers: {
+          'User-Agent': USER_AGENT,
+          'Accept': 'text/html,text/css,application/xhtml+xml,*/*',
+          'Accept-Language': 'en-US,en;q=0.9',
+        },
+        redirect: 'follow',
+      });
+
+      if (!resp.ok) {
+        return errorResponse(resp.status, 'Target returned ' + resp.status + ' ' + resp.statusText, origin);
+      }
+
+      // Read body and check size
+      const body = await resp.arrayBuffer();
+
+      if (body.byteLength > MAX_RESPONSE_SIZE) {
+        return errorResponse(413, 'Response too large (' + Math.round(body.byteLength / 1024 / 1024) + ' MB, max ' + (MAX_RESPONSE_SIZE / 1024 / 1024) + ' MB)', origin);
+      }
+
+      // Return with CORS headers
+      const responseHeaders = new Headers(corsHeaders(origin));
+      responseHeaders.set('Content-Type', resp.headers.get('Content-Type') || 'text/html; charset=utf-8');
+
+      // Pass through cache headers if present
+      const cacheControl = resp.headers.get('Cache-Control');
+      if (cacheControl) responseHeaders.set('Cache-Control', cacheControl);
+
+      return new Response(body, {
+        status: 200,
+        headers: responseHeaders,
+      });
+    } catch (err) {
+      return errorResponse(502, 'Failed to fetch target: ' + (err.message || 'unknown error'), origin);
+    }
+  },
+};
 </file>
 
 <file path="workflows/quick-reference.md">

@@ -10,11 +10,10 @@ const USER_AGENT = 'MilgAnalyzer/1.0 (design-analyzer; +https://github.com/jdewo
 const RATE_LIMIT = 30;
 const RATE_WINDOW_MS = 60 * 1000;
 
-// Allowed origins — set to your GitHub Pages domain(s) in production.
-// Browsers cannot spoof Origin headers, so this reliably blocks hotlinking.
-// Example: ['https://yourusername.github.io', 'http://localhost:3000']
+// Allowed origins — browsers cannot spoof Origin headers, so this reliably blocks hotlinking.
+// Add 'http://localhost:3000' etc. for local dev if needed.
 // Set to null to allow any origin (development only).
-const ALLOWED_ORIGINS = null;
+const ALLOWED_ORIGINS = ['https://jdeworks.github.io'];
 
 // In-memory rate limiting (per-isolate, resets on cold start — good enough for abuse prevention)
 const rateCounts = new Map();
