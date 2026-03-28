@@ -435,6 +435,14 @@
       var url = (urlInput.value || '').trim();
       if (!url) { showToast('Enter a URL first'); return; }
       if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+      // Normalize: add www. if bare domain (many sites redirect or block without it)
+      try {
+        var parsed = new URL(url);
+        if (!parsed.hostname.startsWith('www.') && parsed.hostname.split('.').length === 2 && !parsed.hostname.includes('localhost')) {
+          url = parsed.protocol + '//www.' + parsed.hostname + parsed.pathname + parsed.search + parsed.hash;
+        }
+      } catch(e) {}
+      urlInput.value = url; // Show normalized URL to user
 
       analyzeUrlBtn.disabled = true;
       analyzeUrlBtn.textContent = 'Fetching...';
