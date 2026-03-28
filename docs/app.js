@@ -16,6 +16,7 @@ let monacoEditor = null;
 let suppressChangeEvent = false;
 
 function initMonaco() {
+  if (typeof monaco === 'undefined') return; // Monaco not loaded (mobile/slow)
   monacoEditor = monaco.editor.create(document.getElementById('editorContainer'), {
     value: '',
     language: 'html',
@@ -1584,9 +1585,22 @@ function startApp() {
   });
 }
 
-// Monaco loads async via require() — wait for it
-if (window._monacoReady) {
+// Monaco loads async via require() — wait for it, with timeout fallback
+var _appStarted = false;
+function safeStartApp() {
+  if (_appStarted) return;
+  _appStarted = true;
   startApp();
+}
+if (window._monacoReady) {
+  safeStartApp();
 } else {
-  window.addEventListener('monaco-ready', startApp);
+  window.addEventListener('monaco-ready', safeStartApp);
+  // Fallback: start without Monaco after 5s (mobile/slow connections)
+  setTimeout(function() {
+    if (!_appStarted) {
+      console.warn('Monaco editor did not load — starting without code editor');
+      safeStartApp();
+    }
+  }, 5000);
 }
