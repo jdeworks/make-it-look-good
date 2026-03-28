@@ -159,6 +159,42 @@ function scoreLayout(data) {
     }
   }
 
+  // Horizontal scroll on containers (not tables/code which are intentional)
+  var hScrollContainers = layout.horizontalScrollContainers || [];
+  var unintentionalHScroll = hScrollContainers.filter(function(c) { return !c.intentional; });
+  if (unintentionalHScroll.length > 0 || data.structure.hasHorizontalOverflow) {
+    checks++;
+    var scrollDetails = unintentionalHScroll.slice(0, 3).map(function(c) {
+      return c.selector + ' overflows by ' + c.overflow + 'px';
+    });
+    if (data.structure.hasHorizontalOverflow) scrollDetails.unshift('Page body has horizontal scroll');
+    findings.push({
+      severity: 'error',
+      title: (data.structure.hasHorizontalOverflow ? 'Page has horizontal scroll' : unintentionalHScroll.length + ' container(s) overflow horizontally'),
+      detail: scrollDetails.join('; '),
+      fix: 'Fix horizontal overflow: add overflow-x-hidden on the outer wrapper, check for elements with fixed widths wider than viewport, or add max-w-full. Common causes: fixed-width tables, absolute positioned elements, images without max-width.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
+    });
+  } else {
+    checks++;
+    passed++;
+  }
+
+  // Nested scrollbars (scroll within scroll — bad UX)
+  var nestedScrollbars = layout.nestedScrollbars || 0;
+  if (nestedScrollbars > 0) {
+    checks++;
+    findings.push({
+      severity: nestedScrollbars > 2 ? 'error' : 'warning',
+      title: nestedScrollbars + ' nested scrollbar(s) detected (scroll within scroll)',
+      detail: 'Scrollable elements inside other scrollable elements confuse users — they don\'t know which container will scroll.',
+      fix: 'Avoid nested scrollbars. Give inner containers enough height to show content, or use pagination/collapsible sections instead of scroll. If a table must scroll horizontally, ensure the outer container does not also scroll.',
+      presetRef: null,
+      source: 'NNGroup — https://www.nngroup.com/articles/scrolling-and-scrollbars/'
+    });
+  }
+
   var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
   var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
   var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));

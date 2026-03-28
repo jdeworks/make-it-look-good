@@ -210,11 +210,21 @@ A design review catches issues **before they ship**. This checklist is organized
 }
 ```
 
+### Automated Scoring
+
+Use the [Design Analyzer](../docs/analyzer.html) to automate ~60 checks across 14 scoring modules. It covers contrast (WCAG + APCA), typography, spacing, touch targets, accessibility, responsive design, consistency, cognitive load, layout quality, performance, readability, motion/animation, and visual balance.
+
+- **8 audience profiles** — General, WCAG AAA, Elderly, Low Vision, Motor Impairment, Color Blind (CVD simulation), Children (6-12), Cognitive — each adjusts thresholds
+- **Context-aware touch targets** — nav links, footer links, inline text links, and buttons scored at appropriate severity levels per WCAG 2.5.8 exceptions
+- **Deep scan** — tests at multiple viewports (375/768/1280px) and dark mode in a single pass
+- **Console snippet** for localhost/behind-login pages — most accurate method
+- Works as a complement to manual review, not a replacement (covers ~30% of accessibility issues; keyboard/screen reader testing still required)
+
 ## Common Mistakes
 
-1. **Reviewing on one viewport only** — always check mobile (375px), tablet (768px), and desktop (1280px) at minimum
+1. **Reviewing on one viewport only** — always check mobile (375px), tablet (768px), and desktop (1280px) at minimum. The analyzer's deep scan mode automates this.
 2. **Skipping keyboard navigation test** — press Tab through the entire page; if you get lost or stuck, it fails
-3. **Relying only on automated tools** — Lighthouse catches ~30% of accessibility issues; manual testing (screen reader, keyboard) is required
+3. **Relying only on automated tools** — Lighthouse catches ~30% of accessibility issues; manual testing (screen reader, keyboard) is required. The Design Analyzer catches more (gradient contrast, touch context, CVD safety) but still can't replace manual review.
 4. **Checking contrast on only one color combination** — test every text color on every background it appears on (including hover states, selected states, and dark mode)
 5. **Ignoring disabled states** — disabled elements still need sufficient contrast for readability (3:1 minimum)
 6. **Not testing with real content** — "Lorem ipsum" hides line length, wrapping, and overflow problems; test with real or realistic content
@@ -248,7 +258,7 @@ Running a design review?
 
 ## Sources
 
-- WCAG 2.1 Quick Reference: https://www.w3.org/WAI/WCAG21/quickref/
+- WCAG 2.2 Quick Reference: https://www.w3.org/WAI/WCAG22/quickref/
 - Nielsen Norman Group — "How to Conduct a Heuristic Evaluation": https://www.nngroup.com/articles/how-to-conduct-a-heuristic-evaluation/
 - WebAIM Contrast Checker: https://webaim.org/resources/contrastchecker/
 - Inclusive Design Principles: https://inclusivedesignprinciples.org/

@@ -11,6 +11,8 @@
 | Large text threshold | **18pt** (24px) or **14pt bold** (18.5px) | WCAG 2.2 |
 | UI component contrast | **3:1** minimum against adjacent colors | WCAG 2.2 |
 | Focus indicator contrast | **3:1** minimum | WCAG 2.2 |
+| APCA body text (supplementary) | **Lc 60+** | APCA-W3 (future WCAG 3.0) |
+| APCA large/bold text | **Lc 45+** | APCA-W3 |
 
 ## Typography
 | Rule | Value | Source |

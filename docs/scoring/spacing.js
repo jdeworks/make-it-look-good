@@ -87,10 +87,13 @@ function scoreSpacing(data) {
     var tooClose = adjacentIssues.filter(function(a) { return a.gap >= 2 && a.gap < minSpacing; });
 
     touching.forEach(function(a) {
+      var labelA = a.textA || a.selectorA || '?';
+      var labelB = a.textB || a.selectorB || '?';
+      var selectorHint = (a.selectorA || a.selectorB) ? ' — ' + (a.selectorA || '') : '';
       findings.push({
         severity: 'error',
         title: 'Interactive elements touching (' + a.gap + 'px gap)',
-        detail: '"' + a.textA + '" and "' + a.textB + '" (' + a.direction + ')',
+        detail: labelA + ' and ' + labelB + ' (' + a.direction + ')' + selectorHint,
         fix: 'Add at least ' + minSpacing + 'px gap between interactive elements. In Tailwind: gap-' + (minSpacing / 4) + ' on the parent flex/grid container.',
         presetRef: 'Button presets use gap-2 (8px) or gap-3 (12px) between buttons',
         source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
@@ -98,10 +101,13 @@ function scoreSpacing(data) {
     });
 
     tooClose.forEach(function(a) {
+      var labelA = a.textA || a.selectorA || '?';
+      var labelB = a.textB || a.selectorB || '?';
+      var selectorHint = (a.selectorA || a.selectorB) ? ' — ' + (a.selectorA || '') : '';
       findings.push({
         severity: 'warning',
         title: 'Interactive elements only ' + a.gap + 'px apart (recommended: ≥' + minSpacing + 'px)',
-        detail: '"' + a.textA + '" and "' + a.textB + '" (' + a.direction + ')',
+        detail: labelA + ' and ' + labelB + ' (' + a.direction + ')' + selectorHint,
         fix: 'Increase gap to at least ' + minSpacing + 'px to prevent mis-taps. In Tailwind: gap-' + (minSpacing / 4) + ' on the parent.',
         presetRef: null,
         source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'

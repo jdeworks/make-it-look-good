@@ -1543,8 +1543,14 @@ function analyzeCurrentPreview() {
     var html = editor.value;
     if (!html || html.trim().length < 10) { btn.classList.remove('active'); alert('No content to analyze. Add some HTML first.'); return; }
 
-    // Store HTML in sessionStorage and open analyzer with auto-analyze flag
+    // Store HTML + current rendering context in sessionStorage
     sessionStorage.setItem('milg-preview-html', html);
+    // Pass dark mode and effect CSS so the analyzer renders the same way the preview does
+    sessionStorage.setItem('milg-preview-context', JSON.stringify({
+      dark: darkMode,
+      effectCSS: visualStyles[currentStyleIndex] ? visualStyles[currentStyleIndex].css : '',
+      effectName: visualStyles[currentStyleIndex] ? visualStyles[currentStyleIndex].name : 'None'
+    }));
     window.open('analyzer.html#analyze-html', '_blank');
     btn.classList.remove('active');
   } catch(e) {

@@ -133,6 +133,7 @@ responsive/
 scripts/
   build-screenshot-snippet.sh
   inject-proxy.sh
+  test-full-matrix.mjs
   test-presets-headless.mjs
 systems/
   apple-hig.md
@@ -349,6 +350,18 @@ Does this element use color to convey information?
       └─ Test with Chrome DevTools simulation (all 3 types)
 ```
 
+## Automated CVD Testing
+
+The [Design Analyzer](../docs/analyzer.html) includes automated CVD palette safety checking when using the **Color Blind** audience profile. It applies Machado et al. 2009 simulation matrices to all color pairs on the page and flags combinations that become indistinguishable (contrast ratio drops below 1.5:1) under protanopia, deuteranopia, or tritanopia simulation.
+
+**How it works:**
+1. Collects all foreground/background colors from the page
+2. Transforms each color through 3 CVD simulation matrices (3×3 linear transform in RGB space)
+3. Recalculates contrast ratio between each simulated pair
+4. Flags pairs where original contrast ≥2:1 but simulated contrast <1.5:1
+
+This catches issues that manual review misses — e.g., two colors that look distinct to typical vision but collapse to nearly identical shades under deuteranopia.
+
 ## Testing Tools
 
 - **Chrome DevTools** — Rendering tab → "Emulate vision deficiencies" → simulates protanopia, deuteranopia, tritanopia, achromatopsia
@@ -356,12 +369,14 @@ Does this element use color to convey information?
 - **Sim Daltonism** (macOS) — Real-time color blindness simulator overlay
 - **Color Oracle** (Windows/macOS/Linux) — System-wide CVD simulator
 - **Coblis** — https://www.color-blindness.com/coblis-color-blindness-simulator/ — upload screenshots
+- **[Design Analyzer](../docs/analyzer.html)** — Automated CVD palette simulation (Color Blind profile), checks all color pairs against 3 CVD types
 
 ## Sources
 - [WCAG 2.2 — Success Criterion 1.4.1 Use of Color](https://www.w3.org/WAI/WCAG22/Understanding/use-of-color)
 - [Okabe & Ito (2008) — Color Universal Design](https://jfly.uni-koeln.de/color/)
 - [Colour Blind Awareness — Types of Colour Blindness](https://www.colourblindawareness.org/colour-blindness/types-of-colour-blindness/)
 - [WebAIM — Visual Disabilities: Color-Blindness](https://webaim.org/articles/visual/colorblind)
+- [Machado, Oliveira, Fernandes (2009) — A Physiologically-based Model for Simulation of Color Vision Deficiency](https://www.inf.ufrgs.br/~oliveira/pubs_files/CVD_Simulation/CVD_Simulation.html)
 </file>
 
 <file path="color/color-psychology.md">
@@ -907,18 +922,38 @@ What type of element needs contrast checking?
    └─ No requirement
 ```
 
+## APCA — Advanced Perceptual Contrast Algorithm
+
+WCAG 2.x contrast ratios are a useful baseline, but APCA (Accessible Perceptual Contrast Algorithm) provides a more perceptually accurate model. Key differences:
+
+| Aspect | WCAG 2.x Ratio | APCA (Lc value) |
+|--------|----------------|-----------------|
+| Polarity | Symmetric (same ratio either way) | Asymmetric (dark-on-light ≠ light-on-dark) |
+| Scale | 1:1 to 21:1 | Lc 0 to ~±108 |
+| Font size/weight | Large text = one lower threshold | Continuous lookup table by size × weight |
+| Perception | Luminance-only | Better models human contrast sensitivity |
+
+**Practical use:** APCA is not yet a WCAG requirement (under development for WCAG 3.0/Silver). Use WCAG 2.x ratios as the compliance standard and APCA as a supplementary perceptual check. The [Design Analyzer](../docs/analyzer.html) reports both.
+
+- Lc 60+ → readable body text (equivalent to ~4.5:1 WCAG for typical sizes)
+- Lc 45+ → readable large/bold text
+- Lc 30+ → non-text UI elements
+
 ## Testing Tools
 - **Chrome DevTools** — Inspect element → color picker shows contrast ratio
 - **axe DevTools** — Browser extension, automated WCAG testing
 - **Lighthouse** — Built into Chrome, checks contrast in accessibility audit
 - **WebAIM Contrast Checker** — https://webaim.org/resources/contrastchecker/
 - **Colour Contrast Analyser** — Desktop app (TPGi), tests against WCAG 2.2
+- **[Design Analyzer](../docs/analyzer.html)** — Reports WCAG ratio + APCA Lc value, gradient/filter-aware, 8 audience profiles
 
 ## Sources
 - [WCAG 2.2 — Success Criterion 1.4.3 Contrast (Minimum)](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum)
 - [WCAG 2.2 — Success Criterion 1.4.6 Contrast (Enhanced)](https://www.w3.org/WAI/WCAG22/Understanding/contrast-enhanced)
 - [WCAG 2.2 — Success Criterion 1.4.11 Non-text Contrast](https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast)
 - [WebAIM — Contrast and Color Accessibility](https://webaim.org/articles/contrast/)
+- [APCA — Accessible Perceptual Contrast Algorithm](https://github.com/Myndex/SAPC-APCA)
+- [APCA Readability Criterion](https://readtech.org/ARC/)
 </file>
 
 <file path="components/buttons.md">
@@ -6942,15 +6977,29 @@ Does this element need a micro-interaction?
 }
 ```
 
+## Context-Aware Exceptions (WCAG 2.5.8)
+
+Not all interactive elements need the same target size. WCAG 2.5.8 defines exceptions based on context:
+
+| Context | Rule | Rationale |
+|---------|------|-----------|
+| **Inline text links** (inside `<p>`, `<blockquote>`, etc.) | Exempt from target size requirements | Users expect paragraph links to be text-sized; enlarging would break reading flow |
+| **Navigation links** | Must meet full target size | Navigation is high-frequency, critical interaction |
+| **Footer links** | Relaxed but not zero — 16px desktop / 24px mobile minimum | Footer links are low-frequency; overly strict sizing is impractical |
+| **Buttons / styled links** | Must meet full target size | Button-styled elements signal "click me" and need adequate sizing |
+
+The [Design Analyzer](../docs/analyzer.html) automatically classifies interactive elements by DOM ancestry (nav, footer, inline paragraph, button-styled) and applies appropriate severity levels.
+
 ## Common Mistakes
 
 1. **Relying on icon size as target size** — a 24px icon with no padding has a 24px target. Users will mis-tap constantly. Always pad to at least 44px.
 2. **Forgetting spacing between targets** — two 48px buttons touching each other effectively merge into one confusing zone. Add 8px+ gap.
 3. **Desktop-only testing** — targets that work fine with a mouse fail on tablets. Use `@media (pointer: coarse)` to detect touch devices and increase sizes.
-4. **Text links in body copy** — short links like "here" can be tiny targets. Ensure link text is descriptive and padding makes the target at least 44px tall.
+4. **Text links in body copy** — short links like "here" can be tiny targets. Ensure link text is descriptive and padding makes the target at least 44px tall. Note: inline text links in paragraphs are exempt from WCAG 2.5.8 target size requirements, but padding still improves usability.
 5. **Fixed headers with tiny buttons** — hamburger menus, close buttons, and back arrows in headers are frequent offenders. These are high-frequency targets — make them generously sized.
 6. **Overlapping hit areas** — using negative margins or absolute positioning can cause targets to overlap. Test by outlining all interactive elements.
 7. **Ignoring the thumb zone** — placing the most important action in the top-right corner of a mobile screen makes it the hardest to reach. Primary actions belong at the bottom.
+8. **Treating all links equally** — footer links, inline text links, and navigation links have different sizing expectations. Applying strict 44px minimums to footer text links creates unnecessary noise.
 
 ## Decision Tree
 
@@ -7842,6 +7891,10 @@ All sources used to build this knowledge base, organized by topic area.
 | WebAIM Contrast Checker | https://webaim.org/resources/contrastchecker/ | Contrast testing tool | 2026-03-17 |
 | MD3 — Color Overview | https://m3.material.io/styles/color/overview | HCT color space, dynamic color | 2026-03-17 |
 | MD3 — Key Colors & Tones | https://m3.material.io/styles/color/the-color-system/key-colors-tones | 5 key colors, 13 tonal stops, role mapping | 2026-03-17 |
+| APCA — Accessible Perceptual Contrast Algorithm | https://github.com/Myndex/SAPC-APCA | APCA-W3 perceptual contrast, Lc values, polarity-aware | 2026-03-20 |
+| Somers (Myndex) — APCA Documentation | https://readtech.org/ARC/ | APCA Readability Criterion, font size/weight thresholds | 2026-03-20 |
+| Machado, Oliveira, Fernandes (2009) — CVD Simulation | https://www.inf.ufrgs.br/~oliveira/pubs_files/CVD_Simulation/CVD_Simulation.html | Physiologically-based CVD simulation matrices (protanopia, deuteranopia, tritanopia) | 2026-03-20 |
+| WCAG 2.2 §1.4.1 — Use of Color | https://www.w3.org/TR/WCAG22/#use-of-color | Color as sole indicator, CVD safety | 2026-03-20 |
 | Radix Colors | https://www.radix-ui.com/colors | Accessible color scale reference | Reference |
 | Open Color | https://yeun.github.io/open-color/ | Open-source color scheme | Reference |
 
@@ -7872,6 +7925,7 @@ All sources used to build this knowledge base, organized by topic area.
 | web.dev — Animations & Performance | https://web.dev/animations-guide/ | GPU-accelerated properties, jank | 2026-03-17 |
 | MDN — prefers-reduced-motion | https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-reduced-motion | Accessibility media query | 2026-03-17 |
 | NNg — Response Times: 3 Important Limits | https://www.nngroup.com/articles/response-times-3-important-limits/ | 100ms/1s/10s thresholds | 2026-03-17 |
+| NNg — Animation Usability | https://www.nngroup.com/articles/animation-usability/ | Animation duration limits, 500ms max perceived threshold | 2026-03-20 |
 | Google — RAIL Performance Model | https://web.dev/articles/rail | Response, Animation, Idle, Load budgets | 2026-03-17 |
 | MD3 — Progress Indicators | https://m3.material.io/components/progress-indicators/overview | Determinate vs indeterminate | 2026-03-17 |
 | MD3 — Interaction States | https://m3.material.io/foundations/interaction/states/overview | Hover, focus, active, dragged states | 2026-03-17 |
@@ -8899,6 +8953,692 @@ Choosing a responsive pattern?
 - CSS-Tricks — "A Complete Guide to CSS Grid": https://css-tricks.com/snippets/css/complete-guide-grid/
 - MDN Web Docs — CSS Grid Layout: https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_grid_layout
 - Ethan Marcotte (2011). "Responsive Web Design." A Book Apart.
+</file>
+
+<file path="scripts/test-full-matrix.mjs">
+#!/usr/bin/env node
+// Full matrix test runner: preset × personality × effect × viewport × dark mode
+// Usage: node scripts/test-full-matrix.mjs [--quick] [--filter=hero] [--effects-only] [--divergence-only]
+//
+// --quick: skip viewports (test only 1280px), skip dark mode → 650 tests instead of 3900
+// --filter=hero: only test presets matching "hero"
+// --effects-only: only test effect variants (skip viewport/dark combos)
+// --divergence-only: skip scoring, only compute divergence from cached results
+//
+// Outputs: research/full-matrix-results.md (scores + divergence + flagged combos)
+
+import puppeteer from 'puppeteer';
+import { createServer } from 'http';
+import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from 'fs';
+import { join, extname } from 'path';
+
+const DOCS_DIR = join(import.meta.dirname, '..', 'docs');
+const RESEARCH_DIR = join(import.meta.dirname, '..', 'research');
+const CACHE_FILE = join(RESEARCH_DIR, 'full-matrix-cache.json');
+const PORT = 8766; // different from basic test runner
+
+const args = process.argv.slice(2);
+const QUICK = args.includes('--quick');
+const EFFECTS_ONLY = args.includes('--effects-only');
+const DIVERGENCE_ONLY = args.includes('--divergence-only');
+const FILTER = (args.find(a => a.startsWith('--filter=')) || '').replace('--filter=', '');
+
+// --- Effect definitions (must match docs/app.js visualStyles) ---
+const EFFECTS = [
+  { name: 'none', css: '' },
+  { name: 'hushed', css: `[class*="shadow"]{box-shadow:none!important}
+[class*="border"]{border-color:rgba(0,0,0,0.06)!important}
+[class*="rounded-lg"],[class*="rounded-xl"],[class*="rounded-2xl"],[class*="rounded-3xl"]{border-radius:4px!important}
+[class*="rounded-full"]{border-radius:9999px!important}
+h1,h2,h3,h4,h5,h6{font-weight:300!important;letter-spacing:0.02em}
+h1{font-size:2.25em!important}
+p,span,li,td,th{opacity:0.75}
+button:not([class*="bg-"]),[role="button"]:not([class*="bg-"]){font-weight:400!important;letter-spacing:0.06em;text-transform:uppercase;font-size:0.82em!important;border:1px solid rgba(0,0,0,0.1)!important;background:transparent!important;color:inherit!important}
+button[class*="bg-"],[role="button"][class*="bg-"]{font-weight:400!important;letter-spacing:0.06em;text-transform:uppercase;font-size:0.82em!important;opacity:0.85}
+button:hover,a:hover,[role="button"]:hover{opacity:0.5;transition:opacity 250ms ease-out}
+nav,aside,[class*="border-b"],[class*="border-r"]{border-color:rgba(0,0,0,0.04)!important}` },
+  { name: 'bouncy', css: `[class*="rounded-md"],[class*="rounded-lg"]{border-radius:16px!important}
+[class*="rounded-xl"],[class*="rounded-2xl"],[class*="rounded-3xl"]{border-radius:24px!important}
+[class*="shadow-sm"],[class*="shadow-md"]{box-shadow:0 4px 14px rgba(99,102,241,0.18),0 2px 6px rgba(244,63,94,0.12)!important}
+[class*="shadow-lg"],[class*="shadow-xl"]{box-shadow:0 10px 30px rgba(99,102,241,0.22),0 4px 12px rgba(244,63,94,0.14)!important}
+button,[role="button"],article{transition:transform 300ms cubic-bezier(0.34,1.56,0.64,1),box-shadow 300ms cubic-bezier(0.34,1.56,0.64,1)!important}
+button:hover,[role="button"]:hover{transform:scale(1.05) translateY(-2px)!important}
+article:hover{transform:translateY(-4px);box-shadow:0 12px 30px rgba(99,102,241,0.2)!important}
+h1,h2,h3{font-weight:800!important;letter-spacing:-0.01em}
+input,select,textarea{border-radius:14px!important}
+button:active,[role="button"]:active{transform:scale(0.95)!important;transition-duration:80ms!important}` },
+  { name: 'frosted', css: `body{background:linear-gradient(135deg,#dbeafe 0%,#ede9fe 35%,#fce7f3 65%,#e0f2fe 100%)!important;min-height:100vh}
+[class*="bg-white"]{background:rgba(255,255,255,0.55)!important;-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);border:1px solid rgba(255,255,255,0.4)!important;box-shadow:0 4px 24px rgba(0,0,0,0.04),inset 0 1px 0 rgba(255,255,255,0.6)!important}
+[class*="bg-slate-50"],[class*="bg-gray-50"],[class*="bg-zinc-50"]{background:rgba(248,250,252,0.4)!important;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+[class*="shadow-sm"],[class*="shadow-md"],[class*="shadow-lg"],[class*="shadow-xl"]{box-shadow:0 4px 20px rgba(0,0,0,0.05),inset 0 1px 0 rgba(255,255,255,0.5)!important}
+[class*="rounded-lg"]{border-radius:14px!important}
+[class*="rounded-xl"],[class*="rounded-2xl"]{border-radius:18px!important}
+[class*="border-slate-200"],[class*="border-gray-200"],[class*="border-zinc-200"]{border-color:rgba(255,255,255,0.35)!important}
+[class*="divide-slate"],[class*="divide-gray"],[class*="divide-zinc"]{--tw-divide-opacity:0.3}
+[class*="border-t"]:not([class*="border-t-0"]){border-color:rgba(100,116,139,0.2)!important}
+[class*="text-slate-500"],[class*="text-gray-500"],[class*="text-zinc-500"]{color:rgb(51,65,85)!important}
+[class*="text-slate-400"],[class*="text-gray-400"]{color:rgb(71,85,105)!important}
+input,select,textarea{background:rgba(255,255,255,0.45)!important;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.4)!important;border-radius:12px!important}
+button:hover,[role="button"]:hover{box-shadow:0 0 24px rgba(99,102,241,0.18),0 6px 20px rgba(0,0,0,0.06)!important;transition:box-shadow 250ms ease-out,transform 250ms ease-out;transform:translateY(-1px)}
+nav,aside,header{-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);background:rgba(255,255,255,0.65)!important}` },
+  { name: 'serif', css: `@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap');
+h1,h2,h3,h4,h5,h6{font-family:'Playfair Display',Georgia,'Times New Roman',serif!important;letter-spacing:-0.02em;line-height:1.15}
+h1{font-weight:400!important;font-size:2.75em!important;letter-spacing:-0.03em}
+h2{font-weight:700!important}
+h3,h4,h5,h6{font-weight:700!important}
+[class*="shadow"]{box-shadow:none!important}
+[class*="border"]{border-color:#e2e8f0!important}
+[class*="rounded-lg"],[class*="rounded-xl"],[class*="rounded-2xl"],[class*="rounded-3xl"],[class*="rounded-md"]{border-radius:2px!important}
+button,[role="button"]{font-weight:400!important;letter-spacing:0.1em;text-transform:uppercase;font-size:0.78em!important;border-radius:1px!important;padding-top:0.75rem!important;padding-bottom:0.75rem!important}
+a:hover{text-decoration:underline!important;text-underline-offset:4px;text-decoration-thickness:1px}
+button:hover,[role="button"]:hover{opacity:0.75;transition:opacity 200ms ease}
+p{line-height:1.75!important}
+body{letter-spacing:0.005em}
+[class*="bg-blue-600"],[class*="bg-indigo-600"],[class*="bg-violet-600"],[class*="bg-teal-600"],[class*="bg-emerald-600"],[class*="bg-rose-600"],[class*="bg-orange-600"],[class*="bg-fuchsia-600"]{background-color:#334155!important}
+[class*="bg-blue-600"]:hover,[class*="bg-indigo-600"]:hover,[class*="bg-violet-600"]:hover,[class*="bg-teal-600"]:hover,[class*="bg-emerald-600"]:hover{background-color:#1e293b!important}
+input,select,textarea{border-radius:1px!important}` },
+];
+
+const VIEWPORTS = QUICK ? [{ w: 1280, h: 900 }] : [
+  { w: 375, h: 812 },
+  { w: 768, h: 1024 },
+  { w: 1280, h: 900 },
+];
+
+const DARK_MODES = QUICK ? [false] : [false, true];
+
+// --- Server ---
+function startServer() {
+  const mimeTypes = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2' };
+  const server = createServer((req, res) => {
+    let filePath = join(DOCS_DIR, req.url === '/' ? 'index.html' : req.url);
+    if (!existsSync(filePath)) { res.writeHead(404); res.end('Not found'); return; }
+    const ext = extname(filePath);
+    res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' });
+    res.end(readFileSync(filePath));
+  });
+  server.listen(PORT);
+  return server;
+}
+
+// --- Build test matrix ---
+function buildTests() {
+  const manifest = JSON.parse(readFileSync(join(DOCS_DIR, 'presets', 'index.json'), 'utf8'));
+  const tests = [];
+
+  for (const [el, info] of Object.entries(manifest.elements)) {
+    if (FILTER && !el.includes(FILTER)) continue;
+    const personalities = Object.keys(info.personalities || {});
+    for (const pers of personalities) {
+      const file = join(DOCS_DIR, 'presets', el, pers + '.html');
+      if (!existsSync(file)) continue;
+
+      for (const effect of EFFECTS) {
+        if (EFFECTS_ONLY) {
+          // Only test at 1280, no dark mode for effects-only
+          tests.push({ element: el, personality: pers, effect: effect.name, effectCSS: effect.css, viewport: { w: 1280, h: 900 }, dark: false });
+        } else {
+          for (const vp of VIEWPORTS) {
+            for (const dark of DARK_MODES) {
+              tests.push({ element: el, personality: pers, effect: effect.name, effectCSS: effect.css, viewport: vp, dark });
+            }
+          }
+        }
+      }
+    }
+  }
+  return tests;
+}
+
+function testKey(t) {
+  return `${t.element}/${t.personality}|${t.effect}|${t.viewport.w}|${t.dark ? 'dark' : 'light'}`;
+}
+
+// --- Run a single test ---
+async function runTest(page, t) {
+  const html = readFileSync(join(DOCS_DIR, 'presets', t.element, t.personality + '.html'), 'utf8');
+
+  await page.setViewport({ width: t.viewport.w, height: t.viewport.h });
+  await page.goto(`http://localhost:${PORT}/tests/test-presets-rendered.html`, { waitUntil: 'networkidle0', timeout: 15000 });
+
+  const result = await page.evaluate(async (html, element, personality, effectCSS, dark, vpWidth) => {
+    return new Promise((resolve) => {
+      const iframe = document.createElement('iframe');
+      iframe.style.cssText = `position:fixed;top:-9999px;left:-9999px;width:${vpWidth}px;height:900px;border:none;`;
+      iframe.sandbox = 'allow-scripts allow-same-origin';
+      document.body.appendChild(iframe);
+
+      let handled = false;
+      function onMsg(e) {
+        if (!e.data || e.data.type !== 'milg-headless-result') return;
+        if (handled) return;
+        handled = true;
+        window.removeEventListener('message', onMsg);
+        if (iframe.parentNode) document.body.removeChild(iframe);
+
+        const data = e.data.data;
+        data.profile = 'general';
+        data.meta.isFragment = true;
+        data.meta.url = element + '/' + personality;
+        try {
+          const report = window.MilgScoring.runScoring(data);
+          resolve({
+            overall: report.overall,
+            grade: report.grade,
+            categories: report.categories.map(c => ({
+              label: c.label,
+              score: c.score,
+              na: !!c.notApplicable,
+              errors: c.findings.filter(f => f.severity === 'error').length,
+              warnings: c.findings.filter(f => f.severity === 'warning').length,
+              infos: c.findings.filter(f => f.severity === 'info').length,
+              findings: c.findings.map(f => ({ severity: f.severity, title: f.title }))
+            })),
+            // Capture raw metrics for divergence analysis
+            metrics: {
+              contrastPairs: (data.colors && data.colors.contrastPairs) ? data.colors.contrastPairs.length : 0,
+              fontSizes: data.typography ? Object.keys(data.typography.fontSizes || {}).length : 0,
+              borderRadii: data.spacing ? Object.keys(data.spacing.borderRadii || {}).length : 0,
+              touchTargets: (data.interaction && data.interaction.touchTargets) ? data.interaction.touchTargets.length : 0,
+              headingCount: data.structure ? (data.structure.headingCount || 0) : 0,
+              totalElements: data.structure ? (data.structure.totalElements || 0) : 0,
+              colors: data.colors ? Object.keys(data.colors.textColors || {}).length : 0,
+              bgColors: data.colors ? Object.keys(data.colors.backgroundColors || {}).length : 0,
+            }
+          });
+        } catch(err) {
+          resolve({ error: err.message });
+        }
+      }
+      window.addEventListener('message', onMsg);
+
+      fetch('/analyzer.js').then(r => r.text()).then(code => {
+        const match = code.match(/function extractFromDocument\(\)\s*\{/);
+        if (!match) { resolve({ error: 'No extractFromDocument' }); return; }
+        const start = code.indexOf(match[0]);
+        let depth = 0, end = start;
+        for (let i = start; i < code.length; i++) {
+          if (code[i] === '{') depth++;
+          if (code[i] === '}') { depth--; if (depth === 0) { end = i + 1; break; } }
+        }
+        const extractFn = code.substring(start, end).replace(/milg-analyzer-result/g, 'milg-headless-result');
+
+        const darkClass = dark ? ' class="dark"' : '';
+        const darkVariantCSS = '@custom-variant dark (&:where(.dark, .dark *));';
+        const srcdoc = '<!DOCTYPE html><html lang="en"' + darkClass + '><head><meta charset="UTF-8">' +
+          '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+          '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
+          (dark ? '<style type="text/tailwindcss">' + darkVariantCSS + '</style>' : '') +
+          (effectCSS ? '<style>' + effectCSS + '</style>' : '') +
+          '<style>body{margin:0}</style></head><body>' +
+          '<script>window.__milgIsFragment=true;</' + 'script>' +
+          html +
+          '<script>setTimeout(function(){(' + extractFn + ')()}, 2500);</' + 'script>' +
+          '</body></html>';
+        iframe.srcdoc = srcdoc;
+      });
+
+      setTimeout(() => {
+        if (handled) return;
+        handled = true;
+        window.removeEventListener('message', onMsg);
+        if (iframe.parentNode) document.body.removeChild(iframe);
+        resolve({ error: 'Timeout' });
+      }, 15000);
+    });
+  }, html, t.element, t.personality, t.effectCSS, t.dark, t.viewport.w);
+
+  return result;
+}
+
+// --- Divergence scoring ---
+// Compares two test results to measure how different they are (0 = identical, 100 = completely different)
+function divergenceScore(a, b) {
+  if (!a || !b || a.error || b.error) return null;
+
+  let totalDiff = 0;
+  let comparisons = 0;
+
+  // 1. Overall score difference (weight: 3)
+  totalDiff += Math.abs(a.overall - b.overall) * 3;
+  comparisons += 3;
+
+  // 2. Per-category score differences (weight: 1 each)
+  const aCats = {};
+  const bCats = {};
+  (a.categories || []).forEach(c => { aCats[c.label] = c; });
+  (b.categories || []).forEach(c => { bCats[c.label] = c; });
+
+  for (const label of Object.keys(aCats)) {
+    if (bCats[label]) {
+      // Normalize score diff to 0-100
+      totalDiff += Math.abs((aCats[label].score || 0) - (bCats[label].score || 0));
+      comparisons++;
+
+      // Finding count differences
+      const aFindings = (aCats[label].errors || 0) + (aCats[label].warnings || 0);
+      const bFindings = (bCats[label].errors || 0) + (bCats[label].warnings || 0);
+      totalDiff += Math.min(100, Math.abs(aFindings - bFindings) * 15);
+      comparisons++;
+    }
+  }
+
+  // 3. Metric differences (structural signals)
+  if (a.metrics && b.metrics) {
+    const metricKeys = ['contrastPairs', 'fontSizes', 'borderRadii', 'touchTargets', 'colors', 'bgColors'];
+    for (const k of metricKeys) {
+      const av = a.metrics[k] || 0;
+      const bv = b.metrics[k] || 0;
+      const maxVal = Math.max(av, bv, 1);
+      totalDiff += (Math.abs(av - bv) / maxVal) * 100;
+      comparisons++;
+    }
+  }
+
+  return comparisons > 0 ? Math.round(totalDiff / comparisons) : 0;
+}
+
+// --- Report generation ---
+function generateReport(results, tests) {
+  const resultMap = {};
+  for (const r of results) {
+    resultMap[r.key] = r;
+  }
+
+  let md = '# Full Matrix Test Results\n\n';
+  md += `**Date:** ${new Date().toISOString()}\n`;
+  md += `**Tests run:** ${results.length} | **Errors:** ${results.filter(r => r.error).length}\n`;
+  md += `**Matrix:** ${new Set(results.map(r => r.element + '/' + r.personality)).size} presets × ${EFFECTS.length} effects × ${VIEWPORTS.length} viewports × ${DARK_MODES.length} dark modes\n\n`;
+
+  const ok = results.filter(r => !r.error);
+  if (ok.length === 0) { return md + 'No successful results.\n'; }
+
+  const avg = Math.round(ok.reduce((s, r) => s + r.overall, 0) / ok.length);
+  const min = Math.min(...ok.map(r => r.overall));
+  const max = Math.max(...ok.map(r => r.overall));
+  md += `**Overall:** avg=${avg} min=${min} max=${max}\n\n`;
+
+  // === Section 1: Effect impact summary ===
+  md += '## 1. Effect Impact Summary\n\n';
+  md += 'Average score by effect (across all presets, viewports, dark modes):\n\n';
+  md += '| Effect | Avg Score | Min | Max | Avg Errors | Avg Warnings |\n';
+  md += '|--------|-----------|-----|-----|------------|-------------|\n';
+  for (const effect of EFFECTS) {
+    const effResults = ok.filter(r => r.effect === effect.name);
+    if (effResults.length === 0) continue;
+    const eAvg = Math.round(effResults.reduce((s, r) => s + r.overall, 0) / effResults.length);
+    const eMin = Math.min(...effResults.map(r => r.overall));
+    const eMax = Math.max(...effResults.map(r => r.overall));
+    const eErr = (effResults.reduce((s, r) => s + r.categories.reduce((cs, c) => cs + c.errors, 0), 0) / effResults.length).toFixed(1);
+    const eWarn = (effResults.reduce((s, r) => s + r.categories.reduce((cs, c) => cs + c.warnings, 0), 0) / effResults.length).toFixed(1);
+    md += `| ${effect.name} | ${eAvg} | ${eMin} | ${eMax} | ${eErr} | ${eWarn} |\n`;
+  }
+
+  // === Section 2: Dark mode impact ===
+  if (DARK_MODES.length > 1) {
+    md += '\n## 2. Dark Mode Impact\n\n';
+    md += '| Preset | Light Score | Dark Score | Delta | Worse Categories |\n';
+    md += '|--------|------------ |------------|-------|-------------------|\n';
+
+    const presets = [...new Set(ok.map(r => r.element + '/' + r.personality))];
+    const darkIssues = [];
+    for (const preset of presets) {
+      // Compare none effect, 1280px, light vs dark
+      const lightKey = `${preset}|none|1280|light`;
+      const darkKey = `${preset}|none|1280|dark`;
+      const light = resultMap[lightKey];
+      const dark = resultMap[darkKey];
+      if (!light || !dark || light.error || dark.error) continue;
+
+      const delta = dark.overall - light.overall;
+      let worse = [];
+      for (let i = 0; i < (light.categories || []).length; i++) {
+        const lc = light.categories[i];
+        const dc = dark.categories[i];
+        if (dc && lc && dc.score < lc.score - 5) {
+          worse.push(`${lc.label} (${lc.score}→${dc.score})`);
+        }
+      }
+
+      if (delta < -5 || worse.length > 0) {
+        darkIssues.push({ preset, light: light.overall, dark: dark.overall, delta, worse });
+        md += `| ${preset} | ${light.overall} | ${dark.overall} | ${delta >= 0 ? '+' : ''}${delta} | ${worse.join(', ') || '—'} |\n`;
+      }
+    }
+    if (darkIssues.length === 0) md += '| (no significant dark mode regressions) | | | | |\n';
+  }
+
+  // === Section 3: Viewport responsiveness ===
+  if (VIEWPORTS.length > 1) {
+    md += '\n## 3. Viewport Responsiveness\n\n';
+    md += '| Preset | 375px | 768px | 1280px | Mobile Delta |\n';
+    md += '|--------|-------|-------|--------|-------------|\n';
+
+    const presets = [...new Set(ok.map(r => r.element + '/' + r.personality))];
+    const vpIssues = [];
+    for (const preset of presets) {
+      const scores = {};
+      for (const vp of VIEWPORTS) {
+        const key = `${preset}|none|${vp.w}|light`;
+        const r = resultMap[key];
+        if (r && !r.error) scores[vp.w] = r.overall;
+      }
+      if (Object.keys(scores).length < VIEWPORTS.length) continue;
+
+      const mobileDelta = (scores[375] || 0) - (scores[1280] || 0);
+      if (Math.abs(mobileDelta) > 5 || (scores[375] || 100) < 70) {
+        vpIssues.push({ preset, scores, mobileDelta });
+        md += `| ${preset} | ${scores[375] ?? '—'} | ${scores[768] ?? '—'} | ${scores[1280] ?? '—'} | ${mobileDelta >= 0 ? '+' : ''}${mobileDelta} |\n`;
+      }
+    }
+    if (vpIssues.length === 0) md += '| (no significant viewport regressions) | | | | |\n';
+  }
+
+  // === Section 4: Frosted + dark mode (known problem combo) ===
+  md += '\n## 4. Frosted Effect Analysis\n\n';
+  md += 'Frosted is the most invasive effect (replaces backgrounds, adds glassmorphism). Checking for issues:\n\n';
+  md += '| Preset | None Score | Frosted Score | Delta | Frosted+Dark | Dark Delta | Key Issues |\n';
+  md += '|--------|-----------|---------------|-------|-------------|------------|------------|\n';
+
+  const presets = [...new Set(ok.map(r => r.element + '/' + r.personality))];
+  for (const preset of presets) {
+    const noneKey = `${preset}|none|1280|light`;
+    const frostedKey = `${preset}|frosted|1280|light`;
+    const frostedDarkKey = `${preset}|frosted|1280|dark`;
+    const none = resultMap[noneKey];
+    const frosted = resultMap[frostedKey];
+    const frostedDark = resultMap[frostedDarkKey];
+
+    if (!none || none.error || !frosted || frosted.error) continue;
+
+    const delta = frosted.overall - none.overall;
+    const darkScore = frostedDark && !frostedDark.error ? frostedDark.overall : '—';
+    const darkDelta = frostedDark && !frostedDark.error ? frostedDark.overall - frosted.overall : '—';
+
+    // Collect key issues from frosted
+    const issues = [];
+    for (const c of frosted.categories) {
+      if (c.errors > 0) {
+        const titles = c.findings.filter(f => f.severity === 'error').map(f => f.title.substring(0, 50));
+        issues.push(...titles.slice(0, 2));
+      }
+    }
+
+    if (delta < -3 || (typeof darkDelta === 'number' && darkDelta < -3) || issues.length > 0) {
+      md += `| ${preset} | ${none.overall} | ${frosted.overall} | ${delta >= 0 ? '+' : ''}${delta} | ${darkScore} | ${typeof darkDelta === 'number' ? (darkDelta >= 0 ? '+' : '') + darkDelta : '—'} | ${issues.slice(0, 2).join('; ') || '—'} |\n`;
+    }
+  }
+
+  // === Section 5: Divergence analysis — are variants meaningfully different? ===
+  md += '\n## 5. Variant Divergence Analysis\n\n';
+  md += 'How different is each variant from "none" effect? Low divergence (< 5) = variant adds negligible value.\n\n';
+
+  // 5a. Effect divergence per preset (at 1280px, light)
+  md += '### 5a. Effect Divergence (per preset, 1280px light)\n\n';
+  md += '| Preset | Hushed | Bouncy | Frosted | Serif | Avg |\n';
+  md += '|--------|--------|--------|---------|-------|-----|\n';
+
+  const lowDivergence = [];
+  for (const preset of presets) {
+    const baseKey = `${preset}|none|1280|light`;
+    const base = resultMap[baseKey];
+    if (!base || base.error) continue;
+
+    const divs = {};
+    let total = 0;
+    let count = 0;
+    for (const eff of EFFECTS.slice(1)) { // skip "none"
+      const key = `${preset}|${eff.name}|1280|light`;
+      const r = resultMap[key];
+      const d = divergenceScore(base, r);
+      divs[eff.name] = d;
+      if (d !== null) { total += d; count++; }
+    }
+    const avgDiv = count > 0 ? Math.round(total / count) : 0;
+
+    md += `| ${preset} | ${divs.hushed ?? '—'} | ${divs.bouncy ?? '—'} | ${divs.frosted ?? '—'} | ${divs.serif ?? '—'} | ${avgDiv} |\n`;
+
+    // Flag low divergence
+    for (const [eff, d] of Object.entries(divs)) {
+      if (d !== null && d < 5) {
+        lowDivergence.push({ preset, effect: eff, divergence: d });
+      }
+    }
+  }
+
+  // 5b. Personality divergence (do clean/minimalist/playful actually differ?)
+  md += '\n### 5b. Personality Divergence (same element, none effect, 1280px light)\n\n';
+  md += 'Low divergence = personalities are too similar. Should be > 10 for meaningful differentiation.\n\n';
+  md += '| Element | Clean vs Min | Clean vs Play | Min vs Play | Clean vs Edit | Avg |\n';
+  md += '|---------|-------------|---------------|-------------|--------------|-----|\n';
+
+  const elements = [...new Set(ok.map(r => r.element))];
+  const lowPersDiv = [];
+  for (const el of elements) {
+    const getR = (p) => resultMap[`${el}/${p}|none|1280|light`];
+    const clean = getR('clean');
+    const min = getR('minimalist');
+    const play = getR('playful');
+    const edit = getR('editorial');
+
+    if (!clean || clean.error) continue;
+
+    const cmDiv = divergenceScore(clean, min);
+    const cpDiv = divergenceScore(clean, play);
+    const mpDiv = divergenceScore(min, play);
+    const ceDiv = divergenceScore(clean, edit);
+
+    const vals = [cmDiv, cpDiv, mpDiv, ceDiv].filter(v => v !== null);
+    const avgDiv = vals.length > 0 ? Math.round(vals.reduce((a, b) => a + b) / vals.length) : 0;
+
+    md += `| ${el} | ${cmDiv ?? '—'} | ${cpDiv ?? '—'} | ${mpDiv ?? '—'} | ${ceDiv ?? '—'} | ${avgDiv} |\n`;
+
+    if (cmDiv !== null && cmDiv < 5) lowPersDiv.push({ element: el, pair: 'clean/minimalist', divergence: cmDiv });
+    if (cpDiv !== null && cpDiv < 5) lowPersDiv.push({ element: el, pair: 'clean/playful', divergence: cpDiv });
+    if (mpDiv !== null && mpDiv < 5) lowPersDiv.push({ element: el, pair: 'minimalist/playful', divergence: mpDiv });
+  }
+
+  // === Section 6: Flagged combinations ===
+  md += '\n## 6. Flagged Combinations\n\n';
+
+  // 6a. Worst scores overall
+  md += '### 6a. Worst Scores (bottom 20)\n\n';
+  md += '| Combo | Score | Grade | Errors | Warnings |\n';
+  md += '|-------|-------|-------|--------|----------|\n';
+  const sorted = ok.sort((a, b) => a.overall - b.overall);
+  for (const r of sorted.slice(0, 20)) {
+    const errs = r.categories.reduce((s, c) => s + c.errors, 0);
+    const warns = r.categories.reduce((s, c) => s + c.warnings, 0);
+    md += `| ${r.key} | ${r.overall} | ${r.grade} | ${errs} | ${warns} |\n`;
+  }
+
+  // 6b. Low divergence (unnecessary variants)
+  md += '\n### 6b. Low Effect Divergence (< 5 — may be unnecessary)\n\n';
+  if (lowDivergence.length > 0) {
+    md += '| Preset | Effect | Divergence |\n';
+    md += '|--------|--------|------------|\n';
+    lowDivergence.sort((a, b) => a.divergence - b.divergence);
+    for (const ld of lowDivergence) {
+      md += `| ${ld.preset} | ${ld.effect} | ${ld.divergence} |\n`;
+    }
+  } else {
+    md += 'None — all effects produce meaningful differentiation.\n';
+  }
+
+  md += '\n### 6c. Low Personality Divergence (< 5 — personalities too similar)\n\n';
+  if (lowPersDiv.length > 0) {
+    md += '| Element | Pair | Divergence |\n';
+    md += '|---------|------|------------|\n';
+    lowPersDiv.sort((a, b) => a.divergence - b.divergence);
+    for (const ld of lowPersDiv) {
+      md += `| ${ld.element} | ${ld.pair} | ${ld.divergence} |\n`;
+    }
+  } else {
+    md += 'None — all personalities produce meaningful differentiation.\n';
+  }
+
+  // 6d. Effect regressions (effect makes things worse by >10 points)
+  md += '\n### 6d. Effect Regressions (score drops > 10 points vs none)\n\n';
+  md += '| Preset | Effect | None Score | Effect Score | Delta |\n';
+  md += '|--------|--------|------------|-------------|-------|\n';
+  let regressionCount = 0;
+  for (const preset of presets) {
+    const baseKey = `${preset}|none|1280|light`;
+    const base = resultMap[baseKey];
+    if (!base || base.error) continue;
+
+    for (const eff of EFFECTS.slice(1)) {
+      const key = `${preset}|${eff.name}|1280|light`;
+      const r = resultMap[key];
+      if (!r || r.error) continue;
+      const delta = r.overall - base.overall;
+      if (delta < -10) {
+        md += `| ${preset} | ${eff.name} | ${base.overall} | ${r.overall} | ${delta} |\n`;
+        regressionCount++;
+      }
+    }
+  }
+  if (regressionCount === 0) md += '| (no regressions > 10 points) | | | | |\n';
+
+  // === Section 7: Most common issues by effect ===
+  md += '\n## 7. Most Common Issues by Effect\n\n';
+  for (const effect of EFFECTS) {
+    const effResults = ok.filter(r => r.effect === effect.name);
+    if (effResults.length === 0) continue;
+
+    md += `### ${effect.name} (${effResults.length} tests)\n\n`;
+    const issueCounts = {};
+    for (const r of effResults) {
+      for (const c of r.categories) {
+        for (const f of c.findings) {
+          if (f.severity === 'info') continue; // skip info
+          const key = `[${f.severity}] ${c.label}: ${f.title.substring(0, 80)}`;
+          issueCounts[key] = (issueCounts[key] || 0) + 1;
+        }
+      }
+    }
+    const sortedIssues = Object.entries(issueCounts).sort((a, b) => b[1] - a[1]);
+    for (const [issue, count] of sortedIssues.slice(0, 10)) {
+      const pct = Math.round(count / effResults.length * 100);
+      md += `- **${count}x** (${pct}%) ${issue}\n`;
+    }
+    md += '\n';
+  }
+
+  return md;
+}
+
+// --- Main ---
+async function main() {
+  const tests = buildTests();
+  console.log(`Full matrix: ${tests.length} test combinations`);
+  console.log(`  Presets: ${new Set(tests.map(t => t.element + '/' + t.personality)).size}`);
+  console.log(`  Effects: ${EFFECTS.length} (${EFFECTS.map(e => e.name).join(', ')})`);
+  console.log(`  Viewports: ${VIEWPORTS.map(v => v.w + 'px').join(', ')}`);
+  console.log(`  Dark modes: ${DARK_MODES.map(d => d ? 'dark' : 'light').join(', ')}`);
+  console.log();
+
+  if (DIVERGENCE_ONLY) {
+    if (!existsSync(CACHE_FILE)) {
+      console.error('No cache file found. Run the full test first.');
+      process.exit(1);
+    }
+    const cached = JSON.parse(readFileSync(CACHE_FILE, 'utf8'));
+    const md = generateReport(cached, tests);
+    const outFile = join(RESEARCH_DIR, 'full-matrix-results.md');
+    writeFileSync(outFile, md);
+    console.log(`Report written to: ${outFile}`);
+    return;
+  }
+
+  const server = startServer();
+  console.log(`Server on port ${PORT}`);
+
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage']
+  });
+
+  // Use multiple pages for parallelism (3 concurrent)
+  const CONCURRENCY = 3;
+  const pages = [];
+  for (let i = 0; i < CONCURRENCY; i++) {
+    pages.push(await browser.newPage());
+  }
+
+  const results = [];
+  let completed = 0;
+  const startTime = Date.now();
+
+  // Process tests in batches
+  async function processTest(page, t) {
+    const key = testKey(t);
+    try {
+      const result = await runTest(page, t);
+      completed++;
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
+      const eta = Math.round((Date.now() - startTime) / completed * (tests.length - completed) / 1000);
+
+      if (result.error) {
+        process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s (ETA ${eta}s) ${key} ERROR: ${result.error}          \n`);
+        results.push({ key, ...t, error: result.error });
+      } else {
+        const e = result.categories.reduce((s, c) => s + c.errors, 0);
+        const w = result.categories.reduce((s, c) => s + c.warnings, 0);
+        process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s (ETA ${eta}s) ${key} → ${result.overall}${result.grade} (${e}E ${w}W)          \n`);
+        results.push({ key, ...t, overall: result.overall, grade: result.grade, categories: result.categories, metrics: result.metrics });
+      }
+    } catch (err) {
+      completed++;
+      process.stdout.write(`\r[${completed}/${tests.length}] ${key} CRASH: ${err.message}          \n`);
+      results.push({ key, ...t, error: err.message });
+    }
+  }
+
+  // Run with concurrency
+  let idx = 0;
+  async function worker(page) {
+    while (idx < tests.length) {
+      const myIdx = idx++;
+      await processTest(page, tests[myIdx]);
+    }
+  }
+
+  await Promise.all(pages.map(p => worker(p)));
+
+  await browser.close();
+  server.close();
+
+  // Cache results
+  if (!existsSync(RESEARCH_DIR)) mkdirSync(RESEARCH_DIR, { recursive: true });
+  writeFileSync(CACHE_FILE, JSON.stringify(results, null, 2));
+  console.log(`\nCached ${results.length} results to ${CACHE_FILE}`);
+
+  // Generate report
+  const md = generateReport(results, tests);
+  const outFile = join(RESEARCH_DIR, 'full-matrix-results.md');
+  writeFileSync(outFile, md);
+  console.log(`Report written to: ${outFile}`);
+
+  // Quick summary
+  const ok = results.filter(r => !r.error);
+  const errs = results.filter(r => r.error);
+  console.log(`\n=== SUMMARY ===`);
+  console.log(`Tested: ${ok.length} | Errors: ${errs.length}`);
+  if (ok.length > 0) {
+    const avg = Math.round(ok.reduce((s, r) => s + r.overall, 0) / ok.length);
+    console.log(`Average: ${avg} | Min: ${Math.min(...ok.map(r => r.overall))} | Max: ${Math.max(...ok.map(r => r.overall))}`);
+    for (const eff of EFFECTS) {
+      const effOk = ok.filter(r => r.effect === eff.name);
+      if (effOk.length > 0) {
+        const effAvg = Math.round(effOk.reduce((s, r) => s + r.overall, 0) / effOk.length);
+        console.log(`  ${eff.name}: avg=${effAvg} (${effOk.length} tests)`);
+      }
+    }
+  }
+}
+
+main().catch(err => { console.error('Fatal:', err); process.exit(1); });
 </file>
 
 <file path="systems/apple-hig.md">
@@ -13585,11 +14325,21 @@ A design review catches issues **before they ship**. This checklist is organized
 }
 ```
 
+### Automated Scoring
+
+Use the [Design Analyzer](../docs/analyzer.html) to automate ~60 checks across 14 scoring modules. It covers contrast (WCAG + APCA), typography, spacing, touch targets, accessibility, responsive design, consistency, cognitive load, layout quality, performance, readability, motion/animation, and visual balance.
+
+- **8 audience profiles** — General, WCAG AAA, Elderly, Low Vision, Motor Impairment, Color Blind (CVD simulation), Children (6-12), Cognitive — each adjusts thresholds
+- **Context-aware touch targets** — nav links, footer links, inline text links, and buttons scored at appropriate severity levels per WCAG 2.5.8 exceptions
+- **Deep scan** — tests at multiple viewports (375/768/1280px) and dark mode in a single pass
+- **Console snippet** for localhost/behind-login pages — most accurate method
+- Works as a complement to manual review, not a replacement (covers ~30% of accessibility issues; keyboard/screen reader testing still required)
+
 ## Common Mistakes
 
-1. **Reviewing on one viewport only** — always check mobile (375px), tablet (768px), and desktop (1280px) at minimum
+1. **Reviewing on one viewport only** — always check mobile (375px), tablet (768px), and desktop (1280px) at minimum. The analyzer's deep scan mode automates this.
 2. **Skipping keyboard navigation test** — press Tab through the entire page; if you get lost or stuck, it fails
-3. **Relying only on automated tools** — Lighthouse catches ~30% of accessibility issues; manual testing (screen reader, keyboard) is required
+3. **Relying only on automated tools** — Lighthouse catches ~30% of accessibility issues; manual testing (screen reader, keyboard) is required. The Design Analyzer catches more (gradient contrast, touch context, CVD safety) but still can't replace manual review.
 4. **Checking contrast on only one color combination** — test every text color on every background it appears on (including hover states, selected states, and dark mode)
 5. **Ignoring disabled states** — disabled elements still need sufficient contrast for readability (3:1 minimum)
 6. **Not testing with real content** — "Lorem ipsum" hides line length, wrapping, and overflow problems; test with real or realistic content
@@ -13623,7 +14373,7 @@ Running a design review?
 
 ## Sources
 
-- WCAG 2.1 Quick Reference: https://www.w3.org/WAI/WCAG21/quickref/
+- WCAG 2.2 Quick Reference: https://www.w3.org/WAI/WCAG22/quickref/
 - Nielsen Norman Group — "How to Conduct a Heuristic Evaluation": https://www.nngroup.com/articles/how-to-conduct-a-heuristic-evaluation/
 - WebAIM Contrast Checker: https://webaim.org/resources/contrastchecker/
 - Inclusive Design Principles: https://inclusivedesignprinciples.org/
@@ -17008,6 +17758,8 @@ process.exit(failed > 0 ? 1 : 0);
 | Large text threshold | **18pt** (24px) or **14pt bold** (18.5px) | WCAG 2.2 |
 | UI component contrast | **3:1** minimum against adjacent colors | WCAG 2.2 |
 | Focus indicator contrast | **3:1** minimum | WCAG 2.2 |
+| APCA body text (supplementary) | **Lc 60+** | APCA-W3 (future WCAG 3.0) |
+| APCA large/bold text | **Lc 45+** | APCA-W3 |
 
 ## Typography
 | Rule | Value | Source |
@@ -17348,6 +18100,23 @@ All presets are:
 - **Realistic content** (not lorem ipsum)
 </file>
 
+<file path=".gitignore">
+# Research directory (raw/intermediate data stays local)
+research/*
+!research/sources.md
+
+# Node (puppeteer used for screenshots only, not part of project)
+node_modules/
+package.json
+package-lock.json
+
+# Local environment (proxy URL etc.)
+.env
+
+# Claude Code commands (local skills, not shared)
+.claude/
+</file>
+
 <file path="docs/scoring/registry.js">
 // Scoring Module Registry
 // Each module calls MilgScoring.register() to add its scoring function.
@@ -17477,23 +18246,6 @@ window.MilgScoring = (function() {
     PROFILES: PROFILES
   };
 })();
-</file>
-
-<file path=".gitignore">
-# Research directory (raw/intermediate data stays local)
-research/*
-!research/sources.md
-
-# Node (puppeteer used for screenshots only, not part of project)
-node_modules/
-package.json
-package-lock.json
-
-# Local environment (proxy URL etc.)
-.env
-
-# Claude Code commands (local skills, not shared)
-.claude/
 </file>
 
 <file path="proxy/README.md">
@@ -19187,6 +19939,42 @@ function scoreLayout(data) {
     }
   }
 
+  // Horizontal scroll on containers (not tables/code which are intentional)
+  var hScrollContainers = layout.horizontalScrollContainers || [];
+  var unintentionalHScroll = hScrollContainers.filter(function(c) { return !c.intentional; });
+  if (unintentionalHScroll.length > 0 || data.structure.hasHorizontalOverflow) {
+    checks++;
+    var scrollDetails = unintentionalHScroll.slice(0, 3).map(function(c) {
+      return c.selector + ' overflows by ' + c.overflow + 'px';
+    });
+    if (data.structure.hasHorizontalOverflow) scrollDetails.unshift('Page body has horizontal scroll');
+    findings.push({
+      severity: 'error',
+      title: (data.structure.hasHorizontalOverflow ? 'Page has horizontal scroll' : unintentionalHScroll.length + ' container(s) overflow horizontally'),
+      detail: scrollDetails.join('; '),
+      fix: 'Fix horizontal overflow: add overflow-x-hidden on the outer wrapper, check for elements with fixed widths wider than viewport, or add max-w-full. Common causes: fixed-width tables, absolute positioned elements, images without max-width.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
+    });
+  } else {
+    checks++;
+    passed++;
+  }
+
+  // Nested scrollbars (scroll within scroll — bad UX)
+  var nestedScrollbars = layout.nestedScrollbars || 0;
+  if (nestedScrollbars > 0) {
+    checks++;
+    findings.push({
+      severity: nestedScrollbars > 2 ? 'error' : 'warning',
+      title: nestedScrollbars + ' nested scrollbar(s) detected (scroll within scroll)',
+      detail: 'Scrollable elements inside other scrollable elements confuse users — they don\'t know which container will scroll.',
+      fix: 'Avoid nested scrollbars. Give inner containers enough height to show content, or use pagination/collapsible sections instead of scroll. If a table must scroll horizontally, ensure the outer container does not also scroll.',
+      presetRef: null,
+      source: 'NNGroup — https://www.nngroup.com/articles/scrolling-and-scrollbars/'
+    });
+  }
+
   var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
   var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
   var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
@@ -20025,10 +20813,13 @@ function scoreSpacing(data) {
     var tooClose = adjacentIssues.filter(function(a) { return a.gap >= 2 && a.gap < minSpacing; });
 
     touching.forEach(function(a) {
+      var labelA = a.textA || a.selectorA || '?';
+      var labelB = a.textB || a.selectorB || '?';
+      var selectorHint = (a.selectorA || a.selectorB) ? ' — ' + (a.selectorA || '') : '';
       findings.push({
         severity: 'error',
         title: 'Interactive elements touching (' + a.gap + 'px gap)',
-        detail: '"' + a.textA + '" and "' + a.textB + '" (' + a.direction + ')',
+        detail: labelA + ' and ' + labelB + ' (' + a.direction + ')' + selectorHint,
         fix: 'Add at least ' + minSpacing + 'px gap between interactive elements. In Tailwind: gap-' + (minSpacing / 4) + ' on the parent flex/grid container.',
         presetRef: 'Button presets use gap-2 (8px) or gap-3 (12px) between buttons',
         source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
@@ -20036,10 +20827,13 @@ function scoreSpacing(data) {
     });
 
     tooClose.forEach(function(a) {
+      var labelA = a.textA || a.selectorA || '?';
+      var labelB = a.textB || a.selectorB || '?';
+      var selectorHint = (a.selectorA || a.selectorB) ? ' — ' + (a.selectorA || '') : '';
       findings.push({
         severity: 'warning',
         title: 'Interactive elements only ' + a.gap + 'px apart (recommended: ≥' + minSpacing + 'px)',
-        detail: '"' + a.textA + '" and "' + a.textB + '" (' + a.direction + ')',
+        detail: labelA + ' and ' + labelB + ' (' + a.direction + ')' + selectorHint,
         fix: 'Increase gap to at least ' + minSpacing + 'px to prevent mis-taps. In Tailwind: gap-' + (minSpacing / 4) + ' on the parent.',
         presetRef: null,
         source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
@@ -20826,12 +21620,21 @@ function scoreTouchTargets(data) {
   data.interaction.touchTargets = touchTargetIssues.slice(0, 40);
 
   // Adjacent interactive element spacing — siblings only
+  // Helper: get a human-readable label for an interactive element
+  function _adjLabel(el) {
+    var txt = (el.textContent || '').trim().substring(0, 30);
+    if (txt) return txt;
+    var label = el.getAttribute('aria-label') || el.getAttribute('title') || el.getAttribute('alt') || '';
+    if (label) return '[' + label.substring(0, 30) + ']';
+    var tag = el.tagName.toLowerCase();
+    var cls = (el.className || '').toString().split(/\s+/).filter(function(c) { return c.length > 0 && c.length < 30; }).slice(0, 2).join('.');
+    return '<' + tag + (cls ? '.' + cls : '') + '>';
+  }
   // Group interactive elements by parent, then check gaps between adjacent siblings
   var adjacentIssues = [];
   var parentGroups = new Map();
   interactive.forEach(function(el) {
     if (!isVisible(el)) return;
-    // Skip decorative/mock elements
     if (el.closest('[aria-hidden="true"]') || el.closest('[role="img"]') || el.closest('.mock, .mock-ui, [class*="mock-"]')) return;
     if (el.hasAttribute('tabindex') && el.getAttribute('tabindex') === '-1') return;
     var rect = el.getBoundingClientRect();
@@ -20843,7 +21646,6 @@ function scoreTouchTargets(data) {
   });
   parentGroups.forEach(function(children) {
     if (children.length < 2) return;
-    // Sort by position (left-to-right, top-to-bottom)
     children.sort(function(a, b) { return a.rect.left - b.rect.left || a.rect.top - b.rect.top; });
     for (var i = 0; i < children.length - 1 && adjacentIssues.length < 15; i++) {
       var a = children[i].rect;
@@ -20853,12 +21655,12 @@ function scoreTouchTargets(data) {
       if (sameRow) {
         var hGap = Math.round(Math.max(0, b.left - a.right));
         if (hGap < 8) {
-          adjacentIssues.push({ gap: hGap, direction: 'horizontal', elementA: cssSelector(children[i].el), elementB: cssSelector(children[i + 1].el), textA: (children[i].el.textContent || '').trim().substring(0, 30), textB: (children[i + 1].el.textContent || '').trim().substring(0, 30) });
+          adjacentIssues.push({ gap: hGap, direction: 'horizontal', selectorA: cssSelector(children[i].el), selectorB: cssSelector(children[i + 1].el), textA: _adjLabel(children[i].el), textB: _adjLabel(children[i + 1].el) });
         }
       } else if (sameCol) {
         var vGap = Math.round(Math.max(0, b.top - a.bottom));
         if (vGap < 8) {
-          adjacentIssues.push({ gap: vGap, direction: 'vertical', elementA: cssSelector(children[i].el), elementB: cssSelector(children[i + 1].el), textA: (children[i].el.textContent || '').trim().substring(0, 30), textB: (children[i + 1].el.textContent || '').trim().substring(0, 30) });
+          adjacentIssues.push({ gap: vGap, direction: 'vertical', selectorA: cssSelector(children[i].el), selectorB: cssSelector(children[i + 1].el), textA: _adjLabel(children[i].el), textB: _adjLabel(children[i + 1].el) });
         }
       }
     }
@@ -20956,9 +21758,15 @@ function scoreTouchTargets(data) {
     });
   });
   // Also check if stylesheets contain focus-visible rules (can't detect via getComputedStyle)
-  data.accessibility.hasFocusVisibleCSS = Array.from(document.styleSheets).some(function(ss) {
+  var hasFocusVisibleCSS = Array.from(document.styleSheets).some(function(ss) {
     try { return Array.from(ss.cssRules).some(function(r) { return r.selectorText && r.selectorText.indexOf('focus-visible') !== -1; }); } catch(e) { return false; }
   });
+  // Also check HTML class attributes for focus-visible (Tailwind v4 classes may not be in accessible stylesheets due to CDN cross-origin)
+  var hasFocusVisibleClasses = Array.from(interactive).slice(0, 20).some(function(el) {
+    var cls = el.getAttribute('class') || '';
+    return cls.indexOf('focus-visible') !== -1 || cls.indexOf('focus:ring') !== -1 || cls.indexOf('focus:outline') !== -1;
+  });
+  data.accessibility.hasFocusVisibleCSS = hasFocusVisibleCSS || hasFocusVisibleClasses;
 
   // --- Font loading analysis ---
   data.performance.fontLoading = [];
@@ -21128,11 +21936,38 @@ function scoreTouchTargets(data) {
 
   // --- Element overflow detection ---
   data.layout.overflowElements = 0;
+  data.layout.horizontalScrollContainers = [];
+  data.layout.nestedScrollbars = 0;
   for (var oi = 0; oi < allElements.length && oi < 500; oi++) {
     var oel = allElements[oi];
     if (!isVisible(oel) || isDecorative(oel)) continue;
     if (oel.scrollWidth > oel.clientWidth + 2 && oel.clientWidth > 0) {
       data.layout.overflowElements++;
+      var oelTag = oel.tagName.toLowerCase();
+      var oelStyle = getComputedStyle(oel);
+      var isIntentionalScroll = oelStyle.overflowX === 'auto' || oelStyle.overflowX === 'scroll';
+      var isTableOrCode = oelTag === 'table' || oelTag === 'pre' || oelTag === 'code' || oel.closest('table,pre,code');
+      if (oel.clientWidth > 200 && !isTableOrCode) {
+        data.layout.horizontalScrollContainers.push({
+          selector: cssSelector(oel),
+          width: oel.clientWidth,
+          scrollWidth: oel.scrollWidth,
+          overflow: Math.round(oel.scrollWidth - oel.clientWidth),
+          intentional: isIntentionalScroll
+        });
+      }
+      if (isIntentionalScroll) {
+        var scrollParent = oel.parentElement;
+        while (scrollParent && scrollParent !== document.documentElement) {
+          var spStyle = getComputedStyle(scrollParent);
+          if ((spStyle.overflowX === 'auto' || spStyle.overflowX === 'scroll' || spStyle.overflowY === 'auto' || spStyle.overflowY === 'scroll') &&
+              scrollParent.scrollHeight > scrollParent.clientHeight + 10) {
+            data.layout.nestedScrollbars++;
+            break;
+          }
+          scrollParent = scrollParent.parentElement;
+        }
+      }
     }
   }
 
@@ -21460,6 +22295,342 @@ function scoreTouchTargets(data) {
 })();
 </file>
 
+<file path="docs/scoring/typography.js">
+// Scoring Module: Typography
+// Weight: 15%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreTypography(data) {
+  var profile = S.getProfile(data);
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+
+  // Body font size check against profile minimum
+  checks++;
+  var bodySize = parseFloat(data.typography.bodyFontSize);
+  if (bodySize >= profile.bodyFontMin) {
+    passed++;
+  } else if (bodySize > 0) {
+    findings.push({
+      severity: 'error',
+      title: 'Body font size is ' + bodySize + 'px (minimum: ' + profile.bodyFontMin + 'px)',
+      detail: 'Small body text reduces readability, especially on mobile',
+      fix: 'Set body font-size to at least ' + profile.bodyFontMin + 'px. In Tailwind: text-base (16px) or text-lg (18px)',
+      presetRef: 'All presets use text-base (16px) or larger for body text', source: 'WCAG 2.2 / NNGroup — https://www.w3.org/TR/WCAG22/#text-spacing'
+    });
+  }
+
+  // Line height check against profile range
+  checks++;
+  var bodyLH = data.typography.bodyLineHeight;
+  var bodyLHRatio = 0;
+  if (bodyLH && bodyLH !== 'normal') {
+    bodyLHRatio = parseFloat(bodyLH) / bodySize;
+  }
+  var lhPassMin = profile.lineHeightMin - 0.05;
+  var lhPassMax = profile.lineHeightMax + 0.1;
+  if (bodyLHRatio >= lhPassMin && bodyLHRatio <= lhPassMax) {
+    passed++;
+  } else if (bodyLHRatio > 0) {
+    findings.push({
+      severity: bodyLHRatio < 1.2 || bodyLHRatio > 2 ? 'error' : 'warning',
+      title: 'Body line-height is ' + (Math.round(bodyLHRatio * 100) / 100) + ' (ideal: ' + profile.lineHeightMin + '–' + profile.lineHeightMax + ')',
+      detail: bodyLHRatio < profile.lineHeightMin ? 'Text feels cramped and hard to read' : 'Text feels too loose and wastes vertical space',
+      fix: bodyLHRatio < profile.lineHeightMin ? 'Increase line-height. In Tailwind: leading-relaxed (1.625) or leading-normal (1.5)' : 'Decrease line-height. In Tailwind: leading-normal (1.5)',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.12 — https://www.w3.org/TR/WCAG22/#text-spacing'
+    });
+  }
+
+  // Line length (profile-aware: elderly 65, children 55, default 75)
+  // Only flag when chars were measured from actual text (not container width estimate)
+  var maxChars = data.typography.maxLineLength ? data.typography.maxLineLength.chars : 0;
+  var lineElement = data.typography.maxLineLength ? data.typography.maxLineLength.element : '';
+  var isTextElement = /^(p|li|td|th|blockquote|dd|figcaption)/.test(lineElement);
+  if (maxChars > 0 && isTextElement) {
+    checks++;
+    var lineLimit = profile.maxLineLength || 75;
+    if (maxChars <= lineLimit + 5) {
+      passed++;
+    } else {
+      findings.push({
+        severity: maxChars > lineLimit + 25 ? 'error' : 'warning',
+        title: 'Line length ~' + maxChars + ' characters (max for this audience: ' + lineLimit + ')',
+        detail: lineLimit < 70 ? 'Shorter lines improve readability for this audience.' : 'Long lines make it hard for the eye to track back to the next line.',
+        fix: 'Constrain content width with max-w-prose (65ch) or max-w-2xl (672px)',
+        presetRef: 'Editorial presets use max-w-prose for reading content',
+        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-length.html'
+      });
+    }
+  }
+
+  // Heading scale — check if headings have a consistent ratio
+  checks++;
+  var headings = data.typography.headings || [];
+  if (headings.length >= 2) {
+    var sizes = headings.map(function(h) { return parseFloat(h.fontSize); }).filter(function(s) { return s > 0; });
+    var uniqueSizes = Array.from(new Set(sizes)).sort(function(a, b) { return b - a; });
+    if (uniqueSizes.length >= 2) {
+      var ratio = uniqueSizes[0] / uniqueSizes[uniqueSizes.length - 1];
+      // Marketing/landing pages legitimately use larger hero text (wider range)
+      var pageType = (data.context && data.context.pageType) || 'unknown';
+      var maxRatio = (pageType === 'marketing' || pageType === 'pricing') ? 6 : 4.5;
+      if (ratio >= 1.5 && ratio <= maxRatio) {
+        passed++;
+      } else {
+        findings.push({
+          severity: ratio > maxRatio + 2 ? 'warning' : 'info',
+          title: 'Heading scale ratio is ' + (Math.round(ratio * 100) / 100) + ' (ideal: 1.5–' + maxRatio + ')',
+          detail: ratio < 1.5 ? 'Headings are too similar in size — weak hierarchy' : 'Heading sizes vary widely — verify the largest heading is intentional (hero text)',
+          fix: 'Use a modular scale (1.200 minor third or 1.250 major third). In Tailwind: text-4xl > text-2xl > text-xl > text-base',
+          presetRef: null,
+          source: 'Modular type scales — https://typescale.com/'
+        });
+      }
+    } else { passed++; } // Only one heading size — acceptable
+  } else { passed++; } // No headings to check
+
+  // Max 2-3 font weights
+  checks++;
+  var fontWeights = data.typography.fontWeights || [];
+  var weightCount = fontWeights.length;
+  if (weightCount <= 4) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'Using ' + weightCount + ' font weights (recommended: 2–3)',
+      detail: 'Too many weights create visual noise and increase font loading time',
+      fix: 'Consolidate to 400 (regular), 500/600 (medium), 700 (bold)',
+      presetRef: null,
+      source: 'Google Fonts best practices — https://fonts.google.com/knowledge/using_type/choosing_reliable_typefaces'
+    });
+  }
+
+  // Profile-specific: minimum font weight (e.g., elderly profile forbids light/thin)
+  if (profile.fontWeightMin > 0 && fontWeights.length > 0) {
+    var lightWeights = fontWeights.filter(function(w) { return parseInt(w) < profile.fontWeightMin; });
+    if (lightWeights.length > 0) {
+      checks++;
+      findings.push({
+        severity: 'warning',
+        title: 'Font weight(s) ' + lightWeights.join(', ') + ' below minimum ' + profile.fontWeightMin + ' for this audience',
+        detail: 'Light and thin font weights reduce readability for users who need higher legibility',
+        fix: 'Use font-weight ' + profile.fontWeightMin + ' (regular) or heavier. Avoid font-weight 100–300.',
+        presetRef: null,
+        source: 'W3C WAI Older Users — https://www.w3.org/WAI/older-users/developing/'
+      });
+    } else {
+      checks++;
+      passed++;
+    }
+  }
+
+  // Letter spacing
+  var lsIssues = (data.typography && data.typography.letterSpacingIssues) || 0;
+  if (lsIssues > 0) {
+    findings.push({
+      severity: 'info',
+      title: lsIssues + ' element(s) with extreme letter-spacing',
+      detail: 'Very tight (< -0.03em) or very loose (> 0.15em) letter spacing reduces readability',
+      fix: 'Keep letter-spacing between -0.02em and 0.1em for body text. Tighter spacing is acceptable for large headings.',
+      presetRef: null,
+      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/letterspacing.html'
+    });
+  }
+
+  // Paragraph spacing
+  var pSpacing = (data.typography && data.typography.paragraphSpacing) || [];
+  if (pSpacing.length >= 3) {
+    checks++;
+    var bodyPx = parseFloat(data.typography.bodyFontSize) || 16;
+    var avgSpacing = pSpacing.reduce(function(s,v){return s+v},0) / pSpacing.length;
+    var spacingEm = avgSpacing / bodyPx;
+    if (spacingEm >= 0.5 && spacingEm <= 1.5) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: 'Paragraph spacing is ' + (Math.round(spacingEm * 100) / 100) + 'em (ideal: 0.75–1em)',
+        detail: spacingEm < 0.5 ? 'Paragraphs feel cramped' : 'Paragraph spacing may be too generous',
+        fix: 'Set paragraph margin-bottom to 0.75em–1em. In Tailwind: space-y-4 on the container or mb-4 on paragraphs.',
+        presetRef: null,
+        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/space-between-paragraphs.html'
+      });
+    }
+  }
+
+  // Max 2 typefaces
+  checks++;
+  var familyCount = (data.typography.fontFamilies || []).length;
+  if (familyCount <= 3) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'Using ' + familyCount + ' font families (recommended: max 2)',
+      detail: 'Too many typefaces make the design feel inconsistent',
+      fix: 'Use 1 sans-serif + 1 serif (or monospace for code). In Tailwind: font-sans + font-serif',
+      presetRef: null,
+      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/summary-of-key-rules.html'
+    });
+  }
+
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+  return { score: score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Typography', icon: 'type' };
+}
+
+
+  S.register("typography", scoreTypography, 15, "Typography", "type");
+})();
+</file>
+
+<file path="docs/ANALYZER-TODO.md">
+# Analyzer TODO
+
+## Completed (69 items)
+
+### Core
+- [x] Modular scoring architecture (14 modules in `scoring/`)
+- [x] 8 audience profiles with evidence-based thresholds (General, WCAG AAA, Elderly, Low Vision, Motor Impairment, Color Blind, Children, Cognitive)
+- [x] 4 input modes (URL fetch, console snippet, paste HTML, import JSON)
+- [x] Gradient contrast via canvas sampling (multi-layer compositing)
+- [x] Background image contrast via canvas (CORS-limited)
+- [x] CSS filter contrast math (brightness, contrast, opacity)
+- [x] APCA contrast algorithm alongside WCAG
+- [x] oklch/oklab color parsing via canvas fallback
+- [x] Space-separated rgb() syntax support
+- [x] Page context detection (marketing/form/app/content)
+- [x] Fragment detection (skips document-level checks for pasted HTML snippets)
+- [x] Decorative element filtering
+- [x] Post-analysis exclusion suggestions (two-step flow)
+- [x] Extraction data caching (sessionStorage)
+- [x] Dark mode report styling
+- [x] AA/AAA profile switching (captures pairs up to 7.5:1)
+- [x] N/A category detection (modules return notApplicable when nothing to check)
+- [x] Context-aware touch targets (nav/footer/inline/button classification per WCAG 2.5.8)
+- [x] CVD palette simulation (Machado et al. 2009 matrices for protanopia, deuteranopia, tritanopia)
+- [x] JS-dependent page detection (warns when page needs JS execution)
+
+### UI & Features
+- [x] Page screenshots (modern-screenshot library, viewport sections, zoom lightbox)
+- [x] Analysis history in localStorage (max 10, dedup by URL+profile)
+- [x] JSON export/import with drag-and-drop
+- [x] Viewport size selector (defaults to current window size)
+- [x] Progress bar during analysis
+- [x] URL autocomplete from history
+- [x] Mobile-optimized layout (CSS grid header, icon-only buttons)
+- [x] Self-hosted CORS proxy (Cloudflare Worker with rate limiting, SSRF protection)
+- [x] Proxy URL injection via local .env (not committed)
+
+### Extraction
+- [x] Actual character-per-line via span measurement
+- [x] Section gaps for whitespace rhythm
+- [x] Left-edge alignment clustering
+- [x] Heading-to-body ratio for visual hierarchy
+- [x] Border radius value clustering
+- [x] Paragraph text extraction (Coleman-Liau)
+- [x] Font loading rules from stylesheets
+- [x] Render-blocking resource counts
+- [x] DOM size and depth
+- [x] Adjacent sibling spacing
+- [x] Animation/keyframe detection
+- [x] Scroll-reveal pattern detection
+- [x] Transform translateY off-screen detection
+- [x] Element overflow detection
+- [x] Letter spacing audit
+- [x] Negative margin detection
+- [x] Container padding clustering
+- [x] Third-party script count
+- [x] Image format audit (WebP/AVIF vs legacy)
+- [x] CLS via PerformanceObserver
+- [x] LCP estimation (API + heuristic)
+- [x] Fixed-width element detection
+- [x] Text truncation (ellipsis) audit
+- [x] ARIA role audit (button tabindex, hidden focusable)
+- [x] Bad link text detection
+- [x] Missing autocomplete on form fields
+- [x] Color-only indicator detection
+- [x] Auto-playing unmuted media detection
+- [x] Padding-inclusive touch measurement (checks parent label/link)
+
+### Testing
+- [x] Headless browser test suite (Puppeteer, serves docs/ locally, renders presets in real iframe with Tailwind)
+- [x] 125 preset templates validated — avg 88, min 69, max 100
+- [x] Before/clean gap verified: 81 avg vs 88 avg (7pt differentiation)
+- [x] Browser-based test runner (`docs/tests/test-presets-rendered.html`)
+- [x] Unit tests for scoring modules (`docs/tests/test-scoring.html`)
+- [x] Edge case test pages (gradients, dark backgrounds, fixed-width, truncation)
+- [x] 3 iterations of template fixes across 125 files (contrast, focus-visible, semantics)
+
+## Completed: Deep Scan Mode
+
+- [x] **Multi-viewport testing** — Spawn 3 parallel iframes at 375/768/1280px, merge results
+- [x] **Dark mode class toggle** — Toggle `.dark` on html, re-extract colors. ~95% reliable for Tailwind/class-based sites
+- [x] **Dark mode media query rewriting** — Extract `prefers-color-scheme: dark` rules from stylesheets, inject unconditionally. ~80-90% reliable
+- [x] **Scroll before extraction** — Auto-scroll full page to trigger intersection observers
+
+## Future: LLM Integration (opt-in)
+
+Default off. Only when user provides API key. See research notes in this file's git history.
+
+- [ ] Soft judgment: tone, copy clarity, color palette appropriateness
+- [ ] Finding summarization in plain language
+- [ ] Clearly labeled as "AI-generated" separate from evidence-based findings
+
+## Decided to Skip (with reasons)
+
+| Item | Reason |
+|------|--------|
+| Vertical rhythm detection | ~60% accuracy, too many false positives |
+| Nested spacing consistency | Can't determine spacing "intent" without component boundaries |
+| Gap vs margin consistency | Mixing is often correct (gap for flex, margin for flow) |
+| Overlapping targets | False positives from menus, dropdowns, positioned elements |
+| Click density mapping | No clear threshold for "too dense," subjective |
+| Shadow consistency | Too many legitimate shadow variations (elevation levels) |
+| Color distance (CIEDE2000) | Complex (~200 lines), similar colors often intentional |
+| Icon sizing consistency | SVG sizing too chaotic in practice |
+| Decision point counting | Counting buttons/links per section unreliable |
+| Information density | Elements-per-viewport varies wildly by page type |
+| Modal/popup detection | position:fixed catches headers/footers too |
+| Grid structure detection | Inferring columns from widths unreliable with flexbox |
+| Proximity grouping | Requires semantic understanding, pure DOM can't do it |
+| Sticky element audit | Almost always intentional, nothing actionable |
+| Critical CSS detection | Requires multi-viewport rendering analysis |
+| Inline CSS size | Often intentional (critical CSS pattern) |
+| Flash/strobe detection | Needs frame-by-frame analysis, not feasible from DOM |
+| F-pattern detection | ~40% accuracy without AI |
+| Whitespace ratio | Varies by page type, no universal threshold |
+| Web Worker extraction | Workers can't access DOM |
+
+## Research Documents
+
+- `research/analyzer-roadmap.md` — P0/P1 roadmap, priority matrix (794 lines)
+- `research/analyzer-p2-research.md` — P2/P3 feature research (928 lines)
+- `research/multi-viewport-dark-mode.md` — Multi-viewport & dark mode feasibility (345 lines)
+- `research/analyzer-test-rendered.md` — Latest headless test results (125 presets, per-module averages)
+
+## E2E Testing
+
+Run `node scripts/test-presets-headless.mjs` for the full rendered test suite. Requires Puppeteer (`npm i puppeteer`). The script:
+1. Serves `docs/` on localhost:8765
+2. Loads each preset in a real iframe with Tailwind CSS
+3. Runs the same extraction + scoring as the production analyzer
+4. Outputs results to `research/analyzer-test-rendered.md`
+
+Key metrics to track:
+- **Overall average** should be ≥85 (currently 88)
+- **Before/clean gap** should be ≥5 points (currently 7) — proves the analyzer differentiates design quality
+- **Contrast average** is the weakest category (currently 46) — legitimate failures from Tailwind's default light color shades
+- **No module should average below 40** except Contrast (known issue with Tailwind color scale)
+</file>
+
 <file path="docs/scoring/contrast.js">
 // Scoring Module: Color & Contrast
 // Weight: 20%
@@ -21683,304 +22854,6 @@ function scoreContrast(data) {
 })();
 </file>
 
-<file path="docs/scoring/typography.js">
-// Scoring Module: Typography
-// Weight: 15%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreTypography(data) {
-  var profile = S.getProfile(data);
-  var findings = [];
-  var checks = 0;
-  var passed = 0;
-
-  // Body font size check against profile minimum
-  checks++;
-  var bodySize = parseFloat(data.typography.bodyFontSize);
-  if (bodySize >= profile.bodyFontMin) {
-    passed++;
-  } else if (bodySize > 0) {
-    findings.push({
-      severity: 'error',
-      title: 'Body font size is ' + bodySize + 'px (minimum: ' + profile.bodyFontMin + 'px)',
-      detail: 'Small body text reduces readability, especially on mobile',
-      fix: 'Set body font-size to at least ' + profile.bodyFontMin + 'px. In Tailwind: text-base (16px) or text-lg (18px)',
-      presetRef: 'All presets use text-base (16px) or larger for body text', source: 'WCAG 2.2 / NNGroup — https://www.w3.org/TR/WCAG22/#text-spacing'
-    });
-  }
-
-  // Line height check against profile range
-  checks++;
-  var bodyLH = data.typography.bodyLineHeight;
-  var bodyLHRatio = 0;
-  if (bodyLH && bodyLH !== 'normal') {
-    bodyLHRatio = parseFloat(bodyLH) / bodySize;
-  }
-  var lhPassMin = profile.lineHeightMin - 0.05;
-  var lhPassMax = profile.lineHeightMax + 0.1;
-  if (bodyLHRatio >= lhPassMin && bodyLHRatio <= lhPassMax) {
-    passed++;
-  } else if (bodyLHRatio > 0) {
-    findings.push({
-      severity: bodyLHRatio < 1.2 || bodyLHRatio > 2 ? 'error' : 'warning',
-      title: 'Body line-height is ' + (Math.round(bodyLHRatio * 100) / 100) + ' (ideal: ' + profile.lineHeightMin + '–' + profile.lineHeightMax + ')',
-      detail: bodyLHRatio < profile.lineHeightMin ? 'Text feels cramped and hard to read' : 'Text feels too loose and wastes vertical space',
-      fix: bodyLHRatio < profile.lineHeightMin ? 'Increase line-height. In Tailwind: leading-relaxed (1.625) or leading-normal (1.5)' : 'Decrease line-height. In Tailwind: leading-normal (1.5)',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.12 — https://www.w3.org/TR/WCAG22/#text-spacing'
-    });
-  }
-
-  // Line length (profile-aware: elderly 65, children 55, default 75)
-  // Only flag when chars were measured from actual text (not container width estimate)
-  var maxChars = data.typography.maxLineLength ? data.typography.maxLineLength.chars : 0;
-  var lineElement = data.typography.maxLineLength ? data.typography.maxLineLength.element : '';
-  var isTextElement = /^(p|li|td|th|blockquote|dd|figcaption)/.test(lineElement);
-  if (maxChars > 0 && isTextElement) {
-    checks++;
-    var lineLimit = profile.maxLineLength || 75;
-    if (maxChars <= lineLimit + 5) {
-      passed++;
-    } else {
-      findings.push({
-        severity: maxChars > lineLimit + 25 ? 'error' : 'warning',
-        title: 'Line length ~' + maxChars + ' characters (max for this audience: ' + lineLimit + ')',
-        detail: lineLimit < 70 ? 'Shorter lines improve readability for this audience.' : 'Long lines make it hard for the eye to track back to the next line.',
-        fix: 'Constrain content width with max-w-prose (65ch) or max-w-2xl (672px)',
-        presetRef: 'Editorial presets use max-w-prose for reading content',
-        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-length.html'
-      });
-    }
-  }
-
-  // Heading scale — check if headings have a consistent ratio
-  checks++;
-  var headings = data.typography.headings || [];
-  if (headings.length >= 2) {
-    var sizes = headings.map(function(h) { return parseFloat(h.fontSize); }).filter(function(s) { return s > 0; });
-    var uniqueSizes = Array.from(new Set(sizes)).sort(function(a, b) { return b - a; });
-    if (uniqueSizes.length >= 2) {
-      var ratio = uniqueSizes[0] / uniqueSizes[uniqueSizes.length - 1];
-      // Marketing/landing pages legitimately use larger hero text (wider range)
-      var pageType = (data.context && data.context.pageType) || 'unknown';
-      var maxRatio = (pageType === 'marketing' || pageType === 'pricing') ? 6 : 4.5;
-      if (ratio >= 1.5 && ratio <= maxRatio) {
-        passed++;
-      } else {
-        findings.push({
-          severity: ratio > maxRatio + 2 ? 'warning' : 'info',
-          title: 'Heading scale ratio is ' + (Math.round(ratio * 100) / 100) + ' (ideal: 1.5–' + maxRatio + ')',
-          detail: ratio < 1.5 ? 'Headings are too similar in size — weak hierarchy' : 'Heading sizes vary widely — verify the largest heading is intentional (hero text)',
-          fix: 'Use a modular scale (1.200 minor third or 1.250 major third). In Tailwind: text-4xl > text-2xl > text-xl > text-base',
-          presetRef: null,
-          source: 'Modular type scales — https://typescale.com/'
-        });
-      }
-    } else { passed++; } // Only one heading size — acceptable
-  } else { passed++; } // No headings to check
-
-  // Max 2-3 font weights
-  checks++;
-  var fontWeights = data.typography.fontWeights || [];
-  var weightCount = fontWeights.length;
-  if (weightCount <= 4) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: 'Using ' + weightCount + ' font weights (recommended: 2–3)',
-      detail: 'Too many weights create visual noise and increase font loading time',
-      fix: 'Consolidate to 400 (regular), 500/600 (medium), 700 (bold)',
-      presetRef: null,
-      source: 'Google Fonts best practices — https://fonts.google.com/knowledge/using_type/choosing_reliable_typefaces'
-    });
-  }
-
-  // Profile-specific: minimum font weight (e.g., elderly profile forbids light/thin)
-  if (profile.fontWeightMin > 0 && fontWeights.length > 0) {
-    var lightWeights = fontWeights.filter(function(w) { return parseInt(w) < profile.fontWeightMin; });
-    if (lightWeights.length > 0) {
-      checks++;
-      findings.push({
-        severity: 'warning',
-        title: 'Font weight(s) ' + lightWeights.join(', ') + ' below minimum ' + profile.fontWeightMin + ' for this audience',
-        detail: 'Light and thin font weights reduce readability for users who need higher legibility',
-        fix: 'Use font-weight ' + profile.fontWeightMin + ' (regular) or heavier. Avoid font-weight 100–300.',
-        presetRef: null,
-        source: 'W3C WAI Older Users — https://www.w3.org/WAI/older-users/developing/'
-      });
-    } else {
-      checks++;
-      passed++;
-    }
-  }
-
-  // Letter spacing
-  var lsIssues = (data.typography && data.typography.letterSpacingIssues) || 0;
-  if (lsIssues > 0) {
-    findings.push({
-      severity: 'info',
-      title: lsIssues + ' element(s) with extreme letter-spacing',
-      detail: 'Very tight (< -0.03em) or very loose (> 0.15em) letter spacing reduces readability',
-      fix: 'Keep letter-spacing between -0.02em and 0.1em for body text. Tighter spacing is acceptable for large headings.',
-      presetRef: null,
-      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/letterspacing.html'
-    });
-  }
-
-  // Paragraph spacing
-  var pSpacing = (data.typography && data.typography.paragraphSpacing) || [];
-  if (pSpacing.length >= 3) {
-    checks++;
-    var bodyPx = parseFloat(data.typography.bodyFontSize) || 16;
-    var avgSpacing = pSpacing.reduce(function(s,v){return s+v},0) / pSpacing.length;
-    var spacingEm = avgSpacing / bodyPx;
-    if (spacingEm >= 0.5 && spacingEm <= 1.5) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: 'Paragraph spacing is ' + (Math.round(spacingEm * 100) / 100) + 'em (ideal: 0.75–1em)',
-        detail: spacingEm < 0.5 ? 'Paragraphs feel cramped' : 'Paragraph spacing may be too generous',
-        fix: 'Set paragraph margin-bottom to 0.75em–1em. In Tailwind: space-y-4 on the container or mb-4 on paragraphs.',
-        presetRef: null,
-        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/space-between-paragraphs.html'
-      });
-    }
-  }
-
-  // Max 2 typefaces
-  checks++;
-  var familyCount = (data.typography.fontFamilies || []).length;
-  if (familyCount <= 3) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: 'Using ' + familyCount + ' font families (recommended: max 2)',
-      detail: 'Too many typefaces make the design feel inconsistent',
-      fix: 'Use 1 sans-serif + 1 serif (or monospace for code). In Tailwind: font-sans + font-serif',
-      presetRef: null,
-      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/summary-of-key-rules.html'
-    });
-  }
-
-  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-  return { score: score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Typography', icon: 'type' };
-}
-
-
-  S.register("typography", scoreTypography, 15, "Typography", "type");
-})();
-</file>
-
-<file path="docs/ANALYZER-TODO.md">
-# Analyzer TODO
-
-## Completed (43 items)
-
-### Core
-- [x] Modular scoring architecture (14 modules in `scoring/`)
-- [x] 5 audience profiles with evidence-based thresholds
-- [x] 3 input modes (URL fetch, console snippet, paste HTML)
-- [x] Gradient contrast via canvas sampling
-- [x] Background image contrast via canvas (CORS-limited)
-- [x] CSS filter contrast math (brightness, contrast, opacity)
-- [x] APCA contrast algorithm alongside WCAG
-- [x] oklch/oklab color parsing via canvas fallback
-- [x] Space-separated rgb() syntax support
-- [x] Page context detection (marketing/form/app/content)
-- [x] Decorative element filtering
-- [x] Post-analysis exclusion suggestions (two-step flow)
-- [x] Extraction data caching (sessionStorage)
-- [x] Dark mode report styling
-- [x] AA/AAA profile switching (captures pairs up to 7.5:1)
-
-### Extraction
-- [x] Actual character-per-line via span measurement
-- [x] Section gaps for whitespace rhythm
-- [x] Left-edge alignment clustering
-- [x] Heading-to-body ratio for visual hierarchy
-- [x] Border radius value clustering
-- [x] Paragraph text extraction (Coleman-Liau)
-- [x] Font loading rules from stylesheets
-- [x] Render-blocking resource counts
-- [x] DOM size and depth
-- [x] Adjacent sibling spacing
-- [x] Animation/keyframe detection
-- [x] Scroll-reveal pattern detection
-- [x] Transform translateY off-screen detection
-- [x] Element overflow detection
-- [x] Letter spacing audit
-- [x] Negative margin detection
-- [x] Container padding clustering
-- [x] Third-party script count
-- [x] Image format audit (WebP/AVIF vs legacy)
-- [x] CLS via PerformanceObserver
-- [x] LCP estimation (API + heuristic)
-- [x] Fixed-width element detection
-- [x] Text truncation (ellipsis) audit
-- [x] ARIA role audit (button tabindex, hidden focusable)
-- [x] Bad link text detection
-- [x] Missing autocomplete on form fields
-- [x] Color-only indicator detection
-- [x] Auto-playing unmuted media detection
-- [x] Padding-inclusive touch measurement (checks parent label/link)
-
-## Future: Deep Scan Mode
-
-These require re-rendering the page and are best offered as an explicit "deep scan" option:
-
-- [x] **Multi-viewport testing** — Spawn 3 parallel iframes at 375/768/1280px, merge results. Architecture ready, ~2-4s. See `research/multi-viewport-dark-mode.md`
-- [x] **Dark mode class toggle** — Toggle `.dark` on html, re-extract colors. ~95% reliable for Tailwind/class-based sites.
-- [x] **Dark mode media query rewriting** — Extract `prefers-color-scheme: dark` rules from stylesheets, inject unconditionally. ~80-90% reliable. See research.
-- [x] **Scroll before extraction** — Auto-scroll full page to trigger intersection observers. Console warning already implemented for manual use.
-
-## Future: LLM Integration (opt-in)
-
-Default off. Only when user provides API key. See research notes in this file's git history.
-
-- [ ] Soft judgment: tone, copy clarity, color palette appropriateness
-- [ ] Finding summarization in plain language
-- [ ] Clearly labeled as "AI-generated" separate from evidence-based findings
-
-## Decided to Skip (with reasons)
-
-| Item | Reason |
-|------|--------|
-| Vertical rhythm detection | ~60% accuracy, too many false positives |
-| Nested spacing consistency | Can't determine spacing "intent" without component boundaries |
-| Gap vs margin consistency | Mixing is often correct (gap for flex, margin for flow) |
-| Overlapping targets | False positives from menus, dropdowns, positioned elements |
-| Click density mapping | No clear threshold for "too dense," subjective |
-| Shadow consistency | Too many legitimate shadow variations (elevation levels) |
-| Color distance (CIEDE2000) | Complex (~200 lines), similar colors often intentional |
-| Icon sizing consistency | SVG sizing too chaotic in practice |
-| Decision point counting | Counting buttons/links per section unreliable |
-| Information density | Elements-per-viewport varies wildly by page type |
-| Modal/popup detection | position:fixed catches headers/footers too |
-| Grid structure detection | Inferring columns from widths unreliable with flexbox |
-| Proximity grouping | Requires semantic understanding, pure DOM can't do it |
-| Sticky element audit | Almost always intentional, nothing actionable |
-| Critical CSS detection | Requires multi-viewport rendering analysis |
-| Inline CSS size | Often intentional (critical CSS pattern) |
-| Flash/strobe detection | Needs frame-by-frame analysis, not feasible from DOM |
-| F-pattern detection | ~40% accuracy without AI |
-| Whitespace ratio | Varies by page type, no universal threshold |
-| Web Worker extraction | Workers can't access DOM |
-
-## Research Documents
-
-- `research/analyzer-roadmap.md` — P0/P1 roadmap, priority matrix (794 lines)
-- `research/analyzer-p2-research.md` — P2/P3 feature research (928 lines)
-- `research/multi-viewport-dark-mode.md` — Multi-viewport & dark mode feasibility (345 lines)
-</file>
-
 <file path="README.md">
 # make-it-look-good
 
@@ -22091,7 +22964,9 @@ Three ways to analyze:
 
 Scoring modules: Color & Contrast (WCAG + APCA), Typography, Spacing & Layout, Touch & Interaction, Accessibility, Responsive Design, Visual Consistency, Cognitive Load, Layout Quality, Performance, Readability, Motion & Animation, Visual Balance.
 
-Features: 5 audience profiles (General, WCAG AAA, Elderly, Low Vision, Motor Impairment), page context detection, gradient/background-image/CSS-filter contrast resolution, decorative element filtering, post-analysis exclusion suggestions, extraction caching, dark mode report, viewport size selection, deep scan (multi-viewport + dark mode), progress bar, markdown/PDF export. Self-hostable CORS proxy (Cloudflare Worker, free tier 100K req/day) — see [`proxy/README.md`](proxy/README.md).
+Features: 8 audience profiles (General, WCAG AAA, Elderly, Low Vision, Motor Impairment, Color Blind, Children, Cognitive), page context detection, gradient/background-image/CSS-filter contrast resolution, decorative element filtering, context-aware touch targets (nav/footer/inline exemptions per WCAG 2.5.8), CVD palette simulation (Machado et al. 2009), post-analysis exclusion suggestions, extraction caching, dark mode report, viewport size selection, deep scan (multi-viewport + dark mode), page screenshots, analysis history, N/A category detection, progress bar, JSON export/import, markdown/PDF export. Self-hostable CORS proxy (Cloudflare Worker, free tier 100K req/day) — see [`proxy/README.md`](proxy/README.md).
+
+Validated against 125 preset templates via headless browser testing (Puppeteer) — average score 88, min 69, max 100, with a 7-point gap between "before" (81 avg) and "clean" (88 avg) variants.
 
 ### Before & After Examples
 
@@ -23731,6 +24606,18 @@ window.MilgReport = (function() {
   data.interaction.touchTargets = touchTargetIssues.slice(0, 40);
 
   // Adjacent interactive element spacing — siblings only
+  // Helper: get a human-readable label for an interactive element
+  function _adjLabel(el) {
+    var txt = (el.textContent || '').trim().substring(0, 30);
+    if (txt) return txt;
+    // Fallback for icon-only elements
+    var label = el.getAttribute('aria-label') || el.getAttribute('title') || el.getAttribute('alt') || '';
+    if (label) return '[' + label.substring(0, 30) + ']';
+    // Last resort: tag + key class
+    var tag = el.tagName.toLowerCase();
+    var cls = (el.className || '').toString().split(/\s+/).filter(function(c) { return c.length > 0 && c.length < 30; }).slice(0, 2).join('.');
+    return '<' + tag + (cls ? '.' + cls : '') + '>';
+  }
   // Group interactive elements by parent, then check gaps between adjacent siblings
   var adjacentIssues = [];
   var parentGroups = new Map();
@@ -23758,12 +24645,12 @@ window.MilgReport = (function() {
       if (sameRow) {
         var hGap = Math.round(Math.max(0, b.left - a.right));
         if (hGap < 8) {
-          adjacentIssues.push({ gap: hGap, direction: 'horizontal', elementA: cssSelector(children[i].el), elementB: cssSelector(children[i + 1].el), textA: (children[i].el.textContent || '').trim().substring(0, 30), textB: (children[i + 1].el.textContent || '').trim().substring(0, 30) });
+          adjacentIssues.push({ gap: hGap, direction: 'horizontal', selectorA: cssSelector(children[i].el), selectorB: cssSelector(children[i + 1].el), textA: _adjLabel(children[i].el), textB: _adjLabel(children[i + 1].el) });
         }
       } else if (sameCol) {
         var vGap = Math.round(Math.max(0, b.top - a.bottom));
         if (vGap < 8) {
-          adjacentIssues.push({ gap: vGap, direction: 'vertical', elementA: cssSelector(children[i].el), elementB: cssSelector(children[i + 1].el), textA: (children[i].el.textContent || '').trim().substring(0, 30), textB: (children[i + 1].el.textContent || '').trim().substring(0, 30) });
+          adjacentIssues.push({ gap: vGap, direction: 'vertical', selectorA: cssSelector(children[i].el), selectorB: cssSelector(children[i + 1].el), textA: _adjLabel(children[i].el), textB: _adjLabel(children[i + 1].el) });
         }
       }
     }
@@ -23862,9 +24749,15 @@ window.MilgReport = (function() {
     });
   });
   // Also check if stylesheets contain focus-visible rules (can't detect via getComputedStyle)
-  data.accessibility.hasFocusVisibleCSS = Array.from(document.styleSheets).some(function(ss) {
+  var hasFocusVisibleCSS = Array.from(document.styleSheets).some(function(ss) {
     try { return Array.from(ss.cssRules).some(function(r) { return r.selectorText && r.selectorText.indexOf('focus-visible') !== -1; }); } catch(e) { return false; }
   });
+  // Also check HTML class attributes for focus-visible (Tailwind v4 classes may not be in accessible stylesheets due to CDN cross-origin)
+  var hasFocusVisibleClasses = Array.from(interactive).slice(0, 20).some(function(el) {
+    var cls = el.getAttribute('class') || '';
+    return cls.indexOf('focus-visible') !== -1 || cls.indexOf('focus:ring') !== -1 || cls.indexOf('focus:outline') !== -1;
+  });
+  data.accessibility.hasFocusVisibleCSS = hasFocusVisibleCSS || hasFocusVisibleClasses;
 
   // --- Font loading analysis ---
   data.performance.fontLoading = [];
@@ -24034,11 +24927,40 @@ window.MilgReport = (function() {
 
   // --- Element overflow detection ---
   data.layout.overflowElements = 0;
+  data.layout.horizontalScrollContainers = [];
+  data.layout.nestedScrollbars = 0;
   for (var oi = 0; oi < allElements.length && oi < 500; oi++) {
     var oel = allElements[oi];
     if (!isVisible(oel) || isDecorative(oel)) continue;
     if (oel.scrollWidth > oel.clientWidth + 2 && oel.clientWidth > 0) {
       data.layout.overflowElements++;
+      // Track significant horizontal scroll containers (> 200px wide, not tables/code blocks with overflow-x-auto which is intentional)
+      var oelTag = oel.tagName.toLowerCase();
+      var oelStyle = getComputedStyle(oel);
+      var isIntentionalScroll = oelStyle.overflowX === 'auto' || oelStyle.overflowX === 'scroll';
+      var isTableOrCode = oelTag === 'table' || oelTag === 'pre' || oelTag === 'code' || oel.closest('table,pre,code');
+      if (oel.clientWidth > 200 && !isTableOrCode) {
+        data.layout.horizontalScrollContainers.push({
+          selector: cssSelector(oel),
+          width: oel.clientWidth,
+          scrollWidth: oel.scrollWidth,
+          overflow: Math.round(oel.scrollWidth - oel.clientWidth),
+          intentional: isIntentionalScroll
+        });
+      }
+      // Detect nested scrollbars (scrollable element inside another scrollable element)
+      if (isIntentionalScroll) {
+        var scrollParent = oel.parentElement;
+        while (scrollParent && scrollParent !== document.documentElement) {
+          var spStyle = getComputedStyle(scrollParent);
+          if ((spStyle.overflowX === 'auto' || spStyle.overflowX === 'scroll' || spStyle.overflowY === 'auto' || spStyle.overflowY === 'scroll') &&
+              scrollParent.scrollHeight > scrollParent.clientHeight + 10) {
+            data.layout.nestedScrollbars++;
+            break;
+          }
+          scrollParent = scrollParent.parentElement;
+        }
+      }
     }
   }
 
@@ -25507,6 +26429,21 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
       <button class="tab-btn" data-tab="tabImport">Import<br><span class="tab-sub">(JSON file)</span></button>
     </div>
 
+    <!-- Shared screenshot options (applies to all tabs) -->
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;flex-wrap:wrap;font-size:12px;color:var(--text-secondary)">
+      <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
+        <input type="checkbox" id="screenshotCheck" checked style="width:15px;height:15px;cursor:pointer">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="13" r="4"/><path d="M5 3v2"/><path d="M19 3v2"/></svg>
+        Screenshots
+      </label>
+      <select id="screenshotQuality" style="font-size:11px;padding:2px 6px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);min-height:24px;cursor:pointer" title="Screenshot quality / file size tradeoff">
+        <option value="0.5|0.4">Draft (~30KB)</option>
+        <option value="0.5|0.7" selected>Standard (~60KB)</option>
+        <option value="0.75|0.8">High (~150KB)</option>
+        <option value="1|0.9">Full (~400KB)</option>
+      </select>
+    </div>
+
     <!-- Tab 0: URL fetch -->
     <div class="tab-content active" id="tabUrl">
       <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;line-height:1.5;">
@@ -25536,13 +26473,6 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
           <input type="checkbox" id="deepScanCheck" style="width:16px;height:16px;cursor:pointer">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><rect x="2" y="3" width="20" height="14" rx="2"/><rect x="6" y="7" width="12" height="8" rx="1" stroke-dasharray="2 2"/><line x1="8" y1="21" x2="16" y2="21"/></svg>
           Deep scan (multi-viewport + dark mode)
-        </label>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
-        <label style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:6px;cursor:pointer">
-          <input type="checkbox" id="screenshotCheck" checked style="width:16px;height:16px;cursor:pointer">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="13" r="4"/><path d="M5 3v2"/><path d="M19 3v2"/></svg>
-          Capture page screenshots
         </label>
       </div>
       <details style="margin-top:12px" id="excludeDetails">
@@ -25604,12 +26534,6 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
         </div>
       </div>
 
-      <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
-        <label style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:6px;cursor:pointer">
-          <input type="checkbox" id="snippetScreenshotCheck" style="width:16px;height:16px;cursor:pointer">
-          Include screenshots (loads external library, larger output)
-        </label>
-      </div>
 
       <div class="snippet-section">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
@@ -25665,12 +26589,6 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
       <div class="input-area">
         <label for="htmlInput" class="sr-only">HTML source code</label>
         <textarea id="htmlInput" placeholder='Paste HTML here...&#10;&#10;<div class="p-8 max-w-4xl mx-auto">&#10;  <h1 class="text-3xl font-bold">...</h1>&#10;</div>'></textarea>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
-        <label style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:6px;cursor:pointer">
-          <input type="checkbox" id="htmlScreenshotCheck" checked style="width:16px;height:16px;cursor:pointer">
-          Capture page screenshots
-        </label>
       </div>
       <div class="input-actions">
         <button class="btn btn-primary" id="analyzeHtmlBtn">
@@ -26154,7 +27072,9 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
     data.accessibility.formLabels.withLabel = labeled;
     data.accessibility.formLabels.withoutLabel = data.accessibility.formLabels.total - labeled;
     Array.from(interactive).slice(0, 10).forEach(function(el) { if (!isVisible(el)) return; var s = getComputedStyle(el); data.accessibility.focusIndicators.push({ element: cssSelector(el), outlineStyle: s.outlineStyle, outlineWidth: s.outlineWidth, outlineColor: s.outlineColor, outlineOffset: s.outlineOffset }); });
-    data.accessibility.hasFocusVisibleCSS = Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r.selectorText && r.selectorText.indexOf('focus-visible') !== -1; }); } catch(e) { return false; } });
+    var _hasFvCSS = Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r.selectorText && r.selectorText.indexOf('focus-visible') !== -1; }); } catch(e) { return false; } });
+    var _hasFvClasses = Array.from(interactive).slice(0, 20).some(function(el) { var cls = el.getAttribute('class') || ''; return cls.indexOf('focus-visible') !== -1 || cls.indexOf('focus:ring') !== -1 || cls.indexOf('focus:outline') !== -1; });
+    data.accessibility.hasFocusVisibleCSS = _hasFvCSS || _hasFvClasses;
     // Font smoothing + bg image behind text (profile-specific)
     data.typography.fontSmoothingAntialiased = false;
     try { var bs = getComputedStyle(document.body).webkitFontSmoothing; if (bs === 'antialiased') data.typography.fontSmoothingAntialiased = true; } catch(e) {}
@@ -26182,6 +27102,8 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
     var copySnippetBtn = document.getElementById('copySnippetBtn');
     var newAnalysisBtn = document.getElementById('newAnalysisBtn');
     var printBtn = document.getElementById('printBtn');
+    // Store original input section HTML so we can restore it after preview analysis
+    var _originalInputSectionHTML = inputSection.innerHTML;
 
     // Tab switching
     document.querySelectorAll('.tab-btn').forEach(function(btn) {
@@ -26196,11 +27118,11 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
     // Load snippet for display
     loadSnippet(snippetCode);
 
-    // Toggle snippet variant (with/without screenshots)
-    var snippetScreenshotCheck = document.getElementById('snippetScreenshotCheck');
-    if (snippetScreenshotCheck) {
-      snippetScreenshotCheck.addEventListener('change', function() {
-        loadSnippet(snippetCode, snippetScreenshotCheck.checked);
+    // Toggle snippet variant based on shared screenshot checkbox
+    var sharedScreenshotCheck = document.getElementById('screenshotCheck');
+    if (sharedScreenshotCheck) {
+      sharedScreenshotCheck.addEventListener('change', function() {
+        loadSnippet(snippetCode, sharedScreenshotCheck.checked);
       });
     }
 
@@ -26219,6 +27141,7 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
       try {
         var data = JSON.parse(json);
         if (!data.meta || !data.colors) throw new Error('Invalid format');
+        data.meta._inputMethod = 'console';
         runAnalysis(data);
       } catch(e) {
         showToast('Invalid JSON: ' + e.message);
@@ -26231,7 +27154,7 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
       if (!html) { showToast('Paste HTML source code first'); return; }
       analyzeHtmlBtn.textContent = 'Analyzing...';
       analyzeHtmlBtn.disabled = true;
-      var wantScreenshots = document.getElementById('htmlScreenshotCheck') && document.getElementById('htmlScreenshotCheck').checked;
+      var wantScreenshots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
       analyzeHtmlInIframe(html, function(data) {
         analyzeHtmlBtn.textContent = 'Analyze HTML';
         analyzeHtmlBtn.disabled = false;
@@ -26425,11 +27348,25 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
       reportContainer.classList.remove('visible');
       reportContainer.innerHTML = '';
       inputSection.style.display = '';
+      // Restore original input form if it was replaced (e.g. by editor preview analysis)
+      if (!inputSection.querySelector('.tab-btn')) {
+        inputSection.innerHTML = _originalInputSectionHTML;
+        // Re-bind tab switching after DOM restoration
+        inputSection.querySelectorAll('.tab-btn').forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            inputSection.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+            inputSection.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
+            btn.classList.add('active');
+            var target = document.getElementById(btn.dataset.tab);
+            if (target) target.classList.add('active');
+          });
+        });
+      }
       document.getElementById('reportActions').style.display = 'none'; document.getElementById('profileExplanation').style.display = 'none';
-      pasteInput.value = '';
-      htmlInput.value = '';
-      urlInput.value = '';
-      urlStatus.style.display = 'none';
+      var pi = document.getElementById('pasteInput'); if (pi) pi.value = '';
+      var hi = document.getElementById('htmlInput'); if (hi) hi.value = '';
+      var ui = document.getElementById('urlInput'); if (ui) ui.value = '';
+      var us = document.getElementById('urlStatus'); if (us) us.style.display = 'none';
       reportData = null;
       // Clear hash so refreshing doesn't reload old report
       if (location.hash) history.replaceState(null, '', location.pathname + location.search);
@@ -26539,13 +27476,18 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
         var previewHtml = sessionStorage.getItem('milg-preview-html');
         if (previewHtml) {
           sessionStorage.removeItem('milg-preview-html');
+          // Read rendering context (dark mode, effect CSS) from editor
+          var previewCtx = {};
+          try { previewCtx = JSON.parse(sessionStorage.getItem('milg-preview-context') || '{}'); } catch(e) {}
+          sessionStorage.removeItem('milg-preview-context');
           // Show loading state
           var inputSection = document.getElementById('inputSection');
-          inputSection.innerHTML = '<div style="text-align:center;padding:64px 24px"><div class="analysis-progress" style="display:block;max-width:400px;margin:0 auto"><div class="analysis-progress-bar"><div class="analysis-progress-fill" style="width:30%;animation:pulse 1.5s ease infinite"></div></div><div class="analysis-progress-label" style="margin-top:12px;font-size:14px">Analyzing editor preview...</div></div></div>';
+          var ctxLabel = (previewCtx.dark ? ' (dark mode)' : '') + (previewCtx.effectName && previewCtx.effectName !== 'None' ? ' + ' + previewCtx.effectName : '');
+          inputSection.innerHTML = '<div style="text-align:center;padding:64px 24px"><div class="analysis-progress" style="display:block;max-width:400px;margin:0 auto"><div class="analysis-progress-bar"><div class="analysis-progress-fill" style="width:30%;animation:pulse 1.5s ease infinite"></div></div><div class="analysis-progress-label" style="margin-top:12px;font-size:14px">Analyzing editor preview' + ctxLabel + '...</div></div></div>';
           analyzeHtmlInIframe(previewHtml, function(data) {
-            data.meta.url = 'Editor Preview';
+            data.meta.url = 'Editor Preview' + ctxLabel;
             runAnalysis(data);
-          }, null, null, true);
+          }, previewCtx.dark || false, previewCtx.effectCSS || '', true);
         }
       } catch(e) {
         console.error('Failed to analyze preview HTML:', e);
@@ -26919,8 +27861,9 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
     var reportContainer = document.getElementById('reportContainer');
     var inputSection = document.getElementById('inputSection');
 
-    // Detect empty/blocked/JS-dependent pages
+    // Detect empty/blocked/JS-dependent pages (skip for console snippet — JS already executed)
     var warningHtml = '';
+    var isConsoleSnippet = data.meta && data.meta._inputMethod === 'console';
     var elCount = (data.structure && data.structure.totalElements) || 0;
     var contentWidth = parseFloat(data.spacing && data.spacing.maxContentWidth) || 0;
     var contrastPairCount = (data.colors && data.colors.contrastPairs) ? data.colors.contrastPairs.length : 0;
@@ -26931,30 +27874,33 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
     // Also flag pages with very few text colors (likely unstyled/broken render)
     var textColorCount = (data.colors && data.colors.textColors) ? data.colors.textColors.length : 0;
     var isBareBones = elCount > 5 && elCount < 50 && textColorCount <= 2 && contentWidth < 200;
-    if (hasLimitedContent || isJsDependent || isBareBones) {
+    if (!isConsoleSnippet && (hasLimitedContent || isJsDependent || isBareBones)) {
       var reason = hasLimitedContent
         ? 'Limited content detected (' + elCount + ' elements)'
         : isJsDependent
         ? 'This page requires JavaScript to render (' + elCount + ' elements but almost no visible text)'
         : 'Page appears incomplete or improperly loaded (' + elCount + ' elements, ' + textColorCount + ' text colors)';
-      warningHtml = '<div style="padding:16px 20px;background:#fffbeb;border:2px solid #f59e0b;border-radius:var(--radius);margin-bottom:16px;font-size:14px;line-height:1.6">' +
-        '<div style="display:flex;align-items:flex-start;gap:12px">' +
-        '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#b45309" stroke-width="2" style="flex-shrink:0;margin-top:2px"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>' +
-        '<div>' +
-        '<strong style="color:#92400e;font-size:15px">' + reason + '</strong>' +
-        '<p style="color:#92400e;margin:6px 0">The URL analysis can only read static HTML and CSS. Sites built with JavaScript frameworks (React, Angular, Vue), ' +
+      var isDark = document.body.classList.contains('dark-ui');
+      var wBg = isDark ? '#2d2006' : '#fffbeb';
+      var wBorder = isDark ? '#92400e' : '#f59e0b';
+      var wText = isDark ? '#fbbf24' : '#92400e';
+      var wStrong = isDark ? '#fcd34d' : '#78350f';
+      var wTipBg = isDark ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.7)';
+      var wTipBorder = isDark ? '#92400e' : '#fbbf24';
+      var wCodeBg = isDark ? '#451a03' : '#fef3c7';
+      warningHtml = '<div style="padding:16px 20px;background:' + wBg + ';border:2px solid ' + wBorder + ';border-radius:var(--radius);margin-bottom:16px;font-size:14px;line-height:1.6">' +
+        '<strong style="color:' + wStrong + ';font-size:15px">' + reason + '</strong>' +
+        '<p style="color:' + wText + ';margin:6px 0">The URL analysis can only read static HTML and CSS. Sites built with JavaScript frameworks (React, Angular, Vue), ' +
         'or protected by Cloudflare/login, will appear empty or broken.</p>' +
-        '<p style="color:#92400e;margin:6px 0"><strong>The results below are unreliable</strong> — they score the empty shell, not the actual page.</p>' +
-        '<div style="margin-top:12px;padding:12px 16px;background:rgba(255,255,255,0.7);border-radius:8px;border:1px solid #fbbf24">' +
-        '<strong style="color:#78350f;font-size:14px">How to analyze this page accurately:</strong>' +
-        '<ol style="color:#92400e;margin:8px 0 0;padding-left:20px;font-size:13px">' +
+        '<p style="color:' + wText + ';margin:6px 0"><strong>The results below are unreliable</strong> — they score the empty shell, not the actual page.</p>' +
+        '<div style="margin-top:12px;padding:12px 16px;background:' + wTipBg + ';border-radius:8px;border:1px solid ' + wTipBorder + '">' +
+        '<strong style="color:' + wStrong + ';font-size:14px">How to analyze this page accurately:</strong>' +
+        '<ol style="color:' + wText + ';margin:8px 0 0;padding-left:20px;font-size:13px">' +
         '<li>Open the page in your browser and navigate to it normally</li>' +
         '<li>Click <strong>New Analysis</strong> above, then switch to the <strong>Console Snippet</strong> tab</li>' +
-        '<li>Copy the snippet, open DevTools (<code style="background:#fef3c7;padding:1px 4px;border-radius:3px">F12</code>), paste into Console, press Enter</li>' +
+        '<li>Copy the snippet, open DevTools (<code style="background:' + wCodeBg + ';padding:1px 4px;border-radius:3px">F12</code>), paste into Console, press Enter</li>' +
         '<li>Come back here and paste the result — you\'ll get a full, accurate analysis</li>' +
         '</ol>' +
-        '</div>' +
-        '</div>' +
         '</div>' +
         '</div>';
     }
@@ -27112,7 +28058,14 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
     } catch(e) { return html; }
   }
 
-  function analyzeHtmlInIframe(html, callback, sourceUrl, excludeSelector, captureScreenshots) {
+  function analyzeHtmlInIframe(html, callback, sourceUrlOrDark, excludeSelectorOrEffectCSS, captureScreenshots) {
+    // Support both signatures:
+    // analyzeHtmlInIframe(html, cb, sourceUrl, excludeSelector, screenshots) — URL mode
+    // analyzeHtmlInIframe(html, cb, dark, effectCSS, screenshots) — editor preview mode
+    var sourceUrl = typeof sourceUrlOrDark === 'string' ? sourceUrlOrDark : null;
+    var excludeSelector = typeof excludeSelectorOrEffectCSS === 'string' && !sourceUrl ? null : excludeSelectorOrEffectCSS;
+    var editorDark = typeof sourceUrlOrDark === 'boolean' ? sourceUrlOrDark : false;
+    var editorEffectCSS = (!sourceUrl && typeof excludeSelectorOrEffectCSS === 'string') ? excludeSelectorOrEffectCSS : '';
     var iframe = document.createElement('iframe');
     // Use viewport from selector or default
     var vp = getSelectedViewport();
@@ -27169,9 +28122,13 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
         srcdoc = html + extractScript;
       }
     } else {
-      srcdoc = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">' +
+      var darkClass = editorDark ? ' class="dark"' : '';
+      var darkVariantTag = editorDark ? '<style type="text/tailwindcss">@custom-variant dark (&:where(.dark, .dark *));</style>' : '';
+      var effectTag = editorEffectCSS ? '<style>' + editorEffectCSS + '</style>' : '';
+      srcdoc = '<!DOCTYPE html><html lang="en"' + darkClass + '><head><meta charset="UTF-8">' +
         '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
         '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
+        darkVariantTag + effectTag +
         '<style>body{margin:0}</style></head><body>' +
         html + excludeVar + fragmentVar + screenshotScript +
         '<script>setTimeout(function(){(' + extractFromDocument.toString() + ')()}, 1500);</' + 'script>' +
@@ -27201,9 +28158,17 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
   }
 
   // --- Screenshot capture script (injected into iframes after extraction) ---
+  function getScreenshotSettings() {
+    var sel = document.getElementById('screenshotQuality');
+    if (!sel) return { scale: 0.5, quality: 0.7 };
+    var parts = sel.value.split('|');
+    return { scale: parseFloat(parts[0]) || 0.5, quality: parseFloat(parts[1]) || 0.7 };
+  }
+
   function buildScreenshotScript(msgType) {
     // Runs inside iframe. Loads modern-screenshot, captures page as viewport-height
-    // sections at 0.5x scale as WebP. Always multi-section for reliability.
+    // sections as WebP. Scale and quality come from UI selector.
+    var ss = getScreenshotSettings();
     return '(function(){' +
       'var s=document.createElement("script");' +
       's.src="' + SCREENSHOT_CDN + '";' +
@@ -27218,13 +28183,13 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
           'if(y>=captureH||shots.length>=5){parent.postMessage({type:"' + msgType + '",screenshots:shots},"*");return}' +
           'window.scrollTo(0,y);' +
           'setTimeout(function(){' +
-            'ms.domToCanvas(document.documentElement,{scale:0.5}).then(function(c){' +
+            'ms.domToCanvas(document.documentElement,{scale:' + ss.scale + '}).then(function(c){' +
               'c.toBlob(function(b){' +
                 'if(!b){y+=vh;next();return}' +
                 'var r=new FileReader();' +
                 'r.onloadend=function(){shots.push(r.result);y+=vh;next()};' +
                 'r.readAsDataURL(b)' +
-              '},"image/webp",0.7)' +
+              '},"image/webp",' + ss.quality + ')' +
             '}).catch(function(){y+=vh;next()})' +
           '},200)' +
         '}' +

@@ -166,15 +166,35 @@ What type of element needs contrast checking?
    └─ No requirement
 ```
 
+## APCA — Advanced Perceptual Contrast Algorithm
+
+WCAG 2.x contrast ratios are a useful baseline, but APCA (Accessible Perceptual Contrast Algorithm) provides a more perceptually accurate model. Key differences:
+
+| Aspect | WCAG 2.x Ratio | APCA (Lc value) |
+|--------|----------------|-----------------|
+| Polarity | Symmetric (same ratio either way) | Asymmetric (dark-on-light ≠ light-on-dark) |
+| Scale | 1:1 to 21:1 | Lc 0 to ~±108 |
+| Font size/weight | Large text = one lower threshold | Continuous lookup table by size × weight |
+| Perception | Luminance-only | Better models human contrast sensitivity |
+
+**Practical use:** APCA is not yet a WCAG requirement (under development for WCAG 3.0/Silver). Use WCAG 2.x ratios as the compliance standard and APCA as a supplementary perceptual check. The [Design Analyzer](../docs/analyzer.html) reports both.
+
+- Lc 60+ → readable body text (equivalent to ~4.5:1 WCAG for typical sizes)
+- Lc 45+ → readable large/bold text
+- Lc 30+ → non-text UI elements
+
 ## Testing Tools
 - **Chrome DevTools** — Inspect element → color picker shows contrast ratio
 - **axe DevTools** — Browser extension, automated WCAG testing
 - **Lighthouse** — Built into Chrome, checks contrast in accessibility audit
 - **WebAIM Contrast Checker** — https://webaim.org/resources/contrastchecker/
 - **Colour Contrast Analyser** — Desktop app (TPGi), tests against WCAG 2.2
+- **[Design Analyzer](../docs/analyzer.html)** — Reports WCAG ratio + APCA Lc value, gradient/filter-aware, 8 audience profiles
 
 ## Sources
 - [WCAG 2.2 — Success Criterion 1.4.3 Contrast (Minimum)](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum)
 - [WCAG 2.2 — Success Criterion 1.4.6 Contrast (Enhanced)](https://www.w3.org/WAI/WCAG22/Understanding/contrast-enhanced)
 - [WCAG 2.2 — Success Criterion 1.4.11 Non-text Contrast](https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast)
 - [WebAIM — Contrast and Color Accessibility](https://webaim.org/articles/contrast/)
+- [APCA — Accessible Perceptual Contrast Algorithm](https://github.com/Myndex/SAPC-APCA)
+- [APCA Readability Criterion](https://readtech.org/ARC/)

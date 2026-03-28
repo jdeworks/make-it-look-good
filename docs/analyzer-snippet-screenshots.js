@@ -572,12 +572,21 @@
   data.interaction.touchTargets = touchTargetIssues.slice(0, 40);
 
   // Adjacent interactive element spacing — siblings only
+  // Helper: get a human-readable label for an interactive element
+  function _adjLabel(el) {
+    var txt = (el.textContent || '').trim().substring(0, 30);
+    if (txt) return txt;
+    var label = el.getAttribute('aria-label') || el.getAttribute('title') || el.getAttribute('alt') || '';
+    if (label) return '[' + label.substring(0, 30) + ']';
+    var tag = el.tagName.toLowerCase();
+    var cls = (el.className || '').toString().split(/\s+/).filter(function(c) { return c.length > 0 && c.length < 30; }).slice(0, 2).join('.');
+    return '<' + tag + (cls ? '.' + cls : '') + '>';
+  }
   // Group interactive elements by parent, then check gaps between adjacent siblings
   var adjacentIssues = [];
   var parentGroups = new Map();
   interactive.forEach(function(el) {
     if (!isVisible(el)) return;
-    // Skip decorative/mock elements
     if (el.closest('[aria-hidden="true"]') || el.closest('[role="img"]') || el.closest('.mock, .mock-ui, [class*="mock-"]')) return;
     if (el.hasAttribute('tabindex') && el.getAttribute('tabindex') === '-1') return;
     var rect = el.getBoundingClientRect();
@@ -589,7 +598,6 @@
   });
   parentGroups.forEach(function(children) {
     if (children.length < 2) return;
-    // Sort by position (left-to-right, top-to-bottom)
     children.sort(function(a, b) { return a.rect.left - b.rect.left || a.rect.top - b.rect.top; });
     for (var i = 0; i < children.length - 1 && adjacentIssues.length < 15; i++) {
       var a = children[i].rect;
@@ -599,12 +607,12 @@
       if (sameRow) {
         var hGap = Math.round(Math.max(0, b.left - a.right));
         if (hGap < 8) {
-          adjacentIssues.push({ gap: hGap, direction: 'horizontal', elementA: cssSelector(children[i].el), elementB: cssSelector(children[i + 1].el), textA: (children[i].el.textContent || '').trim().substring(0, 30), textB: (children[i + 1].el.textContent || '').trim().substring(0, 30) });
+          adjacentIssues.push({ gap: hGap, direction: 'horizontal', selectorA: cssSelector(children[i].el), selectorB: cssSelector(children[i + 1].el), textA: _adjLabel(children[i].el), textB: _adjLabel(children[i + 1].el) });
         }
       } else if (sameCol) {
         var vGap = Math.round(Math.max(0, b.top - a.bottom));
         if (vGap < 8) {
-          adjacentIssues.push({ gap: vGap, direction: 'vertical', elementA: cssSelector(children[i].el), elementB: cssSelector(children[i + 1].el), textA: (children[i].el.textContent || '').trim().substring(0, 30), textB: (children[i + 1].el.textContent || '').trim().substring(0, 30) });
+          adjacentIssues.push({ gap: vGap, direction: 'vertical', selectorA: cssSelector(children[i].el), selectorB: cssSelector(children[i + 1].el), textA: _adjLabel(children[i].el), textB: _adjLabel(children[i + 1].el) });
         }
       }
     }
@@ -702,9 +710,15 @@
     });
   });
   // Also check if stylesheets contain focus-visible rules (can't detect via getComputedStyle)
-  data.accessibility.hasFocusVisibleCSS = Array.from(document.styleSheets).some(function(ss) {
+  var hasFocusVisibleCSS = Array.from(document.styleSheets).some(function(ss) {
     try { return Array.from(ss.cssRules).some(function(r) { return r.selectorText && r.selectorText.indexOf('focus-visible') !== -1; }); } catch(e) { return false; }
   });
+  // Also check HTML class attributes for focus-visible (Tailwind v4 classes may not be in accessible stylesheets due to CDN cross-origin)
+  var hasFocusVisibleClasses = Array.from(interactive).slice(0, 20).some(function(el) {
+    var cls = el.getAttribute('class') || '';
+    return cls.indexOf('focus-visible') !== -1 || cls.indexOf('focus:ring') !== -1 || cls.indexOf('focus:outline') !== -1;
+  });
+  data.accessibility.hasFocusVisibleCSS = hasFocusVisibleCSS || hasFocusVisibleClasses;
 
   // --- Font loading analysis ---
   data.performance.fontLoading = [];
@@ -874,11 +888,38 @@
 
   // --- Element overflow detection ---
   data.layout.overflowElements = 0;
+  data.layout.horizontalScrollContainers = [];
+  data.layout.nestedScrollbars = 0;
   for (var oi = 0; oi < allElements.length && oi < 500; oi++) {
     var oel = allElements[oi];
     if (!isVisible(oel) || isDecorative(oel)) continue;
     if (oel.scrollWidth > oel.clientWidth + 2 && oel.clientWidth > 0) {
       data.layout.overflowElements++;
+      var oelTag = oel.tagName.toLowerCase();
+      var oelStyle = getComputedStyle(oel);
+      var isIntentionalScroll = oelStyle.overflowX === 'auto' || oelStyle.overflowX === 'scroll';
+      var isTableOrCode = oelTag === 'table' || oelTag === 'pre' || oelTag === 'code' || oel.closest('table,pre,code');
+      if (oel.clientWidth > 200 && !isTableOrCode) {
+        data.layout.horizontalScrollContainers.push({
+          selector: cssSelector(oel),
+          width: oel.clientWidth,
+          scrollWidth: oel.scrollWidth,
+          overflow: Math.round(oel.scrollWidth - oel.clientWidth),
+          intentional: isIntentionalScroll
+        });
+      }
+      if (isIntentionalScroll) {
+        var scrollParent = oel.parentElement;
+        while (scrollParent && scrollParent !== document.documentElement) {
+          var spStyle = getComputedStyle(scrollParent);
+          if ((spStyle.overflowX === 'auto' || spStyle.overflowX === 'scroll' || spStyle.overflowY === 'auto' || spStyle.overflowY === 'scroll') &&
+              scrollParent.scrollHeight > scrollParent.clientHeight + 10) {
+            data.layout.nestedScrollbars++;
+            break;
+          }
+          scrollParent = scrollParent.parentElement;
+        }
+      }
     }
   }
 

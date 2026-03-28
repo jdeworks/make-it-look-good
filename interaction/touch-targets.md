@@ -157,15 +157,29 @@
 }
 ```
 
+## Context-Aware Exceptions (WCAG 2.5.8)
+
+Not all interactive elements need the same target size. WCAG 2.5.8 defines exceptions based on context:
+
+| Context | Rule | Rationale |
+|---------|------|-----------|
+| **Inline text links** (inside `<p>`, `<blockquote>`, etc.) | Exempt from target size requirements | Users expect paragraph links to be text-sized; enlarging would break reading flow |
+| **Navigation links** | Must meet full target size | Navigation is high-frequency, critical interaction |
+| **Footer links** | Relaxed but not zero — 16px desktop / 24px mobile minimum | Footer links are low-frequency; overly strict sizing is impractical |
+| **Buttons / styled links** | Must meet full target size | Button-styled elements signal "click me" and need adequate sizing |
+
+The [Design Analyzer](../docs/analyzer.html) automatically classifies interactive elements by DOM ancestry (nav, footer, inline paragraph, button-styled) and applies appropriate severity levels.
+
 ## Common Mistakes
 
 1. **Relying on icon size as target size** — a 24px icon with no padding has a 24px target. Users will mis-tap constantly. Always pad to at least 44px.
 2. **Forgetting spacing between targets** — two 48px buttons touching each other effectively merge into one confusing zone. Add 8px+ gap.
 3. **Desktop-only testing** — targets that work fine with a mouse fail on tablets. Use `@media (pointer: coarse)` to detect touch devices and increase sizes.
-4. **Text links in body copy** — short links like "here" can be tiny targets. Ensure link text is descriptive and padding makes the target at least 44px tall.
+4. **Text links in body copy** — short links like "here" can be tiny targets. Ensure link text is descriptive and padding makes the target at least 44px tall. Note: inline text links in paragraphs are exempt from WCAG 2.5.8 target size requirements, but padding still improves usability.
 5. **Fixed headers with tiny buttons** — hamburger menus, close buttons, and back arrows in headers are frequent offenders. These are high-frequency targets — make them generously sized.
 6. **Overlapping hit areas** — using negative margins or absolute positioning can cause targets to overlap. Test by outlining all interactive elements.
 7. **Ignoring the thumb zone** — placing the most important action in the top-right corner of a mobile screen makes it the hardest to reach. Primary actions belong at the bottom.
+8. **Treating all links equally** — footer links, inline text links, and navigation links have different sizing expectations. Applying strict 44px minimums to footer text links creates unnecessary noise.
 
 ## Decision Tree
 

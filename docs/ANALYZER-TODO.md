@@ -1,23 +1,39 @@
 # Analyzer TODO
 
-## Completed (43 items)
+## Completed (69 items)
 
 ### Core
 - [x] Modular scoring architecture (14 modules in `scoring/`)
-- [x] 5 audience profiles with evidence-based thresholds
-- [x] 3 input modes (URL fetch, console snippet, paste HTML)
-- [x] Gradient contrast via canvas sampling
+- [x] 8 audience profiles with evidence-based thresholds (General, WCAG AAA, Elderly, Low Vision, Motor Impairment, Color Blind, Children, Cognitive)
+- [x] 4 input modes (URL fetch, console snippet, paste HTML, import JSON)
+- [x] Gradient contrast via canvas sampling (multi-layer compositing)
 - [x] Background image contrast via canvas (CORS-limited)
 - [x] CSS filter contrast math (brightness, contrast, opacity)
 - [x] APCA contrast algorithm alongside WCAG
 - [x] oklch/oklab color parsing via canvas fallback
 - [x] Space-separated rgb() syntax support
 - [x] Page context detection (marketing/form/app/content)
+- [x] Fragment detection (skips document-level checks for pasted HTML snippets)
 - [x] Decorative element filtering
 - [x] Post-analysis exclusion suggestions (two-step flow)
 - [x] Extraction data caching (sessionStorage)
 - [x] Dark mode report styling
 - [x] AA/AAA profile switching (captures pairs up to 7.5:1)
+- [x] N/A category detection (modules return notApplicable when nothing to check)
+- [x] Context-aware touch targets (nav/footer/inline/button classification per WCAG 2.5.8)
+- [x] CVD palette simulation (Machado et al. 2009 matrices for protanopia, deuteranopia, tritanopia)
+- [x] JS-dependent page detection (warns when page needs JS execution)
+
+### UI & Features
+- [x] Page screenshots (modern-screenshot library, viewport sections, zoom lightbox)
+- [x] Analysis history in localStorage (max 10, dedup by URL+profile)
+- [x] JSON export/import with drag-and-drop
+- [x] Viewport size selector (defaults to current window size)
+- [x] Progress bar during analysis
+- [x] URL autocomplete from history
+- [x] Mobile-optimized layout (CSS grid header, icon-only buttons)
+- [x] Self-hosted CORS proxy (Cloudflare Worker with rate limiting, SSRF protection)
+- [x] Proxy URL injection via local .env (not committed)
 
 ### Extraction
 - [x] Actual character-per-line via span measurement
@@ -50,14 +66,21 @@
 - [x] Auto-playing unmuted media detection
 - [x] Padding-inclusive touch measurement (checks parent label/link)
 
-## Future: Deep Scan Mode
+### Testing
+- [x] Headless browser test suite (Puppeteer, serves docs/ locally, renders presets in real iframe with Tailwind)
+- [x] 125 preset templates validated — avg 88, min 69, max 100
+- [x] Before/clean gap verified: 81 avg vs 88 avg (7pt differentiation)
+- [x] Browser-based test runner (`docs/tests/test-presets-rendered.html`)
+- [x] Unit tests for scoring modules (`docs/tests/test-scoring.html`)
+- [x] Edge case test pages (gradients, dark backgrounds, fixed-width, truncation)
+- [x] 3 iterations of template fixes across 125 files (contrast, focus-visible, semantics)
 
-These require re-rendering the page and are best offered as an explicit "deep scan" option:
+## Completed: Deep Scan Mode
 
-- [x] **Multi-viewport testing** — Spawn 3 parallel iframes at 375/768/1280px, merge results. Architecture ready, ~2-4s. See `research/multi-viewport-dark-mode.md`
-- [x] **Dark mode class toggle** — Toggle `.dark` on html, re-extract colors. ~95% reliable for Tailwind/class-based sites.
-- [x] **Dark mode media query rewriting** — Extract `prefers-color-scheme: dark` rules from stylesheets, inject unconditionally. ~80-90% reliable. See research.
-- [x] **Scroll before extraction** — Auto-scroll full page to trigger intersection observers. Console warning already implemented for manual use.
+- [x] **Multi-viewport testing** — Spawn 3 parallel iframes at 375/768/1280px, merge results
+- [x] **Dark mode class toggle** — Toggle `.dark` on html, re-extract colors. ~95% reliable for Tailwind/class-based sites
+- [x] **Dark mode media query rewriting** — Extract `prefers-color-scheme: dark` rules from stylesheets, inject unconditionally. ~80-90% reliable
+- [x] **Scroll before extraction** — Auto-scroll full page to trigger intersection observers
 
 ## Future: LLM Integration (opt-in)
 
@@ -97,3 +120,18 @@ Default off. Only when user provides API key. See research notes in this file's 
 - `research/analyzer-roadmap.md` — P0/P1 roadmap, priority matrix (794 lines)
 - `research/analyzer-p2-research.md` — P2/P3 feature research (928 lines)
 - `research/multi-viewport-dark-mode.md` — Multi-viewport & dark mode feasibility (345 lines)
+- `research/analyzer-test-rendered.md` — Latest headless test results (125 presets, per-module averages)
+
+## E2E Testing
+
+Run `node scripts/test-presets-headless.mjs` for the full rendered test suite. Requires Puppeteer (`npm i puppeteer`). The script:
+1. Serves `docs/` on localhost:8765
+2. Loads each preset in a real iframe with Tailwind CSS
+3. Runs the same extraction + scoring as the production analyzer
+4. Outputs results to `research/analyzer-test-rendered.md`
+
+Key metrics to track:
+- **Overall average** should be ≥85 (currently 88)
+- **Before/clean gap** should be ≥5 points (currently 7) — proves the analyzer differentiates design quality
+- **Contrast average** is the weakest category (currently 46) — legitimate failures from Tailwind's default light color shades
+- **No module should average below 40** except Contrast (known issue with Tailwind color scale)

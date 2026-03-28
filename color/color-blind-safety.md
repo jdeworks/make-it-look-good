@@ -171,6 +171,18 @@ Does this element use color to convey information?
       └─ Test with Chrome DevTools simulation (all 3 types)
 ```
 
+## Automated CVD Testing
+
+The [Design Analyzer](../docs/analyzer.html) includes automated CVD palette safety checking when using the **Color Blind** audience profile. It applies Machado et al. 2009 simulation matrices to all color pairs on the page and flags combinations that become indistinguishable (contrast ratio drops below 1.5:1) under protanopia, deuteranopia, or tritanopia simulation.
+
+**How it works:**
+1. Collects all foreground/background colors from the page
+2. Transforms each color through 3 CVD simulation matrices (3×3 linear transform in RGB space)
+3. Recalculates contrast ratio between each simulated pair
+4. Flags pairs where original contrast ≥2:1 but simulated contrast <1.5:1
+
+This catches issues that manual review misses — e.g., two colors that look distinct to typical vision but collapse to nearly identical shades under deuteranopia.
+
 ## Testing Tools
 
 - **Chrome DevTools** — Rendering tab → "Emulate vision deficiencies" → simulates protanopia, deuteranopia, tritanopia, achromatopsia
@@ -178,9 +190,11 @@ Does this element use color to convey information?
 - **Sim Daltonism** (macOS) — Real-time color blindness simulator overlay
 - **Color Oracle** (Windows/macOS/Linux) — System-wide CVD simulator
 - **Coblis** — https://www.color-blindness.com/coblis-color-blindness-simulator/ — upload screenshots
+- **[Design Analyzer](../docs/analyzer.html)** — Automated CVD palette simulation (Color Blind profile), checks all color pairs against 3 CVD types
 
 ## Sources
 - [WCAG 2.2 — Success Criterion 1.4.1 Use of Color](https://www.w3.org/WAI/WCAG22/Understanding/use-of-color)
 - [Okabe & Ito (2008) — Color Universal Design](https://jfly.uni-koeln.de/color/)
 - [Colour Blind Awareness — Types of Colour Blindness](https://www.colourblindawareness.org/colour-blindness/types-of-colour-blindness/)
 - [WebAIM — Visual Disabilities: Color-Blindness](https://webaim.org/articles/visual/colorblind)
+- [Machado, Oliveira, Fernandes (2009) — A Physiologically-based Model for Simulation of Color Vision Deficiency](https://www.inf.ufrgs.br/~oliveira/pubs_files/CVD_Simulation/CVD_Simulation.html)

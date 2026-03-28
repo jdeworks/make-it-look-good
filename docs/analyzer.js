@@ -341,7 +341,9 @@
     data.accessibility.formLabels.withLabel = labeled;
     data.accessibility.formLabels.withoutLabel = data.accessibility.formLabels.total - labeled;
     Array.from(interactive).slice(0, 10).forEach(function(el) { if (!isVisible(el)) return; var s = getComputedStyle(el); data.accessibility.focusIndicators.push({ element: cssSelector(el), outlineStyle: s.outlineStyle, outlineWidth: s.outlineWidth, outlineColor: s.outlineColor, outlineOffset: s.outlineOffset }); });
-    data.accessibility.hasFocusVisibleCSS = Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r.selectorText && r.selectorText.indexOf('focus-visible') !== -1; }); } catch(e) { return false; } });
+    var _hasFvCSS = Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r.selectorText && r.selectorText.indexOf('focus-visible') !== -1; }); } catch(e) { return false; } });
+    var _hasFvClasses = Array.from(interactive).slice(0, 20).some(function(el) { var cls = el.getAttribute('class') || ''; return cls.indexOf('focus-visible') !== -1 || cls.indexOf('focus:ring') !== -1 || cls.indexOf('focus:outline') !== -1; });
+    data.accessibility.hasFocusVisibleCSS = _hasFvCSS || _hasFvClasses;
     // Font smoothing + bg image behind text (profile-specific)
     data.typography.fontSmoothingAntialiased = false;
     try { var bs = getComputedStyle(document.body).webkitFontSmoothing; if (bs === 'antialiased') data.typography.fontSmoothingAntialiased = true; } catch(e) {}
@@ -369,6 +371,8 @@
     var copySnippetBtn = document.getElementById('copySnippetBtn');
     var newAnalysisBtn = document.getElementById('newAnalysisBtn');
     var printBtn = document.getElementById('printBtn');
+    // Store original input section HTML so we can restore it after preview analysis
+    var _originalInputSectionHTML = inputSection.innerHTML;
 
     // Tab switching
     document.querySelectorAll('.tab-btn').forEach(function(btn) {
@@ -383,11 +387,11 @@
     // Load snippet for display
     loadSnippet(snippetCode);
 
-    // Toggle snippet variant (with/without screenshots)
-    var snippetScreenshotCheck = document.getElementById('snippetScreenshotCheck');
-    if (snippetScreenshotCheck) {
-      snippetScreenshotCheck.addEventListener('change', function() {
-        loadSnippet(snippetCode, snippetScreenshotCheck.checked);
+    // Toggle snippet variant based on shared screenshot checkbox
+    var sharedScreenshotCheck = document.getElementById('screenshotCheck');
+    if (sharedScreenshotCheck) {
+      sharedScreenshotCheck.addEventListener('change', function() {
+        loadSnippet(snippetCode, sharedScreenshotCheck.checked);
       });
     }
 
@@ -406,6 +410,7 @@
       try {
         var data = JSON.parse(json);
         if (!data.meta || !data.colors) throw new Error('Invalid format');
+        data.meta._inputMethod = 'console';
         runAnalysis(data);
       } catch(e) {
         showToast('Invalid JSON: ' + e.message);
@@ -418,7 +423,7 @@
       if (!html) { showToast('Paste HTML source code first'); return; }
       analyzeHtmlBtn.textContent = 'Analyzing...';
       analyzeHtmlBtn.disabled = true;
-      var wantScreenshots = document.getElementById('htmlScreenshotCheck') && document.getElementById('htmlScreenshotCheck').checked;
+      var wantScreenshots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
       analyzeHtmlInIframe(html, function(data) {
         analyzeHtmlBtn.textContent = 'Analyze HTML';
         analyzeHtmlBtn.disabled = false;
@@ -612,11 +617,25 @@
       reportContainer.classList.remove('visible');
       reportContainer.innerHTML = '';
       inputSection.style.display = '';
+      // Restore original input form if it was replaced (e.g. by editor preview analysis)
+      if (!inputSection.querySelector('.tab-btn')) {
+        inputSection.innerHTML = _originalInputSectionHTML;
+        // Re-bind tab switching after DOM restoration
+        inputSection.querySelectorAll('.tab-btn').forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            inputSection.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+            inputSection.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
+            btn.classList.add('active');
+            var target = document.getElementById(btn.dataset.tab);
+            if (target) target.classList.add('active');
+          });
+        });
+      }
       document.getElementById('reportActions').style.display = 'none'; document.getElementById('profileExplanation').style.display = 'none';
-      pasteInput.value = '';
-      htmlInput.value = '';
-      urlInput.value = '';
-      urlStatus.style.display = 'none';
+      var pi = document.getElementById('pasteInput'); if (pi) pi.value = '';
+      var hi = document.getElementById('htmlInput'); if (hi) hi.value = '';
+      var ui = document.getElementById('urlInput'); if (ui) ui.value = '';
+      var us = document.getElementById('urlStatus'); if (us) us.style.display = 'none';
       reportData = null;
       // Clear hash so refreshing doesn't reload old report
       if (location.hash) history.replaceState(null, '', location.pathname + location.search);
@@ -726,13 +745,18 @@
         var previewHtml = sessionStorage.getItem('milg-preview-html');
         if (previewHtml) {
           sessionStorage.removeItem('milg-preview-html');
+          // Read rendering context (dark mode, effect CSS) from editor
+          var previewCtx = {};
+          try { previewCtx = JSON.parse(sessionStorage.getItem('milg-preview-context') || '{}'); } catch(e) {}
+          sessionStorage.removeItem('milg-preview-context');
           // Show loading state
           var inputSection = document.getElementById('inputSection');
-          inputSection.innerHTML = '<div style="text-align:center;padding:64px 24px"><div class="analysis-progress" style="display:block;max-width:400px;margin:0 auto"><div class="analysis-progress-bar"><div class="analysis-progress-fill" style="width:30%;animation:pulse 1.5s ease infinite"></div></div><div class="analysis-progress-label" style="margin-top:12px;font-size:14px">Analyzing editor preview...</div></div></div>';
+          var ctxLabel = (previewCtx.dark ? ' (dark mode)' : '') + (previewCtx.effectName && previewCtx.effectName !== 'None' ? ' + ' + previewCtx.effectName : '');
+          inputSection.innerHTML = '<div style="text-align:center;padding:64px 24px"><div class="analysis-progress" style="display:block;max-width:400px;margin:0 auto"><div class="analysis-progress-bar"><div class="analysis-progress-fill" style="width:30%;animation:pulse 1.5s ease infinite"></div></div><div class="analysis-progress-label" style="margin-top:12px;font-size:14px">Analyzing editor preview' + ctxLabel + '...</div></div></div>';
           analyzeHtmlInIframe(previewHtml, function(data) {
-            data.meta.url = 'Editor Preview';
+            data.meta.url = 'Editor Preview' + ctxLabel;
             runAnalysis(data);
-          }, null, null, true);
+          }, previewCtx.dark || false, previewCtx.effectCSS || '', true);
         }
       } catch(e) {
         console.error('Failed to analyze preview HTML:', e);
@@ -1106,8 +1130,9 @@
     var reportContainer = document.getElementById('reportContainer');
     var inputSection = document.getElementById('inputSection');
 
-    // Detect empty/blocked/JS-dependent pages
+    // Detect empty/blocked/JS-dependent pages (skip for console snippet — JS already executed)
     var warningHtml = '';
+    var isConsoleSnippet = data.meta && data.meta._inputMethod === 'console';
     var elCount = (data.structure && data.structure.totalElements) || 0;
     var contentWidth = parseFloat(data.spacing && data.spacing.maxContentWidth) || 0;
     var contrastPairCount = (data.colors && data.colors.contrastPairs) ? data.colors.contrastPairs.length : 0;
@@ -1118,30 +1143,33 @@
     // Also flag pages with very few text colors (likely unstyled/broken render)
     var textColorCount = (data.colors && data.colors.textColors) ? data.colors.textColors.length : 0;
     var isBareBones = elCount > 5 && elCount < 50 && textColorCount <= 2 && contentWidth < 200;
-    if (hasLimitedContent || isJsDependent || isBareBones) {
+    if (!isConsoleSnippet && (hasLimitedContent || isJsDependent || isBareBones)) {
       var reason = hasLimitedContent
         ? 'Limited content detected (' + elCount + ' elements)'
         : isJsDependent
         ? 'This page requires JavaScript to render (' + elCount + ' elements but almost no visible text)'
         : 'Page appears incomplete or improperly loaded (' + elCount + ' elements, ' + textColorCount + ' text colors)';
-      warningHtml = '<div style="padding:16px 20px;background:#fffbeb;border:2px solid #f59e0b;border-radius:var(--radius);margin-bottom:16px;font-size:14px;line-height:1.6">' +
-        '<div style="display:flex;align-items:flex-start;gap:12px">' +
-        '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#b45309" stroke-width="2" style="flex-shrink:0;margin-top:2px"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>' +
-        '<div>' +
-        '<strong style="color:#92400e;font-size:15px">' + reason + '</strong>' +
-        '<p style="color:#92400e;margin:6px 0">The URL analysis can only read static HTML and CSS. Sites built with JavaScript frameworks (React, Angular, Vue), ' +
+      var isDark = document.body.classList.contains('dark-ui');
+      var wBg = isDark ? '#2d2006' : '#fffbeb';
+      var wBorder = isDark ? '#92400e' : '#f59e0b';
+      var wText = isDark ? '#fbbf24' : '#92400e';
+      var wStrong = isDark ? '#fcd34d' : '#78350f';
+      var wTipBg = isDark ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.7)';
+      var wTipBorder = isDark ? '#92400e' : '#fbbf24';
+      var wCodeBg = isDark ? '#451a03' : '#fef3c7';
+      warningHtml = '<div style="padding:16px 20px;background:' + wBg + ';border:2px solid ' + wBorder + ';border-radius:var(--radius);margin-bottom:16px;font-size:14px;line-height:1.6">' +
+        '<strong style="color:' + wStrong + ';font-size:15px">' + reason + '</strong>' +
+        '<p style="color:' + wText + ';margin:6px 0">The URL analysis can only read static HTML and CSS. Sites built with JavaScript frameworks (React, Angular, Vue), ' +
         'or protected by Cloudflare/login, will appear empty or broken.</p>' +
-        '<p style="color:#92400e;margin:6px 0"><strong>The results below are unreliable</strong> — they score the empty shell, not the actual page.</p>' +
-        '<div style="margin-top:12px;padding:12px 16px;background:rgba(255,255,255,0.7);border-radius:8px;border:1px solid #fbbf24">' +
-        '<strong style="color:#78350f;font-size:14px">How to analyze this page accurately:</strong>' +
-        '<ol style="color:#92400e;margin:8px 0 0;padding-left:20px;font-size:13px">' +
+        '<p style="color:' + wText + ';margin:6px 0"><strong>The results below are unreliable</strong> — they score the empty shell, not the actual page.</p>' +
+        '<div style="margin-top:12px;padding:12px 16px;background:' + wTipBg + ';border-radius:8px;border:1px solid ' + wTipBorder + '">' +
+        '<strong style="color:' + wStrong + ';font-size:14px">How to analyze this page accurately:</strong>' +
+        '<ol style="color:' + wText + ';margin:8px 0 0;padding-left:20px;font-size:13px">' +
         '<li>Open the page in your browser and navigate to it normally</li>' +
         '<li>Click <strong>New Analysis</strong> above, then switch to the <strong>Console Snippet</strong> tab</li>' +
-        '<li>Copy the snippet, open DevTools (<code style="background:#fef3c7;padding:1px 4px;border-radius:3px">F12</code>), paste into Console, press Enter</li>' +
+        '<li>Copy the snippet, open DevTools (<code style="background:' + wCodeBg + ';padding:1px 4px;border-radius:3px">F12</code>), paste into Console, press Enter</li>' +
         '<li>Come back here and paste the result — you\'ll get a full, accurate analysis</li>' +
         '</ol>' +
-        '</div>' +
-        '</div>' +
         '</div>' +
         '</div>';
     }
@@ -1299,7 +1327,14 @@
     } catch(e) { return html; }
   }
 
-  function analyzeHtmlInIframe(html, callback, sourceUrl, excludeSelector, captureScreenshots) {
+  function analyzeHtmlInIframe(html, callback, sourceUrlOrDark, excludeSelectorOrEffectCSS, captureScreenshots) {
+    // Support both signatures:
+    // analyzeHtmlInIframe(html, cb, sourceUrl, excludeSelector, screenshots) — URL mode
+    // analyzeHtmlInIframe(html, cb, dark, effectCSS, screenshots) — editor preview mode
+    var sourceUrl = typeof sourceUrlOrDark === 'string' ? sourceUrlOrDark : null;
+    var excludeSelector = typeof excludeSelectorOrEffectCSS === 'string' && !sourceUrl ? null : excludeSelectorOrEffectCSS;
+    var editorDark = typeof sourceUrlOrDark === 'boolean' ? sourceUrlOrDark : false;
+    var editorEffectCSS = (!sourceUrl && typeof excludeSelectorOrEffectCSS === 'string') ? excludeSelectorOrEffectCSS : '';
     var iframe = document.createElement('iframe');
     // Use viewport from selector or default
     var vp = getSelectedViewport();
@@ -1356,9 +1391,13 @@
         srcdoc = html + extractScript;
       }
     } else {
-      srcdoc = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">' +
+      var darkClass = editorDark ? ' class="dark"' : '';
+      var darkVariantTag = editorDark ? '<style type="text/tailwindcss">@custom-variant dark (&:where(.dark, .dark *));</style>' : '';
+      var effectTag = editorEffectCSS ? '<style>' + editorEffectCSS + '</style>' : '';
+      srcdoc = '<!DOCTYPE html><html lang="en"' + darkClass + '><head><meta charset="UTF-8">' +
         '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
         '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
+        darkVariantTag + effectTag +
         '<style>body{margin:0}</style></head><body>' +
         html + excludeVar + fragmentVar + screenshotScript +
         '<script>setTimeout(function(){(' + extractFromDocument.toString() + ')()}, 1500);</' + 'script>' +
@@ -1388,9 +1427,17 @@
   }
 
   // --- Screenshot capture script (injected into iframes after extraction) ---
+  function getScreenshotSettings() {
+    var sel = document.getElementById('screenshotQuality');
+    if (!sel) return { scale: 0.5, quality: 0.7 };
+    var parts = sel.value.split('|');
+    return { scale: parseFloat(parts[0]) || 0.5, quality: parseFloat(parts[1]) || 0.7 };
+  }
+
   function buildScreenshotScript(msgType) {
     // Runs inside iframe. Loads modern-screenshot, captures page as viewport-height
-    // sections at 0.5x scale as WebP. Always multi-section for reliability.
+    // sections as WebP. Scale and quality come from UI selector.
+    var ss = getScreenshotSettings();
     return '(function(){' +
       'var s=document.createElement("script");' +
       's.src="' + SCREENSHOT_CDN + '";' +
@@ -1405,13 +1452,13 @@
           'if(y>=captureH||shots.length>=5){parent.postMessage({type:"' + msgType + '",screenshots:shots},"*");return}' +
           'window.scrollTo(0,y);' +
           'setTimeout(function(){' +
-            'ms.domToCanvas(document.documentElement,{scale:0.5}).then(function(c){' +
+            'ms.domToCanvas(document.documentElement,{scale:' + ss.scale + '}).then(function(c){' +
               'c.toBlob(function(b){' +
                 'if(!b){y+=vh;next();return}' +
                 'var r=new FileReader();' +
                 'r.onloadend=function(){shots.push(r.result);y+=vh;next()};' +
                 'r.readAsDataURL(b)' +
-              '},"image/webp",0.7)' +
+              '},"image/webp",' + ss.quality + ')' +
             '}).catch(function(){y+=vh;next()})' +
           '},200)' +
         '}' +

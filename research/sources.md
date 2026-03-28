@@ -30,6 +30,10 @@ All sources used to build this knowledge base, organized by topic area.
 | WebAIM Contrast Checker | https://webaim.org/resources/contrastchecker/ | Contrast testing tool | 2026-03-17 |
 | MD3 — Color Overview | https://m3.material.io/styles/color/overview | HCT color space, dynamic color | 2026-03-17 |
 | MD3 — Key Colors & Tones | https://m3.material.io/styles/color/the-color-system/key-colors-tones | 5 key colors, 13 tonal stops, role mapping | 2026-03-17 |
+| APCA — Accessible Perceptual Contrast Algorithm | https://github.com/Myndex/SAPC-APCA | APCA-W3 perceptual contrast, Lc values, polarity-aware | 2026-03-20 |
+| Somers (Myndex) — APCA Documentation | https://readtech.org/ARC/ | APCA Readability Criterion, font size/weight thresholds | 2026-03-20 |
+| Machado, Oliveira, Fernandes (2009) — CVD Simulation | https://www.inf.ufrgs.br/~oliveira/pubs_files/CVD_Simulation/CVD_Simulation.html | Physiologically-based CVD simulation matrices (protanopia, deuteranopia, tritanopia) | 2026-03-20 |
+| WCAG 2.2 §1.4.1 — Use of Color | https://www.w3.org/TR/WCAG22/#use-of-color | Color as sole indicator, CVD safety | 2026-03-20 |
 | Radix Colors | https://www.radix-ui.com/colors | Accessible color scale reference | Reference |
 | Open Color | https://yeun.github.io/open-color/ | Open-source color scheme | Reference |
 
@@ -60,6 +64,7 @@ All sources used to build this knowledge base, organized by topic area.
 | web.dev — Animations & Performance | https://web.dev/animations-guide/ | GPU-accelerated properties, jank | 2026-03-17 |
 | MDN — prefers-reduced-motion | https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-reduced-motion | Accessibility media query | 2026-03-17 |
 | NNg — Response Times: 3 Important Limits | https://www.nngroup.com/articles/response-times-3-important-limits/ | 100ms/1s/10s thresholds | 2026-03-17 |
+| NNg — Animation Usability | https://www.nngroup.com/articles/animation-usability/ | Animation duration limits, 500ms max perceived threshold | 2026-03-20 |
 | Google — RAIL Performance Model | https://web.dev/articles/rail | Response, Animation, Idle, Load budgets | 2026-03-17 |
 | MD3 — Progress Indicators | https://m3.material.io/components/progress-indicators/overview | Determinate vs indeterminate | 2026-03-17 |
 | MD3 — Interaction States | https://m3.material.io/foundations/interaction/states/overview | Hover, focus, active, dragged states | 2026-03-17 |
