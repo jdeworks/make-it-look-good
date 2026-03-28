@@ -1159,8 +1159,8 @@
       var wCodeBg = isDark ? '#451a03' : '#fef3c7';
       warningHtml = '<div style="padding:16px 20px;background:' + wBg + ';border:2px solid ' + wBorder + ';border-radius:var(--radius);margin-bottom:16px;font-size:14px;line-height:1.6">' +
         '<strong style="color:' + wStrong + ';font-size:15px">' + reason + '</strong>' +
-        '<p style="color:' + wText + ';margin:6px 0">The URL analysis can only read static HTML and CSS. Sites built with JavaScript frameworks (React, Angular, Vue), ' +
-        'or protected by Cloudflare/login, will appear empty or broken.</p>' +
+        '<p style="color:' + wText + ';margin:6px 0">The URL analysis reads only static HTML and CSS. JavaScript is not executed for your security — running unknown scripts in your browser is dangerous. ' +
+        'Sites built with JS frameworks (React, Angular, Vue), or protected by Cloudflare/login, will appear empty.</p>' +
         '<p style="color:' + wText + ';margin:6px 0"><strong>The results below are unreliable</strong> — they score the empty shell, not the actual page.</p>' +
         '<div style="margin-top:12px;padding:12px 16px;background:' + wTipBg + ';border-radius:8px;border:1px solid ' + wTipBorder + '">' +
         '<strong style="color:' + wStrong + ';font-size:14px">How to analyze this page accurately:</strong>' +
