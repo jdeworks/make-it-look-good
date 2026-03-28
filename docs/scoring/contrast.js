@@ -150,7 +150,9 @@ function scoreContrast(data) {
   var passing = total - failures.length;
   var score = Math.round((passing / total) * 100);
 
-  return { score: score, findings: findings, weight: 20, label: 'Color & Contrast', icon: 'contrast' };
+  var checks = total;
+  var passed = passing;
+  return { score: score, findings: findings, checks: checks, passed: passed, weight: 20, label: 'Color & Contrast', icon: 'contrast' };
 }
 
 

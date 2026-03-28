@@ -70,7 +70,7 @@
     }
 
     var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
-    return { score: score, findings: findings, weight: 3, label: 'Motion & Animation', icon: 'cognitive' };
+    return { score: score, findings: findings, checks: checks, passed: passed, weight: 3, label: 'Motion & Animation', icon: 'cognitive' };
   }
 
   S.register("filters", scoreFilters, 3, "Motion & Animation", "cognitive");

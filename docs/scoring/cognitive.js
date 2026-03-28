@@ -45,7 +45,7 @@ function scoreCognitiveLoad(data) {
   }
 
   var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
-  return { score: score, findings: findings, weight: 5, label: 'Cognitive Load', icon: 'cognitive' };
+  return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Cognitive Load', icon: 'cognitive' };
 }
 
 

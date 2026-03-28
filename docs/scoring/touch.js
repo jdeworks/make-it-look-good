@@ -92,8 +92,11 @@ function scoreTouchTargets(data) {
   // Score: deduct per error, less per warning
   var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
   var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var totalTargets = targets.length || 1;
+  var checks = totalTargets;
+  var passed = totalTargets - errors - warnings;
   var score = Math.max(0, 100 - (errors * 10) - (warnings * 3));
-  return { score: score, findings: findings, weight: 15, label: 'Touch & Interaction', icon: 'touch' };
+  return { score: score, findings: findings, checks: checks, passed: Math.max(0, passed), weight: 15, label: 'Touch & Interaction', icon: 'touch' };
 }
 
 

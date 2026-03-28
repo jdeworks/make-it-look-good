@@ -81,20 +81,24 @@ window.MilgReport = (function() {
       html += '</div>';
       html += renderProgressBar(cat.score);
 
-      // Finding count
+      // Finding count with color-coded badges and tooltips
       var errors = cat.findings.filter(function(f) { return f.severity === 'error'; }).length;
       var warnings = cat.findings.filter(function(f) { return f.severity === 'warning'; }).length;
       var infos = cat.findings.filter(function(f) { return f.severity === 'info'; }).length;
+      var passed = (cat.checks || 0) - errors - warnings;
+      if (passed < 0) passed = 0;
+      // If module didn't report checks, estimate from findings
+      var totalChecks = cat.checks || (errors + warnings + infos + (cat.findings.length === 0 ? 1 : 0));
+      var notApplicable = Math.max(0, totalChecks - errors - warnings - infos - passed);
 
-      if (cat.findings.length > 0) {
-        html += '<div class="report-card-counts">';
-        if (errors > 0) html += '<span class="count-error">' + errors + ' error' + (errors > 1 ? 's' : '') + '</span>';
-        if (warnings > 0) html += '<span class="count-warning">' + warnings + ' warning' + (warnings > 1 ? 's' : '') + '</span>';
-        if (infos > 0) html += '<span class="count-info">' + infos + ' info</span>';
-        html += '</div>';
-      } else {
-        html += '<div class="report-card-counts"><span class="count-pass">All checks passed</span></div>';
+      html += '<div class="report-card-counts">';
+      if (totalChecks > 0 || cat.findings.length === 0) {
+        if (passed > 0 || cat.findings.length === 0) html += '<span class="count-pass" title="Passed">' + (passed || totalChecks) + '</span>';
+        if (errors > 0) html += '<span class="count-error" title="Errors">' + errors + '</span>';
+        if (warnings > 0) html += '<span class="count-warning" title="Warnings">' + warnings + '</span>';
+        if (infos > 0) html += '<span class="count-info" title="Info">' + infos + '</span>';
       }
+      html += '</div>';
 
       html += '</div>';
     });

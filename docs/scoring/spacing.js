@@ -155,7 +155,7 @@ function scoreSpacing(data) {
   }
 
   var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
-  return { score: score, findings: findings, weight: 15, label: 'Spacing & Layout', icon: 'spacing' };
+  return { score: score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Spacing & Layout', icon: 'spacing' };
 }
 
 

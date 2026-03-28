@@ -55,7 +55,7 @@
     }
 
     var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
-    return { score: score, findings: findings, weight: 3, label: 'Visual Balance', icon: 'consistency' };
+    return { score: score, findings: findings, checks: checks, passed: passed, weight: 3, label: 'Visual Balance', icon: 'consistency' };
   }
 
   S.register("balance", scoreBalance, 3, "Visual Balance", "consistency");
