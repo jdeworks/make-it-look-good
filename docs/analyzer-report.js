@@ -119,12 +119,13 @@ window.MilgReport = (function() {
       var totalChecks = cat.checks || (errors + warnings + infos + (cat.findings.length === 0 ? 1 : 0));
       var notApplicable = Math.max(0, totalChecks - errors - warnings - infos - passed);
 
+      var catId = 'findings-' + cat.icon;
       html += '<div class="report-card-counts">';
       if (totalChecks > 0 || cat.findings.length === 0) {
-        if (passed > 0 || cat.findings.length === 0) html += '<span class="count-pass" title="Passed">' + (passed || totalChecks) + '</span>';
-        if (errors > 0) html += '<span class="count-error" title="Errors">' + errors + '</span>';
-        if (warnings > 0) html += '<span class="count-warning" title="Warnings">' + warnings + '</span>';
-        if (infos > 0) html += '<span class="count-info" title="Info">' + infos + '</span>';
+        if (errors > 0) html += '<span class="count-error" title="' + errors + ' error(s)" onclick="event.stopPropagation();document.getElementById(\'' + catId + '\').scrollIntoView({behavior:\'smooth\',block:\'start\'})">' + errors + '</span>';
+        if (warnings > 0) html += '<span class="count-warning" title="' + warnings + ' warning(s)" onclick="event.stopPropagation();document.getElementById(\'' + catId + '\').scrollIntoView({behavior:\'smooth\',block:\'start\'})">' + warnings + '</span>';
+        if (infos > 0) html += '<span class="count-info" title="' + infos + ' info" onclick="event.stopPropagation();document.getElementById(\'' + catId + '\').scrollIntoView({behavior:\'smooth\',block:\'start\'})">' + infos + '</span>';
+        if (passed > 0 || cat.findings.length === 0) html += '<span class="count-pass" title="' + (passed || totalChecks) + ' passed">' + (passed || totalChecks) + '</span>';
       }
       html += '</div>';
 
@@ -181,6 +182,26 @@ window.MilgReport = (function() {
     });
 
     html += '</div>';
+
+    // --- Passed checks ---
+    var passedCategories = report.categories.filter(function(cat) { return cat.findings.length === 0 || cat.passed > 0; });
+    if (passedCategories.length > 0) {
+      html += '<details class="report-passed">';
+      html += '<summary style="cursor:pointer;font-size:16px;font-weight:600;padding:8px 0;color:var(--text-secondary)">Passed Checks</summary>';
+      html += '<div style="margin-top:8px">';
+      passedCategories.forEach(function(cat) {
+        var passCount = cat.passed || 0;
+        if (cat.findings.length === 0) passCount = cat.checks || 1;
+        if (passCount <= 0) return;
+        html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">';
+        html += '<span class="count-pass" style="cursor:default">' + passCount + '</span>';
+        html += '<span style="font-size:13px;font-weight:600">' + cat.label + '</span>';
+        html += '<span style="font-size:12px;color:var(--text-secondary)">' + (cat.findings.length === 0 ? 'All checks passed' : passCount + ' of ' + (cat.checks || passCount) + ' checks passed') + '</span>';
+        html += '</div>';
+      });
+      html += '</div>';
+      html += '</details>';
+    }
 
     // --- Extracted data summary ---
     html += '<div class="report-summary">';

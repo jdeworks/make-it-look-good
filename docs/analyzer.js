@@ -339,6 +339,10 @@
     data.accessibility.hasFocusVisibleCSS = Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r.selectorText && r.selectorText.indexOf('focus-visible') !== -1; }); } catch(e) { return false; } });
 
     parent.postMessage({ type: 'milg-analyzer-result', data: data }, '*');
+    // Trigger screenshot capture if configured (function injected by parent)
+    if (typeof window.__milgDoScreenshots === 'function') {
+      setTimeout(window.__milgDoScreenshots, 200);
+    }
   }
 
   // --- UI Logic ---
@@ -818,7 +822,7 @@
       }
       return true;
     });
-    runAnalysis(filtered);
+    runAnalysis(filtered, true);
     showToast('Re-scored with ' + active.length + ' exclusion(s)');
   };
 
@@ -919,8 +923,11 @@
     }, 15000);
   }
 
-  function runAnalysis(data) {
+  var _originalRawData = null; // Original data before exclusions
+
+  function runAnalysis(data, skipExclusionDetection) {
     lastRawData = data;
+    if (!_originalRawData || !skipExclusionDetection) _originalRawData = data;
     try { sessionStorage.setItem('milg-last-extraction', JSON.stringify(data, function(k, v) { return k === 'viewportData' ? undefined : v; })); } catch(e) {}
     // Apply selected profile
     var profile = document.getElementById('profileSelect');
@@ -929,15 +936,28 @@
     var reportContainer = document.getElementById('reportContainer');
     var inputSection = document.getElementById('inputSection');
 
-    // Detect exclusion patterns and prepend suggestions
-    var patterns = detectExclusionPatterns(data);
-    var suggestionsHtml = renderExclusionSuggestions(patterns);
+    // Detect exclusion patterns (use original data so they persist after re-scoring)
+    var suggestionsHtml = '';
+    if (!skipExclusionDetection) {
+      var patterns = detectExclusionPatterns(data);
+      suggestionsHtml = renderExclusionSuggestions(patterns);
+    } else {
+      // Show a "reset exclusions" option when viewing filtered results
+      suggestionsHtml = '<div class="exclusion-suggestions" style="padding:8px 12px;font-size:12px;display:flex;align-items:center;justify-content:space-between">' +
+        '<span style="color:var(--text-secondary)">Showing filtered results (some elements excluded)</span>' +
+        '<button class="btn" style="font-size:11px;padding:4px 10px;min-height:28px" onclick="window.__milgResetExclusions()">Reset exclusions</button>' +
+        '</div>';
+    }
 
     reportContainer.innerHTML = suggestionsHtml + MilgReport.renderReport(reportData);
     reportContainer.classList.add('visible');
     inputSection.style.display = 'none';
     document.getElementById('reportActions').style.display = 'flex';
   }
+
+  window.__milgResetExclusions = function() {
+    if (_originalRawData) runAnalysis(_originalRawData);
+  };
 
   // --- URL Fetch via CORS proxy ---
   // Remembers which proxy worked so subsequent requests (CSS files etc.) skip failed ones
@@ -1077,8 +1097,7 @@
           finish(data);
           return;
         }
-        // Extraction done — trigger screenshot capture inside the iframe
-        try { iframe.contentWindow.__milgCaptureScreenshots(); } catch(e) { /* will timeout */ }
+        // Screenshot capture auto-triggers inside the iframe after extraction
         // Store data, wait for screenshots
         iframe._milgData = data;
       }
@@ -1096,9 +1115,8 @@
     if (sourceUrl) html = injectBaseTag(html, sourceUrl);
     // Pass exclude selector to extraction context
     var excludeVar = excludeSelector ? '<script>window.__milgExclude=' + JSON.stringify(excludeSelector) + ';</' + 'script>' : '';
-    // Screenshot capture script: listens for start-capture message, loads library, captures
-    // Screenshot script: runs automatically after extraction posts its result
-    var screenshotScript = captureScreenshots ? '<script>window.__milgCaptureScreenshots=function(){' + buildScreenshotScript('milg-screenshots-result') + '};</' + 'script>' : '';
+    // Screenshot capture: script that auto-runs after extraction, loads CDN library, captures page
+    var screenshotScript = captureScreenshots ? '<script>window.__milgDoScreenshots=function(){' + buildScreenshotScript('milg-screenshots-result') + '};</' + 'script>' : '';
     var srcdoc;
     if (isFullDoc) {
       // Wait for window load (CSS/fonts loaded), then extra delay for rendering
