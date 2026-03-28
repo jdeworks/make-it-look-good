@@ -1106,15 +1106,23 @@
     var reportContainer = document.getElementById('reportContainer');
     var inputSection = document.getElementById('inputSection');
 
-    // Detect empty/blocked pages (Cloudflare challenge, JS-only apps, etc.)
+    // Detect empty/blocked/JS-dependent pages
     var warningHtml = '';
     var elCount = (data.structure && data.structure.totalElements) || 0;
     var contentWidth = parseFloat(data.spacing && data.spacing.maxContentWidth) || 0;
-    if (elCount < 20 || contentWidth < 100) {
+    var contrastPairCount = (data.colors && data.colors.contrastPairs) ? data.colors.contrastPairs.length : 0;
+    var headingCount = (data.typography && data.typography.headings) ? data.typography.headings.length : 0;
+    var hasLimitedContent = elCount < 20 || contentWidth < 100;
+    // JS-dependent pages: have HTML elements but almost no visible text/headings
+    var isJsDependent = elCount > 20 && contrastPairCount < 3 && headingCount < 1;
+    if (hasLimitedContent || isJsDependent) {
+      var reason = hasLimitedContent
+        ? 'Limited content detected (' + elCount + ' elements)'
+        : 'Page appears to require JavaScript to render (' + elCount + ' elements but almost no visible text)';
       warningHtml = '<div style="padding:12px 16px;background:#fffbeb;border:1px solid #fed7aa;border-radius:var(--radius);margin-bottom:12px;font-size:13px;line-height:1.5">' +
-        '<strong style="color:#b45309">Limited content detected (' + elCount + ' elements)</strong><br>' +
-        '<span style="color:#92400e">This page may be blocked by Cloudflare, require JavaScript to render, or need authentication. ' +
-        'The high scores above reflect the lack of content to check, not the quality of the design.</span><br>' +
+        '<strong style="color:#b45309">' + reason + '</strong><br>' +
+        '<span style="color:#92400e">This page may be a JavaScript app (React, Angular, Vue), blocked by Cloudflare, or need authentication. ' +
+        'The scores above may not reflect the actual design.</span><br>' +
         '<span style="color:#92400e">For accurate results, use the <strong>Console Snippet</strong> tab — it runs in your browser with the fully rendered page.</span>' +
         '</div>';
     }
@@ -1207,11 +1215,14 @@
   function fetchViaProxy(url, callback) {
     fetchWithProxy(url)
       .then(function(html) {
-        // Detect proxy error pages (Cloudflare challenges, 4xx/5xx error pages)
+        // Detect proxy error pages (Cloudflare challenges, 4xx/5xx error pages, consent walls)
+        var htmlStart = (html || '').substring(0, 3000);
         if (html && (
-          /class="no-js.*oldie"/i.test(html.substring(0, 500)) || // Cloudflare error template
-          /cf-error-details|cf-wrapper|cloudflare/i.test(html.substring(0, 2000)) ||
-          /Access Denied|403 Forbidden|Just a moment/i.test(html.substring(0, 1000))
+          /class="no-js.*oldie"/i.test(htmlStart) || // Cloudflare error template
+          /cf-error-details|cf-wrapper/i.test(htmlStart) ||
+          /Access Denied|403 Forbidden/i.test(htmlStart) ||
+          /Just a moment|Checking your browser/i.test(htmlStart) || // Cloudflare challenge
+          /consent\.google|accounts\.google.*ServiceLogin/i.test(htmlStart) // Google consent/login redirect
         )) {
           callback(null, 'The site returned an error/challenge page (likely blocking proxy access). Use the Console Snippet tab instead.');
           return;
