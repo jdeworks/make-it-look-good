@@ -12,15 +12,16 @@ function scoreAccessibility(data) {
   var passed = 0;
   var a11y = data.accessibility;
 
-  // Semantic elements
+  // Semantic elements (relaxed for small components/fragments)
+  var elCount = (data.structure && data.structure.totalElements) || 0;
   checks++;
   var semantic = a11y.semanticElements || {};
   var hasMain = (semantic.main || 0) > 0;
   var hasNav = (semantic.nav || 0) > 0;
   var hasHeader = (semantic.header || 0) > 0;
   var semanticCount = [hasMain, hasNav, hasHeader].filter(Boolean).length;
-  if (semanticCount >= 2) {
-    passed++;
+  if (semanticCount >= 2 || elCount < 30) {
+    passed++; // Small components don't need full page landmarks
   } else {
     findings.push({
       severity: semanticCount === 0 ? 'error' : 'warning',
@@ -116,23 +117,26 @@ function scoreAccessibility(data) {
     });
   }
 
-  // Language attribute
-  checks++;
-  if (data.accessibility.langAttribute) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'error',
-      title: 'Missing lang attribute on <html>',
-      detail: 'Screen readers need the language to pronounce content correctly',
-      fix: 'Add lang="en" (or appropriate language) to the <html> element.',
-      presetRef: null,
-      source: 'WCAG 2.2 §3.1.1 — https://www.w3.org/TR/WCAG22/#language-of-page'
-    });
+  // Language attribute (skip for HTML fragments — pasted snippets, presets)
+  var isFragment = data.meta && (data.meta.url === 'Pasted HTML' || data.meta.url === 'Editor Preview' || data.meta.isFragment);
+  if (!isFragment) {
+    checks++;
+    if (data.accessibility.langAttribute) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'error',
+        title: 'Missing lang attribute on <html>',
+        detail: 'Screen readers need the language to pronounce content correctly',
+        fix: 'Add lang="en" (or appropriate language) to the <html> element.',
+        presetRef: null,
+        source: 'WCAG 2.2 §3.1.1 — https://www.w3.org/TR/WCAG22/#language-of-page'
+      });
+    }
   }
 
-  // Skip navigation link
-  if (data.structure && data.structure.totalElements > 50) {
+  // Skip navigation link (skip for fragments)
+  if (!isFragment && data.structure && data.structure.totalElements > 50) {
     checks++;
     if (data.accessibility.hasSkipLink) {
       passed++;

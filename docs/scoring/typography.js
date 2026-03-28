@@ -49,20 +49,25 @@ function scoreTypography(data) {
   }
 
   // Line length (profile-aware: elderly 65, children 55, default 75)
-  checks++;
+  // Only flag when chars were measured from actual text (not container width estimate)
   var maxChars = data.typography.maxLineLength ? data.typography.maxLineLength.chars : 0;
-  var lineLimit = profile.maxLineLength || 75;
-  if (maxChars > 0 && maxChars <= lineLimit + 5) {
-    passed++;
-  } else if (maxChars > lineLimit + 5) {
-    findings.push({
-      severity: maxChars > lineLimit + 25 ? 'error' : 'warning',
-      title: 'Line length ~' + maxChars + ' characters (max for this audience: ' + lineLimit + ')',
-      detail: lineLimit < 70 ? 'Shorter lines improve readability for this audience.' : 'Long lines make it hard for the eye to track back to the next line.',
-      fix: 'Constrain content width with max-w-prose (65ch) or max-w-2xl (672px)',
-      presetRef: 'Editorial presets use max-w-prose for reading content',
-      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-length.html'
-    });
+  var lineElement = data.typography.maxLineLength ? data.typography.maxLineLength.element : '';
+  var isTextElement = /^(p|li|td|th|blockquote|dd|figcaption)/.test(lineElement);
+  if (maxChars > 0 && isTextElement) {
+    checks++;
+    var lineLimit = profile.maxLineLength || 75;
+    if (maxChars <= lineLimit + 5) {
+      passed++;
+    } else {
+      findings.push({
+        severity: maxChars > lineLimit + 25 ? 'error' : 'warning',
+        title: 'Line length ~' + maxChars + ' characters (max for this audience: ' + lineLimit + ')',
+        detail: lineLimit < 70 ? 'Shorter lines improve readability for this audience.' : 'Long lines make it hard for the eye to track back to the next line.',
+        fix: 'Constrain content width with max-w-prose (65ch) or max-w-2xl (672px)',
+        presetRef: 'Editorial presets use max-w-prose for reading content',
+        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-length.html'
+      });
+    }
   }
 
   // Heading scale — check if headings have a consistent ratio
@@ -73,13 +78,16 @@ function scoreTypography(data) {
     var uniqueSizes = Array.from(new Set(sizes)).sort(function(a, b) { return b - a; });
     if (uniqueSizes.length >= 2) {
       var ratio = uniqueSizes[0] / uniqueSizes[uniqueSizes.length - 1];
-      if (ratio >= 1.5 && ratio <= 4) {
+      // Marketing/landing pages legitimately use larger hero text (wider range)
+      var pageType = (data.context && data.context.pageType) || 'unknown';
+      var maxRatio = (pageType === 'marketing' || pageType === 'pricing') ? 6 : 4.5;
+      if (ratio >= 1.5 && ratio <= maxRatio) {
         passed++;
       } else {
         findings.push({
-          severity: 'warning',
-          title: 'Heading scale ratio is ' + (Math.round(ratio * 100) / 100) + ' (ideal: 1.5–3.5)',
-          detail: ratio < 1.5 ? 'Headings are too similar in size — weak hierarchy' : 'Heading sizes vary too wildly — use a modular scale',
+          severity: ratio > maxRatio + 2 ? 'warning' : 'info',
+          title: 'Heading scale ratio is ' + (Math.round(ratio * 100) / 100) + ' (ideal: 1.5–' + maxRatio + ')',
+          detail: ratio < 1.5 ? 'Headings are too similar in size — weak hierarchy' : 'Heading sizes vary widely — verify the largest heading is intentional (hero text)',
           fix: 'Use a modular scale (1.200 minor third or 1.250 major third). In Tailwind: text-4xl > text-2xl > text-xl > text-base',
           presetRef: null,
           source: 'Modular type scales — https://typescale.com/'
