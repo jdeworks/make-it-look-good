@@ -549,6 +549,22 @@
   padding: 4px;
 }
 
+/* Export details: always open on desktop, collapsible on mobile */
+.export-details { display: contents; } /* Desktop: acts as if not there */
+.export-summary { display: none; } /* Hidden on desktop */
+
+@media (max-width: 640px) {
+  .export-details { display: block; border-top: 1px solid var(--border); padding-top: 8px; }
+  .export-summary {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 6px 0;
+  }
+}
+
 /* Legacy compat */
 .report-actions {
   display: none;
@@ -1093,30 +1109,65 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
   /* Tabs: hide subtitle text on mobile */
   .tab-sub { display: none; }
   .input-tabs { gap: 0; }
-  .tab-btn { font-size: 13px; padding: 10px 8px; }
+  .tab-btn { font-size: 12px; padding: 10px 6px; }
 
-  /* Report */
-  .report-container { padding: 16px 16px 48px; }
+  /* Report — prevent overflow */
+  .report-container { padding: 12px 12px 48px; overflow-x: hidden; }
   .report-header { flex-direction: column; text-align: center; gap: 16px; }
-  .report-categories { grid-template-columns: 1fr 1fr; gap: 8px; }
+
+  /* Category cards: single column on narrow screens */
+  .report-categories { grid-template-columns: 1fr; gap: 8px; }
   .report-card { padding: 12px; }
   .report-card-score { font-size: 20px; }
+  .report-card-title h3 { font-size: 12px; }
+  .report-card-weight { font-size: 10px; }
+  .report-card-counts { flex-wrap: wrap; }
   .summary-grid { grid-template-columns: 1fr; }
 
-  /* Action buttons: full width stacked */
-  .report-controls { padding: 0 16px 12px; }
+  /* Viewport bar: wrap tags */
+  .report-viewport-bar { flex-wrap: wrap; gap: 4px; padding: 6px 10px; }
+
+  /* Action buttons: collapse exports into details on mobile */
+  .report-controls { padding: 0 12px 12px; }
   .report-controls-row { flex-direction: column; gap: 6px; }
-  .report-controls-row .btn { justify-content: center; width: 100%; }
+  .report-controls-row .btn { justify-content: center; width: 100%; font-size: 12px; }
   .persona-selector { width: 100%; flex-wrap: wrap; }
-  .persona-selector select { flex: 1; }
-  .profile-explanation table { font-size: 11px; }
-  .report-actions { flex-direction: column; gap: 8px; padding: 0 16px 12px; }
+  .persona-selector select { flex: 1; min-width: 0; }
+  .profile-explanation table { font-size: 10px; overflow-x: auto; display: block; }
+  .report-actions { flex-direction: column; gap: 8px; padding: 0 12px 12px; }
   .report-actions .btn { justify-content: center; }
+
+  /* Export row: wrap into collapsible on mobile */
+  .report-controls-row:last-child {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .report-controls-row:last-child .btn {
+    flex: 1;
+    min-width: 0;
+    font-size: 11px;
+    padding: 8px 4px;
+    white-space: nowrap;
+  }
 
   /* Findings */
   .report-finding { padding: 10px 12px; }
   .finding-title { font-size: 12px; }
+  .finding-detail { font-size: 12px; }
+  .finding-fix { font-size: 12px; }
+  .finding-source { font-size: 10px; }
+
+  /* Screenshots: prevent overflow */
+  .screenshot-thumb { min-width: 0; max-width: 100%; }
 
   /* Hide Editor link on mobile analyzer */
   .analyzer-body .hide-mobile { display: none !important; }
+
+  /* History: tighter on mobile */
+  .history-section { padding: 12px; }
+  .history-item { padding: 6px 8px; gap: 6px; }
+  .history-score { font-size: 16px; min-width: 30px; }
+  .history-url { font-size: 12px; }
+  .history-delete { opacity: 1; } /* Always show on mobile (no hover) */
 }

@@ -4,7 +4,7 @@
 
 const MAX_RESPONSE_SIZE = 10 * 1024 * 1024; // 10 MB
 const ALLOWED_SCHEMES = ['http:', 'https:'];
-const USER_AGENT = 'MilgAnalyzer/1.0 (design-analyzer; +https://github.com/jdeworks/make-it-look-good)';
+const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 // Rate limit: requests per IP per minute
 const RATE_LIMIT = 30;

@@ -889,35 +889,49 @@
 
   // Screenshot zoom lightbox
   window.__milgZoomScreenshot = function(img) {
+    var isMobile = window.innerWidth <= 640;
     var rect = img.getBoundingClientRect();
     var overlay = document.createElement('div');
-    overlay.className = 'screenshot-overlay';
-    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0);z-index:9999;cursor:zoom-out;display:flex;align-items:center;justify-content:center;transition:background 300ms ease';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0);z-index:9999;cursor:zoom-out;display:flex;align-items:center;justify-content:center;transition:background 200ms ease;overflow:auto;-webkit-overflow-scrolling:touch';
 
     var zoomed = document.createElement('img');
     zoomed.src = img.src;
     zoomed.alt = img.alt;
-    zoomed.style.cssText = 'position:fixed;top:' + rect.top + 'px;left:' + rect.left + 'px;width:' + rect.width + 'px;height:' + rect.height + 'px;object-fit:contain;transition:all 300ms ease;border-radius:4px;box-shadow:0 8px 32px rgba(0,0,0,0.3)';
+
+    if (isMobile) {
+      // Mobile: no position animation (causes jank), just fade in and allow scroll
+      zoomed.style.cssText = 'width:100vw;height:auto;object-fit:contain;opacity:0;transition:opacity 200ms ease';
+      overlay.style.alignItems = 'flex-start';
+    } else {
+      zoomed.style.cssText = 'position:fixed;top:' + rect.top + 'px;left:' + rect.left + 'px;width:' + rect.width + 'px;height:' + rect.height + 'px;object-fit:contain;transition:all 250ms ease;border-radius:4px;box-shadow:0 8px 32px rgba(0,0,0,0.3)';
+    }
 
     overlay.appendChild(zoomed);
     document.body.appendChild(overlay);
 
-    // Animate to full screen (maintain aspect ratio)
     requestAnimationFrame(function() {
-      overlay.style.background = 'rgba(0,0,0,0.9)';
-      zoomed.style.top = '0';
-      zoomed.style.left = '0';
-      zoomed.style.width = '100vw';
-      zoomed.style.height = '100vh';
+      overlay.style.background = 'rgba(0,0,0,0.92)';
+      if (isMobile) {
+        zoomed.style.opacity = '1';
+      } else {
+        zoomed.style.top = '0';
+        zoomed.style.left = '0';
+        zoomed.style.width = '100vw';
+        zoomed.style.height = '100vh';
+      }
     });
 
     function close() {
-      zoomed.style.top = rect.top + 'px';
-      zoomed.style.left = rect.left + 'px';
-      zoomed.style.width = rect.width + 'px';
-      zoomed.style.height = rect.height + 'px';
+      if (isMobile) {
+        zoomed.style.opacity = '0';
+      } else {
+        zoomed.style.top = rect.top + 'px';
+        zoomed.style.left = rect.left + 'px';
+        zoomed.style.width = rect.width + 'px';
+        zoomed.style.height = rect.height + 'px';
+      }
       overlay.style.background = 'rgba(0,0,0,0)';
-      setTimeout(function() { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); }, 300);
+      setTimeout(function() { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); }, 250);
     }
     overlay.addEventListener('click', close);
     document.addEventListener('keydown', function onKey(e) { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); } });
