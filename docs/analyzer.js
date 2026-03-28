@@ -718,10 +718,13 @@
         var previewHtml = sessionStorage.getItem('milg-preview-html');
         if (previewHtml) {
           sessionStorage.removeItem('milg-preview-html');
+          // Show loading state
+          var inputSection = document.getElementById('inputSection');
+          inputSection.innerHTML = '<div style="text-align:center;padding:64px 24px"><div class="analysis-progress" style="display:block;max-width:400px;margin:0 auto"><div class="analysis-progress-bar"><div class="analysis-progress-fill" style="width:30%;animation:pulse 1.5s ease infinite"></div></div><div class="analysis-progress-label" style="margin-top:12px;font-size:14px">Analyzing editor preview...</div></div></div>';
           analyzeHtmlInIframe(previewHtml, function(data) {
             data.meta.url = 'Editor Preview';
             runAnalysis(data);
-          }, null, null, true); // true = capture screenshots
+          }, null, null, true);
         }
       } catch(e) {
         console.error('Failed to analyze preview HTML:', e);
@@ -756,27 +759,28 @@
       }
     });
 
-    // Check for cached extraction data and offer to resume
-    try {
-      var cached = sessionStorage.getItem('milg-last-extraction');
-      if (cached && !location.hash.startsWith('#data=')) {
-        var data = JSON.parse(cached);
-        if (data.meta && data.meta.url) {
-          var resumeDiv = document.createElement('div');
-          resumeDiv.style.cssText = 'padding:10px 14px;background:var(--bg-alt);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:16px;font-size:13px;display:flex;align-items:center;justify-content:space-between;gap:8px';
-          resumeDiv.innerHTML = '<span>Previous analysis available: <strong>' + (data.meta.url || '').substring(0, 50) + '</strong></span><button class="btn btn-primary" style="font-size:12px;padding:6px 12px;min-height:36px" onclick="this.parentElement.remove()">Resume</button>';
-          resumeDiv.querySelector('button').addEventListener('click', function() { resumeDiv.remove(); runAnalysis(data); });
-          document.getElementById('inputSection').prepend(resumeDiv);
-        }
-      }
-    } catch(e) {}
-
-    // Render analysis history
+    // Render analysis history (replaces old "resume previous" banner)
     var historyHtml = renderHistoryList();
     if (historyHtml) {
       var historyContainer = document.createElement('div');
       historyContainer.innerHTML = historyHtml;
       document.getElementById('inputSection').appendChild(historyContainer);
+    }
+
+    // Populate URL datalist from history for autocomplete
+    var urlDatalist = document.getElementById('urlHistory');
+    if (urlDatalist) {
+      var history = getHistory();
+      var seenUrls = {};
+      history.forEach(function(entry) {
+        var url = entry.url || '';
+        if (url && url !== 'Editor Preview' && url !== 'Pasted HTML' && !seenUrls[url]) {
+          seenUrls[url] = true;
+          var opt = document.createElement('option');
+          opt.value = url;
+          urlDatalist.appendChild(opt);
+        }
+      });
     }
   }
 
@@ -1021,16 +1025,34 @@
       var date = new Date(entry.timestamp);
       var dateStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       var urlShort = (entry.url || '').replace(/^https?:\/\//, '').substring(0, 40);
-      html += '<div class="history-item" onclick="window.__milgLoadHistory(' + idx + ')" title="Click to reload this analysis">';
-      html += '<span class="history-score" style="color:' + (entry.score >= 80 ? '#16a34a' : entry.score >= 60 ? '#ca8a04' : '#dc2626') + '">' + entry.score + '</span>';
-      html += '<span class="history-url">' + urlShort + '</span>';
+      html += '<div class="history-item">';
+      html += '<span class="history-score" style="color:' + (entry.score >= 80 ? '#16a34a' : entry.score >= 60 ? '#ca8a04' : '#dc2626') + '" onclick="window.__milgLoadHistory(' + idx + ')">' + entry.score + '</span>';
+      html += '<span class="history-url" onclick="window.__milgLoadHistory(' + idx + ')">' + urlShort + '</span>';
       html += '<span class="history-date">' + dateStr + '</span>';
+      html += '<button class="history-delete" onclick="event.stopPropagation();window.__milgDeleteHistory(' + idx + ')" title="Remove from history">&times;</button>';
       html += '</div>';
     });
     html += '<p style="font-size:11px;color:var(--text-secondary);margin-top:6px">Oldest removed after ' + HISTORY_MAX + ' scans. Export JSON to keep permanently.</p>';
     html += '</div>';
     return html;
   }
+
+  window.__milgDeleteHistory = function(idx) {
+    try {
+      var history = getHistory();
+      history.splice(idx, 1);
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+      // Re-render history
+      var containers = document.querySelectorAll('.history-section');
+      containers.forEach(function(c) { c.parentNode.removeChild(c); });
+      var historyHtml = renderHistoryList();
+      if (historyHtml) {
+        var container = document.createElement('div');
+        container.innerHTML = historyHtml;
+        document.getElementById('inputSection').appendChild(container);
+      }
+    } catch(e) {}
+  };
 
   window.__milgLoadHistory = function(idx) {
     var history = getHistory();
