@@ -109,7 +109,11 @@ window.MilgReport = (function() {
       html += '<h3>' + cat.label + '</h3>';
       html += '<span class="report-card-weight">' + cat.weight + '% weight</span>';
       html += '</div>';
-      html += '<div class="report-card-score" style="color:' + scoreColor(cat.score) + '">' + cat.score + '</div>';
+      if (cat.notApplicable) {
+        html += '<div class="report-card-score" style="color:var(--text-secondary);font-size:13px">N/A</div>';
+      } else {
+        html += '<div class="report-card-score" style="color:' + scoreColor(cat.score) + '">' + cat.score + '</div>';
+      }
       html += '</div>';
       html += renderProgressBar(cat.score);
 

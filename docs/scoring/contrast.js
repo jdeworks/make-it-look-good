@@ -211,7 +211,8 @@ function scoreContrast(data) {
       source: 'WCAG 2.2 §1.4.5 — https://www.w3.org/TR/WCAG22/#images-of-text'
     });
   }
-  return { score: score, findings: findings, checks: checks, passed: passed, weight: 20, label: 'Color & Contrast', icon: 'contrast' };
+  var na = pairs.length === 0;
+  return { score: score, findings: findings, checks: checks, passed: passed, weight: 20, label: 'Color & Contrast', icon: 'contrast', notApplicable: na };
 }
 
 

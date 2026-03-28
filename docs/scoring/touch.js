@@ -132,11 +132,12 @@ function scoreTouchTargets(data) {
   // Score: deduct per error, less per warning
   var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
   var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var totalTargets = targets.length || 1;
+  var totalTargets = targets.length || 0;
   var checks = totalTargets;
-  var passed = totalTargets - errors - warnings;
+  var passed = Math.max(0, totalTargets - errors - warnings);
   var score = Math.max(0, 100 - (errors * 10) - (warnings * 3));
-  return { score: score, findings: findings, checks: checks, passed: Math.max(0, passed), weight: 15, label: 'Touch & Interaction', icon: 'touch' };
+  var na = totalTargets === 0 && transitions.length === 0;
+  return { score: na ? 100 : score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Touch & Interaction', icon: 'touch', notApplicable: na };
 }
 
 

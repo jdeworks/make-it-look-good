@@ -64,6 +64,7 @@ window.MilgScoring = (function() {
     var totalWeight = 0;
     var weightedSum = 0;
     categories.forEach(function(cat) {
+      if (cat.notApplicable) return; // Skip N/A categories from score
       totalWeight += cat.weight;
       weightedSum += cat.score * cat.weight;
     });
