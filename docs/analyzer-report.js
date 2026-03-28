@@ -209,6 +209,25 @@ window.MilgReport = (function() {
     html += '</div>';
     html += '</div>';
 
+    // --- Screenshots ---
+    if (report.raw.screenshots && report.raw.screenshots.length > 0) {
+      html += '<div class="report-summary" style="margin-top:16px">';
+      html += '<details open>';
+      html += '<summary style="cursor:pointer;font-size:18px;font-weight:700;padding:8px 0">Page Screenshots</summary>';
+      html += '<div style="display:flex;flex-direction:column;gap:12px;margin-top:12px">';
+      report.raw.screenshots.forEach(function(src, idx) {
+        html += '<div style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">';
+        if (report.raw.screenshots.length > 1) {
+          html += '<div style="padding:6px 12px;font-size:11px;color:var(--text-secondary);border-bottom:1px solid var(--border);background:var(--bg-alt)">Section ' + (idx + 1) + ' of ' + report.raw.screenshots.length + '</div>';
+        }
+        html += '<img src="' + src + '" alt="Page screenshot ' + (idx + 1) + '" style="width:100%;display:block" loading="lazy">';
+        html += '</div>';
+      });
+      html += '</div>';
+      html += '</details>';
+      html += '</div>';
+    }
+
     // --- Methodology note ---
     html += '<div class="report-methodology">';
     html += '<h2>About this Report</h2>';
