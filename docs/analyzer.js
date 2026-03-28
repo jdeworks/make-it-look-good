@@ -698,8 +698,20 @@
       applyDarkMode();
     });
 
-    // Check for data in hash (from editor "Analyze preview" button)
-    if (location.hash.startsWith('#data=')) {
+    // Check for data from editor "Analyze preview" button
+    if (location.hash === '#preview') {
+      try {
+        var previewJson = sessionStorage.getItem('milg-preview-data');
+        if (previewJson) {
+          sessionStorage.removeItem('milg-preview-data');
+          var data = JSON.parse(previewJson);
+          data.meta.url = 'Editor Preview';
+          runAnalysis(data);
+        }
+      } catch(e) {
+        console.error('Failed to load preview data:', e);
+      }
+    } else if (location.hash.startsWith('#data=')) {
       try {
         var compressed = location.hash.substring(6);
         var json = decodeURIComponent(atob(compressed));

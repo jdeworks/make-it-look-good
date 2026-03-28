@@ -40,12 +40,15 @@ function scoreTouchTargets(data) {
           source: 'WCAG 2.2 §2.5.8 inline exception — https://www.w3.org/TR/WCAG22/#target-size-minimum'
         });
       } else if (ctx === 'footer') {
-        // Footer links — relaxed, info severity
+        // Footer links — relaxed but still error below hard minimum (16px)
+        var footerHardMin = isDesktop ? 16 : 24;
         findings.push({
-          severity: 'info',
-          title: 'Footer link ' + w + '×' + h + 'px (below ' + minSize + 'px)',
+          severity: minDim < footerHardMin ? 'error' : 'info',
+          title: 'Footer link ' + w + '×' + h + 'px' + (minDim < footerHardMin ? ' (too small even for footer — min ' + footerHardMin + 'px)' : ' (below ' + minSize + 'px, relaxed for footer)'),
           detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-          fix: 'Footer links are typically smaller. Consider increasing padding for touch accessibility.',
+          fix: minDim < footerHardMin
+            ? 'Even footer links need at least ' + footerHardMin + 'px height. Add padding to increase click area.'
+            : 'Footer links have relaxed sizing expectations. Consider padding for touch accessibility.',
           source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
         });
       } else if (ctx === 'nav') {

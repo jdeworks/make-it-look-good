@@ -17756,6 +17756,358 @@ function scoreResponsive(data) {
 })();
 </file>
 
+<file path="docs/scoring/performance.js">
+// Scoring Module: Performance
+// Weight: 5%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scorePerformance(data) {
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+  var perf = data.performance || {};
+
+  // Font loading
+  var fontIssues = perf.fontLoading || [];
+  if (fontIssues.length > 0) {
+    checks++;
+    findings.push({
+      severity: 'warning',
+      title: fontIssues.length + ' web font(s) without font-display: swap',
+      detail: 'Fonts with display:auto or display:block cause invisible text (FOIT) while loading',
+      fix: 'Add font-display: swap (or optional) to @font-face rules. This shows fallback text immediately.',
+      presetRef: null,
+      source: 'Web.dev — https://web.dev/articles/font-display'
+    });
+  } else {
+    checks++;
+    passed++;
+  }
+
+  // Render-blocking resources
+  var rb = perf.renderBlocking || {};
+  checks++;
+  var blockingCount = (rb.cssInHead || 0) + (rb.jsInHead || 0);
+  if (blockingCount <= 3) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: blockingCount + ' render-blocking resources in <head>',
+      detail: (rb.cssInHead || 0) + ' CSS files, ' + (rb.jsInHead || 0) + ' sync JS scripts',
+      fix: 'Defer non-critical CSS with media="print" onload hack. Add async/defer to scripts.',
+      presetRef: null,
+      source: 'Web.dev — https://web.dev/articles/render-blocking-resources'
+    });
+  }
+
+  // DOM complexity
+  checks++;
+  var domSize = perf.domSize || 0;
+  if (domSize <= 1500) {
+    passed++;
+  } else {
+    findings.push({
+      severity: domSize > 3000 ? 'warning' : 'info',
+      title: domSize + ' DOM elements (' + (domSize > 3000 ? 'excessive' : 'large') + ')',
+      detail: 'Large DOMs slow rendering, increase memory, and hurt interaction responsiveness',
+      fix: 'Consider lazy loading sections, virtualizing long lists, or simplifying markup.',
+      presetRef: null,
+      source: 'Chrome DevTools — https://developer.chrome.com/docs/lighthouse/performance/dom-size'
+    });
+  }
+
+  // DOM depth
+  checks++;
+  var depth = perf.domDepth || 0;
+  if (depth <= 32) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'info',
+      title: 'DOM nesting depth: ' + depth + ' levels (recommended: ≤32)',
+      detail: 'Deep nesting increases CSS selector matching time and layout complexity',
+      fix: 'Flatten nested containers where possible. Avoid wrapping divs that serve no purpose.',
+      presetRef: null,
+      source: 'Chrome DevTools — https://developer.chrome.com/docs/lighthouse/performance/dom-size'
+    });
+  }
+
+  // Third-party scripts
+  if (data.performance && data.performance.thirdPartyScripts !== undefined) {
+    checks++;
+    var tpCount = data.performance.thirdPartyScripts;
+    if (tpCount <= 5) {
+      passed++;
+    } else {
+      findings.push({
+        severity: tpCount > 10 ? 'warning' : 'info',
+        title: tpCount + ' third-party scripts loaded',
+        detail: 'Each third-party script adds latency, potential blocking, and privacy concerns',
+        fix: 'Audit third-party scripts. Remove unused ones, defer non-critical ones, consider self-hosting critical libraries.',
+        presetRef: null,
+        source: 'Web Vitals — https://web.dev/articles/optimizing-third-party-javascript'
+      });
+    }
+  }
+
+  // Image format audit
+  var imgFmt = (data.performance && data.performance.imageFormats) || {};
+  if (imgFmt.legacy > 0) {
+    checks++;
+    if (imgFmt.modern >= imgFmt.legacy) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: imgFmt.legacy + ' image(s) use legacy formats (JPEG/PNG)',
+        detail: imgFmt.modern + ' use modern formats (WebP/AVIF). Modern formats are 25-50% smaller.',
+        fix: 'Convert images to WebP or AVIF. Use <picture> with format fallbacks for broad browser support.',
+        presetRef: null,
+        source: 'Web.dev — https://web.dev/articles/serve-images-webp'
+      });
+    }
+  }
+
+  // CLS (Cumulative Layout Shift)
+  if (data.performance && data.performance.cls !== null && data.performance.cls !== undefined) {
+    checks++;
+    var cls = data.performance.cls;
+    if (cls <= 0.1) {
+      passed++;
+    } else {
+      findings.push({
+        severity: cls > 0.25 ? 'error' : 'warning',
+        title: 'CLS (Cumulative Layout Shift): ' + cls + ' (' + (cls > 0.25 ? 'poor' : 'needs improvement') + ')',
+        detail: 'Layout shifts disrupt user reading and cause mis-clicks. Target: < 0.1.',
+        fix: 'Add explicit width/height to images and ads. Use min-height on dynamic content areas. Avoid inserting content above existing content.',
+        presetRef: null,
+        source: 'Web Vitals — https://web.dev/articles/cls'
+      });
+    }
+  }
+
+  // LCP
+  var lcp = data.performance && data.performance.lcp;
+  if (lcp) {
+    checks++;
+    if (lcp.time <= 2500) {
+      passed++;
+    } else {
+      findings.push({
+        severity: lcp.time > 4000 ? 'error' : 'warning',
+        title: 'LCP: ' + (lcp.time / 1000).toFixed(1) + 's (' + (lcp.time > 4000 ? 'poor' : 'needs improvement') + ')',
+        detail: 'Largest element: <' + lcp.element + '>. Target: < 2.5s.',
+        fix: 'Optimize the largest visible element. For images: preload, use WebP, set fetchpriority="high". For text: ensure fonts load with font-display:swap.',
+        presetRef: null,
+        source: 'Web Vitals — https://web.dev/articles/lcp'
+      });
+    }
+  }
+
+  // LCP lazy loading (heuristic)
+  if (data.performance && data.performance.lcpLazyLoaded) {
+    findings.push({
+      severity: 'error',
+      title: 'LCP image uses loading="lazy"',
+      detail: 'Lazy loading the largest visible image delays LCP significantly',
+      fix: 'Remove loading="lazy" from the hero/LCP image. Only lazy-load below-fold images.',
+      presetRef: null,
+      source: 'Web Vitals — https://web.dev/articles/lcp'
+    });
+  }
+
+  // Non-responsive images
+  var nri = (data.performance && data.performance.nonResponsiveImages) || 0;
+  if (nri > 0) {
+    findings.push({
+      severity: 'warning',
+      title: nri + ' image(s) without responsive sizing',
+      detail: 'Images without max-width: 100% can overflow their containers on small screens',
+      fix: 'Add max-width: 100% and height: auto to all images. In Tailwind: class="max-w-full h-auto".',
+      presetRef: null,
+      source: 'MDN — https://developer.mozilla.org/en-US/docs/Learn/HTML/Multimedia_and_embedding/Responsive_images'
+    });
+  }
+
+  var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
+  return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Performance', icon: 'cognitive' };
+}
+
+
+  S.register("performance", scorePerformance, 5, "Performance", "cognitive");
+})();
+</file>
+
+<file path="docs/scoring/spacing.js">
+// Scoring Module: Spacing & Layout
+// Weight: 15%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreSpacing(data) {
+  var profile = S.getProfile(data);
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+
+  // 4px grid adherence — check if spacing values are multiples of 4
+  checks++;
+  var allSpacing = [].concat(data.spacing.paddings || [], data.spacing.margins || [], data.spacing.gaps || []);
+  var onGrid = 0;
+  var offGrid = 0;
+  allSpacing.forEach(function(s) {
+    var px = parseFloat(s.value);
+    if (isNaN(px) || px === 0) return;
+    if (Math.round(px) % 4 === 0) onGrid += s.count;
+    else offGrid += s.count;
+  });
+  var gridRatio = (onGrid + offGrid) > 0 ? onGrid / (onGrid + offGrid) : 1;
+  if (gridRatio >= 0.7) {
+    passed++;
+    if (gridRatio < 0.85) {
+      findings.push({
+        severity: 'info',
+        title: Math.round(gridRatio * 100) + '% of spacing values on 4px grid',
+        detail: 'Good adherence — a few values could be rounded to the nearest 4px increment',
+        fix: 'Use Tailwind spacing utilities (p-1=4px, p-2=8px, p-3=12px, p-4=16px, ...)',
+        presetRef: null
+      });
+    }
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'Only ' + Math.round(gridRatio * 100) + '% of spacing is on a 4px grid',
+      detail: 'Inconsistent spacing makes layouts feel unpolished',
+      fix: 'Align spacing to 4px increments: 4, 8, 12, 16, 24, 32, 48, 64px',
+      presetRef: 'All presets use Tailwind spacing scale (4px base unit)', source: 'Material Design spacing — https://m3.material.io/foundations/layout/applying-layout'
+    });
+  }
+
+  // Content max-width
+  checks++;
+  var maxW = parseFloat(data.spacing.maxContentWidth);
+  if (maxW > 0 && maxW <= 1500) {
+    passed++;
+  } else if (maxW > 1500) {
+    findings.push({
+      severity: 'warning',
+      title: 'Content width is ' + Math.round(maxW) + 'px (recommended: 1200–1440px)',
+      detail: 'Very wide content is harder to scan and looks stretched on large monitors',
+      fix: 'Add a max-width container. In Tailwind: max-w-7xl (1280px) or max-w-screen-xl',
+      presetRef: 'Dashboard presets use max-w-7xl containers',
+      source: 'NNGroup — https://www.nngroup.com/articles/utilize-available-screen-space/'
+    });
+  } else {
+    passed++; // No max width data or narrow — fine
+  }
+
+  // Mobile padding >= 16px
+  checks++;
+  var bodyPad = parseFloat(data.spacing.bodyPaddingHorizontal);
+  if (bodyPad >= 14 || isNaN(bodyPad) || bodyPad === 0) {
+    passed++; // 0 is OK if inner containers have padding
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'Body horizontal padding is ' + bodyPad + 'px (minimum: 16px)',
+      detail: 'Content touching screen edges feels cramped on mobile',
+      fix: 'Add px-4 (16px) padding to the body or main container',
+      presetRef: null,
+      source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout'
+    });
+  }
+
+  // Adjacent interactive element spacing (buttons/links too close together)
+  var adjacentIssues = (data.interaction && data.interaction.adjacentIssues) || [];
+  if (adjacentIssues.length > 0) {
+    checks++;
+    var minSpacing = profile.targetSpacing;
+    var touching = adjacentIssues.filter(function(a) { return a.gap < 2; });
+    var tooClose = adjacentIssues.filter(function(a) { return a.gap >= 2 && a.gap < minSpacing; });
+
+    touching.forEach(function(a) {
+      findings.push({
+        severity: 'error',
+        title: 'Interactive elements touching (' + a.gap + 'px gap)',
+        detail: '"' + a.textA + '" and "' + a.textB + '" (' + a.direction + ')',
+        fix: 'Add at least ' + minSpacing + 'px gap between interactive elements. In Tailwind: gap-' + (minSpacing / 4) + ' on the parent flex/grid container.',
+        presetRef: 'Button presets use gap-2 (8px) or gap-3 (12px) between buttons',
+        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
+      });
+    });
+
+    tooClose.forEach(function(a) {
+      findings.push({
+        severity: 'warning',
+        title: 'Interactive elements only ' + a.gap + 'px apart (recommended: ≥' + minSpacing + 'px)',
+        detail: '"' + a.textA + '" and "' + a.textB + '" (' + a.direction + ')',
+        fix: 'Increase gap to at least ' + minSpacing + 'px to prevent mis-taps. In Tailwind: gap-' + (minSpacing / 4) + ' on the parent.',
+        presetRef: null,
+        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
+      });
+    });
+
+    if (touching.length === 0 && tooClose.length === 0) passed++;
+  }
+
+  // Element overflow
+  var overflows = (data.layout && data.layout.overflowElements) || 0;
+  if (overflows > 0) {
+    checks++;
+    findings.push({
+      severity: overflows > 5 ? 'warning' : 'info',
+      title: overflows + ' element(s) with horizontal overflow',
+      detail: 'Content extends beyond its container, causing horizontal scroll or clipping',
+      fix: 'Add overflow-x: hidden or overflow: auto to the container element. Check for fixed-width children inside flexible containers.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
+    });
+  } else {
+    checks++;
+    passed++;
+  }
+
+  // Negative margins
+  var negMargins = (data.spacing && data.spacing.negativeMargins) || 0;
+  if (negMargins > 5) {
+    findings.push({
+      severity: 'info',
+      title: negMargins + ' element(s) use negative margins',
+      detail: 'Negative margins can cause overlapping content and layout fragility',
+      fix: 'Consider using CSS grid/flexbox gap, transform, or absolute positioning instead of negative margins where possible.',
+      presetRef: null,
+      source: 'CSS best practices'
+    });
+  }
+
+  // Container padding consistency
+  var cPaddings = (data.spacing && data.spacing.containerPaddings) || [];
+  if (cPaddings.length >= 4) {
+    findings.push({
+      severity: 'info',
+      title: cPaddings.length + ' distinct container padding values',
+      detail: 'Values: ' + cPaddings.slice(0, 5).map(function(p) { return p.value + ' (' + p.count + 'x)'; }).join(', '),
+      fix: 'Standardize container padding to 2-3 values. In Tailwind: p-4 (16px), p-6 (24px), p-8 (32px).',
+      presetRef: null,
+      source: 'Gestalt proximity — https://lawsofux.com/law-of-proximity/'
+    });
+  }
+
+  var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
+  return { score: score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Spacing & Layout', icon: 'spacing' };
+}
+
+
+  S.register("spacing", scoreSpacing, 15, "Spacing & Layout", "spacing");
+})();
+</file>
+
 <file path="docs/scoring/touch.js">
 // Scoring Module: Touch & Interaction
 // Weight: 15%
@@ -17799,12 +18151,15 @@ function scoreTouchTargets(data) {
           source: 'WCAG 2.2 §2.5.8 inline exception — https://www.w3.org/TR/WCAG22/#target-size-minimum'
         });
       } else if (ctx === 'footer') {
-        // Footer links — relaxed, info severity
+        // Footer links — relaxed but still error below hard minimum (16px)
+        var footerHardMin = isDesktop ? 16 : 24;
         findings.push({
-          severity: 'info',
-          title: 'Footer link ' + w + '×' + h + 'px (below ' + minSize + 'px)',
+          severity: minDim < footerHardMin ? 'error' : 'info',
+          title: 'Footer link ' + w + '×' + h + 'px' + (minDim < footerHardMin ? ' (too small even for footer — min ' + footerHardMin + 'px)' : ' (below ' + minSize + 'px, relaxed for footer)'),
           detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-          fix: 'Footer links are typically smaller. Consider increasing padding for touch accessibility.',
+          fix: minDim < footerHardMin
+            ? 'Even footer links need at least ' + footerHardMin + 'px height. Add padding to increase click area.'
+            : 'Footer links have relaxed sizing expectations. Consider padding for touch accessibility.',
           source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
         });
       } else if (ctx === 'nav') {
@@ -19091,358 +19446,6 @@ function scoreTouchTargets(data) {
     window.__milgData = data;
     window.__milgData_json = json;
   }
-})();
-</file>
-
-<file path="docs/scoring/performance.js">
-// Scoring Module: Performance
-// Weight: 5%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scorePerformance(data) {
-  var findings = [];
-  var checks = 0;
-  var passed = 0;
-  var perf = data.performance || {};
-
-  // Font loading
-  var fontIssues = perf.fontLoading || [];
-  if (fontIssues.length > 0) {
-    checks++;
-    findings.push({
-      severity: 'warning',
-      title: fontIssues.length + ' web font(s) without font-display: swap',
-      detail: 'Fonts with display:auto or display:block cause invisible text (FOIT) while loading',
-      fix: 'Add font-display: swap (or optional) to @font-face rules. This shows fallback text immediately.',
-      presetRef: null,
-      source: 'Web.dev — https://web.dev/articles/font-display'
-    });
-  } else {
-    checks++;
-    passed++;
-  }
-
-  // Render-blocking resources
-  var rb = perf.renderBlocking || {};
-  checks++;
-  var blockingCount = (rb.cssInHead || 0) + (rb.jsInHead || 0);
-  if (blockingCount <= 3) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: blockingCount + ' render-blocking resources in <head>',
-      detail: (rb.cssInHead || 0) + ' CSS files, ' + (rb.jsInHead || 0) + ' sync JS scripts',
-      fix: 'Defer non-critical CSS with media="print" onload hack. Add async/defer to scripts.',
-      presetRef: null,
-      source: 'Web.dev — https://web.dev/articles/render-blocking-resources'
-    });
-  }
-
-  // DOM complexity
-  checks++;
-  var domSize = perf.domSize || 0;
-  if (domSize <= 1500) {
-    passed++;
-  } else {
-    findings.push({
-      severity: domSize > 3000 ? 'warning' : 'info',
-      title: domSize + ' DOM elements (' + (domSize > 3000 ? 'excessive' : 'large') + ')',
-      detail: 'Large DOMs slow rendering, increase memory, and hurt interaction responsiveness',
-      fix: 'Consider lazy loading sections, virtualizing long lists, or simplifying markup.',
-      presetRef: null,
-      source: 'Chrome DevTools — https://developer.chrome.com/docs/lighthouse/performance/dom-size'
-    });
-  }
-
-  // DOM depth
-  checks++;
-  var depth = perf.domDepth || 0;
-  if (depth <= 32) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'info',
-      title: 'DOM nesting depth: ' + depth + ' levels (recommended: ≤32)',
-      detail: 'Deep nesting increases CSS selector matching time and layout complexity',
-      fix: 'Flatten nested containers where possible. Avoid wrapping divs that serve no purpose.',
-      presetRef: null,
-      source: 'Chrome DevTools — https://developer.chrome.com/docs/lighthouse/performance/dom-size'
-    });
-  }
-
-  // Third-party scripts
-  if (data.performance && data.performance.thirdPartyScripts !== undefined) {
-    checks++;
-    var tpCount = data.performance.thirdPartyScripts;
-    if (tpCount <= 5) {
-      passed++;
-    } else {
-      findings.push({
-        severity: tpCount > 10 ? 'warning' : 'info',
-        title: tpCount + ' third-party scripts loaded',
-        detail: 'Each third-party script adds latency, potential blocking, and privacy concerns',
-        fix: 'Audit third-party scripts. Remove unused ones, defer non-critical ones, consider self-hosting critical libraries.',
-        presetRef: null,
-        source: 'Web Vitals — https://web.dev/articles/optimizing-third-party-javascript'
-      });
-    }
-  }
-
-  // Image format audit
-  var imgFmt = (data.performance && data.performance.imageFormats) || {};
-  if (imgFmt.legacy > 0) {
-    checks++;
-    if (imgFmt.modern >= imgFmt.legacy) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: imgFmt.legacy + ' image(s) use legacy formats (JPEG/PNG)',
-        detail: imgFmt.modern + ' use modern formats (WebP/AVIF). Modern formats are 25-50% smaller.',
-        fix: 'Convert images to WebP or AVIF. Use <picture> with format fallbacks for broad browser support.',
-        presetRef: null,
-        source: 'Web.dev — https://web.dev/articles/serve-images-webp'
-      });
-    }
-  }
-
-  // CLS (Cumulative Layout Shift)
-  if (data.performance && data.performance.cls !== null && data.performance.cls !== undefined) {
-    checks++;
-    var cls = data.performance.cls;
-    if (cls <= 0.1) {
-      passed++;
-    } else {
-      findings.push({
-        severity: cls > 0.25 ? 'error' : 'warning',
-        title: 'CLS (Cumulative Layout Shift): ' + cls + ' (' + (cls > 0.25 ? 'poor' : 'needs improvement') + ')',
-        detail: 'Layout shifts disrupt user reading and cause mis-clicks. Target: < 0.1.',
-        fix: 'Add explicit width/height to images and ads. Use min-height on dynamic content areas. Avoid inserting content above existing content.',
-        presetRef: null,
-        source: 'Web Vitals — https://web.dev/articles/cls'
-      });
-    }
-  }
-
-  // LCP
-  var lcp = data.performance && data.performance.lcp;
-  if (lcp) {
-    checks++;
-    if (lcp.time <= 2500) {
-      passed++;
-    } else {
-      findings.push({
-        severity: lcp.time > 4000 ? 'error' : 'warning',
-        title: 'LCP: ' + (lcp.time / 1000).toFixed(1) + 's (' + (lcp.time > 4000 ? 'poor' : 'needs improvement') + ')',
-        detail: 'Largest element: <' + lcp.element + '>. Target: < 2.5s.',
-        fix: 'Optimize the largest visible element. For images: preload, use WebP, set fetchpriority="high". For text: ensure fonts load with font-display:swap.',
-        presetRef: null,
-        source: 'Web Vitals — https://web.dev/articles/lcp'
-      });
-    }
-  }
-
-  // LCP lazy loading (heuristic)
-  if (data.performance && data.performance.lcpLazyLoaded) {
-    findings.push({
-      severity: 'error',
-      title: 'LCP image uses loading="lazy"',
-      detail: 'Lazy loading the largest visible image delays LCP significantly',
-      fix: 'Remove loading="lazy" from the hero/LCP image. Only lazy-load below-fold images.',
-      presetRef: null,
-      source: 'Web Vitals — https://web.dev/articles/lcp'
-    });
-  }
-
-  // Non-responsive images
-  var nri = (data.performance && data.performance.nonResponsiveImages) || 0;
-  if (nri > 0) {
-    findings.push({
-      severity: 'warning',
-      title: nri + ' image(s) without responsive sizing',
-      detail: 'Images without max-width: 100% can overflow their containers on small screens',
-      fix: 'Add max-width: 100% and height: auto to all images. In Tailwind: class="max-w-full h-auto".',
-      presetRef: null,
-      source: 'MDN — https://developer.mozilla.org/en-US/docs/Learn/HTML/Multimedia_and_embedding/Responsive_images'
-    });
-  }
-
-  var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
-  return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Performance', icon: 'cognitive' };
-}
-
-
-  S.register("performance", scorePerformance, 5, "Performance", "cognitive");
-})();
-</file>
-
-<file path="docs/scoring/spacing.js">
-// Scoring Module: Spacing & Layout
-// Weight: 15%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreSpacing(data) {
-  var profile = S.getProfile(data);
-  var findings = [];
-  var checks = 0;
-  var passed = 0;
-
-  // 4px grid adherence — check if spacing values are multiples of 4
-  checks++;
-  var allSpacing = [].concat(data.spacing.paddings || [], data.spacing.margins || [], data.spacing.gaps || []);
-  var onGrid = 0;
-  var offGrid = 0;
-  allSpacing.forEach(function(s) {
-    var px = parseFloat(s.value);
-    if (isNaN(px) || px === 0) return;
-    if (Math.round(px) % 4 === 0) onGrid += s.count;
-    else offGrid += s.count;
-  });
-  var gridRatio = (onGrid + offGrid) > 0 ? onGrid / (onGrid + offGrid) : 1;
-  if (gridRatio >= 0.7) {
-    passed++;
-    if (gridRatio < 0.85) {
-      findings.push({
-        severity: 'info',
-        title: Math.round(gridRatio * 100) + '% of spacing values on 4px grid',
-        detail: 'Good adherence — a few values could be rounded to the nearest 4px increment',
-        fix: 'Use Tailwind spacing utilities (p-1=4px, p-2=8px, p-3=12px, p-4=16px, ...)',
-        presetRef: null
-      });
-    }
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: 'Only ' + Math.round(gridRatio * 100) + '% of spacing is on a 4px grid',
-      detail: 'Inconsistent spacing makes layouts feel unpolished',
-      fix: 'Align spacing to 4px increments: 4, 8, 12, 16, 24, 32, 48, 64px',
-      presetRef: 'All presets use Tailwind spacing scale (4px base unit)', source: 'Material Design spacing — https://m3.material.io/foundations/layout/applying-layout'
-    });
-  }
-
-  // Content max-width
-  checks++;
-  var maxW = parseFloat(data.spacing.maxContentWidth);
-  if (maxW > 0 && maxW <= 1500) {
-    passed++;
-  } else if (maxW > 1500) {
-    findings.push({
-      severity: 'warning',
-      title: 'Content width is ' + Math.round(maxW) + 'px (recommended: 1200–1440px)',
-      detail: 'Very wide content is harder to scan and looks stretched on large monitors',
-      fix: 'Add a max-width container. In Tailwind: max-w-7xl (1280px) or max-w-screen-xl',
-      presetRef: 'Dashboard presets use max-w-7xl containers',
-      source: 'NNGroup — https://www.nngroup.com/articles/utilize-available-screen-space/'
-    });
-  } else {
-    passed++; // No max width data or narrow — fine
-  }
-
-  // Mobile padding >= 16px
-  checks++;
-  var bodyPad = parseFloat(data.spacing.bodyPaddingHorizontal);
-  if (bodyPad >= 14 || isNaN(bodyPad) || bodyPad === 0) {
-    passed++; // 0 is OK if inner containers have padding
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: 'Body horizontal padding is ' + bodyPad + 'px (minimum: 16px)',
-      detail: 'Content touching screen edges feels cramped on mobile',
-      fix: 'Add px-4 (16px) padding to the body or main container',
-      presetRef: null,
-      source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout'
-    });
-  }
-
-  // Adjacent interactive element spacing (buttons/links too close together)
-  var adjacentIssues = (data.interaction && data.interaction.adjacentIssues) || [];
-  if (adjacentIssues.length > 0) {
-    checks++;
-    var minSpacing = profile.targetSpacing;
-    var touching = adjacentIssues.filter(function(a) { return a.gap < 2; });
-    var tooClose = adjacentIssues.filter(function(a) { return a.gap >= 2 && a.gap < minSpacing; });
-
-    touching.forEach(function(a) {
-      findings.push({
-        severity: 'error',
-        title: 'Interactive elements touching (' + a.gap + 'px gap)',
-        detail: '"' + a.textA + '" and "' + a.textB + '" (' + a.direction + ')',
-        fix: 'Add at least ' + minSpacing + 'px gap between interactive elements. In Tailwind: gap-' + (minSpacing / 4) + ' on the parent flex/grid container.',
-        presetRef: 'Button presets use gap-2 (8px) or gap-3 (12px) between buttons',
-        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
-      });
-    });
-
-    tooClose.forEach(function(a) {
-      findings.push({
-        severity: 'warning',
-        title: 'Interactive elements only ' + a.gap + 'px apart (recommended: ≥' + minSpacing + 'px)',
-        detail: '"' + a.textA + '" and "' + a.textB + '" (' + a.direction + ')',
-        fix: 'Increase gap to at least ' + minSpacing + 'px to prevent mis-taps. In Tailwind: gap-' + (minSpacing / 4) + ' on the parent.',
-        presetRef: null,
-        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
-      });
-    });
-
-    if (touching.length === 0 && tooClose.length === 0) passed++;
-  }
-
-  // Element overflow
-  var overflows = (data.layout && data.layout.overflowElements) || 0;
-  if (overflows > 0) {
-    checks++;
-    findings.push({
-      severity: overflows > 5 ? 'warning' : 'info',
-      title: overflows + ' element(s) with horizontal overflow',
-      detail: 'Content extends beyond its container, causing horizontal scroll or clipping',
-      fix: 'Add overflow-x: hidden or overflow: auto to the container element. Check for fixed-width children inside flexible containers.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
-    });
-  } else {
-    checks++;
-    passed++;
-  }
-
-  // Negative margins
-  var negMargins = (data.spacing && data.spacing.negativeMargins) || 0;
-  if (negMargins > 5) {
-    findings.push({
-      severity: 'info',
-      title: negMargins + ' element(s) use negative margins',
-      detail: 'Negative margins can cause overlapping content and layout fragility',
-      fix: 'Consider using CSS grid/flexbox gap, transform, or absolute positioning instead of negative margins where possible.',
-      presetRef: null,
-      source: 'CSS best practices'
-    });
-  }
-
-  // Container padding consistency
-  var cPaddings = (data.spacing && data.spacing.containerPaddings) || [];
-  if (cPaddings.length >= 4) {
-    findings.push({
-      severity: 'info',
-      title: cPaddings.length + ' distinct container padding values',
-      detail: 'Values: ' + cPaddings.slice(0, 5).map(function(p) { return p.value + ' (' + p.count + 'x)'; }).join(', '),
-      fix: 'Standardize container padding to 2-3 values. In Tailwind: p-4 (16px), p-6 (24px), p-8 (32px).',
-      presetRef: null,
-      source: 'Gestalt proximity — https://lawsofux.com/law-of-proximity/'
-    });
-  }
-
-  var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
-  return { score: score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Spacing & Layout', icon: 'spacing' };
-}
-
-
-  S.register("spacing", scoreSpacing, 15, "Spacing & Layout", "spacing");
 })();
 </file>
 
@@ -25129,8 +25132,20 @@ body.dark-ui .severity-badge-info {
       applyDarkMode();
     });
 
-    // Check for data in hash (from editor "Analyze preview" button)
-    if (location.hash.startsWith('#data=')) {
+    // Check for data from editor "Analyze preview" button
+    if (location.hash === '#preview') {
+      try {
+        var previewJson = sessionStorage.getItem('milg-preview-data');
+        if (previewJson) {
+          sessionStorage.removeItem('milg-preview-data');
+          var data = JSON.parse(previewJson);
+          data.meta.url = 'Editor Preview';
+          runAnalysis(data);
+        }
+      } catch(e) {
+        console.error('Failed to load preview data:', e);
+      }
+    } else if (location.hash.startsWith('#data=')) {
       try {
         var compressed = location.hash.substring(6);
         var json = decodeURIComponent(atob(compressed));

@@ -1545,10 +1545,20 @@ function analyzeCurrentPreview() {
     window.removeEventListener('message', onResult);
     btn.classList.remove('active');
 
-    // Encode data and open analyzer
+    // Store data in sessionStorage and open analyzer (avoids URL length limits)
     var json = JSON.stringify(e.data.data);
-    var encoded = btoa(encodeURIComponent(json));
-    window.open('analyzer.html#data=' + encoded, '_blank');
+    try {
+      sessionStorage.setItem('milg-preview-data', json);
+      window.open('analyzer.html#preview', '_blank');
+    } catch(err) {
+      // Fallback: try hash encoding for small data
+      try {
+        var encoded = btoa(encodeURIComponent(json));
+        window.open('analyzer.html#data=' + encoded, '_blank');
+      } catch(e2) {
+        alert('Data too large for preview analysis. Use the Console Snippet tab on the analyzer page.');
+      }
+    }
   }
   window.addEventListener('message', onResult);
 
@@ -1558,7 +1568,7 @@ function analyzeCurrentPreview() {
   setTimeout(function() {
     window.removeEventListener('message', onResult);
     btn.classList.remove('active');
-  }, 5000);
+  }, 8000);
 }
 
 // --- Contrast / Accessibility Checker ---
