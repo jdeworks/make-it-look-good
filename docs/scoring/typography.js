@@ -174,7 +174,9 @@ function scoreTypography(data) {
     });
   }
 
-  var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
   return { score: score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Typography', icon: 'type' };
 }
 

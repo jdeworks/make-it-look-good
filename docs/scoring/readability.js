@@ -44,6 +44,7 @@
       if (shortHeadings.length === 0) {
         passed++;
       } else {
+        passed++; // Info doesn't reduce score
         findings.push({
           severity: 'info',
           title: shortHeadings.length + ' heading(s) with very short text (< 3 chars)',
@@ -131,9 +132,11 @@
       });
     }
 
-    var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
-    return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Readability', icon: 'type' };
+    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+    return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Readability', icon: 'readability' };
   }
 
-  S.register("readability", scoreReadability, 5, "Readability", "type");
+  S.register("readability", scoreReadability, 5, "Readability", "readability");
 })();

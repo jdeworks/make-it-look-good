@@ -13526,6 +13526,388 @@ function analyzePreset(name) {
 </script></body></html>
 </file>
 
+<file path="expressive/hero-patterns.md">
+# Hero Section Patterns
+
+> **TL;DR:** A hero has 3 seconds to communicate what the page is about and why the visitor should care. Lead with a clear value proposition (5-8 words), support with 1 sentence, and include exactly 1 primary CTA. The hero type (centered, split, editorial, immersive) should match the content's intent, not just look impressive.
+
+## Core Principles
+
+1. **The hero IS the first impression** — 94% of first impressions are design-related. The hero sets the emotional tone for the entire page.
+2. **Clarity beats creativity** — a clever hero that confuses is worse than a simple hero that communicates. Lead with what you do, not how clever you are.
+3. **One action, not a menu** — the hero should funnel attention to a single primary CTA. Secondary actions can exist but must be visually subordinate.
+4. **Visual hierarchy in 3 layers** — headline (what), subheadline (why), CTA (what to do). Each layer is distinct in size and weight.
+5. **Performance affects perception** — a hero that loads in 1s feels premium. A hero that loads in 4s feels broken. Optimize images and defer non-critical assets.
+
+## Concrete Rules
+
+### Hero Anatomy
+| Element | Sizing | Purpose |
+|---------|--------|---------|
+| Headline | text-4xl to text-7xl (36-72px) | The value proposition. 5-8 words max |
+| Subheadline | text-lg to text-xl (18-20px) | Supporting context. 1-2 sentences max |
+| Primary CTA | min-h-[48px], text-base to text-lg | The ONE thing you want them to do |
+| Secondary CTA | text-sm to text-base, ghost/outlined | Alternative action (lower priority) |
+| Visual | Full-bleed or constrained | Product screenshot, illustration, or gradient |
+
+### Hero Types by Intent
+| Type | Layout | Best For |
+|------|--------|----------|
+| Centered | Text centered, CTAs below, visual below or bg | SaaS landing, product launch, app download |
+| Split (50/50) | Text left, visual right (or reversed) | Product demos, portfolios, agency pages |
+| Editorial | Large serif headline, minimal visual | Publishing, editorial, personal brand |
+| Immersive | Full-viewport visual, text overlay | Photography, luxury brands, experiences |
+| Card-stack | Multiple overlapping cards/panels | Feature highlights, multi-product pages |
+
+### Headline Sizing by Viewport
+| Viewport | Headline Size | Line Height |
+|----------|--------------|-------------|
+| Mobile (320-639px) | text-3xl to text-4xl (30-36px) | 1.1-1.2 |
+| Tablet (640-1023px) | text-4xl to text-5xl (36-48px) | 1.1 |
+| Desktop (1024px+) | text-5xl to text-7xl (48-72px) | 1.05-1.1 |
+
+### Spacing Rules
+- **Headline to subheadline:** 16-24px (mt-4 to mt-6)
+- **Subheadline to CTA:** 24-40px (mt-6 to mt-10)
+- **Hero section padding:** 80-160px vertical (py-20 to py-40)
+- **Max content width:** 640px for centered text (max-w-2xl)
+
+## CSS/Implementation Patterns
+
+### Centered Hero (Most Common)
+```html
+<section class="relative py-24 sm:py-32 lg:py-40">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="max-w-2xl mx-auto text-center">
+      <h1 class="text-4xl sm:text-5xl lg:text-7xl font-bold tracking-tight text-slate-900 dark:text-white leading-[1.1]">
+        Ship products<br>
+        <span class="text-indigo-600 dark:text-indigo-400">people love</span>
+      </h1>
+      <p class="mt-6 text-lg sm:text-xl text-slate-600 dark:text-slate-300 max-w-xl mx-auto">
+        The design platform that helps teams build beautiful, accessible interfaces in half the time.
+      </p>
+      <div class="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
+        <a href="#" class="w-full sm:w-auto rounded-xl bg-indigo-600 px-8 py-4 text-base font-semibold text-white hover:bg-indigo-500 transition-colors">
+          Start free trial
+        </a>
+        <a href="#" class="w-full sm:w-auto rounded-xl border border-slate-300 dark:border-slate-600 px-8 py-4 text-base font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+          Watch demo
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+```
+
+### Split Hero with Product Visual
+```html
+<section class="py-20 lg:py-32">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+      <div>
+        <h1 class="text-4xl sm:text-5xl font-bold tracking-tight text-slate-900 dark:text-white leading-[1.1]">
+          Analytics that<br>actually make sense
+        </h1>
+        <p class="mt-6 text-lg text-slate-600 dark:text-slate-300">
+          Stop drowning in dashboards. Get the 3 metrics that matter, updated in real time.
+        </p>
+        <div class="mt-8 flex flex-wrap gap-4">
+          <a href="#" class="rounded-lg bg-slate-900 dark:bg-white px-6 py-3 text-sm font-semibold text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-100 transition-colors">
+            Get started
+          </a>
+        </div>
+      </div>
+      <div class="relative">
+        <div class="aspect-[4/3] rounded-2xl bg-gradient-to-br from-indigo-100 to-violet-100 dark:from-indigo-900/30 dark:to-violet-900/30 border border-slate-200 dark:border-slate-700 shadow-xl"></div>
+      </div>
+    </div>
+  </div>
+</section>
+```
+
+### Editorial Hero (Type-Driven)
+```html
+<section class="py-32 sm:py-40">
+  <div class="max-w-4xl mx-auto px-4 sm:px-6">
+    <h1 class="text-5xl sm:text-6xl lg:text-8xl font-light tracking-tight text-slate-900 dark:text-white leading-[1.05]" style="font-family: 'Playfair Display', serif">
+      Design is not<br>just what it looks like.
+    </h1>
+    <p class="mt-8 text-xl text-slate-500 dark:text-slate-400 max-w-2xl">
+      It's how it works. We help companies build products that feel as good as they function.
+    </p>
+    <div class="mt-12 flex items-center gap-6">
+      <a href="#" class="text-base font-medium text-slate-900 dark:text-white border-b-2 border-slate-900 dark:border-white pb-1 hover:border-indigo-600 dark:hover:border-indigo-400 transition-colors">
+        Explore our work
+      </a>
+    </div>
+  </div>
+</section>
+```
+
+### Immersive Hero (Full Viewport)
+```html
+<section class="relative min-h-screen flex items-center justify-center overflow-hidden">
+  <!-- Background -->
+  <div class="absolute inset-0 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900"></div>
+  <!-- Content -->
+  <div class="relative z-10 max-w-3xl mx-auto px-4 text-center">
+    <h1 class="text-4xl sm:text-6xl lg:text-7xl font-bold text-white tracking-tight leading-[1.1]">
+      Experience design<br>without limits
+    </h1>
+    <p class="mt-6 text-lg sm:text-xl text-slate-300 max-w-xl mx-auto">
+      Immersive creative tools for the next generation of digital experiences.
+    </p>
+    <div class="mt-10">
+      <a href="#" class="inline-flex rounded-full bg-white px-8 py-4 text-base font-semibold text-slate-900 hover:bg-slate-100 transition-colors">
+        Enter the experience
+      </a>
+    </div>
+  </div>
+</section>
+```
+
+## Common Mistakes
+
+1. **Headline too long** — over 10 words in a hero headline and the user skims past it. 5-8 words. Cut ruthlessly.
+2. **Two equal CTAs** — "Sign Up" and "Learn More" at the same visual weight. Make one clearly primary.
+3. **Hero too tall on mobile** — a min-h-screen hero with large text can push all useful content below the fold on mobile. Use py-24 instead.
+4. **Stock photo hero** — generic stock photos actively hurt credibility. A solid gradient or abstract shape is better than a fake team photo.
+5. **Autoplaying video background** — most users find it distracting, it kills performance, and it doesn't work on mobile Safari. Use a static image with a play button instead.
+6. **Text over busy images without overlay** — white text on a photo needs a dark overlay (bg-black/50 minimum) for readability.
+
+## Decision Tree
+
+```
+Choosing a hero type:
+├─ What are you showing?
+│  ├─ A product/app → Split hero with screenshot or Centered + visual below
+│  ├─ A service/brand → Centered or Editorial (type-driven)
+│  ├─ A portfolio/creative work → Immersive or Editorial
+│  └─ An experience/event → Immersive (full viewport)
+├─ What's the headline length?
+│  ├─ 3-5 words → Can go very large (text-7xl+), editorial works well
+│  ├─ 5-8 words → Standard sizing (text-5xl-6xl)
+│  └─ 8+ words → Needs careful line breaking, consider split layout
+├─ How many CTAs?
+│  ├─ 1 → Center it. Make it big.
+│  ├─ 2 → Primary (filled) + Secondary (outlined/ghost). Clear hierarchy.
+│  └─ 3+ → Rethink. A hero is not a navigation menu.
+└─ Mobile considerations:
+   └─ Always stack CTAs vertically on mobile (flex-col sm:flex-row)
+```
+
+## Related Templates
+- [`personal-hero/`](../docs/presets/personal-hero/) — Personal site with staggered reveal hero
+- [`agency-landing/`](../docs/presets/agency-landing/) — Agency with gradient mesh hero
+- [`product-launch/`](../docs/presets/product-launch/) — Product launch with gradient text hero
+- [`devtool-landing/`](../docs/presets/devtool-landing/) — Developer tool with gradient mesh + terminal hero
+- [`event-page/`](../docs/presets/event-page/) — Event with bold date hero
+
+## Sources
+- [NN/g — How Users Read on the Web](https://www.nngroup.com/articles/how-users-read-on-the-web/)
+- [Peep Laja — Above the Fold](https://cxl.com/blog/above-the-fold/)
+- [web.dev — LCP Optimization](https://web.dev/lcp/)
+- Cross-reference: [Visual Hierarchy](../layout/visual-hierarchy.md), [Type Scale](../typography/type-scale.md), [Animation Timing](../interaction/animation-timing.md)
+</file>
+
+<file path="expressive/purposeful-motion.md">
+# Purposeful Motion
+
+> **TL;DR:** Motion in expressive pages differs from utility UI animation. Use motion to guide attention (draw the eye), establish hierarchy (what matters most moves first), and create emotional resonance (motion that matches the brand's energy). Limit to 2-3 motion techniques per page. Motion should explain, reveal, or delight — never decorate.
+
+## Core Principles
+
+1. **Motion is a hierarchy tool** — the first thing to animate gets the most attention. Use motion order to guide the user's eye: headline → subheadline → CTA → supporting content.
+2. **Restraint creates impact** — a single well-timed animation in a sea of stillness is memorable. Animation everywhere is noise.
+3. **Motion should match brand energy** — a luxury brand uses slow, graceful fades. A gaming startup uses fast, bouncy springs. The motion IS the personality.
+4. **Motion must serve the narrative** — on expressive pages, motion reveals the story. Elements appear as they become relevant, creating a sense of progression.
+5. **Performance is feel** — 60fps motion feels premium. Janky motion feels broken. Only animate `transform` and `opacity`.
+
+## Concrete Rules
+
+### Motion Techniques by Purpose
+| Purpose | Technique | Duration | Easing |
+|---------|-----------|----------|--------|
+| Draw attention | Fade + slide in | 400-600ms | ease-out (decelerate) |
+| Establish hierarchy | Staggered reveal | 200ms each, 80-120ms stagger | ease-out |
+| Create delight | Scale bounce | 300-500ms | spring (0.34, 1.56, 0.64, 1) |
+| Show progression | Counter/number roll | 600-1000ms | ease-in-out |
+| Ambient atmosphere | Slow float/pulse | 3-6s, infinite | ease-in-out |
+| Entrance drama | Large slide + fade | 600-800ms | cubic-bezier(0.16, 1, 0.3, 1) |
+
+### Stagger Choreography Rules
+- **Maximum elements in a stagger group:** 5-7
+- **Stagger delay:** 80-120ms per element
+- **Total stagger duration:** max 800ms
+- **Direction:** match reading order (top-to-bottom, left-to-right in LTR)
+- **First element:** always the headline or most important element
+
+### Motion Budget Per Page
+| Page Type | Max Motion Techniques | Max Animated Elements per Viewport |
+|-----------|----------------------|-----------------------------------|
+| Landing page | 3 | 5-7 |
+| Portfolio piece | 2-3 | 3-5 |
+| Product page | 2 | 4-6 |
+| Personal site | 2-3 | 3-5 |
+
+### Speed by Brand Energy
+| Brand Energy | Enter Duration | Hover Duration | Easing Character |
+|-------------|---------------|----------------|-----------------|
+| Calm/luxury | 600-800ms | 300ms | Gentle ease-out |
+| Professional | 300-500ms | 200ms | Standard ease-out |
+| Energetic | 200-400ms | 150ms | Bouncy spring |
+| Dramatic | 600-1000ms | 200ms | Strong deceleration |
+
+## CSS/Implementation Patterns
+
+### Staggered Hero Reveal
+```html
+<style>
+  @keyframes heroReveal {
+    from { opacity: 0; transform: translateY(32px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .hero-stagger > * {
+    opacity: 0;
+    animation: heroReveal 500ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  .hero-stagger > *:nth-child(1) { animation-delay: 0ms; }
+  .hero-stagger > *:nth-child(2) { animation-delay: 100ms; }
+  .hero-stagger > *:nth-child(3) { animation-delay: 200ms; }
+  .hero-stagger > *:nth-child(4) { animation-delay: 300ms; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hero-stagger > * { opacity: 1; animation: none; }
+  }
+</style>
+
+<section class="py-32">
+  <div class="hero-stagger max-w-2xl mx-auto text-center">
+    <span class="text-sm font-semibold text-indigo-600 uppercase tracking-wider">Introducing</span>
+    <h1 class="mt-4 text-5xl font-bold tracking-tight">Build faster, ship sooner</h1>
+    <p class="mt-6 text-lg text-slate-600">The platform that turns ideas into products.</p>
+    <div class="mt-10">
+      <a href="#" class="rounded-xl bg-indigo-600 px-8 py-4 text-white font-semibold">Get started</a>
+    </div>
+  </div>
+</section>
+```
+
+### Ambient Background Motion
+```css
+/* Slow floating gradient — adds atmosphere without distraction */
+@keyframes gradientShift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+.ambient-bg {
+  background: linear-gradient(-45deg, #dbeafe, #ede9fe, #fce7f3, #e0f2fe);
+  background-size: 400% 400%;
+  animation: gradientShift 8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ambient-bg { animation: none; background-position: 0% 50%; }
+}
+```
+
+### Number Counter Animation
+```html
+<style>
+  @property --num {
+    syntax: '<integer>';
+    initial-value: 0;
+    inherits: false;
+  }
+  .counter {
+    --num: 0;
+    animation: countUp 1s ease-in-out forwards;
+    counter-reset: num var(--num);
+  }
+  .counter::after { content: counter(num); }
+  @keyframes countUp { to { --num: 2847; } }
+</style>
+
+<span class="counter text-4xl font-bold tabular-nums"></span>
+```
+
+### Hover Micro-Motion for Cards
+```html
+<article class="group rounded-2xl border border-slate-200 dark:border-slate-700 p-6 transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-lg hover:shadow-slate-200/50 dark:hover:shadow-slate-900/50">
+  <div class="overflow-hidden rounded-xl">
+    <div class="aspect-[16/9] bg-slate-100 dark:bg-slate-800 transition-transform duration-500 ease-out group-hover:scale-105"></div>
+  </div>
+  <h3 class="mt-4 text-lg font-semibold">Card Title</h3>
+  <p class="mt-2 text-sm text-slate-600 dark:text-slate-400">Card description goes here.</p>
+</article>
+```
+
+### Scroll-Triggered Reveal (Intersection Observer)
+```html
+<style>
+  .reveal { opacity: 0; transform: translateY(24px); transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
+  .reveal.in-view { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) {
+    .reveal { opacity: 1; transform: none; transition: none; }
+  }
+</style>
+
+<div class="reveal">Revealed content</div>
+
+<script>
+const obs = new IntersectionObserver(
+  entries => entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in-view'); obs.unobserve(e.target); } }),
+  { threshold: 0.15 }
+);
+document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
+</script>
+```
+
+## Common Mistakes
+
+1. **Animating everything** — if every element fades, slides, and bounces, nothing has impact. Pick 3-5 elements per viewport to animate.
+2. **Same animation for every element** — using the same fade-up for headlines, images, and buttons. Vary the technique: headlines slide, images scale, buttons fade.
+3. **Ignoring reduced motion** — roughly 25% of users prefer reduced motion. Wrap all animations in a `prefers-reduced-motion` check.
+4. **Animation on repeat visits** — entrance animations are great the first time. On return visits or quick navigation, they feel like barriers. Consider only animating on first viewport intersection.
+5. **Slow, dramatic animations on utility elements** — a 800ms animation on a form field is painful. Reserve dramatic timing for hero elements and key moments.
+6. **Animating layout properties** — `width`, `height`, `top`, `left`, `margin` trigger expensive reflows. Only animate `transform` and `opacity`.
+
+## Decision Tree
+
+```
+Adding purposeful motion:
+├─ What's the goal?
+│  ├─ Guide attention → Staggered reveal (headline → sub → CTA)
+│  ├─ Create atmosphere → Ambient background motion (slow, subtle)
+│  ├─ Show data → Counter animation or chart reveal
+│  ├─ Encourage interaction → Hover micro-motion on interactive elements
+│  └─ Tell a story → Scroll-triggered progressive reveal
+├─ Brand energy?
+│  ├─ Calm → Longer duration (500-800ms), gentle easing
+│  ├─ Energetic → Shorter (200-400ms), spring easing
+│  └─ Dramatic → Long initial (600-1000ms), strong deceleration
+├─ How many motion elements per viewport?
+│  ├─ 1-3 → Perfect. Each one gets attention.
+│  ├─ 4-5 → OK if staggered properly.
+│  └─ 6+ → Too many. Cut to the most important.
+└─ Accessibility:
+   └─ Always: @media (prefers-reduced-motion: reduce) { animation: none; }
+```
+
+## Related Templates
+- [`scroll-story/`](../docs/presets/scroll-story/) — IntersectionObserver scroll reveals with staggered cascade
+- [`saas-features/`](../docs/presets/saas-features/) — Bouncy hover interactions on bento cards (playful variant)
+- [`devtool-landing/`](../docs/presets/devtool-landing/) — Glow card hover effects (clean variant)
+- [`agency-landing/`](../docs/presets/agency-landing/) — Service row expand on hover, image zoom
+
+## Sources
+- [Material Design 3 — Motion principles](https://m3.material.io/styles/motion/overview)
+- [Apple HIG — Motion](https://developer.apple.com/design/human-interface-guidelines/motion)
+- [Stripe.com](https://stripe.com) — exemplar of purposeful motion in product pages
+- Cross-reference: [Animation Timing](../interaction/animation-timing.md), [Micro-Interactions](../interaction/micro-interactions.md), [Visual Identity](visual-identity.md)
+</file>
+
 <file path="expressive/scroll-effect-patterns.md">
 # Scroll Effect Patterns
 
@@ -13881,6 +14263,321 @@ requestAnimationFrame(function() {
 - `docs/presets/scroll-reveal-landing/` — reference implementation of patterns 4, 6, 7, 8
 - `docs/presets/app-showcase/` — reference implementation of patterns 1, 5
 - `docs/presets/agency-portfolio/` — reference implementation of pattern 3
+</file>
+
+<file path="expressive/scroll-storytelling.md">
+# Scroll-Based Storytelling
+
+> **TL;DR:** Scroll storytelling uses scroll position as a timeline to reveal content progressively. Use CSS `scroll-snap`, `position: sticky`, and `@keyframes` with `animation-timeline: scroll()` for native scroll-driven animations. Keep each "scene" viewport-height sized, limit to 3-5 scroll scenes per page, and always provide a skip/nav option for users who don't want to scroll.
+
+## Core Principles
+
+1. **Scroll is a timeline, not a decoration** — each scroll position should reveal new information. If removing the scroll effect doesn't lose meaning, the effect is decorative, not narrative.
+2. **Progressive disclosure builds anticipation** — reveal information in a logical sequence. Don't show everything at once and animate it for no reason.
+3. **One idea per viewport** — each scroll "scene" should communicate one concept. Cramming multiple ideas into a sticky section creates cognitive overload.
+4. **The user controls the pace** — scroll-driven animation lets users speed up, slow down, or reverse. This is fundamentally different from auto-playing animation.
+5. **Performance is non-negotiable** — scroll-triggered layout shifts, heavy JS scroll listeners, or janky animations destroy the experience. Use CSS scroll-driven animations or IntersectionObserver, not scroll event listeners.
+
+## Concrete Rules
+
+### Scroll Scene Sizing
+| Parameter | Value | Rationale |
+|-----------|-------|-----------|
+| Scene height | 100vh (1 viewport) | Each scene fills the screen, creating clear transitions |
+| Sticky section height | 200-500vh scroll distance | 200vh = fast transition, 500vh = slow, detailed reveal |
+| Number of scenes | 3-5 per page | More than 5 causes fatigue. Users lose patience. |
+| Skip option | Always present | Users must be able to jump to content without scrolling through every scene |
+
+### Animation Trigger Points
+| Technique | CSS/JS | Use For |
+|-----------|--------|---------|
+| Scroll snap | `scroll-snap-type: y mandatory` | Full-viewport scene transitions |
+| Sticky + progress | `position: sticky` + scroll distance | Sections that transform as you scroll |
+| IntersectionObserver | JS | Reveal-on-enter animations |
+| `animation-timeline: scroll()` | CSS | Native scroll-driven animations (modern browsers) |
+
+### Timing and Distance
+- **Reveal animations:** trigger at 20-30% viewport intersection (threshold: 0.2-0.3)
+- **Sticky transform distance:** 200-300vh for a single transformation sequence
+- **Fade-in distance:** 10-20% of viewport height (not too fast, not too slow)
+- **Parallax ratio:** foreground 1:1, midground 0.5:1, background 0.2:1
+
+## CSS/Implementation Patterns
+
+### Scroll-Snap Sections
+```html
+<div class="h-screen overflow-y-scroll snap-y snap-mandatory">
+  <section class="h-screen snap-start flex items-center justify-center">
+    <h2 class="text-5xl font-bold">Scene One</h2>
+  </section>
+  <section class="h-screen snap-start flex items-center justify-center bg-slate-900 text-white">
+    <h2 class="text-5xl font-bold">Scene Two</h2>
+  </section>
+  <section class="h-screen snap-start flex items-center justify-center">
+    <h2 class="text-5xl font-bold">Scene Three</h2>
+  </section>
+</div>
+```
+
+### Sticky Section with Content Swap
+```html
+<!-- The sticky container stays fixed while scroll distance passes -->
+<div class="relative" style="height: 300vh">
+  <div class="sticky top-0 h-screen flex items-center justify-center overflow-hidden">
+    <div class="max-w-2xl mx-auto px-4 text-center">
+      <h2 class="text-4xl font-bold text-slate-900 dark:text-white">
+        How it works
+      </h2>
+      <p class="mt-4 text-lg text-slate-600 dark:text-slate-300">
+        Scroll to explore each step
+      </p>
+    </div>
+  </div>
+</div>
+```
+
+### CSS Scroll-Driven Animation (Modern)
+```css
+/* Fade in and slide up as element enters viewport */
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(40px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.reveal-on-scroll {
+  animation: fadeSlideIn linear both;
+  animation-timeline: view();
+  animation-range: entry 0% entry 40%;
+}
+```
+```html
+<div class="reveal-on-scroll">
+  <h3 class="text-2xl font-bold">This fades in on scroll</h3>
+</div>
+```
+
+### IntersectionObserver Reveal (Broad Support)
+```html
+<style>
+  .scroll-reveal { opacity: 0; transform: translateY(24px); transition: opacity 0.6s ease-out, transform 0.6s ease-out; }
+  .scroll-reveal.visible { opacity: 1; transform: translateY(0); }
+</style>
+
+<div class="scroll-reveal">Content that reveals on scroll</div>
+
+<script>
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.2 });
+document.querySelectorAll('.scroll-reveal').forEach(el => observer.observe(el));
+</script>
+```
+
+### Horizontal Scroll Inside Vertical Page
+```html
+<section class="relative" style="height: 400vh">
+  <div class="sticky top-0 h-screen flex items-center overflow-hidden">
+    <div class="flex gap-8 px-8" id="hscroll-track" style="transform: translateX(0)">
+      <div class="w-[80vw] flex-shrink-0 rounded-2xl bg-slate-100 dark:bg-slate-800 p-12">
+        <h3 class="text-2xl font-bold">Panel 1</h3>
+      </div>
+      <div class="w-[80vw] flex-shrink-0 rounded-2xl bg-slate-100 dark:bg-slate-800 p-12">
+        <h3 class="text-2xl font-bold">Panel 2</h3>
+      </div>
+      <div class="w-[80vw] flex-shrink-0 rounded-2xl bg-slate-100 dark:bg-slate-800 p-12">
+        <h3 class="text-2xl font-bold">Panel 3</h3>
+      </div>
+    </div>
+  </div>
+</section>
+```
+
+## Common Mistakes
+
+1. **Scroll-jacking** — overriding the browser's native scroll behavior (changing scroll speed, direction, or snapping aggressively). Users hate losing control of scroll.
+2. **No skip option** — forcing users through a 5-scene scroll sequence to reach the CTA. Always provide navigation or a "skip to content" link.
+3. **Heavy JS scroll listeners** — attaching animation logic to `scroll` events causes jank. Use IntersectionObserver, CSS `animation-timeline`, or `requestAnimationFrame` with throttling.
+4. **Too many scroll scenes** — 3-5 is the sweet spot. More than 5 and users feel trapped in a never-ending scroll sequence.
+5. **Scroll effects on every element** — if everything fades in on scroll, nothing feels special. Use reveal animations on 3-5 key elements per viewport.
+6. **No mobile fallback** — complex scroll effects often break on touch devices. Simplify to basic reveals on mobile, keep full effects for desktop.
+7. **Content unreachable without JavaScript** — scroll-driven layouts must be readable if JS fails. Use progressive enhancement.
+
+## Decision Tree
+
+```
+Adding scroll storytelling:
+├─ Is the content sequential/narrative?
+│  ├─ Yes → Scroll storytelling adds value
+│  └─ No → Use standard page layout instead
+├─ How many "scenes"?
+│  ├─ 1-2 → Simple reveal-on-scroll is enough
+│  ├─ 3-5 → Sticky sections with content swap
+│  └─ 6+ → Too many. Consolidate or use a different pattern.
+├─ Technical approach:
+│  ├─ Simple fade-in → CSS animation-timeline: view() or IntersectionObserver
+│  ├─ Sticky transformations → position: sticky + scroll distance calculation
+│  ├─ Full-page snapping → scroll-snap-type: y mandatory
+│  └─ Horizontal scroll → Sticky container + translateX based on scroll %
+├─ Mobile:
+│  ├─ Simplify → Reduce to basic reveals, remove parallax
+│  └─ Skip option → Always provide a way to bypass
+└─ Accessibility:
+   ├─ prefers-reduced-motion → Disable all scroll animations
+   └─ Keyboard nav → Ensure all content reachable without scrolling
+```
+
+## Related Templates
+- [`scroll-story/`](../docs/presets/scroll-story/) — Scroll-triggered portfolio with IntersectionObserver reveals
+- [`jdeworks-personal/`](../docs/presets/jdeworks-personal/) — Personalized scroll-driven portfolio
+
+## Sources
+- [MDN — Scroll-driven animations](https://developer.mozilla.org/en-US/docs/Web/CSS/animation-timeline)
+- [web.dev — Scroll-driven animations](https://developer.chrome.com/docs/css-ui/scroll-driven-animations)
+- [NN/g — Scrolljacking](https://www.nngroup.com/articles/scrolljacking-101/)
+- Cross-reference: [Animation Timing](../interaction/animation-timing.md), [Visual Hierarchy](../layout/visual-hierarchy.md)
+</file>
+
+<file path="expressive/visual-identity.md">
+# Visual Identity Systems
+
+> **TL;DR:** A strong visual identity comes from constraints, not features. Pick 1 signature element (bold typography, a distinctive color, an unusual layout rhythm) and apply it consistently. The screenshot test: if someone sees one section out of context, they should recognize your site.
+
+## Core Principles
+
+1. **Identity comes from deliberate constraints** — limiting your palette, type choices, and layout patterns creates recognition. Generic sites use everything; distinctive sites use less, but intentionally.
+2. **One signature element carries the design** — oversized type, a bold accent color, a consistent geometric motif, or an unusual grid. Not all at once.
+3. **Consistency is the multiplier** — a signature element used once is a novelty. Used across every section, it becomes identity.
+4. **Contrast creates emphasis** — the signature element works because everything else is restrained. A bold headline only feels bold next to quiet body text.
+5. **Identity transcends pages** — the visual language should feel cohesive whether the user is on the hero, an about page, or a pricing table.
+
+## Concrete Rules
+
+### The Identity Stack
+| Layer | What to Define | Example |
+|-------|---------------|---------|
+| Color | 1 primary + 1 accent + 1 neutral scale | Indigo-600 primary, amber-400 accent, slate neutrals |
+| Typography | 1 display font + 1 body font (max) | Clash Display for headings, Inter for body |
+| Shape language | Consistent corner radius + border style | All rounded-2xl, or all sharp corners |
+| Spacing rhythm | Consistent section spacing multiple | 80px between sections, 32px within |
+| Signature motif | 1 recurring visual element | Diagonal lines, dots, gradient borders |
+
+### Type-Driven Identity
+| Approach | Font Style | When to Use |
+|----------|-----------|-------------|
+| Bold authority | 800-900 weight, tight tracking (-0.03em) | Tech startups, SaaS, bold brands |
+| Elegant editorial | Serif display (400 weight), generous spacing | Luxury, editorial, publishing |
+| Friendly approachable | Rounded sans-serif, loose tracking | Consumer apps, creative tools |
+| Minimal modern | Light weight (300), wide tracking (0.05em+) | Design agencies, portfolios |
+
+### Color Identity Rules
+- **Primary usage:** 60% neutral, 30% primary, 10% accent (the 60-30-10 rule)
+- **Accent sparingly:** accent color on max 2 elements per viewport (CTA button + one highlight)
+- **Dark mode identity:** keep the same signature color relationships, don't just invert
+- **Gradient identity:** if using gradients, use the same gradient direction and stops everywhere
+
+### Spacing for Personality
+| Personality | Section Gap | Component Gap | Padding |
+|-------------|------------|---------------|---------|
+| Dense/editorial | 48-64px | 16-24px | 16-24px |
+| Standard/clean | 80-96px | 24-32px | 24-32px |
+| Spacious/luxury | 120-160px | 32-48px | 32-48px |
+| Dramatic | 160-240px | 48-64px | 48-80px |
+
+## CSS/Implementation Patterns
+
+### Signature Typography System
+```css
+/* Display font for identity */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&display=swap');
+
+.heading-display {
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+```
+```html
+<!-- Tailwind: identity through type scale -->
+<h1 class="text-5xl sm:text-7xl font-bold tracking-tighter leading-none">
+  Build something<br>
+  <span class="text-indigo-500">extraordinary</span>
+</h1>
+```
+
+### Signature Shape Language
+```html
+<!-- Consistent rounded style across all components -->
+<div class="rounded-3xl bg-white p-8 shadow-sm"> <!-- Card -->
+<button class="rounded-2xl px-6 py-3"> <!-- Button -->
+<img class="rounded-2xl"> <!-- Image -->
+<input class="rounded-xl"> <!-- Input -->
+```
+
+### Signature Color Accent
+```html
+<!-- Accent used sparingly for maximum impact -->
+<div class="border-l-4 border-amber-400 pl-6"> <!-- Pull quote -->
+<span class="bg-amber-400/20 text-amber-700 px-2 py-0.5 rounded"> <!-- Badge -->
+<div class="bg-gradient-to-r from-amber-400 to-orange-500 h-1 w-16"> <!-- Decorative bar -->
+```
+
+### Signature Motif (Diagonal Lines)
+```html
+<!-- Repeating motif as section separator -->
+<div class="relative py-24">
+  <div class="absolute inset-0 opacity-5"
+       style="background: repeating-linear-gradient(
+         -45deg, transparent, transparent 10px,
+         currentColor 10px, currentColor 11px
+       )"></div>
+  <div class="relative z-10"><!-- Content --></div>
+</div>
+```
+
+## Common Mistakes
+
+1. **Using 3+ display fonts** — one display font creates identity. Three create chaos. Max: 1 display + 1 body.
+2. **Inconsistent radius** — mixing rounded-lg, rounded-xl, and rounded-full randomly destroys cohesion. Pick one radius and use it everywhere.
+3. **Signature element only on hero** — if your bold type only appears in the hero and the rest is generic, there's no identity. Carry it through.
+4. **Too many accent colors** — one accent color at 10% usage is a brand. Three accent colors is a birthday party.
+5. **Copying trends without integration** — glassmorphism cards with gradient text with animated borders. Pick one effect and own it.
+6. **No negative space** — identity needs breathing room. Dense layouts feel generic because nothing stands out.
+
+## Decision Tree
+
+```
+Building visual identity:
+├─ What's the personality?
+│  ├─ Bold/confident → Heavy type (700-900), tight tracking, strong colors
+│  ├─ Elegant/refined → Serif display, generous whitespace, muted palette
+│  ├─ Playful/creative → Rounded shapes, colorful accents, bouncy motion
+│  └─ Minimal/modern → Light type, wide tracking, restrained palette
+├─ Pick ONE signature element:
+│  ├─ Typography → Distinctive display font, use it on every heading
+│  ├─ Color → Bold accent, use sparingly across all sections
+│  ├─ Shape → Consistent geometry (sharp, rounded, organic), apply everywhere
+│  └─ Motif → Visual pattern (lines, dots, gradients), repeat as separator/accent
+├─ Apply the 60-30-10 rule:
+│  ├─ 60% neutral background/text
+│  ├─ 30% primary color
+│  └─ 10% accent/signature element
+└─ The screenshot test:
+   └─ Crop any section → Is the source recognizable? If no, signature isn't strong enough.
+```
+
+## Related Templates
+- [`editorial-blog/`](../docs/presets/editorial-blog/) — Serif headings, extreme whitespace, content-first identity
+- [`agency-landing/`](../docs/presets/agency-landing/) — Bold creative brand identity
+- [`devtool-landing/`](../docs/presets/devtool-landing/) — Dark premium tech identity
+- [`jdeworks-personal/`](../docs/presets/jdeworks-personal/) — Personalized visual identity
+
+## Sources
+- Müller-Brockmann, J. (1981). *Grid Systems in Graphic Design*
+- [Refactoring UI — Building Your Color Palette](https://www.refactoringui.com/)
+- [Typewolf — Font Recommendations](https://www.typewolf.com/)
+- [Laws of UX — Aesthetic-Usability Effect](https://lawsofux.com/aesthetic-usability-effect/)
+- Cross-reference: [Color Systems](../color/color-systems.md), [Type Scale](../typography/type-scale.md), [Spacing System](../layout/spacing-system.md)
 </file>
 
 <file path="proxy/wrangler.toml">
@@ -14858,6 +15555,7 @@ For Tailwind v4, add `@import "tailwindcss"` to your main CSS file. No `tailwind
       if (ratio <= 2) {
         passed++;
       } else if (ratio <= 3) {
+        passed++; // Info findings don't reduce score
         findings.push({
           severity: 'info',
           title: 'Content distribution is ' + Math.round(leftCount / total * 100) + '% left / ' + Math.round(rightCount / total * 100) + '% right',
@@ -14878,7 +15576,9 @@ For Tailwind v4, add `@import "tailwindcss"` to your main CSS file. No `tailwind
       }
     }
 
-    var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
+    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
     return { score: score, findings: findings, checks: checks, passed: passed, weight: 3, label: 'Visual Balance', icon: 'consistency' };
   }
 
@@ -15014,703 +15714,6 @@ window.MilgScoring = (function() {
     PROFILES: PROFILES
   };
 })();
-</file>
-
-<file path="expressive/hero-patterns.md">
-# Hero Section Patterns
-
-> **TL;DR:** A hero has 3 seconds to communicate what the page is about and why the visitor should care. Lead with a clear value proposition (5-8 words), support with 1 sentence, and include exactly 1 primary CTA. The hero type (centered, split, editorial, immersive) should match the content's intent, not just look impressive.
-
-## Core Principles
-
-1. **The hero IS the first impression** — 94% of first impressions are design-related. The hero sets the emotional tone for the entire page.
-2. **Clarity beats creativity** — a clever hero that confuses is worse than a simple hero that communicates. Lead with what you do, not how clever you are.
-3. **One action, not a menu** — the hero should funnel attention to a single primary CTA. Secondary actions can exist but must be visually subordinate.
-4. **Visual hierarchy in 3 layers** — headline (what), subheadline (why), CTA (what to do). Each layer is distinct in size and weight.
-5. **Performance affects perception** — a hero that loads in 1s feels premium. A hero that loads in 4s feels broken. Optimize images and defer non-critical assets.
-
-## Concrete Rules
-
-### Hero Anatomy
-| Element | Sizing | Purpose |
-|---------|--------|---------|
-| Headline | text-4xl to text-7xl (36-72px) | The value proposition. 5-8 words max |
-| Subheadline | text-lg to text-xl (18-20px) | Supporting context. 1-2 sentences max |
-| Primary CTA | min-h-[48px], text-base to text-lg | The ONE thing you want them to do |
-| Secondary CTA | text-sm to text-base, ghost/outlined | Alternative action (lower priority) |
-| Visual | Full-bleed or constrained | Product screenshot, illustration, or gradient |
-
-### Hero Types by Intent
-| Type | Layout | Best For |
-|------|--------|----------|
-| Centered | Text centered, CTAs below, visual below or bg | SaaS landing, product launch, app download |
-| Split (50/50) | Text left, visual right (or reversed) | Product demos, portfolios, agency pages |
-| Editorial | Large serif headline, minimal visual | Publishing, editorial, personal brand |
-| Immersive | Full-viewport visual, text overlay | Photography, luxury brands, experiences |
-| Card-stack | Multiple overlapping cards/panels | Feature highlights, multi-product pages |
-
-### Headline Sizing by Viewport
-| Viewport | Headline Size | Line Height |
-|----------|--------------|-------------|
-| Mobile (320-639px) | text-3xl to text-4xl (30-36px) | 1.1-1.2 |
-| Tablet (640-1023px) | text-4xl to text-5xl (36-48px) | 1.1 |
-| Desktop (1024px+) | text-5xl to text-7xl (48-72px) | 1.05-1.1 |
-
-### Spacing Rules
-- **Headline to subheadline:** 16-24px (mt-4 to mt-6)
-- **Subheadline to CTA:** 24-40px (mt-6 to mt-10)
-- **Hero section padding:** 80-160px vertical (py-20 to py-40)
-- **Max content width:** 640px for centered text (max-w-2xl)
-
-## CSS/Implementation Patterns
-
-### Centered Hero (Most Common)
-```html
-<section class="relative py-24 sm:py-32 lg:py-40">
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div class="max-w-2xl mx-auto text-center">
-      <h1 class="text-4xl sm:text-5xl lg:text-7xl font-bold tracking-tight text-slate-900 dark:text-white leading-[1.1]">
-        Ship products<br>
-        <span class="text-indigo-600 dark:text-indigo-400">people love</span>
-      </h1>
-      <p class="mt-6 text-lg sm:text-xl text-slate-600 dark:text-slate-300 max-w-xl mx-auto">
-        The design platform that helps teams build beautiful, accessible interfaces in half the time.
-      </p>
-      <div class="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
-        <a href="#" class="w-full sm:w-auto rounded-xl bg-indigo-600 px-8 py-4 text-base font-semibold text-white hover:bg-indigo-500 transition-colors">
-          Start free trial
-        </a>
-        <a href="#" class="w-full sm:w-auto rounded-xl border border-slate-300 dark:border-slate-600 px-8 py-4 text-base font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-          Watch demo
-        </a>
-      </div>
-    </div>
-  </div>
-</section>
-```
-
-### Split Hero with Product Visual
-```html
-<section class="py-20 lg:py-32">
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div class="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
-      <div>
-        <h1 class="text-4xl sm:text-5xl font-bold tracking-tight text-slate-900 dark:text-white leading-[1.1]">
-          Analytics that<br>actually make sense
-        </h1>
-        <p class="mt-6 text-lg text-slate-600 dark:text-slate-300">
-          Stop drowning in dashboards. Get the 3 metrics that matter, updated in real time.
-        </p>
-        <div class="mt-8 flex flex-wrap gap-4">
-          <a href="#" class="rounded-lg bg-slate-900 dark:bg-white px-6 py-3 text-sm font-semibold text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-100 transition-colors">
-            Get started
-          </a>
-        </div>
-      </div>
-      <div class="relative">
-        <div class="aspect-[4/3] rounded-2xl bg-gradient-to-br from-indigo-100 to-violet-100 dark:from-indigo-900/30 dark:to-violet-900/30 border border-slate-200 dark:border-slate-700 shadow-xl"></div>
-      </div>
-    </div>
-  </div>
-</section>
-```
-
-### Editorial Hero (Type-Driven)
-```html
-<section class="py-32 sm:py-40">
-  <div class="max-w-4xl mx-auto px-4 sm:px-6">
-    <h1 class="text-5xl sm:text-6xl lg:text-8xl font-light tracking-tight text-slate-900 dark:text-white leading-[1.05]" style="font-family: 'Playfair Display', serif">
-      Design is not<br>just what it looks like.
-    </h1>
-    <p class="mt-8 text-xl text-slate-500 dark:text-slate-400 max-w-2xl">
-      It's how it works. We help companies build products that feel as good as they function.
-    </p>
-    <div class="mt-12 flex items-center gap-6">
-      <a href="#" class="text-base font-medium text-slate-900 dark:text-white border-b-2 border-slate-900 dark:border-white pb-1 hover:border-indigo-600 dark:hover:border-indigo-400 transition-colors">
-        Explore our work
-      </a>
-    </div>
-  </div>
-</section>
-```
-
-### Immersive Hero (Full Viewport)
-```html
-<section class="relative min-h-screen flex items-center justify-center overflow-hidden">
-  <!-- Background -->
-  <div class="absolute inset-0 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900"></div>
-  <!-- Content -->
-  <div class="relative z-10 max-w-3xl mx-auto px-4 text-center">
-    <h1 class="text-4xl sm:text-6xl lg:text-7xl font-bold text-white tracking-tight leading-[1.1]">
-      Experience design<br>without limits
-    </h1>
-    <p class="mt-6 text-lg sm:text-xl text-slate-300 max-w-xl mx-auto">
-      Immersive creative tools for the next generation of digital experiences.
-    </p>
-    <div class="mt-10">
-      <a href="#" class="inline-flex rounded-full bg-white px-8 py-4 text-base font-semibold text-slate-900 hover:bg-slate-100 transition-colors">
-        Enter the experience
-      </a>
-    </div>
-  </div>
-</section>
-```
-
-## Common Mistakes
-
-1. **Headline too long** — over 10 words in a hero headline and the user skims past it. 5-8 words. Cut ruthlessly.
-2. **Two equal CTAs** — "Sign Up" and "Learn More" at the same visual weight. Make one clearly primary.
-3. **Hero too tall on mobile** — a min-h-screen hero with large text can push all useful content below the fold on mobile. Use py-24 instead.
-4. **Stock photo hero** — generic stock photos actively hurt credibility. A solid gradient or abstract shape is better than a fake team photo.
-5. **Autoplaying video background** — most users find it distracting, it kills performance, and it doesn't work on mobile Safari. Use a static image with a play button instead.
-6. **Text over busy images without overlay** — white text on a photo needs a dark overlay (bg-black/50 minimum) for readability.
-
-## Decision Tree
-
-```
-Choosing a hero type:
-├─ What are you showing?
-│  ├─ A product/app → Split hero with screenshot or Centered + visual below
-│  ├─ A service/brand → Centered or Editorial (type-driven)
-│  ├─ A portfolio/creative work → Immersive or Editorial
-│  └─ An experience/event → Immersive (full viewport)
-├─ What's the headline length?
-│  ├─ 3-5 words → Can go very large (text-7xl+), editorial works well
-│  ├─ 5-8 words → Standard sizing (text-5xl-6xl)
-│  └─ 8+ words → Needs careful line breaking, consider split layout
-├─ How many CTAs?
-│  ├─ 1 → Center it. Make it big.
-│  ├─ 2 → Primary (filled) + Secondary (outlined/ghost). Clear hierarchy.
-│  └─ 3+ → Rethink. A hero is not a navigation menu.
-└─ Mobile considerations:
-   └─ Always stack CTAs vertically on mobile (flex-col sm:flex-row)
-```
-
-## Related Templates
-- [`personal-hero/`](../docs/presets/personal-hero/) — Personal site with staggered reveal hero
-- [`agency-landing/`](../docs/presets/agency-landing/) — Agency with gradient mesh hero
-- [`product-launch/`](../docs/presets/product-launch/) — Product launch with gradient text hero
-- [`devtool-landing/`](../docs/presets/devtool-landing/) — Developer tool with gradient mesh + terminal hero
-- [`event-page/`](../docs/presets/event-page/) — Event with bold date hero
-
-## Sources
-- [NN/g — How Users Read on the Web](https://www.nngroup.com/articles/how-users-read-on-the-web/)
-- [Peep Laja — Above the Fold](https://cxl.com/blog/above-the-fold/)
-- [web.dev — LCP Optimization](https://web.dev/lcp/)
-- Cross-reference: [Visual Hierarchy](../layout/visual-hierarchy.md), [Type Scale](../typography/type-scale.md), [Animation Timing](../interaction/animation-timing.md)
-</file>
-
-<file path="expressive/purposeful-motion.md">
-# Purposeful Motion
-
-> **TL;DR:** Motion in expressive pages differs from utility UI animation. Use motion to guide attention (draw the eye), establish hierarchy (what matters most moves first), and create emotional resonance (motion that matches the brand's energy). Limit to 2-3 motion techniques per page. Motion should explain, reveal, or delight — never decorate.
-
-## Core Principles
-
-1. **Motion is a hierarchy tool** — the first thing to animate gets the most attention. Use motion order to guide the user's eye: headline → subheadline → CTA → supporting content.
-2. **Restraint creates impact** — a single well-timed animation in a sea of stillness is memorable. Animation everywhere is noise.
-3. **Motion should match brand energy** — a luxury brand uses slow, graceful fades. A gaming startup uses fast, bouncy springs. The motion IS the personality.
-4. **Motion must serve the narrative** — on expressive pages, motion reveals the story. Elements appear as they become relevant, creating a sense of progression.
-5. **Performance is feel** — 60fps motion feels premium. Janky motion feels broken. Only animate `transform` and `opacity`.
-
-## Concrete Rules
-
-### Motion Techniques by Purpose
-| Purpose | Technique | Duration | Easing |
-|---------|-----------|----------|--------|
-| Draw attention | Fade + slide in | 400-600ms | ease-out (decelerate) |
-| Establish hierarchy | Staggered reveal | 200ms each, 80-120ms stagger | ease-out |
-| Create delight | Scale bounce | 300-500ms | spring (0.34, 1.56, 0.64, 1) |
-| Show progression | Counter/number roll | 600-1000ms | ease-in-out |
-| Ambient atmosphere | Slow float/pulse | 3-6s, infinite | ease-in-out |
-| Entrance drama | Large slide + fade | 600-800ms | cubic-bezier(0.16, 1, 0.3, 1) |
-
-### Stagger Choreography Rules
-- **Maximum elements in a stagger group:** 5-7
-- **Stagger delay:** 80-120ms per element
-- **Total stagger duration:** max 800ms
-- **Direction:** match reading order (top-to-bottom, left-to-right in LTR)
-- **First element:** always the headline or most important element
-
-### Motion Budget Per Page
-| Page Type | Max Motion Techniques | Max Animated Elements per Viewport |
-|-----------|----------------------|-----------------------------------|
-| Landing page | 3 | 5-7 |
-| Portfolio piece | 2-3 | 3-5 |
-| Product page | 2 | 4-6 |
-| Personal site | 2-3 | 3-5 |
-
-### Speed by Brand Energy
-| Brand Energy | Enter Duration | Hover Duration | Easing Character |
-|-------------|---------------|----------------|-----------------|
-| Calm/luxury | 600-800ms | 300ms | Gentle ease-out |
-| Professional | 300-500ms | 200ms | Standard ease-out |
-| Energetic | 200-400ms | 150ms | Bouncy spring |
-| Dramatic | 600-1000ms | 200ms | Strong deceleration |
-
-## CSS/Implementation Patterns
-
-### Staggered Hero Reveal
-```html
-<style>
-  @keyframes heroReveal {
-    from { opacity: 0; transform: translateY(32px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-  .hero-stagger > * {
-    opacity: 0;
-    animation: heroReveal 500ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  }
-  .hero-stagger > *:nth-child(1) { animation-delay: 0ms; }
-  .hero-stagger > *:nth-child(2) { animation-delay: 100ms; }
-  .hero-stagger > *:nth-child(3) { animation-delay: 200ms; }
-  .hero-stagger > *:nth-child(4) { animation-delay: 300ms; }
-
-  @media (prefers-reduced-motion: reduce) {
-    .hero-stagger > * { opacity: 1; animation: none; }
-  }
-</style>
-
-<section class="py-32">
-  <div class="hero-stagger max-w-2xl mx-auto text-center">
-    <span class="text-sm font-semibold text-indigo-600 uppercase tracking-wider">Introducing</span>
-    <h1 class="mt-4 text-5xl font-bold tracking-tight">Build faster, ship sooner</h1>
-    <p class="mt-6 text-lg text-slate-600">The platform that turns ideas into products.</p>
-    <div class="mt-10">
-      <a href="#" class="rounded-xl bg-indigo-600 px-8 py-4 text-white font-semibold">Get started</a>
-    </div>
-  </div>
-</section>
-```
-
-### Ambient Background Motion
-```css
-/* Slow floating gradient — adds atmosphere without distraction */
-@keyframes gradientShift {
-  0%, 100% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-}
-
-.ambient-bg {
-  background: linear-gradient(-45deg, #dbeafe, #ede9fe, #fce7f3, #e0f2fe);
-  background-size: 400% 400%;
-  animation: gradientShift 8s ease-in-out infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .ambient-bg { animation: none; background-position: 0% 50%; }
-}
-```
-
-### Number Counter Animation
-```html
-<style>
-  @property --num {
-    syntax: '<integer>';
-    initial-value: 0;
-    inherits: false;
-  }
-  .counter {
-    --num: 0;
-    animation: countUp 1s ease-in-out forwards;
-    counter-reset: num var(--num);
-  }
-  .counter::after { content: counter(num); }
-  @keyframes countUp { to { --num: 2847; } }
-</style>
-
-<span class="counter text-4xl font-bold tabular-nums"></span>
-```
-
-### Hover Micro-Motion for Cards
-```html
-<article class="group rounded-2xl border border-slate-200 dark:border-slate-700 p-6 transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-lg hover:shadow-slate-200/50 dark:hover:shadow-slate-900/50">
-  <div class="overflow-hidden rounded-xl">
-    <div class="aspect-[16/9] bg-slate-100 dark:bg-slate-800 transition-transform duration-500 ease-out group-hover:scale-105"></div>
-  </div>
-  <h3 class="mt-4 text-lg font-semibold">Card Title</h3>
-  <p class="mt-2 text-sm text-slate-600 dark:text-slate-400">Card description goes here.</p>
-</article>
-```
-
-### Scroll-Triggered Reveal (Intersection Observer)
-```html
-<style>
-  .reveal { opacity: 0; transform: translateY(24px); transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
-  .reveal.in-view { opacity: 1; transform: none; }
-  @media (prefers-reduced-motion: reduce) {
-    .reveal { opacity: 1; transform: none; transition: none; }
-  }
-</style>
-
-<div class="reveal">Revealed content</div>
-
-<script>
-const obs = new IntersectionObserver(
-  entries => entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in-view'); obs.unobserve(e.target); } }),
-  { threshold: 0.15 }
-);
-document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
-</script>
-```
-
-## Common Mistakes
-
-1. **Animating everything** — if every element fades, slides, and bounces, nothing has impact. Pick 3-5 elements per viewport to animate.
-2. **Same animation for every element** — using the same fade-up for headlines, images, and buttons. Vary the technique: headlines slide, images scale, buttons fade.
-3. **Ignoring reduced motion** — roughly 25% of users prefer reduced motion. Wrap all animations in a `prefers-reduced-motion` check.
-4. **Animation on repeat visits** — entrance animations are great the first time. On return visits or quick navigation, they feel like barriers. Consider only animating on first viewport intersection.
-5. **Slow, dramatic animations on utility elements** — a 800ms animation on a form field is painful. Reserve dramatic timing for hero elements and key moments.
-6. **Animating layout properties** — `width`, `height`, `top`, `left`, `margin` trigger expensive reflows. Only animate `transform` and `opacity`.
-
-## Decision Tree
-
-```
-Adding purposeful motion:
-├─ What's the goal?
-│  ├─ Guide attention → Staggered reveal (headline → sub → CTA)
-│  ├─ Create atmosphere → Ambient background motion (slow, subtle)
-│  ├─ Show data → Counter animation or chart reveal
-│  ├─ Encourage interaction → Hover micro-motion on interactive elements
-│  └─ Tell a story → Scroll-triggered progressive reveal
-├─ Brand energy?
-│  ├─ Calm → Longer duration (500-800ms), gentle easing
-│  ├─ Energetic → Shorter (200-400ms), spring easing
-│  └─ Dramatic → Long initial (600-1000ms), strong deceleration
-├─ How many motion elements per viewport?
-│  ├─ 1-3 → Perfect. Each one gets attention.
-│  ├─ 4-5 → OK if staggered properly.
-│  └─ 6+ → Too many. Cut to the most important.
-└─ Accessibility:
-   └─ Always: @media (prefers-reduced-motion: reduce) { animation: none; }
-```
-
-## Related Templates
-- [`scroll-story/`](../docs/presets/scroll-story/) — IntersectionObserver scroll reveals with staggered cascade
-- [`saas-features/`](../docs/presets/saas-features/) — Bouncy hover interactions on bento cards (playful variant)
-- [`devtool-landing/`](../docs/presets/devtool-landing/) — Glow card hover effects (clean variant)
-- [`agency-landing/`](../docs/presets/agency-landing/) — Service row expand on hover, image zoom
-
-## Sources
-- [Material Design 3 — Motion principles](https://m3.material.io/styles/motion/overview)
-- [Apple HIG — Motion](https://developer.apple.com/design/human-interface-guidelines/motion)
-- [Stripe.com](https://stripe.com) — exemplar of purposeful motion in product pages
-- Cross-reference: [Animation Timing](../interaction/animation-timing.md), [Micro-Interactions](../interaction/micro-interactions.md), [Visual Identity](visual-identity.md)
-</file>
-
-<file path="expressive/scroll-storytelling.md">
-# Scroll-Based Storytelling
-
-> **TL;DR:** Scroll storytelling uses scroll position as a timeline to reveal content progressively. Use CSS `scroll-snap`, `position: sticky`, and `@keyframes` with `animation-timeline: scroll()` for native scroll-driven animations. Keep each "scene" viewport-height sized, limit to 3-5 scroll scenes per page, and always provide a skip/nav option for users who don't want to scroll.
-
-## Core Principles
-
-1. **Scroll is a timeline, not a decoration** — each scroll position should reveal new information. If removing the scroll effect doesn't lose meaning, the effect is decorative, not narrative.
-2. **Progressive disclosure builds anticipation** — reveal information in a logical sequence. Don't show everything at once and animate it for no reason.
-3. **One idea per viewport** — each scroll "scene" should communicate one concept. Cramming multiple ideas into a sticky section creates cognitive overload.
-4. **The user controls the pace** — scroll-driven animation lets users speed up, slow down, or reverse. This is fundamentally different from auto-playing animation.
-5. **Performance is non-negotiable** — scroll-triggered layout shifts, heavy JS scroll listeners, or janky animations destroy the experience. Use CSS scroll-driven animations or IntersectionObserver, not scroll event listeners.
-
-## Concrete Rules
-
-### Scroll Scene Sizing
-| Parameter | Value | Rationale |
-|-----------|-------|-----------|
-| Scene height | 100vh (1 viewport) | Each scene fills the screen, creating clear transitions |
-| Sticky section height | 200-500vh scroll distance | 200vh = fast transition, 500vh = slow, detailed reveal |
-| Number of scenes | 3-5 per page | More than 5 causes fatigue. Users lose patience. |
-| Skip option | Always present | Users must be able to jump to content without scrolling through every scene |
-
-### Animation Trigger Points
-| Technique | CSS/JS | Use For |
-|-----------|--------|---------|
-| Scroll snap | `scroll-snap-type: y mandatory` | Full-viewport scene transitions |
-| Sticky + progress | `position: sticky` + scroll distance | Sections that transform as you scroll |
-| IntersectionObserver | JS | Reveal-on-enter animations |
-| `animation-timeline: scroll()` | CSS | Native scroll-driven animations (modern browsers) |
-
-### Timing and Distance
-- **Reveal animations:** trigger at 20-30% viewport intersection (threshold: 0.2-0.3)
-- **Sticky transform distance:** 200-300vh for a single transformation sequence
-- **Fade-in distance:** 10-20% of viewport height (not too fast, not too slow)
-- **Parallax ratio:** foreground 1:1, midground 0.5:1, background 0.2:1
-
-## CSS/Implementation Patterns
-
-### Scroll-Snap Sections
-```html
-<div class="h-screen overflow-y-scroll snap-y snap-mandatory">
-  <section class="h-screen snap-start flex items-center justify-center">
-    <h2 class="text-5xl font-bold">Scene One</h2>
-  </section>
-  <section class="h-screen snap-start flex items-center justify-center bg-slate-900 text-white">
-    <h2 class="text-5xl font-bold">Scene Two</h2>
-  </section>
-  <section class="h-screen snap-start flex items-center justify-center">
-    <h2 class="text-5xl font-bold">Scene Three</h2>
-  </section>
-</div>
-```
-
-### Sticky Section with Content Swap
-```html
-<!-- The sticky container stays fixed while scroll distance passes -->
-<div class="relative" style="height: 300vh">
-  <div class="sticky top-0 h-screen flex items-center justify-center overflow-hidden">
-    <div class="max-w-2xl mx-auto px-4 text-center">
-      <h2 class="text-4xl font-bold text-slate-900 dark:text-white">
-        How it works
-      </h2>
-      <p class="mt-4 text-lg text-slate-600 dark:text-slate-300">
-        Scroll to explore each step
-      </p>
-    </div>
-  </div>
-</div>
-```
-
-### CSS Scroll-Driven Animation (Modern)
-```css
-/* Fade in and slide up as element enters viewport */
-@keyframes fadeSlideIn {
-  from { opacity: 0; transform: translateY(40px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-.reveal-on-scroll {
-  animation: fadeSlideIn linear both;
-  animation-timeline: view();
-  animation-range: entry 0% entry 40%;
-}
-```
-```html
-<div class="reveal-on-scroll">
-  <h3 class="text-2xl font-bold">This fades in on scroll</h3>
-</div>
-```
-
-### IntersectionObserver Reveal (Broad Support)
-```html
-<style>
-  .scroll-reveal { opacity: 0; transform: translateY(24px); transition: opacity 0.6s ease-out, transform 0.6s ease-out; }
-  .scroll-reveal.visible { opacity: 1; transform: translateY(0); }
-</style>
-
-<div class="scroll-reveal">Content that reveals on scroll</div>
-
-<script>
-const observer = new IntersectionObserver((entries) => {
-  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
-}, { threshold: 0.2 });
-document.querySelectorAll('.scroll-reveal').forEach(el => observer.observe(el));
-</script>
-```
-
-### Horizontal Scroll Inside Vertical Page
-```html
-<section class="relative" style="height: 400vh">
-  <div class="sticky top-0 h-screen flex items-center overflow-hidden">
-    <div class="flex gap-8 px-8" id="hscroll-track" style="transform: translateX(0)">
-      <div class="w-[80vw] flex-shrink-0 rounded-2xl bg-slate-100 dark:bg-slate-800 p-12">
-        <h3 class="text-2xl font-bold">Panel 1</h3>
-      </div>
-      <div class="w-[80vw] flex-shrink-0 rounded-2xl bg-slate-100 dark:bg-slate-800 p-12">
-        <h3 class="text-2xl font-bold">Panel 2</h3>
-      </div>
-      <div class="w-[80vw] flex-shrink-0 rounded-2xl bg-slate-100 dark:bg-slate-800 p-12">
-        <h3 class="text-2xl font-bold">Panel 3</h3>
-      </div>
-    </div>
-  </div>
-</section>
-```
-
-## Common Mistakes
-
-1. **Scroll-jacking** — overriding the browser's native scroll behavior (changing scroll speed, direction, or snapping aggressively). Users hate losing control of scroll.
-2. **No skip option** — forcing users through a 5-scene scroll sequence to reach the CTA. Always provide navigation or a "skip to content" link.
-3. **Heavy JS scroll listeners** — attaching animation logic to `scroll` events causes jank. Use IntersectionObserver, CSS `animation-timeline`, or `requestAnimationFrame` with throttling.
-4. **Too many scroll scenes** — 3-5 is the sweet spot. More than 5 and users feel trapped in a never-ending scroll sequence.
-5. **Scroll effects on every element** — if everything fades in on scroll, nothing feels special. Use reveal animations on 3-5 key elements per viewport.
-6. **No mobile fallback** — complex scroll effects often break on touch devices. Simplify to basic reveals on mobile, keep full effects for desktop.
-7. **Content unreachable without JavaScript** — scroll-driven layouts must be readable if JS fails. Use progressive enhancement.
-
-## Decision Tree
-
-```
-Adding scroll storytelling:
-├─ Is the content sequential/narrative?
-│  ├─ Yes → Scroll storytelling adds value
-│  └─ No → Use standard page layout instead
-├─ How many "scenes"?
-│  ├─ 1-2 → Simple reveal-on-scroll is enough
-│  ├─ 3-5 → Sticky sections with content swap
-│  └─ 6+ → Too many. Consolidate or use a different pattern.
-├─ Technical approach:
-│  ├─ Simple fade-in → CSS animation-timeline: view() or IntersectionObserver
-│  ├─ Sticky transformations → position: sticky + scroll distance calculation
-│  ├─ Full-page snapping → scroll-snap-type: y mandatory
-│  └─ Horizontal scroll → Sticky container + translateX based on scroll %
-├─ Mobile:
-│  ├─ Simplify → Reduce to basic reveals, remove parallax
-│  └─ Skip option → Always provide a way to bypass
-└─ Accessibility:
-   ├─ prefers-reduced-motion → Disable all scroll animations
-   └─ Keyboard nav → Ensure all content reachable without scrolling
-```
-
-## Related Templates
-- [`scroll-story/`](../docs/presets/scroll-story/) — Scroll-triggered portfolio with IntersectionObserver reveals
-- [`jdeworks-personal/`](../docs/presets/jdeworks-personal/) — Personalized scroll-driven portfolio
-
-## Sources
-- [MDN — Scroll-driven animations](https://developer.mozilla.org/en-US/docs/Web/CSS/animation-timeline)
-- [web.dev — Scroll-driven animations](https://developer.chrome.com/docs/css-ui/scroll-driven-animations)
-- [NN/g — Scrolljacking](https://www.nngroup.com/articles/scrolljacking-101/)
-- Cross-reference: [Animation Timing](../interaction/animation-timing.md), [Visual Hierarchy](../layout/visual-hierarchy.md)
-</file>
-
-<file path="expressive/visual-identity.md">
-# Visual Identity Systems
-
-> **TL;DR:** A strong visual identity comes from constraints, not features. Pick 1 signature element (bold typography, a distinctive color, an unusual layout rhythm) and apply it consistently. The screenshot test: if someone sees one section out of context, they should recognize your site.
-
-## Core Principles
-
-1. **Identity comes from deliberate constraints** — limiting your palette, type choices, and layout patterns creates recognition. Generic sites use everything; distinctive sites use less, but intentionally.
-2. **One signature element carries the design** — oversized type, a bold accent color, a consistent geometric motif, or an unusual grid. Not all at once.
-3. **Consistency is the multiplier** — a signature element used once is a novelty. Used across every section, it becomes identity.
-4. **Contrast creates emphasis** — the signature element works because everything else is restrained. A bold headline only feels bold next to quiet body text.
-5. **Identity transcends pages** — the visual language should feel cohesive whether the user is on the hero, an about page, or a pricing table.
-
-## Concrete Rules
-
-### The Identity Stack
-| Layer | What to Define | Example |
-|-------|---------------|---------|
-| Color | 1 primary + 1 accent + 1 neutral scale | Indigo-600 primary, amber-400 accent, slate neutrals |
-| Typography | 1 display font + 1 body font (max) | Clash Display for headings, Inter for body |
-| Shape language | Consistent corner radius + border style | All rounded-2xl, or all sharp corners |
-| Spacing rhythm | Consistent section spacing multiple | 80px between sections, 32px within |
-| Signature motif | 1 recurring visual element | Diagonal lines, dots, gradient borders |
-
-### Type-Driven Identity
-| Approach | Font Style | When to Use |
-|----------|-----------|-------------|
-| Bold authority | 800-900 weight, tight tracking (-0.03em) | Tech startups, SaaS, bold brands |
-| Elegant editorial | Serif display (400 weight), generous spacing | Luxury, editorial, publishing |
-| Friendly approachable | Rounded sans-serif, loose tracking | Consumer apps, creative tools |
-| Minimal modern | Light weight (300), wide tracking (0.05em+) | Design agencies, portfolios |
-
-### Color Identity Rules
-- **Primary usage:** 60% neutral, 30% primary, 10% accent (the 60-30-10 rule)
-- **Accent sparingly:** accent color on max 2 elements per viewport (CTA button + one highlight)
-- **Dark mode identity:** keep the same signature color relationships, don't just invert
-- **Gradient identity:** if using gradients, use the same gradient direction and stops everywhere
-
-### Spacing for Personality
-| Personality | Section Gap | Component Gap | Padding |
-|-------------|------------|---------------|---------|
-| Dense/editorial | 48-64px | 16-24px | 16-24px |
-| Standard/clean | 80-96px | 24-32px | 24-32px |
-| Spacious/luxury | 120-160px | 32-48px | 32-48px |
-| Dramatic | 160-240px | 48-64px | 48-80px |
-
-## CSS/Implementation Patterns
-
-### Signature Typography System
-```css
-/* Display font for identity */
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&display=swap');
-
-.heading-display {
-  font-family: 'Space Grotesk', sans-serif;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  line-height: 1.1;
-}
-```
-```html
-<!-- Tailwind: identity through type scale -->
-<h1 class="text-5xl sm:text-7xl font-bold tracking-tighter leading-none">
-  Build something<br>
-  <span class="text-indigo-500">extraordinary</span>
-</h1>
-```
-
-### Signature Shape Language
-```html
-<!-- Consistent rounded style across all components -->
-<div class="rounded-3xl bg-white p-8 shadow-sm"> <!-- Card -->
-<button class="rounded-2xl px-6 py-3"> <!-- Button -->
-<img class="rounded-2xl"> <!-- Image -->
-<input class="rounded-xl"> <!-- Input -->
-```
-
-### Signature Color Accent
-```html
-<!-- Accent used sparingly for maximum impact -->
-<div class="border-l-4 border-amber-400 pl-6"> <!-- Pull quote -->
-<span class="bg-amber-400/20 text-amber-700 px-2 py-0.5 rounded"> <!-- Badge -->
-<div class="bg-gradient-to-r from-amber-400 to-orange-500 h-1 w-16"> <!-- Decorative bar -->
-```
-
-### Signature Motif (Diagonal Lines)
-```html
-<!-- Repeating motif as section separator -->
-<div class="relative py-24">
-  <div class="absolute inset-0 opacity-5"
-       style="background: repeating-linear-gradient(
-         -45deg, transparent, transparent 10px,
-         currentColor 10px, currentColor 11px
-       )"></div>
-  <div class="relative z-10"><!-- Content --></div>
-</div>
-```
-
-## Common Mistakes
-
-1. **Using 3+ display fonts** — one display font creates identity. Three create chaos. Max: 1 display + 1 body.
-2. **Inconsistent radius** — mixing rounded-lg, rounded-xl, and rounded-full randomly destroys cohesion. Pick one radius and use it everywhere.
-3. **Signature element only on hero** — if your bold type only appears in the hero and the rest is generic, there's no identity. Carry it through.
-4. **Too many accent colors** — one accent color at 10% usage is a brand. Three accent colors is a birthday party.
-5. **Copying trends without integration** — glassmorphism cards with gradient text with animated borders. Pick one effect and own it.
-6. **No negative space** — identity needs breathing room. Dense layouts feel generic because nothing stands out.
-
-## Decision Tree
-
-```
-Building visual identity:
-├─ What's the personality?
-│  ├─ Bold/confident → Heavy type (700-900), tight tracking, strong colors
-│  ├─ Elegant/refined → Serif display, generous whitespace, muted palette
-│  ├─ Playful/creative → Rounded shapes, colorful accents, bouncy motion
-│  └─ Minimal/modern → Light type, wide tracking, restrained palette
-├─ Pick ONE signature element:
-│  ├─ Typography → Distinctive display font, use it on every heading
-│  ├─ Color → Bold accent, use sparingly across all sections
-│  ├─ Shape → Consistent geometry (sharp, rounded, organic), apply everywhere
-│  └─ Motif → Visual pattern (lines, dots, gradients), repeat as separator/accent
-├─ Apply the 60-30-10 rule:
-│  ├─ 60% neutral background/text
-│  ├─ 30% primary color
-│  └─ 10% accent/signature element
-└─ The screenshot test:
-   └─ Crop any section → Is the source recognizable? If no, signature isn't strong enough.
-```
-
-## Related Templates
-- [`editorial-blog/`](../docs/presets/editorial-blog/) — Serif headings, extreme whitespace, content-first identity
-- [`agency-landing/`](../docs/presets/agency-landing/) — Bold creative brand identity
-- [`devtool-landing/`](../docs/presets/devtool-landing/) — Dark premium tech identity
-- [`jdeworks-personal/`](../docs/presets/jdeworks-personal/) — Personalized visual identity
-
-## Sources
-- Müller-Brockmann, J. (1981). *Grid Systems in Graphic Design*
-- [Refactoring UI — Building Your Color Palette](https://www.refactoringui.com/)
-- [Typewolf — Font Recommendations](https://www.typewolf.com/)
-- [Laws of UX — Aesthetic-Usability Effect](https://lawsofux.com/aesthetic-usability-effect/)
-- Cross-reference: [Color Systems](../color/color-systems.md), [Type Scale](../typography/type-scale.md), [Spacing System](../layout/spacing-system.md)
 </file>
 
 <file path="workflows/quick-reference.md">
@@ -15863,6 +15866,72 @@ package-lock.json
 
 # Claude Code commands (local skills, not shared)
 .claude/
+</file>
+
+<file path="CLAUDE.md">
+# CLAUDE.md — make-it-look-good
+
+## Quick Start
+- **Design consultation** → Read `CONSULT.md` and follow the steps
+- **Need a component** → Read `docs/presets/_index.md` for presets and composition recipes
+- **Quick number lookup** → Read `workflows/quick-reference.md`
+- **Read only what's needed** — each knowledge file is self-contained (~200-400 lines)
+
+## Purpose
+This repo is a **design knowledge base for LLMs**. When an LLM needs to make UI/UX decisions, it reads files from this repo to get concrete, evidence-based guidance with hard numbers.
+
+## CSS Framework
+All presets and examples use **[Tailwind CSS](https://tailwindcss.com)** as the default styling framework. When the user's stack is unknown, output Tailwind classes. For the preview tool, Tailwind v4 is loaded via CDN (`@tailwindcss/browser@4`). Match the user's stack if they use something else — see CONSULT.md Step 0.
+
+## File Format Convention
+Every knowledge file follows this template:
+
+```
+# {Topic Title}
+> **TL;DR:** {2-3 sentence actionable summary}
+## Core Principles
+## Concrete Rules
+## CSS/Implementation Patterns
+## Common Mistakes
+## Decision Tree
+## Sources
+```
+
+Not every section is required, but **Concrete Rules** and **CSS/Implementation Patterns** are mandatory — every file must have actionable specifics.
+
+## Maintenance Rules
+- **One file per focused topic** — don't merge topics; create new files instead
+- **Flat folders** (max 1 level deep) — no nested subdirectories within topic folders (exception: `docs/presets/` contains per-preset directories with framework variants)
+- **Concrete numbers over vague principles** — "4.5:1 contrast ratio" not "ensure sufficient contrast"
+- **Markdown only** — no JSON/YAML data files unless tooling specifically requires it
+- **research/ is gitignored** — only `research/sources.md` (bibliography) is committed
+- **Update `research/sources.md`** when adding new sources to any file
+- **Update `README.md`** index when adding new knowledge files
+- **Cross-reference related files** using relative links: `[topic](../folder/file.md)`
+- **Every preset in `docs/presets/` needs:** consistent design tokens (blue-600 primary default, slate neutrals), dark mode support, responsive design, and an entry in `docs/presets/index.json`. Personality variants use different color palettes appropriate to their personality (rose for playful, indigo for editorial, etc.)
+
+## Design Consultation Workflow
+- **`CONSULT.md`** is the LLM consultation playbook — read it to run an interactive design consultation
+- **Step 0 in CONSULT.md classifies the input** — existing code (any framework), screenshot, vague idea, or raw data — and routes to the right workflow
+- **Match the user's tech stack** — don't output Tailwind HTML to someone using React + styled-components. Detect the framework and output code in their format
+- **Always generate Design Review Notes** (Step 4 in CONSULT.md) — a structured markdown document with issues found, design decisions, tokens, and an implementation checklist. This is the primary deliverable
+- **`docs/index.html`** is a live preview tool (GitHub Pages) — paste HTML + Tailwind to preview designs. Includes before/after examples in the Templates menu.
+
+## Directory Structure
+- `foundations/` — Cognitive/psychological principles (Gestalt, Hick's Law, Fitts's Law, etc.)
+- `color/` — Color theory, accessibility, psychology, color-blind safety
+- `typography/` — Type scales, font pairing, readability, web font loading
+- `layout/` — Spacing systems, visual hierarchy, grids, whitespace
+- `interaction/` — Animation timing, micro-interactions, touch targets, loading states
+- `responsive/` — Mobile-first, breakpoints, fluid typography, responsive patterns
+- `systems/` — Design tokens, Material Design 3, Apple HIG, building a system
+- `expressive/` — Visual identity, hero patterns, scroll storytelling, purposeful motion
+- `heuristics/` — Nielsen's 10 heuristics, UX frameworks
+- `components/` — Concrete component patterns (buttons, forms, cards, etc.)
+- `docs/presets/` — Copy-paste-ready HTML+Tailwind presets with personality variants (see `docs/presets/_index.md`)
+  - Each preset dir has `clean.html`, `minimalist.html`, `playful.html` (and optionally `react.jsx`, `vue.vue`, `svelte.svelte`)
+- `workflows/` — Cross-cutting decision guides and checklists
+- `research/` — Raw research data (gitignored except sources.md)
 </file>
 
 <file path="docs/presets/_index.md">
@@ -16073,6 +16142,62 @@ All presets are:
 - **Realistic content** (not lorem ipsum)
 </file>
 
+<file path="docs/presets/index.json">
+{
+  "categories": [
+    { "label": "Layouts", "elements": ["shell-sidebar", "shell-marketing", "shell-dashboard", "shell-form"] },
+    { "label": "Components", "elements": ["hero", "stats-row", "data-table", "card-grid", "pricing-cards", "feature-grid", "tabs", "accordion", "pagination", "dropdown", "avatars"] },
+    { "label": "Before → After", "elements": ["dashboard", "landing", "form", "cards", "project"] },
+    { "label": "Full Pages", "elements": ["pricing", "portfolio", "restaurant", "statuspage"] },
+    { "label": "Expressive", "elements": ["personal-hero", "agency-landing", "agency-portfolio", "app-showcase", "scroll-reveal-landing", "product-launch", "editorial-blog", "saas-features", "scroll-story", "product-page", "devtool-landing", "docs-site", "event-page", "jdeworks-personal"] },
+    { "label": "Edge Cases", "elements": ["deploy", "buttons", "osslanding"] }
+  ],
+  "elements": {
+    "dashboard": { "label": "Dashboard", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "landing": { "label": "Landing Page", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
+    "form": { "label": "Form", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
+    "cards": { "label": "Card Grid", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "project": { "label": "Multi-Page App", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
+    "pricing": { "label": "SaaS Pricing", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "portfolio": { "label": "Portfolio (Dark)", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "restaurant": { "label": "Restaurant (Warm)", "personalities": { "clean": { "primaryColor": "amber" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "statuspage": { "label": "Status Page", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "deploy": { "label": "Deploy Monitor", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "buttons": { "label": "Button System", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "osslanding": { "label": "OSS Landing", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "shell-sidebar": { "label": "App Shell (Sidebar)", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "shell-marketing": { "label": "Marketing Page", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "shell-dashboard": { "label": "Dashboard Shell", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "shell-form": { "label": "Centered Form", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "hero": { "label": "Hero Section", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "stats-row": { "label": "Stats Row", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "data-table": { "label": "Data Table", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "card-grid": { "label": "Card Grid", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "pricing-cards": { "label": "Pricing Cards", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "feature-grid": { "label": "Feature Grid", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "tabs": { "label": "Tabs", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "accordion": { "label": "Accordion", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "pagination": { "label": "Pagination", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "dropdown": { "label": "Dropdown Menu", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "avatars": { "label": "Avatar Group", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "personal-hero": { "label": "Personal Site", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "agency-landing": { "label": "Agency Landing", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "product-launch": { "label": "Product Launch", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "editorial-blog": { "label": "Editorial Blog", "personalities": { "clean": { "primaryColor": "slate" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "saas-features": { "label": "SaaS Features", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "scroll-story": { "label": "Scroll Story", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "product-page": { "label": "Product Page", "personalities": { "clean": { "primaryColor": "sky" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "devtool-landing": { "label": "DevTool Landing", "personalities": { "clean": { "primaryColor": "cyan" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "docs-site": { "label": "Docs Site", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "event-page": { "label": "Event Page", "personalities": { "clean": { "primaryColor": "amber" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "jdeworks-personal": { "label": "JDE Personal", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "agency-portfolio": { "label": "Agency Portfolio", "personalities": { "clean": { "primaryColor": "teal" } } },
+    "app-showcase": { "label": "App Showcase", "personalities": { "clean": { "primaryColor": "orange" } } },
+    "scroll-reveal-landing": { "label": "Scroll Reveal Landing", "personalities": { "clean": { "primaryColor": "sky" } } }
+  }
+}
+</file>
+
 <file path="docs/scoring/readability.js">
 // Scoring Module: Readability & Scanability
 // Weight: 5%
@@ -16120,6 +16245,7 @@ All presets are:
       if (shortHeadings.length === 0) {
         passed++;
       } else {
+        passed++; // Info doesn't reduce score
         findings.push({
           severity: 'info',
           title: shortHeadings.length + ' heading(s) with very short text (< 3 chars)',
@@ -16207,11 +16333,13 @@ All presets are:
       });
     }
 
-    var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
-    return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Readability', icon: 'type' };
+    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+    return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Readability', icon: 'readability' };
   }
 
-  S.register("readability", scoreReadability, 5, "Readability", "type");
+  S.register("readability", scoreReadability, 5, "Readability", "readability");
 })();
 </file>
 
@@ -17330,128 +17458,6 @@ export default {
 };
 </file>
 
-<file path="CLAUDE.md">
-# CLAUDE.md — make-it-look-good
-
-## Quick Start
-- **Design consultation** → Read `CONSULT.md` and follow the steps
-- **Need a component** → Read `docs/presets/_index.md` for presets and composition recipes
-- **Quick number lookup** → Read `workflows/quick-reference.md`
-- **Read only what's needed** — each knowledge file is self-contained (~200-400 lines)
-
-## Purpose
-This repo is a **design knowledge base for LLMs**. When an LLM needs to make UI/UX decisions, it reads files from this repo to get concrete, evidence-based guidance with hard numbers.
-
-## CSS Framework
-All presets and examples use **[Tailwind CSS](https://tailwindcss.com)** as the default styling framework. When the user's stack is unknown, output Tailwind classes. For the preview tool, Tailwind v4 is loaded via CDN (`@tailwindcss/browser@4`). Match the user's stack if they use something else — see CONSULT.md Step 0.
-
-## File Format Convention
-Every knowledge file follows this template:
-
-```
-# {Topic Title}
-> **TL;DR:** {2-3 sentence actionable summary}
-## Core Principles
-## Concrete Rules
-## CSS/Implementation Patterns
-## Common Mistakes
-## Decision Tree
-## Sources
-```
-
-Not every section is required, but **Concrete Rules** and **CSS/Implementation Patterns** are mandatory — every file must have actionable specifics.
-
-## Maintenance Rules
-- **One file per focused topic** — don't merge topics; create new files instead
-- **Flat folders** (max 1 level deep) — no nested subdirectories within topic folders (exception: `docs/presets/` contains per-preset directories with framework variants)
-- **Concrete numbers over vague principles** — "4.5:1 contrast ratio" not "ensure sufficient contrast"
-- **Markdown only** — no JSON/YAML data files unless tooling specifically requires it
-- **research/ is gitignored** — only `research/sources.md` (bibliography) is committed
-- **Update `research/sources.md`** when adding new sources to any file
-- **Update `README.md`** index when adding new knowledge files
-- **Cross-reference related files** using relative links: `[topic](../folder/file.md)`
-- **Every preset in `docs/presets/` needs:** consistent design tokens (blue-600 primary default, slate neutrals), dark mode support, responsive design, and an entry in `docs/presets/index.json`. Personality variants use different color palettes appropriate to their personality (rose for playful, indigo for editorial, etc.)
-
-## Design Consultation Workflow
-- **`CONSULT.md`** is the LLM consultation playbook — read it to run an interactive design consultation
-- **Step 0 in CONSULT.md classifies the input** — existing code (any framework), screenshot, vague idea, or raw data — and routes to the right workflow
-- **Match the user's tech stack** — don't output Tailwind HTML to someone using React + styled-components. Detect the framework and output code in their format
-- **Always generate Design Review Notes** (Step 4 in CONSULT.md) — a structured markdown document with issues found, design decisions, tokens, and an implementation checklist. This is the primary deliverable
-- **`docs/index.html`** is a live preview tool (GitHub Pages) — paste HTML + Tailwind to preview designs. Includes before/after examples in the Templates menu.
-
-## Directory Structure
-- `foundations/` — Cognitive/psychological principles (Gestalt, Hick's Law, Fitts's Law, etc.)
-- `color/` — Color theory, accessibility, psychology, color-blind safety
-- `typography/` — Type scales, font pairing, readability, web font loading
-- `layout/` — Spacing systems, visual hierarchy, grids, whitespace
-- `interaction/` — Animation timing, micro-interactions, touch targets, loading states
-- `responsive/` — Mobile-first, breakpoints, fluid typography, responsive patterns
-- `systems/` — Design tokens, Material Design 3, Apple HIG, building a system
-- `expressive/` — Visual identity, hero patterns, scroll storytelling, purposeful motion
-- `heuristics/` — Nielsen's 10 heuristics, UX frameworks
-- `components/` — Concrete component patterns (buttons, forms, cards, etc.)
-- `docs/presets/` — Copy-paste-ready HTML+Tailwind presets with personality variants (see `docs/presets/_index.md`)
-  - Each preset dir has `clean.html`, `minimalist.html`, `playful.html` (and optionally `react.jsx`, `vue.vue`, `svelte.svelte`)
-- `workflows/` — Cross-cutting decision guides and checklists
-- `research/` — Raw research data (gitignored except sources.md)
-</file>
-
-<file path="docs/presets/index.json">
-{
-  "categories": [
-    { "label": "Layouts", "elements": ["shell-sidebar", "shell-marketing", "shell-dashboard", "shell-form"] },
-    { "label": "Components", "elements": ["hero", "stats-row", "data-table", "card-grid", "pricing-cards", "feature-grid", "tabs", "accordion", "pagination", "dropdown", "avatars"] },
-    { "label": "Before → After", "elements": ["dashboard", "landing", "form", "cards", "project"] },
-    { "label": "Full Pages", "elements": ["pricing", "portfolio", "restaurant", "statuspage"] },
-    { "label": "Expressive", "elements": ["personal-hero", "agency-landing", "agency-portfolio", "app-showcase", "scroll-reveal-landing", "product-launch", "editorial-blog", "saas-features", "scroll-story", "product-page", "devtool-landing", "docs-site", "event-page", "jdeworks-personal"] },
-    { "label": "Edge Cases", "elements": ["deploy", "buttons", "osslanding"] }
-  ],
-  "elements": {
-    "dashboard": { "label": "Dashboard", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "landing": { "label": "Landing Page", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
-    "form": { "label": "Form", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
-    "cards": { "label": "Card Grid", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "project": { "label": "Multi-Page App", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
-    "pricing": { "label": "SaaS Pricing", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "portfolio": { "label": "Portfolio (Dark)", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "restaurant": { "label": "Restaurant (Warm)", "personalities": { "clean": { "primaryColor": "amber" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "statuspage": { "label": "Status Page", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "deploy": { "label": "Deploy Monitor", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "buttons": { "label": "Button System", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "osslanding": { "label": "OSS Landing", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "shell-sidebar": { "label": "App Shell (Sidebar)", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "shell-marketing": { "label": "Marketing Page", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "shell-dashboard": { "label": "Dashboard Shell", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "shell-form": { "label": "Centered Form", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "hero": { "label": "Hero Section", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "stats-row": { "label": "Stats Row", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "data-table": { "label": "Data Table", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "card-grid": { "label": "Card Grid", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "pricing-cards": { "label": "Pricing Cards", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "feature-grid": { "label": "Feature Grid", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "tabs": { "label": "Tabs", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "accordion": { "label": "Accordion", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "pagination": { "label": "Pagination", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "dropdown": { "label": "Dropdown Menu", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "avatars": { "label": "Avatar Group", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "personal-hero": { "label": "Personal Site", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "agency-landing": { "label": "Agency Landing", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "product-launch": { "label": "Product Launch", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "editorial-blog": { "label": "Editorial Blog", "personalities": { "clean": { "primaryColor": "slate" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "saas-features": { "label": "SaaS Features", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "scroll-story": { "label": "Scroll Story", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "product-page": { "label": "Product Page", "personalities": { "clean": { "primaryColor": "sky" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "devtool-landing": { "label": "DevTool Landing", "personalities": { "clean": { "primaryColor": "cyan" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "docs-site": { "label": "Docs Site", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "event-page": { "label": "Event Page", "personalities": { "clean": { "primaryColor": "amber" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "jdeworks-personal": { "label": "JDE Personal", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "agency-portfolio": { "label": "Agency Portfolio", "personalities": { "clean": { "primaryColor": "teal" } } },
-    "app-showcase": { "label": "App Showcase", "personalities": { "clean": { "primaryColor": "orange" } } },
-    "scroll-reveal-landing": { "label": "Scroll Reveal Landing", "personalities": { "clean": { "primaryColor": "sky" } } }
-  }
-}
-</file>
-
 <file path="docs/scoring/cognitive.js">
 // Scoring Module: Cognitive Load
 // Weight: 5%
@@ -17553,7 +17559,9 @@ function scoreCognitiveLoad(data) {
     }
   }
 
-  var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
   return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Cognitive Load', icon: 'cognitive' };
 }
 
@@ -17635,7 +17643,9 @@ function scoreVisualConsistency(data) {
     }
   }
 
-  var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
   return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Visual Consistency', icon: 'consistency' };
 }
 
@@ -17716,7 +17726,9 @@ function scoreVisualConsistency(data) {
       });
     }
 
-    var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
+    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
     return { score: score, findings: findings, checks: checks, passed: passed, weight: 3, label: 'Motion & Animation', icon: 'cognitive' };
   }
 
@@ -17886,12 +17898,14 @@ function scoreLayout(data) {
     }
   }
 
-  var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
-  return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Layout Quality', icon: 'spacing' };
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+  return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Layout Quality', icon: 'layout' };
 }
 
 
-  S.register("layout", scoreLayout, 5, "Layout Quality", "spacing");
+  S.register("layout", scoreLayout, 5, "Layout Quality", "layout");
 })();
 </file>
 
@@ -18026,7 +18040,9 @@ function scoreResponsive(data) {
     });
   }
 
-  var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
   return { score: score, findings: findings, checks: checks, passed: passed, weight: 10, label: 'Responsive Design', icon: 'responsive' };
 }
 
@@ -18212,7 +18228,9 @@ function scorePerformance(data) {
     });
   }
 
-  var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
   return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Performance', icon: 'cognitive' };
 }
 
@@ -18378,7 +18396,9 @@ function scoreSpacing(data) {
     });
   }
 
-  var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
   return { score: score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Spacing & Layout', icon: 'spacing' };
 }
 
@@ -19905,223 +19925,14 @@ function scoreTypography(data) {
     });
   }
 
-  var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
   return { score: score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Typography', icon: 'type' };
 }
 
 
   S.register("typography", scoreTypography, 15, "Typography", "type");
-})();
-</file>
-
-<file path="docs/scoring/contrast.js">
-// Scoring Module: Color & Contrast
-// Weight: 20%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function parseRgb(str) {
-  var m = str.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
-  if (!m) m = str.match(/rgb\((\d+)\s+(\d+)\s+(\d+)\)/);
-  if (!m) return null;
-  return { r: +m[1], g: +m[2], b: +m[3] };
-}
-
-function applyFilterToColor(c, filterStr) {
-  if (!c || !filterStr) return c;
-  var r = c.r, g = c.g, b = c.b;
-  var re = /brightness\(([\d.]+)\)|contrast\(([\d.]+)\)|opacity\(([\d.]+)\)/g;
-  var m;
-  while ((m = re.exec(filterStr)) !== null) {
-    if (m[1] !== undefined) {
-      var br = parseFloat(m[1]);
-      r = Math.min(255, Math.round(r * br));
-      g = Math.min(255, Math.round(g * br));
-      b = Math.min(255, Math.round(b * br));
-    } else if (m[2] !== undefined) {
-      var ct = parseFloat(m[2]);
-      r = Math.min(255, Math.max(0, Math.round(((r - 128) * ct) + 128)));
-      g = Math.min(255, Math.max(0, Math.round(((g - 128) * ct) + 128)));
-      b = Math.min(255, Math.max(0, Math.round(((b - 128) * ct) + 128)));
-    }
-    // opacity affects alpha, not RGB channels for contrast purposes
-  }
-  return { r: r, g: g, b: b };
-}
-
-function luminance(c) {
-  var rs = c.r / 255, gs = c.g / 255, bs = c.b / 255;
-  var r = rs <= 0.03928 ? rs / 12.92 : Math.pow((rs + 0.055) / 1.055, 2.4);
-  var g = gs <= 0.03928 ? gs / 12.92 : Math.pow((gs + 0.055) / 1.055, 2.4);
-  var b = bs <= 0.03928 ? bs / 12.92 : Math.pow((bs + 0.055) / 1.055, 2.4);
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
-
-function contrastRatio(c1, c2) {
-  var l1 = luminance(c1), l2 = luminance(c2);
-  return Math.round(((Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)) * 100) / 100;
-}
-
-// APCA contrast (Lc value)
-// Simplified APCA-W3 calculation
-function sRGBtoY(rgb) {
-  // Linearize sRGB
-  function lin(v) { v = v / 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
-  return 0.2126729 * lin(rgb.r) + 0.7151522 * lin(rgb.g) + 0.0721750 * lin(rgb.b);
-}
-
-function apcaContrast(txtRgb, bgRgb) {
-  var txtY = sRGBtoY(txtRgb);
-  var bgY = sRGBtoY(bgRgb);
-  // Clamp
-  if (txtY < 0) txtY = 0;
-  if (bgY < 0) bgY = 0;
-  // SAPC power curve
-  var normBG = Math.pow(bgY, 0.56);
-  var normTXT = Math.pow(txtY, 0.57);
-  var rawContrast;
-  if (bgY > txtY) {
-    rawContrast = (normBG - normTXT) * 1.14;
-  } else {
-    rawContrast = (normBG - normTXT) * 1.14;
-  }
-  // Scale and clamp
-  if (Math.abs(rawContrast) < 0.1) return 0;
-  return Math.round(rawContrast * 100);
-}
-
-function scoreContrast(data) {
-  var profile = S.getProfile(data);
-  var findings = [];
-  var pairs = data.colors.contrastPairs || [];
-
-  // Re-evaluate each pair against profile thresholds
-  var profilePairs = pairs.map(function(p) {
-    var needed = p.isLarge ? profile.contrastLarge : profile.contrast;
-    var ratio = p.ratio;
-
-    // If a CSS filter is present, re-compute contrast with adjusted bg
-    if (p.filter) {
-      var bgParsed = parseRgb(p.bg);
-      if (bgParsed) {
-        var adjustedBg = applyFilterToColor(bgParsed, p.filter);
-        var fgParsed = parseRgb(p.fg);
-        if (fgParsed) {
-          ratio = contrastRatio(fgParsed, adjustedBg);
-        }
-      }
-    }
-
-    var passes = ratio >= needed;
-    return { ratio: ratio, needed: needed, passes: passes, isLarge: p.isLarge, text: p.text, fontSize: p.fontSize, selector: p.selector, fg: p.fg, bg: p.bg, filter: p.filter || '' };
-  });
-
-  // Separate uncertain results (1:1 ratio usually means bg couldn't be determined — gradient, SVG, etc.)
-  var uncertain = profilePairs.filter(function(p) { return !p.passes && p.ratio <= 1.01 && p.fg === p.bg; });
-  var failures = profilePairs.filter(function(p) { return !p.passes && !(p.ratio <= 1.01 && p.fg === p.bg); });
-  var nearMisses = profilePairs.filter(function(p) { return p.passes && p.ratio < p.needed + 0.5; });
-
-  failures.forEach(function(p) {
-    var apcaVal = '';
-    var fgP = parseRgb(p.fg);
-    var bgP = parseRgb(p.bg);
-    if (fgP && bgP) { apcaVal = ' (APCA: Lc ' + apcaContrast(fgP, bgP) + ')'; }
-    findings.push({
-      severity: 'error',
-      title: 'Text fails contrast ' + p.ratio + ':1 (needs ' + p.needed + ':1)',
-      detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector + apcaVal,
-      fix: p.isLarge
-        ? 'Large text needs ' + profile.contrastLarge + ':1 minimum. Darken the text or lighten the background.'
-        : 'Normal text needs ' + profile.contrast + ':1 minimum. Use a darker text color or lighter background.',
-      presetRef: 'All presets use text-slate-600+ on white backgrounds (8:1+ ratio)',
-      source: p.isLarge ? 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' : 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
-    });
-  });
-
-  if (uncertain.length > 0) {
-    findings.push({
-      severity: 'info',
-      title: uncertain.length + ' element(s) with undetermined contrast (background could not be resolved)',
-      detail: 'These elements may use gradients, images, SVGs, or complex CSS that the analyzer cannot parse. Check manually: ' + uncertain.slice(0, 3).map(function(p) { return '"' + p.text + '"'; }).join(', '),
-      fix: 'Verify these elements have sufficient contrast visually. The analyzer reports 1:1 when the effective background cannot be computed.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
-    });
-  }
-
-  nearMisses.forEach(function(p) {
-    findings.push({
-      severity: 'info',
-      title: 'Text passes contrast but close to threshold: ' + p.ratio + ':1 (needs ' + p.needed + ':1)',
-      detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector,
-      fix: 'Passes AA but consider increasing for AAA (7:1). Slight changes in background could cause failure.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.6 — https://www.w3.org/TR/WCAG22/#contrast-enhanced'
-    });
-  });
-
-  // CVD palette safety check (color_blind profile)
-  if (profile.checkCVD && pairs.length > 0) {
-    var uniqueColors = {};
-    pairs.forEach(function(p) {
-      if (p.fg) uniqueColors[p.fg] = true;
-      if (p.bg) uniqueColors[p.bg] = true;
-    });
-    var colorList = Object.keys(uniqueColors).map(function(c) { return parseRgb(c); }).filter(Boolean);
-    var cvdTypes = ['protanopia', 'deuteranopia', 'tritanopia'];
-    var cvdIssues = {};
-    cvdTypes.forEach(function(type) { cvdIssues[type] = 0; });
-
-    // Check all color pairs through CVD simulation
-    for (var ci = 0; ci < colorList.length && ci < 20; ci++) {
-      for (var cj = ci + 1; cj < colorList.length && cj < 20; cj++) {
-        var origRatio = contrastRatio(colorList[ci], colorList[cj]);
-        if (origRatio < 2) continue; // Skip colors already too similar
-        cvdTypes.forEach(function(type) {
-          var matrix = S.CVD_MATRICES[type];
-          var simA = S.simulateCVD(colorList[ci], matrix);
-          var simB = S.simulateCVD(colorList[cj], matrix);
-          var simRatio = contrastRatio(simA, simB);
-          if (simRatio < 1.5 && origRatio >= 2) cvdIssues[type]++;
-        });
-      }
-    }
-
-    var totalCvdIssues = cvdIssues.protanopia + cvdIssues.deuteranopia + cvdIssues.tritanopia;
-    if (totalCvdIssues > 0) {
-      var cvdDetails = cvdTypes.filter(function(t) { return cvdIssues[t] > 0; }).map(function(t) { return t + ': ' + cvdIssues[t] + ' pair(s)'; }).join(', ');
-      findings.push({
-        severity: totalCvdIssues > 3 ? 'error' : 'warning',
-        title: totalCvdIssues + ' color pair(s) become indistinguishable under color vision deficiency',
-        detail: cvdDetails + '. These colors look distinct to typical vision but collapse for ~8% of men.',
-        fix: 'Add non-color indicators (icons, patterns, text labels) alongside color. Avoid red-green as the only differentiator.',
-        source: 'WCAG 2.2 §1.4.1 — https://www.w3.org/TR/WCAG22/#use-of-color'
-      });
-    } else if (colorList.length >= 3) {
-      findings.push({
-        severity: 'info',
-        title: 'Color palette passes CVD simulation (' + colorList.length + ' colors checked)',
-        detail: 'All color pairs remain distinguishable under protanopia, deuteranopia, and tritanopia simulation.',
-        fix: 'No action needed. This palette is CVD-safe.',
-        source: 'Machado et al. 2009 — https://www.inf.ufrgs.br/~oliveira/pubs_files/CVD_Simulation/CVD_Simulation.html'
-      });
-    }
-  }
-
-  // Don't count uncertain results as failures in the score
-  var total = (profilePairs.length - uncertain.length) || 1;
-  var passing = total - failures.length;
-  var score = Math.max(0, 100 - (failures.length * 10) - (nearMisses.length * 3));
-
-  var checks = total;
-  var passed = passing;
-  return { score: score, findings: findings, checks: checks, passed: passed, weight: 20, label: 'Color & Contrast', icon: 'contrast' };
-}
-
-
-  S.register("contrast", scoreContrast, 20, "Color & Contrast", "contrast");
 })();
 </file>
 
@@ -21114,6 +20925,217 @@ Each test case has:
 Use these to calibrate your output quality and verify the flow works.
 </file>
 
+<file path="docs/scoring/contrast.js">
+// Scoring Module: Color & Contrast
+// Weight: 20%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function parseRgb(str) {
+  var m = str.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+  if (!m) m = str.match(/rgb\((\d+)\s+(\d+)\s+(\d+)\)/);
+  if (!m) return null;
+  return { r: +m[1], g: +m[2], b: +m[3] };
+}
+
+function applyFilterToColor(c, filterStr) {
+  if (!c || !filterStr) return c;
+  var r = c.r, g = c.g, b = c.b;
+  var re = /brightness\(([\d.]+)\)|contrast\(([\d.]+)\)|opacity\(([\d.]+)\)/g;
+  var m;
+  while ((m = re.exec(filterStr)) !== null) {
+    if (m[1] !== undefined) {
+      var br = parseFloat(m[1]);
+      r = Math.min(255, Math.round(r * br));
+      g = Math.min(255, Math.round(g * br));
+      b = Math.min(255, Math.round(b * br));
+    } else if (m[2] !== undefined) {
+      var ct = parseFloat(m[2]);
+      r = Math.min(255, Math.max(0, Math.round(((r - 128) * ct) + 128)));
+      g = Math.min(255, Math.max(0, Math.round(((g - 128) * ct) + 128)));
+      b = Math.min(255, Math.max(0, Math.round(((b - 128) * ct) + 128)));
+    }
+    // opacity affects alpha, not RGB channels for contrast purposes
+  }
+  return { r: r, g: g, b: b };
+}
+
+function luminance(c) {
+  var rs = c.r / 255, gs = c.g / 255, bs = c.b / 255;
+  var r = rs <= 0.03928 ? rs / 12.92 : Math.pow((rs + 0.055) / 1.055, 2.4);
+  var g = gs <= 0.03928 ? gs / 12.92 : Math.pow((gs + 0.055) / 1.055, 2.4);
+  var b = bs <= 0.03928 ? bs / 12.92 : Math.pow((bs + 0.055) / 1.055, 2.4);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function contrastRatio(c1, c2) {
+  var l1 = luminance(c1), l2 = luminance(c2);
+  return Math.round(((Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)) * 100) / 100;
+}
+
+// APCA contrast (Lc value)
+// Simplified APCA-W3 calculation
+function sRGBtoY(rgb) {
+  // Linearize sRGB
+  function lin(v) { v = v / 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
+  return 0.2126729 * lin(rgb.r) + 0.7151522 * lin(rgb.g) + 0.0721750 * lin(rgb.b);
+}
+
+function apcaContrast(txtRgb, bgRgb) {
+  var txtY = sRGBtoY(txtRgb);
+  var bgY = sRGBtoY(bgRgb);
+  // Clamp
+  if (txtY < 0) txtY = 0;
+  if (bgY < 0) bgY = 0;
+  // SAPC power curve
+  var normBG = Math.pow(bgY, 0.56);
+  var normTXT = Math.pow(txtY, 0.57);
+  var rawContrast;
+  if (bgY > txtY) {
+    rawContrast = (normBG - normTXT) * 1.14;
+  } else {
+    rawContrast = (normBG - normTXT) * 1.14;
+  }
+  // Scale and clamp
+  if (Math.abs(rawContrast) < 0.1) return 0;
+  return Math.round(rawContrast * 100);
+}
+
+function scoreContrast(data) {
+  var profile = S.getProfile(data);
+  var findings = [];
+  var pairs = data.colors.contrastPairs || [];
+
+  // Re-evaluate each pair against profile thresholds
+  var profilePairs = pairs.map(function(p) {
+    var needed = p.isLarge ? profile.contrastLarge : profile.contrast;
+    var ratio = p.ratio;
+
+    // If a CSS filter is present, re-compute contrast with adjusted bg
+    if (p.filter) {
+      var bgParsed = parseRgb(p.bg);
+      if (bgParsed) {
+        var adjustedBg = applyFilterToColor(bgParsed, p.filter);
+        var fgParsed = parseRgb(p.fg);
+        if (fgParsed) {
+          ratio = contrastRatio(fgParsed, adjustedBg);
+        }
+      }
+    }
+
+    var passes = ratio >= needed;
+    return { ratio: ratio, needed: needed, passes: passes, isLarge: p.isLarge, text: p.text, fontSize: p.fontSize, selector: p.selector, fg: p.fg, bg: p.bg, filter: p.filter || '' };
+  });
+
+  // Separate uncertain results (1:1 ratio usually means bg couldn't be determined — gradient, SVG, etc.)
+  var uncertain = profilePairs.filter(function(p) { return !p.passes && p.ratio <= 1.01 && p.fg === p.bg; });
+  var failures = profilePairs.filter(function(p) { return !p.passes && !(p.ratio <= 1.01 && p.fg === p.bg); });
+  var nearMisses = profilePairs.filter(function(p) { return p.passes && p.ratio < p.needed + 0.5; });
+
+  failures.forEach(function(p) {
+    var apcaVal = '';
+    var fgP = parseRgb(p.fg);
+    var bgP = parseRgb(p.bg);
+    if (fgP && bgP) { apcaVal = ' (APCA: Lc ' + apcaContrast(fgP, bgP) + ')'; }
+    findings.push({
+      severity: 'error',
+      title: 'Text fails contrast ' + p.ratio + ':1 (needs ' + p.needed + ':1)',
+      detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector + apcaVal,
+      fix: p.isLarge
+        ? 'Large text needs ' + profile.contrastLarge + ':1 minimum. Darken the text or lighten the background.'
+        : 'Normal text needs ' + profile.contrast + ':1 minimum. Use a darker text color or lighter background.',
+      presetRef: 'All presets use text-slate-600+ on white backgrounds (8:1+ ratio)',
+      source: p.isLarge ? 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' : 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
+    });
+  });
+
+  if (uncertain.length > 0) {
+    findings.push({
+      severity: 'info',
+      title: uncertain.length + ' element(s) with undetermined contrast (background could not be resolved)',
+      detail: 'These elements may use gradients, images, SVGs, or complex CSS that the analyzer cannot parse. Check manually: ' + uncertain.slice(0, 3).map(function(p) { return '"' + p.text + '"'; }).join(', '),
+      fix: 'Verify these elements have sufficient contrast visually. The analyzer reports 1:1 when the effective background cannot be computed.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
+    });
+  }
+
+  nearMisses.forEach(function(p) {
+    findings.push({
+      severity: 'info',
+      title: 'Text passes contrast but close to threshold: ' + p.ratio + ':1 (needs ' + p.needed + ':1)',
+      detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector,
+      fix: 'Passes AA but consider increasing for AAA (7:1). Slight changes in background could cause failure.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.6 — https://www.w3.org/TR/WCAG22/#contrast-enhanced'
+    });
+  });
+
+  // CVD palette safety check (color_blind profile)
+  if (profile.checkCVD && pairs.length > 0) {
+    var uniqueColors = {};
+    pairs.forEach(function(p) {
+      if (p.fg) uniqueColors[p.fg] = true;
+      if (p.bg) uniqueColors[p.bg] = true;
+    });
+    var colorList = Object.keys(uniqueColors).map(function(c) { return parseRgb(c); }).filter(Boolean);
+    var cvdTypes = ['protanopia', 'deuteranopia', 'tritanopia'];
+    var cvdIssues = {};
+    cvdTypes.forEach(function(type) { cvdIssues[type] = 0; });
+
+    // Check all color pairs through CVD simulation
+    for (var ci = 0; ci < colorList.length && ci < 20; ci++) {
+      for (var cj = ci + 1; cj < colorList.length && cj < 20; cj++) {
+        var origRatio = contrastRatio(colorList[ci], colorList[cj]);
+        if (origRatio < 2) continue; // Skip colors already too similar
+        cvdTypes.forEach(function(type) {
+          var matrix = S.CVD_MATRICES[type];
+          var simA = S.simulateCVD(colorList[ci], matrix);
+          var simB = S.simulateCVD(colorList[cj], matrix);
+          var simRatio = contrastRatio(simA, simB);
+          if (simRatio < 1.5 && origRatio >= 2) cvdIssues[type]++;
+        });
+      }
+    }
+
+    var totalCvdIssues = cvdIssues.protanopia + cvdIssues.deuteranopia + cvdIssues.tritanopia;
+    if (totalCvdIssues > 0) {
+      var cvdDetails = cvdTypes.filter(function(t) { return cvdIssues[t] > 0; }).map(function(t) { return t + ': ' + cvdIssues[t] + ' pair(s)'; }).join(', ');
+      findings.push({
+        severity: totalCvdIssues > 3 ? 'error' : 'warning',
+        title: totalCvdIssues + ' color pair(s) become indistinguishable under color vision deficiency',
+        detail: cvdDetails + '. These colors look distinct to typical vision but collapse for ~8% of men.',
+        fix: 'Add non-color indicators (icons, patterns, text labels) alongside color. Avoid red-green as the only differentiator.',
+        source: 'WCAG 2.2 §1.4.1 — https://www.w3.org/TR/WCAG22/#use-of-color'
+      });
+    } else if (colorList.length >= 3) {
+      findings.push({
+        severity: 'info',
+        title: 'Color palette passes CVD simulation (' + colorList.length + ' colors checked)',
+        detail: 'All color pairs remain distinguishable under protanopia, deuteranopia, and tritanopia simulation.',
+        fix: 'No action needed. This palette is CVD-safe.',
+        source: 'Machado et al. 2009 — https://www.inf.ufrgs.br/~oliveira/pubs_files/CVD_Simulation/CVD_Simulation.html'
+      });
+    }
+  }
+
+  // Don't count uncertain results as failures in the score
+  var total = (profilePairs.length - uncertain.length) || 1;
+  var passing = total - failures.length;
+  var score = Math.max(0, 100 - (failures.length * 10) - (nearMisses.length * 3));
+
+  var checks = total;
+  var passed = passing;
+  return { score: score, findings: findings, checks: checks, passed: passed, weight: 20, label: 'Color & Contrast', icon: 'contrast' };
+}
+
+
+  S.register("contrast", scoreContrast, 20, "Color & Contrast", "contrast");
+})();
+</file>
+
 <file path="docs/ANALYZER-TODO.md">
 # Analyzer TODO
 
@@ -21485,7 +21507,9 @@ function scoreAccessibility(data) {
     }
   }
 
-  var score = checks > 0 ? Math.round((passed / checks) * 100) : 100;
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
   return { score: score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Accessibility', icon: 'a11y' };
 }
 
@@ -21510,7 +21534,9 @@ window.MilgReport = (function() {
     a11y: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="4" r="2"/><path d="M6 8h12"/><path d="M12 8v8"/><path d="M9 20l3-4 3 4"/></svg>',
     responsive: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>',
     consistency: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l9 4.5v5c0 4.1-3.6 8-9 10.5-5.4-2.5-9-6.4-9-10.5v-5L12 3z"/></svg>',
-    cognitive: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a8 8 0 0 0-8 8c0 3.4 2.1 6.3 5 7.5V20h6v-2.5c2.9-1.2 5-4.1 5-7.5a8 8 0 0 0-8-8z"/><line x1="10" y1="22" x2="14" y2="22"/></svg>'
+    cognitive: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a8 8 0 0 0-8 8c0 3.4 2.1 6.3 5 7.5V20h6v-2.5c2.9-1.2 5-4.1 5-7.5a8 8 0 0 0-8-8z"/><line x1="10" y1="22" x2="14" y2="22"/></svg>',
+    layout: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="12" y1="3" x2="12" y2="12"/></svg>',
+    readability: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>'
   };
 
   function isDarkUi() {
