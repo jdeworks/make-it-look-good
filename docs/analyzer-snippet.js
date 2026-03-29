@@ -1021,6 +1021,54 @@
   }
   data.layout.hiddenClipElements = data.layout.hiddenClipElements.slice(0, 10);
 
+  // --- Child exceeds parent detection ---
+  // Elements wider/taller than their parent without scroll/auto overflow
+  // Skips: absolutely positioned, fixed, decorative, tiny elements, and elements
+  // inside scroll containers (which handle overflow intentionally)
+  data.layout.childExceedsParent = [];
+  for (var cei = 0; cei < allElements.length && cei < 400; cei++) {
+    var ceEl = allElements[cei];
+    if (!isVisible(ceEl) || isDecorative(ceEl)) continue;
+    if (ceEl.tagName === 'SCRIPT' || ceEl.tagName === 'STYLE' || ceEl.tagName === 'SVG' || ceEl.tagName === 'IMG') continue;
+    var ceStyle = getComputedStyle(ceEl);
+    // Skip positioned elements — they intentionally escape parent bounds
+    if (ceStyle.position === 'absolute' || ceStyle.position === 'fixed' || ceStyle.position === 'sticky') continue;
+    var ceParent = ceEl.parentElement;
+    if (!ceParent || ceParent === document.body || ceParent === document.documentElement) continue;
+    var ceRect = ceEl.getBoundingClientRect();
+    var cpRect = ceParent.getBoundingClientRect();
+    if (ceRect.width < 20 || cpRect.width < 20) continue;
+    // Child wider than parent by more than 4px
+    var excessRight = ceRect.right - cpRect.right;
+    var excessLeft = cpRect.left - ceRect.left;
+    var excess = Math.max(excessRight, excessLeft);
+    if (excess <= 4) continue;
+    // Check parent overflow — if scroll/auto, the parent handles it
+    var cpStyle = getComputedStyle(ceParent);
+    if (cpStyle.overflowX === 'auto' || cpStyle.overflowX === 'scroll' ||
+        cpStyle.overflowX === 'hidden' || cpStyle.overflow === 'auto' ||
+        cpStyle.overflow === 'scroll' || cpStyle.overflow === 'hidden') continue;
+    // Skip if any ancestor has scroll — walk up max 3 levels
+    var hasScrollAncestor = false;
+    var anc = ceParent.parentElement;
+    for (var ancI = 0; ancI < 3 && anc && anc !== document.body; ancI++) {
+      var ancOx = getComputedStyle(anc).overflowX;
+      if (ancOx === 'auto' || ancOx === 'scroll' || ancOx === 'hidden') { hasScrollAncestor = true; break; }
+      anc = anc.parentElement;
+    }
+    if (hasScrollAncestor) continue;
+    data.layout.childExceedsParent.push({
+      child: cssSelector(ceEl),
+      childTag: ceEl.tagName.toLowerCase(),
+      childText: (ceEl.textContent || '').trim().substring(0, 30),
+      parent: cssSelector(ceParent),
+      excess: Math.round(excess),
+      childWidth: Math.round(ceRect.width),
+      parentWidth: Math.round(cpRect.width)
+    });
+  }
+  data.layout.childExceedsParent = data.layout.childExceedsParent.slice(0, 15);
+
   // --- Text overlap detection ---
   // Find fixed/sticky elements with text that overlap other text content
   // Only flag when the overlapping element has a transparent background (text-on-text = unreadable)
