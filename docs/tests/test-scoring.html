@@ -354,6 +354,43 @@
       assert('Toggle no ARIA flagged', touchTitles.indexOf('ARIA state') !== -1, 'Got: ' + touchTitles);
     })();
 
+    // Tier 2: consistency checks
+    (function() {
+      var data = makeData({
+        consistency: { borderWidthInconsistencies: 2, fontWeightInconsistencies: 1, gradientDirections: 5 },
+        layout: {
+          buttonHierarchy: { total: 6, filled: 6, outline: 0, text: 0 },
+          fixedViewportConsumption: 35
+        }
+      });
+      var result = MilgScoring.runScoring(data);
+      var cons = result.categories.find(function(c) { return c.label === 'Visual Consistency'; });
+      var lay = result.categories.find(function(c) { return c.label === 'Layout Quality'; });
+      var consTitles = cons.findings.map(function(f) { return f.title; }).join(' | ');
+      var layTitles = lay.findings.map(function(f) { return f.title; }).join(' | ');
+      assert('Border width inconsistency flagged', consTitles.indexOf('border width') !== -1, 'Got: ' + consTitles);
+      assert('Font weight inconsistency flagged', consTitles.indexOf('font-weight') !== -1, 'Got: ' + consTitles);
+      assert('Gradient direction inconsistency flagged', consTitles.indexOf('gradient') !== -1, 'Got: ' + consTitles);
+      assert('Button hierarchy flagged', layTitles.indexOf('hierarchy') !== -1, 'Got: ' + layTitles);
+      assert('Fixed viewport consumption flagged', layTitles.indexOf('viewport') !== -1 || layTitles.indexOf('Fixed') !== -1, 'Got: ' + layTitles);
+    })();
+
+    // Performance: complex filters, forced layers
+    (function() {
+      var data = makeData({
+        performance: { complexFilters: 3, forcedLayers: 15 },
+        accessibility: { selectNoDefault: 2 }
+      });
+      var result = MilgScoring.runScoring(data);
+      var perf = result.categories.find(function(c) { return c.label === 'Performance'; });
+      var a11y = result.categories.find(function(c) { return c.label === 'Accessibility'; });
+      var perfTitles = perf.findings.map(function(f) { return f.title; }).join(' | ');
+      var a11yTitles = a11y.findings.map(function(f) { return f.title; }).join(' | ');
+      assert('Complex filters flagged', perfTitles.indexOf('filter') !== -1, 'Got: ' + perfTitles);
+      assert('Forced layers flagged', perfTitles.indexOf('compositor') !== -1 || perfTitles.indexOf('GPU') !== -1, 'Got: ' + perfTitles);
+      assert('Select no default flagged', a11yTitles.indexOf('select') !== -1 || a11yTitles.indexOf('default') !== -1, 'Got: ' + a11yTitles);
+    })();
+
     // =========================================================
     // RENDER RESULTS
     // =========================================================

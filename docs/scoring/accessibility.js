@@ -521,6 +521,19 @@ function scoreAccessibility(data) {
     });
   }
 
+  // Select without default option
+  var selectNoDefault = a11y.selectNoDefault || 0;
+  if (selectNoDefault > 0) {
+    findings.push({
+      severity: 'info',
+      title: selectNoDefault + ' select element(s) without meaningful default option',
+      detail: 'Select elements have a blank first option. Users see an empty dropdown.',
+      fix: 'Add a descriptive prompt like "Select an option..." as the first disabled option.',
+      presetRef: null,
+      source: 'NNGroup — https://www.nngroup.com/articles/drop-down-menus/'
+    });
+  }
+
   // Disabled element contrast
   var disabledLC = a11y.disabledLowContrast || 0;
   if (disabledLC > 0) {

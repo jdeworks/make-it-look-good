@@ -261,6 +261,41 @@ function scoreLayout(data) {
     passed++;
   }
 
+  // Button/CTA hierarchy
+  var btnH = layout.buttonHierarchy || {};
+  if (btnH.total > 3 && btnH.filled > 0 && btnH.outline === 0 && btnH.text === 0) {
+    findings.push({
+      severity: 'info',
+      title: 'All ' + btnH.total + ' buttons use the same filled style — no visual hierarchy',
+      detail: 'Without primary/secondary/tertiary button styles, users can\'t distinguish the main action.',
+      fix: 'Designate one primary CTA (filled) and style others as secondary (outline) or tertiary (text-only).',
+      presetRef: 'All presets use primary + secondary button styles',
+      source: 'Material Design 3 — https://m3.material.io/components/buttons/overview'
+    });
+  }
+
+  // Fixed elements consuming viewport
+  var fixedVp = layout.fixedViewportConsumption || 0;
+  if (fixedVp > 30) {
+    findings.push({
+      severity: 'warning',
+      title: 'Fixed elements consume ' + fixedVp + '% of viewport height',
+      detail: 'Sticky headers, footers, and toolbars take up more than 30% of the screen, leaving little room for content.',
+      fix: 'Collapse fixed elements on scroll, or reduce their height. Consider hiding the header on scroll-down, showing on scroll-up.',
+      presetRef: null,
+      source: 'NNGroup — https://www.nngroup.com/articles/sticky-headers/'
+    });
+  } else if (fixedVp > 20) {
+    findings.push({
+      severity: 'info',
+      title: 'Fixed elements consume ' + fixedVp + '% of viewport height',
+      detail: 'Fixed elements take significant viewport space. Monitor on smaller screens.',
+      fix: 'Consider collapsing or reducing fixed element height on mobile.',
+      presetRef: null,
+      source: 'NNGroup — https://www.nngroup.com/articles/sticky-headers/'
+    });
+  }
+
   // Text overlap — fixed/sticky elements without opaque background overlapping text below
   var textOverlaps = layout.textOverlaps || [];
   if (textOverlaps.length > 0) {

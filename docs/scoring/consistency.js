@@ -108,6 +108,42 @@ function scoreVisualConsistency(data) {
     }
   }
 
+  // Border width inconsistencies in sibling groups
+  var borderInc = (data.consistency && data.consistency.borderWidthInconsistencies) || 0;
+  if (borderInc > 0) {
+    findings.push({
+      severity: 'info',
+      title: borderInc + ' sibling group(s) with inconsistent border widths',
+      detail: 'Children in the same flex/grid container use different border widths.',
+      fix: 'Unify border widths within component groups. Use a consistent border-width token.',
+      source: 'Material Design 3 — https://m3.material.io/styles/shape/overview'
+    });
+  }
+
+  // Font weight role consistency
+  var fwInc = (data.consistency && data.consistency.fontWeightInconsistencies) || 0;
+  if (fwInc > 0) {
+    findings.push({
+      severity: 'info',
+      title: fwInc + ' heading level(s) with inconsistent font-weights',
+      detail: 'Same-level headings (e.g. multiple h3s) use different font-weights.',
+      fix: 'Standardize heading weights per level. All h2s should share the same weight.',
+      source: 'Modular type scales — https://typescale.com/'
+    });
+  }
+
+  // Gradient direction consistency
+  var gradDirs = (data.consistency && data.consistency.gradientDirections) || 0;
+  if (gradDirs > 3) {
+    findings.push({
+      severity: 'info',
+      title: gradDirs + ' distinct gradient directions (recommend 1-2)',
+      detail: 'Multiple gradient directions create visual incoherence.',
+      fix: 'Limit to 1-2 gradient directions for visual coherence.',
+      source: 'Design Systems — https://www.designsystems.com/'
+    });
+  }
+
   // Z-index sprawl
   var zSprawl = (data.layout && data.layout.zIndexSprawl) || {};
   if (zSprawl.distinct > 0) {

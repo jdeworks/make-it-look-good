@@ -1708,6 +1708,107 @@
     if (ratio < 2.0) data.accessibility.disabledLowContrast++;
   });
 
+  // --- Tier 1 remaining + Tier 2 checks ---
+
+  // Select without meaningful default option
+  data.accessibility.selectNoDefault = 0;
+  document.querySelectorAll('select').forEach(function(sel) {
+    if (!isVisible(sel)) return;
+    var opts = sel.querySelectorAll('option');
+    if (opts.length === 0) { data.accessibility.selectNoDefault++; return; }
+    if (opts[0].textContent.trim() === '' && !opts[0].disabled) data.accessibility.selectNoDefault++;
+  });
+
+  // Large fixed elements consuming viewport (> 25% height)
+  data.layout.fixedViewportConsumption = 0;
+  var fixedTotalH = 0;
+  for (var fvi = 0; fvi < allElements.length && fvi < 200; fvi++) {
+    var fvEl = allElements[fvi];
+    var fvS = getComputedStyle(fvEl);
+    if (fvS.position === 'fixed' || fvS.position === 'sticky') {
+      var fvR = fvEl.getBoundingClientRect();
+      if (fvR.height > 10 && fvR.width > _vpW * 0.5) fixedTotalH += fvR.height;
+    }
+  }
+  data.layout.fixedViewportConsumption = Math.round(fixedTotalH / window.innerHeight * 100);
+
+  // CSS filter complexity
+  data.performance.complexFilters = 0;
+  for (var cfi = 0; cfi < allElements.length && cfi < 300; cfi++) {
+    var cfEl = allElements[cfi];
+    if (!isVisible(cfEl)) continue;
+    var cfFilter = getComputedStyle(cfEl).filter;
+    if (cfFilter && cfFilter !== 'none') {
+      var filterCount = (cfFilter.match(/\(/g) || []).length;
+      if (filterCount >= 3) data.performance.complexFilters++;
+    }
+  }
+
+  // Button/CTA hierarchy — detect if all buttons look the same
+  data.layout.buttonHierarchy = { total: 0, filled: 0, outline: 0, text: 0 };
+  document.querySelectorAll('button, [role="button"], a').forEach(function(btn) {
+    if (!isVisible(btn) || isDecorative(btn)) return;
+    var bs = getComputedStyle(btn);
+    var hasBg = bs.backgroundColor !== 'rgba(0, 0, 0, 0)' && bs.backgroundColor !== 'transparent';
+    var hasPad = parseFloat(bs.paddingLeft) > 8 && parseFloat(bs.paddingTop) > 4;
+    var hasBorder = parseFloat(bs.borderWidth) > 0 && bs.borderStyle !== 'none';
+    if (!hasPad) return; // not styled as a button
+    data.layout.buttonHierarchy.total++;
+    if (hasBg && !hasBorder) data.layout.buttonHierarchy.filled++;
+    else if (!hasBg && hasBorder) data.layout.buttonHierarchy.outline++;
+    else if (hasBg && hasBorder) data.layout.buttonHierarchy.filled++;
+    else data.layout.buttonHierarchy.text++;
+  });
+
+  // Border width consistency in sibling groups
+  data.consistency = data.consistency || {};
+  data.consistency.borderWidthInconsistencies = 0;
+  document.querySelectorAll('[style*="display:flex"], [style*="display: flex"], .flex, .grid').forEach(function(container) {
+    if (!isVisible(container) || container.children.length < 3) return;
+    var widths = {};
+    Array.from(container.children).slice(0, 10).forEach(function(child) {
+      var bw = getComputedStyle(child).borderTopWidth;
+      if (bw !== '0px') widths[bw] = (widths[bw] || 0) + 1;
+    });
+    if (Object.keys(widths).length > 1) data.consistency.borderWidthInconsistencies++;
+  });
+
+  // Font weight role consistency (same heading level with different weights)
+  data.consistency.fontWeightInconsistencies = 0;
+  var hwByLevel = {};
+  document.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(function(h) {
+    if (!isVisible(h)) return;
+    var tag = h.tagName.toLowerCase();
+    var w = getComputedStyle(h).fontWeight;
+    if (!hwByLevel[tag]) hwByLevel[tag] = new Set();
+    hwByLevel[tag].add(w);
+  });
+  Object.keys(hwByLevel).forEach(function(tag) {
+    if (hwByLevel[tag].size > 1) data.consistency.fontWeightInconsistencies++;
+  });
+
+  // Gradient direction consistency
+  data.consistency.gradientDirections = 0;
+  var gradDirs = {};
+  for (var gdi = 0; gdi < allElements.length && gdi < 200; gdi++) {
+    var gdEl = allElements[gdi];
+    if (!isVisible(gdEl) || isDecorative(gdEl)) continue;
+    var bgImg = getComputedStyle(gdEl).backgroundImage;
+    if (bgImg && bgImg.indexOf('linear-gradient') !== -1) {
+      var dirMatch = bgImg.match(/linear-gradient\((\d+deg|to \w+)/);
+      if (dirMatch) gradDirs[dirMatch[1]] = (gradDirs[dirMatch[1]] || 0) + 1;
+    }
+  }
+  data.consistency.gradientDirections = Object.keys(gradDirs).length;
+
+  // Forced compositor layers (translateZ(0) hack)
+  data.performance.forcedLayers = 0;
+  for (var fli = 0; fli < allElements.length && fli < 300; fli++) {
+    var flEl = allElements[fli];
+    var flT = getComputedStyle(flEl).transform;
+    if (flT && flT !== 'none' && /matrix3d/.test(flT)) data.performance.forcedLayers++;
+  }
+
   // --- Image responsive sizing ---
   data.performance.nonResponsiveImages = 0;
   document.querySelectorAll('img').forEach(function(img) {

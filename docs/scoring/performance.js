@@ -210,6 +210,32 @@ function scorePerformance(data) {
     });
   }
 
+  // Complex CSS filters
+  var complexFilters = (data.performance && data.performance.complexFilters) || 0;
+  if (complexFilters > 0) {
+    findings.push({
+      severity: complexFilters > 5 ? 'warning' : 'info',
+      title: complexFilters + ' element(s) with complex CSS filters (3+ functions)',
+      detail: 'Stacked CSS filters (blur + brightness + contrast) are expensive to render, especially during scroll.',
+      fix: 'Simplify CSS filters to 1-2 functions. Pre-render complex effects as images if possible.',
+      presetRef: null,
+      source: 'web.dev — https://web.dev/articles/animations-guide'
+    });
+  }
+
+  // Forced compositor layers (translateZ(0) / matrix3d)
+  var forcedLayers = (data.performance && data.performance.forcedLayers) || 0;
+  if (forcedLayers > 10) {
+    findings.push({
+      severity: 'warning',
+      title: forcedLayers + ' elements with forced GPU compositor layers',
+      detail: 'Excessive translateZ(0) or 3D transforms create GPU layers, consuming memory.',
+      fix: 'Use will-change on elements that actually animate. Remove translateZ(0) hacks from static elements.',
+      presetRef: null,
+      source: 'web.dev — https://web.dev/articles/animations-guide'
+    });
+  }
+
   // Non-passive scroll listeners
   var lStats = (data.interaction && data.interaction.listenerStats) || {};
   if (lStats.nonPassiveScroll > 0) {
