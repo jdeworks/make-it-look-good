@@ -782,19 +782,29 @@
   data.accessibility.formLabels.withLabel = labeled;
   data.accessibility.formLabels.withoutLabel = data.accessibility.formLabels.total - labeled;
 
-  // Focus indicators (sample first 10 interactive elements)
+  // Focus indicators — actually focus elements to detect browser defaults and CSS :focus styles
   var focusSample = Array.from(interactive).slice(0, 10);
+  var _prevFocused = document.activeElement;
   focusSample.forEach(function(el) {
     if (!isVisible(el)) return;
-    var s = getComputedStyle(el);
+    var restStyle = getComputedStyle(el);
+    var restOutline = restStyle.outlineStyle;
+    var restOutlineW = restStyle.outlineWidth;
+    try { el.focus({ preventScroll: true }); } catch(e) {}
+    var focusStyle = getComputedStyle(el);
+    var hasFocusChange = focusStyle.outlineStyle !== restOutline ||
+      focusStyle.outlineWidth !== restOutlineW ||
+      (focusStyle.boxShadow !== 'none' && focusStyle.boxShadow !== restStyle.boxShadow);
     data.accessibility.focusIndicators.push({
       element: cssSelector(el),
-      outlineStyle: s.outlineStyle,
-      outlineWidth: s.outlineWidth,
-      outlineColor: s.outlineColor,
-      outlineOffset: s.outlineOffset
+      outlineStyle: focusStyle.outlineStyle,
+      outlineWidth: focusStyle.outlineWidth,
+      outlineColor: focusStyle.outlineColor,
+      outlineOffset: focusStyle.outlineOffset,
+      hasFocusChange: hasFocusChange
     });
   });
+  try { if (_prevFocused && _prevFocused.focus) _prevFocused.focus({ preventScroll: true }); else document.body.focus(); } catch(e) {}
   // Also check if stylesheets contain focus-visible rules (can't detect via getComputedStyle)
   var hasFocusVisibleCSS = Array.from(document.styleSheets).some(function(ss) {
     try { return Array.from(ss.cssRules).some(function(r) { return r.selectorText && r.selectorText.indexOf('focus-visible') !== -1; }); } catch(e) { return false; }

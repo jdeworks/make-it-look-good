@@ -52,8 +52,13 @@ function scoreVisualConsistency(data) {
     });
   }
 
-  // Border radius consistency
-  var radii = (data.layout && data.layout.borderRadii) || [];
+  // Border radius consistency — exclude pill/circle shapes (9999px, 50%, >100px)
+  var radii = ((data.layout && data.layout.borderRadii) || []).filter(function(r) {
+    var v = r.value;
+    if (v === '50%' || v === '9999px') return false;
+    var px = parseFloat(v);
+    return !(px > 100);
+  });
   if (radii.length > 0) {
     checks++;
     if (radii.length <= 4) {
@@ -61,7 +66,7 @@ function scoreVisualConsistency(data) {
     } else {
       findings.push({
         severity: 'info',
-        title: radii.length + ' distinct border-radius values (recommend 2-4)',
+        title: radii.length + ' distinct border-radius values (recommend 2-4, excluding pill/circle shapes)',
         detail: 'Values: ' + radii.slice(0, 6).map(function(r) { return r.value + ' (' + r.count + 'x)'; }).join(', '),
         fix: 'Standardize border-radius to 2-4 values in your design tokens. In Tailwind: rounded-sm (2px), rounded (4px), rounded-lg (8px), rounded-xl (12px).',
         presetRef: null,

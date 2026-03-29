@@ -510,7 +510,9 @@ window.MilgReport = (function() {
   }
 
   // --- Markdown Export ---
-  function renderMarkdown(report) {
+  function renderMarkdown(report, options) {
+    var opts = options || {};
+    var skipImages = opts.skipImages || false;
     var lines = [];
     lines.push('# Design Analysis Report');
     lines.push('');
@@ -612,8 +614,8 @@ window.MilgReport = (function() {
       }
     }
 
-    // Screenshots (as inline base64 images in markdown)
-    if (report.raw.screenshots && report.raw.screenshots.length > 0) {
+    // Screenshots (as inline base64 images in markdown) — skip when copying for paste
+    if (!skipImages && report.raw.screenshots && report.raw.screenshots.length > 0) {
       lines.push('## Page Screenshots');
       lines.push('');
       report.raw.screenshots.forEach(function(src, idx) {

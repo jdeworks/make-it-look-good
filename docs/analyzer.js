@@ -956,12 +956,12 @@
       showToast('Markdown report downloaded');
     });
 
-    // Copy markdown to clipboard
+    // Copy markdown to clipboard (without images for easy pasting)
     document.getElementById('copyMdBtn').addEventListener('click', function() {
       if (!reportData) return;
-      var md = MilgReport.renderMarkdown(reportData);
+      var md = MilgReport.renderMarkdown(reportData, { skipImages: true });
       navigator.clipboard.writeText(md).then(function() {
-        showToast('Markdown copied to clipboard');
+        showToast('Markdown copied (without images)');
       }).catch(function() {
         // Fallback
         var ta = document.createElement('textarea');

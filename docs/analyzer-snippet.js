@@ -641,15 +641,21 @@
   }
   data.layout.sectionGaps = sectionGaps;
 
-  // Alignment consistency: collect left edges of major block elements
+  // Alignment consistency: collect left edges of major block elements with selectors
   var alignTargets = document.querySelectorAll('h1,h2,h3,h4,p,ul,ol,table,form,img,figure,blockquote');
   var leftEdges = [];
+  var leftEdgeDetails = [];
   Array.from(alignTargets).forEach(function(el) {
     if (!isVisible(el) || isDecorative(el)) return;
     var r = el.getBoundingClientRect();
-    if (r.width > 50) leftEdges.push(Math.round(r.left));
+    if (r.width > 50) {
+      var edge = Math.round(r.left);
+      leftEdges.push(edge);
+      leftEdgeDetails.push({ left: edge, selector: cssSelector(el), tag: el.tagName.toLowerCase(), text: (el.textContent || '').trim().substring(0, 30) });
+    }
   });
   data.layout.alignmentEdges = leftEdges;
+  data.layout.alignmentEdgeDetails = leftEdgeDetails;
 
   // Visual hierarchy: heading size to body size ratios
   var bodyFS = parseFloat(data.typography.bodyFontSize) || 16;
@@ -850,19 +856,32 @@
   data.accessibility.formLabels.withLabel = labeled;
   data.accessibility.formLabels.withoutLabel = data.accessibility.formLabels.total - labeled;
 
-  // Focus indicators (sample first 10 interactive elements)
+  // Focus indicators — actually focus elements to detect browser defaults and CSS :focus styles
   var focusSample = Array.from(interactive).slice(0, 10);
+  var _prevFocused = document.activeElement;
   focusSample.forEach(function(el) {
     if (!isVisible(el)) return;
-    var s = getComputedStyle(el);
+    // Get resting outline
+    var restStyle = getComputedStyle(el);
+    var restOutline = restStyle.outlineStyle;
+    var restOutlineW = restStyle.outlineWidth;
+    // Actually focus the element to see if outline changes
+    try { el.focus({ preventScroll: true }); } catch(e) {}
+    var focusStyle = getComputedStyle(el);
+    var hasFocusChange = focusStyle.outlineStyle !== restOutline ||
+      focusStyle.outlineWidth !== restOutlineW ||
+      (focusStyle.boxShadow !== 'none' && focusStyle.boxShadow !== restStyle.boxShadow);
     data.accessibility.focusIndicators.push({
       element: cssSelector(el),
-      outlineStyle: s.outlineStyle,
-      outlineWidth: s.outlineWidth,
-      outlineColor: s.outlineColor,
-      outlineOffset: s.outlineOffset
+      outlineStyle: focusStyle.outlineStyle,
+      outlineWidth: focusStyle.outlineWidth,
+      outlineColor: focusStyle.outlineColor,
+      outlineOffset: focusStyle.outlineOffset,
+      hasFocusChange: hasFocusChange
     });
   });
+  // Restore previous focus
+  try { if (_prevFocused && _prevFocused.focus) _prevFocused.focus({ preventScroll: true }); else document.body.focus(); } catch(e) {}
   // Also check if stylesheets contain focus-visible rules (can't detect via getComputedStyle)
   var hasFocusVisibleCSS = Array.from(document.styleSheets).some(function(ss) {
     try { return Array.from(ss.cssRules).some(function(r) { return r.selectorText && r.selectorText.indexOf('focus-visible') !== -1; }); } catch(e) { return false; }

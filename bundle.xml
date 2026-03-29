@@ -19042,6 +19042,314 @@ The encoded URL is in the committed JS (unavoidable for a static site). But:
 - Anyone with DevTools Network tab can see the decoded URL on requests (that's fine — can't prevent it)
 </file>
 
+<file path="docs/scoring/readability.js">
+// Scoring Module: Readability & Scanability
+// Weight: 5%
+// Sources: Coleman-Liau Index, NNGroup scanning research
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+  function scoreReadability(data) {
+    var findings = [];
+    var checks = 0;
+    var passed = 0;
+
+    // Extract text content from the raw data
+    // We use heading count and element count as proxies since we don't have raw text in extracted data
+    var headings = (data.typography && data.typography.headings) || [];
+    var totalElements = (data.structure && data.structure.totalElements) || 0;
+
+    // Scanability: heading frequency
+    // Good rule: 1 heading per ~100-150 elements of content
+    if (totalElements > 50) {
+      checks++;
+      var headingRatio = headings.length / (totalElements / 100);
+      if (headingRatio >= 0.5 && headingRatio <= 5) {
+        passed++;
+      } else if (headingRatio < 0.5) {
+        findings.push({
+          severity: 'warning',
+          title: 'Low heading density: ' + headings.length + ' headings for ' + totalElements + ' elements',
+          detail: 'Content without headings is harder to scan. 79% of users scan rather than read (NNGroup)',
+          fix: 'Add descriptive headings to break content into scannable sections. Aim for a heading every 2-3 paragraphs.',
+          presetRef: null,
+          source: 'NNGroup scanning research — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+        });
+      }
+    }
+
+    // Heading descriptiveness: check if headings are too short (likely generic)
+    if (headings.length > 0) {
+      checks++;
+      var shortHeadings = headings.filter(function(h) {
+        return h.text && h.text.length < 3;
+      });
+      if (shortHeadings.length === 0) {
+        passed++;
+      } else {
+        passed++; // Info doesn't reduce score
+        findings.push({
+          severity: 'info',
+          title: shortHeadings.length + ' heading(s) with very short text (< 3 chars)',
+          detail: 'Short headings like numbers or icons don\'t help users scan. Use descriptive text.',
+          fix: 'Replace generic headings with descriptive ones that summarize the section content.',
+          presetRef: null,
+          source: 'NNGroup — https://www.nngroup.com/articles/headings-pickup-lines/'
+        });
+      }
+    }
+
+    // Font size variety as readability signal
+    // Too many sizes = visual noise, harder to establish reading rhythm
+    var fontSizes = (data.typography && data.typography.fontSizes) || [];
+    var smallTextCount = fontSizes.filter(function(f) {
+      return parseFloat(f.value) < 12;
+    }).reduce(function(sum, f) { return sum + f.count; }, 0);
+
+    if (smallTextCount > 0 && totalElements > 20) {
+      checks++;
+      var smallRatio = smallTextCount / totalElements;
+      if (smallRatio < 0.05) {
+        passed++;
+      } else {
+        findings.push({
+          severity: 'warning',
+          title: smallTextCount + ' element(s) with text smaller than 12px',
+          detail: 'Text below 12px is difficult to read for most users and nearly impossible for elderly or low-vision users',
+          fix: 'Increase small text to at least 12px. Consider if the information is important enough to display — if not, remove it.',
+          presetRef: null,
+          source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text'
+        });
+      }
+    }
+
+    // Coleman-Liau readability index
+    var rd = data.readability || {};
+    if (rd.totalWords >= 50 && rd.paragraphCount >= 2) {
+      checks++;
+      // Coleman-Liau: 0.0588 * L - 0.296 * S - 15.8
+      // L = avg letters per 100 words, S = avg sentences per 100 words
+      var L = (rd.totalChars / rd.totalWords) * 100;
+      var sentenceCount = 0;
+      (rd.textBlocks || []).forEach(function(b) {
+        sentenceCount += (b.text.match(/[.!?]+/g) || []).length;
+      });
+      var S_val = (sentenceCount / rd.totalWords) * 100;
+      var cli = Math.round(0.0588 * L - 0.296 * S_val - 15.8);
+      if (cli >= 6 && cli <= 12) {
+        passed++;
+      } else {
+        findings.push({
+          severity: cli > 14 ? 'warning' : 'info',
+          title: 'Reading level: grade ' + cli + ' (Coleman-Liau Index)',
+          detail: cli > 12 ? 'Content may be too complex for a general audience' : 'Content may be overly simple for the target audience',
+          fix: cli > 12 ? 'Shorten sentences, use simpler words, break complex ideas into steps. Aim for grade 8-10 for general audiences.' : 'This reading level is appropriate for broad accessibility.',
+          presetRef: null,
+          source: 'Coleman-Liau Index — https://en.wikipedia.org/wiki/Coleman%E2%80%93Liau_index'
+        });
+      }
+    }
+
+    // Paragraph length audit
+    var longParagraphs = (rd.textBlocks || []).filter(function(b) { return b.wordCount > 150; });
+    if (longParagraphs.length > 0) {
+      findings.push({
+        severity: 'warning',
+        title: longParagraphs.length + ' paragraph(s) exceed 150 words',
+        detail: 'Long paragraphs reduce scanability. Ideal: 40-80 words per paragraph.',
+        fix: 'Break long paragraphs into shorter ones. Use subheadings, bullet lists, or callout boxes to chunk content.',
+        presetRef: null,
+        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+      });
+    }
+
+    // List usage for scanability
+    if (rd.totalWords >= 100 && !rd.hasLists) {
+      findings.push({
+        severity: 'info',
+        title: 'No lists found in content area',
+        detail: 'Lists improve scanability by 47% compared to wall-of-text (NNGroup)',
+        fix: 'Convert sequences, features, or steps into <ul>/<ol> lists where appropriate.',
+        presetRef: null,
+        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+      });
+    }
+
+    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+    return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Readability', icon: 'readability' };
+  }
+
+  S.register("readability", scoreReadability, 5, "Readability", "readability");
+})();
+</file>
+
+<file path="proxy/worker.js">
+// make-it-look-good — CORS Proxy Worker
+// Deploy: cd proxy && npx wrangler deploy
+// Free tier: 100K requests/day on Cloudflare Workers
+
+const MAX_RESPONSE_SIZE = 10 * 1024 * 1024; // 10 MB
+const ALLOWED_SCHEMES = ['http:', 'https:'];
+const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+
+// Rate limit: requests per IP per minute
+const RATE_LIMIT = 30;
+const RATE_WINDOW_MS = 60 * 1000;
+
+// Allowed origins — browsers cannot spoof Origin headers, so this reliably blocks hotlinking.
+// Add 'http://localhost:3000' etc. for local dev if needed.
+// Set to null to allow any origin (development only).
+const ALLOWED_ORIGINS = ['https://jdeworks.github.io'];
+
+// In-memory rate limiting (per-isolate, resets on cold start — good enough for abuse prevention)
+const rateCounts = new Map();
+
+function checkRateLimit(ip) {
+  const now = Date.now();
+  const bucket = Math.floor(now / RATE_WINDOW_MS);
+  const key = ip + ':' + bucket;
+
+  // Clean old entries periodically
+  if (rateCounts.size > 10000) {
+    for (const [k, v] of rateCounts) {
+      if (v.bucket < bucket) rateCounts.delete(k);
+    }
+  }
+
+  const entry = rateCounts.get(key);
+  if (!entry) {
+    rateCounts.set(key, { bucket, count: 1 });
+    return true;
+  }
+  entry.count++;
+  return entry.count <= RATE_LIMIT;
+}
+
+function corsHeaders(origin) {
+  const allowOrigin = ALLOWED_ORIGINS === null ? '*' : (origin || '*');
+  return {
+    'Access-Control-Allow-Origin': allowOrigin,
+    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Allow-Headers': '*',
+    'Access-Control-Max-Age': '86400',
+  };
+}
+
+function errorResponse(status, message, origin) {
+  return new Response(JSON.stringify({ error: message }), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      ...corsHeaders(origin),
+    },
+  });
+}
+
+export default {
+  async fetch(request) {
+    const origin = request.headers.get('Origin') || '';
+    const ip = request.headers.get('cf-connecting-ip') || 'unknown';
+
+    // Handle CORS preflight
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: corsHeaders(origin) });
+    }
+
+    // Only GET allowed
+    if (request.method !== 'GET') {
+      return errorResponse(405, 'Only GET requests are allowed', origin);
+    }
+
+    // Origin check — blocks other websites from using this proxy via their browsers
+    if (ALLOWED_ORIGINS !== null) {
+      if (!origin || !ALLOWED_ORIGINS.includes(origin)) {
+        return errorResponse(403, 'Origin not allowed', origin);
+      }
+    }
+
+    // Rate limit per IP
+    if (!checkRateLimit(ip)) {
+      return errorResponse(429, 'Rate limited — max ' + RATE_LIMIT + ' requests per minute', origin);
+    }
+
+    // Parse target URL from query parameter
+    const reqUrl = new URL(request.url);
+    const target = reqUrl.searchParams.get('url');
+
+    if (!target) {
+      return errorResponse(400, 'Missing ?url= parameter', origin);
+    }
+
+    // Validate URL scheme
+    let targetUrl;
+    try {
+      targetUrl = new URL(target);
+    } catch {
+      return errorResponse(400, 'Invalid URL: ' + target, origin);
+    }
+
+    if (!ALLOWED_SCHEMES.includes(targetUrl.protocol)) {
+      return errorResponse(400, 'Only http/https URLs are allowed', origin);
+    }
+
+    // Block private/local IPs to prevent SSRF
+    const hostname = targetUrl.hostname;
+    if (
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === '0.0.0.0' ||
+      hostname === '::1' ||
+      hostname.endsWith('.local') ||
+      /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(hostname)
+    ) {
+      return errorResponse(403, 'Private/local URLs are not allowed', origin);
+    }
+
+    // Fetch the target
+    try {
+      const resp = await fetch(targetUrl.href, {
+        headers: {
+          'User-Agent': USER_AGENT,
+          'Accept': 'text/html,text/css,application/xhtml+xml,*/*',
+          'Accept-Language': 'en-US,en;q=0.9',
+        },
+        redirect: 'follow',
+      });
+
+      if (!resp.ok) {
+        return errorResponse(resp.status, 'Target returned ' + resp.status + ' ' + resp.statusText, origin);
+      }
+
+      // Read body and check size
+      const body = await resp.arrayBuffer();
+
+      if (body.byteLength > MAX_RESPONSE_SIZE) {
+        return errorResponse(413, 'Response too large (' + Math.round(body.byteLength / 1024 / 1024) + ' MB, max ' + (MAX_RESPONSE_SIZE / 1024 / 1024) + ' MB)', origin);
+      }
+
+      // Return with CORS headers
+      const responseHeaders = new Headers(corsHeaders(origin));
+      responseHeaders.set('Content-Type', resp.headers.get('Content-Type') || 'text/html; charset=utf-8');
+
+      // Pass through cache headers if present
+      const cacheControl = resp.headers.get('Cache-Control');
+      if (cacheControl) responseHeaders.set('Cache-Control', cacheControl);
+
+      return new Response(body, {
+        status: 200,
+        headers: responseHeaders,
+      });
+    } catch (err) {
+      return errorResponse(502, 'Failed to fetch target: ' + (err.message || 'unknown error'), origin);
+    }
+  },
+};
+</file>
+
 <file path="scripts/test-full-matrix.mjs">
 #!/usr/bin/env node
 // Full matrix test runner: preset × personality × effect × viewport × dark mode
@@ -19769,314 +20077,6 @@ async function main() {
 main().catch(err => { console.error('Fatal:', err); process.exit(1); });
 </file>
 
-<file path="docs/scoring/readability.js">
-// Scoring Module: Readability & Scanability
-// Weight: 5%
-// Sources: Coleman-Liau Index, NNGroup scanning research
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-  function scoreReadability(data) {
-    var findings = [];
-    var checks = 0;
-    var passed = 0;
-
-    // Extract text content from the raw data
-    // We use heading count and element count as proxies since we don't have raw text in extracted data
-    var headings = (data.typography && data.typography.headings) || [];
-    var totalElements = (data.structure && data.structure.totalElements) || 0;
-
-    // Scanability: heading frequency
-    // Good rule: 1 heading per ~100-150 elements of content
-    if (totalElements > 50) {
-      checks++;
-      var headingRatio = headings.length / (totalElements / 100);
-      if (headingRatio >= 0.5 && headingRatio <= 5) {
-        passed++;
-      } else if (headingRatio < 0.5) {
-        findings.push({
-          severity: 'warning',
-          title: 'Low heading density: ' + headings.length + ' headings for ' + totalElements + ' elements',
-          detail: 'Content without headings is harder to scan. 79% of users scan rather than read (NNGroup)',
-          fix: 'Add descriptive headings to break content into scannable sections. Aim for a heading every 2-3 paragraphs.',
-          presetRef: null,
-          source: 'NNGroup scanning research — https://www.nngroup.com/articles/how-users-read-on-the-web/'
-        });
-      }
-    }
-
-    // Heading descriptiveness: check if headings are too short (likely generic)
-    if (headings.length > 0) {
-      checks++;
-      var shortHeadings = headings.filter(function(h) {
-        return h.text && h.text.length < 3;
-      });
-      if (shortHeadings.length === 0) {
-        passed++;
-      } else {
-        passed++; // Info doesn't reduce score
-        findings.push({
-          severity: 'info',
-          title: shortHeadings.length + ' heading(s) with very short text (< 3 chars)',
-          detail: 'Short headings like numbers or icons don\'t help users scan. Use descriptive text.',
-          fix: 'Replace generic headings with descriptive ones that summarize the section content.',
-          presetRef: null,
-          source: 'NNGroup — https://www.nngroup.com/articles/headings-pickup-lines/'
-        });
-      }
-    }
-
-    // Font size variety as readability signal
-    // Too many sizes = visual noise, harder to establish reading rhythm
-    var fontSizes = (data.typography && data.typography.fontSizes) || [];
-    var smallTextCount = fontSizes.filter(function(f) {
-      return parseFloat(f.value) < 12;
-    }).reduce(function(sum, f) { return sum + f.count; }, 0);
-
-    if (smallTextCount > 0 && totalElements > 20) {
-      checks++;
-      var smallRatio = smallTextCount / totalElements;
-      if (smallRatio < 0.05) {
-        passed++;
-      } else {
-        findings.push({
-          severity: 'warning',
-          title: smallTextCount + ' element(s) with text smaller than 12px',
-          detail: 'Text below 12px is difficult to read for most users and nearly impossible for elderly or low-vision users',
-          fix: 'Increase small text to at least 12px. Consider if the information is important enough to display — if not, remove it.',
-          presetRef: null,
-          source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text'
-        });
-      }
-    }
-
-    // Coleman-Liau readability index
-    var rd = data.readability || {};
-    if (rd.totalWords >= 50 && rd.paragraphCount >= 2) {
-      checks++;
-      // Coleman-Liau: 0.0588 * L - 0.296 * S - 15.8
-      // L = avg letters per 100 words, S = avg sentences per 100 words
-      var L = (rd.totalChars / rd.totalWords) * 100;
-      var sentenceCount = 0;
-      (rd.textBlocks || []).forEach(function(b) {
-        sentenceCount += (b.text.match(/[.!?]+/g) || []).length;
-      });
-      var S_val = (sentenceCount / rd.totalWords) * 100;
-      var cli = Math.round(0.0588 * L - 0.296 * S_val - 15.8);
-      if (cli >= 6 && cli <= 12) {
-        passed++;
-      } else {
-        findings.push({
-          severity: cli > 14 ? 'warning' : 'info',
-          title: 'Reading level: grade ' + cli + ' (Coleman-Liau Index)',
-          detail: cli > 12 ? 'Content may be too complex for a general audience' : 'Content may be overly simple for the target audience',
-          fix: cli > 12 ? 'Shorten sentences, use simpler words, break complex ideas into steps. Aim for grade 8-10 for general audiences.' : 'This reading level is appropriate for broad accessibility.',
-          presetRef: null,
-          source: 'Coleman-Liau Index — https://en.wikipedia.org/wiki/Coleman%E2%80%93Liau_index'
-        });
-      }
-    }
-
-    // Paragraph length audit
-    var longParagraphs = (rd.textBlocks || []).filter(function(b) { return b.wordCount > 150; });
-    if (longParagraphs.length > 0) {
-      findings.push({
-        severity: 'warning',
-        title: longParagraphs.length + ' paragraph(s) exceed 150 words',
-        detail: 'Long paragraphs reduce scanability. Ideal: 40-80 words per paragraph.',
-        fix: 'Break long paragraphs into shorter ones. Use subheadings, bullet lists, or callout boxes to chunk content.',
-        presetRef: null,
-        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
-      });
-    }
-
-    // List usage for scanability
-    if (rd.totalWords >= 100 && !rd.hasLists) {
-      findings.push({
-        severity: 'info',
-        title: 'No lists found in content area',
-        detail: 'Lists improve scanability by 47% compared to wall-of-text (NNGroup)',
-        fix: 'Convert sequences, features, or steps into <ul>/<ol> lists where appropriate.',
-        presetRef: null,
-        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
-      });
-    }
-
-    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-    return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Readability', icon: 'readability' };
-  }
-
-  S.register("readability", scoreReadability, 5, "Readability", "readability");
-})();
-</file>
-
-<file path="proxy/worker.js">
-// make-it-look-good — CORS Proxy Worker
-// Deploy: cd proxy && npx wrangler deploy
-// Free tier: 100K requests/day on Cloudflare Workers
-
-const MAX_RESPONSE_SIZE = 10 * 1024 * 1024; // 10 MB
-const ALLOWED_SCHEMES = ['http:', 'https:'];
-const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
-
-// Rate limit: requests per IP per minute
-const RATE_LIMIT = 30;
-const RATE_WINDOW_MS = 60 * 1000;
-
-// Allowed origins — browsers cannot spoof Origin headers, so this reliably blocks hotlinking.
-// Add 'http://localhost:3000' etc. for local dev if needed.
-// Set to null to allow any origin (development only).
-const ALLOWED_ORIGINS = ['https://jdeworks.github.io'];
-
-// In-memory rate limiting (per-isolate, resets on cold start — good enough for abuse prevention)
-const rateCounts = new Map();
-
-function checkRateLimit(ip) {
-  const now = Date.now();
-  const bucket = Math.floor(now / RATE_WINDOW_MS);
-  const key = ip + ':' + bucket;
-
-  // Clean old entries periodically
-  if (rateCounts.size > 10000) {
-    for (const [k, v] of rateCounts) {
-      if (v.bucket < bucket) rateCounts.delete(k);
-    }
-  }
-
-  const entry = rateCounts.get(key);
-  if (!entry) {
-    rateCounts.set(key, { bucket, count: 1 });
-    return true;
-  }
-  entry.count++;
-  return entry.count <= RATE_LIMIT;
-}
-
-function corsHeaders(origin) {
-  const allowOrigin = ALLOWED_ORIGINS === null ? '*' : (origin || '*');
-  return {
-    'Access-Control-Allow-Origin': allowOrigin,
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
-    'Access-Control-Allow-Headers': '*',
-    'Access-Control-Max-Age': '86400',
-  };
-}
-
-function errorResponse(status, message, origin) {
-  return new Response(JSON.stringify({ error: message }), {
-    status,
-    headers: {
-      'Content-Type': 'application/json',
-      ...corsHeaders(origin),
-    },
-  });
-}
-
-export default {
-  async fetch(request) {
-    const origin = request.headers.get('Origin') || '';
-    const ip = request.headers.get('cf-connecting-ip') || 'unknown';
-
-    // Handle CORS preflight
-    if (request.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: corsHeaders(origin) });
-    }
-
-    // Only GET allowed
-    if (request.method !== 'GET') {
-      return errorResponse(405, 'Only GET requests are allowed', origin);
-    }
-
-    // Origin check — blocks other websites from using this proxy via their browsers
-    if (ALLOWED_ORIGINS !== null) {
-      if (!origin || !ALLOWED_ORIGINS.includes(origin)) {
-        return errorResponse(403, 'Origin not allowed', origin);
-      }
-    }
-
-    // Rate limit per IP
-    if (!checkRateLimit(ip)) {
-      return errorResponse(429, 'Rate limited — max ' + RATE_LIMIT + ' requests per minute', origin);
-    }
-
-    // Parse target URL from query parameter
-    const reqUrl = new URL(request.url);
-    const target = reqUrl.searchParams.get('url');
-
-    if (!target) {
-      return errorResponse(400, 'Missing ?url= parameter', origin);
-    }
-
-    // Validate URL scheme
-    let targetUrl;
-    try {
-      targetUrl = new URL(target);
-    } catch {
-      return errorResponse(400, 'Invalid URL: ' + target, origin);
-    }
-
-    if (!ALLOWED_SCHEMES.includes(targetUrl.protocol)) {
-      return errorResponse(400, 'Only http/https URLs are allowed', origin);
-    }
-
-    // Block private/local IPs to prevent SSRF
-    const hostname = targetUrl.hostname;
-    if (
-      hostname === 'localhost' ||
-      hostname === '127.0.0.1' ||
-      hostname === '0.0.0.0' ||
-      hostname === '::1' ||
-      hostname.endsWith('.local') ||
-      /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(hostname)
-    ) {
-      return errorResponse(403, 'Private/local URLs are not allowed', origin);
-    }
-
-    // Fetch the target
-    try {
-      const resp = await fetch(targetUrl.href, {
-        headers: {
-          'User-Agent': USER_AGENT,
-          'Accept': 'text/html,text/css,application/xhtml+xml,*/*',
-          'Accept-Language': 'en-US,en;q=0.9',
-        },
-        redirect: 'follow',
-      });
-
-      if (!resp.ok) {
-        return errorResponse(resp.status, 'Target returned ' + resp.status + ' ' + resp.statusText, origin);
-      }
-
-      // Read body and check size
-      const body = await resp.arrayBuffer();
-
-      if (body.byteLength > MAX_RESPONSE_SIZE) {
-        return errorResponse(413, 'Response too large (' + Math.round(body.byteLength / 1024 / 1024) + ' MB, max ' + (MAX_RESPONSE_SIZE / 1024 / 1024) + ' MB)', origin);
-      }
-
-      // Return with CORS headers
-      const responseHeaders = new Headers(corsHeaders(origin));
-      responseHeaders.set('Content-Type', resp.headers.get('Content-Type') || 'text/html; charset=utf-8');
-
-      // Pass through cache headers if present
-      const cacheControl = resp.headers.get('Cache-Control');
-      if (cacheControl) responseHeaders.set('Cache-Control', cacheControl);
-
-      return new Response(body, {
-        status: 200,
-        headers: responseHeaders,
-      });
-    } catch (err) {
-      return errorResponse(502, 'Failed to fetch target: ' + (err.message || 'unknown error'), origin);
-    }
-  },
-};
-</file>
-
 <file path="docs/scoring/balance.js">
 // Scoring Module: Visual Weight Balance
 // Weight: 3%
@@ -20182,6 +20182,245 @@ export default {
 
   S.register("balance", scoreBalance, 3, "Visual Balance", "consistency");
 })();
+</file>
+
+<file path="README.md">
+# make-it-look-good
+
+> **Make your website, app, or UI actually look good.** Give your AI assistant this repo and it will help you design, redesign, or fix the visual design of any web project — with real design principles, not guesswork.
+
+Your AI asks what you're building, what personality you want (clean, minimalist, playful, editorial), your colors, and your audience — then produces production-ready HTML/CSS with proper spacing, contrast, typography, and responsive behavior. It works on landing pages, dashboards, forms, portfolios, e-commerce, or any UI.
+
+**This is not a library you install.** It's a design knowledge base (45 topics on color, typography, spacing, layout, interaction, accessibility) plus a consultation playbook that guides your AI through the right questions and decisions.
+
+---
+
+## If you are an AI assistant reading this
+
+The user wants you to **help them make their website or UI look good**. This repo is a design toolkit — use it to guide the user through a design consultation for *their* project.
+
+**Start here:**
+1. Read [`CONSULT.md`](CONSULT.md) — the full design consultation playbook. Follow it step by step.
+2. Read [`docs/presets/_index.md`](docs/presets/_index.md) — template catalog with preview links.
+3. Read [`workflows/quick-reference.md`](workflows/quick-reference.md) — critical design numbers.
+4. Read ONLY the knowledge files relevant to the user's question (see Step 2 in CONSULT.md).
+
+**Your job:** Ask the user what they're building (or what they want to improve), walk them through personality/colors/audience questions, then generate or fix their UI code using the design principles in this repo. Do NOT improve this repo itself — focus on the user's project.
+
+CONSULT.md includes:
+- A consultation depth selector (quick start / guided / thorough) — ask the user how deep to go
+- Required intake questions about personality, colors, inspiration, and dark mode — don't skip these
+- Website analysis workflow (Step 1E) for when users share reference URLs
+- Template catalog with preview links at `https://jdeworks.github.io/make-it-look-good/#preset:{element}/{personality}`
+
+---
+
+## For Developers
+
+### What is this?
+
+You have a website or UI that needs to look better. Give this repo to your AI assistant and it becomes a **design consultant** — asking the right questions, applying real design principles, and producing code that actually looks professional. Not generic blue SaaS. Your brand, your personality, your colors.
+
+### How to use it
+
+**Option A — Online chat** (Claude.ai, ChatGPT, Gemini, Perplexity, etc.)
+
+Copy-paste this entire block as your first message:
+
+```
+Fetch this file — it's a design toolkit that will help me make my website look good:
+https://raw.githubusercontent.com/jdeworks/make-it-look-good/dev/bundle.xml
+
+Read the CONSULT.md inside it and follow the consultation playbook step by step.
+You are a design consultant — help me design or improve MY website/UI, not this
+repo. Start by asking what I'm building and how detailed I want the consultation
+(quick start / guided / thorough).
+```
+
+The bundle (~194k tokens) includes the full consultation playbook, all 45 knowledge files, and a template catalog. To browse templates visually, use the [live preview tool](https://jdeworks.github.io/make-it-look-good/) and tell your AI which ones you like.
+
+**Option B — Local AI agent** (Claude Code, Cursor, Windsurf, Codex, etc.)
+
+Clone and point your agent at the folder:
+```bash
+git clone -b dev https://github.com/jdeworks/make-it-look-good.git
+```
+
+Then tell your agent:
+```
+Read CONSULT.md from the make-it-look-good folder. It's a design consultation
+playbook — use it to help me make my website/UI look good. Follow the steps
+and start by asking what I'm building.
+```
+
+A local agent gets the full file structure including all 170+ template HTML files. This is the recommended approach for hands-on design work.
+
+**Option C — Quick prompts** (if your AI already has the repo loaded)
+
+Guided consultation (asks about personality, colors, audience):
+```
+Follow the CONSULT.md playbook to run a design consultation for my project.
+```
+
+Audit existing code:
+```
+Follow CONSULT.md Step 1A to audit this code, then generate design review notes: [paste your code]
+```
+
+Grab a component:
+```
+Look at docs/presets/_index.md and give me a hero + pricing cards layout.
+```
+
+> **Tip:** Share a link to a site you like the look of. Even one reference ("I want it to feel like aesop.com") dramatically improves results.
+
+---
+
+### Preview Tool
+
+Paste any HTML+Tailwind into the [live preview tool](https://jdeworks.github.io/make-it-look-good/) to see it rendered instantly. Toggle mobile/tablet/desktop views, dark mode, and share via URL. Includes 121 prebuilt templates across 38 elements with multiple design personalities.
+
+### Design Analyzer
+
+Score any website against evidence-based design rules with the [Design Analyzer](https://jdeworks.github.io/make-it-look-good/analyzer.html). **~60 checks across 14 scoring modules** — no AI, just math against WCAG 2.2, Material Design, NNGroup research, and typography best practices. Every finding links to its source.
+
+Three ways to analyze:
+
+| Method | Best for | How |
+|--------|----------|-----|
+| **Enter URL** | Phone, quick checks | Paste a URL — fetched via CORS proxy, scored automatically |
+| **Console Snippet** | Most accurate, localhost, behind login | Copy snippet → run in DevTools console → paste JSON |
+| **Paste HTML** | Static mockups | Paste HTML source, rendered in iframe |
+
+Scoring modules: Color & Contrast (WCAG + APCA), Typography, Spacing & Layout, Touch & Interaction, Accessibility, Responsive Design, Visual Consistency, Cognitive Load, Layout Quality, Performance, Readability, Motion & Animation, Visual Balance.
+
+Features: 8 audience profiles (General, WCAG AAA, Elderly, Low Vision, Motor Impairment, Color Blind, Children, Cognitive), page context detection, gradient/background-image/CSS-filter contrast resolution, decorative element filtering, context-aware touch targets (nav/footer/inline exemptions per WCAG 2.5.8), CVD palette simulation (Machado et al. 2009), post-analysis exclusion suggestions, extraction caching, dark mode report, viewport size selection, deep scan (multi-viewport + dark mode), page screenshots, analysis history, N/A category detection, progress bar, JSON export/import, markdown/PDF export. Self-hostable CORS proxy (Cloudflare Worker, free tier 100K req/day) — see [`proxy/README.md`](proxy/README.md).
+
+Validated against 125 preset templates via headless browser testing (Puppeteer) — average score 88, min 69, max 100, with a 7-point gap between "before" (81 avg) and "clean" (88 avg) variants.
+
+### Before & After Examples
+
+Each "before" shows a typical MVP. Each "after" is a structurally different redesign — not just CSS tweaks but genuinely different layouts. Multiple personalities (Clean, Minimalist, Playful, Editorial) show how the same content can look completely different.
+
+| Example | Personalities | Try it |
+|---------|--------------|--------|
+| Dashboard | Clean, Minimalist, Playful | [Before](https://jdeworks.github.io/make-it-look-good/#preset:dashboard/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:dashboard/clean) |
+| Landing Page | Clean, Minimalist, Playful, Editorial | [Before](https://jdeworks.github.io/make-it-look-good/#preset:landing/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:landing/clean) |
+| Form | Clean, Minimalist, Playful, Editorial | [Before](https://jdeworks.github.io/make-it-look-good/#preset:form/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:form/clean) |
+| Card Grid | Clean, Minimalist, Playful | [Before](https://jdeworks.github.io/make-it-look-good/#preset:cards/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:cards/clean) |
+| Multi-Page App | Clean, Minimalist, Playful | [Before](https://jdeworks.github.io/make-it-look-good/#preset:project/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:project/clean) |
+
+Click any "After" link — personality buttons appear in the preview header to switch between variants. Color swatches let you recolor with any Tailwind palette. Effect buttons apply CSS overlays (Hushed, Bouncy, Frosted, Serif).
+
+### Example: Guided Consultation Flow
+
+Here's what a real consultation looks like when an LLM follows the playbook. The user says *"I need a website for my cafe. Something warm and inviting."*
+
+**1. The AI classifies the input** → vague idea, no code → guided intake
+
+**2. Intake questions asked:**
+- What are you building? → Landing page / content site, single-page with sections
+- Who uses it? → General public, 65-75% mobile traffic
+- Personality? → Playful & friendly, "specialty coffee shop" feel
+- Tech stack? → Plain HTML + Tailwind CDN
+- Colors? → Warm amber `#f59e0b`, rich brown `#78350f`
+- Inspiration? → "Your favorite neighborhood spot, not corporate chain"
+- Dark mode? → No
+
+**3. The AI reads knowledge files** → `layout/visual-hierarchy.md`, `typography/type-scale.md`, `color/color-psychology.md`, `interaction/touch-targets.md`, `responsive/mobile-first.md`
+
+**4. Design decisions (with reasoning):**
+- Playfair Display headings + Inter body → artisanal yet readable
+- Amber-900 on amber-50 at 7.2:1 contrast → AAA pass
+- White text on amber buttons fails WCAG → switched to amber-900 text
+- `rounded-2xl` cards + pill-shaped CTAs → warmth, not corporate
+- 48px touch targets everywhere → mobile-heavy audience
+- Section order: Hero → Menu → About → Hours → Footer → inverted pyramid
+
+**5. Output:** A single self-contained HTML file that renders on 375px–1440px+, passes WCAG AA on all text, with warm amber palette and serif/sans font pairing.
+
+The full flow with all design decisions is in [`tests/e2e-restaurant-flow.md`](tests/e2e-restaurant-flow.md). The output is in [`tests/e2e-restaurant.html`](tests/e2e-restaurant.html).
+
+### Validated Test Cases
+
+The consultation flow is tested across 12 real-world scenarios — all pass all applicable design rules (contrast, touch targets, spacing, hierarchy). See [`tests/`](tests/) for the full set.
+
+| Scenario | Input | What It Proves |
+|----------|-------|----------------|
+| React settings page | JSX + inline styles | Outputs in user's framework, no forced Tailwind migration |
+| Barebones HTML | Hackathon-quality landing page | Full redesign with Tailwind CDN |
+| Vue dashboard | Vue 3 SFC + scoped CSS | Preserves Vue SFC structure |
+| Restaurant landing | "warm and inviting cafe" | Guided intake → personality-driven output |
+| Developer portfolio | "dark mode, emerald accent" | Dark mode design with monospace accents |
+| SaaS pricing | Brand colors provided | Brand color application, clean personality |
+| Status page | JSON API data pasted | Raw data → structured UI (Step 1D) |
+| CLI output | Terminal table pasted | Non-standard input → dark technical dashboard |
+| Email template | "welcome email" | Non-web output with email-specific constraints |
+
+---
+
+## What's Inside
+
+### Preset Library — [`docs/presets/_index.md`](docs/presets/_index.md)
+
+38+ presets with multiple personality variants (Clean, Minimalist, Playful). Interactive components also have React, Vue, and Svelte framework files.
+
+| Category | Examples |
+|----------|---------|
+| **Layout Shells** | App shell, marketing page, dashboard, centered form |
+| **Components** | Hero, tabs, accordion, pagination, dropdown, avatars, data table |
+| **Full Pages** | Pricing, portfolio, restaurant, status page |
+| **Before → After** | Dashboard, landing page, form, card grid, multi-page app |
+| **Expressive** | Personal site, agency landing, agency portfolio, app showcase, scroll reveal landing, product launch, editorial blog, SaaS features, scroll story, product page, devtool landing, docs site, event page, personalized portfolio |
+| **Edge Cases** | Deploy monitor, button system, OSS landing |
+
+All presets: dark mode, WCAG AA contrast, 44px touch targets, responsive. [Composition recipes](docs/presets/_index.md#composition-recipes) show how to combine them into full pages.
+
+### Knowledge Files — 44 topics
+
+| Area | Topics |
+|------|--------|
+| **Foundations** | [Cognitive load](foundations/cognitive-load.md), [Gestalt](foundations/gestalt-principles.md), [Hick's Law](foundations/hicks-law.md), [Fitts's Law](foundations/fitts-law.md), [Aesthetic-usability](foundations/aesthetic-usability.md), [Peak-end rule](foundations/peak-end-rule.md) |
+| **Color** | [Contrast & a11y](color/contrast-and-accessibility.md), [Color systems](color/color-systems.md), [Psychology](color/color-psychology.md), [Color-blind safety](color/color-blind-safety.md) |
+| **Typography** | [Type scale](typography/type-scale.md), [Font pairing](typography/font-pairing.md), [Readability](typography/readability.md), [Web font loading](typography/web-font-loading.md) |
+| **Layout** | [Spacing system](layout/spacing-system.md), [Visual hierarchy](layout/visual-hierarchy.md), [Grid systems](layout/grid-systems.md), [Whitespace](layout/whitespace.md) |
+| **Interaction** | [Animation timing](interaction/animation-timing.md), [Micro-interactions](interaction/micro-interactions.md), [Touch targets](interaction/touch-targets.md), [Loading states](interaction/loading-states.md) |
+| **Responsive** | [Mobile-first](responsive/mobile-first.md), [Breakpoints](responsive/breakpoints.md), [Fluid typography](responsive/fluid-typography.md), [Patterns](responsive/responsive-patterns.md) |
+| **Systems** | [Design tokens](systems/design-tokens.md), [Material Design 3](systems/material-design-3.md), [Apple HIG](systems/apple-hig.md), [Building a system](systems/building-a-system.md) |
+| **Expressive** | [Visual identity](expressive/visual-identity.md), [Hero patterns](expressive/hero-patterns.md), [Scroll storytelling](expressive/scroll-storytelling.md), [Purposeful motion](expressive/purposeful-motion.md), [Scroll effect patterns](expressive/scroll-effect-patterns.md), [Curated examples](expressive/curated-examples.md) |
+| **Heuristics** | [Nielsen's 10](heuristics/nielsen-10.md), [UX frameworks](heuristics/ux-frameworks.md) |
+| **Components** | [Buttons](components/buttons.md), [Forms](components/forms.md), [Cards](components/cards.md), [Navigation](components/navigation.md), [Modals](components/modals-and-dialogs.md), [Tables](components/tables-and-lists.md), [Feedback](components/feedback.md) |
+
+Each file: 200–400 lines, concrete rules with numbers, CSS/Tailwind patterns, decision trees, sources.
+
+### Workflows
+
+| Workflow | Use when |
+|----------|----------|
+| [Quick Reference](workflows/quick-reference.md) | Need a number fast (contrast ratio, spacing value, timing) |
+| [New Project Checklist](workflows/new-project-checklist.md) | Starting from scratch |
+| [Design Review Checklist](workflows/design-review-checklist.md) | Auditing an existing design |
+
+### Critical Numbers
+
+| What | Value |
+|------|-------|
+| Text contrast (AA) | 4.5:1 |
+| Large text contrast (AA) | 3:1 |
+| Body font size | ≥16px |
+| Line height | 1.4–1.6 |
+| Line length | 45–75 characters |
+| Touch target | ≥44×44px |
+| Base spacing unit | 4px or 8px |
+| Nav items | 5–7 max |
+| Enter animation | 200–300ms |
+| Exit animation | 150–200ms |
+
+---
+
+If this helped you ship something that looks good, [give it a star](../../stargazers). Found an issue? [Open one](../../issues).
+
+Sources: [research/sources.md](research/sources.md)
 </file>
 
 <file path="docs/scoring/cognitive.js">
@@ -20414,8 +20653,13 @@ function scoreVisualConsistency(data) {
     });
   }
 
-  // Border radius consistency
-  var radii = (data.layout && data.layout.borderRadii) || [];
+  // Border radius consistency — exclude pill/circle shapes (9999px, 50%, >100px)
+  var radii = ((data.layout && data.layout.borderRadii) || []).filter(function(r) {
+    var v = r.value;
+    if (v === '50%' || v === '9999px') return false;
+    var px = parseFloat(v);
+    return !(px > 100);
+  });
   if (radii.length > 0) {
     checks++;
     if (radii.length <= 4) {
@@ -20423,7 +20667,7 @@ function scoreVisualConsistency(data) {
     } else {
       findings.push({
         severity: 'info',
-        title: radii.length + ' distinct border-radius values (recommend 2-4)',
+        title: radii.length + ' distinct border-radius values (recommend 2-4, excluding pill/circle shapes)',
         detail: 'Values: ' + radii.slice(0, 6).map(function(r) { return r.value + ' (' + r.count + 'x)'; }).join(', '),
         fix: 'Standardize border-radius to 2-4 values in your design tokens. In Tailwind: rounded-sm (2px), rounded (4px), rounded-lg (8px), rounded-xl (12px).',
         presetRef: null,
@@ -20733,245 +20977,6 @@ function scoreResponsive(data) {
 })();
 </file>
 
-<file path="README.md">
-# make-it-look-good
-
-> **Make your website, app, or UI actually look good.** Give your AI assistant this repo and it will help you design, redesign, or fix the visual design of any web project — with real design principles, not guesswork.
-
-Your AI asks what you're building, what personality you want (clean, minimalist, playful, editorial), your colors, and your audience — then produces production-ready HTML/CSS with proper spacing, contrast, typography, and responsive behavior. It works on landing pages, dashboards, forms, portfolios, e-commerce, or any UI.
-
-**This is not a library you install.** It's a design knowledge base (45 topics on color, typography, spacing, layout, interaction, accessibility) plus a consultation playbook that guides your AI through the right questions and decisions.
-
----
-
-## If you are an AI assistant reading this
-
-The user wants you to **help them make their website or UI look good**. This repo is a design toolkit — use it to guide the user through a design consultation for *their* project.
-
-**Start here:**
-1. Read [`CONSULT.md`](CONSULT.md) — the full design consultation playbook. Follow it step by step.
-2. Read [`docs/presets/_index.md`](docs/presets/_index.md) — template catalog with preview links.
-3. Read [`workflows/quick-reference.md`](workflows/quick-reference.md) — critical design numbers.
-4. Read ONLY the knowledge files relevant to the user's question (see Step 2 in CONSULT.md).
-
-**Your job:** Ask the user what they're building (or what they want to improve), walk them through personality/colors/audience questions, then generate or fix their UI code using the design principles in this repo. Do NOT improve this repo itself — focus on the user's project.
-
-CONSULT.md includes:
-- A consultation depth selector (quick start / guided / thorough) — ask the user how deep to go
-- Required intake questions about personality, colors, inspiration, and dark mode — don't skip these
-- Website analysis workflow (Step 1E) for when users share reference URLs
-- Template catalog with preview links at `https://jdeworks.github.io/make-it-look-good/#preset:{element}/{personality}`
-
----
-
-## For Developers
-
-### What is this?
-
-You have a website or UI that needs to look better. Give this repo to your AI assistant and it becomes a **design consultant** — asking the right questions, applying real design principles, and producing code that actually looks professional. Not generic blue SaaS. Your brand, your personality, your colors.
-
-### How to use it
-
-**Option A — Online chat** (Claude.ai, ChatGPT, Gemini, Perplexity, etc.)
-
-Copy-paste this entire block as your first message:
-
-```
-Fetch this file — it's a design toolkit that will help me make my website look good:
-https://raw.githubusercontent.com/jdeworks/make-it-look-good/dev/bundle.xml
-
-Read the CONSULT.md inside it and follow the consultation playbook step by step.
-You are a design consultant — help me design or improve MY website/UI, not this
-repo. Start by asking what I'm building and how detailed I want the consultation
-(quick start / guided / thorough).
-```
-
-The bundle (~194k tokens) includes the full consultation playbook, all 45 knowledge files, and a template catalog. To browse templates visually, use the [live preview tool](https://jdeworks.github.io/make-it-look-good/) and tell your AI which ones you like.
-
-**Option B — Local AI agent** (Claude Code, Cursor, Windsurf, Codex, etc.)
-
-Clone and point your agent at the folder:
-```bash
-git clone -b dev https://github.com/jdeworks/make-it-look-good.git
-```
-
-Then tell your agent:
-```
-Read CONSULT.md from the make-it-look-good folder. It's a design consultation
-playbook — use it to help me make my website/UI look good. Follow the steps
-and start by asking what I'm building.
-```
-
-A local agent gets the full file structure including all 170+ template HTML files. This is the recommended approach for hands-on design work.
-
-**Option C — Quick prompts** (if your AI already has the repo loaded)
-
-Guided consultation (asks about personality, colors, audience):
-```
-Follow the CONSULT.md playbook to run a design consultation for my project.
-```
-
-Audit existing code:
-```
-Follow CONSULT.md Step 1A to audit this code, then generate design review notes: [paste your code]
-```
-
-Grab a component:
-```
-Look at docs/presets/_index.md and give me a hero + pricing cards layout.
-```
-
-> **Tip:** Share a link to a site you like the look of. Even one reference ("I want it to feel like aesop.com") dramatically improves results.
-
----
-
-### Preview Tool
-
-Paste any HTML+Tailwind into the [live preview tool](https://jdeworks.github.io/make-it-look-good/) to see it rendered instantly. Toggle mobile/tablet/desktop views, dark mode, and share via URL. Includes 121 prebuilt templates across 38 elements with multiple design personalities.
-
-### Design Analyzer
-
-Score any website against evidence-based design rules with the [Design Analyzer](https://jdeworks.github.io/make-it-look-good/analyzer.html). **~60 checks across 14 scoring modules** — no AI, just math against WCAG 2.2, Material Design, NNGroup research, and typography best practices. Every finding links to its source.
-
-Three ways to analyze:
-
-| Method | Best for | How |
-|--------|----------|-----|
-| **Enter URL** | Phone, quick checks | Paste a URL — fetched via CORS proxy, scored automatically |
-| **Console Snippet** | Most accurate, localhost, behind login | Copy snippet → run in DevTools console → paste JSON |
-| **Paste HTML** | Static mockups | Paste HTML source, rendered in iframe |
-
-Scoring modules: Color & Contrast (WCAG + APCA), Typography, Spacing & Layout, Touch & Interaction, Accessibility, Responsive Design, Visual Consistency, Cognitive Load, Layout Quality, Performance, Readability, Motion & Animation, Visual Balance.
-
-Features: 8 audience profiles (General, WCAG AAA, Elderly, Low Vision, Motor Impairment, Color Blind, Children, Cognitive), page context detection, gradient/background-image/CSS-filter contrast resolution, decorative element filtering, context-aware touch targets (nav/footer/inline exemptions per WCAG 2.5.8), CVD palette simulation (Machado et al. 2009), post-analysis exclusion suggestions, extraction caching, dark mode report, viewport size selection, deep scan (multi-viewport + dark mode), page screenshots, analysis history, N/A category detection, progress bar, JSON export/import, markdown/PDF export. Self-hostable CORS proxy (Cloudflare Worker, free tier 100K req/day) — see [`proxy/README.md`](proxy/README.md).
-
-Validated against 125 preset templates via headless browser testing (Puppeteer) — average score 88, min 69, max 100, with a 7-point gap between "before" (81 avg) and "clean" (88 avg) variants.
-
-### Before & After Examples
-
-Each "before" shows a typical MVP. Each "after" is a structurally different redesign — not just CSS tweaks but genuinely different layouts. Multiple personalities (Clean, Minimalist, Playful, Editorial) show how the same content can look completely different.
-
-| Example | Personalities | Try it |
-|---------|--------------|--------|
-| Dashboard | Clean, Minimalist, Playful | [Before](https://jdeworks.github.io/make-it-look-good/#preset:dashboard/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:dashboard/clean) |
-| Landing Page | Clean, Minimalist, Playful, Editorial | [Before](https://jdeworks.github.io/make-it-look-good/#preset:landing/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:landing/clean) |
-| Form | Clean, Minimalist, Playful, Editorial | [Before](https://jdeworks.github.io/make-it-look-good/#preset:form/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:form/clean) |
-| Card Grid | Clean, Minimalist, Playful | [Before](https://jdeworks.github.io/make-it-look-good/#preset:cards/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:cards/clean) |
-| Multi-Page App | Clean, Minimalist, Playful | [Before](https://jdeworks.github.io/make-it-look-good/#preset:project/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:project/clean) |
-
-Click any "After" link — personality buttons appear in the preview header to switch between variants. Color swatches let you recolor with any Tailwind palette. Effect buttons apply CSS overlays (Hushed, Bouncy, Frosted, Serif).
-
-### Example: Guided Consultation Flow
-
-Here's what a real consultation looks like when an LLM follows the playbook. The user says *"I need a website for my cafe. Something warm and inviting."*
-
-**1. The AI classifies the input** → vague idea, no code → guided intake
-
-**2. Intake questions asked:**
-- What are you building? → Landing page / content site, single-page with sections
-- Who uses it? → General public, 65-75% mobile traffic
-- Personality? → Playful & friendly, "specialty coffee shop" feel
-- Tech stack? → Plain HTML + Tailwind CDN
-- Colors? → Warm amber `#f59e0b`, rich brown `#78350f`
-- Inspiration? → "Your favorite neighborhood spot, not corporate chain"
-- Dark mode? → No
-
-**3. The AI reads knowledge files** → `layout/visual-hierarchy.md`, `typography/type-scale.md`, `color/color-psychology.md`, `interaction/touch-targets.md`, `responsive/mobile-first.md`
-
-**4. Design decisions (with reasoning):**
-- Playfair Display headings + Inter body → artisanal yet readable
-- Amber-900 on amber-50 at 7.2:1 contrast → AAA pass
-- White text on amber buttons fails WCAG → switched to amber-900 text
-- `rounded-2xl` cards + pill-shaped CTAs → warmth, not corporate
-- 48px touch targets everywhere → mobile-heavy audience
-- Section order: Hero → Menu → About → Hours → Footer → inverted pyramid
-
-**5. Output:** A single self-contained HTML file that renders on 375px–1440px+, passes WCAG AA on all text, with warm amber palette and serif/sans font pairing.
-
-The full flow with all design decisions is in [`tests/e2e-restaurant-flow.md`](tests/e2e-restaurant-flow.md). The output is in [`tests/e2e-restaurant.html`](tests/e2e-restaurant.html).
-
-### Validated Test Cases
-
-The consultation flow is tested across 12 real-world scenarios — all pass all applicable design rules (contrast, touch targets, spacing, hierarchy). See [`tests/`](tests/) for the full set.
-
-| Scenario | Input | What It Proves |
-|----------|-------|----------------|
-| React settings page | JSX + inline styles | Outputs in user's framework, no forced Tailwind migration |
-| Barebones HTML | Hackathon-quality landing page | Full redesign with Tailwind CDN |
-| Vue dashboard | Vue 3 SFC + scoped CSS | Preserves Vue SFC structure |
-| Restaurant landing | "warm and inviting cafe" | Guided intake → personality-driven output |
-| Developer portfolio | "dark mode, emerald accent" | Dark mode design with monospace accents |
-| SaaS pricing | Brand colors provided | Brand color application, clean personality |
-| Status page | JSON API data pasted | Raw data → structured UI (Step 1D) |
-| CLI output | Terminal table pasted | Non-standard input → dark technical dashboard |
-| Email template | "welcome email" | Non-web output with email-specific constraints |
-
----
-
-## What's Inside
-
-### Preset Library — [`docs/presets/_index.md`](docs/presets/_index.md)
-
-38+ presets with multiple personality variants (Clean, Minimalist, Playful). Interactive components also have React, Vue, and Svelte framework files.
-
-| Category | Examples |
-|----------|---------|
-| **Layout Shells** | App shell, marketing page, dashboard, centered form |
-| **Components** | Hero, tabs, accordion, pagination, dropdown, avatars, data table |
-| **Full Pages** | Pricing, portfolio, restaurant, status page |
-| **Before → After** | Dashboard, landing page, form, card grid, multi-page app |
-| **Expressive** | Personal site, agency landing, agency portfolio, app showcase, scroll reveal landing, product launch, editorial blog, SaaS features, scroll story, product page, devtool landing, docs site, event page, personalized portfolio |
-| **Edge Cases** | Deploy monitor, button system, OSS landing |
-
-All presets: dark mode, WCAG AA contrast, 44px touch targets, responsive. [Composition recipes](docs/presets/_index.md#composition-recipes) show how to combine them into full pages.
-
-### Knowledge Files — 44 topics
-
-| Area | Topics |
-|------|--------|
-| **Foundations** | [Cognitive load](foundations/cognitive-load.md), [Gestalt](foundations/gestalt-principles.md), [Hick's Law](foundations/hicks-law.md), [Fitts's Law](foundations/fitts-law.md), [Aesthetic-usability](foundations/aesthetic-usability.md), [Peak-end rule](foundations/peak-end-rule.md) |
-| **Color** | [Contrast & a11y](color/contrast-and-accessibility.md), [Color systems](color/color-systems.md), [Psychology](color/color-psychology.md), [Color-blind safety](color/color-blind-safety.md) |
-| **Typography** | [Type scale](typography/type-scale.md), [Font pairing](typography/font-pairing.md), [Readability](typography/readability.md), [Web font loading](typography/web-font-loading.md) |
-| **Layout** | [Spacing system](layout/spacing-system.md), [Visual hierarchy](layout/visual-hierarchy.md), [Grid systems](layout/grid-systems.md), [Whitespace](layout/whitespace.md) |
-| **Interaction** | [Animation timing](interaction/animation-timing.md), [Micro-interactions](interaction/micro-interactions.md), [Touch targets](interaction/touch-targets.md), [Loading states](interaction/loading-states.md) |
-| **Responsive** | [Mobile-first](responsive/mobile-first.md), [Breakpoints](responsive/breakpoints.md), [Fluid typography](responsive/fluid-typography.md), [Patterns](responsive/responsive-patterns.md) |
-| **Systems** | [Design tokens](systems/design-tokens.md), [Material Design 3](systems/material-design-3.md), [Apple HIG](systems/apple-hig.md), [Building a system](systems/building-a-system.md) |
-| **Expressive** | [Visual identity](expressive/visual-identity.md), [Hero patterns](expressive/hero-patterns.md), [Scroll storytelling](expressive/scroll-storytelling.md), [Purposeful motion](expressive/purposeful-motion.md), [Scroll effect patterns](expressive/scroll-effect-patterns.md), [Curated examples](expressive/curated-examples.md) |
-| **Heuristics** | [Nielsen's 10](heuristics/nielsen-10.md), [UX frameworks](heuristics/ux-frameworks.md) |
-| **Components** | [Buttons](components/buttons.md), [Forms](components/forms.md), [Cards](components/cards.md), [Navigation](components/navigation.md), [Modals](components/modals-and-dialogs.md), [Tables](components/tables-and-lists.md), [Feedback](components/feedback.md) |
-
-Each file: 200–400 lines, concrete rules with numbers, CSS/Tailwind patterns, decision trees, sources.
-
-### Workflows
-
-| Workflow | Use when |
-|----------|----------|
-| [Quick Reference](workflows/quick-reference.md) | Need a number fast (contrast ratio, spacing value, timing) |
-| [New Project Checklist](workflows/new-project-checklist.md) | Starting from scratch |
-| [Design Review Checklist](workflows/design-review-checklist.md) | Auditing an existing design |
-
-### Critical Numbers
-
-| What | Value |
-|------|-------|
-| Text contrast (AA) | 4.5:1 |
-| Large text contrast (AA) | 3:1 |
-| Body font size | ≥16px |
-| Line height | 1.4–1.6 |
-| Line length | 45–75 characters |
-| Touch target | ≥44×44px |
-| Base spacing unit | 4px or 8px |
-| Nav items | 5–7 max |
-| Enter animation | 200–300ms |
-| Exit animation | 150–200ms |
-
----
-
-If this helped you ship something that looks good, [give it a star](../../stargazers). Found an issue? [Open one](../../issues).
-
-Sources: [research/sources.md](research/sources.md)
-</file>
-
 <file path="docs/scoring/performance.js">
 // Scoring Module: Performance
 // Weight: 5%
@@ -21216,13 +21221,21 @@ function scoreLayout(data) {
     // Find near-miss clusters (4-12px apart — elements on same axis but jagged)
     var nearMisses = 0;
     var jaggedExamples = [];
+    var edgeDetails = layout.alignmentEdgeDetails || [];
     for (var i = 1; i < clusters.length; i++) {
       var prevAvg = Math.round(clusters[i - 1].reduce(function(s,v){return s+v},0) / clusters[i - 1].length);
       var currAvg = Math.round(clusters[i].reduce(function(s,v){return s+v},0) / clusters[i].length);
       var gap = currAvg - prevAvg;
       if (gap > 3 && gap <= 12) {
         nearMisses++;
-        jaggedExamples.push(prevAvg + 'px → ' + currAvg + 'px (' + gap + 'px off)');
+        // Find example elements at each edge for actionable detail
+        var prevEl = edgeDetails.find(function(d) { return Math.abs(d.left - prevAvg) <= 3; });
+        var currEl = edgeDetails.find(function(d) { return Math.abs(d.left - currAvg) <= 3; });
+        var example = prevAvg + 'px → ' + currAvg + 'px (' + gap + 'px off)';
+        if (prevEl && currEl) {
+          example += ': ' + prevEl.tag + ' "' + (prevEl.text || '').substring(0, 20) + '" vs ' + currEl.tag + ' "' + (currEl.text || '').substring(0, 20) + '"';
+        }
+        jaggedExamples.push(example);
       }
     }
     // Also check how many unique clusters there are relative to element count
@@ -21286,7 +21299,13 @@ function scoreLayout(data) {
   }
 
   // Border radius consistency (moved from consistency to layout)
-  var radii = layout.borderRadii || [];
+  // Exclude pill/circle values (9999px, 50%, or anything > 100px) — these are intentional full-round shapes, not part of the design scale
+  var radii = (layout.borderRadii || []).filter(function(r) {
+    var v = r.value;
+    if (v === '50%' || v === '9999px') return false;
+    var px = parseFloat(v);
+    return !(px > 100);
+  });
   if (radii.length > 0) {
     checks++;
     if (radii.length <= 4) {
@@ -21294,7 +21313,7 @@ function scoreLayout(data) {
     } else {
       findings.push({
         severity: 'info',
-        title: radii.length + ' distinct border-radius values (recommend 2-4)',
+        title: radii.length + ' distinct border-radius values (recommend 2-4, excluding pill/circle shapes)',
         detail: 'Values: ' + radii.slice(0, 6).map(function(r) { return r.value + ' (' + r.count + 'x)'; }).join(', '),
         fix: 'Standardize border-radius to 2-4 values. In Tailwind: rounded-sm, rounded, rounded-lg, rounded-xl.',
         presetRef: null,
@@ -23167,19 +23186,29 @@ function scoreContrast(data) {
   data.accessibility.formLabels.withLabel = labeled;
   data.accessibility.formLabels.withoutLabel = data.accessibility.formLabels.total - labeled;
 
-  // Focus indicators (sample first 10 interactive elements)
+  // Focus indicators — actually focus elements to detect browser defaults and CSS :focus styles
   var focusSample = Array.from(interactive).slice(0, 10);
+  var _prevFocused = document.activeElement;
   focusSample.forEach(function(el) {
     if (!isVisible(el)) return;
-    var s = getComputedStyle(el);
+    var restStyle = getComputedStyle(el);
+    var restOutline = restStyle.outlineStyle;
+    var restOutlineW = restStyle.outlineWidth;
+    try { el.focus({ preventScroll: true }); } catch(e) {}
+    var focusStyle = getComputedStyle(el);
+    var hasFocusChange = focusStyle.outlineStyle !== restOutline ||
+      focusStyle.outlineWidth !== restOutlineW ||
+      (focusStyle.boxShadow !== 'none' && focusStyle.boxShadow !== restStyle.boxShadow);
     data.accessibility.focusIndicators.push({
       element: cssSelector(el),
-      outlineStyle: s.outlineStyle,
-      outlineWidth: s.outlineWidth,
-      outlineColor: s.outlineColor,
-      outlineOffset: s.outlineOffset
+      outlineStyle: focusStyle.outlineStyle,
+      outlineWidth: focusStyle.outlineWidth,
+      outlineColor: focusStyle.outlineColor,
+      outlineOffset: focusStyle.outlineOffset,
+      hasFocusChange: hasFocusChange
     });
   });
+  try { if (_prevFocused && _prevFocused.focus) _prevFocused.focus({ preventScroll: true }); else document.body.focus(); } catch(e) {}
   // Also check if stylesheets contain focus-visible rules (can't detect via getComputedStyle)
   var hasFocusVisibleCSS = Array.from(document.styleSheets).some(function(ss) {
     try { return Array.from(ss.cssRules).some(function(r) { return r.selectorText && r.selectorText.indexOf('focus-visible') !== -1; }); } catch(e) { return false; }
@@ -23991,11 +24020,12 @@ function scoreAccessibility(data) {
     });
   }
 
-  // Focus indicators
+  // Focus indicators — check if any element shows a visible change when focused
   checks++;
   var focusIndicators = a11y.focusIndicators || [];
   var hasAnyFocus = focusIndicators.some(function(f) {
-    return f.outlineStyle !== 'none' && f.outlineWidth !== '0px';
+    // Element has visible outline when focused, or showed a change on focus
+    return f.hasFocusChange || (f.outlineStyle !== 'none' && f.outlineWidth !== '0px');
   });
   var hasFocusVisibleCSS = a11y.hasFocusVisibleCSS || false;
   if (hasAnyFocus || hasFocusVisibleCSS || focusIndicators.length === 0) {
@@ -24755,7 +24785,9 @@ window.MilgReport = (function() {
   }
 
   // --- Markdown Export ---
-  function renderMarkdown(report) {
+  function renderMarkdown(report, options) {
+    var opts = options || {};
+    var skipImages = opts.skipImages || false;
     var lines = [];
     lines.push('# Design Analysis Report');
     lines.push('');
@@ -24857,8 +24889,8 @@ window.MilgReport = (function() {
       }
     }
 
-    // Screenshots (as inline base64 images in markdown)
-    if (report.raw.screenshots && report.raw.screenshots.length > 0) {
+    // Screenshots (as inline base64 images in markdown) — skip when copying for paste
+    if (!skipImages && report.raw.screenshots && report.raw.screenshots.length > 0) {
       lines.push('## Page Screenshots');
       lines.push('');
       report.raw.screenshots.forEach(function(src, idx) {
@@ -26728,15 +26760,21 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
   }
   data.layout.sectionGaps = sectionGaps;
 
-  // Alignment consistency: collect left edges of major block elements
+  // Alignment consistency: collect left edges of major block elements with selectors
   var alignTargets = document.querySelectorAll('h1,h2,h3,h4,p,ul,ol,table,form,img,figure,blockquote');
   var leftEdges = [];
+  var leftEdgeDetails = [];
   Array.from(alignTargets).forEach(function(el) {
     if (!isVisible(el) || isDecorative(el)) return;
     var r = el.getBoundingClientRect();
-    if (r.width > 50) leftEdges.push(Math.round(r.left));
+    if (r.width > 50) {
+      var edge = Math.round(r.left);
+      leftEdges.push(edge);
+      leftEdgeDetails.push({ left: edge, selector: cssSelector(el), tag: el.tagName.toLowerCase(), text: (el.textContent || '').trim().substring(0, 30) });
+    }
   });
   data.layout.alignmentEdges = leftEdges;
+  data.layout.alignmentEdgeDetails = leftEdgeDetails;
 
   // Visual hierarchy: heading size to body size ratios
   var bodyFS = parseFloat(data.typography.bodyFontSize) || 16;
@@ -26937,19 +26975,32 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
   data.accessibility.formLabels.withLabel = labeled;
   data.accessibility.formLabels.withoutLabel = data.accessibility.formLabels.total - labeled;
 
-  // Focus indicators (sample first 10 interactive elements)
+  // Focus indicators — actually focus elements to detect browser defaults and CSS :focus styles
   var focusSample = Array.from(interactive).slice(0, 10);
+  var _prevFocused = document.activeElement;
   focusSample.forEach(function(el) {
     if (!isVisible(el)) return;
-    var s = getComputedStyle(el);
+    // Get resting outline
+    var restStyle = getComputedStyle(el);
+    var restOutline = restStyle.outlineStyle;
+    var restOutlineW = restStyle.outlineWidth;
+    // Actually focus the element to see if outline changes
+    try { el.focus({ preventScroll: true }); } catch(e) {}
+    var focusStyle = getComputedStyle(el);
+    var hasFocusChange = focusStyle.outlineStyle !== restOutline ||
+      focusStyle.outlineWidth !== restOutlineW ||
+      (focusStyle.boxShadow !== 'none' && focusStyle.boxShadow !== restStyle.boxShadow);
     data.accessibility.focusIndicators.push({
       element: cssSelector(el),
-      outlineStyle: s.outlineStyle,
-      outlineWidth: s.outlineWidth,
-      outlineColor: s.outlineColor,
-      outlineOffset: s.outlineOffset
+      outlineStyle: focusStyle.outlineStyle,
+      outlineWidth: focusStyle.outlineWidth,
+      outlineColor: focusStyle.outlineColor,
+      outlineOffset: focusStyle.outlineOffset,
+      hasFocusChange: hasFocusChange
     });
   });
+  // Restore previous focus
+  try { if (_prevFocused && _prevFocused.focus) _prevFocused.focus({ preventScroll: true }); else document.body.focus(); } catch(e) {}
   // Also check if stylesheets contain focus-visible rules (can't detect via getComputedStyle)
   var hasFocusVisibleCSS = Array.from(document.styleSheets).some(function(ss) {
     try { return Array.from(ss.cssRules).some(function(r) { return r.selectorText && r.selectorText.indexOf('focus-visible') !== -1; }); } catch(e) { return false; }
@@ -27918,7 +27969,7 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
     <details class="export-details" open>
       <summary class="export-summary">Export &amp; Share</summary>
     <div class="report-controls-row">
-      <button class="btn" id="copyMdBtn" title="Copy Markdown to clipboard">
+      <button class="btn" id="copyMdBtn" title="Copy Markdown without images (for pasting into chat/docs)">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
         <span class="btn-label">Copy Markdown</span>
       </button>
@@ -28931,12 +28982,12 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
       showToast('Markdown report downloaded');
     });
 
-    // Copy markdown to clipboard
+    // Copy markdown to clipboard (without images for easy pasting)
     document.getElementById('copyMdBtn').addEventListener('click', function() {
       if (!reportData) return;
-      var md = MilgReport.renderMarkdown(reportData);
+      var md = MilgReport.renderMarkdown(reportData, { skipImages: true });
       navigator.clipboard.writeText(md).then(function() {
-        showToast('Markdown copied to clipboard');
+        showToast('Markdown copied (without images)');
       }).catch(function() {
         // Fallback
         var ta = document.createElement('textarea');

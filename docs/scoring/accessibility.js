@@ -98,11 +98,12 @@ function scoreAccessibility(data) {
     });
   }
 
-  // Focus indicators
+  // Focus indicators — check if any element shows a visible change when focused
   checks++;
   var focusIndicators = a11y.focusIndicators || [];
   var hasAnyFocus = focusIndicators.some(function(f) {
-    return f.outlineStyle !== 'none' && f.outlineWidth !== '0px';
+    // Element has visible outline when focused, or showed a change on focus
+    return f.hasFocusChange || (f.outlineStyle !== 'none' && f.outlineWidth !== '0px');
   });
   var hasFocusVisibleCSS = a11y.hasFocusVisibleCSS || false;
   if (hasAnyFocus || hasFocusVisibleCSS || focusIndicators.length === 0) {

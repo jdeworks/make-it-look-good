@@ -53,13 +53,21 @@ function scoreLayout(data) {
     // Find near-miss clusters (4-12px apart — elements on same axis but jagged)
     var nearMisses = 0;
     var jaggedExamples = [];
+    var edgeDetails = layout.alignmentEdgeDetails || [];
     for (var i = 1; i < clusters.length; i++) {
       var prevAvg = Math.round(clusters[i - 1].reduce(function(s,v){return s+v},0) / clusters[i - 1].length);
       var currAvg = Math.round(clusters[i].reduce(function(s,v){return s+v},0) / clusters[i].length);
       var gap = currAvg - prevAvg;
       if (gap > 3 && gap <= 12) {
         nearMisses++;
-        jaggedExamples.push(prevAvg + 'px → ' + currAvg + 'px (' + gap + 'px off)');
+        // Find example elements at each edge for actionable detail
+        var prevEl = edgeDetails.find(function(d) { return Math.abs(d.left - prevAvg) <= 3; });
+        var currEl = edgeDetails.find(function(d) { return Math.abs(d.left - currAvg) <= 3; });
+        var example = prevAvg + 'px → ' + currAvg + 'px (' + gap + 'px off)';
+        if (prevEl && currEl) {
+          example += ': ' + prevEl.tag + ' "' + (prevEl.text || '').substring(0, 20) + '" vs ' + currEl.tag + ' "' + (currEl.text || '').substring(0, 20) + '"';
+        }
+        jaggedExamples.push(example);
       }
     }
     // Also check how many unique clusters there are relative to element count
@@ -123,7 +131,13 @@ function scoreLayout(data) {
   }
 
   // Border radius consistency (moved from consistency to layout)
-  var radii = layout.borderRadii || [];
+  // Exclude pill/circle values (9999px, 50%, or anything > 100px) — these are intentional full-round shapes, not part of the design scale
+  var radii = (layout.borderRadii || []).filter(function(r) {
+    var v = r.value;
+    if (v === '50%' || v === '9999px') return false;
+    var px = parseFloat(v);
+    return !(px > 100);
+  });
   if (radii.length > 0) {
     checks++;
     if (radii.length <= 4) {
@@ -131,7 +145,7 @@ function scoreLayout(data) {
     } else {
       findings.push({
         severity: 'info',
-        title: radii.length + ' distinct border-radius values (recommend 2-4)',
+        title: radii.length + ' distinct border-radius values (recommend 2-4, excluding pill/circle shapes)',
         detail: 'Values: ' + radii.slice(0, 6).map(function(r) { return r.value + ' (' + r.count + 'x)'; }).join(', '),
         fix: 'Standardize border-radius to 2-4 values. In Tailwind: rounded-sm, rounded, rounded-lg, rounded-xl.',
         presetRef: null,
