@@ -431,6 +431,103 @@
     data.accessibility.bgImageBehindText = 0;
     document.querySelectorAll('p,h1,h2,h3,h4,h5,h6,li,span').forEach(function(el) { if (!isVisible(el)) return; var bgi = getComputedStyle(el).backgroundImage; if (bgi && bgi !== 'none' && bgi.indexOf('url(') !== -1 && el.textContent.trim().length > 10) data.accessibility.bgImageBehindText++; });
 
+    // --- Viewport visibility: detect elements positioned off-screen on x-axis ---
+    var vpW = window.innerWidth;
+    data.layout.offscreenElements = [];
+    var meaningfulSel = 'button,a,[role="menuitem"],[role="menu"],li,p,h1,h2,h3,h4,h5,h6,img,input,select,textarea,td,th,label,span,div';
+    document.querySelectorAll(meaningfulSel).forEach(function(el) {
+      if (!isVisible(el) || isDecorative(el)) return;
+      var r = el.getBoundingClientRect();
+      if (r.width < 4 || r.height < 4) return;
+      // Element fully off-screen on x-axis? (right edge left of viewport, or left edge right of viewport)
+      var fullyOff = r.right < 0 || r.left >= vpW;
+      // Element partially overflowing right edge significantly (>50% of its width clipped)
+      var majorClip = r.left < vpW && r.right > vpW && (r.right - vpW) > r.width * 0.5;
+      if (!fullyOff && !majorClip) return;
+      // Skip if inside a scroll container (overflow-x: auto/scroll) — tables, code blocks, etc.
+      var anc = el.parentElement;
+      var inScroll = false;
+      while (anc && anc !== document.body && anc !== document.documentElement) {
+        var ox = getComputedStyle(anc).overflowX;
+        if (ox === 'auto' || ox === 'scroll') { inScroll = true; break; }
+        anc = anc.parentElement;
+      }
+      if (inScroll) return;
+      // Skip children of already-recorded off-screen parents (avoid duplicates)
+      var parentAlready = data.layout.offscreenElements.some(function(rec) {
+        try { var pel = document.querySelector(rec.selector); return pel && pel.contains(el) && pel !== el; } catch(e) { return false; }
+      });
+      if (parentAlready) return;
+      data.layout.offscreenElements.push({
+        element: el.tagName.toLowerCase(),
+        selector: cssSelector(el),
+        text: (el.textContent || el.getAttribute('aria-label') || '').trim().substring(0, 50),
+        left: Math.round(r.left),
+        right: Math.round(r.right),
+        vpWidth: vpW,
+        reason: r.right < 0 ? 'left-overflow' : r.left >= vpW ? 'right-overflow' : 'major-clip'
+      });
+    });
+    data.layout.offscreenElements = data.layout.offscreenElements.slice(0, 20);
+
+    // --- Missing data points expected by scoring modules ---
+    data.structure.hasHorizontalOverflow = document.documentElement.scrollWidth > document.documentElement.clientWidth;
+
+    // Border radii (for layout/consistency scoring)
+    var radiusMap = {};
+    Array.from(allElements).slice(0, 500).forEach(function(el) {
+      if (!isVisible(el)) return;
+      var br = getComputedStyle(el).borderRadius;
+      if (br && br !== '0px') { radiusMap[br] = (radiusMap[br] || 0) + 1; }
+    });
+    data.layout.borderRadii = Object.keys(radiusMap).map(function(k) { return { value: k, count: radiusMap[k] }; }).sort(function(a, b) { return b.count - a.count; }).slice(0, 15);
+
+    // Horizontal scroll containers
+    data.layout.horizontalScrollContainers = [];
+    data.layout.nestedScrollbars = 0;
+    var overflowEls = document.querySelectorAll('[style*="overflow"],[class*="overflow"]');
+    overflowEls.forEach(function(oel) {
+      if (oel.scrollWidth > oel.clientWidth + 2 && oel.clientWidth > 0) {
+        var tag = oel.tagName.toLowerCase();
+        var intentional = tag === 'table' || tag === 'pre' || tag === 'code' ||
+          oel.closest('table,pre,code,.overflow-x-auto,.overflow-x-scroll') !== null ||
+          /overflow-x-(auto|scroll)/.test(oel.className || '');
+        data.layout.horizontalScrollContainers.push({
+          selector: cssSelector(oel),
+          intentional: intentional,
+          scrollWidth: oel.scrollWidth,
+          overflow: Math.round(oel.scrollWidth - oel.clientWidth),
+          element: tag
+        });
+        // Nested scrollbar check
+        var scrollParent = oel.parentElement;
+        while (scrollParent && scrollParent !== document.body) {
+          var ps = getComputedStyle(scrollParent);
+          if (ps.overflowY === 'auto' || ps.overflowY === 'scroll') {
+            data.layout.nestedScrollbars++;
+            break;
+          }
+          scrollParent = scrollParent.parentElement;
+        }
+      }
+    });
+
+    // Fixed-width and truncated elements
+    data.structure.fixedWidthElements = 0;
+    document.querySelectorAll('[style*="width"]').forEach(function(el) {
+      if (!isVisible(el)) return;
+      var w = el.style.width;
+      if (w && /^\d+(px)?$/.test(w) && parseFloat(w) > 300) {
+        var parentW = el.parentElement ? el.parentElement.getBoundingClientRect().width : vpW;
+        if (parseFloat(w) > parentW * 0.8) data.structure.fixedWidthElements++;
+      }
+    });
+    data.structure.truncatedElements = 0;
+    document.querySelectorAll('[class*="truncate"],[class*="ellipsis"],[style*="text-overflow"]').forEach(function(tel) {
+      if (!isVisible(tel)) return;
+      if (tel.scrollWidth > tel.clientWidth + 2) data.structure.truncatedElements++;
+    });
+
     parent.postMessage({ type: 'milg-analyzer-result', data: data }, '*');
     // Trigger screenshot capture if configured (function injected by parent)
     if (typeof window.__milgDoScreenshots === 'function') {

@@ -998,6 +998,41 @@
     }
   }
 
+  // --- Viewport visibility: elements positioned off-screen on x-axis ---
+  var _vpW = window.innerWidth;
+  data.layout.offscreenElements = [];
+  var _meaningfulSel = 'button,a,[role="menuitem"],[role="menu"],li,p,h1,h2,h3,h4,h5,h6,img,input,select,textarea,td,th,label,span,div';
+  document.querySelectorAll(_meaningfulSel).forEach(function(el) {
+    if (!isVisible(el) || isDecorative(el)) return;
+    var r = el.getBoundingClientRect();
+    if (r.width < 4 || r.height < 4) return;
+    var fullyOff = r.right < 0 || r.left >= _vpW;
+    var majorClip = r.left < _vpW && r.right > _vpW && (r.right - _vpW) > r.width * 0.5;
+    if (!fullyOff && !majorClip) return;
+    var anc = el.parentElement;
+    var inScroll = false;
+    while (anc && anc !== document.body && anc !== document.documentElement) {
+      var ox = getComputedStyle(anc).overflowX;
+      if (ox === 'auto' || ox === 'scroll') { inScroll = true; break; }
+      anc = anc.parentElement;
+    }
+    if (inScroll) return;
+    var parentAlready = data.layout.offscreenElements.some(function(rec) {
+      try { var pel = document.querySelector(rec.selector); return pel && pel.contains(el) && pel !== el; } catch(e) { return false; }
+    });
+    if (parentAlready) return;
+    data.layout.offscreenElements.push({
+      element: el.tagName.toLowerCase(),
+      selector: cssSelector(el),
+      text: (el.textContent || el.getAttribute('aria-label') || '').trim().substring(0, 50),
+      left: Math.round(r.left),
+      right: Math.round(r.right),
+      vpWidth: _vpW,
+      reason: r.right < 0 ? 'left-overflow' : r.left >= _vpW ? 'right-overflow' : 'major-clip'
+    });
+  });
+  data.layout.offscreenElements = data.layout.offscreenElements.slice(0, 20);
+
   // --- Letter spacing issues ---
   data.typography.letterSpacingIssues = 0;
   for (var li = 0; li < allElements.length && li < 500; li++) {

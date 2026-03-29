@@ -159,6 +159,28 @@ function scoreLayout(data) {
     }
   }
 
+  // Off-screen elements: visible elements positioned outside viewport (x-axis)
+  var offscreen = layout.offscreenElements || [];
+  if (offscreen.length > 0) {
+    checks++;
+    var offDetails = offscreen.slice(0, 5).map(function(e) {
+      var label = e.element;
+      if (e.text) label += ' ("' + e.text.substring(0, 25) + (e.text.length > 25 ? '…' : '') + '")';
+      return label + ' at x=' + e.left + 'px';
+    });
+    findings.push({
+      severity: offscreen.length > 3 ? 'error' : 'warning',
+      title: offscreen.length + ' element(s) positioned outside viewport',
+      detail: offDetails.join('; '),
+      fix: 'Check absolute/fixed positioning. On mobile, dropdown menus with right-0 may overflow left. Use left-0 sm:right-0 or max-w-[calc(100vw-2rem)]. For elements extending right, check fixed widths wider than viewport.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
+    });
+  } else {
+    checks++;
+    passed++;
+  }
+
   // Horizontal scroll on containers (not tables/code which are intentional)
   var hScrollContainers = layout.horizontalScrollContainers || [];
   var unintentionalHScroll = hScrollContainers.filter(function(c) { return !c.intentional; });

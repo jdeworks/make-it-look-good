@@ -2709,7 +2709,7 @@ For Tailwind v4, add `@import "tailwindcss"` to your main CSS file. No `tailwind
     "cards": { "label": "Card Grid", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
     "project": { "label": "Multi-Page App", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
     "pricing": { "label": "SaaS Pricing", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "portfolio": { "label": "Portfolio (Dark)", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "portfolio": { "label": "Portfolio", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
     "restaurant": { "label": "Restaurant (Warm)", "personalities": { "clean": { "primaryColor": "amber" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
     "statuspage": { "label": "Status Page", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
     "deploy": { "label": "Deploy Monitor", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
@@ -9084,371 +9084,6 @@ Choosing a responsive pattern?
 - Ethan Marcotte (2011). "Responsive Web Design." A Book Apart.
 </file>
 
-<file path="scripts/test-template.mjs">
-#!/usr/bin/env node
-// Test a specific template across all combinations (effects × viewports × dark modes)
-// Usage:
-//   node scripts/test-template.mjs dashboard/clean     # test one template
-//   node scripts/test-template.mjs dashboard            # test all variants of dashboard
-//   node scripts/test-template.mjs --all                # test everything (full matrix)
-//   node scripts/test-template.mjs --all --threads=6    # parallel threads
-//
-// Options:
-//   --threads=N    Number of concurrent browser pages (default: 3)
-//   --all          Test all templates
-//   --light-only   Skip dark mode tests
-//   --desktop-only Skip mobile/tablet viewports
-//
-// Results saved to: research/template-results/<template-name>.json + .md
-
-import puppeteer from 'puppeteer';
-import { createServer } from 'http';
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
-import { join, extname } from 'path';
-
-const DOCS_DIR = join(import.meta.dirname, '..', 'docs');
-const RESEARCH_DIR = join(import.meta.dirname, '..', 'research');
-const RESULTS_DIR = join(RESEARCH_DIR, 'template-results');
-const PORT = 8767;
-
-const args = process.argv.slice(2);
-const ALL = args.includes('--all');
-const LIGHT_ONLY = args.includes('--light-only');
-const DESKTOP_ONLY = args.includes('--desktop-only');
-const THREADS = parseInt((args.find(a => a.startsWith('--threads=')) || '--threads=3').split('=')[1]);
-const TEMPLATE = args.find(a => !a.startsWith('--')) || '';
-
-if (!ALL && !TEMPLATE) {
-  console.log('Usage: node scripts/test-template.mjs <template> [--threads=N] [--light-only] [--desktop-only]');
-  console.log('       node scripts/test-template.mjs --all [--threads=N]');
-  console.log('\nExamples:');
-  console.log('  node scripts/test-template.mjs dashboard/clean');
-  console.log('  node scripts/test-template.mjs dashboard');
-  console.log('  node scripts/test-template.mjs --all --threads=6');
-  process.exit(0);
-}
-
-// Effect names — CSS extracted from test-full-matrix.mjs
-const EFFECT_LIST = [
-  { name: 'none', css: '' },
-  { name: 'hushed' },
-  { name: 'bouncy' },
-  { name: 'frosted' },
-  { name: 'serif' },
-];
-
-// Read effects from the full matrix test file
-let fullMatrixSrc;
-try {
-  fullMatrixSrc = readFileSync(join(import.meta.dirname, 'test-full-matrix.mjs'), 'utf8');
-} catch(e) {
-  console.error('Cannot read test-full-matrix.mjs for effect definitions');
-  process.exit(1);
-}
-
-// Extract each effect's CSS from the source
-function extractEffectCSS(src, name) {
-  if (name === 'none') return '';
-  const re = new RegExp(`\\{\\s*name:\\s*'${name}'\\s*,\\s*css:\\s*\`([\\s\\S]*?)\`\\s*\\}`, 'm');
-  const m = src.match(re);
-  return m ? m[1] : '';
-}
-
-const EFFECTS_PARSED = EFFECT_LIST.map(e => ({
-  name: e.name,
-  css: extractEffectCSS(fullMatrixSrc, e.name)
-}));
-
-const VIEWPORTS = DESKTOP_ONLY
-  ? [{ w: 1280, h: 900 }]
-  : [{ w: 375, h: 812 }, { w: 768, h: 1024 }, { w: 1280, h: 900 }];
-
-const DARK_MODES = LIGHT_ONLY ? [false] : [false, true];
-
-// Server
-function startServer() {
-  const mimeTypes = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2' };
-  const server = createServer((req, res) => {
-    let filePath = join(DOCS_DIR, req.url === '/' ? 'index.html' : req.url);
-    if (!existsSync(filePath)) { res.writeHead(404); res.end('Not found'); return; }
-    const ext = extname(filePath);
-    res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' });
-    res.end(readFileSync(filePath));
-  });
-  server.listen(PORT);
-  return server;
-}
-
-// Build test list
-function buildTests() {
-  const manifest = JSON.parse(readFileSync(join(DOCS_DIR, 'presets', 'index.json'), 'utf8'));
-  const tests = [];
-
-  for (const [el, info] of Object.entries(manifest.elements)) {
-    const personalities = Object.keys(info.personalities || {});
-    for (const pers of personalities) {
-      const presetKey = `${el}/${pers}`;
-
-      // Filter
-      if (!ALL) {
-        if (TEMPLATE.includes('/')) {
-          // Exact match: dashboard/clean
-          if (presetKey !== TEMPLATE) continue;
-        } else {
-          // Element match: dashboard (all variants)
-          if (el !== TEMPLATE) continue;
-        }
-      }
-
-      const file = join(DOCS_DIR, 'presets', el, pers + '.html');
-      if (!existsSync(file)) continue;
-
-      for (const effect of EFFECTS_PARSED) {
-        for (const vp of VIEWPORTS) {
-          for (const dark of DARK_MODES) {
-            tests.push({ element: el, personality: pers, effect: effect.name, effectCSS: effect.css, viewport: vp, dark });
-          }
-        }
-      }
-    }
-  }
-  return tests;
-}
-
-function testKey(t) {
-  return `${t.element}/${t.personality}|${t.effect}|${t.viewport.w}|${t.dark ? 'dark' : 'light'}`;
-}
-
-// Run a single test (same logic as full matrix)
-async function runTest(page, t) {
-  const html = readFileSync(join(DOCS_DIR, 'presets', t.element, t.personality + '.html'), 'utf8');
-  await page.setViewport({ width: t.viewport.w, height: t.viewport.h });
-  await page.goto(`http://localhost:${PORT}/tests/test-presets-rendered.html`, { waitUntil: 'networkidle0', timeout: 15000 });
-
-  const result = await page.evaluate(async (html, element, personality, effectCSS, dark, vpWidth) => {
-    return new Promise((resolve) => {
-      const iframe = document.createElement('iframe');
-      iframe.style.cssText = `position:fixed;top:-9999px;left:-9999px;width:${vpWidth}px;height:900px;border:none;`;
-      iframe.sandbox = 'allow-scripts allow-same-origin';
-      document.body.appendChild(iframe);
-
-      let handled = false;
-      function onMsg(e) {
-        if (!e.data || e.data.type !== 'milg-headless-result') return;
-        if (handled) return;
-        handled = true;
-        window.removeEventListener('message', onMsg);
-        if (iframe.parentNode) document.body.removeChild(iframe);
-
-        const data = e.data.data;
-        data.profile = 'general';
-        data.meta.isFragment = true;
-        data.meta.url = element + '/' + personality;
-        try {
-          const report = window.MilgScoring.runScoring(data);
-
-          // Read darkness level from extraction (computed area-weighted in extractFromDocument)
-          var darknessLevel = (data.colors && data.colors.darknessLevel) || 5;
-
-          resolve({
-            overall: report.overall,
-            grade: report.grade,
-            darknessLevel,
-            categories: report.categories.map(c => ({
-              label: c.label, score: c.score, na: !!c.notApplicable,
-              errors: c.findings.filter(f => f.severity === 'error').length,
-              warnings: c.findings.filter(f => f.severity === 'warning').length,
-              findings: c.findings.map(f => ({ severity: f.severity, title: f.title }))
-            }))
-          });
-        } catch(err) {
-          resolve({ error: err.message });
-        }
-      }
-      window.addEventListener('message', onMsg);
-
-      fetch('/analyzer.js').then(r => r.text()).then(code => {
-        const match = code.match(/function extractFromDocument\(\)\s*\{/);
-        if (!match) { resolve({ error: 'No extractFromDocument' }); return; }
-        const start = code.indexOf(match[0]);
-        let depth = 0, end = start;
-        for (let i = start; i < code.length; i++) {
-          if (code[i] === '{') depth++;
-          if (code[i] === '}') { depth--; if (depth === 0) { end = i + 1; break; } }
-        }
-        const extractFn = code.substring(start, end).replace(/milg-analyzer-result/g, 'milg-headless-result');
-
-        const darkClass = dark ? ' class="dark"' : '';
-        const darkVariantCSS = '@custom-variant dark (&:where(.dark, .dark *));';
-        const srcdoc = '<!DOCTYPE html><html lang="en"' + darkClass + '><head><meta charset="UTF-8">' +
-          '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
-          '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
-          (dark ? '<style type="text/tailwindcss">' + darkVariantCSS + '</style>' : '') +
-          (effectCSS ? '<style>' + effectCSS + '</style>' : '') +
-          '<style>body{margin:0}</style></head><body>' +
-          '<script>window.__milgIsFragment=true;</' + 'script>' +
-          html +
-          '<script>setTimeout(function(){(' + extractFn + ')()}, 2500);</' + 'script>' +
-          '</body></html>';
-        iframe.srcdoc = srcdoc;
-      });
-
-      setTimeout(() => {
-        if (handled) return;
-        handled = true;
-        window.removeEventListener('message', onMsg);
-        if (iframe.parentNode) document.body.removeChild(iframe);
-        resolve({ error: 'Timeout' });
-      }, 15000);
-    });
-  }, html, t.element, t.personality, t.effectCSS, t.dark, t.viewport.w);
-
-  return result;
-}
-
-// Generate per-template report
-function generateReport(templateName, results) {
-  const ok = results.filter(r => !r.error);
-  if (ok.length === 0) return '# No results\n';
-
-  const avg = Math.round(ok.reduce((s, r) => s + r.overall, 0) / ok.length);
-  const min = Math.min(...ok.map(r => r.overall));
-  const max = Math.max(...ok.map(r => r.overall));
-
-  let md = `# Test Results: ${templateName}\n\n`;
-  md += `**Date:** ${new Date().toISOString()}\n`;
-  md += `**Tests:** ${ok.length} | **Avg:** ${avg} | **Min:** ${min} | **Max:** ${max}\n\n`;
-
-  // Score matrix
-  md += '## Score Matrix\n\n';
-  md += '| Effect | Viewport | Mode | Score | Grade | DL | Errors | Warnings |\n';
-  md += '|--------|----------|------|-------|-------|----|--------|----------|\n';
-  for (const r of ok.sort((a, b) => a.overall - b.overall)) {
-    const errs = r.categories.reduce((s, c) => s + c.errors, 0);
-    const warns = r.categories.reduce((s, c) => s + c.warnings, 0);
-    md += `| ${r.effect} | ${r.viewport.w} | ${r.dark ? 'dark' : 'light'} | ${r.overall} | ${r.grade} | ${r.darknessLevel || '?'} | ${errs} | ${warns} |\n`;
-  }
-
-  // Issues
-  md += '\n## Issues Found\n\n';
-  const issueCounts = {};
-  for (const r of ok) {
-    for (const c of r.categories) {
-      for (const f of c.findings) {
-        if (f.severity === 'info') continue;
-        const key = `[${f.severity}] ${c.label}: ${f.title.substring(0, 80)}`;
-        issueCounts[key] = (issueCounts[key] || 0) + 1;
-      }
-    }
-  }
-  const sorted = Object.entries(issueCounts).sort((a, b) => b[1] - a[1]);
-  for (const [issue, count] of sorted) {
-    md += `- **${count}x** ${issue}\n`;
-  }
-
-  // Darkness levels
-  md += '\n## Darkness Levels\n\n';
-  const byMode = {};
-  for (const r of ok) {
-    const modeKey = r.dark ? 'dark' : 'light';
-    if (!byMode[modeKey]) byMode[modeKey] = [];
-    byMode[modeKey].push(r.darknessLevel || 5);
-  }
-  for (const [mode, levels] of Object.entries(byMode)) {
-    const avgDL = (levels.reduce((s, l) => s + l, 0) / levels.length).toFixed(1);
-    md += `- **${mode}:** avg DL=${avgDL} (range ${Math.min(...levels)}-${Math.max(...levels)})\n`;
-  }
-
-  return md;
-}
-
-// Main
-async function main() {
-  const tests = buildTests();
-  if (tests.length === 0) {
-    console.error(`No tests found for "${TEMPLATE}". Check the template name exists in docs/presets/index.json`);
-    process.exit(1);
-  }
-
-  const templateName = ALL ? 'all' : TEMPLATE;
-  console.log(`Testing: ${templateName} (${tests.length} combinations, ${THREADS} threads)`);
-
-  if (!existsSync(RESULTS_DIR)) mkdirSync(RESULTS_DIR, { recursive: true });
-
-  const server = startServer();
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage']
-  });
-
-  const pages = [];
-  for (let i = 0; i < THREADS; i++) {
-    pages.push(await browser.newPage());
-  }
-
-  const results = [];
-  let completed = 0;
-  const startTime = Date.now();
-
-  async function processTest(page, t) {
-    const key = testKey(t);
-    try {
-      const result = await runTest(page, t);
-      completed++;
-      const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
-      const eta = Math.round((Date.now() - startTime) / completed * (tests.length - completed) / 1000);
-
-      if (result.error) {
-        process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s (ETA ${eta}s) ${key} ERROR: ${result.error}          \n`);
-        results.push({ key, ...t, error: result.error });
-      } else {
-        const e = result.categories.reduce((s, c) => s + c.errors, 0);
-        const w = result.categories.reduce((s, c) => s + c.warnings, 0);
-        process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s (ETA ${eta}s) ${key} → ${result.overall}${result.grade} D${result.darknessLevel || '?'} (${e}E ${w}W)          \n`);
-        results.push({ key, ...t, ...result });
-      }
-    } catch (err) {
-      completed++;
-      results.push({ key, ...t, error: err.message });
-    }
-  }
-
-  let idx = 0;
-  async function worker(page) {
-    while (idx < tests.length) {
-      const myIdx = idx++;
-      await processTest(page, tests[myIdx]);
-    }
-  }
-
-  await Promise.all(pages.map(p => worker(p)));
-  await browser.close();
-  server.close();
-
-  // Save results
-  const safeName = templateName.replace(/\//g, '-');
-  const jsonFile = join(RESULTS_DIR, `${safeName}.json`);
-  const mdFile = join(RESULTS_DIR, `${safeName}.md`);
-
-  writeFileSync(jsonFile, JSON.stringify(results, null, 2));
-  const md = generateReport(templateName, results);
-  writeFileSync(mdFile, md);
-
-  console.log(`\nResults saved to:`);
-  console.log(`  ${jsonFile}`);
-  console.log(`  ${mdFile}`);
-
-  // Summary
-  const ok = results.filter(r => !r.error);
-  const avg = ok.length > 0 ? Math.round(ok.reduce((s, r) => s + r.overall, 0) / ok.length) : 0;
-  console.log(`\n=== SUMMARY ===`);
-  console.log(`Tested: ${ok.length} | Errors: ${results.filter(r => r.error).length}`);
-  console.log(`Average: ${avg} | Min: ${Math.min(...ok.map(r => r.overall))} | Max: ${Math.max(...ok.map(r => r.overall))}`);
-}
-
-main().catch(err => { console.error('Fatal:', err); process.exit(1); });
-</file>
-
 <file path="systems/apple-hig.md">
 # Apple Human Interface Guidelines
 
@@ -14864,7 +14499,7 @@ Start here. Everything builds on these.
 | Preset | Description |
 |--------|-------------|
 | [`pricing/`](pricing/) | SaaS pricing page |
-| [`portfolio/`](portfolio/) | Portfolio (dark theme) |
+| [`portfolio/`](portfolio/) | Portfolio (clean variant is dark-themed) |
 | [`restaurant/`](restaurant/) | Restaurant (warm theme) |
 | [`statuspage/`](statuspage/) | Status page |
 
@@ -16754,733 +16389,6 @@ echo ""
 echo "Next: commit docs/analyzer.js and push to deploy."
 </file>
 
-<file path="scripts/test-full-matrix.mjs">
-#!/usr/bin/env node
-// Full matrix test runner: preset × personality × effect × viewport × dark mode
-// Usage: node scripts/test-full-matrix.mjs [--quick] [--filter=hero] [--effects-only] [--divergence-only]
-//
-// --quick: skip viewports (test only 1280px), skip dark mode → 650 tests instead of 3900
-// --filter=hero: only test presets matching "hero"
-// --effects-only: only test effect variants (skip viewport/dark combos)
-// --divergence-only: skip scoring, only compute divergence from cached results
-//
-// Outputs: research/full-matrix-results.md (scores + divergence + flagged combos)
-
-import puppeteer from 'puppeteer';
-import { createServer } from 'http';
-import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from 'fs';
-import { join, extname } from 'path';
-
-const DOCS_DIR = join(import.meta.dirname, '..', 'docs');
-const RESEARCH_DIR = join(import.meta.dirname, '..', 'research');
-const CACHE_FILE = join(RESEARCH_DIR, 'full-matrix-cache.json');
-const PORT = 8766; // different from basic test runner
-
-const args = process.argv.slice(2);
-const QUICK = args.includes('--quick');
-const EFFECTS_ONLY = args.includes('--effects-only');
-const DIVERGENCE_ONLY = args.includes('--divergence-only');
-const FILTER = (args.find(a => a.startsWith('--filter=')) || '').replace('--filter=', '');
-
-// --- Effect definitions (must match docs/app.js visualStyles) ---
-const EFFECTS = [
-  { name: 'none', css: '' },
-  { name: 'hushed', css: `[class*="shadow"]{box-shadow:none!important}
-[class*="border"]{border-color:rgba(0,0,0,0.06)!important}
-[class*="rounded-lg"],[class*="rounded-xl"],[class*="rounded-2xl"],[class*="rounded-3xl"]{border-radius:4px!important}
-[class*="rounded-full"]{border-radius:9999px!important}
-h1,h2,h3,h4,h5,h6{font-weight:300!important;letter-spacing:0.02em}
-h1{font-size:2.25em!important}
-p,span,li,td,th{opacity:0.75}
-button:not([class*="bg-"]),[role="button"]:not([class*="bg-"]){font-weight:400!important;letter-spacing:0.06em;text-transform:uppercase;font-size:0.82em!important;border:1px solid rgba(0,0,0,0.1)!important;background:transparent!important;color:inherit!important}
-button[class*="bg-"],[role="button"][class*="bg-"]{font-weight:400!important;letter-spacing:0.06em;text-transform:uppercase;font-size:0.82em!important;opacity:0.85}
-button:hover,a:hover,[role="button"]:hover{opacity:0.5;transition:opacity 250ms ease-out}
-nav,aside,[class*="border-b"],[class*="border-r"]{border-color:rgba(0,0,0,0.04)!important}` },
-  { name: 'bouncy', css: `[class*="rounded-md"],[class*="rounded-lg"]{border-radius:16px!important}
-[class*="rounded-xl"],[class*="rounded-2xl"],[class*="rounded-3xl"]{border-radius:24px!important}
-[class*="shadow-sm"],[class*="shadow-md"]{box-shadow:0 4px 14px rgba(99,102,241,0.18),0 2px 6px rgba(244,63,94,0.12)!important}
-[class*="shadow-lg"],[class*="shadow-xl"]{box-shadow:0 10px 30px rgba(99,102,241,0.22),0 4px 12px rgba(244,63,94,0.14)!important}
-button,[role="button"],article{transition:transform 300ms cubic-bezier(0.34,1.56,0.64,1),box-shadow 300ms cubic-bezier(0.34,1.56,0.64,1)!important}
-button:hover,[role="button"]:hover{transform:scale(1.05) translateY(-2px)!important}
-article:hover{transform:translateY(-4px);box-shadow:0 12px 30px rgba(99,102,241,0.2)!important}
-h1,h2,h3{font-weight:800!important;letter-spacing:-0.01em}
-input,select,textarea{border-radius:14px!important}
-button:active,[role="button"]:active{transform:scale(0.95)!important;transition-duration:80ms!important}` },
-  { name: 'frosted', css: `body:not(.dark){background:linear-gradient(135deg,#dbeafe 0%,#ede9fe 35%,#fce7f3 65%,#e0f2fe 100%)!important;min-height:100vh}
-.dark body,.dark.min-h-screen,html.dark body{background:linear-gradient(135deg,#0f172a 0%,#1e1b4b 35%,#1e1b4b 65%,#0f172a 100%)!important;min-height:100vh}
-:not(.dark) [class*="bg-white"]{background:rgba(255,255,255,0.55)!important;-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);border:1px solid rgba(255,255,255,0.4)!important;box-shadow:0 4px 24px rgba(0,0,0,0.04),inset 0 1px 0 rgba(255,255,255,0.6)!important}
-.dark [class*="bg-slate-900"],.dark [class*="bg-slate-950"],.dark [class*="bg-gray-900"],.dark [class*="bg-gray-950"]{background:rgba(15,23,42,0.55)!important;-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);border:1px solid rgba(99,102,241,0.15)!important;box-shadow:0 4px 24px rgba(0,0,0,0.2),inset 0 1px 0 rgba(99,102,241,0.1)!important}
-:not(.dark) [class*="bg-slate-50"],:not(.dark) [class*="bg-gray-50"],:not(.dark) [class*="bg-zinc-50"]{background:rgba(248,250,252,0.4)!important;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
-.dark [class*="bg-slate-800"],.dark [class*="bg-gray-800"],.dark [class*="bg-slate-850"]{background:rgba(30,41,59,0.5)!important;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
-[class*="shadow-sm"],[class*="shadow-md"],[class*="shadow-lg"],[class*="shadow-xl"]{box-shadow:0 4px 20px rgba(0,0,0,0.05),inset 0 1px 0 rgba(255,255,255,0.5)!important}
-.dark [class*="shadow-sm"],.dark [class*="shadow-md"],.dark [class*="shadow-lg"],.dark [class*="shadow-xl"]{box-shadow:0 4px 20px rgba(0,0,0,0.3),inset 0 1px 0 rgba(99,102,241,0.1)!important}
-[class*="rounded-lg"]{border-radius:14px!important}
-[class*="rounded-xl"],[class*="rounded-2xl"]{border-radius:18px!important}
-:not(.dark) [class*="border-slate-200"],:not(.dark) [class*="border-gray-200"],:not(.dark) [class*="border-zinc-200"]{border-color:rgba(255,255,255,0.35)!important}
-.dark [class*="border-slate-700"],.dark [class*="border-slate-800"],.dark [class*="border-gray-700"],.dark [class*="border-gray-800"]{border-color:rgba(99,102,241,0.15)!important}
-[class*="divide-slate"],[class*="divide-gray"],[class*="divide-zinc"]{--tw-divide-opacity:0.3}
-:not(.dark) [class*="border-t"]:not([class*="border-t-0"]){border-color:rgba(100,116,139,0.2)!important}
-.dark [class*="border-t"]:not([class*="border-t-0"]){border-color:rgba(99,102,241,0.12)!important}
-:not(.dark) [class*="text-slate-500"],:not(.dark) [class*="text-gray-500"],:not(.dark) [class*="text-zinc-500"]{color:rgb(51,65,85)!important}
-:not(.dark) [class*="text-slate-400"],:not(.dark) [class*="text-gray-400"]{color:rgb(71,85,105)!important}
-.dark [class*="text-slate-400"],.dark [class*="text-gray-400"]{color:rgb(148,163,184)!important}
-.dark [class*="text-slate-300"],.dark [class*="text-gray-300"]{color:rgb(203,213,225)!important}
-input,select,textarea{-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);border-radius:12px!important}
-:not(.dark) input,:not(.dark) select,:not(.dark) textarea{background:rgba(255,255,255,0.45)!important;border:1px solid rgba(255,255,255,0.4)!important}
-.dark input,.dark select,.dark textarea{background:rgba(15,23,42,0.45)!important;border:1px solid rgba(99,102,241,0.2)!important}
-button:hover,[role="button"]:hover{box-shadow:0 0 24px rgba(99,102,241,0.18),0 6px 20px rgba(0,0,0,0.06)!important;transition:box-shadow 250ms ease-out,transform 250ms ease-out;transform:translateY(-1px)}
-:not(.dark) nav,:not(.dark) aside,:not(.dark) header{-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);background:rgba(255,255,255,0.65)!important}
-.dark nav,.dark aside,.dark header{-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);background:rgba(15,23,42,0.65)!important}` },
-  { name: 'serif', css: `@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap');
-h1,h2,h3,h4,h5,h6{font-family:'Playfair Display',Georgia,'Times New Roman',serif!important;letter-spacing:-0.02em;line-height:1.15}
-h1{font-weight:400!important;font-size:2.75em!important;letter-spacing:-0.03em}
-h2{font-weight:700!important}
-h3,h4,h5,h6{font-weight:700!important}
-[class*="shadow"]{box-shadow:none!important}
-[class*="border"]{border-color:#e2e8f0!important}
-[class*="rounded-lg"],[class*="rounded-xl"],[class*="rounded-2xl"],[class*="rounded-3xl"],[class*="rounded-md"]{border-radius:2px!important}
-button,[role="button"]{font-weight:400!important;letter-spacing:0.1em;text-transform:uppercase;font-size:0.78em!important;border-radius:1px!important;padding-top:0.75rem!important;padding-bottom:0.75rem!important}
-a:hover{text-decoration:underline!important;text-underline-offset:4px;text-decoration-thickness:1px}
-button:hover,[role="button"]:hover{opacity:0.75;transition:opacity 200ms ease}
-p{line-height:1.75!important}
-body{letter-spacing:0.005em}
-[class*="bg-blue-600"],[class*="bg-indigo-600"],[class*="bg-violet-600"],[class*="bg-teal-600"],[class*="bg-emerald-600"],[class*="bg-rose-600"],[class*="bg-orange-600"],[class*="bg-fuchsia-600"]{background-color:#334155!important}
-[class*="bg-blue-600"]:hover,[class*="bg-indigo-600"]:hover,[class*="bg-violet-600"]:hover,[class*="bg-teal-600"]:hover,[class*="bg-emerald-600"]:hover{background-color:#1e293b!important}
-input,select,textarea{border-radius:1px!important}` },
-];
-
-const VIEWPORTS = QUICK ? [{ w: 1280, h: 900 }] : [
-  { w: 375, h: 812 },
-  { w: 768, h: 1024 },
-  { w: 1280, h: 900 },
-];
-
-const DARK_MODES = QUICK ? [false] : [false, true];
-
-// --- Server ---
-function startServer() {
-  const mimeTypes = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2' };
-  const server = createServer((req, res) => {
-    let filePath = join(DOCS_DIR, req.url === '/' ? 'index.html' : req.url);
-    if (!existsSync(filePath)) { res.writeHead(404); res.end('Not found'); return; }
-    const ext = extname(filePath);
-    res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' });
-    res.end(readFileSync(filePath));
-  });
-  server.listen(PORT);
-  return server;
-}
-
-// --- Build test matrix ---
-function buildTests() {
-  const manifest = JSON.parse(readFileSync(join(DOCS_DIR, 'presets', 'index.json'), 'utf8'));
-  const tests = [];
-
-  for (const [el, info] of Object.entries(manifest.elements)) {
-    if (FILTER && !el.includes(FILTER)) continue;
-    const personalities = Object.keys(info.personalities || {});
-    for (const pers of personalities) {
-      const file = join(DOCS_DIR, 'presets', el, pers + '.html');
-      if (!existsSync(file)) continue;
-
-      for (const effect of EFFECTS) {
-        if (EFFECTS_ONLY) {
-          // Only test at 1280, no dark mode for effects-only
-          tests.push({ element: el, personality: pers, effect: effect.name, effectCSS: effect.css, viewport: { w: 1280, h: 900 }, dark: false });
-        } else {
-          for (const vp of VIEWPORTS) {
-            for (const dark of DARK_MODES) {
-              tests.push({ element: el, personality: pers, effect: effect.name, effectCSS: effect.css, viewport: vp, dark });
-            }
-          }
-        }
-      }
-    }
-  }
-  return tests;
-}
-
-function testKey(t) {
-  return `${t.element}/${t.personality}|${t.effect}|${t.viewport.w}|${t.dark ? 'dark' : 'light'}`;
-}
-
-// --- Run a single test ---
-async function runTest(page, t) {
-  const html = readFileSync(join(DOCS_DIR, 'presets', t.element, t.personality + '.html'), 'utf8');
-
-  await page.setViewport({ width: t.viewport.w, height: t.viewport.h });
-  await page.goto(`http://localhost:${PORT}/tests/test-presets-rendered.html`, { waitUntil: 'networkidle0', timeout: 15000 });
-
-  const result = await page.evaluate(async (html, element, personality, effectCSS, dark, vpWidth) => {
-    return new Promise((resolve) => {
-      const iframe = document.createElement('iframe');
-      iframe.style.cssText = `position:fixed;top:-9999px;left:-9999px;width:${vpWidth}px;height:900px;border:none;`;
-      iframe.sandbox = 'allow-scripts allow-same-origin';
-      document.body.appendChild(iframe);
-
-      let handled = false;
-      function onMsg(e) {
-        if (!e.data || e.data.type !== 'milg-headless-result') return;
-        if (handled) return;
-        handled = true;
-        window.removeEventListener('message', onMsg);
-        if (iframe.parentNode) document.body.removeChild(iframe);
-
-        const data = e.data.data;
-        data.profile = 'general';
-        data.meta.isFragment = true;
-        data.meta.url = element + '/' + personality;
-        try {
-          const report = window.MilgScoring.runScoring(data);
-          // Read darkness level from extraction (computed area-weighted in extractFromDocument)
-          var darknessLevel = (data.colors && data.colors.darknessLevel) || 5;
-
-          resolve({
-            overall: report.overall,
-            grade: report.grade,
-            darknessLevel: darknessLevel,
-            categories: report.categories.map(c => ({
-              label: c.label,
-              score: c.score,
-              na: !!c.notApplicable,
-              errors: c.findings.filter(f => f.severity === 'error').length,
-              warnings: c.findings.filter(f => f.severity === 'warning').length,
-              infos: c.findings.filter(f => f.severity === 'info').length,
-              findings: c.findings.map(f => ({ severity: f.severity, title: f.title }))
-            })),
-            // Capture raw metrics for divergence analysis
-            metrics: {
-              contrastPairs: (data.colors && data.colors.contrastPairs) ? data.colors.contrastPairs.length : 0,
-              fontSizes: data.typography ? Object.keys(data.typography.fontSizes || {}).length : 0,
-              borderRadii: data.spacing ? Object.keys(data.spacing.borderRadii || {}).length : 0,
-              touchTargets: (data.interaction && data.interaction.touchTargets) ? data.interaction.touchTargets.length : 0,
-              headingCount: data.structure ? (data.structure.headingCount || 0) : 0,
-              totalElements: data.structure ? (data.structure.totalElements || 0) : 0,
-              colors: data.colors ? Object.keys(data.colors.textColors || {}).length : 0,
-              bgColors: data.colors ? Object.keys(data.colors.backgroundColors || {}).length : 0,
-            }
-          });
-        } catch(err) {
-          resolve({ error: err.message });
-        }
-      }
-      window.addEventListener('message', onMsg);
-
-      fetch('/analyzer.js').then(r => r.text()).then(code => {
-        const match = code.match(/function extractFromDocument\(\)\s*\{/);
-        if (!match) { resolve({ error: 'No extractFromDocument' }); return; }
-        const start = code.indexOf(match[0]);
-        let depth = 0, end = start;
-        for (let i = start; i < code.length; i++) {
-          if (code[i] === '{') depth++;
-          if (code[i] === '}') { depth--; if (depth === 0) { end = i + 1; break; } }
-        }
-        const extractFn = code.substring(start, end).replace(/milg-analyzer-result/g, 'milg-headless-result');
-
-        const darkClass = dark ? ' class="dark"' : '';
-        const darkVariantCSS = '@custom-variant dark (&:where(.dark, .dark *));';
-        const srcdoc = '<!DOCTYPE html><html lang="en"' + darkClass + '><head><meta charset="UTF-8">' +
-          '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
-          '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
-          (dark ? '<style type="text/tailwindcss">' + darkVariantCSS + '</style>' : '') +
-          (effectCSS ? '<style>' + effectCSS + '</style>' : '') +
-          '<style>body{margin:0}</style></head><body>' +
-          '<script>window.__milgIsFragment=true;</' + 'script>' +
-          html +
-          '<script>setTimeout(function(){(' + extractFn + ')()}, 2500);</' + 'script>' +
-          '</body></html>';
-        iframe.srcdoc = srcdoc;
-      });
-
-      setTimeout(() => {
-        if (handled) return;
-        handled = true;
-        window.removeEventListener('message', onMsg);
-        if (iframe.parentNode) document.body.removeChild(iframe);
-        resolve({ error: 'Timeout' });
-      }, 15000);
-    });
-  }, html, t.element, t.personality, t.effectCSS, t.dark, t.viewport.w);
-
-  return result;
-}
-
-// --- Divergence scoring ---
-// Compares two test results to measure how different they are (0 = identical, 100 = completely different)
-function divergenceScore(a, b) {
-  if (!a || !b || a.error || b.error) return null;
-
-  let totalDiff = 0;
-  let comparisons = 0;
-
-  // 1. Overall score difference (weight: 3)
-  totalDiff += Math.abs(a.overall - b.overall) * 3;
-  comparisons += 3;
-
-  // 2. Per-category score differences (weight: 1 each)
-  const aCats = {};
-  const bCats = {};
-  (a.categories || []).forEach(c => { aCats[c.label] = c; });
-  (b.categories || []).forEach(c => { bCats[c.label] = c; });
-
-  for (const label of Object.keys(aCats)) {
-    if (bCats[label]) {
-      // Normalize score diff to 0-100
-      totalDiff += Math.abs((aCats[label].score || 0) - (bCats[label].score || 0));
-      comparisons++;
-
-      // Finding count differences
-      const aFindings = (aCats[label].errors || 0) + (aCats[label].warnings || 0);
-      const bFindings = (bCats[label].errors || 0) + (bCats[label].warnings || 0);
-      totalDiff += Math.min(100, Math.abs(aFindings - bFindings) * 15);
-      comparisons++;
-    }
-  }
-
-  // 3. Metric differences (structural signals)
-  if (a.metrics && b.metrics) {
-    const metricKeys = ['contrastPairs', 'fontSizes', 'borderRadii', 'touchTargets', 'colors', 'bgColors'];
-    for (const k of metricKeys) {
-      const av = a.metrics[k] || 0;
-      const bv = b.metrics[k] || 0;
-      const maxVal = Math.max(av, bv, 1);
-      totalDiff += (Math.abs(av - bv) / maxVal) * 100;
-      comparisons++;
-    }
-  }
-
-  return comparisons > 0 ? Math.round(totalDiff / comparisons) : 0;
-}
-
-// --- Report generation ---
-function generateReport(results, tests) {
-  const resultMap = {};
-  for (const r of results) {
-    resultMap[r.key] = r;
-  }
-
-  let md = '# Full Matrix Test Results\n\n';
-  md += `**Date:** ${new Date().toISOString()}\n`;
-  md += `**Tests run:** ${results.length} | **Errors:** ${results.filter(r => r.error).length}\n`;
-  md += `**Matrix:** ${new Set(results.map(r => r.element + '/' + r.personality)).size} presets × ${EFFECTS.length} effects × ${VIEWPORTS.length} viewports × ${DARK_MODES.length} dark modes\n\n`;
-
-  const ok = results.filter(r => !r.error);
-  if (ok.length === 0) { return md + 'No successful results.\n'; }
-
-  const avg = Math.round(ok.reduce((s, r) => s + r.overall, 0) / ok.length);
-  const min = Math.min(...ok.map(r => r.overall));
-  const max = Math.max(...ok.map(r => r.overall));
-  md += `**Overall:** avg=${avg} min=${min} max=${max}\n\n`;
-
-  // === Section 1: Effect impact summary ===
-  md += '## 1. Effect Impact Summary\n\n';
-  md += 'Average score by effect (across all presets, viewports, dark modes):\n\n';
-  md += '| Effect | Avg Score | Min | Max | Avg Errors | Avg Warnings |\n';
-  md += '|--------|-----------|-----|-----|------------|-------------|\n';
-  for (const effect of EFFECTS) {
-    const effResults = ok.filter(r => r.effect === effect.name);
-    if (effResults.length === 0) continue;
-    const eAvg = Math.round(effResults.reduce((s, r) => s + r.overall, 0) / effResults.length);
-    const eMin = Math.min(...effResults.map(r => r.overall));
-    const eMax = Math.max(...effResults.map(r => r.overall));
-    const eErr = (effResults.reduce((s, r) => s + r.categories.reduce((cs, c) => cs + c.errors, 0), 0) / effResults.length).toFixed(1);
-    const eWarn = (effResults.reduce((s, r) => s + r.categories.reduce((cs, c) => cs + c.warnings, 0), 0) / effResults.length).toFixed(1);
-    md += `| ${effect.name} | ${eAvg} | ${eMin} | ${eMax} | ${eErr} | ${eWarn} |\n`;
-  }
-
-  // === Section 1b: Darkness Level Analysis ===
-  md += '\n## 1b. Page Darkness Level\n\n';
-  md += 'Scale: 1 = white page, 10 = black page. Range 2.5–7.5 is expected; outside = warning.\n\n';
-  md += '| Preset | Light DL | Dark DL | Delta | Warning |\n';
-  md += '|--------|----------|---------|-------|---------|\n';
-  {
-    const presetsDL = [...new Set(ok.map(r => r.element + '/' + r.personality))];
-    for (const preset of presetsDL) {
-      const lk = `${preset}|none|1280|light`;
-      const dk = `${preset}|none|1280|dark`;
-      const lr = resultMap[lk];
-      const dr = resultMap[dk];
-      const lDL = lr && !lr.error ? (lr.darknessLevel || '?') : '—';
-      const dDL = dr && !dr.error ? (dr.darknessLevel || '?') : '—';
-      const delta = (typeof lDL === 'number' && typeof dDL === 'number') ? dDL - lDL : '—';
-      let warn = '';
-      if (typeof lDL === 'number' && (lDL < 2.5 || lDL > 7.5)) warn += 'light-mode ';
-      if (typeof dDL === 'number' && (dDL < 2.5 || dDL > 7.5)) warn += 'dark-mode ';
-      if (typeof lDL === 'number' && typeof dDL === 'number' && Math.abs(dDL - lDL) < 2) warn += 'low-contrast-switch ';
-      if (warn || (typeof delta === 'number' && Math.abs(delta) < 2)) {
-        md += `| ${preset} | ${lDL} | ${dDL} | ${typeof delta === 'number' ? (delta >= 0 ? '+' : '') + delta : delta} | ${warn.trim() || '—'} |\n`;
-      }
-    }
-  }
-
-  // === Section 2: Dark mode impact ===
-  if (DARK_MODES.length > 1) {
-    md += '\n## 2. Dark Mode Impact\n\n';
-    md += '| Preset | Light Score | Dark Score | Delta | Worse Categories |\n';
-    md += '|--------|------------ |------------|-------|-------------------|\n';
-
-    const presets = [...new Set(ok.map(r => r.element + '/' + r.personality))];
-    const darkIssues = [];
-    for (const preset of presets) {
-      // Compare none effect, 1280px, light vs dark
-      const lightKey = `${preset}|none|1280|light`;
-      const darkKey = `${preset}|none|1280|dark`;
-      const light = resultMap[lightKey];
-      const dark = resultMap[darkKey];
-      if (!light || !dark || light.error || dark.error) continue;
-
-      const delta = dark.overall - light.overall;
-      let worse = [];
-      for (let i = 0; i < (light.categories || []).length; i++) {
-        const lc = light.categories[i];
-        const dc = dark.categories[i];
-        if (dc && lc && dc.score < lc.score - 5) {
-          worse.push(`${lc.label} (${lc.score}→${dc.score})`);
-        }
-      }
-
-      if (delta < -5 || worse.length > 0) {
-        darkIssues.push({ preset, light: light.overall, dark: dark.overall, delta, worse });
-        md += `| ${preset} | ${light.overall} | ${dark.overall} | ${delta >= 0 ? '+' : ''}${delta} | ${worse.join(', ') || '—'} |\n`;
-      }
-    }
-    if (darkIssues.length === 0) md += '| (no significant dark mode regressions) | | | | |\n';
-  }
-
-  // === Section 3: Viewport responsiveness ===
-  if (VIEWPORTS.length > 1) {
-    md += '\n## 3. Viewport Responsiveness\n\n';
-    md += '| Preset | 375px | 768px | 1280px | Mobile Delta |\n';
-    md += '|--------|-------|-------|--------|-------------|\n';
-
-    const presets = [...new Set(ok.map(r => r.element + '/' + r.personality))];
-    const vpIssues = [];
-    for (const preset of presets) {
-      const scores = {};
-      for (const vp of VIEWPORTS) {
-        const key = `${preset}|none|${vp.w}|light`;
-        const r = resultMap[key];
-        if (r && !r.error) scores[vp.w] = r.overall;
-      }
-      if (Object.keys(scores).length < VIEWPORTS.length) continue;
-
-      const mobileDelta = (scores[375] || 0) - (scores[1280] || 0);
-      if (Math.abs(mobileDelta) > 5 || (scores[375] || 100) < 70) {
-        vpIssues.push({ preset, scores, mobileDelta });
-        md += `| ${preset} | ${scores[375] ?? '—'} | ${scores[768] ?? '—'} | ${scores[1280] ?? '—'} | ${mobileDelta >= 0 ? '+' : ''}${mobileDelta} |\n`;
-      }
-    }
-    if (vpIssues.length === 0) md += '| (no significant viewport regressions) | | | | |\n';
-  }
-
-  // === Section 4: Frosted + dark mode (known problem combo) ===
-  md += '\n## 4. Frosted Effect Analysis\n\n';
-  md += 'Frosted is the most invasive effect (replaces backgrounds, adds glassmorphism). Checking for issues:\n\n';
-  md += '| Preset | None Score | Frosted Score | Delta | Frosted+Dark | Dark Delta | Key Issues |\n';
-  md += '|--------|-----------|---------------|-------|-------------|------------|------------|\n';
-
-  const presets = [...new Set(ok.map(r => r.element + '/' + r.personality))];
-  for (const preset of presets) {
-    const noneKey = `${preset}|none|1280|light`;
-    const frostedKey = `${preset}|frosted|1280|light`;
-    const frostedDarkKey = `${preset}|frosted|1280|dark`;
-    const none = resultMap[noneKey];
-    const frosted = resultMap[frostedKey];
-    const frostedDark = resultMap[frostedDarkKey];
-
-    if (!none || none.error || !frosted || frosted.error) continue;
-
-    const delta = frosted.overall - none.overall;
-    const darkScore = frostedDark && !frostedDark.error ? frostedDark.overall : '—';
-    const darkDelta = frostedDark && !frostedDark.error ? frostedDark.overall - frosted.overall : '—';
-
-    // Collect key issues from frosted
-    const issues = [];
-    for (const c of frosted.categories) {
-      if (c.errors > 0) {
-        const titles = c.findings.filter(f => f.severity === 'error').map(f => f.title.substring(0, 50));
-        issues.push(...titles.slice(0, 2));
-      }
-    }
-
-    if (delta < -3 || (typeof darkDelta === 'number' && darkDelta < -3) || issues.length > 0) {
-      md += `| ${preset} | ${none.overall} | ${frosted.overall} | ${delta >= 0 ? '+' : ''}${delta} | ${darkScore} | ${typeof darkDelta === 'number' ? (darkDelta >= 0 ? '+' : '') + darkDelta : '—'} | ${issues.slice(0, 2).join('; ') || '—'} |\n`;
-    }
-  }
-
-  // === Section 5: Divergence analysis — are variants meaningfully different? ===
-  md += '\n## 5. Variant Divergence Analysis\n\n';
-  md += 'How different is each variant from "none" effect? Low divergence (< 5) = variant adds negligible value.\n\n';
-
-  // 5a. Effect divergence per preset (at 1280px, light)
-  md += '### 5a. Effect Divergence (per preset, 1280px light)\n\n';
-  md += '| Preset | Hushed | Bouncy | Frosted | Serif | Avg |\n';
-  md += '|--------|--------|--------|---------|-------|-----|\n';
-
-  const lowDivergence = [];
-  for (const preset of presets) {
-    const baseKey = `${preset}|none|1280|light`;
-    const base = resultMap[baseKey];
-    if (!base || base.error) continue;
-
-    const divs = {};
-    let total = 0;
-    let count = 0;
-    for (const eff of EFFECTS.slice(1)) { // skip "none"
-      const key = `${preset}|${eff.name}|1280|light`;
-      const r = resultMap[key];
-      const d = divergenceScore(base, r);
-      divs[eff.name] = d;
-      if (d !== null) { total += d; count++; }
-    }
-    const avgDiv = count > 0 ? Math.round(total / count) : 0;
-
-    md += `| ${preset} | ${divs.hushed ?? '—'} | ${divs.bouncy ?? '—'} | ${divs.frosted ?? '—'} | ${divs.serif ?? '—'} | ${avgDiv} |\n`;
-
-    // Flag low divergence
-    for (const [eff, d] of Object.entries(divs)) {
-      if (d !== null && d < 5) {
-        lowDivergence.push({ preset, effect: eff, divergence: d });
-      }
-    }
-  }
-
-  // 5b. Personality divergence (do clean/minimalist/playful actually differ?)
-  md += '\n### 5b. Personality Divergence (same element, none effect, 1280px light)\n\n';
-  md += 'Low divergence = personalities are too similar. Should be > 10 for meaningful differentiation.\n\n';
-  md += '| Element | Clean vs Min | Clean vs Play | Min vs Play | Clean vs Edit | Avg |\n';
-  md += '|---------|-------------|---------------|-------------|--------------|-----|\n';
-
-  const elements = [...new Set(ok.map(r => r.element))];
-  const lowPersDiv = [];
-  for (const el of elements) {
-    const getR = (p) => resultMap[`${el}/${p}|none|1280|light`];
-    const clean = getR('clean');
-    const min = getR('minimalist');
-    const play = getR('playful');
-    const edit = getR('editorial');
-
-    if (!clean || clean.error) continue;
-
-    const cmDiv = divergenceScore(clean, min);
-    const cpDiv = divergenceScore(clean, play);
-    const mpDiv = divergenceScore(min, play);
-    const ceDiv = divergenceScore(clean, edit);
-
-    const vals = [cmDiv, cpDiv, mpDiv, ceDiv].filter(v => v !== null);
-    const avgDiv = vals.length > 0 ? Math.round(vals.reduce((a, b) => a + b) / vals.length) : 0;
-
-    md += `| ${el} | ${cmDiv ?? '—'} | ${cpDiv ?? '—'} | ${mpDiv ?? '—'} | ${ceDiv ?? '—'} | ${avgDiv} |\n`;
-
-    if (cmDiv !== null && cmDiv < 5) lowPersDiv.push({ element: el, pair: 'clean/minimalist', divergence: cmDiv });
-    if (cpDiv !== null && cpDiv < 5) lowPersDiv.push({ element: el, pair: 'clean/playful', divergence: cpDiv });
-    if (mpDiv !== null && mpDiv < 5) lowPersDiv.push({ element: el, pair: 'minimalist/playful', divergence: mpDiv });
-  }
-
-  // === Section 6: Flagged combinations ===
-  md += '\n## 6. Flagged Combinations\n\n';
-
-  // 6a. Worst scores overall
-  md += '### 6a. Worst Scores (bottom 20)\n\n';
-  md += '| Combo | Score | Grade | Errors | Warnings |\n';
-  md += '|-------|-------|-------|--------|----------|\n';
-  const sorted = ok.sort((a, b) => a.overall - b.overall);
-  for (const r of sorted.slice(0, 20)) {
-    const errs = r.categories.reduce((s, c) => s + c.errors, 0);
-    const warns = r.categories.reduce((s, c) => s + c.warnings, 0);
-    md += `| ${r.key} | ${r.overall} | ${r.grade} | ${errs} | ${warns} |\n`;
-  }
-
-  // 6b. Low divergence (unnecessary variants)
-  md += '\n### 6b. Low Effect Divergence (< 5 — may be unnecessary)\n\n';
-  if (lowDivergence.length > 0) {
-    md += '| Preset | Effect | Divergence |\n';
-    md += '|--------|--------|------------|\n';
-    lowDivergence.sort((a, b) => a.divergence - b.divergence);
-    for (const ld of lowDivergence) {
-      md += `| ${ld.preset} | ${ld.effect} | ${ld.divergence} |\n`;
-    }
-  } else {
-    md += 'None — all effects produce meaningful differentiation.\n';
-  }
-
-  md += '\n### 6c. Low Personality Divergence (< 5 — personalities too similar)\n\n';
-  if (lowPersDiv.length > 0) {
-    md += '| Element | Pair | Divergence |\n';
-    md += '|---------|------|------------|\n';
-    lowPersDiv.sort((a, b) => a.divergence - b.divergence);
-    for (const ld of lowPersDiv) {
-      md += `| ${ld.element} | ${ld.pair} | ${ld.divergence} |\n`;
-    }
-  } else {
-    md += 'None — all personalities produce meaningful differentiation.\n';
-  }
-
-  // 6d. Effect regressions (effect makes things worse by >10 points)
-  md += '\n### 6d. Effect Regressions (score drops > 10 points vs none)\n\n';
-  md += '| Preset | Effect | None Score | Effect Score | Delta |\n';
-  md += '|--------|--------|------------|-------------|-------|\n';
-  let regressionCount = 0;
-  for (const preset of presets) {
-    const baseKey = `${preset}|none|1280|light`;
-    const base = resultMap[baseKey];
-    if (!base || base.error) continue;
-
-    for (const eff of EFFECTS.slice(1)) {
-      const key = `${preset}|${eff.name}|1280|light`;
-      const r = resultMap[key];
-      if (!r || r.error) continue;
-      const delta = r.overall - base.overall;
-      if (delta < -10) {
-        md += `| ${preset} | ${eff.name} | ${base.overall} | ${r.overall} | ${delta} |\n`;
-        regressionCount++;
-      }
-    }
-  }
-  if (regressionCount === 0) md += '| (no regressions > 10 points) | | | | |\n';
-
-  // === Section 7: Most common issues by effect ===
-  md += '\n## 7. Most Common Issues by Effect\n\n';
-  for (const effect of EFFECTS) {
-    const effResults = ok.filter(r => r.effect === effect.name);
-    if (effResults.length === 0) continue;
-
-    md += `### ${effect.name} (${effResults.length} tests)\n\n`;
-    const issueCounts = {};
-    for (const r of effResults) {
-      for (const c of r.categories) {
-        for (const f of c.findings) {
-          if (f.severity === 'info') continue; // skip info
-          const key = `[${f.severity}] ${c.label}: ${f.title.substring(0, 80)}`;
-          issueCounts[key] = (issueCounts[key] || 0) + 1;
-        }
-      }
-    }
-    const sortedIssues = Object.entries(issueCounts).sort((a, b) => b[1] - a[1]);
-    for (const [issue, count] of sortedIssues.slice(0, 10)) {
-      const pct = Math.round(count / effResults.length * 100);
-      md += `- **${count}x** (${pct}%) ${issue}\n`;
-    }
-    md += '\n';
-  }
-
-  return md;
-}
-
-// --- Main ---
-async function main() {
-  const tests = buildTests();
-  console.log(`Full matrix: ${tests.length} test combinations`);
-  console.log(`  Presets: ${new Set(tests.map(t => t.element + '/' + t.personality)).size}`);
-  console.log(`  Effects: ${EFFECTS.length} (${EFFECTS.map(e => e.name).join(', ')})`);
-  console.log(`  Viewports: ${VIEWPORTS.map(v => v.w + 'px').join(', ')}`);
-  console.log(`  Dark modes: ${DARK_MODES.map(d => d ? 'dark' : 'light').join(', ')}`);
-  console.log();
-
-  if (DIVERGENCE_ONLY) {
-    if (!existsSync(CACHE_FILE)) {
-      console.error('No cache file found. Run the full test first.');
-      process.exit(1);
-    }
-    const cached = JSON.parse(readFileSync(CACHE_FILE, 'utf8'));
-    const md = generateReport(cached, tests);
-    const outFile = join(RESEARCH_DIR, 'full-matrix-results.md');
-    writeFileSync(outFile, md);
-    console.log(`Report written to: ${outFile}`);
-    return;
-  }
-
-  const server = startServer();
-  console.log(`Server on port ${PORT}`);
-
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage']
-  });
-
-  // Use multiple pages for parallelism (3 concurrent)
-  const CONCURRENCY = 3;
-  const pages = [];
-  for (let i = 0; i < CONCURRENCY; i++) {
-    pages.push(await browser.newPage());
-  }
-
-  const results = [];
-  let completed = 0;
-  const startTime = Date.now();
-
-  // Process tests in batches
-  async function processTest(page, t) {
-    const key = testKey(t);
-    try {
-      const result = await runTest(page, t);
-      completed++;
-      const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
-      const eta = Math.round((Date.now() - startTime) / completed * (tests.length - completed) / 1000);
-
-      if (result.error) {
-        process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s (ETA ${eta}s) ${key} ERROR: ${result.error}          \n`);
-        results.push({ key, ...t, error: result.error });
-      } else {
-        const e = result.categories.reduce((s, c) => s + c.errors, 0);
-        const w = result.categories.reduce((s, c) => s + c.warnings, 0);
-        const dl = result.darknessLevel || '?';
-        process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s (ETA ${eta}s) ${key} → ${result.overall}${result.grade} (${e}E ${w}W) D${dl}          \n`);
-        results.push({ key, ...t, overall: result.overall, grade: result.grade, categories: result.categories, metrics: result.metrics, darknessLevel: result.darknessLevel });
-      }
-    } catch (err) {
-      completed++;
-      process.stdout.write(`\r[${completed}/${tests.length}] ${key} CRASH: ${err.message}          \n`);
-      results.push({ key, ...t, error: err.message });
-    }
-  }
-
-  // Run with concurrency
-  let idx = 0;
-  async function worker(page) {
-    while (idx < tests.length) {
-      const myIdx = idx++;
-      await processTest(page, tests[myIdx]);
-    }
-  }
-
-  await Promise.all(pages.map(p => worker(p)));
-
-  await browser.close();
-  server.close();
-
-  // Cache results
-  if (!existsSync(RESEARCH_DIR)) mkdirSync(RESEARCH_DIR, { recursive: true });
-  writeFileSync(CACHE_FILE, JSON.stringify(results, null, 2));
-  console.log(`\nCached ${results.length} results to ${CACHE_FILE}`);
-
-  // Generate report
-  const md = generateReport(results, tests);
-  const outFile = join(RESEARCH_DIR, 'full-matrix-results.md');
-  writeFileSync(outFile, md);
-  console.log(`Report written to: ${outFile}`);
-
-  // Quick summary
-  const ok = results.filter(r => !r.error);
-  const errs = results.filter(r => r.error);
-  console.log(`\n=== SUMMARY ===`);
-  console.log(`Tested: ${ok.length} | Errors: ${errs.length}`);
-  if (ok.length > 0) {
-    const avg = Math.round(ok.reduce((s, r) => s + r.overall, 0) / ok.length);
-    console.log(`Average: ${avg} | Min: ${Math.min(...ok.map(r => r.overall))} | Max: ${Math.max(...ok.map(r => r.overall))}`);
-    for (const eff of EFFECTS) {
-      const effOk = ok.filter(r => r.effect === eff.name);
-      if (effOk.length > 0) {
-        const effAvg = Math.round(effOk.reduce((s, r) => s + r.overall, 0) / effOk.length);
-        console.log(`  ${eff.name}: avg=${effAvg} (${effOk.length} tests)`);
-      }
-    }
-  }
-}
-
-main().catch(err => { console.error('Fatal:', err); process.exit(1); });
-</file>
-
 <file path="scripts/test-presets-headless.mjs">
 #!/usr/bin/env node
 // Headless browser test runner for all presets
@@ -17730,6 +16638,371 @@ async function main() {
     writeFileSync(outFile, md);
     console.log(`\nResults written to: ${outFile}`);
   }
+}
+
+main().catch(err => { console.error('Fatal:', err); process.exit(1); });
+</file>
+
+<file path="scripts/test-template.mjs">
+#!/usr/bin/env node
+// Test a specific template across all combinations (effects × viewports × dark modes)
+// Usage:
+//   node scripts/test-template.mjs dashboard/clean     # test one template
+//   node scripts/test-template.mjs dashboard            # test all variants of dashboard
+//   node scripts/test-template.mjs --all                # test everything (full matrix)
+//   node scripts/test-template.mjs --all --threads=6    # parallel threads
+//
+// Options:
+//   --threads=N    Number of concurrent browser pages (default: 3)
+//   --all          Test all templates
+//   --light-only   Skip dark mode tests
+//   --desktop-only Skip mobile/tablet viewports
+//
+// Results saved to: research/template-results/<template-name>.json + .md
+
+import puppeteer from 'puppeteer';
+import { createServer } from 'http';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { join, extname } from 'path';
+
+const DOCS_DIR = join(import.meta.dirname, '..', 'docs');
+const RESEARCH_DIR = join(import.meta.dirname, '..', 'research');
+const RESULTS_DIR = join(RESEARCH_DIR, 'template-results');
+const PORT = 8767;
+
+const args = process.argv.slice(2);
+const ALL = args.includes('--all');
+const LIGHT_ONLY = args.includes('--light-only');
+const DESKTOP_ONLY = args.includes('--desktop-only');
+const THREADS = parseInt((args.find(a => a.startsWith('--threads=')) || '--threads=3').split('=')[1]);
+const TEMPLATE = args.find(a => !a.startsWith('--')) || '';
+
+if (!ALL && !TEMPLATE) {
+  console.log('Usage: node scripts/test-template.mjs <template> [--threads=N] [--light-only] [--desktop-only]');
+  console.log('       node scripts/test-template.mjs --all [--threads=N]');
+  console.log('\nExamples:');
+  console.log('  node scripts/test-template.mjs dashboard/clean');
+  console.log('  node scripts/test-template.mjs dashboard');
+  console.log('  node scripts/test-template.mjs --all --threads=6');
+  process.exit(0);
+}
+
+// Effect names — CSS extracted from test-full-matrix.mjs
+const EFFECT_LIST = [
+  { name: 'none', css: '' },
+  { name: 'hushed' },
+  { name: 'bouncy' },
+  { name: 'frosted' },
+  { name: 'serif' },
+];
+
+// Read effects from the full matrix test file
+let fullMatrixSrc;
+try {
+  fullMatrixSrc = readFileSync(join(import.meta.dirname, 'test-full-matrix.mjs'), 'utf8');
+} catch(e) {
+  console.error('Cannot read test-full-matrix.mjs for effect definitions');
+  process.exit(1);
+}
+
+// Extract each effect's CSS from the source
+function extractEffectCSS(src, name) {
+  if (name === 'none') return '';
+  const re = new RegExp(`\\{\\s*name:\\s*'${name}'\\s*,\\s*css:\\s*\`([\\s\\S]*?)\`\\s*\\}`, 'm');
+  const m = src.match(re);
+  return m ? m[1] : '';
+}
+
+const EFFECTS_PARSED = EFFECT_LIST.map(e => ({
+  name: e.name,
+  css: extractEffectCSS(fullMatrixSrc, e.name)
+}));
+
+const VIEWPORTS = DESKTOP_ONLY
+  ? [{ w: 1280, h: 900 }]
+  : [{ w: 375, h: 812 }, { w: 768, h: 1024 }, { w: 1280, h: 900 }];
+
+const DARK_MODES = LIGHT_ONLY ? [false] : [false, true];
+
+// Server
+function startServer() {
+  const mimeTypes = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2' };
+  const server = createServer((req, res) => {
+    let filePath = join(DOCS_DIR, req.url === '/' ? 'index.html' : req.url);
+    if (!existsSync(filePath)) { res.writeHead(404); res.end('Not found'); return; }
+    const ext = extname(filePath);
+    res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' });
+    res.end(readFileSync(filePath));
+  });
+  server.listen(PORT);
+  return server;
+}
+
+// Build test list
+function buildTests() {
+  const manifest = JSON.parse(readFileSync(join(DOCS_DIR, 'presets', 'index.json'), 'utf8'));
+  const tests = [];
+
+  for (const [el, info] of Object.entries(manifest.elements)) {
+    const personalities = Object.keys(info.personalities || {});
+    for (const pers of personalities) {
+      const presetKey = `${el}/${pers}`;
+
+      // Filter
+      if (!ALL) {
+        if (TEMPLATE.includes('/')) {
+          // Exact match: dashboard/clean
+          if (presetKey !== TEMPLATE) continue;
+        } else {
+          // Element match: dashboard (all variants)
+          if (el !== TEMPLATE) continue;
+        }
+      }
+
+      const file = join(DOCS_DIR, 'presets', el, pers + '.html');
+      if (!existsSync(file)) continue;
+
+      for (const effect of EFFECTS_PARSED) {
+        for (const vp of VIEWPORTS) {
+          for (const dark of DARK_MODES) {
+            tests.push({ element: el, personality: pers, effect: effect.name, effectCSS: effect.css, viewport: vp, dark });
+          }
+        }
+      }
+    }
+  }
+  return tests;
+}
+
+function testKey(t) {
+  return `${t.element}/${t.personality}|${t.effect}|${t.viewport.w}|${t.dark ? 'dark' : 'light'}`;
+}
+
+// Run a single test (same logic as full matrix)
+async function runTest(page, t) {
+  const html = readFileSync(join(DOCS_DIR, 'presets', t.element, t.personality + '.html'), 'utf8');
+  await page.setViewport({ width: t.viewport.w, height: t.viewport.h });
+  await page.goto(`http://localhost:${PORT}/tests/test-presets-rendered.html`, { waitUntil: 'networkidle0', timeout: 15000 });
+
+  const result = await page.evaluate(async (html, element, personality, effectCSS, dark, vpWidth) => {
+    return new Promise((resolve) => {
+      const iframe = document.createElement('iframe');
+      iframe.style.cssText = `position:fixed;top:-9999px;left:-9999px;width:${vpWidth}px;height:900px;border:none;`;
+      iframe.sandbox = 'allow-scripts allow-same-origin';
+      document.body.appendChild(iframe);
+
+      let handled = false;
+      function onMsg(e) {
+        if (!e.data || e.data.type !== 'milg-headless-result') return;
+        if (handled) return;
+        handled = true;
+        window.removeEventListener('message', onMsg);
+        if (iframe.parentNode) document.body.removeChild(iframe);
+
+        const data = e.data.data;
+        data.profile = 'general';
+        data.meta.isFragment = true;
+        data.meta.url = element + '/' + personality;
+        try {
+          const report = window.MilgScoring.runScoring(data);
+
+          // Read darkness level from extraction (computed area-weighted in extractFromDocument)
+          var darknessLevel = (data.colors && data.colors.darknessLevel) || 5;
+
+          resolve({
+            overall: report.overall,
+            grade: report.grade,
+            darknessLevel,
+            categories: report.categories.map(c => ({
+              label: c.label, score: c.score, na: !!c.notApplicable,
+              errors: c.findings.filter(f => f.severity === 'error').length,
+              warnings: c.findings.filter(f => f.severity === 'warning').length,
+              findings: c.findings.map(f => ({ severity: f.severity, title: f.title }))
+            }))
+          });
+        } catch(err) {
+          resolve({ error: err.message });
+        }
+      }
+      window.addEventListener('message', onMsg);
+
+      fetch('/analyzer.js').then(r => r.text()).then(code => {
+        const match = code.match(/function extractFromDocument\(\)\s*\{/);
+        if (!match) { resolve({ error: 'No extractFromDocument' }); return; }
+        const start = code.indexOf(match[0]);
+        let depth = 0, end = start;
+        for (let i = start; i < code.length; i++) {
+          if (code[i] === '{') depth++;
+          if (code[i] === '}') { depth--; if (depth === 0) { end = i + 1; break; } }
+        }
+        const extractFn = code.substring(start, end).replace(/milg-analyzer-result/g, 'milg-headless-result');
+
+        const darkClass = dark ? ' class="dark"' : '';
+        const darkVariantCSS = '@custom-variant dark (&:where(.dark, .dark *));';
+        const srcdoc = '<!DOCTYPE html><html lang="en"' + darkClass + '><head><meta charset="UTF-8">' +
+          '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+          '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
+          (dark ? '<style type="text/tailwindcss">' + darkVariantCSS + '</style>' : '') +
+          (effectCSS ? '<style>' + effectCSS + '</style>' : '') +
+          '<style>body{margin:0}</style></head><body>' +
+          '<script>window.__milgIsFragment=true;</' + 'script>' +
+          html +
+          '<script>setTimeout(function(){(' + extractFn + ')()}, 2500);</' + 'script>' +
+          '</body></html>';
+        iframe.srcdoc = srcdoc;
+      });
+
+      setTimeout(() => {
+        if (handled) return;
+        handled = true;
+        window.removeEventListener('message', onMsg);
+        if (iframe.parentNode) document.body.removeChild(iframe);
+        resolve({ error: 'Timeout' });
+      }, 15000);
+    });
+  }, html, t.element, t.personality, t.effectCSS, t.dark, t.viewport.w);
+
+  return result;
+}
+
+// Generate per-template report
+function generateReport(templateName, results) {
+  const ok = results.filter(r => !r.error);
+  if (ok.length === 0) return '# No results\n';
+
+  const avg = Math.round(ok.reduce((s, r) => s + r.overall, 0) / ok.length);
+  const min = Math.min(...ok.map(r => r.overall));
+  const max = Math.max(...ok.map(r => r.overall));
+
+  let md = `# Test Results: ${templateName}\n\n`;
+  md += `**Date:** ${new Date().toISOString()}\n`;
+  md += `**Tests:** ${ok.length} | **Avg:** ${avg} | **Min:** ${min} | **Max:** ${max}\n\n`;
+
+  // Score matrix
+  md += '## Score Matrix\n\n';
+  md += '| Effect | Viewport | Mode | Score | Grade | DL | Errors | Warnings |\n';
+  md += '|--------|----------|------|-------|-------|----|--------|----------|\n';
+  for (const r of ok.sort((a, b) => a.overall - b.overall)) {
+    const errs = r.categories.reduce((s, c) => s + c.errors, 0);
+    const warns = r.categories.reduce((s, c) => s + c.warnings, 0);
+    md += `| ${r.effect} | ${r.viewport.w} | ${r.dark ? 'dark' : 'light'} | ${r.overall} | ${r.grade} | ${r.darknessLevel || '?'} | ${errs} | ${warns} |\n`;
+  }
+
+  // Issues
+  md += '\n## Issues Found\n\n';
+  const issueCounts = {};
+  for (const r of ok) {
+    for (const c of r.categories) {
+      for (const f of c.findings) {
+        if (f.severity === 'info') continue;
+        const key = `[${f.severity}] ${c.label}: ${f.title.substring(0, 80)}`;
+        issueCounts[key] = (issueCounts[key] || 0) + 1;
+      }
+    }
+  }
+  const sorted = Object.entries(issueCounts).sort((a, b) => b[1] - a[1]);
+  for (const [issue, count] of sorted) {
+    md += `- **${count}x** ${issue}\n`;
+  }
+
+  // Darkness levels
+  md += '\n## Darkness Levels\n\n';
+  const byMode = {};
+  for (const r of ok) {
+    const modeKey = r.dark ? 'dark' : 'light';
+    if (!byMode[modeKey]) byMode[modeKey] = [];
+    byMode[modeKey].push(r.darknessLevel || 5);
+  }
+  for (const [mode, levels] of Object.entries(byMode)) {
+    const avgDL = (levels.reduce((s, l) => s + l, 0) / levels.length).toFixed(1);
+    md += `- **${mode}:** avg DL=${avgDL} (range ${Math.min(...levels)}-${Math.max(...levels)})\n`;
+  }
+
+  return md;
+}
+
+// Main
+async function main() {
+  const tests = buildTests();
+  if (tests.length === 0) {
+    console.error(`No tests found for "${TEMPLATE}". Check the template name exists in docs/presets/index.json`);
+    process.exit(1);
+  }
+
+  const templateName = ALL ? 'all' : TEMPLATE;
+  console.log(`Testing: ${templateName} (${tests.length} combinations, ${THREADS} threads)`);
+
+  if (!existsSync(RESULTS_DIR)) mkdirSync(RESULTS_DIR, { recursive: true });
+
+  const server = startServer();
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage']
+  });
+
+  const pages = [];
+  for (let i = 0; i < THREADS; i++) {
+    pages.push(await browser.newPage());
+  }
+
+  const results = [];
+  let completed = 0;
+  const startTime = Date.now();
+
+  async function processTest(page, t) {
+    const key = testKey(t);
+    try {
+      const result = await runTest(page, t);
+      completed++;
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
+      const eta = Math.round((Date.now() - startTime) / completed * (tests.length - completed) / 1000);
+
+      if (result.error) {
+        process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s (ETA ${eta}s) ${key} ERROR: ${result.error}          \n`);
+        results.push({ key, ...t, error: result.error });
+      } else {
+        const e = result.categories.reduce((s, c) => s + c.errors, 0);
+        const w = result.categories.reduce((s, c) => s + c.warnings, 0);
+        process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s (ETA ${eta}s) ${key} → ${result.overall}${result.grade} D${result.darknessLevel || '?'} (${e}E ${w}W)          \n`);
+        results.push({ key, ...t, ...result });
+      }
+    } catch (err) {
+      completed++;
+      results.push({ key, ...t, error: err.message });
+    }
+  }
+
+  let idx = 0;
+  async function worker(page) {
+    while (idx < tests.length) {
+      const myIdx = idx++;
+      await processTest(page, tests[myIdx]);
+    }
+  }
+
+  await Promise.all(pages.map(p => worker(p)));
+  await browser.close();
+  server.close();
+
+  // Save results
+  const safeName = templateName.replace(/\//g, '-');
+  const jsonFile = join(RESULTS_DIR, `${safeName}.json`);
+  const mdFile = join(RESULTS_DIR, `${safeName}.md`);
+
+  writeFileSync(jsonFile, JSON.stringify(results, null, 2));
+  const md = generateReport(templateName, results);
+  writeFileSync(mdFile, md);
+
+  console.log(`\nResults saved to:`);
+  console.log(`  ${jsonFile}`);
+  console.log(`  ${mdFile}`);
+
+  // Summary
+  const ok = results.filter(r => !r.error);
+  const avg = ok.length > 0 ? Math.round(ok.reduce((s, r) => s + r.overall, 0) / ok.length) : 0;
+  console.log(`\n=== SUMMARY ===`);
+  console.log(`Tested: ${ok.length} | Errors: ${results.filter(r => r.error).length}`);
+  console.log(`Average: ${avg} | Min: ${Math.min(...ok.map(r => r.overall))} | Max: ${Math.max(...ok.map(r => r.overall))}`);
 }
 
 main().catch(err => { console.error('Fatal:', err); process.exit(1); });
@@ -19513,6 +18786,733 @@ Each test case has:
 Use these to calibrate your output quality and verify the flow works.
 </file>
 
+<file path="scripts/test-full-matrix.mjs">
+#!/usr/bin/env node
+// Full matrix test runner: preset × personality × effect × viewport × dark mode
+// Usage: node scripts/test-full-matrix.mjs [--quick] [--filter=hero] [--effects-only] [--divergence-only]
+//
+// --quick: skip viewports (test only 1280px), skip dark mode → 650 tests instead of 3900
+// --filter=hero: only test presets matching "hero"
+// --effects-only: only test effect variants (skip viewport/dark combos)
+// --divergence-only: skip scoring, only compute divergence from cached results
+//
+// Outputs: research/full-matrix-results.md (scores + divergence + flagged combos)
+
+import puppeteer from 'puppeteer';
+import { createServer } from 'http';
+import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from 'fs';
+import { join, extname } from 'path';
+
+const DOCS_DIR = join(import.meta.dirname, '..', 'docs');
+const RESEARCH_DIR = join(import.meta.dirname, '..', 'research');
+const CACHE_FILE = join(RESEARCH_DIR, 'full-matrix-cache.json');
+const PORT = 8766; // different from basic test runner
+
+const args = process.argv.slice(2);
+const QUICK = args.includes('--quick');
+const EFFECTS_ONLY = args.includes('--effects-only');
+const DIVERGENCE_ONLY = args.includes('--divergence-only');
+const FILTER = (args.find(a => a.startsWith('--filter=')) || '').replace('--filter=', '');
+
+// --- Effect definitions (must match docs/app.js visualStyles) ---
+const EFFECTS = [
+  { name: 'none', css: '' },
+  { name: 'hushed', css: `[class*="shadow"]{box-shadow:none!important}
+[class*="border"]{border-color:rgba(0,0,0,0.06)!important}
+[class*="rounded-lg"],[class*="rounded-xl"],[class*="rounded-2xl"],[class*="rounded-3xl"]{border-radius:4px!important}
+[class*="rounded-full"]{border-radius:9999px!important}
+h1,h2,h3,h4,h5,h6{font-weight:300!important;letter-spacing:0.02em}
+h1{font-size:2.25em!important}
+p,span,li,td,th{opacity:0.75}
+button:not([class*="bg-"]),[role="button"]:not([class*="bg-"]){font-weight:400!important;letter-spacing:0.06em;text-transform:uppercase;font-size:0.82em!important;border:1px solid rgba(0,0,0,0.1)!important;background:transparent!important;color:inherit!important}
+button[class*="bg-"],[role="button"][class*="bg-"]{font-weight:400!important;letter-spacing:0.06em;text-transform:uppercase;font-size:0.82em!important;opacity:0.85}
+button:hover,a:hover,[role="button"]:hover{opacity:0.5;transition:opacity 250ms ease-out}
+nav,aside,[class*="border-b"],[class*="border-r"]{border-color:rgba(0,0,0,0.04)!important}` },
+  { name: 'bouncy', css: `[class*="rounded-md"],[class*="rounded-lg"]{border-radius:16px!important}
+[class*="rounded-xl"],[class*="rounded-2xl"],[class*="rounded-3xl"]{border-radius:24px!important}
+[class*="shadow-sm"],[class*="shadow-md"]{box-shadow:0 4px 14px rgba(99,102,241,0.18),0 2px 6px rgba(244,63,94,0.12)!important}
+[class*="shadow-lg"],[class*="shadow-xl"]{box-shadow:0 10px 30px rgba(99,102,241,0.22),0 4px 12px rgba(244,63,94,0.14)!important}
+button,[role="button"],article{transition:transform 300ms cubic-bezier(0.34,1.56,0.64,1),box-shadow 300ms cubic-bezier(0.34,1.56,0.64,1)!important}
+button:hover,[role="button"]:hover{transform:scale(1.05) translateY(-2px)!important}
+article:hover{transform:translateY(-4px);box-shadow:0 12px 30px rgba(99,102,241,0.2)!important}
+h1,h2,h3{font-weight:800!important;letter-spacing:-0.01em}
+input,select,textarea{border-radius:14px!important}
+button:active,[role="button"]:active{transform:scale(0.95)!important;transition-duration:80ms!important}` },
+  { name: 'frosted', css: `body:not(.dark){background:linear-gradient(135deg,#dbeafe 0%,#ede9fe 35%,#fce7f3 65%,#e0f2fe 100%)!important;min-height:100vh}
+.dark body,.dark.min-h-screen,html.dark body{background:linear-gradient(135deg,#0f172a 0%,#1e1b4b 35%,#1e1b4b 65%,#0f172a 100%)!important;min-height:100vh}
+:not(.dark) [class*="bg-white"]{background:rgba(255,255,255,0.55)!important;-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);border:1px solid rgba(255,255,255,0.4)!important;box-shadow:0 4px 24px rgba(0,0,0,0.04),inset 0 1px 0 rgba(255,255,255,0.6)!important}
+.dark [class*="bg-slate-900"],.dark [class*="bg-slate-950"],.dark [class*="bg-gray-900"],.dark [class*="bg-gray-950"]{background:rgba(15,23,42,0.55)!important;-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);border:1px solid rgba(99,102,241,0.15)!important;box-shadow:0 4px 24px rgba(0,0,0,0.2),inset 0 1px 0 rgba(99,102,241,0.1)!important}
+:not(.dark) [class*="bg-slate-50"],:not(.dark) [class*="bg-gray-50"],:not(.dark) [class*="bg-zinc-50"]{background:rgba(248,250,252,0.4)!important;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+.dark [class*="bg-slate-800"],.dark [class*="bg-gray-800"],.dark [class*="bg-slate-850"]{background:rgba(30,41,59,0.5)!important;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+[class*="shadow-sm"],[class*="shadow-md"],[class*="shadow-lg"],[class*="shadow-xl"]{box-shadow:0 4px 20px rgba(0,0,0,0.05),inset 0 1px 0 rgba(255,255,255,0.5)!important}
+.dark [class*="shadow-sm"],.dark [class*="shadow-md"],.dark [class*="shadow-lg"],.dark [class*="shadow-xl"]{box-shadow:0 4px 20px rgba(0,0,0,0.3),inset 0 1px 0 rgba(99,102,241,0.1)!important}
+[class*="rounded-lg"]{border-radius:14px!important}
+[class*="rounded-xl"],[class*="rounded-2xl"]{border-radius:18px!important}
+:not(.dark) [class*="border-slate-200"],:not(.dark) [class*="border-gray-200"],:not(.dark) [class*="border-zinc-200"]{border-color:rgba(255,255,255,0.35)!important}
+.dark [class*="border-slate-700"],.dark [class*="border-slate-800"],.dark [class*="border-gray-700"],.dark [class*="border-gray-800"]{border-color:rgba(99,102,241,0.15)!important}
+[class*="divide-slate"],[class*="divide-gray"],[class*="divide-zinc"]{--tw-divide-opacity:0.3}
+:not(.dark) [class*="border-t"]:not([class*="border-t-0"]){border-color:rgba(100,116,139,0.2)!important}
+.dark [class*="border-t"]:not([class*="border-t-0"]){border-color:rgba(99,102,241,0.12)!important}
+:not(.dark) [class*="text-slate-500"],:not(.dark) [class*="text-gray-500"],:not(.dark) [class*="text-zinc-500"]{color:rgb(51,65,85)!important}
+:not(.dark) [class*="text-slate-400"],:not(.dark) [class*="text-gray-400"]{color:rgb(71,85,105)!important}
+.dark [class*="text-slate-400"],.dark [class*="text-gray-400"]{color:rgb(148,163,184)!important}
+.dark [class*="text-slate-300"],.dark [class*="text-gray-300"]{color:rgb(203,213,225)!important}
+input,select,textarea{-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);border-radius:12px!important}
+:not(.dark) input,:not(.dark) select,:not(.dark) textarea{background:rgba(255,255,255,0.45)!important;border:1px solid rgba(255,255,255,0.4)!important}
+.dark input,.dark select,.dark textarea{background:rgba(15,23,42,0.45)!important;border:1px solid rgba(99,102,241,0.2)!important}
+button:hover,[role="button"]:hover{box-shadow:0 0 24px rgba(99,102,241,0.18),0 6px 20px rgba(0,0,0,0.06)!important;transition:box-shadow 250ms ease-out,transform 250ms ease-out;transform:translateY(-1px)}
+:not(.dark) nav,:not(.dark) aside,:not(.dark) header{-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);background:rgba(255,255,255,0.65)!important}
+.dark nav,.dark aside,.dark header{-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);background:rgba(15,23,42,0.65)!important}` },
+  { name: 'serif', css: `@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap');
+h1,h2,h3,h4,h5,h6{font-family:'Playfair Display',Georgia,'Times New Roman',serif!important;letter-spacing:-0.02em;line-height:1.15}
+h1{font-weight:400!important;font-size:2.75em!important;letter-spacing:-0.03em}
+h2{font-weight:700!important}
+h3,h4,h5,h6{font-weight:700!important}
+[class*="shadow"]{box-shadow:none!important}
+[class*="border"]{border-color:#e2e8f0!important}
+[class*="rounded-lg"],[class*="rounded-xl"],[class*="rounded-2xl"],[class*="rounded-3xl"],[class*="rounded-md"]{border-radius:2px!important}
+button,[role="button"]{font-weight:400!important;letter-spacing:0.1em;text-transform:uppercase;font-size:0.78em!important;border-radius:1px!important;padding-top:0.75rem!important;padding-bottom:0.75rem!important}
+a:hover{text-decoration:underline!important;text-underline-offset:4px;text-decoration-thickness:1px}
+button:hover,[role="button"]:hover{opacity:0.75;transition:opacity 200ms ease}
+p{line-height:1.75!important}
+body{letter-spacing:0.005em}
+[class*="bg-blue-600"],[class*="bg-indigo-600"],[class*="bg-violet-600"],[class*="bg-teal-600"],[class*="bg-emerald-600"],[class*="bg-rose-600"],[class*="bg-orange-600"],[class*="bg-fuchsia-600"]{background-color:#334155!important}
+[class*="bg-blue-600"]:hover,[class*="bg-indigo-600"]:hover,[class*="bg-violet-600"]:hover,[class*="bg-teal-600"]:hover,[class*="bg-emerald-600"]:hover{background-color:#1e293b!important}
+input,select,textarea{border-radius:1px!important}` },
+];
+
+const VIEWPORTS = QUICK ? [{ w: 1280, h: 900 }] : [
+  { w: 375, h: 812 },
+  { w: 768, h: 1024 },
+  { w: 1280, h: 900 },
+];
+
+const DARK_MODES = QUICK ? [false] : [false, true];
+
+// --- Server ---
+function startServer() {
+  const mimeTypes = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2' };
+  const server = createServer((req, res) => {
+    let filePath = join(DOCS_DIR, req.url === '/' ? 'index.html' : req.url);
+    if (!existsSync(filePath)) { res.writeHead(404); res.end('Not found'); return; }
+    const ext = extname(filePath);
+    res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' });
+    res.end(readFileSync(filePath));
+  });
+  server.listen(PORT);
+  return server;
+}
+
+// --- Build test matrix ---
+function buildTests() {
+  const manifest = JSON.parse(readFileSync(join(DOCS_DIR, 'presets', 'index.json'), 'utf8'));
+  const tests = [];
+
+  for (const [el, info] of Object.entries(manifest.elements)) {
+    if (FILTER && !el.includes(FILTER)) continue;
+    const personalities = Object.keys(info.personalities || {});
+    for (const pers of personalities) {
+      const file = join(DOCS_DIR, 'presets', el, pers + '.html');
+      if (!existsSync(file)) continue;
+
+      for (const effect of EFFECTS) {
+        if (EFFECTS_ONLY) {
+          // Only test at 1280, no dark mode for effects-only
+          tests.push({ element: el, personality: pers, effect: effect.name, effectCSS: effect.css, viewport: { w: 1280, h: 900 }, dark: false });
+        } else {
+          for (const vp of VIEWPORTS) {
+            for (const dark of DARK_MODES) {
+              tests.push({ element: el, personality: pers, effect: effect.name, effectCSS: effect.css, viewport: vp, dark });
+            }
+          }
+        }
+      }
+    }
+  }
+  return tests;
+}
+
+function testKey(t) {
+  return `${t.element}/${t.personality}|${t.effect}|${t.viewport.w}|${t.dark ? 'dark' : 'light'}`;
+}
+
+// --- Run a single test ---
+async function runTest(page, t) {
+  const html = readFileSync(join(DOCS_DIR, 'presets', t.element, t.personality + '.html'), 'utf8');
+
+  await page.setViewport({ width: t.viewport.w, height: t.viewport.h });
+  await page.goto(`http://localhost:${PORT}/tests/test-presets-rendered.html`, { waitUntil: 'networkidle0', timeout: 15000 });
+
+  const result = await page.evaluate(async (html, element, personality, effectCSS, dark, vpWidth) => {
+    return new Promise((resolve) => {
+      const iframe = document.createElement('iframe');
+      iframe.style.cssText = `position:fixed;top:-9999px;left:-9999px;width:${vpWidth}px;height:900px;border:none;`;
+      iframe.sandbox = 'allow-scripts allow-same-origin';
+      document.body.appendChild(iframe);
+
+      let handled = false;
+      function onMsg(e) {
+        if (!e.data || e.data.type !== 'milg-headless-result') return;
+        if (handled) return;
+        handled = true;
+        window.removeEventListener('message', onMsg);
+        if (iframe.parentNode) document.body.removeChild(iframe);
+
+        const data = e.data.data;
+        data.profile = 'general';
+        data.meta.isFragment = true;
+        data.meta.url = element + '/' + personality;
+        try {
+          const report = window.MilgScoring.runScoring(data);
+          // Read darkness level from extraction (computed area-weighted in extractFromDocument)
+          var darknessLevel = (data.colors && data.colors.darknessLevel) || 5;
+
+          resolve({
+            overall: report.overall,
+            grade: report.grade,
+            darknessLevel: darknessLevel,
+            categories: report.categories.map(c => ({
+              label: c.label,
+              score: c.score,
+              na: !!c.notApplicable,
+              errors: c.findings.filter(f => f.severity === 'error').length,
+              warnings: c.findings.filter(f => f.severity === 'warning').length,
+              infos: c.findings.filter(f => f.severity === 'info').length,
+              findings: c.findings.map(f => ({ severity: f.severity, title: f.title }))
+            })),
+            // Capture raw metrics for divergence analysis
+            metrics: {
+              contrastPairs: (data.colors && data.colors.contrastPairs) ? data.colors.contrastPairs.length : 0,
+              fontSizes: data.typography ? Object.keys(data.typography.fontSizes || {}).length : 0,
+              borderRadii: data.spacing ? Object.keys(data.spacing.borderRadii || {}).length : 0,
+              touchTargets: (data.interaction && data.interaction.touchTargets) ? data.interaction.touchTargets.length : 0,
+              headingCount: data.structure ? (data.structure.headingCount || 0) : 0,
+              totalElements: data.structure ? (data.structure.totalElements || 0) : 0,
+              colors: data.colors ? Object.keys(data.colors.textColors || {}).length : 0,
+              bgColors: data.colors ? Object.keys(data.colors.backgroundColors || {}).length : 0,
+            }
+          });
+        } catch(err) {
+          resolve({ error: err.message });
+        }
+      }
+      window.addEventListener('message', onMsg);
+
+      fetch('/analyzer.js').then(r => r.text()).then(code => {
+        const match = code.match(/function extractFromDocument\(\)\s*\{/);
+        if (!match) { resolve({ error: 'No extractFromDocument' }); return; }
+        const start = code.indexOf(match[0]);
+        let depth = 0, end = start;
+        for (let i = start; i < code.length; i++) {
+          if (code[i] === '{') depth++;
+          if (code[i] === '}') { depth--; if (depth === 0) { end = i + 1; break; } }
+        }
+        const extractFn = code.substring(start, end).replace(/milg-analyzer-result/g, 'milg-headless-result');
+
+        const darkClass = dark ? ' class="dark"' : '';
+        const darkVariantCSS = '@custom-variant dark (&:where(.dark, .dark *));';
+        const srcdoc = '<!DOCTYPE html><html lang="en"' + darkClass + '><head><meta charset="UTF-8">' +
+          '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+          '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
+          (dark ? '<style type="text/tailwindcss">' + darkVariantCSS + '</style>' : '') +
+          (effectCSS ? '<style>' + effectCSS + '</style>' : '') +
+          '<style>body{margin:0}</style></head><body>' +
+          '<script>window.__milgIsFragment=true;</' + 'script>' +
+          html +
+          '<script>setTimeout(function(){(' + extractFn + ')()}, 2500);</' + 'script>' +
+          '</body></html>';
+        iframe.srcdoc = srcdoc;
+      });
+
+      setTimeout(() => {
+        if (handled) return;
+        handled = true;
+        window.removeEventListener('message', onMsg);
+        if (iframe.parentNode) document.body.removeChild(iframe);
+        resolve({ error: 'Timeout' });
+      }, 15000);
+    });
+  }, html, t.element, t.personality, t.effectCSS, t.dark, t.viewport.w);
+
+  return result;
+}
+
+// --- Divergence scoring ---
+// Compares two test results to measure how different they are (0 = identical, 100 = completely different)
+function divergenceScore(a, b) {
+  if (!a || !b || a.error || b.error) return null;
+
+  let totalDiff = 0;
+  let comparisons = 0;
+
+  // 1. Overall score difference (weight: 3)
+  totalDiff += Math.abs(a.overall - b.overall) * 3;
+  comparisons += 3;
+
+  // 2. Per-category score differences (weight: 1 each)
+  const aCats = {};
+  const bCats = {};
+  (a.categories || []).forEach(c => { aCats[c.label] = c; });
+  (b.categories || []).forEach(c => { bCats[c.label] = c; });
+
+  for (const label of Object.keys(aCats)) {
+    if (bCats[label]) {
+      // Normalize score diff to 0-100
+      totalDiff += Math.abs((aCats[label].score || 0) - (bCats[label].score || 0));
+      comparisons++;
+
+      // Finding count differences
+      const aFindings = (aCats[label].errors || 0) + (aCats[label].warnings || 0);
+      const bFindings = (bCats[label].errors || 0) + (bCats[label].warnings || 0);
+      totalDiff += Math.min(100, Math.abs(aFindings - bFindings) * 15);
+      comparisons++;
+    }
+  }
+
+  // 3. Metric differences (structural signals)
+  if (a.metrics && b.metrics) {
+    const metricKeys = ['contrastPairs', 'fontSizes', 'borderRadii', 'touchTargets', 'colors', 'bgColors'];
+    for (const k of metricKeys) {
+      const av = a.metrics[k] || 0;
+      const bv = b.metrics[k] || 0;
+      const maxVal = Math.max(av, bv, 1);
+      totalDiff += (Math.abs(av - bv) / maxVal) * 100;
+      comparisons++;
+    }
+  }
+
+  return comparisons > 0 ? Math.round(totalDiff / comparisons) : 0;
+}
+
+// --- Report generation ---
+function generateReport(results, tests) {
+  const resultMap = {};
+  for (const r of results) {
+    resultMap[r.key] = r;
+  }
+
+  let md = '# Full Matrix Test Results\n\n';
+  md += `**Date:** ${new Date().toISOString()}\n`;
+  md += `**Tests run:** ${results.length} | **Errors:** ${results.filter(r => r.error).length}\n`;
+  md += `**Matrix:** ${new Set(results.map(r => r.element + '/' + r.personality)).size} presets × ${EFFECTS.length} effects × ${VIEWPORTS.length} viewports × ${DARK_MODES.length} dark modes\n\n`;
+
+  const ok = results.filter(r => !r.error);
+  if (ok.length === 0) { return md + 'No successful results.\n'; }
+
+  const avg = Math.round(ok.reduce((s, r) => s + r.overall, 0) / ok.length);
+  const min = Math.min(...ok.map(r => r.overall));
+  const max = Math.max(...ok.map(r => r.overall));
+  md += `**Overall:** avg=${avg} min=${min} max=${max}\n\n`;
+
+  // === Section 1: Effect impact summary ===
+  md += '## 1. Effect Impact Summary\n\n';
+  md += 'Average score by effect (across all presets, viewports, dark modes):\n\n';
+  md += '| Effect | Avg Score | Min | Max | Avg Errors | Avg Warnings |\n';
+  md += '|--------|-----------|-----|-----|------------|-------------|\n';
+  for (const effect of EFFECTS) {
+    const effResults = ok.filter(r => r.effect === effect.name);
+    if (effResults.length === 0) continue;
+    const eAvg = Math.round(effResults.reduce((s, r) => s + r.overall, 0) / effResults.length);
+    const eMin = Math.min(...effResults.map(r => r.overall));
+    const eMax = Math.max(...effResults.map(r => r.overall));
+    const eErr = (effResults.reduce((s, r) => s + r.categories.reduce((cs, c) => cs + c.errors, 0), 0) / effResults.length).toFixed(1);
+    const eWarn = (effResults.reduce((s, r) => s + r.categories.reduce((cs, c) => cs + c.warnings, 0), 0) / effResults.length).toFixed(1);
+    md += `| ${effect.name} | ${eAvg} | ${eMin} | ${eMax} | ${eErr} | ${eWarn} |\n`;
+  }
+
+  // === Section 1b: Darkness Level Analysis ===
+  md += '\n## 1b. Page Darkness Level\n\n';
+  md += 'Scale: 1 = white page, 10 = black page. Range 2.5–7.5 is expected; outside = warning.\n\n';
+  md += '| Preset | Light DL | Dark DL | Delta | Warning |\n';
+  md += '|--------|----------|---------|-------|---------|\n';
+  {
+    const presetsDL = [...new Set(ok.map(r => r.element + '/' + r.personality))];
+    for (const preset of presetsDL) {
+      const lk = `${preset}|none|1280|light`;
+      const dk = `${preset}|none|1280|dark`;
+      const lr = resultMap[lk];
+      const dr = resultMap[dk];
+      const lDL = lr && !lr.error ? (lr.darknessLevel || '?') : '—';
+      const dDL = dr && !dr.error ? (dr.darknessLevel || '?') : '—';
+      const delta = (typeof lDL === 'number' && typeof dDL === 'number') ? dDL - lDL : '—';
+      let warn = '';
+      if (typeof lDL === 'number' && (lDL < 2.5 || lDL > 7.5)) warn += 'light-mode ';
+      if (typeof dDL === 'number' && (dDL < 2.5 || dDL > 7.5)) warn += 'dark-mode ';
+      if (typeof lDL === 'number' && typeof dDL === 'number' && Math.abs(dDL - lDL) < 2) warn += 'low-contrast-switch ';
+      if (warn || (typeof delta === 'number' && Math.abs(delta) < 2)) {
+        md += `| ${preset} | ${lDL} | ${dDL} | ${typeof delta === 'number' ? (delta >= 0 ? '+' : '') + delta : delta} | ${warn.trim() || '—'} |\n`;
+      }
+    }
+  }
+
+  // === Section 2: Dark mode impact ===
+  if (DARK_MODES.length > 1) {
+    md += '\n## 2. Dark Mode Impact\n\n';
+    md += '| Preset | Light Score | Dark Score | Delta | Worse Categories |\n';
+    md += '|--------|------------ |------------|-------|-------------------|\n';
+
+    const presets = [...new Set(ok.map(r => r.element + '/' + r.personality))];
+    const darkIssues = [];
+    for (const preset of presets) {
+      // Compare none effect, 1280px, light vs dark
+      const lightKey = `${preset}|none|1280|light`;
+      const darkKey = `${preset}|none|1280|dark`;
+      const light = resultMap[lightKey];
+      const dark = resultMap[darkKey];
+      if (!light || !dark || light.error || dark.error) continue;
+
+      const delta = dark.overall - light.overall;
+      let worse = [];
+      for (let i = 0; i < (light.categories || []).length; i++) {
+        const lc = light.categories[i];
+        const dc = dark.categories[i];
+        if (dc && lc && dc.score < lc.score - 5) {
+          worse.push(`${lc.label} (${lc.score}→${dc.score})`);
+        }
+      }
+
+      if (delta < -5 || worse.length > 0) {
+        darkIssues.push({ preset, light: light.overall, dark: dark.overall, delta, worse });
+        md += `| ${preset} | ${light.overall} | ${dark.overall} | ${delta >= 0 ? '+' : ''}${delta} | ${worse.join(', ') || '—'} |\n`;
+      }
+    }
+    if (darkIssues.length === 0) md += '| (no significant dark mode regressions) | | | | |\n';
+  }
+
+  // === Section 3: Viewport responsiveness ===
+  if (VIEWPORTS.length > 1) {
+    md += '\n## 3. Viewport Responsiveness\n\n';
+    md += '| Preset | 375px | 768px | 1280px | Mobile Delta |\n';
+    md += '|--------|-------|-------|--------|-------------|\n';
+
+    const presets = [...new Set(ok.map(r => r.element + '/' + r.personality))];
+    const vpIssues = [];
+    for (const preset of presets) {
+      const scores = {};
+      for (const vp of VIEWPORTS) {
+        const key = `${preset}|none|${vp.w}|light`;
+        const r = resultMap[key];
+        if (r && !r.error) scores[vp.w] = r.overall;
+      }
+      if (Object.keys(scores).length < VIEWPORTS.length) continue;
+
+      const mobileDelta = (scores[375] || 0) - (scores[1280] || 0);
+      if (Math.abs(mobileDelta) > 5 || (scores[375] || 100) < 70) {
+        vpIssues.push({ preset, scores, mobileDelta });
+        md += `| ${preset} | ${scores[375] ?? '—'} | ${scores[768] ?? '—'} | ${scores[1280] ?? '—'} | ${mobileDelta >= 0 ? '+' : ''}${mobileDelta} |\n`;
+      }
+    }
+    if (vpIssues.length === 0) md += '| (no significant viewport regressions) | | | | |\n';
+  }
+
+  // === Section 4: Frosted + dark mode (known problem combo) ===
+  md += '\n## 4. Frosted Effect Analysis\n\n';
+  md += 'Frosted is the most invasive effect (replaces backgrounds, adds glassmorphism). Checking for issues:\n\n';
+  md += '| Preset | None Score | Frosted Score | Delta | Frosted+Dark | Dark Delta | Key Issues |\n';
+  md += '|--------|-----------|---------------|-------|-------------|------------|------------|\n';
+
+  const presets = [...new Set(ok.map(r => r.element + '/' + r.personality))];
+  for (const preset of presets) {
+    const noneKey = `${preset}|none|1280|light`;
+    const frostedKey = `${preset}|frosted|1280|light`;
+    const frostedDarkKey = `${preset}|frosted|1280|dark`;
+    const none = resultMap[noneKey];
+    const frosted = resultMap[frostedKey];
+    const frostedDark = resultMap[frostedDarkKey];
+
+    if (!none || none.error || !frosted || frosted.error) continue;
+
+    const delta = frosted.overall - none.overall;
+    const darkScore = frostedDark && !frostedDark.error ? frostedDark.overall : '—';
+    const darkDelta = frostedDark && !frostedDark.error ? frostedDark.overall - frosted.overall : '—';
+
+    // Collect key issues from frosted
+    const issues = [];
+    for (const c of frosted.categories) {
+      if (c.errors > 0) {
+        const titles = c.findings.filter(f => f.severity === 'error').map(f => f.title.substring(0, 50));
+        issues.push(...titles.slice(0, 2));
+      }
+    }
+
+    if (delta < -3 || (typeof darkDelta === 'number' && darkDelta < -3) || issues.length > 0) {
+      md += `| ${preset} | ${none.overall} | ${frosted.overall} | ${delta >= 0 ? '+' : ''}${delta} | ${darkScore} | ${typeof darkDelta === 'number' ? (darkDelta >= 0 ? '+' : '') + darkDelta : '—'} | ${issues.slice(0, 2).join('; ') || '—'} |\n`;
+    }
+  }
+
+  // === Section 5: Divergence analysis — are variants meaningfully different? ===
+  md += '\n## 5. Variant Divergence Analysis\n\n';
+  md += 'How different is each variant from "none" effect? Low divergence (< 5) = variant adds negligible value.\n\n';
+
+  // 5a. Effect divergence per preset (at 1280px, light)
+  md += '### 5a. Effect Divergence (per preset, 1280px light)\n\n';
+  md += '| Preset | Hushed | Bouncy | Frosted | Serif | Avg |\n';
+  md += '|--------|--------|--------|---------|-------|-----|\n';
+
+  const lowDivergence = [];
+  for (const preset of presets) {
+    const baseKey = `${preset}|none|1280|light`;
+    const base = resultMap[baseKey];
+    if (!base || base.error) continue;
+
+    const divs = {};
+    let total = 0;
+    let count = 0;
+    for (const eff of EFFECTS.slice(1)) { // skip "none"
+      const key = `${preset}|${eff.name}|1280|light`;
+      const r = resultMap[key];
+      const d = divergenceScore(base, r);
+      divs[eff.name] = d;
+      if (d !== null) { total += d; count++; }
+    }
+    const avgDiv = count > 0 ? Math.round(total / count) : 0;
+
+    md += `| ${preset} | ${divs.hushed ?? '—'} | ${divs.bouncy ?? '—'} | ${divs.frosted ?? '—'} | ${divs.serif ?? '—'} | ${avgDiv} |\n`;
+
+    // Flag low divergence
+    for (const [eff, d] of Object.entries(divs)) {
+      if (d !== null && d < 5) {
+        lowDivergence.push({ preset, effect: eff, divergence: d });
+      }
+    }
+  }
+
+  // 5b. Personality divergence (do clean/minimalist/playful actually differ?)
+  md += '\n### 5b. Personality Divergence (same element, none effect, 1280px light)\n\n';
+  md += 'Low divergence = personalities are too similar. Should be > 10 for meaningful differentiation.\n\n';
+  md += '| Element | Clean vs Min | Clean vs Play | Min vs Play | Clean vs Edit | Avg |\n';
+  md += '|---------|-------------|---------------|-------------|--------------|-----|\n';
+
+  const elements = [...new Set(ok.map(r => r.element))];
+  const lowPersDiv = [];
+  for (const el of elements) {
+    const getR = (p) => resultMap[`${el}/${p}|none|1280|light`];
+    const clean = getR('clean');
+    const min = getR('minimalist');
+    const play = getR('playful');
+    const edit = getR('editorial');
+
+    if (!clean || clean.error) continue;
+
+    const cmDiv = divergenceScore(clean, min);
+    const cpDiv = divergenceScore(clean, play);
+    const mpDiv = divergenceScore(min, play);
+    const ceDiv = divergenceScore(clean, edit);
+
+    const vals = [cmDiv, cpDiv, mpDiv, ceDiv].filter(v => v !== null);
+    const avgDiv = vals.length > 0 ? Math.round(vals.reduce((a, b) => a + b) / vals.length) : 0;
+
+    md += `| ${el} | ${cmDiv ?? '—'} | ${cpDiv ?? '—'} | ${mpDiv ?? '—'} | ${ceDiv ?? '—'} | ${avgDiv} |\n`;
+
+    if (cmDiv !== null && cmDiv < 5) lowPersDiv.push({ element: el, pair: 'clean/minimalist', divergence: cmDiv });
+    if (cpDiv !== null && cpDiv < 5) lowPersDiv.push({ element: el, pair: 'clean/playful', divergence: cpDiv });
+    if (mpDiv !== null && mpDiv < 5) lowPersDiv.push({ element: el, pair: 'minimalist/playful', divergence: mpDiv });
+  }
+
+  // === Section 6: Flagged combinations ===
+  md += '\n## 6. Flagged Combinations\n\n';
+
+  // 6a. Worst scores overall
+  md += '### 6a. Worst Scores (bottom 20)\n\n';
+  md += '| Combo | Score | Grade | Errors | Warnings |\n';
+  md += '|-------|-------|-------|--------|----------|\n';
+  const sorted = ok.sort((a, b) => a.overall - b.overall);
+  for (const r of sorted.slice(0, 20)) {
+    const errs = r.categories.reduce((s, c) => s + c.errors, 0);
+    const warns = r.categories.reduce((s, c) => s + c.warnings, 0);
+    md += `| ${r.key} | ${r.overall} | ${r.grade} | ${errs} | ${warns} |\n`;
+  }
+
+  // 6b. Low divergence (unnecessary variants)
+  md += '\n### 6b. Low Effect Divergence (< 5 — may be unnecessary)\n\n';
+  if (lowDivergence.length > 0) {
+    md += '| Preset | Effect | Divergence |\n';
+    md += '|--------|--------|------------|\n';
+    lowDivergence.sort((a, b) => a.divergence - b.divergence);
+    for (const ld of lowDivergence) {
+      md += `| ${ld.preset} | ${ld.effect} | ${ld.divergence} |\n`;
+    }
+  } else {
+    md += 'None — all effects produce meaningful differentiation.\n';
+  }
+
+  md += '\n### 6c. Low Personality Divergence (< 5 — personalities too similar)\n\n';
+  if (lowPersDiv.length > 0) {
+    md += '| Element | Pair | Divergence |\n';
+    md += '|---------|------|------------|\n';
+    lowPersDiv.sort((a, b) => a.divergence - b.divergence);
+    for (const ld of lowPersDiv) {
+      md += `| ${ld.element} | ${ld.pair} | ${ld.divergence} |\n`;
+    }
+  } else {
+    md += 'None — all personalities produce meaningful differentiation.\n';
+  }
+
+  // 6d. Effect regressions (effect makes things worse by >10 points)
+  md += '\n### 6d. Effect Regressions (score drops > 10 points vs none)\n\n';
+  md += '| Preset | Effect | None Score | Effect Score | Delta |\n';
+  md += '|--------|--------|------------|-------------|-------|\n';
+  let regressionCount = 0;
+  for (const preset of presets) {
+    const baseKey = `${preset}|none|1280|light`;
+    const base = resultMap[baseKey];
+    if (!base || base.error) continue;
+
+    for (const eff of EFFECTS.slice(1)) {
+      const key = `${preset}|${eff.name}|1280|light`;
+      const r = resultMap[key];
+      if (!r || r.error) continue;
+      const delta = r.overall - base.overall;
+      if (delta < -10) {
+        md += `| ${preset} | ${eff.name} | ${base.overall} | ${r.overall} | ${delta} |\n`;
+        regressionCount++;
+      }
+    }
+  }
+  if (regressionCount === 0) md += '| (no regressions > 10 points) | | | | |\n';
+
+  // === Section 7: Most common issues by effect ===
+  md += '\n## 7. Most Common Issues by Effect\n\n';
+  for (const effect of EFFECTS) {
+    const effResults = ok.filter(r => r.effect === effect.name);
+    if (effResults.length === 0) continue;
+
+    md += `### ${effect.name} (${effResults.length} tests)\n\n`;
+    const issueCounts = {};
+    for (const r of effResults) {
+      for (const c of r.categories) {
+        for (const f of c.findings) {
+          if (f.severity === 'info') continue; // skip info
+          const key = `[${f.severity}] ${c.label}: ${f.title.substring(0, 80)}`;
+          issueCounts[key] = (issueCounts[key] || 0) + 1;
+        }
+      }
+    }
+    const sortedIssues = Object.entries(issueCounts).sort((a, b) => b[1] - a[1]);
+    for (const [issue, count] of sortedIssues.slice(0, 10)) {
+      const pct = Math.round(count / effResults.length * 100);
+      md += `- **${count}x** (${pct}%) ${issue}\n`;
+    }
+    md += '\n';
+  }
+
+  return md;
+}
+
+// --- Main ---
+async function main() {
+  const tests = buildTests();
+  console.log(`Full matrix: ${tests.length} test combinations`);
+  console.log(`  Presets: ${new Set(tests.map(t => t.element + '/' + t.personality)).size}`);
+  console.log(`  Effects: ${EFFECTS.length} (${EFFECTS.map(e => e.name).join(', ')})`);
+  console.log(`  Viewports: ${VIEWPORTS.map(v => v.w + 'px').join(', ')}`);
+  console.log(`  Dark modes: ${DARK_MODES.map(d => d ? 'dark' : 'light').join(', ')}`);
+  console.log();
+
+  if (DIVERGENCE_ONLY) {
+    if (!existsSync(CACHE_FILE)) {
+      console.error('No cache file found. Run the full test first.');
+      process.exit(1);
+    }
+    const cached = JSON.parse(readFileSync(CACHE_FILE, 'utf8'));
+    const md = generateReport(cached, tests);
+    const outFile = join(RESEARCH_DIR, 'full-matrix-results.md');
+    writeFileSync(outFile, md);
+    console.log(`Report written to: ${outFile}`);
+    return;
+  }
+
+  const server = startServer();
+  console.log(`Server on port ${PORT}`);
+
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage']
+  });
+
+  // Use multiple pages for parallelism (3 concurrent)
+  const CONCURRENCY = 3;
+  const pages = [];
+  for (let i = 0; i < CONCURRENCY; i++) {
+    pages.push(await browser.newPage());
+  }
+
+  const results = [];
+  let completed = 0;
+  const startTime = Date.now();
+
+  // Process tests in batches
+  async function processTest(page, t) {
+    const key = testKey(t);
+    try {
+      const result = await runTest(page, t);
+      completed++;
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
+      const eta = Math.round((Date.now() - startTime) / completed * (tests.length - completed) / 1000);
+
+      if (result.error) {
+        process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s (ETA ${eta}s) ${key} ERROR: ${result.error}          \n`);
+        results.push({ key, ...t, error: result.error });
+      } else {
+        const e = result.categories.reduce((s, c) => s + c.errors, 0);
+        const w = result.categories.reduce((s, c) => s + c.warnings, 0);
+        const dl = result.darknessLevel || '?';
+        process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s (ETA ${eta}s) ${key} → ${result.overall}${result.grade} (${e}E ${w}W) D${dl}          \n`);
+        results.push({ key, ...t, overall: result.overall, grade: result.grade, categories: result.categories, metrics: result.metrics, darknessLevel: result.darknessLevel });
+      }
+    } catch (err) {
+      completed++;
+      process.stdout.write(`\r[${completed}/${tests.length}] ${key} CRASH: ${err.message}          \n`);
+      results.push({ key, ...t, error: err.message });
+    }
+  }
+
+  // Run with concurrency
+  let idx = 0;
+  async function worker(page) {
+    while (idx < tests.length) {
+      const myIdx = idx++;
+      await processTest(page, tests[myIdx]);
+    }
+  }
+
+  await Promise.all(pages.map(p => worker(p)));
+
+  await browser.close();
+  server.close();
+
+  // Cache results
+  if (!existsSync(RESEARCH_DIR)) mkdirSync(RESEARCH_DIR, { recursive: true });
+  writeFileSync(CACHE_FILE, JSON.stringify(results, null, 2));
+  console.log(`\nCached ${results.length} results to ${CACHE_FILE}`);
+
+  // Generate report
+  const md = generateReport(results, tests);
+  const outFile = join(RESEARCH_DIR, 'full-matrix-results.md');
+  writeFileSync(outFile, md);
+  console.log(`Report written to: ${outFile}`);
+
+  // Quick summary
+  const ok = results.filter(r => !r.error);
+  const errs = results.filter(r => r.error);
+  console.log(`\n=== SUMMARY ===`);
+  console.log(`Tested: ${ok.length} | Errors: ${errs.length}`);
+  if (ok.length > 0) {
+    const avg = Math.round(ok.reduce((s, r) => s + r.overall, 0) / ok.length);
+    console.log(`Average: ${avg} | Min: ${Math.min(...ok.map(r => r.overall))} | Max: ${Math.max(...ok.map(r => r.overall))}`);
+    for (const eff of EFFECTS) {
+      const effOk = ok.filter(r => r.effect === eff.name);
+      if (effOk.length > 0) {
+        const effAvg = Math.round(effOk.reduce((s, r) => s + r.overall, 0) / effOk.length);
+        console.log(`  ${eff.name}: avg=${effAvg} (${effOk.length} tests)`);
+      }
+    }
+  }
+}
+
+main().catch(err => { console.error('Fatal:', err); process.exit(1); });
+</file>
+
 <file path="docs/scoring/registry.js">
 // Scoring Module Registry
 // Each module calls MilgScoring.register() to add its scoring function.
@@ -19767,113 +19767,6 @@ The encoded URL is in the committed JS (unavoidable for a static site). But:
 - The encoded string doesn't match URL patterns (stops automated scrapers)
 - Origin checking + rate limiting in the worker caps abuse even if found
 - Anyone with DevTools Network tab can see the decoded URL on requests (that's fine — can't prevent it)
-</file>
-
-<file path="docs/scoring/balance.js">
-// Scoring Module: Visual Weight Balance
-// Weight: 3%
-// Source: Ngo et al. 2003 — balance correlates with preference (r=0.67)
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-  function scoreBalance(data) {
-    var findings = [];
-    var checks = 0;
-    var passed = 0;
-
-    // We use alignment edges as a proxy for content distribution
-    var edges = (data.layout && data.layout.alignmentEdges) || [];
-    var vw = (data.meta && data.meta.viewportWidth) || 1280;
-
-    if (edges.length >= 10) {
-      checks++;
-
-      // Count elements in left half vs right half
-      var leftCount = 0;
-      var rightCount = 0;
-      var midpoint = vw / 2;
-
-      edges.forEach(function(edge) {
-        if (edge < midpoint) leftCount++;
-        else rightCount++;
-      });
-
-      var total = leftCount + rightCount;
-      var ratio = total > 0 ? Math.max(leftCount, rightCount) / Math.min(leftCount || 1, rightCount || 1) : 1;
-
-      if (ratio <= 2) {
-        passed++;
-      } else if (ratio <= 3) {
-        passed++; // Info findings don't reduce score
-        findings.push({
-          severity: 'info',
-          title: 'Content distribution is ' + Math.round(leftCount / total * 100) + '% left / ' + Math.round(rightCount / total * 100) + '% right',
-          detail: 'Moderate imbalance — may be intentional (sidebar layout) or indicate uneven content distribution',
-          fix: 'If using a sidebar layout, this is expected. Otherwise, distribute content more evenly or use a centered layout.',
-          presetRef: null,
-          source: 'Ngo et al. 2003 — Visual balance and aesthetic preference'
-        });
-      } else {
-        findings.push({
-          severity: 'info',
-          title: 'Content heavily weighted to one side (' + Math.round(leftCount / total * 100) + '% / ' + Math.round(rightCount / total * 100) + '%)',
-          detail: 'Strong left-right imbalance — often intentional in sidebar or marketing layouts',
-          fix: 'If using a sidebar or asymmetric layout, this is expected. Otherwise, distribute content more evenly.',
-          presetRef: null,
-          source: 'Ngo et al. 2003 — Visual balance and aesthetic preference'
-        });
-      }
-    }
-
-    // Content centering: is the primary content centered or justified?
-    if (edges.length >= 5) {
-      checks++;
-      var meanEdge = edges.reduce(function(s,v){return s+v},0) / edges.length;
-      var centered = Math.abs(meanEdge - vw * 0.1) < vw * 0.15; // within 15% of typical left margin
-      if (centered || meanEdge > 10) {
-        passed++;
-      } else {
-        findings.push({
-          severity: 'info',
-          title: 'Content appears flush to the left edge (mean position: ' + Math.round(meanEdge) + 'px)',
-          detail: 'Content without proper margins can feel unbalanced.',
-          fix: 'Add container padding or centering. In Tailwind: mx-auto px-4.',
-          source: 'Gestalt proximity — https://lawsofux.com/law-of-proximity/'
-        });
-      }
-    }
-
-    // Vertical rhythm: check if section gaps are present
-    var sectionGaps = (data.layout && data.layout.sectionGaps) || [];
-    if (sectionGaps.length >= 2) {
-      checks++;
-      var minGap = Math.min.apply(null, sectionGaps);
-      var maxGap = Math.max.apply(null, sectionGaps);
-      if (minGap >= 16 && maxGap / (minGap || 1) <= 3) {
-        passed++;
-      } else if (minGap < 4) {
-        findings.push({
-          severity: 'info',
-          title: 'Sections have very tight spacing (minimum gap: ' + minGap + 'px)',
-          detail: 'Sections need breathing room. Tight spacing makes content feel cramped.',
-          fix: 'Use consistent section spacing: 48-96px between major sections.',
-          source: 'Gestalt similarity — https://lawsofux.com/law-of-similarity/'
-        });
-      } else {
-        passed++;
-      }
-    }
-
-    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-    var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-    var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-    return { score: score, findings: findings, checks: checks, passed: passed, weight: 3, label: 'Visual Balance', icon: 'consistency' };
-  }
-
-  S.register("balance", scoreBalance, 3, "Visual Balance", "consistency");
-})();
 </file>
 
 <file path="docs/scoring/readability.js">
@@ -20182,6 +20075,113 @@ export default {
     }
   },
 };
+</file>
+
+<file path="docs/scoring/balance.js">
+// Scoring Module: Visual Weight Balance
+// Weight: 3%
+// Source: Ngo et al. 2003 — balance correlates with preference (r=0.67)
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+  function scoreBalance(data) {
+    var findings = [];
+    var checks = 0;
+    var passed = 0;
+
+    // We use alignment edges as a proxy for content distribution
+    var edges = (data.layout && data.layout.alignmentEdges) || [];
+    var vw = (data.meta && data.meta.viewportWidth) || 1280;
+
+    if (edges.length >= 10) {
+      checks++;
+
+      // Count elements in left half vs right half
+      var leftCount = 0;
+      var rightCount = 0;
+      var midpoint = vw / 2;
+
+      edges.forEach(function(edge) {
+        if (edge < midpoint) leftCount++;
+        else rightCount++;
+      });
+
+      var total = leftCount + rightCount;
+      var ratio = total > 0 ? Math.max(leftCount, rightCount) / Math.min(leftCount || 1, rightCount || 1) : 1;
+
+      if (ratio <= 2) {
+        passed++;
+      } else if (ratio <= 3) {
+        passed++; // Info findings don't reduce score
+        findings.push({
+          severity: 'info',
+          title: 'Content distribution is ' + Math.round(leftCount / total * 100) + '% left / ' + Math.round(rightCount / total * 100) + '% right',
+          detail: 'Moderate imbalance — may be intentional (sidebar layout) or indicate uneven content distribution',
+          fix: 'If using a sidebar layout, this is expected. Otherwise, distribute content more evenly or use a centered layout.',
+          presetRef: null,
+          source: 'Ngo et al. 2003 — Visual balance and aesthetic preference'
+        });
+      } else {
+        findings.push({
+          severity: 'info',
+          title: 'Content heavily weighted to one side (' + Math.round(leftCount / total * 100) + '% / ' + Math.round(rightCount / total * 100) + '%)',
+          detail: 'Strong left-right imbalance — often intentional in sidebar or marketing layouts',
+          fix: 'If using a sidebar or asymmetric layout, this is expected. Otherwise, distribute content more evenly.',
+          presetRef: null,
+          source: 'Ngo et al. 2003 — Visual balance and aesthetic preference'
+        });
+      }
+    }
+
+    // Content centering: is the primary content centered or justified?
+    if (edges.length >= 5) {
+      checks++;
+      var meanEdge = edges.reduce(function(s,v){return s+v},0) / edges.length;
+      var centered = Math.abs(meanEdge - vw * 0.1) < vw * 0.15; // within 15% of typical left margin
+      if (centered || meanEdge > 10) {
+        passed++;
+      } else {
+        findings.push({
+          severity: 'info',
+          title: 'Content appears flush to the left edge (mean position: ' + Math.round(meanEdge) + 'px)',
+          detail: 'Content without proper margins can feel unbalanced.',
+          fix: 'Add container padding or centering. In Tailwind: mx-auto px-4.',
+          source: 'Gestalt proximity — https://lawsofux.com/law-of-proximity/'
+        });
+      }
+    }
+
+    // Vertical rhythm: check if section gaps are present
+    var sectionGaps = (data.layout && data.layout.sectionGaps) || [];
+    if (sectionGaps.length >= 2) {
+      checks++;
+      var minGap = Math.min.apply(null, sectionGaps);
+      var maxGap = Math.max.apply(null, sectionGaps);
+      if (minGap >= 16 && maxGap / (minGap || 1) <= 3) {
+        passed++;
+      } else if (minGap < 4) {
+        findings.push({
+          severity: 'info',
+          title: 'Sections have very tight spacing (minimum gap: ' + minGap + 'px)',
+          detail: 'Sections need breathing room. Tight spacing makes content feel cramped.',
+          fix: 'Use consistent section spacing: 48-96px between major sections.',
+          source: 'Gestalt similarity — https://lawsofux.com/law-of-similarity/'
+        });
+      } else {
+        passed++;
+      }
+    }
+
+    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+    var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+    var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+    return { score: score, findings: findings, checks: checks, passed: passed, weight: 3, label: 'Visual Balance', icon: 'consistency' };
+  }
+
+  S.register("balance", scoreBalance, 3, "Visual Balance", "consistency");
+})();
 </file>
 
 <file path="docs/scoring/cognitive.js">
@@ -20751,6 +20751,28 @@ function scoreLayout(data) {
     } else {
       passed++;
     }
+  }
+
+  // Off-screen elements: visible elements positioned outside viewport (x-axis)
+  var offscreen = layout.offscreenElements || [];
+  if (offscreen.length > 0) {
+    checks++;
+    var offDetails = offscreen.slice(0, 5).map(function(e) {
+      var label = e.element;
+      if (e.text) label += ' ("' + e.text.substring(0, 25) + (e.text.length > 25 ? '…' : '') + '")';
+      return label + ' at x=' + e.left + 'px';
+    });
+    findings.push({
+      severity: offscreen.length > 3 ? 'error' : 'warning',
+      title: offscreen.length + ' element(s) positioned outside viewport',
+      detail: offDetails.join('; '),
+      fix: 'Check absolute/fixed positioning. On mobile, dropdown menus with right-0 may overflow left. Use left-0 sm:right-0 or max-w-[calc(100vw-2rem)]. For elements extending right, check fixed widths wider than viewport.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
+    });
+  } else {
+    checks++;
+    passed++;
   }
 
   // Horizontal scroll on containers (not tables/code which are intentional)
@@ -21662,6 +21684,245 @@ function scoreTypography(data) {
 
   S.register("typography", scoreTypography, 15, "Typography", "type");
 })();
+</file>
+
+<file path="README.md">
+# make-it-look-good
+
+> **Make your website, app, or UI actually look good.** Give your AI assistant this repo and it will help you design, redesign, or fix the visual design of any web project — with real design principles, not guesswork.
+
+Your AI asks what you're building, what personality you want (clean, minimalist, playful, editorial), your colors, and your audience — then produces production-ready HTML/CSS with proper spacing, contrast, typography, and responsive behavior. It works on landing pages, dashboards, forms, portfolios, e-commerce, or any UI.
+
+**This is not a library you install.** It's a design knowledge base (45 topics on color, typography, spacing, layout, interaction, accessibility) plus a consultation playbook that guides your AI through the right questions and decisions.
+
+---
+
+## If you are an AI assistant reading this
+
+The user wants you to **help them make their website or UI look good**. This repo is a design toolkit — use it to guide the user through a design consultation for *their* project.
+
+**Start here:**
+1. Read [`CONSULT.md`](CONSULT.md) — the full design consultation playbook. Follow it step by step.
+2. Read [`docs/presets/_index.md`](docs/presets/_index.md) — template catalog with preview links.
+3. Read [`workflows/quick-reference.md`](workflows/quick-reference.md) — critical design numbers.
+4. Read ONLY the knowledge files relevant to the user's question (see Step 2 in CONSULT.md).
+
+**Your job:** Ask the user what they're building (or what they want to improve), walk them through personality/colors/audience questions, then generate or fix their UI code using the design principles in this repo. Do NOT improve this repo itself — focus on the user's project.
+
+CONSULT.md includes:
+- A consultation depth selector (quick start / guided / thorough) — ask the user how deep to go
+- Required intake questions about personality, colors, inspiration, and dark mode — don't skip these
+- Website analysis workflow (Step 1E) for when users share reference URLs
+- Template catalog with preview links at `https://jdeworks.github.io/make-it-look-good/#preset:{element}/{personality}`
+
+---
+
+## For Developers
+
+### What is this?
+
+You have a website or UI that needs to look better. Give this repo to your AI assistant and it becomes a **design consultant** — asking the right questions, applying real design principles, and producing code that actually looks professional. Not generic blue SaaS. Your brand, your personality, your colors.
+
+### How to use it
+
+**Option A — Online chat** (Claude.ai, ChatGPT, Gemini, Perplexity, etc.)
+
+Copy-paste this entire block as your first message:
+
+```
+Fetch this file — it's a design toolkit that will help me make my website look good:
+https://raw.githubusercontent.com/jdeworks/make-it-look-good/dev/bundle.xml
+
+Read the CONSULT.md inside it and follow the consultation playbook step by step.
+You are a design consultant — help me design or improve MY website/UI, not this
+repo. Start by asking what I'm building and how detailed I want the consultation
+(quick start / guided / thorough).
+```
+
+The bundle (~194k tokens) includes the full consultation playbook, all 45 knowledge files, and a template catalog. To browse templates visually, use the [live preview tool](https://jdeworks.github.io/make-it-look-good/) and tell your AI which ones you like.
+
+**Option B — Local AI agent** (Claude Code, Cursor, Windsurf, Codex, etc.)
+
+Clone and point your agent at the folder:
+```bash
+git clone -b dev https://github.com/jdeworks/make-it-look-good.git
+```
+
+Then tell your agent:
+```
+Read CONSULT.md from the make-it-look-good folder. It's a design consultation
+playbook — use it to help me make my website/UI look good. Follow the steps
+and start by asking what I'm building.
+```
+
+A local agent gets the full file structure including all 170+ template HTML files. This is the recommended approach for hands-on design work.
+
+**Option C — Quick prompts** (if your AI already has the repo loaded)
+
+Guided consultation (asks about personality, colors, audience):
+```
+Follow the CONSULT.md playbook to run a design consultation for my project.
+```
+
+Audit existing code:
+```
+Follow CONSULT.md Step 1A to audit this code, then generate design review notes: [paste your code]
+```
+
+Grab a component:
+```
+Look at docs/presets/_index.md and give me a hero + pricing cards layout.
+```
+
+> **Tip:** Share a link to a site you like the look of. Even one reference ("I want it to feel like aesop.com") dramatically improves results.
+
+---
+
+### Preview Tool
+
+Paste any HTML+Tailwind into the [live preview tool](https://jdeworks.github.io/make-it-look-good/) to see it rendered instantly. Toggle mobile/tablet/desktop views, dark mode, and share via URL. Includes 121 prebuilt templates across 38 elements with multiple design personalities.
+
+### Design Analyzer
+
+Score any website against evidence-based design rules with the [Design Analyzer](https://jdeworks.github.io/make-it-look-good/analyzer.html). **~60 checks across 14 scoring modules** — no AI, just math against WCAG 2.2, Material Design, NNGroup research, and typography best practices. Every finding links to its source.
+
+Three ways to analyze:
+
+| Method | Best for | How |
+|--------|----------|-----|
+| **Enter URL** | Phone, quick checks | Paste a URL — fetched via CORS proxy, scored automatically |
+| **Console Snippet** | Most accurate, localhost, behind login | Copy snippet → run in DevTools console → paste JSON |
+| **Paste HTML** | Static mockups | Paste HTML source, rendered in iframe |
+
+Scoring modules: Color & Contrast (WCAG + APCA), Typography, Spacing & Layout, Touch & Interaction, Accessibility, Responsive Design, Visual Consistency, Cognitive Load, Layout Quality, Performance, Readability, Motion & Animation, Visual Balance.
+
+Features: 8 audience profiles (General, WCAG AAA, Elderly, Low Vision, Motor Impairment, Color Blind, Children, Cognitive), page context detection, gradient/background-image/CSS-filter contrast resolution, decorative element filtering, context-aware touch targets (nav/footer/inline exemptions per WCAG 2.5.8), CVD palette simulation (Machado et al. 2009), post-analysis exclusion suggestions, extraction caching, dark mode report, viewport size selection, deep scan (multi-viewport + dark mode), page screenshots, analysis history, N/A category detection, progress bar, JSON export/import, markdown/PDF export. Self-hostable CORS proxy (Cloudflare Worker, free tier 100K req/day) — see [`proxy/README.md`](proxy/README.md).
+
+Validated against 125 preset templates via headless browser testing (Puppeteer) — average score 88, min 69, max 100, with a 7-point gap between "before" (81 avg) and "clean" (88 avg) variants.
+
+### Before & After Examples
+
+Each "before" shows a typical MVP. Each "after" is a structurally different redesign — not just CSS tweaks but genuinely different layouts. Multiple personalities (Clean, Minimalist, Playful, Editorial) show how the same content can look completely different.
+
+| Example | Personalities | Try it |
+|---------|--------------|--------|
+| Dashboard | Clean, Minimalist, Playful | [Before](https://jdeworks.github.io/make-it-look-good/#preset:dashboard/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:dashboard/clean) |
+| Landing Page | Clean, Minimalist, Playful, Editorial | [Before](https://jdeworks.github.io/make-it-look-good/#preset:landing/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:landing/clean) |
+| Form | Clean, Minimalist, Playful, Editorial | [Before](https://jdeworks.github.io/make-it-look-good/#preset:form/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:form/clean) |
+| Card Grid | Clean, Minimalist, Playful | [Before](https://jdeworks.github.io/make-it-look-good/#preset:cards/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:cards/clean) |
+| Multi-Page App | Clean, Minimalist, Playful | [Before](https://jdeworks.github.io/make-it-look-good/#preset:project/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:project/clean) |
+
+Click any "After" link — personality buttons appear in the preview header to switch between variants. Color swatches let you recolor with any Tailwind palette. Effect buttons apply CSS overlays (Hushed, Bouncy, Frosted, Serif).
+
+### Example: Guided Consultation Flow
+
+Here's what a real consultation looks like when an LLM follows the playbook. The user says *"I need a website for my cafe. Something warm and inviting."*
+
+**1. The AI classifies the input** → vague idea, no code → guided intake
+
+**2. Intake questions asked:**
+- What are you building? → Landing page / content site, single-page with sections
+- Who uses it? → General public, 65-75% mobile traffic
+- Personality? → Playful & friendly, "specialty coffee shop" feel
+- Tech stack? → Plain HTML + Tailwind CDN
+- Colors? → Warm amber `#f59e0b`, rich brown `#78350f`
+- Inspiration? → "Your favorite neighborhood spot, not corporate chain"
+- Dark mode? → No
+
+**3. The AI reads knowledge files** → `layout/visual-hierarchy.md`, `typography/type-scale.md`, `color/color-psychology.md`, `interaction/touch-targets.md`, `responsive/mobile-first.md`
+
+**4. Design decisions (with reasoning):**
+- Playfair Display headings + Inter body → artisanal yet readable
+- Amber-900 on amber-50 at 7.2:1 contrast → AAA pass
+- White text on amber buttons fails WCAG → switched to amber-900 text
+- `rounded-2xl` cards + pill-shaped CTAs → warmth, not corporate
+- 48px touch targets everywhere → mobile-heavy audience
+- Section order: Hero → Menu → About → Hours → Footer → inverted pyramid
+
+**5. Output:** A single self-contained HTML file that renders on 375px–1440px+, passes WCAG AA on all text, with warm amber palette and serif/sans font pairing.
+
+The full flow with all design decisions is in [`tests/e2e-restaurant-flow.md`](tests/e2e-restaurant-flow.md). The output is in [`tests/e2e-restaurant.html`](tests/e2e-restaurant.html).
+
+### Validated Test Cases
+
+The consultation flow is tested across 12 real-world scenarios — all pass all applicable design rules (contrast, touch targets, spacing, hierarchy). See [`tests/`](tests/) for the full set.
+
+| Scenario | Input | What It Proves |
+|----------|-------|----------------|
+| React settings page | JSX + inline styles | Outputs in user's framework, no forced Tailwind migration |
+| Barebones HTML | Hackathon-quality landing page | Full redesign with Tailwind CDN |
+| Vue dashboard | Vue 3 SFC + scoped CSS | Preserves Vue SFC structure |
+| Restaurant landing | "warm and inviting cafe" | Guided intake → personality-driven output |
+| Developer portfolio | "dark mode, emerald accent" | Dark mode design with monospace accents |
+| SaaS pricing | Brand colors provided | Brand color application, clean personality |
+| Status page | JSON API data pasted | Raw data → structured UI (Step 1D) |
+| CLI output | Terminal table pasted | Non-standard input → dark technical dashboard |
+| Email template | "welcome email" | Non-web output with email-specific constraints |
+
+---
+
+## What's Inside
+
+### Preset Library — [`docs/presets/_index.md`](docs/presets/_index.md)
+
+38+ presets with multiple personality variants (Clean, Minimalist, Playful). Interactive components also have React, Vue, and Svelte framework files.
+
+| Category | Examples |
+|----------|---------|
+| **Layout Shells** | App shell, marketing page, dashboard, centered form |
+| **Components** | Hero, tabs, accordion, pagination, dropdown, avatars, data table |
+| **Full Pages** | Pricing, portfolio, restaurant, status page |
+| **Before → After** | Dashboard, landing page, form, card grid, multi-page app |
+| **Expressive** | Personal site, agency landing, agency portfolio, app showcase, scroll reveal landing, product launch, editorial blog, SaaS features, scroll story, product page, devtool landing, docs site, event page, personalized portfolio |
+| **Edge Cases** | Deploy monitor, button system, OSS landing |
+
+All presets: dark mode, WCAG AA contrast, 44px touch targets, responsive. [Composition recipes](docs/presets/_index.md#composition-recipes) show how to combine them into full pages.
+
+### Knowledge Files — 44 topics
+
+| Area | Topics |
+|------|--------|
+| **Foundations** | [Cognitive load](foundations/cognitive-load.md), [Gestalt](foundations/gestalt-principles.md), [Hick's Law](foundations/hicks-law.md), [Fitts's Law](foundations/fitts-law.md), [Aesthetic-usability](foundations/aesthetic-usability.md), [Peak-end rule](foundations/peak-end-rule.md) |
+| **Color** | [Contrast & a11y](color/contrast-and-accessibility.md), [Color systems](color/color-systems.md), [Psychology](color/color-psychology.md), [Color-blind safety](color/color-blind-safety.md) |
+| **Typography** | [Type scale](typography/type-scale.md), [Font pairing](typography/font-pairing.md), [Readability](typography/readability.md), [Web font loading](typography/web-font-loading.md) |
+| **Layout** | [Spacing system](layout/spacing-system.md), [Visual hierarchy](layout/visual-hierarchy.md), [Grid systems](layout/grid-systems.md), [Whitespace](layout/whitespace.md) |
+| **Interaction** | [Animation timing](interaction/animation-timing.md), [Micro-interactions](interaction/micro-interactions.md), [Touch targets](interaction/touch-targets.md), [Loading states](interaction/loading-states.md) |
+| **Responsive** | [Mobile-first](responsive/mobile-first.md), [Breakpoints](responsive/breakpoints.md), [Fluid typography](responsive/fluid-typography.md), [Patterns](responsive/responsive-patterns.md) |
+| **Systems** | [Design tokens](systems/design-tokens.md), [Material Design 3](systems/material-design-3.md), [Apple HIG](systems/apple-hig.md), [Building a system](systems/building-a-system.md) |
+| **Expressive** | [Visual identity](expressive/visual-identity.md), [Hero patterns](expressive/hero-patterns.md), [Scroll storytelling](expressive/scroll-storytelling.md), [Purposeful motion](expressive/purposeful-motion.md), [Scroll effect patterns](expressive/scroll-effect-patterns.md), [Curated examples](expressive/curated-examples.md) |
+| **Heuristics** | [Nielsen's 10](heuristics/nielsen-10.md), [UX frameworks](heuristics/ux-frameworks.md) |
+| **Components** | [Buttons](components/buttons.md), [Forms](components/forms.md), [Cards](components/cards.md), [Navigation](components/navigation.md), [Modals](components/modals-and-dialogs.md), [Tables](components/tables-and-lists.md), [Feedback](components/feedback.md) |
+
+Each file: 200–400 lines, concrete rules with numbers, CSS/Tailwind patterns, decision trees, sources.
+
+### Workflows
+
+| Workflow | Use when |
+|----------|----------|
+| [Quick Reference](workflows/quick-reference.md) | Need a number fast (contrast ratio, spacing value, timing) |
+| [New Project Checklist](workflows/new-project-checklist.md) | Starting from scratch |
+| [Design Review Checklist](workflows/design-review-checklist.md) | Auditing an existing design |
+
+### Critical Numbers
+
+| What | Value |
+|------|-------|
+| Text contrast (AA) | 4.5:1 |
+| Large text contrast (AA) | 3:1 |
+| Body font size | ≥16px |
+| Line height | 1.4–1.6 |
+| Line length | 45–75 characters |
+| Touch target | ≥44×44px |
+| Base spacing unit | 4px or 8px |
+| Nav items | 5–7 max |
+| Enter animation | 200–300ms |
+| Exit animation | 150–200ms |
+
+---
+
+If this helped you ship something that looks good, [give it a star](../../stargazers). Found an issue? [Open one](../../issues).
+
+Sources: [research/sources.md](research/sources.md)
 </file>
 
 <file path="docs/analyzer-snippet-screenshots.js">
@@ -22665,6 +22926,41 @@ function scoreTypography(data) {
     }
   }
 
+  // --- Viewport visibility: elements positioned off-screen on x-axis ---
+  var _vpW = window.innerWidth;
+  data.layout.offscreenElements = [];
+  var _meaningfulSel = 'button,a,[role="menuitem"],[role="menu"],li,p,h1,h2,h3,h4,h5,h6,img,input,select,textarea,td,th,label,span,div';
+  document.querySelectorAll(_meaningfulSel).forEach(function(el) {
+    if (!isVisible(el) || isDecorative(el)) return;
+    var r = el.getBoundingClientRect();
+    if (r.width < 4 || r.height < 4) return;
+    var fullyOff = r.right < 0 || r.left >= _vpW;
+    var majorClip = r.left < _vpW && r.right > _vpW && (r.right - _vpW) > r.width * 0.5;
+    if (!fullyOff && !majorClip) return;
+    var anc = el.parentElement;
+    var inScroll = false;
+    while (anc && anc !== document.body && anc !== document.documentElement) {
+      var ox = getComputedStyle(anc).overflowX;
+      if (ox === 'auto' || ox === 'scroll') { inScroll = true; break; }
+      anc = anc.parentElement;
+    }
+    if (inScroll) return;
+    var parentAlready = data.layout.offscreenElements.some(function(rec) {
+      try { var pel = document.querySelector(rec.selector); return pel && pel.contains(el) && pel !== el; } catch(e) { return false; }
+    });
+    if (parentAlready) return;
+    data.layout.offscreenElements.push({
+      element: el.tagName.toLowerCase(),
+      selector: cssSelector(el),
+      text: (el.textContent || el.getAttribute('aria-label') || '').trim().substring(0, 50),
+      left: Math.round(r.left),
+      right: Math.round(r.right),
+      vpWidth: _vpW,
+      reason: r.right < 0 ? 'left-overflow' : r.left >= _vpW ? 'right-overflow' : 'major-clip'
+    });
+  });
+  data.layout.offscreenElements = data.layout.offscreenElements.slice(0, 20);
+
   // --- Letter spacing issues ---
   data.typography.letterSpacingIssues = 0;
   for (var li = 0; li < allElements.length && li < 500; li++) {
@@ -22989,243 +23285,144 @@ function scoreTypography(data) {
 })();
 </file>
 
-<file path="README.md">
-# make-it-look-good
+<file path="docs/ANALYZER-TODO.md">
+# Analyzer TODO
 
-> **Make your website, app, or UI actually look good.** Give your AI assistant this repo and it will help you design, redesign, or fix the visual design of any web project — with real design principles, not guesswork.
+## Completed (69 items)
 
-Your AI asks what you're building, what personality you want (clean, minimalist, playful, editorial), your colors, and your audience — then produces production-ready HTML/CSS with proper spacing, contrast, typography, and responsive behavior. It works on landing pages, dashboards, forms, portfolios, e-commerce, or any UI.
+### Core
+- [x] Modular scoring architecture (14 modules in `scoring/`)
+- [x] 8 audience profiles with evidence-based thresholds (General, WCAG AAA, Elderly, Low Vision, Motor Impairment, Color Blind, Children, Cognitive)
+- [x] 4 input modes (URL fetch, console snippet, paste HTML, import JSON)
+- [x] Gradient contrast via canvas sampling (multi-layer compositing)
+- [x] Background image contrast via canvas (CORS-limited)
+- [x] CSS filter contrast math (brightness, contrast, opacity)
+- [x] APCA contrast algorithm alongside WCAG
+- [x] oklch/oklab color parsing via canvas fallback
+- [x] Space-separated rgb() syntax support
+- [x] Page context detection (marketing/form/app/content)
+- [x] Fragment detection (skips document-level checks for pasted HTML snippets)
+- [x] Decorative element filtering
+- [x] Post-analysis exclusion suggestions (two-step flow)
+- [x] Extraction data caching (sessionStorage)
+- [x] Dark mode report styling
+- [x] AA/AAA profile switching (captures pairs up to 7.5:1)
+- [x] N/A category detection (modules return notApplicable when nothing to check)
+- [x] Context-aware touch targets (nav/footer/inline/button classification per WCAG 2.5.8)
+- [x] CVD palette simulation (Machado et al. 2009 matrices for protanopia, deuteranopia, tritanopia)
+- [x] JS-dependent page detection (warns when page needs JS execution)
 
-**This is not a library you install.** It's a design knowledge base (45 topics on color, typography, spacing, layout, interaction, accessibility) plus a consultation playbook that guides your AI through the right questions and decisions.
+### UI & Features
+- [x] Page screenshots (modern-screenshot library, viewport sections, zoom lightbox)
+- [x] Analysis history in localStorage (max 10, dedup by URL+profile)
+- [x] JSON export/import with drag-and-drop
+- [x] Viewport size selector (defaults to current window size)
+- [x] Progress bar during analysis
+- [x] URL autocomplete from history
+- [x] Mobile-optimized layout (CSS grid header, icon-only buttons)
+- [x] Self-hosted CORS proxy (Cloudflare Worker with rate limiting, SSRF protection)
+- [x] Proxy URL injection via local .env (not committed)
 
----
+### Extraction
+- [x] Actual character-per-line via span measurement
+- [x] Section gaps for whitespace rhythm
+- [x] Left-edge alignment clustering
+- [x] Heading-to-body ratio for visual hierarchy
+- [x] Border radius value clustering
+- [x] Paragraph text extraction (Coleman-Liau)
+- [x] Font loading rules from stylesheets
+- [x] Render-blocking resource counts
+- [x] DOM size and depth
+- [x] Adjacent sibling spacing
+- [x] Animation/keyframe detection
+- [x] Scroll-reveal pattern detection
+- [x] Transform translateY off-screen detection
+- [x] Element overflow detection
+- [x] Letter spacing audit
+- [x] Negative margin detection
+- [x] Container padding clustering
+- [x] Third-party script count
+- [x] Image format audit (WebP/AVIF vs legacy)
+- [x] CLS via PerformanceObserver
+- [x] LCP estimation (API + heuristic)
+- [x] Fixed-width element detection
+- [x] Text truncation (ellipsis) audit
+- [x] ARIA role audit (button tabindex, hidden focusable)
+- [x] Bad link text detection
+- [x] Missing autocomplete on form fields
+- [x] Color-only indicator detection
+- [x] Auto-playing unmuted media detection
+- [x] Padding-inclusive touch measurement (checks parent label/link)
 
-## If you are an AI assistant reading this
+### Testing
+- [x] Headless browser test suite (Puppeteer, serves docs/ locally, renders presets in real iframe with Tailwind)
+- [x] 125 preset templates validated — avg 88, min 69, max 100
+- [x] Before/clean gap verified: 81 avg vs 88 avg (7pt differentiation)
+- [x] Browser-based test runner (`docs/tests/test-presets-rendered.html`)
+- [x] Unit tests for scoring modules (`docs/tests/test-scoring.html`)
+- [x] Edge case test pages (gradients, dark backgrounds, fixed-width, truncation)
+- [x] 3 iterations of template fixes across 125 files (contrast, focus-visible, semantics)
 
-The user wants you to **help them make their website or UI look good**. This repo is a design toolkit — use it to guide the user through a design consultation for *their* project.
+## Completed: Deep Scan Mode
 
-**Start here:**
-1. Read [`CONSULT.md`](CONSULT.md) — the full design consultation playbook. Follow it step by step.
-2. Read [`docs/presets/_index.md`](docs/presets/_index.md) — template catalog with preview links.
-3. Read [`workflows/quick-reference.md`](workflows/quick-reference.md) — critical design numbers.
-4. Read ONLY the knowledge files relevant to the user's question (see Step 2 in CONSULT.md).
+- [x] **Multi-viewport testing** — Spawn 3 parallel iframes at 375/768/1280px, merge results
+- [x] **Dark mode class toggle** — Toggle `.dark` on html, re-extract colors. ~95% reliable for Tailwind/class-based sites
+- [x] **Dark mode media query rewriting** — Extract `prefers-color-scheme: dark` rules from stylesheets, inject unconditionally. ~80-90% reliable
+- [x] **Scroll before extraction** — Auto-scroll full page to trigger intersection observers
 
-**Your job:** Ask the user what they're building (or what they want to improve), walk them through personality/colors/audience questions, then generate or fix their UI code using the design principles in this repo. Do NOT improve this repo itself — focus on the user's project.
+## Future: LLM Integration (opt-in)
 
-CONSULT.md includes:
-- A consultation depth selector (quick start / guided / thorough) — ask the user how deep to go
-- Required intake questions about personality, colors, inspiration, and dark mode — don't skip these
-- Website analysis workflow (Step 1E) for when users share reference URLs
-- Template catalog with preview links at `https://jdeworks.github.io/make-it-look-good/#preset:{element}/{personality}`
+Default off. Only when user provides API key. See research notes in this file's git history.
 
----
+- [ ] Soft judgment: tone, copy clarity, color palette appropriateness
+- [ ] Finding summarization in plain language
+- [ ] Clearly labeled as "AI-generated" separate from evidence-based findings
 
-## For Developers
+## Decided to Skip (with reasons)
 
-### What is this?
-
-You have a website or UI that needs to look better. Give this repo to your AI assistant and it becomes a **design consultant** — asking the right questions, applying real design principles, and producing code that actually looks professional. Not generic blue SaaS. Your brand, your personality, your colors.
-
-### How to use it
-
-**Option A — Online chat** (Claude.ai, ChatGPT, Gemini, Perplexity, etc.)
-
-Copy-paste this entire block as your first message:
-
-```
-Fetch this file — it's a design toolkit that will help me make my website look good:
-https://raw.githubusercontent.com/jdeworks/make-it-look-good/dev/bundle.xml
-
-Read the CONSULT.md inside it and follow the consultation playbook step by step.
-You are a design consultant — help me design or improve MY website/UI, not this
-repo. Start by asking what I'm building and how detailed I want the consultation
-(quick start / guided / thorough).
-```
-
-The bundle (~194k tokens) includes the full consultation playbook, all 45 knowledge files, and a template catalog. To browse templates visually, use the [live preview tool](https://jdeworks.github.io/make-it-look-good/) and tell your AI which ones you like.
-
-**Option B — Local AI agent** (Claude Code, Cursor, Windsurf, Codex, etc.)
-
-Clone and point your agent at the folder:
-```bash
-git clone -b dev https://github.com/jdeworks/make-it-look-good.git
-```
-
-Then tell your agent:
-```
-Read CONSULT.md from the make-it-look-good folder. It's a design consultation
-playbook — use it to help me make my website/UI look good. Follow the steps
-and start by asking what I'm building.
-```
-
-A local agent gets the full file structure including all 170+ template HTML files. This is the recommended approach for hands-on design work.
-
-**Option C — Quick prompts** (if your AI already has the repo loaded)
-
-Guided consultation (asks about personality, colors, audience):
-```
-Follow the CONSULT.md playbook to run a design consultation for my project.
-```
-
-Audit existing code:
-```
-Follow CONSULT.md Step 1A to audit this code, then generate design review notes: [paste your code]
-```
-
-Grab a component:
-```
-Look at docs/presets/_index.md and give me a hero + pricing cards layout.
-```
-
-> **Tip:** Share a link to a site you like the look of. Even one reference ("I want it to feel like aesop.com") dramatically improves results.
-
----
-
-### Preview Tool
-
-Paste any HTML+Tailwind into the [live preview tool](https://jdeworks.github.io/make-it-look-good/) to see it rendered instantly. Toggle mobile/tablet/desktop views, dark mode, and share via URL. Includes 121 prebuilt templates across 38 elements with multiple design personalities.
-
-### Design Analyzer
-
-Score any website against evidence-based design rules with the [Design Analyzer](https://jdeworks.github.io/make-it-look-good/analyzer.html). **~60 checks across 14 scoring modules** — no AI, just math against WCAG 2.2, Material Design, NNGroup research, and typography best practices. Every finding links to its source.
-
-Three ways to analyze:
-
-| Method | Best for | How |
-|--------|----------|-----|
-| **Enter URL** | Phone, quick checks | Paste a URL — fetched via CORS proxy, scored automatically |
-| **Console Snippet** | Most accurate, localhost, behind login | Copy snippet → run in DevTools console → paste JSON |
-| **Paste HTML** | Static mockups | Paste HTML source, rendered in iframe |
-
-Scoring modules: Color & Contrast (WCAG + APCA), Typography, Spacing & Layout, Touch & Interaction, Accessibility, Responsive Design, Visual Consistency, Cognitive Load, Layout Quality, Performance, Readability, Motion & Animation, Visual Balance.
-
-Features: 8 audience profiles (General, WCAG AAA, Elderly, Low Vision, Motor Impairment, Color Blind, Children, Cognitive), page context detection, gradient/background-image/CSS-filter contrast resolution, decorative element filtering, context-aware touch targets (nav/footer/inline exemptions per WCAG 2.5.8), CVD palette simulation (Machado et al. 2009), post-analysis exclusion suggestions, extraction caching, dark mode report, viewport size selection, deep scan (multi-viewport + dark mode), page screenshots, analysis history, N/A category detection, progress bar, JSON export/import, markdown/PDF export. Self-hostable CORS proxy (Cloudflare Worker, free tier 100K req/day) — see [`proxy/README.md`](proxy/README.md).
-
-Validated against 125 preset templates via headless browser testing (Puppeteer) — average score 88, min 69, max 100, with a 7-point gap between "before" (81 avg) and "clean" (88 avg) variants.
-
-### Before & After Examples
-
-Each "before" shows a typical MVP. Each "after" is a structurally different redesign — not just CSS tweaks but genuinely different layouts. Multiple personalities (Clean, Minimalist, Playful, Editorial) show how the same content can look completely different.
-
-| Example | Personalities | Try it |
-|---------|--------------|--------|
-| Dashboard | Clean, Minimalist, Playful | [Before](https://jdeworks.github.io/make-it-look-good/#preset:dashboard/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:dashboard/clean) |
-| Landing Page | Clean, Minimalist, Playful, Editorial | [Before](https://jdeworks.github.io/make-it-look-good/#preset:landing/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:landing/clean) |
-| Form | Clean, Minimalist, Playful, Editorial | [Before](https://jdeworks.github.io/make-it-look-good/#preset:form/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:form/clean) |
-| Card Grid | Clean, Minimalist, Playful | [Before](https://jdeworks.github.io/make-it-look-good/#preset:cards/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:cards/clean) |
-| Multi-Page App | Clean, Minimalist, Playful | [Before](https://jdeworks.github.io/make-it-look-good/#preset:project/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:project/clean) |
-
-Click any "After" link — personality buttons appear in the preview header to switch between variants. Color swatches let you recolor with any Tailwind palette. Effect buttons apply CSS overlays (Hushed, Bouncy, Frosted, Serif).
-
-### Example: Guided Consultation Flow
-
-Here's what a real consultation looks like when an LLM follows the playbook. The user says *"I need a website for my cafe. Something warm and inviting."*
-
-**1. The AI classifies the input** → vague idea, no code → guided intake
-
-**2. Intake questions asked:**
-- What are you building? → Landing page / content site, single-page with sections
-- Who uses it? → General public, 65-75% mobile traffic
-- Personality? → Playful & friendly, "specialty coffee shop" feel
-- Tech stack? → Plain HTML + Tailwind CDN
-- Colors? → Warm amber `#f59e0b`, rich brown `#78350f`
-- Inspiration? → "Your favorite neighborhood spot, not corporate chain"
-- Dark mode? → No
-
-**3. The AI reads knowledge files** → `layout/visual-hierarchy.md`, `typography/type-scale.md`, `color/color-psychology.md`, `interaction/touch-targets.md`, `responsive/mobile-first.md`
-
-**4. Design decisions (with reasoning):**
-- Playfair Display headings + Inter body → artisanal yet readable
-- Amber-900 on amber-50 at 7.2:1 contrast → AAA pass
-- White text on amber buttons fails WCAG → switched to amber-900 text
-- `rounded-2xl` cards + pill-shaped CTAs → warmth, not corporate
-- 48px touch targets everywhere → mobile-heavy audience
-- Section order: Hero → Menu → About → Hours → Footer → inverted pyramid
-
-**5. Output:** A single self-contained HTML file that renders on 375px–1440px+, passes WCAG AA on all text, with warm amber palette and serif/sans font pairing.
-
-The full flow with all design decisions is in [`tests/e2e-restaurant-flow.md`](tests/e2e-restaurant-flow.md). The output is in [`tests/e2e-restaurant.html`](tests/e2e-restaurant.html).
-
-### Validated Test Cases
-
-The consultation flow is tested across 12 real-world scenarios — all pass all applicable design rules (contrast, touch targets, spacing, hierarchy). See [`tests/`](tests/) for the full set.
-
-| Scenario | Input | What It Proves |
-|----------|-------|----------------|
-| React settings page | JSX + inline styles | Outputs in user's framework, no forced Tailwind migration |
-| Barebones HTML | Hackathon-quality landing page | Full redesign with Tailwind CDN |
-| Vue dashboard | Vue 3 SFC + scoped CSS | Preserves Vue SFC structure |
-| Restaurant landing | "warm and inviting cafe" | Guided intake → personality-driven output |
-| Developer portfolio | "dark mode, emerald accent" | Dark mode design with monospace accents |
-| SaaS pricing | Brand colors provided | Brand color application, clean personality |
-| Status page | JSON API data pasted | Raw data → structured UI (Step 1D) |
-| CLI output | Terminal table pasted | Non-standard input → dark technical dashboard |
-| Email template | "welcome email" | Non-web output with email-specific constraints |
-
----
-
-## What's Inside
-
-### Preset Library — [`docs/presets/_index.md`](docs/presets/_index.md)
-
-38+ presets with multiple personality variants (Clean, Minimalist, Playful). Interactive components also have React, Vue, and Svelte framework files.
-
-| Category | Examples |
-|----------|---------|
-| **Layout Shells** | App shell, marketing page, dashboard, centered form |
-| **Components** | Hero, tabs, accordion, pagination, dropdown, avatars, data table |
-| **Full Pages** | Pricing, portfolio, restaurant, status page |
-| **Before → After** | Dashboard, landing page, form, card grid, multi-page app |
-| **Expressive** | Personal site, agency landing, agency portfolio, app showcase, scroll reveal landing, product launch, editorial blog, SaaS features, scroll story, product page, devtool landing, docs site, event page, personalized portfolio |
-| **Edge Cases** | Deploy monitor, button system, OSS landing |
-
-All presets: dark mode, WCAG AA contrast, 44px touch targets, responsive. [Composition recipes](docs/presets/_index.md#composition-recipes) show how to combine them into full pages.
-
-### Knowledge Files — 44 topics
-
-| Area | Topics |
+| Item | Reason |
 |------|--------|
-| **Foundations** | [Cognitive load](foundations/cognitive-load.md), [Gestalt](foundations/gestalt-principles.md), [Hick's Law](foundations/hicks-law.md), [Fitts's Law](foundations/fitts-law.md), [Aesthetic-usability](foundations/aesthetic-usability.md), [Peak-end rule](foundations/peak-end-rule.md) |
-| **Color** | [Contrast & a11y](color/contrast-and-accessibility.md), [Color systems](color/color-systems.md), [Psychology](color/color-psychology.md), [Color-blind safety](color/color-blind-safety.md) |
-| **Typography** | [Type scale](typography/type-scale.md), [Font pairing](typography/font-pairing.md), [Readability](typography/readability.md), [Web font loading](typography/web-font-loading.md) |
-| **Layout** | [Spacing system](layout/spacing-system.md), [Visual hierarchy](layout/visual-hierarchy.md), [Grid systems](layout/grid-systems.md), [Whitespace](layout/whitespace.md) |
-| **Interaction** | [Animation timing](interaction/animation-timing.md), [Micro-interactions](interaction/micro-interactions.md), [Touch targets](interaction/touch-targets.md), [Loading states](interaction/loading-states.md) |
-| **Responsive** | [Mobile-first](responsive/mobile-first.md), [Breakpoints](responsive/breakpoints.md), [Fluid typography](responsive/fluid-typography.md), [Patterns](responsive/responsive-patterns.md) |
-| **Systems** | [Design tokens](systems/design-tokens.md), [Material Design 3](systems/material-design-3.md), [Apple HIG](systems/apple-hig.md), [Building a system](systems/building-a-system.md) |
-| **Expressive** | [Visual identity](expressive/visual-identity.md), [Hero patterns](expressive/hero-patterns.md), [Scroll storytelling](expressive/scroll-storytelling.md), [Purposeful motion](expressive/purposeful-motion.md), [Scroll effect patterns](expressive/scroll-effect-patterns.md), [Curated examples](expressive/curated-examples.md) |
-| **Heuristics** | [Nielsen's 10](heuristics/nielsen-10.md), [UX frameworks](heuristics/ux-frameworks.md) |
-| **Components** | [Buttons](components/buttons.md), [Forms](components/forms.md), [Cards](components/cards.md), [Navigation](components/navigation.md), [Modals](components/modals-and-dialogs.md), [Tables](components/tables-and-lists.md), [Feedback](components/feedback.md) |
+| Vertical rhythm detection | ~60% accuracy, too many false positives |
+| Nested spacing consistency | Can't determine spacing "intent" without component boundaries |
+| Gap vs margin consistency | Mixing is often correct (gap for flex, margin for flow) |
+| Overlapping targets | False positives from menus, dropdowns, positioned elements |
+| Click density mapping | No clear threshold for "too dense," subjective |
+| Shadow consistency | Too many legitimate shadow variations (elevation levels) |
+| Color distance (CIEDE2000) | Complex (~200 lines), similar colors often intentional |
+| Icon sizing consistency | SVG sizing too chaotic in practice |
+| Decision point counting | Counting buttons/links per section unreliable |
+| Information density | Elements-per-viewport varies wildly by page type |
+| Modal/popup detection | position:fixed catches headers/footers too |
+| Grid structure detection | Inferring columns from widths unreliable with flexbox |
+| Proximity grouping | Requires semantic understanding, pure DOM can't do it |
+| Sticky element audit | Almost always intentional, nothing actionable |
+| Critical CSS detection | Requires multi-viewport rendering analysis |
+| Inline CSS size | Often intentional (critical CSS pattern) |
+| Flash/strobe detection | Needs frame-by-frame analysis, not feasible from DOM |
+| F-pattern detection | ~40% accuracy without AI |
+| Whitespace ratio | Varies by page type, no universal threshold |
+| Web Worker extraction | Workers can't access DOM |
 
-Each file: 200–400 lines, concrete rules with numbers, CSS/Tailwind patterns, decision trees, sources.
+## Research Documents
 
-### Workflows
+- `research/analyzer-roadmap.md` — P0/P1 roadmap, priority matrix (794 lines)
+- `research/analyzer-p2-research.md` — P2/P3 feature research (928 lines)
+- `research/multi-viewport-dark-mode.md` — Multi-viewport & dark mode feasibility (345 lines)
+- `research/analyzer-test-rendered.md` — Latest headless test results (125 presets, per-module averages)
 
-| Workflow | Use when |
-|----------|----------|
-| [Quick Reference](workflows/quick-reference.md) | Need a number fast (contrast ratio, spacing value, timing) |
-| [New Project Checklist](workflows/new-project-checklist.md) | Starting from scratch |
-| [Design Review Checklist](workflows/design-review-checklist.md) | Auditing an existing design |
+## E2E Testing
 
-### Critical Numbers
+Run `node scripts/test-presets-headless.mjs` for the full rendered test suite. Requires Puppeteer (`npm i puppeteer`). The script:
+1. Serves `docs/` on localhost:8765
+2. Loads each preset in a real iframe with Tailwind CSS
+3. Runs the same extraction + scoring as the production analyzer
+4. Outputs results to `research/analyzer-test-rendered.md`
 
-| What | Value |
-|------|-------|
-| Text contrast (AA) | 4.5:1 |
-| Large text contrast (AA) | 3:1 |
-| Body font size | ≥16px |
-| Line height | 1.4–1.6 |
-| Line length | 45–75 characters |
-| Touch target | ≥44×44px |
-| Base spacing unit | 4px or 8px |
-| Nav items | 5–7 max |
-| Enter animation | 200–300ms |
-| Exit animation | 150–200ms |
-
----
-
-If this helped you ship something that looks good, [give it a star](../../stargazers). Found an issue? [Open one](../../issues).
-
-Sources: [research/sources.md](research/sources.md)
+Key metrics to track:
+- **Overall average** should be ≥85 (currently 88)
+- **Before/clean gap** should be ≥5 points (currently 7) — proves the analyzer differentiates design quality
+- **Contrast average** is the weakest category (currently 46) — legitimate failures from Tailwind's default light color shades
+- **No module should average below 40** except Contrast (known issue with Tailwind color scale)
 </file>
 
 <file path="docs/scoring/contrast.js">
@@ -23468,146 +23665,6 @@ function scoreContrast(data) {
 
   S.register("contrast", scoreContrast, 20, "Color & Contrast", "contrast");
 })();
-</file>
-
-<file path="docs/ANALYZER-TODO.md">
-# Analyzer TODO
-
-## Completed (69 items)
-
-### Core
-- [x] Modular scoring architecture (14 modules in `scoring/`)
-- [x] 8 audience profiles with evidence-based thresholds (General, WCAG AAA, Elderly, Low Vision, Motor Impairment, Color Blind, Children, Cognitive)
-- [x] 4 input modes (URL fetch, console snippet, paste HTML, import JSON)
-- [x] Gradient contrast via canvas sampling (multi-layer compositing)
-- [x] Background image contrast via canvas (CORS-limited)
-- [x] CSS filter contrast math (brightness, contrast, opacity)
-- [x] APCA contrast algorithm alongside WCAG
-- [x] oklch/oklab color parsing via canvas fallback
-- [x] Space-separated rgb() syntax support
-- [x] Page context detection (marketing/form/app/content)
-- [x] Fragment detection (skips document-level checks for pasted HTML snippets)
-- [x] Decorative element filtering
-- [x] Post-analysis exclusion suggestions (two-step flow)
-- [x] Extraction data caching (sessionStorage)
-- [x] Dark mode report styling
-- [x] AA/AAA profile switching (captures pairs up to 7.5:1)
-- [x] N/A category detection (modules return notApplicable when nothing to check)
-- [x] Context-aware touch targets (nav/footer/inline/button classification per WCAG 2.5.8)
-- [x] CVD palette simulation (Machado et al. 2009 matrices for protanopia, deuteranopia, tritanopia)
-- [x] JS-dependent page detection (warns when page needs JS execution)
-
-### UI & Features
-- [x] Page screenshots (modern-screenshot library, viewport sections, zoom lightbox)
-- [x] Analysis history in localStorage (max 10, dedup by URL+profile)
-- [x] JSON export/import with drag-and-drop
-- [x] Viewport size selector (defaults to current window size)
-- [x] Progress bar during analysis
-- [x] URL autocomplete from history
-- [x] Mobile-optimized layout (CSS grid header, icon-only buttons)
-- [x] Self-hosted CORS proxy (Cloudflare Worker with rate limiting, SSRF protection)
-- [x] Proxy URL injection via local .env (not committed)
-
-### Extraction
-- [x] Actual character-per-line via span measurement
-- [x] Section gaps for whitespace rhythm
-- [x] Left-edge alignment clustering
-- [x] Heading-to-body ratio for visual hierarchy
-- [x] Border radius value clustering
-- [x] Paragraph text extraction (Coleman-Liau)
-- [x] Font loading rules from stylesheets
-- [x] Render-blocking resource counts
-- [x] DOM size and depth
-- [x] Adjacent sibling spacing
-- [x] Animation/keyframe detection
-- [x] Scroll-reveal pattern detection
-- [x] Transform translateY off-screen detection
-- [x] Element overflow detection
-- [x] Letter spacing audit
-- [x] Negative margin detection
-- [x] Container padding clustering
-- [x] Third-party script count
-- [x] Image format audit (WebP/AVIF vs legacy)
-- [x] CLS via PerformanceObserver
-- [x] LCP estimation (API + heuristic)
-- [x] Fixed-width element detection
-- [x] Text truncation (ellipsis) audit
-- [x] ARIA role audit (button tabindex, hidden focusable)
-- [x] Bad link text detection
-- [x] Missing autocomplete on form fields
-- [x] Color-only indicator detection
-- [x] Auto-playing unmuted media detection
-- [x] Padding-inclusive touch measurement (checks parent label/link)
-
-### Testing
-- [x] Headless browser test suite (Puppeteer, serves docs/ locally, renders presets in real iframe with Tailwind)
-- [x] 125 preset templates validated — avg 88, min 69, max 100
-- [x] Before/clean gap verified: 81 avg vs 88 avg (7pt differentiation)
-- [x] Browser-based test runner (`docs/tests/test-presets-rendered.html`)
-- [x] Unit tests for scoring modules (`docs/tests/test-scoring.html`)
-- [x] Edge case test pages (gradients, dark backgrounds, fixed-width, truncation)
-- [x] 3 iterations of template fixes across 125 files (contrast, focus-visible, semantics)
-
-## Completed: Deep Scan Mode
-
-- [x] **Multi-viewport testing** — Spawn 3 parallel iframes at 375/768/1280px, merge results
-- [x] **Dark mode class toggle** — Toggle `.dark` on html, re-extract colors. ~95% reliable for Tailwind/class-based sites
-- [x] **Dark mode media query rewriting** — Extract `prefers-color-scheme: dark` rules from stylesheets, inject unconditionally. ~80-90% reliable
-- [x] **Scroll before extraction** — Auto-scroll full page to trigger intersection observers
-
-## Future: LLM Integration (opt-in)
-
-Default off. Only when user provides API key. See research notes in this file's git history.
-
-- [ ] Soft judgment: tone, copy clarity, color palette appropriateness
-- [ ] Finding summarization in plain language
-- [ ] Clearly labeled as "AI-generated" separate from evidence-based findings
-
-## Decided to Skip (with reasons)
-
-| Item | Reason |
-|------|--------|
-| Vertical rhythm detection | ~60% accuracy, too many false positives |
-| Nested spacing consistency | Can't determine spacing "intent" without component boundaries |
-| Gap vs margin consistency | Mixing is often correct (gap for flex, margin for flow) |
-| Overlapping targets | False positives from menus, dropdowns, positioned elements |
-| Click density mapping | No clear threshold for "too dense," subjective |
-| Shadow consistency | Too many legitimate shadow variations (elevation levels) |
-| Color distance (CIEDE2000) | Complex (~200 lines), similar colors often intentional |
-| Icon sizing consistency | SVG sizing too chaotic in practice |
-| Decision point counting | Counting buttons/links per section unreliable |
-| Information density | Elements-per-viewport varies wildly by page type |
-| Modal/popup detection | position:fixed catches headers/footers too |
-| Grid structure detection | Inferring columns from widths unreliable with flexbox |
-| Proximity grouping | Requires semantic understanding, pure DOM can't do it |
-| Sticky element audit | Almost always intentional, nothing actionable |
-| Critical CSS detection | Requires multi-viewport rendering analysis |
-| Inline CSS size | Often intentional (critical CSS pattern) |
-| Flash/strobe detection | Needs frame-by-frame analysis, not feasible from DOM |
-| F-pattern detection | ~40% accuracy without AI |
-| Whitespace ratio | Varies by page type, no universal threshold |
-| Web Worker extraction | Workers can't access DOM |
-
-## Research Documents
-
-- `research/analyzer-roadmap.md` — P0/P1 roadmap, priority matrix (794 lines)
-- `research/analyzer-p2-research.md` — P2/P3 feature research (928 lines)
-- `research/multi-viewport-dark-mode.md` — Multi-viewport & dark mode feasibility (345 lines)
-- `research/analyzer-test-rendered.md` — Latest headless test results (125 presets, per-module averages)
-
-## E2E Testing
-
-Run `node scripts/test-presets-headless.mjs` for the full rendered test suite. Requires Puppeteer (`npm i puppeteer`). The script:
-1. Serves `docs/` on localhost:8765
-2. Loads each preset in a real iframe with Tailwind CSS
-3. Runs the same extraction + scoring as the production analyzer
-4. Outputs results to `research/analyzer-test-rendered.md`
-
-Key metrics to track:
-- **Overall average** should be ≥85 (currently 88)
-- **Before/clean gap** should be ≥5 points (currently 7) — proves the analyzer differentiates design quality
-- **Contrast average** is the weakest category (currently 46) — legitimate failures from Tailwind's default light color shades
-- **No module should average below 40** except Contrast (known issue with Tailwind color scale)
 </file>
 
 <file path="docs/scoring/accessibility.js">
@@ -25557,6 +25614,41 @@ window.MilgReport = (function() {
       }
     }
   }
+
+  // --- Viewport visibility: elements positioned off-screen on x-axis ---
+  var _vpW = window.innerWidth;
+  data.layout.offscreenElements = [];
+  var _meaningfulSel = 'button,a,[role="menuitem"],[role="menu"],li,p,h1,h2,h3,h4,h5,h6,img,input,select,textarea,td,th,label,span,div';
+  document.querySelectorAll(_meaningfulSel).forEach(function(el) {
+    if (!isVisible(el) || isDecorative(el)) return;
+    var r = el.getBoundingClientRect();
+    if (r.width < 4 || r.height < 4) return;
+    var fullyOff = r.right < 0 || r.left >= _vpW;
+    var majorClip = r.left < _vpW && r.right > _vpW && (r.right - _vpW) > r.width * 0.5;
+    if (!fullyOff && !majorClip) return;
+    var anc = el.parentElement;
+    var inScroll = false;
+    while (anc && anc !== document.body && anc !== document.documentElement) {
+      var ox = getComputedStyle(anc).overflowX;
+      if (ox === 'auto' || ox === 'scroll') { inScroll = true; break; }
+      anc = anc.parentElement;
+    }
+    if (inScroll) return;
+    var parentAlready = data.layout.offscreenElements.some(function(rec) {
+      try { var pel = document.querySelector(rec.selector); return pel && pel.contains(el) && pel !== el; } catch(e) { return false; }
+    });
+    if (parentAlready) return;
+    data.layout.offscreenElements.push({
+      element: el.tagName.toLowerCase(),
+      selector: cssSelector(el),
+      text: (el.textContent || el.getAttribute('aria-label') || '').trim().substring(0, 50),
+      left: Math.round(r.left),
+      right: Math.round(r.right),
+      vpWidth: _vpW,
+      reason: r.right < 0 ? 'left-overflow' : r.left >= _vpW ? 'right-overflow' : 'major-clip'
+    });
+  });
+  data.layout.offscreenElements = data.layout.offscreenElements.slice(0, 20);
 
   // --- Letter spacing issues ---
   data.typography.letterSpacingIssues = 0;
@@ -27756,6 +27848,103 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
     try { var bs = getComputedStyle(document.body).webkitFontSmoothing; if (bs === 'antialiased') data.typography.fontSmoothingAntialiased = true; } catch(e) {}
     data.accessibility.bgImageBehindText = 0;
     document.querySelectorAll('p,h1,h2,h3,h4,h5,h6,li,span').forEach(function(el) { if (!isVisible(el)) return; var bgi = getComputedStyle(el).backgroundImage; if (bgi && bgi !== 'none' && bgi.indexOf('url(') !== -1 && el.textContent.trim().length > 10) data.accessibility.bgImageBehindText++; });
+
+    // --- Viewport visibility: detect elements positioned off-screen on x-axis ---
+    var vpW = window.innerWidth;
+    data.layout.offscreenElements = [];
+    var meaningfulSel = 'button,a,[role="menuitem"],[role="menu"],li,p,h1,h2,h3,h4,h5,h6,img,input,select,textarea,td,th,label,span,div';
+    document.querySelectorAll(meaningfulSel).forEach(function(el) {
+      if (!isVisible(el) || isDecorative(el)) return;
+      var r = el.getBoundingClientRect();
+      if (r.width < 4 || r.height < 4) return;
+      // Element fully off-screen on x-axis? (right edge left of viewport, or left edge right of viewport)
+      var fullyOff = r.right < 0 || r.left >= vpW;
+      // Element partially overflowing right edge significantly (>50% of its width clipped)
+      var majorClip = r.left < vpW && r.right > vpW && (r.right - vpW) > r.width * 0.5;
+      if (!fullyOff && !majorClip) return;
+      // Skip if inside a scroll container (overflow-x: auto/scroll) — tables, code blocks, etc.
+      var anc = el.parentElement;
+      var inScroll = false;
+      while (anc && anc !== document.body && anc !== document.documentElement) {
+        var ox = getComputedStyle(anc).overflowX;
+        if (ox === 'auto' || ox === 'scroll') { inScroll = true; break; }
+        anc = anc.parentElement;
+      }
+      if (inScroll) return;
+      // Skip children of already-recorded off-screen parents (avoid duplicates)
+      var parentAlready = data.layout.offscreenElements.some(function(rec) {
+        try { var pel = document.querySelector(rec.selector); return pel && pel.contains(el) && pel !== el; } catch(e) { return false; }
+      });
+      if (parentAlready) return;
+      data.layout.offscreenElements.push({
+        element: el.tagName.toLowerCase(),
+        selector: cssSelector(el),
+        text: (el.textContent || el.getAttribute('aria-label') || '').trim().substring(0, 50),
+        left: Math.round(r.left),
+        right: Math.round(r.right),
+        vpWidth: vpW,
+        reason: r.right < 0 ? 'left-overflow' : r.left >= vpW ? 'right-overflow' : 'major-clip'
+      });
+    });
+    data.layout.offscreenElements = data.layout.offscreenElements.slice(0, 20);
+
+    // --- Missing data points expected by scoring modules ---
+    data.structure.hasHorizontalOverflow = document.documentElement.scrollWidth > document.documentElement.clientWidth;
+
+    // Border radii (for layout/consistency scoring)
+    var radiusMap = {};
+    Array.from(allElements).slice(0, 500).forEach(function(el) {
+      if (!isVisible(el)) return;
+      var br = getComputedStyle(el).borderRadius;
+      if (br && br !== '0px') { radiusMap[br] = (radiusMap[br] || 0) + 1; }
+    });
+    data.layout.borderRadii = Object.keys(radiusMap).map(function(k) { return { value: k, count: radiusMap[k] }; }).sort(function(a, b) { return b.count - a.count; }).slice(0, 15);
+
+    // Horizontal scroll containers
+    data.layout.horizontalScrollContainers = [];
+    data.layout.nestedScrollbars = 0;
+    var overflowEls = document.querySelectorAll('[style*="overflow"],[class*="overflow"]');
+    overflowEls.forEach(function(oel) {
+      if (oel.scrollWidth > oel.clientWidth + 2 && oel.clientWidth > 0) {
+        var tag = oel.tagName.toLowerCase();
+        var intentional = tag === 'table' || tag === 'pre' || tag === 'code' ||
+          oel.closest('table,pre,code,.overflow-x-auto,.overflow-x-scroll') !== null ||
+          /overflow-x-(auto|scroll)/.test(oel.className || '');
+        data.layout.horizontalScrollContainers.push({
+          selector: cssSelector(oel),
+          intentional: intentional,
+          scrollWidth: oel.scrollWidth,
+          overflow: Math.round(oel.scrollWidth - oel.clientWidth),
+          element: tag
+        });
+        // Nested scrollbar check
+        var scrollParent = oel.parentElement;
+        while (scrollParent && scrollParent !== document.body) {
+          var ps = getComputedStyle(scrollParent);
+          if (ps.overflowY === 'auto' || ps.overflowY === 'scroll') {
+            data.layout.nestedScrollbars++;
+            break;
+          }
+          scrollParent = scrollParent.parentElement;
+        }
+      }
+    });
+
+    // Fixed-width and truncated elements
+    data.structure.fixedWidthElements = 0;
+    document.querySelectorAll('[style*="width"]').forEach(function(el) {
+      if (!isVisible(el)) return;
+      var w = el.style.width;
+      if (w && /^\d+(px)?$/.test(w) && parseFloat(w) > 300) {
+        var parentW = el.parentElement ? el.parentElement.getBoundingClientRect().width : vpW;
+        if (parseFloat(w) > parentW * 0.8) data.structure.fixedWidthElements++;
+      }
+    });
+    data.structure.truncatedElements = 0;
+    document.querySelectorAll('[class*="truncate"],[class*="ellipsis"],[style*="text-overflow"]').forEach(function(tel) {
+      if (!isVisible(tel)) return;
+      if (tel.scrollWidth > tel.clientWidth + 2) data.structure.truncatedElements++;
+    });
 
     parent.postMessage({ type: 'milg-analyzer-result', data: data }, '*');
     // Trigger screenshot capture if configured (function injected by parent)

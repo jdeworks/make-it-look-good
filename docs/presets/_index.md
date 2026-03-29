@@ -87,7 +87,7 @@ Start here. Everything builds on these.
 | Preset | Description |
 |--------|-------------|
 | [`pricing/`](pricing/) | SaaS pricing page |
-| [`portfolio/`](portfolio/) | Portfolio (dark theme) |
+| [`portfolio/`](portfolio/) | Portfolio (clean variant is dark-themed) |
 | [`restaurant/`](restaurant/) | Restaurant (warm theme) |
 | [`statuspage/`](statuspage/) | Status page |
 
