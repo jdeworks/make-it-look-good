@@ -1613,6 +1613,101 @@
     }
   }
 
+  // --- Tier 1: Quick win checks ---
+
+  // Image upscale detection (rendered larger than natural size)
+  data.performance.upscaledImages = [];
+  document.querySelectorAll('img').forEach(function(img) {
+    if (!img.naturalWidth || !img.complete || !isVisible(img)) return;
+    var r = img.getBoundingClientRect();
+    if (r.width < 24) return; // skip tiny icons
+    var dpr = window.devicePixelRatio || 1;
+    var renderedW = r.width * dpr;
+    if (renderedW > img.naturalWidth * 1.1) {
+      var upscale = Math.round(renderedW / img.naturalWidth * 100);
+      data.performance.upscaledImages.push({ selector: cssSelector(img), rendered: Math.round(r.width) + 'x' + Math.round(r.height), natural: img.naturalWidth + 'x' + img.naturalHeight, upscale: upscale });
+    }
+  });
+  data.performance.upscaledImages = data.performance.upscaledImages.slice(0, 10);
+
+  // Text clipping without title
+  data.accessibility.textClippedNoTitle = 0;
+  for (var tci = 0; tci < allElements.length && tci < 300; tci++) {
+    var tcEl = allElements[tci];
+    if (!isVisible(tcEl) || isDecorative(tcEl)) continue;
+    var tcS = getComputedStyle(tcEl);
+    var isClipped = tcS.textOverflow === 'ellipsis' || (tcS.overflow === 'hidden' && tcS.whiteSpace === 'nowrap' && tcEl.scrollWidth > tcEl.clientWidth + 2);
+    if (isClipped && !tcEl.getAttribute('title') && !tcEl.getAttribute('aria-label')) {
+      data.accessibility.textClippedNoTitle++;
+    }
+  }
+
+  // Placeholder-only labels
+  data.accessibility.placeholderOnlyInputs = 0;
+  document.querySelectorAll('input[placeholder], textarea[placeholder]').forEach(function(el) {
+    if (!isVisible(el)) return;
+    var hasLabel = el.labels && el.labels.length > 0;
+    var hasAriaLabel = el.hasAttribute('aria-label') || el.hasAttribute('aria-labelledby');
+    if (!hasLabel && !hasAriaLabel) data.accessibility.placeholderOnlyInputs++;
+  });
+
+  // Links without underline or color distinction (in body text, not nav)
+  data.accessibility.invisibleLinks = 0;
+  document.querySelectorAll('a[href]').forEach(function(a) {
+    if (!isVisible(a) || isDecorative(a) || a.closest('nav, header, footer, [role="navigation"]')) return;
+    var aS = getComputedStyle(a);
+    var pS = a.parentElement ? getComputedStyle(a.parentElement) : null;
+    if (!pS) return;
+    var hasUnderline = aS.textDecorationLine && aS.textDecorationLine.indexOf('underline') !== -1;
+    var hasColorDiff = aS.color !== pS.color;
+    var hasBgDiff = aS.backgroundColor !== 'rgba(0, 0, 0, 0)' && aS.backgroundColor !== 'transparent';
+    if (!hasUnderline && !hasColorDiff && !hasBgDiff) data.accessibility.invisibleLinks++;
+  });
+
+  // Required fields without visual indicator
+  data.accessibility.requiredNoIndicator = 0;
+  document.querySelectorAll('[required]').forEach(function(el) {
+    if (!isVisible(el)) return;
+    var label = (el.labels && el.labels[0]) || (el.id && document.querySelector('label[for="' + el.id + '"]'));
+    if (!label) return;
+    var labelText = label.textContent || '';
+    if (!/\*/.test(labelText) && !/required/i.test(labelText) && !label.querySelector('.required, [class*="required"]')) {
+      data.accessibility.requiredNoIndicator++;
+    }
+  });
+
+  // Input without visible boundary
+  data.accessibility.invisibleInputs = 0;
+  document.querySelectorAll('input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]), textarea').forEach(function(el) {
+    if (!isVisible(el) || isDecorative(el)) return;
+    var s = getComputedStyle(el);
+    var hasBorder = parseFloat(s.borderWidth) > 0 && s.borderStyle !== 'none';
+    var hasShadow = s.boxShadow !== 'none';
+    var bg = parseColor(s.backgroundColor);
+    var parentBg = getEffectiveBg(el.parentElement || el);
+    var hasDistinctBg = bg && parentBg && contrastRatio(blendOnWhite(bg), parentBg) > 1.15;
+    if (!hasBorder && !hasShadow && !hasDistinctBg) data.accessibility.invisibleInputs++;
+  });
+
+  // will-change overuse
+  data.performance.willChangeCount = 0;
+  for (var wci = 0; wci < allElements.length && wci < 300; wci++) {
+    var wcEl = allElements[wci];
+    var wc = getComputedStyle(wcEl).willChange;
+    if (wc && wc !== 'auto') data.performance.willChangeCount++;
+  }
+
+  // Disabled element contrast
+  data.accessibility.disabledLowContrast = 0;
+  document.querySelectorAll('[disabled], [aria-disabled="true"]').forEach(function(el) {
+    if (!isVisible(el)) return;
+    var fg = parseColor(getComputedStyle(el).color);
+    if (!fg) return;
+    var bg = getEffectiveBg(el);
+    var ratio = contrastRatio(blendOnWhite(fg), bg);
+    if (ratio < 2.0) data.accessibility.disabledLowContrast++;
+  });
+
   // --- Image responsive sizing ---
   data.performance.nonResponsiveImages = 0;
   document.querySelectorAll('img').forEach(function(img) {
@@ -1809,32 +1904,57 @@
   // --- Event listener extraction (Chrome DevTools API only) ---
   // Collects handler source code as TEXT for display — NEVER executed
   data.interaction.eventListeners = [];
+  data.interaction.listenerPatterns = { toggleNoAria: 0, navigationInButton: 0, fetchNoLoading: 0 };
+  data.interaction.listenerStats = { total: 0, elementsWithListeners: 0, nonPassiveScroll: 0 };
   if (typeof getEventListeners === 'function') {
-    var _elSample = Array.from(document.querySelectorAll('button, a, [role="button"], [onclick], input, select')).slice(0, 30);
+    function _safeSrc(fn) {
+      try {
+        var src = Function.prototype.toString.call(fn);
+        if (src.indexOf('[native code]') !== -1) return '[native]';
+        return src.length > 500 ? src.substring(0, 500) + '...' : src;
+      } catch(e) { return '[unreadable]'; }
+    }
+    // Element listeners
+    var _elSample = Array.from(document.querySelectorAll('button, a, [role="button"], [onclick], input, select')).slice(0, 50);
     _elSample.forEach(function(el) {
       try {
         var listeners = getEventListeners(el);
         if (!listeners) return;
         var types = Object.keys(listeners);
         if (types.length === 0) return;
-        var entry = { selector: cssSelector(el), handlers: [] };
+        data.interaction.listenerStats.elementsWithListeners++;
+        var entry = { selector: cssSelector(el), tag: el.tagName.toLowerCase(), handlers: [] };
         types.forEach(function(type) {
           listeners[type].forEach(function(l) {
-            var src = '';
-            try { src = l.listener ? l.listener.toString().substring(0, 500) : ''; } catch(e) {}
-            entry.handlers.push({
-              type: type,
-              // Store source as text only — for display and static analysis, never eval
-              source: src,
-              once: !!l.once,
-              passive: !!l.passive
-            });
+            data.interaction.listenerStats.total++;
+            var src = _safeSrc(l.listener);
+            // Pattern analysis on source text (never executed)
+            if (type === 'click' && src !== '[native]' && src !== '[unreadable]') {
+              var hasToggle = /classList\.(toggle|add|remove)/.test(src);
+              var hasAriaExpanded = /aria-expanded|setAttribute.*aria/.test(src);
+              if (hasToggle && !hasAriaExpanded) data.interaction.listenerPatterns.toggleNoAria++;
+              if (/location\.(href|assign)|window\.location|router\.push/.test(src) && el.tagName === 'BUTTON') {
+                data.interaction.listenerPatterns.navigationInButton++;
+              }
+              if (/fetch\(|XMLHttpRequest|\.ajax\(|axios/.test(src)) {
+                data.interaction.listenerPatterns.fetchNoLoading++;
+              }
+            }
+            entry.handlers.push({ type: type, source: src, once: !!l.once, passive: !!l.passive });
           });
         });
         if (entry.handlers.length > 0) data.interaction.eventListeners.push(entry);
       } catch(e) {}
     });
     data.interaction.eventListeners = data.interaction.eventListeners.slice(0, 20);
+    // Window/document listener stats
+    try {
+      var _winL = getEventListeners(window);
+      Object.keys(_winL).forEach(function(type) {
+        data.interaction.listenerStats.total += _winL[type].length;
+        if (type === 'scroll') _winL[type].forEach(function(l) { if (!l.passive) data.interaction.listenerStats.nonPassiveScroll++; });
+      });
+    } catch(e) {}
   }
 
   // Clean up measurement span

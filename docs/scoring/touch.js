@@ -145,6 +145,29 @@ function scoreTouchTargets(data) {
     }
   });
 
+  // Event listener pattern findings
+  var lPatterns = (data.interaction && data.interaction.listenerPatterns) || {};
+  if (lPatterns.toggleNoAria > 0) {
+    findings.push({
+      severity: 'warning',
+      title: lPatterns.toggleNoAria + ' toggle handler(s) without ARIA state management',
+      detail: 'Click handlers toggle CSS classes but don\'t update aria-expanded or other ARIA states. Screen readers won\'t know the element\'s state changed.',
+      fix: 'Add setAttribute(\'aria-expanded\', isOpen) alongside classList.toggle() in toggle handlers.',
+      presetRef: null,
+      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
+    });
+  }
+  if (lPatterns.navigationInButton > 0) {
+    findings.push({
+      severity: 'info',
+      title: lPatterns.navigationInButton + ' button(s) trigger page navigation',
+      detail: 'Buttons with click handlers that change location.href should typically be <a> elements for proper semantics and accessibility.',
+      fix: 'Use <a href="..."> for navigation instead of <button> with JavaScript location change.',
+      presetRef: null,
+      source: 'HTML spec — https://html.spec.whatwg.org/multipage/text-level-semantics.html#the-a-element'
+    });
+  }
+
   // Score: deduct per error, less per warning
   var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
   var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;

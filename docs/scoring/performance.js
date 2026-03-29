@@ -174,6 +174,55 @@ function scorePerformance(data) {
     });
   }
 
+  // Upscaled images
+  var upscaled = (data.performance && data.performance.upscaledImages) || [];
+  if (upscaled.length > 0) {
+    var upDetails = upscaled.slice(0, 3).map(function(u) { return u.selector + ' ' + u.natural + ' → ' + u.rendered + ' (' + u.upscale + '%)'; });
+    findings.push({
+      severity: upscaled.some(function(u) { return u.upscale > 150; }) ? 'warning' : 'info',
+      title: upscaled.length + ' image(s) rendered larger than natural size',
+      detail: 'Images are upscaled, causing visible pixelation: ' + upDetails.join('; '),
+      fix: 'Provide higher-resolution source images or use srcset for retina displays.',
+      presetRef: null,
+      source: 'MDN — https://developer.mozilla.org/en-US/docs/Learn/HTML/Multimedia_and_embedding/Responsive_images'
+    });
+  }
+
+  // will-change overuse
+  var willChange = (data.performance && data.performance.willChangeCount) || 0;
+  if (willChange > 10) {
+    findings.push({
+      severity: 'warning',
+      title: willChange + ' elements use will-change (recommend < 10)',
+      detail: 'Excessive will-change creates GPU compositor layers, increasing memory usage.',
+      fix: 'Remove will-change from elements that don\'t animate frequently. Apply only during animation, then remove.',
+      presetRef: null,
+      source: 'MDN — https://developer.mozilla.org/en-US/docs/Web/CSS/will-change'
+    });
+  } else if (willChange > 5) {
+    findings.push({
+      severity: 'info',
+      title: willChange + ' elements use will-change',
+      detail: 'Monitor GPU memory if adding more will-change hints.',
+      fix: 'will-change is fine for elements that animate frequently. Avoid on static elements.',
+      presetRef: null,
+      source: 'MDN — https://developer.mozilla.org/en-US/docs/Web/CSS/will-change'
+    });
+  }
+
+  // Non-passive scroll listeners
+  var lStats = (data.interaction && data.interaction.listenerStats) || {};
+  if (lStats.nonPassiveScroll > 0) {
+    findings.push({
+      severity: 'warning',
+      title: lStats.nonPassiveScroll + ' non-passive scroll listener(s)',
+      detail: 'Non-passive scroll listeners block smooth scrolling. The browser must wait for the handler to decide if it calls preventDefault().',
+      fix: 'Add { passive: true } to scroll event listeners that don\'t call preventDefault().',
+      presetRef: null,
+      source: 'web.dev — https://web.dev/articles/passive-listeners'
+    });
+  }
+
   var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
   var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
   var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));

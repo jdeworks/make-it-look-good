@@ -456,6 +456,84 @@ function scoreAccessibility(data) {
     });
   }
 
+  // Text clipping without title
+  var textClipped = a11y.textClippedNoTitle || 0;
+  if (textClipped > 0) {
+    findings.push({
+      severity: textClipped > 5 ? 'warning' : 'info',
+      title: textClipped + ' element(s) truncate text without title attribute',
+      detail: 'Text is clipped with ellipsis but has no title or aria-label, so the full text is inaccessible.',
+      fix: 'Add title="full text here" to elements with text-overflow: ellipsis so users can see the complete content on hover.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
+    });
+  }
+
+  // Placeholder-only labels
+  var placeholderOnly = a11y.placeholderOnlyInputs || 0;
+  if (placeholderOnly > 0) {
+    findings.push({
+      severity: 'warning',
+      title: placeholderOnly + ' input(s) use placeholder as only label',
+      detail: 'Placeholders disappear when the user starts typing, leaving no visible label.',
+      fix: 'Add a visible <label> element. Placeholders are hints, not labels.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
+    });
+  }
+
+  // Invisible links (no underline, no color distinction)
+  var invisLinks = a11y.invisibleLinks || 0;
+  if (invisLinks > 0) {
+    findings.push({
+      severity: 'warning',
+      title: invisLinks + ' link(s) visually indistinguishable from surrounding text',
+      detail: 'Links in body text have no underline, no color difference, and no background — users cannot identify them as clickable.',
+      fix: 'Add text-decoration: underline or a distinct color to in-content links. Nav and button-styled links are exempt.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.1 — https://www.w3.org/TR/WCAG22/#use-of-color'
+    });
+  }
+
+  // Required fields without visual indicator
+  var reqNoIndicator = a11y.requiredNoIndicator || 0;
+  if (reqNoIndicator > 0) {
+    findings.push({
+      severity: 'warning',
+      title: reqNoIndicator + ' required field(s) without visual indicator',
+      detail: 'Required inputs have no asterisk (*) or "Required" text in their label.',
+      fix: 'Add an asterisk (*) to required field labels or include "Required" text.',
+      presetRef: null,
+      source: 'WCAG 2.2 §3.3.2 — https://www.w3.org/TR/WCAG22/#labels-or-instructions'
+    });
+  }
+
+  // Invisible inputs (no border/background/shadow)
+  var invisInputs = a11y.invisibleInputs || 0;
+  if (invisInputs > 0) {
+    findings.push({
+      severity: 'warning',
+      title: invisInputs + ' input(s) without visible boundary',
+      detail: 'Text inputs have no border, no distinct background, and no shadow — users cannot identify where to type.',
+      fix: 'Add a border (border-slate-300) or distinct background to input fields. WCAG 1.4.11 requires 3:1 contrast for input boundaries.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.11 — https://www.w3.org/TR/WCAG22/#non-text-contrast'
+    });
+  }
+
+  // Disabled element contrast
+  var disabledLC = a11y.disabledLowContrast || 0;
+  if (disabledLC > 0) {
+    findings.push({
+      severity: 'info',
+      title: disabledLC + ' disabled element(s) with very low contrast (< 2:1)',
+      detail: 'While WCAG exempts disabled elements from contrast rules, users should still be able to read what is disabled.',
+      fix: 'Aim for at least 2:1 contrast on disabled elements so users understand what is unavailable.',
+      presetRef: null,
+      source: 'Usability research — https://www.nngroup.com/articles/disabled-buttons/'
+    });
+  }
+
   var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
   var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
   var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));

@@ -16901,340 +16901,6 @@ function runTests() {
 </html>
 </file>
 
-<file path="docs/tests/test-scoring.html">
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Scoring Module Tests</title>
-  <style>
-    body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; background: #f8fafc; }
-    h1 { font-size: 20px; margin-bottom: 16px; }
-    .test { padding: 8px 12px; margin: 4px 0; border-radius: 6px; font-size: 13px; font-family: monospace; }
-    .pass { background: #f0fdf4; border: 1px solid #bbf7d0; color: #16a34a; }
-    .fail { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; }
-    .summary { margin-top: 16px; padding: 12px; border-radius: 8px; font-weight: 600; font-size: 15px; }
-    .summary.all-pass { background: #f0fdf4; color: #16a34a; border: 2px solid #16a34a; }
-    .summary.has-fail { background: #fef2f2; color: #dc2626; border: 2px solid #dc2626; }
-    #results { max-width: 800px; }
-  </style>
-</head>
-<body>
-  <h1>Scoring Module Tests</h1>
-  <div id="results">Loading modules...</div>
-
-  <!-- Load scoring modules -->
-  <script src="../scoring/registry.js"></script>
-  <script src="../scoring/contrast.js"></script>
-  <script src="../scoring/typography.js"></script>
-  <script src="../scoring/spacing.js"></script>
-  <script src="../scoring/touch.js"></script>
-  <script src="../scoring/accessibility.js"></script>
-  <script src="../scoring/responsive.js"></script>
-  <script src="../scoring/consistency.js"></script>
-  <script src="../scoring/cognitive.js"></script>
-  <script src="../scoring/layout.js"></script>
-  <script src="../scoring/performance.js"></script>
-  <script src="../scoring/readability.js"></script>
-  <script src="../scoring/filters.js"></script>
-  <script src="../scoring/balance.js"></script>
-
-  <script>
-    var results = [];
-    var passed = 0;
-    var failed = 0;
-
-    function assert(name, condition, detail) {
-      if (condition) {
-        results.push({ name: name, pass: true });
-        passed++;
-      } else {
-        results.push({ name: name, pass: false, detail: detail || 'assertion failed' });
-        failed++;
-      }
-    }
-
-    // --- Minimal valid extraction data ---
-    function makeData(overrides) {
-      var base = {
-        meta: { title: 'Test', url: 'https://test.com', viewportWidth: 1280, viewportHeight: 900, timestamp: new Date().toISOString(), version: 1 },
-        colors: { textColors: [{ value: '#000', count: 10 }], bgColors: [{ value: '#fff', count: 10 }], contrastPairs: [] },
-        typography: { bodyFontSize: '16px', bodyLineHeight: '24px', bodyFontFamily: 'sans-serif', fontFamilies: ['sans-serif'], fontSizes: [{ value: '16px', count: 10 }], fontWeights: [{ value: '400', count: 10 }, { value: '700', count: 5 }], headings: [{ tag: 'h1', text: 'Test', fontSize: '32px', fontWeight: '700', lineHeight: '40px', fontFamily: 'sans-serif' }], lineHeights: [{ value: 1.5, count: 10 }], maxLineLength: { chars: 65, element: 'p' } },
-        spacing: { paddings: [{ value: '16px', count: 10 }], margins: [{ value: '16px', count: 10 }], gaps: [{ value: '16px', count: 5 }], maxContentWidth: '1200px', bodyPaddingHorizontal: '16px' },
-        layout: { sectionGaps: [64, 64, 64], alignmentEdges: [16, 16, 16, 16, 16], visualHierarchy: { h1ToBody: 2, h2ToBody: 1.5, bodySize: 16 }, borderRadii: [{ value: '8px', count: 10 }] },
-        interaction: { touchTargets: [], transitions: ['0.15s'], adjacentIssues: [] },
-        accessibility: { semanticElements: { header: 1, nav: 1, main: 1, footer: 1, section: 3, article: 0, aside: 0 }, headingHierarchy: ['h1', 'h2', 'h3'], imagesWithoutAlt: 0, formLabels: { total: 2, withLabel: 2, withoutLabel: 0 }, focusIndicators: [{ element: 'button', outlineStyle: 'solid', outlineWidth: '2px', outlineColor: 'blue', outlineOffset: '2px' }], hasFocusVisibleCSS: true, langAttribute: true, hasSkipLink: true, badLinkTexts: [], missingAutocomplete: 0, ariaIssues: [], colorOnlyIndicators: 0, autoPlayMedia: 0, navItemCount: 5 },
-        structure: { totalElements: 100, darkModeClasses: true, responsiveClasses: true, tailwindDetected: true, cssFramework: 'tailwind', viewportMeta: 'width=device-width, initial-scale=1.0', blocksZoom: false, hasHorizontalOverflow: false, fixedWidthElements: 0, truncatedElements: 0 },
-        context: { pageType: 'content' },
-        animation: { keyframeCount: 0, hasReducedMotion: true, hiddenElements: 0, scrollRevealPatterns: [] },
-        performance: { fontLoading: [], renderBlocking: { cssInHead: 1, jsInHead: 0 }, domSize: 100, domDepth: 8, thirdPartyScripts: 2, imageFormats: { modern: 3, legacy: 0 }, cls: 0.02, lcp: { time: 1500, element: 'img', size: 50000 }, nonResponsiveImages: 0 },
-        readability: { gradeLevel: 8 }
-      };
-      if (overrides) {
-        Object.keys(overrides).forEach(function(k) {
-          if (typeof overrides[k] === 'object' && !Array.isArray(overrides[k]) && base[k]) {
-            Object.keys(overrides[k]).forEach(function(k2) { base[k][k2] = overrides[k][k2]; });
-          } else {
-            base[k] = overrides[k];
-          }
-        });
-      }
-      return base;
-    }
-
-    // =========================================================
-    // TEST 1: All modules run without errors on valid data
-    // =========================================================
-    (function() {
-      var profiles = ['general', 'wcag_aaa', 'elderly', 'low_vision', 'motor_impairment', 'color_blind', 'children', 'cognitive'];
-      profiles.forEach(function(profile) {
-        try {
-          var data = makeData({ profile: profile });
-          var result = MilgScoring.runScoring(data);
-          assert('runScoring(' + profile + ') completes', result && typeof result.overall === 'number', 'result: ' + JSON.stringify(result && result.overall));
-          assert('runScoring(' + profile + ') score 0-100', result.overall >= 0 && result.overall <= 100, 'score: ' + result.overall);
-          assert('runScoring(' + profile + ') has categories', result.categories && result.categories.length > 0, 'categories: ' + (result.categories && result.categories.length));
-
-          // Check all categories have required fields
-          result.categories.forEach(function(cat) {
-            assert(profile + '/' + cat.label + ' has score', typeof cat.score === 'number' && cat.score >= 0 && cat.score <= 100, 'score: ' + cat.score);
-            assert(profile + '/' + cat.label + ' has findings array', Array.isArray(cat.findings), 'findings: ' + typeof cat.findings);
-            assert(profile + '/' + cat.label + ' has checks count', typeof cat.checks === 'number' || cat.checks === undefined, 'checks: ' + cat.checks);
-          });
-        } catch(e) {
-          assert('runScoring(' + profile + ') no error', false, e.message + ' at ' + (e.stack || '').split('\n')[1]);
-        }
-      });
-    })();
-
-    // =========================================================
-    // TEST 2: Good data should score well (>= 80)
-    // =========================================================
-    (function() {
-      var data = makeData();
-      var result = MilgScoring.runScoring(data);
-      assert('Good data scores >= 80', result.overall >= 80, 'score: ' + result.overall);
-      assert('Good data grade A or B', result.grade === 'A' || result.grade === 'B', 'grade: ' + result.grade);
-    })();
-
-    // =========================================================
-    // TEST 3: Contrast failures lower score
-    // =========================================================
-    (function() {
-      var data = makeData({
-        colors: {
-          textColors: [{ value: '#999', count: 5 }],
-          bgColors: [{ value: '#fff', count: 5 }],
-          contrastPairs: [
-            { fg: 'rgb(153,153,153)', bg: 'rgb(255,255,255)', ratio: 2.85, needed: 4.5, passes: false, fontSize: 16, fontWeight: 400, isLarge: false, text: 'Low contrast text', selector: 'p', filter: '' },
-            { fg: 'rgb(153,153,153)', bg: 'rgb(255,255,255)', ratio: 2.85, needed: 4.5, passes: false, fontSize: 16, fontWeight: 400, isLarge: false, text: 'Another low contrast', selector: 'span', filter: '' }
-          ]
-        }
-      });
-      var result = MilgScoring.runScoring(data);
-      var contrastCat = result.categories.find(function(c) { return c.label === 'Color & Contrast'; });
-      assert('Contrast failures produce errors', contrastCat.findings.some(function(f) { return f.severity === 'error'; }), 'findings: ' + contrastCat.findings.length);
-      assert('Contrast score < 100', contrastCat.score < 100, 'score: ' + contrastCat.score);
-    })();
-
-    // =========================================================
-    // TEST 4: Touch target issues
-    // =========================================================
-    (function() {
-      var data = makeData({
-        interaction: {
-          touchTargets: [
-            { element: 'button', width: 20, height: 20, text: 'Tiny button', selector: 'button.tiny', passes: false, isButton: true, linkContext: 'button' },
-            { element: 'a', width: 30, height: 15, text: 'Footer link', selector: 'a', passes: false, isButton: false, linkContext: 'footer' },
-            { element: 'a', width: 50, height: 12, text: 'Inline link', selector: 'a', passes: false, isButton: false, linkContext: 'inline' }
-          ],
-          transitions: ['0.2s']
-        }
-      });
-      var result = MilgScoring.runScoring(data);
-      var touchCat = result.categories.find(function(c) { return c.label === 'Touch & Interaction'; });
-      var errors = touchCat.findings.filter(function(f) { return f.severity === 'error'; });
-      var infos = touchCat.findings.filter(function(f) { return f.severity === 'info'; });
-      assert('Button gets error', errors.some(function(f) { return f.title.indexOf('button') !== -1; }), 'errors: ' + errors.map(function(f){return f.title}).join('; '));
-      assert('Footer link gets info or error', touchCat.findings.some(function(f) { return f.title.indexOf('Footer') !== -1; }), 'findings: ' + touchCat.findings.map(function(f){return f.title}).join('; '));
-      assert('Inline link gets info (exempt)', infos.some(function(f) { return f.title.indexOf('Inline') !== -1 || f.title.indexOf('inline') !== -1; }), 'infos: ' + infos.map(function(f){return f.title}).join('; '));
-    })();
-
-    // =========================================================
-    // TEST 5: Profile differentiation
-    // =========================================================
-    (function() {
-      var data = makeData({
-        typography: { bodyFontSize: '15px', bodyLineHeight: '22px', bodyFontFamily: 'sans-serif', fontFamilies: ['sans-serif'], fontSizes: [{ value: '15px', count: 10 }], fontWeights: [{ value: '400', count: 10 }], headings: [{ tag: 'h1', text: 'Test', fontSize: '32px', fontWeight: '700', lineHeight: '40px', fontFamily: 'sans-serif' }], lineHeights: [{ value: 1.47, count: 10 }], maxLineLength: { chars: 70, element: 'p' } }
-      });
-      var generalResult = MilgScoring.runScoring(makeData(Object.assign({}, data, { profile: 'general' })));
-      var elderlyResult = MilgScoring.runScoring(makeData(Object.assign({}, data, { profile: 'elderly' })));
-      var childResult = MilgScoring.runScoring(makeData(Object.assign({}, data, { profile: 'children' })));
-
-      assert('Elderly scores lower than general for 15px font', elderlyResult.overall <= generalResult.overall, 'elderly: ' + elderlyResult.overall + ' general: ' + generalResult.overall);
-      assert('Children scores different from general', childResult.overall !== generalResult.overall || childResult.categories.some(function(c, i) { return c.findings.length !== generalResult.categories[i].findings.length; }), 'findings differ');
-    })();
-
-    // =========================================================
-    // TEST 6: CVD simulation (color_blind profile)
-    // =========================================================
-    (function() {
-      var data = makeData({
-        profile: 'color_blind',
-        colors: {
-          textColors: [{ value: 'rgb(255,0,0)', count: 3 }, { value: 'rgb(0,128,0)', count: 3 }],
-          bgColors: [{ value: 'rgb(255,255,255)', count: 10 }],
-          contrastPairs: [
-            { fg: 'rgb(255,0,0)', bg: 'rgb(255,255,255)', ratio: 4, needed: 4.5, passes: false, fontSize: 16, fontWeight: 400, isLarge: false, text: 'Red text', selector: 'span.red', filter: '' },
-            { fg: 'rgb(0,128,0)', bg: 'rgb(255,255,255)', ratio: 4.6, needed: 4.5, passes: true, fontSize: 16, fontWeight: 400, isLarge: false, text: 'Green text', selector: 'span.green', filter: '' }
-          ]
-        }
-      });
-      try {
-        var result = MilgScoring.runScoring(data);
-        assert('CVD profile runs without error', true);
-        var contrastCat = result.categories.find(function(c) { return c.label === 'Color & Contrast'; });
-        assert('CVD has contrast findings', contrastCat.findings.length > 0, 'findings: ' + contrastCat.findings.length);
-      } catch(e) {
-        assert('CVD profile no error', false, e.message);
-      }
-    })();
-
-    // =========================================================
-    // TEST 7: Cognitive profile checks
-    // =========================================================
-    (function() {
-      var data = makeData({
-        profile: 'cognitive',
-        accessibility: {
-          semanticElements: { header: 1, nav: 1, main: 1, footer: 1 },
-          headingHierarchy: ['h1', 'h2', 'h3'], imagesWithoutAlt: 0,
-          formLabels: { total: 0, withLabel: 0, withoutLabel: 0 },
-          focusIndicators: [], hasFocusVisibleCSS: true, langAttribute: true,
-          hasSkipLink: true, badLinkTexts: [], missingAutocomplete: 0,
-          ariaIssues: [], colorOnlyIndicators: 0, autoPlayMedia: 0,
-          navItemCount: 12 // exceeds max 5 for cognitive
-        },
-        readability: { gradeLevel: 12 } // exceeds max 8 for cognitive
-      });
-      var result = MilgScoring.runScoring(data);
-      var cogCat = result.categories.find(function(c) { return c.label === 'Cognitive Load'; });
-      assert('Cognitive profile flags high nav count', cogCat.findings.some(function(f) { return f.title.indexOf('navigation') !== -1; }), 'findings: ' + cogCat.findings.map(function(f){return f.title}).join('; '));
-      assert('Cognitive profile flags high reading level', cogCat.findings.some(function(f) { return f.title.indexOf('Reading level') !== -1 || f.title.indexOf('reading') !== -1; }), 'findings: ' + cogCat.findings.map(function(f){return f.title}).join('; '));
-    })();
-
-    // =========================================================
-    // TEST 8: All modules return checks/passed
-    // =========================================================
-    (function() {
-      var data = makeData();
-      var result = MilgScoring.runScoring(data);
-      result.categories.forEach(function(cat) {
-        assert(cat.label + ' has checks count', cat.checks !== undefined && cat.checks >= 0, 'checks: ' + cat.checks);
-      });
-    })();
-
-    // =========================================================
-    // TEST 9: Registry utilities
-    // =========================================================
-    (function() {
-      // parseColor
-      var c = MilgScoring.parseColor('rgb(255, 0, 0)');
-      assert('parseColor rgb()', c && c.r === 255 && c.g === 0 && c.b === 0, JSON.stringify(c));
-
-      var c2 = MilgScoring.parseColor('rgba(0, 128, 255, 0.5)');
-      assert('parseColor rgba()', c2 && c2.r === 0 && c2.g === 128 && c2.b === 255 && c2.a === 0.5, JSON.stringify(c2));
-
-      // contrastRatio
-      var ratio = MilgScoring.contrastRatio({ r: 0, g: 0, b: 0 }, { r: 255, g: 255, b: 255 });
-      assert('contrastRatio black/white = 21', Math.abs(ratio - 21) < 0.1, 'ratio: ' + ratio);
-
-      // CVD simulation
-      var sim = MilgScoring.simulateCVD({ r: 255, g: 0, b: 0 }, MilgScoring.CVD_MATRICES.protanopia);
-      assert('CVD simulation produces valid color', sim && sim.r >= 0 && sim.r <= 255 && sim.g >= 0 && sim.b >= 0, JSON.stringify(sim));
-      assert('CVD protanopia dims red', sim.r < 200, 'r: ' + sim.r); // red looks much darker/different under protanopia
-    })();
-
-    // =========================================================
-    // NEW: Extended checks tests
-    // =========================================================
-
-    // Duplicate IDs should produce error when used in ARIA
-    (function() {
-      var data = makeData({
-        accessibility: {
-          duplicateIds: [{ id: 'foo', count: 2, usedInAria: true }],
-          nestedInteractives: ['a.nested'],
-          emptyInteractives: ['button.empty'],
-          positiveTabindex: 3,
-          scrollableNoKeyboard: 1,
-          nonTextContrast: [{ selector: 'input', ratio: 2.1, borderColor: 'rgb(200,200,200)', bg: 'rgb(255,255,255)' }],
-          tableIssues: [{ selector: 'table', issues: ['no-th', 'no-caption'] }],
-          missingButtonType: 2
-        }
-      });
-      var result = MilgScoring.runScoring(data);
-      var a11y = result.categories.find(function(c) { return c.label === 'Accessibility'; });
-      var titles = a11y.findings.map(function(f) { return f.title; }).join(' | ');
-      assert('Duplicate IDs flagged', titles.indexOf('duplicate ID') !== -1, 'Got: ' + titles);
-      assert('Nested interactives flagged', titles.indexOf('nested interactive') !== -1, 'Got: ' + titles);
-      assert('Empty interactives flagged', titles.indexOf('no accessible name') !== -1, 'Got: ' + titles);
-      assert('Positive tabindex flagged', titles.indexOf('positive tabindex') !== -1, 'Got: ' + titles);
-      assert('Scrollable no keyboard flagged', titles.indexOf('keyboard-accessible') !== -1, 'Got: ' + titles);
-      assert('Non-text contrast flagged', titles.indexOf('border contrast') !== -1, 'Got: ' + titles);
-      assert('Table issues flagged', titles.indexOf('table') !== -1, 'Got: ' + titles);
-    })();
-
-    // Z-index sprawl and shadow consistency
-    (function() {
-      var data = makeData({
-        layout: { zIndexSprawl: { distinct: 12, max: 9999, values: [] }, shadowSprawl: 9 },
-        colors: { darkModeHalation: true }
-      });
-      var result = MilgScoring.runScoring(data);
-      var consistency = result.categories.find(function(c) { return c.label === 'Visual Consistency'; });
-      var titles = consistency.findings.map(function(f) { return f.title; }).join(' | ');
-      assert('Z-index sprawl flagged', titles.indexOf('z-index') !== -1, 'Got: ' + titles);
-      assert('Shadow sprawl flagged', titles.indexOf('box-shadow') !== -1, 'Got: ' + titles);
-      assert('Dark mode halation flagged', titles.indexOf('halation') !== -1 || titles.indexOf('black') !== -1, 'Got: ' + titles);
-    })();
-
-    // All-caps and justified text
-    (function() {
-      var data = makeData({
-        typography: { allCapsLongText: 3, justifiedText: 2 }
-      });
-      var result = MilgScoring.runScoring(data);
-      var typo = result.categories.find(function(c) { return c.label === 'Typography'; });
-      var titles = typo.findings.map(function(f) { return f.title; }).join(' | ');
-      assert('All-caps long text flagged', titles.indexOf('all-caps') !== -1, 'Got: ' + titles);
-      assert('Justified text flagged', titles.indexOf('justify') !== -1, 'Got: ' + titles);
-    })();
-
-    // =========================================================
-    // RENDER RESULTS
-    // =========================================================
-    var html = '';
-    results.forEach(function(r) {
-      html += '<div class="test ' + (r.pass ? 'pass' : 'fail') + '">';
-      html += (r.pass ? '✓' : '✗') + ' ' + r.name;
-      if (!r.pass && r.detail) html += ' — <strong>' + r.detail + '</strong>';
-      html += '</div>';
-    });
-    html += '<div class="summary ' + (failed === 0 ? 'all-pass' : 'has-fail') + '">';
-    html += passed + ' passed, ' + failed + ' failed';
-    html += '</div>';
-    document.getElementById('results').innerHTML = html;
-
-    // Also log for CI
-    console.log('Scoring tests: ' + passed + ' passed, ' + failed + ' failed');
-    if (failed > 0) console.error('FAILURES:', results.filter(function(r) { return !r.pass; }).map(function(r) { return r.name + ': ' + r.detail; }));
-  </script>
-</body>
-</html>
-</file>
-
 <file path="docs/test-sites.html">
 <!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -18841,6 +18507,386 @@ package-lock.json
 
 # Claude Code commands (local skills, not shared)
 .claude/
+</file>
+
+<file path="docs/tests/test-scoring.html">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scoring Module Tests</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; background: #f8fafc; }
+    h1 { font-size: 20px; margin-bottom: 16px; }
+    .test { padding: 8px 12px; margin: 4px 0; border-radius: 6px; font-size: 13px; font-family: monospace; }
+    .pass { background: #f0fdf4; border: 1px solid #bbf7d0; color: #16a34a; }
+    .fail { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; }
+    .summary { margin-top: 16px; padding: 12px; border-radius: 8px; font-weight: 600; font-size: 15px; }
+    .summary.all-pass { background: #f0fdf4; color: #16a34a; border: 2px solid #16a34a; }
+    .summary.has-fail { background: #fef2f2; color: #dc2626; border: 2px solid #dc2626; }
+    #results { max-width: 800px; }
+  </style>
+</head>
+<body>
+  <h1>Scoring Module Tests</h1>
+  <div id="results">Loading modules...</div>
+
+  <!-- Load scoring modules -->
+  <script src="../scoring/registry.js"></script>
+  <script src="../scoring/contrast.js"></script>
+  <script src="../scoring/typography.js"></script>
+  <script src="../scoring/spacing.js"></script>
+  <script src="../scoring/touch.js"></script>
+  <script src="../scoring/accessibility.js"></script>
+  <script src="../scoring/responsive.js"></script>
+  <script src="../scoring/consistency.js"></script>
+  <script src="../scoring/cognitive.js"></script>
+  <script src="../scoring/layout.js"></script>
+  <script src="../scoring/performance.js"></script>
+  <script src="../scoring/readability.js"></script>
+  <script src="../scoring/filters.js"></script>
+  <script src="../scoring/balance.js"></script>
+
+  <script>
+    var results = [];
+    var passed = 0;
+    var failed = 0;
+
+    function assert(name, condition, detail) {
+      if (condition) {
+        results.push({ name: name, pass: true });
+        passed++;
+      } else {
+        results.push({ name: name, pass: false, detail: detail || 'assertion failed' });
+        failed++;
+      }
+    }
+
+    // --- Minimal valid extraction data ---
+    function makeData(overrides) {
+      var base = {
+        meta: { title: 'Test', url: 'https://test.com', viewportWidth: 1280, viewportHeight: 900, timestamp: new Date().toISOString(), version: 1 },
+        colors: { textColors: [{ value: '#000', count: 10 }], bgColors: [{ value: '#fff', count: 10 }], contrastPairs: [] },
+        typography: { bodyFontSize: '16px', bodyLineHeight: '24px', bodyFontFamily: 'sans-serif', fontFamilies: ['sans-serif'], fontSizes: [{ value: '16px', count: 10 }], fontWeights: [{ value: '400', count: 10 }, { value: '700', count: 5 }], headings: [{ tag: 'h1', text: 'Test', fontSize: '32px', fontWeight: '700', lineHeight: '40px', fontFamily: 'sans-serif' }], lineHeights: [{ value: 1.5, count: 10 }], maxLineLength: { chars: 65, element: 'p' } },
+        spacing: { paddings: [{ value: '16px', count: 10 }], margins: [{ value: '16px', count: 10 }], gaps: [{ value: '16px', count: 5 }], maxContentWidth: '1200px', bodyPaddingHorizontal: '16px' },
+        layout: { sectionGaps: [64, 64, 64], alignmentEdges: [16, 16, 16, 16, 16], visualHierarchy: { h1ToBody: 2, h2ToBody: 1.5, bodySize: 16 }, borderRadii: [{ value: '8px', count: 10 }] },
+        interaction: { touchTargets: [], transitions: ['0.15s'], adjacentIssues: [] },
+        accessibility: { semanticElements: { header: 1, nav: 1, main: 1, footer: 1, section: 3, article: 0, aside: 0 }, headingHierarchy: ['h1', 'h2', 'h3'], imagesWithoutAlt: 0, formLabels: { total: 2, withLabel: 2, withoutLabel: 0 }, focusIndicators: [{ element: 'button', outlineStyle: 'solid', outlineWidth: '2px', outlineColor: 'blue', outlineOffset: '2px' }], hasFocusVisibleCSS: true, langAttribute: true, hasSkipLink: true, badLinkTexts: [], missingAutocomplete: 0, ariaIssues: [], colorOnlyIndicators: 0, autoPlayMedia: 0, navItemCount: 5 },
+        structure: { totalElements: 100, darkModeClasses: true, responsiveClasses: true, tailwindDetected: true, cssFramework: 'tailwind', viewportMeta: 'width=device-width, initial-scale=1.0', blocksZoom: false, hasHorizontalOverflow: false, fixedWidthElements: 0, truncatedElements: 0 },
+        context: { pageType: 'content' },
+        animation: { keyframeCount: 0, hasReducedMotion: true, hiddenElements: 0, scrollRevealPatterns: [] },
+        performance: { fontLoading: [], renderBlocking: { cssInHead: 1, jsInHead: 0 }, domSize: 100, domDepth: 8, thirdPartyScripts: 2, imageFormats: { modern: 3, legacy: 0 }, cls: 0.02, lcp: { time: 1500, element: 'img', size: 50000 }, nonResponsiveImages: 0 },
+        readability: { gradeLevel: 8 }
+      };
+      if (overrides) {
+        Object.keys(overrides).forEach(function(k) {
+          if (typeof overrides[k] === 'object' && !Array.isArray(overrides[k]) && base[k]) {
+            Object.keys(overrides[k]).forEach(function(k2) { base[k][k2] = overrides[k][k2]; });
+          } else {
+            base[k] = overrides[k];
+          }
+        });
+      }
+      return base;
+    }
+
+    // =========================================================
+    // TEST 1: All modules run without errors on valid data
+    // =========================================================
+    (function() {
+      var profiles = ['general', 'wcag_aaa', 'elderly', 'low_vision', 'motor_impairment', 'color_blind', 'children', 'cognitive'];
+      profiles.forEach(function(profile) {
+        try {
+          var data = makeData({ profile: profile });
+          var result = MilgScoring.runScoring(data);
+          assert('runScoring(' + profile + ') completes', result && typeof result.overall === 'number', 'result: ' + JSON.stringify(result && result.overall));
+          assert('runScoring(' + profile + ') score 0-100', result.overall >= 0 && result.overall <= 100, 'score: ' + result.overall);
+          assert('runScoring(' + profile + ') has categories', result.categories && result.categories.length > 0, 'categories: ' + (result.categories && result.categories.length));
+
+          // Check all categories have required fields
+          result.categories.forEach(function(cat) {
+            assert(profile + '/' + cat.label + ' has score', typeof cat.score === 'number' && cat.score >= 0 && cat.score <= 100, 'score: ' + cat.score);
+            assert(profile + '/' + cat.label + ' has findings array', Array.isArray(cat.findings), 'findings: ' + typeof cat.findings);
+            assert(profile + '/' + cat.label + ' has checks count', typeof cat.checks === 'number' || cat.checks === undefined, 'checks: ' + cat.checks);
+          });
+        } catch(e) {
+          assert('runScoring(' + profile + ') no error', false, e.message + ' at ' + (e.stack || '').split('\n')[1]);
+        }
+      });
+    })();
+
+    // =========================================================
+    // TEST 2: Good data should score well (>= 80)
+    // =========================================================
+    (function() {
+      var data = makeData();
+      var result = MilgScoring.runScoring(data);
+      assert('Good data scores >= 80', result.overall >= 80, 'score: ' + result.overall);
+      assert('Good data grade A or B', result.grade === 'A' || result.grade === 'B', 'grade: ' + result.grade);
+    })();
+
+    // =========================================================
+    // TEST 3: Contrast failures lower score
+    // =========================================================
+    (function() {
+      var data = makeData({
+        colors: {
+          textColors: [{ value: '#999', count: 5 }],
+          bgColors: [{ value: '#fff', count: 5 }],
+          contrastPairs: [
+            { fg: 'rgb(153,153,153)', bg: 'rgb(255,255,255)', ratio: 2.85, needed: 4.5, passes: false, fontSize: 16, fontWeight: 400, isLarge: false, text: 'Low contrast text', selector: 'p', filter: '' },
+            { fg: 'rgb(153,153,153)', bg: 'rgb(255,255,255)', ratio: 2.85, needed: 4.5, passes: false, fontSize: 16, fontWeight: 400, isLarge: false, text: 'Another low contrast', selector: 'span', filter: '' }
+          ]
+        }
+      });
+      var result = MilgScoring.runScoring(data);
+      var contrastCat = result.categories.find(function(c) { return c.label === 'Color & Contrast'; });
+      assert('Contrast failures produce errors', contrastCat.findings.some(function(f) { return f.severity === 'error'; }), 'findings: ' + contrastCat.findings.length);
+      assert('Contrast score < 100', contrastCat.score < 100, 'score: ' + contrastCat.score);
+    })();
+
+    // =========================================================
+    // TEST 4: Touch target issues
+    // =========================================================
+    (function() {
+      var data = makeData({
+        interaction: {
+          touchTargets: [
+            { element: 'button', width: 20, height: 20, text: 'Tiny button', selector: 'button.tiny', passes: false, isButton: true, linkContext: 'button' },
+            { element: 'a', width: 30, height: 15, text: 'Footer link', selector: 'a', passes: false, isButton: false, linkContext: 'footer' },
+            { element: 'a', width: 50, height: 12, text: 'Inline link', selector: 'a', passes: false, isButton: false, linkContext: 'inline' }
+          ],
+          transitions: ['0.2s']
+        }
+      });
+      var result = MilgScoring.runScoring(data);
+      var touchCat = result.categories.find(function(c) { return c.label === 'Touch & Interaction'; });
+      var errors = touchCat.findings.filter(function(f) { return f.severity === 'error'; });
+      var infos = touchCat.findings.filter(function(f) { return f.severity === 'info'; });
+      assert('Button gets error', errors.some(function(f) { return f.title.indexOf('button') !== -1; }), 'errors: ' + errors.map(function(f){return f.title}).join('; '));
+      assert('Footer link gets info or error', touchCat.findings.some(function(f) { return f.title.indexOf('Footer') !== -1; }), 'findings: ' + touchCat.findings.map(function(f){return f.title}).join('; '));
+      assert('Inline link gets info (exempt)', infos.some(function(f) { return f.title.indexOf('Inline') !== -1 || f.title.indexOf('inline') !== -1; }), 'infos: ' + infos.map(function(f){return f.title}).join('; '));
+    })();
+
+    // =========================================================
+    // TEST 5: Profile differentiation
+    // =========================================================
+    (function() {
+      var data = makeData({
+        typography: { bodyFontSize: '15px', bodyLineHeight: '22px', bodyFontFamily: 'sans-serif', fontFamilies: ['sans-serif'], fontSizes: [{ value: '15px', count: 10 }], fontWeights: [{ value: '400', count: 10 }], headings: [{ tag: 'h1', text: 'Test', fontSize: '32px', fontWeight: '700', lineHeight: '40px', fontFamily: 'sans-serif' }], lineHeights: [{ value: 1.47, count: 10 }], maxLineLength: { chars: 70, element: 'p' } }
+      });
+      var generalResult = MilgScoring.runScoring(makeData(Object.assign({}, data, { profile: 'general' })));
+      var elderlyResult = MilgScoring.runScoring(makeData(Object.assign({}, data, { profile: 'elderly' })));
+      var childResult = MilgScoring.runScoring(makeData(Object.assign({}, data, { profile: 'children' })));
+
+      assert('Elderly scores lower than general for 15px font', elderlyResult.overall <= generalResult.overall, 'elderly: ' + elderlyResult.overall + ' general: ' + generalResult.overall);
+      assert('Children scores different from general', childResult.overall !== generalResult.overall || childResult.categories.some(function(c, i) { return c.findings.length !== generalResult.categories[i].findings.length; }), 'findings differ');
+    })();
+
+    // =========================================================
+    // TEST 6: CVD simulation (color_blind profile)
+    // =========================================================
+    (function() {
+      var data = makeData({
+        profile: 'color_blind',
+        colors: {
+          textColors: [{ value: 'rgb(255,0,0)', count: 3 }, { value: 'rgb(0,128,0)', count: 3 }],
+          bgColors: [{ value: 'rgb(255,255,255)', count: 10 }],
+          contrastPairs: [
+            { fg: 'rgb(255,0,0)', bg: 'rgb(255,255,255)', ratio: 4, needed: 4.5, passes: false, fontSize: 16, fontWeight: 400, isLarge: false, text: 'Red text', selector: 'span.red', filter: '' },
+            { fg: 'rgb(0,128,0)', bg: 'rgb(255,255,255)', ratio: 4.6, needed: 4.5, passes: true, fontSize: 16, fontWeight: 400, isLarge: false, text: 'Green text', selector: 'span.green', filter: '' }
+          ]
+        }
+      });
+      try {
+        var result = MilgScoring.runScoring(data);
+        assert('CVD profile runs without error', true);
+        var contrastCat = result.categories.find(function(c) { return c.label === 'Color & Contrast'; });
+        assert('CVD has contrast findings', contrastCat.findings.length > 0, 'findings: ' + contrastCat.findings.length);
+      } catch(e) {
+        assert('CVD profile no error', false, e.message);
+      }
+    })();
+
+    // =========================================================
+    // TEST 7: Cognitive profile checks
+    // =========================================================
+    (function() {
+      var data = makeData({
+        profile: 'cognitive',
+        accessibility: {
+          semanticElements: { header: 1, nav: 1, main: 1, footer: 1 },
+          headingHierarchy: ['h1', 'h2', 'h3'], imagesWithoutAlt: 0,
+          formLabels: { total: 0, withLabel: 0, withoutLabel: 0 },
+          focusIndicators: [], hasFocusVisibleCSS: true, langAttribute: true,
+          hasSkipLink: true, badLinkTexts: [], missingAutocomplete: 0,
+          ariaIssues: [], colorOnlyIndicators: 0, autoPlayMedia: 0,
+          navItemCount: 12 // exceeds max 5 for cognitive
+        },
+        readability: { gradeLevel: 12 } // exceeds max 8 for cognitive
+      });
+      var result = MilgScoring.runScoring(data);
+      var cogCat = result.categories.find(function(c) { return c.label === 'Cognitive Load'; });
+      assert('Cognitive profile flags high nav count', cogCat.findings.some(function(f) { return f.title.indexOf('navigation') !== -1; }), 'findings: ' + cogCat.findings.map(function(f){return f.title}).join('; '));
+      assert('Cognitive profile flags high reading level', cogCat.findings.some(function(f) { return f.title.indexOf('Reading level') !== -1 || f.title.indexOf('reading') !== -1; }), 'findings: ' + cogCat.findings.map(function(f){return f.title}).join('; '));
+    })();
+
+    // =========================================================
+    // TEST 8: All modules return checks/passed
+    // =========================================================
+    (function() {
+      var data = makeData();
+      var result = MilgScoring.runScoring(data);
+      result.categories.forEach(function(cat) {
+        assert(cat.label + ' has checks count', cat.checks !== undefined && cat.checks >= 0, 'checks: ' + cat.checks);
+      });
+    })();
+
+    // =========================================================
+    // TEST 9: Registry utilities
+    // =========================================================
+    (function() {
+      // parseColor
+      var c = MilgScoring.parseColor('rgb(255, 0, 0)');
+      assert('parseColor rgb()', c && c.r === 255 && c.g === 0 && c.b === 0, JSON.stringify(c));
+
+      var c2 = MilgScoring.parseColor('rgba(0, 128, 255, 0.5)');
+      assert('parseColor rgba()', c2 && c2.r === 0 && c2.g === 128 && c2.b === 255 && c2.a === 0.5, JSON.stringify(c2));
+
+      // contrastRatio
+      var ratio = MilgScoring.contrastRatio({ r: 0, g: 0, b: 0 }, { r: 255, g: 255, b: 255 });
+      assert('contrastRatio black/white = 21', Math.abs(ratio - 21) < 0.1, 'ratio: ' + ratio);
+
+      // CVD simulation
+      var sim = MilgScoring.simulateCVD({ r: 255, g: 0, b: 0 }, MilgScoring.CVD_MATRICES.protanopia);
+      assert('CVD simulation produces valid color', sim && sim.r >= 0 && sim.r <= 255 && sim.g >= 0 && sim.b >= 0, JSON.stringify(sim));
+      assert('CVD protanopia dims red', sim.r < 200, 'r: ' + sim.r); // red looks much darker/different under protanopia
+    })();
+
+    // =========================================================
+    // NEW: Extended checks tests
+    // =========================================================
+
+    // Duplicate IDs should produce error when used in ARIA
+    (function() {
+      var data = makeData({
+        accessibility: {
+          duplicateIds: [{ id: 'foo', count: 2, usedInAria: true }],
+          nestedInteractives: ['a.nested'],
+          emptyInteractives: ['button.empty'],
+          positiveTabindex: 3,
+          scrollableNoKeyboard: 1,
+          nonTextContrast: [{ selector: 'input', ratio: 2.1, borderColor: 'rgb(200,200,200)', bg: 'rgb(255,255,255)' }],
+          tableIssues: [{ selector: 'table', issues: ['no-th', 'no-caption'] }],
+          missingButtonType: 2
+        }
+      });
+      var result = MilgScoring.runScoring(data);
+      var a11y = result.categories.find(function(c) { return c.label === 'Accessibility'; });
+      var titles = a11y.findings.map(function(f) { return f.title; }).join(' | ');
+      assert('Duplicate IDs flagged', titles.indexOf('duplicate ID') !== -1, 'Got: ' + titles);
+      assert('Nested interactives flagged', titles.indexOf('nested interactive') !== -1, 'Got: ' + titles);
+      assert('Empty interactives flagged', titles.indexOf('no accessible name') !== -1, 'Got: ' + titles);
+      assert('Positive tabindex flagged', titles.indexOf('positive tabindex') !== -1, 'Got: ' + titles);
+      assert('Scrollable no keyboard flagged', titles.indexOf('keyboard-accessible') !== -1, 'Got: ' + titles);
+      assert('Non-text contrast flagged', titles.indexOf('border contrast') !== -1, 'Got: ' + titles);
+      assert('Table issues flagged', titles.indexOf('table') !== -1, 'Got: ' + titles);
+    })();
+
+    // Z-index sprawl and shadow consistency
+    (function() {
+      var data = makeData({
+        layout: { zIndexSprawl: { distinct: 12, max: 9999, values: [] }, shadowSprawl: 9 },
+        colors: { darkModeHalation: true }
+      });
+      var result = MilgScoring.runScoring(data);
+      var consistency = result.categories.find(function(c) { return c.label === 'Visual Consistency'; });
+      var titles = consistency.findings.map(function(f) { return f.title; }).join(' | ');
+      assert('Z-index sprawl flagged', titles.indexOf('z-index') !== -1, 'Got: ' + titles);
+      assert('Shadow sprawl flagged', titles.indexOf('box-shadow') !== -1, 'Got: ' + titles);
+      assert('Dark mode halation flagged', titles.indexOf('halation') !== -1 || titles.indexOf('black') !== -1, 'Got: ' + titles);
+    })();
+
+    // All-caps and justified text
+    (function() {
+      var data = makeData({
+        typography: { allCapsLongText: 3, justifiedText: 2 }
+      });
+      var result = MilgScoring.runScoring(data);
+      var typo = result.categories.find(function(c) { return c.label === 'Typography'; });
+      var titles = typo.findings.map(function(f) { return f.title; }).join(' | ');
+      assert('All-caps long text flagged', titles.indexOf('all-caps') !== -1, 'Got: ' + titles);
+      assert('Justified text flagged', titles.indexOf('justify') !== -1, 'Got: ' + titles);
+    })();
+
+    // Tier 1 checks: text clipping, placeholder labels, invisible links, etc.
+    (function() {
+      var data = makeData({
+        accessibility: {
+          textClippedNoTitle: 6,
+          placeholderOnlyInputs: 2,
+          invisibleLinks: 3,
+          requiredNoIndicator: 4,
+          invisibleInputs: 1,
+          disabledLowContrast: 2
+        }
+      });
+      var result = MilgScoring.runScoring(data);
+      var a11y = result.categories.find(function(c) { return c.label === 'Accessibility'; });
+      var titles = a11y.findings.map(function(f) { return f.title; }).join(' | ');
+      assert('Text clipping flagged', titles.indexOf('truncate') !== -1, 'Got: ' + titles);
+      assert('Placeholder-only labels flagged', titles.indexOf('placeholder') !== -1, 'Got: ' + titles);
+      assert('Invisible links flagged', titles.indexOf('indistinguishable') !== -1, 'Got: ' + titles);
+      assert('Required no indicator flagged', titles.indexOf('required') !== -1, 'Got: ' + titles);
+      assert('Invisible inputs flagged', titles.indexOf('visible boundary') !== -1, 'Got: ' + titles);
+      assert('Disabled low contrast flagged', titles.indexOf('disabled') !== -1, 'Got: ' + titles);
+    })();
+
+    // Performance: upscaled images, will-change, non-passive scroll
+    (function() {
+      var data = makeData({
+        performance: {
+          upscaledImages: [{ selector: 'img', rendered: '800x600', natural: '400x300', upscale: 200 }],
+          willChangeCount: 12
+        },
+        interaction: {
+          listenerStats: { nonPassiveScroll: 2 },
+          listenerPatterns: { toggleNoAria: 1, navigationInButton: 1 }
+        }
+      });
+      var result = MilgScoring.runScoring(data);
+      var perf = result.categories.find(function(c) { return c.label === 'Performance'; });
+      var touch = result.categories.find(function(c) { return c.label === 'Touch & Interaction'; });
+      var perfTitles = perf.findings.map(function(f) { return f.title; }).join(' | ');
+      var touchTitles = touch.findings.map(function(f) { return f.title; }).join(' | ');
+      assert('Upscaled images flagged', perfTitles.indexOf('larger than natural') !== -1, 'Got: ' + perfTitles);
+      assert('will-change flagged', perfTitles.indexOf('will-change') !== -1, 'Got: ' + perfTitles);
+      assert('Non-passive scroll flagged', perfTitles.indexOf('non-passive') !== -1, 'Got: ' + perfTitles);
+      assert('Toggle no ARIA flagged', touchTitles.indexOf('ARIA state') !== -1, 'Got: ' + touchTitles);
+    })();
+
+    // =========================================================
+    // RENDER RESULTS
+    // =========================================================
+    var html = '';
+    results.forEach(function(r) {
+      html += '<div class="test ' + (r.pass ? 'pass' : 'fail') + '">';
+      html += (r.pass ? '✓' : '✗') + ' ' + r.name;
+      if (!r.pass && r.detail) html += ' — <strong>' + r.detail + '</strong>';
+      html += '</div>';
+    });
+    html += '<div class="summary ' + (failed === 0 ? 'all-pass' : 'has-fail') + '">';
+    html += passed + ' passed, ' + failed + ' failed';
+    html += '</div>';
+    document.getElementById('results').innerHTML = html;
+
+    // Also log for CI
+    console.log('Scoring tests: ' + passed + ' passed, ' + failed + ' failed');
+    if (failed > 0) console.error('FAILURES:', results.filter(function(r) { return !r.pass; }).map(function(r) { return r.name + ': ' + r.detail; }));
+  </script>
+</body>
+</html>
 </file>
 
 <file path="docs/scoring/registry.js">
@@ -21213,174 +21259,6 @@ function scoreResponsive(data) {
 })();
 </file>
 
-<file path="docs/scoring/consistency.js">
-// Scoring Module: Visual Consistency
-// Weight: 5%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreVisualConsistency(data) {
-  var findings = [];
-  var checks = 0;
-  var passed = 0;
-
-  // Scale thresholds by page complexity
-  var pageType = (data.context && data.context.pageType) || 'unknown';
-  var elCount = (data.structure && data.structure.totalElements) || 100;
-  // Marketing/content pages legitimately use more colors and font sizes
-  var colorLimit = elCount > 200 ? 35 : elCount > 100 ? 25 : 20;
-  var fontSizeLimit = elCount > 200 ? 12 : elCount > 100 ? 10 : 8;
-  if (pageType === 'marketing' || pageType === 'pricing') { colorLimit += 10; fontSizeLimit += 3; }
-
-  // Color palette coherence — how many unique text/bg colors?
-  checks++;
-  var textColors = (data.colors.textColors || []).length;
-  var bgColors = (data.colors.bgColors || []).length;
-  var totalUnique = textColors + bgColors;
-  if (totalUnique <= colorLimit) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: totalUnique + ' unique colors detected (recommend < ' + colorLimit + ' for this page type)',
-      detail: textColors + ' text colors, ' + bgColors + ' background colors',
-      fix: 'Consolidate to a systematic color palette: 1 primary + 1 neutral + 3 semantic (error, warning, success)',
-      presetRef: 'Presets use a single primary color with slate neutrals',
-      source: 'Material Design 3 — https://m3.material.io/styles/color/roles'
-    });
-  }
-
-  // Font size consistency — too many unique sizes?
-  checks++;
-  var fontSizes = (data.typography.fontSizes || []).length;
-  if (fontSizes <= fontSizeLimit) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'info',
-      title: fontSizes + ' unique font sizes (recommend ≤' + fontSizeLimit + ' from a type scale)',
-      detail: 'A consistent type scale creates visual rhythm',
-      fix: 'Use a modular scale: text-sm, text-base, text-lg, text-xl, text-2xl, text-3xl, text-4xl',
-      presetRef: null,
-      source: 'Modular type scales — https://typescale.com/'
-    });
-  }
-
-  // Border radius consistency — exclude pill/circle shapes (9999px, 50%, >100px)
-  var radii = ((data.layout && data.layout.borderRadii) || []).filter(function(r) {
-    var v = r.value;
-    if (v === '50%' || v === '9999px') return false;
-    var px = parseFloat(v);
-    return !(px > 100);
-  });
-  if (radii.length > 0) {
-    checks++;
-    if (radii.length <= 4) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: radii.length + ' distinct border-radius values (recommend 2-4, excluding pill/circle shapes)',
-        detail: 'Values: ' + radii.slice(0, 6).map(function(r) { return r.value + ' (' + r.count + 'x)'; }).join(', '),
-        fix: 'Standardize border-radius to 2-4 values in your design tokens. In Tailwind: rounded-sm (2px), rounded (4px), rounded-lg (8px), rounded-xl (12px).',
-        presetRef: null,
-        source: 'Material Design 3 — https://m3.material.io/styles/shape/overview'
-      });
-    }
-  }
-
-  // Line height consistency
-  var lineHeights = (data.typography && data.typography.lineHeights) || [];
-  if (lineHeights.length > 0) {
-    checks++;
-    if (lineHeights.length <= 5) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: lineHeights.length + ' distinct line-height values (recommend 2-4)',
-        detail: 'Consistent line-height creates visual rhythm across the page.',
-        fix: 'Standardize to 2-3 line-heights: tight (1.25), normal (1.5), relaxed (1.75).',
-        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-spacing.html'
-      });
-    }
-  }
-
-  // Dark mode support consistency
-  if (data.structure) {
-    checks++;
-    if (data.structure.darkModeClasses) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: 'No dark mode support detected',
-        detail: 'Dark mode is expected by ~80% of users (Android settings data).',
-        fix: 'Add dark mode with dark: variants in Tailwind or prefers-color-scheme media query.',
-        source: 'Apple HIG — https://developer.apple.com/design/human-interface-guidelines/dark-mode'
-      });
-    }
-  }
-
-  // Z-index sprawl
-  var zSprawl = (data.layout && data.layout.zIndexSprawl) || {};
-  if (zSprawl.distinct > 0) {
-    checks++;
-    if (zSprawl.distinct <= 8) {
-      passed++;
-    } else {
-      findings.push({
-        severity: zSprawl.distinct > 15 ? 'warning' : 'info',
-        title: zSprawl.distinct + ' distinct z-index values (recommend ≤8)',
-        detail: 'Max z-index: ' + zSprawl.max + '. Many z-index values indicate ad-hoc stacking that becomes unmaintainable.',
-        fix: 'Consolidate to a z-index scale: --z-dropdown: 10, --z-sticky: 20, --z-modal: 30, --z-toast: 40.',
-        source: 'Josh Comeau Stacking Contexts — https://www.joshwcomeau.com/css/stacking-contexts/'
-      });
-    }
-  }
-
-  // Shadow consistency
-  var shadowSprawl = (data.layout && data.layout.shadowSprawl) || 0;
-  if (shadowSprawl > 0) {
-    checks++;
-    if (shadowSprawl <= 5) {
-      passed++;
-    } else {
-      findings.push({
-        severity: shadowSprawl > 10 ? 'warning' : 'info',
-        title: shadowSprawl + ' distinct box-shadow values (recommend 3-5)',
-        detail: 'Too many unique shadow styles suggest an inconsistent elevation system.',
-        fix: 'Standardize to 3-5 elevation levels: shadow-sm, shadow, shadow-md, shadow-lg, shadow-xl.',
-        source: 'Material Design 3 — https://m3.material.io/styles/elevation/overview'
-      });
-    }
-  }
-
-  // Dark mode halation (pure black on pure white)
-  if (data.colors && data.colors.darkModeHalation) {
-    checks++;
-    findings.push({
-      severity: 'warning',
-      title: 'Pure black (#000) with pure white (#fff) text detected in dark mode',
-      detail: 'Pure black backgrounds with pure white text causes halation (glowing text effect) for users with astigmatism (~33% of population).',
-      fix: 'Use off-black backgrounds (slate-900 / #0f172a) and off-white text (slate-100 / #f1f5f9) in dark mode.',
-      source: 'Apple HIG Dark Mode — https://developer.apple.com/design/human-interface-guidelines/dark-mode'
-    });
-  }
-
-  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-  return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Visual Consistency', icon: 'consistency' };
-}
-
-
-  S.register("consistency", scoreVisualConsistency, 5, "Visual Consistency", "consistency");
-})();
-</file>
-
 <file path="docs/scoring/performance.js">
 // Scoring Module: Performance
 // Weight: 5%
@@ -21558,6 +21436,55 @@ function scorePerformance(data) {
     });
   }
 
+  // Upscaled images
+  var upscaled = (data.performance && data.performance.upscaledImages) || [];
+  if (upscaled.length > 0) {
+    var upDetails = upscaled.slice(0, 3).map(function(u) { return u.selector + ' ' + u.natural + ' → ' + u.rendered + ' (' + u.upscale + '%)'; });
+    findings.push({
+      severity: upscaled.some(function(u) { return u.upscale > 150; }) ? 'warning' : 'info',
+      title: upscaled.length + ' image(s) rendered larger than natural size',
+      detail: 'Images are upscaled, causing visible pixelation: ' + upDetails.join('; '),
+      fix: 'Provide higher-resolution source images or use srcset for retina displays.',
+      presetRef: null,
+      source: 'MDN — https://developer.mozilla.org/en-US/docs/Learn/HTML/Multimedia_and_embedding/Responsive_images'
+    });
+  }
+
+  // will-change overuse
+  var willChange = (data.performance && data.performance.willChangeCount) || 0;
+  if (willChange > 10) {
+    findings.push({
+      severity: 'warning',
+      title: willChange + ' elements use will-change (recommend < 10)',
+      detail: 'Excessive will-change creates GPU compositor layers, increasing memory usage.',
+      fix: 'Remove will-change from elements that don\'t animate frequently. Apply only during animation, then remove.',
+      presetRef: null,
+      source: 'MDN — https://developer.mozilla.org/en-US/docs/Web/CSS/will-change'
+    });
+  } else if (willChange > 5) {
+    findings.push({
+      severity: 'info',
+      title: willChange + ' elements use will-change',
+      detail: 'Monitor GPU memory if adding more will-change hints.',
+      fix: 'will-change is fine for elements that animate frequently. Avoid on static elements.',
+      presetRef: null,
+      source: 'MDN — https://developer.mozilla.org/en-US/docs/Web/CSS/will-change'
+    });
+  }
+
+  // Non-passive scroll listeners
+  var lStats = (data.interaction && data.interaction.listenerStats) || {};
+  if (lStats.nonPassiveScroll > 0) {
+    findings.push({
+      severity: 'warning',
+      title: lStats.nonPassiveScroll + ' non-passive scroll listener(s)',
+      detail: 'Non-passive scroll listeners block smooth scrolling. The browser must wait for the handler to decide if it calls preventDefault().',
+      fix: 'Add { passive: true } to scroll event listeners that don\'t call preventDefault().',
+      presetRef: null,
+      source: 'web.dev — https://web.dev/articles/passive-listeners'
+    });
+  }
+
   var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
   var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
   var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
@@ -21566,6 +21493,174 @@ function scorePerformance(data) {
 
 
   S.register("performance", scorePerformance, 5, "Performance", "cognitive");
+})();
+</file>
+
+<file path="docs/scoring/consistency.js">
+// Scoring Module: Visual Consistency
+// Weight: 5%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreVisualConsistency(data) {
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+
+  // Scale thresholds by page complexity
+  var pageType = (data.context && data.context.pageType) || 'unknown';
+  var elCount = (data.structure && data.structure.totalElements) || 100;
+  // Marketing/content pages legitimately use more colors and font sizes
+  var colorLimit = elCount > 200 ? 35 : elCount > 100 ? 25 : 20;
+  var fontSizeLimit = elCount > 200 ? 12 : elCount > 100 ? 10 : 8;
+  if (pageType === 'marketing' || pageType === 'pricing') { colorLimit += 10; fontSizeLimit += 3; }
+
+  // Color palette coherence — how many unique text/bg colors?
+  checks++;
+  var textColors = (data.colors.textColors || []).length;
+  var bgColors = (data.colors.bgColors || []).length;
+  var totalUnique = textColors + bgColors;
+  if (totalUnique <= colorLimit) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: totalUnique + ' unique colors detected (recommend < ' + colorLimit + ' for this page type)',
+      detail: textColors + ' text colors, ' + bgColors + ' background colors',
+      fix: 'Consolidate to a systematic color palette: 1 primary + 1 neutral + 3 semantic (error, warning, success)',
+      presetRef: 'Presets use a single primary color with slate neutrals',
+      source: 'Material Design 3 — https://m3.material.io/styles/color/roles'
+    });
+  }
+
+  // Font size consistency — too many unique sizes?
+  checks++;
+  var fontSizes = (data.typography.fontSizes || []).length;
+  if (fontSizes <= fontSizeLimit) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'info',
+      title: fontSizes + ' unique font sizes (recommend ≤' + fontSizeLimit + ' from a type scale)',
+      detail: 'A consistent type scale creates visual rhythm',
+      fix: 'Use a modular scale: text-sm, text-base, text-lg, text-xl, text-2xl, text-3xl, text-4xl',
+      presetRef: null,
+      source: 'Modular type scales — https://typescale.com/'
+    });
+  }
+
+  // Border radius consistency — exclude pill/circle shapes (9999px, 50%, >100px)
+  var radii = ((data.layout && data.layout.borderRadii) || []).filter(function(r) {
+    var v = r.value;
+    if (v === '50%' || v === '9999px') return false;
+    var px = parseFloat(v);
+    return !(px > 100);
+  });
+  if (radii.length > 0) {
+    checks++;
+    if (radii.length <= 4) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: radii.length + ' distinct border-radius values (recommend 2-4, excluding pill/circle shapes)',
+        detail: 'Values: ' + radii.slice(0, 6).map(function(r) { return r.value + ' (' + r.count + 'x)'; }).join(', '),
+        fix: 'Standardize border-radius to 2-4 values in your design tokens. In Tailwind: rounded-sm (2px), rounded (4px), rounded-lg (8px), rounded-xl (12px).',
+        presetRef: null,
+        source: 'Material Design 3 — https://m3.material.io/styles/shape/overview'
+      });
+    }
+  }
+
+  // Line height consistency
+  var lineHeights = (data.typography && data.typography.lineHeights) || [];
+  if (lineHeights.length > 0) {
+    checks++;
+    if (lineHeights.length <= 5) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: lineHeights.length + ' distinct line-height values (recommend 2-4)',
+        detail: 'Consistent line-height creates visual rhythm across the page.',
+        fix: 'Standardize to 2-3 line-heights: tight (1.25), normal (1.5), relaxed (1.75).',
+        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-spacing.html'
+      });
+    }
+  }
+
+  // Dark mode support consistency
+  if (data.structure) {
+    checks++;
+    if (data.structure.darkModeClasses) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: 'No dark mode support detected',
+        detail: 'Dark mode is expected by ~80% of users (Android settings data).',
+        fix: 'Add dark mode with dark: variants in Tailwind or prefers-color-scheme media query.',
+        source: 'Apple HIG — https://developer.apple.com/design/human-interface-guidelines/dark-mode'
+      });
+    }
+  }
+
+  // Z-index sprawl
+  var zSprawl = (data.layout && data.layout.zIndexSprawl) || {};
+  if (zSprawl.distinct > 0) {
+    checks++;
+    if (zSprawl.distinct <= 8) {
+      passed++;
+    } else {
+      findings.push({
+        severity: zSprawl.distinct > 15 ? 'warning' : 'info',
+        title: zSprawl.distinct + ' distinct z-index values (recommend ≤8)',
+        detail: 'Max z-index: ' + zSprawl.max + '. Many z-index values indicate ad-hoc stacking that becomes unmaintainable.',
+        fix: 'Consolidate to a z-index scale: --z-dropdown: 10, --z-sticky: 20, --z-modal: 30, --z-toast: 40.',
+        source: 'Josh Comeau Stacking Contexts — https://www.joshwcomeau.com/css/stacking-contexts/'
+      });
+    }
+  }
+
+  // Shadow consistency
+  var shadowSprawl = (data.layout && data.layout.shadowSprawl) || 0;
+  if (shadowSprawl > 0) {
+    checks++;
+    if (shadowSprawl <= 5) {
+      passed++;
+    } else {
+      findings.push({
+        severity: shadowSprawl > 10 ? 'warning' : 'info',
+        title: shadowSprawl + ' distinct box-shadow values (recommend 3-5)',
+        detail: 'Too many unique shadow styles suggest an inconsistent elevation system.',
+        fix: 'Standardize to 3-5 elevation levels: shadow-sm, shadow, shadow-md, shadow-lg, shadow-xl.',
+        source: 'Material Design 3 — https://m3.material.io/styles/elevation/overview'
+      });
+    }
+  }
+
+  // Dark mode halation (pure black on pure white)
+  if (data.colors && data.colors.darkModeHalation) {
+    checks++;
+    findings.push({
+      severity: 'warning',
+      title: 'Pure black (#000) with pure white (#fff) text detected in dark mode',
+      detail: 'Pure black backgrounds with pure white text causes halation (glowing text effect) for users with astigmatism (~33% of population).',
+      fix: 'Use off-black backgrounds (slate-900 / #0f172a) and off-white text (slate-100 / #f1f5f9) in dark mode.',
+      source: 'Apple HIG Dark Mode — https://developer.apple.com/design/human-interface-guidelines/dark-mode'
+    });
+  }
+
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+  return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Visual Consistency', icon: 'consistency' };
+}
+
+
+  S.register("consistency", scoreVisualConsistency, 5, "Visual Consistency", "consistency");
 })();
 </file>
 
@@ -21890,6 +21985,29 @@ function scoreTouchTargets(data) {
       });
     }
   });
+
+  // Event listener pattern findings
+  var lPatterns = (data.interaction && data.interaction.listenerPatterns) || {};
+  if (lPatterns.toggleNoAria > 0) {
+    findings.push({
+      severity: 'warning',
+      title: lPatterns.toggleNoAria + ' toggle handler(s) without ARIA state management',
+      detail: 'Click handlers toggle CSS classes but don\'t update aria-expanded or other ARIA states. Screen readers won\'t know the element\'s state changed.',
+      fix: 'Add setAttribute(\'aria-expanded\', isOpen) alongside classList.toggle() in toggle handlers.',
+      presetRef: null,
+      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
+    });
+  }
+  if (lPatterns.navigationInButton > 0) {
+    findings.push({
+      severity: 'info',
+      title: lPatterns.navigationInButton + ' button(s) trigger page navigation',
+      detail: 'Buttons with click handlers that change location.href should typically be <a> elements for proper semantics and accessibility.',
+      fix: 'Use <a href="..."> for navigation instead of <button> with JavaScript location change.',
+      presetRef: null,
+      source: 'HTML spec — https://html.spec.whatwg.org/multipage/text-level-semantics.html#the-a-element'
+    });
+  }
 
   // Score: deduct per error, less per warning
   var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
@@ -23356,6 +23474,84 @@ function scoreAccessibility(data) {
       fix: 'Add type="button" to buttons that are not form submit buttons.',
       presetRef: null,
       source: 'HTML spec — https://html.spec.whatwg.org/multipage/form-elements.html#the-button-element'
+    });
+  }
+
+  // Text clipping without title
+  var textClipped = a11y.textClippedNoTitle || 0;
+  if (textClipped > 0) {
+    findings.push({
+      severity: textClipped > 5 ? 'warning' : 'info',
+      title: textClipped + ' element(s) truncate text without title attribute',
+      detail: 'Text is clipped with ellipsis but has no title or aria-label, so the full text is inaccessible.',
+      fix: 'Add title="full text here" to elements with text-overflow: ellipsis so users can see the complete content on hover.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
+    });
+  }
+
+  // Placeholder-only labels
+  var placeholderOnly = a11y.placeholderOnlyInputs || 0;
+  if (placeholderOnly > 0) {
+    findings.push({
+      severity: 'warning',
+      title: placeholderOnly + ' input(s) use placeholder as only label',
+      detail: 'Placeholders disappear when the user starts typing, leaving no visible label.',
+      fix: 'Add a visible <label> element. Placeholders are hints, not labels.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
+    });
+  }
+
+  // Invisible links (no underline, no color distinction)
+  var invisLinks = a11y.invisibleLinks || 0;
+  if (invisLinks > 0) {
+    findings.push({
+      severity: 'warning',
+      title: invisLinks + ' link(s) visually indistinguishable from surrounding text',
+      detail: 'Links in body text have no underline, no color difference, and no background — users cannot identify them as clickable.',
+      fix: 'Add text-decoration: underline or a distinct color to in-content links. Nav and button-styled links are exempt.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.1 — https://www.w3.org/TR/WCAG22/#use-of-color'
+    });
+  }
+
+  // Required fields without visual indicator
+  var reqNoIndicator = a11y.requiredNoIndicator || 0;
+  if (reqNoIndicator > 0) {
+    findings.push({
+      severity: 'warning',
+      title: reqNoIndicator + ' required field(s) without visual indicator',
+      detail: 'Required inputs have no asterisk (*) or "Required" text in their label.',
+      fix: 'Add an asterisk (*) to required field labels or include "Required" text.',
+      presetRef: null,
+      source: 'WCAG 2.2 §3.3.2 — https://www.w3.org/TR/WCAG22/#labels-or-instructions'
+    });
+  }
+
+  // Invisible inputs (no border/background/shadow)
+  var invisInputs = a11y.invisibleInputs || 0;
+  if (invisInputs > 0) {
+    findings.push({
+      severity: 'warning',
+      title: invisInputs + ' input(s) without visible boundary',
+      detail: 'Text inputs have no border, no distinct background, and no shadow — users cannot identify where to type.',
+      fix: 'Add a border (border-slate-300) or distinct background to input fields. WCAG 1.4.11 requires 3:1 contrast for input boundaries.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.11 — https://www.w3.org/TR/WCAG22/#non-text-contrast'
+    });
+  }
+
+  // Disabled element contrast
+  var disabledLC = a11y.disabledLowContrast || 0;
+  if (disabledLC > 0) {
+    findings.push({
+      severity: 'info',
+      title: disabledLC + ' disabled element(s) with very low contrast (< 2:1)',
+      detail: 'While WCAG exempts disabled elements from contrast rules, users should still be able to read what is disabled.',
+      fix: 'Aim for at least 2:1 contrast on disabled elements so users understand what is unavailable.',
+      presetRef: null,
+      source: 'Usability research — https://www.nngroup.com/articles/disabled-buttons/'
     });
   }
 
@@ -28806,6 +29002,101 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
     }
   }
 
+  // --- Tier 1: Quick win checks ---
+
+  // Image upscale detection (rendered larger than natural size)
+  data.performance.upscaledImages = [];
+  document.querySelectorAll('img').forEach(function(img) {
+    if (!img.naturalWidth || !img.complete || !isVisible(img)) return;
+    var r = img.getBoundingClientRect();
+    if (r.width < 24) return; // skip tiny icons
+    var dpr = window.devicePixelRatio || 1;
+    var renderedW = r.width * dpr;
+    if (renderedW > img.naturalWidth * 1.1) {
+      var upscale = Math.round(renderedW / img.naturalWidth * 100);
+      data.performance.upscaledImages.push({ selector: cssSelector(img), rendered: Math.round(r.width) + 'x' + Math.round(r.height), natural: img.naturalWidth + 'x' + img.naturalHeight, upscale: upscale });
+    }
+  });
+  data.performance.upscaledImages = data.performance.upscaledImages.slice(0, 10);
+
+  // Text clipping without title
+  data.accessibility.textClippedNoTitle = 0;
+  for (var tci = 0; tci < allElements.length && tci < 300; tci++) {
+    var tcEl = allElements[tci];
+    if (!isVisible(tcEl) || isDecorative(tcEl)) continue;
+    var tcS = getComputedStyle(tcEl);
+    var isClipped = tcS.textOverflow === 'ellipsis' || (tcS.overflow === 'hidden' && tcS.whiteSpace === 'nowrap' && tcEl.scrollWidth > tcEl.clientWidth + 2);
+    if (isClipped && !tcEl.getAttribute('title') && !tcEl.getAttribute('aria-label')) {
+      data.accessibility.textClippedNoTitle++;
+    }
+  }
+
+  // Placeholder-only labels
+  data.accessibility.placeholderOnlyInputs = 0;
+  document.querySelectorAll('input[placeholder], textarea[placeholder]').forEach(function(el) {
+    if (!isVisible(el)) return;
+    var hasLabel = el.labels && el.labels.length > 0;
+    var hasAriaLabel = el.hasAttribute('aria-label') || el.hasAttribute('aria-labelledby');
+    if (!hasLabel && !hasAriaLabel) data.accessibility.placeholderOnlyInputs++;
+  });
+
+  // Links without underline or color distinction (in body text, not nav)
+  data.accessibility.invisibleLinks = 0;
+  document.querySelectorAll('a[href]').forEach(function(a) {
+    if (!isVisible(a) || isDecorative(a) || a.closest('nav, header, footer, [role="navigation"]')) return;
+    var aS = getComputedStyle(a);
+    var pS = a.parentElement ? getComputedStyle(a.parentElement) : null;
+    if (!pS) return;
+    var hasUnderline = aS.textDecorationLine && aS.textDecorationLine.indexOf('underline') !== -1;
+    var hasColorDiff = aS.color !== pS.color;
+    var hasBgDiff = aS.backgroundColor !== 'rgba(0, 0, 0, 0)' && aS.backgroundColor !== 'transparent';
+    if (!hasUnderline && !hasColorDiff && !hasBgDiff) data.accessibility.invisibleLinks++;
+  });
+
+  // Required fields without visual indicator
+  data.accessibility.requiredNoIndicator = 0;
+  document.querySelectorAll('[required]').forEach(function(el) {
+    if (!isVisible(el)) return;
+    var label = (el.labels && el.labels[0]) || (el.id && document.querySelector('label[for="' + el.id + '"]'));
+    if (!label) return;
+    var labelText = label.textContent || '';
+    if (!/\*/.test(labelText) && !/required/i.test(labelText) && !label.querySelector('.required, [class*="required"]')) {
+      data.accessibility.requiredNoIndicator++;
+    }
+  });
+
+  // Input without visible boundary
+  data.accessibility.invisibleInputs = 0;
+  document.querySelectorAll('input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]), textarea').forEach(function(el) {
+    if (!isVisible(el) || isDecorative(el)) return;
+    var s = getComputedStyle(el);
+    var hasBorder = parseFloat(s.borderWidth) > 0 && s.borderStyle !== 'none';
+    var hasShadow = s.boxShadow !== 'none';
+    var bg = parseColor(s.backgroundColor);
+    var parentBg = getEffectiveBg(el.parentElement || el);
+    var hasDistinctBg = bg && parentBg && contrastRatio(blendOnWhite(bg), parentBg) > 1.15;
+    if (!hasBorder && !hasShadow && !hasDistinctBg) data.accessibility.invisibleInputs++;
+  });
+
+  // will-change overuse
+  data.performance.willChangeCount = 0;
+  for (var wci = 0; wci < allElements.length && wci < 300; wci++) {
+    var wcEl = allElements[wci];
+    var wc = getComputedStyle(wcEl).willChange;
+    if (wc && wc !== 'auto') data.performance.willChangeCount++;
+  }
+
+  // Disabled element contrast
+  data.accessibility.disabledLowContrast = 0;
+  document.querySelectorAll('[disabled], [aria-disabled="true"]').forEach(function(el) {
+    if (!isVisible(el)) return;
+    var fg = parseColor(getComputedStyle(el).color);
+    if (!fg) return;
+    var bg = getEffectiveBg(el);
+    var ratio = contrastRatio(blendOnWhite(fg), bg);
+    if (ratio < 2.0) data.accessibility.disabledLowContrast++;
+  });
+
   // --- Image responsive sizing ---
   data.performance.nonResponsiveImages = 0;
   document.querySelectorAll('img').forEach(function(img) {
@@ -29002,32 +29293,57 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
   // --- Event listener extraction (Chrome DevTools API only) ---
   // Collects handler source code as TEXT for display — NEVER executed
   data.interaction.eventListeners = [];
+  data.interaction.listenerPatterns = { toggleNoAria: 0, navigationInButton: 0, fetchNoLoading: 0 };
+  data.interaction.listenerStats = { total: 0, elementsWithListeners: 0, nonPassiveScroll: 0 };
   if (typeof getEventListeners === 'function') {
-    var _elSample = Array.from(document.querySelectorAll('button, a, [role="button"], [onclick], input, select')).slice(0, 30);
+    function _safeSrc(fn) {
+      try {
+        var src = Function.prototype.toString.call(fn);
+        if (src.indexOf('[native code]') !== -1) return '[native]';
+        return src.length > 500 ? src.substring(0, 500) + '...' : src;
+      } catch(e) { return '[unreadable]'; }
+    }
+    // Element listeners
+    var _elSample = Array.from(document.querySelectorAll('button, a, [role="button"], [onclick], input, select')).slice(0, 50);
     _elSample.forEach(function(el) {
       try {
         var listeners = getEventListeners(el);
         if (!listeners) return;
         var types = Object.keys(listeners);
         if (types.length === 0) return;
-        var entry = { selector: cssSelector(el), handlers: [] };
+        data.interaction.listenerStats.elementsWithListeners++;
+        var entry = { selector: cssSelector(el), tag: el.tagName.toLowerCase(), handlers: [] };
         types.forEach(function(type) {
           listeners[type].forEach(function(l) {
-            var src = '';
-            try { src = l.listener ? l.listener.toString().substring(0, 500) : ''; } catch(e) {}
-            entry.handlers.push({
-              type: type,
-              // Store source as text only — for display and static analysis, never eval
-              source: src,
-              once: !!l.once,
-              passive: !!l.passive
-            });
+            data.interaction.listenerStats.total++;
+            var src = _safeSrc(l.listener);
+            // Pattern analysis on source text (never executed)
+            if (type === 'click' && src !== '[native]' && src !== '[unreadable]') {
+              var hasToggle = /classList\.(toggle|add|remove)/.test(src);
+              var hasAriaExpanded = /aria-expanded|setAttribute.*aria/.test(src);
+              if (hasToggle && !hasAriaExpanded) data.interaction.listenerPatterns.toggleNoAria++;
+              if (/location\.(href|assign)|window\.location|router\.push/.test(src) && el.tagName === 'BUTTON') {
+                data.interaction.listenerPatterns.navigationInButton++;
+              }
+              if (/fetch\(|XMLHttpRequest|\.ajax\(|axios/.test(src)) {
+                data.interaction.listenerPatterns.fetchNoLoading++;
+              }
+            }
+            entry.handlers.push({ type: type, source: src, once: !!l.once, passive: !!l.passive });
           });
         });
         if (entry.handlers.length > 0) data.interaction.eventListeners.push(entry);
       } catch(e) {}
     });
     data.interaction.eventListeners = data.interaction.eventListeners.slice(0, 20);
+    // Window/document listener stats
+    try {
+      var _winL = getEventListeners(window);
+      Object.keys(_winL).forEach(function(type) {
+        data.interaction.listenerStats.total += _winL[type].length;
+        if (type === 'scroll') _winL[type].forEach(function(l) { if (!l.passive) data.interaction.listenerStats.nonPassiveScroll++; });
+      });
+    } catch(e) {}
   }
 
   // Clean up measurement span

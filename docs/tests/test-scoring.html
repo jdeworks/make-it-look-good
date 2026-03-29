@@ -308,6 +308,52 @@
       assert('Justified text flagged', titles.indexOf('justify') !== -1, 'Got: ' + titles);
     })();
 
+    // Tier 1 checks: text clipping, placeholder labels, invisible links, etc.
+    (function() {
+      var data = makeData({
+        accessibility: {
+          textClippedNoTitle: 6,
+          placeholderOnlyInputs: 2,
+          invisibleLinks: 3,
+          requiredNoIndicator: 4,
+          invisibleInputs: 1,
+          disabledLowContrast: 2
+        }
+      });
+      var result = MilgScoring.runScoring(data);
+      var a11y = result.categories.find(function(c) { return c.label === 'Accessibility'; });
+      var titles = a11y.findings.map(function(f) { return f.title; }).join(' | ');
+      assert('Text clipping flagged', titles.indexOf('truncate') !== -1, 'Got: ' + titles);
+      assert('Placeholder-only labels flagged', titles.indexOf('placeholder') !== -1, 'Got: ' + titles);
+      assert('Invisible links flagged', titles.indexOf('indistinguishable') !== -1, 'Got: ' + titles);
+      assert('Required no indicator flagged', titles.indexOf('required') !== -1, 'Got: ' + titles);
+      assert('Invisible inputs flagged', titles.indexOf('visible boundary') !== -1, 'Got: ' + titles);
+      assert('Disabled low contrast flagged', titles.indexOf('disabled') !== -1, 'Got: ' + titles);
+    })();
+
+    // Performance: upscaled images, will-change, non-passive scroll
+    (function() {
+      var data = makeData({
+        performance: {
+          upscaledImages: [{ selector: 'img', rendered: '800x600', natural: '400x300', upscale: 200 }],
+          willChangeCount: 12
+        },
+        interaction: {
+          listenerStats: { nonPassiveScroll: 2 },
+          listenerPatterns: { toggleNoAria: 1, navigationInButton: 1 }
+        }
+      });
+      var result = MilgScoring.runScoring(data);
+      var perf = result.categories.find(function(c) { return c.label === 'Performance'; });
+      var touch = result.categories.find(function(c) { return c.label === 'Touch & Interaction'; });
+      var perfTitles = perf.findings.map(function(f) { return f.title; }).join(' | ');
+      var touchTitles = touch.findings.map(function(f) { return f.title; }).join(' | ');
+      assert('Upscaled images flagged', perfTitles.indexOf('larger than natural') !== -1, 'Got: ' + perfTitles);
+      assert('will-change flagged', perfTitles.indexOf('will-change') !== -1, 'Got: ' + perfTitles);
+      assert('Non-passive scroll flagged', perfTitles.indexOf('non-passive') !== -1, 'Got: ' + perfTitles);
+      assert('Toggle no ARIA flagged', touchTitles.indexOf('ARIA state') !== -1, 'Got: ' + touchTitles);
+    })();
+
     // =========================================================
     // RENDER RESULTS
     // =========================================================
