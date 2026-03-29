@@ -261,6 +261,23 @@ function scoreLayout(data) {
     passed++;
   }
 
+  // Hidden clip — elements with overflow-x:hidden that silently clip content
+  var hiddenClips = layout.hiddenClipElements || [];
+  if (hiddenClips.length > 0) {
+    checks++;
+    var clipDetails = hiddenClips.slice(0, 3).map(function(c) {
+      return c.selector + ' clips ' + c.clipped + 'px of content';
+    });
+    findings.push({
+      severity: hiddenClips.length > 2 ? 'warning' : 'info',
+      title: hiddenClips.length + ' element(s) silently clip overflowing content',
+      detail: 'These elements use overflow-x:hidden to hide content that doesn\'t fit, instead of allowing scroll or fixing the layout: ' + clipDetails.join('; '),
+      fix: 'Use overflow-x-auto to allow scrolling, or fix the root cause — constrain child widths with max-w-full. overflow-x-hidden masks layout bugs.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
+    });
+  }
+
   // DOM statistics — structural quality indicators (info-only)
   var domStats = (data.structure || {}).domStats;
   if (domStats) {

@@ -918,6 +918,23 @@
   // Horizontal overflow
   data.structure.hasHorizontalOverflow = document.documentElement.scrollWidth > document.documentElement.clientWidth;
 
+  // Hidden overflow clips — elements with overflow-x:hidden that silently clip content
+  data.layout.hiddenClipElements = [];
+  for (var hci = 0; hci < allElements.length && hci < 300; hci++) {
+    var hcEl = allElements[hci];
+    if (!isVisible(hcEl) || isDecorative(hcEl)) continue;
+    var hcStyle = getComputedStyle(hcEl);
+    if (hcStyle.overflowX === 'hidden' && hcEl.scrollWidth > hcEl.clientWidth + 4 && hcEl.clientWidth > 50) {
+      data.layout.hiddenClipElements.push({
+        selector: cssSelector(hcEl),
+        clientWidth: hcEl.clientWidth,
+        scrollWidth: hcEl.scrollWidth,
+        clipped: Math.round(hcEl.scrollWidth - hcEl.clientWidth)
+      });
+    }
+  }
+  data.layout.hiddenClipElements = data.layout.hiddenClipElements.slice(0, 10);
+
   // --- Performance extras ---
   // Third-party scripts
   var ownHost = location.hostname;
