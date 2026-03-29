@@ -925,11 +925,10 @@
     if (!isVisible(hcEl) || isDecorative(hcEl)) continue;
     var hcStyle = getComputedStyle(hcEl);
     var hcRadius = hcStyle.borderRadius;
-    var hcCls = (hcEl.className && typeof hcEl.className === 'string') ? hcEl.className : '';
-    var hcHasRounded = /rounded/.test(hcCls) || (hcRadius && hcRadius !== '0px');
-    var hcIsSection = hcEl.tagName === 'SECTION' || hcEl.tagName === 'ARTICLE';
+    var hcHasRadius = hcRadius && hcRadius !== '0px' && hcRadius !== '0%';
+    var hcHasText = hcEl.textContent && hcEl.textContent.trim().length > 10;
     if (hcStyle.overflowX === 'hidden' && hcEl.scrollWidth > hcEl.clientWidth + 4 && hcEl.clientWidth > 50
-        && !hcHasRounded && !hcIsSection
+        && !hcHasRadius && hcHasText
         && hcStyle.pointerEvents !== 'none'
         && hcStyle.position !== 'fixed') {
       data.layout.hiddenClipElements.push({

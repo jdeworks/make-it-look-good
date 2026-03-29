@@ -19043,308 +19043,6 @@ The encoded URL is in the committed JS (unavoidable for a static site). But:
 - Anyone with DevTools Network tab can see the decoded URL on requests (that's fine — can't prevent it)
 </file>
 
-<file path="scripts/test-layout.mjs">
-#!/usr/bin/env node
-// Test all templates for layout/overflow issues across viewports
-// Skips effects (they only change colors/fonts) and "before" variants
-//
-// Usage:
-//   node scripts/test-layout.mjs              # test all templates
-//   node scripts/test-layout.mjs dashboard    # test one element
-//   node scripts/test-layout.mjs --threads=6  # parallel threads
-//
-// Checks:
-//   - Body horizontal overflow (scrollWidth > clientWidth)
-//   - Elements wider than viewport without scroll wrapper
-//   - Content clipped outside viewport bounds
-//   - Hidden panels that overflow when revealed
-
-import puppeteer from 'puppeteer';
-import { createServer } from 'http';
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
-import { join, extname } from 'path';
-
-const DOCS_DIR = join(import.meta.dirname, '..', 'docs');
-const RESULTS_DIR = join(import.meta.dirname, '..', 'research', 'template-results');
-const PORT = 8768;
-
-const args = process.argv.slice(2);
-const THREADS = parseInt((args.find(a => a.startsWith('--threads=')) || '--threads=3').split('=')[1]);
-const TEMPLATE = args.find(a => !a.startsWith('--')) || '';
-
-const VIEWPORTS = [
-  { w: 375, h: 812, label: 'phone' },
-  { w: 768, h: 1024, label: 'tablet' },
-  { w: 1280, h: 900, label: 'desktop' },
-];
-
-const DARK_MODES = [false, true];
-
-function startServer() {
-  const mimeTypes = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2' };
-  const server = createServer((req, res) => {
-    let filePath = join(DOCS_DIR, req.url === '/' ? 'index.html' : req.url);
-    if (!existsSync(filePath)) { res.writeHead(404); res.end('Not found'); return; }
-    res.writeHead(200, { 'Content-Type': mimeTypes[extname(filePath)] || 'application/octet-stream' });
-    res.end(readFileSync(filePath));
-  });
-  server.listen(PORT);
-  return server;
-}
-
-function buildTests() {
-  const manifest = JSON.parse(readFileSync(join(DOCS_DIR, 'presets', 'index.json'), 'utf8'));
-  const tests = [];
-  for (const [el, info] of Object.entries(manifest.elements)) {
-    for (const pers of Object.keys(info.personalities || {})) {
-      // Skip "before" variants
-      if (pers === 'before') continue;
-      // Filter by template if specified
-      if (TEMPLATE && el !== TEMPLATE && `${el}/${pers}` !== TEMPLATE) continue;
-      const file = join(DOCS_DIR, 'presets', el, pers + '.html');
-      if (!existsSync(file)) continue;
-      for (const vp of VIEWPORTS) {
-        for (const dark of DARK_MODES) {
-          tests.push({ element: el, personality: pers, viewport: vp, dark });
-        }
-      }
-    }
-  }
-  return tests;
-}
-
-function testKey(t) {
-  return `${t.element}/${t.personality}|${t.viewport.label}|${t.dark ? 'dark' : 'light'}`;
-}
-
-async function runTest(page, t) {
-  const html = readFileSync(join(DOCS_DIR, 'presets', t.element, t.personality + '.html'), 'utf8');
-  await page.setViewport({ width: t.viewport.w, height: t.viewport.h });
-
-  const result = await page.evaluate(async (html, dark, vpWidth, vpHeight) => {
-    return new Promise((resolve) => {
-      const iframe = document.createElement('iframe');
-      iframe.style.cssText = `position:fixed;top:0;left:0;width:${vpWidth}px;height:${vpHeight}px;border:none;`;
-      document.body.appendChild(iframe);
-
-      const darkClass = dark ? ' class="dark"' : '';
-      const darkVariantCSS = '@custom-variant dark (&:where(.dark, .dark *));';
-      const srcdoc = '<!DOCTYPE html><html lang="en"' + darkClass + '><head><meta charset="UTF-8">' +
-        '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
-        '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
-        (dark ? '<style type="text/tailwindcss">' + darkVariantCSS + '</style>' : '') +
-        '<style>body{margin:0}</style></head><body>' + html +
-        '<script>setTimeout(function(){' +
-        // Layout checks running inside the iframe
-        'var doc = document.documentElement;' +
-        'var body = document.body;' +
-        'var vpW = window.innerWidth;' +
-        'var vpH = window.innerHeight;' +
-        'var issues = [];' +
-        // 1. Body overflow
-        'var bodyScrollW = Math.max(doc.scrollWidth, body.scrollWidth);' +
-        'if (bodyScrollW > vpW + 2) {' +
-        '  issues.push({ type: "body-overflow", scrollWidth: bodyScrollW, viewport: vpW, overflow: bodyScrollW - vpW });' +
-        '}' +
-        // 2. Elements wider than viewport without scroll wrapper
-        'var all = body.querySelectorAll("*");' +
-        'var checked = new Set();' +
-        'for (var i = 0; i < all.length && i < 500; i++) {' +
-        '  var el = all[i];' +
-        '  if (el.tagName === "SCRIPT" || el.tagName === "STYLE") continue;' +
-        '  var r = el.getBoundingClientRect();' +
-        '  if (r.width < 4 || r.height < 4) continue;' +
-        '  if (r.right > vpW + 2 || r.left < -2) {' +
-        // Check if inside overflow-x-auto/scroll container
-        '    var inScroll = false;' +
-        '    var anc = el.parentElement;' +
-        '    while (anc && anc !== body) {' +
-        '      var ox = getComputedStyle(anc).overflowX;' +
-        '      if (ox === "auto" || ox === "scroll") { inScroll = true; break; }' +
-        '      anc = anc.parentElement;' +
-        '    }' +
-        '    if (!inScroll) {' +
-        // Skip if parent already recorded
-        '      var sel = el.tagName.toLowerCase();' +
-        '      if (el.id) sel = "#" + el.id;' +
-        '      else if (el.className && typeof el.className === "string") sel += "." + el.className.trim().split(/\\s+/).slice(0,2).join(".");' +
-        '      var text = (el.textContent || "").trim().substring(0, 40);' +
-        '      if (!checked.has(sel)) {' +
-        '        checked.add(sel);' +
-        '        issues.push({ type: "element-overflow", selector: sel, text: text, left: Math.round(r.left), right: Math.round(r.right), width: Math.round(r.width), vpWidth: vpW });' +
-        '      }' +
-        '    }' +
-        '  }' +
-        '}' +
-        // 3. Elements wider than viewport but hidden by overflow:hidden (silent clip)
-        'for (var j = 0; j < all.length && j < 300; j++) {' +
-        '  var el2 = all[j];' +
-        '  if (el2.tagName === "SCRIPT" || el2.tagName === "STYLE") continue;' +
-        '  var s2 = getComputedStyle(el2);' +
-        '  var br2 = s2.borderRadius;' +
-        '  var cls2 = (el2.className && typeof el2.className === "string") ? el2.className : "";' +
-        '  var hasRoundedClass = /rounded/.test(cls2);' +
-        '  var isSection = el2.tagName === "SECTION" || el2.tagName === "ARTICLE";' +
-        '  if (s2.overflowX === "hidden" && el2.scrollWidth > el2.clientWidth + 4 && (!br2 || br2 === "0px") && !hasRoundedClass && !isSection && s2.pointerEvents !== "none" && s2.position !== "fixed") {' +
-        '    var sel2 = el2.tagName.toLowerCase();' +
-        '    if (el2.id) sel2 = "#" + el2.id;' +
-        '    else if (el2.className && typeof el2.className === "string") sel2 += "." + el2.className.trim().split(/\\s+/).slice(0,2).join(".");' +
-        '    issues.push({ type: "hidden-clip", selector: sel2, clientWidth: el2.clientWidth, scrollWidth: el2.scrollWidth, clipped: el2.scrollWidth - el2.clientWidth });' +
-        '  }' +
-        '}' +
-        'parent.postMessage({ type: "layout-result", issues: issues }, "*");' +
-        '}, 2500);</' + 'script></body></html>';
-
-      let handled = false;
-      function onMsg(e) {
-        if (!e.data || e.data.type !== 'layout-result') return;
-        if (handled) return;
-        handled = true;
-        window.removeEventListener('message', onMsg);
-        if (iframe.parentNode) document.body.removeChild(iframe);
-        resolve({ issues: e.data.issues || [] });
-      }
-      window.addEventListener('message', onMsg);
-      iframe.srcdoc = srcdoc;
-
-      setTimeout(() => {
-        if (handled) return;
-        handled = true;
-        window.removeEventListener('message', onMsg);
-        if (iframe.parentNode) document.body.removeChild(iframe);
-        resolve({ error: 'Timeout' });
-      }, 12000);
-    });
-  }, html, t.dark, t.viewport.w, t.viewport.h);
-
-  return result;
-}
-
-async function main() {
-  const tests = buildTests();
-  if (tests.length === 0) {
-    console.error('No tests found' + (TEMPLATE ? ` for "${TEMPLATE}"` : '') + '. Check docs/presets/index.json');
-    process.exit(1);
-  }
-
-  console.log(`Layout test: ${TEMPLATE || 'ALL'} (${tests.length} combinations, ${THREADS} threads)`);
-  if (!existsSync(RESULTS_DIR)) mkdirSync(RESULTS_DIR, { recursive: true });
-
-  const server = startServer();
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage']
-  });
-
-  const pages = [];
-  for (let i = 0; i < THREADS; i++) pages.push(await browser.newPage());
-
-  const results = [];
-  let completed = 0;
-  const startTime = Date.now();
-
-  let idx = 0;
-  async function worker(page) {
-    while (idx < tests.length) {
-      const t = tests[idx++];
-      const key = testKey(t);
-      try {
-        const result = await runTest(page, t);
-        completed++;
-        const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
-        if (result.error) {
-          process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s ${key} ERROR          \n`);
-          results.push({ key, ...t, error: result.error });
-        } else {
-          const bodyOF = result.issues.filter(i => i.type === 'body-overflow').length;
-          const elemOF = result.issues.filter(i => i.type === 'element-overflow').length;
-          const clip = result.issues.filter(i => i.type === 'hidden-clip').length;
-          // Only count body overflow and hidden-clip as failures — element-overflow
-          // without body scroll is usually intentional (hidden sidebars, translate off-screen)
-          const realIssues = bodyOF + clip;
-          if (realIssues > 0) {
-            process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s ${key} ❌ ${bodyOF} body-overflow, ${clip} hidden-clip${elemOF > 0 ? ', ' + elemOF + ' elem-overflow' : ''}          \n`);
-          } else if (elemOF > 0) {
-            process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s ${key} ⚠ ${elemOF} offscreen (no body scroll)          `);
-          } else {
-            process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s ${key} ✓          `);
-          }
-          results.push({ key, ...t, issues: result.issues });
-        }
-      } catch (err) {
-        completed++;
-        results.push({ key, ...t, error: err.message });
-      }
-    }
-  }
-
-  await Promise.all(pages.map(p => worker(p)));
-  await browser.close();
-  server.close();
-
-  // Report
-  const ok = results.filter(r => !r.error);
-  // Real issues = body overflow or hidden clip (not just off-screen elements without scroll)
-  const withIssues = ok.filter(r => r.issues && r.issues.some(i => i.type === 'body-overflow' || i.type === 'hidden-clip'));
-
-  let md = `# Layout Test Results\n\n`;
-  md += `**Date:** ${new Date().toISOString()}\n`;
-  md += `**Templates tested:** ${ok.length} | **With issues:** ${withIssues.length}\n\n`;
-
-  if (withIssues.length > 0) {
-    md += '## Failures\n\n';
-    md += '| Template | Viewport | Mode | Body OF | Elem OF | Clip | Details |\n';
-    md += '|----------|----------|------|---------|---------|------|---------|\n';
-    for (const r of withIssues.sort((a, b) => b.issues.length - a.issues.length)) {
-      const bodyOF = r.issues.filter(i => i.type === 'body-overflow');
-      const elemOF = r.issues.filter(i => i.type === 'element-overflow');
-      const clip = r.issues.filter(i => i.type === 'hidden-clip');
-      const details = [
-        ...bodyOF.map(i => `body +${i.overflow}px`),
-        ...elemOF.slice(0, 2).map(i => `${i.selector} right=${i.right}px`),
-        ...clip.slice(0, 1).map(i => `${i.selector} clipped ${i.clipped}px`)
-      ].join('; ');
-      md += `| ${r.element}/${r.personality} | ${r.viewport.label} | ${r.dark ? 'dark' : 'light'} | ${bodyOF.length} | ${elemOF.length} | ${clip.length} | ${details} |\n`;
-    }
-
-    // Aggregate by template
-    md += '\n## Summary by Template\n\n';
-    const byTemplate = {};
-    for (const r of withIssues) {
-      const tpl = `${r.element}/${r.personality}`;
-      if (!byTemplate[tpl]) byTemplate[tpl] = { phone: 0, tablet: 0, desktop: 0, issues: [] };
-      byTemplate[tpl][r.viewport.label]++;
-      for (const i of r.issues) byTemplate[tpl].issues.push(i);
-    }
-    for (const [tpl, data] of Object.entries(byTemplate).sort((a, b) => b[1].issues.length - a[1].issues.length)) {
-      md += `### ${tpl}\n`;
-      md += `- Phone: ${data.phone} | Tablet: ${data.tablet} | Desktop: ${data.desktop}\n`;
-      const uniqueIssues = new Set(data.issues.map(i => `${i.type}: ${i.selector || 'body'}`));
-      for (const ui of uniqueIssues) md += `  - ${ui}\n`;
-      md += '\n';
-    }
-  } else {
-    md += '## All templates pass! No overflow issues detected.\n';
-  }
-
-  const outFile = join(RESULTS_DIR, 'layout-test.md');
-  writeFileSync(outFile, md);
-  writeFileSync(join(RESULTS_DIR, 'layout-test.json'), JSON.stringify(results, null, 2));
-
-  console.log(`\n\n=== LAYOUT TEST RESULTS ===`);
-  console.log(`Tested: ${ok.length} | Issues: ${withIssues.length} | Errors: ${results.filter(r => r.error).length}`);
-  if (withIssues.length > 0) {
-    console.log(`\nTemplates with overflow:`);
-    for (const r of withIssues) {
-      console.log(`  ${r.key}: ${r.issues.map(i => i.type).join(', ')}`);
-    }
-  }
-  console.log(`\nReport: ${outFile}`);
-}
-
-main().catch(err => { console.error('Fatal:', err); process.exit(1); });
-</file>
-
 <file path="docs/scoring/readability.js">
 // Scoring Module: Readability & Scanability
 // Weight: 5%
@@ -20375,6 +20073,307 @@ async function main() {
       }
     }
   }
+}
+
+main().catch(err => { console.error('Fatal:', err); process.exit(1); });
+</file>
+
+<file path="scripts/test-layout.mjs">
+#!/usr/bin/env node
+// Test all templates for layout/overflow issues across viewports
+// Skips effects (they only change colors/fonts) and "before" variants
+//
+// Usage:
+//   node scripts/test-layout.mjs              # test all templates
+//   node scripts/test-layout.mjs dashboard    # test one element
+//   node scripts/test-layout.mjs --threads=6  # parallel threads
+//
+// Checks:
+//   - Body horizontal overflow (scrollWidth > clientWidth)
+//   - Elements wider than viewport without scroll wrapper
+//   - Content clipped outside viewport bounds
+//   - Hidden panels that overflow when revealed
+
+import puppeteer from 'puppeteer';
+import { createServer } from 'http';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { join, extname } from 'path';
+
+const DOCS_DIR = join(import.meta.dirname, '..', 'docs');
+const RESULTS_DIR = join(import.meta.dirname, '..', 'research', 'template-results');
+const PORT = 8768;
+
+const args = process.argv.slice(2);
+const THREADS = parseInt((args.find(a => a.startsWith('--threads=')) || '--threads=3').split('=')[1]);
+const TEMPLATE = args.find(a => !a.startsWith('--')) || '';
+
+const VIEWPORTS = [
+  { w: 375, h: 812, label: 'phone' },
+  { w: 768, h: 1024, label: 'tablet' },
+  { w: 1280, h: 900, label: 'desktop' },
+];
+
+const DARK_MODES = [false, true];
+
+function startServer() {
+  const mimeTypes = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2' };
+  const server = createServer((req, res) => {
+    let filePath = join(DOCS_DIR, req.url === '/' ? 'index.html' : req.url);
+    if (!existsSync(filePath)) { res.writeHead(404); res.end('Not found'); return; }
+    res.writeHead(200, { 'Content-Type': mimeTypes[extname(filePath)] || 'application/octet-stream' });
+    res.end(readFileSync(filePath));
+  });
+  server.listen(PORT);
+  return server;
+}
+
+function buildTests() {
+  const manifest = JSON.parse(readFileSync(join(DOCS_DIR, 'presets', 'index.json'), 'utf8'));
+  const tests = [];
+  for (const [el, info] of Object.entries(manifest.elements)) {
+    for (const pers of Object.keys(info.personalities || {})) {
+      // Skip "before" variants
+      if (pers === 'before') continue;
+      // Filter by template if specified
+      if (TEMPLATE && el !== TEMPLATE && `${el}/${pers}` !== TEMPLATE) continue;
+      const file = join(DOCS_DIR, 'presets', el, pers + '.html');
+      if (!existsSync(file)) continue;
+      for (const vp of VIEWPORTS) {
+        for (const dark of DARK_MODES) {
+          tests.push({ element: el, personality: pers, viewport: vp, dark });
+        }
+      }
+    }
+  }
+  return tests;
+}
+
+function testKey(t) {
+  return `${t.element}/${t.personality}|${t.viewport.label}|${t.dark ? 'dark' : 'light'}`;
+}
+
+async function runTest(page, t) {
+  const html = readFileSync(join(DOCS_DIR, 'presets', t.element, t.personality + '.html'), 'utf8');
+  await page.setViewport({ width: t.viewport.w, height: t.viewport.h });
+
+  const result = await page.evaluate(async (html, dark, vpWidth, vpHeight) => {
+    return new Promise((resolve) => {
+      const iframe = document.createElement('iframe');
+      iframe.style.cssText = `position:fixed;top:0;left:0;width:${vpWidth}px;height:${vpHeight}px;border:none;`;
+      document.body.appendChild(iframe);
+
+      const darkClass = dark ? ' class="dark"' : '';
+      const darkVariantCSS = '@custom-variant dark (&:where(.dark, .dark *));';
+      const srcdoc = '<!DOCTYPE html><html lang="en"' + darkClass + '><head><meta charset="UTF-8">' +
+        '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+        '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
+        (dark ? '<style type="text/tailwindcss">' + darkVariantCSS + '</style>' : '') +
+        '<style>body{margin:0}</style></head><body>' + html +
+        '<script>setTimeout(function(){' +
+        // Layout checks running inside the iframe
+        'var doc = document.documentElement;' +
+        'var body = document.body;' +
+        'var vpW = window.innerWidth;' +
+        'var vpH = window.innerHeight;' +
+        'var issues = [];' +
+        // 1. Body overflow
+        'var bodyScrollW = Math.max(doc.scrollWidth, body.scrollWidth);' +
+        'if (bodyScrollW > vpW + 2) {' +
+        '  issues.push({ type: "body-overflow", scrollWidth: bodyScrollW, viewport: vpW, overflow: bodyScrollW - vpW });' +
+        '}' +
+        // 2. Elements wider than viewport without scroll wrapper
+        'var all = body.querySelectorAll("*");' +
+        'var checked = new Set();' +
+        'for (var i = 0; i < all.length && i < 500; i++) {' +
+        '  var el = all[i];' +
+        '  if (el.tagName === "SCRIPT" || el.tagName === "STYLE") continue;' +
+        '  var r = el.getBoundingClientRect();' +
+        '  if (r.width < 4 || r.height < 4) continue;' +
+        '  if (r.right > vpW + 2 || r.left < -2) {' +
+        // Check if inside overflow-x-auto/scroll container
+        '    var inScroll = false;' +
+        '    var anc = el.parentElement;' +
+        '    while (anc && anc !== body) {' +
+        '      var ox = getComputedStyle(anc).overflowX;' +
+        '      if (ox === "auto" || ox === "scroll") { inScroll = true; break; }' +
+        '      anc = anc.parentElement;' +
+        '    }' +
+        '    if (!inScroll) {' +
+        // Skip if parent already recorded
+        '      var sel = el.tagName.toLowerCase();' +
+        '      if (el.id) sel = "#" + el.id;' +
+        '      else if (el.className && typeof el.className === "string") sel += "." + el.className.trim().split(/\\s+/).slice(0,2).join(".");' +
+        '      var text = (el.textContent || "").trim().substring(0, 40);' +
+        '      if (!checked.has(sel)) {' +
+        '        checked.add(sel);' +
+        '        issues.push({ type: "element-overflow", selector: sel, text: text, left: Math.round(r.left), right: Math.round(r.right), width: Math.round(r.width), vpWidth: vpW });' +
+        '      }' +
+        '    }' +
+        '  }' +
+        '}' +
+        // 3. Elements wider than viewport but hidden by overflow:hidden (silent clip)
+        'for (var j = 0; j < all.length && j < 300; j++) {' +
+        '  var el2 = all[j];' +
+        '  if (el2.tagName === "SCRIPT" || el2.tagName === "STYLE") continue;' +
+        '  var s2 = getComputedStyle(el2);' +
+        '  var br2 = s2.borderRadius;' +
+        '  var hasRadius = br2 && br2 !== "0px" && br2 !== "0%";' +
+        '  var hasText = el2.textContent && el2.textContent.trim().length > 10;' +
+        '  if (s2.overflowX === "hidden" && el2.scrollWidth > el2.clientWidth + 4 && !hasRadius && hasText && s2.pointerEvents !== "none" && s2.position !== "fixed") {' +
+        '    var sel2 = el2.tagName.toLowerCase();' +
+        '    if (el2.id) sel2 = "#" + el2.id;' +
+        '    else if (el2.className && typeof el2.className === "string") sel2 += "." + el2.className.trim().split(/\\s+/).slice(0,2).join(".");' +
+        '    issues.push({ type: "hidden-clip", selector: sel2, clientWidth: el2.clientWidth, scrollWidth: el2.scrollWidth, clipped: el2.scrollWidth - el2.clientWidth });' +
+        '  }' +
+        '}' +
+        'parent.postMessage({ type: "layout-result", issues: issues }, "*");' +
+        '}, 3500);</' + 'script></body></html>';
+
+      let handled = false;
+      function onMsg(e) {
+        if (!e.data || e.data.type !== 'layout-result') return;
+        if (handled) return;
+        handled = true;
+        window.removeEventListener('message', onMsg);
+        if (iframe.parentNode) document.body.removeChild(iframe);
+        resolve({ issues: e.data.issues || [] });
+      }
+      window.addEventListener('message', onMsg);
+      iframe.srcdoc = srcdoc;
+
+      setTimeout(() => {
+        if (handled) return;
+        handled = true;
+        window.removeEventListener('message', onMsg);
+        if (iframe.parentNode) document.body.removeChild(iframe);
+        resolve({ error: 'Timeout' });
+      }, 12000);
+    });
+  }, html, t.dark, t.viewport.w, t.viewport.h);
+
+  return result;
+}
+
+async function main() {
+  const tests = buildTests();
+  if (tests.length === 0) {
+    console.error('No tests found' + (TEMPLATE ? ` for "${TEMPLATE}"` : '') + '. Check docs/presets/index.json');
+    process.exit(1);
+  }
+
+  console.log(`Layout test: ${TEMPLATE || 'ALL'} (${tests.length} combinations, ${THREADS} threads)`);
+  if (!existsSync(RESULTS_DIR)) mkdirSync(RESULTS_DIR, { recursive: true });
+
+  const server = startServer();
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage']
+  });
+
+  const pages = [];
+  for (let i = 0; i < THREADS; i++) pages.push(await browser.newPage());
+
+  const results = [];
+  let completed = 0;
+  const startTime = Date.now();
+
+  let idx = 0;
+  async function worker(page) {
+    while (idx < tests.length) {
+      const t = tests[idx++];
+      const key = testKey(t);
+      try {
+        const result = await runTest(page, t);
+        completed++;
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
+        if (result.error) {
+          process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s ${key} ERROR          \n`);
+          results.push({ key, ...t, error: result.error });
+        } else {
+          const bodyOF = result.issues.filter(i => i.type === 'body-overflow').length;
+          const elemOF = result.issues.filter(i => i.type === 'element-overflow').length;
+          const clip = result.issues.filter(i => i.type === 'hidden-clip').length;
+          // Only count body overflow and hidden-clip as failures — element-overflow
+          // without body scroll is usually intentional (hidden sidebars, translate off-screen)
+          const realIssues = bodyOF + clip;
+          if (realIssues > 0) {
+            process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s ${key} ❌ ${bodyOF} body-overflow, ${clip} hidden-clip${elemOF > 0 ? ', ' + elemOF + ' elem-overflow' : ''}          \n`);
+          } else if (elemOF > 0) {
+            process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s ${key} ⚠ ${elemOF} offscreen (no body scroll)          `);
+          } else {
+            process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s ${key} ✓          `);
+          }
+          results.push({ key, ...t, issues: result.issues });
+        }
+      } catch (err) {
+        completed++;
+        results.push({ key, ...t, error: err.message });
+      }
+    }
+  }
+
+  await Promise.all(pages.map(p => worker(p)));
+  await browser.close();
+  server.close();
+
+  // Report
+  const ok = results.filter(r => !r.error);
+  // Real issues = body overflow or hidden clip (not just off-screen elements without scroll)
+  const withIssues = ok.filter(r => r.issues && r.issues.some(i => i.type === 'body-overflow' || i.type === 'hidden-clip'));
+
+  let md = `# Layout Test Results\n\n`;
+  md += `**Date:** ${new Date().toISOString()}\n`;
+  md += `**Templates tested:** ${ok.length} | **With issues:** ${withIssues.length}\n\n`;
+
+  if (withIssues.length > 0) {
+    md += '## Failures\n\n';
+    md += '| Template | Viewport | Mode | Body OF | Elem OF | Clip | Details |\n';
+    md += '|----------|----------|------|---------|---------|------|---------|\n';
+    for (const r of withIssues.sort((a, b) => b.issues.length - a.issues.length)) {
+      const bodyOF = r.issues.filter(i => i.type === 'body-overflow');
+      const elemOF = r.issues.filter(i => i.type === 'element-overflow');
+      const clip = r.issues.filter(i => i.type === 'hidden-clip');
+      const details = [
+        ...bodyOF.map(i => `body +${i.overflow}px`),
+        ...elemOF.slice(0, 2).map(i => `${i.selector} right=${i.right}px`),
+        ...clip.slice(0, 1).map(i => `${i.selector} clipped ${i.clipped}px`)
+      ].join('; ');
+      md += `| ${r.element}/${r.personality} | ${r.viewport.label} | ${r.dark ? 'dark' : 'light'} | ${bodyOF.length} | ${elemOF.length} | ${clip.length} | ${details} |\n`;
+    }
+
+    // Aggregate by template
+    md += '\n## Summary by Template\n\n';
+    const byTemplate = {};
+    for (const r of withIssues) {
+      const tpl = `${r.element}/${r.personality}`;
+      if (!byTemplate[tpl]) byTemplate[tpl] = { phone: 0, tablet: 0, desktop: 0, issues: [] };
+      byTemplate[tpl][r.viewport.label]++;
+      for (const i of r.issues) byTemplate[tpl].issues.push(i);
+    }
+    for (const [tpl, data] of Object.entries(byTemplate).sort((a, b) => b[1].issues.length - a[1].issues.length)) {
+      md += `### ${tpl}\n`;
+      md += `- Phone: ${data.phone} | Tablet: ${data.tablet} | Desktop: ${data.desktop}\n`;
+      const uniqueIssues = new Set(data.issues.map(i => `${i.type}: ${i.selector || 'body'}`));
+      for (const ui of uniqueIssues) md += `  - ${ui}\n`;
+      md += '\n';
+    }
+  } else {
+    md += '## All templates pass! No overflow issues detected.\n';
+  }
+
+  const outFile = join(RESULTS_DIR, 'layout-test.md');
+  writeFileSync(outFile, md);
+  writeFileSync(join(RESULTS_DIR, 'layout-test.json'), JSON.stringify(results, null, 2));
+
+  console.log(`\n\n=== LAYOUT TEST RESULTS ===`);
+  console.log(`Tested: ${ok.length} | Issues: ${withIssues.length} | Errors: ${results.filter(r => r.error).length}`);
+  if (withIssues.length > 0) {
+    console.log(`\nTemplates with overflow:`);
+    for (const r of withIssues) {
+      console.log(`  ${r.key}: ${r.issues.map(i => i.type).join(', ')}`);
+    }
+  }
+  console.log(`\nReport: ${outFile}`);
 }
 
 main().catch(err => { console.error('Fatal:', err); process.exit(1); });
@@ -23074,6 +23073,669 @@ function scoreAccessibility(data) {
 })();
 </file>
 
+<file path="docs/analyzer-report.js">
+// make-it-look-good — Report Renderers
+// HTML report, markdown export, gauge SVG, progress bars
+
+window.MilgReport = (function() {
+  "use strict";
+
+  // --- Report Rendering ---
+  var categoryIcons = {
+    contrast: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2v20"/><path d="M12 2a10 10 0 0 1 0 20"/></svg>',
+    type: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>',
+    spacing: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>',
+    touch: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 11V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v0"/><path d="M14 10V4a2 2 0 0 0-2-2 2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>',
+    a11y: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="4" r="2"/><path d="M6 8h12"/><path d="M12 8v8"/><path d="M9 20l3-4 3 4"/></svg>',
+    responsive: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>',
+    consistency: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l9 4.5v5c0 4.1-3.6 8-9 10.5-5.4-2.5-9-6.4-9-10.5v-5L12 3z"/></svg>',
+    cognitive: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a8 8 0 0 0-8 8c0 3.4 2.1 6.3 5 7.5V20h6v-2.5c2.9-1.2 5-4.1 5-7.5a8 8 0 0 0-8-8z"/><line x1="10" y1="22" x2="14" y2="22"/></svg>',
+    layout: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="12" y1="3" x2="12" y2="12"/></svg>',
+    readability: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>'
+  };
+
+  function isDarkUi() {
+    return document.body && document.body.classList.contains('dark-ui');
+  }
+
+  function scoreColor(score) {
+    var dark = isDarkUi();
+    if (score >= 90) return dark ? '#4ade80' : '#16a34a';
+    if (score >= 70) return dark ? '#facc15' : '#ca8a04';
+    if (score >= 50) return dark ? '#fb923c' : '#ea580c';
+    return dark ? '#f87171' : '#dc2626';
+  }
+
+  function gradeColor(grade) {
+    var dark = isDarkUi();
+    var light = { A: '#16a34a', B: '#65a30d', C: '#ca8a04', D: '#ea580c', F: '#dc2626' };
+    var darkC = { A: '#4ade80', B: '#a3e635', C: '#facc15', D: '#fb923c', F: '#f87171' };
+    return (dark ? darkC : light)[grade] || '#64748b';
+  }
+
+  function severityBadge(severity) {
+    var cls = 'severity-badge-' + (severity || 'info');
+    return '<span class="' + cls + '" style="display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px">' + severity + '</span>';
+  }
+
+  function renderReport(report) {
+    var html = '';
+
+    // --- Header ---
+    html += '<div class="report-header">';
+    html += '<div class="report-header-info">';
+    html += '<h1>Design Analysis Report</h1>';
+    var reportUrl = report.meta.url || 'Pasted HTML';
+    if (/^https?:\/\//.test(reportUrl)) {
+      html += '<p class="report-url"><a href="' + escapeHtml(reportUrl) + '" target="_blank" rel="noopener" style="color:var(--primary);text-decoration:underline">' + escapeHtml(reportUrl) + '</a></p>';
+    } else {
+      html += '<p class="report-url">' + escapeHtml(reportUrl) + '</p>';
+    }
+    var ctxType = (report.raw.context && report.raw.context.pageType) || 'unknown';
+    var ctxLabel = { marketing: 'Marketing / Landing', pricing: 'Pricing Page', form: 'Form Page', app: 'Application', content: 'Content Page', component: 'Component / Snippet', unknown: 'General' }[ctxType] || ctxType;
+    html += '<p class="report-timestamp">' + new Date(report.meta.timestamp).toLocaleString() + ' &middot; ' + report.meta.viewportWidth + '&times;' + report.meta.viewportHeight + 'px &middot; Detected: ' + ctxLabel + '</p>';
+    html += '</div>';
+
+    // Overall score gauge
+    html += '<div class="report-gauge">';
+    html += renderGauge(report.overall, report.grade);
+    html += '<div class="report-grade-label">' + report.gradeLabel + '</div>';
+    html += '</div>';
+    html += '</div>';
+
+    // --- Deep scan viewport bar (at top) ---
+    if (report.raw.deepScan && report.raw.deepScan.viewports && report.raw.deepScan.viewports.length > 0) {
+      html += '<div class="report-viewport-bar">';
+      html += '<span style="font-size:12px;color:var(--text-secondary);font-weight:600">Viewports analyzed:</span> ';
+      report.raw.deepScan.viewports.forEach(function(vp, idx) {
+        var status = vp.error ? '✗' : '✓';
+        html += '<span class="viewport-tag' + (vp.error ? ' viewport-error' : '') + '" title="' + escapeHtml(vp.label) + '">' + status + ' ' + vp.width + 'px</span>';
+      });
+      html += '</div>';
+    }
+
+    // --- Screenshots (collapsible, before scores) ---
+    if (report.raw.screenshots && report.raw.screenshots.length > 0) {
+      html += '<details class="report-screenshots">';
+      html += '<summary style="cursor:pointer;font-size:14px;font-weight:600;padding:8px 0;color:var(--text-secondary)">Page Screenshots (' + report.raw.screenshots.length + ')</summary>';
+      html += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;margin-bottom:16px">';
+      report.raw.screenshots.forEach(function(src, idx) {
+        html += '<div class="screenshot-thumb" style="flex:1;min-width:200px;max-width:400px">';
+        if (report.raw.screenshots.length > 1) {
+          html += '<div style="padding:4px 8px;font-size:10px;color:var(--text-secondary);border-bottom:1px solid var(--border);background:var(--bg-alt)">Section ' + (idx + 1) + '</div>';
+        }
+        html += '<img src="' + src + '" alt="Page screenshot ' + (idx + 1) + '" class="screenshot-img" style="width:100%;display:block;cursor:zoom-in" onclick="window.__milgZoomScreenshot(this)" loading="lazy">';
+        html += '</div>';
+      });
+      html += '</div>';
+      // Unhidden panels screenshots (shown when hidden panels were detected)
+      if (report.raw.screenshotsUnhidden && report.raw.screenshotsUnhidden.length > 0) {
+        html += '<div style="margin-top:12px;padding:12px;border:2px dashed var(--border);border-radius:8px;background:var(--bg-alt)">';
+        html += '<div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text-error,#ef4444)">With hidden panels revealed (' + (report.raw.layout.hiddenPanelCount || '?') + ' panels unhidden)</div>';
+        html += '<div style="display:flex;flex-wrap:wrap;gap:12px">';
+        report.raw.screenshotsUnhidden.forEach(function(src, idx) {
+          html += '<div class="screenshot-thumb" style="flex:1;min-width:200px;max-width:400px">';
+          if (report.raw.screenshotsUnhidden.length > 1) {
+            html += '<div style="padding:4px 8px;font-size:10px;color:var(--text-secondary);border-bottom:1px solid var(--border);background:var(--bg-alt)">Section ' + (idx + 1) + '</div>';
+          }
+          html += '<img src="' + src + '" alt="Page with panels revealed ' + (idx + 1) + '" class="screenshot-img" style="width:100%;display:block;cursor:zoom-in" onclick="window.__milgZoomScreenshot(this)" loading="lazy">';
+          html += '</div>';
+        });
+        html += '</div>';
+        html += '</div>';
+      }
+      html += '</details>';
+    }
+
+    // --- Category cards ---
+    html += '<div class="report-categories">';
+    report.categories.forEach(function(cat) {
+      var catId = 'findings-' + cat.icon;
+      var hasFindings = cat.findings.length > 0;
+      // All cards are clickable — scroll to findings if present, otherwise to passed checks
+      var scrollTarget = hasFindings ? catId : 'passed-checks';
+      html += '<div class="report-card report-card-clickable" onclick="var el=document.getElementById(\'' + scrollTarget + '\');if(el){el.scrollIntoView({behavior:\'smooth\',block:\'start\'});if(!el.open&&el.tagName===\'DETAILS\')el.open=true;}">';
+      html += '<div class="report-card-header">';
+      html += '<div class="report-card-icon" style="color:' + scoreColor(cat.score) + '">' + (categoryIcons[cat.icon] || '') + '</div>';
+      html += '<div class="report-card-title">';
+      html += '<h3>' + cat.label + '</h3>';
+      html += '<span class="report-card-weight">' + cat.weight + '% weight</span>';
+      html += '</div>';
+      if (cat.notApplicable) {
+        html += '<div class="report-card-score" style="color:var(--text-secondary);font-size:13px">N/A</div>';
+      } else {
+        html += '<div class="report-card-score" style="color:' + scoreColor(cat.score) + '">' + cat.score + '</div>';
+      }
+      html += '</div>';
+      html += renderProgressBar(cat.score);
+
+      // Finding count with color-coded badges and tooltips
+      var errors = cat.findings.filter(function(f) { return f.severity === 'error'; }).length;
+      var warnings = cat.findings.filter(function(f) { return f.severity === 'warning'; }).length;
+      var infos = cat.findings.filter(function(f) { return f.severity === 'info'; }).length;
+      var passed = (cat.checks || 0) - errors - warnings;
+      if (passed < 0) passed = 0;
+      // If module didn't report checks, estimate from findings
+      var totalChecks = cat.checks || (errors + warnings + infos + (cat.findings.length === 0 ? 1 : 0));
+      var notApplicable = Math.max(0, totalChecks - errors - warnings - infos - passed);
+
+      var catId = 'findings-' + cat.icon;
+      html += '<div class="report-card-counts">';
+      if (totalChecks > 0 || cat.findings.length === 0) {
+        if (errors > 0) html += '<span class="count-error" title="' + errors + ' error(s)" onclick="event.stopPropagation();document.getElementById(\'' + catId + '\').scrollIntoView({behavior:\'smooth\',block:\'start\'})">' + errors + '</span>';
+        if (warnings > 0) html += '<span class="count-warning" title="' + warnings + ' warning(s)" onclick="event.stopPropagation();document.getElementById(\'' + catId + '\').scrollIntoView({behavior:\'smooth\',block:\'start\'})">' + warnings + '</span>';
+        if (infos > 0) html += '<span class="count-info" title="' + infos + ' info" onclick="event.stopPropagation();document.getElementById(\'' + catId + '\').scrollIntoView({behavior:\'smooth\',block:\'start\'})">' + infos + '</span>';
+        if (passed > 0 || cat.findings.length === 0) html += '<span class="count-pass" title="' + (passed || totalChecks) + ' passed">' + (passed || totalChecks) + '</span>';
+      }
+      html += '</div>';
+
+      html += '</div>';
+    });
+    html += '</div>';
+
+    // --- Detailed findings ---
+    html += '<div class="report-findings">';
+    html += '<h2>Detailed Findings</h2>';
+
+    report.categories.forEach(function(cat) {
+      if (cat.findings.length === 0) return;
+
+      html += '<div class="report-finding-group" id="findings-' + cat.icon + '">';
+      html += '<h3>' + (categoryIcons[cat.icon] || '') + ' ' + cat.label + '</h3>';
+
+      cat.findings.forEach(function(f) {
+        html += '<div class="report-finding severity-' + f.severity + '">';
+        html += '<div class="finding-header">';
+        html += severityBadge(f.severity);
+        html += '<span class="finding-title">' + escapeHtml(f.title) + '</span>';
+        html += '</div>';
+        if (f.detail) html += '<p class="finding-detail">' + escapeHtml(f.detail) + '</p>';
+
+        html += '<div class="finding-fix">';
+        html += '<strong>Fix:</strong> ' + escapeHtml(f.fix);
+        html += '</div>';
+
+        if (f.presetRef) {
+          html += '<div class="finding-preset">';
+          html += '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> ';
+          html += escapeHtml(f.presetRef);
+          html += '</div>';
+        }
+
+        if (f.source) {
+          var srcParts = f.source.split(' — ');
+          var srcLabel = srcParts[0];
+          var srcUrl = srcParts[1] || '';
+          html += '<div class="finding-source">';
+          if (srcUrl) {
+            html += '<a href="' + escapeHtml(srcUrl) + '" target="_blank" rel="noopener">' + escapeHtml(srcLabel) + '</a>';
+          } else {
+            html += escapeHtml(srcLabel);
+          }
+          html += '</div>';
+        }
+
+        html += '</div>';
+      });
+
+      html += '</div>';
+    });
+
+    html += '</div>';
+
+    // --- Passed checks ---
+    // Check descriptions per category (what was checked and passed)
+    var checkDescriptions = {
+      contrast: [
+        { title: 'Text contrast ratio meets threshold', detail: 'All text elements have sufficient contrast against their backgrounds.', source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' },
+        { title: 'No undetermined contrast issues', detail: 'All background colors could be resolved (no complex gradients or images blocking analysis).', source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' },
+        { title: 'Text uses real HTML (not images)', detail: 'Text is rendered as selectable HTML, not embedded in images.', source: 'WCAG 2.2 §1.4.5 — https://www.w3.org/TR/WCAG22/#images-of-text' },
+        { title: 'CVD-safe color palette', detail: 'Color pairs remain distinguishable under color vision deficiency simulation.', source: 'Machado et al. 2009 — https://www.inf.ufrgs.br/~oliveira/pubs_files/CVD_Simulation/CVD_Simulation.html' }
+      ],
+      type: [
+        { title: 'Body font size adequate', detail: 'Body text meets the minimum font size for this audience.', source: 'NNGroup — https://www.nngroup.com/articles/let-users-control-font-size/' },
+        { title: 'Line height within range', detail: 'Body line-height provides comfortable reading spacing.', source: 'WCAG 2.2 §1.4.12 — https://www.w3.org/TR/WCAG22/#text-spacing' },
+        { title: 'Line length under limit', detail: 'Content width constrains lines to a readable character count.', source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-length.html' },
+        { title: 'Heading scale consistent', detail: 'Headings follow a logical size progression from H1 down.', source: 'Modular type scales — https://typescale.com/' },
+        { title: 'Font weight count reasonable', detail: 'Uses 2-4 font weights, avoiding visual noise.', source: 'Google Fonts — https://fonts.google.com/knowledge/using_type/choosing_reliable_typefaces' },
+        { title: 'Font family count under limit', detail: 'Uses 1-3 font families for visual consistency.', source: 'Butterick\'s Practical Typography — https://practicaltypography.com/summary-of-key-rules.html' },
+        { title: 'Paragraph spacing appropriate', detail: 'Paragraphs have comfortable spacing between them.', source: 'Butterick\'s Practical Typography — https://practicaltypography.com/space-between-paragraphs.html' }
+      ],
+      spacing: [
+        { title: 'Spacing on 4px grid', detail: 'Spacing values align to a consistent base unit.', source: 'Material Design — https://m3.material.io/foundations/layout/applying-layout' },
+        { title: 'Content width constrained', detail: 'Content doesn\'t stretch to excessive widths.', source: 'NNGroup — https://www.nngroup.com/articles/utilize-available-screen-space/' },
+        { title: 'Body padding adequate', detail: 'Content has proper edge padding, not touching screen sides.', source: 'Material Design — https://m3.material.io/foundations/layout/applying-layout' },
+        { title: 'No element overflow', detail: 'No content extends beyond its container boundaries.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' },
+        { title: 'Interactive element spacing adequate', detail: 'Buttons and links have enough gap between them to prevent mis-clicks.', source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum' }
+      ],
+      touch: [
+        { title: 'Interactive targets properly sized', detail: 'Buttons, links, and inputs meet minimum target size.', source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum' },
+        { title: 'Transition durations appropriate', detail: 'Animations stay under 500ms for responsive feel.', source: 'NNGroup — https://www.nngroup.com/articles/animation-usability/' },
+        { title: 'Touch-friendly on mobile', detail: 'Elements would pass touch target requirements on mobile viewports.', source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout' }
+      ],
+      a11y: [
+        { title: 'Semantic HTML landmarks', detail: 'Page uses header, nav, main, and/or footer elements.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships' },
+        { title: 'Heading hierarchy intact', detail: 'Headings follow sequential order without gaps (h1 → h2 → h3).', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships' },
+        { title: 'Images have alt text', detail: 'All img elements include alt attributes for screen readers.', source: 'WCAG 2.2 §1.1.1 — https://www.w3.org/TR/WCAG22/#non-text-content' },
+        { title: 'Form inputs labeled', detail: 'All form fields have associated labels or aria-label.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships' },
+        { title: 'Focus indicators visible', detail: 'Interactive elements show visible focus styling for keyboard users.', source: 'WCAG 2.2 §2.4.7 — https://www.w3.org/TR/WCAG22/#focus-visible' },
+        { title: 'Language attribute set', detail: 'HTML element has a lang attribute for correct pronunciation.', source: 'WCAG 2.2 §3.1.1 — https://www.w3.org/TR/WCAG22/#language-of-page' },
+        { title: 'Skip navigation link', detail: 'Keyboard users can skip past navigation to reach main content.', source: 'WCAG 2.2 §2.4.1 — https://www.w3.org/TR/WCAG22/#bypass-blocks' },
+        { title: 'Descriptive link text', detail: 'Links use meaningful text instead of "click here" or "read more".', source: 'WCAG 2.2 §2.4.4 — https://www.w3.org/TR/WCAG22/#link-purpose-in-context' },
+        { title: 'No color-only indicators', detail: 'Status information uses icons or text in addition to color.', source: 'WCAG 2.2 §1.4.1 — https://www.w3.org/TR/WCAG22/#use-of-color' }
+      ],
+      responsive: [
+        { title: 'Responsive breakpoints detected', detail: 'CSS media queries or responsive utility classes are present.', source: 'NNGroup — https://www.nngroup.com/articles/responsive-web-design-definition/' },
+        { title: 'Dark mode support', detail: 'Page supports dark color scheme.', source: 'Apple HIG — https://developer.apple.com/design/human-interface-guidelines/dark-mode' },
+        { title: 'Viewport meta tag correct', detail: 'Proper viewport configuration for mobile rendering.', source: 'MDN — https://developer.mozilla.org/en-US/docs/Web/HTML/Viewport_meta_tag' },
+        { title: 'User zoom not blocked', detail: 'Viewport doesn\'t prevent pinch-to-zoom.', source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text' },
+        { title: 'No horizontal overflow', detail: 'Page content fits within viewport width.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' },
+        { title: 'No fixed-width elements', detail: 'Elements use flexible widths that adapt to screen size.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' }
+      ],
+      consistency: [
+        { title: 'Color palette coherent', detail: 'Number of unique colors is within expected range.', source: 'Material Design 3 — https://m3.material.io/styles/color/roles' },
+        { title: 'Font size scale consistent', detail: 'Uses a limited set of font sizes from a type scale.', source: 'Modular type scales — https://typescale.com/' },
+        { title: 'Border radius consistent', detail: 'Uses 2-4 standard border-radius values.', source: 'Material Design 3 — https://m3.material.io/styles/shape/overview' },
+        { title: 'Line height consistent', detail: 'Uses a small set of line-height values across the page.', source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-spacing.html' },
+        { title: 'Dark mode supported', detail: 'Page provides a dark color scheme option.', source: 'Apple HIG — https://developer.apple.com/design/human-interface-guidelines/dark-mode' }
+      ],
+      cognitive: [
+        { title: 'Content sections well-organized', detail: 'Page sections and headings are within cognitive load limits.', source: 'Hick\'s Law — https://lawsofux.com/hicks-law/' },
+        { title: 'Form complexity manageable', detail: 'Visible form fields stay within recommended limits.', source: 'Miller\'s Law — https://lawsofux.com/millers-law/' },
+        { title: 'Navigation count appropriate', detail: 'Top-level navigation items are within working memory limits.', source: 'Cowan (2001) — https://doi.org/10.1017/S0140525X01003922' },
+        { title: 'Reading level appropriate', detail: 'Content reading level matches the target audience.', source: 'WCAG 2.2 §3.1.5 — https://www.w3.org/TR/WCAG22/#reading-level' },
+        { title: 'Visual complexity manageable', detail: 'Number of unique colors doesn\'t overwhelm the user.', source: 'Material Design 3 — https://m3.material.io/styles/color/roles' },
+        { title: 'Heading hierarchy supports scanning', detail: 'Headings follow a logical order for easy content navigation.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships' }
+      ],
+      layout: [
+        { title: 'Section spacing consistent', detail: 'Gaps between major sections use uniform spacing.', source: 'Gestalt similarity — https://lawsofux.com/law-of-similarity/' },
+        { title: 'Alignment grid clean', detail: 'Elements share consistent alignment edges without jagged offsets.', source: 'Gestalt continuity — https://lawsofux.com/law-of-common-region/' },
+        { title: 'H1 visual hierarchy clear', detail: 'H1 stands out from body text at 2-4x size.', source: 'Modular type scales — https://typescale.com/' },
+        { title: 'H2 visual hierarchy appropriate', detail: 'H2 is clearly distinct from both H1 and body text.', source: 'Modular type scales — https://typescale.com/' },
+        { title: 'Border radius standardized', detail: 'Uses a consistent set of border-radius values.', source: 'Material Design 3 — https://m3.material.io/styles/shape/overview' },
+        { title: 'Page density manageable', detail: 'Element count is within comfortable range for the page type.', source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/' }
+      ],
+      readability: [
+        { title: 'Heading density adequate', detail: 'Headings break content into scannable sections.', source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/' },
+        { title: 'Headings are descriptive', detail: 'Heading text is long enough to be meaningful (not just icons/numbers).', source: 'NNGroup — https://www.nngroup.com/articles/headings-pickup-lines/' },
+        { title: 'No tiny text', detail: 'All text is at least 12px for readability.', source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text' },
+        { title: 'Reading level appropriate', detail: 'Coleman-Liau index indicates content matches target audience.', source: 'Coleman-Liau Index — https://en.wikipedia.org/wiki/Coleman%E2%80%93Liau_index' },
+        { title: 'Paragraph length manageable', detail: 'No paragraphs exceed 150 words.', source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/' },
+        { title: 'Lists used for scanability', detail: 'Content uses lists to break up sequences and improve scanning.', source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/' }
+      ],
+      performance: [
+        { title: 'Web fonts use font-display', detail: 'Font loading doesn\'t block text rendering.', source: 'Web.dev — https://web.dev/articles/font-display' },
+        { title: 'Render-blocking resources limited', detail: 'Few CSS/JS files block initial page render.', source: 'Web.dev — https://web.dev/articles/render-blocking-resources' },
+        { title: 'DOM size reasonable', detail: 'Page has a manageable number of DOM elements.', source: 'Chrome DevTools — https://developer.chrome.com/docs/lighthouse/performance/dom-size' },
+        { title: 'DOM nesting depth OK', detail: 'HTML nesting doesn\'t exceed recommended depth.', source: 'Chrome DevTools — https://developer.chrome.com/docs/lighthouse/performance/dom-size' },
+        { title: 'Third-party scripts limited', detail: 'External script count is within reasonable bounds.', source: 'Web.dev — https://web.dev/articles/optimizing-third-party-javascript' },
+        { title: 'Modern image formats used', detail: 'Images use WebP or AVIF for smaller file sizes.', source: 'Web.dev — https://web.dev/articles/serve-images-webp' },
+        { title: 'CLS within target', detail: 'Cumulative Layout Shift is below 0.1 threshold.', source: 'Web Vitals — https://web.dev/articles/cls' },
+        { title: 'LCP within target', detail: 'Largest Contentful Paint is below 2.5s threshold.', source: 'Web Vitals — https://web.dev/articles/lcp' }
+      ]
+    };
+
+    var passedCategories = report.categories.filter(function(cat) { return cat.passed > 0 || cat.findings.length === 0; });
+    if (passedCategories.length > 0) {
+      html += '<div class="report-findings" style="margin-top:16px">';
+      html += '<details id="passed-checks">';
+      html += '<summary style="cursor:pointer;font-size:18px;font-weight:700;padding:8px 0">Passed Checks</summary>';
+
+      passedCategories.forEach(function(cat) {
+        var passCount = cat.passed || 0;
+        if (cat.findings.length === 0) passCount = cat.checks || 1;
+        if (passCount <= 0) return;
+
+        var failedTitles = {};
+        cat.findings.forEach(function(f) { failedTitles[f.title.substring(0, 30)] = true; });
+
+        html += '<div class="report-finding-group">';
+        html += '<h3>' + (categoryIcons[cat.icon] || '') + ' ' + cat.label + ' <span style="font-size:12px;color:var(--text-secondary);font-weight:400">(' + passCount + ' passed)</span></h3>';
+
+        // Show check descriptions that weren't in the failures
+        var descs = checkDescriptions[cat.icon] || [];
+        var shown = 0;
+        descs.forEach(function(desc) {
+          // Skip if a similar title appears in failures
+          var isFailure = cat.findings.some(function(f) {
+            return f.title.toLowerCase().indexOf(desc.title.toLowerCase().substring(0, 15)) !== -1;
+          });
+          if (isFailure) return;
+          if (shown >= passCount) return;
+
+          html += '<div class="report-finding severity-pass" style="border-left:3px solid #16a34a">';
+          html += '<div class="finding-header">';
+          html += severityBadge('pass');
+          html += '<span class="finding-title">' + escapeHtml(desc.title) + '</span>';
+          html += '</div>';
+          html += '<p class="finding-detail">' + escapeHtml(desc.detail) + '</p>';
+          if (desc.source) {
+            var sp = desc.source.split(' — ');
+            html += '<div class="finding-source">';
+            if (sp[1]) html += '<a href="' + escapeHtml(sp[1]) + '" target="_blank" rel="noopener">' + escapeHtml(sp[0]) + '</a>';
+            else html += escapeHtml(sp[0]);
+            html += '</div>';
+          }
+          html += '</div>';
+          shown++;
+        });
+
+        // If we have more passes than descriptions, show a summary
+        if (shown < passCount) {
+          html += '<div class="report-finding severity-pass" style="border-left:3px solid #16a34a">';
+          html += '<div class="finding-header">';
+          html += severityBadge('pass');
+          html += '<span class="finding-title">' + (passCount - shown) + ' additional check(s) passed</span>';
+          html += '</div>';
+          html += '</div>';
+        }
+
+        html += '</div>';
+      });
+
+      html += '</details>';
+      html += '</div>';
+    }
+
+    // --- Extracted data summary ---
+    html += '<div class="report-summary">';
+    html += '<h2>Design Token Summary</h2>';
+    html += '<div class="summary-grid">';
+
+    // Color palette
+    html += '<div class="summary-section">';
+    html += '<h4>Color Palette</h4>';
+    html += '<div class="color-swatches">';
+    var bgColors = (report.raw.colors.bgColors || []).slice(0, 8);
+    bgColors.forEach(function(c) {
+      html += '<div class="color-swatch" style="background:' + c.value + '" title="' + c.value + ' (' + c.count + ' uses)"></div>';
+    });
+    html += '</div>';
+    html += '<div class="color-swatches" style="margin-top:4px">';
+    var textColors = (report.raw.colors.textColors || []).slice(0, 8);
+    textColors.forEach(function(c) {
+      html += '<div class="color-swatch" style="background:' + c.value + '" title="' + c.value + ' (' + c.count + ' uses)"></div>';
+    });
+    html += '</div>';
+    html += '</div>';
+
+    // Typography
+    html += '<div class="summary-section">';
+    html += '<h4>Typography</h4>';
+    html += '<div class="summary-list">';
+    html += '<div>Body: ' + escapeHtml(report.raw.typography.bodyFontSize) + ' / ' + escapeHtml(report.raw.typography.bodyLineHeight) + '</div>';
+    html += '<div>Families: ' + escapeHtml((report.raw.typography.fontFamilies || []).join(', ')) + '</div>';
+    var headings = report.raw.typography.headings || [];
+    if (headings.length > 0) {
+      html += '<div>Headings: ' + headings.map(function(h) { return h.tag + '=' + h.fontSize; }).join(', ') + '</div>';
+    }
+    html += '</div>';
+    html += '</div>';
+
+    // Spacing
+    html += '<div class="summary-section">';
+    html += '<h4>Spacing</h4>';
+    html += '<div class="summary-list">';
+    html += '<div>Max content width: ' + escapeHtml(report.raw.spacing.maxContentWidth) + '</div>';
+    var topPaddings = (report.raw.spacing.paddings || []).slice(0, 5);
+    html += '<div>Common paddings: ' + topPaddings.map(function(p) { return p.value; }).join(', ') + '</div>';
+    html += '</div>';
+    html += '</div>';
+
+    // Structure
+    html += '<div class="summary-section">';
+    html += '<h4>Structure</h4>';
+    html += '<div class="summary-list">';
+    html += '<div>Elements: ' + report.raw.structure.totalElements + '</div>';
+    html += '<div>Framework: ' + report.raw.structure.cssFramework + '</div>';
+    html += '<div>Responsive: ' + (report.raw.structure.responsiveClasses ? 'Yes' : 'No') + '</div>';
+    html += '<div>Dark mode: ' + (report.raw.structure.darkModeClasses ? 'Yes' : 'No') + '</div>';
+    var ds = report.raw.structure.domStats;
+    if (ds) {
+      html += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">';
+      html += '<div style="font-weight:600;margin-bottom:4px">Element Distribution</div>';
+      if (ds.topTags && ds.topTags.length > 0) {
+        html += '<div style="display:flex;flex-wrap:wrap;gap:4px 10px;font-size:12px">';
+        ds.topTags.forEach(function(t) {
+          html += '<span>&lt;' + t.tag + '&gt; <strong>' + t.count + '</strong></span>';
+        });
+        html += '</div>';
+      }
+      html += '<div style="font-size:12px;margin-top:4px;color:var(--text-secondary)">';
+      html += 'Semantic: ' + ds.semanticCount + ' · Divs: ' + ds.divCount + ' (' + ds.divRatio + '%)';
+      if (ds.displayNoneCount > 0) html += ' · Hidden (display:none): ' + ds.displayNoneCount;
+      if (ds.ariaHiddenCount > 0) html += ' · aria-hidden: ' + ds.ariaHiddenCount;
+      html += '</div>';
+      html += '</div>';
+    }
+    var hpc = report.raw.layout && report.raw.layout.hiddenPanelCount;
+    var hpi = report.raw.layout && report.raw.layout.hiddenPanelIssues;
+    if (hpc > 0) {
+      html += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">';
+      html += '<div style="font-weight:600;margin-bottom:4px">Hidden Panels Detected: ' + hpc + '</div>';
+      if (hpi && hpi.length > 0) {
+        html += '<div style="font-size:12px;color:var(--text-error,#ef4444)">' + hpi.length + ' panel(s) overflow when revealed:</div>';
+        hpi.forEach(function(p) {
+          var issueStr = p.issues.map(function(i) {
+            return i.type === 'right-overflow' ? 'right +' + i.overflow + 'px'
+              : i.type === 'left-overflow' ? 'left -' + i.overflow + 'px'
+              : i.type === 'internal-overflow' ? 'internal +' + i.overflow + 'px'
+              : i.type;
+          }).join(', ');
+          html += '<div style="font-size:12px;margin-top:2px"><code style="font-size:11px">' + p.selector + '</code> (' + p.role + '): ' + issueStr + '</div>';
+        });
+      } else {
+        html += '<div style="font-size:12px;color:var(--text-secondary)">All panels fit within viewport when revealed</div>';
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+    html += '</div>';
+
+    html += '</div>';
+    html += '</div>';
+
+    // --- Methodology note ---
+    html += '<div class="report-methodology">';
+    html += '<h2>About this Report</h2>';
+    html += '<p>This report checks <strong>computed styles</strong> against concrete, evidence-based rules from WCAG 2.2, Material Design, and typography research. ';
+    html += 'It does not use AI — every finding is a deterministic comparison of measured values against documented thresholds.</p>';
+    html += '<p><strong>What it catches well:</strong> contrast ratios, font sizes, touch targets, spacing grid adherence, semantic HTML, heading hierarchy — anything with a hard number.</p>';
+    html += '<p><strong>What it cannot judge:</strong> visual balance, color harmony, whether a layout "feels right", design personality, or context-dependent choices (e.g., a 14px caption is fine but 14px body text is not).</p>';
+    html += '<p>For a full design review with context-aware judgment, use this report as input for a <a href="index.html" style="color:var(--primary)">design consultation</a> — the findings give an AI or human reviewer concrete data to work from.</p>';
+    html += '</div>';
+
+    // Deep scan results
+    if (report.raw.deepScan) {
+      var ds = report.raw.deepScan;
+      html += '<div class="report-summary" style="margin-top:16px">';
+      html += '<h2>Deep Scan Results</h2>';
+
+      if (ds.viewports && ds.viewports.length > 0) {
+        html += '<h4 style="font-size:13px;margin-bottom:8px">Multi-Viewport Comparison</h4>';
+        html += '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px">';
+        html += '<tr><th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border)">Viewport</th><th style="padding:4px 8px;border-bottom:1px solid var(--border)">Touch Issues</th><th style="padding:4px 8px;border-bottom:1px solid var(--border)">Contrast Fails</th><th style="padding:4px 8px;border-bottom:1px solid var(--border)">Overflow</th><th style="padding:4px 8px;border-bottom:1px solid var(--border)"></th></tr>';
+        ds.viewports.forEach(function(vp, idx) {
+          if (vp.error) {
+            html += '<tr><td style="padding:4px 8px">' + escapeHtml(vp.label) + ' (' + vp.width + 'px)</td><td colspan="4" style="padding:4px 8px;color:#dc2626">Extraction failed</td></tr>';
+          } else {
+            html += '<tr><td style="padding:4px 8px">' + escapeHtml(vp.label) + ' (' + vp.width + 'px)</td>';
+            html += '<td style="padding:4px 8px;text-align:center">' + (vp.touchTargets || 0) + '</td>';
+            html += '<td style="padding:4px 8px;text-align:center">' + (vp.contrastFails || 0) + '</td>';
+            html += '<td style="padding:4px 8px;text-align:center">' + (vp.overflow ? 'Yes' : 'No') + '</td>';
+            html += '<td style="padding:4px 8px;text-align:center"><button class="btn" style="font-size:11px;padding:3px 10px;min-height:28px" onclick="window.__milgSwitchViewport(' + idx + ')">View report</button></td></tr>';
+          }
+        });
+        html += '</table>';
+      }
+
+      if (ds.darkMode && ds.darkMode.tested) {
+        html += '<h4 style="font-size:13px;margin-bottom:8px">Dark Mode Test</h4>';
+        var dmFails = ds.darkMode.contrastFails;
+        if (dmFails === 0) {
+          html += '<p style="font-size:13px"><span style="color:#16a34a">No contrast failures in dark mode</span></p>';
+        } else {
+          html += '<p style="font-size:13px"><span style="color:#dc2626">' + dmFails + ' contrast failure(s) in dark mode (' + ds.darkMode.contrastTotal + ' pairs checked)</span></p>';
+        }
+      }
+
+      html += '</div>';
+    }
+
+    return html;
+  }
+
+  // --- Markdown Export ---
+  function renderMarkdown(report, options) {
+    var opts = options || {};
+    var skipImages = opts.skipImages || false;
+    var lines = [];
+    lines.push('# Design Analysis Report');
+    lines.push('');
+    lines.push('**URL:** ' + (report.meta.url || 'Pasted HTML'));
+    lines.push('**Date:** ' + new Date(report.meta.timestamp).toLocaleString());
+    lines.push('**Viewport:** ' + report.meta.viewportWidth + '×' + report.meta.viewportHeight + 'px');
+    lines.push('**Overall Score:** ' + report.overall + '/100 (' + report.grade + ' — ' + report.gradeLabel + ')');
+    lines.push('');
+
+    lines.push('## Category Scores');
+    lines.push('');
+    lines.push('| Category | Score | Weight | Issues |');
+    lines.push('|----------|-------|--------|--------|');
+    report.categories.forEach(function(cat) {
+      var errors = cat.findings.filter(function(f) { return f.severity === 'error'; }).length;
+      var warnings = cat.findings.filter(function(f) { return f.severity === 'warning'; }).length;
+      var issues = [];
+      if (errors > 0) issues.push(errors + ' error' + (errors > 1 ? 's' : ''));
+      if (warnings > 0) issues.push(warnings + ' warning' + (warnings > 1 ? 's' : ''));
+      lines.push('| ' + cat.label + ' | ' + cat.score + '/100 | ' + cat.weight + '% | ' + (issues.length > 0 ? issues.join(', ') : 'All passed') + ' |');
+    });
+    lines.push('');
+
+    lines.push('## Detailed Findings');
+    lines.push('');
+    report.categories.forEach(function(cat) {
+      if (cat.findings.length === 0) return;
+      lines.push('### ' + cat.label);
+      lines.push('');
+      cat.findings.forEach(function(f) {
+        var icon = f.severity === 'error' ? '❌' : f.severity === 'warning' ? '⚠️' : 'ℹ️';
+        lines.push('- ' + icon + ' **[' + f.severity + ']** ' + f.title);
+        if (f.detail) lines.push('  - ' + f.detail);
+        lines.push('  - **Fix:** ' + f.fix);
+        if (f.presetRef) lines.push('  - **Example:** ' + f.presetRef);
+        if (f.source) {
+          var sp = f.source.split(' — ');
+          lines.push('  - **Source:** [' + sp[0] + '](' + (sp[1] || '') + ')');
+        }
+        lines.push('');
+      });
+    });
+
+    lines.push('## Design Token Summary');
+    lines.push('');
+    lines.push('- **Body font:** ' + report.raw.typography.bodyFontSize + ' / ' + report.raw.typography.bodyLineHeight);
+    lines.push('- **Font families:** ' + (report.raw.typography.fontFamilies || []).join(', '));
+    var headings = report.raw.typography.headings || [];
+    if (headings.length > 0) {
+      lines.push('- **Headings:** ' + headings.map(function(h) { return h.tag + '=' + h.fontSize; }).join(', '));
+    }
+    lines.push('- **Max content width:** ' + report.raw.spacing.maxContentWidth);
+    lines.push('- **Elements:** ' + report.raw.structure.totalElements);
+    lines.push('- **Framework:** ' + report.raw.structure.cssFramework);
+    lines.push('- **Responsive:** ' + (report.raw.structure.responsiveClasses ? 'Yes' : 'No'));
+    lines.push('- **Dark mode:** ' + (report.raw.structure.darkModeClasses ? 'Yes' : 'No'));
+    var mds = report.raw.structure.domStats;
+    if (mds) {
+      lines.push('- **Element distribution:** ' + (mds.topTags || []).map(function(t) { return '<' + t.tag + '> ×' + t.count; }).join(', '));
+      lines.push('- **Semantic elements:** ' + mds.semanticCount + ' · Divs: ' + mds.divCount + ' (' + mds.divRatio + '%)');
+      if (mds.displayNoneCount > 0) lines.push('- **Hidden (display:none):** ' + mds.displayNoneCount);
+    }
+    var mhpc = report.raw.layout && report.raw.layout.hiddenPanelCount;
+    var mhpi = report.raw.layout && report.raw.layout.hiddenPanelIssues;
+    if (mhpc > 0) {
+      lines.push('- **Hidden panels:** ' + mhpc + ' detected' + (mhpi && mhpi.length > 0 ? ', ' + mhpi.length + ' overflow when revealed' : ', all fit viewport'));
+    }
+    lines.push('');
+
+    // Deep scan results
+    if (report.raw.deepScan) {
+      var ds = report.raw.deepScan;
+      lines.push('## Deep Scan Results');
+      lines.push('');
+      if (ds.viewports && ds.viewports.length > 0) {
+        lines.push('### Multi-Viewport Comparison');
+        lines.push('');
+        lines.push('| Viewport | Touch Issues | Contrast Fails | Overflow |');
+        lines.push('|----------|-------------|----------------|----------|');
+        ds.viewports.forEach(function(vp) {
+          if (vp.error) {
+            lines.push('| ' + vp.label + ' (' + vp.width + 'px) | — | — | Extraction failed |');
+          } else {
+            lines.push('| ' + vp.label + ' (' + vp.width + 'px) | ' + (vp.touchTargets || 0) + ' | ' + (vp.contrastFails || 0) + ' | ' + (vp.overflow ? 'Yes' : 'No') + ' |');
+          }
+        });
+        lines.push('');
+      }
+      if (ds.darkMode && ds.darkMode.tested) {
+        lines.push('### Dark Mode Test');
+        lines.push('');
+        var dmFails = ds.darkMode.contrastFails;
+        if (dmFails === 0) {
+          lines.push('No contrast failures in dark mode.');
+        } else {
+          lines.push(dmFails + ' contrast failure(s) in dark mode (' + ds.darkMode.contrastTotal + ' pairs checked).');
+        }
+        lines.push('');
+      }
+    }
+
+    // Screenshots (as inline base64 images in markdown) — skip when copying for paste
+    if (!skipImages && report.raw.screenshots && report.raw.screenshots.length > 0) {
+      lines.push('## Page Screenshots');
+      lines.push('');
+      report.raw.screenshots.forEach(function(src, idx) {
+        lines.push('### Screenshot ' + (idx + 1));
+        lines.push('');
+        lines.push('![Page screenshot ' + (idx + 1) + '](' + src + ')');
+        lines.push('');
+      });
+    }
+
+    lines.push('---');
+    lines.push('*Generated by [make-it-look-good](https://github.com/jdeworks/make-it-look-good) Design Analyzer — rule-based scoring, no AI.*');
+
+    return lines.join('\n');
+  }
+
+  function renderGauge(score, grade) {
+    var color = gradeColor(grade);
+    var circumference = 2 * Math.PI * 54;
+    var offset = circumference - (score / 100) * circumference;
+    return '<svg width="120" height="120" viewBox="0 0 120 120">' +
+      '<circle cx="60" cy="60" r="54" fill="none" stroke="var(--border)" stroke-width="8"/>' +
+      '<circle cx="60" cy="60" r="54" fill="none" stroke="' + color + '" stroke-width="8" ' +
+      'stroke-dasharray="' + circumference + '" stroke-dashoffset="' + offset + '" ' +
+      'stroke-linecap="round" transform="rotate(-90 60 60)" style="transition:stroke-dashoffset 0.8s ease"/>' +
+      '<text x="60" y="55" text-anchor="middle" font-size="32" font-weight="700" fill="' + color + '">' + score + '</text>' +
+      '<text x="60" y="75" text-anchor="middle" font-size="14" font-weight="600" fill="' + color + '">' + grade + '</text>' +
+      '</svg>';
+  }
+
+  function renderProgressBar(score) {
+    var color = scoreColor(score);
+    return '<div class="progress-bar"><div class="progress-fill" style="width:' + score + '%;background:' + color + '"></div></div>';
+  }
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  return { renderReport: renderReport, renderMarkdown: renderMarkdown };
+})();
+</file>
+
 <file path="docs/analyzer-snippet-screenshots.js">
 // make-it-look-good — Design Extraction Snippet (with screenshots)
 // Run this in the browser console on any page.
@@ -24002,11 +24664,10 @@ function scoreAccessibility(data) {
     if (!isVisible(hcEl) || isDecorative(hcEl)) continue;
     var hcStyle = getComputedStyle(hcEl);
     var hcRadius = hcStyle.borderRadius;
-    var hcCls = (hcEl.className && typeof hcEl.className === 'string') ? hcEl.className : '';
-    var hcHasRounded = /rounded/.test(hcCls) || (hcRadius && hcRadius !== '0px');
-    var hcIsSection = hcEl.tagName === 'SECTION' || hcEl.tagName === 'ARTICLE';
+    var hcHasRadius = hcRadius && hcRadius !== '0px' && hcRadius !== '0%';
+    var hcHasText = hcEl.textContent && hcEl.textContent.trim().length > 10;
     if (hcStyle.overflowX === 'hidden' && hcEl.scrollWidth > hcEl.clientWidth + 4 && hcEl.clientWidth > 50
-        && !hcHasRounded && !hcIsSection
+        && !hcHasRadius && hcHasText
         && hcStyle.pointerEvents !== 'none'
         && hcStyle.position !== 'fixed') {
       data.layout.hiddenClipElements.push({
@@ -24613,669 +25274,6 @@ function scoreAccessibility(data) {
     window.__milgData = data;
     window.__milgData_json = json;
   }
-})();
-</file>
-
-<file path="docs/analyzer-report.js">
-// make-it-look-good — Report Renderers
-// HTML report, markdown export, gauge SVG, progress bars
-
-window.MilgReport = (function() {
-  "use strict";
-
-  // --- Report Rendering ---
-  var categoryIcons = {
-    contrast: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2v20"/><path d="M12 2a10 10 0 0 1 0 20"/></svg>',
-    type: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>',
-    spacing: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>',
-    touch: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 11V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v0"/><path d="M14 10V4a2 2 0 0 0-2-2 2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>',
-    a11y: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="4" r="2"/><path d="M6 8h12"/><path d="M12 8v8"/><path d="M9 20l3-4 3 4"/></svg>',
-    responsive: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>',
-    consistency: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l9 4.5v5c0 4.1-3.6 8-9 10.5-5.4-2.5-9-6.4-9-10.5v-5L12 3z"/></svg>',
-    cognitive: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a8 8 0 0 0-8 8c0 3.4 2.1 6.3 5 7.5V20h6v-2.5c2.9-1.2 5-4.1 5-7.5a8 8 0 0 0-8-8z"/><line x1="10" y1="22" x2="14" y2="22"/></svg>',
-    layout: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="12" y1="3" x2="12" y2="12"/></svg>',
-    readability: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>'
-  };
-
-  function isDarkUi() {
-    return document.body && document.body.classList.contains('dark-ui');
-  }
-
-  function scoreColor(score) {
-    var dark = isDarkUi();
-    if (score >= 90) return dark ? '#4ade80' : '#16a34a';
-    if (score >= 70) return dark ? '#facc15' : '#ca8a04';
-    if (score >= 50) return dark ? '#fb923c' : '#ea580c';
-    return dark ? '#f87171' : '#dc2626';
-  }
-
-  function gradeColor(grade) {
-    var dark = isDarkUi();
-    var light = { A: '#16a34a', B: '#65a30d', C: '#ca8a04', D: '#ea580c', F: '#dc2626' };
-    var darkC = { A: '#4ade80', B: '#a3e635', C: '#facc15', D: '#fb923c', F: '#f87171' };
-    return (dark ? darkC : light)[grade] || '#64748b';
-  }
-
-  function severityBadge(severity) {
-    var cls = 'severity-badge-' + (severity || 'info');
-    return '<span class="' + cls + '" style="display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px">' + severity + '</span>';
-  }
-
-  function renderReport(report) {
-    var html = '';
-
-    // --- Header ---
-    html += '<div class="report-header">';
-    html += '<div class="report-header-info">';
-    html += '<h1>Design Analysis Report</h1>';
-    var reportUrl = report.meta.url || 'Pasted HTML';
-    if (/^https?:\/\//.test(reportUrl)) {
-      html += '<p class="report-url"><a href="' + escapeHtml(reportUrl) + '" target="_blank" rel="noopener" style="color:var(--primary);text-decoration:underline">' + escapeHtml(reportUrl) + '</a></p>';
-    } else {
-      html += '<p class="report-url">' + escapeHtml(reportUrl) + '</p>';
-    }
-    var ctxType = (report.raw.context && report.raw.context.pageType) || 'unknown';
-    var ctxLabel = { marketing: 'Marketing / Landing', pricing: 'Pricing Page', form: 'Form Page', app: 'Application', content: 'Content Page', component: 'Component / Snippet', unknown: 'General' }[ctxType] || ctxType;
-    html += '<p class="report-timestamp">' + new Date(report.meta.timestamp).toLocaleString() + ' &middot; ' + report.meta.viewportWidth + '&times;' + report.meta.viewportHeight + 'px &middot; Detected: ' + ctxLabel + '</p>';
-    html += '</div>';
-
-    // Overall score gauge
-    html += '<div class="report-gauge">';
-    html += renderGauge(report.overall, report.grade);
-    html += '<div class="report-grade-label">' + report.gradeLabel + '</div>';
-    html += '</div>';
-    html += '</div>';
-
-    // --- Deep scan viewport bar (at top) ---
-    if (report.raw.deepScan && report.raw.deepScan.viewports && report.raw.deepScan.viewports.length > 0) {
-      html += '<div class="report-viewport-bar">';
-      html += '<span style="font-size:12px;color:var(--text-secondary);font-weight:600">Viewports analyzed:</span> ';
-      report.raw.deepScan.viewports.forEach(function(vp, idx) {
-        var status = vp.error ? '✗' : '✓';
-        html += '<span class="viewport-tag' + (vp.error ? ' viewport-error' : '') + '" title="' + escapeHtml(vp.label) + '">' + status + ' ' + vp.width + 'px</span>';
-      });
-      html += '</div>';
-    }
-
-    // --- Screenshots (collapsible, before scores) ---
-    if (report.raw.screenshots && report.raw.screenshots.length > 0) {
-      html += '<details class="report-screenshots">';
-      html += '<summary style="cursor:pointer;font-size:14px;font-weight:600;padding:8px 0;color:var(--text-secondary)">Page Screenshots (' + report.raw.screenshots.length + ')</summary>';
-      html += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;margin-bottom:16px">';
-      report.raw.screenshots.forEach(function(src, idx) {
-        html += '<div class="screenshot-thumb" style="flex:1;min-width:200px;max-width:400px">';
-        if (report.raw.screenshots.length > 1) {
-          html += '<div style="padding:4px 8px;font-size:10px;color:var(--text-secondary);border-bottom:1px solid var(--border);background:var(--bg-alt)">Section ' + (idx + 1) + '</div>';
-        }
-        html += '<img src="' + src + '" alt="Page screenshot ' + (idx + 1) + '" class="screenshot-img" style="width:100%;display:block;cursor:zoom-in" onclick="window.__milgZoomScreenshot(this)" loading="lazy">';
-        html += '</div>';
-      });
-      html += '</div>';
-      // Unhidden panels screenshots (shown when hidden panels were detected)
-      if (report.raw.screenshotsUnhidden && report.raw.screenshotsUnhidden.length > 0) {
-        html += '<div style="margin-top:12px;padding:12px;border:2px dashed var(--border);border-radius:8px;background:var(--bg-alt)">';
-        html += '<div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text-error,#ef4444)">With hidden panels revealed (' + (report.raw.layout.hiddenPanelCount || '?') + ' panels unhidden)</div>';
-        html += '<div style="display:flex;flex-wrap:wrap;gap:12px">';
-        report.raw.screenshotsUnhidden.forEach(function(src, idx) {
-          html += '<div class="screenshot-thumb" style="flex:1;min-width:200px;max-width:400px">';
-          if (report.raw.screenshotsUnhidden.length > 1) {
-            html += '<div style="padding:4px 8px;font-size:10px;color:var(--text-secondary);border-bottom:1px solid var(--border);background:var(--bg-alt)">Section ' + (idx + 1) + '</div>';
-          }
-          html += '<img src="' + src + '" alt="Page with panels revealed ' + (idx + 1) + '" class="screenshot-img" style="width:100%;display:block;cursor:zoom-in" onclick="window.__milgZoomScreenshot(this)" loading="lazy">';
-          html += '</div>';
-        });
-        html += '</div>';
-        html += '</div>';
-      }
-      html += '</details>';
-    }
-
-    // --- Category cards ---
-    html += '<div class="report-categories">';
-    report.categories.forEach(function(cat) {
-      var catId = 'findings-' + cat.icon;
-      var hasFindings = cat.findings.length > 0;
-      // All cards are clickable — scroll to findings if present, otherwise to passed checks
-      var scrollTarget = hasFindings ? catId : 'passed-checks';
-      html += '<div class="report-card report-card-clickable" onclick="var el=document.getElementById(\'' + scrollTarget + '\');if(el){el.scrollIntoView({behavior:\'smooth\',block:\'start\'});if(!el.open&&el.tagName===\'DETAILS\')el.open=true;}">';
-      html += '<div class="report-card-header">';
-      html += '<div class="report-card-icon" style="color:' + scoreColor(cat.score) + '">' + (categoryIcons[cat.icon] || '') + '</div>';
-      html += '<div class="report-card-title">';
-      html += '<h3>' + cat.label + '</h3>';
-      html += '<span class="report-card-weight">' + cat.weight + '% weight</span>';
-      html += '</div>';
-      if (cat.notApplicable) {
-        html += '<div class="report-card-score" style="color:var(--text-secondary);font-size:13px">N/A</div>';
-      } else {
-        html += '<div class="report-card-score" style="color:' + scoreColor(cat.score) + '">' + cat.score + '</div>';
-      }
-      html += '</div>';
-      html += renderProgressBar(cat.score);
-
-      // Finding count with color-coded badges and tooltips
-      var errors = cat.findings.filter(function(f) { return f.severity === 'error'; }).length;
-      var warnings = cat.findings.filter(function(f) { return f.severity === 'warning'; }).length;
-      var infos = cat.findings.filter(function(f) { return f.severity === 'info'; }).length;
-      var passed = (cat.checks || 0) - errors - warnings;
-      if (passed < 0) passed = 0;
-      // If module didn't report checks, estimate from findings
-      var totalChecks = cat.checks || (errors + warnings + infos + (cat.findings.length === 0 ? 1 : 0));
-      var notApplicable = Math.max(0, totalChecks - errors - warnings - infos - passed);
-
-      var catId = 'findings-' + cat.icon;
-      html += '<div class="report-card-counts">';
-      if (totalChecks > 0 || cat.findings.length === 0) {
-        if (errors > 0) html += '<span class="count-error" title="' + errors + ' error(s)" onclick="event.stopPropagation();document.getElementById(\'' + catId + '\').scrollIntoView({behavior:\'smooth\',block:\'start\'})">' + errors + '</span>';
-        if (warnings > 0) html += '<span class="count-warning" title="' + warnings + ' warning(s)" onclick="event.stopPropagation();document.getElementById(\'' + catId + '\').scrollIntoView({behavior:\'smooth\',block:\'start\'})">' + warnings + '</span>';
-        if (infos > 0) html += '<span class="count-info" title="' + infos + ' info" onclick="event.stopPropagation();document.getElementById(\'' + catId + '\').scrollIntoView({behavior:\'smooth\',block:\'start\'})">' + infos + '</span>';
-        if (passed > 0 || cat.findings.length === 0) html += '<span class="count-pass" title="' + (passed || totalChecks) + ' passed">' + (passed || totalChecks) + '</span>';
-      }
-      html += '</div>';
-
-      html += '</div>';
-    });
-    html += '</div>';
-
-    // --- Detailed findings ---
-    html += '<div class="report-findings">';
-    html += '<h2>Detailed Findings</h2>';
-
-    report.categories.forEach(function(cat) {
-      if (cat.findings.length === 0) return;
-
-      html += '<div class="report-finding-group" id="findings-' + cat.icon + '">';
-      html += '<h3>' + (categoryIcons[cat.icon] || '') + ' ' + cat.label + '</h3>';
-
-      cat.findings.forEach(function(f) {
-        html += '<div class="report-finding severity-' + f.severity + '">';
-        html += '<div class="finding-header">';
-        html += severityBadge(f.severity);
-        html += '<span class="finding-title">' + escapeHtml(f.title) + '</span>';
-        html += '</div>';
-        if (f.detail) html += '<p class="finding-detail">' + escapeHtml(f.detail) + '</p>';
-
-        html += '<div class="finding-fix">';
-        html += '<strong>Fix:</strong> ' + escapeHtml(f.fix);
-        html += '</div>';
-
-        if (f.presetRef) {
-          html += '<div class="finding-preset">';
-          html += '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> ';
-          html += escapeHtml(f.presetRef);
-          html += '</div>';
-        }
-
-        if (f.source) {
-          var srcParts = f.source.split(' — ');
-          var srcLabel = srcParts[0];
-          var srcUrl = srcParts[1] || '';
-          html += '<div class="finding-source">';
-          if (srcUrl) {
-            html += '<a href="' + escapeHtml(srcUrl) + '" target="_blank" rel="noopener">' + escapeHtml(srcLabel) + '</a>';
-          } else {
-            html += escapeHtml(srcLabel);
-          }
-          html += '</div>';
-        }
-
-        html += '</div>';
-      });
-
-      html += '</div>';
-    });
-
-    html += '</div>';
-
-    // --- Passed checks ---
-    // Check descriptions per category (what was checked and passed)
-    var checkDescriptions = {
-      contrast: [
-        { title: 'Text contrast ratio meets threshold', detail: 'All text elements have sufficient contrast against their backgrounds.', source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' },
-        { title: 'No undetermined contrast issues', detail: 'All background colors could be resolved (no complex gradients or images blocking analysis).', source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' },
-        { title: 'Text uses real HTML (not images)', detail: 'Text is rendered as selectable HTML, not embedded in images.', source: 'WCAG 2.2 §1.4.5 — https://www.w3.org/TR/WCAG22/#images-of-text' },
-        { title: 'CVD-safe color palette', detail: 'Color pairs remain distinguishable under color vision deficiency simulation.', source: 'Machado et al. 2009 — https://www.inf.ufrgs.br/~oliveira/pubs_files/CVD_Simulation/CVD_Simulation.html' }
-      ],
-      type: [
-        { title: 'Body font size adequate', detail: 'Body text meets the minimum font size for this audience.', source: 'NNGroup — https://www.nngroup.com/articles/let-users-control-font-size/' },
-        { title: 'Line height within range', detail: 'Body line-height provides comfortable reading spacing.', source: 'WCAG 2.2 §1.4.12 — https://www.w3.org/TR/WCAG22/#text-spacing' },
-        { title: 'Line length under limit', detail: 'Content width constrains lines to a readable character count.', source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-length.html' },
-        { title: 'Heading scale consistent', detail: 'Headings follow a logical size progression from H1 down.', source: 'Modular type scales — https://typescale.com/' },
-        { title: 'Font weight count reasonable', detail: 'Uses 2-4 font weights, avoiding visual noise.', source: 'Google Fonts — https://fonts.google.com/knowledge/using_type/choosing_reliable_typefaces' },
-        { title: 'Font family count under limit', detail: 'Uses 1-3 font families for visual consistency.', source: 'Butterick\'s Practical Typography — https://practicaltypography.com/summary-of-key-rules.html' },
-        { title: 'Paragraph spacing appropriate', detail: 'Paragraphs have comfortable spacing between them.', source: 'Butterick\'s Practical Typography — https://practicaltypography.com/space-between-paragraphs.html' }
-      ],
-      spacing: [
-        { title: 'Spacing on 4px grid', detail: 'Spacing values align to a consistent base unit.', source: 'Material Design — https://m3.material.io/foundations/layout/applying-layout' },
-        { title: 'Content width constrained', detail: 'Content doesn\'t stretch to excessive widths.', source: 'NNGroup — https://www.nngroup.com/articles/utilize-available-screen-space/' },
-        { title: 'Body padding adequate', detail: 'Content has proper edge padding, not touching screen sides.', source: 'Material Design — https://m3.material.io/foundations/layout/applying-layout' },
-        { title: 'No element overflow', detail: 'No content extends beyond its container boundaries.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' },
-        { title: 'Interactive element spacing adequate', detail: 'Buttons and links have enough gap between them to prevent mis-clicks.', source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum' }
-      ],
-      touch: [
-        { title: 'Interactive targets properly sized', detail: 'Buttons, links, and inputs meet minimum target size.', source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum' },
-        { title: 'Transition durations appropriate', detail: 'Animations stay under 500ms for responsive feel.', source: 'NNGroup — https://www.nngroup.com/articles/animation-usability/' },
-        { title: 'Touch-friendly on mobile', detail: 'Elements would pass touch target requirements on mobile viewports.', source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout' }
-      ],
-      a11y: [
-        { title: 'Semantic HTML landmarks', detail: 'Page uses header, nav, main, and/or footer elements.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships' },
-        { title: 'Heading hierarchy intact', detail: 'Headings follow sequential order without gaps (h1 → h2 → h3).', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships' },
-        { title: 'Images have alt text', detail: 'All img elements include alt attributes for screen readers.', source: 'WCAG 2.2 §1.1.1 — https://www.w3.org/TR/WCAG22/#non-text-content' },
-        { title: 'Form inputs labeled', detail: 'All form fields have associated labels or aria-label.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships' },
-        { title: 'Focus indicators visible', detail: 'Interactive elements show visible focus styling for keyboard users.', source: 'WCAG 2.2 §2.4.7 — https://www.w3.org/TR/WCAG22/#focus-visible' },
-        { title: 'Language attribute set', detail: 'HTML element has a lang attribute for correct pronunciation.', source: 'WCAG 2.2 §3.1.1 — https://www.w3.org/TR/WCAG22/#language-of-page' },
-        { title: 'Skip navigation link', detail: 'Keyboard users can skip past navigation to reach main content.', source: 'WCAG 2.2 §2.4.1 — https://www.w3.org/TR/WCAG22/#bypass-blocks' },
-        { title: 'Descriptive link text', detail: 'Links use meaningful text instead of "click here" or "read more".', source: 'WCAG 2.2 §2.4.4 — https://www.w3.org/TR/WCAG22/#link-purpose-in-context' },
-        { title: 'No color-only indicators', detail: 'Status information uses icons or text in addition to color.', source: 'WCAG 2.2 §1.4.1 — https://www.w3.org/TR/WCAG22/#use-of-color' }
-      ],
-      responsive: [
-        { title: 'Responsive breakpoints detected', detail: 'CSS media queries or responsive utility classes are present.', source: 'NNGroup — https://www.nngroup.com/articles/responsive-web-design-definition/' },
-        { title: 'Dark mode support', detail: 'Page supports dark color scheme.', source: 'Apple HIG — https://developer.apple.com/design/human-interface-guidelines/dark-mode' },
-        { title: 'Viewport meta tag correct', detail: 'Proper viewport configuration for mobile rendering.', source: 'MDN — https://developer.mozilla.org/en-US/docs/Web/HTML/Viewport_meta_tag' },
-        { title: 'User zoom not blocked', detail: 'Viewport doesn\'t prevent pinch-to-zoom.', source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text' },
-        { title: 'No horizontal overflow', detail: 'Page content fits within viewport width.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' },
-        { title: 'No fixed-width elements', detail: 'Elements use flexible widths that adapt to screen size.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' }
-      ],
-      consistency: [
-        { title: 'Color palette coherent', detail: 'Number of unique colors is within expected range.', source: 'Material Design 3 — https://m3.material.io/styles/color/roles' },
-        { title: 'Font size scale consistent', detail: 'Uses a limited set of font sizes from a type scale.', source: 'Modular type scales — https://typescale.com/' },
-        { title: 'Border radius consistent', detail: 'Uses 2-4 standard border-radius values.', source: 'Material Design 3 — https://m3.material.io/styles/shape/overview' },
-        { title: 'Line height consistent', detail: 'Uses a small set of line-height values across the page.', source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-spacing.html' },
-        { title: 'Dark mode supported', detail: 'Page provides a dark color scheme option.', source: 'Apple HIG — https://developer.apple.com/design/human-interface-guidelines/dark-mode' }
-      ],
-      cognitive: [
-        { title: 'Content sections well-organized', detail: 'Page sections and headings are within cognitive load limits.', source: 'Hick\'s Law — https://lawsofux.com/hicks-law/' },
-        { title: 'Form complexity manageable', detail: 'Visible form fields stay within recommended limits.', source: 'Miller\'s Law — https://lawsofux.com/millers-law/' },
-        { title: 'Navigation count appropriate', detail: 'Top-level navigation items are within working memory limits.', source: 'Cowan (2001) — https://doi.org/10.1017/S0140525X01003922' },
-        { title: 'Reading level appropriate', detail: 'Content reading level matches the target audience.', source: 'WCAG 2.2 §3.1.5 — https://www.w3.org/TR/WCAG22/#reading-level' },
-        { title: 'Visual complexity manageable', detail: 'Number of unique colors doesn\'t overwhelm the user.', source: 'Material Design 3 — https://m3.material.io/styles/color/roles' },
-        { title: 'Heading hierarchy supports scanning', detail: 'Headings follow a logical order for easy content navigation.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships' }
-      ],
-      layout: [
-        { title: 'Section spacing consistent', detail: 'Gaps between major sections use uniform spacing.', source: 'Gestalt similarity — https://lawsofux.com/law-of-similarity/' },
-        { title: 'Alignment grid clean', detail: 'Elements share consistent alignment edges without jagged offsets.', source: 'Gestalt continuity — https://lawsofux.com/law-of-common-region/' },
-        { title: 'H1 visual hierarchy clear', detail: 'H1 stands out from body text at 2-4x size.', source: 'Modular type scales — https://typescale.com/' },
-        { title: 'H2 visual hierarchy appropriate', detail: 'H2 is clearly distinct from both H1 and body text.', source: 'Modular type scales — https://typescale.com/' },
-        { title: 'Border radius standardized', detail: 'Uses a consistent set of border-radius values.', source: 'Material Design 3 — https://m3.material.io/styles/shape/overview' },
-        { title: 'Page density manageable', detail: 'Element count is within comfortable range for the page type.', source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/' }
-      ],
-      readability: [
-        { title: 'Heading density adequate', detail: 'Headings break content into scannable sections.', source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/' },
-        { title: 'Headings are descriptive', detail: 'Heading text is long enough to be meaningful (not just icons/numbers).', source: 'NNGroup — https://www.nngroup.com/articles/headings-pickup-lines/' },
-        { title: 'No tiny text', detail: 'All text is at least 12px for readability.', source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text' },
-        { title: 'Reading level appropriate', detail: 'Coleman-Liau index indicates content matches target audience.', source: 'Coleman-Liau Index — https://en.wikipedia.org/wiki/Coleman%E2%80%93Liau_index' },
-        { title: 'Paragraph length manageable', detail: 'No paragraphs exceed 150 words.', source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/' },
-        { title: 'Lists used for scanability', detail: 'Content uses lists to break up sequences and improve scanning.', source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/' }
-      ],
-      performance: [
-        { title: 'Web fonts use font-display', detail: 'Font loading doesn\'t block text rendering.', source: 'Web.dev — https://web.dev/articles/font-display' },
-        { title: 'Render-blocking resources limited', detail: 'Few CSS/JS files block initial page render.', source: 'Web.dev — https://web.dev/articles/render-blocking-resources' },
-        { title: 'DOM size reasonable', detail: 'Page has a manageable number of DOM elements.', source: 'Chrome DevTools — https://developer.chrome.com/docs/lighthouse/performance/dom-size' },
-        { title: 'DOM nesting depth OK', detail: 'HTML nesting doesn\'t exceed recommended depth.', source: 'Chrome DevTools — https://developer.chrome.com/docs/lighthouse/performance/dom-size' },
-        { title: 'Third-party scripts limited', detail: 'External script count is within reasonable bounds.', source: 'Web.dev — https://web.dev/articles/optimizing-third-party-javascript' },
-        { title: 'Modern image formats used', detail: 'Images use WebP or AVIF for smaller file sizes.', source: 'Web.dev — https://web.dev/articles/serve-images-webp' },
-        { title: 'CLS within target', detail: 'Cumulative Layout Shift is below 0.1 threshold.', source: 'Web Vitals — https://web.dev/articles/cls' },
-        { title: 'LCP within target', detail: 'Largest Contentful Paint is below 2.5s threshold.', source: 'Web Vitals — https://web.dev/articles/lcp' }
-      ]
-    };
-
-    var passedCategories = report.categories.filter(function(cat) { return cat.passed > 0 || cat.findings.length === 0; });
-    if (passedCategories.length > 0) {
-      html += '<div class="report-findings" style="margin-top:16px">';
-      html += '<details id="passed-checks">';
-      html += '<summary style="cursor:pointer;font-size:18px;font-weight:700;padding:8px 0">Passed Checks</summary>';
-
-      passedCategories.forEach(function(cat) {
-        var passCount = cat.passed || 0;
-        if (cat.findings.length === 0) passCount = cat.checks || 1;
-        if (passCount <= 0) return;
-
-        var failedTitles = {};
-        cat.findings.forEach(function(f) { failedTitles[f.title.substring(0, 30)] = true; });
-
-        html += '<div class="report-finding-group">';
-        html += '<h3>' + (categoryIcons[cat.icon] || '') + ' ' + cat.label + ' <span style="font-size:12px;color:var(--text-secondary);font-weight:400">(' + passCount + ' passed)</span></h3>';
-
-        // Show check descriptions that weren't in the failures
-        var descs = checkDescriptions[cat.icon] || [];
-        var shown = 0;
-        descs.forEach(function(desc) {
-          // Skip if a similar title appears in failures
-          var isFailure = cat.findings.some(function(f) {
-            return f.title.toLowerCase().indexOf(desc.title.toLowerCase().substring(0, 15)) !== -1;
-          });
-          if (isFailure) return;
-          if (shown >= passCount) return;
-
-          html += '<div class="report-finding severity-pass" style="border-left:3px solid #16a34a">';
-          html += '<div class="finding-header">';
-          html += severityBadge('pass');
-          html += '<span class="finding-title">' + escapeHtml(desc.title) + '</span>';
-          html += '</div>';
-          html += '<p class="finding-detail">' + escapeHtml(desc.detail) + '</p>';
-          if (desc.source) {
-            var sp = desc.source.split(' — ');
-            html += '<div class="finding-source">';
-            if (sp[1]) html += '<a href="' + escapeHtml(sp[1]) + '" target="_blank" rel="noopener">' + escapeHtml(sp[0]) + '</a>';
-            else html += escapeHtml(sp[0]);
-            html += '</div>';
-          }
-          html += '</div>';
-          shown++;
-        });
-
-        // If we have more passes than descriptions, show a summary
-        if (shown < passCount) {
-          html += '<div class="report-finding severity-pass" style="border-left:3px solid #16a34a">';
-          html += '<div class="finding-header">';
-          html += severityBadge('pass');
-          html += '<span class="finding-title">' + (passCount - shown) + ' additional check(s) passed</span>';
-          html += '</div>';
-          html += '</div>';
-        }
-
-        html += '</div>';
-      });
-
-      html += '</details>';
-      html += '</div>';
-    }
-
-    // --- Extracted data summary ---
-    html += '<div class="report-summary">';
-    html += '<h2>Design Token Summary</h2>';
-    html += '<div class="summary-grid">';
-
-    // Color palette
-    html += '<div class="summary-section">';
-    html += '<h4>Color Palette</h4>';
-    html += '<div class="color-swatches">';
-    var bgColors = (report.raw.colors.bgColors || []).slice(0, 8);
-    bgColors.forEach(function(c) {
-      html += '<div class="color-swatch" style="background:' + c.value + '" title="' + c.value + ' (' + c.count + ' uses)"></div>';
-    });
-    html += '</div>';
-    html += '<div class="color-swatches" style="margin-top:4px">';
-    var textColors = (report.raw.colors.textColors || []).slice(0, 8);
-    textColors.forEach(function(c) {
-      html += '<div class="color-swatch" style="background:' + c.value + '" title="' + c.value + ' (' + c.count + ' uses)"></div>';
-    });
-    html += '</div>';
-    html += '</div>';
-
-    // Typography
-    html += '<div class="summary-section">';
-    html += '<h4>Typography</h4>';
-    html += '<div class="summary-list">';
-    html += '<div>Body: ' + escapeHtml(report.raw.typography.bodyFontSize) + ' / ' + escapeHtml(report.raw.typography.bodyLineHeight) + '</div>';
-    html += '<div>Families: ' + escapeHtml((report.raw.typography.fontFamilies || []).join(', ')) + '</div>';
-    var headings = report.raw.typography.headings || [];
-    if (headings.length > 0) {
-      html += '<div>Headings: ' + headings.map(function(h) { return h.tag + '=' + h.fontSize; }).join(', ') + '</div>';
-    }
-    html += '</div>';
-    html += '</div>';
-
-    // Spacing
-    html += '<div class="summary-section">';
-    html += '<h4>Spacing</h4>';
-    html += '<div class="summary-list">';
-    html += '<div>Max content width: ' + escapeHtml(report.raw.spacing.maxContentWidth) + '</div>';
-    var topPaddings = (report.raw.spacing.paddings || []).slice(0, 5);
-    html += '<div>Common paddings: ' + topPaddings.map(function(p) { return p.value; }).join(', ') + '</div>';
-    html += '</div>';
-    html += '</div>';
-
-    // Structure
-    html += '<div class="summary-section">';
-    html += '<h4>Structure</h4>';
-    html += '<div class="summary-list">';
-    html += '<div>Elements: ' + report.raw.structure.totalElements + '</div>';
-    html += '<div>Framework: ' + report.raw.structure.cssFramework + '</div>';
-    html += '<div>Responsive: ' + (report.raw.structure.responsiveClasses ? 'Yes' : 'No') + '</div>';
-    html += '<div>Dark mode: ' + (report.raw.structure.darkModeClasses ? 'Yes' : 'No') + '</div>';
-    var ds = report.raw.structure.domStats;
-    if (ds) {
-      html += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">';
-      html += '<div style="font-weight:600;margin-bottom:4px">Element Distribution</div>';
-      if (ds.topTags && ds.topTags.length > 0) {
-        html += '<div style="display:flex;flex-wrap:wrap;gap:4px 10px;font-size:12px">';
-        ds.topTags.forEach(function(t) {
-          html += '<span>&lt;' + t.tag + '&gt; <strong>' + t.count + '</strong></span>';
-        });
-        html += '</div>';
-      }
-      html += '<div style="font-size:12px;margin-top:4px;color:var(--text-secondary)">';
-      html += 'Semantic: ' + ds.semanticCount + ' · Divs: ' + ds.divCount + ' (' + ds.divRatio + '%)';
-      if (ds.displayNoneCount > 0) html += ' · Hidden (display:none): ' + ds.displayNoneCount;
-      if (ds.ariaHiddenCount > 0) html += ' · aria-hidden: ' + ds.ariaHiddenCount;
-      html += '</div>';
-      html += '</div>';
-    }
-    var hpc = report.raw.layout && report.raw.layout.hiddenPanelCount;
-    var hpi = report.raw.layout && report.raw.layout.hiddenPanelIssues;
-    if (hpc > 0) {
-      html += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">';
-      html += '<div style="font-weight:600;margin-bottom:4px">Hidden Panels Detected: ' + hpc + '</div>';
-      if (hpi && hpi.length > 0) {
-        html += '<div style="font-size:12px;color:var(--text-error,#ef4444)">' + hpi.length + ' panel(s) overflow when revealed:</div>';
-        hpi.forEach(function(p) {
-          var issueStr = p.issues.map(function(i) {
-            return i.type === 'right-overflow' ? 'right +' + i.overflow + 'px'
-              : i.type === 'left-overflow' ? 'left -' + i.overflow + 'px'
-              : i.type === 'internal-overflow' ? 'internal +' + i.overflow + 'px'
-              : i.type;
-          }).join(', ');
-          html += '<div style="font-size:12px;margin-top:2px"><code style="font-size:11px">' + p.selector + '</code> (' + p.role + '): ' + issueStr + '</div>';
-        });
-      } else {
-        html += '<div style="font-size:12px;color:var(--text-secondary)">All panels fit within viewport when revealed</div>';
-      }
-      html += '</div>';
-    }
-    html += '</div>';
-    html += '</div>';
-
-    html += '</div>';
-    html += '</div>';
-
-    // --- Methodology note ---
-    html += '<div class="report-methodology">';
-    html += '<h2>About this Report</h2>';
-    html += '<p>This report checks <strong>computed styles</strong> against concrete, evidence-based rules from WCAG 2.2, Material Design, and typography research. ';
-    html += 'It does not use AI — every finding is a deterministic comparison of measured values against documented thresholds.</p>';
-    html += '<p><strong>What it catches well:</strong> contrast ratios, font sizes, touch targets, spacing grid adherence, semantic HTML, heading hierarchy — anything with a hard number.</p>';
-    html += '<p><strong>What it cannot judge:</strong> visual balance, color harmony, whether a layout "feels right", design personality, or context-dependent choices (e.g., a 14px caption is fine but 14px body text is not).</p>';
-    html += '<p>For a full design review with context-aware judgment, use this report as input for a <a href="index.html" style="color:var(--primary)">design consultation</a> — the findings give an AI or human reviewer concrete data to work from.</p>';
-    html += '</div>';
-
-    // Deep scan results
-    if (report.raw.deepScan) {
-      var ds = report.raw.deepScan;
-      html += '<div class="report-summary" style="margin-top:16px">';
-      html += '<h2>Deep Scan Results</h2>';
-
-      if (ds.viewports && ds.viewports.length > 0) {
-        html += '<h4 style="font-size:13px;margin-bottom:8px">Multi-Viewport Comparison</h4>';
-        html += '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px">';
-        html += '<tr><th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border)">Viewport</th><th style="padding:4px 8px;border-bottom:1px solid var(--border)">Touch Issues</th><th style="padding:4px 8px;border-bottom:1px solid var(--border)">Contrast Fails</th><th style="padding:4px 8px;border-bottom:1px solid var(--border)">Overflow</th><th style="padding:4px 8px;border-bottom:1px solid var(--border)"></th></tr>';
-        ds.viewports.forEach(function(vp, idx) {
-          if (vp.error) {
-            html += '<tr><td style="padding:4px 8px">' + escapeHtml(vp.label) + ' (' + vp.width + 'px)</td><td colspan="4" style="padding:4px 8px;color:#dc2626">Extraction failed</td></tr>';
-          } else {
-            html += '<tr><td style="padding:4px 8px">' + escapeHtml(vp.label) + ' (' + vp.width + 'px)</td>';
-            html += '<td style="padding:4px 8px;text-align:center">' + (vp.touchTargets || 0) + '</td>';
-            html += '<td style="padding:4px 8px;text-align:center">' + (vp.contrastFails || 0) + '</td>';
-            html += '<td style="padding:4px 8px;text-align:center">' + (vp.overflow ? 'Yes' : 'No') + '</td>';
-            html += '<td style="padding:4px 8px;text-align:center"><button class="btn" style="font-size:11px;padding:3px 10px;min-height:28px" onclick="window.__milgSwitchViewport(' + idx + ')">View report</button></td></tr>';
-          }
-        });
-        html += '</table>';
-      }
-
-      if (ds.darkMode && ds.darkMode.tested) {
-        html += '<h4 style="font-size:13px;margin-bottom:8px">Dark Mode Test</h4>';
-        var dmFails = ds.darkMode.contrastFails;
-        if (dmFails === 0) {
-          html += '<p style="font-size:13px"><span style="color:#16a34a">No contrast failures in dark mode</span></p>';
-        } else {
-          html += '<p style="font-size:13px"><span style="color:#dc2626">' + dmFails + ' contrast failure(s) in dark mode (' + ds.darkMode.contrastTotal + ' pairs checked)</span></p>';
-        }
-      }
-
-      html += '</div>';
-    }
-
-    return html;
-  }
-
-  // --- Markdown Export ---
-  function renderMarkdown(report, options) {
-    var opts = options || {};
-    var skipImages = opts.skipImages || false;
-    var lines = [];
-    lines.push('# Design Analysis Report');
-    lines.push('');
-    lines.push('**URL:** ' + (report.meta.url || 'Pasted HTML'));
-    lines.push('**Date:** ' + new Date(report.meta.timestamp).toLocaleString());
-    lines.push('**Viewport:** ' + report.meta.viewportWidth + '×' + report.meta.viewportHeight + 'px');
-    lines.push('**Overall Score:** ' + report.overall + '/100 (' + report.grade + ' — ' + report.gradeLabel + ')');
-    lines.push('');
-
-    lines.push('## Category Scores');
-    lines.push('');
-    lines.push('| Category | Score | Weight | Issues |');
-    lines.push('|----------|-------|--------|--------|');
-    report.categories.forEach(function(cat) {
-      var errors = cat.findings.filter(function(f) { return f.severity === 'error'; }).length;
-      var warnings = cat.findings.filter(function(f) { return f.severity === 'warning'; }).length;
-      var issues = [];
-      if (errors > 0) issues.push(errors + ' error' + (errors > 1 ? 's' : ''));
-      if (warnings > 0) issues.push(warnings + ' warning' + (warnings > 1 ? 's' : ''));
-      lines.push('| ' + cat.label + ' | ' + cat.score + '/100 | ' + cat.weight + '% | ' + (issues.length > 0 ? issues.join(', ') : 'All passed') + ' |');
-    });
-    lines.push('');
-
-    lines.push('## Detailed Findings');
-    lines.push('');
-    report.categories.forEach(function(cat) {
-      if (cat.findings.length === 0) return;
-      lines.push('### ' + cat.label);
-      lines.push('');
-      cat.findings.forEach(function(f) {
-        var icon = f.severity === 'error' ? '❌' : f.severity === 'warning' ? '⚠️' : 'ℹ️';
-        lines.push('- ' + icon + ' **[' + f.severity + ']** ' + f.title);
-        if (f.detail) lines.push('  - ' + f.detail);
-        lines.push('  - **Fix:** ' + f.fix);
-        if (f.presetRef) lines.push('  - **Example:** ' + f.presetRef);
-        if (f.source) {
-          var sp = f.source.split(' — ');
-          lines.push('  - **Source:** [' + sp[0] + '](' + (sp[1] || '') + ')');
-        }
-        lines.push('');
-      });
-    });
-
-    lines.push('## Design Token Summary');
-    lines.push('');
-    lines.push('- **Body font:** ' + report.raw.typography.bodyFontSize + ' / ' + report.raw.typography.bodyLineHeight);
-    lines.push('- **Font families:** ' + (report.raw.typography.fontFamilies || []).join(', '));
-    var headings = report.raw.typography.headings || [];
-    if (headings.length > 0) {
-      lines.push('- **Headings:** ' + headings.map(function(h) { return h.tag + '=' + h.fontSize; }).join(', '));
-    }
-    lines.push('- **Max content width:** ' + report.raw.spacing.maxContentWidth);
-    lines.push('- **Elements:** ' + report.raw.structure.totalElements);
-    lines.push('- **Framework:** ' + report.raw.structure.cssFramework);
-    lines.push('- **Responsive:** ' + (report.raw.structure.responsiveClasses ? 'Yes' : 'No'));
-    lines.push('- **Dark mode:** ' + (report.raw.structure.darkModeClasses ? 'Yes' : 'No'));
-    var mds = report.raw.structure.domStats;
-    if (mds) {
-      lines.push('- **Element distribution:** ' + (mds.topTags || []).map(function(t) { return '<' + t.tag + '> ×' + t.count; }).join(', '));
-      lines.push('- **Semantic elements:** ' + mds.semanticCount + ' · Divs: ' + mds.divCount + ' (' + mds.divRatio + '%)');
-      if (mds.displayNoneCount > 0) lines.push('- **Hidden (display:none):** ' + mds.displayNoneCount);
-    }
-    var mhpc = report.raw.layout && report.raw.layout.hiddenPanelCount;
-    var mhpi = report.raw.layout && report.raw.layout.hiddenPanelIssues;
-    if (mhpc > 0) {
-      lines.push('- **Hidden panels:** ' + mhpc + ' detected' + (mhpi && mhpi.length > 0 ? ', ' + mhpi.length + ' overflow when revealed' : ', all fit viewport'));
-    }
-    lines.push('');
-
-    // Deep scan results
-    if (report.raw.deepScan) {
-      var ds = report.raw.deepScan;
-      lines.push('## Deep Scan Results');
-      lines.push('');
-      if (ds.viewports && ds.viewports.length > 0) {
-        lines.push('### Multi-Viewport Comparison');
-        lines.push('');
-        lines.push('| Viewport | Touch Issues | Contrast Fails | Overflow |');
-        lines.push('|----------|-------------|----------------|----------|');
-        ds.viewports.forEach(function(vp) {
-          if (vp.error) {
-            lines.push('| ' + vp.label + ' (' + vp.width + 'px) | — | — | Extraction failed |');
-          } else {
-            lines.push('| ' + vp.label + ' (' + vp.width + 'px) | ' + (vp.touchTargets || 0) + ' | ' + (vp.contrastFails || 0) + ' | ' + (vp.overflow ? 'Yes' : 'No') + ' |');
-          }
-        });
-        lines.push('');
-      }
-      if (ds.darkMode && ds.darkMode.tested) {
-        lines.push('### Dark Mode Test');
-        lines.push('');
-        var dmFails = ds.darkMode.contrastFails;
-        if (dmFails === 0) {
-          lines.push('No contrast failures in dark mode.');
-        } else {
-          lines.push(dmFails + ' contrast failure(s) in dark mode (' + ds.darkMode.contrastTotal + ' pairs checked).');
-        }
-        lines.push('');
-      }
-    }
-
-    // Screenshots (as inline base64 images in markdown) — skip when copying for paste
-    if (!skipImages && report.raw.screenshots && report.raw.screenshots.length > 0) {
-      lines.push('## Page Screenshots');
-      lines.push('');
-      report.raw.screenshots.forEach(function(src, idx) {
-        lines.push('### Screenshot ' + (idx + 1));
-        lines.push('');
-        lines.push('![Page screenshot ' + (idx + 1) + '](' + src + ')');
-        lines.push('');
-      });
-    }
-
-    lines.push('---');
-    lines.push('*Generated by [make-it-look-good](https://github.com/jdeworks/make-it-look-good) Design Analyzer — rule-based scoring, no AI.*');
-
-    return lines.join('\n');
-  }
-
-  function renderGauge(score, grade) {
-    var color = gradeColor(grade);
-    var circumference = 2 * Math.PI * 54;
-    var offset = circumference - (score / 100) * circumference;
-    return '<svg width="120" height="120" viewBox="0 0 120 120">' +
-      '<circle cx="60" cy="60" r="54" fill="none" stroke="var(--border)" stroke-width="8"/>' +
-      '<circle cx="60" cy="60" r="54" fill="none" stroke="' + color + '" stroke-width="8" ' +
-      'stroke-dasharray="' + circumference + '" stroke-dashoffset="' + offset + '" ' +
-      'stroke-linecap="round" transform="rotate(-90 60 60)" style="transition:stroke-dashoffset 0.8s ease"/>' +
-      '<text x="60" y="55" text-anchor="middle" font-size="32" font-weight="700" fill="' + color + '">' + score + '</text>' +
-      '<text x="60" y="75" text-anchor="middle" font-size="14" font-weight="600" fill="' + color + '">' + grade + '</text>' +
-      '</svg>';
-  }
-
-  function renderProgressBar(score) {
-    var color = scoreColor(score);
-    return '<div class="progress-bar"><div class="progress-fill" style="width:' + score + '%;background:' + color + '"></div></div>';
-  }
-
-  function escapeHtml(str) {
-    if (!str) return '';
-    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  }
-
-  return { renderReport: renderReport, renderMarkdown: renderMarkdown };
 })();
 </file>
 
@@ -26460,6 +26458,351 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
 }
 </file>
 
+<file path="docs/analyzer.html">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>make-it-look-good — Design Analyzer</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='2' y='2' width='12' height='12' rx='2' fill='%232563eb'/><rect x='18' y='2' width='12' height='12' rx='2' fill='%2393c5fd'/><rect x='2' y='18' width='12' height='12' rx='2' fill='%2393c5fd'/><rect x='18' y='18' width='12' height='12' rx='2' fill='%232563eb'/></svg>">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="analyzer.css">
+</head>
+<body class="analyzer-body">
+
+  <!-- Header -->
+  <header class="header">
+    <div class="header-left">
+      <a href="index.html" class="logo" style="text-decoration:none"><span class="logo-full">make-it-look-good <span class="logo-sub">analyzer</span></span><span class="logo-short">milg</span></a>
+    </div>
+    <nav class="header-right" aria-label="Site navigation">
+      <a href="index.html" class="btn" style="text-decoration:none">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        <span class="hide-mobile">Editor</span>
+      </a>
+      <button class="btn btn-icon" id="darkBtn" title="Toggle dark mode" aria-label="Toggle dark mode">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+    </nav>
+  </header>
+
+  <main>
+  <!-- Input Section -->
+  <div class="input-section" id="inputSection">
+    <div class="input-hero">
+      <h1>Design Analyzer</h1>
+      <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
+    </div>
+
+    <!-- Tabs -->
+    <div class="input-tabs">
+      <button class="tab-btn active" data-tab="tabUrl">Enter URL<br><span class="tab-sub">(mobile-friendly)</span></button>
+      <button class="tab-btn" data-tab="tabSnippet">Console Snippet<br><span class="tab-sub">(most accurate)</span></button>
+      <button class="tab-btn" data-tab="tabHtml">Paste HTML<br><span class="tab-sub">(approximate)</span></button>
+      <button class="tab-btn" data-tab="tabImport">Import<br><span class="tab-sub">(JSON file)</span></button>
+    </div>
+
+    <!-- Shared screenshot options (applies to all tabs) -->
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;flex-wrap:wrap;font-size:12px;color:var(--text-secondary)">
+      <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
+        <input type="checkbox" id="screenshotCheck" checked style="width:15px;height:15px;cursor:pointer">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="13" r="4"/><path d="M5 3v2"/><path d="M19 3v2"/></svg>
+        Screenshots
+      </label>
+      <select id="screenshotQuality" style="font-size:11px;padding:2px 6px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);min-height:24px;cursor:pointer" title="Screenshot quality / file size tradeoff">
+        <option value="0.5|0.4">Draft (~30KB)</option>
+        <option value="0.5|0.7" selected>Standard (~60KB)</option>
+        <option value="0.75|0.8">High (~150KB)</option>
+        <option value="1|0.9">Full (~400KB)</option>
+      </select>
+    </div>
+
+    <!-- Tab 0: URL fetch -->
+    <div class="tab-content active" id="tabUrl">
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;line-height:1.5;">
+        Enter a URL to analyze. The page is fetched via a CORS proxy and rendered in a hidden iframe with its CSS.
+        Works on phone — no console needed.
+      </p>
+      <div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;line-height:1.5;padding:8px 12px;background:var(--bg-alt);border:1px solid var(--border);border-radius:var(--radius);">
+        <strong style="color:var(--text)">Limitations:</strong> Pages behind login, localhost, and some sites that block proxies won't work. Use the Console Snippet tab for those.
+        JavaScript is intentionally <strong style="color:var(--text)">not</strong> executed — running unknown JS in your browser is a security risk. This means JS-rendered pages (React, Angular, Vue) will appear empty. Use the Console Snippet on the real page for full results.
+      </div>
+      <div class="input-area">
+        <label for="urlInput" class="sr-only">Website URL</label>
+        <input type="url" id="urlInput" name="url" autocomplete="on" list="urlHistory" placeholder="https://example.com" style="width:100%;padding:12px 16px;border:1px solid var(--border);border-radius:var(--radius);font-size:15px;font-family:var(--font);color:var(--text);background:var(--bg);outline:none;min-height:44px;" />
+        <datalist id="urlHistory"></datalist>
+      </div>
+      <div class="viewport-row" id="viewportRow" style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap">
+        <label style="font-size:12px;color:var(--text-secondary);white-space:nowrap">Viewport:</label>
+        <select id="viewportSelect" class="btn" style="padding:4px 24px 4px 8px;font-size:12px;appearance:auto;cursor:pointer;min-height:36px">
+          <option value="current" selected>Current window size</option>
+          <option value="375x812">Phone (375×812)</option>
+          <option value="768x1024">Tablet (768×1024)</option>
+          <option value="1280x900">Desktop (1280×900)</option>
+          <option value="1920x1080">Large (1920×1080)</option>
+        </select>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+        <label style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="checkbox" id="deepScanCheck" style="width:16px;height:16px;cursor:pointer">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><rect x="2" y="3" width="20" height="14" rx="2"/><rect x="6" y="7" width="12" height="8" rx="1" stroke-dasharray="2 2"/><line x1="8" y1="21" x2="16" y2="21"/></svg>
+          Deep scan (multi-viewport + dark mode)
+        </label>
+      </div>
+      <details style="margin-top:12px" id="excludeDetails">
+        <summary style="font-size:13px;color:var(--text-secondary);cursor:pointer;user-select:none">Skip elements from analysis (optional)</summary>
+        <div style="margin-top:8px">
+          <p style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;line-height:1.4">Elements you skip (and everything inside them) won't be scored. Useful for decorative UI mockups, screenshots, or third-party widgets.</p>
+          <div id="excludePresets" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+            <button type="button" class="exclude-tag" data-selector="[class*='mock']">Mock UI</button>
+            <button type="button" class="exclude-tag" data-selector=".demo, .preview, .screenshot">Demos</button>
+            <button type="button" class="exclude-tag" data-selector="footer">Footer</button>
+            <button type="button" class="exclude-tag" data-selector="iframe">Iframes</button>
+            <button type="button" class="exclude-tag" data-selector="svg">SVGs</button>
+            <button type="button" class="exclude-tag" data-selector=".sidebar, aside">Sidebar</button>
+            <button type="button" class="exclude-tag" data-selector=".ad, .ads, [class*='advert']">Ads</button>
+            <button type="button" class="exclude-tag" data-selector=".cookie, [class*='cookie'], [class*='consent']">Cookie banners</button>
+          </div>
+          <label for="excludeSelector" style="font-size:12px;color:var(--text-secondary)">Or type a CSS selector:</label>
+          <input type="text" id="excludeSelector" placeholder="e.g. .hero-image, #chat-widget" style="width:100%;padding:8px 12px;margin-top:4px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;font-family:var(--mono);color:var(--text);background:var(--bg);outline:none;min-height:44px;" />
+        </div>
+      </details>
+      <div class="input-actions" style="margin-top:12px">
+        <button class="btn btn-primary" id="analyzeUrlBtn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          Analyze URL
+        </button>
+      </div>
+      <div id="urlStatus" style="margin-top:12px;font-size:13px;color:var(--text-secondary);display:none"></div>
+      <div class="analysis-progress" id="analysisProgress" style="display:none">
+        <div class="analysis-progress-bar">
+          <div class="analysis-progress-fill" id="progressFill"></div>
+        </div>
+        <div class="analysis-progress-label" id="progressLabel">Preparing...</div>
+      </div>
+    </div>
+
+    <!-- Tab 1: Snippet extraction -->
+    <div class="tab-content" id="tabSnippet">
+      <div class="guide-steps">
+        <div class="guide-step">
+          <div class="guide-step-num">1</div>
+          <div>Open the website you want to analyze (works with <strong>any URL</strong> including <code>localhost</code> and pages behind login)</div>
+        </div>
+        <div class="guide-step">
+          <div class="guide-step-num">2</div>
+          <div>Open browser DevTools with <code>F12</code> and go to the <strong>Console</strong> tab.
+            <span style="display:block;font-size:12px;color:var(--text-secondary);margin-top:4px">Tip: undock DevTools into a separate window (click <code>⋮</code> → dock side → <strong>undock</strong>) so the page viewport stays at its real size. Docked DevTools shrink the page, which can skew layout and touch-target measurements.</span>
+          </div>
+        </div>
+        <div class="guide-step">
+          <div class="guide-step-num">3</div>
+          <div>Copy the extraction snippet below and <strong>paste it into the console</strong>, then press Enter. It extracts design tokens and copies JSON to your clipboard automatically.</div>
+        </div>
+        <div class="guide-step">
+          <div class="guide-step-num">4</div>
+          <div>Come back here and <strong>paste the JSON</strong> into the box below, then click Analyze.
+            <span style="display:block;font-size:12px;color:var(--text-secondary);margin-top:4px">If auto-copy didn't work, the console will show the JSON — type <code>copy(window.__milgData_json)</code> to copy it manually.</span>
+            <span style="display:block;font-size:12px;color:var(--text-secondary);margin-top:4px">For pages with scroll animations: run <code>window.__milgScrollFirst = true</code> first, then paste the snippet. It scrolls the page to trigger lazy loading before extracting.</span>
+          </div>
+        </div>
+      </div>
+
+
+      <div class="snippet-section">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <h2 style="font-size:14px">Extraction Snippet</h2>
+          <button class="btn" id="copySnippetBtn">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            Copy snippet
+          </button>
+        </div>
+        <div class="snippet-box">
+          <div class="snippet-header">
+            <span>JavaScript</span>
+          </div>
+          <pre class="snippet-code" id="snippetCode">Loading...</pre>
+        </div>
+      </div>
+
+      <div class="console-tip" style="margin-top:20px;">
+        <strong>Quick HTML grab (with CSS):</strong> If you just want to copy the page for the "Paste HTML" tab, run this in the console:<br>
+        <code style="display:block;margin-top:6px;padding:6px 8px;word-break:break-all;white-space:pre-wrap">(async()=>{let c='';for(const s of document.styleSheets){try{c+=Array.from(s.cssRules).map(r=>r.cssText).join('\n')}catch(e){if(s.href){try{const r=await fetch(s.href);c+=await r.text()}catch(e2){}}}}const h=document.documentElement.cloneNode(true);h.querySelectorAll('script').forEach(s=>s.remove());h.querySelectorAll('link[rel=stylesheet]').forEach(l=>l.remove());const st=document.createElement('style');st.textContent=c;h.querySelector('head').appendChild(st);copy(h.outerHTML);console.log('%c✓ HTML + CSS copied!','color:#16a34a;font-weight:bold;font-size:14px')})()</code>
+        <span style="color:var(--text-secondary);font-size:12px;display:block;margin-top:4px">This inlines all CSS (including external stylesheets) into the HTML and removes scripts. Works behind logins, on SPAs, localhost — everywhere.</span>
+      </div>
+
+      <div style="margin-top:24px;">
+        <h2 style="font-size:14px;font-weight:600;margin-bottom:8px;">Paste extracted JSON</h2>
+        <div class="input-area">
+          <label for="pasteInput" class="sr-only">Extracted JSON data</label>
+          <textarea id="pasteInput" placeholder='Paste the JSON data copied by the snippet here...&#10;&#10;It should start with { "meta": { ... }'></textarea>
+        </div>
+        <div class="input-actions">
+          <button class="btn btn-primary" id="analyzeBtn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a8 8 0 0 0-8 8c0 3.4 2.1 6.3 5 7.5V20h6v-2.5c2.9-1.2 5-4.1 5-7.5a8 8 0 0 0-8-8z"/><line x1="10" y1="22" x2="14" y2="22"/></svg>
+            Analyze
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 2: Paste HTML -->
+    <div class="tab-content" id="tabHtml">
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;line-height:1.5;padding:10px 14px;background:var(--bg-alt);border:1px solid var(--border);border-radius:var(--radius);">
+        <strong style="color:var(--text)">Approximate mode.</strong>
+        This renders HTML in an iframe and reads computed styles. External fonts, images, and some CSS (relative URLs, @import chains) won't load — scores may differ from the live site.
+        Use the "Extract from Site" tab for accurate results.
+      </div>
+
+      <div class="console-tip" style="margin-bottom:16px;">
+        <strong>Grab page with CSS inlined:</strong> Open DevTools console (<code>F12</code>) and run:<br>
+        <code style="display:block;margin-top:6px;padding:6px 8px;word-break:break-all;white-space:pre-wrap">(async()=>{let c='';for(const s of document.styleSheets){try{c+=Array.from(s.cssRules).map(r=>r.cssText).join('\n')}catch(e){if(s.href){try{const r=await fetch(s.href);c+=await r.text()}catch(e2){}}}}const h=document.documentElement.cloneNode(true);h.querySelectorAll('script').forEach(s=>s.remove());h.querySelectorAll('link[rel=stylesheet]').forEach(l=>l.remove());const st=document.createElement('style');st.textContent=c;h.querySelector('head').appendChild(st);copy(h.outerHTML);console.log('%c✓ HTML + CSS copied!','color:#16a34a;font-weight:bold;font-size:14px')})()</code>
+        <span style="color:var(--text-secondary);font-size:12px;display:block;margin-top:4px">Inlines all external CSS into the HTML and strips scripts. Works behind logins, on SPAs, localhost.</span>
+      </div>
+
+      <div class="input-area">
+        <label for="htmlInput" class="sr-only">HTML source code</label>
+        <textarea id="htmlInput" placeholder='Paste HTML here...&#10;&#10;<div class="p-8 max-w-4xl mx-auto">&#10;  <h1 class="text-3xl font-bold">...</h1>&#10;</div>'></textarea>
+      </div>
+      <div class="input-actions">
+        <button class="btn btn-primary" id="analyzeHtmlBtn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a8 8 0 0 0-8 8c0 3.4 2.1 6.3 5 7.5V20h6v-2.5c2.9-1.2 5-4.1 5-7.5a8 8 0 0 0-8-8z"/><line x1="10" y1="22" x2="14" y2="22"/></svg>
+          Analyze HTML
+        </button>
+      </div>
+    </div>
+
+    <!-- Tab 3: Import JSON -->
+    <div class="tab-content" id="tabImport">
+      <div class="import-dropzone" id="importDropzone">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--text-secondary);margin-bottom:12px">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        <p style="font-size:14px;font-weight:600;margin-bottom:4px">Drop a JSON file here</p>
+        <p style="font-size:12px;color:var(--text-secondary)">or click to browse — loads a previously exported analysis</p>
+        <input type="file" id="importDropFile" accept=".json" style="display:none">
+      </div>
+    </div>
+  </div>
+
+  <!-- Report controls (shown when report is visible) -->
+  <div class="report-controls" id="reportActions">
+    <!-- Top row: audience selector + new analysis -->
+    <div class="report-controls-row">
+      <div class="persona-selector">
+        <label for="profileSelect" style="font-size:13px;color:var(--text-secondary);white-space:nowrap;font-weight:600">Audience:</label>
+        <select id="profileSelect" class="btn" style="padding:6px 28px 6px 10px;font-size:13px;appearance:auto;cursor:pointer">
+          <option value="general">General (WCAG AA)</option>
+          <option value="wcag_aaa">Strict (WCAG AAA)</option>
+          <option value="elderly">Elderly (65+)</option>
+          <option value="low_vision">Low Vision</option>
+          <option value="motor_impairment">Motor Impairment</option>
+          <option value="color_blind">Color Vision Deficiency</option>
+          <option value="children">Children (6-12)</option>
+          <option value="cognitive">Cognitive / Learning</option>
+        </select>
+        <button class="btn btn-icon" id="profileInfoBtn" title="What do these profiles do?" aria-label="Profile info" style="padding:6px;min-width:44px;min-height:44px;font-size:15px;font-weight:700">?</button>
+      </div>
+      <button class="btn" id="newAnalysisBtn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New Analysis
+      </button>
+    </div>
+    <!-- Profile explanation (hidden by default) -->
+    <div class="profile-explanation" id="profileExplanation" style="display:none">
+      <button class="profile-explanation-close" onclick="document.getElementById('profileExplanation').style.display='none'" aria-label="Close">&times;</button>
+      <h4>Audience Profiles — Evidence-Based Thresholds</h4>
+      <p>Each profile adjusts scoring thresholds based on published accessibility research. Switching re-scores instantly.</p>
+      <table>
+        <tr><th></th><th>Contrast</th><th>Font min</th><th>Touch</th><th>Key change</th></tr>
+        <tr><td><strong>General</strong></td><td>4.5:1</td><td>16px</td><td>24/44px</td><td>WCAG AA baseline</td></tr>
+        <tr><td><strong>WCAG AAA</strong></td><td>7:1</td><td>16px</td><td>24/44px</td><td>Enhanced contrast</td></tr>
+        <tr><td><strong>Elderly</strong></td><td>7:1</td><td>18px</td><td>48px</td><td>12px spacing, max 7 nav, no thin fonts, reduced motion</td></tr>
+        <tr><td><strong>Low Vision</strong></td><td>7:1</td><td>18px</td><td>44px</td><td>12px spacing, 32px icons, bg image warnings</td></tr>
+        <tr><td><strong>Motor</strong></td><td>4.5:1</td><td>16px</td><td>48px</td><td>12px spacing, focus indicator checks</td></tr>
+        <tr><td><strong>Color Vision</strong></td><td>4.5:1</td><td>16px</td><td>24/44px</td><td>CVD palette simulation, red-green reliance</td></tr>
+        <tr><td><strong>Children</strong></td><td>4.5:1</td><td>18px</td><td>48px</td><td>16px spacing, grade 5 reading, max 5 nav</td></tr>
+        <tr><td><strong>Cognitive</strong></td><td>4.5:1</td><td>16px</td><td>24/44px</td><td>Grade 8 reading, max 5 nav, reduced motion</td></tr>
+      </table>
+      <details style="margin-top:10px">
+        <summary style="font-size:12px;color:var(--text-secondary);cursor:pointer">Sources</summary>
+        <ul style="font-size:11px;color:var(--text-secondary);margin-top:6px;padding-left:18px;line-height:1.6">
+          <li><strong>Contrast 4.5:1 / 7:1</strong> — <a href="https://www.w3.org/TR/WCAG22/#contrast-minimum" target="_blank" rel="noopener">WCAG 2.2 §1.4.3</a> (AA) and <a href="https://www.w3.org/TR/WCAG22/#contrast-enhanced" target="_blank" rel="noopener">§1.4.6</a> (AAA)</li>
+          <li><strong>Touch target 44px</strong> — <a href="https://www.w3.org/TR/WCAG22/#target-size-minimum" target="_blank" rel="noopener">WCAG 2.2 §2.5.8</a>; 48dp from <a href="https://m3.material.io/foundations/layout/applying-layout" target="_blank" rel="noopener">Material Design 3</a></li>
+          <li><strong>Click target 24px</strong> — <a href="https://www.w3.org/TR/WCAG22/#target-size-minimum" target="_blank" rel="noopener">WCAG 2.2 §2.5.8</a> minimum for non-inline targets</li>
+          <li><strong>16px body text</strong> — Browser default; <a href="https://www.nngroup.com/articles/let-users-control-font-size/" target="_blank" rel="noopener">NNGroup research</a> on minimum legibility</li>
+          <li><strong>18px for elderly</strong> — <a href="https://www.w3.org/WAI/older-users/" target="_blank" rel="noopener">W3C WAI Older Users</a> and <a href="https://www.w3.org/TR/WCAG22/#dfn-large-scale" target="_blank" rel="noopener">WCAG large text definition</a> (18pt = 24px, 14pt bold = 18.5px)</li>
+          <li><strong>48px targets for motor/elderly</strong> — <a href="https://m3.material.io/foundations/layout/applying-layout" target="_blank" rel="noopener">Material Design 3</a> (48dp); <a href="https://developer.apple.com/design/human-interface-guidelines/accessibility" target="_blank" rel="noopener">Apple HIG</a> (44pt)</li>
+          <li><strong>12px target spacing</strong> — <a href="https://www.w3.org/TR/WCAG22/#target-size-minimum" target="_blank" rel="noopener">WCAG 2.2 §2.5.8</a> spacing exception; Motor impairment research via <a href="https://www.w3.org/WAI/GL/task-forces/coga/" target="_blank" rel="noopener">COGA Task Force</a></li>
+          <li><strong>Line height 1.4–1.6</strong> — <a href="https://www.w3.org/TR/WCAG22/#text-spacing" target="_blank" rel="noopener">WCAG 2.2 §1.4.12</a> (1.5× minimum); <a href="https://practicaltypography.com/line-spacing.html" target="_blank" rel="noopener">Butterick's Practical Typography</a></li>
+          <li><strong>No thin fonts for elderly</strong> — <a href="https://www.w3.org/WAI/older-users/developing/" target="_blank" rel="noopener">W3C WAI Developing for Older Users</a>: avoid font-weight below 400</li>
+          <li><strong>CVD palette simulation</strong> — <a href="https://www.inf.ufrgs.br/~oliveira/pubs_files/CVD_Simulation/CVD_Simulation.html" target="_blank" rel="noopener">Machado et al. 2009</a>; <a href="https://www.w3.org/TR/WCAG22/#use-of-color" target="_blank" rel="noopener">WCAG 2.2 §1.4.1</a></li>
+          <li><strong>Reading level Grade 5/8</strong> — <a href="https://www.w3.org/TR/WCAG22/#reading-level" target="_blank" rel="noopener">WCAG 2.2 §3.1.5</a>; Flesch-Kincaid / Coleman-Liau index</li>
+          <li><strong>Max 5 nav items</strong> — <a href="https://doi.org/10.1017/S0140525X01003922" target="_blank" rel="noopener">Cowan (2001)</a>: working memory 4±1; <a href="https://www.nngroup.com/articles/childrens-websites-usability-issues/" target="_blank" rel="noopener">NNGroup children UX</a></li>
+          <li><strong>Children touch targets</strong> — <a href="https://www.nngroup.com/articles/children-ux-physical-development/" target="_blank" rel="noopener">NNGroup Physical Development</a>: 48px min, 76px ideal for ages 4-8</li>
+          <li><strong>Cognitive/COGA</strong> — <a href="https://www.w3.org/TR/coga-usable/" target="_blank" rel="noopener">W3C Making Content Usable</a>: short sentences, consistent nav, icon+text</li>
+        </ul>
+      </details>
+    </div>
+    <!-- Bottom row: export actions (collapsible on mobile via CSS) -->
+    <details class="export-details" open>
+      <summary class="export-summary">Export &amp; Share</summary>
+    <div class="report-controls-row">
+      <button class="btn" id="copyMdBtn" title="Copy Markdown without images (for pasting into chat/docs)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        <span class="btn-label">Copy Markdown</span>
+      </button>
+      <button class="btn" id="markdownBtn" title="Download as .md file">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        <span class="btn-label">.md</span>
+      </button>
+      <button class="btn" id="printBtn" title="Print or save as PDF">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+        <span class="btn-label">PDF</span>
+      </button>
+      <button class="btn" id="exportJsonBtn" title="Save analysis as JSON (re-importable)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span class="btn-label">JSON</span>
+      </button>
+      <button class="btn" id="importJsonBtn" title="Load a previously exported analysis">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <span class="btn-label">Import</span>
+      </button>
+      <input type="file" id="importJsonFile" accept=".json" style="display:none">
+    </div>
+    </details>
+  </div>
+
+  <!-- Report container -->
+  <div class="report-container" id="reportContainer"></div>
+  </main>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+  <!-- Scoring: registry + modular scoring functions -->
+  <script src="scoring/registry.js"></script>
+  <script src="scoring/contrast.js"></script>
+  <script src="scoring/typography.js"></script>
+  <script src="scoring/spacing.js"></script>
+  <script src="scoring/touch.js"></script>
+  <script src="scoring/accessibility.js"></script>
+  <script src="scoring/responsive.js"></script>
+  <script src="scoring/consistency.js"></script>
+  <script src="scoring/cognitive.js"></script>
+  <script src="scoring/layout.js"></script>
+  <script src="scoring/performance.js"></script>
+  <script src="scoring/readability.js"></script>
+  <script src="scoring/filters.js"></script>
+  <script src="scoring/balance.js"></script>
+  <!-- Report rendering + UI -->
+  <script src="analyzer-report.js"></script>
+  <script src="analyzer.js"></script>
+</body>
+</html>
+</file>
+
 <file path="docs/analyzer-snippet.js">
 // make-it-look-good — Design Extraction Snippet
 // Run this in the browser console on any page, or use as a bookmarklet.
@@ -27466,12 +27809,12 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
     if (!isVisible(hcEl) || isDecorative(hcEl)) continue;
     var hcStyle = getComputedStyle(hcEl);
     var hcRadius = hcStyle.borderRadius;
-    var hcCls = (hcEl.className && typeof hcEl.className === 'string') ? hcEl.className : '';
-    var hcHasRounded = /rounded/.test(hcCls) || (hcRadius && hcRadius !== '0px');
-    var hcIsSection = hcEl.tagName === 'SECTION' || hcEl.tagName === 'ARTICLE';
-    // Skip: rounded-corner clip, section containers, decorative overlays, fixed elements
+    var hcHasRadius = hcRadius && hcRadius !== '0px' && hcRadius !== '0%';
+    // Skip: rounded-corner clip (computed border-radius > 0), decorative overlays, fixed viewport elements
+    // Also skip if the element itself or parent has no meaningful text (decorative containers)
+    var hcHasText = hcEl.textContent && hcEl.textContent.trim().length > 10;
     if (hcStyle.overflowX === 'hidden' && hcEl.scrollWidth > hcEl.clientWidth + 4 && hcEl.clientWidth > 50
-        && !hcHasRounded && !hcIsSection
+        && !hcHasRadius && hcHasText
         && hcStyle.pointerEvents !== 'none'
         && hcStyle.position !== 'fixed') {
       data.layout.hiddenClipElements.push({
@@ -28046,351 +28389,6 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
   // Also store on window for debugging
   window.__milgData = data;
 })();
-</file>
-
-<file path="docs/analyzer.html">
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>make-it-look-good — Design Analyzer</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='2' y='2' width='12' height='12' rx='2' fill='%232563eb'/><rect x='18' y='2' width='12' height='12' rx='2' fill='%2393c5fd'/><rect x='2' y='18' width='12' height='12' rx='2' fill='%2393c5fd'/><rect x='18' y='18' width='12' height='12' rx='2' fill='%232563eb'/></svg>">
-  <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="analyzer.css">
-</head>
-<body class="analyzer-body">
-
-  <!-- Header -->
-  <header class="header">
-    <div class="header-left">
-      <a href="index.html" class="logo" style="text-decoration:none"><span class="logo-full">make-it-look-good <span class="logo-sub">analyzer</span></span><span class="logo-short">milg</span></a>
-    </div>
-    <nav class="header-right" aria-label="Site navigation">
-      <a href="index.html" class="btn" style="text-decoration:none">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-        <span class="hide-mobile">Editor</span>
-      </a>
-      <button class="btn btn-icon" id="darkBtn" title="Toggle dark mode" aria-label="Toggle dark mode">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-      </button>
-    </nav>
-  </header>
-
-  <main>
-  <!-- Input Section -->
-  <div class="input-section" id="inputSection">
-    <div class="input-hero">
-      <h1>Design Analyzer</h1>
-      <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
-    </div>
-
-    <!-- Tabs -->
-    <div class="input-tabs">
-      <button class="tab-btn active" data-tab="tabUrl">Enter URL<br><span class="tab-sub">(mobile-friendly)</span></button>
-      <button class="tab-btn" data-tab="tabSnippet">Console Snippet<br><span class="tab-sub">(most accurate)</span></button>
-      <button class="tab-btn" data-tab="tabHtml">Paste HTML<br><span class="tab-sub">(approximate)</span></button>
-      <button class="tab-btn" data-tab="tabImport">Import<br><span class="tab-sub">(JSON file)</span></button>
-    </div>
-
-    <!-- Shared screenshot options (applies to all tabs) -->
-    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;flex-wrap:wrap;font-size:12px;color:var(--text-secondary)">
-      <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
-        <input type="checkbox" id="screenshotCheck" checked style="width:15px;height:15px;cursor:pointer">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="13" r="4"/><path d="M5 3v2"/><path d="M19 3v2"/></svg>
-        Screenshots
-      </label>
-      <select id="screenshotQuality" style="font-size:11px;padding:2px 6px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);min-height:24px;cursor:pointer" title="Screenshot quality / file size tradeoff">
-        <option value="0.5|0.4">Draft (~30KB)</option>
-        <option value="0.5|0.7" selected>Standard (~60KB)</option>
-        <option value="0.75|0.8">High (~150KB)</option>
-        <option value="1|0.9">Full (~400KB)</option>
-      </select>
-    </div>
-
-    <!-- Tab 0: URL fetch -->
-    <div class="tab-content active" id="tabUrl">
-      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;line-height:1.5;">
-        Enter a URL to analyze. The page is fetched via a CORS proxy and rendered in a hidden iframe with its CSS.
-        Works on phone — no console needed.
-      </p>
-      <div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;line-height:1.5;padding:8px 12px;background:var(--bg-alt);border:1px solid var(--border);border-radius:var(--radius);">
-        <strong style="color:var(--text)">Limitations:</strong> Pages behind login, localhost, and some sites that block proxies won't work. Use the Console Snippet tab for those.
-        JavaScript is intentionally <strong style="color:var(--text)">not</strong> executed — running unknown JS in your browser is a security risk. This means JS-rendered pages (React, Angular, Vue) will appear empty. Use the Console Snippet on the real page for full results.
-      </div>
-      <div class="input-area">
-        <label for="urlInput" class="sr-only">Website URL</label>
-        <input type="url" id="urlInput" name="url" autocomplete="on" list="urlHistory" placeholder="https://example.com" style="width:100%;padding:12px 16px;border:1px solid var(--border);border-radius:var(--radius);font-size:15px;font-family:var(--font);color:var(--text);background:var(--bg);outline:none;min-height:44px;" />
-        <datalist id="urlHistory"></datalist>
-      </div>
-      <div class="viewport-row" id="viewportRow" style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap">
-        <label style="font-size:12px;color:var(--text-secondary);white-space:nowrap">Viewport:</label>
-        <select id="viewportSelect" class="btn" style="padding:4px 24px 4px 8px;font-size:12px;appearance:auto;cursor:pointer;min-height:36px">
-          <option value="current" selected>Current window size</option>
-          <option value="375x812">Phone (375×812)</option>
-          <option value="768x1024">Tablet (768×1024)</option>
-          <option value="1280x900">Desktop (1280×900)</option>
-          <option value="1920x1080">Large (1920×1080)</option>
-        </select>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
-        <label style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:6px;cursor:pointer">
-          <input type="checkbox" id="deepScanCheck" style="width:16px;height:16px;cursor:pointer">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><rect x="2" y="3" width="20" height="14" rx="2"/><rect x="6" y="7" width="12" height="8" rx="1" stroke-dasharray="2 2"/><line x1="8" y1="21" x2="16" y2="21"/></svg>
-          Deep scan (multi-viewport + dark mode)
-        </label>
-      </div>
-      <details style="margin-top:12px" id="excludeDetails">
-        <summary style="font-size:13px;color:var(--text-secondary);cursor:pointer;user-select:none">Skip elements from analysis (optional)</summary>
-        <div style="margin-top:8px">
-          <p style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;line-height:1.4">Elements you skip (and everything inside them) won't be scored. Useful for decorative UI mockups, screenshots, or third-party widgets.</p>
-          <div id="excludePresets" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
-            <button type="button" class="exclude-tag" data-selector="[class*='mock']">Mock UI</button>
-            <button type="button" class="exclude-tag" data-selector=".demo, .preview, .screenshot">Demos</button>
-            <button type="button" class="exclude-tag" data-selector="footer">Footer</button>
-            <button type="button" class="exclude-tag" data-selector="iframe">Iframes</button>
-            <button type="button" class="exclude-tag" data-selector="svg">SVGs</button>
-            <button type="button" class="exclude-tag" data-selector=".sidebar, aside">Sidebar</button>
-            <button type="button" class="exclude-tag" data-selector=".ad, .ads, [class*='advert']">Ads</button>
-            <button type="button" class="exclude-tag" data-selector=".cookie, [class*='cookie'], [class*='consent']">Cookie banners</button>
-          </div>
-          <label for="excludeSelector" style="font-size:12px;color:var(--text-secondary)">Or type a CSS selector:</label>
-          <input type="text" id="excludeSelector" placeholder="e.g. .hero-image, #chat-widget" style="width:100%;padding:8px 12px;margin-top:4px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;font-family:var(--mono);color:var(--text);background:var(--bg);outline:none;min-height:44px;" />
-        </div>
-      </details>
-      <div class="input-actions" style="margin-top:12px">
-        <button class="btn btn-primary" id="analyzeUrlBtn">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          Analyze URL
-        </button>
-      </div>
-      <div id="urlStatus" style="margin-top:12px;font-size:13px;color:var(--text-secondary);display:none"></div>
-      <div class="analysis-progress" id="analysisProgress" style="display:none">
-        <div class="analysis-progress-bar">
-          <div class="analysis-progress-fill" id="progressFill"></div>
-        </div>
-        <div class="analysis-progress-label" id="progressLabel">Preparing...</div>
-      </div>
-    </div>
-
-    <!-- Tab 1: Snippet extraction -->
-    <div class="tab-content" id="tabSnippet">
-      <div class="guide-steps">
-        <div class="guide-step">
-          <div class="guide-step-num">1</div>
-          <div>Open the website you want to analyze (works with <strong>any URL</strong> including <code>localhost</code> and pages behind login)</div>
-        </div>
-        <div class="guide-step">
-          <div class="guide-step-num">2</div>
-          <div>Open browser DevTools with <code>F12</code> and go to the <strong>Console</strong> tab.
-            <span style="display:block;font-size:12px;color:var(--text-secondary);margin-top:4px">Tip: undock DevTools into a separate window (click <code>⋮</code> → dock side → <strong>undock</strong>) so the page viewport stays at its real size. Docked DevTools shrink the page, which can skew layout and touch-target measurements.</span>
-          </div>
-        </div>
-        <div class="guide-step">
-          <div class="guide-step-num">3</div>
-          <div>Copy the extraction snippet below and <strong>paste it into the console</strong>, then press Enter. It extracts design tokens and copies JSON to your clipboard automatically.</div>
-        </div>
-        <div class="guide-step">
-          <div class="guide-step-num">4</div>
-          <div>Come back here and <strong>paste the JSON</strong> into the box below, then click Analyze.
-            <span style="display:block;font-size:12px;color:var(--text-secondary);margin-top:4px">If auto-copy didn't work, the console will show the JSON — type <code>copy(window.__milgData_json)</code> to copy it manually.</span>
-            <span style="display:block;font-size:12px;color:var(--text-secondary);margin-top:4px">For pages with scroll animations: run <code>window.__milgScrollFirst = true</code> first, then paste the snippet. It scrolls the page to trigger lazy loading before extracting.</span>
-          </div>
-        </div>
-      </div>
-
-
-      <div class="snippet-section">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-          <h2 style="font-size:14px">Extraction Snippet</h2>
-          <button class="btn" id="copySnippetBtn">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-            Copy snippet
-          </button>
-        </div>
-        <div class="snippet-box">
-          <div class="snippet-header">
-            <span>JavaScript</span>
-          </div>
-          <pre class="snippet-code" id="snippetCode">Loading...</pre>
-        </div>
-      </div>
-
-      <div class="console-tip" style="margin-top:20px;">
-        <strong>Quick HTML grab (with CSS):</strong> If you just want to copy the page for the "Paste HTML" tab, run this in the console:<br>
-        <code style="display:block;margin-top:6px;padding:6px 8px;word-break:break-all;white-space:pre-wrap">(async()=>{let c='';for(const s of document.styleSheets){try{c+=Array.from(s.cssRules).map(r=>r.cssText).join('\n')}catch(e){if(s.href){try{const r=await fetch(s.href);c+=await r.text()}catch(e2){}}}}const h=document.documentElement.cloneNode(true);h.querySelectorAll('script').forEach(s=>s.remove());h.querySelectorAll('link[rel=stylesheet]').forEach(l=>l.remove());const st=document.createElement('style');st.textContent=c;h.querySelector('head').appendChild(st);copy(h.outerHTML);console.log('%c✓ HTML + CSS copied!','color:#16a34a;font-weight:bold;font-size:14px')})()</code>
-        <span style="color:var(--text-secondary);font-size:12px;display:block;margin-top:4px">This inlines all CSS (including external stylesheets) into the HTML and removes scripts. Works behind logins, on SPAs, localhost — everywhere.</span>
-      </div>
-
-      <div style="margin-top:24px;">
-        <h2 style="font-size:14px;font-weight:600;margin-bottom:8px;">Paste extracted JSON</h2>
-        <div class="input-area">
-          <label for="pasteInput" class="sr-only">Extracted JSON data</label>
-          <textarea id="pasteInput" placeholder='Paste the JSON data copied by the snippet here...&#10;&#10;It should start with { "meta": { ... }'></textarea>
-        </div>
-        <div class="input-actions">
-          <button class="btn btn-primary" id="analyzeBtn">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a8 8 0 0 0-8 8c0 3.4 2.1 6.3 5 7.5V20h6v-2.5c2.9-1.2 5-4.1 5-7.5a8 8 0 0 0-8-8z"/><line x1="10" y1="22" x2="14" y2="22"/></svg>
-            Analyze
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Tab 2: Paste HTML -->
-    <div class="tab-content" id="tabHtml">
-      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;line-height:1.5;padding:10px 14px;background:var(--bg-alt);border:1px solid var(--border);border-radius:var(--radius);">
-        <strong style="color:var(--text)">Approximate mode.</strong>
-        This renders HTML in an iframe and reads computed styles. External fonts, images, and some CSS (relative URLs, @import chains) won't load — scores may differ from the live site.
-        Use the "Extract from Site" tab for accurate results.
-      </div>
-
-      <div class="console-tip" style="margin-bottom:16px;">
-        <strong>Grab page with CSS inlined:</strong> Open DevTools console (<code>F12</code>) and run:<br>
-        <code style="display:block;margin-top:6px;padding:6px 8px;word-break:break-all;white-space:pre-wrap">(async()=>{let c='';for(const s of document.styleSheets){try{c+=Array.from(s.cssRules).map(r=>r.cssText).join('\n')}catch(e){if(s.href){try{const r=await fetch(s.href);c+=await r.text()}catch(e2){}}}}const h=document.documentElement.cloneNode(true);h.querySelectorAll('script').forEach(s=>s.remove());h.querySelectorAll('link[rel=stylesheet]').forEach(l=>l.remove());const st=document.createElement('style');st.textContent=c;h.querySelector('head').appendChild(st);copy(h.outerHTML);console.log('%c✓ HTML + CSS copied!','color:#16a34a;font-weight:bold;font-size:14px')})()</code>
-        <span style="color:var(--text-secondary);font-size:12px;display:block;margin-top:4px">Inlines all external CSS into the HTML and strips scripts. Works behind logins, on SPAs, localhost.</span>
-      </div>
-
-      <div class="input-area">
-        <label for="htmlInput" class="sr-only">HTML source code</label>
-        <textarea id="htmlInput" placeholder='Paste HTML here...&#10;&#10;<div class="p-8 max-w-4xl mx-auto">&#10;  <h1 class="text-3xl font-bold">...</h1>&#10;</div>'></textarea>
-      </div>
-      <div class="input-actions">
-        <button class="btn btn-primary" id="analyzeHtmlBtn">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a8 8 0 0 0-8 8c0 3.4 2.1 6.3 5 7.5V20h6v-2.5c2.9-1.2 5-4.1 5-7.5a8 8 0 0 0-8-8z"/><line x1="10" y1="22" x2="14" y2="22"/></svg>
-          Analyze HTML
-        </button>
-      </div>
-    </div>
-
-    <!-- Tab 3: Import JSON -->
-    <div class="tab-content" id="tabImport">
-      <div class="import-dropzone" id="importDropzone">
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--text-secondary);margin-bottom:12px">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-        </svg>
-        <p style="font-size:14px;font-weight:600;margin-bottom:4px">Drop a JSON file here</p>
-        <p style="font-size:12px;color:var(--text-secondary)">or click to browse — loads a previously exported analysis</p>
-        <input type="file" id="importDropFile" accept=".json" style="display:none">
-      </div>
-    </div>
-  </div>
-
-  <!-- Report controls (shown when report is visible) -->
-  <div class="report-controls" id="reportActions">
-    <!-- Top row: audience selector + new analysis -->
-    <div class="report-controls-row">
-      <div class="persona-selector">
-        <label for="profileSelect" style="font-size:13px;color:var(--text-secondary);white-space:nowrap;font-weight:600">Audience:</label>
-        <select id="profileSelect" class="btn" style="padding:6px 28px 6px 10px;font-size:13px;appearance:auto;cursor:pointer">
-          <option value="general">General (WCAG AA)</option>
-          <option value="wcag_aaa">Strict (WCAG AAA)</option>
-          <option value="elderly">Elderly (65+)</option>
-          <option value="low_vision">Low Vision</option>
-          <option value="motor_impairment">Motor Impairment</option>
-          <option value="color_blind">Color Vision Deficiency</option>
-          <option value="children">Children (6-12)</option>
-          <option value="cognitive">Cognitive / Learning</option>
-        </select>
-        <button class="btn btn-icon" id="profileInfoBtn" title="What do these profiles do?" aria-label="Profile info" style="padding:6px;min-width:44px;min-height:44px;font-size:15px;font-weight:700">?</button>
-      </div>
-      <button class="btn" id="newAnalysisBtn">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        New Analysis
-      </button>
-    </div>
-    <!-- Profile explanation (hidden by default) -->
-    <div class="profile-explanation" id="profileExplanation" style="display:none">
-      <button class="profile-explanation-close" onclick="document.getElementById('profileExplanation').style.display='none'" aria-label="Close">&times;</button>
-      <h4>Audience Profiles — Evidence-Based Thresholds</h4>
-      <p>Each profile adjusts scoring thresholds based on published accessibility research. Switching re-scores instantly.</p>
-      <table>
-        <tr><th></th><th>Contrast</th><th>Font min</th><th>Touch</th><th>Key change</th></tr>
-        <tr><td><strong>General</strong></td><td>4.5:1</td><td>16px</td><td>24/44px</td><td>WCAG AA baseline</td></tr>
-        <tr><td><strong>WCAG AAA</strong></td><td>7:1</td><td>16px</td><td>24/44px</td><td>Enhanced contrast</td></tr>
-        <tr><td><strong>Elderly</strong></td><td>7:1</td><td>18px</td><td>48px</td><td>12px spacing, max 7 nav, no thin fonts, reduced motion</td></tr>
-        <tr><td><strong>Low Vision</strong></td><td>7:1</td><td>18px</td><td>44px</td><td>12px spacing, 32px icons, bg image warnings</td></tr>
-        <tr><td><strong>Motor</strong></td><td>4.5:1</td><td>16px</td><td>48px</td><td>12px spacing, focus indicator checks</td></tr>
-        <tr><td><strong>Color Vision</strong></td><td>4.5:1</td><td>16px</td><td>24/44px</td><td>CVD palette simulation, red-green reliance</td></tr>
-        <tr><td><strong>Children</strong></td><td>4.5:1</td><td>18px</td><td>48px</td><td>16px spacing, grade 5 reading, max 5 nav</td></tr>
-        <tr><td><strong>Cognitive</strong></td><td>4.5:1</td><td>16px</td><td>24/44px</td><td>Grade 8 reading, max 5 nav, reduced motion</td></tr>
-      </table>
-      <details style="margin-top:10px">
-        <summary style="font-size:12px;color:var(--text-secondary);cursor:pointer">Sources</summary>
-        <ul style="font-size:11px;color:var(--text-secondary);margin-top:6px;padding-left:18px;line-height:1.6">
-          <li><strong>Contrast 4.5:1 / 7:1</strong> — <a href="https://www.w3.org/TR/WCAG22/#contrast-minimum" target="_blank" rel="noopener">WCAG 2.2 §1.4.3</a> (AA) and <a href="https://www.w3.org/TR/WCAG22/#contrast-enhanced" target="_blank" rel="noopener">§1.4.6</a> (AAA)</li>
-          <li><strong>Touch target 44px</strong> — <a href="https://www.w3.org/TR/WCAG22/#target-size-minimum" target="_blank" rel="noopener">WCAG 2.2 §2.5.8</a>; 48dp from <a href="https://m3.material.io/foundations/layout/applying-layout" target="_blank" rel="noopener">Material Design 3</a></li>
-          <li><strong>Click target 24px</strong> — <a href="https://www.w3.org/TR/WCAG22/#target-size-minimum" target="_blank" rel="noopener">WCAG 2.2 §2.5.8</a> minimum for non-inline targets</li>
-          <li><strong>16px body text</strong> — Browser default; <a href="https://www.nngroup.com/articles/let-users-control-font-size/" target="_blank" rel="noopener">NNGroup research</a> on minimum legibility</li>
-          <li><strong>18px for elderly</strong> — <a href="https://www.w3.org/WAI/older-users/" target="_blank" rel="noopener">W3C WAI Older Users</a> and <a href="https://www.w3.org/TR/WCAG22/#dfn-large-scale" target="_blank" rel="noopener">WCAG large text definition</a> (18pt = 24px, 14pt bold = 18.5px)</li>
-          <li><strong>48px targets for motor/elderly</strong> — <a href="https://m3.material.io/foundations/layout/applying-layout" target="_blank" rel="noopener">Material Design 3</a> (48dp); <a href="https://developer.apple.com/design/human-interface-guidelines/accessibility" target="_blank" rel="noopener">Apple HIG</a> (44pt)</li>
-          <li><strong>12px target spacing</strong> — <a href="https://www.w3.org/TR/WCAG22/#target-size-minimum" target="_blank" rel="noopener">WCAG 2.2 §2.5.8</a> spacing exception; Motor impairment research via <a href="https://www.w3.org/WAI/GL/task-forces/coga/" target="_blank" rel="noopener">COGA Task Force</a></li>
-          <li><strong>Line height 1.4–1.6</strong> — <a href="https://www.w3.org/TR/WCAG22/#text-spacing" target="_blank" rel="noopener">WCAG 2.2 §1.4.12</a> (1.5× minimum); <a href="https://practicaltypography.com/line-spacing.html" target="_blank" rel="noopener">Butterick's Practical Typography</a></li>
-          <li><strong>No thin fonts for elderly</strong> — <a href="https://www.w3.org/WAI/older-users/developing/" target="_blank" rel="noopener">W3C WAI Developing for Older Users</a>: avoid font-weight below 400</li>
-          <li><strong>CVD palette simulation</strong> — <a href="https://www.inf.ufrgs.br/~oliveira/pubs_files/CVD_Simulation/CVD_Simulation.html" target="_blank" rel="noopener">Machado et al. 2009</a>; <a href="https://www.w3.org/TR/WCAG22/#use-of-color" target="_blank" rel="noopener">WCAG 2.2 §1.4.1</a></li>
-          <li><strong>Reading level Grade 5/8</strong> — <a href="https://www.w3.org/TR/WCAG22/#reading-level" target="_blank" rel="noopener">WCAG 2.2 §3.1.5</a>; Flesch-Kincaid / Coleman-Liau index</li>
-          <li><strong>Max 5 nav items</strong> — <a href="https://doi.org/10.1017/S0140525X01003922" target="_blank" rel="noopener">Cowan (2001)</a>: working memory 4±1; <a href="https://www.nngroup.com/articles/childrens-websites-usability-issues/" target="_blank" rel="noopener">NNGroup children UX</a></li>
-          <li><strong>Children touch targets</strong> — <a href="https://www.nngroup.com/articles/children-ux-physical-development/" target="_blank" rel="noopener">NNGroup Physical Development</a>: 48px min, 76px ideal for ages 4-8</li>
-          <li><strong>Cognitive/COGA</strong> — <a href="https://www.w3.org/TR/coga-usable/" target="_blank" rel="noopener">W3C Making Content Usable</a>: short sentences, consistent nav, icon+text</li>
-        </ul>
-      </details>
-    </div>
-    <!-- Bottom row: export actions (collapsible on mobile via CSS) -->
-    <details class="export-details" open>
-      <summary class="export-summary">Export &amp; Share</summary>
-    <div class="report-controls-row">
-      <button class="btn" id="copyMdBtn" title="Copy Markdown without images (for pasting into chat/docs)">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-        <span class="btn-label">Copy Markdown</span>
-      </button>
-      <button class="btn" id="markdownBtn" title="Download as .md file">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-        <span class="btn-label">.md</span>
-      </button>
-      <button class="btn" id="printBtn" title="Print or save as PDF">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-        <span class="btn-label">PDF</span>
-      </button>
-      <button class="btn" id="exportJsonBtn" title="Save analysis as JSON (re-importable)">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        <span class="btn-label">JSON</span>
-      </button>
-      <button class="btn" id="importJsonBtn" title="Load a previously exported analysis">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-        <span class="btn-label">Import</span>
-      </button>
-      <input type="file" id="importJsonFile" accept=".json" style="display:none">
-    </div>
-    </details>
-  </div>
-
-  <!-- Report container -->
-  <div class="report-container" id="reportContainer"></div>
-  </main>
-
-  <!-- Toast -->
-  <div class="toast" id="toast"></div>
-
-  <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js"></script>
-  <script src="scoring/contrast.js"></script>
-  <script src="scoring/typography.js"></script>
-  <script src="scoring/spacing.js"></script>
-  <script src="scoring/touch.js"></script>
-  <script src="scoring/accessibility.js"></script>
-  <script src="scoring/responsive.js"></script>
-  <script src="scoring/consistency.js"></script>
-  <script src="scoring/cognitive.js"></script>
-  <script src="scoring/layout.js"></script>
-  <script src="scoring/performance.js"></script>
-  <script src="scoring/readability.js"></script>
-  <script src="scoring/filters.js"></script>
-  <script src="scoring/balance.js"></script>
-  <!-- Report rendering + UI -->
-  <script src="analyzer-report.js"></script>
-  <script src="analyzer.js"></script>
-</body>
-</html>
 </file>
 
 <file path="docs/analyzer.js">
