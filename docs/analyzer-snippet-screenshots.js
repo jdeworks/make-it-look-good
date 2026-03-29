@@ -7,6 +7,10 @@
 (function() {
   'use strict';
 
+  // --- Scan mode ---
+  var _scanMode = window.__milgScanMode || 'full';
+  var _doExpensive = _scanMode === 'full';
+
   // --- Auto-scroll option ---
   // To scroll the page before extraction (triggers lazy loading + intersection observers):
   // Run: window.__milgScrollFirst = true   then paste the snippet.
@@ -1422,6 +1426,24 @@
   data.consistency.gradientDirections = Object.keys(gradDirs).length;
   data.performance.forcedLayers = 0;
   for (var fli = 0; fli < allElements.length && fli < 300; fli++) { var flT = getComputedStyle(allElements[fli]).transform; if (flT && flT !== 'none' && /matrix3d/.test(flT)) data.performance.forcedLayers++; }
+
+  // --- Tier 4: Opt-in expensive checks ---
+  if (_doExpensive) {
+    data.layout.visualNoiseBands = [];
+    var vpBands = Math.ceil(Math.max(document.body.scrollHeight, window.innerHeight) / window.innerHeight);
+    for (var vbi = 0; vbi < Math.min(vpBands, 5); vbi++) { var bandTop = vbi * window.innerHeight; var bandBottom = bandTop + window.innerHeight; var noiseScore = 0; for (var vni = 0; vni < allElements.length && vni < 500; vni++) { var vnEl = allElements[vni]; if (!isVisible(vnEl) || isDecorative(vnEl)) continue; var vnR = vnEl.getBoundingClientRect(); var absTop = vnR.top + window.scrollY; if (absTop + vnR.height < bandTop || absTop > bandBottom) continue; var vnS = getComputedStyle(vnEl); if (vnS.boxShadow !== 'none') noiseScore += 1; if (vnS.backgroundColor !== 'rgba(0, 0, 0, 0)' && vnS.backgroundColor !== 'transparent') noiseScore += 0.5; if (parseFloat(vnS.borderWidth) > 0 && vnS.borderStyle !== 'none') noiseScore += 0.5; if (parseInt(vnS.fontWeight) >= 700) noiseScore += 0.3; if (vnEl.tagName === 'IMG') noiseScore += 1; } data.layout.visualNoiseBands.push({ band: vbi, score: Math.round(noiseScore * 10) / 10 }); }
+    data.layout.emptyContainers = 0;
+    document.querySelectorAll('ul, ol, tbody, [role="list"], main, section').forEach(function(el) { if (!isVisible(el)) return; var r = el.getBoundingClientRect(); if (r.height > 50 && el.textContent.trim() === '' && el.querySelectorAll('img, svg, canvas, video').length === 0) data.layout.emptyContainers++; });
+    data.consistency.iconSizeVariance = 0;
+    var iconRatios = []; document.querySelectorAll('svg').forEach(function(svg) { if (!isVisible(svg) || isDecorative(svg)) return; var r = svg.getBoundingClientRect(); if (r.height < 8 || r.height > 100) return; var parentFS = parseFloat(getComputedStyle(svg.parentElement || svg).fontSize) || 16; iconRatios.push(r.height / parentFS); });
+    if (iconRatios.length >= 3) { var iconAvg = iconRatios.reduce(function(s, r) { return s + r; }, 0) / iconRatios.length; var iconVar = iconRatios.reduce(function(s, r) { return s + Math.pow(r - iconAvg, 2); }, 0) / iconRatios.length; data.consistency.iconSizeVariance = Math.round((iconAvg > 0 ? Math.sqrt(iconVar) / iconAvg : 0) * 100); }
+    data.consistency.paddingAsymmetry = 0;
+    document.querySelectorAll('button, [role="button"], input[type="submit"]').forEach(function(el) { if (!isVisible(el) || isDecorative(el)) return; var s = getComputedStyle(el); var pl = parseFloat(s.paddingLeft) || 0; var pr = parseFloat(s.paddingRight) || 0; if (Math.abs(pl - pr) > 4 && pl > 0 && pr > 0) data.consistency.paddingAsymmetry++; });
+    data.colors.temperatureMixing = false;
+    var warmCount = 0, coolCount = 0;
+    (data.colors.textColors || []).concat(data.colors.bgColors || []).forEach(function(c) { var rgb = parseColor(c.value || c); if (!rgb) return; var r = rgb.r / 255, g = rgb.g / 255, b = rgb.b / 255; var max = Math.max(r, g, b), min = Math.min(r, g, b); var sat = max > 0 ? (max - min) / max : 0; if (sat < 0.15) return; var hue = 0; if (max === r) hue = 60 * ((g - b) / (max - min)); else if (max === g) hue = 60 * (2 + (b - r) / (max - min)); else hue = 60 * (4 + (r - g) / (max - min)); if (hue < 0) hue += 360; if ((hue >= 0 && hue <= 60) || hue >= 300) warmCount++; else if (hue >= 150 && hue <= 270) coolCount++; });
+    if (warmCount >= 3 && coolCount >= 3) data.colors.temperatureMixing = true;
+  }
 
   // --- Image responsive sizing ---
   data.performance.nonResponsiveImages = 0;

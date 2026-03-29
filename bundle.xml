@@ -18640,6 +18640,515 @@ window.MilgScoring = (function() {
 })();
 </file>
 
+<file path="proxy/README.md">
+# CORS Proxy Worker
+
+A lightweight Cloudflare Worker that proxies HTTP requests with CORS headers, used by the Design Analyzer's URL input mode.
+
+## Why
+
+Browsers block cross-origin requests (CORS). To fetch and analyze external websites from a client-side app, we need a proxy that adds `Access-Control-Allow-Origin` headers. This self-hosted worker replaces dependency on third-party CORS proxies.
+
+## Full setup (from scratch)
+
+### 1. Deploy the Worker to Cloudflare
+
+1. [Sign up for Cloudflare](https://dash.cloudflare.com/sign-up) (free, no credit card)
+2. Install Wrangler (Cloudflare's deploy CLI):
+   ```bash
+   npm install -g wrangler
+   ```
+3. Login to Cloudflare:
+   ```bash
+   wrangler login
+   ```
+4. Deploy the worker:
+   ```bash
+   cd proxy
+   npx wrangler deploy
+   ```
+5. Copy the `*.workers.dev` URL from the output — that's your proxy URL
+
+### 2. Connect it to the Analyzer
+
+1. Copy `.env.example` to `.env` at the repo root:
+   ```bash
+   cp .env.example .env
+   ```
+2. Edit `.env` and set your worker URL:
+   ```
+   PROXY_URL=https://milg-cors-proxy.YOUR-SUB.workers.dev
+   ```
+3. Run the inject script:
+   ```bash
+   ./scripts/inject-proxy.sh
+   ```
+4. Commit and push:
+   ```bash
+   git add docs/analyzer.js
+   git commit -m "Inject proxy URL"
+   git push
+   ```
+
+GitHub Pages will serve the updated `docs/analyzer.js` with your proxy baked in.
+
+### 3. If you need to change the URL
+
+Edit `.env`, run `./scripts/inject-proxy.sh` again, commit and push.
+
+### 4. If you want to remove the proxy
+
+Delete `.env` (or clear `PROXY_URL`), run `./scripts/inject-proxy.sh` — it resets to the placeholder, falling back to third-party proxies.
+
+## Setting up on a different computer
+
+1. Clone the repo
+2. Create `.env` with your `PROXY_URL=...` (the `.env` file is gitignored)
+3. Run `./scripts/inject-proxy.sh`
+4. That's it — the deployed `docs/analyzer.js` already has the URL from your last push
+
+You only need to re-run the inject script if you want to change the URL or deploy from a fresh clone.
+
+## Free tier limits
+
+| | Free | Paid ($5/month) |
+|---|---|---|
+| Requests | 100K/day | 10M/month |
+| CPU time | 10ms/request | 30ms/request |
+| When exceeded | **Hard stop** (5XX until midnight UTC) | $0.30/million overage |
+
+100K/day handles ~5,500 daily users doing 3 analyses each. For context, each analysis uses ~4-6 proxied requests (1 HTML page + 3-5 CSS files).
+
+## Safety features
+
+| Feature | What it does |
+|---------|-------------|
+| **Origin checking** | Only browsers on `jdeworks.github.io` can use the proxy (unforgeable by browsers) |
+| **Rate limiting** | 30 requests/minute per IP address |
+| **SSRF protection** | Blocks localhost, private IPs, `.local` domains |
+| **Method restriction** | GET only, http/https only |
+| **Size limit** | 10 MB max response |
+
+## Configuration
+
+Edit `proxy/worker.js`:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ALLOWED_ORIGINS` | `['https://jdeworks.github.io']` | Allowed Origin domains. Set to `null` for any (dev only). |
+| `RATE_LIMIT` | `30` | Max requests per IP per minute |
+| `MAX_RESPONSE_SIZE` | `10 MB` | Max proxied response body |
+| `USER_AGENT` | `MilgAnalyzer/1.0` | User-Agent sent to target servers |
+
+After changing, redeploy: `cd proxy && npx wrangler deploy`
+
+## How the URL stays (mostly) hidden
+
+```
+.env (local, gitignored)
+  └── PROXY_URL=https://your-worker.workers.dev
+
+./scripts/inject-proxy.sh
+  └── base64-encodes URL → patches docs/analyzer.js
+
+docs/analyzer.js (committed)
+  └── var _pe = 'aHR0cHM6Ly8uLi4=';  (not a recognizable URL pattern)
+
+Browser (runtime)
+  └── atob() decodes → fetches from your worker
+```
+
+The encoded URL is in the committed JS (unavoidable for a static site). But:
+- The raw URL is never in git (`.env` is gitignored)
+- The encoded string doesn't match URL patterns (stops automated scrapers)
+- Origin checking + rate limiting in the worker caps abuse even if found
+- Anyone with DevTools Network tab can see the decoded URL on requests (that's fine — can't prevent it)
+</file>
+
+<file path="README.md">
+# make-it-look-good
+
+> **Make your website, app, or UI actually look good.** Give your AI assistant this repo and it will help you design, redesign, or fix the visual design of any web project — with real design principles, not guesswork.
+
+Your AI asks what you're building, what personality you want (clean, minimalist, playful, editorial), your colors, and your audience — then produces production-ready HTML/CSS with proper spacing, contrast, typography, and responsive behavior. It works on landing pages, dashboards, forms, portfolios, e-commerce, or any UI.
+
+**This is not a library you install.** It's a design knowledge base (45 topics on color, typography, spacing, layout, interaction, accessibility) plus a consultation playbook that guides your AI through the right questions and decisions.
+
+---
+
+## If you are an AI assistant reading this
+
+The user wants you to **help them make their website or UI look good**. This repo is a design toolkit — use it to guide the user through a design consultation for *their* project.
+
+**Start here:**
+1. Read [`CONSULT.md`](CONSULT.md) — the full design consultation playbook. Follow it step by step.
+2. Read [`docs/presets/_index.md`](docs/presets/_index.md) — template catalog with preview links.
+3. Read [`workflows/quick-reference.md`](workflows/quick-reference.md) — critical design numbers.
+4. Read ONLY the knowledge files relevant to the user's question (see Step 2 in CONSULT.md).
+
+**Your job:** Ask the user what they're building (or what they want to improve), walk them through personality/colors/audience questions, then generate or fix their UI code using the design principles in this repo. Do NOT improve this repo itself — focus on the user's project.
+
+CONSULT.md includes:
+- A consultation depth selector (quick start / guided / thorough) — ask the user how deep to go
+- Required intake questions about personality, colors, inspiration, and dark mode — don't skip these
+- Website analysis workflow (Step 1E) for when users share reference URLs
+- Template catalog with preview links at `https://jdeworks.github.io/make-it-look-good/#preset:{element}/{personality}`
+
+---
+
+## For Developers
+
+### What is this?
+
+You have a website or UI that needs to look better. Give this repo to your AI assistant and it becomes a **design consultant** — asking the right questions, applying real design principles, and producing code that actually looks professional. Not generic blue SaaS. Your brand, your personality, your colors.
+
+### How to use it
+
+**Option A — Online chat** (Claude.ai, ChatGPT, Gemini, Perplexity, etc.)
+
+Copy-paste this entire block as your first message:
+
+```
+Fetch this file — it's a design toolkit that will help me make my website look good:
+https://raw.githubusercontent.com/jdeworks/make-it-look-good/dev/bundle.xml
+
+Read the CONSULT.md inside it and follow the consultation playbook step by step.
+You are a design consultant — help me design or improve MY website/UI, not this
+repo. Start by asking what I'm building and how detailed I want the consultation
+(quick start / guided / thorough).
+```
+
+The bundle (~194k tokens) includes the full consultation playbook, all 45 knowledge files, and a template catalog. To browse templates visually, use the [live preview tool](https://jdeworks.github.io/make-it-look-good/) and tell your AI which ones you like.
+
+**Option B — Local AI agent** (Claude Code, Cursor, Windsurf, Codex, etc.)
+
+Clone and point your agent at the folder:
+```bash
+git clone -b dev https://github.com/jdeworks/make-it-look-good.git
+```
+
+Then tell your agent:
+```
+Read CONSULT.md from the make-it-look-good folder. It's a design consultation
+playbook — use it to help me make my website/UI look good. Follow the steps
+and start by asking what I'm building.
+```
+
+A local agent gets the full file structure including all 170+ template HTML files. This is the recommended approach for hands-on design work.
+
+**Option C — Quick prompts** (if your AI already has the repo loaded)
+
+Guided consultation (asks about personality, colors, audience):
+```
+Follow the CONSULT.md playbook to run a design consultation for my project.
+```
+
+Audit existing code:
+```
+Follow CONSULT.md Step 1A to audit this code, then generate design review notes: [paste your code]
+```
+
+Grab a component:
+```
+Look at docs/presets/_index.md and give me a hero + pricing cards layout.
+```
+
+> **Tip:** Share a link to a site you like the look of. Even one reference ("I want it to feel like aesop.com") dramatically improves results.
+
+---
+
+### Preview Tool
+
+Paste any HTML+Tailwind into the [live preview tool](https://jdeworks.github.io/make-it-look-good/) to see it rendered instantly. Toggle mobile/tablet/desktop views, dark mode, and share via URL. Includes 121 prebuilt templates across 38 elements with multiple design personalities.
+
+### Design Analyzer
+
+Score any website against evidence-based design rules with the [Design Analyzer](https://jdeworks.github.io/make-it-look-good/analyzer.html). **~60 checks across 14 scoring modules** — no AI, just math against WCAG 2.2, Material Design, NNGroup research, and typography best practices. Every finding links to its source.
+
+Three ways to analyze:
+
+| Method | Best for | How |
+|--------|----------|-----|
+| **Enter URL** | Phone, quick checks | Paste a URL — fetched via CORS proxy, scored automatically |
+| **Console Snippet** | Most accurate, localhost, behind login | Copy snippet → run in DevTools console → paste JSON |
+| **Paste HTML** | Static mockups | Paste HTML source, rendered in iframe |
+
+Scoring modules: Color & Contrast (WCAG + APCA), Typography, Spacing & Layout, Touch & Interaction, Accessibility, Responsive Design, Visual Consistency, Cognitive Load, Layout Quality, Performance, Readability, Motion & Animation, Visual Balance.
+
+Features: 8 audience profiles (General, WCAG AAA, Elderly, Low Vision, Motor Impairment, Color Blind, Children, Cognitive), page context detection, gradient/background-image/CSS-filter contrast resolution, decorative element filtering, context-aware touch targets (nav/footer/inline exemptions per WCAG 2.5.8), CVD palette simulation (Machado et al. 2009), post-analysis exclusion suggestions, extraction caching, dark mode report, viewport size selection, deep scan (multi-viewport + dark mode), page screenshots, analysis history, N/A category detection, progress bar, JSON export/import, markdown/PDF export. Self-hostable CORS proxy (Cloudflare Worker, free tier 100K req/day) — see [`proxy/README.md`](proxy/README.md).
+
+Validated against 125 preset templates via headless browser testing (Puppeteer) — average score 88, min 69, max 100, with a 7-point gap between "before" (81 avg) and "clean" (88 avg) variants.
+
+### Before & After Examples
+
+Each "before" shows a typical MVP. Each "after" is a structurally different redesign — not just CSS tweaks but genuinely different layouts. Multiple personalities (Clean, Minimalist, Playful, Editorial) show how the same content can look completely different.
+
+| Example | Personalities | Try it |
+|---------|--------------|--------|
+| Dashboard | Clean, Minimalist, Playful | [Before](https://jdeworks.github.io/make-it-look-good/#preset:dashboard/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:dashboard/clean) |
+| Landing Page | Clean, Minimalist, Playful, Editorial | [Before](https://jdeworks.github.io/make-it-look-good/#preset:landing/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:landing/clean) |
+| Form | Clean, Minimalist, Playful, Editorial | [Before](https://jdeworks.github.io/make-it-look-good/#preset:form/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:form/clean) |
+| Card Grid | Clean, Minimalist, Playful | [Before](https://jdeworks.github.io/make-it-look-good/#preset:cards/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:cards/clean) |
+| Multi-Page App | Clean, Minimalist, Playful | [Before](https://jdeworks.github.io/make-it-look-good/#preset:project/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:project/clean) |
+
+Click any "After" link — personality buttons appear in the preview header to switch between variants. Color swatches let you recolor with any Tailwind palette. Effect buttons apply CSS overlays (Hushed, Bouncy, Frosted, Serif).
+
+### Example: Guided Consultation Flow
+
+Here's what a real consultation looks like when an LLM follows the playbook. The user says *"I need a website for my cafe. Something warm and inviting."*
+
+**1. The AI classifies the input** → vague idea, no code → guided intake
+
+**2. Intake questions asked:**
+- What are you building? → Landing page / content site, single-page with sections
+- Who uses it? → General public, 65-75% mobile traffic
+- Personality? → Playful & friendly, "specialty coffee shop" feel
+- Tech stack? → Plain HTML + Tailwind CDN
+- Colors? → Warm amber `#f59e0b`, rich brown `#78350f`
+- Inspiration? → "Your favorite neighborhood spot, not corporate chain"
+- Dark mode? → No
+
+**3. The AI reads knowledge files** → `layout/visual-hierarchy.md`, `typography/type-scale.md`, `color/color-psychology.md`, `interaction/touch-targets.md`, `responsive/mobile-first.md`
+
+**4. Design decisions (with reasoning):**
+- Playfair Display headings + Inter body → artisanal yet readable
+- Amber-900 on amber-50 at 7.2:1 contrast → AAA pass
+- White text on amber buttons fails WCAG → switched to amber-900 text
+- `rounded-2xl` cards + pill-shaped CTAs → warmth, not corporate
+- 48px touch targets everywhere → mobile-heavy audience
+- Section order: Hero → Menu → About → Hours → Footer → inverted pyramid
+
+**5. Output:** A single self-contained HTML file that renders on 375px–1440px+, passes WCAG AA on all text, with warm amber palette and serif/sans font pairing.
+
+The full flow with all design decisions is in [`tests/e2e-restaurant-flow.md`](tests/e2e-restaurant-flow.md). The output is in [`tests/e2e-restaurant.html`](tests/e2e-restaurant.html).
+
+### Validated Test Cases
+
+The consultation flow is tested across 12 real-world scenarios — all pass all applicable design rules (contrast, touch targets, spacing, hierarchy). See [`tests/`](tests/) for the full set.
+
+| Scenario | Input | What It Proves |
+|----------|-------|----------------|
+| React settings page | JSX + inline styles | Outputs in user's framework, no forced Tailwind migration |
+| Barebones HTML | Hackathon-quality landing page | Full redesign with Tailwind CDN |
+| Vue dashboard | Vue 3 SFC + scoped CSS | Preserves Vue SFC structure |
+| Restaurant landing | "warm and inviting cafe" | Guided intake → personality-driven output |
+| Developer portfolio | "dark mode, emerald accent" | Dark mode design with monospace accents |
+| SaaS pricing | Brand colors provided | Brand color application, clean personality |
+| Status page | JSON API data pasted | Raw data → structured UI (Step 1D) |
+| CLI output | Terminal table pasted | Non-standard input → dark technical dashboard |
+| Email template | "welcome email" | Non-web output with email-specific constraints |
+
+---
+
+## What's Inside
+
+### Preset Library — [`docs/presets/_index.md`](docs/presets/_index.md)
+
+38+ presets with multiple personality variants (Clean, Minimalist, Playful). Interactive components also have React, Vue, and Svelte framework files.
+
+| Category | Examples |
+|----------|---------|
+| **Layout Shells** | App shell, marketing page, dashboard, centered form |
+| **Components** | Hero, tabs, accordion, pagination, dropdown, avatars, data table |
+| **Full Pages** | Pricing, portfolio, restaurant, status page |
+| **Before → After** | Dashboard, landing page, form, card grid, multi-page app |
+| **Expressive** | Personal site, agency landing, agency portfolio, app showcase, scroll reveal landing, product launch, editorial blog, SaaS features, scroll story, product page, devtool landing, docs site, event page, personalized portfolio |
+| **Edge Cases** | Deploy monitor, button system, OSS landing |
+
+All presets: dark mode, WCAG AA contrast, 44px touch targets, responsive. [Composition recipes](docs/presets/_index.md#composition-recipes) show how to combine them into full pages.
+
+### Knowledge Files — 44 topics
+
+| Area | Topics |
+|------|--------|
+| **Foundations** | [Cognitive load](foundations/cognitive-load.md), [Gestalt](foundations/gestalt-principles.md), [Hick's Law](foundations/hicks-law.md), [Fitts's Law](foundations/fitts-law.md), [Aesthetic-usability](foundations/aesthetic-usability.md), [Peak-end rule](foundations/peak-end-rule.md) |
+| **Color** | [Contrast & a11y](color/contrast-and-accessibility.md), [Color systems](color/color-systems.md), [Psychology](color/color-psychology.md), [Color-blind safety](color/color-blind-safety.md) |
+| **Typography** | [Type scale](typography/type-scale.md), [Font pairing](typography/font-pairing.md), [Readability](typography/readability.md), [Web font loading](typography/web-font-loading.md) |
+| **Layout** | [Spacing system](layout/spacing-system.md), [Visual hierarchy](layout/visual-hierarchy.md), [Grid systems](layout/grid-systems.md), [Whitespace](layout/whitespace.md) |
+| **Interaction** | [Animation timing](interaction/animation-timing.md), [Micro-interactions](interaction/micro-interactions.md), [Touch targets](interaction/touch-targets.md), [Loading states](interaction/loading-states.md) |
+| **Responsive** | [Mobile-first](responsive/mobile-first.md), [Breakpoints](responsive/breakpoints.md), [Fluid typography](responsive/fluid-typography.md), [Patterns](responsive/responsive-patterns.md) |
+| **Systems** | [Design tokens](systems/design-tokens.md), [Material Design 3](systems/material-design-3.md), [Apple HIG](systems/apple-hig.md), [Building a system](systems/building-a-system.md) |
+| **Expressive** | [Visual identity](expressive/visual-identity.md), [Hero patterns](expressive/hero-patterns.md), [Scroll storytelling](expressive/scroll-storytelling.md), [Purposeful motion](expressive/purposeful-motion.md), [Scroll effect patterns](expressive/scroll-effect-patterns.md), [Curated examples](expressive/curated-examples.md) |
+| **Heuristics** | [Nielsen's 10](heuristics/nielsen-10.md), [UX frameworks](heuristics/ux-frameworks.md) |
+| **Components** | [Buttons](components/buttons.md), [Forms](components/forms.md), [Cards](components/cards.md), [Navigation](components/navigation.md), [Modals](components/modals-and-dialogs.md), [Tables](components/tables-and-lists.md), [Feedback](components/feedback.md) |
+
+Each file: 200–400 lines, concrete rules with numbers, CSS/Tailwind patterns, decision trees, sources.
+
+### Workflows
+
+| Workflow | Use when |
+|----------|----------|
+| [Quick Reference](workflows/quick-reference.md) | Need a number fast (contrast ratio, spacing value, timing) |
+| [New Project Checklist](workflows/new-project-checklist.md) | Starting from scratch |
+| [Design Review Checklist](workflows/design-review-checklist.md) | Auditing an existing design |
+
+### Critical Numbers
+
+| What | Value |
+|------|-------|
+| Text contrast (AA) | 4.5:1 |
+| Large text contrast (AA) | 3:1 |
+| Body font size | ≥16px |
+| Line height | 1.4–1.6 |
+| Line length | 45–75 characters |
+| Touch target | ≥44×44px |
+| Base spacing unit | 4px or 8px |
+| Nav items | 5–7 max |
+| Enter animation | 200–300ms |
+| Exit animation | 150–200ms |
+
+---
+
+If this helped you ship something that looks good, [give it a star](../../stargazers). Found an issue? [Open one](../../issues).
+
+Sources: [research/sources.md](research/sources.md)
+</file>
+
+<file path="docs/scoring/readability.js">
+// Scoring Module: Readability & Scanability
+// Weight: 5%
+// Sources: Coleman-Liau Index, NNGroup scanning research
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+  function scoreReadability(data) {
+    var findings = [];
+    var checks = 0;
+    var passed = 0;
+
+    // Extract text content from the raw data
+    // We use heading count and element count as proxies since we don't have raw text in extracted data
+    var headings = (data.typography && data.typography.headings) || [];
+    var totalElements = (data.structure && data.structure.totalElements) || 0;
+
+    // Scanability: heading frequency
+    // Good rule: 1 heading per ~100-150 elements of content
+    if (totalElements > 50) {
+      checks++;
+      var headingRatio = headings.length / (totalElements / 100);
+      if (headingRatio >= 0.5 && headingRatio <= 5) {
+        passed++;
+      } else if (headingRatio < 0.5) {
+        findings.push({
+          severity: 'warning',
+          title: 'Low heading density: ' + headings.length + ' headings for ' + totalElements + ' elements',
+          detail: 'Content without headings is harder to scan. 79% of users scan rather than read (NNGroup)',
+          fix: 'Add descriptive headings to break content into scannable sections. Aim for a heading every 2-3 paragraphs.',
+          presetRef: null,
+          source: 'NNGroup scanning research — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+        });
+      }
+    }
+
+    // Heading descriptiveness: check if headings are too short (likely generic)
+    if (headings.length > 0) {
+      checks++;
+      var shortHeadings = headings.filter(function(h) {
+        return h.text && h.text.length < 3;
+      });
+      if (shortHeadings.length === 0) {
+        passed++;
+      } else {
+        passed++; // Info doesn't reduce score
+        findings.push({
+          severity: 'info',
+          title: shortHeadings.length + ' heading(s) with very short text (< 3 chars)',
+          detail: 'Short headings like numbers or icons don\'t help users scan. Use descriptive text.',
+          fix: 'Replace generic headings with descriptive ones that summarize the section content.',
+          presetRef: null,
+          source: 'NNGroup — https://www.nngroup.com/articles/headings-pickup-lines/'
+        });
+      }
+    }
+
+    // Font size variety as readability signal
+    // Too many sizes = visual noise, harder to establish reading rhythm
+    var fontSizes = (data.typography && data.typography.fontSizes) || [];
+    var smallTextCount = fontSizes.filter(function(f) {
+      return parseFloat(f.value) < 12;
+    }).reduce(function(sum, f) { return sum + f.count; }, 0);
+
+    if (smallTextCount > 0 && totalElements > 20) {
+      checks++;
+      var smallRatio = smallTextCount / totalElements;
+      if (smallRatio < 0.05) {
+        passed++;
+      } else {
+        findings.push({
+          severity: 'warning',
+          title: smallTextCount + ' element(s) with text smaller than 12px',
+          detail: 'Text below 12px is difficult to read for most users and nearly impossible for elderly or low-vision users',
+          fix: 'Increase small text to at least 12px. Consider if the information is important enough to display — if not, remove it.',
+          presetRef: null,
+          source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text'
+        });
+      }
+    }
+
+    // Coleman-Liau readability index
+    var rd = data.readability || {};
+    if (rd.totalWords >= 50 && rd.paragraphCount >= 2) {
+      checks++;
+      // Coleman-Liau: 0.0588 * L - 0.296 * S - 15.8
+      // L = avg letters per 100 words, S = avg sentences per 100 words
+      var L = (rd.totalChars / rd.totalWords) * 100;
+      var sentenceCount = 0;
+      (rd.textBlocks || []).forEach(function(b) {
+        sentenceCount += (b.text.match(/[.!?]+/g) || []).length;
+      });
+      var S_val = (sentenceCount / rd.totalWords) * 100;
+      var cli = Math.round(0.0588 * L - 0.296 * S_val - 15.8);
+      if (cli >= 6 && cli <= 12) {
+        passed++;
+      } else {
+        findings.push({
+          severity: cli > 14 ? 'warning' : 'info',
+          title: 'Reading level: grade ' + cli + ' (Coleman-Liau Index)',
+          detail: cli > 12 ? 'Content may be too complex for a general audience' : 'Content may be overly simple for the target audience',
+          fix: cli > 12 ? 'Shorten sentences, use simpler words, break complex ideas into steps. Aim for grade 8-10 for general audiences.' : 'This reading level is appropriate for broad accessibility.',
+          presetRef: null,
+          source: 'Coleman-Liau Index — https://en.wikipedia.org/wiki/Coleman%E2%80%93Liau_index'
+        });
+      }
+    }
+
+    // Paragraph length audit
+    var longParagraphs = (rd.textBlocks || []).filter(function(b) { return b.wordCount > 150; });
+    if (longParagraphs.length > 0) {
+      findings.push({
+        severity: 'warning',
+        title: longParagraphs.length + ' paragraph(s) exceed 150 words',
+        detail: 'Long paragraphs reduce scanability. Ideal: 40-80 words per paragraph.',
+        fix: 'Break long paragraphs into shorter ones. Use subheadings, bullet lists, or callout boxes to chunk content.',
+        presetRef: null,
+        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+      });
+    }
+
+    // List usage for scanability
+    if (rd.totalWords >= 100 && !rd.hasLists) {
+      findings.push({
+        severity: 'info',
+        title: 'No lists found in content area',
+        detail: 'Lists improve scanability by 47% compared to wall-of-text (NNGroup)',
+        fix: 'Convert sequences, features, or steps into <ul>/<ol> lists where appropriate.',
+        presetRef: null,
+        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+      });
+    }
+
+    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+    return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Readability', icon: 'readability' };
+  }
+
+  S.register("readability", scoreReadability, 5, "Readability", "readability");
+})();
+</file>
+
 <file path="docs/tests/test-scoring.html">
 <!DOCTYPE html>
 <html lang="en">
@@ -19055,276 +19564,6 @@ window.MilgScoring = (function() {
   </script>
 </body>
 </html>
-</file>
-
-<file path="proxy/README.md">
-# CORS Proxy Worker
-
-A lightweight Cloudflare Worker that proxies HTTP requests with CORS headers, used by the Design Analyzer's URL input mode.
-
-## Why
-
-Browsers block cross-origin requests (CORS). To fetch and analyze external websites from a client-side app, we need a proxy that adds `Access-Control-Allow-Origin` headers. This self-hosted worker replaces dependency on third-party CORS proxies.
-
-## Full setup (from scratch)
-
-### 1. Deploy the Worker to Cloudflare
-
-1. [Sign up for Cloudflare](https://dash.cloudflare.com/sign-up) (free, no credit card)
-2. Install Wrangler (Cloudflare's deploy CLI):
-   ```bash
-   npm install -g wrangler
-   ```
-3. Login to Cloudflare:
-   ```bash
-   wrangler login
-   ```
-4. Deploy the worker:
-   ```bash
-   cd proxy
-   npx wrangler deploy
-   ```
-5. Copy the `*.workers.dev` URL from the output — that's your proxy URL
-
-### 2. Connect it to the Analyzer
-
-1. Copy `.env.example` to `.env` at the repo root:
-   ```bash
-   cp .env.example .env
-   ```
-2. Edit `.env` and set your worker URL:
-   ```
-   PROXY_URL=https://milg-cors-proxy.YOUR-SUB.workers.dev
-   ```
-3. Run the inject script:
-   ```bash
-   ./scripts/inject-proxy.sh
-   ```
-4. Commit and push:
-   ```bash
-   git add docs/analyzer.js
-   git commit -m "Inject proxy URL"
-   git push
-   ```
-
-GitHub Pages will serve the updated `docs/analyzer.js` with your proxy baked in.
-
-### 3. If you need to change the URL
-
-Edit `.env`, run `./scripts/inject-proxy.sh` again, commit and push.
-
-### 4. If you want to remove the proxy
-
-Delete `.env` (or clear `PROXY_URL`), run `./scripts/inject-proxy.sh` — it resets to the placeholder, falling back to third-party proxies.
-
-## Setting up on a different computer
-
-1. Clone the repo
-2. Create `.env` with your `PROXY_URL=...` (the `.env` file is gitignored)
-3. Run `./scripts/inject-proxy.sh`
-4. That's it — the deployed `docs/analyzer.js` already has the URL from your last push
-
-You only need to re-run the inject script if you want to change the URL or deploy from a fresh clone.
-
-## Free tier limits
-
-| | Free | Paid ($5/month) |
-|---|---|---|
-| Requests | 100K/day | 10M/month |
-| CPU time | 10ms/request | 30ms/request |
-| When exceeded | **Hard stop** (5XX until midnight UTC) | $0.30/million overage |
-
-100K/day handles ~5,500 daily users doing 3 analyses each. For context, each analysis uses ~4-6 proxied requests (1 HTML page + 3-5 CSS files).
-
-## Safety features
-
-| Feature | What it does |
-|---------|-------------|
-| **Origin checking** | Only browsers on `jdeworks.github.io` can use the proxy (unforgeable by browsers) |
-| **Rate limiting** | 30 requests/minute per IP address |
-| **SSRF protection** | Blocks localhost, private IPs, `.local` domains |
-| **Method restriction** | GET only, http/https only |
-| **Size limit** | 10 MB max response |
-
-## Configuration
-
-Edit `proxy/worker.js`:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ALLOWED_ORIGINS` | `['https://jdeworks.github.io']` | Allowed Origin domains. Set to `null` for any (dev only). |
-| `RATE_LIMIT` | `30` | Max requests per IP per minute |
-| `MAX_RESPONSE_SIZE` | `10 MB` | Max proxied response body |
-| `USER_AGENT` | `MilgAnalyzer/1.0` | User-Agent sent to target servers |
-
-After changing, redeploy: `cd proxy && npx wrangler deploy`
-
-## How the URL stays (mostly) hidden
-
-```
-.env (local, gitignored)
-  └── PROXY_URL=https://your-worker.workers.dev
-
-./scripts/inject-proxy.sh
-  └── base64-encodes URL → patches docs/analyzer.js
-
-docs/analyzer.js (committed)
-  └── var _pe = 'aHR0cHM6Ly8uLi4=';  (not a recognizable URL pattern)
-
-Browser (runtime)
-  └── atob() decodes → fetches from your worker
-```
-
-The encoded URL is in the committed JS (unavoidable for a static site). But:
-- The raw URL is never in git (`.env` is gitignored)
-- The encoded string doesn't match URL patterns (stops automated scrapers)
-- Origin checking + rate limiting in the worker caps abuse even if found
-- Anyone with DevTools Network tab can see the decoded URL on requests (that's fine — can't prevent it)
-</file>
-
-<file path="docs/scoring/readability.js">
-// Scoring Module: Readability & Scanability
-// Weight: 5%
-// Sources: Coleman-Liau Index, NNGroup scanning research
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-  function scoreReadability(data) {
-    var findings = [];
-    var checks = 0;
-    var passed = 0;
-
-    // Extract text content from the raw data
-    // We use heading count and element count as proxies since we don't have raw text in extracted data
-    var headings = (data.typography && data.typography.headings) || [];
-    var totalElements = (data.structure && data.structure.totalElements) || 0;
-
-    // Scanability: heading frequency
-    // Good rule: 1 heading per ~100-150 elements of content
-    if (totalElements > 50) {
-      checks++;
-      var headingRatio = headings.length / (totalElements / 100);
-      if (headingRatio >= 0.5 && headingRatio <= 5) {
-        passed++;
-      } else if (headingRatio < 0.5) {
-        findings.push({
-          severity: 'warning',
-          title: 'Low heading density: ' + headings.length + ' headings for ' + totalElements + ' elements',
-          detail: 'Content without headings is harder to scan. 79% of users scan rather than read (NNGroup)',
-          fix: 'Add descriptive headings to break content into scannable sections. Aim for a heading every 2-3 paragraphs.',
-          presetRef: null,
-          source: 'NNGroup scanning research — https://www.nngroup.com/articles/how-users-read-on-the-web/'
-        });
-      }
-    }
-
-    // Heading descriptiveness: check if headings are too short (likely generic)
-    if (headings.length > 0) {
-      checks++;
-      var shortHeadings = headings.filter(function(h) {
-        return h.text && h.text.length < 3;
-      });
-      if (shortHeadings.length === 0) {
-        passed++;
-      } else {
-        passed++; // Info doesn't reduce score
-        findings.push({
-          severity: 'info',
-          title: shortHeadings.length + ' heading(s) with very short text (< 3 chars)',
-          detail: 'Short headings like numbers or icons don\'t help users scan. Use descriptive text.',
-          fix: 'Replace generic headings with descriptive ones that summarize the section content.',
-          presetRef: null,
-          source: 'NNGroup — https://www.nngroup.com/articles/headings-pickup-lines/'
-        });
-      }
-    }
-
-    // Font size variety as readability signal
-    // Too many sizes = visual noise, harder to establish reading rhythm
-    var fontSizes = (data.typography && data.typography.fontSizes) || [];
-    var smallTextCount = fontSizes.filter(function(f) {
-      return parseFloat(f.value) < 12;
-    }).reduce(function(sum, f) { return sum + f.count; }, 0);
-
-    if (smallTextCount > 0 && totalElements > 20) {
-      checks++;
-      var smallRatio = smallTextCount / totalElements;
-      if (smallRatio < 0.05) {
-        passed++;
-      } else {
-        findings.push({
-          severity: 'warning',
-          title: smallTextCount + ' element(s) with text smaller than 12px',
-          detail: 'Text below 12px is difficult to read for most users and nearly impossible for elderly or low-vision users',
-          fix: 'Increase small text to at least 12px. Consider if the information is important enough to display — if not, remove it.',
-          presetRef: null,
-          source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text'
-        });
-      }
-    }
-
-    // Coleman-Liau readability index
-    var rd = data.readability || {};
-    if (rd.totalWords >= 50 && rd.paragraphCount >= 2) {
-      checks++;
-      // Coleman-Liau: 0.0588 * L - 0.296 * S - 15.8
-      // L = avg letters per 100 words, S = avg sentences per 100 words
-      var L = (rd.totalChars / rd.totalWords) * 100;
-      var sentenceCount = 0;
-      (rd.textBlocks || []).forEach(function(b) {
-        sentenceCount += (b.text.match(/[.!?]+/g) || []).length;
-      });
-      var S_val = (sentenceCount / rd.totalWords) * 100;
-      var cli = Math.round(0.0588 * L - 0.296 * S_val - 15.8);
-      if (cli >= 6 && cli <= 12) {
-        passed++;
-      } else {
-        findings.push({
-          severity: cli > 14 ? 'warning' : 'info',
-          title: 'Reading level: grade ' + cli + ' (Coleman-Liau Index)',
-          detail: cli > 12 ? 'Content may be too complex for a general audience' : 'Content may be overly simple for the target audience',
-          fix: cli > 12 ? 'Shorten sentences, use simpler words, break complex ideas into steps. Aim for grade 8-10 for general audiences.' : 'This reading level is appropriate for broad accessibility.',
-          presetRef: null,
-          source: 'Coleman-Liau Index — https://en.wikipedia.org/wiki/Coleman%E2%80%93Liau_index'
-        });
-      }
-    }
-
-    // Paragraph length audit
-    var longParagraphs = (rd.textBlocks || []).filter(function(b) { return b.wordCount > 150; });
-    if (longParagraphs.length > 0) {
-      findings.push({
-        severity: 'warning',
-        title: longParagraphs.length + ' paragraph(s) exceed 150 words',
-        detail: 'Long paragraphs reduce scanability. Ideal: 40-80 words per paragraph.',
-        fix: 'Break long paragraphs into shorter ones. Use subheadings, bullet lists, or callout boxes to chunk content.',
-        presetRef: null,
-        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
-      });
-    }
-
-    // List usage for scanability
-    if (rd.totalWords >= 100 && !rd.hasLists) {
-      findings.push({
-        severity: 'info',
-        title: 'No lists found in content area',
-        detail: 'Lists improve scanability by 47% compared to wall-of-text (NNGroup)',
-        fix: 'Convert sequences, features, or steps into <ul>/<ol> lists where appropriate.',
-        presetRef: null,
-        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
-      });
-    }
-
-    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-    return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Readability', icon: 'readability' };
-  }
-
-  S.register("readability", scoreReadability, 5, "Readability", "readability");
-})();
 </file>
 
 <file path="proxy/worker.js">
@@ -20217,245 +20456,6 @@ async function main() {
 main().catch(err => { console.error('Fatal:', err); process.exit(1); });
 </file>
 
-<file path="README.md">
-# make-it-look-good
-
-> **Make your website, app, or UI actually look good.** Give your AI assistant this repo and it will help you design, redesign, or fix the visual design of any web project — with real design principles, not guesswork.
-
-Your AI asks what you're building, what personality you want (clean, minimalist, playful, editorial), your colors, and your audience — then produces production-ready HTML/CSS with proper spacing, contrast, typography, and responsive behavior. It works on landing pages, dashboards, forms, portfolios, e-commerce, or any UI.
-
-**This is not a library you install.** It's a design knowledge base (45 topics on color, typography, spacing, layout, interaction, accessibility) plus a consultation playbook that guides your AI through the right questions and decisions.
-
----
-
-## If you are an AI assistant reading this
-
-The user wants you to **help them make their website or UI look good**. This repo is a design toolkit — use it to guide the user through a design consultation for *their* project.
-
-**Start here:**
-1. Read [`CONSULT.md`](CONSULT.md) — the full design consultation playbook. Follow it step by step.
-2. Read [`docs/presets/_index.md`](docs/presets/_index.md) — template catalog with preview links.
-3. Read [`workflows/quick-reference.md`](workflows/quick-reference.md) — critical design numbers.
-4. Read ONLY the knowledge files relevant to the user's question (see Step 2 in CONSULT.md).
-
-**Your job:** Ask the user what they're building (or what they want to improve), walk them through personality/colors/audience questions, then generate or fix their UI code using the design principles in this repo. Do NOT improve this repo itself — focus on the user's project.
-
-CONSULT.md includes:
-- A consultation depth selector (quick start / guided / thorough) — ask the user how deep to go
-- Required intake questions about personality, colors, inspiration, and dark mode — don't skip these
-- Website analysis workflow (Step 1E) for when users share reference URLs
-- Template catalog with preview links at `https://jdeworks.github.io/make-it-look-good/#preset:{element}/{personality}`
-
----
-
-## For Developers
-
-### What is this?
-
-You have a website or UI that needs to look better. Give this repo to your AI assistant and it becomes a **design consultant** — asking the right questions, applying real design principles, and producing code that actually looks professional. Not generic blue SaaS. Your brand, your personality, your colors.
-
-### How to use it
-
-**Option A — Online chat** (Claude.ai, ChatGPT, Gemini, Perplexity, etc.)
-
-Copy-paste this entire block as your first message:
-
-```
-Fetch this file — it's a design toolkit that will help me make my website look good:
-https://raw.githubusercontent.com/jdeworks/make-it-look-good/dev/bundle.xml
-
-Read the CONSULT.md inside it and follow the consultation playbook step by step.
-You are a design consultant — help me design or improve MY website/UI, not this
-repo. Start by asking what I'm building and how detailed I want the consultation
-(quick start / guided / thorough).
-```
-
-The bundle (~194k tokens) includes the full consultation playbook, all 45 knowledge files, and a template catalog. To browse templates visually, use the [live preview tool](https://jdeworks.github.io/make-it-look-good/) and tell your AI which ones you like.
-
-**Option B — Local AI agent** (Claude Code, Cursor, Windsurf, Codex, etc.)
-
-Clone and point your agent at the folder:
-```bash
-git clone -b dev https://github.com/jdeworks/make-it-look-good.git
-```
-
-Then tell your agent:
-```
-Read CONSULT.md from the make-it-look-good folder. It's a design consultation
-playbook — use it to help me make my website/UI look good. Follow the steps
-and start by asking what I'm building.
-```
-
-A local agent gets the full file structure including all 170+ template HTML files. This is the recommended approach for hands-on design work.
-
-**Option C — Quick prompts** (if your AI already has the repo loaded)
-
-Guided consultation (asks about personality, colors, audience):
-```
-Follow the CONSULT.md playbook to run a design consultation for my project.
-```
-
-Audit existing code:
-```
-Follow CONSULT.md Step 1A to audit this code, then generate design review notes: [paste your code]
-```
-
-Grab a component:
-```
-Look at docs/presets/_index.md and give me a hero + pricing cards layout.
-```
-
-> **Tip:** Share a link to a site you like the look of. Even one reference ("I want it to feel like aesop.com") dramatically improves results.
-
----
-
-### Preview Tool
-
-Paste any HTML+Tailwind into the [live preview tool](https://jdeworks.github.io/make-it-look-good/) to see it rendered instantly. Toggle mobile/tablet/desktop views, dark mode, and share via URL. Includes 121 prebuilt templates across 38 elements with multiple design personalities.
-
-### Design Analyzer
-
-Score any website against evidence-based design rules with the [Design Analyzer](https://jdeworks.github.io/make-it-look-good/analyzer.html). **~60 checks across 14 scoring modules** — no AI, just math against WCAG 2.2, Material Design, NNGroup research, and typography best practices. Every finding links to its source.
-
-Three ways to analyze:
-
-| Method | Best for | How |
-|--------|----------|-----|
-| **Enter URL** | Phone, quick checks | Paste a URL — fetched via CORS proxy, scored automatically |
-| **Console Snippet** | Most accurate, localhost, behind login | Copy snippet → run in DevTools console → paste JSON |
-| **Paste HTML** | Static mockups | Paste HTML source, rendered in iframe |
-
-Scoring modules: Color & Contrast (WCAG + APCA), Typography, Spacing & Layout, Touch & Interaction, Accessibility, Responsive Design, Visual Consistency, Cognitive Load, Layout Quality, Performance, Readability, Motion & Animation, Visual Balance.
-
-Features: 8 audience profiles (General, WCAG AAA, Elderly, Low Vision, Motor Impairment, Color Blind, Children, Cognitive), page context detection, gradient/background-image/CSS-filter contrast resolution, decorative element filtering, context-aware touch targets (nav/footer/inline exemptions per WCAG 2.5.8), CVD palette simulation (Machado et al. 2009), post-analysis exclusion suggestions, extraction caching, dark mode report, viewport size selection, deep scan (multi-viewport + dark mode), page screenshots, analysis history, N/A category detection, progress bar, JSON export/import, markdown/PDF export. Self-hostable CORS proxy (Cloudflare Worker, free tier 100K req/day) — see [`proxy/README.md`](proxy/README.md).
-
-Validated against 125 preset templates via headless browser testing (Puppeteer) — average score 88, min 69, max 100, with a 7-point gap between "before" (81 avg) and "clean" (88 avg) variants.
-
-### Before & After Examples
-
-Each "before" shows a typical MVP. Each "after" is a structurally different redesign — not just CSS tweaks but genuinely different layouts. Multiple personalities (Clean, Minimalist, Playful, Editorial) show how the same content can look completely different.
-
-| Example | Personalities | Try it |
-|---------|--------------|--------|
-| Dashboard | Clean, Minimalist, Playful | [Before](https://jdeworks.github.io/make-it-look-good/#preset:dashboard/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:dashboard/clean) |
-| Landing Page | Clean, Minimalist, Playful, Editorial | [Before](https://jdeworks.github.io/make-it-look-good/#preset:landing/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:landing/clean) |
-| Form | Clean, Minimalist, Playful, Editorial | [Before](https://jdeworks.github.io/make-it-look-good/#preset:form/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:form/clean) |
-| Card Grid | Clean, Minimalist, Playful | [Before](https://jdeworks.github.io/make-it-look-good/#preset:cards/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:cards/clean) |
-| Multi-Page App | Clean, Minimalist, Playful | [Before](https://jdeworks.github.io/make-it-look-good/#preset:project/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:project/clean) |
-
-Click any "After" link — personality buttons appear in the preview header to switch between variants. Color swatches let you recolor with any Tailwind palette. Effect buttons apply CSS overlays (Hushed, Bouncy, Frosted, Serif).
-
-### Example: Guided Consultation Flow
-
-Here's what a real consultation looks like when an LLM follows the playbook. The user says *"I need a website for my cafe. Something warm and inviting."*
-
-**1. The AI classifies the input** → vague idea, no code → guided intake
-
-**2. Intake questions asked:**
-- What are you building? → Landing page / content site, single-page with sections
-- Who uses it? → General public, 65-75% mobile traffic
-- Personality? → Playful & friendly, "specialty coffee shop" feel
-- Tech stack? → Plain HTML + Tailwind CDN
-- Colors? → Warm amber `#f59e0b`, rich brown `#78350f`
-- Inspiration? → "Your favorite neighborhood spot, not corporate chain"
-- Dark mode? → No
-
-**3. The AI reads knowledge files** → `layout/visual-hierarchy.md`, `typography/type-scale.md`, `color/color-psychology.md`, `interaction/touch-targets.md`, `responsive/mobile-first.md`
-
-**4. Design decisions (with reasoning):**
-- Playfair Display headings + Inter body → artisanal yet readable
-- Amber-900 on amber-50 at 7.2:1 contrast → AAA pass
-- White text on amber buttons fails WCAG → switched to amber-900 text
-- `rounded-2xl` cards + pill-shaped CTAs → warmth, not corporate
-- 48px touch targets everywhere → mobile-heavy audience
-- Section order: Hero → Menu → About → Hours → Footer → inverted pyramid
-
-**5. Output:** A single self-contained HTML file that renders on 375px–1440px+, passes WCAG AA on all text, with warm amber palette and serif/sans font pairing.
-
-The full flow with all design decisions is in [`tests/e2e-restaurant-flow.md`](tests/e2e-restaurant-flow.md). The output is in [`tests/e2e-restaurant.html`](tests/e2e-restaurant.html).
-
-### Validated Test Cases
-
-The consultation flow is tested across 12 real-world scenarios — all pass all applicable design rules (contrast, touch targets, spacing, hierarchy). See [`tests/`](tests/) for the full set.
-
-| Scenario | Input | What It Proves |
-|----------|-------|----------------|
-| React settings page | JSX + inline styles | Outputs in user's framework, no forced Tailwind migration |
-| Barebones HTML | Hackathon-quality landing page | Full redesign with Tailwind CDN |
-| Vue dashboard | Vue 3 SFC + scoped CSS | Preserves Vue SFC structure |
-| Restaurant landing | "warm and inviting cafe" | Guided intake → personality-driven output |
-| Developer portfolio | "dark mode, emerald accent" | Dark mode design with monospace accents |
-| SaaS pricing | Brand colors provided | Brand color application, clean personality |
-| Status page | JSON API data pasted | Raw data → structured UI (Step 1D) |
-| CLI output | Terminal table pasted | Non-standard input → dark technical dashboard |
-| Email template | "welcome email" | Non-web output with email-specific constraints |
-
----
-
-## What's Inside
-
-### Preset Library — [`docs/presets/_index.md`](docs/presets/_index.md)
-
-38+ presets with multiple personality variants (Clean, Minimalist, Playful). Interactive components also have React, Vue, and Svelte framework files.
-
-| Category | Examples |
-|----------|---------|
-| **Layout Shells** | App shell, marketing page, dashboard, centered form |
-| **Components** | Hero, tabs, accordion, pagination, dropdown, avatars, data table |
-| **Full Pages** | Pricing, portfolio, restaurant, status page |
-| **Before → After** | Dashboard, landing page, form, card grid, multi-page app |
-| **Expressive** | Personal site, agency landing, agency portfolio, app showcase, scroll reveal landing, product launch, editorial blog, SaaS features, scroll story, product page, devtool landing, docs site, event page, personalized portfolio |
-| **Edge Cases** | Deploy monitor, button system, OSS landing |
-
-All presets: dark mode, WCAG AA contrast, 44px touch targets, responsive. [Composition recipes](docs/presets/_index.md#composition-recipes) show how to combine them into full pages.
-
-### Knowledge Files — 44 topics
-
-| Area | Topics |
-|------|--------|
-| **Foundations** | [Cognitive load](foundations/cognitive-load.md), [Gestalt](foundations/gestalt-principles.md), [Hick's Law](foundations/hicks-law.md), [Fitts's Law](foundations/fitts-law.md), [Aesthetic-usability](foundations/aesthetic-usability.md), [Peak-end rule](foundations/peak-end-rule.md) |
-| **Color** | [Contrast & a11y](color/contrast-and-accessibility.md), [Color systems](color/color-systems.md), [Psychology](color/color-psychology.md), [Color-blind safety](color/color-blind-safety.md) |
-| **Typography** | [Type scale](typography/type-scale.md), [Font pairing](typography/font-pairing.md), [Readability](typography/readability.md), [Web font loading](typography/web-font-loading.md) |
-| **Layout** | [Spacing system](layout/spacing-system.md), [Visual hierarchy](layout/visual-hierarchy.md), [Grid systems](layout/grid-systems.md), [Whitespace](layout/whitespace.md) |
-| **Interaction** | [Animation timing](interaction/animation-timing.md), [Micro-interactions](interaction/micro-interactions.md), [Touch targets](interaction/touch-targets.md), [Loading states](interaction/loading-states.md) |
-| **Responsive** | [Mobile-first](responsive/mobile-first.md), [Breakpoints](responsive/breakpoints.md), [Fluid typography](responsive/fluid-typography.md), [Patterns](responsive/responsive-patterns.md) |
-| **Systems** | [Design tokens](systems/design-tokens.md), [Material Design 3](systems/material-design-3.md), [Apple HIG](systems/apple-hig.md), [Building a system](systems/building-a-system.md) |
-| **Expressive** | [Visual identity](expressive/visual-identity.md), [Hero patterns](expressive/hero-patterns.md), [Scroll storytelling](expressive/scroll-storytelling.md), [Purposeful motion](expressive/purposeful-motion.md), [Scroll effect patterns](expressive/scroll-effect-patterns.md), [Curated examples](expressive/curated-examples.md) |
-| **Heuristics** | [Nielsen's 10](heuristics/nielsen-10.md), [UX frameworks](heuristics/ux-frameworks.md) |
-| **Components** | [Buttons](components/buttons.md), [Forms](components/forms.md), [Cards](components/cards.md), [Navigation](components/navigation.md), [Modals](components/modals-and-dialogs.md), [Tables](components/tables-and-lists.md), [Feedback](components/feedback.md) |
-
-Each file: 200–400 lines, concrete rules with numbers, CSS/Tailwind patterns, decision trees, sources.
-
-### Workflows
-
-| Workflow | Use when |
-|----------|----------|
-| [Quick Reference](workflows/quick-reference.md) | Need a number fast (contrast ratio, spacing value, timing) |
-| [New Project Checklist](workflows/new-project-checklist.md) | Starting from scratch |
-| [Design Review Checklist](workflows/design-review-checklist.md) | Auditing an existing design |
-
-### Critical Numbers
-
-| What | Value |
-|------|-------|
-| Text contrast (AA) | 4.5:1 |
-| Large text contrast (AA) | 3:1 |
-| Body font size | ≥16px |
-| Line height | 1.4–1.6 |
-| Line length | 45–75 characters |
-| Touch target | ≥44×44px |
-| Base spacing unit | 4px or 8px |
-| Nav items | 5–7 max |
-| Enter animation | 200–300ms |
-| Exit animation | 150–200ms |
-
----
-
-If this helped you ship something that looks good, [give it a star](../../stargazers). Found an issue? [Open one](../../issues).
-
-Sources: [research/sources.md](research/sources.md)
-</file>
-
 <file path="docs/scoring/balance.js">
 // Scoring Module: Visual Weight Balance
 // Weight: 3%
@@ -21296,6 +21296,180 @@ function scoreResponsive(data) {
 })();
 </file>
 
+<file path="docs/scoring/spacing.js">
+// Scoring Module: Spacing & Layout
+// Weight: 15%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreSpacing(data) {
+  var profile = S.getProfile(data);
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+
+  // 4px grid adherence — check if spacing values are multiples of 4
+  checks++;
+  var allSpacing = [].concat(data.spacing.paddings || [], data.spacing.margins || [], data.spacing.gaps || []);
+  var onGrid = 0;
+  var offGrid = 0;
+  allSpacing.forEach(function(s) {
+    var px = parseFloat(s.value);
+    if (isNaN(px) || px === 0) return;
+    if (Math.round(px) % 4 === 0) onGrid += s.count;
+    else offGrid += s.count;
+  });
+  var gridRatio = (onGrid + offGrid) > 0 ? onGrid / (onGrid + offGrid) : 1;
+  if (gridRatio >= 0.7) {
+    passed++;
+    if (gridRatio < 0.85) {
+      findings.push({
+        severity: 'info',
+        title: Math.round(gridRatio * 100) + '% of spacing values on 4px grid',
+        detail: 'Good adherence — a few values could be rounded to the nearest 4px increment',
+        fix: 'Use Tailwind spacing utilities (p-1=4px, p-2=8px, p-3=12px, p-4=16px, ...)',
+        presetRef: null
+      });
+    }
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'Only ' + Math.round(gridRatio * 100) + '% of spacing is on a 4px grid',
+      detail: 'Inconsistent spacing makes layouts feel unpolished',
+      fix: 'Align spacing to 4px increments: 4, 8, 12, 16, 24, 32, 48, 64px',
+      presetRef: 'All presets use Tailwind spacing scale (4px base unit)', source: 'Material Design spacing — https://m3.material.io/foundations/layout/applying-layout'
+    });
+  }
+
+  // Content max-width
+  checks++;
+  var maxW = parseFloat(data.spacing.maxContentWidth);
+  if (maxW > 0 && maxW <= 1500) {
+    passed++;
+  } else if (maxW > 1500) {
+    findings.push({
+      severity: 'warning',
+      title: 'Content width is ' + Math.round(maxW) + 'px (recommended: 1200–1440px)',
+      detail: 'Very wide content is harder to scan and looks stretched on large monitors',
+      fix: 'Add a max-width container. In Tailwind: max-w-7xl (1280px) or max-w-screen-xl',
+      presetRef: 'Dashboard presets use max-w-7xl containers',
+      source: 'NNGroup — https://www.nngroup.com/articles/utilize-available-screen-space/'
+    });
+  } else {
+    passed++; // No max width data or narrow — fine
+  }
+
+  // Mobile padding >= 16px
+  checks++;
+  var bodyPad = parseFloat(data.spacing.bodyPaddingHorizontal);
+  if (bodyPad >= 14 || isNaN(bodyPad) || bodyPad === 0) {
+    passed++; // 0 is OK if inner containers have padding
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'Body horizontal padding is ' + bodyPad + 'px (minimum: 16px)',
+      detail: 'Content touching screen edges feels cramped on mobile',
+      fix: 'Add px-4 (16px) padding to the body or main container',
+      presetRef: null,
+      source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout'
+    });
+  }
+
+  // Adjacent interactive element spacing (buttons/links too close together)
+  var adjacentIssues = (data.interaction && data.interaction.adjacentIssues) || [];
+  if (adjacentIssues.length > 0) {
+    checks++;
+    var minSpacing = profile.targetSpacing;
+    var touching = adjacentIssues.filter(function(a) { return a.gap < 2; });
+    var tooClose = adjacentIssues.filter(function(a) { return a.gap >= 2 && a.gap < minSpacing; });
+
+    touching.forEach(function(a) {
+      var labelA = a.textA || a.selectorA || '?';
+      var labelB = a.textB || a.selectorB || '?';
+      var selectorHint = (a.selectorA || a.selectorB) ? ' — ' + (a.selectorA || '') : '';
+      findings.push({
+        severity: 'error',
+        title: 'Interactive elements touching (' + a.gap + 'px gap)',
+        detail: labelA + ' and ' + labelB + ' (' + a.direction + ')' + selectorHint,
+        fix: 'Add at least ' + minSpacing + 'px gap between interactive elements. In Tailwind: gap-' + (minSpacing / 4) + ' on the parent flex/grid container.',
+        presetRef: 'Button presets use gap-2 (8px) or gap-3 (12px) between buttons',
+        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
+      });
+    });
+
+    tooClose.forEach(function(a) {
+      var labelA = a.textA || a.selectorA || '?';
+      var labelB = a.textB || a.selectorB || '?';
+      var selectorHint = (a.selectorA || a.selectorB) ? ' — ' + (a.selectorA || '') : '';
+      findings.push({
+        severity: 'warning',
+        title: 'Interactive elements only ' + a.gap + 'px apart (recommended: ≥' + minSpacing + 'px)',
+        detail: labelA + ' and ' + labelB + ' (' + a.direction + ')' + selectorHint,
+        fix: 'Increase gap to at least ' + minSpacing + 'px to prevent mis-taps. In Tailwind: gap-' + (minSpacing / 4) + ' on the parent.',
+        presetRef: null,
+        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
+      });
+    });
+
+    if (touching.length === 0 && tooClose.length === 0) passed++;
+  }
+
+  // Element overflow
+  var overflows = (data.layout && data.layout.overflowElements) || 0;
+  if (overflows > 0) {
+    checks++;
+    findings.push({
+      severity: overflows > 5 ? 'warning' : 'info',
+      title: overflows + ' element(s) with horizontal overflow',
+      detail: 'Content extends beyond its container, causing horizontal scroll or clipping',
+      fix: 'Add overflow-x: hidden or overflow: auto to the container element. Check for fixed-width children inside flexible containers.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
+    });
+  } else {
+    checks++;
+    passed++;
+  }
+
+  // Negative margins
+  var negMargins = (data.spacing && data.spacing.negativeMargins) || 0;
+  if (negMargins > 5) {
+    findings.push({
+      severity: 'info',
+      title: negMargins + ' element(s) use negative margins',
+      detail: 'Negative margins can cause overlapping content and layout fragility',
+      fix: 'Consider using CSS grid/flexbox gap, transform, or absolute positioning instead of negative margins where possible.',
+      presetRef: null,
+      source: 'CSS best practices'
+    });
+  }
+
+  // Container padding consistency
+  var cPaddings = (data.spacing && data.spacing.containerPaddings) || [];
+  if (cPaddings.length >= 4) {
+    findings.push({
+      severity: 'info',
+      title: cPaddings.length + ' distinct container padding values',
+      detail: 'Values: ' + cPaddings.slice(0, 5).map(function(p) { return p.value + ' (' + p.count + 'x)'; }).join(', '),
+      fix: 'Standardize container padding to 2-3 values. In Tailwind: p-4 (16px), p-6 (24px), p-8 (32px).',
+      presetRef: null,
+      source: 'Gestalt proximity — https://lawsofux.com/law-of-proximity/'
+    });
+  }
+
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+  return { score: score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Spacing & Layout', icon: 'spacing' };
+}
+
+
+  S.register("spacing", scoreSpacing, 15, "Spacing & Layout", "spacing");
+})();
+</file>
+
 <file path="docs/scoring/consistency.js">
 // Scoring Module: Visual Consistency
 // Weight: 5%
@@ -21440,6 +21614,41 @@ function scoreVisualConsistency(data) {
       detail: 'Multiple gradient directions create visual incoherence.',
       fix: 'Limit to 1-2 gradient directions for visual coherence.',
       source: 'Design Systems — https://www.designsystems.com/'
+    });
+  }
+
+  // Icon size consistency (opt-in, full scan)
+  var iconCV = (data.consistency && data.consistency.iconSizeVariance) || 0;
+  if (iconCV > 40) {
+    findings.push({
+      severity: 'info',
+      title: 'Icon sizes vary significantly relative to text (CV: ' + iconCV + '%)',
+      detail: 'SVG icons are sized inconsistently relative to adjacent text.',
+      fix: 'Standardize inline icons to 1.25em (1.25x the parent font size). Use w-4 h-4 or w-5 h-5 consistently.',
+      source: 'Material Design 3 — https://m3.material.io/styles/icons/overview'
+    });
+  }
+
+  // Padding asymmetry in buttons
+  var padAsym = (data.consistency && data.consistency.paddingAsymmetry) || 0;
+  if (padAsym > 0) {
+    findings.push({
+      severity: 'info',
+      title: padAsym + ' button(s) with asymmetric horizontal padding',
+      detail: 'Buttons have different left and right padding (>4px difference).',
+      fix: 'Use equal horizontal padding on buttons for centered content: px-4, px-6, etc.',
+      source: 'Material Design 3 — https://m3.material.io/components/buttons/specs'
+    });
+  }
+
+  // Color temperature mixing (opt-in, full scan)
+  if (data.colors && data.colors.temperatureMixing) {
+    findings.push({
+      severity: 'info',
+      title: 'Page mixes warm and cool accent colors',
+      detail: 'Both warm (red/orange/yellow) and cool (blue/cyan) accent colors are used. Verify this is an intentional complementary scheme.',
+      fix: 'If unintentional, consolidate to either warm or cool accent palette. Complementary schemes should be deliberate.',
+      source: 'Color theory — https://color.adobe.com/'
     });
   }
 
@@ -21760,180 +21969,6 @@ function scorePerformance(data) {
 
 
   S.register("performance", scorePerformance, 5, "Performance", "cognitive");
-})();
-</file>
-
-<file path="docs/scoring/spacing.js">
-// Scoring Module: Spacing & Layout
-// Weight: 15%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreSpacing(data) {
-  var profile = S.getProfile(data);
-  var findings = [];
-  var checks = 0;
-  var passed = 0;
-
-  // 4px grid adherence — check if spacing values are multiples of 4
-  checks++;
-  var allSpacing = [].concat(data.spacing.paddings || [], data.spacing.margins || [], data.spacing.gaps || []);
-  var onGrid = 0;
-  var offGrid = 0;
-  allSpacing.forEach(function(s) {
-    var px = parseFloat(s.value);
-    if (isNaN(px) || px === 0) return;
-    if (Math.round(px) % 4 === 0) onGrid += s.count;
-    else offGrid += s.count;
-  });
-  var gridRatio = (onGrid + offGrid) > 0 ? onGrid / (onGrid + offGrid) : 1;
-  if (gridRatio >= 0.7) {
-    passed++;
-    if (gridRatio < 0.85) {
-      findings.push({
-        severity: 'info',
-        title: Math.round(gridRatio * 100) + '% of spacing values on 4px grid',
-        detail: 'Good adherence — a few values could be rounded to the nearest 4px increment',
-        fix: 'Use Tailwind spacing utilities (p-1=4px, p-2=8px, p-3=12px, p-4=16px, ...)',
-        presetRef: null
-      });
-    }
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: 'Only ' + Math.round(gridRatio * 100) + '% of spacing is on a 4px grid',
-      detail: 'Inconsistent spacing makes layouts feel unpolished',
-      fix: 'Align spacing to 4px increments: 4, 8, 12, 16, 24, 32, 48, 64px',
-      presetRef: 'All presets use Tailwind spacing scale (4px base unit)', source: 'Material Design spacing — https://m3.material.io/foundations/layout/applying-layout'
-    });
-  }
-
-  // Content max-width
-  checks++;
-  var maxW = parseFloat(data.spacing.maxContentWidth);
-  if (maxW > 0 && maxW <= 1500) {
-    passed++;
-  } else if (maxW > 1500) {
-    findings.push({
-      severity: 'warning',
-      title: 'Content width is ' + Math.round(maxW) + 'px (recommended: 1200–1440px)',
-      detail: 'Very wide content is harder to scan and looks stretched on large monitors',
-      fix: 'Add a max-width container. In Tailwind: max-w-7xl (1280px) or max-w-screen-xl',
-      presetRef: 'Dashboard presets use max-w-7xl containers',
-      source: 'NNGroup — https://www.nngroup.com/articles/utilize-available-screen-space/'
-    });
-  } else {
-    passed++; // No max width data or narrow — fine
-  }
-
-  // Mobile padding >= 16px
-  checks++;
-  var bodyPad = parseFloat(data.spacing.bodyPaddingHorizontal);
-  if (bodyPad >= 14 || isNaN(bodyPad) || bodyPad === 0) {
-    passed++; // 0 is OK if inner containers have padding
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: 'Body horizontal padding is ' + bodyPad + 'px (minimum: 16px)',
-      detail: 'Content touching screen edges feels cramped on mobile',
-      fix: 'Add px-4 (16px) padding to the body or main container',
-      presetRef: null,
-      source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout'
-    });
-  }
-
-  // Adjacent interactive element spacing (buttons/links too close together)
-  var adjacentIssues = (data.interaction && data.interaction.adjacentIssues) || [];
-  if (adjacentIssues.length > 0) {
-    checks++;
-    var minSpacing = profile.targetSpacing;
-    var touching = adjacentIssues.filter(function(a) { return a.gap < 2; });
-    var tooClose = adjacentIssues.filter(function(a) { return a.gap >= 2 && a.gap < minSpacing; });
-
-    touching.forEach(function(a) {
-      var labelA = a.textA || a.selectorA || '?';
-      var labelB = a.textB || a.selectorB || '?';
-      var selectorHint = (a.selectorA || a.selectorB) ? ' — ' + (a.selectorA || '') : '';
-      findings.push({
-        severity: 'error',
-        title: 'Interactive elements touching (' + a.gap + 'px gap)',
-        detail: labelA + ' and ' + labelB + ' (' + a.direction + ')' + selectorHint,
-        fix: 'Add at least ' + minSpacing + 'px gap between interactive elements. In Tailwind: gap-' + (minSpacing / 4) + ' on the parent flex/grid container.',
-        presetRef: 'Button presets use gap-2 (8px) or gap-3 (12px) between buttons',
-        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
-      });
-    });
-
-    tooClose.forEach(function(a) {
-      var labelA = a.textA || a.selectorA || '?';
-      var labelB = a.textB || a.selectorB || '?';
-      var selectorHint = (a.selectorA || a.selectorB) ? ' — ' + (a.selectorA || '') : '';
-      findings.push({
-        severity: 'warning',
-        title: 'Interactive elements only ' + a.gap + 'px apart (recommended: ≥' + minSpacing + 'px)',
-        detail: labelA + ' and ' + labelB + ' (' + a.direction + ')' + selectorHint,
-        fix: 'Increase gap to at least ' + minSpacing + 'px to prevent mis-taps. In Tailwind: gap-' + (minSpacing / 4) + ' on the parent.',
-        presetRef: null,
-        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
-      });
-    });
-
-    if (touching.length === 0 && tooClose.length === 0) passed++;
-  }
-
-  // Element overflow
-  var overflows = (data.layout && data.layout.overflowElements) || 0;
-  if (overflows > 0) {
-    checks++;
-    findings.push({
-      severity: overflows > 5 ? 'warning' : 'info',
-      title: overflows + ' element(s) with horizontal overflow',
-      detail: 'Content extends beyond its container, causing horizontal scroll or clipping',
-      fix: 'Add overflow-x: hidden or overflow: auto to the container element. Check for fixed-width children inside flexible containers.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
-    });
-  } else {
-    checks++;
-    passed++;
-  }
-
-  // Negative margins
-  var negMargins = (data.spacing && data.spacing.negativeMargins) || 0;
-  if (negMargins > 5) {
-    findings.push({
-      severity: 'info',
-      title: negMargins + ' element(s) use negative margins',
-      detail: 'Negative margins can cause overlapping content and layout fragility',
-      fix: 'Consider using CSS grid/flexbox gap, transform, or absolute positioning instead of negative margins where possible.',
-      presetRef: null,
-      source: 'CSS best practices'
-    });
-  }
-
-  // Container padding consistency
-  var cPaddings = (data.spacing && data.spacing.containerPaddings) || [];
-  if (cPaddings.length >= 4) {
-    findings.push({
-      severity: 'info',
-      title: cPaddings.length + ' distinct container padding values',
-      detail: 'Values: ' + cPaddings.slice(0, 5).map(function(p) { return p.value + ' (' + p.count + 'x)'; }).join(', '),
-      fix: 'Standardize container padding to 2-3 values. In Tailwind: p-4 (16px), p-6 (24px), p-8 (32px).',
-      presetRef: null,
-      source: 'Gestalt proximity — https://lawsofux.com/law-of-proximity/'
-    });
-  }
-
-  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-  return { score: score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Spacing & Layout', icon: 'spacing' };
-}
-
-
-  S.register("spacing", scoreSpacing, 15, "Spacing & Layout", "spacing");
 })();
 </file>
 
@@ -23095,6 +23130,33 @@ function scoreLayout(data) {
     }
   }
 
+  // Visual noise density (opt-in, full scan)
+  var noiseBands = layout.visualNoiseBands || [];
+  var maxNoise = noiseBands.reduce(function(m, b) { return Math.max(m, b.score); }, 0);
+  if (maxNoise > 25) {
+    findings.push({
+      severity: maxNoise > 40 ? 'warning' : 'info',
+      title: 'High visual density in viewport band (noise score: ' + maxNoise + ')',
+      detail: 'A viewport-height region has many competing visual elements (shadows, colors, borders, bold text, images).',
+      fix: 'Reduce competing elements: fewer borders, consolidate backgrounds, or add whitespace between sections.',
+      presetRef: null,
+      source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+    });
+  }
+
+  // Empty containers
+  var emptyCont = layout.emptyContainers || 0;
+  if (emptyCont > 0) {
+    findings.push({
+      severity: 'info',
+      title: emptyCont + ' visible container(s) appear empty',
+      detail: 'Lists, sections, or grids are visible but have no text or media content. Could indicate a missing empty state.',
+      fix: 'Add an empty state message, illustration, or CTA (e.g., "No items yet").',
+      presetRef: null,
+      source: 'NNGroup — https://www.nngroup.com/articles/empty-state-ui-design/'
+    });
+  }
+
   // Hidden clip — elements with overflow-x:hidden that silently clip content
   var hiddenClips = layout.hiddenClipElements || [];
   if (hiddenClips.length > 0) {
@@ -23149,567 +23211,6 @@ function scoreLayout(data) {
 
 
   S.register("layout", scoreLayout, 5, "Layout Quality", "layout");
-})();
-</file>
-
-<file path="docs/scoring/accessibility.js">
-// Scoring Module: Accessibility
-// Weight: 15%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreAccessibility(data) {
-  var profile = S.getProfile(data);
-  var findings = [];
-  var checks = 0;
-  var passed = 0;
-  var a11y = data.accessibility;
-
-  // Semantic elements (relaxed for small components/fragments)
-  var elCount = (data.structure && data.structure.totalElements) || 0;
-  checks++;
-  var semantic = a11y.semanticElements || {};
-  var hasMain = (semantic.main || 0) > 0;
-  var hasNav = (semantic.nav || 0) > 0;
-  var hasHeader = (semantic.header || 0) > 0;
-  var semanticCount = [hasMain, hasNav, hasHeader].filter(Boolean).length;
-  if (semanticCount >= 2 || elCount < 50) {
-    passed++; // Small components don't need full page landmarks
-  } else {
-    findings.push({
-      severity: semanticCount === 0 ? 'error' : 'warning',
-      title: 'Missing semantic HTML elements',
-      detail: 'Found: ' + (hasHeader ? 'header ' : '') + (hasNav ? 'nav ' : '') + (hasMain ? 'main ' : '') + (semantic.footer ? 'footer' : ''),
-      fix: 'Use <header>, <nav>, <main>, <footer> for page structure. Screen readers rely on these landmarks.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships',
-      presetRef: 'All presets use semantic HTML landmarks'
-    });
-  }
-
-  // Heading hierarchy
-  checks++;
-  var headingOrder = a11y.headingHierarchy || [];
-  var hierarchyBroken = false;
-  for (var i = 1; i < headingOrder.length; i++) {
-    var prev = parseInt(headingOrder[i - 1].charAt(1));
-    var curr = parseInt(headingOrder[i].charAt(1));
-    if (curr > prev + 1) { hierarchyBroken = true; break; }
-  }
-  if (!hierarchyBroken) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: 'Heading hierarchy has gaps (e.g., h1 → h3)',
-      detail: 'Heading order: ' + headingOrder.join(' → '),
-      fix: 'Use headings in order: h1 → h2 → h3. Never skip levels. Style with classes instead of heading tags.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships',
-      presetRef: null
-    });
-  }
-
-  // Images with alt
-  checks++;
-  if (a11y.imagesWithoutAlt === 0) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'error',
-      title: a11y.imagesWithoutAlt + ' image(s) missing alt text',
-      detail: 'Screen readers cannot describe these images to users',
-      fix: 'Add alt="description" to all <img> tags. Use alt="" for decorative images.', source: 'WCAG 2.2 §1.1.1 — https://www.w3.org/TR/WCAG22/#non-text-content',
-      presetRef: null
-    });
-  }
-
-  // Image sizing (performance impact)
-  var imgIssues = (data.performance && data.performance.imageSizing) || [];
-  var noDimensions = imgIssues.filter(function(i) { return i.issues.indexOf('no-dimensions') !== -1; });
-  var lazyAbove = imgIssues.filter(function(i) { return i.issues.indexOf('lazy-above-fold') !== -1; });
-  var oversized = imgIssues.filter(function(i) { return i.issues.some(function(x) { return x.indexOf('oversized') === 0; }); });
-  if (noDimensions.length > 0) {
-    findings.push({ severity: 'warning', title: noDimensions.length + ' image(s) without explicit dimensions', detail: 'Missing width/height causes layout shift (CLS) when images load', fix: 'Add width and height attributes to all <img> tags, or use CSS aspect-ratio.', presetRef: null, source: 'Web Vitals — https://web.dev/articles/cls' });
-  }
-  if (lazyAbove.length > 0) {
-    findings.push({ severity: 'error', title: lazyAbove.length + ' above-fold image(s) with lazy loading', detail: 'lazy loading on visible images delays LCP (Largest Contentful Paint)', fix: 'Remove loading="lazy" from images visible in the initial viewport. Use it only for below-fold images.', presetRef: null, source: 'Web Vitals — https://web.dev/articles/lcp' });
-  }
-  if (oversized.length > 0) {
-    findings.push({ severity: 'info', title: oversized.length + ' image(s) may be oversized for their display size', detail: 'Serving images much larger than their display size wastes bandwidth', fix: 'Resize images to 2x their display size (for retina). Use srcset for responsive images.', presetRef: null, source: 'MDN — https://developer.mozilla.org/en-US/docs/Learn/HTML/Multimedia_and_embedding/Responsive_images' });
-  }
-
-  // Form labels
-  checks++;
-  var forms = a11y.formLabels || {};
-  if (forms.total === 0 || forms.withoutLabel === 0) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'error',
-      title: forms.withoutLabel + ' of ' + forms.total + ' form inputs missing labels',
-      detail: 'Unlabeled inputs are unusable for screen reader users',
-      fix: 'Use <label for="id"> or wrap the input in a <label>. Add aria-label for icon-only inputs.',
-      presetRef: 'Form presets always pair inputs with visible labels',
-      source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
-    });
-  }
-
-  // Focus indicators — check if any element shows a visible change when focused
-  checks++;
-  var focusIndicators = a11y.focusIndicators || [];
-  var hasAnyFocus = focusIndicators.some(function(f) {
-    // Element has visible outline when focused, or showed a change on focus
-    return f.hasFocusChange || (f.outlineStyle !== 'none' && f.outlineWidth !== '0px');
-  });
-  var hasFocusVisibleCSS = a11y.hasFocusVisibleCSS || false;
-  if (hasAnyFocus || hasFocusVisibleCSS || focusIndicators.length === 0) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'error',
-      title: 'No visible focus indicators found',
-      detail: 'Keyboard users cannot see which element is focused',
-      fix: 'Ensure focus-visible styles exist. In Tailwind: focus-visible:ring-2 focus-visible:ring-blue-500', source: 'WCAG 2.2 §2.4.7 — https://www.w3.org/TR/WCAG22/#focus-visible',
-      presetRef: 'All interactive presets include focus-visible ring styles'
-    });
-  }
-
-  // Language attribute (skip for HTML fragments — pasted snippets, presets)
-  var isFragment = data.meta && (data.meta.url === 'Pasted HTML' || data.meta.url === 'Editor Preview' || data.meta.isFragment);
-  if (!isFragment) {
-    checks++;
-    if (data.accessibility.langAttribute) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'error',
-        title: 'Missing lang attribute on <html>',
-        detail: 'Screen readers need the language to pronounce content correctly',
-        fix: 'Add lang="en" (or appropriate language) to the <html> element.',
-        presetRef: null,
-        source: 'WCAG 2.2 §3.1.1 — https://www.w3.org/TR/WCAG22/#language-of-page'
-      });
-    }
-  }
-
-  // Skip navigation link (skip for fragments)
-  if (!isFragment && data.structure && data.structure.totalElements > 50) {
-    checks++;
-    if (data.accessibility.hasSkipLink) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: 'No skip navigation link found',
-        detail: 'Keyboard users must tab through all navigation before reaching main content',
-        fix: 'Add a visually hidden skip link as the first focusable element: <a href="#main" class="sr-only focus:not-sr-only">Skip to content</a>',
-        presetRef: null,
-        source: 'WCAG 2.2 §2.4.1 — https://www.w3.org/TR/WCAG22/#bypass-blocks'
-      });
-    }
-  }
-
-  // Bad link texts
-  var badLinks = data.accessibility.badLinkTexts || [];
-  if (badLinks.length > 0) {
-    findings.push({
-      severity: 'warning',
-      title: badLinks.length + ' link(s) with non-descriptive text',
-      detail: 'Found: ' + badLinks.slice(0, 5).map(function(l) { return '"' + l.text + '"'; }).join(', '),
-      fix: 'Replace generic text like "click here" or "read more" with descriptive link text that makes sense out of context.',
-      presetRef: null,
-      source: 'WCAG 2.2 §2.4.4 — https://www.w3.org/TR/WCAG22/#link-purpose-in-context'
-    });
-  }
-
-  // Missing autocomplete on common fields
-  var missingAC = data.accessibility.missingAutocomplete || 0;
-  if (missingAC > 0) {
-    findings.push({
-      severity: 'info',
-      title: missingAC + ' form field(s) missing autocomplete attribute',
-      detail: 'Autocomplete helps users fill forms faster and reduces errors',
-      fix: 'Add autocomplete="name", autocomplete="email", etc. to common input fields.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.3.5 — https://www.w3.org/TR/WCAG22/#identify-input-purpose'
-    });
-  }
-
-  // ARIA audit
-  var ariaIssues = data.accessibility.ariaIssues || [];
-  var btnNoTabindex = ariaIssues.filter(function(a) { return a.type === 'button-no-tabindex'; });
-  var hiddenFocusable = ariaIssues.filter(function(a) { return a.type === 'hidden-focusable'; });
-  if (btnNoTabindex.length > 0) {
-    findings.push({
-      severity: 'error',
-      title: btnNoTabindex.length + ' element(s) with role="button" but no tabindex',
-      detail: 'Non-button elements with role="button" must be keyboard-focusable',
-      fix: 'Add tabindex="0" and a keydown handler for Enter/Space to elements with role="button", or use a real <button> element.',
-      presetRef: null,
-      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
-    });
-  }
-  if (hiddenFocusable.length > 0) {
-    findings.push({
-      severity: 'error',
-      title: hiddenFocusable.length + ' focusable element(s) inside aria-hidden containers',
-      detail: 'Screen readers skip aria-hidden content, but keyboard focus can still reach these elements — creating a confusing experience',
-      fix: 'Add tabindex="-1" to focusable elements inside aria-hidden containers, or restructure to keep them outside.',
-      presetRef: null,
-      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
-    });
-  }
-
-  // Color-only indicators
-  var colorOnly = data.accessibility.colorOnlyIndicators || 0;
-  if (colorOnly > 0) {
-    findings.push({
-      severity: 'warning',
-      title: colorOnly + ' status element(s) may rely on color alone',
-      detail: 'Elements with error/success/warning classes but no icon or text prefix',
-      fix: 'Add an icon (✓, ✗, ⚠) or text label ("Error:", "Success:") alongside color to convey status. Color-blind users cannot distinguish red from green.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.1 — https://www.w3.org/TR/WCAG22/#use-of-color'
-    });
-  }
-
-  // Auto-playing media
-  var autoPlay = data.accessibility.autoPlayMedia || 0;
-  if (autoPlay > 0) {
-    findings.push({
-      severity: 'error',
-      title: autoPlay + ' auto-playing media element(s) without muted attribute',
-      detail: 'Unexpected audio disrupts users, especially those using screen readers',
-      fix: 'Add the muted attribute to auto-playing videos, or remove autoplay entirely. Let users choose to play media.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.2 — https://www.w3.org/TR/WCAG22/#audio-control'
-    });
-  }
-
-  // Profile-specific: font smoothing warning (low_vision)
-  if (profile.warnFontSmoothing && data.typography && data.typography.fontSmoothingAntialiased) {
-    checks++;
-    findings.push({
-      severity: 'warning',
-      title: '-webkit-font-smoothing: antialiased detected',
-      detail: 'Antialiased font smoothing thins fonts on macOS, reducing legibility for low-vision users.',
-      fix: 'Remove -webkit-font-smoothing: antialiased or use auto instead.',
-      source: 'Low Vision TF — https://www.w3.org/WAI/GL/low-vision-a11y-tf/'
-    });
-  }
-
-  // Profile-specific: background images behind text (low_vision)
-  if (profile.warnBackgroundImage && data.accessibility && data.accessibility.bgImageBehindText) {
-    checks++;
-    findings.push({
-      severity: 'warning',
-      title: data.accessibility.bgImageBehindText + ' element(s) with background images behind text',
-      detail: 'Background textures/patterns reduce text legibility for low-vision users.',
-      fix: 'Use solid backgrounds behind text, or add a semi-transparent overlay.',
-      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
-    });
-  }
-
-  // Profile-specific: outline:none without focus replacement (motor_impairment)
-  if (profile.warnOutlineNone && a11y.focusIndicators) {
-    var outlineNone = a11y.focusIndicators.filter(function(f) {
-      return f.outlineStyle === 'none' && !a11y.hasFocusVisibleCSS;
-    }).length;
-    if (outlineNone > 0) {
-      checks++;
-      findings.push({
-        severity: 'error',
-        title: outlineNone + ' element(s) with outline:none and no :focus-visible replacement',
-        detail: 'Removing focus outlines without providing alternative styling makes keyboard navigation impossible.',
-        fix: 'Never use outline:none without a :focus-visible replacement. Use focus-visible:ring-2 in Tailwind.',
-        source: 'WCAG 2.2 §2.4.7 — https://www.w3.org/TR/WCAG22/#focus-visible'
-      });
-    }
-  }
-
-  // --- Structural completeness hints (info only, full pages via URL/snippet) ---
-  // Only for real pages, not pasted fragments or editor previews
-  var inputMethod = (data.meta && data.meta._inputMethod) || '';
-  var isFullPage = (inputMethod === 'url' || inputMethod === 'console') && !isFragment;
-  if (isFullPage && elCount > 50) {
-    // Missing <footer>
-    if (!semantic.footer) {
-      findings.push({
-        severity: 'info',
-        title: 'No <footer> element found',
-        detail: 'Most pages benefit from a footer with copyright, contact info, and secondary navigation. Some pages (SPAs, dashboards, single-purpose tools) legitimately omit it.',
-        fix: 'Add a <footer> with site-wide links, copyright, and contact information. It helps users who scroll to the bottom looking for additional navigation.',
-        presetRef: null,
-        source: 'HTML spec — https://html.spec.whatwg.org/multipage/sections.html#the-footer-element'
-      });
-    }
-    // No dark mode support
-    var hasDarkMode = (data.structure && data.structure.darkModeClasses) ||
-      (data.structure && data.structure.darkModeMethod && data.structure.darkModeMethod !== 'none');
-    if (!hasDarkMode && elCount > 100) {
-      findings.push({
-        severity: 'info',
-        title: 'No dark mode support detected',
-        detail: 'No dark: classes, prefers-color-scheme media query, or dark mode toggle found in static analysis. Note: dark mode can also be implemented purely in JavaScript (runtime class toggling, CSS-in-JS, matchMedia listeners) which this check cannot detect.',
-        fix: 'If your page doesn\'t have dark mode yet, consider adding it via CSS prefers-color-scheme (automatic), Tailwind dark: classes, or a JS-based toggle. Dark mode reduces eye strain and is increasingly expected by users.',
-        presetRef: 'All presets include dark mode variants',
-        source: 'MDN — https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-color-scheme'
-      });
-    }
-    // No <main> landmark (upgrade existing semantic check to also hint here)
-    if (!hasMain) {
-      findings.push({
-        severity: 'info',
-        title: 'No <main> landmark found',
-        detail: 'The <main> element identifies the primary content area. Screen readers use it to let users jump directly to content, skipping navigation.',
-        fix: 'Wrap your primary content in <main>. There should be exactly one per page.',
-        presetRef: null,
-        source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
-      });
-    }
-    // No <h1> on the page
-    var headings = (data.typography && data.typography.headings) || [];
-    var hasH1 = headings.some(function(h) { return h.tag === 'h1'; });
-    if (!hasH1 && headings.length > 0) {
-      findings.push({
-        severity: 'info',
-        title: 'No <h1> heading found',
-        detail: 'The page has headings (' + headings.map(function(h) { return h.tag; }).join(', ') + ') but no <h1>. Every page should have exactly one <h1> describing its primary purpose.',
-        fix: 'Add a single <h1> as the main title. Other headings should follow hierarchically (h2, h3, etc.).',
-        presetRef: null,
-        source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
-      });
-    }
-    // Not responsive (no responsive classes or viewport meta)
-    var hasResponsive = data.structure && data.structure.responsiveClasses;
-    var hasViewportMeta = data.structure && data.structure.viewportMeta && data.structure.viewportMeta.indexOf('width=device-width') !== -1;
-    if (!hasResponsive && !hasViewportMeta) {
-      findings.push({
-        severity: 'info',
-        title: 'No responsive design indicators found',
-        detail: 'No responsive CSS classes (sm:, md:, lg:) or proper viewport meta tag detected. Note: responsive behavior can also be implemented purely in JavaScript (resize listeners, dynamic styles) or via CSS media queries in external stylesheets that this static check may not detect.',
-        fix: 'If your page isn\'t responsive yet, add <meta name="viewport" content="width=device-width, initial-scale=1.0"> and use responsive breakpoints (CSS media queries, Tailwind sm:/md:/lg: classes, or JS-based approaches) for layout adjustments.',
-        presetRef: null,
-        source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
-      });
-    }
-  }
-
-  // --- Extended checks ---
-
-  // Duplicate IDs
-  var dupIds = a11y.duplicateIds || [];
-  if (dupIds.length > 0) {
-    checks++;
-    var ariaIds = dupIds.filter(function(d) { return d.usedInAria; });
-    var details = dupIds.slice(0, 5).map(function(d) { return '#' + d.id + ' (' + d.count + 'x' + (d.usedInAria ? ', used in label/ARIA' : '') + ')'; });
-    findings.push({
-      severity: ariaIds.length > 0 ? 'error' : 'warning',
-      title: dupIds.length + ' duplicate ID(s) found',
-      detail: details.join('; '),
-      fix: 'Each id must be unique on the page. Duplicate IDs break form labels, ARIA references, and anchor links.',
-      presetRef: null,
-      source: 'WCAG 2.2 §4.1.1 — https://www.w3.org/TR/WCAG22/#parsing'
-    });
-  }
-
-  // Scrollable regions without keyboard access
-  var scrollNoKey = a11y.scrollableNoKeyboard || 0;
-  if (scrollNoKey > 0) {
-    checks++;
-    findings.push({
-      severity: 'error',
-      title: scrollNoKey + ' scrollable region(s) not keyboard-accessible',
-      detail: 'Scrollable containers without focusable content or tabindex cannot be scrolled by keyboard users.',
-      fix: 'Add tabindex="0" to scrollable containers, or ensure they contain focusable elements (links, buttons).',
-      presetRef: null,
-      source: 'WCAG 2.2 §2.1.1 — https://www.w3.org/TR/WCAG22/#keyboard'
-    });
-  }
-
-  // Nested interactive elements
-  var nestedInt = a11y.nestedInteractives || [];
-  if (nestedInt.length > 0) {
-    checks++;
-    findings.push({
-      severity: 'error',
-      title: nestedInt.length + ' nested interactive element(s) (e.g. link inside link)',
-      detail: 'Nested clickable elements create undefined behavior. Elements: ' + nestedInt.slice(0, 3).join(', '),
-      fix: 'Never nest interactive elements. Use a single <a> or <button> and handle layout with CSS.',
-      presetRef: null,
-      source: 'HTML spec §4.5.1 — https://html.spec.whatwg.org/multipage/text-level-semantics.html#the-a-element'
-    });
-  }
-
-  // Positive tabindex
-  var posTabindex = a11y.positiveTabindex || 0;
-  if (posTabindex > 0) {
-    checks++;
-    findings.push({
-      severity: 'warning',
-      title: posTabindex + ' element(s) with positive tabindex',
-      detail: 'Positive tabindex disrupts natural tab order and creates confusing keyboard navigation.',
-      fix: 'Remove positive tabindex values. Use DOM order to control tab sequence. tabindex="0" adds to natural order; tabindex="-1" removes from it.',
-      presetRef: null,
-      source: 'WCAG 2.2 §2.4.3 — https://www.w3.org/TR/WCAG22/#focus-order'
-    });
-  }
-
-  // Empty buttons/links
-  var emptyInt = a11y.emptyInteractives || [];
-  if (emptyInt.length > 0) {
-    checks++;
-    findings.push({
-      severity: 'error',
-      title: emptyInt.length + ' interactive element(s) with no accessible name',
-      detail: 'Buttons/links without text, aria-label, or title are invisible to screen readers: ' + emptyInt.slice(0, 3).join(', '),
-      fix: 'Add text content, aria-label="description", or a descriptive title attribute to all interactive elements.',
-      presetRef: null,
-      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
-    });
-  }
-
-  // Non-text contrast (input borders)
-  var ntContrast = a11y.nonTextContrast || [];
-  if (ntContrast.length > 0) {
-    checks++;
-    var ntDetails = ntContrast.slice(0, 3).map(function(n) { return n.selector + ' border ' + n.ratio + ':1'; });
-    findings.push({
-      severity: 'warning',
-      title: ntContrast.length + ' form element(s) with border contrast below 3:1',
-      detail: 'Input borders must have at least 3:1 contrast against their background (WCAG 1.4.11): ' + ntDetails.join('; '),
-      fix: 'Increase border color contrast. In dark mode use border-slate-600 or darker. Light mode: border-slate-300 minimum on white.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.11 — https://www.w3.org/TR/WCAG22/#non-text-contrast'
-    });
-  }
-
-  // Table accessibility
-  var tableIssues = a11y.tableIssues || [];
-  if (tableIssues.length > 0) {
-    checks++;
-    var tblDetails = tableIssues.slice(0, 3).map(function(t) { return t.selector + ': ' + t.issues.join(', '); });
-    findings.push({
-      severity: tableIssues.some(function(t) { return t.issues.indexOf('no-th') !== -1; }) ? 'warning' : 'info',
-      title: tableIssues.length + ' table(s) with accessibility issues',
-      detail: tblDetails.join('; '),
-      fix: 'Data tables need <th> with scope="col" or scope="row". Add <caption> or aria-label for screen reader context.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
-    });
-  }
-
-  // Missing button type
-  var missingBtnType = a11y.missingButtonType || 0;
-  if (missingBtnType > 0) {
-    findings.push({
-      severity: 'info',
-      title: missingBtnType + ' button(s) without explicit type attribute',
-      detail: 'Buttons default to type="submit" which can cause accidental form submissions.',
-      fix: 'Add type="button" to buttons that are not form submit buttons.',
-      presetRef: null,
-      source: 'HTML spec — https://html.spec.whatwg.org/multipage/form-elements.html#the-button-element'
-    });
-  }
-
-  // Text clipping without title
-  var textClipped = a11y.textClippedNoTitle || 0;
-  if (textClipped > 0) {
-    findings.push({
-      severity: textClipped > 5 ? 'warning' : 'info',
-      title: textClipped + ' element(s) truncate text without title attribute',
-      detail: 'Text is clipped with ellipsis but has no title or aria-label, so the full text is inaccessible.',
-      fix: 'Add title="full text here" to elements with text-overflow: ellipsis so users can see the complete content on hover.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
-    });
-  }
-
-  // Placeholder-only labels
-  var placeholderOnly = a11y.placeholderOnlyInputs || 0;
-  if (placeholderOnly > 0) {
-    findings.push({
-      severity: 'warning',
-      title: placeholderOnly + ' input(s) use placeholder as only label',
-      detail: 'Placeholders disappear when the user starts typing, leaving no visible label.',
-      fix: 'Add a visible <label> element. Placeholders are hints, not labels.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
-    });
-  }
-
-  // Invisible links (no underline, no color distinction)
-  var invisLinks = a11y.invisibleLinks || 0;
-  if (invisLinks > 0) {
-    findings.push({
-      severity: 'warning',
-      title: invisLinks + ' link(s) visually indistinguishable from surrounding text',
-      detail: 'Links in body text have no underline, no color difference, and no background — users cannot identify them as clickable.',
-      fix: 'Add text-decoration: underline or a distinct color to in-content links. Nav and button-styled links are exempt.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.1 — https://www.w3.org/TR/WCAG22/#use-of-color'
-    });
-  }
-
-  // Required fields without visual indicator
-  var reqNoIndicator = a11y.requiredNoIndicator || 0;
-  if (reqNoIndicator > 0) {
-    findings.push({
-      severity: 'warning',
-      title: reqNoIndicator + ' required field(s) without visual indicator',
-      detail: 'Required inputs have no asterisk (*) or "Required" text in their label.',
-      fix: 'Add an asterisk (*) to required field labels or include "Required" text.',
-      presetRef: null,
-      source: 'WCAG 2.2 §3.3.2 — https://www.w3.org/TR/WCAG22/#labels-or-instructions'
-    });
-  }
-
-  // Invisible inputs (no border/background/shadow)
-  var invisInputs = a11y.invisibleInputs || 0;
-  if (invisInputs > 0) {
-    findings.push({
-      severity: 'warning',
-      title: invisInputs + ' input(s) without visible boundary',
-      detail: 'Text inputs have no border, no distinct background, and no shadow — users cannot identify where to type.',
-      fix: 'Add a border (border-slate-300) or distinct background to input fields. WCAG 1.4.11 requires 3:1 contrast for input boundaries.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.11 — https://www.w3.org/TR/WCAG22/#non-text-contrast'
-    });
-  }
-
-  // Select without default option
-  var selectNoDefault = a11y.selectNoDefault || 0;
-  if (selectNoDefault > 0) {
-    findings.push({
-      severity: 'info',
-      title: selectNoDefault + ' select element(s) without meaningful default option',
-      detail: 'Select elements have a blank first option. Users see an empty dropdown.',
-      fix: 'Add a descriptive prompt like "Select an option..." as the first disabled option.',
-      presetRef: null,
-      source: 'NNGroup — https://www.nngroup.com/articles/drop-down-menus/'
-    });
-  }
-
-  // Disabled element contrast
-  var disabledLC = a11y.disabledLowContrast || 0;
-  if (disabledLC > 0) {
-    findings.push({
-      severity: 'info',
-      title: disabledLC + ' disabled element(s) with very low contrast (< 2:1)',
-      detail: 'While WCAG exempts disabled elements from contrast rules, users should still be able to read what is disabled.',
-      fix: 'Aim for at least 2:1 contrast on disabled elements so users understand what is unavailable.',
-      presetRef: null,
-      source: 'Usability research — https://www.nngroup.com/articles/disabled-buttons/'
-    });
-  }
-
-  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-  return { score: score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Accessibility', icon: 'a11y' };
-}
-
-
-  S.register("accessibility", scoreAccessibility, 15, "Accessibility", "a11y");
 })();
 </file>
 
@@ -24373,6 +23874,567 @@ window.MilgReport = (function() {
   }
 
   return { renderReport: renderReport, renderMarkdown: renderMarkdown };
+})();
+</file>
+
+<file path="docs/scoring/accessibility.js">
+// Scoring Module: Accessibility
+// Weight: 15%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreAccessibility(data) {
+  var profile = S.getProfile(data);
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+  var a11y = data.accessibility;
+
+  // Semantic elements (relaxed for small components/fragments)
+  var elCount = (data.structure && data.structure.totalElements) || 0;
+  checks++;
+  var semantic = a11y.semanticElements || {};
+  var hasMain = (semantic.main || 0) > 0;
+  var hasNav = (semantic.nav || 0) > 0;
+  var hasHeader = (semantic.header || 0) > 0;
+  var semanticCount = [hasMain, hasNav, hasHeader].filter(Boolean).length;
+  if (semanticCount >= 2 || elCount < 50) {
+    passed++; // Small components don't need full page landmarks
+  } else {
+    findings.push({
+      severity: semanticCount === 0 ? 'error' : 'warning',
+      title: 'Missing semantic HTML elements',
+      detail: 'Found: ' + (hasHeader ? 'header ' : '') + (hasNav ? 'nav ' : '') + (hasMain ? 'main ' : '') + (semantic.footer ? 'footer' : ''),
+      fix: 'Use <header>, <nav>, <main>, <footer> for page structure. Screen readers rely on these landmarks.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships',
+      presetRef: 'All presets use semantic HTML landmarks'
+    });
+  }
+
+  // Heading hierarchy
+  checks++;
+  var headingOrder = a11y.headingHierarchy || [];
+  var hierarchyBroken = false;
+  for (var i = 1; i < headingOrder.length; i++) {
+    var prev = parseInt(headingOrder[i - 1].charAt(1));
+    var curr = parseInt(headingOrder[i].charAt(1));
+    if (curr > prev + 1) { hierarchyBroken = true; break; }
+  }
+  if (!hierarchyBroken) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'Heading hierarchy has gaps (e.g., h1 → h3)',
+      detail: 'Heading order: ' + headingOrder.join(' → '),
+      fix: 'Use headings in order: h1 → h2 → h3. Never skip levels. Style with classes instead of heading tags.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships',
+      presetRef: null
+    });
+  }
+
+  // Images with alt
+  checks++;
+  if (a11y.imagesWithoutAlt === 0) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'error',
+      title: a11y.imagesWithoutAlt + ' image(s) missing alt text',
+      detail: 'Screen readers cannot describe these images to users',
+      fix: 'Add alt="description" to all <img> tags. Use alt="" for decorative images.', source: 'WCAG 2.2 §1.1.1 — https://www.w3.org/TR/WCAG22/#non-text-content',
+      presetRef: null
+    });
+  }
+
+  // Image sizing (performance impact)
+  var imgIssues = (data.performance && data.performance.imageSizing) || [];
+  var noDimensions = imgIssues.filter(function(i) { return i.issues.indexOf('no-dimensions') !== -1; });
+  var lazyAbove = imgIssues.filter(function(i) { return i.issues.indexOf('lazy-above-fold') !== -1; });
+  var oversized = imgIssues.filter(function(i) { return i.issues.some(function(x) { return x.indexOf('oversized') === 0; }); });
+  if (noDimensions.length > 0) {
+    findings.push({ severity: 'warning', title: noDimensions.length + ' image(s) without explicit dimensions', detail: 'Missing width/height causes layout shift (CLS) when images load', fix: 'Add width and height attributes to all <img> tags, or use CSS aspect-ratio.', presetRef: null, source: 'Web Vitals — https://web.dev/articles/cls' });
+  }
+  if (lazyAbove.length > 0) {
+    findings.push({ severity: 'error', title: lazyAbove.length + ' above-fold image(s) with lazy loading', detail: 'lazy loading on visible images delays LCP (Largest Contentful Paint)', fix: 'Remove loading="lazy" from images visible in the initial viewport. Use it only for below-fold images.', presetRef: null, source: 'Web Vitals — https://web.dev/articles/lcp' });
+  }
+  if (oversized.length > 0) {
+    findings.push({ severity: 'info', title: oversized.length + ' image(s) may be oversized for their display size', detail: 'Serving images much larger than their display size wastes bandwidth', fix: 'Resize images to 2x their display size (for retina). Use srcset for responsive images.', presetRef: null, source: 'MDN — https://developer.mozilla.org/en-US/docs/Learn/HTML/Multimedia_and_embedding/Responsive_images' });
+  }
+
+  // Form labels
+  checks++;
+  var forms = a11y.formLabels || {};
+  if (forms.total === 0 || forms.withoutLabel === 0) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'error',
+      title: forms.withoutLabel + ' of ' + forms.total + ' form inputs missing labels',
+      detail: 'Unlabeled inputs are unusable for screen reader users',
+      fix: 'Use <label for="id"> or wrap the input in a <label>. Add aria-label for icon-only inputs.',
+      presetRef: 'Form presets always pair inputs with visible labels',
+      source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
+    });
+  }
+
+  // Focus indicators — check if any element shows a visible change when focused
+  checks++;
+  var focusIndicators = a11y.focusIndicators || [];
+  var hasAnyFocus = focusIndicators.some(function(f) {
+    // Element has visible outline when focused, or showed a change on focus
+    return f.hasFocusChange || (f.outlineStyle !== 'none' && f.outlineWidth !== '0px');
+  });
+  var hasFocusVisibleCSS = a11y.hasFocusVisibleCSS || false;
+  if (hasAnyFocus || hasFocusVisibleCSS || focusIndicators.length === 0) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'error',
+      title: 'No visible focus indicators found',
+      detail: 'Keyboard users cannot see which element is focused',
+      fix: 'Ensure focus-visible styles exist. In Tailwind: focus-visible:ring-2 focus-visible:ring-blue-500', source: 'WCAG 2.2 §2.4.7 — https://www.w3.org/TR/WCAG22/#focus-visible',
+      presetRef: 'All interactive presets include focus-visible ring styles'
+    });
+  }
+
+  // Language attribute (skip for HTML fragments — pasted snippets, presets)
+  var isFragment = data.meta && (data.meta.url === 'Pasted HTML' || data.meta.url === 'Editor Preview' || data.meta.isFragment);
+  if (!isFragment) {
+    checks++;
+    if (data.accessibility.langAttribute) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'error',
+        title: 'Missing lang attribute on <html>',
+        detail: 'Screen readers need the language to pronounce content correctly',
+        fix: 'Add lang="en" (or appropriate language) to the <html> element.',
+        presetRef: null,
+        source: 'WCAG 2.2 §3.1.1 — https://www.w3.org/TR/WCAG22/#language-of-page'
+      });
+    }
+  }
+
+  // Skip navigation link (skip for fragments)
+  if (!isFragment && data.structure && data.structure.totalElements > 50) {
+    checks++;
+    if (data.accessibility.hasSkipLink) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: 'No skip navigation link found',
+        detail: 'Keyboard users must tab through all navigation before reaching main content',
+        fix: 'Add a visually hidden skip link as the first focusable element: <a href="#main" class="sr-only focus:not-sr-only">Skip to content</a>',
+        presetRef: null,
+        source: 'WCAG 2.2 §2.4.1 — https://www.w3.org/TR/WCAG22/#bypass-blocks'
+      });
+    }
+  }
+
+  // Bad link texts
+  var badLinks = data.accessibility.badLinkTexts || [];
+  if (badLinks.length > 0) {
+    findings.push({
+      severity: 'warning',
+      title: badLinks.length + ' link(s) with non-descriptive text',
+      detail: 'Found: ' + badLinks.slice(0, 5).map(function(l) { return '"' + l.text + '"'; }).join(', '),
+      fix: 'Replace generic text like "click here" or "read more" with descriptive link text that makes sense out of context.',
+      presetRef: null,
+      source: 'WCAG 2.2 §2.4.4 — https://www.w3.org/TR/WCAG22/#link-purpose-in-context'
+    });
+  }
+
+  // Missing autocomplete on common fields
+  var missingAC = data.accessibility.missingAutocomplete || 0;
+  if (missingAC > 0) {
+    findings.push({
+      severity: 'info',
+      title: missingAC + ' form field(s) missing autocomplete attribute',
+      detail: 'Autocomplete helps users fill forms faster and reduces errors',
+      fix: 'Add autocomplete="name", autocomplete="email", etc. to common input fields.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.3.5 — https://www.w3.org/TR/WCAG22/#identify-input-purpose'
+    });
+  }
+
+  // ARIA audit
+  var ariaIssues = data.accessibility.ariaIssues || [];
+  var btnNoTabindex = ariaIssues.filter(function(a) { return a.type === 'button-no-tabindex'; });
+  var hiddenFocusable = ariaIssues.filter(function(a) { return a.type === 'hidden-focusable'; });
+  if (btnNoTabindex.length > 0) {
+    findings.push({
+      severity: 'error',
+      title: btnNoTabindex.length + ' element(s) with role="button" but no tabindex',
+      detail: 'Non-button elements with role="button" must be keyboard-focusable',
+      fix: 'Add tabindex="0" and a keydown handler for Enter/Space to elements with role="button", or use a real <button> element.',
+      presetRef: null,
+      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
+    });
+  }
+  if (hiddenFocusable.length > 0) {
+    findings.push({
+      severity: 'error',
+      title: hiddenFocusable.length + ' focusable element(s) inside aria-hidden containers',
+      detail: 'Screen readers skip aria-hidden content, but keyboard focus can still reach these elements — creating a confusing experience',
+      fix: 'Add tabindex="-1" to focusable elements inside aria-hidden containers, or restructure to keep them outside.',
+      presetRef: null,
+      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
+    });
+  }
+
+  // Color-only indicators
+  var colorOnly = data.accessibility.colorOnlyIndicators || 0;
+  if (colorOnly > 0) {
+    findings.push({
+      severity: 'warning',
+      title: colorOnly + ' status element(s) may rely on color alone',
+      detail: 'Elements with error/success/warning classes but no icon or text prefix',
+      fix: 'Add an icon (✓, ✗, ⚠) or text label ("Error:", "Success:") alongside color to convey status. Color-blind users cannot distinguish red from green.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.1 — https://www.w3.org/TR/WCAG22/#use-of-color'
+    });
+  }
+
+  // Auto-playing media
+  var autoPlay = data.accessibility.autoPlayMedia || 0;
+  if (autoPlay > 0) {
+    findings.push({
+      severity: 'error',
+      title: autoPlay + ' auto-playing media element(s) without muted attribute',
+      detail: 'Unexpected audio disrupts users, especially those using screen readers',
+      fix: 'Add the muted attribute to auto-playing videos, or remove autoplay entirely. Let users choose to play media.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.2 — https://www.w3.org/TR/WCAG22/#audio-control'
+    });
+  }
+
+  // Profile-specific: font smoothing warning (low_vision)
+  if (profile.warnFontSmoothing && data.typography && data.typography.fontSmoothingAntialiased) {
+    checks++;
+    findings.push({
+      severity: 'warning',
+      title: '-webkit-font-smoothing: antialiased detected',
+      detail: 'Antialiased font smoothing thins fonts on macOS, reducing legibility for low-vision users.',
+      fix: 'Remove -webkit-font-smoothing: antialiased or use auto instead.',
+      source: 'Low Vision TF — https://www.w3.org/WAI/GL/low-vision-a11y-tf/'
+    });
+  }
+
+  // Profile-specific: background images behind text (low_vision)
+  if (profile.warnBackgroundImage && data.accessibility && data.accessibility.bgImageBehindText) {
+    checks++;
+    findings.push({
+      severity: 'warning',
+      title: data.accessibility.bgImageBehindText + ' element(s) with background images behind text',
+      detail: 'Background textures/patterns reduce text legibility for low-vision users.',
+      fix: 'Use solid backgrounds behind text, or add a semi-transparent overlay.',
+      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
+    });
+  }
+
+  // Profile-specific: outline:none without focus replacement (motor_impairment)
+  if (profile.warnOutlineNone && a11y.focusIndicators) {
+    var outlineNone = a11y.focusIndicators.filter(function(f) {
+      return f.outlineStyle === 'none' && !a11y.hasFocusVisibleCSS;
+    }).length;
+    if (outlineNone > 0) {
+      checks++;
+      findings.push({
+        severity: 'error',
+        title: outlineNone + ' element(s) with outline:none and no :focus-visible replacement',
+        detail: 'Removing focus outlines without providing alternative styling makes keyboard navigation impossible.',
+        fix: 'Never use outline:none without a :focus-visible replacement. Use focus-visible:ring-2 in Tailwind.',
+        source: 'WCAG 2.2 §2.4.7 — https://www.w3.org/TR/WCAG22/#focus-visible'
+      });
+    }
+  }
+
+  // --- Structural completeness hints (info only, full pages via URL/snippet) ---
+  // Only for real pages, not pasted fragments or editor previews
+  var inputMethod = (data.meta && data.meta._inputMethod) || '';
+  var isFullPage = (inputMethod === 'url' || inputMethod === 'console') && !isFragment;
+  if (isFullPage && elCount > 50) {
+    // Missing <footer>
+    if (!semantic.footer) {
+      findings.push({
+        severity: 'info',
+        title: 'No <footer> element found',
+        detail: 'Most pages benefit from a footer with copyright, contact info, and secondary navigation. Some pages (SPAs, dashboards, single-purpose tools) legitimately omit it.',
+        fix: 'Add a <footer> with site-wide links, copyright, and contact information. It helps users who scroll to the bottom looking for additional navigation.',
+        presetRef: null,
+        source: 'HTML spec — https://html.spec.whatwg.org/multipage/sections.html#the-footer-element'
+      });
+    }
+    // No dark mode support
+    var hasDarkMode = (data.structure && data.structure.darkModeClasses) ||
+      (data.structure && data.structure.darkModeMethod && data.structure.darkModeMethod !== 'none');
+    if (!hasDarkMode && elCount > 100) {
+      findings.push({
+        severity: 'info',
+        title: 'No dark mode support detected',
+        detail: 'No dark: classes, prefers-color-scheme media query, or dark mode toggle found in static analysis. Note: dark mode can also be implemented purely in JavaScript (runtime class toggling, CSS-in-JS, matchMedia listeners) which this check cannot detect.',
+        fix: 'If your page doesn\'t have dark mode yet, consider adding it via CSS prefers-color-scheme (automatic), Tailwind dark: classes, or a JS-based toggle. Dark mode reduces eye strain and is increasingly expected by users.',
+        presetRef: 'All presets include dark mode variants',
+        source: 'MDN — https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-color-scheme'
+      });
+    }
+    // No <main> landmark (upgrade existing semantic check to also hint here)
+    if (!hasMain) {
+      findings.push({
+        severity: 'info',
+        title: 'No <main> landmark found',
+        detail: 'The <main> element identifies the primary content area. Screen readers use it to let users jump directly to content, skipping navigation.',
+        fix: 'Wrap your primary content in <main>. There should be exactly one per page.',
+        presetRef: null,
+        source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
+      });
+    }
+    // No <h1> on the page
+    var headings = (data.typography && data.typography.headings) || [];
+    var hasH1 = headings.some(function(h) { return h.tag === 'h1'; });
+    if (!hasH1 && headings.length > 0) {
+      findings.push({
+        severity: 'info',
+        title: 'No <h1> heading found',
+        detail: 'The page has headings (' + headings.map(function(h) { return h.tag; }).join(', ') + ') but no <h1>. Every page should have exactly one <h1> describing its primary purpose.',
+        fix: 'Add a single <h1> as the main title. Other headings should follow hierarchically (h2, h3, etc.).',
+        presetRef: null,
+        source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
+      });
+    }
+    // Not responsive (no responsive classes or viewport meta)
+    var hasResponsive = data.structure && data.structure.responsiveClasses;
+    var hasViewportMeta = data.structure && data.structure.viewportMeta && data.structure.viewportMeta.indexOf('width=device-width') !== -1;
+    if (!hasResponsive && !hasViewportMeta) {
+      findings.push({
+        severity: 'info',
+        title: 'No responsive design indicators found',
+        detail: 'No responsive CSS classes (sm:, md:, lg:) or proper viewport meta tag detected. Note: responsive behavior can also be implemented purely in JavaScript (resize listeners, dynamic styles) or via CSS media queries in external stylesheets that this static check may not detect.',
+        fix: 'If your page isn\'t responsive yet, add <meta name="viewport" content="width=device-width, initial-scale=1.0"> and use responsive breakpoints (CSS media queries, Tailwind sm:/md:/lg: classes, or JS-based approaches) for layout adjustments.',
+        presetRef: null,
+        source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
+      });
+    }
+  }
+
+  // --- Extended checks ---
+
+  // Duplicate IDs
+  var dupIds = a11y.duplicateIds || [];
+  if (dupIds.length > 0) {
+    checks++;
+    var ariaIds = dupIds.filter(function(d) { return d.usedInAria; });
+    var details = dupIds.slice(0, 5).map(function(d) { return '#' + d.id + ' (' + d.count + 'x' + (d.usedInAria ? ', used in label/ARIA' : '') + ')'; });
+    findings.push({
+      severity: ariaIds.length > 0 ? 'error' : 'warning',
+      title: dupIds.length + ' duplicate ID(s) found',
+      detail: details.join('; '),
+      fix: 'Each id must be unique on the page. Duplicate IDs break form labels, ARIA references, and anchor links.',
+      presetRef: null,
+      source: 'WCAG 2.2 §4.1.1 — https://www.w3.org/TR/WCAG22/#parsing'
+    });
+  }
+
+  // Scrollable regions without keyboard access
+  var scrollNoKey = a11y.scrollableNoKeyboard || 0;
+  if (scrollNoKey > 0) {
+    checks++;
+    findings.push({
+      severity: 'error',
+      title: scrollNoKey + ' scrollable region(s) not keyboard-accessible',
+      detail: 'Scrollable containers without focusable content or tabindex cannot be scrolled by keyboard users.',
+      fix: 'Add tabindex="0" to scrollable containers, or ensure they contain focusable elements (links, buttons).',
+      presetRef: null,
+      source: 'WCAG 2.2 §2.1.1 — https://www.w3.org/TR/WCAG22/#keyboard'
+    });
+  }
+
+  // Nested interactive elements
+  var nestedInt = a11y.nestedInteractives || [];
+  if (nestedInt.length > 0) {
+    checks++;
+    findings.push({
+      severity: 'error',
+      title: nestedInt.length + ' nested interactive element(s) (e.g. link inside link)',
+      detail: 'Nested clickable elements create undefined behavior. Elements: ' + nestedInt.slice(0, 3).join(', '),
+      fix: 'Never nest interactive elements. Use a single <a> or <button> and handle layout with CSS.',
+      presetRef: null,
+      source: 'HTML spec §4.5.1 — https://html.spec.whatwg.org/multipage/text-level-semantics.html#the-a-element'
+    });
+  }
+
+  // Positive tabindex
+  var posTabindex = a11y.positiveTabindex || 0;
+  if (posTabindex > 0) {
+    checks++;
+    findings.push({
+      severity: 'warning',
+      title: posTabindex + ' element(s) with positive tabindex',
+      detail: 'Positive tabindex disrupts natural tab order and creates confusing keyboard navigation.',
+      fix: 'Remove positive tabindex values. Use DOM order to control tab sequence. tabindex="0" adds to natural order; tabindex="-1" removes from it.',
+      presetRef: null,
+      source: 'WCAG 2.2 §2.4.3 — https://www.w3.org/TR/WCAG22/#focus-order'
+    });
+  }
+
+  // Empty buttons/links
+  var emptyInt = a11y.emptyInteractives || [];
+  if (emptyInt.length > 0) {
+    checks++;
+    findings.push({
+      severity: 'error',
+      title: emptyInt.length + ' interactive element(s) with no accessible name',
+      detail: 'Buttons/links without text, aria-label, or title are invisible to screen readers: ' + emptyInt.slice(0, 3).join(', '),
+      fix: 'Add text content, aria-label="description", or a descriptive title attribute to all interactive elements.',
+      presetRef: null,
+      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
+    });
+  }
+
+  // Non-text contrast (input borders)
+  var ntContrast = a11y.nonTextContrast || [];
+  if (ntContrast.length > 0) {
+    checks++;
+    var ntDetails = ntContrast.slice(0, 3).map(function(n) { return n.selector + ' border ' + n.ratio + ':1'; });
+    findings.push({
+      severity: 'warning',
+      title: ntContrast.length + ' form element(s) with border contrast below 3:1',
+      detail: 'Input borders must have at least 3:1 contrast against their background (WCAG 1.4.11): ' + ntDetails.join('; '),
+      fix: 'Increase border color contrast. In dark mode use border-slate-600 or darker. Light mode: border-slate-300 minimum on white.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.11 — https://www.w3.org/TR/WCAG22/#non-text-contrast'
+    });
+  }
+
+  // Table accessibility
+  var tableIssues = a11y.tableIssues || [];
+  if (tableIssues.length > 0) {
+    checks++;
+    var tblDetails = tableIssues.slice(0, 3).map(function(t) { return t.selector + ': ' + t.issues.join(', '); });
+    findings.push({
+      severity: tableIssues.some(function(t) { return t.issues.indexOf('no-th') !== -1; }) ? 'warning' : 'info',
+      title: tableIssues.length + ' table(s) with accessibility issues',
+      detail: tblDetails.join('; '),
+      fix: 'Data tables need <th> with scope="col" or scope="row". Add <caption> or aria-label for screen reader context.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
+    });
+  }
+
+  // Missing button type
+  var missingBtnType = a11y.missingButtonType || 0;
+  if (missingBtnType > 0) {
+    findings.push({
+      severity: 'info',
+      title: missingBtnType + ' button(s) without explicit type attribute',
+      detail: 'Buttons default to type="submit" which can cause accidental form submissions.',
+      fix: 'Add type="button" to buttons that are not form submit buttons.',
+      presetRef: null,
+      source: 'HTML spec — https://html.spec.whatwg.org/multipage/form-elements.html#the-button-element'
+    });
+  }
+
+  // Text clipping without title
+  var textClipped = a11y.textClippedNoTitle || 0;
+  if (textClipped > 0) {
+    findings.push({
+      severity: textClipped > 5 ? 'warning' : 'info',
+      title: textClipped + ' element(s) truncate text without title attribute',
+      detail: 'Text is clipped with ellipsis but has no title or aria-label, so the full text is inaccessible.',
+      fix: 'Add title="full text here" to elements with text-overflow: ellipsis so users can see the complete content on hover.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
+    });
+  }
+
+  // Placeholder-only labels
+  var placeholderOnly = a11y.placeholderOnlyInputs || 0;
+  if (placeholderOnly > 0) {
+    findings.push({
+      severity: 'warning',
+      title: placeholderOnly + ' input(s) use placeholder as only label',
+      detail: 'Placeholders disappear when the user starts typing, leaving no visible label.',
+      fix: 'Add a visible <label> element. Placeholders are hints, not labels.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
+    });
+  }
+
+  // Invisible links (no underline, no color distinction)
+  var invisLinks = a11y.invisibleLinks || 0;
+  if (invisLinks > 0) {
+    findings.push({
+      severity: 'warning',
+      title: invisLinks + ' link(s) visually indistinguishable from surrounding text',
+      detail: 'Links in body text have no underline, no color difference, and no background — users cannot identify them as clickable.',
+      fix: 'Add text-decoration: underline or a distinct color to in-content links. Nav and button-styled links are exempt.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.1 — https://www.w3.org/TR/WCAG22/#use-of-color'
+    });
+  }
+
+  // Required fields without visual indicator
+  var reqNoIndicator = a11y.requiredNoIndicator || 0;
+  if (reqNoIndicator > 0) {
+    findings.push({
+      severity: 'warning',
+      title: reqNoIndicator + ' required field(s) without visual indicator',
+      detail: 'Required inputs have no asterisk (*) or "Required" text in their label.',
+      fix: 'Add an asterisk (*) to required field labels or include "Required" text.',
+      presetRef: null,
+      source: 'WCAG 2.2 §3.3.2 — https://www.w3.org/TR/WCAG22/#labels-or-instructions'
+    });
+  }
+
+  // Invisible inputs (no border/background/shadow)
+  var invisInputs = a11y.invisibleInputs || 0;
+  if (invisInputs > 0) {
+    findings.push({
+      severity: 'warning',
+      title: invisInputs + ' input(s) without visible boundary',
+      detail: 'Text inputs have no border, no distinct background, and no shadow — users cannot identify where to type.',
+      fix: 'Add a border (border-slate-300) or distinct background to input fields. WCAG 1.4.11 requires 3:1 contrast for input boundaries.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.11 — https://www.w3.org/TR/WCAG22/#non-text-contrast'
+    });
+  }
+
+  // Select without default option
+  var selectNoDefault = a11y.selectNoDefault || 0;
+  if (selectNoDefault > 0) {
+    findings.push({
+      severity: 'info',
+      title: selectNoDefault + ' select element(s) without meaningful default option',
+      detail: 'Select elements have a blank first option. Users see an empty dropdown.',
+      fix: 'Add a descriptive prompt like "Select an option..." as the first disabled option.',
+      presetRef: null,
+      source: 'NNGroup — https://www.nngroup.com/articles/drop-down-menus/'
+    });
+  }
+
+  // Disabled element contrast
+  var disabledLC = a11y.disabledLowContrast || 0;
+  if (disabledLC > 0) {
+    findings.push({
+      severity: 'info',
+      title: disabledLC + ' disabled element(s) with very low contrast (< 2:1)',
+      detail: 'While WCAG exempts disabled elements from contrast rules, users should still be able to read what is disabled.',
+      fix: 'Aim for at least 2:1 contrast on disabled elements so users understand what is unavailable.',
+      presetRef: null,
+      source: 'Usability research — https://www.nngroup.com/articles/disabled-buttons/'
+    });
+  }
+
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+  return { score: score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Accessibility', icon: 'a11y' };
+}
+
+
+  S.register("accessibility", scoreAccessibility, 15, "Accessibility", "a11y");
 })();
 </file>
 
@@ -25566,6 +25628,10 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
 
 (function() {
   'use strict';
+
+  // --- Scan mode ---
+  var _scanMode = window.__milgScanMode || 'full';
+  var _doExpensive = _scanMode === 'full';
 
   // --- Auto-scroll option ---
   // To scroll the page before extraction (triggers lazy loading + intersection observers):
@@ -26982,6 +27048,24 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
   data.consistency.gradientDirections = Object.keys(gradDirs).length;
   data.performance.forcedLayers = 0;
   for (var fli = 0; fli < allElements.length && fli < 300; fli++) { var flT = getComputedStyle(allElements[fli]).transform; if (flT && flT !== 'none' && /matrix3d/.test(flT)) data.performance.forcedLayers++; }
+
+  // --- Tier 4: Opt-in expensive checks ---
+  if (_doExpensive) {
+    data.layout.visualNoiseBands = [];
+    var vpBands = Math.ceil(Math.max(document.body.scrollHeight, window.innerHeight) / window.innerHeight);
+    for (var vbi = 0; vbi < Math.min(vpBands, 5); vbi++) { var bandTop = vbi * window.innerHeight; var bandBottom = bandTop + window.innerHeight; var noiseScore = 0; for (var vni = 0; vni < allElements.length && vni < 500; vni++) { var vnEl = allElements[vni]; if (!isVisible(vnEl) || isDecorative(vnEl)) continue; var vnR = vnEl.getBoundingClientRect(); var absTop = vnR.top + window.scrollY; if (absTop + vnR.height < bandTop || absTop > bandBottom) continue; var vnS = getComputedStyle(vnEl); if (vnS.boxShadow !== 'none') noiseScore += 1; if (vnS.backgroundColor !== 'rgba(0, 0, 0, 0)' && vnS.backgroundColor !== 'transparent') noiseScore += 0.5; if (parseFloat(vnS.borderWidth) > 0 && vnS.borderStyle !== 'none') noiseScore += 0.5; if (parseInt(vnS.fontWeight) >= 700) noiseScore += 0.3; if (vnEl.tagName === 'IMG') noiseScore += 1; } data.layout.visualNoiseBands.push({ band: vbi, score: Math.round(noiseScore * 10) / 10 }); }
+    data.layout.emptyContainers = 0;
+    document.querySelectorAll('ul, ol, tbody, [role="list"], main, section').forEach(function(el) { if (!isVisible(el)) return; var r = el.getBoundingClientRect(); if (r.height > 50 && el.textContent.trim() === '' && el.querySelectorAll('img, svg, canvas, video').length === 0) data.layout.emptyContainers++; });
+    data.consistency.iconSizeVariance = 0;
+    var iconRatios = []; document.querySelectorAll('svg').forEach(function(svg) { if (!isVisible(svg) || isDecorative(svg)) return; var r = svg.getBoundingClientRect(); if (r.height < 8 || r.height > 100) return; var parentFS = parseFloat(getComputedStyle(svg.parentElement || svg).fontSize) || 16; iconRatios.push(r.height / parentFS); });
+    if (iconRatios.length >= 3) { var iconAvg = iconRatios.reduce(function(s, r) { return s + r; }, 0) / iconRatios.length; var iconVar = iconRatios.reduce(function(s, r) { return s + Math.pow(r - iconAvg, 2); }, 0) / iconRatios.length; data.consistency.iconSizeVariance = Math.round((iconAvg > 0 ? Math.sqrt(iconVar) / iconAvg : 0) * 100); }
+    data.consistency.paddingAsymmetry = 0;
+    document.querySelectorAll('button, [role="button"], input[type="submit"]').forEach(function(el) { if (!isVisible(el) || isDecorative(el)) return; var s = getComputedStyle(el); var pl = parseFloat(s.paddingLeft) || 0; var pr = parseFloat(s.paddingRight) || 0; if (Math.abs(pl - pr) > 4 && pl > 0 && pr > 0) data.consistency.paddingAsymmetry++; });
+    data.colors.temperatureMixing = false;
+    var warmCount = 0, coolCount = 0;
+    (data.colors.textColors || []).concat(data.colors.bgColors || []).forEach(function(c) { var rgb = parseColor(c.value || c); if (!rgb) return; var r = rgb.r / 255, g = rgb.g / 255, b = rgb.b / 255; var max = Math.max(r, g, b), min = Math.min(r, g, b); var sat = max > 0 ? (max - min) / max : 0; if (sat < 0.15) return; var hue = 0; if (max === r) hue = 60 * ((g - b) / (max - min)); else if (max === g) hue = 60 * (2 + (b - r) / (max - min)); else hue = 60 * (4 + (r - g) / (max - min)); if (hue < 0) hue += 360; if ((hue >= 0 && hue <= 60) || hue >= 300) warmCount++; else if (hue >= 150 && hue <= 270) coolCount++; });
+    if (warmCount >= 3 && coolCount >= 3) data.colors.temperatureMixing = true;
+  }
 
   // --- Image responsive sizing ---
   data.performance.nonResponsiveImages = 0;
@@ -29463,6 +29547,92 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
     var flT = getComputedStyle(flEl).transform;
     if (flT && flT !== 'none' && /matrix3d/.test(flT)) data.performance.forcedLayers++;
   }
+
+  // --- Tier 4: Opt-in expensive checks (only in 'full' scan mode) ---
+  if (_doExpensive) {
+
+    // Visual noise density per viewport band
+    data.layout.visualNoiseBands = [];
+    var vpBands = Math.ceil(Math.max(document.body.scrollHeight, window.innerHeight) / window.innerHeight);
+    for (var vbi = 0; vbi < Math.min(vpBands, 5); vbi++) {
+      var bandTop = vbi * window.innerHeight;
+      var bandBottom = bandTop + window.innerHeight;
+      var noiseScore = 0;
+      for (var vni = 0; vni < allElements.length && vni < 500; vni++) {
+        var vnEl = allElements[vni];
+        if (!isVisible(vnEl) || isDecorative(vnEl)) continue;
+        var vnR = vnEl.getBoundingClientRect();
+        var absTop = vnR.top + window.scrollY;
+        if (absTop + vnR.height < bandTop || absTop > bandBottom) continue;
+        var vnS = getComputedStyle(vnEl);
+        if (vnS.boxShadow !== 'none') noiseScore += 1;
+        if (vnS.backgroundColor !== 'rgba(0, 0, 0, 0)' && vnS.backgroundColor !== 'transparent') noiseScore += 0.5;
+        if (parseFloat(vnS.borderWidth) > 0 && vnS.borderStyle !== 'none') noiseScore += 0.5;
+        if (parseInt(vnS.fontWeight) >= 700) noiseScore += 0.3;
+        if (vnEl.tagName === 'IMG') noiseScore += 1;
+      }
+      data.layout.visualNoiseBands.push({ band: vbi, score: Math.round(noiseScore * 10) / 10 });
+    }
+
+    // Empty containers (visible but no content)
+    data.layout.emptyContainers = 0;
+    document.querySelectorAll('ul, ol, tbody, [role="list"], [role="grid"], main, section').forEach(function(el) {
+      if (!isVisible(el)) return;
+      var r = el.getBoundingClientRect();
+      if (r.height > 50 && el.textContent.trim() === '' && el.querySelectorAll('img, svg, canvas, video').length === 0) {
+        data.layout.emptyContainers++;
+      }
+    });
+
+    // Icon size consistency (SVGs relative to parent text)
+    data.consistency.iconSizeVariance = 0;
+    var iconRatios = [];
+    document.querySelectorAll('svg').forEach(function(svg) {
+      if (!isVisible(svg) || isDecorative(svg)) return;
+      var r = svg.getBoundingClientRect();
+      if (r.height < 8 || r.height > 100) return;
+      var parentFS = parseFloat(getComputedStyle(svg.parentElement || svg).fontSize) || 16;
+      iconRatios.push(r.height / parentFS);
+    });
+    if (iconRatios.length >= 3) {
+      var iconAvg = iconRatios.reduce(function(s, r) { return s + r; }, 0) / iconRatios.length;
+      var iconVar = iconRatios.reduce(function(s, r) { return s + Math.pow(r - iconAvg, 2); }, 0) / iconRatios.length;
+      var iconCV = iconAvg > 0 ? Math.sqrt(iconVar) / iconAvg : 0;
+      data.consistency.iconSizeVariance = Math.round(iconCV * 100);
+    }
+
+    // Padding asymmetry in buttons/cards
+    data.consistency.paddingAsymmetry = 0;
+    document.querySelectorAll('button, [role="button"], input[type="submit"]').forEach(function(el) {
+      if (!isVisible(el) || isDecorative(el)) return;
+      var s = getComputedStyle(el);
+      var pl = parseFloat(s.paddingLeft) || 0;
+      var pr = parseFloat(s.paddingRight) || 0;
+      if (Math.abs(pl - pr) > 4 && pl > 0 && pr > 0) data.consistency.paddingAsymmetry++;
+    });
+
+    // Color temperature mixing (warm vs cool accents)
+    data.colors.temperatureMixing = false;
+    var warmCount = 0, coolCount = 0;
+    (data.colors.textColors || []).concat(data.colors.bgColors || []).forEach(function(c) {
+      var rgb = parseColor(c.value || c);
+      if (!rgb) return;
+      // Convert to hue
+      var r = rgb.r / 255, g = rgb.g / 255, b = rgb.b / 255;
+      var max = Math.max(r, g, b), min = Math.min(r, g, b);
+      var sat = max > 0 ? (max - min) / max : 0;
+      if (sat < 0.15) return; // neutral, skip
+      var hue = 0;
+      if (max === r) hue = 60 * ((g - b) / (max - min));
+      else if (max === g) hue = 60 * (2 + (b - r) / (max - min));
+      else hue = 60 * (4 + (r - g) / (max - min));
+      if (hue < 0) hue += 360;
+      if ((hue >= 0 && hue <= 60) || hue >= 300) warmCount++;
+      else if (hue >= 150 && hue <= 270) coolCount++;
+    });
+    if (warmCount >= 3 && coolCount >= 3) data.colors.temperatureMixing = true;
+
+  } // end _doExpensive
 
   // --- Image responsive sizing ---
   data.performance.nonResponsiveImages = 0;

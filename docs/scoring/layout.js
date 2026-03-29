@@ -348,6 +348,33 @@ function scoreLayout(data) {
     }
   }
 
+  // Visual noise density (opt-in, full scan)
+  var noiseBands = layout.visualNoiseBands || [];
+  var maxNoise = noiseBands.reduce(function(m, b) { return Math.max(m, b.score); }, 0);
+  if (maxNoise > 25) {
+    findings.push({
+      severity: maxNoise > 40 ? 'warning' : 'info',
+      title: 'High visual density in viewport band (noise score: ' + maxNoise + ')',
+      detail: 'A viewport-height region has many competing visual elements (shadows, colors, borders, bold text, images).',
+      fix: 'Reduce competing elements: fewer borders, consolidate backgrounds, or add whitespace between sections.',
+      presetRef: null,
+      source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+    });
+  }
+
+  // Empty containers
+  var emptyCont = layout.emptyContainers || 0;
+  if (emptyCont > 0) {
+    findings.push({
+      severity: 'info',
+      title: emptyCont + ' visible container(s) appear empty',
+      detail: 'Lists, sections, or grids are visible but have no text or media content. Could indicate a missing empty state.',
+      fix: 'Add an empty state message, illustration, or CTA (e.g., "No items yet").',
+      presetRef: null,
+      source: 'NNGroup — https://www.nngroup.com/articles/empty-state-ui-design/'
+    });
+  }
+
   // Hidden clip — elements with overflow-x:hidden that silently clip content
   var hiddenClips = layout.hiddenClipElements || [];
   if (hiddenClips.length > 0) {

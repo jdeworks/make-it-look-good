@@ -144,6 +144,41 @@ function scoreVisualConsistency(data) {
     });
   }
 
+  // Icon size consistency (opt-in, full scan)
+  var iconCV = (data.consistency && data.consistency.iconSizeVariance) || 0;
+  if (iconCV > 40) {
+    findings.push({
+      severity: 'info',
+      title: 'Icon sizes vary significantly relative to text (CV: ' + iconCV + '%)',
+      detail: 'SVG icons are sized inconsistently relative to adjacent text.',
+      fix: 'Standardize inline icons to 1.25em (1.25x the parent font size). Use w-4 h-4 or w-5 h-5 consistently.',
+      source: 'Material Design 3 — https://m3.material.io/styles/icons/overview'
+    });
+  }
+
+  // Padding asymmetry in buttons
+  var padAsym = (data.consistency && data.consistency.paddingAsymmetry) || 0;
+  if (padAsym > 0) {
+    findings.push({
+      severity: 'info',
+      title: padAsym + ' button(s) with asymmetric horizontal padding',
+      detail: 'Buttons have different left and right padding (>4px difference).',
+      fix: 'Use equal horizontal padding on buttons for centered content: px-4, px-6, etc.',
+      source: 'Material Design 3 — https://m3.material.io/components/buttons/specs'
+    });
+  }
+
+  // Color temperature mixing (opt-in, full scan)
+  if (data.colors && data.colors.temperatureMixing) {
+    findings.push({
+      severity: 'info',
+      title: 'Page mixes warm and cool accent colors',
+      detail: 'Both warm (red/orange/yellow) and cool (blue/cyan) accent colors are used. Verify this is an intentional complementary scheme.',
+      fix: 'If unintentional, consolidate to either warm or cool accent palette. Complementary schemes should be deliberate.',
+      source: 'Color theory — https://color.adobe.com/'
+    });
+  }
+
   // Z-index sprawl
   var zSprawl = (data.layout && data.layout.zIndexSprawl) || {};
   if (zSprawl.distinct > 0) {
