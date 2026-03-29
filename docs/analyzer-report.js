@@ -92,6 +92,22 @@ window.MilgReport = (function() {
         html += '</div>';
       });
       html += '</div>';
+      // Unhidden panels screenshots (shown when hidden panels were detected)
+      if (report.raw.screenshotsUnhidden && report.raw.screenshotsUnhidden.length > 0) {
+        html += '<div style="margin-top:12px;padding:12px;border:2px dashed var(--border);border-radius:8px;background:var(--bg-alt)">';
+        html += '<div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text-error,#ef4444)">With hidden panels revealed (' + (report.raw.layout.hiddenPanelCount || '?') + ' panels unhidden)</div>';
+        html += '<div style="display:flex;flex-wrap:wrap;gap:12px">';
+        report.raw.screenshotsUnhidden.forEach(function(src, idx) {
+          html += '<div class="screenshot-thumb" style="flex:1;min-width:200px;max-width:400px">';
+          if (report.raw.screenshotsUnhidden.length > 1) {
+            html += '<div style="padding:4px 8px;font-size:10px;color:var(--text-secondary);border-bottom:1px solid var(--border);background:var(--bg-alt)">Section ' + (idx + 1) + '</div>';
+          }
+          html += '<img src="' + src + '" alt="Page with panels revealed ' + (idx + 1) + '" class="screenshot-img" style="width:100%;display:block;cursor:zoom-in" onclick="window.__milgZoomScreenshot(this)" loading="lazy">';
+          html += '</div>';
+        });
+        html += '</div>';
+        html += '</div>';
+      }
       html += '</details>';
     }
 
@@ -398,6 +414,45 @@ window.MilgReport = (function() {
     html += '<div>Framework: ' + report.raw.structure.cssFramework + '</div>';
     html += '<div>Responsive: ' + (report.raw.structure.responsiveClasses ? 'Yes' : 'No') + '</div>';
     html += '<div>Dark mode: ' + (report.raw.structure.darkModeClasses ? 'Yes' : 'No') + '</div>';
+    var ds = report.raw.structure.domStats;
+    if (ds) {
+      html += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">';
+      html += '<div style="font-weight:600;margin-bottom:4px">Element Distribution</div>';
+      if (ds.topTags && ds.topTags.length > 0) {
+        html += '<div style="display:flex;flex-wrap:wrap;gap:4px 10px;font-size:12px">';
+        ds.topTags.forEach(function(t) {
+          html += '<span>&lt;' + t.tag + '&gt; <strong>' + t.count + '</strong></span>';
+        });
+        html += '</div>';
+      }
+      html += '<div style="font-size:12px;margin-top:4px;color:var(--text-secondary)">';
+      html += 'Semantic: ' + ds.semanticCount + ' · Divs: ' + ds.divCount + ' (' + ds.divRatio + '%)';
+      if (ds.displayNoneCount > 0) html += ' · Hidden (display:none): ' + ds.displayNoneCount;
+      if (ds.ariaHiddenCount > 0) html += ' · aria-hidden: ' + ds.ariaHiddenCount;
+      html += '</div>';
+      html += '</div>';
+    }
+    var hpc = report.raw.layout && report.raw.layout.hiddenPanelCount;
+    var hpi = report.raw.layout && report.raw.layout.hiddenPanelIssues;
+    if (hpc > 0) {
+      html += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">';
+      html += '<div style="font-weight:600;margin-bottom:4px">Hidden Panels Detected: ' + hpc + '</div>';
+      if (hpi && hpi.length > 0) {
+        html += '<div style="font-size:12px;color:var(--text-error,#ef4444)">' + hpi.length + ' panel(s) overflow when revealed:</div>';
+        hpi.forEach(function(p) {
+          var issueStr = p.issues.map(function(i) {
+            return i.type === 'right-overflow' ? 'right +' + i.overflow + 'px'
+              : i.type === 'left-overflow' ? 'left -' + i.overflow + 'px'
+              : i.type === 'internal-overflow' ? 'internal +' + i.overflow + 'px'
+              : i.type;
+          }).join(', ');
+          html += '<div style="font-size:12px;margin-top:2px"><code style="font-size:11px">' + p.selector + '</code> (' + p.role + '): ' + issueStr + '</div>';
+        });
+      } else {
+        html += '<div style="font-size:12px;color:var(--text-secondary)">All panels fit within viewport when revealed</div>';
+      }
+      html += '</div>';
+    }
     html += '</div>';
     html += '</div>';
 
@@ -512,6 +567,17 @@ window.MilgReport = (function() {
     lines.push('- **Framework:** ' + report.raw.structure.cssFramework);
     lines.push('- **Responsive:** ' + (report.raw.structure.responsiveClasses ? 'Yes' : 'No'));
     lines.push('- **Dark mode:** ' + (report.raw.structure.darkModeClasses ? 'Yes' : 'No'));
+    var mds = report.raw.structure.domStats;
+    if (mds) {
+      lines.push('- **Element distribution:** ' + (mds.topTags || []).map(function(t) { return '<' + t.tag + '> ×' + t.count; }).join(', '));
+      lines.push('- **Semantic elements:** ' + mds.semanticCount + ' · Divs: ' + mds.divCount + ' (' + mds.divRatio + '%)');
+      if (mds.displayNoneCount > 0) lines.push('- **Hidden (display:none):** ' + mds.displayNoneCount);
+    }
+    var mhpc = report.raw.layout && report.raw.layout.hiddenPanelCount;
+    var mhpi = report.raw.layout && report.raw.layout.hiddenPanelIssues;
+    if (mhpc > 0) {
+      lines.push('- **Hidden panels:** ' + mhpc + ' detected' + (mhpi && mhpi.length > 0 ? ', ' + mhpi.length + ' overflow when revealed' : ', all fit viewport'));
+    }
     lines.push('');
 
     // Deep scan results

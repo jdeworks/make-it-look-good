@@ -270,6 +270,74 @@ function scoreAccessibility(data) {
     }
   }
 
+  // --- Structural completeness hints (info only, full pages via URL/snippet) ---
+  // Only for real pages, not pasted fragments or editor previews
+  var inputMethod = (data.meta && data.meta._inputMethod) || '';
+  var isFullPage = (inputMethod === 'url' || inputMethod === 'console') && !isFragment;
+  if (isFullPage && elCount > 50) {
+    // Missing <footer>
+    if (!semantic.footer) {
+      findings.push({
+        severity: 'info',
+        title: 'No <footer> element found',
+        detail: 'Most pages benefit from a footer with copyright, contact info, and secondary navigation. Some pages (SPAs, dashboards, single-purpose tools) legitimately omit it.',
+        fix: 'Add a <footer> with site-wide links, copyright, and contact information. It helps users who scroll to the bottom looking for additional navigation.',
+        presetRef: null,
+        source: 'HTML spec — https://html.spec.whatwg.org/multipage/sections.html#the-footer-element'
+      });
+    }
+    // No dark mode support
+    var hasDarkMode = (data.structure && data.structure.darkModeClasses) ||
+      (data.structure && data.structure.darkModeMethod && data.structure.darkModeMethod !== 'none');
+    if (!hasDarkMode && elCount > 100) {
+      findings.push({
+        severity: 'info',
+        title: 'No dark mode support detected',
+        detail: 'No dark: classes, prefers-color-scheme media query, or dark mode toggle found in static analysis. Note: dark mode can also be implemented purely in JavaScript (runtime class toggling, CSS-in-JS, matchMedia listeners) which this check cannot detect.',
+        fix: 'If your page doesn\'t have dark mode yet, consider adding it via CSS prefers-color-scheme (automatic), Tailwind dark: classes, or a JS-based toggle. Dark mode reduces eye strain and is increasingly expected by users.',
+        presetRef: 'All presets include dark mode variants',
+        source: 'MDN — https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-color-scheme'
+      });
+    }
+    // No <main> landmark (upgrade existing semantic check to also hint here)
+    if (!hasMain) {
+      findings.push({
+        severity: 'info',
+        title: 'No <main> landmark found',
+        detail: 'The <main> element identifies the primary content area. Screen readers use it to let users jump directly to content, skipping navigation.',
+        fix: 'Wrap your primary content in <main>. There should be exactly one per page.',
+        presetRef: null,
+        source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
+      });
+    }
+    // No <h1> on the page
+    var headings = (data.typography && data.typography.headings) || [];
+    var hasH1 = headings.some(function(h) { return h.tag === 'h1'; });
+    if (!hasH1 && headings.length > 0) {
+      findings.push({
+        severity: 'info',
+        title: 'No <h1> heading found',
+        detail: 'The page has headings (' + headings.map(function(h) { return h.tag; }).join(', ') + ') but no <h1>. Every page should have exactly one <h1> describing its primary purpose.',
+        fix: 'Add a single <h1> as the main title. Other headings should follow hierarchically (h2, h3, etc.).',
+        presetRef: null,
+        source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
+      });
+    }
+    // Not responsive (no responsive classes or viewport meta)
+    var hasResponsive = data.structure && data.structure.responsiveClasses;
+    var hasViewportMeta = data.structure && data.structure.viewportMeta && data.structure.viewportMeta.indexOf('width=device-width') !== -1;
+    if (!hasResponsive && !hasViewportMeta) {
+      findings.push({
+        severity: 'info',
+        title: 'No responsive design indicators found',
+        detail: 'No responsive CSS classes (sm:, md:, lg:) or proper viewport meta tag detected. Note: responsive behavior can also be implemented purely in JavaScript (resize listeners, dynamic styles) or via CSS media queries in external stylesheets that this static check may not detect.',
+        fix: 'If your page isn\'t responsive yet, add <meta name="viewport" content="width=device-width, initial-scale=1.0"> and use responsive breakpoints (CSS media queries, Tailwind sm:/md:/lg: classes, or JS-based approaches) for layout adjustments.',
+        presetRef: null,
+        source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
+      });
+    }
+  }
+
   var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
   var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
   var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));

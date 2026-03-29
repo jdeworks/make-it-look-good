@@ -181,20 +181,24 @@ function scoreLayout(data) {
     passed++;
   }
 
-  // Horizontal scroll on containers (not tables/code which are intentional)
+  // Horizontal scroll on containers — use refined classification
   var hScrollContainers = layout.horizontalScrollContainers || [];
-  var unintentionalHScroll = hScrollContainers.filter(function(c) { return !c.intentional; });
-  if (unintentionalHScroll.length > 0 || data.structure.hasHorizontalOverflow) {
+  var bugScrollContainers = hScrollContainers.filter(function(c) { return c.classification === 'bug' || !c.intentional; });
+  if (bugScrollContainers.length > 0 || data.structure.hasHorizontalOverflow) {
     checks++;
-    var scrollDetails = unintentionalHScroll.slice(0, 3).map(function(c) {
-      return c.selector + ' overflows by ' + c.overflow + 'px';
+    var scrollDetails = bugScrollContainers.slice(0, 3).map(function(c) {
+      var reasonLabel = c.reason === 'structural-children-in-scroll' ? ' (structural content in scroll container)'
+        : c.reason === 'wide-container-scrolls' ? ' (wide container should fill viewport)'
+        : c.reason === 'no-overflow-css' ? ' (no overflow CSS — content spills)'
+        : '';
+      return c.selector + ' overflows by ' + c.overflow + 'px' + reasonLabel;
     });
     if (data.structure.hasHorizontalOverflow) scrollDetails.unshift('Page body has horizontal scroll');
     findings.push({
       severity: 'error',
-      title: (data.structure.hasHorizontalOverflow ? 'Page has horizontal scroll' : unintentionalHScroll.length + ' container(s) overflow horizontally'),
+      title: (data.structure.hasHorizontalOverflow ? 'Page has horizontal scroll' : bugScrollContainers.length + ' container(s) overflow horizontally'),
       detail: scrollDetails.join('; '),
-      fix: 'Fix horizontal overflow: add overflow-x-hidden on the outer wrapper, check for elements with fixed widths wider than viewport, or add max-w-full. Common causes: fixed-width tables, absolute positioned elements, images without max-width.',
+      fix: 'Fix horizontal overflow: add overflow-x-hidden on the outer wrapper, check for elements with fixed widths wider than viewport, or add max-w-full. Common causes: fixed-width tables, absolute positioned elements, images without max-width. If a wide container has overflow-x-auto but contains page sections (nav, forms, headings), remove the overflow and fix the root cause.',
       presetRef: null,
       source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
     });
@@ -215,6 +219,61 @@ function scoreLayout(data) {
       presetRef: null,
       source: 'NNGroup — https://www.nngroup.com/articles/scrolling-and-scrollbars/'
     });
+  }
+
+  // Hidden panel overflow issues (menus, dialogs revealed by hybrid unhide)
+  var hiddenPanelIssues = layout.hiddenPanelIssues || [];
+  if (hiddenPanelIssues.length > 0) {
+    checks++;
+    var panelDetails = hiddenPanelIssues.slice(0, 3).map(function(p) {
+      var issueTypes = p.issues.map(function(i) {
+        return i.type === 'right-overflow' ? 'overflows right by ' + i.overflow + 'px'
+          : i.type === 'left-overflow' ? 'overflows left by ' + i.overflow + 'px'
+          : i.type === 'internal-overflow' ? 'content overflows internally by ' + i.overflow + 'px'
+          : i.type;
+      });
+      return p.selector + ' (' + p.role + '): ' + issueTypes.join(', ');
+    });
+    findings.push({
+      severity: hiddenPanelIssues.length > 2 ? 'error' : 'warning',
+      title: hiddenPanelIssues.length + ' hidden panel(s) overflow when revealed (menus/dialogs)',
+      detail: 'These panels are hidden at load time but overflow the viewport when opened: ' + panelDetails.join('; '),
+      fix: 'Dropdown menus and dialogs must fit within the viewport when revealed. Use max-w-[calc(100vw-1rem)], or position with left-0 instead of right-0 on narrow viewports. For dialogs: add max-h-[90vh] overflow-y-auto.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
+    });
+  } else if (layout.hiddenPanelCount > 0) {
+    checks++;
+    passed++;
+  }
+
+  // DOM statistics — structural quality indicators (info-only)
+  var domStats = (data.structure || {}).domStats;
+  if (domStats) {
+    checks++;
+    if (domStats.divRatio > 60 && domStats.semanticCount < 5) {
+      findings.push({
+        severity: 'info',
+        title: 'Div-heavy markup (' + domStats.divRatio + '% divs, ' + domStats.semanticCount + ' semantic elements)',
+        detail: domStats.divCount + ' divs vs ' + domStats.semanticCount + ' semantic elements (nav, header, footer, section, article, etc.). Top tags: ' + domStats.topTags.map(function(t) { return t.tag + '×' + t.count; }).join(', '),
+        fix: 'Replace generic divs with semantic HTML where appropriate: <nav>, <header>, <main>, <section>, <article>, <aside>. This improves accessibility and helps screen readers navigate.',
+        presetRef: null,
+        source: 'HTML Living Standard — https://html.spec.whatwg.org/multipage/dom.html#semantics-2'
+      });
+    } else {
+      passed++;
+    }
+    if (domStats.displayNoneCount > 50) {
+      checks++;
+      findings.push({
+        severity: 'info',
+        title: domStats.displayNoneCount + ' elements with display:none — possible hidden content',
+        detail: domStats.ariaHiddenCount + ' have aria-hidden="true". Large numbers of hidden elements may indicate unused markup, off-canvas panels, or JS-toggled content that should be checked.',
+        fix: 'Review hidden elements. If they\'re unused, remove them to reduce DOM size. If they\'re interactive panels (menus, modals), ensure they\'re accessible when revealed.',
+        presetRef: null,
+        source: 'Web Almanac DOM complexity — https://almanac.httparchive.org/en/2022/markup#elements'
+      });
+    }
   }
 
   var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;

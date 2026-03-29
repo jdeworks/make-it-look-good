@@ -965,6 +965,13 @@
   data.layout.overflowElements = 0;
   data.layout.horizontalScrollContainers = [];
   data.layout.nestedScrollbars = 0;
+  var _vpW = window.innerWidth;
+
+  // Content that is expected to scroll horizontally
+  var _dataContentTags = { table: 1, pre: 1, code: 1 };
+  // Structural children — if a scroll container holds these, it's masking a layout bug
+  var _structuralSel = 'nav,form,section,header,footer,article,aside,main,h1,h2,h3,h4,h5,h6';
+
   for (var oi = 0; oi < allElements.length && oi < 500; oi++) {
     var oel = allElements[oi];
     if (!isVisible(oel) || isDecorative(oel)) continue;
@@ -972,18 +979,35 @@
       data.layout.overflowElements++;
       var oelTag = oel.tagName.toLowerCase();
       var oelStyle = getComputedStyle(oel);
-      var isIntentionalScroll = oelStyle.overflowX === 'auto' || oelStyle.overflowX === 'scroll';
-      var isTableOrCode = oelTag === 'table' || oelTag === 'pre' || oelTag === 'code' || oel.closest('table,pre,code');
-      if (oel.clientWidth > 200 && !isTableOrCode) {
+      var hasOverflowCSS = oelStyle.overflowX === 'auto' || oelStyle.overflowX === 'scroll';
+      var isDataContent = !!_dataContentTags[oelTag] || !!oel.closest('table,pre,code');
+      var hasStructuralChildren = !isDataContent && oel.querySelector(_structuralSel);
+      var isWideContainer = oel.clientWidth >= _vpW * 0.8;
+
+      var classification = 'bug';
+      if (hasOverflowCSS && isDataContent && !hasStructuralChildren) {
+        classification = 'intentional';
+      } else if (hasOverflowCSS && !isDataContent && !hasStructuralChildren && !isWideContainer) {
+        classification = 'intentional';
+      }
+      if (!hasOverflowCSS) classification = 'bug';
+      if (isWideContainer && hasOverflowCSS && !isDataContent) classification = 'bug';
+
+      if (oel.clientWidth > 200) {
         data.layout.horizontalScrollContainers.push({
           selector: cssSelector(oel),
           width: oel.clientWidth,
           scrollWidth: oel.scrollWidth,
           overflow: Math.round(oel.scrollWidth - oel.clientWidth),
-          intentional: isIntentionalScroll
+          intentional: classification === 'intentional',
+          classification: classification,
+          reason: !hasOverflowCSS ? 'no-overflow-css' :
+                  hasStructuralChildren ? 'structural-children-in-scroll' :
+                  isWideContainer ? 'wide-container-scrolls' :
+                  isDataContent ? 'data-content' : 'unknown'
         });
       }
-      if (isIntentionalScroll) {
+      if (hasOverflowCSS) {
         var scrollParent = oel.parentElement;
         while (scrollParent && scrollParent !== document.documentElement) {
           var spStyle = getComputedStyle(scrollParent);
@@ -999,7 +1023,6 @@
   }
 
   // --- Viewport visibility: elements positioned off-screen on x-axis ---
-  var _vpW = window.innerWidth;
   data.layout.offscreenElements = [];
   var _meaningfulSel = 'button,a,[role="menuitem"],[role="menu"],li,p,h1,h2,h3,h4,h5,h6,img,input,select,textarea,td,th,label,span,div';
   document.querySelectorAll(_meaningfulSel).forEach(function(el) {
@@ -1010,13 +1033,19 @@
     var majorClip = r.left < _vpW && r.right > _vpW && (r.right - _vpW) > r.width * 0.5;
     if (!fullyOff && !majorClip) return;
     var anc = el.parentElement;
-    var inScroll = false;
+    var inIntentionalScroll = false;
     while (anc && anc !== document.body && anc !== document.documentElement) {
       var ox = getComputedStyle(anc).overflowX;
-      if (ox === 'auto' || ox === 'scroll') { inScroll = true; break; }
+      if (ox === 'auto' || ox === 'scroll') {
+        var ancTag = anc.tagName.toLowerCase();
+        var isData = !!_dataContentTags[ancTag] || !!anc.closest('table,pre,code');
+        var isWide = anc.clientWidth >= _vpW * 0.8;
+        if (isData && !isWide) { inIntentionalScroll = true; break; }
+        break;
+      }
       anc = anc.parentElement;
     }
-    if (inScroll) return;
+    if (inIntentionalScroll) return;
     var parentAlready = data.layout.offscreenElements.some(function(rec) {
       try { var pel = document.querySelector(rec.selector); return pel && pel.contains(el) && pel !== el; } catch(e) { return false; }
     });
@@ -1032,6 +1061,84 @@
     });
   });
   data.layout.offscreenElements = data.layout.offscreenElements.slice(0, 20);
+
+  // --- Hidden panel detection (hybrid unhide) ---
+  data.layout.hiddenPanelIssues = [];
+  var _hiddenPanels = [];
+  document.querySelectorAll('[role="menu"], [role="listbox"], [role="dialog"], [role="tooltip"], [role="alertdialog"]').forEach(function(el) {
+    if (!isVisible(el) && _hiddenPanels.indexOf(el) === -1) _hiddenPanels.push(el);
+  });
+  var _inlineRoles = { region: 1, tabpanel: 1, tab: 1 };
+  document.querySelectorAll('[aria-controls]').forEach(function(trigger) {
+    var targetId = trigger.getAttribute('aria-controls');
+    if (targetId) {
+      var target = document.getElementById(targetId);
+      if (target && !isVisible(target) && _hiddenPanels.indexOf(target) === -1) {
+        var targetRole = (target.getAttribute('role') || '').toLowerCase();
+        if (!_inlineRoles[targetRole]) _hiddenPanels.push(target);
+      }
+    }
+  });
+  document.querySelectorAll('[aria-haspopup="true"], [aria-haspopup="menu"], [aria-haspopup="dialog"], [aria-haspopup="listbox"]').forEach(function(trigger) {
+    var ctrlId = trigger.getAttribute('aria-controls');
+    if (ctrlId) {
+      var t = document.getElementById(ctrlId);
+      if (t && !isVisible(t) && _hiddenPanels.indexOf(t) === -1) _hiddenPanels.push(t);
+      return;
+    }
+    var wrapper = trigger.parentElement;
+    if (!wrapper) return;
+    wrapper.querySelectorAll('[role="menu"], [role="listbox"], [role="dialog"]').forEach(function(c) {
+      if (!isVisible(c) && _hiddenPanels.indexOf(c) === -1) _hiddenPanels.push(c);
+    });
+  });
+  if (typeof getEventListeners === 'function') {
+    document.querySelectorAll('button, [role="button"]').forEach(function(btn) {
+      try {
+        var listeners = getEventListeners(btn);
+        if (!listeners.click || listeners.click.length === 0) return;
+        var wrapper = btn.parentElement;
+        if (!wrapper) return;
+        wrapper.querySelectorAll('[role="menu"], [role="listbox"], [role="dialog"], .dropdown-menu, .popover, [class*="dropdown"], [class*="popover"]').forEach(function(p) {
+          if (!isVisible(p) && _hiddenPanels.indexOf(p) === -1) _hiddenPanels.push(p);
+        });
+      } catch(e) {}
+    });
+  }
+  _hiddenPanels.slice(0, 15).forEach(function(panel) {
+    var origCssText = panel.style.cssText;
+    var origAriaHidden = panel.getAttribute('aria-hidden');
+    var origHidden = panel.hasAttribute('hidden');
+    panel.style.cssText = origCssText + '; display: block !important; visibility: visible !important; opacity: 1 !important; pointer-events: none !important;';
+    if (origHidden) panel.removeAttribute('hidden');
+    if (origAriaHidden) panel.setAttribute('aria-hidden', 'false');
+    void panel.offsetHeight;
+    var pr = panel.getBoundingClientRect();
+    var issues = [];
+    if (pr.width > 0 && pr.height > 0) {
+      if (pr.right > _vpW + 2) issues.push({ type: 'right-overflow', overflow: Math.round(pr.right - _vpW) });
+      if (pr.left < -2) issues.push({ type: 'left-overflow', overflow: Math.round(Math.abs(pr.left)) });
+      if (pr.bottom > window.innerHeight * 2) issues.push({ type: 'extreme-bottom', bottom: Math.round(pr.bottom) });
+      if (panel.scrollWidth > panel.clientWidth + 2) issues.push({ type: 'internal-overflow', overflow: Math.round(panel.scrollWidth - panel.clientWidth) });
+    }
+    panel.style.cssText = origCssText;
+    if (origHidden) panel.setAttribute('hidden', '');
+    if (origAriaHidden) panel.setAttribute('aria-hidden', origAriaHidden);
+    else if (panel.hasAttribute('aria-hidden')) panel.removeAttribute('aria-hidden');
+    if (issues.length > 0) {
+      data.layout.hiddenPanelIssues.push({
+        selector: cssSelector(panel),
+        role: panel.getAttribute('role') || 'unknown',
+        width: Math.round(pr.width),
+        height: Math.round(pr.height),
+        left: Math.round(pr.left),
+        right: Math.round(pr.right),
+        vpWidth: _vpW,
+        issues: issues
+      });
+    }
+  });
+  data.layout.hiddenPanelCount = _hiddenPanels.length;
 
   // --- Letter spacing issues ---
   data.typography.letterSpacingIssues = 0;
@@ -1220,6 +1327,36 @@
   document.querySelectorAll('video[autoplay]:not([muted]), audio[autoplay]:not([muted])').forEach(function(el) {
     data.accessibility.autoPlayMedia++;
   });
+
+  // --- DOM statistics ---
+  data.structure.domStats = {};
+  var _tagCounts = {};
+  var _hiddenCount = 0;
+  var _displayNoneCount = 0;
+  var _ariaHiddenCount = 0;
+  for (var dsi = 0; dsi < allElements.length; dsi++) {
+    var dsel = allElements[dsi];
+    var dsTag = dsel.tagName.toLowerCase();
+    _tagCounts[dsTag] = (_tagCounts[dsTag] || 0) + 1;
+    if (dsel.tagName === 'SCRIPT' || dsel.tagName === 'STYLE' || dsel.tagName === 'LINK') continue;
+    var dss = getComputedStyle(dsel);
+    if (dss.display === 'none') _displayNoneCount++;
+    if (dss.visibility === 'hidden' || dss.opacity === '0') _hiddenCount++;
+    if (dsel.getAttribute('aria-hidden') === 'true') _ariaHiddenCount++;
+  }
+  var _semanticTags = ['nav', 'header', 'footer', 'main', 'article', 'section', 'aside', 'figure', 'figcaption', 'details', 'summary', 'dialog', 'ul', 'ol', 'li', 'table', 'form', 'fieldset', 'label'];
+  var semanticCount = 0;
+  _semanticTags.forEach(function(t) { semanticCount += (_tagCounts[t] || 0); });
+  data.structure.domStats = {
+    divCount: _tagCounts['div'] || 0,
+    spanCount: _tagCounts['span'] || 0,
+    semanticCount: semanticCount,
+    hiddenCount: _hiddenCount,
+    displayNoneCount: _displayNoneCount,
+    ariaHiddenCount: _ariaHiddenCount,
+    divRatio: allElements.length > 0 ? Math.round((_tagCounts['div'] || 0) / allElements.length * 100) : 0,
+    topTags: Object.keys(_tagCounts).filter(function(t) { return t !== 'script' && t !== 'style' && t !== 'link'; }).sort(function(a, b) { return _tagCounts[b] - _tagCounts[a]; }).slice(0, 5).map(function(t) { return { tag: t, count: _tagCounts[t] }; })
+  };
 
   // Clean up measurement span
   document.body.removeChild(_measureSpan);

@@ -433,27 +433,31 @@
 
     // --- Viewport visibility: detect elements positioned off-screen on x-axis ---
     var vpW = window.innerWidth;
+    var _iframeDataContentTags = { table: 1, pre: 1, code: 1 };
     data.layout.offscreenElements = [];
     var meaningfulSel = 'button,a,[role="menuitem"],[role="menu"],li,p,h1,h2,h3,h4,h5,h6,img,input,select,textarea,td,th,label,span,div';
     document.querySelectorAll(meaningfulSel).forEach(function(el) {
       if (!isVisible(el) || isDecorative(el)) return;
       var r = el.getBoundingClientRect();
       if (r.width < 4 || r.height < 4) return;
-      // Element fully off-screen on x-axis? (right edge left of viewport, or left edge right of viewport)
       var fullyOff = r.right < 0 || r.left >= vpW;
-      // Element partially overflowing right edge significantly (>50% of its width clipped)
       var majorClip = r.left < vpW && r.right > vpW && (r.right - vpW) > r.width * 0.5;
       if (!fullyOff && !majorClip) return;
-      // Skip if inside a scroll container (overflow-x: auto/scroll) — tables, code blocks, etc.
+      // Only skip if inside a genuinely intentional scroll container (data content)
       var anc = el.parentElement;
-      var inScroll = false;
+      var inIntentionalScroll = false;
       while (anc && anc !== document.body && anc !== document.documentElement) {
         var ox = getComputedStyle(anc).overflowX;
-        if (ox === 'auto' || ox === 'scroll') { inScroll = true; break; }
+        if (ox === 'auto' || ox === 'scroll') {
+          var ancTag = anc.tagName.toLowerCase();
+          var isData = !!_iframeDataContentTags[ancTag] || !!anc.closest('table,pre,code');
+          var isWide = anc.clientWidth >= vpW * 0.8;
+          if (isData && !isWide) { inIntentionalScroll = true; break; }
+          break;
+        }
         anc = anc.parentElement;
       }
-      if (inScroll) return;
-      // Skip children of already-recorded off-screen parents (avoid duplicates)
+      if (inIntentionalScroll) return;
       var parentAlready = data.layout.offscreenElements.some(function(rec) {
         try { var pel = document.querySelector(rec.selector); return pel && pel.contains(el) && pel !== el; } catch(e) { return false; }
       });
@@ -482,19 +486,38 @@
     });
     data.layout.borderRadii = Object.keys(radiusMap).map(function(k) { return { value: k, count: radiusMap[k] }; }).sort(function(a, b) { return b.count - a.count; }).slice(0, 15);
 
-    // Horizontal scroll containers
+    // Horizontal scroll containers — refined classification
+    var _iframeStructuralSel = 'nav,form,section,header,footer,article,aside,main,h1,h2,h3,h4,h5,h6';
     data.layout.horizontalScrollContainers = [];
     data.layout.nestedScrollbars = 0;
     var overflowEls = document.querySelectorAll('[style*="overflow"],[class*="overflow"]');
     overflowEls.forEach(function(oel) {
       if (oel.scrollWidth > oel.clientWidth + 2 && oel.clientWidth > 0) {
         var tag = oel.tagName.toLowerCase();
-        var intentional = tag === 'table' || tag === 'pre' || tag === 'code' ||
-          oel.closest('table,pre,code,.overflow-x-auto,.overflow-x-scroll') !== null ||
+        var oelStyle = getComputedStyle(oel);
+        var hasOverflowCSS = oelStyle.overflowX === 'auto' || oelStyle.overflowX === 'scroll' ||
           /overflow-x-(auto|scroll)/.test(oel.className || '');
+        var isDataContent = !!_iframeDataContentTags[tag] || !!oel.closest('table,pre,code');
+        var hasStructuralChildren = !isDataContent && oel.querySelector(_iframeStructuralSel);
+        var isWideContainer = oel.clientWidth >= vpW * 0.8;
+
+        var classification = 'bug';
+        if (hasOverflowCSS && isDataContent && !hasStructuralChildren) {
+          classification = 'intentional';
+        } else if (hasOverflowCSS && !isDataContent && !hasStructuralChildren && !isWideContainer) {
+          classification = 'intentional';
+        }
+        if (!hasOverflowCSS) classification = 'bug';
+        if (isWideContainer && hasOverflowCSS && !isDataContent) classification = 'bug';
+
         data.layout.horizontalScrollContainers.push({
           selector: cssSelector(oel),
-          intentional: intentional,
+          intentional: classification === 'intentional',
+          classification: classification,
+          reason: !hasOverflowCSS ? 'no-overflow-css' :
+                  hasStructuralChildren ? 'structural-children-in-scroll' :
+                  isWideContainer ? 'wide-container-scrolls' :
+                  isDataContent ? 'data-content' : 'unknown',
           scrollWidth: oel.scrollWidth,
           overflow: Math.round(oel.scrollWidth - oel.clientWidth),
           element: tag
@@ -511,6 +534,95 @@
         }
       }
     });
+
+    // Hidden panel detection — find all invisible interactive panels
+    data.layout.hiddenPanelIssues = [];
+    var _iframeHiddenPanels = [];
+    document.querySelectorAll('[role="menu"], [role="listbox"], [role="dialog"], [role="tooltip"], [role="alertdialog"]').forEach(function(el) {
+      if (!isVisible(el) && _iframeHiddenPanels.indexOf(el) === -1) _iframeHiddenPanels.push(el);
+    });
+    var _iframeInlineRoles = { region: 1, tabpanel: 1, tab: 1 };
+    document.querySelectorAll('[aria-controls]').forEach(function(trigger) {
+      var targetId = trigger.getAttribute('aria-controls');
+      if (targetId) {
+        var target = document.getElementById(targetId);
+        if (target && !isVisible(target) && _iframeHiddenPanels.indexOf(target) === -1) {
+          var targetRole = (target.getAttribute('role') || '').toLowerCase();
+          if (!_iframeInlineRoles[targetRole]) _iframeHiddenPanels.push(target);
+        }
+      }
+    });
+    document.querySelectorAll('[aria-haspopup="true"], [aria-haspopup="menu"], [aria-haspopup="dialog"], [aria-haspopup="listbox"]').forEach(function(trigger) {
+      var ctrlId = trigger.getAttribute('aria-controls');
+      if (ctrlId) {
+        var t = document.getElementById(ctrlId);
+        if (t && !isVisible(t) && _iframeHiddenPanels.indexOf(t) === -1) _iframeHiddenPanels.push(t);
+        return;
+      }
+      var wrapper = trigger.parentElement;
+      if (!wrapper) return;
+      wrapper.querySelectorAll('[role="menu"], [role="listbox"], [role="dialog"]').forEach(function(c) {
+        if (!isVisible(c) && _iframeHiddenPanels.indexOf(c) === -1) _iframeHiddenPanels.push(c);
+      });
+    });
+    data.layout.hiddenPanelCount = _iframeHiddenPanels.length;
+    _iframeHiddenPanels.slice(0, 15).forEach(function(panel) {
+      var origCssText = panel.style.cssText;
+      var origAriaHidden = panel.getAttribute('aria-hidden');
+      var origHidden = panel.hasAttribute('hidden');
+      panel.style.cssText = origCssText + '; display: block !important; visibility: visible !important; opacity: 1 !important; pointer-events: none !important;';
+      if (origHidden) panel.removeAttribute('hidden');
+      if (origAriaHidden) panel.setAttribute('aria-hidden', 'false');
+      void panel.offsetHeight;
+      var pr = panel.getBoundingClientRect();
+      var issues = [];
+      if (pr.width > 0 && pr.height > 0) {
+        if (pr.right > vpW + 2) issues.push({ type: 'right-overflow', overflow: Math.round(pr.right - vpW) });
+        if (pr.left < -2) issues.push({ type: 'left-overflow', overflow: Math.round(Math.abs(pr.left)) });
+        if (pr.bottom > window.innerHeight * 2) issues.push({ type: 'extreme-bottom', bottom: Math.round(pr.bottom) });
+        if (panel.scrollWidth > panel.clientWidth + 2) issues.push({ type: 'internal-overflow', overflow: Math.round(panel.scrollWidth - panel.clientWidth) });
+      }
+      panel.style.cssText = origCssText;
+      if (origHidden) panel.setAttribute('hidden', '');
+      if (origAriaHidden) panel.setAttribute('aria-hidden', origAriaHidden);
+      else if (panel.hasAttribute('aria-hidden')) panel.removeAttribute('aria-hidden');
+      if (issues.length > 0) {
+        data.layout.hiddenPanelIssues.push({
+          selector: cssSelector(panel),
+          role: panel.getAttribute('role') || 'unknown',
+          width: Math.round(pr.width),
+          height: Math.round(pr.height),
+          left: Math.round(pr.left),
+          right: Math.round(pr.right),
+          vpWidth: vpW,
+          issues: issues
+        });
+      }
+    });
+
+    // DOM statistics
+    var _iframeTagCounts = {};
+    var _iframeDisplayNone = 0;
+    var _iframeAriaHidden = 0;
+    Array.from(allElements).forEach(function(el) {
+      var t = el.tagName.toLowerCase();
+      _iframeTagCounts[t] = (_iframeTagCounts[t] || 0) + 1;
+      if (t === 'script' || t === 'style' || t === 'link') return;
+      if (getComputedStyle(el).display === 'none') _iframeDisplayNone++;
+      if (el.getAttribute('aria-hidden') === 'true') _iframeAriaHidden++;
+    });
+    var _iframeSemTags = ['nav','header','footer','main','article','section','aside','figure','figcaption','details','summary','dialog','ul','ol','li','table','form','fieldset','label'];
+    var _iframeSemCount = 0;
+    _iframeSemTags.forEach(function(t) { _iframeSemCount += (_iframeTagCounts[t] || 0); });
+    data.structure.domStats = {
+      divCount: _iframeTagCounts['div'] || 0,
+      spanCount: _iframeTagCounts['span'] || 0,
+      semanticCount: _iframeSemCount,
+      displayNoneCount: _iframeDisplayNone,
+      ariaHiddenCount: _iframeAriaHidden,
+      divRatio: allElements.length > 0 ? Math.round((_iframeTagCounts['div'] || 0) / allElements.length * 100) : 0,
+      topTags: Object.keys(_iframeTagCounts).filter(function(t) { return t !== 'script' && t !== 'style' && t !== 'link'; }).sort(function(a, b) { return _iframeTagCounts[b] - _iframeTagCounts[a]; }).slice(0, 5).map(function(t) { return { tag: t, count: _iframeTagCounts[t] }; })
+    };
 
     // Fixed-width and truncated elements
     data.structure.fixedWidthElements = 0;
@@ -605,6 +717,7 @@
       analyzeHtmlInIframe(html, function(data) {
         analyzeHtmlBtn.textContent = 'Analyze HTML';
         analyzeHtmlBtn.disabled = false;
+        data.meta._inputMethod = 'paste';
         runAnalysis(data);
       }, null, null, wantScreenshots);
     });
@@ -705,6 +818,7 @@
                   showProgress(100, 'Done!');
                   setTimeout(hideProgress, 500);
                   primary.meta.url = url;
+                  primary.meta._inputMethod = 'url';
                   runAnalysis(primary);
                 });
               } else {
@@ -714,6 +828,7 @@
                 showProgress(100, 'Done!');
                 setTimeout(hideProgress, 500);
                 primary.meta.url = url;
+                primary.meta._inputMethod = 'url';
                 runAnalysis(primary);
               }
               return;
@@ -739,6 +854,7 @@
           showProgress(100, 'Done!');
           setTimeout(hideProgress, 500);
           data.meta.url = url;
+          data.meta._inputMethod = 'url';
           runAnalysis(data);
         }, url, exclude, wantShots);
       });
@@ -933,6 +1049,7 @@
           inputSection.innerHTML = '<div style="text-align:center;padding:64px 24px"><div class="analysis-progress" style="display:block;max-width:400px;margin:0 auto"><div class="analysis-progress-bar"><div class="analysis-progress-fill" style="width:30%;animation:pulse 1.5s ease infinite"></div></div><div class="analysis-progress-label" style="margin-top:12px;font-size:14px">Analyzing editor preview' + ctxLabel + '...</div></div></div>';
           analyzeHtmlInIframe(previewHtml, function(data) {
             data.meta.url = 'Editor Preview' + ctxLabel;
+            data.meta._inputMethod = 'editor';
             runAnalysis(data);
           }, previewCtx.dark || false, previewCtx.effectCSS || '', true);
         }
@@ -1310,7 +1427,8 @@
 
     // Detect empty/blocked/JS-dependent pages (skip for console snippet — JS already executed)
     var warningHtml = '';
-    var isConsoleSnippet = data.meta && data.meta._inputMethod === 'console';
+    var inputMethod = (data.meta && data.meta._inputMethod) || '';
+    var isUrlFetch = inputMethod === 'url';
     var elCount = (data.structure && data.structure.totalElements) || 0;
     var contentWidth = parseFloat(data.spacing && data.spacing.maxContentWidth) || 0;
     var contrastPairCount = (data.colors && data.colors.contrastPairs) ? data.colors.contrastPairs.length : 0;
@@ -1321,7 +1439,8 @@
     // Also flag pages with very few text colors (likely unstyled/broken render)
     var textColorCount = (data.colors && data.colors.textColors) ? data.colors.textColors.length : 0;
     var isBareBones = elCount > 5 && elCount < 50 && textColorCount <= 2 && contentWidth < 200;
-    if (!isConsoleSnippet && (hasLimitedContent || isJsDependent || isBareBones)) {
+    // Only show JS-required warning for URL fetch — paste/editor/console modes don't need it
+    if (isUrlFetch && (hasLimitedContent || isJsDependent || isBareBones)) {
       var reason = hasLimitedContent
         ? 'Limited content detected (' + elCount + ' elements)'
         : isJsDependent
@@ -1544,6 +1663,18 @@
       }
       if (e.data.type === 'milg-screenshots-result' && iframe._milgData) {
         iframe._milgData.screenshots = e.data.screenshots || [];
+        // If hidden panels were detected, trigger unhidden screenshot pass
+        var hpc = iframe._milgData.layout && iframe._milgData.layout.hiddenPanelCount;
+        if (hpc > 0 && iframe.contentWindow && iframe.contentWindow.__milgDoUnhiddenScreenshots) {
+          try {
+            setTimeout(function() { iframe.contentWindow.__milgDoUnhiddenScreenshots(); }, 100);
+          } catch(ex) { finish(iframe._milgData); }
+        } else {
+          finish(iframe._milgData);
+        }
+      }
+      if (e.data.type === 'milg-screenshots-unhidden' && iframe._milgData) {
+        iframe._milgData.screenshotsUnhidden = e.data.screenshots || [];
         finish(iframe._milgData);
       }
     }
@@ -1558,7 +1689,41 @@
     var excludeVar = excludeSelector ? '<script>window.__milgExclude=' + JSON.stringify(excludeSelector) + ';</' + 'script>' : '';
     var fragmentVar = !isFullDoc ? '<script>window.__milgIsFragment=true;</' + 'script>' : '';
     // Screenshot capture: script that auto-runs after extraction, loads CDN library, captures page
-    var screenshotScript = captureScreenshots ? '<script>window.__milgDoScreenshots=function(){' + buildScreenshotScript('milg-screenshots-result') + '};</' + 'script>' : '';
+    // Also includes unhidden-panels screenshot if hidden panels are detected
+    var unhiddenScreenshotFn = 'window.__milgDoUnhiddenScreenshots=function(){' +
+      // Unhide all interactive panels using !important overrides
+      'var panels=document.querySelectorAll("[role=menu],[role=listbox],[role=dialog],[role=tooltip],[role=alertdialog]");' +
+      'var hidden=[];' +
+      'panels.forEach(function(p){' +
+        'var s=getComputedStyle(p);' +
+        'if(s.display==="none"||s.visibility==="hidden"||s.opacity==="0"){' +
+          'hidden.push({el:p,css:p.style.cssText,ariaH:p.getAttribute("aria-hidden"),hadHidden:p.hasAttribute("hidden")});' +
+          'p.style.cssText=p.style.cssText+";display:block !important;visibility:visible !important;opacity:1 !important;";' +
+          'if(p.hasAttribute("hidden"))p.removeAttribute("hidden");' +
+          'if(p.getAttribute("aria-hidden")==="true")p.setAttribute("aria-hidden","false")' +
+        '}' +
+      '});' +
+      // Also check aria-haspopup sibling panels
+      'document.querySelectorAll("[aria-haspopup]").forEach(function(t){' +
+        'var w=t.parentElement;if(!w)return;' +
+        'w.querySelectorAll("[role=menu],[role=listbox],[role=dialog]").forEach(function(p){' +
+          'var s=getComputedStyle(p);' +
+          'if(s.display==="none"||s.visibility==="hidden"||s.opacity==="0"){' +
+            'hidden.push({el:p,css:p.style.cssText,ariaH:p.getAttribute("aria-hidden"),hadHidden:p.hasAttribute("hidden")});' +
+            'p.style.cssText=p.style.cssText+";display:block !important;visibility:visible !important;opacity:1 !important;";' +
+            'if(p.hasAttribute("hidden"))p.removeAttribute("hidden");' +
+            'if(p.getAttribute("aria-hidden")==="true")p.setAttribute("aria-hidden","false")' +
+          '}' +
+        '})' +
+      '});' +
+      'if(hidden.length===0){parent.postMessage({type:"milg-screenshots-unhidden",screenshots:[]},"*");return}' +
+      // Force reflow then capture
+      'void document.body.offsetHeight;' +
+      'setTimeout(function(){' + buildScreenshotScript('milg-screenshots-unhidden') +
+      // Restore will happen after screenshots are taken — we don't need to restore in iframe since it's destroyed
+      '},300)' +
+    '};';
+    var screenshotScript = captureScreenshots ? '<script>window.__milgDoScreenshots=function(){' + buildScreenshotScript('milg-screenshots-result') + '};' + unhiddenScreenshotFn + '</' + 'script>' : '';
     var srcdoc;
     if (isFullDoc) {
       // Wait for window load (CSS/fonts loaded), then extra delay for rendering
