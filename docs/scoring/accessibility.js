@@ -339,6 +339,123 @@ function scoreAccessibility(data) {
     }
   }
 
+  // --- Extended checks ---
+
+  // Duplicate IDs
+  var dupIds = a11y.duplicateIds || [];
+  if (dupIds.length > 0) {
+    checks++;
+    var ariaIds = dupIds.filter(function(d) { return d.usedInAria; });
+    var details = dupIds.slice(0, 5).map(function(d) { return '#' + d.id + ' (' + d.count + 'x' + (d.usedInAria ? ', used in label/ARIA' : '') + ')'; });
+    findings.push({
+      severity: ariaIds.length > 0 ? 'error' : 'warning',
+      title: dupIds.length + ' duplicate ID(s) found',
+      detail: details.join('; '),
+      fix: 'Each id must be unique on the page. Duplicate IDs break form labels, ARIA references, and anchor links.',
+      presetRef: null,
+      source: 'WCAG 2.2 §4.1.1 — https://www.w3.org/TR/WCAG22/#parsing'
+    });
+  }
+
+  // Scrollable regions without keyboard access
+  var scrollNoKey = a11y.scrollableNoKeyboard || 0;
+  if (scrollNoKey > 0) {
+    checks++;
+    findings.push({
+      severity: 'error',
+      title: scrollNoKey + ' scrollable region(s) not keyboard-accessible',
+      detail: 'Scrollable containers without focusable content or tabindex cannot be scrolled by keyboard users.',
+      fix: 'Add tabindex="0" to scrollable containers, or ensure they contain focusable elements (links, buttons).',
+      presetRef: null,
+      source: 'WCAG 2.2 §2.1.1 — https://www.w3.org/TR/WCAG22/#keyboard'
+    });
+  }
+
+  // Nested interactive elements
+  var nestedInt = a11y.nestedInteractives || [];
+  if (nestedInt.length > 0) {
+    checks++;
+    findings.push({
+      severity: 'error',
+      title: nestedInt.length + ' nested interactive element(s) (e.g. link inside link)',
+      detail: 'Nested clickable elements create undefined behavior. Elements: ' + nestedInt.slice(0, 3).join(', '),
+      fix: 'Never nest interactive elements. Use a single <a> or <button> and handle layout with CSS.',
+      presetRef: null,
+      source: 'HTML spec §4.5.1 — https://html.spec.whatwg.org/multipage/text-level-semantics.html#the-a-element'
+    });
+  }
+
+  // Positive tabindex
+  var posTabindex = a11y.positiveTabindex || 0;
+  if (posTabindex > 0) {
+    checks++;
+    findings.push({
+      severity: 'warning',
+      title: posTabindex + ' element(s) with positive tabindex',
+      detail: 'Positive tabindex disrupts natural tab order and creates confusing keyboard navigation.',
+      fix: 'Remove positive tabindex values. Use DOM order to control tab sequence. tabindex="0" adds to natural order; tabindex="-1" removes from it.',
+      presetRef: null,
+      source: 'WCAG 2.2 §2.4.3 — https://www.w3.org/TR/WCAG22/#focus-order'
+    });
+  }
+
+  // Empty buttons/links
+  var emptyInt = a11y.emptyInteractives || [];
+  if (emptyInt.length > 0) {
+    checks++;
+    findings.push({
+      severity: 'error',
+      title: emptyInt.length + ' interactive element(s) with no accessible name',
+      detail: 'Buttons/links without text, aria-label, or title are invisible to screen readers: ' + emptyInt.slice(0, 3).join(', '),
+      fix: 'Add text content, aria-label="description", or a descriptive title attribute to all interactive elements.',
+      presetRef: null,
+      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
+    });
+  }
+
+  // Non-text contrast (input borders)
+  var ntContrast = a11y.nonTextContrast || [];
+  if (ntContrast.length > 0) {
+    checks++;
+    var ntDetails = ntContrast.slice(0, 3).map(function(n) { return n.selector + ' border ' + n.ratio + ':1'; });
+    findings.push({
+      severity: 'warning',
+      title: ntContrast.length + ' form element(s) with border contrast below 3:1',
+      detail: 'Input borders must have at least 3:1 contrast against their background (WCAG 1.4.11): ' + ntDetails.join('; '),
+      fix: 'Increase border color contrast. In dark mode use border-slate-600 or darker. Light mode: border-slate-300 minimum on white.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.11 — https://www.w3.org/TR/WCAG22/#non-text-contrast'
+    });
+  }
+
+  // Table accessibility
+  var tableIssues = a11y.tableIssues || [];
+  if (tableIssues.length > 0) {
+    checks++;
+    var tblDetails = tableIssues.slice(0, 3).map(function(t) { return t.selector + ': ' + t.issues.join(', '); });
+    findings.push({
+      severity: tableIssues.some(function(t) { return t.issues.indexOf('no-th') !== -1; }) ? 'warning' : 'info',
+      title: tableIssues.length + ' table(s) with accessibility issues',
+      detail: tblDetails.join('; '),
+      fix: 'Data tables need <th> with scope="col" or scope="row". Add <caption> or aria-label for screen reader context.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
+    });
+  }
+
+  // Missing button type
+  var missingBtnType = a11y.missingButtonType || 0;
+  if (missingBtnType > 0) {
+    findings.push({
+      severity: 'info',
+      title: missingBtnType + ' button(s) without explicit type attribute',
+      detail: 'Buttons default to type="submit" which can cause accidental form submissions.',
+      fix: 'Add type="button" to buttons that are not form submit buttons.',
+      presetRef: null,
+      source: 'HTML spec — https://html.spec.whatwg.org/multipage/form-elements.html#the-button-element'
+    });
+  }
+
   var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
   var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
   var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));

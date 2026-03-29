@@ -253,6 +253,62 @@
     })();
 
     // =========================================================
+    // NEW: Extended checks tests
+    // =========================================================
+
+    // Duplicate IDs should produce error when used in ARIA
+    (function() {
+      var data = makeData({
+        accessibility: {
+          duplicateIds: [{ id: 'foo', count: 2, usedInAria: true }],
+          nestedInteractives: ['a.nested'],
+          emptyInteractives: ['button.empty'],
+          positiveTabindex: 3,
+          scrollableNoKeyboard: 1,
+          nonTextContrast: [{ selector: 'input', ratio: 2.1, borderColor: 'rgb(200,200,200)', bg: 'rgb(255,255,255)' }],
+          tableIssues: [{ selector: 'table', issues: ['no-th', 'no-caption'] }],
+          missingButtonType: 2
+        }
+      });
+      var result = MilgScoring.runScoring(data);
+      var a11y = result.categories.find(function(c) { return c.label === 'Accessibility'; });
+      var titles = a11y.findings.map(function(f) { return f.title; }).join(' | ');
+      assert('Duplicate IDs flagged', titles.indexOf('duplicate ID') !== -1, 'Got: ' + titles);
+      assert('Nested interactives flagged', titles.indexOf('nested interactive') !== -1, 'Got: ' + titles);
+      assert('Empty interactives flagged', titles.indexOf('no accessible name') !== -1, 'Got: ' + titles);
+      assert('Positive tabindex flagged', titles.indexOf('positive tabindex') !== -1, 'Got: ' + titles);
+      assert('Scrollable no keyboard flagged', titles.indexOf('keyboard-accessible') !== -1, 'Got: ' + titles);
+      assert('Non-text contrast flagged', titles.indexOf('border contrast') !== -1, 'Got: ' + titles);
+      assert('Table issues flagged', titles.indexOf('table') !== -1, 'Got: ' + titles);
+    })();
+
+    // Z-index sprawl and shadow consistency
+    (function() {
+      var data = makeData({
+        layout: { zIndexSprawl: { distinct: 12, max: 9999, values: [] }, shadowSprawl: 9 },
+        colors: { darkModeHalation: true }
+      });
+      var result = MilgScoring.runScoring(data);
+      var consistency = result.categories.find(function(c) { return c.label === 'Visual Consistency'; });
+      var titles = consistency.findings.map(function(f) { return f.title; }).join(' | ');
+      assert('Z-index sprawl flagged', titles.indexOf('z-index') !== -1, 'Got: ' + titles);
+      assert('Shadow sprawl flagged', titles.indexOf('box-shadow') !== -1, 'Got: ' + titles);
+      assert('Dark mode halation flagged', titles.indexOf('halation') !== -1 || titles.indexOf('black') !== -1, 'Got: ' + titles);
+    })();
+
+    // All-caps and justified text
+    (function() {
+      var data = makeData({
+        typography: { allCapsLongText: 3, justifiedText: 2 }
+      });
+      var result = MilgScoring.runScoring(data);
+      var typo = result.categories.find(function(c) { return c.label === 'Typography'; });
+      var titles = typo.findings.map(function(f) { return f.title; }).join(' | ');
+      assert('All-caps long text flagged', titles.indexOf('all-caps') !== -1, 'Got: ' + titles);
+      assert('Justified text flagged', titles.indexOf('justify') !== -1, 'Got: ' + titles);
+    })();
+
+    // =========================================================
     // RENDER RESULTS
     // =========================================================
     var html = '';

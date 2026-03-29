@@ -6,6 +6,17 @@
 (function() {
   'use strict';
 
+  // --- Scan mode option ---
+  // Set window.__milgScanMode before running:
+  //   'full'     — All checks (default)
+  //   'quick'    — Fast checks only (skip expensive DOM walks)
+  //   'a11y'     — Accessibility checks only
+  //   'visual'   — Visual/layout checks only
+  var _scanMode = window.__milgScanMode || 'full';
+  var _doA11y = _scanMode === 'full' || _scanMode === 'a11y';
+  var _doVisual = _scanMode === 'full' || _scanMode === 'visual';
+  var _doExpensive = _scanMode === 'full';
+
   // --- Auto-scroll option ---
   // To scroll the page before extraction (triggers lazy loading + intersection observers):
   // Run: window.__milgScrollFirst = true   then paste the snippet.
@@ -298,7 +309,8 @@
       viewportWidth: window.innerWidth,
       viewportHeight: window.innerHeight,
       timestamp: new Date().toISOString(),
-      version: 1
+      version: 1,
+      scanMode: _scanMode
     },
     colors: { textColors: [], bgColors: [], contrastPairs: [] },
     typography: {
@@ -1446,6 +1458,161 @@
   });
   if (data.accessibility.ariaIssues.length > 20) data.accessibility.ariaIssues = data.accessibility.ariaIssues.slice(0, 20);
 
+  // --- Extended checks (high + medium priority) ---
+
+  // 1. Duplicate IDs
+  var idMap = {};
+  document.querySelectorAll('[id]').forEach(function(el) {
+    var id = el.id;
+    if (id) idMap[id] = (idMap[id] || 0) + 1;
+  });
+  data.accessibility.duplicateIds = Object.keys(idMap).filter(function(id) { return idMap[id] > 1; }).map(function(id) {
+    // Check if used in label/ARIA (higher severity)
+    var usedInLabel = !!document.querySelector('label[for="' + CSS.escape(id) + '"], [aria-labelledby~="' + CSS.escape(id) + '"], [aria-describedby~="' + CSS.escape(id) + '"], [aria-controls="' + CSS.escape(id) + '"]');
+    return { id: id, count: idMap[id], usedInAria: usedInLabel };
+  }).slice(0, 15);
+
+  // 2. Scrollable regions without keyboard access
+  data.accessibility.scrollableNoKeyboard = 0;
+  document.querySelectorAll('*').forEach(function(el) {
+    if (el.tagName === 'BODY' || el.tagName === 'HTML') return;
+    var s = getComputedStyle(el);
+    var isScrollable = (s.overflowY === 'auto' || s.overflowY === 'scroll') && el.scrollHeight > el.clientHeight + 10;
+    if (!isScrollable) isScrollable = (s.overflowX === 'auto' || s.overflowX === 'scroll') && el.scrollWidth > el.clientWidth + 10;
+    if (!isScrollable) return;
+    var hasFocusable = el.querySelector('a, button, input, select, textarea, [tabindex]');
+    var hasTabindex = el.hasAttribute('tabindex');
+    if (!hasFocusable && !hasTabindex) data.accessibility.scrollableNoKeyboard++;
+  });
+
+  // 3. Nested interactive elements
+  data.accessibility.nestedInteractives = [];
+  document.querySelectorAll('a a, a button, button a, button button').forEach(function(el) {
+    if (!isVisible(el)) return;
+    data.accessibility.nestedInteractives.push(cssSelector(el));
+  });
+  data.accessibility.nestedInteractives = data.accessibility.nestedInteractives.slice(0, 10);
+
+  // 4. Positive tabindex
+  data.accessibility.positiveTabindex = 0;
+  document.querySelectorAll('[tabindex]').forEach(function(el) {
+    if (parseInt(el.getAttribute('tabindex')) > 0) data.accessibility.positiveTabindex++;
+  });
+
+  // 5. Empty buttons/links (no accessible name)
+  data.accessibility.emptyInteractives = [];
+  document.querySelectorAll('a, button, [role="button"], [role="link"]').forEach(function(el) {
+    if (!isVisible(el) || isDecorative(el)) return;
+    var text = (el.textContent || '').trim();
+    var ariaLabel = el.getAttribute('aria-label') || '';
+    var ariaLabelledBy = el.getAttribute('aria-labelledby');
+    var title = el.getAttribute('title') || '';
+    var hasImg = el.querySelector('img[alt]:not([alt=""])');
+    var hasSvgTitle = el.querySelector('svg title');
+    if (!text && !ariaLabel && !ariaLabelledBy && !title && !hasImg && !hasSvgTitle) {
+      data.accessibility.emptyInteractives.push(cssSelector(el));
+    }
+  });
+  data.accessibility.emptyInteractives = data.accessibility.emptyInteractives.slice(0, 10);
+
+  // 6. Non-text contrast (WCAG 1.4.11) — input borders, button borders
+  data.accessibility.nonTextContrast = [];
+  document.querySelectorAll('input, select, textarea').forEach(function(el) {
+    if (!isVisible(el) || isDecorative(el)) return;
+    var s = getComputedStyle(el);
+    var borderColor = parseColor(s.borderColor || s.borderTopColor);
+    if (!borderColor || borderColor.a < 0.3) return; // no visible border
+    var bg = getEffectiveBg(el);
+    var borderBlended = blendOnWhite(borderColor);
+    var ratio = contrastRatio(borderBlended, bg);
+    if (ratio < 3) {
+      data.accessibility.nonTextContrast.push({
+        selector: cssSelector(el),
+        ratio: Math.round(ratio * 100) / 100,
+        borderColor: rgbStr(borderBlended),
+        bg: rgbStr(bg)
+      });
+    }
+  });
+  data.accessibility.nonTextContrast = data.accessibility.nonTextContrast.slice(0, 10);
+
+  // 7. Z-index sprawl
+  var zIndexValues = {};
+  for (var zi = 0; zi < allElements.length && zi < 500; zi++) {
+    var zEl = allElements[zi];
+    var zVal = getComputedStyle(zEl).zIndex;
+    if (zVal !== 'auto') zIndexValues[zVal] = (zIndexValues[zVal] || 0) + 1;
+  }
+  data.layout.zIndexSprawl = {
+    distinct: Object.keys(zIndexValues).length,
+    max: Object.keys(zIndexValues).length > 0 ? Math.max.apply(null, Object.keys(zIndexValues).map(Number)) : 0,
+    values: Object.keys(zIndexValues).map(function(z) { return { value: +z, count: zIndexValues[z] }; }).sort(function(a, b) { return b.value - a.value; }).slice(0, 10)
+  };
+
+  // 8. Shadow consistency
+  var shadowValues = {};
+  for (var si = 0; si < allElements.length && si < 500; si++) {
+    var sEl = allElements[si];
+    if (!isVisible(sEl)) continue;
+    var shadow = getComputedStyle(sEl).boxShadow;
+    if (shadow && shadow !== 'none') shadowValues[shadow] = (shadowValues[shadow] || 0) + 1;
+  }
+  data.layout.shadowSprawl = Object.keys(shadowValues).length;
+
+  // 9. Pure black/white in dark mode (halation)
+  data.colors.darkModeHalation = false;
+  if (data.structure.isDarkPage) {
+    data.colors.contrastPairs.forEach(function(p) {
+      var fg = parseColor(p.fg);
+      var bg = parseColor(p.bg);
+      if (!fg || !bg) return;
+      // Near-black bg (< 10) with near-white fg (> 245)
+      if (bg.r < 10 && bg.g < 10 && bg.b < 10 && fg.r > 245 && fg.g > 245 && fg.b > 245) {
+        data.colors.darkModeHalation = true;
+      }
+    });
+  }
+
+  // 10. Table accessibility
+  data.accessibility.tableIssues = [];
+  document.querySelectorAll('table').forEach(function(table) {
+    if (!isVisible(table) || isDecorative(table)) return;
+    var issues = [];
+    if (!table.querySelector('th')) issues.push('no-th');
+    var ths = table.querySelectorAll('th');
+    var noScope = 0;
+    ths.forEach(function(th) { if (!th.getAttribute('scope')) noScope++; });
+    if (noScope > 0 && ths.length > 0) issues.push('no-scope');
+    if (!table.querySelector('caption') && !table.getAttribute('aria-label') && !table.getAttribute('aria-labelledby')) issues.push('no-caption');
+    if (issues.length > 0) data.accessibility.tableIssues.push({ selector: cssSelector(table), issues: issues });
+  });
+
+  // 11. Missing button type
+  data.accessibility.missingButtonType = document.querySelectorAll('button:not([type])').length;
+
+  // 12. All-caps long text
+  data.typography.allCapsLongText = 0;
+  for (var aci = 0; aci < allElements.length && aci < 300; aci++) {
+    var acEl = allElements[aci];
+    if (!isVisible(acEl) || isDecorative(acEl)) continue;
+    var acStyle = getComputedStyle(acEl);
+    if (acStyle.textTransform === 'uppercase') {
+      var acText = (acEl.textContent || '').trim();
+      if (acText.length > 50) data.typography.allCapsLongText++;
+    }
+  }
+
+  // 13. Justified text
+  data.typography.justifiedText = 0;
+  for (var jti = 0; jti < allElements.length && jti < 300; jti++) {
+    var jtEl = allElements[jti];
+    if (!isVisible(jtEl) || isDecorative(jtEl)) continue;
+    if (getComputedStyle(jtEl).textAlign === 'justify') {
+      var jtText = (jtEl.textContent || '').trim();
+      if (jtText.length > 30) data.typography.justifiedText++;
+    }
+  }
+
   // --- Image responsive sizing ---
   data.performance.nonResponsiveImages = 0;
   document.querySelectorAll('img').forEach(function(img) {
@@ -1638,6 +1805,37 @@
     // Top 5 most-used tags (excluding script/style/link)
     topTags: Object.keys(_tagCounts).filter(function(t) { return t !== 'script' && t !== 'style' && t !== 'link'; }).sort(function(a, b) { return _tagCounts[b] - _tagCounts[a]; }).slice(0, 5).map(function(t) { return { tag: t, count: _tagCounts[t] }; })
   };
+
+  // --- Event listener extraction (Chrome DevTools API only) ---
+  // Collects handler source code as TEXT for display — NEVER executed
+  data.interaction.eventListeners = [];
+  if (typeof getEventListeners === 'function') {
+    var _elSample = Array.from(document.querySelectorAll('button, a, [role="button"], [onclick], input, select')).slice(0, 30);
+    _elSample.forEach(function(el) {
+      try {
+        var listeners = getEventListeners(el);
+        if (!listeners) return;
+        var types = Object.keys(listeners);
+        if (types.length === 0) return;
+        var entry = { selector: cssSelector(el), handlers: [] };
+        types.forEach(function(type) {
+          listeners[type].forEach(function(l) {
+            var src = '';
+            try { src = l.listener ? l.listener.toString().substring(0, 500) : ''; } catch(e) {}
+            entry.handlers.push({
+              type: type,
+              // Store source as text only — for display and static analysis, never eval
+              source: src,
+              once: !!l.once,
+              passive: !!l.passive
+            });
+          });
+        });
+        if (entry.handlers.length > 0) data.interaction.eventListeners.push(entry);
+      } catch(e) {}
+    });
+    data.interaction.eventListeners = data.interaction.eventListeners.slice(0, 20);
+  }
 
   // Clean up measurement span
   document.body.removeChild(_measureSpan);

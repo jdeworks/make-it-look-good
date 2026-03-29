@@ -182,6 +182,32 @@ function scoreTypography(data) {
     });
   }
 
+  // All-caps long text
+  var allCaps = (data.typography && data.typography.allCapsLongText) || 0;
+  if (allCaps > 0) {
+    findings.push({
+      severity: 'warning',
+      title: allCaps + ' block(s) of long text in all-caps (> 50 characters)',
+      detail: 'All-uppercase text reduces reading speed by 10-20%. Reserve for short labels and headings.',
+      fix: 'Remove text-transform: uppercase on body text. Use it only for short labels, buttons, and headings under 5 words.',
+      presetRef: null,
+      source: 'Tinker 1963, Butterick\'s Practical Typography — https://practicaltypography.com/all-caps.html'
+    });
+  }
+
+  // Justified text
+  var justified = (data.typography && data.typography.justifiedText) || 0;
+  if (justified > 0) {
+    findings.push({
+      severity: 'info',
+      title: justified + ' element(s) with text-align: justify',
+      detail: 'Justified text creates uneven word spacing (rivers of white) without proper hyphenation, reducing readability.',
+      fix: 'Use text-align: left for web content. Justified text only works well with automatic hyphenation (hyphens: auto).',
+      presetRef: null,
+      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/justified-text.html'
+    });
+  }
+
   var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
   var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
   var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));

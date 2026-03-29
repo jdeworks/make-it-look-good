@@ -108,6 +108,52 @@ function scoreVisualConsistency(data) {
     }
   }
 
+  // Z-index sprawl
+  var zSprawl = (data.layout && data.layout.zIndexSprawl) || {};
+  if (zSprawl.distinct > 0) {
+    checks++;
+    if (zSprawl.distinct <= 8) {
+      passed++;
+    } else {
+      findings.push({
+        severity: zSprawl.distinct > 15 ? 'warning' : 'info',
+        title: zSprawl.distinct + ' distinct z-index values (recommend ≤8)',
+        detail: 'Max z-index: ' + zSprawl.max + '. Many z-index values indicate ad-hoc stacking that becomes unmaintainable.',
+        fix: 'Consolidate to a z-index scale: --z-dropdown: 10, --z-sticky: 20, --z-modal: 30, --z-toast: 40.',
+        source: 'Josh Comeau Stacking Contexts — https://www.joshwcomeau.com/css/stacking-contexts/'
+      });
+    }
+  }
+
+  // Shadow consistency
+  var shadowSprawl = (data.layout && data.layout.shadowSprawl) || 0;
+  if (shadowSprawl > 0) {
+    checks++;
+    if (shadowSprawl <= 5) {
+      passed++;
+    } else {
+      findings.push({
+        severity: shadowSprawl > 10 ? 'warning' : 'info',
+        title: shadowSprawl + ' distinct box-shadow values (recommend 3-5)',
+        detail: 'Too many unique shadow styles suggest an inconsistent elevation system.',
+        fix: 'Standardize to 3-5 elevation levels: shadow-sm, shadow, shadow-md, shadow-lg, shadow-xl.',
+        source: 'Material Design 3 — https://m3.material.io/styles/elevation/overview'
+      });
+    }
+  }
+
+  // Dark mode halation (pure black on pure white)
+  if (data.colors && data.colors.darkModeHalation) {
+    checks++;
+    findings.push({
+      severity: 'warning',
+      title: 'Pure black (#000) with pure white (#fff) text detected in dark mode',
+      detail: 'Pure black backgrounds with pure white text causes halation (glowing text effect) for users with astigmatism (~33% of population).',
+      fix: 'Use off-black backgrounds (slate-900 / #0f172a) and off-white text (slate-100 / #f1f5f9) in dark mode.',
+      source: 'Apple HIG Dark Mode — https://developer.apple.com/design/human-interface-guidelines/dark-mode'
+    });
+  }
+
   var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
   var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
   var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
