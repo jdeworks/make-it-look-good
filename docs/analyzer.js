@@ -164,7 +164,7 @@
     var htmlStr = document.body.innerHTML;
     if (/class="[^"]*(?:sm:|md:|lg:|xl:)/.test(htmlStr) || /class="[^"]*(?:flex|grid|text-|bg-|p-|m-)/.test(htmlStr)) { data.structure.tailwindDetected = true; data.structure.cssFramework = 'tailwind'; }
     else if (/class="[^"]*(?:col-md|col-sm|btn-primary|container-fluid)/.test(htmlStr)) { data.structure.cssFramework = 'bootstrap'; }
-    data.structure.darkModeClasses = /class="[^"]*dark:/.test(htmlStr) || document.body.classList.contains('dark-ui') || document.body.classList.contains('dark-mode') || document.documentElement.classList.contains('dark') || Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r.cssText && r.cssText.indexOf('prefers-color-scheme') !== -1; }); } catch(e) { return false; } });
+    data.structure.darkModeClasses = /class="[^"]*dark:/.test(htmlStr) || document.body.classList.contains('dark-ui') || document.body.classList.contains('dark-mode') || document.body.classList.contains('dark-theme') || document.documentElement.classList.contains('dark') || document.documentElement.getAttribute('data-theme') === 'dark' || document.body.getAttribute('data-theme') === 'dark' || document.querySelector('[data-bs-theme="dark"]') !== null || Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r.cssText && r.cssText.indexOf('prefers-color-scheme') !== -1; }); } catch(e) { return false; } });
     data.structure.responsiveClasses = /class="[^"]*(?:sm:|md:|lg:|xl:)/.test(htmlStr) || Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r instanceof CSSMediaRule && /max-width|min-width/.test(r.conditionText || ''); }); } catch(e) { return false; } });
 
     // Decorative element detection
@@ -212,6 +212,10 @@
       if (seenForContrast.has(el)) continue;
       seenForContrast.add(el);
       var style = getComputedStyle(el);
+      // Skip gradient text (uses -webkit-background-clip: text with transparent fill)
+      var textFillColor = style.webkitTextFillColor || style.getPropertyValue('-webkit-text-fill-color') || '';
+      var bgClip = style.webkitBackgroundClip || style.getPropertyValue('-webkit-background-clip') || style.backgroundClip || '';
+      if (textFillColor === 'transparent' || bgClip === 'text') continue;
       var fg = parseColor(style.color);
       if (!fg) continue;
       var fgBlended = blendOnWhite(fg);
@@ -241,6 +245,25 @@
     contrastPairs.sort(function(a, b) { return a.ratio - b.ratio; });
     data.colors.contrastPairs = contrastPairs.slice(0, 50);
 
+    // Area-weighted darkness tracking for accurate page brightness measurement
+    var darknessAreas = []; // { darkness: 0-1, area: px² }
+    function parseGradientColors(bgImage) {
+      // Extract color stops from linear-gradient, radial-gradient
+      var colors = [];
+      var re = /(?:rgb|rgba)\(\s*(\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\s*\)|#([0-9a-fA-F]{3,8})/g;
+      var m;
+      while ((m = re.exec(bgImage)) !== null) {
+        if (m[4]) {
+          var hex = m[4];
+          if (hex.length === 3) hex = hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2];
+          colors.push({ r: parseInt(hex.substr(0,2),16), g: parseInt(hex.substr(2,2),16), b: parseInt(hex.substr(4,2),16) });
+        } else {
+          colors.push({ r: parseInt(m[1]), g: parseInt(m[2]), b: parseInt(m[3]) });
+        }
+      }
+      return colors;
+    }
+
     for (var i = 0; i < allElements.length; i++) {
       var el = allElements[i];
       if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE' || el.tagName === 'NOSCRIPT') continue;
@@ -254,10 +277,34 @@
       if (s.color) textColorMap[s.color] = (textColorMap[s.color] || 0) + 1;
       var bgColor = s.backgroundColor;
       if (bgColor && bgColor !== 'rgba(0, 0, 0, 0)' && bgColor !== 'transparent') bgColorMap[bgColor] = (bgColorMap[bgColor] || 0) + 1;
+
+      // Track area-weighted darkness for bg-color and gradients
+      var rect = el.getBoundingClientRect();
+      var area = rect.width * rect.height;
+      if (area > 100) { // skip tiny elements
+        var bgM = bgColor && bgColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+        if (bgM) {
+          var bgLum = (parseInt(bgM[1]) * 0.299 + parseInt(bgM[2]) * 0.587 + parseInt(bgM[3]) * 0.114) / 255;
+          var bgAlpha = 1;
+          var alphaM = bgColor.match(/rgba\(\d+,\s*\d+,\s*\d+,\s*([\d.]+)/);
+          if (alphaM) bgAlpha = parseFloat(alphaM[1]);
+          if (bgAlpha > 0.3) darknessAreas.push({ darkness: 1 - bgLum, area: area * bgAlpha });
+        }
+        // Also check background-image for gradients
+        var bgImg = s.backgroundImage;
+        if (bgImg && bgImg !== 'none' && /gradient/.test(bgImg)) {
+          var gradColors = parseGradientColors(bgImg);
+          if (gradColors.length > 0) {
+            var avgGradLum = gradColors.reduce(function(sum, c) { return sum + (c.r * 0.299 + c.g * 0.587 + c.b * 0.114) / 255; }, 0) / gradColors.length;
+            darknessAreas.push({ darkness: 1 - avgGradLum, area: area });
+          }
+        }
+      }
+
       [s.paddingTop, s.paddingRight, s.paddingBottom, s.paddingLeft].filter(function(v) { return v !== '0px'; }).forEach(function(v) { paddingMap[v] = (paddingMap[v] || 0) + 1; });
       [s.marginTop, s.marginRight, s.marginBottom, s.marginLeft].filter(function(v) { return v !== '0px' && v !== 'auto'; }).forEach(function(v) { marginMap[v] = (marginMap[v] || 0) + 1; });
       if (s.gap && s.gap !== 'normal' && s.gap !== '0px') gapMap[s.gap] = (gapMap[s.gap] || 0) + 1;
-      var w = el.getBoundingClientRect().width;
+      var w = rect.width;
       if (w > maxContentW && w < window.innerWidth * 0.95) maxContentW = w;
     }
     function mapToSorted(map) { return Object.keys(map).map(function(k) { return { value: k, count: map[k] }; }).sort(function(a, b) { return b.count - a.count; }).slice(0, 30); }
@@ -267,6 +314,40 @@
     data.typography.lineHeights = mapToSorted(lineHeightMap);
     data.colors.textColors = mapToSorted(textColorMap);
     data.colors.bgColors = mapToSorted(bgColorMap);
+
+    // Darkness level: 1 = white page, 10 = black page (area-weighted, includes gradients)
+    var totalPixelWeight = 0;
+    var totalDarkness = 0;
+    if (darknessAreas.length > 0) {
+      // Use area-weighted calculation (accounts for element size and gradients)
+      for (var da = 0; da < darknessAreas.length; da++) {
+        totalDarkness += darknessAreas[da].darkness * darknessAreas[da].area;
+        totalPixelWeight += darknessAreas[da].area;
+      }
+    } else {
+      // Fallback: simple element-count weighting
+      for (var bgC in bgColorMap) {
+        var count = bgColorMap[bgC] || 1;
+        var m = bgC.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+        if (m) {
+          var lum = (parseInt(m[1]) * 0.299 + parseInt(m[2]) * 0.587 + parseInt(m[3]) * 0.114) / 255;
+          totalDarkness += (1 - lum) * count;
+          totalPixelWeight += count;
+        }
+      }
+    }
+    data.colors.darknessLevel = totalPixelWeight > 0 ? Math.max(1, Math.min(10, Math.round((totalDarkness / totalPixelWeight) * 9 + 1))) : 5;
+
+    // Smart dark mode detection: check multiple signals
+    var isDarkPage = data.colors.darknessLevel >= 6;
+    data.structure.isDarkPage = isDarkPage;
+    data.structure.darkModeMethod = 'none';
+    if (document.documentElement.classList.contains('dark')) data.structure.darkModeMethod = 'tailwind-class';
+    else if (document.body.classList.contains('dark-ui') || document.body.classList.contains('dark-mode') || document.body.classList.contains('dark-theme')) data.structure.darkModeMethod = 'body-class';
+    else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) data.structure.darkModeMethod = 'media-query';
+    else if (document.querySelector('[data-theme="dark"]') || document.documentElement.getAttribute('data-theme') === 'dark' || document.body.getAttribute('data-theme') === 'dark') data.structure.darkModeMethod = 'data-attribute';
+    else if (isDarkPage) data.structure.darkModeMethod = 'inferred-from-colors';
+
     data.spacing.paddings = mapToSorted(paddingMap);
     data.spacing.margins = mapToSorted(marginMap);
     data.spacing.gaps = mapToSorted(gapMap);

@@ -135,6 +135,7 @@ scripts/
   inject-proxy.sh
   test-full-matrix.mjs
   test-presets-headless.mjs
+  test-template.mjs
 systems/
   apple-hig.md
   building-a-system.md
@@ -9083,6 +9084,371 @@ Choosing a responsive pattern?
 - Ethan Marcotte (2011). "Responsive Web Design." A Book Apart.
 </file>
 
+<file path="scripts/test-template.mjs">
+#!/usr/bin/env node
+// Test a specific template across all combinations (effects × viewports × dark modes)
+// Usage:
+//   node scripts/test-template.mjs dashboard/clean     # test one template
+//   node scripts/test-template.mjs dashboard            # test all variants of dashboard
+//   node scripts/test-template.mjs --all                # test everything (full matrix)
+//   node scripts/test-template.mjs --all --threads=6    # parallel threads
+//
+// Options:
+//   --threads=N    Number of concurrent browser pages (default: 3)
+//   --all          Test all templates
+//   --light-only   Skip dark mode tests
+//   --desktop-only Skip mobile/tablet viewports
+//
+// Results saved to: research/template-results/<template-name>.json + .md
+
+import puppeteer from 'puppeteer';
+import { createServer } from 'http';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { join, extname } from 'path';
+
+const DOCS_DIR = join(import.meta.dirname, '..', 'docs');
+const RESEARCH_DIR = join(import.meta.dirname, '..', 'research');
+const RESULTS_DIR = join(RESEARCH_DIR, 'template-results');
+const PORT = 8767;
+
+const args = process.argv.slice(2);
+const ALL = args.includes('--all');
+const LIGHT_ONLY = args.includes('--light-only');
+const DESKTOP_ONLY = args.includes('--desktop-only');
+const THREADS = parseInt((args.find(a => a.startsWith('--threads=')) || '--threads=3').split('=')[1]);
+const TEMPLATE = args.find(a => !a.startsWith('--')) || '';
+
+if (!ALL && !TEMPLATE) {
+  console.log('Usage: node scripts/test-template.mjs <template> [--threads=N] [--light-only] [--desktop-only]');
+  console.log('       node scripts/test-template.mjs --all [--threads=N]');
+  console.log('\nExamples:');
+  console.log('  node scripts/test-template.mjs dashboard/clean');
+  console.log('  node scripts/test-template.mjs dashboard');
+  console.log('  node scripts/test-template.mjs --all --threads=6');
+  process.exit(0);
+}
+
+// Effect names — CSS extracted from test-full-matrix.mjs
+const EFFECT_LIST = [
+  { name: 'none', css: '' },
+  { name: 'hushed' },
+  { name: 'bouncy' },
+  { name: 'frosted' },
+  { name: 'serif' },
+];
+
+// Read effects from the full matrix test file
+let fullMatrixSrc;
+try {
+  fullMatrixSrc = readFileSync(join(import.meta.dirname, 'test-full-matrix.mjs'), 'utf8');
+} catch(e) {
+  console.error('Cannot read test-full-matrix.mjs for effect definitions');
+  process.exit(1);
+}
+
+// Extract each effect's CSS from the source
+function extractEffectCSS(src, name) {
+  if (name === 'none') return '';
+  const re = new RegExp(`\\{\\s*name:\\s*'${name}'\\s*,\\s*css:\\s*\`([\\s\\S]*?)\`\\s*\\}`, 'm');
+  const m = src.match(re);
+  return m ? m[1] : '';
+}
+
+const EFFECTS_PARSED = EFFECT_LIST.map(e => ({
+  name: e.name,
+  css: extractEffectCSS(fullMatrixSrc, e.name)
+}));
+
+const VIEWPORTS = DESKTOP_ONLY
+  ? [{ w: 1280, h: 900 }]
+  : [{ w: 375, h: 812 }, { w: 768, h: 1024 }, { w: 1280, h: 900 }];
+
+const DARK_MODES = LIGHT_ONLY ? [false] : [false, true];
+
+// Server
+function startServer() {
+  const mimeTypes = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2' };
+  const server = createServer((req, res) => {
+    let filePath = join(DOCS_DIR, req.url === '/' ? 'index.html' : req.url);
+    if (!existsSync(filePath)) { res.writeHead(404); res.end('Not found'); return; }
+    const ext = extname(filePath);
+    res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' });
+    res.end(readFileSync(filePath));
+  });
+  server.listen(PORT);
+  return server;
+}
+
+// Build test list
+function buildTests() {
+  const manifest = JSON.parse(readFileSync(join(DOCS_DIR, 'presets', 'index.json'), 'utf8'));
+  const tests = [];
+
+  for (const [el, info] of Object.entries(manifest.elements)) {
+    const personalities = Object.keys(info.personalities || {});
+    for (const pers of personalities) {
+      const presetKey = `${el}/${pers}`;
+
+      // Filter
+      if (!ALL) {
+        if (TEMPLATE.includes('/')) {
+          // Exact match: dashboard/clean
+          if (presetKey !== TEMPLATE) continue;
+        } else {
+          // Element match: dashboard (all variants)
+          if (el !== TEMPLATE) continue;
+        }
+      }
+
+      const file = join(DOCS_DIR, 'presets', el, pers + '.html');
+      if (!existsSync(file)) continue;
+
+      for (const effect of EFFECTS_PARSED) {
+        for (const vp of VIEWPORTS) {
+          for (const dark of DARK_MODES) {
+            tests.push({ element: el, personality: pers, effect: effect.name, effectCSS: effect.css, viewport: vp, dark });
+          }
+        }
+      }
+    }
+  }
+  return tests;
+}
+
+function testKey(t) {
+  return `${t.element}/${t.personality}|${t.effect}|${t.viewport.w}|${t.dark ? 'dark' : 'light'}`;
+}
+
+// Run a single test (same logic as full matrix)
+async function runTest(page, t) {
+  const html = readFileSync(join(DOCS_DIR, 'presets', t.element, t.personality + '.html'), 'utf8');
+  await page.setViewport({ width: t.viewport.w, height: t.viewport.h });
+  await page.goto(`http://localhost:${PORT}/tests/test-presets-rendered.html`, { waitUntil: 'networkidle0', timeout: 15000 });
+
+  const result = await page.evaluate(async (html, element, personality, effectCSS, dark, vpWidth) => {
+    return new Promise((resolve) => {
+      const iframe = document.createElement('iframe');
+      iframe.style.cssText = `position:fixed;top:-9999px;left:-9999px;width:${vpWidth}px;height:900px;border:none;`;
+      iframe.sandbox = 'allow-scripts allow-same-origin';
+      document.body.appendChild(iframe);
+
+      let handled = false;
+      function onMsg(e) {
+        if (!e.data || e.data.type !== 'milg-headless-result') return;
+        if (handled) return;
+        handled = true;
+        window.removeEventListener('message', onMsg);
+        if (iframe.parentNode) document.body.removeChild(iframe);
+
+        const data = e.data.data;
+        data.profile = 'general';
+        data.meta.isFragment = true;
+        data.meta.url = element + '/' + personality;
+        try {
+          const report = window.MilgScoring.runScoring(data);
+
+          // Read darkness level from extraction (computed area-weighted in extractFromDocument)
+          var darknessLevel = (data.colors && data.colors.darknessLevel) || 5;
+
+          resolve({
+            overall: report.overall,
+            grade: report.grade,
+            darknessLevel,
+            categories: report.categories.map(c => ({
+              label: c.label, score: c.score, na: !!c.notApplicable,
+              errors: c.findings.filter(f => f.severity === 'error').length,
+              warnings: c.findings.filter(f => f.severity === 'warning').length,
+              findings: c.findings.map(f => ({ severity: f.severity, title: f.title }))
+            }))
+          });
+        } catch(err) {
+          resolve({ error: err.message });
+        }
+      }
+      window.addEventListener('message', onMsg);
+
+      fetch('/analyzer.js').then(r => r.text()).then(code => {
+        const match = code.match(/function extractFromDocument\(\)\s*\{/);
+        if (!match) { resolve({ error: 'No extractFromDocument' }); return; }
+        const start = code.indexOf(match[0]);
+        let depth = 0, end = start;
+        for (let i = start; i < code.length; i++) {
+          if (code[i] === '{') depth++;
+          if (code[i] === '}') { depth--; if (depth === 0) { end = i + 1; break; } }
+        }
+        const extractFn = code.substring(start, end).replace(/milg-analyzer-result/g, 'milg-headless-result');
+
+        const darkClass = dark ? ' class="dark"' : '';
+        const darkVariantCSS = '@custom-variant dark (&:where(.dark, .dark *));';
+        const srcdoc = '<!DOCTYPE html><html lang="en"' + darkClass + '><head><meta charset="UTF-8">' +
+          '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+          '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
+          (dark ? '<style type="text/tailwindcss">' + darkVariantCSS + '</style>' : '') +
+          (effectCSS ? '<style>' + effectCSS + '</style>' : '') +
+          '<style>body{margin:0}</style></head><body>' +
+          '<script>window.__milgIsFragment=true;</' + 'script>' +
+          html +
+          '<script>setTimeout(function(){(' + extractFn + ')()}, 2500);</' + 'script>' +
+          '</body></html>';
+        iframe.srcdoc = srcdoc;
+      });
+
+      setTimeout(() => {
+        if (handled) return;
+        handled = true;
+        window.removeEventListener('message', onMsg);
+        if (iframe.parentNode) document.body.removeChild(iframe);
+        resolve({ error: 'Timeout' });
+      }, 15000);
+    });
+  }, html, t.element, t.personality, t.effectCSS, t.dark, t.viewport.w);
+
+  return result;
+}
+
+// Generate per-template report
+function generateReport(templateName, results) {
+  const ok = results.filter(r => !r.error);
+  if (ok.length === 0) return '# No results\n';
+
+  const avg = Math.round(ok.reduce((s, r) => s + r.overall, 0) / ok.length);
+  const min = Math.min(...ok.map(r => r.overall));
+  const max = Math.max(...ok.map(r => r.overall));
+
+  let md = `# Test Results: ${templateName}\n\n`;
+  md += `**Date:** ${new Date().toISOString()}\n`;
+  md += `**Tests:** ${ok.length} | **Avg:** ${avg} | **Min:** ${min} | **Max:** ${max}\n\n`;
+
+  // Score matrix
+  md += '## Score Matrix\n\n';
+  md += '| Effect | Viewport | Mode | Score | Grade | DL | Errors | Warnings |\n';
+  md += '|--------|----------|------|-------|-------|----|--------|----------|\n';
+  for (const r of ok.sort((a, b) => a.overall - b.overall)) {
+    const errs = r.categories.reduce((s, c) => s + c.errors, 0);
+    const warns = r.categories.reduce((s, c) => s + c.warnings, 0);
+    md += `| ${r.effect} | ${r.viewport.w} | ${r.dark ? 'dark' : 'light'} | ${r.overall} | ${r.grade} | ${r.darknessLevel || '?'} | ${errs} | ${warns} |\n`;
+  }
+
+  // Issues
+  md += '\n## Issues Found\n\n';
+  const issueCounts = {};
+  for (const r of ok) {
+    for (const c of r.categories) {
+      for (const f of c.findings) {
+        if (f.severity === 'info') continue;
+        const key = `[${f.severity}] ${c.label}: ${f.title.substring(0, 80)}`;
+        issueCounts[key] = (issueCounts[key] || 0) + 1;
+      }
+    }
+  }
+  const sorted = Object.entries(issueCounts).sort((a, b) => b[1] - a[1]);
+  for (const [issue, count] of sorted) {
+    md += `- **${count}x** ${issue}\n`;
+  }
+
+  // Darkness levels
+  md += '\n## Darkness Levels\n\n';
+  const byMode = {};
+  for (const r of ok) {
+    const modeKey = r.dark ? 'dark' : 'light';
+    if (!byMode[modeKey]) byMode[modeKey] = [];
+    byMode[modeKey].push(r.darknessLevel || 5);
+  }
+  for (const [mode, levels] of Object.entries(byMode)) {
+    const avgDL = (levels.reduce((s, l) => s + l, 0) / levels.length).toFixed(1);
+    md += `- **${mode}:** avg DL=${avgDL} (range ${Math.min(...levels)}-${Math.max(...levels)})\n`;
+  }
+
+  return md;
+}
+
+// Main
+async function main() {
+  const tests = buildTests();
+  if (tests.length === 0) {
+    console.error(`No tests found for "${TEMPLATE}". Check the template name exists in docs/presets/index.json`);
+    process.exit(1);
+  }
+
+  const templateName = ALL ? 'all' : TEMPLATE;
+  console.log(`Testing: ${templateName} (${tests.length} combinations, ${THREADS} threads)`);
+
+  if (!existsSync(RESULTS_DIR)) mkdirSync(RESULTS_DIR, { recursive: true });
+
+  const server = startServer();
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage']
+  });
+
+  const pages = [];
+  for (let i = 0; i < THREADS; i++) {
+    pages.push(await browser.newPage());
+  }
+
+  const results = [];
+  let completed = 0;
+  const startTime = Date.now();
+
+  async function processTest(page, t) {
+    const key = testKey(t);
+    try {
+      const result = await runTest(page, t);
+      completed++;
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
+      const eta = Math.round((Date.now() - startTime) / completed * (tests.length - completed) / 1000);
+
+      if (result.error) {
+        process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s (ETA ${eta}s) ${key} ERROR: ${result.error}          \n`);
+        results.push({ key, ...t, error: result.error });
+      } else {
+        const e = result.categories.reduce((s, c) => s + c.errors, 0);
+        const w = result.categories.reduce((s, c) => s + c.warnings, 0);
+        process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s (ETA ${eta}s) ${key} → ${result.overall}${result.grade} D${result.darknessLevel || '?'} (${e}E ${w}W)          \n`);
+        results.push({ key, ...t, ...result });
+      }
+    } catch (err) {
+      completed++;
+      results.push({ key, ...t, error: err.message });
+    }
+  }
+
+  let idx = 0;
+  async function worker(page) {
+    while (idx < tests.length) {
+      const myIdx = idx++;
+      await processTest(page, tests[myIdx]);
+    }
+  }
+
+  await Promise.all(pages.map(p => worker(p)));
+  await browser.close();
+  server.close();
+
+  // Save results
+  const safeName = templateName.replace(/\//g, '-');
+  const jsonFile = join(RESULTS_DIR, `${safeName}.json`);
+  const mdFile = join(RESULTS_DIR, `${safeName}.md`);
+
+  writeFileSync(jsonFile, JSON.stringify(results, null, 2));
+  const md = generateReport(templateName, results);
+  writeFileSync(mdFile, md);
+
+  console.log(`\nResults saved to:`);
+  console.log(`  ${jsonFile}`);
+  console.log(`  ${mdFile}`);
+
+  // Summary
+  const ok = results.filter(r => !r.error);
+  const avg = ok.length > 0 ? Math.round(ok.reduce((s, r) => s + r.overall, 0) / ok.length) : 0;
+  console.log(`\n=== SUMMARY ===`);
+  console.log(`Tested: ${ok.length} | Errors: ${results.filter(r => r.error).length}`);
+  console.log(`Average: ${avg} | Min: ${Math.min(...ok.map(r => r.overall))} | Max: ${Math.max(...ok.map(r => r.overall))}`);
+}
+
+main().catch(err => { console.error('Fatal:', err); process.exit(1); });
+</file>
+
 <file path="systems/apple-hig.md">
 # Apple Human Interface Guidelines
 
@@ -16440,20 +16806,31 @@ article:hover{transform:translateY(-4px);box-shadow:0 12px 30px rgba(99,102,241,
 h1,h2,h3{font-weight:800!important;letter-spacing:-0.01em}
 input,select,textarea{border-radius:14px!important}
 button:active,[role="button"]:active{transform:scale(0.95)!important;transition-duration:80ms!important}` },
-  { name: 'frosted', css: `body{background:linear-gradient(135deg,#dbeafe 0%,#ede9fe 35%,#fce7f3 65%,#e0f2fe 100%)!important;min-height:100vh}
-[class*="bg-white"]{background:rgba(255,255,255,0.55)!important;-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);border:1px solid rgba(255,255,255,0.4)!important;box-shadow:0 4px 24px rgba(0,0,0,0.04),inset 0 1px 0 rgba(255,255,255,0.6)!important}
-[class*="bg-slate-50"],[class*="bg-gray-50"],[class*="bg-zinc-50"]{background:rgba(248,250,252,0.4)!important;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+  { name: 'frosted', css: `body:not(.dark){background:linear-gradient(135deg,#dbeafe 0%,#ede9fe 35%,#fce7f3 65%,#e0f2fe 100%)!important;min-height:100vh}
+.dark body,.dark.min-h-screen,html.dark body{background:linear-gradient(135deg,#0f172a 0%,#1e1b4b 35%,#1e1b4b 65%,#0f172a 100%)!important;min-height:100vh}
+:not(.dark) [class*="bg-white"]{background:rgba(255,255,255,0.55)!important;-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);border:1px solid rgba(255,255,255,0.4)!important;box-shadow:0 4px 24px rgba(0,0,0,0.04),inset 0 1px 0 rgba(255,255,255,0.6)!important}
+.dark [class*="bg-slate-900"],.dark [class*="bg-slate-950"],.dark [class*="bg-gray-900"],.dark [class*="bg-gray-950"]{background:rgba(15,23,42,0.55)!important;-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);border:1px solid rgba(99,102,241,0.15)!important;box-shadow:0 4px 24px rgba(0,0,0,0.2),inset 0 1px 0 rgba(99,102,241,0.1)!important}
+:not(.dark) [class*="bg-slate-50"],:not(.dark) [class*="bg-gray-50"],:not(.dark) [class*="bg-zinc-50"]{background:rgba(248,250,252,0.4)!important;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+.dark [class*="bg-slate-800"],.dark [class*="bg-gray-800"],.dark [class*="bg-slate-850"]{background:rgba(30,41,59,0.5)!important;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
 [class*="shadow-sm"],[class*="shadow-md"],[class*="shadow-lg"],[class*="shadow-xl"]{box-shadow:0 4px 20px rgba(0,0,0,0.05),inset 0 1px 0 rgba(255,255,255,0.5)!important}
+.dark [class*="shadow-sm"],.dark [class*="shadow-md"],.dark [class*="shadow-lg"],.dark [class*="shadow-xl"]{box-shadow:0 4px 20px rgba(0,0,0,0.3),inset 0 1px 0 rgba(99,102,241,0.1)!important}
 [class*="rounded-lg"]{border-radius:14px!important}
 [class*="rounded-xl"],[class*="rounded-2xl"]{border-radius:18px!important}
-[class*="border-slate-200"],[class*="border-gray-200"],[class*="border-zinc-200"]{border-color:rgba(255,255,255,0.35)!important}
+:not(.dark) [class*="border-slate-200"],:not(.dark) [class*="border-gray-200"],:not(.dark) [class*="border-zinc-200"]{border-color:rgba(255,255,255,0.35)!important}
+.dark [class*="border-slate-700"],.dark [class*="border-slate-800"],.dark [class*="border-gray-700"],.dark [class*="border-gray-800"]{border-color:rgba(99,102,241,0.15)!important}
 [class*="divide-slate"],[class*="divide-gray"],[class*="divide-zinc"]{--tw-divide-opacity:0.3}
-[class*="border-t"]:not([class*="border-t-0"]){border-color:rgba(100,116,139,0.2)!important}
-[class*="text-slate-500"],[class*="text-gray-500"],[class*="text-zinc-500"]{color:rgb(51,65,85)!important}
-[class*="text-slate-400"],[class*="text-gray-400"]{color:rgb(71,85,105)!important}
-input,select,textarea{background:rgba(255,255,255,0.45)!important;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.4)!important;border-radius:12px!important}
+:not(.dark) [class*="border-t"]:not([class*="border-t-0"]){border-color:rgba(100,116,139,0.2)!important}
+.dark [class*="border-t"]:not([class*="border-t-0"]){border-color:rgba(99,102,241,0.12)!important}
+:not(.dark) [class*="text-slate-500"],:not(.dark) [class*="text-gray-500"],:not(.dark) [class*="text-zinc-500"]{color:rgb(51,65,85)!important}
+:not(.dark) [class*="text-slate-400"],:not(.dark) [class*="text-gray-400"]{color:rgb(71,85,105)!important}
+.dark [class*="text-slate-400"],.dark [class*="text-gray-400"]{color:rgb(148,163,184)!important}
+.dark [class*="text-slate-300"],.dark [class*="text-gray-300"]{color:rgb(203,213,225)!important}
+input,select,textarea{-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);border-radius:12px!important}
+:not(.dark) input,:not(.dark) select,:not(.dark) textarea{background:rgba(255,255,255,0.45)!important;border:1px solid rgba(255,255,255,0.4)!important}
+.dark input,.dark select,.dark textarea{background:rgba(15,23,42,0.45)!important;border:1px solid rgba(99,102,241,0.2)!important}
 button:hover,[role="button"]:hover{box-shadow:0 0 24px rgba(99,102,241,0.18),0 6px 20px rgba(0,0,0,0.06)!important;transition:box-shadow 250ms ease-out,transform 250ms ease-out;transform:translateY(-1px)}
-nav,aside,header{-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);background:rgba(255,255,255,0.65)!important}` },
+:not(.dark) nav,:not(.dark) aside,:not(.dark) header{-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);background:rgba(255,255,255,0.65)!important}
+.dark nav,.dark aside,.dark header{-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);background:rgba(15,23,42,0.65)!important}` },
   { name: 'serif', css: `@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap');
 h1,h2,h3,h4,h5,h6{font-family:'Playfair Display',Georgia,'Times New Roman',serif!important;letter-spacing:-0.02em;line-height:1.15}
 h1{font-weight:400!important;font-size:2.75em!important;letter-spacing:-0.03em}
@@ -16555,9 +16932,13 @@ async function runTest(page, t) {
         data.meta.url = element + '/' + personality;
         try {
           const report = window.MilgScoring.runScoring(data);
+          // Read darkness level from extraction (computed area-weighted in extractFromDocument)
+          var darknessLevel = (data.colors && data.colors.darknessLevel) || 5;
+
           resolve({
             overall: report.overall,
             grade: report.grade,
+            darknessLevel: darknessLevel,
             categories: report.categories.map(c => ({
               label: c.label,
               score: c.score,
@@ -16705,6 +17086,31 @@ function generateReport(results, tests) {
     const eErr = (effResults.reduce((s, r) => s + r.categories.reduce((cs, c) => cs + c.errors, 0), 0) / effResults.length).toFixed(1);
     const eWarn = (effResults.reduce((s, r) => s + r.categories.reduce((cs, c) => cs + c.warnings, 0), 0) / effResults.length).toFixed(1);
     md += `| ${effect.name} | ${eAvg} | ${eMin} | ${eMax} | ${eErr} | ${eWarn} |\n`;
+  }
+
+  // === Section 1b: Darkness Level Analysis ===
+  md += '\n## 1b. Page Darkness Level\n\n';
+  md += 'Scale: 1 = white page, 10 = black page. Range 2.5–7.5 is expected; outside = warning.\n\n';
+  md += '| Preset | Light DL | Dark DL | Delta | Warning |\n';
+  md += '|--------|----------|---------|-------|---------|\n';
+  {
+    const presetsDL = [...new Set(ok.map(r => r.element + '/' + r.personality))];
+    for (const preset of presetsDL) {
+      const lk = `${preset}|none|1280|light`;
+      const dk = `${preset}|none|1280|dark`;
+      const lr = resultMap[lk];
+      const dr = resultMap[dk];
+      const lDL = lr && !lr.error ? (lr.darknessLevel || '?') : '—';
+      const dDL = dr && !dr.error ? (dr.darknessLevel || '?') : '—';
+      const delta = (typeof lDL === 'number' && typeof dDL === 'number') ? dDL - lDL : '—';
+      let warn = '';
+      if (typeof lDL === 'number' && (lDL < 2.5 || lDL > 7.5)) warn += 'light-mode ';
+      if (typeof dDL === 'number' && (dDL < 2.5 || dDL > 7.5)) warn += 'dark-mode ';
+      if (typeof lDL === 'number' && typeof dDL === 'number' && Math.abs(dDL - lDL) < 2) warn += 'low-contrast-switch ';
+      if (warn || (typeof delta === 'number' && Math.abs(delta) < 2)) {
+        md += `| ${preset} | ${lDL} | ${dDL} | ${typeof delta === 'number' ? (delta >= 0 ? '+' : '') + delta : delta} | ${warn.trim() || '—'} |\n`;
+      }
+    }
   }
 
   // === Section 2: Dark mode impact ===
@@ -17018,8 +17424,9 @@ async function main() {
       } else {
         const e = result.categories.reduce((s, c) => s + c.errors, 0);
         const w = result.categories.reduce((s, c) => s + c.warnings, 0);
-        process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s (ETA ${eta}s) ${key} → ${result.overall}${result.grade} (${e}E ${w}W)          \n`);
-        results.push({ key, ...t, overall: result.overall, grade: result.grade, categories: result.categories, metrics: result.metrics });
+        const dl = result.darknessLevel || '?';
+        process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s (ETA ${eta}s) ${key} → ${result.overall}${result.grade} (${e}E ${w}W) D${dl}          \n`);
+        results.push({ key, ...t, overall: result.overall, grade: result.grade, categories: result.categories, metrics: result.metrics, darknessLevel: result.darknessLevel });
       }
     } catch (err) {
       completed++;
@@ -19410,10 +19817,10 @@ The encoded URL is in the committed JS (unavoidable for a static site). But:
         });
       } else {
         findings.push({
-          severity: 'warning',
+          severity: 'info',
           title: 'Content heavily weighted to one side (' + Math.round(leftCount / total * 100) + '% / ' + Math.round(rightCount / total * 100) + '%)',
-          detail: 'Strong left-right imbalance can feel visually unstable unless intentional',
-          fix: 'Consider centering the main content or balancing sections with complementary elements on the lighter side.',
+          detail: 'Strong left-right imbalance — often intentional in sidebar or marketing layouts',
+          fix: 'If using a sidebar or asymmetric layout, this is expected. Otherwise, distribute content more evenly.',
           presetRef: null,
           source: 'Ngo et al. 2003 — Visual balance and aesthetic preference'
         });
@@ -19446,9 +19853,9 @@ The encoded URL is in the committed JS (unavoidable for a static site). But:
       var maxGap = Math.max.apply(null, sectionGaps);
       if (minGap >= 16 && maxGap / (minGap || 1) <= 3) {
         passed++;
-      } else if (minGap < 8) {
+      } else if (minGap < 4) {
         findings.push({
-          severity: 'warning',
+          severity: 'info',
           title: 'Sections have very tight spacing (minimum gap: ' + minGap + 'px)',
           detail: 'Sections need breathing room. Tight spacing makes content feel cramped.',
           fix: 'Use consistent section spacing: 48-96px between major sections.',
@@ -21575,8 +21982,10 @@ function scoreTypography(data) {
   }
   // Dark mode: check Tailwind dark: classes, .dark-ui/.dark-mode body classes, or prefers-color-scheme in stylesheets
   data.structure.darkModeClasses = /class="[^"]*dark:/.test(htmlStr)
-    || document.body.classList.contains('dark-ui') || document.body.classList.contains('dark-mode')
+    || document.body.classList.contains('dark-ui') || document.body.classList.contains('dark-mode') || document.body.classList.contains('dark-theme')
     || document.documentElement.classList.contains('dark')
+    || document.documentElement.getAttribute('data-theme') === 'dark' || document.body.getAttribute('data-theme') === 'dark'
+    || document.querySelector('[data-bs-theme="dark"]') !== null
     || Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r.cssText && r.cssText.indexOf('prefers-color-scheme') !== -1; }); } catch(e) { return false; } });
   // Responsive: check Tailwind responsive classes OR CSS @media queries in stylesheets
   data.structure.responsiveClasses = /class="[^"]*(?:sm:|md:|lg:|xl:)/.test(htmlStr)
@@ -21611,6 +22020,10 @@ function scoreTypography(data) {
     seenForContrast.add(el);
 
     var style = getComputedStyle(el);
+    // Skip gradient text (uses -webkit-background-clip: text with transparent fill)
+    var textFillColor = style.webkitTextFillColor || style.getPropertyValue('-webkit-text-fill-color') || '';
+    var bgClip = style.webkitBackgroundClip || style.getPropertyValue('-webkit-background-clip') || style.backgroundClip || '';
+    if (textFillColor === 'transparent' || bgClip === 'text') continue;
     var fg = parseColor(style.color);
     if (!fg) continue;
     var fgBlended = blendOnWhite(fg);
@@ -21670,6 +22083,23 @@ function scoreTypography(data) {
   var marginMap = {};
   var gapMap = {};
   var maxContentW = 0;
+  var darknessAreas = [];
+
+  function parseGradientColors(bgImage) {
+    var colors = [];
+    var re = /(?:rgb|rgba)\(\s*(\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\s*\)|#([0-9a-fA-F]{3,8})/g;
+    var m;
+    while ((m = re.exec(bgImage)) !== null) {
+      if (m[4]) {
+        var hex = m[4];
+        if (hex.length === 3) hex = hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2];
+        colors.push({ r: parseInt(hex.substr(0,2),16), g: parseInt(hex.substr(2,2),16), b: parseInt(hex.substr(4,2),16) });
+      } else {
+        colors.push({ r: parseInt(m[1]), g: parseInt(m[2]), b: parseInt(m[3]) });
+      }
+    }
+    return colors;
+  }
 
   for (var i = 0; i < allElements.length; i++) {
     var el = allElements[i];
@@ -21700,6 +22130,28 @@ function scoreTypography(data) {
       bgColorMap[bgColor] = (bgColorMap[bgColor] || 0) + 1;
     }
 
+    // Track area-weighted darkness (element size + gradients)
+    var rect = el.getBoundingClientRect();
+    var area = rect.width * rect.height;
+    if (area > 100) {
+      var bgM = bgColor && bgColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+      if (bgM) {
+        var bgLum = (parseInt(bgM[1]) * 0.299 + parseInt(bgM[2]) * 0.587 + parseInt(bgM[3]) * 0.114) / 255;
+        var bgAlpha = 1;
+        var alphaM = bgColor.match(/rgba\(\d+,\s*\d+,\s*\d+,\s*([\d.]+)/);
+        if (alphaM) bgAlpha = parseFloat(alphaM[1]);
+        if (bgAlpha > 0.3) darknessAreas.push({ darkness: 1 - bgLum, area: area * bgAlpha });
+      }
+      var bgImg = s.backgroundImage;
+      if (bgImg && bgImg !== 'none' && /gradient/.test(bgImg)) {
+        var gradColors = parseGradientColors(bgImg);
+        if (gradColors.length > 0) {
+          var avgGradLum = gradColors.reduce(function(sum, c) { return sum + (c.r * 0.299 + c.g * 0.587 + c.b * 0.114) / 255; }, 0) / gradColors.length;
+          darknessAreas.push({ darkness: 1 - avgGradLum, area: area });
+        }
+      }
+    }
+
     // Spacing
     var pad = [s.paddingTop, s.paddingRight, s.paddingBottom, s.paddingLeft].filter(function(v) { return v !== '0px'; });
     pad.forEach(function(v) { paddingMap[v] = (paddingMap[v] || 0) + 1; });
@@ -21710,7 +22162,7 @@ function scoreTypography(data) {
     }
 
     // Content width
-    var w = el.getBoundingClientRect().width;
+    var w = rect.width;
     if (w > maxContentW && w < window.innerWidth * 0.95) maxContentW = w;
   }
 
@@ -21727,6 +22179,36 @@ function scoreTypography(data) {
   data.typography.lineHeights = mapToSorted(lineHeightMap);
   data.colors.textColors = mapToSorted(textColorMap);
   data.colors.bgColors = mapToSorted(bgColorMap);
+
+  // Darkness level: 1 = white page, 10 = black page (area-weighted, includes gradients)
+  var totalPixelWeight = 0;
+  var totalDarkness = 0;
+  if (darknessAreas.length > 0) {
+    for (var da = 0; da < darknessAreas.length; da++) {
+      totalDarkness += darknessAreas[da].darkness * darknessAreas[da].area;
+      totalPixelWeight += darknessAreas[da].area;
+    }
+  } else {
+    for (var bgC in bgColorMap) {
+      var count = bgColorMap[bgC] || 1;
+      var m = bgC.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+      if (m) {
+        var lum = (parseInt(m[1]) * 0.299 + parseInt(m[2]) * 0.587 + parseInt(m[3]) * 0.114) / 255;
+        totalDarkness += (1 - lum) * count;
+        totalPixelWeight += count;
+      }
+    }
+  }
+  data.colors.darknessLevel = totalPixelWeight > 0 ? Math.max(1, Math.min(10, Math.round((totalDarkness / totalPixelWeight) * 9 + 1))) : 5;
+  var isDarkPage = data.colors.darknessLevel >= 6;
+  data.structure.isDarkPage = isDarkPage;
+  data.structure.darkModeMethod = 'none';
+  if (document.documentElement.classList.contains('dark')) data.structure.darkModeMethod = 'tailwind-class';
+  else if (document.body.classList.contains('dark-ui') || document.body.classList.contains('dark-mode') || document.body.classList.contains('dark-theme')) data.structure.darkModeMethod = 'body-class';
+  else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) data.structure.darkModeMethod = 'media-query';
+  else if (document.querySelector('[data-theme="dark"]') || document.documentElement.getAttribute('data-theme') === 'dark' || document.body.getAttribute('data-theme') === 'dark') data.structure.darkModeMethod = 'data-attribute';
+  else if (isDarkPage) data.structure.darkModeMethod = 'inferred-from-colors';
+
   data.spacing.paddings = mapToSorted(paddingMap);
   data.spacing.margins = mapToSorted(marginMap);
   data.spacing.gaps = mapToSorted(gapMap);
@@ -22850,9 +23332,26 @@ function scoreContrast(data) {
     return { ratio: ratio, needed: needed, passes: passes, isLarge: p.isLarge, text: p.text, fontSize: p.fontSize, selector: p.selector, fg: p.fg, bg: p.bg, filter: p.filter || '' };
   });
 
-  // Separate uncertain results (1:1 ratio usually means bg couldn't be determined — gradient, SVG, etc.)
-  var uncertain = profilePairs.filter(function(p) { return !p.passes && p.ratio <= 1.01 && p.fg === p.bg; });
-  var failures = profilePairs.filter(function(p) { return !p.passes && !(p.ratio <= 1.01 && p.fg === p.bg); });
+  // Separate uncertain results (very low ratio usually means bg couldn't be determined — gradient, SVG, image, etc.)
+  // Cases: fg===bg (exact 1:1), or ratio < 1.5 with light text on light bg (white text on gradient that resolved to white)
+  function isUncertain(p) {
+    if (p.passes) return false;
+    if (p.ratio <= 1.01 && p.fg === p.bg) return true;
+    // Very low ratio with light fg+bg suggests unresolved gradient background
+    if (p.ratio < 1.5) {
+      var fgC = parseRgb(p.fg);
+      var bgC = parseRgb(p.bg);
+      if (fgC && bgC) {
+        var fgBright = (fgC.r + fgC.g + fgC.b) / 3;
+        var bgBright = (bgC.r + bgC.g + bgC.b) / 3;
+        // Both very light (white text on resolved-to-white bg) or both very dark
+        if ((fgBright > 200 && bgBright > 200) || (fgBright < 55 && bgBright < 55)) return true;
+      }
+    }
+    return false;
+  }
+  var uncertain = profilePairs.filter(function(p) { return isUncertain(p); });
+  var failures = profilePairs.filter(function(p) { return !p.passes && !isUncertain(p); });
   var nearMisses = profilePairs.filter(function(p) { return p.passes && p.ratio < p.needed + 0.5; });
 
   failures.forEach(function(p) {
@@ -22945,7 +23444,9 @@ function scoreContrast(data) {
   // Don't count uncertain results as failures in the score
   var total = (profilePairs.length - uncertain.length) || 1;
   var passing = total - failures.length;
-  var score = Math.max(0, 100 - (failures.length * 10) - (nearMisses.length * 3));
+  // Scale deduction by total pairs: more pairs = less impact per failure (large pages shouldn't be punished more)
+  var failPenalty = total > 10 ? Math.max(3, Math.round(100 / total)) : 10;
+  var score = Math.max(0, 100 - (failures.length * failPenalty) - (nearMisses.length * 1));
 
   // Add baseline checks
   var checks = Math.max(total, 1);
@@ -23132,7 +23633,7 @@ function scoreAccessibility(data) {
   var hasNav = (semantic.nav || 0) > 0;
   var hasHeader = (semantic.header || 0) > 0;
   var semanticCount = [hasMain, hasNav, hasHeader].filter(Boolean).length;
-  if (semanticCount >= 2 || elCount < 30) {
+  if (semanticCount >= 2 || elCount < 50) {
     passed++; // Small components don't need full page landmarks
   } else {
     findings.push({
@@ -24358,8 +24859,10 @@ window.MilgReport = (function() {
   }
   // Dark mode: check Tailwind dark: classes, .dark-ui/.dark-mode body classes, or prefers-color-scheme in stylesheets
   data.structure.darkModeClasses = /class="[^"]*dark:/.test(htmlStr)
-    || document.body.classList.contains('dark-ui') || document.body.classList.contains('dark-mode')
+    || document.body.classList.contains('dark-ui') || document.body.classList.contains('dark-mode') || document.body.classList.contains('dark-theme')
     || document.documentElement.classList.contains('dark')
+    || document.documentElement.getAttribute('data-theme') === 'dark' || document.body.getAttribute('data-theme') === 'dark'
+    || document.querySelector('[data-bs-theme="dark"]') !== null
     || Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r.cssText && r.cssText.indexOf('prefers-color-scheme') !== -1; }); } catch(e) { return false; } });
   // Responsive: check Tailwind responsive classes OR CSS @media queries in stylesheets
   data.structure.responsiveClasses = /class="[^"]*(?:sm:|md:|lg:|xl:)/.test(htmlStr)
@@ -24394,6 +24897,10 @@ window.MilgReport = (function() {
     seenForContrast.add(el);
 
     var style = getComputedStyle(el);
+    // Skip gradient text (uses -webkit-background-clip: text with transparent fill)
+    var textFillColor = style.webkitTextFillColor || style.getPropertyValue('-webkit-text-fill-color') || '';
+    var bgClip = style.webkitBackgroundClip || style.getPropertyValue('-webkit-background-clip') || style.backgroundClip || '';
+    if (textFillColor === 'transparent' || bgClip === 'text') continue;
     var fg = parseColor(style.color);
     if (!fg) continue;
     var fgBlended = blendOnWhite(fg);
@@ -24453,6 +24960,23 @@ window.MilgReport = (function() {
   var marginMap = {};
   var gapMap = {};
   var maxContentW = 0;
+  var darknessAreas = [];
+
+  function parseGradientColors(bgImage) {
+    var colors = [];
+    var re = /(?:rgb|rgba)\(\s*(\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\s*\)|#([0-9a-fA-F]{3,8})/g;
+    var m;
+    while ((m = re.exec(bgImage)) !== null) {
+      if (m[4]) {
+        var hex = m[4];
+        if (hex.length === 3) hex = hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2];
+        colors.push({ r: parseInt(hex.substr(0,2),16), g: parseInt(hex.substr(2,2),16), b: parseInt(hex.substr(4,2),16) });
+      } else {
+        colors.push({ r: parseInt(m[1]), g: parseInt(m[2]), b: parseInt(m[3]) });
+      }
+    }
+    return colors;
+  }
 
   for (var i = 0; i < allElements.length; i++) {
     var el = allElements[i];
@@ -24483,6 +25007,28 @@ window.MilgReport = (function() {
       bgColorMap[bgColor] = (bgColorMap[bgColor] || 0) + 1;
     }
 
+    // Track area-weighted darkness (accounts for element size and gradients)
+    var rect = el.getBoundingClientRect();
+    var area = rect.width * rect.height;
+    if (area > 100) {
+      var bgM = bgColor && bgColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+      if (bgM) {
+        var bgLum = (parseInt(bgM[1]) * 0.299 + parseInt(bgM[2]) * 0.587 + parseInt(bgM[3]) * 0.114) / 255;
+        var bgAlpha = 1;
+        var alphaM = bgColor.match(/rgba\(\d+,\s*\d+,\s*\d+,\s*([\d.]+)/);
+        if (alphaM) bgAlpha = parseFloat(alphaM[1]);
+        if (bgAlpha > 0.3) darknessAreas.push({ darkness: 1 - bgLum, area: area * bgAlpha });
+      }
+      var bgImg = s.backgroundImage;
+      if (bgImg && bgImg !== 'none' && /gradient/.test(bgImg)) {
+        var gradColors = parseGradientColors(bgImg);
+        if (gradColors.length > 0) {
+          var avgGradLum = gradColors.reduce(function(sum, c) { return sum + (c.r * 0.299 + c.g * 0.587 + c.b * 0.114) / 255; }, 0) / gradColors.length;
+          darknessAreas.push({ darkness: 1 - avgGradLum, area: area });
+        }
+      }
+    }
+
     // Spacing
     var pad = [s.paddingTop, s.paddingRight, s.paddingBottom, s.paddingLeft].filter(function(v) { return v !== '0px'; });
     pad.forEach(function(v) { paddingMap[v] = (paddingMap[v] || 0) + 1; });
@@ -24493,7 +25039,7 @@ window.MilgReport = (function() {
     }
 
     // Content width
-    var w = el.getBoundingClientRect().width;
+    var w = rect.width;
     if (w > maxContentW && w < window.innerWidth * 0.95) maxContentW = w;
   }
 
@@ -24510,6 +25056,38 @@ window.MilgReport = (function() {
   data.typography.lineHeights = mapToSorted(lineHeightMap);
   data.colors.textColors = mapToSorted(textColorMap);
   data.colors.bgColors = mapToSorted(bgColorMap);
+
+  // Darkness level: 1 = white page, 10 = black page (area-weighted, includes gradients)
+  var totalPixelWeight = 0;
+  var totalDarkness = 0;
+  if (darknessAreas.length > 0) {
+    for (var da = 0; da < darknessAreas.length; da++) {
+      totalDarkness += darknessAreas[da].darkness * darknessAreas[da].area;
+      totalPixelWeight += darknessAreas[da].area;
+    }
+  } else {
+    for (var bgC in bgColorMap) {
+      var count = bgColorMap[bgC] || 1;
+      var m = bgC.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+      if (m) {
+        var lum = (parseInt(m[1]) * 0.299 + parseInt(m[2]) * 0.587 + parseInt(m[3]) * 0.114) / 255;
+        totalDarkness += (1 - lum) * count;
+        totalPixelWeight += count;
+      }
+    }
+  }
+  data.colors.darknessLevel = totalPixelWeight > 0 ? Math.max(1, Math.min(10, Math.round((totalDarkness / totalPixelWeight) * 9 + 1))) : 5;
+
+  // Smart dark mode detection
+  var isDarkPage = data.colors.darknessLevel >= 6;
+  data.structure.isDarkPage = isDarkPage;
+  data.structure.darkModeMethod = 'none';
+  if (document.documentElement.classList.contains('dark')) data.structure.darkModeMethod = 'tailwind-class';
+  else if (document.body.classList.contains('dark-ui') || document.body.classList.contains('dark-mode') || document.body.classList.contains('dark-theme')) data.structure.darkModeMethod = 'body-class';
+  else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) data.structure.darkModeMethod = 'media-query';
+  else if (document.querySelector('[data-theme="dark"]') || document.documentElement.getAttribute('data-theme') === 'dark' || document.body.getAttribute('data-theme') === 'dark') data.structure.darkModeMethod = 'data-attribute';
+  else if (isDarkPage) data.structure.darkModeMethod = 'inferred-from-colors';
+
   data.spacing.paddings = mapToSorted(paddingMap);
   data.spacing.margins = mapToSorted(marginMap);
   data.spacing.gaps = mapToSorted(gapMap);
@@ -26912,7 +27490,7 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
     var htmlStr = document.body.innerHTML;
     if (/class="[^"]*(?:sm:|md:|lg:|xl:)/.test(htmlStr) || /class="[^"]*(?:flex|grid|text-|bg-|p-|m-)/.test(htmlStr)) { data.structure.tailwindDetected = true; data.structure.cssFramework = 'tailwind'; }
     else if (/class="[^"]*(?:col-md|col-sm|btn-primary|container-fluid)/.test(htmlStr)) { data.structure.cssFramework = 'bootstrap'; }
-    data.structure.darkModeClasses = /class="[^"]*dark:/.test(htmlStr) || document.body.classList.contains('dark-ui') || document.body.classList.contains('dark-mode') || document.documentElement.classList.contains('dark') || Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r.cssText && r.cssText.indexOf('prefers-color-scheme') !== -1; }); } catch(e) { return false; } });
+    data.structure.darkModeClasses = /class="[^"]*dark:/.test(htmlStr) || document.body.classList.contains('dark-ui') || document.body.classList.contains('dark-mode') || document.body.classList.contains('dark-theme') || document.documentElement.classList.contains('dark') || document.documentElement.getAttribute('data-theme') === 'dark' || document.body.getAttribute('data-theme') === 'dark' || document.querySelector('[data-bs-theme="dark"]') !== null || Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r.cssText && r.cssText.indexOf('prefers-color-scheme') !== -1; }); } catch(e) { return false; } });
     data.structure.responsiveClasses = /class="[^"]*(?:sm:|md:|lg:|xl:)/.test(htmlStr) || Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r instanceof CSSMediaRule && /max-width|min-width/.test(r.conditionText || ''); }); } catch(e) { return false; } });
 
     // Decorative element detection
@@ -26960,6 +27538,10 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
       if (seenForContrast.has(el)) continue;
       seenForContrast.add(el);
       var style = getComputedStyle(el);
+      // Skip gradient text (uses -webkit-background-clip: text with transparent fill)
+      var textFillColor = style.webkitTextFillColor || style.getPropertyValue('-webkit-text-fill-color') || '';
+      var bgClip = style.webkitBackgroundClip || style.getPropertyValue('-webkit-background-clip') || style.backgroundClip || '';
+      if (textFillColor === 'transparent' || bgClip === 'text') continue;
       var fg = parseColor(style.color);
       if (!fg) continue;
       var fgBlended = blendOnWhite(fg);
@@ -26989,6 +27571,25 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
     contrastPairs.sort(function(a, b) { return a.ratio - b.ratio; });
     data.colors.contrastPairs = contrastPairs.slice(0, 50);
 
+    // Area-weighted darkness tracking for accurate page brightness measurement
+    var darknessAreas = []; // { darkness: 0-1, area: px² }
+    function parseGradientColors(bgImage) {
+      // Extract color stops from linear-gradient, radial-gradient
+      var colors = [];
+      var re = /(?:rgb|rgba)\(\s*(\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\s*\)|#([0-9a-fA-F]{3,8})/g;
+      var m;
+      while ((m = re.exec(bgImage)) !== null) {
+        if (m[4]) {
+          var hex = m[4];
+          if (hex.length === 3) hex = hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2];
+          colors.push({ r: parseInt(hex.substr(0,2),16), g: parseInt(hex.substr(2,2),16), b: parseInt(hex.substr(4,2),16) });
+        } else {
+          colors.push({ r: parseInt(m[1]), g: parseInt(m[2]), b: parseInt(m[3]) });
+        }
+      }
+      return colors;
+    }
+
     for (var i = 0; i < allElements.length; i++) {
       var el = allElements[i];
       if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE' || el.tagName === 'NOSCRIPT') continue;
@@ -27002,10 +27603,34 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
       if (s.color) textColorMap[s.color] = (textColorMap[s.color] || 0) + 1;
       var bgColor = s.backgroundColor;
       if (bgColor && bgColor !== 'rgba(0, 0, 0, 0)' && bgColor !== 'transparent') bgColorMap[bgColor] = (bgColorMap[bgColor] || 0) + 1;
+
+      // Track area-weighted darkness for bg-color and gradients
+      var rect = el.getBoundingClientRect();
+      var area = rect.width * rect.height;
+      if (area > 100) { // skip tiny elements
+        var bgM = bgColor && bgColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+        if (bgM) {
+          var bgLum = (parseInt(bgM[1]) * 0.299 + parseInt(bgM[2]) * 0.587 + parseInt(bgM[3]) * 0.114) / 255;
+          var bgAlpha = 1;
+          var alphaM = bgColor.match(/rgba\(\d+,\s*\d+,\s*\d+,\s*([\d.]+)/);
+          if (alphaM) bgAlpha = parseFloat(alphaM[1]);
+          if (bgAlpha > 0.3) darknessAreas.push({ darkness: 1 - bgLum, area: area * bgAlpha });
+        }
+        // Also check background-image for gradients
+        var bgImg = s.backgroundImage;
+        if (bgImg && bgImg !== 'none' && /gradient/.test(bgImg)) {
+          var gradColors = parseGradientColors(bgImg);
+          if (gradColors.length > 0) {
+            var avgGradLum = gradColors.reduce(function(sum, c) { return sum + (c.r * 0.299 + c.g * 0.587 + c.b * 0.114) / 255; }, 0) / gradColors.length;
+            darknessAreas.push({ darkness: 1 - avgGradLum, area: area });
+          }
+        }
+      }
+
       [s.paddingTop, s.paddingRight, s.paddingBottom, s.paddingLeft].filter(function(v) { return v !== '0px'; }).forEach(function(v) { paddingMap[v] = (paddingMap[v] || 0) + 1; });
       [s.marginTop, s.marginRight, s.marginBottom, s.marginLeft].filter(function(v) { return v !== '0px' && v !== 'auto'; }).forEach(function(v) { marginMap[v] = (marginMap[v] || 0) + 1; });
       if (s.gap && s.gap !== 'normal' && s.gap !== '0px') gapMap[s.gap] = (gapMap[s.gap] || 0) + 1;
-      var w = el.getBoundingClientRect().width;
+      var w = rect.width;
       if (w > maxContentW && w < window.innerWidth * 0.95) maxContentW = w;
     }
     function mapToSorted(map) { return Object.keys(map).map(function(k) { return { value: k, count: map[k] }; }).sort(function(a, b) { return b.count - a.count; }).slice(0, 30); }
@@ -27015,6 +27640,40 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
     data.typography.lineHeights = mapToSorted(lineHeightMap);
     data.colors.textColors = mapToSorted(textColorMap);
     data.colors.bgColors = mapToSorted(bgColorMap);
+
+    // Darkness level: 1 = white page, 10 = black page (area-weighted, includes gradients)
+    var totalPixelWeight = 0;
+    var totalDarkness = 0;
+    if (darknessAreas.length > 0) {
+      // Use area-weighted calculation (accounts for element size and gradients)
+      for (var da = 0; da < darknessAreas.length; da++) {
+        totalDarkness += darknessAreas[da].darkness * darknessAreas[da].area;
+        totalPixelWeight += darknessAreas[da].area;
+      }
+    } else {
+      // Fallback: simple element-count weighting
+      for (var bgC in bgColorMap) {
+        var count = bgColorMap[bgC] || 1;
+        var m = bgC.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+        if (m) {
+          var lum = (parseInt(m[1]) * 0.299 + parseInt(m[2]) * 0.587 + parseInt(m[3]) * 0.114) / 255;
+          totalDarkness += (1 - lum) * count;
+          totalPixelWeight += count;
+        }
+      }
+    }
+    data.colors.darknessLevel = totalPixelWeight > 0 ? Math.max(1, Math.min(10, Math.round((totalDarkness / totalPixelWeight) * 9 + 1))) : 5;
+
+    // Smart dark mode detection: check multiple signals
+    var isDarkPage = data.colors.darknessLevel >= 6;
+    data.structure.isDarkPage = isDarkPage;
+    data.structure.darkModeMethod = 'none';
+    if (document.documentElement.classList.contains('dark')) data.structure.darkModeMethod = 'tailwind-class';
+    else if (document.body.classList.contains('dark-ui') || document.body.classList.contains('dark-mode') || document.body.classList.contains('dark-theme')) data.structure.darkModeMethod = 'body-class';
+    else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) data.structure.darkModeMethod = 'media-query';
+    else if (document.querySelector('[data-theme="dark"]') || document.documentElement.getAttribute('data-theme') === 'dark' || document.body.getAttribute('data-theme') === 'dark') data.structure.darkModeMethod = 'data-attribute';
+    else if (isDarkPage) data.structure.darkModeMethod = 'inferred-from-colors';
+
     data.spacing.paddings = mapToSorted(paddingMap);
     data.spacing.margins = mapToSorted(marginMap);
     data.spacing.gaps = mapToSorted(gapMap);

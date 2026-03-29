@@ -45,10 +45,10 @@
         });
       } else {
         findings.push({
-          severity: 'warning',
+          severity: 'info',
           title: 'Content heavily weighted to one side (' + Math.round(leftCount / total * 100) + '% / ' + Math.round(rightCount / total * 100) + '%)',
-          detail: 'Strong left-right imbalance can feel visually unstable unless intentional',
-          fix: 'Consider centering the main content or balancing sections with complementary elements on the lighter side.',
+          detail: 'Strong left-right imbalance — often intentional in sidebar or marketing layouts',
+          fix: 'If using a sidebar or asymmetric layout, this is expected. Otherwise, distribute content more evenly.',
           presetRef: null,
           source: 'Ngo et al. 2003 — Visual balance and aesthetic preference'
         });
@@ -81,9 +81,9 @@
       var maxGap = Math.max.apply(null, sectionGaps);
       if (minGap >= 16 && maxGap / (minGap || 1) <= 3) {
         passed++;
-      } else if (minGap < 8) {
+      } else if (minGap < 4) {
         findings.push({
-          severity: 'warning',
+          severity: 'info',
           title: 'Sections have very tight spacing (minimum gap: ' + minGap + 'px)',
           detail: 'Sections need breathing room. Tight spacing makes content feel cramped.',
           fix: 'Use consistent section spacing: 48-96px between major sections.',

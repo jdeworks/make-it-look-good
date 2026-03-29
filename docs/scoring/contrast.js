@@ -101,9 +101,26 @@ function scoreContrast(data) {
     return { ratio: ratio, needed: needed, passes: passes, isLarge: p.isLarge, text: p.text, fontSize: p.fontSize, selector: p.selector, fg: p.fg, bg: p.bg, filter: p.filter || '' };
   });
 
-  // Separate uncertain results (1:1 ratio usually means bg couldn't be determined — gradient, SVG, etc.)
-  var uncertain = profilePairs.filter(function(p) { return !p.passes && p.ratio <= 1.01 && p.fg === p.bg; });
-  var failures = profilePairs.filter(function(p) { return !p.passes && !(p.ratio <= 1.01 && p.fg === p.bg); });
+  // Separate uncertain results (very low ratio usually means bg couldn't be determined — gradient, SVG, image, etc.)
+  // Cases: fg===bg (exact 1:1), or ratio < 1.5 with light text on light bg (white text on gradient that resolved to white)
+  function isUncertain(p) {
+    if (p.passes) return false;
+    if (p.ratio <= 1.01 && p.fg === p.bg) return true;
+    // Very low ratio with light fg+bg suggests unresolved gradient background
+    if (p.ratio < 1.5) {
+      var fgC = parseRgb(p.fg);
+      var bgC = parseRgb(p.bg);
+      if (fgC && bgC) {
+        var fgBright = (fgC.r + fgC.g + fgC.b) / 3;
+        var bgBright = (bgC.r + bgC.g + bgC.b) / 3;
+        // Both very light (white text on resolved-to-white bg) or both very dark
+        if ((fgBright > 200 && bgBright > 200) || (fgBright < 55 && bgBright < 55)) return true;
+      }
+    }
+    return false;
+  }
+  var uncertain = profilePairs.filter(function(p) { return isUncertain(p); });
+  var failures = profilePairs.filter(function(p) { return !p.passes && !isUncertain(p); });
   var nearMisses = profilePairs.filter(function(p) { return p.passes && p.ratio < p.needed + 0.5; });
 
   failures.forEach(function(p) {
@@ -196,7 +213,9 @@ function scoreContrast(data) {
   // Don't count uncertain results as failures in the score
   var total = (profilePairs.length - uncertain.length) || 1;
   var passing = total - failures.length;
-  var score = Math.max(0, 100 - (failures.length * 10) - (nearMisses.length * 3));
+  // Scale deduction by total pairs: more pairs = less impact per failure (large pages shouldn't be punished more)
+  var failPenalty = total > 10 ? Math.max(3, Math.round(100 / total)) : 10;
+  var score = Math.max(0, 100 - (failures.length * failPenalty) - (nearMisses.length * 1));
 
   // Add baseline checks
   var checks = Math.max(total, 1);

@@ -20,7 +20,7 @@ function scoreAccessibility(data) {
   var hasNav = (semantic.nav || 0) > 0;
   var hasHeader = (semantic.header || 0) > 0;
   var semanticCount = [hasMain, hasNav, hasHeader].filter(Boolean).length;
-  if (semanticCount >= 2 || elCount < 30) {
+  if (semanticCount >= 2 || elCount < 50) {
     passed++; // Small components don't need full page landmarks
   } else {
     findings.push({
