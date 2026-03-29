@@ -925,7 +925,10 @@
     if (!isVisible(hcEl) || isDecorative(hcEl)) continue;
     var hcStyle = getComputedStyle(hcEl);
     var hcRadius = hcStyle.borderRadius;
-    if (hcStyle.overflowX === 'hidden' && hcEl.scrollWidth > hcEl.clientWidth + 4 && hcEl.clientWidth > 50 && (!hcRadius || hcRadius === '0px')) {
+    if (hcStyle.overflowX === 'hidden' && hcEl.scrollWidth > hcEl.clientWidth + 4 && hcEl.clientWidth > 50
+        && (!hcRadius || hcRadius === '0px')
+        && hcStyle.pointerEvents !== 'none'
+        && hcStyle.position !== 'fixed') {
       data.layout.hiddenClipElements.push({
         selector: cssSelector(hcEl),
         clientWidth: hcEl.clientWidth,
