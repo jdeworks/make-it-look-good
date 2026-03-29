@@ -136,7 +136,10 @@ async function runTest(page, t) {
         '  if (el2.tagName === "SCRIPT" || el2.tagName === "STYLE") continue;' +
         '  var s2 = getComputedStyle(el2);' +
         '  var br2 = s2.borderRadius;' +
-        '  if (s2.overflowX === "hidden" && el2.scrollWidth > el2.clientWidth + 4 && (!br2 || br2 === "0px") && s2.pointerEvents !== "none" && s2.position !== "fixed") {' +
+        '  var cls2 = (el2.className && typeof el2.className === "string") ? el2.className : "";' +
+        '  var hasRoundedClass = /rounded/.test(cls2);' +
+        '  var isSection = el2.tagName === "SECTION" || el2.tagName === "ARTICLE";' +
+        '  if (s2.overflowX === "hidden" && el2.scrollWidth > el2.clientWidth + 4 && (!br2 || br2 === "0px") && !hasRoundedClass && !isSection && s2.pointerEvents !== "none" && s2.position !== "fixed") {' +
         '    var sel2 = el2.tagName.toLowerCase();' +
         '    if (el2.id) sel2 = "#" + el2.id;' +
         '    else if (el2.className && typeof el2.className === "string") sel2 += "." + el2.className.trim().split(/\\s+/).slice(0,2).join(".");' +

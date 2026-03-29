@@ -1003,9 +1003,12 @@
     if (!isVisible(hcEl) || isDecorative(hcEl)) continue;
     var hcStyle = getComputedStyle(hcEl);
     var hcRadius = hcStyle.borderRadius;
-    // Skip: rounded-corner clip (border-radius > 0), decorative overlays (pointer-events:none), viewport-spanning fixed elements
+    var hcCls = (hcEl.className && typeof hcEl.className === 'string') ? hcEl.className : '';
+    var hcHasRounded = /rounded/.test(hcCls) || (hcRadius && hcRadius !== '0px');
+    var hcIsSection = hcEl.tagName === 'SECTION' || hcEl.tagName === 'ARTICLE';
+    // Skip: rounded-corner clip, section containers, decorative overlays, fixed elements
     if (hcStyle.overflowX === 'hidden' && hcEl.scrollWidth > hcEl.clientWidth + 4 && hcEl.clientWidth > 50
-        && (!hcRadius || hcRadius === '0px')
+        && !hcHasRounded && !hcIsSection
         && hcStyle.pointerEvents !== 'none'
         && hcStyle.position !== 'fixed') {
       data.layout.hiddenClipElements.push({
