@@ -18786,6 +18786,262 @@ package-lock.json
 .claude/
 </file>
 
+<file path="docs/scoring/registry.js">
+// Scoring Module Registry
+// Each module calls MilgScoring.register() to add its scoring function.
+// The main scoring engine calls all registered modules in order.
+
+window.MilgScoring = (function() {
+  'use strict';
+
+  var modules = [];
+
+  // --- User Persona Profiles ---
+  var PROFILES = {
+    general:          { contrast: 4.5, contrastLarge: 3,   bodyFontMin: 16, lineHeightMin: 1.4, lineHeightMax: 1.6, touchTarget: 44, touchTargetDesktop: 24, touchTargetDesktopWarn: 32, targetSpacing: 8,  fontWeightMin: 0,   maxNavItems: 0, maxLineLength: 75, readingGradeLevel: 0, requireReducedMotion: false, checkCVD: false },
+    wcag_aaa:         { contrast: 7,   contrastLarge: 4.5, bodyFontMin: 16, lineHeightMin: 1.4, lineHeightMax: 1.6, touchTarget: 44, touchTargetDesktop: 24, touchTargetDesktopWarn: 32, targetSpacing: 8,  fontWeightMin: 0,   maxNavItems: 0, maxLineLength: 75, readingGradeLevel: 0, requireReducedMotion: false, checkCVD: false },
+    elderly:          { contrast: 7,   contrastLarge: 4.5, bodyFontMin: 18, lineHeightMin: 1.6, lineHeightMax: 1.8, touchTarget: 48, touchTargetDesktop: 48, touchTargetDesktopWarn: 48, targetSpacing: 12, fontWeightMin: 400, maxNavItems: 7, maxLineLength: 65, readingGradeLevel: 0, requireReducedMotion: true,  checkCVD: false },
+    low_vision:       { contrast: 7,   contrastLarge: 4.5, bodyFontMin: 18, lineHeightMin: 1.5, lineHeightMax: 1.7, touchTarget: 44, touchTargetDesktop: 44, touchTargetDesktopWarn: 44, targetSpacing: 12, fontWeightMin: 300, maxNavItems: 0, maxLineLength: 0,  readingGradeLevel: 0, requireReducedMotion: false, checkCVD: false, warnFontSmoothing: true, warnBackgroundImage: true, iconMinSize: 32 },
+    motor_impairment: { contrast: 4.5, contrastLarge: 3,   bodyFontMin: 16, lineHeightMin: 1.4, lineHeightMax: 1.6, touchTarget: 48, touchTargetDesktop: 48, touchTargetDesktopWarn: 48, targetSpacing: 12, fontWeightMin: 0,   maxNavItems: 0, maxLineLength: 0,  readingGradeLevel: 0, requireReducedMotion: false, checkCVD: false, warnOutlineNone: true },
+    color_blind:      { contrast: 4.5, contrastLarge: 3,   bodyFontMin: 16, lineHeightMin: 1.4, lineHeightMax: 1.6, touchTarget: 44, touchTargetDesktop: 24, touchTargetDesktopWarn: 32, targetSpacing: 8,  fontWeightMin: 0,   maxNavItems: 0, maxLineLength: 0,  readingGradeLevel: 0, requireReducedMotion: false, checkCVD: true },
+    children:         { contrast: 4.5, contrastLarge: 3,   bodyFontMin: 18, lineHeightMin: 1.5, lineHeightMax: 1.8, touchTarget: 48, touchTargetDesktop: 44, touchTargetDesktopWarn: 48, targetSpacing: 16, fontWeightMin: 400, maxNavItems: 5, maxLineLength: 55, readingGradeLevel: 5, requireReducedMotion: false, checkCVD: false },
+    cognitive:        { contrast: 4.5, contrastLarge: 3,   bodyFontMin: 16, lineHeightMin: 1.5, lineHeightMax: 1.7, touchTarget: 44, touchTargetDesktop: 24, touchTargetDesktopWarn: 32, targetSpacing: 8,  fontWeightMin: 0,   maxNavItems: 5, maxLineLength: 65, readingGradeLevel: 8, requireReducedMotion: true,  checkCVD: false }
+  };
+
+  function getProfile(data) {
+    var name = (data && data.profile) || 'general';
+    return PROFILES[name] || PROFILES.general;
+  }
+
+  // --- Color utilities (shared by contrast module) ---
+  function parseColor(str) {
+    if (!str || str === 'transparent' || str === 'rgba(0, 0, 0, 0)') return null;
+    var m = str.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
+    if (m) return { r: +m[1], g: +m[2], b: +m[3], a: m[4] !== undefined ? +m[4] : 1 };
+    var m2 = str.match(/rgba?\((\d+)\s+(\d+)\s+(\d+)(?:\s*\/\s*([\d.]+%?))?\)/);
+    if (m2) { var a = m2[4] !== undefined ? (m2[4].indexOf('%') !== -1 ? parseFloat(m2[4]) / 100 : +m2[4]) : 1; return { r: +m2[1], g: +m2[2], b: +m2[3], a: a }; }
+    return null;
+  }
+
+  function luminance(c) {
+    var rs = c.r / 255, gs = c.g / 255, bs = c.b / 255;
+    var r = rs <= 0.03928 ? rs / 12.92 : Math.pow((rs + 0.055) / 1.055, 2.4);
+    var g = gs <= 0.03928 ? gs / 12.92 : Math.pow((gs + 0.055) / 1.055, 2.4);
+    var b = bs <= 0.03928 ? bs / 12.92 : Math.pow((bs + 0.055) / 1.055, 2.4);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  }
+
+  function contrastRatio(c1, c2) {
+    var l1 = luminance(c1), l2 = luminance(c2);
+    return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+  }
+
+  // --- Public API ---
+  function register(name, scoreFn, weight, label, icon) {
+    modules.push({ name: name, score: scoreFn, weight: weight, label: label, icon: icon });
+  }
+
+  function runScoring(data) {
+    var categories = modules.map(function(mod) {
+      var result = mod.score(data, getProfile(data));
+      result.weight = result.weight || mod.weight;
+      result.label = result.label || mod.label;
+      result.icon = result.icon || mod.icon;
+      return result;
+    });
+
+    var totalWeight = 0;
+    var weightedSum = 0;
+    categories.forEach(function(cat) {
+      if (cat.notApplicable) return; // Skip N/A categories from score
+      totalWeight += cat.weight;
+      weightedSum += cat.score * cat.weight;
+    });
+
+    var overall = Math.round(weightedSum / totalWeight);
+    var grade = overall >= 90 ? 'A' : overall >= 80 ? 'B' : overall >= 70 ? 'C' : overall >= 60 ? 'D' : 'F';
+    var gradeLabel = { A: 'Excellent', B: 'Good', C: 'Needs Improvement', D: 'Significant Issues', F: 'Major Redesign Needed' };
+
+    return {
+      overall: overall,
+      grade: grade,
+      gradeLabel: gradeLabel[grade],
+      categories: categories,
+      meta: data.meta,
+      raw: data
+    };
+  }
+
+  // Standardized scoring: errors=-10, warnings=-3, info=0 (industry standard per Cypress/axe-core)
+  function scoreFromFindings(findings, baseChecks) {
+    var errors = 0, warnings = 0;
+    findings.forEach(function(f) {
+      if (f.severity === 'error') errors++;
+      else if (f.severity === 'warning') warnings++;
+    });
+    // If module provides a checks-based score, use it; otherwise deduction-based
+    if (baseChecks !== undefined && baseChecks > 0) {
+      var passed = baseChecks - errors - warnings;
+      return Math.max(0, Math.round((Math.max(0, passed) / baseChecks) * 100));
+    }
+    return Math.max(0, 100 - (errors * 10) - (warnings * 3));
+  }
+
+  // CVD simulation matrices (Machado et al. 2009, severity 1.0)
+  var CVD_MATRICES = {
+    protanopia:   [0.567, 0.433, 0.000, 0.558, 0.442, 0.000, 0.000, 0.242, 0.758],
+    deuteranopia: [0.625, 0.375, 0.000, 0.700, 0.300, 0.000, 0.000, 0.300, 0.700],
+    tritanopia:   [0.950, 0.050, 0.000, 0.000, 0.433, 0.567, 0.000, 0.475, 0.525]
+  };
+
+  function simulateCVD(rgb, matrix) {
+    return {
+      r: Math.round(Math.min(255, Math.max(0, rgb.r * matrix[0] + rgb.g * matrix[1] + rgb.b * matrix[2]))),
+      g: Math.round(Math.min(255, Math.max(0, rgb.r * matrix[3] + rgb.g * matrix[4] + rgb.b * matrix[5]))),
+      b: Math.round(Math.min(255, Math.max(0, rgb.r * matrix[6] + rgb.g * matrix[7] + rgb.b * matrix[8])))
+    };
+  }
+
+  return {
+    register: register,
+    runScoring: runScoring,
+    getProfile: getProfile,
+    scoreFromFindings: scoreFromFindings,
+    parseColor: parseColor,
+    luminance: luminance,
+    contrastRatio: contrastRatio,
+    simulateCVD: simulateCVD,
+    CVD_MATRICES: CVD_MATRICES,
+    PROFILES: PROFILES
+  };
+})();
+</file>
+
+<file path="proxy/README.md">
+# CORS Proxy Worker
+
+A lightweight Cloudflare Worker that proxies HTTP requests with CORS headers, used by the Design Analyzer's URL input mode.
+
+## Why
+
+Browsers block cross-origin requests (CORS). To fetch and analyze external websites from a client-side app, we need a proxy that adds `Access-Control-Allow-Origin` headers. This self-hosted worker replaces dependency on third-party CORS proxies.
+
+## Full setup (from scratch)
+
+### 1. Deploy the Worker to Cloudflare
+
+1. [Sign up for Cloudflare](https://dash.cloudflare.com/sign-up) (free, no credit card)
+2. Install Wrangler (Cloudflare's deploy CLI):
+   ```bash
+   npm install -g wrangler
+   ```
+3. Login to Cloudflare:
+   ```bash
+   wrangler login
+   ```
+4. Deploy the worker:
+   ```bash
+   cd proxy
+   npx wrangler deploy
+   ```
+5. Copy the `*.workers.dev` URL from the output — that's your proxy URL
+
+### 2. Connect it to the Analyzer
+
+1. Copy `.env.example` to `.env` at the repo root:
+   ```bash
+   cp .env.example .env
+   ```
+2. Edit `.env` and set your worker URL:
+   ```
+   PROXY_URL=https://milg-cors-proxy.YOUR-SUB.workers.dev
+   ```
+3. Run the inject script:
+   ```bash
+   ./scripts/inject-proxy.sh
+   ```
+4. Commit and push:
+   ```bash
+   git add docs/analyzer.js
+   git commit -m "Inject proxy URL"
+   git push
+   ```
+
+GitHub Pages will serve the updated `docs/analyzer.js` with your proxy baked in.
+
+### 3. If you need to change the URL
+
+Edit `.env`, run `./scripts/inject-proxy.sh` again, commit and push.
+
+### 4. If you want to remove the proxy
+
+Delete `.env` (or clear `PROXY_URL`), run `./scripts/inject-proxy.sh` — it resets to the placeholder, falling back to third-party proxies.
+
+## Setting up on a different computer
+
+1. Clone the repo
+2. Create `.env` with your `PROXY_URL=...` (the `.env` file is gitignored)
+3. Run `./scripts/inject-proxy.sh`
+4. That's it — the deployed `docs/analyzer.js` already has the URL from your last push
+
+You only need to re-run the inject script if you want to change the URL or deploy from a fresh clone.
+
+## Free tier limits
+
+| | Free | Paid ($5/month) |
+|---|---|---|
+| Requests | 100K/day | 10M/month |
+| CPU time | 10ms/request | 30ms/request |
+| When exceeded | **Hard stop** (5XX until midnight UTC) | $0.30/million overage |
+
+100K/day handles ~5,500 daily users doing 3 analyses each. For context, each analysis uses ~4-6 proxied requests (1 HTML page + 3-5 CSS files).
+
+## Safety features
+
+| Feature | What it does |
+|---------|-------------|
+| **Origin checking** | Only browsers on `jdeworks.github.io` can use the proxy (unforgeable by browsers) |
+| **Rate limiting** | 30 requests/minute per IP address |
+| **SSRF protection** | Blocks localhost, private IPs, `.local` domains |
+| **Method restriction** | GET only, http/https only |
+| **Size limit** | 10 MB max response |
+
+## Configuration
+
+Edit `proxy/worker.js`:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ALLOWED_ORIGINS` | `['https://jdeworks.github.io']` | Allowed Origin domains. Set to `null` for any (dev only). |
+| `RATE_LIMIT` | `30` | Max requests per IP per minute |
+| `MAX_RESPONSE_SIZE` | `10 MB` | Max proxied response body |
+| `USER_AGENT` | `MilgAnalyzer/1.0` | User-Agent sent to target servers |
+
+After changing, redeploy: `cd proxy && npx wrangler deploy`
+
+## How the URL stays (mostly) hidden
+
+```
+.env (local, gitignored)
+  └── PROXY_URL=https://your-worker.workers.dev
+
+./scripts/inject-proxy.sh
+  └── base64-encodes URL → patches docs/analyzer.js
+
+docs/analyzer.js (committed)
+  └── var _pe = 'aHR0cHM6Ly8uLi4=';  (not a recognizable URL pattern)
+
+Browser (runtime)
+  └── atob() decodes → fetches from your worker
+```
+
+The encoded URL is in the committed JS (unavoidable for a static site). But:
+- The raw URL is never in git (`.env` is gitignored)
+- The encoded string doesn't match URL patterns (stops automated scrapers)
+- Origin checking + rate limiting in the worker caps abuse even if found
+- Anyone with DevTools Network tab can see the decoded URL on requests (that's fine — can't prevent it)
+</file>
+
 <file path="scripts/test-full-matrix.mjs">
 #!/usr/bin/env node
 // Full matrix test runner: preset × personality × effect × viewport × dark mode
@@ -18838,30 +19094,30 @@ article:hover{transform:translateY(-4px);box-shadow:0 12px 30px rgba(99,102,241,
 h1,h2,h3{font-weight:800!important;letter-spacing:-0.01em}
 input,select,textarea{border-radius:14px!important}
 button:active,[role="button"]:active{transform:scale(0.95)!important;transition-duration:80ms!important}` },
-  { name: 'frosted', css: `body:not(.dark){background:linear-gradient(135deg,#dbeafe 0%,#ede9fe 35%,#fce7f3 65%,#e0f2fe 100%)!important;min-height:100vh}
+  { name: 'frosted', css: `html:not(.dark) body{background:linear-gradient(135deg,#dbeafe 0%,#ede9fe 35%,#fce7f3 65%,#e0f2fe 100%)!important;min-height:100vh}
 .dark body,.dark.min-h-screen,html.dark body{background:linear-gradient(135deg,#0f172a 0%,#1e1b4b 35%,#1e1b4b 65%,#0f172a 100%)!important;min-height:100vh}
-:not(.dark) [class*="bg-white"]{background:rgba(255,255,255,0.55)!important;-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);border:1px solid rgba(255,255,255,0.4)!important;box-shadow:0 4px 24px rgba(0,0,0,0.04),inset 0 1px 0 rgba(255,255,255,0.6)!important}
+html:not(.dark) [class*="bg-white"]{background:rgba(255,255,255,0.55)!important;-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);border:1px solid rgba(255,255,255,0.4)!important;box-shadow:0 4px 24px rgba(0,0,0,0.04),inset 0 1px 0 rgba(255,255,255,0.6)!important}
 .dark [class*="bg-slate-900"],.dark [class*="bg-slate-950"],.dark [class*="bg-gray-900"],.dark [class*="bg-gray-950"]{background:rgba(15,23,42,0.78)!important;-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);border:1px solid rgba(99,102,241,0.15)!important;box-shadow:0 4px 24px rgba(0,0,0,0.2),inset 0 1px 0 rgba(99,102,241,0.1)!important}
-:not(.dark) [class*="bg-slate-50"],:not(.dark) [class*="bg-gray-50"],:not(.dark) [class*="bg-zinc-50"]{background:rgba(248,250,252,0.4)!important;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+html:not(.dark) [class*="bg-slate-50"],html:not(.dark) [class*="bg-gray-50"],html:not(.dark) [class*="bg-zinc-50"]{background:rgba(248,250,252,0.4)!important;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
 .dark [class*="bg-slate-800"],.dark [class*="bg-gray-800"],.dark [class*="bg-slate-850"]{background:rgba(30,41,59,0.72)!important;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
 [class*="shadow-sm"],[class*="shadow-md"],[class*="shadow-lg"],[class*="shadow-xl"]{box-shadow:0 4px 20px rgba(0,0,0,0.05),inset 0 1px 0 rgba(255,255,255,0.5)!important}
 .dark [class*="shadow-sm"],.dark [class*="shadow-md"],.dark [class*="shadow-lg"],.dark [class*="shadow-xl"]{box-shadow:0 4px 20px rgba(0,0,0,0.3),inset 0 1px 0 rgba(99,102,241,0.1)!important}
 [class*="rounded-lg"]{border-radius:14px!important}
 [class*="rounded-xl"],[class*="rounded-2xl"]{border-radius:18px!important}
-:not(.dark) [class*="border-slate-200"],:not(.dark) [class*="border-gray-200"],:not(.dark) [class*="border-zinc-200"]{border-color:rgba(255,255,255,0.35)!important}
+html:not(.dark) [class*="border-slate-200"],html:not(.dark) [class*="border-gray-200"],html:not(.dark) [class*="border-zinc-200"]{border-color:rgba(255,255,255,0.35)!important}
 .dark [class*="border-slate-700"],.dark [class*="border-slate-800"],.dark [class*="border-gray-700"],.dark [class*="border-gray-800"]{border-color:rgba(99,102,241,0.15)!important}
 [class*="divide-slate"],[class*="divide-gray"],[class*="divide-zinc"]{--tw-divide-opacity:0.3}
-:not(.dark) [class*="border-t"]:not([class*="border-t-0"]){border-color:rgba(100,116,139,0.2)!important}
+html:not(.dark) [class*="border-t"]:not([class*="border-t-0"]){border-color:rgba(100,116,139,0.2)!important}
 .dark [class*="border-t"]:not([class*="border-t-0"]){border-color:rgba(99,102,241,0.12)!important}
-:not(.dark) [class*="text-slate-500"],:not(.dark) [class*="text-gray-500"],:not(.dark) [class*="text-zinc-500"]{color:rgb(51,65,85)!important}
-:not(.dark) [class*="text-slate-400"],:not(.dark) [class*="text-gray-400"]{color:rgb(71,85,105)!important}
+html:not(.dark) [class*="text-slate-500"],html:not(.dark) [class*="text-gray-500"],html:not(.dark) [class*="text-zinc-500"]{color:rgb(51,65,85)!important}
+html:not(.dark) [class*="text-slate-400"],html:not(.dark) [class*="text-gray-400"]{color:rgb(71,85,105)!important}
 .dark [class*="text-slate-400"],.dark [class*="text-gray-400"]{color:rgb(148,163,184)!important}
 .dark [class*="text-slate-300"],.dark [class*="text-gray-300"]{color:rgb(203,213,225)!important}
 input,select,textarea{-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);border-radius:12px!important}
-:not(.dark) input,:not(.dark) select,:not(.dark) textarea{background:rgba(255,255,255,0.45)!important;border:1px solid rgba(255,255,255,0.4)!important}
+html:not(.dark) input,html:not(.dark) select,html:not(.dark) textarea{background:rgba(255,255,255,0.45)!important;border:1px solid rgba(255,255,255,0.4)!important}
 .dark input,.dark select,.dark textarea{background:rgba(15,23,42,0.45)!important;border:1px solid rgba(99,102,241,0.2)!important}
 button:hover,[role="button"]:hover{box-shadow:0 0 24px rgba(99,102,241,0.18),0 6px 20px rgba(0,0,0,0.06)!important;transition:box-shadow 250ms ease-out,transform 250ms ease-out;transform:translateY(-1px)}
-:not(.dark) nav,:not(.dark) aside,:not(.dark) header{-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);background:rgba(255,255,255,0.65)!important}
+html:not(.dark) nav,html:not(.dark) aside,html:not(.dark) header{-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);background:rgba(255,255,255,0.65)!important}
 .dark nav,.dark aside,.dark header{-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);background:rgba(15,23,42,0.65)!important}` },
   { name: 'serif', css: `@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap');
 h1,h2,h3,h4,h5,h6{font-family:'Playfair Display',Georgia,'Times New Roman',serif!important;letter-spacing:-0.02em;line-height:1.15}
@@ -19511,262 +19767,6 @@ async function main() {
 }
 
 main().catch(err => { console.error('Fatal:', err); process.exit(1); });
-</file>
-
-<file path="docs/scoring/registry.js">
-// Scoring Module Registry
-// Each module calls MilgScoring.register() to add its scoring function.
-// The main scoring engine calls all registered modules in order.
-
-window.MilgScoring = (function() {
-  'use strict';
-
-  var modules = [];
-
-  // --- User Persona Profiles ---
-  var PROFILES = {
-    general:          { contrast: 4.5, contrastLarge: 3,   bodyFontMin: 16, lineHeightMin: 1.4, lineHeightMax: 1.6, touchTarget: 44, touchTargetDesktop: 24, touchTargetDesktopWarn: 32, targetSpacing: 8,  fontWeightMin: 0,   maxNavItems: 0, maxLineLength: 75, readingGradeLevel: 0, requireReducedMotion: false, checkCVD: false },
-    wcag_aaa:         { contrast: 7,   contrastLarge: 4.5, bodyFontMin: 16, lineHeightMin: 1.4, lineHeightMax: 1.6, touchTarget: 44, touchTargetDesktop: 24, touchTargetDesktopWarn: 32, targetSpacing: 8,  fontWeightMin: 0,   maxNavItems: 0, maxLineLength: 75, readingGradeLevel: 0, requireReducedMotion: false, checkCVD: false },
-    elderly:          { contrast: 7,   contrastLarge: 4.5, bodyFontMin: 18, lineHeightMin: 1.6, lineHeightMax: 1.8, touchTarget: 48, touchTargetDesktop: 48, touchTargetDesktopWarn: 48, targetSpacing: 12, fontWeightMin: 400, maxNavItems: 7, maxLineLength: 65, readingGradeLevel: 0, requireReducedMotion: true,  checkCVD: false },
-    low_vision:       { contrast: 7,   contrastLarge: 4.5, bodyFontMin: 18, lineHeightMin: 1.5, lineHeightMax: 1.7, touchTarget: 44, touchTargetDesktop: 44, touchTargetDesktopWarn: 44, targetSpacing: 12, fontWeightMin: 300, maxNavItems: 0, maxLineLength: 0,  readingGradeLevel: 0, requireReducedMotion: false, checkCVD: false, warnFontSmoothing: true, warnBackgroundImage: true, iconMinSize: 32 },
-    motor_impairment: { contrast: 4.5, contrastLarge: 3,   bodyFontMin: 16, lineHeightMin: 1.4, lineHeightMax: 1.6, touchTarget: 48, touchTargetDesktop: 48, touchTargetDesktopWarn: 48, targetSpacing: 12, fontWeightMin: 0,   maxNavItems: 0, maxLineLength: 0,  readingGradeLevel: 0, requireReducedMotion: false, checkCVD: false, warnOutlineNone: true },
-    color_blind:      { contrast: 4.5, contrastLarge: 3,   bodyFontMin: 16, lineHeightMin: 1.4, lineHeightMax: 1.6, touchTarget: 44, touchTargetDesktop: 24, touchTargetDesktopWarn: 32, targetSpacing: 8,  fontWeightMin: 0,   maxNavItems: 0, maxLineLength: 0,  readingGradeLevel: 0, requireReducedMotion: false, checkCVD: true },
-    children:         { contrast: 4.5, contrastLarge: 3,   bodyFontMin: 18, lineHeightMin: 1.5, lineHeightMax: 1.8, touchTarget: 48, touchTargetDesktop: 44, touchTargetDesktopWarn: 48, targetSpacing: 16, fontWeightMin: 400, maxNavItems: 5, maxLineLength: 55, readingGradeLevel: 5, requireReducedMotion: false, checkCVD: false },
-    cognitive:        { contrast: 4.5, contrastLarge: 3,   bodyFontMin: 16, lineHeightMin: 1.5, lineHeightMax: 1.7, touchTarget: 44, touchTargetDesktop: 24, touchTargetDesktopWarn: 32, targetSpacing: 8,  fontWeightMin: 0,   maxNavItems: 5, maxLineLength: 65, readingGradeLevel: 8, requireReducedMotion: true,  checkCVD: false }
-  };
-
-  function getProfile(data) {
-    var name = (data && data.profile) || 'general';
-    return PROFILES[name] || PROFILES.general;
-  }
-
-  // --- Color utilities (shared by contrast module) ---
-  function parseColor(str) {
-    if (!str || str === 'transparent' || str === 'rgba(0, 0, 0, 0)') return null;
-    var m = str.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
-    if (m) return { r: +m[1], g: +m[2], b: +m[3], a: m[4] !== undefined ? +m[4] : 1 };
-    var m2 = str.match(/rgba?\((\d+)\s+(\d+)\s+(\d+)(?:\s*\/\s*([\d.]+%?))?\)/);
-    if (m2) { var a = m2[4] !== undefined ? (m2[4].indexOf('%') !== -1 ? parseFloat(m2[4]) / 100 : +m2[4]) : 1; return { r: +m2[1], g: +m2[2], b: +m2[3], a: a }; }
-    return null;
-  }
-
-  function luminance(c) {
-    var rs = c.r / 255, gs = c.g / 255, bs = c.b / 255;
-    var r = rs <= 0.03928 ? rs / 12.92 : Math.pow((rs + 0.055) / 1.055, 2.4);
-    var g = gs <= 0.03928 ? gs / 12.92 : Math.pow((gs + 0.055) / 1.055, 2.4);
-    var b = bs <= 0.03928 ? bs / 12.92 : Math.pow((bs + 0.055) / 1.055, 2.4);
-    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  }
-
-  function contrastRatio(c1, c2) {
-    var l1 = luminance(c1), l2 = luminance(c2);
-    return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
-  }
-
-  // --- Public API ---
-  function register(name, scoreFn, weight, label, icon) {
-    modules.push({ name: name, score: scoreFn, weight: weight, label: label, icon: icon });
-  }
-
-  function runScoring(data) {
-    var categories = modules.map(function(mod) {
-      var result = mod.score(data, getProfile(data));
-      result.weight = result.weight || mod.weight;
-      result.label = result.label || mod.label;
-      result.icon = result.icon || mod.icon;
-      return result;
-    });
-
-    var totalWeight = 0;
-    var weightedSum = 0;
-    categories.forEach(function(cat) {
-      if (cat.notApplicable) return; // Skip N/A categories from score
-      totalWeight += cat.weight;
-      weightedSum += cat.score * cat.weight;
-    });
-
-    var overall = Math.round(weightedSum / totalWeight);
-    var grade = overall >= 90 ? 'A' : overall >= 80 ? 'B' : overall >= 70 ? 'C' : overall >= 60 ? 'D' : 'F';
-    var gradeLabel = { A: 'Excellent', B: 'Good', C: 'Needs Improvement', D: 'Significant Issues', F: 'Major Redesign Needed' };
-
-    return {
-      overall: overall,
-      grade: grade,
-      gradeLabel: gradeLabel[grade],
-      categories: categories,
-      meta: data.meta,
-      raw: data
-    };
-  }
-
-  // Standardized scoring: errors=-10, warnings=-3, info=0 (industry standard per Cypress/axe-core)
-  function scoreFromFindings(findings, baseChecks) {
-    var errors = 0, warnings = 0;
-    findings.forEach(function(f) {
-      if (f.severity === 'error') errors++;
-      else if (f.severity === 'warning') warnings++;
-    });
-    // If module provides a checks-based score, use it; otherwise deduction-based
-    if (baseChecks !== undefined && baseChecks > 0) {
-      var passed = baseChecks - errors - warnings;
-      return Math.max(0, Math.round((Math.max(0, passed) / baseChecks) * 100));
-    }
-    return Math.max(0, 100 - (errors * 10) - (warnings * 3));
-  }
-
-  // CVD simulation matrices (Machado et al. 2009, severity 1.0)
-  var CVD_MATRICES = {
-    protanopia:   [0.567, 0.433, 0.000, 0.558, 0.442, 0.000, 0.000, 0.242, 0.758],
-    deuteranopia: [0.625, 0.375, 0.000, 0.700, 0.300, 0.000, 0.000, 0.300, 0.700],
-    tritanopia:   [0.950, 0.050, 0.000, 0.000, 0.433, 0.567, 0.000, 0.475, 0.525]
-  };
-
-  function simulateCVD(rgb, matrix) {
-    return {
-      r: Math.round(Math.min(255, Math.max(0, rgb.r * matrix[0] + rgb.g * matrix[1] + rgb.b * matrix[2]))),
-      g: Math.round(Math.min(255, Math.max(0, rgb.r * matrix[3] + rgb.g * matrix[4] + rgb.b * matrix[5]))),
-      b: Math.round(Math.min(255, Math.max(0, rgb.r * matrix[6] + rgb.g * matrix[7] + rgb.b * matrix[8])))
-    };
-  }
-
-  return {
-    register: register,
-    runScoring: runScoring,
-    getProfile: getProfile,
-    scoreFromFindings: scoreFromFindings,
-    parseColor: parseColor,
-    luminance: luminance,
-    contrastRatio: contrastRatio,
-    simulateCVD: simulateCVD,
-    CVD_MATRICES: CVD_MATRICES,
-    PROFILES: PROFILES
-  };
-})();
-</file>
-
-<file path="proxy/README.md">
-# CORS Proxy Worker
-
-A lightweight Cloudflare Worker that proxies HTTP requests with CORS headers, used by the Design Analyzer's URL input mode.
-
-## Why
-
-Browsers block cross-origin requests (CORS). To fetch and analyze external websites from a client-side app, we need a proxy that adds `Access-Control-Allow-Origin` headers. This self-hosted worker replaces dependency on third-party CORS proxies.
-
-## Full setup (from scratch)
-
-### 1. Deploy the Worker to Cloudflare
-
-1. [Sign up for Cloudflare](https://dash.cloudflare.com/sign-up) (free, no credit card)
-2. Install Wrangler (Cloudflare's deploy CLI):
-   ```bash
-   npm install -g wrangler
-   ```
-3. Login to Cloudflare:
-   ```bash
-   wrangler login
-   ```
-4. Deploy the worker:
-   ```bash
-   cd proxy
-   npx wrangler deploy
-   ```
-5. Copy the `*.workers.dev` URL from the output — that's your proxy URL
-
-### 2. Connect it to the Analyzer
-
-1. Copy `.env.example` to `.env` at the repo root:
-   ```bash
-   cp .env.example .env
-   ```
-2. Edit `.env` and set your worker URL:
-   ```
-   PROXY_URL=https://milg-cors-proxy.YOUR-SUB.workers.dev
-   ```
-3. Run the inject script:
-   ```bash
-   ./scripts/inject-proxy.sh
-   ```
-4. Commit and push:
-   ```bash
-   git add docs/analyzer.js
-   git commit -m "Inject proxy URL"
-   git push
-   ```
-
-GitHub Pages will serve the updated `docs/analyzer.js` with your proxy baked in.
-
-### 3. If you need to change the URL
-
-Edit `.env`, run `./scripts/inject-proxy.sh` again, commit and push.
-
-### 4. If you want to remove the proxy
-
-Delete `.env` (or clear `PROXY_URL`), run `./scripts/inject-proxy.sh` — it resets to the placeholder, falling back to third-party proxies.
-
-## Setting up on a different computer
-
-1. Clone the repo
-2. Create `.env` with your `PROXY_URL=...` (the `.env` file is gitignored)
-3. Run `./scripts/inject-proxy.sh`
-4. That's it — the deployed `docs/analyzer.js` already has the URL from your last push
-
-You only need to re-run the inject script if you want to change the URL or deploy from a fresh clone.
-
-## Free tier limits
-
-| | Free | Paid ($5/month) |
-|---|---|---|
-| Requests | 100K/day | 10M/month |
-| CPU time | 10ms/request | 30ms/request |
-| When exceeded | **Hard stop** (5XX until midnight UTC) | $0.30/million overage |
-
-100K/day handles ~5,500 daily users doing 3 analyses each. For context, each analysis uses ~4-6 proxied requests (1 HTML page + 3-5 CSS files).
-
-## Safety features
-
-| Feature | What it does |
-|---------|-------------|
-| **Origin checking** | Only browsers on `jdeworks.github.io` can use the proxy (unforgeable by browsers) |
-| **Rate limiting** | 30 requests/minute per IP address |
-| **SSRF protection** | Blocks localhost, private IPs, `.local` domains |
-| **Method restriction** | GET only, http/https only |
-| **Size limit** | 10 MB max response |
-
-## Configuration
-
-Edit `proxy/worker.js`:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ALLOWED_ORIGINS` | `['https://jdeworks.github.io']` | Allowed Origin domains. Set to `null` for any (dev only). |
-| `RATE_LIMIT` | `30` | Max requests per IP per minute |
-| `MAX_RESPONSE_SIZE` | `10 MB` | Max proxied response body |
-| `USER_AGENT` | `MilgAnalyzer/1.0` | User-Agent sent to target servers |
-
-After changing, redeploy: `cd proxy && npx wrangler deploy`
-
-## How the URL stays (mostly) hidden
-
-```
-.env (local, gitignored)
-  └── PROXY_URL=https://your-worker.workers.dev
-
-./scripts/inject-proxy.sh
-  └── base64-encodes URL → patches docs/analyzer.js
-
-docs/analyzer.js (committed)
-  └── var _pe = 'aHR0cHM6Ly8uLi4=';  (not a recognizable URL pattern)
-
-Browser (runtime)
-  └── atob() decodes → fetches from your worker
-```
-
-The encoded URL is in the committed JS (unavoidable for a static site). But:
-- The raw URL is never in git (`.env` is gitignored)
-- The encoded string doesn't match URL patterns (stops automated scrapers)
-- Origin checking + rate limiting in the worker caps abuse even if found
-- Anyone with DevTools Network tab can see the decoded URL on requests (that's fine — can't prevent it)
 </file>
 
 <file path="docs/scoring/readability.js">
@@ -20733,194 +20733,6 @@ function scoreResponsive(data) {
 })();
 </file>
 
-<file path="docs/scoring/performance.js">
-// Scoring Module: Performance
-// Weight: 5%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scorePerformance(data) {
-  var findings = [];
-  var checks = 0;
-  var passed = 0;
-  var perf = data.performance || {};
-
-  // Font loading
-  var fontIssues = perf.fontLoading || [];
-  if (fontIssues.length > 0) {
-    checks++;
-    findings.push({
-      severity: 'warning',
-      title: fontIssues.length + ' web font(s) without font-display: swap',
-      detail: 'Fonts with display:auto or display:block cause invisible text (FOIT) while loading',
-      fix: 'Add font-display: swap (or optional) to @font-face rules. This shows fallback text immediately.',
-      presetRef: null,
-      source: 'Web.dev — https://web.dev/articles/font-display'
-    });
-  } else {
-    checks++;
-    passed++;
-  }
-
-  // Render-blocking resources
-  var rb = perf.renderBlocking || {};
-  checks++;
-  var blockingCount = (rb.cssInHead || 0) + (rb.jsInHead || 0);
-  if (blockingCount <= 3) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: blockingCount + ' render-blocking resources in <head>',
-      detail: (rb.cssInHead || 0) + ' CSS files, ' + (rb.jsInHead || 0) + ' sync JS scripts',
-      fix: 'Defer non-critical CSS with media="print" onload hack. Add async/defer to scripts.',
-      presetRef: null,
-      source: 'Web.dev — https://web.dev/articles/render-blocking-resources'
-    });
-  }
-
-  // DOM complexity
-  checks++;
-  var domSize = perf.domSize || 0;
-  if (domSize <= 1500) {
-    passed++;
-  } else {
-    findings.push({
-      severity: domSize > 3000 ? 'warning' : 'info',
-      title: domSize + ' DOM elements (' + (domSize > 3000 ? 'excessive' : 'large') + ')',
-      detail: 'Large DOMs slow rendering, increase memory, and hurt interaction responsiveness',
-      fix: 'Consider lazy loading sections, virtualizing long lists, or simplifying markup.',
-      presetRef: null,
-      source: 'Chrome DevTools — https://developer.chrome.com/docs/lighthouse/performance/dom-size'
-    });
-  }
-
-  // DOM depth
-  checks++;
-  var depth = perf.domDepth || 0;
-  if (depth <= 32) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'info',
-      title: 'DOM nesting depth: ' + depth + ' levels (recommended: ≤32)',
-      detail: 'Deep nesting increases CSS selector matching time and layout complexity',
-      fix: 'Flatten nested containers where possible. Avoid wrapping divs that serve no purpose.',
-      presetRef: null,
-      source: 'Chrome DevTools — https://developer.chrome.com/docs/lighthouse/performance/dom-size'
-    });
-  }
-
-  // Third-party scripts
-  if (data.performance && data.performance.thirdPartyScripts !== undefined) {
-    checks++;
-    var tpCount = data.performance.thirdPartyScripts;
-    if (tpCount <= 5) {
-      passed++;
-    } else {
-      findings.push({
-        severity: tpCount > 10 ? 'warning' : 'info',
-        title: tpCount + ' third-party scripts loaded',
-        detail: 'Each third-party script adds latency, potential blocking, and privacy concerns',
-        fix: 'Audit third-party scripts. Remove unused ones, defer non-critical ones, consider self-hosting critical libraries.',
-        presetRef: null,
-        source: 'Web Vitals — https://web.dev/articles/optimizing-third-party-javascript'
-      });
-    }
-  }
-
-  // Image format audit
-  var imgFmt = (data.performance && data.performance.imageFormats) || {};
-  if (imgFmt.legacy > 0) {
-    checks++;
-    if (imgFmt.modern >= imgFmt.legacy) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: imgFmt.legacy + ' image(s) use legacy formats (JPEG/PNG)',
-        detail: imgFmt.modern + ' use modern formats (WebP/AVIF). Modern formats are 25-50% smaller.',
-        fix: 'Convert images to WebP or AVIF. Use <picture> with format fallbacks for broad browser support.',
-        presetRef: null,
-        source: 'Web.dev — https://web.dev/articles/serve-images-webp'
-      });
-    }
-  }
-
-  // CLS (Cumulative Layout Shift)
-  if (data.performance && data.performance.cls !== null && data.performance.cls !== undefined) {
-    checks++;
-    var cls = data.performance.cls;
-    if (cls <= 0.1) {
-      passed++;
-    } else {
-      findings.push({
-        severity: cls > 0.25 ? 'error' : 'warning',
-        title: 'CLS (Cumulative Layout Shift): ' + cls + ' (' + (cls > 0.25 ? 'poor' : 'needs improvement') + ')',
-        detail: 'Layout shifts disrupt user reading and cause mis-clicks. Target: < 0.1.',
-        fix: 'Add explicit width/height to images and ads. Use min-height on dynamic content areas. Avoid inserting content above existing content.',
-        presetRef: null,
-        source: 'Web Vitals — https://web.dev/articles/cls'
-      });
-    }
-  }
-
-  // LCP
-  var lcp = data.performance && data.performance.lcp;
-  if (lcp) {
-    checks++;
-    if (lcp.time <= 2500) {
-      passed++;
-    } else {
-      findings.push({
-        severity: lcp.time > 4000 ? 'error' : 'warning',
-        title: 'LCP: ' + (lcp.time / 1000).toFixed(1) + 's (' + (lcp.time > 4000 ? 'poor' : 'needs improvement') + ')',
-        detail: 'Largest element: <' + lcp.element + '>. Target: < 2.5s.',
-        fix: 'Optimize the largest visible element. For images: preload, use WebP, set fetchpriority="high". For text: ensure fonts load with font-display:swap.',
-        presetRef: null,
-        source: 'Web Vitals — https://web.dev/articles/lcp'
-      });
-    }
-  }
-
-  // LCP lazy loading (heuristic)
-  if (data.performance && data.performance.lcpLazyLoaded) {
-    findings.push({
-      severity: 'error',
-      title: 'LCP image uses loading="lazy"',
-      detail: 'Lazy loading the largest visible image delays LCP significantly',
-      fix: 'Remove loading="lazy" from the hero/LCP image. Only lazy-load below-fold images.',
-      presetRef: null,
-      source: 'Web Vitals — https://web.dev/articles/lcp'
-    });
-  }
-
-  // Non-responsive images
-  var nri = (data.performance && data.performance.nonResponsiveImages) || 0;
-  if (nri > 0) {
-    findings.push({
-      severity: 'warning',
-      title: nri + ' image(s) without responsive sizing',
-      detail: 'Images without max-width: 100% can overflow their containers on small screens',
-      fix: 'Add max-width: 100% and height: auto to all images. In Tailwind: class="max-w-full h-auto".',
-      presetRef: null,
-      source: 'MDN — https://developer.mozilla.org/en-US/docs/Learn/HTML/Multimedia_and_embedding/Responsive_images'
-    });
-  }
-
-  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-  return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Performance', icon: 'cognitive' };
-}
-
-
-  S.register("performance", scorePerformance, 5, "Performance", "cognitive");
-})();
-</file>
-
 <file path="README.md">
 # make-it-look-good
 
@@ -21158,6 +20970,194 @@ Each file: 200–400 lines, concrete rules with numbers, CSS/Tailwind patterns, 
 If this helped you ship something that looks good, [give it a star](../../stargazers). Found an issue? [Open one](../../issues).
 
 Sources: [research/sources.md](research/sources.md)
+</file>
+
+<file path="docs/scoring/performance.js">
+// Scoring Module: Performance
+// Weight: 5%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scorePerformance(data) {
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+  var perf = data.performance || {};
+
+  // Font loading
+  var fontIssues = perf.fontLoading || [];
+  if (fontIssues.length > 0) {
+    checks++;
+    findings.push({
+      severity: 'warning',
+      title: fontIssues.length + ' web font(s) without font-display: swap',
+      detail: 'Fonts with display:auto or display:block cause invisible text (FOIT) while loading',
+      fix: 'Add font-display: swap (or optional) to @font-face rules. This shows fallback text immediately.',
+      presetRef: null,
+      source: 'Web.dev — https://web.dev/articles/font-display'
+    });
+  } else {
+    checks++;
+    passed++;
+  }
+
+  // Render-blocking resources
+  var rb = perf.renderBlocking || {};
+  checks++;
+  var blockingCount = (rb.cssInHead || 0) + (rb.jsInHead || 0);
+  if (blockingCount <= 3) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: blockingCount + ' render-blocking resources in <head>',
+      detail: (rb.cssInHead || 0) + ' CSS files, ' + (rb.jsInHead || 0) + ' sync JS scripts',
+      fix: 'Defer non-critical CSS with media="print" onload hack. Add async/defer to scripts.',
+      presetRef: null,
+      source: 'Web.dev — https://web.dev/articles/render-blocking-resources'
+    });
+  }
+
+  // DOM complexity
+  checks++;
+  var domSize = perf.domSize || 0;
+  if (domSize <= 1500) {
+    passed++;
+  } else {
+    findings.push({
+      severity: domSize > 3000 ? 'warning' : 'info',
+      title: domSize + ' DOM elements (' + (domSize > 3000 ? 'excessive' : 'large') + ')',
+      detail: 'Large DOMs slow rendering, increase memory, and hurt interaction responsiveness',
+      fix: 'Consider lazy loading sections, virtualizing long lists, or simplifying markup.',
+      presetRef: null,
+      source: 'Chrome DevTools — https://developer.chrome.com/docs/lighthouse/performance/dom-size'
+    });
+  }
+
+  // DOM depth
+  checks++;
+  var depth = perf.domDepth || 0;
+  if (depth <= 32) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'info',
+      title: 'DOM nesting depth: ' + depth + ' levels (recommended: ≤32)',
+      detail: 'Deep nesting increases CSS selector matching time and layout complexity',
+      fix: 'Flatten nested containers where possible. Avoid wrapping divs that serve no purpose.',
+      presetRef: null,
+      source: 'Chrome DevTools — https://developer.chrome.com/docs/lighthouse/performance/dom-size'
+    });
+  }
+
+  // Third-party scripts
+  if (data.performance && data.performance.thirdPartyScripts !== undefined) {
+    checks++;
+    var tpCount = data.performance.thirdPartyScripts;
+    if (tpCount <= 5) {
+      passed++;
+    } else {
+      findings.push({
+        severity: tpCount > 10 ? 'warning' : 'info',
+        title: tpCount + ' third-party scripts loaded',
+        detail: 'Each third-party script adds latency, potential blocking, and privacy concerns',
+        fix: 'Audit third-party scripts. Remove unused ones, defer non-critical ones, consider self-hosting critical libraries.',
+        presetRef: null,
+        source: 'Web Vitals — https://web.dev/articles/optimizing-third-party-javascript'
+      });
+    }
+  }
+
+  // Image format audit
+  var imgFmt = (data.performance && data.performance.imageFormats) || {};
+  if (imgFmt.legacy > 0) {
+    checks++;
+    if (imgFmt.modern >= imgFmt.legacy) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: imgFmt.legacy + ' image(s) use legacy formats (JPEG/PNG)',
+        detail: imgFmt.modern + ' use modern formats (WebP/AVIF). Modern formats are 25-50% smaller.',
+        fix: 'Convert images to WebP or AVIF. Use <picture> with format fallbacks for broad browser support.',
+        presetRef: null,
+        source: 'Web.dev — https://web.dev/articles/serve-images-webp'
+      });
+    }
+  }
+
+  // CLS (Cumulative Layout Shift)
+  if (data.performance && data.performance.cls !== null && data.performance.cls !== undefined) {
+    checks++;
+    var cls = data.performance.cls;
+    if (cls <= 0.1) {
+      passed++;
+    } else {
+      findings.push({
+        severity: cls > 0.25 ? 'error' : 'warning',
+        title: 'CLS (Cumulative Layout Shift): ' + cls + ' (' + (cls > 0.25 ? 'poor' : 'needs improvement') + ')',
+        detail: 'Layout shifts disrupt user reading and cause mis-clicks. Target: < 0.1.',
+        fix: 'Add explicit width/height to images and ads. Use min-height on dynamic content areas. Avoid inserting content above existing content.',
+        presetRef: null,
+        source: 'Web Vitals — https://web.dev/articles/cls'
+      });
+    }
+  }
+
+  // LCP
+  var lcp = data.performance && data.performance.lcp;
+  if (lcp) {
+    checks++;
+    if (lcp.time <= 2500) {
+      passed++;
+    } else {
+      findings.push({
+        severity: lcp.time > 4000 ? 'error' : 'warning',
+        title: 'LCP: ' + (lcp.time / 1000).toFixed(1) + 's (' + (lcp.time > 4000 ? 'poor' : 'needs improvement') + ')',
+        detail: 'Largest element: <' + lcp.element + '>. Target: < 2.5s.',
+        fix: 'Optimize the largest visible element. For images: preload, use WebP, set fetchpriority="high". For text: ensure fonts load with font-display:swap.',
+        presetRef: null,
+        source: 'Web Vitals — https://web.dev/articles/lcp'
+      });
+    }
+  }
+
+  // LCP lazy loading (heuristic)
+  if (data.performance && data.performance.lcpLazyLoaded) {
+    findings.push({
+      severity: 'error',
+      title: 'LCP image uses loading="lazy"',
+      detail: 'Lazy loading the largest visible image delays LCP significantly',
+      fix: 'Remove loading="lazy" from the hero/LCP image. Only lazy-load below-fold images.',
+      presetRef: null,
+      source: 'Web Vitals — https://web.dev/articles/lcp'
+    });
+  }
+
+  // Non-responsive images
+  var nri = (data.performance && data.performance.nonResponsiveImages) || 0;
+  if (nri > 0) {
+    findings.push({
+      severity: 'warning',
+      title: nri + ' image(s) without responsive sizing',
+      detail: 'Images without max-width: 100% can overflow their containers on small screens',
+      fix: 'Add max-width: 100% and height: auto to all images. In Tailwind: class="max-w-full h-auto".',
+      presetRef: null,
+      source: 'MDN — https://developer.mozilla.org/en-US/docs/Learn/HTML/Multimedia_and_embedding/Responsive_images'
+    });
+  }
+
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+  return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Performance', icon: 'cognitive' };
+}
+
+
+  S.register("performance", scorePerformance, 5, "Performance", "cognitive");
+})();
 </file>
 
 <file path="docs/scoring/layout.js">
