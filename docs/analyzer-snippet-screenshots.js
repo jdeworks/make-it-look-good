@@ -924,7 +924,8 @@
     var hcEl = allElements[hci];
     if (!isVisible(hcEl) || isDecorative(hcEl)) continue;
     var hcStyle = getComputedStyle(hcEl);
-    if (hcStyle.overflowX === 'hidden' && hcEl.scrollWidth > hcEl.clientWidth + 4 && hcEl.clientWidth > 50) {
+    var hcRadius = hcStyle.borderRadius;
+    if (hcStyle.overflowX === 'hidden' && hcEl.scrollWidth > hcEl.clientWidth + 4 && hcEl.clientWidth > 50 && (!hcRadius || hcRadius === '0px')) {
       data.layout.hiddenClipElements.push({
         selector: cssSelector(hcEl),
         clientWidth: hcEl.clientWidth,

@@ -17872,7 +17872,8 @@ async function runTest(page, t) {
         '  var el2 = all[j];' +
         '  if (el2.tagName === "SCRIPT" || el2.tagName === "STYLE") continue;' +
         '  var s2 = getComputedStyle(el2);' +
-        '  if (s2.overflowX === "hidden" && el2.scrollWidth > el2.clientWidth + 4) {' +
+        '  var br2 = s2.borderRadius;' +
+        '  if (s2.overflowX === "hidden" && el2.scrollWidth > el2.clientWidth + 4 && (!br2 || br2 === "0px")) {' +
         '    var sel2 = el2.tagName.toLowerCase();' +
         '    if (el2.id) sel2 = "#" + el2.id;' +
         '    else if (el2.className && typeof el2.className === "string") sel2 += "." + el2.className.trim().split(/\\s+/).slice(0,2).join(".");' +
@@ -23997,7 +23998,8 @@ function scoreAccessibility(data) {
     var hcEl = allElements[hci];
     if (!isVisible(hcEl) || isDecorative(hcEl)) continue;
     var hcStyle = getComputedStyle(hcEl);
-    if (hcStyle.overflowX === 'hidden' && hcEl.scrollWidth > hcEl.clientWidth + 4 && hcEl.clientWidth > 50) {
+    var hcRadius = hcStyle.borderRadius;
+    if (hcStyle.overflowX === 'hidden' && hcEl.scrollWidth > hcEl.clientWidth + 4 && hcEl.clientWidth > 50 && (!hcRadius || hcRadius === '0px')) {
       data.layout.hiddenClipElements.push({
         selector: cssSelector(hcEl),
         clientWidth: hcEl.clientWidth,
@@ -27454,7 +27456,9 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
     var hcEl = allElements[hci];
     if (!isVisible(hcEl) || isDecorative(hcEl)) continue;
     var hcStyle = getComputedStyle(hcEl);
-    if (hcStyle.overflowX === 'hidden' && hcEl.scrollWidth > hcEl.clientWidth + 4 && hcEl.clientWidth > 50) {
+    var hcRadius = hcStyle.borderRadius;
+    // Skip elements where overflow-hidden is for rounded-corner clipping (border-radius > 0)
+    if (hcStyle.overflowX === 'hidden' && hcEl.scrollWidth > hcEl.clientWidth + 4 && hcEl.clientWidth > 50 && (!hcRadius || hcRadius === '0px')) {
       data.layout.hiddenClipElements.push({
         selector: cssSelector(hcEl),
         clientWidth: hcEl.clientWidth,
