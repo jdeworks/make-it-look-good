@@ -941,6 +941,53 @@
   }
   data.layout.hiddenClipElements = data.layout.hiddenClipElements.slice(0, 10);
 
+  // --- Text overlap detection ---
+  data.layout.textOverlaps = [];
+  var _fixedTextEls = [];
+  for (var ovi = 0; ovi < allElements.length && ovi < 200; ovi++) {
+    var ovEl = allElements[ovi];
+    if (!isVisible(ovEl) || isDecorative(ovEl)) continue;
+    var ovStyle = getComputedStyle(ovEl);
+    var ovPos = ovStyle.position;
+    if (ovPos !== 'fixed' && ovPos !== 'sticky') continue;
+    var ovText = (ovEl.textContent || '').trim();
+    if (ovText.length < 2) continue;
+    var ovBg = parseColor(ovStyle.backgroundColor);
+    var ovHasBg = ovBg && ovBg.a > 0.5;
+    var ovRect = ovEl.getBoundingClientRect();
+    if (ovRect.width < 10 || ovRect.height < 10) continue;
+    _fixedTextEls.push({ el: ovEl, rect: ovRect, hasBg: ovHasBg, text: ovText.substring(0, 40), selector: cssSelector(ovEl) });
+  }
+  _fixedTextEls.forEach(function(fixed) {
+    if (fixed.hasBg) return;
+    var testPoints = [
+      { x: fixed.rect.left + 10, y: fixed.rect.top + fixed.rect.height / 2 },
+      { x: fixed.rect.left + fixed.rect.width / 2, y: fixed.rect.top + fixed.rect.height / 2 },
+      { x: fixed.rect.right - 10, y: fixed.rect.top + fixed.rect.height / 2 }
+    ];
+    for (var tpi = 0; tpi < testPoints.length; tpi++) {
+      var pt = testPoints[tpi];
+      var origVis = fixed.el.style.visibility;
+      fixed.el.style.visibility = 'hidden';
+      var under = document.elementFromPoint(pt.x, pt.y);
+      fixed.el.style.visibility = origVis;
+      if (under && under !== document.body && under !== document.documentElement) {
+        var underText = (under.textContent || '').trim();
+        if (underText.length > 5) {
+          data.layout.textOverlaps.push({
+            fixed: fixed.selector,
+            fixedText: fixed.text,
+            under: cssSelector(under),
+            underText: underText.substring(0, 40),
+            hasBackground: fixed.hasBg
+          });
+          break;
+        }
+      }
+    }
+  });
+  data.layout.textOverlaps = data.layout.textOverlaps.slice(0, 10);
+
   // --- Performance extras ---
   // Third-party scripts
   var ownHost = location.hostname;

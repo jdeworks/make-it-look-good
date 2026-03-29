@@ -261,6 +261,23 @@ function scoreLayout(data) {
     passed++;
   }
 
+  // Text overlap — fixed/sticky elements without opaque background overlapping text below
+  var textOverlaps = layout.textOverlaps || [];
+  if (textOverlaps.length > 0) {
+    checks++;
+    var overlapDetails = textOverlaps.slice(0, 3).map(function(o) {
+      return o.fixed + ' ("' + o.fixedText.substring(0, 20) + '") overlaps ' + o.under + ' ("' + o.underText.substring(0, 20) + '")';
+    });
+    findings.push({
+      severity: textOverlaps.length > 2 ? 'error' : 'warning',
+      title: textOverlaps.length + ' fixed element(s) overlap text without opaque background',
+      detail: 'Fixed/sticky elements with transparent backgrounds overlap readable text underneath, making both unreadable: ' + overlapDetails.join('; '),
+      fix: 'Add an opaque or semi-opaque background (bg-white/90, backdrop-blur) to fixed elements that overlap content. Or hide the element when it scrolls over content sections.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
+    });
+  }
+
   // Hidden clip — elements with overflow-x:hidden that silently clip content
   var hiddenClips = layout.hiddenClipElements || [];
   if (hiddenClips.length > 0) {
