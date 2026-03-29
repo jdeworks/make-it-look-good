@@ -210,6 +210,22 @@ function scoreContrast(data) {
     }
   }
 
+  // Backdrop-filter + translucent backgrounds — contrast ratio may be unreliable
+  var backdropPairs = profilePairs.filter(function(p) { return p.backdropFilter && p.minBgAlpha < 0.7; });
+  if (backdropPairs.length > 0) {
+    var bdSamples = backdropPairs.slice(0, 3).map(function(p) {
+      return '"' + p.text + '" (bg alpha: ' + p.minBgAlpha + ')';
+    });
+    findings.push({
+      severity: 'warning',
+      title: backdropPairs.length + ' text element(s) on translucent backdrop-filter surfaces',
+      detail: 'These elements sit on semi-transparent backgrounds with backdrop-filter (frosted glass effect). The computed contrast ratio assumes the blended background color, but the actual perceived contrast depends on what is visible through the translucent surface, which varies across the page. Elements: ' + bdSamples.join('; '),
+      fix: 'Increase background opacity to at least 0.75 for text containers, or add a solid fallback background. For frosted glass effects, use a minimum alpha of 0.7-0.8 to ensure text remains readable regardless of what shows through.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
+    });
+  }
+
   // Don't count uncertain results as failures in the score
   var total = (profilePairs.length - uncertain.length) || 1;
   var passing = total - failures.length;

@@ -227,13 +227,20 @@
       var threshold = isLarge ? 3 : 4.5;
       var filterAncestor = el;
       var filterValue = '';
+      var hasBackdropFilter = false;
+      var minBgAlpha = 1;
       while (filterAncestor && filterAncestor !== document.documentElement) {
-        var f = getComputedStyle(filterAncestor).filter;
-        if (f && f !== 'none') { filterValue = f; break; }
+        var aStyle = getComputedStyle(filterAncestor);
+        var f = aStyle.filter;
+        if (f && f !== 'none' && !filterValue) { filterValue = f; }
+        var bf = aStyle.backdropFilter || aStyle.webkitBackdropFilter || '';
+        if (bf && bf !== 'none') hasBackdropFilter = true;
+        var aBg = parseColor(aStyle.backgroundColor);
+        if (aBg && aBg.a > 0 && aBg.a < 1 && aBg.a < minBgAlpha) minBgAlpha = aBg.a;
         filterAncestor = filterAncestor.parentElement;
       }
       if (ratio < 7.5) {
-        contrastPairs.push({ fg: rgbStr(fgBlended), bg: rgbStr(bg), ratio: Math.round(ratio * 100) / 100, needed: threshold, passes: ratio >= threshold, fontSize: Math.round(fontSize), fontWeight: fontWeight, isLarge: isLarge, text: node.textContent.trim().substring(0, 50), selector: cssSelector(el), filter: filterValue });
+        contrastPairs.push({ fg: rgbStr(fgBlended), bg: rgbStr(bg), ratio: Math.round(ratio * 100) / 100, needed: threshold, passes: ratio >= threshold, fontSize: Math.round(fontSize), fontWeight: fontWeight, isLarge: isLarge, text: node.textContent.trim().substring(0, 50), selector: cssSelector(el), filter: filterValue, backdropFilter: hasBackdropFilter, minBgAlpha: Math.round(minBgAlpha * 100) / 100 });
       }
       var elWidth = el.getBoundingClientRect().width;
       var charWidth = fontSize * 0.5;

@@ -419,12 +419,23 @@
     var isLarge = fontSize >= 24 || (fontSize >= 18.66 && fontWeight >= 700);
     var threshold = isLarge ? 3 : 4.5;
 
-    // Check for CSS filters on ancestors that affect contrast
+    // Check for CSS filters and backdrop-filter on ancestors that affect contrast
     var filterAncestor = el;
     var filterValue = '';
+    var hasBackdropFilter = false;
+    var minBgAlpha = 1;
     while (filterAncestor && filterAncestor !== document.documentElement) {
-      var f = getComputedStyle(filterAncestor).filter;
-      if (f && f !== 'none') { filterValue = f; break; }
+      var ancestorStyle = getComputedStyle(filterAncestor);
+      var f = ancestorStyle.filter;
+      if (f && f !== 'none' && !filterValue) { filterValue = f; }
+      // Detect backdrop-filter (frosted glass, blur effects)
+      var bf = ancestorStyle.backdropFilter || ancestorStyle.webkitBackdropFilter || '';
+      if (bf && bf !== 'none') hasBackdropFilter = true;
+      // Track minimum background alpha in the compositing chain
+      var ancestorBg = parseColor(ancestorStyle.backgroundColor);
+      if (ancestorBg && ancestorBg.a > 0 && ancestorBg.a < 1 && ancestorBg.a < minBgAlpha) {
+        minBgAlpha = ancestorBg.a;
+      }
       filterAncestor = filterAncestor.parentElement;
     }
 
@@ -438,7 +449,9 @@
         fontSize: Math.round(fontSize), fontWeight: fontWeight, isLarge: isLarge,
         text: node.textContent.trim().substring(0, 50),
         selector: cssSelector(el),
-        filter: filterValue
+        filter: filterValue,
+        backdropFilter: hasBackdropFilter,
+        minBgAlpha: Math.round(minBgAlpha * 100) / 100
       });
     }
 
