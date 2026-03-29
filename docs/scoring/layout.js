@@ -281,18 +281,36 @@ function scoreLayout(data) {
   // Child exceeds parent — elements sticking out of their container
   var childExceeds = layout.childExceedsParent || [];
   if (childExceeds.length > 0) {
-    checks++;
-    var ceDetails = childExceeds.slice(0, 3).map(function(c) {
-      return c.childTag + (c.childText ? ' ("' + c.childText.substring(0, 15) + '…")' : '') + ' exceeds ' + c.parent + ' by ' + c.excess + 'px (' + c.childWidth + 'px in ' + c.parentWidth + 'px)';
-    });
-    findings.push({
-      severity: childExceeds.length > 4 ? 'warning' : 'info',
-      title: childExceeds.length + ' element(s) wider than their parent container',
-      detail: 'These elements extend past their parent bounds without a scroll wrapper: ' + ceDetails.join('; '),
-      fix: 'Add max-w-full or w-full to constrain children to their container width. If intentional (decorative bleed), add overflow-hidden on the parent.',
-      presetRef: null,
-      source: 'CSS Box Model — https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_box_model'
-    });
+    // Split: deliberate (parent has explicit overflow:hidden/clip) vs accidental (default visible)
+    var accidental = childExceeds.filter(function(c) { return !c.deliberate; });
+    var deliberate = childExceeds.filter(function(c) { return c.deliberate; });
+    if (accidental.length > 0) {
+      checks++;
+      var accDetails = accidental.slice(0, 3).map(function(c) {
+        return c.childTag + (c.childText ? ' ("' + c.childText.substring(0, 15) + '…")' : '') + ' exceeds ' + c.parent + ' by ' + c.excess + 'px';
+      });
+      findings.push({
+        severity: 'warning',
+        title: accidental.length + ' element(s) wider than parent without overflow handling',
+        detail: 'These elements extend past their parent with no overflow set (likely unintentional): ' + accDetails.join('; '),
+        fix: 'Add max-w-full or overflow-x-auto on the parent. If intentional, set overflow-hidden or overflow-visible explicitly.',
+        presetRef: null,
+        source: 'CSS Box Model — https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_box_model'
+      });
+    }
+    if (deliberate.length > 0) {
+      var delDetails = deliberate.slice(0, 3).map(function(c) {
+        return c.childTag + (c.childText ? ' ("' + c.childText.substring(0, 15) + '…")' : '') + ' exceeds ' + c.parent + ' by ' + c.excess + 'px (overflow: ' + c.parentOverflow + ')';
+      });
+      findings.push({
+        severity: 'info',
+        title: deliberate.length + ' element(s) wider than parent (overflow explicitly set)',
+        detail: 'Parent has explicit overflow handling — likely intentional: ' + delDetails.join('; '),
+        fix: 'Verify this overflow is intentional. If content is being clipped unexpectedly, use overflow-x-auto for scroll or constrain child width.',
+        presetRef: null,
+        source: 'CSS Box Model — https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_box_model'
+      });
+    }
   }
 
   // Hidden clip — elements with overflow-x:hidden that silently clip content

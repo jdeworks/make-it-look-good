@@ -959,9 +959,8 @@
     var excess = Math.max(excessRight, excessLeft);
     if (excess <= 4) continue;
     var cpStyle = getComputedStyle(ceParent);
-    if (cpStyle.overflowX === 'auto' || cpStyle.overflowX === 'scroll' ||
-        cpStyle.overflowX === 'hidden' || cpStyle.overflow === 'auto' ||
-        cpStyle.overflow === 'scroll' || cpStyle.overflow === 'hidden') continue;
+    var cpOx = cpStyle.overflowX;
+    if (cpOx === 'auto' || cpOx === 'scroll') continue;
     var hasScrollAncestor = false;
     var anc = ceParent.parentElement;
     for (var ancI = 0; ancI < 3 && anc && anc !== document.body; ancI++) {
@@ -970,6 +969,7 @@
       anc = anc.parentElement;
     }
     if (hasScrollAncestor) continue;
+    var parentOverflowExplicit = cpOx === 'hidden' || cpOx === 'clip';
     data.layout.childExceedsParent.push({
       child: cssSelector(ceEl),
       childTag: ceEl.tagName.toLowerCase(),
@@ -977,7 +977,9 @@
       parent: cssSelector(ceParent),
       excess: Math.round(excess),
       childWidth: Math.round(ceRect.width),
-      parentWidth: Math.round(cpRect.width)
+      parentWidth: Math.round(cpRect.width),
+      parentOverflow: cpOx,
+      deliberate: parentOverflowExplicit
     });
   }
   data.layout.childExceedsParent = data.layout.childExceedsParent.slice(0, 15);
