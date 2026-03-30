@@ -1129,6 +1129,19 @@
 
     // Profile selector — re-score when changed
     document.getElementById('profileSelect').addEventListener('change', function() {
+      // Re-score crawl pages when profile changes
+      if (_crawlSession && _crawlSession.pages && _crawlSession.pages.length > 0) {
+        _crawlSession.pages.forEach(function(page) {
+          if (page.status === 'done' && page.rawData) {
+            page.rawData.profile = document.getElementById('profileSelect').value;
+            page.reportData = MilgScoring.runScoring(page.rawData);
+          }
+        });
+        _crawlSession.summary = MilgCrawl.buildSummary(_crawlSession);
+        renderCrawlTabs();
+        showCrawlPageContent(_crawlActivePageTab);
+        return;
+      }
       if (lastRawData) runAnalysis(lastRawData);
     });
 
