@@ -1925,10 +1925,37 @@
         fetch(_ssUrl).then(function(r) { return r.text(); }).then(function(snippetSrc) {
           function _next(idx) {
             if (idx >= _links.length) {
-              _updateCrawlOverlay('Crawl complete!', 'Copying ' + _cResults.length + ' pages to clipboard...');
-              _copyCrawlResults(_cResults);
-              console.log('%c\u2713 Crawl complete! ' + _cResults.length + ' pages.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-              setTimeout(_removeCrawlOverlay, 1500);
+              // Prepare data but show copy button (auto-copy fails in async context)
+              var crawlJson = JSON.stringify({ _milgCrawl: true, startUrl: location.href, results: _cResults });
+              window.__milgCrawlResults = _cResults;
+              window.__milgCrawlJson = crawlJson;
+              try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) {}
+              console.log('%c\u2713 Crawl complete! ' + _cResults.length + ' pages (' + Math.round(crawlJson.length / 1024) + ' KB)', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+              // Show copy button in overlay (user click = real gesture = clipboard works)
+              _crawlOverlay.innerHTML = '<div style="text-align:center">' +
+                '<div style="font-size:28px;margin-bottom:12px">\u2713</div>' +
+                '<div style="color:#fff;font-size:16px;font-weight:600;margin-bottom:6px">Crawl complete! ' + _cResults.length + ' pages analyzed.</div>' +
+                '<div style="color:rgba(255,255,255,0.6);font-size:13px;margin-bottom:20px">' + Math.round(crawlJson.length / 1024) + ' KB of design data ready</div>' +
+                '<button id="milg-crawl-copy-btn" style="padding:12px 28px;font-size:14px;font-weight:600;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-bottom:10px">Copy to Clipboard</button>' +
+                '<div style="color:rgba(255,255,255,0.5);font-size:11px;margin-top:8px">Then paste into the analyzer</div>' +
+                '</div>';
+              document.getElementById('milg-crawl-copy-btn').addEventListener('click', function() {
+                navigator.clipboard.writeText(crawlJson).then(function() {
+                  document.getElementById('milg-crawl-copy-btn').textContent = 'Copied!';
+                  document.getElementById('milg-crawl-copy-btn').style.background = '#16a34a';
+                  setTimeout(_removeCrawlOverlay, 800);
+                }).catch(function() {
+                  // Fallback for older browsers
+                  var ta = document.createElement('textarea'); ta.value = crawlJson;
+                  ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
+                  document.body.appendChild(ta); ta.select();
+                  try { document.execCommand('copy'); } catch(e) {}
+                  document.body.removeChild(ta);
+                  document.getElementById('milg-crawl-copy-btn').textContent = 'Copied!';
+                  document.getElementById('milg-crawl-copy-btn').style.background = '#16a34a';
+                  setTimeout(_removeCrawlOverlay, 800);
+                });
+              });
               return;
             }
             var url = _links[idx];
