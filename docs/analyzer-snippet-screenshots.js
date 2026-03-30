@@ -1680,116 +1680,118 @@
     var vh = window.innerHeight || 900;
     var captureH = Math.min(totalH, 32000);
 
-    console.log('[ss] totalH=' + totalH + ' vh=' + vh + ' captureH=' + captureH + ' sections=' + Math.ceil(captureH / vh));
     var _ssStart = Date.now();
+    function _t() { return '[' + ((Date.now() - _ssStart) / 1000).toFixed(1) + 's] '; }
+    // Cap at 5 viewports for the full capture (avoid huge canvases)
+    captureH = Math.min(captureH, vh * 5);
+    var numSections = Math.ceil(captureH / vh);
+    console.log('[ss] ' + _t() + 'totalH=' + totalH + ' vh=' + vh + ' captureH=' + captureH + ' sections=' + numSections);
 
-    if (captureH <= vh * 3) {
-      console.log('[ss] Short page — single capture (no scroll needed)');
-      ms.domToCanvas(document.documentElement, { scale: 0.5 }).then(function(canvas) {
-        console.log('[ss] domToCanvas done (' + (Date.now() - _ssStart) + 'ms), canvas=' + canvas.width + 'x' + canvas.height);
-        canvas.toBlob(function(blob) {
-          if (!blob) { console.log('[ss] toBlob returned null'); data.screenshots = []; outputData(data); return; }
-          var reader = new FileReader();
-          reader.onloadend = function() {
-            data.screenshots = [reader.result];
-            console.log('%c✓ Screenshot captured (' + Math.round(reader.result.length / 1024) + ' KB, ' + (Date.now() - _ssStart) + 'ms)', 'color: #16a34a;');
+    // Show overlay so users aren't confused during capture
+    var _overlay = document.createElement('div');
+    _overlay.setAttribute('data-milg-overlay', '1');
+    _overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.6);display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui,sans-serif;';
+    _overlay.innerHTML = '<div style="width:40px;height:40px;border:3px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:milg-spin 0.8s linear infinite"></div>' +
+      '<div id="milg-ss-status" style="color:#fff;margin-top:16px;font-size:14px;font-weight:500">Preparing screenshots...</div>' +
+      '<div style="color:rgba(255,255,255,0.6);margin-top:6px;font-size:12px">Scrolling page to load all content, then capturing</div>' +
+      '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style>';
+    document.body.appendChild(_overlay);
+    var _ssFilter = function(el) { return !el.getAttribute || !el.getAttribute('data-milg-overlay'); };
+    var _origScrollY = window.scrollY;
+
+    // Phase 1: Pre-scroll the entire page to trigger ALL lazy content, IntersectionObservers, etc.
+    console.log('[ss] ' + _t() + 'Phase 1: Pre-scrolling page to trigger lazy content...');
+    var _preScrollPositions = [];
+    for (var _ps = 0; _ps < captureH; _ps += vh) _preScrollPositions.push(_ps);
+    var _psIdx = 0;
+    function _preScrollNext() {
+      if (_psIdx >= _preScrollPositions.length) {
+        // All positions scrolled — wait for content to finish loading
+        console.log('[ss] ' + _t() + 'Phase 1 complete. Waiting for lazy content to finish loading...');
+        var statusEl = document.getElementById('milg-ss-status');
+        if (statusEl) statusEl.textContent = 'Waiting for images to load...';
+        setTimeout(function() { _startCapture(); }, 500);
+        return;
+      }
+      var scrollY = _preScrollPositions[_psIdx];
+      window.scrollTo(0, scrollY);
+      try { window.dispatchEvent(new Event('scroll')); } catch(e) {}
+      var statusEl = document.getElementById('milg-ss-status');
+      if (statusEl) statusEl.textContent = 'Loading content... (section ' + (_psIdx + 1) + '/' + _preScrollPositions.length + ')';
+      _psIdx++;
+      setTimeout(_preScrollNext, 200); // 200ms per scroll position
+    }
+    _preScrollNext();
+
+    // Phase 2: Capture the full page as one big canvas, then split into sections
+    function _startCapture() {
+      window.scrollTo(0, 0);
+      console.log('[ss] ' + _t() + 'Phase 2: Capturing full page (' + captureH + 'px) as single canvas...');
+      var statusEl = document.getElementById('milg-ss-status');
+      if (statusEl) statusEl.textContent = 'Rendering page to canvas...';
+
+      ms.domToCanvas(document.documentElement, {
+        scale: 0.5,
+        filter: _ssFilter,
+        timeout: 8000 // 8s timeout for resource loading (default is 30s)
+      }).then(function(fullCanvas) {
+        console.log('[ss] ' + _t() + 'Full canvas captured: ' + fullCanvas.width + 'x' + fullCanvas.height);
+
+        // Split into viewport-sized sections
+        var secScale = 0.5;
+        var secW = fullCanvas.width;
+        var secVH = Math.round(vh * secScale);
+        var totalSecs = Math.min(Math.ceil(fullCanvas.height / secVH), 5);
+        console.log('[ss] ' + _t() + 'Splitting into ' + totalSecs + ' sections (secH=' + secVH + 'px in canvas coords)');
+
+        var shots = [];
+        var secIdx = 0;
+        function splitNext() {
+          if (secIdx >= totalSecs) {
+            window.scrollTo(0, _origScrollY);
+            if (_overlay.parentNode) _overlay.parentNode.removeChild(_overlay);
+            data.screenshots = shots;
+            console.log('%c✓ ' + shots.length + ' screenshot(s) captured (' + _t().trim() + ' total)', 'color: #16a34a; font-weight: bold;');
             outputData(data);
-          };
-          reader.readAsDataURL(blob);
-        }, 'image/webp', 0.7);
+            return;
+          }
+          if (statusEl) statusEl.textContent = 'Exporting section ' + (secIdx + 1) + ' of ' + totalSecs + '...';
+
+          var srcY = secIdx * secVH;
+          var srcH = Math.min(secVH, fullCanvas.height - srcY);
+          if (srcH <= 0) { secIdx++; splitNext(); return; }
+
+          var secCanvas = document.createElement('canvas');
+          secCanvas.width = secW;
+          secCanvas.height = srcH;
+          var ctx = secCanvas.getContext('2d');
+          ctx.drawImage(fullCanvas, 0, srcY, secW, srcH, 0, 0, secW, srcH);
+
+          secCanvas.toBlob(function(blob) {
+            if (!blob) {
+              console.log('[ss] ' + _t() + 'Section ' + (secIdx + 1) + ': toBlob returned null');
+              secIdx++; splitNext(); return;
+            }
+            var reader = new FileReader();
+            reader.onloadend = function() {
+              var kb = Math.round(reader.result.length / 1024);
+              console.log('[ss] ' + _t() + 'Section ' + (secIdx + 1) + '/' + totalSecs + ': ' + kb + ' KB' + (kb < 3 ? ' ⚠ (may be blank)' : ''));
+              shots.push(reader.result);
+              secIdx++;
+              splitNext();
+            };
+            reader.readAsDataURL(blob);
+          }, 'image/webp', 0.7);
+        }
+        splitNext();
+
       }).catch(function(err) {
-        console.log('%c⚠ Screenshot failed: ' + err.message, 'color: #b45309;');
+        console.log('[ss] ' + _t() + '✗ Full page capture failed: ' + (err && err.message || err));
+        window.scrollTo(0, _origScrollY);
+        if (_overlay.parentNode) _overlay.parentNode.removeChild(_overlay);
         data.screenshots = [];
         outputData(data);
       });
-    } else {
-      console.log('[ss] Tall page — multi-section capture');
-
-      // Show overlay so users aren't confused by page scrolling during capture
-      var _overlay = document.createElement('div');
-      _overlay.setAttribute('data-milg-overlay', '1');
-      _overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.6);display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui,sans-serif;';
-      _overlay.innerHTML = '<div style="width:40px;height:40px;border:3px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:milg-spin 0.8s linear infinite"></div>' +
-        '<div id="milg-ss-status" style="color:#fff;margin-top:16px;font-size:14px;font-weight:500">Capturing screenshots...</div>' +
-        '<div style="color:rgba(255,255,255,0.6);margin-top:6px;font-size:12px">Scrolling through the page to capture each section</div>' +
-        '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style>';
-      document.body.appendChild(_overlay);
-      // Filter function to exclude overlay from screenshots
-      var _ssFilter = function(el) { return !el.getAttribute || !el.getAttribute('data-milg-overlay'); };
-
-      var shots = [];
-      var y = 0;
-      var secH = vh;
-      var _origScrollY = window.scrollY;
-      function captureNext() {
-        if (y >= captureH || shots.length >= 5) {
-          // Restore scroll position and remove overlay
-          window.scrollTo(0, _origScrollY);
-          if (_overlay.parentNode) _overlay.parentNode.removeChild(_overlay);
-          data.screenshots = shots;
-          console.log('%c✓ ' + shots.length + ' screenshot(s) captured (' + (Date.now() - _ssStart) + 'ms total)', 'color: #16a34a;');
-          outputData(data);
-          return;
-        }
-        var secIdx = Math.floor(y / secH) + 1;
-        var secTotal = Math.min(Math.ceil(captureH / secH), 5);
-        var secStart = Date.now();
-        console.log('[ss] Section ' + secIdx + '/' + secTotal + ' — y=' + y);
-
-        // Update overlay status
-        var statusEl = document.getElementById('milg-ss-status');
-        if (statusEl) statusEl.textContent = 'Capturing section ' + secIdx + ' of ' + secTotal + '...';
-
-        // Step 1: Scroll to trigger lazy content (IntersectionObserver, lazy images)
-        window.scrollTo(0, y);
-        if (y > 0) { try { window.dispatchEvent(new Event('scroll')); } catch(e) {} }
-
-        // Step 2: Wait for scroll-triggered content to render
-        var scrollDelay = y === 0 ? 50 : 300;
-        setTimeout(function() {
-          void document.documentElement.offsetHeight;
-          console.log('[ss]   scroll settled (' + (Date.now() - secStart) + 'ms)');
-
-          // Step 3: Capture using style option (transform applied to library's internal
-          // clone, not the real DOM — no scrollbar disappearing, no visual glitches)
-          var captH = Math.min(secH, captureH - y);
-          var opts = {
-            scale: 0.5,
-            width: window.innerWidth,
-            height: captH,
-            filter: _ssFilter,
-            style: { transform: 'translateY(-' + y + 'px)', overflow: 'hidden' }
-          };
-          console.log('[ss]   calling domToCanvas with style.transform=translateY(-' + y + 'px), height=' + captH);
-
-          ms.domToCanvas(document.documentElement, opts).then(function(canvas) {
-            console.log('[ss]   domToCanvas done (' + (Date.now() - secStart) + 'ms), canvas=' + canvas.width + 'x' + canvas.height);
-
-            canvas.toBlob(function(blob) {
-              if (!blob) {
-                console.log('[ss]   toBlob returned null — skipping');
-                y += secH; captureNext(); return;
-              }
-              var reader = new FileReader();
-              reader.onloadend = function() {
-                var kb = Math.round(reader.result.length / 1024);
-                console.log('[ss]   ✓ section ' + secIdx + ' captured (' + kb + ' KB, ' + (Date.now() - secStart) + 'ms)');
-                if (kb < 3) {
-                  console.log('[ss]   ⚠ Very small (' + kb + 'KB) — may be blank. Check if content is scroll-revealed.');
-                }
-                shots.push(reader.result);
-                y += secH;
-                captureNext();
-              };
-              reader.readAsDataURL(blob);
-            }, 'image/webp', 0.7);
-          }).catch(function(err) {
-            console.log('[ss]   ✗ domToCanvas failed: ' + (err && err.message || err) + ' (' + (Date.now() - secStart) + 'ms)');
-            y += secH; captureNext();
-          });
-        }, scrollDelay);
-      }
-      captureNext();
     }
   }).catch(function() {
     data.screenshots = [];

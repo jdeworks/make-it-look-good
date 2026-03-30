@@ -2489,26 +2489,21 @@
         'var totalH=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);' +
         'var vh=window.innerHeight||900;' +
         'var captureH=Math.min(totalH,vh*5);' + // max 5 viewports
-        'var shots=[];var y=0;' +
-        'function next(){' +
-          'if(y>=captureH||shots.length>=5){window.scrollTo(0,0);parent.postMessage({type:"' + msgType + '",screenshots:shots},"*");return}' +
-          'window.scrollTo(0,y);' +
-          'if(y>0)try{window.dispatchEvent(new Event("scroll"))}catch(e){}' +
-          'setTimeout(function(){' +
-            'void document.documentElement.offsetHeight;' +
-            'var captH=Math.min(vh,captureH-y);' +
-            'ms.domToCanvas(document.documentElement,{scale:' + ss.scale + ',width:window.innerWidth,height:captH,' +
-              'style:{transform:"translateY(-"+y+"px)",overflow:"hidden"}}).then(function(c){' +
-              'c.toBlob(function(b){' +
-                'if(!b){y+=vh;next();return}' +
-                'var r=new FileReader();' +
-                'r.onloadend=function(){shots.push(r.result);y+=vh;next()};' +
-                'r.readAsDataURL(b)' +
-              '},"image/webp",' + ss.quality + ')' +
-            '}).catch(function(){y+=vh;next()})' +
-          '},y===0?50:300)' +
-        '}' +
-        'next()' +
+        // Full page capture then split into sections
+        'captureH=Math.min(captureH,vh*5);' +
+        'ms.domToCanvas(document.documentElement,{scale:' + ss.scale + ',timeout:8000}).then(function(fc){' +
+          'var sH=Math.round(vh*' + ss.scale + ');var shots=[];var si=0;var tot=Math.min(Math.ceil(fc.height/sH),5);' +
+          'function sp(){' +
+            'if(si>=tot){parent.postMessage({type:"' + msgType + '",screenshots:shots},"*");return}' +
+            'var sy=si*sH;var sh=Math.min(sH,fc.height-sy);if(sh<=0){si++;sp();return}' +
+            'var sc=document.createElement("canvas");sc.width=fc.width;sc.height=sh;' +
+            'sc.getContext("2d").drawImage(fc,0,sy,fc.width,sh,0,0,fc.width,sh);' +
+            'sc.toBlob(function(b){' +
+              'if(!b){si++;sp();return}' +
+              'var r=new FileReader();r.onloadend=function(){shots.push(r.result);si++;sp()};r.readAsDataURL(b)' +
+            '},"image/webp",' + ss.quality + ')' +
+          '}sp()' +
+        '}).catch(function(){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")})' +
       '};' +
       's.onerror=function(){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")};' +
       'document.head.appendChild(s)' +
