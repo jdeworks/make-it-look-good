@@ -1979,20 +1979,28 @@
       var wTipBg = isDark ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.7)';
       var wTipBorder = isDark ? '#92400e' : '#fbbf24';
       var wCodeBg = isDark ? '#451a03' : '#fef3c7';
+      var wBtnBg = isDark ? '#92400e' : '#f59e0b';
+      var wBtnText = isDark ? '#fef3c7' : '#78350f';
+      var wBtnSecBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)';
+      var wBtnSecBorder = isDark ? '#92400e' : '#d97706';
+      var pageUrl = (data.meta && data.meta.url) || '';
       warningHtml = '<div style="padding:16px 20px;background:' + wBg + ';border:2px solid ' + wBorder + ';border-radius:var(--radius);margin-bottom:16px;font-size:14px;line-height:1.6">' +
         '<strong style="color:' + wStrong + ';font-size:15px">' + reason + '</strong>' +
-        '<p style="color:' + wText + ';margin:6px 0">The URL analysis reads only static HTML and CSS. JavaScript is not executed for your security — running unknown scripts in your browser is dangerous. ' +
+        '<p style="color:' + wText + ';margin:6px 0">The URL analysis reads only static HTML and CSS. JavaScript is not executed for your security. ' +
         'Sites built with JS frameworks (React, Angular, Vue), or protected by Cloudflare/login, will appear empty.</p>' +
         '<p style="color:' + wText + ';margin:6px 0"><strong>The results below are unreliable</strong> — they score the empty shell, not the actual page.</p>' +
-        '<div style="margin-top:12px;padding:12px 16px;background:' + wTipBg + ';border-radius:8px;border:1px solid ' + wTipBorder + '">' +
-        '<strong style="color:' + wStrong + ';font-size:14px">How to analyze this page accurately:</strong>' +
-        '<ol style="color:' + wText + ';margin:8px 0 0;padding-left:20px;font-size:13px">' +
-        '<li>Open the page in your browser and navigate to it normally</li>' +
-        '<li>Click <strong>New Analysis</strong> above, then switch to the <strong>Console Snippet</strong> tab</li>' +
-        '<li>Copy the snippet, open DevTools (<code style="background:' + wCodeBg + ';padding:1px 4px;border-radius:3px">F12</code>), paste into Console, press Enter</li>' +
-        '<li>Come back here and paste the result — you\'ll get a full, accurate analysis</li>' +
-        '</ol>' +
+        '<div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">' +
+        // Option 1: Console Snippet (safe, recommended)
+        '<button onclick="window.__milgSwitchToSnippet()" style="padding:8px 16px;background:' + wBtnBg + ';color:' + wBtnText + ';border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px">' +
+        '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>' +
+        'Use Console Snippet (safe)</button>' +
+        // Option 2: Try with JS (trust required)
+        (pageUrl ? '<button onclick="window.__milgTryWithJs(\'' + pageUrl.replace(/'/g, "\\'") + '\')" style="padding:8px 16px;background:' + wBtnSecBg + ';color:' + wText + ';border:1px solid ' + wBtnSecBorder + ';border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:6px">' +
+        '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>' +
+        'Try with JS enabled</button>' : '') +
         '</div>' +
+        '<p style="color:' + wText + ';margin:10px 0 0;font-size:12px;opacity:0.8">The console snippet runs in the page\'s own context and captures everything. ' +
+        'Trying with JS loads the site in a sandboxed frame — works for most sites but some block framing.</p>' +
         '</div>';
     }
 
@@ -2028,6 +2036,130 @@
 
   window.__milgResetExclusions = function() {
     if (_originalRawData) runAnalysis(_originalRawData);
+  };
+
+  // Switch to Console Snippet tab (from JS-required warning)
+  window.__milgSwitchToSnippet = function() {
+    var reportContainer = document.getElementById('reportContainer');
+    var inputSection = document.getElementById('inputSection');
+    reportContainer.innerHTML = '';
+    reportContainer.classList.remove('visible');
+    document.getElementById('reportActions').style.display = 'none';
+    inputSection.style.display = '';
+    // Activate the snippet tab
+    document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+    document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
+    var snippetBtn = document.querySelector('.tab-btn[data-tab="tabSnippet"]');
+    if (snippetBtn) snippetBtn.classList.add('active');
+    var snippetTab = document.getElementById('tabSnippet');
+    if (snippetTab) snippetTab.classList.add('active');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Try analyzing with JS enabled (loads page in iframe with src=, injects extraction snippet)
+  window.__milgTryWithJs = function(url) {
+    // Show trust confirmation
+    var ok = confirm(
+      'This will load ' + url + ' in a sandboxed frame and execute its JavaScript.\n\n' +
+      'Only do this if you trust the site — malicious JS could potentially access data on this page (XSS risk).\n\n' +
+      'Continue?'
+    );
+    if (!ok) return;
+
+    var reportContainer = document.getElementById('reportContainer');
+    var isDark = document.body.classList.contains('dark-ui');
+    var loadBg = isDark ? '#1e293b' : '#f1f5f9';
+    var loadText = isDark ? '#94a3b8' : '#475569';
+    reportContainer.innerHTML = '<div style="padding:40px;text-align:center;color:' + loadText + ';background:' + loadBg + ';border-radius:var(--radius)">' +
+      '<div style="font-size:24px;margin-bottom:12px">&#9889;</div>' +
+      '<div style="font-weight:600;font-size:15px;margin-bottom:6px">Loading page with JavaScript enabled...</div>' +
+      '<div style="font-size:13px">Waiting for the page to render, then extracting design data.</div>' +
+      '<div style="margin-top:16px;font-size:12px;opacity:0.7">This may take 10-15 seconds. Some sites block framing (X-Frame-Options).</div>' +
+      '</div>';
+
+    var vp = getSelectedViewport();
+    var iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + vp.w + 'px;height:' + vp.h + 'px;border:none;';
+    iframe.sandbox = 'allow-scripts allow-same-origin allow-forms';
+    document.body.appendChild(iframe);
+
+    var done = false;
+    function cleanup() { if (iframe.parentNode) document.body.removeChild(iframe); }
+
+    // Fetch the extraction snippet source
+    var snippetFile = 'analyzer-snippet.js';
+    var snippetPromise = _snippetCache[snippetFile]
+      ? Promise.resolve(_snippetCache[snippetFile])
+      : fetch(snippetFile).then(function(r) { return r.text(); }).then(function(t) { _snippetCache[snippetFile] = t; return t; });
+
+    iframe.addEventListener('load', function() {
+      if (done) return;
+      snippetPromise.then(function(snippetSrc) {
+        // Wait for page JS to settle (React hydration, SPA rendering, etc.)
+        setTimeout(function() {
+          if (done) return;
+          try {
+            var iWin = iframe.contentWindow;
+            var iDoc = iframe.contentDocument || iWin.document;
+            // Inject extraction snippet (disable crawl)
+            var script = iDoc.createElement('script');
+            script.textContent = 'window.__milgCrawlSite=false;\n' + snippetSrc;
+            iDoc.body.appendChild(script);
+
+            // Poll for __milgData
+            var polls = 0;
+            var poller = setInterval(function() {
+              if (done) { clearInterval(poller); return; }
+              polls++;
+              try {
+                var d = iWin.__milgData;
+                if (d) {
+                  clearInterval(poller); done = true;
+                  d.meta.url = url;
+                  d.meta._inputMethod = 'url';
+                  cleanup();
+                  runAnalysis(d);
+                } else if (polls > 30) {
+                  clearInterval(poller); done = true;
+                  cleanup();
+                  reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
+                    'Extraction timed out — the page may block framing or take too long to render.<br>' +
+                    '<button onclick="window.__milgSwitchToSnippet()" style="margin-top:12px;padding:8px 16px;border-radius:6px;border:1px solid currentColor;background:none;color:inherit;cursor:pointer;font-size:13px">Use Console Snippet instead</button></div>';
+                }
+              } catch(e) {
+                clearInterval(poller); done = true;
+                cleanup();
+                reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
+                  'Cannot access page — blocked by cross-origin policy or X-Frame-Options.<br>' +
+                  '<button onclick="window.__milgSwitchToSnippet()" style="margin-top:12px;padding:8px 16px;border-radius:6px;border:1px solid currentColor;background:none;color:inherit;cursor:pointer;font-size:13px">Use Console Snippet instead</button></div>';
+              }
+            }, 500);
+          } catch(e) {
+            done = true; cleanup();
+            reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
+              'Cannot access page: ' + e.message + '<br>' +
+              '<button onclick="window.__milgSwitchToSnippet()" style="margin-top:12px;padding:8px 16px;border-radius:6px;border:1px solid currentColor;background:none;color:inherit;cursor:pointer;font-size:13px">Use Console Snippet instead</button></div>';
+          }
+        }, 2000); // Wait 2s for JS rendering
+      });
+    });
+
+    iframe.addEventListener('error', function() {
+      if (done) return; done = true; cleanup();
+      reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
+        'Failed to load the page in a frame.<br>' +
+        '<button onclick="window.__milgSwitchToSnippet()" style="margin-top:12px;padding:8px 16px;border-radius:6px;border:1px solid currentColor;background:none;color:inherit;cursor:pointer;font-size:13px">Use Console Snippet instead</button></div>';
+    });
+
+    iframe.src = url;
+
+    // Hard timeout
+    setTimeout(function() {
+      if (done) return; done = true; cleanup();
+      reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
+        'Page took too long to load (15s timeout).<br>' +
+        '<button onclick="window.__milgSwitchToSnippet()" style="margin-top:12px;padding:8px 16px;border-radius:6px;border:1px solid currentColor;background:none;color:inherit;cursor:pointer;font-size:13px">Use Console Snippet instead</button></div>';
+    }, 15000);
   };
 
   // --- URL Fetch via CORS proxy ---
