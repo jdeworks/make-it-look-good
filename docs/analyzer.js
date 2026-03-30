@@ -849,16 +849,35 @@
       });
     });
 
-    // Load snippet for display (respect screenshot checkbox initial state)
-    var _initScreenshots = document.getElementById('screenshotCheck');
-    loadSnippet(snippetCode, _initScreenshots && _initScreenshots.checked);
-
-    // Toggle snippet variant based on shared screenshot checkbox
+    // Snippet loading with crawl + screenshot options
     var sharedScreenshotCheck = document.getElementById('screenshotCheck');
-    if (sharedScreenshotCheck) {
-      sharedScreenshotCheck.addEventListener('change', function() {
-        loadSnippet(snippetCode, sharedScreenshotCheck.checked);
+    var snippetCrawlCheck = document.getElementById('snippetCrawlCheck');
+    var snippetCrawlMaxPages = document.getElementById('snippetCrawlMaxPages');
+
+    function reloadSnippet() {
+      var withScreenshots = sharedScreenshotCheck && sharedScreenshotCheck.checked;
+      loadSnippet(snippetCode, withScreenshots, function() {
+        // After snippet loaded, prepend crawl vars if checked
+        if (snippetCrawlCheck && snippetCrawlCheck.checked) {
+          var maxP = (snippetCrawlMaxPages && parseInt(snippetCrawlMaxPages.value)) || 5;
+          var prefix = 'window.__milgCrawlSite=true; window.__milgCrawlMaxPages=' + maxP + ';\n';
+          snippetCode.textContent = prefix + snippetCode.textContent;
+        }
       });
+    }
+    reloadSnippet();
+
+    if (sharedScreenshotCheck) {
+      sharedScreenshotCheck.addEventListener('change', reloadSnippet);
+    }
+    if (snippetCrawlCheck) {
+      snippetCrawlCheck.addEventListener('change', function() {
+        if (snippetCrawlMaxPages) snippetCrawlMaxPages.style.display = snippetCrawlCheck.checked ? '' : 'none';
+        reloadSnippet();
+      });
+    }
+    if (snippetCrawlMaxPages) {
+      snippetCrawlMaxPages.addEventListener('change', reloadSnippet);
     }
 
     // Copy snippet
@@ -1110,6 +1129,12 @@
       var ui = document.getElementById('urlInput'); if (ui) ui.value = '';
       var us = document.getElementById('urlStatus'); if (us) us.style.display = 'none';
       reportData = null;
+      // Reset crawl state
+      _crawlSession = null;
+      _crawlPageReports = {};
+      var cr = document.getElementById('crawlResults'); if (cr) cr.style.display = 'none';
+      var cpc = document.getElementById('crawlPageContent'); if (cpc) { cpc.style.display = 'none'; cpc.innerHTML = ''; }
+      var cpa = document.getElementById('crawlProgressArea'); if (cpa) cpa.style.display = 'none';
       // Clear hash so refreshing doesn't reload old report
       if (location.hash) history.replaceState(null, '', location.pathname + location.search);
     });
@@ -1436,12 +1461,16 @@
       crawlProgressLabel.textContent = 'Fetching starting page\u2026';
       crawlProgressCount.textContent = '0 / ' + maxPages;
 
-      // Show crawl results area
+      // Show crawl results area, hide input section
+      var inputSection = document.getElementById('inputSection');
       var reportActions = document.getElementById('reportActions');
       var reportContainer = document.getElementById('reportContainer');
+      if (inputSection) inputSection.style.display = 'none';
       crawlResults.style.display = '';
       if (reportContainer) reportContainer.className = 'report-container';
-      if (reportActions) reportActions.style.display = '';
+      if (reportActions) reportActions.style.display = 'flex';
+      // Scroll to results
+      crawlResults.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
       renderCrawlTabs();
       showCrawlPageContent('summary');
@@ -1973,6 +2002,12 @@
     reportContainer.classList.add('visible');
     inputSection.style.display = 'none';
     document.getElementById('reportActions').style.display = 'flex';
+    // Hide crawl containers when showing single-page results (unless crawl is driving this)
+    var _isCrawlDriven = lastRawData && lastRawData.meta && lastRawData.meta._inputMethod === 'crawl';
+    if (!_isCrawlDriven) {
+      var cr = document.getElementById('crawlResults'); if (cr) cr.style.display = 'none';
+      var cpc = document.getElementById('crawlPageContent'); if (cpc) cpc.style.display = 'none';
+    }
 
     // Save to history (skip re-scores from exclusions)
     if (!skipExclusionDetection) {
@@ -2314,15 +2349,16 @@
   }
 
   var _snippetCache = {};
-  function loadSnippet(codeEl, withScreenshots) {
+  function loadSnippet(codeEl, withScreenshots, callback) {
     var file = withScreenshots ? 'analyzer-snippet-screenshots.js' : 'analyzer-snippet.js';
     if (_snippetCache[file]) {
       codeEl.textContent = _snippetCache[file];
+      if (callback) callback();
       return;
     }
     fetch(file)
       .then(function(r) { return r.text(); })
-      .then(function(text) { _snippetCache[file] = text; codeEl.textContent = text; })
+      .then(function(text) { _snippetCache[file] = text; codeEl.textContent = text; if (callback) callback(); })
       .catch(function() { codeEl.textContent = '// Failed to load snippet — copy from ' + file; });
   }
 
