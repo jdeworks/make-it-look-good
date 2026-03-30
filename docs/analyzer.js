@@ -2095,14 +2095,24 @@
       // Patch URL constructor — inside srcdoc, window.location.href is "about:srcdoc"
       // which isn't a valid base URL. Many JS frameworks do new URL(path, location.href)
       // which throws. This patches the constructor to use the real site URL as fallback.
+      // Patch URL constructor — inside srcdoc:
+      //   window.location.href → "about:srcdoc" (not a valid base)
+      //   window.location.origin → "null" (the string, not null)
+      //   Location object toString → "about:srcdoc"
+      // Many frameworks do new URL(path, location.href) or new URL(path, location.origin).
+      // Strategy: check known bad bases first (fast), then try/catch as fallback for anything else.
       var urlPatch = '<script>' +
         '(function(){' +
           'var _rb="' + url.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '";' +
           'var _O=URL;' +
           'function _P(u,b){' +
-            'if(b&&(b==="about:srcdoc"||b==="about:blank"))b=_rb;' +
+            'if(b){' +
+              'var bs=typeof b==="string"?b:String(b);' +
+              'if(bs==="about:srcdoc"||bs==="about:blank"||bs==="null"||bs.indexOf("about:")===0)b=_rb;' +
+            '}' +
             'if(!b&&typeof u==="string"&&u.charAt(0)==="/")return new _O(u,_rb);' +
-            'return arguments.length===1?new _O(u):new _O(u,b);' +
+            'try{return arguments.length===1?new _O(u):new _O(u,b);}' +
+            'catch(e){try{return new _O(u,_rb);}catch(e2){throw e;}}' +
           '}' +
           '_P.prototype=_O.prototype;' +
           '_P.createObjectURL=_O.createObjectURL.bind(_O);' +
