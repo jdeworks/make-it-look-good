@@ -1906,19 +1906,34 @@
         _copyCrawlResults(_cResults);
         console.log('%c\u2713 Crawl complete (1 page).', 'color: #16a34a; font-weight: bold;');
       } else {
-        // Use screenshot snippet for injection (so crawled pages also get screenshots)
+        // Show crawl progress overlay
+        var _crawlOverlay = document.createElement('div');
+        _crawlOverlay.setAttribute('data-milg-overlay', '1');
+        _crawlOverlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.6);display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui,sans-serif;';
+        _crawlOverlay.innerHTML = '<div style="width:40px;height:40px;border:3px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:milg-spin 0.8s linear infinite"></div>' +
+          '<div id="milg-crawl-status" style="color:#fff;margin-top:16px;font-size:14px;font-weight:500">Crawling site...</div>' +
+          '<div id="milg-crawl-detail" style="color:rgba(255,255,255,0.6);margin-top:6px;font-size:12px">Loading extraction snippet...</div>' +
+          '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style>';
+        document.body.appendChild(_crawlOverlay);
+        function _updateCrawlOverlay(status, detail) {
+          var s = document.getElementById('milg-crawl-status'); if (s) s.textContent = status;
+          var d = document.getElementById('milg-crawl-detail'); if (d) d.textContent = detail;
+        }
+        function _removeCrawlOverlay() { if (_crawlOverlay.parentNode) _crawlOverlay.parentNode.removeChild(_crawlOverlay); }
+
         var _ssUrl = 'https://jdeworks.github.io/make-it-look-good/analyzer-snippet-screenshots.js';
-        // Crawl approach: fetch page HTML (same-origin fetch), load as srcdoc (bypasses X-Frame-Options),
-        // inject snippet, poll for results. Since we're running on the target site, fetch is same-origin.
         fetch(_ssUrl).then(function(r) { return r.text(); }).then(function(snippetSrc) {
           function _next(idx) {
             if (idx >= _links.length) {
+              _updateCrawlOverlay('Crawl complete!', 'Copying ' + _cResults.length + ' pages to clipboard...');
               _copyCrawlResults(_cResults);
               console.log('%c\u2713 Crawl complete! ' + _cResults.length + ' pages.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+              setTimeout(_removeCrawlOverlay, 1500);
               return;
             }
             var url = _links[idx];
             var path; try { path = new URL(url).pathname; } catch(e) { path = url; }
+            _updateCrawlOverlay('Crawling page ' + (idx + 1) + ' of ' + _links.length, path);
             console.log('%c\u2192 [' + (idx+1) + '/' + _links.length + '] ' + path, 'color: #3b82f6;');
 
             // Fetch page HTML (same-origin — we're on the site) then load as srcdoc
@@ -1989,7 +2004,7 @@
             });
           }
           _next(0);
-        }).catch(function() { console.log('%c\u26A0 Could not fetch snippet for crawl.', 'color: #b45309;'); });
+        }).catch(function() { _removeCrawlOverlay(); console.log('%c\u26A0 Could not fetch snippet for crawl.', 'color: #b45309;'); });
       }
       return; // Skip clipboard copy
     }

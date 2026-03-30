@@ -2373,23 +2373,36 @@
       _copyCrawlResults(_crawlResults);
       console.log('%c\u2713 Crawl complete (1 page). Open the analyzer.', 'color: #16a34a; font-weight: bold;');
     } else {
-      // Crawl: fetch page HTML (same-origin), load as srcdoc (bypasses X-Frame-Options),
-      // inject snippet, poll for results.
+      // Show crawl progress overlay
+      var _crawlOverlay = document.createElement('div');
+      _crawlOverlay.setAttribute('data-milg-overlay', '1');
+      _crawlOverlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.6);display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui,sans-serif;';
+      _crawlOverlay.innerHTML = '<div style="width:40px;height:40px;border:3px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:milg-spin 0.8s linear infinite"></div>' +
+        '<div id="milg-crawl-status" style="color:#fff;margin-top:16px;font-size:14px;font-weight:500">Crawling site...</div>' +
+        '<div id="milg-crawl-detail" style="color:rgba(255,255,255,0.6);margin-top:6px;font-size:12px">Loading extraction snippet...</div>' +
+        '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style>';
+      document.body.appendChild(_crawlOverlay);
+      function _updateCrawlOverlay(status, detail) {
+        var s = document.getElementById('milg-crawl-status'); if (s) s.textContent = status;
+        var d = document.getElementById('milg-crawl-detail'); if (d) d.textContent = detail;
+      }
+      function _removeCrawlOverlay() { if (_crawlOverlay.parentNode) _crawlOverlay.parentNode.removeChild(_crawlOverlay); }
+
       var _snippetUrl = 'https://jdeworks.github.io/make-it-look-good/analyzer-snippet.js';
-      console.log('%cLoading extraction snippet for injection\u2026', 'color: #64748b;');
 
       fetch(_snippetUrl).then(function(r) { return r.text(); }).then(function(snippetSrc) {
-        console.log('%c\u2713 Snippet loaded. Starting crawl.', 'color: #16a34a;');
-
         function processNext(idx) {
           if (idx >= _crawlLinks.length) {
+            _updateCrawlOverlay('Crawl complete!', 'Copying ' + _crawlResults.length + ' pages to clipboard...');
             _copyCrawlResults(_crawlResults);
             console.log('%c\u2713 Crawl complete! ' + _crawlResults.length + ' pages analyzed.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+            setTimeout(_removeCrawlOverlay, 1500);
             return;
           }
 
           var url = _crawlLinks[idx];
           var path; try { path = new URL(url).pathname; } catch(e) { path = url; }
+          _updateCrawlOverlay('Crawling page ' + (idx + 1) + ' of ' + _crawlLinks.length, path);
           console.log('%c\u2192 [' + (idx + 1) + '/' + _crawlLinks.length + '] ' + path, 'color: #3b82f6;');
 
           // Fetch page HTML (same-origin) then load as srcdoc (bypasses X-Frame-Options)
@@ -2488,8 +2501,8 @@
         processNext(0);
 
       }).catch(function(e) {
+        _removeCrawlOverlay();
         console.log('%c\u26A0 Could not fetch snippet source: ' + e.message, 'color: #b45309;');
-        console.log('%cCrawl requires the snippet source from GitHub Pages.', 'color: #64748b;');
       });
     }
     return; // Skip normal clipboard copy
