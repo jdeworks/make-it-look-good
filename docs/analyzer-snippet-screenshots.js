@@ -1871,8 +1871,35 @@
       var _cResults = [{ url: location.href, data: data }];
       console.log('%c\uD83D\uDD77 Site Crawl: discovered ' + _links.length + ' page(s)', 'color: #8b5cf6; font-weight: bold;');
 
+      // Copy full crawl results to clipboard (localStorage doesn't work cross-origin)
+      function _copyCrawlResults(results) {
+        var crawlJson = JSON.stringify({ _milgCrawl: true, startUrl: location.href, results: results });
+        console.log('[crawl] Total crawl JSON: ' + Math.round(crawlJson.length / 1024) + ' KB');
+        window.__milgCrawlResults = results;
+        window.__milgCrawlJson = crawlJson;
+        try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) {}
+        // Try clipboard
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(crawlJson).then(function() {
+            console.log('%c\u2713 Crawl results copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+          }).catch(function() {
+            // Fallback
+            var ta = document.createElement('textarea'); ta.value = crawlJson;
+            ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
+            document.body.appendChild(ta); ta.select();
+            try { document.execCommand('copy') && console.log('%c\u2713 Crawl results copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;'); } catch(e) {}
+            document.body.removeChild(ta);
+            if (!document.execCommand('copy')) {
+              console.log('%c\u26A0 Could not copy crawl results. Type: copy(window.__milgCrawlJson)', 'color: #b45309; font-weight: bold;');
+            }
+          });
+        } else {
+          console.log('%c\u26A0 Type: copy(window.__milgCrawlJson) — then paste into the analyzer.', 'color: #b45309; font-weight: bold;');
+        }
+      }
+
       if (_links.length === 0) {
-        try { localStorage.setItem('milg-crawl-complete', JSON.stringify({ startUrl: location.href, results: _cResults })); } catch(e) {}
+        _copyCrawlResults(_cResults);
         console.log('%c\u2713 Crawl complete (1 page).', 'color: #16a34a; font-weight: bold;');
       } else {
         // Use screenshot snippet for injection (so crawled pages also get screenshots)
@@ -1882,9 +1909,8 @@
         fetch(_ssUrl).then(function(r) { return r.text(); }).then(function(snippetSrc) {
           function _next(idx) {
             if (idx >= _links.length) {
-              try { localStorage.setItem('milg-crawl-complete', JSON.stringify({ startUrl: location.href, results: _cResults })); } catch(e) {}
+              _copyCrawlResults(_cResults);
               console.log('%c\u2713 Crawl complete! ' + _cResults.length + ' pages.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-              window.__milgCrawlResults = _cResults;
               return;
             }
             var url = _links[idx];

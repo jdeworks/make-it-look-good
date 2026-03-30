@@ -2347,9 +2347,30 @@
     console.log('%c\uD83D\uDD77 Site Crawl: discovered ' + _crawlLinks.length + ' page(s)', 'color: #8b5cf6; font-weight: bold;');
     _crawlLinks.forEach(function(l, i) { var p; try { p = new URL(l).pathname; } catch(e) { p = l; } console.log('  ' + (i + 1) + '. ' + p); });
 
+    // Copy full crawl results to clipboard (localStorage doesn't work cross-origin)
+    function _copyCrawlResults(results) {
+      var crawlJson = JSON.stringify({ _milgCrawl: true, startUrl: location.href, results: results });
+      window.__milgCrawlResults = results;
+      window.__milgCrawlJson = crawlJson;
+      try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) {}
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(crawlJson).then(function() {
+          console.log('%c\u2713 Crawl results copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+        }).catch(function() {
+          var ta = document.createElement('textarea'); ta.value = crawlJson;
+          ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
+          document.body.appendChild(ta); ta.select();
+          try { document.execCommand('copy'); } catch(e) {}
+          document.body.removeChild(ta);
+          console.log('%c\u26A0 Type: copy(window.__milgCrawlJson) — then paste into the analyzer.', 'color: #b45309; font-weight: bold;');
+        });
+      } else {
+        console.log('%c\u26A0 Type: copy(window.__milgCrawlJson) — then paste into the analyzer.', 'color: #b45309; font-weight: bold;');
+      }
+    }
+
     if (_crawlLinks.length === 0) {
-      var _s = { startUrl: location.href, results: _crawlResults };
-      try { localStorage.setItem('milg-crawl-complete', JSON.stringify(_s)); } catch(e) {}
+      _copyCrawlResults(_crawlResults);
       console.log('%c\u2713 Crawl complete (1 page). Open the analyzer.', 'color: #16a34a; font-weight: bold;');
     } else {
       // Crawl: fetch page HTML (same-origin), load as srcdoc (bypasses X-Frame-Options),
@@ -2362,12 +2383,8 @@
 
         function processNext(idx) {
           if (idx >= _crawlLinks.length) {
-            var state = { startUrl: location.href, results: _crawlResults };
-            try { localStorage.setItem('milg-crawl-complete', JSON.stringify(state)); } catch(e) {}
+            _copyCrawlResults(_crawlResults);
             console.log('%c\u2713 Crawl complete! ' + _crawlResults.length + ' pages analyzed.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-            console.log('%cOpen the analyzer to view results (they load automatically).', 'color: #3b82f6;');
-            console.log('%cOr access: window.__milgCrawlResults', 'color: #64748b;');
-            window.__milgCrawlResults = _crawlResults;
             return;
           }
 

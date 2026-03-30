@@ -19836,13 +19836,22 @@ function scoreCognitiveLoad(data) {
       });
       var S_val = (sentenceCount / rd.totalWords) * 100;
       var cli = Math.round(0.0588 * L - 0.296 * S_val - 15.8);
+      // Detect non-English content — Coleman-Liau inflates scores for languages
+      // with long compound words (German, Finnish, Dutch, etc.)
+      var pageLang = (data.meta && data.meta.lang || '').toLowerCase().split('-')[0];
+      var isNonEnglish = pageLang && pageLang !== 'en' && pageLang !== '';
+      // Also heuristic: if avg word length > 6.5 chars, likely non-English
+      var avgWordLen = rd.totalChars / rd.totalWords;
+      if (!isNonEnglish && avgWordLen > 6.5) isNonEnglish = true;
+      var langNote = isNonEnglish ? ' Note: This index is calibrated for English text — non-English languages (detected: ' + (pageLang || 'long words') + ') typically score higher due to longer average word length.' : '';
+
       if (cli >= 6 && cli <= 12) {
         passed++;
       } else {
         findings.push({
-          severity: cli > 14 ? 'warning' : 'info',
+          severity: isNonEnglish ? 'info' : (cli > 14 ? 'warning' : 'info'),
           title: 'Reading level: grade ' + cli + ' (Coleman-Liau Index)',
-          detail: cli > 12 ? 'Content may be too complex for a general audience' : 'Content may be overly simple for the target audience',
+          detail: (cli > 12 ? 'Content may be too complex for a general audience' : 'Content may be overly simple for the target audience') + langNote,
           fix: cli > 12 ? 'Shorten sentences, use simpler words, break complex ideas into steps. Aim for grade 8-10 for general audiences.' : 'This reading level is appropriate for broad accessibility.',
           presetRef: null,
           source: 'Coleman-Liau Index — https://en.wikipedia.org/wiki/Coleman%E2%80%93Liau_index'
@@ -20933,6 +20942,198 @@ function scoreSpacing(data) {
   }
 
   S.register("balance", scoreBalance, 3, "Visual Balance", "consistency");
+})();
+</file>
+
+<file path="docs/scoring/touch.js">
+// Scoring Module: Touch & Interaction
+// Weight: 15%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreTouchTargets(data) {
+  var profile = S.getProfile(data);
+  var findings = [];
+  var targets = data.interaction.touchTargets || [];
+
+  // Viewport-aware thresholds, adjusted by profile:
+  var vw = (data.meta && data.meta.viewportWidth) || 1280;
+  var isDesktop = vw >= 1024;
+  var minSize = isDesktop ? profile.touchTargetDesktop : profile.touchTarget;
+  var warnSize = isDesktop ? profile.touchTargetDesktopWarn : profile.touchTarget;
+  var context = isDesktop ? 'desktop' : 'touch/mobile';
+  var issueCount = 0;
+
+  targets.forEach(function(t) {
+    var w = t.width, h = t.height;
+    var minDim = Math.min(w, h);
+
+    // WCAG 2.5.8 exception: inline text links are exempt from target size requirements.
+    // Detect by checking if element is an <a> without button-like styling (no bg, no border, no padding > 4px)
+    var isInlineLink = t.element === 'a' && !t.isButton;
+
+    if (minDim < minSize) {
+      issueCount++;
+      var ctx = t.linkContext || (isInlineLink ? 'inline' : 'button');
+
+      // On desktop, determine severity based on how far below threshold:
+      // - ≥20px (just 4px short of 24px) → info (barely noticeable with mouse)
+      // - ≥16px → warning (small but usable with mouse)
+      // - <16px → error (genuinely too small even for mouse)
+      // On mobile, all failures are errors (fingers need the full 44px)
+      function desktopSeverity(dim) {
+        if (!isDesktop) return 'error';
+        if (dim >= 20) return 'info';
+        if (dim >= 16) return 'warning';
+        return 'error';
+      }
+
+      if (ctx === 'inline') {
+        // True inline text links (inside <p>, <blockquote>, etc.) — WCAG 2.5.8 exempt
+        findings.push({
+          severity: 'info',
+          title: 'Inline text link ' + w + '×' + h + 'px — exempt from target size',
+          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+          fix: 'Inline text links in paragraphs are exempt per WCAG 2.5.8. Consider adding padding for better usability.',
+          source: 'WCAG 2.2 §2.5.8 inline exception — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+          locator: { selector: t.selector, text: t.text || '' }
+        });
+      } else if (ctx === 'footer') {
+        // Footer links — relaxed but still error below hard minimum (16px)
+        var footerHardMin = isDesktop ? 16 : 24;
+        findings.push({
+          severity: minDim < footerHardMin ? 'error' : 'info',
+          title: 'Footer link ' + w + '×' + h + 'px' + (minDim < footerHardMin ? ' (too small even for footer — min ' + footerHardMin + 'px)' : ' (below ' + minSize + 'px, relaxed for footer)'),
+          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+          fix: minDim < footerHardMin
+            ? 'Even footer links need at least ' + footerHardMin + 'px height. Add padding to increase click area.'
+            : 'Footer links have relaxed sizing expectations. Consider padding for touch accessibility.',
+          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+          locator: { selector: t.selector, text: t.text || '' }
+        });
+      } else if (ctx === 'nav') {
+        // Navigation links — should be properly sized
+        var navSev = desktopSeverity(minDim);
+        findings.push({
+          severity: navSev,
+          title: 'Nav link ' + w + '×' + h + 'px (minimum: ' + minSize + 'px)',
+          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+          fix: 'Navigation links need adequate sizing. Add padding: py-2 px-4 (min-height ' + minSize + 'px).',
+          presetRef: 'Navigation presets use min-height 44px on nav links',
+          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+          locator: { selector: t.selector, text: t.text || '' }
+        });
+      } else {
+        // Buttons, styled links, other interactive elements
+        var sev = desktopSeverity(minDim);
+        findings.push({
+          severity: sev,
+          title: t.element + ' is ' + w + '×' + h + 'px (' + (isDesktop ? 'desktop min: ' + minSize + 'px' : 'touch min: ' + minSize + 'px') + ')',
+          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+          fix: isDesktop
+            ? (sev === 'info'
+              ? 'Slightly below ' + minSize + 'px desktop minimum — usable with mouse but consider adding padding.'
+              : 'Click targets need at least ' + minSize + '×' + minSize + 'px. Increase padding or min-height/min-width.')
+            : 'Touch targets need ' + minSize + '×' + minSize + 'px minimum. Add min-h-[' + minSize + 'px] min-w-[' + minSize + 'px] or increase padding.',
+          presetRef: isDesktop ? null : 'Button presets use py-3 px-6 (48px height)',
+          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+          locator: { selector: t.selector, text: t.text || '' }
+        });
+      }
+    } else if (minDim < warnSize && isDesktop && !isInlineLink) {
+      findings.push({
+        severity: 'warning',
+        title: t.element + ' is ' + w + '×' + h + 'px (recommended for desktop: ≥' + warnSize + 'px)',
+        detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+        fix: 'While ' + minSize + 'px meets minimum, ' + warnSize + 'px+ improves click comfort. Consider adding padding.',
+        presetRef: null,
+        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+        locator: { selector: t.selector, text: t.text || '' }
+      });
+    }
+  });
+
+  // Also flag targets that pass the current threshold but would fail on touch
+  if (isDesktop && targets.length > 0) {
+    var touchMin = profile.touchTarget;
+    var touchFails = targets.filter(function(t) { return Math.min(t.width, t.height) < touchMin; });
+    if (touchFails.length > 0) {
+      findings.push({
+        severity: 'info',
+        title: touchFails.length + ' element(s) below ' + touchMin + 'px touch target (analyzed at ' + vw + 'px desktop viewport)',
+        detail: 'These meet desktop minimums but would fail on touch devices. Consider responsive sizing if the site is also used on mobile.',
+        fix: 'For responsive touch support: add touch-target sizing at mobile breakpoints, e.g. sm:min-h-[' + touchMin + 'px]',
+        presetRef: null,
+        source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout'
+      });
+    }
+  }
+
+  // Note when responsive CSS exists that might fix touch targets on mobile
+  if (isDesktop && data.interaction && data.interaction.hasResponsiveTargetCSS) {
+    findings.push({
+      severity: 'info',
+      title: 'Responsive CSS detected that may adjust target sizes at mobile breakpoints',
+      detail: 'This site has media queries with height/padding rules. Touch targets may be correctly sized on mobile devices.',
+      fix: 'Verify by testing at mobile viewport. Use the viewport selector to re-scan at 375px width.',
+      presetRef: null
+    });
+  }
+
+  // Transitions / animation duration
+  var transitions = data.interaction.transitions || [];
+  transitions.forEach(function(t) {
+    var ms = parseFloat(t) * 1000;
+    if (ms > 500) {
+      findings.push({
+        severity: 'warning',
+        title: 'Transition duration ' + ms + 'ms exceeds 500ms maximum',
+        detail: 'Users perceive animations longer than 500ms as sluggish',
+        fix: 'Keep transitions under 500ms. Enter: 200–300ms, Exit: 150–200ms. In Tailwind: duration-200 or duration-300',
+        presetRef: null,
+        source: 'NNGroup animation — https://www.nngroup.com/articles/animation-usability/'
+      });
+    }
+  });
+
+  // Event listener pattern findings
+  var lPatterns = (data.interaction && data.interaction.listenerPatterns) || {};
+  if (lPatterns.toggleNoAria > 0) {
+    findings.push({
+      severity: 'warning',
+      title: lPatterns.toggleNoAria + ' toggle handler(s) without ARIA state management',
+      detail: 'Click handlers toggle CSS classes but don\'t update aria-expanded or other ARIA states. Screen readers won\'t know the element\'s state changed.',
+      fix: 'Add setAttribute(\'aria-expanded\', isOpen) alongside classList.toggle() in toggle handlers.',
+      presetRef: null,
+      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
+    });
+  }
+  if (lPatterns.navigationInButton > 0) {
+    findings.push({
+      severity: 'info',
+      title: lPatterns.navigationInButton + ' button(s) trigger page navigation',
+      detail: 'Buttons with click handlers that change location.href should typically be <a> elements for proper semantics and accessibility.',
+      fix: 'Use <a href="..."> for navigation instead of <button> with JavaScript location change.',
+      presetRef: null,
+      source: 'HTML spec — https://html.spec.whatwg.org/multipage/text-level-semantics.html#the-a-element'
+    });
+  }
+
+  // Score: deduct per error, less per warning
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var totalTargets = targets.length || 0;
+  var checks = totalTargets;
+  var passed = Math.max(0, totalTargets - errors - warnings);
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 3));
+  var na = totalTargets === 0 && transitions.length === 0;
+  return { score: na ? 100 : score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Touch & Interaction', icon: 'touch', notApplicable: na };
+}
+
+
+  S.register("touch", scoreTouchTargets, 15, "Touch & Interaction", "touch");
 })();
 </file>
 
@@ -22563,198 +22764,6 @@ function scoreContrast(data) {
 
 
   S.register("contrast", scoreContrast, 20, "Color & Contrast", "contrast");
-})();
-</file>
-
-<file path="docs/scoring/touch.js">
-// Scoring Module: Touch & Interaction
-// Weight: 15%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreTouchTargets(data) {
-  var profile = S.getProfile(data);
-  var findings = [];
-  var targets = data.interaction.touchTargets || [];
-
-  // Viewport-aware thresholds, adjusted by profile:
-  var vw = (data.meta && data.meta.viewportWidth) || 1280;
-  var isDesktop = vw >= 1024;
-  var minSize = isDesktop ? profile.touchTargetDesktop : profile.touchTarget;
-  var warnSize = isDesktop ? profile.touchTargetDesktopWarn : profile.touchTarget;
-  var context = isDesktop ? 'desktop' : 'touch/mobile';
-  var issueCount = 0;
-
-  targets.forEach(function(t) {
-    var w = t.width, h = t.height;
-    var minDim = Math.min(w, h);
-
-    // WCAG 2.5.8 exception: inline text links are exempt from target size requirements.
-    // Detect by checking if element is an <a> without button-like styling (no bg, no border, no padding > 4px)
-    var isInlineLink = t.element === 'a' && !t.isButton;
-
-    if (minDim < minSize) {
-      issueCount++;
-      var ctx = t.linkContext || (isInlineLink ? 'inline' : 'button');
-
-      // On desktop, determine severity based on how far below threshold:
-      // - ≥20px (just 4px short of 24px) → info (barely noticeable with mouse)
-      // - ≥16px → warning (small but usable with mouse)
-      // - <16px → error (genuinely too small even for mouse)
-      // On mobile, all failures are errors (fingers need the full 44px)
-      function desktopSeverity(dim) {
-        if (!isDesktop) return 'error';
-        if (dim >= 20) return 'info';
-        if (dim >= 16) return 'warning';
-        return 'error';
-      }
-
-      if (ctx === 'inline') {
-        // True inline text links (inside <p>, <blockquote>, etc.) — WCAG 2.5.8 exempt
-        findings.push({
-          severity: 'info',
-          title: 'Inline text link ' + w + '×' + h + 'px — exempt from target size',
-          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-          fix: 'Inline text links in paragraphs are exempt per WCAG 2.5.8. Consider adding padding for better usability.',
-          source: 'WCAG 2.2 §2.5.8 inline exception — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-          locator: { selector: t.selector, text: t.text || '' }
-        });
-      } else if (ctx === 'footer') {
-        // Footer links — relaxed but still error below hard minimum (16px)
-        var footerHardMin = isDesktop ? 16 : 24;
-        findings.push({
-          severity: minDim < footerHardMin ? 'error' : 'info',
-          title: 'Footer link ' + w + '×' + h + 'px' + (minDim < footerHardMin ? ' (too small even for footer — min ' + footerHardMin + 'px)' : ' (below ' + minSize + 'px, relaxed for footer)'),
-          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-          fix: minDim < footerHardMin
-            ? 'Even footer links need at least ' + footerHardMin + 'px height. Add padding to increase click area.'
-            : 'Footer links have relaxed sizing expectations. Consider padding for touch accessibility.',
-          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-          locator: { selector: t.selector, text: t.text || '' }
-        });
-      } else if (ctx === 'nav') {
-        // Navigation links — should be properly sized
-        var navSev = desktopSeverity(minDim);
-        findings.push({
-          severity: navSev,
-          title: 'Nav link ' + w + '×' + h + 'px (minimum: ' + minSize + 'px)',
-          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-          fix: 'Navigation links need adequate sizing. Add padding: py-2 px-4 (min-height ' + minSize + 'px).',
-          presetRef: 'Navigation presets use min-height 44px on nav links',
-          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-          locator: { selector: t.selector, text: t.text || '' }
-        });
-      } else {
-        // Buttons, styled links, other interactive elements
-        var sev = desktopSeverity(minDim);
-        findings.push({
-          severity: sev,
-          title: t.element + ' is ' + w + '×' + h + 'px (' + (isDesktop ? 'desktop min: ' + minSize + 'px' : 'touch min: ' + minSize + 'px') + ')',
-          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-          fix: isDesktop
-            ? (sev === 'info'
-              ? 'Slightly below ' + minSize + 'px desktop minimum — usable with mouse but consider adding padding.'
-              : 'Click targets need at least ' + minSize + '×' + minSize + 'px. Increase padding or min-height/min-width.')
-            : 'Touch targets need ' + minSize + '×' + minSize + 'px minimum. Add min-h-[' + minSize + 'px] min-w-[' + minSize + 'px] or increase padding.',
-          presetRef: isDesktop ? null : 'Button presets use py-3 px-6 (48px height)',
-          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-          locator: { selector: t.selector, text: t.text || '' }
-        });
-      }
-    } else if (minDim < warnSize && isDesktop && !isInlineLink) {
-      findings.push({
-        severity: 'warning',
-        title: t.element + ' is ' + w + '×' + h + 'px (recommended for desktop: ≥' + warnSize + 'px)',
-        detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-        fix: 'While ' + minSize + 'px meets minimum, ' + warnSize + 'px+ improves click comfort. Consider adding padding.',
-        presetRef: null,
-        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-        locator: { selector: t.selector, text: t.text || '' }
-      });
-    }
-  });
-
-  // Also flag targets that pass the current threshold but would fail on touch
-  if (isDesktop && targets.length > 0) {
-    var touchMin = profile.touchTarget;
-    var touchFails = targets.filter(function(t) { return Math.min(t.width, t.height) < touchMin; });
-    if (touchFails.length > 0) {
-      findings.push({
-        severity: 'info',
-        title: touchFails.length + ' element(s) below ' + touchMin + 'px touch target (analyzed at ' + vw + 'px desktop viewport)',
-        detail: 'These meet desktop minimums but would fail on touch devices. Consider responsive sizing if the site is also used on mobile.',
-        fix: 'For responsive touch support: add touch-target sizing at mobile breakpoints, e.g. sm:min-h-[' + touchMin + 'px]',
-        presetRef: null,
-        source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout'
-      });
-    }
-  }
-
-  // Note when responsive CSS exists that might fix touch targets on mobile
-  if (isDesktop && data.interaction && data.interaction.hasResponsiveTargetCSS) {
-    findings.push({
-      severity: 'info',
-      title: 'Responsive CSS detected that may adjust target sizes at mobile breakpoints',
-      detail: 'This site has media queries with height/padding rules. Touch targets may be correctly sized on mobile devices.',
-      fix: 'Verify by testing at mobile viewport. Use the viewport selector to re-scan at 375px width.',
-      presetRef: null
-    });
-  }
-
-  // Transitions / animation duration
-  var transitions = data.interaction.transitions || [];
-  transitions.forEach(function(t) {
-    var ms = parseFloat(t) * 1000;
-    if (ms > 500) {
-      findings.push({
-        severity: 'warning',
-        title: 'Transition duration ' + ms + 'ms exceeds 500ms maximum',
-        detail: 'Users perceive animations longer than 500ms as sluggish',
-        fix: 'Keep transitions under 500ms. Enter: 200–300ms, Exit: 150–200ms. In Tailwind: duration-200 or duration-300',
-        presetRef: null,
-        source: 'NNGroup animation — https://www.nngroup.com/articles/animation-usability/'
-      });
-    }
-  });
-
-  // Event listener pattern findings
-  var lPatterns = (data.interaction && data.interaction.listenerPatterns) || {};
-  if (lPatterns.toggleNoAria > 0) {
-    findings.push({
-      severity: 'warning',
-      title: lPatterns.toggleNoAria + ' toggle handler(s) without ARIA state management',
-      detail: 'Click handlers toggle CSS classes but don\'t update aria-expanded or other ARIA states. Screen readers won\'t know the element\'s state changed.',
-      fix: 'Add setAttribute(\'aria-expanded\', isOpen) alongside classList.toggle() in toggle handlers.',
-      presetRef: null,
-      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
-    });
-  }
-  if (lPatterns.navigationInButton > 0) {
-    findings.push({
-      severity: 'info',
-      title: lPatterns.navigationInButton + ' button(s) trigger page navigation',
-      detail: 'Buttons with click handlers that change location.href should typically be <a> elements for proper semantics and accessibility.',
-      fix: 'Use <a href="..."> for navigation instead of <button> with JavaScript location change.',
-      presetRef: null,
-      source: 'HTML spec — https://html.spec.whatwg.org/multipage/text-level-semantics.html#the-a-element'
-    });
-  }
-
-  // Score: deduct per error, less per warning
-  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var totalTargets = targets.length || 0;
-  var checks = totalTargets;
-  var passed = Math.max(0, totalTargets - errors - warnings);
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 3));
-  var na = totalTargets === 0 && transitions.length === 0;
-  return { score: na ? 100 : score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Touch & Interaction', icon: 'touch', notApplicable: na };
-}
-
-
-  S.register("touch", scoreTouchTargets, 15, "Touch & Interaction", "touch");
 })();
 </file>
 
@@ -25495,15 +25504,20 @@ window.MilgReport = (function() {
     html += '<div class="summary-section">';
     html += '<h4>Color Palette</h4>';
     html += '<div class="color-swatches">';
+    function swatchTitle(c, label) {
+      var t = c.value + '\n' + c.count + '× ' + label;
+      if (c.sample) t += '\n' + c.sample;
+      return t.replace(/"/g, '&quot;');
+    }
     var bgColors = sortByHue((report.raw.colors.bgColors || []).slice(0, 12));
     bgColors.forEach(function(c) {
-      html += '<div class="color-swatch" style="background:' + c.value + '" title="' + c.value + ' (' + c.count + ' uses)"></div>';
+      html += '<div class="color-swatch" style="background:' + c.value + '" title="' + swatchTitle(c, 'background') + '"></div>';
     });
     html += '</div>';
     html += '<div class="color-swatches" style="margin-top:4px">';
     var textColors = sortByHue((report.raw.colors.textColors || []).slice(0, 12));
     textColors.forEach(function(c) {
-      html += '<div class="color-swatch" style="background:' + c.value + '" title="' + c.value + ' (' + c.count + ' uses)"></div>';
+      html += '<div class="color-swatch" style="background:' + c.value + '" title="' + swatchTitle(c, 'text') + '"></div>';
     });
     html += '</div>';
     html += '</div>';
@@ -28617,8 +28631,35 @@ function scoreLayout(data) {
       var _cResults = [{ url: location.href, data: data }];
       console.log('%c\uD83D\uDD77 Site Crawl: discovered ' + _links.length + ' page(s)', 'color: #8b5cf6; font-weight: bold;');
 
+      // Copy full crawl results to clipboard (localStorage doesn't work cross-origin)
+      function _copyCrawlResults(results) {
+        var crawlJson = JSON.stringify({ _milgCrawl: true, startUrl: location.href, results: results });
+        console.log('[crawl] Total crawl JSON: ' + Math.round(crawlJson.length / 1024) + ' KB');
+        window.__milgCrawlResults = results;
+        window.__milgCrawlJson = crawlJson;
+        try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) {}
+        // Try clipboard
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(crawlJson).then(function() {
+            console.log('%c\u2713 Crawl results copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+          }).catch(function() {
+            // Fallback
+            var ta = document.createElement('textarea'); ta.value = crawlJson;
+            ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
+            document.body.appendChild(ta); ta.select();
+            try { document.execCommand('copy') && console.log('%c\u2713 Crawl results copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;'); } catch(e) {}
+            document.body.removeChild(ta);
+            if (!document.execCommand('copy')) {
+              console.log('%c\u26A0 Could not copy crawl results. Type: copy(window.__milgCrawlJson)', 'color: #b45309; font-weight: bold;');
+            }
+          });
+        } else {
+          console.log('%c\u26A0 Type: copy(window.__milgCrawlJson) — then paste into the analyzer.', 'color: #b45309; font-weight: bold;');
+        }
+      }
+
       if (_links.length === 0) {
-        try { localStorage.setItem('milg-crawl-complete', JSON.stringify({ startUrl: location.href, results: _cResults })); } catch(e) {}
+        _copyCrawlResults(_cResults);
         console.log('%c\u2713 Crawl complete (1 page).', 'color: #16a34a; font-weight: bold;');
       } else {
         // Use screenshot snippet for injection (so crawled pages also get screenshots)
@@ -28628,9 +28669,8 @@ function scoreLayout(data) {
         fetch(_ssUrl).then(function(r) { return r.text(); }).then(function(snippetSrc) {
           function _next(idx) {
             if (idx >= _links.length) {
-              try { localStorage.setItem('milg-crawl-complete', JSON.stringify({ startUrl: location.href, results: _cResults })); } catch(e) {}
+              _copyCrawlResults(_cResults);
               console.log('%c\u2713 Crawl complete! ' + _cResults.length + ' pages.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-              window.__milgCrawlResults = _cResults;
               return;
             }
             var url = _links[idx];
@@ -31063,9 +31103,30 @@ function scoreLayout(data) {
     console.log('%c\uD83D\uDD77 Site Crawl: discovered ' + _crawlLinks.length + ' page(s)', 'color: #8b5cf6; font-weight: bold;');
     _crawlLinks.forEach(function(l, i) { var p; try { p = new URL(l).pathname; } catch(e) { p = l; } console.log('  ' + (i + 1) + '. ' + p); });
 
+    // Copy full crawl results to clipboard (localStorage doesn't work cross-origin)
+    function _copyCrawlResults(results) {
+      var crawlJson = JSON.stringify({ _milgCrawl: true, startUrl: location.href, results: results });
+      window.__milgCrawlResults = results;
+      window.__milgCrawlJson = crawlJson;
+      try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) {}
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(crawlJson).then(function() {
+          console.log('%c\u2713 Crawl results copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+        }).catch(function() {
+          var ta = document.createElement('textarea'); ta.value = crawlJson;
+          ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
+          document.body.appendChild(ta); ta.select();
+          try { document.execCommand('copy'); } catch(e) {}
+          document.body.removeChild(ta);
+          console.log('%c\u26A0 Type: copy(window.__milgCrawlJson) — then paste into the analyzer.', 'color: #b45309; font-weight: bold;');
+        });
+      } else {
+        console.log('%c\u26A0 Type: copy(window.__milgCrawlJson) — then paste into the analyzer.', 'color: #b45309; font-weight: bold;');
+      }
+    }
+
     if (_crawlLinks.length === 0) {
-      var _s = { startUrl: location.href, results: _crawlResults };
-      try { localStorage.setItem('milg-crawl-complete', JSON.stringify(_s)); } catch(e) {}
+      _copyCrawlResults(_crawlResults);
       console.log('%c\u2713 Crawl complete (1 page). Open the analyzer.', 'color: #16a34a; font-weight: bold;');
     } else {
       // Crawl: fetch page HTML (same-origin), load as srcdoc (bypasses X-Frame-Options),
@@ -31078,12 +31139,8 @@ function scoreLayout(data) {
 
         function processNext(idx) {
           if (idx >= _crawlLinks.length) {
-            var state = { startUrl: location.href, results: _crawlResults };
-            try { localStorage.setItem('milg-crawl-complete', JSON.stringify(state)); } catch(e) {}
+            _copyCrawlResults(_crawlResults);
             console.log('%c\u2713 Crawl complete! ' + _crawlResults.length + ' pages analyzed.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-            console.log('%cOpen the analyzer to view results (they load automatically).', 'color: #3b82f6;');
-            console.log('%cOr access: window.__milgCrawlResults', 'color: #64748b;');
-            window.__milgCrawlResults = _crawlResults;
             return;
           }
 
@@ -31399,6 +31456,7 @@ function scoreLayout(data) {
 
     var fontSizeMap = {}, fontWeightMap = {}, fontFamilySet = new Set(), lineHeightMap = {};
     var textColorMap = {}, bgColorMap = {}, paddingMap = {}, marginMap = {}, gapMap = {};
+    var textColorSample = {}, bgColorSample = {}; // Store one sample selector per color
     var maxContentW = 0;
     var contrastPairs = [];
     var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
@@ -31480,9 +31538,9 @@ function scoreLayout(data) {
       fontFamilySet.add(s.fontFamily.split(',')[0].trim().replace(/['"]/g, ''));
       var lh = s.lineHeight;
       if (lh !== 'normal') { var lhR = parseFloat(lh) / parseFloat(s.fontSize); lineHeightMap[Math.round(lhR * 100) / 100] = (lineHeightMap[Math.round(lhR * 100) / 100] || 0) + 1; }
-      if (s.color) textColorMap[s.color] = (textColorMap[s.color] || 0) + 1;
+      if (s.color) { textColorMap[s.color] = (textColorMap[s.color] || 0) + 1; if (!textColorSample[s.color]) textColorSample[s.color] = getSelector(el); }
       var bgColor = s.backgroundColor;
-      if (bgColor && bgColor !== 'rgba(0, 0, 0, 0)' && bgColor !== 'transparent') bgColorMap[bgColor] = (bgColorMap[bgColor] || 0) + 1;
+      if (bgColor && bgColor !== 'rgba(0, 0, 0, 0)' && bgColor !== 'transparent') { bgColorMap[bgColor] = (bgColorMap[bgColor] || 0) + 1; if (!bgColorSample[bgColor]) bgColorSample[bgColor] = getSelector(el); }
 
       // Track area-weighted darkness for bg-color and gradients
       var rect = el.getBoundingClientRect();
@@ -31513,13 +31571,13 @@ function scoreLayout(data) {
       var w = rect.width;
       if (w > maxContentW && w < window.innerWidth * 0.95) maxContentW = w;
     }
-    function mapToSorted(map) { return Object.keys(map).map(function(k) { return { value: k, count: map[k] }; }).sort(function(a, b) { return b.count - a.count; }).slice(0, 30); }
+    function mapToSorted(map, sampleMap) { return Object.keys(map).map(function(k) { return { value: k, count: map[k], sample: sampleMap ? (sampleMap[k] || '') : '' }; }).sort(function(a, b) { return b.count - a.count; }).slice(0, 30); }
     data.typography.fontSizes = mapToSorted(fontSizeMap);
     data.typography.fontWeights = mapToSorted(fontWeightMap);
     data.typography.fontFamilies = Array.from(fontFamilySet).slice(0, 10);
     data.typography.lineHeights = mapToSorted(lineHeightMap);
-    data.colors.textColors = mapToSorted(textColorMap);
-    data.colors.bgColors = mapToSorted(bgColorMap);
+    data.colors.textColors = mapToSorted(textColorMap, textColorSample);
+    data.colors.bgColors = mapToSorted(bgColorMap, bgColorSample);
 
     // Darkness level: 1 = white page, 10 = black page (area-weighted, includes gradients)
     var totalPixelWeight = 0;
@@ -32087,12 +32145,44 @@ function scoreLayout(data) {
       });
     });
 
+    // Load multi-page crawl results into the tabbed view
+    function loadCrawlResults(crawlState, source) {
+      if (!crawlState || !crawlState.results || crawlState.results.length === 0) return false;
+      showToast('Loaded crawl results' + (source ? ' from ' + source : '') + ' (' + crawlState.results.length + ' pages)');
+      _crawlSession = MilgCrawl.createSession(crawlState.startUrl || crawlState.results[0].url, {
+        maxPages: crawlState.results.length,
+        profile: document.getElementById('profileSelect') ? document.getElementById('profileSelect').value : 'general'
+      });
+      crawlState.results.forEach(function(r) {
+        var report = MilgScoring.runScoring(r.data);
+        _crawlSession.pages.push({
+          url: r.url, status: 'done', title: (r.data.meta && r.data.meta.title) || '',
+          rawData: r.data, reportData: report, error: null,
+          startedAt: r.data.meta.timestamp, completedAt: r.data.meta.timestamp
+        });
+      });
+      _crawlSession.status = 'complete';
+      _crawlSession.summary = MilgCrawl.buildSummary(_crawlSession);
+      crawlResults.style.display = '';
+      var reportActions = document.getElementById('reportActions');
+      if (reportActions) reportActions.style.display = '';
+      inputSection.style.display = 'none';
+      renderCrawlTabs();
+      showCrawlPageContent('summary');
+      return true;
+    }
+
     // Analyze JSON
     analyzeBtn.addEventListener('click', function() {
       var json = pasteInput.value.trim();
       if (!json) { showToast('Paste the extracted JSON data first'); return; }
       try {
         var data = JSON.parse(json);
+        // Detect multi-page crawl format
+        if (data._milgCrawl && data.results) {
+          loadCrawlResults(data, 'pasted crawl data');
+          return;
+        }
         if (!data.meta || !data.colors) throw new Error('Invalid format');
         data.meta._inputMethod = 'console';
         runAnalysis(data);
@@ -32756,36 +32846,7 @@ function scoreLayout(data) {
       if (snippetCrawlData) {
         localStorage.removeItem('milg-crawl-complete');
         var crawlState = JSON.parse(snippetCrawlData);
-        if (crawlState && crawlState.results && crawlState.results.length > 0) {
-          showToast('Loaded crawl results from console snippet (' + crawlState.results.length + ' pages)');
-          // Build session from snippet results
-          _crawlSession = MilgCrawl.createSession(crawlState.startUrl || crawlState.results[0].url, {
-            maxPages: crawlState.results.length,
-            profile: document.getElementById('profileSelect') ? document.getElementById('profileSelect').value : 'general'
-          });
-          crawlState.results.forEach(function(r) {
-            var report = MilgScoring.runScoring(r.data);
-            _crawlSession.pages.push({
-              url: r.url, status: 'done', title: (r.data.meta && r.data.meta.title) || '',
-              rawData: r.data, reportData: report, error: null,
-              startedAt: r.data.meta.timestamp, completedAt: r.data.meta.timestamp
-            });
-          });
-          _crawlSession.status = 'complete';
-          _crawlSession.summary = MilgCrawl.buildSummary(_crawlSession);
-          // Show results
-          crawlResults.style.display = '';
-          var reportActions = document.getElementById('reportActions');
-          if (reportActions) reportActions.style.display = '';
-          renderCrawlTabs();
-          showCrawlPageContent('summary');
-          // Switch to URL tab and enable crawl mode
-          document.querySelectorAll('.tab-btn').forEach(function(t) { t.classList.remove('active'); });
-          document.querySelectorAll('.tab-content').forEach(function(t) { t.classList.remove('active'); });
-          var urlTab = document.querySelector('[data-tab="tabUrl"]');
-          if (urlTab) urlTab.classList.add('active');
-          var tabUrl = document.getElementById('tabUrl');
-          if (tabUrl) tabUrl.classList.add('active');
+        if (loadCrawlResults(crawlState, 'console snippet')) {
           if (crawlSiteCheck) crawlSiteCheck.checked = true;
           if (crawlOptions) crawlOptions.style.display = '';
         }

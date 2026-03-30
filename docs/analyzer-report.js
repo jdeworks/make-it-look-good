@@ -401,15 +401,20 @@ window.MilgReport = (function() {
     html += '<div class="summary-section">';
     html += '<h4>Color Palette</h4>';
     html += '<div class="color-swatches">';
+    function swatchTitle(c, label) {
+      var t = c.value + '\n' + c.count + '× ' + label;
+      if (c.sample) t += '\n' + c.sample;
+      return t.replace(/"/g, '&quot;');
+    }
     var bgColors = sortByHue((report.raw.colors.bgColors || []).slice(0, 12));
     bgColors.forEach(function(c) {
-      html += '<div class="color-swatch" style="background:' + c.value + '" title="' + c.value + ' (' + c.count + ' uses)"></div>';
+      html += '<div class="color-swatch" style="background:' + c.value + '" title="' + swatchTitle(c, 'background') + '"></div>';
     });
     html += '</div>';
     html += '<div class="color-swatches" style="margin-top:4px">';
     var textColors = sortByHue((report.raw.colors.textColors || []).slice(0, 12));
     textColors.forEach(function(c) {
-      html += '<div class="color-swatch" style="background:' + c.value + '" title="' + c.value + ' (' + c.count + ' uses)"></div>';
+      html += '<div class="color-swatch" style="background:' + c.value + '" title="' + swatchTitle(c, 'text') + '"></div>';
     });
     html += '</div>';
     html += '</div>';

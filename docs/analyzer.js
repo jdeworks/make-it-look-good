@@ -200,6 +200,7 @@
 
     var fontSizeMap = {}, fontWeightMap = {}, fontFamilySet = new Set(), lineHeightMap = {};
     var textColorMap = {}, bgColorMap = {}, paddingMap = {}, marginMap = {}, gapMap = {};
+    var textColorSample = {}, bgColorSample = {}; // Store one sample selector per color
     var maxContentW = 0;
     var contrastPairs = [];
     var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
@@ -281,9 +282,9 @@
       fontFamilySet.add(s.fontFamily.split(',')[0].trim().replace(/['"]/g, ''));
       var lh = s.lineHeight;
       if (lh !== 'normal') { var lhR = parseFloat(lh) / parseFloat(s.fontSize); lineHeightMap[Math.round(lhR * 100) / 100] = (lineHeightMap[Math.round(lhR * 100) / 100] || 0) + 1; }
-      if (s.color) textColorMap[s.color] = (textColorMap[s.color] || 0) + 1;
+      if (s.color) { textColorMap[s.color] = (textColorMap[s.color] || 0) + 1; if (!textColorSample[s.color]) textColorSample[s.color] = getSelector(el); }
       var bgColor = s.backgroundColor;
-      if (bgColor && bgColor !== 'rgba(0, 0, 0, 0)' && bgColor !== 'transparent') bgColorMap[bgColor] = (bgColorMap[bgColor] || 0) + 1;
+      if (bgColor && bgColor !== 'rgba(0, 0, 0, 0)' && bgColor !== 'transparent') { bgColorMap[bgColor] = (bgColorMap[bgColor] || 0) + 1; if (!bgColorSample[bgColor]) bgColorSample[bgColor] = getSelector(el); }
 
       // Track area-weighted darkness for bg-color and gradients
       var rect = el.getBoundingClientRect();
@@ -314,13 +315,13 @@
       var w = rect.width;
       if (w > maxContentW && w < window.innerWidth * 0.95) maxContentW = w;
     }
-    function mapToSorted(map) { return Object.keys(map).map(function(k) { return { value: k, count: map[k] }; }).sort(function(a, b) { return b.count - a.count; }).slice(0, 30); }
+    function mapToSorted(map, sampleMap) { return Object.keys(map).map(function(k) { return { value: k, count: map[k], sample: sampleMap ? (sampleMap[k] || '') : '' }; }).sort(function(a, b) { return b.count - a.count; }).slice(0, 30); }
     data.typography.fontSizes = mapToSorted(fontSizeMap);
     data.typography.fontWeights = mapToSorted(fontWeightMap);
     data.typography.fontFamilies = Array.from(fontFamilySet).slice(0, 10);
     data.typography.lineHeights = mapToSorted(lineHeightMap);
-    data.colors.textColors = mapToSorted(textColorMap);
-    data.colors.bgColors = mapToSorted(bgColorMap);
+    data.colors.textColors = mapToSorted(textColorMap, textColorSample);
+    data.colors.bgColors = mapToSorted(bgColorMap, bgColorSample);
 
     // Darkness level: 1 = white page, 10 = black page (area-weighted, includes gradients)
     var totalPixelWeight = 0;
@@ -888,12 +889,44 @@
       });
     });
 
+    // Load multi-page crawl results into the tabbed view
+    function loadCrawlResults(crawlState, source) {
+      if (!crawlState || !crawlState.results || crawlState.results.length === 0) return false;
+      showToast('Loaded crawl results' + (source ? ' from ' + source : '') + ' (' + crawlState.results.length + ' pages)');
+      _crawlSession = MilgCrawl.createSession(crawlState.startUrl || crawlState.results[0].url, {
+        maxPages: crawlState.results.length,
+        profile: document.getElementById('profileSelect') ? document.getElementById('profileSelect').value : 'general'
+      });
+      crawlState.results.forEach(function(r) {
+        var report = MilgScoring.runScoring(r.data);
+        _crawlSession.pages.push({
+          url: r.url, status: 'done', title: (r.data.meta && r.data.meta.title) || '',
+          rawData: r.data, reportData: report, error: null,
+          startedAt: r.data.meta.timestamp, completedAt: r.data.meta.timestamp
+        });
+      });
+      _crawlSession.status = 'complete';
+      _crawlSession.summary = MilgCrawl.buildSummary(_crawlSession);
+      crawlResults.style.display = '';
+      var reportActions = document.getElementById('reportActions');
+      if (reportActions) reportActions.style.display = '';
+      inputSection.style.display = 'none';
+      renderCrawlTabs();
+      showCrawlPageContent('summary');
+      return true;
+    }
+
     // Analyze JSON
     analyzeBtn.addEventListener('click', function() {
       var json = pasteInput.value.trim();
       if (!json) { showToast('Paste the extracted JSON data first'); return; }
       try {
         var data = JSON.parse(json);
+        // Detect multi-page crawl format
+        if (data._milgCrawl && data.results) {
+          loadCrawlResults(data, 'pasted crawl data');
+          return;
+        }
         if (!data.meta || !data.colors) throw new Error('Invalid format');
         data.meta._inputMethod = 'console';
         runAnalysis(data);
@@ -1557,36 +1590,7 @@
       if (snippetCrawlData) {
         localStorage.removeItem('milg-crawl-complete');
         var crawlState = JSON.parse(snippetCrawlData);
-        if (crawlState && crawlState.results && crawlState.results.length > 0) {
-          showToast('Loaded crawl results from console snippet (' + crawlState.results.length + ' pages)');
-          // Build session from snippet results
-          _crawlSession = MilgCrawl.createSession(crawlState.startUrl || crawlState.results[0].url, {
-            maxPages: crawlState.results.length,
-            profile: document.getElementById('profileSelect') ? document.getElementById('profileSelect').value : 'general'
-          });
-          crawlState.results.forEach(function(r) {
-            var report = MilgScoring.runScoring(r.data);
-            _crawlSession.pages.push({
-              url: r.url, status: 'done', title: (r.data.meta && r.data.meta.title) || '',
-              rawData: r.data, reportData: report, error: null,
-              startedAt: r.data.meta.timestamp, completedAt: r.data.meta.timestamp
-            });
-          });
-          _crawlSession.status = 'complete';
-          _crawlSession.summary = MilgCrawl.buildSummary(_crawlSession);
-          // Show results
-          crawlResults.style.display = '';
-          var reportActions = document.getElementById('reportActions');
-          if (reportActions) reportActions.style.display = '';
-          renderCrawlTabs();
-          showCrawlPageContent('summary');
-          // Switch to URL tab and enable crawl mode
-          document.querySelectorAll('.tab-btn').forEach(function(t) { t.classList.remove('active'); });
-          document.querySelectorAll('.tab-content').forEach(function(t) { t.classList.remove('active'); });
-          var urlTab = document.querySelector('[data-tab="tabUrl"]');
-          if (urlTab) urlTab.classList.add('active');
-          var tabUrl = document.getElementById('tabUrl');
-          if (tabUrl) tabUrl.classList.add('active');
+        if (loadCrawlResults(crawlState, 'console snippet')) {
           if (crawlSiteCheck) crawlSiteCheck.checked = true;
           if (crawlOptions) crawlOptions.style.display = '';
         }
