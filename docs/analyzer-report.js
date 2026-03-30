@@ -366,17 +366,48 @@ window.MilgReport = (function() {
     html += '<h2>Design Token Summary</h2>';
     html += '<div class="summary-grid">';
 
-    // Color palette
+    // Color palette — sorted by hue then lightness for visual grouping
+    function sortByHue(colors) {
+      return colors.slice().sort(function(a, b) {
+        var ca = parseColorToHSL(a.value);
+        var cb = parseColorToHSL(b.value);
+        if (!ca || !cb) return 0;
+        // Achromatic (grays) first, sorted by lightness
+        if (ca.s < 5 && cb.s < 5) return ca.l - cb.l;
+        if (ca.s < 5) return -1;
+        if (cb.s < 5) return 1;
+        // Chromatic: sort by hue, then lightness
+        if (Math.abs(ca.h - cb.h) > 10) return ca.h - cb.h;
+        return ca.l - cb.l;
+      });
+    }
+    function parseColorToHSL(str) {
+      if (!str) return null;
+      // Parse rgb/rgba
+      var m = str.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+      if (!m) return null;
+      var r = parseInt(m[1]) / 255, g = parseInt(m[2]) / 255, b = parseInt(m[3]) / 255;
+      var max = Math.max(r, g, b), min = Math.min(r, g, b);
+      var h = 0, s = 0, l = (max + min) / 2;
+      if (max !== min) {
+        var d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+        else if (max === g) h = ((b - r) / d + 2) / 6;
+        else h = ((r - g) / d + 4) / 6;
+      }
+      return { h: Math.round(h * 360), s: Math.round(s * 100), l: Math.round(l * 100) };
+    }
     html += '<div class="summary-section">';
     html += '<h4>Color Palette</h4>';
     html += '<div class="color-swatches">';
-    var bgColors = (report.raw.colors.bgColors || []).slice(0, 8);
+    var bgColors = sortByHue((report.raw.colors.bgColors || []).slice(0, 12));
     bgColors.forEach(function(c) {
       html += '<div class="color-swatch" style="background:' + c.value + '" title="' + c.value + ' (' + c.count + ' uses)"></div>';
     });
     html += '</div>';
     html += '<div class="color-swatches" style="margin-top:4px">';
-    var textColors = (report.raw.colors.textColors || []).slice(0, 8);
+    var textColors = sortByHue((report.raw.colors.textColors || []).slice(0, 12));
     textColors.forEach(function(c) {
       html += '<div class="color-swatch" style="background:' + c.value + '" title="' + c.value + ' (' + c.count + ' uses)"></div>';
     });

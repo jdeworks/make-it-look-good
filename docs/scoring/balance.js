@@ -18,13 +18,24 @@
     if (edges.length >= 10) {
       checks++;
 
-      // Count elements in left half vs right half
+      // Estimate content center points from left edges:
+      // For each left-edge, estimate center as edge + avgWidth/2
+      // where avgWidth is derived from the spread of edges
+      var sortedEdges = edges.slice().sort(function(a, b) { return a - b; });
+      var minEdge = sortedEdges[0];
+      var maxEdge = sortedEdges[sortedEdges.length - 1];
+      // Estimate average element width from the content span
+      var contentSpan = maxEdge - minEdge;
+      var estWidth = contentSpan > 0 ? Math.min(contentSpan / 2, vw * 0.4) : vw * 0.3;
+
       var leftCount = 0;
       var rightCount = 0;
       var midpoint = vw / 2;
 
       edges.forEach(function(edge) {
-        if (edge < midpoint) leftCount++;
+        // Use estimated center of element, not left edge
+        var center = edge + estWidth / 2;
+        if (center < midpoint) leftCount++;
         else rightCount++;
       });
 

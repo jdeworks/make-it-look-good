@@ -2822,6 +2822,152 @@ For Tailwind v4, add `@import "tailwindcss"` to your main CSS file. No `tailwind
 </div>
 </file>
 
+<file path="docs/tests/edge-gradients.html">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gradient Contrast Edge Cases</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 32px; background: #f8f8f8; }
+    h1 { font-size: 24px; margin-bottom: 24px; }
+    .test-card { padding: 24px; margin-bottom: 16px; border-radius: 8px; }
+    .label { font-size: 12px; color: #666; margin-bottom: 4px; }
+    .expect { font-size: 11px; color: #888; margin-top: 8px; }
+
+    /* Test 1: Multiple linear gradients (white overlay on colored gradient) - SHOULD PASS */
+    .test-multi-gradient {
+      background: linear-gradient(rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.85)),
+                  linear-gradient(135deg, hsla(19, 57%, 47%, 0.35) 0%, hsla(232, 24%, 24%, 0.12) 100%);
+      color: #000;
+    }
+
+    /* Test 2: Radial gradient dot pattern + solid bg - SHOULD PASS */
+    .test-radial-dot {
+      background-color: #f5f0eb;
+      background-image: radial-gradient(circle, hsla(19, 50%, 55%, 0.25) 1px, transparent 1px);
+      background-size: 16px 16px;
+      color: #1a1a1a;
+    }
+
+    /* Test 3: Dark gradient with light text - SHOULD PASS */
+    .test-dark-gradient {
+      background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+      color: #f1f5f9;
+    }
+
+    /* Test 4: Low contrast gradient - SHOULD FAIL */
+    .test-low-contrast {
+      background: linear-gradient(to right, #e5e7eb, #d1d5db);
+      color: #9ca3af;
+    }
+
+    /* Test 5: Semi-transparent overlay on white - SHOULD PASS (high contrast) */
+    .test-semi-transparent {
+      background: linear-gradient(rgba(0, 0, 0, 0.05), rgba(0, 0, 0, 0.05));
+      color: #111827;
+    }
+
+    /* Test 6: Multiple gradient layers with semi-transparency - SHOULD PASS */
+    .test-triple-layer {
+      background: linear-gradient(rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.9)),
+                  linear-gradient(45deg, rgba(59, 130, 246, 0.1), rgba(99, 102, 241, 0.1)),
+                  linear-gradient(to bottom, #f0f9ff, #e0f2fe);
+      color: #0f172a;
+    }
+
+    /* Test 7: Gradient with oklch colors (modern CSS) - SHOULD PASS */
+    .test-oklch {
+      background: linear-gradient(to right, oklch(0.95 0.02 250), oklch(0.92 0.03 280));
+      color: #1e293b;
+    }
+
+    /* Test 8: Barely passing gradient contrast - SHOULD be info, not error */
+    .test-barely-pass {
+      background: linear-gradient(to right, #f8f8f8, #f0f0f0);
+      color: #737373;
+    }
+
+    /* Test 9: Gradient that makes text invisible - SHOULD FAIL */
+    .test-invisible {
+      background: linear-gradient(to right, #ef4444, #f97316);
+      color: #dc2626;
+    }
+
+    /* Test 10: Conic gradient (not supported yet) */
+    .test-conic {
+      background: conic-gradient(from 0deg, #f8fafc, #e2e8f0, #f8fafc);
+      color: #1e293b;
+    }
+  </style>
+</head>
+<body>
+  <h1>Gradient Contrast Edge Cases</h1>
+
+  <div class="label">Test 1: Multiple linear-gradient layers (white 85% overlay)</div>
+  <div class="test-card test-multi-gradient">
+    <p>Easily create accurate translations for your content in minutes.</p>
+    <div class="expect">Expected: PASS (black on near-white ~18:1). Bug previously reported this as 1.66:1</div>
+  </div>
+
+  <div class="label">Test 2: Radial gradient dot pattern</div>
+  <div class="test-card test-radial-dot">
+    <p>This text sits on a subtle radial dot pattern with a beige background color.</p>
+    <div class="expect">Expected: PASS (dark text on beige ~15:1). Radial dots are tiny and shouldn't affect reading</div>
+  </div>
+
+  <div class="label">Test 3: Dark diagonal gradient</div>
+  <div class="test-card test-dark-gradient">
+    <p>Light text on a dark diagonal gradient background.</p>
+    <div class="expect">Expected: PASS (light on dark ~11:1)</div>
+  </div>
+
+  <div class="label">Test 4: Low contrast gradient (should fail)</div>
+  <div class="test-card test-low-contrast">
+    <p>Gray text on a light gray gradient — this should be flagged.</p>
+    <div class="expect">Expected: FAIL (gray on gray ~1.5-2:1)</div>
+  </div>
+
+  <div class="label">Test 5: Semi-transparent overlay on white</div>
+  <div class="test-card test-semi-transparent">
+    <p>Nearly black text on a barely tinted white surface.</p>
+    <div class="expect">Expected: PASS (near-black on near-white ~19:1)</div>
+  </div>
+
+  <div class="label">Test 6: Triple-layer gradient stack</div>
+  <div class="test-card test-triple-layer">
+    <p>Dark text on three stacked gradient layers that composite to near-white.</p>
+    <div class="expect">Expected: PASS (dark on composited near-white ~18:1)</div>
+  </div>
+
+  <div class="label">Test 7: oklch gradient colors</div>
+  <div class="test-card test-oklch">
+    <p>Dark text on a subtle oklch gradient background.</p>
+    <div class="expect">Expected: PASS (dark on light ~11:1). Tests modern color format support.</div>
+  </div>
+
+  <div class="label">Test 8: Barely passing contrast</div>
+  <div class="test-card test-barely-pass">
+    <p>Medium gray text on a very light gradient.</p>
+    <div class="expect">Expected: INFO (barely passes ~4.5-5:1). Should NOT be error or warning.</div>
+  </div>
+
+  <div class="label">Test 9: Gradient that hides text (should fail)</div>
+  <div class="test-card test-invisible">
+    <p>Red text on a red-orange gradient — nearly invisible.</p>
+    <div class="expect">Expected: FAIL (red on red ~1.2:1)</div>
+  </div>
+
+  <div class="label">Test 10: Conic gradient (fallback)</div>
+  <div class="test-card test-conic">
+    <p>Text on a conic gradient — parser may not support this yet.</p>
+    <div class="expect">Expected: Either PASS or UNCERTAIN (conic not parsed → white fallback → passes)</div>
+  </div>
+</body>
+</html>
+</file>
+
 <file path="docs/tests/edge-layout.html">
 <!-- Edge Case: Layout, Spacing, Touch, Typography -->
 <!-- Tests: spacing grid, overflow, negative margins, touch targets, line length, fixed widths, truncation -->
@@ -17100,152 +17246,6 @@ function scoreResponsive(data) {
 })();
 </file>
 
-<file path="docs/tests/edge-gradients.html">
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Gradient Contrast Edge Cases</title>
-  <style>
-    body { font-family: system-ui, sans-serif; margin: 0; padding: 32px; background: #f8f8f8; }
-    h1 { font-size: 24px; margin-bottom: 24px; }
-    .test-card { padding: 24px; margin-bottom: 16px; border-radius: 8px; }
-    .label { font-size: 12px; color: #666; margin-bottom: 4px; }
-    .expect { font-size: 11px; color: #888; margin-top: 8px; }
-
-    /* Test 1: Multiple linear gradients (white overlay on colored gradient) - SHOULD PASS */
-    .test-multi-gradient {
-      background: linear-gradient(rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.85)),
-                  linear-gradient(135deg, hsla(19, 57%, 47%, 0.35) 0%, hsla(232, 24%, 24%, 0.12) 100%);
-      color: #000;
-    }
-
-    /* Test 2: Radial gradient dot pattern + solid bg - SHOULD PASS */
-    .test-radial-dot {
-      background-color: #f5f0eb;
-      background-image: radial-gradient(circle, hsla(19, 50%, 55%, 0.25) 1px, transparent 1px);
-      background-size: 16px 16px;
-      color: #1a1a1a;
-    }
-
-    /* Test 3: Dark gradient with light text - SHOULD PASS */
-    .test-dark-gradient {
-      background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
-      color: #f1f5f9;
-    }
-
-    /* Test 4: Low contrast gradient - SHOULD FAIL */
-    .test-low-contrast {
-      background: linear-gradient(to right, #e5e7eb, #d1d5db);
-      color: #9ca3af;
-    }
-
-    /* Test 5: Semi-transparent overlay on white - SHOULD PASS (high contrast) */
-    .test-semi-transparent {
-      background: linear-gradient(rgba(0, 0, 0, 0.05), rgba(0, 0, 0, 0.05));
-      color: #111827;
-    }
-
-    /* Test 6: Multiple gradient layers with semi-transparency - SHOULD PASS */
-    .test-triple-layer {
-      background: linear-gradient(rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.9)),
-                  linear-gradient(45deg, rgba(59, 130, 246, 0.1), rgba(99, 102, 241, 0.1)),
-                  linear-gradient(to bottom, #f0f9ff, #e0f2fe);
-      color: #0f172a;
-    }
-
-    /* Test 7: Gradient with oklch colors (modern CSS) - SHOULD PASS */
-    .test-oklch {
-      background: linear-gradient(to right, oklch(0.95 0.02 250), oklch(0.92 0.03 280));
-      color: #1e293b;
-    }
-
-    /* Test 8: Barely passing gradient contrast - SHOULD be info, not error */
-    .test-barely-pass {
-      background: linear-gradient(to right, #f8f8f8, #f0f0f0);
-      color: #737373;
-    }
-
-    /* Test 9: Gradient that makes text invisible - SHOULD FAIL */
-    .test-invisible {
-      background: linear-gradient(to right, #ef4444, #f97316);
-      color: #dc2626;
-    }
-
-    /* Test 10: Conic gradient (not supported yet) */
-    .test-conic {
-      background: conic-gradient(from 0deg, #f8fafc, #e2e8f0, #f8fafc);
-      color: #1e293b;
-    }
-  </style>
-</head>
-<body>
-  <h1>Gradient Contrast Edge Cases</h1>
-
-  <div class="label">Test 1: Multiple linear-gradient layers (white 85% overlay)</div>
-  <div class="test-card test-multi-gradient">
-    <p>Easily create accurate translations for your content in minutes.</p>
-    <div class="expect">Expected: PASS (black on near-white ~18:1). Bug previously reported this as 1.66:1</div>
-  </div>
-
-  <div class="label">Test 2: Radial gradient dot pattern</div>
-  <div class="test-card test-radial-dot">
-    <p>This text sits on a subtle radial dot pattern with a beige background color.</p>
-    <div class="expect">Expected: PASS (dark text on beige ~15:1). Radial dots are tiny and shouldn't affect reading</div>
-  </div>
-
-  <div class="label">Test 3: Dark diagonal gradient</div>
-  <div class="test-card test-dark-gradient">
-    <p>Light text on a dark diagonal gradient background.</p>
-    <div class="expect">Expected: PASS (light on dark ~11:1)</div>
-  </div>
-
-  <div class="label">Test 4: Low contrast gradient (should fail)</div>
-  <div class="test-card test-low-contrast">
-    <p>Gray text on a light gray gradient — this should be flagged.</p>
-    <div class="expect">Expected: FAIL (gray on gray ~1.5-2:1)</div>
-  </div>
-
-  <div class="label">Test 5: Semi-transparent overlay on white</div>
-  <div class="test-card test-semi-transparent">
-    <p>Nearly black text on a barely tinted white surface.</p>
-    <div class="expect">Expected: PASS (near-black on near-white ~19:1)</div>
-  </div>
-
-  <div class="label">Test 6: Triple-layer gradient stack</div>
-  <div class="test-card test-triple-layer">
-    <p>Dark text on three stacked gradient layers that composite to near-white.</p>
-    <div class="expect">Expected: PASS (dark on composited near-white ~18:1)</div>
-  </div>
-
-  <div class="label">Test 7: oklch gradient colors</div>
-  <div class="test-card test-oklch">
-    <p>Dark text on a subtle oklch gradient background.</p>
-    <div class="expect">Expected: PASS (dark on light ~11:1). Tests modern color format support.</div>
-  </div>
-
-  <div class="label">Test 8: Barely passing contrast</div>
-  <div class="test-card test-barely-pass">
-    <p>Medium gray text on a very light gradient.</p>
-    <div class="expect">Expected: INFO (barely passes ~4.5-5:1). Should NOT be error or warning.</div>
-  </div>
-
-  <div class="label">Test 9: Gradient that hides text (should fail)</div>
-  <div class="test-card test-invisible">
-    <p>Red text on a red-orange gradient — nearly invisible.</p>
-    <div class="expect">Expected: FAIL (red on red ~1.2:1)</div>
-  </div>
-
-  <div class="label">Test 10: Conic gradient (fallback)</div>
-  <div class="test-card test-conic">
-    <p>Text on a conic gradient — parser may not support this yet.</p>
-    <div class="expect">Expected: Either PASS or UNCERTAIN (conic not parsed → white fallback → passes)</div>
-  </div>
-</body>
-</html>
-</file>
-
 <file path="docs/tests/test-presets-rendered.html">
 <!DOCTYPE html>
 <html lang="en">
@@ -20400,13 +20400,24 @@ window.MilgCrawl = (function() {
     if (edges.length >= 10) {
       checks++;
 
-      // Count elements in left half vs right half
+      // Estimate content center points from left edges:
+      // For each left-edge, estimate center as edge + avgWidth/2
+      // where avgWidth is derived from the spread of edges
+      var sortedEdges = edges.slice().sort(function(a, b) { return a - b; });
+      var minEdge = sortedEdges[0];
+      var maxEdge = sortedEdges[sortedEdges.length - 1];
+      // Estimate average element width from the content span
+      var contentSpan = maxEdge - minEdge;
+      var estWidth = contentSpan > 0 ? Math.min(contentSpan / 2, vw * 0.4) : vw * 0.3;
+
       var leftCount = 0;
       var rightCount = 0;
       var midpoint = vw / 2;
 
       edges.forEach(function(edge) {
-        if (edge < midpoint) leftCount++;
+        // Use estimated center of element, not left edge
+        var center = edge + estWidth / 2;
+        if (center < midpoint) leftCount++;
         else rightCount++;
       });
 
@@ -23656,17 +23667,48 @@ window.MilgReport = (function() {
     html += '<h2>Design Token Summary</h2>';
     html += '<div class="summary-grid">';
 
-    // Color palette
+    // Color palette — sorted by hue then lightness for visual grouping
+    function sortByHue(colors) {
+      return colors.slice().sort(function(a, b) {
+        var ca = parseColorToHSL(a.value);
+        var cb = parseColorToHSL(b.value);
+        if (!ca || !cb) return 0;
+        // Achromatic (grays) first, sorted by lightness
+        if (ca.s < 5 && cb.s < 5) return ca.l - cb.l;
+        if (ca.s < 5) return -1;
+        if (cb.s < 5) return 1;
+        // Chromatic: sort by hue, then lightness
+        if (Math.abs(ca.h - cb.h) > 10) return ca.h - cb.h;
+        return ca.l - cb.l;
+      });
+    }
+    function parseColorToHSL(str) {
+      if (!str) return null;
+      // Parse rgb/rgba
+      var m = str.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+      if (!m) return null;
+      var r = parseInt(m[1]) / 255, g = parseInt(m[2]) / 255, b = parseInt(m[3]) / 255;
+      var max = Math.max(r, g, b), min = Math.min(r, g, b);
+      var h = 0, s = 0, l = (max + min) / 2;
+      if (max !== min) {
+        var d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+        else if (max === g) h = ((b - r) / d + 2) / 6;
+        else h = ((r - g) / d + 4) / 6;
+      }
+      return { h: Math.round(h * 360), s: Math.round(s * 100), l: Math.round(l * 100) };
+    }
     html += '<div class="summary-section">';
     html += '<h4>Color Palette</h4>';
     html += '<div class="color-swatches">';
-    var bgColors = (report.raw.colors.bgColors || []).slice(0, 8);
+    var bgColors = sortByHue((report.raw.colors.bgColors || []).slice(0, 12));
     bgColors.forEach(function(c) {
       html += '<div class="color-swatch" style="background:' + c.value + '" title="' + c.value + ' (' + c.count + ' uses)"></div>';
     });
     html += '</div>';
     html += '<div class="color-swatches" style="margin-top:4px">';
-    var textColors = (report.raw.colors.textColors || []).slice(0, 8);
+    var textColors = sortByHue((report.raw.colors.textColors || []).slice(0, 12));
     textColors.forEach(function(c) {
       html += '<div class="color-swatch" style="background:' + c.value + '" title="' + c.value + ' (' + c.count + ' uses)"></div>';
     });
