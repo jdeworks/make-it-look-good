@@ -1910,12 +1910,16 @@
                 '})();</' + 'script>';
               var baseTag = '<base href="' + url + '">';
               var headPatch = envPatch + baseTag;
-              if (/<head[\s>]/i.test(html)) {
+              html = html.replace(/<meta[^>]*http-equiv=["']?X-Frame-Options["']?[^>]*>/gi, '');
+              // Inject BEFORE the first <script> tag so patches run before any framework JS
+              // (Next.js puts inline scripts immediately after <head>)
+              if (/<script[\s>]/i.test(html)) {
+                html = html.replace(/<script[\s>]/i, headPatch + '<script ');
+              } else if (/<head[\s>]/i.test(html)) {
                 html = html.replace(/<head([^>]*)>/i, '<head$1>' + headPatch);
               } else {
                 html = headPatch + html;
               }
-              html = html.replace(/<meta[^>]*http-equiv=["']?X-Frame-Options["']?[^>]*>/gi, '');
 
               var iframe = document.createElement('iframe');
               iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';

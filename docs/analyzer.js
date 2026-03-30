@@ -2149,11 +2149,12 @@
         '})();' +
         '</' + 'script>';
 
-      // Inject URL patch as the very first script (before any framework JS)
-      if (/<head[\s>]/i.test(html)) {
+      // Inject BEFORE the first <script> tag so patches run before any framework JS
+      // (Next.js puts inline scripts immediately after <head>)
+      if (/<script[\s>]/i.test(html)) {
+        html = html.replace(/<script[\s>]/i, urlPatch + '<script ');
+      } else if (/<head[\s>]/i.test(html)) {
         html = html.replace(/<head([^>]*)>/i, '<head$1>' + urlPatch);
-      } else if (/<html[\s>]/i.test(html)) {
-        html = html.replace(/<html([^>]*)>/i, '<html$1><head>' + urlPatch + '</head>');
       } else {
         html = urlPatch + html;
       }

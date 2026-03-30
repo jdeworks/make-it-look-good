@@ -2393,7 +2393,10 @@
               '})();</' + 'script>';
             var baseTag = '<base href="' + url + '">';
             var headPatch = envPatch + baseTag;
-            if (/<head[\s>]/i.test(html)) {
+            // Inject BEFORE the first <script> tag so patches run before any framework JS
+            if (/<script[\s>]/i.test(html)) {
+              html = html.replace(/<script[\s>]/i, headPatch + '<script ');
+            } else if (/<head[\s>]/i.test(html)) {
               html = html.replace(/<head([^>]*)>/i, '<head$1>' + headPatch);
             } else {
               html = headPatch + html;
