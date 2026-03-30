@@ -19471,6 +19471,278 @@ If this helped you ship something that looks good, [give it a star](../../starga
 Sources: [research/sources.md](research/sources.md)
 </file>
 
+<file path="docs/scoring/balance.js">
+// Scoring Module: Visual Weight Balance
+// Weight: 3%
+// Source: Ngo et al. 2003 — balance correlates with preference (r=0.67)
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+  function scoreBalance(data) {
+    var findings = [];
+    var checks = 0;
+    var passed = 0;
+
+    // We use alignment edges as a proxy for content distribution
+    var edges = (data.layout && data.layout.alignmentEdges) || [];
+    var vw = (data.meta && data.meta.viewportWidth) || 1280;
+
+    if (edges.length >= 10) {
+      checks++;
+
+      // Count elements in left half vs right half
+      var leftCount = 0;
+      var rightCount = 0;
+      var midpoint = vw / 2;
+
+      edges.forEach(function(edge) {
+        if (edge < midpoint) leftCount++;
+        else rightCount++;
+      });
+
+      var total = leftCount + rightCount;
+      var ratio = total > 0 ? Math.max(leftCount, rightCount) / Math.min(leftCount || 1, rightCount || 1) : 1;
+
+      if (ratio <= 2) {
+        passed++;
+      } else if (ratio <= 3) {
+        passed++; // Info findings don't reduce score
+        findings.push({
+          severity: 'info',
+          title: 'Content distribution is ' + Math.round(leftCount / total * 100) + '% left / ' + Math.round(rightCount / total * 100) + '% right',
+          detail: 'Moderate imbalance — may be intentional (sidebar layout) or indicate uneven content distribution',
+          fix: 'If using a sidebar layout, this is expected. Otherwise, distribute content more evenly or use a centered layout.',
+          presetRef: null,
+          source: 'Ngo et al. 2003 — Visual balance and aesthetic preference'
+        });
+      } else {
+        findings.push({
+          severity: 'info',
+          title: 'Content heavily weighted to one side (' + Math.round(leftCount / total * 100) + '% / ' + Math.round(rightCount / total * 100) + '%)',
+          detail: 'Strong left-right imbalance — often intentional in sidebar or marketing layouts',
+          fix: 'If using a sidebar or asymmetric layout, this is expected. Otherwise, distribute content more evenly.',
+          presetRef: null,
+          source: 'Ngo et al. 2003 — Visual balance and aesthetic preference'
+        });
+      }
+    }
+
+    // Content centering: is the primary content centered or justified?
+    if (edges.length >= 5) {
+      checks++;
+      var meanEdge = edges.reduce(function(s,v){return s+v},0) / edges.length;
+      var centered = Math.abs(meanEdge - vw * 0.1) < vw * 0.15; // within 15% of typical left margin
+      if (centered || meanEdge > 10) {
+        passed++;
+      } else {
+        findings.push({
+          severity: 'info',
+          title: 'Content appears flush to the left edge (mean position: ' + Math.round(meanEdge) + 'px)',
+          detail: 'Content without proper margins can feel unbalanced.',
+          fix: 'Add container padding or centering. In Tailwind: mx-auto px-4.',
+          source: 'Gestalt proximity — https://lawsofux.com/law-of-proximity/'
+        });
+      }
+    }
+
+    // Vertical rhythm: check if section gaps are present
+    var sectionGaps = (data.layout && data.layout.sectionGaps) || [];
+    if (sectionGaps.length >= 2) {
+      checks++;
+      var minGap = Math.min.apply(null, sectionGaps);
+      var maxGap = Math.max.apply(null, sectionGaps);
+      if (minGap >= 16 && maxGap / (minGap || 1) <= 3) {
+        passed++;
+      } else if (minGap < 4) {
+        findings.push({
+          severity: 'info',
+          title: 'Sections have very tight spacing (minimum gap: ' + minGap + 'px)',
+          detail: 'Sections need breathing room. Tight spacing makes content feel cramped.',
+          fix: 'Use consistent section spacing: 48-96px between major sections.',
+          source: 'Gestalt similarity — https://lawsofux.com/law-of-similarity/'
+        });
+      } else {
+        passed++;
+      }
+    }
+
+    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+    var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+    var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+    return { score: score, findings: findings, checks: checks, passed: passed, weight: 3, label: 'Visual Balance', icon: 'consistency' };
+  }
+
+  S.register("balance", scoreBalance, 3, "Visual Balance", "consistency");
+})();
+</file>
+
+<file path="docs/scoring/readability.js">
+// Scoring Module: Readability & Scanability
+// Weight: 5%
+// Sources: Coleman-Liau Index, NNGroup scanning research
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+  function scoreReadability(data) {
+    var findings = [];
+    var checks = 0;
+    var passed = 0;
+
+    // Extract text content from the raw data
+    // We use heading count and element count as proxies since we don't have raw text in extracted data
+    var headings = (data.typography && data.typography.headings) || [];
+    var totalElements = (data.structure && data.structure.totalElements) || 0;
+
+    // Scanability: heading frequency
+    // Good rule: 1 heading per ~100-150 elements of content
+    if (totalElements > 50) {
+      checks++;
+      var headingRatio = headings.length / (totalElements / 100);
+      if (headingRatio >= 0.5 && headingRatio <= 5) {
+        passed++;
+      } else if (headingRatio < 0.5) {
+        findings.push({
+          severity: 'warning',
+          title: 'Low heading density: ' + headings.length + ' headings for ' + totalElements + ' elements',
+          detail: 'Content without headings is harder to scan. 79% of users scan rather than read (NNGroup)',
+          fix: 'Add descriptive headings to break content into scannable sections. Aim for a heading every 2-3 paragraphs.',
+          presetRef: null,
+          source: 'NNGroup scanning research — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+        });
+      }
+    }
+
+    // Heading descriptiveness: check if headings are too short (likely generic)
+    if (headings.length > 0) {
+      checks++;
+      var shortHeadings = headings.filter(function(h) {
+        return h.text && h.text.length < 3;
+      });
+      if (shortHeadings.length === 0) {
+        passed++;
+      } else {
+        passed++; // Info doesn't reduce score
+        findings.push({
+          severity: 'info',
+          title: shortHeadings.length + ' heading(s) with very short text (< 3 chars)',
+          detail: 'Short headings like numbers or icons don\'t help users scan. Use descriptive text.',
+          fix: 'Replace generic headings with descriptive ones that summarize the section content.',
+          presetRef: null,
+          source: 'NNGroup — https://www.nngroup.com/articles/headings-pickup-lines/'
+        });
+      }
+    }
+
+    // Font size variety as readability signal
+    // Too many sizes = visual noise, harder to establish reading rhythm
+    var fontSizes = (data.typography && data.typography.fontSizes) || [];
+    var smallTextCount = fontSizes.filter(function(f) {
+      return parseFloat(f.value) < 12;
+    }).reduce(function(sum, f) { return sum + f.count; }, 0);
+
+    if (smallTextCount > 0 && totalElements > 20) {
+      checks++;
+      var smallRatio = smallTextCount / totalElements;
+      if (smallRatio < 0.05) {
+        passed++;
+      } else {
+        findings.push({
+          severity: 'warning',
+          title: smallTextCount + ' element(s) with text smaller than 12px',
+          detail: 'Text below 12px is difficult to read for most users and nearly impossible for elderly or low-vision users',
+          fix: 'Increase small text to at least 12px. Consider if the information is important enough to display — if not, remove it.',
+          presetRef: null,
+          source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text'
+        });
+      }
+    }
+
+    // Coleman-Liau readability index
+    var rd = data.readability || {};
+    if (rd.totalWords >= 50 && rd.paragraphCount >= 2) {
+      checks++;
+      // Coleman-Liau: 0.0588 * L - 0.296 * S - 15.8
+      // L = avg letters per 100 words, S = avg sentences per 100 words
+      var L = (rd.totalChars / rd.totalWords) * 100;
+      var sentenceCount = 0;
+      (rd.textBlocks || []).forEach(function(b) {
+        sentenceCount += (b.text.match(/[.!?]+/g) || []).length;
+      });
+      var S_val = (sentenceCount / rd.totalWords) * 100;
+      var cli = Math.round(0.0588 * L - 0.296 * S_val - 15.8);
+      if (cli >= 6 && cli <= 12) {
+        passed++;
+      } else {
+        findings.push({
+          severity: cli > 14 ? 'warning' : 'info',
+          title: 'Reading level: grade ' + cli + ' (Coleman-Liau Index)',
+          detail: cli > 12 ? 'Content may be too complex for a general audience' : 'Content may be overly simple for the target audience',
+          fix: cli > 12 ? 'Shorten sentences, use simpler words, break complex ideas into steps. Aim for grade 8-10 for general audiences.' : 'This reading level is appropriate for broad accessibility.',
+          presetRef: null,
+          source: 'Coleman-Liau Index — https://en.wikipedia.org/wiki/Coleman%E2%80%93Liau_index'
+        });
+      }
+    }
+
+    // Paragraph length audit
+    var longParagraphs = (rd.textBlocks || []).filter(function(b) { return b.wordCount > 150; });
+    if (longParagraphs.length > 0) {
+      findings.push({
+        severity: 'warning',
+        title: longParagraphs.length + ' paragraph(s) exceed 150 words',
+        detail: 'Long paragraphs reduce scanability. Ideal: 40-80 words per paragraph.',
+        fix: 'Break long paragraphs into shorter ones. Use subheadings, bullet lists, or callout boxes to chunk content.',
+        presetRef: null,
+        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+      });
+    }
+
+    // List usage for scanability
+    if (rd.totalWords >= 100 && !rd.hasLists) {
+      findings.push({
+        severity: 'info',
+        title: 'No lists found in content area',
+        detail: 'Lists improve scanability by 47% compared to wall-of-text (NNGroup)',
+        fix: 'Convert sequences, features, or steps into <ul>/<ol> lists where appropriate.',
+        presetRef: null,
+        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+      });
+    }
+
+    // Table cell readability on mobile (cramped/wrapped cells)
+    var tableCellIssues = (data.layout && data.layout.tableCellIssues) || [];
+    if (tableCellIssues.length > 0) {
+      checks++;
+      var tableDetails = tableCellIssues.slice(0, 3).map(function(t) {
+        var parts = [];
+        if (t.crampedCells > 0) parts.push(t.crampedCells + ' cells lack horizontal padding');
+        if (t.wrappedCells > 0) parts.push(t.wrappedCells + ' cells wrap to multiple lines');
+        return t.selector + ': ' + parts.join(', ') + ' (table ' + t.tableWidth + 'px on ' + t.vpWidth + 'px viewport)';
+      });
+      findings.push({
+        severity: tableCellIssues.some(function(t) { return t.crampedCells > 4 || t.wrappedCells > 4; }) ? 'error' : 'warning',
+        title: 'Table readability issues on mobile (' + tableCellIssues.length + ' table' + (tableCellIssues.length > 1 ? 's' : '') + ')',
+        detail: tableDetails.join('; '),
+        fix: 'Add horizontal padding to table cells (px-3 sm:px-4). For narrow viewports, consider hiding low-priority columns, using a responsive card layout, or reducing font size.',
+        source: 'NNGroup Mobile Tables — https://www.nngroup.com/articles/mobile-tables/',
+        locator: { selector: tableCellIssues[0].selector, text: '' }
+      });
+    }
+
+    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+    var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+    var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+    return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Readability', icon: 'readability' };
+  }
+
+  S.register("readability", scoreReadability, 5, "Readability", "readability");
+})();
+</file>
+
 <file path="docs/tests/test-scoring.html">
 <!DOCTYPE html>
 <html lang="en">
@@ -20778,113 +21050,6 @@ async function main() {
 main().catch(err => { console.error('Fatal:', err); process.exit(1); });
 </file>
 
-<file path="docs/scoring/balance.js">
-// Scoring Module: Visual Weight Balance
-// Weight: 3%
-// Source: Ngo et al. 2003 — balance correlates with preference (r=0.67)
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-  function scoreBalance(data) {
-    var findings = [];
-    var checks = 0;
-    var passed = 0;
-
-    // We use alignment edges as a proxy for content distribution
-    var edges = (data.layout && data.layout.alignmentEdges) || [];
-    var vw = (data.meta && data.meta.viewportWidth) || 1280;
-
-    if (edges.length >= 10) {
-      checks++;
-
-      // Count elements in left half vs right half
-      var leftCount = 0;
-      var rightCount = 0;
-      var midpoint = vw / 2;
-
-      edges.forEach(function(edge) {
-        if (edge < midpoint) leftCount++;
-        else rightCount++;
-      });
-
-      var total = leftCount + rightCount;
-      var ratio = total > 0 ? Math.max(leftCount, rightCount) / Math.min(leftCount || 1, rightCount || 1) : 1;
-
-      if (ratio <= 2) {
-        passed++;
-      } else if (ratio <= 3) {
-        passed++; // Info findings don't reduce score
-        findings.push({
-          severity: 'info',
-          title: 'Content distribution is ' + Math.round(leftCount / total * 100) + '% left / ' + Math.round(rightCount / total * 100) + '% right',
-          detail: 'Moderate imbalance — may be intentional (sidebar layout) or indicate uneven content distribution',
-          fix: 'If using a sidebar layout, this is expected. Otherwise, distribute content more evenly or use a centered layout.',
-          presetRef: null,
-          source: 'Ngo et al. 2003 — Visual balance and aesthetic preference'
-        });
-      } else {
-        findings.push({
-          severity: 'info',
-          title: 'Content heavily weighted to one side (' + Math.round(leftCount / total * 100) + '% / ' + Math.round(rightCount / total * 100) + '%)',
-          detail: 'Strong left-right imbalance — often intentional in sidebar or marketing layouts',
-          fix: 'If using a sidebar or asymmetric layout, this is expected. Otherwise, distribute content more evenly.',
-          presetRef: null,
-          source: 'Ngo et al. 2003 — Visual balance and aesthetic preference'
-        });
-      }
-    }
-
-    // Content centering: is the primary content centered or justified?
-    if (edges.length >= 5) {
-      checks++;
-      var meanEdge = edges.reduce(function(s,v){return s+v},0) / edges.length;
-      var centered = Math.abs(meanEdge - vw * 0.1) < vw * 0.15; // within 15% of typical left margin
-      if (centered || meanEdge > 10) {
-        passed++;
-      } else {
-        findings.push({
-          severity: 'info',
-          title: 'Content appears flush to the left edge (mean position: ' + Math.round(meanEdge) + 'px)',
-          detail: 'Content without proper margins can feel unbalanced.',
-          fix: 'Add container padding or centering. In Tailwind: mx-auto px-4.',
-          source: 'Gestalt proximity — https://lawsofux.com/law-of-proximity/'
-        });
-      }
-    }
-
-    // Vertical rhythm: check if section gaps are present
-    var sectionGaps = (data.layout && data.layout.sectionGaps) || [];
-    if (sectionGaps.length >= 2) {
-      checks++;
-      var minGap = Math.min.apply(null, sectionGaps);
-      var maxGap = Math.max.apply(null, sectionGaps);
-      if (minGap >= 16 && maxGap / (minGap || 1) <= 3) {
-        passed++;
-      } else if (minGap < 4) {
-        findings.push({
-          severity: 'info',
-          title: 'Sections have very tight spacing (minimum gap: ' + minGap + 'px)',
-          detail: 'Sections need breathing room. Tight spacing makes content feel cramped.',
-          fix: 'Use consistent section spacing: 48-96px between major sections.',
-          source: 'Gestalt similarity — https://lawsofux.com/law-of-similarity/'
-        });
-      } else {
-        passed++;
-      }
-    }
-
-    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-    var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-    var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-    return { score: score, findings: findings, checks: checks, passed: passed, weight: 3, label: 'Visual Balance', icon: 'consistency' };
-  }
-
-  S.register("balance", scoreBalance, 3, "Visual Balance", "consistency");
-})();
-</file>
-
 <file path="docs/scoring/cognitive.js">
 // Scoring Module: Cognitive Load
 // Weight: 5%
@@ -21060,168 +21225,118 @@ function scoreCognitiveLoad(data) {
 })();
 </file>
 
-<file path="docs/scoring/readability.js">
-// Scoring Module: Readability & Scanability
-// Weight: 5%
-// Sources: Coleman-Liau Index, NNGroup scanning research
+<file path="docs/scoring/filters.js">
+// Scoring Module: Motion, Animation & Filters
+// Weight: 3%
+// Sources: WCAG 2.2 §2.3.3, CSS Filter Effects spec
 
 (function() {
   "use strict";
   var S = window.MilgScoring;
 
-  function scoreReadability(data) {
+  function scoreFilters(data) {
     var findings = [];
     var checks = 0;
     var passed = 0;
+    var anim = data.animation || {};
 
-    // Extract text content from the raw data
-    // We use heading count and element count as proxies since we don't have raw text in extracted data
-    var headings = (data.typography && data.typography.headings) || [];
-    var totalElements = (data.structure && data.structure.totalElements) || 0;
-
-    // Scanability: heading frequency
-    // Good rule: 1 heading per ~100-150 elements of content
-    if (totalElements > 50) {
-      checks++;
-      var headingRatio = headings.length / (totalElements / 100);
-      if (headingRatio >= 0.5 && headingRatio <= 5) {
-        passed++;
-      } else if (headingRatio < 0.5) {
-        findings.push({
-          severity: 'warning',
-          title: 'Low heading density: ' + headings.length + ' headings for ' + totalElements + ' elements',
-          detail: 'Content without headings is harder to scan. 79% of users scan rather than read (NNGroup)',
-          fix: 'Add descriptive headings to break content into scannable sections. Aim for a heading every 2-3 paragraphs.',
-          presetRef: null,
-          source: 'NNGroup scanning research — https://www.nngroup.com/articles/how-users-read-on-the-web/'
-        });
-      }
-    }
-
-    // Heading descriptiveness: check if headings are too short (likely generic)
-    if (headings.length > 0) {
-      checks++;
-      var shortHeadings = headings.filter(function(h) {
-        return h.text && h.text.length < 3;
-      });
-      if (shortHeadings.length === 0) {
-        passed++;
-      } else {
-        passed++; // Info doesn't reduce score
-        findings.push({
-          severity: 'info',
-          title: shortHeadings.length + ' heading(s) with very short text (< 3 chars)',
-          detail: 'Short headings like numbers or icons don\'t help users scan. Use descriptive text.',
-          fix: 'Replace generic headings with descriptive ones that summarize the section content.',
-          presetRef: null,
-          source: 'NNGroup — https://www.nngroup.com/articles/headings-pickup-lines/'
-        });
-      }
-    }
-
-    // Font size variety as readability signal
-    // Too many sizes = visual noise, harder to establish reading rhythm
-    var fontSizes = (data.typography && data.typography.fontSizes) || [];
-    var smallTextCount = fontSizes.filter(function(f) {
-      return parseFloat(f.value) < 12;
-    }).reduce(function(sum, f) { return sum + f.count; }, 0);
-
-    if (smallTextCount > 0 && totalElements > 20) {
-      checks++;
-      var smallRatio = smallTextCount / totalElements;
-      if (smallRatio < 0.05) {
-        passed++;
-      } else {
-        findings.push({
-          severity: 'warning',
-          title: smallTextCount + ' element(s) with text smaller than 12px',
-          detail: 'Text below 12px is difficult to read for most users and nearly impossible for elderly or low-vision users',
-          fix: 'Increase small text to at least 12px. Consider if the information is important enough to display — if not, remove it.',
-          presetRef: null,
-          source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text'
-        });
-      }
-    }
-
-    // Coleman-Liau readability index
-    var rd = data.readability || {};
-    if (rd.totalWords >= 50 && rd.paragraphCount >= 2) {
-      checks++;
-      // Coleman-Liau: 0.0588 * L - 0.296 * S - 15.8
-      // L = avg letters per 100 words, S = avg sentences per 100 words
-      var L = (rd.totalChars / rd.totalWords) * 100;
-      var sentenceCount = 0;
-      (rd.textBlocks || []).forEach(function(b) {
-        sentenceCount += (b.text.match(/[.!?]+/g) || []).length;
-      });
-      var S_val = (sentenceCount / rd.totalWords) * 100;
-      var cli = Math.round(0.0588 * L - 0.296 * S_val - 15.8);
-      if (cli >= 6 && cli <= 12) {
-        passed++;
-      } else {
-        findings.push({
-          severity: cli > 14 ? 'warning' : 'info',
-          title: 'Reading level: grade ' + cli + ' (Coleman-Liau Index)',
-          detail: cli > 12 ? 'Content may be too complex for a general audience' : 'Content may be overly simple for the target audience',
-          fix: cli > 12 ? 'Shorten sentences, use simpler words, break complex ideas into steps. Aim for grade 8-10 for general audiences.' : 'This reading level is appropriate for broad accessibility.',
-          presetRef: null,
-          source: 'Coleman-Liau Index — https://en.wikipedia.org/wiki/Coleman%E2%80%93Liau_index'
-        });
-      }
-    }
-
-    // Paragraph length audit
-    var longParagraphs = (rd.textBlocks || []).filter(function(b) { return b.wordCount > 150; });
-    if (longParagraphs.length > 0) {
+    // prefers-reduced-motion support
+    checks++;
+    if (anim.hasReducedMotion) {
+      passed++;
+    } else if (anim.keyframeCount > 0 || (data.interaction && data.interaction.transitions && data.interaction.transitions.length > 2)) {
       findings.push({
         severity: 'warning',
-        title: longParagraphs.length + ' paragraph(s) exceed 150 words',
-        detail: 'Long paragraphs reduce scanability. Ideal: 40-80 words per paragraph.',
-        fix: 'Break long paragraphs into shorter ones. Use subheadings, bullet lists, or callout boxes to chunk content.',
+        title: 'No prefers-reduced-motion support detected',
+        detail: (anim.keyframeCount || 0) + ' @keyframes rules found. Users with vestibular disorders need the option to reduce motion.',
+        fix: 'Add @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }',
         presetRef: null,
-        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+        source: 'WCAG 2.2 §2.3.3 — https://www.w3.org/TR/WCAG22/#animation-from-interactions'
       });
+    } else {
+      passed++; // No significant animations, no need for reduced-motion
     }
 
-    // List usage for scanability
-    if (rd.totalWords >= 100 && !rd.hasLists) {
+    // Hidden elements waiting for scroll-reveal
+    if (anim.hiddenElements > 0) {
+      checks++;
+      if (anim.hiddenElements <= 5) {
+        passed++;
+        findings.push({
+          severity: 'info',
+          title: anim.hiddenElements + ' element(s) with opacity:0 + transition (pre-animation state)',
+          detail: 'These elements are invisible at scan time (pre-animation state). Their contrast/sizing was not checked.',
+          fix: 'This is normal for scroll-reveal animations. Run the snippet after scrolling the full page for complete analysis.',
+          presetRef: null,
+          preAnimationState: true
+        });
+      } else {
+        findings.push({
+          severity: 'warning',
+          title: anim.hiddenElements + ' hidden elements waiting for animation trigger (pre-animation state)',
+          detail: 'A large portion of the page is invisible at load time (pre-animation state). This may affect perceived loading speed and SEO.',
+          fix: 'Consider showing initial content without animation, then enhancing with scroll effects. Ensure content is accessible without JS.',
+          presetRef: null,
+          preAnimationState: true,
+          source: 'WCAG 2.2 §2.3.3 — https://www.w3.org/TR/WCAG22/#animation-from-interactions'
+        });
+      }
+    }
+
+    // Scroll-reveal library detection
+    var patterns = anim.scrollRevealPatterns || [];
+    if (patterns.length > 0) {
+      var totalReveal = patterns.reduce(function(s, p) { return s + p.count; }, 0);
       findings.push({
         severity: 'info',
-        title: 'No lists found in content area',
-        detail: 'Lists improve scanability by 47% compared to wall-of-text (NNGroup)',
-        fix: 'Convert sequences, features, or steps into <ul>/<ol> lists where appropriate.',
+        title: 'Scroll-reveal library detected: ' + totalReveal + ' animated element(s)',
+        detail: 'Libraries found: ' + patterns.map(function(p) { return p.selector + ' (' + p.count + ')'; }).join(', '),
+        fix: 'Ensure scroll-reveal animations respect prefers-reduced-motion and that content is visible without JavaScript.',
         presetRef: null,
-        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+        source: 'WCAG 2.2 §2.3.3 — https://www.w3.org/TR/WCAG22/#animation-from-interactions'
       });
     }
 
-    // Table cell readability on mobile (cramped/wrapped cells)
-    var tableCellIssues = (data.layout && data.layout.tableCellIssues) || [];
-    if (tableCellIssues.length > 0) {
+    // Transition count: too many or too few
+    var transitions = (data.interaction && data.interaction.transitions) || [];
+    if (transitions.length > 0) {
       checks++;
-      var tableDetails = tableCellIssues.slice(0, 3).map(function(t) {
-        var parts = [];
-        if (t.crampedCells > 0) parts.push(t.crampedCells + ' cells lack horizontal padding');
-        if (t.wrappedCells > 0) parts.push(t.wrappedCells + ' cells wrap to multiple lines');
-        return t.selector + ': ' + parts.join(', ') + ' (table ' + t.tableWidth + 'px on ' + t.vpWidth + 'px viewport)';
-      });
-      findings.push({
-        severity: tableCellIssues.some(function(t) { return t.crampedCells > 4 || t.wrappedCells > 4; }) ? 'error' : 'warning',
-        title: 'Table readability issues on mobile (' + tableCellIssues.length + ' table' + (tableCellIssues.length > 1 ? 's' : '') + ')',
-        detail: tableDetails.join('; '),
-        fix: 'Add horizontal padding to table cells (px-3 sm:px-4). For narrow viewports, consider hiding low-priority columns, using a responsive card layout, or reducing font size.',
-        source: 'NNGroup Mobile Tables — https://www.nngroup.com/articles/mobile-tables/',
-        locator: { selector: tableCellIssues[0].selector, text: '' }
-      });
+      if (transitions.length <= 8) {
+        passed++;
+      } else {
+        findings.push({
+          severity: 'info',
+          title: transitions.length + ' unique transition durations (recommend ≤5)',
+          detail: 'Using many different durations creates inconsistent motion feel.',
+          fix: 'Standardize to 2-3 durations: fast (150ms), normal (300ms), slow (500ms).',
+          source: 'Material Design motion — https://m3.material.io/styles/motion/overview'
+        });
+      }
+    }
+
+    // Keyframe animation count
+    if (anim.keyframeCount > 0) {
+      checks++;
+      if (anim.keyframeCount <= 10) {
+        passed++;
+      } else {
+        findings.push({
+          severity: 'info',
+          title: anim.keyframeCount + ' @keyframes rules (high count)',
+          detail: 'Many animations can cause performance issues and visual overwhelm.',
+          fix: 'Review if all animations serve a purpose. Remove decorative animations.',
+          source: 'NNGroup — https://www.nngroup.com/articles/animation-usability/'
+        });
+      }
     }
 
     var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
     var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
     var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-    return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Readability', icon: 'readability' };
+    return { score: score, findings: findings, checks: checks, passed: passed, weight: 3, label: 'Motion & Animation', icon: 'cognitive' };
   }
 
-  S.register("readability", scoreReadability, 5, "Readability", "readability");
+  S.register("filters", scoreFilters, 3, "Motion & Animation", "cognitive");
 })();
 </file>
 
@@ -21668,121 +21783,6 @@ async function main() {
 main().catch(err => { console.error('Fatal:', err); process.exit(1); });
 </file>
 
-<file path="docs/scoring/filters.js">
-// Scoring Module: Motion, Animation & Filters
-// Weight: 3%
-// Sources: WCAG 2.2 §2.3.3, CSS Filter Effects spec
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-  function scoreFilters(data) {
-    var findings = [];
-    var checks = 0;
-    var passed = 0;
-    var anim = data.animation || {};
-
-    // prefers-reduced-motion support
-    checks++;
-    if (anim.hasReducedMotion) {
-      passed++;
-    } else if (anim.keyframeCount > 0 || (data.interaction && data.interaction.transitions && data.interaction.transitions.length > 2)) {
-      findings.push({
-        severity: 'warning',
-        title: 'No prefers-reduced-motion support detected',
-        detail: (anim.keyframeCount || 0) + ' @keyframes rules found. Users with vestibular disorders need the option to reduce motion.',
-        fix: 'Add @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }',
-        presetRef: null,
-        source: 'WCAG 2.2 §2.3.3 — https://www.w3.org/TR/WCAG22/#animation-from-interactions'
-      });
-    } else {
-      passed++; // No significant animations, no need for reduced-motion
-    }
-
-    // Hidden elements waiting for scroll-reveal
-    if (anim.hiddenElements > 0) {
-      checks++;
-      if (anim.hiddenElements <= 5) {
-        passed++;
-        findings.push({
-          severity: 'info',
-          title: anim.hiddenElements + ' element(s) with opacity:0 + transition (pre-animation state)',
-          detail: 'These elements are invisible at scan time (pre-animation state). Their contrast/sizing was not checked.',
-          fix: 'This is normal for scroll-reveal animations. Run the snippet after scrolling the full page for complete analysis.',
-          presetRef: null,
-          preAnimationState: true
-        });
-      } else {
-        findings.push({
-          severity: 'warning',
-          title: anim.hiddenElements + ' hidden elements waiting for animation trigger (pre-animation state)',
-          detail: 'A large portion of the page is invisible at load time (pre-animation state). This may affect perceived loading speed and SEO.',
-          fix: 'Consider showing initial content without animation, then enhancing with scroll effects. Ensure content is accessible without JS.',
-          presetRef: null,
-          preAnimationState: true,
-          source: 'WCAG 2.2 §2.3.3 — https://www.w3.org/TR/WCAG22/#animation-from-interactions'
-        });
-      }
-    }
-
-    // Scroll-reveal library detection
-    var patterns = anim.scrollRevealPatterns || [];
-    if (patterns.length > 0) {
-      var totalReveal = patterns.reduce(function(s, p) { return s + p.count; }, 0);
-      findings.push({
-        severity: 'info',
-        title: 'Scroll-reveal library detected: ' + totalReveal + ' animated element(s)',
-        detail: 'Libraries found: ' + patterns.map(function(p) { return p.selector + ' (' + p.count + ')'; }).join(', '),
-        fix: 'Ensure scroll-reveal animations respect prefers-reduced-motion and that content is visible without JavaScript.',
-        presetRef: null,
-        source: 'WCAG 2.2 §2.3.3 — https://www.w3.org/TR/WCAG22/#animation-from-interactions'
-      });
-    }
-
-    // Transition count: too many or too few
-    var transitions = (data.interaction && data.interaction.transitions) || [];
-    if (transitions.length > 0) {
-      checks++;
-      if (transitions.length <= 8) {
-        passed++;
-      } else {
-        findings.push({
-          severity: 'info',
-          title: transitions.length + ' unique transition durations (recommend ≤5)',
-          detail: 'Using many different durations creates inconsistent motion feel.',
-          fix: 'Standardize to 2-3 durations: fast (150ms), normal (300ms), slow (500ms).',
-          source: 'Material Design motion — https://m3.material.io/styles/motion/overview'
-        });
-      }
-    }
-
-    // Keyframe animation count
-    if (anim.keyframeCount > 0) {
-      checks++;
-      if (anim.keyframeCount <= 10) {
-        passed++;
-      } else {
-        findings.push({
-          severity: 'info',
-          title: anim.keyframeCount + ' @keyframes rules (high count)',
-          detail: 'Many animations can cause performance issues and visual overwhelm.',
-          fix: 'Review if all animations serve a purpose. Remove decorative animations.',
-          source: 'NNGroup — https://www.nngroup.com/articles/animation-usability/'
-        });
-      }
-    }
-
-    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-    var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-    var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-    return { score: score, findings: findings, checks: checks, passed: passed, weight: 3, label: 'Motion & Animation', icon: 'cognitive' };
-  }
-
-  S.register("filters", scoreFilters, 3, "Motion & Animation", "cognitive");
-})();
-</file>
-
 <file path="docs/scoring/spacing.js">
 // Scoring Module: Spacing & Layout
 // Weight: 15%
@@ -22220,6 +22220,146 @@ function scorePerformance(data) {
 
   S.register("performance", scorePerformance, 5, "Performance", "cognitive");
 })();
+</file>
+
+<file path="docs/ANALYZER-TODO.md">
+# Analyzer TODO
+
+## Completed (69 items)
+
+### Core
+- [x] Modular scoring architecture (14 modules in `scoring/`)
+- [x] 8 audience profiles with evidence-based thresholds (General, WCAG AAA, Elderly, Low Vision, Motor Impairment, Color Blind, Children, Cognitive)
+- [x] 4 input modes (URL fetch, console snippet, paste HTML, import JSON)
+- [x] Gradient contrast via canvas sampling (multi-layer compositing)
+- [x] Background image contrast via canvas (CORS-limited)
+- [x] CSS filter contrast math (brightness, contrast, opacity)
+- [x] APCA contrast algorithm alongside WCAG
+- [x] oklch/oklab color parsing via canvas fallback
+- [x] Space-separated rgb() syntax support
+- [x] Page context detection (marketing/form/app/content)
+- [x] Fragment detection (skips document-level checks for pasted HTML snippets)
+- [x] Decorative element filtering
+- [x] Post-analysis exclusion suggestions (two-step flow)
+- [x] Extraction data caching (sessionStorage)
+- [x] Dark mode report styling
+- [x] AA/AAA profile switching (captures pairs up to 7.5:1)
+- [x] N/A category detection (modules return notApplicable when nothing to check)
+- [x] Context-aware touch targets (nav/footer/inline/button classification per WCAG 2.5.8)
+- [x] CVD palette simulation (Machado et al. 2009 matrices for protanopia, deuteranopia, tritanopia)
+- [x] JS-dependent page detection (warns when page needs JS execution)
+
+### UI & Features
+- [x] Page screenshots (modern-screenshot library, viewport sections, zoom lightbox)
+- [x] Analysis history in localStorage (max 10, dedup by URL+profile)
+- [x] JSON export/import with drag-and-drop
+- [x] Viewport size selector (defaults to current window size)
+- [x] Progress bar during analysis
+- [x] URL autocomplete from history
+- [x] Mobile-optimized layout (CSS grid header, icon-only buttons)
+- [x] Self-hosted CORS proxy (Cloudflare Worker with rate limiting, SSRF protection)
+- [x] Proxy URL injection via local .env (not committed)
+
+### Extraction
+- [x] Actual character-per-line via span measurement
+- [x] Section gaps for whitespace rhythm
+- [x] Left-edge alignment clustering
+- [x] Heading-to-body ratio for visual hierarchy
+- [x] Border radius value clustering
+- [x] Paragraph text extraction (Coleman-Liau)
+- [x] Font loading rules from stylesheets
+- [x] Render-blocking resource counts
+- [x] DOM size and depth
+- [x] Adjacent sibling spacing
+- [x] Animation/keyframe detection
+- [x] Scroll-reveal pattern detection
+- [x] Transform translateY off-screen detection
+- [x] Element overflow detection
+- [x] Letter spacing audit
+- [x] Negative margin detection
+- [x] Container padding clustering
+- [x] Third-party script count
+- [x] Image format audit (WebP/AVIF vs legacy)
+- [x] CLS via PerformanceObserver
+- [x] LCP estimation (API + heuristic)
+- [x] Fixed-width element detection
+- [x] Text truncation (ellipsis) audit
+- [x] ARIA role audit (button tabindex, hidden focusable)
+- [x] Bad link text detection
+- [x] Missing autocomplete on form fields
+- [x] Color-only indicator detection
+- [x] Auto-playing unmuted media detection
+- [x] Padding-inclusive touch measurement (checks parent label/link)
+
+### Testing
+- [x] Headless browser test suite (Puppeteer, serves docs/ locally, renders presets in real iframe with Tailwind)
+- [x] 125 preset templates validated — avg 88, min 69, max 100
+- [x] Before/clean gap verified: 81 avg vs 88 avg (7pt differentiation)
+- [x] Browser-based test runner (`docs/tests/test-presets-rendered.html`)
+- [x] Unit tests for scoring modules (`docs/tests/test-scoring.html`)
+- [x] Edge case test pages (gradients, dark backgrounds, fixed-width, truncation)
+- [x] 3 iterations of template fixes across 125 files (contrast, focus-visible, semantics)
+
+## Completed: Deep Scan Mode
+
+- [x] **Multi-viewport testing** — Spawn 3 parallel iframes at 375/768/1280px, merge results
+- [x] **Dark mode class toggle** — Toggle `.dark` on html, re-extract colors. ~95% reliable for Tailwind/class-based sites
+- [x] **Dark mode media query rewriting** — Extract `prefers-color-scheme: dark` rules from stylesheets, inject unconditionally. ~80-90% reliable
+- [x] **Scroll before extraction** — Auto-scroll full page to trigger intersection observers
+
+## Future: LLM Integration (opt-in)
+
+Default off. Only when user provides API key. See research notes in this file's git history.
+
+- [ ] Soft judgment: tone, copy clarity, color palette appropriateness
+- [ ] Finding summarization in plain language
+- [ ] Clearly labeled as "AI-generated" separate from evidence-based findings
+
+## Decided to Skip (with reasons)
+
+| Item | Reason |
+|------|--------|
+| Vertical rhythm detection | ~60% accuracy, too many false positives |
+| Nested spacing consistency | Can't determine spacing "intent" without component boundaries |
+| Gap vs margin consistency | Mixing is often correct (gap for flex, margin for flow) |
+| Overlapping targets | False positives from menus, dropdowns, positioned elements |
+| Click density mapping | No clear threshold for "too dense," subjective |
+| Shadow consistency | Too many legitimate shadow variations (elevation levels) |
+| Color distance (CIEDE2000) | Complex (~200 lines), similar colors often intentional |
+| Icon sizing consistency | SVG sizing too chaotic in practice |
+| Decision point counting | Counting buttons/links per section unreliable |
+| Information density | Elements-per-viewport varies wildly by page type |
+| Modal/popup detection | position:fixed catches headers/footers too |
+| Grid structure detection | Inferring columns from widths unreliable with flexbox |
+| Proximity grouping | Requires semantic understanding, pure DOM can't do it |
+| Sticky element audit | Almost always intentional, nothing actionable |
+| Critical CSS detection | Requires multi-viewport rendering analysis |
+| Inline CSS size | Often intentional (critical CSS pattern) |
+| Flash/strobe detection | Needs frame-by-frame analysis, not feasible from DOM |
+| F-pattern detection | ~40% accuracy without AI |
+| Whitespace ratio | Varies by page type, no universal threshold |
+| Web Worker extraction | Workers can't access DOM |
+
+## Research Documents
+
+- `research/analyzer-roadmap.md` — P0/P1 roadmap, priority matrix (794 lines)
+- `research/analyzer-p2-research.md` — P2/P3 feature research (928 lines)
+- `research/multi-viewport-dark-mode.md` — Multi-viewport & dark mode feasibility (345 lines)
+- `research/analyzer-test-rendered.md` — Latest headless test results (125 presets, per-module averages)
+
+## E2E Testing
+
+Run `node scripts/test-presets-headless.mjs` for the full rendered test suite. Requires Puppeteer (`npm i puppeteer`). The script:
+1. Serves `docs/` on localhost:8765
+2. Loads each preset in a real iframe with Tailwind CSS
+3. Runs the same extraction + scoring as the production analyzer
+4. Outputs results to `research/analyzer-test-rendered.md`
+
+Key metrics to track:
+- **Overall average** should be ≥85 (currently 88)
+- **Before/clean gap** should be ≥5 points (currently 7) — proves the analyzer differentiates design quality
+- **Contrast average** is the weakest category (currently 46) — legitimate failures from Tailwind's default light color shades
+- **No module should average below 40** except Contrast (known issue with Tailwind color scale)
 </file>
 
 <file path="docs/scoring/consistency.js">
@@ -22685,146 +22825,6 @@ function scoreTypography(data) {
 
   S.register("typography", scoreTypography, 15, "Typography", "type");
 })();
-</file>
-
-<file path="docs/ANALYZER-TODO.md">
-# Analyzer TODO
-
-## Completed (69 items)
-
-### Core
-- [x] Modular scoring architecture (14 modules in `scoring/`)
-- [x] 8 audience profiles with evidence-based thresholds (General, WCAG AAA, Elderly, Low Vision, Motor Impairment, Color Blind, Children, Cognitive)
-- [x] 4 input modes (URL fetch, console snippet, paste HTML, import JSON)
-- [x] Gradient contrast via canvas sampling (multi-layer compositing)
-- [x] Background image contrast via canvas (CORS-limited)
-- [x] CSS filter contrast math (brightness, contrast, opacity)
-- [x] APCA contrast algorithm alongside WCAG
-- [x] oklch/oklab color parsing via canvas fallback
-- [x] Space-separated rgb() syntax support
-- [x] Page context detection (marketing/form/app/content)
-- [x] Fragment detection (skips document-level checks for pasted HTML snippets)
-- [x] Decorative element filtering
-- [x] Post-analysis exclusion suggestions (two-step flow)
-- [x] Extraction data caching (sessionStorage)
-- [x] Dark mode report styling
-- [x] AA/AAA profile switching (captures pairs up to 7.5:1)
-- [x] N/A category detection (modules return notApplicable when nothing to check)
-- [x] Context-aware touch targets (nav/footer/inline/button classification per WCAG 2.5.8)
-- [x] CVD palette simulation (Machado et al. 2009 matrices for protanopia, deuteranopia, tritanopia)
-- [x] JS-dependent page detection (warns when page needs JS execution)
-
-### UI & Features
-- [x] Page screenshots (modern-screenshot library, viewport sections, zoom lightbox)
-- [x] Analysis history in localStorage (max 10, dedup by URL+profile)
-- [x] JSON export/import with drag-and-drop
-- [x] Viewport size selector (defaults to current window size)
-- [x] Progress bar during analysis
-- [x] URL autocomplete from history
-- [x] Mobile-optimized layout (CSS grid header, icon-only buttons)
-- [x] Self-hosted CORS proxy (Cloudflare Worker with rate limiting, SSRF protection)
-- [x] Proxy URL injection via local .env (not committed)
-
-### Extraction
-- [x] Actual character-per-line via span measurement
-- [x] Section gaps for whitespace rhythm
-- [x] Left-edge alignment clustering
-- [x] Heading-to-body ratio for visual hierarchy
-- [x] Border radius value clustering
-- [x] Paragraph text extraction (Coleman-Liau)
-- [x] Font loading rules from stylesheets
-- [x] Render-blocking resource counts
-- [x] DOM size and depth
-- [x] Adjacent sibling spacing
-- [x] Animation/keyframe detection
-- [x] Scroll-reveal pattern detection
-- [x] Transform translateY off-screen detection
-- [x] Element overflow detection
-- [x] Letter spacing audit
-- [x] Negative margin detection
-- [x] Container padding clustering
-- [x] Third-party script count
-- [x] Image format audit (WebP/AVIF vs legacy)
-- [x] CLS via PerformanceObserver
-- [x] LCP estimation (API + heuristic)
-- [x] Fixed-width element detection
-- [x] Text truncation (ellipsis) audit
-- [x] ARIA role audit (button tabindex, hidden focusable)
-- [x] Bad link text detection
-- [x] Missing autocomplete on form fields
-- [x] Color-only indicator detection
-- [x] Auto-playing unmuted media detection
-- [x] Padding-inclusive touch measurement (checks parent label/link)
-
-### Testing
-- [x] Headless browser test suite (Puppeteer, serves docs/ locally, renders presets in real iframe with Tailwind)
-- [x] 125 preset templates validated — avg 88, min 69, max 100
-- [x] Before/clean gap verified: 81 avg vs 88 avg (7pt differentiation)
-- [x] Browser-based test runner (`docs/tests/test-presets-rendered.html`)
-- [x] Unit tests for scoring modules (`docs/tests/test-scoring.html`)
-- [x] Edge case test pages (gradients, dark backgrounds, fixed-width, truncation)
-- [x] 3 iterations of template fixes across 125 files (contrast, focus-visible, semantics)
-
-## Completed: Deep Scan Mode
-
-- [x] **Multi-viewport testing** — Spawn 3 parallel iframes at 375/768/1280px, merge results
-- [x] **Dark mode class toggle** — Toggle `.dark` on html, re-extract colors. ~95% reliable for Tailwind/class-based sites
-- [x] **Dark mode media query rewriting** — Extract `prefers-color-scheme: dark` rules from stylesheets, inject unconditionally. ~80-90% reliable
-- [x] **Scroll before extraction** — Auto-scroll full page to trigger intersection observers
-
-## Future: LLM Integration (opt-in)
-
-Default off. Only when user provides API key. See research notes in this file's git history.
-
-- [ ] Soft judgment: tone, copy clarity, color palette appropriateness
-- [ ] Finding summarization in plain language
-- [ ] Clearly labeled as "AI-generated" separate from evidence-based findings
-
-## Decided to Skip (with reasons)
-
-| Item | Reason |
-|------|--------|
-| Vertical rhythm detection | ~60% accuracy, too many false positives |
-| Nested spacing consistency | Can't determine spacing "intent" without component boundaries |
-| Gap vs margin consistency | Mixing is often correct (gap for flex, margin for flow) |
-| Overlapping targets | False positives from menus, dropdowns, positioned elements |
-| Click density mapping | No clear threshold for "too dense," subjective |
-| Shadow consistency | Too many legitimate shadow variations (elevation levels) |
-| Color distance (CIEDE2000) | Complex (~200 lines), similar colors often intentional |
-| Icon sizing consistency | SVG sizing too chaotic in practice |
-| Decision point counting | Counting buttons/links per section unreliable |
-| Information density | Elements-per-viewport varies wildly by page type |
-| Modal/popup detection | position:fixed catches headers/footers too |
-| Grid structure detection | Inferring columns from widths unreliable with flexbox |
-| Proximity grouping | Requires semantic understanding, pure DOM can't do it |
-| Sticky element audit | Almost always intentional, nothing actionable |
-| Critical CSS detection | Requires multi-viewport rendering analysis |
-| Inline CSS size | Often intentional (critical CSS pattern) |
-| Flash/strobe detection | Needs frame-by-frame analysis, not feasible from DOM |
-| F-pattern detection | ~40% accuracy without AI |
-| Whitespace ratio | Varies by page type, no universal threshold |
-| Web Worker extraction | Workers can't access DOM |
-
-## Research Documents
-
-- `research/analyzer-roadmap.md` — P0/P1 roadmap, priority matrix (794 lines)
-- `research/analyzer-p2-research.md` — P2/P3 feature research (928 lines)
-- `research/multi-viewport-dark-mode.md` — Multi-viewport & dark mode feasibility (345 lines)
-- `research/analyzer-test-rendered.md` — Latest headless test results (125 presets, per-module averages)
-
-## E2E Testing
-
-Run `node scripts/test-presets-headless.mjs` for the full rendered test suite. Requires Puppeteer (`npm i puppeteer`). The script:
-1. Serves `docs/` on localhost:8765
-2. Loads each preset in a real iframe with Tailwind CSS
-3. Runs the same extraction + scoring as the production analyzer
-4. Outputs results to `research/analyzer-test-rendered.md`
-
-Key metrics to track:
-- **Overall average** should be ≥85 (currently 88)
-- **Before/clean gap** should be ≥5 points (currently 7) — proves the analyzer differentiates design quality
-- **Contrast average** is the weakest category (currently 46) — legitimate failures from Tailwind's default light color shades
-- **No module should average below 40** except Contrast (known issue with Tailwind color scale)
 </file>
 
 <file path="docs/scoring/touch.js">
