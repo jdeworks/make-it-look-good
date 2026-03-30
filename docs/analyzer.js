@@ -2092,18 +2092,16 @@
         return;
       }
 
-      // Patch URL constructor — inside srcdoc, window.location.href is "about:srcdoc"
-      // which isn't a valid base URL. Many JS frameworks do new URL(path, location.href)
-      // which throws. This patches the constructor to use the real site URL as fallback.
-      // Patch URL constructor — inside srcdoc:
-      //   window.location.href → "about:srcdoc" (not a valid base)
-      //   window.location.origin → "null" (the string, not null)
-      //   Location object toString → "about:srcdoc"
-      // Many frameworks do new URL(path, location.href) or new URL(path, location.origin).
-      // Strategy: check known bad bases first (fast), then try/catch as fallback for anything else.
+      // Comprehensive srcdoc environment patches:
+      // Inside srcdoc iframes, many Web APIs break because the document origin is the
+      // parent's origin (jdeworks.github.io) while the page's JS expects the real site.
+      // We patch: URL constructor, History API, and provide error-resilient wrappers.
+      var escapedUrl = url.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
       var urlPatch = '<script>' +
         '(function(){' +
-          'var _rb="' + url.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '";' +
+          'var _rb="' + escapedUrl + '";' +
+          // --- URL constructor patch ---
+          // location.href="about:srcdoc", location.origin="null", Location→"about:srcdoc"
           'var _O=URL;' +
           'function _P(u,b){' +
             'if(b){' +
@@ -2117,8 +2115,23 @@
           '_P.prototype=_O.prototype;' +
           '_P.createObjectURL=_O.createObjectURL.bind(_O);' +
           '_P.revokeObjectURL=_O.revokeObjectURL.bind(_O);' +
-          '_P.canParse=_O.canParse?_O.canParse.bind(_O):undefined;' +
+          'if(_O.canParse)_P.canParse=_O.canParse.bind(_O);' +
           'window.URL=_P;' +
+          // --- History API patch ---
+          // Next.js/React Router call history.pushState/replaceState with the target site
+          // URL, which throws SecurityError because it doesn't match the document origin.
+          // Wrap to silently catch these errors (routing isn't needed for design analysis).
+          'var _hps=history.pushState.bind(history);' +
+          'var _hrs=history.replaceState.bind(history);' +
+          'history.pushState=function(s,t,u){try{_hps(s,t,u);}catch(e){}};' +
+          'history.replaceState=function(s,t,u){try{_hrs(s,t,u);}catch(e){}};' +
+          // --- Fetch patch ---
+          // Relative fetch("/api/...") would go to jdeworks.github.io. Rewrite to target.
+          'var _of=window.fetch;' +
+          'window.fetch=function(u,o){' +
+            'if(typeof u==="string"&&u.charAt(0)==="/")u=_rb.replace(/\\/$/,"")+u;' +
+            'return _of.call(this,u,o);' +
+          '};' +
         '})();' +
         '</' + 'script>';
 

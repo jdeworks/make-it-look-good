@@ -8735,6 +8735,131 @@ How much whitespace do I need?
 - Related: [Spacing System](spacing-system.md), [Grid Systems](grid-systems.md), [Visual Hierarchy](visual-hierarchy.md)
 </file>
 
+<file path="proxy/README.md">
+# CORS Proxy Worker
+
+A lightweight Cloudflare Worker that proxies HTTP requests with CORS headers, used by the Design Analyzer's URL input mode.
+
+## Why
+
+Browsers block cross-origin requests (CORS). To fetch and analyze external websites from a client-side app, we need a proxy that adds `Access-Control-Allow-Origin` headers. This self-hosted worker replaces dependency on third-party CORS proxies.
+
+## Full setup (from scratch)
+
+### 1. Deploy the Worker to Cloudflare
+
+1. [Sign up for Cloudflare](https://dash.cloudflare.com/sign-up) (free, no credit card)
+2. Install Wrangler (Cloudflare's deploy CLI):
+   ```bash
+   npm install -g wrangler
+   ```
+3. Login to Cloudflare:
+   ```bash
+   wrangler login
+   ```
+4. Deploy the worker:
+   ```bash
+   cd proxy
+   npx wrangler deploy
+   ```
+5. Copy the `*.workers.dev` URL from the output — that's your proxy URL
+
+### 2. Connect it to the Analyzer
+
+1. Copy `.env.example` to `.env` at the repo root:
+   ```bash
+   cp .env.example .env
+   ```
+2. Edit `.env` and set your worker URL:
+   ```
+   PROXY_URL=https://milg-cors-proxy.YOUR-SUB.workers.dev
+   ```
+3. Run the inject script:
+   ```bash
+   ./scripts/inject-proxy.sh
+   ```
+4. Commit and push:
+   ```bash
+   git add docs/analyzer.js
+   git commit -m "Inject proxy URL"
+   git push
+   ```
+
+GitHub Pages will serve the updated `docs/analyzer.js` with your proxy baked in.
+
+### 3. If you need to change the URL
+
+Edit `.env`, run `./scripts/inject-proxy.sh` again, commit and push.
+
+### 4. If you want to remove the proxy
+
+Delete `.env` (or clear `PROXY_URL`), run `./scripts/inject-proxy.sh` — it resets to the placeholder, falling back to third-party proxies.
+
+## Setting up on a different computer
+
+1. Clone the repo
+2. Create `.env` with your `PROXY_URL=...` (the `.env` file is gitignored)
+3. Run `./scripts/inject-proxy.sh`
+4. That's it — the deployed `docs/analyzer.js` already has the URL from your last push
+
+You only need to re-run the inject script if you want to change the URL or deploy from a fresh clone.
+
+## Free tier limits
+
+| | Free | Paid ($5/month) |
+|---|---|---|
+| Requests | 100K/day | 10M/month |
+| CPU time | 10ms/request | 30ms/request |
+| When exceeded | **Hard stop** (5XX until midnight UTC) | $0.30/million overage |
+
+100K/day handles ~5,500 daily users doing 3 analyses each. For context, each analysis uses ~4-6 proxied requests (1 HTML page + 3-5 CSS files).
+
+## Safety features
+
+| Feature | What it does |
+|---------|-------------|
+| **Origin checking** | Only browsers on `jdeworks.github.io` can use the proxy (unforgeable by browsers) |
+| **Rate limiting** | 30 requests/minute per IP address |
+| **SSRF protection** | Blocks localhost, private IPs, `.local` domains |
+| **Method restriction** | GET only, http/https only |
+| **Size limit** | 10 MB max response |
+
+## Configuration
+
+Edit `proxy/worker.js`:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ALLOWED_ORIGINS` | `['https://jdeworks.github.io']` | Allowed Origin domains. Set to `null` for any (dev only). |
+| `RATE_LIMIT` | `30` | Max requests per IP per minute |
+| `MAX_RESPONSE_SIZE` | `10 MB` | Max proxied response body |
+| `USER_AGENT` | `MilgAnalyzer/1.0` | User-Agent sent to target servers |
+
+After changing, redeploy: `cd proxy && npx wrangler deploy`
+
+## How the URL stays (mostly) hidden
+
+```
+.env (local, gitignored)
+  └── PROXY_URL=https://your-worker.workers.dev
+
+./scripts/inject-proxy.sh
+  └── base64-encodes URL → patches docs/analyzer.js
+
+docs/analyzer.js (committed)
+  └── var _pe = 'aHR0cHM6Ly8uLi4=';  (not a recognizable URL pattern)
+
+Browser (runtime)
+  └── atob() decodes → fetches from your worker
+```
+
+The encoded URL is in the committed JS (unavoidable for a static site). But:
+- The raw URL is never in git (`.env` is gitignored)
+- The encoded string doesn't match URL patterns (stops automated scrapers)
+- Origin checking + rate limiting in the worker caps abuse even if found
+- Anyone with DevTools Network tab can see the decoded URL on requests (that's fine — can't prevent it)
+</file>
+
 <file path="proxy/wrangler.toml">
 name = "milg-cors-proxy"
 main = "worker.js"
@@ -9696,6 +9821,49 @@ Choosing a responsive pattern?
 - CSS-Tricks — "A Complete Guide to CSS Grid": https://css-tricks.com/snippets/css/complete-guide-grid/
 - MDN Web Docs — CSS Grid Layout: https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_grid_layout
 - Ethan Marcotte (2011). "Responsive Web Design." A Book Apart.
+</file>
+
+<file path="scripts/inject-proxy.sh">
+#!/usr/bin/env bash
+# Reads PROXY_URL from .env and injects it (base64-encoded) into docs/analyzer.js
+# Usage: ./scripts/inject-proxy.sh
+#
+# The encoded URL replaces __PROXY_ENCODED__ in analyzer.js.
+# If no .env or PROXY_URL is empty, it resets to the placeholder (third-party fallback).
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+ANALYZER="$ROOT_DIR/docs/analyzer.js"
+ENV_FILE="$ROOT_DIR/.env"
+
+# Read .env if it exists
+PROXY_URL=""
+if [ -f "$ENV_FILE" ]; then
+  # Source only PROXY_URL (safe: we control the .env format)
+  PROXY_URL=$(grep -E '^PROXY_URL=' "$ENV_FILE" | head -1 | cut -d'=' -f2- | tr -d "'\"" | xargs)
+fi
+
+if [ -z "$PROXY_URL" ]; then
+  echo "No PROXY_URL found in .env — resetting to placeholder (third-party fallback mode)"
+  # Reset to placeholder if it was previously injected
+  sed -i "s|var _pe = '[^']*';|var _pe = '__PROXY_ENCODED__';|" "$ANALYZER"
+  echo "Done: docs/analyzer.js uses third-party proxies only"
+  exit 0
+fi
+
+# Base64-encode the URL
+ENCODED=$(echo -n "$PROXY_URL" | base64 -w 0 2>/dev/null || echo -n "$PROXY_URL" | base64)
+
+# Replace in analyzer.js (works whether current value is placeholder or a previous injection)
+sed -i "s|var _pe = '[^']*';|var _pe = '${ENCODED}';|" "$ANALYZER"
+
+echo "Injected proxy URL into docs/analyzer.js"
+echo "  URL: $PROXY_URL"
+echo "  Encoded: $ENCODED"
+echo ""
+echo "Next: commit docs/analyzer.js and push to deploy."
 </file>
 
 <file path="systems/apple-hig.md">
@@ -14868,6 +15036,34 @@ Match the user's tech stack — don't output Tailwind HTML to someone using Reac
 Always generate Design Review Notes (Step 4 in CONSULT.md) as the primary deliverable.
 </file>
 
+<file path=".env.example">
+# Copy this file to .env and fill in your values.
+# .env is gitignored — your URL stays out of the repo.
+#
+# After editing, run: ./scripts/inject-proxy.sh
+# Then commit docs/analyzer.js and push.
+
+# Your Cloudflare Worker proxy URL (see proxy/README.md to deploy one)
+PROXY_URL=https://milg-cors-proxy.YOUR-SUB.workers.dev
+</file>
+
+<file path=".gitignore">
+# Research directory (raw/intermediate data stays local)
+research/*
+!research/sources.md
+
+# Node (puppeteer used for screenshots only, not part of project)
+node_modules/
+package.json
+package-lock.json
+
+# Local environment (proxy URL etc.)
+.env
+
+# Claude Code commands (local skills, not shared)
+.claude/
+</file>
+
 <file path="AGENTS.md">
 # AGENTS.md — make-it-look-good
 
@@ -17378,131 +17574,6 @@ Where should I place primary actions on mobile?
 - [Steven Hoober — Design for Fingers and Thumbs](https://www.smashingmagazine.com/2012/02/finger-friendly-design-ideal-mobile-touchscreen-target-sizes/) — thumb zone research
 </file>
 
-<file path="proxy/README.md">
-# CORS Proxy Worker
-
-A lightweight Cloudflare Worker that proxies HTTP requests with CORS headers, used by the Design Analyzer's URL input mode.
-
-## Why
-
-Browsers block cross-origin requests (CORS). To fetch and analyze external websites from a client-side app, we need a proxy that adds `Access-Control-Allow-Origin` headers. This self-hosted worker replaces dependency on third-party CORS proxies.
-
-## Full setup (from scratch)
-
-### 1. Deploy the Worker to Cloudflare
-
-1. [Sign up for Cloudflare](https://dash.cloudflare.com/sign-up) (free, no credit card)
-2. Install Wrangler (Cloudflare's deploy CLI):
-   ```bash
-   npm install -g wrangler
-   ```
-3. Login to Cloudflare:
-   ```bash
-   wrangler login
-   ```
-4. Deploy the worker:
-   ```bash
-   cd proxy
-   npx wrangler deploy
-   ```
-5. Copy the `*.workers.dev` URL from the output — that's your proxy URL
-
-### 2. Connect it to the Analyzer
-
-1. Copy `.env.example` to `.env` at the repo root:
-   ```bash
-   cp .env.example .env
-   ```
-2. Edit `.env` and set your worker URL:
-   ```
-   PROXY_URL=https://milg-cors-proxy.YOUR-SUB.workers.dev
-   ```
-3. Run the inject script:
-   ```bash
-   ./scripts/inject-proxy.sh
-   ```
-4. Commit and push:
-   ```bash
-   git add docs/analyzer.js
-   git commit -m "Inject proxy URL"
-   git push
-   ```
-
-GitHub Pages will serve the updated `docs/analyzer.js` with your proxy baked in.
-
-### 3. If you need to change the URL
-
-Edit `.env`, run `./scripts/inject-proxy.sh` again, commit and push.
-
-### 4. If you want to remove the proxy
-
-Delete `.env` (or clear `PROXY_URL`), run `./scripts/inject-proxy.sh` — it resets to the placeholder, falling back to third-party proxies.
-
-## Setting up on a different computer
-
-1. Clone the repo
-2. Create `.env` with your `PROXY_URL=...` (the `.env` file is gitignored)
-3. Run `./scripts/inject-proxy.sh`
-4. That's it — the deployed `docs/analyzer.js` already has the URL from your last push
-
-You only need to re-run the inject script if you want to change the URL or deploy from a fresh clone.
-
-## Free tier limits
-
-| | Free | Paid ($5/month) |
-|---|---|---|
-| Requests | 100K/day | 10M/month |
-| CPU time | 10ms/request | 30ms/request |
-| When exceeded | **Hard stop** (5XX until midnight UTC) | $0.30/million overage |
-
-100K/day handles ~5,500 daily users doing 3 analyses each. For context, each analysis uses ~4-6 proxied requests (1 HTML page + 3-5 CSS files).
-
-## Safety features
-
-| Feature | What it does |
-|---------|-------------|
-| **Origin checking** | Only browsers on `jdeworks.github.io` can use the proxy (unforgeable by browsers) |
-| **Rate limiting** | 30 requests/minute per IP address |
-| **SSRF protection** | Blocks localhost, private IPs, `.local` domains |
-| **Method restriction** | GET only, http/https only |
-| **Size limit** | 10 MB max response |
-
-## Configuration
-
-Edit `proxy/worker.js`:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ALLOWED_ORIGINS` | `['https://jdeworks.github.io']` | Allowed Origin domains. Set to `null` for any (dev only). |
-| `RATE_LIMIT` | `30` | Max requests per IP per minute |
-| `MAX_RESPONSE_SIZE` | `10 MB` | Max proxied response body |
-| `USER_AGENT` | `MilgAnalyzer/1.0` | User-Agent sent to target servers |
-
-After changing, redeploy: `cd proxy && npx wrangler deploy`
-
-## How the URL stays (mostly) hidden
-
-```
-.env (local, gitignored)
-  └── PROXY_URL=https://your-worker.workers.dev
-
-./scripts/inject-proxy.sh
-  └── base64-encodes URL → patches docs/analyzer.js
-
-docs/analyzer.js (committed)
-  └── var _pe = 'aHR0cHM6Ly8uLi4=';  (not a recognizable URL pattern)
-
-Browser (runtime)
-  └── atob() decodes → fetches from your worker
-```
-
-The encoded URL is in the committed JS (unavoidable for a static site). But:
-- The raw URL is never in git (`.env` is gitignored)
-- The encoded string doesn't match URL patterns (stops automated scrapers)
-- Origin checking + rate limiting in the worker caps abuse even if found
-- Anyone with DevTools Network tab can see the decoded URL on requests (that's fine — can't prevent it)
-</file>
-
 <file path="proxy/worker.js">
 // make-it-look-good — CORS Proxy Worker
 // Deploy: cd proxy && npx wrangler deploy
@@ -17840,49 +17911,6 @@ cat "$SNIPPET" | sed '/try {$/,/var _msLoaded = Promise.reject(); }$/c\
 
 echo "Output: $OUTPUT ($(wc -c < "$OUTPUT") bytes)"
 echo "This version works on ALL sites regardless of CSP."
-</file>
-
-<file path="scripts/inject-proxy.sh">
-#!/usr/bin/env bash
-# Reads PROXY_URL from .env and injects it (base64-encoded) into docs/analyzer.js
-# Usage: ./scripts/inject-proxy.sh
-#
-# The encoded URL replaces __PROXY_ENCODED__ in analyzer.js.
-# If no .env or PROXY_URL is empty, it resets to the placeholder (third-party fallback).
-
-set -euo pipefail
-
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ROOT_DIR="$(dirname "$SCRIPT_DIR")"
-ANALYZER="$ROOT_DIR/docs/analyzer.js"
-ENV_FILE="$ROOT_DIR/.env"
-
-# Read .env if it exists
-PROXY_URL=""
-if [ -f "$ENV_FILE" ]; then
-  # Source only PROXY_URL (safe: we control the .env format)
-  PROXY_URL=$(grep -E '^PROXY_URL=' "$ENV_FILE" | head -1 | cut -d'=' -f2- | tr -d "'\"" | xargs)
-fi
-
-if [ -z "$PROXY_URL" ]; then
-  echo "No PROXY_URL found in .env — resetting to placeholder (third-party fallback mode)"
-  # Reset to placeholder if it was previously injected
-  sed -i "s|var _pe = '[^']*';|var _pe = '__PROXY_ENCODED__';|" "$ANALYZER"
-  echo "Done: docs/analyzer.js uses third-party proxies only"
-  exit 0
-fi
-
-# Base64-encode the URL
-ENCODED=$(echo -n "$PROXY_URL" | base64 -w 0 2>/dev/null || echo -n "$PROXY_URL" | base64)
-
-# Replace in analyzer.js (works whether current value is placeholder or a previous injection)
-sed -i "s|var _pe = '[^']*';|var _pe = '${ENCODED}';|" "$ANALYZER"
-
-echo "Injected proxy URL into docs/analyzer.js"
-echo "  URL: $PROXY_URL"
-echo "  Encoded: $ENCODED"
-echo ""
-echo "Next: commit docs/analyzer.js and push to deploy."
 </file>
 
 <file path="scripts/test-presets-headless.mjs">
@@ -18908,34 +18936,6 @@ Each preset has clean, minimalist, and playful personality variants. React and V
 - [Nielsen Norman Group](https://www.nngroup.com)
 - [Butterick's Practical Typography](https://practicaltypography.com)
 - [The Elements of Typographic Style (Bringhurst)](https://en.wikipedia.org/wiki/The_Elements_of_Typographic_Style)
-</file>
-
-<file path=".env.example">
-# Copy this file to .env and fill in your values.
-# .env is gitignored — your URL stays out of the repo.
-#
-# After editing, run: ./scripts/inject-proxy.sh
-# Then commit docs/analyzer.js and push.
-
-# Your Cloudflare Worker proxy URL (see proxy/README.md to deploy one)
-PROXY_URL=https://milg-cors-proxy.YOUR-SUB.workers.dev
-</file>
-
-<file path=".gitignore">
-# Research directory (raw/intermediate data stays local)
-research/*
-!research/sources.md
-
-# Node (puppeteer used for screenshots only, not part of project)
-node_modules/
-package.json
-package-lock.json
-
-# Local environment (proxy URL etc.)
-.env
-
-# Claude Code commands (local skills, not shared)
-.claude/
 </file>
 
 <file path="README.md">
@@ -33137,18 +33137,16 @@ function scoreLayout(data) {
         return;
       }
 
-      // Patch URL constructor — inside srcdoc, window.location.href is "about:srcdoc"
-      // which isn't a valid base URL. Many JS frameworks do new URL(path, location.href)
-      // which throws. This patches the constructor to use the real site URL as fallback.
-      // Patch URL constructor — inside srcdoc:
-      //   window.location.href → "about:srcdoc" (not a valid base)
-      //   window.location.origin → "null" (the string, not null)
-      //   Location object toString → "about:srcdoc"
-      // Many frameworks do new URL(path, location.href) or new URL(path, location.origin).
-      // Strategy: check known bad bases first (fast), then try/catch as fallback for anything else.
+      // Comprehensive srcdoc environment patches:
+      // Inside srcdoc iframes, many Web APIs break because the document origin is the
+      // parent's origin (jdeworks.github.io) while the page's JS expects the real site.
+      // We patch: URL constructor, History API, and provide error-resilient wrappers.
+      var escapedUrl = url.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
       var urlPatch = '<script>' +
         '(function(){' +
-          'var _rb="' + url.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '";' +
+          'var _rb="' + escapedUrl + '";' +
+          // --- URL constructor patch ---
+          // location.href="about:srcdoc", location.origin="null", Location→"about:srcdoc"
           'var _O=URL;' +
           'function _P(u,b){' +
             'if(b){' +
@@ -33162,8 +33160,23 @@ function scoreLayout(data) {
           '_P.prototype=_O.prototype;' +
           '_P.createObjectURL=_O.createObjectURL.bind(_O);' +
           '_P.revokeObjectURL=_O.revokeObjectURL.bind(_O);' +
-          '_P.canParse=_O.canParse?_O.canParse.bind(_O):undefined;' +
+          'if(_O.canParse)_P.canParse=_O.canParse.bind(_O);' +
           'window.URL=_P;' +
+          // --- History API patch ---
+          // Next.js/React Router call history.pushState/replaceState with the target site
+          // URL, which throws SecurityError because it doesn't match the document origin.
+          // Wrap to silently catch these errors (routing isn't needed for design analysis).
+          'var _hps=history.pushState.bind(history);' +
+          'var _hrs=history.replaceState.bind(history);' +
+          'history.pushState=function(s,t,u){try{_hps(s,t,u);}catch(e){}};' +
+          'history.replaceState=function(s,t,u){try{_hrs(s,t,u);}catch(e){}};' +
+          // --- Fetch patch ---
+          // Relative fetch("/api/...") would go to jdeworks.github.io. Rewrite to target.
+          'var _of=window.fetch;' +
+          'window.fetch=function(u,o){' +
+            'if(typeof u==="string"&&u.charAt(0)==="/")u=_rb.replace(/\\/$/,"")+u;' +
+            'return _of.call(this,u,o);' +
+          '};' +
         '})();' +
         '</' + 'script>';
 
