@@ -1680,14 +1680,19 @@
     var vh = window.innerHeight || 900;
     var captureH = Math.min(totalH, 32000);
 
+    console.log('[ss] totalH=' + totalH + ' vh=' + vh + ' captureH=' + captureH + ' sections=' + Math.ceil(captureH / vh));
+    var _ssStart = Date.now();
+
     if (captureH <= vh * 3) {
+      console.log('[ss] Short page — single capture (no scroll needed)');
       ms.domToCanvas(document.documentElement, { scale: 0.5 }).then(function(canvas) {
+        console.log('[ss] domToCanvas done (' + (Date.now() - _ssStart) + 'ms), canvas=' + canvas.width + 'x' + canvas.height);
         canvas.toBlob(function(blob) {
-          if (!blob) { data.screenshots = []; outputData(data); return; }
+          if (!blob) { console.log('[ss] toBlob returned null'); data.screenshots = []; outputData(data); return; }
           var reader = new FileReader();
           reader.onloadend = function() {
             data.screenshots = [reader.result];
-            console.log('%c✓ Screenshot captured (' + Math.round(reader.result.length / 1024) + ' KB)', 'color: #16a34a;');
+            console.log('%c✓ Screenshot captured (' + Math.round(reader.result.length / 1024) + ' KB, ' + (Date.now() - _ssStart) + 'ms)', 'color: #16a34a;');
             outputData(data);
           };
           reader.readAsDataURL(blob);
@@ -1698,49 +1703,75 @@
         outputData(data);
       });
     } else {
+      console.log('[ss] Tall page — multi-section capture');
       var shots = [];
       var y = 0;
       var secH = vh;
       function captureNext() {
         if (y >= captureH || shots.length >= 5) {
+          // Restore scroll position
+          window.scrollTo(0, 0);
           data.screenshots = shots;
-          console.log('%c✓ ' + shots.length + ' screenshot(s) captured', 'color: #16a34a;');
+          console.log('%c✓ ' + shots.length + ' screenshot(s) captured (' + (Date.now() - _ssStart) + 'ms total)', 'color: #16a34a;');
           outputData(data);
           return;
         }
-        // Step 1: Scroll to position — triggers scroll listeners, IntersectionObserver,
-        // lazy loading, reveal animations, sticky headers, etc.
+        var secIdx = Math.floor(y / secH) + 1;
+        var secTotal = Math.min(Math.ceil(captureH / secH), 5);
+        var secStart = Date.now();
+        console.log('[ss] Section ' + secIdx + '/' + secTotal + ' — y=' + y);
+
+        // Step 1: Scroll to trigger lazy content (skip for first section — already there)
         window.scrollTo(0, y);
-        window.dispatchEvent(new Event('scroll'));
-        // Step 2: Wait for scroll-triggered content to render (lazy images, animations)
+        if (y > 0) { try { window.dispatchEvent(new Event('scroll')); } catch(e) {} }
+
+        // Step 2: Wait for scroll-triggered content (shorter for first section)
+        var scrollDelay = y === 0 ? 50 : 300;
         setTimeout(function() {
-          // Force any pending IntersectionObserver callbacks
           void document.documentElement.offsetHeight;
-          // Step 3: Wait again for async content (image decode, CSS transitions)
-          setTimeout(function() {
-          // Step 4: Apply translateY offset so domToCanvas captures the scrolled viewport
-          // (domToCanvas renders from DOM position, not visual viewport)
+          console.log('[ss]   scroll settled (' + (Date.now() - secStart) + 'ms)');
+
+          // Step 3: Apply translateY offset for domToCanvas
           var origTransform = document.documentElement.style.transform;
           var origOverflow = document.documentElement.style.overflow;
           document.documentElement.style.transform = 'translateY(-' + y + 'px)';
           document.documentElement.style.overflow = 'hidden';
           void document.documentElement.offsetHeight; // force reflow
-          ms.domToCanvas(document.documentElement, { scale: 0.5, width: window.innerWidth, height: Math.min(secH, captureH - y) }).then(function(canvas) {
+          console.log('[ss]   translateY(-' + y + 'px) applied, calling domToCanvas...');
+
+          var captH = Math.min(secH, captureH - y);
+          ms.domToCanvas(document.documentElement, { scale: 0.5, width: window.innerWidth, height: captH }).then(function(canvas) {
+            // Restore immediately after capture
             document.documentElement.style.transform = origTransform || '';
             document.documentElement.style.overflow = origOverflow || '';
+            console.log('[ss]   domToCanvas done (' + (Date.now() - secStart) + 'ms), canvas=' + canvas.width + 'x' + canvas.height);
+
             canvas.toBlob(function(blob) {
-              if (!blob) { y += secH; captureNext(); return; }
+              if (!blob) {
+                console.log('[ss]   toBlob returned null — skipping');
+                y += secH; captureNext(); return;
+              }
               var reader = new FileReader();
-              reader.onloadend = function() { shots.push(reader.result); y += secH; captureNext(); };
+              reader.onloadend = function() {
+                var kb = Math.round(reader.result.length / 1024);
+                console.log('[ss]   ✓ section ' + secIdx + ' captured (' + kb + ' KB, ' + (Date.now() - secStart) + 'ms)');
+                // Check if screenshot is mostly empty (tiny file = likely blank)
+                if (kb < 2) {
+                  console.log('[ss]   ⚠ Very small (' + kb + 'KB) — likely empty/blank capture');
+                }
+                shots.push(reader.result);
+                y += secH;
+                captureNext();
+              };
               reader.readAsDataURL(blob);
             }, 'image/webp', 0.7);
-          }).catch(function() {
+          }).catch(function(err) {
             document.documentElement.style.transform = origTransform || '';
             document.documentElement.style.overflow = origOverflow || '';
+            console.log('[ss]   ✗ domToCanvas failed: ' + (err && err.message || err) + ' (' + (Date.now() - secStart) + 'ms)');
             y += secH; captureNext();
           });
-          }, 300); // inner wait: let async content settle after scroll triggers
-        }, 400); // outer wait: let scroll listeners + IntersectionObserver fire
+        }, scrollDelay); // 50ms for first section, 300ms for scrolled sections
       }
       captureNext();
     }
@@ -1751,9 +1782,12 @@
 
   function outputData(data) {
     var json = JSON.stringify(data);
+    console.log('[clipboard] JSON size: ' + Math.round(json.length / 1024) + ' KB');
 
-    // Copy to clipboard
+    // Copy to clipboard — navigator.clipboard requires user gesture + focus on many sites,
+    // so we try it first, then fall back to execCommand, then give manual instructions.
     function copyFallback() {
+      console.log('[clipboard] Trying execCommand fallback...');
       var ta = document.createElement('textarea');
       ta.value = json;
       ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
@@ -1766,18 +1800,26 @@
           console.log('%c✓ Design data + screenshots copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
           return;
         }
+        console.log('[clipboard] execCommand returned false');
       } catch(e) {
         document.body.removeChild(ta);
+        console.log('[clipboard] execCommand threw: ' + e.message);
       }
-      console.log('%c⚠ Could not copy to clipboard. Type: copy(window.__milgData_json)', 'color: #b45309; font-weight: bold;');
+      console.log('%c⚠ Could not copy to clipboard automatically.', 'color: #b45309; font-weight: bold;');
+      console.log('%cType: copy(window.__milgData_json)  — then paste into the analyzer.', 'color: #3b82f6; font-weight: bold;');
       window.__milgData_json = json;
     }
 
     if (navigator.clipboard && navigator.clipboard.writeText) {
+      console.log('[clipboard] Trying navigator.clipboard.writeText...');
       navigator.clipboard.writeText(json).then(function() {
         console.log('%c✓ Design data + screenshots copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-      }).catch(copyFallback);
+      }).catch(function(err) {
+        console.log('[clipboard] navigator.clipboard failed: ' + err.message);
+        copyFallback();
+      });
     } else {
+      console.log('[clipboard] navigator.clipboard not available');
       copyFallback();
     }
 
