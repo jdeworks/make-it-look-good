@@ -1779,53 +1779,70 @@
     window.__milgData = data;
     window.__milgData_json = json;
 
-    // --- Site Crawl Mode (navigation-based, with screenshots) ---
+    // --- Site Crawl Mode (fetch-based, stays on current page, with screenshots) ---
     if (window.__milgCrawlSite) {
-      var _ck = 'milg-crawl-state';
-      var _cc = 'milg-crawl-complete';
-      var _cs;
-      try { _cs = JSON.parse(localStorage.getItem(_ck)); } catch(e) { _cs = null; }
+      var _cm = Math.min(Math.max(window.__milgCrawlMaxPages || 5, 1), 25);
+      var _cb = window.__milgCrawlBlacklist || [];
+      var _co = location.origin;
+      var _seen = {}; _seen[_co + location.pathname.replace(/\/$/, '')] = true;
+      var _links = [];
+      document.querySelectorAll('a[href]').forEach(function(a) {
+        var h = a.getAttribute('href');
+        if (!h || h.startsWith('#') || h.startsWith('mailto:') || h.startsWith('tel:') || h.startsWith('javascript:')) return;
+        try { var u = new URL(h, location.href); if (u.origin !== _co) return; if (/\.(pdf|zip|png|jpg|svg|css|js|json|xml|woff2?)$/i.test(u.pathname)) return; u.hash = ''; var k = u.origin + u.pathname.replace(/\/$/, ''); if (_seen[k]) return; var bl = _cb.some(function(p) { p = p.trim(); if (!p) return false; if (p.endsWith('*')) return u.pathname.startsWith(p.slice(0, -1)); return u.pathname === p; }); if (bl) return; _seen[k] = true; _links.push(u.origin + u.pathname); } catch(e) {}
+      });
+      _links = _links.slice(0, _cm - 1);
+      var _cResults = [{ url: location.href, data: data }];
+      console.log('%c\uD83D\uDD77 Site Crawl: discovered ' + _links.length + ' page(s). Fetching & analyzing\u2026', 'color: #8b5cf6; font-weight: bold;');
+      var _ssUrl = 'https://jdeworks.github.io/make-it-look-good/analyzer-snippet-screenshots.js';
 
-      if (!_cs) {
-        var _cm = Math.min(Math.max(window.__milgCrawlMaxPages || 5, 1), 25);
-        var _cb = window.__milgCrawlBlacklist || [];
-        var _co = location.origin;
-        var _seen = {}; _seen[_co + location.pathname.replace(/\/$/, '')] = true;
-        var _links = [];
-        document.querySelectorAll('a[href]').forEach(function(a) {
-          var h = a.getAttribute('href');
-          if (!h || h.startsWith('#') || h.startsWith('mailto:') || h.startsWith('tel:') || h.startsWith('javascript:')) return;
-          try { var u = new URL(h, location.href); if (u.origin !== _co) return; if (/\.(pdf|zip|png|jpg|svg|css|js|json|xml|woff2?)$/i.test(u.pathname)) return; u.hash = ''; var k = u.origin + u.pathname.replace(/\/$/, ''); if (_seen[k]) return; var bl = _cb.some(function(p) { p = p.trim(); if (!p) return false; if (p.endsWith('*')) return u.pathname.startsWith(p.slice(0, -1)); return u.pathname === p; }); if (bl) return; _seen[k] = true; _links.push(u.origin + u.pathname); } catch(e) {}
-        });
-        _links = _links.slice(0, _cm - 1);
-        _cs = { startUrl: location.href, queue: _links, results: [{ url: location.href, data: data }], currentIndex: 0 };
-        localStorage.setItem(_ck, JSON.stringify(_cs));
-        console.log('%c\uD83D\uDD77 Site Crawl: discovered ' + _links.length + ' page(s)', 'color: #8b5cf6; font-weight: bold;');
-        if (_links.length > 0) {
-          console.log('%c\u2192 Navigating to: ' + _links[0], 'color: #3b82f6;');
-          console.log('%cPaste the snippet again on the next page (Ctrl+V, Enter).', 'color: #64748b;');
-          setTimeout(function() { window.location.href = _links[0]; }, 1000);
-        } else {
-          localStorage.removeItem(_ck);
-          localStorage.setItem(_cc, JSON.stringify(_cs));
-          console.log('%c\u2713 Crawl complete (1 page). Open the analyzer.', 'color: #16a34a; font-weight: bold;');
-        }
-      } else {
-        _cs.results.push({ url: location.href, data: data });
-        _cs.currentIndex++;
-        if (_cs.currentIndex < _cs.queue.length) {
-          var next = _cs.queue[_cs.currentIndex];
-          localStorage.setItem(_ck, JSON.stringify(_cs));
-          console.log('%c\uD83D\uDD77 Crawl: ' + _cs.results.length + '/' + (_cs.queue.length + 1) + ' done', 'color: #8b5cf6; font-weight: bold;');
-          console.log('%c\u2192 Navigating to: ' + next, 'color: #3b82f6;');
-          console.log('%cPaste the snippet again (Ctrl+V, Enter).', 'color: #64748b;');
-          setTimeout(function() { window.location.href = next; }, 1000);
-        } else {
-          localStorage.removeItem(_ck);
-          localStorage.setItem(_cc, JSON.stringify(_cs));
-          console.log('%c\u2713 Crawl complete! ' + _cs.results.length + ' pages analyzed.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+      function _csProcess(snippetSrc, idx) {
+        if (idx >= _links.length) {
+          var st = { startUrl: location.href, results: _cResults };
+          try { localStorage.setItem('milg-crawl-complete', JSON.stringify(st)); } catch(e) {}
+          console.log('%c\u2713 Crawl complete! ' + _cResults.length + ' pages analyzed.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
           console.log('%cOpen the analyzer to view results.', 'color: #3b82f6;');
+          window.__milgCrawlResults = _cResults;
+          return;
         }
+        var url = _links[idx];
+        var path; try { path = new URL(url).pathname; } catch(e) { path = url; }
+        console.log('%c\u2192 [' + (idx + 1) + '/' + _links.length + '] ' + path, 'color: #3b82f6;');
+        fetch(url, { credentials: 'same-origin' }).then(function(r) { return r.text(); }).then(function(html) {
+          var baseUrl = url.replace(/\/[^/]*$/, '/');
+          var cssLinks = []; var m; var re1 = /<link[^>]+rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*>/gi;
+          while (m = re1.exec(html)) cssLinks.push(m[1]);
+          return (cssLinks.length > 0 ? Promise.all(cssLinks.map(function(h) { var cu = h.startsWith('http') ? h : (h.startsWith('/') ? _co + h : baseUrl + h); return fetch(cu, { credentials: 'same-origin' }).then(function(r) { return r.text(); }).catch(function() { return ''; }); })) : Promise.resolve([])).then(function(ct) {
+            var p = html.replace(/<link[^>]+rel=["']stylesheet["'][^>]*>/gi, '');
+            if (ct.length > 0) { var sb = '<style>' + ct.join('\n') + '</style>'; p = /<\/head>/i.test(p) ? p.replace(/<\/head>/i, sb + '</head>') : sb + p; }
+            p = /<head([^>]*)>/i.test(p) ? p.replace(/<head([^>]*)>/i, '<head$1><base href="' + baseUrl + '">') : '<base href="' + baseUrl + '">' + p;
+            var iframe = document.createElement('iframe');
+            iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
+            iframe.sandbox = 'allow-scripts allow-same-origin';
+            document.body.appendChild(iframe);
+            var es = '<script>window.__milgCrawlSite=false;</' + 'script><script>' + snippetSrc + '</' + 'script>';
+            iframe.srcdoc = /<\/body>/i.test(p) ? p.replace(/<\/body>/i, es + '</body>') : p + es;
+            var polls = 0;
+            var pi = setInterval(function() {
+              polls++;
+              try {
+                var d = iframe.contentWindow && iframe.contentWindow.__milgData;
+                if (d) { clearInterval(pi); d.meta.url = url; _cResults.push({ url: url, data: d }); if (iframe.parentNode) document.body.removeChild(iframe); console.log('%c  \u2713 ' + path, 'color: #16a34a;'); setTimeout(function() { _csProcess(snippetSrc, idx + 1); }, 300); }
+                else if (polls > 60) { clearInterval(pi); if (iframe.parentNode) document.body.removeChild(iframe); console.log('%c  \u2717 Timeout: ' + path, 'color: #dc2626;'); setTimeout(function() { _csProcess(snippetSrc, idx + 1); }, 300); }
+              } catch(e) { clearInterval(pi); if (iframe.parentNode) document.body.removeChild(iframe); console.log('%c  \u2717 Error: ' + path, 'color: #dc2626;'); setTimeout(function() { _csProcess(snippetSrc, idx + 1); }, 300); }
+            }, 500);
+          });
+        }).catch(function(e) { console.log('%c  \u2717 Fetch failed: ' + path + ' (' + e.message + ')', 'color: #dc2626;'); setTimeout(function() { _csProcess(snippetSrc, idx + 1); }, 300); });
+      }
+
+      if (_links.length === 0) {
+        var st = { startUrl: location.href, results: _cResults };
+        try { localStorage.setItem('milg-crawl-complete', JSON.stringify(st)); } catch(e) {}
+        console.log('%c\u2713 Crawl complete (1 page).', 'color: #16a34a; font-weight: bold;');
+      } else {
+        fetch(_ssUrl).then(function(r) { return r.text(); }).then(function(src) { _csProcess(src, 0); }).catch(function() {
+          console.log('%c\u26A0 Could not fetch snippet for crawl.', 'color: #b45309;');
+        });
       }
       return; // Skip clipboard copy
     }
