@@ -21482,307 +21482,6 @@ function scoreCognitiveLoad(data) {
 })();
 </file>
 
-<file path="scripts/test-layout.mjs">
-#!/usr/bin/env node
-// Test all templates for layout/overflow issues across viewports
-// Skips effects (they only change colors/fonts) and "before" variants
-//
-// Usage:
-//   node scripts/test-layout.mjs              # test all templates
-//   node scripts/test-layout.mjs dashboard    # test one element
-//   node scripts/test-layout.mjs --threads=6  # parallel threads
-//
-// Checks:
-//   - Body horizontal overflow (scrollWidth > clientWidth)
-//   - Elements wider than viewport without scroll wrapper
-//   - Content clipped outside viewport bounds
-//   - Hidden panels that overflow when revealed
-
-import puppeteer from 'puppeteer';
-import { createServer } from 'http';
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
-import { join, extname } from 'path';
-
-const DOCS_DIR = join(import.meta.dirname, '..', 'docs');
-const RESULTS_DIR = join(import.meta.dirname, '..', 'research', 'template-results');
-const PORT = 8768;
-
-const args = process.argv.slice(2);
-const THREADS = parseInt((args.find(a => a.startsWith('--threads=')) || '--threads=3').split('=')[1]);
-const TEMPLATE = args.find(a => !a.startsWith('--')) || '';
-
-const VIEWPORTS = [
-  { w: 375, h: 812, label: 'phone' },
-  { w: 768, h: 1024, label: 'tablet' },
-  { w: 1280, h: 900, label: 'desktop' },
-];
-
-const DARK_MODES = [false, true];
-
-function startServer() {
-  const mimeTypes = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2' };
-  const server = createServer((req, res) => {
-    let filePath = join(DOCS_DIR, req.url === '/' ? 'index.html' : req.url);
-    if (!existsSync(filePath)) { res.writeHead(404); res.end('Not found'); return; }
-    res.writeHead(200, { 'Content-Type': mimeTypes[extname(filePath)] || 'application/octet-stream' });
-    res.end(readFileSync(filePath));
-  });
-  server.listen(PORT);
-  return server;
-}
-
-function buildTests() {
-  const manifest = JSON.parse(readFileSync(join(DOCS_DIR, 'presets', 'index.json'), 'utf8'));
-  const tests = [];
-  for (const [el, info] of Object.entries(manifest.elements)) {
-    for (const pers of Object.keys(info.personalities || {})) {
-      // Skip "before" variants
-      if (pers === 'before') continue;
-      // Filter by template if specified
-      if (TEMPLATE && el !== TEMPLATE && `${el}/${pers}` !== TEMPLATE) continue;
-      const file = join(DOCS_DIR, 'presets', el, pers + '.html');
-      if (!existsSync(file)) continue;
-      for (const vp of VIEWPORTS) {
-        for (const dark of DARK_MODES) {
-          tests.push({ element: el, personality: pers, viewport: vp, dark });
-        }
-      }
-    }
-  }
-  return tests;
-}
-
-function testKey(t) {
-  return `${t.element}/${t.personality}|${t.viewport.label}|${t.dark ? 'dark' : 'light'}`;
-}
-
-async function runTest(page, t) {
-  const html = readFileSync(join(DOCS_DIR, 'presets', t.element, t.personality + '.html'), 'utf8');
-  await page.setViewport({ width: t.viewport.w, height: t.viewport.h });
-
-  const result = await page.evaluate(async (html, dark, vpWidth, vpHeight) => {
-    return new Promise((resolve) => {
-      const iframe = document.createElement('iframe');
-      iframe.style.cssText = `position:fixed;top:0;left:0;width:${vpWidth}px;height:${vpHeight}px;border:none;`;
-      document.body.appendChild(iframe);
-
-      const darkClass = dark ? ' class="dark"' : '';
-      const darkVariantCSS = '@custom-variant dark (&:where(.dark, .dark *));';
-      const srcdoc = '<!DOCTYPE html><html lang="en"' + darkClass + '><head><meta charset="UTF-8">' +
-        '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
-        '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
-        (dark ? '<style type="text/tailwindcss">' + darkVariantCSS + '</style>' : '') +
-        '<style>body{margin:0}</style></head><body>' + html +
-        '<script>setTimeout(function(){' +
-        // Layout checks running inside the iframe
-        'var doc = document.documentElement;' +
-        'var body = document.body;' +
-        'var vpW = window.innerWidth;' +
-        'var vpH = window.innerHeight;' +
-        'var issues = [];' +
-        // 1. Body overflow
-        'var bodyScrollW = Math.max(doc.scrollWidth, body.scrollWidth);' +
-        'if (bodyScrollW > vpW + 2) {' +
-        '  issues.push({ type: "body-overflow", scrollWidth: bodyScrollW, viewport: vpW, overflow: bodyScrollW - vpW });' +
-        '}' +
-        // 2. Elements wider than viewport without scroll wrapper
-        'var all = body.querySelectorAll("*");' +
-        'var checked = new Set();' +
-        'for (var i = 0; i < all.length && i < 500; i++) {' +
-        '  var el = all[i];' +
-        '  if (el.tagName === "SCRIPT" || el.tagName === "STYLE") continue;' +
-        '  var r = el.getBoundingClientRect();' +
-        '  if (r.width < 4 || r.height < 4) continue;' +
-        '  if (r.right > vpW + 2 || r.left < -2) {' +
-        // Check if inside overflow-x-auto/scroll container
-        '    var inScroll = false;' +
-        '    var anc = el.parentElement;' +
-        '    while (anc && anc !== body) {' +
-        '      var ox = getComputedStyle(anc).overflowX;' +
-        '      if (ox === "auto" || ox === "scroll") { inScroll = true; break; }' +
-        '      anc = anc.parentElement;' +
-        '    }' +
-        '    if (!inScroll) {' +
-        // Skip if parent already recorded
-        '      var sel = el.tagName.toLowerCase();' +
-        '      if (el.id) sel = "#" + el.id;' +
-        '      else if (el.className && typeof el.className === "string") sel += "." + el.className.trim().split(/\\s+/).slice(0,2).join(".");' +
-        '      var text = (el.textContent || "").trim().substring(0, 40);' +
-        '      if (!checked.has(sel)) {' +
-        '        checked.add(sel);' +
-        '        issues.push({ type: "element-overflow", selector: sel, text: text, left: Math.round(r.left), right: Math.round(r.right), width: Math.round(r.width), vpWidth: vpW });' +
-        '      }' +
-        '    }' +
-        '  }' +
-        '}' +
-        // 3. Elements wider than viewport but hidden by overflow:hidden (silent clip)
-        'for (var j = 0; j < all.length && j < 300; j++) {' +
-        '  var el2 = all[j];' +
-        '  if (el2.tagName === "SCRIPT" || el2.tagName === "STYLE") continue;' +
-        '  var s2 = getComputedStyle(el2);' +
-        '  var br2 = s2.borderRadius;' +
-        '  var hasRadius = br2 && br2 !== "0px" && br2 !== "0%";' +
-        '  var hasText = el2.textContent && el2.textContent.trim().length > 10;' +
-        '  if (s2.overflowX === "hidden" && el2.scrollWidth > el2.clientWidth + 4 && !hasRadius && hasText && s2.pointerEvents !== "none" && s2.position !== "fixed") {' +
-        '    var sel2 = el2.tagName.toLowerCase();' +
-        '    if (el2.id) sel2 = "#" + el2.id;' +
-        '    else if (el2.className && typeof el2.className === "string") sel2 += "." + el2.className.trim().split(/\\s+/).slice(0,2).join(".");' +
-        '    issues.push({ type: "hidden-clip", selector: sel2, clientWidth: el2.clientWidth, scrollWidth: el2.scrollWidth, clipped: el2.scrollWidth - el2.clientWidth });' +
-        '  }' +
-        '}' +
-        'parent.postMessage({ type: "layout-result", issues: issues }, "*");' +
-        '}, 3500);</' + 'script></body></html>';
-
-      let handled = false;
-      function onMsg(e) {
-        if (!e.data || e.data.type !== 'layout-result') return;
-        if (handled) return;
-        handled = true;
-        window.removeEventListener('message', onMsg);
-        if (iframe.parentNode) document.body.removeChild(iframe);
-        resolve({ issues: e.data.issues || [] });
-      }
-      window.addEventListener('message', onMsg);
-      iframe.srcdoc = srcdoc;
-
-      setTimeout(() => {
-        if (handled) return;
-        handled = true;
-        window.removeEventListener('message', onMsg);
-        if (iframe.parentNode) document.body.removeChild(iframe);
-        resolve({ error: 'Timeout' });
-      }, 12000);
-    });
-  }, html, t.dark, t.viewport.w, t.viewport.h);
-
-  return result;
-}
-
-async function main() {
-  const tests = buildTests();
-  if (tests.length === 0) {
-    console.error('No tests found' + (TEMPLATE ? ` for "${TEMPLATE}"` : '') + '. Check docs/presets/index.json');
-    process.exit(1);
-  }
-
-  console.log(`Layout test: ${TEMPLATE || 'ALL'} (${tests.length} combinations, ${THREADS} threads)`);
-  if (!existsSync(RESULTS_DIR)) mkdirSync(RESULTS_DIR, { recursive: true });
-
-  const server = startServer();
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage']
-  });
-
-  const pages = [];
-  for (let i = 0; i < THREADS; i++) pages.push(await browser.newPage());
-
-  const results = [];
-  let completed = 0;
-  const startTime = Date.now();
-
-  let idx = 0;
-  async function worker(page) {
-    while (idx < tests.length) {
-      const t = tests[idx++];
-      const key = testKey(t);
-      try {
-        const result = await runTest(page, t);
-        completed++;
-        const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
-        if (result.error) {
-          process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s ${key} ERROR          \n`);
-          results.push({ key, ...t, error: result.error });
-        } else {
-          const bodyOF = result.issues.filter(i => i.type === 'body-overflow').length;
-          const elemOF = result.issues.filter(i => i.type === 'element-overflow').length;
-          const clip = result.issues.filter(i => i.type === 'hidden-clip').length;
-          // Only count body overflow and hidden-clip as failures — element-overflow
-          // without body scroll is usually intentional (hidden sidebars, translate off-screen)
-          const realIssues = bodyOF + clip;
-          if (realIssues > 0) {
-            process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s ${key} ❌ ${bodyOF} body-overflow, ${clip} hidden-clip${elemOF > 0 ? ', ' + elemOF + ' elem-overflow' : ''}          \n`);
-          } else if (elemOF > 0) {
-            process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s ${key} ⚠ ${elemOF} offscreen (no body scroll)          `);
-          } else {
-            process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s ${key} ✓          `);
-          }
-          results.push({ key, ...t, issues: result.issues });
-        }
-      } catch (err) {
-        completed++;
-        results.push({ key, ...t, error: err.message });
-      }
-    }
-  }
-
-  await Promise.all(pages.map(p => worker(p)));
-  await browser.close();
-  server.close();
-
-  // Report
-  const ok = results.filter(r => !r.error);
-  // Real issues = body overflow or hidden clip (not just off-screen elements without scroll)
-  const withIssues = ok.filter(r => r.issues && r.issues.some(i => i.type === 'body-overflow' || i.type === 'hidden-clip'));
-
-  let md = `# Layout Test Results\n\n`;
-  md += `**Date:** ${new Date().toISOString()}\n`;
-  md += `**Templates tested:** ${ok.length} | **With issues:** ${withIssues.length}\n\n`;
-
-  if (withIssues.length > 0) {
-    md += '## Failures\n\n';
-    md += '| Template | Viewport | Mode | Body OF | Elem OF | Clip | Details |\n';
-    md += '|----------|----------|------|---------|---------|------|---------|\n';
-    for (const r of withIssues.sort((a, b) => b.issues.length - a.issues.length)) {
-      const bodyOF = r.issues.filter(i => i.type === 'body-overflow');
-      const elemOF = r.issues.filter(i => i.type === 'element-overflow');
-      const clip = r.issues.filter(i => i.type === 'hidden-clip');
-      const details = [
-        ...bodyOF.map(i => `body +${i.overflow}px`),
-        ...elemOF.slice(0, 2).map(i => `${i.selector} right=${i.right}px`),
-        ...clip.slice(0, 1).map(i => `${i.selector} clipped ${i.clipped}px`)
-      ].join('; ');
-      md += `| ${r.element}/${r.personality} | ${r.viewport.label} | ${r.dark ? 'dark' : 'light'} | ${bodyOF.length} | ${elemOF.length} | ${clip.length} | ${details} |\n`;
-    }
-
-    // Aggregate by template
-    md += '\n## Summary by Template\n\n';
-    const byTemplate = {};
-    for (const r of withIssues) {
-      const tpl = `${r.element}/${r.personality}`;
-      if (!byTemplate[tpl]) byTemplate[tpl] = { phone: 0, tablet: 0, desktop: 0, issues: [] };
-      byTemplate[tpl][r.viewport.label]++;
-      for (const i of r.issues) byTemplate[tpl].issues.push(i);
-    }
-    for (const [tpl, data] of Object.entries(byTemplate).sort((a, b) => b[1].issues.length - a[1].issues.length)) {
-      md += `### ${tpl}\n`;
-      md += `- Phone: ${data.phone} | Tablet: ${data.tablet} | Desktop: ${data.desktop}\n`;
-      const uniqueIssues = new Set(data.issues.map(i => `${i.type}: ${i.selector || 'body'}`));
-      for (const ui of uniqueIssues) md += `  - ${ui}\n`;
-      md += '\n';
-    }
-  } else {
-    md += '## All templates pass! No overflow issues detected.\n';
-  }
-
-  const outFile = join(RESULTS_DIR, 'layout-test.md');
-  writeFileSync(outFile, md);
-  writeFileSync(join(RESULTS_DIR, 'layout-test.json'), JSON.stringify(results, null, 2));
-
-  console.log(`\n\n=== LAYOUT TEST RESULTS ===`);
-  console.log(`Tested: ${ok.length} | Issues: ${withIssues.length} | Errors: ${results.filter(r => r.error).length}`);
-  if (withIssues.length > 0) {
-    console.log(`\nTemplates with overflow:`);
-    for (const r of withIssues) {
-      console.log(`  ${r.key}: ${r.issues.map(i => i.type).join(', ')}`);
-    }
-  }
-  console.log(`\nReport: ${outFile}`);
-}
-
-main().catch(err => { console.error('Fatal:', err); process.exit(1); });
-</file>
-
 <file path="docs/scoring/performance.js">
 // Scoring Module: Performance
 // Weight: 5%
@@ -22362,6 +22061,533 @@ Key metrics to track:
 - **No module should average below 40** except Contrast (known issue with Tailwind color scale)
 </file>
 
+<file path="scripts/test-layout.mjs">
+#!/usr/bin/env node
+// Test all templates for layout/overflow issues across viewports
+// Skips effects (they only change colors/fonts) and "before" variants
+//
+// Usage:
+//   node scripts/test-layout.mjs              # test all templates
+//   node scripts/test-layout.mjs dashboard    # test one element
+//   node scripts/test-layout.mjs --threads=6  # parallel threads
+//
+// Checks:
+//   - Body horizontal overflow (scrollWidth > clientWidth)
+//   - Elements wider than viewport without scroll wrapper
+//   - Content clipped outside viewport bounds
+//   - Hidden panels that overflow when revealed
+
+import puppeteer from 'puppeteer';
+import { createServer } from 'http';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { join, extname } from 'path';
+
+const DOCS_DIR = join(import.meta.dirname, '..', 'docs');
+const RESULTS_DIR = join(import.meta.dirname, '..', 'research', 'template-results');
+const PORT = 8768;
+
+const args = process.argv.slice(2);
+const THREADS = parseInt((args.find(a => a.startsWith('--threads=')) || '--threads=3').split('=')[1]);
+const TEMPLATE = args.find(a => !a.startsWith('--')) || '';
+
+const VIEWPORTS = [
+  { w: 375, h: 812, label: 'phone' },
+  { w: 768, h: 1024, label: 'tablet' },
+  { w: 1280, h: 900, label: 'desktop' },
+];
+
+const DARK_MODES = [false, true];
+
+function startServer() {
+  const mimeTypes = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2' };
+  const server = createServer((req, res) => {
+    let filePath = join(DOCS_DIR, req.url === '/' ? 'index.html' : req.url);
+    if (!existsSync(filePath)) { res.writeHead(404); res.end('Not found'); return; }
+    res.writeHead(200, { 'Content-Type': mimeTypes[extname(filePath)] || 'application/octet-stream' });
+    res.end(readFileSync(filePath));
+  });
+  server.listen(PORT);
+  return server;
+}
+
+function buildTests() {
+  const manifest = JSON.parse(readFileSync(join(DOCS_DIR, 'presets', 'index.json'), 'utf8'));
+  const tests = [];
+  for (const [el, info] of Object.entries(manifest.elements)) {
+    for (const pers of Object.keys(info.personalities || {})) {
+      // Skip "before" variants
+      if (pers === 'before') continue;
+      // Filter by template if specified
+      if (TEMPLATE && el !== TEMPLATE && `${el}/${pers}` !== TEMPLATE) continue;
+      const file = join(DOCS_DIR, 'presets', el, pers + '.html');
+      if (!existsSync(file)) continue;
+      for (const vp of VIEWPORTS) {
+        for (const dark of DARK_MODES) {
+          tests.push({ element: el, personality: pers, viewport: vp, dark });
+        }
+      }
+    }
+  }
+  return tests;
+}
+
+function testKey(t) {
+  return `${t.element}/${t.personality}|${t.viewport.label}|${t.dark ? 'dark' : 'light'}`;
+}
+
+async function runTest(page, t) {
+  const html = readFileSync(join(DOCS_DIR, 'presets', t.element, t.personality + '.html'), 'utf8');
+  await page.setViewport({ width: t.viewport.w, height: t.viewport.h });
+
+  const result = await page.evaluate(async (html, dark, vpWidth, vpHeight) => {
+    return new Promise((resolve) => {
+      const iframe = document.createElement('iframe');
+      iframe.style.cssText = `position:fixed;top:0;left:0;width:${vpWidth}px;height:${vpHeight}px;border:none;`;
+      document.body.appendChild(iframe);
+
+      const darkClass = dark ? ' class="dark"' : '';
+      const darkVariantCSS = '@custom-variant dark (&:where(.dark, .dark *));';
+      const srcdoc = '<!DOCTYPE html><html lang="en"' + darkClass + '><head><meta charset="UTF-8">' +
+        '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+        '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
+        (dark ? '<style type="text/tailwindcss">' + darkVariantCSS + '</style>' : '') +
+        '<style>body{margin:0}</style></head><body>' + html +
+        '<script>setTimeout(function(){' +
+        // Layout checks running inside the iframe
+        'var doc = document.documentElement;' +
+        'var body = document.body;' +
+        'var vpW = window.innerWidth;' +
+        'var vpH = window.innerHeight;' +
+        'var issues = [];' +
+        // 1. Body overflow
+        'var bodyScrollW = Math.max(doc.scrollWidth, body.scrollWidth);' +
+        'if (bodyScrollW > vpW + 2) {' +
+        '  issues.push({ type: "body-overflow", scrollWidth: bodyScrollW, viewport: vpW, overflow: bodyScrollW - vpW });' +
+        '}' +
+        // 2. Elements wider than viewport without scroll wrapper
+        'var all = body.querySelectorAll("*");' +
+        'var checked = new Set();' +
+        'for (var i = 0; i < all.length && i < 500; i++) {' +
+        '  var el = all[i];' +
+        '  if (el.tagName === "SCRIPT" || el.tagName === "STYLE") continue;' +
+        '  var r = el.getBoundingClientRect();' +
+        '  if (r.width < 4 || r.height < 4) continue;' +
+        '  if (r.right > vpW + 2 || r.left < -2) {' +
+        // Check if inside overflow-x-auto/scroll container
+        '    var inScroll = false;' +
+        '    var anc = el.parentElement;' +
+        '    while (anc && anc !== body) {' +
+        '      var ox = getComputedStyle(anc).overflowX;' +
+        '      if (ox === "auto" || ox === "scroll") { inScroll = true; break; }' +
+        '      anc = anc.parentElement;' +
+        '    }' +
+        '    if (!inScroll) {' +
+        // Skip if parent already recorded
+        '      var sel = el.tagName.toLowerCase();' +
+        '      if (el.id) sel = "#" + el.id;' +
+        '      else if (el.className && typeof el.className === "string") sel += "." + el.className.trim().split(/\\s+/).slice(0,2).join(".");' +
+        '      var text = (el.textContent || "").trim().substring(0, 40);' +
+        '      if (!checked.has(sel)) {' +
+        '        checked.add(sel);' +
+        '        issues.push({ type: "element-overflow", selector: sel, text: text, left: Math.round(r.left), right: Math.round(r.right), width: Math.round(r.width), vpWidth: vpW });' +
+        '      }' +
+        '    }' +
+        '  }' +
+        '}' +
+        // 3. Elements wider than viewport but hidden by overflow:hidden (silent clip)
+        'for (var j = 0; j < all.length && j < 300; j++) {' +
+        '  var el2 = all[j];' +
+        '  if (el2.tagName === "SCRIPT" || el2.tagName === "STYLE") continue;' +
+        '  var s2 = getComputedStyle(el2);' +
+        '  var br2 = s2.borderRadius;' +
+        '  var hasRadius = br2 && br2 !== "0px" && br2 !== "0%";' +
+        '  var hasText = el2.textContent && el2.textContent.trim().length > 10;' +
+        '  if (s2.overflowX === "hidden" && el2.scrollWidth > el2.clientWidth + 4 && !hasRadius && hasText && s2.pointerEvents !== "none" && s2.position !== "fixed") {' +
+        '    var sel2 = el2.tagName.toLowerCase();' +
+        '    if (el2.id) sel2 = "#" + el2.id;' +
+        '    else if (el2.className && typeof el2.className === "string") sel2 += "." + el2.className.trim().split(/\\s+/).slice(0,2).join(".");' +
+        '    issues.push({ type: "hidden-clip", selector: sel2, clientWidth: el2.clientWidth, scrollWidth: el2.scrollWidth, clipped: el2.scrollWidth - el2.clientWidth });' +
+        '  }' +
+        '}' +
+        'parent.postMessage({ type: "layout-result", issues: issues }, "*");' +
+        '}, 3500);</' + 'script></body></html>';
+
+      let handled = false;
+      function onMsg(e) {
+        if (!e.data || e.data.type !== 'layout-result') return;
+        if (handled) return;
+        handled = true;
+        window.removeEventListener('message', onMsg);
+        if (iframe.parentNode) document.body.removeChild(iframe);
+        resolve({ issues: e.data.issues || [] });
+      }
+      window.addEventListener('message', onMsg);
+      iframe.srcdoc = srcdoc;
+
+      setTimeout(() => {
+        if (handled) return;
+        handled = true;
+        window.removeEventListener('message', onMsg);
+        if (iframe.parentNode) document.body.removeChild(iframe);
+        resolve({ error: 'Timeout' });
+      }, 12000);
+    });
+  }, html, t.dark, t.viewport.w, t.viewport.h);
+
+  return result;
+}
+
+async function main() {
+  const tests = buildTests();
+  if (tests.length === 0) {
+    console.error('No tests found' + (TEMPLATE ? ` for "${TEMPLATE}"` : '') + '. Check docs/presets/index.json');
+    process.exit(1);
+  }
+
+  console.log(`Layout test: ${TEMPLATE || 'ALL'} (${tests.length} combinations, ${THREADS} threads)`);
+  if (!existsSync(RESULTS_DIR)) mkdirSync(RESULTS_DIR, { recursive: true });
+
+  const server = startServer();
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage']
+  });
+
+  const pages = [];
+  for (let i = 0; i < THREADS; i++) pages.push(await browser.newPage());
+
+  const results = [];
+  let completed = 0;
+  const startTime = Date.now();
+
+  let idx = 0;
+  async function worker(page) {
+    while (idx < tests.length) {
+      const t = tests[idx++];
+      const key = testKey(t);
+      try {
+        const result = await runTest(page, t);
+        completed++;
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
+        if (result.error) {
+          process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s ${key} ERROR          \n`);
+          results.push({ key, ...t, error: result.error });
+        } else {
+          const bodyOF = result.issues.filter(i => i.type === 'body-overflow').length;
+          const elemOF = result.issues.filter(i => i.type === 'element-overflow').length;
+          const clip = result.issues.filter(i => i.type === 'hidden-clip').length;
+          // Only count body overflow and hidden-clip as failures — element-overflow
+          // without body scroll is usually intentional (hidden sidebars, translate off-screen)
+          const realIssues = bodyOF + clip;
+          if (realIssues > 0) {
+            process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s ${key} ❌ ${bodyOF} body-overflow, ${clip} hidden-clip${elemOF > 0 ? ', ' + elemOF + ' elem-overflow' : ''}          \n`);
+          } else if (elemOF > 0) {
+            process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s ${key} ⚠ ${elemOF} offscreen (no body scroll)          `);
+          } else {
+            process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s ${key} ✓          `);
+          }
+          results.push({ key, ...t, issues: result.issues });
+        }
+      } catch (err) {
+        completed++;
+        results.push({ key, ...t, error: err.message });
+      }
+    }
+  }
+
+  await Promise.all(pages.map(p => worker(p)));
+  await browser.close();
+  server.close();
+
+  // Report
+  const ok = results.filter(r => !r.error);
+  // Real issues = body overflow or hidden clip (not just off-screen elements without scroll)
+  const withIssues = ok.filter(r => r.issues && r.issues.some(i => i.type === 'body-overflow' || i.type === 'hidden-clip'));
+
+  let md = `# Layout Test Results\n\n`;
+  md += `**Date:** ${new Date().toISOString()}\n`;
+  md += `**Templates tested:** ${ok.length} | **With issues:** ${withIssues.length}\n\n`;
+
+  if (withIssues.length > 0) {
+    md += '## Failures\n\n';
+    md += '| Template | Viewport | Mode | Body OF | Elem OF | Clip | Details |\n';
+    md += '|----------|----------|------|---------|---------|------|---------|\n';
+    for (const r of withIssues.sort((a, b) => b.issues.length - a.issues.length)) {
+      const bodyOF = r.issues.filter(i => i.type === 'body-overflow');
+      const elemOF = r.issues.filter(i => i.type === 'element-overflow');
+      const clip = r.issues.filter(i => i.type === 'hidden-clip');
+      const details = [
+        ...bodyOF.map(i => `body +${i.overflow}px`),
+        ...elemOF.slice(0, 2).map(i => `${i.selector} right=${i.right}px`),
+        ...clip.slice(0, 1).map(i => `${i.selector} clipped ${i.clipped}px`)
+      ].join('; ');
+      md += `| ${r.element}/${r.personality} | ${r.viewport.label} | ${r.dark ? 'dark' : 'light'} | ${bodyOF.length} | ${elemOF.length} | ${clip.length} | ${details} |\n`;
+    }
+
+    // Aggregate by template
+    md += '\n## Summary by Template\n\n';
+    const byTemplate = {};
+    for (const r of withIssues) {
+      const tpl = `${r.element}/${r.personality}`;
+      if (!byTemplate[tpl]) byTemplate[tpl] = { phone: 0, tablet: 0, desktop: 0, issues: [] };
+      byTemplate[tpl][r.viewport.label]++;
+      for (const i of r.issues) byTemplate[tpl].issues.push(i);
+    }
+    for (const [tpl, data] of Object.entries(byTemplate).sort((a, b) => b[1].issues.length - a[1].issues.length)) {
+      md += `### ${tpl}\n`;
+      md += `- Phone: ${data.phone} | Tablet: ${data.tablet} | Desktop: ${data.desktop}\n`;
+      const uniqueIssues = new Set(data.issues.map(i => `${i.type}: ${i.selector || 'body'}`));
+      for (const ui of uniqueIssues) md += `  - ${ui}\n`;
+      md += '\n';
+    }
+  } else {
+    md += '## All templates pass! No overflow issues detected.\n';
+  }
+
+  const outFile = join(RESULTS_DIR, 'layout-test.md');
+  writeFileSync(outFile, md);
+  writeFileSync(join(RESULTS_DIR, 'layout-test.json'), JSON.stringify(results, null, 2));
+
+  console.log(`\n\n=== LAYOUT TEST RESULTS ===`);
+  console.log(`Tested: ${ok.length} | Issues: ${withIssues.length} | Errors: ${results.filter(r => r.error).length}`);
+  if (withIssues.length > 0) {
+    console.log(`\nTemplates with overflow:`);
+    for (const r of withIssues) {
+      console.log(`  ${r.key}: ${r.issues.map(i => i.type).join(', ')}`);
+    }
+  }
+  console.log(`\nReport: ${outFile}`);
+}
+
+main().catch(err => { console.error('Fatal:', err); process.exit(1); });
+</file>
+
+<file path="docs/scoring/typography.js">
+// Scoring Module: Typography
+// Weight: 15%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreTypography(data) {
+  var profile = S.getProfile(data);
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+
+  // Body font size check against profile minimum
+  checks++;
+  var bodySize = parseFloat(data.typography.bodyFontSize);
+  if (bodySize >= profile.bodyFontMin) {
+    passed++;
+  } else if (bodySize > 0) {
+    findings.push({
+      severity: 'error',
+      title: 'Body font size is ' + bodySize + 'px (minimum: ' + profile.bodyFontMin + 'px)',
+      detail: 'Small body text reduces readability, especially on mobile',
+      fix: 'Set body font-size to at least ' + profile.bodyFontMin + 'px. In Tailwind: text-base (16px) or text-lg (18px)',
+      presetRef: 'All presets use text-base (16px) or larger for body text', source: 'WCAG 2.2 / NNGroup — https://www.w3.org/TR/WCAG22/#text-spacing'
+    });
+  }
+
+  // Line height check against profile range
+  checks++;
+  var bodyLH = data.typography.bodyLineHeight;
+  var bodyLHRatio = 0;
+  if (bodyLH && bodyLH !== 'normal') {
+    bodyLHRatio = parseFloat(bodyLH) / bodySize;
+  }
+  var lhPassMin = profile.lineHeightMin - 0.05;
+  var lhPassMax = profile.lineHeightMax + 0.1;
+  if (bodyLHRatio >= lhPassMin && bodyLHRatio <= lhPassMax) {
+    passed++;
+  } else if (bodyLHRatio > 0) {
+    findings.push({
+      severity: bodyLHRatio < 1.2 || bodyLHRatio > 2 ? 'error' : 'warning',
+      title: 'Body line-height is ' + (Math.round(bodyLHRatio * 100) / 100) + ' (ideal: ' + profile.lineHeightMin + '–' + profile.lineHeightMax + ')',
+      detail: bodyLHRatio < profile.lineHeightMin ? 'Text feels cramped and hard to read' : 'Text feels too loose and wastes vertical space',
+      fix: bodyLHRatio < profile.lineHeightMin ? 'Increase line-height. In Tailwind: leading-relaxed (1.625) or leading-normal (1.5)' : 'Decrease line-height. In Tailwind: leading-normal (1.5)',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.12 — https://www.w3.org/TR/WCAG22/#text-spacing'
+    });
+  }
+
+  // Line length (profile-aware: elderly 65, children 55, default 75)
+  var maxChars = data.typography.maxLineLength ? data.typography.maxLineLength.chars : 0;
+  var lineElement = data.typography.maxLineLength ? data.typography.maxLineLength.element : '';
+  var lineFontSize = data.typography.maxLineLength ? (data.typography.maxLineLength.fontSize || 0) : 0;
+  var lineTextLength = data.typography.maxLineLength ? (data.typography.maxLineLength.textLength || 0) : 0;
+  var isTextElement = /^(p|li|td|th|blockquote|dd|figcaption)/.test(lineElement);
+  // Hero/intro text: large font (>=20px) with short content (<150 chars) is intentionally wide
+  var isHeroText = lineFontSize >= 20 && lineTextLength < 150;
+  if (maxChars > 0 && isTextElement && !isHeroText) {
+    checks++;
+    var lineLimit = profile.maxLineLength || 75;
+    if (maxChars <= lineLimit + 5) {
+      passed++;
+    } else {
+      findings.push({
+        severity: maxChars > lineLimit + 25 ? 'error' : 'warning',
+        title: 'Line length ~' + maxChars + ' characters (max for this audience: ' + lineLimit + ')',
+        detail: lineElement + ' — ' + (lineLimit < 70 ? 'Shorter lines improve readability for this audience.' : 'Long lines make it hard for the eye to track back to the next line.'),
+        fix: 'Constrain content width with max-w-prose (65ch) or max-w-2xl (672px)',
+        presetRef: 'Editorial presets use max-w-prose for reading content',
+        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-length.html',
+        locator: { selector: lineElement, text: '' }
+      });
+    }
+  }
+
+  // Heading scale — check if headings have a consistent ratio
+  checks++;
+  var headings = data.typography.headings || [];
+  if (headings.length >= 2) {
+    var sizes = headings.map(function(h) { return parseFloat(h.fontSize); }).filter(function(s) { return s > 0; });
+    var uniqueSizes = Array.from(new Set(sizes)).sort(function(a, b) { return b - a; });
+    if (uniqueSizes.length >= 2) {
+      var ratio = uniqueSizes[0] / uniqueSizes[uniqueSizes.length - 1];
+      // Marketing/landing pages legitimately use larger hero text (wider range)
+      var pageType = (data.context && data.context.pageType) || 'unknown';
+      var maxRatio = (pageType === 'marketing' || pageType === 'pricing') ? 6 : 4.5;
+      if (ratio >= 1.5 && ratio <= maxRatio) {
+        passed++;
+      } else {
+        findings.push({
+          severity: ratio > maxRatio + 2 ? 'warning' : 'info',
+          title: 'Heading scale ratio is ' + (Math.round(ratio * 100) / 100) + ' (ideal: 1.5–' + maxRatio + ')',
+          detail: ratio < 1.5 ? 'Headings are too similar in size — weak hierarchy' : 'Heading sizes vary widely — verify the largest heading is intentional (hero text)',
+          fix: 'Use a modular scale (1.200 minor third or 1.250 major third). In Tailwind: text-4xl > text-2xl > text-xl > text-base',
+          presetRef: null,
+          source: 'Modular type scales — https://typescale.com/'
+        });
+      }
+    } else { passed++; } // Only one heading size — acceptable
+  } else { passed++; } // No headings to check
+
+  // Max 2-3 font weights
+  checks++;
+  var fontWeights = data.typography.fontWeights || [];
+  var weightCount = fontWeights.length;
+  if (weightCount <= 4) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'Using ' + weightCount + ' font weights (recommended: 2–3)',
+      detail: 'Too many weights create visual noise and increase font loading time',
+      fix: 'Consolidate to 400 (regular), 500/600 (medium), 700 (bold)',
+      presetRef: null,
+      source: 'Google Fonts best practices — https://fonts.google.com/knowledge/using_type/choosing_reliable_typefaces'
+    });
+  }
+
+  // Profile-specific: minimum font weight (e.g., elderly profile forbids light/thin)
+  if (profile.fontWeightMin > 0 && fontWeights.length > 0) {
+    var lightWeights = fontWeights.filter(function(w) { return parseInt(w) < profile.fontWeightMin; });
+    if (lightWeights.length > 0) {
+      checks++;
+      findings.push({
+        severity: 'warning',
+        title: 'Font weight(s) ' + lightWeights.join(', ') + ' below minimum ' + profile.fontWeightMin + ' for this audience',
+        detail: 'Light and thin font weights reduce readability for users who need higher legibility',
+        fix: 'Use font-weight ' + profile.fontWeightMin + ' (regular) or heavier. Avoid font-weight 100–300.',
+        presetRef: null,
+        source: 'W3C WAI Older Users — https://www.w3.org/WAI/older-users/developing/'
+      });
+    } else {
+      checks++;
+      passed++;
+    }
+  }
+
+  // Letter spacing
+  var lsIssues = (data.typography && data.typography.letterSpacingIssues) || 0;
+  if (lsIssues > 0) {
+    findings.push({
+      severity: 'info',
+      title: lsIssues + ' element(s) with extreme letter-spacing',
+      detail: 'Very tight (< -0.03em) or very loose (> 0.15em) letter spacing reduces readability',
+      fix: 'Keep letter-spacing between -0.02em and 0.1em for body text. Tighter spacing is acceptable for large headings.',
+      presetRef: null,
+      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/letterspacing.html'
+    });
+  }
+
+  // Paragraph spacing
+  var pSpacing = (data.typography && data.typography.paragraphSpacing) || [];
+  if (pSpacing.length >= 3) {
+    checks++;
+    var bodyPx = parseFloat(data.typography.bodyFontSize) || 16;
+    var avgSpacing = pSpacing.reduce(function(s,v){return s+v},0) / pSpacing.length;
+    var spacingEm = avgSpacing / bodyPx;
+    if (spacingEm >= 0.5 && spacingEm <= 1.5) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: 'Paragraph spacing is ' + (Math.round(spacingEm * 100) / 100) + 'em (ideal: 0.75–1em)',
+        detail: spacingEm < 0.5 ? 'Paragraphs feel cramped' : 'Paragraph spacing may be too generous',
+        fix: 'Set paragraph margin-bottom to 0.75em–1em. In Tailwind: space-y-4 on the container or mb-4 on paragraphs.',
+        presetRef: null,
+        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/space-between-paragraphs.html'
+      });
+    }
+  }
+
+  // Max 2 typefaces
+  checks++;
+  var familyCount = (data.typography.fontFamilies || []).length;
+  if (familyCount <= 3) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'Using ' + familyCount + ' font families (recommended: max 2)',
+      detail: 'Too many typefaces make the design feel inconsistent',
+      fix: 'Use 1 sans-serif + 1 serif (or monospace for code). In Tailwind: font-sans + font-serif',
+      presetRef: null,
+      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/summary-of-key-rules.html'
+    });
+  }
+
+  // All-caps long text
+  var allCaps = (data.typography && data.typography.allCapsLongText) || 0;
+  if (allCaps > 0) {
+    findings.push({
+      severity: 'warning',
+      title: allCaps + ' block(s) of long text in all-caps (> 50 characters)',
+      detail: 'All-uppercase text reduces reading speed by 10-20%. Reserve for short labels and headings.',
+      fix: 'Remove text-transform: uppercase on body text. Use it only for short labels, buttons, and headings under 5 words.',
+      presetRef: null,
+      source: 'Tinker 1963, Butterick\'s Practical Typography — https://practicaltypography.com/all-caps.html'
+    });
+  }
+
+  // Justified text
+  var justified = (data.typography && data.typography.justifiedText) || 0;
+  if (justified > 0) {
+    findings.push({
+      severity: 'info',
+      title: justified + ' element(s) with text-align: justify',
+      detail: 'Justified text creates uneven word spacing (rivers of white) without proper hyphenation, reducing readability.',
+      fix: 'Use text-align: left for web content. Justified text only works well with automatic hyphenation (hyphens: auto).',
+      presetRef: null,
+      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/justified-text.html'
+    });
+  }
+
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+  return { score: score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Typography', icon: 'type' };
+}
+
+
+  S.register("typography", scoreTypography, 15, "Typography", "type");
+})();
+</file>
+
 <file path="docs/scoring/consistency.js">
 // Scoring Module: Visual Consistency
 // Weight: 5%
@@ -22598,232 +22824,6 @@ function scoreVisualConsistency(data) {
 
 
   S.register("consistency", scoreVisualConsistency, 5, "Visual Consistency", "consistency");
-})();
-</file>
-
-<file path="docs/scoring/typography.js">
-// Scoring Module: Typography
-// Weight: 15%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreTypography(data) {
-  var profile = S.getProfile(data);
-  var findings = [];
-  var checks = 0;
-  var passed = 0;
-
-  // Body font size check against profile minimum
-  checks++;
-  var bodySize = parseFloat(data.typography.bodyFontSize);
-  if (bodySize >= profile.bodyFontMin) {
-    passed++;
-  } else if (bodySize > 0) {
-    findings.push({
-      severity: 'error',
-      title: 'Body font size is ' + bodySize + 'px (minimum: ' + profile.bodyFontMin + 'px)',
-      detail: 'Small body text reduces readability, especially on mobile',
-      fix: 'Set body font-size to at least ' + profile.bodyFontMin + 'px. In Tailwind: text-base (16px) or text-lg (18px)',
-      presetRef: 'All presets use text-base (16px) or larger for body text', source: 'WCAG 2.2 / NNGroup — https://www.w3.org/TR/WCAG22/#text-spacing'
-    });
-  }
-
-  // Line height check against profile range
-  checks++;
-  var bodyLH = data.typography.bodyLineHeight;
-  var bodyLHRatio = 0;
-  if (bodyLH && bodyLH !== 'normal') {
-    bodyLHRatio = parseFloat(bodyLH) / bodySize;
-  }
-  var lhPassMin = profile.lineHeightMin - 0.05;
-  var lhPassMax = profile.lineHeightMax + 0.1;
-  if (bodyLHRatio >= lhPassMin && bodyLHRatio <= lhPassMax) {
-    passed++;
-  } else if (bodyLHRatio > 0) {
-    findings.push({
-      severity: bodyLHRatio < 1.2 || bodyLHRatio > 2 ? 'error' : 'warning',
-      title: 'Body line-height is ' + (Math.round(bodyLHRatio * 100) / 100) + ' (ideal: ' + profile.lineHeightMin + '–' + profile.lineHeightMax + ')',
-      detail: bodyLHRatio < profile.lineHeightMin ? 'Text feels cramped and hard to read' : 'Text feels too loose and wastes vertical space',
-      fix: bodyLHRatio < profile.lineHeightMin ? 'Increase line-height. In Tailwind: leading-relaxed (1.625) or leading-normal (1.5)' : 'Decrease line-height. In Tailwind: leading-normal (1.5)',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.12 — https://www.w3.org/TR/WCAG22/#text-spacing'
-    });
-  }
-
-  // Line length (profile-aware: elderly 65, children 55, default 75)
-  var maxChars = data.typography.maxLineLength ? data.typography.maxLineLength.chars : 0;
-  var lineElement = data.typography.maxLineLength ? data.typography.maxLineLength.element : '';
-  var lineFontSize = data.typography.maxLineLength ? (data.typography.maxLineLength.fontSize || 0) : 0;
-  var lineTextLength = data.typography.maxLineLength ? (data.typography.maxLineLength.textLength || 0) : 0;
-  var isTextElement = /^(p|li|td|th|blockquote|dd|figcaption)/.test(lineElement);
-  // Hero/intro text: large font (>=20px) with short content (<150 chars) is intentionally wide
-  var isHeroText = lineFontSize >= 20 && lineTextLength < 150;
-  if (maxChars > 0 && isTextElement && !isHeroText) {
-    checks++;
-    var lineLimit = profile.maxLineLength || 75;
-    if (maxChars <= lineLimit + 5) {
-      passed++;
-    } else {
-      findings.push({
-        severity: maxChars > lineLimit + 25 ? 'error' : 'warning',
-        title: 'Line length ~' + maxChars + ' characters (max for this audience: ' + lineLimit + ')',
-        detail: lineElement + ' — ' + (lineLimit < 70 ? 'Shorter lines improve readability for this audience.' : 'Long lines make it hard for the eye to track back to the next line.'),
-        fix: 'Constrain content width with max-w-prose (65ch) or max-w-2xl (672px)',
-        presetRef: 'Editorial presets use max-w-prose for reading content',
-        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-length.html',
-        locator: { selector: lineElement, text: '' }
-      });
-    }
-  }
-
-  // Heading scale — check if headings have a consistent ratio
-  checks++;
-  var headings = data.typography.headings || [];
-  if (headings.length >= 2) {
-    var sizes = headings.map(function(h) { return parseFloat(h.fontSize); }).filter(function(s) { return s > 0; });
-    var uniqueSizes = Array.from(new Set(sizes)).sort(function(a, b) { return b - a; });
-    if (uniqueSizes.length >= 2) {
-      var ratio = uniqueSizes[0] / uniqueSizes[uniqueSizes.length - 1];
-      // Marketing/landing pages legitimately use larger hero text (wider range)
-      var pageType = (data.context && data.context.pageType) || 'unknown';
-      var maxRatio = (pageType === 'marketing' || pageType === 'pricing') ? 6 : 4.5;
-      if (ratio >= 1.5 && ratio <= maxRatio) {
-        passed++;
-      } else {
-        findings.push({
-          severity: ratio > maxRatio + 2 ? 'warning' : 'info',
-          title: 'Heading scale ratio is ' + (Math.round(ratio * 100) / 100) + ' (ideal: 1.5–' + maxRatio + ')',
-          detail: ratio < 1.5 ? 'Headings are too similar in size — weak hierarchy' : 'Heading sizes vary widely — verify the largest heading is intentional (hero text)',
-          fix: 'Use a modular scale (1.200 minor third or 1.250 major third). In Tailwind: text-4xl > text-2xl > text-xl > text-base',
-          presetRef: null,
-          source: 'Modular type scales — https://typescale.com/'
-        });
-      }
-    } else { passed++; } // Only one heading size — acceptable
-  } else { passed++; } // No headings to check
-
-  // Max 2-3 font weights
-  checks++;
-  var fontWeights = data.typography.fontWeights || [];
-  var weightCount = fontWeights.length;
-  if (weightCount <= 4) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: 'Using ' + weightCount + ' font weights (recommended: 2–3)',
-      detail: 'Too many weights create visual noise and increase font loading time',
-      fix: 'Consolidate to 400 (regular), 500/600 (medium), 700 (bold)',
-      presetRef: null,
-      source: 'Google Fonts best practices — https://fonts.google.com/knowledge/using_type/choosing_reliable_typefaces'
-    });
-  }
-
-  // Profile-specific: minimum font weight (e.g., elderly profile forbids light/thin)
-  if (profile.fontWeightMin > 0 && fontWeights.length > 0) {
-    var lightWeights = fontWeights.filter(function(w) { return parseInt(w) < profile.fontWeightMin; });
-    if (lightWeights.length > 0) {
-      checks++;
-      findings.push({
-        severity: 'warning',
-        title: 'Font weight(s) ' + lightWeights.join(', ') + ' below minimum ' + profile.fontWeightMin + ' for this audience',
-        detail: 'Light and thin font weights reduce readability for users who need higher legibility',
-        fix: 'Use font-weight ' + profile.fontWeightMin + ' (regular) or heavier. Avoid font-weight 100–300.',
-        presetRef: null,
-        source: 'W3C WAI Older Users — https://www.w3.org/WAI/older-users/developing/'
-      });
-    } else {
-      checks++;
-      passed++;
-    }
-  }
-
-  // Letter spacing
-  var lsIssues = (data.typography && data.typography.letterSpacingIssues) || 0;
-  if (lsIssues > 0) {
-    findings.push({
-      severity: 'info',
-      title: lsIssues + ' element(s) with extreme letter-spacing',
-      detail: 'Very tight (< -0.03em) or very loose (> 0.15em) letter spacing reduces readability',
-      fix: 'Keep letter-spacing between -0.02em and 0.1em for body text. Tighter spacing is acceptable for large headings.',
-      presetRef: null,
-      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/letterspacing.html'
-    });
-  }
-
-  // Paragraph spacing
-  var pSpacing = (data.typography && data.typography.paragraphSpacing) || [];
-  if (pSpacing.length >= 3) {
-    checks++;
-    var bodyPx = parseFloat(data.typography.bodyFontSize) || 16;
-    var avgSpacing = pSpacing.reduce(function(s,v){return s+v},0) / pSpacing.length;
-    var spacingEm = avgSpacing / bodyPx;
-    if (spacingEm >= 0.5 && spacingEm <= 1.5) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: 'Paragraph spacing is ' + (Math.round(spacingEm * 100) / 100) + 'em (ideal: 0.75–1em)',
-        detail: spacingEm < 0.5 ? 'Paragraphs feel cramped' : 'Paragraph spacing may be too generous',
-        fix: 'Set paragraph margin-bottom to 0.75em–1em. In Tailwind: space-y-4 on the container or mb-4 on paragraphs.',
-        presetRef: null,
-        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/space-between-paragraphs.html'
-      });
-    }
-  }
-
-  // Max 2 typefaces
-  checks++;
-  var familyCount = (data.typography.fontFamilies || []).length;
-  if (familyCount <= 3) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: 'Using ' + familyCount + ' font families (recommended: max 2)',
-      detail: 'Too many typefaces make the design feel inconsistent',
-      fix: 'Use 1 sans-serif + 1 serif (or monospace for code). In Tailwind: font-sans + font-serif',
-      presetRef: null,
-      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/summary-of-key-rules.html'
-    });
-  }
-
-  // All-caps long text
-  var allCaps = (data.typography && data.typography.allCapsLongText) || 0;
-  if (allCaps > 0) {
-    findings.push({
-      severity: 'warning',
-      title: allCaps + ' block(s) of long text in all-caps (> 50 characters)',
-      detail: 'All-uppercase text reduces reading speed by 10-20%. Reserve for short labels and headings.',
-      fix: 'Remove text-transform: uppercase on body text. Use it only for short labels, buttons, and headings under 5 words.',
-      presetRef: null,
-      source: 'Tinker 1963, Butterick\'s Practical Typography — https://practicaltypography.com/all-caps.html'
-    });
-  }
-
-  // Justified text
-  var justified = (data.typography && data.typography.justifiedText) || 0;
-  if (justified > 0) {
-    findings.push({
-      severity: 'info',
-      title: justified + ' element(s) with text-align: justify',
-      detail: 'Justified text creates uneven word spacing (rivers of white) without proper hyphenation, reducing readability.',
-      fix: 'Use text-align: left for web content. Justified text only works well with automatic hyphenation (hyphens: auto).',
-      presetRef: null,
-      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/justified-text.html'
-    });
-  }
-
-  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-  return { score: score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Typography', icon: 'type' };
-}
-
-
-  S.register("typography", scoreTypography, 15, "Typography", "type");
 })();
 </file>
 
@@ -28478,7 +28478,7 @@ function scoreLayout(data) {
     window.__milgData = data;
     window.__milgData_json = json;
 
-    // --- Site Crawl Mode (fetch-based, stays on current page, with screenshots) ---
+    // --- Site Crawl Mode (same-origin iframe with src=, full JS execution) ---
     if (window.__milgCrawlSite) {
       var _cm = Math.min(Math.max(window.__milgCrawlMaxPages || 5, 1), 25);
       var _cb = window.__milgCrawlBlacklist || [];
@@ -28492,56 +28492,58 @@ function scoreLayout(data) {
       });
       _links = _links.slice(0, _cm - 1);
       var _cResults = [{ url: location.href, data: data }];
-      console.log('%c\uD83D\uDD77 Site Crawl: discovered ' + _links.length + ' page(s). Fetching & analyzing\u2026', 'color: #8b5cf6; font-weight: bold;');
-      var _ssUrl = 'https://jdeworks.github.io/make-it-look-good/analyzer-snippet-screenshots.js';
-
-      function _csProcess(snippetSrc, idx) {
-        if (idx >= _links.length) {
-          var st = { startUrl: location.href, results: _cResults };
-          try { localStorage.setItem('milg-crawl-complete', JSON.stringify(st)); } catch(e) {}
-          console.log('%c\u2713 Crawl complete! ' + _cResults.length + ' pages analyzed.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-          console.log('%cOpen the analyzer to view results.', 'color: #3b82f6;');
-          window.__milgCrawlResults = _cResults;
-          return;
-        }
-        var url = _links[idx];
-        var path; try { path = new URL(url).pathname; } catch(e) { path = url; }
-        console.log('%c\u2192 [' + (idx + 1) + '/' + _links.length + '] ' + path, 'color: #3b82f6;');
-        fetch(url, { credentials: 'same-origin' }).then(function(r) { return r.text(); }).then(function(html) {
-          var baseUrl = url.replace(/\/[^/]*$/, '/');
-          var cssLinks = []; var m; var re1 = /<link[^>]+rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*>/gi;
-          while (m = re1.exec(html)) cssLinks.push(m[1]);
-          return (cssLinks.length > 0 ? Promise.all(cssLinks.map(function(h) { var cu = h.startsWith('http') ? h : (h.startsWith('/') ? _co + h : baseUrl + h); return fetch(cu, { credentials: 'same-origin' }).then(function(r) { return r.text(); }).catch(function() { return ''; }); })) : Promise.resolve([])).then(function(ct) {
-            var p = html.replace(/<link[^>]+rel=["']stylesheet["'][^>]*>/gi, '');
-            if (ct.length > 0) { var sb = '<style>' + ct.join('\n') + '</style>'; p = /<\/head>/i.test(p) ? p.replace(/<\/head>/i, sb + '</head>') : sb + p; }
-            p = /<head([^>]*)>/i.test(p) ? p.replace(/<head([^>]*)>/i, '<head$1><base href="' + baseUrl + '">') : '<base href="' + baseUrl + '">' + p;
-            var iframe = document.createElement('iframe');
-            iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
-            iframe.sandbox = 'allow-scripts allow-same-origin';
-            document.body.appendChild(iframe);
-            var es = '<script>window.__milgCrawlSite=false;</' + 'script><script>' + snippetSrc + '</' + 'script>';
-            iframe.srcdoc = /<\/body>/i.test(p) ? p.replace(/<\/body>/i, es + '</body>') : p + es;
-            var polls = 0;
-            var pi = setInterval(function() {
-              polls++;
-              try {
-                var d = iframe.contentWindow && iframe.contentWindow.__milgData;
-                if (d) { clearInterval(pi); d.meta.url = url; _cResults.push({ url: url, data: d }); if (iframe.parentNode) document.body.removeChild(iframe); console.log('%c  \u2713 ' + path, 'color: #16a34a;'); setTimeout(function() { _csProcess(snippetSrc, idx + 1); }, 300); }
-                else if (polls > 60) { clearInterval(pi); if (iframe.parentNode) document.body.removeChild(iframe); console.log('%c  \u2717 Timeout: ' + path, 'color: #dc2626;'); setTimeout(function() { _csProcess(snippetSrc, idx + 1); }, 300); }
-              } catch(e) { clearInterval(pi); if (iframe.parentNode) document.body.removeChild(iframe); console.log('%c  \u2717 Error: ' + path, 'color: #dc2626;'); setTimeout(function() { _csProcess(snippetSrc, idx + 1); }, 300); }
-            }, 500);
-          });
-        }).catch(function(e) { console.log('%c  \u2717 Fetch failed: ' + path + ' (' + e.message + ')', 'color: #dc2626;'); setTimeout(function() { _csProcess(snippetSrc, idx + 1); }, 300); });
-      }
+      console.log('%c\uD83D\uDD77 Site Crawl: discovered ' + _links.length + ' page(s)', 'color: #8b5cf6; font-weight: bold;');
 
       if (_links.length === 0) {
-        var st = { startUrl: location.href, results: _cResults };
-        try { localStorage.setItem('milg-crawl-complete', JSON.stringify(st)); } catch(e) {}
+        try { localStorage.setItem('milg-crawl-complete', JSON.stringify({ startUrl: location.href, results: _cResults })); } catch(e) {}
         console.log('%c\u2713 Crawl complete (1 page).', 'color: #16a34a; font-weight: bold;');
       } else {
-        fetch(_ssUrl).then(function(r) { return r.text(); }).then(function(src) { _csProcess(src, 0); }).catch(function() {
-          console.log('%c\u26A0 Could not fetch snippet for crawl.', 'color: #b45309;');
-        });
+        // Use screenshot snippet for injection (so crawled pages also get screenshots)
+        var _ssUrl = 'https://jdeworks.github.io/make-it-look-good/analyzer-snippet-screenshots.js';
+        fetch(_ssUrl).then(function(r) { return r.text(); }).then(function(snippetSrc) {
+          function _next(idx) {
+            if (idx >= _links.length) {
+              try { localStorage.setItem('milg-crawl-complete', JSON.stringify({ startUrl: location.href, results: _cResults })); } catch(e) {}
+              console.log('%c\u2713 Crawl complete! ' + _cResults.length + ' pages.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+              window.__milgCrawlResults = _cResults;
+              return;
+            }
+            var url = _links[idx];
+            var path; try { path = new URL(url).pathname; } catch(e) { path = url; }
+            console.log('%c\u2192 [' + (idx+1) + '/' + _links.length + '] ' + path + ' (with JS)', 'color: #3b82f6;');
+            var iframe = document.createElement('iframe');
+            iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
+            iframe.sandbox = 'allow-scripts allow-same-origin allow-forms';
+            document.body.appendChild(iframe);
+            var done = false;
+            function cleanup() { if (iframe.parentNode) document.body.removeChild(iframe); }
+            iframe.addEventListener('load', function() {
+              if (done) return;
+              setTimeout(function() {
+                if (done) return;
+                try {
+                  var iWin = iframe.contentWindow;
+                  var script = (iframe.contentDocument || iWin.document).createElement('script');
+                  script.textContent = 'window.__milgCrawlSite=false;\n' + snippetSrc;
+                  (iframe.contentDocument || iWin.document).body.appendChild(script);
+                  var polls = 0;
+                  var pi = setInterval(function() {
+                    polls++;
+                    try {
+                      var d = iWin.__milgData;
+                      if (d) { clearInterval(pi); done = true; d.meta.url = url; _cResults.push({ url: url, data: d }); cleanup(); console.log('%c  \u2713 ' + path, 'color: #16a34a;'); setTimeout(function() { _next(idx + 1); }, 500); }
+                      else if (polls > 60) { clearInterval(pi); done = true; cleanup(); console.log('%c  \u2717 Timeout: ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }
+                    } catch(e) { clearInterval(pi); done = true; cleanup(); console.log('%c  \u2717 Error: ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }
+                  }, 500);
+                } catch(e) { done = true; cleanup(); console.log('%c  \u2717 Access denied: ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }
+              }, 3000);
+            });
+            iframe.addEventListener('error', function() { if (done) return; done = true; cleanup(); console.log('%c  \u2717 Load failed: ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); });
+            iframe.src = url;
+            setTimeout(function() { if (done) return; done = true; cleanup(); console.log('%c  \u2717 Hard timeout: ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }, 30000);
+          }
+          _next(0);
+        }).catch(function() { console.log('%c\u26A0 Could not fetch snippet for crawl.', 'color: #b45309;'); });
       }
       return; // Skip clipboard copy
     }
@@ -30859,10 +30861,10 @@ function scoreLayout(data) {
   // Also store on window for debugging
   window.__milgData = data;
 
-  // --- Site Crawl Mode (fetch-based, stays on current page) ---
+  // --- Site Crawl Mode (same-origin iframe with src=, full JS execution) ---
   // Set window.__milgCrawlSite = true before running.
-  // Fetches same-domain pages via fetch(), renders in hidden iframes with srcdoc,
-  // and runs extraction — all without leaving the page.
+  // Loads each page in a hidden same-origin iframe (src=url), waits for full JS
+  // execution, then injects the extraction snippet. Stays on current page.
   if (window.__milgCrawlSite) {
     var _crawlMax = Math.min(Math.max(window.__milgCrawlMaxPages || 5, 1), 25);
     var _crawlBlacklist = window.__milgCrawlBlacklist || [];
@@ -30870,7 +30872,6 @@ function scoreLayout(data) {
     var _crawlSeen = {};
     _crawlSeen[_crawlOrigin + location.pathname.replace(/\/$/, '')] = true;
 
-    // Discover same-domain links from current page
     var _crawlLinks = [];
     document.querySelectorAll('a[href]').forEach(function(a) {
       var href = a.getAttribute('href');
@@ -30891,136 +30892,116 @@ function scoreLayout(data) {
     _crawlLinks = _crawlLinks.slice(0, _crawlMax - 1);
 
     var _crawlResults = [{ url: location.href, data: data }];
-    console.log('%c\uD83D\uDD77 Site Crawl: discovered ' + _crawlLinks.length + ' page(s). Fetching & analyzing\u2026', 'color: #8b5cf6; font-weight: bold;');
+    console.log('%c\uD83D\uDD77 Site Crawl: discovered ' + _crawlLinks.length + ' page(s)', 'color: #8b5cf6; font-weight: bold;');
     _crawlLinks.forEach(function(l, i) { var p; try { p = new URL(l).pathname; } catch(e) { p = l; } console.log('  ' + (i + 1) + '. ' + p); });
 
-    // Get the full snippet source text for injection into iframes
-    // We read it from the current script execution context by capturing it
-    var _snippetIIFE = '(function(){' +
-      'var _scanMode="quick";' + // lighter scan for crawled pages
-      'window.__milgCrawlSite=false;' + // prevent re-crawl inside iframe
-      document.currentScript ? '' : ''; // placeholder
-    // We'll fetch our own source for reliable injection
-    var _snippetSrcUrl = 'https://jdeworks.github.io/make-it-look-good/analyzer-snippet.js';
+    if (_crawlLinks.length === 0) {
+      var _s = { startUrl: location.href, results: _crawlResults };
+      try { localStorage.setItem('milg-crawl-complete', JSON.stringify(_s)); } catch(e) {}
+      console.log('%c\u2713 Crawl complete (1 page). Open the analyzer.', 'color: #16a34a; font-weight: bold;');
+    } else {
+      // Fetch snippet source for injection into iframes after they load
+      var _snippetUrl = 'https://jdeworks.github.io/make-it-look-good/analyzer-snippet.js';
+      console.log('%cLoading extraction snippet for injection\u2026', 'color: #64748b;');
 
-    function _crawlWithSnippet(snippetSrc) {
-      function processNext(idx) {
-        if (idx >= _crawlLinks.length) {
-          // Done
-          var state = { startUrl: location.href, results: _crawlResults };
-          try { localStorage.setItem('milg-crawl-complete', JSON.stringify(state)); } catch(e) {}
-          console.log('%c\u2713 Crawl complete! ' + _crawlResults.length + ' pages analyzed.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-          console.log('%cOpen the analyzer to view aggregated results (they load automatically).', 'color: #3b82f6;');
-          console.log('%cOr access: window.__milgCrawlResults', 'color: #64748b;');
-          window.__milgCrawlResults = _crawlResults;
-          return;
-        }
+      fetch(_snippetUrl).then(function(r) { return r.text(); }).then(function(snippetSrc) {
+        console.log('%c\u2713 Snippet loaded. Starting crawl with full JS execution per page.', 'color: #16a34a;');
 
-        var url = _crawlLinks[idx];
-        var path; try { path = new URL(url).pathname; } catch(e) { path = url; }
-        console.log('%c\u2192 [' + (idx + 1) + '/' + _crawlLinks.length + '] Fetching ' + path + '\u2026', 'color: #3b82f6;');
+        function processNext(idx) {
+          if (idx >= _crawlLinks.length) {
+            var state = { startUrl: location.href, results: _crawlResults };
+            try { localStorage.setItem('milg-crawl-complete', JSON.stringify(state)); } catch(e) {}
+            console.log('%c\u2713 Crawl complete! ' + _crawlResults.length + ' pages analyzed.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+            console.log('%cOpen the analyzer to view results (they load automatically).', 'color: #3b82f6;');
+            console.log('%cOr access: window.__milgCrawlResults', 'color: #64748b;');
+            window.__milgCrawlResults = _crawlResults;
+            return;
+          }
 
-        // Fetch the page HTML (same-origin, so no CORS needed, cookies included)
-        fetch(url, { credentials: 'same-origin' }).then(function(r) {
-          if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
-          return r.text();
-        }).then(function(html) {
-          // Inline CSS from the fetched HTML (resolve relative URLs)
-          var baseUrl = url.replace(/\/[^/]*$/, '/');
-          var cssLinks = [];
-          var linkRe = /<link[^>]+rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*>/gi;
-          var altRe = /<link[^>]+href=["']([^"']+)["'][^>]*rel=["']stylesheet["'][^>]*>/gi;
-          var m;
-          while (m = linkRe.exec(html)) cssLinks.push(m[1]);
-          while (m = altRe.exec(html)) { if (cssLinks.indexOf(m[1]) === -1) cssLinks.push(m[1]); }
+          var url = _crawlLinks[idx];
+          var path; try { path = new URL(url).pathname; } catch(e) { path = url; }
+          console.log('%c\u2192 [' + (idx + 1) + '/' + _crawlLinks.length + '] Loading ' + path + ' (with JS)\u2026', 'color: #3b82f6;');
 
-          var cssPromise = cssLinks.length > 0 ?
-            Promise.all(cssLinks.map(function(href) {
-              var cssUrl = href.startsWith('http') ? href : (href.startsWith('/') ? _crawlOrigin + href : baseUrl + href);
-              return fetch(cssUrl, { credentials: 'same-origin' }).then(function(r) { return r.text(); }).catch(function() { return ''; });
-            })) : Promise.resolve([]);
-
-          return cssPromise.then(function(cssTexts) {
-            // Remove link tags, inject inlined CSS
-            var processed = html.replace(/<link[^>]+rel=["']stylesheet["'][^>]*>/gi, '');
-            if (cssTexts.length > 0) {
-              var styleBlock = '<style>' + cssTexts.join('\n') + '</style>';
-              processed = /<\/head>/i.test(processed) ? processed.replace(/<\/head>/i, styleBlock + '</head>') : styleBlock + processed;
-            }
-            // Add base tag for relative URLs
-            var baseTag = '<base href="' + baseUrl + '">';
-            processed = /<head([^>]*)>/i.test(processed) ? processed.replace(/<head([^>]*)>/i, '<head$1>' + baseTag) : baseTag + processed;
-            return processed;
-          });
-        }).then(function(processedHtml) {
-          // Create hidden iframe with srcdoc
+          // Create same-origin iframe with src= (full page load, JS executes)
           var iframe = document.createElement('iframe');
           iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
-          iframe.sandbox = 'allow-scripts allow-same-origin';
+          // Sandbox: allow scripts + same-origin but block top-navigation (prevents frame-busting)
+          iframe.sandbox = 'allow-scripts allow-same-origin allow-forms';
           document.body.appendChild(iframe);
 
           var done = false;
           function cleanup() { if (iframe.parentNode) document.body.removeChild(iframe); }
 
-          // Build srcdoc with extraction script
-          var extractScript = '<script>window.__milgCrawlSite=false;window.__milgIsFragment=false;</' + 'script>' +
-            '<script>' + snippetSrc + '</' + 'script>';
+          iframe.addEventListener('load', function() {
+            if (done) return;
+            // Wait for page JS to settle (SPA rendering, lazy loading, etc.)
+            setTimeout(function() {
+              if (done) return;
+              try {
+                var iWin = iframe.contentWindow;
+                var iDoc = iframe.contentDocument || iWin.document;
+                // Inject extraction snippet (disable crawl to prevent recursion)
+                var script = iDoc.createElement('script');
+                script.textContent = 'window.__milgCrawlSite=false;\n' + snippetSrc;
+                iDoc.body.appendChild(script);
 
-          var srcdoc;
-          if (/<\/body>/i.test(processedHtml)) {
-            srcdoc = processedHtml.replace(/<\/body>/i, extractScript + '</body>');
-          } else {
-            srcdoc = processedHtml + extractScript;
-          }
-          iframe.srcdoc = srcdoc;
-
-          // Poll for results
-          var polls = 0;
-          var poller = setInterval(function() {
-            polls++;
-            try {
-              var iData = iframe.contentWindow && iframe.contentWindow.__milgData;
-              if (iData) {
-                clearInterval(poller); done = true;
-                iData.meta.url = url;
-                _crawlResults.push({ url: url, data: iData });
+                // Poll for __milgData
+                var polls = 0;
+                var poller = setInterval(function() {
+                  polls++;
+                  try {
+                    var iData = iWin.__milgData;
+                    if (iData) {
+                      clearInterval(poller); done = true;
+                      iData.meta.url = url;
+                      _crawlResults.push({ url: url, data: iData });
+                      cleanup();
+                      console.log('%c  \u2713 ' + path + ' (' + (iData.structure.totalElements || 0) + ' elements)', 'color: #16a34a;');
+                      setTimeout(function() { processNext(idx + 1); }, 500);
+                    } else if (polls > 40) {
+                      clearInterval(poller); done = true;
+                      console.log('%c  \u2717 Timeout: ' + path, 'color: #dc2626;');
+                      cleanup();
+                      setTimeout(function() { processNext(idx + 1); }, 500);
+                    }
+                  } catch(e) {
+                    clearInterval(poller); done = true;
+                    console.log('%c  \u2717 Error: ' + path + ' (' + e.message + ')', 'color: #dc2626;');
+                    cleanup();
+                    setTimeout(function() { processNext(idx + 1); }, 500);
+                  }
+                }, 500);
+              } catch(e) {
+                done = true;
+                console.log('%c  \u2717 Cannot access iframe: ' + path + ' (' + e.message + ')', 'color: #dc2626;');
                 cleanup();
-                console.log('%c  \u2713 ' + path + ' (' + (iData.structure.totalElements || 0) + ' elements)', 'color: #16a34a;');
-                setTimeout(function() { processNext(idx + 1); }, 300);
-              } else if (polls > 40) { // 20 seconds
-                clearInterval(poller); done = true;
-                console.log('%c  \u2717 Timeout: ' + path, 'color: #dc2626;');
-                cleanup();
-                setTimeout(function() { processNext(idx + 1); }, 300);
+                setTimeout(function() { processNext(idx + 1); }, 500);
               }
-            } catch(e) {
-              clearInterval(poller); done = true;
-              console.log('%c  \u2717 Error: ' + path + ' (' + e.message + ')', 'color: #dc2626;');
-              cleanup();
-              setTimeout(function() { processNext(idx + 1); }, 300);
-            }
-          }, 500);
-        }).catch(function(e) {
-          console.log('%c  \u2717 Fetch failed: ' + path + ' (' + e.message + ')', 'color: #dc2626;');
-          setTimeout(function() { processNext(idx + 1); }, 300);
-        });
-      }
-      processNext(0);
-    }
+            }, 3000); // 3s wait for JS to settle after load
+          });
 
-    if (_crawlLinks.length === 0) {
-      var state = { startUrl: location.href, results: _crawlResults };
-      try { localStorage.setItem('milg-crawl-complete', JSON.stringify(state)); } catch(e) {}
-      console.log('%c\u2713 Crawl complete (1 page). Open the analyzer.', 'color: #16a34a; font-weight: bold;');
-    } else {
-      // Fetch our own snippet source for iframe injection
-      fetch(_snippetSrcUrl).then(function(r) { return r.text(); }).then(function(src) {
-        _crawlWithSnippet(src);
-      }).catch(function() {
-        console.log('%c\u26A0 Could not fetch snippet. Using inline extraction (reduced accuracy).', 'color: #b45309;');
-        // Minimal fallback — just store current page result
-        var state = { startUrl: location.href, results: _crawlResults };
-        try { localStorage.setItem('milg-crawl-complete', JSON.stringify(state)); } catch(e) {}
+          iframe.addEventListener('error', function() {
+            if (done) return; done = true;
+            console.log('%c  \u2717 Failed to load: ' + path, 'color: #dc2626;');
+            cleanup();
+            setTimeout(function() { processNext(idx + 1); }, 500);
+          });
+
+          iframe.src = url;
+
+          // Hard timeout (30s per page)
+          setTimeout(function() {
+            if (done) return; done = true;
+            console.log('%c  \u2717 Hard timeout: ' + path, 'color: #dc2626;');
+            cleanup();
+            setTimeout(function() { processNext(idx + 1); }, 500);
+          }, 30000);
+        }
+        processNext(0);
+
+      }).catch(function(e) {
+        console.log('%c\u26A0 Could not fetch snippet source: ' + e.message, 'color: #b45309;');
+        console.log('%cCrawl requires the snippet source from GitHub Pages.', 'color: #64748b;');
       });
     }
     return; // Skip normal clipboard copy

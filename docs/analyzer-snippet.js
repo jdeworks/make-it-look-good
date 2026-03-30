@@ -2307,10 +2307,10 @@
   // Also store on window for debugging
   window.__milgData = data;
 
-  // --- Site Crawl Mode (fetch-based, stays on current page) ---
+  // --- Site Crawl Mode (same-origin iframe with src=, full JS execution) ---
   // Set window.__milgCrawlSite = true before running.
-  // Fetches same-domain pages via fetch(), renders in hidden iframes with srcdoc,
-  // and runs extraction — all without leaving the page.
+  // Loads each page in a hidden same-origin iframe (src=url), waits for full JS
+  // execution, then injects the extraction snippet. Stays on current page.
   if (window.__milgCrawlSite) {
     var _crawlMax = Math.min(Math.max(window.__milgCrawlMaxPages || 5, 1), 25);
     var _crawlBlacklist = window.__milgCrawlBlacklist || [];
@@ -2318,7 +2318,6 @@
     var _crawlSeen = {};
     _crawlSeen[_crawlOrigin + location.pathname.replace(/\/$/, '')] = true;
 
-    // Discover same-domain links from current page
     var _crawlLinks = [];
     document.querySelectorAll('a[href]').forEach(function(a) {
       var href = a.getAttribute('href');
@@ -2339,136 +2338,116 @@
     _crawlLinks = _crawlLinks.slice(0, _crawlMax - 1);
 
     var _crawlResults = [{ url: location.href, data: data }];
-    console.log('%c\uD83D\uDD77 Site Crawl: discovered ' + _crawlLinks.length + ' page(s). Fetching & analyzing\u2026', 'color: #8b5cf6; font-weight: bold;');
+    console.log('%c\uD83D\uDD77 Site Crawl: discovered ' + _crawlLinks.length + ' page(s)', 'color: #8b5cf6; font-weight: bold;');
     _crawlLinks.forEach(function(l, i) { var p; try { p = new URL(l).pathname; } catch(e) { p = l; } console.log('  ' + (i + 1) + '. ' + p); });
 
-    // Get the full snippet source text for injection into iframes
-    // We read it from the current script execution context by capturing it
-    var _snippetIIFE = '(function(){' +
-      'var _scanMode="quick";' + // lighter scan for crawled pages
-      'window.__milgCrawlSite=false;' + // prevent re-crawl inside iframe
-      document.currentScript ? '' : ''; // placeholder
-    // We'll fetch our own source for reliable injection
-    var _snippetSrcUrl = 'https://jdeworks.github.io/make-it-look-good/analyzer-snippet.js';
+    if (_crawlLinks.length === 0) {
+      var _s = { startUrl: location.href, results: _crawlResults };
+      try { localStorage.setItem('milg-crawl-complete', JSON.stringify(_s)); } catch(e) {}
+      console.log('%c\u2713 Crawl complete (1 page). Open the analyzer.', 'color: #16a34a; font-weight: bold;');
+    } else {
+      // Fetch snippet source for injection into iframes after they load
+      var _snippetUrl = 'https://jdeworks.github.io/make-it-look-good/analyzer-snippet.js';
+      console.log('%cLoading extraction snippet for injection\u2026', 'color: #64748b;');
 
-    function _crawlWithSnippet(snippetSrc) {
-      function processNext(idx) {
-        if (idx >= _crawlLinks.length) {
-          // Done
-          var state = { startUrl: location.href, results: _crawlResults };
-          try { localStorage.setItem('milg-crawl-complete', JSON.stringify(state)); } catch(e) {}
-          console.log('%c\u2713 Crawl complete! ' + _crawlResults.length + ' pages analyzed.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-          console.log('%cOpen the analyzer to view aggregated results (they load automatically).', 'color: #3b82f6;');
-          console.log('%cOr access: window.__milgCrawlResults', 'color: #64748b;');
-          window.__milgCrawlResults = _crawlResults;
-          return;
-        }
+      fetch(_snippetUrl).then(function(r) { return r.text(); }).then(function(snippetSrc) {
+        console.log('%c\u2713 Snippet loaded. Starting crawl with full JS execution per page.', 'color: #16a34a;');
 
-        var url = _crawlLinks[idx];
-        var path; try { path = new URL(url).pathname; } catch(e) { path = url; }
-        console.log('%c\u2192 [' + (idx + 1) + '/' + _crawlLinks.length + '] Fetching ' + path + '\u2026', 'color: #3b82f6;');
+        function processNext(idx) {
+          if (idx >= _crawlLinks.length) {
+            var state = { startUrl: location.href, results: _crawlResults };
+            try { localStorage.setItem('milg-crawl-complete', JSON.stringify(state)); } catch(e) {}
+            console.log('%c\u2713 Crawl complete! ' + _crawlResults.length + ' pages analyzed.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+            console.log('%cOpen the analyzer to view results (they load automatically).', 'color: #3b82f6;');
+            console.log('%cOr access: window.__milgCrawlResults', 'color: #64748b;');
+            window.__milgCrawlResults = _crawlResults;
+            return;
+          }
 
-        // Fetch the page HTML (same-origin, so no CORS needed, cookies included)
-        fetch(url, { credentials: 'same-origin' }).then(function(r) {
-          if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
-          return r.text();
-        }).then(function(html) {
-          // Inline CSS from the fetched HTML (resolve relative URLs)
-          var baseUrl = url.replace(/\/[^/]*$/, '/');
-          var cssLinks = [];
-          var linkRe = /<link[^>]+rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*>/gi;
-          var altRe = /<link[^>]+href=["']([^"']+)["'][^>]*rel=["']stylesheet["'][^>]*>/gi;
-          var m;
-          while (m = linkRe.exec(html)) cssLinks.push(m[1]);
-          while (m = altRe.exec(html)) { if (cssLinks.indexOf(m[1]) === -1) cssLinks.push(m[1]); }
+          var url = _crawlLinks[idx];
+          var path; try { path = new URL(url).pathname; } catch(e) { path = url; }
+          console.log('%c\u2192 [' + (idx + 1) + '/' + _crawlLinks.length + '] Loading ' + path + ' (with JS)\u2026', 'color: #3b82f6;');
 
-          var cssPromise = cssLinks.length > 0 ?
-            Promise.all(cssLinks.map(function(href) {
-              var cssUrl = href.startsWith('http') ? href : (href.startsWith('/') ? _crawlOrigin + href : baseUrl + href);
-              return fetch(cssUrl, { credentials: 'same-origin' }).then(function(r) { return r.text(); }).catch(function() { return ''; });
-            })) : Promise.resolve([]);
-
-          return cssPromise.then(function(cssTexts) {
-            // Remove link tags, inject inlined CSS
-            var processed = html.replace(/<link[^>]+rel=["']stylesheet["'][^>]*>/gi, '');
-            if (cssTexts.length > 0) {
-              var styleBlock = '<style>' + cssTexts.join('\n') + '</style>';
-              processed = /<\/head>/i.test(processed) ? processed.replace(/<\/head>/i, styleBlock + '</head>') : styleBlock + processed;
-            }
-            // Add base tag for relative URLs
-            var baseTag = '<base href="' + baseUrl + '">';
-            processed = /<head([^>]*)>/i.test(processed) ? processed.replace(/<head([^>]*)>/i, '<head$1>' + baseTag) : baseTag + processed;
-            return processed;
-          });
-        }).then(function(processedHtml) {
-          // Create hidden iframe with srcdoc
+          // Create same-origin iframe with src= (full page load, JS executes)
           var iframe = document.createElement('iframe');
           iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
-          iframe.sandbox = 'allow-scripts allow-same-origin';
+          // Sandbox: allow scripts + same-origin but block top-navigation (prevents frame-busting)
+          iframe.sandbox = 'allow-scripts allow-same-origin allow-forms';
           document.body.appendChild(iframe);
 
           var done = false;
           function cleanup() { if (iframe.parentNode) document.body.removeChild(iframe); }
 
-          // Build srcdoc with extraction script
-          var extractScript = '<script>window.__milgCrawlSite=false;window.__milgIsFragment=false;</' + 'script>' +
-            '<script>' + snippetSrc + '</' + 'script>';
+          iframe.addEventListener('load', function() {
+            if (done) return;
+            // Wait for page JS to settle (SPA rendering, lazy loading, etc.)
+            setTimeout(function() {
+              if (done) return;
+              try {
+                var iWin = iframe.contentWindow;
+                var iDoc = iframe.contentDocument || iWin.document;
+                // Inject extraction snippet (disable crawl to prevent recursion)
+                var script = iDoc.createElement('script');
+                script.textContent = 'window.__milgCrawlSite=false;\n' + snippetSrc;
+                iDoc.body.appendChild(script);
 
-          var srcdoc;
-          if (/<\/body>/i.test(processedHtml)) {
-            srcdoc = processedHtml.replace(/<\/body>/i, extractScript + '</body>');
-          } else {
-            srcdoc = processedHtml + extractScript;
-          }
-          iframe.srcdoc = srcdoc;
-
-          // Poll for results
-          var polls = 0;
-          var poller = setInterval(function() {
-            polls++;
-            try {
-              var iData = iframe.contentWindow && iframe.contentWindow.__milgData;
-              if (iData) {
-                clearInterval(poller); done = true;
-                iData.meta.url = url;
-                _crawlResults.push({ url: url, data: iData });
+                // Poll for __milgData
+                var polls = 0;
+                var poller = setInterval(function() {
+                  polls++;
+                  try {
+                    var iData = iWin.__milgData;
+                    if (iData) {
+                      clearInterval(poller); done = true;
+                      iData.meta.url = url;
+                      _crawlResults.push({ url: url, data: iData });
+                      cleanup();
+                      console.log('%c  \u2713 ' + path + ' (' + (iData.structure.totalElements || 0) + ' elements)', 'color: #16a34a;');
+                      setTimeout(function() { processNext(idx + 1); }, 500);
+                    } else if (polls > 40) {
+                      clearInterval(poller); done = true;
+                      console.log('%c  \u2717 Timeout: ' + path, 'color: #dc2626;');
+                      cleanup();
+                      setTimeout(function() { processNext(idx + 1); }, 500);
+                    }
+                  } catch(e) {
+                    clearInterval(poller); done = true;
+                    console.log('%c  \u2717 Error: ' + path + ' (' + e.message + ')', 'color: #dc2626;');
+                    cleanup();
+                    setTimeout(function() { processNext(idx + 1); }, 500);
+                  }
+                }, 500);
+              } catch(e) {
+                done = true;
+                console.log('%c  \u2717 Cannot access iframe: ' + path + ' (' + e.message + ')', 'color: #dc2626;');
                 cleanup();
-                console.log('%c  \u2713 ' + path + ' (' + (iData.structure.totalElements || 0) + ' elements)', 'color: #16a34a;');
-                setTimeout(function() { processNext(idx + 1); }, 300);
-              } else if (polls > 40) { // 20 seconds
-                clearInterval(poller); done = true;
-                console.log('%c  \u2717 Timeout: ' + path, 'color: #dc2626;');
-                cleanup();
-                setTimeout(function() { processNext(idx + 1); }, 300);
+                setTimeout(function() { processNext(idx + 1); }, 500);
               }
-            } catch(e) {
-              clearInterval(poller); done = true;
-              console.log('%c  \u2717 Error: ' + path + ' (' + e.message + ')', 'color: #dc2626;');
-              cleanup();
-              setTimeout(function() { processNext(idx + 1); }, 300);
-            }
-          }, 500);
-        }).catch(function(e) {
-          console.log('%c  \u2717 Fetch failed: ' + path + ' (' + e.message + ')', 'color: #dc2626;');
-          setTimeout(function() { processNext(idx + 1); }, 300);
-        });
-      }
-      processNext(0);
-    }
+            }, 3000); // 3s wait for JS to settle after load
+          });
 
-    if (_crawlLinks.length === 0) {
-      var state = { startUrl: location.href, results: _crawlResults };
-      try { localStorage.setItem('milg-crawl-complete', JSON.stringify(state)); } catch(e) {}
-      console.log('%c\u2713 Crawl complete (1 page). Open the analyzer.', 'color: #16a34a; font-weight: bold;');
-    } else {
-      // Fetch our own snippet source for iframe injection
-      fetch(_snippetSrcUrl).then(function(r) { return r.text(); }).then(function(src) {
-        _crawlWithSnippet(src);
-      }).catch(function() {
-        console.log('%c\u26A0 Could not fetch snippet. Using inline extraction (reduced accuracy).', 'color: #b45309;');
-        // Minimal fallback — just store current page result
-        var state = { startUrl: location.href, results: _crawlResults };
-        try { localStorage.setItem('milg-crawl-complete', JSON.stringify(state)); } catch(e) {}
+          iframe.addEventListener('error', function() {
+            if (done) return; done = true;
+            console.log('%c  \u2717 Failed to load: ' + path, 'color: #dc2626;');
+            cleanup();
+            setTimeout(function() { processNext(idx + 1); }, 500);
+          });
+
+          iframe.src = url;
+
+          // Hard timeout (30s per page)
+          setTimeout(function() {
+            if (done) return; done = true;
+            console.log('%c  \u2717 Hard timeout: ' + path, 'color: #dc2626;');
+            cleanup();
+            setTimeout(function() { processNext(idx + 1); }, 500);
+          }, 30000);
+        }
+        processNext(0);
+
+      }).catch(function(e) {
+        console.log('%c\u26A0 Could not fetch snippet source: ' + e.message, 'color: #b45309;');
+        console.log('%cCrawl requires the snippet source from GitHub Pages.', 'color: #64748b;');
       });
     }
     return; // Skip normal clipboard copy

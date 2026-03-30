@@ -1779,7 +1779,7 @@
     window.__milgData = data;
     window.__milgData_json = json;
 
-    // --- Site Crawl Mode (fetch-based, stays on current page, with screenshots) ---
+    // --- Site Crawl Mode (same-origin iframe with src=, full JS execution) ---
     if (window.__milgCrawlSite) {
       var _cm = Math.min(Math.max(window.__milgCrawlMaxPages || 5, 1), 25);
       var _cb = window.__milgCrawlBlacklist || [];
@@ -1793,56 +1793,58 @@
       });
       _links = _links.slice(0, _cm - 1);
       var _cResults = [{ url: location.href, data: data }];
-      console.log('%c\uD83D\uDD77 Site Crawl: discovered ' + _links.length + ' page(s). Fetching & analyzing\u2026', 'color: #8b5cf6; font-weight: bold;');
-      var _ssUrl = 'https://jdeworks.github.io/make-it-look-good/analyzer-snippet-screenshots.js';
-
-      function _csProcess(snippetSrc, idx) {
-        if (idx >= _links.length) {
-          var st = { startUrl: location.href, results: _cResults };
-          try { localStorage.setItem('milg-crawl-complete', JSON.stringify(st)); } catch(e) {}
-          console.log('%c\u2713 Crawl complete! ' + _cResults.length + ' pages analyzed.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-          console.log('%cOpen the analyzer to view results.', 'color: #3b82f6;');
-          window.__milgCrawlResults = _cResults;
-          return;
-        }
-        var url = _links[idx];
-        var path; try { path = new URL(url).pathname; } catch(e) { path = url; }
-        console.log('%c\u2192 [' + (idx + 1) + '/' + _links.length + '] ' + path, 'color: #3b82f6;');
-        fetch(url, { credentials: 'same-origin' }).then(function(r) { return r.text(); }).then(function(html) {
-          var baseUrl = url.replace(/\/[^/]*$/, '/');
-          var cssLinks = []; var m; var re1 = /<link[^>]+rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*>/gi;
-          while (m = re1.exec(html)) cssLinks.push(m[1]);
-          return (cssLinks.length > 0 ? Promise.all(cssLinks.map(function(h) { var cu = h.startsWith('http') ? h : (h.startsWith('/') ? _co + h : baseUrl + h); return fetch(cu, { credentials: 'same-origin' }).then(function(r) { return r.text(); }).catch(function() { return ''; }); })) : Promise.resolve([])).then(function(ct) {
-            var p = html.replace(/<link[^>]+rel=["']stylesheet["'][^>]*>/gi, '');
-            if (ct.length > 0) { var sb = '<style>' + ct.join('\n') + '</style>'; p = /<\/head>/i.test(p) ? p.replace(/<\/head>/i, sb + '</head>') : sb + p; }
-            p = /<head([^>]*)>/i.test(p) ? p.replace(/<head([^>]*)>/i, '<head$1><base href="' + baseUrl + '">') : '<base href="' + baseUrl + '">' + p;
-            var iframe = document.createElement('iframe');
-            iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
-            iframe.sandbox = 'allow-scripts allow-same-origin';
-            document.body.appendChild(iframe);
-            var es = '<script>window.__milgCrawlSite=false;</' + 'script><script>' + snippetSrc + '</' + 'script>';
-            iframe.srcdoc = /<\/body>/i.test(p) ? p.replace(/<\/body>/i, es + '</body>') : p + es;
-            var polls = 0;
-            var pi = setInterval(function() {
-              polls++;
-              try {
-                var d = iframe.contentWindow && iframe.contentWindow.__milgData;
-                if (d) { clearInterval(pi); d.meta.url = url; _cResults.push({ url: url, data: d }); if (iframe.parentNode) document.body.removeChild(iframe); console.log('%c  \u2713 ' + path, 'color: #16a34a;'); setTimeout(function() { _csProcess(snippetSrc, idx + 1); }, 300); }
-                else if (polls > 60) { clearInterval(pi); if (iframe.parentNode) document.body.removeChild(iframe); console.log('%c  \u2717 Timeout: ' + path, 'color: #dc2626;'); setTimeout(function() { _csProcess(snippetSrc, idx + 1); }, 300); }
-              } catch(e) { clearInterval(pi); if (iframe.parentNode) document.body.removeChild(iframe); console.log('%c  \u2717 Error: ' + path, 'color: #dc2626;'); setTimeout(function() { _csProcess(snippetSrc, idx + 1); }, 300); }
-            }, 500);
-          });
-        }).catch(function(e) { console.log('%c  \u2717 Fetch failed: ' + path + ' (' + e.message + ')', 'color: #dc2626;'); setTimeout(function() { _csProcess(snippetSrc, idx + 1); }, 300); });
-      }
+      console.log('%c\uD83D\uDD77 Site Crawl: discovered ' + _links.length + ' page(s)', 'color: #8b5cf6; font-weight: bold;');
 
       if (_links.length === 0) {
-        var st = { startUrl: location.href, results: _cResults };
-        try { localStorage.setItem('milg-crawl-complete', JSON.stringify(st)); } catch(e) {}
+        try { localStorage.setItem('milg-crawl-complete', JSON.stringify({ startUrl: location.href, results: _cResults })); } catch(e) {}
         console.log('%c\u2713 Crawl complete (1 page).', 'color: #16a34a; font-weight: bold;');
       } else {
-        fetch(_ssUrl).then(function(r) { return r.text(); }).then(function(src) { _csProcess(src, 0); }).catch(function() {
-          console.log('%c\u26A0 Could not fetch snippet for crawl.', 'color: #b45309;');
-        });
+        // Use screenshot snippet for injection (so crawled pages also get screenshots)
+        var _ssUrl = 'https://jdeworks.github.io/make-it-look-good/analyzer-snippet-screenshots.js';
+        fetch(_ssUrl).then(function(r) { return r.text(); }).then(function(snippetSrc) {
+          function _next(idx) {
+            if (idx >= _links.length) {
+              try { localStorage.setItem('milg-crawl-complete', JSON.stringify({ startUrl: location.href, results: _cResults })); } catch(e) {}
+              console.log('%c\u2713 Crawl complete! ' + _cResults.length + ' pages.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+              window.__milgCrawlResults = _cResults;
+              return;
+            }
+            var url = _links[idx];
+            var path; try { path = new URL(url).pathname; } catch(e) { path = url; }
+            console.log('%c\u2192 [' + (idx+1) + '/' + _links.length + '] ' + path + ' (with JS)', 'color: #3b82f6;');
+            var iframe = document.createElement('iframe');
+            iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
+            iframe.sandbox = 'allow-scripts allow-same-origin allow-forms';
+            document.body.appendChild(iframe);
+            var done = false;
+            function cleanup() { if (iframe.parentNode) document.body.removeChild(iframe); }
+            iframe.addEventListener('load', function() {
+              if (done) return;
+              setTimeout(function() {
+                if (done) return;
+                try {
+                  var iWin = iframe.contentWindow;
+                  var script = (iframe.contentDocument || iWin.document).createElement('script');
+                  script.textContent = 'window.__milgCrawlSite=false;\n' + snippetSrc;
+                  (iframe.contentDocument || iWin.document).body.appendChild(script);
+                  var polls = 0;
+                  var pi = setInterval(function() {
+                    polls++;
+                    try {
+                      var d = iWin.__milgData;
+                      if (d) { clearInterval(pi); done = true; d.meta.url = url; _cResults.push({ url: url, data: d }); cleanup(); console.log('%c  \u2713 ' + path, 'color: #16a34a;'); setTimeout(function() { _next(idx + 1); }, 500); }
+                      else if (polls > 60) { clearInterval(pi); done = true; cleanup(); console.log('%c  \u2717 Timeout: ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }
+                    } catch(e) { clearInterval(pi); done = true; cleanup(); console.log('%c  \u2717 Error: ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }
+                  }, 500);
+                } catch(e) { done = true; cleanup(); console.log('%c  \u2717 Access denied: ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }
+              }, 3000);
+            });
+            iframe.addEventListener('error', function() { if (done) return; done = true; cleanup(); console.log('%c  \u2717 Load failed: ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); });
+            iframe.src = url;
+            setTimeout(function() { if (done) return; done = true; cleanup(); console.log('%c  \u2717 Hard timeout: ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }, 30000);
+          }
+          _next(0);
+        }).catch(function() { console.log('%c\u26A0 Could not fetch snippet for crawl.', 'color: #b45309;'); });
       }
       return; // Skip clipboard copy
     }
