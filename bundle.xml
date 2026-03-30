@@ -8735,6 +8735,12 @@ How much whitespace do I need?
 - Related: [Spacing System](spacing-system.md), [Grid Systems](grid-systems.md), [Visual Hierarchy](visual-hierarchy.md)
 </file>
 
+<file path="proxy/wrangler.toml">
+name = "milg-cors-proxy"
+main = "worker.js"
+compatibility_date = "2024-09-01"
+</file>
+
 <file path="responsive/breakpoints.md">
 # Breakpoints
 
@@ -17372,12 +17378,6 @@ Where should I place primary actions on mobile?
 - [Steven Hoober — Design for Fingers and Thumbs](https://www.smashingmagazine.com/2012/02/finger-friendly-design-ideal-mobile-touchscreen-target-sizes/) — thumb zone research
 </file>
 
-<file path="proxy/wrangler.toml">
-name = "milg-cors-proxy"
-main = "worker.js"
-compatibility_date = "2024-09-01"
-</file>
-
 <file path="research/sources.md">
 # Sources
 
@@ -18650,6 +18650,245 @@ package-lock.json
 .claude/
 </file>
 
+<file path="README.md">
+# make-it-look-good
+
+> **Make your website, app, or UI actually look good.** Give your AI assistant this repo and it will help you design, redesign, or fix the visual design of any web project — with real design principles, not guesswork.
+
+Your AI asks what you're building, what personality you want (clean, minimalist, playful, editorial), your colors, and your audience — then produces production-ready HTML/CSS with proper spacing, contrast, typography, and responsive behavior. It works on landing pages, dashboards, forms, portfolios, e-commerce, or any UI.
+
+**This is not a library you install.** It's a design knowledge base (45 topics on color, typography, spacing, layout, interaction, accessibility) plus a consultation playbook that guides your AI through the right questions and decisions.
+
+---
+
+## If you are an AI assistant reading this
+
+The user wants you to **help them make their website or UI look good**. This repo is a design toolkit — use it to guide the user through a design consultation for *their* project.
+
+**Start here:**
+1. Read [`CONSULT.md`](CONSULT.md) — the full design consultation playbook. Follow it step by step.
+2. Read [`docs/presets/_index.md`](docs/presets/_index.md) — template catalog with preview links.
+3. Read [`workflows/quick-reference.md`](workflows/quick-reference.md) — critical design numbers.
+4. Read ONLY the knowledge files relevant to the user's question (see Step 2 in CONSULT.md).
+
+**Your job:** Ask the user what they're building (or what they want to improve), walk them through personality/colors/audience questions, then generate or fix their UI code using the design principles in this repo. Do NOT improve this repo itself — focus on the user's project.
+
+CONSULT.md includes:
+- A consultation depth selector (quick start / guided / thorough) — ask the user how deep to go
+- Required intake questions about personality, colors, inspiration, and dark mode — don't skip these
+- Website analysis workflow (Step 1E) for when users share reference URLs
+- Template catalog with preview links at `https://jdeworks.github.io/make-it-look-good/#preset:{element}/{personality}`
+
+---
+
+## For Developers
+
+### What is this?
+
+You have a website or UI that needs to look better. Give this repo to your AI assistant and it becomes a **design consultant** — asking the right questions, applying real design principles, and producing code that actually looks professional. Not generic blue SaaS. Your brand, your personality, your colors.
+
+### How to use it
+
+**Option A — Online chat** (Claude.ai, ChatGPT, Gemini, Perplexity, etc.)
+
+Copy-paste this entire block as your first message:
+
+```
+Fetch this file — it's a design toolkit that will help me make my website look good:
+https://raw.githubusercontent.com/jdeworks/make-it-look-good/dev/bundle.xml
+
+Read the CONSULT.md inside it and follow the consultation playbook step by step.
+You are a design consultant — help me design or improve MY website/UI, not this
+repo. Start by asking what I'm building and how detailed I want the consultation
+(quick start / guided / thorough).
+```
+
+The bundle (~194k tokens) includes the full consultation playbook, all 45 knowledge files, and a template catalog. To browse templates visually, use the [live preview tool](https://jdeworks.github.io/make-it-look-good/) and tell your AI which ones you like.
+
+**Option B — Local AI agent** (Claude Code, Cursor, Windsurf, Codex, etc.)
+
+Clone and point your agent at the folder:
+```bash
+git clone -b dev https://github.com/jdeworks/make-it-look-good.git
+```
+
+Then tell your agent:
+```
+Read CONSULT.md from the make-it-look-good folder. It's a design consultation
+playbook — use it to help me make my website/UI look good. Follow the steps
+and start by asking what I'm building.
+```
+
+A local agent gets the full file structure including all 170+ template HTML files. This is the recommended approach for hands-on design work.
+
+**Option C — Quick prompts** (if your AI already has the repo loaded)
+
+Guided consultation (asks about personality, colors, audience):
+```
+Follow the CONSULT.md playbook to run a design consultation for my project.
+```
+
+Audit existing code:
+```
+Follow CONSULT.md Step 1A to audit this code, then generate design review notes: [paste your code]
+```
+
+Grab a component:
+```
+Look at docs/presets/_index.md and give me a hero + pricing cards layout.
+```
+
+> **Tip:** Share a link to a site you like the look of. Even one reference ("I want it to feel like aesop.com") dramatically improves results.
+
+---
+
+### Preview Tool
+
+Paste any HTML+Tailwind into the [live preview tool](https://jdeworks.github.io/make-it-look-good/) to see it rendered instantly. Toggle mobile/tablet/desktop views, dark mode, and share via URL. Includes 121 prebuilt templates across 38 elements with multiple design personalities.
+
+### Design Analyzer
+
+Score any website against evidence-based design rules with the [Design Analyzer](https://jdeworks.github.io/make-it-look-good/analyzer.html). **~60 checks across 14 scoring modules** — no AI, just math against WCAG 2.2, Material Design, NNGroup research, and typography best practices. Every finding links to its source.
+
+Three ways to analyze:
+
+| Method | Best for | How |
+|--------|----------|-----|
+| **Enter URL** | Phone, quick checks | Paste a URL — fetched via CORS proxy, scored automatically |
+| **Console Snippet** | Most accurate, localhost, behind login | Copy snippet → run in DevTools console → paste JSON |
+| **Paste HTML** | Static mockups | Paste HTML source, rendered in iframe |
+
+Scoring modules: Color & Contrast (WCAG + APCA), Typography, Spacing & Layout, Touch & Interaction, Accessibility, Responsive Design, Visual Consistency, Cognitive Load, Layout Quality, Performance, Readability, Motion & Animation, Visual Balance.
+
+Features: 8 audience profiles (General, WCAG AAA, Elderly, Low Vision, Motor Impairment, Color Blind, Children, Cognitive), page context detection, gradient/background-image/CSS-filter contrast resolution, decorative element filtering, context-aware touch targets (nav/footer/inline exemptions per WCAG 2.5.8), CVD palette simulation (Machado et al. 2009), post-analysis exclusion suggestions, extraction caching, dark mode report, viewport size selection, deep scan (multi-viewport + dark mode), page screenshots, analysis history, N/A category detection, progress bar, JSON export/import, markdown/PDF export. Self-hostable CORS proxy (Cloudflare Worker, free tier 100K req/day) — see [`proxy/README.md`](proxy/README.md).
+
+Validated against 125 preset templates via headless browser testing (Puppeteer) — average score 88, min 69, max 100, with a 7-point gap between "before" (81 avg) and "clean" (88 avg) variants.
+
+### Before & After Examples
+
+Each "before" shows a typical MVP. Each "after" is a structurally different redesign — not just CSS tweaks but genuinely different layouts. Multiple personalities (Clean, Minimalist, Playful, Editorial) show how the same content can look completely different.
+
+| Example | Personalities | Try it |
+|---------|--------------|--------|
+| Dashboard | Clean, Minimalist, Playful | [Before](https://jdeworks.github.io/make-it-look-good/#preset:dashboard/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:dashboard/clean) |
+| Landing Page | Clean, Minimalist, Playful, Editorial | [Before](https://jdeworks.github.io/make-it-look-good/#preset:landing/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:landing/clean) |
+| Form | Clean, Minimalist, Playful, Editorial | [Before](https://jdeworks.github.io/make-it-look-good/#preset:form/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:form/clean) |
+| Card Grid | Clean, Minimalist, Playful | [Before](https://jdeworks.github.io/make-it-look-good/#preset:cards/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:cards/clean) |
+| Multi-Page App | Clean, Minimalist, Playful | [Before](https://jdeworks.github.io/make-it-look-good/#preset:project/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:project/clean) |
+
+Click any "After" link — personality buttons appear in the preview header to switch between variants. Color swatches let you recolor with any Tailwind palette. Effect buttons apply CSS overlays (Hushed, Bouncy, Frosted, Serif).
+
+### Example: Guided Consultation Flow
+
+Here's what a real consultation looks like when an LLM follows the playbook. The user says *"I need a website for my cafe. Something warm and inviting."*
+
+**1. The AI classifies the input** → vague idea, no code → guided intake
+
+**2. Intake questions asked:**
+- What are you building? → Landing page / content site, single-page with sections
+- Who uses it? → General public, 65-75% mobile traffic
+- Personality? → Playful & friendly, "specialty coffee shop" feel
+- Tech stack? → Plain HTML + Tailwind CDN
+- Colors? → Warm amber `#f59e0b`, rich brown `#78350f`
+- Inspiration? → "Your favorite neighborhood spot, not corporate chain"
+- Dark mode? → No
+
+**3. The AI reads knowledge files** → `layout/visual-hierarchy.md`, `typography/type-scale.md`, `color/color-psychology.md`, `interaction/touch-targets.md`, `responsive/mobile-first.md`
+
+**4. Design decisions (with reasoning):**
+- Playfair Display headings + Inter body → artisanal yet readable
+- Amber-900 on amber-50 at 7.2:1 contrast → AAA pass
+- White text on amber buttons fails WCAG → switched to amber-900 text
+- `rounded-2xl` cards + pill-shaped CTAs → warmth, not corporate
+- 48px touch targets everywhere → mobile-heavy audience
+- Section order: Hero → Menu → About → Hours → Footer → inverted pyramid
+
+**5. Output:** A single self-contained HTML file that renders on 375px–1440px+, passes WCAG AA on all text, with warm amber palette and serif/sans font pairing.
+
+The full flow with all design decisions is in [`tests/e2e-restaurant-flow.md`](tests/e2e-restaurant-flow.md). The output is in [`tests/e2e-restaurant.html`](tests/e2e-restaurant.html).
+
+### Validated Test Cases
+
+The consultation flow is tested across 12 real-world scenarios — all pass all applicable design rules (contrast, touch targets, spacing, hierarchy). See [`tests/`](tests/) for the full set.
+
+| Scenario | Input | What It Proves |
+|----------|-------|----------------|
+| React settings page | JSX + inline styles | Outputs in user's framework, no forced Tailwind migration |
+| Barebones HTML | Hackathon-quality landing page | Full redesign with Tailwind CDN |
+| Vue dashboard | Vue 3 SFC + scoped CSS | Preserves Vue SFC structure |
+| Restaurant landing | "warm and inviting cafe" | Guided intake → personality-driven output |
+| Developer portfolio | "dark mode, emerald accent" | Dark mode design with monospace accents |
+| SaaS pricing | Brand colors provided | Brand color application, clean personality |
+| Status page | JSON API data pasted | Raw data → structured UI (Step 1D) |
+| CLI output | Terminal table pasted | Non-standard input → dark technical dashboard |
+| Email template | "welcome email" | Non-web output with email-specific constraints |
+
+---
+
+## What's Inside
+
+### Preset Library — [`docs/presets/_index.md`](docs/presets/_index.md)
+
+38+ presets with multiple personality variants (Clean, Minimalist, Playful). Interactive components also have React, Vue, and Svelte framework files.
+
+| Category | Examples |
+|----------|---------|
+| **Layout Shells** | App shell, marketing page, dashboard, centered form |
+| **Components** | Hero, tabs, accordion, pagination, dropdown, avatars, data table |
+| **Full Pages** | Pricing, portfolio, restaurant, status page |
+| **Before → After** | Dashboard, landing page, form, card grid, multi-page app |
+| **Expressive** | Personal site, agency landing, agency portfolio, app showcase, scroll reveal landing, product launch, editorial blog, SaaS features, scroll story, product page, devtool landing, docs site, event page, personalized portfolio |
+| **Edge Cases** | Deploy monitor, button system, OSS landing |
+
+All presets: dark mode, WCAG AA contrast, 44px touch targets, responsive. [Composition recipes](docs/presets/_index.md#composition-recipes) show how to combine them into full pages.
+
+### Knowledge Files — 44 topics
+
+| Area | Topics |
+|------|--------|
+| **Foundations** | [Cognitive load](foundations/cognitive-load.md), [Gestalt](foundations/gestalt-principles.md), [Hick's Law](foundations/hicks-law.md), [Fitts's Law](foundations/fitts-law.md), [Aesthetic-usability](foundations/aesthetic-usability.md), [Peak-end rule](foundations/peak-end-rule.md) |
+| **Color** | [Contrast & a11y](color/contrast-and-accessibility.md), [Color systems](color/color-systems.md), [Psychology](color/color-psychology.md), [Color-blind safety](color/color-blind-safety.md) |
+| **Typography** | [Type scale](typography/type-scale.md), [Font pairing](typography/font-pairing.md), [Readability](typography/readability.md), [Web font loading](typography/web-font-loading.md) |
+| **Layout** | [Spacing system](layout/spacing-system.md), [Visual hierarchy](layout/visual-hierarchy.md), [Grid systems](layout/grid-systems.md), [Whitespace](layout/whitespace.md) |
+| **Interaction** | [Animation timing](interaction/animation-timing.md), [Micro-interactions](interaction/micro-interactions.md), [Touch targets](interaction/touch-targets.md), [Loading states](interaction/loading-states.md) |
+| **Responsive** | [Mobile-first](responsive/mobile-first.md), [Breakpoints](responsive/breakpoints.md), [Fluid typography](responsive/fluid-typography.md), [Patterns](responsive/responsive-patterns.md) |
+| **Systems** | [Design tokens](systems/design-tokens.md), [Material Design 3](systems/material-design-3.md), [Apple HIG](systems/apple-hig.md), [Building a system](systems/building-a-system.md) |
+| **Expressive** | [Visual identity](expressive/visual-identity.md), [Hero patterns](expressive/hero-patterns.md), [Scroll storytelling](expressive/scroll-storytelling.md), [Purposeful motion](expressive/purposeful-motion.md), [Scroll effect patterns](expressive/scroll-effect-patterns.md), [Curated examples](expressive/curated-examples.md) |
+| **Heuristics** | [Nielsen's 10](heuristics/nielsen-10.md), [UX frameworks](heuristics/ux-frameworks.md) |
+| **Components** | [Buttons](components/buttons.md), [Forms](components/forms.md), [Cards](components/cards.md), [Navigation](components/navigation.md), [Modals](components/modals-and-dialogs.md), [Tables](components/tables-and-lists.md), [Feedback](components/feedback.md) |
+
+Each file: 200–400 lines, concrete rules with numbers, CSS/Tailwind patterns, decision trees, sources.
+
+### Workflows
+
+| Workflow | Use when |
+|----------|----------|
+| [Quick Reference](workflows/quick-reference.md) | Need a number fast (contrast ratio, spacing value, timing) |
+| [New Project Checklist](workflows/new-project-checklist.md) | Starting from scratch |
+| [Design Review Checklist](workflows/design-review-checklist.md) | Auditing an existing design |
+
+### Critical Numbers
+
+| What | Value |
+|------|-------|
+| Text contrast (AA) | 4.5:1 |
+| Large text contrast (AA) | 3:1 |
+| Body font size | ≥16px |
+| Line height | 1.4–1.6 |
+| Line length | 45–75 characters |
+| Touch target | ≥44×44px |
+| Base spacing unit | 4px or 8px |
+| Nav items | 5–7 max |
+| Enter animation | 200–300ms |
+| Exit animation | 150–200ms |
+
+---
+
+If this helped you ship something that looks good, [give it a star](../../stargazers). Found an issue? [Open one](../../issues).
+
+Sources: [research/sources.md](research/sources.md)
+</file>
+
 <file path="docs/scoring/registry.js">
 // Scoring Module Registry
 // Each module calls MilgScoring.register() to add its scoring function.
@@ -19397,243 +19636,129 @@ window.MilgCrawl = (function() {
 })();
 </file>
 
-<file path="README.md">
-# make-it-look-good
+<file path="proxy/README.md">
+# CORS Proxy Worker
 
-> **Make your website, app, or UI actually look good.** Give your AI assistant this repo and it will help you design, redesign, or fix the visual design of any web project — with real design principles, not guesswork.
+A lightweight Cloudflare Worker that proxies HTTP requests with CORS headers, used by the Design Analyzer's URL input mode.
 
-Your AI asks what you're building, what personality you want (clean, minimalist, playful, editorial), your colors, and your audience — then produces production-ready HTML/CSS with proper spacing, contrast, typography, and responsive behavior. It works on landing pages, dashboards, forms, portfolios, e-commerce, or any UI.
+## Why
 
-**This is not a library you install.** It's a design knowledge base (45 topics on color, typography, spacing, layout, interaction, accessibility) plus a consultation playbook that guides your AI through the right questions and decisions.
+Browsers block cross-origin requests (CORS). To fetch and analyze external websites from a client-side app, we need a proxy that adds `Access-Control-Allow-Origin` headers. This self-hosted worker replaces dependency on third-party CORS proxies.
 
----
+## Full setup (from scratch)
 
-## If you are an AI assistant reading this
+### 1. Deploy the Worker to Cloudflare
 
-The user wants you to **help them make their website or UI look good**. This repo is a design toolkit — use it to guide the user through a design consultation for *their* project.
+1. [Sign up for Cloudflare](https://dash.cloudflare.com/sign-up) (free, no credit card)
+2. Install Wrangler (Cloudflare's deploy CLI):
+   ```bash
+   npm install -g wrangler
+   ```
+3. Login to Cloudflare:
+   ```bash
+   wrangler login
+   ```
+4. Deploy the worker:
+   ```bash
+   cd proxy
+   npx wrangler deploy
+   ```
+5. Copy the `*.workers.dev` URL from the output — that's your proxy URL
 
-**Start here:**
-1. Read [`CONSULT.md`](CONSULT.md) — the full design consultation playbook. Follow it step by step.
-2. Read [`docs/presets/_index.md`](docs/presets/_index.md) — template catalog with preview links.
-3. Read [`workflows/quick-reference.md`](workflows/quick-reference.md) — critical design numbers.
-4. Read ONLY the knowledge files relevant to the user's question (see Step 2 in CONSULT.md).
+### 2. Connect it to the Analyzer
 
-**Your job:** Ask the user what they're building (or what they want to improve), walk them through personality/colors/audience questions, then generate or fix their UI code using the design principles in this repo. Do NOT improve this repo itself — focus on the user's project.
+1. Copy `.env.example` to `.env` at the repo root:
+   ```bash
+   cp .env.example .env
+   ```
+2. Edit `.env` and set your worker URL:
+   ```
+   PROXY_URL=https://milg-cors-proxy.YOUR-SUB.workers.dev
+   ```
+3. Run the inject script:
+   ```bash
+   ./scripts/inject-proxy.sh
+   ```
+4. Commit and push:
+   ```bash
+   git add docs/analyzer.js
+   git commit -m "Inject proxy URL"
+   git push
+   ```
 
-CONSULT.md includes:
-- A consultation depth selector (quick start / guided / thorough) — ask the user how deep to go
-- Required intake questions about personality, colors, inspiration, and dark mode — don't skip these
-- Website analysis workflow (Step 1E) for when users share reference URLs
-- Template catalog with preview links at `https://jdeworks.github.io/make-it-look-good/#preset:{element}/{personality}`
+GitHub Pages will serve the updated `docs/analyzer.js` with your proxy baked in.
 
----
+### 3. If you need to change the URL
 
-## For Developers
+Edit `.env`, run `./scripts/inject-proxy.sh` again, commit and push.
 
-### What is this?
+### 4. If you want to remove the proxy
 
-You have a website or UI that needs to look better. Give this repo to your AI assistant and it becomes a **design consultant** — asking the right questions, applying real design principles, and producing code that actually looks professional. Not generic blue SaaS. Your brand, your personality, your colors.
+Delete `.env` (or clear `PROXY_URL`), run `./scripts/inject-proxy.sh` — it resets to the placeholder, falling back to third-party proxies.
 
-### How to use it
+## Setting up on a different computer
 
-**Option A — Online chat** (Claude.ai, ChatGPT, Gemini, Perplexity, etc.)
+1. Clone the repo
+2. Create `.env` with your `PROXY_URL=...` (the `.env` file is gitignored)
+3. Run `./scripts/inject-proxy.sh`
+4. That's it — the deployed `docs/analyzer.js` already has the URL from your last push
 
-Copy-paste this entire block as your first message:
+You only need to re-run the inject script if you want to change the URL or deploy from a fresh clone.
+
+## Free tier limits
+
+| | Free | Paid ($5/month) |
+|---|---|---|
+| Requests | 100K/day | 10M/month |
+| CPU time | 10ms/request | 30ms/request |
+| When exceeded | **Hard stop** (5XX until midnight UTC) | $0.30/million overage |
+
+100K/day handles ~5,500 daily users doing 3 analyses each. For context, each analysis uses ~4-6 proxied requests (1 HTML page + 3-5 CSS files).
+
+## Safety features
+
+| Feature | What it does |
+|---------|-------------|
+| **Origin checking** | Only browsers on `jdeworks.github.io` can use the proxy (unforgeable by browsers) |
+| **Rate limiting** | 30 requests/minute per IP address |
+| **SSRF protection** | Blocks localhost, private IPs, `.local` domains |
+| **Method restriction** | GET only, http/https only |
+| **Size limit** | 10 MB max response |
+
+## Configuration
+
+Edit `proxy/worker.js`:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ALLOWED_ORIGINS` | `['https://jdeworks.github.io']` | Allowed Origin domains. Set to `null` for any (dev only). |
+| `RATE_LIMIT` | `30` | Max requests per IP per minute |
+| `MAX_RESPONSE_SIZE` | `10 MB` | Max proxied response body |
+| `USER_AGENT` | `MilgAnalyzer/1.0` | User-Agent sent to target servers |
+
+After changing, redeploy: `cd proxy && npx wrangler deploy`
+
+## How the URL stays (mostly) hidden
 
 ```
-Fetch this file — it's a design toolkit that will help me make my website look good:
-https://raw.githubusercontent.com/jdeworks/make-it-look-good/dev/bundle.xml
+.env (local, gitignored)
+  └── PROXY_URL=https://your-worker.workers.dev
 
-Read the CONSULT.md inside it and follow the consultation playbook step by step.
-You are a design consultant — help me design or improve MY website/UI, not this
-repo. Start by asking what I'm building and how detailed I want the consultation
-(quick start / guided / thorough).
+./scripts/inject-proxy.sh
+  └── base64-encodes URL → patches docs/analyzer.js
+
+docs/analyzer.js (committed)
+  └── var _pe = 'aHR0cHM6Ly8uLi4=';  (not a recognizable URL pattern)
+
+Browser (runtime)
+  └── atob() decodes → fetches from your worker
 ```
 
-The bundle (~194k tokens) includes the full consultation playbook, all 45 knowledge files, and a template catalog. To browse templates visually, use the [live preview tool](https://jdeworks.github.io/make-it-look-good/) and tell your AI which ones you like.
-
-**Option B — Local AI agent** (Claude Code, Cursor, Windsurf, Codex, etc.)
-
-Clone and point your agent at the folder:
-```bash
-git clone -b dev https://github.com/jdeworks/make-it-look-good.git
-```
-
-Then tell your agent:
-```
-Read CONSULT.md from the make-it-look-good folder. It's a design consultation
-playbook — use it to help me make my website/UI look good. Follow the steps
-and start by asking what I'm building.
-```
-
-A local agent gets the full file structure including all 170+ template HTML files. This is the recommended approach for hands-on design work.
-
-**Option C — Quick prompts** (if your AI already has the repo loaded)
-
-Guided consultation (asks about personality, colors, audience):
-```
-Follow the CONSULT.md playbook to run a design consultation for my project.
-```
-
-Audit existing code:
-```
-Follow CONSULT.md Step 1A to audit this code, then generate design review notes: [paste your code]
-```
-
-Grab a component:
-```
-Look at docs/presets/_index.md and give me a hero + pricing cards layout.
-```
-
-> **Tip:** Share a link to a site you like the look of. Even one reference ("I want it to feel like aesop.com") dramatically improves results.
-
----
-
-### Preview Tool
-
-Paste any HTML+Tailwind into the [live preview tool](https://jdeworks.github.io/make-it-look-good/) to see it rendered instantly. Toggle mobile/tablet/desktop views, dark mode, and share via URL. Includes 121 prebuilt templates across 38 elements with multiple design personalities.
-
-### Design Analyzer
-
-Score any website against evidence-based design rules with the [Design Analyzer](https://jdeworks.github.io/make-it-look-good/analyzer.html). **~60 checks across 14 scoring modules** — no AI, just math against WCAG 2.2, Material Design, NNGroup research, and typography best practices. Every finding links to its source.
-
-Three ways to analyze:
-
-| Method | Best for | How |
-|--------|----------|-----|
-| **Enter URL** | Phone, quick checks | Paste a URL — fetched via CORS proxy, scored automatically |
-| **Console Snippet** | Most accurate, localhost, behind login | Copy snippet → run in DevTools console → paste JSON |
-| **Paste HTML** | Static mockups | Paste HTML source, rendered in iframe |
-
-Scoring modules: Color & Contrast (WCAG + APCA), Typography, Spacing & Layout, Touch & Interaction, Accessibility, Responsive Design, Visual Consistency, Cognitive Load, Layout Quality, Performance, Readability, Motion & Animation, Visual Balance.
-
-Features: 8 audience profiles (General, WCAG AAA, Elderly, Low Vision, Motor Impairment, Color Blind, Children, Cognitive), page context detection, gradient/background-image/CSS-filter contrast resolution, decorative element filtering, context-aware touch targets (nav/footer/inline exemptions per WCAG 2.5.8), CVD palette simulation (Machado et al. 2009), post-analysis exclusion suggestions, extraction caching, dark mode report, viewport size selection, deep scan (multi-viewport + dark mode), page screenshots, analysis history, N/A category detection, progress bar, JSON export/import, markdown/PDF export. Self-hostable CORS proxy (Cloudflare Worker, free tier 100K req/day) — see [`proxy/README.md`](proxy/README.md).
-
-Validated against 125 preset templates via headless browser testing (Puppeteer) — average score 88, min 69, max 100, with a 7-point gap between "before" (81 avg) and "clean" (88 avg) variants.
-
-### Before & After Examples
-
-Each "before" shows a typical MVP. Each "after" is a structurally different redesign — not just CSS tweaks but genuinely different layouts. Multiple personalities (Clean, Minimalist, Playful, Editorial) show how the same content can look completely different.
-
-| Example | Personalities | Try it |
-|---------|--------------|--------|
-| Dashboard | Clean, Minimalist, Playful | [Before](https://jdeworks.github.io/make-it-look-good/#preset:dashboard/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:dashboard/clean) |
-| Landing Page | Clean, Minimalist, Playful, Editorial | [Before](https://jdeworks.github.io/make-it-look-good/#preset:landing/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:landing/clean) |
-| Form | Clean, Minimalist, Playful, Editorial | [Before](https://jdeworks.github.io/make-it-look-good/#preset:form/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:form/clean) |
-| Card Grid | Clean, Minimalist, Playful | [Before](https://jdeworks.github.io/make-it-look-good/#preset:cards/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:cards/clean) |
-| Multi-Page App | Clean, Minimalist, Playful | [Before](https://jdeworks.github.io/make-it-look-good/#preset:project/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:project/clean) |
-
-Click any "After" link — personality buttons appear in the preview header to switch between variants. Color swatches let you recolor with any Tailwind palette. Effect buttons apply CSS overlays (Hushed, Bouncy, Frosted, Serif).
-
-### Example: Guided Consultation Flow
-
-Here's what a real consultation looks like when an LLM follows the playbook. The user says *"I need a website for my cafe. Something warm and inviting."*
-
-**1. The AI classifies the input** → vague idea, no code → guided intake
-
-**2. Intake questions asked:**
-- What are you building? → Landing page / content site, single-page with sections
-- Who uses it? → General public, 65-75% mobile traffic
-- Personality? → Playful & friendly, "specialty coffee shop" feel
-- Tech stack? → Plain HTML + Tailwind CDN
-- Colors? → Warm amber `#f59e0b`, rich brown `#78350f`
-- Inspiration? → "Your favorite neighborhood spot, not corporate chain"
-- Dark mode? → No
-
-**3. The AI reads knowledge files** → `layout/visual-hierarchy.md`, `typography/type-scale.md`, `color/color-psychology.md`, `interaction/touch-targets.md`, `responsive/mobile-first.md`
-
-**4. Design decisions (with reasoning):**
-- Playfair Display headings + Inter body → artisanal yet readable
-- Amber-900 on amber-50 at 7.2:1 contrast → AAA pass
-- White text on amber buttons fails WCAG → switched to amber-900 text
-- `rounded-2xl` cards + pill-shaped CTAs → warmth, not corporate
-- 48px touch targets everywhere → mobile-heavy audience
-- Section order: Hero → Menu → About → Hours → Footer → inverted pyramid
-
-**5. Output:** A single self-contained HTML file that renders on 375px–1440px+, passes WCAG AA on all text, with warm amber palette and serif/sans font pairing.
-
-The full flow with all design decisions is in [`tests/e2e-restaurant-flow.md`](tests/e2e-restaurant-flow.md). The output is in [`tests/e2e-restaurant.html`](tests/e2e-restaurant.html).
-
-### Validated Test Cases
-
-The consultation flow is tested across 12 real-world scenarios — all pass all applicable design rules (contrast, touch targets, spacing, hierarchy). See [`tests/`](tests/) for the full set.
-
-| Scenario | Input | What It Proves |
-|----------|-------|----------------|
-| React settings page | JSX + inline styles | Outputs in user's framework, no forced Tailwind migration |
-| Barebones HTML | Hackathon-quality landing page | Full redesign with Tailwind CDN |
-| Vue dashboard | Vue 3 SFC + scoped CSS | Preserves Vue SFC structure |
-| Restaurant landing | "warm and inviting cafe" | Guided intake → personality-driven output |
-| Developer portfolio | "dark mode, emerald accent" | Dark mode design with monospace accents |
-| SaaS pricing | Brand colors provided | Brand color application, clean personality |
-| Status page | JSON API data pasted | Raw data → structured UI (Step 1D) |
-| CLI output | Terminal table pasted | Non-standard input → dark technical dashboard |
-| Email template | "welcome email" | Non-web output with email-specific constraints |
-
----
-
-## What's Inside
-
-### Preset Library — [`docs/presets/_index.md`](docs/presets/_index.md)
-
-38+ presets with multiple personality variants (Clean, Minimalist, Playful). Interactive components also have React, Vue, and Svelte framework files.
-
-| Category | Examples |
-|----------|---------|
-| **Layout Shells** | App shell, marketing page, dashboard, centered form |
-| **Components** | Hero, tabs, accordion, pagination, dropdown, avatars, data table |
-| **Full Pages** | Pricing, portfolio, restaurant, status page |
-| **Before → After** | Dashboard, landing page, form, card grid, multi-page app |
-| **Expressive** | Personal site, agency landing, agency portfolio, app showcase, scroll reveal landing, product launch, editorial blog, SaaS features, scroll story, product page, devtool landing, docs site, event page, personalized portfolio |
-| **Edge Cases** | Deploy monitor, button system, OSS landing |
-
-All presets: dark mode, WCAG AA contrast, 44px touch targets, responsive. [Composition recipes](docs/presets/_index.md#composition-recipes) show how to combine them into full pages.
-
-### Knowledge Files — 44 topics
-
-| Area | Topics |
-|------|--------|
-| **Foundations** | [Cognitive load](foundations/cognitive-load.md), [Gestalt](foundations/gestalt-principles.md), [Hick's Law](foundations/hicks-law.md), [Fitts's Law](foundations/fitts-law.md), [Aesthetic-usability](foundations/aesthetic-usability.md), [Peak-end rule](foundations/peak-end-rule.md) |
-| **Color** | [Contrast & a11y](color/contrast-and-accessibility.md), [Color systems](color/color-systems.md), [Psychology](color/color-psychology.md), [Color-blind safety](color/color-blind-safety.md) |
-| **Typography** | [Type scale](typography/type-scale.md), [Font pairing](typography/font-pairing.md), [Readability](typography/readability.md), [Web font loading](typography/web-font-loading.md) |
-| **Layout** | [Spacing system](layout/spacing-system.md), [Visual hierarchy](layout/visual-hierarchy.md), [Grid systems](layout/grid-systems.md), [Whitespace](layout/whitespace.md) |
-| **Interaction** | [Animation timing](interaction/animation-timing.md), [Micro-interactions](interaction/micro-interactions.md), [Touch targets](interaction/touch-targets.md), [Loading states](interaction/loading-states.md) |
-| **Responsive** | [Mobile-first](responsive/mobile-first.md), [Breakpoints](responsive/breakpoints.md), [Fluid typography](responsive/fluid-typography.md), [Patterns](responsive/responsive-patterns.md) |
-| **Systems** | [Design tokens](systems/design-tokens.md), [Material Design 3](systems/material-design-3.md), [Apple HIG](systems/apple-hig.md), [Building a system](systems/building-a-system.md) |
-| **Expressive** | [Visual identity](expressive/visual-identity.md), [Hero patterns](expressive/hero-patterns.md), [Scroll storytelling](expressive/scroll-storytelling.md), [Purposeful motion](expressive/purposeful-motion.md), [Scroll effect patterns](expressive/scroll-effect-patterns.md), [Curated examples](expressive/curated-examples.md) |
-| **Heuristics** | [Nielsen's 10](heuristics/nielsen-10.md), [UX frameworks](heuristics/ux-frameworks.md) |
-| **Components** | [Buttons](components/buttons.md), [Forms](components/forms.md), [Cards](components/cards.md), [Navigation](components/navigation.md), [Modals](components/modals-and-dialogs.md), [Tables](components/tables-and-lists.md), [Feedback](components/feedback.md) |
-
-Each file: 200–400 lines, concrete rules with numbers, CSS/Tailwind patterns, decision trees, sources.
-
-### Workflows
-
-| Workflow | Use when |
-|----------|----------|
-| [Quick Reference](workflows/quick-reference.md) | Need a number fast (contrast ratio, spacing value, timing) |
-| [New Project Checklist](workflows/new-project-checklist.md) | Starting from scratch |
-| [Design Review Checklist](workflows/design-review-checklist.md) | Auditing an existing design |
-
-### Critical Numbers
-
-| What | Value |
-|------|-------|
-| Text contrast (AA) | 4.5:1 |
-| Large text contrast (AA) | 3:1 |
-| Body font size | ≥16px |
-| Line height | 1.4–1.6 |
-| Line length | 45–75 characters |
-| Touch target | ≥44×44px |
-| Base spacing unit | 4px or 8px |
-| Nav items | 5–7 max |
-| Enter animation | 200–300ms |
-| Exit animation | 150–200ms |
-
----
-
-If this helped you ship something that looks good, [give it a star](../../stargazers). Found an issue? [Open one](../../issues).
-
-Sources: [research/sources.md](research/sources.md)
+The encoded URL is in the committed JS (unavoidable for a static site). But:
+- The raw URL is never in git (`.env` is gitignored)
+- The encoded string doesn't match URL patterns (stops automated scrapers)
+- Origin checking + rate limiting in the worker caps abuse even if found
+- Anyone with DevTools Network tab can see the decoded URL on requests (that's fine — can't prevent it)
 </file>
 
 <file path="docs/scoring/filters.js">
@@ -19916,129 +20041,167 @@ Sources: [research/sources.md](research/sources.md)
 })();
 </file>
 
-<file path="proxy/README.md">
-# CORS Proxy Worker
+<file path="proxy/worker.js">
+// make-it-look-good — CORS Proxy Worker
+// Deploy: cd proxy && npx wrangler deploy
+// Free tier: 100K requests/day on Cloudflare Workers
 
-A lightweight Cloudflare Worker that proxies HTTP requests with CORS headers, used by the Design Analyzer's URL input mode.
+const MAX_RESPONSE_SIZE = 10 * 1024 * 1024; // 10 MB
+const ALLOWED_SCHEMES = ['http:', 'https:'];
+const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
-## Why
+// Rate limit: requests per IP per minute
+const RATE_LIMIT = 30;
+const RATE_WINDOW_MS = 60 * 1000;
 
-Browsers block cross-origin requests (CORS). To fetch and analyze external websites from a client-side app, we need a proxy that adds `Access-Control-Allow-Origin` headers. This self-hosted worker replaces dependency on third-party CORS proxies.
+// Allowed origins — browsers cannot spoof Origin headers, so this reliably blocks hotlinking.
+// Add 'http://localhost:3000' etc. for local dev if needed.
+// Set to null to allow any origin (development only).
+const ALLOWED_ORIGINS = ['https://jdeworks.github.io'];
 
-## Full setup (from scratch)
+// In-memory rate limiting (per-isolate, resets on cold start — good enough for abuse prevention)
+const rateCounts = new Map();
 
-### 1. Deploy the Worker to Cloudflare
+function checkRateLimit(ip) {
+  const now = Date.now();
+  const bucket = Math.floor(now / RATE_WINDOW_MS);
+  const key = ip + ':' + bucket;
 
-1. [Sign up for Cloudflare](https://dash.cloudflare.com/sign-up) (free, no credit card)
-2. Install Wrangler (Cloudflare's deploy CLI):
-   ```bash
-   npm install -g wrangler
-   ```
-3. Login to Cloudflare:
-   ```bash
-   wrangler login
-   ```
-4. Deploy the worker:
-   ```bash
-   cd proxy
-   npx wrangler deploy
-   ```
-5. Copy the `*.workers.dev` URL from the output — that's your proxy URL
+  // Clean old entries periodically
+  if (rateCounts.size > 10000) {
+    for (const [k, v] of rateCounts) {
+      if (v.bucket < bucket) rateCounts.delete(k);
+    }
+  }
 
-### 2. Connect it to the Analyzer
+  const entry = rateCounts.get(key);
+  if (!entry) {
+    rateCounts.set(key, { bucket, count: 1 });
+    return true;
+  }
+  entry.count++;
+  return entry.count <= RATE_LIMIT;
+}
 
-1. Copy `.env.example` to `.env` at the repo root:
-   ```bash
-   cp .env.example .env
-   ```
-2. Edit `.env` and set your worker URL:
-   ```
-   PROXY_URL=https://milg-cors-proxy.YOUR-SUB.workers.dev
-   ```
-3. Run the inject script:
-   ```bash
-   ./scripts/inject-proxy.sh
-   ```
-4. Commit and push:
-   ```bash
-   git add docs/analyzer.js
-   git commit -m "Inject proxy URL"
-   git push
-   ```
+function corsHeaders(origin) {
+  const allowOrigin = ALLOWED_ORIGINS === null ? '*' : (origin || '*');
+  return {
+    'Access-Control-Allow-Origin': allowOrigin,
+    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Allow-Headers': '*',
+    'Access-Control-Max-Age': '86400',
+  };
+}
 
-GitHub Pages will serve the updated `docs/analyzer.js` with your proxy baked in.
+function errorResponse(status, message, origin) {
+  return new Response(JSON.stringify({ error: message }), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      ...corsHeaders(origin),
+    },
+  });
+}
 
-### 3. If you need to change the URL
+export default {
+  async fetch(request) {
+    const origin = request.headers.get('Origin') || '';
+    const ip = request.headers.get('cf-connecting-ip') || 'unknown';
 
-Edit `.env`, run `./scripts/inject-proxy.sh` again, commit and push.
+    // Handle CORS preflight
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: corsHeaders(origin) });
+    }
 
-### 4. If you want to remove the proxy
+    // Only GET allowed
+    if (request.method !== 'GET') {
+      return errorResponse(405, 'Only GET requests are allowed', origin);
+    }
 
-Delete `.env` (or clear `PROXY_URL`), run `./scripts/inject-proxy.sh` — it resets to the placeholder, falling back to third-party proxies.
+    // Origin check — blocks other websites from using this proxy via their browsers
+    if (ALLOWED_ORIGINS !== null) {
+      if (!origin || !ALLOWED_ORIGINS.includes(origin)) {
+        return errorResponse(403, 'Origin not allowed', origin);
+      }
+    }
 
-## Setting up on a different computer
+    // Rate limit per IP
+    if (!checkRateLimit(ip)) {
+      return errorResponse(429, 'Rate limited — max ' + RATE_LIMIT + ' requests per minute', origin);
+    }
 
-1. Clone the repo
-2. Create `.env` with your `PROXY_URL=...` (the `.env` file is gitignored)
-3. Run `./scripts/inject-proxy.sh`
-4. That's it — the deployed `docs/analyzer.js` already has the URL from your last push
+    // Parse target URL from query parameter
+    const reqUrl = new URL(request.url);
+    const target = reqUrl.searchParams.get('url');
 
-You only need to re-run the inject script if you want to change the URL or deploy from a fresh clone.
+    if (!target) {
+      return errorResponse(400, 'Missing ?url= parameter', origin);
+    }
 
-## Free tier limits
+    // Validate URL scheme
+    let targetUrl;
+    try {
+      targetUrl = new URL(target);
+    } catch {
+      return errorResponse(400, 'Invalid URL: ' + target, origin);
+    }
 
-| | Free | Paid ($5/month) |
-|---|---|---|
-| Requests | 100K/day | 10M/month |
-| CPU time | 10ms/request | 30ms/request |
-| When exceeded | **Hard stop** (5XX until midnight UTC) | $0.30/million overage |
+    if (!ALLOWED_SCHEMES.includes(targetUrl.protocol)) {
+      return errorResponse(400, 'Only http/https URLs are allowed', origin);
+    }
 
-100K/day handles ~5,500 daily users doing 3 analyses each. For context, each analysis uses ~4-6 proxied requests (1 HTML page + 3-5 CSS files).
+    // Block private/local IPs to prevent SSRF
+    const hostname = targetUrl.hostname;
+    if (
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === '0.0.0.0' ||
+      hostname === '::1' ||
+      hostname.endsWith('.local') ||
+      /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(hostname)
+    ) {
+      return errorResponse(403, 'Private/local URLs are not allowed', origin);
+    }
 
-## Safety features
+    // Fetch the target
+    try {
+      const resp = await fetch(targetUrl.href, {
+        headers: {
+          'User-Agent': USER_AGENT,
+          'Accept': 'text/html,text/css,application/xhtml+xml,*/*',
+          'Accept-Language': 'en-US,en;q=0.9',
+        },
+        redirect: 'follow',
+      });
 
-| Feature | What it does |
-|---------|-------------|
-| **Origin checking** | Only browsers on `jdeworks.github.io` can use the proxy (unforgeable by browsers) |
-| **Rate limiting** | 30 requests/minute per IP address |
-| **SSRF protection** | Blocks localhost, private IPs, `.local` domains |
-| **Method restriction** | GET only, http/https only |
-| **Size limit** | 10 MB max response |
+      if (!resp.ok) {
+        return errorResponse(resp.status, 'Target returned ' + resp.status + ' ' + resp.statusText, origin);
+      }
 
-## Configuration
+      // Read body and check size
+      const body = await resp.arrayBuffer();
 
-Edit `proxy/worker.js`:
+      if (body.byteLength > MAX_RESPONSE_SIZE) {
+        return errorResponse(413, 'Response too large (' + Math.round(body.byteLength / 1024 / 1024) + ' MB, max ' + (MAX_RESPONSE_SIZE / 1024 / 1024) + ' MB)', origin);
+      }
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ALLOWED_ORIGINS` | `['https://jdeworks.github.io']` | Allowed Origin domains. Set to `null` for any (dev only). |
-| `RATE_LIMIT` | `30` | Max requests per IP per minute |
-| `MAX_RESPONSE_SIZE` | `10 MB` | Max proxied response body |
-| `USER_AGENT` | `MilgAnalyzer/1.0` | User-Agent sent to target servers |
+      // Return with CORS headers
+      const responseHeaders = new Headers(corsHeaders(origin));
+      responseHeaders.set('Content-Type', resp.headers.get('Content-Type') || 'text/html; charset=utf-8');
 
-After changing, redeploy: `cd proxy && npx wrangler deploy`
+      // Pass through cache headers if present
+      const cacheControl = resp.headers.get('Cache-Control');
+      if (cacheControl) responseHeaders.set('Cache-Control', cacheControl);
 
-## How the URL stays (mostly) hidden
-
-```
-.env (local, gitignored)
-  └── PROXY_URL=https://your-worker.workers.dev
-
-./scripts/inject-proxy.sh
-  └── base64-encodes URL → patches docs/analyzer.js
-
-docs/analyzer.js (committed)
-  └── var _pe = 'aHR0cHM6Ly8uLi4=';  (not a recognizable URL pattern)
-
-Browser (runtime)
-  └── atob() decodes → fetches from your worker
-```
-
-The encoded URL is in the committed JS (unavoidable for a static site). But:
-- The raw URL is never in git (`.env` is gitignored)
-- The encoded string doesn't match URL patterns (stops automated scrapers)
-- Origin checking + rate limiting in the worker caps abuse even if found
-- Anyone with DevTools Network tab can see the decoded URL on requests (that's fine — can't prevent it)
+      return new Response(body, {
+        status: 200,
+        headers: responseHeaders,
+      });
+    } catch (err) {
+      return errorResponse(502, 'Failed to fetch target: ' + (err.message || 'unknown error'), origin);
+    }
+  },
+};
 </file>
 
 <file path="docs/scoring/balance.js">
@@ -21177,169 +21340,6 @@ function scoreSpacing(data) {
   </script>
 </body>
 </html>
-</file>
-
-<file path="proxy/worker.js">
-// make-it-look-good — CORS Proxy Worker
-// Deploy: cd proxy && npx wrangler deploy
-// Free tier: 100K requests/day on Cloudflare Workers
-
-const MAX_RESPONSE_SIZE = 10 * 1024 * 1024; // 10 MB
-const ALLOWED_SCHEMES = ['http:', 'https:'];
-const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
-
-// Rate limit: requests per IP per minute
-const RATE_LIMIT = 30;
-const RATE_WINDOW_MS = 60 * 1000;
-
-// Allowed origins — browsers cannot spoof Origin headers, so this reliably blocks hotlinking.
-// Add 'http://localhost:3000' etc. for local dev if needed.
-// Set to null to allow any origin (development only).
-const ALLOWED_ORIGINS = ['https://jdeworks.github.io'];
-
-// In-memory rate limiting (per-isolate, resets on cold start — good enough for abuse prevention)
-const rateCounts = new Map();
-
-function checkRateLimit(ip) {
-  const now = Date.now();
-  const bucket = Math.floor(now / RATE_WINDOW_MS);
-  const key = ip + ':' + bucket;
-
-  // Clean old entries periodically
-  if (rateCounts.size > 10000) {
-    for (const [k, v] of rateCounts) {
-      if (v.bucket < bucket) rateCounts.delete(k);
-    }
-  }
-
-  const entry = rateCounts.get(key);
-  if (!entry) {
-    rateCounts.set(key, { bucket, count: 1 });
-    return true;
-  }
-  entry.count++;
-  return entry.count <= RATE_LIMIT;
-}
-
-function corsHeaders(origin) {
-  const allowOrigin = ALLOWED_ORIGINS === null ? '*' : (origin || '*');
-  return {
-    'Access-Control-Allow-Origin': allowOrigin,
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
-    'Access-Control-Allow-Headers': '*',
-    'Access-Control-Max-Age': '86400',
-  };
-}
-
-function errorResponse(status, message, origin) {
-  return new Response(JSON.stringify({ error: message }), {
-    status,
-    headers: {
-      'Content-Type': 'application/json',
-      ...corsHeaders(origin),
-    },
-  });
-}
-
-export default {
-  async fetch(request) {
-    const origin = request.headers.get('Origin') || '';
-    const ip = request.headers.get('cf-connecting-ip') || 'unknown';
-
-    // Handle CORS preflight
-    if (request.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: corsHeaders(origin) });
-    }
-
-    // Only GET allowed
-    if (request.method !== 'GET') {
-      return errorResponse(405, 'Only GET requests are allowed', origin);
-    }
-
-    // Origin check — blocks other websites from using this proxy via their browsers
-    if (ALLOWED_ORIGINS !== null) {
-      if (!origin || !ALLOWED_ORIGINS.includes(origin)) {
-        return errorResponse(403, 'Origin not allowed', origin);
-      }
-    }
-
-    // Rate limit per IP
-    if (!checkRateLimit(ip)) {
-      return errorResponse(429, 'Rate limited — max ' + RATE_LIMIT + ' requests per minute', origin);
-    }
-
-    // Parse target URL from query parameter
-    const reqUrl = new URL(request.url);
-    const target = reqUrl.searchParams.get('url');
-
-    if (!target) {
-      return errorResponse(400, 'Missing ?url= parameter', origin);
-    }
-
-    // Validate URL scheme
-    let targetUrl;
-    try {
-      targetUrl = new URL(target);
-    } catch {
-      return errorResponse(400, 'Invalid URL: ' + target, origin);
-    }
-
-    if (!ALLOWED_SCHEMES.includes(targetUrl.protocol)) {
-      return errorResponse(400, 'Only http/https URLs are allowed', origin);
-    }
-
-    // Block private/local IPs to prevent SSRF
-    const hostname = targetUrl.hostname;
-    if (
-      hostname === 'localhost' ||
-      hostname === '127.0.0.1' ||
-      hostname === '0.0.0.0' ||
-      hostname === '::1' ||
-      hostname.endsWith('.local') ||
-      /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(hostname)
-    ) {
-      return errorResponse(403, 'Private/local URLs are not allowed', origin);
-    }
-
-    // Fetch the target
-    try {
-      const resp = await fetch(targetUrl.href, {
-        headers: {
-          'User-Agent': USER_AGENT,
-          'Accept': 'text/html,text/css,application/xhtml+xml,*/*',
-          'Accept-Language': 'en-US,en;q=0.9',
-        },
-        redirect: 'follow',
-      });
-
-      if (!resp.ok) {
-        return errorResponse(resp.status, 'Target returned ' + resp.status + ' ' + resp.statusText, origin);
-      }
-
-      // Read body and check size
-      const body = await resp.arrayBuffer();
-
-      if (body.byteLength > MAX_RESPONSE_SIZE) {
-        return errorResponse(413, 'Response too large (' + Math.round(body.byteLength / 1024 / 1024) + ' MB, max ' + (MAX_RESPONSE_SIZE / 1024 / 1024) + ' MB)', origin);
-      }
-
-      // Return with CORS headers
-      const responseHeaders = new Headers(corsHeaders(origin));
-      responseHeaders.set('Content-Type', resp.headers.get('Content-Type') || 'text/html; charset=utf-8');
-
-      // Pass through cache headers if present
-      const cacheControl = resp.headers.get('Cache-Control');
-      if (cacheControl) responseHeaders.set('Cache-Control', cacheControl);
-
-      return new Response(body, {
-        status: 200,
-        headers: responseHeaders,
-      });
-    } catch (err) {
-      return errorResponse(502, 'Failed to fetch target: ' + (err.message || 'unknown error'), origin);
-    }
-  },
-};
 </file>
 
 <file path="scripts/test-full-matrix.mjs">
@@ -33101,12 +33101,14 @@ function scoreLayout(data) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Try analyzing with JS enabled (loads page in iframe with src=, injects extraction snippet)
+  // Try analyzing with JS enabled — fetches HTML via proxy, adds <base href> for
+  // relative URL resolution, loads as srcdoc (same-origin so we can access the DOM).
+  // The page's JS executes (React/Vue hydration etc.) then we inject the extraction snippet.
   window.__milgTryWithJs = function(url) {
-    // Show trust confirmation
     var ok = confirm(
-      'This will load ' + url + ' in a sandboxed frame and execute its JavaScript.\n\n' +
-      'Only do this if you trust the site — malicious JS could potentially access data on this page (XSS risk).\n\n' +
+      'This will fetch the page via proxy and run its JavaScript in a sandboxed frame on this page.\n\n' +
+      'Only do this if you trust the site — its scripts will execute with access to this page\'s origin (XSS risk).\n\n' +
+      'Some sites may not work if they rely on cookies, auth, or same-origin API calls.\n\n' +
       'Continue?'
     );
     if (!ok) return;
@@ -33115,96 +33117,107 @@ function scoreLayout(data) {
     var isDark = document.body.classList.contains('dark-ui');
     var loadBg = isDark ? '#1e293b' : '#f1f5f9';
     var loadText = isDark ? '#94a3b8' : '#475569';
+    var errBtn = 'style="margin-top:12px;padding:8px 16px;border-radius:6px;border:1px solid currentColor;background:none;color:inherit;cursor:pointer;font-size:13px"';
     reportContainer.innerHTML = '<div style="padding:40px;text-align:center;color:' + loadText + ';background:' + loadBg + ';border-radius:var(--radius)">' +
       '<div style="font-size:24px;margin-bottom:12px">&#9889;</div>' +
-      '<div style="font-weight:600;font-size:15px;margin-bottom:6px">Loading page with JavaScript enabled...</div>' +
-      '<div style="font-size:13px">Waiting for the page to render, then extracting design data.</div>' +
-      '<div style="margin-top:16px;font-size:12px;opacity:0.7">This may take 10-15 seconds. Some sites block framing (X-Frame-Options).</div>' +
+      '<div style="font-weight:600;font-size:15px;margin-bottom:6px">Fetching page &amp; enabling JavaScript...</div>' +
+      '<div style="font-size:13px">Downloading HTML via proxy, then running JS in a sandboxed frame.</div>' +
+      '<div style="margin-top:16px;font-size:12px;opacity:0.7">This may take 10-20 seconds depending on the site\'s JS bundle size.</div>' +
       '</div>';
 
-    var vp = getSelectedViewport();
-    var iframe = document.createElement('iframe');
-    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + vp.w + 'px;height:' + vp.h + 'px;border:none;';
-    iframe.sandbox = 'allow-scripts allow-same-origin allow-forms';
-    document.body.appendChild(iframe);
+    // Step 1: Fetch raw HTML via proxy (don't inline CSS — let JS handle it)
+    fetchWithProxy(url).then(function(html) {
+      if (!html || html.length < 50) {
+        reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
+          'Could not fetch the page (empty response).<br>' +
+          '<button onclick="window.__milgSwitchToSnippet()" ' + errBtn + '>Use Console Snippet instead</button></div>';
+        return;
+      }
 
-    var done = false;
-    function cleanup() { if (iframe.parentNode) document.body.removeChild(iframe); }
+      // Step 2: Add <base href> so relative URLs (scripts, images, fonts) resolve against the original site
+      var baseTag = '<base href="' + url.replace(/"/g, '&quot;') + '">';
+      if (/<head[^>]*>/i.test(html)) {
+        html = html.replace(/<head([^>]*)>/i, '<head$1>' + baseTag);
+      } else if (/<html[^>]*>/i.test(html)) {
+        html = html.replace(/<html([^>]*)>/i, '<html$1><head>' + baseTag + '</head>');
+      } else {
+        html = baseTag + html;
+      }
 
-    // Fetch the extraction snippet source
-    var snippetFile = 'analyzer-snippet.js';
-    var snippetPromise = _snippetCache[snippetFile]
-      ? Promise.resolve(_snippetCache[snippetFile])
-      : fetch(snippetFile).then(function(r) { return r.text(); }).then(function(t) { _snippetCache[snippetFile] = t; return t; });
+      // Step 3: Create same-origin iframe with srcdoc (JS will execute)
+      var vp = getSelectedViewport();
+      var iframe = document.createElement('iframe');
+      iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + vp.w + 'px;height:' + vp.h + 'px;border:none;';
+      iframe.sandbox = 'allow-scripts allow-same-origin allow-forms';
+      document.body.appendChild(iframe);
 
-    iframe.addEventListener('load', function() {
-      if (done) return;
-      snippetPromise.then(function(snippetSrc) {
-        // Wait for page JS to settle (React hydration, SPA rendering, etc.)
+      var done = false;
+      function cleanup() { if (iframe.parentNode) document.body.removeChild(iframe); }
+
+      function showError(msg) {
+        reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
+          msg + '<br><button onclick="window.__milgSwitchToSnippet()" ' + errBtn + '>Use Console Snippet instead</button></div>';
+      }
+
+      // Step 4: After iframe loads + JS settles, inject extraction snippet
+      iframe.addEventListener('load', function() {
+        if (done) return;
+        // Wait for JS to settle (React hydration, SPA rendering, lazy chunks)
         setTimeout(function() {
           if (done) return;
           try {
             var iWin = iframe.contentWindow;
             var iDoc = iframe.contentDocument || iWin.document;
-            // Inject extraction snippet (disable crawl)
+            // Check if the page actually rendered content
+            var bodyEls = iDoc.body ? iDoc.body.querySelectorAll('*').length : 0;
+
+            // Inject inline extraction function (same as analyzeHtmlInIframe uses)
             var script = iDoc.createElement('script');
-            script.textContent = 'window.__milgCrawlSite=false;\n' + snippetSrc;
+            script.textContent = '(' + extractFromDocument.toString() + ')();';
             iDoc.body.appendChild(script);
 
-            // Poll for __milgData
-            var polls = 0;
-            var poller = setInterval(function() {
-              if (done) { clearInterval(poller); return; }
-              polls++;
-              try {
-                var d = iWin.__milgData;
-                if (d) {
-                  clearInterval(poller); done = true;
-                  d.meta.url = url;
-                  d.meta._inputMethod = 'url';
-                  cleanup();
-                  runAnalysis(d);
-                } else if (polls > 30) {
-                  clearInterval(poller); done = true;
-                  cleanup();
-                  reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
-                    'Extraction timed out — the page may block framing or take too long to render.<br>' +
-                    '<button onclick="window.__milgSwitchToSnippet()" style="margin-top:12px;padding:8px 16px;border-radius:6px;border:1px solid currentColor;background:none;color:inherit;cursor:pointer;font-size:13px">Use Console Snippet instead</button></div>';
-                }
-              } catch(e) {
-                clearInterval(poller); done = true;
+            // Listen for postMessage result
+            var resultHandler = function(e) {
+              if (done) return;
+              if (e.data && e.data.type === 'milg-analyzer-result') {
+                done = true;
+                window.removeEventListener('message', resultHandler);
+                var d = e.data.data;
+                d.meta.url = url;
+                d.meta._inputMethod = 'url';
                 cleanup();
-                reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
-                  'Cannot access page — blocked by cross-origin policy or X-Frame-Options.<br>' +
-                  '<button onclick="window.__milgSwitchToSnippet()" style="margin-top:12px;padding:8px 16px;border-radius:6px;border:1px solid currentColor;background:none;color:inherit;cursor:pointer;font-size:13px">Use Console Snippet instead</button></div>';
+                runAnalysis(d);
               }
-            }, 500);
+            };
+            window.addEventListener('message', resultHandler);
+
+            // Timeout: if extraction doesn't complete in 15s
+            setTimeout(function() {
+              if (done) return; done = true;
+              window.removeEventListener('message', resultHandler);
+              cleanup();
+              showError('Extraction timed out — JS may have failed to render or the page has no content (' + bodyEls + ' elements found).');
+            }, 15000);
           } catch(e) {
             done = true; cleanup();
-            reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
-              'Cannot access page: ' + e.message + '<br>' +
-              '<button onclick="window.__milgSwitchToSnippet()" style="margin-top:12px;padding:8px 16px;border-radius:6px;border:1px solid currentColor;background:none;color:inherit;cursor:pointer;font-size:13px">Use Console Snippet instead</button></div>';
+            showError('Cannot access frame: ' + e.message);
           }
-        }, 2000); // Wait 2s for JS rendering
+        }, 3000); // 3s wait for JS hydration/rendering
       });
-    });
 
-    iframe.addEventListener('error', function() {
-      if (done) return; done = true; cleanup();
+      iframe.srcdoc = html;
+
+      // Hard timeout for the whole process
+      setTimeout(function() {
+        if (done) return; done = true; cleanup();
+        showError('Page took too long to load (25s timeout).');
+      }, 25000);
+
+    }).catch(function(e) {
       reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
-        'Failed to load the page in a frame.<br>' +
-        '<button onclick="window.__milgSwitchToSnippet()" style="margin-top:12px;padding:8px 16px;border-radius:6px;border:1px solid currentColor;background:none;color:inherit;cursor:pointer;font-size:13px">Use Console Snippet instead</button></div>';
+        'Failed to fetch the page: ' + (e.message || 'proxy error') + '<br>' +
+        '<button onclick="window.__milgSwitchToSnippet()" ' + errBtn + '>Use Console Snippet instead</button></div>';
     });
-
-    iframe.src = url;
-
-    // Hard timeout
-    setTimeout(function() {
-      if (done) return; done = true; cleanup();
-      reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
-        'Page took too long to load (15s timeout).<br>' +
-        '<button onclick="window.__milgSwitchToSnippet()" style="margin-top:12px;padding:8px 16px;border-radius:6px;border:1px solid currentColor;background:none;color:inherit;cursor:pointer;font-size:13px">Use Console Snippet instead</button></div>';
-    }, 15000);
   };
 
   // --- URL Fetch via CORS proxy ---

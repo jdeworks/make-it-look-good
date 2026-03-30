@@ -2056,12 +2056,14 @@
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Try analyzing with JS enabled (loads page in iframe with src=, injects extraction snippet)
+  // Try analyzing with JS enabled — fetches HTML via proxy, adds <base href> for
+  // relative URL resolution, loads as srcdoc (same-origin so we can access the DOM).
+  // The page's JS executes (React/Vue hydration etc.) then we inject the extraction snippet.
   window.__milgTryWithJs = function(url) {
-    // Show trust confirmation
     var ok = confirm(
-      'This will load ' + url + ' in a sandboxed frame and execute its JavaScript.\n\n' +
-      'Only do this if you trust the site — malicious JS could potentially access data on this page (XSS risk).\n\n' +
+      'This will fetch the page via proxy and run its JavaScript in a sandboxed frame on this page.\n\n' +
+      'Only do this if you trust the site — its scripts will execute with access to this page\'s origin (XSS risk).\n\n' +
+      'Some sites may not work if they rely on cookies, auth, or same-origin API calls.\n\n' +
       'Continue?'
     );
     if (!ok) return;
@@ -2070,96 +2072,107 @@
     var isDark = document.body.classList.contains('dark-ui');
     var loadBg = isDark ? '#1e293b' : '#f1f5f9';
     var loadText = isDark ? '#94a3b8' : '#475569';
+    var errBtn = 'style="margin-top:12px;padding:8px 16px;border-radius:6px;border:1px solid currentColor;background:none;color:inherit;cursor:pointer;font-size:13px"';
     reportContainer.innerHTML = '<div style="padding:40px;text-align:center;color:' + loadText + ';background:' + loadBg + ';border-radius:var(--radius)">' +
       '<div style="font-size:24px;margin-bottom:12px">&#9889;</div>' +
-      '<div style="font-weight:600;font-size:15px;margin-bottom:6px">Loading page with JavaScript enabled...</div>' +
-      '<div style="font-size:13px">Waiting for the page to render, then extracting design data.</div>' +
-      '<div style="margin-top:16px;font-size:12px;opacity:0.7">This may take 10-15 seconds. Some sites block framing (X-Frame-Options).</div>' +
+      '<div style="font-weight:600;font-size:15px;margin-bottom:6px">Fetching page &amp; enabling JavaScript...</div>' +
+      '<div style="font-size:13px">Downloading HTML via proxy, then running JS in a sandboxed frame.</div>' +
+      '<div style="margin-top:16px;font-size:12px;opacity:0.7">This may take 10-20 seconds depending on the site\'s JS bundle size.</div>' +
       '</div>';
 
-    var vp = getSelectedViewport();
-    var iframe = document.createElement('iframe');
-    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + vp.w + 'px;height:' + vp.h + 'px;border:none;';
-    iframe.sandbox = 'allow-scripts allow-same-origin allow-forms';
-    document.body.appendChild(iframe);
+    // Step 1: Fetch raw HTML via proxy (don't inline CSS — let JS handle it)
+    fetchWithProxy(url).then(function(html) {
+      if (!html || html.length < 50) {
+        reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
+          'Could not fetch the page (empty response).<br>' +
+          '<button onclick="window.__milgSwitchToSnippet()" ' + errBtn + '>Use Console Snippet instead</button></div>';
+        return;
+      }
 
-    var done = false;
-    function cleanup() { if (iframe.parentNode) document.body.removeChild(iframe); }
+      // Step 2: Add <base href> so relative URLs (scripts, images, fonts) resolve against the original site
+      var baseTag = '<base href="' + url.replace(/"/g, '&quot;') + '">';
+      if (/<head[^>]*>/i.test(html)) {
+        html = html.replace(/<head([^>]*)>/i, '<head$1>' + baseTag);
+      } else if (/<html[^>]*>/i.test(html)) {
+        html = html.replace(/<html([^>]*)>/i, '<html$1><head>' + baseTag + '</head>');
+      } else {
+        html = baseTag + html;
+      }
 
-    // Fetch the extraction snippet source
-    var snippetFile = 'analyzer-snippet.js';
-    var snippetPromise = _snippetCache[snippetFile]
-      ? Promise.resolve(_snippetCache[snippetFile])
-      : fetch(snippetFile).then(function(r) { return r.text(); }).then(function(t) { _snippetCache[snippetFile] = t; return t; });
+      // Step 3: Create same-origin iframe with srcdoc (JS will execute)
+      var vp = getSelectedViewport();
+      var iframe = document.createElement('iframe');
+      iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + vp.w + 'px;height:' + vp.h + 'px;border:none;';
+      iframe.sandbox = 'allow-scripts allow-same-origin allow-forms';
+      document.body.appendChild(iframe);
 
-    iframe.addEventListener('load', function() {
-      if (done) return;
-      snippetPromise.then(function(snippetSrc) {
-        // Wait for page JS to settle (React hydration, SPA rendering, etc.)
+      var done = false;
+      function cleanup() { if (iframe.parentNode) document.body.removeChild(iframe); }
+
+      function showError(msg) {
+        reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
+          msg + '<br><button onclick="window.__milgSwitchToSnippet()" ' + errBtn + '>Use Console Snippet instead</button></div>';
+      }
+
+      // Step 4: After iframe loads + JS settles, inject extraction snippet
+      iframe.addEventListener('load', function() {
+        if (done) return;
+        // Wait for JS to settle (React hydration, SPA rendering, lazy chunks)
         setTimeout(function() {
           if (done) return;
           try {
             var iWin = iframe.contentWindow;
             var iDoc = iframe.contentDocument || iWin.document;
-            // Inject extraction snippet (disable crawl)
+            // Check if the page actually rendered content
+            var bodyEls = iDoc.body ? iDoc.body.querySelectorAll('*').length : 0;
+
+            // Inject inline extraction function (same as analyzeHtmlInIframe uses)
             var script = iDoc.createElement('script');
-            script.textContent = 'window.__milgCrawlSite=false;\n' + snippetSrc;
+            script.textContent = '(' + extractFromDocument.toString() + ')();';
             iDoc.body.appendChild(script);
 
-            // Poll for __milgData
-            var polls = 0;
-            var poller = setInterval(function() {
-              if (done) { clearInterval(poller); return; }
-              polls++;
-              try {
-                var d = iWin.__milgData;
-                if (d) {
-                  clearInterval(poller); done = true;
-                  d.meta.url = url;
-                  d.meta._inputMethod = 'url';
-                  cleanup();
-                  runAnalysis(d);
-                } else if (polls > 30) {
-                  clearInterval(poller); done = true;
-                  cleanup();
-                  reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
-                    'Extraction timed out — the page may block framing or take too long to render.<br>' +
-                    '<button onclick="window.__milgSwitchToSnippet()" style="margin-top:12px;padding:8px 16px;border-radius:6px;border:1px solid currentColor;background:none;color:inherit;cursor:pointer;font-size:13px">Use Console Snippet instead</button></div>';
-                }
-              } catch(e) {
-                clearInterval(poller); done = true;
+            // Listen for postMessage result
+            var resultHandler = function(e) {
+              if (done) return;
+              if (e.data && e.data.type === 'milg-analyzer-result') {
+                done = true;
+                window.removeEventListener('message', resultHandler);
+                var d = e.data.data;
+                d.meta.url = url;
+                d.meta._inputMethod = 'url';
                 cleanup();
-                reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
-                  'Cannot access page — blocked by cross-origin policy or X-Frame-Options.<br>' +
-                  '<button onclick="window.__milgSwitchToSnippet()" style="margin-top:12px;padding:8px 16px;border-radius:6px;border:1px solid currentColor;background:none;color:inherit;cursor:pointer;font-size:13px">Use Console Snippet instead</button></div>';
+                runAnalysis(d);
               }
-            }, 500);
+            };
+            window.addEventListener('message', resultHandler);
+
+            // Timeout: if extraction doesn't complete in 15s
+            setTimeout(function() {
+              if (done) return; done = true;
+              window.removeEventListener('message', resultHandler);
+              cleanup();
+              showError('Extraction timed out — JS may have failed to render or the page has no content (' + bodyEls + ' elements found).');
+            }, 15000);
           } catch(e) {
             done = true; cleanup();
-            reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
-              'Cannot access page: ' + e.message + '<br>' +
-              '<button onclick="window.__milgSwitchToSnippet()" style="margin-top:12px;padding:8px 16px;border-radius:6px;border:1px solid currentColor;background:none;color:inherit;cursor:pointer;font-size:13px">Use Console Snippet instead</button></div>';
+            showError('Cannot access frame: ' + e.message);
           }
-        }, 2000); // Wait 2s for JS rendering
+        }, 3000); // 3s wait for JS hydration/rendering
       });
-    });
 
-    iframe.addEventListener('error', function() {
-      if (done) return; done = true; cleanup();
+      iframe.srcdoc = html;
+
+      // Hard timeout for the whole process
+      setTimeout(function() {
+        if (done) return; done = true; cleanup();
+        showError('Page took too long to load (25s timeout).');
+      }, 25000);
+
+    }).catch(function(e) {
       reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
-        'Failed to load the page in a frame.<br>' +
-        '<button onclick="window.__milgSwitchToSnippet()" style="margin-top:12px;padding:8px 16px;border-radius:6px;border:1px solid currentColor;background:none;color:inherit;cursor:pointer;font-size:13px">Use Console Snippet instead</button></div>';
+        'Failed to fetch the page: ' + (e.message || 'proxy error') + '<br>' +
+        '<button onclick="window.__milgSwitchToSnippet()" ' + errBtn + '>Use Console Snippet instead</button></div>';
     });
-
-    iframe.src = url;
-
-    // Hard timeout
-    setTimeout(function() {
-      if (done) return; done = true; cleanup();
-      reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
-        'Page took too long to load (15s timeout).<br>' +
-        '<button onclick="window.__milgSwitchToSnippet()" style="margin-top:12px;padding:8px 16px;border-radius:6px;border:1px solid currentColor;background:none;color:inherit;cursor:pointer;font-size:13px">Use Console Snippet instead</button></div>';
-    }, 15000);
   };
 
   // --- URL Fetch via CORS proxy ---
