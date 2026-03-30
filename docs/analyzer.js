@@ -1373,27 +1373,28 @@
     function showCrawlPageContent(key) {
       _crawlActivePageTab = key;
       renderCrawlTabs();
+      var reportContainer = document.getElementById('reportContainer');
       if (key === 'summary') {
+        // Summary goes into crawlPageContent (the crawl results area)
         var summary = _crawlSession.summary || MilgCrawl.buildSummary(_crawlSession);
         crawlPageContent.innerHTML = MilgReport.renderCrawlSummary(summary);
-        var vpSubtabs = document.getElementById('crawlViewportSubtabs');
-        if (vpSubtabs) vpSubtabs.style.display = 'none';
+        crawlPageContent.style.display = '';
+        if (reportContainer) reportContainer.style.display = 'none';
       } else {
         var idx = parseInt(key);
         var page = _crawlSession.pages[idx];
         if (!page || page.status !== 'done') {
           crawlPageContent.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-secondary)">' +
             (page && page.status === 'error' ? 'Error: ' + (page.error || 'Analysis failed') : 'Analyzing\u2026') + '</div>';
+          crawlPageContent.style.display = '';
+          if (reportContainer) reportContainer.style.display = 'none';
           return;
         }
-        // Use cached report HTML or render fresh
-        if (!_crawlPageReports[idx]) {
-          var profile = document.getElementById('profileSelect');
-          if (profile) page.rawData.profile = profile.value;
-          page.reportData = MilgScoring.runScoring(page.rawData);
-          _crawlPageReports[idx] = MilgReport.renderReport(page.reportData);
-        }
-        crawlPageContent.innerHTML = _crawlPageReports[idx];
+        // Use the standard report view — runAnalysis feeds reportContainer with
+        // full functionality (profile switching, re-evaluation, export, etc.)
+        crawlPageContent.style.display = 'none';
+        if (reportContainer) reportContainer.style.display = '';
+        runAnalysis(page.rawData, true);
       }
     }
 

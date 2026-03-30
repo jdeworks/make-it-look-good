@@ -2307,88 +2307,123 @@
   // Also store on window for debugging
   window.__milgData = data;
 
-  // --- Site Crawl Mode ---
-  // Set window.__milgCrawlSite = true before pasting the snippet (or use a bookmarklet).
-  // On each page, the snippet extracts data, stores it, and navigates to the next URL.
-  // After all pages are visited, results are stored for the analyzer to pick up.
+  // --- Site Crawl Mode (automatic via same-origin iframes) ---
+  // Set window.__milgCrawlSite = true before running. No re-pasting needed.
+  // Uses hidden iframes to load same-domain pages and extract data from each.
   if (window.__milgCrawlSite) {
-    var _crawlKey = 'milg-crawl-state';
-    var _crawlCompleteKey = 'milg-crawl-complete';
-    var crawlState;
-    try { crawlState = JSON.parse(localStorage.getItem(_crawlKey)); } catch(e) { crawlState = null; }
+    var _crawlMax = Math.min(Math.max(window.__milgCrawlMaxPages || 5, 1), 25);
+    var _crawlBlacklist = window.__milgCrawlBlacklist || [];
+    var _crawlOrigin = location.origin;
+    var _crawlSeen = {};
+    _crawlSeen[_crawlOrigin + location.pathname.replace(/\/$/, '')] = true;
 
-    if (!crawlState) {
-      // First page: discover links and start crawl
-      var maxPages = window.__milgCrawlMaxPages || 5;
-      maxPages = Math.min(Math.max(maxPages, 1), 25);
-      var blacklist = window.__milgCrawlBlacklist || [];
-      var origin = location.origin;
-      var seen = {};
-      var norm = location.origin + location.pathname.replace(/\/$/, '') || '/';
-      seen[norm] = true;
+    // Discover same-domain links
+    var _crawlLinks = [];
+    document.querySelectorAll('a[href]').forEach(function(a) {
+      var href = a.getAttribute('href');
+      if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('javascript:')) return;
+      try {
+        var u = new URL(href, location.href);
+        if (u.origin !== _crawlOrigin) return;
+        if (/\.(pdf|zip|png|jpg|svg|css|js|json|xml|woff2?)$/i.test(u.pathname)) return;
+        var key = u.origin + u.pathname.replace(/\/$/, '');
+        if (_crawlSeen[key]) return;
+        var blocked = _crawlBlacklist.some(function(pat) { pat = pat.trim(); if (!pat) return false; if (pat.endsWith('*')) return u.pathname.startsWith(pat.slice(0, -1)); return u.pathname === pat || u.href.includes(pat); });
+        if (blocked) return;
+        _crawlSeen[key] = true;
+        _crawlLinks.push(u.href);
+      } catch(e) {}
+    });
+    _crawlLinks = _crawlLinks.slice(0, _crawlMax - 1);
 
-      var links = [];
-      document.querySelectorAll('a[href]').forEach(function(a) {
-        var href = a.getAttribute('href');
-        if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('javascript:')) return;
-        try {
-          var u = new URL(href, location.href);
-          if (u.origin !== origin) return;
-          if (/\.(pdf|zip|png|jpg|svg|css|js|json|xml|woff2?)$/i.test(u.pathname)) return;
-          var key = u.origin + u.pathname.replace(/\/$/, '');
-          if (seen[key]) return;
-          // Check blacklist
-          var blocked = blacklist.some(function(pat) {
-            pat = pat.trim();
-            if (!pat) return false;
-            if (pat.endsWith('*')) return u.pathname.startsWith(pat.slice(0, -1));
-            return u.pathname === pat || u.href.includes(pat);
-          });
-          if (blocked) return;
-          seen[key] = true;
-          links.push(u.href);
-        } catch(e) {}
-      });
-      links = links.slice(0, maxPages - 1);
+    var _crawlResults = [{ url: location.href, data: data }];
+    console.log('%c\uD83D\uDD77 Site Crawl: found ' + _crawlLinks.length + ' same-domain pages. Analyzing via iframes\u2026', 'color: #8b5cf6; font-weight: bold;');
 
-      crawlState = {
-        startUrl: location.href,
-        queue: links,
-        results: [{ url: location.href, data: data }],
-        currentIndex: 0
+    // Get the extraction function source for injection into iframes
+    var _extractSrc = extractFromDocument.toString();
+
+    function _crawlNext(idx) {
+      if (idx >= _crawlLinks.length) {
+        // Done — store results
+        var state = { startUrl: location.href, results: _crawlResults };
+        try { localStorage.setItem('milg-crawl-complete', JSON.stringify(state)); } catch(e) {}
+        console.log('%c\u2713 Crawl complete! ' + _crawlResults.length + ' pages analyzed.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+        console.log('%cOpen the analyzer to view results (they load automatically).', 'color: #3b82f6;');
+        window.__milgCrawlResults = _crawlResults;
+        return;
+      }
+      var url = _crawlLinks[idx];
+      var path; try { path = new URL(url).pathname; } catch(e) { path = url; }
+      console.log('%c\u2192 [' + (idx + 1) + '/' + _crawlLinks.length + '] ' + path, 'color: #3b82f6;');
+
+      var iframe = document.createElement('iframe');
+      iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
+      document.body.appendChild(iframe);
+
+      var done = false;
+      iframe.onload = function() {
+        if (done) return;
+        // Wait for page to settle, then inject extraction
+        setTimeout(function() {
+          if (done) return;
+          try {
+            var iDoc = iframe.contentDocument || iframe.contentWindow.document;
+            var script = iDoc.createElement('script');
+            script.textContent = '(' + _extractSrc + ')();';
+            // Listen for result via window.__milgData
+            iDoc.body.appendChild(script);
+            // Poll for result (postMessage won't reach us reliably)
+            var polls = 0;
+            var poller = setInterval(function() {
+              polls++;
+              try {
+                var iData = iframe.contentWindow.__milgData;
+                if (iData) {
+                  clearInterval(poller);
+                  done = true;
+                  iData.meta.url = url;
+                  _crawlResults.push({ url: url, data: iData });
+                  if (iframe.parentNode) document.body.removeChild(iframe);
+                  setTimeout(function() { _crawlNext(idx + 1); }, 500);
+                } else if (polls > 20) {
+                  clearInterval(poller);
+                  done = true;
+                  console.log('%c  \u2717 Timeout: ' + path, 'color: #dc2626;');
+                  if (iframe.parentNode) document.body.removeChild(iframe);
+                  setTimeout(function() { _crawlNext(idx + 1); }, 500);
+                }
+              } catch(e) {
+                clearInterval(poller);
+                done = true;
+                console.log('%c  \u2717 Error: ' + path + ' (' + e.message + ')', 'color: #dc2626;');
+                if (iframe.parentNode) document.body.removeChild(iframe);
+                setTimeout(function() { _crawlNext(idx + 1); }, 500);
+              }
+            }, 500);
+          } catch(e) {
+            done = true;
+            console.log('%c  \u2717 Cannot access: ' + path + ' (' + e.message + ')', 'color: #dc2626;');
+            if (iframe.parentNode) document.body.removeChild(iframe);
+            setTimeout(function() { _crawlNext(idx + 1); }, 500);
+          }
+        }, 2000);
       };
-      localStorage.setItem(_crawlKey, JSON.stringify(crawlState));
-      console.log('%c🕷 Site Crawl: discovered ' + links.length + ' pages', 'color: #8b5cf6; font-weight: bold;');
-
-      if (links.length > 0) {
-        console.log('%c→ Navigating to: ' + links[0], 'color: #3b82f6;');
-        console.log('%cPaste the snippet again on the next page (or use a bookmarklet).', 'color: #64748b;');
-        setTimeout(function() { window.location.href = links[0]; }, 800);
-      } else {
-        // Only one page — complete immediately
-        localStorage.removeItem(_crawlKey);
-        localStorage.setItem(_crawlCompleteKey, JSON.stringify(crawlState));
-        console.log('%c✓ Crawl complete (1 page). Open the analyzer to view results.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-      }
-    } else {
-      // Continuation: store result for current page
-      crawlState.results.push({ url: location.href, data: data });
-      crawlState.currentIndex++;
-
-      if (crawlState.currentIndex < crawlState.queue.length) {
-        var nextUrl = crawlState.queue[crawlState.currentIndex];
-        localStorage.setItem(_crawlKey, JSON.stringify(crawlState));
-        console.log('%c🕷 Crawl: page ' + (crawlState.currentIndex + 1) + '/' + crawlState.queue.length + ' done', 'color: #8b5cf6; font-weight: bold;');
-        console.log('%c→ Navigating to: ' + nextUrl, 'color: #3b82f6;');
-        setTimeout(function() { window.location.href = nextUrl; }, 800);
-      } else {
-        // Done — store final results and clean up
-        localStorage.removeItem(_crawlKey);
-        localStorage.setItem(_crawlCompleteKey, JSON.stringify(crawlState));
-        console.log('%c✓ Crawl complete! ' + crawlState.results.length + ' pages analyzed.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-        console.log('%cOpen the analyzer to view aggregated results. They will load automatically.', 'color: #3b82f6;');
-      }
+      iframe.onerror = function() {
+        if (done) return; done = true;
+        console.log('%c  \u2717 Failed to load: ' + path, 'color: #dc2626;');
+        if (iframe.parentNode) document.body.removeChild(iframe);
+        setTimeout(function() { _crawlNext(idx + 1); }, 500);
+      };
+      iframe.src = url;
+      // Hard timeout
+      setTimeout(function() {
+        if (done) return; done = true;
+        console.log('%c  \u2717 Timeout: ' + path, 'color: #dc2626;');
+        if (iframe.parentNode) document.body.removeChild(iframe);
+        setTimeout(function() { _crawlNext(idx + 1); }, 500);
+      }, 15000);
     }
+    _crawlNext(0);
     return; // Skip normal clipboard copy
   }
 })();
