@@ -21,6 +21,7 @@
   // --- State ---
   var reportData = null;
   var darkMode = localStorage.getItem('milg-dark') === 'true';
+  var _crawlSession = null;
 
   // --- Snippet for iframe extraction (same-origin, used for "Analyze preview" and paste-HTML) ---
   function getIframeExtractionScript() {
@@ -1348,7 +1349,7 @@
     }
 
     // --- Site Crawl wiring ---
-    var _crawlSession = null;
+    // _crawlSession is declared at IIFE scope (accessible from runAnalysis)
     var _crawlPageReports = {}; // pageIndex → rendered HTML cache
     var _crawlActivePageTab = 'summary';
     var CRAWL_HARD_MAX = 25;
@@ -1443,6 +1444,9 @@
       _crawlActivePageTab = key;
       renderCrawlTabs();
       var reportContainer = document.getElementById('reportContainer');
+      var reportActions = document.getElementById('reportActions');
+      // Always show export/actions in crawl mode
+      if (reportActions) reportActions.style.display = 'flex';
       if (key === 'summary') {
         var summary = _crawlSession.summary || MilgCrawl.buildSummary(_crawlSession);
         crawlPageContent.innerHTML = MilgReport.renderCrawlSummary(summary);
@@ -1460,11 +1464,16 @@
           if (reportContainer) { reportContainer.style.display = 'none'; reportContainer.className = 'report-container'; }
           return;
         }
-        // Use the standard report view via runAnalysis (full profile switching, export, etc.)
+        // Show page report — use runAnalysis but skip exclusion detection
+        // (exclusion patterns are per-page noise that doesn't apply in crawl context)
         crawlPageContent.style.display = 'none';
         crawlPageContent.className = 'report-container';
         if (reportContainer) reportContainer.style.display = '';
-        runAnalysis(page.rawData, true);
+        // Temporarily mark as crawl-driven so runAnalysis doesn't hide tabs
+        page.rawData.meta = page.rawData.meta || {};
+        var origMethod = page.rawData.meta._inputMethod;
+        runAnalysis(page.rawData, 'crawl-page');
+        page.rawData.meta._inputMethod = origMethod;
       }
     }
 
@@ -2022,7 +2031,10 @@
 
     // Detect exclusion patterns (use original data so they persist after re-scoring)
     var suggestionsHtml = '';
-    if (!skipExclusionDetection) {
+    var isCrawlPage = skipExclusionDetection === 'crawl-page';
+    if (isCrawlPage) {
+      // No exclusion suggestions for crawl pages
+    } else if (!skipExclusionDetection) {
       var patterns = detectExclusionPatterns(data);
       suggestionsHtml = renderExclusionSuggestions(patterns);
     } else {
