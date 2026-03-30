@@ -2694,6 +2694,554 @@ All presets assume Tailwind CSS is available. Setup per framework:
 For Tailwind v4, add `@import "tailwindcss"` to your main CSS file. No `tailwind.config.js` needed for default setup.
 </file>
 
+<file path="docs/tests/edge-a11y.html">
+<!-- Edge Case: Accessibility Checks -->
+<!-- Tests: semantic HTML, headings, alt text, labels, focus, lang, skip link, ARIA, link text, autocomplete, color-only -->
+<html><!-- intentionally missing lang attribute -->
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>body{font-family:system-ui;margin:0;padding:24px}.section{margin-bottom:24px;padding:16px;border:1px solid #e5e7eb;border-radius:8px}h2{font-size:16px;margin-bottom:8px}</style>
+</head><body>
+<!-- No skip link -->
+
+<div class="section">
+  <h2>1. Missing semantic HTML (no header/nav/main/footer)</h2>
+  <p>This page uses only divs — no semantic landmarks.</p>
+</div>
+
+<div class="section">
+  <h2>2. Heading hierarchy gap (h2 → h4, skipping h3)</h2>
+  <h4>This h4 follows an h2 — hierarchy broken</h4>
+</div>
+
+<div class="section">
+  <h2>3. Images without alt</h2>
+  <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='60'%3E%3Crect fill='%23ddd' width='100' height='60'/%3E%3C/svg%3E" width="100" height="60">
+  <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='60'%3E%3Crect fill='%23ccc' width='100' height='60'/%3E%3C/svg%3E" width="100" height="60" alt="Has alt text">
+</div>
+
+<div class="section">
+  <h2>4. Form labels missing</h2>
+  <input type="text" placeholder="No label">
+  <label for="good-input">Has label:</label>
+  <input type="text" id="good-input">
+</div>
+
+<div class="section">
+  <h2>5. Focus indicators removed</h2>
+  <button style="outline:none;border:1px solid #ccc;padding:8px 16px;cursor:pointer">No focus ring</button>
+</div>
+
+<div class="section">
+  <h2>6. Bad link text</h2>
+  <a href="#">Click here</a> |
+  <a href="#">Read more</a> |
+  <a href="#">Learn more</a> |
+  <a href="#">here</a>
+</div>
+
+<div class="section">
+  <h2>7. ARIA issues</h2>
+  <div role="button" style="padding:8px 16px;background:#3b82f6;color:white;display:inline-block;border-radius:4px;cursor:pointer">role=button without tabindex</div>
+  <div aria-hidden="true">
+    <a href="#">Focusable link inside aria-hidden</a>
+    <button>Focusable button inside aria-hidden</button>
+  </div>
+</div>
+
+<div class="section">
+  <h2>8. Missing autocomplete</h2>
+  <input type="email" name="email" placeholder="Email without autocomplete">
+  <input type="tel" name="phone" placeholder="Phone without autocomplete">
+</div>
+
+<div class="section">
+  <h2>9. Color-only indicators</h2>
+  <span class="error" style="color:#dc2626">Something went wrong</span>
+  <span class="success" style="color:#16a34a">All good</span>
+  <span class="warning" style="color:#f59e0b">Caution needed</span>
+</div>
+</body></html>
+</file>
+
+<file path="docs/tests/edge-contrast.html">
+<!-- Edge Case: Contrast Detection -->
+<!-- Tests: gradient bg, bg-image, oklch colors, CSS filters, semi-transparent overlays, 1:1 uncertain -->
+<style>
+  body { font-family: system-ui; margin: 0; padding: 24px; }
+  .section { margin-bottom: 32px; padding: 16px; border: 1px solid #e5e7eb; border-radius: 8px; }
+  h2 { font-size: 18px; margin-bottom: 12px; }
+</style>
+
+<div class="section">
+  <h2>1. Gradient background (should detect, not 1:1)</h2>
+  <div style="background: linear-gradient(135deg, #1e40af, #7c3aed); color: white; padding: 24px; border-radius: 8px;">
+    <p style="font-size: 16px;">White text on blue-to-purple gradient — should compute real contrast</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>2. Solid color — clear pass</h2>
+  <p style="color: #1e293b; background: #ffffff; padding: 12px;">Dark text on white — 15:1 ratio, clear pass</p>
+</div>
+
+<div class="section">
+  <h2>3. Solid color — clear fail</h2>
+  <p style="color: #d1d5db; background: #f9fafb; padding: 12px;">Light gray on near-white — ~1.4:1, should fail</p>
+</div>
+
+<div class="section">
+  <h2>4. Near-miss (4.3:1)</h2>
+  <p style="color: #6b7280; background: #ffffff; padding: 12px;">Medium gray on white — ~4.6:1, near miss for AAA</p>
+</div>
+
+<div class="section">
+  <h2>5. CSS filter: brightness</h2>
+  <div style="filter: brightness(0.7); background: white; padding: 16px;">
+    <p style="color: #9ca3af;">Gray text inside brightness(0.7) filter — adjusted contrast should differ from raw</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>6. Semi-transparent overlay</h2>
+  <div style="position: relative; background: #1e40af; padding: 24px; border-radius: 8px;">
+    <div style="position: absolute; inset: 0; background: rgba(255,255,255,0.5); border-radius: 8px;"></div>
+    <p style="position: relative; color: #1e293b; z-index: 1;">Text on blue with 50% white overlay — effective bg is light blue</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>7. Large text (lower threshold)</h2>
+  <p style="font-size: 24px; font-weight: 700; color: #9ca3af; background: white; padding: 12px;">Large bold text — only needs 3:1</p>
+</div>
+
+<div class="section">
+  <h2>8. oklch color (Tailwind v4)</h2>
+  <div style="background: oklch(0.208 0.042 265.755); color: oklch(0.985 0.002 247.839); padding: 16px; border-radius: 8px;">
+    <p>Light text on dark oklch background — should parse via canvas</p>
+  </div>
+</div>
+</file>
+
+<file path="docs/tests/edge-layout.html">
+<!-- Edge Case: Layout, Spacing, Touch, Typography -->
+<!-- Tests: spacing grid, overflow, negative margins, touch targets, line length, fixed widths, truncation -->
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+body{font-family:system-ui;margin:0;padding:24px}
+.section{margin-bottom:24px;padding:16px;border:1px solid #e5e7eb;border-radius:8px}
+h2{font-size:16px;margin-bottom:8px}
+</style>
+</head><body>
+<header><nav><a href="#">Home</a></nav></header>
+<main>
+
+<section class="section">
+  <h1>Edge Case: Layout & Spacing</h1>
+</section>
+
+<section class="section">
+  <h2>1. Off-grid spacing (5px, 7px, 13px, 22px)</h2>
+  <div style="padding: 5px;">5px padding (not on 4px grid)</div>
+  <div style="margin-top: 7px;">7px margin</div>
+  <div style="padding: 13px;">13px padding</div>
+  <div style="margin-top: 22px;">22px margin</div>
+</section>
+
+<section class="section">
+  <h2>2. Element overflow</h2>
+  <div style="width: 200px; overflow: hidden; border: 1px solid #ccc;">
+    <div style="width: 400px; background: #fee2e2; padding: 8px;">This div overflows its container — 400px inside 200px</div>
+  </div>
+</section>
+
+<section class="section">
+  <h2>3. Negative margins</h2>
+  <div style="margin-top: -12px; background: #fef3c7; padding: 8px;">margin-top: -12px</div>
+  <div style="margin-left: -8px; background: #dbeafe; padding: 8px;">margin-left: -8px</div>
+  <div style="margin-bottom: -16px; background: #dcfce7; padding: 8px;">margin-bottom: -16px</div>
+  <div style="margin-right: -4px; background: #f3e8ff; padding: 8px;">margin-right: -4px</div>
+  <div style="margin-top: -10px; background: #ffe4e6; padding: 8px;">margin-top: -10px</div>
+  <div style="margin-left: -6px; background: #e0f2fe; padding: 8px;">margin-left: -6px</div>
+</section>
+
+<section class="section">
+  <h2>4. Small touch targets</h2>
+  <a href="#" style="font-size:12px;display:inline-block;">Tiny link (no padding)</a>
+  <button style="font-size:10px;padding:2px 4px;border:1px solid #ccc;">Tiny button</button>
+  <a href="#" style="padding:12px 24px;display:inline-block;background:#3b82f6;color:white;border-radius:4px;">Good size button</a>
+</section>
+
+<section class="section">
+  <h2>5. Extreme line length</h2>
+  <p style="max-width:none;">This is a very long paragraph with no max-width constraint. On a wide screen, the line length will exceed 75 characters significantly, making it hard for the eye to track back to the beginning of the next line. The ideal line length is 45-75 characters, with 66 being the sweet spot according to Bringhurst. This paragraph deliberately exceeds that to trigger the line length check in the typography scoring module.</p>
+</section>
+
+<section class="section">
+  <h2>6. Fixed-width element</h2>
+  <div style="width: 800px; background: #f1f5f9; padding: 16px; border-radius: 8px;">
+    This div is fixed at 800px — will overflow on mobile
+  </div>
+</section>
+
+<section class="section">
+  <h2>7. Truncated text</h2>
+  <div style="width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 1px solid #ccc; padding: 4px;">
+    This text is truncated because it's too long for the container
+  </div>
+  <div style="width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 1px solid #ccc; padding: 4px;">
+    Another truncated line
+  </div>
+  <div style="width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 1px solid #ccc; padding: 4px;">
+    And a third one too
+  </div>
+  <div style="width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 1px solid #ccc; padding: 4px;">
+    Fourth truncated piece
+  </div>
+</section>
+
+<section class="section">
+  <h2>8. Inconsistent container padding</h2>
+  <div style="padding: 12px; background: #f9fafb; margin-bottom: 8px;">Card with 12px padding</div>
+  <div style="padding: 24px; background: #f9fafb; margin-bottom: 8px;">Card with 24px padding</div>
+  <div style="padding: 16px; background: #f9fafb; margin-bottom: 8px;">Card with 16px padding</div>
+  <div style="padding: 32px; background: #f9fafb; margin-bottom: 8px;">Card with 32px padding</div>
+  <div style="padding: 20px; background: #f9fafb;">Card with 20px padding</div>
+</section>
+
+</main>
+</body></html>
+</file>
+
+<file path="docs/tests/edge-performance.html">
+<!-- Edge Case: Performance & Motion -->
+<!-- Tests: font loading, render blocking, DOM size, third-party scripts, images, CLS, animations -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Render-blocking CSS (no media attribute) -->
+<link rel="stylesheet" href="data:text/css,body{margin:0}">
+<link rel="stylesheet" href="data:text/css,.x{color:red}">
+<link rel="stylesheet" href="data:text/css,.y{color:blue}">
+<link rel="stylesheet" href="data:text/css,.z{color:green}">
+<!-- Render-blocking JS (no async/defer) -->
+<script>var x=1;</script>
+<script>var y=2;</script>
+<style>
+body{font-family:system-ui;padding:24px}
+.section{margin-bottom:24px;padding:16px;border:1px solid #e5e7eb;border-radius:8px}
+h2{font-size:16px;margin-bottom:8px}
+/* Animation keyframes */
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideUp { from { transform: translateY(20px); } to { transform: translateY(0); } }
+@keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+/* No prefers-reduced-motion support — should flag */
+.animated { animation: fadeIn 0.3s ease; }
+.scroll-reveal { opacity: 0; transition: opacity 0.5s, transform 0.5s; transform: translateY(30px); }
+</style>
+</head><body>
+<main>
+
+<section class="section">
+  <h1>Edge Case: Performance & Motion</h1>
+</section>
+
+<section class="section">
+  <h2>1. Render-blocking resources</h2>
+  <p>This page has 4 render-blocking CSS files and 2 sync JS scripts in &lt;head&gt;</p>
+</section>
+
+<section class="section">
+  <h2>2. Legacy images (no WebP/AVIF)</h2>
+  <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" width="100" height="60" alt="PNG image">
+  <img src="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//AP//AP//AP//AP//AP//AP//AP//AP//AP//AP//AP//AP//" width="100" height="60" alt="JPEG image">
+  <!-- Image without dimensions (CLS risk) -->
+  <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" alt="No dimensions set">
+</section>
+
+<section class="section">
+  <h2>3. Scroll-reveal elements (opacity: 0 + transition)</h2>
+  <div class="scroll-reveal">This element is hidden waiting for scroll trigger</div>
+  <div class="scroll-reveal">Another hidden element</div>
+  <div class="scroll-reveal">Third hidden element</div>
+  <div data-aos="fade-up">AOS scroll reveal element</div>
+</section>
+
+<section class="section">
+  <h2>4. Long animation (> 500ms)</h2>
+  <div style="transition: all 0.8s ease;">Transition 800ms</div>
+  <div style="animation: pulse 2s infinite;">Pulse animation 2s</div>
+</section>
+
+<section class="section">
+  <h2>5. Keyframes (3 defined, no prefers-reduced-motion)</h2>
+  <div class="animated">Animated element</div>
+  <p>This page defines 3 @keyframes rules but has no @media (prefers-reduced-motion) support.</p>
+</section>
+
+<section class="section">
+  <h2>6. Above-fold image with lazy loading (bad for LCP)</h2>
+  <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='300'%3E%3Crect fill='%23e5e7eb' width='600' height='300'/%3E%3Ctext x='300' y='150' text-anchor='middle' fill='%23999' font-size='20'%3EHero Image%3C/text%3E%3C/svg%3E" width="600" height="300" alt="Hero image" loading="lazy">
+</section>
+
+</main>
+</body></html>
+</file>
+
+<file path="docs/tests/edge-readability.html">
+<!-- Edge Case: Readability & Typography -->
+<!-- Tests: heading density, small text, Coleman-Liau, paragraph length, lists, letter spacing, paragraph spacing, visual hierarchy -->
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>body{font-family:system-ui;margin:0;padding:24px;line-height:1.6}.section{margin-bottom:32px;padding:16px;border:1px solid #e5e7eb;border-radius:8px}</style>
+</head><body>
+<main>
+
+<section class="section">
+  <h1>Edge Case: Readability</h1>
+</section>
+
+<section class="section">
+  <h2>1. Long paragraph (> 150 words)</h2>
+  <p>This is an intentionally long paragraph designed to test the paragraph length checker. It contains many sentences that go on and on, covering multiple topics without any natural breaks. The reader must track through all of this text without the benefit of subheadings, bullet points, or any other visual chunking mechanism. Research from the Nielsen Norman Group shows that users scan web content rather than reading it word-by-word. When paragraphs exceed 150 words, they become walls of text that most users will skip entirely. The ideal paragraph length for web content is 40-80 words. By breaking content into smaller chunks and using descriptive subheadings, you can improve scanability by up to 47%. This paragraph deliberately exceeds the 150-word threshold to verify that the analyzer correctly flags it. It keeps going to make absolutely sure we cross that boundary with plenty of margin. Additional sentences are added here to pad the word count even further beyond what would be considered good practice for web writing.</p>
+</section>
+
+<section class="section">
+  <h2>2. Complex vocabulary (high Coleman-Liau grade)</h2>
+  <p>The anthropomorphization of computational algorithms demonstrates an epistemological predisposition toward reductionist interpretations of neurobiological phenomena. Notwithstanding the aforementioned methodological constraints, the interdisciplinary synthesis of psycholinguistic and neurocognitive paradigms necessitates a comprehensive reconceptualization of established theoretical frameworks.</p>
+  <p>Furthermore, the juxtaposition of phenomenological and empiricist perspectives illuminates the inherent contradictions within contemporary epistemological discourse, thereby undermining the foundational assumptions of positivist methodologies.</p>
+</section>
+
+<section class="section">
+  <h2>3. No content lists (wall of text)</h2>
+  <p>Feature one is great because it does something useful. Feature two is also important for different reasons. Feature three helps with a specific problem. Feature four addresses another need entirely. These should really be in a list for better scanability.</p>
+</section>
+
+<section class="section">
+  <h2>4. With proper lists</h2>
+  <p>Our key features include:</p>
+  <ul>
+    <li>Feature one — does something useful</li>
+    <li>Feature two — important for different reasons</li>
+    <li>Feature three — helps with a specific problem</li>
+    <li>Feature four — addresses another need</li>
+  </ul>
+</section>
+
+<section class="section">
+  <h2>5. Very small text</h2>
+  <p style="font-size:9px">This text is only 9px — nearly impossible to read</p>
+  <p style="font-size:10px">This is 10px — too small for most users</p>
+  <p style="font-size:11px">This is 11px — still below the 12px minimum</p>
+</section>
+
+<section class="section">
+  <h2>6. Extreme letter spacing</h2>
+  <p style="letter-spacing: -0.05em;">Extremely tight letter spacing (-0.05em) — hard to read</p>
+  <p style="letter-spacing: 0.3em;">Extremely loose letter spacing (0.3em) — hard to read</p>
+  <p style="letter-spacing: -0.01em;">Acceptable negative spacing (-0.01em)</p>
+</section>
+
+<section class="section">
+  <h2>7. Inconsistent paragraph spacing</h2>
+  <p style="margin-bottom: 4px;">Very tight paragraph spacing (4px)</p>
+  <p style="margin-bottom: 4px;">Second paragraph with tight spacing</p>
+  <p style="margin-bottom: 4px;">Third paragraph with tight spacing</p>
+</section>
+
+<section class="section">
+  <h2>8. Good readability (control)</h2>
+  <p>This paragraph has good readability. It uses clear, simple language at a comfortable reading level. Sentences are short and direct. The font size is 16px with proper line height.</p>
+  <p>A second paragraph with adequate spacing shows proper paragraph breaks. The content flows naturally and is easy to scan.</p>
+</section>
+
+</main>
+</body></html>
+</file>
+
+<file path="docs/tests/run-edge-cases.html">
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Edge Case Test Runner</title>
+<style>body{font-family:system-ui;padding:20px;font-size:13px;max-width:1400px;margin:0 auto}table{border-collapse:collapse;width:100%;margin:12px 0}td,th{border:1px solid #ddd;padding:5px 7px;text-align:left;font-size:11px}th{background:#f5f5f5;font-weight:600}.pass{color:#16a34a}.warn{color:#b45309}.fail{color:#dc2626}h1{font-size:20px}h2{font-size:16px;margin-top:20px}.status{color:#666;margin:8px 0}</style>
+</head><body>
+<h1>Edge Case Test Runner</h1>
+<p class="status" id="status">Loading modules...</p>
+<div id="output"></div>
+
+<script src="../scoring/registry.js"></script>
+<script src="../scoring/contrast.js"></script>
+<script src="../scoring/typography.js"></script>
+<script src="../scoring/spacing.js"></script>
+<script src="../scoring/touch.js"></script>
+<script src="../scoring/accessibility.js"></script>
+<script src="../scoring/responsive.js"></script>
+<script src="../scoring/consistency.js"></script>
+<script src="../scoring/cognitive.js"></script>
+<script src="../scoring/layout.js"></script>
+<script src="../scoring/performance.js"></script>
+<script src="../scoring/readability.js"></script>
+<script src="../scoring/filters.js"></script>
+<script src="../scoring/balance.js"></script>
+<script src="../analyzer-snippet.js"></script>
+<script>
+// Load the snippet as a string for injection
+var snippetSrc = '';
+fetch('../analyzer-snippet.js').then(function(r){return r.text()}).then(function(t){snippetSrc=t;runTests()});
+
+var TESTS = [
+  { file: 'edge-contrast.html', name: 'Contrast Edge Cases', expect: {
+    contrast: { maxScore: 70, mustFindTexts: ['gradient', 'Light gray'] },
+    note: 'Should detect gradient bg, flag light gray, pass dark text'
+  }},
+  { file: 'edge-a11y.html', name: 'Accessibility Edge Cases', expect: {
+    accessibility: { maxScore: 40 },
+    note: 'Missing lang, no skip link, bad links, ARIA issues, missing labels, color-only'
+  }},
+  { file: 'edge-layout.html', name: 'Layout & Spacing Edge Cases', expect: {
+    spacing: { maxScore: 80 },
+    note: 'Off-grid spacing, overflow, negative margins, fixed widths'
+  }},
+  { file: 'edge-performance.html', name: 'Performance & Motion Edge Cases', expect: {
+    note: 'Render-blocking, legacy images, scroll-reveal, no prefers-reduced-motion'
+  }},
+  { file: 'edge-readability.html', name: 'Readability Edge Cases', expect: {
+    readability: { maxScore: 60 },
+    note: 'Long paragraphs, complex vocabulary, no lists, small text'
+  }}
+];
+
+var status = document.getElementById('status');
+var output = document.getElementById('output');
+
+function analyzeFile(file) {
+  return new Promise(function(resolve) {
+    var iframe = document.createElement('iframe');
+    iframe.style.cssText = 'width:1280px;height:900px;border:none;position:absolute;top:-9999px;left:-9999px;';
+    document.body.appendChild(iframe);
+
+    var msgId = 'edge-' + file.replace(/\W/g, '');
+    function onMsg(e) {
+      if (!e.data || e.data.type !== msgId) return;
+      window.removeEventListener('message', onMsg);
+      document.body.removeChild(iframe);
+      resolve(e.data.data);
+    }
+    window.addEventListener('message', onMsg);
+
+    fetch(file).then(function(r){return r.text()}).then(function(html) {
+      // Inject extraction snippet that posts results back
+      var modified = snippetSrc.replace(
+        /window\.__milgData = data;/,
+        'parent.postMessage({type:"' + msgId + '",data:data},"*");'
+      ).replace(
+        /navigator\.clipboard[\s\S]*?window\.__milgData = data;/,
+        'parent.postMessage({type:"' + msgId + '",data:data},"*");'
+      );
+      // Actually just use a simple extraction inline
+      var script = '<script>setTimeout(function(){' +
+        'var data={meta:{url:"test:' + file + '",viewportWidth:1280,viewportHeight:900,timestamp:new Date().toISOString(),version:1},' +
+        'colors:{textColors:[],bgColors:[],contrastPairs:[]},typography:{bodyFontSize:getComputedStyle(document.body).fontSize,bodyLineHeight:getComputedStyle(document.body).lineHeight,bodyFontFamily:"",fontFamilies:[],fontSizes:[],fontWeights:[],headings:[],lineHeights:[],maxLineLength:{chars:0,element:""},paragraphSpacing:[],letterSpacingIssues:0},spacing:{paddings:[],margins:[],gaps:[],maxContentWidth:"",bodyPaddingHorizontal:"",negativeMargins:0,containerPaddings:[]},layout:{sectionGaps:[],alignmentEdges:[],visualHierarchy:{},borderRadii:[],overflowElements:0},interaction:{touchTargets:[],transitions:[]},accessibility:{semanticElements:{header:document.querySelectorAll("header").length,nav:document.querySelectorAll("nav").length,main:document.querySelectorAll("main").length,footer:document.querySelectorAll("footer").length},headingHierarchy:[],imagesWithoutAlt:0,formLabels:{total:0,withLabel:0,withoutLabel:0},focusIndicators:[],langAttribute:document.documentElement.getAttribute("lang")||"",hasSkipLink:!!document.querySelector("a[href^=\\"#main\\"],a[href^=\\"#content\\"]"),badLinkTexts:[],missingAutocomplete:0,ariaIssues:[],colorOnlyIndicators:0},structure:{totalElements:document.body.querySelectorAll("*").length,darkModeClasses:false,responsiveClasses:false,tailwindDetected:false,cssFramework:"unknown",viewportMeta:document.querySelector("meta[name=viewport]")?document.querySelector("meta[name=viewport]").getAttribute("content"):"",blocksZoom:false,hasHorizontalOverflow:document.documentElement.scrollWidth>document.documentElement.clientWidth,fixedWidthElements:0,truncatedElements:0},context:{pageType:"unknown"},performance:{imageSizing:[],fontLoading:[],renderBlocking:{cssInHead:document.querySelectorAll("head link[rel=stylesheet]").length,jsInHead:document.querySelectorAll("head script:not([async]):not([defer])").length},domSize:document.body.querySelectorAll("*").length,domDepth:0,thirdPartyScripts:0,imageFormats:{modern:0,legacy:0},cls:null,nonResponsiveImages:0},readability:{textBlocks:[],totalWords:0,totalChars:0,paragraphCount:0,hasLists:document.querySelectorAll("ul,ol").length>0},animation:{hiddenElements:0,keyframeCount:0,hasReducedMotion:false,scrollRevealPatterns:[]}};' +
+        // Contrast pairs
+        'function parseC(s){if(!s||s==="transparent"||s==="rgba(0, 0, 0, 0)")return null;var m=s.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)/);if(m)return{r:+m[1],g:+m[2],b:+m[3],a:1};return null}' +
+        'function blend(c){if(!c)return{r:255,g:255,b:255};return c}' +
+        'function getBg(el){var n=el;while(n&&n!==document.documentElement){var c=parseC(getComputedStyle(n).backgroundColor);if(c)return c;n=n.parentElement}return{r:255,g:255,b:255}}' +
+        'function lum(c){var R=c.r/255,G=c.g/255,B=c.b/255;R=R<=0.03928?R/12.92:Math.pow((R+0.055)/1.055,2.4);G=G<=0.03928?G/12.92:Math.pow((G+0.055)/1.055,2.4);B=B<=0.03928?B/12.92:Math.pow((B+0.055)/1.055,2.4);return 0.2126*R+0.7152*G+0.0722*B}' +
+        'function cr(a,b){return(Math.max(lum(a),lum(b))+0.05)/(Math.min(lum(a),lum(b))+0.05)}' +
+        'function vis(el){var s=getComputedStyle(el);if(s.display==="none"||s.visibility==="hidden"||s.opacity==="0")return false;var r=el.getBoundingClientRect();return r.width>0&&r.height>0}' +
+        'var w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,null,false);var nd,seen=new Set();' +
+        'while(nd=w.nextNode()){if(!nd.textContent.trim())continue;var el=nd.parentElement;if(!el||!vis(el)||seen.has(el))continue;seen.add(el);var st=getComputedStyle(el);var fg=parseC(st.color);if(!fg)continue;var bg=getBg(el);var ratio=cr(fg,bg);var fs=parseFloat(st.fontSize);var fw=parseInt(st.fontWeight)||400;var isL=fs>=24||(fs>=18.66&&fw>=700);var th=isL?3:4.5;if(ratio<7.5){data.colors.contrastPairs.push({fg:"rgb("+fg.r+","+fg.g+","+fg.b+")",bg:"rgb("+bg.r+","+bg.g+","+bg.b+")",ratio:Math.round(ratio*100)/100,needed:th,passes:ratio>=th,fontSize:Math.round(fs),fontWeight:fw,isLarge:isL,text:nd.textContent.trim().substring(0,30),selector:el.tagName.toLowerCase()})}}' +
+        // Headings
+        'document.querySelectorAll("h1,h2,h3,h4,h5,h6").forEach(function(h){data.typography.headings.push({tag:h.tagName.toLowerCase(),fontSize:getComputedStyle(h).fontSize,fontWeight:getComputedStyle(h).fontWeight,lineHeight:getComputedStyle(h).lineHeight,fontFamily:"",text:h.textContent.trim().substring(0,30)});data.accessibility.headingHierarchy.push(h.tagName.toLowerCase())});' +
+        // Images
+        'var noAlt=0;document.querySelectorAll("img").forEach(function(i){if(!i.hasAttribute("alt"))noAlt++});data.accessibility.imagesWithoutAlt=noAlt;' +
+        // Bad links
+        'document.querySelectorAll("a").forEach(function(a){if(!vis(a))return;var t=(a.textContent||"").trim().toLowerCase();if(["click here","here","read more","learn more","more","link"].indexOf(t)!==-1)data.accessibility.badLinkTexts.push({text:t,selector:""})});' +
+        // ARIA
+        'document.querySelectorAll("[role=button]:not(button):not(a)").forEach(function(el){if(!el.hasAttribute("tabindex"))data.accessibility.ariaIssues.push({type:"button-no-tabindex"})});' +
+        'document.querySelectorAll("[aria-hidden=true] a,[aria-hidden=true] button").forEach(function(el){if(vis(el))data.accessibility.ariaIssues.push({type:"hidden-focusable"})});' +
+        // Forms
+        'document.querySelectorAll("input:not([type=hidden]):not([type=submit])").forEach(function(inp){data.accessibility.formLabels.total++;if((inp.id&&document.querySelector("label[for="+inp.id+"]"))||inp.closest("label")||inp.getAttribute("aria-label"))data.accessibility.formLabels.withLabel++;else data.accessibility.formLabels.withoutLabel++});' +
+        // Color-only
+        'document.querySelectorAll("[class*=error],[class*=success],[class*=warning]").forEach(function(el){if(!vis(el))return;var hasIcon=el.querySelector("svg,img");var t=(el.textContent||"").trim();if(!hasIcon&&!/^(error|warning|success)\\s*[:!]/i.test(t)&&t.length>0&&t.length<200)data.accessibility.colorOnlyIndicators++});' +
+        // Autocomplete
+        'document.querySelectorAll("input[type=email],input[type=tel]").forEach(function(f){if(!f.getAttribute("autocomplete"))data.accessibility.missingAutocomplete++});' +
+        // Touch targets
+        'document.querySelectorAll("a,button,input").forEach(function(el){if(!vis(el))return;var r=el.getBoundingClientRect();if(Math.round(r.width)<44||Math.round(r.height)<44)data.interaction.touchTargets.push({element:el.tagName.toLowerCase(),width:Math.round(r.width),height:Math.round(r.height),text:(el.textContent||"").trim().substring(0,30),selector:"",passes:false})});' +
+        // Readability
+        'document.querySelectorAll("p").forEach(function(p){if(!vis(p))return;var t=(p.textContent||"").trim();if(t.length>20){data.readability.textBlocks.push({text:t,wordCount:t.split(/\\s+/).length,charCount:t.length});data.readability.totalWords+=t.split(/\\s+/).length;data.readability.totalChars+=t.length;data.readability.paragraphCount++}});' +
+        // Animations
+        'var allEls=document.body.querySelectorAll("*");for(var i=0;i<allEls.length;i++){var as=getComputedStyle(allEls[i]);if(as.opacity==="0"&&(as.transitionProperty!=="none"||as.animationName!=="none"))data.animation.hiddenElements++}' +
+        'try{Array.from(document.styleSheets).forEach(function(ss){try{Array.from(ss.cssRules).forEach(function(r){if(r instanceof CSSKeyframesRule)data.animation.keyframeCount++;if(r instanceof CSSMediaRule&&/prefers-reduced-motion/.test(r.conditionText||""))data.animation.hasReducedMotion=true})}catch(e){}})}catch(e){}' +
+        'var revealSels=["[data-aos]",".wow",".scroll-reveal"];revealSels.forEach(function(sel){try{var c=document.querySelectorAll(sel).length;if(c>0)data.animation.scrollRevealPatterns.push({selector:sel,count:c})}catch(e){}});' +
+        // Negative margins
+        'for(var ni=0;ni<allEls.length&&ni<500;ni++){var ns=getComputedStyle(allEls[ni]);if(parseFloat(ns.marginTop)<0||parseFloat(ns.marginLeft)<0||parseFloat(ns.marginBottom)<0||parseFloat(ns.marginRight)<0)data.spacing.negativeMargins++}' +
+        'parent.postMessage({type:"' + msgId + '",data:data},"*");' +
+        '},2000);</' + 'script>';
+
+      var isFullDoc = /<html/i.test(html);
+      if (isFullDoc && /<\/body>/i.test(html)) {
+        iframe.srcdoc = html.replace(/<\/body>/i, script + '</body>');
+      } else {
+        iframe.srcdoc = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"></head><body>' + html + script + '</body></html>';
+      }
+    });
+
+    setTimeout(function() { window.removeEventListener('message', onMsg); if (iframe.parentNode) document.body.removeChild(iframe); resolve(null); }, 8000);
+  });
+}
+
+function runTests() {
+  (async function() {
+    var allHtml = '';
+
+    for (var i = 0; i < TESTS.length; i++) {
+      var test = TESTS[i];
+      status.textContent = 'Testing: ' + test.name + ' (' + (i+1) + '/' + TESTS.length + ')';
+      var data = await analyzeFile(test.file);
+
+      allHtml += '<h2>' + test.name + '</h2>';
+      if (!data) { allHtml += '<p class="fail">TIMEOUT — extraction failed</p>'; continue; }
+
+      var report = MilgScoring.runScoring(data);
+      allHtml += '<p>Score: <strong class="' + (report.overall >= 80 ? 'pass' : report.overall >= 50 ? 'warn' : 'fail') + '">' + report.overall + '/100 (' + report.grade + ')</strong> — ' + (test.expect.note || '') + '</p>';
+
+      // Show all findings
+      allHtml += '<table><tr><th>Module</th><th>Score</th><th>Findings</th></tr>';
+      report.categories.forEach(function(c) {
+        if (c.findings.length === 0 && c.score === 100) return; // skip perfect modules
+        var cls = c.score >= 80 ? 'pass' : c.score >= 50 ? 'warn' : 'fail';
+        var details = c.findings.map(function(f) {
+          var icon = f.severity === 'error' ? '❌' : f.severity === 'warning' ? '⚠️' : 'ℹ️';
+          return icon + ' ' + f.title;
+        }).join('<br>');
+        allHtml += '<tr><td><strong>' + c.label + '</strong></td><td class="' + cls + '">' + c.score + '</td><td style="font-size:10px">' + (details || 'All passed') + '</td></tr>';
+      });
+      allHtml += '</table>';
+
+      // Validate expectations
+      if (test.expect.contrast && test.expect.contrast.maxScore) {
+        var contrastCat = report.categories.find(function(c) { return c.icon === 'contrast'; });
+        if (contrastCat && contrastCat.score > test.expect.contrast.maxScore) {
+          allHtml += '<p class="fail">EXPECTATION FAILED: Contrast score ' + contrastCat.score + ' > expected max ' + test.expect.contrast.maxScore + '</p>';
+        }
+      }
+      if (test.expect.accessibility && test.expect.accessibility.maxScore) {
+        var a11yCat = report.categories.find(function(c) { return c.icon === 'a11y'; });
+        if (a11yCat && a11yCat.score > test.expect.accessibility.maxScore) {
+          allHtml += '<p class="fail">EXPECTATION FAILED: A11y score ' + a11yCat.score + ' > expected max ' + test.expect.accessibility.maxScore + '</p>';
+        }
+      }
+    }
+
+    status.textContent = 'Done — ' + TESTS.length + ' edge case suites tested';
+    output.innerHTML = allHtml;
+  })();
+}
+</script></body></html>
+</file>
+
 <file path="docs/test-sites.html">
 <!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -16077,134 +16625,6 @@ All presets are:
 }
 </file>
 
-<file path="docs/tests/edge-a11y.html">
-<!-- Edge Case: Accessibility Checks -->
-<!-- Tests: semantic HTML, headings, alt text, labels, focus, lang, skip link, ARIA, link text, autocomplete, color-only -->
-<html><!-- intentionally missing lang attribute -->
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<style>body{font-family:system-ui;margin:0;padding:24px}.section{margin-bottom:24px;padding:16px;border:1px solid #e5e7eb;border-radius:8px}h2{font-size:16px;margin-bottom:8px}</style>
-</head><body>
-<!-- No skip link -->
-
-<div class="section">
-  <h2>1. Missing semantic HTML (no header/nav/main/footer)</h2>
-  <p>This page uses only divs — no semantic landmarks.</p>
-</div>
-
-<div class="section">
-  <h2>2. Heading hierarchy gap (h2 → h4, skipping h3)</h2>
-  <h4>This h4 follows an h2 — hierarchy broken</h4>
-</div>
-
-<div class="section">
-  <h2>3. Images without alt</h2>
-  <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='60'%3E%3Crect fill='%23ddd' width='100' height='60'/%3E%3C/svg%3E" width="100" height="60">
-  <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='60'%3E%3Crect fill='%23ccc' width='100' height='60'/%3E%3C/svg%3E" width="100" height="60" alt="Has alt text">
-</div>
-
-<div class="section">
-  <h2>4. Form labels missing</h2>
-  <input type="text" placeholder="No label">
-  <label for="good-input">Has label:</label>
-  <input type="text" id="good-input">
-</div>
-
-<div class="section">
-  <h2>5. Focus indicators removed</h2>
-  <button style="outline:none;border:1px solid #ccc;padding:8px 16px;cursor:pointer">No focus ring</button>
-</div>
-
-<div class="section">
-  <h2>6. Bad link text</h2>
-  <a href="#">Click here</a> |
-  <a href="#">Read more</a> |
-  <a href="#">Learn more</a> |
-  <a href="#">here</a>
-</div>
-
-<div class="section">
-  <h2>7. ARIA issues</h2>
-  <div role="button" style="padding:8px 16px;background:#3b82f6;color:white;display:inline-block;border-radius:4px;cursor:pointer">role=button without tabindex</div>
-  <div aria-hidden="true">
-    <a href="#">Focusable link inside aria-hidden</a>
-    <button>Focusable button inside aria-hidden</button>
-  </div>
-</div>
-
-<div class="section">
-  <h2>8. Missing autocomplete</h2>
-  <input type="email" name="email" placeholder="Email without autocomplete">
-  <input type="tel" name="phone" placeholder="Phone without autocomplete">
-</div>
-
-<div class="section">
-  <h2>9. Color-only indicators</h2>
-  <span class="error" style="color:#dc2626">Something went wrong</span>
-  <span class="success" style="color:#16a34a">All good</span>
-  <span class="warning" style="color:#f59e0b">Caution needed</span>
-</div>
-</body></html>
-</file>
-
-<file path="docs/tests/edge-contrast.html">
-<!-- Edge Case: Contrast Detection -->
-<!-- Tests: gradient bg, bg-image, oklch colors, CSS filters, semi-transparent overlays, 1:1 uncertain -->
-<style>
-  body { font-family: system-ui; margin: 0; padding: 24px; }
-  .section { margin-bottom: 32px; padding: 16px; border: 1px solid #e5e7eb; border-radius: 8px; }
-  h2 { font-size: 18px; margin-bottom: 12px; }
-</style>
-
-<div class="section">
-  <h2>1. Gradient background (should detect, not 1:1)</h2>
-  <div style="background: linear-gradient(135deg, #1e40af, #7c3aed); color: white; padding: 24px; border-radius: 8px;">
-    <p style="font-size: 16px;">White text on blue-to-purple gradient — should compute real contrast</p>
-  </div>
-</div>
-
-<div class="section">
-  <h2>2. Solid color — clear pass</h2>
-  <p style="color: #1e293b; background: #ffffff; padding: 12px;">Dark text on white — 15:1 ratio, clear pass</p>
-</div>
-
-<div class="section">
-  <h2>3. Solid color — clear fail</h2>
-  <p style="color: #d1d5db; background: #f9fafb; padding: 12px;">Light gray on near-white — ~1.4:1, should fail</p>
-</div>
-
-<div class="section">
-  <h2>4. Near-miss (4.3:1)</h2>
-  <p style="color: #6b7280; background: #ffffff; padding: 12px;">Medium gray on white — ~4.6:1, near miss for AAA</p>
-</div>
-
-<div class="section">
-  <h2>5. CSS filter: brightness</h2>
-  <div style="filter: brightness(0.7); background: white; padding: 16px;">
-    <p style="color: #9ca3af;">Gray text inside brightness(0.7) filter — adjusted contrast should differ from raw</p>
-  </div>
-</div>
-
-<div class="section">
-  <h2>6. Semi-transparent overlay</h2>
-  <div style="position: relative; background: #1e40af; padding: 24px; border-radius: 8px;">
-    <div style="position: absolute; inset: 0; background: rgba(255,255,255,0.5); border-radius: 8px;"></div>
-    <p style="position: relative; color: #1e293b; z-index: 1;">Text on blue with 50% white overlay — effective bg is light blue</p>
-  </div>
-</div>
-
-<div class="section">
-  <h2>7. Large text (lower threshold)</h2>
-  <p style="font-size: 24px; font-weight: 700; color: #9ca3af; background: white; padding: 12px;">Large bold text — only needs 3:1</p>
-</div>
-
-<div class="section">
-  <h2>8. oklch color (Tailwind v4)</h2>
-  <div style="background: oklch(0.208 0.042 265.755); color: oklch(0.985 0.002 247.839); padding: 16px; border-radius: 8px;">
-    <p>Light text on dark oklch background — should parse via canvas</p>
-  </div>
-</div>
-</file>
-
 <file path="docs/tests/edge-gradients.html">
 <!DOCTYPE html>
 <html lang="en">
@@ -16349,426 +16769,6 @@ All presets are:
   </div>
 </body>
 </html>
-</file>
-
-<file path="docs/tests/edge-layout.html">
-<!-- Edge Case: Layout, Spacing, Touch, Typography -->
-<!-- Tests: spacing grid, overflow, negative margins, touch targets, line length, fixed widths, truncation -->
-<html lang="en">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<style>
-body{font-family:system-ui;margin:0;padding:24px}
-.section{margin-bottom:24px;padding:16px;border:1px solid #e5e7eb;border-radius:8px}
-h2{font-size:16px;margin-bottom:8px}
-</style>
-</head><body>
-<header><nav><a href="#">Home</a></nav></header>
-<main>
-
-<section class="section">
-  <h1>Edge Case: Layout & Spacing</h1>
-</section>
-
-<section class="section">
-  <h2>1. Off-grid spacing (5px, 7px, 13px, 22px)</h2>
-  <div style="padding: 5px;">5px padding (not on 4px grid)</div>
-  <div style="margin-top: 7px;">7px margin</div>
-  <div style="padding: 13px;">13px padding</div>
-  <div style="margin-top: 22px;">22px margin</div>
-</section>
-
-<section class="section">
-  <h2>2. Element overflow</h2>
-  <div style="width: 200px; overflow: hidden; border: 1px solid #ccc;">
-    <div style="width: 400px; background: #fee2e2; padding: 8px;">This div overflows its container — 400px inside 200px</div>
-  </div>
-</section>
-
-<section class="section">
-  <h2>3. Negative margins</h2>
-  <div style="margin-top: -12px; background: #fef3c7; padding: 8px;">margin-top: -12px</div>
-  <div style="margin-left: -8px; background: #dbeafe; padding: 8px;">margin-left: -8px</div>
-  <div style="margin-bottom: -16px; background: #dcfce7; padding: 8px;">margin-bottom: -16px</div>
-  <div style="margin-right: -4px; background: #f3e8ff; padding: 8px;">margin-right: -4px</div>
-  <div style="margin-top: -10px; background: #ffe4e6; padding: 8px;">margin-top: -10px</div>
-  <div style="margin-left: -6px; background: #e0f2fe; padding: 8px;">margin-left: -6px</div>
-</section>
-
-<section class="section">
-  <h2>4. Small touch targets</h2>
-  <a href="#" style="font-size:12px;display:inline-block;">Tiny link (no padding)</a>
-  <button style="font-size:10px;padding:2px 4px;border:1px solid #ccc;">Tiny button</button>
-  <a href="#" style="padding:12px 24px;display:inline-block;background:#3b82f6;color:white;border-radius:4px;">Good size button</a>
-</section>
-
-<section class="section">
-  <h2>5. Extreme line length</h2>
-  <p style="max-width:none;">This is a very long paragraph with no max-width constraint. On a wide screen, the line length will exceed 75 characters significantly, making it hard for the eye to track back to the beginning of the next line. The ideal line length is 45-75 characters, with 66 being the sweet spot according to Bringhurst. This paragraph deliberately exceeds that to trigger the line length check in the typography scoring module.</p>
-</section>
-
-<section class="section">
-  <h2>6. Fixed-width element</h2>
-  <div style="width: 800px; background: #f1f5f9; padding: 16px; border-radius: 8px;">
-    This div is fixed at 800px — will overflow on mobile
-  </div>
-</section>
-
-<section class="section">
-  <h2>7. Truncated text</h2>
-  <div style="width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 1px solid #ccc; padding: 4px;">
-    This text is truncated because it's too long for the container
-  </div>
-  <div style="width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 1px solid #ccc; padding: 4px;">
-    Another truncated line
-  </div>
-  <div style="width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 1px solid #ccc; padding: 4px;">
-    And a third one too
-  </div>
-  <div style="width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 1px solid #ccc; padding: 4px;">
-    Fourth truncated piece
-  </div>
-</section>
-
-<section class="section">
-  <h2>8. Inconsistent container padding</h2>
-  <div style="padding: 12px; background: #f9fafb; margin-bottom: 8px;">Card with 12px padding</div>
-  <div style="padding: 24px; background: #f9fafb; margin-bottom: 8px;">Card with 24px padding</div>
-  <div style="padding: 16px; background: #f9fafb; margin-bottom: 8px;">Card with 16px padding</div>
-  <div style="padding: 32px; background: #f9fafb; margin-bottom: 8px;">Card with 32px padding</div>
-  <div style="padding: 20px; background: #f9fafb;">Card with 20px padding</div>
-</section>
-
-</main>
-</body></html>
-</file>
-
-<file path="docs/tests/edge-performance.html">
-<!-- Edge Case: Performance & Motion -->
-<!-- Tests: font loading, render blocking, DOM size, third-party scripts, images, CLS, animations -->
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<!-- Render-blocking CSS (no media attribute) -->
-<link rel="stylesheet" href="data:text/css,body{margin:0}">
-<link rel="stylesheet" href="data:text/css,.x{color:red}">
-<link rel="stylesheet" href="data:text/css,.y{color:blue}">
-<link rel="stylesheet" href="data:text/css,.z{color:green}">
-<!-- Render-blocking JS (no async/defer) -->
-<script>var x=1;</script>
-<script>var y=2;</script>
-<style>
-body{font-family:system-ui;padding:24px}
-.section{margin-bottom:24px;padding:16px;border:1px solid #e5e7eb;border-radius:8px}
-h2{font-size:16px;margin-bottom:8px}
-/* Animation keyframes */
-@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-@keyframes slideUp { from { transform: translateY(20px); } to { transform: translateY(0); } }
-@keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
-/* No prefers-reduced-motion support — should flag */
-.animated { animation: fadeIn 0.3s ease; }
-.scroll-reveal { opacity: 0; transition: opacity 0.5s, transform 0.5s; transform: translateY(30px); }
-</style>
-</head><body>
-<main>
-
-<section class="section">
-  <h1>Edge Case: Performance & Motion</h1>
-</section>
-
-<section class="section">
-  <h2>1. Render-blocking resources</h2>
-  <p>This page has 4 render-blocking CSS files and 2 sync JS scripts in &lt;head&gt;</p>
-</section>
-
-<section class="section">
-  <h2>2. Legacy images (no WebP/AVIF)</h2>
-  <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" width="100" height="60" alt="PNG image">
-  <img src="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//AP//AP//AP//AP//AP//AP//AP//AP//AP//AP//AP//AP//" width="100" height="60" alt="JPEG image">
-  <!-- Image without dimensions (CLS risk) -->
-  <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" alt="No dimensions set">
-</section>
-
-<section class="section">
-  <h2>3. Scroll-reveal elements (opacity: 0 + transition)</h2>
-  <div class="scroll-reveal">This element is hidden waiting for scroll trigger</div>
-  <div class="scroll-reveal">Another hidden element</div>
-  <div class="scroll-reveal">Third hidden element</div>
-  <div data-aos="fade-up">AOS scroll reveal element</div>
-</section>
-
-<section class="section">
-  <h2>4. Long animation (> 500ms)</h2>
-  <div style="transition: all 0.8s ease;">Transition 800ms</div>
-  <div style="animation: pulse 2s infinite;">Pulse animation 2s</div>
-</section>
-
-<section class="section">
-  <h2>5. Keyframes (3 defined, no prefers-reduced-motion)</h2>
-  <div class="animated">Animated element</div>
-  <p>This page defines 3 @keyframes rules but has no @media (prefers-reduced-motion) support.</p>
-</section>
-
-<section class="section">
-  <h2>6. Above-fold image with lazy loading (bad for LCP)</h2>
-  <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='300'%3E%3Crect fill='%23e5e7eb' width='600' height='300'/%3E%3Ctext x='300' y='150' text-anchor='middle' fill='%23999' font-size='20'%3EHero Image%3C/text%3E%3C/svg%3E" width="600" height="300" alt="Hero image" loading="lazy">
-</section>
-
-</main>
-</body></html>
-</file>
-
-<file path="docs/tests/edge-readability.html">
-<!-- Edge Case: Readability & Typography -->
-<!-- Tests: heading density, small text, Coleman-Liau, paragraph length, lists, letter spacing, paragraph spacing, visual hierarchy -->
-<html lang="en">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<style>body{font-family:system-ui;margin:0;padding:24px;line-height:1.6}.section{margin-bottom:32px;padding:16px;border:1px solid #e5e7eb;border-radius:8px}</style>
-</head><body>
-<main>
-
-<section class="section">
-  <h1>Edge Case: Readability</h1>
-</section>
-
-<section class="section">
-  <h2>1. Long paragraph (> 150 words)</h2>
-  <p>This is an intentionally long paragraph designed to test the paragraph length checker. It contains many sentences that go on and on, covering multiple topics without any natural breaks. The reader must track through all of this text without the benefit of subheadings, bullet points, or any other visual chunking mechanism. Research from the Nielsen Norman Group shows that users scan web content rather than reading it word-by-word. When paragraphs exceed 150 words, they become walls of text that most users will skip entirely. The ideal paragraph length for web content is 40-80 words. By breaking content into smaller chunks and using descriptive subheadings, you can improve scanability by up to 47%. This paragraph deliberately exceeds the 150-word threshold to verify that the analyzer correctly flags it. It keeps going to make absolutely sure we cross that boundary with plenty of margin. Additional sentences are added here to pad the word count even further beyond what would be considered good practice for web writing.</p>
-</section>
-
-<section class="section">
-  <h2>2. Complex vocabulary (high Coleman-Liau grade)</h2>
-  <p>The anthropomorphization of computational algorithms demonstrates an epistemological predisposition toward reductionist interpretations of neurobiological phenomena. Notwithstanding the aforementioned methodological constraints, the interdisciplinary synthesis of psycholinguistic and neurocognitive paradigms necessitates a comprehensive reconceptualization of established theoretical frameworks.</p>
-  <p>Furthermore, the juxtaposition of phenomenological and empiricist perspectives illuminates the inherent contradictions within contemporary epistemological discourse, thereby undermining the foundational assumptions of positivist methodologies.</p>
-</section>
-
-<section class="section">
-  <h2>3. No content lists (wall of text)</h2>
-  <p>Feature one is great because it does something useful. Feature two is also important for different reasons. Feature three helps with a specific problem. Feature four addresses another need entirely. These should really be in a list for better scanability.</p>
-</section>
-
-<section class="section">
-  <h2>4. With proper lists</h2>
-  <p>Our key features include:</p>
-  <ul>
-    <li>Feature one — does something useful</li>
-    <li>Feature two — important for different reasons</li>
-    <li>Feature three — helps with a specific problem</li>
-    <li>Feature four — addresses another need</li>
-  </ul>
-</section>
-
-<section class="section">
-  <h2>5. Very small text</h2>
-  <p style="font-size:9px">This text is only 9px — nearly impossible to read</p>
-  <p style="font-size:10px">This is 10px — too small for most users</p>
-  <p style="font-size:11px">This is 11px — still below the 12px minimum</p>
-</section>
-
-<section class="section">
-  <h2>6. Extreme letter spacing</h2>
-  <p style="letter-spacing: -0.05em;">Extremely tight letter spacing (-0.05em) — hard to read</p>
-  <p style="letter-spacing: 0.3em;">Extremely loose letter spacing (0.3em) — hard to read</p>
-  <p style="letter-spacing: -0.01em;">Acceptable negative spacing (-0.01em)</p>
-</section>
-
-<section class="section">
-  <h2>7. Inconsistent paragraph spacing</h2>
-  <p style="margin-bottom: 4px;">Very tight paragraph spacing (4px)</p>
-  <p style="margin-bottom: 4px;">Second paragraph with tight spacing</p>
-  <p style="margin-bottom: 4px;">Third paragraph with tight spacing</p>
-</section>
-
-<section class="section">
-  <h2>8. Good readability (control)</h2>
-  <p>This paragraph has good readability. It uses clear, simple language at a comfortable reading level. Sentences are short and direct. The font size is 16px with proper line height.</p>
-  <p>A second paragraph with adequate spacing shows proper paragraph breaks. The content flows naturally and is easy to scan.</p>
-</section>
-
-</main>
-</body></html>
-</file>
-
-<file path="docs/tests/run-edge-cases.html">
-<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Edge Case Test Runner</title>
-<style>body{font-family:system-ui;padding:20px;font-size:13px;max-width:1400px;margin:0 auto}table{border-collapse:collapse;width:100%;margin:12px 0}td,th{border:1px solid #ddd;padding:5px 7px;text-align:left;font-size:11px}th{background:#f5f5f5;font-weight:600}.pass{color:#16a34a}.warn{color:#b45309}.fail{color:#dc2626}h1{font-size:20px}h2{font-size:16px;margin-top:20px}.status{color:#666;margin:8px 0}</style>
-</head><body>
-<h1>Edge Case Test Runner</h1>
-<p class="status" id="status">Loading modules...</p>
-<div id="output"></div>
-
-<script src="../scoring/registry.js"></script>
-<script src="../scoring/contrast.js"></script>
-<script src="../scoring/typography.js"></script>
-<script src="../scoring/spacing.js"></script>
-<script src="../scoring/touch.js"></script>
-<script src="../scoring/accessibility.js"></script>
-<script src="../scoring/responsive.js"></script>
-<script src="../scoring/consistency.js"></script>
-<script src="../scoring/cognitive.js"></script>
-<script src="../scoring/layout.js"></script>
-<script src="../scoring/performance.js"></script>
-<script src="../scoring/readability.js"></script>
-<script src="../scoring/filters.js"></script>
-<script src="../scoring/balance.js"></script>
-<script src="../analyzer-snippet.js"></script>
-<script>
-// Load the snippet as a string for injection
-var snippetSrc = '';
-fetch('../analyzer-snippet.js').then(function(r){return r.text()}).then(function(t){snippetSrc=t;runTests()});
-
-var TESTS = [
-  { file: 'edge-contrast.html', name: 'Contrast Edge Cases', expect: {
-    contrast: { maxScore: 70, mustFindTexts: ['gradient', 'Light gray'] },
-    note: 'Should detect gradient bg, flag light gray, pass dark text'
-  }},
-  { file: 'edge-a11y.html', name: 'Accessibility Edge Cases', expect: {
-    accessibility: { maxScore: 40 },
-    note: 'Missing lang, no skip link, bad links, ARIA issues, missing labels, color-only'
-  }},
-  { file: 'edge-layout.html', name: 'Layout & Spacing Edge Cases', expect: {
-    spacing: { maxScore: 80 },
-    note: 'Off-grid spacing, overflow, negative margins, fixed widths'
-  }},
-  { file: 'edge-performance.html', name: 'Performance & Motion Edge Cases', expect: {
-    note: 'Render-blocking, legacy images, scroll-reveal, no prefers-reduced-motion'
-  }},
-  { file: 'edge-readability.html', name: 'Readability Edge Cases', expect: {
-    readability: { maxScore: 60 },
-    note: 'Long paragraphs, complex vocabulary, no lists, small text'
-  }}
-];
-
-var status = document.getElementById('status');
-var output = document.getElementById('output');
-
-function analyzeFile(file) {
-  return new Promise(function(resolve) {
-    var iframe = document.createElement('iframe');
-    iframe.style.cssText = 'width:1280px;height:900px;border:none;position:absolute;top:-9999px;left:-9999px;';
-    document.body.appendChild(iframe);
-
-    var msgId = 'edge-' + file.replace(/\W/g, '');
-    function onMsg(e) {
-      if (!e.data || e.data.type !== msgId) return;
-      window.removeEventListener('message', onMsg);
-      document.body.removeChild(iframe);
-      resolve(e.data.data);
-    }
-    window.addEventListener('message', onMsg);
-
-    fetch(file).then(function(r){return r.text()}).then(function(html) {
-      // Inject extraction snippet that posts results back
-      var modified = snippetSrc.replace(
-        /window\.__milgData = data;/,
-        'parent.postMessage({type:"' + msgId + '",data:data},"*");'
-      ).replace(
-        /navigator\.clipboard[\s\S]*?window\.__milgData = data;/,
-        'parent.postMessage({type:"' + msgId + '",data:data},"*");'
-      );
-      // Actually just use a simple extraction inline
-      var script = '<script>setTimeout(function(){' +
-        'var data={meta:{url:"test:' + file + '",viewportWidth:1280,viewportHeight:900,timestamp:new Date().toISOString(),version:1},' +
-        'colors:{textColors:[],bgColors:[],contrastPairs:[]},typography:{bodyFontSize:getComputedStyle(document.body).fontSize,bodyLineHeight:getComputedStyle(document.body).lineHeight,bodyFontFamily:"",fontFamilies:[],fontSizes:[],fontWeights:[],headings:[],lineHeights:[],maxLineLength:{chars:0,element:""},paragraphSpacing:[],letterSpacingIssues:0},spacing:{paddings:[],margins:[],gaps:[],maxContentWidth:"",bodyPaddingHorizontal:"",negativeMargins:0,containerPaddings:[]},layout:{sectionGaps:[],alignmentEdges:[],visualHierarchy:{},borderRadii:[],overflowElements:0},interaction:{touchTargets:[],transitions:[]},accessibility:{semanticElements:{header:document.querySelectorAll("header").length,nav:document.querySelectorAll("nav").length,main:document.querySelectorAll("main").length,footer:document.querySelectorAll("footer").length},headingHierarchy:[],imagesWithoutAlt:0,formLabels:{total:0,withLabel:0,withoutLabel:0},focusIndicators:[],langAttribute:document.documentElement.getAttribute("lang")||"",hasSkipLink:!!document.querySelector("a[href^=\\"#main\\"],a[href^=\\"#content\\"]"),badLinkTexts:[],missingAutocomplete:0,ariaIssues:[],colorOnlyIndicators:0},structure:{totalElements:document.body.querySelectorAll("*").length,darkModeClasses:false,responsiveClasses:false,tailwindDetected:false,cssFramework:"unknown",viewportMeta:document.querySelector("meta[name=viewport]")?document.querySelector("meta[name=viewport]").getAttribute("content"):"",blocksZoom:false,hasHorizontalOverflow:document.documentElement.scrollWidth>document.documentElement.clientWidth,fixedWidthElements:0,truncatedElements:0},context:{pageType:"unknown"},performance:{imageSizing:[],fontLoading:[],renderBlocking:{cssInHead:document.querySelectorAll("head link[rel=stylesheet]").length,jsInHead:document.querySelectorAll("head script:not([async]):not([defer])").length},domSize:document.body.querySelectorAll("*").length,domDepth:0,thirdPartyScripts:0,imageFormats:{modern:0,legacy:0},cls:null,nonResponsiveImages:0},readability:{textBlocks:[],totalWords:0,totalChars:0,paragraphCount:0,hasLists:document.querySelectorAll("ul,ol").length>0},animation:{hiddenElements:0,keyframeCount:0,hasReducedMotion:false,scrollRevealPatterns:[]}};' +
-        // Contrast pairs
-        'function parseC(s){if(!s||s==="transparent"||s==="rgba(0, 0, 0, 0)")return null;var m=s.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)/);if(m)return{r:+m[1],g:+m[2],b:+m[3],a:1};return null}' +
-        'function blend(c){if(!c)return{r:255,g:255,b:255};return c}' +
-        'function getBg(el){var n=el;while(n&&n!==document.documentElement){var c=parseC(getComputedStyle(n).backgroundColor);if(c)return c;n=n.parentElement}return{r:255,g:255,b:255}}' +
-        'function lum(c){var R=c.r/255,G=c.g/255,B=c.b/255;R=R<=0.03928?R/12.92:Math.pow((R+0.055)/1.055,2.4);G=G<=0.03928?G/12.92:Math.pow((G+0.055)/1.055,2.4);B=B<=0.03928?B/12.92:Math.pow((B+0.055)/1.055,2.4);return 0.2126*R+0.7152*G+0.0722*B}' +
-        'function cr(a,b){return(Math.max(lum(a),lum(b))+0.05)/(Math.min(lum(a),lum(b))+0.05)}' +
-        'function vis(el){var s=getComputedStyle(el);if(s.display==="none"||s.visibility==="hidden"||s.opacity==="0")return false;var r=el.getBoundingClientRect();return r.width>0&&r.height>0}' +
-        'var w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,null,false);var nd,seen=new Set();' +
-        'while(nd=w.nextNode()){if(!nd.textContent.trim())continue;var el=nd.parentElement;if(!el||!vis(el)||seen.has(el))continue;seen.add(el);var st=getComputedStyle(el);var fg=parseC(st.color);if(!fg)continue;var bg=getBg(el);var ratio=cr(fg,bg);var fs=parseFloat(st.fontSize);var fw=parseInt(st.fontWeight)||400;var isL=fs>=24||(fs>=18.66&&fw>=700);var th=isL?3:4.5;if(ratio<7.5){data.colors.contrastPairs.push({fg:"rgb("+fg.r+","+fg.g+","+fg.b+")",bg:"rgb("+bg.r+","+bg.g+","+bg.b+")",ratio:Math.round(ratio*100)/100,needed:th,passes:ratio>=th,fontSize:Math.round(fs),fontWeight:fw,isLarge:isL,text:nd.textContent.trim().substring(0,30),selector:el.tagName.toLowerCase()})}}' +
-        // Headings
-        'document.querySelectorAll("h1,h2,h3,h4,h5,h6").forEach(function(h){data.typography.headings.push({tag:h.tagName.toLowerCase(),fontSize:getComputedStyle(h).fontSize,fontWeight:getComputedStyle(h).fontWeight,lineHeight:getComputedStyle(h).lineHeight,fontFamily:"",text:h.textContent.trim().substring(0,30)});data.accessibility.headingHierarchy.push(h.tagName.toLowerCase())});' +
-        // Images
-        'var noAlt=0;document.querySelectorAll("img").forEach(function(i){if(!i.hasAttribute("alt"))noAlt++});data.accessibility.imagesWithoutAlt=noAlt;' +
-        // Bad links
-        'document.querySelectorAll("a").forEach(function(a){if(!vis(a))return;var t=(a.textContent||"").trim().toLowerCase();if(["click here","here","read more","learn more","more","link"].indexOf(t)!==-1)data.accessibility.badLinkTexts.push({text:t,selector:""})});' +
-        // ARIA
-        'document.querySelectorAll("[role=button]:not(button):not(a)").forEach(function(el){if(!el.hasAttribute("tabindex"))data.accessibility.ariaIssues.push({type:"button-no-tabindex"})});' +
-        'document.querySelectorAll("[aria-hidden=true] a,[aria-hidden=true] button").forEach(function(el){if(vis(el))data.accessibility.ariaIssues.push({type:"hidden-focusable"})});' +
-        // Forms
-        'document.querySelectorAll("input:not([type=hidden]):not([type=submit])").forEach(function(inp){data.accessibility.formLabels.total++;if((inp.id&&document.querySelector("label[for="+inp.id+"]"))||inp.closest("label")||inp.getAttribute("aria-label"))data.accessibility.formLabels.withLabel++;else data.accessibility.formLabels.withoutLabel++});' +
-        // Color-only
-        'document.querySelectorAll("[class*=error],[class*=success],[class*=warning]").forEach(function(el){if(!vis(el))return;var hasIcon=el.querySelector("svg,img");var t=(el.textContent||"").trim();if(!hasIcon&&!/^(error|warning|success)\\s*[:!]/i.test(t)&&t.length>0&&t.length<200)data.accessibility.colorOnlyIndicators++});' +
-        // Autocomplete
-        'document.querySelectorAll("input[type=email],input[type=tel]").forEach(function(f){if(!f.getAttribute("autocomplete"))data.accessibility.missingAutocomplete++});' +
-        // Touch targets
-        'document.querySelectorAll("a,button,input").forEach(function(el){if(!vis(el))return;var r=el.getBoundingClientRect();if(Math.round(r.width)<44||Math.round(r.height)<44)data.interaction.touchTargets.push({element:el.tagName.toLowerCase(),width:Math.round(r.width),height:Math.round(r.height),text:(el.textContent||"").trim().substring(0,30),selector:"",passes:false})});' +
-        // Readability
-        'document.querySelectorAll("p").forEach(function(p){if(!vis(p))return;var t=(p.textContent||"").trim();if(t.length>20){data.readability.textBlocks.push({text:t,wordCount:t.split(/\\s+/).length,charCount:t.length});data.readability.totalWords+=t.split(/\\s+/).length;data.readability.totalChars+=t.length;data.readability.paragraphCount++}});' +
-        // Animations
-        'var allEls=document.body.querySelectorAll("*");for(var i=0;i<allEls.length;i++){var as=getComputedStyle(allEls[i]);if(as.opacity==="0"&&(as.transitionProperty!=="none"||as.animationName!=="none"))data.animation.hiddenElements++}' +
-        'try{Array.from(document.styleSheets).forEach(function(ss){try{Array.from(ss.cssRules).forEach(function(r){if(r instanceof CSSKeyframesRule)data.animation.keyframeCount++;if(r instanceof CSSMediaRule&&/prefers-reduced-motion/.test(r.conditionText||""))data.animation.hasReducedMotion=true})}catch(e){}})}catch(e){}' +
-        'var revealSels=["[data-aos]",".wow",".scroll-reveal"];revealSels.forEach(function(sel){try{var c=document.querySelectorAll(sel).length;if(c>0)data.animation.scrollRevealPatterns.push({selector:sel,count:c})}catch(e){}});' +
-        // Negative margins
-        'for(var ni=0;ni<allEls.length&&ni<500;ni++){var ns=getComputedStyle(allEls[ni]);if(parseFloat(ns.marginTop)<0||parseFloat(ns.marginLeft)<0||parseFloat(ns.marginBottom)<0||parseFloat(ns.marginRight)<0)data.spacing.negativeMargins++}' +
-        'parent.postMessage({type:"' + msgId + '",data:data},"*");' +
-        '},2000);</' + 'script>';
-
-      var isFullDoc = /<html/i.test(html);
-      if (isFullDoc && /<\/body>/i.test(html)) {
-        iframe.srcdoc = html.replace(/<\/body>/i, script + '</body>');
-      } else {
-        iframe.srcdoc = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"></head><body>' + html + script + '</body></html>';
-      }
-    });
-
-    setTimeout(function() { window.removeEventListener('message', onMsg); if (iframe.parentNode) document.body.removeChild(iframe); resolve(null); }, 8000);
-  });
-}
-
-function runTests() {
-  (async function() {
-    var allHtml = '';
-
-    for (var i = 0; i < TESTS.length; i++) {
-      var test = TESTS[i];
-      status.textContent = 'Testing: ' + test.name + ' (' + (i+1) + '/' + TESTS.length + ')';
-      var data = await analyzeFile(test.file);
-
-      allHtml += '<h2>' + test.name + '</h2>';
-      if (!data) { allHtml += '<p class="fail">TIMEOUT — extraction failed</p>'; continue; }
-
-      var report = MilgScoring.runScoring(data);
-      allHtml += '<p>Score: <strong class="' + (report.overall >= 80 ? 'pass' : report.overall >= 50 ? 'warn' : 'fail') + '">' + report.overall + '/100 (' + report.grade + ')</strong> — ' + (test.expect.note || '') + '</p>';
-
-      // Show all findings
-      allHtml += '<table><tr><th>Module</th><th>Score</th><th>Findings</th></tr>';
-      report.categories.forEach(function(c) {
-        if (c.findings.length === 0 && c.score === 100) return; // skip perfect modules
-        var cls = c.score >= 80 ? 'pass' : c.score >= 50 ? 'warn' : 'fail';
-        var details = c.findings.map(function(f) {
-          var icon = f.severity === 'error' ? '❌' : f.severity === 'warning' ? '⚠️' : 'ℹ️';
-          return icon + ' ' + f.title;
-        }).join('<br>');
-        allHtml += '<tr><td><strong>' + c.label + '</strong></td><td class="' + cls + '">' + c.score + '</td><td style="font-size:10px">' + (details || 'All passed') + '</td></tr>';
-      });
-      allHtml += '</table>';
-
-      // Validate expectations
-      if (test.expect.contrast && test.expect.contrast.maxScore) {
-        var contrastCat = report.categories.find(function(c) { return c.icon === 'contrast'; });
-        if (contrastCat && contrastCat.score > test.expect.contrast.maxScore) {
-          allHtml += '<p class="fail">EXPECTATION FAILED: Contrast score ' + contrastCat.score + ' > expected max ' + test.expect.contrast.maxScore + '</p>';
-        }
-      }
-      if (test.expect.accessibility && test.expect.accessibility.maxScore) {
-        var a11yCat = report.categories.find(function(c) { return c.icon === 'a11y'; });
-        if (a11yCat && a11yCat.score > test.expect.accessibility.maxScore) {
-          allHtml += '<p class="fail">EXPECTATION FAILED: A11y score ' + a11yCat.score + ' > expected max ' + test.expect.accessibility.maxScore + '</p>';
-        }
-      }
-    }
-
-    status.textContent = 'Done — ' + TESTS.length + ' edge case suites tested';
-    output.innerHTML = allHtml;
-  })();
-}
-</script></body></html>
 </file>
 
 <file path="docs/tests/test-presets-rendered.html">
@@ -19272,6 +19272,148 @@ window.MilgScoring = (function() {
 })();
 </file>
 
+<file path="docs/scoring/responsive.js">
+// Scoring Module: Responsive Design
+// Weight: 10%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreResponsive(data) {
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+  var struct = data.structure;
+
+  // Responsive classes
+  checks++;
+  if (struct.responsiveClasses) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'No responsive breakpoint classes detected',
+      detail: struct.cssFramework === 'tailwind' ? 'No sm:/md:/lg: prefixes found' : 'No responsive utilities detected',
+      fix: 'Add responsive variants. In Tailwind: sm:flex, md:grid-cols-2, lg:px-8',
+      presetRef: 'All presets include mobile-first responsive design',
+      source: 'NNGroup mobile — https://www.nngroup.com/articles/responsive-web-design-definition/'
+    });
+  }
+
+  // Dark mode
+  checks++;
+  if (struct.darkModeClasses) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'info',
+      title: 'No dark mode support detected',
+      detail: 'dark: class variants not found',
+      fix: 'Add dark mode variants. In Tailwind: dark:bg-slate-900 dark:text-slate-100',
+      presetRef: 'All presets include dark: variants',
+      source: 'Apple HIG — https://developer.apple.com/design/human-interface-guidelines/dark-mode'
+    });
+  }
+
+  // Viewport width check — if analyzed on desktop, check if content is flexible
+  checks++;
+  var vw = data.meta.viewportWidth;
+  var maxContent = parseFloat(data.spacing.maxContentWidth);
+  if (maxContent > 0 && (maxContent <= vw * 0.95 || struct.responsiveClasses)) {
+    passed++;
+  } else if (!struct.responsiveClasses && maxContent > vw * 0.95) {
+    findings.push({
+      severity: 'warning',
+      title: 'Content fills entire viewport width without constraints',
+      detail: 'Content may not reflow well on smaller screens',
+      fix: 'Use responsive containers and flexible layouts',
+      presetRef: null
+    });
+  } else {
+    passed++; // Can't determine, give benefit of doubt
+  }
+
+  // Viewport meta audit
+  if (data.structure && data.structure.viewportMeta !== undefined) {
+    checks++;
+    var vpContent = data.structure.viewportMeta;
+    if (!vpContent) {
+      findings.push({
+        severity: 'error',
+        title: 'Missing viewport meta tag',
+        detail: 'Without a viewport meta tag, mobile browsers render at desktop width',
+        fix: 'Add <meta name="viewport" content="width=device-width, initial-scale=1.0"> to <head>.',
+        presetRef: null,
+        source: 'MDN — https://developer.mozilla.org/en-US/docs/Web/HTML/Viewport_meta_tag'
+      });
+    } else if (data.structure.blocksZoom) {
+      findings.push({
+        severity: 'error',
+        title: 'Viewport blocks user zoom (user-scalable=no)',
+        detail: 'Preventing zoom is an accessibility barrier for low-vision users',
+        fix: 'Remove user-scalable=no from the viewport meta tag.',
+        presetRef: null,
+        source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text'
+      });
+    } else {
+      passed++;
+    }
+  }
+
+  // Horizontal overflow
+  if (data.structure && data.structure.hasHorizontalOverflow) {
+    checks++;
+    findings.push({
+      severity: 'warning',
+      title: 'Page has horizontal overflow (horizontal scrollbar)',
+      detail: 'Content extends beyond viewport width — common responsive design failure',
+      fix: 'Find elements with fixed widths wider than the viewport. Add overflow-x: hidden to body or fix the overflowing element.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
+    });
+  } else if (data.structure && data.structure.hasHorizontalOverflow === false) {
+    checks++;
+    passed++;
+  }
+
+  // Fixed-width elements
+  var fixedW = (data.structure && data.structure.fixedWidthElements) || 0;
+  if (fixedW > 0) {
+    findings.push({
+      severity: fixedW > 3 ? 'warning' : 'info',
+      title: fixedW + ' element(s) with fixed pixel widths > 300px',
+      detail: 'Fixed-width elements may overflow on smaller screens',
+      fix: 'Use max-width instead of width, or percentage/viewport units. In Tailwind: max-w-full or w-full.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
+    });
+  }
+
+  // Text truncation
+  var truncated = (data.structure && data.structure.truncatedElements) || 0;
+  if (truncated > 3) {
+    findings.push({
+      severity: 'info',
+      title: truncated + ' element(s) with truncated text (ellipsis)',
+      detail: 'Content is being cut off — may hide important information on smaller screens',
+      fix: 'Consider allowing text to wrap, expanding the container, or using a tooltip to show full content.',
+      presetRef: null,
+      source: 'NNGroup — https://www.nngroup.com/articles/truncation-and-progressive-disclosure/'
+    });
+  }
+
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+  return { score: score, findings: findings, checks: checks, passed: passed, weight: 10, label: 'Responsive Design', icon: 'responsive' };
+}
+
+
+  S.register("responsive", scoreResponsive, 10, "Responsive Design", "responsive");
+})();
+</file>
+
 <file path="proxy/README.md">
 # CORS Proxy Worker
 
@@ -19743,145 +19885,118 @@ Sources: [research/sources.md](research/sources.md)
 })();
 </file>
 
-<file path="docs/scoring/responsive.js">
-// Scoring Module: Responsive Design
-// Weight: 10%
+<file path="docs/scoring/filters.js">
+// Scoring Module: Motion, Animation & Filters
+// Weight: 3%
+// Sources: WCAG 2.2 §2.3.3, CSS Filter Effects spec
 
 (function() {
   "use strict";
   var S = window.MilgScoring;
 
-function scoreResponsive(data) {
-  var findings = [];
-  var checks = 0;
-  var passed = 0;
-  var struct = data.structure;
+  function scoreFilters(data) {
+    var findings = [];
+    var checks = 0;
+    var passed = 0;
+    var anim = data.animation || {};
 
-  // Responsive classes
-  checks++;
-  if (struct.responsiveClasses) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: 'No responsive breakpoint classes detected',
-      detail: struct.cssFramework === 'tailwind' ? 'No sm:/md:/lg: prefixes found' : 'No responsive utilities detected',
-      fix: 'Add responsive variants. In Tailwind: sm:flex, md:grid-cols-2, lg:px-8',
-      presetRef: 'All presets include mobile-first responsive design',
-      source: 'NNGroup mobile — https://www.nngroup.com/articles/responsive-web-design-definition/'
-    });
-  }
-
-  // Dark mode
-  checks++;
-  if (struct.darkModeClasses) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'info',
-      title: 'No dark mode support detected',
-      detail: 'dark: class variants not found',
-      fix: 'Add dark mode variants. In Tailwind: dark:bg-slate-900 dark:text-slate-100',
-      presetRef: 'All presets include dark: variants',
-      source: 'Apple HIG — https://developer.apple.com/design/human-interface-guidelines/dark-mode'
-    });
-  }
-
-  // Viewport width check — if analyzed on desktop, check if content is flexible
-  checks++;
-  var vw = data.meta.viewportWidth;
-  var maxContent = parseFloat(data.spacing.maxContentWidth);
-  if (maxContent > 0 && (maxContent <= vw * 0.95 || struct.responsiveClasses)) {
-    passed++;
-  } else if (!struct.responsiveClasses && maxContent > vw * 0.95) {
-    findings.push({
-      severity: 'warning',
-      title: 'Content fills entire viewport width without constraints',
-      detail: 'Content may not reflow well on smaller screens',
-      fix: 'Use responsive containers and flexible layouts',
-      presetRef: null
-    });
-  } else {
-    passed++; // Can't determine, give benefit of doubt
-  }
-
-  // Viewport meta audit
-  if (data.structure && data.structure.viewportMeta !== undefined) {
+    // prefers-reduced-motion support
     checks++;
-    var vpContent = data.structure.viewportMeta;
-    if (!vpContent) {
+    if (anim.hasReducedMotion) {
+      passed++;
+    } else if (anim.keyframeCount > 0 || (data.interaction && data.interaction.transitions && data.interaction.transitions.length > 2)) {
       findings.push({
-        severity: 'error',
-        title: 'Missing viewport meta tag',
-        detail: 'Without a viewport meta tag, mobile browsers render at desktop width',
-        fix: 'Add <meta name="viewport" content="width=device-width, initial-scale=1.0"> to <head>.',
+        severity: 'warning',
+        title: 'No prefers-reduced-motion support detected',
+        detail: (anim.keyframeCount || 0) + ' @keyframes rules found. Users with vestibular disorders need the option to reduce motion.',
+        fix: 'Add @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }',
         presetRef: null,
-        source: 'MDN — https://developer.mozilla.org/en-US/docs/Web/HTML/Viewport_meta_tag'
-      });
-    } else if (data.structure.blocksZoom) {
-      findings.push({
-        severity: 'error',
-        title: 'Viewport blocks user zoom (user-scalable=no)',
-        detail: 'Preventing zoom is an accessibility barrier for low-vision users',
-        fix: 'Remove user-scalable=no from the viewport meta tag.',
-        presetRef: null,
-        source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text'
+        source: 'WCAG 2.2 §2.3.3 — https://www.w3.org/TR/WCAG22/#animation-from-interactions'
       });
     } else {
-      passed++;
+      passed++; // No significant animations, no need for reduced-motion
     }
+
+    // Hidden elements waiting for scroll-reveal
+    if (anim.hiddenElements > 0) {
+      checks++;
+      if (anim.hiddenElements <= 5) {
+        passed++;
+        findings.push({
+          severity: 'info',
+          title: anim.hiddenElements + ' element(s) with opacity:0 + transition (pre-animation state)',
+          detail: 'These elements are invisible at scan time (pre-animation state). Their contrast/sizing was not checked.',
+          fix: 'This is normal for scroll-reveal animations. Run the snippet after scrolling the full page for complete analysis.',
+          presetRef: null,
+          preAnimationState: true
+        });
+      } else {
+        findings.push({
+          severity: 'warning',
+          title: anim.hiddenElements + ' hidden elements waiting for animation trigger (pre-animation state)',
+          detail: 'A large portion of the page is invisible at load time (pre-animation state). This may affect perceived loading speed and SEO.',
+          fix: 'Consider showing initial content without animation, then enhancing with scroll effects. Ensure content is accessible without JS.',
+          presetRef: null,
+          preAnimationState: true,
+          source: 'WCAG 2.2 §2.3.3 — https://www.w3.org/TR/WCAG22/#animation-from-interactions'
+        });
+      }
+    }
+
+    // Scroll-reveal library detection
+    var patterns = anim.scrollRevealPatterns || [];
+    if (patterns.length > 0) {
+      var totalReveal = patterns.reduce(function(s, p) { return s + p.count; }, 0);
+      findings.push({
+        severity: 'info',
+        title: 'Scroll-reveal library detected: ' + totalReveal + ' animated element(s)',
+        detail: 'Libraries found: ' + patterns.map(function(p) { return p.selector + ' (' + p.count + ')'; }).join(', '),
+        fix: 'Ensure scroll-reveal animations respect prefers-reduced-motion and that content is visible without JavaScript.',
+        presetRef: null,
+        source: 'WCAG 2.2 §2.3.3 — https://www.w3.org/TR/WCAG22/#animation-from-interactions'
+      });
+    }
+
+    // Transition count: too many or too few
+    var transitions = (data.interaction && data.interaction.transitions) || [];
+    if (transitions.length > 0) {
+      checks++;
+      if (transitions.length <= 8) {
+        passed++;
+      } else {
+        findings.push({
+          severity: 'info',
+          title: transitions.length + ' unique transition durations (recommend ≤5)',
+          detail: 'Using many different durations creates inconsistent motion feel.',
+          fix: 'Standardize to 2-3 durations: fast (150ms), normal (300ms), slow (500ms).',
+          source: 'Material Design motion — https://m3.material.io/styles/motion/overview'
+        });
+      }
+    }
+
+    // Keyframe animation count
+    if (anim.keyframeCount > 0) {
+      checks++;
+      if (anim.keyframeCount <= 10) {
+        passed++;
+      } else {
+        findings.push({
+          severity: 'info',
+          title: anim.keyframeCount + ' @keyframes rules (high count)',
+          detail: 'Many animations can cause performance issues and visual overwhelm.',
+          fix: 'Review if all animations serve a purpose. Remove decorative animations.',
+          source: 'NNGroup — https://www.nngroup.com/articles/animation-usability/'
+        });
+      }
+    }
+
+    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+    var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+    var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+    return { score: score, findings: findings, checks: checks, passed: passed, weight: 3, label: 'Motion & Animation', icon: 'cognitive' };
   }
 
-  // Horizontal overflow
-  if (data.structure && data.structure.hasHorizontalOverflow) {
-    checks++;
-    findings.push({
-      severity: 'warning',
-      title: 'Page has horizontal overflow (horizontal scrollbar)',
-      detail: 'Content extends beyond viewport width — common responsive design failure',
-      fix: 'Find elements with fixed widths wider than the viewport. Add overflow-x: hidden to body or fix the overflowing element.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
-    });
-  } else if (data.structure && data.structure.hasHorizontalOverflow === false) {
-    checks++;
-    passed++;
-  }
-
-  // Fixed-width elements
-  var fixedW = (data.structure && data.structure.fixedWidthElements) || 0;
-  if (fixedW > 0) {
-    findings.push({
-      severity: fixedW > 3 ? 'warning' : 'info',
-      title: fixedW + ' element(s) with fixed pixel widths > 300px',
-      detail: 'Fixed-width elements may overflow on smaller screens',
-      fix: 'Use max-width instead of width, or percentage/viewport units. In Tailwind: max-w-full or w-full.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
-    });
-  }
-
-  // Text truncation
-  var truncated = (data.structure && data.structure.truncatedElements) || 0;
-  if (truncated > 3) {
-    findings.push({
-      severity: 'info',
-      title: truncated + ' element(s) with truncated text (ellipsis)',
-      detail: 'Content is being cut off — may hide important information on smaller screens',
-      fix: 'Consider allowing text to wrap, expanding the container, or using a tooltip to show full content.',
-      presetRef: null,
-      source: 'NNGroup — https://www.nngroup.com/articles/truncation-and-progressive-disclosure/'
-    });
-  }
-
-  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-  return { score: score, findings: findings, checks: checks, passed: passed, weight: 10, label: 'Responsive Design', icon: 'responsive' };
-}
-
-
-  S.register("responsive", scoreResponsive, 10, "Responsive Design", "responsive");
+  S.register("filters", scoreFilters, 3, "Motion & Animation", "cognitive");
 })();
 </file>
 
@@ -20300,6 +20415,146 @@ function scoreResponsive(data) {
   </script>
 </body>
 </html>
+</file>
+
+<file path="docs/ANALYZER-TODO.md">
+# Analyzer TODO
+
+## Completed (69 items)
+
+### Core
+- [x] Modular scoring architecture (14 modules in `scoring/`)
+- [x] 8 audience profiles with evidence-based thresholds (General, WCAG AAA, Elderly, Low Vision, Motor Impairment, Color Blind, Children, Cognitive)
+- [x] 4 input modes (URL fetch, console snippet, paste HTML, import JSON)
+- [x] Gradient contrast via canvas sampling (multi-layer compositing)
+- [x] Background image contrast via canvas (CORS-limited)
+- [x] CSS filter contrast math (brightness, contrast, opacity)
+- [x] APCA contrast algorithm alongside WCAG
+- [x] oklch/oklab color parsing via canvas fallback
+- [x] Space-separated rgb() syntax support
+- [x] Page context detection (marketing/form/app/content)
+- [x] Fragment detection (skips document-level checks for pasted HTML snippets)
+- [x] Decorative element filtering
+- [x] Post-analysis exclusion suggestions (two-step flow)
+- [x] Extraction data caching (sessionStorage)
+- [x] Dark mode report styling
+- [x] AA/AAA profile switching (captures pairs up to 7.5:1)
+- [x] N/A category detection (modules return notApplicable when nothing to check)
+- [x] Context-aware touch targets (nav/footer/inline/button classification per WCAG 2.5.8)
+- [x] CVD palette simulation (Machado et al. 2009 matrices for protanopia, deuteranopia, tritanopia)
+- [x] JS-dependent page detection (warns when page needs JS execution)
+
+### UI & Features
+- [x] Page screenshots (modern-screenshot library, viewport sections, zoom lightbox)
+- [x] Analysis history in localStorage (max 10, dedup by URL+profile)
+- [x] JSON export/import with drag-and-drop
+- [x] Viewport size selector (defaults to current window size)
+- [x] Progress bar during analysis
+- [x] URL autocomplete from history
+- [x] Mobile-optimized layout (CSS grid header, icon-only buttons)
+- [x] Self-hosted CORS proxy (Cloudflare Worker with rate limiting, SSRF protection)
+- [x] Proxy URL injection via local .env (not committed)
+
+### Extraction
+- [x] Actual character-per-line via span measurement
+- [x] Section gaps for whitespace rhythm
+- [x] Left-edge alignment clustering
+- [x] Heading-to-body ratio for visual hierarchy
+- [x] Border radius value clustering
+- [x] Paragraph text extraction (Coleman-Liau)
+- [x] Font loading rules from stylesheets
+- [x] Render-blocking resource counts
+- [x] DOM size and depth
+- [x] Adjacent sibling spacing
+- [x] Animation/keyframe detection
+- [x] Scroll-reveal pattern detection
+- [x] Transform translateY off-screen detection
+- [x] Element overflow detection
+- [x] Letter spacing audit
+- [x] Negative margin detection
+- [x] Container padding clustering
+- [x] Third-party script count
+- [x] Image format audit (WebP/AVIF vs legacy)
+- [x] CLS via PerformanceObserver
+- [x] LCP estimation (API + heuristic)
+- [x] Fixed-width element detection
+- [x] Text truncation (ellipsis) audit
+- [x] ARIA role audit (button tabindex, hidden focusable)
+- [x] Bad link text detection
+- [x] Missing autocomplete on form fields
+- [x] Color-only indicator detection
+- [x] Auto-playing unmuted media detection
+- [x] Padding-inclusive touch measurement (checks parent label/link)
+
+### Testing
+- [x] Headless browser test suite (Puppeteer, serves docs/ locally, renders presets in real iframe with Tailwind)
+- [x] 125 preset templates validated — avg 88, min 69, max 100
+- [x] Before/clean gap verified: 81 avg vs 88 avg (7pt differentiation)
+- [x] Browser-based test runner (`docs/tests/test-presets-rendered.html`)
+- [x] Unit tests for scoring modules (`docs/tests/test-scoring.html`)
+- [x] Edge case test pages (gradients, dark backgrounds, fixed-width, truncation)
+- [x] 3 iterations of template fixes across 125 files (contrast, focus-visible, semantics)
+
+## Completed: Deep Scan Mode
+
+- [x] **Multi-viewport testing** — Spawn 3 parallel iframes at 375/768/1280px, merge results
+- [x] **Dark mode class toggle** — Toggle `.dark` on html, re-extract colors. ~95% reliable for Tailwind/class-based sites
+- [x] **Dark mode media query rewriting** — Extract `prefers-color-scheme: dark` rules from stylesheets, inject unconditionally. ~80-90% reliable
+- [x] **Scroll before extraction** — Auto-scroll full page to trigger intersection observers
+
+## Future: LLM Integration (opt-in)
+
+Default off. Only when user provides API key. See research notes in this file's git history.
+
+- [ ] Soft judgment: tone, copy clarity, color palette appropriateness
+- [ ] Finding summarization in plain language
+- [ ] Clearly labeled as "AI-generated" separate from evidence-based findings
+
+## Decided to Skip (with reasons)
+
+| Item | Reason |
+|------|--------|
+| Vertical rhythm detection | ~60% accuracy, too many false positives |
+| Nested spacing consistency | Can't determine spacing "intent" without component boundaries |
+| Gap vs margin consistency | Mixing is often correct (gap for flex, margin for flow) |
+| Overlapping targets | False positives from menus, dropdowns, positioned elements |
+| Click density mapping | No clear threshold for "too dense," subjective |
+| Shadow consistency | Too many legitimate shadow variations (elevation levels) |
+| Color distance (CIEDE2000) | Complex (~200 lines), similar colors often intentional |
+| Icon sizing consistency | SVG sizing too chaotic in practice |
+| Decision point counting | Counting buttons/links per section unreliable |
+| Information density | Elements-per-viewport varies wildly by page type |
+| Modal/popup detection | position:fixed catches headers/footers too |
+| Grid structure detection | Inferring columns from widths unreliable with flexbox |
+| Proximity grouping | Requires semantic understanding, pure DOM can't do it |
+| Sticky element audit | Almost always intentional, nothing actionable |
+| Critical CSS detection | Requires multi-viewport rendering analysis |
+| Inline CSS size | Often intentional (critical CSS pattern) |
+| Flash/strobe detection | Needs frame-by-frame analysis, not feasible from DOM |
+| F-pattern detection | ~40% accuracy without AI |
+| Whitespace ratio | Varies by page type, no universal threshold |
+| Web Worker extraction | Workers can't access DOM |
+
+## Research Documents
+
+- `research/analyzer-roadmap.md` — P0/P1 roadmap, priority matrix (794 lines)
+- `research/analyzer-p2-research.md` — P2/P3 feature research (928 lines)
+- `research/multi-viewport-dark-mode.md` — Multi-viewport & dark mode feasibility (345 lines)
+- `research/analyzer-test-rendered.md` — Latest headless test results (125 presets, per-module averages)
+
+## E2E Testing
+
+Run `node scripts/test-presets-headless.mjs` for the full rendered test suite. Requires Puppeteer (`npm i puppeteer`). The script:
+1. Serves `docs/` on localhost:8765
+2. Loads each preset in a real iframe with Tailwind CSS
+3. Runs the same extraction + scoring as the production analyzer
+4. Outputs results to `research/analyzer-test-rendered.md`
+
+Key metrics to track:
+- **Overall average** should be ≥85 (currently 88)
+- **Before/clean gap** should be ≥5 points (currently 7) — proves the analyzer differentiates design quality
+- **Contrast average** is the weakest category (currently 46) — legitimate failures from Tailwind's default light color shades
+- **No module should average below 40** except Contrast (known issue with Tailwind color scale)
 </file>
 
 <file path="proxy/worker.js">
@@ -21367,121 +21622,6 @@ function scoreCognitiveLoad(data) {
 })();
 </file>
 
-<file path="docs/scoring/filters.js">
-// Scoring Module: Motion, Animation & Filters
-// Weight: 3%
-// Sources: WCAG 2.2 §2.3.3, CSS Filter Effects spec
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-  function scoreFilters(data) {
-    var findings = [];
-    var checks = 0;
-    var passed = 0;
-    var anim = data.animation || {};
-
-    // prefers-reduced-motion support
-    checks++;
-    if (anim.hasReducedMotion) {
-      passed++;
-    } else if (anim.keyframeCount > 0 || (data.interaction && data.interaction.transitions && data.interaction.transitions.length > 2)) {
-      findings.push({
-        severity: 'warning',
-        title: 'No prefers-reduced-motion support detected',
-        detail: (anim.keyframeCount || 0) + ' @keyframes rules found. Users with vestibular disorders need the option to reduce motion.',
-        fix: 'Add @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }',
-        presetRef: null,
-        source: 'WCAG 2.2 §2.3.3 — https://www.w3.org/TR/WCAG22/#animation-from-interactions'
-      });
-    } else {
-      passed++; // No significant animations, no need for reduced-motion
-    }
-
-    // Hidden elements waiting for scroll-reveal
-    if (anim.hiddenElements > 0) {
-      checks++;
-      if (anim.hiddenElements <= 5) {
-        passed++;
-        findings.push({
-          severity: 'info',
-          title: anim.hiddenElements + ' element(s) with opacity:0 + transition (pre-animation state)',
-          detail: 'These elements are invisible at scan time (pre-animation state). Their contrast/sizing was not checked.',
-          fix: 'This is normal for scroll-reveal animations. Run the snippet after scrolling the full page for complete analysis.',
-          presetRef: null,
-          preAnimationState: true
-        });
-      } else {
-        findings.push({
-          severity: 'warning',
-          title: anim.hiddenElements + ' hidden elements waiting for animation trigger (pre-animation state)',
-          detail: 'A large portion of the page is invisible at load time (pre-animation state). This may affect perceived loading speed and SEO.',
-          fix: 'Consider showing initial content without animation, then enhancing with scroll effects. Ensure content is accessible without JS.',
-          presetRef: null,
-          preAnimationState: true,
-          source: 'WCAG 2.2 §2.3.3 — https://www.w3.org/TR/WCAG22/#animation-from-interactions'
-        });
-      }
-    }
-
-    // Scroll-reveal library detection
-    var patterns = anim.scrollRevealPatterns || [];
-    if (patterns.length > 0) {
-      var totalReveal = patterns.reduce(function(s, p) { return s + p.count; }, 0);
-      findings.push({
-        severity: 'info',
-        title: 'Scroll-reveal library detected: ' + totalReveal + ' animated element(s)',
-        detail: 'Libraries found: ' + patterns.map(function(p) { return p.selector + ' (' + p.count + ')'; }).join(', '),
-        fix: 'Ensure scroll-reveal animations respect prefers-reduced-motion and that content is visible without JavaScript.',
-        presetRef: null,
-        source: 'WCAG 2.2 §2.3.3 — https://www.w3.org/TR/WCAG22/#animation-from-interactions'
-      });
-    }
-
-    // Transition count: too many or too few
-    var transitions = (data.interaction && data.interaction.transitions) || [];
-    if (transitions.length > 0) {
-      checks++;
-      if (transitions.length <= 8) {
-        passed++;
-      } else {
-        findings.push({
-          severity: 'info',
-          title: transitions.length + ' unique transition durations (recommend ≤5)',
-          detail: 'Using many different durations creates inconsistent motion feel.',
-          fix: 'Standardize to 2-3 durations: fast (150ms), normal (300ms), slow (500ms).',
-          source: 'Material Design motion — https://m3.material.io/styles/motion/overview'
-        });
-      }
-    }
-
-    // Keyframe animation count
-    if (anim.keyframeCount > 0) {
-      checks++;
-      if (anim.keyframeCount <= 10) {
-        passed++;
-      } else {
-        findings.push({
-          severity: 'info',
-          title: anim.keyframeCount + ' @keyframes rules (high count)',
-          detail: 'Many animations can cause performance issues and visual overwhelm.',
-          fix: 'Review if all animations serve a purpose. Remove decorative animations.',
-          source: 'NNGroup — https://www.nngroup.com/articles/animation-usability/'
-        });
-      }
-    }
-
-    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-    var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-    var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-    return { score: score, findings: findings, checks: checks, passed: passed, weight: 3, label: 'Motion & Animation', icon: 'cognitive' };
-  }
-
-  S.register("filters", scoreFilters, 3, "Motion & Animation", "cognitive");
-})();
-</file>
-
 <file path="docs/scoring/performance.js">
 // Scoring Module: Performance
 // Weight: 5%
@@ -21919,146 +22059,6 @@ function scoreSpacing(data) {
 
   S.register("spacing", scoreSpacing, 15, "Spacing & Layout", "spacing");
 })();
-</file>
-
-<file path="docs/ANALYZER-TODO.md">
-# Analyzer TODO
-
-## Completed (69 items)
-
-### Core
-- [x] Modular scoring architecture (14 modules in `scoring/`)
-- [x] 8 audience profiles with evidence-based thresholds (General, WCAG AAA, Elderly, Low Vision, Motor Impairment, Color Blind, Children, Cognitive)
-- [x] 4 input modes (URL fetch, console snippet, paste HTML, import JSON)
-- [x] Gradient contrast via canvas sampling (multi-layer compositing)
-- [x] Background image contrast via canvas (CORS-limited)
-- [x] CSS filter contrast math (brightness, contrast, opacity)
-- [x] APCA contrast algorithm alongside WCAG
-- [x] oklch/oklab color parsing via canvas fallback
-- [x] Space-separated rgb() syntax support
-- [x] Page context detection (marketing/form/app/content)
-- [x] Fragment detection (skips document-level checks for pasted HTML snippets)
-- [x] Decorative element filtering
-- [x] Post-analysis exclusion suggestions (two-step flow)
-- [x] Extraction data caching (sessionStorage)
-- [x] Dark mode report styling
-- [x] AA/AAA profile switching (captures pairs up to 7.5:1)
-- [x] N/A category detection (modules return notApplicable when nothing to check)
-- [x] Context-aware touch targets (nav/footer/inline/button classification per WCAG 2.5.8)
-- [x] CVD palette simulation (Machado et al. 2009 matrices for protanopia, deuteranopia, tritanopia)
-- [x] JS-dependent page detection (warns when page needs JS execution)
-
-### UI & Features
-- [x] Page screenshots (modern-screenshot library, viewport sections, zoom lightbox)
-- [x] Analysis history in localStorage (max 10, dedup by URL+profile)
-- [x] JSON export/import with drag-and-drop
-- [x] Viewport size selector (defaults to current window size)
-- [x] Progress bar during analysis
-- [x] URL autocomplete from history
-- [x] Mobile-optimized layout (CSS grid header, icon-only buttons)
-- [x] Self-hosted CORS proxy (Cloudflare Worker with rate limiting, SSRF protection)
-- [x] Proxy URL injection via local .env (not committed)
-
-### Extraction
-- [x] Actual character-per-line via span measurement
-- [x] Section gaps for whitespace rhythm
-- [x] Left-edge alignment clustering
-- [x] Heading-to-body ratio for visual hierarchy
-- [x] Border radius value clustering
-- [x] Paragraph text extraction (Coleman-Liau)
-- [x] Font loading rules from stylesheets
-- [x] Render-blocking resource counts
-- [x] DOM size and depth
-- [x] Adjacent sibling spacing
-- [x] Animation/keyframe detection
-- [x] Scroll-reveal pattern detection
-- [x] Transform translateY off-screen detection
-- [x] Element overflow detection
-- [x] Letter spacing audit
-- [x] Negative margin detection
-- [x] Container padding clustering
-- [x] Third-party script count
-- [x] Image format audit (WebP/AVIF vs legacy)
-- [x] CLS via PerformanceObserver
-- [x] LCP estimation (API + heuristic)
-- [x] Fixed-width element detection
-- [x] Text truncation (ellipsis) audit
-- [x] ARIA role audit (button tabindex, hidden focusable)
-- [x] Bad link text detection
-- [x] Missing autocomplete on form fields
-- [x] Color-only indicator detection
-- [x] Auto-playing unmuted media detection
-- [x] Padding-inclusive touch measurement (checks parent label/link)
-
-### Testing
-- [x] Headless browser test suite (Puppeteer, serves docs/ locally, renders presets in real iframe with Tailwind)
-- [x] 125 preset templates validated — avg 88, min 69, max 100
-- [x] Before/clean gap verified: 81 avg vs 88 avg (7pt differentiation)
-- [x] Browser-based test runner (`docs/tests/test-presets-rendered.html`)
-- [x] Unit tests for scoring modules (`docs/tests/test-scoring.html`)
-- [x] Edge case test pages (gradients, dark backgrounds, fixed-width, truncation)
-- [x] 3 iterations of template fixes across 125 files (contrast, focus-visible, semantics)
-
-## Completed: Deep Scan Mode
-
-- [x] **Multi-viewport testing** — Spawn 3 parallel iframes at 375/768/1280px, merge results
-- [x] **Dark mode class toggle** — Toggle `.dark` on html, re-extract colors. ~95% reliable for Tailwind/class-based sites
-- [x] **Dark mode media query rewriting** — Extract `prefers-color-scheme: dark` rules from stylesheets, inject unconditionally. ~80-90% reliable
-- [x] **Scroll before extraction** — Auto-scroll full page to trigger intersection observers
-
-## Future: LLM Integration (opt-in)
-
-Default off. Only when user provides API key. See research notes in this file's git history.
-
-- [ ] Soft judgment: tone, copy clarity, color palette appropriateness
-- [ ] Finding summarization in plain language
-- [ ] Clearly labeled as "AI-generated" separate from evidence-based findings
-
-## Decided to Skip (with reasons)
-
-| Item | Reason |
-|------|--------|
-| Vertical rhythm detection | ~60% accuracy, too many false positives |
-| Nested spacing consistency | Can't determine spacing "intent" without component boundaries |
-| Gap vs margin consistency | Mixing is often correct (gap for flex, margin for flow) |
-| Overlapping targets | False positives from menus, dropdowns, positioned elements |
-| Click density mapping | No clear threshold for "too dense," subjective |
-| Shadow consistency | Too many legitimate shadow variations (elevation levels) |
-| Color distance (CIEDE2000) | Complex (~200 lines), similar colors often intentional |
-| Icon sizing consistency | SVG sizing too chaotic in practice |
-| Decision point counting | Counting buttons/links per section unreliable |
-| Information density | Elements-per-viewport varies wildly by page type |
-| Modal/popup detection | position:fixed catches headers/footers too |
-| Grid structure detection | Inferring columns from widths unreliable with flexbox |
-| Proximity grouping | Requires semantic understanding, pure DOM can't do it |
-| Sticky element audit | Almost always intentional, nothing actionable |
-| Critical CSS detection | Requires multi-viewport rendering analysis |
-| Inline CSS size | Often intentional (critical CSS pattern) |
-| Flash/strobe detection | Needs frame-by-frame analysis, not feasible from DOM |
-| F-pattern detection | ~40% accuracy without AI |
-| Whitespace ratio | Varies by page type, no universal threshold |
-| Web Worker extraction | Workers can't access DOM |
-
-## Research Documents
-
-- `research/analyzer-roadmap.md` — P0/P1 roadmap, priority matrix (794 lines)
-- `research/analyzer-p2-research.md` — P2/P3 feature research (928 lines)
-- `research/multi-viewport-dark-mode.md` — Multi-viewport & dark mode feasibility (345 lines)
-- `research/analyzer-test-rendered.md` — Latest headless test results (125 presets, per-module averages)
-
-## E2E Testing
-
-Run `node scripts/test-presets-headless.mjs` for the full rendered test suite. Requires Puppeteer (`npm i puppeteer`). The script:
-1. Serves `docs/` on localhost:8765
-2. Loads each preset in a real iframe with Tailwind CSS
-3. Runs the same extraction + scoring as the production analyzer
-4. Outputs results to `research/analyzer-test-rendered.md`
-
-Key metrics to track:
-- **Overall average** should be ≥85 (currently 88)
-- **Before/clean gap** should be ≥5 points (currently 7) — proves the analyzer differentiates design quality
-- **Contrast average** is the weakest category (currently 46) — legitimate failures from Tailwind's default light color shades
-- **No module should average below 40** except Contrast (known issue with Tailwind color scale)
 </file>
 
 <file path="scripts/test-layout.mjs">
@@ -28540,7 +28540,8 @@ function scoreLayout(data) {
             });
             iframe.addEventListener('error', function() { if (done) return; done = true; cleanup(); console.log('%c  \u2717 Load failed: ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); });
             iframe.src = url;
-            setTimeout(function() { if (done) return; done = true; cleanup(); console.log('%c  \u2717 Hard timeout: ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }, 30000);
+            var _pt = Math.max(30000, Math.round(45000 * Math.sqrt(_links.length)));
+            setTimeout(function() { if (done) return; done = true; cleanup(); console.log('%c  \u2717 Hard timeout (' + Math.round(_pt/1000) + 's): ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }, _pt);
           }
           _next(0);
         }).catch(function() { console.log('%c\u26A0 Could not fetch snippet for crawl.', 'color: #b45309;'); });
@@ -30989,13 +30990,14 @@ function scoreLayout(data) {
 
           iframe.src = url;
 
-          // Hard timeout (30s per page)
+          // Hard timeout — scales with page count (more pages = heavier site = more time)
+          var _pageTimeout = Math.max(30000, Math.round(45000 * Math.sqrt(_crawlLinks.length)));
           setTimeout(function() {
             if (done) return; done = true;
-            console.log('%c  \u2717 Hard timeout: ' + path, 'color: #dc2626;');
+            console.log('%c  \u2717 Hard timeout (' + Math.round(_pageTimeout / 1000) + 's): ' + path, 'color: #dc2626;');
             cleanup();
             setTimeout(function() { processNext(idx + 1); }, 500);
-          }, 30000);
+          }, _pageTimeout);
         }
         processNext(0);
 
@@ -32353,13 +32355,15 @@ function scoreLayout(data) {
       });
     }
 
-    // Page limit easter egg — MutationObserver
+    // Page limit easter egg — MutationObserver on max attr + input value check
+    var _crawlEasterEggShown = false;
     if (crawlMaxPages) {
       var _crawlMaxObserver = new MutationObserver(function(mutations) {
         mutations.forEach(function(m) {
           if (m.attributeName === 'max') {
             var newMax = parseInt(crawlMaxPages.getAttribute('max'));
-            if (newMax > 10) {
+            if (newMax > 10 && !_crawlEasterEggShown) {
+              _crawlEasterEggShown = true;
               showToast('Nice try! We see you editing the DOM \uD83D\uDE0F Fine, ' + CRAWL_HARD_MAX + ' is the real limit\u2026 but your proxy rate limit isn\u2019t.');
               crawlMaxPages.setAttribute('max', CRAWL_HARD_MAX);
             }
@@ -32367,6 +32371,15 @@ function scoreLayout(data) {
         });
       });
       _crawlMaxObserver.observe(crawlMaxPages, { attributes: true, attributeFilter: ['max'] });
+      // Also catch when someone types >10 directly
+      crawlMaxPages.addEventListener('input', function() {
+        var val = parseInt(crawlMaxPages.value);
+        if (val > 10 && !_crawlEasterEggShown) {
+          _crawlEasterEggShown = true;
+          showToast('Going beyond 10? Bold move \uD83D\uDE0F We\u2019ll allow up to ' + CRAWL_HARD_MAX + '. You found the secret ceiling!');
+          crawlMaxPages.setAttribute('max', CRAWL_HARD_MAX);
+        }
+      });
     }
 
     // isCrawlMode helper

@@ -1341,13 +1341,15 @@
       });
     }
 
-    // Page limit easter egg — MutationObserver
+    // Page limit easter egg — MutationObserver on max attr + input value check
+    var _crawlEasterEggShown = false;
     if (crawlMaxPages) {
       var _crawlMaxObserver = new MutationObserver(function(mutations) {
         mutations.forEach(function(m) {
           if (m.attributeName === 'max') {
             var newMax = parseInt(crawlMaxPages.getAttribute('max'));
-            if (newMax > 10) {
+            if (newMax > 10 && !_crawlEasterEggShown) {
+              _crawlEasterEggShown = true;
               showToast('Nice try! We see you editing the DOM \uD83D\uDE0F Fine, ' + CRAWL_HARD_MAX + ' is the real limit\u2026 but your proxy rate limit isn\u2019t.');
               crawlMaxPages.setAttribute('max', CRAWL_HARD_MAX);
             }
@@ -1355,6 +1357,15 @@
         });
       });
       _crawlMaxObserver.observe(crawlMaxPages, { attributes: true, attributeFilter: ['max'] });
+      // Also catch when someone types >10 directly
+      crawlMaxPages.addEventListener('input', function() {
+        var val = parseInt(crawlMaxPages.value);
+        if (val > 10 && !_crawlEasterEggShown) {
+          _crawlEasterEggShown = true;
+          showToast('Going beyond 10? Bold move \uD83D\uDE0F We\u2019ll allow up to ' + CRAWL_HARD_MAX + '. You found the secret ceiling!');
+          crawlMaxPages.setAttribute('max', CRAWL_HARD_MAX);
+        }
+      });
     }
 
     // isCrawlMode helper

@@ -2435,13 +2435,14 @@
 
           iframe.src = url;
 
-          // Hard timeout (30s per page)
+          // Hard timeout — scales with page count (more pages = heavier site = more time)
+          var _pageTimeout = Math.max(30000, Math.round(45000 * Math.sqrt(_crawlLinks.length)));
           setTimeout(function() {
             if (done) return; done = true;
-            console.log('%c  \u2717 Hard timeout: ' + path, 'color: #dc2626;');
+            console.log('%c  \u2717 Hard timeout (' + Math.round(_pageTimeout / 1000) + 's): ' + path, 'color: #dc2626;');
             cleanup();
             setTimeout(function() { processNext(idx + 1); }, 500);
-          }, 30000);
+          }, _pageTimeout);
         }
         processNext(0);
 
