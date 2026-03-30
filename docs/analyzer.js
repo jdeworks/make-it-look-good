@@ -529,6 +529,93 @@
     });
     data.layout.offscreenElements = data.layout.offscreenElements.slice(0, 20);
 
+    // --- Table cell readability on narrow viewports ---
+    data.layout.tableCellIssues = [];
+    if (vpW < 768) {
+      document.querySelectorAll('table').forEach(function(table) {
+        var cells = table.querySelectorAll('td, th');
+        var cramped = 0, wrappedCells = 0;
+        cells.forEach(function(cell) {
+          if (!isVisible(cell)) return;
+          var cs = getComputedStyle(cell);
+          var r = cell.getBoundingClientRect();
+          var hPad = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+          // Check for very tight horizontal padding (<8px total)
+          if (hPad < 8 && r.width > 0) cramped++;
+          // Check for wrapped content (cell height > 1.8x line height = multi-line)
+          var lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.4;
+          if (r.height > lh * 1.8 && cell.textContent.trim().length > 0) wrappedCells++;
+        });
+        if (cramped > 2 || wrappedCells > 2) {
+          data.layout.tableCellIssues.push({
+            selector: cssSelector(table),
+            totalCells: cells.length,
+            crampedCells: cramped,
+            wrappedCells: wrappedCells,
+            tableWidth: Math.round(table.getBoundingClientRect().width),
+            vpWidth: vpW
+          });
+        }
+      });
+    }
+
+    // --- Fixed element scroll-contrast risk detection ---
+    // Detect fixed/sticky elements with static colors that may lose contrast
+    // when scrolled over sections with different background luminance
+    data.layout.fixedContrastRisks = [];
+    (function() {
+      function luminance(r, g, b) { var a = [r,g,b].map(function(v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return 0.2126 * a[0] + 0.7152 * a[1] + 0.0722 * a[2]; }
+      function parseColor(str) { var m = str.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/); return m ? { r: +m[1], g: +m[2], b: +m[3] } : null; }
+
+      // Sample section background colors at different scroll positions
+      var sections = document.querySelectorAll('section,main>div,[class*="bg-"]');
+      var sectionBgs = [];
+      sections.forEach(function(sec) {
+        var bg = getComputedStyle(sec).backgroundColor;
+        var c = parseColor(bg);
+        if (c) sectionBgs.push({ lum: luminance(c.r, c.g, c.b), element: cssSelector(sec) });
+      });
+      var hasLightSections = sectionBgs.some(function(s) { return s.lum > 0.4; });
+      var hasDarkSections = sectionBgs.some(function(s) { return s.lum < 0.15; });
+
+      // Check visible fixed/sticky elements for contrast risk
+      document.querySelectorAll('header,nav,[class*="fixed"],[class*="sticky"]').forEach(function(el) {
+        var s = getComputedStyle(el);
+        if (s.position !== 'fixed' && s.position !== 'sticky') return;
+        // Check text/icon colored children
+        var coloredChildren = el.querySelectorAll('a,button,span,svg,h1,h2,h3,p');
+        coloredChildren.forEach(function(child) {
+          var cs = getComputedStyle(child);
+          var color = parseColor(cs.color);
+          if (!color) return;
+          var colorLum = luminance(color.r, color.g, color.b);
+          var isLightColor = colorLum > 0.6;
+          var isDarkColor = colorLum < 0.15;
+          // Light text on a page with light sections = risk
+          if (isLightColor && hasLightSections) {
+            data.layout.fixedContrastRisks.push({
+              selector: cssSelector(child),
+              text: (child.textContent || child.getAttribute('aria-label') || '').trim().substring(0, 30),
+              color: cs.color,
+              risk: 'light-on-light',
+              element: child.tagName.toLowerCase()
+            });
+          }
+          // Dark text on a page with dark sections = risk
+          if (isDarkColor && hasDarkSections) {
+            data.layout.fixedContrastRisks.push({
+              selector: cssSelector(child),
+              text: (child.textContent || child.getAttribute('aria-label') || '').trim().substring(0, 30),
+              color: cs.color,
+              risk: 'dark-on-dark',
+              element: child.tagName.toLowerCase()
+            });
+          }
+        });
+      });
+      data.layout.fixedContrastRisks = data.layout.fixedContrastRisks.slice(0, 10);
+    })();
+
     // --- Missing data points expected by scoring modules ---
     data.structure.hasHorizontalOverflow = document.documentElement.scrollWidth > document.documentElement.clientWidth;
 

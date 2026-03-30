@@ -59,7 +59,7 @@
         <a href="#stats" class="text-sm text-white/70 hover:text-white transition-colors min-h-11 inline-flex items-center nav-link focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none rounded">Results</a>
         <a href="#cta" class="text-sm font-semibold px-5 py-2.5 rounded-full min-h-11 inline-flex items-center transition-all nav-cta" style="background: var(--accent); color: var(--hero-bg);" class="focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Get Started</a>
       </div>
-      <button onclick="document.getElementById('appMobileMenu').classList.toggle('hidden')" class="sm:hidden min-h-11 min-w-[44px] flex items-center justify-center text-white rounded-lg focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none" aria-label="Menu">
+      <button id="navBurger" onclick="document.getElementById('appMobileMenu').classList.toggle('hidden')" class="sm:hidden min-h-11 min-w-[44px] flex items-center justify-center text-white rounded-lg focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none" aria-label="Menu">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
       </button>
     </div>
@@ -384,6 +384,9 @@
   var nav = document.getElementById('appNav');
   var navLogo = document.getElementById('navLogo');
   var navLinks = document.querySelectorAll('.nav-link');
+  var navBurger = document.getElementById('navBurger');
+  var mobileMenu = document.getElementById('appMobileMenu');
+  var mobileMenuLinks = mobileMenu ? mobileMenu.querySelectorAll('a:not([style*="background"])') : [];
 
   // Measure phone screens
   var screens = document.querySelectorAll('.phone-screen');
@@ -442,9 +445,15 @@
       nav.style.borderBottom = '1px solid rgba(62,39,28,0.08)';
       navLogo.style.color = 'var(--brown-text)';
       navLinks.forEach(function(l) { l.style.color = 'var(--brown-muted)'; });
+      if (navBurger) navBurger.style.color = 'var(--brown-text)';
+      if (mobileMenu) mobileMenu.style.background = 'rgba(255,251,248,0.98)';
+      mobileMenuLinks.forEach(function(l) { l.style.color = 'var(--brown-muted)'; });
     } else {
       navLogo.style.color = 'white';
       navLinks.forEach(function(l) { l.style.color = 'rgba(255,255,255,0.7)'; });
+      if (navBurger) navBurger.style.color = 'white';
+      if (mobileMenu) mobileMenu.style.background = 'var(--hero-bg)';
+      mobileMenuLinks.forEach(function(l) { l.style.color = 'rgba(255,255,255,0.7)'; });
     }
   }
 

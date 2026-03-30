@@ -1007,6 +1007,49 @@
   // Horizontal overflow
   data.structure.hasHorizontalOverflow = document.documentElement.scrollWidth > document.documentElement.clientWidth;
 
+  // --- Table cell readability on narrow viewports ---
+  data.layout.tableCellIssues = [];
+  if (_vpW < 768) {
+    document.querySelectorAll('table').forEach(function(table) {
+      var cells = table.querySelectorAll('td, th');
+      var cramped = 0, wrappedCells = 0;
+      cells.forEach(function(cell) {
+        if (!isVisible(cell)) return;
+        var cs = getComputedStyle(cell);
+        var r = cell.getBoundingClientRect();
+        var hPad = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+        if (hPad < 8 && r.width > 0) cramped++;
+        var lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.4;
+        if (r.height > lh * 1.8 && cell.textContent.trim().length > 0) wrappedCells++;
+      });
+      if (cramped > 2 || wrappedCells > 2) {
+        data.layout.tableCellIssues.push({ selector: cssSelector(table), totalCells: cells.length, crampedCells: cramped, wrappedCells: wrappedCells, tableWidth: Math.round(table.getBoundingClientRect().width), vpWidth: _vpW });
+      }
+    });
+  }
+
+  // --- Fixed element scroll-contrast risk detection ---
+  data.layout.fixedContrastRisks = [];
+  (function() {
+    function _lum(r, g, b) { var a = [r,g,b].map(function(v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return 0.2126 * a[0] + 0.7152 * a[1] + 0.0722 * a[2]; }
+    function _pc(str) { var m = str.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/); return m ? { r: +m[1], g: +m[2], b: +m[3] } : null; }
+    var sections = document.querySelectorAll('section,main>div,[class*="bg-"]');
+    var hasLight = false, hasDark = false;
+    sections.forEach(function(sec) { var c = _pc(getComputedStyle(sec).backgroundColor); if (c) { var l = _lum(c.r, c.g, c.b); if (l > 0.4) hasLight = true; if (l < 0.15) hasDark = true; } });
+    document.querySelectorAll('header,nav,[class*="fixed"],[class*="sticky"]').forEach(function(el) {
+      var s = getComputedStyle(el);
+      if (s.position !== 'fixed' && s.position !== 'sticky') return;
+      el.querySelectorAll('a,button,span,svg,h1,h2,h3,p').forEach(function(child) {
+        var c = _pc(getComputedStyle(child).color);
+        if (!c) return;
+        var cl = _lum(c.r, c.g, c.b);
+        if (cl > 0.6 && hasLight) data.layout.fixedContrastRisks.push({ selector: cssSelector(child), text: (child.textContent || child.getAttribute('aria-label') || '').trim().substring(0, 30), color: getComputedStyle(child).color, risk: 'light-on-light', element: child.tagName.toLowerCase() });
+        if (cl < 0.15 && hasDark) data.layout.fixedContrastRisks.push({ selector: cssSelector(child), text: (child.textContent || child.getAttribute('aria-label') || '').trim().substring(0, 30), color: getComputedStyle(child).color, risk: 'dark-on-dark', element: child.tagName.toLowerCase() });
+      });
+    });
+    data.layout.fixedContrastRisks = data.layout.fixedContrastRisks.slice(0, 10);
+  })();
+
   // Hidden overflow clips — elements with overflow-x:hidden that silently clip content
   // This detects elements wider than their container but hidden instead of scrollable
   data.layout.hiddenClipElements = [];

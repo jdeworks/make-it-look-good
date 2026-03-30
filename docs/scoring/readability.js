@@ -132,9 +132,29 @@
       });
     }
 
+    // Table cell readability on mobile (cramped/wrapped cells)
+    var tableCellIssues = (data.layout && data.layout.tableCellIssues) || [];
+    if (tableCellIssues.length > 0) {
+      checks++;
+      var tableDetails = tableCellIssues.slice(0, 3).map(function(t) {
+        var parts = [];
+        if (t.crampedCells > 0) parts.push(t.crampedCells + ' cells lack horizontal padding');
+        if (t.wrappedCells > 0) parts.push(t.wrappedCells + ' cells wrap to multiple lines');
+        return t.selector + ': ' + parts.join(', ') + ' (table ' + t.tableWidth + 'px on ' + t.vpWidth + 'px viewport)';
+      });
+      findings.push({
+        severity: tableCellIssues.some(function(t) { return t.crampedCells > 4 || t.wrappedCells > 4; }) ? 'error' : 'warning',
+        title: 'Table readability issues on mobile (' + tableCellIssues.length + ' table' + (tableCellIssues.length > 1 ? 's' : '') + ')',
+        detail: tableDetails.join('; '),
+        fix: 'Add horizontal padding to table cells (px-3 sm:px-4). For narrow viewports, consider hiding low-priority columns, using a responsive card layout, or reducing font size.',
+        source: 'NNGroup Mobile Tables — https://www.nngroup.com/articles/mobile-tables/',
+        locator: { selector: tableCellIssues[0].selector, text: '' }
+      });
+    }
+
     var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+    var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+    var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
     return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Readability', icon: 'readability' };
   }
 

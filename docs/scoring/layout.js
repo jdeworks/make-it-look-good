@@ -424,6 +424,24 @@ function scoreLayout(data) {
     }
   }
 
+  // Fixed element scroll-contrast risk
+  var fixedRisks = (data.layout && data.layout.fixedContrastRisks) || [];
+  if (fixedRisks.length > 0) {
+    checks++;
+    var riskDetails = fixedRisks.slice(0, 3).map(function(r) {
+      var label = r.element + (r.text ? ' ("' + r.text.substring(0, 20) + '")' : '');
+      return label + ' — ' + (r.risk === 'light-on-light' ? 'light color may vanish on light sections' : 'dark color may vanish on dark sections');
+    });
+    findings.push({
+      severity: fixedRisks.length > 2 ? 'error' : 'warning',
+      title: fixedRisks.length + ' fixed element(s) may lose contrast when scrolled',
+      detail: riskDetails.join('; '),
+      fix: 'Fixed/sticky elements must adapt their color when scrolling over different-colored sections. Use a scroll listener to toggle text color, or add a semi-opaque background to the fixed container.',
+      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum',
+      locator: { selector: fixedRisks[0].selector, text: fixedRisks[0].text || '' }
+    });
+  }
+
   var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
   var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
   var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
