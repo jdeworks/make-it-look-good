@@ -1704,13 +1704,28 @@
       });
     } else {
       console.log('[ss] Tall page — multi-section capture');
+
+      // Show overlay so users aren't confused by page scrolling during capture
+      var _overlay = document.createElement('div');
+      _overlay.setAttribute('data-milg-overlay', '1');
+      _overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.6);display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui,sans-serif;';
+      _overlay.innerHTML = '<div style="width:40px;height:40px;border:3px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:milg-spin 0.8s linear infinite"></div>' +
+        '<div id="milg-ss-status" style="color:#fff;margin-top:16px;font-size:14px;font-weight:500">Capturing screenshots...</div>' +
+        '<div style="color:rgba(255,255,255,0.6);margin-top:6px;font-size:12px">Scrolling through the page to capture each section</div>' +
+        '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style>';
+      document.body.appendChild(_overlay);
+      // Filter function to exclude overlay from screenshots
+      var _ssFilter = function(el) { return !el.getAttribute || !el.getAttribute('data-milg-overlay'); };
+
       var shots = [];
       var y = 0;
       var secH = vh;
+      var _origScrollY = window.scrollY;
       function captureNext() {
         if (y >= captureH || shots.length >= 5) {
-          // Restore scroll position
-          window.scrollTo(0, 0);
+          // Restore scroll position and remove overlay
+          window.scrollTo(0, _origScrollY);
+          if (_overlay.parentNode) _overlay.parentNode.removeChild(_overlay);
           data.screenshots = shots;
           console.log('%c✓ ' + shots.length + ' screenshot(s) captured (' + (Date.now() - _ssStart) + 'ms total)', 'color: #16a34a;');
           outputData(data);
@@ -1721,29 +1736,33 @@
         var secStart = Date.now();
         console.log('[ss] Section ' + secIdx + '/' + secTotal + ' — y=' + y);
 
-        // Step 1: Scroll to trigger lazy content (skip for first section — already there)
+        // Update overlay status
+        var statusEl = document.getElementById('milg-ss-status');
+        if (statusEl) statusEl.textContent = 'Capturing section ' + secIdx + ' of ' + secTotal + '...';
+
+        // Step 1: Scroll to trigger lazy content (IntersectionObserver, lazy images)
         window.scrollTo(0, y);
         if (y > 0) { try { window.dispatchEvent(new Event('scroll')); } catch(e) {} }
 
-        // Step 2: Wait for scroll-triggered content (shorter for first section)
+        // Step 2: Wait for scroll-triggered content to render
         var scrollDelay = y === 0 ? 50 : 300;
         setTimeout(function() {
           void document.documentElement.offsetHeight;
           console.log('[ss]   scroll settled (' + (Date.now() - secStart) + 'ms)');
 
-          // Step 3: Apply translateY offset for domToCanvas
-          var origTransform = document.documentElement.style.transform;
-          var origOverflow = document.documentElement.style.overflow;
-          document.documentElement.style.transform = 'translateY(-' + y + 'px)';
-          document.documentElement.style.overflow = 'hidden';
-          void document.documentElement.offsetHeight; // force reflow
-          console.log('[ss]   translateY(-' + y + 'px) applied, calling domToCanvas...');
-
+          // Step 3: Capture using style option (transform applied to library's internal
+          // clone, not the real DOM — no scrollbar disappearing, no visual glitches)
           var captH = Math.min(secH, captureH - y);
-          ms.domToCanvas(document.documentElement, { scale: 0.5, width: window.innerWidth, height: captH }).then(function(canvas) {
-            // Restore immediately after capture
-            document.documentElement.style.transform = origTransform || '';
-            document.documentElement.style.overflow = origOverflow || '';
+          var opts = {
+            scale: 0.5,
+            width: window.innerWidth,
+            height: captH,
+            filter: _ssFilter,
+            style: { transform: 'translateY(-' + y + 'px)', overflow: 'hidden' }
+          };
+          console.log('[ss]   calling domToCanvas with style.transform=translateY(-' + y + 'px), height=' + captH);
+
+          ms.domToCanvas(document.documentElement, opts).then(function(canvas) {
             console.log('[ss]   domToCanvas done (' + (Date.now() - secStart) + 'ms), canvas=' + canvas.width + 'x' + canvas.height);
 
             canvas.toBlob(function(blob) {
@@ -1755,9 +1774,8 @@
               reader.onloadend = function() {
                 var kb = Math.round(reader.result.length / 1024);
                 console.log('[ss]   ✓ section ' + secIdx + ' captured (' + kb + ' KB, ' + (Date.now() - secStart) + 'ms)');
-                // Check if screenshot is mostly empty (tiny file = likely blank)
-                if (kb < 2) {
-                  console.log('[ss]   ⚠ Very small (' + kb + 'KB) — likely empty/blank capture');
+                if (kb < 3) {
+                  console.log('[ss]   ⚠ Very small (' + kb + 'KB) — may be blank. Check if content is scroll-revealed.');
                 }
                 shots.push(reader.result);
                 y += secH;
@@ -1766,12 +1784,10 @@
               reader.readAsDataURL(blob);
             }, 'image/webp', 0.7);
           }).catch(function(err) {
-            document.documentElement.style.transform = origTransform || '';
-            document.documentElement.style.overflow = origOverflow || '';
             console.log('[ss]   ✗ domToCanvas failed: ' + (err && err.message || err) + ' (' + (Date.now() - secStart) + 'ms)');
             y += secH; captureNext();
           });
-        }, scrollDelay); // 50ms for first section, 300ms for scrolled sections
+        }, scrollDelay);
       }
       captureNext();
     }

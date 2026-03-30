@@ -16827,6 +16827,137 @@ All presets are:
 }
 </file>
 
+<file path="docs/scoring/registry.js">
+// Scoring Module Registry
+// Each module calls MilgScoring.register() to add its scoring function.
+// The main scoring engine calls all registered modules in order.
+
+window.MilgScoring = (function() {
+  'use strict';
+
+  var modules = [];
+
+  // --- User Persona Profiles ---
+  var PROFILES = {
+    general:          { contrast: 4.5, contrastLarge: 3,   bodyFontMin: 16, lineHeightMin: 1.4, lineHeightMax: 1.6, touchTarget: 44, touchTargetDesktop: 24, touchTargetDesktopWarn: 32, targetSpacing: 8,  fontWeightMin: 0,   maxNavItems: 0, maxLineLength: 75, readingGradeLevel: 0, requireReducedMotion: false, checkCVD: false },
+    wcag_aaa:         { contrast: 7,   contrastLarge: 4.5, bodyFontMin: 16, lineHeightMin: 1.4, lineHeightMax: 1.6, touchTarget: 44, touchTargetDesktop: 24, touchTargetDesktopWarn: 32, targetSpacing: 8,  fontWeightMin: 0,   maxNavItems: 0, maxLineLength: 75, readingGradeLevel: 0, requireReducedMotion: false, checkCVD: false },
+    elderly:          { contrast: 7,   contrastLarge: 4.5, bodyFontMin: 18, lineHeightMin: 1.6, lineHeightMax: 1.8, touchTarget: 48, touchTargetDesktop: 48, touchTargetDesktopWarn: 48, targetSpacing: 12, fontWeightMin: 400, maxNavItems: 7, maxLineLength: 65, readingGradeLevel: 0, requireReducedMotion: true,  checkCVD: false },
+    low_vision:       { contrast: 7,   contrastLarge: 4.5, bodyFontMin: 18, lineHeightMin: 1.5, lineHeightMax: 1.7, touchTarget: 44, touchTargetDesktop: 44, touchTargetDesktopWarn: 44, targetSpacing: 12, fontWeightMin: 300, maxNavItems: 0, maxLineLength: 0,  readingGradeLevel: 0, requireReducedMotion: false, checkCVD: false, warnFontSmoothing: true, warnBackgroundImage: true, iconMinSize: 32 },
+    motor_impairment: { contrast: 4.5, contrastLarge: 3,   bodyFontMin: 16, lineHeightMin: 1.4, lineHeightMax: 1.6, touchTarget: 48, touchTargetDesktop: 48, touchTargetDesktopWarn: 48, targetSpacing: 12, fontWeightMin: 0,   maxNavItems: 0, maxLineLength: 0,  readingGradeLevel: 0, requireReducedMotion: false, checkCVD: false, warnOutlineNone: true },
+    color_blind:      { contrast: 4.5, contrastLarge: 3,   bodyFontMin: 16, lineHeightMin: 1.4, lineHeightMax: 1.6, touchTarget: 44, touchTargetDesktop: 24, touchTargetDesktopWarn: 32, targetSpacing: 8,  fontWeightMin: 0,   maxNavItems: 0, maxLineLength: 0,  readingGradeLevel: 0, requireReducedMotion: false, checkCVD: true },
+    children:         { contrast: 4.5, contrastLarge: 3,   bodyFontMin: 18, lineHeightMin: 1.5, lineHeightMax: 1.8, touchTarget: 48, touchTargetDesktop: 44, touchTargetDesktopWarn: 48, targetSpacing: 16, fontWeightMin: 400, maxNavItems: 5, maxLineLength: 55, readingGradeLevel: 5, requireReducedMotion: false, checkCVD: false },
+    cognitive:        { contrast: 4.5, contrastLarge: 3,   bodyFontMin: 16, lineHeightMin: 1.5, lineHeightMax: 1.7, touchTarget: 44, touchTargetDesktop: 24, touchTargetDesktopWarn: 32, targetSpacing: 8,  fontWeightMin: 0,   maxNavItems: 5, maxLineLength: 65, readingGradeLevel: 8, requireReducedMotion: true,  checkCVD: false }
+  };
+
+  function getProfile(data) {
+    var name = (data && data.profile) || 'general';
+    return PROFILES[name] || PROFILES.general;
+  }
+
+  // --- Color utilities (shared by contrast module) ---
+  function parseColor(str) {
+    if (!str || str === 'transparent' || str === 'rgba(0, 0, 0, 0)') return null;
+    var m = str.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
+    if (m) return { r: +m[1], g: +m[2], b: +m[3], a: m[4] !== undefined ? +m[4] : 1 };
+    var m2 = str.match(/rgba?\((\d+)\s+(\d+)\s+(\d+)(?:\s*\/\s*([\d.]+%?))?\)/);
+    if (m2) { var a = m2[4] !== undefined ? (m2[4].indexOf('%') !== -1 ? parseFloat(m2[4]) / 100 : +m2[4]) : 1; return { r: +m2[1], g: +m2[2], b: +m2[3], a: a }; }
+    return null;
+  }
+
+  function luminance(c) {
+    var rs = c.r / 255, gs = c.g / 255, bs = c.b / 255;
+    var r = rs <= 0.03928 ? rs / 12.92 : Math.pow((rs + 0.055) / 1.055, 2.4);
+    var g = gs <= 0.03928 ? gs / 12.92 : Math.pow((gs + 0.055) / 1.055, 2.4);
+    var b = bs <= 0.03928 ? bs / 12.92 : Math.pow((bs + 0.055) / 1.055, 2.4);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  }
+
+  function contrastRatio(c1, c2) {
+    var l1 = luminance(c1), l2 = luminance(c2);
+    return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+  }
+
+  // --- Public API ---
+  function register(name, scoreFn, weight, label, icon) {
+    modules.push({ name: name, score: scoreFn, weight: weight, label: label, icon: icon });
+  }
+
+  function runScoring(data) {
+    var categories = modules.map(function(mod) {
+      var result = mod.score(data, getProfile(data));
+      result.weight = result.weight || mod.weight;
+      result.label = result.label || mod.label;
+      result.icon = result.icon || mod.icon;
+      return result;
+    });
+
+    var totalWeight = 0;
+    var weightedSum = 0;
+    categories.forEach(function(cat) {
+      if (cat.notApplicable) return; // Skip N/A categories from score
+      totalWeight += cat.weight;
+      weightedSum += cat.score * cat.weight;
+    });
+
+    var overall = Math.round(weightedSum / totalWeight);
+    var grade = overall >= 90 ? 'A' : overall >= 80 ? 'B' : overall >= 70 ? 'C' : overall >= 60 ? 'D' : 'F';
+    var gradeLabel = { A: 'Excellent', B: 'Good', C: 'Needs Improvement', D: 'Significant Issues', F: 'Major Redesign Needed' };
+
+    return {
+      overall: overall,
+      grade: grade,
+      gradeLabel: gradeLabel[grade],
+      categories: categories,
+      meta: data.meta,
+      raw: data
+    };
+  }
+
+  // Standardized scoring: errors=-10, warnings=-3, info=0 (industry standard per Cypress/axe-core)
+  function scoreFromFindings(findings, baseChecks) {
+    var errors = 0, warnings = 0;
+    findings.forEach(function(f) {
+      if (f.severity === 'error') errors++;
+      else if (f.severity === 'warning') warnings++;
+    });
+    // If module provides a checks-based score, use it; otherwise deduction-based
+    if (baseChecks !== undefined && baseChecks > 0) {
+      var passed = baseChecks - errors - warnings;
+      return Math.max(0, Math.round((Math.max(0, passed) / baseChecks) * 100));
+    }
+    return Math.max(0, 100 - (errors * 10) - (warnings * 3));
+  }
+
+  // CVD simulation matrices (Machado et al. 2009, severity 1.0)
+  var CVD_MATRICES = {
+    protanopia:   [0.567, 0.433, 0.000, 0.558, 0.442, 0.000, 0.000, 0.242, 0.758],
+    deuteranopia: [0.625, 0.375, 0.000, 0.700, 0.300, 0.000, 0.000, 0.300, 0.700],
+    tritanopia:   [0.950, 0.050, 0.000, 0.000, 0.433, 0.567, 0.000, 0.475, 0.525]
+  };
+
+  function simulateCVD(rgb, matrix) {
+    return {
+      r: Math.round(Math.min(255, Math.max(0, rgb.r * matrix[0] + rgb.g * matrix[1] + rgb.b * matrix[2]))),
+      g: Math.round(Math.min(255, Math.max(0, rgb.r * matrix[3] + rgb.g * matrix[4] + rgb.b * matrix[5]))),
+      b: Math.round(Math.min(255, Math.max(0, rgb.r * matrix[6] + rgb.g * matrix[7] + rgb.b * matrix[8])))
+    };
+  }
+
+  return {
+    register: register,
+    runScoring: runScoring,
+    getProfile: getProfile,
+    scoreFromFindings: scoreFromFindings,
+    parseColor: parseColor,
+    luminance: luminance,
+    contrastRatio: contrastRatio,
+    simulateCVD: simulateCVD,
+    CVD_MATRICES: CVD_MATRICES,
+    PROFILES: PROFILES
+  };
+})();
+</file>
+
 <file path="docs/scoring/responsive.js">
 // Scoring Module: Responsive Design
 // Weight: 10%
@@ -19319,6 +19450,181 @@ If this helped you ship something that looks good, [give it a star](../../starga
 Sources: [research/sources.md](research/sources.md)
 </file>
 
+<file path="docs/scoring/cognitive.js">
+// Scoring Module: Cognitive Load
+// Weight: 5%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreCognitiveLoad(data) {
+  var profile = S.getProfile(data);
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+
+  // Heading count as proxy for section complexity
+  checks++;
+  var headingCount = (data.typography.headings || []).length;
+  if (headingCount <= 15) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'info',
+      title: headingCount + ' headings on page — consider chunking content',
+      detail: 'Hick\'s Law: more choices = slower decisions',
+      fix: 'Break content into tabs, accordions, or separate pages. Keep 5–7 top-level sections.',
+      presetRef: 'Tab and accordion presets for progressive disclosure',
+      source: 'Hick\'s Law — https://lawsofux.com/hicks-law/'
+    });
+  }
+
+  // Form fields per step
+  checks++;
+  var formFields = data.accessibility.formLabels ? data.accessibility.formLabels.total : 0;
+  if (formFields <= 7 || formFields === 0) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: formFields + ' form fields visible (recommended: 5–7 per step)',
+      detail: 'Long forms have high abandonment rates',
+      fix: 'Break into multi-step form with 3–5 fields per step. Show a progress indicator.',
+      presetRef: 'Form presets demonstrate multi-step patterns',
+      source: 'Miller\'s Law / Baymard Institute — https://lawsofux.com/millers-law/'
+    });
+  }
+
+  // Navigation item count (profile-aware)
+  if (profile.maxNavItems > 0 && data.accessibility && data.accessibility.semanticElements) {
+    var navCount = data.accessibility.navItemCount || 0;
+    if (navCount > 0) {
+      checks++;
+      if (navCount <= profile.maxNavItems) {
+        passed++;
+      } else {
+        findings.push({
+          severity: 'warning',
+          title: navCount + ' top-level navigation items (recommended: ≤' + profile.maxNavItems + ' for this audience)',
+          detail: 'Working memory holds 4±1 items. More nav items increase cognitive load and decision time.',
+          fix: 'Reduce to ' + profile.maxNavItems + ' top-level items. Group less-used links under "More" or a hamburger menu.',
+          source: 'Cowan (2001) working memory — https://doi.org/10.1017/S0140525X01003922'
+        });
+      }
+    }
+  }
+
+  // Reading level (profile-aware)
+  if (profile.readingGradeLevel > 0 && data.readability && data.readability.gradeLevel > 0) {
+    checks++;
+    var grade = data.readability.gradeLevel;
+    if (grade <= profile.readingGradeLevel) {
+      passed++;
+    } else {
+      findings.push({
+        severity: grade > profile.readingGradeLevel + 3 ? 'error' : 'warning',
+        title: 'Reading level is grade ' + Math.round(grade) + ' (maximum for this audience: grade ' + profile.readingGradeLevel + ')',
+        detail: 'Content may be too complex for the target audience. Lower grade level = more accessible.',
+        fix: 'Use shorter sentences, simpler words, and active voice. Aim for grade ' + profile.readingGradeLevel + ' or lower.',
+        source: 'WCAG 2.2 §3.1.5 — https://www.w3.org/TR/WCAG22/#reading-level'
+      });
+    }
+  }
+
+  // Reduced motion requirement (profile-aware)
+  if (profile.requireReducedMotion) {
+    var anim = data.animation || {};
+    if (anim.keyframeCount > 0 || (data.interaction && data.interaction.transitions && data.interaction.transitions.length > 2)) {
+      checks++;
+      if (anim.hasReducedMotion) {
+        passed++;
+      } else {
+        findings.push({
+          severity: 'warning',
+          title: 'Animations present without prefers-reduced-motion support',
+          detail: 'This audience profile requires motion reduction options. ' + (anim.keyframeCount || 0) + ' keyframe rules found.',
+          fix: 'Add @media (prefers-reduced-motion: reduce) to disable or reduce animations.',
+          source: 'WCAG 2.2 §2.3.3 — https://www.w3.org/TR/WCAG22/#animation-from-interactions'
+        });
+      }
+    }
+  }
+
+  // Unique color count as cognitive noise indicator
+  var textColors = (data.colors && data.colors.textColors) || [];
+  var bgColors = (data.colors && data.colors.bgColors) || [];
+  if (textColors.length + bgColors.length > 0) {
+    checks++;
+    var uniqueColors = textColors.length + bgColors.length;
+    if (uniqueColors <= 30) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: uniqueColors + ' unique colors — high visual complexity',
+        detail: 'Many distinct colors increase cognitive load and make the page harder to parse.',
+        fix: 'Consolidate to a systematic palette: primary + neutral + 3 semantic colors.',
+        source: 'Material Design 3 — https://m3.material.io/styles/color/roles'
+      });
+    }
+  }
+
+  // Interactive element density
+  var touchTargets = (data.interaction && data.interaction.touchTargets) || [];
+  var totalElements = (data.structure && data.structure.totalElements) || 100;
+  if (totalElements > 30) {
+    checks++;
+    // Count all interactive elements (touch issues + those that passed)
+    var interactiveCount = touchTargets.length + Math.round(totalElements * 0.1); // rough estimate
+    var density = interactiveCount / totalElements;
+    if (density < 0.4) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: 'High interactive element density',
+        detail: 'Many clickable elements relative to content can overwhelm users.',
+        fix: 'Group related actions. Use progressive disclosure to hide secondary actions.',
+        source: 'Hick\'s Law — https://lawsofux.com/hicks-law/'
+      });
+    }
+  }
+
+  // Consistent heading hierarchy (cognitive predictability)
+  var headingHierarchy = (data.accessibility && data.accessibility.headingHierarchy) || [];
+  if (headingHierarchy.length >= 2) {
+    checks++;
+    var hierarchyBroken = false;
+    for (var hi = 1; hi < headingHierarchy.length; hi++) {
+      var prevLevel = parseInt(headingHierarchy[hi - 1].charAt(1));
+      var currLevel = parseInt(headingHierarchy[hi].charAt(1));
+      if (currLevel > prevLevel + 1) { hierarchyBroken = true; break; }
+    }
+    if (!hierarchyBroken) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'warning',
+        title: 'Heading hierarchy gaps break mental model',
+        detail: 'Skipped heading levels (e.g., h1 → h3) make it harder for users to understand content structure.',
+        fix: 'Use headings in order: h1 → h2 → h3. Don\'t skip levels.',
+        source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
+      });
+    }
+  }
+
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+  return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Cognitive Load', icon: 'cognitive' };
+}
+
+
+  S.register("cognitive", scoreCognitiveLoad, 5, "Cognitive Load", "cognitive");
+})();
+</file>
+
 <file path="docs/scoring/filters.js">
 // Scoring Module: Motion, Animation & Filters
 // Weight: 3%
@@ -19596,137 +19902,6 @@ Sources: [research/sources.md](research/sources.md)
   }
 
   S.register("readability", scoreReadability, 5, "Readability", "readability");
-})();
-</file>
-
-<file path="docs/scoring/registry.js">
-// Scoring Module Registry
-// Each module calls MilgScoring.register() to add its scoring function.
-// The main scoring engine calls all registered modules in order.
-
-window.MilgScoring = (function() {
-  'use strict';
-
-  var modules = [];
-
-  // --- User Persona Profiles ---
-  var PROFILES = {
-    general:          { contrast: 4.5, contrastLarge: 3,   bodyFontMin: 16, lineHeightMin: 1.4, lineHeightMax: 1.6, touchTarget: 44, touchTargetDesktop: 24, touchTargetDesktopWarn: 32, targetSpacing: 8,  fontWeightMin: 0,   maxNavItems: 0, maxLineLength: 75, readingGradeLevel: 0, requireReducedMotion: false, checkCVD: false },
-    wcag_aaa:         { contrast: 7,   contrastLarge: 4.5, bodyFontMin: 16, lineHeightMin: 1.4, lineHeightMax: 1.6, touchTarget: 44, touchTargetDesktop: 24, touchTargetDesktopWarn: 32, targetSpacing: 8,  fontWeightMin: 0,   maxNavItems: 0, maxLineLength: 75, readingGradeLevel: 0, requireReducedMotion: false, checkCVD: false },
-    elderly:          { contrast: 7,   contrastLarge: 4.5, bodyFontMin: 18, lineHeightMin: 1.6, lineHeightMax: 1.8, touchTarget: 48, touchTargetDesktop: 48, touchTargetDesktopWarn: 48, targetSpacing: 12, fontWeightMin: 400, maxNavItems: 7, maxLineLength: 65, readingGradeLevel: 0, requireReducedMotion: true,  checkCVD: false },
-    low_vision:       { contrast: 7,   contrastLarge: 4.5, bodyFontMin: 18, lineHeightMin: 1.5, lineHeightMax: 1.7, touchTarget: 44, touchTargetDesktop: 44, touchTargetDesktopWarn: 44, targetSpacing: 12, fontWeightMin: 300, maxNavItems: 0, maxLineLength: 0,  readingGradeLevel: 0, requireReducedMotion: false, checkCVD: false, warnFontSmoothing: true, warnBackgroundImage: true, iconMinSize: 32 },
-    motor_impairment: { contrast: 4.5, contrastLarge: 3,   bodyFontMin: 16, lineHeightMin: 1.4, lineHeightMax: 1.6, touchTarget: 48, touchTargetDesktop: 48, touchTargetDesktopWarn: 48, targetSpacing: 12, fontWeightMin: 0,   maxNavItems: 0, maxLineLength: 0,  readingGradeLevel: 0, requireReducedMotion: false, checkCVD: false, warnOutlineNone: true },
-    color_blind:      { contrast: 4.5, contrastLarge: 3,   bodyFontMin: 16, lineHeightMin: 1.4, lineHeightMax: 1.6, touchTarget: 44, touchTargetDesktop: 24, touchTargetDesktopWarn: 32, targetSpacing: 8,  fontWeightMin: 0,   maxNavItems: 0, maxLineLength: 0,  readingGradeLevel: 0, requireReducedMotion: false, checkCVD: true },
-    children:         { contrast: 4.5, contrastLarge: 3,   bodyFontMin: 18, lineHeightMin: 1.5, lineHeightMax: 1.8, touchTarget: 48, touchTargetDesktop: 44, touchTargetDesktopWarn: 48, targetSpacing: 16, fontWeightMin: 400, maxNavItems: 5, maxLineLength: 55, readingGradeLevel: 5, requireReducedMotion: false, checkCVD: false },
-    cognitive:        { contrast: 4.5, contrastLarge: 3,   bodyFontMin: 16, lineHeightMin: 1.5, lineHeightMax: 1.7, touchTarget: 44, touchTargetDesktop: 24, touchTargetDesktopWarn: 32, targetSpacing: 8,  fontWeightMin: 0,   maxNavItems: 5, maxLineLength: 65, readingGradeLevel: 8, requireReducedMotion: true,  checkCVD: false }
-  };
-
-  function getProfile(data) {
-    var name = (data && data.profile) || 'general';
-    return PROFILES[name] || PROFILES.general;
-  }
-
-  // --- Color utilities (shared by contrast module) ---
-  function parseColor(str) {
-    if (!str || str === 'transparent' || str === 'rgba(0, 0, 0, 0)') return null;
-    var m = str.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
-    if (m) return { r: +m[1], g: +m[2], b: +m[3], a: m[4] !== undefined ? +m[4] : 1 };
-    var m2 = str.match(/rgba?\((\d+)\s+(\d+)\s+(\d+)(?:\s*\/\s*([\d.]+%?))?\)/);
-    if (m2) { var a = m2[4] !== undefined ? (m2[4].indexOf('%') !== -1 ? parseFloat(m2[4]) / 100 : +m2[4]) : 1; return { r: +m2[1], g: +m2[2], b: +m2[3], a: a }; }
-    return null;
-  }
-
-  function luminance(c) {
-    var rs = c.r / 255, gs = c.g / 255, bs = c.b / 255;
-    var r = rs <= 0.03928 ? rs / 12.92 : Math.pow((rs + 0.055) / 1.055, 2.4);
-    var g = gs <= 0.03928 ? gs / 12.92 : Math.pow((gs + 0.055) / 1.055, 2.4);
-    var b = bs <= 0.03928 ? bs / 12.92 : Math.pow((bs + 0.055) / 1.055, 2.4);
-    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  }
-
-  function contrastRatio(c1, c2) {
-    var l1 = luminance(c1), l2 = luminance(c2);
-    return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
-  }
-
-  // --- Public API ---
-  function register(name, scoreFn, weight, label, icon) {
-    modules.push({ name: name, score: scoreFn, weight: weight, label: label, icon: icon });
-  }
-
-  function runScoring(data) {
-    var categories = modules.map(function(mod) {
-      var result = mod.score(data, getProfile(data));
-      result.weight = result.weight || mod.weight;
-      result.label = result.label || mod.label;
-      result.icon = result.icon || mod.icon;
-      return result;
-    });
-
-    var totalWeight = 0;
-    var weightedSum = 0;
-    categories.forEach(function(cat) {
-      if (cat.notApplicable) return; // Skip N/A categories from score
-      totalWeight += cat.weight;
-      weightedSum += cat.score * cat.weight;
-    });
-
-    var overall = Math.round(weightedSum / totalWeight);
-    var grade = overall >= 90 ? 'A' : overall >= 80 ? 'B' : overall >= 70 ? 'C' : overall >= 60 ? 'D' : 'F';
-    var gradeLabel = { A: 'Excellent', B: 'Good', C: 'Needs Improvement', D: 'Significant Issues', F: 'Major Redesign Needed' };
-
-    return {
-      overall: overall,
-      grade: grade,
-      gradeLabel: gradeLabel[grade],
-      categories: categories,
-      meta: data.meta,
-      raw: data
-    };
-  }
-
-  // Standardized scoring: errors=-10, warnings=-3, info=0 (industry standard per Cypress/axe-core)
-  function scoreFromFindings(findings, baseChecks) {
-    var errors = 0, warnings = 0;
-    findings.forEach(function(f) {
-      if (f.severity === 'error') errors++;
-      else if (f.severity === 'warning') warnings++;
-    });
-    // If module provides a checks-based score, use it; otherwise deduction-based
-    if (baseChecks !== undefined && baseChecks > 0) {
-      var passed = baseChecks - errors - warnings;
-      return Math.max(0, Math.round((Math.max(0, passed) / baseChecks) * 100));
-    }
-    return Math.max(0, 100 - (errors * 10) - (warnings * 3));
-  }
-
-  // CVD simulation matrices (Machado et al. 2009, severity 1.0)
-  var CVD_MATRICES = {
-    protanopia:   [0.567, 0.433, 0.000, 0.558, 0.442, 0.000, 0.000, 0.242, 0.758],
-    deuteranopia: [0.625, 0.375, 0.000, 0.700, 0.300, 0.000, 0.000, 0.300, 0.700],
-    tritanopia:   [0.950, 0.050, 0.000, 0.000, 0.433, 0.567, 0.000, 0.475, 0.525]
-  };
-
-  function simulateCVD(rgb, matrix) {
-    return {
-      r: Math.round(Math.min(255, Math.max(0, rgb.r * matrix[0] + rgb.g * matrix[1] + rgb.b * matrix[2]))),
-      g: Math.round(Math.min(255, Math.max(0, rgb.r * matrix[3] + rgb.g * matrix[4] + rgb.b * matrix[5]))),
-      b: Math.round(Math.min(255, Math.max(0, rgb.r * matrix[6] + rgb.g * matrix[7] + rgb.b * matrix[8])))
-    };
-  }
-
-  return {
-    register: register,
-    runScoring: runScoring,
-    getProfile: getProfile,
-    scoreFromFindings: scoreFromFindings,
-    parseColor: parseColor,
-    luminance: luminance,
-    contrastRatio: contrastRatio,
-    simulateCVD: simulateCVD,
-    CVD_MATRICES: CVD_MATRICES,
-    PROFILES: PROFILES
-  };
 })();
 </file>
 
@@ -20308,181 +20483,6 @@ window.MilgCrawl = (function() {
   }
 
   S.register("balance", scoreBalance, 3, "Visual Balance", "consistency");
-})();
-</file>
-
-<file path="docs/scoring/cognitive.js">
-// Scoring Module: Cognitive Load
-// Weight: 5%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreCognitiveLoad(data) {
-  var profile = S.getProfile(data);
-  var findings = [];
-  var checks = 0;
-  var passed = 0;
-
-  // Heading count as proxy for section complexity
-  checks++;
-  var headingCount = (data.typography.headings || []).length;
-  if (headingCount <= 15) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'info',
-      title: headingCount + ' headings on page — consider chunking content',
-      detail: 'Hick\'s Law: more choices = slower decisions',
-      fix: 'Break content into tabs, accordions, or separate pages. Keep 5–7 top-level sections.',
-      presetRef: 'Tab and accordion presets for progressive disclosure',
-      source: 'Hick\'s Law — https://lawsofux.com/hicks-law/'
-    });
-  }
-
-  // Form fields per step
-  checks++;
-  var formFields = data.accessibility.formLabels ? data.accessibility.formLabels.total : 0;
-  if (formFields <= 7 || formFields === 0) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: formFields + ' form fields visible (recommended: 5–7 per step)',
-      detail: 'Long forms have high abandonment rates',
-      fix: 'Break into multi-step form with 3–5 fields per step. Show a progress indicator.',
-      presetRef: 'Form presets demonstrate multi-step patterns',
-      source: 'Miller\'s Law / Baymard Institute — https://lawsofux.com/millers-law/'
-    });
-  }
-
-  // Navigation item count (profile-aware)
-  if (profile.maxNavItems > 0 && data.accessibility && data.accessibility.semanticElements) {
-    var navCount = data.accessibility.navItemCount || 0;
-    if (navCount > 0) {
-      checks++;
-      if (navCount <= profile.maxNavItems) {
-        passed++;
-      } else {
-        findings.push({
-          severity: 'warning',
-          title: navCount + ' top-level navigation items (recommended: ≤' + profile.maxNavItems + ' for this audience)',
-          detail: 'Working memory holds 4±1 items. More nav items increase cognitive load and decision time.',
-          fix: 'Reduce to ' + profile.maxNavItems + ' top-level items. Group less-used links under "More" or a hamburger menu.',
-          source: 'Cowan (2001) working memory — https://doi.org/10.1017/S0140525X01003922'
-        });
-      }
-    }
-  }
-
-  // Reading level (profile-aware)
-  if (profile.readingGradeLevel > 0 && data.readability && data.readability.gradeLevel > 0) {
-    checks++;
-    var grade = data.readability.gradeLevel;
-    if (grade <= profile.readingGradeLevel) {
-      passed++;
-    } else {
-      findings.push({
-        severity: grade > profile.readingGradeLevel + 3 ? 'error' : 'warning',
-        title: 'Reading level is grade ' + Math.round(grade) + ' (maximum for this audience: grade ' + profile.readingGradeLevel + ')',
-        detail: 'Content may be too complex for the target audience. Lower grade level = more accessible.',
-        fix: 'Use shorter sentences, simpler words, and active voice. Aim for grade ' + profile.readingGradeLevel + ' or lower.',
-        source: 'WCAG 2.2 §3.1.5 — https://www.w3.org/TR/WCAG22/#reading-level'
-      });
-    }
-  }
-
-  // Reduced motion requirement (profile-aware)
-  if (profile.requireReducedMotion) {
-    var anim = data.animation || {};
-    if (anim.keyframeCount > 0 || (data.interaction && data.interaction.transitions && data.interaction.transitions.length > 2)) {
-      checks++;
-      if (anim.hasReducedMotion) {
-        passed++;
-      } else {
-        findings.push({
-          severity: 'warning',
-          title: 'Animations present without prefers-reduced-motion support',
-          detail: 'This audience profile requires motion reduction options. ' + (anim.keyframeCount || 0) + ' keyframe rules found.',
-          fix: 'Add @media (prefers-reduced-motion: reduce) to disable or reduce animations.',
-          source: 'WCAG 2.2 §2.3.3 — https://www.w3.org/TR/WCAG22/#animation-from-interactions'
-        });
-      }
-    }
-  }
-
-  // Unique color count as cognitive noise indicator
-  var textColors = (data.colors && data.colors.textColors) || [];
-  var bgColors = (data.colors && data.colors.bgColors) || [];
-  if (textColors.length + bgColors.length > 0) {
-    checks++;
-    var uniqueColors = textColors.length + bgColors.length;
-    if (uniqueColors <= 30) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: uniqueColors + ' unique colors — high visual complexity',
-        detail: 'Many distinct colors increase cognitive load and make the page harder to parse.',
-        fix: 'Consolidate to a systematic palette: primary + neutral + 3 semantic colors.',
-        source: 'Material Design 3 — https://m3.material.io/styles/color/roles'
-      });
-    }
-  }
-
-  // Interactive element density
-  var touchTargets = (data.interaction && data.interaction.touchTargets) || [];
-  var totalElements = (data.structure && data.structure.totalElements) || 100;
-  if (totalElements > 30) {
-    checks++;
-    // Count all interactive elements (touch issues + those that passed)
-    var interactiveCount = touchTargets.length + Math.round(totalElements * 0.1); // rough estimate
-    var density = interactiveCount / totalElements;
-    if (density < 0.4) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: 'High interactive element density',
-        detail: 'Many clickable elements relative to content can overwhelm users.',
-        fix: 'Group related actions. Use progressive disclosure to hide secondary actions.',
-        source: 'Hick\'s Law — https://lawsofux.com/hicks-law/'
-      });
-    }
-  }
-
-  // Consistent heading hierarchy (cognitive predictability)
-  var headingHierarchy = (data.accessibility && data.accessibility.headingHierarchy) || [];
-  if (headingHierarchy.length >= 2) {
-    checks++;
-    var hierarchyBroken = false;
-    for (var hi = 1; hi < headingHierarchy.length; hi++) {
-      var prevLevel = parseInt(headingHierarchy[hi - 1].charAt(1));
-      var currLevel = parseInt(headingHierarchy[hi].charAt(1));
-      if (currLevel > prevLevel + 1) { hierarchyBroken = true; break; }
-    }
-    if (!hierarchyBroken) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'warning',
-        title: 'Heading hierarchy gaps break mental model',
-        detail: 'Skipped heading levels (e.g., h1 → h3) make it harder for users to understand content structure.',
-        fix: 'Use headings in order: h1 → h2 → h3. Don\'t skip levels.',
-        source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
-      });
-    }
-  }
-
-  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-  return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Cognitive Load', icon: 'cognitive' };
-}
-
-
-  S.register("cognitive", scoreCognitiveLoad, 5, "Cognitive Load", "cognitive");
 })();
 </file>
 
@@ -28408,13 +28408,28 @@ function scoreLayout(data) {
       });
     } else {
       console.log('[ss] Tall page — multi-section capture');
+
+      // Show overlay so users aren't confused by page scrolling during capture
+      var _overlay = document.createElement('div');
+      _overlay.setAttribute('data-milg-overlay', '1');
+      _overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.6);display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui,sans-serif;';
+      _overlay.innerHTML = '<div style="width:40px;height:40px;border:3px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:milg-spin 0.8s linear infinite"></div>' +
+        '<div id="milg-ss-status" style="color:#fff;margin-top:16px;font-size:14px;font-weight:500">Capturing screenshots...</div>' +
+        '<div style="color:rgba(255,255,255,0.6);margin-top:6px;font-size:12px">Scrolling through the page to capture each section</div>' +
+        '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style>';
+      document.body.appendChild(_overlay);
+      // Filter function to exclude overlay from screenshots
+      var _ssFilter = function(el) { return !el.getAttribute || !el.getAttribute('data-milg-overlay'); };
+
       var shots = [];
       var y = 0;
       var secH = vh;
+      var _origScrollY = window.scrollY;
       function captureNext() {
         if (y >= captureH || shots.length >= 5) {
-          // Restore scroll position
-          window.scrollTo(0, 0);
+          // Restore scroll position and remove overlay
+          window.scrollTo(0, _origScrollY);
+          if (_overlay.parentNode) _overlay.parentNode.removeChild(_overlay);
           data.screenshots = shots;
           console.log('%c✓ ' + shots.length + ' screenshot(s) captured (' + (Date.now() - _ssStart) + 'ms total)', 'color: #16a34a;');
           outputData(data);
@@ -28425,29 +28440,33 @@ function scoreLayout(data) {
         var secStart = Date.now();
         console.log('[ss] Section ' + secIdx + '/' + secTotal + ' — y=' + y);
 
-        // Step 1: Scroll to trigger lazy content (skip for first section — already there)
+        // Update overlay status
+        var statusEl = document.getElementById('milg-ss-status');
+        if (statusEl) statusEl.textContent = 'Capturing section ' + secIdx + ' of ' + secTotal + '...';
+
+        // Step 1: Scroll to trigger lazy content (IntersectionObserver, lazy images)
         window.scrollTo(0, y);
         if (y > 0) { try { window.dispatchEvent(new Event('scroll')); } catch(e) {} }
 
-        // Step 2: Wait for scroll-triggered content (shorter for first section)
+        // Step 2: Wait for scroll-triggered content to render
         var scrollDelay = y === 0 ? 50 : 300;
         setTimeout(function() {
           void document.documentElement.offsetHeight;
           console.log('[ss]   scroll settled (' + (Date.now() - secStart) + 'ms)');
 
-          // Step 3: Apply translateY offset for domToCanvas
-          var origTransform = document.documentElement.style.transform;
-          var origOverflow = document.documentElement.style.overflow;
-          document.documentElement.style.transform = 'translateY(-' + y + 'px)';
-          document.documentElement.style.overflow = 'hidden';
-          void document.documentElement.offsetHeight; // force reflow
-          console.log('[ss]   translateY(-' + y + 'px) applied, calling domToCanvas...');
-
+          // Step 3: Capture using style option (transform applied to library's internal
+          // clone, not the real DOM — no scrollbar disappearing, no visual glitches)
           var captH = Math.min(secH, captureH - y);
-          ms.domToCanvas(document.documentElement, { scale: 0.5, width: window.innerWidth, height: captH }).then(function(canvas) {
-            // Restore immediately after capture
-            document.documentElement.style.transform = origTransform || '';
-            document.documentElement.style.overflow = origOverflow || '';
+          var opts = {
+            scale: 0.5,
+            width: window.innerWidth,
+            height: captH,
+            filter: _ssFilter,
+            style: { transform: 'translateY(-' + y + 'px)', overflow: 'hidden' }
+          };
+          console.log('[ss]   calling domToCanvas with style.transform=translateY(-' + y + 'px), height=' + captH);
+
+          ms.domToCanvas(document.documentElement, opts).then(function(canvas) {
             console.log('[ss]   domToCanvas done (' + (Date.now() - secStart) + 'ms), canvas=' + canvas.width + 'x' + canvas.height);
 
             canvas.toBlob(function(blob) {
@@ -28459,9 +28478,8 @@ function scoreLayout(data) {
               reader.onloadend = function() {
                 var kb = Math.round(reader.result.length / 1024);
                 console.log('[ss]   ✓ section ' + secIdx + ' captured (' + kb + ' KB, ' + (Date.now() - secStart) + 'ms)');
-                // Check if screenshot is mostly empty (tiny file = likely blank)
-                if (kb < 2) {
-                  console.log('[ss]   ⚠ Very small (' + kb + 'KB) — likely empty/blank capture');
+                if (kb < 3) {
+                  console.log('[ss]   ⚠ Very small (' + kb + 'KB) — may be blank. Check if content is scroll-revealed.');
                 }
                 shots.push(reader.result);
                 y += secH;
@@ -28470,12 +28488,10 @@ function scoreLayout(data) {
               reader.readAsDataURL(blob);
             }, 'image/webp', 0.7);
           }).catch(function(err) {
-            document.documentElement.style.transform = origTransform || '';
-            document.documentElement.style.overflow = origOverflow || '';
             console.log('[ss]   ✗ domToCanvas failed: ' + (err && err.message || err) + ' (' + (Date.now() - secStart) + 'ms)');
             y += secH; captureNext();
           });
-        }, scrollDelay); // 50ms for first section, 300ms for scrolled sections
+        }, scrollDelay);
       }
       captureNext();
     }
@@ -33575,27 +33591,22 @@ function scoreLayout(data) {
         'var captureH=Math.min(totalH,vh*5);' + // max 5 viewports
         'var shots=[];var y=0;' +
         'function next(){' +
-          'if(y>=captureH||shots.length>=5){parent.postMessage({type:"' + msgType + '",screenshots:shots},"*");return}' +
-          // Scroll to trigger scroll listeners, IntersectionObserver, lazy loading
+          'if(y>=captureH||shots.length>=5){window.scrollTo(0,0);parent.postMessage({type:"' + msgType + '",screenshots:shots},"*");return}' +
           'window.scrollTo(0,y);' +
-          'try{window.dispatchEvent(new Event("scroll"))}catch(e){}' +
+          'if(y>0)try{window.dispatchEvent(new Event("scroll"))}catch(e){}' +
           'setTimeout(function(){' +
             'void document.documentElement.offsetHeight;' +
-            'setTimeout(function(){' +
-            'var oT=document.documentElement.style.transform;var oO=document.documentElement.style.overflow;' +
-            'document.documentElement.style.transform="translateY(-"+y+"px)";document.documentElement.style.overflow="hidden";' +
-            'void document.documentElement.offsetHeight;' +
-            'ms.domToCanvas(document.documentElement,{scale:' + ss.scale + '}).then(function(c){' +
-              'document.documentElement.style.transform=oT||"";document.documentElement.style.overflow=oO||"";' +
+            'var captH=Math.min(vh,captureH-y);' +
+            'ms.domToCanvas(document.documentElement,{scale:' + ss.scale + ',width:window.innerWidth,height:captH,' +
+              'style:{transform:"translateY(-"+y+"px)",overflow:"hidden"}}).then(function(c){' +
               'c.toBlob(function(b){' +
                 'if(!b){y+=vh;next();return}' +
                 'var r=new FileReader();' +
                 'r.onloadend=function(){shots.push(r.result);y+=vh;next()};' +
                 'r.readAsDataURL(b)' +
               '},"image/webp",' + ss.quality + ')' +
-            '}).catch(function(){document.documentElement.style.transform=oT||"";document.documentElement.style.overflow=oO||"";y+=vh;next()})' +
-            '},300)' + // inner wait: async content settle
-          '},400)' + // outer wait: scroll listeners fire
+            '}).catch(function(){y+=vh;next()})' +
+          '},y===0?50:300)' +
         '}' +
         'next()' +
       '};' +

@@ -2491,27 +2491,22 @@
         'var captureH=Math.min(totalH,vh*5);' + // max 5 viewports
         'var shots=[];var y=0;' +
         'function next(){' +
-          'if(y>=captureH||shots.length>=5){parent.postMessage({type:"' + msgType + '",screenshots:shots},"*");return}' +
-          // Scroll to trigger scroll listeners, IntersectionObserver, lazy loading
+          'if(y>=captureH||shots.length>=5){window.scrollTo(0,0);parent.postMessage({type:"' + msgType + '",screenshots:shots},"*");return}' +
           'window.scrollTo(0,y);' +
-          'try{window.dispatchEvent(new Event("scroll"))}catch(e){}' +
+          'if(y>0)try{window.dispatchEvent(new Event("scroll"))}catch(e){}' +
           'setTimeout(function(){' +
             'void document.documentElement.offsetHeight;' +
-            'setTimeout(function(){' +
-            'var oT=document.documentElement.style.transform;var oO=document.documentElement.style.overflow;' +
-            'document.documentElement.style.transform="translateY(-"+y+"px)";document.documentElement.style.overflow="hidden";' +
-            'void document.documentElement.offsetHeight;' +
-            'ms.domToCanvas(document.documentElement,{scale:' + ss.scale + '}).then(function(c){' +
-              'document.documentElement.style.transform=oT||"";document.documentElement.style.overflow=oO||"";' +
+            'var captH=Math.min(vh,captureH-y);' +
+            'ms.domToCanvas(document.documentElement,{scale:' + ss.scale + ',width:window.innerWidth,height:captH,' +
+              'style:{transform:"translateY(-"+y+"px)",overflow:"hidden"}}).then(function(c){' +
               'c.toBlob(function(b){' +
                 'if(!b){y+=vh;next();return}' +
                 'var r=new FileReader();' +
                 'r.onloadend=function(){shots.push(r.result);y+=vh;next()};' +
                 'r.readAsDataURL(b)' +
               '},"image/webp",' + ss.quality + ')' +
-            '}).catch(function(){document.documentElement.style.transform=oT||"";document.documentElement.style.overflow=oO||"";y+=vh;next()})' +
-            '},300)' + // inner wait: async content settle
-          '},400)' + // outer wait: scroll listeners fire
+            '}).catch(function(){y+=vh;next()})' +
+          '},y===0?50:300)' +
         '}' +
         'next()' +
       '};' +
