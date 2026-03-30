@@ -2072,25 +2072,20 @@
     if (!ok) return;
 
     var reportContainer = document.getElementById('reportContainer');
-    var isDark = document.body.classList.contains('dark-ui');
-    var loadBg = isDark ? '#1e293b' : '#f1f5f9';
-    var loadText = isDark ? '#94a3b8' : '#475569';
     var errBtn = 'style="margin-top:12px;padding:8px 16px;border-radius:6px;border:1px solid currentColor;background:none;color:inherit;cursor:pointer;font-size:13px"';
-    reportContainer.innerHTML = '<div style="padding:40px;text-align:center;color:' + loadText + ';background:' + loadBg + ';border-radius:var(--radius)">' +
-      '<div style="font-size:24px;margin-bottom:12px">&#9889;</div>' +
-      '<div style="font-weight:600;font-size:15px;margin-bottom:6px">Fetching page &amp; enabling JavaScript...</div>' +
-      '<div style="font-size:13px">Downloading HTML via proxy, then running JS in a sandboxed frame.</div>' +
-      '<div style="margin-top:16px;font-size:12px;opacity:0.7">This may take 10-20 seconds depending on the site\'s JS bundle size.</div>' +
-      '</div>';
+    showProgress(5, 'Fetching page via proxy...');
 
     // Fetch raw HTML via proxy (don't use fetchViaProxy which inlines CSS — let JS handle it)
     fetchWithProxy(url).then(function(html) {
       if (!html || html.length < 50) {
+        hideProgress();
         reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
           'Could not fetch the page (empty response).<br>' +
           '<button onclick="window.__milgSwitchToSnippet()" ' + errBtn + '>Use Console Snippet instead</button></div>';
         return;
       }
+
+      showProgress(20, 'Patching environment for JS execution...');
 
       // Comprehensive srcdoc environment patches:
       // Inside srcdoc iframes, many Web APIs break because the document origin is the
@@ -2144,17 +2139,31 @@
         html = urlPatch + html;
       }
 
+      showProgress(30, 'Running JavaScript & rendering page...');
+
+      // Animate progress while waiting for JS to hydrate (takes 3-12s)
+      var _jsProgressTimer = setInterval(function() {
+        var fill = document.getElementById('progressFill');
+        if (!fill) { clearInterval(_jsProgressTimer); return; }
+        var cur = parseFloat(fill.style.width) || 30;
+        if (cur < 85) showProgress(cur + 2, cur < 50 ? 'Running JavaScript & rendering page...' : cur < 70 ? 'Waiting for framework hydration...' : 'Extracting design data...');
+      }, 800);
+
       // Delegate to the standard analysis pipeline — it handles base tag injection,
       // extraction (wait for load + 1s), screenshots, unhidden panels, and timeouts
       var wantShots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
       var exclude = window.__milgCombinedExclude || (document.getElementById('excludeSelector') && document.getElementById('excludeSelector').value || '').trim() || null;
       analyzeHtmlInIframe(html, function(data) {
+        clearInterval(_jsProgressTimer);
+        showProgress(100, 'Done!');
+        setTimeout(hideProgress, 500);
         data.meta.url = url;
         data.meta._inputMethod = 'url';
         runAnalysis(data);
       }, url, exclude, wantShots);
 
     }).catch(function(e) {
+      hideProgress();
       reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
         'Failed to fetch the page: ' + (e.message || 'proxy error') + '<br>' +
         '<button onclick="window.__milgSwitchToSnippet()" ' + errBtn + '>Use Console Snippet instead</button></div>';
@@ -2446,6 +2455,8 @@
   function buildScreenshotScript(msgType) {
     // Runs inside iframe. Loads modern-screenshot, captures page as viewport-height
     // sections as WebP. Scale and quality come from UI selector.
+    // For srcdoc iframes (JS-enabled mode), images are cross-origin to the iframe's
+    // origin, so we set crossOrigin="anonymous" on all images before capture.
     var ss = getScreenshotSettings();
     return '(function(){' +
       'var s=document.createElement("script");' +
@@ -2453,14 +2464,20 @@
       's.onload=function(){' +
         'var ms=window.modernScreenshot;' +
         'if(!ms||!ms.domToCanvas){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*");return}' +
+        // Mark all images as CORS-eligible so canvas isn't tainted in srcdoc iframes
+        'document.querySelectorAll("img").forEach(function(i){if(i.src&&i.src.indexOf("data:")!==0)i.crossOrigin="anonymous"});' +
         'var totalH=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);' +
         'var vh=window.innerHeight||900;' +
         'var captureH=Math.min(totalH,vh*5);' + // max 5 viewports
         'var shots=[];var y=0;' +
         'function next(){' +
           'if(y>=captureH||shots.length>=5){parent.postMessage({type:"' + msgType + '",screenshots:shots},"*");return}' +
+          // Scroll to trigger scroll listeners, IntersectionObserver, lazy loading
           'window.scrollTo(0,y);' +
+          'try{window.dispatchEvent(new Event("scroll"))}catch(e){}' +
           'setTimeout(function(){' +
+            'void document.documentElement.offsetHeight;' +
+            'setTimeout(function(){' +
             'var oT=document.documentElement.style.transform;var oO=document.documentElement.style.overflow;' +
             'document.documentElement.style.transform="translateY(-"+y+"px)";document.documentElement.style.overflow="hidden";' +
             'void document.documentElement.offsetHeight;' +
@@ -2473,7 +2490,8 @@
                 'r.readAsDataURL(b)' +
               '},"image/webp",' + ss.quality + ')' +
             '}).catch(function(){document.documentElement.style.transform=oT||"";document.documentElement.style.overflow=oO||"";y+=vh;next()})' +
-          '},200)' +
+            '},300)' + // inner wait: async content settle
+          '},400)' + // outer wait: scroll listeners fire
         '}' +
         'next()' +
       '};' +
