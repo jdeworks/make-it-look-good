@@ -40,7 +40,6 @@
       <button class="tab-btn" data-tab="tabSnippet">Console Snippet<br><span class="tab-sub">(most accurate)</span></button>
       <button class="tab-btn" data-tab="tabHtml">Paste HTML<br><span class="tab-sub">(approximate)</span></button>
       <button class="tab-btn" data-tab="tabImport">Import<br><span class="tab-sub">(JSON file)</span></button>
-      <button class="tab-btn" data-tab="tabCrawl">Site Crawl<br><span class="tab-sub">(multi-page)</span></button>
     </div>
 
     <!-- Shared screenshot options (applies to all tabs) -->
@@ -90,6 +89,33 @@
           Deep scan (multi-viewport + dark mode)
         </label>
       </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+        <label style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="checkbox" id="crawlSiteCheck" style="width:16px;height:16px;cursor:pointer">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/><path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10A15.3 15.3 0 0112 2z"/></svg>
+          Crawl site (analyze multiple pages)
+        </label>
+      </div>
+      <div id="crawlOptions" style="display:none;margin-top:8px;padding:10px 14px;background:var(--bg-alt);border:1px solid var(--border);border-radius:var(--radius)">
+        <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:8px">
+          <div>
+            <label for="crawlMaxPages" style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:var(--text-secondary)">Max pages</label>
+            <input type="number" id="crawlMaxPages" min="1" max="10" value="5" class="btn" style="width:70px;padding:6px 8px;font-size:13px;text-align:center">
+          </div>
+          <div style="flex:1;min-width:160px">
+            <label for="crawlBlacklist" style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:var(--text-secondary)">Exclude pages</label>
+            <input type="text" id="crawlBlacklist" placeholder="/blog/*, /login" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-family:var(--mono);color:var(--text);background:var(--bg);outline:none">
+          </div>
+        </div>
+        <div id="crawlProgressArea" style="display:none;margin-top:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <span id="crawlProgressLabel" style="font-size:12px;font-weight:600;color:var(--text-secondary)">Discovering pages...</span>
+            <span id="crawlProgressCount" style="font-size:12px;color:var(--text-secondary)"></span>
+          </div>
+          <div class="progress-bar" style="margin-bottom:8px"><div class="progress-fill" id="crawlProgressFill"></div></div>
+          <div id="crawlProgressList" class="crawl-progress-list"></div>
+        </div>
+      </div>
       <details style="margin-top:12px" id="excludeDetails">
         <summary style="font-size:13px;color:var(--text-secondary);cursor:pointer;user-select:none">Skip elements from analysis (optional)</summary>
         <div style="margin-top:8px">
@@ -108,11 +134,12 @@
           <input type="text" id="excludeSelector" placeholder="e.g. .hero-image, #chat-widget" style="width:100%;padding:8px 12px;margin-top:4px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;font-family:var(--mono);color:var(--text);background:var(--bg);outline:none;min-height:44px;" />
         </div>
       </details>
-      <div class="input-actions" style="margin-top:12px">
+      <div class="input-actions" style="margin-top:12px;display:flex;gap:10px;align-items:center">
         <button class="btn btn-primary" id="analyzeUrlBtn">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           Analyze URL
         </button>
+        <button class="btn" id="cancelCrawlBtn" style="display:none;min-height:44px">Cancel</button>
       </div>
       <div id="urlStatus" style="margin-top:12px;font-size:13px;color:var(--text-secondary);display:none"></div>
       <div class="analysis-progress" id="analysisProgress" style="display:none">
@@ -222,42 +249,6 @@
         <p style="font-size:14px;font-weight:600;margin-bottom:4px">Drop a JSON file here</p>
         <p style="font-size:12px;color:var(--text-secondary)">or click to browse — loads a previously exported analysis</p>
         <input type="file" id="importDropFile" accept=".json" style="display:none">
-      </div>
-    </div>
-    <div class="tab-content" id="tabCrawl">
-      <div style="margin-bottom:16px">
-        <label for="crawlUrlInput" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;color:var(--text-secondary)">Starting URL</label>
-        <input type="url" id="crawlUrlInput" class="url-input" placeholder="https://example.com" autocomplete="url" spellcheck="false">
-      </div>
-      <div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:16px">
-        <div>
-          <label for="crawlMaxPages" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;color:var(--text-secondary)">Max pages</label>
-          <input type="number" id="crawlMaxPages" min="1" max="10" value="5" class="btn" style="width:80px;padding:8px 10px;font-size:14px;text-align:center">
-        </div>
-        <div style="flex:1;min-width:200px">
-          <label for="crawlBlacklist" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;color:var(--text-secondary)">Exclude pages <span style="font-weight:400">(comma-separated)</span></label>
-          <input type="text" id="crawlBlacklist" class="url-input" placeholder="/blog/*, /login, /admin" style="font-size:13px">
-        </div>
-      </div>
-      <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:16px">
-        <label class="checkbox-label" style="font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px">
-          <input type="checkbox" id="crawlDeepScan"> Deep scan <span style="color:var(--text-secondary)">(test 3 viewports + dark mode per page)</span>
-        </label>
-      </div>
-      <div style="display:flex;gap:10px;align-items:center">
-        <button class="btn btn-primary" id="startCrawlBtn" style="min-height:44px;padding:10px 24px;font-weight:600">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          Start Crawl
-        </button>
-        <button class="btn" id="cancelCrawlBtn" style="display:none;min-height:44px">Cancel</button>
-      </div>
-      <div id="crawlProgressArea" style="display:none;margin-top:20px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <span id="crawlProgressLabel" style="font-size:13px;font-weight:600;color:var(--text-secondary)">Discovering pages...</span>
-          <span id="crawlProgressCount" style="font-size:13px;color:var(--text-secondary)"></span>
-        </div>
-        <div class="progress-bar" style="margin-bottom:12px"><div class="progress-fill" id="crawlProgressFill"></div></div>
-        <div id="crawlProgressList" class="crawl-progress-list"></div>
       </div>
     </div>
   </div>

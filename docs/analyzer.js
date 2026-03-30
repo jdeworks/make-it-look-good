@@ -849,8 +849,9 @@
       });
     });
 
-    // Load snippet for display
-    loadSnippet(snippetCode);
+    // Load snippet for display (respect screenshot checkbox initial state)
+    var _initScreenshots = document.getElementById('screenshotCheck');
+    loadSnippet(snippetCode, _initScreenshots && _initScreenshots.checked);
 
     // Toggle snippet variant based on shared screenshot checkbox
     var sharedScreenshotCheck = document.getElementById('screenshotCheck');
@@ -914,6 +915,9 @@
         }
       } catch(e) {}
       urlInput.value = url; // Show normalized URL to user
+
+      // Crawl mode intercept
+      if (isCrawlMode()) { startCrawl(url); return; }
 
       analyzeUrlBtn.disabled = true;
       analyzeUrlBtn.textContent = 'Fetching...';
@@ -1291,12 +1295,11 @@
     var _crawlActivePageTab = 'summary';
     var CRAWL_HARD_MAX = 25;
 
-    var startCrawlBtn = document.getElementById('startCrawlBtn');
+    var crawlSiteCheck = document.getElementById('crawlSiteCheck');
+    var crawlOptions = document.getElementById('crawlOptions');
     var cancelCrawlBtn = document.getElementById('cancelCrawlBtn');
-    var crawlUrlInput = document.getElementById('crawlUrlInput');
     var crawlMaxPages = document.getElementById('crawlMaxPages');
     var crawlBlacklist = document.getElementById('crawlBlacklist');
-    var crawlDeepScan = document.getElementById('crawlDeepScan');
     var crawlProgressArea = document.getElementById('crawlProgressArea');
     var crawlProgressLabel = document.getElementById('crawlProgressLabel');
     var crawlProgressCount = document.getElementById('crawlProgressCount');
@@ -1305,6 +1308,13 @@
     var crawlResults = document.getElementById('crawlResults');
     var crawlPageTabs = document.getElementById('crawlPageTabs');
     var crawlPageContent = document.getElementById('crawlPageContent');
+
+    // Crawl site toggle — show/hide crawl options
+    if (crawlSiteCheck && crawlOptions) {
+      crawlSiteCheck.addEventListener('change', function() {
+        crawlOptions.style.display = crawlSiteCheck.checked ? '' : 'none';
+      });
+    }
 
     // Page limit easter egg — MutationObserver
     if (crawlMaxPages) {
@@ -1322,12 +1332,8 @@
       _crawlMaxObserver.observe(crawlMaxPages, { attributes: true, attributeFilter: ['max'] });
     }
 
-    // Enter key in crawl URL input
-    if (crawlUrlInput) {
-      crawlUrlInput.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') { e.preventDefault(); startCrawlBtn.click(); }
-      });
-    }
+    // isCrawlMode helper
+    function isCrawlMode() { return crawlSiteCheck && crawlSiteCheck.checked; }
 
     function crawlStatusIcon(status) {
       if (status === 'done') return '<span class="status-icon done"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></span>';
@@ -1400,118 +1406,104 @@
       });
     }
 
-    if (startCrawlBtn) {
-      startCrawlBtn.addEventListener('click', function() {
-        var url = (crawlUrlInput.value || '').trim();
-        if (!url) { showToast('Enter a starting URL'); return; }
-        if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+    // Crawl intercept — when crawl mode is on, analyzeUrlBtn triggers a crawl instead
+    function startCrawl(url) {
+      var maxPages = parseInt(crawlMaxPages.value) || 5;
+      maxPages = Math.min(Math.max(maxPages, 1), CRAWL_HARD_MAX);
 
-        var maxPages = parseInt(crawlMaxPages.value) || 5;
-        maxPages = Math.min(Math.max(maxPages, 1), CRAWL_HARD_MAX);
+      var blacklist = (crawlBlacklist.value || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+      var deepScan = document.getElementById('deepScanCheck') && document.getElementById('deepScanCheck').checked;
+      var profile = document.getElementById('profileSelect');
 
-        var blacklist = (crawlBlacklist.value || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
-        var deepScan = crawlDeepScan && crawlDeepScan.checked;
-        var profile = document.getElementById('profileSelect');
+      _crawlSession = MilgCrawl.createSession(url, {
+        maxPages: maxPages,
+        blacklist: blacklist,
+        deepScan: deepScan,
+        profile: profile ? profile.value : 'general'
+      });
+      _crawlPageReports = {};
+      _crawlActivePageTab = 'summary';
 
-        _crawlSession = MilgCrawl.createSession(url, {
-          maxPages: maxPages,
-          blacklist: blacklist,
-          deepScan: deepScan,
-          profile: profile ? profile.value : 'general'
-        });
-        _crawlPageReports = {};
-        _crawlActivePageTab = 'summary';
+      // Show progress
+      analyzeUrlBtn.disabled = true;
+      analyzeUrlBtn.textContent = 'Crawling\u2026';
+      cancelCrawlBtn.style.display = '';
+      crawlProgressArea.style.display = '';
+      crawlProgressList.innerHTML = '';
+      crawlProgressFill.style.width = '0%';
+      crawlProgressLabel.textContent = 'Fetching starting page\u2026';
+      crawlProgressCount.textContent = '0 / ' + maxPages;
 
-        // Show progress, hide input controls
-        startCrawlBtn.disabled = true;
-        startCrawlBtn.textContent = 'Crawling\u2026';
-        cancelCrawlBtn.style.display = '';
-        crawlProgressArea.style.display = '';
-        crawlProgressList.innerHTML = '';
-        crawlProgressFill.style.width = '0%';
-        crawlProgressLabel.textContent = 'Fetching starting page\u2026';
-        crawlProgressCount.textContent = '0 / ' + maxPages;
+      // Show crawl results area
+      var reportActions = document.getElementById('reportActions');
+      var reportContainer = document.getElementById('reportContainer');
+      crawlResults.style.display = '';
+      if (reportContainer) reportContainer.className = 'report-container';
+      if (reportActions) reportActions.style.display = '';
 
-        // Show crawl results area
-        var inputSection = document.getElementById('inputSection');
-        var reportActions = document.getElementById('reportActions');
-        var reportContainer = document.getElementById('reportContainer');
-        crawlResults.style.display = '';
-        if (reportContainer) reportContainer.className = 'report-container';
-        if (reportActions) reportActions.style.display = '';
+      renderCrawlTabs();
+      showCrawlPageContent('summary');
 
-        // Initial summary tab
-        renderCrawlTabs();
-        showCrawlPageContent('summary');
+      var doneCount = 0;
+      var totalPages = 1;
 
-        var doneCount = 0;
-        var totalPages = 1; // updated after discovery
-
-        MilgCrawl.startCrawl(_crawlSession, {
-          fetchPage: function(pageUrl, cb) {
-            fetchViaProxy(pageUrl, function(html, err) {
-              cb(html, err);
-            });
-          },
-          analyzePage: function(html, pageUrl, opts, cb) {
-            analyzeHtmlInIframe(html, function(data) {
-              if (data) {
-                data.meta.url = pageUrl;
-                data.meta._inputMethod = 'crawl';
-                if (opts.profile) data.profile = opts.profile;
-              }
-              cb(data);
-            }, pageUrl, opts.excludeSelector || null, false);
-          },
-          scorePage: function(data) {
-            return MilgScoring.runScoring(data);
-          },
-          onDiscovery: function(urls) {
-            totalPages = 1 + urls.length;
-            crawlProgressCount.textContent = '0 / ' + totalPages;
-            crawlProgressLabel.textContent = 'Found ' + urls.length + ' page' + (urls.length !== 1 ? 's' : '') + ' to crawl';
-          },
-          onPageStart: function(page) {
-            updateCrawlProgressItem(page);
-            crawlProgressLabel.textContent = 'Analyzing ' + page.url.replace(/^https?:\/\/[^/]+/, '') + '\u2026';
-            renderCrawlTabs();
-          },
-          onPageComplete: function(page) {
-            doneCount++;
-            updateCrawlProgressItem(page);
-            crawlProgressCount.textContent = doneCount + ' / ' + totalPages;
-            crawlProgressFill.style.width = Math.round(doneCount / totalPages * 100) + '%';
-            renderCrawlTabs();
-            // Update summary live
-            if (_crawlActivePageTab === 'summary') {
-              showCrawlPageContent('summary');
+      MilgCrawl.startCrawl(_crawlSession, {
+        fetchPage: function(pageUrl, cb) {
+          fetchViaProxy(pageUrl, function(html, err) { cb(html, err); });
+        },
+        analyzePage: function(html, pageUrl, opts, cb) {
+          analyzeHtmlInIframe(html, function(data) {
+            if (data) {
+              data.meta.url = pageUrl;
+              data.meta._inputMethod = 'crawl';
+              if (opts.profile) data.profile = opts.profile;
             }
-          },
-          onPageError: function(page) {
-            doneCount++;
-            updateCrawlProgressItem(page);
-            crawlProgressCount.textContent = doneCount + ' / ' + totalPages;
-            crawlProgressFill.style.width = Math.round(doneCount / totalPages * 100) + '%';
-            renderCrawlTabs();
-          },
-          onComplete: function(session) {
-            startCrawlBtn.disabled = false;
-            startCrawlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Start Crawl';
-            cancelCrawlBtn.style.display = 'none';
-            crawlProgressLabel.textContent = 'Crawl complete!';
-            crawlProgressFill.style.width = '100%';
-            renderCrawlTabs();
-            showCrawlPageContent('summary');
-          }
-        });
+            cb(data);
+          }, pageUrl, opts.excludeSelector || null, false);
+        },
+        scorePage: function(data) { return MilgScoring.runScoring(data); },
+        onDiscovery: function(urls) {
+          totalPages = 1 + urls.length;
+          crawlProgressCount.textContent = '0 / ' + totalPages;
+          crawlProgressLabel.textContent = 'Found ' + urls.length + ' page' + (urls.length !== 1 ? 's' : '') + ' to crawl';
+        },
+        onPageStart: function(page) {
+          updateCrawlProgressItem(page);
+          crawlProgressLabel.textContent = 'Analyzing ' + page.url.replace(/^https?:\/\/[^/]+/, '') + '\u2026';
+          renderCrawlTabs();
+        },
+        onPageComplete: function(page) {
+          doneCount++;
+          updateCrawlProgressItem(page);
+          crawlProgressCount.textContent = doneCount + ' / ' + totalPages;
+          crawlProgressFill.style.width = Math.round(doneCount / totalPages * 100) + '%';
+          renderCrawlTabs();
+          if (_crawlActivePageTab === 'summary') showCrawlPageContent('summary');
+        },
+        onPageError: function(page) {
+          doneCount++;
+          updateCrawlProgressItem(page);
+          crawlProgressCount.textContent = doneCount + ' / ' + totalPages;
+          crawlProgressFill.style.width = Math.round(doneCount / totalPages * 100) + '%';
+          renderCrawlTabs();
+        },
+        onComplete: function(session) {
+          analyzeUrlBtn.disabled = false;
+          analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
+          cancelCrawlBtn.style.display = 'none';
+          crawlProgressLabel.textContent = 'Crawl complete!';
+          crawlProgressFill.style.width = '100%';
+          renderCrawlTabs();
+          showCrawlPageContent('summary');
+        }
       });
     }
 
     if (cancelCrawlBtn) {
       cancelCrawlBtn.addEventListener('click', function() {
         if (_crawlSession) MilgCrawl.abortCrawl(_crawlSession);
-        startCrawlBtn.disabled = false;
-        startCrawlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Start Crawl';
+        analyzeUrlBtn.disabled = false;
+        analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
         cancelCrawlBtn.style.display = 'none';
         crawlProgressLabel.textContent = 'Crawl cancelled';
       });
@@ -1546,13 +1538,15 @@
           if (reportActions) reportActions.style.display = '';
           renderCrawlTabs();
           showCrawlPageContent('summary');
-          // Switch to crawl tab
+          // Switch to URL tab and enable crawl mode
           document.querySelectorAll('.tab-btn').forEach(function(t) { t.classList.remove('active'); });
           document.querySelectorAll('.tab-content').forEach(function(t) { t.classList.remove('active'); });
-          var crawlTab = document.querySelector('[data-tab="tabCrawl"]');
-          if (crawlTab) crawlTab.classList.add('active');
-          var tabCrawl = document.getElementById('tabCrawl');
-          if (tabCrawl) tabCrawl.classList.add('active');
+          var urlTab = document.querySelector('[data-tab="tabUrl"]');
+          if (urlTab) urlTab.classList.add('active');
+          var tabUrl = document.getElementById('tabUrl');
+          if (tabUrl) tabUrl.classList.add('active');
+          if (crawlSiteCheck) crawlSiteCheck.checked = true;
+          if (crawlOptions) crawlOptions.style.display = '';
         }
       }
     } catch(e) { console.error('Failed to load snippet crawl data:', e); }

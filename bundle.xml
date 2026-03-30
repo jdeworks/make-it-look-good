@@ -20885,6 +20885,181 @@ main().catch(err => { console.error('Fatal:', err); process.exit(1); });
 })();
 </file>
 
+<file path="docs/scoring/cognitive.js">
+// Scoring Module: Cognitive Load
+// Weight: 5%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreCognitiveLoad(data) {
+  var profile = S.getProfile(data);
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+
+  // Heading count as proxy for section complexity
+  checks++;
+  var headingCount = (data.typography.headings || []).length;
+  if (headingCount <= 15) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'info',
+      title: headingCount + ' headings on page — consider chunking content',
+      detail: 'Hick\'s Law: more choices = slower decisions',
+      fix: 'Break content into tabs, accordions, or separate pages. Keep 5–7 top-level sections.',
+      presetRef: 'Tab and accordion presets for progressive disclosure',
+      source: 'Hick\'s Law — https://lawsofux.com/hicks-law/'
+    });
+  }
+
+  // Form fields per step
+  checks++;
+  var formFields = data.accessibility.formLabels ? data.accessibility.formLabels.total : 0;
+  if (formFields <= 7 || formFields === 0) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: formFields + ' form fields visible (recommended: 5–7 per step)',
+      detail: 'Long forms have high abandonment rates',
+      fix: 'Break into multi-step form with 3–5 fields per step. Show a progress indicator.',
+      presetRef: 'Form presets demonstrate multi-step patterns',
+      source: 'Miller\'s Law / Baymard Institute — https://lawsofux.com/millers-law/'
+    });
+  }
+
+  // Navigation item count (profile-aware)
+  if (profile.maxNavItems > 0 && data.accessibility && data.accessibility.semanticElements) {
+    var navCount = data.accessibility.navItemCount || 0;
+    if (navCount > 0) {
+      checks++;
+      if (navCount <= profile.maxNavItems) {
+        passed++;
+      } else {
+        findings.push({
+          severity: 'warning',
+          title: navCount + ' top-level navigation items (recommended: ≤' + profile.maxNavItems + ' for this audience)',
+          detail: 'Working memory holds 4±1 items. More nav items increase cognitive load and decision time.',
+          fix: 'Reduce to ' + profile.maxNavItems + ' top-level items. Group less-used links under "More" or a hamburger menu.',
+          source: 'Cowan (2001) working memory — https://doi.org/10.1017/S0140525X01003922'
+        });
+      }
+    }
+  }
+
+  // Reading level (profile-aware)
+  if (profile.readingGradeLevel > 0 && data.readability && data.readability.gradeLevel > 0) {
+    checks++;
+    var grade = data.readability.gradeLevel;
+    if (grade <= profile.readingGradeLevel) {
+      passed++;
+    } else {
+      findings.push({
+        severity: grade > profile.readingGradeLevel + 3 ? 'error' : 'warning',
+        title: 'Reading level is grade ' + Math.round(grade) + ' (maximum for this audience: grade ' + profile.readingGradeLevel + ')',
+        detail: 'Content may be too complex for the target audience. Lower grade level = more accessible.',
+        fix: 'Use shorter sentences, simpler words, and active voice. Aim for grade ' + profile.readingGradeLevel + ' or lower.',
+        source: 'WCAG 2.2 §3.1.5 — https://www.w3.org/TR/WCAG22/#reading-level'
+      });
+    }
+  }
+
+  // Reduced motion requirement (profile-aware)
+  if (profile.requireReducedMotion) {
+    var anim = data.animation || {};
+    if (anim.keyframeCount > 0 || (data.interaction && data.interaction.transitions && data.interaction.transitions.length > 2)) {
+      checks++;
+      if (anim.hasReducedMotion) {
+        passed++;
+      } else {
+        findings.push({
+          severity: 'warning',
+          title: 'Animations present without prefers-reduced-motion support',
+          detail: 'This audience profile requires motion reduction options. ' + (anim.keyframeCount || 0) + ' keyframe rules found.',
+          fix: 'Add @media (prefers-reduced-motion: reduce) to disable or reduce animations.',
+          source: 'WCAG 2.2 §2.3.3 — https://www.w3.org/TR/WCAG22/#animation-from-interactions'
+        });
+      }
+    }
+  }
+
+  // Unique color count as cognitive noise indicator
+  var textColors = (data.colors && data.colors.textColors) || [];
+  var bgColors = (data.colors && data.colors.bgColors) || [];
+  if (textColors.length + bgColors.length > 0) {
+    checks++;
+    var uniqueColors = textColors.length + bgColors.length;
+    if (uniqueColors <= 30) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: uniqueColors + ' unique colors — high visual complexity',
+        detail: 'Many distinct colors increase cognitive load and make the page harder to parse.',
+        fix: 'Consolidate to a systematic palette: primary + neutral + 3 semantic colors.',
+        source: 'Material Design 3 — https://m3.material.io/styles/color/roles'
+      });
+    }
+  }
+
+  // Interactive element density
+  var touchTargets = (data.interaction && data.interaction.touchTargets) || [];
+  var totalElements = (data.structure && data.structure.totalElements) || 100;
+  if (totalElements > 30) {
+    checks++;
+    // Count all interactive elements (touch issues + those that passed)
+    var interactiveCount = touchTargets.length + Math.round(totalElements * 0.1); // rough estimate
+    var density = interactiveCount / totalElements;
+    if (density < 0.4) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: 'High interactive element density',
+        detail: 'Many clickable elements relative to content can overwhelm users.',
+        fix: 'Group related actions. Use progressive disclosure to hide secondary actions.',
+        source: 'Hick\'s Law — https://lawsofux.com/hicks-law/'
+      });
+    }
+  }
+
+  // Consistent heading hierarchy (cognitive predictability)
+  var headingHierarchy = (data.accessibility && data.accessibility.headingHierarchy) || [];
+  if (headingHierarchy.length >= 2) {
+    checks++;
+    var hierarchyBroken = false;
+    for (var hi = 1; hi < headingHierarchy.length; hi++) {
+      var prevLevel = parseInt(headingHierarchy[hi - 1].charAt(1));
+      var currLevel = parseInt(headingHierarchy[hi].charAt(1));
+      if (currLevel > prevLevel + 1) { hierarchyBroken = true; break; }
+    }
+    if (!hierarchyBroken) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'warning',
+        title: 'Heading hierarchy gaps break mental model',
+        detail: 'Skipped heading levels (e.g., h1 → h3) make it harder for users to understand content structure.',
+        fix: 'Use headings in order: h1 → h2 → h3. Don\'t skip levels.',
+        source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
+      });
+    }
+  }
+
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+  return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Cognitive Load', icon: 'cognitive' };
+}
+
+
+  S.register("cognitive", scoreCognitiveLoad, 5, "Cognitive Load", "cognitive");
+})();
+</file>
+
 <file path="docs/scoring/readability.js">
 // Scoring Module: Readability & Scanability
 // Weight: 5%
@@ -21047,6 +21222,148 @@ main().catch(err => { console.error('Fatal:', err); process.exit(1); });
   }
 
   S.register("readability", scoreReadability, 5, "Readability", "readability");
+})();
+</file>
+
+<file path="docs/scoring/responsive.js">
+// Scoring Module: Responsive Design
+// Weight: 10%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreResponsive(data) {
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+  var struct = data.structure;
+
+  // Responsive classes
+  checks++;
+  if (struct.responsiveClasses) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'No responsive breakpoint classes detected',
+      detail: struct.cssFramework === 'tailwind' ? 'No sm:/md:/lg: prefixes found' : 'No responsive utilities detected',
+      fix: 'Add responsive variants. In Tailwind: sm:flex, md:grid-cols-2, lg:px-8',
+      presetRef: 'All presets include mobile-first responsive design',
+      source: 'NNGroup mobile — https://www.nngroup.com/articles/responsive-web-design-definition/'
+    });
+  }
+
+  // Dark mode
+  checks++;
+  if (struct.darkModeClasses) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'info',
+      title: 'No dark mode support detected',
+      detail: 'dark: class variants not found',
+      fix: 'Add dark mode variants. In Tailwind: dark:bg-slate-900 dark:text-slate-100',
+      presetRef: 'All presets include dark: variants',
+      source: 'Apple HIG — https://developer.apple.com/design/human-interface-guidelines/dark-mode'
+    });
+  }
+
+  // Viewport width check — if analyzed on desktop, check if content is flexible
+  checks++;
+  var vw = data.meta.viewportWidth;
+  var maxContent = parseFloat(data.spacing.maxContentWidth);
+  if (maxContent > 0 && (maxContent <= vw * 0.95 || struct.responsiveClasses)) {
+    passed++;
+  } else if (!struct.responsiveClasses && maxContent > vw * 0.95) {
+    findings.push({
+      severity: 'warning',
+      title: 'Content fills entire viewport width without constraints',
+      detail: 'Content may not reflow well on smaller screens',
+      fix: 'Use responsive containers and flexible layouts',
+      presetRef: null
+    });
+  } else {
+    passed++; // Can't determine, give benefit of doubt
+  }
+
+  // Viewport meta audit
+  if (data.structure && data.structure.viewportMeta !== undefined) {
+    checks++;
+    var vpContent = data.structure.viewportMeta;
+    if (!vpContent) {
+      findings.push({
+        severity: 'error',
+        title: 'Missing viewport meta tag',
+        detail: 'Without a viewport meta tag, mobile browsers render at desktop width',
+        fix: 'Add <meta name="viewport" content="width=device-width, initial-scale=1.0"> to <head>.',
+        presetRef: null,
+        source: 'MDN — https://developer.mozilla.org/en-US/docs/Web/HTML/Viewport_meta_tag'
+      });
+    } else if (data.structure.blocksZoom) {
+      findings.push({
+        severity: 'error',
+        title: 'Viewport blocks user zoom (user-scalable=no)',
+        detail: 'Preventing zoom is an accessibility barrier for low-vision users',
+        fix: 'Remove user-scalable=no from the viewport meta tag.',
+        presetRef: null,
+        source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text'
+      });
+    } else {
+      passed++;
+    }
+  }
+
+  // Horizontal overflow
+  if (data.structure && data.structure.hasHorizontalOverflow) {
+    checks++;
+    findings.push({
+      severity: 'warning',
+      title: 'Page has horizontal overflow (horizontal scrollbar)',
+      detail: 'Content extends beyond viewport width — common responsive design failure',
+      fix: 'Find elements with fixed widths wider than the viewport. Add overflow-x: hidden to body or fix the overflowing element.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
+    });
+  } else if (data.structure && data.structure.hasHorizontalOverflow === false) {
+    checks++;
+    passed++;
+  }
+
+  // Fixed-width elements
+  var fixedW = (data.structure && data.structure.fixedWidthElements) || 0;
+  if (fixedW > 0) {
+    findings.push({
+      severity: fixedW > 3 ? 'warning' : 'info',
+      title: fixedW + ' element(s) with fixed pixel widths > 300px',
+      detail: 'Fixed-width elements may overflow on smaller screens',
+      fix: 'Use max-width instead of width, or percentage/viewport units. In Tailwind: max-w-full or w-full.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
+    });
+  }
+
+  // Text truncation
+  var truncated = (data.structure && data.structure.truncatedElements) || 0;
+  if (truncated > 3) {
+    findings.push({
+      severity: 'info',
+      title: truncated + ' element(s) with truncated text (ellipsis)',
+      detail: 'Content is being cut off — may hide important information on smaller screens',
+      fix: 'Consider allowing text to wrap, expanding the container, or using a tooltip to show full content.',
+      presetRef: null,
+      source: 'NNGroup — https://www.nngroup.com/articles/truncation-and-progressive-disclosure/'
+    });
+  }
+
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+  return { score: score, findings: findings, checks: checks, passed: passed, weight: 10, label: 'Responsive Design', icon: 'responsive' };
+}
+
+
+  S.register("responsive", scoreResponsive, 10, "Responsive Design", "responsive");
 })();
 </file>
 
@@ -21351,181 +21668,6 @@ async function main() {
 main().catch(err => { console.error('Fatal:', err); process.exit(1); });
 </file>
 
-<file path="docs/scoring/cognitive.js">
-// Scoring Module: Cognitive Load
-// Weight: 5%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreCognitiveLoad(data) {
-  var profile = S.getProfile(data);
-  var findings = [];
-  var checks = 0;
-  var passed = 0;
-
-  // Heading count as proxy for section complexity
-  checks++;
-  var headingCount = (data.typography.headings || []).length;
-  if (headingCount <= 15) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'info',
-      title: headingCount + ' headings on page — consider chunking content',
-      detail: 'Hick\'s Law: more choices = slower decisions',
-      fix: 'Break content into tabs, accordions, or separate pages. Keep 5–7 top-level sections.',
-      presetRef: 'Tab and accordion presets for progressive disclosure',
-      source: 'Hick\'s Law — https://lawsofux.com/hicks-law/'
-    });
-  }
-
-  // Form fields per step
-  checks++;
-  var formFields = data.accessibility.formLabels ? data.accessibility.formLabels.total : 0;
-  if (formFields <= 7 || formFields === 0) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: formFields + ' form fields visible (recommended: 5–7 per step)',
-      detail: 'Long forms have high abandonment rates',
-      fix: 'Break into multi-step form with 3–5 fields per step. Show a progress indicator.',
-      presetRef: 'Form presets demonstrate multi-step patterns',
-      source: 'Miller\'s Law / Baymard Institute — https://lawsofux.com/millers-law/'
-    });
-  }
-
-  // Navigation item count (profile-aware)
-  if (profile.maxNavItems > 0 && data.accessibility && data.accessibility.semanticElements) {
-    var navCount = data.accessibility.navItemCount || 0;
-    if (navCount > 0) {
-      checks++;
-      if (navCount <= profile.maxNavItems) {
-        passed++;
-      } else {
-        findings.push({
-          severity: 'warning',
-          title: navCount + ' top-level navigation items (recommended: ≤' + profile.maxNavItems + ' for this audience)',
-          detail: 'Working memory holds 4±1 items. More nav items increase cognitive load and decision time.',
-          fix: 'Reduce to ' + profile.maxNavItems + ' top-level items. Group less-used links under "More" or a hamburger menu.',
-          source: 'Cowan (2001) working memory — https://doi.org/10.1017/S0140525X01003922'
-        });
-      }
-    }
-  }
-
-  // Reading level (profile-aware)
-  if (profile.readingGradeLevel > 0 && data.readability && data.readability.gradeLevel > 0) {
-    checks++;
-    var grade = data.readability.gradeLevel;
-    if (grade <= profile.readingGradeLevel) {
-      passed++;
-    } else {
-      findings.push({
-        severity: grade > profile.readingGradeLevel + 3 ? 'error' : 'warning',
-        title: 'Reading level is grade ' + Math.round(grade) + ' (maximum for this audience: grade ' + profile.readingGradeLevel + ')',
-        detail: 'Content may be too complex for the target audience. Lower grade level = more accessible.',
-        fix: 'Use shorter sentences, simpler words, and active voice. Aim for grade ' + profile.readingGradeLevel + ' or lower.',
-        source: 'WCAG 2.2 §3.1.5 — https://www.w3.org/TR/WCAG22/#reading-level'
-      });
-    }
-  }
-
-  // Reduced motion requirement (profile-aware)
-  if (profile.requireReducedMotion) {
-    var anim = data.animation || {};
-    if (anim.keyframeCount > 0 || (data.interaction && data.interaction.transitions && data.interaction.transitions.length > 2)) {
-      checks++;
-      if (anim.hasReducedMotion) {
-        passed++;
-      } else {
-        findings.push({
-          severity: 'warning',
-          title: 'Animations present without prefers-reduced-motion support',
-          detail: 'This audience profile requires motion reduction options. ' + (anim.keyframeCount || 0) + ' keyframe rules found.',
-          fix: 'Add @media (prefers-reduced-motion: reduce) to disable or reduce animations.',
-          source: 'WCAG 2.2 §2.3.3 — https://www.w3.org/TR/WCAG22/#animation-from-interactions'
-        });
-      }
-    }
-  }
-
-  // Unique color count as cognitive noise indicator
-  var textColors = (data.colors && data.colors.textColors) || [];
-  var bgColors = (data.colors && data.colors.bgColors) || [];
-  if (textColors.length + bgColors.length > 0) {
-    checks++;
-    var uniqueColors = textColors.length + bgColors.length;
-    if (uniqueColors <= 30) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: uniqueColors + ' unique colors — high visual complexity',
-        detail: 'Many distinct colors increase cognitive load and make the page harder to parse.',
-        fix: 'Consolidate to a systematic palette: primary + neutral + 3 semantic colors.',
-        source: 'Material Design 3 — https://m3.material.io/styles/color/roles'
-      });
-    }
-  }
-
-  // Interactive element density
-  var touchTargets = (data.interaction && data.interaction.touchTargets) || [];
-  var totalElements = (data.structure && data.structure.totalElements) || 100;
-  if (totalElements > 30) {
-    checks++;
-    // Count all interactive elements (touch issues + those that passed)
-    var interactiveCount = touchTargets.length + Math.round(totalElements * 0.1); // rough estimate
-    var density = interactiveCount / totalElements;
-    if (density < 0.4) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: 'High interactive element density',
-        detail: 'Many clickable elements relative to content can overwhelm users.',
-        fix: 'Group related actions. Use progressive disclosure to hide secondary actions.',
-        source: 'Hick\'s Law — https://lawsofux.com/hicks-law/'
-      });
-    }
-  }
-
-  // Consistent heading hierarchy (cognitive predictability)
-  var headingHierarchy = (data.accessibility && data.accessibility.headingHierarchy) || [];
-  if (headingHierarchy.length >= 2) {
-    checks++;
-    var hierarchyBroken = false;
-    for (var hi = 1; hi < headingHierarchy.length; hi++) {
-      var prevLevel = parseInt(headingHierarchy[hi - 1].charAt(1));
-      var currLevel = parseInt(headingHierarchy[hi].charAt(1));
-      if (currLevel > prevLevel + 1) { hierarchyBroken = true; break; }
-    }
-    if (!hierarchyBroken) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'warning',
-        title: 'Heading hierarchy gaps break mental model',
-        detail: 'Skipped heading levels (e.g., h1 → h3) make it harder for users to understand content structure.',
-        fix: 'Use headings in order: h1 → h2 → h3. Don\'t skip levels.',
-        source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
-      });
-    }
-  }
-
-  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-  return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Cognitive Load', icon: 'cognitive' };
-}
-
-
-  S.register("cognitive", scoreCognitiveLoad, 5, "Cognitive Load", "cognitive");
-})();
-</file>
-
 <file path="docs/scoring/filters.js">
 // Scoring Module: Motion, Animation & Filters
 // Weight: 3%
@@ -21638,148 +21780,6 @@ function scoreCognitiveLoad(data) {
   }
 
   S.register("filters", scoreFilters, 3, "Motion & Animation", "cognitive");
-})();
-</file>
-
-<file path="docs/scoring/responsive.js">
-// Scoring Module: Responsive Design
-// Weight: 10%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreResponsive(data) {
-  var findings = [];
-  var checks = 0;
-  var passed = 0;
-  var struct = data.structure;
-
-  // Responsive classes
-  checks++;
-  if (struct.responsiveClasses) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: 'No responsive breakpoint classes detected',
-      detail: struct.cssFramework === 'tailwind' ? 'No sm:/md:/lg: prefixes found' : 'No responsive utilities detected',
-      fix: 'Add responsive variants. In Tailwind: sm:flex, md:grid-cols-2, lg:px-8',
-      presetRef: 'All presets include mobile-first responsive design',
-      source: 'NNGroup mobile — https://www.nngroup.com/articles/responsive-web-design-definition/'
-    });
-  }
-
-  // Dark mode
-  checks++;
-  if (struct.darkModeClasses) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'info',
-      title: 'No dark mode support detected',
-      detail: 'dark: class variants not found',
-      fix: 'Add dark mode variants. In Tailwind: dark:bg-slate-900 dark:text-slate-100',
-      presetRef: 'All presets include dark: variants',
-      source: 'Apple HIG — https://developer.apple.com/design/human-interface-guidelines/dark-mode'
-    });
-  }
-
-  // Viewport width check — if analyzed on desktop, check if content is flexible
-  checks++;
-  var vw = data.meta.viewportWidth;
-  var maxContent = parseFloat(data.spacing.maxContentWidth);
-  if (maxContent > 0 && (maxContent <= vw * 0.95 || struct.responsiveClasses)) {
-    passed++;
-  } else if (!struct.responsiveClasses && maxContent > vw * 0.95) {
-    findings.push({
-      severity: 'warning',
-      title: 'Content fills entire viewport width without constraints',
-      detail: 'Content may not reflow well on smaller screens',
-      fix: 'Use responsive containers and flexible layouts',
-      presetRef: null
-    });
-  } else {
-    passed++; // Can't determine, give benefit of doubt
-  }
-
-  // Viewport meta audit
-  if (data.structure && data.structure.viewportMeta !== undefined) {
-    checks++;
-    var vpContent = data.structure.viewportMeta;
-    if (!vpContent) {
-      findings.push({
-        severity: 'error',
-        title: 'Missing viewport meta tag',
-        detail: 'Without a viewport meta tag, mobile browsers render at desktop width',
-        fix: 'Add <meta name="viewport" content="width=device-width, initial-scale=1.0"> to <head>.',
-        presetRef: null,
-        source: 'MDN — https://developer.mozilla.org/en-US/docs/Web/HTML/Viewport_meta_tag'
-      });
-    } else if (data.structure.blocksZoom) {
-      findings.push({
-        severity: 'error',
-        title: 'Viewport blocks user zoom (user-scalable=no)',
-        detail: 'Preventing zoom is an accessibility barrier for low-vision users',
-        fix: 'Remove user-scalable=no from the viewport meta tag.',
-        presetRef: null,
-        source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text'
-      });
-    } else {
-      passed++;
-    }
-  }
-
-  // Horizontal overflow
-  if (data.structure && data.structure.hasHorizontalOverflow) {
-    checks++;
-    findings.push({
-      severity: 'warning',
-      title: 'Page has horizontal overflow (horizontal scrollbar)',
-      detail: 'Content extends beyond viewport width — common responsive design failure',
-      fix: 'Find elements with fixed widths wider than the viewport. Add overflow-x: hidden to body or fix the overflowing element.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
-    });
-  } else if (data.structure && data.structure.hasHorizontalOverflow === false) {
-    checks++;
-    passed++;
-  }
-
-  // Fixed-width elements
-  var fixedW = (data.structure && data.structure.fixedWidthElements) || 0;
-  if (fixedW > 0) {
-    findings.push({
-      severity: fixedW > 3 ? 'warning' : 'info',
-      title: fixedW + ' element(s) with fixed pixel widths > 300px',
-      detail: 'Fixed-width elements may overflow on smaller screens',
-      fix: 'Use max-width instead of width, or percentage/viewport units. In Tailwind: max-w-full or w-full.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
-    });
-  }
-
-  // Text truncation
-  var truncated = (data.structure && data.structure.truncatedElements) || 0;
-  if (truncated > 3) {
-    findings.push({
-      severity: 'info',
-      title: truncated + ' element(s) with truncated text (ellipsis)',
-      detail: 'Content is being cut off — may hide important information on smaller screens',
-      fix: 'Consider allowing text to wrap, expanding the container, or using a tooltip to show full content.',
-      presetRef: null,
-      source: 'NNGroup — https://www.nngroup.com/articles/truncation-and-progressive-disclosure/'
-    });
-  }
-
-  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-  return { score: score, findings: findings, checks: checks, passed: passed, weight: 10, label: 'Responsive Design', icon: 'responsive' };
-}
-
-
-  S.register("responsive", scoreResponsive, 10, "Responsive Design", "responsive");
 })();
 </file>
 
@@ -22461,146 +22461,6 @@ function scoreVisualConsistency(data) {
 })();
 </file>
 
-<file path="docs/ANALYZER-TODO.md">
-# Analyzer TODO
-
-## Completed (69 items)
-
-### Core
-- [x] Modular scoring architecture (14 modules in `scoring/`)
-- [x] 8 audience profiles with evidence-based thresholds (General, WCAG AAA, Elderly, Low Vision, Motor Impairment, Color Blind, Children, Cognitive)
-- [x] 4 input modes (URL fetch, console snippet, paste HTML, import JSON)
-- [x] Gradient contrast via canvas sampling (multi-layer compositing)
-- [x] Background image contrast via canvas (CORS-limited)
-- [x] CSS filter contrast math (brightness, contrast, opacity)
-- [x] APCA contrast algorithm alongside WCAG
-- [x] oklch/oklab color parsing via canvas fallback
-- [x] Space-separated rgb() syntax support
-- [x] Page context detection (marketing/form/app/content)
-- [x] Fragment detection (skips document-level checks for pasted HTML snippets)
-- [x] Decorative element filtering
-- [x] Post-analysis exclusion suggestions (two-step flow)
-- [x] Extraction data caching (sessionStorage)
-- [x] Dark mode report styling
-- [x] AA/AAA profile switching (captures pairs up to 7.5:1)
-- [x] N/A category detection (modules return notApplicable when nothing to check)
-- [x] Context-aware touch targets (nav/footer/inline/button classification per WCAG 2.5.8)
-- [x] CVD palette simulation (Machado et al. 2009 matrices for protanopia, deuteranopia, tritanopia)
-- [x] JS-dependent page detection (warns when page needs JS execution)
-
-### UI & Features
-- [x] Page screenshots (modern-screenshot library, viewport sections, zoom lightbox)
-- [x] Analysis history in localStorage (max 10, dedup by URL+profile)
-- [x] JSON export/import with drag-and-drop
-- [x] Viewport size selector (defaults to current window size)
-- [x] Progress bar during analysis
-- [x] URL autocomplete from history
-- [x] Mobile-optimized layout (CSS grid header, icon-only buttons)
-- [x] Self-hosted CORS proxy (Cloudflare Worker with rate limiting, SSRF protection)
-- [x] Proxy URL injection via local .env (not committed)
-
-### Extraction
-- [x] Actual character-per-line via span measurement
-- [x] Section gaps for whitespace rhythm
-- [x] Left-edge alignment clustering
-- [x] Heading-to-body ratio for visual hierarchy
-- [x] Border radius value clustering
-- [x] Paragraph text extraction (Coleman-Liau)
-- [x] Font loading rules from stylesheets
-- [x] Render-blocking resource counts
-- [x] DOM size and depth
-- [x] Adjacent sibling spacing
-- [x] Animation/keyframe detection
-- [x] Scroll-reveal pattern detection
-- [x] Transform translateY off-screen detection
-- [x] Element overflow detection
-- [x] Letter spacing audit
-- [x] Negative margin detection
-- [x] Container padding clustering
-- [x] Third-party script count
-- [x] Image format audit (WebP/AVIF vs legacy)
-- [x] CLS via PerformanceObserver
-- [x] LCP estimation (API + heuristic)
-- [x] Fixed-width element detection
-- [x] Text truncation (ellipsis) audit
-- [x] ARIA role audit (button tabindex, hidden focusable)
-- [x] Bad link text detection
-- [x] Missing autocomplete on form fields
-- [x] Color-only indicator detection
-- [x] Auto-playing unmuted media detection
-- [x] Padding-inclusive touch measurement (checks parent label/link)
-
-### Testing
-- [x] Headless browser test suite (Puppeteer, serves docs/ locally, renders presets in real iframe with Tailwind)
-- [x] 125 preset templates validated — avg 88, min 69, max 100
-- [x] Before/clean gap verified: 81 avg vs 88 avg (7pt differentiation)
-- [x] Browser-based test runner (`docs/tests/test-presets-rendered.html`)
-- [x] Unit tests for scoring modules (`docs/tests/test-scoring.html`)
-- [x] Edge case test pages (gradients, dark backgrounds, fixed-width, truncation)
-- [x] 3 iterations of template fixes across 125 files (contrast, focus-visible, semantics)
-
-## Completed: Deep Scan Mode
-
-- [x] **Multi-viewport testing** — Spawn 3 parallel iframes at 375/768/1280px, merge results
-- [x] **Dark mode class toggle** — Toggle `.dark` on html, re-extract colors. ~95% reliable for Tailwind/class-based sites
-- [x] **Dark mode media query rewriting** — Extract `prefers-color-scheme: dark` rules from stylesheets, inject unconditionally. ~80-90% reliable
-- [x] **Scroll before extraction** — Auto-scroll full page to trigger intersection observers
-
-## Future: LLM Integration (opt-in)
-
-Default off. Only when user provides API key. See research notes in this file's git history.
-
-- [ ] Soft judgment: tone, copy clarity, color palette appropriateness
-- [ ] Finding summarization in plain language
-- [ ] Clearly labeled as "AI-generated" separate from evidence-based findings
-
-## Decided to Skip (with reasons)
-
-| Item | Reason |
-|------|--------|
-| Vertical rhythm detection | ~60% accuracy, too many false positives |
-| Nested spacing consistency | Can't determine spacing "intent" without component boundaries |
-| Gap vs margin consistency | Mixing is often correct (gap for flex, margin for flow) |
-| Overlapping targets | False positives from menus, dropdowns, positioned elements |
-| Click density mapping | No clear threshold for "too dense," subjective |
-| Shadow consistency | Too many legitimate shadow variations (elevation levels) |
-| Color distance (CIEDE2000) | Complex (~200 lines), similar colors often intentional |
-| Icon sizing consistency | SVG sizing too chaotic in practice |
-| Decision point counting | Counting buttons/links per section unreliable |
-| Information density | Elements-per-viewport varies wildly by page type |
-| Modal/popup detection | position:fixed catches headers/footers too |
-| Grid structure detection | Inferring columns from widths unreliable with flexbox |
-| Proximity grouping | Requires semantic understanding, pure DOM can't do it |
-| Sticky element audit | Almost always intentional, nothing actionable |
-| Critical CSS detection | Requires multi-viewport rendering analysis |
-| Inline CSS size | Often intentional (critical CSS pattern) |
-| Flash/strobe detection | Needs frame-by-frame analysis, not feasible from DOM |
-| F-pattern detection | ~40% accuracy without AI |
-| Whitespace ratio | Varies by page type, no universal threshold |
-| Web Worker extraction | Workers can't access DOM |
-
-## Research Documents
-
-- `research/analyzer-roadmap.md` — P0/P1 roadmap, priority matrix (794 lines)
-- `research/analyzer-p2-research.md` — P2/P3 feature research (928 lines)
-- `research/multi-viewport-dark-mode.md` — Multi-viewport & dark mode feasibility (345 lines)
-- `research/analyzer-test-rendered.md` — Latest headless test results (125 presets, per-module averages)
-
-## E2E Testing
-
-Run `node scripts/test-presets-headless.mjs` for the full rendered test suite. Requires Puppeteer (`npm i puppeteer`). The script:
-1. Serves `docs/` on localhost:8765
-2. Loads each preset in a real iframe with Tailwind CSS
-3. Runs the same extraction + scoring as the production analyzer
-4. Outputs results to `research/analyzer-test-rendered.md`
-
-Key metrics to track:
-- **Overall average** should be ≥85 (currently 88)
-- **Before/clean gap** should be ≥5 points (currently 7) — proves the analyzer differentiates design quality
-- **Contrast average** is the weakest category (currently 46) — legitimate failures from Tailwind's default light color shades
-- **No module should average below 40** except Contrast (known issue with Tailwind color scale)
-</file>
-
 <file path="docs/scoring/touch.js">
 // Scoring Module: Touch & Interaction
 // Weight: 15%
@@ -23017,6 +22877,146 @@ function scoreTypography(data) {
 
   S.register("typography", scoreTypography, 15, "Typography", "type");
 })();
+</file>
+
+<file path="docs/ANALYZER-TODO.md">
+# Analyzer TODO
+
+## Completed (69 items)
+
+### Core
+- [x] Modular scoring architecture (14 modules in `scoring/`)
+- [x] 8 audience profiles with evidence-based thresholds (General, WCAG AAA, Elderly, Low Vision, Motor Impairment, Color Blind, Children, Cognitive)
+- [x] 4 input modes (URL fetch, console snippet, paste HTML, import JSON)
+- [x] Gradient contrast via canvas sampling (multi-layer compositing)
+- [x] Background image contrast via canvas (CORS-limited)
+- [x] CSS filter contrast math (brightness, contrast, opacity)
+- [x] APCA contrast algorithm alongside WCAG
+- [x] oklch/oklab color parsing via canvas fallback
+- [x] Space-separated rgb() syntax support
+- [x] Page context detection (marketing/form/app/content)
+- [x] Fragment detection (skips document-level checks for pasted HTML snippets)
+- [x] Decorative element filtering
+- [x] Post-analysis exclusion suggestions (two-step flow)
+- [x] Extraction data caching (sessionStorage)
+- [x] Dark mode report styling
+- [x] AA/AAA profile switching (captures pairs up to 7.5:1)
+- [x] N/A category detection (modules return notApplicable when nothing to check)
+- [x] Context-aware touch targets (nav/footer/inline/button classification per WCAG 2.5.8)
+- [x] CVD palette simulation (Machado et al. 2009 matrices for protanopia, deuteranopia, tritanopia)
+- [x] JS-dependent page detection (warns when page needs JS execution)
+
+### UI & Features
+- [x] Page screenshots (modern-screenshot library, viewport sections, zoom lightbox)
+- [x] Analysis history in localStorage (max 10, dedup by URL+profile)
+- [x] JSON export/import with drag-and-drop
+- [x] Viewport size selector (defaults to current window size)
+- [x] Progress bar during analysis
+- [x] URL autocomplete from history
+- [x] Mobile-optimized layout (CSS grid header, icon-only buttons)
+- [x] Self-hosted CORS proxy (Cloudflare Worker with rate limiting, SSRF protection)
+- [x] Proxy URL injection via local .env (not committed)
+
+### Extraction
+- [x] Actual character-per-line via span measurement
+- [x] Section gaps for whitespace rhythm
+- [x] Left-edge alignment clustering
+- [x] Heading-to-body ratio for visual hierarchy
+- [x] Border radius value clustering
+- [x] Paragraph text extraction (Coleman-Liau)
+- [x] Font loading rules from stylesheets
+- [x] Render-blocking resource counts
+- [x] DOM size and depth
+- [x] Adjacent sibling spacing
+- [x] Animation/keyframe detection
+- [x] Scroll-reveal pattern detection
+- [x] Transform translateY off-screen detection
+- [x] Element overflow detection
+- [x] Letter spacing audit
+- [x] Negative margin detection
+- [x] Container padding clustering
+- [x] Third-party script count
+- [x] Image format audit (WebP/AVIF vs legacy)
+- [x] CLS via PerformanceObserver
+- [x] LCP estimation (API + heuristic)
+- [x] Fixed-width element detection
+- [x] Text truncation (ellipsis) audit
+- [x] ARIA role audit (button tabindex, hidden focusable)
+- [x] Bad link text detection
+- [x] Missing autocomplete on form fields
+- [x] Color-only indicator detection
+- [x] Auto-playing unmuted media detection
+- [x] Padding-inclusive touch measurement (checks parent label/link)
+
+### Testing
+- [x] Headless browser test suite (Puppeteer, serves docs/ locally, renders presets in real iframe with Tailwind)
+- [x] 125 preset templates validated — avg 88, min 69, max 100
+- [x] Before/clean gap verified: 81 avg vs 88 avg (7pt differentiation)
+- [x] Browser-based test runner (`docs/tests/test-presets-rendered.html`)
+- [x] Unit tests for scoring modules (`docs/tests/test-scoring.html`)
+- [x] Edge case test pages (gradients, dark backgrounds, fixed-width, truncation)
+- [x] 3 iterations of template fixes across 125 files (contrast, focus-visible, semantics)
+
+## Completed: Deep Scan Mode
+
+- [x] **Multi-viewport testing** — Spawn 3 parallel iframes at 375/768/1280px, merge results
+- [x] **Dark mode class toggle** — Toggle `.dark` on html, re-extract colors. ~95% reliable for Tailwind/class-based sites
+- [x] **Dark mode media query rewriting** — Extract `prefers-color-scheme: dark` rules from stylesheets, inject unconditionally. ~80-90% reliable
+- [x] **Scroll before extraction** — Auto-scroll full page to trigger intersection observers
+
+## Future: LLM Integration (opt-in)
+
+Default off. Only when user provides API key. See research notes in this file's git history.
+
+- [ ] Soft judgment: tone, copy clarity, color palette appropriateness
+- [ ] Finding summarization in plain language
+- [ ] Clearly labeled as "AI-generated" separate from evidence-based findings
+
+## Decided to Skip (with reasons)
+
+| Item | Reason |
+|------|--------|
+| Vertical rhythm detection | ~60% accuracy, too many false positives |
+| Nested spacing consistency | Can't determine spacing "intent" without component boundaries |
+| Gap vs margin consistency | Mixing is often correct (gap for flex, margin for flow) |
+| Overlapping targets | False positives from menus, dropdowns, positioned elements |
+| Click density mapping | No clear threshold for "too dense," subjective |
+| Shadow consistency | Too many legitimate shadow variations (elevation levels) |
+| Color distance (CIEDE2000) | Complex (~200 lines), similar colors often intentional |
+| Icon sizing consistency | SVG sizing too chaotic in practice |
+| Decision point counting | Counting buttons/links per section unreliable |
+| Information density | Elements-per-viewport varies wildly by page type |
+| Modal/popup detection | position:fixed catches headers/footers too |
+| Grid structure detection | Inferring columns from widths unreliable with flexbox |
+| Proximity grouping | Requires semantic understanding, pure DOM can't do it |
+| Sticky element audit | Almost always intentional, nothing actionable |
+| Critical CSS detection | Requires multi-viewport rendering analysis |
+| Inline CSS size | Often intentional (critical CSS pattern) |
+| Flash/strobe detection | Needs frame-by-frame analysis, not feasible from DOM |
+| F-pattern detection | ~40% accuracy without AI |
+| Whitespace ratio | Varies by page type, no universal threshold |
+| Web Worker extraction | Workers can't access DOM |
+
+## Research Documents
+
+- `research/analyzer-roadmap.md` — P0/P1 roadmap, priority matrix (794 lines)
+- `research/analyzer-p2-research.md` — P2/P3 feature research (928 lines)
+- `research/multi-viewport-dark-mode.md` — Multi-viewport & dark mode feasibility (345 lines)
+- `research/analyzer-test-rendered.md` — Latest headless test results (125 presets, per-module averages)
+
+## E2E Testing
+
+Run `node scripts/test-presets-headless.mjs` for the full rendered test suite. Requires Puppeteer (`npm i puppeteer`). The script:
+1. Serves `docs/` on localhost:8765
+2. Loads each preset in a real iframe with Tailwind CSS
+3. Runs the same extraction + scoring as the production analyzer
+4. Outputs results to `research/analyzer-test-rendered.md`
+
+Key metrics to track:
+- **Overall average** should be ≥85 (currently 88)
+- **Before/clean gap** should be ≥5 points (currently 7) — proves the analyzer differentiates design quality
+- **Contrast average** is the weakest category (currently 46) — legitimate failures from Tailwind's default light color shades
+- **No module should average below 40** except Contrast (known issue with Tailwind color scale)
 </file>
 
 <file path="docs/scoring/contrast.js">
@@ -26349,7 +26349,6 @@ function scoreLayout(data) {
       <button class="tab-btn" data-tab="tabSnippet">Console Snippet<br><span class="tab-sub">(most accurate)</span></button>
       <button class="tab-btn" data-tab="tabHtml">Paste HTML<br><span class="tab-sub">(approximate)</span></button>
       <button class="tab-btn" data-tab="tabImport">Import<br><span class="tab-sub">(JSON file)</span></button>
-      <button class="tab-btn" data-tab="tabCrawl">Site Crawl<br><span class="tab-sub">(multi-page)</span></button>
     </div>
 
     <!-- Shared screenshot options (applies to all tabs) -->
@@ -26399,6 +26398,33 @@ function scoreLayout(data) {
           Deep scan (multi-viewport + dark mode)
         </label>
       </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+        <label style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="checkbox" id="crawlSiteCheck" style="width:16px;height:16px;cursor:pointer">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/><path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10A15.3 15.3 0 0112 2z"/></svg>
+          Crawl site (analyze multiple pages)
+        </label>
+      </div>
+      <div id="crawlOptions" style="display:none;margin-top:8px;padding:10px 14px;background:var(--bg-alt);border:1px solid var(--border);border-radius:var(--radius)">
+        <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:8px">
+          <div>
+            <label for="crawlMaxPages" style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:var(--text-secondary)">Max pages</label>
+            <input type="number" id="crawlMaxPages" min="1" max="10" value="5" class="btn" style="width:70px;padding:6px 8px;font-size:13px;text-align:center">
+          </div>
+          <div style="flex:1;min-width:160px">
+            <label for="crawlBlacklist" style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:var(--text-secondary)">Exclude pages</label>
+            <input type="text" id="crawlBlacklist" placeholder="/blog/*, /login" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-family:var(--mono);color:var(--text);background:var(--bg);outline:none">
+          </div>
+        </div>
+        <div id="crawlProgressArea" style="display:none;margin-top:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <span id="crawlProgressLabel" style="font-size:12px;font-weight:600;color:var(--text-secondary)">Discovering pages...</span>
+            <span id="crawlProgressCount" style="font-size:12px;color:var(--text-secondary)"></span>
+          </div>
+          <div class="progress-bar" style="margin-bottom:8px"><div class="progress-fill" id="crawlProgressFill"></div></div>
+          <div id="crawlProgressList" class="crawl-progress-list"></div>
+        </div>
+      </div>
       <details style="margin-top:12px" id="excludeDetails">
         <summary style="font-size:13px;color:var(--text-secondary);cursor:pointer;user-select:none">Skip elements from analysis (optional)</summary>
         <div style="margin-top:8px">
@@ -26417,11 +26443,12 @@ function scoreLayout(data) {
           <input type="text" id="excludeSelector" placeholder="e.g. .hero-image, #chat-widget" style="width:100%;padding:8px 12px;margin-top:4px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;font-family:var(--mono);color:var(--text);background:var(--bg);outline:none;min-height:44px;" />
         </div>
       </details>
-      <div class="input-actions" style="margin-top:12px">
+      <div class="input-actions" style="margin-top:12px;display:flex;gap:10px;align-items:center">
         <button class="btn btn-primary" id="analyzeUrlBtn">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           Analyze URL
         </button>
+        <button class="btn" id="cancelCrawlBtn" style="display:none;min-height:44px">Cancel</button>
       </div>
       <div id="urlStatus" style="margin-top:12px;font-size:13px;color:var(--text-secondary);display:none"></div>
       <div class="analysis-progress" id="analysisProgress" style="display:none">
@@ -26531,42 +26558,6 @@ function scoreLayout(data) {
         <p style="font-size:14px;font-weight:600;margin-bottom:4px">Drop a JSON file here</p>
         <p style="font-size:12px;color:var(--text-secondary)">or click to browse — loads a previously exported analysis</p>
         <input type="file" id="importDropFile" accept=".json" style="display:none">
-      </div>
-    </div>
-    <div class="tab-content" id="tabCrawl">
-      <div style="margin-bottom:16px">
-        <label for="crawlUrlInput" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;color:var(--text-secondary)">Starting URL</label>
-        <input type="url" id="crawlUrlInput" class="url-input" placeholder="https://example.com" autocomplete="url" spellcheck="false">
-      </div>
-      <div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:16px">
-        <div>
-          <label for="crawlMaxPages" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;color:var(--text-secondary)">Max pages</label>
-          <input type="number" id="crawlMaxPages" min="1" max="10" value="5" class="btn" style="width:80px;padding:8px 10px;font-size:14px;text-align:center">
-        </div>
-        <div style="flex:1;min-width:200px">
-          <label for="crawlBlacklist" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;color:var(--text-secondary)">Exclude pages <span style="font-weight:400">(comma-separated)</span></label>
-          <input type="text" id="crawlBlacklist" class="url-input" placeholder="/blog/*, /login, /admin" style="font-size:13px">
-        </div>
-      </div>
-      <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:16px">
-        <label class="checkbox-label" style="font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px">
-          <input type="checkbox" id="crawlDeepScan"> Deep scan <span style="color:var(--text-secondary)">(test 3 viewports + dark mode per page)</span>
-        </label>
-      </div>
-      <div style="display:flex;gap:10px;align-items:center">
-        <button class="btn btn-primary" id="startCrawlBtn" style="min-height:44px;padding:10px 24px;font-weight:600">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          Start Crawl
-        </button>
-        <button class="btn" id="cancelCrawlBtn" style="display:none;min-height:44px">Cancel</button>
-      </div>
-      <div id="crawlProgressArea" style="display:none;margin-top:20px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <span id="crawlProgressLabel" style="font-size:13px;font-weight:600;color:var(--text-secondary)">Discovering pages...</span>
-          <span id="crawlProgressCount" style="font-size:13px;color:var(--text-secondary)"></span>
-        </div>
-        <div class="progress-bar" style="margin-bottom:12px"><div class="progress-fill" id="crawlProgressFill"></div></div>
-        <div id="crawlProgressList" class="crawl-progress-list"></div>
       </div>
     </div>
   </div>
@@ -31724,8 +31715,9 @@ function scoreLayout(data) {
       });
     });
 
-    // Load snippet for display
-    loadSnippet(snippetCode);
+    // Load snippet for display (respect screenshot checkbox initial state)
+    var _initScreenshots = document.getElementById('screenshotCheck');
+    loadSnippet(snippetCode, _initScreenshots && _initScreenshots.checked);
 
     // Toggle snippet variant based on shared screenshot checkbox
     var sharedScreenshotCheck = document.getElementById('screenshotCheck');
@@ -31789,6 +31781,9 @@ function scoreLayout(data) {
         }
       } catch(e) {}
       urlInput.value = url; // Show normalized URL to user
+
+      // Crawl mode intercept
+      if (isCrawlMode()) { startCrawl(url); return; }
 
       analyzeUrlBtn.disabled = true;
       analyzeUrlBtn.textContent = 'Fetching...';
@@ -32166,12 +32161,11 @@ function scoreLayout(data) {
     var _crawlActivePageTab = 'summary';
     var CRAWL_HARD_MAX = 25;
 
-    var startCrawlBtn = document.getElementById('startCrawlBtn');
+    var crawlSiteCheck = document.getElementById('crawlSiteCheck');
+    var crawlOptions = document.getElementById('crawlOptions');
     var cancelCrawlBtn = document.getElementById('cancelCrawlBtn');
-    var crawlUrlInput = document.getElementById('crawlUrlInput');
     var crawlMaxPages = document.getElementById('crawlMaxPages');
     var crawlBlacklist = document.getElementById('crawlBlacklist');
-    var crawlDeepScan = document.getElementById('crawlDeepScan');
     var crawlProgressArea = document.getElementById('crawlProgressArea');
     var crawlProgressLabel = document.getElementById('crawlProgressLabel');
     var crawlProgressCount = document.getElementById('crawlProgressCount');
@@ -32180,6 +32174,13 @@ function scoreLayout(data) {
     var crawlResults = document.getElementById('crawlResults');
     var crawlPageTabs = document.getElementById('crawlPageTabs');
     var crawlPageContent = document.getElementById('crawlPageContent');
+
+    // Crawl site toggle — show/hide crawl options
+    if (crawlSiteCheck && crawlOptions) {
+      crawlSiteCheck.addEventListener('change', function() {
+        crawlOptions.style.display = crawlSiteCheck.checked ? '' : 'none';
+      });
+    }
 
     // Page limit easter egg — MutationObserver
     if (crawlMaxPages) {
@@ -32197,12 +32198,8 @@ function scoreLayout(data) {
       _crawlMaxObserver.observe(crawlMaxPages, { attributes: true, attributeFilter: ['max'] });
     }
 
-    // Enter key in crawl URL input
-    if (crawlUrlInput) {
-      crawlUrlInput.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') { e.preventDefault(); startCrawlBtn.click(); }
-      });
-    }
+    // isCrawlMode helper
+    function isCrawlMode() { return crawlSiteCheck && crawlSiteCheck.checked; }
 
     function crawlStatusIcon(status) {
       if (status === 'done') return '<span class="status-icon done"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></span>';
@@ -32275,118 +32272,104 @@ function scoreLayout(data) {
       });
     }
 
-    if (startCrawlBtn) {
-      startCrawlBtn.addEventListener('click', function() {
-        var url = (crawlUrlInput.value || '').trim();
-        if (!url) { showToast('Enter a starting URL'); return; }
-        if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+    // Crawl intercept — when crawl mode is on, analyzeUrlBtn triggers a crawl instead
+    function startCrawl(url) {
+      var maxPages = parseInt(crawlMaxPages.value) || 5;
+      maxPages = Math.min(Math.max(maxPages, 1), CRAWL_HARD_MAX);
 
-        var maxPages = parseInt(crawlMaxPages.value) || 5;
-        maxPages = Math.min(Math.max(maxPages, 1), CRAWL_HARD_MAX);
+      var blacklist = (crawlBlacklist.value || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+      var deepScan = document.getElementById('deepScanCheck') && document.getElementById('deepScanCheck').checked;
+      var profile = document.getElementById('profileSelect');
 
-        var blacklist = (crawlBlacklist.value || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
-        var deepScan = crawlDeepScan && crawlDeepScan.checked;
-        var profile = document.getElementById('profileSelect');
+      _crawlSession = MilgCrawl.createSession(url, {
+        maxPages: maxPages,
+        blacklist: blacklist,
+        deepScan: deepScan,
+        profile: profile ? profile.value : 'general'
+      });
+      _crawlPageReports = {};
+      _crawlActivePageTab = 'summary';
 
-        _crawlSession = MilgCrawl.createSession(url, {
-          maxPages: maxPages,
-          blacklist: blacklist,
-          deepScan: deepScan,
-          profile: profile ? profile.value : 'general'
-        });
-        _crawlPageReports = {};
-        _crawlActivePageTab = 'summary';
+      // Show progress
+      analyzeUrlBtn.disabled = true;
+      analyzeUrlBtn.textContent = 'Crawling\u2026';
+      cancelCrawlBtn.style.display = '';
+      crawlProgressArea.style.display = '';
+      crawlProgressList.innerHTML = '';
+      crawlProgressFill.style.width = '0%';
+      crawlProgressLabel.textContent = 'Fetching starting page\u2026';
+      crawlProgressCount.textContent = '0 / ' + maxPages;
 
-        // Show progress, hide input controls
-        startCrawlBtn.disabled = true;
-        startCrawlBtn.textContent = 'Crawling\u2026';
-        cancelCrawlBtn.style.display = '';
-        crawlProgressArea.style.display = '';
-        crawlProgressList.innerHTML = '';
-        crawlProgressFill.style.width = '0%';
-        crawlProgressLabel.textContent = 'Fetching starting page\u2026';
-        crawlProgressCount.textContent = '0 / ' + maxPages;
+      // Show crawl results area
+      var reportActions = document.getElementById('reportActions');
+      var reportContainer = document.getElementById('reportContainer');
+      crawlResults.style.display = '';
+      if (reportContainer) reportContainer.className = 'report-container';
+      if (reportActions) reportActions.style.display = '';
 
-        // Show crawl results area
-        var inputSection = document.getElementById('inputSection');
-        var reportActions = document.getElementById('reportActions');
-        var reportContainer = document.getElementById('reportContainer');
-        crawlResults.style.display = '';
-        if (reportContainer) reportContainer.className = 'report-container';
-        if (reportActions) reportActions.style.display = '';
+      renderCrawlTabs();
+      showCrawlPageContent('summary');
 
-        // Initial summary tab
-        renderCrawlTabs();
-        showCrawlPageContent('summary');
+      var doneCount = 0;
+      var totalPages = 1;
 
-        var doneCount = 0;
-        var totalPages = 1; // updated after discovery
-
-        MilgCrawl.startCrawl(_crawlSession, {
-          fetchPage: function(pageUrl, cb) {
-            fetchViaProxy(pageUrl, function(html, err) {
-              cb(html, err);
-            });
-          },
-          analyzePage: function(html, pageUrl, opts, cb) {
-            analyzeHtmlInIframe(html, function(data) {
-              if (data) {
-                data.meta.url = pageUrl;
-                data.meta._inputMethod = 'crawl';
-                if (opts.profile) data.profile = opts.profile;
-              }
-              cb(data);
-            }, pageUrl, opts.excludeSelector || null, false);
-          },
-          scorePage: function(data) {
-            return MilgScoring.runScoring(data);
-          },
-          onDiscovery: function(urls) {
-            totalPages = 1 + urls.length;
-            crawlProgressCount.textContent = '0 / ' + totalPages;
-            crawlProgressLabel.textContent = 'Found ' + urls.length + ' page' + (urls.length !== 1 ? 's' : '') + ' to crawl';
-          },
-          onPageStart: function(page) {
-            updateCrawlProgressItem(page);
-            crawlProgressLabel.textContent = 'Analyzing ' + page.url.replace(/^https?:\/\/[^/]+/, '') + '\u2026';
-            renderCrawlTabs();
-          },
-          onPageComplete: function(page) {
-            doneCount++;
-            updateCrawlProgressItem(page);
-            crawlProgressCount.textContent = doneCount + ' / ' + totalPages;
-            crawlProgressFill.style.width = Math.round(doneCount / totalPages * 100) + '%';
-            renderCrawlTabs();
-            // Update summary live
-            if (_crawlActivePageTab === 'summary') {
-              showCrawlPageContent('summary');
+      MilgCrawl.startCrawl(_crawlSession, {
+        fetchPage: function(pageUrl, cb) {
+          fetchViaProxy(pageUrl, function(html, err) { cb(html, err); });
+        },
+        analyzePage: function(html, pageUrl, opts, cb) {
+          analyzeHtmlInIframe(html, function(data) {
+            if (data) {
+              data.meta.url = pageUrl;
+              data.meta._inputMethod = 'crawl';
+              if (opts.profile) data.profile = opts.profile;
             }
-          },
-          onPageError: function(page) {
-            doneCount++;
-            updateCrawlProgressItem(page);
-            crawlProgressCount.textContent = doneCount + ' / ' + totalPages;
-            crawlProgressFill.style.width = Math.round(doneCount / totalPages * 100) + '%';
-            renderCrawlTabs();
-          },
-          onComplete: function(session) {
-            startCrawlBtn.disabled = false;
-            startCrawlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Start Crawl';
-            cancelCrawlBtn.style.display = 'none';
-            crawlProgressLabel.textContent = 'Crawl complete!';
-            crawlProgressFill.style.width = '100%';
-            renderCrawlTabs();
-            showCrawlPageContent('summary');
-          }
-        });
+            cb(data);
+          }, pageUrl, opts.excludeSelector || null, false);
+        },
+        scorePage: function(data) { return MilgScoring.runScoring(data); },
+        onDiscovery: function(urls) {
+          totalPages = 1 + urls.length;
+          crawlProgressCount.textContent = '0 / ' + totalPages;
+          crawlProgressLabel.textContent = 'Found ' + urls.length + ' page' + (urls.length !== 1 ? 's' : '') + ' to crawl';
+        },
+        onPageStart: function(page) {
+          updateCrawlProgressItem(page);
+          crawlProgressLabel.textContent = 'Analyzing ' + page.url.replace(/^https?:\/\/[^/]+/, '') + '\u2026';
+          renderCrawlTabs();
+        },
+        onPageComplete: function(page) {
+          doneCount++;
+          updateCrawlProgressItem(page);
+          crawlProgressCount.textContent = doneCount + ' / ' + totalPages;
+          crawlProgressFill.style.width = Math.round(doneCount / totalPages * 100) + '%';
+          renderCrawlTabs();
+          if (_crawlActivePageTab === 'summary') showCrawlPageContent('summary');
+        },
+        onPageError: function(page) {
+          doneCount++;
+          updateCrawlProgressItem(page);
+          crawlProgressCount.textContent = doneCount + ' / ' + totalPages;
+          crawlProgressFill.style.width = Math.round(doneCount / totalPages * 100) + '%';
+          renderCrawlTabs();
+        },
+        onComplete: function(session) {
+          analyzeUrlBtn.disabled = false;
+          analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
+          cancelCrawlBtn.style.display = 'none';
+          crawlProgressLabel.textContent = 'Crawl complete!';
+          crawlProgressFill.style.width = '100%';
+          renderCrawlTabs();
+          showCrawlPageContent('summary');
+        }
       });
     }
 
     if (cancelCrawlBtn) {
       cancelCrawlBtn.addEventListener('click', function() {
         if (_crawlSession) MilgCrawl.abortCrawl(_crawlSession);
-        startCrawlBtn.disabled = false;
-        startCrawlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Start Crawl';
+        analyzeUrlBtn.disabled = false;
+        analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
         cancelCrawlBtn.style.display = 'none';
         crawlProgressLabel.textContent = 'Crawl cancelled';
       });
@@ -32421,13 +32404,15 @@ function scoreLayout(data) {
           if (reportActions) reportActions.style.display = '';
           renderCrawlTabs();
           showCrawlPageContent('summary');
-          // Switch to crawl tab
+          // Switch to URL tab and enable crawl mode
           document.querySelectorAll('.tab-btn').forEach(function(t) { t.classList.remove('active'); });
           document.querySelectorAll('.tab-content').forEach(function(t) { t.classList.remove('active'); });
-          var crawlTab = document.querySelector('[data-tab="tabCrawl"]');
-          if (crawlTab) crawlTab.classList.add('active');
-          var tabCrawl = document.getElementById('tabCrawl');
-          if (tabCrawl) tabCrawl.classList.add('active');
+          var urlTab = document.querySelector('[data-tab="tabUrl"]');
+          if (urlTab) urlTab.classList.add('active');
+          var tabUrl = document.getElementById('tabUrl');
+          if (tabUrl) tabUrl.classList.add('active');
+          if (crawlSiteCheck) crawlSiteCheck.checked = true;
+          if (crawlOptions) crawlOptions.style.display = '';
         }
       }
     } catch(e) { console.error('Failed to load snippet crawl data:', e); }
