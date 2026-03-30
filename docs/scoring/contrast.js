@@ -123,19 +123,32 @@ function scoreContrast(data) {
   var failures = profilePairs.filter(function(p) { return !p.passes && !isUncertain(p); });
   var nearMisses = profilePairs.filter(function(p) { return p.passes && p.ratio < p.needed + 0.5; });
 
+  // Deduplicate failures with identical ratio + selector
+  var failSeen = {};
   failures.forEach(function(p) {
+    var dedup = p.ratio + '|' + p.selector;
+    if (failSeen[dedup]) { failSeen[dedup].count++; return; }
+    failSeen[dedup] = { p: p, count: 1 };
+  });
+  Object.keys(failSeen).forEach(function(key) {
+    var entry = failSeen[key];
+    var p = entry.p;
     var apcaVal = '';
     var fgP = parseRgb(p.fg);
     var bgP = parseRgb(p.bg);
     if (fgP && bgP) { apcaVal = ' (APCA: Lc ' + apcaContrast(fgP, bgP) + ')'; }
+    var countNote = entry.count > 1 ? ' (' + entry.count + ' instances)' : '';
+    // Detect if the bg is likely white fallback (image/gradient bg we couldn't resolve)
+    var bgIsWhite = p.bg === 'rgb(255, 255, 255)' || p.bg === 'rgba(255, 255, 255, 1)';
+    var bgNote = bgIsWhite ? ' The detected background is white — if the actual background is an image or gradient, the real contrast may differ.' : '';
     findings.push({
       severity: 'error',
-      title: 'Text fails contrast ' + p.ratio + ':1 (needs ' + p.needed + ':1)',
+      title: 'Text fails contrast ' + p.ratio + ':1 (needs ' + p.needed + ':1)' + countNote,
       detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector + apcaVal,
-      fix: p.isLarge
+      fix: (p.isLarge
         ? 'Large text needs ' + profile.contrastLarge + ':1 minimum. Darken the text or lighten the background.'
-        : 'Normal text needs ' + profile.contrast + ':1 minimum. Use a darker text color or lighter background.',
-      presetRef: 'All presets use text-slate-600+ on white backgrounds (8:1+ ratio)',
+        : 'Normal text needs ' + profile.contrast + ':1 minimum. Use a darker text color or lighter background.') + bgNote,
+      presetRef: null,
       source: p.isLarge ? 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' : 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum',
       locator: { selector: p.selector, text: p.text }
     });
@@ -152,10 +165,20 @@ function scoreContrast(data) {
     });
   }
 
+  // Deduplicate near-misses with identical ratio + selector
+  var nearSeen = {};
   nearMisses.forEach(function(p) {
+    var dedup = p.ratio + '|' + p.selector;
+    if (nearSeen[dedup]) { nearSeen[dedup].count++; return; }
+    nearSeen[dedup] = { p: p, count: 1 };
+  });
+  Object.keys(nearSeen).forEach(function(key) {
+    var entry = nearSeen[key];
+    var p = entry.p;
+    var countNote = entry.count > 1 ? ' (' + entry.count + ' instances)' : '';
     findings.push({
       severity: 'info',
-      title: 'Text passes contrast but close to threshold: ' + p.ratio + ':1 (needs ' + p.needed + ':1)',
+      title: 'Text passes contrast but close to threshold: ' + p.ratio + ':1 (needs ' + p.needed + ':1)' + countNote,
       detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector,
       fix: 'Passes AA but consider increasing for AAA (7:1). Slight changes in background could cause failure.',
       presetRef: null,
