@@ -855,10 +855,11 @@
     var snippetCrawlMaxPages = document.getElementById('snippetCrawlMaxPages');
 
     function reloadSnippet() {
-      var withScreenshots = sharedScreenshotCheck && sharedScreenshotCheck.checked;
+      // Crawl requires the non-screenshot snippet (crawl code only exists there)
+      var crawlOn = snippetCrawlCheck && snippetCrawlCheck.checked;
+      var withScreenshots = !crawlOn && sharedScreenshotCheck && sharedScreenshotCheck.checked;
       loadSnippet(snippetCode, withScreenshots, function() {
-        // After snippet loaded, prepend crawl vars if checked
-        if (snippetCrawlCheck && snippetCrawlCheck.checked) {
+        if (crawlOn) {
           var maxP = (snippetCrawlMaxPages && parseInt(snippetCrawlMaxPages.value)) || 5;
           var prefix = 'window.__milgCrawlSite=true; window.__milgCrawlMaxPages=' + maxP + ';\n';
           snippetCode.textContent = prefix + snippetCode.textContent;
@@ -868,11 +869,22 @@
     reloadSnippet();
 
     if (sharedScreenshotCheck) {
-      sharedScreenshotCheck.addEventListener('change', reloadSnippet);
+      sharedScreenshotCheck.addEventListener('change', function() {
+        // Uncheck crawl when screenshots enabled (mutually exclusive)
+        if (sharedScreenshotCheck.checked && snippetCrawlCheck && snippetCrawlCheck.checked) {
+          snippetCrawlCheck.checked = false;
+          if (snippetCrawlMaxPages) snippetCrawlMaxPages.style.display = 'none';
+        }
+        reloadSnippet();
+      });
     }
     if (snippetCrawlCheck) {
       snippetCrawlCheck.addEventListener('change', function() {
         if (snippetCrawlMaxPages) snippetCrawlMaxPages.style.display = snippetCrawlCheck.checked ? '' : 'none';
+        // Uncheck screenshots when crawl enabled (crawl uses non-screenshot snippet)
+        if (snippetCrawlCheck.checked && sharedScreenshotCheck && sharedScreenshotCheck.checked) {
+          sharedScreenshotCheck.checked = false;
+        }
         reloadSnippet();
       });
     }

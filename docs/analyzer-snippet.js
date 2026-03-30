@@ -2339,91 +2339,106 @@
     var _crawlResults = [{ url: location.href, data: data }];
     console.log('%c\uD83D\uDD77 Site Crawl: found ' + _crawlLinks.length + ' same-domain pages. Analyzing via iframes\u2026', 'color: #8b5cf6; font-weight: bold;');
 
-    // Get the extraction function source for injection into iframes
-    var _extractSrc = extractFromDocument.toString();
+    // Get the snippet source for injection — fetch from known CDN path or use inline
+    var _snippetSrc = null;
+    // Try to get the snippet source from the page's own script tags or fetch it
+    var _snippetUrl = 'https://jdeworks.github.io/make-it-look-good/analyzer-snippet.js';
 
-    function _crawlNext(idx) {
-      if (idx >= _crawlLinks.length) {
-        // Done — store results
-        var state = { startUrl: location.href, results: _crawlResults };
-        try { localStorage.setItem('milg-crawl-complete', JSON.stringify(state)); } catch(e) {}
-        console.log('%c\u2713 Crawl complete! ' + _crawlResults.length + ' pages analyzed.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-        console.log('%cOpen the analyzer to view results (they load automatically).', 'color: #3b82f6;');
-        window.__milgCrawlResults = _crawlResults;
-        return;
-      }
-      var url = _crawlLinks[idx];
-      var path; try { path = new URL(url).pathname; } catch(e) { path = url; }
-      console.log('%c\u2192 [' + (idx + 1) + '/' + _crawlLinks.length + '] ' + path, 'color: #3b82f6;');
+    function _startCrawl() {
+      function _crawlNext(idx) {
+        if (idx >= _crawlLinks.length) {
+          var state = { startUrl: location.href, results: _crawlResults };
+          try { localStorage.setItem('milg-crawl-complete', JSON.stringify(state)); } catch(e) {}
+          console.log('%c\u2713 Crawl complete! ' + _crawlResults.length + ' pages analyzed.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+          console.log('%cOpen the analyzer to view results (they load automatically).', 'color: #3b82f6;');
+          window.__milgCrawlResults = _crawlResults;
+          return;
+        }
+        var url = _crawlLinks[idx];
+        var path; try { path = new URL(url).pathname; } catch(e) { path = url; }
+        console.log('%c\u2192 [' + (idx + 1) + '/' + _crawlLinks.length + '] ' + path, 'color: #3b82f6;');
 
-      var iframe = document.createElement('iframe');
-      iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
-      document.body.appendChild(iframe);
+        var iframe = document.createElement('iframe');
+        iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
+        document.body.appendChild(iframe);
 
-      var done = false;
-      iframe.onload = function() {
-        if (done) return;
-        // Wait for page to settle, then inject extraction
-        setTimeout(function() {
+        var done = false;
+        function cleanup() { if (iframe.parentNode) document.body.removeChild(iframe); }
+
+        iframe.onload = function() {
           if (done) return;
-          try {
-            var iDoc = iframe.contentDocument || iframe.contentWindow.document;
-            var script = iDoc.createElement('script');
-            script.textContent = '(' + _extractSrc + ')();';
-            // Listen for result via window.__milgData
-            iDoc.body.appendChild(script);
-            // Poll for result (postMessage won't reach us reliably)
-            var polls = 0;
-            var poller = setInterval(function() {
-              polls++;
-              try {
-                var iData = iframe.contentWindow.__milgData;
-                if (iData) {
-                  clearInterval(poller);
-                  done = true;
-                  iData.meta.url = url;
-                  _crawlResults.push({ url: url, data: iData });
-                  if (iframe.parentNode) document.body.removeChild(iframe);
-                  setTimeout(function() { _crawlNext(idx + 1); }, 500);
-                } else if (polls > 20) {
-                  clearInterval(poller);
-                  done = true;
-                  console.log('%c  \u2717 Timeout: ' + path, 'color: #dc2626;');
-                  if (iframe.parentNode) document.body.removeChild(iframe);
+          setTimeout(function() {
+            if (done) return;
+            try {
+              var iDoc = iframe.contentDocument || iframe.contentWindow.document;
+              // Inject the full snippet into the iframe
+              var script = iDoc.createElement('script');
+              // Disable crawl + clipboard in the injected snippet
+              script.textContent = 'window.__milgCrawlSite=false;' + _snippetSrc;
+              iDoc.body.appendChild(script);
+              // Poll for __milgData
+              var polls = 0;
+              var poller = setInterval(function() {
+                polls++;
+                try {
+                  var iData = iframe.contentWindow.__milgData;
+                  if (iData) {
+                    clearInterval(poller); done = true;
+                    iData.meta.url = url;
+                    _crawlResults.push({ url: url, data: iData });
+                    cleanup();
+                    console.log('%c  \u2713 ' + path + ' (' + (iData.structure.totalElements || 0) + ' elements)', 'color: #16a34a;');
+                    setTimeout(function() { _crawlNext(idx + 1); }, 500);
+                  } else if (polls > 30) {
+                    clearInterval(poller); done = true;
+                    console.log('%c  \u2717 Timeout: ' + path, 'color: #dc2626;');
+                    cleanup();
+                    setTimeout(function() { _crawlNext(idx + 1); }, 500);
+                  }
+                } catch(e) {
+                  clearInterval(poller); done = true;
+                  console.log('%c  \u2717 Error: ' + path + ' (' + e.message + ')', 'color: #dc2626;');
+                  cleanup();
                   setTimeout(function() { _crawlNext(idx + 1); }, 500);
                 }
-              } catch(e) {
-                clearInterval(poller);
-                done = true;
-                console.log('%c  \u2717 Error: ' + path + ' (' + e.message + ')', 'color: #dc2626;');
-                if (iframe.parentNode) document.body.removeChild(iframe);
-                setTimeout(function() { _crawlNext(idx + 1); }, 500);
-              }
-            }, 500);
-          } catch(e) {
-            done = true;
-            console.log('%c  \u2717 Cannot access: ' + path + ' (' + e.message + ')', 'color: #dc2626;');
-            if (iframe.parentNode) document.body.removeChild(iframe);
-            setTimeout(function() { _crawlNext(idx + 1); }, 500);
-          }
-        }, 2000);
-      };
-      iframe.onerror = function() {
-        if (done) return; done = true;
-        console.log('%c  \u2717 Failed to load: ' + path, 'color: #dc2626;');
-        if (iframe.parentNode) document.body.removeChild(iframe);
-        setTimeout(function() { _crawlNext(idx + 1); }, 500);
-      };
-      iframe.src = url;
-      // Hard timeout
-      setTimeout(function() {
-        if (done) return; done = true;
-        console.log('%c  \u2717 Timeout: ' + path, 'color: #dc2626;');
-        if (iframe.parentNode) document.body.removeChild(iframe);
-        setTimeout(function() { _crawlNext(idx + 1); }, 500);
-      }, 15000);
+              }, 500);
+            } catch(e) {
+              done = true;
+              console.log('%c  \u2717 Cannot access: ' + path + ' (cross-origin?)', 'color: #dc2626;');
+              cleanup();
+              setTimeout(function() { _crawlNext(idx + 1); }, 500);
+            }
+          }, 2000);
+        };
+        iframe.onerror = function() {
+          if (done) return; done = true;
+          console.log('%c  \u2717 Failed to load: ' + path, 'color: #dc2626;');
+          cleanup();
+          setTimeout(function() { _crawlNext(idx + 1); }, 500);
+        };
+        iframe.src = url;
+        setTimeout(function() {
+          if (done) return; done = true;
+          console.log('%c  \u2717 Hard timeout: ' + path, 'color: #dc2626;');
+          cleanup();
+          setTimeout(function() { _crawlNext(idx + 1); }, 500);
+        }, 20000);
+      }
+      _crawlNext(0);
     }
-    _crawlNext(0);
+
+    // Fetch the snippet source for iframe injection
+    fetch(_snippetUrl).then(function(r) { return r.text(); }).then(function(src) {
+      _snippetSrc = src;
+      _startCrawl();
+    }).catch(function() {
+      // Fallback: try to read from current page's script if we're on the analyzer
+      console.log('%c\u26A0 Could not fetch snippet source. Trying navigation fallback\u2026', 'color: #b45309;');
+      // Store results so far and navigate
+      var state = { startUrl: location.href, results: _crawlResults, queue: _crawlLinks, currentIndex: 0 };
+      localStorage.setItem('milg-crawl-state', JSON.stringify(state));
+      console.log('%cPaste the snippet on the next page. Crawl state is saved.', 'color: #3b82f6;');
+    });
     return; // Skip normal clipboard copy
   }
 })();
