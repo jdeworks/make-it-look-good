@@ -1375,11 +1375,11 @@
       renderCrawlTabs();
       var reportContainer = document.getElementById('reportContainer');
       if (key === 'summary') {
-        // Summary goes into crawlPageContent (the crawl results area)
         var summary = _crawlSession.summary || MilgCrawl.buildSummary(_crawlSession);
         crawlPageContent.innerHTML = MilgReport.renderCrawlSummary(summary);
         crawlPageContent.style.display = '';
-        if (reportContainer) reportContainer.style.display = 'none';
+        crawlPageContent.className = 'report-container visible';
+        if (reportContainer) { reportContainer.style.display = 'none'; reportContainer.className = 'report-container'; }
       } else {
         var idx = parseInt(key);
         var page = _crawlSession.pages[idx];
@@ -1387,12 +1387,13 @@
           crawlPageContent.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-secondary)">' +
             (page && page.status === 'error' ? 'Error: ' + (page.error || 'Analysis failed') : 'Analyzing\u2026') + '</div>';
           crawlPageContent.style.display = '';
-          if (reportContainer) reportContainer.style.display = 'none';
+          crawlPageContent.className = 'report-container visible';
+          if (reportContainer) { reportContainer.style.display = 'none'; reportContainer.className = 'report-container'; }
           return;
         }
-        // Use the standard report view — runAnalysis feeds reportContainer with
-        // full functionality (profile switching, re-evaluation, export, etc.)
+        // Use the standard report view via runAnalysis (full profile switching, export, etc.)
         crawlPageContent.style.display = 'none';
+        crawlPageContent.className = 'report-container';
         if (reportContainer) reportContainer.style.display = '';
         runAnalysis(page.rawData, true);
       }
