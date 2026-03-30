@@ -2037,8 +2037,8 @@
     reportContainer.classList.add('visible');
     inputSection.style.display = 'none';
     document.getElementById('reportActions').style.display = 'flex';
-    // Hide crawl containers when showing single-page results (unless crawl is driving this)
-    var _isCrawlDriven = lastRawData && lastRawData.meta && lastRawData.meta._inputMethod === 'crawl';
+    // Hide crawl containers when showing single-page results (unless crawl session is active)
+    var _isCrawlDriven = _crawlSession && _crawlSession.pages && _crawlSession.pages.length > 0;
     if (!_isCrawlDriven) {
       var cr = document.getElementById('crawlResults'); if (cr) cr.style.display = 'none';
       var cpc = document.getElementById('crawlPageContent'); if (cpc) cpc.style.display = 'none';

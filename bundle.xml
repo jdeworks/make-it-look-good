@@ -19740,180 +19740,6 @@ function scoreCognitiveLoad(data) {
 })();
 </file>
 
-<file path="docs/scoring/readability.js">
-// Scoring Module: Readability & Scanability
-// Weight: 5%
-// Sources: Coleman-Liau Index, NNGroup scanning research
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-  function scoreReadability(data) {
-    var findings = [];
-    var checks = 0;
-    var passed = 0;
-
-    // Extract text content from the raw data
-    // We use heading count and element count as proxies since we don't have raw text in extracted data
-    var headings = (data.typography && data.typography.headings) || [];
-    var totalElements = (data.structure && data.structure.totalElements) || 0;
-
-    // Scanability: heading frequency
-    // Good rule: 1 heading per ~100-150 elements of content
-    if (totalElements > 50) {
-      checks++;
-      var headingRatio = headings.length / (totalElements / 100);
-      if (headingRatio >= 0.5 && headingRatio <= 5) {
-        passed++;
-      } else if (headingRatio < 0.5) {
-        findings.push({
-          severity: 'warning',
-          title: 'Low heading density: ' + headings.length + ' headings for ' + totalElements + ' elements',
-          detail: 'Content without headings is harder to scan. 79% of users scan rather than read (NNGroup)',
-          fix: 'Add descriptive headings to break content into scannable sections. Aim for a heading every 2-3 paragraphs.',
-          presetRef: null,
-          source: 'NNGroup scanning research — https://www.nngroup.com/articles/how-users-read-on-the-web/'
-        });
-      }
-    }
-
-    // Heading descriptiveness: check if headings are too short (likely generic)
-    if (headings.length > 0) {
-      checks++;
-      var shortHeadings = headings.filter(function(h) {
-        return h.text && h.text.length < 3;
-      });
-      if (shortHeadings.length === 0) {
-        passed++;
-      } else {
-        passed++; // Info doesn't reduce score
-        findings.push({
-          severity: 'info',
-          title: shortHeadings.length + ' heading(s) with very short text (< 3 chars)',
-          detail: 'Short headings like numbers or icons don\'t help users scan. Use descriptive text.',
-          fix: 'Replace generic headings with descriptive ones that summarize the section content.',
-          presetRef: null,
-          source: 'NNGroup — https://www.nngroup.com/articles/headings-pickup-lines/'
-        });
-      }
-    }
-
-    // Font size variety as readability signal
-    // Too many sizes = visual noise, harder to establish reading rhythm
-    var fontSizes = (data.typography && data.typography.fontSizes) || [];
-    var smallTextCount = fontSizes.filter(function(f) {
-      return parseFloat(f.value) < 12;
-    }).reduce(function(sum, f) { return sum + f.count; }, 0);
-
-    if (smallTextCount > 0 && totalElements > 20) {
-      checks++;
-      var smallRatio = smallTextCount / totalElements;
-      if (smallRatio < 0.05) {
-        passed++;
-      } else {
-        findings.push({
-          severity: 'warning',
-          title: smallTextCount + ' element(s) with text smaller than 12px',
-          detail: 'Text below 12px is difficult to read for most users and nearly impossible for elderly or low-vision users',
-          fix: 'Increase small text to at least 12px. Consider if the information is important enough to display — if not, remove it.',
-          presetRef: null,
-          source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text'
-        });
-      }
-    }
-
-    // Coleman-Liau readability index
-    var rd = data.readability || {};
-    if (rd.totalWords >= 50 && rd.paragraphCount >= 2) {
-      checks++;
-      // Coleman-Liau: 0.0588 * L - 0.296 * S - 15.8
-      // L = avg letters per 100 words, S = avg sentences per 100 words
-      var L = (rd.totalChars / rd.totalWords) * 100;
-      var sentenceCount = 0;
-      (rd.textBlocks || []).forEach(function(b) {
-        sentenceCount += (b.text.match(/[.!?]+/g) || []).length;
-      });
-      var S_val = (sentenceCount / rd.totalWords) * 100;
-      var cli = Math.round(0.0588 * L - 0.296 * S_val - 15.8);
-      // Detect non-English content — Coleman-Liau inflates scores for languages
-      // with long compound words (German, Finnish, Dutch, etc.)
-      var pageLang = (data.meta && data.meta.lang || '').toLowerCase().split('-')[0];
-      var isNonEnglish = pageLang && pageLang !== 'en' && pageLang !== '';
-      // Also heuristic: if avg word length > 6.5 chars, likely non-English
-      var avgWordLen = rd.totalChars / rd.totalWords;
-      if (!isNonEnglish && avgWordLen > 6.5) isNonEnglish = true;
-      var langNote = isNonEnglish ? ' Note: This index is calibrated for English text — non-English languages (detected: ' + (pageLang || 'long words') + ') typically score higher due to longer average word length.' : '';
-
-      if (cli >= 6 && cli <= 12) {
-        passed++;
-      } else {
-        findings.push({
-          severity: isNonEnglish ? 'info' : (cli > 14 ? 'warning' : 'info'),
-          title: 'Reading level: grade ' + cli + ' (Coleman-Liau Index)',
-          detail: (cli > 12 ? 'Content may be too complex for a general audience' : 'Content may be overly simple for the target audience') + langNote,
-          fix: cli > 12 ? 'Shorten sentences, use simpler words, break complex ideas into steps. Aim for grade 8-10 for general audiences.' : 'This reading level is appropriate for broad accessibility.',
-          presetRef: null,
-          source: 'Coleman-Liau Index — https://en.wikipedia.org/wiki/Coleman%E2%80%93Liau_index'
-        });
-      }
-    }
-
-    // Paragraph length audit
-    var longParagraphs = (rd.textBlocks || []).filter(function(b) { return b.wordCount > 150; });
-    if (longParagraphs.length > 0) {
-      findings.push({
-        severity: 'warning',
-        title: longParagraphs.length + ' paragraph(s) exceed 150 words',
-        detail: 'Long paragraphs reduce scanability. Ideal: 40-80 words per paragraph.',
-        fix: 'Break long paragraphs into shorter ones. Use subheadings, bullet lists, or callout boxes to chunk content.',
-        presetRef: null,
-        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
-      });
-    }
-
-    // List usage for scanability
-    if (rd.totalWords >= 100 && !rd.hasLists) {
-      findings.push({
-        severity: 'info',
-        title: 'No lists found in content area',
-        detail: 'Lists improve scanability by 47% compared to wall-of-text (NNGroup)',
-        fix: 'Convert sequences, features, or steps into <ul>/<ol> lists where appropriate.',
-        presetRef: null,
-        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
-      });
-    }
-
-    // Table cell readability on mobile (cramped/wrapped cells)
-    var tableCellIssues = (data.layout && data.layout.tableCellIssues) || [];
-    if (tableCellIssues.length > 0) {
-      checks++;
-      var tableDetails = tableCellIssues.slice(0, 3).map(function(t) {
-        var parts = [];
-        if (t.crampedCells > 0) parts.push(t.crampedCells + ' cells lack horizontal padding');
-        if (t.wrappedCells > 0) parts.push(t.wrappedCells + ' cells wrap to multiple lines');
-        return t.selector + ': ' + parts.join(', ') + ' (table ' + t.tableWidth + 'px on ' + t.vpWidth + 'px viewport)';
-      });
-      findings.push({
-        severity: tableCellIssues.some(function(t) { return t.crampedCells > 4 || t.wrappedCells > 4; }) ? 'error' : 'warning',
-        title: 'Table readability issues on mobile (' + tableCellIssues.length + ' table' + (tableCellIssues.length > 1 ? 's' : '') + ')',
-        detail: tableDetails.join('; '),
-        fix: 'Add horizontal padding to table cells (px-3 sm:px-4). For narrow viewports, consider hiding low-priority columns, using a responsive card layout, or reducing font size.',
-        source: 'NNGroup Mobile Tables — https://www.nngroup.com/articles/mobile-tables/',
-        locator: { selector: tableCellIssues[0].selector, text: '' }
-      });
-    }
-
-    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-    var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-    var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-    return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Readability', icon: 'readability' };
-  }
-
-  S.register("readability", scoreReadability, 5, "Readability", "readability");
-})();
-</file>
-
 <file path="docs/analyzer-crawl.js">
 // Site Crawl Module — multi-page analysis with progressive results
 // Provides: link discovery, session management, summary building, export helpers
@@ -20651,6 +20477,180 @@ function scorePerformance(data) {
 })();
 </file>
 
+<file path="docs/scoring/readability.js">
+// Scoring Module: Readability & Scanability
+// Weight: 5%
+// Sources: Coleman-Liau Index, NNGroup scanning research
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+  function scoreReadability(data) {
+    var findings = [];
+    var checks = 0;
+    var passed = 0;
+
+    // Extract text content from the raw data
+    // We use heading count and element count as proxies since we don't have raw text in extracted data
+    var headings = (data.typography && data.typography.headings) || [];
+    var totalElements = (data.structure && data.structure.totalElements) || 0;
+
+    // Scanability: heading frequency
+    // Good rule: 1 heading per ~100-150 elements of content
+    if (totalElements > 50) {
+      checks++;
+      var headingRatio = headings.length / (totalElements / 100);
+      if (headingRatio >= 0.5 && headingRatio <= 5) {
+        passed++;
+      } else if (headingRatio < 0.5) {
+        findings.push({
+          severity: 'warning',
+          title: 'Low heading density: ' + headings.length + ' headings for ' + totalElements + ' elements',
+          detail: 'Content without headings is harder to scan. 79% of users scan rather than read (NNGroup)',
+          fix: 'Add descriptive headings to break content into scannable sections. Aim for a heading every 2-3 paragraphs.',
+          presetRef: null,
+          source: 'NNGroup scanning research — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+        });
+      }
+    }
+
+    // Heading descriptiveness: check if headings are too short (likely generic)
+    if (headings.length > 0) {
+      checks++;
+      var shortHeadings = headings.filter(function(h) {
+        return h.text && h.text.length < 3;
+      });
+      if (shortHeadings.length === 0) {
+        passed++;
+      } else {
+        passed++; // Info doesn't reduce score
+        findings.push({
+          severity: 'info',
+          title: shortHeadings.length + ' heading(s) with very short text (< 3 chars)',
+          detail: 'Short headings like numbers or icons don\'t help users scan. Use descriptive text.',
+          fix: 'Replace generic headings with descriptive ones that summarize the section content.',
+          presetRef: null,
+          source: 'NNGroup — https://www.nngroup.com/articles/headings-pickup-lines/'
+        });
+      }
+    }
+
+    // Font size variety as readability signal
+    // Too many sizes = visual noise, harder to establish reading rhythm
+    var fontSizes = (data.typography && data.typography.fontSizes) || [];
+    var smallTextCount = fontSizes.filter(function(f) {
+      return parseFloat(f.value) < 12;
+    }).reduce(function(sum, f) { return sum + f.count; }, 0);
+
+    if (smallTextCount > 0 && totalElements > 20) {
+      checks++;
+      var smallRatio = smallTextCount / totalElements;
+      if (smallRatio < 0.05) {
+        passed++;
+      } else {
+        findings.push({
+          severity: 'warning',
+          title: smallTextCount + ' element(s) with text smaller than 12px',
+          detail: 'Text below 12px is difficult to read for most users and nearly impossible for elderly or low-vision users',
+          fix: 'Increase small text to at least 12px. Consider if the information is important enough to display — if not, remove it.',
+          presetRef: null,
+          source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text'
+        });
+      }
+    }
+
+    // Coleman-Liau readability index
+    var rd = data.readability || {};
+    if (rd.totalWords >= 50 && rd.paragraphCount >= 2) {
+      checks++;
+      // Coleman-Liau: 0.0588 * L - 0.296 * S - 15.8
+      // L = avg letters per 100 words, S = avg sentences per 100 words
+      var L = (rd.totalChars / rd.totalWords) * 100;
+      var sentenceCount = 0;
+      (rd.textBlocks || []).forEach(function(b) {
+        sentenceCount += (b.text.match(/[.!?]+/g) || []).length;
+      });
+      var S_val = (sentenceCount / rd.totalWords) * 100;
+      var cli = Math.round(0.0588 * L - 0.296 * S_val - 15.8);
+      // Detect non-English content — Coleman-Liau inflates scores for languages
+      // with long compound words (German, Finnish, Dutch, etc.)
+      var pageLang = (data.meta && data.meta.lang || '').toLowerCase().split('-')[0];
+      var isNonEnglish = pageLang && pageLang !== 'en' && pageLang !== '';
+      // Also heuristic: if avg word length > 6.5 chars, likely non-English
+      var avgWordLen = rd.totalChars / rd.totalWords;
+      if (!isNonEnglish && avgWordLen > 6.5) isNonEnglish = true;
+      var langNote = isNonEnglish ? ' Note: This index is calibrated for English text — non-English languages (detected: ' + (pageLang || 'long words') + ') typically score higher due to longer average word length.' : '';
+
+      if (cli >= 6 && cli <= 12) {
+        passed++;
+      } else {
+        findings.push({
+          severity: isNonEnglish ? 'info' : (cli > 14 ? 'warning' : 'info'),
+          title: 'Reading level: grade ' + cli + ' (Coleman-Liau Index)',
+          detail: (cli > 12 ? 'Content may be too complex for a general audience' : 'Content may be overly simple for the target audience') + langNote,
+          fix: cli > 12 ? 'Shorten sentences, use simpler words, break complex ideas into steps. Aim for grade 8-10 for general audiences.' : 'This reading level is appropriate for broad accessibility.',
+          presetRef: null,
+          source: 'Coleman-Liau Index — https://en.wikipedia.org/wiki/Coleman%E2%80%93Liau_index'
+        });
+      }
+    }
+
+    // Paragraph length audit
+    var longParagraphs = (rd.textBlocks || []).filter(function(b) { return b.wordCount > 150; });
+    if (longParagraphs.length > 0) {
+      findings.push({
+        severity: 'warning',
+        title: longParagraphs.length + ' paragraph(s) exceed 150 words',
+        detail: 'Long paragraphs reduce scanability. Ideal: 40-80 words per paragraph.',
+        fix: 'Break long paragraphs into shorter ones. Use subheadings, bullet lists, or callout boxes to chunk content.',
+        presetRef: null,
+        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+      });
+    }
+
+    // List usage for scanability
+    if (rd.totalWords >= 100 && !rd.hasLists) {
+      findings.push({
+        severity: 'info',
+        title: 'No lists found in content area',
+        detail: 'Lists improve scanability by 47% compared to wall-of-text (NNGroup)',
+        fix: 'Convert sequences, features, or steps into <ul>/<ol> lists where appropriate.',
+        presetRef: null,
+        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+      });
+    }
+
+    // Table cell readability on mobile (cramped/wrapped cells)
+    var tableCellIssues = (data.layout && data.layout.tableCellIssues) || [];
+    if (tableCellIssues.length > 0) {
+      checks++;
+      var tableDetails = tableCellIssues.slice(0, 3).map(function(t) {
+        var parts = [];
+        if (t.crampedCells > 0) parts.push(t.crampedCells + ' cells lack horizontal padding');
+        if (t.wrappedCells > 0) parts.push(t.wrappedCells + ' cells wrap to multiple lines');
+        return t.selector + ': ' + parts.join(', ') + ' (table ' + t.tableWidth + 'px on ' + t.vpWidth + 'px viewport)';
+      });
+      findings.push({
+        severity: tableCellIssues.some(function(t) { return t.crampedCells > 4 || t.wrappedCells > 4; }) ? 'error' : 'warning',
+        title: 'Table readability issues on mobile (' + tableCellIssues.length + ' table' + (tableCellIssues.length > 1 ? 's' : '') + ')',
+        detail: tableDetails.join('; '),
+        fix: 'Add horizontal padding to table cells (px-3 sm:px-4). For narrow viewports, consider hiding low-priority columns, using a responsive card layout, or reducing font size.',
+        source: 'NNGroup Mobile Tables — https://www.nngroup.com/articles/mobile-tables/',
+        locator: { selector: tableCellIssues[0].selector, text: '' }
+      });
+    }
+
+    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+    var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+    var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+    return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Readability', icon: 'readability' };
+  }
+
+  S.register("readability", scoreReadability, 5, "Readability", "readability");
+})();
+</file>
+
 <file path="docs/scoring/spacing.js">
 // Scoring Module: Spacing & Layout
 // Weight: 15%
@@ -20825,6 +20825,423 @@ function scoreSpacing(data) {
 
   S.register("spacing", scoreSpacing, 15, "Spacing & Layout", "spacing");
 })();
+</file>
+
+<file path="docs/tests/test-scoring.html">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scoring Module Tests</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; background: #f8fafc; }
+    h1 { font-size: 20px; margin-bottom: 16px; }
+    .test { padding: 8px 12px; margin: 4px 0; border-radius: 6px; font-size: 13px; font-family: monospace; }
+    .pass { background: #f0fdf4; border: 1px solid #bbf7d0; color: #16a34a; }
+    .fail { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; }
+    .summary { margin-top: 16px; padding: 12px; border-radius: 8px; font-weight: 600; font-size: 15px; }
+    .summary.all-pass { background: #f0fdf4; color: #16a34a; border: 2px solid #16a34a; }
+    .summary.has-fail { background: #fef2f2; color: #dc2626; border: 2px solid #dc2626; }
+    #results { max-width: 800px; }
+  </style>
+</head>
+<body>
+  <h1>Scoring Module Tests</h1>
+  <div id="results">Loading modules...</div>
+
+  <!-- Load scoring modules -->
+  <script src="../scoring/registry.js"></script>
+  <script src="../scoring/contrast.js"></script>
+  <script src="../scoring/typography.js"></script>
+  <script src="../scoring/spacing.js"></script>
+  <script src="../scoring/touch.js"></script>
+  <script src="../scoring/accessibility.js"></script>
+  <script src="../scoring/responsive.js"></script>
+  <script src="../scoring/consistency.js"></script>
+  <script src="../scoring/cognitive.js"></script>
+  <script src="../scoring/layout.js"></script>
+  <script src="../scoring/performance.js"></script>
+  <script src="../scoring/readability.js"></script>
+  <script src="../scoring/filters.js"></script>
+  <script src="../scoring/balance.js"></script>
+
+  <script>
+    var results = [];
+    var passed = 0;
+    var failed = 0;
+
+    function assert(name, condition, detail) {
+      if (condition) {
+        results.push({ name: name, pass: true });
+        passed++;
+      } else {
+        results.push({ name: name, pass: false, detail: detail || 'assertion failed' });
+        failed++;
+      }
+    }
+
+    // --- Minimal valid extraction data ---
+    function makeData(overrides) {
+      var base = {
+        meta: { title: 'Test', url: 'https://test.com', viewportWidth: 1280, viewportHeight: 900, timestamp: new Date().toISOString(), version: 1 },
+        colors: { textColors: [{ value: '#000', count: 10 }], bgColors: [{ value: '#fff', count: 10 }], contrastPairs: [] },
+        typography: { bodyFontSize: '16px', bodyLineHeight: '24px', bodyFontFamily: 'sans-serif', fontFamilies: ['sans-serif'], fontSizes: [{ value: '16px', count: 10 }], fontWeights: [{ value: '400', count: 10 }, { value: '700', count: 5 }], headings: [{ tag: 'h1', text: 'Test', fontSize: '32px', fontWeight: '700', lineHeight: '40px', fontFamily: 'sans-serif' }], lineHeights: [{ value: 1.5, count: 10 }], maxLineLength: { chars: 65, element: 'p' } },
+        spacing: { paddings: [{ value: '16px', count: 10 }], margins: [{ value: '16px', count: 10 }], gaps: [{ value: '16px', count: 5 }], maxContentWidth: '1200px', bodyPaddingHorizontal: '16px' },
+        layout: { sectionGaps: [64, 64, 64], alignmentEdges: [16, 16, 16, 16, 16], visualHierarchy: { h1ToBody: 2, h2ToBody: 1.5, bodySize: 16 }, borderRadii: [{ value: '8px', count: 10 }] },
+        interaction: { touchTargets: [], transitions: ['0.15s'], adjacentIssues: [] },
+        accessibility: { semanticElements: { header: 1, nav: 1, main: 1, footer: 1, section: 3, article: 0, aside: 0 }, headingHierarchy: ['h1', 'h2', 'h3'], imagesWithoutAlt: 0, formLabels: { total: 2, withLabel: 2, withoutLabel: 0 }, focusIndicators: [{ element: 'button', outlineStyle: 'solid', outlineWidth: '2px', outlineColor: 'blue', outlineOffset: '2px' }], hasFocusVisibleCSS: true, langAttribute: true, hasSkipLink: true, badLinkTexts: [], missingAutocomplete: 0, ariaIssues: [], colorOnlyIndicators: 0, autoPlayMedia: 0, navItemCount: 5 },
+        structure: { totalElements: 100, darkModeClasses: true, responsiveClasses: true, tailwindDetected: true, cssFramework: 'tailwind', viewportMeta: 'width=device-width, initial-scale=1.0', blocksZoom: false, hasHorizontalOverflow: false, fixedWidthElements: 0, truncatedElements: 0 },
+        context: { pageType: 'content' },
+        animation: { keyframeCount: 0, hasReducedMotion: true, hiddenElements: 0, scrollRevealPatterns: [] },
+        performance: { fontLoading: [], renderBlocking: { cssInHead: 1, jsInHead: 0 }, domSize: 100, domDepth: 8, thirdPartyScripts: 2, imageFormats: { modern: 3, legacy: 0 }, cls: 0.02, lcp: { time: 1500, element: 'img', size: 50000 }, nonResponsiveImages: 0 },
+        readability: { gradeLevel: 8 }
+      };
+      if (overrides) {
+        Object.keys(overrides).forEach(function(k) {
+          if (typeof overrides[k] === 'object' && !Array.isArray(overrides[k]) && base[k]) {
+            Object.keys(overrides[k]).forEach(function(k2) { base[k][k2] = overrides[k][k2]; });
+          } else {
+            base[k] = overrides[k];
+          }
+        });
+      }
+      return base;
+    }
+
+    // =========================================================
+    // TEST 1: All modules run without errors on valid data
+    // =========================================================
+    (function() {
+      var profiles = ['general', 'wcag_aaa', 'elderly', 'low_vision', 'motor_impairment', 'color_blind', 'children', 'cognitive'];
+      profiles.forEach(function(profile) {
+        try {
+          var data = makeData({ profile: profile });
+          var result = MilgScoring.runScoring(data);
+          assert('runScoring(' + profile + ') completes', result && typeof result.overall === 'number', 'result: ' + JSON.stringify(result && result.overall));
+          assert('runScoring(' + profile + ') score 0-100', result.overall >= 0 && result.overall <= 100, 'score: ' + result.overall);
+          assert('runScoring(' + profile + ') has categories', result.categories && result.categories.length > 0, 'categories: ' + (result.categories && result.categories.length));
+
+          // Check all categories have required fields
+          result.categories.forEach(function(cat) {
+            assert(profile + '/' + cat.label + ' has score', typeof cat.score === 'number' && cat.score >= 0 && cat.score <= 100, 'score: ' + cat.score);
+            assert(profile + '/' + cat.label + ' has findings array', Array.isArray(cat.findings), 'findings: ' + typeof cat.findings);
+            assert(profile + '/' + cat.label + ' has checks count', typeof cat.checks === 'number' || cat.checks === undefined, 'checks: ' + cat.checks);
+          });
+        } catch(e) {
+          assert('runScoring(' + profile + ') no error', false, e.message + ' at ' + (e.stack || '').split('\n')[1]);
+        }
+      });
+    })();
+
+    // =========================================================
+    // TEST 2: Good data should score well (>= 80)
+    // =========================================================
+    (function() {
+      var data = makeData();
+      var result = MilgScoring.runScoring(data);
+      assert('Good data scores >= 80', result.overall >= 80, 'score: ' + result.overall);
+      assert('Good data grade A or B', result.grade === 'A' || result.grade === 'B', 'grade: ' + result.grade);
+    })();
+
+    // =========================================================
+    // TEST 3: Contrast failures lower score
+    // =========================================================
+    (function() {
+      var data = makeData({
+        colors: {
+          textColors: [{ value: '#999', count: 5 }],
+          bgColors: [{ value: '#fff', count: 5 }],
+          contrastPairs: [
+            { fg: 'rgb(153,153,153)', bg: 'rgb(255,255,255)', ratio: 2.85, needed: 4.5, passes: false, fontSize: 16, fontWeight: 400, isLarge: false, text: 'Low contrast text', selector: 'p', filter: '' },
+            { fg: 'rgb(153,153,153)', bg: 'rgb(255,255,255)', ratio: 2.85, needed: 4.5, passes: false, fontSize: 16, fontWeight: 400, isLarge: false, text: 'Another low contrast', selector: 'span', filter: '' }
+          ]
+        }
+      });
+      var result = MilgScoring.runScoring(data);
+      var contrastCat = result.categories.find(function(c) { return c.label === 'Color & Contrast'; });
+      assert('Contrast failures produce errors', contrastCat.findings.some(function(f) { return f.severity === 'error'; }), 'findings: ' + contrastCat.findings.length);
+      assert('Contrast score < 100', contrastCat.score < 100, 'score: ' + contrastCat.score);
+    })();
+
+    // =========================================================
+    // TEST 4: Touch target issues
+    // =========================================================
+    (function() {
+      var data = makeData({
+        interaction: {
+          touchTargets: [
+            { element: 'button', width: 20, height: 20, text: 'Tiny button', selector: 'button.tiny', passes: false, isButton: true, linkContext: 'button' },
+            { element: 'a', width: 30, height: 15, text: 'Footer link', selector: 'a', passes: false, isButton: false, linkContext: 'footer' },
+            { element: 'a', width: 50, height: 12, text: 'Inline link', selector: 'a', passes: false, isButton: false, linkContext: 'inline' }
+          ],
+          transitions: ['0.2s']
+        }
+      });
+      var result = MilgScoring.runScoring(data);
+      var touchCat = result.categories.find(function(c) { return c.label === 'Touch & Interaction'; });
+      var errors = touchCat.findings.filter(function(f) { return f.severity === 'error'; });
+      var infos = touchCat.findings.filter(function(f) { return f.severity === 'info'; });
+      assert('Button gets error', errors.some(function(f) { return f.title.indexOf('button') !== -1; }), 'errors: ' + errors.map(function(f){return f.title}).join('; '));
+      assert('Footer link gets info or error', touchCat.findings.some(function(f) { return f.title.indexOf('Footer') !== -1; }), 'findings: ' + touchCat.findings.map(function(f){return f.title}).join('; '));
+      assert('Inline link gets info (exempt)', infos.some(function(f) { return f.title.indexOf('Inline') !== -1 || f.title.indexOf('inline') !== -1; }), 'infos: ' + infos.map(function(f){return f.title}).join('; '));
+    })();
+
+    // =========================================================
+    // TEST 5: Profile differentiation
+    // =========================================================
+    (function() {
+      var data = makeData({
+        typography: { bodyFontSize: '15px', bodyLineHeight: '22px', bodyFontFamily: 'sans-serif', fontFamilies: ['sans-serif'], fontSizes: [{ value: '15px', count: 10 }], fontWeights: [{ value: '400', count: 10 }], headings: [{ tag: 'h1', text: 'Test', fontSize: '32px', fontWeight: '700', lineHeight: '40px', fontFamily: 'sans-serif' }], lineHeights: [{ value: 1.47, count: 10 }], maxLineLength: { chars: 70, element: 'p' } }
+      });
+      var generalResult = MilgScoring.runScoring(makeData(Object.assign({}, data, { profile: 'general' })));
+      var elderlyResult = MilgScoring.runScoring(makeData(Object.assign({}, data, { profile: 'elderly' })));
+      var childResult = MilgScoring.runScoring(makeData(Object.assign({}, data, { profile: 'children' })));
+
+      assert('Elderly scores lower than general for 15px font', elderlyResult.overall <= generalResult.overall, 'elderly: ' + elderlyResult.overall + ' general: ' + generalResult.overall);
+      assert('Children scores different from general', childResult.overall !== generalResult.overall || childResult.categories.some(function(c, i) { return c.findings.length !== generalResult.categories[i].findings.length; }), 'findings differ');
+    })();
+
+    // =========================================================
+    // TEST 6: CVD simulation (color_blind profile)
+    // =========================================================
+    (function() {
+      var data = makeData({
+        profile: 'color_blind',
+        colors: {
+          textColors: [{ value: 'rgb(255,0,0)', count: 3 }, { value: 'rgb(0,128,0)', count: 3 }],
+          bgColors: [{ value: 'rgb(255,255,255)', count: 10 }],
+          contrastPairs: [
+            { fg: 'rgb(255,0,0)', bg: 'rgb(255,255,255)', ratio: 4, needed: 4.5, passes: false, fontSize: 16, fontWeight: 400, isLarge: false, text: 'Red text', selector: 'span.red', filter: '' },
+            { fg: 'rgb(0,128,0)', bg: 'rgb(255,255,255)', ratio: 4.6, needed: 4.5, passes: true, fontSize: 16, fontWeight: 400, isLarge: false, text: 'Green text', selector: 'span.green', filter: '' }
+          ]
+        }
+      });
+      try {
+        var result = MilgScoring.runScoring(data);
+        assert('CVD profile runs without error', true);
+        var contrastCat = result.categories.find(function(c) { return c.label === 'Color & Contrast'; });
+        assert('CVD has contrast findings', contrastCat.findings.length > 0, 'findings: ' + contrastCat.findings.length);
+      } catch(e) {
+        assert('CVD profile no error', false, e.message);
+      }
+    })();
+
+    // =========================================================
+    // TEST 7: Cognitive profile checks
+    // =========================================================
+    (function() {
+      var data = makeData({
+        profile: 'cognitive',
+        accessibility: {
+          semanticElements: { header: 1, nav: 1, main: 1, footer: 1 },
+          headingHierarchy: ['h1', 'h2', 'h3'], imagesWithoutAlt: 0,
+          formLabels: { total: 0, withLabel: 0, withoutLabel: 0 },
+          focusIndicators: [], hasFocusVisibleCSS: true, langAttribute: true,
+          hasSkipLink: true, badLinkTexts: [], missingAutocomplete: 0,
+          ariaIssues: [], colorOnlyIndicators: 0, autoPlayMedia: 0,
+          navItemCount: 12 // exceeds max 5 for cognitive
+        },
+        readability: { gradeLevel: 12 } // exceeds max 8 for cognitive
+      });
+      var result = MilgScoring.runScoring(data);
+      var cogCat = result.categories.find(function(c) { return c.label === 'Cognitive Load'; });
+      assert('Cognitive profile flags high nav count', cogCat.findings.some(function(f) { return f.title.indexOf('navigation') !== -1; }), 'findings: ' + cogCat.findings.map(function(f){return f.title}).join('; '));
+      assert('Cognitive profile flags high reading level', cogCat.findings.some(function(f) { return f.title.indexOf('Reading level') !== -1 || f.title.indexOf('reading') !== -1; }), 'findings: ' + cogCat.findings.map(function(f){return f.title}).join('; '));
+    })();
+
+    // =========================================================
+    // TEST 8: All modules return checks/passed
+    // =========================================================
+    (function() {
+      var data = makeData();
+      var result = MilgScoring.runScoring(data);
+      result.categories.forEach(function(cat) {
+        assert(cat.label + ' has checks count', cat.checks !== undefined && cat.checks >= 0, 'checks: ' + cat.checks);
+      });
+    })();
+
+    // =========================================================
+    // TEST 9: Registry utilities
+    // =========================================================
+    (function() {
+      // parseColor
+      var c = MilgScoring.parseColor('rgb(255, 0, 0)');
+      assert('parseColor rgb()', c && c.r === 255 && c.g === 0 && c.b === 0, JSON.stringify(c));
+
+      var c2 = MilgScoring.parseColor('rgba(0, 128, 255, 0.5)');
+      assert('parseColor rgba()', c2 && c2.r === 0 && c2.g === 128 && c2.b === 255 && c2.a === 0.5, JSON.stringify(c2));
+
+      // contrastRatio
+      var ratio = MilgScoring.contrastRatio({ r: 0, g: 0, b: 0 }, { r: 255, g: 255, b: 255 });
+      assert('contrastRatio black/white = 21', Math.abs(ratio - 21) < 0.1, 'ratio: ' + ratio);
+
+      // CVD simulation
+      var sim = MilgScoring.simulateCVD({ r: 255, g: 0, b: 0 }, MilgScoring.CVD_MATRICES.protanopia);
+      assert('CVD simulation produces valid color', sim && sim.r >= 0 && sim.r <= 255 && sim.g >= 0 && sim.b >= 0, JSON.stringify(sim));
+      assert('CVD protanopia dims red', sim.r < 200, 'r: ' + sim.r); // red looks much darker/different under protanopia
+    })();
+
+    // =========================================================
+    // NEW: Extended checks tests
+    // =========================================================
+
+    // Duplicate IDs should produce error when used in ARIA
+    (function() {
+      var data = makeData({
+        accessibility: {
+          duplicateIds: [{ id: 'foo', count: 2, usedInAria: true }],
+          nestedInteractives: ['a.nested'],
+          emptyInteractives: ['button.empty'],
+          positiveTabindex: 3,
+          scrollableNoKeyboard: 1,
+          nonTextContrast: [{ selector: 'input', ratio: 2.1, borderColor: 'rgb(200,200,200)', bg: 'rgb(255,255,255)' }],
+          tableIssues: [{ selector: 'table', issues: ['no-th', 'no-caption'] }],
+          missingButtonType: 2
+        }
+      });
+      var result = MilgScoring.runScoring(data);
+      var a11y = result.categories.find(function(c) { return c.label === 'Accessibility'; });
+      var titles = a11y.findings.map(function(f) { return f.title; }).join(' | ');
+      assert('Duplicate IDs flagged', titles.indexOf('duplicate ID') !== -1, 'Got: ' + titles);
+      assert('Nested interactives flagged', titles.indexOf('nested interactive') !== -1, 'Got: ' + titles);
+      assert('Empty interactives flagged', titles.indexOf('no accessible name') !== -1, 'Got: ' + titles);
+      assert('Positive tabindex flagged', titles.indexOf('positive tabindex') !== -1, 'Got: ' + titles);
+      assert('Scrollable no keyboard flagged', titles.indexOf('keyboard-accessible') !== -1, 'Got: ' + titles);
+      assert('Non-text contrast flagged', titles.indexOf('border contrast') !== -1, 'Got: ' + titles);
+      assert('Table issues flagged', titles.indexOf('table') !== -1, 'Got: ' + titles);
+    })();
+
+    // Z-index sprawl and shadow consistency
+    (function() {
+      var data = makeData({
+        layout: { zIndexSprawl: { distinct: 12, max: 9999, values: [] }, shadowSprawl: 9 },
+        colors: { darkModeHalation: true }
+      });
+      var result = MilgScoring.runScoring(data);
+      var consistency = result.categories.find(function(c) { return c.label === 'Visual Consistency'; });
+      var titles = consistency.findings.map(function(f) { return f.title; }).join(' | ');
+      assert('Z-index sprawl flagged', titles.indexOf('z-index') !== -1, 'Got: ' + titles);
+      assert('Shadow sprawl flagged', titles.indexOf('box-shadow') !== -1, 'Got: ' + titles);
+      assert('Dark mode halation flagged', titles.indexOf('halation') !== -1 || titles.indexOf('black') !== -1, 'Got: ' + titles);
+    })();
+
+    // All-caps and justified text
+    (function() {
+      var data = makeData({
+        typography: { allCapsLongText: 3, justifiedText: 2 }
+      });
+      var result = MilgScoring.runScoring(data);
+      var typo = result.categories.find(function(c) { return c.label === 'Typography'; });
+      var titles = typo.findings.map(function(f) { return f.title; }).join(' | ');
+      assert('All-caps long text flagged', titles.indexOf('all-caps') !== -1, 'Got: ' + titles);
+      assert('Justified text flagged', titles.indexOf('justify') !== -1, 'Got: ' + titles);
+    })();
+
+    // Tier 1 checks: text clipping, placeholder labels, invisible links, etc.
+    (function() {
+      var data = makeData({
+        accessibility: {
+          textClippedNoTitle: 6,
+          placeholderOnlyInputs: 2,
+          invisibleLinks: 3,
+          requiredNoIndicator: 4,
+          invisibleInputs: 1,
+          disabledLowContrast: 2
+        }
+      });
+      var result = MilgScoring.runScoring(data);
+      var a11y = result.categories.find(function(c) { return c.label === 'Accessibility'; });
+      var titles = a11y.findings.map(function(f) { return f.title; }).join(' | ');
+      assert('Text clipping flagged', titles.indexOf('truncate') !== -1, 'Got: ' + titles);
+      assert('Placeholder-only labels flagged', titles.indexOf('placeholder') !== -1, 'Got: ' + titles);
+      assert('Invisible links flagged', titles.indexOf('indistinguishable') !== -1, 'Got: ' + titles);
+      assert('Required no indicator flagged', titles.indexOf('required') !== -1, 'Got: ' + titles);
+      assert('Invisible inputs flagged', titles.indexOf('visible boundary') !== -1, 'Got: ' + titles);
+      assert('Disabled low contrast flagged', titles.indexOf('disabled') !== -1, 'Got: ' + titles);
+    })();
+
+    // Performance: upscaled images, will-change, non-passive scroll
+    (function() {
+      var data = makeData({
+        performance: {
+          upscaledImages: [{ selector: 'img', rendered: '800x600', natural: '400x300', upscale: 200 }],
+          willChangeCount: 12
+        },
+        interaction: {
+          listenerStats: { nonPassiveScroll: 2 },
+          listenerPatterns: { toggleNoAria: 1, navigationInButton: 1 }
+        }
+      });
+      var result = MilgScoring.runScoring(data);
+      var perf = result.categories.find(function(c) { return c.label === 'Performance'; });
+      var touch = result.categories.find(function(c) { return c.label === 'Touch & Interaction'; });
+      var perfTitles = perf.findings.map(function(f) { return f.title; }).join(' | ');
+      var touchTitles = touch.findings.map(function(f) { return f.title; }).join(' | ');
+      assert('Upscaled images flagged', perfTitles.indexOf('larger than natural') !== -1, 'Got: ' + perfTitles);
+      assert('will-change flagged', perfTitles.indexOf('will-change') !== -1, 'Got: ' + perfTitles);
+      assert('Non-passive scroll flagged', perfTitles.indexOf('non-passive') !== -1, 'Got: ' + perfTitles);
+      assert('Toggle no ARIA flagged', touchTitles.indexOf('ARIA state') !== -1, 'Got: ' + touchTitles);
+    })();
+
+    // Tier 2: consistency checks
+    (function() {
+      var data = makeData({
+        consistency: { borderWidthInconsistencies: 2, fontWeightInconsistencies: 1, gradientDirections: 5 },
+        layout: {
+          buttonHierarchy: { total: 6, filled: 6, outline: 0, text: 0 },
+          fixedViewportConsumption: 35
+        }
+      });
+      var result = MilgScoring.runScoring(data);
+      var cons = result.categories.find(function(c) { return c.label === 'Visual Consistency'; });
+      var lay = result.categories.find(function(c) { return c.label === 'Layout Quality'; });
+      var consTitles = cons.findings.map(function(f) { return f.title; }).join(' | ');
+      var layTitles = lay.findings.map(function(f) { return f.title; }).join(' | ');
+      assert('Border width inconsistency flagged', consTitles.indexOf('border width') !== -1, 'Got: ' + consTitles);
+      assert('Font weight inconsistency flagged', consTitles.indexOf('font-weight') !== -1, 'Got: ' + consTitles);
+      assert('Gradient direction inconsistency flagged', consTitles.indexOf('gradient') !== -1, 'Got: ' + consTitles);
+      assert('Button hierarchy flagged', layTitles.indexOf('hierarchy') !== -1, 'Got: ' + layTitles);
+      assert('Fixed viewport consumption flagged', layTitles.indexOf('viewport') !== -1 || layTitles.indexOf('Fixed') !== -1, 'Got: ' + layTitles);
+    })();
+
+    // Performance: complex filters, forced layers
+    (function() {
+      var data = makeData({
+        performance: { complexFilters: 3, forcedLayers: 15 },
+        accessibility: { selectNoDefault: 2 }
+      });
+      var result = MilgScoring.runScoring(data);
+      var perf = result.categories.find(function(c) { return c.label === 'Performance'; });
+      var a11y = result.categories.find(function(c) { return c.label === 'Accessibility'; });
+      var perfTitles = perf.findings.map(function(f) { return f.title; }).join(' | ');
+      var a11yTitles = a11y.findings.map(function(f) { return f.title; }).join(' | ');
+      assert('Complex filters flagged', perfTitles.indexOf('filter') !== -1, 'Got: ' + perfTitles);
+      assert('Forced layers flagged', perfTitles.indexOf('compositor') !== -1 || perfTitles.indexOf('GPU') !== -1, 'Got: ' + perfTitles);
+      assert('Select no default flagged', a11yTitles.indexOf('select') !== -1 || a11yTitles.indexOf('default') !== -1, 'Got: ' + a11yTitles);
+    })();
+
+    // =========================================================
+    // RENDER RESULTS
+    // =========================================================
+    var html = '';
+    results.forEach(function(r) {
+      html += '<div class="test ' + (r.pass ? 'pass' : 'fail') + '">';
+      html += (r.pass ? '✓' : '✗') + ' ' + r.name;
+      if (!r.pass && r.detail) html += ' — <strong>' + r.detail + '</strong>';
+      html += '</div>';
+    });
+    html += '<div class="summary ' + (failed === 0 ? 'all-pass' : 'has-fail') + '">';
+    html += passed + ' passed, ' + failed + ' failed';
+    html += '</div>';
+    document.getElementById('results').innerHTML = html;
+
+    // Also log for CI
+    console.log('Scoring tests: ' + passed + ' passed, ' + failed + ' failed');
+    if (failed > 0) console.error('FAILURES:', results.filter(function(r) { return !r.pass; }).map(function(r) { return r.name + ': ' + r.detail; }));
+  </script>
+</body>
+</html>
 </file>
 
 <file path="docs/scoring/balance.js">
@@ -21361,423 +21778,6 @@ function scoreTypography(data) {
 
   S.register("typography", scoreTypography, 15, "Typography", "type");
 })();
-</file>
-
-<file path="docs/tests/test-scoring.html">
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Scoring Module Tests</title>
-  <style>
-    body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; background: #f8fafc; }
-    h1 { font-size: 20px; margin-bottom: 16px; }
-    .test { padding: 8px 12px; margin: 4px 0; border-radius: 6px; font-size: 13px; font-family: monospace; }
-    .pass { background: #f0fdf4; border: 1px solid #bbf7d0; color: #16a34a; }
-    .fail { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; }
-    .summary { margin-top: 16px; padding: 12px; border-radius: 8px; font-weight: 600; font-size: 15px; }
-    .summary.all-pass { background: #f0fdf4; color: #16a34a; border: 2px solid #16a34a; }
-    .summary.has-fail { background: #fef2f2; color: #dc2626; border: 2px solid #dc2626; }
-    #results { max-width: 800px; }
-  </style>
-</head>
-<body>
-  <h1>Scoring Module Tests</h1>
-  <div id="results">Loading modules...</div>
-
-  <!-- Load scoring modules -->
-  <script src="../scoring/registry.js"></script>
-  <script src="../scoring/contrast.js"></script>
-  <script src="../scoring/typography.js"></script>
-  <script src="../scoring/spacing.js"></script>
-  <script src="../scoring/touch.js"></script>
-  <script src="../scoring/accessibility.js"></script>
-  <script src="../scoring/responsive.js"></script>
-  <script src="../scoring/consistency.js"></script>
-  <script src="../scoring/cognitive.js"></script>
-  <script src="../scoring/layout.js"></script>
-  <script src="../scoring/performance.js"></script>
-  <script src="../scoring/readability.js"></script>
-  <script src="../scoring/filters.js"></script>
-  <script src="../scoring/balance.js"></script>
-
-  <script>
-    var results = [];
-    var passed = 0;
-    var failed = 0;
-
-    function assert(name, condition, detail) {
-      if (condition) {
-        results.push({ name: name, pass: true });
-        passed++;
-      } else {
-        results.push({ name: name, pass: false, detail: detail || 'assertion failed' });
-        failed++;
-      }
-    }
-
-    // --- Minimal valid extraction data ---
-    function makeData(overrides) {
-      var base = {
-        meta: { title: 'Test', url: 'https://test.com', viewportWidth: 1280, viewportHeight: 900, timestamp: new Date().toISOString(), version: 1 },
-        colors: { textColors: [{ value: '#000', count: 10 }], bgColors: [{ value: '#fff', count: 10 }], contrastPairs: [] },
-        typography: { bodyFontSize: '16px', bodyLineHeight: '24px', bodyFontFamily: 'sans-serif', fontFamilies: ['sans-serif'], fontSizes: [{ value: '16px', count: 10 }], fontWeights: [{ value: '400', count: 10 }, { value: '700', count: 5 }], headings: [{ tag: 'h1', text: 'Test', fontSize: '32px', fontWeight: '700', lineHeight: '40px', fontFamily: 'sans-serif' }], lineHeights: [{ value: 1.5, count: 10 }], maxLineLength: { chars: 65, element: 'p' } },
-        spacing: { paddings: [{ value: '16px', count: 10 }], margins: [{ value: '16px', count: 10 }], gaps: [{ value: '16px', count: 5 }], maxContentWidth: '1200px', bodyPaddingHorizontal: '16px' },
-        layout: { sectionGaps: [64, 64, 64], alignmentEdges: [16, 16, 16, 16, 16], visualHierarchy: { h1ToBody: 2, h2ToBody: 1.5, bodySize: 16 }, borderRadii: [{ value: '8px', count: 10 }] },
-        interaction: { touchTargets: [], transitions: ['0.15s'], adjacentIssues: [] },
-        accessibility: { semanticElements: { header: 1, nav: 1, main: 1, footer: 1, section: 3, article: 0, aside: 0 }, headingHierarchy: ['h1', 'h2', 'h3'], imagesWithoutAlt: 0, formLabels: { total: 2, withLabel: 2, withoutLabel: 0 }, focusIndicators: [{ element: 'button', outlineStyle: 'solid', outlineWidth: '2px', outlineColor: 'blue', outlineOffset: '2px' }], hasFocusVisibleCSS: true, langAttribute: true, hasSkipLink: true, badLinkTexts: [], missingAutocomplete: 0, ariaIssues: [], colorOnlyIndicators: 0, autoPlayMedia: 0, navItemCount: 5 },
-        structure: { totalElements: 100, darkModeClasses: true, responsiveClasses: true, tailwindDetected: true, cssFramework: 'tailwind', viewportMeta: 'width=device-width, initial-scale=1.0', blocksZoom: false, hasHorizontalOverflow: false, fixedWidthElements: 0, truncatedElements: 0 },
-        context: { pageType: 'content' },
-        animation: { keyframeCount: 0, hasReducedMotion: true, hiddenElements: 0, scrollRevealPatterns: [] },
-        performance: { fontLoading: [], renderBlocking: { cssInHead: 1, jsInHead: 0 }, domSize: 100, domDepth: 8, thirdPartyScripts: 2, imageFormats: { modern: 3, legacy: 0 }, cls: 0.02, lcp: { time: 1500, element: 'img', size: 50000 }, nonResponsiveImages: 0 },
-        readability: { gradeLevel: 8 }
-      };
-      if (overrides) {
-        Object.keys(overrides).forEach(function(k) {
-          if (typeof overrides[k] === 'object' && !Array.isArray(overrides[k]) && base[k]) {
-            Object.keys(overrides[k]).forEach(function(k2) { base[k][k2] = overrides[k][k2]; });
-          } else {
-            base[k] = overrides[k];
-          }
-        });
-      }
-      return base;
-    }
-
-    // =========================================================
-    // TEST 1: All modules run without errors on valid data
-    // =========================================================
-    (function() {
-      var profiles = ['general', 'wcag_aaa', 'elderly', 'low_vision', 'motor_impairment', 'color_blind', 'children', 'cognitive'];
-      profiles.forEach(function(profile) {
-        try {
-          var data = makeData({ profile: profile });
-          var result = MilgScoring.runScoring(data);
-          assert('runScoring(' + profile + ') completes', result && typeof result.overall === 'number', 'result: ' + JSON.stringify(result && result.overall));
-          assert('runScoring(' + profile + ') score 0-100', result.overall >= 0 && result.overall <= 100, 'score: ' + result.overall);
-          assert('runScoring(' + profile + ') has categories', result.categories && result.categories.length > 0, 'categories: ' + (result.categories && result.categories.length));
-
-          // Check all categories have required fields
-          result.categories.forEach(function(cat) {
-            assert(profile + '/' + cat.label + ' has score', typeof cat.score === 'number' && cat.score >= 0 && cat.score <= 100, 'score: ' + cat.score);
-            assert(profile + '/' + cat.label + ' has findings array', Array.isArray(cat.findings), 'findings: ' + typeof cat.findings);
-            assert(profile + '/' + cat.label + ' has checks count', typeof cat.checks === 'number' || cat.checks === undefined, 'checks: ' + cat.checks);
-          });
-        } catch(e) {
-          assert('runScoring(' + profile + ') no error', false, e.message + ' at ' + (e.stack || '').split('\n')[1]);
-        }
-      });
-    })();
-
-    // =========================================================
-    // TEST 2: Good data should score well (>= 80)
-    // =========================================================
-    (function() {
-      var data = makeData();
-      var result = MilgScoring.runScoring(data);
-      assert('Good data scores >= 80', result.overall >= 80, 'score: ' + result.overall);
-      assert('Good data grade A or B', result.grade === 'A' || result.grade === 'B', 'grade: ' + result.grade);
-    })();
-
-    // =========================================================
-    // TEST 3: Contrast failures lower score
-    // =========================================================
-    (function() {
-      var data = makeData({
-        colors: {
-          textColors: [{ value: '#999', count: 5 }],
-          bgColors: [{ value: '#fff', count: 5 }],
-          contrastPairs: [
-            { fg: 'rgb(153,153,153)', bg: 'rgb(255,255,255)', ratio: 2.85, needed: 4.5, passes: false, fontSize: 16, fontWeight: 400, isLarge: false, text: 'Low contrast text', selector: 'p', filter: '' },
-            { fg: 'rgb(153,153,153)', bg: 'rgb(255,255,255)', ratio: 2.85, needed: 4.5, passes: false, fontSize: 16, fontWeight: 400, isLarge: false, text: 'Another low contrast', selector: 'span', filter: '' }
-          ]
-        }
-      });
-      var result = MilgScoring.runScoring(data);
-      var contrastCat = result.categories.find(function(c) { return c.label === 'Color & Contrast'; });
-      assert('Contrast failures produce errors', contrastCat.findings.some(function(f) { return f.severity === 'error'; }), 'findings: ' + contrastCat.findings.length);
-      assert('Contrast score < 100', contrastCat.score < 100, 'score: ' + contrastCat.score);
-    })();
-
-    // =========================================================
-    // TEST 4: Touch target issues
-    // =========================================================
-    (function() {
-      var data = makeData({
-        interaction: {
-          touchTargets: [
-            { element: 'button', width: 20, height: 20, text: 'Tiny button', selector: 'button.tiny', passes: false, isButton: true, linkContext: 'button' },
-            { element: 'a', width: 30, height: 15, text: 'Footer link', selector: 'a', passes: false, isButton: false, linkContext: 'footer' },
-            { element: 'a', width: 50, height: 12, text: 'Inline link', selector: 'a', passes: false, isButton: false, linkContext: 'inline' }
-          ],
-          transitions: ['0.2s']
-        }
-      });
-      var result = MilgScoring.runScoring(data);
-      var touchCat = result.categories.find(function(c) { return c.label === 'Touch & Interaction'; });
-      var errors = touchCat.findings.filter(function(f) { return f.severity === 'error'; });
-      var infos = touchCat.findings.filter(function(f) { return f.severity === 'info'; });
-      assert('Button gets error', errors.some(function(f) { return f.title.indexOf('button') !== -1; }), 'errors: ' + errors.map(function(f){return f.title}).join('; '));
-      assert('Footer link gets info or error', touchCat.findings.some(function(f) { return f.title.indexOf('Footer') !== -1; }), 'findings: ' + touchCat.findings.map(function(f){return f.title}).join('; '));
-      assert('Inline link gets info (exempt)', infos.some(function(f) { return f.title.indexOf('Inline') !== -1 || f.title.indexOf('inline') !== -1; }), 'infos: ' + infos.map(function(f){return f.title}).join('; '));
-    })();
-
-    // =========================================================
-    // TEST 5: Profile differentiation
-    // =========================================================
-    (function() {
-      var data = makeData({
-        typography: { bodyFontSize: '15px', bodyLineHeight: '22px', bodyFontFamily: 'sans-serif', fontFamilies: ['sans-serif'], fontSizes: [{ value: '15px', count: 10 }], fontWeights: [{ value: '400', count: 10 }], headings: [{ tag: 'h1', text: 'Test', fontSize: '32px', fontWeight: '700', lineHeight: '40px', fontFamily: 'sans-serif' }], lineHeights: [{ value: 1.47, count: 10 }], maxLineLength: { chars: 70, element: 'p' } }
-      });
-      var generalResult = MilgScoring.runScoring(makeData(Object.assign({}, data, { profile: 'general' })));
-      var elderlyResult = MilgScoring.runScoring(makeData(Object.assign({}, data, { profile: 'elderly' })));
-      var childResult = MilgScoring.runScoring(makeData(Object.assign({}, data, { profile: 'children' })));
-
-      assert('Elderly scores lower than general for 15px font', elderlyResult.overall <= generalResult.overall, 'elderly: ' + elderlyResult.overall + ' general: ' + generalResult.overall);
-      assert('Children scores different from general', childResult.overall !== generalResult.overall || childResult.categories.some(function(c, i) { return c.findings.length !== generalResult.categories[i].findings.length; }), 'findings differ');
-    })();
-
-    // =========================================================
-    // TEST 6: CVD simulation (color_blind profile)
-    // =========================================================
-    (function() {
-      var data = makeData({
-        profile: 'color_blind',
-        colors: {
-          textColors: [{ value: 'rgb(255,0,0)', count: 3 }, { value: 'rgb(0,128,0)', count: 3 }],
-          bgColors: [{ value: 'rgb(255,255,255)', count: 10 }],
-          contrastPairs: [
-            { fg: 'rgb(255,0,0)', bg: 'rgb(255,255,255)', ratio: 4, needed: 4.5, passes: false, fontSize: 16, fontWeight: 400, isLarge: false, text: 'Red text', selector: 'span.red', filter: '' },
-            { fg: 'rgb(0,128,0)', bg: 'rgb(255,255,255)', ratio: 4.6, needed: 4.5, passes: true, fontSize: 16, fontWeight: 400, isLarge: false, text: 'Green text', selector: 'span.green', filter: '' }
-          ]
-        }
-      });
-      try {
-        var result = MilgScoring.runScoring(data);
-        assert('CVD profile runs without error', true);
-        var contrastCat = result.categories.find(function(c) { return c.label === 'Color & Contrast'; });
-        assert('CVD has contrast findings', contrastCat.findings.length > 0, 'findings: ' + contrastCat.findings.length);
-      } catch(e) {
-        assert('CVD profile no error', false, e.message);
-      }
-    })();
-
-    // =========================================================
-    // TEST 7: Cognitive profile checks
-    // =========================================================
-    (function() {
-      var data = makeData({
-        profile: 'cognitive',
-        accessibility: {
-          semanticElements: { header: 1, nav: 1, main: 1, footer: 1 },
-          headingHierarchy: ['h1', 'h2', 'h3'], imagesWithoutAlt: 0,
-          formLabels: { total: 0, withLabel: 0, withoutLabel: 0 },
-          focusIndicators: [], hasFocusVisibleCSS: true, langAttribute: true,
-          hasSkipLink: true, badLinkTexts: [], missingAutocomplete: 0,
-          ariaIssues: [], colorOnlyIndicators: 0, autoPlayMedia: 0,
-          navItemCount: 12 // exceeds max 5 for cognitive
-        },
-        readability: { gradeLevel: 12 } // exceeds max 8 for cognitive
-      });
-      var result = MilgScoring.runScoring(data);
-      var cogCat = result.categories.find(function(c) { return c.label === 'Cognitive Load'; });
-      assert('Cognitive profile flags high nav count', cogCat.findings.some(function(f) { return f.title.indexOf('navigation') !== -1; }), 'findings: ' + cogCat.findings.map(function(f){return f.title}).join('; '));
-      assert('Cognitive profile flags high reading level', cogCat.findings.some(function(f) { return f.title.indexOf('Reading level') !== -1 || f.title.indexOf('reading') !== -1; }), 'findings: ' + cogCat.findings.map(function(f){return f.title}).join('; '));
-    })();
-
-    // =========================================================
-    // TEST 8: All modules return checks/passed
-    // =========================================================
-    (function() {
-      var data = makeData();
-      var result = MilgScoring.runScoring(data);
-      result.categories.forEach(function(cat) {
-        assert(cat.label + ' has checks count', cat.checks !== undefined && cat.checks >= 0, 'checks: ' + cat.checks);
-      });
-    })();
-
-    // =========================================================
-    // TEST 9: Registry utilities
-    // =========================================================
-    (function() {
-      // parseColor
-      var c = MilgScoring.parseColor('rgb(255, 0, 0)');
-      assert('parseColor rgb()', c && c.r === 255 && c.g === 0 && c.b === 0, JSON.stringify(c));
-
-      var c2 = MilgScoring.parseColor('rgba(0, 128, 255, 0.5)');
-      assert('parseColor rgba()', c2 && c2.r === 0 && c2.g === 128 && c2.b === 255 && c2.a === 0.5, JSON.stringify(c2));
-
-      // contrastRatio
-      var ratio = MilgScoring.contrastRatio({ r: 0, g: 0, b: 0 }, { r: 255, g: 255, b: 255 });
-      assert('contrastRatio black/white = 21', Math.abs(ratio - 21) < 0.1, 'ratio: ' + ratio);
-
-      // CVD simulation
-      var sim = MilgScoring.simulateCVD({ r: 255, g: 0, b: 0 }, MilgScoring.CVD_MATRICES.protanopia);
-      assert('CVD simulation produces valid color', sim && sim.r >= 0 && sim.r <= 255 && sim.g >= 0 && sim.b >= 0, JSON.stringify(sim));
-      assert('CVD protanopia dims red', sim.r < 200, 'r: ' + sim.r); // red looks much darker/different under protanopia
-    })();
-
-    // =========================================================
-    // NEW: Extended checks tests
-    // =========================================================
-
-    // Duplicate IDs should produce error when used in ARIA
-    (function() {
-      var data = makeData({
-        accessibility: {
-          duplicateIds: [{ id: 'foo', count: 2, usedInAria: true }],
-          nestedInteractives: ['a.nested'],
-          emptyInteractives: ['button.empty'],
-          positiveTabindex: 3,
-          scrollableNoKeyboard: 1,
-          nonTextContrast: [{ selector: 'input', ratio: 2.1, borderColor: 'rgb(200,200,200)', bg: 'rgb(255,255,255)' }],
-          tableIssues: [{ selector: 'table', issues: ['no-th', 'no-caption'] }],
-          missingButtonType: 2
-        }
-      });
-      var result = MilgScoring.runScoring(data);
-      var a11y = result.categories.find(function(c) { return c.label === 'Accessibility'; });
-      var titles = a11y.findings.map(function(f) { return f.title; }).join(' | ');
-      assert('Duplicate IDs flagged', titles.indexOf('duplicate ID') !== -1, 'Got: ' + titles);
-      assert('Nested interactives flagged', titles.indexOf('nested interactive') !== -1, 'Got: ' + titles);
-      assert('Empty interactives flagged', titles.indexOf('no accessible name') !== -1, 'Got: ' + titles);
-      assert('Positive tabindex flagged', titles.indexOf('positive tabindex') !== -1, 'Got: ' + titles);
-      assert('Scrollable no keyboard flagged', titles.indexOf('keyboard-accessible') !== -1, 'Got: ' + titles);
-      assert('Non-text contrast flagged', titles.indexOf('border contrast') !== -1, 'Got: ' + titles);
-      assert('Table issues flagged', titles.indexOf('table') !== -1, 'Got: ' + titles);
-    })();
-
-    // Z-index sprawl and shadow consistency
-    (function() {
-      var data = makeData({
-        layout: { zIndexSprawl: { distinct: 12, max: 9999, values: [] }, shadowSprawl: 9 },
-        colors: { darkModeHalation: true }
-      });
-      var result = MilgScoring.runScoring(data);
-      var consistency = result.categories.find(function(c) { return c.label === 'Visual Consistency'; });
-      var titles = consistency.findings.map(function(f) { return f.title; }).join(' | ');
-      assert('Z-index sprawl flagged', titles.indexOf('z-index') !== -1, 'Got: ' + titles);
-      assert('Shadow sprawl flagged', titles.indexOf('box-shadow') !== -1, 'Got: ' + titles);
-      assert('Dark mode halation flagged', titles.indexOf('halation') !== -1 || titles.indexOf('black') !== -1, 'Got: ' + titles);
-    })();
-
-    // All-caps and justified text
-    (function() {
-      var data = makeData({
-        typography: { allCapsLongText: 3, justifiedText: 2 }
-      });
-      var result = MilgScoring.runScoring(data);
-      var typo = result.categories.find(function(c) { return c.label === 'Typography'; });
-      var titles = typo.findings.map(function(f) { return f.title; }).join(' | ');
-      assert('All-caps long text flagged', titles.indexOf('all-caps') !== -1, 'Got: ' + titles);
-      assert('Justified text flagged', titles.indexOf('justify') !== -1, 'Got: ' + titles);
-    })();
-
-    // Tier 1 checks: text clipping, placeholder labels, invisible links, etc.
-    (function() {
-      var data = makeData({
-        accessibility: {
-          textClippedNoTitle: 6,
-          placeholderOnlyInputs: 2,
-          invisibleLinks: 3,
-          requiredNoIndicator: 4,
-          invisibleInputs: 1,
-          disabledLowContrast: 2
-        }
-      });
-      var result = MilgScoring.runScoring(data);
-      var a11y = result.categories.find(function(c) { return c.label === 'Accessibility'; });
-      var titles = a11y.findings.map(function(f) { return f.title; }).join(' | ');
-      assert('Text clipping flagged', titles.indexOf('truncate') !== -1, 'Got: ' + titles);
-      assert('Placeholder-only labels flagged', titles.indexOf('placeholder') !== -1, 'Got: ' + titles);
-      assert('Invisible links flagged', titles.indexOf('indistinguishable') !== -1, 'Got: ' + titles);
-      assert('Required no indicator flagged', titles.indexOf('required') !== -1, 'Got: ' + titles);
-      assert('Invisible inputs flagged', titles.indexOf('visible boundary') !== -1, 'Got: ' + titles);
-      assert('Disabled low contrast flagged', titles.indexOf('disabled') !== -1, 'Got: ' + titles);
-    })();
-
-    // Performance: upscaled images, will-change, non-passive scroll
-    (function() {
-      var data = makeData({
-        performance: {
-          upscaledImages: [{ selector: 'img', rendered: '800x600', natural: '400x300', upscale: 200 }],
-          willChangeCount: 12
-        },
-        interaction: {
-          listenerStats: { nonPassiveScroll: 2 },
-          listenerPatterns: { toggleNoAria: 1, navigationInButton: 1 }
-        }
-      });
-      var result = MilgScoring.runScoring(data);
-      var perf = result.categories.find(function(c) { return c.label === 'Performance'; });
-      var touch = result.categories.find(function(c) { return c.label === 'Touch & Interaction'; });
-      var perfTitles = perf.findings.map(function(f) { return f.title; }).join(' | ');
-      var touchTitles = touch.findings.map(function(f) { return f.title; }).join(' | ');
-      assert('Upscaled images flagged', perfTitles.indexOf('larger than natural') !== -1, 'Got: ' + perfTitles);
-      assert('will-change flagged', perfTitles.indexOf('will-change') !== -1, 'Got: ' + perfTitles);
-      assert('Non-passive scroll flagged', perfTitles.indexOf('non-passive') !== -1, 'Got: ' + perfTitles);
-      assert('Toggle no ARIA flagged', touchTitles.indexOf('ARIA state') !== -1, 'Got: ' + touchTitles);
-    })();
-
-    // Tier 2: consistency checks
-    (function() {
-      var data = makeData({
-        consistency: { borderWidthInconsistencies: 2, fontWeightInconsistencies: 1, gradientDirections: 5 },
-        layout: {
-          buttonHierarchy: { total: 6, filled: 6, outline: 0, text: 0 },
-          fixedViewportConsumption: 35
-        }
-      });
-      var result = MilgScoring.runScoring(data);
-      var cons = result.categories.find(function(c) { return c.label === 'Visual Consistency'; });
-      var lay = result.categories.find(function(c) { return c.label === 'Layout Quality'; });
-      var consTitles = cons.findings.map(function(f) { return f.title; }).join(' | ');
-      var layTitles = lay.findings.map(function(f) { return f.title; }).join(' | ');
-      assert('Border width inconsistency flagged', consTitles.indexOf('border width') !== -1, 'Got: ' + consTitles);
-      assert('Font weight inconsistency flagged', consTitles.indexOf('font-weight') !== -1, 'Got: ' + consTitles);
-      assert('Gradient direction inconsistency flagged', consTitles.indexOf('gradient') !== -1, 'Got: ' + consTitles);
-      assert('Button hierarchy flagged', layTitles.indexOf('hierarchy') !== -1, 'Got: ' + layTitles);
-      assert('Fixed viewport consumption flagged', layTitles.indexOf('viewport') !== -1 || layTitles.indexOf('Fixed') !== -1, 'Got: ' + layTitles);
-    })();
-
-    // Performance: complex filters, forced layers
-    (function() {
-      var data = makeData({
-        performance: { complexFilters: 3, forcedLayers: 15 },
-        accessibility: { selectNoDefault: 2 }
-      });
-      var result = MilgScoring.runScoring(data);
-      var perf = result.categories.find(function(c) { return c.label === 'Performance'; });
-      var a11y = result.categories.find(function(c) { return c.label === 'Accessibility'; });
-      var perfTitles = perf.findings.map(function(f) { return f.title; }).join(' | ');
-      var a11yTitles = a11y.findings.map(function(f) { return f.title; }).join(' | ');
-      assert('Complex filters flagged', perfTitles.indexOf('filter') !== -1, 'Got: ' + perfTitles);
-      assert('Forced layers flagged', perfTitles.indexOf('compositor') !== -1 || perfTitles.indexOf('GPU') !== -1, 'Got: ' + perfTitles);
-      assert('Select no default flagged', a11yTitles.indexOf('select') !== -1 || a11yTitles.indexOf('default') !== -1, 'Got: ' + a11yTitles);
-    })();
-
-    // =========================================================
-    // RENDER RESULTS
-    // =========================================================
-    var html = '';
-    results.forEach(function(r) {
-      html += '<div class="test ' + (r.pass ? 'pass' : 'fail') + '">';
-      html += (r.pass ? '✓' : '✗') + ' ' + r.name;
-      if (!r.pass && r.detail) html += ' — <strong>' + r.detail + '</strong>';
-      html += '</div>';
-    });
-    html += '<div class="summary ' + (failed === 0 ? 'all-pass' : 'has-fail') + '">';
-    html += passed + ' passed, ' + failed + ' failed';
-    html += '</div>';
-    document.getElementById('results').innerHTML = html;
-
-    // Also log for CI
-    console.log('Scoring tests: ' + passed + ' passed, ' + failed + ' failed');
-    if (failed > 0) console.error('FAILURES:', results.filter(function(r) { return !r.pass; }).map(function(r) { return r.name + ': ' + r.detail; }));
-  </script>
-</body>
-</html>
 </file>
 
 <file path="scripts/test-full-matrix.mjs">
@@ -28638,23 +28638,27 @@ function scoreLayout(data) {
         window.__milgCrawlResults = results;
         window.__milgCrawlJson = crawlJson;
         try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) {}
-        // Try clipboard
+        // Try clipboard (both methods may fail — console loses focus/gesture context)
+        function _crawlCopyFallback() {
+          var ta = document.createElement('textarea'); ta.value = crawlJson;
+          ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
+          document.body.appendChild(ta); ta.select();
+          var ok = false;
+          try { ok = document.execCommand('copy'); } catch(e) {}
+          document.body.removeChild(ta);
+          if (ok) {
+            console.log('%c\u2713 Crawl results copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+          } else {
+            console.log('%c\u26A0 Auto-copy failed. Type: copy(window.__milgCrawlJson)', 'color: #b45309; font-weight: bold;');
+            console.log('%cThen paste into the analyzer.', 'color: #3b82f6;');
+          }
+        }
         if (navigator.clipboard && navigator.clipboard.writeText) {
           navigator.clipboard.writeText(crawlJson).then(function() {
             console.log('%c\u2713 Crawl results copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-          }).catch(function() {
-            // Fallback
-            var ta = document.createElement('textarea'); ta.value = crawlJson;
-            ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
-            document.body.appendChild(ta); ta.select();
-            try { document.execCommand('copy') && console.log('%c\u2713 Crawl results copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;'); } catch(e) {}
-            document.body.removeChild(ta);
-            if (!document.execCommand('copy')) {
-              console.log('%c\u26A0 Could not copy crawl results. Type: copy(window.__milgCrawlJson)', 'color: #b45309; font-weight: bold;');
-            }
-          });
+          }).catch(_crawlCopyFallback);
         } else {
-          console.log('%c\u26A0 Type: copy(window.__milgCrawlJson) — then paste into the analyzer.', 'color: #b45309; font-weight: bold;');
+          _crawlCopyFallback();
         }
       }
 
@@ -33293,8 +33297,8 @@ function scoreLayout(data) {
     reportContainer.classList.add('visible');
     inputSection.style.display = 'none';
     document.getElementById('reportActions').style.display = 'flex';
-    // Hide crawl containers when showing single-page results (unless crawl is driving this)
-    var _isCrawlDriven = lastRawData && lastRawData.meta && lastRawData.meta._inputMethod === 'crawl';
+    // Hide crawl containers when showing single-page results (unless crawl session is active)
+    var _isCrawlDriven = _crawlSession && _crawlSession.pages && _crawlSession.pages.length > 0;
     if (!_isCrawlDriven) {
       var cr = document.getElementById('crawlResults'); if (cr) cr.style.display = 'none';
       var cpc = document.getElementById('crawlPageContent'); if (cpc) cpc.style.display = 'none';

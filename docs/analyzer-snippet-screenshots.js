@@ -1878,23 +1878,27 @@
         window.__milgCrawlResults = results;
         window.__milgCrawlJson = crawlJson;
         try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) {}
-        // Try clipboard
+        // Try clipboard (both methods may fail — console loses focus/gesture context)
+        function _crawlCopyFallback() {
+          var ta = document.createElement('textarea'); ta.value = crawlJson;
+          ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
+          document.body.appendChild(ta); ta.select();
+          var ok = false;
+          try { ok = document.execCommand('copy'); } catch(e) {}
+          document.body.removeChild(ta);
+          if (ok) {
+            console.log('%c\u2713 Crawl results copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+          } else {
+            console.log('%c\u26A0 Auto-copy failed. Type: copy(window.__milgCrawlJson)', 'color: #b45309; font-weight: bold;');
+            console.log('%cThen paste into the analyzer.', 'color: #3b82f6;');
+          }
+        }
         if (navigator.clipboard && navigator.clipboard.writeText) {
           navigator.clipboard.writeText(crawlJson).then(function() {
             console.log('%c\u2713 Crawl results copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-          }).catch(function() {
-            // Fallback
-            var ta = document.createElement('textarea'); ta.value = crawlJson;
-            ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
-            document.body.appendChild(ta); ta.select();
-            try { document.execCommand('copy') && console.log('%c\u2713 Crawl results copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;'); } catch(e) {}
-            document.body.removeChild(ta);
-            if (!document.execCommand('copy')) {
-              console.log('%c\u26A0 Could not copy crawl results. Type: copy(window.__milgCrawlJson)', 'color: #b45309; font-weight: bold;');
-            }
-          });
+          }).catch(_crawlCopyFallback);
         } else {
-          console.log('%c\u26A0 Type: copy(window.__milgCrawlJson) — then paste into the analyzer.', 'color: #b45309; font-weight: bold;');
+          _crawlCopyFallback();
         }
       }
 
