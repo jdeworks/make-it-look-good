@@ -2423,7 +2423,7 @@
                 cleanup();
                 setTimeout(function() { processNext(idx + 1); }, 500);
               }
-            }, 3000); // 3s wait for JS to settle after load
+            }, 1500); // 1.5s wait for JS to settle after load
           });
 
           iframe.addEventListener('error', function() {
@@ -2435,8 +2435,8 @@
 
           iframe.src = url;
 
-          // 5 minutes per page timeout
-          var _pageTimeout = 300000;
+          // 10 seconds per page timeout
+          var _pageTimeout = 10000;
           setTimeout(function() {
             if (done) return; done = true;
             console.log('%c  \u2717 Hard timeout (' + Math.round(_pageTimeout / 1000) + 's): ' + path, 'color: #dc2626;');

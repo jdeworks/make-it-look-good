@@ -1837,11 +1837,11 @@
                     } catch(e) { clearInterval(pi); done = true; cleanup(); console.log('%c  \u2717 Error: ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }
                   }, 500);
                 } catch(e) { done = true; cleanup(); console.log('%c  \u2717 Access denied: ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }
-              }, 3000);
+              }, 1500);
             });
             iframe.addEventListener('error', function() { if (done) return; done = true; cleanup(); console.log('%c  \u2717 Load failed: ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); });
             iframe.src = url;
-            setTimeout(function() { if (done) return; done = true; cleanup(); console.log('%c  \u2717 Hard timeout (5m): ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }, 300000);
+            setTimeout(function() { if (done) return; done = true; cleanup(); console.log('%c  \u2717 Timeout: ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }, 10000);
           }
           _next(0);
         }).catch(function() { console.log('%c\u26A0 Could not fetch snippet for crawl.', 'color: #b45309;'); });
