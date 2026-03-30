@@ -1028,6 +1028,26 @@
     });
   }
 
+  // --- Silently clipped content: flex/grid rows overflowing without scroll ---
+  data.layout.clippedOverflow = [];
+  if (_vpW < 768) {
+    document.querySelectorAll('div,section,nav,footer,header').forEach(function(el) {
+      if (!isVisible(el)) return;
+      if (el.scrollWidth <= el.clientWidth + 4 || el.clientWidth < 50) return;
+      var s = getComputedStyle(el);
+      var isFlex = s.display === 'flex' || s.display === 'inline-flex';
+      var isGrid = s.display === 'grid' || s.display === 'inline-grid';
+      if (!isFlex && !isGrid) return;
+      if (s.overflowX === 'auto' || s.overflowX === 'scroll' || s.overflowX === 'hidden') return;
+      if (isFlex && s.flexWrap !== 'nowrap') return;
+      var overflowPx = el.scrollWidth - el.clientWidth;
+      if (overflowPx > 8) {
+        data.layout.clippedOverflow.push({ selector: cssSelector(el), overflow: overflowPx, containerWidth: el.clientWidth, contentWidth: el.scrollWidth, vpWidth: _vpW, display: s.display });
+      }
+    });
+    data.layout.clippedOverflow = data.layout.clippedOverflow.slice(0, 10);
+  }
+
   // --- Fixed element scroll-contrast risk detection ---
   data.layout.fixedContrastRisks = [];
   (function() {

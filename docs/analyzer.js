@@ -679,6 +679,37 @@
       }
     });
 
+    // --- Silently clipped content: flex/grid containers where content overflows without scroll ---
+    // These won't cause page-level scrollbar in Chromium but can on iOS Safari
+    data.layout.clippedOverflow = [];
+    if (vpW < 768) {
+      document.querySelectorAll('div,section,nav,footer,header').forEach(function(el) {
+        if (!isVisible(el)) return;
+        if (el.scrollWidth <= el.clientWidth + 4 || el.clientWidth < 50) return;
+        var s = getComputedStyle(el);
+        // Only check flex/grid rows (not block elements which wrap naturally)
+        var isFlex = s.display === 'flex' || s.display === 'inline-flex';
+        var isGrid = s.display === 'grid' || s.display === 'inline-grid';
+        if (!isFlex && !isGrid) return;
+        // Skip if already has overflow handling
+        if (s.overflowX === 'auto' || s.overflowX === 'scroll' || s.overflowX === 'hidden') return;
+        // Skip if flex-wrap is enabled (content wraps instead of overflowing)
+        if (isFlex && s.flexWrap !== 'nowrap') return;
+        var overflowPx = el.scrollWidth - el.clientWidth;
+        if (overflowPx > 8) {
+          data.layout.clippedOverflow.push({
+            selector: cssSelector(el),
+            overflow: overflowPx,
+            containerWidth: el.clientWidth,
+            contentWidth: el.scrollWidth,
+            vpWidth: vpW,
+            display: s.display
+          });
+        }
+      });
+      data.layout.clippedOverflow = data.layout.clippedOverflow.slice(0, 10);
+    }
+
     // Hidden panel detection — find all invisible interactive panels
     data.layout.hiddenPanelIssues = [];
     var _iframeHiddenPanels = [];

@@ -424,6 +424,23 @@ function scoreLayout(data) {
     }
   }
 
+  // Silently clipped flex/grid overflow (mobile)
+  var clippedOverflow = (data.layout && data.layout.clippedOverflow) || [];
+  if (clippedOverflow.length > 0) {
+    checks++;
+    var clipDetails = clippedOverflow.slice(0, 3).map(function(c) {
+      return c.selector + ' overflows by ' + c.overflow + 'px (' + c.display + ' container, ' + c.containerWidth + 'px wide)';
+    });
+    findings.push({
+      severity: clippedOverflow.some(function(c) { return c.overflow > 30; }) ? 'error' : 'warning',
+      title: clippedOverflow.length + ' flex/grid container(s) overflow silently on mobile',
+      detail: clipDetails.join('; '),
+      fix: 'Content overflows the container without a scrollbar — may cause horizontal scroll on iOS Safari. Add flex-wrap, reduce gap size on mobile (gap-4 sm:gap-8), or add overflow-x-hidden.',
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
+      locator: { selector: clippedOverflow[0].selector, text: '' }
+    });
+  }
+
   // Fixed element scroll-contrast risk
   var fixedRisks = (data.layout && data.layout.fixedContrastRisks) || [];
   if (fixedRisks.length > 0) {
