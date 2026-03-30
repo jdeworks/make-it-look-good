@@ -17016,478 +17016,144 @@ All presets are:
 </html>
 </file>
 
-<file path="docs/analyzer-crawl.js">
-// Site Crawl Module — multi-page analysis with progressive results
-// Provides: link discovery, session management, summary building, export helpers
-// Pipeline orchestration lives in analyzer.js (has access to fetchViaProxy, analyzeHtmlInIframe)
+<file path="docs/ANALYZER-TODO.md">
+# Analyzer TODO
 
-window.MilgCrawl = (function() {
-  "use strict";
+## Completed (69 items)
 
-  // --- URL utilities ---
+### Core
+- [x] Modular scoring architecture (14 modules in `scoring/`)
+- [x] 8 audience profiles with evidence-based thresholds (General, WCAG AAA, Elderly, Low Vision, Motor Impairment, Color Blind, Children, Cognitive)
+- [x] 4 input modes (URL fetch, console snippet, paste HTML, import JSON)
+- [x] Gradient contrast via canvas sampling (multi-layer compositing)
+- [x] Background image contrast via canvas (CORS-limited)
+- [x] CSS filter contrast math (brightness, contrast, opacity)
+- [x] APCA contrast algorithm alongside WCAG
+- [x] oklch/oklab color parsing via canvas fallback
+- [x] Space-separated rgb() syntax support
+- [x] Page context detection (marketing/form/app/content)
+- [x] Fragment detection (skips document-level checks for pasted HTML snippets)
+- [x] Decorative element filtering
+- [x] Post-analysis exclusion suggestions (two-step flow)
+- [x] Extraction data caching (sessionStorage)
+- [x] Dark mode report styling
+- [x] AA/AAA profile switching (captures pairs up to 7.5:1)
+- [x] N/A category detection (modules return notApplicable when nothing to check)
+- [x] Context-aware touch targets (nav/footer/inline/button classification per WCAG 2.5.8)
+- [x] CVD palette simulation (Machado et al. 2009 matrices for protanopia, deuteranopia, tritanopia)
+- [x] JS-dependent page detection (warns when page needs JS execution)
 
-  function normalizeUrl(url) {
-    try {
-      var u = new URL(url);
-      u.hash = '';
-      u.search = ''; // ignore query params for dedup (configurable later)
-      if (u.pathname.length > 1 && u.pathname.endsWith('/')) {
-        u.pathname = u.pathname.slice(0, -1);
-      }
-      return u.href;
-    } catch(e) { return url; }
-  }
+### UI & Features
+- [x] Page screenshots (modern-screenshot library, viewport sections, zoom lightbox)
+- [x] Analysis history in localStorage (max 10, dedup by URL+profile)
+- [x] JSON export/import with drag-and-drop
+- [x] Viewport size selector (defaults to current window size)
+- [x] Progress bar during analysis
+- [x] URL autocomplete from history
+- [x] Mobile-optimized layout (CSS grid header, icon-only buttons)
+- [x] Self-hosted CORS proxy (Cloudflare Worker with rate limiting, SSRF protection)
+- [x] Proxy URL injection via local .env (not committed)
 
-  function matchesBlacklist(url, patterns) {
-    if (!patterns || patterns.length === 0) return false;
-    var path;
-    try { path = new URL(url).pathname; } catch(e) { return false; }
-    return patterns.some(function(pattern) {
-      pattern = pattern.trim();
-      if (!pattern) return false;
-      if (pattern.endsWith('*')) {
-        return path.startsWith(pattern.slice(0, -1));
-      }
-      return path === pattern || url.includes(pattern);
-    });
-  }
+### Extraction
+- [x] Actual character-per-line via span measurement
+- [x] Section gaps for whitespace rhythm
+- [x] Left-edge alignment clustering
+- [x] Heading-to-body ratio for visual hierarchy
+- [x] Border radius value clustering
+- [x] Paragraph text extraction (Coleman-Liau)
+- [x] Font loading rules from stylesheets
+- [x] Render-blocking resource counts
+- [x] DOM size and depth
+- [x] Adjacent sibling spacing
+- [x] Animation/keyframe detection
+- [x] Scroll-reveal pattern detection
+- [x] Transform translateY off-screen detection
+- [x] Element overflow detection
+- [x] Letter spacing audit
+- [x] Negative margin detection
+- [x] Container padding clustering
+- [x] Third-party script count
+- [x] Image format audit (WebP/AVIF vs legacy)
+- [x] CLS via PerformanceObserver
+- [x] LCP estimation (API + heuristic)
+- [x] Fixed-width element detection
+- [x] Text truncation (ellipsis) audit
+- [x] ARIA role audit (button tabindex, hidden focusable)
+- [x] Bad link text detection
+- [x] Missing autocomplete on form fields
+- [x] Color-only indicator detection
+- [x] Auto-playing unmuted media detection
+- [x] Padding-inclusive touch measurement (checks parent label/link)
 
-  var SKIP_EXTENSIONS = /\.(pdf|zip|tar|gz|png|jpg|jpeg|gif|svg|webp|ico|css|js|json|xml|woff|woff2|ttf|eot|mp3|mp4|avi|mov)$/i;
+### Testing
+- [x] Headless browser test suite (Puppeteer, serves docs/ locally, renders presets in real iframe with Tailwind)
+- [x] 125 preset templates validated — avg 88, min 69, max 100
+- [x] Before/clean gap verified: 81 avg vs 88 avg (7pt differentiation)
+- [x] Browser-based test runner (`docs/tests/test-presets-rendered.html`)
+- [x] Unit tests for scoring modules (`docs/tests/test-scoring.html`)
+- [x] Edge case test pages (gradients, dark backgrounds, fixed-width, truncation)
+- [x] 3 iterations of template fixes across 125 files (contrast, focus-visible, semantics)
 
-  function discoverLinks(html, baseUrl, blacklist, maxPages) {
-    var doc = new DOMParser().parseFromString(html, 'text/html');
-    var origin;
-    try { origin = new URL(baseUrl).origin; } catch(e) { return []; }
-    var seen = new Set();
-    seen.add(normalizeUrl(baseUrl));
-    // Mark index variants as seen to avoid re-crawling the start page
-    try {
-      var baseP = new URL(baseUrl).pathname;
-      if (baseP === '/' || baseP === '/index.html' || baseP === '/index.htm') {
-        var o = new URL(baseUrl).origin;
-        seen.add(normalizeUrl(o + '/')); seen.add(normalizeUrl(o + '/index.html')); seen.add(normalizeUrl(o + '/index.htm'));
-      }
-    } catch(e) {}
+## Completed: Deep Scan Mode
 
-    var links = [];
-    var anchors = doc.querySelectorAll('a[href]');
-    for (var i = 0; i < anchors.length; i++) {
-      var href = anchors[i].getAttribute('href');
-      if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('javascript:')) continue;
-      var resolved;
-      try { resolved = new URL(href, baseUrl).href; } catch(e) { continue; }
-      var u;
-      try { u = new URL(resolved); } catch(e) { continue; }
-      if (u.origin !== origin) continue;
-      if (SKIP_EXTENSIONS.test(u.pathname)) continue;
-      var norm = normalizeUrl(resolved);
-      if (seen.has(norm)) continue;
-      if (matchesBlacklist(norm, blacklist)) continue;
-      seen.add(norm);
-      links.push(resolved);
-      if (links.length >= maxPages - 1) break; // -1 because starting page is counted
-    }
-    return links;
-  }
+- [x] **Multi-viewport testing** — Spawn 3 parallel iframes at 375/768/1280px, merge results
+- [x] **Dark mode class toggle** — Toggle `.dark` on html, re-extract colors. ~95% reliable for Tailwind/class-based sites
+- [x] **Dark mode media query rewriting** — Extract `prefers-color-scheme: dark` rules from stylesheets, inject unconditionally. ~80-90% reliable
+- [x] **Scroll before extraction** — Auto-scroll full page to trigger intersection observers
 
-  // --- Session management ---
+## Future: LLM Integration (opt-in)
 
-  var _sessionCounter = 0;
+Default off. Only when user provides API key. See research notes in this file's git history.
 
-  function createSession(startUrl, options) {
-    var opts = options || {};
-    return {
-      id: 'crawl-' + (++_sessionCounter) + '-' + Date.now(),
-      startUrl: startUrl,
-      startedAt: new Date().toISOString(),
-      status: 'crawling',
-      options: {
-        maxPages: Math.min(Math.max(opts.maxPages || 5, 1), 25),
-        blacklist: opts.blacklist || [],
-        deepScan: !!opts.deepScan,
-        screenshots: !!opts.screenshots,
-        excludeSelector: opts.excludeSelector || '',
-        profile: opts.profile || 'general'
-      },
-      discoveredUrls: [],
-      queue: [],
-      pages: [],
-      summary: null,
-      _aborted: false
-    };
-  }
+- [ ] Soft judgment: tone, copy clarity, color palette appropriateness
+- [ ] Finding summarization in plain language
+- [ ] Clearly labeled as "AI-generated" separate from evidence-based findings
 
-  // Start crawl — pipeline is an object with:
-  //   fetchPage(url, callback(html, error))
-  //   analyzePage(html, url, options, callback(data))
-  //   scorePage(data) → reportData
-  //   onPageStart(pageEntry)
-  //   onPageComplete(pageEntry)
-  //   onPageError(pageEntry)
-  //   onDiscovery(urls)
-  //   onComplete(session)
-  function startCrawl(session, pipeline) {
-    var startUrl = session.startUrl;
-    var opts = session.options;
+## Decided to Skip (with reasons)
 
-    // Step 1: fetch starting page to discover links
-    var startPage = {
-      url: startUrl,
-      status: 'fetching',
-      title: '',
-      rawData: null,
-      reportData: null,
-      error: null,
-      startedAt: new Date().toISOString(),
-      completedAt: null
-    };
-    session.pages.push(startPage);
-    if (pipeline.onPageStart) pipeline.onPageStart(startPage);
+| Item | Reason |
+|------|--------|
+| Vertical rhythm detection | ~60% accuracy, too many false positives |
+| Nested spacing consistency | Can't determine spacing "intent" without component boundaries |
+| Gap vs margin consistency | Mixing is often correct (gap for flex, margin for flow) |
+| Overlapping targets | False positives from menus, dropdowns, positioned elements |
+| Click density mapping | No clear threshold for "too dense," subjective |
+| Shadow consistency | Too many legitimate shadow variations (elevation levels) |
+| Color distance (CIEDE2000) | Complex (~200 lines), similar colors often intentional |
+| Icon sizing consistency | SVG sizing too chaotic in practice |
+| Decision point counting | Counting buttons/links per section unreliable |
+| Information density | Elements-per-viewport varies wildly by page type |
+| Modal/popup detection | position:fixed catches headers/footers too |
+| Grid structure detection | Inferring columns from widths unreliable with flexbox |
+| Proximity grouping | Requires semantic understanding, pure DOM can't do it |
+| Sticky element audit | Almost always intentional, nothing actionable |
+| Critical CSS detection | Requires multi-viewport rendering analysis |
+| Inline CSS size | Often intentional (critical CSS pattern) |
+| Flash/strobe detection | Needs frame-by-frame analysis, not feasible from DOM |
+| F-pattern detection | ~40% accuracy without AI |
+| Whitespace ratio | Varies by page type, no universal threshold |
+| Web Worker extraction | Workers can't access DOM |
 
-    pipeline.fetchPage(startUrl, function(html, err) {
-      if (session._aborted) return;
-      if (err || !html) {
-        startPage.status = 'error';
-        startPage.error = err || 'Empty response';
-        startPage.completedAt = new Date().toISOString();
-        if (pipeline.onPageError) pipeline.onPageError(startPage);
-        session.status = 'complete';
-        session.summary = buildSummary(session);
-        if (pipeline.onComplete) pipeline.onComplete(session);
-        return;
-      }
+## Research Documents
 
-      // Discover links from starting page HTML
-      var discovered = discoverLinks(html, startUrl, opts.blacklist, opts.maxPages);
-      session.discoveredUrls = discovered;
-      session.queue = discovered.slice();
-      if (pipeline.onDiscovery) pipeline.onDiscovery(discovered);
+- `research/analyzer-roadmap.md` — P0/P1 roadmap, priority matrix (794 lines)
+- `research/analyzer-p2-research.md` — P2/P3 feature research (928 lines)
+- `research/multi-viewport-dark-mode.md` — Multi-viewport & dark mode feasibility (345 lines)
+- `research/analyzer-test-rendered.md` — Latest headless test results (125 presets, per-module averages)
 
-      // Analyze starting page
-      startPage.status = 'analyzing';
-      pipeline.analyzePage(html, startUrl, opts, function(data) {
-        if (session._aborted) return;
-        if (data) {
-          startPage.rawData = data;
-          startPage.title = (data.meta && data.meta.title) || '';
-          startPage.reportData = pipeline.scorePage(data);
-          startPage.status = 'done';
-        } else {
-          startPage.status = 'error';
-          startPage.error = 'Analysis failed';
-        }
-        startPage.completedAt = new Date().toISOString();
-        if (startPage.status === 'done') {
-          if (pipeline.onPageComplete) pipeline.onPageComplete(startPage);
-        } else {
-          if (pipeline.onPageError) pipeline.onPageError(startPage);
-        }
+## E2E Testing
 
-        // Process remaining queue
-        processQueue(session, pipeline, 0);
-      });
-    });
-  }
+Run `node scripts/test-presets-headless.mjs` for the full rendered test suite. Requires Puppeteer (`npm i puppeteer`). The script:
+1. Serves `docs/` on localhost:8765
+2. Loads each preset in a real iframe with Tailwind CSS
+3. Runs the same extraction + scoring as the production analyzer
+4. Outputs results to `research/analyzer-test-rendered.md`
 
-  function processQueue(session, pipeline, idx) {
-    if (session._aborted) {
-      session.status = 'aborted';
-      session.summary = buildSummary(session);
-      if (pipeline.onComplete) pipeline.onComplete(session);
-      return;
-    }
-    if (idx >= session.queue.length) {
-      session.status = 'complete';
-      session.summary = buildSummary(session);
-      if (pipeline.onComplete) pipeline.onComplete(session);
-      return;
-    }
-
-    var url = session.queue[idx];
-    var pageEntry = {
-      url: url,
-      status: 'fetching',
-      title: '',
-      rawData: null,
-      reportData: null,
-      error: null,
-      startedAt: new Date().toISOString(),
-      completedAt: null
-    };
-    session.pages.push(pageEntry);
-    if (pipeline.onPageStart) pipeline.onPageStart(pageEntry);
-
-    pipeline.fetchPage(url, function(html, err) {
-      if (session._aborted) { processQueue(session, pipeline, idx + 1); return; }
-      if (err || !html) {
-        pageEntry.status = 'error';
-        pageEntry.error = err || 'Empty response';
-        pageEntry.completedAt = new Date().toISOString();
-        if (pipeline.onPageError) pipeline.onPageError(pageEntry);
-        // Continue after delay
-        setTimeout(function() { processQueue(session, pipeline, idx + 1); }, 2000);
-        return;
-      }
-
-      pageEntry.status = 'analyzing';
-      pipeline.analyzePage(html, url, session.options, function(data) {
-        if (session._aborted) { processQueue(session, pipeline, idx + 1); return; }
-        if (data) {
-          pageEntry.rawData = data;
-          pageEntry.title = (data.meta && data.meta.title) || '';
-          pageEntry.reportData = pipeline.scorePage(data);
-          pageEntry.status = 'done';
-        } else {
-          pageEntry.status = 'error';
-          pageEntry.error = 'Analysis failed';
-        }
-        pageEntry.completedAt = new Date().toISOString();
-        if (pageEntry.status === 'done') {
-          if (pipeline.onPageComplete) pipeline.onPageComplete(pageEntry);
-        } else {
-          if (pipeline.onPageError) pipeline.onPageError(pageEntry);
-        }
-        // Delay between pages to respect rate limits
-        setTimeout(function() { processQueue(session, pipeline, idx + 1); }, 2000);
-      });
-    });
-  }
-
-  function abortCrawl(session) {
-    session._aborted = true;
-  }
-
-  // --- Summary builder ---
-
-  function buildSummary(session) {
-    var donePages = session.pages.filter(function(p) { return p.status === 'done' && p.reportData; });
-    var failedPages = session.pages.filter(function(p) { return p.status === 'error'; });
-
-    if (donePages.length === 0) {
-      return {
-        pagesAnalyzed: 0, pagesFailed: failedPages.length,
-        averageScore: 0, worstPage: null, bestPage: null,
-        scoreGrid: [], crossPageIssues: [], categoryAverages: []
-      };
-    }
-
-    // Score grid
-    var scoreGrid = donePages.map(function(p) {
-      var path;
-      try { path = new URL(p.url).pathname; } catch(e) { path = p.url; }
-      return { url: p.url, path: path, title: p.title, score: p.reportData.overall, grade: p.reportData.grade };
-    });
-
-    var scores = donePages.map(function(p) { return p.reportData.overall; });
-    var avgScore = Math.round(scores.reduce(function(a, b) { return a + b; }, 0) / scores.length);
-
-    var worstIdx = scores.indexOf(Math.min.apply(null, scores));
-    var bestIdx = scores.indexOf(Math.max.apply(null, scores));
-
-    // Cross-page issue grouping
-    var issueMap = {};
-    donePages.forEach(function(p) {
-      if (!p.reportData || !p.reportData.categories) return;
-      p.reportData.categories.forEach(function(cat) {
-        cat.findings.forEach(function(f) {
-          if (f.severity === 'info') return;
-          var key = f.severity + '|' + f.title;
-          if (!issueMap[key]) {
-            issueMap[key] = { title: f.title, severity: f.severity, fix: f.fix, pages: [], count: 0 };
-          }
-          issueMap[key].pages.push({ url: p.url, detail: f.detail || '' });
-          issueMap[key].count++;
-        });
-      });
-    });
-    var crossPageIssues = Object.keys(issueMap).map(function(k) { return issueMap[k]; });
-    crossPageIssues.sort(function(a, b) {
-      // Errors first, then by count
-      if (a.severity !== b.severity) return a.severity === 'error' ? -1 : 1;
-      return b.count - a.count;
-    });
-
-    // Category averages
-    var catMap = {};
-    donePages.forEach(function(p) {
-      if (!p.reportData || !p.reportData.categories) return;
-      p.reportData.categories.forEach(function(cat) {
-        if (!catMap[cat.label]) catMap[cat.label] = { scores: [], worstScore: 100, worstPage: '' };
-        catMap[cat.label].scores.push(cat.score);
-        if (cat.score < catMap[cat.label].worstScore) {
-          catMap[cat.label].worstScore = cat.score;
-          catMap[cat.label].worstPage = p.url;
-        }
-      });
-    });
-    var categoryAverages = Object.keys(catMap).map(function(label) {
-      var scores = catMap[label].scores;
-      return {
-        label: label,
-        avgScore: Math.round(scores.reduce(function(a, b) { return a + b; }, 0) / scores.length),
-        worstPage: catMap[label].worstPage
-      };
-    });
-
-    return {
-      pagesAnalyzed: donePages.length,
-      pagesFailed: failedPages.length,
-      averageScore: avgScore,
-      worstPage: { url: donePages[worstIdx].url, score: scores[worstIdx] },
-      bestPage: { url: donePages[bestIdx].url, score: scores[bestIdx] },
-      scoreGrid: scoreGrid,
-      crossPageIssues: crossPageIssues,
-      categoryAverages: categoryAverages
-    };
-  }
-
-  // --- Export helpers ---
-
-  function filterFindings(categories, minSeverity) {
-    if (!minSeverity || minSeverity === 'all') return categories;
-    return categories.map(function(cat) {
-      return Object.assign({}, cat, {
-        findings: cat.findings.filter(function(f) {
-          if (minSeverity === 'error') return f.severity === 'error';
-          if (minSeverity === 'warning') return f.severity === 'error' || f.severity === 'warning';
-          return true;
-        })
-      });
-    });
-  }
-
-  function renderCrawlMarkdown(session, severityFilter) {
-    var summary = session.summary || buildSummary(session);
-    var lines = [];
-    lines.push('# Site Crawl Report');
-    lines.push('');
-    lines.push('**Starting URL:** ' + session.startUrl);
-    lines.push('**Date:** ' + new Date(session.startedAt).toLocaleString());
-    lines.push('**Pages analyzed:** ' + summary.pagesAnalyzed + ' (failed: ' + summary.pagesFailed + ')');
-    lines.push('**Average score:** ' + summary.averageScore + '/100');
-    if (severityFilter && severityFilter !== 'all') {
-      lines.push('**Filter:** ' + (severityFilter === 'error' ? 'Errors only' : 'Warnings + Errors'));
-    }
-    lines.push('');
-
-    // Score grid
-    lines.push('## Score Summary');
-    lines.push('');
-    lines.push('| Page | Score | Grade |');
-    lines.push('|------|-------|-------|');
-    summary.scoreGrid.forEach(function(row) {
-      lines.push('| ' + row.path + ' | ' + row.score + ' | ' + row.grade + ' |');
-    });
-    lines.push('');
-
-    // Cross-page issues
-    var filteredIssues = summary.crossPageIssues.filter(function(issue) {
-      if (severityFilter === 'error') return issue.severity === 'error';
-      if (severityFilter === 'warning') return issue.severity === 'error' || issue.severity === 'warning';
-      return true;
-    });
-    if (filteredIssues.length > 0) {
-      lines.push('## Cross-Page Issues');
-      lines.push('');
-      filteredIssues.forEach(function(issue) {
-        var icon = issue.severity === 'error' ? 'x' : '!';
-        lines.push('### [' + icon + '] ' + issue.title + ' (' + issue.count + ' page' + (issue.count > 1 ? 's' : '') + ')');
-        issue.pages.forEach(function(p) {
-          var path; try { path = new URL(p.url).pathname; } catch(e) { path = p.url; }
-          lines.push('- ' + path + (p.detail ? ': ' + p.detail : ''));
-        });
-        if (issue.fix) lines.push('- **Fix:** ' + issue.fix);
-        lines.push('');
-      });
-    }
-
-    // Per-page reports
-    lines.push('## Per-Page Reports');
-    lines.push('');
-    session.pages.forEach(function(page) {
-      if (page.status !== 'done' || !page.reportData) return;
-      var path; try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
-      lines.push('---');
-      lines.push('### ' + path + ' (' + page.reportData.overall + '/100 — ' + page.reportData.grade + ')');
-      lines.push('');
-      var cats = filterFindings(page.reportData.categories, severityFilter);
-      cats.forEach(function(cat) {
-        var relevant = cat.findings.length;
-        if (relevant === 0) return;
-        lines.push('#### ' + cat.label);
-        cat.findings.forEach(function(f) {
-          var icon = f.severity === 'error' ? 'x' : f.severity === 'warning' ? '!' : 'i';
-          lines.push('- [' + icon + '] ' + f.title);
-          if (f.detail) lines.push('  - ' + f.detail);
-          if (f.fix) lines.push('  - **Fix:** ' + f.fix);
-        });
-        lines.push('');
-      });
-    });
-
-    return lines.join('\n');
-  }
-
-  function renderCrawlCSV(session) {
-    var summary = session.summary || buildSummary(session);
-    var lines = ['URL,Path,Title,Score,Grade,Errors,Warnings'];
-    session.pages.forEach(function(page) {
-      if (page.status !== 'done' || !page.reportData) return;
-      var path; try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
-      var errors = 0, warnings = 0;
-      (page.reportData.categories || []).forEach(function(cat) {
-        cat.findings.forEach(function(f) {
-          if (f.severity === 'error') errors++;
-          if (f.severity === 'warning') warnings++;
-        });
-      });
-      var title = (page.title || '').replace(/,/g, ' ').replace(/"/g, "'");
-      lines.push('"' + page.url + '","' + path + '","' + title + '",' + page.reportData.overall + ',' + page.reportData.grade + ',' + errors + ',' + warnings);
-    });
-    return lines.join('\n');
-  }
-
-  function renderCrawlJSON(session, severityFilter) {
-    var out = {
-      startUrl: session.startUrl,
-      startedAt: session.startedAt,
-      options: session.options,
-      summary: session.summary,
-      pages: session.pages.map(function(p) {
-        if (p.status !== 'done' || !p.reportData) {
-          return { url: p.url, status: p.status, error: p.error };
-        }
-        var cats = filterFindings(p.reportData.categories, severityFilter);
-        return {
-          url: p.url,
-          title: p.title,
-          score: p.reportData.overall,
-          grade: p.reportData.grade,
-          categories: cats.map(function(c) {
-            return { label: c.label, score: c.score, findings: c.findings };
-          })
-        };
-      })
-    };
-    return JSON.stringify(out, null, 2);
-  }
-
-  // --- Public API ---
-
-  return {
-    normalizeUrl: normalizeUrl,
-    matchesBlacklist: matchesBlacklist,
-    discoverLinks: discoverLinks,
-    createSession: createSession,
-    startCrawl: startCrawl,
-    abortCrawl: abortCrawl,
-    buildSummary: buildSummary,
-    filterFindings: filterFindings,
-    renderCrawlMarkdown: renderCrawlMarkdown,
-    renderCrawlCSV: renderCrawlCSV,
-    renderCrawlJSON: renderCrawlJSON
-  };
-})();
+Key metrics to track:
+- **Overall average** should be ≥85 (currently 88)
+- **Before/clean gap** should be ≥5 points (currently 7) — proves the analyzer differentiates design quality
+- **Contrast average** is the weakest category (currently 46) — legitimate failures from Tailwind's default light color shades
+- **No module should average below 40** except Contrast (known issue with Tailwind color scale)
 </file>
 
 <file path="interaction/touch-targets.md">
@@ -19115,144 +18781,478 @@ window.MilgScoring = (function() {
 })();
 </file>
 
-<file path="docs/ANALYZER-TODO.md">
-# Analyzer TODO
+<file path="docs/analyzer-crawl.js">
+// Site Crawl Module — multi-page analysis with progressive results
+// Provides: link discovery, session management, summary building, export helpers
+// Pipeline orchestration lives in analyzer.js (has access to fetchViaProxy, analyzeHtmlInIframe)
 
-## Completed (69 items)
+window.MilgCrawl = (function() {
+  "use strict";
 
-### Core
-- [x] Modular scoring architecture (14 modules in `scoring/`)
-- [x] 8 audience profiles with evidence-based thresholds (General, WCAG AAA, Elderly, Low Vision, Motor Impairment, Color Blind, Children, Cognitive)
-- [x] 4 input modes (URL fetch, console snippet, paste HTML, import JSON)
-- [x] Gradient contrast via canvas sampling (multi-layer compositing)
-- [x] Background image contrast via canvas (CORS-limited)
-- [x] CSS filter contrast math (brightness, contrast, opacity)
-- [x] APCA contrast algorithm alongside WCAG
-- [x] oklch/oklab color parsing via canvas fallback
-- [x] Space-separated rgb() syntax support
-- [x] Page context detection (marketing/form/app/content)
-- [x] Fragment detection (skips document-level checks for pasted HTML snippets)
-- [x] Decorative element filtering
-- [x] Post-analysis exclusion suggestions (two-step flow)
-- [x] Extraction data caching (sessionStorage)
-- [x] Dark mode report styling
-- [x] AA/AAA profile switching (captures pairs up to 7.5:1)
-- [x] N/A category detection (modules return notApplicable when nothing to check)
-- [x] Context-aware touch targets (nav/footer/inline/button classification per WCAG 2.5.8)
-- [x] CVD palette simulation (Machado et al. 2009 matrices for protanopia, deuteranopia, tritanopia)
-- [x] JS-dependent page detection (warns when page needs JS execution)
+  // --- URL utilities ---
 
-### UI & Features
-- [x] Page screenshots (modern-screenshot library, viewport sections, zoom lightbox)
-- [x] Analysis history in localStorage (max 10, dedup by URL+profile)
-- [x] JSON export/import with drag-and-drop
-- [x] Viewport size selector (defaults to current window size)
-- [x] Progress bar during analysis
-- [x] URL autocomplete from history
-- [x] Mobile-optimized layout (CSS grid header, icon-only buttons)
-- [x] Self-hosted CORS proxy (Cloudflare Worker with rate limiting, SSRF protection)
-- [x] Proxy URL injection via local .env (not committed)
+  function normalizeUrl(url) {
+    try {
+      var u = new URL(url);
+      u.hash = '';
+      u.search = ''; // ignore query params for dedup (configurable later)
+      if (u.pathname.length > 1 && u.pathname.endsWith('/')) {
+        u.pathname = u.pathname.slice(0, -1);
+      }
+      return u.href;
+    } catch(e) { return url; }
+  }
 
-### Extraction
-- [x] Actual character-per-line via span measurement
-- [x] Section gaps for whitespace rhythm
-- [x] Left-edge alignment clustering
-- [x] Heading-to-body ratio for visual hierarchy
-- [x] Border radius value clustering
-- [x] Paragraph text extraction (Coleman-Liau)
-- [x] Font loading rules from stylesheets
-- [x] Render-blocking resource counts
-- [x] DOM size and depth
-- [x] Adjacent sibling spacing
-- [x] Animation/keyframe detection
-- [x] Scroll-reveal pattern detection
-- [x] Transform translateY off-screen detection
-- [x] Element overflow detection
-- [x] Letter spacing audit
-- [x] Negative margin detection
-- [x] Container padding clustering
-- [x] Third-party script count
-- [x] Image format audit (WebP/AVIF vs legacy)
-- [x] CLS via PerformanceObserver
-- [x] LCP estimation (API + heuristic)
-- [x] Fixed-width element detection
-- [x] Text truncation (ellipsis) audit
-- [x] ARIA role audit (button tabindex, hidden focusable)
-- [x] Bad link text detection
-- [x] Missing autocomplete on form fields
-- [x] Color-only indicator detection
-- [x] Auto-playing unmuted media detection
-- [x] Padding-inclusive touch measurement (checks parent label/link)
+  function matchesBlacklist(url, patterns) {
+    if (!patterns || patterns.length === 0) return false;
+    var path;
+    try { path = new URL(url).pathname; } catch(e) { return false; }
+    return patterns.some(function(pattern) {
+      pattern = pattern.trim();
+      if (!pattern) return false;
+      if (pattern.endsWith('*')) {
+        return path.startsWith(pattern.slice(0, -1));
+      }
+      return path === pattern || url.includes(pattern);
+    });
+  }
 
-### Testing
-- [x] Headless browser test suite (Puppeteer, serves docs/ locally, renders presets in real iframe with Tailwind)
-- [x] 125 preset templates validated — avg 88, min 69, max 100
-- [x] Before/clean gap verified: 81 avg vs 88 avg (7pt differentiation)
-- [x] Browser-based test runner (`docs/tests/test-presets-rendered.html`)
-- [x] Unit tests for scoring modules (`docs/tests/test-scoring.html`)
-- [x] Edge case test pages (gradients, dark backgrounds, fixed-width, truncation)
-- [x] 3 iterations of template fixes across 125 files (contrast, focus-visible, semantics)
+  var SKIP_EXTENSIONS = /\.(pdf|zip|tar|gz|png|jpg|jpeg|gif|svg|webp|ico|css|js|json|xml|woff|woff2|ttf|eot|mp3|mp4|avi|mov)$/i;
 
-## Completed: Deep Scan Mode
+  function discoverLinks(html, baseUrl, blacklist, maxPages) {
+    var doc = new DOMParser().parseFromString(html, 'text/html');
+    var origin;
+    try { origin = new URL(baseUrl).origin; } catch(e) { return []; }
+    var seen = new Set();
+    seen.add(normalizeUrl(baseUrl));
+    // Mark index variants as seen to avoid re-crawling the start page
+    try {
+      var baseP = new URL(baseUrl).pathname;
+      if (baseP === '/' || baseP === '/index.html' || baseP === '/index.htm') {
+        var o = new URL(baseUrl).origin;
+        seen.add(normalizeUrl(o + '/')); seen.add(normalizeUrl(o + '/index.html')); seen.add(normalizeUrl(o + '/index.htm'));
+      }
+    } catch(e) {}
 
-- [x] **Multi-viewport testing** — Spawn 3 parallel iframes at 375/768/1280px, merge results
-- [x] **Dark mode class toggle** — Toggle `.dark` on html, re-extract colors. ~95% reliable for Tailwind/class-based sites
-- [x] **Dark mode media query rewriting** — Extract `prefers-color-scheme: dark` rules from stylesheets, inject unconditionally. ~80-90% reliable
-- [x] **Scroll before extraction** — Auto-scroll full page to trigger intersection observers
+    var links = [];
+    var anchors = doc.querySelectorAll('a[href]');
+    for (var i = 0; i < anchors.length; i++) {
+      var href = anchors[i].getAttribute('href');
+      if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('javascript:')) continue;
+      var resolved;
+      try { resolved = new URL(href, baseUrl).href; } catch(e) { continue; }
+      var u;
+      try { u = new URL(resolved); } catch(e) { continue; }
+      if (u.origin !== origin) continue;
+      if (SKIP_EXTENSIONS.test(u.pathname)) continue;
+      var norm = normalizeUrl(resolved);
+      if (seen.has(norm)) continue;
+      if (matchesBlacklist(norm, blacklist)) continue;
+      seen.add(norm);
+      links.push(resolved);
+      if (links.length >= maxPages - 1) break; // -1 because starting page is counted
+    }
+    return links;
+  }
 
-## Future: LLM Integration (opt-in)
+  // --- Session management ---
 
-Default off. Only when user provides API key. See research notes in this file's git history.
+  var _sessionCounter = 0;
 
-- [ ] Soft judgment: tone, copy clarity, color palette appropriateness
-- [ ] Finding summarization in plain language
-- [ ] Clearly labeled as "AI-generated" separate from evidence-based findings
+  function createSession(startUrl, options) {
+    var opts = options || {};
+    return {
+      id: 'crawl-' + (++_sessionCounter) + '-' + Date.now(),
+      startUrl: startUrl,
+      startedAt: new Date().toISOString(),
+      status: 'crawling',
+      options: {
+        maxPages: Math.min(Math.max(opts.maxPages || 5, 1), 25),
+        blacklist: opts.blacklist || [],
+        deepScan: !!opts.deepScan,
+        screenshots: !!opts.screenshots,
+        excludeSelector: opts.excludeSelector || '',
+        profile: opts.profile || 'general'
+      },
+      discoveredUrls: [],
+      queue: [],
+      pages: [],
+      summary: null,
+      _aborted: false
+    };
+  }
 
-## Decided to Skip (with reasons)
+  // Start crawl — pipeline is an object with:
+  //   fetchPage(url, callback(html, error))
+  //   analyzePage(html, url, options, callback(data))
+  //   scorePage(data) → reportData
+  //   onPageStart(pageEntry)
+  //   onPageComplete(pageEntry)
+  //   onPageError(pageEntry)
+  //   onDiscovery(urls)
+  //   onComplete(session)
+  function startCrawl(session, pipeline) {
+    var startUrl = session.startUrl;
+    var opts = session.options;
 
-| Item | Reason |
-|------|--------|
-| Vertical rhythm detection | ~60% accuracy, too many false positives |
-| Nested spacing consistency | Can't determine spacing "intent" without component boundaries |
-| Gap vs margin consistency | Mixing is often correct (gap for flex, margin for flow) |
-| Overlapping targets | False positives from menus, dropdowns, positioned elements |
-| Click density mapping | No clear threshold for "too dense," subjective |
-| Shadow consistency | Too many legitimate shadow variations (elevation levels) |
-| Color distance (CIEDE2000) | Complex (~200 lines), similar colors often intentional |
-| Icon sizing consistency | SVG sizing too chaotic in practice |
-| Decision point counting | Counting buttons/links per section unreliable |
-| Information density | Elements-per-viewport varies wildly by page type |
-| Modal/popup detection | position:fixed catches headers/footers too |
-| Grid structure detection | Inferring columns from widths unreliable with flexbox |
-| Proximity grouping | Requires semantic understanding, pure DOM can't do it |
-| Sticky element audit | Almost always intentional, nothing actionable |
-| Critical CSS detection | Requires multi-viewport rendering analysis |
-| Inline CSS size | Often intentional (critical CSS pattern) |
-| Flash/strobe detection | Needs frame-by-frame analysis, not feasible from DOM |
-| F-pattern detection | ~40% accuracy without AI |
-| Whitespace ratio | Varies by page type, no universal threshold |
-| Web Worker extraction | Workers can't access DOM |
+    // Step 1: fetch starting page to discover links
+    var startPage = {
+      url: startUrl,
+      status: 'fetching',
+      title: '',
+      rawData: null,
+      reportData: null,
+      error: null,
+      startedAt: new Date().toISOString(),
+      completedAt: null
+    };
+    session.pages.push(startPage);
+    if (pipeline.onPageStart) pipeline.onPageStart(startPage);
 
-## Research Documents
+    pipeline.fetchPage(startUrl, function(html, err) {
+      if (session._aborted) return;
+      if (err || !html) {
+        startPage.status = 'error';
+        startPage.error = err || 'Empty response';
+        startPage.completedAt = new Date().toISOString();
+        if (pipeline.onPageError) pipeline.onPageError(startPage);
+        session.status = 'complete';
+        session.summary = buildSummary(session);
+        if (pipeline.onComplete) pipeline.onComplete(session);
+        return;
+      }
 
-- `research/analyzer-roadmap.md` — P0/P1 roadmap, priority matrix (794 lines)
-- `research/analyzer-p2-research.md` — P2/P3 feature research (928 lines)
-- `research/multi-viewport-dark-mode.md` — Multi-viewport & dark mode feasibility (345 lines)
-- `research/analyzer-test-rendered.md` — Latest headless test results (125 presets, per-module averages)
+      // Discover links from starting page HTML
+      var discovered = discoverLinks(html, startUrl, opts.blacklist, opts.maxPages);
+      session.discoveredUrls = discovered;
+      session.queue = discovered.slice();
+      if (pipeline.onDiscovery) pipeline.onDiscovery(discovered);
 
-## E2E Testing
+      // Analyze starting page
+      startPage.status = 'analyzing';
+      pipeline.analyzePage(html, startUrl, opts, function(data) {
+        if (session._aborted) return;
+        if (data) {
+          startPage.rawData = data;
+          startPage.title = (data.meta && data.meta.title) || '';
+          startPage.reportData = pipeline.scorePage(data);
+          startPage.status = 'done';
+        } else {
+          startPage.status = 'error';
+          startPage.error = 'Analysis failed';
+        }
+        startPage.completedAt = new Date().toISOString();
+        if (startPage.status === 'done') {
+          if (pipeline.onPageComplete) pipeline.onPageComplete(startPage);
+        } else {
+          if (pipeline.onPageError) pipeline.onPageError(startPage);
+        }
 
-Run `node scripts/test-presets-headless.mjs` for the full rendered test suite. Requires Puppeteer (`npm i puppeteer`). The script:
-1. Serves `docs/` on localhost:8765
-2. Loads each preset in a real iframe with Tailwind CSS
-3. Runs the same extraction + scoring as the production analyzer
-4. Outputs results to `research/analyzer-test-rendered.md`
+        // Process remaining queue
+        processQueue(session, pipeline, 0);
+      });
+    });
+  }
 
-Key metrics to track:
-- **Overall average** should be ≥85 (currently 88)
-- **Before/clean gap** should be ≥5 points (currently 7) — proves the analyzer differentiates design quality
-- **Contrast average** is the weakest category (currently 46) — legitimate failures from Tailwind's default light color shades
-- **No module should average below 40** except Contrast (known issue with Tailwind color scale)
+  function processQueue(session, pipeline, idx) {
+    if (session._aborted) {
+      session.status = 'aborted';
+      session.summary = buildSummary(session);
+      if (pipeline.onComplete) pipeline.onComplete(session);
+      return;
+    }
+    if (idx >= session.queue.length) {
+      session.status = 'complete';
+      session.summary = buildSummary(session);
+      if (pipeline.onComplete) pipeline.onComplete(session);
+      return;
+    }
+
+    var url = session.queue[idx];
+    var pageEntry = {
+      url: url,
+      status: 'fetching',
+      title: '',
+      rawData: null,
+      reportData: null,
+      error: null,
+      startedAt: new Date().toISOString(),
+      completedAt: null
+    };
+    session.pages.push(pageEntry);
+    if (pipeline.onPageStart) pipeline.onPageStart(pageEntry);
+
+    pipeline.fetchPage(url, function(html, err) {
+      if (session._aborted) { processQueue(session, pipeline, idx + 1); return; }
+      if (err || !html) {
+        pageEntry.status = 'error';
+        pageEntry.error = err || 'Empty response';
+        pageEntry.completedAt = new Date().toISOString();
+        if (pipeline.onPageError) pipeline.onPageError(pageEntry);
+        // Continue after delay
+        setTimeout(function() { processQueue(session, pipeline, idx + 1); }, 2000);
+        return;
+      }
+
+      pageEntry.status = 'analyzing';
+      pipeline.analyzePage(html, url, session.options, function(data) {
+        if (session._aborted) { processQueue(session, pipeline, idx + 1); return; }
+        if (data) {
+          pageEntry.rawData = data;
+          pageEntry.title = (data.meta && data.meta.title) || '';
+          pageEntry.reportData = pipeline.scorePage(data);
+          pageEntry.status = 'done';
+        } else {
+          pageEntry.status = 'error';
+          pageEntry.error = 'Analysis failed';
+        }
+        pageEntry.completedAt = new Date().toISOString();
+        if (pageEntry.status === 'done') {
+          if (pipeline.onPageComplete) pipeline.onPageComplete(pageEntry);
+        } else {
+          if (pipeline.onPageError) pipeline.onPageError(pageEntry);
+        }
+        // Delay between pages to respect rate limits
+        setTimeout(function() { processQueue(session, pipeline, idx + 1); }, 2000);
+      });
+    });
+  }
+
+  function abortCrawl(session) {
+    session._aborted = true;
+  }
+
+  // --- Summary builder ---
+
+  function buildSummary(session) {
+    var donePages = session.pages.filter(function(p) { return p.status === 'done' && p.reportData; });
+    var failedPages = session.pages.filter(function(p) { return p.status === 'error'; });
+
+    if (donePages.length === 0) {
+      return {
+        pagesAnalyzed: 0, pagesFailed: failedPages.length,
+        averageScore: 0, worstPage: null, bestPage: null,
+        scoreGrid: [], crossPageIssues: [], categoryAverages: []
+      };
+    }
+
+    // Score grid
+    var scoreGrid = donePages.map(function(p) {
+      var path;
+      try { path = new URL(p.url).pathname; } catch(e) { path = p.url; }
+      return { url: p.url, path: path, title: p.title, score: p.reportData.overall, grade: p.reportData.grade };
+    });
+
+    var scores = donePages.map(function(p) { return p.reportData.overall; });
+    var avgScore = Math.round(scores.reduce(function(a, b) { return a + b; }, 0) / scores.length);
+
+    var worstIdx = scores.indexOf(Math.min.apply(null, scores));
+    var bestIdx = scores.indexOf(Math.max.apply(null, scores));
+
+    // Cross-page issue grouping
+    var issueMap = {};
+    donePages.forEach(function(p) {
+      if (!p.reportData || !p.reportData.categories) return;
+      p.reportData.categories.forEach(function(cat) {
+        cat.findings.forEach(function(f) {
+          if (f.severity === 'info') return;
+          var key = f.severity + '|' + f.title;
+          if (!issueMap[key]) {
+            issueMap[key] = { title: f.title, severity: f.severity, fix: f.fix, pages: [], count: 0 };
+          }
+          issueMap[key].pages.push({ url: p.url, detail: f.detail || '' });
+          issueMap[key].count++;
+        });
+      });
+    });
+    var crossPageIssues = Object.keys(issueMap).map(function(k) { return issueMap[k]; });
+    crossPageIssues.sort(function(a, b) {
+      // Errors first, then by count
+      if (a.severity !== b.severity) return a.severity === 'error' ? -1 : 1;
+      return b.count - a.count;
+    });
+
+    // Category averages
+    var catMap = {};
+    donePages.forEach(function(p) {
+      if (!p.reportData || !p.reportData.categories) return;
+      p.reportData.categories.forEach(function(cat) {
+        if (!catMap[cat.label]) catMap[cat.label] = { scores: [], worstScore: 100, worstPage: '' };
+        catMap[cat.label].scores.push(cat.score);
+        if (cat.score < catMap[cat.label].worstScore) {
+          catMap[cat.label].worstScore = cat.score;
+          catMap[cat.label].worstPage = p.url;
+        }
+      });
+    });
+    var categoryAverages = Object.keys(catMap).map(function(label) {
+      var scores = catMap[label].scores;
+      return {
+        label: label,
+        avgScore: Math.round(scores.reduce(function(a, b) { return a + b; }, 0) / scores.length),
+        worstPage: catMap[label].worstPage
+      };
+    });
+
+    return {
+      pagesAnalyzed: donePages.length,
+      pagesFailed: failedPages.length,
+      averageScore: avgScore,
+      worstPage: { url: donePages[worstIdx].url, score: scores[worstIdx] },
+      bestPage: { url: donePages[bestIdx].url, score: scores[bestIdx] },
+      scoreGrid: scoreGrid,
+      crossPageIssues: crossPageIssues,
+      categoryAverages: categoryAverages
+    };
+  }
+
+  // --- Export helpers ---
+
+  function filterFindings(categories, minSeverity) {
+    if (!minSeverity || minSeverity === 'all') return categories;
+    return categories.map(function(cat) {
+      return Object.assign({}, cat, {
+        findings: cat.findings.filter(function(f) {
+          if (minSeverity === 'error') return f.severity === 'error';
+          if (minSeverity === 'warning') return f.severity === 'error' || f.severity === 'warning';
+          return true;
+        })
+      });
+    });
+  }
+
+  function renderCrawlMarkdown(session, severityFilter) {
+    var summary = session.summary || buildSummary(session);
+    var lines = [];
+    lines.push('# Site Crawl Report');
+    lines.push('');
+    lines.push('**Starting URL:** ' + session.startUrl);
+    lines.push('**Date:** ' + new Date(session.startedAt).toLocaleString());
+    lines.push('**Pages analyzed:** ' + summary.pagesAnalyzed + ' (failed: ' + summary.pagesFailed + ')');
+    lines.push('**Average score:** ' + summary.averageScore + '/100');
+    if (severityFilter && severityFilter !== 'all') {
+      lines.push('**Filter:** ' + (severityFilter === 'error' ? 'Errors only' : 'Warnings + Errors'));
+    }
+    lines.push('');
+
+    // Score grid
+    lines.push('## Score Summary');
+    lines.push('');
+    lines.push('| Page | Score | Grade |');
+    lines.push('|------|-------|-------|');
+    summary.scoreGrid.forEach(function(row) {
+      lines.push('| ' + row.path + ' | ' + row.score + ' | ' + row.grade + ' |');
+    });
+    lines.push('');
+
+    // Cross-page issues
+    var filteredIssues = summary.crossPageIssues.filter(function(issue) {
+      if (severityFilter === 'error') return issue.severity === 'error';
+      if (severityFilter === 'warning') return issue.severity === 'error' || issue.severity === 'warning';
+      return true;
+    });
+    if (filteredIssues.length > 0) {
+      lines.push('## Cross-Page Issues');
+      lines.push('');
+      filteredIssues.forEach(function(issue) {
+        var icon = issue.severity === 'error' ? 'x' : '!';
+        lines.push('### [' + icon + '] ' + issue.title + ' (' + issue.count + ' page' + (issue.count > 1 ? 's' : '') + ')');
+        issue.pages.forEach(function(p) {
+          var path; try { path = new URL(p.url).pathname; } catch(e) { path = p.url; }
+          lines.push('- ' + path + (p.detail ? ': ' + p.detail : ''));
+        });
+        if (issue.fix) lines.push('- **Fix:** ' + issue.fix);
+        lines.push('');
+      });
+    }
+
+    // Per-page reports
+    lines.push('## Per-Page Reports');
+    lines.push('');
+    session.pages.forEach(function(page) {
+      if (page.status !== 'done' || !page.reportData) return;
+      var path; try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
+      lines.push('---');
+      lines.push('### ' + path + ' (' + page.reportData.overall + '/100 — ' + page.reportData.grade + ')');
+      lines.push('');
+      var cats = filterFindings(page.reportData.categories, severityFilter);
+      cats.forEach(function(cat) {
+        var relevant = cat.findings.length;
+        if (relevant === 0) return;
+        lines.push('#### ' + cat.label);
+        cat.findings.forEach(function(f) {
+          var icon = f.severity === 'error' ? 'x' : f.severity === 'warning' ? '!' : 'i';
+          lines.push('- [' + icon + '] ' + f.title);
+          if (f.detail) lines.push('  - ' + f.detail);
+          if (f.fix) lines.push('  - **Fix:** ' + f.fix);
+        });
+        lines.push('');
+      });
+    });
+
+    return lines.join('\n');
+  }
+
+  function renderCrawlCSV(session) {
+    var summary = session.summary || buildSummary(session);
+    var lines = ['URL,Path,Title,Score,Grade,Errors,Warnings'];
+    session.pages.forEach(function(page) {
+      if (page.status !== 'done' || !page.reportData) return;
+      var path; try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
+      var errors = 0, warnings = 0;
+      (page.reportData.categories || []).forEach(function(cat) {
+        cat.findings.forEach(function(f) {
+          if (f.severity === 'error') errors++;
+          if (f.severity === 'warning') warnings++;
+        });
+      });
+      var title = (page.title || '').replace(/,/g, ' ').replace(/"/g, "'");
+      lines.push('"' + page.url + '","' + path + '","' + title + '",' + page.reportData.overall + ',' + page.reportData.grade + ',' + errors + ',' + warnings);
+    });
+    return lines.join('\n');
+  }
+
+  function renderCrawlJSON(session, severityFilter) {
+    var out = {
+      startUrl: session.startUrl,
+      startedAt: session.startedAt,
+      options: session.options,
+      summary: session.summary,
+      pages: session.pages.map(function(p) {
+        if (p.status !== 'done' || !p.reportData) {
+          return { url: p.url, status: p.status, error: p.error };
+        }
+        var cats = filterFindings(p.reportData.categories, severityFilter);
+        return {
+          url: p.url,
+          title: p.title,
+          score: p.reportData.overall,
+          grade: p.reportData.grade,
+          categories: cats.map(function(c) {
+            return { label: c.label, score: c.score, findings: c.findings };
+          })
+        };
+      })
+    };
+    return JSON.stringify(out, null, 2);
+  }
+
+  // --- Public API ---
+
+  return {
+    normalizeUrl: normalizeUrl,
+    matchesBlacklist: matchesBlacklist,
+    discoverLinks: discoverLinks,
+    createSession: createSession,
+    startCrawl: startCrawl,
+    abortCrawl: abortCrawl,
+    buildSummary: buildSummary,
+    filterFindings: filterFindings,
+    renderCrawlMarkdown: renderCrawlMarkdown,
+    renderCrawlCSV: renderCrawlCSV,
+    renderCrawlJSON: renderCrawlJSON
+  };
+})();
 </file>
 
 <file path="README.md">
@@ -28415,9 +28415,17 @@ function scoreLayout(data) {
           outputData(data);
           return;
         }
+        // Step 1: Scroll to position — triggers scroll listeners, IntersectionObserver,
+        // lazy loading, reveal animations, sticky headers, etc.
         window.scrollTo(0, y);
+        window.dispatchEvent(new Event('scroll'));
+        // Step 2: Wait for scroll-triggered content to render (lazy images, animations)
         setTimeout(function() {
-          // Physically offset the body so domToCanvas sees "scrolled" state
+          // Force any pending IntersectionObserver callbacks
+          void document.documentElement.offsetHeight;
+          // Step 3: Wait again for async content (image decode, CSS transitions)
+          setTimeout(function() {
+          // Step 4: Apply translateY offset so domToCanvas captures the scrolled viewport
           // (domToCanvas renders from DOM position, not visual viewport)
           var origTransform = document.documentElement.style.transform;
           var origOverflow = document.documentElement.style.overflow;
@@ -28438,7 +28446,8 @@ function scoreLayout(data) {
             document.documentElement.style.overflow = origOverflow || '';
             y += secH; captureNext();
           });
-        }, 200);
+          }, 300); // inner wait: let async content settle after scroll triggers
+        }, 400); // outer wait: let scroll listeners + IntersectionObserver fire
       }
       captureNext();
     }

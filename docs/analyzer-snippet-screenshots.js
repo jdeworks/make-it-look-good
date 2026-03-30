@@ -1708,9 +1708,17 @@
           outputData(data);
           return;
         }
+        // Step 1: Scroll to position — triggers scroll listeners, IntersectionObserver,
+        // lazy loading, reveal animations, sticky headers, etc.
         window.scrollTo(0, y);
+        window.dispatchEvent(new Event('scroll'));
+        // Step 2: Wait for scroll-triggered content to render (lazy images, animations)
         setTimeout(function() {
-          // Physically offset the body so domToCanvas sees "scrolled" state
+          // Force any pending IntersectionObserver callbacks
+          void document.documentElement.offsetHeight;
+          // Step 3: Wait again for async content (image decode, CSS transitions)
+          setTimeout(function() {
+          // Step 4: Apply translateY offset so domToCanvas captures the scrolled viewport
           // (domToCanvas renders from DOM position, not visual viewport)
           var origTransform = document.documentElement.style.transform;
           var origOverflow = document.documentElement.style.overflow;
@@ -1731,7 +1739,8 @@
             document.documentElement.style.overflow = origOverflow || '';
             y += secH; captureNext();
           });
-        }, 200);
+          }, 300); // inner wait: let async content settle after scroll triggers
+        }, 400); // outer wait: let scroll listeners + IntersectionObserver fire
       }
       captureNext();
     }
