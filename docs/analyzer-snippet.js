@@ -2352,12 +2352,13 @@
       try { localStorage.setItem('milg-crawl-complete', JSON.stringify(_s)); } catch(e) {}
       console.log('%c\u2713 Crawl complete (1 page). Open the analyzer.', 'color: #16a34a; font-weight: bold;');
     } else {
-      // Fetch snippet source for injection into iframes after they load
+      // Crawl: fetch page HTML (same-origin), load as srcdoc (bypasses X-Frame-Options),
+      // inject snippet, poll for results.
       var _snippetUrl = 'https://jdeworks.github.io/make-it-look-good/analyzer-snippet.js';
       console.log('%cLoading extraction snippet for injection\u2026', 'color: #64748b;');
 
       fetch(_snippetUrl).then(function(r) { return r.text(); }).then(function(snippetSrc) {
-        console.log('%c\u2713 Snippet loaded. Starting crawl with full JS execution per page.', 'color: #16a34a;');
+        console.log('%c\u2713 Snippet loaded. Starting crawl.', 'color: #16a34a;');
 
         function processNext(idx) {
           if (idx >= _crawlLinks.length) {
@@ -2372,84 +2373,85 @@
 
           var url = _crawlLinks[idx];
           var path; try { path = new URL(url).pathname; } catch(e) { path = url; }
-          console.log('%c\u2192 [' + (idx + 1) + '/' + _crawlLinks.length + '] Loading ' + path + ' (with JS)\u2026', 'color: #3b82f6;');
+          console.log('%c\u2192 [' + (idx + 1) + '/' + _crawlLinks.length + '] ' + path, 'color: #3b82f6;');
 
-          // Create same-origin iframe with src= (full page load, JS executes)
-          var iframe = document.createElement('iframe');
-          iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
-          // Sandbox: allow scripts + same-origin but block top-navigation (prevents frame-busting)
-          iframe.sandbox = 'allow-scripts allow-same-origin allow-forms';
-          document.body.appendChild(iframe);
+          // Fetch page HTML (same-origin) then load as srcdoc (bypasses X-Frame-Options)
+          fetch(url).then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.text();
+          }).then(function(html) {
+            var baseTag = '<base href="' + url + '">';
+            if (/<head[\s>]/i.test(html)) {
+              html = html.replace(/<head([^>]*)>/i, '<head$1>' + baseTag);
+            } else {
+              html = baseTag + html;
+            }
+            html = html.replace(/<meta[^>]*http-equiv=["']?X-Frame-Options["']?[^>]*>/gi, '');
 
-          var done = false;
-          function cleanup() { if (iframe.parentNode) document.body.removeChild(iframe); }
+            var iframe = document.createElement('iframe');
+            iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
+            iframe.sandbox = 'allow-scripts allow-same-origin allow-forms';
+            document.body.appendChild(iframe);
 
-          iframe.addEventListener('load', function() {
-            if (done) return;
-            // Wait for page JS to settle (SPA rendering, lazy loading, etc.)
-            setTimeout(function() {
+            var done = false;
+            function cleanup() { if (iframe.parentNode) document.body.removeChild(iframe); }
+
+            iframe.addEventListener('load', function() {
               if (done) return;
-              try {
-                var iWin = iframe.contentWindow;
-                var iDoc = iframe.contentDocument || iWin.document;
-                // Inject extraction snippet (disable crawl to prevent recursion)
-                var script = iDoc.createElement('script');
-                script.textContent = 'window.__milgCrawlSite=false;\n' + snippetSrc;
-                iDoc.body.appendChild(script);
+              setTimeout(function() {
+                if (done) return;
+                try {
+                  var iWin = iframe.contentWindow;
+                  var iDoc = iframe.contentDocument || iWin.document;
+                  var script = iDoc.createElement('script');
+                  script.textContent = 'window.__milgCrawlSite=false;\n' + snippetSrc;
+                  iDoc.body.appendChild(script);
 
-                // Poll for __milgData
-                var polls = 0;
-                var poller = setInterval(function() {
-                  if (done) { clearInterval(poller); return; }
-                  polls++;
-                  try {
-                    var iData = iWin.__milgData;
-                    if (iData) {
+                  var polls = 0;
+                  var poller = setInterval(function() {
+                    if (done) { clearInterval(poller); return; }
+                    polls++;
+                    try {
+                      var iData = iWin.__milgData;
+                      if (iData) {
+                        clearInterval(poller); done = true;
+                        iData.meta.url = url;
+                        _crawlResults.push({ url: url, data: iData });
+                        cleanup();
+                        console.log('%c  \u2713 ' + path + ' (' + (iData.structure.totalElements || 0) + ' elements)', 'color: #16a34a;');
+                        setTimeout(function() { processNext(idx + 1); }, 500);
+                      } else if (polls > 20) {
+                        clearInterval(poller); done = true;
+                        console.log('%c  \u2717 Timeout: ' + path, 'color: #dc2626;');
+                        cleanup();
+                        setTimeout(function() { processNext(idx + 1); }, 500);
+                      }
+                    } catch(e) {
                       clearInterval(poller); done = true;
-                      iData.meta.url = url;
-                      _crawlResults.push({ url: url, data: iData });
-                      cleanup();
-                      console.log('%c  \u2713 ' + path + ' (' + (iData.structure.totalElements || 0) + ' elements)', 'color: #16a34a;');
-                      setTimeout(function() { processNext(idx + 1); }, 500);
-                    } else if (polls > 40) {
-                      clearInterval(poller); done = true;
-                      console.log('%c  \u2717 Timeout: ' + path, 'color: #dc2626;');
+                      console.log('%c  \u2717 Error: ' + path + ' (' + e.message + ')', 'color: #dc2626;');
                       cleanup();
                       setTimeout(function() { processNext(idx + 1); }, 500);
                     }
-                  } catch(e) {
-                    clearInterval(poller); done = true;
-                    console.log('%c  \u2717 Error: ' + path + ' (' + e.message + ')', 'color: #dc2626;');
-                    cleanup();
-                    setTimeout(function() { processNext(idx + 1); }, 500);
-                  }
-                }, 500);
-              } catch(e) {
-                done = true;
-                console.log('%c  \u2717 Cannot access iframe: ' + path + ' (' + e.message + ')', 'color: #dc2626;');
-                cleanup();
-                setTimeout(function() { processNext(idx + 1); }, 500);
-              }
-            }, 1500); // 1.5s wait for JS to settle after load
-          });
-
-          iframe.addEventListener('error', function() {
-            if (done) return; done = true;
-            console.log('%c  \u2717 Failed to load: ' + path, 'color: #dc2626;');
-            cleanup();
+                  }, 500);
+                } catch(e) {
+                  done = true;
+                  console.log('%c  \u2717 Cannot inject snippet: ' + path + ' (' + e.message + ')', 'color: #dc2626;');
+                  cleanup();
+                  setTimeout(function() { processNext(idx + 1); }, 500);
+                }
+              }, 1500);
+            });
+            iframe.srcdoc = html;
+            setTimeout(function() {
+              if (done) return; done = true;
+              console.log('%c  \u2717 Timeout (10s): ' + path, 'color: #dc2626;');
+              cleanup();
+              setTimeout(function() { processNext(idx + 1); }, 500);
+            }, 10000);
+          }).catch(function(e) {
+            console.log('%c  \u2717 Fetch failed: ' + path + ' (' + (e.message || e) + ')', 'color: #dc2626;');
             setTimeout(function() { processNext(idx + 1); }, 500);
           });
-
-          iframe.src = url;
-
-          // 10 seconds per page timeout
-          var _pageTimeout = 10000;
-          setTimeout(function() {
-            if (done) return; done = true;
-            console.log('%c  \u2717 Hard timeout (' + Math.round(_pageTimeout / 1000) + 's): ' + path, 'color: #dc2626;');
-            cleanup();
-            setTimeout(function() { processNext(idx + 1); }, 500);
-          }, _pageTimeout);
         }
         processNext(0);
 
