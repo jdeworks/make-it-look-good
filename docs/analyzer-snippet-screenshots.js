@@ -1709,15 +1709,28 @@
         }
         window.scrollTo(0, y);
         setTimeout(function() {
+          // Physically offset the body so domToCanvas sees "scrolled" state
+          // (domToCanvas renders from DOM position, not visual viewport)
+          var origTransform = document.documentElement.style.transform;
+          var origOverflow = document.documentElement.style.overflow;
+          document.documentElement.style.transform = 'translateY(-' + y + 'px)';
+          document.documentElement.style.overflow = 'hidden';
+          void document.documentElement.offsetHeight; // force reflow
           ms.domToCanvas(document.documentElement, { scale: 0.5, width: window.innerWidth, height: Math.min(secH, captureH - y) }).then(function(canvas) {
+            document.documentElement.style.transform = origTransform || '';
+            document.documentElement.style.overflow = origOverflow || '';
             canvas.toBlob(function(blob) {
               if (!blob) { y += secH; captureNext(); return; }
               var reader = new FileReader();
               reader.onloadend = function() { shots.push(reader.result); y += secH; captureNext(); };
               reader.readAsDataURL(blob);
             }, 'image/webp', 0.7);
-          }).catch(function() { y += secH; captureNext(); });
-        }, 150);
+          }).catch(function() {
+            document.documentElement.style.transform = origTransform || '';
+            document.documentElement.style.overflow = origOverflow || '';
+            y += secH; captureNext();
+          });
+        }, 200);
       }
       captureNext();
     }
@@ -1765,5 +1778,56 @@
 
     window.__milgData = data;
     window.__milgData_json = json;
+
+    // --- Site Crawl Mode (navigation-based, with screenshots) ---
+    if (window.__milgCrawlSite) {
+      var _ck = 'milg-crawl-state';
+      var _cc = 'milg-crawl-complete';
+      var _cs;
+      try { _cs = JSON.parse(localStorage.getItem(_ck)); } catch(e) { _cs = null; }
+
+      if (!_cs) {
+        var _cm = Math.min(Math.max(window.__milgCrawlMaxPages || 5, 1), 25);
+        var _cb = window.__milgCrawlBlacklist || [];
+        var _co = location.origin;
+        var _seen = {}; _seen[_co + location.pathname.replace(/\/$/, '')] = true;
+        var _links = [];
+        document.querySelectorAll('a[href]').forEach(function(a) {
+          var h = a.getAttribute('href');
+          if (!h || h.startsWith('#') || h.startsWith('mailto:') || h.startsWith('tel:') || h.startsWith('javascript:')) return;
+          try { var u = new URL(h, location.href); if (u.origin !== _co) return; if (/\.(pdf|zip|png|jpg|svg|css|js|json|xml|woff2?)$/i.test(u.pathname)) return; u.hash = ''; var k = u.origin + u.pathname.replace(/\/$/, ''); if (_seen[k]) return; var bl = _cb.some(function(p) { p = p.trim(); if (!p) return false; if (p.endsWith('*')) return u.pathname.startsWith(p.slice(0, -1)); return u.pathname === p; }); if (bl) return; _seen[k] = true; _links.push(u.origin + u.pathname); } catch(e) {}
+        });
+        _links = _links.slice(0, _cm - 1);
+        _cs = { startUrl: location.href, queue: _links, results: [{ url: location.href, data: data }], currentIndex: 0 };
+        localStorage.setItem(_ck, JSON.stringify(_cs));
+        console.log('%c\uD83D\uDD77 Site Crawl: discovered ' + _links.length + ' page(s)', 'color: #8b5cf6; font-weight: bold;');
+        if (_links.length > 0) {
+          console.log('%c\u2192 Navigating to: ' + _links[0], 'color: #3b82f6;');
+          console.log('%cPaste the snippet again on the next page (Ctrl+V, Enter).', 'color: #64748b;');
+          setTimeout(function() { window.location.href = _links[0]; }, 1000);
+        } else {
+          localStorage.removeItem(_ck);
+          localStorage.setItem(_cc, JSON.stringify(_cs));
+          console.log('%c\u2713 Crawl complete (1 page). Open the analyzer.', 'color: #16a34a; font-weight: bold;');
+        }
+      } else {
+        _cs.results.push({ url: location.href, data: data });
+        _cs.currentIndex++;
+        if (_cs.currentIndex < _cs.queue.length) {
+          var next = _cs.queue[_cs.currentIndex];
+          localStorage.setItem(_ck, JSON.stringify(_cs));
+          console.log('%c\uD83D\uDD77 Crawl: ' + _cs.results.length + '/' + (_cs.queue.length + 1) + ' done', 'color: #8b5cf6; font-weight: bold;');
+          console.log('%c\u2192 Navigating to: ' + next, 'color: #3b82f6;');
+          console.log('%cPaste the snippet again (Ctrl+V, Enter).', 'color: #64748b;');
+          setTimeout(function() { window.location.href = next; }, 1000);
+        } else {
+          localStorage.removeItem(_ck);
+          localStorage.setItem(_cc, JSON.stringify(_cs));
+          console.log('%c\u2713 Crawl complete! ' + _cs.results.length + ' pages analyzed.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+          console.log('%cOpen the analyzer to view results.', 'color: #3b82f6;');
+        }
+      }
+      return; // Skip clipboard copy
+    }
   }
 })();

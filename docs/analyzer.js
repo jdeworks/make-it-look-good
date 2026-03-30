@@ -855,9 +855,8 @@
     var snippetCrawlMaxPages = document.getElementById('snippetCrawlMaxPages');
 
     function reloadSnippet() {
-      // Crawl requires the non-screenshot snippet (crawl code only exists there)
       var crawlOn = snippetCrawlCheck && snippetCrawlCheck.checked;
-      var withScreenshots = !crawlOn && sharedScreenshotCheck && sharedScreenshotCheck.checked;
+      var withScreenshots = sharedScreenshotCheck && sharedScreenshotCheck.checked;
       loadSnippet(snippetCode, withScreenshots, function() {
         if (crawlOn) {
           var maxP = (snippetCrawlMaxPages && parseInt(snippetCrawlMaxPages.value)) || 5;
@@ -869,22 +868,11 @@
     reloadSnippet();
 
     if (sharedScreenshotCheck) {
-      sharedScreenshotCheck.addEventListener('change', function() {
-        // Uncheck crawl when screenshots enabled (mutually exclusive)
-        if (sharedScreenshotCheck.checked && snippetCrawlCheck && snippetCrawlCheck.checked) {
-          snippetCrawlCheck.checked = false;
-          if (snippetCrawlMaxPages) snippetCrawlMaxPages.style.display = 'none';
-        }
-        reloadSnippet();
-      });
+      sharedScreenshotCheck.addEventListener('change', reloadSnippet);
     }
     if (snippetCrawlCheck) {
       snippetCrawlCheck.addEventListener('change', function() {
         if (snippetCrawlMaxPages) snippetCrawlMaxPages.style.display = snippetCrawlCheck.checked ? '' : 'none';
-        // Uncheck screenshots when crawl enabled (crawl uses non-screenshot snippet)
-        if (snippetCrawlCheck.checked && sharedScreenshotCheck && sharedScreenshotCheck.checked) {
-          sharedScreenshotCheck.checked = false;
-        }
         reloadSnippet();
       });
     }
@@ -2327,14 +2315,18 @@
           'if(y>=captureH||shots.length>=5){parent.postMessage({type:"' + msgType + '",screenshots:shots},"*");return}' +
           'window.scrollTo(0,y);' +
           'setTimeout(function(){' +
+            'var oT=document.documentElement.style.transform;var oO=document.documentElement.style.overflow;' +
+            'document.documentElement.style.transform="translateY(-"+y+"px)";document.documentElement.style.overflow="hidden";' +
+            'void document.documentElement.offsetHeight;' +
             'ms.domToCanvas(document.documentElement,{scale:' + ss.scale + '}).then(function(c){' +
+              'document.documentElement.style.transform=oT||"";document.documentElement.style.overflow=oO||"";' +
               'c.toBlob(function(b){' +
                 'if(!b){y+=vh;next();return}' +
                 'var r=new FileReader();' +
                 'r.onloadend=function(){shots.push(r.result);y+=vh;next()};' +
                 'r.readAsDataURL(b)' +
               '},"image/webp",' + ss.quality + ')' +
-            '}).catch(function(){y+=vh;next()})' +
+            '}).catch(function(){document.documentElement.style.transform=oT||"";document.documentElement.style.overflow=oO||"";y+=vh;next()})' +
           '},200)' +
         '}' +
         'next()' +

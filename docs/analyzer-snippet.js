@@ -2307,138 +2307,77 @@
   // Also store on window for debugging
   window.__milgData = data;
 
-  // --- Site Crawl Mode (automatic via same-origin iframes) ---
-  // Set window.__milgCrawlSite = true before running. No re-pasting needed.
-  // Uses hidden iframes to load same-domain pages and extract data from each.
+  // --- Site Crawl Mode (navigation-based) ---
+  // Set window.__milgCrawlSite = true before running.
+  // Navigates to each same-domain page. Re-paste the snippet on each page
+  // (it's already in your clipboard). The snippet detects crawl state and continues.
   if (window.__milgCrawlSite) {
-    var _crawlMax = Math.min(Math.max(window.__milgCrawlMaxPages || 5, 1), 25);
-    var _crawlBlacklist = window.__milgCrawlBlacklist || [];
-    var _crawlOrigin = location.origin;
-    var _crawlSeen = {};
-    _crawlSeen[_crawlOrigin + location.pathname.replace(/\/$/, '')] = true;
+    var _crawlKey = 'milg-crawl-state';
+    var _crawlCompleteKey = 'milg-crawl-complete';
+    var _crawlState;
+    try { _crawlState = JSON.parse(localStorage.getItem(_crawlKey)); } catch(e) { _crawlState = null; }
 
-    // Discover same-domain links
-    var _crawlLinks = [];
-    document.querySelectorAll('a[href]').forEach(function(a) {
-      var href = a.getAttribute('href');
-      if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('javascript:')) return;
-      try {
-        var u = new URL(href, location.href);
-        if (u.origin !== _crawlOrigin) return;
-        if (/\.(pdf|zip|png|jpg|svg|css|js|json|xml|woff2?)$/i.test(u.pathname)) return;
-        var key = u.origin + u.pathname.replace(/\/$/, '');
-        if (_crawlSeen[key]) return;
-        var blocked = _crawlBlacklist.some(function(pat) { pat = pat.trim(); if (!pat) return false; if (pat.endsWith('*')) return u.pathname.startsWith(pat.slice(0, -1)); return u.pathname === pat || u.href.includes(pat); });
-        if (blocked) return;
-        _crawlSeen[key] = true;
-        _crawlLinks.push(u.href);
-      } catch(e) {}
-    });
-    _crawlLinks = _crawlLinks.slice(0, _crawlMax - 1);
+    if (!_crawlState) {
+      // First page: discover links, save state, navigate
+      var _crawlMax = Math.min(Math.max(window.__milgCrawlMaxPages || 5, 1), 25);
+      var _crawlBlacklist = window.__milgCrawlBlacklist || [];
+      var _crawlOrigin = location.origin;
+      var _crawlSeen = {};
+      _crawlSeen[_crawlOrigin + location.pathname.replace(/\/$/, '')] = true;
 
-    var _crawlResults = [{ url: location.href, data: data }];
-    console.log('%c\uD83D\uDD77 Site Crawl: found ' + _crawlLinks.length + ' same-domain pages. Analyzing via iframes\u2026', 'color: #8b5cf6; font-weight: bold;');
+      var _crawlLinks = [];
+      document.querySelectorAll('a[href]').forEach(function(a) {
+        var href = a.getAttribute('href');
+        if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('javascript:')) return;
+        try {
+          var u = new URL(href, location.href);
+          if (u.origin !== _crawlOrigin) return;
+          if (/\.(pdf|zip|png|jpg|svg|css|js|json|xml|woff2?)$/i.test(u.pathname)) return;
+          u.hash = '';
+          var key = u.origin + u.pathname.replace(/\/$/, '');
+          if (_crawlSeen[key]) return;
+          var blocked = _crawlBlacklist.some(function(pat) { pat = pat.trim(); if (!pat) return false; if (pat.endsWith('*')) return u.pathname.startsWith(pat.slice(0, -1)); return u.pathname === pat; });
+          if (blocked) return;
+          _crawlSeen[key] = true;
+          _crawlLinks.push(u.origin + u.pathname);
+        } catch(e) {}
+      });
+      _crawlLinks = _crawlLinks.slice(0, _crawlMax - 1);
 
-    // Get the snippet source for injection — fetch from known CDN path or use inline
-    var _snippetSrc = null;
-    // Try to get the snippet source from the page's own script tags or fetch it
-    var _snippetUrl = 'https://jdeworks.github.io/make-it-look-good/analyzer-snippet.js';
+      _crawlState = { startUrl: location.href, queue: _crawlLinks, results: [{ url: location.href, data: data }], currentIndex: 0 };
+      localStorage.setItem(_crawlKey, JSON.stringify(_crawlState));
+      console.log('%c\uD83D\uDD77 Site Crawl: discovered ' + _crawlLinks.length + ' page(s)', 'color: #8b5cf6; font-weight: bold;');
+      _crawlLinks.forEach(function(l, i) { var p; try { p = new URL(l).pathname; } catch(e) { p = l; } console.log('  ' + (i + 1) + '. ' + p); });
 
-    function _startCrawl() {
-      function _crawlNext(idx) {
-        if (idx >= _crawlLinks.length) {
-          var state = { startUrl: location.href, results: _crawlResults };
-          try { localStorage.setItem('milg-crawl-complete', JSON.stringify(state)); } catch(e) {}
-          console.log('%c\u2713 Crawl complete! ' + _crawlResults.length + ' pages analyzed.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-          console.log('%cOpen the analyzer to view results (they load automatically).', 'color: #3b82f6;');
-          window.__milgCrawlResults = _crawlResults;
-          return;
-        }
-        var url = _crawlLinks[idx];
-        var path; try { path = new URL(url).pathname; } catch(e) { path = url; }
-        console.log('%c\u2192 [' + (idx + 1) + '/' + _crawlLinks.length + '] ' + path, 'color: #3b82f6;');
-
-        var iframe = document.createElement('iframe');
-        iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
-        document.body.appendChild(iframe);
-
-        var done = false;
-        function cleanup() { if (iframe.parentNode) document.body.removeChild(iframe); }
-
-        iframe.onload = function() {
-          if (done) return;
-          setTimeout(function() {
-            if (done) return;
-            try {
-              var iDoc = iframe.contentDocument || iframe.contentWindow.document;
-              // Inject the full snippet into the iframe
-              var script = iDoc.createElement('script');
-              // Disable crawl + clipboard in the injected snippet
-              script.textContent = 'window.__milgCrawlSite=false;' + _snippetSrc;
-              iDoc.body.appendChild(script);
-              // Poll for __milgData
-              var polls = 0;
-              var poller = setInterval(function() {
-                polls++;
-                try {
-                  var iData = iframe.contentWindow.__milgData;
-                  if (iData) {
-                    clearInterval(poller); done = true;
-                    iData.meta.url = url;
-                    _crawlResults.push({ url: url, data: iData });
-                    cleanup();
-                    console.log('%c  \u2713 ' + path + ' (' + (iData.structure.totalElements || 0) + ' elements)', 'color: #16a34a;');
-                    setTimeout(function() { _crawlNext(idx + 1); }, 500);
-                  } else if (polls > 30) {
-                    clearInterval(poller); done = true;
-                    console.log('%c  \u2717 Timeout: ' + path, 'color: #dc2626;');
-                    cleanup();
-                    setTimeout(function() { _crawlNext(idx + 1); }, 500);
-                  }
-                } catch(e) {
-                  clearInterval(poller); done = true;
-                  console.log('%c  \u2717 Error: ' + path + ' (' + e.message + ')', 'color: #dc2626;');
-                  cleanup();
-                  setTimeout(function() { _crawlNext(idx + 1); }, 500);
-                }
-              }, 500);
-            } catch(e) {
-              done = true;
-              console.log('%c  \u2717 Cannot access: ' + path + ' (cross-origin?)', 'color: #dc2626;');
-              cleanup();
-              setTimeout(function() { _crawlNext(idx + 1); }, 500);
-            }
-          }, 2000);
-        };
-        iframe.onerror = function() {
-          if (done) return; done = true;
-          console.log('%c  \u2717 Failed to load: ' + path, 'color: #dc2626;');
-          cleanup();
-          setTimeout(function() { _crawlNext(idx + 1); }, 500);
-        };
-        iframe.src = url;
-        setTimeout(function() {
-          if (done) return; done = true;
-          console.log('%c  \u2717 Hard timeout: ' + path, 'color: #dc2626;');
-          cleanup();
-          setTimeout(function() { _crawlNext(idx + 1); }, 500);
-        }, 20000);
+      if (_crawlLinks.length > 0) {
+        console.log('%c\u2192 Navigating to: ' + _crawlLinks[0], 'color: #3b82f6;');
+        console.log('%cPaste the snippet again on the next page (Ctrl+V, Enter).', 'color: #64748b;');
+        setTimeout(function() { window.location.href = _crawlLinks[0]; }, 1000);
+      } else {
+        localStorage.removeItem(_crawlKey);
+        localStorage.setItem(_crawlCompleteKey, JSON.stringify(_crawlState));
+        console.log('%c\u2713 Crawl complete (1 page). Open the analyzer to view results.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
       }
-      _crawlNext(0);
-    }
+    } else {
+      // Continuation: add current page results
+      _crawlState.results.push({ url: location.href, data: data });
+      _crawlState.currentIndex++;
+      var remaining = _crawlState.queue.length - _crawlState.currentIndex;
+      console.log('%c\uD83D\uDD77 Crawl: ' + _crawlState.results.length + '/' + (_crawlState.queue.length + 1) + ' pages done' + (remaining > 0 ? ', ' + remaining + ' remaining' : ''), 'color: #8b5cf6; font-weight: bold;');
 
-    // Fetch the snippet source for iframe injection
-    fetch(_snippetUrl).then(function(r) { return r.text(); }).then(function(src) {
-      _snippetSrc = src;
-      _startCrawl();
-    }).catch(function() {
-      // Fallback: try to read from current page's script if we're on the analyzer
-      console.log('%c\u26A0 Could not fetch snippet source. Trying navigation fallback\u2026', 'color: #b45309;');
-      // Store results so far and navigate
-      var state = { startUrl: location.href, results: _crawlResults, queue: _crawlLinks, currentIndex: 0 };
-      localStorage.setItem('milg-crawl-state', JSON.stringify(state));
-      console.log('%cPaste the snippet on the next page. Crawl state is saved.', 'color: #3b82f6;');
-    });
+      if (_crawlState.currentIndex < _crawlState.queue.length) {
+        var nextUrl = _crawlState.queue[_crawlState.currentIndex];
+        localStorage.setItem(_crawlKey, JSON.stringify(_crawlState));
+        console.log('%c\u2192 Navigating to: ' + nextUrl, 'color: #3b82f6;');
+        console.log('%cPaste the snippet again on the next page (Ctrl+V, Enter).', 'color: #64748b;');
+        setTimeout(function() { window.location.href = nextUrl; }, 1000);
+      } else {
+        localStorage.removeItem(_crawlKey);
+        localStorage.setItem(_crawlCompleteKey, JSON.stringify(_crawlState));
+        console.log('%c\u2713 Crawl complete! ' + _crawlState.results.length + ' pages analyzed.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+        console.log('%cOpen the analyzer to view aggregated results (they load automatically).', 'color: #3b82f6;');
+      }
+    }
     return; // Skip normal clipboard copy
   }
 })();
