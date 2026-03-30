@@ -578,40 +578,42 @@
       var hasLightSections = sectionBgs.some(function(s) { return s.lum > 0.4; });
       var hasDarkSections = sectionBgs.some(function(s) { return s.lum < 0.15; });
 
-      // Check visible fixed/sticky elements for contrast risk
-      document.querySelectorAll('header,nav,[class*="fixed"],[class*="sticky"]').forEach(function(el) {
+      // Check visible fixed elements for contrast risk (report per container, not per child)
+      // Only position:fixed — sticky elements are anchored within their section context
+      document.querySelectorAll('header,nav,[class*="fixed"]').forEach(function(el) {
         var s = getComputedStyle(el);
-        if (s.position !== 'fixed' && s.position !== 'sticky') return;
-        // Check text/icon colored children
+        if (s.position !== 'fixed') return;
+        var lightCount = 0, darkCount = 0, firstLight = null, firstDark = null;
         var coloredChildren = el.querySelectorAll('a,button,span,svg,h1,h2,h3,p');
         coloredChildren.forEach(function(child) {
+          if (!isVisible(child)) return; // skip display:none / hidden children
           var cs = getComputedStyle(child);
           var color = parseColor(cs.color);
           if (!color) return;
           var colorLum = luminance(color.r, color.g, color.b);
-          var isLightColor = colorLum > 0.6;
-          var isDarkColor = colorLum < 0.15;
-          // Light text on a page with light sections = risk
-          if (isLightColor && hasLightSections) {
-            data.layout.fixedContrastRisks.push({
-              selector: cssSelector(child),
-              text: (child.textContent || child.getAttribute('aria-label') || '').trim().substring(0, 30),
-              color: cs.color,
-              risk: 'light-on-light',
-              element: child.tagName.toLowerCase()
-            });
-          }
-          // Dark text on a page with dark sections = risk
-          if (isDarkColor && hasDarkSections) {
-            data.layout.fixedContrastRisks.push({
-              selector: cssSelector(child),
-              text: (child.textContent || child.getAttribute('aria-label') || '').trim().substring(0, 30),
-              color: cs.color,
-              risk: 'dark-on-dark',
-              element: child.tagName.toLowerCase()
-            });
-          }
+          if (colorLum > 0.6 && hasLightSections) { lightCount++; if (!firstLight) firstLight = child; }
+          if (colorLum < 0.15 && hasDarkSections) { darkCount++; if (!firstDark) firstDark = child; }
         });
+        if (lightCount > 0 && firstLight) {
+          data.layout.fixedContrastRisks.push({
+            selector: cssSelector(el),
+            text: (firstLight.textContent || firstLight.getAttribute('aria-label') || '').trim().substring(0, 30),
+            color: getComputedStyle(firstLight).color,
+            risk: 'light-on-light',
+            element: el.tagName.toLowerCase(),
+            childCount: lightCount
+          });
+        }
+        if (darkCount > 0 && firstDark) {
+          data.layout.fixedContrastRisks.push({
+            selector: cssSelector(el),
+            text: (firstDark.textContent || firstDark.getAttribute('aria-label') || '').trim().substring(0, 30),
+            color: getComputedStyle(firstDark).color,
+            risk: 'dark-on-dark',
+            element: el.tagName.toLowerCase(),
+            childCount: darkCount
+          });
+        }
       });
       data.layout.fixedContrastRisks = data.layout.fixedContrastRisks.slice(0, 10);
     })();

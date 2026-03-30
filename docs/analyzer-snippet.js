@@ -1036,16 +1036,20 @@
     var sections = document.querySelectorAll('section,main>div,[class*="bg-"]');
     var hasLight = false, hasDark = false;
     sections.forEach(function(sec) { var c = _pc(getComputedStyle(sec).backgroundColor); if (c) { var l = _lum(c.r, c.g, c.b); if (l > 0.4) hasLight = true; if (l < 0.15) hasDark = true; } });
-    document.querySelectorAll('header,nav,[class*="fixed"],[class*="sticky"]').forEach(function(el) {
+    document.querySelectorAll('header,nav,[class*="fixed"]').forEach(function(el) {
       var s = getComputedStyle(el);
-      if (s.position !== 'fixed' && s.position !== 'sticky') return;
+      if (s.position !== 'fixed') return;
+      var lc = 0, dc = 0, fL = null, fD = null;
       el.querySelectorAll('a,button,span,svg,h1,h2,h3,p').forEach(function(child) {
+        if (!isVisible(child)) return;
         var c = _pc(getComputedStyle(child).color);
         if (!c) return;
         var cl = _lum(c.r, c.g, c.b);
-        if (cl > 0.6 && hasLight) data.layout.fixedContrastRisks.push({ selector: cssSelector(child), text: (child.textContent || child.getAttribute('aria-label') || '').trim().substring(0, 30), color: getComputedStyle(child).color, risk: 'light-on-light', element: child.tagName.toLowerCase() });
-        if (cl < 0.15 && hasDark) data.layout.fixedContrastRisks.push({ selector: cssSelector(child), text: (child.textContent || child.getAttribute('aria-label') || '').trim().substring(0, 30), color: getComputedStyle(child).color, risk: 'dark-on-dark', element: child.tagName.toLowerCase() });
+        if (cl > 0.6 && hasLight) { lc++; if (!fL) fL = child; }
+        if (cl < 0.15 && hasDark) { dc++; if (!fD) fD = child; }
       });
+      if (lc > 0 && fL) data.layout.fixedContrastRisks.push({ selector: cssSelector(el), text: (fL.textContent || fL.getAttribute('aria-label') || '').trim().substring(0, 30), color: getComputedStyle(fL).color, risk: 'light-on-light', element: el.tagName.toLowerCase(), childCount: lc });
+      if (dc > 0 && fD) data.layout.fixedContrastRisks.push({ selector: cssSelector(el), text: (fD.textContent || fD.getAttribute('aria-label') || '').trim().substring(0, 30), color: getComputedStyle(fD).color, risk: 'dark-on-dark', element: el.tagName.toLowerCase(), childCount: dc });
     });
     data.layout.fixedContrastRisks = data.layout.fixedContrastRisks.slice(0, 10);
   })();

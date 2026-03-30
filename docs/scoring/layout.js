@@ -428,13 +428,15 @@ function scoreLayout(data) {
   var fixedRisks = (data.layout && data.layout.fixedContrastRisks) || [];
   if (fixedRisks.length > 0) {
     checks++;
+    var totalChildren = fixedRisks.reduce(function(sum, r) { return sum + (r.childCount || 1); }, 0);
     var riskDetails = fixedRisks.slice(0, 3).map(function(r) {
       var label = r.element + (r.text ? ' ("' + r.text.substring(0, 20) + '")' : '');
-      return label + ' — ' + (r.risk === 'light-on-light' ? 'light color may vanish on light sections' : 'dark color may vanish on dark sections');
+      var count = r.childCount > 1 ? ' (' + r.childCount + ' children)' : '';
+      return label + count + ' — ' + (r.risk === 'light-on-light' ? 'light color may vanish on light sections' : 'dark color may vanish on dark sections');
     });
     findings.push({
-      severity: fixedRisks.length > 2 ? 'error' : 'warning',
-      title: fixedRisks.length + ' fixed element(s) may lose contrast when scrolled',
+      severity: totalChildren > 4 ? 'error' : 'warning',
+      title: fixedRisks.length + ' fixed container(s) with ' + totalChildren + ' element(s) may lose contrast when scrolled',
       detail: riskDetails.join('; '),
       fix: 'Fixed/sticky elements must adapt their color when scrolling over different-colored sections. Use a scroll listener to toggle text color, or add a semi-opaque background to the fixed container.',
       source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum',
