@@ -1896,14 +1896,25 @@
               if (!r.ok) throw new Error('HTTP ' + r.status);
               return r.text();
             }).then(function(html) {
-              // Add base tag so relative URLs resolve correctly
+              // Srcdoc environment patches — same as analyzer's "Try with JS" mode:
+              // URL constructor, History API, fetch for relative URLs
+              var eu = url.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+              var envPatch = '<script>(function(){' +
+                'var _rb="' + eu + '";var _O=URL;' +
+                'function _P(u,b){if(b){var bs=typeof b==="string"?b:String(b);if(bs==="about:srcdoc"||bs==="about:blank"||bs==="null"||bs.indexOf("about:")===0)b=_rb;}' +
+                'if(!b&&typeof u==="string"&&u.charAt(0)==="/")return new _O(u,_rb);try{return arguments.length===1?new _O(u):new _O(u,b);}catch(e){try{return new _O(u,_rb);}catch(e2){throw e;}}}' +
+                '_P.prototype=_O.prototype;_P.createObjectURL=_O.createObjectURL.bind(_O);_P.revokeObjectURL=_O.revokeObjectURL.bind(_O);if(_O.canParse)_P.canParse=_O.canParse.bind(_O);window.URL=_P;' +
+                'var _hps=history.pushState.bind(history);var _hrs=history.replaceState.bind(history);' +
+                'history.pushState=function(s,t,u){try{_hps(s,t,u);}catch(e){}};history.replaceState=function(s,t,u){try{_hrs(s,t,u);}catch(e){}};' +
+                'var _of=window.fetch;window.fetch=function(u,o){if(typeof u==="string"&&u.charAt(0)==="/")u=_rb.replace(/\\/$/,"")+u;return _of.call(this,u,o);};' +
+                '})();</' + 'script>';
               var baseTag = '<base href="' + url + '">';
+              var headPatch = envPatch + baseTag;
               if (/<head[\s>]/i.test(html)) {
-                html = html.replace(/<head([^>]*)>/i, '<head$1>' + baseTag);
+                html = html.replace(/<head([^>]*)>/i, '<head$1>' + headPatch);
               } else {
-                html = baseTag + html;
+                html = headPatch + html;
               }
-              // Remove any X-Frame-Options meta tags
               html = html.replace(/<meta[^>]*http-equiv=["']?X-Frame-Options["']?[^>]*>/gi, '');
 
               var iframe = document.createElement('iframe');
