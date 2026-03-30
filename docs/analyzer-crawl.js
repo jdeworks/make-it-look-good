@@ -41,6 +41,14 @@ window.MilgCrawl = (function() {
     try { origin = new URL(baseUrl).origin; } catch(e) { return []; }
     var seen = new Set();
     seen.add(normalizeUrl(baseUrl));
+    // Mark index variants as seen to avoid re-crawling the start page
+    try {
+      var baseP = new URL(baseUrl).pathname;
+      if (baseP === '/' || baseP === '/index.html' || baseP === '/index.htm') {
+        var o = new URL(baseUrl).origin;
+        seen.add(normalizeUrl(o + '/')); seen.add(normalizeUrl(o + '/index.html')); seen.add(normalizeUrl(o + '/index.htm'));
+      }
+    } catch(e) {}
 
     var links = [];
     var anchors = doc.querySelectorAll('a[href]');

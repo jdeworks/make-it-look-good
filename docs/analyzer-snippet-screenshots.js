@@ -164,6 +164,7 @@
     if (!bgi || bgi === 'none' || bgi.indexOf('url(') === -1 || bgi.indexOf('gradient') !== -1) return null;
     var urlMatch = bgi.match(/url\(["']?([^"')]+)["']?\)/);
     if (!urlMatch) return null;
+    if (urlMatch[1].charAt(0) === '#') return null; // SVG reference, not an image
     try {
       var img = new Image();
       img.crossOrigin = 'anonymous';
@@ -1784,7 +1785,13 @@
       var _cm = Math.min(Math.max(window.__milgCrawlMaxPages || 5, 1), 25);
       var _cb = window.__milgCrawlBlacklist || [];
       var _co = location.origin;
-      var _seen = {}; _seen[_co + location.pathname.replace(/\/$/, '')] = true;
+      var _seen = {};
+      var _curPath = location.pathname.replace(/\/$/, '');
+      _seen[_co + _curPath] = true;
+      // Also mark index variants as seen to avoid re-crawling the current page
+      if (_curPath === '' || _curPath === '/index.html' || _curPath === '/index.htm') {
+        _seen[_co] = true; _seen[_co + '/index.html'] = true; _seen[_co + '/index.htm'] = true;
+      }
       var _links = [];
       document.querySelectorAll('a[href]').forEach(function(a) {
         var h = a.getAttribute('href');
@@ -1829,6 +1836,7 @@
                   (iframe.contentDocument || iWin.document).body.appendChild(script);
                   var polls = 0;
                   var pi = setInterval(function() {
+                    if (done) { clearInterval(pi); return; }
                     polls++;
                     try {
                       var d = iWin.__milgData;
