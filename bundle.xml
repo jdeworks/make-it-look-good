@@ -84,6 +84,7 @@ docs/
     run-edge-cases.html
     test-presets-rendered.html
     test-scoring.html
+  analyzer-crawl.js
   analyzer-report.js
   analyzer-snippet-screenshots.js
   analyzer-snippet.js
@@ -2691,6 +2692,472 @@ All presets assume Tailwind CSS is available. Setup per framework:
 | Plain HTML (CDN) | `<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>` |
 
 For Tailwind v4, add `@import "tailwindcss"` to your main CSS file. No `tailwind.config.js` needed for default setup.
+</file>
+
+<file path="docs/analyzer-crawl.js">
+// Site Crawl Module — multi-page analysis with progressive results
+// Provides: link discovery, session management, summary building, export helpers
+// Pipeline orchestration lives in analyzer.js (has access to fetchViaProxy, analyzeHtmlInIframe)
+
+window.MilgCrawl = (function() {
+  "use strict";
+
+  // --- URL utilities ---
+
+  function normalizeUrl(url) {
+    try {
+      var u = new URL(url);
+      u.hash = '';
+      u.search = ''; // ignore query params for dedup (configurable later)
+      if (u.pathname.length > 1 && u.pathname.endsWith('/')) {
+        u.pathname = u.pathname.slice(0, -1);
+      }
+      return u.href;
+    } catch(e) { return url; }
+  }
+
+  function matchesBlacklist(url, patterns) {
+    if (!patterns || patterns.length === 0) return false;
+    var path;
+    try { path = new URL(url).pathname; } catch(e) { return false; }
+    return patterns.some(function(pattern) {
+      pattern = pattern.trim();
+      if (!pattern) return false;
+      if (pattern.endsWith('*')) {
+        return path.startsWith(pattern.slice(0, -1));
+      }
+      return path === pattern || url.includes(pattern);
+    });
+  }
+
+  var SKIP_EXTENSIONS = /\.(pdf|zip|tar|gz|png|jpg|jpeg|gif|svg|webp|ico|css|js|json|xml|woff|woff2|ttf|eot|mp3|mp4|avi|mov)$/i;
+
+  function discoverLinks(html, baseUrl, blacklist, maxPages) {
+    var doc = new DOMParser().parseFromString(html, 'text/html');
+    var origin;
+    try { origin = new URL(baseUrl).origin; } catch(e) { return []; }
+    var seen = new Set();
+    seen.add(normalizeUrl(baseUrl));
+
+    var links = [];
+    var anchors = doc.querySelectorAll('a[href]');
+    for (var i = 0; i < anchors.length; i++) {
+      var href = anchors[i].getAttribute('href');
+      if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('javascript:')) continue;
+      var resolved;
+      try { resolved = new URL(href, baseUrl).href; } catch(e) { continue; }
+      var u;
+      try { u = new URL(resolved); } catch(e) { continue; }
+      if (u.origin !== origin) continue;
+      if (SKIP_EXTENSIONS.test(u.pathname)) continue;
+      var norm = normalizeUrl(resolved);
+      if (seen.has(norm)) continue;
+      if (matchesBlacklist(norm, blacklist)) continue;
+      seen.add(norm);
+      links.push(resolved);
+      if (links.length >= maxPages - 1) break; // -1 because starting page is counted
+    }
+    return links;
+  }
+
+  // --- Session management ---
+
+  var _sessionCounter = 0;
+
+  function createSession(startUrl, options) {
+    var opts = options || {};
+    return {
+      id: 'crawl-' + (++_sessionCounter) + '-' + Date.now(),
+      startUrl: startUrl,
+      startedAt: new Date().toISOString(),
+      status: 'crawling',
+      options: {
+        maxPages: Math.min(Math.max(opts.maxPages || 5, 1), 25),
+        blacklist: opts.blacklist || [],
+        deepScan: !!opts.deepScan,
+        screenshots: !!opts.screenshots,
+        excludeSelector: opts.excludeSelector || '',
+        profile: opts.profile || 'general'
+      },
+      discoveredUrls: [],
+      queue: [],
+      pages: [],
+      summary: null,
+      _aborted: false
+    };
+  }
+
+  // Start crawl — pipeline is an object with:
+  //   fetchPage(url, callback(html, error))
+  //   analyzePage(html, url, options, callback(data))
+  //   scorePage(data) → reportData
+  //   onPageStart(pageEntry)
+  //   onPageComplete(pageEntry)
+  //   onPageError(pageEntry)
+  //   onDiscovery(urls)
+  //   onComplete(session)
+  function startCrawl(session, pipeline) {
+    var startUrl = session.startUrl;
+    var opts = session.options;
+
+    // Step 1: fetch starting page to discover links
+    var startPage = {
+      url: startUrl,
+      status: 'fetching',
+      title: '',
+      rawData: null,
+      reportData: null,
+      error: null,
+      startedAt: new Date().toISOString(),
+      completedAt: null
+    };
+    session.pages.push(startPage);
+    if (pipeline.onPageStart) pipeline.onPageStart(startPage);
+
+    pipeline.fetchPage(startUrl, function(html, err) {
+      if (session._aborted) return;
+      if (err || !html) {
+        startPage.status = 'error';
+        startPage.error = err || 'Empty response';
+        startPage.completedAt = new Date().toISOString();
+        if (pipeline.onPageError) pipeline.onPageError(startPage);
+        session.status = 'complete';
+        session.summary = buildSummary(session);
+        if (pipeline.onComplete) pipeline.onComplete(session);
+        return;
+      }
+
+      // Discover links from starting page HTML
+      var discovered = discoverLinks(html, startUrl, opts.blacklist, opts.maxPages);
+      session.discoveredUrls = discovered;
+      session.queue = discovered.slice();
+      if (pipeline.onDiscovery) pipeline.onDiscovery(discovered);
+
+      // Analyze starting page
+      startPage.status = 'analyzing';
+      pipeline.analyzePage(html, startUrl, opts, function(data) {
+        if (session._aborted) return;
+        if (data) {
+          startPage.rawData = data;
+          startPage.title = (data.meta && data.meta.title) || '';
+          startPage.reportData = pipeline.scorePage(data);
+          startPage.status = 'done';
+        } else {
+          startPage.status = 'error';
+          startPage.error = 'Analysis failed';
+        }
+        startPage.completedAt = new Date().toISOString();
+        if (startPage.status === 'done') {
+          if (pipeline.onPageComplete) pipeline.onPageComplete(startPage);
+        } else {
+          if (pipeline.onPageError) pipeline.onPageError(startPage);
+        }
+
+        // Process remaining queue
+        processQueue(session, pipeline, 0);
+      });
+    });
+  }
+
+  function processQueue(session, pipeline, idx) {
+    if (session._aborted) {
+      session.status = 'aborted';
+      session.summary = buildSummary(session);
+      if (pipeline.onComplete) pipeline.onComplete(session);
+      return;
+    }
+    if (idx >= session.queue.length) {
+      session.status = 'complete';
+      session.summary = buildSummary(session);
+      if (pipeline.onComplete) pipeline.onComplete(session);
+      return;
+    }
+
+    var url = session.queue[idx];
+    var pageEntry = {
+      url: url,
+      status: 'fetching',
+      title: '',
+      rawData: null,
+      reportData: null,
+      error: null,
+      startedAt: new Date().toISOString(),
+      completedAt: null
+    };
+    session.pages.push(pageEntry);
+    if (pipeline.onPageStart) pipeline.onPageStart(pageEntry);
+
+    pipeline.fetchPage(url, function(html, err) {
+      if (session._aborted) { processQueue(session, pipeline, idx + 1); return; }
+      if (err || !html) {
+        pageEntry.status = 'error';
+        pageEntry.error = err || 'Empty response';
+        pageEntry.completedAt = new Date().toISOString();
+        if (pipeline.onPageError) pipeline.onPageError(pageEntry);
+        // Continue after delay
+        setTimeout(function() { processQueue(session, pipeline, idx + 1); }, 2000);
+        return;
+      }
+
+      pageEntry.status = 'analyzing';
+      pipeline.analyzePage(html, url, session.options, function(data) {
+        if (session._aborted) { processQueue(session, pipeline, idx + 1); return; }
+        if (data) {
+          pageEntry.rawData = data;
+          pageEntry.title = (data.meta && data.meta.title) || '';
+          pageEntry.reportData = pipeline.scorePage(data);
+          pageEntry.status = 'done';
+        } else {
+          pageEntry.status = 'error';
+          pageEntry.error = 'Analysis failed';
+        }
+        pageEntry.completedAt = new Date().toISOString();
+        if (pageEntry.status === 'done') {
+          if (pipeline.onPageComplete) pipeline.onPageComplete(pageEntry);
+        } else {
+          if (pipeline.onPageError) pipeline.onPageError(pageEntry);
+        }
+        // Delay between pages to respect rate limits
+        setTimeout(function() { processQueue(session, pipeline, idx + 1); }, 2000);
+      });
+    });
+  }
+
+  function abortCrawl(session) {
+    session._aborted = true;
+  }
+
+  // --- Summary builder ---
+
+  function buildSummary(session) {
+    var donePages = session.pages.filter(function(p) { return p.status === 'done' && p.reportData; });
+    var failedPages = session.pages.filter(function(p) { return p.status === 'error'; });
+
+    if (donePages.length === 0) {
+      return {
+        pagesAnalyzed: 0, pagesFailed: failedPages.length,
+        averageScore: 0, worstPage: null, bestPage: null,
+        scoreGrid: [], crossPageIssues: [], categoryAverages: []
+      };
+    }
+
+    // Score grid
+    var scoreGrid = donePages.map(function(p) {
+      var path;
+      try { path = new URL(p.url).pathname; } catch(e) { path = p.url; }
+      return { url: p.url, path: path, title: p.title, score: p.reportData.overall, grade: p.reportData.grade };
+    });
+
+    var scores = donePages.map(function(p) { return p.reportData.overall; });
+    var avgScore = Math.round(scores.reduce(function(a, b) { return a + b; }, 0) / scores.length);
+
+    var worstIdx = scores.indexOf(Math.min.apply(null, scores));
+    var bestIdx = scores.indexOf(Math.max.apply(null, scores));
+
+    // Cross-page issue grouping
+    var issueMap = {};
+    donePages.forEach(function(p) {
+      if (!p.reportData || !p.reportData.categories) return;
+      p.reportData.categories.forEach(function(cat) {
+        cat.findings.forEach(function(f) {
+          if (f.severity === 'info') return;
+          var key = f.severity + '|' + f.title;
+          if (!issueMap[key]) {
+            issueMap[key] = { title: f.title, severity: f.severity, fix: f.fix, pages: [], count: 0 };
+          }
+          issueMap[key].pages.push({ url: p.url, detail: f.detail || '' });
+          issueMap[key].count++;
+        });
+      });
+    });
+    var crossPageIssues = Object.keys(issueMap).map(function(k) { return issueMap[k]; });
+    crossPageIssues.sort(function(a, b) {
+      // Errors first, then by count
+      if (a.severity !== b.severity) return a.severity === 'error' ? -1 : 1;
+      return b.count - a.count;
+    });
+
+    // Category averages
+    var catMap = {};
+    donePages.forEach(function(p) {
+      if (!p.reportData || !p.reportData.categories) return;
+      p.reportData.categories.forEach(function(cat) {
+        if (!catMap[cat.label]) catMap[cat.label] = { scores: [], worstScore: 100, worstPage: '' };
+        catMap[cat.label].scores.push(cat.score);
+        if (cat.score < catMap[cat.label].worstScore) {
+          catMap[cat.label].worstScore = cat.score;
+          catMap[cat.label].worstPage = p.url;
+        }
+      });
+    });
+    var categoryAverages = Object.keys(catMap).map(function(label) {
+      var scores = catMap[label].scores;
+      return {
+        label: label,
+        avgScore: Math.round(scores.reduce(function(a, b) { return a + b; }, 0) / scores.length),
+        worstPage: catMap[label].worstPage
+      };
+    });
+
+    return {
+      pagesAnalyzed: donePages.length,
+      pagesFailed: failedPages.length,
+      averageScore: avgScore,
+      worstPage: { url: donePages[worstIdx].url, score: scores[worstIdx] },
+      bestPage: { url: donePages[bestIdx].url, score: scores[bestIdx] },
+      scoreGrid: scoreGrid,
+      crossPageIssues: crossPageIssues,
+      categoryAverages: categoryAverages
+    };
+  }
+
+  // --- Export helpers ---
+
+  function filterFindings(categories, minSeverity) {
+    if (!minSeverity || minSeverity === 'all') return categories;
+    return categories.map(function(cat) {
+      return Object.assign({}, cat, {
+        findings: cat.findings.filter(function(f) {
+          if (minSeverity === 'error') return f.severity === 'error';
+          if (minSeverity === 'warning') return f.severity === 'error' || f.severity === 'warning';
+          return true;
+        })
+      });
+    });
+  }
+
+  function renderCrawlMarkdown(session, severityFilter) {
+    var summary = session.summary || buildSummary(session);
+    var lines = [];
+    lines.push('# Site Crawl Report');
+    lines.push('');
+    lines.push('**Starting URL:** ' + session.startUrl);
+    lines.push('**Date:** ' + new Date(session.startedAt).toLocaleString());
+    lines.push('**Pages analyzed:** ' + summary.pagesAnalyzed + ' (failed: ' + summary.pagesFailed + ')');
+    lines.push('**Average score:** ' + summary.averageScore + '/100');
+    if (severityFilter && severityFilter !== 'all') {
+      lines.push('**Filter:** ' + (severityFilter === 'error' ? 'Errors only' : 'Warnings + Errors'));
+    }
+    lines.push('');
+
+    // Score grid
+    lines.push('## Score Summary');
+    lines.push('');
+    lines.push('| Page | Score | Grade |');
+    lines.push('|------|-------|-------|');
+    summary.scoreGrid.forEach(function(row) {
+      lines.push('| ' + row.path + ' | ' + row.score + ' | ' + row.grade + ' |');
+    });
+    lines.push('');
+
+    // Cross-page issues
+    var filteredIssues = summary.crossPageIssues.filter(function(issue) {
+      if (severityFilter === 'error') return issue.severity === 'error';
+      if (severityFilter === 'warning') return issue.severity === 'error' || issue.severity === 'warning';
+      return true;
+    });
+    if (filteredIssues.length > 0) {
+      lines.push('## Cross-Page Issues');
+      lines.push('');
+      filteredIssues.forEach(function(issue) {
+        var icon = issue.severity === 'error' ? 'x' : '!';
+        lines.push('### [' + icon + '] ' + issue.title + ' (' + issue.count + ' page' + (issue.count > 1 ? 's' : '') + ')');
+        issue.pages.forEach(function(p) {
+          var path; try { path = new URL(p.url).pathname; } catch(e) { path = p.url; }
+          lines.push('- ' + path + (p.detail ? ': ' + p.detail : ''));
+        });
+        if (issue.fix) lines.push('- **Fix:** ' + issue.fix);
+        lines.push('');
+      });
+    }
+
+    // Per-page reports
+    lines.push('## Per-Page Reports');
+    lines.push('');
+    session.pages.forEach(function(page) {
+      if (page.status !== 'done' || !page.reportData) return;
+      var path; try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
+      lines.push('---');
+      lines.push('### ' + path + ' (' + page.reportData.overall + '/100 — ' + page.reportData.grade + ')');
+      lines.push('');
+      var cats = filterFindings(page.reportData.categories, severityFilter);
+      cats.forEach(function(cat) {
+        var relevant = cat.findings.length;
+        if (relevant === 0) return;
+        lines.push('#### ' + cat.label);
+        cat.findings.forEach(function(f) {
+          var icon = f.severity === 'error' ? 'x' : f.severity === 'warning' ? '!' : 'i';
+          lines.push('- [' + icon + '] ' + f.title);
+          if (f.detail) lines.push('  - ' + f.detail);
+          if (f.fix) lines.push('  - **Fix:** ' + f.fix);
+        });
+        lines.push('');
+      });
+    });
+
+    return lines.join('\n');
+  }
+
+  function renderCrawlCSV(session) {
+    var summary = session.summary || buildSummary(session);
+    var lines = ['URL,Path,Title,Score,Grade,Errors,Warnings'];
+    session.pages.forEach(function(page) {
+      if (page.status !== 'done' || !page.reportData) return;
+      var path; try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
+      var errors = 0, warnings = 0;
+      (page.reportData.categories || []).forEach(function(cat) {
+        cat.findings.forEach(function(f) {
+          if (f.severity === 'error') errors++;
+          if (f.severity === 'warning') warnings++;
+        });
+      });
+      var title = (page.title || '').replace(/,/g, ' ').replace(/"/g, "'");
+      lines.push('"' + page.url + '","' + path + '","' + title + '",' + page.reportData.overall + ',' + page.reportData.grade + ',' + errors + ',' + warnings);
+    });
+    return lines.join('\n');
+  }
+
+  function renderCrawlJSON(session, severityFilter) {
+    var out = {
+      startUrl: session.startUrl,
+      startedAt: session.startedAt,
+      options: session.options,
+      summary: session.summary,
+      pages: session.pages.map(function(p) {
+        if (p.status !== 'done' || !p.reportData) {
+          return { url: p.url, status: p.status, error: p.error };
+        }
+        var cats = filterFindings(p.reportData.categories, severityFilter);
+        return {
+          url: p.url,
+          title: p.title,
+          score: p.reportData.overall,
+          grade: p.reportData.grade,
+          categories: cats.map(function(c) {
+            return { label: c.label, score: c.score, findings: c.findings };
+          })
+        };
+      })
+    };
+    return JSON.stringify(out, null, 2);
+  }
+
+  // --- Public API ---
+
+  return {
+    normalizeUrl: normalizeUrl,
+    matchesBlacklist: matchesBlacklist,
+    discoverLinks: discoverLinks,
+    createSession: createSession,
+    startCrawl: startCrawl,
+    abortCrawl: abortCrawl,
+    buildSummary: buildSummary,
+    filterFindings: filterFindings,
+    renderCrawlMarkdown: renderCrawlMarkdown,
+    renderCrawlCSV: renderCrawlCSV,
+    renderCrawlJSON: renderCrawlJSON
+  };
+})();
 </file>
 
 <file path="expressive/curated-examples.md">
@@ -21296,182 +21763,6 @@ function scoreResponsive(data) {
 })();
 </file>
 
-<file path="docs/scoring/spacing.js">
-// Scoring Module: Spacing & Layout
-// Weight: 15%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreSpacing(data) {
-  var profile = S.getProfile(data);
-  var findings = [];
-  var checks = 0;
-  var passed = 0;
-
-  // 4px grid adherence — check if spacing values are multiples of 4
-  checks++;
-  var allSpacing = [].concat(data.spacing.paddings || [], data.spacing.margins || [], data.spacing.gaps || []);
-  var onGrid = 0;
-  var offGrid = 0;
-  allSpacing.forEach(function(s) {
-    var px = parseFloat(s.value);
-    if (isNaN(px) || px === 0) return;
-    if (Math.round(px) % 4 === 0) onGrid += s.count;
-    else offGrid += s.count;
-  });
-  var gridRatio = (onGrid + offGrid) > 0 ? onGrid / (onGrid + offGrid) : 1;
-  if (gridRatio >= 0.7) {
-    passed++;
-    if (gridRatio < 0.85) {
-      findings.push({
-        severity: 'info',
-        title: Math.round(gridRatio * 100) + '% of spacing values on 4px grid',
-        detail: 'Good adherence — a few values could be rounded to the nearest 4px increment',
-        fix: 'Use Tailwind spacing utilities (p-1=4px, p-2=8px, p-3=12px, p-4=16px, ...)',
-        presetRef: null
-      });
-    }
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: 'Only ' + Math.round(gridRatio * 100) + '% of spacing is on a 4px grid',
-      detail: 'Inconsistent spacing makes layouts feel unpolished',
-      fix: 'Align spacing to 4px increments: 4, 8, 12, 16, 24, 32, 48, 64px',
-      presetRef: 'All presets use Tailwind spacing scale (4px base unit)', source: 'Material Design spacing — https://m3.material.io/foundations/layout/applying-layout'
-    });
-  }
-
-  // Content max-width
-  checks++;
-  var maxW = parseFloat(data.spacing.maxContentWidth);
-  if (maxW > 0 && maxW <= 1500) {
-    passed++;
-  } else if (maxW > 1500) {
-    findings.push({
-      severity: 'warning',
-      title: 'Content width is ' + Math.round(maxW) + 'px (recommended: 1200–1440px)',
-      detail: 'Very wide content is harder to scan and looks stretched on large monitors',
-      fix: 'Add a max-width container. In Tailwind: max-w-7xl (1280px) or max-w-screen-xl',
-      presetRef: 'Dashboard presets use max-w-7xl containers',
-      source: 'NNGroup — https://www.nngroup.com/articles/utilize-available-screen-space/'
-    });
-  } else {
-    passed++; // No max width data or narrow — fine
-  }
-
-  // Mobile padding >= 16px
-  checks++;
-  var bodyPad = parseFloat(data.spacing.bodyPaddingHorizontal);
-  if (bodyPad >= 14 || isNaN(bodyPad) || bodyPad === 0) {
-    passed++; // 0 is OK if inner containers have padding
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: 'Body horizontal padding is ' + bodyPad + 'px (minimum: 16px)',
-      detail: 'Content touching screen edges feels cramped on mobile',
-      fix: 'Add px-4 (16px) padding to the body or main container',
-      presetRef: null,
-      source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout'
-    });
-  }
-
-  // Adjacent interactive element spacing (buttons/links too close together)
-  var adjacentIssues = (data.interaction && data.interaction.adjacentIssues) || [];
-  if (adjacentIssues.length > 0) {
-    checks++;
-    var minSpacing = profile.targetSpacing;
-    var touching = adjacentIssues.filter(function(a) { return a.gap < 2; });
-    var tooClose = adjacentIssues.filter(function(a) { return a.gap >= 2 && a.gap < minSpacing; });
-
-    touching.forEach(function(a) {
-      var labelA = a.textA || a.selectorA || '?';
-      var labelB = a.textB || a.selectorB || '?';
-      var selectorHint = (a.selectorA || a.selectorB) ? ' — ' + (a.selectorA || '') : '';
-      findings.push({
-        severity: 'error',
-        title: 'Interactive elements touching (' + a.gap + 'px gap)',
-        detail: labelA + ' and ' + labelB + ' (' + a.direction + ')' + selectorHint,
-        fix: 'Add at least ' + minSpacing + 'px gap between interactive elements. In Tailwind: gap-' + (minSpacing / 4) + ' on the parent flex/grid container.',
-        presetRef: 'Button presets use gap-2 (8px) or gap-3 (12px) between buttons',
-        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-        locator: { selector: a.selectorA || a.selectorB || '', text: a.textA || '' }
-      });
-    });
-
-    tooClose.forEach(function(a) {
-      var labelA = a.textA || a.selectorA || '?';
-      var labelB = a.textB || a.selectorB || '?';
-      var selectorHint = (a.selectorA || a.selectorB) ? ' — ' + (a.selectorA || '') : '';
-      findings.push({
-        severity: 'warning',
-        title: 'Interactive elements only ' + a.gap + 'px apart (recommended: ≥' + minSpacing + 'px)',
-        detail: labelA + ' and ' + labelB + ' (' + a.direction + ')' + selectorHint,
-        fix: 'Increase gap to at least ' + minSpacing + 'px to prevent mis-taps. In Tailwind: gap-' + (minSpacing / 4) + ' on the parent.',
-        presetRef: null,
-        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-        locator: { selector: a.selectorA || a.selectorB || '', text: a.textA || '' }
-      });
-    });
-
-    if (touching.length === 0 && tooClose.length === 0) passed++;
-  }
-
-  // Element overflow
-  var overflows = (data.layout && data.layout.overflowElements) || 0;
-  if (overflows > 0) {
-    checks++;
-    findings.push({
-      severity: overflows > 5 ? 'warning' : 'info',
-      title: overflows + ' element(s) with horizontal overflow',
-      detail: 'Content extends beyond its container, causing horizontal scroll or clipping',
-      fix: 'Add overflow-x: hidden or overflow: auto to the container element. Check for fixed-width children inside flexible containers.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
-    });
-  } else {
-    checks++;
-    passed++;
-  }
-
-  // Negative margins
-  var negMargins = (data.spacing && data.spacing.negativeMargins) || 0;
-  if (negMargins > 5) {
-    findings.push({
-      severity: 'info',
-      title: negMargins + ' element(s) use negative margins',
-      detail: 'Negative margins can cause overlapping content and layout fragility',
-      fix: 'Consider using CSS grid/flexbox gap, transform, or absolute positioning instead of negative margins where possible.',
-      presetRef: null,
-      source: 'CSS best practices'
-    });
-  }
-
-  // Container padding consistency
-  var cPaddings = (data.spacing && data.spacing.containerPaddings) || [];
-  if (cPaddings.length >= 4) {
-    findings.push({
-      severity: 'info',
-      title: cPaddings.length + ' distinct container padding values',
-      detail: 'Values: ' + cPaddings.slice(0, 5).map(function(p) { return p.value + ' (' + p.count + 'x)'; }).join(', '),
-      fix: 'Standardize container padding to 2-3 values. In Tailwind: p-4 (16px), p-6 (24px), p-8 (32px).',
-      presetRef: null,
-      source: 'Gestalt proximity — https://lawsofux.com/law-of-proximity/'
-    });
-  }
-
-  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-  return { score: score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Spacing & Layout', icon: 'spacing' };
-}
-
-
-  S.register("spacing", scoreSpacing, 15, "Spacing & Layout", "spacing");
-})();
-</file>
-
 <file path="docs/scoring/performance.js">
 // Scoring Module: Performance
 // Weight: 5%
@@ -21735,6 +22026,182 @@ function scorePerformance(data) {
 })();
 </file>
 
+<file path="docs/scoring/spacing.js">
+// Scoring Module: Spacing & Layout
+// Weight: 15%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreSpacing(data) {
+  var profile = S.getProfile(data);
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+
+  // 4px grid adherence — check if spacing values are multiples of 4
+  checks++;
+  var allSpacing = [].concat(data.spacing.paddings || [], data.spacing.margins || [], data.spacing.gaps || []);
+  var onGrid = 0;
+  var offGrid = 0;
+  allSpacing.forEach(function(s) {
+    var px = parseFloat(s.value);
+    if (isNaN(px) || px === 0) return;
+    if (Math.round(px) % 4 === 0) onGrid += s.count;
+    else offGrid += s.count;
+  });
+  var gridRatio = (onGrid + offGrid) > 0 ? onGrid / (onGrid + offGrid) : 1;
+  if (gridRatio >= 0.7) {
+    passed++;
+    if (gridRatio < 0.85) {
+      findings.push({
+        severity: 'info',
+        title: Math.round(gridRatio * 100) + '% of spacing values on 4px grid',
+        detail: 'Good adherence — a few values could be rounded to the nearest 4px increment',
+        fix: 'Use Tailwind spacing utilities (p-1=4px, p-2=8px, p-3=12px, p-4=16px, ...)',
+        presetRef: null
+      });
+    }
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'Only ' + Math.round(gridRatio * 100) + '% of spacing is on a 4px grid',
+      detail: 'Inconsistent spacing makes layouts feel unpolished',
+      fix: 'Align spacing to 4px increments: 4, 8, 12, 16, 24, 32, 48, 64px',
+      presetRef: 'All presets use Tailwind spacing scale (4px base unit)', source: 'Material Design spacing — https://m3.material.io/foundations/layout/applying-layout'
+    });
+  }
+
+  // Content max-width
+  checks++;
+  var maxW = parseFloat(data.spacing.maxContentWidth);
+  if (maxW > 0 && maxW <= 1500) {
+    passed++;
+  } else if (maxW > 1500) {
+    findings.push({
+      severity: 'warning',
+      title: 'Content width is ' + Math.round(maxW) + 'px (recommended: 1200–1440px)',
+      detail: 'Very wide content is harder to scan and looks stretched on large monitors',
+      fix: 'Add a max-width container. In Tailwind: max-w-7xl (1280px) or max-w-screen-xl',
+      presetRef: 'Dashboard presets use max-w-7xl containers',
+      source: 'NNGroup — https://www.nngroup.com/articles/utilize-available-screen-space/'
+    });
+  } else {
+    passed++; // No max width data or narrow — fine
+  }
+
+  // Mobile padding >= 16px
+  checks++;
+  var bodyPad = parseFloat(data.spacing.bodyPaddingHorizontal);
+  if (bodyPad >= 14 || isNaN(bodyPad) || bodyPad === 0) {
+    passed++; // 0 is OK if inner containers have padding
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'Body horizontal padding is ' + bodyPad + 'px (minimum: 16px)',
+      detail: 'Content touching screen edges feels cramped on mobile',
+      fix: 'Add px-4 (16px) padding to the body or main container',
+      presetRef: null,
+      source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout'
+    });
+  }
+
+  // Adjacent interactive element spacing (buttons/links too close together)
+  var adjacentIssues = (data.interaction && data.interaction.adjacentIssues) || [];
+  if (adjacentIssues.length > 0) {
+    checks++;
+    var minSpacing = profile.targetSpacing;
+    var touching = adjacentIssues.filter(function(a) { return a.gap < 2; });
+    var tooClose = adjacentIssues.filter(function(a) { return a.gap >= 2 && a.gap < minSpacing; });
+
+    touching.forEach(function(a) {
+      var labelA = a.textA || a.selectorA || '?';
+      var labelB = a.textB || a.selectorB || '?';
+      var selectorHint = (a.selectorA || a.selectorB) ? ' — ' + (a.selectorA || '') : '';
+      findings.push({
+        severity: 'error',
+        title: 'Interactive elements touching (' + a.gap + 'px gap)',
+        detail: labelA + ' and ' + labelB + ' (' + a.direction + ')' + selectorHint,
+        fix: 'Add at least ' + minSpacing + 'px gap between interactive elements. In Tailwind: gap-' + (minSpacing / 4) + ' on the parent flex/grid container.',
+        presetRef: 'Button presets use gap-2 (8px) or gap-3 (12px) between buttons',
+        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+        locator: { selector: a.selectorA || a.selectorB || '', text: a.textA || '' }
+      });
+    });
+
+    tooClose.forEach(function(a) {
+      var labelA = a.textA || a.selectorA || '?';
+      var labelB = a.textB || a.selectorB || '?';
+      var selectorHint = (a.selectorA || a.selectorB) ? ' — ' + (a.selectorA || '') : '';
+      findings.push({
+        severity: 'warning',
+        title: 'Interactive elements only ' + a.gap + 'px apart (recommended: ≥' + minSpacing + 'px)',
+        detail: labelA + ' and ' + labelB + ' (' + a.direction + ')' + selectorHint,
+        fix: 'Increase gap to at least ' + minSpacing + 'px to prevent mis-taps. In Tailwind: gap-' + (minSpacing / 4) + ' on the parent.',
+        presetRef: null,
+        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+        locator: { selector: a.selectorA || a.selectorB || '', text: a.textA || '' }
+      });
+    });
+
+    if (touching.length === 0 && tooClose.length === 0) passed++;
+  }
+
+  // Element overflow
+  var overflows = (data.layout && data.layout.overflowElements) || 0;
+  if (overflows > 0) {
+    checks++;
+    findings.push({
+      severity: overflows > 5 ? 'warning' : 'info',
+      title: overflows + ' element(s) with horizontal overflow',
+      detail: 'Content extends beyond its container, causing horizontal scroll or clipping',
+      fix: 'Add overflow-x: hidden or overflow: auto to the container element. Check for fixed-width children inside flexible containers.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
+    });
+  } else {
+    checks++;
+    passed++;
+  }
+
+  // Negative margins
+  var negMargins = (data.spacing && data.spacing.negativeMargins) || 0;
+  if (negMargins > 5) {
+    findings.push({
+      severity: 'info',
+      title: negMargins + ' element(s) use negative margins',
+      detail: 'Negative margins can cause overlapping content and layout fragility',
+      fix: 'Consider using CSS grid/flexbox gap, transform, or absolute positioning instead of negative margins where possible.',
+      presetRef: null,
+      source: 'CSS best practices'
+    });
+  }
+
+  // Container padding consistency
+  var cPaddings = (data.spacing && data.spacing.containerPaddings) || [];
+  if (cPaddings.length >= 4) {
+    findings.push({
+      severity: 'info',
+      title: cPaddings.length + ' distinct container padding values',
+      detail: 'Values: ' + cPaddings.slice(0, 5).map(function(p) { return p.value + ' (' + p.count + 'x)'; }).join(', '),
+      fix: 'Standardize container padding to 2-3 values. In Tailwind: p-4 (16px), p-6 (24px), p-8 (32px).',
+      presetRef: null,
+      source: 'Gestalt proximity — https://lawsofux.com/law-of-proximity/'
+    });
+  }
+
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+  return { score: score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Spacing & Layout', icon: 'spacing' };
+}
+
+
+  S.register("spacing", scoreSpacing, 15, "Spacing & Layout", "spacing");
+})();
+</file>
+
 <file path="docs/scoring/consistency.js">
 // Scoring Module: Visual Consistency
 // Weight: 5%
@@ -21972,6 +22439,146 @@ function scoreVisualConsistency(data) {
 
   S.register("consistency", scoreVisualConsistency, 5, "Visual Consistency", "consistency");
 })();
+</file>
+
+<file path="docs/ANALYZER-TODO.md">
+# Analyzer TODO
+
+## Completed (69 items)
+
+### Core
+- [x] Modular scoring architecture (14 modules in `scoring/`)
+- [x] 8 audience profiles with evidence-based thresholds (General, WCAG AAA, Elderly, Low Vision, Motor Impairment, Color Blind, Children, Cognitive)
+- [x] 4 input modes (URL fetch, console snippet, paste HTML, import JSON)
+- [x] Gradient contrast via canvas sampling (multi-layer compositing)
+- [x] Background image contrast via canvas (CORS-limited)
+- [x] CSS filter contrast math (brightness, contrast, opacity)
+- [x] APCA contrast algorithm alongside WCAG
+- [x] oklch/oklab color parsing via canvas fallback
+- [x] Space-separated rgb() syntax support
+- [x] Page context detection (marketing/form/app/content)
+- [x] Fragment detection (skips document-level checks for pasted HTML snippets)
+- [x] Decorative element filtering
+- [x] Post-analysis exclusion suggestions (two-step flow)
+- [x] Extraction data caching (sessionStorage)
+- [x] Dark mode report styling
+- [x] AA/AAA profile switching (captures pairs up to 7.5:1)
+- [x] N/A category detection (modules return notApplicable when nothing to check)
+- [x] Context-aware touch targets (nav/footer/inline/button classification per WCAG 2.5.8)
+- [x] CVD palette simulation (Machado et al. 2009 matrices for protanopia, deuteranopia, tritanopia)
+- [x] JS-dependent page detection (warns when page needs JS execution)
+
+### UI & Features
+- [x] Page screenshots (modern-screenshot library, viewport sections, zoom lightbox)
+- [x] Analysis history in localStorage (max 10, dedup by URL+profile)
+- [x] JSON export/import with drag-and-drop
+- [x] Viewport size selector (defaults to current window size)
+- [x] Progress bar during analysis
+- [x] URL autocomplete from history
+- [x] Mobile-optimized layout (CSS grid header, icon-only buttons)
+- [x] Self-hosted CORS proxy (Cloudflare Worker with rate limiting, SSRF protection)
+- [x] Proxy URL injection via local .env (not committed)
+
+### Extraction
+- [x] Actual character-per-line via span measurement
+- [x] Section gaps for whitespace rhythm
+- [x] Left-edge alignment clustering
+- [x] Heading-to-body ratio for visual hierarchy
+- [x] Border radius value clustering
+- [x] Paragraph text extraction (Coleman-Liau)
+- [x] Font loading rules from stylesheets
+- [x] Render-blocking resource counts
+- [x] DOM size and depth
+- [x] Adjacent sibling spacing
+- [x] Animation/keyframe detection
+- [x] Scroll-reveal pattern detection
+- [x] Transform translateY off-screen detection
+- [x] Element overflow detection
+- [x] Letter spacing audit
+- [x] Negative margin detection
+- [x] Container padding clustering
+- [x] Third-party script count
+- [x] Image format audit (WebP/AVIF vs legacy)
+- [x] CLS via PerformanceObserver
+- [x] LCP estimation (API + heuristic)
+- [x] Fixed-width element detection
+- [x] Text truncation (ellipsis) audit
+- [x] ARIA role audit (button tabindex, hidden focusable)
+- [x] Bad link text detection
+- [x] Missing autocomplete on form fields
+- [x] Color-only indicator detection
+- [x] Auto-playing unmuted media detection
+- [x] Padding-inclusive touch measurement (checks parent label/link)
+
+### Testing
+- [x] Headless browser test suite (Puppeteer, serves docs/ locally, renders presets in real iframe with Tailwind)
+- [x] 125 preset templates validated — avg 88, min 69, max 100
+- [x] Before/clean gap verified: 81 avg vs 88 avg (7pt differentiation)
+- [x] Browser-based test runner (`docs/tests/test-presets-rendered.html`)
+- [x] Unit tests for scoring modules (`docs/tests/test-scoring.html`)
+- [x] Edge case test pages (gradients, dark backgrounds, fixed-width, truncation)
+- [x] 3 iterations of template fixes across 125 files (contrast, focus-visible, semantics)
+
+## Completed: Deep Scan Mode
+
+- [x] **Multi-viewport testing** — Spawn 3 parallel iframes at 375/768/1280px, merge results
+- [x] **Dark mode class toggle** — Toggle `.dark` on html, re-extract colors. ~95% reliable for Tailwind/class-based sites
+- [x] **Dark mode media query rewriting** — Extract `prefers-color-scheme: dark` rules from stylesheets, inject unconditionally. ~80-90% reliable
+- [x] **Scroll before extraction** — Auto-scroll full page to trigger intersection observers
+
+## Future: LLM Integration (opt-in)
+
+Default off. Only when user provides API key. See research notes in this file's git history.
+
+- [ ] Soft judgment: tone, copy clarity, color palette appropriateness
+- [ ] Finding summarization in plain language
+- [ ] Clearly labeled as "AI-generated" separate from evidence-based findings
+
+## Decided to Skip (with reasons)
+
+| Item | Reason |
+|------|--------|
+| Vertical rhythm detection | ~60% accuracy, too many false positives |
+| Nested spacing consistency | Can't determine spacing "intent" without component boundaries |
+| Gap vs margin consistency | Mixing is often correct (gap for flex, margin for flow) |
+| Overlapping targets | False positives from menus, dropdowns, positioned elements |
+| Click density mapping | No clear threshold for "too dense," subjective |
+| Shadow consistency | Too many legitimate shadow variations (elevation levels) |
+| Color distance (CIEDE2000) | Complex (~200 lines), similar colors often intentional |
+| Icon sizing consistency | SVG sizing too chaotic in practice |
+| Decision point counting | Counting buttons/links per section unreliable |
+| Information density | Elements-per-viewport varies wildly by page type |
+| Modal/popup detection | position:fixed catches headers/footers too |
+| Grid structure detection | Inferring columns from widths unreliable with flexbox |
+| Proximity grouping | Requires semantic understanding, pure DOM can't do it |
+| Sticky element audit | Almost always intentional, nothing actionable |
+| Critical CSS detection | Requires multi-viewport rendering analysis |
+| Inline CSS size | Often intentional (critical CSS pattern) |
+| Flash/strobe detection | Needs frame-by-frame analysis, not feasible from DOM |
+| F-pattern detection | ~40% accuracy without AI |
+| Whitespace ratio | Varies by page type, no universal threshold |
+| Web Worker extraction | Workers can't access DOM |
+
+## Research Documents
+
+- `research/analyzer-roadmap.md` — P0/P1 roadmap, priority matrix (794 lines)
+- `research/analyzer-p2-research.md` — P2/P3 feature research (928 lines)
+- `research/multi-viewport-dark-mode.md` — Multi-viewport & dark mode feasibility (345 lines)
+- `research/analyzer-test-rendered.md` — Latest headless test results (125 presets, per-module averages)
+
+## E2E Testing
+
+Run `node scripts/test-presets-headless.mjs` for the full rendered test suite. Requires Puppeteer (`npm i puppeteer`). The script:
+1. Serves `docs/` on localhost:8765
+2. Loads each preset in a real iframe with Tailwind CSS
+3. Runs the same extraction + scoring as the production analyzer
+4. Outputs results to `research/analyzer-test-rendered.md`
+
+Key metrics to track:
+- **Overall average** should be ≥85 (currently 88)
+- **Before/clean gap** should be ≥5 points (currently 7) — proves the analyzer differentiates design quality
+- **Contrast average** is the weakest category (currently 46) — legitimate failures from Tailwind's default light color shades
+- **No module should average below 40** except Contrast (known issue with Tailwind color scale)
 </file>
 
 <file path="docs/scoring/touch.js">
@@ -22392,146 +22999,6 @@ function scoreTypography(data) {
 })();
 </file>
 
-<file path="docs/ANALYZER-TODO.md">
-# Analyzer TODO
-
-## Completed (69 items)
-
-### Core
-- [x] Modular scoring architecture (14 modules in `scoring/`)
-- [x] 8 audience profiles with evidence-based thresholds (General, WCAG AAA, Elderly, Low Vision, Motor Impairment, Color Blind, Children, Cognitive)
-- [x] 4 input modes (URL fetch, console snippet, paste HTML, import JSON)
-- [x] Gradient contrast via canvas sampling (multi-layer compositing)
-- [x] Background image contrast via canvas (CORS-limited)
-- [x] CSS filter contrast math (brightness, contrast, opacity)
-- [x] APCA contrast algorithm alongside WCAG
-- [x] oklch/oklab color parsing via canvas fallback
-- [x] Space-separated rgb() syntax support
-- [x] Page context detection (marketing/form/app/content)
-- [x] Fragment detection (skips document-level checks for pasted HTML snippets)
-- [x] Decorative element filtering
-- [x] Post-analysis exclusion suggestions (two-step flow)
-- [x] Extraction data caching (sessionStorage)
-- [x] Dark mode report styling
-- [x] AA/AAA profile switching (captures pairs up to 7.5:1)
-- [x] N/A category detection (modules return notApplicable when nothing to check)
-- [x] Context-aware touch targets (nav/footer/inline/button classification per WCAG 2.5.8)
-- [x] CVD palette simulation (Machado et al. 2009 matrices for protanopia, deuteranopia, tritanopia)
-- [x] JS-dependent page detection (warns when page needs JS execution)
-
-### UI & Features
-- [x] Page screenshots (modern-screenshot library, viewport sections, zoom lightbox)
-- [x] Analysis history in localStorage (max 10, dedup by URL+profile)
-- [x] JSON export/import with drag-and-drop
-- [x] Viewport size selector (defaults to current window size)
-- [x] Progress bar during analysis
-- [x] URL autocomplete from history
-- [x] Mobile-optimized layout (CSS grid header, icon-only buttons)
-- [x] Self-hosted CORS proxy (Cloudflare Worker with rate limiting, SSRF protection)
-- [x] Proxy URL injection via local .env (not committed)
-
-### Extraction
-- [x] Actual character-per-line via span measurement
-- [x] Section gaps for whitespace rhythm
-- [x] Left-edge alignment clustering
-- [x] Heading-to-body ratio for visual hierarchy
-- [x] Border radius value clustering
-- [x] Paragraph text extraction (Coleman-Liau)
-- [x] Font loading rules from stylesheets
-- [x] Render-blocking resource counts
-- [x] DOM size and depth
-- [x] Adjacent sibling spacing
-- [x] Animation/keyframe detection
-- [x] Scroll-reveal pattern detection
-- [x] Transform translateY off-screen detection
-- [x] Element overflow detection
-- [x] Letter spacing audit
-- [x] Negative margin detection
-- [x] Container padding clustering
-- [x] Third-party script count
-- [x] Image format audit (WebP/AVIF vs legacy)
-- [x] CLS via PerformanceObserver
-- [x] LCP estimation (API + heuristic)
-- [x] Fixed-width element detection
-- [x] Text truncation (ellipsis) audit
-- [x] ARIA role audit (button tabindex, hidden focusable)
-- [x] Bad link text detection
-- [x] Missing autocomplete on form fields
-- [x] Color-only indicator detection
-- [x] Auto-playing unmuted media detection
-- [x] Padding-inclusive touch measurement (checks parent label/link)
-
-### Testing
-- [x] Headless browser test suite (Puppeteer, serves docs/ locally, renders presets in real iframe with Tailwind)
-- [x] 125 preset templates validated — avg 88, min 69, max 100
-- [x] Before/clean gap verified: 81 avg vs 88 avg (7pt differentiation)
-- [x] Browser-based test runner (`docs/tests/test-presets-rendered.html`)
-- [x] Unit tests for scoring modules (`docs/tests/test-scoring.html`)
-- [x] Edge case test pages (gradients, dark backgrounds, fixed-width, truncation)
-- [x] 3 iterations of template fixes across 125 files (contrast, focus-visible, semantics)
-
-## Completed: Deep Scan Mode
-
-- [x] **Multi-viewport testing** — Spawn 3 parallel iframes at 375/768/1280px, merge results
-- [x] **Dark mode class toggle** — Toggle `.dark` on html, re-extract colors. ~95% reliable for Tailwind/class-based sites
-- [x] **Dark mode media query rewriting** — Extract `prefers-color-scheme: dark` rules from stylesheets, inject unconditionally. ~80-90% reliable
-- [x] **Scroll before extraction** — Auto-scroll full page to trigger intersection observers
-
-## Future: LLM Integration (opt-in)
-
-Default off. Only when user provides API key. See research notes in this file's git history.
-
-- [ ] Soft judgment: tone, copy clarity, color palette appropriateness
-- [ ] Finding summarization in plain language
-- [ ] Clearly labeled as "AI-generated" separate from evidence-based findings
-
-## Decided to Skip (with reasons)
-
-| Item | Reason |
-|------|--------|
-| Vertical rhythm detection | ~60% accuracy, too many false positives |
-| Nested spacing consistency | Can't determine spacing "intent" without component boundaries |
-| Gap vs margin consistency | Mixing is often correct (gap for flex, margin for flow) |
-| Overlapping targets | False positives from menus, dropdowns, positioned elements |
-| Click density mapping | No clear threshold for "too dense," subjective |
-| Shadow consistency | Too many legitimate shadow variations (elevation levels) |
-| Color distance (CIEDE2000) | Complex (~200 lines), similar colors often intentional |
-| Icon sizing consistency | SVG sizing too chaotic in practice |
-| Decision point counting | Counting buttons/links per section unreliable |
-| Information density | Elements-per-viewport varies wildly by page type |
-| Modal/popup detection | position:fixed catches headers/footers too |
-| Grid structure detection | Inferring columns from widths unreliable with flexbox |
-| Proximity grouping | Requires semantic understanding, pure DOM can't do it |
-| Sticky element audit | Almost always intentional, nothing actionable |
-| Critical CSS detection | Requires multi-viewport rendering analysis |
-| Inline CSS size | Often intentional (critical CSS pattern) |
-| Flash/strobe detection | Needs frame-by-frame analysis, not feasible from DOM |
-| F-pattern detection | ~40% accuracy without AI |
-| Whitespace ratio | Varies by page type, no universal threshold |
-| Web Worker extraction | Workers can't access DOM |
-
-## Research Documents
-
-- `research/analyzer-roadmap.md` — P0/P1 roadmap, priority matrix (794 lines)
-- `research/analyzer-p2-research.md` — P2/P3 feature research (928 lines)
-- `research/multi-viewport-dark-mode.md` — Multi-viewport & dark mode feasibility (345 lines)
-- `research/analyzer-test-rendered.md` — Latest headless test results (125 presets, per-module averages)
-
-## E2E Testing
-
-Run `node scripts/test-presets-headless.mjs` for the full rendered test suite. Requires Puppeteer (`npm i puppeteer`). The script:
-1. Serves `docs/` on localhost:8765
-2. Loads each preset in a real iframe with Tailwind CSS
-3. Runs the same extraction + scoring as the production analyzer
-4. Outputs results to `research/analyzer-test-rendered.md`
-
-Key metrics to track:
-- **Overall average** should be ≥85 (currently 88)
-- **Before/clean gap** should be ≥5 points (currently 7) — proves the analyzer differentiates design quality
-- **Contrast average** is the weakest category (currently 46) — legitimate failures from Tailwind's default light color shades
-- **No module should average below 40** except Contrast (known issue with Tailwind color scale)
-</file>
-
 <file path="docs/scoring/contrast.js">
 // Scoring Module: Color & Contrast
 // Weight: 20%
@@ -22789,444 +23256,6 @@ function scoreContrast(data) {
 
 
   S.register("contrast", scoreContrast, 20, "Color & Contrast", "contrast");
-})();
-</file>
-
-<file path="docs/scoring/layout.js">
-// Scoring Module: Layout Quality
-// Weight: 5%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreLayout(data) {
-  var findings = [];
-  var checks = 0;
-  var passed = 0;
-  var layout = data.layout || {};
-
-  // Whitespace rhythm: check if section gaps are consistent
-  var gaps = layout.sectionGaps || [];
-  if (gaps.length >= 2) {
-    checks++;
-    var avg = gaps.reduce(function(s, g) { return s + g; }, 0) / gaps.length;
-    var variance = gaps.reduce(function(s, g) { return s + Math.pow(g - avg, 2); }, 0) / gaps.length;
-    var stdDev = Math.sqrt(variance);
-    var cv = avg > 0 ? stdDev / avg : 0; // coefficient of variation
-    if (cv < 0.3) {
-      passed++;
-    } else {
-      findings.push({
-        severity: cv > 0.6 ? 'warning' : 'info',
-        title: 'Inconsistent spacing between sections (CV: ' + Math.round(cv * 100) + '%)',
-        detail: 'Gaps range from ' + Math.min.apply(null, gaps) + 'px to ' + Math.max.apply(null, gaps) + 'px (avg ' + Math.round(avg) + 'px)',
-        fix: 'Use consistent spacing between major sections. Pick one value (e.g. 64px or 96px) and use it everywhere.',
-        presetRef: null,
-        source: 'Gestalt similarity — https://lawsofux.com/law-of-similarity/'
-      });
-    }
-  }
-
-  // Alignment consistency: cluster left edges and find near-misses ("jagged" alignment)
-  var edges = layout.alignmentEdges || [];
-  if (edges.length >= 5) {
-    checks++;
-    // Cluster edges within 3px (considered aligned)
-    var clusters = [];
-    var sorted = edges.slice().sort(function(a, b) { return a - b; });
-    var current = [sorted[0]];
-    for (var i = 1; i < sorted.length; i++) {
-      if (sorted[i] - sorted[i - 1] <= 3) {
-        current.push(sorted[i]);
-      } else {
-        clusters.push(current);
-        current = [sorted[i]];
-      }
-    }
-    clusters.push(current);
-    // Find near-miss clusters (4-12px apart — elements on same axis but jagged)
-    var nearMisses = 0;
-    var jaggedExamples = [];
-    var edgeDetails = layout.alignmentEdgeDetails || [];
-    for (var i = 1; i < clusters.length; i++) {
-      var prevAvg = Math.round(clusters[i - 1].reduce(function(s,v){return s+v},0) / clusters[i - 1].length);
-      var currAvg = Math.round(clusters[i].reduce(function(s,v){return s+v},0) / clusters[i].length);
-      var gap = currAvg - prevAvg;
-      if (gap > 3 && gap <= 12) {
-        nearMisses++;
-        // Find example elements at each edge for actionable detail
-        var prevEl = edgeDetails.find(function(d) { return Math.abs(d.left - prevAvg) <= 3; });
-        var currEl = edgeDetails.find(function(d) { return Math.abs(d.left - currAvg) <= 3; });
-        var example = prevAvg + 'px → ' + currAvg + 'px (' + gap + 'px off)';
-        if (prevEl && currEl) {
-          example += ': ' + prevEl.tag + ' "' + (prevEl.text || '').substring(0, 20) + '" vs ' + currEl.tag + ' "' + (currEl.text || '').substring(0, 20) + '"';
-        }
-        jaggedExamples.push(example);
-      }
-    }
-    // Also check how many unique clusters there are relative to element count
-    var clusterRatio = clusters.length / edges.length;
-    if (nearMisses === 0 && clusterRatio < 0.5) {
-      passed++;
-    } else if (nearMisses > 0) {
-      findings.push({
-        severity: nearMisses >= 3 ? 'warning' : 'info',
-        title: nearMisses + ' jagged alignment(s) — elements on same axis but ' + (nearMisses >= 3 ? 'noticeably' : 'slightly') + ' off',
-        detail: clusters.length + ' alignment edges across ' + edges.length + ' elements. ' + (jaggedExamples.length > 0 ? 'Offsets: ' + jaggedExamples.slice(0, 3).join(', ') : ''),
-        fix: 'Elements that share a visual axis should be exactly aligned. Check that container padding, margin, and grid column widths are consistent. In Tailwind: use consistent px-4/px-6 and grid/flex alignment.',
-        presetRef: null,
-        source: 'Gestalt continuity — https://lawsofux.com/law-of-common-region/'
-      });
-    } else if (clusterRatio >= 0.5) {
-      findings.push({
-        severity: 'info',
-        title: 'Weak alignment grid — ' + clusters.length + ' distinct left edges across ' + edges.length + ' elements',
-        detail: 'A well-aligned layout typically has 2-4 dominant alignment edges. High variance suggests inconsistent margins/padding.',
-        fix: 'Establish a consistent alignment grid. Use the same container padding and let content flow within columns.',
-        presetRef: null,
-        source: 'Gestalt continuity — https://lawsofux.com/law-of-common-region/'
-      });
-    }
-  }
-
-  // Visual hierarchy: heading-to-body ratios
-  var vh = layout.visualHierarchy || {};
-  if (vh.h1ToBody > 0) {
-    checks++;
-    if (vh.h1ToBody >= 2 && vh.h1ToBody <= 4) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: 'H1 is ' + vh.h1ToBody + 'x body text (ideal: 2-4x)',
-        detail: vh.h1ToBody < 2 ? 'H1 doesn\'t stand out enough from body text' : 'H1 may be too large relative to body text',
-        fix: 'H1 should be 2-4x the body font size for clear hierarchy. At 16px body, H1 should be 32-64px.',
-        presetRef: null,
-        source: 'Modular type scales — https://typescale.com/'
-      });
-    }
-  }
-
-  // H2-to-body ratio (secondary hierarchy)
-  if (vh.h2ToBody > 0) {
-    checks++;
-    if (vh.h2ToBody >= 1.3 && vh.h2ToBody <= 2.5) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: 'H2 is ' + vh.h2ToBody + 'x body text (ideal: 1.3-2.5x)',
-        detail: vh.h2ToBody < 1.3 ? 'H2 is too close to body text size — weak sub-section hierarchy' : 'H2 may be too large, competing with H1',
-        fix: 'H2 should be clearly smaller than H1 but distinct from body. At 16px body, H2 should be 20-40px.',
-        presetRef: null,
-        source: 'Modular type scales — https://typescale.com/'
-      });
-    }
-  }
-
-  // Border radius consistency (moved from consistency to layout)
-  // Exclude pill/circle values (9999px, 50%, or anything > 100px) — these are intentional full-round shapes, not part of the design scale
-  var radii = (layout.borderRadii || []).filter(function(r) {
-    var v = r.value;
-    if (v === '50%' || v === '9999px') return false;
-    var px = parseFloat(v);
-    return !(px > 100);
-  });
-  if (radii.length > 0) {
-    checks++;
-    if (radii.length <= 4) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: radii.length + ' distinct border-radius values (recommend 2-4, excluding pill/circle shapes)',
-        detail: 'Values: ' + radii.slice(0, 6).map(function(r) { return r.value + ' (' + r.count + 'x)'; }).join(', '),
-        fix: 'Standardize border-radius to 2-4 values. In Tailwind: rounded-sm, rounded, rounded-lg, rounded-xl.',
-        presetRef: null,
-        source: 'Material Design 3 — https://m3.material.io/styles/shape/overview'
-      });
-    }
-  }
-
-  // Content-to-whitespace balance (if we have element count and viewport)
-  if (data.structure && data.structure.totalElements > 10) {
-    var elCount = data.structure.totalElements;
-    checks++;
-    // Very sparse or very dense pages
-    if (elCount > 3000) {
-      findings.push({
-        severity: 'info',
-        title: 'Dense page (' + elCount + ' elements) — may feel cluttered',
-        detail: 'High element density can overwhelm users. Consider progressive disclosure.',
-        fix: 'Break content into sections, use collapsible panels, or paginate.',
-        presetRef: null,
-        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
-      });
-    } else {
-      passed++;
-    }
-  }
-
-  // Off-screen elements: visible elements positioned outside viewport (x-axis)
-  var offscreen = layout.offscreenElements || [];
-  if (offscreen.length > 0) {
-    checks++;
-    var offDetails = offscreen.slice(0, 5).map(function(e) {
-      var label = e.element;
-      if (e.text) label += ' ("' + e.text.substring(0, 25) + (e.text.length > 25 ? '…' : '') + '")';
-      return label + ' at x=' + e.left + 'px';
-    });
-    findings.push({
-      severity: offscreen.length > 3 ? 'error' : 'warning',
-      title: offscreen.length + ' element(s) positioned outside viewport',
-      detail: offDetails.join('; '),
-      fix: 'Check absolute/fixed positioning. On mobile, dropdown menus with right-0 may overflow left. Use left-0 sm:right-0 or max-w-[calc(100vw-2rem)]. For elements extending right, check fixed widths wider than viewport.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
-      locator: { selector: offscreen[0] ? offscreen[0].selector : '', text: offscreen[0] ? (offscreen[0].text || '') : '' }
-    });
-  } else {
-    checks++;
-    passed++;
-  }
-
-  // Horizontal scroll on containers — use refined classification
-  var hScrollContainers = layout.horizontalScrollContainers || [];
-  var bugScrollContainers = hScrollContainers.filter(function(c) { return c.classification === 'bug' || !c.intentional; });
-  if (bugScrollContainers.length > 0 || data.structure.hasHorizontalOverflow) {
-    checks++;
-    var scrollDetails = bugScrollContainers.slice(0, 3).map(function(c) {
-      var reasonLabel = c.reason === 'structural-children-in-scroll' ? ' (structural content in scroll container)'
-        : c.reason === 'wide-container-scrolls' ? ' (wide container should fill viewport)'
-        : c.reason === 'no-overflow-css' ? ' (no overflow CSS — content spills)'
-        : '';
-      return c.selector + ' overflows by ' + c.overflow + 'px' + reasonLabel;
-    });
-    if (data.structure.hasHorizontalOverflow) scrollDetails.unshift('Page body has horizontal scroll');
-    findings.push({
-      severity: 'error',
-      title: (data.structure.hasHorizontalOverflow ? 'Page has horizontal scroll' : bugScrollContainers.length + ' container(s) overflow horizontally'),
-      detail: scrollDetails.join('; '),
-      fix: 'Fix horizontal overflow: add overflow-x-hidden on the outer wrapper, check for elements with fixed widths wider than viewport, or add max-w-full. Common causes: fixed-width tables, absolute positioned elements, images without max-width. If a wide container has overflow-x-auto but contains page sections (nav, forms, headings), remove the overflow and fix the root cause.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
-      locator: { selector: bugScrollContainers[0] ? bugScrollContainers[0].selector : '', text: '' }
-    });
-  } else {
-    checks++;
-    passed++;
-  }
-
-  // Nested scrollbars (scroll within scroll — bad UX)
-  var nestedScrollbars = layout.nestedScrollbars || 0;
-  if (nestedScrollbars > 0) {
-    checks++;
-    findings.push({
-      severity: nestedScrollbars > 2 ? 'error' : 'warning',
-      title: nestedScrollbars + ' nested scrollbar(s) detected (scroll within scroll)',
-      detail: 'Scrollable elements inside other scrollable elements confuse users — they don\'t know which container will scroll.',
-      fix: 'Avoid nested scrollbars. Give inner containers enough height to show content, or use pagination/collapsible sections instead of scroll. If a table must scroll horizontally, ensure the outer container does not also scroll.',
-      presetRef: null,
-      source: 'NNGroup — https://www.nngroup.com/articles/scrolling-and-scrollbars/'
-    });
-  }
-
-  // Hidden panel overflow issues (menus, dialogs revealed by hybrid unhide)
-  var hiddenPanelIssues = layout.hiddenPanelIssues || [];
-  if (hiddenPanelIssues.length > 0) {
-    checks++;
-    var panelDetails = hiddenPanelIssues.slice(0, 3).map(function(p) {
-      var issueTypes = p.issues.map(function(i) {
-        return i.type === 'right-overflow' ? 'overflows right by ' + i.overflow + 'px'
-          : i.type === 'left-overflow' ? 'overflows left by ' + i.overflow + 'px'
-          : i.type === 'internal-overflow' ? 'content overflows internally by ' + i.overflow + 'px'
-          : i.type;
-      });
-      return p.selector + ' (' + p.role + '): ' + issueTypes.join(', ');
-    });
-    findings.push({
-      severity: hiddenPanelIssues.length > 2 ? 'error' : 'warning',
-      title: hiddenPanelIssues.length + ' hidden panel(s) overflow when revealed (menus/dialogs)',
-      detail: 'These panels are hidden at load time but overflow the viewport when opened: ' + panelDetails.join('; '),
-      fix: 'Dropdown menus and dialogs must fit within the viewport when revealed. Use max-w-[calc(100vw-1rem)], or position with left-0 instead of right-0 on narrow viewports. For dialogs: add max-h-[90vh] overflow-y-auto.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
-      locator: { selector: hiddenPanelIssues[0] ? hiddenPanelIssues[0].selector : '', text: '' }
-    });
-  } else if (layout.hiddenPanelCount > 0) {
-    checks++;
-    passed++;
-  }
-
-  // Button/CTA hierarchy
-  var btnH = layout.buttonHierarchy || {};
-  if (btnH.total > 3 && btnH.filled > 0 && btnH.outline === 0 && btnH.text === 0) {
-    findings.push({
-      severity: 'info',
-      title: 'All ' + btnH.total + ' buttons use the same filled style — no visual hierarchy',
-      detail: 'Without primary/secondary/tertiary button styles, users can\'t distinguish the main action.',
-      fix: 'Designate one primary CTA (filled) and style others as secondary (outline) or tertiary (text-only).',
-      presetRef: 'All presets use primary + secondary button styles',
-      source: 'Material Design 3 — https://m3.material.io/components/buttons/overview'
-    });
-  }
-
-  // Fixed elements consuming viewport
-  var fixedVp = layout.fixedViewportConsumption || 0;
-  if (fixedVp > 30) {
-    findings.push({
-      severity: 'warning',
-      title: 'Fixed elements consume ' + fixedVp + '% of viewport height',
-      detail: 'Sticky headers, footers, and toolbars take up more than 30% of the screen, leaving little room for content.',
-      fix: 'Collapse fixed elements on scroll, or reduce their height. Consider hiding the header on scroll-down, showing on scroll-up.',
-      presetRef: null,
-      source: 'NNGroup — https://www.nngroup.com/articles/sticky-headers/'
-    });
-  } else if (fixedVp > 20) {
-    findings.push({
-      severity: 'info',
-      title: 'Fixed elements consume ' + fixedVp + '% of viewport height',
-      detail: 'Fixed elements take significant viewport space. Monitor on smaller screens.',
-      fix: 'Consider collapsing or reducing fixed element height on mobile.',
-      presetRef: null,
-      source: 'NNGroup — https://www.nngroup.com/articles/sticky-headers/'
-    });
-  }
-
-  // Text overlap — fixed/sticky elements without opaque background overlapping text below
-  var textOverlaps = layout.textOverlaps || [];
-  if (textOverlaps.length > 0) {
-    checks++;
-    var overlapDetails = textOverlaps.slice(0, 3).map(function(o) {
-      return o.fixed + ' ("' + o.fixedText.substring(0, 20) + '") overlaps ' + o.under + ' ("' + o.underText.substring(0, 20) + '")';
-    });
-    findings.push({
-      severity: textOverlaps.length > 2 ? 'error' : 'warning',
-      title: textOverlaps.length + ' fixed element(s) overlap text without opaque background',
-      detail: 'Fixed/sticky elements with transparent backgrounds overlap readable text underneath, making both unreadable: ' + overlapDetails.join('; '),
-      fix: 'Add an opaque or semi-opaque background (bg-white/90, backdrop-blur) to fixed elements that overlap content. Or hide the element when it scrolls over content sections.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
-    });
-  }
-
-  // Child exceeds parent — elements sticking out of their container
-  var childExceeds = layout.childExceedsParent || [];
-  if (childExceeds.length > 0) {
-    // Split: deliberate (parent has explicit overflow:hidden/clip) vs accidental (default visible)
-    var accidental = childExceeds.filter(function(c) { return !c.deliberate; });
-    var deliberate = childExceeds.filter(function(c) { return c.deliberate; });
-    if (accidental.length > 0) {
-      checks++;
-      var accDetails = accidental.slice(0, 3).map(function(c) {
-        return c.childTag + (c.childText ? ' ("' + c.childText.substring(0, 15) + '…")' : '') + ' exceeds ' + c.parent + ' by ' + c.excess + 'px';
-      });
-      findings.push({
-        severity: 'warning',
-        title: accidental.length + ' element(s) wider than parent without overflow handling',
-        detail: 'These elements extend past their parent with no overflow set (likely unintentional): ' + accDetails.join('; '),
-        fix: 'Add max-w-full or overflow-x-auto on the parent. If intentional, set overflow-hidden or overflow-visible explicitly.',
-        presetRef: null,
-        source: 'CSS Box Model — https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_box_model'
-      });
-    }
-    if (deliberate.length > 0) {
-      var delDetails = deliberate.slice(0, 3).map(function(c) {
-        return c.childTag + (c.childText ? ' ("' + c.childText.substring(0, 15) + '…")' : '') + ' exceeds ' + c.parent + ' by ' + c.excess + 'px (overflow: ' + c.parentOverflow + ')';
-      });
-      findings.push({
-        severity: 'info',
-        title: deliberate.length + ' element(s) wider than parent (overflow explicitly set)',
-        detail: 'Parent has explicit overflow handling — likely intentional: ' + delDetails.join('; '),
-        fix: 'Verify this overflow is intentional. If content is being clipped unexpectedly, use overflow-x-auto for scroll or constrain child width.',
-        presetRef: null,
-        source: 'CSS Box Model — https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_box_model'
-      });
-    }
-  }
-
-  // Visual noise density (opt-in, full scan)
-  var noiseBands = layout.visualNoiseBands || [];
-  var maxNoise = noiseBands.reduce(function(m, b) { return Math.max(m, b.score); }, 0);
-  if (maxNoise > 25) {
-    findings.push({
-      severity: maxNoise > 40 ? 'warning' : 'info',
-      title: 'High visual density in viewport band (noise score: ' + maxNoise + ')',
-      detail: 'A viewport-height region has many competing visual elements (shadows, colors, borders, bold text, images).',
-      fix: 'Reduce competing elements: fewer borders, consolidate backgrounds, or add whitespace between sections.',
-      presetRef: null,
-      source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
-    });
-  }
-
-  // Empty containers
-  var emptyCont = layout.emptyContainers || 0;
-  if (emptyCont > 0) {
-    findings.push({
-      severity: 'info',
-      title: emptyCont + ' visible container(s) appear empty',
-      detail: 'Lists, sections, or grids are visible but have no text or media content. Could indicate a missing empty state.',
-      fix: 'Add an empty state message, illustration, or CTA (e.g., "No items yet").',
-      presetRef: null,
-      source: 'NNGroup — https://www.nngroup.com/articles/empty-state-ui-design/'
-    });
-  }
-
-  // Hidden clip — elements with overflow-x:hidden that silently clip content
-  var hiddenClips = layout.hiddenClipElements || [];
-  if (hiddenClips.length > 0) {
-    checks++;
-    var clipDetails = hiddenClips.slice(0, 3).map(function(c) {
-      return c.selector + ' clips ' + c.clipped + 'px of content';
-    });
-    findings.push({
-      severity: hiddenClips.length > 2 ? 'warning' : 'info',
-      title: hiddenClips.length + ' element(s) silently clip overflowing content',
-      detail: 'These elements use overflow-x:hidden to hide content that doesn\'t fit, instead of allowing scroll or fixing the layout: ' + clipDetails.join('; '),
-      fix: 'Use overflow-x-auto to allow scrolling, or fix the root cause — constrain child widths with max-w-full. overflow-x-hidden masks layout bugs.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
-    });
-  }
-
-  // DOM statistics — structural quality indicators (info-only)
-  var domStats = (data.structure || {}).domStats;
-  if (domStats) {
-    checks++;
-    if (domStats.divRatio > 60 && domStats.semanticCount < 5) {
-      findings.push({
-        severity: 'info',
-        title: 'Div-heavy markup (' + domStats.divRatio + '% divs, ' + domStats.semanticCount + ' semantic elements)',
-        detail: domStats.divCount + ' divs vs ' + domStats.semanticCount + ' semantic elements (nav, header, footer, section, article, etc.). Top tags: ' + domStats.topTags.map(function(t) { return t.tag + '×' + t.count; }).join(', '),
-        fix: 'Replace generic divs with semantic HTML where appropriate: <nav>, <header>, <main>, <section>, <article>, <aside>. This improves accessibility and helps screen readers navigate.',
-        presetRef: null,
-        source: 'HTML Living Standard — https://html.spec.whatwg.org/multipage/dom.html#semantics-2'
-      });
-    } else {
-      passed++;
-    }
-    if (domStats.displayNoneCount > 50) {
-      checks++;
-      findings.push({
-        severity: 'info',
-        title: domStats.displayNoneCount + ' elements with display:none — possible hidden content',
-        detail: domStats.ariaHiddenCount + ' have aria-hidden="true". Large numbers of hidden elements may indicate unused markup, off-canvas panels, or JS-toggled content that should be checked.',
-        fix: 'Review hidden elements. If they\'re unused, remove them to reduce DOM size. If they\'re interactive panels (menus, modals), ensure they\'re accessible when revealed.',
-        presetRef: null,
-        source: 'Web Almanac DOM complexity — https://almanac.httparchive.org/en/2022/markup#elements'
-      });
-    }
-  }
-
-  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-  return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Layout Quality', icon: 'layout' };
-}
-
-
-  S.register("layout", scoreLayout, 5, "Layout Quality", "layout");
 })();
 </file>
 
@@ -23889,7 +23918,541 @@ window.MilgReport = (function() {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
-  return { renderReport: renderReport, renderMarkdown: renderMarkdown };
+  function renderCrawlSummary(summary) {
+    if (!summary || summary.pagesAnalyzed === 0) {
+      return '<div class="crawl-summary"><p style="color:var(--text-secondary)">No pages analyzed yet.</p></div>';
+    }
+
+    var html = '<div class="crawl-summary">';
+
+    // Overall stats
+    html += '<h2>Site Overview</h2>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:24px">';
+    html += '<div style="padding:12px 20px;border-radius:10px;background:var(--surface);border:1px solid var(--border);text-align:center">';
+    html += '<div style="font-size:32px;font-weight:700;font-variant-numeric:tabular-nums">' + summary.averageScore + '</div>';
+    html += '<div style="font-size:12px;color:var(--text-secondary)">Average Score</div></div>';
+    html += '<div style="padding:12px 20px;border-radius:10px;background:var(--surface);border:1px solid var(--border);text-align:center">';
+    html += '<div style="font-size:32px;font-weight:700">' + summary.pagesAnalyzed + '</div>';
+    html += '<div style="font-size:12px;color:var(--text-secondary)">Pages Analyzed</div></div>';
+    if (summary.pagesFailed > 0) {
+      html += '<div style="padding:12px 20px;border-radius:10px;background:#fef2f2;border:1px solid #fecaca;text-align:center">';
+      html += '<div style="font-size:32px;font-weight:700;color:#dc2626">' + summary.pagesFailed + '</div>';
+      html += '<div style="font-size:12px;color:#dc2626">Failed</div></div>';
+    }
+    html += '</div>';
+
+    // Score grid
+    html += '<h3>Page Scores</h3>';
+    html += '<div class="crawl-score-grid">';
+    summary.scoreGrid.forEach(function(row) {
+      var gradeClass = 'grade-' + row.grade.toLowerCase();
+      html += '<div class="crawl-score-card">';
+      html += '<div class="score ' + gradeClass + '">' + row.score + '</div>';
+      html += '<div class="grade ' + gradeClass + '">' + row.grade + '</div>';
+      html += '<div class="page-path" title="' + escapeHtml(row.url) + '">' + escapeHtml(row.path || '/') + '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+
+    // Cross-page issues
+    var issues = summary.crossPageIssues;
+    if (issues.length > 0) {
+      html += '<h3>Issues Across Pages</h3>';
+      issues.slice(0, 30).forEach(function(issue) {
+        html += '<div class="crawl-issue-group">';
+        html += '<div class="issue-header">';
+        html += '<div class="issue-title"><span class="severity-badge ' + issue.severity + '">' + issue.severity + '</span>' + escapeHtml(issue.title) + '</div>';
+        html += '<div class="issue-count">' + issue.count + ' page' + (issue.count > 1 ? 's' : '') + '</div>';
+        html += '</div>';
+        html += '<div class="issue-pages">';
+        issue.pages.slice(0, 5).forEach(function(p) {
+          var path; try { path = new URL(p.url).pathname; } catch(e) { path = p.url; }
+          html += '<div>' + escapeHtml(path) + (p.detail ? ' — ' + escapeHtml(p.detail.substring(0, 80)) : '') + '</div>';
+        });
+        if (issue.pages.length > 5) html += '<div style="color:var(--text-secondary)">...and ' + (issue.pages.length - 5) + ' more</div>';
+        html += '</div>';
+        html += '</div>';
+      });
+    }
+
+    // Category averages
+    if (summary.categoryAverages.length > 0) {
+      html += '<h3>Category Averages</h3>';
+      html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px">';
+      summary.categoryAverages.forEach(function(cat) {
+        var barColor = cat.avgScore >= 90 ? '#16a34a' : cat.avgScore >= 80 ? '#ca8a04' : cat.avgScore >= 70 ? '#ea580c' : '#dc2626';
+        html += '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;background:var(--surface);border:1px solid var(--border)">';
+        html += '<div style="flex:1;font-size:13px;font-weight:500">' + escapeHtml(cat.label) + '</div>';
+        html += '<div style="width:50px;height:6px;border-radius:3px;background:var(--border);overflow:hidden"><div style="height:100%;width:' + cat.avgScore + '%;background:' + barColor + ';border-radius:3px"></div></div>';
+        html += '<div style="font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;width:28px;text-align:right">' + cat.avgScore + '</div>';
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+
+    html += '</div>';
+    return html;
+  }
+
+  function renderCrawlPageTab(page, index, isActive) {
+    var path;
+    try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
+    if (path === '/') path = '/ (home)';
+    var label = page.title ? page.title.substring(0, 25) : path;
+
+    var dotClass = 'pending';
+    if (page.status === 'done' && page.reportData) {
+      dotClass = 'grade-' + page.reportData.grade.toLowerCase();
+    } else if (page.status === 'error') {
+      dotClass = 'error';
+    }
+
+    return '<button class="crawl-page-tab' + (isActive ? ' active' : '') + '" data-crawl-page="' + index + '" title="' + escapeHtml(page.url) + '">' +
+      '<span class="score-dot ' + dotClass + '"></span>' +
+      escapeHtml(label) +
+      (page.status === 'done' && page.reportData ? ' <span style="font-size:11px;color:var(--text-secondary)">' + page.reportData.overall + '</span>' : '') +
+      '</button>';
+  }
+
+  return { renderReport: renderReport, renderMarkdown: renderMarkdown, renderCrawlSummary: renderCrawlSummary, renderCrawlPageTab: renderCrawlPageTab };
+})();
+</file>
+
+<file path="docs/scoring/layout.js">
+// Scoring Module: Layout Quality
+// Weight: 5%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreLayout(data) {
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+  var layout = data.layout || {};
+
+  // Whitespace rhythm: check if section gaps are consistent
+  var gaps = layout.sectionGaps || [];
+  if (gaps.length >= 2) {
+    checks++;
+    var avg = gaps.reduce(function(s, g) { return s + g; }, 0) / gaps.length;
+    var variance = gaps.reduce(function(s, g) { return s + Math.pow(g - avg, 2); }, 0) / gaps.length;
+    var stdDev = Math.sqrt(variance);
+    var cv = avg > 0 ? stdDev / avg : 0; // coefficient of variation
+    if (cv < 0.3) {
+      passed++;
+    } else {
+      findings.push({
+        severity: cv > 0.6 ? 'warning' : 'info',
+        title: 'Inconsistent spacing between sections (CV: ' + Math.round(cv * 100) + '%)',
+        detail: 'Gaps range from ' + Math.min.apply(null, gaps) + 'px to ' + Math.max.apply(null, gaps) + 'px (avg ' + Math.round(avg) + 'px)',
+        fix: 'Use consistent spacing between major sections. Pick one value (e.g. 64px or 96px) and use it everywhere.',
+        presetRef: null,
+        source: 'Gestalt similarity — https://lawsofux.com/law-of-similarity/'
+      });
+    }
+  }
+
+  // Alignment consistency: cluster left edges and find near-misses ("jagged" alignment)
+  var edges = layout.alignmentEdges || [];
+  if (edges.length >= 5) {
+    checks++;
+    // Cluster edges within 3px (considered aligned)
+    var clusters = [];
+    var sorted = edges.slice().sort(function(a, b) { return a - b; });
+    var current = [sorted[0]];
+    for (var i = 1; i < sorted.length; i++) {
+      if (sorted[i] - sorted[i - 1] <= 3) {
+        current.push(sorted[i]);
+      } else {
+        clusters.push(current);
+        current = [sorted[i]];
+      }
+    }
+    clusters.push(current);
+    // Find near-miss clusters (4-12px apart — elements on same axis but jagged)
+    var nearMisses = 0;
+    var jaggedExamples = [];
+    var edgeDetails = layout.alignmentEdgeDetails || [];
+    for (var i = 1; i < clusters.length; i++) {
+      var prevAvg = Math.round(clusters[i - 1].reduce(function(s,v){return s+v},0) / clusters[i - 1].length);
+      var currAvg = Math.round(clusters[i].reduce(function(s,v){return s+v},0) / clusters[i].length);
+      var gap = currAvg - prevAvg;
+      if (gap > 3 && gap <= 12) {
+        nearMisses++;
+        // Find example elements at each edge for actionable detail
+        var prevEl = edgeDetails.find(function(d) { return Math.abs(d.left - prevAvg) <= 3; });
+        var currEl = edgeDetails.find(function(d) { return Math.abs(d.left - currAvg) <= 3; });
+        var example = prevAvg + 'px → ' + currAvg + 'px (' + gap + 'px off)';
+        if (prevEl && currEl) {
+          example += ': ' + prevEl.tag + ' "' + (prevEl.text || '').substring(0, 20) + '" vs ' + currEl.tag + ' "' + (currEl.text || '').substring(0, 20) + '"';
+        }
+        jaggedExamples.push(example);
+      }
+    }
+    // Also check how many unique clusters there are relative to element count
+    var clusterRatio = clusters.length / edges.length;
+    if (nearMisses === 0 && clusterRatio < 0.5) {
+      passed++;
+    } else if (nearMisses > 0) {
+      findings.push({
+        severity: nearMisses >= 3 ? 'warning' : 'info',
+        title: nearMisses + ' jagged alignment(s) — elements on same axis but ' + (nearMisses >= 3 ? 'noticeably' : 'slightly') + ' off',
+        detail: clusters.length + ' alignment edges across ' + edges.length + ' elements. ' + (jaggedExamples.length > 0 ? 'Offsets: ' + jaggedExamples.slice(0, 3).join(', ') : ''),
+        fix: 'Elements that share a visual axis should be exactly aligned. Check that container padding, margin, and grid column widths are consistent. In Tailwind: use consistent px-4/px-6 and grid/flex alignment.',
+        presetRef: null,
+        source: 'Gestalt continuity — https://lawsofux.com/law-of-common-region/'
+      });
+    } else if (clusterRatio >= 0.5) {
+      findings.push({
+        severity: 'info',
+        title: 'Weak alignment grid — ' + clusters.length + ' distinct left edges across ' + edges.length + ' elements',
+        detail: 'A well-aligned layout typically has 2-4 dominant alignment edges. High variance suggests inconsistent margins/padding.',
+        fix: 'Establish a consistent alignment grid. Use the same container padding and let content flow within columns.',
+        presetRef: null,
+        source: 'Gestalt continuity — https://lawsofux.com/law-of-common-region/'
+      });
+    }
+  }
+
+  // Visual hierarchy: heading-to-body ratios
+  var vh = layout.visualHierarchy || {};
+  if (vh.h1ToBody > 0) {
+    checks++;
+    if (vh.h1ToBody >= 2 && vh.h1ToBody <= 4) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: 'H1 is ' + vh.h1ToBody + 'x body text (ideal: 2-4x)',
+        detail: vh.h1ToBody < 2 ? 'H1 doesn\'t stand out enough from body text' : 'H1 may be too large relative to body text',
+        fix: 'H1 should be 2-4x the body font size for clear hierarchy. At 16px body, H1 should be 32-64px.',
+        presetRef: null,
+        source: 'Modular type scales — https://typescale.com/'
+      });
+    }
+  }
+
+  // H2-to-body ratio (secondary hierarchy)
+  if (vh.h2ToBody > 0) {
+    checks++;
+    if (vh.h2ToBody >= 1.3 && vh.h2ToBody <= 2.5) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: 'H2 is ' + vh.h2ToBody + 'x body text (ideal: 1.3-2.5x)',
+        detail: vh.h2ToBody < 1.3 ? 'H2 is too close to body text size — weak sub-section hierarchy' : 'H2 may be too large, competing with H1',
+        fix: 'H2 should be clearly smaller than H1 but distinct from body. At 16px body, H2 should be 20-40px.',
+        presetRef: null,
+        source: 'Modular type scales — https://typescale.com/'
+      });
+    }
+  }
+
+  // Border radius consistency (moved from consistency to layout)
+  // Exclude pill/circle values (9999px, 50%, or anything > 100px) — these are intentional full-round shapes, not part of the design scale
+  var radii = (layout.borderRadii || []).filter(function(r) {
+    var v = r.value;
+    if (v === '50%' || v === '9999px') return false;
+    var px = parseFloat(v);
+    return !(px > 100);
+  });
+  if (radii.length > 0) {
+    checks++;
+    if (radii.length <= 4) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: radii.length + ' distinct border-radius values (recommend 2-4, excluding pill/circle shapes)',
+        detail: 'Values: ' + radii.slice(0, 6).map(function(r) { return r.value + ' (' + r.count + 'x)'; }).join(', '),
+        fix: 'Standardize border-radius to 2-4 values. In Tailwind: rounded-sm, rounded, rounded-lg, rounded-xl.',
+        presetRef: null,
+        source: 'Material Design 3 — https://m3.material.io/styles/shape/overview'
+      });
+    }
+  }
+
+  // Content-to-whitespace balance (if we have element count and viewport)
+  if (data.structure && data.structure.totalElements > 10) {
+    var elCount = data.structure.totalElements;
+    checks++;
+    // Very sparse or very dense pages
+    if (elCount > 3000) {
+      findings.push({
+        severity: 'info',
+        title: 'Dense page (' + elCount + ' elements) — may feel cluttered',
+        detail: 'High element density can overwhelm users. Consider progressive disclosure.',
+        fix: 'Break content into sections, use collapsible panels, or paginate.',
+        presetRef: null,
+        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+      });
+    } else {
+      passed++;
+    }
+  }
+
+  // Off-screen elements: visible elements positioned outside viewport (x-axis)
+  var offscreen = layout.offscreenElements || [];
+  if (offscreen.length > 0) {
+    checks++;
+    var offDetails = offscreen.slice(0, 5).map(function(e) {
+      var label = e.element;
+      if (e.text) label += ' ("' + e.text.substring(0, 25) + (e.text.length > 25 ? '…' : '') + '")';
+      return label + ' at x=' + e.left + 'px';
+    });
+    findings.push({
+      severity: offscreen.length > 3 ? 'error' : 'warning',
+      title: offscreen.length + ' element(s) positioned outside viewport',
+      detail: offDetails.join('; '),
+      fix: 'Check absolute/fixed positioning. On mobile, dropdown menus with right-0 may overflow left. Use left-0 sm:right-0 or max-w-[calc(100vw-2rem)]. For elements extending right, check fixed widths wider than viewport.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
+      locator: { selector: offscreen[0] ? offscreen[0].selector : '', text: offscreen[0] ? (offscreen[0].text || '') : '' }
+    });
+  } else {
+    checks++;
+    passed++;
+  }
+
+  // Horizontal scroll on containers — use refined classification
+  var hScrollContainers = layout.horizontalScrollContainers || [];
+  var bugScrollContainers = hScrollContainers.filter(function(c) { return c.classification === 'bug' || !c.intentional; });
+  if (bugScrollContainers.length > 0 || data.structure.hasHorizontalOverflow) {
+    checks++;
+    var scrollDetails = bugScrollContainers.slice(0, 3).map(function(c) {
+      var reasonLabel = c.reason === 'structural-children-in-scroll' ? ' (structural content in scroll container)'
+        : c.reason === 'wide-container-scrolls' ? ' (wide container should fill viewport)'
+        : c.reason === 'no-overflow-css' ? ' (no overflow CSS — content spills)'
+        : '';
+      return c.selector + ' overflows by ' + c.overflow + 'px' + reasonLabel;
+    });
+    if (data.structure.hasHorizontalOverflow) scrollDetails.unshift('Page body has horizontal scroll');
+    findings.push({
+      severity: 'error',
+      title: (data.structure.hasHorizontalOverflow ? 'Page has horizontal scroll' : bugScrollContainers.length + ' container(s) overflow horizontally'),
+      detail: scrollDetails.join('; '),
+      fix: 'Fix horizontal overflow: add overflow-x-hidden on the outer wrapper, check for elements with fixed widths wider than viewport, or add max-w-full. Common causes: fixed-width tables, absolute positioned elements, images without max-width. If a wide container has overflow-x-auto but contains page sections (nav, forms, headings), remove the overflow and fix the root cause.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
+      locator: { selector: bugScrollContainers[0] ? bugScrollContainers[0].selector : '', text: '' }
+    });
+  } else {
+    checks++;
+    passed++;
+  }
+
+  // Nested scrollbars (scroll within scroll — bad UX)
+  var nestedScrollbars = layout.nestedScrollbars || 0;
+  if (nestedScrollbars > 0) {
+    checks++;
+    findings.push({
+      severity: nestedScrollbars > 2 ? 'error' : 'warning',
+      title: nestedScrollbars + ' nested scrollbar(s) detected (scroll within scroll)',
+      detail: 'Scrollable elements inside other scrollable elements confuse users — they don\'t know which container will scroll.',
+      fix: 'Avoid nested scrollbars. Give inner containers enough height to show content, or use pagination/collapsible sections instead of scroll. If a table must scroll horizontally, ensure the outer container does not also scroll.',
+      presetRef: null,
+      source: 'NNGroup — https://www.nngroup.com/articles/scrolling-and-scrollbars/'
+    });
+  }
+
+  // Hidden panel overflow issues (menus, dialogs revealed by hybrid unhide)
+  var hiddenPanelIssues = layout.hiddenPanelIssues || [];
+  if (hiddenPanelIssues.length > 0) {
+    checks++;
+    var panelDetails = hiddenPanelIssues.slice(0, 3).map(function(p) {
+      var issueTypes = p.issues.map(function(i) {
+        return i.type === 'right-overflow' ? 'overflows right by ' + i.overflow + 'px'
+          : i.type === 'left-overflow' ? 'overflows left by ' + i.overflow + 'px'
+          : i.type === 'internal-overflow' ? 'content overflows internally by ' + i.overflow + 'px'
+          : i.type;
+      });
+      return p.selector + ' (' + p.role + '): ' + issueTypes.join(', ');
+    });
+    findings.push({
+      severity: hiddenPanelIssues.length > 2 ? 'error' : 'warning',
+      title: hiddenPanelIssues.length + ' hidden panel(s) overflow when revealed (menus/dialogs)',
+      detail: 'These panels are hidden at load time but overflow the viewport when opened: ' + panelDetails.join('; '),
+      fix: 'Dropdown menus and dialogs must fit within the viewport when revealed. Use max-w-[calc(100vw-1rem)], or position with left-0 instead of right-0 on narrow viewports. For dialogs: add max-h-[90vh] overflow-y-auto.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
+      locator: { selector: hiddenPanelIssues[0] ? hiddenPanelIssues[0].selector : '', text: '' }
+    });
+  } else if (layout.hiddenPanelCount > 0) {
+    checks++;
+    passed++;
+  }
+
+  // Button/CTA hierarchy
+  var btnH = layout.buttonHierarchy || {};
+  if (btnH.total > 3 && btnH.filled > 0 && btnH.outline === 0 && btnH.text === 0) {
+    findings.push({
+      severity: 'info',
+      title: 'All ' + btnH.total + ' buttons use the same filled style — no visual hierarchy',
+      detail: 'Without primary/secondary/tertiary button styles, users can\'t distinguish the main action.',
+      fix: 'Designate one primary CTA (filled) and style others as secondary (outline) or tertiary (text-only).',
+      presetRef: 'All presets use primary + secondary button styles',
+      source: 'Material Design 3 — https://m3.material.io/components/buttons/overview'
+    });
+  }
+
+  // Fixed elements consuming viewport
+  var fixedVp = layout.fixedViewportConsumption || 0;
+  if (fixedVp > 30) {
+    findings.push({
+      severity: 'warning',
+      title: 'Fixed elements consume ' + fixedVp + '% of viewport height',
+      detail: 'Sticky headers, footers, and toolbars take up more than 30% of the screen, leaving little room for content.',
+      fix: 'Collapse fixed elements on scroll, or reduce their height. Consider hiding the header on scroll-down, showing on scroll-up.',
+      presetRef: null,
+      source: 'NNGroup — https://www.nngroup.com/articles/sticky-headers/'
+    });
+  } else if (fixedVp > 20) {
+    findings.push({
+      severity: 'info',
+      title: 'Fixed elements consume ' + fixedVp + '% of viewport height',
+      detail: 'Fixed elements take significant viewport space. Monitor on smaller screens.',
+      fix: 'Consider collapsing or reducing fixed element height on mobile.',
+      presetRef: null,
+      source: 'NNGroup — https://www.nngroup.com/articles/sticky-headers/'
+    });
+  }
+
+  // Text overlap — fixed/sticky elements without opaque background overlapping text below
+  var textOverlaps = layout.textOverlaps || [];
+  if (textOverlaps.length > 0) {
+    checks++;
+    var overlapDetails = textOverlaps.slice(0, 3).map(function(o) {
+      return o.fixed + ' ("' + o.fixedText.substring(0, 20) + '") overlaps ' + o.under + ' ("' + o.underText.substring(0, 20) + '")';
+    });
+    findings.push({
+      severity: textOverlaps.length > 2 ? 'error' : 'warning',
+      title: textOverlaps.length + ' fixed element(s) overlap text without opaque background',
+      detail: 'Fixed/sticky elements with transparent backgrounds overlap readable text underneath, making both unreadable: ' + overlapDetails.join('; '),
+      fix: 'Add an opaque or semi-opaque background (bg-white/90, backdrop-blur) to fixed elements that overlap content. Or hide the element when it scrolls over content sections.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
+    });
+  }
+
+  // Child exceeds parent — elements sticking out of their container
+  var childExceeds = layout.childExceedsParent || [];
+  if (childExceeds.length > 0) {
+    // Split: deliberate (parent has explicit overflow:hidden/clip) vs accidental (default visible)
+    var accidental = childExceeds.filter(function(c) { return !c.deliberate; });
+    var deliberate = childExceeds.filter(function(c) { return c.deliberate; });
+    if (accidental.length > 0) {
+      checks++;
+      var accDetails = accidental.slice(0, 3).map(function(c) {
+        return c.childTag + (c.childText ? ' ("' + c.childText.substring(0, 15) + '…")' : '') + ' exceeds ' + c.parent + ' by ' + c.excess + 'px';
+      });
+      findings.push({
+        severity: 'warning',
+        title: accidental.length + ' element(s) wider than parent without overflow handling',
+        detail: 'These elements extend past their parent with no overflow set (likely unintentional): ' + accDetails.join('; '),
+        fix: 'Add max-w-full or overflow-x-auto on the parent. If intentional, set overflow-hidden or overflow-visible explicitly.',
+        presetRef: null,
+        source: 'CSS Box Model — https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_box_model'
+      });
+    }
+    if (deliberate.length > 0) {
+      var delDetails = deliberate.slice(0, 3).map(function(c) {
+        return c.childTag + (c.childText ? ' ("' + c.childText.substring(0, 15) + '…")' : '') + ' exceeds ' + c.parent + ' by ' + c.excess + 'px (overflow: ' + c.parentOverflow + ')';
+      });
+      findings.push({
+        severity: 'info',
+        title: deliberate.length + ' element(s) wider than parent (overflow explicitly set)',
+        detail: 'Parent has explicit overflow handling — likely intentional: ' + delDetails.join('; '),
+        fix: 'Verify this overflow is intentional. If content is being clipped unexpectedly, use overflow-x-auto for scroll or constrain child width.',
+        presetRef: null,
+        source: 'CSS Box Model — https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_box_model'
+      });
+    }
+  }
+
+  // Visual noise density (opt-in, full scan)
+  var noiseBands = layout.visualNoiseBands || [];
+  var maxNoise = noiseBands.reduce(function(m, b) { return Math.max(m, b.score); }, 0);
+  if (maxNoise > 25) {
+    findings.push({
+      severity: maxNoise > 40 ? 'warning' : 'info',
+      title: 'High visual density in viewport band (noise score: ' + maxNoise + ')',
+      detail: 'A viewport-height region has many competing visual elements (shadows, colors, borders, bold text, images).',
+      fix: 'Reduce competing elements: fewer borders, consolidate backgrounds, or add whitespace between sections.',
+      presetRef: null,
+      source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+    });
+  }
+
+  // Empty containers
+  var emptyCont = layout.emptyContainers || 0;
+  if (emptyCont > 0) {
+    findings.push({
+      severity: 'info',
+      title: emptyCont + ' visible container(s) appear empty',
+      detail: 'Lists, sections, or grids are visible but have no text or media content. Could indicate a missing empty state.',
+      fix: 'Add an empty state message, illustration, or CTA (e.g., "No items yet").',
+      presetRef: null,
+      source: 'NNGroup — https://www.nngroup.com/articles/empty-state-ui-design/'
+    });
+  }
+
+  // Hidden clip — elements with overflow-x:hidden that silently clip content
+  var hiddenClips = layout.hiddenClipElements || [];
+  if (hiddenClips.length > 0) {
+    checks++;
+    var clipDetails = hiddenClips.slice(0, 3).map(function(c) {
+      return c.selector + ' clips ' + c.clipped + 'px of content';
+    });
+    findings.push({
+      severity: hiddenClips.length > 2 ? 'warning' : 'info',
+      title: hiddenClips.length + ' element(s) silently clip overflowing content',
+      detail: 'These elements use overflow-x:hidden to hide content that doesn\'t fit, instead of allowing scroll or fixing the layout: ' + clipDetails.join('; '),
+      fix: 'Use overflow-x-auto to allow scrolling, or fix the root cause — constrain child widths with max-w-full. overflow-x-hidden masks layout bugs.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
+    });
+  }
+
+  // DOM statistics — structural quality indicators (info-only)
+  var domStats = (data.structure || {}).domStats;
+  if (domStats) {
+    checks++;
+    if (domStats.divRatio > 60 && domStats.semanticCount < 5) {
+      findings.push({
+        severity: 'info',
+        title: 'Div-heavy markup (' + domStats.divRatio + '% divs, ' + domStats.semanticCount + ' semantic elements)',
+        detail: domStats.divCount + ' divs vs ' + domStats.semanticCount + ' semantic elements (nav, header, footer, section, article, etc.). Top tags: ' + domStats.topTags.map(function(t) { return t.tag + '×' + t.count; }).join(', '),
+        fix: 'Replace generic divs with semantic HTML where appropriate: <nav>, <header>, <main>, <section>, <article>, <aside>. This improves accessibility and helps screen readers navigate.',
+        presetRef: null,
+        source: 'HTML Living Standard — https://html.spec.whatwg.org/multipage/dom.html#semantics-2'
+      });
+    } else {
+      passed++;
+    }
+    if (domStats.displayNoneCount > 50) {
+      checks++;
+      findings.push({
+        severity: 'info',
+        title: domStats.displayNoneCount + ' elements with display:none — possible hidden content',
+        detail: domStats.ariaHiddenCount + ' have aria-hidden="true". Large numbers of hidden elements may indicate unused markup, off-canvas panels, or JS-toggled content that should be checked.',
+        fix: 'Review hidden elements. If they\'re unused, remove them to reduce DOM size. If they\'re interactive panels (menus, modals), ensure they\'re accessible when revealed.',
+        presetRef: null,
+        source: 'Web Almanac DOM complexity — https://almanac.httparchive.org/en/2022/markup#elements'
+      });
+    }
+  }
+
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+  return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Layout Quality', icon: 'layout' };
+}
+
+
+  S.register("layout", scoreLayout, 5, "Layout Quality", "layout");
 })();
 </file>
 
@@ -24948,6 +25511,57 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
   color: var(--text);
 }
 
+/* --- Site Crawl --- */
+.crawl-progress-list { display:flex; flex-direction:column; gap:6px; max-height:200px; overflow-y:auto; }
+.crawl-progress-item { display:flex; align-items:center; gap:8px; font-size:13px; padding:6px 10px; border-radius:8px; background:var(--surface); }
+.crawl-progress-item .status-icon { width:18px; height:18px; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
+.crawl-progress-item .status-icon.pending { color:var(--text-secondary); }
+.crawl-progress-item .status-icon.done { color:#16a34a; }
+.crawl-progress-item .status-icon.error { color:#dc2626; }
+.crawl-progress-item .status-icon.active { color:var(--primary); animation: crawl-pulse 1s ease-in-out infinite; }
+@keyframes crawl-pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+.crawl-progress-item .page-url { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text); }
+.crawl-progress-item .page-score { font-weight:600; font-variant-numeric:tabular-nums; }
+
+.crawl-page-tabs { display:flex; gap:2px; overflow-x:auto; padding:0 16px 0; border-bottom:1px solid var(--border); background:var(--bg); position:sticky; top:0; z-index:5; }
+.crawl-page-tab { flex-shrink:0; padding:10px 16px; font-size:13px; font-weight:500; color:var(--text-secondary); background:none; border:none; border-bottom:2px solid transparent; cursor:pointer; display:flex; align-items:center; gap:6px; white-space:nowrap; transition: color 0.15s, border-color 0.15s; }
+.crawl-page-tab:hover { color:var(--text); }
+.crawl-page-tab.active { color:var(--primary); border-bottom-color:var(--primary); }
+.crawl-page-tab .score-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.crawl-page-tab .score-dot.grade-a { background:#16a34a; }
+.crawl-page-tab .score-dot.grade-b { background:#ca8a04; }
+.crawl-page-tab .score-dot.grade-c { background:#ea580c; }
+.crawl-page-tab .score-dot.grade-d, .crawl-page-tab .score-dot.grade-f { background:#dc2626; }
+.crawl-page-tab .score-dot.pending { background:var(--text-secondary); animation: crawl-pulse 1s ease-in-out infinite; }
+.crawl-page-tab .score-dot.error { background:#dc2626; }
+
+.crawl-viewport-subtabs { display:flex; gap:2px; padding:4px 16px; background:var(--surface); border-bottom:1px solid var(--border); }
+.crawl-viewport-subtab { padding:6px 14px; font-size:12px; font-weight:500; color:var(--text-secondary); background:none; border:none; border-bottom:2px solid transparent; cursor:pointer; transition: color 0.15s; }
+.crawl-viewport-subtab:hover { color:var(--text); }
+.crawl-viewport-subtab.active { color:var(--primary); border-bottom-color:var(--primary); }
+
+.crawl-summary { padding:24px; }
+.crawl-summary h2 { font-size:20px; font-weight:700; margin:0 0 16px; color:var(--text); }
+.crawl-summary h3 { font-size:15px; font-weight:600; margin:24px 0 12px; color:var(--text); }
+.crawl-score-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:10px; margin-bottom:24px; }
+.crawl-score-card { padding:14px; border-radius:10px; background:var(--surface); border:1px solid var(--border); text-align:center; }
+.crawl-score-card .score { font-size:28px; font-weight:700; font-variant-numeric:tabular-nums; }
+.crawl-score-card .grade { font-size:13px; font-weight:600; margin-top:2px; }
+.crawl-score-card .page-path { font-size:12px; color:var(--text-secondary); margin-top:6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.crawl-score-card .grade-a { color:#16a34a; }
+.crawl-score-card .grade-b { color:#ca8a04; }
+.crawl-score-card .grade-c { color:#ea580c; }
+.crawl-score-card .grade-d, .crawl-score-card .grade-f { color:#dc2626; }
+
+.crawl-issue-group { margin-bottom:12px; padding:12px 14px; border-radius:8px; background:var(--surface); border:1px solid var(--border); }
+.crawl-issue-group .issue-header { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
+.crawl-issue-group .issue-title { font-size:13px; font-weight:600; color:var(--text); }
+.crawl-issue-group .issue-count { font-size:12px; color:var(--text-secondary); white-space:nowrap; }
+.crawl-issue-group .issue-pages { margin-top:6px; font-size:12px; color:var(--text-secondary); }
+.crawl-issue-group .severity-badge { display:inline-block; font-size:11px; font-weight:600; padding:1px 6px; border-radius:4px; margin-right:6px; }
+.crawl-issue-group .severity-badge.error { background:#fef2f2; color:#dc2626; }
+.crawl-issue-group .severity-badge.warning { background:#fffbeb; color:#ca8a04; }
+
 /* --- Print / PDF --- */
 @media print {
   body, .analyzer-body {
@@ -25678,6 +26292,7 @@ function scoreAccessibility(data) {
       <button class="tab-btn" data-tab="tabSnippet">Console Snippet<br><span class="tab-sub">(most accurate)</span></button>
       <button class="tab-btn" data-tab="tabHtml">Paste HTML<br><span class="tab-sub">(approximate)</span></button>
       <button class="tab-btn" data-tab="tabImport">Import<br><span class="tab-sub">(JSON file)</span></button>
+      <button class="tab-btn" data-tab="tabCrawl">Site Crawl<br><span class="tab-sub">(multi-page)</span></button>
     </div>
 
     <!-- Shared screenshot options (applies to all tabs) -->
@@ -25861,6 +26476,42 @@ function scoreAccessibility(data) {
         <input type="file" id="importDropFile" accept=".json" style="display:none">
       </div>
     </div>
+    <div class="tab-content" id="tabCrawl">
+      <div style="margin-bottom:16px">
+        <label for="crawlUrlInput" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;color:var(--text-secondary)">Starting URL</label>
+        <input type="url" id="crawlUrlInput" class="url-input" placeholder="https://example.com" autocomplete="url" spellcheck="false">
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:16px">
+        <div>
+          <label for="crawlMaxPages" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;color:var(--text-secondary)">Max pages</label>
+          <input type="number" id="crawlMaxPages" min="1" max="10" value="5" class="btn" style="width:80px;padding:8px 10px;font-size:14px;text-align:center">
+        </div>
+        <div style="flex:1;min-width:200px">
+          <label for="crawlBlacklist" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;color:var(--text-secondary)">Exclude pages <span style="font-weight:400">(comma-separated)</span></label>
+          <input type="text" id="crawlBlacklist" class="url-input" placeholder="/blog/*, /login, /admin" style="font-size:13px">
+        </div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:16px">
+        <label class="checkbox-label" style="font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px">
+          <input type="checkbox" id="crawlDeepScan"> Deep scan <span style="color:var(--text-secondary)">(test 3 viewports + dark mode per page)</span>
+        </label>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <button class="btn btn-primary" id="startCrawlBtn" style="min-height:44px;padding:10px 24px;font-weight:600">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          Start Crawl
+        </button>
+        <button class="btn" id="cancelCrawlBtn" style="display:none;min-height:44px">Cancel</button>
+      </div>
+      <div id="crawlProgressArea" style="display:none;margin-top:20px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span id="crawlProgressLabel" style="font-size:13px;font-weight:600;color:var(--text-secondary)">Discovering pages...</span>
+          <span id="crawlProgressCount" style="font-size:13px;color:var(--text-secondary)"></span>
+        </div>
+        <div class="progress-bar" style="margin-bottom:12px"><div class="progress-fill" id="crawlProgressFill"></div></div>
+        <div id="crawlProgressList" class="crawl-progress-list"></div>
+      </div>
+    </div>
   </div>
 
   <!-- Report controls (shown when report is visible) -->
@@ -25925,6 +26576,14 @@ function scoreAccessibility(data) {
     <!-- Bottom row: export actions (collapsible on mobile via CSS) -->
     <details class="export-details" open>
       <summary class="export-summary">Export &amp; Share</summary>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding:0 2px" id="severityFilterRow">
+      <label for="exportSeverityFilter" style="font-size:12px;color:var(--text-secondary);white-space:nowrap">Export filter:</label>
+      <select id="exportSeverityFilter" class="btn" style="padding:4px 24px 4px 8px;font-size:12px;appearance:auto;cursor:pointer">
+        <option value="all">All findings</option>
+        <option value="warning">Warnings + Errors</option>
+        <option value="error">Errors only</option>
+      </select>
+    </div>
     <div class="report-controls-row">
       <button class="btn" id="copyMdBtn" title="Copy Markdown without images (for pasting into chat/docs)">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
@@ -25953,6 +26612,12 @@ function scoreAccessibility(data) {
 
   <!-- Report container -->
   <div class="report-container" id="reportContainer"></div>
+  <!-- Crawl results (multi-page tabbed view) -->
+  <div id="crawlResults" style="display:none">
+    <div class="crawl-page-tabs" id="crawlPageTabs"></div>
+    <div id="crawlViewportSubtabs" class="crawl-viewport-subtabs" style="display:none"></div>
+    <div class="report-container visible" id="crawlPageContent"></div>
+  </div>
   </main>
 
   <!-- Toast -->
@@ -25975,6 +26640,7 @@ function scoreAccessibility(data) {
   <script src="scoring/balance.js"></script>
   <!-- Report rendering + UI -->
   <script src="analyzer-report.js"></script>
+  <script src="analyzer-crawl.js"></script>
   <script src="analyzer.js"></script>
 </body>
 </html>
@@ -29994,6 +30660,91 @@ function scoreAccessibility(data) {
 
   // Also store on window for debugging
   window.__milgData = data;
+
+  // --- Site Crawl Mode ---
+  // Set window.__milgCrawlSite = true before pasting the snippet (or use a bookmarklet).
+  // On each page, the snippet extracts data, stores it, and navigates to the next URL.
+  // After all pages are visited, results are stored for the analyzer to pick up.
+  if (window.__milgCrawlSite) {
+    var _crawlKey = 'milg-crawl-state';
+    var _crawlCompleteKey = 'milg-crawl-complete';
+    var crawlState;
+    try { crawlState = JSON.parse(localStorage.getItem(_crawlKey)); } catch(e) { crawlState = null; }
+
+    if (!crawlState) {
+      // First page: discover links and start crawl
+      var maxPages = window.__milgCrawlMaxPages || 5;
+      maxPages = Math.min(Math.max(maxPages, 1), 25);
+      var blacklist = window.__milgCrawlBlacklist || [];
+      var origin = location.origin;
+      var seen = {};
+      var norm = location.origin + location.pathname.replace(/\/$/, '') || '/';
+      seen[norm] = true;
+
+      var links = [];
+      document.querySelectorAll('a[href]').forEach(function(a) {
+        var href = a.getAttribute('href');
+        if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('javascript:')) return;
+        try {
+          var u = new URL(href, location.href);
+          if (u.origin !== origin) return;
+          if (/\.(pdf|zip|png|jpg|svg|css|js|json|xml|woff2?)$/i.test(u.pathname)) return;
+          var key = u.origin + u.pathname.replace(/\/$/, '');
+          if (seen[key]) return;
+          // Check blacklist
+          var blocked = blacklist.some(function(pat) {
+            pat = pat.trim();
+            if (!pat) return false;
+            if (pat.endsWith('*')) return u.pathname.startsWith(pat.slice(0, -1));
+            return u.pathname === pat || u.href.includes(pat);
+          });
+          if (blocked) return;
+          seen[key] = true;
+          links.push(u.href);
+        } catch(e) {}
+      });
+      links = links.slice(0, maxPages - 1);
+
+      crawlState = {
+        startUrl: location.href,
+        queue: links,
+        results: [{ url: location.href, data: data }],
+        currentIndex: 0
+      };
+      localStorage.setItem(_crawlKey, JSON.stringify(crawlState));
+      console.log('%c🕷 Site Crawl: discovered ' + links.length + ' pages', 'color: #8b5cf6; font-weight: bold;');
+
+      if (links.length > 0) {
+        console.log('%c→ Navigating to: ' + links[0], 'color: #3b82f6;');
+        console.log('%cPaste the snippet again on the next page (or use a bookmarklet).', 'color: #64748b;');
+        setTimeout(function() { window.location.href = links[0]; }, 800);
+      } else {
+        // Only one page — complete immediately
+        localStorage.removeItem(_crawlKey);
+        localStorage.setItem(_crawlCompleteKey, JSON.stringify(crawlState));
+        console.log('%c✓ Crawl complete (1 page). Open the analyzer to view results.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+      }
+    } else {
+      // Continuation: store result for current page
+      crawlState.results.push({ url: location.href, data: data });
+      crawlState.currentIndex++;
+
+      if (crawlState.currentIndex < crawlState.queue.length) {
+        var nextUrl = crawlState.queue[crawlState.currentIndex];
+        localStorage.setItem(_crawlKey, JSON.stringify(crawlState));
+        console.log('%c🕷 Crawl: page ' + (crawlState.currentIndex + 1) + '/' + crawlState.queue.length + ' done', 'color: #8b5cf6; font-weight: bold;');
+        console.log('%c→ Navigating to: ' + nextUrl, 'color: #3b82f6;');
+        setTimeout(function() { window.location.href = nextUrl; }, 800);
+      } else {
+        // Done — store final results and clean up
+        localStorage.removeItem(_crawlKey);
+        localStorage.setItem(_crawlCompleteKey, JSON.stringify(crawlState));
+        console.log('%c✓ Crawl complete! ' + crawlState.results.length + ' pages analyzed.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+        console.log('%cOpen the analyzer to view aggregated results. They will load automatically.', 'color: #3b82f6;');
+      }
+    }
+    return; // Skip normal clipboard copy
+  }
 })();
 </file>
 
@@ -31162,6 +31913,320 @@ function scoreAccessibility(data) {
           opt.value = url;
           urlDatalist.appendChild(opt);
         }
+      });
+    }
+
+    // --- Site Crawl wiring ---
+    var _crawlSession = null;
+    var _crawlPageReports = {}; // pageIndex → rendered HTML cache
+    var _crawlActivePageTab = 'summary';
+    var CRAWL_HARD_MAX = 25;
+
+    var startCrawlBtn = document.getElementById('startCrawlBtn');
+    var cancelCrawlBtn = document.getElementById('cancelCrawlBtn');
+    var crawlUrlInput = document.getElementById('crawlUrlInput');
+    var crawlMaxPages = document.getElementById('crawlMaxPages');
+    var crawlBlacklist = document.getElementById('crawlBlacklist');
+    var crawlDeepScan = document.getElementById('crawlDeepScan');
+    var crawlProgressArea = document.getElementById('crawlProgressArea');
+    var crawlProgressLabel = document.getElementById('crawlProgressLabel');
+    var crawlProgressCount = document.getElementById('crawlProgressCount');
+    var crawlProgressFill = document.getElementById('crawlProgressFill');
+    var crawlProgressList = document.getElementById('crawlProgressList');
+    var crawlResults = document.getElementById('crawlResults');
+    var crawlPageTabs = document.getElementById('crawlPageTabs');
+    var crawlPageContent = document.getElementById('crawlPageContent');
+
+    // Page limit easter egg — MutationObserver
+    if (crawlMaxPages) {
+      var _crawlMaxObserver = new MutationObserver(function(mutations) {
+        mutations.forEach(function(m) {
+          if (m.attributeName === 'max') {
+            var newMax = parseInt(crawlMaxPages.getAttribute('max'));
+            if (newMax > 10) {
+              showToast('Nice try! We see you editing the DOM \uD83D\uDE0F Fine, ' + CRAWL_HARD_MAX + ' is the real limit\u2026 but your proxy rate limit isn\u2019t.');
+              crawlMaxPages.setAttribute('max', CRAWL_HARD_MAX);
+            }
+          }
+        });
+      });
+      _crawlMaxObserver.observe(crawlMaxPages, { attributes: true, attributeFilter: ['max'] });
+    }
+
+    // Enter key in crawl URL input
+    if (crawlUrlInput) {
+      crawlUrlInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); startCrawlBtn.click(); }
+      });
+    }
+
+    function crawlStatusIcon(status) {
+      if (status === 'done') return '<span class="status-icon done"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></span>';
+      if (status === 'error') return '<span class="status-icon error"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>';
+      if (status === 'fetching' || status === 'analyzing') return '<span class="status-icon active"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/></svg></span>';
+      return '<span class="status-icon pending"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-dasharray="20" stroke-dashoffset="10"/></svg></span>';
+    }
+
+    function updateCrawlProgressItem(page) {
+      var existing = document.getElementById('crawl-progress-' + encodeURIComponent(page.url));
+      var path; try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
+      var scoreText = page.status === 'done' && page.reportData ? ' ' + page.reportData.overall + '/100' : '';
+      var errorText = page.status === 'error' ? ' <span style="color:#dc2626;font-size:12px">' + (page.error || 'Failed').substring(0, 40) + '</span>' : '';
+      var html = crawlStatusIcon(page.status) +
+        '<span class="page-url" title="' + page.url + '">' + path + '</span>' +
+        '<span class="page-score">' + scoreText + errorText + '</span>';
+      if (existing) {
+        existing.innerHTML = html;
+      } else {
+        var div = document.createElement('div');
+        div.className = 'crawl-progress-item';
+        div.id = 'crawl-progress-' + encodeURIComponent(page.url);
+        div.innerHTML = html;
+        crawlProgressList.appendChild(div);
+      }
+    }
+
+    function renderCrawlTabs() {
+      if (!_crawlSession || !crawlPageTabs) return;
+      var html = '<button class="crawl-page-tab' + (_crawlActivePageTab === 'summary' ? ' active' : '') + '" data-crawl-page="summary">Summary</button>';
+      _crawlSession.pages.forEach(function(page, idx) {
+        html += MilgReport.renderCrawlPageTab(page, idx, _crawlActivePageTab === String(idx));
+      });
+      crawlPageTabs.innerHTML = html;
+    }
+
+    function showCrawlPageContent(key) {
+      _crawlActivePageTab = key;
+      renderCrawlTabs();
+      if (key === 'summary') {
+        var summary = _crawlSession.summary || MilgCrawl.buildSummary(_crawlSession);
+        crawlPageContent.innerHTML = MilgReport.renderCrawlSummary(summary);
+        var vpSubtabs = document.getElementById('crawlViewportSubtabs');
+        if (vpSubtabs) vpSubtabs.style.display = 'none';
+      } else {
+        var idx = parseInt(key);
+        var page = _crawlSession.pages[idx];
+        if (!page || page.status !== 'done') {
+          crawlPageContent.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-secondary)">' +
+            (page && page.status === 'error' ? 'Error: ' + (page.error || 'Analysis failed') : 'Analyzing\u2026') + '</div>';
+          return;
+        }
+        // Use cached report HTML or render fresh
+        if (!_crawlPageReports[idx]) {
+          var profile = document.getElementById('profileSelect');
+          if (profile) page.rawData.profile = profile.value;
+          page.reportData = MilgScoring.runScoring(page.rawData);
+          _crawlPageReports[idx] = MilgReport.renderReport(page.reportData);
+        }
+        crawlPageContent.innerHTML = _crawlPageReports[idx];
+      }
+    }
+
+    // Tab click delegation
+    if (crawlPageTabs) {
+      crawlPageTabs.addEventListener('click', function(e) {
+        var tab = e.target.closest('[data-crawl-page]');
+        if (!tab) return;
+        showCrawlPageContent(tab.getAttribute('data-crawl-page'));
+      });
+    }
+
+    if (startCrawlBtn) {
+      startCrawlBtn.addEventListener('click', function() {
+        var url = (crawlUrlInput.value || '').trim();
+        if (!url) { showToast('Enter a starting URL'); return; }
+        if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+
+        var maxPages = parseInt(crawlMaxPages.value) || 5;
+        maxPages = Math.min(Math.max(maxPages, 1), CRAWL_HARD_MAX);
+
+        var blacklist = (crawlBlacklist.value || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+        var deepScan = crawlDeepScan && crawlDeepScan.checked;
+        var profile = document.getElementById('profileSelect');
+
+        _crawlSession = MilgCrawl.createSession(url, {
+          maxPages: maxPages,
+          blacklist: blacklist,
+          deepScan: deepScan,
+          profile: profile ? profile.value : 'general'
+        });
+        _crawlPageReports = {};
+        _crawlActivePageTab = 'summary';
+
+        // Show progress, hide input controls
+        startCrawlBtn.disabled = true;
+        startCrawlBtn.textContent = 'Crawling\u2026';
+        cancelCrawlBtn.style.display = '';
+        crawlProgressArea.style.display = '';
+        crawlProgressList.innerHTML = '';
+        crawlProgressFill.style.width = '0%';
+        crawlProgressLabel.textContent = 'Fetching starting page\u2026';
+        crawlProgressCount.textContent = '0 / ' + maxPages;
+
+        // Show crawl results area
+        var inputSection = document.getElementById('inputSection');
+        var reportActions = document.getElementById('reportActions');
+        var reportContainer = document.getElementById('reportContainer');
+        crawlResults.style.display = '';
+        if (reportContainer) reportContainer.className = 'report-container';
+        if (reportActions) reportActions.style.display = '';
+
+        // Initial summary tab
+        renderCrawlTabs();
+        showCrawlPageContent('summary');
+
+        var doneCount = 0;
+        var totalPages = 1; // updated after discovery
+
+        MilgCrawl.startCrawl(_crawlSession, {
+          fetchPage: function(pageUrl, cb) {
+            fetchViaProxy(pageUrl, function(html, err) {
+              cb(html, err);
+            });
+          },
+          analyzePage: function(html, pageUrl, opts, cb) {
+            analyzeHtmlInIframe(html, function(data) {
+              if (data) {
+                data.meta.url = pageUrl;
+                data.meta._inputMethod = 'crawl';
+                if (opts.profile) data.profile = opts.profile;
+              }
+              cb(data);
+            }, pageUrl, opts.excludeSelector || null, false);
+          },
+          scorePage: function(data) {
+            return MilgScoring.runScoring(data);
+          },
+          onDiscovery: function(urls) {
+            totalPages = 1 + urls.length;
+            crawlProgressCount.textContent = '0 / ' + totalPages;
+            crawlProgressLabel.textContent = 'Found ' + urls.length + ' page' + (urls.length !== 1 ? 's' : '') + ' to crawl';
+          },
+          onPageStart: function(page) {
+            updateCrawlProgressItem(page);
+            crawlProgressLabel.textContent = 'Analyzing ' + page.url.replace(/^https?:\/\/[^/]+/, '') + '\u2026';
+            renderCrawlTabs();
+          },
+          onPageComplete: function(page) {
+            doneCount++;
+            updateCrawlProgressItem(page);
+            crawlProgressCount.textContent = doneCount + ' / ' + totalPages;
+            crawlProgressFill.style.width = Math.round(doneCount / totalPages * 100) + '%';
+            renderCrawlTabs();
+            // Update summary live
+            if (_crawlActivePageTab === 'summary') {
+              showCrawlPageContent('summary');
+            }
+          },
+          onPageError: function(page) {
+            doneCount++;
+            updateCrawlProgressItem(page);
+            crawlProgressCount.textContent = doneCount + ' / ' + totalPages;
+            crawlProgressFill.style.width = Math.round(doneCount / totalPages * 100) + '%';
+            renderCrawlTabs();
+          },
+          onComplete: function(session) {
+            startCrawlBtn.disabled = false;
+            startCrawlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Start Crawl';
+            cancelCrawlBtn.style.display = 'none';
+            crawlProgressLabel.textContent = 'Crawl complete!';
+            crawlProgressFill.style.width = '100%';
+            renderCrawlTabs();
+            showCrawlPageContent('summary');
+          }
+        });
+      });
+    }
+
+    if (cancelCrawlBtn) {
+      cancelCrawlBtn.addEventListener('click', function() {
+        if (_crawlSession) MilgCrawl.abortCrawl(_crawlSession);
+        startCrawlBtn.disabled = false;
+        startCrawlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Start Crawl';
+        cancelCrawlBtn.style.display = 'none';
+        crawlProgressLabel.textContent = 'Crawl cancelled';
+      });
+    }
+
+    // Check for completed snippet crawl on load
+    try {
+      var snippetCrawlData = localStorage.getItem('milg-crawl-complete');
+      if (snippetCrawlData) {
+        localStorage.removeItem('milg-crawl-complete');
+        var crawlState = JSON.parse(snippetCrawlData);
+        if (crawlState && crawlState.results && crawlState.results.length > 0) {
+          showToast('Loaded crawl results from console snippet (' + crawlState.results.length + ' pages)');
+          // Build session from snippet results
+          _crawlSession = MilgCrawl.createSession(crawlState.startUrl || crawlState.results[0].url, {
+            maxPages: crawlState.results.length,
+            profile: document.getElementById('profileSelect') ? document.getElementById('profileSelect').value : 'general'
+          });
+          crawlState.results.forEach(function(r) {
+            var report = MilgScoring.runScoring(r.data);
+            _crawlSession.pages.push({
+              url: r.url, status: 'done', title: (r.data.meta && r.data.meta.title) || '',
+              rawData: r.data, reportData: report, error: null,
+              startedAt: r.data.meta.timestamp, completedAt: r.data.meta.timestamp
+            });
+          });
+          _crawlSession.status = 'complete';
+          _crawlSession.summary = MilgCrawl.buildSummary(_crawlSession);
+          // Show results
+          crawlResults.style.display = '';
+          var reportActions = document.getElementById('reportActions');
+          if (reportActions) reportActions.style.display = '';
+          renderCrawlTabs();
+          showCrawlPageContent('summary');
+          // Switch to crawl tab
+          document.querySelectorAll('.tab-btn').forEach(function(t) { t.classList.remove('active'); });
+          document.querySelectorAll('.tab-content').forEach(function(t) { t.classList.remove('active'); });
+          var crawlTab = document.querySelector('[data-tab="tabCrawl"]');
+          if (crawlTab) crawlTab.classList.add('active');
+          var tabCrawl = document.getElementById('tabCrawl');
+          if (tabCrawl) tabCrawl.classList.add('active');
+        }
+      }
+    } catch(e) { console.error('Failed to load snippet crawl data:', e); }
+
+    // Crawl export wiring — override export buttons when crawl is active
+    var exportSeverityFilter = document.getElementById('exportSeverityFilter');
+    var copyMdBtn = document.getElementById('copyMdBtn');
+    var markdownBtn = document.getElementById('markdownBtn');
+    var exportJsonBtn = document.getElementById('exportJsonBtn');
+
+    function isCrawlActive() { return _crawlSession && _crawlSession.pages.length > 0 && crawlResults.style.display !== 'none'; }
+
+    // Wrap export handlers — add crawl check before each
+    if (copyMdBtn) {
+      var _origCopyMd = copyMdBtn.onclick;
+      copyMdBtn.addEventListener('click', function(e) {
+        if (!isCrawlActive()) return; // let original handler run
+        e.stopImmediatePropagation();
+        var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
+        var md = MilgCrawl.renderCrawlMarkdown(_crawlSession, filter);
+        navigator.clipboard.writeText(md).then(function() { showToast('Crawl report copied as Markdown!'); }).catch(function() { showToast('Copy failed'); });
+      });
+    }
+    if (markdownBtn) {
+      markdownBtn.addEventListener('click', function(e) {
+        if (!isCrawlActive()) return;
+        e.stopImmediatePropagation();
+        var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
+        var md = MilgCrawl.renderCrawlMarkdown(_crawlSession, filter);
+        var blob = new Blob([md], { type: 'text/markdown' });
+        var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+        a.download = 'site-crawl-report.md'; a.click();
+      });
+    }
+    if (exportJsonBtn) {
+      exportJsonBtn.addEventListener('click', function(e) {
+        if (!isCrawlActive()) return;
+        e.stopImmediatePropagation();
+        var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
+        var json = MilgCrawl.renderCrawlJSON(_crawlSession, filter);
+        var blob = new Blob([json], { type: 'application/json' });
+        var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+        a.download = 'site-crawl-data.json'; a.click();
       });
     }
   }

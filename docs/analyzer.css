@@ -1052,6 +1052,57 @@ body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
   color: var(--text);
 }
 
+/* --- Site Crawl --- */
+.crawl-progress-list { display:flex; flex-direction:column; gap:6px; max-height:200px; overflow-y:auto; }
+.crawl-progress-item { display:flex; align-items:center; gap:8px; font-size:13px; padding:6px 10px; border-radius:8px; background:var(--surface); }
+.crawl-progress-item .status-icon { width:18px; height:18px; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
+.crawl-progress-item .status-icon.pending { color:var(--text-secondary); }
+.crawl-progress-item .status-icon.done { color:#16a34a; }
+.crawl-progress-item .status-icon.error { color:#dc2626; }
+.crawl-progress-item .status-icon.active { color:var(--primary); animation: crawl-pulse 1s ease-in-out infinite; }
+@keyframes crawl-pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+.crawl-progress-item .page-url { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text); }
+.crawl-progress-item .page-score { font-weight:600; font-variant-numeric:tabular-nums; }
+
+.crawl-page-tabs { display:flex; gap:2px; overflow-x:auto; padding:0 16px 0; border-bottom:1px solid var(--border); background:var(--bg); position:sticky; top:0; z-index:5; }
+.crawl-page-tab { flex-shrink:0; padding:10px 16px; font-size:13px; font-weight:500; color:var(--text-secondary); background:none; border:none; border-bottom:2px solid transparent; cursor:pointer; display:flex; align-items:center; gap:6px; white-space:nowrap; transition: color 0.15s, border-color 0.15s; }
+.crawl-page-tab:hover { color:var(--text); }
+.crawl-page-tab.active { color:var(--primary); border-bottom-color:var(--primary); }
+.crawl-page-tab .score-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.crawl-page-tab .score-dot.grade-a { background:#16a34a; }
+.crawl-page-tab .score-dot.grade-b { background:#ca8a04; }
+.crawl-page-tab .score-dot.grade-c { background:#ea580c; }
+.crawl-page-tab .score-dot.grade-d, .crawl-page-tab .score-dot.grade-f { background:#dc2626; }
+.crawl-page-tab .score-dot.pending { background:var(--text-secondary); animation: crawl-pulse 1s ease-in-out infinite; }
+.crawl-page-tab .score-dot.error { background:#dc2626; }
+
+.crawl-viewport-subtabs { display:flex; gap:2px; padding:4px 16px; background:var(--surface); border-bottom:1px solid var(--border); }
+.crawl-viewport-subtab { padding:6px 14px; font-size:12px; font-weight:500; color:var(--text-secondary); background:none; border:none; border-bottom:2px solid transparent; cursor:pointer; transition: color 0.15s; }
+.crawl-viewport-subtab:hover { color:var(--text); }
+.crawl-viewport-subtab.active { color:var(--primary); border-bottom-color:var(--primary); }
+
+.crawl-summary { padding:24px; }
+.crawl-summary h2 { font-size:20px; font-weight:700; margin:0 0 16px; color:var(--text); }
+.crawl-summary h3 { font-size:15px; font-weight:600; margin:24px 0 12px; color:var(--text); }
+.crawl-score-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:10px; margin-bottom:24px; }
+.crawl-score-card { padding:14px; border-radius:10px; background:var(--surface); border:1px solid var(--border); text-align:center; }
+.crawl-score-card .score { font-size:28px; font-weight:700; font-variant-numeric:tabular-nums; }
+.crawl-score-card .grade { font-size:13px; font-weight:600; margin-top:2px; }
+.crawl-score-card .page-path { font-size:12px; color:var(--text-secondary); margin-top:6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.crawl-score-card .grade-a { color:#16a34a; }
+.crawl-score-card .grade-b { color:#ca8a04; }
+.crawl-score-card .grade-c { color:#ea580c; }
+.crawl-score-card .grade-d, .crawl-score-card .grade-f { color:#dc2626; }
+
+.crawl-issue-group { margin-bottom:12px; padding:12px 14px; border-radius:8px; background:var(--surface); border:1px solid var(--border); }
+.crawl-issue-group .issue-header { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
+.crawl-issue-group .issue-title { font-size:13px; font-weight:600; color:var(--text); }
+.crawl-issue-group .issue-count { font-size:12px; color:var(--text-secondary); white-space:nowrap; }
+.crawl-issue-group .issue-pages { margin-top:6px; font-size:12px; color:var(--text-secondary); }
+.crawl-issue-group .severity-badge { display:inline-block; font-size:11px; font-weight:600; padding:1px 6px; border-radius:4px; margin-right:6px; }
+.crawl-issue-group .severity-badge.error { background:#fef2f2; color:#dc2626; }
+.crawl-issue-group .severity-badge.warning { background:#fffbeb; color:#ca8a04; }
+
 /* --- Print / PDF --- */
 @media print {
   body, .analyzer-body {

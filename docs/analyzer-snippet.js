@@ -2239,4 +2239,89 @@
 
   // Also store on window for debugging
   window.__milgData = data;
+
+  // --- Site Crawl Mode ---
+  // Set window.__milgCrawlSite = true before pasting the snippet (or use a bookmarklet).
+  // On each page, the snippet extracts data, stores it, and navigates to the next URL.
+  // After all pages are visited, results are stored for the analyzer to pick up.
+  if (window.__milgCrawlSite) {
+    var _crawlKey = 'milg-crawl-state';
+    var _crawlCompleteKey = 'milg-crawl-complete';
+    var crawlState;
+    try { crawlState = JSON.parse(localStorage.getItem(_crawlKey)); } catch(e) { crawlState = null; }
+
+    if (!crawlState) {
+      // First page: discover links and start crawl
+      var maxPages = window.__milgCrawlMaxPages || 5;
+      maxPages = Math.min(Math.max(maxPages, 1), 25);
+      var blacklist = window.__milgCrawlBlacklist || [];
+      var origin = location.origin;
+      var seen = {};
+      var norm = location.origin + location.pathname.replace(/\/$/, '') || '/';
+      seen[norm] = true;
+
+      var links = [];
+      document.querySelectorAll('a[href]').forEach(function(a) {
+        var href = a.getAttribute('href');
+        if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('javascript:')) return;
+        try {
+          var u = new URL(href, location.href);
+          if (u.origin !== origin) return;
+          if (/\.(pdf|zip|png|jpg|svg|css|js|json|xml|woff2?)$/i.test(u.pathname)) return;
+          var key = u.origin + u.pathname.replace(/\/$/, '');
+          if (seen[key]) return;
+          // Check blacklist
+          var blocked = blacklist.some(function(pat) {
+            pat = pat.trim();
+            if (!pat) return false;
+            if (pat.endsWith('*')) return u.pathname.startsWith(pat.slice(0, -1));
+            return u.pathname === pat || u.href.includes(pat);
+          });
+          if (blocked) return;
+          seen[key] = true;
+          links.push(u.href);
+        } catch(e) {}
+      });
+      links = links.slice(0, maxPages - 1);
+
+      crawlState = {
+        startUrl: location.href,
+        queue: links,
+        results: [{ url: location.href, data: data }],
+        currentIndex: 0
+      };
+      localStorage.setItem(_crawlKey, JSON.stringify(crawlState));
+      console.log('%c🕷 Site Crawl: discovered ' + links.length + ' pages', 'color: #8b5cf6; font-weight: bold;');
+
+      if (links.length > 0) {
+        console.log('%c→ Navigating to: ' + links[0], 'color: #3b82f6;');
+        console.log('%cPaste the snippet again on the next page (or use a bookmarklet).', 'color: #64748b;');
+        setTimeout(function() { window.location.href = links[0]; }, 800);
+      } else {
+        // Only one page — complete immediately
+        localStorage.removeItem(_crawlKey);
+        localStorage.setItem(_crawlCompleteKey, JSON.stringify(crawlState));
+        console.log('%c✓ Crawl complete (1 page). Open the analyzer to view results.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+      }
+    } else {
+      // Continuation: store result for current page
+      crawlState.results.push({ url: location.href, data: data });
+      crawlState.currentIndex++;
+
+      if (crawlState.currentIndex < crawlState.queue.length) {
+        var nextUrl = crawlState.queue[crawlState.currentIndex];
+        localStorage.setItem(_crawlKey, JSON.stringify(crawlState));
+        console.log('%c🕷 Crawl: page ' + (crawlState.currentIndex + 1) + '/' + crawlState.queue.length + ' done', 'color: #8b5cf6; font-weight: bold;');
+        console.log('%c→ Navigating to: ' + nextUrl, 'color: #3b82f6;');
+        setTimeout(function() { window.location.href = nextUrl; }, 800);
+      } else {
+        // Done — store final results and clean up
+        localStorage.removeItem(_crawlKey);
+        localStorage.setItem(_crawlCompleteKey, JSON.stringify(crawlState));
+        console.log('%c✓ Crawl complete! ' + crawlState.results.length + ' pages analyzed.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+        console.log('%cOpen the analyzer to view aggregated results. They will load automatically.', 'color: #3b82f6;');
+      }
+    }
+    return; // Skip normal clipboard copy
+  }
 })();

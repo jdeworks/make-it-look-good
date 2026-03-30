@@ -1164,6 +1164,320 @@
         }
       });
     }
+
+    // --- Site Crawl wiring ---
+    var _crawlSession = null;
+    var _crawlPageReports = {}; // pageIndex → rendered HTML cache
+    var _crawlActivePageTab = 'summary';
+    var CRAWL_HARD_MAX = 25;
+
+    var startCrawlBtn = document.getElementById('startCrawlBtn');
+    var cancelCrawlBtn = document.getElementById('cancelCrawlBtn');
+    var crawlUrlInput = document.getElementById('crawlUrlInput');
+    var crawlMaxPages = document.getElementById('crawlMaxPages');
+    var crawlBlacklist = document.getElementById('crawlBlacklist');
+    var crawlDeepScan = document.getElementById('crawlDeepScan');
+    var crawlProgressArea = document.getElementById('crawlProgressArea');
+    var crawlProgressLabel = document.getElementById('crawlProgressLabel');
+    var crawlProgressCount = document.getElementById('crawlProgressCount');
+    var crawlProgressFill = document.getElementById('crawlProgressFill');
+    var crawlProgressList = document.getElementById('crawlProgressList');
+    var crawlResults = document.getElementById('crawlResults');
+    var crawlPageTabs = document.getElementById('crawlPageTabs');
+    var crawlPageContent = document.getElementById('crawlPageContent');
+
+    // Page limit easter egg — MutationObserver
+    if (crawlMaxPages) {
+      var _crawlMaxObserver = new MutationObserver(function(mutations) {
+        mutations.forEach(function(m) {
+          if (m.attributeName === 'max') {
+            var newMax = parseInt(crawlMaxPages.getAttribute('max'));
+            if (newMax > 10) {
+              showToast('Nice try! We see you editing the DOM \uD83D\uDE0F Fine, ' + CRAWL_HARD_MAX + ' is the real limit\u2026 but your proxy rate limit isn\u2019t.');
+              crawlMaxPages.setAttribute('max', CRAWL_HARD_MAX);
+            }
+          }
+        });
+      });
+      _crawlMaxObserver.observe(crawlMaxPages, { attributes: true, attributeFilter: ['max'] });
+    }
+
+    // Enter key in crawl URL input
+    if (crawlUrlInput) {
+      crawlUrlInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); startCrawlBtn.click(); }
+      });
+    }
+
+    function crawlStatusIcon(status) {
+      if (status === 'done') return '<span class="status-icon done"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></span>';
+      if (status === 'error') return '<span class="status-icon error"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>';
+      if (status === 'fetching' || status === 'analyzing') return '<span class="status-icon active"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/></svg></span>';
+      return '<span class="status-icon pending"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-dasharray="20" stroke-dashoffset="10"/></svg></span>';
+    }
+
+    function updateCrawlProgressItem(page) {
+      var existing = document.getElementById('crawl-progress-' + encodeURIComponent(page.url));
+      var path; try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
+      var scoreText = page.status === 'done' && page.reportData ? ' ' + page.reportData.overall + '/100' : '';
+      var errorText = page.status === 'error' ? ' <span style="color:#dc2626;font-size:12px">' + (page.error || 'Failed').substring(0, 40) + '</span>' : '';
+      var html = crawlStatusIcon(page.status) +
+        '<span class="page-url" title="' + page.url + '">' + path + '</span>' +
+        '<span class="page-score">' + scoreText + errorText + '</span>';
+      if (existing) {
+        existing.innerHTML = html;
+      } else {
+        var div = document.createElement('div');
+        div.className = 'crawl-progress-item';
+        div.id = 'crawl-progress-' + encodeURIComponent(page.url);
+        div.innerHTML = html;
+        crawlProgressList.appendChild(div);
+      }
+    }
+
+    function renderCrawlTabs() {
+      if (!_crawlSession || !crawlPageTabs) return;
+      var html = '<button class="crawl-page-tab' + (_crawlActivePageTab === 'summary' ? ' active' : '') + '" data-crawl-page="summary">Summary</button>';
+      _crawlSession.pages.forEach(function(page, idx) {
+        html += MilgReport.renderCrawlPageTab(page, idx, _crawlActivePageTab === String(idx));
+      });
+      crawlPageTabs.innerHTML = html;
+    }
+
+    function showCrawlPageContent(key) {
+      _crawlActivePageTab = key;
+      renderCrawlTabs();
+      if (key === 'summary') {
+        var summary = _crawlSession.summary || MilgCrawl.buildSummary(_crawlSession);
+        crawlPageContent.innerHTML = MilgReport.renderCrawlSummary(summary);
+        var vpSubtabs = document.getElementById('crawlViewportSubtabs');
+        if (vpSubtabs) vpSubtabs.style.display = 'none';
+      } else {
+        var idx = parseInt(key);
+        var page = _crawlSession.pages[idx];
+        if (!page || page.status !== 'done') {
+          crawlPageContent.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-secondary)">' +
+            (page && page.status === 'error' ? 'Error: ' + (page.error || 'Analysis failed') : 'Analyzing\u2026') + '</div>';
+          return;
+        }
+        // Use cached report HTML or render fresh
+        if (!_crawlPageReports[idx]) {
+          var profile = document.getElementById('profileSelect');
+          if (profile) page.rawData.profile = profile.value;
+          page.reportData = MilgScoring.runScoring(page.rawData);
+          _crawlPageReports[idx] = MilgReport.renderReport(page.reportData);
+        }
+        crawlPageContent.innerHTML = _crawlPageReports[idx];
+      }
+    }
+
+    // Tab click delegation
+    if (crawlPageTabs) {
+      crawlPageTabs.addEventListener('click', function(e) {
+        var tab = e.target.closest('[data-crawl-page]');
+        if (!tab) return;
+        showCrawlPageContent(tab.getAttribute('data-crawl-page'));
+      });
+    }
+
+    if (startCrawlBtn) {
+      startCrawlBtn.addEventListener('click', function() {
+        var url = (crawlUrlInput.value || '').trim();
+        if (!url) { showToast('Enter a starting URL'); return; }
+        if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+
+        var maxPages = parseInt(crawlMaxPages.value) || 5;
+        maxPages = Math.min(Math.max(maxPages, 1), CRAWL_HARD_MAX);
+
+        var blacklist = (crawlBlacklist.value || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+        var deepScan = crawlDeepScan && crawlDeepScan.checked;
+        var profile = document.getElementById('profileSelect');
+
+        _crawlSession = MilgCrawl.createSession(url, {
+          maxPages: maxPages,
+          blacklist: blacklist,
+          deepScan: deepScan,
+          profile: profile ? profile.value : 'general'
+        });
+        _crawlPageReports = {};
+        _crawlActivePageTab = 'summary';
+
+        // Show progress, hide input controls
+        startCrawlBtn.disabled = true;
+        startCrawlBtn.textContent = 'Crawling\u2026';
+        cancelCrawlBtn.style.display = '';
+        crawlProgressArea.style.display = '';
+        crawlProgressList.innerHTML = '';
+        crawlProgressFill.style.width = '0%';
+        crawlProgressLabel.textContent = 'Fetching starting page\u2026';
+        crawlProgressCount.textContent = '0 / ' + maxPages;
+
+        // Show crawl results area
+        var inputSection = document.getElementById('inputSection');
+        var reportActions = document.getElementById('reportActions');
+        var reportContainer = document.getElementById('reportContainer');
+        crawlResults.style.display = '';
+        if (reportContainer) reportContainer.className = 'report-container';
+        if (reportActions) reportActions.style.display = '';
+
+        // Initial summary tab
+        renderCrawlTabs();
+        showCrawlPageContent('summary');
+
+        var doneCount = 0;
+        var totalPages = 1; // updated after discovery
+
+        MilgCrawl.startCrawl(_crawlSession, {
+          fetchPage: function(pageUrl, cb) {
+            fetchViaProxy(pageUrl, function(html, err) {
+              cb(html, err);
+            });
+          },
+          analyzePage: function(html, pageUrl, opts, cb) {
+            analyzeHtmlInIframe(html, function(data) {
+              if (data) {
+                data.meta.url = pageUrl;
+                data.meta._inputMethod = 'crawl';
+                if (opts.profile) data.profile = opts.profile;
+              }
+              cb(data);
+            }, pageUrl, opts.excludeSelector || null, false);
+          },
+          scorePage: function(data) {
+            return MilgScoring.runScoring(data);
+          },
+          onDiscovery: function(urls) {
+            totalPages = 1 + urls.length;
+            crawlProgressCount.textContent = '0 / ' + totalPages;
+            crawlProgressLabel.textContent = 'Found ' + urls.length + ' page' + (urls.length !== 1 ? 's' : '') + ' to crawl';
+          },
+          onPageStart: function(page) {
+            updateCrawlProgressItem(page);
+            crawlProgressLabel.textContent = 'Analyzing ' + page.url.replace(/^https?:\/\/[^/]+/, '') + '\u2026';
+            renderCrawlTabs();
+          },
+          onPageComplete: function(page) {
+            doneCount++;
+            updateCrawlProgressItem(page);
+            crawlProgressCount.textContent = doneCount + ' / ' + totalPages;
+            crawlProgressFill.style.width = Math.round(doneCount / totalPages * 100) + '%';
+            renderCrawlTabs();
+            // Update summary live
+            if (_crawlActivePageTab === 'summary') {
+              showCrawlPageContent('summary');
+            }
+          },
+          onPageError: function(page) {
+            doneCount++;
+            updateCrawlProgressItem(page);
+            crawlProgressCount.textContent = doneCount + ' / ' + totalPages;
+            crawlProgressFill.style.width = Math.round(doneCount / totalPages * 100) + '%';
+            renderCrawlTabs();
+          },
+          onComplete: function(session) {
+            startCrawlBtn.disabled = false;
+            startCrawlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Start Crawl';
+            cancelCrawlBtn.style.display = 'none';
+            crawlProgressLabel.textContent = 'Crawl complete!';
+            crawlProgressFill.style.width = '100%';
+            renderCrawlTabs();
+            showCrawlPageContent('summary');
+          }
+        });
+      });
+    }
+
+    if (cancelCrawlBtn) {
+      cancelCrawlBtn.addEventListener('click', function() {
+        if (_crawlSession) MilgCrawl.abortCrawl(_crawlSession);
+        startCrawlBtn.disabled = false;
+        startCrawlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Start Crawl';
+        cancelCrawlBtn.style.display = 'none';
+        crawlProgressLabel.textContent = 'Crawl cancelled';
+      });
+    }
+
+    // Check for completed snippet crawl on load
+    try {
+      var snippetCrawlData = localStorage.getItem('milg-crawl-complete');
+      if (snippetCrawlData) {
+        localStorage.removeItem('milg-crawl-complete');
+        var crawlState = JSON.parse(snippetCrawlData);
+        if (crawlState && crawlState.results && crawlState.results.length > 0) {
+          showToast('Loaded crawl results from console snippet (' + crawlState.results.length + ' pages)');
+          // Build session from snippet results
+          _crawlSession = MilgCrawl.createSession(crawlState.startUrl || crawlState.results[0].url, {
+            maxPages: crawlState.results.length,
+            profile: document.getElementById('profileSelect') ? document.getElementById('profileSelect').value : 'general'
+          });
+          crawlState.results.forEach(function(r) {
+            var report = MilgScoring.runScoring(r.data);
+            _crawlSession.pages.push({
+              url: r.url, status: 'done', title: (r.data.meta && r.data.meta.title) || '',
+              rawData: r.data, reportData: report, error: null,
+              startedAt: r.data.meta.timestamp, completedAt: r.data.meta.timestamp
+            });
+          });
+          _crawlSession.status = 'complete';
+          _crawlSession.summary = MilgCrawl.buildSummary(_crawlSession);
+          // Show results
+          crawlResults.style.display = '';
+          var reportActions = document.getElementById('reportActions');
+          if (reportActions) reportActions.style.display = '';
+          renderCrawlTabs();
+          showCrawlPageContent('summary');
+          // Switch to crawl tab
+          document.querySelectorAll('.tab-btn').forEach(function(t) { t.classList.remove('active'); });
+          document.querySelectorAll('.tab-content').forEach(function(t) { t.classList.remove('active'); });
+          var crawlTab = document.querySelector('[data-tab="tabCrawl"]');
+          if (crawlTab) crawlTab.classList.add('active');
+          var tabCrawl = document.getElementById('tabCrawl');
+          if (tabCrawl) tabCrawl.classList.add('active');
+        }
+      }
+    } catch(e) { console.error('Failed to load snippet crawl data:', e); }
+
+    // Crawl export wiring — override export buttons when crawl is active
+    var exportSeverityFilter = document.getElementById('exportSeverityFilter');
+    var copyMdBtn = document.getElementById('copyMdBtn');
+    var markdownBtn = document.getElementById('markdownBtn');
+    var exportJsonBtn = document.getElementById('exportJsonBtn');
+
+    function isCrawlActive() { return _crawlSession && _crawlSession.pages.length > 0 && crawlResults.style.display !== 'none'; }
+
+    // Wrap export handlers — add crawl check before each
+    if (copyMdBtn) {
+      var _origCopyMd = copyMdBtn.onclick;
+      copyMdBtn.addEventListener('click', function(e) {
+        if (!isCrawlActive()) return; // let original handler run
+        e.stopImmediatePropagation();
+        var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
+        var md = MilgCrawl.renderCrawlMarkdown(_crawlSession, filter);
+        navigator.clipboard.writeText(md).then(function() { showToast('Crawl report copied as Markdown!'); }).catch(function() { showToast('Copy failed'); });
+      });
+    }
+    if (markdownBtn) {
+      markdownBtn.addEventListener('click', function(e) {
+        if (!isCrawlActive()) return;
+        e.stopImmediatePropagation();
+        var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
+        var md = MilgCrawl.renderCrawlMarkdown(_crawlSession, filter);
+        var blob = new Blob([md], { type: 'text/markdown' });
+        var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+        a.download = 'site-crawl-report.md'; a.click();
+      });
+    }
+    if (exportJsonBtn) {
+      exportJsonBtn.addEventListener('click', function(e) {
+        if (!isCrawlActive()) return;
+        e.stopImmediatePropagation();
+        var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
+        var json = MilgCrawl.renderCrawlJSON(_crawlSession, filter);
+        var blob = new Blob([json], { type: 'application/json' });
+        var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+        a.download = 'site-crawl-data.json'; a.click();
+      });
+    }
   }
 
   var lastRawData = null; // Store raw data for re-scoring with different profiles

@@ -40,6 +40,7 @@
       <button class="tab-btn" data-tab="tabSnippet">Console Snippet<br><span class="tab-sub">(most accurate)</span></button>
       <button class="tab-btn" data-tab="tabHtml">Paste HTML<br><span class="tab-sub">(approximate)</span></button>
       <button class="tab-btn" data-tab="tabImport">Import<br><span class="tab-sub">(JSON file)</span></button>
+      <button class="tab-btn" data-tab="tabCrawl">Site Crawl<br><span class="tab-sub">(multi-page)</span></button>
     </div>
 
     <!-- Shared screenshot options (applies to all tabs) -->
@@ -223,6 +224,42 @@
         <input type="file" id="importDropFile" accept=".json" style="display:none">
       </div>
     </div>
+    <div class="tab-content" id="tabCrawl">
+      <div style="margin-bottom:16px">
+        <label for="crawlUrlInput" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;color:var(--text-secondary)">Starting URL</label>
+        <input type="url" id="crawlUrlInput" class="url-input" placeholder="https://example.com" autocomplete="url" spellcheck="false">
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:16px">
+        <div>
+          <label for="crawlMaxPages" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;color:var(--text-secondary)">Max pages</label>
+          <input type="number" id="crawlMaxPages" min="1" max="10" value="5" class="btn" style="width:80px;padding:8px 10px;font-size:14px;text-align:center">
+        </div>
+        <div style="flex:1;min-width:200px">
+          <label for="crawlBlacklist" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;color:var(--text-secondary)">Exclude pages <span style="font-weight:400">(comma-separated)</span></label>
+          <input type="text" id="crawlBlacklist" class="url-input" placeholder="/blog/*, /login, /admin" style="font-size:13px">
+        </div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:16px">
+        <label class="checkbox-label" style="font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px">
+          <input type="checkbox" id="crawlDeepScan"> Deep scan <span style="color:var(--text-secondary)">(test 3 viewports + dark mode per page)</span>
+        </label>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <button class="btn btn-primary" id="startCrawlBtn" style="min-height:44px;padding:10px 24px;font-weight:600">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          Start Crawl
+        </button>
+        <button class="btn" id="cancelCrawlBtn" style="display:none;min-height:44px">Cancel</button>
+      </div>
+      <div id="crawlProgressArea" style="display:none;margin-top:20px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span id="crawlProgressLabel" style="font-size:13px;font-weight:600;color:var(--text-secondary)">Discovering pages...</span>
+          <span id="crawlProgressCount" style="font-size:13px;color:var(--text-secondary)"></span>
+        </div>
+        <div class="progress-bar" style="margin-bottom:12px"><div class="progress-fill" id="crawlProgressFill"></div></div>
+        <div id="crawlProgressList" class="crawl-progress-list"></div>
+      </div>
+    </div>
   </div>
 
   <!-- Report controls (shown when report is visible) -->
@@ -287,6 +324,14 @@
     <!-- Bottom row: export actions (collapsible on mobile via CSS) -->
     <details class="export-details" open>
       <summary class="export-summary">Export &amp; Share</summary>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding:0 2px" id="severityFilterRow">
+      <label for="exportSeverityFilter" style="font-size:12px;color:var(--text-secondary);white-space:nowrap">Export filter:</label>
+      <select id="exportSeverityFilter" class="btn" style="padding:4px 24px 4px 8px;font-size:12px;appearance:auto;cursor:pointer">
+        <option value="all">All findings</option>
+        <option value="warning">Warnings + Errors</option>
+        <option value="error">Errors only</option>
+      </select>
+    </div>
     <div class="report-controls-row">
       <button class="btn" id="copyMdBtn" title="Copy Markdown without images (for pasting into chat/docs)">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
@@ -315,6 +360,12 @@
 
   <!-- Report container -->
   <div class="report-container" id="reportContainer"></div>
+  <!-- Crawl results (multi-page tabbed view) -->
+  <div id="crawlResults" style="display:none">
+    <div class="crawl-page-tabs" id="crawlPageTabs"></div>
+    <div id="crawlViewportSubtabs" class="crawl-viewport-subtabs" style="display:none"></div>
+    <div class="report-container visible" id="crawlPageContent"></div>
+  </div>
   </main>
 
   <!-- Toast -->
@@ -337,6 +388,7 @@
   <script src="scoring/balance.js"></script>
   <!-- Report rendering + UI -->
   <script src="analyzer-report.js"></script>
+  <script src="analyzer-crawl.js"></script>
   <script src="analyzer.js"></script>
 </body>
 </html>

@@ -656,5 +656,101 @@ window.MilgReport = (function() {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
-  return { renderReport: renderReport, renderMarkdown: renderMarkdown };
+  function renderCrawlSummary(summary) {
+    if (!summary || summary.pagesAnalyzed === 0) {
+      return '<div class="crawl-summary"><p style="color:var(--text-secondary)">No pages analyzed yet.</p></div>';
+    }
+
+    var html = '<div class="crawl-summary">';
+
+    // Overall stats
+    html += '<h2>Site Overview</h2>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:24px">';
+    html += '<div style="padding:12px 20px;border-radius:10px;background:var(--surface);border:1px solid var(--border);text-align:center">';
+    html += '<div style="font-size:32px;font-weight:700;font-variant-numeric:tabular-nums">' + summary.averageScore + '</div>';
+    html += '<div style="font-size:12px;color:var(--text-secondary)">Average Score</div></div>';
+    html += '<div style="padding:12px 20px;border-radius:10px;background:var(--surface);border:1px solid var(--border);text-align:center">';
+    html += '<div style="font-size:32px;font-weight:700">' + summary.pagesAnalyzed + '</div>';
+    html += '<div style="font-size:12px;color:var(--text-secondary)">Pages Analyzed</div></div>';
+    if (summary.pagesFailed > 0) {
+      html += '<div style="padding:12px 20px;border-radius:10px;background:#fef2f2;border:1px solid #fecaca;text-align:center">';
+      html += '<div style="font-size:32px;font-weight:700;color:#dc2626">' + summary.pagesFailed + '</div>';
+      html += '<div style="font-size:12px;color:#dc2626">Failed</div></div>';
+    }
+    html += '</div>';
+
+    // Score grid
+    html += '<h3>Page Scores</h3>';
+    html += '<div class="crawl-score-grid">';
+    summary.scoreGrid.forEach(function(row) {
+      var gradeClass = 'grade-' + row.grade.toLowerCase();
+      html += '<div class="crawl-score-card">';
+      html += '<div class="score ' + gradeClass + '">' + row.score + '</div>';
+      html += '<div class="grade ' + gradeClass + '">' + row.grade + '</div>';
+      html += '<div class="page-path" title="' + escapeHtml(row.url) + '">' + escapeHtml(row.path || '/') + '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+
+    // Cross-page issues
+    var issues = summary.crossPageIssues;
+    if (issues.length > 0) {
+      html += '<h3>Issues Across Pages</h3>';
+      issues.slice(0, 30).forEach(function(issue) {
+        html += '<div class="crawl-issue-group">';
+        html += '<div class="issue-header">';
+        html += '<div class="issue-title"><span class="severity-badge ' + issue.severity + '">' + issue.severity + '</span>' + escapeHtml(issue.title) + '</div>';
+        html += '<div class="issue-count">' + issue.count + ' page' + (issue.count > 1 ? 's' : '') + '</div>';
+        html += '</div>';
+        html += '<div class="issue-pages">';
+        issue.pages.slice(0, 5).forEach(function(p) {
+          var path; try { path = new URL(p.url).pathname; } catch(e) { path = p.url; }
+          html += '<div>' + escapeHtml(path) + (p.detail ? ' — ' + escapeHtml(p.detail.substring(0, 80)) : '') + '</div>';
+        });
+        if (issue.pages.length > 5) html += '<div style="color:var(--text-secondary)">...and ' + (issue.pages.length - 5) + ' more</div>';
+        html += '</div>';
+        html += '</div>';
+      });
+    }
+
+    // Category averages
+    if (summary.categoryAverages.length > 0) {
+      html += '<h3>Category Averages</h3>';
+      html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px">';
+      summary.categoryAverages.forEach(function(cat) {
+        var barColor = cat.avgScore >= 90 ? '#16a34a' : cat.avgScore >= 80 ? '#ca8a04' : cat.avgScore >= 70 ? '#ea580c' : '#dc2626';
+        html += '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;background:var(--surface);border:1px solid var(--border)">';
+        html += '<div style="flex:1;font-size:13px;font-weight:500">' + escapeHtml(cat.label) + '</div>';
+        html += '<div style="width:50px;height:6px;border-radius:3px;background:var(--border);overflow:hidden"><div style="height:100%;width:' + cat.avgScore + '%;background:' + barColor + ';border-radius:3px"></div></div>';
+        html += '<div style="font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;width:28px;text-align:right">' + cat.avgScore + '</div>';
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+
+    html += '</div>';
+    return html;
+  }
+
+  function renderCrawlPageTab(page, index, isActive) {
+    var path;
+    try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
+    if (path === '/') path = '/ (home)';
+    var label = page.title ? page.title.substring(0, 25) : path;
+
+    var dotClass = 'pending';
+    if (page.status === 'done' && page.reportData) {
+      dotClass = 'grade-' + page.reportData.grade.toLowerCase();
+    } else if (page.status === 'error') {
+      dotClass = 'error';
+    }
+
+    return '<button class="crawl-page-tab' + (isActive ? ' active' : '') + '" data-crawl-page="' + index + '" title="' + escapeHtml(page.url) + '">' +
+      '<span class="score-dot ' + dotClass + '"></span>' +
+      escapeHtml(label) +
+      (page.status === 'done' && page.reportData ? ' <span style="font-size:11px;color:var(--text-secondary)">' + page.reportData.overall + '</span>' : '') +
+      '</button>';
+  }
+
+  return { renderReport: renderReport, renderMarkdown: renderMarkdown, renderCrawlSummary: renderCrawlSummary, renderCrawlPageTab: renderCrawlPageTab };
 })();
