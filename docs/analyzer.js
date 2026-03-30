@@ -2059,6 +2059,9 @@
   // Try analyzing with JS enabled — fetches HTML via proxy, adds <base href> for
   // relative URL resolution, loads as srcdoc (same-origin so we can access the DOM).
   // The page's JS executes (React/Vue hydration etc.) then we inject the extraction snippet.
+  // Try analyzing with JS enabled — fetches raw HTML via proxy, patches URL constructor
+  // (srcdoc has about:srcdoc as location which breaks new URL(path, location.href)),
+  // then delegates to analyzeHtmlInIframe which handles extraction, screenshots, and timeouts.
   window.__milgTryWithJs = function(url) {
     var ok = confirm(
       'This will fetch the page via proxy and run its JavaScript in a sandboxed frame on this page.\n\n' +
@@ -2080,7 +2083,7 @@
       '<div style="margin-top:16px;font-size:12px;opacity:0.7">This may take 10-20 seconds depending on the site\'s JS bundle size.</div>' +
       '</div>';
 
-    // Step 1: Fetch raw HTML via proxy (don't inline CSS — let JS handle it)
+    // Fetch raw HTML via proxy (don't use fetchViaProxy which inlines CSS — let JS handle it)
     fetchWithProxy(url).then(function(html) {
       if (!html || html.length < 50) {
         reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
@@ -2089,84 +2092,44 @@
         return;
       }
 
-      // Step 2: Add <base href> so relative URLs (scripts, images, fonts) resolve against the original site
-      var baseTag = '<base href="' + url.replace(/"/g, '&quot;') + '">';
-      if (/<head[^>]*>/i.test(html)) {
-        html = html.replace(/<head([^>]*)>/i, '<head$1>' + baseTag);
-      } else if (/<html[^>]*>/i.test(html)) {
-        html = html.replace(/<html([^>]*)>/i, '<html$1><head>' + baseTag + '</head>');
+      // Patch URL constructor — inside srcdoc, window.location.href is "about:srcdoc"
+      // which isn't a valid base URL. Many JS frameworks do new URL(path, location.href)
+      // which throws. This patches the constructor to use the real site URL as fallback.
+      var urlPatch = '<script>' +
+        '(function(){' +
+          'var _rb="' + url.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '";' +
+          'var _O=URL;' +
+          'function _P(u,b){' +
+            'if(b&&(b==="about:srcdoc"||b==="about:blank"))b=_rb;' +
+            'if(!b&&typeof u==="string"&&u.charAt(0)==="/")return new _O(u,_rb);' +
+            'return arguments.length===1?new _O(u):new _O(u,b);' +
+          '}' +
+          '_P.prototype=_O.prototype;' +
+          '_P.createObjectURL=_O.createObjectURL.bind(_O);' +
+          '_P.revokeObjectURL=_O.revokeObjectURL.bind(_O);' +
+          '_P.canParse=_O.canParse?_O.canParse.bind(_O):undefined;' +
+          'window.URL=_P;' +
+        '})();' +
+        '</' + 'script>';
+
+      // Inject URL patch as the very first script (before any framework JS)
+      if (/<head[\s>]/i.test(html)) {
+        html = html.replace(/<head([^>]*)>/i, '<head$1>' + urlPatch);
+      } else if (/<html[\s>]/i.test(html)) {
+        html = html.replace(/<html([^>]*)>/i, '<html$1><head>' + urlPatch + '</head>');
       } else {
-        html = baseTag + html;
+        html = urlPatch + html;
       }
 
-      // Step 3: Create same-origin iframe with srcdoc (JS will execute)
-      var vp = getSelectedViewport();
-      var iframe = document.createElement('iframe');
-      iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + vp.w + 'px;height:' + vp.h + 'px;border:none;';
-      iframe.sandbox = 'allow-scripts allow-same-origin allow-forms';
-      document.body.appendChild(iframe);
-
-      var done = false;
-      function cleanup() { if (iframe.parentNode) document.body.removeChild(iframe); }
-
-      function showError(msg) {
-        reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
-          msg + '<br><button onclick="window.__milgSwitchToSnippet()" ' + errBtn + '>Use Console Snippet instead</button></div>';
-      }
-
-      // Step 4: After iframe loads + JS settles, inject extraction snippet
-      iframe.addEventListener('load', function() {
-        if (done) return;
-        // Wait for JS to settle (React hydration, SPA rendering, lazy chunks)
-        setTimeout(function() {
-          if (done) return;
-          try {
-            var iWin = iframe.contentWindow;
-            var iDoc = iframe.contentDocument || iWin.document;
-            // Check if the page actually rendered content
-            var bodyEls = iDoc.body ? iDoc.body.querySelectorAll('*').length : 0;
-
-            // Inject inline extraction function (same as analyzeHtmlInIframe uses)
-            var script = iDoc.createElement('script');
-            script.textContent = '(' + extractFromDocument.toString() + ')();';
-            iDoc.body.appendChild(script);
-
-            // Listen for postMessage result
-            var resultHandler = function(e) {
-              if (done) return;
-              if (e.data && e.data.type === 'milg-analyzer-result') {
-                done = true;
-                window.removeEventListener('message', resultHandler);
-                var d = e.data.data;
-                d.meta.url = url;
-                d.meta._inputMethod = 'url';
-                cleanup();
-                runAnalysis(d);
-              }
-            };
-            window.addEventListener('message', resultHandler);
-
-            // Timeout: if extraction doesn't complete in 15s
-            setTimeout(function() {
-              if (done) return; done = true;
-              window.removeEventListener('message', resultHandler);
-              cleanup();
-              showError('Extraction timed out — JS may have failed to render or the page has no content (' + bodyEls + ' elements found).');
-            }, 15000);
-          } catch(e) {
-            done = true; cleanup();
-            showError('Cannot access frame: ' + e.message);
-          }
-        }, 3000); // 3s wait for JS hydration/rendering
-      });
-
-      iframe.srcdoc = html;
-
-      // Hard timeout for the whole process
-      setTimeout(function() {
-        if (done) return; done = true; cleanup();
-        showError('Page took too long to load (25s timeout).');
-      }, 25000);
+      // Delegate to the standard analysis pipeline — it handles base tag injection,
+      // extraction (wait for load + 1s), screenshots, unhidden panels, and timeouts
+      var wantShots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
+      var exclude = window.__milgCombinedExclude || (document.getElementById('excludeSelector') && document.getElementById('excludeSelector').value || '').trim() || null;
+      analyzeHtmlInIframe(html, function(data) {
+        data.meta.url = url;
+        data.meta._inputMethod = 'url';
+        runAnalysis(data);
+      }, url, exclude, wantShots);
 
     }).catch(function(e) {
       reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
@@ -2403,7 +2366,11 @@
     var srcdoc;
     if (isFullDoc) {
       // Wait for window load (CSS/fonts loaded), then extra delay for rendering
-      var extractScript = excludeVar + fragmentVar + screenshotScript + '<script>window.addEventListener("load",function(){setTimeout(function(){(' + extractFromDocument.toString() + ')()},1000)});setTimeout(function(){(' + extractFromDocument.toString() + ')()},8000);</' + 'script>';
+      // JS-enabled mode (URL patch present) needs longer delays for React/Vue hydration
+      var hasJsPatch = html.indexOf('about:srcdoc') !== -1;
+      var postLoadDelay = hasJsPatch ? 3000 : 1000;
+      var fallbackDelay = hasJsPatch ? 12000 : 8000;
+      var extractScript = excludeVar + fragmentVar + screenshotScript + '<script>window.addEventListener("load",function(){setTimeout(function(){(' + extractFromDocument.toString() + ')()},' + postLoadDelay + ')});setTimeout(function(){(' + extractFromDocument.toString() + ')()},' + fallbackDelay + ');</' + 'script>';
       if (/<\/body>/i.test(html)) {
         srcdoc = html.replace(/<\/body>/i, extractScript + '</body>');
       } else {
