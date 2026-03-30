@@ -31,7 +31,7 @@
   .scroll-reveal {
     opacity: 0;
     transform: translateY(40px);
-    transition: opacity 0.7s ease-out, transform 0.7s ease-out;
+    transition: opacity 0.5s ease-out, transform 0.5s ease-out;
   }
   .scroll-reveal.revealed {
     opacity: 1;
@@ -56,6 +56,14 @@
   .project-card:hover img {
     transform: scale(1.05);
   }
+
+  /* Reduced motion: disable animations */
+  @media (prefers-reduced-motion: reduce) {
+    .scroll-reveal { opacity: 1; transform: none; transition: none; }
+    .marquee-track { animation: none; }
+    .service-item { transition: none; }
+    .project-card img { transition: none; }
+  }
 </style>
 
 <div class="min-h-screen bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100">
@@ -63,13 +71,36 @@
   <!-- Header (visible after scroll, fixed top-right) -->
   <header id="agencyHeader" class="fixed top-0 left-0 right-0 z-40 flex items-center justify-between px-4 md:px-10 py-3 md:py-4 pointer-events-none opacity-0 transition-opacity duration-500" style="background: rgba(255,255,255,0.85); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);">
     <span id="headerLogo" class="pointer-events-none text-base font-semibold text-slate-900 dark:text-white">Studio Name<span class="text-teal-600 dark:text-teal-400 text-[0.6em] align-super">&reg;</span></span>
-    <nav class="pointer-events-auto flex items-center gap-4 sm:gap-6" aria-label="Main navigation">
-      <a href="#work" class="text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Work</a>
-      <a href="#services" class="text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Services</a>
-      <a href="#about" class="text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">About</a>
+    <!-- Desktop nav -->
+    <nav class="pointer-events-auto hidden sm:flex items-center gap-6" aria-label="Main navigation">
+      <a href="#work" class="text-sm font-medium text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Work</a>
+      <a href="#services" class="text-sm font-medium text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Services</a>
+      <a href="#about" class="text-sm font-medium text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">About</a>
       <a href="#contact" class="inline-flex items-center px-5 py-2.5 text-sm font-medium bg-teal-700 dark:bg-teal-600 text-white rounded-full hover:bg-teal-600 dark:hover:bg-teal-500 transition-colors min-h-11">Contact</a>
     </nav>
+    <!-- Mobile menu button -->
+    <button id="mobileMenuBtn" class="pointer-events-auto sm:hidden flex items-center justify-center w-11 h-11 text-slate-900 dark:text-white" aria-label="Open menu" aria-expanded="false">
+      <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 9h16.5m-16.5 6.75h16.5"/></svg>
+    </button>
   </header>
+
+  <!-- Mobile menu overlay -->
+  <div id="mobileMenu" class="fixed inset-0 z-50 hidden" aria-label="Mobile navigation">
+    <div class="absolute inset-0 bg-white dark:bg-slate-950 px-6 pt-6 pb-12 flex flex-col">
+      <div class="flex items-center justify-between mb-12">
+        <span class="text-base font-semibold text-slate-900 dark:text-white">Studio Name<span class="text-teal-600 dark:text-teal-400 text-[0.6em] align-super">&reg;</span></span>
+        <button id="mobileMenuClose" class="flex items-center justify-center w-11 h-11 text-slate-900 dark:text-white" aria-label="Close menu">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <nav class="flex flex-col gap-6">
+        <a href="#work" class="text-2xl font-light text-slate-900 dark:text-white" onclick="closeMobileMenu()">Work</a>
+        <a href="#services" class="text-2xl font-light text-slate-900 dark:text-white" onclick="closeMobileMenu()">Services</a>
+        <a href="#about" class="text-2xl font-light text-slate-900 dark:text-white" onclick="closeMobileMenu()">About</a>
+        <a href="#contact" class="inline-flex items-center justify-center px-6 py-3 mt-4 text-base font-medium bg-teal-700 dark:bg-teal-600 text-white rounded-full hover:bg-teal-600 dark:hover:bg-teal-500 transition-colors min-h-11" onclick="closeMobileMenu()">Contact</a>
+      </nav>
+    </div>
+  </div>
 
   <main>
 
@@ -85,7 +116,7 @@
 
     <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-8 mt-auto">
       <div class="max-w-md">
-        <p class="text-base sm:text-lg leading-relaxed text-slate-600 dark:text-slate-400">
+        <p class="text-base sm:text-lg leading-relaxed text-slate-700 dark:text-slate-400">
           A digital studio specialized in UX/UI design and bespoke web development.
           We create tailor-made experiences optimized for impact.
         </p>
@@ -94,11 +125,11 @@
         </a>
       </div>
 
-      <nav class="flex items-center gap-6 sm:gap-8 text-sm" aria-label="Page sections">
-        <a href="#work" class="text-slate-900 dark:text-white font-medium underline underline-offset-4 decoration-1 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Work</a>
-        <a href="#services" class="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Services</a>
-        <a href="#about" class="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">About</a>
-        <a href="#contact" class="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Contact</a>
+      <nav class="flex flex-wrap items-center gap-4 sm:gap-8 text-sm" aria-label="Page sections">
+        <a href="#work" class="inline-flex items-center min-h-[44px] text-slate-900 dark:text-white font-medium underline underline-offset-4 decoration-1 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Work</a>
+        <a href="#services" class="inline-flex items-center min-h-[44px] text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Services</a>
+        <a href="#about" class="inline-flex items-center min-h-[44px] text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">About</a>
+        <a href="#contact" class="inline-flex items-center min-h-[44px] text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Contact</a>
       </nav>
     </div>
   </section>
@@ -167,7 +198,7 @@
   <!-- Work / Projects Grid -->
   <section id="work" class="py-16 md:py-24 lg:py-32 px-4 sm:px-8 md:px-10 bg-white dark:bg-slate-950">
     <div class="max-w-6xl mx-auto">
-      <h2 class="text-xs font-semibold uppercase tracking-widest text-slate-600 dark:text-slate-400 mb-10 md:mb-16 scroll-reveal">Selected projects</h2>
+      <h2 class="text-xs font-semibold uppercase tracking-widest text-slate-700 dark:text-slate-400 mb-10 md:mb-16 scroll-reveal">Selected projects</h2>
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
         <!-- Project 1 -->
@@ -178,7 +209,7 @@
             </div>
           </div>
           <h3 class="text-lg font-semibold group-hover:text-teal-700 dark:group-hover:text-teal-400 transition-colors">Fintech Dashboard</h3>
-          <p class="text-sm text-slate-600 dark:text-slate-400 mt-1">UX/UI Design &middot; Development</p>
+          <p class="text-sm text-slate-700 dark:text-slate-400 mt-1">UX/UI Design &middot; Development</p>
         </a>
 
         <!-- Project 2 -->
@@ -189,7 +220,7 @@
             </div>
           </div>
           <h3 class="text-lg font-semibold group-hover:text-teal-700 dark:group-hover:text-teal-400 transition-colors">Luxury Watch Brand</h3>
-          <p class="text-sm text-slate-600 dark:text-slate-400 mt-1">Art direction &middot; E-Commerce</p>
+          <p class="text-sm text-slate-700 dark:text-slate-400 mt-1">Art direction &middot; E-Commerce</p>
         </a>
 
         <!-- Project 3 -->
@@ -200,7 +231,7 @@
             </div>
           </div>
           <h3 class="text-lg font-semibold group-hover:text-teal-700 dark:group-hover:text-teal-400 transition-colors">Health & Wellness App</h3>
-          <p class="text-sm text-slate-600 dark:text-slate-400 mt-1">UX Research &middot; Mobile Design</p>
+          <p class="text-sm text-slate-700 dark:text-slate-400 mt-1">UX Research &middot; Mobile Design</p>
         </a>
 
         <!-- Project 4 -->
@@ -211,7 +242,7 @@
             </div>
           </div>
           <h3 class="text-lg font-semibold group-hover:text-teal-700 dark:group-hover:text-teal-400 transition-colors">Creative Agency Rebrand</h3>
-          <p class="text-sm text-slate-600 dark:text-slate-400 mt-1">Branding &middot; Web Design</p>
+          <p class="text-sm text-slate-700 dark:text-slate-400 mt-1">Branding &middot; Web Design</p>
         </a>
       </div>
     </div>
@@ -259,9 +290,9 @@
     <div class="max-w-6xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
       <div>
         <p class="text-base font-semibold text-slate-900 dark:text-white">Studio Name<span class="text-teal-600 dark:text-teal-400 text-xs align-super">&reg;</span></p>
-        <p class="text-sm text-slate-600 dark:text-slate-400 mt-1">&copy; 2026 All rights reserved.</p>
+        <p class="text-sm text-slate-700 dark:text-slate-400 mt-1">&copy; 2026 All rights reserved.</p>
       </div>
-      <nav class="flex items-center gap-6 text-sm text-slate-600 dark:text-slate-400" aria-label="Footer links">
+      <nav class="flex items-center gap-6 text-sm text-slate-700 dark:text-slate-400" aria-label="Footer links">
         <a href="#" class="hover:text-slate-900 dark:hover:text-white transition-colors">Instagram</a>
         <a href="#" class="hover:text-slate-900 dark:hover:text-white transition-colors">LinkedIn</a>
         <a href="#" class="hover:text-slate-900 dark:hover:text-white transition-colors">Dribbble</a>
@@ -350,4 +381,21 @@ var revealObserver = new IntersectionObserver(function(entries) {
   });
 }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
 reveals.forEach(function(el) { revealObserver.observe(el); });
+
+// --- Mobile menu ---
+var mobileMenu = document.getElementById('mobileMenu');
+var mobileMenuBtn = document.getElementById('mobileMenuBtn');
+var mobileMenuClose = document.getElementById('mobileMenuClose');
+
+function closeMobileMenu() {
+  mobileMenu.classList.add('hidden');
+  mobileMenuBtn.setAttribute('aria-expanded', 'false');
+  document.body.style.overflow = '';
+}
+mobileMenuBtn.addEventListener('click', function() {
+  mobileMenu.classList.remove('hidden');
+  mobileMenuBtn.setAttribute('aria-expanded', 'true');
+  document.body.style.overflow = 'hidden';
+});
+mobileMenuClose.addEventListener('click', closeMobileMenu);
 </script>
