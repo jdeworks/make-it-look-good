@@ -33009,8 +33009,20 @@ function scoreLayout(data) {
     // Also flag pages with very few text colors (likely unstyled/broken render)
     var textColorCount = (data.colors && data.colors.textColors) ? data.colors.textColors.length : 0;
     var isBareBones = elCount > 5 && elCount < 50 && textColorCount <= 2 && contentWidth < 200;
+    // Show success note for JS-enabled analysis (no screenshots available in srcdoc mode)
+    var isJsEnabled = data.meta && data.meta._jsEnabled;
+    if (isJsEnabled && isUrlFetch && !(hasLimitedContent || isJsDependent || isBareBones)) {
+      var isDark = document.body.classList.contains('dark-ui');
+      var nBg = isDark ? '#0c2d1e' : '#f0fdf4';
+      var nBorder = isDark ? '#166534' : '#22c55e';
+      var nText = isDark ? '#86efac' : '#166534';
+      warningHtml = '<div style="padding:12px 16px;background:' + nBg + ';border:1px solid ' + nBorder + ';border-radius:var(--radius);margin-bottom:12px;font-size:13px;color:' + nText + ';display:flex;align-items:center;gap:8px">' +
+        '<span style="font-size:16px">&#9889;</span>' +
+        '<span>Analyzed with JavaScript enabled (' + elCount + ' elements). ' +
+        'Screenshots are not available in this mode — use the <strong>Console Snippet</strong> for screenshots.</span></div>';
+    }
     // Only show JS-required warning for URL fetch — paste/editor/console modes don't need it
-    if (isUrlFetch && (hasLimitedContent || isJsDependent || isBareBones)) {
+    if (isUrlFetch && !isJsEnabled && (hasLimitedContent || isJsDependent || isBareBones)) {
       var reason = hasLimitedContent
         ? 'Limited content detected (' + elCount + ' elements)'
         : isJsDependent
@@ -33118,19 +33130,34 @@ function scoreLayout(data) {
 
     var reportContainer = document.getElementById('reportContainer');
     var errBtn = 'style="margin-top:12px;padding:8px 16px;border-radius:6px;border:1px solid currentColor;background:none;color:inherit;cursor:pointer;font-size:13px"';
-    showProgress(5, 'Fetching page via proxy...');
+
+    // Show progress directly in reportContainer (the input section with the
+    // normal progress bar is hidden at this point since the warning is showing)
+    var isDark = document.body.classList.contains('dark-ui');
+    var progBg = isDark ? '#1e293b' : '#f1f5f9';
+    var progText = isDark ? '#94a3b8' : '#475569';
+    var progAccent = isDark ? '#3b82f6' : '#2563eb';
+    function showJsProgress(pct, label) {
+      reportContainer.innerHTML = '<div style="padding:30px 40px;background:' + progBg + ';border-radius:var(--radius);text-align:center">' +
+        '<div style="font-size:13px;color:' + progText + ';margin-bottom:12px;font-weight:500">' + label + '</div>' +
+        '<div style="height:6px;background:' + (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)') + ';border-radius:3px;overflow:hidden">' +
+        '<div style="height:100%;width:' + pct + '%;background:' + progAccent + ';border-radius:3px;transition:width 0.6s ease"></div></div>' +
+        '</div>';
+      reportContainer.classList.add('visible');
+    }
+
+    showJsProgress(5, 'Fetching page via proxy...');
 
     // Fetch raw HTML via proxy (don't use fetchViaProxy which inlines CSS — let JS handle it)
     fetchWithProxy(url).then(function(html) {
       if (!html || html.length < 50) {
-        hideProgress();
         reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
           'Could not fetch the page (empty response).<br>' +
           '<button onclick="window.__milgSwitchToSnippet()" ' + errBtn + '>Use Console Snippet instead</button></div>';
         return;
       }
 
-      showProgress(20, 'Patching environment for JS execution...');
+      showJsProgress(20, 'Preparing JavaScript environment...');
 
       // Comprehensive srcdoc environment patches:
       // Inside srcdoc iframes, many Web APIs break because the document origin is the
@@ -33140,8 +33167,6 @@ function scoreLayout(data) {
       var urlPatch = '<script>' +
         '(function(){' +
           'var _rb="' + escapedUrl + '";' +
-          // --- URL constructor patch ---
-          // location.href="about:srcdoc", location.origin="null", Location→"about:srcdoc"
           'var _O=URL;' +
           'function _P(u,b){' +
             'if(b){' +
@@ -33157,16 +33182,10 @@ function scoreLayout(data) {
           '_P.revokeObjectURL=_O.revokeObjectURL.bind(_O);' +
           'if(_O.canParse)_P.canParse=_O.canParse.bind(_O);' +
           'window.URL=_P;' +
-          // --- History API patch ---
-          // Next.js/React Router call history.pushState/replaceState with the target site
-          // URL, which throws SecurityError because it doesn't match the document origin.
-          // Wrap to silently catch these errors (routing isn't needed for design analysis).
           'var _hps=history.pushState.bind(history);' +
           'var _hrs=history.replaceState.bind(history);' +
           'history.pushState=function(s,t,u){try{_hps(s,t,u);}catch(e){}};' +
           'history.replaceState=function(s,t,u){try{_hrs(s,t,u);}catch(e){}};' +
-          // --- Fetch patch ---
-          // Relative fetch("/api/...") would go to jdeworks.github.io. Rewrite to target.
           'var _of=window.fetch;' +
           'window.fetch=function(u,o){' +
             'if(typeof u==="string"&&u.charAt(0)==="/")u=_rb.replace(/\\/$/,"")+u;' +
@@ -33184,31 +33203,32 @@ function scoreLayout(data) {
         html = urlPatch + html;
       }
 
-      showProgress(30, 'Running JavaScript & rendering page...');
+      showJsProgress(30, 'Running JavaScript & rendering page...');
 
-      // Animate progress while waiting for JS to hydrate (takes 3-12s)
+      // Animate progress while waiting for JS hydration
+      var _jpPct = 30;
       var _jsProgressTimer = setInterval(function() {
-        var fill = document.getElementById('progressFill');
-        if (!fill) { clearInterval(_jsProgressTimer); return; }
-        var cur = parseFloat(fill.style.width) || 30;
-        if (cur < 85) showProgress(cur + 2, cur < 50 ? 'Running JavaScript & rendering page...' : cur < 70 ? 'Waiting for framework hydration...' : 'Extracting design data...');
-      }, 800);
+        _jpPct = Math.min(_jpPct + 3, 90);
+        var label = _jpPct < 50 ? 'Running JavaScript & rendering page...'
+          : _jpPct < 70 ? 'Waiting for framework hydration...'
+          : 'Extracting design data...';
+        showJsProgress(_jpPct, label);
+      }, 600);
 
-      // Delegate to the standard analysis pipeline — it handles base tag injection,
-      // extraction (wait for load + 1s), screenshots, unhidden panels, and timeouts
-      var wantShots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
+      // Delegate to the standard analysis pipeline — handles base tag, extraction,
+      // screenshots, unhidden panels, and timeouts.
+      // Skip screenshots for JS-enabled mode — cross-origin images in srcdoc taint
+      // the canvas, making domToCanvas fail. Screenshots work via Console Snippet.
       var exclude = window.__milgCombinedExclude || (document.getElementById('excludeSelector') && document.getElementById('excludeSelector').value || '').trim() || null;
       analyzeHtmlInIframe(html, function(data) {
         clearInterval(_jsProgressTimer);
-        showProgress(100, 'Done!');
-        setTimeout(hideProgress, 500);
         data.meta.url = url;
         data.meta._inputMethod = 'url';
+        data.meta._jsEnabled = true;
         runAnalysis(data);
-      }, url, exclude, wantShots);
+      }, url, exclude, false); // false = skip screenshots (CORS issues in srcdoc)
 
     }).catch(function(e) {
-      hideProgress();
       reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
         'Failed to fetch the page: ' + (e.message || 'proxy error') + '<br>' +
         '<button onclick="window.__milgSwitchToSnippet()" ' + errBtn + '>Use Console Snippet instead</button></div>';
@@ -33445,8 +33465,8 @@ function scoreLayout(data) {
       // Wait for window load (CSS/fonts loaded), then extra delay for rendering
       // JS-enabled mode (URL patch present) needs longer delays for React/Vue hydration
       var hasJsPatch = html.indexOf('about:srcdoc') !== -1;
-      var postLoadDelay = hasJsPatch ? 3000 : 1000;
-      var fallbackDelay = hasJsPatch ? 12000 : 8000;
+      var postLoadDelay = hasJsPatch ? 2000 : 1000;
+      var fallbackDelay = hasJsPatch ? 8000 : 8000;
       var extractScript = excludeVar + fragmentVar + screenshotScript + '<script>window.addEventListener("load",function(){setTimeout(function(){(' + extractFromDocument.toString() + ')()},' + postLoadDelay + ')});setTimeout(function(){(' + extractFromDocument.toString() + ')()},' + fallbackDelay + ');</' + 'script>';
       if (/<\/body>/i.test(html)) {
         srcdoc = html.replace(/<\/body>/i, extractScript + '</body>');
