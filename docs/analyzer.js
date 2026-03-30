@@ -151,7 +151,7 @@
     var data = {
       meta: { title: document.title, url: location.href, viewportWidth: window.innerWidth, viewportHeight: window.innerHeight, timestamp: new Date().toISOString(), version: 1, isFragment: !!window.__milgIsFragment },
       colors: { textColors: [], bgColors: [], contrastPairs: [] },
-      typography: { bodyFontSize: '', bodyLineHeight: '', bodyFontFamily: '', fontFamilies: [], fontSizes: [], fontWeights: [], headings: [], lineHeights: [], maxLineLength: { chars: 0, element: '' } },
+      typography: { bodyFontSize: '', bodyLineHeight: '', bodyFontFamily: '', fontFamilies: [], fontSizes: [], fontWeights: [], headings: [], lineHeights: [], maxLineLength: { chars: 0, element: '', fontSize: 0, textLength: 0 } },
       spacing: { paddings: [], margins: [], gaps: [], maxContentWidth: '', bodyPaddingHorizontal: '' },
       layout: { sectionGaps: [], alignmentEdges: [], visualHierarchy: {} },
       interaction: { touchTargets: [], transitions: [] },
@@ -246,7 +246,7 @@
       var charWidth = fontSize * 0.5;
       var charsPerLine = Math.round(elWidth / charWidth);
       if (charsPerLine > data.typography.maxLineLength.chars && el.tagName !== 'SCRIPT' && el.tagName !== 'STYLE' && !el.closest('pre') && !el.closest('code')) {
-        data.typography.maxLineLength = { chars: charsPerLine, element: cssSelector(el) };
+        data.typography.maxLineLength = { chars: charsPerLine, element: cssSelector(el), fontSize: Math.round(fontSize), textLength: node.textContent.trim().length };
       }
     }
     contrastPairs.sort(function(a, b) { return a.ratio - b.ratio; });
@@ -478,6 +478,54 @@
         vpWidth: vpW,
         reason: r.right < 0 ? 'left-overflow' : r.left >= vpW ? 'right-overflow' : 'major-clip'
       });
+    });
+    data.layout.offscreenElements = data.layout.offscreenElements.slice(0, 20);
+
+    // --- Second pass: check hidden fixed/sticky elements for potential overflow ---
+    // Elements like scroll-triggered headers may be hidden (opacity:0) at extraction time
+    // but overflow the viewport when they become visible after scrolling
+    document.querySelectorAll('*').forEach(function(el) {
+      var s = getComputedStyle(el);
+      if (s.position !== 'fixed' && s.position !== 'sticky') return;
+      // Only check elements that are currently hidden
+      if (s.opacity !== '0' && s.display !== 'none' && s.visibility !== 'hidden') return;
+      // Temporarily reveal to measure
+      var origOpacity = el.style.opacity;
+      var origVisibility = el.style.visibility;
+      var origPointerEvents = el.style.pointerEvents;
+      el.style.opacity = '0.001';
+      el.style.visibility = 'visible';
+      el.style.pointerEvents = 'none';
+      // Force reflow
+      void el.offsetWidth;
+      // Check children for overflow
+      var children = el.querySelectorAll(meaningfulSel);
+      children.forEach(function(child) {
+        var cs = getComputedStyle(child);
+        if (cs.display === 'none') return;
+        var cr = child.getBoundingClientRect();
+        if (cr.width < 4 || cr.height < 4) return;
+        var fullyOff = cr.right < 0 || cr.left >= vpW;
+        var majorClip = cr.left < vpW && cr.right > vpW && (cr.right - vpW) > cr.width * 0.5;
+        if (!fullyOff && !majorClip) return;
+        // Skip if already reported
+        var sel = cssSelector(child);
+        var alreadyReported = data.layout.offscreenElements.some(function(rec) { return rec.selector === sel; });
+        if (alreadyReported) return;
+        data.layout.offscreenElements.push({
+          element: child.tagName.toLowerCase(),
+          selector: sel,
+          text: (child.textContent || child.getAttribute('aria-label') || '').trim().substring(0, 50),
+          left: Math.round(cr.left),
+          right: Math.round(cr.right),
+          vpWidth: vpW,
+          reason: 'hidden-fixed-overflow'
+        });
+      });
+      // Restore
+      el.style.opacity = origOpacity;
+      el.style.visibility = origVisibility;
+      el.style.pointerEvents = origPointerEvents;
     });
     data.layout.offscreenElements = data.layout.offscreenElements.slice(0, 20);
 
@@ -1765,7 +1813,7 @@
         finish({
           meta: { title: '', url: 'Pasted HTML', viewportWidth: 1280, viewportHeight: 900, timestamp: new Date().toISOString(), version: 1 },
           colors: { textColors: [], bgColors: [], contrastPairs: [] },
-          typography: { bodyFontSize: '16px', bodyLineHeight: '24px', bodyFontFamily: 'sans-serif', fontFamilies: [], fontSizes: [], fontWeights: [], headings: [], lineHeights: [], maxLineLength: { chars: 0, element: '' } },
+          typography: { bodyFontSize: '16px', bodyLineHeight: '24px', bodyFontFamily: 'sans-serif', fontFamilies: [], fontSizes: [], fontWeights: [], headings: [], lineHeights: [], maxLineLength: { chars: 0, element: '', fontSize: 0, textLength: 0 } },
           spacing: { paddings: [], margins: [], gaps: [], maxContentWidth: '', bodyPaddingHorizontal: '' },
           layout: { sectionGaps: [], alignmentEdges: [], visualHierarchy: {} },
           interaction: { touchTargets: [], transitions: [] },

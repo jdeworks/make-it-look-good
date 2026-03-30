@@ -136,7 +136,8 @@ function scoreContrast(data) {
         ? 'Large text needs ' + profile.contrastLarge + ':1 minimum. Darken the text or lighten the background.'
         : 'Normal text needs ' + profile.contrast + ':1 minimum. Use a darker text color or lighter background.',
       presetRef: 'All presets use text-slate-600+ on white backgrounds (8:1+ ratio)',
-      source: p.isLarge ? 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' : 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
+      source: p.isLarge ? 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' : 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum',
+      locator: { selector: p.selector, text: p.text }
     });
   });
 
@@ -158,7 +159,8 @@ function scoreContrast(data) {
       detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector,
       fix: 'Passes AA but consider increasing for AAA (7:1). Slight changes in background could cause failure.',
       presetRef: null,
-      source: 'WCAG 2.2 §1.4.6 — https://www.w3.org/TR/WCAG22/#contrast-enhanced'
+      source: 'WCAG 2.2 §1.4.6 — https://www.w3.org/TR/WCAG22/#contrast-enhanced',
+      locator: { selector: p.selector, text: p.text }
     });
   });
 

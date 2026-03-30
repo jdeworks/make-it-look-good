@@ -49,11 +49,14 @@ function scoreTypography(data) {
   }
 
   // Line length (profile-aware: elderly 65, children 55, default 75)
-  // Only flag when chars were measured from actual text (not container width estimate)
   var maxChars = data.typography.maxLineLength ? data.typography.maxLineLength.chars : 0;
   var lineElement = data.typography.maxLineLength ? data.typography.maxLineLength.element : '';
+  var lineFontSize = data.typography.maxLineLength ? (data.typography.maxLineLength.fontSize || 0) : 0;
+  var lineTextLength = data.typography.maxLineLength ? (data.typography.maxLineLength.textLength || 0) : 0;
   var isTextElement = /^(p|li|td|th|blockquote|dd|figcaption)/.test(lineElement);
-  if (maxChars > 0 && isTextElement) {
+  // Hero/intro text: large font (>=20px) with short content (<150 chars) is intentionally wide
+  var isHeroText = lineFontSize >= 20 && lineTextLength < 150;
+  if (maxChars > 0 && isTextElement && !isHeroText) {
     checks++;
     var lineLimit = profile.maxLineLength || 75;
     if (maxChars <= lineLimit + 5) {
@@ -62,10 +65,11 @@ function scoreTypography(data) {
       findings.push({
         severity: maxChars > lineLimit + 25 ? 'error' : 'warning',
         title: 'Line length ~' + maxChars + ' characters (max for this audience: ' + lineLimit + ')',
-        detail: lineLimit < 70 ? 'Shorter lines improve readability for this audience.' : 'Long lines make it hard for the eye to track back to the next line.',
+        detail: lineElement + ' — ' + (lineLimit < 70 ? 'Shorter lines improve readability for this audience.' : 'Long lines make it hard for the eye to track back to the next line.'),
         fix: 'Constrain content width with max-w-prose (65ch) or max-w-2xl (672px)',
         presetRef: 'Editorial presets use max-w-prose for reading content',
-        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-length.html'
+        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-length.html',
+        locator: { selector: lineElement, text: '' }
       });
     }
   }

@@ -188,7 +188,8 @@ function scoreLayout(data) {
       detail: offDetails.join('; '),
       fix: 'Check absolute/fixed positioning. On mobile, dropdown menus with right-0 may overflow left. Use left-0 sm:right-0 or max-w-[calc(100vw-2rem)]. For elements extending right, check fixed widths wider than viewport.',
       presetRef: null,
-      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
+      locator: { selector: offscreen[0] ? offscreen[0].selector : '', text: offscreen[0] ? (offscreen[0].text || '') : '' }
     });
   } else {
     checks++;
@@ -214,7 +215,8 @@ function scoreLayout(data) {
       detail: scrollDetails.join('; '),
       fix: 'Fix horizontal overflow: add overflow-x-hidden on the outer wrapper, check for elements with fixed widths wider than viewport, or add max-w-full. Common causes: fixed-width tables, absolute positioned elements, images without max-width. If a wide container has overflow-x-auto but contains page sections (nav, forms, headings), remove the overflow and fix the root cause.',
       presetRef: null,
-      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
+      locator: { selector: bugScrollContainers[0] ? bugScrollContainers[0].selector : '', text: '' }
     });
   } else {
     checks++;
@@ -254,7 +256,8 @@ function scoreLayout(data) {
       detail: 'These panels are hidden at load time but overflow the viewport when opened: ' + panelDetails.join('; '),
       fix: 'Dropdown menus and dialogs must fit within the viewport when revealed. Use max-w-[calc(100vw-1rem)], or position with left-0 instead of right-0 on narrow viewports. For dialogs: add max-h-[90vh] overflow-y-auto.',
       presetRef: null,
-      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
+      locator: { selector: hiddenPanelIssues[0] ? hiddenPanelIssues[0].selector : '', text: '' }
     });
   } else if (layout.hiddenPanelCount > 0) {
     checks++;

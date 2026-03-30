@@ -49,7 +49,8 @@ function scoreTouchTargets(data) {
           title: 'Inline text link ' + w + '×' + h + 'px — exempt from target size',
           detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
           fix: 'Inline text links in paragraphs are exempt per WCAG 2.5.8. Consider adding padding for better usability.',
-          source: 'WCAG 2.2 §2.5.8 inline exception — https://www.w3.org/TR/WCAG22/#target-size-minimum'
+          source: 'WCAG 2.2 §2.5.8 inline exception — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+          locator: { selector: t.selector, text: t.text || '' }
         });
       } else if (ctx === 'footer') {
         // Footer links — relaxed but still error below hard minimum (16px)
@@ -61,7 +62,8 @@ function scoreTouchTargets(data) {
           fix: minDim < footerHardMin
             ? 'Even footer links need at least ' + footerHardMin + 'px height. Add padding to increase click area.'
             : 'Footer links have relaxed sizing expectations. Consider padding for touch accessibility.',
-          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
+          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+          locator: { selector: t.selector, text: t.text || '' }
         });
       } else if (ctx === 'nav') {
         // Navigation links — should be properly sized
@@ -72,7 +74,8 @@ function scoreTouchTargets(data) {
           detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
           fix: 'Navigation links need adequate sizing. Add padding: py-2 px-4 (min-height ' + minSize + 'px).',
           presetRef: 'Navigation presets use min-height 44px on nav links',
-          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
+          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+          locator: { selector: t.selector, text: t.text || '' }
         });
       } else {
         // Buttons, styled links, other interactive elements
@@ -87,7 +90,8 @@ function scoreTouchTargets(data) {
               : 'Click targets need at least ' + minSize + '×' + minSize + 'px. Increase padding or min-height/min-width.')
             : 'Touch targets need ' + minSize + '×' + minSize + 'px minimum. Add min-h-[' + minSize + 'px] min-w-[' + minSize + 'px] or increase padding.',
           presetRef: isDesktop ? null : 'Button presets use py-3 px-6 (48px height)',
-          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
+          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+          locator: { selector: t.selector, text: t.text || '' }
         });
       }
     } else if (minDim < warnSize && isDesktop && !isInlineLink) {
@@ -97,7 +101,8 @@ function scoreTouchTargets(data) {
         detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
         fix: 'While ' + minSize + 'px meets minimum, ' + warnSize + 'px+ improves click comfort. Consider adding padding.',
         presetRef: null,
-        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum'
+        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+        locator: { selector: t.selector, text: t.text || '' }
       });
     }
   });
