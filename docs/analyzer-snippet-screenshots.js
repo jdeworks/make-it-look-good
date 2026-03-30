@@ -1841,8 +1841,7 @@
             });
             iframe.addEventListener('error', function() { if (done) return; done = true; cleanup(); console.log('%c  \u2717 Load failed: ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); });
             iframe.src = url;
-            var _pt = Math.max(30000, Math.round(45000 * Math.sqrt(_links.length)));
-            setTimeout(function() { if (done) return; done = true; cleanup(); console.log('%c  \u2717 Hard timeout (' + Math.round(_pt/1000) + 's): ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }, _pt);
+            setTimeout(function() { if (done) return; done = true; cleanup(); console.log('%c  \u2717 Hard timeout (5m): ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }, 300000);
           }
           _next(0);
         }).catch(function() { console.log('%c\u26A0 Could not fetch snippet for crawl.', 'color: #b45309;'); });
