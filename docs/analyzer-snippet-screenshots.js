@@ -1,5 +1,5 @@
 // make-it-look-good — Design Extraction Snippet (with screenshots)
-// Version: 2025-03-31-v21
+// Version: 2025-03-31-v22
 // Run this in the browser console on any page.
 // Loads modern-screenshot from CDN to capture page screenshots as WebP.
 // Output is larger (~200-800KB extra) but includes visual reference.
@@ -7,7 +7,7 @@
 
 (function() {
   'use strict';
-  var _MILG_VERSION = '2025-03-31-v21';
+  var _MILG_VERSION = '2025-03-31-v22';
   console.log('%c[milg] Snippet version: ' + _MILG_VERSION, 'color: #64748b;');
 
   // --- Scan mode ---
@@ -335,9 +335,17 @@
   data.structure.responsiveClasses = /class="[^"]*(?:sm:|md:|lg:|xl:)/.test(htmlStr)
     || Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r instanceof CSSMediaRule && /max-width|min-width/.test(r.conditionText || ''); }); } catch(e) { return false; } });
 
-  // Store element references for bbox re-reading after pre-scroll
-  // (pre-scroll triggers IntersectionObserver/lazy content that shifts layout)
-  var _bboxRefs = []; // [{el, target, key}] — target is the data array, key is the index
+  // Universal bbox tracker: captures bbox AND stores element ref for re-reading
+  // after pre-scroll (which triggers layout shifts from lazy content/animations)
+  var _bboxRefs = []; // [{el, obj, key}] — will update obj[key] = newBbox
+  function captureBbox(el) {
+    var r = el.getBoundingClientRect();
+    return { left: Math.round(r.left + window.scrollX), top: Math.round(r.top + window.scrollY), width: Math.round(r.width), height: Math.round(r.height) };
+  }
+  function trackBbox(el, obj, key) {
+    obj[key] = captureBbox(el);
+    _bboxRefs.push({ el: el, obj: obj, key: key });
+  }
 
   // --- Typography & Colors ---
   var fontSizeMap = {};
@@ -404,8 +412,7 @@
     // Collect all pairs up to AAA+buffer (7.5) so profile switching works
     var elRect = el.getBoundingClientRect();
     if (ratio < 7.5) {
-      _bboxRefs.push({ el: el, arr: contrastPairs, idx: contrastPairs.length });
-      contrastPairs.push({
+      var _cpEntry = {
         fg: rgbStr(fgBlended), bg: rgbStr(bg),
         ratio: Math.round(ratio * 100) / 100,
         needed: threshold,
@@ -416,8 +423,10 @@
         filter: filterValue,
         backdropFilter: hasBackdropFilter,
         minBgAlpha: Math.round(minBgAlpha * 100) / 100,
-        bbox: { left: Math.round(elRect.left + window.scrollX), top: Math.round(elRect.top + window.scrollY), width: Math.round(elRect.width), height: Math.round(elRect.height) }
-      });
+        bbox: null
+      };
+      trackBbox(el, _cpEntry, 'bbox');
+      contrastPairs.push(_cpEntry);
     }
 
     // Measure line length
@@ -432,8 +441,8 @@
       var charWidth = _measureSpan.getBoundingClientRect().width / 36;
       var charsPerLine = Math.round(elWidth / charWidth);
       if (charsPerLine > data.typography.maxLineLength.chars) {
-        var _mlRect = el.getBoundingClientRect();
-        data.typography.maxLineLength = { chars: charsPerLine, element: cssSelector(el), fontSize: Math.round(parseFloat(style.fontSize)), textLength: textLen, bbox: { left: Math.round(_mlRect.left + window.scrollX), top: Math.round(_mlRect.top + window.scrollY), width: Math.round(_mlRect.width), height: Math.round(_mlRect.height) } };
+        data.typography.maxLineLength = { chars: charsPerLine, element: cssSelector(el), fontSize: Math.round(parseFloat(style.fontSize)), textLength: textLen, bbox: null };
+        trackBbox(el, data.typography.maxLineLength, 'bbox');
       }
     }
   }
@@ -476,8 +485,8 @@
     var fs = s.fontSize;
     fontSizeMap[fs] = (fontSizeMap[fs] || 0) + 1;
     if (!fontSizeSamples[fs]) {
-      var _fsRect = el.getBoundingClientRect();
-      fontSizeSamples[fs] = { selector: cssSelector(el), bbox: { left: Math.round(_fsRect.left + window.scrollX), top: Math.round(_fsRect.top + window.scrollY), width: Math.round(_fsRect.width), height: Math.round(_fsRect.height) } };
+      fontSizeSamples[fs] = { selector: cssSelector(el), bbox: null };
+      trackBbox(el, fontSizeSamples[fs], 'bbox');
     }
     var fw = s.fontWeight;
     fontWeightMap[fw] = (fontWeightMap[fw] || 0) + 1;
@@ -590,8 +599,7 @@
   var headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
   headings.forEach(function(h) {
     var hs = getComputedStyle(h);
-    var hRect = h.getBoundingClientRect();
-    data.typography.headings.push({
+    var _hEntry = {
       tag: h.tagName.toLowerCase(),
       text: h.textContent.trim().substring(0, 60),
       fontSize: hs.fontSize,
@@ -599,8 +607,10 @@
       lineHeight: hs.lineHeight,
       fontFamily: hs.fontFamily.split(',')[0].trim().replace(/['"]/g, ''),
       selector: cssSelector(h),
-      bbox: { left: Math.round(hRect.left + window.scrollX), top: Math.round(hRect.top + window.scrollY), width: Math.round(hRect.width), height: Math.round(hRect.height) }
-    });
+      bbox: null
+    };
+    trackBbox(h, _hEntry, 'bbox');
+    data.typography.headings.push(_hEntry);
     data.accessibility.headingHierarchy.push(h.tagName.toLowerCase());
   });
 
@@ -673,8 +683,7 @@
           else linkContext = 'standalone';
         }
       }
-      _bboxRefs.push({ el: el, arr: touchTargetIssues, idx: touchTargetIssues.length });
-      touchTargetIssues.push({
+      var _ttEntry = {
         element: el.tagName.toLowerCase(),
         width: w, height: h,
         text: (el.textContent || el.getAttribute('aria-label') || '').trim().substring(0, 40),
@@ -682,8 +691,10 @@
         passes: false,
         isButton: el.tagName !== 'A' || linkContext === 'button' || linkContext === 'nav',
         linkContext: linkContext,
-        bbox: { left: Math.round(rect.left + window.scrollX), top: Math.round(rect.top + window.scrollY), width: w, height: h }
-      });
+        bbox: null
+      };
+      trackBbox(el, _ttEntry, 'bbox');
+      touchTargetIssues.push(_ttEntry);
     }
   });
   // Keep worst 40
@@ -1217,7 +1228,7 @@
       try { var pel = document.querySelector(rec.selector); return pel && pel.contains(el) && pel !== el; } catch(e) { return false; }
     });
     if (parentAlready) return;
-    data.layout.offscreenElements.push({
+    var _oeEntry = {
       element: el.tagName.toLowerCase(),
       selector: cssSelector(el),
       text: (el.textContent || el.getAttribute('aria-label') || '').trim().substring(0, 50),
@@ -1225,8 +1236,10 @@
       right: Math.round(r.right),
       vpWidth: _vpW,
       reason: r.right < 0 ? 'left-overflow' : r.left >= _vpW ? 'right-overflow' : 'major-clip',
-      bbox: { left: Math.round(r.left + window.scrollX), top: Math.round(r.top + window.scrollY), width: Math.round(r.width), height: Math.round(r.height) }
-    });
+      bbox: null
+    };
+    trackBbox(el, _oeEntry, 'bbox');
+    data.layout.offscreenElements.push(_oeEntry);
   });
   data.layout.offscreenElements = data.layout.offscreenElements.slice(0, 20);
 
@@ -1294,7 +1307,7 @@
     if (origAriaHidden) panel.setAttribute('aria-hidden', origAriaHidden);
     else if (panel.hasAttribute('aria-hidden')) panel.removeAttribute('aria-hidden');
     if (issues.length > 0) {
-      data.layout.hiddenPanelIssues.push({
+      var _hpEntry = {
         selector: cssSelector(panel),
         role: panel.getAttribute('role') || 'unknown',
         width: Math.round(pr.width),
@@ -1303,8 +1316,10 @@
         right: Math.round(pr.right),
         vpWidth: _vpW,
         issues: issues,
-        bbox: { left: Math.round(pr.left + window.scrollX), top: Math.round(pr.top + window.scrollY), width: Math.round(pr.width), height: Math.round(pr.height) }
-      });
+        bbox: null
+      };
+      trackBbox(panel, _hpEntry, 'bbox');
+      data.layout.hiddenPanelIssues.push(_hpEntry);
     }
   });
   data.layout.hiddenPanelCount = _hiddenPanels.length;
@@ -1809,9 +1824,9 @@
 
       var _bboxUpdated = 0;
       _bboxRefs.forEach(function(ref) {
-        if (!ref.el || !ref.arr[ref.idx]) return;
+        if (!ref.el || !ref.obj) return;
         try {
-          ref.arr[ref.idx].bbox = getFlowPosition(ref.el);
+          ref.obj[ref.key] = getFlowPosition(ref.el);
           _bboxUpdated++;
         } catch(e) {}
       });
