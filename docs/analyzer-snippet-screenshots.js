@@ -1761,6 +1761,180 @@
               canvasWidth: fullCanvas.width,
               canvasHeight: fullCanvas.height
             };
+            // --- Pixel contrast verification on the pristine full canvas ---
+            // Runs on the raw canvas BEFORE WebP compression, so no artifacts.
+            // Uses fg-exclusion: CSS fg color is known, exclude fg-like pixels,
+            // find the dominant background color from remaining pixels.
+            (function() {
+              var pairs = data.colors.contrastPairs || [];
+              var pairsWithBbox = pairs.filter(function(p) { return p.bbox; });
+              if (pairsWithBbox.length === 0) return;
+
+              var fullCtx = fullCanvas.getContext('2d', { willReadFrequently: true });
+              var FG_DIST_SQ = 8100; // 90^2 — pixels within this RGB distance from CSS fg are excluded as "text"
+
+              function parseRgbStr(str) {
+                var m = str.match(/rgb[a]?\((\d+),\s*(\d+),\s*(\d+)/);
+                if (!m) m = str.match(/rgb[a]?\((\d+)\s+(\d+)\s+(\d+)/);
+                return m ? { r: +m[1], g: +m[2], b: +m[3] } : null;
+              }
+              function lum(c) {
+                var rs = c.r / 255, gs = c.g / 255, bs = c.b / 255;
+                var r = rs <= 0.03928 ? rs / 12.92 : Math.pow((rs + 0.055) / 1.055, 2.4);
+                var g = gs <= 0.03928 ? gs / 12.92 : Math.pow((gs + 0.055) / 1.055, 2.4);
+                var b = bs <= 0.03928 ? bs / 12.92 : Math.pow((bs + 0.055) / 1.055, 2.4);
+                return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+              }
+              function cr(c1, c2) {
+                var l1 = lum(c1), l2 = lum(c2);
+                return Math.round(((Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)) * 100) / 100;
+              }
+
+              var results = [];
+              pairsWithBbox.forEach(function(pair) {
+                var cssFg = parseRgbStr(pair.fg);
+                var cssBg = parseRgbStr(pair.bg);
+                if (!cssFg) return;
+
+                // Map bbox to canvas coordinates
+                var cx = Math.round(pair.bbox.left * secScale);
+                var cy = Math.round(pair.bbox.top * secScale);
+                var cw = Math.round(pair.bbox.width * secScale);
+                var ch = Math.round(pair.bbox.height * secScale);
+
+                // Clamp to canvas bounds
+                if (cx < 0) { cw += cx; cx = 0; }
+                if (cy < 0) { ch += cy; cy = 0; }
+                if (cx + cw > fullCanvas.width) cw = fullCanvas.width - cx;
+                if (cy + ch > fullCanvas.height) ch = fullCanvas.height - cy;
+                if (cw < 2 || ch < 2) return;
+
+                // Read all pixels in the bbox at once
+                var imgData = fullCtx.getImageData(cx, cy, cw, ch);
+                var px = imgData.data;
+                var totalPixels = cw * ch;
+
+                // Classify pixels: exclude fg-like pixels, quantize background candidates
+                var buckets = {}; // key "r,g,b" quantized to 4-bit → {count, rSum, gSum, bSum}
+                var bgCount = 0;
+                var worstBg = null, worstRatio = 999;
+
+                for (var i = 0; i < px.length; i += 4) {
+                  var r = px[i], g = px[i + 1], b = px[i + 2];
+                  // Distance from CSS foreground color
+                  var dr = r - cssFg.r, dg = g - cssFg.g, db = b - cssFg.b;
+                  var distSq = dr * dr + dg * dg + db * db;
+                  if (distSq < FG_DIST_SQ) continue; // Skip — this is a text/anti-aliased pixel
+
+                  bgCount++;
+                  // Quantize to 4-bit buckets (16 levels per channel → 4096 buckets)
+                  var qr = (r >> 4), qg = (g >> 4), qb = (b >> 4);
+                  var key = (qr << 8) | (qg << 4) | qb;
+                  if (!buckets[key]) buckets[key] = { count: 0, rSum: 0, gSum: 0, bSum: 0 };
+                  buckets[key].count++;
+                  buckets[key].rSum += r;
+                  buckets[key].gSum += g;
+                  buckets[key].bSum += b;
+
+                  // Track worst contrast pixel
+                  var pxColor = { r: r, g: g, b: b };
+                  var pxRatio = cr(cssFg, pxColor);
+                  if (pxRatio < worstRatio) { worstRatio = pxRatio; worstBg = pxColor; }
+                }
+
+                // If too few bg pixels (>80% was text), sample outside the bbox (padding area)
+                if (bgCount < totalPixels * 0.15) {
+                  var margin = Math.max(4, Math.round(Math.min(cw, ch) * 0.3));
+                  var outerRegions = [
+                    [cx - margin, cy, margin, ch],          // left
+                    [cx + cw, cy, margin, ch],               // right
+                    [cx - margin, cy - margin, cw + margin * 2, margin], // top
+                    [cx - margin, cy + ch, cw + margin * 2, margin]      // bottom
+                  ];
+                  outerRegions.forEach(function(reg) {
+                    var ox = Math.max(0, reg[0]), oy = Math.max(0, reg[1]);
+                    var ow = Math.min(reg[2], fullCanvas.width - ox);
+                    var oh = Math.min(reg[3], fullCanvas.height - oy);
+                    if (ow < 1 || oh < 1) return;
+                    var outer = fullCtx.getImageData(ox, oy, ow, oh);
+                    var op = outer.data;
+                    for (var j = 0; j < op.length; j += 4) {
+                      var r = op[j], g = op[j + 1], b = op[j + 2];
+                      bgCount++;
+                      var qr = (r >> 4), qg = (g >> 4), qb = (b >> 4);
+                      var key = (qr << 8) | (qg << 4) | qb;
+                      if (!buckets[key]) buckets[key] = { count: 0, rSum: 0, gSum: 0, bSum: 0 };
+                      buckets[key].count++;
+                      buckets[key].rSum += r; buckets[key].gSum += g; buckets[key].bSum += b;
+                      var pxColor = { r: r, g: g, b: b };
+                      var pxRatio = cr(cssFg, pxColor);
+                      if (pxRatio < worstRatio) { worstRatio = pxRatio; worstBg = pxColor; }
+                    }
+                  });
+                }
+
+                if (bgCount < 3) return; // Not enough data
+
+                // Find dominant background (most populated bucket)
+                var bestBucket = null, bestCount = 0;
+                var occupiedBuckets = 0;
+                var keys = Object.keys(buckets);
+                for (var ki = 0; ki < keys.length; ki++) {
+                  var b = buckets[keys[ki]];
+                  occupiedBuckets++;
+                  if (b.count > bestCount) { bestCount = b.count; bestBucket = b; }
+                }
+
+                var dominantBg = {
+                  r: Math.round(bestBucket.rSum / bestBucket.count),
+                  g: Math.round(bestBucket.gSum / bestBucket.count),
+                  b: Math.round(bestBucket.bSum / bestBucket.count)
+                };
+
+                var dominantRatio = cr(cssFg, dominantBg);
+                var cssRatio = pair.ratio;
+                var needed = pair.needed || 4.5;
+                var cssPasses = cssRatio >= needed;
+                var pixelPasses = worstRatio >= needed;
+                var dominantPasses = dominantRatio >= needed;
+                var isVariableBg = occupiedBuckets > 5 && (worstRatio / (dominantRatio || 1)) < 0.6;
+
+                // Store result on the contrast pair itself
+                pair.pixelVerify = {
+                  dominantBg: 'rgb(' + dominantBg.r + ',' + dominantBg.g + ',' + dominantBg.b + ')',
+                  dominantRatio: dominantRatio,
+                  worstRatio: worstRatio,
+                  worstBg: worstBg ? 'rgb(' + worstBg.r + ',' + worstBg.g + ',' + worstBg.b + ')' : null,
+                  bgSamples: bgCount,
+                  isVariableBg: isVariableBg,
+                  cssBgConfirmed: cssBg ? (Math.abs(dominantBg.r - cssBg.r) + Math.abs(dominantBg.g - cssBg.g) + Math.abs(dominantBg.b - cssBg.b) < 60) : false,
+                  crossesBoundary: cssPasses !== pixelPasses,
+                  dominantPasses: dominantPasses
+                };
+
+                if (pair.pixelVerify.crossesBoundary || isVariableBg || Math.abs(dominantRatio - cssRatio) > 1.5) {
+                  results.push({
+                    selector: pair.selector,
+                    text: pair.text,
+                    cssRatio: cssRatio,
+                    pixelRatio: worstRatio,
+                    pixelRatioAvg: dominantRatio,
+                    cssPasses: cssPasses,
+                    pixelPasses: pixelPasses,
+                    crossesBoundary: cssPasses !== pixelPasses,
+                    isVariableBg: isVariableBg,
+                    significant: true,
+                    bgSamples: bgCount,
+                    pixelBgDominant: pair.pixelVerify.dominantBg,
+                    cssBgConfirmed: pair.pixelVerify.cssBgConfirmed
+                  });
+                }
+              });
+
+              data.pixelVerifyResults = results;
+              console.log('[ss] ' + _t() + 'Pixel contrast verified: ' + pairsWithBbox.length + ' pairs, ' + results.length + ' discrepancies');
+            })();
+
             console.log('%c✓ ' + shots.length + ' screenshot(s) captured (' + _t().trim() + ' total)', 'color: #16a34a; font-weight: bold;');
             outputData(data);
             return;

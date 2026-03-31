@@ -295,18 +295,64 @@ window.MilgContrastVerify = (function() {
   }
 
   // Run verification on all contrast pairs with bboxes
+  // Prefers pre-computed pixelVerify data from extraction (pristine canvas).
+  // Falls back to post-hoc screenshot canvas sampling when not available.
   // callback(results) where results is array of verification objects
   function verify(reportData, callback) {
     var raw = reportData && reportData.raw;
-    if (!raw || !raw.screenshots || !raw.screenshotMeta || !raw.colors || !raw.colors.contrastPairs) {
+    if (!raw || !raw.colors || !raw.colors.contrastPairs) {
       callback([]); return;
     }
 
-    var meta = raw.screenshotMeta;
     var pairs = raw.colors.contrastPairs.filter(function(p) { return p.bbox; });
     if (pairs.length === 0) { callback([]); return; }
 
-    // Load all screenshot sections into canvases
+    // Check if extraction already computed pixel verification (snippet-screenshots path)
+    var hasPrecomputed = raw.pixelVerifyResults || pairs.some(function(p) { return p.pixelVerify; });
+    if (hasPrecomputed) {
+      // Use pre-computed results — these were done on the pristine full-res canvas
+      var results = (raw.pixelVerifyResults || []).slice();
+      // Also collect per-pair results that weren't flagged as discrepancies
+      pairs.forEach(function(pair) {
+        if (!pair.pixelVerify) return;
+        var pv = pair.pixelVerify;
+        // Check if already in results array
+        var alreadyIn = results.some(function(r) { return r.selector === pair.selector; });
+        if (!alreadyIn) {
+          results.push({
+            selector: pair.selector,
+            text: pair.text,
+            cssRatio: pair.ratio,
+            pixelRatio: pv.worstRatio,
+            pixelRatioAvg: pv.dominantRatio,
+            pixelRatioBest: pv.dominantRatio,
+            cssPasses: pair.ratio >= (pair.needed || 4.5),
+            pixelPasses: pv.worstRatio >= (pair.needed || 4.5),
+            crossesBoundary: pv.crossesBoundary,
+            isVariableBg: pv.isVariableBg,
+            significant: false,
+            bgSamples: pv.bgSamples,
+            pixelBgDominant: pv.dominantBg,
+            pixelBgWorst: pv.worstBg,
+            cssBgConfirmed: pv.cssBgConfirmed,
+            ratioDiff: Math.abs(pv.dominantRatio - pair.ratio),
+            bgVariance: 0,
+            sampleCount: { fg: 0, bg: pv.bgSamples }
+          });
+        }
+      });
+      results.sort(function(a, b) {
+        if (a.crossesBoundary !== b.crossesBoundary) return a.crossesBoundary ? -1 : 1;
+        return (b.ratioDiff || 0) - (a.ratioDiff || 0);
+      });
+      callback(results);
+      return;
+    }
+
+    // Fallback: post-hoc verification from screenshot canvases (iframe path)
+    if (!raw.screenshots || !raw.screenshotMeta) { callback([]); return; }
+    var meta = raw.screenshotMeta;
+
     var sectionCanvases = new Array(raw.screenshots.length);
     var loaded = 0;
     var total = raw.screenshots.length;
@@ -316,14 +362,12 @@ window.MilgContrastVerify = (function() {
         sectionCanvases[idx] = sec;
         loaded++;
         if (loaded === total) {
-          // All sections loaded — run verification
           var results = [];
           pairs.forEach(function(pair) {
             var result = verifyPair(pair, sectionCanvases, meta);
             if (result) results.push(result);
           });
 
-          // Sort: boundary-crossing first, then by discrepancy size
           results.sort(function(a, b) {
             if (a.crossesBoundary !== b.crossesBoundary) return a.crossesBoundary ? -1 : 1;
             return b.ratioDiff - a.ratioDiff;

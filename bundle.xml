@@ -23069,18 +23069,64 @@ window.MilgContrastVerify = (function() {
   }
 
   // Run verification on all contrast pairs with bboxes
+  // Prefers pre-computed pixelVerify data from extraction (pristine canvas).
+  // Falls back to post-hoc screenshot canvas sampling when not available.
   // callback(results) where results is array of verification objects
   function verify(reportData, callback) {
     var raw = reportData && reportData.raw;
-    if (!raw || !raw.screenshots || !raw.screenshotMeta || !raw.colors || !raw.colors.contrastPairs) {
+    if (!raw || !raw.colors || !raw.colors.contrastPairs) {
       callback([]); return;
     }
 
-    var meta = raw.screenshotMeta;
     var pairs = raw.colors.contrastPairs.filter(function(p) { return p.bbox; });
     if (pairs.length === 0) { callback([]); return; }
 
-    // Load all screenshot sections into canvases
+    // Check if extraction already computed pixel verification (snippet-screenshots path)
+    var hasPrecomputed = raw.pixelVerifyResults || pairs.some(function(p) { return p.pixelVerify; });
+    if (hasPrecomputed) {
+      // Use pre-computed results — these were done on the pristine full-res canvas
+      var results = (raw.pixelVerifyResults || []).slice();
+      // Also collect per-pair results that weren't flagged as discrepancies
+      pairs.forEach(function(pair) {
+        if (!pair.pixelVerify) return;
+        var pv = pair.pixelVerify;
+        // Check if already in results array
+        var alreadyIn = results.some(function(r) { return r.selector === pair.selector; });
+        if (!alreadyIn) {
+          results.push({
+            selector: pair.selector,
+            text: pair.text,
+            cssRatio: pair.ratio,
+            pixelRatio: pv.worstRatio,
+            pixelRatioAvg: pv.dominantRatio,
+            pixelRatioBest: pv.dominantRatio,
+            cssPasses: pair.ratio >= (pair.needed || 4.5),
+            pixelPasses: pv.worstRatio >= (pair.needed || 4.5),
+            crossesBoundary: pv.crossesBoundary,
+            isVariableBg: pv.isVariableBg,
+            significant: false,
+            bgSamples: pv.bgSamples,
+            pixelBgDominant: pv.dominantBg,
+            pixelBgWorst: pv.worstBg,
+            cssBgConfirmed: pv.cssBgConfirmed,
+            ratioDiff: Math.abs(pv.dominantRatio - pair.ratio),
+            bgVariance: 0,
+            sampleCount: { fg: 0, bg: pv.bgSamples }
+          });
+        }
+      });
+      results.sort(function(a, b) {
+        if (a.crossesBoundary !== b.crossesBoundary) return a.crossesBoundary ? -1 : 1;
+        return (b.ratioDiff || 0) - (a.ratioDiff || 0);
+      });
+      callback(results);
+      return;
+    }
+
+    // Fallback: post-hoc verification from screenshot canvases (iframe path)
+    if (!raw.screenshots || !raw.screenshotMeta) { callback([]); return; }
+    var meta = raw.screenshotMeta;
+
     var sectionCanvases = new Array(raw.screenshots.length);
     var loaded = 0;
     var total = raw.screenshots.length;
@@ -23090,14 +23136,12 @@ window.MilgContrastVerify = (function() {
         sectionCanvases[idx] = sec;
         loaded++;
         if (loaded === total) {
-          // All sections loaded — run verification
           var results = [];
           pairs.forEach(function(pair) {
             var result = verifyPair(pair, sectionCanvases, meta);
             if (result) results.push(result);
           });
 
-          // Sort: boundary-crossing first, then by discrepancy size
           results.sort(function(a, b) {
             if (a.crossesBoundary !== b.crossesBoundary) return a.crossesBoundary ? -1 : 1;
             return b.ratioDiff - a.ratioDiff;
@@ -24373,6 +24417,245 @@ function scoreTypography(data) {
 </html>
 </file>
 
+<file path="docs/scoring/consistency.js">
+// Scoring Module: Visual Consistency
+// Weight: 5%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreVisualConsistency(data) {
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+
+  // Scale thresholds by page complexity
+  var pageType = (data.context && data.context.pageType) || 'unknown';
+  var elCount = (data.structure && data.structure.totalElements) || 100;
+  // Marketing/content pages legitimately use more colors and font sizes
+  var colorLimit = elCount > 200 ? 35 : elCount > 100 ? 25 : 20;
+  var fontSizeLimit = elCount > 200 ? 12 : elCount > 100 ? 10 : 8;
+  if (pageType === 'marketing' || pageType === 'pricing') { colorLimit += 10; fontSizeLimit += 3; }
+
+  // Color palette coherence — how many unique text/bg colors?
+  checks++;
+  var textColors = (data.colors.textColors || []).length;
+  var bgColors = (data.colors.bgColors || []).length;
+  var totalUnique = textColors + bgColors;
+  if (totalUnique <= colorLimit) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: totalUnique + ' unique colors detected (recommend < ' + colorLimit + ' for this page type)',
+      detail: textColors + ' text colors, ' + bgColors + ' background colors',
+      fix: 'Consolidate to a systematic color palette: 1 primary + 1 neutral + 3 semantic (error, warning, success)',
+      presetRef: 'Presets use a single primary color with slate neutrals',
+      source: 'Material Design 3 — https://m3.material.io/styles/color/roles'
+    });
+  }
+
+  // Font size consistency — too many unique sizes?
+  checks++;
+  var fontSizes = (data.typography.fontSizes || []).length;
+  if (fontSizes <= fontSizeLimit) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'info',
+      title: fontSizes + ' unique font sizes (recommend ≤' + fontSizeLimit + ' from a type scale)',
+      detail: 'A consistent type scale creates visual rhythm',
+      fix: 'Use a modular scale: text-sm, text-base, text-lg, text-xl, text-2xl, text-3xl, text-4xl',
+      presetRef: null,
+      source: 'Modular type scales — https://typescale.com/'
+    });
+  }
+
+  // Border radius consistency — exclude pill/circle shapes (9999px, 50%, >100px)
+  var radii = ((data.layout && data.layout.borderRadii) || []).filter(function(r) {
+    var v = r.value;
+    if (v === '50%' || v === '9999px') return false;
+    var px = parseFloat(v);
+    return !(px > 100);
+  });
+  if (radii.length > 0) {
+    checks++;
+    if (radii.length <= 4) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: radii.length + ' distinct border-radius values (recommend 2-4, excluding pill/circle shapes)',
+        detail: 'Values: ' + radii.slice(0, 6).map(function(r) { return r.value + ' (' + r.count + 'x)'; }).join(', '),
+        fix: 'Standardize border-radius to 2-4 values in your design tokens. In Tailwind: rounded-sm (2px), rounded (4px), rounded-lg (8px), rounded-xl (12px).',
+        presetRef: null,
+        source: 'Material Design 3 — https://m3.material.io/styles/shape/overview'
+      });
+    }
+  }
+
+  // Line height consistency
+  var lineHeights = (data.typography && data.typography.lineHeights) || [];
+  if (lineHeights.length > 0) {
+    checks++;
+    if (lineHeights.length <= 5) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: lineHeights.length + ' distinct line-height values (recommend 2-4)',
+        detail: 'Consistent line-height creates visual rhythm across the page.',
+        fix: 'Standardize to 2-3 line-heights: tight (1.25), normal (1.5), relaxed (1.75).',
+        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-spacing.html'
+      });
+    }
+  }
+
+  // Dark mode support consistency
+  if (data.structure) {
+    checks++;
+    if (data.structure.darkModeClasses) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: 'No dark mode support detected',
+        detail: 'Dark mode is expected by ~80% of users (Android settings data).',
+        fix: 'Add dark mode with dark: variants in Tailwind or prefers-color-scheme media query.',
+        source: 'Apple HIG — https://developer.apple.com/design/human-interface-guidelines/dark-mode'
+      });
+    }
+  }
+
+  // Border width inconsistencies in sibling groups
+  var borderInc = (data.consistency && data.consistency.borderWidthInconsistencies) || 0;
+  if (borderInc > 0) {
+    findings.push({
+      severity: 'info',
+      title: borderInc + ' sibling group(s) with inconsistent border widths',
+      detail: 'Children in the same flex/grid container use different border widths.',
+      fix: 'Unify border widths within component groups. Use a consistent border-width token.',
+      source: 'Material Design 3 — https://m3.material.io/styles/shape/overview'
+    });
+  }
+
+  // Font weight role consistency
+  var fwInc = (data.consistency && data.consistency.fontWeightInconsistencies) || 0;
+  if (fwInc > 0) {
+    findings.push({
+      severity: 'info',
+      title: fwInc + ' heading level(s) with inconsistent font-weights',
+      detail: 'Same-level headings (e.g. multiple h3s) use different font-weights.',
+      fix: 'Standardize heading weights per level. All h2s should share the same weight.',
+      source: 'Modular type scales — https://typescale.com/'
+    });
+  }
+
+  // Gradient direction consistency
+  var gradDirs = (data.consistency && data.consistency.gradientDirections) || 0;
+  if (gradDirs > 3) {
+    findings.push({
+      severity: 'info',
+      title: gradDirs + ' distinct gradient directions (recommend 1-2)',
+      detail: 'Multiple gradient directions create visual incoherence.',
+      fix: 'Limit to 1-2 gradient directions for visual coherence.',
+      source: 'Design Systems — https://www.designsystems.com/'
+    });
+  }
+
+  // Icon size consistency (opt-in, full scan)
+  var iconCV = (data.consistency && data.consistency.iconSizeVariance) || 0;
+  if (iconCV > 40) {
+    findings.push({
+      severity: 'info',
+      title: 'Icon sizes vary significantly relative to text (CV: ' + iconCV + '%)',
+      detail: 'SVG icons are sized inconsistently relative to adjacent text.',
+      fix: 'Standardize inline icons to 1.25em (1.25x the parent font size). Use w-4 h-4 or w-5 h-5 consistently.',
+      source: 'Material Design 3 — https://m3.material.io/styles/icons/overview'
+    });
+  }
+
+  // Padding asymmetry in buttons
+  var padAsym = (data.consistency && data.consistency.paddingAsymmetry) || 0;
+  if (padAsym > 0) {
+    findings.push({
+      severity: 'info',
+      title: padAsym + ' button(s) with asymmetric horizontal padding',
+      detail: 'Buttons have different left and right padding (>4px difference).',
+      fix: 'Use equal horizontal padding on buttons for centered content: px-4, px-6, etc.',
+      source: 'Material Design 3 — https://m3.material.io/components/buttons/specs'
+    });
+  }
+
+  // Color temperature mixing (opt-in, full scan)
+  if (data.colors && data.colors.temperatureMixing) {
+    findings.push({
+      severity: 'info',
+      title: 'Page mixes warm and cool accent colors',
+      detail: 'Both warm (red/orange/yellow) and cool (blue/cyan) accent colors are used. Verify this is an intentional complementary scheme.',
+      fix: 'If unintentional, consolidate to either warm or cool accent palette. Complementary schemes should be deliberate.',
+      source: 'Color theory — https://color.adobe.com/'
+    });
+  }
+
+  // Z-index sprawl
+  var zSprawl = (data.layout && data.layout.zIndexSprawl) || {};
+  if (zSprawl.distinct > 0) {
+    checks++;
+    if (zSprawl.distinct <= 8) {
+      passed++;
+    } else {
+      findings.push({
+        severity: zSprawl.distinct > 15 ? 'warning' : 'info',
+        title: zSprawl.distinct + ' distinct z-index values (recommend ≤8)',
+        detail: 'Max z-index: ' + zSprawl.max + '. Many z-index values indicate ad-hoc stacking that becomes unmaintainable.',
+        fix: 'Consolidate to a z-index scale: --z-dropdown: 10, --z-sticky: 20, --z-modal: 30, --z-toast: 40.',
+        source: 'Josh Comeau Stacking Contexts — https://www.joshwcomeau.com/css/stacking-contexts/'
+      });
+    }
+  }
+
+  // Shadow consistency
+  var shadowSprawl = (data.layout && data.layout.shadowSprawl) || 0;
+  if (shadowSprawl > 0) {
+    checks++;
+    if (shadowSprawl <= 5) {
+      passed++;
+    } else {
+      findings.push({
+        severity: shadowSprawl > 10 ? 'warning' : 'info',
+        title: shadowSprawl + ' distinct box-shadow values (recommend 3-5)',
+        detail: 'Too many unique shadow styles suggest an inconsistent elevation system.',
+        fix: 'Standardize to 3-5 elevation levels: shadow-sm, shadow, shadow-md, shadow-lg, shadow-xl.',
+        source: 'Material Design 3 — https://m3.material.io/styles/elevation/overview'
+      });
+    }
+  }
+
+  // Dark mode halation (pure black on pure white)
+  if (data.colors && data.colors.darkModeHalation) {
+    checks++;
+    findings.push({
+      severity: 'warning',
+      title: 'Pure black (#000) with pure white (#fff) text detected in dark mode',
+      detail: 'Pure black backgrounds with pure white text causes halation (glowing text effect) for users with astigmatism (~33% of population).',
+      fix: 'Use off-black backgrounds (slate-900 / #0f172a) and off-white text (slate-100 / #f1f5f9) in dark mode.',
+      source: 'Apple HIG Dark Mode — https://developer.apple.com/design/human-interface-guidelines/dark-mode'
+    });
+  }
+
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+  return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Visual Consistency', icon: 'consistency' };
+}
+
+
+  S.register("consistency", scoreVisualConsistency, 5, "Visual Consistency", "consistency");
+})();
+</file>
+
 <file path="docs/analyzer-viewer.js">
 // make-it-look-good — Screenshot Viewer with Bbox Overlays
 // Displays zoomed screenshots with filterable SVG bounding box overlays for findings.
@@ -24508,16 +24791,17 @@ window.MilgViewer = (function() {
     viewImg.src = _screenshots[_currentSection];
     viewImg.alt = 'Screenshot section ' + (_currentSection + 1);
 
-    // SVG overlay — viewBox matches the canvas section pixel dimensions
-    var sectionHeight = Math.round(_meta.viewportHeight * _meta.scale);
-    // Last section may be shorter
-    var lastSectionH = _meta.canvasHeight - (_currentSection * sectionHeight);
-    var thisSectionH = Math.min(sectionHeight, lastSectionH);
-
+    // SVG overlay — viewBox updated to match actual image dimensions once loaded
     var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('class', 'milg-viewer-svg');
-    svg.setAttribute('viewBox', '0 0 ' + _meta.canvasWidth + ' ' + thisSectionH);
     svg.setAttribute('preserveAspectRatio', 'xMinYMin meet');
+    // Set initial viewBox from metadata, will be corrected when image loads
+    var initSectionH = Math.min(Math.round(_meta.viewportHeight * _meta.scale), _meta.canvasHeight - _currentSection * Math.round(_meta.viewportHeight * _meta.scale));
+    svg.setAttribute('viewBox', '0 0 ' + _meta.canvasWidth + ' ' + initSectionH);
+    viewImg.addEventListener('load', function() {
+      // Use the actual image natural dimensions for perfect alignment
+      svg.setAttribute('viewBox', '0 0 ' + viewImg.naturalWidth + ' ' + viewImg.naturalHeight);
+    });
 
     frame.appendChild(viewImg);
     frame.appendChild(svg);
@@ -24601,15 +24885,14 @@ window.MilgViewer = (function() {
     if (zoomSel) zoomSel.value = '1';
 
     var img = _overlay.querySelector('.milg-viewer-img');
-    if (img) img.src = _screenshots[_currentSection];
-
-    // Update viewBox for new section height
     var svg = _overlay.querySelector('.milg-viewer-svg');
-    if (svg && _meta) {
-      var sectionHeight = Math.round(_meta.viewportHeight * _meta.scale);
-      var lastSectionH = _meta.canvasHeight - (_currentSection * sectionHeight);
-      var thisSectionH = Math.min(sectionHeight, lastSectionH);
-      svg.setAttribute('viewBox', '0 0 ' + _meta.canvasWidth + ' ' + thisSectionH);
+    if (img) {
+      img.src = _screenshots[_currentSection];
+      // Update viewBox when new image loads to match its exact dimensions
+      img.addEventListener('load', function onLoad() {
+        img.removeEventListener('load', onLoad);
+        if (svg) svg.setAttribute('viewBox', '0 0 ' + img.naturalWidth + ' ' + img.naturalHeight);
+      });
     }
 
     // Update nav label
@@ -25075,245 +25358,6 @@ window.MilgViewer = (function() {
     close: close,
     showFinding: showFinding
   };
-})();
-</file>
-
-<file path="docs/scoring/consistency.js">
-// Scoring Module: Visual Consistency
-// Weight: 5%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreVisualConsistency(data) {
-  var findings = [];
-  var checks = 0;
-  var passed = 0;
-
-  // Scale thresholds by page complexity
-  var pageType = (data.context && data.context.pageType) || 'unknown';
-  var elCount = (data.structure && data.structure.totalElements) || 100;
-  // Marketing/content pages legitimately use more colors and font sizes
-  var colorLimit = elCount > 200 ? 35 : elCount > 100 ? 25 : 20;
-  var fontSizeLimit = elCount > 200 ? 12 : elCount > 100 ? 10 : 8;
-  if (pageType === 'marketing' || pageType === 'pricing') { colorLimit += 10; fontSizeLimit += 3; }
-
-  // Color palette coherence — how many unique text/bg colors?
-  checks++;
-  var textColors = (data.colors.textColors || []).length;
-  var bgColors = (data.colors.bgColors || []).length;
-  var totalUnique = textColors + bgColors;
-  if (totalUnique <= colorLimit) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: totalUnique + ' unique colors detected (recommend < ' + colorLimit + ' for this page type)',
-      detail: textColors + ' text colors, ' + bgColors + ' background colors',
-      fix: 'Consolidate to a systematic color palette: 1 primary + 1 neutral + 3 semantic (error, warning, success)',
-      presetRef: 'Presets use a single primary color with slate neutrals',
-      source: 'Material Design 3 — https://m3.material.io/styles/color/roles'
-    });
-  }
-
-  // Font size consistency — too many unique sizes?
-  checks++;
-  var fontSizes = (data.typography.fontSizes || []).length;
-  if (fontSizes <= fontSizeLimit) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'info',
-      title: fontSizes + ' unique font sizes (recommend ≤' + fontSizeLimit + ' from a type scale)',
-      detail: 'A consistent type scale creates visual rhythm',
-      fix: 'Use a modular scale: text-sm, text-base, text-lg, text-xl, text-2xl, text-3xl, text-4xl',
-      presetRef: null,
-      source: 'Modular type scales — https://typescale.com/'
-    });
-  }
-
-  // Border radius consistency — exclude pill/circle shapes (9999px, 50%, >100px)
-  var radii = ((data.layout && data.layout.borderRadii) || []).filter(function(r) {
-    var v = r.value;
-    if (v === '50%' || v === '9999px') return false;
-    var px = parseFloat(v);
-    return !(px > 100);
-  });
-  if (radii.length > 0) {
-    checks++;
-    if (radii.length <= 4) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: radii.length + ' distinct border-radius values (recommend 2-4, excluding pill/circle shapes)',
-        detail: 'Values: ' + radii.slice(0, 6).map(function(r) { return r.value + ' (' + r.count + 'x)'; }).join(', '),
-        fix: 'Standardize border-radius to 2-4 values in your design tokens. In Tailwind: rounded-sm (2px), rounded (4px), rounded-lg (8px), rounded-xl (12px).',
-        presetRef: null,
-        source: 'Material Design 3 — https://m3.material.io/styles/shape/overview'
-      });
-    }
-  }
-
-  // Line height consistency
-  var lineHeights = (data.typography && data.typography.lineHeights) || [];
-  if (lineHeights.length > 0) {
-    checks++;
-    if (lineHeights.length <= 5) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: lineHeights.length + ' distinct line-height values (recommend 2-4)',
-        detail: 'Consistent line-height creates visual rhythm across the page.',
-        fix: 'Standardize to 2-3 line-heights: tight (1.25), normal (1.5), relaxed (1.75).',
-        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-spacing.html'
-      });
-    }
-  }
-
-  // Dark mode support consistency
-  if (data.structure) {
-    checks++;
-    if (data.structure.darkModeClasses) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: 'No dark mode support detected',
-        detail: 'Dark mode is expected by ~80% of users (Android settings data).',
-        fix: 'Add dark mode with dark: variants in Tailwind or prefers-color-scheme media query.',
-        source: 'Apple HIG — https://developer.apple.com/design/human-interface-guidelines/dark-mode'
-      });
-    }
-  }
-
-  // Border width inconsistencies in sibling groups
-  var borderInc = (data.consistency && data.consistency.borderWidthInconsistencies) || 0;
-  if (borderInc > 0) {
-    findings.push({
-      severity: 'info',
-      title: borderInc + ' sibling group(s) with inconsistent border widths',
-      detail: 'Children in the same flex/grid container use different border widths.',
-      fix: 'Unify border widths within component groups. Use a consistent border-width token.',
-      source: 'Material Design 3 — https://m3.material.io/styles/shape/overview'
-    });
-  }
-
-  // Font weight role consistency
-  var fwInc = (data.consistency && data.consistency.fontWeightInconsistencies) || 0;
-  if (fwInc > 0) {
-    findings.push({
-      severity: 'info',
-      title: fwInc + ' heading level(s) with inconsistent font-weights',
-      detail: 'Same-level headings (e.g. multiple h3s) use different font-weights.',
-      fix: 'Standardize heading weights per level. All h2s should share the same weight.',
-      source: 'Modular type scales — https://typescale.com/'
-    });
-  }
-
-  // Gradient direction consistency
-  var gradDirs = (data.consistency && data.consistency.gradientDirections) || 0;
-  if (gradDirs > 3) {
-    findings.push({
-      severity: 'info',
-      title: gradDirs + ' distinct gradient directions (recommend 1-2)',
-      detail: 'Multiple gradient directions create visual incoherence.',
-      fix: 'Limit to 1-2 gradient directions for visual coherence.',
-      source: 'Design Systems — https://www.designsystems.com/'
-    });
-  }
-
-  // Icon size consistency (opt-in, full scan)
-  var iconCV = (data.consistency && data.consistency.iconSizeVariance) || 0;
-  if (iconCV > 40) {
-    findings.push({
-      severity: 'info',
-      title: 'Icon sizes vary significantly relative to text (CV: ' + iconCV + '%)',
-      detail: 'SVG icons are sized inconsistently relative to adjacent text.',
-      fix: 'Standardize inline icons to 1.25em (1.25x the parent font size). Use w-4 h-4 or w-5 h-5 consistently.',
-      source: 'Material Design 3 — https://m3.material.io/styles/icons/overview'
-    });
-  }
-
-  // Padding asymmetry in buttons
-  var padAsym = (data.consistency && data.consistency.paddingAsymmetry) || 0;
-  if (padAsym > 0) {
-    findings.push({
-      severity: 'info',
-      title: padAsym + ' button(s) with asymmetric horizontal padding',
-      detail: 'Buttons have different left and right padding (>4px difference).',
-      fix: 'Use equal horizontal padding on buttons for centered content: px-4, px-6, etc.',
-      source: 'Material Design 3 — https://m3.material.io/components/buttons/specs'
-    });
-  }
-
-  // Color temperature mixing (opt-in, full scan)
-  if (data.colors && data.colors.temperatureMixing) {
-    findings.push({
-      severity: 'info',
-      title: 'Page mixes warm and cool accent colors',
-      detail: 'Both warm (red/orange/yellow) and cool (blue/cyan) accent colors are used. Verify this is an intentional complementary scheme.',
-      fix: 'If unintentional, consolidate to either warm or cool accent palette. Complementary schemes should be deliberate.',
-      source: 'Color theory — https://color.adobe.com/'
-    });
-  }
-
-  // Z-index sprawl
-  var zSprawl = (data.layout && data.layout.zIndexSprawl) || {};
-  if (zSprawl.distinct > 0) {
-    checks++;
-    if (zSprawl.distinct <= 8) {
-      passed++;
-    } else {
-      findings.push({
-        severity: zSprawl.distinct > 15 ? 'warning' : 'info',
-        title: zSprawl.distinct + ' distinct z-index values (recommend ≤8)',
-        detail: 'Max z-index: ' + zSprawl.max + '. Many z-index values indicate ad-hoc stacking that becomes unmaintainable.',
-        fix: 'Consolidate to a z-index scale: --z-dropdown: 10, --z-sticky: 20, --z-modal: 30, --z-toast: 40.',
-        source: 'Josh Comeau Stacking Contexts — https://www.joshwcomeau.com/css/stacking-contexts/'
-      });
-    }
-  }
-
-  // Shadow consistency
-  var shadowSprawl = (data.layout && data.layout.shadowSprawl) || 0;
-  if (shadowSprawl > 0) {
-    checks++;
-    if (shadowSprawl <= 5) {
-      passed++;
-    } else {
-      findings.push({
-        severity: shadowSprawl > 10 ? 'warning' : 'info',
-        title: shadowSprawl + ' distinct box-shadow values (recommend 3-5)',
-        detail: 'Too many unique shadow styles suggest an inconsistent elevation system.',
-        fix: 'Standardize to 3-5 elevation levels: shadow-sm, shadow, shadow-md, shadow-lg, shadow-xl.',
-        source: 'Material Design 3 — https://m3.material.io/styles/elevation/overview'
-      });
-    }
-  }
-
-  // Dark mode halation (pure black on pure white)
-  if (data.colors && data.colors.darkModeHalation) {
-    checks++;
-    findings.push({
-      severity: 'warning',
-      title: 'Pure black (#000) with pure white (#fff) text detected in dark mode',
-      detail: 'Pure black backgrounds with pure white text causes halation (glowing text effect) for users with astigmatism (~33% of population).',
-      fix: 'Use off-black backgrounds (slate-900 / #0f172a) and off-white text (slate-100 / #f1f5f9) in dark mode.',
-      source: 'Apple HIG Dark Mode — https://developer.apple.com/design/human-interface-guidelines/dark-mode'
-    });
-  }
-
-  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-  return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Visual Consistency', icon: 'consistency' };
-}
-
-
-  S.register("consistency", scoreVisualConsistency, 5, "Visual Consistency", "consistency");
 })();
 </file>
 
@@ -32210,6 +32254,180 @@ function scoreLayout(data) {
               canvasWidth: fullCanvas.width,
               canvasHeight: fullCanvas.height
             };
+            // --- Pixel contrast verification on the pristine full canvas ---
+            // Runs on the raw canvas BEFORE WebP compression, so no artifacts.
+            // Uses fg-exclusion: CSS fg color is known, exclude fg-like pixels,
+            // find the dominant background color from remaining pixels.
+            (function() {
+              var pairs = data.colors.contrastPairs || [];
+              var pairsWithBbox = pairs.filter(function(p) { return p.bbox; });
+              if (pairsWithBbox.length === 0) return;
+
+              var fullCtx = fullCanvas.getContext('2d', { willReadFrequently: true });
+              var FG_DIST_SQ = 8100; // 90^2 — pixels within this RGB distance from CSS fg are excluded as "text"
+
+              function parseRgbStr(str) {
+                var m = str.match(/rgb[a]?\((\d+),\s*(\d+),\s*(\d+)/);
+                if (!m) m = str.match(/rgb[a]?\((\d+)\s+(\d+)\s+(\d+)/);
+                return m ? { r: +m[1], g: +m[2], b: +m[3] } : null;
+              }
+              function lum(c) {
+                var rs = c.r / 255, gs = c.g / 255, bs = c.b / 255;
+                var r = rs <= 0.03928 ? rs / 12.92 : Math.pow((rs + 0.055) / 1.055, 2.4);
+                var g = gs <= 0.03928 ? gs / 12.92 : Math.pow((gs + 0.055) / 1.055, 2.4);
+                var b = bs <= 0.03928 ? bs / 12.92 : Math.pow((bs + 0.055) / 1.055, 2.4);
+                return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+              }
+              function cr(c1, c2) {
+                var l1 = lum(c1), l2 = lum(c2);
+                return Math.round(((Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)) * 100) / 100;
+              }
+
+              var results = [];
+              pairsWithBbox.forEach(function(pair) {
+                var cssFg = parseRgbStr(pair.fg);
+                var cssBg = parseRgbStr(pair.bg);
+                if (!cssFg) return;
+
+                // Map bbox to canvas coordinates
+                var cx = Math.round(pair.bbox.left * secScale);
+                var cy = Math.round(pair.bbox.top * secScale);
+                var cw = Math.round(pair.bbox.width * secScale);
+                var ch = Math.round(pair.bbox.height * secScale);
+
+                // Clamp to canvas bounds
+                if (cx < 0) { cw += cx; cx = 0; }
+                if (cy < 0) { ch += cy; cy = 0; }
+                if (cx + cw > fullCanvas.width) cw = fullCanvas.width - cx;
+                if (cy + ch > fullCanvas.height) ch = fullCanvas.height - cy;
+                if (cw < 2 || ch < 2) return;
+
+                // Read all pixels in the bbox at once
+                var imgData = fullCtx.getImageData(cx, cy, cw, ch);
+                var px = imgData.data;
+                var totalPixels = cw * ch;
+
+                // Classify pixels: exclude fg-like pixels, quantize background candidates
+                var buckets = {}; // key "r,g,b" quantized to 4-bit → {count, rSum, gSum, bSum}
+                var bgCount = 0;
+                var worstBg = null, worstRatio = 999;
+
+                for (var i = 0; i < px.length; i += 4) {
+                  var r = px[i], g = px[i + 1], b = px[i + 2];
+                  // Distance from CSS foreground color
+                  var dr = r - cssFg.r, dg = g - cssFg.g, db = b - cssFg.b;
+                  var distSq = dr * dr + dg * dg + db * db;
+                  if (distSq < FG_DIST_SQ) continue; // Skip — this is a text/anti-aliased pixel
+
+                  bgCount++;
+                  // Quantize to 4-bit buckets (16 levels per channel → 4096 buckets)
+                  var qr = (r >> 4), qg = (g >> 4), qb = (b >> 4);
+                  var key = (qr << 8) | (qg << 4) | qb;
+                  if (!buckets[key]) buckets[key] = { count: 0, rSum: 0, gSum: 0, bSum: 0 };
+                  buckets[key].count++;
+                  buckets[key].rSum += r;
+                  buckets[key].gSum += g;
+                  buckets[key].bSum += b;
+
+                  // Track worst contrast pixel
+                  var pxColor = { r: r, g: g, b: b };
+                  var pxRatio = cr(cssFg, pxColor);
+                  if (pxRatio < worstRatio) { worstRatio = pxRatio; worstBg = pxColor; }
+                }
+
+                // If too few bg pixels (>80% was text), sample outside the bbox (padding area)
+                if (bgCount < totalPixels * 0.15) {
+                  var margin = Math.max(4, Math.round(Math.min(cw, ch) * 0.3));
+                  var outerRegions = [
+                    [cx - margin, cy, margin, ch],          // left
+                    [cx + cw, cy, margin, ch],               // right
+                    [cx - margin, cy - margin, cw + margin * 2, margin], // top
+                    [cx - margin, cy + ch, cw + margin * 2, margin]      // bottom
+                  ];
+                  outerRegions.forEach(function(reg) {
+                    var ox = Math.max(0, reg[0]), oy = Math.max(0, reg[1]);
+                    var ow = Math.min(reg[2], fullCanvas.width - ox);
+                    var oh = Math.min(reg[3], fullCanvas.height - oy);
+                    if (ow < 1 || oh < 1) return;
+                    var outer = fullCtx.getImageData(ox, oy, ow, oh);
+                    var op = outer.data;
+                    for (var j = 0; j < op.length; j += 4) {
+                      var r = op[j], g = op[j + 1], b = op[j + 2];
+                      bgCount++;
+                      var qr = (r >> 4), qg = (g >> 4), qb = (b >> 4);
+                      var key = (qr << 8) | (qg << 4) | qb;
+                      if (!buckets[key]) buckets[key] = { count: 0, rSum: 0, gSum: 0, bSum: 0 };
+                      buckets[key].count++;
+                      buckets[key].rSum += r; buckets[key].gSum += g; buckets[key].bSum += b;
+                      var pxColor = { r: r, g: g, b: b };
+                      var pxRatio = cr(cssFg, pxColor);
+                      if (pxRatio < worstRatio) { worstRatio = pxRatio; worstBg = pxColor; }
+                    }
+                  });
+                }
+
+                if (bgCount < 3) return; // Not enough data
+
+                // Find dominant background (most populated bucket)
+                var bestBucket = null, bestCount = 0;
+                var occupiedBuckets = 0;
+                var keys = Object.keys(buckets);
+                for (var ki = 0; ki < keys.length; ki++) {
+                  var b = buckets[keys[ki]];
+                  occupiedBuckets++;
+                  if (b.count > bestCount) { bestCount = b.count; bestBucket = b; }
+                }
+
+                var dominantBg = {
+                  r: Math.round(bestBucket.rSum / bestBucket.count),
+                  g: Math.round(bestBucket.gSum / bestBucket.count),
+                  b: Math.round(bestBucket.bSum / bestBucket.count)
+                };
+
+                var dominantRatio = cr(cssFg, dominantBg);
+                var cssRatio = pair.ratio;
+                var needed = pair.needed || 4.5;
+                var cssPasses = cssRatio >= needed;
+                var pixelPasses = worstRatio >= needed;
+                var dominantPasses = dominantRatio >= needed;
+                var isVariableBg = occupiedBuckets > 5 && (worstRatio / (dominantRatio || 1)) < 0.6;
+
+                // Store result on the contrast pair itself
+                pair.pixelVerify = {
+                  dominantBg: 'rgb(' + dominantBg.r + ',' + dominantBg.g + ',' + dominantBg.b + ')',
+                  dominantRatio: dominantRatio,
+                  worstRatio: worstRatio,
+                  worstBg: worstBg ? 'rgb(' + worstBg.r + ',' + worstBg.g + ',' + worstBg.b + ')' : null,
+                  bgSamples: bgCount,
+                  isVariableBg: isVariableBg,
+                  cssBgConfirmed: cssBg ? (Math.abs(dominantBg.r - cssBg.r) + Math.abs(dominantBg.g - cssBg.g) + Math.abs(dominantBg.b - cssBg.b) < 60) : false,
+                  crossesBoundary: cssPasses !== pixelPasses,
+                  dominantPasses: dominantPasses
+                };
+
+                if (pair.pixelVerify.crossesBoundary || isVariableBg || Math.abs(dominantRatio - cssRatio) > 1.5) {
+                  results.push({
+                    selector: pair.selector,
+                    text: pair.text,
+                    cssRatio: cssRatio,
+                    pixelRatio: worstRatio,
+                    pixelRatioAvg: dominantRatio,
+                    cssPasses: cssPasses,
+                    pixelPasses: pixelPasses,
+                    crossesBoundary: cssPasses !== pixelPasses,
+                    isVariableBg: isVariableBg,
+                    significant: true,
+                    bgSamples: bgCount,
+                    pixelBgDominant: pair.pixelVerify.dominantBg,
+                    cssBgConfirmed: pair.pixelVerify.cssBgConfirmed
+                  });
+                }
+              });
+
+              data.pixelVerifyResults = results;
+              console.log('[ss] ' + _t() + 'Pixel contrast verified: ' + pairsWithBbox.length + ' pairs, ' + results.length + ' discrepancies');
+            })();
+
             console.log('%c✓ ' + shots.length + ' screenshot(s) captured (' + _t().trim() + ' total)', 'color: #16a34a; font-weight: bold;');
             outputData(data);
             return;

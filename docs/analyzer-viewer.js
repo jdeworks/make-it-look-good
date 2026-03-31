@@ -132,16 +132,17 @@ window.MilgViewer = (function() {
     viewImg.src = _screenshots[_currentSection];
     viewImg.alt = 'Screenshot section ' + (_currentSection + 1);
 
-    // SVG overlay — viewBox matches the canvas section pixel dimensions
-    var sectionHeight = Math.round(_meta.viewportHeight * _meta.scale);
-    // Last section may be shorter
-    var lastSectionH = _meta.canvasHeight - (_currentSection * sectionHeight);
-    var thisSectionH = Math.min(sectionHeight, lastSectionH);
-
+    // SVG overlay — viewBox updated to match actual image dimensions once loaded
     var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('class', 'milg-viewer-svg');
-    svg.setAttribute('viewBox', '0 0 ' + _meta.canvasWidth + ' ' + thisSectionH);
     svg.setAttribute('preserveAspectRatio', 'xMinYMin meet');
+    // Set initial viewBox from metadata, will be corrected when image loads
+    var initSectionH = Math.min(Math.round(_meta.viewportHeight * _meta.scale), _meta.canvasHeight - _currentSection * Math.round(_meta.viewportHeight * _meta.scale));
+    svg.setAttribute('viewBox', '0 0 ' + _meta.canvasWidth + ' ' + initSectionH);
+    viewImg.addEventListener('load', function() {
+      // Use the actual image natural dimensions for perfect alignment
+      svg.setAttribute('viewBox', '0 0 ' + viewImg.naturalWidth + ' ' + viewImg.naturalHeight);
+    });
 
     frame.appendChild(viewImg);
     frame.appendChild(svg);
@@ -225,15 +226,14 @@ window.MilgViewer = (function() {
     if (zoomSel) zoomSel.value = '1';
 
     var img = _overlay.querySelector('.milg-viewer-img');
-    if (img) img.src = _screenshots[_currentSection];
-
-    // Update viewBox for new section height
     var svg = _overlay.querySelector('.milg-viewer-svg');
-    if (svg && _meta) {
-      var sectionHeight = Math.round(_meta.viewportHeight * _meta.scale);
-      var lastSectionH = _meta.canvasHeight - (_currentSection * sectionHeight);
-      var thisSectionH = Math.min(sectionHeight, lastSectionH);
-      svg.setAttribute('viewBox', '0 0 ' + _meta.canvasWidth + ' ' + thisSectionH);
+    if (img) {
+      img.src = _screenshots[_currentSection];
+      // Update viewBox when new image loads to match its exact dimensions
+      img.addEventListener('load', function onLoad() {
+        img.removeEventListener('load', onLoad);
+        if (svg) svg.setAttribute('viewBox', '0 0 ' + img.naturalWidth + ' ' + img.naturalHeight);
+      });
     }
 
     // Update nav label
