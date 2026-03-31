@@ -81,7 +81,7 @@ function scoreContrast(data) {
   var pairs = data.colors.contrastPairs || [];
 
   // Re-evaluate each pair against profile thresholds
-  var profilePairs = pairs.map(function(p) {
+  var profilePairs = pairs.filter(function(p) { return p && p.fg && p.bg; }).map(function(p) {
     var needed = p.isLarge ? profile.contrastLarge : profile.contrast;
     var ratio = p.ratio;
 
