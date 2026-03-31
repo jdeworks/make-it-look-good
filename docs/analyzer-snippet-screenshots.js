@@ -1772,6 +1772,14 @@
         var totalSecs = Math.min(Math.ceil(fullCanvas.height / secVH), 10);
         console.log('[ss] ' + _t() + 'Splitting into ' + totalSecs + ' sections (secH=' + secVH + 'px in canvas coords)');
 
+        // Store full-page canvas as single PNG for the viewer (pixel-perfect, no section stitching)
+        try {
+          data.screenshotFull = fullCanvas.toDataURL('image/png');
+          console.log('[ss] ' + _t() + 'Full-page PNG stored (' + Math.round(data.screenshotFull.length / 1024) + 'KB)');
+        } catch(e) {
+          console.warn('[ss] Full-page PNG failed:', e.message);
+        }
+
         var shots = [];
         var secIdx = 0;
         function splitNext() {

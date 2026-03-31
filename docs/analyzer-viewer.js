@@ -202,21 +202,21 @@ window.MilgViewer = (function() {
       });
     });
 
-    // Stitch screenshots into one continuous canvas
-    stitchScreenshots(_screenshots, function(stitched) {
-      _stitchedCanvas = stitched;
-      frame.innerHTML = '';
+    // Use full-page screenshot if available (pixel-perfect, no section stitching)
+    // Fall back to stitching sections only when screenshotFull is missing
+    var fullPageSrc = (reportData.raw && reportData.raw.screenshotFull) || null;
 
-      // Convert to image (canvas can't have SVG overlay positioned over it easily)
+    function onImageReady(imgSrc, canvasW, canvasH) {
+      frame.innerHTML = '';
       var viewImg = document.createElement('img');
       viewImg.className = 'milg-viewer-img';
-      viewImg.src = stitched.canvas.toDataURL('image/png');
+      viewImg.src = imgSrc;
       viewImg.alt = 'Full page screenshot';
 
-      // SVG overlay — viewBox matches stitched image exactly
+      // SVG viewBox = original canvas dimensions (matches dom * scale exactly)
       var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       svg.setAttribute('class', 'milg-viewer-svg');
-      svg.setAttribute('viewBox', '0 0 ' + stitched.width + ' ' + stitched.height);
+      svg.setAttribute('viewBox', '0 0 ' + canvasW + ' ' + canvasH);
       svg.setAttribute('preserveAspectRatio', 'xMinYMin meet');
 
       frame.appendChild(viewImg);
@@ -228,14 +228,23 @@ window.MilgViewer = (function() {
       // Scroll to the section the user clicked on
       if (sectionIndex > 0 && _meta) {
         var scrollTarget = sectionIndex * Math.round(_meta.viewportHeight * _meta.scale);
-        var ratio = scrollTarget / stitched.height;
-        // The frame displays at CSS-constrained size, compute actual scroll position
         viewImg.addEventListener('load', function() {
-          var displayH = viewImg.offsetHeight;
-          content.scrollTop = Math.round(ratio * displayH);
+          content.scrollTop = Math.round(scrollTarget);
         });
       }
-    });
+    }
+
+    if (fullPageSrc) {
+      // Direct full-page image — no stitching needed
+      _stitchedCanvas = { width: _meta.canvasWidth, height: _meta.canvasHeight };
+      onImageReady(fullPageSrc, _meta.canvasWidth, _meta.canvasHeight);
+    } else {
+      // Stitch sections as fallback
+      stitchScreenshots(_screenshots, function(stitched) {
+        _stitchedCanvas = stitched;
+        onImageReady(stitched.canvas.toDataURL('image/png'), stitched.width, stitched.height);
+      });
+    }
   }
 
   // Build debug info for alignment diagnostics
@@ -396,15 +405,9 @@ window.MilgViewer = (function() {
     // Compute actual scale from canvas dimensions vs document dimensions.
     // The document may have grown between extraction (bboxes) and capture (screenshots)
     // due to lazy-loaded content. Use docHeightAtCapture for Y mapping.
-    // Map DOM coordinates to stitched image coordinates.
-    // The stitched image may differ from the original canvas height
-    // due to WebP section compression round-tripping.
-    // Use stitchedHeight / canvasHeight as a correction factor for Y.
+    // With the full-page PNG, dom.top * scale = canvas.y exactly.
     var scaleX = _meta.scale;
     var scaleY = _meta.scale;
-    if (_stitchedCanvas && _meta.canvasHeight > 0) {
-      scaleY = _meta.scale * (_stitchedCanvas.height / _meta.canvasHeight);
-    }
 
     // Build pixel verification lookup
     var verifyMap = {};
