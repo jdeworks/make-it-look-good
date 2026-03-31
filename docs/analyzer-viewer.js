@@ -100,8 +100,17 @@ window.MilgViewer = (function() {
     }
     var sevPills = sevPill('error', 'Errors') + sevPill('warning', 'Warnings') + sevPill('info', 'Info');
 
+    // Pixel verification filter pill (only if verification results exist)
+    var verifyPill = '';
+    if (reportData._contrastVerifyResults && reportData._contrastVerifyResults.length > 0) {
+      var vCount = reportData._contrastVerifyResults.length;
+      verifyPill = '<span class="milg-viewer-sep"></span>' +
+        '<button class="milg-viewer-filter-btn milg-viewer-sev-verify" data-filter-type="verify" data-filter-value="all" title="Show pixel-verified contrast">Pixel Verified <span class="milg-viewer-count">' + vCount + '</span></button>' +
+        '<button class="milg-viewer-filter-btn milg-viewer-sev-error" data-filter-type="verify" data-filter-value="fails" title="Pixel verification failures only">Pixel Fails <span class="milg-viewer-count">0</span></button>';
+    }
+
     toolbar.innerHTML = navHtml +
-      '<div class="milg-viewer-filters">' + catPills + '<span class="milg-viewer-sep"></span>' + sevPills + '</div>' +
+      '<div class="milg-viewer-filters">' + catPills + '<span class="milg-viewer-sep"></span>' + sevPills + verifyPill + '</div>' +
       '<span class="milg-viewer-zoom-level" title="Scroll to zoom, double-click to toggle">100%</span>' +
       '<button class="milg-viewer-close" title="Close (Esc)">&times;</button>';
 
@@ -345,6 +354,28 @@ window.MilgViewer = (function() {
   function updateFilterButtons() {
     if (!_overlay) return;
     var counts = countInSection();
+
+    // Count verify results in this section
+    var verifyInSection = 0, verifyFailsInSection = 0;
+    if (_reportData && _reportData._contrastVerifyResults && _reportData.raw && _reportData.raw.colors && _meta) {
+      var scale = _meta.scale;
+      var sectionH = Math.round(_meta.viewportHeight * scale);
+      var sectionTop = _currentSection * sectionH;
+      var sectionBottom = sectionTop + sectionH;
+      var pairsBySelector = {};
+      _reportData.raw.colors.contrastPairs.forEach(function(p) { if (p.bbox) pairsBySelector[p.selector] = p; });
+      _reportData._contrastVerifyResults.forEach(function(vr) {
+        var pair = pairsBySelector[vr.selector];
+        if (!pair || !pair.bbox) return;
+        var cy = pair.bbox.top * scale;
+        var cb = cy + pair.bbox.height * scale;
+        if (cb >= sectionTop && cy <= sectionBottom) {
+          verifyInSection++;
+          if (vr.crossesBoundary) verifyFailsInSection++;
+        }
+      });
+    }
+
     var btns = _overlay.querySelectorAll('.milg-viewer-filter-btn');
     btns.forEach(function(btn) {
       var type = btn.getAttribute('data-filter-type');
@@ -352,7 +383,12 @@ window.MilgViewer = (function() {
       var isActive = _activeFilter && _activeFilter.type === type && _activeFilter.value === value;
       btn.classList.toggle('active', isActive);
       // Update count badge and visibility for this section
-      var count = type === 'category' ? (counts.cat[value] || 0) : (counts.sev[value] || 0);
+      var count;
+      if (type === 'verify') {
+        count = value === 'fails' ? verifyFailsInSection : verifyInSection;
+      } else {
+        count = type === 'category' ? (counts.cat[value] || 0) : (counts.sev[value] || 0);
+      }
       var badge = btn.querySelector('.milg-viewer-count');
       if (badge) badge.textContent = count;
       btn.style.display = count > 0 ? '' : 'none';
@@ -379,6 +415,12 @@ window.MilgViewer = (function() {
       return;
     }
     if (hint) hint.parentNode.removeChild(hint);
+
+    // Handle pixel verification filter — renders from verification results, not findings
+    if (_activeFilter.type === 'verify') {
+      renderVerifyOverlays(svg);
+      return;
+    }
 
     var scale = _meta.scale;
     var sectionH = Math.round(_meta.viewportHeight * scale);
@@ -511,6 +553,111 @@ window.MilgViewer = (function() {
     if (y + th > window.innerHeight - 8) y = e.clientY - th - 12;
     _tooltip.style.left = x + 'px';
     _tooltip.style.top = y + 'px';
+  }
+
+  // Render pixel verification results as bbox overlays
+  function renderVerifyOverlays(svg) {
+    if (!_reportData || !_reportData._contrastVerifyResults || !_meta) return;
+    var results = _reportData._contrastVerifyResults;
+    var scale = _meta.scale;
+    var sectionH = Math.round(_meta.viewportHeight * scale);
+    var sectionTop = _currentSection * sectionH;
+    var sectionBottom = sectionTop + sectionH;
+    var showFails = _activeFilter.value === 'fails';
+
+    // Also need original contrast pairs to get bboxes (verify results have selector but not bbox directly)
+    var pairsBySelector = {};
+    if (_reportData.raw && _reportData.raw.colors && _reportData.raw.colors.contrastPairs) {
+      _reportData.raw.colors.contrastPairs.forEach(function(p) {
+        if (p.bbox) pairsBySelector[p.selector] = p;
+      });
+    }
+
+    results.forEach(function(vr, vIdx) {
+      if (showFails && !vr.crossesBoundary) return;
+      var pair = pairsBySelector[vr.selector];
+      if (!pair || !pair.bbox) return;
+
+      var canvasY = pair.bbox.top * scale;
+      var canvasBottom = canvasY + pair.bbox.height * scale;
+      if (canvasBottom < sectionTop || canvasY > sectionBottom) return;
+
+      var x = Math.round(pair.bbox.left * scale);
+      var y = Math.round(canvasY - sectionTop);
+      var w = Math.round(pair.bbox.width * scale);
+      var h = Math.round(pair.bbox.height * scale);
+
+      // Color based on verification status
+      var fill, stroke, dash;
+      if (vr.crossesBoundary && vr.cssPasses && !vr.pixelPasses) {
+        // Hidden failure: red
+        fill = 'rgba(239,68,68,0.25)'; stroke = '#ef4444'; dash = '6 2';
+      } else if (vr.crossesBoundary && !vr.cssPasses && vr.pixelPasses) {
+        // False positive: green
+        fill = 'rgba(34,197,94,0.2)'; stroke = '#22c55e'; dash = '4 3';
+      } else if (vr.isVariableBg) {
+        // Variable background: amber
+        fill = 'rgba(234,179,8,0.15)'; stroke = '#eab308'; dash = '4 2';
+      } else {
+        // Verified consistent: subtle green
+        fill = 'rgba(34,197,94,0.08)'; stroke = '#86efac'; dash = '';
+      }
+
+      var rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      rect.setAttribute('x', x);
+      rect.setAttribute('y', y);
+      rect.setAttribute('width', Math.max(w, 4));
+      rect.setAttribute('height', Math.max(h, 4));
+      rect.setAttribute('fill', fill);
+      rect.setAttribute('stroke', stroke);
+      rect.setAttribute('stroke-width', '1.5');
+      rect.setAttribute('rx', '2');
+      if (dash) rect.setAttribute('stroke-dasharray', dash);
+      rect.setAttribute('data-verify', vIdx);
+      svg.appendChild(rect);
+
+      // Add ratio label inside the rect
+      if (w > 30 && h > 12) {
+        var label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        label.setAttribute('x', x + 3);
+        label.setAttribute('y', y + 11);
+        label.setAttribute('font-size', '10');
+        label.setAttribute('fill', stroke);
+        label.setAttribute('font-family', 'system-ui, sans-serif');
+        label.setAttribute('font-weight', '600');
+        label.setAttribute('pointer-events', 'none');
+        label.textContent = vr.pixelRatio + ':1';
+        svg.appendChild(label);
+      }
+    });
+
+    // Tooltip handlers for verify rects
+    svg.querySelectorAll('rect[data-verify]').forEach(function(rect) {
+      rect.addEventListener('mouseenter', function(e) {
+        var vIdx = parseInt(rect.getAttribute('data-verify'));
+        var vr = results[vIdx];
+        if (!vr) return;
+        hideTooltip();
+        _tooltip = document.createElement('div');
+        _tooltip.className = 'milg-viewer-tooltip';
+        _tooltip.innerHTML = '<div class="milg-viewer-tooltip-title">' + vr.selector + '</div>' +
+          '<div class="milg-viewer-tooltip-detail">"' + (vr.text || '').substring(0, 40) + '"</div>' +
+          '<div style="margin-top:4px;font-size:11px">' +
+          'CSS: ' + vr.cssRatio + ':1 ' + (vr.cssPasses ? '<span style="color:#22c55e">pass</span>' : '<span style="color:#ef4444">fail</span>') +
+          '<br>Pixel worst: ' + vr.pixelRatio + ':1 ' + (vr.pixelPasses ? '<span style="color:#22c55e">pass</span>' : '<span style="color:#ef4444">fail</span>') +
+          '<br>Pixel avg: ' + vr.pixelRatioAvg + ':1, best: ' + vr.pixelRatioBest + ':1' +
+          (vr.isVariableBg ? '<br><span style="color:#eab308">Variable background (variance: ' + vr.bgVariance + ')</span>' : '') +
+          '</div>';
+        document.body.appendChild(_tooltip);
+        var tx = e.clientX + 12, ty = e.clientY + 12;
+        var tw = _tooltip.offsetWidth, th = _tooltip.offsetHeight;
+        if (tx + tw > window.innerWidth - 8) tx = e.clientX - tw - 12;
+        if (ty + th > window.innerHeight - 8) ty = e.clientY - th - 12;
+        _tooltip.style.left = tx + 'px'; _tooltip.style.top = ty + 'px';
+      });
+      rect.addEventListener('mouseleave', hideTooltip);
+      rect.addEventListener('click', function() { scrollToFinding(-1); }); // close viewer on click
+    });
   }
 
   function scrollToFinding(findingIdx) {

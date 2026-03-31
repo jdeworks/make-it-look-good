@@ -159,20 +159,82 @@ window.MilgContrastVerify = (function() {
     fgColor.g = Math.round(fgColor.g / fgSlice.length);
     fgColor.b = Math.round(fgColor.b / fgSlice.length);
 
-    // --- BG sampling: grid across the full bbox ---
-    // Sample density scales with box size: ~1 sample per 3px, clamped to [3, 50].
-    // Large hero images get dense sampling; small buttons get sparse.
+    // --- BG sampling: edges and margins ONLY, excluding text band ---
+    // The text band (middle 30-70% of height) contains text pixels that would
+    // contaminate BG readings. Sample from:
+    //   1. Top strip (0% - 20% height)
+    //   2. Bottom strip (80% - 100% height)
+    //   3. Left edge strip (0% - 10% width, full height)
+    //   4. Right edge strip (90% - 100% width, full height)
+    //   5. Between-line gaps: horizontal sweeps at 25% and 75% height
+    // This catches the actual background even with dense text.
     var bgSamples = [];
-    var insetX = Math.max(1, canvasW * 0.03);
-    var insetY = Math.max(1, canvasH * 0.03);
     var bgHSteps = Math.max(3, Math.min(_density.bgH, Math.floor(canvasW / 3)));
     var bgVSteps = Math.max(3, Math.min(_density.bgV, Math.floor(canvasH / 3)));
-    for (var bx = 0; bx < bgHSteps; bx++) {
-      for (var by = 0; by < bgVSteps; by++) {
-        var px = canvasX + insetX + ((canvasW - insetX * 2) * bx / (bgHSteps - 1));
-        var py = yInSection + insetY + ((canvasH - insetY * 2) * by / (bgVSteps - 1));
+    var insetX = Math.max(1, canvasW * 0.02);
+    var insetY = Math.max(1, canvasH * 0.02);
+
+    // Top strip (above text)
+    var topStripBottom = yInSection + canvasH * 0.2;
+    var topVSteps = Math.max(2, Math.ceil(bgVSteps * 0.2));
+    for (var tx = 0; tx < bgHSteps; tx++) {
+      for (var ty = 0; ty < topVSteps; ty++) {
+        var px = canvasX + insetX + ((canvasW - insetX * 2) * tx / (bgHSteps - 1));
+        var py = yInSection + insetY + ((topStripBottom - yInSection - insetY) * ty / (topVSteps - 1 || 1));
         bgSamples.push(samplePixel(sec.ctx, px, py, sec.width, sec.height));
       }
+    }
+
+    // Bottom strip (below text)
+    var bottomStripTop = yInSection + canvasH * 0.8;
+    var bottomStripEnd = yInSection + canvasH - insetY;
+    var botVSteps = Math.max(2, Math.ceil(bgVSteps * 0.2));
+    for (var bxb = 0; bxb < bgHSteps; bxb++) {
+      for (var byb = 0; byb < botVSteps; byb++) {
+        var px = canvasX + insetX + ((canvasW - insetX * 2) * bxb / (bgHSteps - 1));
+        var py = bottomStripTop + ((bottomStripEnd - bottomStripTop) * byb / (botVSteps - 1 || 1));
+        bgSamples.push(samplePixel(sec.ctx, px, py, sec.width, sec.height));
+      }
+    }
+
+    // Left edge strip (avoid text, sample full height at left margin)
+    var leftEdge = canvasX + insetX;
+    var leftEdgeEnd = canvasX + canvasW * 0.08;
+    var edgeVSteps = Math.max(3, Math.ceil(bgVSteps * 0.4));
+    if (leftEdgeEnd > leftEdge + 1) {
+      for (var ly = 0; ly < edgeVSteps; ly++) {
+        var py = yInSection + insetY + ((canvasH - insetY * 2) * ly / (edgeVSteps - 1));
+        bgSamples.push(samplePixel(sec.ctx, leftEdge, py, sec.width, sec.height));
+        bgSamples.push(samplePixel(sec.ctx, leftEdgeEnd, py, sec.width, sec.height));
+      }
+    }
+
+    // Right edge strip
+    var rightEdge = canvasX + canvasW - insetX;
+    var rightEdgeStart = canvasX + canvasW * 0.92;
+    if (rightEdge > rightEdgeStart + 1) {
+      for (var ry = 0; ry < edgeVSteps; ry++) {
+        var py = yInSection + insetY + ((canvasH - insetY * 2) * ry / (edgeVSteps - 1));
+        bgSamples.push(samplePixel(sec.ctx, rightEdge, py, sec.width, sec.height));
+        bgSamples.push(samplePixel(sec.ctx, rightEdgeStart, py, sec.width, sec.height));
+      }
+    }
+
+    // Between-line gap sweeps (25% and 75% of height — between top/text and text/bottom)
+    var gapYs = [yInSection + canvasH * 0.22, yInSection + canvasH * 0.78];
+    for (var gi = 0; gi < gapYs.length; gi++) {
+      for (var gx = 0; gx < bgHSteps; gx++) {
+        var px = canvasX + insetX + ((canvasW - insetX * 2) * gx / (bgHSteps - 1));
+        bgSamples.push(samplePixel(sec.ctx, px, gapYs[gi], sec.width, sec.height));
+      }
+    }
+
+    // Safety: if we got very few samples (tiny box), fall back to corners
+    if (bgSamples.length < 4) {
+      bgSamples.push(samplePixel(sec.ctx, canvasX + 1, yInSection + 1, sec.width, sec.height));
+      bgSamples.push(samplePixel(sec.ctx, canvasX + canvasW - 1, yInSection + 1, sec.width, sec.height));
+      bgSamples.push(samplePixel(sec.ctx, canvasX + 1, yInSection + canvasH - 1, sec.width, sec.height));
+      bgSamples.push(samplePixel(sec.ctx, canvasX + canvasW - 1, yInSection + canvasH - 1, sec.width, sec.height));
     }
 
     // Find worst-case BG (the one that gives lowest contrast with FG)
