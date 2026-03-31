@@ -396,7 +396,7 @@ window.MilgContrastVerify = (function() {
     }
     if (r.isVariableBg) {
       return '<span style="color:#f59e0b">Variable background: worst ' + r.pixelRatio + ':1, avg ' + r.pixelRatioAvg + ':1, best ' + r.pixelRatioBest + ':1</span>' +
-        '<br><span style="color:var(--text-secondary);font-size:11px">Photo or gradient background — contrast varies across element (' + r.sampleCount.bg + ' points sampled)</span>';
+        '<br><span style="color:var(--text-secondary);font-size:11px">Photo or gradient background — contrast varies across element' + (r.sampleCount ? ' (' + r.sampleCount.bg + ' points sampled)' : '') + '</span>';
     }
     if (r.significant) {
       return '<span style="color:#f59e0b">Pixel contrast: ' + r.pixelRatio + ':1</span> ' +
@@ -463,7 +463,7 @@ window.MilgContrastVerify = (function() {
         html += '<div style="margin-top:6px;padding:6px 8px;background:' + (isDark ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.7)') + ';border-radius:4px;font-size:12px">';
         html += '<strong>' + r.selector + '</strong>: "' + (r.text || '').substring(0, 30) + '"';
         html += '<br>CSS: ' + r.cssRatio + ':1 (pass) &rarr; Pixels: ' + r.pixelRatio + ':1 (fail)';
-        html += '<br><span style="color:var(--text-secondary)">Pixel FG: ' + r.pixelFg + ' / BG worst: ' + r.pixelBgWorst + (r.isVariableBg ? ' (variable bg, ' + r.sampleCount.bg + ' points)' : '') + '</span>';
+        html += '<br><span style="color:var(--text-secondary)">Pixel FG: ' + (r.pixelFg || '?') + ' / BG worst: ' + (r.pixelBgWorst || r.pixelBgDominant || '?') + (r.isVariableBg && r.sampleCount ? ' (variable bg, ' + r.sampleCount.bg + ' points)' : '') + '</span>';
         html += '</div>';
       });
       html += '</div>';
@@ -496,7 +496,7 @@ window.MilgContrastVerify = (function() {
         html += '<div style="margin-top:6px;padding:6px 8px;background:' + (isDark ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.7)') + ';border-radius:4px;font-size:12px">';
         html += '<strong>' + r.selector + '</strong>: "' + (r.text || '').substring(0, 30) + '"';
         html += '<br>Contrast range: <span style="color:#ef4444">' + r.pixelRatio + ':1</span> (worst) to <span style="color:#16a34a">' + r.pixelRatioBest + ':1</span> (best), avg ' + r.pixelRatioAvg + ':1';
-        html += '<br><span style="color:var(--text-secondary)">' + r.sampleCount.bg + ' background points sampled, variance: ' + r.bgVariance + '</span>';
+        html += '<br><span style="color:var(--text-secondary)">' + (r.sampleCount ? r.sampleCount.bg + ' background points sampled, ' : '') + 'variance: ' + (r.bgVariance || '?') + '</span>';
         html += '</div>';
       });
       if (vbResults.length > 5) html += '<div style="font-size:11px;color:var(--text-secondary);margin-top:4px">...and ' + (vbResults.length - 5) + ' more</div>';
