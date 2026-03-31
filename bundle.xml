@@ -30975,8 +30975,16 @@ window.MilgViewer = (function() {
   function showToast(msg) {
     var t = document.getElementById('toast');
     t.textContent = msg;
+    t.style.cursor = 'pointer';
+    t.onclick = function() {
+      navigator.clipboard.writeText(msg).then(function() {
+        t.textContent = 'Copied!';
+        setTimeout(function() { t.classList.remove('show'); }, 500);
+      });
+    };
     t.classList.add('show');
-    setTimeout(function() { t.classList.remove('show'); }, 3000);
+    console.log('[toast]', msg);
+    setTimeout(function() { t.classList.remove('show'); }, 5000);
   }
 
   function showProgress(pct, label) {
