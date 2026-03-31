@@ -219,7 +219,7 @@ window.MilgExtract = (function() {
       }
       var elRect = el.getBoundingClientRect();
       if (ratio < 7.5) {
-        contrastPairs.push({ fg: rgbStr(fgBlended), bg: rgbStr(bg), ratio: Math.round(ratio * 100) / 100, needed: threshold, passes: ratio >= threshold, fontSize: Math.round(fontSize), fontWeight: fontWeight, isLarge: isLarge, text: node.textContent.trim().substring(0, 50), selector: cssSelector(el), filter: filterValue, backdropFilter: hasBackdropFilter, minBgAlpha: Math.round(minBgAlpha * 100) / 100, bbox: { left: Math.round(elRect.left), top: Math.round(elRect.top), width: Math.round(elRect.width), height: Math.round(elRect.height) } });
+        contrastPairs.push({ fg: rgbStr(fgBlended), bg: rgbStr(bg), ratio: Math.round(ratio * 100) / 100, needed: threshold, passes: ratio >= threshold, fontSize: Math.round(fontSize), fontWeight: fontWeight, isLarge: isLarge, text: node.textContent.trim().substring(0, 50), selector: cssSelector(el), filter: filterValue, backdropFilter: hasBackdropFilter, minBgAlpha: Math.round(minBgAlpha * 100) / 100, bbox: { left: Math.round(elRect.left + window.scrollX), top: Math.round(elRect.top + window.scrollY), width: Math.round(elRect.width), height: Math.round(elRect.height) } });
       }
       var elWidth = elRect.width;
       var charWidth = fontSize * 0.5;
@@ -387,7 +387,7 @@ window.MilgExtract = (function() {
           else if (el.closest('p, blockquote, figcaption, td, th, dd')) linkCtx = 'inline';
           else { var ls = getComputedStyle(el); if ((ls.backgroundColor !== 'rgba(0, 0, 0, 0)' && ls.backgroundColor !== 'transparent') || (ls.borderStyle !== 'none' && ls.borderWidth !== '0px') || parseFloat(ls.paddingTop) > 4 || parseFloat(ls.paddingBottom) > 4) linkCtx = 'button'; else linkCtx = 'standalone'; }
         }
-        touchIssues.push({ element: el.tagName.toLowerCase(), width: w, height: h, text: (el.textContent || el.getAttribute('aria-label') || '').trim().substring(0, 40), selector: cssSelector(el), passes: false, isButton: el.tagName !== 'A' || linkCtx === 'button' || linkCtx === 'nav', linkContext: linkCtx, bbox: { left: Math.round(rect.left), top: Math.round(rect.top), width: w, height: h } });
+        touchIssues.push({ element: el.tagName.toLowerCase(), width: w, height: h, text: (el.textContent || el.getAttribute('aria-label') || '').trim().substring(0, 40), selector: cssSelector(el), passes: false, isButton: el.tagName !== 'A' || linkCtx === 'button' || linkCtx === 'nav', linkContext: linkCtx, bbox: { left: Math.round(rect.left + window.scrollX), top: Math.round(rect.top + window.scrollY), width: w, height: h } });
       }
     });
     touchIssues.sort(function(a, b) { return (a.width * a.height) - (b.width * b.height); });

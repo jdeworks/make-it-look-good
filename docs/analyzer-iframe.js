@@ -48,11 +48,10 @@ window.MilgIframe = (function() {
         'document.querySelectorAll("img").forEach(function(i){if(i.src&&i.src.indexOf("data:")!==0)i.crossOrigin="anonymous"});' +
         'var totalH=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);' +
         'var vh=window.innerHeight||900;' +
-        'var captureH=Math.min(totalH,vh*5);' + // max 5 viewports
-        // Full page capture then split into sections
-        'captureH=Math.min(captureH,vh*5);' +
+        'var captureH=Math.min(totalH,vh*10);' + // max 10 viewports
+        'captureH=Math.min(captureH,vh*10);' +
         'ms.domToCanvas(document.documentElement,{scale:' + ss.scale + ',timeout:8000}).then(function(fc){' +
-          'var sH=Math.round(vh*' + ss.scale + ');var shots=[];var si=0;var tot=Math.min(Math.ceil(fc.height/sH),5);' +
+          'var sH=Math.round(vh*' + ss.scale + ');var shots=[];var si=0;var tot=Math.min(Math.ceil(fc.height/sH),10);' +
           'function sp(){' +
             'if(si>=tot){parent.postMessage({type:"' + msgType + '",screenshots:shots,screenshotMeta:{scale:' + ss.scale + ',viewportHeight:vh,sectionCount:tot,canvasWidth:fc.width,canvasHeight:fc.height}},"*");return}' +
             'var sy=si*sH;var sh=Math.min(sH,fc.height-sy);if(sh<=0){si++;sp();return}' +

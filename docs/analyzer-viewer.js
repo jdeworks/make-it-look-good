@@ -144,6 +144,19 @@ window.MilgViewer = (function() {
       });
     }
 
+    // Double-click to step zoom up (or reset if at max)
+    content.addEventListener('dblclick', function(e) {
+      if (e.target.closest('.milg-viewer-toolbar')) return;
+      if (!zoomSelect) return;
+      var options = zoomSelect.options;
+      var curIdx = zoomSelect.selectedIndex;
+      // Step up one level, or reset to 100% if at max
+      var nextIdx = curIdx < options.length - 1 ? curIdx + 1 : 1; // index 1 = 100%
+      zoomSelect.selectedIndex = nextIdx;
+      _zoomLevel = parseFloat(zoomSelect.value) || 1;
+      applyZoom(frame);
+    });
+
     // Stitch screenshots into one continuous canvas
     stitchScreenshots(_screenshots, function(stitched) {
       _stitchedCanvas = stitched;
@@ -219,8 +232,18 @@ window.MilgViewer = (function() {
 
   function applyZoom(frame) {
     if (!frame) return;
-    frame.style.transform = _zoomLevel === 1 ? '' : 'scale(' + _zoomLevel + ')';
-    frame.style.transformOrigin = 'center top';
+    // Use width/height scaling instead of CSS transform so the parent scrolls properly
+    var img = frame.querySelector('.milg-viewer-img');
+    if (!img) return;
+    if (_zoomLevel === 1) {
+      img.style.width = '';
+      img.style.maxWidth = '100%';
+    } else {
+      // Set explicit pixel width based on zoom — parent overflow:auto handles scroll
+      var baseWidth = _meta ? _meta.canvasWidth : 640;
+      img.style.maxWidth = 'none';
+      img.style.width = Math.round(baseWidth * _zoomLevel) + 'px';
+    }
   }
 
   function _onKeyDown(e) {

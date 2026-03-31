@@ -466,7 +466,7 @@
         filter: filterValue,
         backdropFilter: hasBackdropFilter,
         minBgAlpha: Math.round(minBgAlpha * 100) / 100,
-        bbox: { left: Math.round(elRect.left), top: Math.round(elRect.top), width: Math.round(elRect.width), height: Math.round(elRect.height) }
+        bbox: { left: Math.round(elRect.left + window.scrollX), top: Math.round(elRect.top + window.scrollY), width: Math.round(elRect.width), height: Math.round(elRect.height) }
       });
     }
 
@@ -734,7 +734,7 @@
         passes: false,
         isButton: el.tagName !== 'A' || linkContext === 'button' || linkContext === 'nav',
         linkContext: linkContext,
-        bbox: { left: Math.round(rect.left), top: Math.round(rect.top), width: w, height: h }
+        bbox: { left: Math.round(rect.left + window.scrollX), top: Math.round(rect.top + window.scrollY), width: w, height: h }
       });
     }
   });

@@ -404,7 +404,7 @@
         filter: filterValue,
         backdropFilter: hasBackdropFilter,
         minBgAlpha: Math.round(minBgAlpha * 100) / 100,
-        bbox: { left: Math.round(elRect.left), top: Math.round(elRect.top), width: Math.round(elRect.width), height: Math.round(elRect.height) }
+        bbox: { left: Math.round(elRect.left + window.scrollX), top: Math.round(elRect.top + window.scrollY), width: Math.round(elRect.width), height: Math.round(elRect.height) }
       });
     }
 
@@ -657,7 +657,7 @@
         passes: false,
         isButton: el.tagName !== 'A' || linkContext === 'button' || linkContext === 'nav',
         linkContext: linkContext,
-        bbox: { left: Math.round(rect.left), top: Math.round(rect.top), width: w, height: h }
+        bbox: { left: Math.round(rect.left + window.scrollX), top: Math.round(rect.top + window.scrollY), width: w, height: h }
       });
     }
   });
@@ -1685,8 +1685,8 @@
 
     var _ssStart = Date.now();
     function _t() { return '[' + ((Date.now() - _ssStart) / 1000).toFixed(1) + 's] '; }
-    // Cap at 5 viewports for the full capture (avoid huge canvases)
-    captureH = Math.min(captureH, vh * 5);
+    // Cap at 10 viewports for the full capture (avoid huge canvases on very long pages)
+    captureH = Math.min(captureH, vh * 10);
     var numSections = Math.ceil(captureH / vh);
     console.log('[ss] ' + _t() + 'totalH=' + totalH + ' vh=' + vh + ' captureH=' + captureH + ' sections=' + numSections);
 
@@ -1744,7 +1744,7 @@
         var secScale = 0.5;
         var secW = fullCanvas.width;
         var secVH = Math.round(vh * secScale);
-        var totalSecs = Math.min(Math.ceil(fullCanvas.height / secVH), 5);
+        var totalSecs = Math.min(Math.ceil(fullCanvas.height / secVH), 10);
         console.log('[ss] ' + _t() + 'Splitting into ' + totalSecs + ' sections (secH=' + secVH + 'px in canvas coords)');
 
         var shots = [];
