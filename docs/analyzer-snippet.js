@@ -1,10 +1,13 @@
 // make-it-look-good — Design Extraction Snippet
+// Version: 2025-03-31-v12
 // Run this in the browser console on any page, or use as a bookmarklet.
 // It extracts design tokens and copies JSON to your clipboard.
 // Then paste into the analyzer at: https://yourusername.github.io/make-it-look-good/analyzer.html
 
 (function() {
   'use strict';
+  var _MILG_VERSION = '2025-03-31-v12';
+  console.log('%c[milg] Snippet version: ' + _MILG_VERSION, 'color: #64748b;');
 
   // --- Scan mode option ---
   // Set window.__milgScanMode before running:

@@ -1,4 +1,5 @@
 // make-it-look-good — Design Extraction Snippet (with screenshots)
+// Version: 2025-03-31-v12
 // Run this in the browser console on any page.
 // Loads modern-screenshot from CDN to capture page screenshots as WebP.
 // Output is larger (~200-800KB extra) but includes visual reference.
@@ -6,6 +7,8 @@
 
 (function() {
   'use strict';
+  var _MILG_VERSION = '2025-03-31-v12';
+  console.log('%c[milg] Snippet version: ' + _MILG_VERSION, 'color: #64748b;');
 
   // --- Scan mode ---
   var _scanMode = window.__milgScanMode || 'full';
