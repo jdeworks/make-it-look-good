@@ -240,7 +240,7 @@ window.MilgViewer = (function() {
 
   // Build debug info for alignment diagnostics
   function buildDebugInfo() {
-    var info = { meta: _meta, zoomLevel: _zoomLevel, findings: [] };
+    var info = { meta: _meta, zoomLevel: _zoomLevel, activeFilter: _activeFilter, findings: [] };
 
     // Screenshot section info
     if (_stitchedCanvas) {
@@ -321,17 +321,28 @@ window.MilgViewer = (function() {
 
   function applyZoom(frame) {
     if (!frame) return;
-    // Use width/height scaling instead of CSS transform so the parent scrolls properly
     var img = frame.querySelector('.milg-viewer-img');
+    var svg = frame.querySelector('.milg-viewer-svg');
     if (!img) return;
     if (_zoomLevel === 1) {
       img.style.width = '';
-      img.style.maxWidth = '100%';
+      img.style.maxWidth = '95vw';
+      if (svg) { svg.style.width = ''; svg.style.height = ''; }
     } else {
-      // Set explicit pixel width based on zoom — parent overflow:auto handles scroll
       var baseWidth = _meta ? _meta.canvasWidth : 640;
+      var zoomedWidth = Math.round(baseWidth * _zoomLevel);
       img.style.maxWidth = 'none';
-      img.style.width = Math.round(baseWidth * _zoomLevel) + 'px';
+      img.style.width = zoomedWidth + 'px';
+      // Force SVG to match image dimensions exactly
+      if (svg) {
+        svg.style.width = zoomedWidth + 'px';
+        // Height follows aspect ratio from viewBox automatically, but set explicitly
+        var vb = svg.getAttribute('viewBox');
+        if (vb && _stitchedCanvas) {
+          var ratio = _stitchedCanvas.height / _stitchedCanvas.width;
+          svg.style.height = Math.round(zoomedWidth * ratio) + 'px';
+        }
+      }
     }
   }
 
