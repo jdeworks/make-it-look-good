@@ -391,6 +391,7 @@
 
   // --- Typography & Colors ---
   var fontSizeMap = {};
+  var fontSizeSamples = {};
   var fontWeightMap = {};
   var fontFamilySet = new Set();
   var lineHeightMap = {};
@@ -482,7 +483,8 @@
       var charWidth = _measureSpan.getBoundingClientRect().width / 36;
       var charsPerLine = Math.round(elWidth / charWidth);
       if (charsPerLine > data.typography.maxLineLength.chars) {
-        data.typography.maxLineLength = { chars: charsPerLine, element: cssSelector(el), fontSize: Math.round(fontSize), textLength: node.textContent.trim().length };
+        var _mlRect = el.getBoundingClientRect();
+        data.typography.maxLineLength = { chars: charsPerLine, element: cssSelector(el), fontSize: Math.round(fontSize), textLength: node.textContent.trim().length, bbox: { left: Math.round(_mlRect.left + window.scrollX), top: Math.round(_mlRect.top + window.scrollY), width: Math.round(_mlRect.width), height: Math.round(_mlRect.height) } };
       }
     }
   }
@@ -524,6 +526,10 @@
     // Font data
     var fs = s.fontSize;
     fontSizeMap[fs] = (fontSizeMap[fs] || 0) + 1;
+    if (!fontSizeSamples[fs]) {
+      var _fsRect = el.getBoundingClientRect();
+      fontSizeSamples[fs] = { selector: cssSelector(el), bbox: { left: Math.round(_fsRect.left + window.scrollX), top: Math.round(_fsRect.top + window.scrollY), width: Math.round(_fsRect.width), height: Math.round(_fsRect.height) } };
+    }
     var fw = s.fontWeight;
     fontWeightMap[fw] = (fontWeightMap[fw] || 0) + 1;
     var ff = s.fontFamily.split(',')[0].trim().replace(/['"]/g, '');
@@ -586,7 +592,11 @@
       .slice(0, 30);
   }
 
-  data.typography.fontSizes = mapToSorted(fontSizeMap);
+  data.typography.fontSizes = mapToSorted(fontSizeMap).map(function(entry) {
+    var sample = fontSizeSamples[entry.value];
+    if (sample) { entry.sampleSelector = sample.selector; entry.bbox = sample.bbox; }
+    return entry;
+  });
   data.typography.fontWeights = mapToSorted(fontWeightMap);
   data.typography.fontFamilies = Array.from(fontFamilySet).slice(0, 10);
   data.typography.lineHeights = mapToSorted(lineHeightMap);
@@ -633,13 +643,16 @@
   var headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
   headings.forEach(function(h) {
     var hs = getComputedStyle(h);
+    var hRect = h.getBoundingClientRect();
     data.typography.headings.push({
       tag: h.tagName.toLowerCase(),
       text: h.textContent.trim().substring(0, 60),
       fontSize: hs.fontSize,
       fontWeight: hs.fontWeight,
       lineHeight: hs.lineHeight,
-      fontFamily: hs.fontFamily.split(',')[0].trim().replace(/['"]/g, '')
+      fontFamily: hs.fontFamily.split(',')[0].trim().replace(/['"]/g, ''),
+      selector: cssSelector(h),
+      bbox: { left: Math.round(hRect.left + window.scrollX), top: Math.round(hRect.top + window.scrollY), width: Math.round(hRect.width), height: Math.round(hRect.height) }
     });
     data.accessibility.headingHierarchy.push(h.tagName.toLowerCase());
   });
@@ -1379,7 +1392,8 @@
       left: Math.round(r.left),
       right: Math.round(r.right),
       vpWidth: _vpW,
-      reason: r.right < 0 ? 'left-overflow' : r.left >= _vpW ? 'right-overflow' : 'major-clip'
+      reason: r.right < 0 ? 'left-overflow' : r.left >= _vpW ? 'right-overflow' : 'major-clip',
+      bbox: { left: Math.round(r.left + window.scrollX), top: Math.round(r.top + window.scrollY), width: Math.round(r.width), height: Math.round(r.height) }
     });
   });
   data.layout.offscreenElements = data.layout.offscreenElements.slice(0, 20);
@@ -1422,7 +1436,8 @@
         left: Math.round(cr.left),
         right: Math.round(cr.right),
         vpWidth: _vpW,
-        reason: 'hidden-fixed-overflow'
+        reason: 'hidden-fixed-overflow',
+        bbox: { left: Math.round(cr.left + window.scrollX), top: Math.round(cr.top + window.scrollY), width: Math.round(cr.width), height: Math.round(cr.height) }
       });
     });
     // Restore
@@ -1541,7 +1556,8 @@
         left: Math.round(pr.left),
         right: Math.round(pr.right),
         vpWidth: _vpW,
-        issues: issues
+        issues: issues,
+        bbox: { left: Math.round(pr.left + window.scrollX), top: Math.round(pr.top + window.scrollY), width: Math.round(pr.width), height: Math.round(pr.height) }
       });
     }
   });
