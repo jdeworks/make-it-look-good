@@ -213,7 +213,7 @@ window.MilgViewer = (function() {
       viewImg.src = stitched.canvas.toDataURL('image/png');
       viewImg.alt = 'Full page screenshot';
 
-      // SVG overlay — viewBox = full stitched canvas dimensions
+      // SVG overlay — viewBox matches stitched image exactly
       var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       svg.setAttribute('class', 'milg-viewer-svg');
       svg.setAttribute('viewBox', '0 0 ' + stitched.width + ' ' + stitched.height);
@@ -245,10 +245,11 @@ window.MilgViewer = (function() {
 
     // Screenshot section info
     if (_stitchedCanvas) {
-      info.stitched = { width: _stitchedCanvas.width, height: _stitchedCanvas.height };
+      info.stitched = { width: _stitchedCanvas.width, height: _stitchedCanvas.height, sectionSizes: _stitchedCanvas.sectionSizes || [] };
     }
     info.screenshotCount = _screenshots.length;
-    info.sectionSizes = [];
+    // Expected section height at scale
+    info.expectedSectionH = _meta ? Math.round(_meta.viewportHeight * _meta.scale) : 0;
     // Read natural sizes from data URIs (async not possible here, use cached)
     var imgEl = _overlay && _overlay.querySelector('.milg-viewer-img');
     if (imgEl) {
@@ -295,9 +296,13 @@ window.MilgViewer = (function() {
         if (loaded === dataUris.length) {
           // All loaded — stitch vertically
           var totalWidth = 0, totalHeight = 0;
-          images.forEach(function(im) {
-            if (im.width > totalWidth) totalWidth = im.width;
-            totalHeight += im.height;
+          var sectionSizes = [];
+          images.forEach(function(im, i) {
+            if (im) {
+              if (im.width > totalWidth) totalWidth = im.width;
+              totalHeight += im.height;
+              sectionSizes.push({ idx: i, width: im.width, height: im.height });
+            }
           });
           var canvas = document.createElement('canvas');
           canvas.width = totalWidth;
@@ -305,10 +310,9 @@ window.MilgViewer = (function() {
           var ctx = canvas.getContext('2d');
           var y = 0;
           images.forEach(function(im) {
-            ctx.drawImage(im, 0, y);
-            y += im.height;
+            if (im) { ctx.drawImage(im, 0, y); y += im.height; }
           });
-          callback({ canvas: canvas, ctx: ctx, width: totalWidth, height: totalHeight });
+          callback({ canvas: canvas, ctx: ctx, width: totalWidth, height: totalHeight, sectionSizes: sectionSizes });
         }
       };
       img.onerror = function() {
@@ -392,11 +396,15 @@ window.MilgViewer = (function() {
     // Compute actual scale from canvas dimensions vs document dimensions.
     // The document may have grown between extraction (bboxes) and capture (screenshots)
     // due to lazy-loaded content. Use docHeightAtCapture for Y mapping.
-    // domToCanvas(scale:0.5) renders the full document at 0.5x regardless of scroll.
-    // Confirmed by Puppeteer tests: dom.top * 0.5 = canvas.y consistently.
-    // Use nominal scale for mapping. Scroll position is irrelevant.
+    // Map DOM coordinates to stitched image coordinates.
+    // The stitched image may differ from the original canvas height
+    // due to WebP section compression round-tripping.
+    // Use stitchedHeight / canvasHeight as a correction factor for Y.
     var scaleX = _meta.scale;
     var scaleY = _meta.scale;
+    if (_stitchedCanvas && _meta.canvasHeight > 0) {
+      scaleY = _meta.scale * (_stitchedCanvas.height / _meta.canvasHeight);
+    }
 
     // Build pixel verification lookup
     var verifyMap = {};
