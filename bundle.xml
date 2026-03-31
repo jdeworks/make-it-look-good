@@ -11939,6 +11939,371 @@ async function main() {
 main().catch(err => { console.error('Fatal:', err); process.exit(1); });
 </file>
 
+<file path="scripts/test-template.mjs">
+#!/usr/bin/env node
+// Test a specific template across all combinations (effects × viewports × dark modes)
+// Usage:
+//   node scripts/test-template.mjs dashboard/clean     # test one template
+//   node scripts/test-template.mjs dashboard            # test all variants of dashboard
+//   node scripts/test-template.mjs --all                # test everything (full matrix)
+//   node scripts/test-template.mjs --all --threads=6    # parallel threads
+//
+// Options:
+//   --threads=N    Number of concurrent browser pages (default: 3)
+//   --all          Test all templates
+//   --light-only   Skip dark mode tests
+//   --desktop-only Skip mobile/tablet viewports
+//
+// Results saved to: research/template-results/<template-name>.json + .md
+
+import puppeteer from 'puppeteer';
+import { createServer } from 'http';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { join, extname } from 'path';
+
+const DOCS_DIR = join(import.meta.dirname, '..', 'docs');
+const RESEARCH_DIR = join(import.meta.dirname, '..', 'research');
+const RESULTS_DIR = join(RESEARCH_DIR, 'template-results');
+const PORT = 8767;
+
+const args = process.argv.slice(2);
+const ALL = args.includes('--all');
+const LIGHT_ONLY = args.includes('--light-only');
+const DESKTOP_ONLY = args.includes('--desktop-only');
+const THREADS = parseInt((args.find(a => a.startsWith('--threads=')) || '--threads=3').split('=')[1]);
+const TEMPLATE = args.find(a => !a.startsWith('--')) || '';
+
+if (!ALL && !TEMPLATE) {
+  console.log('Usage: node scripts/test-template.mjs <template> [--threads=N] [--light-only] [--desktop-only]');
+  console.log('       node scripts/test-template.mjs --all [--threads=N]');
+  console.log('\nExamples:');
+  console.log('  node scripts/test-template.mjs dashboard/clean');
+  console.log('  node scripts/test-template.mjs dashboard');
+  console.log('  node scripts/test-template.mjs --all --threads=6');
+  process.exit(0);
+}
+
+// Effect names — CSS extracted from test-full-matrix.mjs
+const EFFECT_LIST = [
+  { name: 'none', css: '' },
+  { name: 'hushed' },
+  { name: 'bouncy' },
+  { name: 'frosted' },
+  { name: 'serif' },
+];
+
+// Read effects from the full matrix test file
+let fullMatrixSrc;
+try {
+  fullMatrixSrc = readFileSync(join(import.meta.dirname, 'test-full-matrix.mjs'), 'utf8');
+} catch(e) {
+  console.error('Cannot read test-full-matrix.mjs for effect definitions');
+  process.exit(1);
+}
+
+// Extract each effect's CSS from the source
+function extractEffectCSS(src, name) {
+  if (name === 'none') return '';
+  const re = new RegExp(`\\{\\s*name:\\s*'${name}'\\s*,\\s*css:\\s*\`([\\s\\S]*?)\`\\s*\\}`, 'm');
+  const m = src.match(re);
+  return m ? m[1] : '';
+}
+
+const EFFECTS_PARSED = EFFECT_LIST.map(e => ({
+  name: e.name,
+  css: extractEffectCSS(fullMatrixSrc, e.name)
+}));
+
+const VIEWPORTS = DESKTOP_ONLY
+  ? [{ w: 1280, h: 900 }]
+  : [{ w: 375, h: 812 }, { w: 768, h: 1024 }, { w: 1280, h: 900 }];
+
+const DARK_MODES = LIGHT_ONLY ? [false] : [false, true];
+
+// Server
+function startServer() {
+  const mimeTypes = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2' };
+  const server = createServer((req, res) => {
+    let filePath = join(DOCS_DIR, req.url === '/' ? 'index.html' : req.url);
+    if (!existsSync(filePath)) { res.writeHead(404); res.end('Not found'); return; }
+    const ext = extname(filePath);
+    res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' });
+    res.end(readFileSync(filePath));
+  });
+  server.listen(PORT);
+  return server;
+}
+
+// Build test list
+function buildTests() {
+  const manifest = JSON.parse(readFileSync(join(DOCS_DIR, 'presets', 'index.json'), 'utf8'));
+  const tests = [];
+
+  for (const [el, info] of Object.entries(manifest.elements)) {
+    const personalities = Object.keys(info.personalities || {});
+    for (const pers of personalities) {
+      const presetKey = `${el}/${pers}`;
+
+      // Filter
+      if (!ALL) {
+        if (TEMPLATE.includes('/')) {
+          // Exact match: dashboard/clean
+          if (presetKey !== TEMPLATE) continue;
+        } else {
+          // Element match: dashboard (all variants)
+          if (el !== TEMPLATE) continue;
+        }
+      }
+
+      const file = join(DOCS_DIR, 'presets', el, pers + '.html');
+      if (!existsSync(file)) continue;
+
+      for (const effect of EFFECTS_PARSED) {
+        for (const vp of VIEWPORTS) {
+          for (const dark of DARK_MODES) {
+            tests.push({ element: el, personality: pers, effect: effect.name, effectCSS: effect.css, viewport: vp, dark });
+          }
+        }
+      }
+    }
+  }
+  return tests;
+}
+
+function testKey(t) {
+  return `${t.element}/${t.personality}|${t.effect}|${t.viewport.w}|${t.dark ? 'dark' : 'light'}`;
+}
+
+// Run a single test (same logic as full matrix)
+async function runTest(page, t) {
+  const html = readFileSync(join(DOCS_DIR, 'presets', t.element, t.personality + '.html'), 'utf8');
+  await page.setViewport({ width: t.viewport.w, height: t.viewport.h });
+  await page.goto(`http://localhost:${PORT}/tests/test-presets-rendered.html`, { waitUntil: 'networkidle0', timeout: 15000 });
+
+  const result = await page.evaluate(async (html, element, personality, effectCSS, dark, vpWidth) => {
+    return new Promise((resolve) => {
+      const iframe = document.createElement('iframe');
+      iframe.style.cssText = `position:fixed;top:-9999px;left:-9999px;width:${vpWidth}px;height:900px;border:none;`;
+      iframe.sandbox = 'allow-scripts allow-same-origin';
+      document.body.appendChild(iframe);
+
+      let handled = false;
+      function onMsg(e) {
+        if (!e.data || e.data.type !== 'milg-headless-result') return;
+        if (handled) return;
+        handled = true;
+        window.removeEventListener('message', onMsg);
+        if (iframe.parentNode) document.body.removeChild(iframe);
+
+        const data = e.data.data;
+        data.profile = 'general';
+        data.meta.isFragment = true;
+        data.meta.url = element + '/' + personality;
+        try {
+          const report = window.MilgScoring.runScoring(data);
+
+          // Read darkness level from extraction (computed area-weighted in extractFromDocument)
+          var darknessLevel = (data.colors && data.colors.darknessLevel) || 5;
+
+          resolve({
+            overall: report.overall,
+            grade: report.grade,
+            darknessLevel,
+            categories: report.categories.map(c => ({
+              label: c.label, score: c.score, na: !!c.notApplicable,
+              errors: c.findings.filter(f => f.severity === 'error').length,
+              warnings: c.findings.filter(f => f.severity === 'warning').length,
+              findings: c.findings.map(f => ({ severity: f.severity, title: f.title }))
+            }))
+          });
+        } catch(err) {
+          resolve({ error: err.message });
+        }
+      }
+      window.addEventListener('message', onMsg);
+
+      fetch('/analyzer.js').then(r => r.text()).then(code => {
+        const match = code.match(/function extractFromDocument\(\)\s*\{/);
+        if (!match) { resolve({ error: 'No extractFromDocument' }); return; }
+        const start = code.indexOf(match[0]);
+        let depth = 0, end = start;
+        for (let i = start; i < code.length; i++) {
+          if (code[i] === '{') depth++;
+          if (code[i] === '}') { depth--; if (depth === 0) { end = i + 1; break; } }
+        }
+        const extractFn = code.substring(start, end).replace(/milg-analyzer-result/g, 'milg-headless-result');
+
+        const darkClass = dark ? ' class="dark"' : '';
+        const darkVariantCSS = '@custom-variant dark (&:where(.dark, .dark *));';
+        const srcdoc = '<!DOCTYPE html><html lang="en"' + darkClass + '><head><meta charset="UTF-8">' +
+          '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+          '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
+          (dark ? '<style type="text/tailwindcss">' + darkVariantCSS + '</style>' : '') +
+          (effectCSS ? '<style>' + effectCSS + '</style>' : '') +
+          '<style>body{margin:0}</style></head><body>' +
+          '<script>window.__milgIsFragment=true;</' + 'script>' +
+          html +
+          '<script>setTimeout(function(){(' + extractFn + ')()}, 2500);</' + 'script>' +
+          '</body></html>';
+        iframe.srcdoc = srcdoc;
+      });
+
+      setTimeout(() => {
+        if (handled) return;
+        handled = true;
+        window.removeEventListener('message', onMsg);
+        if (iframe.parentNode) document.body.removeChild(iframe);
+        resolve({ error: 'Timeout' });
+      }, 15000);
+    });
+  }, html, t.element, t.personality, t.effectCSS, t.dark, t.viewport.w);
+
+  return result;
+}
+
+// Generate per-template report
+function generateReport(templateName, results) {
+  const ok = results.filter(r => !r.error);
+  if (ok.length === 0) return '# No results\n';
+
+  const avg = Math.round(ok.reduce((s, r) => s + r.overall, 0) / ok.length);
+  const min = Math.min(...ok.map(r => r.overall));
+  const max = Math.max(...ok.map(r => r.overall));
+
+  let md = `# Test Results: ${templateName}\n\n`;
+  md += `**Date:** ${new Date().toISOString()}\n`;
+  md += `**Tests:** ${ok.length} | **Avg:** ${avg} | **Min:** ${min} | **Max:** ${max}\n\n`;
+
+  // Score matrix
+  md += '## Score Matrix\n\n';
+  md += '| Effect | Viewport | Mode | Score | Grade | DL | Errors | Warnings |\n';
+  md += '|--------|----------|------|-------|-------|----|--------|----------|\n';
+  for (const r of ok.sort((a, b) => a.overall - b.overall)) {
+    const errs = r.categories.reduce((s, c) => s + c.errors, 0);
+    const warns = r.categories.reduce((s, c) => s + c.warnings, 0);
+    md += `| ${r.effect} | ${r.viewport.w} | ${r.dark ? 'dark' : 'light'} | ${r.overall} | ${r.grade} | ${r.darknessLevel || '?'} | ${errs} | ${warns} |\n`;
+  }
+
+  // Issues
+  md += '\n## Issues Found\n\n';
+  const issueCounts = {};
+  for (const r of ok) {
+    for (const c of r.categories) {
+      for (const f of c.findings) {
+        if (f.severity === 'info') continue;
+        const key = `[${f.severity}] ${c.label}: ${f.title.substring(0, 80)}`;
+        issueCounts[key] = (issueCounts[key] || 0) + 1;
+      }
+    }
+  }
+  const sorted = Object.entries(issueCounts).sort((a, b) => b[1] - a[1]);
+  for (const [issue, count] of sorted) {
+    md += `- **${count}x** ${issue}\n`;
+  }
+
+  // Darkness levels
+  md += '\n## Darkness Levels\n\n';
+  const byMode = {};
+  for (const r of ok) {
+    const modeKey = r.dark ? 'dark' : 'light';
+    if (!byMode[modeKey]) byMode[modeKey] = [];
+    byMode[modeKey].push(r.darknessLevel || 5);
+  }
+  for (const [mode, levels] of Object.entries(byMode)) {
+    const avgDL = (levels.reduce((s, l) => s + l, 0) / levels.length).toFixed(1);
+    md += `- **${mode}:** avg DL=${avgDL} (range ${Math.min(...levels)}-${Math.max(...levels)})\n`;
+  }
+
+  return md;
+}
+
+// Main
+async function main() {
+  const tests = buildTests();
+  if (tests.length === 0) {
+    console.error(`No tests found for "${TEMPLATE}". Check the template name exists in docs/presets/index.json`);
+    process.exit(1);
+  }
+
+  const templateName = ALL ? 'all' : TEMPLATE;
+  console.log(`Testing: ${templateName} (${tests.length} combinations, ${THREADS} threads)`);
+
+  if (!existsSync(RESULTS_DIR)) mkdirSync(RESULTS_DIR, { recursive: true });
+
+  const server = startServer();
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage']
+  });
+
+  const pages = [];
+  for (let i = 0; i < THREADS; i++) {
+    pages.push(await browser.newPage());
+  }
+
+  const results = [];
+  let completed = 0;
+  const startTime = Date.now();
+
+  async function processTest(page, t) {
+    const key = testKey(t);
+    try {
+      const result = await runTest(page, t);
+      completed++;
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
+      const eta = Math.round((Date.now() - startTime) / completed * (tests.length - completed) / 1000);
+
+      if (result.error) {
+        process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s (ETA ${eta}s) ${key} ERROR: ${result.error}          \n`);
+        results.push({ key, ...t, error: result.error });
+      } else {
+        const e = result.categories.reduce((s, c) => s + c.errors, 0);
+        const w = result.categories.reduce((s, c) => s + c.warnings, 0);
+        process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s (ETA ${eta}s) ${key} → ${result.overall}${result.grade} D${result.darknessLevel || '?'} (${e}E ${w}W)          \n`);
+        results.push({ key, ...t, ...result });
+      }
+    } catch (err) {
+      completed++;
+      results.push({ key, ...t, error: err.message });
+    }
+  }
+
+  let idx = 0;
+  async function worker(page) {
+    while (idx < tests.length) {
+      const myIdx = idx++;
+      await processTest(page, tests[myIdx]);
+    }
+  }
+
+  await Promise.all(pages.map(p => worker(p)));
+  await browser.close();
+  server.close();
+
+  // Save results
+  const safeName = templateName.replace(/\//g, '-');
+  const jsonFile = join(RESULTS_DIR, `${safeName}.json`);
+  const mdFile = join(RESULTS_DIR, `${safeName}.md`);
+
+  writeFileSync(jsonFile, JSON.stringify(results, null, 2));
+  const md = generateReport(templateName, results);
+  writeFileSync(mdFile, md);
+
+  console.log(`\nResults saved to:`);
+  console.log(`  ${jsonFile}`);
+  console.log(`  ${mdFile}`);
+
+  // Summary
+  const ok = results.filter(r => !r.error);
+  const avg = ok.length > 0 ? Math.round(ok.reduce((s, r) => s + r.overall, 0) / ok.length) : 0;
+  console.log(`\n=== SUMMARY ===`);
+  console.log(`Tested: ${ok.length} | Errors: ${results.filter(r => r.error).length}`);
+  console.log(`Average: ${avg} | Min: ${Math.min(...ok.map(r => r.overall))} | Max: ${Math.max(...ok.map(r => r.overall))}`);
+}
+
+main().catch(err => { console.error('Fatal:', err); process.exit(1); });
+</file>
+
 <file path="systems/apple-hig.md">
 # Apple Human Interface Guidelines
 
@@ -19139,6 +19504,124 @@ All presets are:
 }
 </file>
 
+<file path="docs/scoring/balance.js">
+// Scoring Module: Visual Weight Balance
+// Weight: 3%
+// Source: Ngo et al. 2003 — balance correlates with preference (r=0.67)
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+  function scoreBalance(data) {
+    var findings = [];
+    var checks = 0;
+    var passed = 0;
+
+    // We use alignment edges as a proxy for content distribution
+    var edges = (data.layout && data.layout.alignmentEdges) || [];
+    var vw = (data.meta && data.meta.viewportWidth) || 1280;
+
+    if (edges.length >= 10) {
+      checks++;
+
+      // Estimate content center points from left edges:
+      // For each left-edge, estimate center as edge + avgWidth/2
+      // where avgWidth is derived from the spread of edges
+      var sortedEdges = edges.slice().sort(function(a, b) { return a - b; });
+      var minEdge = sortedEdges[0];
+      var maxEdge = sortedEdges[sortedEdges.length - 1];
+      // Estimate average element width from the content span
+      var contentSpan = maxEdge - minEdge;
+      var estWidth = contentSpan > 0 ? Math.min(contentSpan / 2, vw * 0.4) : vw * 0.3;
+
+      var leftCount = 0;
+      var rightCount = 0;
+      var midpoint = vw / 2;
+
+      edges.forEach(function(edge) {
+        // Use estimated center of element, not left edge
+        var center = edge + estWidth / 2;
+        if (center < midpoint) leftCount++;
+        else rightCount++;
+      });
+
+      var total = leftCount + rightCount;
+      var ratio = total > 0 ? Math.max(leftCount, rightCount) / Math.min(leftCount || 1, rightCount || 1) : 1;
+
+      if (ratio <= 2) {
+        passed++;
+      } else if (ratio <= 3) {
+        passed++; // Info findings don't reduce score
+        findings.push({
+          severity: 'info',
+          title: 'Content distribution is ' + Math.round(leftCount / total * 100) + '% left / ' + Math.round(rightCount / total * 100) + '% right',
+          detail: 'Moderate imbalance — may be intentional (sidebar layout) or indicate uneven content distribution',
+          fix: 'If using a sidebar layout, this is expected. Otherwise, distribute content more evenly or use a centered layout.',
+          presetRef: null,
+          source: 'Ngo et al. 2003 — Visual balance and aesthetic preference'
+        });
+      } else {
+        findings.push({
+          severity: 'info',
+          title: 'Content heavily weighted to one side (' + Math.round(leftCount / total * 100) + '% / ' + Math.round(rightCount / total * 100) + '%)',
+          detail: 'Strong left-right imbalance — often intentional in sidebar or marketing layouts',
+          fix: 'If using a sidebar or asymmetric layout, this is expected. Otherwise, distribute content more evenly.',
+          presetRef: null,
+          source: 'Ngo et al. 2003 — Visual balance and aesthetic preference'
+        });
+      }
+    }
+
+    // Content centering: is the primary content centered or justified?
+    if (edges.length >= 5) {
+      checks++;
+      var meanEdge = edges.reduce(function(s,v){return s+v},0) / edges.length;
+      var centered = Math.abs(meanEdge - vw * 0.1) < vw * 0.15; // within 15% of typical left margin
+      if (centered || meanEdge > 10) {
+        passed++;
+      } else {
+        findings.push({
+          severity: 'info',
+          title: 'Content appears flush to the left edge (mean position: ' + Math.round(meanEdge) + 'px)',
+          detail: 'Content without proper margins can feel unbalanced.',
+          fix: 'Add container padding or centering. In Tailwind: mx-auto px-4.',
+          source: 'Gestalt proximity — https://lawsofux.com/law-of-proximity/'
+        });
+      }
+    }
+
+    // Vertical rhythm: check if section gaps are present
+    var sectionGaps = (data.layout && data.layout.sectionGaps) || [];
+    if (sectionGaps.length >= 2) {
+      checks++;
+      var minGap = Math.min.apply(null, sectionGaps);
+      var maxGap = Math.max.apply(null, sectionGaps);
+      if (minGap >= 16 && maxGap / (minGap || 1) <= 3) {
+        passed++;
+      } else if (minGap < 4) {
+        findings.push({
+          severity: 'info',
+          title: 'Sections have very tight spacing (minimum gap: ' + minGap + 'px)',
+          detail: 'Sections need breathing room. Tight spacing makes content feel cramped.',
+          fix: 'Use consistent section spacing: 48-96px between major sections.',
+          source: 'Gestalt similarity — https://lawsofux.com/law-of-similarity/'
+        });
+      } else {
+        passed++;
+      }
+    }
+
+    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+    var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+    var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+    return { score: score, findings: findings, checks: checks, passed: passed, weight: 3, label: 'Visual Balance', icon: 'consistency' };
+  }
+
+  S.register("balance", scoreBalance, 3, "Visual Balance", "consistency");
+})();
+</file>
+
 <file path="docs/scoring/spacing.js">
 // Scoring Module: Spacing & Layout
 // Weight: 15%
@@ -20946,371 +21429,6 @@ window.MilgProxy = (function() {
 })();
 </file>
 
-<file path="scripts/test-template.mjs">
-#!/usr/bin/env node
-// Test a specific template across all combinations (effects × viewports × dark modes)
-// Usage:
-//   node scripts/test-template.mjs dashboard/clean     # test one template
-//   node scripts/test-template.mjs dashboard            # test all variants of dashboard
-//   node scripts/test-template.mjs --all                # test everything (full matrix)
-//   node scripts/test-template.mjs --all --threads=6    # parallel threads
-//
-// Options:
-//   --threads=N    Number of concurrent browser pages (default: 3)
-//   --all          Test all templates
-//   --light-only   Skip dark mode tests
-//   --desktop-only Skip mobile/tablet viewports
-//
-// Results saved to: research/template-results/<template-name>.json + .md
-
-import puppeteer from 'puppeteer';
-import { createServer } from 'http';
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
-import { join, extname } from 'path';
-
-const DOCS_DIR = join(import.meta.dirname, '..', 'docs');
-const RESEARCH_DIR = join(import.meta.dirname, '..', 'research');
-const RESULTS_DIR = join(RESEARCH_DIR, 'template-results');
-const PORT = 8767;
-
-const args = process.argv.slice(2);
-const ALL = args.includes('--all');
-const LIGHT_ONLY = args.includes('--light-only');
-const DESKTOP_ONLY = args.includes('--desktop-only');
-const THREADS = parseInt((args.find(a => a.startsWith('--threads=')) || '--threads=3').split('=')[1]);
-const TEMPLATE = args.find(a => !a.startsWith('--')) || '';
-
-if (!ALL && !TEMPLATE) {
-  console.log('Usage: node scripts/test-template.mjs <template> [--threads=N] [--light-only] [--desktop-only]');
-  console.log('       node scripts/test-template.mjs --all [--threads=N]');
-  console.log('\nExamples:');
-  console.log('  node scripts/test-template.mjs dashboard/clean');
-  console.log('  node scripts/test-template.mjs dashboard');
-  console.log('  node scripts/test-template.mjs --all --threads=6');
-  process.exit(0);
-}
-
-// Effect names — CSS extracted from test-full-matrix.mjs
-const EFFECT_LIST = [
-  { name: 'none', css: '' },
-  { name: 'hushed' },
-  { name: 'bouncy' },
-  { name: 'frosted' },
-  { name: 'serif' },
-];
-
-// Read effects from the full matrix test file
-let fullMatrixSrc;
-try {
-  fullMatrixSrc = readFileSync(join(import.meta.dirname, 'test-full-matrix.mjs'), 'utf8');
-} catch(e) {
-  console.error('Cannot read test-full-matrix.mjs for effect definitions');
-  process.exit(1);
-}
-
-// Extract each effect's CSS from the source
-function extractEffectCSS(src, name) {
-  if (name === 'none') return '';
-  const re = new RegExp(`\\{\\s*name:\\s*'${name}'\\s*,\\s*css:\\s*\`([\\s\\S]*?)\`\\s*\\}`, 'm');
-  const m = src.match(re);
-  return m ? m[1] : '';
-}
-
-const EFFECTS_PARSED = EFFECT_LIST.map(e => ({
-  name: e.name,
-  css: extractEffectCSS(fullMatrixSrc, e.name)
-}));
-
-const VIEWPORTS = DESKTOP_ONLY
-  ? [{ w: 1280, h: 900 }]
-  : [{ w: 375, h: 812 }, { w: 768, h: 1024 }, { w: 1280, h: 900 }];
-
-const DARK_MODES = LIGHT_ONLY ? [false] : [false, true];
-
-// Server
-function startServer() {
-  const mimeTypes = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2' };
-  const server = createServer((req, res) => {
-    let filePath = join(DOCS_DIR, req.url === '/' ? 'index.html' : req.url);
-    if (!existsSync(filePath)) { res.writeHead(404); res.end('Not found'); return; }
-    const ext = extname(filePath);
-    res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' });
-    res.end(readFileSync(filePath));
-  });
-  server.listen(PORT);
-  return server;
-}
-
-// Build test list
-function buildTests() {
-  const manifest = JSON.parse(readFileSync(join(DOCS_DIR, 'presets', 'index.json'), 'utf8'));
-  const tests = [];
-
-  for (const [el, info] of Object.entries(manifest.elements)) {
-    const personalities = Object.keys(info.personalities || {});
-    for (const pers of personalities) {
-      const presetKey = `${el}/${pers}`;
-
-      // Filter
-      if (!ALL) {
-        if (TEMPLATE.includes('/')) {
-          // Exact match: dashboard/clean
-          if (presetKey !== TEMPLATE) continue;
-        } else {
-          // Element match: dashboard (all variants)
-          if (el !== TEMPLATE) continue;
-        }
-      }
-
-      const file = join(DOCS_DIR, 'presets', el, pers + '.html');
-      if (!existsSync(file)) continue;
-
-      for (const effect of EFFECTS_PARSED) {
-        for (const vp of VIEWPORTS) {
-          for (const dark of DARK_MODES) {
-            tests.push({ element: el, personality: pers, effect: effect.name, effectCSS: effect.css, viewport: vp, dark });
-          }
-        }
-      }
-    }
-  }
-  return tests;
-}
-
-function testKey(t) {
-  return `${t.element}/${t.personality}|${t.effect}|${t.viewport.w}|${t.dark ? 'dark' : 'light'}`;
-}
-
-// Run a single test (same logic as full matrix)
-async function runTest(page, t) {
-  const html = readFileSync(join(DOCS_DIR, 'presets', t.element, t.personality + '.html'), 'utf8');
-  await page.setViewport({ width: t.viewport.w, height: t.viewport.h });
-  await page.goto(`http://localhost:${PORT}/tests/test-presets-rendered.html`, { waitUntil: 'networkidle0', timeout: 15000 });
-
-  const result = await page.evaluate(async (html, element, personality, effectCSS, dark, vpWidth) => {
-    return new Promise((resolve) => {
-      const iframe = document.createElement('iframe');
-      iframe.style.cssText = `position:fixed;top:-9999px;left:-9999px;width:${vpWidth}px;height:900px;border:none;`;
-      iframe.sandbox = 'allow-scripts allow-same-origin';
-      document.body.appendChild(iframe);
-
-      let handled = false;
-      function onMsg(e) {
-        if (!e.data || e.data.type !== 'milg-headless-result') return;
-        if (handled) return;
-        handled = true;
-        window.removeEventListener('message', onMsg);
-        if (iframe.parentNode) document.body.removeChild(iframe);
-
-        const data = e.data.data;
-        data.profile = 'general';
-        data.meta.isFragment = true;
-        data.meta.url = element + '/' + personality;
-        try {
-          const report = window.MilgScoring.runScoring(data);
-
-          // Read darkness level from extraction (computed area-weighted in extractFromDocument)
-          var darknessLevel = (data.colors && data.colors.darknessLevel) || 5;
-
-          resolve({
-            overall: report.overall,
-            grade: report.grade,
-            darknessLevel,
-            categories: report.categories.map(c => ({
-              label: c.label, score: c.score, na: !!c.notApplicable,
-              errors: c.findings.filter(f => f.severity === 'error').length,
-              warnings: c.findings.filter(f => f.severity === 'warning').length,
-              findings: c.findings.map(f => ({ severity: f.severity, title: f.title }))
-            }))
-          });
-        } catch(err) {
-          resolve({ error: err.message });
-        }
-      }
-      window.addEventListener('message', onMsg);
-
-      fetch('/analyzer.js').then(r => r.text()).then(code => {
-        const match = code.match(/function extractFromDocument\(\)\s*\{/);
-        if (!match) { resolve({ error: 'No extractFromDocument' }); return; }
-        const start = code.indexOf(match[0]);
-        let depth = 0, end = start;
-        for (let i = start; i < code.length; i++) {
-          if (code[i] === '{') depth++;
-          if (code[i] === '}') { depth--; if (depth === 0) { end = i + 1; break; } }
-        }
-        const extractFn = code.substring(start, end).replace(/milg-analyzer-result/g, 'milg-headless-result');
-
-        const darkClass = dark ? ' class="dark"' : '';
-        const darkVariantCSS = '@custom-variant dark (&:where(.dark, .dark *));';
-        const srcdoc = '<!DOCTYPE html><html lang="en"' + darkClass + '><head><meta charset="UTF-8">' +
-          '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
-          '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
-          (dark ? '<style type="text/tailwindcss">' + darkVariantCSS + '</style>' : '') +
-          (effectCSS ? '<style>' + effectCSS + '</style>' : '') +
-          '<style>body{margin:0}</style></head><body>' +
-          '<script>window.__milgIsFragment=true;</' + 'script>' +
-          html +
-          '<script>setTimeout(function(){(' + extractFn + ')()}, 2500);</' + 'script>' +
-          '</body></html>';
-        iframe.srcdoc = srcdoc;
-      });
-
-      setTimeout(() => {
-        if (handled) return;
-        handled = true;
-        window.removeEventListener('message', onMsg);
-        if (iframe.parentNode) document.body.removeChild(iframe);
-        resolve({ error: 'Timeout' });
-      }, 15000);
-    });
-  }, html, t.element, t.personality, t.effectCSS, t.dark, t.viewport.w);
-
-  return result;
-}
-
-// Generate per-template report
-function generateReport(templateName, results) {
-  const ok = results.filter(r => !r.error);
-  if (ok.length === 0) return '# No results\n';
-
-  const avg = Math.round(ok.reduce((s, r) => s + r.overall, 0) / ok.length);
-  const min = Math.min(...ok.map(r => r.overall));
-  const max = Math.max(...ok.map(r => r.overall));
-
-  let md = `# Test Results: ${templateName}\n\n`;
-  md += `**Date:** ${new Date().toISOString()}\n`;
-  md += `**Tests:** ${ok.length} | **Avg:** ${avg} | **Min:** ${min} | **Max:** ${max}\n\n`;
-
-  // Score matrix
-  md += '## Score Matrix\n\n';
-  md += '| Effect | Viewport | Mode | Score | Grade | DL | Errors | Warnings |\n';
-  md += '|--------|----------|------|-------|-------|----|--------|----------|\n';
-  for (const r of ok.sort((a, b) => a.overall - b.overall)) {
-    const errs = r.categories.reduce((s, c) => s + c.errors, 0);
-    const warns = r.categories.reduce((s, c) => s + c.warnings, 0);
-    md += `| ${r.effect} | ${r.viewport.w} | ${r.dark ? 'dark' : 'light'} | ${r.overall} | ${r.grade} | ${r.darknessLevel || '?'} | ${errs} | ${warns} |\n`;
-  }
-
-  // Issues
-  md += '\n## Issues Found\n\n';
-  const issueCounts = {};
-  for (const r of ok) {
-    for (const c of r.categories) {
-      for (const f of c.findings) {
-        if (f.severity === 'info') continue;
-        const key = `[${f.severity}] ${c.label}: ${f.title.substring(0, 80)}`;
-        issueCounts[key] = (issueCounts[key] || 0) + 1;
-      }
-    }
-  }
-  const sorted = Object.entries(issueCounts).sort((a, b) => b[1] - a[1]);
-  for (const [issue, count] of sorted) {
-    md += `- **${count}x** ${issue}\n`;
-  }
-
-  // Darkness levels
-  md += '\n## Darkness Levels\n\n';
-  const byMode = {};
-  for (const r of ok) {
-    const modeKey = r.dark ? 'dark' : 'light';
-    if (!byMode[modeKey]) byMode[modeKey] = [];
-    byMode[modeKey].push(r.darknessLevel || 5);
-  }
-  for (const [mode, levels] of Object.entries(byMode)) {
-    const avgDL = (levels.reduce((s, l) => s + l, 0) / levels.length).toFixed(1);
-    md += `- **${mode}:** avg DL=${avgDL} (range ${Math.min(...levels)}-${Math.max(...levels)})\n`;
-  }
-
-  return md;
-}
-
-// Main
-async function main() {
-  const tests = buildTests();
-  if (tests.length === 0) {
-    console.error(`No tests found for "${TEMPLATE}". Check the template name exists in docs/presets/index.json`);
-    process.exit(1);
-  }
-
-  const templateName = ALL ? 'all' : TEMPLATE;
-  console.log(`Testing: ${templateName} (${tests.length} combinations, ${THREADS} threads)`);
-
-  if (!existsSync(RESULTS_DIR)) mkdirSync(RESULTS_DIR, { recursive: true });
-
-  const server = startServer();
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage']
-  });
-
-  const pages = [];
-  for (let i = 0; i < THREADS; i++) {
-    pages.push(await browser.newPage());
-  }
-
-  const results = [];
-  let completed = 0;
-  const startTime = Date.now();
-
-  async function processTest(page, t) {
-    const key = testKey(t);
-    try {
-      const result = await runTest(page, t);
-      completed++;
-      const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
-      const eta = Math.round((Date.now() - startTime) / completed * (tests.length - completed) / 1000);
-
-      if (result.error) {
-        process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s (ETA ${eta}s) ${key} ERROR: ${result.error}          \n`);
-        results.push({ key, ...t, error: result.error });
-      } else {
-        const e = result.categories.reduce((s, c) => s + c.errors, 0);
-        const w = result.categories.reduce((s, c) => s + c.warnings, 0);
-        process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s (ETA ${eta}s) ${key} → ${result.overall}${result.grade} D${result.darknessLevel || '?'} (${e}E ${w}W)          \n`);
-        results.push({ key, ...t, ...result });
-      }
-    } catch (err) {
-      completed++;
-      results.push({ key, ...t, error: err.message });
-    }
-  }
-
-  let idx = 0;
-  async function worker(page) {
-    while (idx < tests.length) {
-      const myIdx = idx++;
-      await processTest(page, tests[myIdx]);
-    }
-  }
-
-  await Promise.all(pages.map(p => worker(p)));
-  await browser.close();
-  server.close();
-
-  // Save results
-  const safeName = templateName.replace(/\//g, '-');
-  const jsonFile = join(RESULTS_DIR, `${safeName}.json`);
-  const mdFile = join(RESULTS_DIR, `${safeName}.md`);
-
-  writeFileSync(jsonFile, JSON.stringify(results, null, 2));
-  const md = generateReport(templateName, results);
-  writeFileSync(mdFile, md);
-
-  console.log(`\nResults saved to:`);
-  console.log(`  ${jsonFile}`);
-  console.log(`  ${mdFile}`);
-
-  // Summary
-  const ok = results.filter(r => !r.error);
-  const avg = ok.length > 0 ? Math.round(ok.reduce((s, r) => s + r.overall, 0) / ok.length) : 0;
-  console.log(`\n=== SUMMARY ===`);
-  console.log(`Tested: ${ok.length} | Errors: ${results.filter(r => r.error).length}`);
-  console.log(`Average: ${avg} | Min: ${Math.min(...ok.map(r => r.overall))} | Max: ${Math.max(...ok.map(r => r.overall))}`);
-}
-
-main().catch(err => { console.error('Fatal:', err); process.exit(1); });
-</file>
-
 <file path="tests/crawl-flow.test.mjs">
 /**
  * Crawl Multi-Page Flow Tests
@@ -21419,124 +21537,6 @@ assert(summary.worstPage.score === 72, 'Worst page score is 72');
 console.log('\n=== Results ===');
 console.log(`${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);
-</file>
-
-<file path="docs/scoring/balance.js">
-// Scoring Module: Visual Weight Balance
-// Weight: 3%
-// Source: Ngo et al. 2003 — balance correlates with preference (r=0.67)
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-  function scoreBalance(data) {
-    var findings = [];
-    var checks = 0;
-    var passed = 0;
-
-    // We use alignment edges as a proxy for content distribution
-    var edges = (data.layout && data.layout.alignmentEdges) || [];
-    var vw = (data.meta && data.meta.viewportWidth) || 1280;
-
-    if (edges.length >= 10) {
-      checks++;
-
-      // Estimate content center points from left edges:
-      // For each left-edge, estimate center as edge + avgWidth/2
-      // where avgWidth is derived from the spread of edges
-      var sortedEdges = edges.slice().sort(function(a, b) { return a - b; });
-      var minEdge = sortedEdges[0];
-      var maxEdge = sortedEdges[sortedEdges.length - 1];
-      // Estimate average element width from the content span
-      var contentSpan = maxEdge - minEdge;
-      var estWidth = contentSpan > 0 ? Math.min(contentSpan / 2, vw * 0.4) : vw * 0.3;
-
-      var leftCount = 0;
-      var rightCount = 0;
-      var midpoint = vw / 2;
-
-      edges.forEach(function(edge) {
-        // Use estimated center of element, not left edge
-        var center = edge + estWidth / 2;
-        if (center < midpoint) leftCount++;
-        else rightCount++;
-      });
-
-      var total = leftCount + rightCount;
-      var ratio = total > 0 ? Math.max(leftCount, rightCount) / Math.min(leftCount || 1, rightCount || 1) : 1;
-
-      if (ratio <= 2) {
-        passed++;
-      } else if (ratio <= 3) {
-        passed++; // Info findings don't reduce score
-        findings.push({
-          severity: 'info',
-          title: 'Content distribution is ' + Math.round(leftCount / total * 100) + '% left / ' + Math.round(rightCount / total * 100) + '% right',
-          detail: 'Moderate imbalance — may be intentional (sidebar layout) or indicate uneven content distribution',
-          fix: 'If using a sidebar layout, this is expected. Otherwise, distribute content more evenly or use a centered layout.',
-          presetRef: null,
-          source: 'Ngo et al. 2003 — Visual balance and aesthetic preference'
-        });
-      } else {
-        findings.push({
-          severity: 'info',
-          title: 'Content heavily weighted to one side (' + Math.round(leftCount / total * 100) + '% / ' + Math.round(rightCount / total * 100) + '%)',
-          detail: 'Strong left-right imbalance — often intentional in sidebar or marketing layouts',
-          fix: 'If using a sidebar or asymmetric layout, this is expected. Otherwise, distribute content more evenly.',
-          presetRef: null,
-          source: 'Ngo et al. 2003 — Visual balance and aesthetic preference'
-        });
-      }
-    }
-
-    // Content centering: is the primary content centered or justified?
-    if (edges.length >= 5) {
-      checks++;
-      var meanEdge = edges.reduce(function(s,v){return s+v},0) / edges.length;
-      var centered = Math.abs(meanEdge - vw * 0.1) < vw * 0.15; // within 15% of typical left margin
-      if (centered || meanEdge > 10) {
-        passed++;
-      } else {
-        findings.push({
-          severity: 'info',
-          title: 'Content appears flush to the left edge (mean position: ' + Math.round(meanEdge) + 'px)',
-          detail: 'Content without proper margins can feel unbalanced.',
-          fix: 'Add container padding or centering. In Tailwind: mx-auto px-4.',
-          source: 'Gestalt proximity — https://lawsofux.com/law-of-proximity/'
-        });
-      }
-    }
-
-    // Vertical rhythm: check if section gaps are present
-    var sectionGaps = (data.layout && data.layout.sectionGaps) || [];
-    if (sectionGaps.length >= 2) {
-      checks++;
-      var minGap = Math.min.apply(null, sectionGaps);
-      var maxGap = Math.max.apply(null, sectionGaps);
-      if (minGap >= 16 && maxGap / (minGap || 1) <= 3) {
-        passed++;
-      } else if (minGap < 4) {
-        findings.push({
-          severity: 'info',
-          title: 'Sections have very tight spacing (minimum gap: ' + minGap + 'px)',
-          detail: 'Sections need breathing room. Tight spacing makes content feel cramped.',
-          fix: 'Use consistent section spacing: 48-96px between major sections.',
-          source: 'Gestalt similarity — https://lawsofux.com/law-of-similarity/'
-        });
-      } else {
-        passed++;
-      }
-    }
-
-    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-    var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-    var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-    return { score: score, findings: findings, checks: checks, passed: passed, weight: 3, label: 'Visual Balance', icon: 'consistency' };
-  }
-
-  S.register("balance", scoreBalance, 3, "Visual Balance", "consistency");
-})();
 </file>
 
 <file path="docs/scoring/performance.js">
@@ -22448,6 +22448,733 @@ window.MilgCrawl = (function() {
     renderCrawlJSON: renderCrawlJSON
   };
 })();
+</file>
+
+<file path="scripts/test-full-matrix.mjs">
+#!/usr/bin/env node
+// Full matrix test runner: preset × personality × effect × viewport × dark mode
+// Usage: node scripts/test-full-matrix.mjs [--quick] [--filter=hero] [--effects-only] [--divergence-only]
+//
+// --quick: skip viewports (test only 1280px), skip dark mode → 650 tests instead of 3900
+// --filter=hero: only test presets matching "hero"
+// --effects-only: only test effect variants (skip viewport/dark combos)
+// --divergence-only: skip scoring, only compute divergence from cached results
+//
+// Outputs: research/full-matrix-results.md (scores + divergence + flagged combos)
+
+import puppeteer from 'puppeteer';
+import { createServer } from 'http';
+import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from 'fs';
+import { join, extname } from 'path';
+
+const DOCS_DIR = join(import.meta.dirname, '..', 'docs');
+const RESEARCH_DIR = join(import.meta.dirname, '..', 'research');
+const CACHE_FILE = join(RESEARCH_DIR, 'full-matrix-cache.json');
+const PORT = 8766; // different from basic test runner
+
+const args = process.argv.slice(2);
+const QUICK = args.includes('--quick');
+const EFFECTS_ONLY = args.includes('--effects-only');
+const DIVERGENCE_ONLY = args.includes('--divergence-only');
+const FILTER = (args.find(a => a.startsWith('--filter=')) || '').replace('--filter=', '');
+
+// --- Effect definitions (must match docs/app.js visualStyles) ---
+const EFFECTS = [
+  { name: 'none', css: '' },
+  { name: 'hushed', css: `[class*="shadow"]{box-shadow:none!important}
+[class*="border"]{border-color:rgba(0,0,0,0.06)!important}
+[class*="rounded-lg"],[class*="rounded-xl"],[class*="rounded-2xl"],[class*="rounded-3xl"]{border-radius:4px!important}
+[class*="rounded-full"]{border-radius:9999px!important}
+h1,h2,h3,h4,h5,h6{font-weight:300!important;letter-spacing:0.02em}
+h1{font-size:2.25em!important}
+p,span,li,td,th{opacity:0.75}
+button:not([class*="bg-"]),[role="button"]:not([class*="bg-"]){font-weight:400!important;letter-spacing:0.06em;text-transform:uppercase;font-size:0.82em!important;border:1px solid rgba(0,0,0,0.1)!important;background:transparent!important;color:inherit!important}
+button[class*="bg-"],[role="button"][class*="bg-"]{font-weight:400!important;letter-spacing:0.06em;text-transform:uppercase;font-size:0.82em!important;opacity:0.85}
+button:hover,a:hover,[role="button"]:hover{opacity:0.5;transition:opacity 250ms ease-out}
+nav,aside,[class*="border-b"],[class*="border-r"]{border-color:rgba(0,0,0,0.04)!important}` },
+  { name: 'bouncy', css: `[class*="rounded-md"],[class*="rounded-lg"]{border-radius:16px!important}
+[class*="rounded-xl"],[class*="rounded-2xl"],[class*="rounded-3xl"]{border-radius:24px!important}
+[class*="shadow-sm"],[class*="shadow-md"]{box-shadow:0 4px 14px rgba(99,102,241,0.18),0 2px 6px rgba(244,63,94,0.12)!important}
+[class*="shadow-lg"],[class*="shadow-xl"]{box-shadow:0 10px 30px rgba(99,102,241,0.22),0 4px 12px rgba(244,63,94,0.14)!important}
+button,[role="button"],article{transition:transform 300ms cubic-bezier(0.34,1.56,0.64,1),box-shadow 300ms cubic-bezier(0.34,1.56,0.64,1)!important}
+button:hover,[role="button"]:hover{transform:scale(1.05) translateY(-2px)!important}
+article:hover{transform:translateY(-4px);box-shadow:0 12px 30px rgba(99,102,241,0.2)!important}
+h1,h2,h3{font-weight:800!important;letter-spacing:-0.01em}
+input,select,textarea{border-radius:14px!important}
+button:active,[role="button"]:active{transform:scale(0.95)!important;transition-duration:80ms!important}` },
+  { name: 'frosted', css: `html:not(.dark) body{background:linear-gradient(135deg,#dbeafe 0%,#ede9fe 35%,#fce7f3 65%,#e0f2fe 100%)!important;min-height:100vh}
+.dark body,.dark.min-h-screen,html.dark body{background:linear-gradient(135deg,#0f172a 0%,#1e1b4b 35%,#1e1b4b 65%,#0f172a 100%)!important;min-height:100vh}
+html:not(.dark) [class*="bg-white"]{background:rgba(255,255,255,0.55)!important;-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);border:1px solid rgba(255,255,255,0.4)!important;box-shadow:0 4px 24px rgba(0,0,0,0.04),inset 0 1px 0 rgba(255,255,255,0.6)!important}
+.dark [class*="bg-slate-900"],.dark [class*="bg-slate-950"],.dark [class*="bg-gray-900"],.dark [class*="bg-gray-950"]{background:rgba(15,23,42,0.78)!important;-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);border:1px solid rgba(99,102,241,0.15)!important;box-shadow:0 4px 24px rgba(0,0,0,0.2),inset 0 1px 0 rgba(99,102,241,0.1)!important}
+html:not(.dark) [class*="bg-slate-50"],html:not(.dark) [class*="bg-gray-50"],html:not(.dark) [class*="bg-zinc-50"]{background:rgba(248,250,252,0.4)!important;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+.dark [class*="bg-slate-800"],.dark [class*="bg-gray-800"],.dark [class*="bg-slate-850"]{background:rgba(30,41,59,0.72)!important;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+[class*="shadow-sm"],[class*="shadow-md"],[class*="shadow-lg"],[class*="shadow-xl"]{box-shadow:0 4px 20px rgba(0,0,0,0.05),inset 0 1px 0 rgba(255,255,255,0.5)!important}
+.dark [class*="shadow-sm"],.dark [class*="shadow-md"],.dark [class*="shadow-lg"],.dark [class*="shadow-xl"]{box-shadow:0 4px 20px rgba(0,0,0,0.3),inset 0 1px 0 rgba(99,102,241,0.1)!important}
+[class*="rounded-lg"]{border-radius:14px!important}
+[class*="rounded-xl"],[class*="rounded-2xl"]{border-radius:18px!important}
+html:not(.dark) [class*="border-slate-200"],html:not(.dark) [class*="border-gray-200"],html:not(.dark) [class*="border-zinc-200"]{border-color:rgba(255,255,255,0.35)!important}
+.dark [class*="border-slate-700"],.dark [class*="border-slate-800"],.dark [class*="border-gray-700"],.dark [class*="border-gray-800"]{border-color:rgba(99,102,241,0.15)!important}
+[class*="divide-slate"],[class*="divide-gray"],[class*="divide-zinc"]{--tw-divide-opacity:0.3}
+html:not(.dark) [class*="border-t"]:not([class*="border-t-0"]){border-color:rgba(100,116,139,0.2)!important}
+.dark [class*="border-t"]:not([class*="border-t-0"]){border-color:rgba(99,102,241,0.12)!important}
+html:not(.dark) [class*="text-slate-500"],html:not(.dark) [class*="text-gray-500"],html:not(.dark) [class*="text-zinc-500"]{color:rgb(51,65,85)!important}
+html:not(.dark) [class*="text-slate-400"],html:not(.dark) [class*="text-gray-400"]{color:rgb(71,85,105)!important}
+.dark [class*="text-slate-400"],.dark [class*="text-gray-400"]{color:rgb(148,163,184)!important}
+.dark [class*="text-slate-300"],.dark [class*="text-gray-300"]{color:rgb(203,213,225)!important}
+input,select,textarea{-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);border-radius:12px!important}
+html:not(.dark) input,html:not(.dark) select,html:not(.dark) textarea{background:rgba(255,255,255,0.45)!important;border:1px solid rgba(255,255,255,0.4)!important}
+.dark input,.dark select,.dark textarea{background:rgba(15,23,42,0.45)!important;border:1px solid rgba(99,102,241,0.2)!important}
+button:hover,[role="button"]:hover{box-shadow:0 0 24px rgba(99,102,241,0.18),0 6px 20px rgba(0,0,0,0.06)!important;transition:box-shadow 250ms ease-out,transform 250ms ease-out;transform:translateY(-1px)}
+html:not(.dark) nav,html:not(.dark) aside,html:not(.dark) header{-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);background:rgba(255,255,255,0.65)!important}
+.dark nav,.dark aside,.dark header{-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);background:rgba(15,23,42,0.65)!important}` },
+  { name: 'serif', css: `@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap');
+h1,h2,h3,h4,h5,h6{font-family:'Playfair Display',Georgia,'Times New Roman',serif!important;letter-spacing:-0.02em;line-height:1.15}
+h1{font-weight:400!important;font-size:2.75em!important;letter-spacing:-0.03em}
+h2{font-weight:700!important}
+h3,h4,h5,h6{font-weight:700!important}
+[class*="shadow"]{box-shadow:none!important}
+[class*="border"]{border-color:#e2e8f0!important}
+[class*="rounded-lg"],[class*="rounded-xl"],[class*="rounded-2xl"],[class*="rounded-3xl"],[class*="rounded-md"]{border-radius:2px!important}
+button,[role="button"]{font-weight:400!important;letter-spacing:0.1em;text-transform:uppercase;font-size:0.78em!important;border-radius:1px!important;padding-top:0.75rem!important;padding-bottom:0.75rem!important}
+a:hover{text-decoration:underline!important;text-underline-offset:4px;text-decoration-thickness:1px}
+button:hover,[role="button"]:hover{opacity:0.75;transition:opacity 200ms ease}
+p{line-height:1.75!important}
+body{letter-spacing:0.005em}
+[class*="bg-blue-600"],[class*="bg-indigo-600"],[class*="bg-violet-600"],[class*="bg-teal-600"],[class*="bg-emerald-600"],[class*="bg-rose-600"],[class*="bg-orange-600"],[class*="bg-fuchsia-600"]{background-color:#334155!important}
+[class*="bg-blue-600"]:hover,[class*="bg-indigo-600"]:hover,[class*="bg-violet-600"]:hover,[class*="bg-teal-600"]:hover,[class*="bg-emerald-600"]:hover{background-color:#1e293b!important}
+input,select,textarea{border-radius:1px!important}` },
+];
+
+const VIEWPORTS = QUICK ? [{ w: 1280, h: 900 }] : [
+  { w: 375, h: 812 },
+  { w: 768, h: 1024 },
+  { w: 1280, h: 900 },
+];
+
+const DARK_MODES = QUICK ? [false] : [false, true];
+
+// --- Server ---
+function startServer() {
+  const mimeTypes = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2' };
+  const server = createServer((req, res) => {
+    let filePath = join(DOCS_DIR, req.url === '/' ? 'index.html' : req.url);
+    if (!existsSync(filePath)) { res.writeHead(404); res.end('Not found'); return; }
+    const ext = extname(filePath);
+    res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' });
+    res.end(readFileSync(filePath));
+  });
+  server.listen(PORT);
+  return server;
+}
+
+// --- Build test matrix ---
+function buildTests() {
+  const manifest = JSON.parse(readFileSync(join(DOCS_DIR, 'presets', 'index.json'), 'utf8'));
+  const tests = [];
+
+  for (const [el, info] of Object.entries(manifest.elements)) {
+    if (FILTER && !el.includes(FILTER)) continue;
+    const personalities = Object.keys(info.personalities || {});
+    for (const pers of personalities) {
+      const file = join(DOCS_DIR, 'presets', el, pers + '.html');
+      if (!existsSync(file)) continue;
+
+      for (const effect of EFFECTS) {
+        if (EFFECTS_ONLY) {
+          // Only test at 1280, no dark mode for effects-only
+          tests.push({ element: el, personality: pers, effect: effect.name, effectCSS: effect.css, viewport: { w: 1280, h: 900 }, dark: false });
+        } else {
+          for (const vp of VIEWPORTS) {
+            for (const dark of DARK_MODES) {
+              tests.push({ element: el, personality: pers, effect: effect.name, effectCSS: effect.css, viewport: vp, dark });
+            }
+          }
+        }
+      }
+    }
+  }
+  return tests;
+}
+
+function testKey(t) {
+  return `${t.element}/${t.personality}|${t.effect}|${t.viewport.w}|${t.dark ? 'dark' : 'light'}`;
+}
+
+// --- Run a single test ---
+async function runTest(page, t) {
+  const html = readFileSync(join(DOCS_DIR, 'presets', t.element, t.personality + '.html'), 'utf8');
+
+  await page.setViewport({ width: t.viewport.w, height: t.viewport.h });
+  await page.goto(`http://localhost:${PORT}/tests/test-presets-rendered.html`, { waitUntil: 'networkidle0', timeout: 15000 });
+
+  const result = await page.evaluate(async (html, element, personality, effectCSS, dark, vpWidth) => {
+    return new Promise((resolve) => {
+      const iframe = document.createElement('iframe');
+      iframe.style.cssText = `position:fixed;top:-9999px;left:-9999px;width:${vpWidth}px;height:900px;border:none;`;
+      iframe.sandbox = 'allow-scripts allow-same-origin';
+      document.body.appendChild(iframe);
+
+      let handled = false;
+      function onMsg(e) {
+        if (!e.data || e.data.type !== 'milg-headless-result') return;
+        if (handled) return;
+        handled = true;
+        window.removeEventListener('message', onMsg);
+        if (iframe.parentNode) document.body.removeChild(iframe);
+
+        const data = e.data.data;
+        data.profile = 'general';
+        data.meta.isFragment = true;
+        data.meta.url = element + '/' + personality;
+        try {
+          const report = window.MilgScoring.runScoring(data);
+          // Read darkness level from extraction (computed area-weighted in extractFromDocument)
+          var darknessLevel = (data.colors && data.colors.darknessLevel) || 5;
+
+          resolve({
+            overall: report.overall,
+            grade: report.grade,
+            darknessLevel: darknessLevel,
+            categories: report.categories.map(c => ({
+              label: c.label,
+              score: c.score,
+              na: !!c.notApplicable,
+              errors: c.findings.filter(f => f.severity === 'error').length,
+              warnings: c.findings.filter(f => f.severity === 'warning').length,
+              infos: c.findings.filter(f => f.severity === 'info').length,
+              findings: c.findings.map(f => ({ severity: f.severity, title: f.title }))
+            })),
+            // Capture raw metrics for divergence analysis
+            metrics: {
+              contrastPairs: (data.colors && data.colors.contrastPairs) ? data.colors.contrastPairs.length : 0,
+              fontSizes: data.typography ? Object.keys(data.typography.fontSizes || {}).length : 0,
+              borderRadii: data.spacing ? Object.keys(data.spacing.borderRadii || {}).length : 0,
+              touchTargets: (data.interaction && data.interaction.touchTargets) ? data.interaction.touchTargets.length : 0,
+              headingCount: data.structure ? (data.structure.headingCount || 0) : 0,
+              totalElements: data.structure ? (data.structure.totalElements || 0) : 0,
+              colors: data.colors ? Object.keys(data.colors.textColors || {}).length : 0,
+              bgColors: data.colors ? Object.keys(data.colors.backgroundColors || {}).length : 0,
+            }
+          });
+        } catch(err) {
+          resolve({ error: err.message });
+        }
+      }
+      window.addEventListener('message', onMsg);
+
+      fetch('/analyzer.js').then(r => r.text()).then(code => {
+        const match = code.match(/function extractFromDocument\(\)\s*\{/);
+        if (!match) { resolve({ error: 'No extractFromDocument' }); return; }
+        const start = code.indexOf(match[0]);
+        let depth = 0, end = start;
+        for (let i = start; i < code.length; i++) {
+          if (code[i] === '{') depth++;
+          if (code[i] === '}') { depth--; if (depth === 0) { end = i + 1; break; } }
+        }
+        const extractFn = code.substring(start, end).replace(/milg-analyzer-result/g, 'milg-headless-result');
+
+        const darkClass = dark ? ' class="dark"' : '';
+        const darkVariantCSS = '@custom-variant dark (&:where(.dark, .dark *));';
+        const srcdoc = '<!DOCTYPE html><html lang="en"' + darkClass + '><head><meta charset="UTF-8">' +
+          '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+          '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
+          (dark ? '<style type="text/tailwindcss">' + darkVariantCSS + '</style>' : '') +
+          (effectCSS ? '<style>' + effectCSS + '</style>' : '') +
+          '<style>body{margin:0}</style></head><body>' +
+          '<script>window.__milgIsFragment=true;</' + 'script>' +
+          html +
+          '<script>setTimeout(function(){(' + extractFn + ')()}, 2500);</' + 'script>' +
+          '</body></html>';
+        iframe.srcdoc = srcdoc;
+      });
+
+      setTimeout(() => {
+        if (handled) return;
+        handled = true;
+        window.removeEventListener('message', onMsg);
+        if (iframe.parentNode) document.body.removeChild(iframe);
+        resolve({ error: 'Timeout' });
+      }, 15000);
+    });
+  }, html, t.element, t.personality, t.effectCSS, t.dark, t.viewport.w);
+
+  return result;
+}
+
+// --- Divergence scoring ---
+// Compares two test results to measure how different they are (0 = identical, 100 = completely different)
+function divergenceScore(a, b) {
+  if (!a || !b || a.error || b.error) return null;
+
+  let totalDiff = 0;
+  let comparisons = 0;
+
+  // 1. Overall score difference (weight: 3)
+  totalDiff += Math.abs(a.overall - b.overall) * 3;
+  comparisons += 3;
+
+  // 2. Per-category score differences (weight: 1 each)
+  const aCats = {};
+  const bCats = {};
+  (a.categories || []).forEach(c => { aCats[c.label] = c; });
+  (b.categories || []).forEach(c => { bCats[c.label] = c; });
+
+  for (const label of Object.keys(aCats)) {
+    if (bCats[label]) {
+      // Normalize score diff to 0-100
+      totalDiff += Math.abs((aCats[label].score || 0) - (bCats[label].score || 0));
+      comparisons++;
+
+      // Finding count differences
+      const aFindings = (aCats[label].errors || 0) + (aCats[label].warnings || 0);
+      const bFindings = (bCats[label].errors || 0) + (bCats[label].warnings || 0);
+      totalDiff += Math.min(100, Math.abs(aFindings - bFindings) * 15);
+      comparisons++;
+    }
+  }
+
+  // 3. Metric differences (structural signals)
+  if (a.metrics && b.metrics) {
+    const metricKeys = ['contrastPairs', 'fontSizes', 'borderRadii', 'touchTargets', 'colors', 'bgColors'];
+    for (const k of metricKeys) {
+      const av = a.metrics[k] || 0;
+      const bv = b.metrics[k] || 0;
+      const maxVal = Math.max(av, bv, 1);
+      totalDiff += (Math.abs(av - bv) / maxVal) * 100;
+      comparisons++;
+    }
+  }
+
+  return comparisons > 0 ? Math.round(totalDiff / comparisons) : 0;
+}
+
+// --- Report generation ---
+function generateReport(results, tests) {
+  const resultMap = {};
+  for (const r of results) {
+    resultMap[r.key] = r;
+  }
+
+  let md = '# Full Matrix Test Results\n\n';
+  md += `**Date:** ${new Date().toISOString()}\n`;
+  md += `**Tests run:** ${results.length} | **Errors:** ${results.filter(r => r.error).length}\n`;
+  md += `**Matrix:** ${new Set(results.map(r => r.element + '/' + r.personality)).size} presets × ${EFFECTS.length} effects × ${VIEWPORTS.length} viewports × ${DARK_MODES.length} dark modes\n\n`;
+
+  const ok = results.filter(r => !r.error);
+  if (ok.length === 0) { return md + 'No successful results.\n'; }
+
+  const avg = Math.round(ok.reduce((s, r) => s + r.overall, 0) / ok.length);
+  const min = Math.min(...ok.map(r => r.overall));
+  const max = Math.max(...ok.map(r => r.overall));
+  md += `**Overall:** avg=${avg} min=${min} max=${max}\n\n`;
+
+  // === Section 1: Effect impact summary ===
+  md += '## 1. Effect Impact Summary\n\n';
+  md += 'Average score by effect (across all presets, viewports, dark modes):\n\n';
+  md += '| Effect | Avg Score | Min | Max | Avg Errors | Avg Warnings |\n';
+  md += '|--------|-----------|-----|-----|------------|-------------|\n';
+  for (const effect of EFFECTS) {
+    const effResults = ok.filter(r => r.effect === effect.name);
+    if (effResults.length === 0) continue;
+    const eAvg = Math.round(effResults.reduce((s, r) => s + r.overall, 0) / effResults.length);
+    const eMin = Math.min(...effResults.map(r => r.overall));
+    const eMax = Math.max(...effResults.map(r => r.overall));
+    const eErr = (effResults.reduce((s, r) => s + r.categories.reduce((cs, c) => cs + c.errors, 0), 0) / effResults.length).toFixed(1);
+    const eWarn = (effResults.reduce((s, r) => s + r.categories.reduce((cs, c) => cs + c.warnings, 0), 0) / effResults.length).toFixed(1);
+    md += `| ${effect.name} | ${eAvg} | ${eMin} | ${eMax} | ${eErr} | ${eWarn} |\n`;
+  }
+
+  // === Section 1b: Darkness Level Analysis ===
+  md += '\n## 1b. Page Darkness Level\n\n';
+  md += 'Scale: 1 = white page, 10 = black page. Range 2.5–7.5 is expected; outside = warning.\n\n';
+  md += '| Preset | Light DL | Dark DL | Delta | Warning |\n';
+  md += '|--------|----------|---------|-------|---------|\n';
+  {
+    const presetsDL = [...new Set(ok.map(r => r.element + '/' + r.personality))];
+    for (const preset of presetsDL) {
+      const lk = `${preset}|none|1280|light`;
+      const dk = `${preset}|none|1280|dark`;
+      const lr = resultMap[lk];
+      const dr = resultMap[dk];
+      const lDL = lr && !lr.error ? (lr.darknessLevel || '?') : '—';
+      const dDL = dr && !dr.error ? (dr.darknessLevel || '?') : '—';
+      const delta = (typeof lDL === 'number' && typeof dDL === 'number') ? dDL - lDL : '—';
+      let warn = '';
+      if (typeof lDL === 'number' && (lDL < 2.5 || lDL > 7.5)) warn += 'light-mode ';
+      if (typeof dDL === 'number' && (dDL < 2.5 || dDL > 7.5)) warn += 'dark-mode ';
+      if (typeof lDL === 'number' && typeof dDL === 'number' && Math.abs(dDL - lDL) < 2) warn += 'low-contrast-switch ';
+      if (warn || (typeof delta === 'number' && Math.abs(delta) < 2)) {
+        md += `| ${preset} | ${lDL} | ${dDL} | ${typeof delta === 'number' ? (delta >= 0 ? '+' : '') + delta : delta} | ${warn.trim() || '—'} |\n`;
+      }
+    }
+  }
+
+  // === Section 2: Dark mode impact ===
+  if (DARK_MODES.length > 1) {
+    md += '\n## 2. Dark Mode Impact\n\n';
+    md += '| Preset | Light Score | Dark Score | Delta | Worse Categories |\n';
+    md += '|--------|------------ |------------|-------|-------------------|\n';
+
+    const presets = [...new Set(ok.map(r => r.element + '/' + r.personality))];
+    const darkIssues = [];
+    for (const preset of presets) {
+      // Compare none effect, 1280px, light vs dark
+      const lightKey = `${preset}|none|1280|light`;
+      const darkKey = `${preset}|none|1280|dark`;
+      const light = resultMap[lightKey];
+      const dark = resultMap[darkKey];
+      if (!light || !dark || light.error || dark.error) continue;
+
+      const delta = dark.overall - light.overall;
+      let worse = [];
+      for (let i = 0; i < (light.categories || []).length; i++) {
+        const lc = light.categories[i];
+        const dc = dark.categories[i];
+        if (dc && lc && dc.score < lc.score - 5) {
+          worse.push(`${lc.label} (${lc.score}→${dc.score})`);
+        }
+      }
+
+      if (delta < -5 || worse.length > 0) {
+        darkIssues.push({ preset, light: light.overall, dark: dark.overall, delta, worse });
+        md += `| ${preset} | ${light.overall} | ${dark.overall} | ${delta >= 0 ? '+' : ''}${delta} | ${worse.join(', ') || '—'} |\n`;
+      }
+    }
+    if (darkIssues.length === 0) md += '| (no significant dark mode regressions) | | | | |\n';
+  }
+
+  // === Section 3: Viewport responsiveness ===
+  if (VIEWPORTS.length > 1) {
+    md += '\n## 3. Viewport Responsiveness\n\n';
+    md += '| Preset | 375px | 768px | 1280px | Mobile Delta |\n';
+    md += '|--------|-------|-------|--------|-------------|\n';
+
+    const presets = [...new Set(ok.map(r => r.element + '/' + r.personality))];
+    const vpIssues = [];
+    for (const preset of presets) {
+      const scores = {};
+      for (const vp of VIEWPORTS) {
+        const key = `${preset}|none|${vp.w}|light`;
+        const r = resultMap[key];
+        if (r && !r.error) scores[vp.w] = r.overall;
+      }
+      if (Object.keys(scores).length < VIEWPORTS.length) continue;
+
+      const mobileDelta = (scores[375] || 0) - (scores[1280] || 0);
+      if (Math.abs(mobileDelta) > 5 || (scores[375] || 100) < 70) {
+        vpIssues.push({ preset, scores, mobileDelta });
+        md += `| ${preset} | ${scores[375] ?? '—'} | ${scores[768] ?? '—'} | ${scores[1280] ?? '—'} | ${mobileDelta >= 0 ? '+' : ''}${mobileDelta} |\n`;
+      }
+    }
+    if (vpIssues.length === 0) md += '| (no significant viewport regressions) | | | | |\n';
+  }
+
+  // === Section 4: Frosted + dark mode (known problem combo) ===
+  md += '\n## 4. Frosted Effect Analysis\n\n';
+  md += 'Frosted is the most invasive effect (replaces backgrounds, adds glassmorphism). Checking for issues:\n\n';
+  md += '| Preset | None Score | Frosted Score | Delta | Frosted+Dark | Dark Delta | Key Issues |\n';
+  md += '|--------|-----------|---------------|-------|-------------|------------|------------|\n';
+
+  const presets = [...new Set(ok.map(r => r.element + '/' + r.personality))];
+  for (const preset of presets) {
+    const noneKey = `${preset}|none|1280|light`;
+    const frostedKey = `${preset}|frosted|1280|light`;
+    const frostedDarkKey = `${preset}|frosted|1280|dark`;
+    const none = resultMap[noneKey];
+    const frosted = resultMap[frostedKey];
+    const frostedDark = resultMap[frostedDarkKey];
+
+    if (!none || none.error || !frosted || frosted.error) continue;
+
+    const delta = frosted.overall - none.overall;
+    const darkScore = frostedDark && !frostedDark.error ? frostedDark.overall : '—';
+    const darkDelta = frostedDark && !frostedDark.error ? frostedDark.overall - frosted.overall : '—';
+
+    // Collect key issues from frosted
+    const issues = [];
+    for (const c of frosted.categories) {
+      if (c.errors > 0) {
+        const titles = c.findings.filter(f => f.severity === 'error').map(f => f.title.substring(0, 50));
+        issues.push(...titles.slice(0, 2));
+      }
+    }
+
+    if (delta < -3 || (typeof darkDelta === 'number' && darkDelta < -3) || issues.length > 0) {
+      md += `| ${preset} | ${none.overall} | ${frosted.overall} | ${delta >= 0 ? '+' : ''}${delta} | ${darkScore} | ${typeof darkDelta === 'number' ? (darkDelta >= 0 ? '+' : '') + darkDelta : '—'} | ${issues.slice(0, 2).join('; ') || '—'} |\n`;
+    }
+  }
+
+  // === Section 5: Divergence analysis — are variants meaningfully different? ===
+  md += '\n## 5. Variant Divergence Analysis\n\n';
+  md += 'How different is each variant from "none" effect? Low divergence (< 5) = variant adds negligible value.\n\n';
+
+  // 5a. Effect divergence per preset (at 1280px, light)
+  md += '### 5a. Effect Divergence (per preset, 1280px light)\n\n';
+  md += '| Preset | Hushed | Bouncy | Frosted | Serif | Avg |\n';
+  md += '|--------|--------|--------|---------|-------|-----|\n';
+
+  const lowDivergence = [];
+  for (const preset of presets) {
+    const baseKey = `${preset}|none|1280|light`;
+    const base = resultMap[baseKey];
+    if (!base || base.error) continue;
+
+    const divs = {};
+    let total = 0;
+    let count = 0;
+    for (const eff of EFFECTS.slice(1)) { // skip "none"
+      const key = `${preset}|${eff.name}|1280|light`;
+      const r = resultMap[key];
+      const d = divergenceScore(base, r);
+      divs[eff.name] = d;
+      if (d !== null) { total += d; count++; }
+    }
+    const avgDiv = count > 0 ? Math.round(total / count) : 0;
+
+    md += `| ${preset} | ${divs.hushed ?? '—'} | ${divs.bouncy ?? '—'} | ${divs.frosted ?? '—'} | ${divs.serif ?? '—'} | ${avgDiv} |\n`;
+
+    // Flag low divergence
+    for (const [eff, d] of Object.entries(divs)) {
+      if (d !== null && d < 5) {
+        lowDivergence.push({ preset, effect: eff, divergence: d });
+      }
+    }
+  }
+
+  // 5b. Personality divergence (do clean/minimalist/playful actually differ?)
+  md += '\n### 5b. Personality Divergence (same element, none effect, 1280px light)\n\n';
+  md += 'Low divergence = personalities are too similar. Should be > 10 for meaningful differentiation.\n\n';
+  md += '| Element | Clean vs Min | Clean vs Play | Min vs Play | Clean vs Edit | Avg |\n';
+  md += '|---------|-------------|---------------|-------------|--------------|-----|\n';
+
+  const elements = [...new Set(ok.map(r => r.element))];
+  const lowPersDiv = [];
+  for (const el of elements) {
+    const getR = (p) => resultMap[`${el}/${p}|none|1280|light`];
+    const clean = getR('clean');
+    const min = getR('minimalist');
+    const play = getR('playful');
+    const edit = getR('editorial');
+
+    if (!clean || clean.error) continue;
+
+    const cmDiv = divergenceScore(clean, min);
+    const cpDiv = divergenceScore(clean, play);
+    const mpDiv = divergenceScore(min, play);
+    const ceDiv = divergenceScore(clean, edit);
+
+    const vals = [cmDiv, cpDiv, mpDiv, ceDiv].filter(v => v !== null);
+    const avgDiv = vals.length > 0 ? Math.round(vals.reduce((a, b) => a + b) / vals.length) : 0;
+
+    md += `| ${el} | ${cmDiv ?? '—'} | ${cpDiv ?? '—'} | ${mpDiv ?? '—'} | ${ceDiv ?? '—'} | ${avgDiv} |\n`;
+
+    if (cmDiv !== null && cmDiv < 5) lowPersDiv.push({ element: el, pair: 'clean/minimalist', divergence: cmDiv });
+    if (cpDiv !== null && cpDiv < 5) lowPersDiv.push({ element: el, pair: 'clean/playful', divergence: cpDiv });
+    if (mpDiv !== null && mpDiv < 5) lowPersDiv.push({ element: el, pair: 'minimalist/playful', divergence: mpDiv });
+  }
+
+  // === Section 6: Flagged combinations ===
+  md += '\n## 6. Flagged Combinations\n\n';
+
+  // 6a. Worst scores overall
+  md += '### 6a. Worst Scores (bottom 20)\n\n';
+  md += '| Combo | Score | Grade | Errors | Warnings |\n';
+  md += '|-------|-------|-------|--------|----------|\n';
+  const sorted = ok.sort((a, b) => a.overall - b.overall);
+  for (const r of sorted.slice(0, 20)) {
+    const errs = r.categories.reduce((s, c) => s + c.errors, 0);
+    const warns = r.categories.reduce((s, c) => s + c.warnings, 0);
+    md += `| ${r.key} | ${r.overall} | ${r.grade} | ${errs} | ${warns} |\n`;
+  }
+
+  // 6b. Low divergence (unnecessary variants)
+  md += '\n### 6b. Low Effect Divergence (< 5 — may be unnecessary)\n\n';
+  if (lowDivergence.length > 0) {
+    md += '| Preset | Effect | Divergence |\n';
+    md += '|--------|--------|------------|\n';
+    lowDivergence.sort((a, b) => a.divergence - b.divergence);
+    for (const ld of lowDivergence) {
+      md += `| ${ld.preset} | ${ld.effect} | ${ld.divergence} |\n`;
+    }
+  } else {
+    md += 'None — all effects produce meaningful differentiation.\n';
+  }
+
+  md += '\n### 6c. Low Personality Divergence (< 5 — personalities too similar)\n\n';
+  if (lowPersDiv.length > 0) {
+    md += '| Element | Pair | Divergence |\n';
+    md += '|---------|------|------------|\n';
+    lowPersDiv.sort((a, b) => a.divergence - b.divergence);
+    for (const ld of lowPersDiv) {
+      md += `| ${ld.element} | ${ld.pair} | ${ld.divergence} |\n`;
+    }
+  } else {
+    md += 'None — all personalities produce meaningful differentiation.\n';
+  }
+
+  // 6d. Effect regressions (effect makes things worse by >10 points)
+  md += '\n### 6d. Effect Regressions (score drops > 10 points vs none)\n\n';
+  md += '| Preset | Effect | None Score | Effect Score | Delta |\n';
+  md += '|--------|--------|------------|-------------|-------|\n';
+  let regressionCount = 0;
+  for (const preset of presets) {
+    const baseKey = `${preset}|none|1280|light`;
+    const base = resultMap[baseKey];
+    if (!base || base.error) continue;
+
+    for (const eff of EFFECTS.slice(1)) {
+      const key = `${preset}|${eff.name}|1280|light`;
+      const r = resultMap[key];
+      if (!r || r.error) continue;
+      const delta = r.overall - base.overall;
+      if (delta < -10) {
+        md += `| ${preset} | ${eff.name} | ${base.overall} | ${r.overall} | ${delta} |\n`;
+        regressionCount++;
+      }
+    }
+  }
+  if (regressionCount === 0) md += '| (no regressions > 10 points) | | | | |\n';
+
+  // === Section 7: Most common issues by effect ===
+  md += '\n## 7. Most Common Issues by Effect\n\n';
+  for (const effect of EFFECTS) {
+    const effResults = ok.filter(r => r.effect === effect.name);
+    if (effResults.length === 0) continue;
+
+    md += `### ${effect.name} (${effResults.length} tests)\n\n`;
+    const issueCounts = {};
+    for (const r of effResults) {
+      for (const c of r.categories) {
+        for (const f of c.findings) {
+          if (f.severity === 'info') continue; // skip info
+          const key = `[${f.severity}] ${c.label}: ${f.title.substring(0, 80)}`;
+          issueCounts[key] = (issueCounts[key] || 0) + 1;
+        }
+      }
+    }
+    const sortedIssues = Object.entries(issueCounts).sort((a, b) => b[1] - a[1]);
+    for (const [issue, count] of sortedIssues.slice(0, 10)) {
+      const pct = Math.round(count / effResults.length * 100);
+      md += `- **${count}x** (${pct}%) ${issue}\n`;
+    }
+    md += '\n';
+  }
+
+  return md;
+}
+
+// --- Main ---
+async function main() {
+  const tests = buildTests();
+  console.log(`Full matrix: ${tests.length} test combinations`);
+  console.log(`  Presets: ${new Set(tests.map(t => t.element + '/' + t.personality)).size}`);
+  console.log(`  Effects: ${EFFECTS.length} (${EFFECTS.map(e => e.name).join(', ')})`);
+  console.log(`  Viewports: ${VIEWPORTS.map(v => v.w + 'px').join(', ')}`);
+  console.log(`  Dark modes: ${DARK_MODES.map(d => d ? 'dark' : 'light').join(', ')}`);
+  console.log();
+
+  if (DIVERGENCE_ONLY) {
+    if (!existsSync(CACHE_FILE)) {
+      console.error('No cache file found. Run the full test first.');
+      process.exit(1);
+    }
+    const cached = JSON.parse(readFileSync(CACHE_FILE, 'utf8'));
+    const md = generateReport(cached, tests);
+    const outFile = join(RESEARCH_DIR, 'full-matrix-results.md');
+    writeFileSync(outFile, md);
+    console.log(`Report written to: ${outFile}`);
+    return;
+  }
+
+  const server = startServer();
+  console.log(`Server on port ${PORT}`);
+
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage']
+  });
+
+  // Use multiple pages for parallelism (3 concurrent)
+  const CONCURRENCY = 3;
+  const pages = [];
+  for (let i = 0; i < CONCURRENCY; i++) {
+    pages.push(await browser.newPage());
+  }
+
+  const results = [];
+  let completed = 0;
+  const startTime = Date.now();
+
+  // Process tests in batches
+  async function processTest(page, t) {
+    const key = testKey(t);
+    try {
+      const result = await runTest(page, t);
+      completed++;
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
+      const eta = Math.round((Date.now() - startTime) / completed * (tests.length - completed) / 1000);
+
+      if (result.error) {
+        process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s (ETA ${eta}s) ${key} ERROR: ${result.error}          \n`);
+        results.push({ key, ...t, error: result.error });
+      } else {
+        const e = result.categories.reduce((s, c) => s + c.errors, 0);
+        const w = result.categories.reduce((s, c) => s + c.warnings, 0);
+        const dl = result.darknessLevel || '?';
+        process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s (ETA ${eta}s) ${key} → ${result.overall}${result.grade} (${e}E ${w}W) D${dl}          \n`);
+        results.push({ key, ...t, overall: result.overall, grade: result.grade, categories: result.categories, metrics: result.metrics, darknessLevel: result.darknessLevel });
+      }
+    } catch (err) {
+      completed++;
+      process.stdout.write(`\r[${completed}/${tests.length}] ${key} CRASH: ${err.message}          \n`);
+      results.push({ key, ...t, error: err.message });
+    }
+  }
+
+  // Run with concurrency
+  let idx = 0;
+  async function worker(page) {
+    while (idx < tests.length) {
+      const myIdx = idx++;
+      await processTest(page, tests[myIdx]);
+    }
+  }
+
+  await Promise.all(pages.map(p => worker(p)));
+
+  await browser.close();
+  server.close();
+
+  // Cache results
+  if (!existsSync(RESEARCH_DIR)) mkdirSync(RESEARCH_DIR, { recursive: true });
+  writeFileSync(CACHE_FILE, JSON.stringify(results, null, 2));
+  console.log(`\nCached ${results.length} results to ${CACHE_FILE}`);
+
+  // Generate report
+  const md = generateReport(results, tests);
+  const outFile = join(RESEARCH_DIR, 'full-matrix-results.md');
+  writeFileSync(outFile, md);
+  console.log(`Report written to: ${outFile}`);
+
+  // Quick summary
+  const ok = results.filter(r => !r.error);
+  const errs = results.filter(r => r.error);
+  console.log(`\n=== SUMMARY ===`);
+  console.log(`Tested: ${ok.length} | Errors: ${errs.length}`);
+  if (ok.length > 0) {
+    const avg = Math.round(ok.reduce((s, r) => s + r.overall, 0) / ok.length);
+    console.log(`Average: ${avg} | Min: ${Math.min(...ok.map(r => r.overall))} | Max: ${Math.max(...ok.map(r => r.overall))}`);
+    for (const eff of EFFECTS) {
+      const effOk = ok.filter(r => r.effect === eff.name);
+      if (effOk.length > 0) {
+        const effAvg = Math.round(effOk.reduce((s, r) => s + r.overall, 0) / effOk.length);
+        console.log(`  ${eff.name}: avg=${effAvg} (${effOk.length} tests)`);
+      }
+    }
+  }
+}
+
+main().catch(err => { console.error('Fatal:', err); process.exit(1); });
 </file>
 
 <file path="docs/scoring/touch.js">
@@ -24910,975 +25637,6 @@ window.MilgIframe = (function() {
 })();
 </file>
 
-<file path="scripts/test-full-matrix.mjs">
-#!/usr/bin/env node
-// Full matrix test runner: preset × personality × effect × viewport × dark mode
-// Usage: node scripts/test-full-matrix.mjs [--quick] [--filter=hero] [--effects-only] [--divergence-only]
-//
-// --quick: skip viewports (test only 1280px), skip dark mode → 650 tests instead of 3900
-// --filter=hero: only test presets matching "hero"
-// --effects-only: only test effect variants (skip viewport/dark combos)
-// --divergence-only: skip scoring, only compute divergence from cached results
-//
-// Outputs: research/full-matrix-results.md (scores + divergence + flagged combos)
-
-import puppeteer from 'puppeteer';
-import { createServer } from 'http';
-import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from 'fs';
-import { join, extname } from 'path';
-
-const DOCS_DIR = join(import.meta.dirname, '..', 'docs');
-const RESEARCH_DIR = join(import.meta.dirname, '..', 'research');
-const CACHE_FILE = join(RESEARCH_DIR, 'full-matrix-cache.json');
-const PORT = 8766; // different from basic test runner
-
-const args = process.argv.slice(2);
-const QUICK = args.includes('--quick');
-const EFFECTS_ONLY = args.includes('--effects-only');
-const DIVERGENCE_ONLY = args.includes('--divergence-only');
-const FILTER = (args.find(a => a.startsWith('--filter=')) || '').replace('--filter=', '');
-
-// --- Effect definitions (must match docs/app.js visualStyles) ---
-const EFFECTS = [
-  { name: 'none', css: '' },
-  { name: 'hushed', css: `[class*="shadow"]{box-shadow:none!important}
-[class*="border"]{border-color:rgba(0,0,0,0.06)!important}
-[class*="rounded-lg"],[class*="rounded-xl"],[class*="rounded-2xl"],[class*="rounded-3xl"]{border-radius:4px!important}
-[class*="rounded-full"]{border-radius:9999px!important}
-h1,h2,h3,h4,h5,h6{font-weight:300!important;letter-spacing:0.02em}
-h1{font-size:2.25em!important}
-p,span,li,td,th{opacity:0.75}
-button:not([class*="bg-"]),[role="button"]:not([class*="bg-"]){font-weight:400!important;letter-spacing:0.06em;text-transform:uppercase;font-size:0.82em!important;border:1px solid rgba(0,0,0,0.1)!important;background:transparent!important;color:inherit!important}
-button[class*="bg-"],[role="button"][class*="bg-"]{font-weight:400!important;letter-spacing:0.06em;text-transform:uppercase;font-size:0.82em!important;opacity:0.85}
-button:hover,a:hover,[role="button"]:hover{opacity:0.5;transition:opacity 250ms ease-out}
-nav,aside,[class*="border-b"],[class*="border-r"]{border-color:rgba(0,0,0,0.04)!important}` },
-  { name: 'bouncy', css: `[class*="rounded-md"],[class*="rounded-lg"]{border-radius:16px!important}
-[class*="rounded-xl"],[class*="rounded-2xl"],[class*="rounded-3xl"]{border-radius:24px!important}
-[class*="shadow-sm"],[class*="shadow-md"]{box-shadow:0 4px 14px rgba(99,102,241,0.18),0 2px 6px rgba(244,63,94,0.12)!important}
-[class*="shadow-lg"],[class*="shadow-xl"]{box-shadow:0 10px 30px rgba(99,102,241,0.22),0 4px 12px rgba(244,63,94,0.14)!important}
-button,[role="button"],article{transition:transform 300ms cubic-bezier(0.34,1.56,0.64,1),box-shadow 300ms cubic-bezier(0.34,1.56,0.64,1)!important}
-button:hover,[role="button"]:hover{transform:scale(1.05) translateY(-2px)!important}
-article:hover{transform:translateY(-4px);box-shadow:0 12px 30px rgba(99,102,241,0.2)!important}
-h1,h2,h3{font-weight:800!important;letter-spacing:-0.01em}
-input,select,textarea{border-radius:14px!important}
-button:active,[role="button"]:active{transform:scale(0.95)!important;transition-duration:80ms!important}` },
-  { name: 'frosted', css: `html:not(.dark) body{background:linear-gradient(135deg,#dbeafe 0%,#ede9fe 35%,#fce7f3 65%,#e0f2fe 100%)!important;min-height:100vh}
-.dark body,.dark.min-h-screen,html.dark body{background:linear-gradient(135deg,#0f172a 0%,#1e1b4b 35%,#1e1b4b 65%,#0f172a 100%)!important;min-height:100vh}
-html:not(.dark) [class*="bg-white"]{background:rgba(255,255,255,0.55)!important;-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);border:1px solid rgba(255,255,255,0.4)!important;box-shadow:0 4px 24px rgba(0,0,0,0.04),inset 0 1px 0 rgba(255,255,255,0.6)!important}
-.dark [class*="bg-slate-900"],.dark [class*="bg-slate-950"],.dark [class*="bg-gray-900"],.dark [class*="bg-gray-950"]{background:rgba(15,23,42,0.78)!important;-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);border:1px solid rgba(99,102,241,0.15)!important;box-shadow:0 4px 24px rgba(0,0,0,0.2),inset 0 1px 0 rgba(99,102,241,0.1)!important}
-html:not(.dark) [class*="bg-slate-50"],html:not(.dark) [class*="bg-gray-50"],html:not(.dark) [class*="bg-zinc-50"]{background:rgba(248,250,252,0.4)!important;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
-.dark [class*="bg-slate-800"],.dark [class*="bg-gray-800"],.dark [class*="bg-slate-850"]{background:rgba(30,41,59,0.72)!important;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
-[class*="shadow-sm"],[class*="shadow-md"],[class*="shadow-lg"],[class*="shadow-xl"]{box-shadow:0 4px 20px rgba(0,0,0,0.05),inset 0 1px 0 rgba(255,255,255,0.5)!important}
-.dark [class*="shadow-sm"],.dark [class*="shadow-md"],.dark [class*="shadow-lg"],.dark [class*="shadow-xl"]{box-shadow:0 4px 20px rgba(0,0,0,0.3),inset 0 1px 0 rgba(99,102,241,0.1)!important}
-[class*="rounded-lg"]{border-radius:14px!important}
-[class*="rounded-xl"],[class*="rounded-2xl"]{border-radius:18px!important}
-html:not(.dark) [class*="border-slate-200"],html:not(.dark) [class*="border-gray-200"],html:not(.dark) [class*="border-zinc-200"]{border-color:rgba(255,255,255,0.35)!important}
-.dark [class*="border-slate-700"],.dark [class*="border-slate-800"],.dark [class*="border-gray-700"],.dark [class*="border-gray-800"]{border-color:rgba(99,102,241,0.15)!important}
-[class*="divide-slate"],[class*="divide-gray"],[class*="divide-zinc"]{--tw-divide-opacity:0.3}
-html:not(.dark) [class*="border-t"]:not([class*="border-t-0"]){border-color:rgba(100,116,139,0.2)!important}
-.dark [class*="border-t"]:not([class*="border-t-0"]){border-color:rgba(99,102,241,0.12)!important}
-html:not(.dark) [class*="text-slate-500"],html:not(.dark) [class*="text-gray-500"],html:not(.dark) [class*="text-zinc-500"]{color:rgb(51,65,85)!important}
-html:not(.dark) [class*="text-slate-400"],html:not(.dark) [class*="text-gray-400"]{color:rgb(71,85,105)!important}
-.dark [class*="text-slate-400"],.dark [class*="text-gray-400"]{color:rgb(148,163,184)!important}
-.dark [class*="text-slate-300"],.dark [class*="text-gray-300"]{color:rgb(203,213,225)!important}
-input,select,textarea{-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);border-radius:12px!important}
-html:not(.dark) input,html:not(.dark) select,html:not(.dark) textarea{background:rgba(255,255,255,0.45)!important;border:1px solid rgba(255,255,255,0.4)!important}
-.dark input,.dark select,.dark textarea{background:rgba(15,23,42,0.45)!important;border:1px solid rgba(99,102,241,0.2)!important}
-button:hover,[role="button"]:hover{box-shadow:0 0 24px rgba(99,102,241,0.18),0 6px 20px rgba(0,0,0,0.06)!important;transition:box-shadow 250ms ease-out,transform 250ms ease-out;transform:translateY(-1px)}
-html:not(.dark) nav,html:not(.dark) aside,html:not(.dark) header{-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);background:rgba(255,255,255,0.65)!important}
-.dark nav,.dark aside,.dark header{-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);background:rgba(15,23,42,0.65)!important}` },
-  { name: 'serif', css: `@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap');
-h1,h2,h3,h4,h5,h6{font-family:'Playfair Display',Georgia,'Times New Roman',serif!important;letter-spacing:-0.02em;line-height:1.15}
-h1{font-weight:400!important;font-size:2.75em!important;letter-spacing:-0.03em}
-h2{font-weight:700!important}
-h3,h4,h5,h6{font-weight:700!important}
-[class*="shadow"]{box-shadow:none!important}
-[class*="border"]{border-color:#e2e8f0!important}
-[class*="rounded-lg"],[class*="rounded-xl"],[class*="rounded-2xl"],[class*="rounded-3xl"],[class*="rounded-md"]{border-radius:2px!important}
-button,[role="button"]{font-weight:400!important;letter-spacing:0.1em;text-transform:uppercase;font-size:0.78em!important;border-radius:1px!important;padding-top:0.75rem!important;padding-bottom:0.75rem!important}
-a:hover{text-decoration:underline!important;text-underline-offset:4px;text-decoration-thickness:1px}
-button:hover,[role="button"]:hover{opacity:0.75;transition:opacity 200ms ease}
-p{line-height:1.75!important}
-body{letter-spacing:0.005em}
-[class*="bg-blue-600"],[class*="bg-indigo-600"],[class*="bg-violet-600"],[class*="bg-teal-600"],[class*="bg-emerald-600"],[class*="bg-rose-600"],[class*="bg-orange-600"],[class*="bg-fuchsia-600"]{background-color:#334155!important}
-[class*="bg-blue-600"]:hover,[class*="bg-indigo-600"]:hover,[class*="bg-violet-600"]:hover,[class*="bg-teal-600"]:hover,[class*="bg-emerald-600"]:hover{background-color:#1e293b!important}
-input,select,textarea{border-radius:1px!important}` },
-];
-
-const VIEWPORTS = QUICK ? [{ w: 1280, h: 900 }] : [
-  { w: 375, h: 812 },
-  { w: 768, h: 1024 },
-  { w: 1280, h: 900 },
-];
-
-const DARK_MODES = QUICK ? [false] : [false, true];
-
-// --- Server ---
-function startServer() {
-  const mimeTypes = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2' };
-  const server = createServer((req, res) => {
-    let filePath = join(DOCS_DIR, req.url === '/' ? 'index.html' : req.url);
-    if (!existsSync(filePath)) { res.writeHead(404); res.end('Not found'); return; }
-    const ext = extname(filePath);
-    res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' });
-    res.end(readFileSync(filePath));
-  });
-  server.listen(PORT);
-  return server;
-}
-
-// --- Build test matrix ---
-function buildTests() {
-  const manifest = JSON.parse(readFileSync(join(DOCS_DIR, 'presets', 'index.json'), 'utf8'));
-  const tests = [];
-
-  for (const [el, info] of Object.entries(manifest.elements)) {
-    if (FILTER && !el.includes(FILTER)) continue;
-    const personalities = Object.keys(info.personalities || {});
-    for (const pers of personalities) {
-      const file = join(DOCS_DIR, 'presets', el, pers + '.html');
-      if (!existsSync(file)) continue;
-
-      for (const effect of EFFECTS) {
-        if (EFFECTS_ONLY) {
-          // Only test at 1280, no dark mode for effects-only
-          tests.push({ element: el, personality: pers, effect: effect.name, effectCSS: effect.css, viewport: { w: 1280, h: 900 }, dark: false });
-        } else {
-          for (const vp of VIEWPORTS) {
-            for (const dark of DARK_MODES) {
-              tests.push({ element: el, personality: pers, effect: effect.name, effectCSS: effect.css, viewport: vp, dark });
-            }
-          }
-        }
-      }
-    }
-  }
-  return tests;
-}
-
-function testKey(t) {
-  return `${t.element}/${t.personality}|${t.effect}|${t.viewport.w}|${t.dark ? 'dark' : 'light'}`;
-}
-
-// --- Run a single test ---
-async function runTest(page, t) {
-  const html = readFileSync(join(DOCS_DIR, 'presets', t.element, t.personality + '.html'), 'utf8');
-
-  await page.setViewport({ width: t.viewport.w, height: t.viewport.h });
-  await page.goto(`http://localhost:${PORT}/tests/test-presets-rendered.html`, { waitUntil: 'networkidle0', timeout: 15000 });
-
-  const result = await page.evaluate(async (html, element, personality, effectCSS, dark, vpWidth) => {
-    return new Promise((resolve) => {
-      const iframe = document.createElement('iframe');
-      iframe.style.cssText = `position:fixed;top:-9999px;left:-9999px;width:${vpWidth}px;height:900px;border:none;`;
-      iframe.sandbox = 'allow-scripts allow-same-origin';
-      document.body.appendChild(iframe);
-
-      let handled = false;
-      function onMsg(e) {
-        if (!e.data || e.data.type !== 'milg-headless-result') return;
-        if (handled) return;
-        handled = true;
-        window.removeEventListener('message', onMsg);
-        if (iframe.parentNode) document.body.removeChild(iframe);
-
-        const data = e.data.data;
-        data.profile = 'general';
-        data.meta.isFragment = true;
-        data.meta.url = element + '/' + personality;
-        try {
-          const report = window.MilgScoring.runScoring(data);
-          // Read darkness level from extraction (computed area-weighted in extractFromDocument)
-          var darknessLevel = (data.colors && data.colors.darknessLevel) || 5;
-
-          resolve({
-            overall: report.overall,
-            grade: report.grade,
-            darknessLevel: darknessLevel,
-            categories: report.categories.map(c => ({
-              label: c.label,
-              score: c.score,
-              na: !!c.notApplicable,
-              errors: c.findings.filter(f => f.severity === 'error').length,
-              warnings: c.findings.filter(f => f.severity === 'warning').length,
-              infos: c.findings.filter(f => f.severity === 'info').length,
-              findings: c.findings.map(f => ({ severity: f.severity, title: f.title }))
-            })),
-            // Capture raw metrics for divergence analysis
-            metrics: {
-              contrastPairs: (data.colors && data.colors.contrastPairs) ? data.colors.contrastPairs.length : 0,
-              fontSizes: data.typography ? Object.keys(data.typography.fontSizes || {}).length : 0,
-              borderRadii: data.spacing ? Object.keys(data.spacing.borderRadii || {}).length : 0,
-              touchTargets: (data.interaction && data.interaction.touchTargets) ? data.interaction.touchTargets.length : 0,
-              headingCount: data.structure ? (data.structure.headingCount || 0) : 0,
-              totalElements: data.structure ? (data.structure.totalElements || 0) : 0,
-              colors: data.colors ? Object.keys(data.colors.textColors || {}).length : 0,
-              bgColors: data.colors ? Object.keys(data.colors.backgroundColors || {}).length : 0,
-            }
-          });
-        } catch(err) {
-          resolve({ error: err.message });
-        }
-      }
-      window.addEventListener('message', onMsg);
-
-      fetch('/analyzer.js').then(r => r.text()).then(code => {
-        const match = code.match(/function extractFromDocument\(\)\s*\{/);
-        if (!match) { resolve({ error: 'No extractFromDocument' }); return; }
-        const start = code.indexOf(match[0]);
-        let depth = 0, end = start;
-        for (let i = start; i < code.length; i++) {
-          if (code[i] === '{') depth++;
-          if (code[i] === '}') { depth--; if (depth === 0) { end = i + 1; break; } }
-        }
-        const extractFn = code.substring(start, end).replace(/milg-analyzer-result/g, 'milg-headless-result');
-
-        const darkClass = dark ? ' class="dark"' : '';
-        const darkVariantCSS = '@custom-variant dark (&:where(.dark, .dark *));';
-        const srcdoc = '<!DOCTYPE html><html lang="en"' + darkClass + '><head><meta charset="UTF-8">' +
-          '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
-          '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
-          (dark ? '<style type="text/tailwindcss">' + darkVariantCSS + '</style>' : '') +
-          (effectCSS ? '<style>' + effectCSS + '</style>' : '') +
-          '<style>body{margin:0}</style></head><body>' +
-          '<script>window.__milgIsFragment=true;</' + 'script>' +
-          html +
-          '<script>setTimeout(function(){(' + extractFn + ')()}, 2500);</' + 'script>' +
-          '</body></html>';
-        iframe.srcdoc = srcdoc;
-      });
-
-      setTimeout(() => {
-        if (handled) return;
-        handled = true;
-        window.removeEventListener('message', onMsg);
-        if (iframe.parentNode) document.body.removeChild(iframe);
-        resolve({ error: 'Timeout' });
-      }, 15000);
-    });
-  }, html, t.element, t.personality, t.effectCSS, t.dark, t.viewport.w);
-
-  return result;
-}
-
-// --- Divergence scoring ---
-// Compares two test results to measure how different they are (0 = identical, 100 = completely different)
-function divergenceScore(a, b) {
-  if (!a || !b || a.error || b.error) return null;
-
-  let totalDiff = 0;
-  let comparisons = 0;
-
-  // 1. Overall score difference (weight: 3)
-  totalDiff += Math.abs(a.overall - b.overall) * 3;
-  comparisons += 3;
-
-  // 2. Per-category score differences (weight: 1 each)
-  const aCats = {};
-  const bCats = {};
-  (a.categories || []).forEach(c => { aCats[c.label] = c; });
-  (b.categories || []).forEach(c => { bCats[c.label] = c; });
-
-  for (const label of Object.keys(aCats)) {
-    if (bCats[label]) {
-      // Normalize score diff to 0-100
-      totalDiff += Math.abs((aCats[label].score || 0) - (bCats[label].score || 0));
-      comparisons++;
-
-      // Finding count differences
-      const aFindings = (aCats[label].errors || 0) + (aCats[label].warnings || 0);
-      const bFindings = (bCats[label].errors || 0) + (bCats[label].warnings || 0);
-      totalDiff += Math.min(100, Math.abs(aFindings - bFindings) * 15);
-      comparisons++;
-    }
-  }
-
-  // 3. Metric differences (structural signals)
-  if (a.metrics && b.metrics) {
-    const metricKeys = ['contrastPairs', 'fontSizes', 'borderRadii', 'touchTargets', 'colors', 'bgColors'];
-    for (const k of metricKeys) {
-      const av = a.metrics[k] || 0;
-      const bv = b.metrics[k] || 0;
-      const maxVal = Math.max(av, bv, 1);
-      totalDiff += (Math.abs(av - bv) / maxVal) * 100;
-      comparisons++;
-    }
-  }
-
-  return comparisons > 0 ? Math.round(totalDiff / comparisons) : 0;
-}
-
-// --- Report generation ---
-function generateReport(results, tests) {
-  const resultMap = {};
-  for (const r of results) {
-    resultMap[r.key] = r;
-  }
-
-  let md = '# Full Matrix Test Results\n\n';
-  md += `**Date:** ${new Date().toISOString()}\n`;
-  md += `**Tests run:** ${results.length} | **Errors:** ${results.filter(r => r.error).length}\n`;
-  md += `**Matrix:** ${new Set(results.map(r => r.element + '/' + r.personality)).size} presets × ${EFFECTS.length} effects × ${VIEWPORTS.length} viewports × ${DARK_MODES.length} dark modes\n\n`;
-
-  const ok = results.filter(r => !r.error);
-  if (ok.length === 0) { return md + 'No successful results.\n'; }
-
-  const avg = Math.round(ok.reduce((s, r) => s + r.overall, 0) / ok.length);
-  const min = Math.min(...ok.map(r => r.overall));
-  const max = Math.max(...ok.map(r => r.overall));
-  md += `**Overall:** avg=${avg} min=${min} max=${max}\n\n`;
-
-  // === Section 1: Effect impact summary ===
-  md += '## 1. Effect Impact Summary\n\n';
-  md += 'Average score by effect (across all presets, viewports, dark modes):\n\n';
-  md += '| Effect | Avg Score | Min | Max | Avg Errors | Avg Warnings |\n';
-  md += '|--------|-----------|-----|-----|------------|-------------|\n';
-  for (const effect of EFFECTS) {
-    const effResults = ok.filter(r => r.effect === effect.name);
-    if (effResults.length === 0) continue;
-    const eAvg = Math.round(effResults.reduce((s, r) => s + r.overall, 0) / effResults.length);
-    const eMin = Math.min(...effResults.map(r => r.overall));
-    const eMax = Math.max(...effResults.map(r => r.overall));
-    const eErr = (effResults.reduce((s, r) => s + r.categories.reduce((cs, c) => cs + c.errors, 0), 0) / effResults.length).toFixed(1);
-    const eWarn = (effResults.reduce((s, r) => s + r.categories.reduce((cs, c) => cs + c.warnings, 0), 0) / effResults.length).toFixed(1);
-    md += `| ${effect.name} | ${eAvg} | ${eMin} | ${eMax} | ${eErr} | ${eWarn} |\n`;
-  }
-
-  // === Section 1b: Darkness Level Analysis ===
-  md += '\n## 1b. Page Darkness Level\n\n';
-  md += 'Scale: 1 = white page, 10 = black page. Range 2.5–7.5 is expected; outside = warning.\n\n';
-  md += '| Preset | Light DL | Dark DL | Delta | Warning |\n';
-  md += '|--------|----------|---------|-------|---------|\n';
-  {
-    const presetsDL = [...new Set(ok.map(r => r.element + '/' + r.personality))];
-    for (const preset of presetsDL) {
-      const lk = `${preset}|none|1280|light`;
-      const dk = `${preset}|none|1280|dark`;
-      const lr = resultMap[lk];
-      const dr = resultMap[dk];
-      const lDL = lr && !lr.error ? (lr.darknessLevel || '?') : '—';
-      const dDL = dr && !dr.error ? (dr.darknessLevel || '?') : '—';
-      const delta = (typeof lDL === 'number' && typeof dDL === 'number') ? dDL - lDL : '—';
-      let warn = '';
-      if (typeof lDL === 'number' && (lDL < 2.5 || lDL > 7.5)) warn += 'light-mode ';
-      if (typeof dDL === 'number' && (dDL < 2.5 || dDL > 7.5)) warn += 'dark-mode ';
-      if (typeof lDL === 'number' && typeof dDL === 'number' && Math.abs(dDL - lDL) < 2) warn += 'low-contrast-switch ';
-      if (warn || (typeof delta === 'number' && Math.abs(delta) < 2)) {
-        md += `| ${preset} | ${lDL} | ${dDL} | ${typeof delta === 'number' ? (delta >= 0 ? '+' : '') + delta : delta} | ${warn.trim() || '—'} |\n`;
-      }
-    }
-  }
-
-  // === Section 2: Dark mode impact ===
-  if (DARK_MODES.length > 1) {
-    md += '\n## 2. Dark Mode Impact\n\n';
-    md += '| Preset | Light Score | Dark Score | Delta | Worse Categories |\n';
-    md += '|--------|------------ |------------|-------|-------------------|\n';
-
-    const presets = [...new Set(ok.map(r => r.element + '/' + r.personality))];
-    const darkIssues = [];
-    for (const preset of presets) {
-      // Compare none effect, 1280px, light vs dark
-      const lightKey = `${preset}|none|1280|light`;
-      const darkKey = `${preset}|none|1280|dark`;
-      const light = resultMap[lightKey];
-      const dark = resultMap[darkKey];
-      if (!light || !dark || light.error || dark.error) continue;
-
-      const delta = dark.overall - light.overall;
-      let worse = [];
-      for (let i = 0; i < (light.categories || []).length; i++) {
-        const lc = light.categories[i];
-        const dc = dark.categories[i];
-        if (dc && lc && dc.score < lc.score - 5) {
-          worse.push(`${lc.label} (${lc.score}→${dc.score})`);
-        }
-      }
-
-      if (delta < -5 || worse.length > 0) {
-        darkIssues.push({ preset, light: light.overall, dark: dark.overall, delta, worse });
-        md += `| ${preset} | ${light.overall} | ${dark.overall} | ${delta >= 0 ? '+' : ''}${delta} | ${worse.join(', ') || '—'} |\n`;
-      }
-    }
-    if (darkIssues.length === 0) md += '| (no significant dark mode regressions) | | | | |\n';
-  }
-
-  // === Section 3: Viewport responsiveness ===
-  if (VIEWPORTS.length > 1) {
-    md += '\n## 3. Viewport Responsiveness\n\n';
-    md += '| Preset | 375px | 768px | 1280px | Mobile Delta |\n';
-    md += '|--------|-------|-------|--------|-------------|\n';
-
-    const presets = [...new Set(ok.map(r => r.element + '/' + r.personality))];
-    const vpIssues = [];
-    for (const preset of presets) {
-      const scores = {};
-      for (const vp of VIEWPORTS) {
-        const key = `${preset}|none|${vp.w}|light`;
-        const r = resultMap[key];
-        if (r && !r.error) scores[vp.w] = r.overall;
-      }
-      if (Object.keys(scores).length < VIEWPORTS.length) continue;
-
-      const mobileDelta = (scores[375] || 0) - (scores[1280] || 0);
-      if (Math.abs(mobileDelta) > 5 || (scores[375] || 100) < 70) {
-        vpIssues.push({ preset, scores, mobileDelta });
-        md += `| ${preset} | ${scores[375] ?? '—'} | ${scores[768] ?? '—'} | ${scores[1280] ?? '—'} | ${mobileDelta >= 0 ? '+' : ''}${mobileDelta} |\n`;
-      }
-    }
-    if (vpIssues.length === 0) md += '| (no significant viewport regressions) | | | | |\n';
-  }
-
-  // === Section 4: Frosted + dark mode (known problem combo) ===
-  md += '\n## 4. Frosted Effect Analysis\n\n';
-  md += 'Frosted is the most invasive effect (replaces backgrounds, adds glassmorphism). Checking for issues:\n\n';
-  md += '| Preset | None Score | Frosted Score | Delta | Frosted+Dark | Dark Delta | Key Issues |\n';
-  md += '|--------|-----------|---------------|-------|-------------|------------|------------|\n';
-
-  const presets = [...new Set(ok.map(r => r.element + '/' + r.personality))];
-  for (const preset of presets) {
-    const noneKey = `${preset}|none|1280|light`;
-    const frostedKey = `${preset}|frosted|1280|light`;
-    const frostedDarkKey = `${preset}|frosted|1280|dark`;
-    const none = resultMap[noneKey];
-    const frosted = resultMap[frostedKey];
-    const frostedDark = resultMap[frostedDarkKey];
-
-    if (!none || none.error || !frosted || frosted.error) continue;
-
-    const delta = frosted.overall - none.overall;
-    const darkScore = frostedDark && !frostedDark.error ? frostedDark.overall : '—';
-    const darkDelta = frostedDark && !frostedDark.error ? frostedDark.overall - frosted.overall : '—';
-
-    // Collect key issues from frosted
-    const issues = [];
-    for (const c of frosted.categories) {
-      if (c.errors > 0) {
-        const titles = c.findings.filter(f => f.severity === 'error').map(f => f.title.substring(0, 50));
-        issues.push(...titles.slice(0, 2));
-      }
-    }
-
-    if (delta < -3 || (typeof darkDelta === 'number' && darkDelta < -3) || issues.length > 0) {
-      md += `| ${preset} | ${none.overall} | ${frosted.overall} | ${delta >= 0 ? '+' : ''}${delta} | ${darkScore} | ${typeof darkDelta === 'number' ? (darkDelta >= 0 ? '+' : '') + darkDelta : '—'} | ${issues.slice(0, 2).join('; ') || '—'} |\n`;
-    }
-  }
-
-  // === Section 5: Divergence analysis — are variants meaningfully different? ===
-  md += '\n## 5. Variant Divergence Analysis\n\n';
-  md += 'How different is each variant from "none" effect? Low divergence (< 5) = variant adds negligible value.\n\n';
-
-  // 5a. Effect divergence per preset (at 1280px, light)
-  md += '### 5a. Effect Divergence (per preset, 1280px light)\n\n';
-  md += '| Preset | Hushed | Bouncy | Frosted | Serif | Avg |\n';
-  md += '|--------|--------|--------|---------|-------|-----|\n';
-
-  const lowDivergence = [];
-  for (const preset of presets) {
-    const baseKey = `${preset}|none|1280|light`;
-    const base = resultMap[baseKey];
-    if (!base || base.error) continue;
-
-    const divs = {};
-    let total = 0;
-    let count = 0;
-    for (const eff of EFFECTS.slice(1)) { // skip "none"
-      const key = `${preset}|${eff.name}|1280|light`;
-      const r = resultMap[key];
-      const d = divergenceScore(base, r);
-      divs[eff.name] = d;
-      if (d !== null) { total += d; count++; }
-    }
-    const avgDiv = count > 0 ? Math.round(total / count) : 0;
-
-    md += `| ${preset} | ${divs.hushed ?? '—'} | ${divs.bouncy ?? '—'} | ${divs.frosted ?? '—'} | ${divs.serif ?? '—'} | ${avgDiv} |\n`;
-
-    // Flag low divergence
-    for (const [eff, d] of Object.entries(divs)) {
-      if (d !== null && d < 5) {
-        lowDivergence.push({ preset, effect: eff, divergence: d });
-      }
-    }
-  }
-
-  // 5b. Personality divergence (do clean/minimalist/playful actually differ?)
-  md += '\n### 5b. Personality Divergence (same element, none effect, 1280px light)\n\n';
-  md += 'Low divergence = personalities are too similar. Should be > 10 for meaningful differentiation.\n\n';
-  md += '| Element | Clean vs Min | Clean vs Play | Min vs Play | Clean vs Edit | Avg |\n';
-  md += '|---------|-------------|---------------|-------------|--------------|-----|\n';
-
-  const elements = [...new Set(ok.map(r => r.element))];
-  const lowPersDiv = [];
-  for (const el of elements) {
-    const getR = (p) => resultMap[`${el}/${p}|none|1280|light`];
-    const clean = getR('clean');
-    const min = getR('minimalist');
-    const play = getR('playful');
-    const edit = getR('editorial');
-
-    if (!clean || clean.error) continue;
-
-    const cmDiv = divergenceScore(clean, min);
-    const cpDiv = divergenceScore(clean, play);
-    const mpDiv = divergenceScore(min, play);
-    const ceDiv = divergenceScore(clean, edit);
-
-    const vals = [cmDiv, cpDiv, mpDiv, ceDiv].filter(v => v !== null);
-    const avgDiv = vals.length > 0 ? Math.round(vals.reduce((a, b) => a + b) / vals.length) : 0;
-
-    md += `| ${el} | ${cmDiv ?? '—'} | ${cpDiv ?? '—'} | ${mpDiv ?? '—'} | ${ceDiv ?? '—'} | ${avgDiv} |\n`;
-
-    if (cmDiv !== null && cmDiv < 5) lowPersDiv.push({ element: el, pair: 'clean/minimalist', divergence: cmDiv });
-    if (cpDiv !== null && cpDiv < 5) lowPersDiv.push({ element: el, pair: 'clean/playful', divergence: cpDiv });
-    if (mpDiv !== null && mpDiv < 5) lowPersDiv.push({ element: el, pair: 'minimalist/playful', divergence: mpDiv });
-  }
-
-  // === Section 6: Flagged combinations ===
-  md += '\n## 6. Flagged Combinations\n\n';
-
-  // 6a. Worst scores overall
-  md += '### 6a. Worst Scores (bottom 20)\n\n';
-  md += '| Combo | Score | Grade | Errors | Warnings |\n';
-  md += '|-------|-------|-------|--------|----------|\n';
-  const sorted = ok.sort((a, b) => a.overall - b.overall);
-  for (const r of sorted.slice(0, 20)) {
-    const errs = r.categories.reduce((s, c) => s + c.errors, 0);
-    const warns = r.categories.reduce((s, c) => s + c.warnings, 0);
-    md += `| ${r.key} | ${r.overall} | ${r.grade} | ${errs} | ${warns} |\n`;
-  }
-
-  // 6b. Low divergence (unnecessary variants)
-  md += '\n### 6b. Low Effect Divergence (< 5 — may be unnecessary)\n\n';
-  if (lowDivergence.length > 0) {
-    md += '| Preset | Effect | Divergence |\n';
-    md += '|--------|--------|------------|\n';
-    lowDivergence.sort((a, b) => a.divergence - b.divergence);
-    for (const ld of lowDivergence) {
-      md += `| ${ld.preset} | ${ld.effect} | ${ld.divergence} |\n`;
-    }
-  } else {
-    md += 'None — all effects produce meaningful differentiation.\n';
-  }
-
-  md += '\n### 6c. Low Personality Divergence (< 5 — personalities too similar)\n\n';
-  if (lowPersDiv.length > 0) {
-    md += '| Element | Pair | Divergence |\n';
-    md += '|---------|------|------------|\n';
-    lowPersDiv.sort((a, b) => a.divergence - b.divergence);
-    for (const ld of lowPersDiv) {
-      md += `| ${ld.element} | ${ld.pair} | ${ld.divergence} |\n`;
-    }
-  } else {
-    md += 'None — all personalities produce meaningful differentiation.\n';
-  }
-
-  // 6d. Effect regressions (effect makes things worse by >10 points)
-  md += '\n### 6d. Effect Regressions (score drops > 10 points vs none)\n\n';
-  md += '| Preset | Effect | None Score | Effect Score | Delta |\n';
-  md += '|--------|--------|------------|-------------|-------|\n';
-  let regressionCount = 0;
-  for (const preset of presets) {
-    const baseKey = `${preset}|none|1280|light`;
-    const base = resultMap[baseKey];
-    if (!base || base.error) continue;
-
-    for (const eff of EFFECTS.slice(1)) {
-      const key = `${preset}|${eff.name}|1280|light`;
-      const r = resultMap[key];
-      if (!r || r.error) continue;
-      const delta = r.overall - base.overall;
-      if (delta < -10) {
-        md += `| ${preset} | ${eff.name} | ${base.overall} | ${r.overall} | ${delta} |\n`;
-        regressionCount++;
-      }
-    }
-  }
-  if (regressionCount === 0) md += '| (no regressions > 10 points) | | | | |\n';
-
-  // === Section 7: Most common issues by effect ===
-  md += '\n## 7. Most Common Issues by Effect\n\n';
-  for (const effect of EFFECTS) {
-    const effResults = ok.filter(r => r.effect === effect.name);
-    if (effResults.length === 0) continue;
-
-    md += `### ${effect.name} (${effResults.length} tests)\n\n`;
-    const issueCounts = {};
-    for (const r of effResults) {
-      for (const c of r.categories) {
-        for (const f of c.findings) {
-          if (f.severity === 'info') continue; // skip info
-          const key = `[${f.severity}] ${c.label}: ${f.title.substring(0, 80)}`;
-          issueCounts[key] = (issueCounts[key] || 0) + 1;
-        }
-      }
-    }
-    const sortedIssues = Object.entries(issueCounts).sort((a, b) => b[1] - a[1]);
-    for (const [issue, count] of sortedIssues.slice(0, 10)) {
-      const pct = Math.round(count / effResults.length * 100);
-      md += `- **${count}x** (${pct}%) ${issue}\n`;
-    }
-    md += '\n';
-  }
-
-  return md;
-}
-
-// --- Main ---
-async function main() {
-  const tests = buildTests();
-  console.log(`Full matrix: ${tests.length} test combinations`);
-  console.log(`  Presets: ${new Set(tests.map(t => t.element + '/' + t.personality)).size}`);
-  console.log(`  Effects: ${EFFECTS.length} (${EFFECTS.map(e => e.name).join(', ')})`);
-  console.log(`  Viewports: ${VIEWPORTS.map(v => v.w + 'px').join(', ')}`);
-  console.log(`  Dark modes: ${DARK_MODES.map(d => d ? 'dark' : 'light').join(', ')}`);
-  console.log();
-
-  if (DIVERGENCE_ONLY) {
-    if (!existsSync(CACHE_FILE)) {
-      console.error('No cache file found. Run the full test first.');
-      process.exit(1);
-    }
-    const cached = JSON.parse(readFileSync(CACHE_FILE, 'utf8'));
-    const md = generateReport(cached, tests);
-    const outFile = join(RESEARCH_DIR, 'full-matrix-results.md');
-    writeFileSync(outFile, md);
-    console.log(`Report written to: ${outFile}`);
-    return;
-  }
-
-  const server = startServer();
-  console.log(`Server on port ${PORT}`);
-
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage']
-  });
-
-  // Use multiple pages for parallelism (3 concurrent)
-  const CONCURRENCY = 3;
-  const pages = [];
-  for (let i = 0; i < CONCURRENCY; i++) {
-    pages.push(await browser.newPage());
-  }
-
-  const results = [];
-  let completed = 0;
-  const startTime = Date.now();
-
-  // Process tests in batches
-  async function processTest(page, t) {
-    const key = testKey(t);
-    try {
-      const result = await runTest(page, t);
-      completed++;
-      const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
-      const eta = Math.round((Date.now() - startTime) / completed * (tests.length - completed) / 1000);
-
-      if (result.error) {
-        process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s (ETA ${eta}s) ${key} ERROR: ${result.error}          \n`);
-        results.push({ key, ...t, error: result.error });
-      } else {
-        const e = result.categories.reduce((s, c) => s + c.errors, 0);
-        const w = result.categories.reduce((s, c) => s + c.warnings, 0);
-        const dl = result.darknessLevel || '?';
-        process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s (ETA ${eta}s) ${key} → ${result.overall}${result.grade} (${e}E ${w}W) D${dl}          \n`);
-        results.push({ key, ...t, overall: result.overall, grade: result.grade, categories: result.categories, metrics: result.metrics, darknessLevel: result.darknessLevel });
-      }
-    } catch (err) {
-      completed++;
-      process.stdout.write(`\r[${completed}/${tests.length}] ${key} CRASH: ${err.message}          \n`);
-      results.push({ key, ...t, error: err.message });
-    }
-  }
-
-  // Run with concurrency
-  let idx = 0;
-  async function worker(page) {
-    while (idx < tests.length) {
-      const myIdx = idx++;
-      await processTest(page, tests[myIdx]);
-    }
-  }
-
-  await Promise.all(pages.map(p => worker(p)));
-
-  await browser.close();
-  server.close();
-
-  // Cache results
-  if (!existsSync(RESEARCH_DIR)) mkdirSync(RESEARCH_DIR, { recursive: true });
-  writeFileSync(CACHE_FILE, JSON.stringify(results, null, 2));
-  console.log(`\nCached ${results.length} results to ${CACHE_FILE}`);
-
-  // Generate report
-  const md = generateReport(results, tests);
-  const outFile = join(RESEARCH_DIR, 'full-matrix-results.md');
-  writeFileSync(outFile, md);
-  console.log(`Report written to: ${outFile}`);
-
-  // Quick summary
-  const ok = results.filter(r => !r.error);
-  const errs = results.filter(r => r.error);
-  console.log(`\n=== SUMMARY ===`);
-  console.log(`Tested: ${ok.length} | Errors: ${errs.length}`);
-  if (ok.length > 0) {
-    const avg = Math.round(ok.reduce((s, r) => s + r.overall, 0) / ok.length);
-    console.log(`Average: ${avg} | Min: ${Math.min(...ok.map(r => r.overall))} | Max: ${Math.max(...ok.map(r => r.overall))}`);
-    for (const eff of EFFECTS) {
-      const effOk = ok.filter(r => r.effect === eff.name);
-      if (effOk.length > 0) {
-        const effAvg = Math.round(effOk.reduce((s, r) => s + r.overall, 0) / effOk.length);
-        console.log(`  ${eff.name}: avg=${effAvg} (${effOk.length} tests)`);
-      }
-    }
-  }
-}
-
-main().catch(err => { console.error('Fatal:', err); process.exit(1); });
-</file>
-
-<file path="docs/scoring/consistency.js">
-// Scoring Module: Visual Consistency
-// Weight: 5%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreVisualConsistency(data) {
-  var findings = [];
-  var checks = 0;
-  var passed = 0;
-
-  // Scale thresholds by page complexity
-  var pageType = (data.context && data.context.pageType) || 'unknown';
-  var elCount = (data.structure && data.structure.totalElements) || 100;
-  // Marketing/content pages legitimately use more colors and font sizes
-  var colorLimit = elCount > 200 ? 35 : elCount > 100 ? 25 : 20;
-  var fontSizeLimit = elCount > 200 ? 12 : elCount > 100 ? 10 : 8;
-  if (pageType === 'marketing' || pageType === 'pricing') { colorLimit += 10; fontSizeLimit += 3; }
-
-  // Color palette coherence — how many unique text/bg colors?
-  checks++;
-  var textColors = (data.colors.textColors || []).length;
-  var bgColors = (data.colors.bgColors || []).length;
-  var totalUnique = textColors + bgColors;
-  if (totalUnique <= colorLimit) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: totalUnique + ' unique colors detected (recommend < ' + colorLimit + ' for this page type)',
-      detail: textColors + ' text colors, ' + bgColors + ' background colors',
-      fix: 'Consolidate to a systematic color palette: 1 primary + 1 neutral + 3 semantic (error, warning, success)',
-      presetRef: 'Presets use a single primary color with slate neutrals',
-      source: 'Material Design 3 — https://m3.material.io/styles/color/roles'
-    });
-  }
-
-  // Font size consistency — too many unique sizes?
-  checks++;
-  var fontSizes = (data.typography.fontSizes || []).length;
-  if (fontSizes <= fontSizeLimit) {
-    passed++;
-  } else {
-    // Collect sample bboxes from font-size entries for viewer overlay
-    var fsBboxes = (data.typography.fontSizes || []).filter(function(fs) { return fs.bbox; }).map(function(fs) { return fs.bbox; });
-    findings.push({
-      severity: 'info',
-      title: fontSizes + ' unique font sizes (recommend ≤' + fontSizeLimit + ' from a type scale)',
-      detail: 'A consistent type scale creates visual rhythm',
-      fix: 'Use a modular scale: text-sm, text-base, text-lg, text-xl, text-2xl, text-3xl, text-4xl',
-      presetRef: null,
-      source: 'Modular type scales — https://typescale.com/',
-      locator: { selector: '', text: '', bboxes: fsBboxes }
-    });
-  }
-
-  // Border radius consistency — exclude pill/circle shapes (9999px, 50%, >100px)
-  var radii = ((data.layout && data.layout.borderRadii) || []).filter(function(r) {
-    var v = r.value;
-    if (v === '50%' || v === '9999px') return false;
-    var px = parseFloat(v);
-    return !(px > 100);
-  });
-  if (radii.length > 0) {
-    checks++;
-    if (radii.length <= 4) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: radii.length + ' distinct border-radius values (recommend 2-4, excluding pill/circle shapes)',
-        detail: 'Values: ' + radii.slice(0, 6).map(function(r) { return r.value + ' (' + r.count + 'x)'; }).join(', '),
-        fix: 'Standardize border-radius to 2-4 values in your design tokens. In Tailwind: rounded-sm (2px), rounded (4px), rounded-lg (8px), rounded-xl (12px).',
-        presetRef: null,
-        source: 'Material Design 3 — https://m3.material.io/styles/shape/overview'
-      });
-    }
-  }
-
-  // Line height consistency
-  var lineHeights = (data.typography && data.typography.lineHeights) || [];
-  if (lineHeights.length > 0) {
-    checks++;
-    if (lineHeights.length <= 5) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: lineHeights.length + ' distinct line-height values (recommend 2-4)',
-        detail: 'Consistent line-height creates visual rhythm across the page.',
-        fix: 'Standardize to 2-3 line-heights: tight (1.25), normal (1.5), relaxed (1.75).',
-        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-spacing.html'
-      });
-    }
-  }
-
-  // Dark mode support consistency
-  if (data.structure) {
-    checks++;
-    if (data.structure.darkModeClasses) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: 'No dark mode support detected',
-        detail: 'Dark mode is expected by ~80% of users (Android settings data).',
-        fix: 'Add dark mode with dark: variants in Tailwind or prefers-color-scheme media query.',
-        source: 'Apple HIG — https://developer.apple.com/design/human-interface-guidelines/dark-mode'
-      });
-    }
-  }
-
-  // Border width inconsistencies in sibling groups
-  var borderInc = (data.consistency && data.consistency.borderWidthInconsistencies) || 0;
-  if (borderInc > 0) {
-    findings.push({
-      severity: 'info',
-      title: borderInc + ' sibling group(s) with inconsistent border widths',
-      detail: 'Children in the same flex/grid container use different border widths.',
-      fix: 'Unify border widths within component groups. Use a consistent border-width token.',
-      source: 'Material Design 3 — https://m3.material.io/styles/shape/overview'
-    });
-  }
-
-  // Font weight role consistency
-  var fwInc = (data.consistency && data.consistency.fontWeightInconsistencies) || 0;
-  if (fwInc > 0) {
-    findings.push({
-      severity: 'info',
-      title: fwInc + ' heading level(s) with inconsistent font-weights',
-      detail: 'Same-level headings (e.g. multiple h3s) use different font-weights.',
-      fix: 'Standardize heading weights per level. All h2s should share the same weight.',
-      source: 'Modular type scales — https://typescale.com/'
-    });
-  }
-
-  // Gradient direction consistency
-  var gradDirs = (data.consistency && data.consistency.gradientDirections) || 0;
-  if (gradDirs > 3) {
-    findings.push({
-      severity: 'info',
-      title: gradDirs + ' distinct gradient directions (recommend 1-2)',
-      detail: 'Multiple gradient directions create visual incoherence.',
-      fix: 'Limit to 1-2 gradient directions for visual coherence.',
-      source: 'Design Systems — https://www.designsystems.com/'
-    });
-  }
-
-  // Icon size consistency (opt-in, full scan)
-  var iconCV = (data.consistency && data.consistency.iconSizeVariance) || 0;
-  if (iconCV > 40) {
-    findings.push({
-      severity: 'info',
-      title: 'Icon sizes vary significantly relative to text (CV: ' + iconCV + '%)',
-      detail: 'SVG icons are sized inconsistently relative to adjacent text.',
-      fix: 'Standardize inline icons to 1.25em (1.25x the parent font size). Use w-4 h-4 or w-5 h-5 consistently.',
-      source: 'Material Design 3 — https://m3.material.io/styles/icons/overview'
-    });
-  }
-
-  // Padding asymmetry in buttons
-  var padAsym = (data.consistency && data.consistency.paddingAsymmetry) || 0;
-  if (padAsym > 0) {
-    findings.push({
-      severity: 'info',
-      title: padAsym + ' button(s) with asymmetric horizontal padding',
-      detail: 'Buttons have different left and right padding (>4px difference).',
-      fix: 'Use equal horizontal padding on buttons for centered content: px-4, px-6, etc.',
-      source: 'Material Design 3 — https://m3.material.io/components/buttons/specs'
-    });
-  }
-
-  // Color temperature mixing (opt-in, full scan)
-  if (data.colors && data.colors.temperatureMixing) {
-    findings.push({
-      severity: 'info',
-      title: 'Page mixes warm and cool accent colors',
-      detail: 'Both warm (red/orange/yellow) and cool (blue/cyan) accent colors are used. Verify this is an intentional complementary scheme.',
-      fix: 'If unintentional, consolidate to either warm or cool accent palette. Complementary schemes should be deliberate.',
-      source: 'Color theory — https://color.adobe.com/'
-    });
-  }
-
-  // Z-index sprawl
-  var zSprawl = (data.layout && data.layout.zIndexSprawl) || {};
-  if (zSprawl.distinct > 0) {
-    checks++;
-    if (zSprawl.distinct <= 8) {
-      passed++;
-    } else {
-      findings.push({
-        severity: zSprawl.distinct > 15 ? 'warning' : 'info',
-        title: zSprawl.distinct + ' distinct z-index values (recommend ≤8)',
-        detail: 'Max z-index: ' + zSprawl.max + '. Many z-index values indicate ad-hoc stacking that becomes unmaintainable.',
-        fix: 'Consolidate to a z-index scale: --z-dropdown: 10, --z-sticky: 20, --z-modal: 30, --z-toast: 40.',
-        source: 'Josh Comeau Stacking Contexts — https://www.joshwcomeau.com/css/stacking-contexts/'
-      });
-    }
-  }
-
-  // Shadow consistency
-  var shadowSprawl = (data.layout && data.layout.shadowSprawl) || 0;
-  if (shadowSprawl > 0) {
-    checks++;
-    if (shadowSprawl <= 5) {
-      passed++;
-    } else {
-      findings.push({
-        severity: shadowSprawl > 10 ? 'warning' : 'info',
-        title: shadowSprawl + ' distinct box-shadow values (recommend 3-5)',
-        detail: 'Too many unique shadow styles suggest an inconsistent elevation system.',
-        fix: 'Standardize to 3-5 elevation levels: shadow-sm, shadow, shadow-md, shadow-lg, shadow-xl.',
-        source: 'Material Design 3 — https://m3.material.io/styles/elevation/overview'
-      });
-    }
-  }
-
-  // Dark mode halation (pure black on pure white)
-  if (data.colors && data.colors.darkModeHalation) {
-    checks++;
-    findings.push({
-      severity: 'warning',
-      title: 'Pure black (#000) with pure white (#fff) text detected in dark mode',
-      detail: 'Pure black backgrounds with pure white text causes halation (glowing text effect) for users with astigmatism (~33% of population).',
-      fix: 'Use off-black backgrounds (slate-900 / #0f172a) and off-white text (slate-100 / #f1f5f9) in dark mode.',
-      source: 'Apple HIG Dark Mode — https://developer.apple.com/design/human-interface-guidelines/dark-mode'
-    });
-  }
-
-  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-  return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Visual Consistency', icon: 'consistency' };
-}
-
-
-  S.register("consistency", scoreVisualConsistency, 5, "Visual Consistency", "consistency");
-})();
-</file>
-
 <file path="docs/scoring/contrast.js">
 // Scoring Module: Color & Contrast
 // Weight: 20%
@@ -26160,307 +25918,6 @@ function scoreContrast(data) {
 
   S.register("contrast", scoreContrast, 20, "Color & Contrast", "contrast");
 })();
-</file>
-
-<file path="scripts/test-layout.mjs">
-#!/usr/bin/env node
-// Test all templates for layout/overflow issues across viewports
-// Skips effects (they only change colors/fonts) and "before" variants
-//
-// Usage:
-//   node scripts/test-layout.mjs              # test all templates
-//   node scripts/test-layout.mjs dashboard    # test one element
-//   node scripts/test-layout.mjs --threads=6  # parallel threads
-//
-// Checks:
-//   - Body horizontal overflow (scrollWidth > clientWidth)
-//   - Elements wider than viewport without scroll wrapper
-//   - Content clipped outside viewport bounds
-//   - Hidden panels that overflow when revealed
-
-import puppeteer from 'puppeteer';
-import { createServer } from 'http';
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
-import { join, extname } from 'path';
-
-const DOCS_DIR = join(import.meta.dirname, '..', 'docs');
-const RESULTS_DIR = join(import.meta.dirname, '..', 'research', 'template-results');
-const PORT = 8768;
-
-const args = process.argv.slice(2);
-const THREADS = parseInt((args.find(a => a.startsWith('--threads=')) || '--threads=3').split('=')[1]);
-const TEMPLATE = args.find(a => !a.startsWith('--')) || '';
-
-const VIEWPORTS = [
-  { w: 375, h: 812, label: 'phone' },
-  { w: 768, h: 1024, label: 'tablet' },
-  { w: 1280, h: 900, label: 'desktop' },
-];
-
-const DARK_MODES = [false, true];
-
-function startServer() {
-  const mimeTypes = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2' };
-  const server = createServer((req, res) => {
-    let filePath = join(DOCS_DIR, req.url === '/' ? 'index.html' : req.url);
-    if (!existsSync(filePath)) { res.writeHead(404); res.end('Not found'); return; }
-    res.writeHead(200, { 'Content-Type': mimeTypes[extname(filePath)] || 'application/octet-stream' });
-    res.end(readFileSync(filePath));
-  });
-  server.listen(PORT);
-  return server;
-}
-
-function buildTests() {
-  const manifest = JSON.parse(readFileSync(join(DOCS_DIR, 'presets', 'index.json'), 'utf8'));
-  const tests = [];
-  for (const [el, info] of Object.entries(manifest.elements)) {
-    for (const pers of Object.keys(info.personalities || {})) {
-      // Skip "before" variants
-      if (pers === 'before') continue;
-      // Filter by template if specified
-      if (TEMPLATE && el !== TEMPLATE && `${el}/${pers}` !== TEMPLATE) continue;
-      const file = join(DOCS_DIR, 'presets', el, pers + '.html');
-      if (!existsSync(file)) continue;
-      for (const vp of VIEWPORTS) {
-        for (const dark of DARK_MODES) {
-          tests.push({ element: el, personality: pers, viewport: vp, dark });
-        }
-      }
-    }
-  }
-  return tests;
-}
-
-function testKey(t) {
-  return `${t.element}/${t.personality}|${t.viewport.label}|${t.dark ? 'dark' : 'light'}`;
-}
-
-async function runTest(page, t) {
-  const html = readFileSync(join(DOCS_DIR, 'presets', t.element, t.personality + '.html'), 'utf8');
-  await page.setViewport({ width: t.viewport.w, height: t.viewport.h });
-
-  const result = await page.evaluate(async (html, dark, vpWidth, vpHeight) => {
-    return new Promise((resolve) => {
-      const iframe = document.createElement('iframe');
-      iframe.style.cssText = `position:fixed;top:0;left:0;width:${vpWidth}px;height:${vpHeight}px;border:none;`;
-      document.body.appendChild(iframe);
-
-      const darkClass = dark ? ' class="dark"' : '';
-      const darkVariantCSS = '@custom-variant dark (&:where(.dark, .dark *));';
-      const srcdoc = '<!DOCTYPE html><html lang="en"' + darkClass + '><head><meta charset="UTF-8">' +
-        '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
-        '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
-        (dark ? '<style type="text/tailwindcss">' + darkVariantCSS + '</style>' : '') +
-        '<style>body{margin:0}</style></head><body>' + html +
-        '<script>setTimeout(function(){' +
-        // Layout checks running inside the iframe
-        'var doc = document.documentElement;' +
-        'var body = document.body;' +
-        'var vpW = window.innerWidth;' +
-        'var vpH = window.innerHeight;' +
-        'var issues = [];' +
-        // 1. Body overflow
-        'var bodyScrollW = Math.max(doc.scrollWidth, body.scrollWidth);' +
-        'if (bodyScrollW > vpW + 2) {' +
-        '  issues.push({ type: "body-overflow", scrollWidth: bodyScrollW, viewport: vpW, overflow: bodyScrollW - vpW });' +
-        '}' +
-        // 2. Elements wider than viewport without scroll wrapper
-        'var all = body.querySelectorAll("*");' +
-        'var checked = new Set();' +
-        'for (var i = 0; i < all.length && i < 500; i++) {' +
-        '  var el = all[i];' +
-        '  if (el.tagName === "SCRIPT" || el.tagName === "STYLE") continue;' +
-        '  var r = el.getBoundingClientRect();' +
-        '  if (r.width < 4 || r.height < 4) continue;' +
-        '  if (r.right > vpW + 2 || r.left < -2) {' +
-        // Check if inside overflow-x-auto/scroll container
-        '    var inScroll = false;' +
-        '    var anc = el.parentElement;' +
-        '    while (anc && anc !== body) {' +
-        '      var ox = getComputedStyle(anc).overflowX;' +
-        '      if (ox === "auto" || ox === "scroll") { inScroll = true; break; }' +
-        '      anc = anc.parentElement;' +
-        '    }' +
-        '    if (!inScroll) {' +
-        // Skip if parent already recorded
-        '      var sel = el.tagName.toLowerCase();' +
-        '      if (el.id) sel = "#" + el.id;' +
-        '      else if (el.className && typeof el.className === "string") sel += "." + el.className.trim().split(/\\s+/).slice(0,2).join(".");' +
-        '      var text = (el.textContent || "").trim().substring(0, 40);' +
-        '      if (!checked.has(sel)) {' +
-        '        checked.add(sel);' +
-        '        issues.push({ type: "element-overflow", selector: sel, text: text, left: Math.round(r.left), right: Math.round(r.right), width: Math.round(r.width), vpWidth: vpW });' +
-        '      }' +
-        '    }' +
-        '  }' +
-        '}' +
-        // 3. Elements wider than viewport but hidden by overflow:hidden (silent clip)
-        'for (var j = 0; j < all.length && j < 300; j++) {' +
-        '  var el2 = all[j];' +
-        '  if (el2.tagName === "SCRIPT" || el2.tagName === "STYLE") continue;' +
-        '  var s2 = getComputedStyle(el2);' +
-        '  var br2 = s2.borderRadius;' +
-        '  var hasRadius = br2 && br2 !== "0px" && br2 !== "0%";' +
-        '  var hasText = el2.textContent && el2.textContent.trim().length > 10;' +
-        '  if (s2.overflowX === "hidden" && el2.scrollWidth > el2.clientWidth + 4 && !hasRadius && hasText && s2.pointerEvents !== "none" && s2.position !== "fixed") {' +
-        '    var sel2 = el2.tagName.toLowerCase();' +
-        '    if (el2.id) sel2 = "#" + el2.id;' +
-        '    else if (el2.className && typeof el2.className === "string") sel2 += "." + el2.className.trim().split(/\\s+/).slice(0,2).join(".");' +
-        '    issues.push({ type: "hidden-clip", selector: sel2, clientWidth: el2.clientWidth, scrollWidth: el2.scrollWidth, clipped: el2.scrollWidth - el2.clientWidth });' +
-        '  }' +
-        '}' +
-        'parent.postMessage({ type: "layout-result", issues: issues }, "*");' +
-        '}, 3500);</' + 'script></body></html>';
-
-      let handled = false;
-      function onMsg(e) {
-        if (!e.data || e.data.type !== 'layout-result') return;
-        if (handled) return;
-        handled = true;
-        window.removeEventListener('message', onMsg);
-        if (iframe.parentNode) document.body.removeChild(iframe);
-        resolve({ issues: e.data.issues || [] });
-      }
-      window.addEventListener('message', onMsg);
-      iframe.srcdoc = srcdoc;
-
-      setTimeout(() => {
-        if (handled) return;
-        handled = true;
-        window.removeEventListener('message', onMsg);
-        if (iframe.parentNode) document.body.removeChild(iframe);
-        resolve({ error: 'Timeout' });
-      }, 12000);
-    });
-  }, html, t.dark, t.viewport.w, t.viewport.h);
-
-  return result;
-}
-
-async function main() {
-  const tests = buildTests();
-  if (tests.length === 0) {
-    console.error('No tests found' + (TEMPLATE ? ` for "${TEMPLATE}"` : '') + '. Check docs/presets/index.json');
-    process.exit(1);
-  }
-
-  console.log(`Layout test: ${TEMPLATE || 'ALL'} (${tests.length} combinations, ${THREADS} threads)`);
-  if (!existsSync(RESULTS_DIR)) mkdirSync(RESULTS_DIR, { recursive: true });
-
-  const server = startServer();
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage']
-  });
-
-  const pages = [];
-  for (let i = 0; i < THREADS; i++) pages.push(await browser.newPage());
-
-  const results = [];
-  let completed = 0;
-  const startTime = Date.now();
-
-  let idx = 0;
-  async function worker(page) {
-    while (idx < tests.length) {
-      const t = tests[idx++];
-      const key = testKey(t);
-      try {
-        const result = await runTest(page, t);
-        completed++;
-        const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
-        if (result.error) {
-          process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s ${key} ERROR          \n`);
-          results.push({ key, ...t, error: result.error });
-        } else {
-          const bodyOF = result.issues.filter(i => i.type === 'body-overflow').length;
-          const elemOF = result.issues.filter(i => i.type === 'element-overflow').length;
-          const clip = result.issues.filter(i => i.type === 'hidden-clip').length;
-          // Only count body overflow and hidden-clip as failures — element-overflow
-          // without body scroll is usually intentional (hidden sidebars, translate off-screen)
-          const realIssues = bodyOF + clip;
-          if (realIssues > 0) {
-            process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s ${key} ❌ ${bodyOF} body-overflow, ${clip} hidden-clip${elemOF > 0 ? ', ' + elemOF + ' elem-overflow' : ''}          \n`);
-          } else if (elemOF > 0) {
-            process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s ${key} ⚠ ${elemOF} offscreen (no body scroll)          `);
-          } else {
-            process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s ${key} ✓          `);
-          }
-          results.push({ key, ...t, issues: result.issues });
-        }
-      } catch (err) {
-        completed++;
-        results.push({ key, ...t, error: err.message });
-      }
-    }
-  }
-
-  await Promise.all(pages.map(p => worker(p)));
-  await browser.close();
-  server.close();
-
-  // Report
-  const ok = results.filter(r => !r.error);
-  // Real issues = body overflow or hidden clip (not just off-screen elements without scroll)
-  const withIssues = ok.filter(r => r.issues && r.issues.some(i => i.type === 'body-overflow' || i.type === 'hidden-clip'));
-
-  let md = `# Layout Test Results\n\n`;
-  md += `**Date:** ${new Date().toISOString()}\n`;
-  md += `**Templates tested:** ${ok.length} | **With issues:** ${withIssues.length}\n\n`;
-
-  if (withIssues.length > 0) {
-    md += '## Failures\n\n';
-    md += '| Template | Viewport | Mode | Body OF | Elem OF | Clip | Details |\n';
-    md += '|----------|----------|------|---------|---------|------|---------|\n';
-    for (const r of withIssues.sort((a, b) => b.issues.length - a.issues.length)) {
-      const bodyOF = r.issues.filter(i => i.type === 'body-overflow');
-      const elemOF = r.issues.filter(i => i.type === 'element-overflow');
-      const clip = r.issues.filter(i => i.type === 'hidden-clip');
-      const details = [
-        ...bodyOF.map(i => `body +${i.overflow}px`),
-        ...elemOF.slice(0, 2).map(i => `${i.selector} right=${i.right}px`),
-        ...clip.slice(0, 1).map(i => `${i.selector} clipped ${i.clipped}px`)
-      ].join('; ');
-      md += `| ${r.element}/${r.personality} | ${r.viewport.label} | ${r.dark ? 'dark' : 'light'} | ${bodyOF.length} | ${elemOF.length} | ${clip.length} | ${details} |\n`;
-    }
-
-    // Aggregate by template
-    md += '\n## Summary by Template\n\n';
-    const byTemplate = {};
-    for (const r of withIssues) {
-      const tpl = `${r.element}/${r.personality}`;
-      if (!byTemplate[tpl]) byTemplate[tpl] = { phone: 0, tablet: 0, desktop: 0, issues: [] };
-      byTemplate[tpl][r.viewport.label]++;
-      for (const i of r.issues) byTemplate[tpl].issues.push(i);
-    }
-    for (const [tpl, data] of Object.entries(byTemplate).sort((a, b) => b[1].issues.length - a[1].issues.length)) {
-      md += `### ${tpl}\n`;
-      md += `- Phone: ${data.phone} | Tablet: ${data.tablet} | Desktop: ${data.desktop}\n`;
-      const uniqueIssues = new Set(data.issues.map(i => `${i.type}: ${i.selector || 'body'}`));
-      for (const ui of uniqueIssues) md += `  - ${ui}\n`;
-      md += '\n';
-    }
-  } else {
-    md += '## All templates pass! No overflow issues detected.\n';
-  }
-
-  const outFile = join(RESULTS_DIR, 'layout-test.md');
-  writeFileSync(outFile, md);
-  writeFileSync(join(RESULTS_DIR, 'layout-test.json'), JSON.stringify(results, null, 2));
-
-  console.log(`\n\n=== LAYOUT TEST RESULTS ===`);
-  console.log(`Tested: ${ok.length} | Issues: ${withIssues.length} | Errors: ${results.filter(r => r.error).length}`);
-  if (withIssues.length > 0) {
-    console.log(`\nTemplates with overflow:`);
-    for (const r of withIssues) {
-      console.log(`  ${r.key}: ${r.issues.map(i => i.type).join(', ')}`);
-    }
-  }
-  console.log(`\nReport: ${outFile}`);
-}
-
-main().catch(err => { console.error('Fatal:', err); process.exit(1); });
 </file>
 
 <file path="docs/scoring/accessibility.js">
@@ -27022,6 +26479,549 @@ function scoreAccessibility(data) {
 
   S.register("accessibility", scoreAccessibility, 15, "Accessibility", "a11y");
 })();
+</file>
+
+<file path="docs/scoring/consistency.js">
+// Scoring Module: Visual Consistency
+// Weight: 5%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreVisualConsistency(data) {
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+
+  // Scale thresholds by page complexity
+  var pageType = (data.context && data.context.pageType) || 'unknown';
+  var elCount = (data.structure && data.structure.totalElements) || 100;
+  // Marketing/content pages legitimately use more colors and font sizes
+  var colorLimit = elCount > 200 ? 35 : elCount > 100 ? 25 : 20;
+  var fontSizeLimit = elCount > 200 ? 12 : elCount > 100 ? 10 : 8;
+  if (pageType === 'marketing' || pageType === 'pricing') { colorLimit += 10; fontSizeLimit += 3; }
+
+  // Color palette coherence — how many unique text/bg colors?
+  checks++;
+  var textColors = (data.colors.textColors || []).length;
+  var bgColors = (data.colors.bgColors || []).length;
+  var totalUnique = textColors + bgColors;
+  if (totalUnique <= colorLimit) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: totalUnique + ' unique colors detected (recommend < ' + colorLimit + ' for this page type)',
+      detail: textColors + ' text colors, ' + bgColors + ' background colors',
+      fix: 'Consolidate to a systematic color palette: 1 primary + 1 neutral + 3 semantic (error, warning, success)',
+      presetRef: 'Presets use a single primary color with slate neutrals',
+      source: 'Material Design 3 — https://m3.material.io/styles/color/roles'
+    });
+  }
+
+  // Font size consistency — too many unique sizes?
+  checks++;
+  var fontSizes = (data.typography.fontSizes || []).length;
+  if (fontSizes <= fontSizeLimit) {
+    passed++;
+  } else {
+    // Collect sample bboxes from font-size entries for viewer overlay
+    var fsBboxes = (data.typography.fontSizes || []).filter(function(fs) { return fs.bbox; }).map(function(fs) { return fs.bbox; });
+    findings.push({
+      severity: 'info',
+      title: fontSizes + ' unique font sizes (recommend ≤' + fontSizeLimit + ' from a type scale)',
+      detail: 'A consistent type scale creates visual rhythm',
+      fix: 'Use a modular scale: text-sm, text-base, text-lg, text-xl, text-2xl, text-3xl, text-4xl',
+      presetRef: null,
+      source: 'Modular type scales — https://typescale.com/',
+      locator: { selector: '', text: '', bboxes: fsBboxes }
+    });
+  }
+
+  // Border radius consistency — exclude pill/circle shapes (9999px, 50%, >100px)
+  var radii = ((data.layout && data.layout.borderRadii) || []).filter(function(r) {
+    var v = r.value;
+    if (v === '50%' || v === '9999px') return false;
+    var px = parseFloat(v);
+    return !(px > 100);
+  });
+  if (radii.length > 0) {
+    checks++;
+    if (radii.length <= 4) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: radii.length + ' distinct border-radius values (recommend 2-4, excluding pill/circle shapes)',
+        detail: 'Values: ' + radii.slice(0, 6).map(function(r) { return r.value + ' (' + r.count + 'x)'; }).join(', '),
+        fix: 'Standardize border-radius to 2-4 values in your design tokens. In Tailwind: rounded-sm (2px), rounded (4px), rounded-lg (8px), rounded-xl (12px).',
+        presetRef: null,
+        source: 'Material Design 3 — https://m3.material.io/styles/shape/overview'
+      });
+    }
+  }
+
+  // Line height consistency
+  var lineHeights = (data.typography && data.typography.lineHeights) || [];
+  if (lineHeights.length > 0) {
+    checks++;
+    if (lineHeights.length <= 5) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: lineHeights.length + ' distinct line-height values (recommend 2-4)',
+        detail: 'Consistent line-height creates visual rhythm across the page.',
+        fix: 'Standardize to 2-3 line-heights: tight (1.25), normal (1.5), relaxed (1.75).',
+        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-spacing.html'
+      });
+    }
+  }
+
+  // Dark mode support consistency
+  if (data.structure) {
+    checks++;
+    if (data.structure.darkModeClasses) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: 'No dark mode support detected',
+        detail: 'Dark mode is expected by ~80% of users (Android settings data).',
+        fix: 'Add dark mode with dark: variants in Tailwind or prefers-color-scheme media query.',
+        source: 'Apple HIG — https://developer.apple.com/design/human-interface-guidelines/dark-mode'
+      });
+    }
+  }
+
+  // Border width inconsistencies in sibling groups
+  var borderInc = (data.consistency && data.consistency.borderWidthInconsistencies) || 0;
+  if (borderInc > 0) {
+    findings.push({
+      severity: 'info',
+      title: borderInc + ' sibling group(s) with inconsistent border widths',
+      detail: 'Children in the same flex/grid container use different border widths.',
+      fix: 'Unify border widths within component groups. Use a consistent border-width token.',
+      source: 'Material Design 3 — https://m3.material.io/styles/shape/overview'
+    });
+  }
+
+  // Font weight role consistency
+  var fwInc = (data.consistency && data.consistency.fontWeightInconsistencies) || 0;
+  if (fwInc > 0) {
+    findings.push({
+      severity: 'info',
+      title: fwInc + ' heading level(s) with inconsistent font-weights',
+      detail: 'Same-level headings (e.g. multiple h3s) use different font-weights.',
+      fix: 'Standardize heading weights per level. All h2s should share the same weight.',
+      source: 'Modular type scales — https://typescale.com/'
+    });
+  }
+
+  // Gradient direction consistency
+  var gradDirs = (data.consistency && data.consistency.gradientDirections) || 0;
+  if (gradDirs > 3) {
+    findings.push({
+      severity: 'info',
+      title: gradDirs + ' distinct gradient directions (recommend 1-2)',
+      detail: 'Multiple gradient directions create visual incoherence.',
+      fix: 'Limit to 1-2 gradient directions for visual coherence.',
+      source: 'Design Systems — https://www.designsystems.com/'
+    });
+  }
+
+  // Icon size consistency (opt-in, full scan)
+  var iconCV = (data.consistency && data.consistency.iconSizeVariance) || 0;
+  if (iconCV > 40) {
+    findings.push({
+      severity: 'info',
+      title: 'Icon sizes vary significantly relative to text (CV: ' + iconCV + '%)',
+      detail: 'SVG icons are sized inconsistently relative to adjacent text.',
+      fix: 'Standardize inline icons to 1.25em (1.25x the parent font size). Use w-4 h-4 or w-5 h-5 consistently.',
+      source: 'Material Design 3 — https://m3.material.io/styles/icons/overview'
+    });
+  }
+
+  // Padding asymmetry in buttons
+  var padAsym = (data.consistency && data.consistency.paddingAsymmetry) || 0;
+  if (padAsym > 0) {
+    findings.push({
+      severity: 'info',
+      title: padAsym + ' button(s) with asymmetric horizontal padding',
+      detail: 'Buttons have different left and right padding (>4px difference).',
+      fix: 'Use equal horizontal padding on buttons for centered content: px-4, px-6, etc.',
+      source: 'Material Design 3 — https://m3.material.io/components/buttons/specs'
+    });
+  }
+
+  // Color temperature mixing (opt-in, full scan)
+  if (data.colors && data.colors.temperatureMixing) {
+    findings.push({
+      severity: 'info',
+      title: 'Page mixes warm and cool accent colors',
+      detail: 'Both warm (red/orange/yellow) and cool (blue/cyan) accent colors are used. Verify this is an intentional complementary scheme.',
+      fix: 'If unintentional, consolidate to either warm or cool accent palette. Complementary schemes should be deliberate.',
+      source: 'Color theory — https://color.adobe.com/'
+    });
+  }
+
+  // Z-index sprawl
+  var zSprawl = (data.layout && data.layout.zIndexSprawl) || {};
+  if (zSprawl.distinct > 0) {
+    checks++;
+    if (zSprawl.distinct <= 8) {
+      passed++;
+    } else {
+      findings.push({
+        severity: zSprawl.distinct > 15 ? 'warning' : 'info',
+        title: zSprawl.distinct + ' distinct z-index values (recommend ≤8)',
+        detail: 'Max z-index: ' + zSprawl.max + '. Many z-index values indicate ad-hoc stacking that becomes unmaintainable.',
+        fix: 'Consolidate to a z-index scale: --z-dropdown: 10, --z-sticky: 20, --z-modal: 30, --z-toast: 40.',
+        source: 'Josh Comeau Stacking Contexts — https://www.joshwcomeau.com/css/stacking-contexts/'
+      });
+    }
+  }
+
+  // Shadow consistency
+  var shadowSprawl = (data.layout && data.layout.shadowSprawl) || 0;
+  if (shadowSprawl > 0) {
+    checks++;
+    if (shadowSprawl <= 5) {
+      passed++;
+    } else {
+      findings.push({
+        severity: shadowSprawl > 10 ? 'warning' : 'info',
+        title: shadowSprawl + ' distinct box-shadow values (recommend 3-5)',
+        detail: 'Too many unique shadow styles suggest an inconsistent elevation system.',
+        fix: 'Standardize to 3-5 elevation levels: shadow-sm, shadow, shadow-md, shadow-lg, shadow-xl.',
+        source: 'Material Design 3 — https://m3.material.io/styles/elevation/overview'
+      });
+    }
+  }
+
+  // Dark mode halation (pure black on pure white)
+  if (data.colors && data.colors.darkModeHalation) {
+    checks++;
+    findings.push({
+      severity: 'warning',
+      title: 'Pure black (#000) with pure white (#fff) text detected in dark mode',
+      detail: 'Pure black backgrounds with pure white text causes halation (glowing text effect) for users with astigmatism (~33% of population).',
+      fix: 'Use off-black backgrounds (slate-900 / #0f172a) and off-white text (slate-100 / #f1f5f9) in dark mode.',
+      source: 'Apple HIG Dark Mode — https://developer.apple.com/design/human-interface-guidelines/dark-mode'
+    });
+  }
+
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+  return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Visual Consistency', icon: 'consistency' };
+}
+
+
+  S.register("consistency", scoreVisualConsistency, 5, "Visual Consistency", "consistency");
+})();
+</file>
+
+<file path="scripts/test-layout.mjs">
+#!/usr/bin/env node
+// Test all templates for layout/overflow issues across viewports
+// Skips effects (they only change colors/fonts) and "before" variants
+//
+// Usage:
+//   node scripts/test-layout.mjs              # test all templates
+//   node scripts/test-layout.mjs dashboard    # test one element
+//   node scripts/test-layout.mjs --threads=6  # parallel threads
+//
+// Checks:
+//   - Body horizontal overflow (scrollWidth > clientWidth)
+//   - Elements wider than viewport without scroll wrapper
+//   - Content clipped outside viewport bounds
+//   - Hidden panels that overflow when revealed
+
+import puppeteer from 'puppeteer';
+import { createServer } from 'http';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { join, extname } from 'path';
+
+const DOCS_DIR = join(import.meta.dirname, '..', 'docs');
+const RESULTS_DIR = join(import.meta.dirname, '..', 'research', 'template-results');
+const PORT = 8768;
+
+const args = process.argv.slice(2);
+const THREADS = parseInt((args.find(a => a.startsWith('--threads=')) || '--threads=3').split('=')[1]);
+const TEMPLATE = args.find(a => !a.startsWith('--')) || '';
+
+const VIEWPORTS = [
+  { w: 375, h: 812, label: 'phone' },
+  { w: 768, h: 1024, label: 'tablet' },
+  { w: 1280, h: 900, label: 'desktop' },
+];
+
+const DARK_MODES = [false, true];
+
+function startServer() {
+  const mimeTypes = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2' };
+  const server = createServer((req, res) => {
+    let filePath = join(DOCS_DIR, req.url === '/' ? 'index.html' : req.url);
+    if (!existsSync(filePath)) { res.writeHead(404); res.end('Not found'); return; }
+    res.writeHead(200, { 'Content-Type': mimeTypes[extname(filePath)] || 'application/octet-stream' });
+    res.end(readFileSync(filePath));
+  });
+  server.listen(PORT);
+  return server;
+}
+
+function buildTests() {
+  const manifest = JSON.parse(readFileSync(join(DOCS_DIR, 'presets', 'index.json'), 'utf8'));
+  const tests = [];
+  for (const [el, info] of Object.entries(manifest.elements)) {
+    for (const pers of Object.keys(info.personalities || {})) {
+      // Skip "before" variants
+      if (pers === 'before') continue;
+      // Filter by template if specified
+      if (TEMPLATE && el !== TEMPLATE && `${el}/${pers}` !== TEMPLATE) continue;
+      const file = join(DOCS_DIR, 'presets', el, pers + '.html');
+      if (!existsSync(file)) continue;
+      for (const vp of VIEWPORTS) {
+        for (const dark of DARK_MODES) {
+          tests.push({ element: el, personality: pers, viewport: vp, dark });
+        }
+      }
+    }
+  }
+  return tests;
+}
+
+function testKey(t) {
+  return `${t.element}/${t.personality}|${t.viewport.label}|${t.dark ? 'dark' : 'light'}`;
+}
+
+async function runTest(page, t) {
+  const html = readFileSync(join(DOCS_DIR, 'presets', t.element, t.personality + '.html'), 'utf8');
+  await page.setViewport({ width: t.viewport.w, height: t.viewport.h });
+
+  const result = await page.evaluate(async (html, dark, vpWidth, vpHeight) => {
+    return new Promise((resolve) => {
+      const iframe = document.createElement('iframe');
+      iframe.style.cssText = `position:fixed;top:0;left:0;width:${vpWidth}px;height:${vpHeight}px;border:none;`;
+      document.body.appendChild(iframe);
+
+      const darkClass = dark ? ' class="dark"' : '';
+      const darkVariantCSS = '@custom-variant dark (&:where(.dark, .dark *));';
+      const srcdoc = '<!DOCTYPE html><html lang="en"' + darkClass + '><head><meta charset="UTF-8">' +
+        '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+        '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
+        (dark ? '<style type="text/tailwindcss">' + darkVariantCSS + '</style>' : '') +
+        '<style>body{margin:0}</style></head><body>' + html +
+        '<script>setTimeout(function(){' +
+        // Layout checks running inside the iframe
+        'var doc = document.documentElement;' +
+        'var body = document.body;' +
+        'var vpW = window.innerWidth;' +
+        'var vpH = window.innerHeight;' +
+        'var issues = [];' +
+        // 1. Body overflow
+        'var bodyScrollW = Math.max(doc.scrollWidth, body.scrollWidth);' +
+        'if (bodyScrollW > vpW + 2) {' +
+        '  issues.push({ type: "body-overflow", scrollWidth: bodyScrollW, viewport: vpW, overflow: bodyScrollW - vpW });' +
+        '}' +
+        // 2. Elements wider than viewport without scroll wrapper
+        'var all = body.querySelectorAll("*");' +
+        'var checked = new Set();' +
+        'for (var i = 0; i < all.length && i < 500; i++) {' +
+        '  var el = all[i];' +
+        '  if (el.tagName === "SCRIPT" || el.tagName === "STYLE") continue;' +
+        '  var r = el.getBoundingClientRect();' +
+        '  if (r.width < 4 || r.height < 4) continue;' +
+        '  if (r.right > vpW + 2 || r.left < -2) {' +
+        // Check if inside overflow-x-auto/scroll container
+        '    var inScroll = false;' +
+        '    var anc = el.parentElement;' +
+        '    while (anc && anc !== body) {' +
+        '      var ox = getComputedStyle(anc).overflowX;' +
+        '      if (ox === "auto" || ox === "scroll") { inScroll = true; break; }' +
+        '      anc = anc.parentElement;' +
+        '    }' +
+        '    if (!inScroll) {' +
+        // Skip if parent already recorded
+        '      var sel = el.tagName.toLowerCase();' +
+        '      if (el.id) sel = "#" + el.id;' +
+        '      else if (el.className && typeof el.className === "string") sel += "." + el.className.trim().split(/\\s+/).slice(0,2).join(".");' +
+        '      var text = (el.textContent || "").trim().substring(0, 40);' +
+        '      if (!checked.has(sel)) {' +
+        '        checked.add(sel);' +
+        '        issues.push({ type: "element-overflow", selector: sel, text: text, left: Math.round(r.left), right: Math.round(r.right), width: Math.round(r.width), vpWidth: vpW });' +
+        '      }' +
+        '    }' +
+        '  }' +
+        '}' +
+        // 3. Elements wider than viewport but hidden by overflow:hidden (silent clip)
+        'for (var j = 0; j < all.length && j < 300; j++) {' +
+        '  var el2 = all[j];' +
+        '  if (el2.tagName === "SCRIPT" || el2.tagName === "STYLE") continue;' +
+        '  var s2 = getComputedStyle(el2);' +
+        '  var br2 = s2.borderRadius;' +
+        '  var hasRadius = br2 && br2 !== "0px" && br2 !== "0%";' +
+        '  var hasText = el2.textContent && el2.textContent.trim().length > 10;' +
+        '  if (s2.overflowX === "hidden" && el2.scrollWidth > el2.clientWidth + 4 && !hasRadius && hasText && s2.pointerEvents !== "none" && s2.position !== "fixed") {' +
+        '    var sel2 = el2.tagName.toLowerCase();' +
+        '    if (el2.id) sel2 = "#" + el2.id;' +
+        '    else if (el2.className && typeof el2.className === "string") sel2 += "." + el2.className.trim().split(/\\s+/).slice(0,2).join(".");' +
+        '    issues.push({ type: "hidden-clip", selector: sel2, clientWidth: el2.clientWidth, scrollWidth: el2.scrollWidth, clipped: el2.scrollWidth - el2.clientWidth });' +
+        '  }' +
+        '}' +
+        'parent.postMessage({ type: "layout-result", issues: issues }, "*");' +
+        '}, 3500);</' + 'script></body></html>';
+
+      let handled = false;
+      function onMsg(e) {
+        if (!e.data || e.data.type !== 'layout-result') return;
+        if (handled) return;
+        handled = true;
+        window.removeEventListener('message', onMsg);
+        if (iframe.parentNode) document.body.removeChild(iframe);
+        resolve({ issues: e.data.issues || [] });
+      }
+      window.addEventListener('message', onMsg);
+      iframe.srcdoc = srcdoc;
+
+      setTimeout(() => {
+        if (handled) return;
+        handled = true;
+        window.removeEventListener('message', onMsg);
+        if (iframe.parentNode) document.body.removeChild(iframe);
+        resolve({ error: 'Timeout' });
+      }, 12000);
+    });
+  }, html, t.dark, t.viewport.w, t.viewport.h);
+
+  return result;
+}
+
+async function main() {
+  const tests = buildTests();
+  if (tests.length === 0) {
+    console.error('No tests found' + (TEMPLATE ? ` for "${TEMPLATE}"` : '') + '. Check docs/presets/index.json');
+    process.exit(1);
+  }
+
+  console.log(`Layout test: ${TEMPLATE || 'ALL'} (${tests.length} combinations, ${THREADS} threads)`);
+  if (!existsSync(RESULTS_DIR)) mkdirSync(RESULTS_DIR, { recursive: true });
+
+  const server = startServer();
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage']
+  });
+
+  const pages = [];
+  for (let i = 0; i < THREADS; i++) pages.push(await browser.newPage());
+
+  const results = [];
+  let completed = 0;
+  const startTime = Date.now();
+
+  let idx = 0;
+  async function worker(page) {
+    while (idx < tests.length) {
+      const t = tests[idx++];
+      const key = testKey(t);
+      try {
+        const result = await runTest(page, t);
+        completed++;
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
+        if (result.error) {
+          process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s ${key} ERROR          \n`);
+          results.push({ key, ...t, error: result.error });
+        } else {
+          const bodyOF = result.issues.filter(i => i.type === 'body-overflow').length;
+          const elemOF = result.issues.filter(i => i.type === 'element-overflow').length;
+          const clip = result.issues.filter(i => i.type === 'hidden-clip').length;
+          // Only count body overflow and hidden-clip as failures — element-overflow
+          // without body scroll is usually intentional (hidden sidebars, translate off-screen)
+          const realIssues = bodyOF + clip;
+          if (realIssues > 0) {
+            process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s ${key} ❌ ${bodyOF} body-overflow, ${clip} hidden-clip${elemOF > 0 ? ', ' + elemOF + ' elem-overflow' : ''}          \n`);
+          } else if (elemOF > 0) {
+            process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s ${key} ⚠ ${elemOF} offscreen (no body scroll)          `);
+          } else {
+            process.stdout.write(`\r[${completed}/${tests.length}] ${elapsed}s ${key} ✓          `);
+          }
+          results.push({ key, ...t, issues: result.issues });
+        }
+      } catch (err) {
+        completed++;
+        results.push({ key, ...t, error: err.message });
+      }
+    }
+  }
+
+  await Promise.all(pages.map(p => worker(p)));
+  await browser.close();
+  server.close();
+
+  // Report
+  const ok = results.filter(r => !r.error);
+  // Real issues = body overflow or hidden clip (not just off-screen elements without scroll)
+  const withIssues = ok.filter(r => r.issues && r.issues.some(i => i.type === 'body-overflow' || i.type === 'hidden-clip'));
+
+  let md = `# Layout Test Results\n\n`;
+  md += `**Date:** ${new Date().toISOString()}\n`;
+  md += `**Templates tested:** ${ok.length} | **With issues:** ${withIssues.length}\n\n`;
+
+  if (withIssues.length > 0) {
+    md += '## Failures\n\n';
+    md += '| Template | Viewport | Mode | Body OF | Elem OF | Clip | Details |\n';
+    md += '|----------|----------|------|---------|---------|------|---------|\n';
+    for (const r of withIssues.sort((a, b) => b.issues.length - a.issues.length)) {
+      const bodyOF = r.issues.filter(i => i.type === 'body-overflow');
+      const elemOF = r.issues.filter(i => i.type === 'element-overflow');
+      const clip = r.issues.filter(i => i.type === 'hidden-clip');
+      const details = [
+        ...bodyOF.map(i => `body +${i.overflow}px`),
+        ...elemOF.slice(0, 2).map(i => `${i.selector} right=${i.right}px`),
+        ...clip.slice(0, 1).map(i => `${i.selector} clipped ${i.clipped}px`)
+      ].join('; ');
+      md += `| ${r.element}/${r.personality} | ${r.viewport.label} | ${r.dark ? 'dark' : 'light'} | ${bodyOF.length} | ${elemOF.length} | ${clip.length} | ${details} |\n`;
+    }
+
+    // Aggregate by template
+    md += '\n## Summary by Template\n\n';
+    const byTemplate = {};
+    for (const r of withIssues) {
+      const tpl = `${r.element}/${r.personality}`;
+      if (!byTemplate[tpl]) byTemplate[tpl] = { phone: 0, tablet: 0, desktop: 0, issues: [] };
+      byTemplate[tpl][r.viewport.label]++;
+      for (const i of r.issues) byTemplate[tpl].issues.push(i);
+    }
+    for (const [tpl, data] of Object.entries(byTemplate).sort((a, b) => b[1].issues.length - a[1].issues.length)) {
+      md += `### ${tpl}\n`;
+      md += `- Phone: ${data.phone} | Tablet: ${data.tablet} | Desktop: ${data.desktop}\n`;
+      const uniqueIssues = new Set(data.issues.map(i => `${i.type}: ${i.selector || 'body'}`));
+      for (const ui of uniqueIssues) md += `  - ${ui}\n`;
+      md += '\n';
+    }
+  } else {
+    md += '## All templates pass! No overflow issues detected.\n';
+  }
+
+  const outFile = join(RESULTS_DIR, 'layout-test.md');
+  writeFileSync(outFile, md);
+  writeFileSync(join(RESULTS_DIR, 'layout-test.json'), JSON.stringify(results, null, 2));
+
+  console.log(`\n\n=== LAYOUT TEST RESULTS ===`);
+  console.log(`Tested: ${ok.length} | Issues: ${withIssues.length} | Errors: ${results.filter(r => r.error).length}`);
+  if (withIssues.length > 0) {
+    console.log(`\nTemplates with overflow:`);
+    for (const r of withIssues) {
+      console.log(`  ${r.key}: ${r.issues.map(i => i.type).join(', ')}`);
+    }
+  }
+  console.log(`\nReport: ${outFile}`);
+}
+
+main().catch(err => { console.error('Fatal:', err); process.exit(1); });
 </file>
 
 <file path="docs/analyzer-report.js">
@@ -34422,7 +34422,7 @@ window.MilgViewer = (function() {
 
 <file path="docs/analyzer-snippet-screenshots.js">
 // make-it-look-good — Design Extraction Snippet (with screenshots)
-// Version: 2025-03-31-v14
+// Version: 2025-03-31-v15
 // Run this in the browser console on any page.
 // Loads modern-screenshot from CDN to capture page screenshots as WebP.
 // Output is larger (~200-800KB extra) but includes visual reference.
@@ -34430,7 +34430,7 @@ window.MilgViewer = (function() {
 
 (function() {
   'use strict';
-  var _MILG_VERSION = '2025-03-31-v14';
+  var _MILG_VERSION = '2025-03-31-v15';
   console.log('%c[milg] Snippet version: ' + _MILG_VERSION, 'color: #64748b;');
 
   // --- Scan mode ---
@@ -36207,9 +36207,60 @@ window.MilgViewer = (function() {
         var secScale = 0.5;
 
         // Log final scroll state for diagnostics
-        var finalScroll = Math.max(window.scrollY, document.documentElement.scrollTop, document.body.scrollTop);
         console.log('[ss] Scroll state at capture: window=' + window.scrollY + ', html=' + document.documentElement.scrollTop + ', body=' + document.body.scrollTop);
+
+        // Direct canvas probe: for contrast pairs at different Y positions,
+        // read the canvas at expected position and scan for the actual content.
+        // This runs on the PRISTINE canvas before any WebP conversion.
+        var _probeCtx = fullCanvas.getContext('2d', { willReadFrequently: true });
         var calibOffset = 0;
+        var _probeResults = [];
+        var _probePairs = (data.colors.contrastPairs || []).filter(function(p) {
+          return p.bbox && p.bbox.top > 200 && p.bbox.width > 50;
+        });
+        // Pick 5 pairs spread across the page
+        var _probeStep = Math.max(1, Math.floor(_probePairs.length / 5));
+        for (var _pi = 0; _pi < _probePairs.length && _probeResults.length < 5; _pi += _probeStep) {
+          var _pp = _probePairs[_pi];
+          var _cx = Math.round((_pp.bbox.left + _pp.bbox.width / 2) * secScale);
+          var _ey = Math.round(_pp.bbox.top * secScale);
+          _cx = Math.max(0, Math.min(_cx, fullCanvas.width - 1));
+          // Read pixels at the expected position and ±100px
+          var _bgPx = _probeCtx.getImageData(_cx, Math.max(0, _ey - 100), 1, 1).data;
+          var _atPx = _probeCtx.getImageData(_cx, Math.min(_ey, fullCanvas.height - 1), 1, 1).data;
+          // Scan for first non-bg pixel near expected Y
+          var _scanY = -1;
+          for (var _sy = Math.max(0, _ey - 100); _sy < Math.min(fullCanvas.height, _ey + 100); _sy++) {
+            var _spx = _probeCtx.getImageData(_cx, _sy, 1, 1).data;
+            var _sdiff = Math.abs(_spx[0] - _bgPx[0]) + Math.abs(_spx[1] - _bgPx[1]) + Math.abs(_spx[2] - _bgPx[2]);
+            if (_sdiff > 40) { _scanY = _sy; break; }
+          }
+          var _off = _scanY >= 0 ? (_ey - _scanY) : null;
+          _probeResults.push({
+            text: _pp.text.substring(0, 20),
+            domTop: _pp.bbox.top,
+            expectedY: _ey,
+            foundY: _scanY,
+            offset: _off,
+            pixelAtExpected: 'rgb(' + _atPx[0] + ',' + _atPx[1] + ',' + _atPx[2] + ')',
+            bgRef: 'rgb(' + _bgPx[0] + ',' + _bgPx[1] + ',' + _bgPx[2] + ')'
+          });
+          console.log('[ss] Probe: "' + _pp.text.substring(0, 20) + '" dom.top=' + _pp.bbox.top + ' expected=' + _ey + ' found=' + _scanY + ' offset=' + _off + ' px@expected=' + _atPx[0] + ',' + _atPx[1] + ',' + _atPx[2]);
+        }
+        // If consistent offset detected, use it
+        var _offsets = _probeResults.filter(function(r) { return r.offset !== null && Math.abs(r.offset) > 5; }).map(function(r) { return r.offset; });
+        if (_offsets.length >= 2) {
+          _offsets.sort(function(a, b) { return a - b; });
+          var _median = _offsets[Math.floor(_offsets.length / 2)];
+          // Check consistency: all within ±15px of median
+          var _consistent = _offsets.every(function(o) { return Math.abs(o - _median) < 15; });
+          if (_consistent) {
+            calibOffset = _median;
+            console.log('[ss] Canvas offset detected: ' + calibOffset + 'px (consistent across ' + _offsets.length + ' probes)');
+          } else {
+            console.log('[ss] Canvas offsets inconsistent: ' + JSON.stringify(_offsets));
+          }
+        }
 
         // Store full-page canvas as single WebP — used by both report and viewer
         var fullPageDataUri;

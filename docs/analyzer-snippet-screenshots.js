@@ -1,5 +1,5 @@
 // make-it-look-good — Design Extraction Snippet (with screenshots)
-// Version: 2025-03-31-v14
+// Version: 2025-03-31-v15
 // Run this in the browser console on any page.
 // Loads modern-screenshot from CDN to capture page screenshots as WebP.
 // Output is larger (~200-800KB extra) but includes visual reference.
@@ -7,7 +7,7 @@
 
 (function() {
   'use strict';
-  var _MILG_VERSION = '2025-03-31-v14';
+  var _MILG_VERSION = '2025-03-31-v15';
   console.log('%c[milg] Snippet version: ' + _MILG_VERSION, 'color: #64748b;');
 
   // --- Scan mode ---
@@ -1784,9 +1784,60 @@
         var secScale = 0.5;
 
         // Log final scroll state for diagnostics
-        var finalScroll = Math.max(window.scrollY, document.documentElement.scrollTop, document.body.scrollTop);
         console.log('[ss] Scroll state at capture: window=' + window.scrollY + ', html=' + document.documentElement.scrollTop + ', body=' + document.body.scrollTop);
+
+        // Direct canvas probe: for contrast pairs at different Y positions,
+        // read the canvas at expected position and scan for the actual content.
+        // This runs on the PRISTINE canvas before any WebP conversion.
+        var _probeCtx = fullCanvas.getContext('2d', { willReadFrequently: true });
         var calibOffset = 0;
+        var _probeResults = [];
+        var _probePairs = (data.colors.contrastPairs || []).filter(function(p) {
+          return p.bbox && p.bbox.top > 200 && p.bbox.width > 50;
+        });
+        // Pick 5 pairs spread across the page
+        var _probeStep = Math.max(1, Math.floor(_probePairs.length / 5));
+        for (var _pi = 0; _pi < _probePairs.length && _probeResults.length < 5; _pi += _probeStep) {
+          var _pp = _probePairs[_pi];
+          var _cx = Math.round((_pp.bbox.left + _pp.bbox.width / 2) * secScale);
+          var _ey = Math.round(_pp.bbox.top * secScale);
+          _cx = Math.max(0, Math.min(_cx, fullCanvas.width - 1));
+          // Read pixels at the expected position and ±100px
+          var _bgPx = _probeCtx.getImageData(_cx, Math.max(0, _ey - 100), 1, 1).data;
+          var _atPx = _probeCtx.getImageData(_cx, Math.min(_ey, fullCanvas.height - 1), 1, 1).data;
+          // Scan for first non-bg pixel near expected Y
+          var _scanY = -1;
+          for (var _sy = Math.max(0, _ey - 100); _sy < Math.min(fullCanvas.height, _ey + 100); _sy++) {
+            var _spx = _probeCtx.getImageData(_cx, _sy, 1, 1).data;
+            var _sdiff = Math.abs(_spx[0] - _bgPx[0]) + Math.abs(_spx[1] - _bgPx[1]) + Math.abs(_spx[2] - _bgPx[2]);
+            if (_sdiff > 40) { _scanY = _sy; break; }
+          }
+          var _off = _scanY >= 0 ? (_ey - _scanY) : null;
+          _probeResults.push({
+            text: _pp.text.substring(0, 20),
+            domTop: _pp.bbox.top,
+            expectedY: _ey,
+            foundY: _scanY,
+            offset: _off,
+            pixelAtExpected: 'rgb(' + _atPx[0] + ',' + _atPx[1] + ',' + _atPx[2] + ')',
+            bgRef: 'rgb(' + _bgPx[0] + ',' + _bgPx[1] + ',' + _bgPx[2] + ')'
+          });
+          console.log('[ss] Probe: "' + _pp.text.substring(0, 20) + '" dom.top=' + _pp.bbox.top + ' expected=' + _ey + ' found=' + _scanY + ' offset=' + _off + ' px@expected=' + _atPx[0] + ',' + _atPx[1] + ',' + _atPx[2]);
+        }
+        // If consistent offset detected, use it
+        var _offsets = _probeResults.filter(function(r) { return r.offset !== null && Math.abs(r.offset) > 5; }).map(function(r) { return r.offset; });
+        if (_offsets.length >= 2) {
+          _offsets.sort(function(a, b) { return a - b; });
+          var _median = _offsets[Math.floor(_offsets.length / 2)];
+          // Check consistency: all within ±15px of median
+          var _consistent = _offsets.every(function(o) { return Math.abs(o - _median) < 15; });
+          if (_consistent) {
+            calibOffset = _median;
+            console.log('[ss] Canvas offset detected: ' + calibOffset + 'px (consistent across ' + _offsets.length + ' probes)');
+          } else {
+            console.log('[ss] Canvas offsets inconsistent: ' + JSON.stringify(_offsets));
+          }
+        }
 
         // Store full-page canvas as single WebP — used by both report and viewer
         var fullPageDataUri;
