@@ -1758,14 +1758,16 @@
       var statusEl = document.getElementById('milg-ss-status');
       if (statusEl) statusEl.textContent = 'Rendering page to canvas...';
 
-      // Inject calibration markers at known positions to measure canvas offset
+      // Inject calibration markers to measure canvas offset.
+      // Use documentElement (not body) for reliable absolute positioning.
+      // Make them 20x20px for reliable detection at 0.5x scale (10x10 in canvas).
       var _calibMarkers = [];
       var _calibPositions = [500, 1500, 3000]; // DOM Y positions
       _calibPositions.forEach(function(domY, idx) {
         var marker = document.createElement('div');
         marker.id = 'milg-calib-' + idx;
-        marker.style.cssText = 'position:absolute !important;left:0 !important;top:' + domY + 'px !important;width:6px !important;height:6px !important;background:#ff0000 !important;z-index:999999 !important;pointer-events:none !important;';
-        document.body.appendChild(marker);
+        marker.style.cssText = 'position:absolute;left:2px;top:' + domY + 'px;width:20px;height:20px;background:#ff0000;z-index:2147483647;pointer-events:none;opacity:1;';
+        document.documentElement.appendChild(marker);
         _calibMarkers.push(marker);
       });
 
@@ -1785,17 +1787,25 @@
         var _calibOffsets = [];
         _calibPositions.forEach(function(domY) {
           var expectedCanvasY = Math.round(domY * secScale);
-          // Scan column at x=1 (left edge) for red marker (±150px range)
-          var scanStart = Math.max(0, expectedCanvasY - 150);
-          var scanEnd = Math.min(fullCanvas.height, expectedCanvasY + 150);
-          for (var sy = scanStart; sy < scanEnd; sy++) {
-            var px = _calibCtx.getImageData(1, sy, 1, 1).data;
-            if (px[0] > 200 && px[1] < 50 && px[2] < 50) {
-              var offset = expectedCanvasY - sy;
-              _calibOffsets.push(offset);
-              console.log('[ss] Calibration marker at dom.top=' + domY + ': expected canvas.y=' + expectedCanvasY + ', found at ' + sy + ', offset=' + offset);
-              break;
+          // Scan a 5px wide column at left edge for red marker (±200px range)
+          var scanStart = Math.max(0, expectedCanvasY - 200);
+          var scanEnd = Math.min(fullCanvas.height, expectedCanvasY + 200);
+          var found = false;
+          for (var sy = scanStart; sy < scanEnd && !found; sy++) {
+            for (var sx = 0; sx < 12 && !found; sx++) {
+              var px = _calibCtx.getImageData(sx, sy, 1, 1).data;
+              if (px[0] > 200 && px[1] < 50 && px[2] < 50) {
+                var offset = expectedCanvasY - sy;
+                _calibOffsets.push(offset);
+                console.log('[ss] Calibration: dom.top=' + domY + ' → expected=' + expectedCanvasY + ', found red at (' + sx + ',' + sy + '), offset=' + offset);
+                found = true;
+              }
             }
+          }
+          if (!found) {
+            // Log what was at the expected position for debugging
+            var dbgPx = _calibCtx.getImageData(5, expectedCanvasY, 1, 1).data;
+            console.log('[ss] Calibration: dom.top=' + domY + ' → expected=' + expectedCanvasY + ' — NOT FOUND. Pixel at (5,' + expectedCanvasY + '): rgb(' + dbgPx[0] + ',' + dbgPx[1] + ',' + dbgPx[2] + ')');
           }
         });
         // Use median offset
