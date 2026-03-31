@@ -7,12 +7,12 @@ window.MilgIframe = (function() {
 
   var _screenshotCDN = '';
   var _getViewport = function() { return { w: 1280, h: 900 }; };
-  var _getScreenshotSettings = function() { return { scale: 0.5, quality: 0.7 }; };
+  var SCREENSHOT_SCALE = 0.5;
+  var SCREENSHOT_QUALITY = 0.8;
 
   function init(opts) {
     if (opts.screenshotCDN) _screenshotCDN = opts.screenshotCDN;
     if (opts.getViewport) _getViewport = opts.getViewport;
-    if (opts.getScreenshotSettings) _getScreenshotSettings = opts.getScreenshotSettings;
   }
 
   // Inject a <base> tag so relative URLs (CSS, images, fonts) resolve to the original domain
@@ -33,11 +33,7 @@ window.MilgIframe = (function() {
 
   // --- Screenshot capture script (injected into iframes after extraction) ---
   function buildScreenshotScript(msgType) {
-    // Runs inside iframe. Loads modern-screenshot, captures page as viewport-height
-    // sections as WebP. Scale and quality come from UI selector.
-    // For srcdoc iframes (JS-enabled mode), images are cross-origin to the iframe's
-    // origin, so we set crossOrigin="anonymous" on all images before capture.
-    var ss = _getScreenshotSettings();
+    var ss = { scale: SCREENSHOT_SCALE, quality: SCREENSHOT_QUALITY };
     return '(function(){' +
       'var s=document.createElement("script");' +
       's.src="' + _screenshotCDN + '";' +

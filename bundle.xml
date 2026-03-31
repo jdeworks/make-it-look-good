@@ -22460,12 +22460,12 @@ window.MilgIframe = (function() {
 
   var _screenshotCDN = '';
   var _getViewport = function() { return { w: 1280, h: 900 }; };
-  var _getScreenshotSettings = function() { return { scale: 0.5, quality: 0.7 }; };
+  var SCREENSHOT_SCALE = 0.5;
+  var SCREENSHOT_QUALITY = 0.8;
 
   function init(opts) {
     if (opts.screenshotCDN) _screenshotCDN = opts.screenshotCDN;
     if (opts.getViewport) _getViewport = opts.getViewport;
-    if (opts.getScreenshotSettings) _getScreenshotSettings = opts.getScreenshotSettings;
   }
 
   // Inject a <base> tag so relative URLs (CSS, images, fonts) resolve to the original domain
@@ -22486,11 +22486,7 @@ window.MilgIframe = (function() {
 
   // --- Screenshot capture script (injected into iframes after extraction) ---
   function buildScreenshotScript(msgType) {
-    // Runs inside iframe. Loads modern-screenshot, captures page as viewport-height
-    // sections as WebP. Scale and quality come from UI selector.
-    // For srcdoc iframes (JS-enabled mode), images are cross-origin to the iframe's
-    // origin, so we set crossOrigin="anonymous" on all images before capture.
-    var ss = _getScreenshotSettings();
+    var ss = { scale: SCREENSHOT_SCALE, quality: SCREENSHOT_QUALITY };
     return '(function(){' +
       'var s=document.createElement("script");' +
       's.src="' + _screenshotCDN + '";' +
@@ -29278,12 +29274,6 @@ body.dark-ui .milg-viewer-tooltip-detail { color: #94a3b8; }
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="13" r="4"/><path d="M5 3v2"/><path d="M19 3v2"/></svg>
         Screenshots
       </label>
-      <select id="screenshotQuality" style="font-size:11px;padding:2px 6px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);min-height:24px;cursor:pointer" title="Screenshot quality / file size tradeoff">
-        <option value="0.5|0.4">Draft (~30KB)</option>
-        <option value="0.5|0.7" selected>Standard (~60KB)</option>
-        <option value="0.75|0.8">High (~150KB)</option>
-        <option value="1|0.9">Full (~400KB)</option>
-      </select>
       <select id="verifyDensity" style="font-size:11px;padding:2px 6px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);min-height:24px;cursor:pointer" title="Pixel contrast verification sampling density">
         <option value="fast">Verify: Fast</option>
         <option value="common" selected>Verify: Standard</option>
@@ -30900,13 +30890,6 @@ window.MilgViewer = (function() {
     return { w: parseInt(parts[0]) || 1280, h: parseInt(parts[1]) || 900 };
   }
 
-  function getScreenshotSettings() {
-    var sel = document.getElementById('screenshotQuality');
-    if (!sel) return { scale: 0.5, quality: 0.7 };
-    var parts = sel.value.split('|');
-    return { scale: parseFloat(parts[0]) || 0.5, quality: parseFloat(parts[1]) || 0.7 };
-  }
-
   // --- Snippet loading ---
   var _snippetCache = {};
   function loadSnippet(codeEl, withScreenshots, callback) {
@@ -30925,8 +30908,7 @@ window.MilgViewer = (function() {
   // --- Initialize modules ---
   MilgIframe.init({
     screenshotCDN: SCREENSHOT_CDN,
-    getViewport: getSelectedViewport,
-    getScreenshotSettings: getScreenshotSettings
+    getViewport: getSelectedViewport
   });
 
   MilgProxy.init({

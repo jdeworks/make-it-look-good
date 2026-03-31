@@ -63,13 +63,6 @@
     return { w: parseInt(parts[0]) || 1280, h: parseInt(parts[1]) || 900 };
   }
 
-  function getScreenshotSettings() {
-    var sel = document.getElementById('screenshotQuality');
-    if (!sel) return { scale: 0.5, quality: 0.7 };
-    var parts = sel.value.split('|');
-    return { scale: parseFloat(parts[0]) || 0.5, quality: parseFloat(parts[1]) || 0.7 };
-  }
-
   // --- Snippet loading ---
   var _snippetCache = {};
   function loadSnippet(codeEl, withScreenshots, callback) {
@@ -88,8 +81,7 @@
   // --- Initialize modules ---
   MilgIframe.init({
     screenshotCDN: SCREENSHOT_CDN,
-    getViewport: getSelectedViewport,
-    getScreenshotSettings: getScreenshotSettings
+    getViewport: getSelectedViewport
   });
 
   MilgProxy.init({
