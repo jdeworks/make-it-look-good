@@ -392,19 +392,11 @@ window.MilgViewer = (function() {
     // Compute actual scale from canvas dimensions vs document dimensions.
     // The document may have grown between extraction (bboxes) and capture (screenshots)
     // due to lazy-loaded content. Use docHeightAtCapture for Y mapping.
-    var rawMeta = _reportData && _reportData.raw && _reportData.raw.meta;
-    var vpW = (rawMeta && rawMeta.viewportWidth) || (_meta.canvasWidth / _meta.scale);
-    var captureDocH = _meta.docHeightAtCapture || (_meta.canvasHeight / _meta.scale);
-    var extractDocH = _meta.docHeightAtExtraction || (rawMeta && rawMeta.docHeight) || captureDocH;
-    var scaleX = _meta.canvasWidth / vpW;
-    // Y scale: map extraction coordinates through two steps:
-    // 1. Extraction bbox top is in extraction-time document coords
-    // 2. If document grew, proportionally adjust: captureY = extractionY * (captureDocH / extractDocH)
-    // 3. Then map to canvas: canvasY = captureY * (canvasHeight / captureDocH)
-    // Combined: canvasY = bbox.top * (canvasHeight / extractDocH)
-    var scaleY = _meta.canvasHeight / extractDocH;
-    if (!scaleX || !isFinite(scaleX)) scaleX = _meta.scale;
-    if (!scaleY || !isFinite(scaleY)) scaleY = _meta.scale;
+    // domToCanvas(scale:0.5) renders the full document at 0.5x regardless of scroll.
+    // Confirmed by Puppeteer tests: dom.top * 0.5 = canvas.y consistently.
+    // Use nominal scale for mapping. Scroll position is irrelevant.
+    var scaleX = _meta.scale;
+    var scaleY = _meta.scale;
 
     // Build pixel verification lookup
     var verifyMap = {};
@@ -513,14 +505,8 @@ window.MilgViewer = (function() {
     var results = _reportData._contrastVerifyResults;
     var showFails = _activeFilter.value === 'fails';
 
-    // Compute scales same as renderOverlays
-    var rawMeta = _reportData.raw && _reportData.raw.meta;
-    var vpW = (rawMeta && rawMeta.viewportWidth) || (_meta.canvasWidth / _meta.scale);
-    var extractDocH = _meta.docHeightAtExtraction || (rawMeta && rawMeta.docHeight) || (_meta.canvasHeight / _meta.scale);
-    var vScaleX = _meta.canvasWidth / vpW;
-    var vScaleY = _meta.canvasHeight / extractDocH;
-    if (!vScaleX || !isFinite(vScaleX)) vScaleX = _meta.scale;
-    if (!vScaleY || !isFinite(vScaleY)) vScaleY = _meta.scale;
+    var vScaleX = _meta.scale;
+    var vScaleY = _meta.scale;
 
     var pairsBySelector = {};
     if (_reportData.raw && _reportData.raw.colors && _reportData.raw.colors.contrastPairs) {
