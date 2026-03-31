@@ -1,5 +1,5 @@
 // make-it-look-good — Design Extraction Snippet (with screenshots)
-// Version: 2025-03-31-v16
+// Version: 2025-03-31-v17
 // Run this in the browser console on any page.
 // Loads modern-screenshot from CDN to capture page screenshots as WebP.
 // Output is larger (~200-800KB extra) but includes visual reference.
@@ -7,7 +7,7 @@
 
 (function() {
   'use strict';
-  var _MILG_VERSION = '2025-03-31-v16';
+  var _MILG_VERSION = '2025-03-31-v17';
   console.log('%c[milg] Snippet version: ' + _MILG_VERSION, 'color: #64748b;');
 
   // --- Scan mode ---
@@ -335,6 +335,10 @@
   data.structure.responsiveClasses = /class="[^"]*(?:sm:|md:|lg:|xl:)/.test(htmlStr)
     || Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r instanceof CSSMediaRule && /max-width|min-width/.test(r.conditionText || ''); }); } catch(e) { return false; } });
 
+  // Store element references for bbox re-reading after pre-scroll
+  // (pre-scroll triggers IntersectionObserver/lazy content that shifts layout)
+  var _bboxRefs = []; // [{el, target, key}] — target is the data array, key is the index
+
   // --- Typography & Colors ---
   var fontSizeMap = {};
   var fontSizeSamples = {}; // fontSize → {selector, bbox}
@@ -400,6 +404,7 @@
     // Collect all pairs up to AAA+buffer (7.5) so profile switching works
     var elRect = el.getBoundingClientRect();
     if (ratio < 7.5) {
+      _bboxRefs.push({ el: el, arr: contrastPairs, idx: contrastPairs.length });
       contrastPairs.push({
         fg: rgbStr(fgBlended), bg: rgbStr(bg),
         ratio: Math.round(ratio * 100) / 100,
@@ -668,6 +673,7 @@
           else linkContext = 'standalone';
         }
       }
+      _bboxRefs.push({ el: el, arr: touchTargetIssues, idx: touchTargetIssues.length });
       touchTargetIssues.push({
         element: el.tagName.toLowerCase(),
         width: w, height: h,
@@ -1769,6 +1775,19 @@
         }
       });
       var actualScroll = Math.max(window.scrollY, document.documentElement.scrollTop, document.body.scrollTop);
+
+      // Re-read all bboxes now that pre-scroll has triggered lazy content.
+      // At scroll=0, getBoundingClientRect gives document-relative coords.
+      var _bboxUpdated = 0;
+      _bboxRefs.forEach(function(ref) {
+        if (!ref.el || !ref.arr[ref.idx]) return;
+        try {
+          var r = ref.el.getBoundingClientRect();
+          ref.arr[ref.idx].bbox = { left: Math.round(r.left), top: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) };
+          _bboxUpdated++;
+        } catch(e) {}
+      });
+      console.log('[ss] ' + _t() + 'Updated ' + _bboxUpdated + '/' + _bboxRefs.length + ' bboxes after pre-scroll');
 
       console.log('[ss] ' + _t() + 'Phase 2: Capturing full page (' + captureH + 'px), scrollY=' + actualScroll + '...');
       var statusEl = document.getElementById('milg-ss-status');
