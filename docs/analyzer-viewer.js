@@ -13,7 +13,8 @@ window.MilgViewer = (function() {
   var _tooltip = null;
   var _reportData = null;
   var _zoomLevel = 1;
-  var _stitchedCanvas = null; // the combined full-page canvas
+  var _stitchedCanvas = null;
+  var _calibrationOffsetY = 0; // detected offset between DOM positions and canvas positions
 
   // Severity colors: red / yellow / blue
   var COLORS = {
@@ -222,16 +223,60 @@ window.MilgViewer = (function() {
       frame.appendChild(viewImg);
       frame.appendChild(svg);
 
-      updateFilterButtons();
-      renderOverlays();
+      // Auto-calibrate: detect Y offset between DOM bbox positions and actual canvas content.
+      // Fixed/sticky headers cause domToCanvas to render content higher than getBoundingClientRect reports.
+      viewImg.addEventListener('load', function() {
+        _calibrationOffsetY = 0;
+        try {
+          var probeCanvas = document.createElement('canvas');
+          probeCanvas.width = viewImg.naturalWidth;
+          probeCanvas.height = viewImg.naturalHeight;
+          var pCtx = probeCanvas.getContext('2d', { willReadFrequently: true });
+          pCtx.drawImage(viewImg, 0, 0);
 
-      // Scroll to the section the user clicked on
-      if (sectionIndex > 0 && _meta) {
-        var scrollTarget = sectionIndex * Math.round(_meta.viewportHeight * _meta.scale);
-        viewImg.addEventListener('load', function() {
-          content.scrollTop = Math.round(scrollTarget);
-        });
-      }
+          // Find a bbox well below the header (dom.top > 500) for calibration
+          var scale = _meta ? _meta.scale : 0.5;
+          var calibBbox = null;
+          for (var ci = 0; ci < _allFindings.length; ci++) {
+            var bb = _allFindings[ci].bboxes[0];
+            if (bb && bb.top > 500 && bb.width > 20 && bb.height > 10) { calibBbox = bb; break; }
+          }
+
+          if (calibBbox && pCtx) {
+            var cx = Math.round((calibBbox.left + calibBbox.width / 2) * scale);
+            var ey = Math.round(calibBbox.top * scale);
+            // Sample background color from very top of canvas
+            var bg = pCtx.getImageData(Math.min(cx, viewImg.naturalWidth - 1), 2, 1, 1).data;
+
+            // Scan ±120px around expected Y for content
+            var scanStart = Math.max(0, ey - 120);
+            var scanEnd = Math.min(viewImg.naturalHeight, ey + 120);
+            var firstContentY = -1;
+            for (var sy = scanStart; sy < scanEnd; sy++) {
+              var px = pCtx.getImageData(Math.min(cx, viewImg.naturalWidth - 1), sy, 1, 1).data;
+              var diff = Math.abs(px[0] - bg[0]) + Math.abs(px[1] - bg[1]) + Math.abs(px[2] - bg[2]);
+              if (diff > 30) { firstContentY = sy; break; }
+            }
+
+            if (firstContentY >= 0) {
+              var offset = ey - firstContentY;
+              // Only apply if offset is significant (>10px) and consistent direction
+              if (Math.abs(offset) > 10) {
+                _calibrationOffsetY = offset;
+                console.log('[viewer] Auto-calibrated Y offset: ' + offset + 'px canvas (' + (offset * 2) + 'px DOM)');
+              }
+            }
+          }
+        } catch(e) { /* probe failed, no calibration */ }
+
+        updateFilterButtons();
+        renderOverlays();
+
+        // Scroll to the section the user clicked on
+        if (sectionIndex > 0 && _meta) {
+          content.scrollTop = Math.round(sectionIndex * Math.round(_meta.viewportHeight * scale) - _calibrationOffsetY);
+        }
+      });
     }
 
     if (fullPageSrc) {
@@ -484,7 +529,6 @@ window.MilgViewer = (function() {
     // Compute actual scale from canvas dimensions vs document dimensions.
     // The document may have grown between extraction (bboxes) and capture (screenshots)
     // due to lazy-loaded content. Use docHeightAtCapture for Y mapping.
-    // With the full-page PNG, dom.top * scale = canvas.y exactly.
     var scaleX = _meta.scale;
     var scaleY = _meta.scale;
 
@@ -512,7 +556,7 @@ window.MilgViewer = (function() {
 
       finding.bboxes.forEach(function(bbox) {
         var x = Math.round(bbox.left * scaleX);
-        var y = Math.round(bbox.top * scaleY);
+        var y = Math.round(bbox.top * scaleY) - _calibrationOffsetY;
         var w = Math.round(bbox.width * scaleX);
         var h = Math.round(bbox.height * scaleY);
 
@@ -573,7 +617,7 @@ window.MilgViewer = (function() {
               category: f.category,
               bbox_dom: bb,
               bbox_canvas: { x: Math.round(bb.left * scaleX), y: Math.round(bb.top * scaleY), w: Math.round(bb.width * scaleX), h: Math.round(bb.height * scaleY) },
-              actual_scales: { scaleX: scaleX, scaleY: scaleY, nominal: _meta.scale },
+              actual_scales: { scaleX: scaleX, scaleY: scaleY, nominal: _meta.scale, calibrationOffsetY: _calibrationOffsetY },
               rect_attrs: { x: rect.getAttribute('x'), y: rect.getAttribute('y'), width: rect.getAttribute('width'), height: rect.getAttribute('height') },
               meta: _meta,
               extractionScroll: _reportData && _reportData.raw && _reportData.raw.meta ? { scrollX: _reportData.raw.meta.scrollX, scrollY: _reportData.raw.meta.scrollY, docHeight: _reportData.raw.meta.docHeight } : null,
@@ -611,7 +655,7 @@ window.MilgViewer = (function() {
       if (!pair || !pair.bbox) return;
 
       var x = Math.round(pair.bbox.left * vScaleX);
-      var y = Math.round(pair.bbox.top * vScaleY);
+      var y = Math.round(pair.bbox.top * vScaleY) - _calibrationOffsetY;
       var w = Math.round(pair.bbox.width * vScaleX);
       var h = Math.round(pair.bbox.height * vScaleY);
 
@@ -751,6 +795,7 @@ window.MilgViewer = (function() {
     _reportData = null;
     _stitchedCanvas = null;
     _zoomLevel = 1;
+    _calibrationOffsetY = 0;
     document.removeEventListener('keydown', _onKeyDown);
   }
 
