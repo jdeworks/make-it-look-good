@@ -34422,7 +34422,7 @@ window.MilgViewer = (function() {
 
 <file path="docs/analyzer-snippet-screenshots.js">
 // make-it-look-good — Design Extraction Snippet (with screenshots)
-// Version: 2025-03-31-v12
+// Version: 2025-03-31-v13
 // Run this in the browser console on any page.
 // Loads modern-screenshot from CDN to capture page screenshots as WebP.
 // Output is larger (~200-800KB extra) but includes visual reference.
@@ -34430,7 +34430,7 @@ window.MilgViewer = (function() {
 
 (function() {
   'use strict';
-  var _MILG_VERSION = '2025-03-31-v12';
+  var _MILG_VERSION = '2025-03-31-v13';
   console.log('%c[milg] Snippet version: ' + _MILG_VERSION, 'color: #64748b;');
 
   // --- Scan mode ---
@@ -36172,13 +36172,26 @@ window.MilgViewer = (function() {
 
     // Phase 2: Capture the full page as one big canvas, then split into sections
     function _startCapture() {
-      // Force instant scroll — smooth scroll CSS would cause domToCanvas to
-      // capture while page is still scrolling, offsetting all content
+      // Force instant scroll to 0 on ALL scroll containers
+      // Some pages use a div with overflow:auto as the main scroll container,
+      // so window.scrollTo(0,0) alone doesn't reset scroll position.
       var origScrollBehavior = document.documentElement.style.scrollBehavior;
       document.documentElement.style.scrollBehavior = 'auto';
+      document.body.style.scrollBehavior = 'auto';
       window.scrollTo(0, 0);
-      // Store actual scroll position to verify it reached 0
-      var actualScroll = window.scrollY;
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+      // Reset any overflow scroll containers
+      document.querySelectorAll('*').forEach(function(el) {
+        if (el.scrollTop > 0) {
+          var s = getComputedStyle(el);
+          if (s.overflow === 'auto' || s.overflow === 'scroll' || s.overflowY === 'auto' || s.overflowY === 'scroll') {
+            el.style.scrollBehavior = 'auto';
+            el.scrollTop = 0;
+          }
+        }
+      });
+      var actualScroll = Math.max(window.scrollY, document.documentElement.scrollTop, document.body.scrollTop);
 
       console.log('[ss] ' + _t() + 'Phase 2: Capturing full page (' + captureH + 'px), scrollY=' + actualScroll + '...');
       var statusEl = document.getElementById('milg-ss-status');
@@ -36193,51 +36206,10 @@ window.MilgViewer = (function() {
 
         var secScale = 0.5;
 
-        // Calibrate by finding existing contrast pair elements in the canvas.
-        // We know each pair's fg color and bbox position. Sample the canvas at
-        // bbox center and scan ±200px to find pixels matching that fg color.
-        var _calibCtx = fullCanvas.getContext('2d', { willReadFrequently: true });
-        var _calibOffsets = [];
-        var calibPairs = (data.colors.contrastPairs || []).filter(function(p) {
-          return p.bbox && p.bbox.top > 300 && p.bbox.width > 30 && p.bbox.height > 8;
-        }).slice(0, 6); // Use up to 6 well-positioned pairs
-
-        calibPairs.forEach(function(pair) {
-          var fgRgb = pair.fg.match(/(\d+)/g);
-          if (!fgRgb || fgRgb.length < 3) return;
-          var fgR = +fgRgb[0], fgG = +fgRgb[1], fgB = +fgRgb[2];
-
-          var cx = Math.round((pair.bbox.left + pair.bbox.width / 2) * secScale);
-          var expectedY = Math.round((pair.bbox.top + pair.bbox.height / 2) * secScale);
-
-          // Scan ±200px for pixels close to the fg color
-          var scanStart = Math.max(0, expectedY - 200);
-          var scanEnd = Math.min(fullCanvas.height, expectedY + 200);
-          var bestY = -1, bestDist = 999;
-          for (var sy = scanStart; sy < scanEnd; sy++) {
-            if (cx < 0 || cx >= fullCanvas.width) continue;
-            var px = _calibCtx.getImageData(cx, sy, 1, 1).data;
-            var dist = Math.abs(px[0] - fgR) + Math.abs(px[1] - fgG) + Math.abs(px[2] - fgB);
-            if (dist < bestDist) { bestDist = dist; bestY = sy; }
-          }
-          if (bestDist < 80 && bestY >= 0) {
-            var offset = expectedY - bestY;
-            _calibOffsets.push(offset);
-            console.log('[ss] Calibration: "' + pair.text.substring(0, 20) + '" dom.top=' + pair.bbox.top + ' → expected=' + expectedY + ', fg found at y=' + bestY + ', offset=' + offset + ' (dist=' + bestDist + ')');
-          }
-        });
-
+        // Log final scroll state for diagnostics
+        var finalScroll = Math.max(window.scrollY, document.documentElement.scrollTop, document.body.scrollTop);
+        console.log('[ss] Scroll state at capture: window=' + window.scrollY + ', html=' + document.documentElement.scrollTop + ', body=' + document.body.scrollTop);
         var calibOffset = 0;
-        if (_calibOffsets.length >= 2) {
-          _calibOffsets.sort(function(a, b) { return a - b; });
-          calibOffset = _calibOffsets[Math.floor(_calibOffsets.length / 2)];
-          console.log('[ss] Calibration offsets: ' + JSON.stringify(_calibOffsets) + ', median: ' + calibOffset);
-        } else if (_calibOffsets.length === 1) {
-          calibOffset = _calibOffsets[0];
-          console.log('[ss] Calibration: single sample offset=' + calibOffset);
-        } else {
-          console.log('[ss] Calibration: no pairs matched, offset=0');
-        }
 
         // Store full-page canvas as single WebP — used by both report and viewer
         var fullPageDataUri;
