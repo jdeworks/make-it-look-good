@@ -22732,6 +22732,234 @@ window.MilgIframe = (function() {
 })();
 </file>
 
+<file path="docs/scoring/typography.js">
+// Scoring Module: Typography
+// Weight: 15%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreTypography(data) {
+  var profile = S.getProfile(data);
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+
+  // Body font size check against profile minimum
+  checks++;
+  var bodySize = parseFloat(data.typography.bodyFontSize);
+  if (bodySize >= profile.bodyFontMin) {
+    passed++;
+  } else if (bodySize > 0) {
+    findings.push({
+      severity: 'error',
+      title: 'Body font size is ' + bodySize + 'px (minimum: ' + profile.bodyFontMin + 'px)',
+      detail: 'Small body text reduces readability, especially on mobile',
+      fix: 'Set body font-size to at least ' + profile.bodyFontMin + 'px. In Tailwind: text-base (16px) or text-lg (18px)',
+      presetRef: 'All presets use text-base (16px) or larger for body text', source: 'WCAG 2.2 / NNGroup — https://www.w3.org/TR/WCAG22/#text-spacing'
+    });
+  }
+
+  // Line height check against profile range
+  checks++;
+  var bodyLH = data.typography.bodyLineHeight;
+  var bodyLHRatio = 0;
+  if (bodyLH && bodyLH !== 'normal') {
+    bodyLHRatio = parseFloat(bodyLH) / bodySize;
+  }
+  var lhPassMin = profile.lineHeightMin - 0.05;
+  var lhPassMax = profile.lineHeightMax + 0.1;
+  if (bodyLHRatio >= lhPassMin && bodyLHRatio <= lhPassMax) {
+    passed++;
+  } else if (bodyLHRatio > 0) {
+    findings.push({
+      severity: bodyLHRatio < 1.2 || bodyLHRatio > 2 ? 'error' : 'warning',
+      title: 'Body line-height is ' + (Math.round(bodyLHRatio * 100) / 100) + ' (ideal: ' + profile.lineHeightMin + '–' + profile.lineHeightMax + ')',
+      detail: bodyLHRatio < profile.lineHeightMin ? 'Text feels cramped and hard to read' : 'Text feels too loose and wastes vertical space',
+      fix: bodyLHRatio < profile.lineHeightMin ? 'Increase line-height. In Tailwind: leading-relaxed (1.625) or leading-normal (1.5)' : 'Decrease line-height. In Tailwind: leading-normal (1.5)',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.12 — https://www.w3.org/TR/WCAG22/#text-spacing'
+    });
+  }
+
+  // Line length (profile-aware: elderly 65, children 55, default 75)
+  var maxChars = data.typography.maxLineLength ? data.typography.maxLineLength.chars : 0;
+  var lineElement = data.typography.maxLineLength ? data.typography.maxLineLength.element : '';
+  var lineFontSize = data.typography.maxLineLength ? (data.typography.maxLineLength.fontSize || 0) : 0;
+  var lineTextLength = data.typography.maxLineLength ? (data.typography.maxLineLength.textLength || 0) : 0;
+  var isTextElement = /^(p|li|td|th|blockquote|dd|figcaption)/.test(lineElement);
+  // Hero/intro text: large font (>=20px) with short content (<150 chars) is intentionally wide
+  var isHeroText = lineFontSize >= 20 && lineTextLength < 150;
+  if (maxChars > 0 && isTextElement && !isHeroText) {
+    checks++;
+    var lineLimit = profile.maxLineLength || 75;
+    if (maxChars <= lineLimit + 5) {
+      passed++;
+    } else {
+      findings.push({
+        severity: maxChars > lineLimit + 25 ? 'error' : 'warning',
+        title: 'Line length ~' + maxChars + ' characters (max for this audience: ' + lineLimit + ')',
+        detail: lineElement + ' — ' + (lineLimit < 70 ? 'Shorter lines improve readability for this audience.' : 'Long lines make it hard for the eye to track back to the next line.'),
+        fix: 'Constrain content width with max-w-prose (65ch) or max-w-2xl (672px)',
+        presetRef: 'Editorial presets use max-w-prose for reading content',
+        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-length.html',
+        locator: { selector: lineElement, text: '', bboxes: data.typography.maxLineLength && data.typography.maxLineLength.bbox ? [data.typography.maxLineLength.bbox] : [] }
+      });
+    }
+  }
+
+  // Heading scale — check if headings have a consistent ratio
+  checks++;
+  var headings = data.typography.headings || [];
+  if (headings.length >= 2) {
+    var sizes = headings.map(function(h) { return parseFloat(h.fontSize); }).filter(function(s) { return s > 0; });
+    var uniqueSizes = Array.from(new Set(sizes)).sort(function(a, b) { return b - a; });
+    if (uniqueSizes.length >= 2) {
+      var ratio = uniqueSizes[0] / uniqueSizes[uniqueSizes.length - 1];
+      // Marketing/landing pages legitimately use larger hero text (wider range)
+      var pageType = (data.context && data.context.pageType) || 'unknown';
+      var maxRatio = (pageType === 'marketing' || pageType === 'pricing') ? 6 : 4.5;
+      if (ratio >= 1.5 && ratio <= maxRatio) {
+        passed++;
+      } else {
+        var headingBboxes = headings.filter(function(h) { return h.bbox; }).map(function(h) { return h.bbox; });
+        findings.push({
+          severity: ratio > maxRatio + 2 ? 'warning' : 'info',
+          title: 'Heading scale ratio is ' + (Math.round(ratio * 100) / 100) + ' (ideal: 1.5–' + maxRatio + ')',
+          detail: ratio < 1.5 ? 'Headings are too similar in size — weak hierarchy' : 'Heading sizes vary widely — verify the largest heading is intentional (hero text)',
+          fix: 'Use a modular scale (1.200 minor third or 1.250 major third). In Tailwind: text-4xl > text-2xl > text-xl > text-base',
+          presetRef: null,
+          source: 'Modular type scales — https://typescale.com/',
+          locator: { selector: '', text: '', bboxes: headingBboxes }
+        });
+      }
+    } else { passed++; } // Only one heading size — acceptable
+  } else { passed++; } // No headings to check
+
+  // Max 2-3 font weights
+  checks++;
+  var fontWeights = data.typography.fontWeights || [];
+  var weightCount = fontWeights.length;
+  if (weightCount <= 4) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'Using ' + weightCount + ' font weights (recommended: 2–3)',
+      detail: 'Too many weights create visual noise and increase font loading time',
+      fix: 'Consolidate to 400 (regular), 500/600 (medium), 700 (bold)',
+      presetRef: null,
+      source: 'Google Fonts best practices — https://fonts.google.com/knowledge/using_type/choosing_reliable_typefaces'
+    });
+  }
+
+  // Profile-specific: minimum font weight (e.g., elderly profile forbids light/thin)
+  if (profile.fontWeightMin > 0 && fontWeights.length > 0) {
+    var lightWeights = fontWeights.filter(function(w) { return parseInt(w) < profile.fontWeightMin; });
+    if (lightWeights.length > 0) {
+      checks++;
+      findings.push({
+        severity: 'warning',
+        title: 'Font weight(s) ' + lightWeights.join(', ') + ' below minimum ' + profile.fontWeightMin + ' for this audience',
+        detail: 'Light and thin font weights reduce readability for users who need higher legibility',
+        fix: 'Use font-weight ' + profile.fontWeightMin + ' (regular) or heavier. Avoid font-weight 100–300.',
+        presetRef: null,
+        source: 'W3C WAI Older Users — https://www.w3.org/WAI/older-users/developing/'
+      });
+    } else {
+      checks++;
+      passed++;
+    }
+  }
+
+  // Letter spacing
+  var lsIssues = (data.typography && data.typography.letterSpacingIssues) || 0;
+  if (lsIssues > 0) {
+    findings.push({
+      severity: 'info',
+      title: lsIssues + ' element(s) with extreme letter-spacing',
+      detail: 'Very tight (< -0.03em) or very loose (> 0.15em) letter spacing reduces readability',
+      fix: 'Keep letter-spacing between -0.02em and 0.1em for body text. Tighter spacing is acceptable for large headings.',
+      presetRef: null,
+      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/letterspacing.html'
+    });
+  }
+
+  // Paragraph spacing
+  var pSpacing = (data.typography && data.typography.paragraphSpacing) || [];
+  if (pSpacing.length >= 3) {
+    checks++;
+    var bodyPx = parseFloat(data.typography.bodyFontSize) || 16;
+    var avgSpacing = pSpacing.reduce(function(s,v){return s+v},0) / pSpacing.length;
+    var spacingEm = avgSpacing / bodyPx;
+    if (spacingEm >= 0.5 && spacingEm <= 1.5) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: 'Paragraph spacing is ' + (Math.round(spacingEm * 100) / 100) + 'em (ideal: 0.75–1em)',
+        detail: spacingEm < 0.5 ? 'Paragraphs feel cramped' : 'Paragraph spacing may be too generous',
+        fix: 'Set paragraph margin-bottom to 0.75em–1em. In Tailwind: space-y-4 on the container or mb-4 on paragraphs.',
+        presetRef: null,
+        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/space-between-paragraphs.html'
+      });
+    }
+  }
+
+  // Max 2 typefaces
+  checks++;
+  var familyCount = (data.typography.fontFamilies || []).length;
+  if (familyCount <= 3) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'Using ' + familyCount + ' font families (recommended: max 2)',
+      detail: 'Too many typefaces make the design feel inconsistent',
+      fix: 'Use 1 sans-serif + 1 serif (or monospace for code). In Tailwind: font-sans + font-serif',
+      presetRef: null,
+      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/summary-of-key-rules.html'
+    });
+  }
+
+  // All-caps long text
+  var allCaps = (data.typography && data.typography.allCapsLongText) || 0;
+  if (allCaps > 0) {
+    findings.push({
+      severity: 'warning',
+      title: allCaps + ' block(s) of long text in all-caps (> 50 characters)',
+      detail: 'All-uppercase text reduces reading speed by 10-20%. Reserve for short labels and headings.',
+      fix: 'Remove text-transform: uppercase on body text. Use it only for short labels, buttons, and headings under 5 words.',
+      presetRef: null,
+      source: 'Tinker 1963, Butterick\'s Practical Typography — https://practicaltypography.com/all-caps.html'
+    });
+  }
+
+  // Justified text
+  var justified = (data.typography && data.typography.justifiedText) || 0;
+  if (justified > 0) {
+    findings.push({
+      severity: 'info',
+      title: justified + ' element(s) with text-align: justify',
+      detail: 'Justified text creates uneven word spacing (rivers of white) without proper hyphenation, reducing readability.',
+      fix: 'Use text-align: left for web content. Justified text only works well with automatic hyphenation (hyphens: auto).',
+      presetRef: null,
+      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/justified-text.html'
+    });
+  }
+
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+  return { score: score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Typography', icon: 'type' };
+}
+
+
+  S.register("typography", scoreTypography, 15, "Typography", "type");
+})();
+</file>
+
 <file path="docs/tests/test-scoring.html">
 <!DOCTYPE html>
 <html lang="en">
@@ -24494,234 +24722,6 @@ window.MilgExtract = (function() {
 })();
 </file>
 
-<file path="docs/scoring/typography.js">
-// Scoring Module: Typography
-// Weight: 15%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreTypography(data) {
-  var profile = S.getProfile(data);
-  var findings = [];
-  var checks = 0;
-  var passed = 0;
-
-  // Body font size check against profile minimum
-  checks++;
-  var bodySize = parseFloat(data.typography.bodyFontSize);
-  if (bodySize >= profile.bodyFontMin) {
-    passed++;
-  } else if (bodySize > 0) {
-    findings.push({
-      severity: 'error',
-      title: 'Body font size is ' + bodySize + 'px (minimum: ' + profile.bodyFontMin + 'px)',
-      detail: 'Small body text reduces readability, especially on mobile',
-      fix: 'Set body font-size to at least ' + profile.bodyFontMin + 'px. In Tailwind: text-base (16px) or text-lg (18px)',
-      presetRef: 'All presets use text-base (16px) or larger for body text', source: 'WCAG 2.2 / NNGroup — https://www.w3.org/TR/WCAG22/#text-spacing'
-    });
-  }
-
-  // Line height check against profile range
-  checks++;
-  var bodyLH = data.typography.bodyLineHeight;
-  var bodyLHRatio = 0;
-  if (bodyLH && bodyLH !== 'normal') {
-    bodyLHRatio = parseFloat(bodyLH) / bodySize;
-  }
-  var lhPassMin = profile.lineHeightMin - 0.05;
-  var lhPassMax = profile.lineHeightMax + 0.1;
-  if (bodyLHRatio >= lhPassMin && bodyLHRatio <= lhPassMax) {
-    passed++;
-  } else if (bodyLHRatio > 0) {
-    findings.push({
-      severity: bodyLHRatio < 1.2 || bodyLHRatio > 2 ? 'error' : 'warning',
-      title: 'Body line-height is ' + (Math.round(bodyLHRatio * 100) / 100) + ' (ideal: ' + profile.lineHeightMin + '–' + profile.lineHeightMax + ')',
-      detail: bodyLHRatio < profile.lineHeightMin ? 'Text feels cramped and hard to read' : 'Text feels too loose and wastes vertical space',
-      fix: bodyLHRatio < profile.lineHeightMin ? 'Increase line-height. In Tailwind: leading-relaxed (1.625) or leading-normal (1.5)' : 'Decrease line-height. In Tailwind: leading-normal (1.5)',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.12 — https://www.w3.org/TR/WCAG22/#text-spacing'
-    });
-  }
-
-  // Line length (profile-aware: elderly 65, children 55, default 75)
-  var maxChars = data.typography.maxLineLength ? data.typography.maxLineLength.chars : 0;
-  var lineElement = data.typography.maxLineLength ? data.typography.maxLineLength.element : '';
-  var lineFontSize = data.typography.maxLineLength ? (data.typography.maxLineLength.fontSize || 0) : 0;
-  var lineTextLength = data.typography.maxLineLength ? (data.typography.maxLineLength.textLength || 0) : 0;
-  var isTextElement = /^(p|li|td|th|blockquote|dd|figcaption)/.test(lineElement);
-  // Hero/intro text: large font (>=20px) with short content (<150 chars) is intentionally wide
-  var isHeroText = lineFontSize >= 20 && lineTextLength < 150;
-  if (maxChars > 0 && isTextElement && !isHeroText) {
-    checks++;
-    var lineLimit = profile.maxLineLength || 75;
-    if (maxChars <= lineLimit + 5) {
-      passed++;
-    } else {
-      findings.push({
-        severity: maxChars > lineLimit + 25 ? 'error' : 'warning',
-        title: 'Line length ~' + maxChars + ' characters (max for this audience: ' + lineLimit + ')',
-        detail: lineElement + ' — ' + (lineLimit < 70 ? 'Shorter lines improve readability for this audience.' : 'Long lines make it hard for the eye to track back to the next line.'),
-        fix: 'Constrain content width with max-w-prose (65ch) or max-w-2xl (672px)',
-        presetRef: 'Editorial presets use max-w-prose for reading content',
-        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-length.html',
-        locator: { selector: lineElement, text: '', bboxes: data.typography.maxLineLength && data.typography.maxLineLength.bbox ? [data.typography.maxLineLength.bbox] : [] }
-      });
-    }
-  }
-
-  // Heading scale — check if headings have a consistent ratio
-  checks++;
-  var headings = data.typography.headings || [];
-  if (headings.length >= 2) {
-    var sizes = headings.map(function(h) { return parseFloat(h.fontSize); }).filter(function(s) { return s > 0; });
-    var uniqueSizes = Array.from(new Set(sizes)).sort(function(a, b) { return b - a; });
-    if (uniqueSizes.length >= 2) {
-      var ratio = uniqueSizes[0] / uniqueSizes[uniqueSizes.length - 1];
-      // Marketing/landing pages legitimately use larger hero text (wider range)
-      var pageType = (data.context && data.context.pageType) || 'unknown';
-      var maxRatio = (pageType === 'marketing' || pageType === 'pricing') ? 6 : 4.5;
-      if (ratio >= 1.5 && ratio <= maxRatio) {
-        passed++;
-      } else {
-        var headingBboxes = headings.filter(function(h) { return h.bbox; }).map(function(h) { return h.bbox; });
-        findings.push({
-          severity: ratio > maxRatio + 2 ? 'warning' : 'info',
-          title: 'Heading scale ratio is ' + (Math.round(ratio * 100) / 100) + ' (ideal: 1.5–' + maxRatio + ')',
-          detail: ratio < 1.5 ? 'Headings are too similar in size — weak hierarchy' : 'Heading sizes vary widely — verify the largest heading is intentional (hero text)',
-          fix: 'Use a modular scale (1.200 minor third or 1.250 major third). In Tailwind: text-4xl > text-2xl > text-xl > text-base',
-          presetRef: null,
-          source: 'Modular type scales — https://typescale.com/',
-          locator: { selector: '', text: '', bboxes: headingBboxes }
-        });
-      }
-    } else { passed++; } // Only one heading size — acceptable
-  } else { passed++; } // No headings to check
-
-  // Max 2-3 font weights
-  checks++;
-  var fontWeights = data.typography.fontWeights || [];
-  var weightCount = fontWeights.length;
-  if (weightCount <= 4) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: 'Using ' + weightCount + ' font weights (recommended: 2–3)',
-      detail: 'Too many weights create visual noise and increase font loading time',
-      fix: 'Consolidate to 400 (regular), 500/600 (medium), 700 (bold)',
-      presetRef: null,
-      source: 'Google Fonts best practices — https://fonts.google.com/knowledge/using_type/choosing_reliable_typefaces'
-    });
-  }
-
-  // Profile-specific: minimum font weight (e.g., elderly profile forbids light/thin)
-  if (profile.fontWeightMin > 0 && fontWeights.length > 0) {
-    var lightWeights = fontWeights.filter(function(w) { return parseInt(w) < profile.fontWeightMin; });
-    if (lightWeights.length > 0) {
-      checks++;
-      findings.push({
-        severity: 'warning',
-        title: 'Font weight(s) ' + lightWeights.join(', ') + ' below minimum ' + profile.fontWeightMin + ' for this audience',
-        detail: 'Light and thin font weights reduce readability for users who need higher legibility',
-        fix: 'Use font-weight ' + profile.fontWeightMin + ' (regular) or heavier. Avoid font-weight 100–300.',
-        presetRef: null,
-        source: 'W3C WAI Older Users — https://www.w3.org/WAI/older-users/developing/'
-      });
-    } else {
-      checks++;
-      passed++;
-    }
-  }
-
-  // Letter spacing
-  var lsIssues = (data.typography && data.typography.letterSpacingIssues) || 0;
-  if (lsIssues > 0) {
-    findings.push({
-      severity: 'info',
-      title: lsIssues + ' element(s) with extreme letter-spacing',
-      detail: 'Very tight (< -0.03em) or very loose (> 0.15em) letter spacing reduces readability',
-      fix: 'Keep letter-spacing between -0.02em and 0.1em for body text. Tighter spacing is acceptable for large headings.',
-      presetRef: null,
-      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/letterspacing.html'
-    });
-  }
-
-  // Paragraph spacing
-  var pSpacing = (data.typography && data.typography.paragraphSpacing) || [];
-  if (pSpacing.length >= 3) {
-    checks++;
-    var bodyPx = parseFloat(data.typography.bodyFontSize) || 16;
-    var avgSpacing = pSpacing.reduce(function(s,v){return s+v},0) / pSpacing.length;
-    var spacingEm = avgSpacing / bodyPx;
-    if (spacingEm >= 0.5 && spacingEm <= 1.5) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: 'Paragraph spacing is ' + (Math.round(spacingEm * 100) / 100) + 'em (ideal: 0.75–1em)',
-        detail: spacingEm < 0.5 ? 'Paragraphs feel cramped' : 'Paragraph spacing may be too generous',
-        fix: 'Set paragraph margin-bottom to 0.75em–1em. In Tailwind: space-y-4 on the container or mb-4 on paragraphs.',
-        presetRef: null,
-        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/space-between-paragraphs.html'
-      });
-    }
-  }
-
-  // Max 2 typefaces
-  checks++;
-  var familyCount = (data.typography.fontFamilies || []).length;
-  if (familyCount <= 3) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: 'Using ' + familyCount + ' font families (recommended: max 2)',
-      detail: 'Too many typefaces make the design feel inconsistent',
-      fix: 'Use 1 sans-serif + 1 serif (or monospace for code). In Tailwind: font-sans + font-serif',
-      presetRef: null,
-      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/summary-of-key-rules.html'
-    });
-  }
-
-  // All-caps long text
-  var allCaps = (data.typography && data.typography.allCapsLongText) || 0;
-  if (allCaps > 0) {
-    findings.push({
-      severity: 'warning',
-      title: allCaps + ' block(s) of long text in all-caps (> 50 characters)',
-      detail: 'All-uppercase text reduces reading speed by 10-20%. Reserve for short labels and headings.',
-      fix: 'Remove text-transform: uppercase on body text. Use it only for short labels, buttons, and headings under 5 words.',
-      presetRef: null,
-      source: 'Tinker 1963, Butterick\'s Practical Typography — https://practicaltypography.com/all-caps.html'
-    });
-  }
-
-  // Justified text
-  var justified = (data.typography && data.typography.justifiedText) || 0;
-  if (justified > 0) {
-    findings.push({
-      severity: 'info',
-      title: justified + ' element(s) with text-align: justify',
-      detail: 'Justified text creates uneven word spacing (rivers of white) without proper hyphenation, reducing readability.',
-      fix: 'Use text-align: left for web content. Justified text only works well with automatic hyphenation (hyphens: auto).',
-      presetRef: null,
-      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/justified-text.html'
-    });
-  }
-
-  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-  return { score: score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Typography', icon: 'type' };
-}
-
-
-  S.register("typography", scoreTypography, 15, "Typography", "type");
-})();
-</file>
-
 <file path="scripts/test-full-matrix.mjs">
 #!/usr/bin/env node
 // Full matrix test runner: preset × personality × effect × viewport × dark mode
@@ -26184,289 +26184,6 @@ async function main() {
 main().catch(err => { console.error('Fatal:', err); process.exit(1); });
 </file>
 
-<file path="docs/scoring/contrast.js">
-// Scoring Module: Color & Contrast
-// Weight: 20%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function parseRgb(str) {
-  var m = str.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
-  if (!m) m = str.match(/rgb\((\d+)\s+(\d+)\s+(\d+)\)/);
-  if (!m) return null;
-  return { r: +m[1], g: +m[2], b: +m[3] };
-}
-
-function applyFilterToColor(c, filterStr) {
-  if (!c || !filterStr) return c;
-  var r = c.r, g = c.g, b = c.b;
-  var re = /brightness\(([\d.]+)\)|contrast\(([\d.]+)\)|opacity\(([\d.]+)\)/g;
-  var m;
-  while ((m = re.exec(filterStr)) !== null) {
-    if (m[1] !== undefined) {
-      var br = parseFloat(m[1]);
-      r = Math.min(255, Math.round(r * br));
-      g = Math.min(255, Math.round(g * br));
-      b = Math.min(255, Math.round(b * br));
-    } else if (m[2] !== undefined) {
-      var ct = parseFloat(m[2]);
-      r = Math.min(255, Math.max(0, Math.round(((r - 128) * ct) + 128)));
-      g = Math.min(255, Math.max(0, Math.round(((g - 128) * ct) + 128)));
-      b = Math.min(255, Math.max(0, Math.round(((b - 128) * ct) + 128)));
-    }
-    // opacity affects alpha, not RGB channels for contrast purposes
-  }
-  return { r: r, g: g, b: b };
-}
-
-function luminance(c) {
-  var rs = c.r / 255, gs = c.g / 255, bs = c.b / 255;
-  var r = rs <= 0.03928 ? rs / 12.92 : Math.pow((rs + 0.055) / 1.055, 2.4);
-  var g = gs <= 0.03928 ? gs / 12.92 : Math.pow((gs + 0.055) / 1.055, 2.4);
-  var b = bs <= 0.03928 ? bs / 12.92 : Math.pow((bs + 0.055) / 1.055, 2.4);
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
-
-function contrastRatio(c1, c2) {
-  var l1 = luminance(c1), l2 = luminance(c2);
-  return Math.round(((Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)) * 100) / 100;
-}
-
-// APCA contrast (Lc value)
-// Simplified APCA-W3 calculation
-function sRGBtoY(rgb) {
-  // Linearize sRGB
-  function lin(v) { v = v / 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
-  return 0.2126729 * lin(rgb.r) + 0.7151522 * lin(rgb.g) + 0.0721750 * lin(rgb.b);
-}
-
-function apcaContrast(txtRgb, bgRgb) {
-  var txtY = sRGBtoY(txtRgb);
-  var bgY = sRGBtoY(bgRgb);
-  // Clamp
-  if (txtY < 0) txtY = 0;
-  if (bgY < 0) bgY = 0;
-  // SAPC power curve
-  var normBG = Math.pow(bgY, 0.56);
-  var normTXT = Math.pow(txtY, 0.57);
-  var rawContrast;
-  if (bgY > txtY) {
-    rawContrast = (normBG - normTXT) * 1.14;
-  } else {
-    rawContrast = (normBG - normTXT) * 1.14;
-  }
-  // Scale and clamp
-  if (Math.abs(rawContrast) < 0.1) return 0;
-  return Math.round(rawContrast * 100);
-}
-
-function scoreContrast(data) {
-  var profile = S.getProfile(data);
-  var findings = [];
-  var pairs = data.colors.contrastPairs || [];
-
-  // Re-evaluate each pair against profile thresholds
-  var profilePairs = pairs.map(function(p) {
-    var needed = p.isLarge ? profile.contrastLarge : profile.contrast;
-    var ratio = p.ratio;
-
-    // If a CSS filter is present, re-compute contrast with adjusted bg
-    if (p.filter) {
-      var bgParsed = parseRgb(p.bg);
-      if (bgParsed) {
-        var adjustedBg = applyFilterToColor(bgParsed, p.filter);
-        var fgParsed = parseRgb(p.fg);
-        if (fgParsed) {
-          ratio = contrastRatio(fgParsed, adjustedBg);
-        }
-      }
-    }
-
-    var passes = ratio >= needed;
-    return { ratio: ratio, needed: needed, passes: passes, isLarge: p.isLarge, text: p.text, fontSize: p.fontSize, selector: p.selector, fg: p.fg, bg: p.bg, filter: p.filter || '', bbox: p.bbox };
-  });
-
-  // Separate uncertain results (very low ratio usually means bg couldn't be determined — gradient, SVG, image, etc.)
-  // Cases: fg===bg (exact 1:1), or ratio < 1.5 with light text on light bg (white text on gradient that resolved to white)
-  function isUncertain(p) {
-    if (p.passes) return false;
-    if (p.ratio <= 1.01 && p.fg === p.bg) return true;
-    // Very low ratio with light fg+bg suggests unresolved gradient background
-    if (p.ratio < 1.5) {
-      var fgC = parseRgb(p.fg);
-      var bgC = parseRgb(p.bg);
-      if (fgC && bgC) {
-        var fgBright = (fgC.r + fgC.g + fgC.b) / 3;
-        var bgBright = (bgC.r + bgC.g + bgC.b) / 3;
-        // Both very light (white text on resolved-to-white bg) or both very dark
-        if ((fgBright > 200 && bgBright > 200) || (fgBright < 55 && bgBright < 55)) return true;
-      }
-    }
-    return false;
-  }
-  var uncertain = profilePairs.filter(function(p) { return isUncertain(p); });
-  var failures = profilePairs.filter(function(p) { return !p.passes && !isUncertain(p); });
-  var nearMisses = profilePairs.filter(function(p) { return p.passes && p.ratio < p.needed + 0.5; });
-
-  // Deduplicate failures with identical ratio + selector
-  var failSeen = {};
-  failures.forEach(function(p) {
-    var dedup = p.ratio + '|' + p.selector;
-    if (failSeen[dedup]) { failSeen[dedup].count++; if (p.bbox) failSeen[dedup].bboxes.push(p.bbox); return; }
-    failSeen[dedup] = { p: p, count: 1, bboxes: p.bbox ? [p.bbox] : [] };
-  });
-  Object.keys(failSeen).forEach(function(key) {
-    var entry = failSeen[key];
-    var p = entry.p;
-    var apcaVal = '';
-    var fgP = parseRgb(p.fg);
-    var bgP = parseRgb(p.bg);
-    if (fgP && bgP) { apcaVal = ' (APCA: Lc ' + apcaContrast(fgP, bgP) + ')'; }
-    var countNote = entry.count > 1 ? ' (' + entry.count + ' instances)' : '';
-    // Detect if the bg is likely white fallback (image/gradient bg we couldn't resolve)
-    var bgIsWhite = p.bg === 'rgb(255, 255, 255)' || p.bg === 'rgba(255, 255, 255, 1)';
-    var bgNote = bgIsWhite ? ' The detected background is white — if the actual background is an image or gradient, the real contrast may differ.' : '';
-    findings.push({
-      severity: 'error',
-      title: 'Text fails contrast ' + p.ratio + ':1 (needs ' + p.needed + ':1)' + countNote,
-      detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector + apcaVal,
-      fix: (p.isLarge
-        ? 'Large text needs ' + profile.contrastLarge + ':1 minimum. Darken the text or lighten the background.'
-        : 'Normal text needs ' + profile.contrast + ':1 minimum. Use a darker text color or lighter background.') + bgNote,
-      presetRef: null,
-      source: p.isLarge ? 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' : 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum',
-      locator: { selector: p.selector, text: p.text, bboxes: entry.bboxes }
-    });
-  });
-
-  if (uncertain.length > 0) {
-    findings.push({
-      severity: 'info',
-      title: uncertain.length + ' element(s) with undetermined contrast (background could not be resolved)',
-      detail: 'These elements may use gradients, images, SVGs, or complex CSS that the analyzer cannot parse. Check manually: ' + uncertain.slice(0, 3).map(function(p) { return '"' + p.text + '"'; }).join(', '),
-      fix: 'Verify these elements have sufficient contrast visually. The analyzer reports 1:1 when the effective background cannot be computed.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
-    });
-  }
-
-  // Deduplicate near-misses with identical ratio + selector
-  var nearSeen = {};
-  nearMisses.forEach(function(p) {
-    var dedup = p.ratio + '|' + p.selector;
-    if (nearSeen[dedup]) { nearSeen[dedup].count++; if (p.bbox) nearSeen[dedup].bboxes.push(p.bbox); return; }
-    nearSeen[dedup] = { p: p, count: 1, bboxes: p.bbox ? [p.bbox] : [] };
-  });
-  Object.keys(nearSeen).forEach(function(key) {
-    var entry = nearSeen[key];
-    var p = entry.p;
-    var countNote = entry.count > 1 ? ' (' + entry.count + ' instances)' : '';
-    findings.push({
-      severity: 'info',
-      title: 'Text passes contrast but close to threshold: ' + p.ratio + ':1 (needs ' + p.needed + ':1)' + countNote,
-      detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector,
-      fix: 'Passes AA but consider increasing for AAA (7:1). Slight changes in background could cause failure.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.6 — https://www.w3.org/TR/WCAG22/#contrast-enhanced',
-      locator: { selector: p.selector, text: p.text, bboxes: entry.bboxes }
-    });
-  });
-
-  // CVD palette safety check (color_blind profile)
-  if (profile.checkCVD && pairs.length > 0) {
-    var uniqueColors = {};
-    pairs.forEach(function(p) {
-      if (p.fg) uniqueColors[p.fg] = true;
-      if (p.bg) uniqueColors[p.bg] = true;
-    });
-    var colorList = Object.keys(uniqueColors).map(function(c) { return parseRgb(c); }).filter(Boolean);
-    var cvdTypes = ['protanopia', 'deuteranopia', 'tritanopia'];
-    var cvdIssues = {};
-    cvdTypes.forEach(function(type) { cvdIssues[type] = 0; });
-
-    // Check all color pairs through CVD simulation
-    for (var ci = 0; ci < colorList.length && ci < 20; ci++) {
-      for (var cj = ci + 1; cj < colorList.length && cj < 20; cj++) {
-        var origRatio = contrastRatio(colorList[ci], colorList[cj]);
-        if (origRatio < 2) continue; // Skip colors already too similar
-        cvdTypes.forEach(function(type) {
-          var matrix = S.CVD_MATRICES[type];
-          var simA = S.simulateCVD(colorList[ci], matrix);
-          var simB = S.simulateCVD(colorList[cj], matrix);
-          var simRatio = contrastRatio(simA, simB);
-          if (simRatio < 1.5 && origRatio >= 2) cvdIssues[type]++;
-        });
-      }
-    }
-
-    var totalCvdIssues = cvdIssues.protanopia + cvdIssues.deuteranopia + cvdIssues.tritanopia;
-    if (totalCvdIssues > 0) {
-      var cvdDetails = cvdTypes.filter(function(t) { return cvdIssues[t] > 0; }).map(function(t) { return t + ': ' + cvdIssues[t] + ' pair(s)'; }).join(', ');
-      findings.push({
-        severity: totalCvdIssues > 3 ? 'error' : 'warning',
-        title: totalCvdIssues + ' color pair(s) become indistinguishable under color vision deficiency',
-        detail: cvdDetails + '. These colors look distinct to typical vision but collapse for ~8% of men.',
-        fix: 'Add non-color indicators (icons, patterns, text labels) alongside color. Avoid red-green as the only differentiator.',
-        source: 'WCAG 2.2 §1.4.1 — https://www.w3.org/TR/WCAG22/#use-of-color'
-      });
-    } else if (colorList.length >= 3) {
-      findings.push({
-        severity: 'info',
-        title: 'Color palette passes CVD simulation (' + colorList.length + ' colors checked)',
-        detail: 'All color pairs remain distinguishable under protanopia, deuteranopia, and tritanopia simulation.',
-        fix: 'No action needed. This palette is CVD-safe.',
-        source: 'Machado et al. 2009 — https://www.inf.ufrgs.br/~oliveira/pubs_files/CVD_Simulation/CVD_Simulation.html'
-      });
-    }
-  }
-
-  // Backdrop-filter + translucent backgrounds — contrast ratio may be unreliable
-  var backdropPairs = profilePairs.filter(function(p) { return p.backdropFilter && p.minBgAlpha < 0.7; });
-  if (backdropPairs.length > 0) {
-    var bdSamples = backdropPairs.slice(0, 3).map(function(p) {
-      return '"' + p.text + '" (bg alpha: ' + p.minBgAlpha + ')';
-    });
-    findings.push({
-      severity: 'warning',
-      title: backdropPairs.length + ' text element(s) on translucent backdrop-filter surfaces',
-      detail: 'These elements sit on semi-transparent backgrounds with backdrop-filter (frosted glass effect). The computed contrast ratio assumes the blended background color, but the actual perceived contrast depends on what is visible through the translucent surface, which varies across the page. Elements: ' + bdSamples.join('; '),
-      fix: 'Increase background opacity to at least 0.75 for text containers, or add a solid fallback background. For frosted glass effects, use a minimum alpha of 0.7-0.8 to ensure text remains readable regardless of what shows through.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
-    });
-  }
-
-  // Don't count uncertain results as failures in the score
-  var total = (profilePairs.length - uncertain.length) || 1;
-  var passing = total - failures.length;
-  // Scale deduction by total pairs: more pairs = less impact per failure (large pages shouldn't be punished more)
-  var failPenalty = total > 10 ? Math.max(3, Math.round(100 / total)) : 10;
-  var score = Math.max(0, 100 - (failures.length * failPenalty) - (nearMisses.length * 1));
-
-  // Add baseline checks
-  var checks = Math.max(total, 1);
-  var passed = Math.max(passing, 0);
-  // Text existence check
-  if (pairs.length === 0 && (data.structure && data.structure.totalElements > 20)) {
-    findings.push({
-      severity: 'info',
-      title: 'No text contrast pairs found to check',
-      detail: 'The page may use images for text, or text may not be visible at scan time.',
-      fix: 'Ensure text is rendered as real HTML text, not embedded in images.',
-      source: 'WCAG 2.2 §1.4.5 — https://www.w3.org/TR/WCAG22/#images-of-text'
-    });
-  }
-  var na = pairs.length === 0;
-  return { score: score, findings: findings, checks: checks, passed: passed, weight: 20, label: 'Color & Contrast', icon: 'contrast', notApplicable: na };
-}
-
-
-  S.register("contrast", scoreContrast, 20, "Color & Contrast", "contrast");
-})();
-</file>
-
 <file path="docs/scoring/accessibility.js">
 // Scoring Module: Accessibility
 // Weight: 15%
@@ -27025,6 +26742,289 @@ function scoreAccessibility(data) {
 
 
   S.register("accessibility", scoreAccessibility, 15, "Accessibility", "a11y");
+})();
+</file>
+
+<file path="docs/scoring/contrast.js">
+// Scoring Module: Color & Contrast
+// Weight: 20%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function parseRgb(str) {
+  var m = str.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+  if (!m) m = str.match(/rgb\((\d+)\s+(\d+)\s+(\d+)\)/);
+  if (!m) return null;
+  return { r: +m[1], g: +m[2], b: +m[3] };
+}
+
+function applyFilterToColor(c, filterStr) {
+  if (!c || !filterStr) return c;
+  var r = c.r, g = c.g, b = c.b;
+  var re = /brightness\(([\d.]+)\)|contrast\(([\d.]+)\)|opacity\(([\d.]+)\)/g;
+  var m;
+  while ((m = re.exec(filterStr)) !== null) {
+    if (m[1] !== undefined) {
+      var br = parseFloat(m[1]);
+      r = Math.min(255, Math.round(r * br));
+      g = Math.min(255, Math.round(g * br));
+      b = Math.min(255, Math.round(b * br));
+    } else if (m[2] !== undefined) {
+      var ct = parseFloat(m[2]);
+      r = Math.min(255, Math.max(0, Math.round(((r - 128) * ct) + 128)));
+      g = Math.min(255, Math.max(0, Math.round(((g - 128) * ct) + 128)));
+      b = Math.min(255, Math.max(0, Math.round(((b - 128) * ct) + 128)));
+    }
+    // opacity affects alpha, not RGB channels for contrast purposes
+  }
+  return { r: r, g: g, b: b };
+}
+
+function luminance(c) {
+  var rs = c.r / 255, gs = c.g / 255, bs = c.b / 255;
+  var r = rs <= 0.03928 ? rs / 12.92 : Math.pow((rs + 0.055) / 1.055, 2.4);
+  var g = gs <= 0.03928 ? gs / 12.92 : Math.pow((gs + 0.055) / 1.055, 2.4);
+  var b = bs <= 0.03928 ? bs / 12.92 : Math.pow((bs + 0.055) / 1.055, 2.4);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function contrastRatio(c1, c2) {
+  var l1 = luminance(c1), l2 = luminance(c2);
+  return Math.round(((Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)) * 100) / 100;
+}
+
+// APCA contrast (Lc value)
+// Simplified APCA-W3 calculation
+function sRGBtoY(rgb) {
+  // Linearize sRGB
+  function lin(v) { v = v / 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
+  return 0.2126729 * lin(rgb.r) + 0.7151522 * lin(rgb.g) + 0.0721750 * lin(rgb.b);
+}
+
+function apcaContrast(txtRgb, bgRgb) {
+  var txtY = sRGBtoY(txtRgb);
+  var bgY = sRGBtoY(bgRgb);
+  // Clamp
+  if (txtY < 0) txtY = 0;
+  if (bgY < 0) bgY = 0;
+  // SAPC power curve
+  var normBG = Math.pow(bgY, 0.56);
+  var normTXT = Math.pow(txtY, 0.57);
+  var rawContrast;
+  if (bgY > txtY) {
+    rawContrast = (normBG - normTXT) * 1.14;
+  } else {
+    rawContrast = (normBG - normTXT) * 1.14;
+  }
+  // Scale and clamp
+  if (Math.abs(rawContrast) < 0.1) return 0;
+  return Math.round(rawContrast * 100);
+}
+
+function scoreContrast(data) {
+  var profile = S.getProfile(data);
+  var findings = [];
+  var pairs = data.colors.contrastPairs || [];
+
+  // Re-evaluate each pair against profile thresholds
+  var profilePairs = pairs.map(function(p) {
+    var needed = p.isLarge ? profile.contrastLarge : profile.contrast;
+    var ratio = p.ratio;
+
+    // If a CSS filter is present, re-compute contrast with adjusted bg
+    if (p.filter) {
+      var bgParsed = parseRgb(p.bg);
+      if (bgParsed) {
+        var adjustedBg = applyFilterToColor(bgParsed, p.filter);
+        var fgParsed = parseRgb(p.fg);
+        if (fgParsed) {
+          ratio = contrastRatio(fgParsed, adjustedBg);
+        }
+      }
+    }
+
+    var passes = ratio >= needed;
+    return { ratio: ratio, needed: needed, passes: passes, isLarge: p.isLarge, text: p.text, fontSize: p.fontSize, selector: p.selector, fg: p.fg, bg: p.bg, filter: p.filter || '', bbox: p.bbox };
+  });
+
+  // Separate uncertain results (very low ratio usually means bg couldn't be determined — gradient, SVG, image, etc.)
+  // Cases: fg===bg (exact 1:1), or ratio < 1.5 with light text on light bg (white text on gradient that resolved to white)
+  function isUncertain(p) {
+    if (p.passes) return false;
+    if (p.ratio <= 1.01 && p.fg === p.bg) return true;
+    // Very low ratio with light fg+bg suggests unresolved gradient background
+    if (p.ratio < 1.5) {
+      var fgC = parseRgb(p.fg);
+      var bgC = parseRgb(p.bg);
+      if (fgC && bgC) {
+        var fgBright = (fgC.r + fgC.g + fgC.b) / 3;
+        var bgBright = (bgC.r + bgC.g + bgC.b) / 3;
+        // Both very light (white text on resolved-to-white bg) or both very dark
+        if ((fgBright > 200 && bgBright > 200) || (fgBright < 55 && bgBright < 55)) return true;
+      }
+    }
+    return false;
+  }
+  var uncertain = profilePairs.filter(function(p) { return isUncertain(p); });
+  var failures = profilePairs.filter(function(p) { return !p.passes && !isUncertain(p); });
+  var nearMisses = profilePairs.filter(function(p) { return p.passes && p.ratio < p.needed + 0.5; });
+
+  // Deduplicate failures with identical ratio + selector
+  var failSeen = {};
+  failures.forEach(function(p) {
+    var dedup = p.ratio + '|' + p.selector;
+    if (failSeen[dedup]) { failSeen[dedup].count++; if (p.bbox) failSeen[dedup].bboxes.push(p.bbox); return; }
+    failSeen[dedup] = { p: p, count: 1, bboxes: p.bbox ? [p.bbox] : [] };
+  });
+  Object.keys(failSeen).forEach(function(key) {
+    var entry = failSeen[key];
+    var p = entry.p;
+    var apcaVal = '';
+    var fgP = parseRgb(p.fg);
+    var bgP = parseRgb(p.bg);
+    if (fgP && bgP) { apcaVal = ' (APCA: Lc ' + apcaContrast(fgP, bgP) + ')'; }
+    var countNote = entry.count > 1 ? ' (' + entry.count + ' instances)' : '';
+    // Detect if the bg is likely white fallback (image/gradient bg we couldn't resolve)
+    var bgIsWhite = p.bg === 'rgb(255, 255, 255)' || p.bg === 'rgba(255, 255, 255, 1)';
+    var bgNote = bgIsWhite ? ' The detected background is white — if the actual background is an image or gradient, the real contrast may differ.' : '';
+    findings.push({
+      severity: 'error',
+      title: 'Text fails contrast ' + p.ratio + ':1 (needs ' + p.needed + ':1)' + countNote,
+      detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector + apcaVal,
+      fix: (p.isLarge
+        ? 'Large text needs ' + profile.contrastLarge + ':1 minimum. Darken the text or lighten the background.'
+        : 'Normal text needs ' + profile.contrast + ':1 minimum. Use a darker text color or lighter background.') + bgNote,
+      presetRef: null,
+      source: p.isLarge ? 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' : 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum',
+      locator: { selector: p.selector, text: p.text, bboxes: entry.bboxes }
+    });
+  });
+
+  if (uncertain.length > 0) {
+    findings.push({
+      severity: 'info',
+      title: uncertain.length + ' element(s) with undetermined contrast (background could not be resolved)',
+      detail: 'These elements may use gradients, images, SVGs, or complex CSS that the analyzer cannot parse. Check manually: ' + uncertain.slice(0, 3).map(function(p) { return '"' + p.text + '"'; }).join(', '),
+      fix: 'Verify these elements have sufficient contrast visually. The analyzer reports 1:1 when the effective background cannot be computed.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
+    });
+  }
+
+  // Deduplicate near-misses with identical ratio + selector
+  var nearSeen = {};
+  nearMisses.forEach(function(p) {
+    var dedup = p.ratio + '|' + p.selector;
+    if (nearSeen[dedup]) { nearSeen[dedup].count++; if (p.bbox) nearSeen[dedup].bboxes.push(p.bbox); return; }
+    nearSeen[dedup] = { p: p, count: 1, bboxes: p.bbox ? [p.bbox] : [] };
+  });
+  Object.keys(nearSeen).forEach(function(key) {
+    var entry = nearSeen[key];
+    var p = entry.p;
+    var countNote = entry.count > 1 ? ' (' + entry.count + ' instances)' : '';
+    findings.push({
+      severity: 'info',
+      title: 'Text passes contrast but close to threshold: ' + p.ratio + ':1 (needs ' + p.needed + ':1)' + countNote,
+      detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector,
+      fix: 'Passes AA but consider increasing for AAA (7:1). Slight changes in background could cause failure.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.6 — https://www.w3.org/TR/WCAG22/#contrast-enhanced',
+      locator: { selector: p.selector, text: p.text, bboxes: entry.bboxes }
+    });
+  });
+
+  // CVD palette safety check (color_blind profile)
+  if (profile.checkCVD && pairs.length > 0) {
+    var uniqueColors = {};
+    pairs.forEach(function(p) {
+      if (p.fg) uniqueColors[p.fg] = true;
+      if (p.bg) uniqueColors[p.bg] = true;
+    });
+    var colorList = Object.keys(uniqueColors).map(function(c) { return parseRgb(c); }).filter(Boolean);
+    var cvdTypes = ['protanopia', 'deuteranopia', 'tritanopia'];
+    var cvdIssues = {};
+    cvdTypes.forEach(function(type) { cvdIssues[type] = 0; });
+
+    // Check all color pairs through CVD simulation
+    for (var ci = 0; ci < colorList.length && ci < 20; ci++) {
+      for (var cj = ci + 1; cj < colorList.length && cj < 20; cj++) {
+        var origRatio = contrastRatio(colorList[ci], colorList[cj]);
+        if (origRatio < 2) continue; // Skip colors already too similar
+        cvdTypes.forEach(function(type) {
+          var matrix = S.CVD_MATRICES[type];
+          var simA = S.simulateCVD(colorList[ci], matrix);
+          var simB = S.simulateCVD(colorList[cj], matrix);
+          var simRatio = contrastRatio(simA, simB);
+          if (simRatio < 1.5 && origRatio >= 2) cvdIssues[type]++;
+        });
+      }
+    }
+
+    var totalCvdIssues = cvdIssues.protanopia + cvdIssues.deuteranopia + cvdIssues.tritanopia;
+    if (totalCvdIssues > 0) {
+      var cvdDetails = cvdTypes.filter(function(t) { return cvdIssues[t] > 0; }).map(function(t) { return t + ': ' + cvdIssues[t] + ' pair(s)'; }).join(', ');
+      findings.push({
+        severity: totalCvdIssues > 3 ? 'error' : 'warning',
+        title: totalCvdIssues + ' color pair(s) become indistinguishable under color vision deficiency',
+        detail: cvdDetails + '. These colors look distinct to typical vision but collapse for ~8% of men.',
+        fix: 'Add non-color indicators (icons, patterns, text labels) alongside color. Avoid red-green as the only differentiator.',
+        source: 'WCAG 2.2 §1.4.1 — https://www.w3.org/TR/WCAG22/#use-of-color'
+      });
+    } else if (colorList.length >= 3) {
+      findings.push({
+        severity: 'info',
+        title: 'Color palette passes CVD simulation (' + colorList.length + ' colors checked)',
+        detail: 'All color pairs remain distinguishable under protanopia, deuteranopia, and tritanopia simulation.',
+        fix: 'No action needed. This palette is CVD-safe.',
+        source: 'Machado et al. 2009 — https://www.inf.ufrgs.br/~oliveira/pubs_files/CVD_Simulation/CVD_Simulation.html'
+      });
+    }
+  }
+
+  // Backdrop-filter + translucent backgrounds — contrast ratio may be unreliable
+  var backdropPairs = profilePairs.filter(function(p) { return p.backdropFilter && p.minBgAlpha < 0.7; });
+  if (backdropPairs.length > 0) {
+    var bdSamples = backdropPairs.slice(0, 3).map(function(p) {
+      return '"' + p.text + '" (bg alpha: ' + p.minBgAlpha + ')';
+    });
+    findings.push({
+      severity: 'warning',
+      title: backdropPairs.length + ' text element(s) on translucent backdrop-filter surfaces',
+      detail: 'These elements sit on semi-transparent backgrounds with backdrop-filter (frosted glass effect). The computed contrast ratio assumes the blended background color, but the actual perceived contrast depends on what is visible through the translucent surface, which varies across the page. Elements: ' + bdSamples.join('; '),
+      fix: 'Increase background opacity to at least 0.75 for text containers, or add a solid fallback background. For frosted glass effects, use a minimum alpha of 0.7-0.8 to ensure text remains readable regardless of what shows through.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
+    });
+  }
+
+  // Don't count uncertain results as failures in the score
+  var total = (profilePairs.length - uncertain.length) || 1;
+  var passing = total - failures.length;
+  // Scale deduction by total pairs: more pairs = less impact per failure (large pages shouldn't be punished more)
+  var failPenalty = total > 10 ? Math.max(3, Math.round(100 / total)) : 10;
+  var score = Math.max(0, 100 - (failures.length * failPenalty) - (nearMisses.length * 1));
+
+  // Add baseline checks
+  var checks = Math.max(total, 1);
+  var passed = Math.max(passing, 0);
+  // Text existence check
+  if (pairs.length === 0 && (data.structure && data.structure.totalElements > 20)) {
+    findings.push({
+      severity: 'info',
+      title: 'No text contrast pairs found to check',
+      detail: 'The page may use images for text, or text may not be visible at scan time.',
+      fix: 'Ensure text is rendered as real HTML text, not embedded in images.',
+      source: 'WCAG 2.2 §1.4.5 — https://www.w3.org/TR/WCAG22/#images-of-text'
+    });
+  }
+  var na = pairs.length === 0;
+  return { score: score, findings: findings, checks: checks, passed: passed, weight: 20, label: 'Color & Contrast', icon: 'contrast', notApplicable: na };
+}
+
+
+  S.register("contrast", scoreContrast, 20, "Color & Contrast", "contrast");
 })();
 </file>
 
@@ -29629,6 +29629,481 @@ body.dark-ui .milg-viewer-tooltip-detail { color: #94a3b8; }
 </html>
 </file>
 
+<file path="docs/scoring/layout.js">
+// Scoring Module: Layout Quality
+// Weight: 5%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreLayout(data) {
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+  var layout = data.layout || {};
+
+  // Whitespace rhythm: check if section gaps are consistent
+  var gaps = layout.sectionGaps || [];
+  if (gaps.length >= 2) {
+    checks++;
+    var avg = gaps.reduce(function(s, g) { return s + g; }, 0) / gaps.length;
+    var variance = gaps.reduce(function(s, g) { return s + Math.pow(g - avg, 2); }, 0) / gaps.length;
+    var stdDev = Math.sqrt(variance);
+    var cv = avg > 0 ? stdDev / avg : 0; // coefficient of variation
+    if (cv < 0.3) {
+      passed++;
+    } else {
+      findings.push({
+        severity: cv > 0.6 ? 'warning' : 'info',
+        title: 'Inconsistent spacing between sections (CV: ' + Math.round(cv * 100) + '%)',
+        detail: 'Gaps range from ' + Math.min.apply(null, gaps) + 'px to ' + Math.max.apply(null, gaps) + 'px (avg ' + Math.round(avg) + 'px)',
+        fix: 'Use consistent spacing between major sections. Pick one value (e.g. 64px or 96px) and use it everywhere.',
+        presetRef: null,
+        source: 'Gestalt similarity — https://lawsofux.com/law-of-similarity/'
+      });
+    }
+  }
+
+  // Alignment consistency: cluster left edges and find near-misses ("jagged" alignment)
+  var edges = layout.alignmentEdges || [];
+  if (edges.length >= 5) {
+    checks++;
+    // Cluster edges within 3px (considered aligned)
+    var clusters = [];
+    var sorted = edges.slice().sort(function(a, b) { return a - b; });
+    var current = [sorted[0]];
+    for (var i = 1; i < sorted.length; i++) {
+      if (sorted[i] - sorted[i - 1] <= 3) {
+        current.push(sorted[i]);
+      } else {
+        clusters.push(current);
+        current = [sorted[i]];
+      }
+    }
+    clusters.push(current);
+    // Find near-miss clusters (4-12px apart — elements on same axis but jagged)
+    var nearMisses = 0;
+    var jaggedExamples = [];
+    var edgeDetails = layout.alignmentEdgeDetails || [];
+    for (var i = 1; i < clusters.length; i++) {
+      var prevAvg = Math.round(clusters[i - 1].reduce(function(s,v){return s+v},0) / clusters[i - 1].length);
+      var currAvg = Math.round(clusters[i].reduce(function(s,v){return s+v},0) / clusters[i].length);
+      var gap = currAvg - prevAvg;
+      if (gap > 3 && gap <= 12) {
+        nearMisses++;
+        // Find example elements at each edge for actionable detail
+        var prevEl = edgeDetails.find(function(d) { return Math.abs(d.left - prevAvg) <= 3; });
+        var currEl = edgeDetails.find(function(d) { return Math.abs(d.left - currAvg) <= 3; });
+        var example = prevAvg + 'px → ' + currAvg + 'px (' + gap + 'px off)';
+        if (prevEl && currEl) {
+          example += ': ' + prevEl.tag + ' "' + (prevEl.text || '').substring(0, 20) + '" vs ' + currEl.tag + ' "' + (currEl.text || '').substring(0, 20) + '"';
+        }
+        jaggedExamples.push(example);
+      }
+    }
+    // Also check how many unique clusters there are relative to element count
+    var clusterRatio = clusters.length / edges.length;
+    if (nearMisses === 0 && clusterRatio < 0.5) {
+      passed++;
+    } else if (nearMisses > 0) {
+      findings.push({
+        severity: nearMisses >= 3 ? 'warning' : 'info',
+        title: nearMisses + ' jagged alignment(s) — elements on same axis but ' + (nearMisses >= 3 ? 'noticeably' : 'slightly') + ' off',
+        detail: clusters.length + ' alignment edges across ' + edges.length + ' elements. ' + (jaggedExamples.length > 0 ? 'Offsets: ' + jaggedExamples.slice(0, 3).join(', ') : ''),
+        fix: 'Elements that share a visual axis should be exactly aligned. Check that container padding, margin, and grid column widths are consistent. In Tailwind: use consistent px-4/px-6 and grid/flex alignment.',
+        presetRef: null,
+        source: 'Gestalt continuity — https://lawsofux.com/law-of-common-region/'
+      });
+    } else if (clusterRatio >= 0.5) {
+      findings.push({
+        severity: 'info',
+        title: 'Weak alignment grid — ' + clusters.length + ' distinct left edges across ' + edges.length + ' elements',
+        detail: 'A well-aligned layout typically has 2-4 dominant alignment edges. High variance suggests inconsistent margins/padding.',
+        fix: 'Establish a consistent alignment grid. Use the same container padding and let content flow within columns.',
+        presetRef: null,
+        source: 'Gestalt continuity — https://lawsofux.com/law-of-common-region/'
+      });
+    }
+  }
+
+  // Visual hierarchy: heading-to-body ratios
+  var vh = layout.visualHierarchy || {};
+  if (vh.h1ToBody > 0) {
+    checks++;
+    if (vh.h1ToBody >= 2 && vh.h1ToBody <= 4) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: 'H1 is ' + vh.h1ToBody + 'x body text (ideal: 2-4x)',
+        detail: vh.h1ToBody < 2 ? 'H1 doesn\'t stand out enough from body text' : 'H1 may be too large relative to body text',
+        fix: 'H1 should be 2-4x the body font size for clear hierarchy. At 16px body, H1 should be 32-64px.',
+        presetRef: null,
+        source: 'Modular type scales — https://typescale.com/'
+      });
+    }
+  }
+
+  // H2-to-body ratio (secondary hierarchy)
+  if (vh.h2ToBody > 0) {
+    checks++;
+    if (vh.h2ToBody >= 1.3 && vh.h2ToBody <= 2.5) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: 'H2 is ' + vh.h2ToBody + 'x body text (ideal: 1.3-2.5x)',
+        detail: vh.h2ToBody < 1.3 ? 'H2 is too close to body text size — weak sub-section hierarchy' : 'H2 may be too large, competing with H1',
+        fix: 'H2 should be clearly smaller than H1 but distinct from body. At 16px body, H2 should be 20-40px.',
+        presetRef: null,
+        source: 'Modular type scales — https://typescale.com/'
+      });
+    }
+  }
+
+  // Border radius consistency (moved from consistency to layout)
+  // Exclude pill/circle values (9999px, 50%, or anything > 100px) — these are intentional full-round shapes, not part of the design scale
+  var radii = (layout.borderRadii || []).filter(function(r) {
+    var v = r.value;
+    if (v === '50%' || v === '9999px') return false;
+    var px = parseFloat(v);
+    return !(px > 100);
+  });
+  if (radii.length > 0) {
+    checks++;
+    if (radii.length <= 4) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: radii.length + ' distinct border-radius values (recommend 2-4, excluding pill/circle shapes)',
+        detail: 'Values: ' + radii.slice(0, 6).map(function(r) { return r.value + ' (' + r.count + 'x)'; }).join(', '),
+        fix: 'Standardize border-radius to 2-4 values. In Tailwind: rounded-sm, rounded, rounded-lg, rounded-xl.',
+        presetRef: null,
+        source: 'Material Design 3 — https://m3.material.io/styles/shape/overview'
+      });
+    }
+  }
+
+  // Content-to-whitespace balance (if we have element count and viewport)
+  if (data.structure && data.structure.totalElements > 10) {
+    var elCount = data.structure.totalElements;
+    checks++;
+    // Very sparse or very dense pages
+    if (elCount > 3000) {
+      findings.push({
+        severity: 'info',
+        title: 'Dense page (' + elCount + ' elements) — may feel cluttered',
+        detail: 'High element density can overwhelm users. Consider progressive disclosure.',
+        fix: 'Break content into sections, use collapsible panels, or paginate.',
+        presetRef: null,
+        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+      });
+    } else {
+      passed++;
+    }
+  }
+
+  // Off-screen elements: visible elements positioned outside viewport (x-axis)
+  var offscreen = layout.offscreenElements || [];
+  if (offscreen.length > 0) {
+    checks++;
+    var offDetails = offscreen.slice(0, 5).map(function(e) {
+      var label = e.element;
+      if (e.text) label += ' ("' + e.text.substring(0, 25) + (e.text.length > 25 ? '…' : '') + '")';
+      return label + ' at x=' + e.left + 'px';
+    });
+    findings.push({
+      severity: offscreen.length > 3 ? 'error' : 'warning',
+      title: offscreen.length + ' element(s) positioned outside viewport',
+      detail: offDetails.join('; '),
+      fix: 'Check absolute/fixed positioning. On mobile, dropdown menus with right-0 may overflow left. Use left-0 sm:right-0 or max-w-[calc(100vw-2rem)]. For elements extending right, check fixed widths wider than viewport.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
+      locator: { selector: offscreen[0] ? offscreen[0].selector : '', text: offscreen[0] ? (offscreen[0].text || '') : '', bboxes: offscreen.filter(function(o) { return o.bbox; }).map(function(o) { return o.bbox; }) }
+    });
+  } else {
+    checks++;
+    passed++;
+  }
+
+  // Horizontal scroll on containers — use refined classification
+  var hScrollContainers = layout.horizontalScrollContainers || [];
+  var bugScrollContainers = hScrollContainers.filter(function(c) { return c.classification === 'bug' || !c.intentional; });
+  if (bugScrollContainers.length > 0 || data.structure.hasHorizontalOverflow) {
+    checks++;
+    var scrollDetails = bugScrollContainers.slice(0, 3).map(function(c) {
+      var reasonLabel = c.reason === 'structural-children-in-scroll' ? ' (structural content in scroll container)'
+        : c.reason === 'wide-container-scrolls' ? ' (wide container should fill viewport)'
+        : c.reason === 'no-overflow-css' ? ' (no overflow CSS — content spills)'
+        : '';
+      return c.selector + ' overflows by ' + c.overflow + 'px' + reasonLabel;
+    });
+    if (data.structure.hasHorizontalOverflow) scrollDetails.unshift('Page body has horizontal scroll');
+    findings.push({
+      severity: 'error',
+      title: (data.structure.hasHorizontalOverflow ? 'Page has horizontal scroll' : bugScrollContainers.length + ' container(s) overflow horizontally'),
+      detail: scrollDetails.join('; '),
+      fix: 'Fix horizontal overflow: add overflow-x-hidden on the outer wrapper, check for elements with fixed widths wider than viewport, or add max-w-full. Common causes: fixed-width tables, absolute positioned elements, images without max-width. If a wide container has overflow-x-auto but contains page sections (nav, forms, headings), remove the overflow and fix the root cause.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
+      locator: { selector: bugScrollContainers[0] ? bugScrollContainers[0].selector : '', text: '', bboxes: bugScrollContainers.filter(function(c) { return c.bbox; }).map(function(c) { return c.bbox; }) }
+    });
+  } else {
+    checks++;
+    passed++;
+  }
+
+  // Nested scrollbars (scroll within scroll — bad UX)
+  var nestedScrollbars = layout.nestedScrollbars || 0;
+  if (nestedScrollbars > 0) {
+    checks++;
+    findings.push({
+      severity: nestedScrollbars > 2 ? 'error' : 'warning',
+      title: nestedScrollbars + ' nested scrollbar(s) detected (scroll within scroll)',
+      detail: 'Scrollable elements inside other scrollable elements confuse users — they don\'t know which container will scroll.',
+      fix: 'Avoid nested scrollbars. Give inner containers enough height to show content, or use pagination/collapsible sections instead of scroll. If a table must scroll horizontally, ensure the outer container does not also scroll.',
+      presetRef: null,
+      source: 'NNGroup — https://www.nngroup.com/articles/scrolling-and-scrollbars/'
+    });
+  }
+
+  // Hidden panel overflow issues (menus, dialogs revealed by hybrid unhide)
+  var hiddenPanelIssues = layout.hiddenPanelIssues || [];
+  if (hiddenPanelIssues.length > 0) {
+    checks++;
+    var panelDetails = hiddenPanelIssues.slice(0, 3).map(function(p) {
+      var issueTypes = p.issues.map(function(i) {
+        return i.type === 'right-overflow' ? 'overflows right by ' + i.overflow + 'px'
+          : i.type === 'left-overflow' ? 'overflows left by ' + i.overflow + 'px'
+          : i.type === 'internal-overflow' ? 'content overflows internally by ' + i.overflow + 'px'
+          : i.type;
+      });
+      return p.selector + ' (' + p.role + '): ' + issueTypes.join(', ');
+    });
+    findings.push({
+      severity: hiddenPanelIssues.length > 2 ? 'error' : 'warning',
+      title: hiddenPanelIssues.length + ' hidden panel(s) overflow when revealed (menus/dialogs)',
+      detail: 'These panels are hidden at load time but overflow the viewport when opened: ' + panelDetails.join('; '),
+      fix: 'Dropdown menus and dialogs must fit within the viewport when revealed. Use max-w-[calc(100vw-1rem)], or position with left-0 instead of right-0 on narrow viewports. For dialogs: add max-h-[90vh] overflow-y-auto.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
+      locator: { selector: hiddenPanelIssues[0] ? hiddenPanelIssues[0].selector : '', text: '', bboxes: hiddenPanelIssues.filter(function(p) { return p.bbox; }).map(function(p) { return p.bbox; }) }
+    });
+  } else if (layout.hiddenPanelCount > 0) {
+    checks++;
+    passed++;
+  }
+
+  // Button/CTA hierarchy
+  var btnH = layout.buttonHierarchy || {};
+  if (btnH.total > 3 && btnH.filled > 0 && btnH.outline === 0 && btnH.text === 0) {
+    findings.push({
+      severity: 'info',
+      title: 'All ' + btnH.total + ' buttons use the same filled style — no visual hierarchy',
+      detail: 'Without primary/secondary/tertiary button styles, users can\'t distinguish the main action.',
+      fix: 'Designate one primary CTA (filled) and style others as secondary (outline) or tertiary (text-only).',
+      presetRef: 'All presets use primary + secondary button styles',
+      source: 'Material Design 3 — https://m3.material.io/components/buttons/overview'
+    });
+  }
+
+  // Fixed elements consuming viewport
+  var fixedVp = layout.fixedViewportConsumption || 0;
+  if (fixedVp > 30) {
+    findings.push({
+      severity: 'warning',
+      title: 'Fixed elements consume ' + fixedVp + '% of viewport height',
+      detail: 'Sticky headers, footers, and toolbars take up more than 30% of the screen, leaving little room for content.',
+      fix: 'Collapse fixed elements on scroll, or reduce their height. Consider hiding the header on scroll-down, showing on scroll-up.',
+      presetRef: null,
+      source: 'NNGroup — https://www.nngroup.com/articles/sticky-headers/'
+    });
+  } else if (fixedVp > 20) {
+    findings.push({
+      severity: 'info',
+      title: 'Fixed elements consume ' + fixedVp + '% of viewport height',
+      detail: 'Fixed elements take significant viewport space. Monitor on smaller screens.',
+      fix: 'Consider collapsing or reducing fixed element height on mobile.',
+      presetRef: null,
+      source: 'NNGroup — https://www.nngroup.com/articles/sticky-headers/'
+    });
+  }
+
+  // Text overlap — fixed/sticky elements without opaque background overlapping text below
+  var textOverlaps = layout.textOverlaps || [];
+  if (textOverlaps.length > 0) {
+    checks++;
+    var overlapDetails = textOverlaps.slice(0, 3).map(function(o) {
+      return o.fixed + ' ("' + o.fixedText.substring(0, 20) + '") overlaps ' + o.under + ' ("' + o.underText.substring(0, 20) + '")';
+    });
+    findings.push({
+      severity: textOverlaps.length > 2 ? 'error' : 'warning',
+      title: textOverlaps.length + ' fixed element(s) overlap text without opaque background',
+      detail: 'Fixed/sticky elements with transparent backgrounds overlap readable text underneath, making both unreadable: ' + overlapDetails.join('; '),
+      fix: 'Add an opaque or semi-opaque background (bg-white/90, backdrop-blur) to fixed elements that overlap content. Or hide the element when it scrolls over content sections.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
+    });
+  }
+
+  // Child exceeds parent — elements sticking out of their container
+  var childExceeds = layout.childExceedsParent || [];
+  if (childExceeds.length > 0) {
+    // Split: deliberate (parent has explicit overflow:hidden/clip) vs accidental (default visible)
+    var accidental = childExceeds.filter(function(c) { return !c.deliberate; });
+    var deliberate = childExceeds.filter(function(c) { return c.deliberate; });
+    if (accidental.length > 0) {
+      checks++;
+      var accDetails = accidental.slice(0, 3).map(function(c) {
+        return c.childTag + (c.childText ? ' ("' + c.childText.substring(0, 15) + '…")' : '') + ' exceeds ' + c.parent + ' by ' + c.excess + 'px';
+      });
+      findings.push({
+        severity: 'warning',
+        title: accidental.length + ' element(s) wider than parent without overflow handling',
+        detail: 'These elements extend past their parent with no overflow set (likely unintentional): ' + accDetails.join('; '),
+        fix: 'Add max-w-full or overflow-x-auto on the parent. If intentional, set overflow-hidden or overflow-visible explicitly.',
+        presetRef: null,
+        source: 'CSS Box Model — https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_box_model'
+      });
+    }
+    if (deliberate.length > 0) {
+      var delDetails = deliberate.slice(0, 3).map(function(c) {
+        return c.childTag + (c.childText ? ' ("' + c.childText.substring(0, 15) + '…")' : '') + ' exceeds ' + c.parent + ' by ' + c.excess + 'px (overflow: ' + c.parentOverflow + ')';
+      });
+      findings.push({
+        severity: 'info',
+        title: deliberate.length + ' element(s) wider than parent (overflow explicitly set)',
+        detail: 'Parent has explicit overflow handling — likely intentional: ' + delDetails.join('; '),
+        fix: 'Verify this overflow is intentional. If content is being clipped unexpectedly, use overflow-x-auto for scroll or constrain child width.',
+        presetRef: null,
+        source: 'CSS Box Model — https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_box_model'
+      });
+    }
+  }
+
+  // Visual noise density (opt-in, full scan)
+  var noiseBands = layout.visualNoiseBands || [];
+  var maxNoise = noiseBands.reduce(function(m, b) { return Math.max(m, b.score); }, 0);
+  if (maxNoise > 25) {
+    findings.push({
+      severity: maxNoise > 40 ? 'warning' : 'info',
+      title: 'High visual density in viewport band (noise score: ' + maxNoise + ')',
+      detail: 'A viewport-height region has many competing visual elements (shadows, colors, borders, bold text, images).',
+      fix: 'Reduce competing elements: fewer borders, consolidate backgrounds, or add whitespace between sections.',
+      presetRef: null,
+      source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+    });
+  }
+
+  // Empty containers
+  var emptyCont = layout.emptyContainers || 0;
+  if (emptyCont > 0) {
+    findings.push({
+      severity: 'info',
+      title: emptyCont + ' visible container(s) appear empty',
+      detail: 'Lists, sections, or grids are visible but have no text or media content. Could indicate a missing empty state.',
+      fix: 'Add an empty state message, illustration, or CTA (e.g., "No items yet").',
+      presetRef: null,
+      source: 'NNGroup — https://www.nngroup.com/articles/empty-state-ui-design/'
+    });
+  }
+
+  // Hidden clip — elements with overflow-x:hidden that silently clip content
+  var hiddenClips = layout.hiddenClipElements || [];
+  if (hiddenClips.length > 0) {
+    checks++;
+    var clipDetails = hiddenClips.slice(0, 3).map(function(c) {
+      return c.selector + ' clips ' + c.clipped + 'px of content';
+    });
+    findings.push({
+      severity: hiddenClips.length > 2 ? 'warning' : 'info',
+      title: hiddenClips.length + ' element(s) silently clip overflowing content',
+      detail: 'These elements use overflow-x:hidden to hide content that doesn\'t fit, instead of allowing scroll or fixing the layout: ' + clipDetails.join('; '),
+      fix: 'Use overflow-x-auto to allow scrolling, or fix the root cause — constrain child widths with max-w-full. overflow-x-hidden masks layout bugs.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
+    });
+  }
+
+  // DOM statistics — structural quality indicators (info-only)
+  var domStats = (data.structure || {}).domStats;
+  if (domStats) {
+    checks++;
+    if (domStats.divRatio > 60 && domStats.semanticCount < 5) {
+      findings.push({
+        severity: 'info',
+        title: 'Div-heavy markup (' + domStats.divRatio + '% divs, ' + domStats.semanticCount + ' semantic elements)',
+        detail: domStats.divCount + ' divs vs ' + domStats.semanticCount + ' semantic elements (nav, header, footer, section, article, etc.). Top tags: ' + domStats.topTags.map(function(t) { return t.tag + '×' + t.count; }).join(', '),
+        fix: 'Replace generic divs with semantic HTML where appropriate: <nav>, <header>, <main>, <section>, <article>, <aside>. This improves accessibility and helps screen readers navigate.',
+        presetRef: null,
+        source: 'HTML Living Standard — https://html.spec.whatwg.org/multipage/dom.html#semantics-2'
+      });
+    } else {
+      passed++;
+    }
+    if (domStats.displayNoneCount > 50) {
+      checks++;
+      findings.push({
+        severity: 'info',
+        title: domStats.displayNoneCount + ' elements with display:none — possible hidden content',
+        detail: domStats.ariaHiddenCount + ' have aria-hidden="true". Large numbers of hidden elements may indicate unused markup, off-canvas panels, or JS-toggled content that should be checked.',
+        fix: 'Review hidden elements. If they\'re unused, remove them to reduce DOM size. If they\'re interactive panels (menus, modals), ensure they\'re accessible when revealed.',
+        presetRef: null,
+        source: 'Web Almanac DOM complexity — https://almanac.httparchive.org/en/2022/markup#elements'
+      });
+    }
+  }
+
+  // Silently clipped flex/grid overflow (mobile)
+  var clippedOverflow = (data.layout && data.layout.clippedOverflow) || [];
+  if (clippedOverflow.length > 0) {
+    checks++;
+    var clipDetails = clippedOverflow.slice(0, 3).map(function(c) {
+      return c.selector + ' overflows by ' + c.overflow + 'px (' + c.display + ' container, ' + c.containerWidth + 'px wide)';
+    });
+    findings.push({
+      severity: clippedOverflow.some(function(c) { return c.overflow > 30; }) ? 'error' : 'warning',
+      title: clippedOverflow.length + ' flex/grid container(s) overflow silently on mobile',
+      detail: clipDetails.join('; '),
+      fix: 'Content overflows the container without a scrollbar — may cause horizontal scroll on iOS Safari. Add flex-wrap, reduce gap size on mobile (gap-4 sm:gap-8), or add overflow-x-hidden.',
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
+      locator: { selector: clippedOverflow[0].selector, text: '', bboxes: clippedOverflow.filter(function(c) { return c.bbox; }).map(function(c) { return c.bbox; }) }
+    });
+  }
+
+  // Fixed element scroll-contrast risk
+  var fixedRisks = (data.layout && data.layout.fixedContrastRisks) || [];
+  if (fixedRisks.length > 0) {
+    checks++;
+    var totalChildren = fixedRisks.reduce(function(sum, r) { return sum + (r.childCount || 1); }, 0);
+    var riskDetails = fixedRisks.slice(0, 3).map(function(r) {
+      var label = r.element + (r.text ? ' ("' + r.text.substring(0, 20) + '")' : '');
+      var count = r.childCount > 1 ? ' (' + r.childCount + ' children)' : '';
+      return label + count + ' — ' + (r.risk === 'light-on-light' ? 'light color may vanish on light sections' : 'dark color may vanish on dark sections');
+    });
+    findings.push({
+      severity: totalChildren > 4 ? 'error' : 'warning',
+      title: fixedRisks.length + ' fixed container(s) with ' + totalChildren + ' element(s) may lose contrast when scrolled',
+      detail: riskDetails.join('; '),
+      fix: 'Fixed/sticky elements must adapt their color when scrolling over different-colored sections. Use a scroll listener to toggle text color, or add a semi-opaque background to the fixed container.',
+      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum',
+      locator: { selector: fixedRisks[0].selector, text: fixedRisks[0].text || '', bboxes: fixedRisks.filter(function(r) { return r.bbox; }).map(function(r) { return r.bbox; }) }
+    });
+  }
+
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+  return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Layout Quality', icon: 'layout' };
+}
+
+
+  S.register("layout", scoreLayout, 5, "Layout Quality", "layout");
+})();
+</file>
+
 <file path="docs/analyzer-viewer.js">
 // make-it-look-good — Screenshot Viewer with Bbox Overlays
 // Stitches screenshot sections into one continuous scrollable image
@@ -30356,481 +30831,6 @@ window.MilgViewer = (function() {
     close: close,
     showFinding: showFinding
   };
-})();
-</file>
-
-<file path="docs/scoring/layout.js">
-// Scoring Module: Layout Quality
-// Weight: 5%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreLayout(data) {
-  var findings = [];
-  var checks = 0;
-  var passed = 0;
-  var layout = data.layout || {};
-
-  // Whitespace rhythm: check if section gaps are consistent
-  var gaps = layout.sectionGaps || [];
-  if (gaps.length >= 2) {
-    checks++;
-    var avg = gaps.reduce(function(s, g) { return s + g; }, 0) / gaps.length;
-    var variance = gaps.reduce(function(s, g) { return s + Math.pow(g - avg, 2); }, 0) / gaps.length;
-    var stdDev = Math.sqrt(variance);
-    var cv = avg > 0 ? stdDev / avg : 0; // coefficient of variation
-    if (cv < 0.3) {
-      passed++;
-    } else {
-      findings.push({
-        severity: cv > 0.6 ? 'warning' : 'info',
-        title: 'Inconsistent spacing between sections (CV: ' + Math.round(cv * 100) + '%)',
-        detail: 'Gaps range from ' + Math.min.apply(null, gaps) + 'px to ' + Math.max.apply(null, gaps) + 'px (avg ' + Math.round(avg) + 'px)',
-        fix: 'Use consistent spacing between major sections. Pick one value (e.g. 64px or 96px) and use it everywhere.',
-        presetRef: null,
-        source: 'Gestalt similarity — https://lawsofux.com/law-of-similarity/'
-      });
-    }
-  }
-
-  // Alignment consistency: cluster left edges and find near-misses ("jagged" alignment)
-  var edges = layout.alignmentEdges || [];
-  if (edges.length >= 5) {
-    checks++;
-    // Cluster edges within 3px (considered aligned)
-    var clusters = [];
-    var sorted = edges.slice().sort(function(a, b) { return a - b; });
-    var current = [sorted[0]];
-    for (var i = 1; i < sorted.length; i++) {
-      if (sorted[i] - sorted[i - 1] <= 3) {
-        current.push(sorted[i]);
-      } else {
-        clusters.push(current);
-        current = [sorted[i]];
-      }
-    }
-    clusters.push(current);
-    // Find near-miss clusters (4-12px apart — elements on same axis but jagged)
-    var nearMisses = 0;
-    var jaggedExamples = [];
-    var edgeDetails = layout.alignmentEdgeDetails || [];
-    for (var i = 1; i < clusters.length; i++) {
-      var prevAvg = Math.round(clusters[i - 1].reduce(function(s,v){return s+v},0) / clusters[i - 1].length);
-      var currAvg = Math.round(clusters[i].reduce(function(s,v){return s+v},0) / clusters[i].length);
-      var gap = currAvg - prevAvg;
-      if (gap > 3 && gap <= 12) {
-        nearMisses++;
-        // Find example elements at each edge for actionable detail
-        var prevEl = edgeDetails.find(function(d) { return Math.abs(d.left - prevAvg) <= 3; });
-        var currEl = edgeDetails.find(function(d) { return Math.abs(d.left - currAvg) <= 3; });
-        var example = prevAvg + 'px → ' + currAvg + 'px (' + gap + 'px off)';
-        if (prevEl && currEl) {
-          example += ': ' + prevEl.tag + ' "' + (prevEl.text || '').substring(0, 20) + '" vs ' + currEl.tag + ' "' + (currEl.text || '').substring(0, 20) + '"';
-        }
-        jaggedExamples.push(example);
-      }
-    }
-    // Also check how many unique clusters there are relative to element count
-    var clusterRatio = clusters.length / edges.length;
-    if (nearMisses === 0 && clusterRatio < 0.5) {
-      passed++;
-    } else if (nearMisses > 0) {
-      findings.push({
-        severity: nearMisses >= 3 ? 'warning' : 'info',
-        title: nearMisses + ' jagged alignment(s) — elements on same axis but ' + (nearMisses >= 3 ? 'noticeably' : 'slightly') + ' off',
-        detail: clusters.length + ' alignment edges across ' + edges.length + ' elements. ' + (jaggedExamples.length > 0 ? 'Offsets: ' + jaggedExamples.slice(0, 3).join(', ') : ''),
-        fix: 'Elements that share a visual axis should be exactly aligned. Check that container padding, margin, and grid column widths are consistent. In Tailwind: use consistent px-4/px-6 and grid/flex alignment.',
-        presetRef: null,
-        source: 'Gestalt continuity — https://lawsofux.com/law-of-common-region/'
-      });
-    } else if (clusterRatio >= 0.5) {
-      findings.push({
-        severity: 'info',
-        title: 'Weak alignment grid — ' + clusters.length + ' distinct left edges across ' + edges.length + ' elements',
-        detail: 'A well-aligned layout typically has 2-4 dominant alignment edges. High variance suggests inconsistent margins/padding.',
-        fix: 'Establish a consistent alignment grid. Use the same container padding and let content flow within columns.',
-        presetRef: null,
-        source: 'Gestalt continuity — https://lawsofux.com/law-of-common-region/'
-      });
-    }
-  }
-
-  // Visual hierarchy: heading-to-body ratios
-  var vh = layout.visualHierarchy || {};
-  if (vh.h1ToBody > 0) {
-    checks++;
-    if (vh.h1ToBody >= 2 && vh.h1ToBody <= 4) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: 'H1 is ' + vh.h1ToBody + 'x body text (ideal: 2-4x)',
-        detail: vh.h1ToBody < 2 ? 'H1 doesn\'t stand out enough from body text' : 'H1 may be too large relative to body text',
-        fix: 'H1 should be 2-4x the body font size for clear hierarchy. At 16px body, H1 should be 32-64px.',
-        presetRef: null,
-        source: 'Modular type scales — https://typescale.com/'
-      });
-    }
-  }
-
-  // H2-to-body ratio (secondary hierarchy)
-  if (vh.h2ToBody > 0) {
-    checks++;
-    if (vh.h2ToBody >= 1.3 && vh.h2ToBody <= 2.5) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: 'H2 is ' + vh.h2ToBody + 'x body text (ideal: 1.3-2.5x)',
-        detail: vh.h2ToBody < 1.3 ? 'H2 is too close to body text size — weak sub-section hierarchy' : 'H2 may be too large, competing with H1',
-        fix: 'H2 should be clearly smaller than H1 but distinct from body. At 16px body, H2 should be 20-40px.',
-        presetRef: null,
-        source: 'Modular type scales — https://typescale.com/'
-      });
-    }
-  }
-
-  // Border radius consistency (moved from consistency to layout)
-  // Exclude pill/circle values (9999px, 50%, or anything > 100px) — these are intentional full-round shapes, not part of the design scale
-  var radii = (layout.borderRadii || []).filter(function(r) {
-    var v = r.value;
-    if (v === '50%' || v === '9999px') return false;
-    var px = parseFloat(v);
-    return !(px > 100);
-  });
-  if (radii.length > 0) {
-    checks++;
-    if (radii.length <= 4) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: radii.length + ' distinct border-radius values (recommend 2-4, excluding pill/circle shapes)',
-        detail: 'Values: ' + radii.slice(0, 6).map(function(r) { return r.value + ' (' + r.count + 'x)'; }).join(', '),
-        fix: 'Standardize border-radius to 2-4 values. In Tailwind: rounded-sm, rounded, rounded-lg, rounded-xl.',
-        presetRef: null,
-        source: 'Material Design 3 — https://m3.material.io/styles/shape/overview'
-      });
-    }
-  }
-
-  // Content-to-whitespace balance (if we have element count and viewport)
-  if (data.structure && data.structure.totalElements > 10) {
-    var elCount = data.structure.totalElements;
-    checks++;
-    // Very sparse or very dense pages
-    if (elCount > 3000) {
-      findings.push({
-        severity: 'info',
-        title: 'Dense page (' + elCount + ' elements) — may feel cluttered',
-        detail: 'High element density can overwhelm users. Consider progressive disclosure.',
-        fix: 'Break content into sections, use collapsible panels, or paginate.',
-        presetRef: null,
-        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
-      });
-    } else {
-      passed++;
-    }
-  }
-
-  // Off-screen elements: visible elements positioned outside viewport (x-axis)
-  var offscreen = layout.offscreenElements || [];
-  if (offscreen.length > 0) {
-    checks++;
-    var offDetails = offscreen.slice(0, 5).map(function(e) {
-      var label = e.element;
-      if (e.text) label += ' ("' + e.text.substring(0, 25) + (e.text.length > 25 ? '…' : '') + '")';
-      return label + ' at x=' + e.left + 'px';
-    });
-    findings.push({
-      severity: offscreen.length > 3 ? 'error' : 'warning',
-      title: offscreen.length + ' element(s) positioned outside viewport',
-      detail: offDetails.join('; '),
-      fix: 'Check absolute/fixed positioning. On mobile, dropdown menus with right-0 may overflow left. Use left-0 sm:right-0 or max-w-[calc(100vw-2rem)]. For elements extending right, check fixed widths wider than viewport.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
-      locator: { selector: offscreen[0] ? offscreen[0].selector : '', text: offscreen[0] ? (offscreen[0].text || '') : '', bboxes: offscreen.filter(function(o) { return o.bbox; }).map(function(o) { return o.bbox; }) }
-    });
-  } else {
-    checks++;
-    passed++;
-  }
-
-  // Horizontal scroll on containers — use refined classification
-  var hScrollContainers = layout.horizontalScrollContainers || [];
-  var bugScrollContainers = hScrollContainers.filter(function(c) { return c.classification === 'bug' || !c.intentional; });
-  if (bugScrollContainers.length > 0 || data.structure.hasHorizontalOverflow) {
-    checks++;
-    var scrollDetails = bugScrollContainers.slice(0, 3).map(function(c) {
-      var reasonLabel = c.reason === 'structural-children-in-scroll' ? ' (structural content in scroll container)'
-        : c.reason === 'wide-container-scrolls' ? ' (wide container should fill viewport)'
-        : c.reason === 'no-overflow-css' ? ' (no overflow CSS — content spills)'
-        : '';
-      return c.selector + ' overflows by ' + c.overflow + 'px' + reasonLabel;
-    });
-    if (data.structure.hasHorizontalOverflow) scrollDetails.unshift('Page body has horizontal scroll');
-    findings.push({
-      severity: 'error',
-      title: (data.structure.hasHorizontalOverflow ? 'Page has horizontal scroll' : bugScrollContainers.length + ' container(s) overflow horizontally'),
-      detail: scrollDetails.join('; '),
-      fix: 'Fix horizontal overflow: add overflow-x-hidden on the outer wrapper, check for elements with fixed widths wider than viewport, or add max-w-full. Common causes: fixed-width tables, absolute positioned elements, images without max-width. If a wide container has overflow-x-auto but contains page sections (nav, forms, headings), remove the overflow and fix the root cause.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
-      locator: { selector: bugScrollContainers[0] ? bugScrollContainers[0].selector : '', text: '', bboxes: bugScrollContainers.filter(function(c) { return c.bbox; }).map(function(c) { return c.bbox; }) }
-    });
-  } else {
-    checks++;
-    passed++;
-  }
-
-  // Nested scrollbars (scroll within scroll — bad UX)
-  var nestedScrollbars = layout.nestedScrollbars || 0;
-  if (nestedScrollbars > 0) {
-    checks++;
-    findings.push({
-      severity: nestedScrollbars > 2 ? 'error' : 'warning',
-      title: nestedScrollbars + ' nested scrollbar(s) detected (scroll within scroll)',
-      detail: 'Scrollable elements inside other scrollable elements confuse users — they don\'t know which container will scroll.',
-      fix: 'Avoid nested scrollbars. Give inner containers enough height to show content, or use pagination/collapsible sections instead of scroll. If a table must scroll horizontally, ensure the outer container does not also scroll.',
-      presetRef: null,
-      source: 'NNGroup — https://www.nngroup.com/articles/scrolling-and-scrollbars/'
-    });
-  }
-
-  // Hidden panel overflow issues (menus, dialogs revealed by hybrid unhide)
-  var hiddenPanelIssues = layout.hiddenPanelIssues || [];
-  if (hiddenPanelIssues.length > 0) {
-    checks++;
-    var panelDetails = hiddenPanelIssues.slice(0, 3).map(function(p) {
-      var issueTypes = p.issues.map(function(i) {
-        return i.type === 'right-overflow' ? 'overflows right by ' + i.overflow + 'px'
-          : i.type === 'left-overflow' ? 'overflows left by ' + i.overflow + 'px'
-          : i.type === 'internal-overflow' ? 'content overflows internally by ' + i.overflow + 'px'
-          : i.type;
-      });
-      return p.selector + ' (' + p.role + '): ' + issueTypes.join(', ');
-    });
-    findings.push({
-      severity: hiddenPanelIssues.length > 2 ? 'error' : 'warning',
-      title: hiddenPanelIssues.length + ' hidden panel(s) overflow when revealed (menus/dialogs)',
-      detail: 'These panels are hidden at load time but overflow the viewport when opened: ' + panelDetails.join('; '),
-      fix: 'Dropdown menus and dialogs must fit within the viewport when revealed. Use max-w-[calc(100vw-1rem)], or position with left-0 instead of right-0 on narrow viewports. For dialogs: add max-h-[90vh] overflow-y-auto.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
-      locator: { selector: hiddenPanelIssues[0] ? hiddenPanelIssues[0].selector : '', text: '', bboxes: hiddenPanelIssues.filter(function(p) { return p.bbox; }).map(function(p) { return p.bbox; }) }
-    });
-  } else if (layout.hiddenPanelCount > 0) {
-    checks++;
-    passed++;
-  }
-
-  // Button/CTA hierarchy
-  var btnH = layout.buttonHierarchy || {};
-  if (btnH.total > 3 && btnH.filled > 0 && btnH.outline === 0 && btnH.text === 0) {
-    findings.push({
-      severity: 'info',
-      title: 'All ' + btnH.total + ' buttons use the same filled style — no visual hierarchy',
-      detail: 'Without primary/secondary/tertiary button styles, users can\'t distinguish the main action.',
-      fix: 'Designate one primary CTA (filled) and style others as secondary (outline) or tertiary (text-only).',
-      presetRef: 'All presets use primary + secondary button styles',
-      source: 'Material Design 3 — https://m3.material.io/components/buttons/overview'
-    });
-  }
-
-  // Fixed elements consuming viewport
-  var fixedVp = layout.fixedViewportConsumption || 0;
-  if (fixedVp > 30) {
-    findings.push({
-      severity: 'warning',
-      title: 'Fixed elements consume ' + fixedVp + '% of viewport height',
-      detail: 'Sticky headers, footers, and toolbars take up more than 30% of the screen, leaving little room for content.',
-      fix: 'Collapse fixed elements on scroll, or reduce their height. Consider hiding the header on scroll-down, showing on scroll-up.',
-      presetRef: null,
-      source: 'NNGroup — https://www.nngroup.com/articles/sticky-headers/'
-    });
-  } else if (fixedVp > 20) {
-    findings.push({
-      severity: 'info',
-      title: 'Fixed elements consume ' + fixedVp + '% of viewport height',
-      detail: 'Fixed elements take significant viewport space. Monitor on smaller screens.',
-      fix: 'Consider collapsing or reducing fixed element height on mobile.',
-      presetRef: null,
-      source: 'NNGroup — https://www.nngroup.com/articles/sticky-headers/'
-    });
-  }
-
-  // Text overlap — fixed/sticky elements without opaque background overlapping text below
-  var textOverlaps = layout.textOverlaps || [];
-  if (textOverlaps.length > 0) {
-    checks++;
-    var overlapDetails = textOverlaps.slice(0, 3).map(function(o) {
-      return o.fixed + ' ("' + o.fixedText.substring(0, 20) + '") overlaps ' + o.under + ' ("' + o.underText.substring(0, 20) + '")';
-    });
-    findings.push({
-      severity: textOverlaps.length > 2 ? 'error' : 'warning',
-      title: textOverlaps.length + ' fixed element(s) overlap text without opaque background',
-      detail: 'Fixed/sticky elements with transparent backgrounds overlap readable text underneath, making both unreadable: ' + overlapDetails.join('; '),
-      fix: 'Add an opaque or semi-opaque background (bg-white/90, backdrop-blur) to fixed elements that overlap content. Or hide the element when it scrolls over content sections.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
-    });
-  }
-
-  // Child exceeds parent — elements sticking out of their container
-  var childExceeds = layout.childExceedsParent || [];
-  if (childExceeds.length > 0) {
-    // Split: deliberate (parent has explicit overflow:hidden/clip) vs accidental (default visible)
-    var accidental = childExceeds.filter(function(c) { return !c.deliberate; });
-    var deliberate = childExceeds.filter(function(c) { return c.deliberate; });
-    if (accidental.length > 0) {
-      checks++;
-      var accDetails = accidental.slice(0, 3).map(function(c) {
-        return c.childTag + (c.childText ? ' ("' + c.childText.substring(0, 15) + '…")' : '') + ' exceeds ' + c.parent + ' by ' + c.excess + 'px';
-      });
-      findings.push({
-        severity: 'warning',
-        title: accidental.length + ' element(s) wider than parent without overflow handling',
-        detail: 'These elements extend past their parent with no overflow set (likely unintentional): ' + accDetails.join('; '),
-        fix: 'Add max-w-full or overflow-x-auto on the parent. If intentional, set overflow-hidden or overflow-visible explicitly.',
-        presetRef: null,
-        source: 'CSS Box Model — https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_box_model'
-      });
-    }
-    if (deliberate.length > 0) {
-      var delDetails = deliberate.slice(0, 3).map(function(c) {
-        return c.childTag + (c.childText ? ' ("' + c.childText.substring(0, 15) + '…")' : '') + ' exceeds ' + c.parent + ' by ' + c.excess + 'px (overflow: ' + c.parentOverflow + ')';
-      });
-      findings.push({
-        severity: 'info',
-        title: deliberate.length + ' element(s) wider than parent (overflow explicitly set)',
-        detail: 'Parent has explicit overflow handling — likely intentional: ' + delDetails.join('; '),
-        fix: 'Verify this overflow is intentional. If content is being clipped unexpectedly, use overflow-x-auto for scroll or constrain child width.',
-        presetRef: null,
-        source: 'CSS Box Model — https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_box_model'
-      });
-    }
-  }
-
-  // Visual noise density (opt-in, full scan)
-  var noiseBands = layout.visualNoiseBands || [];
-  var maxNoise = noiseBands.reduce(function(m, b) { return Math.max(m, b.score); }, 0);
-  if (maxNoise > 25) {
-    findings.push({
-      severity: maxNoise > 40 ? 'warning' : 'info',
-      title: 'High visual density in viewport band (noise score: ' + maxNoise + ')',
-      detail: 'A viewport-height region has many competing visual elements (shadows, colors, borders, bold text, images).',
-      fix: 'Reduce competing elements: fewer borders, consolidate backgrounds, or add whitespace between sections.',
-      presetRef: null,
-      source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
-    });
-  }
-
-  // Empty containers
-  var emptyCont = layout.emptyContainers || 0;
-  if (emptyCont > 0) {
-    findings.push({
-      severity: 'info',
-      title: emptyCont + ' visible container(s) appear empty',
-      detail: 'Lists, sections, or grids are visible but have no text or media content. Could indicate a missing empty state.',
-      fix: 'Add an empty state message, illustration, or CTA (e.g., "No items yet").',
-      presetRef: null,
-      source: 'NNGroup — https://www.nngroup.com/articles/empty-state-ui-design/'
-    });
-  }
-
-  // Hidden clip — elements with overflow-x:hidden that silently clip content
-  var hiddenClips = layout.hiddenClipElements || [];
-  if (hiddenClips.length > 0) {
-    checks++;
-    var clipDetails = hiddenClips.slice(0, 3).map(function(c) {
-      return c.selector + ' clips ' + c.clipped + 'px of content';
-    });
-    findings.push({
-      severity: hiddenClips.length > 2 ? 'warning' : 'info',
-      title: hiddenClips.length + ' element(s) silently clip overflowing content',
-      detail: 'These elements use overflow-x:hidden to hide content that doesn\'t fit, instead of allowing scroll or fixing the layout: ' + clipDetails.join('; '),
-      fix: 'Use overflow-x-auto to allow scrolling, or fix the root cause — constrain child widths with max-w-full. overflow-x-hidden masks layout bugs.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
-    });
-  }
-
-  // DOM statistics — structural quality indicators (info-only)
-  var domStats = (data.structure || {}).domStats;
-  if (domStats) {
-    checks++;
-    if (domStats.divRatio > 60 && domStats.semanticCount < 5) {
-      findings.push({
-        severity: 'info',
-        title: 'Div-heavy markup (' + domStats.divRatio + '% divs, ' + domStats.semanticCount + ' semantic elements)',
-        detail: domStats.divCount + ' divs vs ' + domStats.semanticCount + ' semantic elements (nav, header, footer, section, article, etc.). Top tags: ' + domStats.topTags.map(function(t) { return t.tag + '×' + t.count; }).join(', '),
-        fix: 'Replace generic divs with semantic HTML where appropriate: <nav>, <header>, <main>, <section>, <article>, <aside>. This improves accessibility and helps screen readers navigate.',
-        presetRef: null,
-        source: 'HTML Living Standard — https://html.spec.whatwg.org/multipage/dom.html#semantics-2'
-      });
-    } else {
-      passed++;
-    }
-    if (domStats.displayNoneCount > 50) {
-      checks++;
-      findings.push({
-        severity: 'info',
-        title: domStats.displayNoneCount + ' elements with display:none — possible hidden content',
-        detail: domStats.ariaHiddenCount + ' have aria-hidden="true". Large numbers of hidden elements may indicate unused markup, off-canvas panels, or JS-toggled content that should be checked.',
-        fix: 'Review hidden elements. If they\'re unused, remove them to reduce DOM size. If they\'re interactive panels (menus, modals), ensure they\'re accessible when revealed.',
-        presetRef: null,
-        source: 'Web Almanac DOM complexity — https://almanac.httparchive.org/en/2022/markup#elements'
-      });
-    }
-  }
-
-  // Silently clipped flex/grid overflow (mobile)
-  var clippedOverflow = (data.layout && data.layout.clippedOverflow) || [];
-  if (clippedOverflow.length > 0) {
-    checks++;
-    var clipDetails = clippedOverflow.slice(0, 3).map(function(c) {
-      return c.selector + ' overflows by ' + c.overflow + 'px (' + c.display + ' container, ' + c.containerWidth + 'px wide)';
-    });
-    findings.push({
-      severity: clippedOverflow.some(function(c) { return c.overflow > 30; }) ? 'error' : 'warning',
-      title: clippedOverflow.length + ' flex/grid container(s) overflow silently on mobile',
-      detail: clipDetails.join('; '),
-      fix: 'Content overflows the container without a scrollbar — may cause horizontal scroll on iOS Safari. Add flex-wrap, reduce gap size on mobile (gap-4 sm:gap-8), or add overflow-x-hidden.',
-      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
-      locator: { selector: clippedOverflow[0].selector, text: '', bboxes: clippedOverflow.filter(function(c) { return c.bbox; }).map(function(c) { return c.bbox; }) }
-    });
-  }
-
-  // Fixed element scroll-contrast risk
-  var fixedRisks = (data.layout && data.layout.fixedContrastRisks) || [];
-  if (fixedRisks.length > 0) {
-    checks++;
-    var totalChildren = fixedRisks.reduce(function(sum, r) { return sum + (r.childCount || 1); }, 0);
-    var riskDetails = fixedRisks.slice(0, 3).map(function(r) {
-      var label = r.element + (r.text ? ' ("' + r.text.substring(0, 20) + '")' : '');
-      var count = r.childCount > 1 ? ' (' + r.childCount + ' children)' : '';
-      return label + count + ' — ' + (r.risk === 'light-on-light' ? 'light color may vanish on light sections' : 'dark color may vanish on dark sections');
-    });
-    findings.push({
-      severity: totalChildren > 4 ? 'error' : 'warning',
-      title: fixedRisks.length + ' fixed container(s) with ' + totalChildren + ' element(s) may lose contrast when scrolled',
-      detail: riskDetails.join('; '),
-      fix: 'Fixed/sticky elements must adapt their color when scrolling over different-colored sections. Use a scroll listener to toggle text color, or add a semi-opaque background to the fixed container.',
-      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum',
-      locator: { selector: fixedRisks[0].selector, text: fixedRisks[0].text || '', bboxes: fixedRisks.filter(function(r) { return r.bbox; }).map(function(r) { return r.bbox; }) }
-    });
-  }
-
-  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-  return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Layout Quality', icon: 'layout' };
-}
-
-
-  S.register("layout", scoreLayout, 5, "Layout Quality", "layout");
 })();
 </file>
 
@@ -36127,8 +36127,8 @@ function scoreLayout(data) {
 
         // Store full-page canvas as single PNG for the viewer (pixel-perfect, no section stitching)
         try {
-          data.screenshotFull = fullCanvas.toDataURL('image/png');
-          console.log('[ss] ' + _t() + 'Full-page PNG stored (' + Math.round(data.screenshotFull.length / 1024) + 'KB)');
+          data.screenshotFull = fullCanvas.toDataURL('image/webp', 0.8);
+          console.log('[ss] ' + _t() + 'Full-page WebP stored (' + Math.round(data.screenshotFull.length / 1024) + 'KB)');
         } catch(e) {
           console.warn('[ss] Full-page PNG failed:', e.message);
         }

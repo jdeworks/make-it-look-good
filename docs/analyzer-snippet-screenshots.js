@@ -1774,8 +1774,8 @@
 
         // Store full-page canvas as single PNG for the viewer (pixel-perfect, no section stitching)
         try {
-          data.screenshotFull = fullCanvas.toDataURL('image/png');
-          console.log('[ss] ' + _t() + 'Full-page PNG stored (' + Math.round(data.screenshotFull.length / 1024) + 'KB)');
+          data.screenshotFull = fullCanvas.toDataURL('image/webp', 0.8);
+          console.log('[ss] ' + _t() + 'Full-page WebP stored (' + Math.round(data.screenshotFull.length / 1024) + 'KB)');
         } catch(e) {
           console.warn('[ss] Full-page PNG failed:', e.message);
         }
