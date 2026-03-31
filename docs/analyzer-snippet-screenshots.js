@@ -1758,62 +1758,59 @@
       var statusEl = document.getElementById('milg-ss-status');
       if (statusEl) statusEl.textContent = 'Rendering page to canvas...';
 
-      // Inject calibration markers to measure canvas offset.
-      // Use documentElement (not body) for reliable absolute positioning.
-      // Make them 20x20px for reliable detection at 0.5x scale (10x10 in canvas).
-      var _calibMarkers = [];
-      var _calibPositions = [500, 1500, 3000]; // DOM Y positions
-      _calibPositions.forEach(function(domY, idx) {
-        var marker = document.createElement('div');
-        marker.id = 'milg-calib-' + idx;
-        marker.style.cssText = 'position:absolute;left:2px;top:' + domY + 'px;width:20px;height:20px;background:#ff0000;z-index:2147483647;pointer-events:none;opacity:1;';
-        document.documentElement.appendChild(marker);
-        _calibMarkers.push(marker);
-      });
-
       ms.domToCanvas(document.documentElement, {
         scale: 0.5,
         filter: _ssFilter,
         timeout: 8000
       }).then(function(fullCanvas) {
-        // Remove calibration markers
-        _calibMarkers.forEach(function(m) { if (m.parentNode) m.parentNode.removeChild(m); });
-
         console.log('[ss] ' + _t() + 'Full canvas captured: ' + fullCanvas.width + 'x' + fullCanvas.height);
 
-        // Detect calibration offset from markers
         var secScale = 0.5;
+
+        // Calibrate by finding existing contrast pair elements in the canvas.
+        // We know each pair's fg color and bbox position. Sample the canvas at
+        // bbox center and scan ±200px to find pixels matching that fg color.
         var _calibCtx = fullCanvas.getContext('2d', { willReadFrequently: true });
         var _calibOffsets = [];
-        _calibPositions.forEach(function(domY) {
-          var expectedCanvasY = Math.round(domY * secScale);
-          // Scan a 5px wide column at left edge for red marker (±200px range)
-          var scanStart = Math.max(0, expectedCanvasY - 200);
-          var scanEnd = Math.min(fullCanvas.height, expectedCanvasY + 200);
-          var found = false;
-          for (var sy = scanStart; sy < scanEnd && !found; sy++) {
-            for (var sx = 0; sx < 12 && !found; sx++) {
-              var px = _calibCtx.getImageData(sx, sy, 1, 1).data;
-              if (px[0] > 200 && px[1] < 50 && px[2] < 50) {
-                var offset = expectedCanvasY - sy;
-                _calibOffsets.push(offset);
-                console.log('[ss] Calibration: dom.top=' + domY + ' → expected=' + expectedCanvasY + ', found red at (' + sx + ',' + sy + '), offset=' + offset);
-                found = true;
-              }
-            }
+        var calibPairs = (data.colors.contrastPairs || []).filter(function(p) {
+          return p.bbox && p.bbox.top > 300 && p.bbox.width > 30 && p.bbox.height > 8;
+        }).slice(0, 6); // Use up to 6 well-positioned pairs
+
+        calibPairs.forEach(function(pair) {
+          var fgRgb = pair.fg.match(/(\d+)/g);
+          if (!fgRgb || fgRgb.length < 3) return;
+          var fgR = +fgRgb[0], fgG = +fgRgb[1], fgB = +fgRgb[2];
+
+          var cx = Math.round((pair.bbox.left + pair.bbox.width / 2) * secScale);
+          var expectedY = Math.round((pair.bbox.top + pair.bbox.height / 2) * secScale);
+
+          // Scan ±200px for pixels close to the fg color
+          var scanStart = Math.max(0, expectedY - 200);
+          var scanEnd = Math.min(fullCanvas.height, expectedY + 200);
+          var bestY = -1, bestDist = 999;
+          for (var sy = scanStart; sy < scanEnd; sy++) {
+            if (cx < 0 || cx >= fullCanvas.width) continue;
+            var px = _calibCtx.getImageData(cx, sy, 1, 1).data;
+            var dist = Math.abs(px[0] - fgR) + Math.abs(px[1] - fgG) + Math.abs(px[2] - fgB);
+            if (dist < bestDist) { bestDist = dist; bestY = sy; }
           }
-          if (!found) {
-            // Log what was at the expected position for debugging
-            var dbgPx = _calibCtx.getImageData(5, expectedCanvasY, 1, 1).data;
-            console.log('[ss] Calibration: dom.top=' + domY + ' → expected=' + expectedCanvasY + ' — NOT FOUND. Pixel at (5,' + expectedCanvasY + '): rgb(' + dbgPx[0] + ',' + dbgPx[1] + ',' + dbgPx[2] + ')');
+          if (bestDist < 80 && bestY >= 0) {
+            var offset = expectedY - bestY;
+            _calibOffsets.push(offset);
+            console.log('[ss] Calibration: "' + pair.text.substring(0, 20) + '" dom.top=' + pair.bbox.top + ' → expected=' + expectedY + ', fg found at y=' + bestY + ', offset=' + offset + ' (dist=' + bestDist + ')');
           }
         });
-        // Use median offset
+
         var calibOffset = 0;
-        if (_calibOffsets.length > 0) {
+        if (_calibOffsets.length >= 2) {
           _calibOffsets.sort(function(a, b) { return a - b; });
           calibOffset = _calibOffsets[Math.floor(_calibOffsets.length / 2)];
-          console.log('[ss] Calibration offsets: ' + JSON.stringify(_calibOffsets) + ', using median: ' + calibOffset);
+          console.log('[ss] Calibration offsets: ' + JSON.stringify(_calibOffsets) + ', median: ' + calibOffset);
+        } else if (_calibOffsets.length === 1) {
+          calibOffset = _calibOffsets[0];
+          console.log('[ss] Calibration: single sample offset=' + calibOffset);
+        } else {
+          console.log('[ss] Calibration: no pairs matched, offset=0');
         }
 
         // Store full-page canvas as single WebP — used by both report and viewer

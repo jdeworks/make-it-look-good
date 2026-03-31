@@ -2993,6 +2993,137 @@ function scoreCognitiveLoad(data) {
 })();
 </file>
 
+<file path="docs/scoring/registry.js">
+// Scoring Module Registry
+// Each module calls MilgScoring.register() to add its scoring function.
+// The main scoring engine calls all registered modules in order.
+
+window.MilgScoring = (function() {
+  'use strict';
+
+  var modules = [];
+
+  // --- User Persona Profiles ---
+  var PROFILES = {
+    general:          { contrast: 4.5, contrastLarge: 3,   bodyFontMin: 16, lineHeightMin: 1.4, lineHeightMax: 1.6, touchTarget: 44, touchTargetDesktop: 24, touchTargetDesktopWarn: 32, targetSpacing: 8,  fontWeightMin: 0,   maxNavItems: 0, maxLineLength: 75, readingGradeLevel: 0, requireReducedMotion: false, checkCVD: false },
+    wcag_aaa:         { contrast: 7,   contrastLarge: 4.5, bodyFontMin: 16, lineHeightMin: 1.4, lineHeightMax: 1.6, touchTarget: 44, touchTargetDesktop: 24, touchTargetDesktopWarn: 32, targetSpacing: 8,  fontWeightMin: 0,   maxNavItems: 0, maxLineLength: 75, readingGradeLevel: 0, requireReducedMotion: false, checkCVD: false },
+    elderly:          { contrast: 7,   contrastLarge: 4.5, bodyFontMin: 18, lineHeightMin: 1.6, lineHeightMax: 1.8, touchTarget: 48, touchTargetDesktop: 48, touchTargetDesktopWarn: 48, targetSpacing: 12, fontWeightMin: 400, maxNavItems: 7, maxLineLength: 65, readingGradeLevel: 0, requireReducedMotion: true,  checkCVD: false },
+    low_vision:       { contrast: 7,   contrastLarge: 4.5, bodyFontMin: 18, lineHeightMin: 1.5, lineHeightMax: 1.7, touchTarget: 44, touchTargetDesktop: 44, touchTargetDesktopWarn: 44, targetSpacing: 12, fontWeightMin: 300, maxNavItems: 0, maxLineLength: 0,  readingGradeLevel: 0, requireReducedMotion: false, checkCVD: false, warnFontSmoothing: true, warnBackgroundImage: true, iconMinSize: 32 },
+    motor_impairment: { contrast: 4.5, contrastLarge: 3,   bodyFontMin: 16, lineHeightMin: 1.4, lineHeightMax: 1.6, touchTarget: 48, touchTargetDesktop: 48, touchTargetDesktopWarn: 48, targetSpacing: 12, fontWeightMin: 0,   maxNavItems: 0, maxLineLength: 0,  readingGradeLevel: 0, requireReducedMotion: false, checkCVD: false, warnOutlineNone: true },
+    color_blind:      { contrast: 4.5, contrastLarge: 3,   bodyFontMin: 16, lineHeightMin: 1.4, lineHeightMax: 1.6, touchTarget: 44, touchTargetDesktop: 24, touchTargetDesktopWarn: 32, targetSpacing: 8,  fontWeightMin: 0,   maxNavItems: 0, maxLineLength: 0,  readingGradeLevel: 0, requireReducedMotion: false, checkCVD: true },
+    children:         { contrast: 4.5, contrastLarge: 3,   bodyFontMin: 18, lineHeightMin: 1.5, lineHeightMax: 1.8, touchTarget: 48, touchTargetDesktop: 44, touchTargetDesktopWarn: 48, targetSpacing: 16, fontWeightMin: 400, maxNavItems: 5, maxLineLength: 55, readingGradeLevel: 5, requireReducedMotion: false, checkCVD: false },
+    cognitive:        { contrast: 4.5, contrastLarge: 3,   bodyFontMin: 16, lineHeightMin: 1.5, lineHeightMax: 1.7, touchTarget: 44, touchTargetDesktop: 24, touchTargetDesktopWarn: 32, targetSpacing: 8,  fontWeightMin: 0,   maxNavItems: 5, maxLineLength: 65, readingGradeLevel: 8, requireReducedMotion: true,  checkCVD: false }
+  };
+
+  function getProfile(data) {
+    var name = (data && data.profile) || 'general';
+    return PROFILES[name] || PROFILES.general;
+  }
+
+  // --- Color utilities (shared by contrast module) ---
+  function parseColor(str) {
+    if (!str || str === 'transparent' || str === 'rgba(0, 0, 0, 0)') return null;
+    var m = str.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
+    if (m) return { r: +m[1], g: +m[2], b: +m[3], a: m[4] !== undefined ? +m[4] : 1 };
+    var m2 = str.match(/rgba?\((\d+)\s+(\d+)\s+(\d+)(?:\s*\/\s*([\d.]+%?))?\)/);
+    if (m2) { var a = m2[4] !== undefined ? (m2[4].indexOf('%') !== -1 ? parseFloat(m2[4]) / 100 : +m2[4]) : 1; return { r: +m2[1], g: +m2[2], b: +m2[3], a: a }; }
+    return null;
+  }
+
+  function luminance(c) {
+    var rs = c.r / 255, gs = c.g / 255, bs = c.b / 255;
+    var r = rs <= 0.03928 ? rs / 12.92 : Math.pow((rs + 0.055) / 1.055, 2.4);
+    var g = gs <= 0.03928 ? gs / 12.92 : Math.pow((gs + 0.055) / 1.055, 2.4);
+    var b = bs <= 0.03928 ? bs / 12.92 : Math.pow((bs + 0.055) / 1.055, 2.4);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  }
+
+  function contrastRatio(c1, c2) {
+    var l1 = luminance(c1), l2 = luminance(c2);
+    return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+  }
+
+  // --- Public API ---
+  function register(name, scoreFn, weight, label, icon) {
+    modules.push({ name: name, score: scoreFn, weight: weight, label: label, icon: icon });
+  }
+
+  function runScoring(data) {
+    var categories = modules.map(function(mod) {
+      var result = mod.score(data, getProfile(data));
+      result.weight = result.weight || mod.weight;
+      result.label = result.label || mod.label;
+      result.icon = result.icon || mod.icon;
+      return result;
+    });
+
+    var totalWeight = 0;
+    var weightedSum = 0;
+    categories.forEach(function(cat) {
+      if (cat.notApplicable) return; // Skip N/A categories from score
+      totalWeight += cat.weight;
+      weightedSum += cat.score * cat.weight;
+    });
+
+    var overall = Math.round(weightedSum / totalWeight);
+    var grade = overall >= 90 ? 'A' : overall >= 80 ? 'B' : overall >= 70 ? 'C' : overall >= 60 ? 'D' : 'F';
+    var gradeLabel = { A: 'Excellent', B: 'Good', C: 'Needs Improvement', D: 'Significant Issues', F: 'Major Redesign Needed' };
+
+    return {
+      overall: overall,
+      grade: grade,
+      gradeLabel: gradeLabel[grade],
+      categories: categories,
+      meta: data.meta,
+      raw: data
+    };
+  }
+
+  // Standardized scoring: errors=-10, warnings=-3, info=0 (industry standard per Cypress/axe-core)
+  function scoreFromFindings(findings, baseChecks) {
+    var errors = 0, warnings = 0;
+    findings.forEach(function(f) {
+      if (f.severity === 'error') errors++;
+      else if (f.severity === 'warning') warnings++;
+    });
+    // If module provides a checks-based score, use it; otherwise deduction-based
+    if (baseChecks !== undefined && baseChecks > 0) {
+      var passed = baseChecks - errors - warnings;
+      return Math.max(0, Math.round((Math.max(0, passed) / baseChecks) * 100));
+    }
+    return Math.max(0, 100 - (errors * 10) - (warnings * 3));
+  }
+
+  // CVD simulation matrices (Machado et al. 2009, severity 1.0)
+  var CVD_MATRICES = {
+    protanopia:   [0.567, 0.433, 0.000, 0.558, 0.442, 0.000, 0.000, 0.242, 0.758],
+    deuteranopia: [0.625, 0.375, 0.000, 0.700, 0.300, 0.000, 0.000, 0.300, 0.700],
+    tritanopia:   [0.950, 0.050, 0.000, 0.000, 0.433, 0.567, 0.000, 0.475, 0.525]
+  };
+
+  function simulateCVD(rgb, matrix) {
+    return {
+      r: Math.round(Math.min(255, Math.max(0, rgb.r * matrix[0] + rgb.g * matrix[1] + rgb.b * matrix[2]))),
+      g: Math.round(Math.min(255, Math.max(0, rgb.r * matrix[3] + rgb.g * matrix[4] + rgb.b * matrix[5]))),
+      b: Math.round(Math.min(255, Math.max(0, rgb.r * matrix[6] + rgb.g * matrix[7] + rgb.b * matrix[8])))
+    };
+  }
+
+  return {
+    register: register,
+    runScoring: runScoring,
+    getProfile: getProfile,
+    scoreFromFindings: scoreFromFindings,
+    parseColor: parseColor,
+    luminance: luminance,
+    contrastRatio: contrastRatio,
+    simulateCVD: simulateCVD,
+    CVD_MATRICES: CVD_MATRICES,
+    PROFILES: PROFILES
+  };
+})();
+</file>
+
 <file path="docs/scoring/responsive.js">
 // Scoring Module: Responsive Design
 // Weight: 10%
@@ -17867,137 +17998,6 @@ All presets are:
 }
 </file>
 
-<file path="docs/scoring/registry.js">
-// Scoring Module Registry
-// Each module calls MilgScoring.register() to add its scoring function.
-// The main scoring engine calls all registered modules in order.
-
-window.MilgScoring = (function() {
-  'use strict';
-
-  var modules = [];
-
-  // --- User Persona Profiles ---
-  var PROFILES = {
-    general:          { contrast: 4.5, contrastLarge: 3,   bodyFontMin: 16, lineHeightMin: 1.4, lineHeightMax: 1.6, touchTarget: 44, touchTargetDesktop: 24, touchTargetDesktopWarn: 32, targetSpacing: 8,  fontWeightMin: 0,   maxNavItems: 0, maxLineLength: 75, readingGradeLevel: 0, requireReducedMotion: false, checkCVD: false },
-    wcag_aaa:         { contrast: 7,   contrastLarge: 4.5, bodyFontMin: 16, lineHeightMin: 1.4, lineHeightMax: 1.6, touchTarget: 44, touchTargetDesktop: 24, touchTargetDesktopWarn: 32, targetSpacing: 8,  fontWeightMin: 0,   maxNavItems: 0, maxLineLength: 75, readingGradeLevel: 0, requireReducedMotion: false, checkCVD: false },
-    elderly:          { contrast: 7,   contrastLarge: 4.5, bodyFontMin: 18, lineHeightMin: 1.6, lineHeightMax: 1.8, touchTarget: 48, touchTargetDesktop: 48, touchTargetDesktopWarn: 48, targetSpacing: 12, fontWeightMin: 400, maxNavItems: 7, maxLineLength: 65, readingGradeLevel: 0, requireReducedMotion: true,  checkCVD: false },
-    low_vision:       { contrast: 7,   contrastLarge: 4.5, bodyFontMin: 18, lineHeightMin: 1.5, lineHeightMax: 1.7, touchTarget: 44, touchTargetDesktop: 44, touchTargetDesktopWarn: 44, targetSpacing: 12, fontWeightMin: 300, maxNavItems: 0, maxLineLength: 0,  readingGradeLevel: 0, requireReducedMotion: false, checkCVD: false, warnFontSmoothing: true, warnBackgroundImage: true, iconMinSize: 32 },
-    motor_impairment: { contrast: 4.5, contrastLarge: 3,   bodyFontMin: 16, lineHeightMin: 1.4, lineHeightMax: 1.6, touchTarget: 48, touchTargetDesktop: 48, touchTargetDesktopWarn: 48, targetSpacing: 12, fontWeightMin: 0,   maxNavItems: 0, maxLineLength: 0,  readingGradeLevel: 0, requireReducedMotion: false, checkCVD: false, warnOutlineNone: true },
-    color_blind:      { contrast: 4.5, contrastLarge: 3,   bodyFontMin: 16, lineHeightMin: 1.4, lineHeightMax: 1.6, touchTarget: 44, touchTargetDesktop: 24, touchTargetDesktopWarn: 32, targetSpacing: 8,  fontWeightMin: 0,   maxNavItems: 0, maxLineLength: 0,  readingGradeLevel: 0, requireReducedMotion: false, checkCVD: true },
-    children:         { contrast: 4.5, contrastLarge: 3,   bodyFontMin: 18, lineHeightMin: 1.5, lineHeightMax: 1.8, touchTarget: 48, touchTargetDesktop: 44, touchTargetDesktopWarn: 48, targetSpacing: 16, fontWeightMin: 400, maxNavItems: 5, maxLineLength: 55, readingGradeLevel: 5, requireReducedMotion: false, checkCVD: false },
-    cognitive:        { contrast: 4.5, contrastLarge: 3,   bodyFontMin: 16, lineHeightMin: 1.5, lineHeightMax: 1.7, touchTarget: 44, touchTargetDesktop: 24, touchTargetDesktopWarn: 32, targetSpacing: 8,  fontWeightMin: 0,   maxNavItems: 5, maxLineLength: 65, readingGradeLevel: 8, requireReducedMotion: true,  checkCVD: false }
-  };
-
-  function getProfile(data) {
-    var name = (data && data.profile) || 'general';
-    return PROFILES[name] || PROFILES.general;
-  }
-
-  // --- Color utilities (shared by contrast module) ---
-  function parseColor(str) {
-    if (!str || str === 'transparent' || str === 'rgba(0, 0, 0, 0)') return null;
-    var m = str.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
-    if (m) return { r: +m[1], g: +m[2], b: +m[3], a: m[4] !== undefined ? +m[4] : 1 };
-    var m2 = str.match(/rgba?\((\d+)\s+(\d+)\s+(\d+)(?:\s*\/\s*([\d.]+%?))?\)/);
-    if (m2) { var a = m2[4] !== undefined ? (m2[4].indexOf('%') !== -1 ? parseFloat(m2[4]) / 100 : +m2[4]) : 1; return { r: +m2[1], g: +m2[2], b: +m2[3], a: a }; }
-    return null;
-  }
-
-  function luminance(c) {
-    var rs = c.r / 255, gs = c.g / 255, bs = c.b / 255;
-    var r = rs <= 0.03928 ? rs / 12.92 : Math.pow((rs + 0.055) / 1.055, 2.4);
-    var g = gs <= 0.03928 ? gs / 12.92 : Math.pow((gs + 0.055) / 1.055, 2.4);
-    var b = bs <= 0.03928 ? bs / 12.92 : Math.pow((bs + 0.055) / 1.055, 2.4);
-    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  }
-
-  function contrastRatio(c1, c2) {
-    var l1 = luminance(c1), l2 = luminance(c2);
-    return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
-  }
-
-  // --- Public API ---
-  function register(name, scoreFn, weight, label, icon) {
-    modules.push({ name: name, score: scoreFn, weight: weight, label: label, icon: icon });
-  }
-
-  function runScoring(data) {
-    var categories = modules.map(function(mod) {
-      var result = mod.score(data, getProfile(data));
-      result.weight = result.weight || mod.weight;
-      result.label = result.label || mod.label;
-      result.icon = result.icon || mod.icon;
-      return result;
-    });
-
-    var totalWeight = 0;
-    var weightedSum = 0;
-    categories.forEach(function(cat) {
-      if (cat.notApplicable) return; // Skip N/A categories from score
-      totalWeight += cat.weight;
-      weightedSum += cat.score * cat.weight;
-    });
-
-    var overall = Math.round(weightedSum / totalWeight);
-    var grade = overall >= 90 ? 'A' : overall >= 80 ? 'B' : overall >= 70 ? 'C' : overall >= 60 ? 'D' : 'F';
-    var gradeLabel = { A: 'Excellent', B: 'Good', C: 'Needs Improvement', D: 'Significant Issues', F: 'Major Redesign Needed' };
-
-    return {
-      overall: overall,
-      grade: grade,
-      gradeLabel: gradeLabel[grade],
-      categories: categories,
-      meta: data.meta,
-      raw: data
-    };
-  }
-
-  // Standardized scoring: errors=-10, warnings=-3, info=0 (industry standard per Cypress/axe-core)
-  function scoreFromFindings(findings, baseChecks) {
-    var errors = 0, warnings = 0;
-    findings.forEach(function(f) {
-      if (f.severity === 'error') errors++;
-      else if (f.severity === 'warning') warnings++;
-    });
-    // If module provides a checks-based score, use it; otherwise deduction-based
-    if (baseChecks !== undefined && baseChecks > 0) {
-      var passed = baseChecks - errors - warnings;
-      return Math.max(0, Math.round((Math.max(0, passed) / baseChecks) * 100));
-    }
-    return Math.max(0, 100 - (errors * 10) - (warnings * 3));
-  }
-
-  // CVD simulation matrices (Machado et al. 2009, severity 1.0)
-  var CVD_MATRICES = {
-    protanopia:   [0.567, 0.433, 0.000, 0.558, 0.442, 0.000, 0.000, 0.242, 0.758],
-    deuteranopia: [0.625, 0.375, 0.000, 0.700, 0.300, 0.000, 0.000, 0.300, 0.700],
-    tritanopia:   [0.950, 0.050, 0.000, 0.000, 0.433, 0.567, 0.000, 0.475, 0.525]
-  };
-
-  function simulateCVD(rgb, matrix) {
-    return {
-      r: Math.round(Math.min(255, Math.max(0, rgb.r * matrix[0] + rgb.g * matrix[1] + rgb.b * matrix[2]))),
-      g: Math.round(Math.min(255, Math.max(0, rgb.r * matrix[3] + rgb.g * matrix[4] + rgb.b * matrix[5]))),
-      b: Math.round(Math.min(255, Math.max(0, rgb.r * matrix[6] + rgb.g * matrix[7] + rgb.b * matrix[8])))
-    };
-  }
-
-  return {
-    register: register,
-    runScoring: runScoring,
-    getProfile: getProfile,
-    scoreFromFindings: scoreFromFindings,
-    parseColor: parseColor,
-    luminance: luminance,
-    contrastRatio: contrastRatio,
-    simulateCVD: simulateCVD,
-    CVD_MATRICES: CVD_MATRICES,
-    PROFILES: PROFILES
-  };
-})();
-</file>
-
 <file path="docs/tests/test-bbox-alignment.js">
 #!/usr/bin/env node
 // Test: bbox alignment accuracy
@@ -24718,6 +24718,198 @@ window.MilgIframe = (function() {
 })();
 </file>
 
+<file path="docs/scoring/touch.js">
+// Scoring Module: Touch & Interaction
+// Weight: 15%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreTouchTargets(data) {
+  var profile = S.getProfile(data);
+  var findings = [];
+  var targets = data.interaction.touchTargets || [];
+
+  // Viewport-aware thresholds, adjusted by profile:
+  var vw = (data.meta && data.meta.viewportWidth) || 1280;
+  var isDesktop = vw >= 1024;
+  var minSize = isDesktop ? profile.touchTargetDesktop : profile.touchTarget;
+  var warnSize = isDesktop ? profile.touchTargetDesktopWarn : profile.touchTarget;
+  var context = isDesktop ? 'desktop' : 'touch/mobile';
+  var issueCount = 0;
+
+  targets.forEach(function(t) {
+    var w = t.width, h = t.height;
+    var minDim = Math.min(w, h);
+
+    // WCAG 2.5.8 exception: inline text links are exempt from target size requirements.
+    // Detect by checking if element is an <a> without button-like styling (no bg, no border, no padding > 4px)
+    var isInlineLink = t.element === 'a' && !t.isButton;
+
+    if (minDim < minSize) {
+      issueCount++;
+      var ctx = t.linkContext || (isInlineLink ? 'inline' : 'button');
+
+      // On desktop, determine severity based on how far below threshold:
+      // - ≥20px (just 4px short of 24px) → info (barely noticeable with mouse)
+      // - ≥16px → warning (small but usable with mouse)
+      // - <16px → error (genuinely too small even for mouse)
+      // On mobile, all failures are errors (fingers need the full 44px)
+      function desktopSeverity(dim) {
+        if (!isDesktop) return 'error';
+        if (dim >= 20) return 'info';
+        if (dim >= 16) return 'warning';
+        return 'error';
+      }
+
+      if (ctx === 'inline') {
+        // True inline text links (inside <p>, <blockquote>, etc.) — WCAG 2.5.8 exempt
+        findings.push({
+          severity: 'info',
+          title: 'Inline text link ' + w + '×' + h + 'px — exempt from target size',
+          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+          fix: 'Inline text links in paragraphs are exempt per WCAG 2.5.8. Consider adding padding for better usability.',
+          source: 'WCAG 2.2 §2.5.8 inline exception — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
+        });
+      } else if (ctx === 'footer') {
+        // Footer links — relaxed but still error below hard minimum (16px)
+        var footerHardMin = isDesktop ? 16 : 24;
+        findings.push({
+          severity: minDim < footerHardMin ? 'error' : 'info',
+          title: 'Footer link ' + w + '×' + h + 'px' + (minDim < footerHardMin ? ' (too small even for footer — min ' + footerHardMin + 'px)' : ' (below ' + minSize + 'px, relaxed for footer)'),
+          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+          fix: minDim < footerHardMin
+            ? 'Even footer links need at least ' + footerHardMin + 'px height. Add padding to increase click area.'
+            : 'Footer links have relaxed sizing expectations. Consider padding for touch accessibility.',
+          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
+        });
+      } else if (ctx === 'nav') {
+        // Navigation links — should be properly sized
+        var navSev = desktopSeverity(minDim);
+        findings.push({
+          severity: navSev,
+          title: 'Nav link ' + w + '×' + h + 'px (minimum: ' + minSize + 'px)',
+          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+          fix: 'Navigation links need adequate sizing. Add padding: py-2 px-4 (min-height ' + minSize + 'px).',
+          presetRef: 'Navigation presets use min-height 44px on nav links',
+          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
+        });
+      } else {
+        // Buttons, styled links, other interactive elements
+        var sev = desktopSeverity(minDim);
+        findings.push({
+          severity: sev,
+          title: t.element + ' is ' + w + '×' + h + 'px (' + (isDesktop ? 'desktop min: ' + minSize + 'px' : 'touch min: ' + minSize + 'px') + ')',
+          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+          fix: isDesktop
+            ? (sev === 'info'
+              ? 'Slightly below ' + minSize + 'px desktop minimum — usable with mouse but consider adding padding.'
+              : 'Click targets need at least ' + minSize + '×' + minSize + 'px. Increase padding or min-height/min-width.')
+            : 'Touch targets need ' + minSize + '×' + minSize + 'px minimum. Add min-h-[' + minSize + 'px] min-w-[' + minSize + 'px] or increase padding.',
+          presetRef: isDesktop ? null : 'Button presets use py-3 px-6 (48px height)',
+          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
+        });
+      }
+    } else if (minDim < warnSize && isDesktop && !isInlineLink) {
+      findings.push({
+        severity: 'warning',
+        title: t.element + ' is ' + w + '×' + h + 'px (recommended for desktop: ≥' + warnSize + 'px)',
+        detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+        fix: 'While ' + minSize + 'px meets minimum, ' + warnSize + 'px+ improves click comfort. Consider adding padding.',
+        presetRef: null,
+        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+        locator: { selector: t.selector, text: t.text || '' }
+      });
+    }
+  });
+
+  // Also flag targets that pass the current threshold but would fail on touch
+  if (isDesktop && targets.length > 0) {
+    var touchMin = profile.touchTarget;
+    var touchFails = targets.filter(function(t) { return Math.min(t.width, t.height) < touchMin; });
+    if (touchFails.length > 0) {
+      findings.push({
+        severity: 'info',
+        title: touchFails.length + ' element(s) below ' + touchMin + 'px touch target (analyzed at ' + vw + 'px desktop viewport)',
+        detail: 'These meet desktop minimums but would fail on touch devices. Consider responsive sizing if the site is also used on mobile.',
+        fix: 'For responsive touch support: add touch-target sizing at mobile breakpoints, e.g. sm:min-h-[' + touchMin + 'px]',
+        presetRef: null,
+        source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout'
+      });
+    }
+  }
+
+  // Note when responsive CSS exists that might fix touch targets on mobile
+  if (isDesktop && data.interaction && data.interaction.hasResponsiveTargetCSS) {
+    findings.push({
+      severity: 'info',
+      title: 'Responsive CSS detected that may adjust target sizes at mobile breakpoints',
+      detail: 'This site has media queries with height/padding rules. Touch targets may be correctly sized on mobile devices.',
+      fix: 'Verify by testing at mobile viewport. Use the viewport selector to re-scan at 375px width.',
+      presetRef: null
+    });
+  }
+
+  // Transitions / animation duration
+  var transitions = data.interaction.transitions || [];
+  transitions.forEach(function(t) {
+    var ms = parseFloat(t) * 1000;
+    if (ms > 500) {
+      findings.push({
+        severity: 'warning',
+        title: 'Transition duration ' + ms + 'ms exceeds 500ms maximum',
+        detail: 'Users perceive animations longer than 500ms as sluggish',
+        fix: 'Keep transitions under 500ms. Enter: 200–300ms, Exit: 150–200ms. In Tailwind: duration-200 or duration-300',
+        presetRef: null,
+        source: 'NNGroup animation — https://www.nngroup.com/articles/animation-usability/'
+      });
+    }
+  });
+
+  // Event listener pattern findings
+  var lPatterns = (data.interaction && data.interaction.listenerPatterns) || {};
+  if (lPatterns.toggleNoAria > 0) {
+    findings.push({
+      severity: 'warning',
+      title: lPatterns.toggleNoAria + ' toggle handler(s) without ARIA state management',
+      detail: 'Click handlers toggle CSS classes but don\'t update aria-expanded or other ARIA states. Screen readers won\'t know the element\'s state changed.',
+      fix: 'Add setAttribute(\'aria-expanded\', isOpen) alongside classList.toggle() in toggle handlers.',
+      presetRef: null,
+      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
+    });
+  }
+  if (lPatterns.navigationInButton > 0) {
+    findings.push({
+      severity: 'info',
+      title: lPatterns.navigationInButton + ' button(s) trigger page navigation',
+      detail: 'Buttons with click handlers that change location.href should typically be <a> elements for proper semantics and accessibility.',
+      fix: 'Use <a href="..."> for navigation instead of <button> with JavaScript location change.',
+      presetRef: null,
+      source: 'HTML spec — https://html.spec.whatwg.org/multipage/text-level-semantics.html#the-a-element'
+    });
+  }
+
+  // Score: deduct per error, less per warning
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var totalTargets = targets.length || 0;
+  var checks = totalTargets;
+  var passed = Math.max(0, totalTargets - errors - warnings);
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 3));
+  var na = totalTargets === 0 && transitions.length === 0;
+  return { score: na ? 100 : score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Touch & Interaction', icon: 'touch', notApplicable: na };
+}
+
+
+  S.register("touch", scoreTouchTargets, 15, "Touch & Interaction", "touch");
+})();
+</file>
+
 <file path="scripts/test-full-matrix.mjs">
 #!/usr/bin/env node
 // Full matrix test runner: preset × personality × effect × viewport × dark mode
@@ -25687,195 +25879,286 @@ function scoreVisualConsistency(data) {
 })();
 </file>
 
-<file path="docs/scoring/touch.js">
-// Scoring Module: Touch & Interaction
-// Weight: 15%
+<file path="docs/scoring/contrast.js">
+// Scoring Module: Color & Contrast
+// Weight: 20%
 
 (function() {
   "use strict";
   var S = window.MilgScoring;
 
-function scoreTouchTargets(data) {
+function parseRgb(str) {
+  var m = str.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+  if (!m) m = str.match(/rgb\((\d+)\s+(\d+)\s+(\d+)\)/);
+  if (!m) return null;
+  return { r: +m[1], g: +m[2], b: +m[3] };
+}
+
+function applyFilterToColor(c, filterStr) {
+  if (!c || !filterStr) return c;
+  var r = c.r, g = c.g, b = c.b;
+  var re = /brightness\(([\d.]+)\)|contrast\(([\d.]+)\)|opacity\(([\d.]+)\)/g;
+  var m;
+  while ((m = re.exec(filterStr)) !== null) {
+    if (m[1] !== undefined) {
+      var br = parseFloat(m[1]);
+      r = Math.min(255, Math.round(r * br));
+      g = Math.min(255, Math.round(g * br));
+      b = Math.min(255, Math.round(b * br));
+    } else if (m[2] !== undefined) {
+      var ct = parseFloat(m[2]);
+      r = Math.min(255, Math.max(0, Math.round(((r - 128) * ct) + 128)));
+      g = Math.min(255, Math.max(0, Math.round(((g - 128) * ct) + 128)));
+      b = Math.min(255, Math.max(0, Math.round(((b - 128) * ct) + 128)));
+    }
+    // opacity affects alpha, not RGB channels for contrast purposes
+  }
+  return { r: r, g: g, b: b };
+}
+
+function luminance(c) {
+  var rs = c.r / 255, gs = c.g / 255, bs = c.b / 255;
+  var r = rs <= 0.03928 ? rs / 12.92 : Math.pow((rs + 0.055) / 1.055, 2.4);
+  var g = gs <= 0.03928 ? gs / 12.92 : Math.pow((gs + 0.055) / 1.055, 2.4);
+  var b = bs <= 0.03928 ? bs / 12.92 : Math.pow((bs + 0.055) / 1.055, 2.4);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function contrastRatio(c1, c2) {
+  var l1 = luminance(c1), l2 = luminance(c2);
+  return Math.round(((Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)) * 100) / 100;
+}
+
+// APCA contrast (Lc value)
+// Simplified APCA-W3 calculation
+function sRGBtoY(rgb) {
+  // Linearize sRGB
+  function lin(v) { v = v / 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
+  return 0.2126729 * lin(rgb.r) + 0.7151522 * lin(rgb.g) + 0.0721750 * lin(rgb.b);
+}
+
+function apcaContrast(txtRgb, bgRgb) {
+  var txtY = sRGBtoY(txtRgb);
+  var bgY = sRGBtoY(bgRgb);
+  // Clamp
+  if (txtY < 0) txtY = 0;
+  if (bgY < 0) bgY = 0;
+  // SAPC power curve
+  var normBG = Math.pow(bgY, 0.56);
+  var normTXT = Math.pow(txtY, 0.57);
+  var rawContrast;
+  if (bgY > txtY) {
+    rawContrast = (normBG - normTXT) * 1.14;
+  } else {
+    rawContrast = (normBG - normTXT) * 1.14;
+  }
+  // Scale and clamp
+  if (Math.abs(rawContrast) < 0.1) return 0;
+  return Math.round(rawContrast * 100);
+}
+
+function scoreContrast(data) {
   var profile = S.getProfile(data);
   var findings = [];
-  var targets = data.interaction.touchTargets || [];
+  var pairs = data.colors.contrastPairs || [];
 
-  // Viewport-aware thresholds, adjusted by profile:
-  var vw = (data.meta && data.meta.viewportWidth) || 1280;
-  var isDesktop = vw >= 1024;
-  var minSize = isDesktop ? profile.touchTargetDesktop : profile.touchTarget;
-  var warnSize = isDesktop ? profile.touchTargetDesktopWarn : profile.touchTarget;
-  var context = isDesktop ? 'desktop' : 'touch/mobile';
-  var issueCount = 0;
+  // Re-evaluate each pair against profile thresholds
+  var profilePairs = pairs.map(function(p) {
+    var needed = p.isLarge ? profile.contrastLarge : profile.contrast;
+    var ratio = p.ratio;
 
-  targets.forEach(function(t) {
-    var w = t.width, h = t.height;
-    var minDim = Math.min(w, h);
-
-    // WCAG 2.5.8 exception: inline text links are exempt from target size requirements.
-    // Detect by checking if element is an <a> without button-like styling (no bg, no border, no padding > 4px)
-    var isInlineLink = t.element === 'a' && !t.isButton;
-
-    if (minDim < minSize) {
-      issueCount++;
-      var ctx = t.linkContext || (isInlineLink ? 'inline' : 'button');
-
-      // On desktop, determine severity based on how far below threshold:
-      // - ≥20px (just 4px short of 24px) → info (barely noticeable with mouse)
-      // - ≥16px → warning (small but usable with mouse)
-      // - <16px → error (genuinely too small even for mouse)
-      // On mobile, all failures are errors (fingers need the full 44px)
-      function desktopSeverity(dim) {
-        if (!isDesktop) return 'error';
-        if (dim >= 20) return 'info';
-        if (dim >= 16) return 'warning';
-        return 'error';
+    // If a CSS filter is present, re-compute contrast with adjusted bg
+    if (p.filter) {
+      var bgParsed = parseRgb(p.bg);
+      if (bgParsed) {
+        var adjustedBg = applyFilterToColor(bgParsed, p.filter);
+        var fgParsed = parseRgb(p.fg);
+        if (fgParsed) {
+          ratio = contrastRatio(fgParsed, adjustedBg);
+        }
       }
-
-      if (ctx === 'inline') {
-        // True inline text links (inside <p>, <blockquote>, etc.) — WCAG 2.5.8 exempt
-        findings.push({
-          severity: 'info',
-          title: 'Inline text link ' + w + '×' + h + 'px — exempt from target size',
-          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-          fix: 'Inline text links in paragraphs are exempt per WCAG 2.5.8. Consider adding padding for better usability.',
-          source: 'WCAG 2.2 §2.5.8 inline exception — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
-        });
-      } else if (ctx === 'footer') {
-        // Footer links — relaxed but still error below hard minimum (16px)
-        var footerHardMin = isDesktop ? 16 : 24;
-        findings.push({
-          severity: minDim < footerHardMin ? 'error' : 'info',
-          title: 'Footer link ' + w + '×' + h + 'px' + (minDim < footerHardMin ? ' (too small even for footer — min ' + footerHardMin + 'px)' : ' (below ' + minSize + 'px, relaxed for footer)'),
-          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-          fix: minDim < footerHardMin
-            ? 'Even footer links need at least ' + footerHardMin + 'px height. Add padding to increase click area.'
-            : 'Footer links have relaxed sizing expectations. Consider padding for touch accessibility.',
-          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
-        });
-      } else if (ctx === 'nav') {
-        // Navigation links — should be properly sized
-        var navSev = desktopSeverity(minDim);
-        findings.push({
-          severity: navSev,
-          title: 'Nav link ' + w + '×' + h + 'px (minimum: ' + minSize + 'px)',
-          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-          fix: 'Navigation links need adequate sizing. Add padding: py-2 px-4 (min-height ' + minSize + 'px).',
-          presetRef: 'Navigation presets use min-height 44px on nav links',
-          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
-        });
-      } else {
-        // Buttons, styled links, other interactive elements
-        var sev = desktopSeverity(minDim);
-        findings.push({
-          severity: sev,
-          title: t.element + ' is ' + w + '×' + h + 'px (' + (isDesktop ? 'desktop min: ' + minSize + 'px' : 'touch min: ' + minSize + 'px') + ')',
-          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-          fix: isDesktop
-            ? (sev === 'info'
-              ? 'Slightly below ' + minSize + 'px desktop minimum — usable with mouse but consider adding padding.'
-              : 'Click targets need at least ' + minSize + '×' + minSize + 'px. Increase padding or min-height/min-width.')
-            : 'Touch targets need ' + minSize + '×' + minSize + 'px minimum. Add min-h-[' + minSize + 'px] min-w-[' + minSize + 'px] or increase padding.',
-          presetRef: isDesktop ? null : 'Button presets use py-3 px-6 (48px height)',
-          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
-        });
-      }
-    } else if (minDim < warnSize && isDesktop && !isInlineLink) {
-      findings.push({
-        severity: 'warning',
-        title: t.element + ' is ' + w + '×' + h + 'px (recommended for desktop: ≥' + warnSize + 'px)',
-        detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-        fix: 'While ' + minSize + 'px meets minimum, ' + warnSize + 'px+ improves click comfort. Consider adding padding.',
-        presetRef: null,
-        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-        locator: { selector: t.selector, text: t.text || '' }
-      });
     }
+
+    var passes = ratio >= needed;
+    return { ratio: ratio, needed: needed, passes: passes, isLarge: p.isLarge, text: p.text, fontSize: p.fontSize, selector: p.selector, fg: p.fg, bg: p.bg, filter: p.filter || '', bbox: p.bbox };
   });
 
-  // Also flag targets that pass the current threshold but would fail on touch
-  if (isDesktop && targets.length > 0) {
-    var touchMin = profile.touchTarget;
-    var touchFails = targets.filter(function(t) { return Math.min(t.width, t.height) < touchMin; });
-    if (touchFails.length > 0) {
+  // Separate uncertain results (very low ratio usually means bg couldn't be determined — gradient, SVG, image, etc.)
+  // Cases: fg===bg (exact 1:1), or ratio < 1.5 with light text on light bg (white text on gradient that resolved to white)
+  function isUncertain(p) {
+    if (p.passes) return false;
+    if (p.ratio <= 1.01 && p.fg === p.bg) return true;
+    // Very low ratio with light fg+bg suggests unresolved gradient background
+    if (p.ratio < 1.5) {
+      var fgC = parseRgb(p.fg);
+      var bgC = parseRgb(p.bg);
+      if (fgC && bgC) {
+        var fgBright = (fgC.r + fgC.g + fgC.b) / 3;
+        var bgBright = (bgC.r + bgC.g + bgC.b) / 3;
+        // Both very light (white text on resolved-to-white bg) or both very dark
+        if ((fgBright > 200 && bgBright > 200) || (fgBright < 55 && bgBright < 55)) return true;
+      }
+    }
+    return false;
+  }
+  var uncertain = profilePairs.filter(function(p) { return isUncertain(p); });
+  var failures = profilePairs.filter(function(p) { return !p.passes && !isUncertain(p); });
+  var nearMisses = profilePairs.filter(function(p) { return p.passes && p.ratio < p.needed + 0.5; });
+
+  // Deduplicate failures with identical ratio + selector
+  var failSeen = {};
+  failures.forEach(function(p) {
+    var dedup = p.ratio + '|' + p.selector;
+    if (failSeen[dedup]) { failSeen[dedup].count++; if (p.bbox) failSeen[dedup].bboxes.push(p.bbox); return; }
+    failSeen[dedup] = { p: p, count: 1, bboxes: p.bbox ? [p.bbox] : [] };
+  });
+  Object.keys(failSeen).forEach(function(key) {
+    var entry = failSeen[key];
+    var p = entry.p;
+    var apcaVal = '';
+    var fgP = parseRgb(p.fg);
+    var bgP = parseRgb(p.bg);
+    if (fgP && bgP) { apcaVal = ' (APCA: Lc ' + apcaContrast(fgP, bgP) + ')'; }
+    var countNote = entry.count > 1 ? ' (' + entry.count + ' instances)' : '';
+    // Detect if the bg is likely white fallback (image/gradient bg we couldn't resolve)
+    var bgIsWhite = p.bg === 'rgb(255, 255, 255)' || p.bg === 'rgba(255, 255, 255, 1)';
+    var bgNote = bgIsWhite ? ' The detected background is white — if the actual background is an image or gradient, the real contrast may differ.' : '';
+    findings.push({
+      severity: 'error',
+      title: 'Text fails contrast ' + p.ratio + ':1 (needs ' + p.needed + ':1)' + countNote,
+      detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector + apcaVal,
+      fix: (p.isLarge
+        ? 'Large text needs ' + profile.contrastLarge + ':1 minimum. Darken the text or lighten the background.'
+        : 'Normal text needs ' + profile.contrast + ':1 minimum. Use a darker text color or lighter background.') + bgNote,
+      presetRef: null,
+      source: p.isLarge ? 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' : 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum',
+      locator: { selector: p.selector, text: p.text, bboxes: entry.bboxes }
+    });
+  });
+
+  if (uncertain.length > 0) {
+    findings.push({
+      severity: 'info',
+      title: uncertain.length + ' element(s) with undetermined contrast (background could not be resolved)',
+      detail: 'These elements may use gradients, images, SVGs, or complex CSS that the analyzer cannot parse. Check manually: ' + uncertain.slice(0, 3).map(function(p) { return '"' + p.text + '"'; }).join(', '),
+      fix: 'Verify these elements have sufficient contrast visually. The analyzer reports 1:1 when the effective background cannot be computed.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
+    });
+  }
+
+  // Deduplicate near-misses with identical ratio + selector
+  var nearSeen = {};
+  nearMisses.forEach(function(p) {
+    var dedup = p.ratio + '|' + p.selector;
+    if (nearSeen[dedup]) { nearSeen[dedup].count++; if (p.bbox) nearSeen[dedup].bboxes.push(p.bbox); return; }
+    nearSeen[dedup] = { p: p, count: 1, bboxes: p.bbox ? [p.bbox] : [] };
+  });
+  Object.keys(nearSeen).forEach(function(key) {
+    var entry = nearSeen[key];
+    var p = entry.p;
+    var countNote = entry.count > 1 ? ' (' + entry.count + ' instances)' : '';
+    findings.push({
+      severity: 'info',
+      title: 'Text passes contrast but close to threshold: ' + p.ratio + ':1 (needs ' + p.needed + ':1)' + countNote,
+      detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector,
+      fix: 'Passes AA but consider increasing for AAA (7:1). Slight changes in background could cause failure.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.6 — https://www.w3.org/TR/WCAG22/#contrast-enhanced',
+      locator: { selector: p.selector, text: p.text, bboxes: entry.bboxes }
+    });
+  });
+
+  // CVD palette safety check (color_blind profile)
+  if (profile.checkCVD && pairs.length > 0) {
+    var uniqueColors = {};
+    pairs.forEach(function(p) {
+      if (p.fg) uniqueColors[p.fg] = true;
+      if (p.bg) uniqueColors[p.bg] = true;
+    });
+    var colorList = Object.keys(uniqueColors).map(function(c) { return parseRgb(c); }).filter(Boolean);
+    var cvdTypes = ['protanopia', 'deuteranopia', 'tritanopia'];
+    var cvdIssues = {};
+    cvdTypes.forEach(function(type) { cvdIssues[type] = 0; });
+
+    // Check all color pairs through CVD simulation
+    for (var ci = 0; ci < colorList.length && ci < 20; ci++) {
+      for (var cj = ci + 1; cj < colorList.length && cj < 20; cj++) {
+        var origRatio = contrastRatio(colorList[ci], colorList[cj]);
+        if (origRatio < 2) continue; // Skip colors already too similar
+        cvdTypes.forEach(function(type) {
+          var matrix = S.CVD_MATRICES[type];
+          var simA = S.simulateCVD(colorList[ci], matrix);
+          var simB = S.simulateCVD(colorList[cj], matrix);
+          var simRatio = contrastRatio(simA, simB);
+          if (simRatio < 1.5 && origRatio >= 2) cvdIssues[type]++;
+        });
+      }
+    }
+
+    var totalCvdIssues = cvdIssues.protanopia + cvdIssues.deuteranopia + cvdIssues.tritanopia;
+    if (totalCvdIssues > 0) {
+      var cvdDetails = cvdTypes.filter(function(t) { return cvdIssues[t] > 0; }).map(function(t) { return t + ': ' + cvdIssues[t] + ' pair(s)'; }).join(', ');
+      findings.push({
+        severity: totalCvdIssues > 3 ? 'error' : 'warning',
+        title: totalCvdIssues + ' color pair(s) become indistinguishable under color vision deficiency',
+        detail: cvdDetails + '. These colors look distinct to typical vision but collapse for ~8% of men.',
+        fix: 'Add non-color indicators (icons, patterns, text labels) alongside color. Avoid red-green as the only differentiator.',
+        source: 'WCAG 2.2 §1.4.1 — https://www.w3.org/TR/WCAG22/#use-of-color'
+      });
+    } else if (colorList.length >= 3) {
       findings.push({
         severity: 'info',
-        title: touchFails.length + ' element(s) below ' + touchMin + 'px touch target (analyzed at ' + vw + 'px desktop viewport)',
-        detail: 'These meet desktop minimums but would fail on touch devices. Consider responsive sizing if the site is also used on mobile.',
-        fix: 'For responsive touch support: add touch-target sizing at mobile breakpoints, e.g. sm:min-h-[' + touchMin + 'px]',
-        presetRef: null,
-        source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout'
+        title: 'Color palette passes CVD simulation (' + colorList.length + ' colors checked)',
+        detail: 'All color pairs remain distinguishable under protanopia, deuteranopia, and tritanopia simulation.',
+        fix: 'No action needed. This palette is CVD-safe.',
+        source: 'Machado et al. 2009 — https://www.inf.ufrgs.br/~oliveira/pubs_files/CVD_Simulation/CVD_Simulation.html'
       });
     }
   }
 
-  // Note when responsive CSS exists that might fix touch targets on mobile
-  if (isDesktop && data.interaction && data.interaction.hasResponsiveTargetCSS) {
-    findings.push({
-      severity: 'info',
-      title: 'Responsive CSS detected that may adjust target sizes at mobile breakpoints',
-      detail: 'This site has media queries with height/padding rules. Touch targets may be correctly sized on mobile devices.',
-      fix: 'Verify by testing at mobile viewport. Use the viewport selector to re-scan at 375px width.',
-      presetRef: null
+  // Backdrop-filter + translucent backgrounds — contrast ratio may be unreliable
+  var backdropPairs = profilePairs.filter(function(p) { return p.backdropFilter && p.minBgAlpha < 0.7; });
+  if (backdropPairs.length > 0) {
+    var bdSamples = backdropPairs.slice(0, 3).map(function(p) {
+      return '"' + p.text + '" (bg alpha: ' + p.minBgAlpha + ')';
     });
-  }
-
-  // Transitions / animation duration
-  var transitions = data.interaction.transitions || [];
-  transitions.forEach(function(t) {
-    var ms = parseFloat(t) * 1000;
-    if (ms > 500) {
-      findings.push({
-        severity: 'warning',
-        title: 'Transition duration ' + ms + 'ms exceeds 500ms maximum',
-        detail: 'Users perceive animations longer than 500ms as sluggish',
-        fix: 'Keep transitions under 500ms. Enter: 200–300ms, Exit: 150–200ms. In Tailwind: duration-200 or duration-300',
-        presetRef: null,
-        source: 'NNGroup animation — https://www.nngroup.com/articles/animation-usability/'
-      });
-    }
-  });
-
-  // Event listener pattern findings
-  var lPatterns = (data.interaction && data.interaction.listenerPatterns) || {};
-  if (lPatterns.toggleNoAria > 0) {
     findings.push({
       severity: 'warning',
-      title: lPatterns.toggleNoAria + ' toggle handler(s) without ARIA state management',
-      detail: 'Click handlers toggle CSS classes but don\'t update aria-expanded or other ARIA states. Screen readers won\'t know the element\'s state changed.',
-      fix: 'Add setAttribute(\'aria-expanded\', isOpen) alongside classList.toggle() in toggle handlers.',
+      title: backdropPairs.length + ' text element(s) on translucent backdrop-filter surfaces',
+      detail: 'These elements sit on semi-transparent backgrounds with backdrop-filter (frosted glass effect). The computed contrast ratio assumes the blended background color, but the actual perceived contrast depends on what is visible through the translucent surface, which varies across the page. Elements: ' + bdSamples.join('; '),
+      fix: 'Increase background opacity to at least 0.75 for text containers, or add a solid fallback background. For frosted glass effects, use a minimum alpha of 0.7-0.8 to ensure text remains readable regardless of what shows through.',
       presetRef: null,
-      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
-    });
-  }
-  if (lPatterns.navigationInButton > 0) {
-    findings.push({
-      severity: 'info',
-      title: lPatterns.navigationInButton + ' button(s) trigger page navigation',
-      detail: 'Buttons with click handlers that change location.href should typically be <a> elements for proper semantics and accessibility.',
-      fix: 'Use <a href="..."> for navigation instead of <button> with JavaScript location change.',
-      presetRef: null,
-      source: 'HTML spec — https://html.spec.whatwg.org/multipage/text-level-semantics.html#the-a-element'
+      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
     });
   }
 
-  // Score: deduct per error, less per warning
-  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var totalTargets = targets.length || 0;
-  var checks = totalTargets;
-  var passed = Math.max(0, totalTargets - errors - warnings);
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 3));
-  var na = totalTargets === 0 && transitions.length === 0;
-  return { score: na ? 100 : score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Touch & Interaction', icon: 'touch', notApplicable: na };
+  // Don't count uncertain results as failures in the score
+  var total = (profilePairs.length - uncertain.length) || 1;
+  var passing = total - failures.length;
+  // Scale deduction by total pairs: more pairs = less impact per failure (large pages shouldn't be punished more)
+  var failPenalty = total > 10 ? Math.max(3, Math.round(100 / total)) : 10;
+  var score = Math.max(0, 100 - (failures.length * failPenalty) - (nearMisses.length * 1));
+
+  // Add baseline checks
+  var checks = Math.max(total, 1);
+  var passed = Math.max(passing, 0);
+  // Text existence check
+  if (pairs.length === 0 && (data.structure && data.structure.totalElements > 20)) {
+    findings.push({
+      severity: 'info',
+      title: 'No text contrast pairs found to check',
+      detail: 'The page may use images for text, or text may not be visible at scan time.',
+      fix: 'Ensure text is rendered as real HTML text, not embedded in images.',
+      source: 'WCAG 2.2 §1.4.5 — https://www.w3.org/TR/WCAG22/#images-of-text'
+    });
+  }
+  var na = pairs.length === 0;
+  return { score: score, findings: findings, checks: checks, passed: passed, weight: 20, label: 'Color & Contrast', icon: 'contrast', notApplicable: na };
 }
 
 
-  S.register("touch", scoreTouchTargets, 15, "Touch & Interaction", "touch");
+  S.register("contrast", scoreContrast, 20, "Color & Contrast", "contrast");
 })();
 </file>
 
@@ -26738,289 +27021,6 @@ function scoreAccessibility(data) {
 
 
   S.register("accessibility", scoreAccessibility, 15, "Accessibility", "a11y");
-})();
-</file>
-
-<file path="docs/scoring/contrast.js">
-// Scoring Module: Color & Contrast
-// Weight: 20%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function parseRgb(str) {
-  var m = str.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
-  if (!m) m = str.match(/rgb\((\d+)\s+(\d+)\s+(\d+)\)/);
-  if (!m) return null;
-  return { r: +m[1], g: +m[2], b: +m[3] };
-}
-
-function applyFilterToColor(c, filterStr) {
-  if (!c || !filterStr) return c;
-  var r = c.r, g = c.g, b = c.b;
-  var re = /brightness\(([\d.]+)\)|contrast\(([\d.]+)\)|opacity\(([\d.]+)\)/g;
-  var m;
-  while ((m = re.exec(filterStr)) !== null) {
-    if (m[1] !== undefined) {
-      var br = parseFloat(m[1]);
-      r = Math.min(255, Math.round(r * br));
-      g = Math.min(255, Math.round(g * br));
-      b = Math.min(255, Math.round(b * br));
-    } else if (m[2] !== undefined) {
-      var ct = parseFloat(m[2]);
-      r = Math.min(255, Math.max(0, Math.round(((r - 128) * ct) + 128)));
-      g = Math.min(255, Math.max(0, Math.round(((g - 128) * ct) + 128)));
-      b = Math.min(255, Math.max(0, Math.round(((b - 128) * ct) + 128)));
-    }
-    // opacity affects alpha, not RGB channels for contrast purposes
-  }
-  return { r: r, g: g, b: b };
-}
-
-function luminance(c) {
-  var rs = c.r / 255, gs = c.g / 255, bs = c.b / 255;
-  var r = rs <= 0.03928 ? rs / 12.92 : Math.pow((rs + 0.055) / 1.055, 2.4);
-  var g = gs <= 0.03928 ? gs / 12.92 : Math.pow((gs + 0.055) / 1.055, 2.4);
-  var b = bs <= 0.03928 ? bs / 12.92 : Math.pow((bs + 0.055) / 1.055, 2.4);
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
-
-function contrastRatio(c1, c2) {
-  var l1 = luminance(c1), l2 = luminance(c2);
-  return Math.round(((Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)) * 100) / 100;
-}
-
-// APCA contrast (Lc value)
-// Simplified APCA-W3 calculation
-function sRGBtoY(rgb) {
-  // Linearize sRGB
-  function lin(v) { v = v / 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
-  return 0.2126729 * lin(rgb.r) + 0.7151522 * lin(rgb.g) + 0.0721750 * lin(rgb.b);
-}
-
-function apcaContrast(txtRgb, bgRgb) {
-  var txtY = sRGBtoY(txtRgb);
-  var bgY = sRGBtoY(bgRgb);
-  // Clamp
-  if (txtY < 0) txtY = 0;
-  if (bgY < 0) bgY = 0;
-  // SAPC power curve
-  var normBG = Math.pow(bgY, 0.56);
-  var normTXT = Math.pow(txtY, 0.57);
-  var rawContrast;
-  if (bgY > txtY) {
-    rawContrast = (normBG - normTXT) * 1.14;
-  } else {
-    rawContrast = (normBG - normTXT) * 1.14;
-  }
-  // Scale and clamp
-  if (Math.abs(rawContrast) < 0.1) return 0;
-  return Math.round(rawContrast * 100);
-}
-
-function scoreContrast(data) {
-  var profile = S.getProfile(data);
-  var findings = [];
-  var pairs = data.colors.contrastPairs || [];
-
-  // Re-evaluate each pair against profile thresholds
-  var profilePairs = pairs.map(function(p) {
-    var needed = p.isLarge ? profile.contrastLarge : profile.contrast;
-    var ratio = p.ratio;
-
-    // If a CSS filter is present, re-compute contrast with adjusted bg
-    if (p.filter) {
-      var bgParsed = parseRgb(p.bg);
-      if (bgParsed) {
-        var adjustedBg = applyFilterToColor(bgParsed, p.filter);
-        var fgParsed = parseRgb(p.fg);
-        if (fgParsed) {
-          ratio = contrastRatio(fgParsed, adjustedBg);
-        }
-      }
-    }
-
-    var passes = ratio >= needed;
-    return { ratio: ratio, needed: needed, passes: passes, isLarge: p.isLarge, text: p.text, fontSize: p.fontSize, selector: p.selector, fg: p.fg, bg: p.bg, filter: p.filter || '', bbox: p.bbox };
-  });
-
-  // Separate uncertain results (very low ratio usually means bg couldn't be determined — gradient, SVG, image, etc.)
-  // Cases: fg===bg (exact 1:1), or ratio < 1.5 with light text on light bg (white text on gradient that resolved to white)
-  function isUncertain(p) {
-    if (p.passes) return false;
-    if (p.ratio <= 1.01 && p.fg === p.bg) return true;
-    // Very low ratio with light fg+bg suggests unresolved gradient background
-    if (p.ratio < 1.5) {
-      var fgC = parseRgb(p.fg);
-      var bgC = parseRgb(p.bg);
-      if (fgC && bgC) {
-        var fgBright = (fgC.r + fgC.g + fgC.b) / 3;
-        var bgBright = (bgC.r + bgC.g + bgC.b) / 3;
-        // Both very light (white text on resolved-to-white bg) or both very dark
-        if ((fgBright > 200 && bgBright > 200) || (fgBright < 55 && bgBright < 55)) return true;
-      }
-    }
-    return false;
-  }
-  var uncertain = profilePairs.filter(function(p) { return isUncertain(p); });
-  var failures = profilePairs.filter(function(p) { return !p.passes && !isUncertain(p); });
-  var nearMisses = profilePairs.filter(function(p) { return p.passes && p.ratio < p.needed + 0.5; });
-
-  // Deduplicate failures with identical ratio + selector
-  var failSeen = {};
-  failures.forEach(function(p) {
-    var dedup = p.ratio + '|' + p.selector;
-    if (failSeen[dedup]) { failSeen[dedup].count++; if (p.bbox) failSeen[dedup].bboxes.push(p.bbox); return; }
-    failSeen[dedup] = { p: p, count: 1, bboxes: p.bbox ? [p.bbox] : [] };
-  });
-  Object.keys(failSeen).forEach(function(key) {
-    var entry = failSeen[key];
-    var p = entry.p;
-    var apcaVal = '';
-    var fgP = parseRgb(p.fg);
-    var bgP = parseRgb(p.bg);
-    if (fgP && bgP) { apcaVal = ' (APCA: Lc ' + apcaContrast(fgP, bgP) + ')'; }
-    var countNote = entry.count > 1 ? ' (' + entry.count + ' instances)' : '';
-    // Detect if the bg is likely white fallback (image/gradient bg we couldn't resolve)
-    var bgIsWhite = p.bg === 'rgb(255, 255, 255)' || p.bg === 'rgba(255, 255, 255, 1)';
-    var bgNote = bgIsWhite ? ' The detected background is white — if the actual background is an image or gradient, the real contrast may differ.' : '';
-    findings.push({
-      severity: 'error',
-      title: 'Text fails contrast ' + p.ratio + ':1 (needs ' + p.needed + ':1)' + countNote,
-      detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector + apcaVal,
-      fix: (p.isLarge
-        ? 'Large text needs ' + profile.contrastLarge + ':1 minimum. Darken the text or lighten the background.'
-        : 'Normal text needs ' + profile.contrast + ':1 minimum. Use a darker text color or lighter background.') + bgNote,
-      presetRef: null,
-      source: p.isLarge ? 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' : 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum',
-      locator: { selector: p.selector, text: p.text, bboxes: entry.bboxes }
-    });
-  });
-
-  if (uncertain.length > 0) {
-    findings.push({
-      severity: 'info',
-      title: uncertain.length + ' element(s) with undetermined contrast (background could not be resolved)',
-      detail: 'These elements may use gradients, images, SVGs, or complex CSS that the analyzer cannot parse. Check manually: ' + uncertain.slice(0, 3).map(function(p) { return '"' + p.text + '"'; }).join(', '),
-      fix: 'Verify these elements have sufficient contrast visually. The analyzer reports 1:1 when the effective background cannot be computed.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
-    });
-  }
-
-  // Deduplicate near-misses with identical ratio + selector
-  var nearSeen = {};
-  nearMisses.forEach(function(p) {
-    var dedup = p.ratio + '|' + p.selector;
-    if (nearSeen[dedup]) { nearSeen[dedup].count++; if (p.bbox) nearSeen[dedup].bboxes.push(p.bbox); return; }
-    nearSeen[dedup] = { p: p, count: 1, bboxes: p.bbox ? [p.bbox] : [] };
-  });
-  Object.keys(nearSeen).forEach(function(key) {
-    var entry = nearSeen[key];
-    var p = entry.p;
-    var countNote = entry.count > 1 ? ' (' + entry.count + ' instances)' : '';
-    findings.push({
-      severity: 'info',
-      title: 'Text passes contrast but close to threshold: ' + p.ratio + ':1 (needs ' + p.needed + ':1)' + countNote,
-      detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector,
-      fix: 'Passes AA but consider increasing for AAA (7:1). Slight changes in background could cause failure.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.6 — https://www.w3.org/TR/WCAG22/#contrast-enhanced',
-      locator: { selector: p.selector, text: p.text, bboxes: entry.bboxes }
-    });
-  });
-
-  // CVD palette safety check (color_blind profile)
-  if (profile.checkCVD && pairs.length > 0) {
-    var uniqueColors = {};
-    pairs.forEach(function(p) {
-      if (p.fg) uniqueColors[p.fg] = true;
-      if (p.bg) uniqueColors[p.bg] = true;
-    });
-    var colorList = Object.keys(uniqueColors).map(function(c) { return parseRgb(c); }).filter(Boolean);
-    var cvdTypes = ['protanopia', 'deuteranopia', 'tritanopia'];
-    var cvdIssues = {};
-    cvdTypes.forEach(function(type) { cvdIssues[type] = 0; });
-
-    // Check all color pairs through CVD simulation
-    for (var ci = 0; ci < colorList.length && ci < 20; ci++) {
-      for (var cj = ci + 1; cj < colorList.length && cj < 20; cj++) {
-        var origRatio = contrastRatio(colorList[ci], colorList[cj]);
-        if (origRatio < 2) continue; // Skip colors already too similar
-        cvdTypes.forEach(function(type) {
-          var matrix = S.CVD_MATRICES[type];
-          var simA = S.simulateCVD(colorList[ci], matrix);
-          var simB = S.simulateCVD(colorList[cj], matrix);
-          var simRatio = contrastRatio(simA, simB);
-          if (simRatio < 1.5 && origRatio >= 2) cvdIssues[type]++;
-        });
-      }
-    }
-
-    var totalCvdIssues = cvdIssues.protanopia + cvdIssues.deuteranopia + cvdIssues.tritanopia;
-    if (totalCvdIssues > 0) {
-      var cvdDetails = cvdTypes.filter(function(t) { return cvdIssues[t] > 0; }).map(function(t) { return t + ': ' + cvdIssues[t] + ' pair(s)'; }).join(', ');
-      findings.push({
-        severity: totalCvdIssues > 3 ? 'error' : 'warning',
-        title: totalCvdIssues + ' color pair(s) become indistinguishable under color vision deficiency',
-        detail: cvdDetails + '. These colors look distinct to typical vision but collapse for ~8% of men.',
-        fix: 'Add non-color indicators (icons, patterns, text labels) alongside color. Avoid red-green as the only differentiator.',
-        source: 'WCAG 2.2 §1.4.1 — https://www.w3.org/TR/WCAG22/#use-of-color'
-      });
-    } else if (colorList.length >= 3) {
-      findings.push({
-        severity: 'info',
-        title: 'Color palette passes CVD simulation (' + colorList.length + ' colors checked)',
-        detail: 'All color pairs remain distinguishable under protanopia, deuteranopia, and tritanopia simulation.',
-        fix: 'No action needed. This palette is CVD-safe.',
-        source: 'Machado et al. 2009 — https://www.inf.ufrgs.br/~oliveira/pubs_files/CVD_Simulation/CVD_Simulation.html'
-      });
-    }
-  }
-
-  // Backdrop-filter + translucent backgrounds — contrast ratio may be unreliable
-  var backdropPairs = profilePairs.filter(function(p) { return p.backdropFilter && p.minBgAlpha < 0.7; });
-  if (backdropPairs.length > 0) {
-    var bdSamples = backdropPairs.slice(0, 3).map(function(p) {
-      return '"' + p.text + '" (bg alpha: ' + p.minBgAlpha + ')';
-    });
-    findings.push({
-      severity: 'warning',
-      title: backdropPairs.length + ' text element(s) on translucent backdrop-filter surfaces',
-      detail: 'These elements sit on semi-transparent backgrounds with backdrop-filter (frosted glass effect). The computed contrast ratio assumes the blended background color, but the actual perceived contrast depends on what is visible through the translucent surface, which varies across the page. Elements: ' + bdSamples.join('; '),
-      fix: 'Increase background opacity to at least 0.75 for text containers, or add a solid fallback background. For frosted glass effects, use a minimum alpha of 0.7-0.8 to ensure text remains readable regardless of what shows through.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
-    });
-  }
-
-  // Don't count uncertain results as failures in the score
-  var total = (profilePairs.length - uncertain.length) || 1;
-  var passing = total - failures.length;
-  // Scale deduction by total pairs: more pairs = less impact per failure (large pages shouldn't be punished more)
-  var failPenalty = total > 10 ? Math.max(3, Math.round(100 / total)) : 10;
-  var score = Math.max(0, 100 - (failures.length * failPenalty) - (nearMisses.length * 1));
-
-  // Add baseline checks
-  var checks = Math.max(total, 1);
-  var passed = Math.max(passing, 0);
-  // Text existence check
-  if (pairs.length === 0 && (data.structure && data.structure.totalElements > 20)) {
-    findings.push({
-      severity: 'info',
-      title: 'No text contrast pairs found to check',
-      detail: 'The page may use images for text, or text may not be visible at scan time.',
-      fix: 'Ensure text is rendered as real HTML text, not embedded in images.',
-      source: 'WCAG 2.2 §1.4.5 — https://www.w3.org/TR/WCAG22/#images-of-text'
-    });
-  }
-  var na = pairs.length === 0;
-  return { score: score, findings: findings, checks: checks, passed: passed, weight: 20, label: 'Color & Contrast', icon: 'contrast', notApplicable: na };
-}
-
-
-  S.register("contrast", scoreContrast, 20, "Color & Contrast", "contrast");
 })();
 </file>
 
@@ -36178,62 +36178,59 @@ window.MilgViewer = (function() {
       var statusEl = document.getElementById('milg-ss-status');
       if (statusEl) statusEl.textContent = 'Rendering page to canvas...';
 
-      // Inject calibration markers to measure canvas offset.
-      // Use documentElement (not body) for reliable absolute positioning.
-      // Make them 20x20px for reliable detection at 0.5x scale (10x10 in canvas).
-      var _calibMarkers = [];
-      var _calibPositions = [500, 1500, 3000]; // DOM Y positions
-      _calibPositions.forEach(function(domY, idx) {
-        var marker = document.createElement('div');
-        marker.id = 'milg-calib-' + idx;
-        marker.style.cssText = 'position:absolute;left:2px;top:' + domY + 'px;width:20px;height:20px;background:#ff0000;z-index:2147483647;pointer-events:none;opacity:1;';
-        document.documentElement.appendChild(marker);
-        _calibMarkers.push(marker);
-      });
-
       ms.domToCanvas(document.documentElement, {
         scale: 0.5,
         filter: _ssFilter,
         timeout: 8000
       }).then(function(fullCanvas) {
-        // Remove calibration markers
-        _calibMarkers.forEach(function(m) { if (m.parentNode) m.parentNode.removeChild(m); });
-
         console.log('[ss] ' + _t() + 'Full canvas captured: ' + fullCanvas.width + 'x' + fullCanvas.height);
 
-        // Detect calibration offset from markers
         var secScale = 0.5;
+
+        // Calibrate by finding existing contrast pair elements in the canvas.
+        // We know each pair's fg color and bbox position. Sample the canvas at
+        // bbox center and scan ±200px to find pixels matching that fg color.
         var _calibCtx = fullCanvas.getContext('2d', { willReadFrequently: true });
         var _calibOffsets = [];
-        _calibPositions.forEach(function(domY) {
-          var expectedCanvasY = Math.round(domY * secScale);
-          // Scan a 5px wide column at left edge for red marker (±200px range)
-          var scanStart = Math.max(0, expectedCanvasY - 200);
-          var scanEnd = Math.min(fullCanvas.height, expectedCanvasY + 200);
-          var found = false;
-          for (var sy = scanStart; sy < scanEnd && !found; sy++) {
-            for (var sx = 0; sx < 12 && !found; sx++) {
-              var px = _calibCtx.getImageData(sx, sy, 1, 1).data;
-              if (px[0] > 200 && px[1] < 50 && px[2] < 50) {
-                var offset = expectedCanvasY - sy;
-                _calibOffsets.push(offset);
-                console.log('[ss] Calibration: dom.top=' + domY + ' → expected=' + expectedCanvasY + ', found red at (' + sx + ',' + sy + '), offset=' + offset);
-                found = true;
-              }
-            }
+        var calibPairs = (data.colors.contrastPairs || []).filter(function(p) {
+          return p.bbox && p.bbox.top > 300 && p.bbox.width > 30 && p.bbox.height > 8;
+        }).slice(0, 6); // Use up to 6 well-positioned pairs
+
+        calibPairs.forEach(function(pair) {
+          var fgRgb = pair.fg.match(/(\d+)/g);
+          if (!fgRgb || fgRgb.length < 3) return;
+          var fgR = +fgRgb[0], fgG = +fgRgb[1], fgB = +fgRgb[2];
+
+          var cx = Math.round((pair.bbox.left + pair.bbox.width / 2) * secScale);
+          var expectedY = Math.round((pair.bbox.top + pair.bbox.height / 2) * secScale);
+
+          // Scan ±200px for pixels close to the fg color
+          var scanStart = Math.max(0, expectedY - 200);
+          var scanEnd = Math.min(fullCanvas.height, expectedY + 200);
+          var bestY = -1, bestDist = 999;
+          for (var sy = scanStart; sy < scanEnd; sy++) {
+            if (cx < 0 || cx >= fullCanvas.width) continue;
+            var px = _calibCtx.getImageData(cx, sy, 1, 1).data;
+            var dist = Math.abs(px[0] - fgR) + Math.abs(px[1] - fgG) + Math.abs(px[2] - fgB);
+            if (dist < bestDist) { bestDist = dist; bestY = sy; }
           }
-          if (!found) {
-            // Log what was at the expected position for debugging
-            var dbgPx = _calibCtx.getImageData(5, expectedCanvasY, 1, 1).data;
-            console.log('[ss] Calibration: dom.top=' + domY + ' → expected=' + expectedCanvasY + ' — NOT FOUND. Pixel at (5,' + expectedCanvasY + '): rgb(' + dbgPx[0] + ',' + dbgPx[1] + ',' + dbgPx[2] + ')');
+          if (bestDist < 80 && bestY >= 0) {
+            var offset = expectedY - bestY;
+            _calibOffsets.push(offset);
+            console.log('[ss] Calibration: "' + pair.text.substring(0, 20) + '" dom.top=' + pair.bbox.top + ' → expected=' + expectedY + ', fg found at y=' + bestY + ', offset=' + offset + ' (dist=' + bestDist + ')');
           }
         });
-        // Use median offset
+
         var calibOffset = 0;
-        if (_calibOffsets.length > 0) {
+        if (_calibOffsets.length >= 2) {
           _calibOffsets.sort(function(a, b) { return a - b; });
           calibOffset = _calibOffsets[Math.floor(_calibOffsets.length / 2)];
-          console.log('[ss] Calibration offsets: ' + JSON.stringify(_calibOffsets) + ', using median: ' + calibOffset);
+          console.log('[ss] Calibration offsets: ' + JSON.stringify(_calibOffsets) + ', median: ' + calibOffset);
+        } else if (_calibOffsets.length === 1) {
+          calibOffset = _calibOffsets[0];
+          console.log('[ss] Calibration: single sample offset=' + calibOffset);
+        } else {
+          console.log('[ss] Calibration: no pairs matched, offset=0');
         }
 
         // Store full-page canvas as single WebP — used by both report and viewer
