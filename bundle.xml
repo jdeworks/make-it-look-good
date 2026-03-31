@@ -30344,19 +30344,15 @@ window.MilgViewer = (function() {
     }
   }
 
-  // Build debug info for alignment diagnostics
+  // Build debug info with pixel probing for alignment diagnostics
   function buildDebugInfo() {
     var rawMeta = _reportData && _reportData.raw && _reportData.raw.meta ? _reportData.raw.meta : {};
     var info = { meta: _meta, extractionScroll: { scrollX: rawMeta.scrollX, scrollY: rawMeta.scrollY, docHeight: rawMeta.docHeight }, zoomLevel: _zoomLevel, activeFilter: _activeFilter, findings: [] };
 
-    // Screenshot section info
     if (_stitchedCanvas) {
-      info.stitched = { width: _stitchedCanvas.width, height: _stitchedCanvas.height, sectionSizes: _stitchedCanvas.sectionSizes || [] };
+      info.stitched = { width: _stitchedCanvas.width, height: _stitchedCanvas.height };
     }
     info.screenshotCount = _screenshots.length;
-    // Expected section height at scale
-    info.expectedSectionH = _meta ? Math.round(_meta.viewportHeight * _meta.scale) : 0;
-    // Read natural sizes from data URIs (async not possible here, use cached)
     var imgEl = _overlay && _overlay.querySelector('.milg-viewer-img');
     if (imgEl) {
       info.displayedImg = { naturalWidth: imgEl.naturalWidth, naturalHeight: imgEl.naturalHeight, offsetWidth: imgEl.offsetWidth, offsetHeight: imgEl.offsetHeight };
@@ -30367,8 +30363,91 @@ window.MilgViewer = (function() {
       info.svgSize = { offsetWidth: svgEl.clientWidth, offsetHeight: svgEl.clientHeight };
     }
 
-    // First 10 findings with bbox details + computed SVG coords
+    // Pixel probe: draw the viewer image to a temp canvas and sample at bbox positions
+    // This tells us WHERE elements actually appear vs where we think they are
+    var probeCtx = null;
+    if (imgEl && imgEl.naturalWidth > 0) {
+      try {
+        var probeCanvas = document.createElement('canvas');
+        probeCanvas.width = imgEl.naturalWidth;
+        probeCanvas.height = imgEl.naturalHeight;
+        probeCtx = probeCanvas.getContext('2d', { willReadFrequently: true });
+        probeCtx.drawImage(imgEl, 0, 0);
+      } catch(e) { probeCtx = null; }
+    }
+
     var scale = _meta ? _meta.scale : 0.5;
+
+    // Pick 5 findings spread across the page (top, 25%, 50%, 75%, bottom)
+    var bboxFindings = _allFindings.filter(function(f) { return f.bboxes.length > 0; });
+    var probeIndices = [];
+    if (bboxFindings.length > 0) {
+      var step = Math.max(1, Math.floor(bboxFindings.length / 5));
+      for (var pi = 0; pi < bboxFindings.length && probeIndices.length < 5; pi += step) {
+        probeIndices.push(pi);
+      }
+      if (probeIndices.indexOf(bboxFindings.length - 1) === -1) probeIndices.push(bboxFindings.length - 1);
+    }
+
+    probeIndices.forEach(function(fi) {
+      var f = bboxFindings[fi];
+      var bbox = f.bboxes[0];
+      var entry = { idx: fi, severity: f.severity, title: f.title.substring(0, 60), category: f.category };
+      entry.dom = bbox;
+      entry.canvas = { x: Math.round(bbox.left * scale), y: Math.round(bbox.top * scale), w: Math.round(bbox.width * scale), h: Math.round(bbox.height * scale) };
+
+      // Pixel probe: sample a column of pixels at the center X of the bbox
+      // Look for a color change (non-background) within ±80px of expected Y
+      if (probeCtx) {
+        var cx = Math.round((bbox.left + bbox.width / 2) * scale);
+        var expectedY = Math.round(bbox.top * scale);
+        // Sample the background color at the top of the page for reference
+        var bgSample = probeCtx.getImageData(cx, 2, 1, 1).data;
+        var bgKey = bgSample[0] + ',' + bgSample[1] + ',' + bgSample[2];
+
+        // Scan ±80px around expected position
+        var scanStart = Math.max(0, expectedY - 80);
+        var scanEnd = Math.min(imgEl.naturalHeight, expectedY + 80);
+        var nonBgPositions = [];
+        for (var sy = scanStart; sy < scanEnd; sy++) {
+          var px = probeCtx.getImageData(cx, sy, 1, 1).data;
+          var pxKey = px[0] + ',' + px[1] + ',' + px[2];
+          // Check if this pixel differs significantly from background
+          var dr = Math.abs(px[0] - bgSample[0]), dg = Math.abs(px[1] - bgSample[1]), db = Math.abs(px[2] - bgSample[2]);
+          if (dr + dg + db > 30) {
+            nonBgPositions.push(sy);
+          }
+        }
+
+        if (nonBgPositions.length > 0) {
+          var firstContent = nonBgPositions[0];
+          var lastContent = nonBgPositions[nonBgPositions.length - 1];
+          entry.probe = {
+            scannedRange: [scanStart, scanEnd],
+            expectedY: expectedY,
+            firstContentY: firstContent,
+            lastContentY: lastContent,
+            offsetFromExpected: expectedY - firstContent,
+            contentSpan: lastContent - firstContent,
+            bgColor: 'rgb(' + bgSample[0] + ',' + bgSample[1] + ',' + bgSample[2] + ')',
+            sampleX: cx
+          };
+        } else {
+          entry.probe = { scannedRange: [scanStart, scanEnd], expectedY: expectedY, noContentFound: true, sampleX: cx };
+        }
+      }
+
+      info.findings.push(entry);
+    });
+
+    // Also add raw pairs for reference
+    if (_reportData && _reportData.raw && _reportData.raw.colors && _reportData.raw.colors.contrastPairs) {
+      info.rawPairs = _reportData.raw.colors.contrastPairs.slice(0, 3).map(function(p) {
+        return { selector: p.selector, text: (p.text || '').substring(0, 30), bbox: p.bbox };
+      });
+    }
+
+    // Legacy format for remaining findings
     _allFindings.slice(0, 10).forEach(function(f, idx) {
       var entry = { idx: idx, severity: f.severity, title: f.title.substring(0, 60), category: f.category, bboxes: [] };
       f.bboxes.forEach(function(bbox) {
