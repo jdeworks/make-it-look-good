@@ -95,6 +95,7 @@ window.MilgViewer = (function() {
       '<select class="milg-viewer-zoom-select" title="Zoom level">' +
         '<option value="0.75">75%</option><option value="1" selected>100%</option><option value="1.5">150%</option><option value="2">200%</option><option value="2.5">250%</option><option value="3">300%</option>' +
       '</select>' +
+      '<button class="milg-viewer-debug-btn" title="Copy debug info to clipboard">Debug</button>' +
       '<button class="milg-viewer-close" title="Close (Esc)">&times;</button>';
 
     _overlay.appendChild(toolbar);
@@ -157,6 +158,50 @@ window.MilgViewer = (function() {
       applyZoom(frame);
     });
 
+    // Drag-to-pan (mouse + touch)
+    var _dragStart = null;
+    var _scrollStart = null;
+    content.addEventListener('mousedown', function(e) {
+      if (e.target.closest('.milg-viewer-toolbar') || e.target.closest('rect')) return;
+      _dragStart = { x: e.clientX, y: e.clientY };
+      _scrollStart = { x: content.scrollLeft, y: content.scrollTop };
+      content.style.cursor = 'grabbing';
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove', function(e) {
+      if (!_dragStart) return;
+      content.scrollLeft = _scrollStart.x - (e.clientX - _dragStart.x);
+      content.scrollTop = _scrollStart.y - (e.clientY - _dragStart.y);
+    });
+    document.addEventListener('mouseup', function() {
+      _dragStart = null;
+      if (content) content.style.cursor = '';
+    });
+    content.addEventListener('touchstart', function(e) {
+      if (e.touches.length !== 1) return;
+      if (e.target.closest('.milg-viewer-toolbar') || e.target.closest('rect')) return;
+      _dragStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      _scrollStart = { x: content.scrollLeft, y: content.scrollTop };
+    }, { passive: true });
+    content.addEventListener('touchmove', function(e) {
+      if (!_dragStart || e.touches.length !== 1) return;
+      content.scrollLeft = _scrollStart.x - (e.touches[0].clientX - _dragStart.x);
+      content.scrollTop = _scrollStart.y - (e.touches[0].clientY - _dragStart.y);
+      e.preventDefault();
+    }, { passive: false });
+    content.addEventListener('touchend', function() { _dragStart = null; }, { passive: true });
+
+    // Debug info button
+    toolbar.querySelector('.milg-viewer-debug-btn').addEventListener('click', function() {
+      var debugData = buildDebugInfo();
+      navigator.clipboard.writeText(debugData).then(function() {
+        alert('Debug info copied to clipboard! Paste it to share.');
+      }).catch(function() {
+        // Fallback: show in a prompt
+        prompt('Copy this debug info:', debugData);
+      });
+    });
+
     // Stitch screenshots into one continuous canvas
     stitchScreenshots(_screenshots, function(stitched) {
       _stitchedCanvas = stitched;
@@ -191,6 +236,50 @@ window.MilgViewer = (function() {
         });
       }
     });
+  }
+
+  // Build debug info for alignment diagnostics
+  function buildDebugInfo() {
+    var info = { meta: _meta, zoomLevel: _zoomLevel, findings: [] };
+
+    // Screenshot section info
+    if (_stitchedCanvas) {
+      info.stitched = { width: _stitchedCanvas.width, height: _stitchedCanvas.height };
+    }
+    info.screenshotCount = _screenshots.length;
+    info.sectionSizes = [];
+    // Read natural sizes from data URIs (async not possible here, use cached)
+    var imgEl = _overlay && _overlay.querySelector('.milg-viewer-img');
+    if (imgEl) {
+      info.displayedImg = { naturalWidth: imgEl.naturalWidth, naturalHeight: imgEl.naturalHeight, offsetWidth: imgEl.offsetWidth, offsetHeight: imgEl.offsetHeight };
+    }
+    var svgEl = _overlay && _overlay.querySelector('.milg-viewer-svg');
+    if (svgEl) {
+      info.svgViewBox = svgEl.getAttribute('viewBox');
+      info.svgSize = { offsetWidth: svgEl.clientWidth, offsetHeight: svgEl.clientHeight };
+    }
+
+    // First 10 findings with bbox details + computed SVG coords
+    var scale = _meta ? _meta.scale : 0.5;
+    _allFindings.slice(0, 10).forEach(function(f, idx) {
+      var entry = { idx: idx, severity: f.severity, title: f.title.substring(0, 60), category: f.category, bboxes: [] };
+      f.bboxes.forEach(function(bbox) {
+        entry.bboxes.push({
+          dom: bbox,
+          canvas: { x: Math.round(bbox.left * scale), y: Math.round(bbox.top * scale), w: Math.round(bbox.width * scale), h: Math.round(bbox.height * scale) }
+        });
+      });
+      info.findings.push(entry);
+    });
+
+    // Raw contrast pair bboxes (first 5)
+    if (_reportData && _reportData.raw && _reportData.raw.colors && _reportData.raw.colors.contrastPairs) {
+      info.rawPairs = _reportData.raw.colors.contrastPairs.slice(0, 5).map(function(p) {
+        return { selector: p.selector, text: (p.text || '').substring(0, 30), bbox: p.bbox, fg: p.fg, bg: p.bg, ratio: p.ratio };
+      });
+    }
+
+    return JSON.stringify(info, null, 2);
   }
 
   // Load all screenshot data URIs and stitch into one tall canvas
