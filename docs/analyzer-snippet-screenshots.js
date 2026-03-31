@@ -1758,14 +1758,53 @@
       var statusEl = document.getElementById('milg-ss-status');
       if (statusEl) statusEl.textContent = 'Rendering page to canvas...';
 
+      // Inject calibration markers at known positions to measure canvas offset
+      var _calibMarkers = [];
+      var _calibPositions = [500, 1500, 3000]; // DOM Y positions
+      _calibPositions.forEach(function(domY, idx) {
+        var marker = document.createElement('div');
+        marker.id = 'milg-calib-' + idx;
+        marker.style.cssText = 'position:absolute !important;left:0 !important;top:' + domY + 'px !important;width:6px !important;height:6px !important;background:#ff0000 !important;z-index:999999 !important;pointer-events:none !important;';
+        document.body.appendChild(marker);
+        _calibMarkers.push(marker);
+      });
+
       ms.domToCanvas(document.documentElement, {
         scale: 0.5,
         filter: _ssFilter,
-        timeout: 8000 // 8s timeout for resource loading (default is 30s)
+        timeout: 8000
       }).then(function(fullCanvas) {
+        // Remove calibration markers
+        _calibMarkers.forEach(function(m) { if (m.parentNode) m.parentNode.removeChild(m); });
+
         console.log('[ss] ' + _t() + 'Full canvas captured: ' + fullCanvas.width + 'x' + fullCanvas.height);
 
+        // Detect calibration offset from markers
         var secScale = 0.5;
+        var _calibCtx = fullCanvas.getContext('2d', { willReadFrequently: true });
+        var _calibOffsets = [];
+        _calibPositions.forEach(function(domY) {
+          var expectedCanvasY = Math.round(domY * secScale);
+          // Scan column at x=1 (left edge) for red marker (±150px range)
+          var scanStart = Math.max(0, expectedCanvasY - 150);
+          var scanEnd = Math.min(fullCanvas.height, expectedCanvasY + 150);
+          for (var sy = scanStart; sy < scanEnd; sy++) {
+            var px = _calibCtx.getImageData(1, sy, 1, 1).data;
+            if (px[0] > 200 && px[1] < 50 && px[2] < 50) {
+              var offset = expectedCanvasY - sy;
+              _calibOffsets.push(offset);
+              console.log('[ss] Calibration marker at dom.top=' + domY + ': expected canvas.y=' + expectedCanvasY + ', found at ' + sy + ', offset=' + offset);
+              break;
+            }
+          }
+        });
+        // Use median offset
+        var calibOffset = 0;
+        if (_calibOffsets.length > 0) {
+          _calibOffsets.sort(function(a, b) { return a - b; });
+          calibOffset = _calibOffsets[Math.floor(_calibOffsets.length / 2)];
+          console.log('[ss] Calibration offsets: ' + JSON.stringify(_calibOffsets) + ', using median: ' + calibOffset);
+        }
 
         // Store full-page canvas as single WebP — used by both report and viewer
         var fullPageDataUri;
@@ -1793,7 +1832,9 @@
               canvasHeight: fullCanvas.height,
               docHeightAtCapture: captureDocH,
               docHeightAtExtraction: data.meta.docHeight || captureDocH,
-              captureScrollY: actualScroll
+              captureScrollY: actualScroll,
+              calibrationOffsetY: calibOffset,
+              calibrationSamples: _calibOffsets
             };
             // --- Pixel contrast verification on the pristine full canvas ---
             // Runs on the raw canvas BEFORE WebP compression, so no artifacts.

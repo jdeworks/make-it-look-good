@@ -223,57 +223,18 @@ window.MilgViewer = (function() {
       frame.appendChild(viewImg);
       frame.appendChild(svg);
 
-      // Auto-calibrate: detect Y offset between DOM bbox positions and actual canvas content.
-      // Fixed/sticky headers cause domToCanvas to render content higher than getBoundingClientRect reports.
+      // Use pre-computed calibration offset from extraction (red marker probing on pristine canvas)
       viewImg.addEventListener('load', function() {
-        _calibrationOffsetY = 0;
-        try {
-          var probeCanvas = document.createElement('canvas');
-          probeCanvas.width = viewImg.naturalWidth;
-          probeCanvas.height = viewImg.naturalHeight;
-          var pCtx = probeCanvas.getContext('2d', { willReadFrequently: true });
-          pCtx.drawImage(viewImg, 0, 0);
-
-          // Find a bbox well below the header (dom.top > 500) for calibration
-          var scale = _meta ? _meta.scale : 0.5;
-          var calibBbox = null;
-          for (var ci = 0; ci < _allFindings.length; ci++) {
-            var bb = _allFindings[ci].bboxes[0];
-            if (bb && bb.top > 500 && bb.width > 20 && bb.height > 10) { calibBbox = bb; break; }
-          }
-
-          if (calibBbox && pCtx) {
-            var cx = Math.round((calibBbox.left + calibBbox.width / 2) * scale);
-            var ey = Math.round(calibBbox.top * scale);
-            // Sample background color from very top of canvas
-            var bg = pCtx.getImageData(Math.min(cx, viewImg.naturalWidth - 1), 2, 1, 1).data;
-
-            // Scan ±120px around expected Y for content
-            var scanStart = Math.max(0, ey - 120);
-            var scanEnd = Math.min(viewImg.naturalHeight, ey + 120);
-            var firstContentY = -1;
-            for (var sy = scanStart; sy < scanEnd; sy++) {
-              var px = pCtx.getImageData(Math.min(cx, viewImg.naturalWidth - 1), sy, 1, 1).data;
-              var diff = Math.abs(px[0] - bg[0]) + Math.abs(px[1] - bg[1]) + Math.abs(px[2] - bg[2]);
-              if (diff > 30) { firstContentY = sy; break; }
-            }
-
-            if (firstContentY >= 0) {
-              var offset = ey - firstContentY;
-              // Only apply if offset is significant (>10px) and consistent direction
-              if (Math.abs(offset) > 10) {
-                _calibrationOffsetY = offset;
-                console.log('[viewer] Auto-calibrated Y offset: ' + offset + 'px canvas (' + (offset * 2) + 'px DOM)');
-              }
-            }
-          }
-        } catch(e) { /* probe failed, no calibration */ }
+        _calibrationOffsetY = (_meta && _meta.calibrationOffsetY) || 0;
+        if (_calibrationOffsetY) {
+          console.log('[viewer] Using calibration offset: ' + _calibrationOffsetY + 'px canvas (' + (_calibrationOffsetY * 2) + 'px DOM), samples: ' + JSON.stringify(_meta.calibrationSamples || []));
+        }
 
         updateFilterButtons();
         renderOverlays();
 
-        // Scroll to the section the user clicked on
         if (sectionIndex > 0 && _meta) {
+          var scale = _meta.scale || 0.5;
           content.scrollTop = Math.round(sectionIndex * Math.round(_meta.viewportHeight * scale) - _calibrationOffsetY);
         }
       });
