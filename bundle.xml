@@ -10652,6 +10652,260 @@ echo ""
 echo "Next: commit docs/analyzer.js and push to deploy."
 </file>
 
+<file path="scripts/test-presets-headless.mjs">
+#!/usr/bin/env node
+// Headless browser test runner for all presets
+// Usage: node scripts/test-presets-headless.mjs
+// Requires: puppeteer (already in package.json)
+//
+// Serves docs/ locally, renders each preset in a real browser,
+// runs the full extraction + scoring, saves results to research/
+
+import puppeteer from 'puppeteer';
+import { createServer } from 'http';
+import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs';
+import { join, extname } from 'path';
+
+const DOCS_DIR = join(import.meta.dirname, '..', 'docs');
+const RESEARCH_DIR = join(import.meta.dirname, '..', 'research');
+const PORT = 8765;
+
+// Simple static file server
+function startServer() {
+  const mimeTypes = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2' };
+  const server = createServer((req, res) => {
+    let filePath = join(DOCS_DIR, req.url === '/' ? 'index.html' : req.url);
+    if (!existsSync(filePath)) { res.writeHead(404); res.end('Not found'); return; }
+    const ext = extname(filePath);
+    res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' });
+    res.end(readFileSync(filePath));
+  });
+  server.listen(PORT);
+  return server;
+}
+
+// Load manifest
+function loadManifest() {
+  return JSON.parse(readFileSync(join(DOCS_DIR, 'presets', 'index.json'), 'utf8'));
+}
+
+// Build test list
+function buildTests(manifest) {
+  const tests = [];
+  for (const [el, info] of Object.entries(manifest.elements)) {
+    const pers = Object.keys(info.personalities || {});
+    for (const p of pers) {
+      const file = join(DOCS_DIR, 'presets', el, p + '.html');
+      if (existsSync(file)) tests.push({ element: el, personality: p });
+    }
+  }
+  return tests;
+}
+
+async function runTest(page, element, personality) {
+  const presetUrl = `http://localhost:${PORT}/presets/${element}/${personality}.html`;
+  const html = readFileSync(join(DOCS_DIR, 'presets', element, personality + '.html'), 'utf8');
+
+  // Navigate to a blank page with scoring modules loaded
+  await page.goto(`http://localhost:${PORT}/tests/test-presets-rendered.html`, { waitUntil: 'networkidle0', timeout: 15000 });
+
+  // Use the page's scoring modules + extraction to analyze the preset
+  const result = await page.evaluate(async (html, element, personality) => {
+    return new Promise((resolve) => {
+      // Create iframe with the preset
+      const iframe = document.createElement('iframe');
+      iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
+      iframe.sandbox = 'allow-scripts allow-same-origin';
+      document.body.appendChild(iframe);
+
+      let handled = false;
+      function onMsg(e) {
+        if (!e.data || e.data.type !== 'milg-headless-result') return;
+        if (handled) return;
+        handled = true;
+        window.removeEventListener('message', onMsg);
+        if (iframe.parentNode) document.body.removeChild(iframe);
+
+        // Score the data
+        const data = e.data.data;
+        data.profile = 'general';
+        data.meta.isFragment = true;
+        data.meta.url = element + '/' + personality;
+        try {
+          const report = window.MilgScoring.runScoring(data);
+          resolve({
+            name: element + '/' + personality,
+            overall: report.overall,
+            grade: report.grade,
+            categories: report.categories.map(c => ({
+              label: c.label,
+              score: c.score,
+              checks: c.checks || 0,
+              errors: c.findings.filter(f => f.severity === 'error').length,
+              warnings: c.findings.filter(f => f.severity === 'warning').length,
+              infos: c.findings.filter(f => f.severity === 'info').length,
+              findings: c.findings.map(f => ({ severity: f.severity, title: f.title }))
+            }))
+          });
+        } catch(err) {
+          resolve({ name: element + '/' + personality, error: err.message });
+        }
+      }
+      window.addEventListener('message', onMsg);
+
+      // Load extraction function from the analyzer
+      fetch('/analyzer.js').then(r => r.text()).then(code => {
+        const match = code.match(/function extractFromDocument\(\)\s*\{/);
+        if (!match) { resolve({ name: element + '/' + personality, error: 'No extractFromDocument' }); return; }
+        const start = code.indexOf(match[0]);
+        let depth = 0, end = start;
+        for (let i = start; i < code.length; i++) {
+          if (code[i] === '{') depth++;
+          if (code[i] === '}') { depth--; if (depth === 0) { end = i + 1; break; } }
+        }
+        const extractFn = code.substring(start, end).replace(/milg-analyzer-result/g, 'milg-headless-result');
+
+        const srcdoc = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">' +
+          '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+          '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
+          '<style>body{margin:0}</style></head><body>' +
+          '<script>window.__milgIsFragment=true;</' + 'script>' +
+          html +
+          '<script>setTimeout(function(){(' + extractFn + ')()}, 2500);</' + 'script>' +
+          '</body></html>';
+        iframe.srcdoc = srcdoc;
+      });
+
+      // Timeout
+      setTimeout(() => {
+        if (handled) return;
+        handled = true;
+        window.removeEventListener('message', onMsg);
+        if (iframe.parentNode) document.body.removeChild(iframe);
+        resolve({ name: element + '/' + personality, error: 'Timeout' });
+      }, 12000);
+    });
+  }, html, element, personality);
+
+  return result;
+}
+
+async function main() {
+  console.log('Starting headless preset test runner...');
+  const server = startServer();
+  console.log(`Server running on port ${PORT}`);
+
+  const manifest = loadManifest();
+  const tests = buildTests(manifest);
+  console.log(`Found ${tests.length} presets to test\n`);
+
+  const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+  const page = await browser.newPage();
+  await page.setViewport({ width: 1280, height: 900 });
+
+  const results = [];
+  const errors = [];
+
+  for (let i = 0; i < tests.length; i++) {
+    const t = tests[i];
+    const name = `${t.element}/${t.personality}`;
+    process.stdout.write(`[${i + 1}/${tests.length}] ${name}...`);
+
+    try {
+      const result = await runTest(page, t.element, t.personality);
+      if (result.error) {
+        process.stdout.write(` ERROR: ${result.error}\n`);
+        errors.push(result);
+      } else {
+        const e = result.categories.reduce((s, c) => s + c.errors, 0);
+        const w = result.categories.reduce((s, c) => s + c.warnings, 0);
+        process.stdout.write(` ${result.overall} ${result.grade} (${e}E ${w}W)\n`);
+        results.push(result);
+      }
+    } catch(err) {
+      process.stdout.write(` CRASH: ${err.message}\n`);
+      errors.push({ name, error: err.message });
+    }
+  }
+
+  await browser.close();
+  server.close();
+
+  // Generate reports
+  console.log(`\n--- Results ---`);
+  console.log(`Tested: ${results.length} | Errors: ${errors.length}`);
+
+  if (results.length > 0) {
+    const avg = Math.round(results.reduce((s, r) => s + r.overall, 0) / results.length);
+    const min = Math.min(...results.map(r => r.overall));
+    const max = Math.max(...results.map(r => r.overall));
+    const beforeResults = results.filter(r => r.name.endsWith('/before'));
+    const cleanResults = results.filter(r => r.name.endsWith('/clean'));
+    const beforeAvg = beforeResults.length > 0 ? Math.round(beforeResults.reduce((s, r) => s + r.overall, 0) / beforeResults.length) : 'N/A';
+    const cleanAvg = cleanResults.length > 0 ? Math.round(cleanResults.reduce((s, r) => s + r.overall, 0) / cleanResults.length) : 'N/A';
+
+    console.log(`Average: ${avg} | Min: ${min} | Max: ${max}`);
+    console.log(`Before avg: ${beforeAvg} | Clean avg: ${cleanAvg}`);
+
+    // Write summary
+    let md = '# Preset Test Results (Headless Browser-Rendered)\n\n';
+    md += `**Date:** ${new Date().toISOString()}\n`;
+    md += `**Tested:** ${results.length} presets | **Errors:** ${errors.length}\n`;
+    md += `**Average:** ${avg} | **Min:** ${min} | **Max:** ${max}\n`;
+    md += `**Before avg:** ${beforeAvg} | **Clean avg:** ${cleanAvg}\n\n`;
+
+    md += '## Scores\n\n';
+    md += '| Preset | Score | Grade | Errors | Warnings | Infos |\n';
+    md += '|--------|-------|-------|--------|----------|-------|\n';
+    results.sort((a, b) => a.overall - b.overall);
+    for (const r of results) {
+      const e = r.categories.reduce((s, c) => s + c.errors, 0);
+      const w = r.categories.reduce((s, c) => s + c.warnings, 0);
+      const inf = r.categories.reduce((s, c) => s + c.infos, 0);
+      md += `| ${r.name} | ${r.overall} | ${r.grade} | ${e} | ${w} | ${inf} |\n`;
+    }
+
+    md += '\n## Category Score Distribution\n\n';
+    const catNames = results[0].categories.map(c => c.label);
+    for (const cat of catNames) {
+      const scores = results.map(r => r.categories.find(c => c.label === cat)?.score ?? 100);
+      const catAvg = Math.round(scores.reduce((s, v) => s + v, 0) / scores.length);
+      const catMin = Math.min(...scores);
+      const catMax = Math.max(...scores);
+      md += `- **${cat}**: avg=${catAvg} min=${catMin} max=${catMax}\n`;
+    }
+
+    md += '\n## Most Common Issues\n\n';
+    const issueCounts = {};
+    for (const r of results) {
+      for (const c of r.categories) {
+        for (const f of c.findings) {
+          const key = `[${f.severity}] ${c.label}: ${f.title.substring(0, 80)}`;
+          issueCounts[key] = (issueCounts[key] || 0) + 1;
+        }
+      }
+    }
+    const sortedIssues = Object.entries(issueCounts).sort((a, b) => b[1] - a[1]);
+    for (const [issue, count] of sortedIssues.slice(0, 30)) {
+      md += `- **${count}x** ${issue}\n`;
+    }
+
+    if (errors.length > 0) {
+      md += '\n## Extraction Errors\n\n';
+      for (const e of errors) {
+        md += `- ${e.name}: ${e.error}\n`;
+      }
+    }
+
+    const outFile = join(RESEARCH_DIR, 'analyzer-test-rendered.md');
+    writeFileSync(outFile, md);
+    console.log(`\nResults written to: ${outFile}`);
+  }
+}
+
+main().catch(err => { console.error('Fatal:', err); process.exit(1); });
+</file>
+
 <file path="systems/apple-hig.md">
 # Apple Human Interface Guidelines
 
@@ -19869,260 +20123,6 @@ All sources used to build this knowledge base, organized by topic area.
 | Adrian Roselli — Toast Messages | https://adrianroselli.com/2020/01/defining-toast-messages.html | Toast a11y considerations | Reference |
 | Inclusive Components — Cards | https://inclusive-components.design/cards/ | Accessible card patterns | Reference |
 | Inclusive Components — Data Tables | https://inclusive-components.design/data-tables/ | Accessible table patterns | Reference |
-</file>
-
-<file path="scripts/test-presets-headless.mjs">
-#!/usr/bin/env node
-// Headless browser test runner for all presets
-// Usage: node scripts/test-presets-headless.mjs
-// Requires: puppeteer (already in package.json)
-//
-// Serves docs/ locally, renders each preset in a real browser,
-// runs the full extraction + scoring, saves results to research/
-
-import puppeteer from 'puppeteer';
-import { createServer } from 'http';
-import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs';
-import { join, extname } from 'path';
-
-const DOCS_DIR = join(import.meta.dirname, '..', 'docs');
-const RESEARCH_DIR = join(import.meta.dirname, '..', 'research');
-const PORT = 8765;
-
-// Simple static file server
-function startServer() {
-  const mimeTypes = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2' };
-  const server = createServer((req, res) => {
-    let filePath = join(DOCS_DIR, req.url === '/' ? 'index.html' : req.url);
-    if (!existsSync(filePath)) { res.writeHead(404); res.end('Not found'); return; }
-    const ext = extname(filePath);
-    res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' });
-    res.end(readFileSync(filePath));
-  });
-  server.listen(PORT);
-  return server;
-}
-
-// Load manifest
-function loadManifest() {
-  return JSON.parse(readFileSync(join(DOCS_DIR, 'presets', 'index.json'), 'utf8'));
-}
-
-// Build test list
-function buildTests(manifest) {
-  const tests = [];
-  for (const [el, info] of Object.entries(manifest.elements)) {
-    const pers = Object.keys(info.personalities || {});
-    for (const p of pers) {
-      const file = join(DOCS_DIR, 'presets', el, p + '.html');
-      if (existsSync(file)) tests.push({ element: el, personality: p });
-    }
-  }
-  return tests;
-}
-
-async function runTest(page, element, personality) {
-  const presetUrl = `http://localhost:${PORT}/presets/${element}/${personality}.html`;
-  const html = readFileSync(join(DOCS_DIR, 'presets', element, personality + '.html'), 'utf8');
-
-  // Navigate to a blank page with scoring modules loaded
-  await page.goto(`http://localhost:${PORT}/tests/test-presets-rendered.html`, { waitUntil: 'networkidle0', timeout: 15000 });
-
-  // Use the page's scoring modules + extraction to analyze the preset
-  const result = await page.evaluate(async (html, element, personality) => {
-    return new Promise((resolve) => {
-      // Create iframe with the preset
-      const iframe = document.createElement('iframe');
-      iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
-      iframe.sandbox = 'allow-scripts allow-same-origin';
-      document.body.appendChild(iframe);
-
-      let handled = false;
-      function onMsg(e) {
-        if (!e.data || e.data.type !== 'milg-headless-result') return;
-        if (handled) return;
-        handled = true;
-        window.removeEventListener('message', onMsg);
-        if (iframe.parentNode) document.body.removeChild(iframe);
-
-        // Score the data
-        const data = e.data.data;
-        data.profile = 'general';
-        data.meta.isFragment = true;
-        data.meta.url = element + '/' + personality;
-        try {
-          const report = window.MilgScoring.runScoring(data);
-          resolve({
-            name: element + '/' + personality,
-            overall: report.overall,
-            grade: report.grade,
-            categories: report.categories.map(c => ({
-              label: c.label,
-              score: c.score,
-              checks: c.checks || 0,
-              errors: c.findings.filter(f => f.severity === 'error').length,
-              warnings: c.findings.filter(f => f.severity === 'warning').length,
-              infos: c.findings.filter(f => f.severity === 'info').length,
-              findings: c.findings.map(f => ({ severity: f.severity, title: f.title }))
-            }))
-          });
-        } catch(err) {
-          resolve({ name: element + '/' + personality, error: err.message });
-        }
-      }
-      window.addEventListener('message', onMsg);
-
-      // Load extraction function from the analyzer
-      fetch('/analyzer.js').then(r => r.text()).then(code => {
-        const match = code.match(/function extractFromDocument\(\)\s*\{/);
-        if (!match) { resolve({ name: element + '/' + personality, error: 'No extractFromDocument' }); return; }
-        const start = code.indexOf(match[0]);
-        let depth = 0, end = start;
-        for (let i = start; i < code.length; i++) {
-          if (code[i] === '{') depth++;
-          if (code[i] === '}') { depth--; if (depth === 0) { end = i + 1; break; } }
-        }
-        const extractFn = code.substring(start, end).replace(/milg-analyzer-result/g, 'milg-headless-result');
-
-        const srcdoc = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">' +
-          '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
-          '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
-          '<style>body{margin:0}</style></head><body>' +
-          '<script>window.__milgIsFragment=true;</' + 'script>' +
-          html +
-          '<script>setTimeout(function(){(' + extractFn + ')()}, 2500);</' + 'script>' +
-          '</body></html>';
-        iframe.srcdoc = srcdoc;
-      });
-
-      // Timeout
-      setTimeout(() => {
-        if (handled) return;
-        handled = true;
-        window.removeEventListener('message', onMsg);
-        if (iframe.parentNode) document.body.removeChild(iframe);
-        resolve({ name: element + '/' + personality, error: 'Timeout' });
-      }, 12000);
-    });
-  }, html, element, personality);
-
-  return result;
-}
-
-async function main() {
-  console.log('Starting headless preset test runner...');
-  const server = startServer();
-  console.log(`Server running on port ${PORT}`);
-
-  const manifest = loadManifest();
-  const tests = buildTests(manifest);
-  console.log(`Found ${tests.length} presets to test\n`);
-
-  const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
-  const page = await browser.newPage();
-  await page.setViewport({ width: 1280, height: 900 });
-
-  const results = [];
-  const errors = [];
-
-  for (let i = 0; i < tests.length; i++) {
-    const t = tests[i];
-    const name = `${t.element}/${t.personality}`;
-    process.stdout.write(`[${i + 1}/${tests.length}] ${name}...`);
-
-    try {
-      const result = await runTest(page, t.element, t.personality);
-      if (result.error) {
-        process.stdout.write(` ERROR: ${result.error}\n`);
-        errors.push(result);
-      } else {
-        const e = result.categories.reduce((s, c) => s + c.errors, 0);
-        const w = result.categories.reduce((s, c) => s + c.warnings, 0);
-        process.stdout.write(` ${result.overall} ${result.grade} (${e}E ${w}W)\n`);
-        results.push(result);
-      }
-    } catch(err) {
-      process.stdout.write(` CRASH: ${err.message}\n`);
-      errors.push({ name, error: err.message });
-    }
-  }
-
-  await browser.close();
-  server.close();
-
-  // Generate reports
-  console.log(`\n--- Results ---`);
-  console.log(`Tested: ${results.length} | Errors: ${errors.length}`);
-
-  if (results.length > 0) {
-    const avg = Math.round(results.reduce((s, r) => s + r.overall, 0) / results.length);
-    const min = Math.min(...results.map(r => r.overall));
-    const max = Math.max(...results.map(r => r.overall));
-    const beforeResults = results.filter(r => r.name.endsWith('/before'));
-    const cleanResults = results.filter(r => r.name.endsWith('/clean'));
-    const beforeAvg = beforeResults.length > 0 ? Math.round(beforeResults.reduce((s, r) => s + r.overall, 0) / beforeResults.length) : 'N/A';
-    const cleanAvg = cleanResults.length > 0 ? Math.round(cleanResults.reduce((s, r) => s + r.overall, 0) / cleanResults.length) : 'N/A';
-
-    console.log(`Average: ${avg} | Min: ${min} | Max: ${max}`);
-    console.log(`Before avg: ${beforeAvg} | Clean avg: ${cleanAvg}`);
-
-    // Write summary
-    let md = '# Preset Test Results (Headless Browser-Rendered)\n\n';
-    md += `**Date:** ${new Date().toISOString()}\n`;
-    md += `**Tested:** ${results.length} presets | **Errors:** ${errors.length}\n`;
-    md += `**Average:** ${avg} | **Min:** ${min} | **Max:** ${max}\n`;
-    md += `**Before avg:** ${beforeAvg} | **Clean avg:** ${cleanAvg}\n\n`;
-
-    md += '## Scores\n\n';
-    md += '| Preset | Score | Grade | Errors | Warnings | Infos |\n';
-    md += '|--------|-------|-------|--------|----------|-------|\n';
-    results.sort((a, b) => a.overall - b.overall);
-    for (const r of results) {
-      const e = r.categories.reduce((s, c) => s + c.errors, 0);
-      const w = r.categories.reduce((s, c) => s + c.warnings, 0);
-      const inf = r.categories.reduce((s, c) => s + c.infos, 0);
-      md += `| ${r.name} | ${r.overall} | ${r.grade} | ${e} | ${w} | ${inf} |\n`;
-    }
-
-    md += '\n## Category Score Distribution\n\n';
-    const catNames = results[0].categories.map(c => c.label);
-    for (const cat of catNames) {
-      const scores = results.map(r => r.categories.find(c => c.label === cat)?.score ?? 100);
-      const catAvg = Math.round(scores.reduce((s, v) => s + v, 0) / scores.length);
-      const catMin = Math.min(...scores);
-      const catMax = Math.max(...scores);
-      md += `- **${cat}**: avg=${catAvg} min=${catMin} max=${catMax}\n`;
-    }
-
-    md += '\n## Most Common Issues\n\n';
-    const issueCounts = {};
-    for (const r of results) {
-      for (const c of r.categories) {
-        for (const f of c.findings) {
-          const key = `[${f.severity}] ${c.label}: ${f.title.substring(0, 80)}`;
-          issueCounts[key] = (issueCounts[key] || 0) + 1;
-        }
-      }
-    }
-    const sortedIssues = Object.entries(issueCounts).sort((a, b) => b[1] - a[1]);
-    for (const [issue, count] of sortedIssues.slice(0, 30)) {
-      md += `- **${count}x** ${issue}\n`;
-    }
-
-    if (errors.length > 0) {
-      md += '\n## Extraction Errors\n\n';
-      for (const e of errors) {
-        md += `- ${e.name}: ${e.error}\n`;
-      }
-    }
-
-    const outFile = join(RESEARCH_DIR, 'analyzer-test-rendered.md');
-    writeFileSync(outFile, md);
-    console.log(`\nResults written to: ${outFile}`);
-  }
-}
-
-main().catch(err => { console.error('Fatal:', err); process.exit(1); });
 </file>
 
 <file path="scripts/test-template.mjs">
@@ -36107,21 +36107,22 @@ window.MilgViewer = (function() {
         var totalSecs = Math.min(Math.ceil(fullCanvas.height / secVH), 10);
         console.log('[ss] ' + _t() + 'Splitting into ' + totalSecs + ' sections (secH=' + secVH + 'px in canvas coords)');
 
-        // Store full-page canvas as single PNG for the viewer (pixel-perfect, no section stitching)
+        // Store full-page canvas as single WebP — used by both report and viewer
+        var fullPageDataUri;
         try {
-          data.screenshotFull = fullCanvas.toDataURL('image/webp', 0.8);
-          console.log('[ss] ' + _t() + 'Full-page WebP stored (' + Math.round(data.screenshotFull.length / 1024) + 'KB)');
+          fullPageDataUri = fullCanvas.toDataURL('image/webp', 0.8);
+          console.log('[ss] ' + _t() + 'Full-page WebP: ' + Math.round(fullPageDataUri.length / 1024) + 'KB');
         } catch(e) {
-          console.warn('[ss] Full-page PNG failed:', e.message);
+          console.warn('[ss] Full-page WebP failed:', e.message);
+          fullPageDataUri = '';
         }
 
-        var shots = [];
-        var secIdx = 0;
-        function splitNext() {
-          if (secIdx >= totalSecs) {
-            window.scrollTo(0, _origScrollY);
-            if (_overlay.parentNode) _overlay.parentNode.removeChild(_overlay);
-            data.screenshots = shots;
+        window.scrollTo(0, _origScrollY);
+        if (_overlay.parentNode) _overlay.parentNode.removeChild(_overlay);
+        data.screenshots = fullPageDataUri ? [fullPageDataUri] : [];
+        data.screenshotFull = fullPageDataUri || null;
+
+        (function finalize() {
             var captureDocH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
             document.documentElement.style.scrollBehavior = origScrollBehavior;
             data.screenshotMeta = {
@@ -36308,39 +36309,9 @@ window.MilgViewer = (function() {
               console.log('[ss] ' + _t() + 'Pixel contrast verified: ' + pairsWithBbox.length + ' pairs, ' + results.length + ' discrepancies');
             })();
 
-            console.log('%c✓ ' + shots.length + ' screenshot(s) captured (' + _t().trim() + ' total)', 'color: #16a34a; font-weight: bold;');
+            console.log('%c✓ Screenshot captured (' + _t().trim() + ')', 'color: #16a34a; font-weight: bold;');
             outputData(data);
-            return;
-          }
-          if (statusEl) statusEl.textContent = 'Exporting section ' + (secIdx + 1) + ' of ' + totalSecs + '...';
-
-          var srcY = secIdx * secVH;
-          var srcH = Math.min(secVH, fullCanvas.height - srcY);
-          if (srcH <= 0) { secIdx++; splitNext(); return; }
-
-          var secCanvas = document.createElement('canvas');
-          secCanvas.width = secW;
-          secCanvas.height = srcH;
-          var ctx = secCanvas.getContext('2d');
-          ctx.drawImage(fullCanvas, 0, srcY, secW, srcH, 0, 0, secW, srcH);
-
-          secCanvas.toBlob(function(blob) {
-            if (!blob) {
-              console.log('[ss] ' + _t() + 'Section ' + (secIdx + 1) + ': toBlob returned null');
-              secIdx++; splitNext(); return;
-            }
-            var reader = new FileReader();
-            reader.onloadend = function() {
-              var kb = Math.round(reader.result.length / 1024);
-              console.log('[ss] ' + _t() + 'Section ' + (secIdx + 1) + '/' + totalSecs + ': ' + kb + ' KB' + (kb < 3 ? ' ⚠ (may be blank)' : ''));
-              shots.push(reader.result);
-              secIdx++;
-              splitNext();
-            };
-            reader.readAsDataURL(blob);
-          }, 'image/webp', 0.8);
-        }
-        splitNext();
+        })();
 
       }).catch(function(err) {
         console.log('[ss] ' + _t() + '✗ Full page capture failed: ' + (err && err.message || err));
@@ -36360,56 +36331,65 @@ window.MilgViewer = (function() {
     var jsonKB = Math.round(json.length / 1024);
     var jsonMB = (json.length / 1024 / 1024).toFixed(1);
     console.log('[clipboard] JSON size: ' + jsonKB + ' KB (' + jsonMB + ' MB)');
-    if (jsonKB > 2048) {
-      console.log('%c⚠ Large payload (' + jsonMB + ' MB) — clipboard paste may be slow. If it fails, use: copy(window.__milgData_json)', 'color: #b45309; font-weight: bold;');
-    }
+    window.__milgData = data;
+    window.__milgData_json = json;
 
-    // Copy to clipboard — navigator.clipboard requires user gesture + focus on many sites,
-    // so we try it first, then fall back to execCommand, then give manual instructions.
-    function copyFallback() {
-      console.log('[clipboard] Trying execCommand fallback...');
-      var ta = document.createElement('textarea');
-      ta.value = json;
-      ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
-      document.body.appendChild(ta);
-      ta.select();
-      try {
-        var ok = document.execCommand('copy');
-        document.body.removeChild(ta);
-        if (ok) {
-          console.log('%c✓ Design data + screenshots copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-          return;
-        }
-        console.log('[clipboard] execCommand returned false');
-      } catch(e) {
-        document.body.removeChild(ta);
-        console.log('[clipboard] execCommand threw: ' + e.message);
+    // Show overlay with copy button (user click = real gesture = clipboard works reliably)
+    var _copyOverlay = document.createElement('div');
+    _copyOverlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:999999;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui,sans-serif';
+    _copyOverlay.innerHTML = '<div style="text-align:center;max-width:400px;padding:20px">' +
+      '<div style="font-size:32px;margin-bottom:12px">&#10003;</div>' +
+      '<div style="color:#fff;font-size:18px;font-weight:600;margin-bottom:6px">Extraction complete!</div>' +
+      '<div style="color:rgba(255,255,255,0.6);font-size:13px;margin-bottom:6px">' + jsonKB + ' KB of design data' + (data.screenshotFull ? ' + full-page screenshot' : '') + '</div>' +
+      (jsonKB > 2048 ? '<div style="color:#fbbf24;font-size:12px;margin-bottom:16px">&#9888; Large payload (' + jsonMB + ' MB) — paste may take a moment</div>' : '<div style="margin-bottom:16px"></div>') +
+      '<button id="milg-copy-btn" style="padding:14px 32px;font-size:15px;font-weight:600;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-bottom:12px;min-width:200px">Copy to Clipboard</button>' +
+      '<div style="color:rgba(255,255,255,0.4);font-size:11px">Then paste into the analyzer</div>' +
+      '</div>';
+    document.body.appendChild(_copyOverlay);
+
+    document.getElementById('milg-copy-btn').addEventListener('click', function() {
+      var btn = document.getElementById('milg-copy-btn');
+      btn.textContent = 'Copying...';
+      btn.disabled = true;
+
+      function onSuccess() {
+        btn.textContent = 'Copied!';
+        btn.style.background = '#16a34a';
+        console.log('%c✓ Design data copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+        setTimeout(function() { if (_copyOverlay.parentNode) _copyOverlay.parentNode.removeChild(_copyOverlay); }, 800);
       }
-      console.log('%c⚠ Could not copy to clipboard automatically.', 'color: #b45309; font-weight: bold;');
-      console.log('%cType: copy(window.__milgData_json)  — then paste into the analyzer.', 'color: #3b82f6; font-weight: bold;');
-      window.__milgData_json = json;
-    }
+      function onFail() {
+        btn.textContent = 'Copy failed — use console';
+        btn.style.background = '#dc2626';
+        console.log('%c⚠ Clipboard copy failed. Type: copy(window.__milgData_json)', 'color: #b45309; font-weight: bold;');
+      }
 
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      console.log('[clipboard] Trying navigator.clipboard.writeText...');
-      navigator.clipboard.writeText(json).then(function() {
-        console.log('%c✓ Design data + screenshots copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-      }).catch(function(err) {
-        console.log('[clipboard] navigator.clipboard failed: ' + err.message);
-        copyFallback();
-      });
-    } else {
-      console.log('[clipboard] navigator.clipboard not available');
-      copyFallback();
-    }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(json).then(onSuccess).catch(function() {
+          // Fallback
+          try {
+            var ta = document.createElement('textarea'); ta.value = json;
+            ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
+            document.body.appendChild(ta); ta.select();
+            document.execCommand('copy') ? onSuccess() : onFail();
+            document.body.removeChild(ta);
+          } catch(e) { onFail(); }
+        });
+      } else {
+        try {
+          var ta = document.createElement('textarea'); ta.value = json;
+          ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
+          document.body.appendChild(ta); ta.select();
+          document.execCommand('copy') ? onSuccess() : onFail();
+          document.body.removeChild(ta);
+        } catch(e) { onFail(); }
+      }
+    });
 
     console.log('%cmake-it-look-good extraction complete (with screenshots)', 'color: #3b82f6; font-weight: bold;');
     console.log('Elements scanned:', data.structure.totalElements);
     console.log('Screenshots:', (data.screenshots || []).length);
-    console.log('Total JSON size:', Math.round(json.length / 1024), 'KB');
-
-    window.__milgData = data;
-    window.__milgData_json = json;
+    console.log('Total JSON size:', jsonKB, 'KB');
 
     // --- Site Crawl Mode (same-origin iframe with src=, full JS execution) ---
     if (window.__milgCrawlSite) {

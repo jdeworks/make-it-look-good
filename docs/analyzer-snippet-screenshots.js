@@ -1772,21 +1772,22 @@
         var totalSecs = Math.min(Math.ceil(fullCanvas.height / secVH), 10);
         console.log('[ss] ' + _t() + 'Splitting into ' + totalSecs + ' sections (secH=' + secVH + 'px in canvas coords)');
 
-        // Store full-page canvas as single PNG for the viewer (pixel-perfect, no section stitching)
+        // Store full-page canvas as single WebP — used by both report and viewer
+        var fullPageDataUri;
         try {
-          data.screenshotFull = fullCanvas.toDataURL('image/webp', 0.8);
-          console.log('[ss] ' + _t() + 'Full-page WebP stored (' + Math.round(data.screenshotFull.length / 1024) + 'KB)');
+          fullPageDataUri = fullCanvas.toDataURL('image/webp', 0.8);
+          console.log('[ss] ' + _t() + 'Full-page WebP: ' + Math.round(fullPageDataUri.length / 1024) + 'KB');
         } catch(e) {
-          console.warn('[ss] Full-page PNG failed:', e.message);
+          console.warn('[ss] Full-page WebP failed:', e.message);
+          fullPageDataUri = '';
         }
 
-        var shots = [];
-        var secIdx = 0;
-        function splitNext() {
-          if (secIdx >= totalSecs) {
-            window.scrollTo(0, _origScrollY);
-            if (_overlay.parentNode) _overlay.parentNode.removeChild(_overlay);
-            data.screenshots = shots;
+        window.scrollTo(0, _origScrollY);
+        if (_overlay.parentNode) _overlay.parentNode.removeChild(_overlay);
+        data.screenshots = fullPageDataUri ? [fullPageDataUri] : [];
+        data.screenshotFull = fullPageDataUri || null;
+
+        (function finalize() {
             var captureDocH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
             document.documentElement.style.scrollBehavior = origScrollBehavior;
             data.screenshotMeta = {
@@ -1973,39 +1974,9 @@
               console.log('[ss] ' + _t() + 'Pixel contrast verified: ' + pairsWithBbox.length + ' pairs, ' + results.length + ' discrepancies');
             })();
 
-            console.log('%c✓ ' + shots.length + ' screenshot(s) captured (' + _t().trim() + ' total)', 'color: #16a34a; font-weight: bold;');
+            console.log('%c✓ Screenshot captured (' + _t().trim() + ')', 'color: #16a34a; font-weight: bold;');
             outputData(data);
-            return;
-          }
-          if (statusEl) statusEl.textContent = 'Exporting section ' + (secIdx + 1) + ' of ' + totalSecs + '...';
-
-          var srcY = secIdx * secVH;
-          var srcH = Math.min(secVH, fullCanvas.height - srcY);
-          if (srcH <= 0) { secIdx++; splitNext(); return; }
-
-          var secCanvas = document.createElement('canvas');
-          secCanvas.width = secW;
-          secCanvas.height = srcH;
-          var ctx = secCanvas.getContext('2d');
-          ctx.drawImage(fullCanvas, 0, srcY, secW, srcH, 0, 0, secW, srcH);
-
-          secCanvas.toBlob(function(blob) {
-            if (!blob) {
-              console.log('[ss] ' + _t() + 'Section ' + (secIdx + 1) + ': toBlob returned null');
-              secIdx++; splitNext(); return;
-            }
-            var reader = new FileReader();
-            reader.onloadend = function() {
-              var kb = Math.round(reader.result.length / 1024);
-              console.log('[ss] ' + _t() + 'Section ' + (secIdx + 1) + '/' + totalSecs + ': ' + kb + ' KB' + (kb < 3 ? ' ⚠ (may be blank)' : ''));
-              shots.push(reader.result);
-              secIdx++;
-              splitNext();
-            };
-            reader.readAsDataURL(blob);
-          }, 'image/webp', 0.8);
-        }
-        splitNext();
+        })();
 
       }).catch(function(err) {
         console.log('[ss] ' + _t() + '✗ Full page capture failed: ' + (err && err.message || err));
@@ -2025,56 +1996,65 @@
     var jsonKB = Math.round(json.length / 1024);
     var jsonMB = (json.length / 1024 / 1024).toFixed(1);
     console.log('[clipboard] JSON size: ' + jsonKB + ' KB (' + jsonMB + ' MB)');
-    if (jsonKB > 2048) {
-      console.log('%c⚠ Large payload (' + jsonMB + ' MB) — clipboard paste may be slow. If it fails, use: copy(window.__milgData_json)', 'color: #b45309; font-weight: bold;');
-    }
+    window.__milgData = data;
+    window.__milgData_json = json;
 
-    // Copy to clipboard — navigator.clipboard requires user gesture + focus on many sites,
-    // so we try it first, then fall back to execCommand, then give manual instructions.
-    function copyFallback() {
-      console.log('[clipboard] Trying execCommand fallback...');
-      var ta = document.createElement('textarea');
-      ta.value = json;
-      ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
-      document.body.appendChild(ta);
-      ta.select();
-      try {
-        var ok = document.execCommand('copy');
-        document.body.removeChild(ta);
-        if (ok) {
-          console.log('%c✓ Design data + screenshots copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-          return;
-        }
-        console.log('[clipboard] execCommand returned false');
-      } catch(e) {
-        document.body.removeChild(ta);
-        console.log('[clipboard] execCommand threw: ' + e.message);
+    // Show overlay with copy button (user click = real gesture = clipboard works reliably)
+    var _copyOverlay = document.createElement('div');
+    _copyOverlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:999999;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui,sans-serif';
+    _copyOverlay.innerHTML = '<div style="text-align:center;max-width:400px;padding:20px">' +
+      '<div style="font-size:32px;margin-bottom:12px">&#10003;</div>' +
+      '<div style="color:#fff;font-size:18px;font-weight:600;margin-bottom:6px">Extraction complete!</div>' +
+      '<div style="color:rgba(255,255,255,0.6);font-size:13px;margin-bottom:6px">' + jsonKB + ' KB of design data' + (data.screenshotFull ? ' + full-page screenshot' : '') + '</div>' +
+      (jsonKB > 2048 ? '<div style="color:#fbbf24;font-size:12px;margin-bottom:16px">&#9888; Large payload (' + jsonMB + ' MB) — paste may take a moment</div>' : '<div style="margin-bottom:16px"></div>') +
+      '<button id="milg-copy-btn" style="padding:14px 32px;font-size:15px;font-weight:600;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-bottom:12px;min-width:200px">Copy to Clipboard</button>' +
+      '<div style="color:rgba(255,255,255,0.4);font-size:11px">Then paste into the analyzer</div>' +
+      '</div>';
+    document.body.appendChild(_copyOverlay);
+
+    document.getElementById('milg-copy-btn').addEventListener('click', function() {
+      var btn = document.getElementById('milg-copy-btn');
+      btn.textContent = 'Copying...';
+      btn.disabled = true;
+
+      function onSuccess() {
+        btn.textContent = 'Copied!';
+        btn.style.background = '#16a34a';
+        console.log('%c✓ Design data copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+        setTimeout(function() { if (_copyOverlay.parentNode) _copyOverlay.parentNode.removeChild(_copyOverlay); }, 800);
       }
-      console.log('%c⚠ Could not copy to clipboard automatically.', 'color: #b45309; font-weight: bold;');
-      console.log('%cType: copy(window.__milgData_json)  — then paste into the analyzer.', 'color: #3b82f6; font-weight: bold;');
-      window.__milgData_json = json;
-    }
+      function onFail() {
+        btn.textContent = 'Copy failed — use console';
+        btn.style.background = '#dc2626';
+        console.log('%c⚠ Clipboard copy failed. Type: copy(window.__milgData_json)', 'color: #b45309; font-weight: bold;');
+      }
 
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      console.log('[clipboard] Trying navigator.clipboard.writeText...');
-      navigator.clipboard.writeText(json).then(function() {
-        console.log('%c✓ Design data + screenshots copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-      }).catch(function(err) {
-        console.log('[clipboard] navigator.clipboard failed: ' + err.message);
-        copyFallback();
-      });
-    } else {
-      console.log('[clipboard] navigator.clipboard not available');
-      copyFallback();
-    }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(json).then(onSuccess).catch(function() {
+          // Fallback
+          try {
+            var ta = document.createElement('textarea'); ta.value = json;
+            ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
+            document.body.appendChild(ta); ta.select();
+            document.execCommand('copy') ? onSuccess() : onFail();
+            document.body.removeChild(ta);
+          } catch(e) { onFail(); }
+        });
+      } else {
+        try {
+          var ta = document.createElement('textarea'); ta.value = json;
+          ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
+          document.body.appendChild(ta); ta.select();
+          document.execCommand('copy') ? onSuccess() : onFail();
+          document.body.removeChild(ta);
+        } catch(e) { onFail(); }
+      }
+    });
 
     console.log('%cmake-it-look-good extraction complete (with screenshots)', 'color: #3b82f6; font-weight: bold;');
     console.log('Elements scanned:', data.structure.totalElements);
     console.log('Screenshots:', (data.screenshots || []).length);
-    console.log('Total JSON size:', Math.round(json.length / 1024), 'KB');
-
-    window.__milgData = data;
-    window.__milgData_json = json;
+    console.log('Total JSON size:', jsonKB, 'KB');
 
     // --- Site Crawl Mode (same-origin iframe with src=, full JS execution) ---
     if (window.__milgCrawlSite) {
