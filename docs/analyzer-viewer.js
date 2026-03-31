@@ -14,9 +14,6 @@ window.MilgViewer = (function() {
   var _tooltip = null;
   var _reportData = null;   // full report data (for pixel verification lookup)
   var _zoomLevel = 1;
-  var _panX = 0, _panY = 0;
-  var _isPanning = false;
-  var _panStartX = 0, _panStartY = 0;
 
   // Severity colors: red / yellow / blue
   var COLORS = {
@@ -111,7 +108,14 @@ window.MilgViewer = (function() {
 
     toolbar.innerHTML = navHtml +
       '<div class="milg-viewer-filters">' + catPills + '<span class="milg-viewer-sep"></span>' + sevPills + verifyPill + '</div>' +
-      '<span class="milg-viewer-zoom-level" title="Scroll to zoom, double-click to toggle">100%</span>' +
+      '<select class="milg-viewer-zoom-select" title="Zoom level">' +
+        '<option value="0.75">75%</option>' +
+        '<option value="1" selected>100%</option>' +
+        '<option value="1.5">150%</option>' +
+        '<option value="2">200%</option>' +
+        '<option value="2.5">250%</option>' +
+        '<option value="3">300%</option>' +
+      '</select>' +
       '<button class="milg-viewer-close" title="Close (Esc)">&times;</button>';
 
     _overlay.appendChild(toolbar);
@@ -173,124 +177,32 @@ window.MilgViewer = (function() {
       }
     });
 
-    // Close on background click (only when not zoomed/panning)
+    // Close on background click
     content.addEventListener('click', function(e) {
-      if (e.target === content && _zoomLevel <= 1) close();
+      if (e.target === content) close();
     });
 
     // Close on Escape
     document.addEventListener('keydown', _onKeyDown);
 
-    // --- Zoom & Pan ---
-    _zoomLevel = 1; _panX = 0; _panY = 0;
-
-    // Mouse wheel zoom — zoom toward cursor position
-    content.addEventListener('wheel', function(e) {
-      e.preventDefault();
-      var delta = e.deltaY > 0 ? -0.15 : 0.15;
-      var newZoom = Math.max(1, Math.min(8, _zoomLevel + delta * _zoomLevel));
-      if (newZoom === _zoomLevel) return;
-
-      // Zoom toward cursor: adjust pan so the point under cursor stays fixed
-      var frameRect = frame.getBoundingClientRect();
-      var cx = (e.clientX - frameRect.left) / frameRect.width;
-      var cy = (e.clientY - frameRect.top) / frameRect.height;
-      var scaleChange = newZoom / _zoomLevel;
-      _panX = cx - (cx - _panX) * scaleChange;
-      _panY = cy - (cy - _panY) * scaleChange;
-
-      _zoomLevel = newZoom;
-      applyZoom(frame);
-    }, { passive: false });
-
-    // Pan via mouse drag (when zoomed in)
-    content.addEventListener('mousedown', function(e) {
-      if (_zoomLevel <= 1 || e.button !== 0) return;
-      if (e.target.closest('.milg-viewer-toolbar')) return;
-      _isPanning = true;
-      _panStartX = e.clientX; _panStartY = e.clientY;
-      content.style.cursor = 'grabbing';
-      e.preventDefault();
-    });
-    document.addEventListener('mousemove', _onMouseMove);
-    document.addEventListener('mouseup', _onMouseUp);
-
-    // Touch pinch-to-zoom + pan
-    var _lastTouchDist = 0;
-    var _lastTouchMid = null;
-    content.addEventListener('touchstart', function(e) {
-      if (e.touches.length === 2) {
-        _lastTouchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-        _lastTouchMid = { x: (e.touches[0].clientX + e.touches[1].clientX) / 2, y: (e.touches[0].clientY + e.touches[1].clientY) / 2 };
-      } else if (e.touches.length === 1 && _zoomLevel > 1) {
-        _isPanning = true;
-        _panStartX = e.touches[0].clientX; _panStartY = e.touches[0].clientY;
-      }
-    }, { passive: true });
-    content.addEventListener('touchmove', function(e) {
-      if (e.touches.length === 2 && _lastTouchDist > 0) {
-        e.preventDefault();
-        var dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-        var scaleChange = dist / _lastTouchDist;
-        _zoomLevel = Math.max(1, Math.min(8, _zoomLevel * scaleChange));
-        _lastTouchDist = dist;
+    // --- Zoom via dropdown ---
+    _zoomLevel = 1;
+    var zoomSelect = toolbar.querySelector('.milg-viewer-zoom-select');
+    if (zoomSelect) {
+      zoomSelect.addEventListener('change', function() {
+        _zoomLevel = parseFloat(zoomSelect.value) || 1;
         applyZoom(frame);
-      } else if (e.touches.length === 1 && _isPanning && _zoomLevel > 1) {
-        e.preventDefault();
-        var dx = (e.touches[0].clientX - _panStartX) / (frame.offsetWidth * _zoomLevel);
-        var dy = (e.touches[0].clientY - _panStartY) / (frame.offsetHeight * _zoomLevel);
-        _panX += dx; _panY += dy;
-        _panStartX = e.touches[0].clientX; _panStartY = e.touches[0].clientY;
-        applyZoom(frame);
-      }
-    }, { passive: false });
-    content.addEventListener('touchend', function() { _isPanning = false; _lastTouchDist = 0; }, { passive: true });
-
-    // Double-click to toggle zoom
-    content.addEventListener('dblclick', function(e) {
-      if (e.target.closest('.milg-viewer-toolbar')) return;
-      if (_zoomLevel > 1) {
-        _zoomLevel = 1; _panX = 0; _panY = 0;
-      } else {
-        _zoomLevel = 3;
-        // Center zoom on click position
-        var frameRect = frame.getBoundingClientRect();
-        var cx = (e.clientX - frameRect.left) / frameRect.width;
-        var cy = (e.clientY - frameRect.top) / frameRect.height;
-        _panX = 0.5 - cx; _panY = 0.5 - cy;
-      }
-      applyZoom(frame);
-    });
+      });
+    }
 
     updateFilterButtons();
     renderOverlays();
   }
 
-  function _onMouseMove(e) {
-    if (!_isPanning || _zoomLevel <= 1 || !_overlay) return;
-    var frame = _overlay.querySelector('.milg-viewer-frame');
-    if (!frame) return;
-    var dx = (e.clientX - _panStartX) / (frame.offsetWidth * _zoomLevel);
-    var dy = (e.clientY - _panStartY) / (frame.offsetHeight * _zoomLevel);
-    _panX += dx; _panY += dy;
-    _panStartX = e.clientX; _panStartY = e.clientY;
-    applyZoom(frame);
-  }
-
-  function _onMouseUp() { _isPanning = false; if (_overlay) { var c = _overlay.querySelector('.milg-viewer-content'); if (c) c.style.cursor = ''; } }
-
   function applyZoom(frame) {
     if (!frame) return;
-    var tx = _panX * frame.offsetWidth;
-    var ty = _panY * frame.offsetHeight;
-    frame.style.transform = 'scale(' + _zoomLevel + ') translate(' + tx + 'px,' + ty + 'px)';
-    frame.style.transformOrigin = '50% 50%';
-    // Update zoom indicator
-    var indicator = _overlay && _overlay.querySelector('.milg-viewer-zoom-level');
-    if (indicator) {
-      indicator.textContent = Math.round(_zoomLevel * 100) + '%';
-      indicator.style.opacity = _zoomLevel > 1 ? '1' : '0.5';
-    }
+    frame.style.transform = _zoomLevel === 1 ? '' : 'scale(' + _zoomLevel + ')';
+    frame.style.transformOrigin = 'center top';
   }
 
   function _onKeyDown(e) {
@@ -306,9 +218,11 @@ window.MilgViewer = (function() {
     _currentSection = next;
 
     // Reset zoom on section change
-    _zoomLevel = 1; _panX = 0; _panY = 0;
+    _zoomLevel = 1;
     var frame = _overlay.querySelector('.milg-viewer-frame');
     if (frame) frame.style.transform = '';
+    var zoomSel = _overlay.querySelector('.milg-viewer-zoom-select');
+    if (zoomSel) zoomSel.value = '1';
 
     var img = _overlay.querySelector('.milg-viewer-img');
     if (img) img.src = _screenshots[_currentSection];
@@ -693,10 +607,8 @@ window.MilgViewer = (function() {
     _screenshots = [];
     _meta = null;
     _reportData = null;
-    _zoomLevel = 1; _panX = 0; _panY = 0; _isPanning = false;
+    _zoomLevel = 1;
     document.removeEventListener('keydown', _onKeyDown);
-    document.removeEventListener('mousemove', _onMouseMove);
-    document.removeEventListener('mouseup', _onMouseUp);
   }
 
   // Simple lightbox fallback (for data without screenshotMeta)
