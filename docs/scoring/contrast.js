@@ -98,7 +98,7 @@ function scoreContrast(data) {
     }
 
     var passes = ratio >= needed;
-    return { ratio: ratio, needed: needed, passes: passes, isLarge: p.isLarge, text: p.text, fontSize: p.fontSize, selector: p.selector, fg: p.fg, bg: p.bg, filter: p.filter || '' };
+    return { ratio: ratio, needed: needed, passes: passes, isLarge: p.isLarge, text: p.text, fontSize: p.fontSize, selector: p.selector, fg: p.fg, bg: p.bg, filter: p.filter || '', bbox: p.bbox };
   });
 
   // Separate uncertain results (very low ratio usually means bg couldn't be determined — gradient, SVG, image, etc.)
@@ -127,8 +127,8 @@ function scoreContrast(data) {
   var failSeen = {};
   failures.forEach(function(p) {
     var dedup = p.ratio + '|' + p.selector;
-    if (failSeen[dedup]) { failSeen[dedup].count++; return; }
-    failSeen[dedup] = { p: p, count: 1 };
+    if (failSeen[dedup]) { failSeen[dedup].count++; if (p.bbox) failSeen[dedup].bboxes.push(p.bbox); return; }
+    failSeen[dedup] = { p: p, count: 1, bboxes: p.bbox ? [p.bbox] : [] };
   });
   Object.keys(failSeen).forEach(function(key) {
     var entry = failSeen[key];
@@ -150,7 +150,7 @@ function scoreContrast(data) {
         : 'Normal text needs ' + profile.contrast + ':1 minimum. Use a darker text color or lighter background.') + bgNote,
       presetRef: null,
       source: p.isLarge ? 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' : 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum',
-      locator: { selector: p.selector, text: p.text }
+      locator: { selector: p.selector, text: p.text, bboxes: entry.bboxes }
     });
   });
 
@@ -169,8 +169,8 @@ function scoreContrast(data) {
   var nearSeen = {};
   nearMisses.forEach(function(p) {
     var dedup = p.ratio + '|' + p.selector;
-    if (nearSeen[dedup]) { nearSeen[dedup].count++; return; }
-    nearSeen[dedup] = { p: p, count: 1 };
+    if (nearSeen[dedup]) { nearSeen[dedup].count++; if (p.bbox) nearSeen[dedup].bboxes.push(p.bbox); return; }
+    nearSeen[dedup] = { p: p, count: 1, bboxes: p.bbox ? [p.bbox] : [] };
   });
   Object.keys(nearSeen).forEach(function(key) {
     var entry = nearSeen[key];
@@ -183,7 +183,7 @@ function scoreContrast(data) {
       fix: 'Passes AA but consider increasing for AAA (7:1). Slight changes in background could cause failure.',
       presetRef: null,
       source: 'WCAG 2.2 §1.4.6 — https://www.w3.org/TR/WCAG22/#contrast-enhanced',
-      locator: { selector: p.selector, text: p.text }
+      locator: { selector: p.selector, text: p.text, bboxes: entry.bboxes }
     });
   });
 

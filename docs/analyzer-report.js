@@ -88,7 +88,7 @@ window.MilgReport = (function() {
         if (report.raw.screenshots.length > 1) {
           html += '<div style="padding:4px 8px;font-size:10px;color:var(--text-secondary);border-bottom:1px solid var(--border);background:var(--bg-alt)">Section ' + (idx + 1) + '</div>';
         }
-        html += '<img src="' + src + '" alt="Page screenshot ' + (idx + 1) + '" class="screenshot-img" style="width:100%;display:block;cursor:zoom-in" onclick="window.__milgZoomScreenshot(this)" loading="lazy">';
+        html += '<img src="' + src + '" alt="Page screenshot ' + (idx + 1) + '" class="screenshot-img" style="width:100%;display:block;cursor:zoom-in" onclick="window.__milgZoomScreenshot(this,' + idx + ')" loading="lazy">';
         html += '</div>';
       });
       html += '</div>';
@@ -102,7 +102,7 @@ window.MilgReport = (function() {
           if (report.raw.screenshotsUnhidden.length > 1) {
             html += '<div style="padding:4px 8px;font-size:10px;color:var(--text-secondary);border-bottom:1px solid var(--border);background:var(--bg-alt)">Section ' + (idx + 1) + '</div>';
           }
-          html += '<img src="' + src + '" alt="Page with panels revealed ' + (idx + 1) + '" class="screenshot-img" style="width:100%;display:block;cursor:zoom-in" onclick="window.__milgZoomScreenshot(this)" loading="lazy">';
+          html += '<img src="' + src + '" alt="Page with panels revealed ' + (idx + 1) + '" class="screenshot-img" style="width:100%;display:block;cursor:zoom-in" onclick="window.__milgZoomScreenshot(this,' + idx + ')" loading="lazy">';
           html += '</div>';
         });
         html += '</div>';
@@ -161,6 +161,8 @@ window.MilgReport = (function() {
     html += '<div class="report-findings">';
     html += '<h2>Detailed Findings</h2>';
 
+    var _bboxFindingIdx = 0; // Global finding index for "show on screenshot" links
+    var _hasScreenshots = report.raw && report.raw.screenshots && report.raw.screenshots.length > 0 && report.raw.screenshotMeta;
     report.categories.forEach(function(cat) {
       if (cat.findings.length === 0) return;
 
@@ -168,7 +170,8 @@ window.MilgReport = (function() {
       html += '<h3>' + (categoryIcons[cat.icon] || '') + ' ' + cat.label + '</h3>';
 
       cat.findings.forEach(function(f) {
-        html += '<div class="report-finding severity-' + f.severity + '">';
+        var hasBboxes = f.locator && f.locator.bboxes && f.locator.bboxes.length > 0;
+        html += '<div class="report-finding severity-' + f.severity + '"' + (hasBboxes ? ' data-finding-idx="' + _bboxFindingIdx + '"' : '') + '>';
         html += '<div class="finding-header">';
         html += severityBadge(f.severity);
         html += '<span class="finding-title">' + escapeHtml(f.title) + '</span>';
@@ -198,6 +201,11 @@ window.MilgReport = (function() {
           }
           html += '</div>';
         }
+
+        if (hasBboxes && _hasScreenshots) {
+          html += '<a class="finding-show-on-screenshot" onclick="window.__milgShowFindingOnScreenshot(' + _bboxFindingIdx + ')">Show on screenshot</a>';
+        }
+        if (hasBboxes) _bboxFindingIdx++;
 
         html += '</div>';
       });

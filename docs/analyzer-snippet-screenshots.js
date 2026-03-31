@@ -391,6 +391,7 @@
     }
 
     // Collect all pairs up to AAA+buffer (7.5) so profile switching works
+    var elRect = el.getBoundingClientRect();
     if (ratio < 7.5) {
       contrastPairs.push({
         fg: rgbStr(fgBlended), bg: rgbStr(bg),
@@ -402,7 +403,8 @@
         selector: cssSelector(el),
         filter: filterValue,
         backdropFilter: hasBackdropFilter,
-        minBgAlpha: Math.round(minBgAlpha * 100) / 100
+        minBgAlpha: Math.round(minBgAlpha * 100) / 100,
+        bbox: { left: Math.round(elRect.left), top: Math.round(elRect.top), width: Math.round(elRect.width), height: Math.round(elRect.height) }
       });
     }
 
@@ -412,7 +414,7 @@
     var textLen = node.textContent.trim().length;
     if (textLen > data.typography.maxLineLength.chars && el.tagName !== 'SCRIPT' && el.tagName !== 'STYLE' && !el.closest('pre') && !el.closest('code')) {
       // Measure actual character width using the hidden span
-      var elWidth = el.getBoundingClientRect().width;
+      var elWidth = elRect.width;
       _measureSpan.style.fontSize = style.fontSize;
       _measureSpan.style.fontFamily = style.fontFamily;
       var charWidth = _measureSpan.getBoundingClientRect().width / 36;
@@ -654,7 +656,8 @@
         selector: cssSelector(el),
         passes: false,
         isButton: el.tagName !== 'A' || linkContext === 'button' || linkContext === 'nav',
-        linkContext: linkContext
+        linkContext: linkContext,
+        bbox: { left: Math.round(rect.left), top: Math.round(rect.top), width: w, height: h }
       });
     }
   });
@@ -1751,6 +1754,13 @@
             window.scrollTo(0, _origScrollY);
             if (_overlay.parentNode) _overlay.parentNode.removeChild(_overlay);
             data.screenshots = shots;
+            data.screenshotMeta = {
+              scale: secScale,
+              viewportHeight: vh,
+              sectionCount: shots.length,
+              canvasWidth: fullCanvas.width,
+              canvasHeight: fullCanvas.height
+            };
             console.log('%c✓ ' + shots.length + ' screenshot(s) captured (' + _t().trim() + ' total)', 'color: #16a34a; font-weight: bold;');
             outputData(data);
             return;
