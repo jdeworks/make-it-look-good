@@ -250,6 +250,9 @@
       url: location.href,
       viewportWidth: window.innerWidth,
       viewportHeight: window.innerHeight,
+      scrollX: window.scrollX,
+      scrollY: window.scrollY,
+      docHeight: Math.max(document.body.scrollHeight, document.documentElement.scrollHeight),
       timestamp: new Date().toISOString(),
       version: 1
     },
@@ -1744,39 +1747,6 @@
     // Phase 2: Capture the full page as one big canvas, then split into sections
     function _startCapture() {
       window.scrollTo(0, 0);
-
-      // Refresh all bboxes at scroll=0 — pre-scroll may have loaded lazy content
-      // that shifted the layout. At scroll=0, getBoundingClientRect gives document coords.
-      console.log('[ss] ' + _t() + 'Refreshing bboxes at scroll=0...');
-      (data.colors.contrastPairs || []).forEach(function(p) {
-        if (!p.selector) return;
-        try {
-          var els = document.querySelectorAll(p.selector);
-          // Find the element that matches the original text
-          for (var ei = 0; ei < els.length; ei++) {
-            var txt = (els[ei].textContent || '').trim().substring(0, 50);
-            if (txt === p.text || els.length === 1) {
-              var r = els[ei].getBoundingClientRect();
-              p.bbox = { left: Math.round(r.left), top: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) };
-              break;
-            }
-          }
-        } catch(e) {}
-      });
-      (data.interaction.touchTargets || []).forEach(function(t) {
-        if (!t.selector) return;
-        try {
-          var els = document.querySelectorAll(t.selector);
-          for (var ei = 0; ei < els.length; ei++) {
-            var txt = (els[ei].textContent || els[ei].getAttribute('aria-label') || '').trim().substring(0, 40);
-            if (txt === t.text || els.length === 1) {
-              var r = els[ei].getBoundingClientRect();
-              t.bbox = { left: Math.round(r.left), top: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) };
-              break;
-            }
-          }
-        } catch(e) {}
-      });
 
       console.log('[ss] ' + _t() + 'Phase 2: Capturing full page (' + captureH + 'px) as single canvas...');
       var statusEl = document.getElementById('milg-ss-status');

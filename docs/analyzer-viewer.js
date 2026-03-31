@@ -240,7 +240,8 @@ window.MilgViewer = (function() {
 
   // Build debug info for alignment diagnostics
   function buildDebugInfo() {
-    var info = { meta: _meta, zoomLevel: _zoomLevel, activeFilter: _activeFilter, findings: [] };
+    var rawMeta = _reportData && _reportData.raw && _reportData.raw.meta ? _reportData.raw.meta : {};
+    var info = { meta: _meta, extractionScroll: { scrollX: rawMeta.scrollX, scrollY: rawMeta.scrollY, docHeight: rawMeta.docHeight }, zoomLevel: _zoomLevel, activeFilter: _activeFilter, findings: [] };
 
     // Screenshot section info
     if (_stitchedCanvas) {
@@ -455,7 +456,37 @@ window.MilgViewer = (function() {
     svg.querySelectorAll('rect').forEach(function(rect) {
       rect.addEventListener('mouseenter', function(e) { showFindingTooltip(e, parseInt(rect.getAttribute('data-finding'))); });
       rect.addEventListener('mouseleave', hideTooltip);
-      rect.addEventListener('click', function() { scrollToFinding(parseInt(rect.getAttribute('data-finding'))); });
+      rect.addEventListener('click', function(e) {
+        if (e.shiftKey) {
+          // Shift+click: copy element debug info
+          var fIdx = parseInt(rect.getAttribute('data-finding'));
+          var f = _allFindings[fIdx];
+          if (f) {
+            var bboxIdx = 0;
+            // Find which bbox this rect corresponds to
+            var rx = parseInt(rect.getAttribute('x')), ry = parseInt(rect.getAttribute('y'));
+            f.bboxes.forEach(function(bb, bi) {
+              if (Math.round(bb.left * _meta.scale) === rx && Math.round(bb.top * _meta.scale) === ry) bboxIdx = bi;
+            });
+            var bb = f.bboxes[bboxIdx];
+            var info = {
+              finding: f.title.substring(0, 60),
+              severity: f.severity,
+              category: f.category,
+              bbox_dom: bb,
+              bbox_canvas: { x: Math.round(bb.left * _meta.scale), y: Math.round(bb.top * _meta.scale), w: Math.round(bb.width * _meta.scale), h: Math.round(bb.height * _meta.scale) },
+              rect_attrs: { x: rect.getAttribute('x'), y: rect.getAttribute('y'), width: rect.getAttribute('width'), height: rect.getAttribute('height') },
+              meta: _meta,
+              extractionScroll: _reportData && _reportData.raw && _reportData.raw.meta ? { scrollX: _reportData.raw.meta.scrollX, scrollY: _reportData.raw.meta.scrollY, docHeight: _reportData.raw.meta.docHeight } : null
+            };
+            navigator.clipboard.writeText(JSON.stringify(info, null, 2)).then(function() {
+              alert('Element debug info copied!');
+            });
+          }
+        } else {
+          scrollToFinding(parseInt(rect.getAttribute('data-finding')));
+        }
+      });
     });
   }
 
