@@ -1,5 +1,5 @@
 // make-it-look-good — Design Extraction Snippet (with screenshots)
-// Version: 2025-03-31-v17
+// Version: 2025-03-31-v18
 // Run this in the browser console on any page.
 // Loads modern-screenshot from CDN to capture page screenshots as WebP.
 // Output is larger (~200-800KB extra) but includes visual reference.
@@ -7,7 +7,7 @@
 
 (function() {
   'use strict';
-  var _MILG_VERSION = '2025-03-31-v17';
+  var _MILG_VERSION = '2025-03-31-v18';
   console.log('%c[milg] Snippet version: ' + _MILG_VERSION, 'color: #64748b;');
 
   // --- Scan mode ---
@@ -1776,8 +1776,17 @@
       });
       var actualScroll = Math.max(window.scrollY, document.documentElement.scrollTop, document.body.scrollTop);
 
+      // Disable ALL CSS transitions/animations so elements snap to their final state.
+      // Scroll-reveal animations (translateY, opacity transitions) would otherwise
+      // leave elements at intermediate positions during bbox reading and capture.
+      var _noTransStyle = document.createElement('style');
+      _noTransStyle.textContent = '*, *::before, *::after { transition: none !important; animation: none !important; animation-duration: 0s !important; transition-duration: 0s !important; }';
+      document.head.appendChild(_noTransStyle);
+      // Force reflow so transitions are killed before we measure
+      void document.body.offsetHeight;
+
       // Re-read all bboxes now that pre-scroll has triggered lazy content.
-      // At scroll=0, getBoundingClientRect gives document-relative coords.
+      // At scroll=0 with no transitions, getBoundingClientRect gives final positions.
       var _bboxUpdated = 0;
       _bboxRefs.forEach(function(ref) {
         if (!ref.el || !ref.arr[ref.idx]) return;
@@ -1825,6 +1834,7 @@
         (function finalize() {
             var captureDocH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
             document.documentElement.style.scrollBehavior = origScrollBehavior;
+            if (_noTransStyle.parentNode) _noTransStyle.parentNode.removeChild(_noTransStyle);
             data.screenshotMeta = {
               scale: secScale,
               viewportHeight: vh,
