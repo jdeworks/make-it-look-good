@@ -20341,12 +20341,16 @@ window.MilgViewer = (function() {
   var _currentSection = 0;
   var _tooltip = null;
   var _reportData = null;   // full report data (for pixel verification lookup)
+  var _zoomLevel = 1;
+  var _panX = 0, _panY = 0;
+  var _isPanning = false;
+  var _panStartX = 0, _panStartY = 0;
 
-  // Severity colors
+  // Severity colors: red / yellow / blue
   var COLORS = {
-    error:   { fill: 'rgba(239,68,68,0.18)', stroke: '#ef4444' },
-    warning: { fill: 'rgba(245,158,11,0.18)', stroke: '#f59e0b' },
-    info:    { fill: 'rgba(59,130,246,0.18)', stroke: '#3b82f6' }
+    error:   { fill: 'rgba(239,68,68,0.22)', stroke: '#ef4444' },
+    warning: { fill: 'rgba(234,179,8,0.22)', stroke: '#eab308' },
+    info:    { fill: 'rgba(59,130,246,0.22)', stroke: '#3b82f6' }
   };
 
   function open(img, sectionIndex, reportData) {
@@ -20426,6 +20430,7 @@ window.MilgViewer = (function() {
 
     toolbar.innerHTML = navHtml +
       '<div class="milg-viewer-filters">' + catPills + '<span class="milg-viewer-sep"></span>' + sevPills + '</div>' +
+      '<span class="milg-viewer-zoom-level" title="Scroll to zoom, double-click to toggle">100%</span>' +
       '<button class="milg-viewer-close" title="Close (Esc)">&times;</button>';
 
     _overlay.appendChild(toolbar);
@@ -20451,7 +20456,7 @@ window.MilgViewer = (function() {
     var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('class', 'milg-viewer-svg');
     svg.setAttribute('viewBox', '0 0 ' + _meta.canvasWidth + ' ' + thisSectionH);
-    svg.setAttribute('preserveAspectRatio', 'none');
+    svg.setAttribute('preserveAspectRatio', 'xMinYMin meet');
 
     frame.appendChild(viewImg);
     frame.appendChild(svg);
@@ -20487,19 +20492,124 @@ window.MilgViewer = (function() {
       }
     });
 
-    // Close on background click
+    // Close on background click (only when not zoomed/panning)
     content.addEventListener('click', function(e) {
-      if (e.target === content) close();
+      if (e.target === content && _zoomLevel <= 1) close();
     });
 
     // Close on Escape
     document.addEventListener('keydown', _onKeyDown);
 
-    // Left/right arrow keys for section nav
-    // (handled in _onKeyDown)
+    // --- Zoom & Pan ---
+    _zoomLevel = 1; _panX = 0; _panY = 0;
+
+    // Mouse wheel zoom — zoom toward cursor position
+    content.addEventListener('wheel', function(e) {
+      e.preventDefault();
+      var delta = e.deltaY > 0 ? -0.15 : 0.15;
+      var newZoom = Math.max(1, Math.min(8, _zoomLevel + delta * _zoomLevel));
+      if (newZoom === _zoomLevel) return;
+
+      // Zoom toward cursor: adjust pan so the point under cursor stays fixed
+      var frameRect = frame.getBoundingClientRect();
+      var cx = (e.clientX - frameRect.left) / frameRect.width;
+      var cy = (e.clientY - frameRect.top) / frameRect.height;
+      var scaleChange = newZoom / _zoomLevel;
+      _panX = cx - (cx - _panX) * scaleChange;
+      _panY = cy - (cy - _panY) * scaleChange;
+
+      _zoomLevel = newZoom;
+      applyZoom(frame);
+    }, { passive: false });
+
+    // Pan via mouse drag (when zoomed in)
+    content.addEventListener('mousedown', function(e) {
+      if (_zoomLevel <= 1 || e.button !== 0) return;
+      if (e.target.closest('.milg-viewer-toolbar')) return;
+      _isPanning = true;
+      _panStartX = e.clientX; _panStartY = e.clientY;
+      content.style.cursor = 'grabbing';
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove', _onMouseMove);
+    document.addEventListener('mouseup', _onMouseUp);
+
+    // Touch pinch-to-zoom + pan
+    var _lastTouchDist = 0;
+    var _lastTouchMid = null;
+    content.addEventListener('touchstart', function(e) {
+      if (e.touches.length === 2) {
+        _lastTouchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+        _lastTouchMid = { x: (e.touches[0].clientX + e.touches[1].clientX) / 2, y: (e.touches[0].clientY + e.touches[1].clientY) / 2 };
+      } else if (e.touches.length === 1 && _zoomLevel > 1) {
+        _isPanning = true;
+        _panStartX = e.touches[0].clientX; _panStartY = e.touches[0].clientY;
+      }
+    }, { passive: true });
+    content.addEventListener('touchmove', function(e) {
+      if (e.touches.length === 2 && _lastTouchDist > 0) {
+        e.preventDefault();
+        var dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+        var scaleChange = dist / _lastTouchDist;
+        _zoomLevel = Math.max(1, Math.min(8, _zoomLevel * scaleChange));
+        _lastTouchDist = dist;
+        applyZoom(frame);
+      } else if (e.touches.length === 1 && _isPanning && _zoomLevel > 1) {
+        e.preventDefault();
+        var dx = (e.touches[0].clientX - _panStartX) / (frame.offsetWidth * _zoomLevel);
+        var dy = (e.touches[0].clientY - _panStartY) / (frame.offsetHeight * _zoomLevel);
+        _panX += dx; _panY += dy;
+        _panStartX = e.touches[0].clientX; _panStartY = e.touches[0].clientY;
+        applyZoom(frame);
+      }
+    }, { passive: false });
+    content.addEventListener('touchend', function() { _isPanning = false; _lastTouchDist = 0; }, { passive: true });
+
+    // Double-click to toggle zoom
+    content.addEventListener('dblclick', function(e) {
+      if (e.target.closest('.milg-viewer-toolbar')) return;
+      if (_zoomLevel > 1) {
+        _zoomLevel = 1; _panX = 0; _panY = 0;
+      } else {
+        _zoomLevel = 3;
+        // Center zoom on click position
+        var frameRect = frame.getBoundingClientRect();
+        var cx = (e.clientX - frameRect.left) / frameRect.width;
+        var cy = (e.clientY - frameRect.top) / frameRect.height;
+        _panX = 0.5 - cx; _panY = 0.5 - cy;
+      }
+      applyZoom(frame);
+    });
 
     updateFilterButtons();
     renderOverlays();
+  }
+
+  function _onMouseMove(e) {
+    if (!_isPanning || _zoomLevel <= 1 || !_overlay) return;
+    var frame = _overlay.querySelector('.milg-viewer-frame');
+    if (!frame) return;
+    var dx = (e.clientX - _panStartX) / (frame.offsetWidth * _zoomLevel);
+    var dy = (e.clientY - _panStartY) / (frame.offsetHeight * _zoomLevel);
+    _panX += dx; _panY += dy;
+    _panStartX = e.clientX; _panStartY = e.clientY;
+    applyZoom(frame);
+  }
+
+  function _onMouseUp() { _isPanning = false; if (_overlay) { var c = _overlay.querySelector('.milg-viewer-content'); if (c) c.style.cursor = ''; } }
+
+  function applyZoom(frame) {
+    if (!frame) return;
+    var tx = _panX * frame.offsetWidth;
+    var ty = _panY * frame.offsetHeight;
+    frame.style.transform = 'scale(' + _zoomLevel + ') translate(' + tx + 'px,' + ty + 'px)';
+    frame.style.transformOrigin = '50% 50%';
+    // Update zoom indicator
+    var indicator = _overlay && _overlay.querySelector('.milg-viewer-zoom-level');
+    if (indicator) {
+      indicator.textContent = Math.round(_zoomLevel * 100) + '%';
+      indicator.style.opacity = _zoomLevel > 1 ? '1' : '0.5';
+    }
   }
 
   function _onKeyDown(e) {
@@ -20513,6 +20623,11 @@ window.MilgViewer = (function() {
     var next = _currentSection + dir;
     if (next < 0 || next >= _screenshots.length) return;
     _currentSection = next;
+
+    // Reset zoom on section change
+    _zoomLevel = 1; _panX = 0; _panY = 0;
+    var frame = _overlay.querySelector('.milg-viewer-frame');
+    if (frame) frame.style.transform = '';
 
     var img = _overlay.querySelector('.milg-viewer-img');
     if (img) img.src = _screenshots[_currentSection];
@@ -20530,17 +20645,45 @@ window.MilgViewer = (function() {
     var label = _overlay.querySelector('.milg-viewer-nav-idx');
     if (label) label.textContent = _currentSection + 1;
 
+    updateFilterButtons();
     renderOverlays();
+  }
+
+  // Count findings visible in the current section
+  function countInSection() {
+    if (!_meta) return { cat: {}, sev: { error: 0, warning: 0, info: 0 } };
+    var scale = _meta.scale;
+    var sectionH = Math.round(_meta.viewportHeight * scale);
+    var sectionTop = _currentSection * sectionH;
+    var sectionBottom = sectionTop + sectionH;
+    var cat = {}, sev = { error: 0, warning: 0, info: 0 };
+    _allFindings.forEach(function(f) {
+      var inSection = f.bboxes.some(function(bbox) {
+        var cy = bbox.top * scale;
+        var cb = cy + bbox.height * scale;
+        return cb >= sectionTop && cy <= sectionBottom;
+      });
+      if (!inSection) return;
+      cat[f.icon] = (cat[f.icon] || 0) + 1;
+      if (sev[f.severity] !== undefined) sev[f.severity]++;
+    });
+    return { cat: cat, sev: sev };
   }
 
   function updateFilterButtons() {
     if (!_overlay) return;
+    var counts = countInSection();
     var btns = _overlay.querySelectorAll('.milg-viewer-filter-btn');
     btns.forEach(function(btn) {
       var type = btn.getAttribute('data-filter-type');
       var value = btn.getAttribute('data-filter-value');
       var isActive = _activeFilter && _activeFilter.type === type && _activeFilter.value === value;
       btn.classList.toggle('active', isActive);
+      // Update count badge and visibility for this section
+      var count = type === 'category' ? (counts.cat[value] || 0) : (counts.sev[value] || 0);
+      var badge = btn.querySelector('.milg-viewer-count');
+      if (badge) badge.textContent = count;
+      btn.style.display = count > 0 ? '' : 'none';
     });
   }
 
@@ -20613,7 +20756,7 @@ window.MilgViewer = (function() {
         rect.setAttribute('height', Math.max(h, 4));
         rect.setAttribute('fill', color.fill);
         rect.setAttribute('stroke', color.stroke);
-        rect.setAttribute('stroke-width', '2');
+        rect.setAttribute('stroke-width', '1.5');
         rect.setAttribute('rx', '2');
         rect.setAttribute('data-finding', fIdx);
 
@@ -20622,13 +20765,13 @@ window.MilgViewer = (function() {
           if (verifyResult.crossesBoundary && verifyResult.cssPasses && !verifyResult.pixelPasses) {
             // Hidden failure — CSS says pass but pixels fail: thick red double-stroke
             rect.setAttribute('stroke', '#ef4444');
-            rect.setAttribute('stroke-width', '3');
+            rect.setAttribute('stroke-width', '2');
             rect.setAttribute('stroke-dasharray', '6 2');
             rect.setAttribute('fill', 'rgba(239,68,68,0.25)');
           } else if (verifyResult.crossesBoundary && !verifyResult.cssPasses && verifyResult.pixelPasses) {
             // False positive — CSS says fail but pixels pass: green dashed
             rect.setAttribute('stroke', '#22c55e');
-            rect.setAttribute('stroke-width', '2');
+            rect.setAttribute('stroke-width', '1.5');
             rect.setAttribute('stroke-dasharray', '4 3');
             rect.setAttribute('fill', 'rgba(34,197,94,0.15)');
           } else if (verifyResult.significant) {
@@ -20731,7 +20874,10 @@ window.MilgViewer = (function() {
     _screenshots = [];
     _meta = null;
     _reportData = null;
+    _zoomLevel = 1; _panX = 0; _panY = 0; _isPanning = false;
     document.removeEventListener('keydown', _onKeyDown);
+    document.removeEventListener('mousemove', _onMouseMove);
+    document.removeEventListener('mouseup', _onMouseUp);
   }
 
   // Simple lightbox fallback (for data without screenshotMeta)
@@ -29207,10 +29353,14 @@ body.dark-ui .crawl-issue-group .severity-badge.warning { background:#451a00; co
 .milg-viewer-filter-btn.active .milg-viewer-count { background: rgba(255,255,255,0.25); }
 .milg-viewer-filter-btn.active { color: #fff; }
 .milg-viewer-filter-btn.milg-viewer-sev-error.active { background: rgba(239,68,68,0.3); border-color: #ef4444; }
-.milg-viewer-filter-btn.milg-viewer-sev-warning.active { background: rgba(245,158,11,0.3); border-color: #f59e0b; }
+.milg-viewer-filter-btn.milg-viewer-sev-warning.active { background: rgba(234,179,8,0.3); border-color: #eab308; }
 .milg-viewer-filter-btn.milg-viewer-sev-info.active { background: rgba(59,130,246,0.3); border-color: #3b82f6; }
 .milg-viewer-filter-btn.active:not(.milg-viewer-sev-error):not(.milg-viewer-sev-warning):not(.milg-viewer-sev-info) {
   background: rgba(255,255,255,0.2); border-color: rgba(255,255,255,0.4);
+}
+.milg-viewer-zoom-level {
+  font-size: 11px; color: rgba(255,255,255,0.5); min-width: 36px; text-align: center;
+  flex-shrink: 0; transition: opacity 150ms;
 }
 .milg-viewer-close {
   background: none; border: none; color: rgba(255,255,255,0.6); font-size: 24px;
@@ -29236,7 +29386,7 @@ body.dark-ui .crawl-issue-group .severity-badge.warning { background:#451a00; co
   pointer-events: none;
 }
 .milg-viewer-svg rect { pointer-events: all; cursor: pointer; }
-.milg-viewer-svg rect:hover { stroke-width: 3; }
+.milg-viewer-svg rect:hover { stroke-width: 2.5; }
 
 .milg-viewer-hint {
   position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
@@ -29260,7 +29410,7 @@ body.dark-ui .crawl-issue-group .severity-badge.warning { background:#451a00; co
   padding: 1px 6px; border-radius: 4px; color: #fff;
 }
 .milg-viewer-tooltip-badge.milg-viewer-sev-error { background: #ef4444; }
-.milg-viewer-tooltip-badge.milg-viewer-sev-warning { background: #f59e0b; color: #78350f; }
+.milg-viewer-tooltip-badge.milg-viewer-sev-warning { background: #eab308; color: #713f12; }
 .milg-viewer-tooltip-badge.milg-viewer-sev-info { background: #3b82f6; }
 .milg-viewer-tooltip-cat { font-size: 10px; color: #94a3b8; }
 .milg-viewer-tooltip-title { font-weight: 600; font-size: 12px; margin-bottom: 2px; }
