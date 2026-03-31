@@ -1746,9 +1746,15 @@
 
     // Phase 2: Capture the full page as one big canvas, then split into sections
     function _startCapture() {
+      // Force instant scroll — smooth scroll CSS would cause domToCanvas to
+      // capture while page is still scrolling, offsetting all content
+      var origScrollBehavior = document.documentElement.style.scrollBehavior;
+      document.documentElement.style.scrollBehavior = 'auto';
       window.scrollTo(0, 0);
+      // Store actual scroll position to verify it reached 0
+      var actualScroll = window.scrollY;
 
-      console.log('[ss] ' + _t() + 'Phase 2: Capturing full page (' + captureH + 'px) as single canvas...');
+      console.log('[ss] ' + _t() + 'Phase 2: Capturing full page (' + captureH + 'px), scrollY=' + actualScroll + '...');
       var statusEl = document.getElementById('milg-ss-status');
       if (statusEl) statusEl.textContent = 'Rendering page to canvas...';
 
@@ -1774,6 +1780,7 @@
             if (_overlay.parentNode) _overlay.parentNode.removeChild(_overlay);
             data.screenshots = shots;
             var captureDocH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+            document.documentElement.style.scrollBehavior = origScrollBehavior;
             data.screenshotMeta = {
               scale: secScale,
               viewportHeight: vh,
@@ -1781,7 +1788,8 @@
               canvasWidth: fullCanvas.width,
               canvasHeight: fullCanvas.height,
               docHeightAtCapture: captureDocH,
-              docHeightAtExtraction: data.meta.docHeight || captureDocH
+              docHeightAtExtraction: data.meta.docHeight || captureDocH,
+              captureScrollY: actualScroll
             };
             // --- Pixel contrast verification on the pristine full canvas ---
             // Runs on the raw canvas BEFORE WebP compression, so no artifacts.

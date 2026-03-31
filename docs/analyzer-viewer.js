@@ -494,7 +494,8 @@ window.MilgViewer = (function() {
               actual_scales: { scaleX: scaleX, scaleY: scaleY, nominal: _meta.scale },
               rect_attrs: { x: rect.getAttribute('x'), y: rect.getAttribute('y'), width: rect.getAttribute('width'), height: rect.getAttribute('height') },
               meta: _meta,
-              extractionScroll: _reportData && _reportData.raw && _reportData.raw.meta ? { scrollX: _reportData.raw.meta.scrollX, scrollY: _reportData.raw.meta.scrollY, docHeight: _reportData.raw.meta.docHeight } : null
+              extractionScroll: _reportData && _reportData.raw && _reportData.raw.meta ? { scrollX: _reportData.raw.meta.scrollX, scrollY: _reportData.raw.meta.scrollY, docHeight: _reportData.raw.meta.docHeight } : null,
+              captureScrollY: _meta.captureScrollY
             };
             navigator.clipboard.writeText(JSON.stringify(info, null, 2)).then(function() {
               alert('Element debug info copied!');
