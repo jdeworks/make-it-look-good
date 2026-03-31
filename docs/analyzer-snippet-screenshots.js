@@ -2003,7 +2003,7 @@
               splitNext();
             };
             reader.readAsDataURL(blob);
-          }, 'image/webp', 0.7);
+          }, 'image/webp', 0.8);
         }
         splitNext();
 
@@ -2022,7 +2022,12 @@
 
   function outputData(data) {
     var json = JSON.stringify(data);
-    console.log('[clipboard] JSON size: ' + Math.round(json.length / 1024) + ' KB');
+    var jsonKB = Math.round(json.length / 1024);
+    var jsonMB = (json.length / 1024 / 1024).toFixed(1);
+    console.log('[clipboard] JSON size: ' + jsonKB + ' KB (' + jsonMB + ' MB)');
+    if (jsonKB > 2048) {
+      console.log('%c⚠ Large payload (' + jsonMB + ' MB) — clipboard paste may be slow. If it fails, use: copy(window.__milgData_json)', 'color: #b45309; font-weight: bold;');
+    }
 
     // Copy to clipboard — navigator.clipboard requires user gesture + focus on many sites,
     // so we try it first, then fall back to execCommand, then give manual instructions.

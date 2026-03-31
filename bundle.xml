@@ -18475,6 +18475,251 @@ async function testExtractionBbox(browser) {
 run();
 </file>
 
+<file path="docs/tests/test-presets-rendered.html">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Preset Test Runner (Browser-Rendered)</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; background: #f8fafc; }
+    h1 { font-size: 20px; margin-bottom: 4px; }
+    .subtitle { font-size: 13px; color: #64748b; margin-bottom: 16px; }
+    #status { font-size: 13px; color: #3b82f6; margin-bottom: 12px; }
+    #progress { width: 100%; height: 6px; background: #e2e8f0; border-radius: 3px; margin-bottom: 16px; }
+    #progressFill { height: 100%; background: #3b82f6; border-radius: 3px; width: 0%; transition: width 0.3s; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { text-align: left; padding: 6px 8px; border-bottom: 2px solid #e2e8f0; font-size: 11px; color: #64748b; text-transform: uppercase; }
+    td { padding: 5px 8px; border-bottom: 1px solid #f1f5f9; }
+    .score { font-weight: 700; font-size: 14px; }
+    .score-a { color: #16a34a; } .score-b { color: #65a30d; } .score-c { color: #ca8a04; }
+    .score-d { color: #ea580c; } .score-f { color: #dc2626; }
+    .issues { font-size: 11px; color: #dc2626; }
+    .cat-scores { font-size: 10px; color: #64748b; }
+    .summary { margin-top: 16px; padding: 12px; border-radius: 8px; font-weight: 600; }
+    .summary.done { background: #f0fdf4; color: #16a34a; border: 2px solid #16a34a; }
+    #downloadBtn { margin-top: 12px; padding: 8px 16px; border: 1px solid #e2e8f0; background: white; border-radius: 6px; cursor: pointer; font-size: 13px; }
+    #downloadBtn:hover { background: #f8fafc; }
+  </style>
+</head>
+<body>
+  <h1>Preset Test Runner (Browser-Rendered)</h1>
+  <p class="subtitle">Renders each preset in a real iframe with Tailwind CSS, runs full extraction + scoring. This is the ground truth.</p>
+  <div id="status">Loading manifest...</div>
+  <div id="progress"><div id="progressFill"></div></div>
+  <table>
+    <thead><tr><th>Preset</th><th>Score</th><th>Grade</th><th>Errors</th><th>Warnings</th><th>Infos</th><th>Category Scores</th></tr></thead>
+    <tbody id="results"></tbody>
+  </table>
+  <div id="summaryDiv"></div>
+  <button id="downloadBtn" style="display:none" onclick="downloadResults()">Download Results (.md)</button>
+
+  <!-- Load scoring modules -->
+  <script src="../scoring/registry.js"></script>
+  <script src="../scoring/contrast.js"></script>
+  <script src="../scoring/typography.js"></script>
+  <script src="../scoring/spacing.js"></script>
+  <script src="../scoring/touch.js"></script>
+  <script src="../scoring/accessibility.js"></script>
+  <script src="../scoring/responsive.js"></script>
+  <script src="../scoring/consistency.js"></script>
+  <script src="../scoring/cognitive.js"></script>
+  <script src="../scoring/layout.js"></script>
+  <script src="../scoring/performance.js"></script>
+  <script src="../scoring/readability.js"></script>
+  <script src="../scoring/filters.js"></script>
+  <script src="../scoring/balance.js"></script>
+
+  <script>
+    // Use the same extractFromDocument as the analyzer
+    var analyzerScript = null;
+    var allResults = [];
+    var totalTests = 0;
+    var completed = 0;
+
+    async function loadAnalyzerExtractor() {
+      // Load analyzer-extract.js which exposes MilgExtract (the extractFromDocument function)
+      var resp = await fetch('../analyzer-extract.js');
+      var code = await resp.text();
+      // Extract the function between 'function extractFromDocument()' and the closing
+      var match = code.match(/function extractFromDocument\(\)\s*\{/);
+      if (!match) { console.error('Could not find extractFromDocument'); return null; }
+      var start = code.indexOf(match[0]);
+      // Find matching closing brace
+      var depth = 0; var end = start;
+      for (var i = start; i < code.length; i++) {
+        if (code[i] === '{') depth++;
+        if (code[i] === '}') { depth--; if (depth === 0) { end = i + 1; break; } }
+      }
+      return code.substring(start, end);
+    }
+
+    async function run() {
+      var statusEl = document.getElementById('status');
+      var progressFill = document.getElementById('progressFill');
+      var resultsBody = document.getElementById('results');
+
+      // Load manifest
+      var resp = await fetch('../presets/index.json');
+      var manifest = await resp.json();
+      var elements = Object.keys(manifest.elements);
+
+      // Load the extraction function
+      var extractFn = await loadAnalyzerExtractor();
+      if (!extractFn) { statusEl.textContent = 'ERROR: Could not load extraction function'; return; }
+
+      // Build test list
+      var tests = [];
+      for (var ei = 0; ei < elements.length; ei++) {
+        var el = elements[ei];
+        var pers = Object.keys(manifest.elements[el].personalities || {});
+        for (var pi = 0; pi < pers.length; pi++) {
+          tests.push({ element: el, personality: pers[pi] });
+        }
+      }
+      totalTests = tests.length;
+      statusEl.textContent = 'Running ' + totalTests + ' tests...';
+
+      // Run tests sequentially (each needs an iframe)
+      for (var ti = 0; ti < tests.length; ti++) {
+        var test = tests[ti];
+        var name = test.element + '/' + test.personality;
+        statusEl.textContent = 'Testing ' + name + ' (' + (ti + 1) + '/' + totalTests + ')...';
+        progressFill.style.width = Math.round(((ti + 1) / totalTests) * 100) + '%';
+
+        try {
+          var data = await extractInIframe(test.element, test.personality, extractFn);
+          if (!data) {
+            addResult(resultsBody, name, null, 'Extraction failed');
+            continue;
+          }
+          data.profile = 'general';
+          data.meta.isFragment = true; // Presets are fragments
+          var report = MilgScoring.runScoring(data);
+          addResult(resultsBody, name, report, null);
+          allResults.push({ name: name, overall: report.overall, grade: report.grade, categories: report.categories.map(function(c) { return { label: c.label, score: c.score, errors: c.findings.filter(function(f){return f.severity==='error'}).length, warnings: c.findings.filter(function(f){return f.severity==='warning'}).length, infos: c.findings.filter(function(f){return f.severity==='info'}).length }; }) });
+        } catch(e) {
+          addResult(resultsBody, name, null, e.message);
+        }
+      }
+
+      // Summary
+      var avg = Math.round(allResults.reduce(function(s, r) { return s + r.overall; }, 0) / allResults.length);
+      var min = Math.min.apply(null, allResults.map(function(r) { return r.overall; }));
+      var max = Math.max.apply(null, allResults.map(function(r) { return r.overall; }));
+      var beforeResults = allResults.filter(function(r) { return r.name.endsWith('/before'); });
+      var cleanResults = allResults.filter(function(r) { return r.name.endsWith('/clean'); });
+      var beforeAvg = beforeResults.length > 0 ? Math.round(beforeResults.reduce(function(s,r){return s+r.overall},0)/beforeResults.length) : 'N/A';
+      var cleanAvg = cleanResults.length > 0 ? Math.round(cleanResults.reduce(function(s,r){return s+r.overall},0)/cleanResults.length) : 'N/A';
+
+      statusEl.textContent = 'Done! ' + allResults.length + ' presets tested.';
+      document.getElementById('summaryDiv').innerHTML = '<div class="summary done">Average: ' + avg + ' | Min: ' + min + ' | Max: ' + max + ' | Before avg: ' + beforeAvg + ' | Clean avg: ' + cleanAvg + '</div>';
+      document.getElementById('downloadBtn').style.display = 'inline-block';
+    }
+
+    function extractInIframe(element, personality, extractFn) {
+      return new Promise(function(resolve) {
+        fetch('../presets/' + element + '/' + personality + '.html')
+          .then(function(r) { if (!r.ok) throw new Error('Not found'); return r.text(); })
+          .then(function(html) {
+            var iframe = document.createElement('iframe');
+            iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
+            iframe.sandbox = 'allow-scripts allow-same-origin';
+            document.body.appendChild(iframe);
+
+            var handled = false;
+            function onMsg(e) {
+              if (!e.data || e.data.type !== 'milg-test-result') return;
+              if (handled) return;
+              handled = true;
+              window.removeEventListener('message', onMsg);
+              if (iframe.parentNode) document.body.removeChild(iframe);
+              resolve(e.data.data);
+            }
+            window.addEventListener('message', onMsg);
+
+            // Build srcdoc with Tailwind + extraction
+            var modifiedExtract = extractFn.replace(/milg-analyzer-result/g, 'milg-test-result');
+            var srcdoc = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">' +
+              '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+              '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
+              '<style>body{margin:0}</style></head><body>' +
+              '<script>window.__milgIsFragment=true;</' + 'script>' +
+              html +
+              '<script>setTimeout(function(){(' + modifiedExtract + ')()}, 2000);</' + 'script>' +
+              '</body></html>';
+            iframe.srcdoc = srcdoc;
+
+            // Timeout
+            setTimeout(function() {
+              if (handled) return;
+              handled = true;
+              window.removeEventListener('message', onMsg);
+              if (iframe.parentNode) document.body.removeChild(iframe);
+              resolve(null);
+            }, 10000);
+          })
+          .catch(function() { resolve(null); });
+      });
+    }
+
+    function addResult(tbody, name, report, error) {
+      var tr = document.createElement('tr');
+      if (error) {
+        tr.innerHTML = '<td>' + name + '</td><td colspan="6" style="color:#dc2626">' + error + '</td>';
+      } else {
+        var errors = 0, warnings = 0, infos = 0;
+        report.categories.forEach(function(c) {
+          c.findings.forEach(function(f) {
+            if (f.severity === 'error') errors++;
+            else if (f.severity === 'warning') warnings++;
+            else infos++;
+          });
+        });
+        var scoreClass = 'score-' + report.grade.toLowerCase();
+        var catScores = report.categories.map(function(c) { return c.label.substring(0, 8) + ':' + c.score; }).join(' | ');
+        tr.innerHTML = '<td>' + name + '</td>' +
+          '<td class="score ' + scoreClass + '">' + report.overall + '</td>' +
+          '<td>' + report.grade + '</td>' +
+          '<td>' + (errors > 0 ? '<span class="issues">' + errors + '</span>' : '0') + '</td>' +
+          '<td>' + (warnings > 0 ? '<span style="color:#b45309">' + warnings + '</span>' : '0') + '</td>' +
+          '<td>' + infos + '</td>' +
+          '<td class="cat-scores">' + catScores + '</td>';
+      }
+      tbody.appendChild(tr);
+    }
+
+    function downloadResults() {
+      var lines = ['# Preset Test Results (Browser-Rendered)', '', '| Preset | Score | Grade | Errors | Warnings |', '|--------|-------|-------|--------|----------|'];
+      allResults.forEach(function(r) {
+        var e = 0, w = 0;
+        r.categories.forEach(function(c) { e += c.errors; w += c.warnings; });
+        lines.push('| ' + r.name + ' | ' + r.overall + ' | ' + r.grade + ' | ' + e + ' | ' + w + ' |');
+      });
+      lines.push('', '## Category Breakdown', '');
+      allResults.forEach(function(r) {
+        lines.push('### ' + r.name + ' (Score: ' + r.overall + ')');
+        r.categories.forEach(function(c) {
+          if (c.errors > 0 || c.warnings > 0 || c.infos > 0) {
+            lines.push('- ' + c.label + ': ' + c.score + ' (' + c.errors + 'E ' + c.warnings + 'W ' + c.infos + 'I)');
+          }
+        });
+        lines.push('');
+      });
+      var blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'preset-test-rendered-' + new Date().toISOString().split('T')[0] + '.md';
+      a.click();
+    }
+
+    run();
+  </script>
+</body>
+</html>
+</file>
+
 <file path="docs/analyzer-crawl-ui.js">
 // make-it-look-good — Crawl UI Wiring
 // Manages multi-page site crawl progress, tabs, and results display.
@@ -21731,251 +21976,6 @@ function scoreSpacing(data) {
 })();
 </file>
 
-<file path="docs/tests/test-presets-rendered.html">
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Preset Test Runner (Browser-Rendered)</title>
-  <style>
-    body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; background: #f8fafc; }
-    h1 { font-size: 20px; margin-bottom: 4px; }
-    .subtitle { font-size: 13px; color: #64748b; margin-bottom: 16px; }
-    #status { font-size: 13px; color: #3b82f6; margin-bottom: 12px; }
-    #progress { width: 100%; height: 6px; background: #e2e8f0; border-radius: 3px; margin-bottom: 16px; }
-    #progressFill { height: 100%; background: #3b82f6; border-radius: 3px; width: 0%; transition: width 0.3s; }
-    table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    th { text-align: left; padding: 6px 8px; border-bottom: 2px solid #e2e8f0; font-size: 11px; color: #64748b; text-transform: uppercase; }
-    td { padding: 5px 8px; border-bottom: 1px solid #f1f5f9; }
-    .score { font-weight: 700; font-size: 14px; }
-    .score-a { color: #16a34a; } .score-b { color: #65a30d; } .score-c { color: #ca8a04; }
-    .score-d { color: #ea580c; } .score-f { color: #dc2626; }
-    .issues { font-size: 11px; color: #dc2626; }
-    .cat-scores { font-size: 10px; color: #64748b; }
-    .summary { margin-top: 16px; padding: 12px; border-radius: 8px; font-weight: 600; }
-    .summary.done { background: #f0fdf4; color: #16a34a; border: 2px solid #16a34a; }
-    #downloadBtn { margin-top: 12px; padding: 8px 16px; border: 1px solid #e2e8f0; background: white; border-radius: 6px; cursor: pointer; font-size: 13px; }
-    #downloadBtn:hover { background: #f8fafc; }
-  </style>
-</head>
-<body>
-  <h1>Preset Test Runner (Browser-Rendered)</h1>
-  <p class="subtitle">Renders each preset in a real iframe with Tailwind CSS, runs full extraction + scoring. This is the ground truth.</p>
-  <div id="status">Loading manifest...</div>
-  <div id="progress"><div id="progressFill"></div></div>
-  <table>
-    <thead><tr><th>Preset</th><th>Score</th><th>Grade</th><th>Errors</th><th>Warnings</th><th>Infos</th><th>Category Scores</th></tr></thead>
-    <tbody id="results"></tbody>
-  </table>
-  <div id="summaryDiv"></div>
-  <button id="downloadBtn" style="display:none" onclick="downloadResults()">Download Results (.md)</button>
-
-  <!-- Load scoring modules -->
-  <script src="../scoring/registry.js"></script>
-  <script src="../scoring/contrast.js"></script>
-  <script src="../scoring/typography.js"></script>
-  <script src="../scoring/spacing.js"></script>
-  <script src="../scoring/touch.js"></script>
-  <script src="../scoring/accessibility.js"></script>
-  <script src="../scoring/responsive.js"></script>
-  <script src="../scoring/consistency.js"></script>
-  <script src="../scoring/cognitive.js"></script>
-  <script src="../scoring/layout.js"></script>
-  <script src="../scoring/performance.js"></script>
-  <script src="../scoring/readability.js"></script>
-  <script src="../scoring/filters.js"></script>
-  <script src="../scoring/balance.js"></script>
-
-  <script>
-    // Use the same extractFromDocument as the analyzer
-    var analyzerScript = null;
-    var allResults = [];
-    var totalTests = 0;
-    var completed = 0;
-
-    async function loadAnalyzerExtractor() {
-      // Load analyzer-extract.js which exposes MilgExtract (the extractFromDocument function)
-      var resp = await fetch('../analyzer-extract.js');
-      var code = await resp.text();
-      // Extract the function between 'function extractFromDocument()' and the closing
-      var match = code.match(/function extractFromDocument\(\)\s*\{/);
-      if (!match) { console.error('Could not find extractFromDocument'); return null; }
-      var start = code.indexOf(match[0]);
-      // Find matching closing brace
-      var depth = 0; var end = start;
-      for (var i = start; i < code.length; i++) {
-        if (code[i] === '{') depth++;
-        if (code[i] === '}') { depth--; if (depth === 0) { end = i + 1; break; } }
-      }
-      return code.substring(start, end);
-    }
-
-    async function run() {
-      var statusEl = document.getElementById('status');
-      var progressFill = document.getElementById('progressFill');
-      var resultsBody = document.getElementById('results');
-
-      // Load manifest
-      var resp = await fetch('../presets/index.json');
-      var manifest = await resp.json();
-      var elements = Object.keys(manifest.elements);
-
-      // Load the extraction function
-      var extractFn = await loadAnalyzerExtractor();
-      if (!extractFn) { statusEl.textContent = 'ERROR: Could not load extraction function'; return; }
-
-      // Build test list
-      var tests = [];
-      for (var ei = 0; ei < elements.length; ei++) {
-        var el = elements[ei];
-        var pers = Object.keys(manifest.elements[el].personalities || {});
-        for (var pi = 0; pi < pers.length; pi++) {
-          tests.push({ element: el, personality: pers[pi] });
-        }
-      }
-      totalTests = tests.length;
-      statusEl.textContent = 'Running ' + totalTests + ' tests...';
-
-      // Run tests sequentially (each needs an iframe)
-      for (var ti = 0; ti < tests.length; ti++) {
-        var test = tests[ti];
-        var name = test.element + '/' + test.personality;
-        statusEl.textContent = 'Testing ' + name + ' (' + (ti + 1) + '/' + totalTests + ')...';
-        progressFill.style.width = Math.round(((ti + 1) / totalTests) * 100) + '%';
-
-        try {
-          var data = await extractInIframe(test.element, test.personality, extractFn);
-          if (!data) {
-            addResult(resultsBody, name, null, 'Extraction failed');
-            continue;
-          }
-          data.profile = 'general';
-          data.meta.isFragment = true; // Presets are fragments
-          var report = MilgScoring.runScoring(data);
-          addResult(resultsBody, name, report, null);
-          allResults.push({ name: name, overall: report.overall, grade: report.grade, categories: report.categories.map(function(c) { return { label: c.label, score: c.score, errors: c.findings.filter(function(f){return f.severity==='error'}).length, warnings: c.findings.filter(function(f){return f.severity==='warning'}).length, infos: c.findings.filter(function(f){return f.severity==='info'}).length }; }) });
-        } catch(e) {
-          addResult(resultsBody, name, null, e.message);
-        }
-      }
-
-      // Summary
-      var avg = Math.round(allResults.reduce(function(s, r) { return s + r.overall; }, 0) / allResults.length);
-      var min = Math.min.apply(null, allResults.map(function(r) { return r.overall; }));
-      var max = Math.max.apply(null, allResults.map(function(r) { return r.overall; }));
-      var beforeResults = allResults.filter(function(r) { return r.name.endsWith('/before'); });
-      var cleanResults = allResults.filter(function(r) { return r.name.endsWith('/clean'); });
-      var beforeAvg = beforeResults.length > 0 ? Math.round(beforeResults.reduce(function(s,r){return s+r.overall},0)/beforeResults.length) : 'N/A';
-      var cleanAvg = cleanResults.length > 0 ? Math.round(cleanResults.reduce(function(s,r){return s+r.overall},0)/cleanResults.length) : 'N/A';
-
-      statusEl.textContent = 'Done! ' + allResults.length + ' presets tested.';
-      document.getElementById('summaryDiv').innerHTML = '<div class="summary done">Average: ' + avg + ' | Min: ' + min + ' | Max: ' + max + ' | Before avg: ' + beforeAvg + ' | Clean avg: ' + cleanAvg + '</div>';
-      document.getElementById('downloadBtn').style.display = 'inline-block';
-    }
-
-    function extractInIframe(element, personality, extractFn) {
-      return new Promise(function(resolve) {
-        fetch('../presets/' + element + '/' + personality + '.html')
-          .then(function(r) { if (!r.ok) throw new Error('Not found'); return r.text(); })
-          .then(function(html) {
-            var iframe = document.createElement('iframe');
-            iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
-            iframe.sandbox = 'allow-scripts allow-same-origin';
-            document.body.appendChild(iframe);
-
-            var handled = false;
-            function onMsg(e) {
-              if (!e.data || e.data.type !== 'milg-test-result') return;
-              if (handled) return;
-              handled = true;
-              window.removeEventListener('message', onMsg);
-              if (iframe.parentNode) document.body.removeChild(iframe);
-              resolve(e.data.data);
-            }
-            window.addEventListener('message', onMsg);
-
-            // Build srcdoc with Tailwind + extraction
-            var modifiedExtract = extractFn.replace(/milg-analyzer-result/g, 'milg-test-result');
-            var srcdoc = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">' +
-              '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
-              '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
-              '<style>body{margin:0}</style></head><body>' +
-              '<script>window.__milgIsFragment=true;</' + 'script>' +
-              html +
-              '<script>setTimeout(function(){(' + modifiedExtract + ')()}, 2000);</' + 'script>' +
-              '</body></html>';
-            iframe.srcdoc = srcdoc;
-
-            // Timeout
-            setTimeout(function() {
-              if (handled) return;
-              handled = true;
-              window.removeEventListener('message', onMsg);
-              if (iframe.parentNode) document.body.removeChild(iframe);
-              resolve(null);
-            }, 10000);
-          })
-          .catch(function() { resolve(null); });
-      });
-    }
-
-    function addResult(tbody, name, report, error) {
-      var tr = document.createElement('tr');
-      if (error) {
-        tr.innerHTML = '<td>' + name + '</td><td colspan="6" style="color:#dc2626">' + error + '</td>';
-      } else {
-        var errors = 0, warnings = 0, infos = 0;
-        report.categories.forEach(function(c) {
-          c.findings.forEach(function(f) {
-            if (f.severity === 'error') errors++;
-            else if (f.severity === 'warning') warnings++;
-            else infos++;
-          });
-        });
-        var scoreClass = 'score-' + report.grade.toLowerCase();
-        var catScores = report.categories.map(function(c) { return c.label.substring(0, 8) + ':' + c.score; }).join(' | ');
-        tr.innerHTML = '<td>' + name + '</td>' +
-          '<td class="score ' + scoreClass + '">' + report.overall + '</td>' +
-          '<td>' + report.grade + '</td>' +
-          '<td>' + (errors > 0 ? '<span class="issues">' + errors + '</span>' : '0') + '</td>' +
-          '<td>' + (warnings > 0 ? '<span style="color:#b45309">' + warnings + '</span>' : '0') + '</td>' +
-          '<td>' + infos + '</td>' +
-          '<td class="cat-scores">' + catScores + '</td>';
-      }
-      tbody.appendChild(tr);
-    }
-
-    function downloadResults() {
-      var lines = ['# Preset Test Results (Browser-Rendered)', '', '| Preset | Score | Grade | Errors | Warnings |', '|--------|-------|-------|--------|----------|'];
-      allResults.forEach(function(r) {
-        var e = 0, w = 0;
-        r.categories.forEach(function(c) { e += c.errors; w += c.warnings; });
-        lines.push('| ' + r.name + ' | ' + r.overall + ' | ' + r.grade + ' | ' + e + ' | ' + w + ' |');
-      });
-      lines.push('', '## Category Breakdown', '');
-      allResults.forEach(function(r) {
-        lines.push('### ' + r.name + ' (Score: ' + r.overall + ')');
-        r.categories.forEach(function(c) {
-          if (c.errors > 0 || c.warnings > 0 || c.infos > 0) {
-            lines.push('- ' + c.label + ': ' + c.score + ' (' + c.errors + 'E ' + c.warnings + 'W ' + c.infos + 'I)');
-          }
-        });
-        lines.push('');
-      });
-      var blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
-      var a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'preset-test-rendered-' + new Date().toISOString().split('T')[0] + '.md';
-      a.click();
-    }
-
-    run();
-  </script>
-</body>
-</html>
-</file>
-
 <file path="docs/analyzer-crawl.js">
 // Site Crawl Module — multi-page analysis with progressive results
 // Provides: link discovery, session management, summary building, export helpers
@@ -22446,284 +22446,6 @@ window.MilgCrawl = (function() {
     renderCrawlMarkdown: renderCrawlMarkdown,
     renderCrawlCSV: renderCrawlCSV,
     renderCrawlJSON: renderCrawlJSON
-  };
-})();
-</file>
-
-<file path="docs/analyzer-iframe.js">
-// make-it-look-good — Iframe Analysis & Screenshot Pipeline
-// Handles iframe creation, extraction injection, screenshot capture, and deep scan.
-// Depends on: analyzer-extract.js (MilgExtract)
-
-window.MilgIframe = (function() {
-  "use strict";
-
-  var _screenshotCDN = '';
-  var _getViewport = function() { return { w: 1280, h: 900 }; };
-  var SCREENSHOT_SCALE = 0.5;
-  var SCREENSHOT_QUALITY = 0.8;
-
-  function init(opts) {
-    if (opts.screenshotCDN) _screenshotCDN = opts.screenshotCDN;
-    if (opts.getViewport) _getViewport = opts.getViewport;
-  }
-
-  // Inject a <base> tag so relative URLs (CSS, images, fonts) resolve to the original domain
-  function injectBaseTag(html, url) {
-    if (!url || url === 'Pasted HTML') return html;
-    try {
-      var base = new URL(url);
-      var baseHref = base.origin + base.pathname.replace(/\/[^/]*$/, '/');
-      var baseTag = '<base href="' + baseHref + '">';
-      // Insert after <head> if present
-      if (/<head[\s>]/i.test(html)) {
-        return html.replace(/<head([^>]*)>/i, '<head$1>' + baseTag);
-      }
-      // Otherwise prepend
-      return baseTag + html;
-    } catch(e) { return html; }
-  }
-
-  // --- Screenshot capture script (injected into iframes after extraction) ---
-  function buildScreenshotScript(msgType) {
-    var ss = { scale: SCREENSHOT_SCALE, quality: SCREENSHOT_QUALITY };
-    return '(function(){' +
-      'var s=document.createElement("script");' +
-      's.src="' + _screenshotCDN + '";' +
-      's.onload=function(){' +
-        'var ms=window.modernScreenshot;' +
-        'if(!ms||!ms.domToCanvas){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*");return}' +
-        // Mark all images as CORS-eligible so canvas isn't tainted in srcdoc iframes
-        'document.querySelectorAll("img").forEach(function(i){if(i.src&&i.src.indexOf("data:")!==0)i.crossOrigin="anonymous"});' +
-        'var totalH=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);' +
-        'var vh=window.innerHeight||900;' +
-        'var captureH=Math.min(totalH,vh*10);' + // max 10 viewports
-        'captureH=Math.min(captureH,vh*10);' +
-        'ms.domToCanvas(document.documentElement,{scale:' + ss.scale + ',timeout:8000}).then(function(fc){' +
-          'var sH=Math.round(vh*' + ss.scale + ');var shots=[];var si=0;var tot=Math.min(Math.ceil(fc.height/sH),10);' +
-          'function sp(){' +
-            'if(si>=tot){parent.postMessage({type:"' + msgType + '",screenshots:shots,screenshotMeta:{scale:' + ss.scale + ',viewportHeight:vh,sectionCount:tot,canvasWidth:fc.width,canvasHeight:fc.height}},"*");return}' +
-            'var sy=si*sH;var sh=Math.min(sH,fc.height-sy);if(sh<=0){si++;sp();return}' +
-            'var sc=document.createElement("canvas");sc.width=fc.width;sc.height=sh;' +
-            'sc.getContext("2d").drawImage(fc,0,sy,fc.width,sh,0,0,fc.width,sh);' +
-            'sc.toBlob(function(b){' +
-              'if(!b){si++;sp();return}' +
-              'var r=new FileReader();r.onloadend=function(){shots.push(r.result);si++;sp()};r.readAsDataURL(b)' +
-            '},"image/webp",' + ss.quality + ')' +
-          '}sp()' +
-        '}).catch(function(){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")})' +
-      '};' +
-      's.onerror=function(){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")};' +
-      'document.head.appendChild(s)' +
-    '})()';
-  }
-
-  function deepScanInIframe(html, url, exclude, vpWidth, vpHeight, callback) {
-    var extractFromDocument = window.MilgExtract;
-    var iframe = document.createElement('iframe');
-    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + vpWidth + 'px;height:' + vpHeight + 'px;border:none;';
-    iframe.sandbox = 'allow-scripts allow-same-origin';
-    document.body.appendChild(iframe);
-
-    var msgType = 'milg-deep-' + vpWidth;
-    var handled = false;
-    function onResult(e) {
-      if (!e.data || e.data.type !== msgType) return;
-      if (handled) return;
-      handled = true;
-      window.removeEventListener('message', onResult);
-      if (iframe.parentNode) document.body.removeChild(iframe);
-      callback(e.data.data);
-    }
-    window.addEventListener('message', onResult);
-
-    var processed = url ? injectBaseTag(html, url) : html;
-    var excludeVar = exclude ? '<script>window.__milgExclude=' + JSON.stringify(exclude) + ';</' + 'script>' : '';
-    var isFullDoc = /<html[\s>]/i.test(processed) || /<!DOCTYPE/i.test(processed);
-
-    var extractStr = extractFromDocument.toString().replace(/milg-analyzer-result/g, msgType);
-    // Auto-scroll inside iframe to trigger intersection observers before extracting
-    var scrollScript = 'window.scrollTo(0,document.body.scrollHeight);setTimeout(function(){window.scrollTo(0,0)},300);';
-    var extractScript = excludeVar + '<script>window.addEventListener("load",function(){' + scrollScript + 'setTimeout(function(){(' + extractStr + ')()},1500)});setTimeout(function(){(' + extractStr + ')()},8000);</' + 'script>';
-
-    var srcdoc;
-    if (isFullDoc) {
-      if (/<\/body>/i.test(processed)) {
-        srcdoc = processed.replace(/<\/body>/i, extractScript + '</body>');
-      } else {
-        srcdoc = processed + extractScript;
-      }
-    } else {
-      srcdoc = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script><style>body{margin:0}</style></head><body>' + processed + extractScript + '</body></html>';
-    }
-    iframe.srcdoc = srcdoc;
-
-    setTimeout(function() {
-      if (handled) return;
-      handled = true;
-      window.removeEventListener('message', onResult);
-      if (iframe.parentNode) document.body.removeChild(iframe);
-      callback(null);
-    }, 15000);
-  }
-
-  function analyzeHtmlInIframe(html, callback, sourceUrlOrDark, excludeSelectorOrEffectCSS, captureScreenshots) {
-    var extractFromDocument = window.MilgExtract;
-    // Support both signatures:
-    // analyzeHtmlInIframe(html, cb, sourceUrl, excludeSelector, screenshots) — URL mode
-    // analyzeHtmlInIframe(html, cb, dark, effectCSS, screenshots) — editor preview mode
-    var sourceUrl = typeof sourceUrlOrDark === 'string' ? sourceUrlOrDark : null;
-    var excludeSelector = typeof excludeSelectorOrEffectCSS === 'string' && !sourceUrl ? null : excludeSelectorOrEffectCSS;
-    var editorDark = typeof sourceUrlOrDark === 'boolean' ? sourceUrlOrDark : false;
-    var editorEffectCSS = (!sourceUrl && typeof excludeSelectorOrEffectCSS === 'string') ? excludeSelectorOrEffectCSS : '';
-    var iframe = document.createElement('iframe');
-    // Use viewport from selector or default
-    var vp = _getViewport();
-    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + vp.w + 'px;height:' + vp.h + 'px;border:none;';
-    iframe.sandbox = 'allow-scripts allow-same-origin';
-    document.body.appendChild(iframe);
-
-    var handled = false;
-    function finish(data) {
-      if (handled) return;
-      handled = true;
-      window.removeEventListener('message', onMsg);
-      if (iframe.parentNode) document.body.removeChild(iframe);
-      callback(data);
-    }
-
-    function onMsg(e) {
-      if (!e.data) return;
-      if (e.data.type === 'milg-analyzer-result') {
-        var data = e.data.data;
-        data.meta.url = 'Pasted HTML';
-        if (!captureScreenshots) {
-          finish(data);
-          return;
-        }
-        // Screenshot capture auto-triggers inside the iframe after extraction
-        // Store data, wait for screenshots
-        iframe._milgData = data;
-      }
-      if (e.data.type === 'milg-screenshots-result' && iframe._milgData) {
-        iframe._milgData.screenshots = e.data.screenshots || [];
-        iframe._milgData.screenshotMeta = e.data.screenshotMeta || null;
-        // If hidden panels were detected, trigger unhidden screenshot pass
-        var hpc = iframe._milgData.layout && iframe._milgData.layout.hiddenPanelCount;
-        if (hpc > 0 && iframe.contentWindow && iframe.contentWindow.__milgDoUnhiddenScreenshots) {
-          try {
-            setTimeout(function() { iframe.contentWindow.__milgDoUnhiddenScreenshots(); }, 100);
-          } catch(ex) { finish(iframe._milgData); }
-        } else {
-          finish(iframe._milgData);
-        }
-      }
-      if (e.data.type === 'milg-screenshots-unhidden' && iframe._milgData) {
-        iframe._milgData.screenshotsUnhidden = e.data.screenshots || [];
-        finish(iframe._milgData);
-      }
-    }
-    window.addEventListener('message', onMsg);
-
-    // If the pasted HTML is a full document (has <html> or <head>), use it as-is
-    // and just append the extraction script. Otherwise wrap in a basic document.
-    var isFullDoc = /<html[\s>]/i.test(html) || /<!DOCTYPE/i.test(html);
-    // Inject <base> tag so relative CSS/image/font URLs resolve to the original domain
-    if (sourceUrl) html = injectBaseTag(html, sourceUrl);
-    // Pass context to extraction
-    var excludeVar = excludeSelector ? '<script>window.__milgExclude=' + JSON.stringify(excludeSelector) + ';</' + 'script>' : '';
-    var fragmentVar = !isFullDoc ? '<script>window.__milgIsFragment=true;</' + 'script>' : '';
-    // Screenshot capture: script that auto-runs after extraction, loads CDN library, captures page
-    // Also includes unhidden-panels screenshot if hidden panels are detected
-    var unhiddenScreenshotFn = 'window.__milgDoUnhiddenScreenshots=function(){' +
-      // Unhide all interactive panels using !important overrides
-      'var panels=document.querySelectorAll("[role=menu],[role=listbox],[role=dialog],[role=tooltip],[role=alertdialog]");' +
-      'var hidden=[];' +
-      'panels.forEach(function(p){' +
-        'var s=getComputedStyle(p);' +
-        'if(s.display==="none"||s.visibility==="hidden"||s.opacity==="0"){' +
-          'hidden.push({el:p,css:p.style.cssText,ariaH:p.getAttribute("aria-hidden"),hadHidden:p.hasAttribute("hidden")});' +
-          'p.style.cssText=p.style.cssText+";display:block !important;visibility:visible !important;opacity:1 !important;";' +
-          'if(p.hasAttribute("hidden"))p.removeAttribute("hidden");' +
-          'if(p.getAttribute("aria-hidden")==="true")p.setAttribute("aria-hidden","false")' +
-        '}' +
-      '});' +
-      // Also check aria-haspopup sibling panels
-      'document.querySelectorAll("[aria-haspopup]").forEach(function(t){' +
-        'var w=t.parentElement;if(!w)return;' +
-        'w.querySelectorAll("[role=menu],[role=listbox],[role=dialog]").forEach(function(p){' +
-          'var s=getComputedStyle(p);' +
-          'if(s.display==="none"||s.visibility==="hidden"||s.opacity==="0"){' +
-            'hidden.push({el:p,css:p.style.cssText,ariaH:p.getAttribute("aria-hidden"),hadHidden:p.hasAttribute("hidden")});' +
-            'p.style.cssText=p.style.cssText+";display:block !important;visibility:visible !important;opacity:1 !important;";' +
-            'if(p.hasAttribute("hidden"))p.removeAttribute("hidden");' +
-            'if(p.getAttribute("aria-hidden")==="true")p.setAttribute("aria-hidden","false")' +
-          '}' +
-        '})' +
-      '});' +
-      'if(hidden.length===0){parent.postMessage({type:"milg-screenshots-unhidden",screenshots:[]},"*");return}' +
-      // Force reflow then capture
-      'void document.body.offsetHeight;' +
-      'setTimeout(function(){' + buildScreenshotScript('milg-screenshots-unhidden') +
-      // Restore will happen after screenshots are taken — we don't need to restore in iframe since it's destroyed
-      '},300)' +
-    '};';
-    var screenshotScript = captureScreenshots ? '<script>window.__milgDoScreenshots=function(){' + buildScreenshotScript('milg-screenshots-result') + '};' + unhiddenScreenshotFn + '</' + 'script>' : '';
-    var srcdoc;
-    if (isFullDoc) {
-      // Wait for window load (CSS/fonts loaded), then extra delay for rendering
-      // JS-enabled mode (URL patch present) needs longer delays for React/Vue hydration
-      var hasJsPatch = html.indexOf('about:srcdoc') !== -1;
-      var postLoadDelay = hasJsPatch ? 2000 : 1000;
-      var fallbackDelay = hasJsPatch ? 8000 : 8000;
-      var extractScript = excludeVar + fragmentVar + screenshotScript + '<script>window.addEventListener("load",function(){setTimeout(function(){(' + extractFromDocument.toString() + ')()},' + postLoadDelay + ')});setTimeout(function(){(' + extractFromDocument.toString() + ')()},' + fallbackDelay + ');</' + 'script>';
-      if (/<\/body>/i.test(html)) {
-        srcdoc = html.replace(/<\/body>/i, extractScript + '</body>');
-      } else {
-        srcdoc = html + extractScript;
-      }
-    } else {
-      var darkClass = editorDark ? ' class="dark"' : '';
-      var darkVariantTag = editorDark ? '<style type="text/tailwindcss">@custom-variant dark (&:where(.dark, .dark *));</style>' : '';
-      var effectTag = editorEffectCSS ? '<style>' + editorEffectCSS + '</style>' : '';
-      srcdoc = '<!DOCTYPE html><html lang="en"' + darkClass + '><head><meta charset="UTF-8">' +
-        '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
-        '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
-        darkVariantTag + effectTag +
-        '<style>body{margin:0}</style></head><body>' +
-        html + excludeVar + fragmentVar + screenshotScript +
-        '<script>setTimeout(function(){(' + extractFromDocument.toString() + ')()}, 1500);</' + 'script>' +
-        '</body></html>';
-    }
-    iframe.srcdoc = srcdoc;
-
-    // Timeout fallback (longer when capturing screenshots)
-    setTimeout(function() {
-      if (!handled && iframe._milgData) {
-        // Extraction succeeded but screenshots timed out — return without screenshots
-        iframe._milgData.screenshots = [];
-        finish(iframe._milgData);
-      } else {
-        finish({
-          meta: { title: '', url: 'Pasted HTML', viewportWidth: 1280, viewportHeight: 900, timestamp: new Date().toISOString(), version: 1 },
-          colors: { textColors: [], bgColors: [], contrastPairs: [] },
-          typography: { bodyFontSize: '16px', bodyLineHeight: '24px', bodyFontFamily: 'sans-serif', fontFamilies: [], fontSizes: [], fontWeights: [], headings: [], lineHeights: [], maxLineLength: { chars: 0, element: '', fontSize: 0, textLength: 0 } },
-          spacing: { paddings: [], margins: [], gaps: [], maxContentWidth: '', bodyPaddingHorizontal: '' },
-          layout: { sectionGaps: [], alignmentEdges: [], visualHierarchy: {} },
-          interaction: { touchTargets: [], transitions: [] },
-          accessibility: { semanticElements: {}, headingHierarchy: [], imagesWithoutAlt: 0, formLabels: { total: 0, withLabel: 0, withoutLabel: 0 }, focusIndicators: [] },
-          structure: { totalElements: 0, darkModeClasses: false, responsiveClasses: false, tailwindDetected: false, cssFramework: 'unknown' }
-        });
-      }
-    }, captureScreenshots ? 25000 : (isFullDoc ? 15000 : 8000));
-  }
-
-  return {
-    init: init,
-    injectBaseTag: injectBaseTag,
-    analyzeHtmlInIframe: analyzeHtmlInIframe,
-    deepScanInIframe: deepScanInIframe,
-    buildScreenshotScript: buildScreenshotScript
   };
 })();
 </file>
@@ -24715,6 +24437,284 @@ window.MilgExtract = (function() {
   }
 
   return extractFromDocument;
+})();
+</file>
+
+<file path="docs/analyzer-iframe.js">
+// make-it-look-good — Iframe Analysis & Screenshot Pipeline
+// Handles iframe creation, extraction injection, screenshot capture, and deep scan.
+// Depends on: analyzer-extract.js (MilgExtract)
+
+window.MilgIframe = (function() {
+  "use strict";
+
+  var _screenshotCDN = '';
+  var _getViewport = function() { return { w: 1280, h: 900 }; };
+  var SCREENSHOT_SCALE = 0.5;
+  var SCREENSHOT_QUALITY = 0.8;
+
+  function init(opts) {
+    if (opts.screenshotCDN) _screenshotCDN = opts.screenshotCDN;
+    if (opts.getViewport) _getViewport = opts.getViewport;
+  }
+
+  // Inject a <base> tag so relative URLs (CSS, images, fonts) resolve to the original domain
+  function injectBaseTag(html, url) {
+    if (!url || url === 'Pasted HTML') return html;
+    try {
+      var base = new URL(url);
+      var baseHref = base.origin + base.pathname.replace(/\/[^/]*$/, '/');
+      var baseTag = '<base href="' + baseHref + '">';
+      // Insert after <head> if present
+      if (/<head[\s>]/i.test(html)) {
+        return html.replace(/<head([^>]*)>/i, '<head$1>' + baseTag);
+      }
+      // Otherwise prepend
+      return baseTag + html;
+    } catch(e) { return html; }
+  }
+
+  // --- Screenshot capture script (injected into iframes after extraction) ---
+  function buildScreenshotScript(msgType) {
+    var ss = { scale: SCREENSHOT_SCALE, quality: SCREENSHOT_QUALITY };
+    return '(function(){' +
+      'var s=document.createElement("script");' +
+      's.src="' + _screenshotCDN + '";' +
+      's.onload=function(){' +
+        'var ms=window.modernScreenshot;' +
+        'if(!ms||!ms.domToCanvas){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*");return}' +
+        // Mark all images as CORS-eligible so canvas isn't tainted in srcdoc iframes
+        'document.querySelectorAll("img").forEach(function(i){if(i.src&&i.src.indexOf("data:")!==0)i.crossOrigin="anonymous"});' +
+        'var totalH=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);' +
+        'var vh=window.innerHeight||900;' +
+        'var captureH=Math.min(totalH,vh*10);' + // max 10 viewports
+        'captureH=Math.min(captureH,vh*10);' +
+        'ms.domToCanvas(document.documentElement,{scale:' + ss.scale + ',timeout:8000}).then(function(fc){' +
+          'var sH=Math.round(vh*' + ss.scale + ');var shots=[];var si=0;var tot=Math.min(Math.ceil(fc.height/sH),10);' +
+          'function sp(){' +
+            'if(si>=tot){parent.postMessage({type:"' + msgType + '",screenshots:shots,screenshotMeta:{scale:' + ss.scale + ',viewportHeight:vh,sectionCount:tot,canvasWidth:fc.width,canvasHeight:fc.height}},"*");return}' +
+            'var sy=si*sH;var sh=Math.min(sH,fc.height-sy);if(sh<=0){si++;sp();return}' +
+            'var sc=document.createElement("canvas");sc.width=fc.width;sc.height=sh;' +
+            'sc.getContext("2d").drawImage(fc,0,sy,fc.width,sh,0,0,fc.width,sh);' +
+            'sc.toBlob(function(b){' +
+              'if(!b){si++;sp();return}' +
+              'var r=new FileReader();r.onloadend=function(){shots.push(r.result);si++;sp()};r.readAsDataURL(b)' +
+            '},"image/webp",' + ss.quality + ')' +
+          '}sp()' +
+        '}).catch(function(){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")})' +
+      '};' +
+      's.onerror=function(){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")};' +
+      'document.head.appendChild(s)' +
+    '})()';
+  }
+
+  function deepScanInIframe(html, url, exclude, vpWidth, vpHeight, callback) {
+    var extractFromDocument = window.MilgExtract;
+    var iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + vpWidth + 'px;height:' + vpHeight + 'px;border:none;';
+    iframe.sandbox = 'allow-scripts allow-same-origin';
+    document.body.appendChild(iframe);
+
+    var msgType = 'milg-deep-' + vpWidth;
+    var handled = false;
+    function onResult(e) {
+      if (!e.data || e.data.type !== msgType) return;
+      if (handled) return;
+      handled = true;
+      window.removeEventListener('message', onResult);
+      if (iframe.parentNode) document.body.removeChild(iframe);
+      callback(e.data.data);
+    }
+    window.addEventListener('message', onResult);
+
+    var processed = url ? injectBaseTag(html, url) : html;
+    var excludeVar = exclude ? '<script>window.__milgExclude=' + JSON.stringify(exclude) + ';</' + 'script>' : '';
+    var isFullDoc = /<html[\s>]/i.test(processed) || /<!DOCTYPE/i.test(processed);
+
+    var extractStr = extractFromDocument.toString().replace(/milg-analyzer-result/g, msgType);
+    // Auto-scroll inside iframe to trigger intersection observers before extracting
+    var scrollScript = 'window.scrollTo(0,document.body.scrollHeight);setTimeout(function(){window.scrollTo(0,0)},300);';
+    var extractScript = excludeVar + '<script>window.addEventListener("load",function(){' + scrollScript + 'setTimeout(function(){(' + extractStr + ')()},1500)});setTimeout(function(){(' + extractStr + ')()},8000);</' + 'script>';
+
+    var srcdoc;
+    if (isFullDoc) {
+      if (/<\/body>/i.test(processed)) {
+        srcdoc = processed.replace(/<\/body>/i, extractScript + '</body>');
+      } else {
+        srcdoc = processed + extractScript;
+      }
+    } else {
+      srcdoc = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script><style>body{margin:0}</style></head><body>' + processed + extractScript + '</body></html>';
+    }
+    iframe.srcdoc = srcdoc;
+
+    setTimeout(function() {
+      if (handled) return;
+      handled = true;
+      window.removeEventListener('message', onResult);
+      if (iframe.parentNode) document.body.removeChild(iframe);
+      callback(null);
+    }, 15000);
+  }
+
+  function analyzeHtmlInIframe(html, callback, sourceUrlOrDark, excludeSelectorOrEffectCSS, captureScreenshots) {
+    var extractFromDocument = window.MilgExtract;
+    // Support both signatures:
+    // analyzeHtmlInIframe(html, cb, sourceUrl, excludeSelector, screenshots) — URL mode
+    // analyzeHtmlInIframe(html, cb, dark, effectCSS, screenshots) — editor preview mode
+    var sourceUrl = typeof sourceUrlOrDark === 'string' ? sourceUrlOrDark : null;
+    var excludeSelector = typeof excludeSelectorOrEffectCSS === 'string' && !sourceUrl ? null : excludeSelectorOrEffectCSS;
+    var editorDark = typeof sourceUrlOrDark === 'boolean' ? sourceUrlOrDark : false;
+    var editorEffectCSS = (!sourceUrl && typeof excludeSelectorOrEffectCSS === 'string') ? excludeSelectorOrEffectCSS : '';
+    var iframe = document.createElement('iframe');
+    // Use viewport from selector or default
+    var vp = _getViewport();
+    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + vp.w + 'px;height:' + vp.h + 'px;border:none;';
+    iframe.sandbox = 'allow-scripts allow-same-origin';
+    document.body.appendChild(iframe);
+
+    var handled = false;
+    function finish(data) {
+      if (handled) return;
+      handled = true;
+      window.removeEventListener('message', onMsg);
+      if (iframe.parentNode) document.body.removeChild(iframe);
+      callback(data);
+    }
+
+    function onMsg(e) {
+      if (!e.data) return;
+      if (e.data.type === 'milg-analyzer-result') {
+        var data = e.data.data;
+        data.meta.url = 'Pasted HTML';
+        if (!captureScreenshots) {
+          finish(data);
+          return;
+        }
+        // Screenshot capture auto-triggers inside the iframe after extraction
+        // Store data, wait for screenshots
+        iframe._milgData = data;
+      }
+      if (e.data.type === 'milg-screenshots-result' && iframe._milgData) {
+        iframe._milgData.screenshots = e.data.screenshots || [];
+        iframe._milgData.screenshotMeta = e.data.screenshotMeta || null;
+        // If hidden panels were detected, trigger unhidden screenshot pass
+        var hpc = iframe._milgData.layout && iframe._milgData.layout.hiddenPanelCount;
+        if (hpc > 0 && iframe.contentWindow && iframe.contentWindow.__milgDoUnhiddenScreenshots) {
+          try {
+            setTimeout(function() { iframe.contentWindow.__milgDoUnhiddenScreenshots(); }, 100);
+          } catch(ex) { finish(iframe._milgData); }
+        } else {
+          finish(iframe._milgData);
+        }
+      }
+      if (e.data.type === 'milg-screenshots-unhidden' && iframe._milgData) {
+        iframe._milgData.screenshotsUnhidden = e.data.screenshots || [];
+        finish(iframe._milgData);
+      }
+    }
+    window.addEventListener('message', onMsg);
+
+    // If the pasted HTML is a full document (has <html> or <head>), use it as-is
+    // and just append the extraction script. Otherwise wrap in a basic document.
+    var isFullDoc = /<html[\s>]/i.test(html) || /<!DOCTYPE/i.test(html);
+    // Inject <base> tag so relative CSS/image/font URLs resolve to the original domain
+    if (sourceUrl) html = injectBaseTag(html, sourceUrl);
+    // Pass context to extraction
+    var excludeVar = excludeSelector ? '<script>window.__milgExclude=' + JSON.stringify(excludeSelector) + ';</' + 'script>' : '';
+    var fragmentVar = !isFullDoc ? '<script>window.__milgIsFragment=true;</' + 'script>' : '';
+    // Screenshot capture: script that auto-runs after extraction, loads CDN library, captures page
+    // Also includes unhidden-panels screenshot if hidden panels are detected
+    var unhiddenScreenshotFn = 'window.__milgDoUnhiddenScreenshots=function(){' +
+      // Unhide all interactive panels using !important overrides
+      'var panels=document.querySelectorAll("[role=menu],[role=listbox],[role=dialog],[role=tooltip],[role=alertdialog]");' +
+      'var hidden=[];' +
+      'panels.forEach(function(p){' +
+        'var s=getComputedStyle(p);' +
+        'if(s.display==="none"||s.visibility==="hidden"||s.opacity==="0"){' +
+          'hidden.push({el:p,css:p.style.cssText,ariaH:p.getAttribute("aria-hidden"),hadHidden:p.hasAttribute("hidden")});' +
+          'p.style.cssText=p.style.cssText+";display:block !important;visibility:visible !important;opacity:1 !important;";' +
+          'if(p.hasAttribute("hidden"))p.removeAttribute("hidden");' +
+          'if(p.getAttribute("aria-hidden")==="true")p.setAttribute("aria-hidden","false")' +
+        '}' +
+      '});' +
+      // Also check aria-haspopup sibling panels
+      'document.querySelectorAll("[aria-haspopup]").forEach(function(t){' +
+        'var w=t.parentElement;if(!w)return;' +
+        'w.querySelectorAll("[role=menu],[role=listbox],[role=dialog]").forEach(function(p){' +
+          'var s=getComputedStyle(p);' +
+          'if(s.display==="none"||s.visibility==="hidden"||s.opacity==="0"){' +
+            'hidden.push({el:p,css:p.style.cssText,ariaH:p.getAttribute("aria-hidden"),hadHidden:p.hasAttribute("hidden")});' +
+            'p.style.cssText=p.style.cssText+";display:block !important;visibility:visible !important;opacity:1 !important;";' +
+            'if(p.hasAttribute("hidden"))p.removeAttribute("hidden");' +
+            'if(p.getAttribute("aria-hidden")==="true")p.setAttribute("aria-hidden","false")' +
+          '}' +
+        '})' +
+      '});' +
+      'if(hidden.length===0){parent.postMessage({type:"milg-screenshots-unhidden",screenshots:[]},"*");return}' +
+      // Force reflow then capture
+      'void document.body.offsetHeight;' +
+      'setTimeout(function(){' + buildScreenshotScript('milg-screenshots-unhidden') +
+      // Restore will happen after screenshots are taken — we don't need to restore in iframe since it's destroyed
+      '},300)' +
+    '};';
+    var screenshotScript = captureScreenshots ? '<script>window.__milgDoScreenshots=function(){' + buildScreenshotScript('milg-screenshots-result') + '};' + unhiddenScreenshotFn + '</' + 'script>' : '';
+    var srcdoc;
+    if (isFullDoc) {
+      // Wait for window load (CSS/fonts loaded), then extra delay for rendering
+      // JS-enabled mode (URL patch present) needs longer delays for React/Vue hydration
+      var hasJsPatch = html.indexOf('about:srcdoc') !== -1;
+      var postLoadDelay = hasJsPatch ? 2000 : 1000;
+      var fallbackDelay = hasJsPatch ? 8000 : 8000;
+      var extractScript = excludeVar + fragmentVar + screenshotScript + '<script>window.addEventListener("load",function(){setTimeout(function(){(' + extractFromDocument.toString() + ')()},' + postLoadDelay + ')});setTimeout(function(){(' + extractFromDocument.toString() + ')()},' + fallbackDelay + ');</' + 'script>';
+      if (/<\/body>/i.test(html)) {
+        srcdoc = html.replace(/<\/body>/i, extractScript + '</body>');
+      } else {
+        srcdoc = html + extractScript;
+      }
+    } else {
+      var darkClass = editorDark ? ' class="dark"' : '';
+      var darkVariantTag = editorDark ? '<style type="text/tailwindcss">@custom-variant dark (&:where(.dark, .dark *));</style>' : '';
+      var effectTag = editorEffectCSS ? '<style>' + editorEffectCSS + '</style>' : '';
+      srcdoc = '<!DOCTYPE html><html lang="en"' + darkClass + '><head><meta charset="UTF-8">' +
+        '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+        '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
+        darkVariantTag + effectTag +
+        '<style>body{margin:0}</style></head><body>' +
+        html + excludeVar + fragmentVar + screenshotScript +
+        '<script>setTimeout(function(){(' + extractFromDocument.toString() + ')()}, 1500);</' + 'script>' +
+        '</body></html>';
+    }
+    iframe.srcdoc = srcdoc;
+
+    // Timeout fallback (longer when capturing screenshots)
+    setTimeout(function() {
+      if (!handled && iframe._milgData) {
+        // Extraction succeeded but screenshots timed out — return without screenshots
+        iframe._milgData.screenshots = [];
+        finish(iframe._milgData);
+      } else {
+        finish({
+          meta: { title: '', url: 'Pasted HTML', viewportWidth: 1280, viewportHeight: 900, timestamp: new Date().toISOString(), version: 1 },
+          colors: { textColors: [], bgColors: [], contrastPairs: [] },
+          typography: { bodyFontSize: '16px', bodyLineHeight: '24px', bodyFontFamily: 'sans-serif', fontFamilies: [], fontSizes: [], fontWeights: [], headings: [], lineHeights: [], maxLineLength: { chars: 0, element: '', fontSize: 0, textLength: 0 } },
+          spacing: { paddings: [], margins: [], gaps: [], maxContentWidth: '', bodyPaddingHorizontal: '' },
+          layout: { sectionGaps: [], alignmentEdges: [], visualHierarchy: {} },
+          interaction: { touchTargets: [], transitions: [] },
+          accessibility: { semanticElements: {}, headingHierarchy: [], imagesWithoutAlt: 0, formLabels: { total: 0, withLabel: 0, withoutLabel: 0 }, focusIndicators: [] },
+          structure: { totalElements: 0, darkModeClasses: false, responsiveClasses: false, tailwindDetected: false, cssFramework: 'unknown' }
+        });
+      }
+    }, captureScreenshots ? 25000 : (isFullDoc ? 15000 : 8000));
+  }
+
+  return {
+    init: init,
+    injectBaseTag: injectBaseTag,
+    analyzeHtmlInIframe: analyzeHtmlInIframe,
+    deepScanInIframe: deepScanInIframe,
+    buildScreenshotScript: buildScreenshotScript
+  };
 })();
 </file>
 
@@ -36338,7 +36338,7 @@ window.MilgViewer = (function() {
               splitNext();
             };
             reader.readAsDataURL(blob);
-          }, 'image/webp', 0.7);
+          }, 'image/webp', 0.8);
         }
         splitNext();
 
@@ -36357,7 +36357,12 @@ window.MilgViewer = (function() {
 
   function outputData(data) {
     var json = JSON.stringify(data);
-    console.log('[clipboard] JSON size: ' + Math.round(json.length / 1024) + ' KB');
+    var jsonKB = Math.round(json.length / 1024);
+    var jsonMB = (json.length / 1024 / 1024).toFixed(1);
+    console.log('[clipboard] JSON size: ' + jsonKB + ' KB (' + jsonMB + ' MB)');
+    if (jsonKB > 2048) {
+      console.log('%c⚠ Large payload (' + jsonMB + ' MB) — clipboard paste may be slow. If it fails, use: copy(window.__milgData_json)', 'color: #b45309; font-weight: bold;');
+    }
 
     // Copy to clipboard — navigator.clipboard requires user gesture + focus on many sites,
     // so we try it first, then fall back to execCommand, then give manual instructions.
