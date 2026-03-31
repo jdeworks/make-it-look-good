@@ -69,7 +69,7 @@ function scoreTypography(data) {
         fix: 'Constrain content width with max-w-prose (65ch) or max-w-2xl (672px)',
         presetRef: 'Editorial presets use max-w-prose for reading content',
         source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-length.html',
-        locator: { selector: lineElement, text: '' }
+        locator: { selector: lineElement, text: '', bboxes: data.typography.maxLineLength && data.typography.maxLineLength.bbox ? [data.typography.maxLineLength.bbox] : [] }
       });
     }
   }
@@ -88,13 +88,15 @@ function scoreTypography(data) {
       if (ratio >= 1.5 && ratio <= maxRatio) {
         passed++;
       } else {
+        var headingBboxes = headings.filter(function(h) { return h.bbox; }).map(function(h) { return h.bbox; });
         findings.push({
           severity: ratio > maxRatio + 2 ? 'warning' : 'info',
           title: 'Heading scale ratio is ' + (Math.round(ratio * 100) / 100) + ' (ideal: 1.5–' + maxRatio + ')',
           detail: ratio < 1.5 ? 'Headings are too similar in size — weak hierarchy' : 'Heading sizes vary widely — verify the largest heading is intentional (hero text)',
           fix: 'Use a modular scale (1.200 minor third or 1.250 major third). In Tailwind: text-4xl > text-2xl > text-xl > text-base',
           presetRef: null,
-          source: 'Modular type scales — https://typescale.com/'
+          source: 'Modular type scales — https://typescale.com/',
+          locator: { selector: '', text: '', bboxes: headingBboxes }
         });
       }
     } else { passed++; } // Only one heading size — acceptable

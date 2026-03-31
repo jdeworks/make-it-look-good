@@ -42,13 +42,16 @@ function scoreVisualConsistency(data) {
   if (fontSizes <= fontSizeLimit) {
     passed++;
   } else {
+    // Collect sample bboxes from font-size entries for viewer overlay
+    var fsBboxes = (data.typography.fontSizes || []).filter(function(fs) { return fs.bbox; }).map(function(fs) { return fs.bbox; });
     findings.push({
       severity: 'info',
       title: fontSizes + ' unique font sizes (recommend ≤' + fontSizeLimit + ' from a type scale)',
       detail: 'A consistent type scale creates visual rhythm',
       fix: 'Use a modular scale: text-sm, text-base, text-lg, text-xl, text-2xl, text-3xl, text-4xl',
       presetRef: null,
-      source: 'Modular type scales — https://typescale.com/'
+      source: 'Modular type scales — https://typescale.com/',
+      locator: { selector: '', text: '', bboxes: fsBboxes }
     });
   }
 

@@ -189,7 +189,7 @@ function scoreLayout(data) {
       fix: 'Check absolute/fixed positioning. On mobile, dropdown menus with right-0 may overflow left. Use left-0 sm:right-0 or max-w-[calc(100vw-2rem)]. For elements extending right, check fixed widths wider than viewport.',
       presetRef: null,
       source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
-      locator: { selector: offscreen[0] ? offscreen[0].selector : '', text: offscreen[0] ? (offscreen[0].text || '') : '' }
+      locator: { selector: offscreen[0] ? offscreen[0].selector : '', text: offscreen[0] ? (offscreen[0].text || '') : '', bboxes: offscreen.filter(function(o) { return o.bbox; }).map(function(o) { return o.bbox; }) }
     });
   } else {
     checks++;
@@ -216,7 +216,7 @@ function scoreLayout(data) {
       fix: 'Fix horizontal overflow: add overflow-x-hidden on the outer wrapper, check for elements with fixed widths wider than viewport, or add max-w-full. Common causes: fixed-width tables, absolute positioned elements, images without max-width. If a wide container has overflow-x-auto but contains page sections (nav, forms, headings), remove the overflow and fix the root cause.',
       presetRef: null,
       source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
-      locator: { selector: bugScrollContainers[0] ? bugScrollContainers[0].selector : '', text: '' }
+      locator: { selector: bugScrollContainers[0] ? bugScrollContainers[0].selector : '', text: '', bboxes: bugScrollContainers.filter(function(c) { return c.bbox; }).map(function(c) { return c.bbox; }) }
     });
   } else {
     checks++;
@@ -257,7 +257,7 @@ function scoreLayout(data) {
       fix: 'Dropdown menus and dialogs must fit within the viewport when revealed. Use max-w-[calc(100vw-1rem)], or position with left-0 instead of right-0 on narrow viewports. For dialogs: add max-h-[90vh] overflow-y-auto.',
       presetRef: null,
       source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
-      locator: { selector: hiddenPanelIssues[0] ? hiddenPanelIssues[0].selector : '', text: '' }
+      locator: { selector: hiddenPanelIssues[0] ? hiddenPanelIssues[0].selector : '', text: '', bboxes: hiddenPanelIssues.filter(function(p) { return p.bbox; }).map(function(p) { return p.bbox; }) }
     });
   } else if (layout.hiddenPanelCount > 0) {
     checks++;
@@ -437,7 +437,7 @@ function scoreLayout(data) {
       detail: clipDetails.join('; '),
       fix: 'Content overflows the container without a scrollbar — may cause horizontal scroll on iOS Safari. Add flex-wrap, reduce gap size on mobile (gap-4 sm:gap-8), or add overflow-x-hidden.',
       source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
-      locator: { selector: clippedOverflow[0].selector, text: '' }
+      locator: { selector: clippedOverflow[0].selector, text: '', bboxes: clippedOverflow.filter(function(c) { return c.bbox; }).map(function(c) { return c.bbox; }) }
     });
   }
 
@@ -457,7 +457,7 @@ function scoreLayout(data) {
       detail: riskDetails.join('; '),
       fix: 'Fixed/sticky elements must adapt their color when scrolling over different-colored sections. Use a scroll listener to toggle text color, or add a semi-opaque background to the fixed container.',
       source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum',
-      locator: { selector: fixedRisks[0].selector, text: fixedRisks[0].text || '' }
+      locator: { selector: fixedRisks[0].selector, text: fixedRisks[0].text || '', bboxes: fixedRisks.filter(function(r) { return r.bbox; }).map(function(r) { return r.bbox; }) }
     });
   }
 

@@ -22335,6 +22335,7 @@ window.MilgExtract = (function() {
     var fontSizeMap = {}, fontWeightMap = {}, fontFamilySet = new Set(), lineHeightMap = {};
     var textColorMap = {}, bgColorMap = {}, paddingMap = {}, marginMap = {}, gapMap = {};
     var textColorSample = {}, bgColorSample = {}; // Store one sample selector per color
+    var fontSizeSamples = {}; // fontSize → {selector, bbox} for first sample element
     var maxContentW = 0;
     var contrastPairs = [];
     var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
@@ -22382,7 +22383,8 @@ window.MilgExtract = (function() {
       var charWidth = fontSize * 0.5;
       var charsPerLine = Math.round(elWidth / charWidth);
       if (charsPerLine > data.typography.maxLineLength.chars && el.tagName !== 'SCRIPT' && el.tagName !== 'STYLE' && !el.closest('pre') && !el.closest('code')) {
-        data.typography.maxLineLength = { chars: charsPerLine, element: cssSelector(el), fontSize: Math.round(fontSize), textLength: node.textContent.trim().length };
+        var mlRect = el.getBoundingClientRect();
+        data.typography.maxLineLength = { chars: charsPerLine, element: cssSelector(el), fontSize: Math.round(fontSize), textLength: node.textContent.trim().length, bbox: { left: Math.round(mlRect.left + window.scrollX), top: Math.round(mlRect.top + window.scrollY), width: Math.round(mlRect.width), height: Math.round(mlRect.height) } };
       }
     }
     contrastPairs.sort(function(a, b) { return a.ratio - b.ratio; });
@@ -22412,7 +22414,10 @@ window.MilgExtract = (function() {
       if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE' || el.tagName === 'NOSCRIPT') continue;
       if (!isVisible(el)) continue;
       var s = getComputedStyle(el);
+      var rect = el.getBoundingClientRect();
+      var elBbox = { left: Math.round(rect.left + window.scrollX), top: Math.round(rect.top + window.scrollY), width: Math.round(rect.width), height: Math.round(rect.height) };
       fontSizeMap[s.fontSize] = (fontSizeMap[s.fontSize] || 0) + 1;
+      if (!fontSizeSamples[s.fontSize]) fontSizeSamples[s.fontSize] = { selector: cssSelector(el), bbox: elBbox };
       fontWeightMap[s.fontWeight] = (fontWeightMap[s.fontWeight] || 0) + 1;
       fontFamilySet.add(s.fontFamily.split(',')[0].trim().replace(/['"]/g, ''));
       var lh = s.lineHeight;
@@ -22422,7 +22427,6 @@ window.MilgExtract = (function() {
       if (bgColor && bgColor !== 'rgba(0, 0, 0, 0)' && bgColor !== 'transparent') { bgColorMap[bgColor] = (bgColorMap[bgColor] || 0) + 1; if (!bgColorSample[bgColor]) bgColorSample[bgColor] = cssSelector(el); }
 
       // Track area-weighted darkness for bg-color and gradients
-      var rect = el.getBoundingClientRect();
       var area = rect.width * rect.height;
       if (area > 100) { // skip tiny elements
         var bgM = bgColor && bgColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
@@ -22450,8 +22454,8 @@ window.MilgExtract = (function() {
       var w = rect.width;
       if (w > maxContentW && w < window.innerWidth * 0.95) maxContentW = w;
     }
-    function mapToSorted(map, sampleMap) { return Object.keys(map).map(function(k) { return { value: k, count: map[k], sample: sampleMap ? (sampleMap[k] || '') : '' }; }).sort(function(a, b) { return b.count - a.count; }).slice(0, 30); }
-    data.typography.fontSizes = mapToSorted(fontSizeMap);
+    function mapToSorted(map, sampleMap, bboxMap) { return Object.keys(map).map(function(k) { var entry = { value: k, count: map[k], sample: sampleMap ? (sampleMap[k] || '') : '' }; if (bboxMap && bboxMap[k]) { entry.sampleSelector = bboxMap[k].selector; entry.bbox = bboxMap[k].bbox; } return entry; }).sort(function(a, b) { return b.count - a.count; }).slice(0, 30); }
+    data.typography.fontSizes = mapToSorted(fontSizeMap, null, fontSizeSamples);
     data.typography.fontWeights = mapToSorted(fontWeightMap);
     data.typography.fontFamilies = Array.from(fontFamilySet).slice(0, 10);
     data.typography.lineHeights = mapToSorted(lineHeightMap);
@@ -22498,7 +22502,8 @@ window.MilgExtract = (function() {
 
     document.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(function(h) {
       var hs = getComputedStyle(h);
-      data.typography.headings.push({ tag: h.tagName.toLowerCase(), text: h.textContent.trim().substring(0, 60), fontSize: hs.fontSize, fontWeight: hs.fontWeight, lineHeight: hs.lineHeight, fontFamily: hs.fontFamily.split(',')[0].trim().replace(/['"]/g, '') });
+      var hRect = h.getBoundingClientRect();
+      data.typography.headings.push({ tag: h.tagName.toLowerCase(), text: h.textContent.trim().substring(0, 60), fontSize: hs.fontSize, fontWeight: hs.fontWeight, lineHeight: hs.lineHeight, fontFamily: hs.fontFamily.split(',')[0].trim().replace(/['"]/g, ''), selector: cssSelector(h), bbox: { left: Math.round(hRect.left + window.scrollX), top: Math.round(hRect.top + window.scrollY), width: Math.round(hRect.width), height: Math.round(hRect.height) } });
       data.accessibility.headingHierarchy.push(h.tagName.toLowerCase());
     });
 
@@ -22612,7 +22617,8 @@ window.MilgExtract = (function() {
         left: Math.round(r.left),
         right: Math.round(r.right),
         vpWidth: vpW,
-        reason: r.right < 0 ? 'left-overflow' : r.left >= vpW ? 'right-overflow' : 'major-clip'
+        reason: r.right < 0 ? 'left-overflow' : r.left >= vpW ? 'right-overflow' : 'major-clip',
+        bbox: { left: Math.round(r.left + window.scrollX), top: Math.round(r.top + window.scrollY), width: Math.round(r.width), height: Math.round(r.height) }
       });
     });
     data.layout.offscreenElements = data.layout.offscreenElements.slice(0, 20);
@@ -22655,7 +22661,8 @@ window.MilgExtract = (function() {
           left: Math.round(cr.left),
           right: Math.round(cr.right),
           vpWidth: vpW,
-          reason: 'hidden-fixed-overflow'
+          reason: 'hidden-fixed-overflow',
+          bbox: { left: Math.round(cr.left + window.scrollX), top: Math.round(cr.top + window.scrollY), width: Math.round(cr.width), height: Math.round(cr.height) }
         });
       });
       // Restore
@@ -22906,7 +22913,8 @@ window.MilgExtract = (function() {
           left: Math.round(pr.left),
           right: Math.round(pr.right),
           vpWidth: vpW,
-          issues: issues
+          issues: issues,
+          bbox: { left: Math.round(pr.left + window.scrollX), top: Math.round(pr.top + window.scrollY), width: Math.round(pr.width), height: Math.round(pr.height) }
         });
       }
     });
@@ -23316,7 +23324,7 @@ function scoreTypography(data) {
         fix: 'Constrain content width with max-w-prose (65ch) or max-w-2xl (672px)',
         presetRef: 'Editorial presets use max-w-prose for reading content',
         source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-length.html',
-        locator: { selector: lineElement, text: '' }
+        locator: { selector: lineElement, text: '', bboxes: data.typography.maxLineLength && data.typography.maxLineLength.bbox ? [data.typography.maxLineLength.bbox] : [] }
       });
     }
   }
@@ -23335,13 +23343,15 @@ function scoreTypography(data) {
       if (ratio >= 1.5 && ratio <= maxRatio) {
         passed++;
       } else {
+        var headingBboxes = headings.filter(function(h) { return h.bbox; }).map(function(h) { return h.bbox; });
         findings.push({
           severity: ratio > maxRatio + 2 ? 'warning' : 'info',
           title: 'Heading scale ratio is ' + (Math.round(ratio * 100) / 100) + ' (ideal: 1.5–' + maxRatio + ')',
           detail: ratio < 1.5 ? 'Headings are too similar in size — weak hierarchy' : 'Heading sizes vary widely — verify the largest heading is intentional (hero text)',
           fix: 'Use a modular scale (1.200 minor third or 1.250 major third). In Tailwind: text-4xl > text-2xl > text-xl > text-base',
           presetRef: null,
-          source: 'Modular type scales — https://typescale.com/'
+          source: 'Modular type scales — https://typescale.com/',
+          locator: { selector: '', text: '', bboxes: headingBboxes }
         });
       }
     } else { passed++; } // Only one heading size — acceptable
@@ -24461,13 +24471,16 @@ function scoreVisualConsistency(data) {
   if (fontSizes <= fontSizeLimit) {
     passed++;
   } else {
+    // Collect sample bboxes from font-size entries for viewer overlay
+    var fsBboxes = (data.typography.fontSizes || []).filter(function(fs) { return fs.bbox; }).map(function(fs) { return fs.bbox; });
     findings.push({
       severity: 'info',
       title: fontSizes + ' unique font sizes (recommend ≤' + fontSizeLimit + ' from a type scale)',
       detail: 'A consistent type scale creates visual rhythm',
       fix: 'Use a modular scale: text-sm, text-base, text-lg, text-xl, text-2xl, text-3xl, text-4xl',
       presetRef: null,
-      source: 'Modular type scales — https://typescale.com/'
+      source: 'Modular type scales — https://typescale.com/',
+      locator: { selector: '', text: '', bboxes: fsBboxes }
     });
   }
 
@@ -29785,7 +29798,7 @@ function scoreLayout(data) {
       fix: 'Check absolute/fixed positioning. On mobile, dropdown menus with right-0 may overflow left. Use left-0 sm:right-0 or max-w-[calc(100vw-2rem)]. For elements extending right, check fixed widths wider than viewport.',
       presetRef: null,
       source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
-      locator: { selector: offscreen[0] ? offscreen[0].selector : '', text: offscreen[0] ? (offscreen[0].text || '') : '' }
+      locator: { selector: offscreen[0] ? offscreen[0].selector : '', text: offscreen[0] ? (offscreen[0].text || '') : '', bboxes: offscreen.filter(function(o) { return o.bbox; }).map(function(o) { return o.bbox; }) }
     });
   } else {
     checks++;
@@ -29812,7 +29825,7 @@ function scoreLayout(data) {
       fix: 'Fix horizontal overflow: add overflow-x-hidden on the outer wrapper, check for elements with fixed widths wider than viewport, or add max-w-full. Common causes: fixed-width tables, absolute positioned elements, images without max-width. If a wide container has overflow-x-auto but contains page sections (nav, forms, headings), remove the overflow and fix the root cause.',
       presetRef: null,
       source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
-      locator: { selector: bugScrollContainers[0] ? bugScrollContainers[0].selector : '', text: '' }
+      locator: { selector: bugScrollContainers[0] ? bugScrollContainers[0].selector : '', text: '', bboxes: bugScrollContainers.filter(function(c) { return c.bbox; }).map(function(c) { return c.bbox; }) }
     });
   } else {
     checks++;
@@ -29853,7 +29866,7 @@ function scoreLayout(data) {
       fix: 'Dropdown menus and dialogs must fit within the viewport when revealed. Use max-w-[calc(100vw-1rem)], or position with left-0 instead of right-0 on narrow viewports. For dialogs: add max-h-[90vh] overflow-y-auto.',
       presetRef: null,
       source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
-      locator: { selector: hiddenPanelIssues[0] ? hiddenPanelIssues[0].selector : '', text: '' }
+      locator: { selector: hiddenPanelIssues[0] ? hiddenPanelIssues[0].selector : '', text: '', bboxes: hiddenPanelIssues.filter(function(p) { return p.bbox; }).map(function(p) { return p.bbox; }) }
     });
   } else if (layout.hiddenPanelCount > 0) {
     checks++;
@@ -30033,7 +30046,7 @@ function scoreLayout(data) {
       detail: clipDetails.join('; '),
       fix: 'Content overflows the container without a scrollbar — may cause horizontal scroll on iOS Safari. Add flex-wrap, reduce gap size on mobile (gap-4 sm:gap-8), or add overflow-x-hidden.',
       source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
-      locator: { selector: clippedOverflow[0].selector, text: '' }
+      locator: { selector: clippedOverflow[0].selector, text: '', bboxes: clippedOverflow.filter(function(c) { return c.bbox; }).map(function(c) { return c.bbox; }) }
     });
   }
 
@@ -30053,7 +30066,7 @@ function scoreLayout(data) {
       detail: riskDetails.join('; '),
       fix: 'Fixed/sticky elements must adapt their color when scrolling over different-colored sections. Use a scroll listener to toggle text color, or add a semi-opaque background to the fixed container.',
       source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum',
-      locator: { selector: fixedRisks[0].selector, text: fixedRisks[0].text || '' }
+      locator: { selector: fixedRisks[0].selector, text: fixedRisks[0].text || '', bboxes: fixedRisks.filter(function(r) { return r.bbox; }).map(function(r) { return r.bbox; }) }
     });
   }
 
