@@ -1,5 +1,5 @@
 // make-it-look-good — Design Extraction Snippet (with screenshots)
-// Version: 2025-03-31-v20
+// Version: 2025-03-31-v21
 // Run this in the browser console on any page.
 // Loads modern-screenshot from CDN to capture page screenshots as WebP.
 // Output is larger (~200-800KB extra) but includes visual reference.
@@ -7,7 +7,7 @@
 
 (function() {
   'use strict';
-  var _MILG_VERSION = '2025-03-31-v20';
+  var _MILG_VERSION = '2025-03-31-v21';
   console.log('%c[milg] Snippet version: ' + _MILG_VERSION, 'color: #64748b;');
 
   // --- Scan mode ---
@@ -1776,59 +1776,42 @@
       });
       var actualScroll = Math.max(window.scrollY, document.documentElement.scrollTop, document.body.scrollTop);
 
-      // Track a reference element's position over time to diagnose drift
-      var _trackEl = null;
-      var _trackLog = [];
-      for (var _ti = 0; _ti < _bboxRefs.length; _ti++) {
-        if (_bboxRefs[_ti].el && _bboxRefs[_ti].arr[_bboxRefs[_ti].idx] && _bboxRefs[_ti].arr[_bboxRefs[_ti].idx].bbox && _bboxRefs[_ti].arr[_bboxRefs[_ti].idx].bbox.top > 2000) {
-          _trackEl = _bboxRefs[_ti].el;
-          break;
-        }
-      }
-      if (_trackEl) {
-        var _trackStart = Date.now();
-        var _trackInterval = setInterval(function() {
-          var r = _trackEl.getBoundingClientRect();
-          var t = Date.now() - _trackStart;
-          var cs = getComputedStyle(_trackEl);
-          _trackLog.push({
-            t: t,
-            top: Math.round(r.top),
-            scrollY: window.scrollY,
-            opacity: cs.opacity,
-            transform: cs.transform !== 'none' ? cs.transform : '-',
-            visibility: cs.visibility,
-            display: cs.display
-          });
-        }, 100);
-      }
-
       var statusEl = document.getElementById('milg-ss-status');
       if (statusEl) statusEl.textContent = 'Waiting for animations to settle...';
       console.log('[ss] ' + _t() + 'Waiting 1.5s for animations to settle...');
 
       setTimeout(function() {
-      // Stop position tracker and log results
-      if (_trackInterval) clearInterval(_trackInterval);
-      if (_trackEl) {
-        var _finalR = _trackEl.getBoundingClientRect();
-        var _finalCS = getComputedStyle(_trackEl);
-        console.log('[ss] Position tracker for element (dom.top > 2000):');
-        console.log('[ss]   Final: top=' + Math.round(_finalR.top) + ' scrollY=' + window.scrollY + ' opacity=' + _finalCS.opacity + ' transform=' + (_finalCS.transform !== 'none' ? _finalCS.transform : 'none'));
-        console.log('[ss]   Text: "' + (_trackEl.textContent || '').trim().substring(0, 30) + '"');
-        console.log('[ss]   Track log (' + _trackLog.length + ' samples):');
-        _trackLog.forEach(function(e) {
-          console.log('[ss]     t=' + e.t + 'ms top=' + e.top + ' scrollY=' + e.scrollY + ' opacity=' + e.opacity + ' transform=' + e.transform);
-        });
+      // Re-read all bboxes, compensating for CSS transforms.
+      // getBoundingClientRect INCLUDES transforms (translateY etc.)
+      // but domToCanvas renders at FLOW position. We need the flow position.
+      function getFlowPosition(el) {
+        var r = el.getBoundingClientRect();
+        var top = r.top, left = r.left;
+        // Walk up the DOM and subtract any translateY/translateX from transforms
+        var node = el;
+        while (node && node !== document.documentElement) {
+          var transform = getComputedStyle(node).transform;
+          if (transform && transform !== 'none') {
+            // matrix(a,b,c,d,tx,ty) — tx is translateX, ty is translateY
+            var m = transform.match(/matrix\(([^)]+)\)/);
+            if (m) {
+              var parts = m[1].split(',');
+              if (parts.length >= 6) {
+                left -= parseFloat(parts[4]) || 0;
+                top -= parseFloat(parts[5]) || 0;
+              }
+            }
+          }
+          node = node.parentElement;
+        }
+        return { left: Math.round(left), top: Math.round(top), width: Math.round(r.width), height: Math.round(r.height) };
       }
 
-      // Re-read all bboxes now that animations have completed.
       var _bboxUpdated = 0;
       _bboxRefs.forEach(function(ref) {
         if (!ref.el || !ref.arr[ref.idx]) return;
         try {
-          var r = ref.el.getBoundingClientRect();
-          ref.arr[ref.idx].bbox = { left: Math.round(r.left), top: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) };
+          ref.arr[ref.idx].bbox = getFlowPosition(ref.el);
           _bboxUpdated++;
         } catch(e) {}
       });
