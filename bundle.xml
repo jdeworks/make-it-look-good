@@ -27928,7 +27928,22 @@ window.MilgViewer = (function() {
       return;
     }
 
-    var scale = _meta.scale;
+    // Compute actual scale from canvas dimensions vs document dimensions.
+    // The document may have grown between extraction (bboxes) and capture (screenshots)
+    // due to lazy-loaded content. Use docHeightAtCapture for Y mapping.
+    var rawMeta = _reportData && _reportData.raw && _reportData.raw.meta;
+    var vpW = (rawMeta && rawMeta.viewportWidth) || (_meta.canvasWidth / _meta.scale);
+    var captureDocH = _meta.docHeightAtCapture || (_meta.canvasHeight / _meta.scale);
+    var extractDocH = _meta.docHeightAtExtraction || (rawMeta && rawMeta.docHeight) || captureDocH;
+    var scaleX = _meta.canvasWidth / vpW;
+    // Y scale: map extraction coordinates through two steps:
+    // 1. Extraction bbox top is in extraction-time document coords
+    // 2. If document grew, proportionally adjust: captureY = extractionY * (captureDocH / extractDocH)
+    // 3. Then map to canvas: canvasY = captureY * (canvasHeight / captureDocH)
+    // Combined: canvasY = bbox.top * (canvasHeight / extractDocH)
+    var scaleY = _meta.canvasHeight / extractDocH;
+    if (!scaleX || !isFinite(scaleX)) scaleX = _meta.scale;
+    if (!scaleY || !isFinite(scaleY)) scaleY = _meta.scale;
 
     // Build pixel verification lookup
     var verifyMap = {};
@@ -27953,11 +27968,10 @@ window.MilgViewer = (function() {
       }
 
       finding.bboxes.forEach(function(bbox) {
-        // Direct mapping — no section math needed for stitched view
-        var x = Math.round(bbox.left * scale);
-        var y = Math.round(bbox.top * scale);
-        var w = Math.round(bbox.width * scale);
-        var h = Math.round(bbox.height * scale);
+        var x = Math.round(bbox.left * scaleX);
+        var y = Math.round(bbox.top * scaleY);
+        var w = Math.round(bbox.width * scaleX);
+        var h = Math.round(bbox.height * scaleY);
 
         var rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
         rect.setAttribute('x', x);
@@ -27996,16 +28010,18 @@ window.MilgViewer = (function() {
       rect.addEventListener('mouseenter', function(e) { showFindingTooltip(e, parseInt(rect.getAttribute('data-finding'))); });
       rect.addEventListener('mouseleave', hideTooltip);
       rect.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
         if (e.shiftKey) {
           // Shift+click: copy element debug info
+          window.getSelection().removeAllRanges(); // prevent text selection from shift
           var fIdx = parseInt(rect.getAttribute('data-finding'));
           var f = _allFindings[fIdx];
           if (f) {
-            var bboxIdx = 0;
-            // Find which bbox this rect corresponds to
             var rx = parseInt(rect.getAttribute('x')), ry = parseInt(rect.getAttribute('y'));
+            var bboxIdx = 0;
             f.bboxes.forEach(function(bb, bi) {
-              if (Math.round(bb.left * _meta.scale) === rx && Math.round(bb.top * _meta.scale) === ry) bboxIdx = bi;
+              if (Math.round(bb.left * scaleX) === rx && Math.round(bb.top * scaleY) === ry) bboxIdx = bi;
             });
             var bb = f.bboxes[bboxIdx];
             var info = {
@@ -28013,7 +28029,8 @@ window.MilgViewer = (function() {
               severity: f.severity,
               category: f.category,
               bbox_dom: bb,
-              bbox_canvas: { x: Math.round(bb.left * _meta.scale), y: Math.round(bb.top * _meta.scale), w: Math.round(bb.width * _meta.scale), h: Math.round(bb.height * _meta.scale) },
+              bbox_canvas: { x: Math.round(bb.left * scaleX), y: Math.round(bb.top * scaleY), w: Math.round(bb.width * scaleX), h: Math.round(bb.height * scaleY) },
+              actual_scales: { scaleX: scaleX, scaleY: scaleY, nominal: _meta.scale },
               rect_attrs: { x: rect.getAttribute('x'), y: rect.getAttribute('y'), width: rect.getAttribute('width'), height: rect.getAttribute('height') },
               meta: _meta,
               extractionScroll: _reportData && _reportData.raw && _reportData.raw.meta ? { scrollX: _reportData.raw.meta.scrollX, scrollY: _reportData.raw.meta.scrollY, docHeight: _reportData.raw.meta.docHeight } : null
@@ -28032,8 +28049,16 @@ window.MilgViewer = (function() {
   function renderVerifyOverlays(svg) {
     if (!_reportData || !_reportData._contrastVerifyResults || !_meta) return;
     var results = _reportData._contrastVerifyResults;
-    var scale = _meta.scale;
     var showFails = _activeFilter.value === 'fails';
+
+    // Compute scales same as renderOverlays
+    var rawMeta = _reportData.raw && _reportData.raw.meta;
+    var vpW = (rawMeta && rawMeta.viewportWidth) || (_meta.canvasWidth / _meta.scale);
+    var extractDocH = _meta.docHeightAtExtraction || (rawMeta && rawMeta.docHeight) || (_meta.canvasHeight / _meta.scale);
+    var vScaleX = _meta.canvasWidth / vpW;
+    var vScaleY = _meta.canvasHeight / extractDocH;
+    if (!vScaleX || !isFinite(vScaleX)) vScaleX = _meta.scale;
+    if (!vScaleY || !isFinite(vScaleY)) vScaleY = _meta.scale;
 
     var pairsBySelector = {};
     if (_reportData.raw && _reportData.raw.colors && _reportData.raw.colors.contrastPairs) {
@@ -28047,10 +28072,10 @@ window.MilgViewer = (function() {
       var pair = pairsBySelector[vr.selector];
       if (!pair || !pair.bbox) return;
 
-      var x = Math.round(pair.bbox.left * scale);
-      var y = Math.round(pair.bbox.top * scale);
-      var w = Math.round(pair.bbox.width * scale);
-      var h = Math.round(pair.bbox.height * scale);
+      var x = Math.round(pair.bbox.left * vScaleX);
+      var y = Math.round(pair.bbox.top * vScaleY);
+      var w = Math.round(pair.bbox.width * vScaleX);
+      var h = Math.round(pair.bbox.height * vScaleY);
 
       var fill, stroke, dash;
       if (vr.crossesBoundary && vr.cssPasses && !vr.pixelPasses) {
@@ -33251,12 +33276,15 @@ function scoreLayout(data) {
             window.scrollTo(0, _origScrollY);
             if (_overlay.parentNode) _overlay.parentNode.removeChild(_overlay);
             data.screenshots = shots;
+            var captureDocH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
             data.screenshotMeta = {
               scale: secScale,
               viewportHeight: vh,
               sectionCount: shots.length,
               canvasWidth: fullCanvas.width,
-              canvasHeight: fullCanvas.height
+              canvasHeight: fullCanvas.height,
+              docHeightAtCapture: captureDocH,
+              docHeightAtExtraction: data.meta.docHeight || captureDocH
             };
             // --- Pixel contrast verification on the pristine full canvas ---
             // Runs on the raw canvas BEFORE WebP compression, so no artifacts.

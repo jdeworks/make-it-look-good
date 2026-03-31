@@ -1773,12 +1773,15 @@
             window.scrollTo(0, _origScrollY);
             if (_overlay.parentNode) _overlay.parentNode.removeChild(_overlay);
             data.screenshots = shots;
+            var captureDocH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
             data.screenshotMeta = {
               scale: secScale,
               viewportHeight: vh,
               sectionCount: shots.length,
               canvasWidth: fullCanvas.width,
-              canvasHeight: fullCanvas.height
+              canvasHeight: fullCanvas.height,
+              docHeightAtCapture: captureDocH,
+              docHeightAtExtraction: data.meta.docHeight || captureDocH
             };
             // --- Pixel contrast verification on the pristine full canvas ---
             // Runs on the raw canvas BEFORE WebP compression, so no artifacts.
