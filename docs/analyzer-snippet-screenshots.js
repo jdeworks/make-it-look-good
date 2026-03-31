@@ -1,5 +1,5 @@
 // make-it-look-good — Design Extraction Snippet (with screenshots)
-// Version: 2025-03-31-v22
+// Version: 2025-03-31-v23
 // Run this in the browser console on any page.
 // Loads modern-screenshot from CDN to capture page screenshots as WebP.
 // Output is larger (~200-800KB extra) but includes visual reference.
@@ -7,7 +7,7 @@
 
 (function() {
   'use strict';
-  var _MILG_VERSION = '2025-03-31-v22';
+  var _MILG_VERSION = '2025-03-31-v23';
   console.log('%c[milg] Snippet version: ' + _MILG_VERSION, 'color: #64748b;');
 
   // --- Scan mode ---
@@ -552,9 +552,11 @@
 
   data.typography.fontSizes = mapToSorted(fontSizeMap).map(function(entry) {
     var sample = fontSizeSamples[entry.value];
-    if (sample) { entry.sampleSelector = sample.selector; entry.bbox = sample.bbox; }
+    if (sample) { entry.sampleSelector = sample.selector; entry._sampleRef = sample; entry.bbox = sample.bbox; }
     return entry;
   });
+  // Store ref so bbox re-read can propagate to exported data
+  data.typography._fontSizeSampleRefs = fontSizeSamples;
   data.typography.fontWeights = mapToSorted(fontWeightMap);
   data.typography.fontFamilies = Array.from(fontFamilySet).slice(0, 10);
   data.typography.lineHeights = mapToSorted(lineHeightMap);
@@ -1829,6 +1831,10 @@
           ref.obj[ref.key] = getFlowPosition(ref.el);
           _bboxUpdated++;
         } catch(e) {}
+      });
+      // Propagate re-read bboxes to exported fontSizes entries
+      (data.typography.fontSizes || []).forEach(function(entry) {
+        if (entry._sampleRef) entry.bbox = entry._sampleRef.bbox;
       });
       console.log('[ss] ' + _t() + 'Updated ' + _bboxUpdated + '/' + _bboxRefs.length + ' bboxes after animations settled');
 
