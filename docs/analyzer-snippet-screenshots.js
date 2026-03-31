@@ -1765,12 +1765,7 @@
       }).then(function(fullCanvas) {
         console.log('[ss] ' + _t() + 'Full canvas captured: ' + fullCanvas.width + 'x' + fullCanvas.height);
 
-        // Split into viewport-sized sections
         var secScale = 0.5;
-        var secW = fullCanvas.width;
-        var secVH = Math.round(vh * secScale);
-        var totalSecs = Math.min(Math.ceil(fullCanvas.height / secVH), 10);
-        console.log('[ss] ' + _t() + 'Splitting into ' + totalSecs + ' sections (secH=' + secVH + 'px in canvas coords)');
 
         // Store full-page canvas as single WebP — used by both report and viewer
         var fullPageDataUri;
@@ -1793,7 +1788,7 @@
             data.screenshotMeta = {
               scale: secScale,
               viewportHeight: vh,
-              sectionCount: shots.length,
+              sectionCount: data.screenshots.length,
               canvasWidth: fullCanvas.width,
               canvasHeight: fullCanvas.height,
               docHeightAtCapture: captureDocH,
