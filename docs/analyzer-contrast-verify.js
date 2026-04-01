@@ -138,12 +138,11 @@ window.MilgContrastVerify = (function() {
     if (yInSection + canvasH > sec.height) canvasH = sec.height - yInSection;
     if (canvasX + canvasW > sec.width) canvasW = sec.width - canvasX;
 
-    // --- Dual classification: text mask + CSS fg distance ---
-    // 1. Render text on hidden canvas (black on white) for a mask
-    // 2. Also compute CSS fg distance for each pixel
-    // 3. Classify as "text" if EITHER the mask says text OR the pixel is close to CSS fg
-    //    Classify as "background" if BOTH the mask says background AND pixel is far from CSS fg
-    // This handles: mask misalignment, fonts not matching, multi-line text, nested elements
+    // --- CSS fg-exclusion classification ---
+    // Classify each sampled pixel as "text" (close to CSS fg color) or "background"
+    // (far from CSS fg). Then compare text pixels to background pixels for contrast.
+    // The CSS fg color is the ground truth — it's what the browser computed.
+    // Anti-aliased pixels (blended fg+bg) are excluded from both groups.
     var cssFg = parseRgb(pair.fg);
     if (!cssFg) return null;
 
@@ -153,44 +152,6 @@ window.MilgContrastVerify = (function() {
     var bh = Math.min(Math.round(canvasH), sec.height - by);
     if (bw < 4 || bh < 4) return null;
 
-    // Build text mask (best-effort — may not align perfectly)
-    var hasMask = false;
-    var maskData = null;
-    var text = pair.text || '';
-    if (text.length > 2) {
-      _maskCanvas.width = bw;
-      _maskCanvas.height = bh;
-      var maskCtx = _maskCtx;
-      maskCtx.fillStyle = '#fff';
-      maskCtx.fillRect(0, 0, bw, bh);
-      var fs = (pair.fontSize || 16) * scale;
-      var ff = pair.fontFamily || 'system-ui, sans-serif';
-      var fw = pair.fontWeight || 400;
-      var fst = pair.fontStyle || 'normal';
-      var lh = pair.lineHeight ? parseFloat(pair.lineHeight) * scale : fs * 1.4;
-      maskCtx.font = fst + ' ' + fw + ' ' + fs + 'px ' + ff;
-      maskCtx.fillStyle = '#000';
-      maskCtx.textBaseline = 'top';
-      if (pair.textTransform === 'uppercase') text = text.toUpperCase();
-      else if (pair.textTransform === 'lowercase') text = text.toLowerCase();
-      else if (pair.textTransform === 'capitalize') text = text.replace(/\b\w/g, function(c) { return c.toUpperCase(); });
-      var ls = 0;
-      if (pair.letterSpacing && pair.letterSpacing !== 'normal') ls = parseFloat(pair.letterSpacing) * scale;
-      var textY = Math.max(0, (bh - lh) / 2);
-      if (ls !== 0) {
-        var cx = 1;
-        for (var ci = 0; ci < text.length && cx < bw; ci++) { maskCtx.fillText(text[ci], cx, textY); cx += maskCtx.measureText(text[ci]).width + ls; }
-      } else {
-        maskCtx.fillText(text, 1, textY);
-      }
-      maskData = maskCtx.getImageData(0, 0, bw, bh).data;
-      // Check if mask has any dark pixels (text was rendered)
-      var darkCount = 0;
-      for (var mi = 0; mi < maskData.length; mi += 16) { if (maskData[mi] < 128) darkCount++; }
-      hasMask = darkCount > 2;
-    }
-
-    // Read screenshot pixels
     var imgData = sec.ctx.getImageData(bx, by, bw, bh).data;
 
     var hSteps = Math.max(6, Math.min(_density.bgH, Math.floor(bw / 2)));
@@ -198,8 +159,10 @@ window.MilgContrastVerify = (function() {
 
     var fgPoints = [], bgPoints = [];
     var fgColors = [], bgColors = [];
-    var FG_DIST_SQ = 10000; // 100^2 — distance from CSS fg to classify as "text-like"
-    var MASK_THRESH = 180;
+    // Two thresholds: inner = definitely text, outer = definitely background
+    // Between them = anti-aliased edge (skip)
+    var FG_INNER_SQ = 3600;  // 60^2 — within this = text pixel
+    var FG_OUTER_SQ = 14400; // 120^2 — beyond this = background pixel
 
     for (var vy = 0; vy < vSteps; vy++) {
       var iy = Math.round(bh * vy / (vSteps - 1 || 1));
@@ -212,22 +175,19 @@ window.MilgContrastVerify = (function() {
         var r = imgData[idx], g = imgData[idx + 1], b = imgData[idx + 2];
         var absX = bx + ix, absY = by + iy;
 
-        // CSS fg distance
         var dr = r - cssFg.r, dg = g - cssFg.g, db = b - cssFg.b;
-        var fgDist = dr * dr + dg * dg + db * db;
-        var isFgByColor = fgDist < FG_DIST_SQ;
+        var distSq = dr * dr + dg * dg + db * db;
 
-        // Mask classification (if available)
-        var isFgByMask = hasMask ? (maskData[idx] < MASK_THRESH) : false;
-
-        // Dual: text if EITHER mask or color says so
-        if (isFgByMask || isFgByColor) {
+        if (distSq < FG_INNER_SQ) {
+          // Definitely text
           fgColors.push({ r: r, g: g, b: b });
           fgPoints.push({ x: absX, y: absY });
-        } else {
+        } else if (distSq > FG_OUTER_SQ) {
+          // Definitely background
           bgColors.push({ r: r, g: g, b: b });
           bgPoints.push({ x: absX, y: absY });
         }
+        // else: anti-aliased edge pixel — skip (don't contaminate either group)
       }
     }
 
