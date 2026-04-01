@@ -251,7 +251,14 @@ window.MilgExtract = (function() {
         _checkNode = _checkNode.parentElement;
       }
       var _rect = el.getBoundingClientRect();
-      if (!_elVisible || _rect.width <= 0 || _rect.height <= 0) { _contrastStats.invisible++; continue; }
+      if (!_elVisible || _rect.width <= 0 || _rect.height <= 0) {
+        _contrastStats.invisible++;
+        // Debug: log first few skipped visible-looking elements
+        if (_contrastStats.invisible <= 5 && _rect.width > 0) {
+          console.log('[extract] Skipped (ancestor invisible):', cssSelector(el), '"' + (el.textContent || '').trim().substring(0, 40) + '"');
+        }
+        continue;
+      }
       if (isDecorative(el)) { _contrastStats.decorative++; continue; }
       if (seenForContrast.has(el)) { _contrastStats.seen++; continue; }
       seenForContrast.add(el);
@@ -269,7 +276,11 @@ window.MilgExtract = (function() {
       } else {
         fg = textFillColor && textFillColor !== 'transparent' ? parseColor(textFillColor) : parseColor(style.color);
       }
-      if (!fg) { _contrastStats.noFg++; continue; }
+      if (!fg) {
+        _contrastStats.noFg++;
+        if (_contrastStats.noFg <= 3) console.log('[extract] No fg color:', cssSelector(el), 'textFill:', textFillColor, 'color:', style.color, '"' + (el.textContent || '').trim().substring(0, 30) + '"');
+        continue;
+      }
       // Skip emoji-only elements (picture emoji can't be contrast-checked)
       var _textContent = (el.textContent || '').trim();
       var _noEmoji = _textContent.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1FA00}-\u{1FA9F}\u{200D}]/gu, '').trim();
