@@ -283,8 +283,16 @@ window.MilgExtract = (function() {
         filterAncestor = filterAncestor.parentElement;
       }
       var elRect = el.getBoundingClientRect();
+      // Compute effective opacity (element × ancestors)
+      var _effOpacity = 1;
+      var _opNode = el;
+      while (_opNode && _opNode !== document.documentElement) {
+        var _opVal = parseFloat(getComputedStyle(_opNode).opacity);
+        if (!isNaN(_opVal) && _opVal < 1) _effOpacity *= _opVal;
+        _opNode = _opNode.parentElement;
+      }
       if (ratio < 22) { // capture all pairs including AAA passes for pixel verification
-        var _cpEntry = { fg: rgbStr(fgBlended), bg: rgbStr(bg), ratio: Math.round(ratio * 100) / 100, needed: threshold, passes: ratio >= threshold, fontSize: Math.round(fontSize), fontWeight: fontWeight, isLarge: isLarge, text: (el.textContent || '').trim().substring(0, 200), selector: cssSelector(el), filter: filterValue, backdropFilter: hasBackdropFilter, minBgAlpha: Math.round(minBgAlpha * 100) / 100, fontFamily: style.fontFamily, fontStyle: style.fontStyle, letterSpacing: style.letterSpacing, textTransform: style.textTransform, lineHeight: style.lineHeight, bbox: null };
+        var _cpEntry = { fg: rgbStr(fgBlended), bg: rgbStr(bg), ratio: Math.round(ratio * 100) / 100, needed: threshold, passes: ratio >= threshold, fontSize: Math.round(fontSize), fontWeight: fontWeight, isLarge: isLarge, text: (el.textContent || '').trim().substring(0, 200), selector: cssSelector(el), filter: filterValue, backdropFilter: hasBackdropFilter, minBgAlpha: Math.round(minBgAlpha * 100) / 100, effectiveOpacity: Math.round(_effOpacity * 100) / 100, fontFamily: style.fontFamily, fontStyle: style.fontStyle, letterSpacing: style.letterSpacing, textTransform: style.textTransform, lineHeight: style.lineHeight, bbox: null };
         trackBbox(el, _cpEntry, 'bbox');
         contrastPairs.push(_cpEntry);
         _contrastStats.captured++;

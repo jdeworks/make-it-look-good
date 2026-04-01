@@ -143,6 +143,18 @@ window.MilgContrastVerify = (function() {
     // Fallback: CSS fg distance with anti-alias exclusion zone
     var cssFg = parseRgb(pair.fg);
     if (!cssFg) return null;
+    var cssBg = parseRgb(pair.bg);
+    // Account for element opacity: compute expected blended pixel color
+    // opacity < 1 means the rendered text = fg*opacity + bg*(1-opacity)
+    var opacity = pair.effectiveOpacity !== undefined ? pair.effectiveOpacity : 1;
+    var expectedFg = cssFg;
+    if (opacity < 0.95 && cssBg) {
+      expectedFg = {
+        r: Math.round(cssFg.r * opacity + cssBg.r * (1 - opacity)),
+        g: Math.round(cssFg.g * opacity + cssBg.g * (1 - opacity)),
+        b: Math.round(cssFg.b * opacity + cssBg.b * (1 - opacity))
+      };
+    }
 
     var bx = Math.max(0, Math.round(canvasX));
     var by = Math.max(0, Math.round(yInSection));
@@ -177,31 +189,28 @@ window.MilgContrastVerify = (function() {
         var ix = Math.min(Math.round(bw * hx / (hSteps - 1 || 1)), bw - 1);
         var idx = (iy * bw + ix) * 4;
         var r = imgData[idx], g = imgData[idx + 1], b = imgData[idx + 2];
-        // Classify text vs background using mask + CSS fg color
-        var isText = false;
-        // Per-element mask: pair._maskPts has text pixel positions from individual element capture
+        // Classify text vs background using mask as spatial guide + CSS distance
+        var inTextArea = false;
+        // Check if this grid point is in a text area (mask)
         if (pair._maskPts && pair._maskW) {
-          // Map screenshot grid position to element-mask coordinates
-          // Mask coords: element-relative at screenshot scale
-          var mkX = ix; // ix is already relative to bbox left
-          var mkY = iy; // iy is already relative to bbox top
-          // Check if this position is near a mask text pixel (within 1 step)
-          var mStep = 2; // mask was sampled every 2px
+          var mkX = ix, mkY = iy, mStep = 2;
           var pts = pair._maskPts;
           for (var mp = 0; mp < pts.length; mp += 2) {
-            var dx = mkX - pts[mp], dy = mkY - pts[mp + 1];
-            if (dx * dx + dy * dy <= mStep * mStep) { isText = true; break; }
+            var mdx = mkX - pts[mp], mdy = mkY - pts[mp + 1];
+            if (mdx * mdx + mdy * mdy <= mStep * mStep) { inTextArea = true; break; }
           }
         } else if (maskData) {
-          // Full-page mask fallback (legacy)
           var mr = maskData[idx], mg = maskData[idx + 1], mb = maskData[idx + 2];
-          if ((mr + mg + mb) / 3 < 80) {
-            var dr = r - cssFg.r, dg = g - cssFg.g, db = b - cssFg.b;
-            isText = dr * dr + dg * dg + db * db < FG_OUTER_SQ;
-          }
+          inTextArea = (mr + mg + mb) / 3 < 80;
         } else {
-          var dr2 = r - cssFg.r, dg2 = g - cssFg.g, db2 = b - cssFg.b;
-          isText = dr2 * dr2 + dg2 * dg2 + db2 * db2 < FG_INNER_SQ;
+          inTextArea = true; // no mask — treat entire bbox as potential text area
+        }
+        // Within text area: use CSS fg distance to separate actual text from background
+        // Outside text area: definitely background
+        var isText = false;
+        if (inTextArea) {
+          var dr = r - expectedFg.r, dg = g - expectedFg.g, db = b - expectedFg.b;
+          isText = dr * dr + dg * dg + db * db < FG_INNER_SQ;
         }
         isTextGrid[vy * hSteps + hx] = isText ? 1 : 0;
         gridData.push({ r: r, g: g, b: b, absX: bx + ix, absY: by + iy });
