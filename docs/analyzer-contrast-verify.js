@@ -192,8 +192,14 @@ window.MilgContrastVerify = (function() {
         // Classify text vs background using mask as spatial guide + CSS distance
         var inTextArea = false;
         // Check if this grid point is in a text area (mask)
-        if (pair._maskPts && pair._maskW) {
-          var mkX = ix, mkY = iy, mStep = 2;
+        if (pair._maskBmp && pair._maskW) {
+          // Bitmap lookup: O(1) instead of scanning point list
+          if (ix >= 0 && ix < pair._maskW && iy >= 0 && iy < pair._maskH) {
+            inTextArea = pair._maskBmp[iy * pair._maskW + ix] === 1;
+          }
+        } else if (pair._maskPts && pair._maskW) {
+          // Legacy point list fallback
+          var mkX = ix, mkY = iy, mStep = 1;
           var pts = pair._maskPts;
           for (var mp = 0; mp < pts.length; mp += 2) {
             var mdx = mkX - pts[mp], mdy = mkY - pts[mp + 1];

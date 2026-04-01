@@ -224,12 +224,13 @@ window.MilgIframe = (function() {
                     'if(bw<2||bh<2)return;' +
                     'try{' +
                       'var px=mCtx.getImageData(bx,by,bw,bh).data;' +
-                      'var step=2,pts=[];' +
-                      'for(var y=0;y<bh;y+=step){for(var x=0;x<bw;x+=step){' +
+                      // Store as bitmap: 1=text, 0=not. 1 byte per pixel.
+                      'var bmp=new Uint8Array(bw*bh);' +
+                      'for(var y=0;y<bh;y++){for(var x=0;x<bw;x++){' +
                         'var i=(y*bw+x)*4;' +
-                        'if((px[i]+px[i+1]+px[i+2])/3<80)pts.push(x,y)' +
+                        'if((px[i]+px[i+1]+px[i+2])/3<80)bmp[y*bw+x]=1' +
                       '}}' +
-                      'pe.pair._maskPts=pts;pe.pair._maskW=bw;pe.pair._maskH=bh;pe.pair._maskLayer=_li' +
+                      'pe.pair._maskBmp=Array.from(bmp);pe.pair._maskW=bw;pe.pair._maskH=bh;pe.pair._maskLayer=_li' +
                     '}catch(e){}' +
                   '});' +
                   // Reset layer elements to white
