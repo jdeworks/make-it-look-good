@@ -175,8 +175,8 @@ window.MilgContrastVerify = (function() {
     var hSteps = Math.max(3, Math.min(500, Math.floor(bw / step)));
     var vSteps = Math.max(3, Math.min(500, Math.floor(bh / step)));
     var EXCL_RADIUS = 5; // pixels within this radius of text are excluded (AA/shadow zone)
-    var FG_INNER_SQ = 3600;  // 60^2 — tight match for CSS distance fallback
-    var FG_OUTER_SQ = 14400; // 120^2 — generous match for mask+color dual check
+    var FG_INNER_SQ = 10000; // 100^2 — catches AA text edges (purple at 73 dist from CSS FG)
+    var FG_OUTER_SQ = 22500; // 150^2 — generous match for mask+color dual check
 
     // Pass 1: classify each grid point using mask or CSS distance
     // Store classification in a 2D array for efficient radius lookup

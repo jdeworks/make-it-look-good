@@ -792,14 +792,32 @@ window.MilgViewer = (function() {
               hlGroup.appendChild(line);
             }
           }
-          // Also show worst point as small red dot always
+          // Worst point: red dot + line to its nearest FG pixel
           var wp = rect._worstPoint;
           if (wp) {
             var wr = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
             wr.setAttribute('cx', wp.x); wr.setAttribute('cy', wp.y + secOff);
-            wr.setAttribute('r', r * 0.8); wr.setAttribute('fill', '#ef4444');
-            wr.setAttribute('opacity', '0.6');
+            wr.setAttribute('r', r); wr.setAttribute('fill', '#ef4444');
+            wr.setAttribute('opacity', '0.7');
             hlGroup.appendChild(wr);
+            // Line from worst BG to its nearest FG
+            var wpNearFg = null, wpNearDist = Infinity;
+            allFg.forEach(function(f) {
+              var d = (f.x - wp.x) * (f.x - wp.x) + (f.y - (wp.y + secOff)) * (f.y - (wp.y + secOff));
+              if (d < wpNearDist) { wpNearDist = d; wpNearFg = f; }
+            });
+            if (wpNearFg) {
+              var wl = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+              wl.setAttribute('x1', wp.x); wl.setAttribute('y1', wp.y + secOff);
+              wl.setAttribute('x2', wpNearFg.x); wl.setAttribute('y2', wpNearFg.y);
+              wl.setAttribute('stroke', '#ef4444'); wl.setAttribute('stroke-width', '1.5');
+              wl.setAttribute('stroke-dasharray', '4 2');
+              hlGroup.appendChild(wl);
+              var wfr = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+              wfr.setAttribute('cx', wpNearFg.x); wfr.setAttribute('cy', wpNearFg.y);
+              wfr.setAttribute('r', r); wfr.setAttribute('fill', '#ef4444'); wfr.setAttribute('opacity', '0.5');
+              hlGroup.appendChild(wfr);
+            }
           }
         }
 
