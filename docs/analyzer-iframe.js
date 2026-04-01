@@ -106,31 +106,21 @@ window.MilgIframe = (function() {
         'void document.body.offsetHeight;' +
         'console.log("[iframe-ss] Phase 2: Waiting for animations to finalize...");' +
         'setTimeout(function(){' +
-          // Get body offset — bboxes are in document coords but canvas starts at body's top-left
-          'var bodyRect=document.body.getBoundingClientRect();' +
-          'var bodyOffX=Math.round(bodyRect.left+window.scrollX);' +
-          'var bodyOffY=Math.round(bodyRect.top+window.scrollY);' +
-          'console.log("[iframe-ss] Body offset: "+bodyOffX+","+bodyOffY);' +
           'if(typeof window.__milgReReadBboxes==="function"){' +
             'var res=window.__milgReReadBboxes();' +
             'console.log("[iframe-ss] Re-read bboxes: "+res)' +
           '}' +
-          // Subtract body offset from all bboxes so they're body-relative (matching canvas origin)
-          'if((bodyOffX!==0||bodyOffY!==0)&&window.__milgBboxRefs){' +
-            'window.__milgBboxRefs.forEach(function(ref){' +
-              'if(ref.obj&&ref.obj[ref.key]){ref.obj[ref.key].left-=bodyOffX;ref.obj[ref.key].top-=bodyOffY}' +
-            '});' +
-            'console.log("[iframe-ss] Shifted "+window.__milgBboxRefs.length+" bboxes by -"+bodyOffX+",-"+bodyOffY)' +
-          '}' +
-          'var fullH=document.body.scrollHeight;' +
-          'console.log("[iframe-ss] body.scrollHeight="+fullH+" vh="+vh);' +
+          'var fullH=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);' +
+          'console.log("[iframe-ss] scrollHeight="+fullH+" vh="+vh);' +
           'var s=document.createElement("script");' +
           's.src="' + _screenshotCDN + '";' +
           's.onload=function(){' +
             'var ms=window.modernScreenshot;' +
             'if(!ms||!ms.domToCanvas){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*");return}' +
             'document.querySelectorAll("img").forEach(function(i){if(i.src&&i.src.indexOf("data:")!==0)i.crossOrigin="anonymous"});' +
-            'ms.domToCanvas(document.body,{scale:' + ss.scale + ',timeout:12000}).then(function(fc){' +
+            // Capture documentElement (same as console snippet) — no body offset drift
+            // height:auto is already set so documentElement = content height, not viewport
+            'ms.domToCanvas(document.documentElement,{scale:' + ss.scale + ',timeout:12000}).then(function(fc){' +
               'console.log("[iframe-ss] Canvas: "+fc.width+"x"+fc.height);' +
               'var fullUri;try{fullUri=fc.toDataURL("image/webp",' + ss.quality + ')}catch(e){fullUri=""}' +
               'var updatedData=window.__milgData||null;' +
@@ -140,7 +130,6 @@ window.MilgIframe = (function() {
                 'screenshotMeta:{scale:' + ss.scale + ',viewportHeight:vh,sectionCount:1,' +
                   'canvasWidth:fc.width,canvasHeight:fc.height,' +
                   'docHeightAtCapture:fullH,' +
-                  'bodyOffsetX:bodyOffX,bodyOffsetY:bodyOffY,' +
                   'calibrationOffsetY:0,calibrationSamples:[]},' +
                 'updatedData:updatedData' +
               '},"*")' +

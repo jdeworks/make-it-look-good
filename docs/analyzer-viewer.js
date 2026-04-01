@@ -95,7 +95,9 @@ window.MilgViewer = (function() {
       var c = sevCounts[sev] || 0;
       return c > 0 ? '<button class="milg-viewer-filter-btn milg-viewer-sev-' + sev + '" data-filter-type="severity" data-filter-value="' + sev + '">' + label + ' <span class="milg-viewer-count">' + c + '</span></button>' : '';
     }
-    var sevPills = sevPill('error', 'Errors') + sevPill('warning', 'Warnings') + sevPill('info', 'Info') + sevPill('pass', 'Passed');
+    var totalFindings = _allFindings.length;
+    var allPill = totalFindings > 0 ? '<button class="milg-viewer-filter-btn" data-filter-type="severity" data-filter-value="all">All <span class="milg-viewer-count">' + totalFindings + '</span></button>' : '';
+    var sevPills = allPill + sevPill('error', 'Errors') + sevPill('warning', 'Warnings') + sevPill('info', 'Info') + sevPill('pass', 'Passed');
 
     // Pixel verification pills
     var verifyPill = '';
@@ -519,7 +521,7 @@ window.MilgViewer = (function() {
 
     _allFindings.forEach(function(finding, fIdx) {
       if (_activeFilter.type === 'category' && finding.icon !== _activeFilter.value) return;
-      if (_activeFilter.type === 'severity' && finding.severity !== _activeFilter.value) return;
+      if (_activeFilter.type === 'severity' && _activeFilter.value !== 'all' && finding.severity !== _activeFilter.value) return;
 
       var color = COLORS[finding.severity] || COLORS.info;
 
