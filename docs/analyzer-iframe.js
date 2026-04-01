@@ -149,7 +149,12 @@ window.MilgIframe = (function() {
               'var _cw=fc.width,_ch=fc.height;' +
               'function _sendFinal(maskUri){' +
                 'var updatedData=window.__milgData||null;' +
-                'parent.postMessage({type:"' + msgType + '",' +
+                // Strip mask bitmap data from pair objects to keep updatedData lean
+                // (masks are sent separately via maskResults)
+                'if(updatedData&&updatedData.colors&&updatedData.colors.contrastPairs){' +
+                  'updatedData.colors.contrastPairs.forEach(function(p){delete p._maskBmp;delete p._maskPts})}' +
+                'var mr=typeof _maskResults!=="undefined"?_maskResults:null;' +
+                'var msg={type:"' + msgType + '",' +
                   'screenshots:fullUri?[fullUri]:[],' +
                   'screenshotFull:fullUri||null,' +
                   'textMask:maskUri||null,' +
@@ -158,8 +163,12 @@ window.MilgIframe = (function() {
                     'docHeightAtCapture:fullH,' +
                     'calibrationOffsetY:0,calibrationSamples:[]},' +
                   'updatedData:updatedData,' +
-                  'maskResults:typeof _maskResults!=="undefined"?_maskResults:null' +
-                '},"*")' +
+                  'maskResults:mr};' +
+                'try{parent.postMessage(msg,"*")}catch(e){' +
+                  'console.warn("[iframe-ss] postMessage failed ("+e.message+"), retrying without masks");' +
+                  'msg.maskResults=null;msg.updatedData=null;' +
+                  'try{parent.postMessage(msg,"*")}catch(e2){console.error("[iframe-ss] postMessage retry failed:",e2)}' +
+                '}' +
               '}' +
               // Step 2: Layered text masks with transition kill
               '_prog("Building text masks...");' +
@@ -209,6 +218,7 @@ window.MilgIframe = (function() {
                     'ch.style.setProperty("-webkit-text-fill-color","#000","important")})' +
                 '});' +
                 'void document.body.offsetHeight;' +
+                'console.log("[iframe-ss] Layer "+_li+": starting domToCanvas...");' +
                 'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:12000}).then(function(mc){' +
                   'console.log("[iframe-ss] Layer "+_li+" captured: "+mc.width+"x"+mc.height);' +
                   'var mCtx=mc.getContext("2d",{willReadFrequently:true});' +
@@ -226,8 +236,9 @@ window.MilgIframe = (function() {
                       'var _dk=0;for(var _b=0;_b<bmp.length;_b++)if(bmp[_b])_dk++;' +
                       'if(_dk===0&&bw>5){var _ci=(Math.floor(bh/2)*bw+Math.floor(bw/2))*4;' +
                         'console.log("[mask] No dark: \\""+pe.pair.text.substring(0,25)+"\\" "+bw+"x"+bh+" L"+_li+" rgb("+px[_ci]+","+px[_ci+1]+","+px[_ci+2]+")")}' +
-                      'pe.pair._maskBmp=Array.from(bmp);pe.pair._maskW=bw;pe.pair._maskH=bh;pe.pair._maskLayer=_li;pe.pair._maskDark=_dk;' +
-                      '_maskResults[pe.idx]={bmp:Array.from(bmp),w:bw,h:bh,layer:_li,dark:_dk}' +
+                      'var _arr=Array.from(bmp);' +
+                      'pe.pair._maskBmp=_arr;pe.pair._maskW=bw;pe.pair._maskH=bh;pe.pair._maskLayer=_li;pe.pair._maskDark=_dk;' +
+                      '_maskResults[pe.idx]={bmp:_arr,w:bw,h:bh,layer:_li,dark:_dk}' +
                     '}catch(e){}' +
                   '});' +
                   // Reset layer elements to white
