@@ -205,10 +205,14 @@ window.MilgContrastVerify = (function() {
         } else {
           inTextArea = true; // no mask — treat entire bbox as potential text area
         }
-        // Within text area: use CSS fg distance to separate actual text from background
-        // Outside text area: definitely background
+        // Per-element mask: trust it completely (it only has THIS element's text)
+        // Full-page mask or no mask: use CSS distance as classifier
         var isText = false;
-        if (inTextArea) {
+        if (pair._maskPts) {
+          // Per-element mask — mask IS the classifier, no distance check needed
+          isText = inTextArea;
+        } else if (inTextArea) {
+          // Full-page mask or no mask — need CSS distance to separate mixed texts
           var dr = r - expectedFg.r, dg = g - expectedFg.g, db = b - expectedFg.b;
           isText = dr * dr + dg * dg + db * db < FG_INNER_SQ;
         }
