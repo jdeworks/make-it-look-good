@@ -22175,6 +22175,651 @@ function scoreSpacing(data) {
 })();
 </file>
 
+<file path="docs/scoring/typography.js">
+// Scoring Module: Typography
+// Weight: 15%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreTypography(data) {
+  var profile = S.getProfile(data);
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+
+  // Body font size check against profile minimum
+  checks++;
+  var bodySize = parseFloat(data.typography.bodyFontSize);
+  if (bodySize >= profile.bodyFontMin) {
+    passed++;
+  } else if (bodySize > 0) {
+    findings.push({
+      severity: 'error',
+      title: 'Body font size is ' + bodySize + 'px (minimum: ' + profile.bodyFontMin + 'px)',
+      detail: 'Small body text reduces readability, especially on mobile',
+      fix: 'Set body font-size to at least ' + profile.bodyFontMin + 'px. In Tailwind: text-base (16px) or text-lg (18px)',
+      presetRef: 'All presets use text-base (16px) or larger for body text', source: 'WCAG 2.2 / NNGroup — https://www.w3.org/TR/WCAG22/#text-spacing'
+    });
+  }
+
+  // Line height check against profile range
+  checks++;
+  var bodyLH = data.typography.bodyLineHeight;
+  var bodyLHRatio = 0;
+  if (bodyLH && bodyLH !== 'normal') {
+    bodyLHRatio = parseFloat(bodyLH) / bodySize;
+  }
+  var lhPassMin = profile.lineHeightMin - 0.05;
+  var lhPassMax = profile.lineHeightMax + 0.1;
+  if (bodyLHRatio >= lhPassMin && bodyLHRatio <= lhPassMax) {
+    passed++;
+  } else if (bodyLHRatio > 0) {
+    findings.push({
+      severity: bodyLHRatio < 1.2 || bodyLHRatio > 2 ? 'error' : 'warning',
+      title: 'Body line-height is ' + (Math.round(bodyLHRatio * 100) / 100) + ' (ideal: ' + profile.lineHeightMin + '–' + profile.lineHeightMax + ')',
+      detail: bodyLHRatio < profile.lineHeightMin ? 'Text feels cramped and hard to read' : 'Text feels too loose and wastes vertical space',
+      fix: bodyLHRatio < profile.lineHeightMin ? 'Increase line-height. In Tailwind: leading-relaxed (1.625) or leading-normal (1.5)' : 'Decrease line-height. In Tailwind: leading-normal (1.5)',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.12 — https://www.w3.org/TR/WCAG22/#text-spacing'
+    });
+  }
+
+  // Line length (profile-aware: elderly 65, children 55, default 75)
+  var maxChars = data.typography.maxLineLength ? data.typography.maxLineLength.chars : 0;
+  var lineElement = data.typography.maxLineLength ? data.typography.maxLineLength.element : '';
+  var lineFontSize = data.typography.maxLineLength ? (data.typography.maxLineLength.fontSize || 0) : 0;
+  var lineTextLength = data.typography.maxLineLength ? (data.typography.maxLineLength.textLength || 0) : 0;
+  var isTextElement = /^(p|li|td|th|blockquote|dd|figcaption)/.test(lineElement);
+  // Hero/intro text: large font (>=20px) with short content (<150 chars) is intentionally wide
+  var isHeroText = lineFontSize >= 20 && lineTextLength < 150;
+  if (maxChars > 0 && isTextElement && !isHeroText) {
+    checks++;
+    var lineLimit = profile.maxLineLength || 75;
+    if (maxChars <= lineLimit + 5) {
+      passed++;
+    } else {
+      findings.push({
+        severity: maxChars > lineLimit + 25 ? 'error' : 'warning',
+        title: 'Line length ~' + maxChars + ' characters (max for this audience: ' + lineLimit + ')',
+        detail: lineElement + ' — ' + (lineLimit < 70 ? 'Shorter lines improve readability for this audience.' : 'Long lines make it hard for the eye to track back to the next line.'),
+        fix: 'Constrain content width with max-w-prose (65ch) or max-w-2xl (672px)',
+        presetRef: 'Editorial presets use max-w-prose for reading content',
+        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-length.html',
+        locator: { selector: lineElement, text: '', bboxes: data.typography.maxLineLength && data.typography.maxLineLength.bbox ? [data.typography.maxLineLength.bbox] : [] }
+      });
+    }
+  }
+
+  // Heading scale — check if headings have a consistent ratio
+  checks++;
+  var headings = data.typography.headings || [];
+  if (headings.length >= 2) {
+    var sizes = headings.map(function(h) { return parseFloat(h.fontSize); }).filter(function(s) { return s > 0; });
+    var uniqueSizes = Array.from(new Set(sizes)).sort(function(a, b) { return b - a; });
+    if (uniqueSizes.length >= 2) {
+      var ratio = uniqueSizes[0] / uniqueSizes[uniqueSizes.length - 1];
+      // Marketing/landing pages legitimately use larger hero text (wider range)
+      var pageType = (data.context && data.context.pageType) || 'unknown';
+      var maxRatio = (pageType === 'marketing' || pageType === 'pricing') ? 6 : 4.5;
+      if (ratio >= 1.5 && ratio <= maxRatio) {
+        passed++;
+      } else {
+        var headingBboxes = headings.filter(function(h) { return h.bbox; }).map(function(h) { return h.bbox; });
+        findings.push({
+          severity: ratio > maxRatio + 2 ? 'warning' : 'info',
+          title: 'Heading scale ratio is ' + (Math.round(ratio * 100) / 100) + ' (ideal: 1.5–' + maxRatio + ')',
+          detail: ratio < 1.5 ? 'Headings are too similar in size — weak hierarchy' : 'Heading sizes vary widely — verify the largest heading is intentional (hero text)',
+          fix: 'Use a modular scale (1.200 minor third or 1.250 major third). In Tailwind: text-4xl > text-2xl > text-xl > text-base',
+          presetRef: null,
+          source: 'Modular type scales — https://typescale.com/',
+          locator: { selector: '', text: '', bboxes: headingBboxes }
+        });
+      }
+    } else { passed++; } // Only one heading size — acceptable
+  } else { passed++; } // No headings to check
+
+  // Max 2-3 font weights
+  checks++;
+  var fontWeights = data.typography.fontWeights || [];
+  var weightCount = fontWeights.length;
+  if (weightCount <= 4) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'Using ' + weightCount + ' font weights (recommended: 2–3)',
+      detail: 'Too many weights create visual noise and increase font loading time',
+      fix: 'Consolidate to 400 (regular), 500/600 (medium), 700 (bold)',
+      presetRef: null,
+      source: 'Google Fonts best practices — https://fonts.google.com/knowledge/using_type/choosing_reliable_typefaces'
+    });
+  }
+
+  // Profile-specific: minimum font weight (e.g., elderly profile forbids light/thin)
+  if (profile.fontWeightMin > 0 && fontWeights.length > 0) {
+    var lightWeights = fontWeights.filter(function(w) { return parseInt(w) < profile.fontWeightMin; });
+    if (lightWeights.length > 0) {
+      checks++;
+      findings.push({
+        severity: 'warning',
+        title: 'Font weight(s) ' + lightWeights.join(', ') + ' below minimum ' + profile.fontWeightMin + ' for this audience',
+        detail: 'Light and thin font weights reduce readability for users who need higher legibility',
+        fix: 'Use font-weight ' + profile.fontWeightMin + ' (regular) or heavier. Avoid font-weight 100–300.',
+        presetRef: null,
+        source: 'W3C WAI Older Users — https://www.w3.org/WAI/older-users/developing/'
+      });
+    } else {
+      checks++;
+      passed++;
+    }
+  }
+
+  // Letter spacing
+  var lsIssues = (data.typography && data.typography.letterSpacingIssues) || 0;
+  if (lsIssues > 0) {
+    findings.push({
+      severity: 'info',
+      title: lsIssues + ' element(s) with extreme letter-spacing',
+      detail: 'Very tight (< -0.03em) or very loose (> 0.15em) letter spacing reduces readability',
+      fix: 'Keep letter-spacing between -0.02em and 0.1em for body text. Tighter spacing is acceptable for large headings.',
+      presetRef: null,
+      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/letterspacing.html'
+    });
+  }
+
+  // Paragraph spacing
+  var pSpacing = (data.typography && data.typography.paragraphSpacing) || [];
+  if (pSpacing.length >= 3) {
+    checks++;
+    var bodyPx = parseFloat(data.typography.bodyFontSize) || 16;
+    var avgSpacing = pSpacing.reduce(function(s,v){return s+v},0) / pSpacing.length;
+    var spacingEm = avgSpacing / bodyPx;
+    if (spacingEm >= 0.5 && spacingEm <= 1.5) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: 'Paragraph spacing is ' + (Math.round(spacingEm * 100) / 100) + 'em (ideal: 0.75–1em)',
+        detail: spacingEm < 0.5 ? 'Paragraphs feel cramped' : 'Paragraph spacing may be too generous',
+        fix: 'Set paragraph margin-bottom to 0.75em–1em. In Tailwind: space-y-4 on the container or mb-4 on paragraphs.',
+        presetRef: null,
+        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/space-between-paragraphs.html'
+      });
+    }
+  }
+
+  // Max 2 typefaces
+  checks++;
+  var familyCount = (data.typography.fontFamilies || []).length;
+  if (familyCount <= 3) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'Using ' + familyCount + ' font families (recommended: max 2)',
+      detail: 'Too many typefaces make the design feel inconsistent',
+      fix: 'Use 1 sans-serif + 1 serif (or monospace for code). In Tailwind: font-sans + font-serif',
+      presetRef: null,
+      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/summary-of-key-rules.html'
+    });
+  }
+
+  // All-caps long text
+  var allCaps = (data.typography && data.typography.allCapsLongText) || 0;
+  if (allCaps > 0) {
+    findings.push({
+      severity: 'warning',
+      title: allCaps + ' block(s) of long text in all-caps (> 50 characters)',
+      detail: 'All-uppercase text reduces reading speed by 10-20%. Reserve for short labels and headings.',
+      fix: 'Remove text-transform: uppercase on body text. Use it only for short labels, buttons, and headings under 5 words.',
+      presetRef: null,
+      source: 'Tinker 1963, Butterick\'s Practical Typography — https://practicaltypography.com/all-caps.html'
+    });
+  }
+
+  // Justified text
+  var justified = (data.typography && data.typography.justifiedText) || 0;
+  if (justified > 0) {
+    findings.push({
+      severity: 'info',
+      title: justified + ' element(s) with text-align: justify',
+      detail: 'Justified text creates uneven word spacing (rivers of white) without proper hyphenation, reducing readability.',
+      fix: 'Use text-align: left for web content. Justified text only works well with automatic hyphenation (hyphens: auto).',
+      presetRef: null,
+      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/justified-text.html'
+    });
+  }
+
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+  return { score: score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Typography', icon: 'type' };
+}
+
+
+  S.register("typography", scoreTypography, 15, "Typography", "type");
+})();
+</file>
+
+<file path="docs/tests/test-scoring.html">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scoring Module Tests</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; background: #f8fafc; }
+    h1 { font-size: 20px; margin-bottom: 16px; }
+    .test { padding: 8px 12px; margin: 4px 0; border-radius: 6px; font-size: 13px; font-family: monospace; }
+    .pass { background: #f0fdf4; border: 1px solid #bbf7d0; color: #16a34a; }
+    .fail { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; }
+    .summary { margin-top: 16px; padding: 12px; border-radius: 8px; font-weight: 600; font-size: 15px; }
+    .summary.all-pass { background: #f0fdf4; color: #16a34a; border: 2px solid #16a34a; }
+    .summary.has-fail { background: #fef2f2; color: #dc2626; border: 2px solid #dc2626; }
+    #results { max-width: 800px; }
+  </style>
+</head>
+<body>
+  <h1>Scoring Module Tests</h1>
+  <div id="results">Loading modules...</div>
+
+  <!-- Load scoring modules -->
+  <script src="../scoring/registry.js"></script>
+  <script src="../scoring/contrast.js"></script>
+  <script src="../scoring/typography.js"></script>
+  <script src="../scoring/spacing.js"></script>
+  <script src="../scoring/touch.js"></script>
+  <script src="../scoring/accessibility.js"></script>
+  <script src="../scoring/responsive.js"></script>
+  <script src="../scoring/consistency.js"></script>
+  <script src="../scoring/cognitive.js"></script>
+  <script src="../scoring/layout.js"></script>
+  <script src="../scoring/performance.js"></script>
+  <script src="../scoring/readability.js"></script>
+  <script src="../scoring/filters.js"></script>
+  <script src="../scoring/balance.js"></script>
+
+  <script>
+    var results = [];
+    var passed = 0;
+    var failed = 0;
+
+    function assert(name, condition, detail) {
+      if (condition) {
+        results.push({ name: name, pass: true });
+        passed++;
+      } else {
+        results.push({ name: name, pass: false, detail: detail || 'assertion failed' });
+        failed++;
+      }
+    }
+
+    // --- Minimal valid extraction data ---
+    function makeData(overrides) {
+      var base = {
+        meta: { title: 'Test', url: 'https://test.com', viewportWidth: 1280, viewportHeight: 900, timestamp: new Date().toISOString(), version: 1 },
+        colors: { textColors: [{ value: '#000', count: 10 }], bgColors: [{ value: '#fff', count: 10 }], contrastPairs: [] },
+        typography: { bodyFontSize: '16px', bodyLineHeight: '24px', bodyFontFamily: 'sans-serif', fontFamilies: ['sans-serif'], fontSizes: [{ value: '16px', count: 10 }], fontWeights: [{ value: '400', count: 10 }, { value: '700', count: 5 }], headings: [{ tag: 'h1', text: 'Test', fontSize: '32px', fontWeight: '700', lineHeight: '40px', fontFamily: 'sans-serif' }], lineHeights: [{ value: 1.5, count: 10 }], maxLineLength: { chars: 65, element: 'p' } },
+        spacing: { paddings: [{ value: '16px', count: 10 }], margins: [{ value: '16px', count: 10 }], gaps: [{ value: '16px', count: 5 }], maxContentWidth: '1200px', bodyPaddingHorizontal: '16px' },
+        layout: { sectionGaps: [64, 64, 64], alignmentEdges: [16, 16, 16, 16, 16], visualHierarchy: { h1ToBody: 2, h2ToBody: 1.5, bodySize: 16 }, borderRadii: [{ value: '8px', count: 10 }] },
+        interaction: { touchTargets: [], transitions: ['0.15s'], adjacentIssues: [] },
+        accessibility: { semanticElements: { header: 1, nav: 1, main: 1, footer: 1, section: 3, article: 0, aside: 0 }, headingHierarchy: ['h1', 'h2', 'h3'], imagesWithoutAlt: 0, formLabels: { total: 2, withLabel: 2, withoutLabel: 0 }, focusIndicators: [{ element: 'button', outlineStyle: 'solid', outlineWidth: '2px', outlineColor: 'blue', outlineOffset: '2px' }], hasFocusVisibleCSS: true, langAttribute: true, hasSkipLink: true, badLinkTexts: [], missingAutocomplete: 0, ariaIssues: [], colorOnlyIndicators: 0, autoPlayMedia: 0, navItemCount: 5 },
+        structure: { totalElements: 100, darkModeClasses: true, responsiveClasses: true, tailwindDetected: true, cssFramework: 'tailwind', viewportMeta: 'width=device-width, initial-scale=1.0', blocksZoom: false, hasHorizontalOverflow: false, fixedWidthElements: 0, truncatedElements: 0 },
+        context: { pageType: 'content' },
+        animation: { keyframeCount: 0, hasReducedMotion: true, hiddenElements: 0, scrollRevealPatterns: [] },
+        performance: { fontLoading: [], renderBlocking: { cssInHead: 1, jsInHead: 0 }, domSize: 100, domDepth: 8, thirdPartyScripts: 2, imageFormats: { modern: 3, legacy: 0 }, cls: 0.02, lcp: { time: 1500, element: 'img', size: 50000 }, nonResponsiveImages: 0 },
+        readability: { gradeLevel: 8 }
+      };
+      if (overrides) {
+        Object.keys(overrides).forEach(function(k) {
+          if (typeof overrides[k] === 'object' && !Array.isArray(overrides[k]) && base[k]) {
+            Object.keys(overrides[k]).forEach(function(k2) { base[k][k2] = overrides[k][k2]; });
+          } else {
+            base[k] = overrides[k];
+          }
+        });
+      }
+      return base;
+    }
+
+    // =========================================================
+    // TEST 1: All modules run without errors on valid data
+    // =========================================================
+    (function() {
+      var profiles = ['general', 'wcag_aaa', 'elderly', 'low_vision', 'motor_impairment', 'color_blind', 'children', 'cognitive'];
+      profiles.forEach(function(profile) {
+        try {
+          var data = makeData({ profile: profile });
+          var result = MilgScoring.runScoring(data);
+          assert('runScoring(' + profile + ') completes', result && typeof result.overall === 'number', 'result: ' + JSON.stringify(result && result.overall));
+          assert('runScoring(' + profile + ') score 0-100', result.overall >= 0 && result.overall <= 100, 'score: ' + result.overall);
+          assert('runScoring(' + profile + ') has categories', result.categories && result.categories.length > 0, 'categories: ' + (result.categories && result.categories.length));
+
+          // Check all categories have required fields
+          result.categories.forEach(function(cat) {
+            assert(profile + '/' + cat.label + ' has score', typeof cat.score === 'number' && cat.score >= 0 && cat.score <= 100, 'score: ' + cat.score);
+            assert(profile + '/' + cat.label + ' has findings array', Array.isArray(cat.findings), 'findings: ' + typeof cat.findings);
+            assert(profile + '/' + cat.label + ' has checks count', typeof cat.checks === 'number' || cat.checks === undefined, 'checks: ' + cat.checks);
+          });
+        } catch(e) {
+          assert('runScoring(' + profile + ') no error', false, e.message + ' at ' + (e.stack || '').split('\n')[1]);
+        }
+      });
+    })();
+
+    // =========================================================
+    // TEST 2: Good data should score well (>= 80)
+    // =========================================================
+    (function() {
+      var data = makeData();
+      var result = MilgScoring.runScoring(data);
+      assert('Good data scores >= 80', result.overall >= 80, 'score: ' + result.overall);
+      assert('Good data grade A or B', result.grade === 'A' || result.grade === 'B', 'grade: ' + result.grade);
+    })();
+
+    // =========================================================
+    // TEST 3: Contrast failures lower score
+    // =========================================================
+    (function() {
+      var data = makeData({
+        colors: {
+          textColors: [{ value: '#999', count: 5 }],
+          bgColors: [{ value: '#fff', count: 5 }],
+          contrastPairs: [
+            { fg: 'rgb(153,153,153)', bg: 'rgb(255,255,255)', ratio: 2.85, needed: 4.5, passes: false, fontSize: 16, fontWeight: 400, isLarge: false, text: 'Low contrast text', selector: 'p', filter: '' },
+            { fg: 'rgb(153,153,153)', bg: 'rgb(255,255,255)', ratio: 2.85, needed: 4.5, passes: false, fontSize: 16, fontWeight: 400, isLarge: false, text: 'Another low contrast', selector: 'span', filter: '' }
+          ]
+        }
+      });
+      var result = MilgScoring.runScoring(data);
+      var contrastCat = result.categories.find(function(c) { return c.label === 'Color & Contrast'; });
+      assert('Contrast failures produce errors', contrastCat.findings.some(function(f) { return f.severity === 'error'; }), 'findings: ' + contrastCat.findings.length);
+      assert('Contrast score < 100', contrastCat.score < 100, 'score: ' + contrastCat.score);
+    })();
+
+    // =========================================================
+    // TEST 4: Touch target issues
+    // =========================================================
+    (function() {
+      var data = makeData({
+        interaction: {
+          touchTargets: [
+            { element: 'button', width: 20, height: 20, text: 'Tiny button', selector: 'button.tiny', passes: false, isButton: true, linkContext: 'button' },
+            { element: 'a', width: 30, height: 15, text: 'Footer link', selector: 'a', passes: false, isButton: false, linkContext: 'footer' },
+            { element: 'a', width: 50, height: 12, text: 'Inline link', selector: 'a', passes: false, isButton: false, linkContext: 'inline' }
+          ],
+          transitions: ['0.2s']
+        }
+      });
+      var result = MilgScoring.runScoring(data);
+      var touchCat = result.categories.find(function(c) { return c.label === 'Touch & Interaction'; });
+      var errors = touchCat.findings.filter(function(f) { return f.severity === 'error'; });
+      var infos = touchCat.findings.filter(function(f) { return f.severity === 'info'; });
+      assert('Button gets error', errors.some(function(f) { return f.title.indexOf('button') !== -1; }), 'errors: ' + errors.map(function(f){return f.title}).join('; '));
+      assert('Footer link gets info or error', touchCat.findings.some(function(f) { return f.title.indexOf('Footer') !== -1; }), 'findings: ' + touchCat.findings.map(function(f){return f.title}).join('; '));
+      assert('Inline link gets info (exempt)', infos.some(function(f) { return f.title.indexOf('Inline') !== -1 || f.title.indexOf('inline') !== -1; }), 'infos: ' + infos.map(function(f){return f.title}).join('; '));
+    })();
+
+    // =========================================================
+    // TEST 5: Profile differentiation
+    // =========================================================
+    (function() {
+      var data = makeData({
+        typography: { bodyFontSize: '15px', bodyLineHeight: '22px', bodyFontFamily: 'sans-serif', fontFamilies: ['sans-serif'], fontSizes: [{ value: '15px', count: 10 }], fontWeights: [{ value: '400', count: 10 }], headings: [{ tag: 'h1', text: 'Test', fontSize: '32px', fontWeight: '700', lineHeight: '40px', fontFamily: 'sans-serif' }], lineHeights: [{ value: 1.47, count: 10 }], maxLineLength: { chars: 70, element: 'p' } }
+      });
+      var generalResult = MilgScoring.runScoring(makeData(Object.assign({}, data, { profile: 'general' })));
+      var elderlyResult = MilgScoring.runScoring(makeData(Object.assign({}, data, { profile: 'elderly' })));
+      var childResult = MilgScoring.runScoring(makeData(Object.assign({}, data, { profile: 'children' })));
+
+      assert('Elderly scores lower than general for 15px font', elderlyResult.overall <= generalResult.overall, 'elderly: ' + elderlyResult.overall + ' general: ' + generalResult.overall);
+      assert('Children scores different from general', childResult.overall !== generalResult.overall || childResult.categories.some(function(c, i) { return c.findings.length !== generalResult.categories[i].findings.length; }), 'findings differ');
+    })();
+
+    // =========================================================
+    // TEST 6: CVD simulation (color_blind profile)
+    // =========================================================
+    (function() {
+      var data = makeData({
+        profile: 'color_blind',
+        colors: {
+          textColors: [{ value: 'rgb(255,0,0)', count: 3 }, { value: 'rgb(0,128,0)', count: 3 }],
+          bgColors: [{ value: 'rgb(255,255,255)', count: 10 }],
+          contrastPairs: [
+            { fg: 'rgb(255,0,0)', bg: 'rgb(255,255,255)', ratio: 4, needed: 4.5, passes: false, fontSize: 16, fontWeight: 400, isLarge: false, text: 'Red text', selector: 'span.red', filter: '' },
+            { fg: 'rgb(0,128,0)', bg: 'rgb(255,255,255)', ratio: 4.6, needed: 4.5, passes: true, fontSize: 16, fontWeight: 400, isLarge: false, text: 'Green text', selector: 'span.green', filter: '' }
+          ]
+        }
+      });
+      try {
+        var result = MilgScoring.runScoring(data);
+        assert('CVD profile runs without error', true);
+        var contrastCat = result.categories.find(function(c) { return c.label === 'Color & Contrast'; });
+        assert('CVD has contrast findings', contrastCat.findings.length > 0, 'findings: ' + contrastCat.findings.length);
+      } catch(e) {
+        assert('CVD profile no error', false, e.message);
+      }
+    })();
+
+    // =========================================================
+    // TEST 7: Cognitive profile checks
+    // =========================================================
+    (function() {
+      var data = makeData({
+        profile: 'cognitive',
+        accessibility: {
+          semanticElements: { header: 1, nav: 1, main: 1, footer: 1 },
+          headingHierarchy: ['h1', 'h2', 'h3'], imagesWithoutAlt: 0,
+          formLabels: { total: 0, withLabel: 0, withoutLabel: 0 },
+          focusIndicators: [], hasFocusVisibleCSS: true, langAttribute: true,
+          hasSkipLink: true, badLinkTexts: [], missingAutocomplete: 0,
+          ariaIssues: [], colorOnlyIndicators: 0, autoPlayMedia: 0,
+          navItemCount: 12 // exceeds max 5 for cognitive
+        },
+        readability: { gradeLevel: 12 } // exceeds max 8 for cognitive
+      });
+      var result = MilgScoring.runScoring(data);
+      var cogCat = result.categories.find(function(c) { return c.label === 'Cognitive Load'; });
+      assert('Cognitive profile flags high nav count', cogCat.findings.some(function(f) { return f.title.indexOf('navigation') !== -1; }), 'findings: ' + cogCat.findings.map(function(f){return f.title}).join('; '));
+      assert('Cognitive profile flags high reading level', cogCat.findings.some(function(f) { return f.title.indexOf('Reading level') !== -1 || f.title.indexOf('reading') !== -1; }), 'findings: ' + cogCat.findings.map(function(f){return f.title}).join('; '));
+    })();
+
+    // =========================================================
+    // TEST 8: All modules return checks/passed
+    // =========================================================
+    (function() {
+      var data = makeData();
+      var result = MilgScoring.runScoring(data);
+      result.categories.forEach(function(cat) {
+        assert(cat.label + ' has checks count', cat.checks !== undefined && cat.checks >= 0, 'checks: ' + cat.checks);
+      });
+    })();
+
+    // =========================================================
+    // TEST 9: Registry utilities
+    // =========================================================
+    (function() {
+      // parseColor
+      var c = MilgScoring.parseColor('rgb(255, 0, 0)');
+      assert('parseColor rgb()', c && c.r === 255 && c.g === 0 && c.b === 0, JSON.stringify(c));
+
+      var c2 = MilgScoring.parseColor('rgba(0, 128, 255, 0.5)');
+      assert('parseColor rgba()', c2 && c2.r === 0 && c2.g === 128 && c2.b === 255 && c2.a === 0.5, JSON.stringify(c2));
+
+      // contrastRatio
+      var ratio = MilgScoring.contrastRatio({ r: 0, g: 0, b: 0 }, { r: 255, g: 255, b: 255 });
+      assert('contrastRatio black/white = 21', Math.abs(ratio - 21) < 0.1, 'ratio: ' + ratio);
+
+      // CVD simulation
+      var sim = MilgScoring.simulateCVD({ r: 255, g: 0, b: 0 }, MilgScoring.CVD_MATRICES.protanopia);
+      assert('CVD simulation produces valid color', sim && sim.r >= 0 && sim.r <= 255 && sim.g >= 0 && sim.b >= 0, JSON.stringify(sim));
+      assert('CVD protanopia dims red', sim.r < 200, 'r: ' + sim.r); // red looks much darker/different under protanopia
+    })();
+
+    // =========================================================
+    // NEW: Extended checks tests
+    // =========================================================
+
+    // Duplicate IDs should produce error when used in ARIA
+    (function() {
+      var data = makeData({
+        accessibility: {
+          duplicateIds: [{ id: 'foo', count: 2, usedInAria: true }],
+          nestedInteractives: ['a.nested'],
+          emptyInteractives: ['button.empty'],
+          positiveTabindex: 3,
+          scrollableNoKeyboard: 1,
+          nonTextContrast: [{ selector: 'input', ratio: 2.1, borderColor: 'rgb(200,200,200)', bg: 'rgb(255,255,255)' }],
+          tableIssues: [{ selector: 'table', issues: ['no-th', 'no-caption'] }],
+          missingButtonType: 2
+        }
+      });
+      var result = MilgScoring.runScoring(data);
+      var a11y = result.categories.find(function(c) { return c.label === 'Accessibility'; });
+      var titles = a11y.findings.map(function(f) { return f.title; }).join(' | ');
+      assert('Duplicate IDs flagged', titles.indexOf('duplicate ID') !== -1, 'Got: ' + titles);
+      assert('Nested interactives flagged', titles.indexOf('nested interactive') !== -1, 'Got: ' + titles);
+      assert('Empty interactives flagged', titles.indexOf('no accessible name') !== -1, 'Got: ' + titles);
+      assert('Positive tabindex flagged', titles.indexOf('positive tabindex') !== -1, 'Got: ' + titles);
+      assert('Scrollable no keyboard flagged', titles.indexOf('keyboard-accessible') !== -1, 'Got: ' + titles);
+      assert('Non-text contrast flagged', titles.indexOf('border contrast') !== -1, 'Got: ' + titles);
+      assert('Table issues flagged', titles.indexOf('table') !== -1, 'Got: ' + titles);
+    })();
+
+    // Z-index sprawl and shadow consistency
+    (function() {
+      var data = makeData({
+        layout: { zIndexSprawl: { distinct: 12, max: 9999, values: [] }, shadowSprawl: 9 },
+        colors: { darkModeHalation: true }
+      });
+      var result = MilgScoring.runScoring(data);
+      var consistency = result.categories.find(function(c) { return c.label === 'Visual Consistency'; });
+      var titles = consistency.findings.map(function(f) { return f.title; }).join(' | ');
+      assert('Z-index sprawl flagged', titles.indexOf('z-index') !== -1, 'Got: ' + titles);
+      assert('Shadow sprawl flagged', titles.indexOf('box-shadow') !== -1, 'Got: ' + titles);
+      assert('Dark mode halation flagged', titles.indexOf('halation') !== -1 || titles.indexOf('black') !== -1, 'Got: ' + titles);
+    })();
+
+    // All-caps and justified text
+    (function() {
+      var data = makeData({
+        typography: { allCapsLongText: 3, justifiedText: 2 }
+      });
+      var result = MilgScoring.runScoring(data);
+      var typo = result.categories.find(function(c) { return c.label === 'Typography'; });
+      var titles = typo.findings.map(function(f) { return f.title; }).join(' | ');
+      assert('All-caps long text flagged', titles.indexOf('all-caps') !== -1, 'Got: ' + titles);
+      assert('Justified text flagged', titles.indexOf('justify') !== -1, 'Got: ' + titles);
+    })();
+
+    // Tier 1 checks: text clipping, placeholder labels, invisible links, etc.
+    (function() {
+      var data = makeData({
+        accessibility: {
+          textClippedNoTitle: 6,
+          placeholderOnlyInputs: 2,
+          invisibleLinks: 3,
+          requiredNoIndicator: 4,
+          invisibleInputs: 1,
+          disabledLowContrast: 2
+        }
+      });
+      var result = MilgScoring.runScoring(data);
+      var a11y = result.categories.find(function(c) { return c.label === 'Accessibility'; });
+      var titles = a11y.findings.map(function(f) { return f.title; }).join(' | ');
+      assert('Text clipping flagged', titles.indexOf('truncate') !== -1, 'Got: ' + titles);
+      assert('Placeholder-only labels flagged', titles.indexOf('placeholder') !== -1, 'Got: ' + titles);
+      assert('Invisible links flagged', titles.indexOf('indistinguishable') !== -1, 'Got: ' + titles);
+      assert('Required no indicator flagged', titles.indexOf('required') !== -1, 'Got: ' + titles);
+      assert('Invisible inputs flagged', titles.indexOf('visible boundary') !== -1, 'Got: ' + titles);
+      assert('Disabled low contrast flagged', titles.indexOf('disabled') !== -1, 'Got: ' + titles);
+    })();
+
+    // Performance: upscaled images, will-change, non-passive scroll
+    (function() {
+      var data = makeData({
+        performance: {
+          upscaledImages: [{ selector: 'img', rendered: '800x600', natural: '400x300', upscale: 200 }],
+          willChangeCount: 12
+        },
+        interaction: {
+          listenerStats: { nonPassiveScroll: 2 },
+          listenerPatterns: { toggleNoAria: 1, navigationInButton: 1 }
+        }
+      });
+      var result = MilgScoring.runScoring(data);
+      var perf = result.categories.find(function(c) { return c.label === 'Performance'; });
+      var touch = result.categories.find(function(c) { return c.label === 'Touch & Interaction'; });
+      var perfTitles = perf.findings.map(function(f) { return f.title; }).join(' | ');
+      var touchTitles = touch.findings.map(function(f) { return f.title; }).join(' | ');
+      assert('Upscaled images flagged', perfTitles.indexOf('larger than natural') !== -1, 'Got: ' + perfTitles);
+      assert('will-change flagged', perfTitles.indexOf('will-change') !== -1, 'Got: ' + perfTitles);
+      assert('Non-passive scroll flagged', perfTitles.indexOf('non-passive') !== -1, 'Got: ' + perfTitles);
+      assert('Toggle no ARIA flagged', touchTitles.indexOf('ARIA state') !== -1, 'Got: ' + touchTitles);
+    })();
+
+    // Tier 2: consistency checks
+    (function() {
+      var data = makeData({
+        consistency: { borderWidthInconsistencies: 2, fontWeightInconsistencies: 1, gradientDirections: 5 },
+        layout: {
+          buttonHierarchy: { total: 6, filled: 6, outline: 0, text: 0 },
+          fixedViewportConsumption: 35
+        }
+      });
+      var result = MilgScoring.runScoring(data);
+      var cons = result.categories.find(function(c) { return c.label === 'Visual Consistency'; });
+      var lay = result.categories.find(function(c) { return c.label === 'Layout Quality'; });
+      var consTitles = cons.findings.map(function(f) { return f.title; }).join(' | ');
+      var layTitles = lay.findings.map(function(f) { return f.title; }).join(' | ');
+      assert('Border width inconsistency flagged', consTitles.indexOf('border width') !== -1, 'Got: ' + consTitles);
+      assert('Font weight inconsistency flagged', consTitles.indexOf('font-weight') !== -1, 'Got: ' + consTitles);
+      assert('Gradient direction inconsistency flagged', consTitles.indexOf('gradient') !== -1, 'Got: ' + consTitles);
+      assert('Button hierarchy flagged', layTitles.indexOf('hierarchy') !== -1, 'Got: ' + layTitles);
+      assert('Fixed viewport consumption flagged', layTitles.indexOf('viewport') !== -1 || layTitles.indexOf('Fixed') !== -1, 'Got: ' + layTitles);
+    })();
+
+    // Performance: complex filters, forced layers
+    (function() {
+      var data = makeData({
+        performance: { complexFilters: 3, forcedLayers: 15 },
+        accessibility: { selectNoDefault: 2 }
+      });
+      var result = MilgScoring.runScoring(data);
+      var perf = result.categories.find(function(c) { return c.label === 'Performance'; });
+      var a11y = result.categories.find(function(c) { return c.label === 'Accessibility'; });
+      var perfTitles = perf.findings.map(function(f) { return f.title; }).join(' | ');
+      var a11yTitles = a11y.findings.map(function(f) { return f.title; }).join(' | ');
+      assert('Complex filters flagged', perfTitles.indexOf('filter') !== -1, 'Got: ' + perfTitles);
+      assert('Forced layers flagged', perfTitles.indexOf('compositor') !== -1 || perfTitles.indexOf('GPU') !== -1, 'Got: ' + perfTitles);
+      assert('Select no default flagged', a11yTitles.indexOf('select') !== -1 || a11yTitles.indexOf('default') !== -1, 'Got: ' + a11yTitles);
+    })();
+
+    // =========================================================
+    // RENDER RESULTS
+    // =========================================================
+    var html = '';
+    results.forEach(function(r) {
+      html += '<div class="test ' + (r.pass ? 'pass' : 'fail') + '">';
+      html += (r.pass ? '✓' : '✗') + ' ' + r.name;
+      if (!r.pass && r.detail) html += ' — <strong>' + r.detail + '</strong>';
+      html += '</div>';
+    });
+    html += '<div class="summary ' + (failed === 0 ? 'all-pass' : 'has-fail') + '">';
+    html += passed + ' passed, ' + failed + ' failed';
+    html += '</div>';
+    document.getElementById('results').innerHTML = html;
+
+    // Also log for CI
+    console.log('Scoring tests: ' + passed + ' passed, ' + failed + ' failed');
+    if (failed > 0) console.error('FAILURES:', results.filter(function(r) { return !r.pass; }).map(function(r) { return r.name + ': ' + r.detail; }));
+  </script>
+</body>
+</html>
+</file>
+
 <file path="docs/analyzer-crawl-ui.js">
 // make-it-look-good — Crawl UI Wiring
 // Manages multi-page site crawl progress, tabs, and results display.
@@ -23371,1019 +24016,6 @@ window.MilgProxy = (function() {
 })();
 </file>
 
-<file path="docs/scoring/readability.js">
-// Scoring Module: Readability & Scanability
-// Weight: 5%
-// Sources: Coleman-Liau Index, NNGroup scanning research
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-  function scoreReadability(data) {
-    var findings = [];
-    var checks = 0;
-    var passed = 0;
-
-    // Extract text content from the raw data
-    // We use heading count and element count as proxies since we don't have raw text in extracted data
-    var headings = (data.typography && data.typography.headings) || [];
-    var totalElements = (data.structure && data.structure.totalElements) || 0;
-
-    // Scanability: heading frequency
-    // Good rule: 1 heading per ~100-150 elements of content
-    if (totalElements > 50) {
-      checks++;
-      var headingRatio = headings.length / (totalElements / 100);
-      if (headingRatio >= 0.5 && headingRatio <= 5) {
-        passed++;
-      } else if (headingRatio < 0.5) {
-        findings.push({
-          severity: 'warning',
-          title: 'Low heading density: ' + headings.length + ' headings for ' + totalElements + ' elements',
-          detail: 'Content without headings is harder to scan. 79% of users scan rather than read (NNGroup)',
-          fix: 'Add descriptive headings to break content into scannable sections. Aim for a heading every 2-3 paragraphs.',
-          presetRef: null,
-          source: 'NNGroup scanning research — https://www.nngroup.com/articles/how-users-read-on-the-web/'
-        });
-      }
-    }
-
-    // Heading descriptiveness: check if headings are too short (likely generic)
-    if (headings.length > 0) {
-      checks++;
-      var shortHeadings = headings.filter(function(h) {
-        return h.text && h.text.length < 3;
-      });
-      if (shortHeadings.length === 0) {
-        passed++;
-      } else {
-        passed++; // Info doesn't reduce score
-        findings.push({
-          severity: 'info',
-          title: shortHeadings.length + ' heading(s) with very short text (< 3 chars)',
-          detail: 'Short headings like numbers or icons don\'t help users scan. Use descriptive text.',
-          fix: 'Replace generic headings with descriptive ones that summarize the section content.',
-          presetRef: null,
-          source: 'NNGroup — https://www.nngroup.com/articles/headings-pickup-lines/'
-        });
-      }
-    }
-
-    // Font size variety as readability signal
-    // Too many sizes = visual noise, harder to establish reading rhythm
-    var fontSizes = (data.typography && data.typography.fontSizes) || [];
-    var smallTextCount = fontSizes.filter(function(f) {
-      return parseFloat(f.value) < 12;
-    }).reduce(function(sum, f) { return sum + f.count; }, 0);
-
-    if (smallTextCount > 0 && totalElements > 20) {
-      checks++;
-      var smallRatio = smallTextCount / totalElements;
-      if (smallRatio < 0.05) {
-        passed++;
-      } else {
-        var smallBboxes = fontSizes.filter(function(f) { return parseFloat(f.value) < 12 && f.bbox; }).map(function(f) { return f.bbox; });
-        findings.push({
-          severity: 'warning',
-          title: smallTextCount + ' element(s) with text smaller than 12px',
-          detail: 'Text below 12px is difficult to read for most users and nearly impossible for elderly or low-vision users',
-          fix: 'Increase small text to at least 12px. Consider if the information is important enough to display — if not, remove it.',
-          presetRef: null,
-          source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text',
-          locator: smallBboxes.length > 0 ? { selector: '', text: '', bboxes: smallBboxes } : undefined
-        });
-      }
-    }
-
-    // Coleman-Liau readability index
-    var rd = data.readability || {};
-    if (rd.totalWords >= 50 && rd.paragraphCount >= 2) {
-      checks++;
-      // Coleman-Liau: 0.0588 * L - 0.296 * S - 15.8
-      // L = avg letters per 100 words, S = avg sentences per 100 words
-      var L = (rd.totalChars / rd.totalWords) * 100;
-      var sentenceCount = 0;
-      (rd.textBlocks || []).forEach(function(b) {
-        sentenceCount += (b.text.match(/[.!?]+/g) || []).length;
-      });
-      var S_val = (sentenceCount / rd.totalWords) * 100;
-      var cli = Math.round(0.0588 * L - 0.296 * S_val - 15.8);
-      // Detect non-English content — Coleman-Liau inflates scores for languages
-      // with long compound words (German, Finnish, Dutch, etc.)
-      var pageLang = (data.meta && data.meta.lang || '').toLowerCase().split('-')[0];
-      var isNonEnglish = pageLang && pageLang !== 'en' && pageLang !== '';
-      // Also heuristic: if avg word length > 6.5 chars, likely non-English
-      var avgWordLen = rd.totalChars / rd.totalWords;
-      if (!isNonEnglish && avgWordLen > 6.5) isNonEnglish = true;
-      var langNote = isNonEnglish ? ' Note: This index is calibrated for English text — non-English languages (detected: ' + (pageLang || 'long words') + ') typically score higher due to longer average word length.' : '';
-
-      if (cli >= 6 && cli <= 12) {
-        passed++;
-      } else {
-        findings.push({
-          severity: isNonEnglish ? 'info' : (cli > 14 ? 'warning' : 'info'),
-          title: 'Reading level: grade ' + cli + ' (Coleman-Liau Index)',
-          detail: (cli > 12 ? 'Content may be too complex for a general audience' : 'Content may be overly simple for the target audience') + langNote,
-          fix: cli > 12 ? 'Shorten sentences, use simpler words, break complex ideas into steps. Aim for grade 8-10 for general audiences.' : 'This reading level is appropriate for broad accessibility.',
-          presetRef: null,
-          source: 'Coleman-Liau Index — https://en.wikipedia.org/wiki/Coleman%E2%80%93Liau_index'
-        });
-      }
-    }
-
-    // Paragraph length audit
-    var longParagraphs = (rd.textBlocks || []).filter(function(b) { return b.wordCount > 150; });
-    if (longParagraphs.length > 0) {
-      findings.push({
-        severity: 'warning',
-        title: longParagraphs.length + ' paragraph(s) exceed 150 words',
-        detail: 'Long paragraphs reduce scanability. Ideal: 40-80 words per paragraph.',
-        fix: 'Break long paragraphs into shorter ones. Use subheadings, bullet lists, or callout boxes to chunk content.',
-        presetRef: null,
-        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
-      });
-    }
-
-    // List usage for scanability
-    if (rd.totalWords >= 100 && !rd.hasLists) {
-      findings.push({
-        severity: 'info',
-        title: 'No lists found in content area',
-        detail: 'Lists improve scanability by 47% compared to wall-of-text (NNGroup)',
-        fix: 'Convert sequences, features, or steps into <ul>/<ol> lists where appropriate.',
-        presetRef: null,
-        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
-      });
-    }
-
-    // Table cell readability on mobile (cramped/wrapped cells)
-    var tableCellIssues = (data.layout && data.layout.tableCellIssues) || [];
-    if (tableCellIssues.length > 0) {
-      checks++;
-      var tableDetails = tableCellIssues.slice(0, 3).map(function(t) {
-        var parts = [];
-        if (t.crampedCells > 0) parts.push(t.crampedCells + ' cells lack horizontal padding');
-        if (t.wrappedCells > 0) parts.push(t.wrappedCells + ' cells wrap to multiple lines');
-        return t.selector + ': ' + parts.join(', ') + ' (table ' + t.tableWidth + 'px on ' + t.vpWidth + 'px viewport)';
-      });
-      findings.push({
-        severity: tableCellIssues.some(function(t) { return t.crampedCells > 4 || t.wrappedCells > 4; }) ? 'error' : 'warning',
-        title: 'Table readability issues on mobile (' + tableCellIssues.length + ' table' + (tableCellIssues.length > 1 ? 's' : '') + ')',
-        detail: tableDetails.join('; '),
-        fix: 'Add horizontal padding to table cells (px-3 sm:px-4). For narrow viewports, consider hiding low-priority columns, using a responsive card layout, or reducing font size.',
-        source: 'NNGroup Mobile Tables — https://www.nngroup.com/articles/mobile-tables/',
-        locator: { selector: tableCellIssues[0].selector, text: '' }
-      });
-    }
-
-    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-    var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-    var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-    return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Readability', icon: 'readability' };
-  }
-
-  S.register("readability", scoreReadability, 5, "Readability", "readability");
-})();
-</file>
-
-<file path="docs/scoring/touch.js">
-// Scoring Module: Touch & Interaction
-// Weight: 15%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreTouchTargets(data) {
-  var profile = S.getProfile(data);
-  var findings = [];
-  var targets = data.interaction.touchTargets || [];
-
-  // Viewport-aware thresholds, adjusted by profile:
-  var vw = (data.meta && data.meta.viewportWidth) || 1280;
-  var isDesktop = vw >= 1024;
-  var minSize = isDesktop ? profile.touchTargetDesktop : profile.touchTarget;
-  var warnSize = isDesktop ? profile.touchTargetDesktopWarn : profile.touchTarget;
-  var context = isDesktop ? 'desktop' : 'touch/mobile';
-  var issueCount = 0;
-
-  targets.forEach(function(t) {
-    var w = t.width, h = t.height;
-    var minDim = Math.min(w, h);
-
-    // WCAG 2.5.8 exception: inline text links are exempt from target size requirements.
-    // Detect by checking if element is an <a> without button-like styling (no bg, no border, no padding > 4px)
-    var isInlineLink = t.element === 'a' && !t.isButton;
-
-    if (minDim < minSize) {
-      issueCount++;
-      var ctx = t.linkContext || (isInlineLink ? 'inline' : 'button');
-
-      // On desktop, determine severity based on how far below threshold:
-      // - ≥20px (just 4px short of 24px) → info (barely noticeable with mouse)
-      // - ≥16px → warning (small but usable with mouse)
-      // - <16px → error (genuinely too small even for mouse)
-      // On mobile, all failures are errors (fingers need the full 44px)
-      function desktopSeverity(dim) {
-        if (!isDesktop) return 'error';
-        if (dim >= 20) return 'info';
-        if (dim >= 16) return 'warning';
-        return 'error';
-      }
-
-      if (ctx === 'inline') {
-        // True inline text links (inside <p>, <blockquote>, etc.) — WCAG 2.5.8 exempt
-        findings.push({
-          severity: 'info',
-          title: 'Inline text link ' + w + '×' + h + 'px — exempt from target size',
-          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-          fix: 'Inline text links in paragraphs are exempt per WCAG 2.5.8. Consider adding padding for better usability.',
-          source: 'WCAG 2.2 §2.5.8 inline exception — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
-        });
-      } else if (ctx === 'footer') {
-        // Footer links — relaxed but still error below hard minimum (16px)
-        var footerHardMin = isDesktop ? 16 : 24;
-        findings.push({
-          severity: minDim < footerHardMin ? 'error' : 'info',
-          title: 'Footer link ' + w + '×' + h + 'px' + (minDim < footerHardMin ? ' (too small even for footer — min ' + footerHardMin + 'px)' : ' (below ' + minSize + 'px, relaxed for footer)'),
-          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-          fix: minDim < footerHardMin
-            ? 'Even footer links need at least ' + footerHardMin + 'px height. Add padding to increase click area.'
-            : 'Footer links have relaxed sizing expectations. Consider padding for touch accessibility.',
-          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
-        });
-      } else if (ctx === 'nav') {
-        // Navigation links — should be properly sized
-        var navSev = desktopSeverity(minDim);
-        findings.push({
-          severity: navSev,
-          title: 'Nav link ' + w + '×' + h + 'px (minimum: ' + minSize + 'px)',
-          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-          fix: 'Navigation links need adequate sizing. Add padding: py-2 px-4 (min-height ' + minSize + 'px).',
-          presetRef: 'Navigation presets use min-height 44px on nav links',
-          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
-        });
-      } else {
-        // Buttons, styled links, other interactive elements
-        var sev = desktopSeverity(minDim);
-        findings.push({
-          severity: sev,
-          title: t.element + ' is ' + w + '×' + h + 'px (' + (isDesktop ? 'desktop min: ' + minSize + 'px' : 'touch min: ' + minSize + 'px') + ')',
-          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-          fix: isDesktop
-            ? (sev === 'info'
-              ? 'Slightly below ' + minSize + 'px desktop minimum — usable with mouse but consider adding padding.'
-              : 'Click targets need at least ' + minSize + '×' + minSize + 'px. Increase padding or min-height/min-width.')
-            : 'Touch targets need ' + minSize + '×' + minSize + 'px minimum. Add min-h-[' + minSize + 'px] min-w-[' + minSize + 'px] or increase padding.',
-          presetRef: isDesktop ? null : 'Button presets use py-3 px-6 (48px height)',
-          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
-        });
-      }
-    } else if (minDim < warnSize && isDesktop && !isInlineLink) {
-      findings.push({
-        severity: 'warning',
-        title: t.element + ' is ' + w + '×' + h + 'px (recommended for desktop: ≥' + warnSize + 'px)',
-        detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-        fix: 'While ' + minSize + 'px meets minimum, ' + warnSize + 'px+ improves click comfort. Consider adding padding.',
-        presetRef: null,
-        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-        locator: { selector: t.selector, text: t.text || '' }
-      });
-    }
-  });
-
-  // Also flag targets that pass the current threshold but would fail on touch
-  if (isDesktop && targets.length > 0) {
-    var touchMin = profile.touchTarget;
-    var touchFails = targets.filter(function(t) { return Math.min(t.width, t.height) < touchMin; });
-    if (touchFails.length > 0) {
-      findings.push({
-        severity: 'info',
-        title: touchFails.length + ' element(s) below ' + touchMin + 'px touch target (analyzed at ' + vw + 'px desktop viewport)',
-        detail: 'These meet desktop minimums but would fail on touch devices. Consider responsive sizing if the site is also used on mobile.',
-        fix: 'For responsive touch support: add touch-target sizing at mobile breakpoints, e.g. sm:min-h-[' + touchMin + 'px]',
-        presetRef: null,
-        source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout'
-      });
-    }
-  }
-
-  // Note when responsive CSS exists that might fix touch targets on mobile
-  if (isDesktop && data.interaction && data.interaction.hasResponsiveTargetCSS) {
-    findings.push({
-      severity: 'info',
-      title: 'Responsive CSS detected that may adjust target sizes at mobile breakpoints',
-      detail: 'This site has media queries with height/padding rules. Touch targets may be correctly sized on mobile devices.',
-      fix: 'Verify by testing at mobile viewport. Use the viewport selector to re-scan at 375px width.',
-      presetRef: null
-    });
-  }
-
-  // Transitions / animation duration
-  var transitions = data.interaction.transitions || [];
-  transitions.forEach(function(t) {
-    var ms = parseFloat(t) * 1000;
-    if (ms > 500) {
-      findings.push({
-        severity: 'warning',
-        title: 'Transition duration ' + ms + 'ms exceeds 500ms maximum',
-        detail: 'Users perceive animations longer than 500ms as sluggish',
-        fix: 'Keep transitions under 500ms. Enter: 200–300ms, Exit: 150–200ms. In Tailwind: duration-200 or duration-300',
-        presetRef: null,
-        source: 'NNGroup animation — https://www.nngroup.com/articles/animation-usability/'
-      });
-    }
-  });
-
-  // Event listener pattern findings
-  var lPatterns = (data.interaction && data.interaction.listenerPatterns) || {};
-  if (lPatterns.toggleNoAria > 0) {
-    findings.push({
-      severity: 'warning',
-      title: lPatterns.toggleNoAria + ' toggle handler(s) without ARIA state management',
-      detail: 'Click handlers toggle CSS classes but don\'t update aria-expanded or other ARIA states. Screen readers won\'t know the element\'s state changed.',
-      fix: 'Add setAttribute(\'aria-expanded\', isOpen) alongside classList.toggle() in toggle handlers.',
-      presetRef: null,
-      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
-    });
-  }
-  if (lPatterns.navigationInButton > 0) {
-    findings.push({
-      severity: 'info',
-      title: lPatterns.navigationInButton + ' button(s) trigger page navigation',
-      detail: 'Buttons with click handlers that change location.href should typically be <a> elements for proper semantics and accessibility.',
-      fix: 'Use <a href="..."> for navigation instead of <button> with JavaScript location change.',
-      presetRef: null,
-      source: 'HTML spec — https://html.spec.whatwg.org/multipage/text-level-semantics.html#the-a-element'
-    });
-  }
-
-  // Score: deduct per error, less per warning
-  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var totalTargets = targets.length || 0;
-  var checks = totalTargets;
-  var passed = Math.max(0, totalTargets - errors - warnings);
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 3));
-  var na = totalTargets === 0 && transitions.length === 0;
-  return { score: na ? 100 : score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Touch & Interaction', icon: 'touch', notApplicable: na };
-}
-
-
-  S.register("touch", scoreTouchTargets, 15, "Touch & Interaction", "touch");
-})();
-</file>
-
-<file path="docs/scoring/typography.js">
-// Scoring Module: Typography
-// Weight: 15%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreTypography(data) {
-  var profile = S.getProfile(data);
-  var findings = [];
-  var checks = 0;
-  var passed = 0;
-
-  // Body font size check against profile minimum
-  checks++;
-  var bodySize = parseFloat(data.typography.bodyFontSize);
-  if (bodySize >= profile.bodyFontMin) {
-    passed++;
-  } else if (bodySize > 0) {
-    findings.push({
-      severity: 'error',
-      title: 'Body font size is ' + bodySize + 'px (minimum: ' + profile.bodyFontMin + 'px)',
-      detail: 'Small body text reduces readability, especially on mobile',
-      fix: 'Set body font-size to at least ' + profile.bodyFontMin + 'px. In Tailwind: text-base (16px) or text-lg (18px)',
-      presetRef: 'All presets use text-base (16px) or larger for body text', source: 'WCAG 2.2 / NNGroup — https://www.w3.org/TR/WCAG22/#text-spacing'
-    });
-  }
-
-  // Line height check against profile range
-  checks++;
-  var bodyLH = data.typography.bodyLineHeight;
-  var bodyLHRatio = 0;
-  if (bodyLH && bodyLH !== 'normal') {
-    bodyLHRatio = parseFloat(bodyLH) / bodySize;
-  }
-  var lhPassMin = profile.lineHeightMin - 0.05;
-  var lhPassMax = profile.lineHeightMax + 0.1;
-  if (bodyLHRatio >= lhPassMin && bodyLHRatio <= lhPassMax) {
-    passed++;
-  } else if (bodyLHRatio > 0) {
-    findings.push({
-      severity: bodyLHRatio < 1.2 || bodyLHRatio > 2 ? 'error' : 'warning',
-      title: 'Body line-height is ' + (Math.round(bodyLHRatio * 100) / 100) + ' (ideal: ' + profile.lineHeightMin + '–' + profile.lineHeightMax + ')',
-      detail: bodyLHRatio < profile.lineHeightMin ? 'Text feels cramped and hard to read' : 'Text feels too loose and wastes vertical space',
-      fix: bodyLHRatio < profile.lineHeightMin ? 'Increase line-height. In Tailwind: leading-relaxed (1.625) or leading-normal (1.5)' : 'Decrease line-height. In Tailwind: leading-normal (1.5)',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.12 — https://www.w3.org/TR/WCAG22/#text-spacing'
-    });
-  }
-
-  // Line length (profile-aware: elderly 65, children 55, default 75)
-  var maxChars = data.typography.maxLineLength ? data.typography.maxLineLength.chars : 0;
-  var lineElement = data.typography.maxLineLength ? data.typography.maxLineLength.element : '';
-  var lineFontSize = data.typography.maxLineLength ? (data.typography.maxLineLength.fontSize || 0) : 0;
-  var lineTextLength = data.typography.maxLineLength ? (data.typography.maxLineLength.textLength || 0) : 0;
-  var isTextElement = /^(p|li|td|th|blockquote|dd|figcaption)/.test(lineElement);
-  // Hero/intro text: large font (>=20px) with short content (<150 chars) is intentionally wide
-  var isHeroText = lineFontSize >= 20 && lineTextLength < 150;
-  if (maxChars > 0 && isTextElement && !isHeroText) {
-    checks++;
-    var lineLimit = profile.maxLineLength || 75;
-    if (maxChars <= lineLimit + 5) {
-      passed++;
-    } else {
-      findings.push({
-        severity: maxChars > lineLimit + 25 ? 'error' : 'warning',
-        title: 'Line length ~' + maxChars + ' characters (max for this audience: ' + lineLimit + ')',
-        detail: lineElement + ' — ' + (lineLimit < 70 ? 'Shorter lines improve readability for this audience.' : 'Long lines make it hard for the eye to track back to the next line.'),
-        fix: 'Constrain content width with max-w-prose (65ch) or max-w-2xl (672px)',
-        presetRef: 'Editorial presets use max-w-prose for reading content',
-        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-length.html',
-        locator: { selector: lineElement, text: '', bboxes: data.typography.maxLineLength && data.typography.maxLineLength.bbox ? [data.typography.maxLineLength.bbox] : [] }
-      });
-    }
-  }
-
-  // Heading scale — check if headings have a consistent ratio
-  checks++;
-  var headings = data.typography.headings || [];
-  if (headings.length >= 2) {
-    var sizes = headings.map(function(h) { return parseFloat(h.fontSize); }).filter(function(s) { return s > 0; });
-    var uniqueSizes = Array.from(new Set(sizes)).sort(function(a, b) { return b - a; });
-    if (uniqueSizes.length >= 2) {
-      var ratio = uniqueSizes[0] / uniqueSizes[uniqueSizes.length - 1];
-      // Marketing/landing pages legitimately use larger hero text (wider range)
-      var pageType = (data.context && data.context.pageType) || 'unknown';
-      var maxRatio = (pageType === 'marketing' || pageType === 'pricing') ? 6 : 4.5;
-      if (ratio >= 1.5 && ratio <= maxRatio) {
-        passed++;
-      } else {
-        var headingBboxes = headings.filter(function(h) { return h.bbox; }).map(function(h) { return h.bbox; });
-        findings.push({
-          severity: ratio > maxRatio + 2 ? 'warning' : 'info',
-          title: 'Heading scale ratio is ' + (Math.round(ratio * 100) / 100) + ' (ideal: 1.5–' + maxRatio + ')',
-          detail: ratio < 1.5 ? 'Headings are too similar in size — weak hierarchy' : 'Heading sizes vary widely — verify the largest heading is intentional (hero text)',
-          fix: 'Use a modular scale (1.200 minor third or 1.250 major third). In Tailwind: text-4xl > text-2xl > text-xl > text-base',
-          presetRef: null,
-          source: 'Modular type scales — https://typescale.com/',
-          locator: { selector: '', text: '', bboxes: headingBboxes }
-        });
-      }
-    } else { passed++; } // Only one heading size — acceptable
-  } else { passed++; } // No headings to check
-
-  // Max 2-3 font weights
-  checks++;
-  var fontWeights = data.typography.fontWeights || [];
-  var weightCount = fontWeights.length;
-  if (weightCount <= 4) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: 'Using ' + weightCount + ' font weights (recommended: 2–3)',
-      detail: 'Too many weights create visual noise and increase font loading time',
-      fix: 'Consolidate to 400 (regular), 500/600 (medium), 700 (bold)',
-      presetRef: null,
-      source: 'Google Fonts best practices — https://fonts.google.com/knowledge/using_type/choosing_reliable_typefaces'
-    });
-  }
-
-  // Profile-specific: minimum font weight (e.g., elderly profile forbids light/thin)
-  if (profile.fontWeightMin > 0 && fontWeights.length > 0) {
-    var lightWeights = fontWeights.filter(function(w) { return parseInt(w) < profile.fontWeightMin; });
-    if (lightWeights.length > 0) {
-      checks++;
-      findings.push({
-        severity: 'warning',
-        title: 'Font weight(s) ' + lightWeights.join(', ') + ' below minimum ' + profile.fontWeightMin + ' for this audience',
-        detail: 'Light and thin font weights reduce readability for users who need higher legibility',
-        fix: 'Use font-weight ' + profile.fontWeightMin + ' (regular) or heavier. Avoid font-weight 100–300.',
-        presetRef: null,
-        source: 'W3C WAI Older Users — https://www.w3.org/WAI/older-users/developing/'
-      });
-    } else {
-      checks++;
-      passed++;
-    }
-  }
-
-  // Letter spacing
-  var lsIssues = (data.typography && data.typography.letterSpacingIssues) || 0;
-  if (lsIssues > 0) {
-    findings.push({
-      severity: 'info',
-      title: lsIssues + ' element(s) with extreme letter-spacing',
-      detail: 'Very tight (< -0.03em) or very loose (> 0.15em) letter spacing reduces readability',
-      fix: 'Keep letter-spacing between -0.02em and 0.1em for body text. Tighter spacing is acceptable for large headings.',
-      presetRef: null,
-      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/letterspacing.html'
-    });
-  }
-
-  // Paragraph spacing
-  var pSpacing = (data.typography && data.typography.paragraphSpacing) || [];
-  if (pSpacing.length >= 3) {
-    checks++;
-    var bodyPx = parseFloat(data.typography.bodyFontSize) || 16;
-    var avgSpacing = pSpacing.reduce(function(s,v){return s+v},0) / pSpacing.length;
-    var spacingEm = avgSpacing / bodyPx;
-    if (spacingEm >= 0.5 && spacingEm <= 1.5) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: 'Paragraph spacing is ' + (Math.round(spacingEm * 100) / 100) + 'em (ideal: 0.75–1em)',
-        detail: spacingEm < 0.5 ? 'Paragraphs feel cramped' : 'Paragraph spacing may be too generous',
-        fix: 'Set paragraph margin-bottom to 0.75em–1em. In Tailwind: space-y-4 on the container or mb-4 on paragraphs.',
-        presetRef: null,
-        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/space-between-paragraphs.html'
-      });
-    }
-  }
-
-  // Max 2 typefaces
-  checks++;
-  var familyCount = (data.typography.fontFamilies || []).length;
-  if (familyCount <= 3) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: 'Using ' + familyCount + ' font families (recommended: max 2)',
-      detail: 'Too many typefaces make the design feel inconsistent',
-      fix: 'Use 1 sans-serif + 1 serif (or monospace for code). In Tailwind: font-sans + font-serif',
-      presetRef: null,
-      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/summary-of-key-rules.html'
-    });
-  }
-
-  // All-caps long text
-  var allCaps = (data.typography && data.typography.allCapsLongText) || 0;
-  if (allCaps > 0) {
-    findings.push({
-      severity: 'warning',
-      title: allCaps + ' block(s) of long text in all-caps (> 50 characters)',
-      detail: 'All-uppercase text reduces reading speed by 10-20%. Reserve for short labels and headings.',
-      fix: 'Remove text-transform: uppercase on body text. Use it only for short labels, buttons, and headings under 5 words.',
-      presetRef: null,
-      source: 'Tinker 1963, Butterick\'s Practical Typography — https://practicaltypography.com/all-caps.html'
-    });
-  }
-
-  // Justified text
-  var justified = (data.typography && data.typography.justifiedText) || 0;
-  if (justified > 0) {
-    findings.push({
-      severity: 'info',
-      title: justified + ' element(s) with text-align: justify',
-      detail: 'Justified text creates uneven word spacing (rivers of white) without proper hyphenation, reducing readability.',
-      fix: 'Use text-align: left for web content. Justified text only works well with automatic hyphenation (hyphens: auto).',
-      presetRef: null,
-      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/justified-text.html'
-    });
-  }
-
-  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-  return { score: score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Typography', icon: 'type' };
-}
-
-
-  S.register("typography", scoreTypography, 15, "Typography", "type");
-})();
-</file>
-
-<file path="docs/tests/test-scoring.html">
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Scoring Module Tests</title>
-  <style>
-    body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; background: #f8fafc; }
-    h1 { font-size: 20px; margin-bottom: 16px; }
-    .test { padding: 8px 12px; margin: 4px 0; border-radius: 6px; font-size: 13px; font-family: monospace; }
-    .pass { background: #f0fdf4; border: 1px solid #bbf7d0; color: #16a34a; }
-    .fail { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; }
-    .summary { margin-top: 16px; padding: 12px; border-radius: 8px; font-weight: 600; font-size: 15px; }
-    .summary.all-pass { background: #f0fdf4; color: #16a34a; border: 2px solid #16a34a; }
-    .summary.has-fail { background: #fef2f2; color: #dc2626; border: 2px solid #dc2626; }
-    #results { max-width: 800px; }
-  </style>
-</head>
-<body>
-  <h1>Scoring Module Tests</h1>
-  <div id="results">Loading modules...</div>
-
-  <!-- Load scoring modules -->
-  <script src="../scoring/registry.js"></script>
-  <script src="../scoring/contrast.js"></script>
-  <script src="../scoring/typography.js"></script>
-  <script src="../scoring/spacing.js"></script>
-  <script src="../scoring/touch.js"></script>
-  <script src="../scoring/accessibility.js"></script>
-  <script src="../scoring/responsive.js"></script>
-  <script src="../scoring/consistency.js"></script>
-  <script src="../scoring/cognitive.js"></script>
-  <script src="../scoring/layout.js"></script>
-  <script src="../scoring/performance.js"></script>
-  <script src="../scoring/readability.js"></script>
-  <script src="../scoring/filters.js"></script>
-  <script src="../scoring/balance.js"></script>
-
-  <script>
-    var results = [];
-    var passed = 0;
-    var failed = 0;
-
-    function assert(name, condition, detail) {
-      if (condition) {
-        results.push({ name: name, pass: true });
-        passed++;
-      } else {
-        results.push({ name: name, pass: false, detail: detail || 'assertion failed' });
-        failed++;
-      }
-    }
-
-    // --- Minimal valid extraction data ---
-    function makeData(overrides) {
-      var base = {
-        meta: { title: 'Test', url: 'https://test.com', viewportWidth: 1280, viewportHeight: 900, timestamp: new Date().toISOString(), version: 1 },
-        colors: { textColors: [{ value: '#000', count: 10 }], bgColors: [{ value: '#fff', count: 10 }], contrastPairs: [] },
-        typography: { bodyFontSize: '16px', bodyLineHeight: '24px', bodyFontFamily: 'sans-serif', fontFamilies: ['sans-serif'], fontSizes: [{ value: '16px', count: 10 }], fontWeights: [{ value: '400', count: 10 }, { value: '700', count: 5 }], headings: [{ tag: 'h1', text: 'Test', fontSize: '32px', fontWeight: '700', lineHeight: '40px', fontFamily: 'sans-serif' }], lineHeights: [{ value: 1.5, count: 10 }], maxLineLength: { chars: 65, element: 'p' } },
-        spacing: { paddings: [{ value: '16px', count: 10 }], margins: [{ value: '16px', count: 10 }], gaps: [{ value: '16px', count: 5 }], maxContentWidth: '1200px', bodyPaddingHorizontal: '16px' },
-        layout: { sectionGaps: [64, 64, 64], alignmentEdges: [16, 16, 16, 16, 16], visualHierarchy: { h1ToBody: 2, h2ToBody: 1.5, bodySize: 16 }, borderRadii: [{ value: '8px', count: 10 }] },
-        interaction: { touchTargets: [], transitions: ['0.15s'], adjacentIssues: [] },
-        accessibility: { semanticElements: { header: 1, nav: 1, main: 1, footer: 1, section: 3, article: 0, aside: 0 }, headingHierarchy: ['h1', 'h2', 'h3'], imagesWithoutAlt: 0, formLabels: { total: 2, withLabel: 2, withoutLabel: 0 }, focusIndicators: [{ element: 'button', outlineStyle: 'solid', outlineWidth: '2px', outlineColor: 'blue', outlineOffset: '2px' }], hasFocusVisibleCSS: true, langAttribute: true, hasSkipLink: true, badLinkTexts: [], missingAutocomplete: 0, ariaIssues: [], colorOnlyIndicators: 0, autoPlayMedia: 0, navItemCount: 5 },
-        structure: { totalElements: 100, darkModeClasses: true, responsiveClasses: true, tailwindDetected: true, cssFramework: 'tailwind', viewportMeta: 'width=device-width, initial-scale=1.0', blocksZoom: false, hasHorizontalOverflow: false, fixedWidthElements: 0, truncatedElements: 0 },
-        context: { pageType: 'content' },
-        animation: { keyframeCount: 0, hasReducedMotion: true, hiddenElements: 0, scrollRevealPatterns: [] },
-        performance: { fontLoading: [], renderBlocking: { cssInHead: 1, jsInHead: 0 }, domSize: 100, domDepth: 8, thirdPartyScripts: 2, imageFormats: { modern: 3, legacy: 0 }, cls: 0.02, lcp: { time: 1500, element: 'img', size: 50000 }, nonResponsiveImages: 0 },
-        readability: { gradeLevel: 8 }
-      };
-      if (overrides) {
-        Object.keys(overrides).forEach(function(k) {
-          if (typeof overrides[k] === 'object' && !Array.isArray(overrides[k]) && base[k]) {
-            Object.keys(overrides[k]).forEach(function(k2) { base[k][k2] = overrides[k][k2]; });
-          } else {
-            base[k] = overrides[k];
-          }
-        });
-      }
-      return base;
-    }
-
-    // =========================================================
-    // TEST 1: All modules run without errors on valid data
-    // =========================================================
-    (function() {
-      var profiles = ['general', 'wcag_aaa', 'elderly', 'low_vision', 'motor_impairment', 'color_blind', 'children', 'cognitive'];
-      profiles.forEach(function(profile) {
-        try {
-          var data = makeData({ profile: profile });
-          var result = MilgScoring.runScoring(data);
-          assert('runScoring(' + profile + ') completes', result && typeof result.overall === 'number', 'result: ' + JSON.stringify(result && result.overall));
-          assert('runScoring(' + profile + ') score 0-100', result.overall >= 0 && result.overall <= 100, 'score: ' + result.overall);
-          assert('runScoring(' + profile + ') has categories', result.categories && result.categories.length > 0, 'categories: ' + (result.categories && result.categories.length));
-
-          // Check all categories have required fields
-          result.categories.forEach(function(cat) {
-            assert(profile + '/' + cat.label + ' has score', typeof cat.score === 'number' && cat.score >= 0 && cat.score <= 100, 'score: ' + cat.score);
-            assert(profile + '/' + cat.label + ' has findings array', Array.isArray(cat.findings), 'findings: ' + typeof cat.findings);
-            assert(profile + '/' + cat.label + ' has checks count', typeof cat.checks === 'number' || cat.checks === undefined, 'checks: ' + cat.checks);
-          });
-        } catch(e) {
-          assert('runScoring(' + profile + ') no error', false, e.message + ' at ' + (e.stack || '').split('\n')[1]);
-        }
-      });
-    })();
-
-    // =========================================================
-    // TEST 2: Good data should score well (>= 80)
-    // =========================================================
-    (function() {
-      var data = makeData();
-      var result = MilgScoring.runScoring(data);
-      assert('Good data scores >= 80', result.overall >= 80, 'score: ' + result.overall);
-      assert('Good data grade A or B', result.grade === 'A' || result.grade === 'B', 'grade: ' + result.grade);
-    })();
-
-    // =========================================================
-    // TEST 3: Contrast failures lower score
-    // =========================================================
-    (function() {
-      var data = makeData({
-        colors: {
-          textColors: [{ value: '#999', count: 5 }],
-          bgColors: [{ value: '#fff', count: 5 }],
-          contrastPairs: [
-            { fg: 'rgb(153,153,153)', bg: 'rgb(255,255,255)', ratio: 2.85, needed: 4.5, passes: false, fontSize: 16, fontWeight: 400, isLarge: false, text: 'Low contrast text', selector: 'p', filter: '' },
-            { fg: 'rgb(153,153,153)', bg: 'rgb(255,255,255)', ratio: 2.85, needed: 4.5, passes: false, fontSize: 16, fontWeight: 400, isLarge: false, text: 'Another low contrast', selector: 'span', filter: '' }
-          ]
-        }
-      });
-      var result = MilgScoring.runScoring(data);
-      var contrastCat = result.categories.find(function(c) { return c.label === 'Color & Contrast'; });
-      assert('Contrast failures produce errors', contrastCat.findings.some(function(f) { return f.severity === 'error'; }), 'findings: ' + contrastCat.findings.length);
-      assert('Contrast score < 100', contrastCat.score < 100, 'score: ' + contrastCat.score);
-    })();
-
-    // =========================================================
-    // TEST 4: Touch target issues
-    // =========================================================
-    (function() {
-      var data = makeData({
-        interaction: {
-          touchTargets: [
-            { element: 'button', width: 20, height: 20, text: 'Tiny button', selector: 'button.tiny', passes: false, isButton: true, linkContext: 'button' },
-            { element: 'a', width: 30, height: 15, text: 'Footer link', selector: 'a', passes: false, isButton: false, linkContext: 'footer' },
-            { element: 'a', width: 50, height: 12, text: 'Inline link', selector: 'a', passes: false, isButton: false, linkContext: 'inline' }
-          ],
-          transitions: ['0.2s']
-        }
-      });
-      var result = MilgScoring.runScoring(data);
-      var touchCat = result.categories.find(function(c) { return c.label === 'Touch & Interaction'; });
-      var errors = touchCat.findings.filter(function(f) { return f.severity === 'error'; });
-      var infos = touchCat.findings.filter(function(f) { return f.severity === 'info'; });
-      assert('Button gets error', errors.some(function(f) { return f.title.indexOf('button') !== -1; }), 'errors: ' + errors.map(function(f){return f.title}).join('; '));
-      assert('Footer link gets info or error', touchCat.findings.some(function(f) { return f.title.indexOf('Footer') !== -1; }), 'findings: ' + touchCat.findings.map(function(f){return f.title}).join('; '));
-      assert('Inline link gets info (exempt)', infos.some(function(f) { return f.title.indexOf('Inline') !== -1 || f.title.indexOf('inline') !== -1; }), 'infos: ' + infos.map(function(f){return f.title}).join('; '));
-    })();
-
-    // =========================================================
-    // TEST 5: Profile differentiation
-    // =========================================================
-    (function() {
-      var data = makeData({
-        typography: { bodyFontSize: '15px', bodyLineHeight: '22px', bodyFontFamily: 'sans-serif', fontFamilies: ['sans-serif'], fontSizes: [{ value: '15px', count: 10 }], fontWeights: [{ value: '400', count: 10 }], headings: [{ tag: 'h1', text: 'Test', fontSize: '32px', fontWeight: '700', lineHeight: '40px', fontFamily: 'sans-serif' }], lineHeights: [{ value: 1.47, count: 10 }], maxLineLength: { chars: 70, element: 'p' } }
-      });
-      var generalResult = MilgScoring.runScoring(makeData(Object.assign({}, data, { profile: 'general' })));
-      var elderlyResult = MilgScoring.runScoring(makeData(Object.assign({}, data, { profile: 'elderly' })));
-      var childResult = MilgScoring.runScoring(makeData(Object.assign({}, data, { profile: 'children' })));
-
-      assert('Elderly scores lower than general for 15px font', elderlyResult.overall <= generalResult.overall, 'elderly: ' + elderlyResult.overall + ' general: ' + generalResult.overall);
-      assert('Children scores different from general', childResult.overall !== generalResult.overall || childResult.categories.some(function(c, i) { return c.findings.length !== generalResult.categories[i].findings.length; }), 'findings differ');
-    })();
-
-    // =========================================================
-    // TEST 6: CVD simulation (color_blind profile)
-    // =========================================================
-    (function() {
-      var data = makeData({
-        profile: 'color_blind',
-        colors: {
-          textColors: [{ value: 'rgb(255,0,0)', count: 3 }, { value: 'rgb(0,128,0)', count: 3 }],
-          bgColors: [{ value: 'rgb(255,255,255)', count: 10 }],
-          contrastPairs: [
-            { fg: 'rgb(255,0,0)', bg: 'rgb(255,255,255)', ratio: 4, needed: 4.5, passes: false, fontSize: 16, fontWeight: 400, isLarge: false, text: 'Red text', selector: 'span.red', filter: '' },
-            { fg: 'rgb(0,128,0)', bg: 'rgb(255,255,255)', ratio: 4.6, needed: 4.5, passes: true, fontSize: 16, fontWeight: 400, isLarge: false, text: 'Green text', selector: 'span.green', filter: '' }
-          ]
-        }
-      });
-      try {
-        var result = MilgScoring.runScoring(data);
-        assert('CVD profile runs without error', true);
-        var contrastCat = result.categories.find(function(c) { return c.label === 'Color & Contrast'; });
-        assert('CVD has contrast findings', contrastCat.findings.length > 0, 'findings: ' + contrastCat.findings.length);
-      } catch(e) {
-        assert('CVD profile no error', false, e.message);
-      }
-    })();
-
-    // =========================================================
-    // TEST 7: Cognitive profile checks
-    // =========================================================
-    (function() {
-      var data = makeData({
-        profile: 'cognitive',
-        accessibility: {
-          semanticElements: { header: 1, nav: 1, main: 1, footer: 1 },
-          headingHierarchy: ['h1', 'h2', 'h3'], imagesWithoutAlt: 0,
-          formLabels: { total: 0, withLabel: 0, withoutLabel: 0 },
-          focusIndicators: [], hasFocusVisibleCSS: true, langAttribute: true,
-          hasSkipLink: true, badLinkTexts: [], missingAutocomplete: 0,
-          ariaIssues: [], colorOnlyIndicators: 0, autoPlayMedia: 0,
-          navItemCount: 12 // exceeds max 5 for cognitive
-        },
-        readability: { gradeLevel: 12 } // exceeds max 8 for cognitive
-      });
-      var result = MilgScoring.runScoring(data);
-      var cogCat = result.categories.find(function(c) { return c.label === 'Cognitive Load'; });
-      assert('Cognitive profile flags high nav count', cogCat.findings.some(function(f) { return f.title.indexOf('navigation') !== -1; }), 'findings: ' + cogCat.findings.map(function(f){return f.title}).join('; '));
-      assert('Cognitive profile flags high reading level', cogCat.findings.some(function(f) { return f.title.indexOf('Reading level') !== -1 || f.title.indexOf('reading') !== -1; }), 'findings: ' + cogCat.findings.map(function(f){return f.title}).join('; '));
-    })();
-
-    // =========================================================
-    // TEST 8: All modules return checks/passed
-    // =========================================================
-    (function() {
-      var data = makeData();
-      var result = MilgScoring.runScoring(data);
-      result.categories.forEach(function(cat) {
-        assert(cat.label + ' has checks count', cat.checks !== undefined && cat.checks >= 0, 'checks: ' + cat.checks);
-      });
-    })();
-
-    // =========================================================
-    // TEST 9: Registry utilities
-    // =========================================================
-    (function() {
-      // parseColor
-      var c = MilgScoring.parseColor('rgb(255, 0, 0)');
-      assert('parseColor rgb()', c && c.r === 255 && c.g === 0 && c.b === 0, JSON.stringify(c));
-
-      var c2 = MilgScoring.parseColor('rgba(0, 128, 255, 0.5)');
-      assert('parseColor rgba()', c2 && c2.r === 0 && c2.g === 128 && c2.b === 255 && c2.a === 0.5, JSON.stringify(c2));
-
-      // contrastRatio
-      var ratio = MilgScoring.contrastRatio({ r: 0, g: 0, b: 0 }, { r: 255, g: 255, b: 255 });
-      assert('contrastRatio black/white = 21', Math.abs(ratio - 21) < 0.1, 'ratio: ' + ratio);
-
-      // CVD simulation
-      var sim = MilgScoring.simulateCVD({ r: 255, g: 0, b: 0 }, MilgScoring.CVD_MATRICES.protanopia);
-      assert('CVD simulation produces valid color', sim && sim.r >= 0 && sim.r <= 255 && sim.g >= 0 && sim.b >= 0, JSON.stringify(sim));
-      assert('CVD protanopia dims red', sim.r < 200, 'r: ' + sim.r); // red looks much darker/different under protanopia
-    })();
-
-    // =========================================================
-    // NEW: Extended checks tests
-    // =========================================================
-
-    // Duplicate IDs should produce error when used in ARIA
-    (function() {
-      var data = makeData({
-        accessibility: {
-          duplicateIds: [{ id: 'foo', count: 2, usedInAria: true }],
-          nestedInteractives: ['a.nested'],
-          emptyInteractives: ['button.empty'],
-          positiveTabindex: 3,
-          scrollableNoKeyboard: 1,
-          nonTextContrast: [{ selector: 'input', ratio: 2.1, borderColor: 'rgb(200,200,200)', bg: 'rgb(255,255,255)' }],
-          tableIssues: [{ selector: 'table', issues: ['no-th', 'no-caption'] }],
-          missingButtonType: 2
-        }
-      });
-      var result = MilgScoring.runScoring(data);
-      var a11y = result.categories.find(function(c) { return c.label === 'Accessibility'; });
-      var titles = a11y.findings.map(function(f) { return f.title; }).join(' | ');
-      assert('Duplicate IDs flagged', titles.indexOf('duplicate ID') !== -1, 'Got: ' + titles);
-      assert('Nested interactives flagged', titles.indexOf('nested interactive') !== -1, 'Got: ' + titles);
-      assert('Empty interactives flagged', titles.indexOf('no accessible name') !== -1, 'Got: ' + titles);
-      assert('Positive tabindex flagged', titles.indexOf('positive tabindex') !== -1, 'Got: ' + titles);
-      assert('Scrollable no keyboard flagged', titles.indexOf('keyboard-accessible') !== -1, 'Got: ' + titles);
-      assert('Non-text contrast flagged', titles.indexOf('border contrast') !== -1, 'Got: ' + titles);
-      assert('Table issues flagged', titles.indexOf('table') !== -1, 'Got: ' + titles);
-    })();
-
-    // Z-index sprawl and shadow consistency
-    (function() {
-      var data = makeData({
-        layout: { zIndexSprawl: { distinct: 12, max: 9999, values: [] }, shadowSprawl: 9 },
-        colors: { darkModeHalation: true }
-      });
-      var result = MilgScoring.runScoring(data);
-      var consistency = result.categories.find(function(c) { return c.label === 'Visual Consistency'; });
-      var titles = consistency.findings.map(function(f) { return f.title; }).join(' | ');
-      assert('Z-index sprawl flagged', titles.indexOf('z-index') !== -1, 'Got: ' + titles);
-      assert('Shadow sprawl flagged', titles.indexOf('box-shadow') !== -1, 'Got: ' + titles);
-      assert('Dark mode halation flagged', titles.indexOf('halation') !== -1 || titles.indexOf('black') !== -1, 'Got: ' + titles);
-    })();
-
-    // All-caps and justified text
-    (function() {
-      var data = makeData({
-        typography: { allCapsLongText: 3, justifiedText: 2 }
-      });
-      var result = MilgScoring.runScoring(data);
-      var typo = result.categories.find(function(c) { return c.label === 'Typography'; });
-      var titles = typo.findings.map(function(f) { return f.title; }).join(' | ');
-      assert('All-caps long text flagged', titles.indexOf('all-caps') !== -1, 'Got: ' + titles);
-      assert('Justified text flagged', titles.indexOf('justify') !== -1, 'Got: ' + titles);
-    })();
-
-    // Tier 1 checks: text clipping, placeholder labels, invisible links, etc.
-    (function() {
-      var data = makeData({
-        accessibility: {
-          textClippedNoTitle: 6,
-          placeholderOnlyInputs: 2,
-          invisibleLinks: 3,
-          requiredNoIndicator: 4,
-          invisibleInputs: 1,
-          disabledLowContrast: 2
-        }
-      });
-      var result = MilgScoring.runScoring(data);
-      var a11y = result.categories.find(function(c) { return c.label === 'Accessibility'; });
-      var titles = a11y.findings.map(function(f) { return f.title; }).join(' | ');
-      assert('Text clipping flagged', titles.indexOf('truncate') !== -1, 'Got: ' + titles);
-      assert('Placeholder-only labels flagged', titles.indexOf('placeholder') !== -1, 'Got: ' + titles);
-      assert('Invisible links flagged', titles.indexOf('indistinguishable') !== -1, 'Got: ' + titles);
-      assert('Required no indicator flagged', titles.indexOf('required') !== -1, 'Got: ' + titles);
-      assert('Invisible inputs flagged', titles.indexOf('visible boundary') !== -1, 'Got: ' + titles);
-      assert('Disabled low contrast flagged', titles.indexOf('disabled') !== -1, 'Got: ' + titles);
-    })();
-
-    // Performance: upscaled images, will-change, non-passive scroll
-    (function() {
-      var data = makeData({
-        performance: {
-          upscaledImages: [{ selector: 'img', rendered: '800x600', natural: '400x300', upscale: 200 }],
-          willChangeCount: 12
-        },
-        interaction: {
-          listenerStats: { nonPassiveScroll: 2 },
-          listenerPatterns: { toggleNoAria: 1, navigationInButton: 1 }
-        }
-      });
-      var result = MilgScoring.runScoring(data);
-      var perf = result.categories.find(function(c) { return c.label === 'Performance'; });
-      var touch = result.categories.find(function(c) { return c.label === 'Touch & Interaction'; });
-      var perfTitles = perf.findings.map(function(f) { return f.title; }).join(' | ');
-      var touchTitles = touch.findings.map(function(f) { return f.title; }).join(' | ');
-      assert('Upscaled images flagged', perfTitles.indexOf('larger than natural') !== -1, 'Got: ' + perfTitles);
-      assert('will-change flagged', perfTitles.indexOf('will-change') !== -1, 'Got: ' + perfTitles);
-      assert('Non-passive scroll flagged', perfTitles.indexOf('non-passive') !== -1, 'Got: ' + perfTitles);
-      assert('Toggle no ARIA flagged', touchTitles.indexOf('ARIA state') !== -1, 'Got: ' + touchTitles);
-    })();
-
-    // Tier 2: consistency checks
-    (function() {
-      var data = makeData({
-        consistency: { borderWidthInconsistencies: 2, fontWeightInconsistencies: 1, gradientDirections: 5 },
-        layout: {
-          buttonHierarchy: { total: 6, filled: 6, outline: 0, text: 0 },
-          fixedViewportConsumption: 35
-        }
-      });
-      var result = MilgScoring.runScoring(data);
-      var cons = result.categories.find(function(c) { return c.label === 'Visual Consistency'; });
-      var lay = result.categories.find(function(c) { return c.label === 'Layout Quality'; });
-      var consTitles = cons.findings.map(function(f) { return f.title; }).join(' | ');
-      var layTitles = lay.findings.map(function(f) { return f.title; }).join(' | ');
-      assert('Border width inconsistency flagged', consTitles.indexOf('border width') !== -1, 'Got: ' + consTitles);
-      assert('Font weight inconsistency flagged', consTitles.indexOf('font-weight') !== -1, 'Got: ' + consTitles);
-      assert('Gradient direction inconsistency flagged', consTitles.indexOf('gradient') !== -1, 'Got: ' + consTitles);
-      assert('Button hierarchy flagged', layTitles.indexOf('hierarchy') !== -1, 'Got: ' + layTitles);
-      assert('Fixed viewport consumption flagged', layTitles.indexOf('viewport') !== -1 || layTitles.indexOf('Fixed') !== -1, 'Got: ' + layTitles);
-    })();
-
-    // Performance: complex filters, forced layers
-    (function() {
-      var data = makeData({
-        performance: { complexFilters: 3, forcedLayers: 15 },
-        accessibility: { selectNoDefault: 2 }
-      });
-      var result = MilgScoring.runScoring(data);
-      var perf = result.categories.find(function(c) { return c.label === 'Performance'; });
-      var a11y = result.categories.find(function(c) { return c.label === 'Accessibility'; });
-      var perfTitles = perf.findings.map(function(f) { return f.title; }).join(' | ');
-      var a11yTitles = a11y.findings.map(function(f) { return f.title; }).join(' | ');
-      assert('Complex filters flagged', perfTitles.indexOf('filter') !== -1, 'Got: ' + perfTitles);
-      assert('Forced layers flagged', perfTitles.indexOf('compositor') !== -1 || perfTitles.indexOf('GPU') !== -1, 'Got: ' + perfTitles);
-      assert('Select no default flagged', a11yTitles.indexOf('select') !== -1 || a11yTitles.indexOf('default') !== -1, 'Got: ' + a11yTitles);
-    })();
-
-    // =========================================================
-    // RENDER RESULTS
-    // =========================================================
-    var html = '';
-    results.forEach(function(r) {
-      html += '<div class="test ' + (r.pass ? 'pass' : 'fail') + '">';
-      html += (r.pass ? '✓' : '✗') + ' ' + r.name;
-      if (!r.pass && r.detail) html += ' — <strong>' + r.detail + '</strong>';
-      html += '</div>';
-    });
-    html += '<div class="summary ' + (failed === 0 ? 'all-pass' : 'has-fail') + '">';
-    html += passed + ' passed, ' + failed + ' failed';
-    html += '</div>';
-    document.getElementById('results').innerHTML = html;
-
-    // Also log for CI
-    console.log('Scoring tests: ' + passed + ' passed, ' + failed + ' failed');
-    if (failed > 0) console.error('FAILURES:', results.filter(function(r) { return !r.pass; }).map(function(r) { return r.name + ': ' + r.detail; }));
-  </script>
-</body>
-</html>
-</file>
-
 <file path="docs/scoring/accessibility.js">
 // Scoring Module: Accessibility
 // Weight: 15%
@@ -25190,6 +24822,374 @@ function scoreVisualConsistency(data) {
 
 
   S.register("consistency", scoreVisualConsistency, 5, "Visual Consistency", "consistency");
+})();
+</file>
+
+<file path="docs/scoring/readability.js">
+// Scoring Module: Readability & Scanability
+// Weight: 5%
+// Sources: Coleman-Liau Index, NNGroup scanning research
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+  function scoreReadability(data) {
+    var findings = [];
+    var checks = 0;
+    var passed = 0;
+
+    // Extract text content from the raw data
+    // We use heading count and element count as proxies since we don't have raw text in extracted data
+    var headings = (data.typography && data.typography.headings) || [];
+    var totalElements = (data.structure && data.structure.totalElements) || 0;
+
+    // Scanability: heading frequency
+    // Good rule: 1 heading per ~100-150 elements of content
+    if (totalElements > 50) {
+      checks++;
+      var headingRatio = headings.length / (totalElements / 100);
+      if (headingRatio >= 0.5 && headingRatio <= 5) {
+        passed++;
+      } else if (headingRatio < 0.5) {
+        findings.push({
+          severity: 'warning',
+          title: 'Low heading density: ' + headings.length + ' headings for ' + totalElements + ' elements',
+          detail: 'Content without headings is harder to scan. 79% of users scan rather than read (NNGroup)',
+          fix: 'Add descriptive headings to break content into scannable sections. Aim for a heading every 2-3 paragraphs.',
+          presetRef: null,
+          source: 'NNGroup scanning research — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+        });
+      }
+    }
+
+    // Heading descriptiveness: check if headings are too short (likely generic)
+    if (headings.length > 0) {
+      checks++;
+      var shortHeadings = headings.filter(function(h) {
+        return h.text && h.text.length < 3;
+      });
+      if (shortHeadings.length === 0) {
+        passed++;
+      } else {
+        passed++; // Info doesn't reduce score
+        findings.push({
+          severity: 'info',
+          title: shortHeadings.length + ' heading(s) with very short text (< 3 chars)',
+          detail: 'Short headings like numbers or icons don\'t help users scan. Use descriptive text.',
+          fix: 'Replace generic headings with descriptive ones that summarize the section content.',
+          presetRef: null,
+          source: 'NNGroup — https://www.nngroup.com/articles/headings-pickup-lines/'
+        });
+      }
+    }
+
+    // Font size variety as readability signal
+    // Too many sizes = visual noise, harder to establish reading rhythm
+    var fontSizes = (data.typography && data.typography.fontSizes) || [];
+    var smallTextCount = fontSizes.filter(function(f) {
+      return parseFloat(f.value) < 12;
+    }).reduce(function(sum, f) { return sum + f.count; }, 0);
+
+    if (smallTextCount > 0 && totalElements > 20) {
+      checks++;
+      var smallRatio = smallTextCount / totalElements;
+      if (smallRatio < 0.05) {
+        passed++;
+      } else {
+        var smallBboxes = fontSizes.filter(function(f) { return parseFloat(f.value) < 12 && f.bbox; }).map(function(f) { return f.bbox; });
+        findings.push({
+          severity: 'warning',
+          title: smallTextCount + ' element(s) with text smaller than 12px',
+          detail: 'Text below 12px is difficult to read for most users and nearly impossible for elderly or low-vision users',
+          fix: 'Increase small text to at least 12px. Consider if the information is important enough to display — if not, remove it.',
+          presetRef: null,
+          source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text',
+          locator: smallBboxes.length > 0 ? { selector: '', text: '', bboxes: smallBboxes } : undefined
+        });
+      }
+    }
+
+    // Coleman-Liau readability index
+    var rd = data.readability || {};
+    if (rd.totalWords >= 50 && rd.paragraphCount >= 2) {
+      checks++;
+      // Coleman-Liau: 0.0588 * L - 0.296 * S - 15.8
+      // L = avg letters per 100 words, S = avg sentences per 100 words
+      var L = (rd.totalChars / rd.totalWords) * 100;
+      var sentenceCount = 0;
+      (rd.textBlocks || []).forEach(function(b) {
+        sentenceCount += (b.text.match(/[.!?]+/g) || []).length;
+      });
+      var S_val = (sentenceCount / rd.totalWords) * 100;
+      var cli = Math.round(0.0588 * L - 0.296 * S_val - 15.8);
+      // Detect non-English content — Coleman-Liau inflates scores for languages
+      // with long compound words (German, Finnish, Dutch, etc.)
+      var pageLang = (data.meta && data.meta.lang || '').toLowerCase().split('-')[0];
+      var isNonEnglish = pageLang && pageLang !== 'en' && pageLang !== '';
+      // Also heuristic: if avg word length > 6.5 chars, likely non-English
+      var avgWordLen = rd.totalChars / rd.totalWords;
+      if (!isNonEnglish && avgWordLen > 6.5) isNonEnglish = true;
+      var langNote = isNonEnglish ? ' Note: This index is calibrated for English text — non-English languages (detected: ' + (pageLang || 'long words') + ') typically score higher due to longer average word length.' : '';
+
+      if (cli >= 6 && cli <= 12) {
+        passed++;
+      } else {
+        findings.push({
+          severity: isNonEnglish ? 'info' : (cli > 14 ? 'warning' : 'info'),
+          title: 'Reading level: grade ' + cli + ' (Coleman-Liau Index)',
+          detail: (cli > 12 ? 'Content may be too complex for a general audience' : 'Content may be overly simple for the target audience') + langNote,
+          fix: cli > 12 ? 'Shorten sentences, use simpler words, break complex ideas into steps. Aim for grade 8-10 for general audiences.' : 'This reading level is appropriate for broad accessibility.',
+          presetRef: null,
+          source: 'Coleman-Liau Index — https://en.wikipedia.org/wiki/Coleman%E2%80%93Liau_index'
+        });
+      }
+    }
+
+    // Paragraph length audit
+    var longParagraphs = (rd.textBlocks || []).filter(function(b) { return b.wordCount > 150; });
+    if (longParagraphs.length > 0) {
+      findings.push({
+        severity: 'warning',
+        title: longParagraphs.length + ' paragraph(s) exceed 150 words',
+        detail: 'Long paragraphs reduce scanability. Ideal: 40-80 words per paragraph.',
+        fix: 'Break long paragraphs into shorter ones. Use subheadings, bullet lists, or callout boxes to chunk content.',
+        presetRef: null,
+        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+      });
+    }
+
+    // List usage for scanability
+    if (rd.totalWords >= 100 && !rd.hasLists) {
+      findings.push({
+        severity: 'info',
+        title: 'No lists found in content area',
+        detail: 'Lists improve scanability by 47% compared to wall-of-text (NNGroup)',
+        fix: 'Convert sequences, features, or steps into <ul>/<ol> lists where appropriate.',
+        presetRef: null,
+        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+      });
+    }
+
+    // Table cell readability on mobile (cramped/wrapped cells)
+    var tableCellIssues = (data.layout && data.layout.tableCellIssues) || [];
+    if (tableCellIssues.length > 0) {
+      checks++;
+      var tableDetails = tableCellIssues.slice(0, 3).map(function(t) {
+        var parts = [];
+        if (t.crampedCells > 0) parts.push(t.crampedCells + ' cells lack horizontal padding');
+        if (t.wrappedCells > 0) parts.push(t.wrappedCells + ' cells wrap to multiple lines');
+        return t.selector + ': ' + parts.join(', ') + ' (table ' + t.tableWidth + 'px on ' + t.vpWidth + 'px viewport)';
+      });
+      findings.push({
+        severity: tableCellIssues.some(function(t) { return t.crampedCells > 4 || t.wrappedCells > 4; }) ? 'error' : 'warning',
+        title: 'Table readability issues on mobile (' + tableCellIssues.length + ' table' + (tableCellIssues.length > 1 ? 's' : '') + ')',
+        detail: tableDetails.join('; '),
+        fix: 'Add horizontal padding to table cells (px-3 sm:px-4). For narrow viewports, consider hiding low-priority columns, using a responsive card layout, or reducing font size.',
+        source: 'NNGroup Mobile Tables — https://www.nngroup.com/articles/mobile-tables/',
+        locator: { selector: tableCellIssues[0].selector, text: '' }
+      });
+    }
+
+    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+    var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+    var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+    return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Readability', icon: 'readability' };
+  }
+
+  S.register("readability", scoreReadability, 5, "Readability", "readability");
+})();
+</file>
+
+<file path="docs/scoring/touch.js">
+// Scoring Module: Touch & Interaction
+// Weight: 15%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreTouchTargets(data) {
+  var profile = S.getProfile(data);
+  var findings = [];
+  var targets = data.interaction.touchTargets || [];
+
+  // Viewport-aware thresholds, adjusted by profile:
+  var vw = (data.meta && data.meta.viewportWidth) || 1280;
+  var isDesktop = vw >= 1024;
+  var minSize = isDesktop ? profile.touchTargetDesktop : profile.touchTarget;
+  var warnSize = isDesktop ? profile.touchTargetDesktopWarn : profile.touchTarget;
+  var context = isDesktop ? 'desktop' : 'touch/mobile';
+  var issueCount = 0;
+
+  targets.forEach(function(t) {
+    var w = t.width, h = t.height;
+    var minDim = Math.min(w, h);
+
+    // WCAG 2.5.8 exception: inline text links are exempt from target size requirements.
+    // Detect by checking if element is an <a> without button-like styling (no bg, no border, no padding > 4px)
+    var isInlineLink = t.element === 'a' && !t.isButton;
+
+    if (minDim < minSize) {
+      issueCount++;
+      var ctx = t.linkContext || (isInlineLink ? 'inline' : 'button');
+
+      // On desktop, determine severity based on how far below threshold:
+      // - ≥20px (just 4px short of 24px) → info (barely noticeable with mouse)
+      // - ≥16px → warning (small but usable with mouse)
+      // - <16px → error (genuinely too small even for mouse)
+      // On mobile, all failures are errors (fingers need the full 44px)
+      function desktopSeverity(dim) {
+        if (!isDesktop) return 'error';
+        if (dim >= 20) return 'info';
+        if (dim >= 16) return 'warning';
+        return 'error';
+      }
+
+      if (ctx === 'inline') {
+        // True inline text links (inside <p>, <blockquote>, etc.) — WCAG 2.5.8 exempt
+        findings.push({
+          severity: 'info',
+          title: 'Inline text link ' + w + '×' + h + 'px — exempt from target size',
+          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+          fix: 'Inline text links in paragraphs are exempt per WCAG 2.5.8. Consider adding padding for better usability.',
+          source: 'WCAG 2.2 §2.5.8 inline exception — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
+        });
+      } else if (ctx === 'footer') {
+        // Footer links — relaxed but still error below hard minimum (16px)
+        var footerHardMin = isDesktop ? 16 : 24;
+        findings.push({
+          severity: minDim < footerHardMin ? 'error' : 'info',
+          title: 'Footer link ' + w + '×' + h + 'px' + (minDim < footerHardMin ? ' (too small even for footer — min ' + footerHardMin + 'px)' : ' (below ' + minSize + 'px, relaxed for footer)'),
+          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+          fix: minDim < footerHardMin
+            ? 'Even footer links need at least ' + footerHardMin + 'px height. Add padding to increase click area.'
+            : 'Footer links have relaxed sizing expectations. Consider padding for touch accessibility.',
+          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
+        });
+      } else if (ctx === 'nav') {
+        // Navigation links — should be properly sized
+        var navSev = desktopSeverity(minDim);
+        findings.push({
+          severity: navSev,
+          title: 'Nav link ' + w + '×' + h + 'px (minimum: ' + minSize + 'px)',
+          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+          fix: 'Navigation links need adequate sizing. Add padding: py-2 px-4 (min-height ' + minSize + 'px).',
+          presetRef: 'Navigation presets use min-height 44px on nav links',
+          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
+        });
+      } else {
+        // Buttons, styled links, other interactive elements
+        var sev = desktopSeverity(minDim);
+        findings.push({
+          severity: sev,
+          title: t.element + ' is ' + w + '×' + h + 'px (' + (isDesktop ? 'desktop min: ' + minSize + 'px' : 'touch min: ' + minSize + 'px') + ')',
+          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+          fix: isDesktop
+            ? (sev === 'info'
+              ? 'Slightly below ' + minSize + 'px desktop minimum — usable with mouse but consider adding padding.'
+              : 'Click targets need at least ' + minSize + '×' + minSize + 'px. Increase padding or min-height/min-width.')
+            : 'Touch targets need ' + minSize + '×' + minSize + 'px minimum. Add min-h-[' + minSize + 'px] min-w-[' + minSize + 'px] or increase padding.',
+          presetRef: isDesktop ? null : 'Button presets use py-3 px-6 (48px height)',
+          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
+        });
+      }
+    } else if (minDim < warnSize && isDesktop && !isInlineLink) {
+      findings.push({
+        severity: 'warning',
+        title: t.element + ' is ' + w + '×' + h + 'px (recommended for desktop: ≥' + warnSize + 'px)',
+        detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+        fix: 'While ' + minSize + 'px meets minimum, ' + warnSize + 'px+ improves click comfort. Consider adding padding.',
+        presetRef: null,
+        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+        locator: { selector: t.selector, text: t.text || '' }
+      });
+    }
+  });
+
+  // Also flag targets that pass the current threshold but would fail on touch
+  if (isDesktop && targets.length > 0) {
+    var touchMin = profile.touchTarget;
+    var touchFails = targets.filter(function(t) { return Math.min(t.width, t.height) < touchMin; });
+    if (touchFails.length > 0) {
+      findings.push({
+        severity: 'info',
+        title: touchFails.length + ' element(s) below ' + touchMin + 'px touch target (analyzed at ' + vw + 'px desktop viewport)',
+        detail: 'These meet desktop minimums but would fail on touch devices. Consider responsive sizing if the site is also used on mobile.',
+        fix: 'For responsive touch support: add touch-target sizing at mobile breakpoints, e.g. sm:min-h-[' + touchMin + 'px]',
+        presetRef: null,
+        source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout'
+      });
+    }
+  }
+
+  // Note when responsive CSS exists that might fix touch targets on mobile
+  if (isDesktop && data.interaction && data.interaction.hasResponsiveTargetCSS) {
+    findings.push({
+      severity: 'info',
+      title: 'Responsive CSS detected that may adjust target sizes at mobile breakpoints',
+      detail: 'This site has media queries with height/padding rules. Touch targets may be correctly sized on mobile devices.',
+      fix: 'Verify by testing at mobile viewport. Use the viewport selector to re-scan at 375px width.',
+      presetRef: null
+    });
+  }
+
+  // Transitions / animation duration
+  var transitions = data.interaction.transitions || [];
+  transitions.forEach(function(t) {
+    var ms = parseFloat(t) * 1000;
+    if (ms > 500) {
+      findings.push({
+        severity: 'warning',
+        title: 'Transition duration ' + ms + 'ms exceeds 500ms maximum',
+        detail: 'Users perceive animations longer than 500ms as sluggish',
+        fix: 'Keep transitions under 500ms. Enter: 200–300ms, Exit: 150–200ms. In Tailwind: duration-200 or duration-300',
+        presetRef: null,
+        source: 'NNGroup animation — https://www.nngroup.com/articles/animation-usability/'
+      });
+    }
+  });
+
+  // Event listener pattern findings
+  var lPatterns = (data.interaction && data.interaction.listenerPatterns) || {};
+  if (lPatterns.toggleNoAria > 0) {
+    findings.push({
+      severity: 'warning',
+      title: lPatterns.toggleNoAria + ' toggle handler(s) without ARIA state management',
+      detail: 'Click handlers toggle CSS classes but don\'t update aria-expanded or other ARIA states. Screen readers won\'t know the element\'s state changed.',
+      fix: 'Add setAttribute(\'aria-expanded\', isOpen) alongside classList.toggle() in toggle handlers.',
+      presetRef: null,
+      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
+    });
+  }
+  if (lPatterns.navigationInButton > 0) {
+    findings.push({
+      severity: 'info',
+      title: lPatterns.navigationInButton + ' button(s) trigger page navigation',
+      detail: 'Buttons with click handlers that change location.href should typically be <a> elements for proper semantics and accessibility.',
+      fix: 'Use <a href="..."> for navigation instead of <button> with JavaScript location change.',
+      presetRef: null,
+      source: 'HTML spec — https://html.spec.whatwg.org/multipage/text-level-semantics.html#the-a-element'
+    });
+  }
+
+  // Score: deduct per error, less per warning
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var totalTargets = targets.length || 0;
+  var checks = totalTargets;
+  var passed = Math.max(0, totalTargets - errors - warnings);
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 3));
+  var na = totalTargets === 0 && transitions.length === 0;
+  return { score: na ? 100 : score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Touch & Interaction', icon: 'touch', notApplicable: na };
+}
+
+
+  S.register("touch", scoreTouchTargets, 15, "Touch & Interaction", "touch");
 })();
 </file>
 
@@ -27206,7 +27206,7 @@ window.MilgIframe = (function() {
       '},300)' +
     '};';
     // Screenshot script: sets up message listener immediately (waits for parent to send milg-start-capture after resize)
-    var screenshotScript = captureScreenshots ? '<script>' + buildScreenshotScript('milg-screenshots-result') + unhiddenScreenshotFn + '</' + 'script>' : '';
+    var screenshotScript = captureScreenshots ? '<script>' + buildScreenshotScript('milg-screenshots-result') + ';' + unhiddenScreenshotFn + '</' + 'script>' : '';
     var srcdoc;
     if (isFullDoc) {
       // Wait for window load (CSS/fonts loaded), then extra delay for rendering

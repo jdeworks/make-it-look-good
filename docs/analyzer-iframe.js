@@ -274,7 +274,7 @@ window.MilgIframe = (function() {
       '},300)' +
     '};';
     // Screenshot script: sets up message listener immediately (waits for parent to send milg-start-capture after resize)
-    var screenshotScript = captureScreenshots ? '<script>' + buildScreenshotScript('milg-screenshots-result') + unhiddenScreenshotFn + '</' + 'script>' : '';
+    var screenshotScript = captureScreenshots ? '<script>' + buildScreenshotScript('milg-screenshots-result') + ';' + unhiddenScreenshotFn + '</' + 'script>' : '';
     var srcdoc;
     if (isFullDoc) {
       // Wait for window load (CSS/fonts loaded), then extra delay for rendering
