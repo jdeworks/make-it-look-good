@@ -642,22 +642,16 @@ window.MilgViewer = (function() {
     var vScaleX = _meta.scale;
     var vScaleY = _meta.scale;
 
-    var pairsBySelector = {};
-    if (_reportData.raw && _reportData.raw.colors && _reportData.raw.colors.contrastPairs) {
-      _reportData.raw.colors.contrastPairs.forEach(function(p) {
-        if (p.bbox) pairsBySelector[p.selector] = p;
-      });
-    }
-
     results.forEach(function(vr, vIdx) {
       if (showFails && !vr.crossesBoundary) return;
-      var pair = pairsBySelector[vr.selector];
-      if (!pair || !pair.bbox) return;
+      // Use bbox directly from verify result (no selector lookup needed)
+      var bbox = vr.bbox;
+      if (!bbox) return;
 
-      var x = Math.round(pair.bbox.left * vScaleX);
-      var y = Math.round(pair.bbox.top * vScaleY) - _calibrationOffsetY;
-      var w = Math.round(pair.bbox.width * vScaleX);
-      var h = Math.round(pair.bbox.height * vScaleY);
+      var x = Math.round(bbox.left * vScaleX);
+      var y = Math.round(bbox.top * vScaleY) - _calibrationOffsetY;
+      var w = Math.round(bbox.width * vScaleX);
+      var h = Math.round(bbox.height * vScaleY);
 
       var fill, stroke, dash;
       if (vr.crossesBoundary && vr.cssPasses && !vr.pixelPasses) {

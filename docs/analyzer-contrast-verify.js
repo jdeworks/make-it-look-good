@@ -322,6 +322,7 @@ window.MilgContrastVerify = (function() {
       cssBg: pair.bg,
       selector: pair.selector,
       text: pair.text,
+      bbox: pair.bbox,
       sectionIdx: sectionIdx,
       sampleCount: { fg: fgPoints.length, bg: pairedBg.length },
       samplePoints: {
