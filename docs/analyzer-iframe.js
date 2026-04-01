@@ -106,9 +106,21 @@ window.MilgIframe = (function() {
         'void document.body.offsetHeight;' +
         'console.log("[iframe-ss] Phase 2: Waiting for animations to finalize...");' +
         'setTimeout(function(){' +
+          // Get body offset — bboxes are in document coords but canvas starts at body's top-left
+          'var bodyRect=document.body.getBoundingClientRect();' +
+          'var bodyOffX=Math.round(bodyRect.left+window.scrollX);' +
+          'var bodyOffY=Math.round(bodyRect.top+window.scrollY);' +
+          'console.log("[iframe-ss] Body offset: "+bodyOffX+","+bodyOffY);' +
           'if(typeof window.__milgReReadBboxes==="function"){' +
             'var res=window.__milgReReadBboxes();' +
             'console.log("[iframe-ss] Re-read bboxes: "+res)' +
+          '}' +
+          // Subtract body offset from all bboxes so they're body-relative (matching canvas origin)
+          'if((bodyOffX!==0||bodyOffY!==0)&&window.__milgBboxRefs){' +
+            'window.__milgBboxRefs.forEach(function(ref){' +
+              'if(ref.obj&&ref.obj[ref.key]){ref.obj[ref.key].left-=bodyOffX;ref.obj[ref.key].top-=bodyOffY}' +
+            '});' +
+            'console.log("[iframe-ss] Shifted "+window.__milgBboxRefs.length+" bboxes by -"+bodyOffX+",-"+bodyOffY)' +
           '}' +
           'var fullH=document.body.scrollHeight;' +
           'console.log("[iframe-ss] body.scrollHeight="+fullH+" vh="+vh);' +
@@ -128,6 +140,7 @@ window.MilgIframe = (function() {
                 'screenshotMeta:{scale:' + ss.scale + ',viewportHeight:vh,sectionCount:1,' +
                   'canvasWidth:fc.width,canvasHeight:fc.height,' +
                   'docHeightAtCapture:fullH,' +
+                  'bodyOffsetX:bodyOffX,bodyOffsetY:bodyOffY,' +
                   'calibrationOffsetY:0,calibrationSamples:[]},' +
                 'updatedData:updatedData' +
               '},"*")' +
