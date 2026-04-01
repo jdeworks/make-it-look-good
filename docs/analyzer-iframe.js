@@ -233,7 +233,12 @@ window.MilgIframe = (function() {
                         // Threshold 240: only rgb(240+,240+,240+) is considered pure white bg
                         'if((px[i]+px[i+1]+px[i+2])/3<240)bmp[y*bw+x]=1' +
                       '}}' +
-                      'pe.pair._maskBmp=Array.from(bmp);pe.pair._maskW=bw;pe.pair._maskH=bh;pe.pair._maskLayer=_li' +
+                      'var _dkCount=0;for(var _bi=0;_bi<bmp.length;_bi++)if(bmp[_bi])_dkCount++;' +
+                      'if(_dkCount===0&&bw>5){' +
+                        'var _cx=Math.floor(bw/2),_cy=Math.floor(bh/2),_ci=(_cy*bw+_cx)*4;' +
+                        'console.log("[mask] No dark px: \\""+pe.pair.text.substring(0,25)+"\\" "+bw+"x"+bh+" L"+_li+" center:rgb("+px[_ci]+","+px[_ci+1]+","+px[_ci+2]+")")' +
+                      '};' +
+                      'pe.pair._maskBmp=Array.from(bmp);pe.pair._maskW=bw;pe.pair._maskH=bh;pe.pair._maskLayer=_li;pe.pair._maskDark=_dkCount' +
                     '}catch(e){}' +
                   '});' +
                   // Reset layer elements + descendants to white
