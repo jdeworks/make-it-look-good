@@ -205,11 +205,16 @@ window.MilgIframe = (function() {
                 'var layer=_layers[_li];_li++;' +
                 '_prog("Text mask layer "+_li+"/"+_layers.length+" ("+layer.length+" elements)...");' +
                 'console.log("[iframe-ss] Layer "+_li+": "+layer.length+" elements");' +
-                // Set layer elements + all descendants to black (overrides any child styles)
+                // Set layer elements + all descendants to black
+                // Save and replace style attribute to ensure total override
                 'layer.forEach(function(pe){' +
-                  'pe.el.style.setProperty("color","#000","important");' +
-                  'pe.el.style.setProperty("-webkit-text-fill-color","#000","important");' +
-                  'pe.el.querySelectorAll("*").forEach(function(ch){ch.style.setProperty("color","#000","important");ch.style.setProperty("-webkit-text-fill-color","#000","important")})' +
+                  'pe._origStyle=pe.el.getAttribute("style")||"";' +
+                  'pe.el.setAttribute("style",pe._origStyle+";color:#000 !important;-webkit-text-fill-color:#000 !important;");' +
+                  'pe._childStyles=[];' +
+                  'pe.el.querySelectorAll("*").forEach(function(ch,ci){' +
+                    'pe._childStyles[ci]=ch.getAttribute("style")||"";' +
+                    'ch.setAttribute("style",pe._childStyles[ci]+";color:#000 !important;-webkit-text-fill-color:#000 !important;")' +
+                  '})' +
                 '});' +
                 'void document.body.offsetHeight;' +
                 'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:12000}).then(function(mc){' +
@@ -241,11 +246,12 @@ window.MilgIframe = (function() {
                       'pe.pair._maskBmp=Array.from(bmp);pe.pair._maskW=bw;pe.pair._maskH=bh;pe.pair._maskLayer=_li;pe.pair._maskDark=_dkCount' +
                     '}catch(e){}' +
                   '});' +
-                  // Reset layer elements + descendants to white
+                  // Reset layer elements + descendants to white (restore original + white override)
                   'layer.forEach(function(pe){' +
-                    'pe.el.style.setProperty("color","#fff","important");' +
-                    'pe.el.style.setProperty("-webkit-text-fill-color","#fff","important");' +
-                    'pe.el.querySelectorAll("*").forEach(function(ch){ch.style.setProperty("color","#fff","important");ch.style.setProperty("-webkit-text-fill-color","#fff","important")})' +
+                    'pe.el.setAttribute("style",pe._origStyle+";color:#fff !important;-webkit-text-fill-color:#fff !important;");' +
+                    'pe.el.querySelectorAll("*").forEach(function(ch,ci){' +
+                      'ch.setAttribute("style",(pe._childStyles[ci]||"")+";color:#fff !important;-webkit-text-fill-color:#fff !important;")' +
+                    '})' +
                   '});' +
                   'setTimeout(_nextLayer,0)' +
                 '}).catch(function(e){console.warn("[iframe-ss] Layer "+_li+" failed:",e);setTimeout(_nextLayer,0)})' +
