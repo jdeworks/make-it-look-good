@@ -184,11 +184,17 @@ window.MilgContrastVerify = (function() {
           // Per-element mask: each element has a unique color rgb(R,G,0)
           // where pairIndex = R*256+G. White (255,255,255) = background.
           var mr = maskData[idx], mg = maskData[idx + 1], mb = maskData[idx + 2];
-          var isWhite = mr > 245 && mg > 245 && mb > 245;
-          if (!isWhite && mb < 30) {
-            // Encoded pair color — decode index (B≈0 for encoded, may be slightly >0 from AA)
-            var maskIdx = mr * 256 + mg;
-            isText = (maskIdx === pairIndex);
+          var isWhite = mr > 220 && mg > 220 && mb > 220;
+          // Encoded colors have B≈50 (offset). Detect by checking B channel range.
+          // AA blending with white pushes values toward (152,152+,152) range — still decodable
+          if (!isWhite && mb > 20 && mb < 120) {
+            // Decode: pairIndex = (R-50)*200 + (G-50)
+            var decodedR = mr - 50, decodedG = mg - 50;
+            if (decodedR >= 0 && decodedG >= 0) {
+              var maskIdx = decodedR * 200 + decodedG;
+              // Allow some AA tolerance: decoded index within ±1 of target
+              isText = (maskIdx >= pairIndex - 1 && maskIdx <= pairIndex + 1);
+            }
           }
           // else: AA fringe or other — skip (isText stays false)
         } else {
@@ -416,13 +422,16 @@ window.MilgContrastVerify = (function() {
       var _vStats = { total: pairs.length, verified: 0, noFgBg: 0, tooSmall: 0, outOfBounds: 0 };
       // Find pair index in the full contrastPairs array (mask uses this index for encoding)
       var allPairs = (raw.colors && raw.colors.contrastPairs) || [];
-      pairs.forEach(function(pair) {
+      var _idxMiss = 0;
+      pairs.forEach(function(pair, pi) {
         var pairIdx = allPairs.indexOf(pair);
-        var result = verifyPair(pair, sectionCanvases, meta, maskCanvasData, pairIdx >= 0 ? pairIdx : 0);
+        if (pairIdx < 0) { _idxMiss++; pairIdx = pi; } // fallback: use position in filtered array
+        var result = verifyPair(pair, sectionCanvases, meta, maskCanvasData, pairIdx);
         if (result) { results.push(result); _vStats.verified++; }
         else _vStats.noFgBg++;
       });
-      console.log('[verify] Stats:', JSON.stringify(_vStats), 'mask:', !!maskCanvasData);
+      if (_idxMiss > 0) console.warn('[verify] ' + _idxMiss + ' pairs had indexOf=-1 (using position fallback)');
+      console.log('[verify] Stats:', JSON.stringify(_vStats), 'mask:', !!maskCanvasData, 'totalPairs:', allPairs.length, 'withBbox:', pairs.length);
       results.sort(function(a, b) {
         if (a.crossesBoundary !== b.crossesBoundary) return a.crossesBoundary ? -1 : 1;
         return b.ratioDiff - a.ratioDiff;

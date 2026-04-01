@@ -182,8 +182,10 @@ window.MilgIframe = (function() {
               '});' +
               'console.log("[iframe-ss] Assigning "+_pairEls.length+" unique mask colors");' +
               '_pairEls.forEach(function(pe){' +
-                'var r=Math.floor(pe.idx/256),g=pe.idx%256;' +
-                'var c="rgb("+r+","+g+",0)";' +
+                // Encode as rgb(R+50, G+50, 50) — offset by 50 to stay far from white(255) and black(0)
+                // AA blending with white: (50+255)/2=152 — still clearly not white
+                'var r=50+Math.floor(pe.idx/200),g=50+(pe.idx%200);' +
+                'var c="rgb("+r+","+g+",50)";' +
                 'pe.el.style.setProperty("color",c,"important");' +
                 'pe.el.style.setProperty("-webkit-text-fill-color",c,"important");' +
                 // Force full visibility on element + ancestors so encoded color renders cleanly
