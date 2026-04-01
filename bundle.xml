@@ -33909,13 +33909,23 @@ window.MilgContrastVerify = (function() {
         // Per-element mask: trust it completely (it only has THIS element's text)
         // Full-page mask or no mask: use CSS distance as classifier
         var isText = false;
-        if (pair._maskPts) {
-          // Per-element mask — mask IS the classifier, no distance check needed
-          isText = inTextArea;
+        if (pair._maskPts && inTextArea) {
+          // Per-element mask says text here. But the mask was at opacity:1 while
+          // the screenshot may have lower opacity → mask text area > actual text.
+          // Filter: pixel must be closer to FG than to BG (handles opacity mismatch)
+          var drF = r - expectedFg.r, dgF = g - expectedFg.g, dbF = b - expectedFg.b;
+          var distFg = drF * drF + dgF * dgF + dbF * dbF;
+          if (cssBg) {
+            var drB = r - cssBg.r, dgB = g - cssBg.g, dbB = b - cssBg.b;
+            var distBg = drB * drB + dgB * dgB + dbB * dbB;
+            isText = distFg < distBg; // closer to FG than BG = text
+          } else {
+            isText = true; // no BG info, trust mask
+          }
         } else if (inTextArea) {
           // Full-page mask or no mask — need CSS distance to separate mixed texts
-          var dr = r - expectedFg.r, dg = g - expectedFg.g, db = b - expectedFg.b;
-          isText = dr * dr + dg * dg + db * db < FG_INNER_SQ;
+          var dr2 = r - expectedFg.r, dg2 = g - expectedFg.g, db2 = b - expectedFg.b;
+          isText = dr2 * dr2 + dg2 * dg2 + db2 * db2 < FG_INNER_SQ;
         }
         isTextGrid[vy * hSteps + hx] = isText ? 1 : 0;
         gridData.push({ r: r, g: g, b: b, absX: bx + ix, absY: by + iy });
@@ -36718,7 +36728,7 @@ window.MilgContrastVerify = (function() {
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v30.8</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v30.9</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
