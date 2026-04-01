@@ -695,29 +695,35 @@ window.MilgViewer = (function() {
         svg.appendChild(label);
       }
 
-      // Sample point dots (shown at zoom >= 150%)
-      if (_zoomLevel >= 1.5 && vr.samplePoints) {
+      // Sample point dots — show where pixels were actually measured
+      if (vr.samplePoints) {
+        // For full-page screenshots (1 section), no section offset needed
         var sH = _meta.viewportHeight ? Math.round(_meta.viewportHeight * vScaleX) : 0;
-        var secOff = vr.sectionIdx ? vr.sectionIdx * sH : 0;
-        // FG sample points (cyan dots)
+        var secOff = (vr.sectionIdx && sH) ? vr.sectionIdx * sH : 0;
+        var dotR = _zoomLevel >= 1.5 ? '2.5' : '1.5';
+        // FG sample points (cyan = text pixels)
         (vr.samplePoints.fg || []).forEach(function(pt) {
           var dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
           dot.setAttribute('cx', pt.x);
           dot.setAttribute('cy', pt.y + secOff);
-          dot.setAttribute('r', '1.5');
+          dot.setAttribute('r', dotR);
           dot.setAttribute('fill', '#06b6d4');
-          dot.setAttribute('opacity', '0.7');
+          dot.setAttribute('stroke', '#fff');
+          dot.setAttribute('stroke-width', '0.5');
+          dot.setAttribute('opacity', '0.85');
           dot.setAttribute('pointer-events', 'none');
           svg.appendChild(dot);
         });
-        // BG sample points (orange dots)
+        // BG sample points (orange = background pixels)
         (vr.samplePoints.bg || []).forEach(function(pt) {
           var dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
           dot.setAttribute('cx', pt.x);
           dot.setAttribute('cy', pt.y + secOff);
-          dot.setAttribute('r', '1.5');
+          dot.setAttribute('r', dotR);
           dot.setAttribute('fill', '#f97316');
-          dot.setAttribute('opacity', '0.6');
+          dot.setAttribute('stroke', '#fff');
+          dot.setAttribute('stroke-width', '0.5');
+          dot.setAttribute('opacity', '0.75');
           dot.setAttribute('pointer-events', 'none');
           svg.appendChild(dot);
         });
@@ -769,14 +775,28 @@ window.MilgViewer = (function() {
 
     _tooltip = document.createElement('div');
     _tooltip.className = 'milg-viewer-tooltip';
+    var sampleInfo = '';
+    if (vr.sampleCount) {
+      sampleInfo = '<div style="margin-top:4px;padding-top:4px;border-top:1px solid rgba(0,0,0,0.1);font-size:10px;color:#64748b">' +
+        '<span style="color:#06b6d4">\u25cf</span> ' + vr.sampleCount.fg + ' text pixels sampled' +
+        ' &nbsp; <span style="color:#f97316">\u25cf</span> ' + vr.sampleCount.bg + ' background pixels' +
+        (vr.pixelFg ? '<br>Pixel FG: ' + vr.pixelFg : '') +
+        (vr.pixelBgWorst ? '<br>Pixel BG (worst): ' + vr.pixelBgWorst : '') +
+        (vr.pixelBgAvg ? ' / BG (avg): ' + vr.pixelBgAvg : '') +
+        (vr.bgVariance ? '<br>BG variance: ' + vr.bgVariance : '') +
+        '</div>';
+    }
     _tooltip.innerHTML = '<div class="milg-viewer-tooltip-title">' + vr.selector + '</div>' +
       '<div class="milg-viewer-tooltip-detail">"' + (vr.text || '').substring(0, 40) + '"</div>' +
       '<div style="margin-top:4px;font-size:11px">' +
-      'CSS: ' + vr.cssRatio + ':1 ' + (vr.cssPasses ? '<span style="color:#22c55e">pass</span>' : '<span style="color:#ef4444">fail</span>') +
+      'CSS: <span style="display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:middle;border:1px solid rgba(0,0,0,0.2);background:' + (vr.cssFg || '') + '"></span> on ' +
+      '<span style="display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:middle;border:1px solid rgba(0,0,0,0.2);background:' + (vr.cssBg || '') + '"></span> ' +
+      vr.cssRatio + ':1 ' + (vr.cssPasses ? '<span style="color:#22c55e">pass</span>' : '<span style="color:#ef4444">fail</span>') +
       '<br>Pixel: ' + (vr.pixelRatio || vr.pixelRatioAvg || '?') + ':1 ' + (vr.pixelPasses ? '<span style="color:#22c55e">pass</span>' : '<span style="color:#ef4444">fail</span>') +
-      (vr.isVariableBg ? '<br><span style="color:#eab308">Variable background</span>' : '') +
-      (vr.cssBgConfirmed === false ? '<br><span style="color:#f59e0b">CSS bg differs from actual</span>' : '') +
-      '</div>';
+      (vr.pixelRatioBest && vr.pixelRatioBest !== vr.pixelRatio ? ' (best: ' + vr.pixelRatioBest + ':1)' : '') +
+      (vr.isVariableBg ? '<br><span style="color:#eab308">Variable background (gradient/image)</span>' : '') +
+      (vr.cssBgConfirmed === false ? '<br><span style="color:#f59e0b">CSS bg differs from actual pixels</span>' : '') +
+      '</div>' + sampleInfo;
 
     positionTooltip(e);
   }

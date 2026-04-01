@@ -118,11 +118,18 @@ window.MilgContrastVerify = (function() {
     if (canvasW < 4 || canvasH < 4) return null;
 
     // Determine which section this bbox falls in
-    var sectionIdx = Math.floor(canvasY / sectionH);
+    // For full-page screenshots (1 section), use section 0 directly
+    var sectionIdx, yInSection;
+    if (sectionCanvases.length === 1) {
+      sectionIdx = 0;
+      yInSection = canvasY;
+    } else {
+      sectionIdx = Math.floor(canvasY / sectionH);
+      yInSection = canvasY - (sectionIdx * sectionH);
+    }
     if (sectionIdx >= sectionCanvases.length || !sectionCanvases[sectionIdx]) return null;
 
     var sec = sectionCanvases[sectionIdx];
-    var yInSection = canvasY - (sectionIdx * sectionH);
     // Clamp to section bounds
     if (yInSection + canvasH > sec.height) canvasH = sec.height - yInSection;
     if (canvasX + canvasW > sec.width) canvasW = sec.width - canvasX;
