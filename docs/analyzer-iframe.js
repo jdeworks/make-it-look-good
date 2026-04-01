@@ -32,61 +32,77 @@ window.MilgIframe = (function() {
   }
 
   // --- Screenshot capture script (injected into iframes after extraction) ---
-  // Called after extraction via __milgDoScreenshots. Captures the full page by:
-  // 1. Resetting scroll, forcing html/body to height:auto + overflow:visible
-  // 2. Waiting for animations to settle + re-reading bboxes
-  // 3. Capturing document.body (not documentElement — avoids viewport-height doubling)
+  // Called after extraction via __milgDoScreenshots (once-guard prevents double run).
+  // Mirrors console snippet: pre-scroll → reset → wait → re-read bboxes → capture body
   function buildScreenshotScript(msgType) {
     var ss = { scale: SCREENSHOT_SCALE, quality: SCREENSHOT_QUALITY };
     return '(function(){' +
+      // Once-guard: extraction may fire twice (load + fallback timeout)
+      'if(window.__milgSsDone)return;window.__milgSsDone=true;' +
       'var vh=window.innerHeight||900;' +
-      // Reset scroll containers
-      'document.documentElement.style.scrollBehavior="auto";' +
-      'document.body.style.scrollBehavior="auto";' +
-      'window.scrollTo(0,0);document.documentElement.scrollTop=0;document.body.scrollTop=0;' +
-      'document.querySelectorAll("*").forEach(function(el){' +
-        'if(el.scrollTop>0){var s=getComputedStyle(el);' +
-        'if(s.overflow==="auto"||s.overflow==="scroll"||s.overflowY==="auto"||s.overflowY==="scroll"){' +
-        'el.style.scrollBehavior="auto";el.scrollTop=0}}' +
-      '});' +
-      // Force html+body to auto height so body.scrollHeight reflects full content
-      // Many sites set html,body{height:100%} which clips scrollHeight to viewport
-      'document.documentElement.style.cssText+="height:auto !important;overflow:visible !important;";' +
-      'document.body.style.cssText+="height:auto !important;overflow:visible !important;";' +
-      'void document.body.offsetHeight;' +
-      // Wait for animations + reflow
-      'setTimeout(function(){' +
-        'if(typeof window.__milgReReadBboxes==="function"){' +
-          'var res=window.__milgReReadBboxes();' +
-          'console.log("[iframe-ss] Re-read bboxes: "+res)' +
+      'var totalH=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);' +
+      'var captureH=Math.min(totalH,vh*10);' +
+      'console.log("[iframe-ss] Phase 1: Pre-scrolling "+captureH+"px to trigger lazy content...");' +
+      // Phase 1: Pre-scroll to trigger IntersectionObservers, lazy images, fade-in animations
+      'var _positions=[];for(var p=0;p<captureH;p+=vh)_positions.push(p);' +
+      'var _pi=0;' +
+      'function _scrollNext(){' +
+        'if(_pi>=_positions.length){' +
+          'console.log("[iframe-ss] Phase 1 done. Waiting for content to settle...");' +
+          'setTimeout(_startCapture,500);return' +
         '}' +
-        'var fullH=document.body.scrollHeight;' +
-        'console.log("[iframe-ss] body.scrollHeight="+fullH+" vh="+vh+" innerH="+window.innerHeight);' +
-        'var s=document.createElement("script");' +
-        's.src="' + _screenshotCDN + '";' +
-        's.onload=function(){' +
-          'var ms=window.modernScreenshot;' +
-          'if(!ms||!ms.domToCanvas){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*");return}' +
-          'document.querySelectorAll("img").forEach(function(i){if(i.src&&i.src.indexOf("data:")!==0)i.crossOrigin="anonymous"});' +
-          // Capture body (not documentElement) to get pure content without viewport wrapper
-          'ms.domToCanvas(document.body,{scale:' + ss.scale + ',timeout:12000}).then(function(fc){' +
-            'console.log("[iframe-ss] Canvas: "+fc.width+"x"+fc.height);' +
-            'var fullUri;try{fullUri=fc.toDataURL("image/webp",' + ss.quality + ')}catch(e){fullUri=""}' +
-            'var updatedData=window.__milgData||null;' +
-            'parent.postMessage({type:"' + msgType + '",' +
-              'screenshots:fullUri?[fullUri]:[],' +
-              'screenshotFull:fullUri||null,' +
-              'screenshotMeta:{scale:' + ss.scale + ',viewportHeight:vh,sectionCount:1,' +
-                'canvasWidth:fc.width,canvasHeight:fc.height,' +
-                'docHeightAtCapture:fullH,' +
-                'calibrationOffsetY:0,calibrationSamples:[]},' +
-              'updatedData:updatedData' +
-            '},"*")' +
-          '}).catch(function(e){console.warn("[iframe-ss] capture failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")})' +
-        '};' +
-        's.onerror=function(){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")};' +
-        'document.head.appendChild(s)' +
-      '},1500)' +
+        'window.scrollTo(0,_positions[_pi]);' +
+        'try{window.dispatchEvent(new Event("scroll"))}catch(e){}' +
+        '_pi++;setTimeout(_scrollNext,150)' +
+      '}' +
+      '_scrollNext();' +
+      // Phase 2: Reset scroll, force height:auto, re-read bboxes, capture
+      'function _startCapture(){' +
+        'document.documentElement.style.scrollBehavior="auto";' +
+        'document.body.style.scrollBehavior="auto";' +
+        'window.scrollTo(0,0);document.documentElement.scrollTop=0;document.body.scrollTop=0;' +
+        'document.querySelectorAll("*").forEach(function(el){' +
+          'if(el.scrollTop>0){var s=getComputedStyle(el);' +
+          'if(s.overflow==="auto"||s.overflow==="scroll"||s.overflowY==="auto"||s.overflowY==="scroll"){' +
+          'el.style.scrollBehavior="auto";el.scrollTop=0}}' +
+        '});' +
+        // Force html+body to auto height so body.scrollHeight reflects full content
+        'document.documentElement.style.cssText+="height:auto !important;overflow:visible !important;";' +
+        'document.body.style.cssText+="height:auto !important;overflow:visible !important;";' +
+        'void document.body.offsetHeight;' +
+        'console.log("[iframe-ss] Phase 2: Waiting for animations...");' +
+        'setTimeout(function(){' +
+          'if(typeof window.__milgReReadBboxes==="function"){' +
+            'var res=window.__milgReReadBboxes();' +
+            'console.log("[iframe-ss] Re-read bboxes: "+res)' +
+          '}' +
+          'var fullH=document.body.scrollHeight;' +
+          'console.log("[iframe-ss] body.scrollHeight="+fullH+" vh="+vh);' +
+          'var s=document.createElement("script");' +
+          's.src="' + _screenshotCDN + '";' +
+          's.onload=function(){' +
+            'var ms=window.modernScreenshot;' +
+            'if(!ms||!ms.domToCanvas){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*");return}' +
+            'document.querySelectorAll("img").forEach(function(i){if(i.src&&i.src.indexOf("data:")!==0)i.crossOrigin="anonymous"});' +
+            'ms.domToCanvas(document.body,{scale:' + ss.scale + ',timeout:12000}).then(function(fc){' +
+              'console.log("[iframe-ss] Canvas: "+fc.width+"x"+fc.height);' +
+              'var fullUri;try{fullUri=fc.toDataURL("image/webp",' + ss.quality + ')}catch(e){fullUri=""}' +
+              'var updatedData=window.__milgData||null;' +
+              'parent.postMessage({type:"' + msgType + '",' +
+                'screenshots:fullUri?[fullUri]:[],' +
+                'screenshotFull:fullUri||null,' +
+                'screenshotMeta:{scale:' + ss.scale + ',viewportHeight:vh,sectionCount:1,' +
+                  'canvasWidth:fc.width,canvasHeight:fc.height,' +
+                  'docHeightAtCapture:fullH,' +
+                  'calibrationOffsetY:0,calibrationSamples:[]},' +
+                'updatedData:updatedData' +
+              '},"*")' +
+            '}).catch(function(e){console.warn("[iframe-ss] capture failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")})' +
+          '};' +
+          's.onerror=function(){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")};' +
+          'document.head.appendChild(s)' +
+        '},1500)' +
+      '}' +
     '})()';
   }
 
