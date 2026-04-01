@@ -179,17 +179,27 @@ window.MilgContrastVerify = (function() {
         var r = imgData[idx], g = imgData[idx + 1], b = imgData[idx + 2];
         // Classify text vs background using mask + CSS fg color
         var isText = false;
-        if (maskData) {
-          // Black-on-white mask: dark = text position, light = background
+        // Per-element mask: pair._maskPts has text pixel positions from individual element capture
+        if (pair._maskPts && pair._maskW) {
+          // Map screenshot grid position to element-mask coordinates
+          // Mask coords: element-relative at screenshot scale
+          var mkX = ix; // ix is already relative to bbox left
+          var mkY = iy; // iy is already relative to bbox top
+          // Check if this position is near a mask text pixel (within 1 step)
+          var mStep = 2; // mask was sampled every 2px
+          var pts = pair._maskPts;
+          for (var mp = 0; mp < pts.length; mp += 2) {
+            var dx = mkX - pts[mp], dy = mkY - pts[mp + 1];
+            if (dx * dx + dy * dy <= mStep * mStep) { isText = true; break; }
+          }
+        } else if (maskData) {
+          // Full-page mask fallback (legacy)
           var mr = maskData[idx], mg = maskData[idx + 1], mb = maskData[idx + 2];
-          var maskBright = (mr + mg + mb) / 3;
-          if (maskBright < 80) {
-            // Mask says text here — verify it's THIS pair's text color (not another span's)
+          if ((mr + mg + mb) / 3 < 80) {
             var dr = r - cssFg.r, dg = g - cssFg.g, db = b - cssFg.b;
             isText = dr * dr + dg * dg + db * db < FG_OUTER_SQ;
           }
         } else {
-          // No mask — pure CSS distance fallback
           var dr2 = r - cssFg.r, dg2 = g - cssFg.g, db2 = b - cssFg.b;
           isText = dr2 * dr2 + dg2 * dg2 + db2 * db2 < FG_INNER_SQ;
         }

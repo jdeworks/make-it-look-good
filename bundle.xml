@@ -3374,6 +3374,124 @@ For Tailwind v4, add `@import "tailwindcss"` to your main CSS file. No `tailwind
 }
 </file>
 
+<file path="docs/scoring/balance.js">
+// Scoring Module: Visual Weight Balance
+// Weight: 3%
+// Source: Ngo et al. 2003 — balance correlates with preference (r=0.67)
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+  function scoreBalance(data) {
+    var findings = [];
+    var checks = 0;
+    var passed = 0;
+
+    // We use alignment edges as a proxy for content distribution
+    var edges = (data.layout && data.layout.alignmentEdges) || [];
+    var vw = (data.meta && data.meta.viewportWidth) || 1280;
+
+    if (edges.length >= 10) {
+      checks++;
+
+      // Estimate content center points from left edges:
+      // For each left-edge, estimate center as edge + avgWidth/2
+      // where avgWidth is derived from the spread of edges
+      var sortedEdges = edges.slice().sort(function(a, b) { return a - b; });
+      var minEdge = sortedEdges[0];
+      var maxEdge = sortedEdges[sortedEdges.length - 1];
+      // Estimate average element width from the content span
+      var contentSpan = maxEdge - minEdge;
+      var estWidth = contentSpan > 0 ? Math.min(contentSpan / 2, vw * 0.4) : vw * 0.3;
+
+      var leftCount = 0;
+      var rightCount = 0;
+      var midpoint = vw / 2;
+
+      edges.forEach(function(edge) {
+        // Use estimated center of element, not left edge
+        var center = edge + estWidth / 2;
+        if (center < midpoint) leftCount++;
+        else rightCount++;
+      });
+
+      var total = leftCount + rightCount;
+      var ratio = total > 0 ? Math.max(leftCount, rightCount) / Math.min(leftCount || 1, rightCount || 1) : 1;
+
+      if (ratio <= 2) {
+        passed++;
+      } else if (ratio <= 3) {
+        passed++; // Info findings don't reduce score
+        findings.push({
+          severity: 'info',
+          title: 'Content distribution is ' + Math.round(leftCount / total * 100) + '% left / ' + Math.round(rightCount / total * 100) + '% right',
+          detail: 'Moderate imbalance — may be intentional (sidebar layout) or indicate uneven content distribution',
+          fix: 'If using a sidebar layout, this is expected. Otherwise, distribute content more evenly or use a centered layout.',
+          presetRef: null,
+          source: 'Ngo et al. 2003 — Visual balance and aesthetic preference'
+        });
+      } else {
+        findings.push({
+          severity: 'info',
+          title: 'Content heavily weighted to one side (' + Math.round(leftCount / total * 100) + '% / ' + Math.round(rightCount / total * 100) + '%)',
+          detail: 'Strong left-right imbalance — often intentional in sidebar or marketing layouts',
+          fix: 'If using a sidebar or asymmetric layout, this is expected. Otherwise, distribute content more evenly.',
+          presetRef: null,
+          source: 'Ngo et al. 2003 — Visual balance and aesthetic preference'
+        });
+      }
+    }
+
+    // Content centering: is the primary content centered or justified?
+    if (edges.length >= 5) {
+      checks++;
+      var meanEdge = edges.reduce(function(s,v){return s+v},0) / edges.length;
+      var centered = Math.abs(meanEdge - vw * 0.1) < vw * 0.15; // within 15% of typical left margin
+      if (centered || meanEdge > 10) {
+        passed++;
+      } else {
+        findings.push({
+          severity: 'info',
+          title: 'Content appears flush to the left edge (mean position: ' + Math.round(meanEdge) + 'px)',
+          detail: 'Content without proper margins can feel unbalanced.',
+          fix: 'Add container padding or centering. In Tailwind: mx-auto px-4.',
+          source: 'Gestalt proximity — https://lawsofux.com/law-of-proximity/'
+        });
+      }
+    }
+
+    // Vertical rhythm: check if section gaps are present
+    var sectionGaps = (data.layout && data.layout.sectionGaps) || [];
+    if (sectionGaps.length >= 2) {
+      checks++;
+      var minGap = Math.min.apply(null, sectionGaps);
+      var maxGap = Math.max.apply(null, sectionGaps);
+      if (minGap >= 16 && maxGap / (minGap || 1) <= 3) {
+        passed++;
+      } else if (minGap < 4) {
+        findings.push({
+          severity: 'info',
+          title: 'Sections have very tight spacing (minimum gap: ' + minGap + 'px)',
+          detail: 'Sections need breathing room. Tight spacing makes content feel cramped.',
+          fix: 'Use consistent section spacing: 48-96px between major sections.',
+          source: 'Gestalt similarity — https://lawsofux.com/law-of-similarity/'
+        });
+      } else {
+        passed++;
+      }
+    }
+
+    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+    var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+    var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+    return { score: score, findings: findings, checks: checks, passed: passed, weight: 3, label: 'Visual Balance', icon: 'consistency' };
+  }
+
+  S.register("balance", scoreBalance, 3, "Visual Balance", "consistency");
+})();
+</file>
+
 <file path="docs/scoring/cognitive.js">
 // Scoring Module: Cognitive Load
 // Weight: 5%
@@ -22254,124 +22372,6 @@ function scoreAccessibility(data) {
 })();
 </file>
 
-<file path="docs/scoring/balance.js">
-// Scoring Module: Visual Weight Balance
-// Weight: 3%
-// Source: Ngo et al. 2003 — balance correlates with preference (r=0.67)
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-  function scoreBalance(data) {
-    var findings = [];
-    var checks = 0;
-    var passed = 0;
-
-    // We use alignment edges as a proxy for content distribution
-    var edges = (data.layout && data.layout.alignmentEdges) || [];
-    var vw = (data.meta && data.meta.viewportWidth) || 1280;
-
-    if (edges.length >= 10) {
-      checks++;
-
-      // Estimate content center points from left edges:
-      // For each left-edge, estimate center as edge + avgWidth/2
-      // where avgWidth is derived from the spread of edges
-      var sortedEdges = edges.slice().sort(function(a, b) { return a - b; });
-      var minEdge = sortedEdges[0];
-      var maxEdge = sortedEdges[sortedEdges.length - 1];
-      // Estimate average element width from the content span
-      var contentSpan = maxEdge - minEdge;
-      var estWidth = contentSpan > 0 ? Math.min(contentSpan / 2, vw * 0.4) : vw * 0.3;
-
-      var leftCount = 0;
-      var rightCount = 0;
-      var midpoint = vw / 2;
-
-      edges.forEach(function(edge) {
-        // Use estimated center of element, not left edge
-        var center = edge + estWidth / 2;
-        if (center < midpoint) leftCount++;
-        else rightCount++;
-      });
-
-      var total = leftCount + rightCount;
-      var ratio = total > 0 ? Math.max(leftCount, rightCount) / Math.min(leftCount || 1, rightCount || 1) : 1;
-
-      if (ratio <= 2) {
-        passed++;
-      } else if (ratio <= 3) {
-        passed++; // Info findings don't reduce score
-        findings.push({
-          severity: 'info',
-          title: 'Content distribution is ' + Math.round(leftCount / total * 100) + '% left / ' + Math.round(rightCount / total * 100) + '% right',
-          detail: 'Moderate imbalance — may be intentional (sidebar layout) or indicate uneven content distribution',
-          fix: 'If using a sidebar layout, this is expected. Otherwise, distribute content more evenly or use a centered layout.',
-          presetRef: null,
-          source: 'Ngo et al. 2003 — Visual balance and aesthetic preference'
-        });
-      } else {
-        findings.push({
-          severity: 'info',
-          title: 'Content heavily weighted to one side (' + Math.round(leftCount / total * 100) + '% / ' + Math.round(rightCount / total * 100) + '%)',
-          detail: 'Strong left-right imbalance — often intentional in sidebar or marketing layouts',
-          fix: 'If using a sidebar or asymmetric layout, this is expected. Otherwise, distribute content more evenly.',
-          presetRef: null,
-          source: 'Ngo et al. 2003 — Visual balance and aesthetic preference'
-        });
-      }
-    }
-
-    // Content centering: is the primary content centered or justified?
-    if (edges.length >= 5) {
-      checks++;
-      var meanEdge = edges.reduce(function(s,v){return s+v},0) / edges.length;
-      var centered = Math.abs(meanEdge - vw * 0.1) < vw * 0.15; // within 15% of typical left margin
-      if (centered || meanEdge > 10) {
-        passed++;
-      } else {
-        findings.push({
-          severity: 'info',
-          title: 'Content appears flush to the left edge (mean position: ' + Math.round(meanEdge) + 'px)',
-          detail: 'Content without proper margins can feel unbalanced.',
-          fix: 'Add container padding or centering. In Tailwind: mx-auto px-4.',
-          source: 'Gestalt proximity — https://lawsofux.com/law-of-proximity/'
-        });
-      }
-    }
-
-    // Vertical rhythm: check if section gaps are present
-    var sectionGaps = (data.layout && data.layout.sectionGaps) || [];
-    if (sectionGaps.length >= 2) {
-      checks++;
-      var minGap = Math.min.apply(null, sectionGaps);
-      var maxGap = Math.max.apply(null, sectionGaps);
-      if (minGap >= 16 && maxGap / (minGap || 1) <= 3) {
-        passed++;
-      } else if (minGap < 4) {
-        findings.push({
-          severity: 'info',
-          title: 'Sections have very tight spacing (minimum gap: ' + minGap + 'px)',
-          detail: 'Sections need breathing room. Tight spacing makes content feel cramped.',
-          fix: 'Use consistent section spacing: 48-96px between major sections.',
-          source: 'Gestalt similarity — https://lawsofux.com/law-of-similarity/'
-        });
-      } else {
-        passed++;
-      }
-    }
-
-    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-    var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-    var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-    return { score: score, findings: findings, checks: checks, passed: passed, weight: 3, label: 'Visual Balance', icon: 'consistency' };
-  }
-
-  S.register("balance", scoreBalance, 3, "Visual Balance", "consistency");
-})();
-</file>
-
 <file path="docs/scoring/consistency.js">
 // Scoring Module: Visual Consistency
 // Weight: 5%
@@ -33350,29 +33350,71 @@ window.MilgIframe = (function() {
                   'updatedData:updatedData' +
                 '},"*")' +
               '}' +
-              // Step 2: Text mask — black text on white background
-              // Simple and robust: all text black, everything else white.
-              // Force all elements visible (opacity:1) so hidden text appears in mask.
-              '_prog("Capturing text mask...");' +
-              'console.log("[iframe-ss] Step 2/2: Capturing text mask...");' +
+              // Step 2: Per-element text masks — for each contrast pair element,
+              // set ONLY that element to black text, capture just its bbox.
+              // Stores mask pixels directly in each pair's data (no full-page mask image).
+              '_prog("Building per-element text masks...");' +
+              'console.log("[iframe-ss] Step 2/2: Per-element masks...");' +
+              // Set global style: everything white+invisible, opacity forced to 1
               'var _maskStyle=document.createElement("style");' +
               '_maskStyle.setAttribute("data-milg-mask","1");' +
-              '_maskStyle.textContent="*,*::before,*::after{color:#000 !important;background-color:#fff !important;background-image:none !important;background:white !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;-webkit-text-fill-color:#000 !important;opacity:1 !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}";' +
+              '_maskStyle.textContent="*,*::before,*::after{color:#fff !important;background-color:#fff !important;background-image:none !important;background:white !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;-webkit-text-fill-color:#fff !important;opacity:1 !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}";' +
               'document.head.appendChild(_maskStyle);' +
               'void document.body.offsetHeight;' +
-              // Safety timeout: if mask takes >8s, send without it
+              // Collect pair elements from bbox refs
+              'var _refs=window.__milgBboxRefs||[];' +
+              'var _pairs=(window.__milgData&&window.__milgData.colors&&window.__milgData.colors.contrastPairs)||[];' +
+              'var _pairEls=[];' +
+              '_refs.forEach(function(ref){' +
+                'if(!ref.el||!ref.obj||ref.obj.ratio===undefined)return;' +
+                'var idx=_pairs.indexOf(ref.obj);' +
+                'if(idx>=0)_pairEls.push({el:ref.el,pair:ref.obj,idx:idx})' +
+              '});' +
+              'console.log("[iframe-ss] "+_pairEls.length+" elements to mask");' +
+              // Process each element: set to black, capture bbox, reset to white
+              'var _mi=0;' +
+              'function _nextMask(){' +
+                'if(_mi>=_pairEls.length){' +
+                  'console.log("[iframe-ss] All masks done");' +
+                  '_sendFinal(null)' + // no full-page mask — per-element masks stored in pairs
+                  ';return}' +
+                'var pe=_pairEls[_mi];_mi++;' +
+                // Set this element to black
+                'pe.el.style.setProperty("color","#000","important");' +
+                'pe.el.style.setProperty("-webkit-text-fill-color","#000","important");' +
+                // Capture just this element
+                'ms.domToCanvas(pe.el,{scale:_sc,timeout:3000}).then(function(elCanvas){' +
+                  // Read pixels and store mask as compact grid in the pair
+                  'var ew=elCanvas.width,eh=elCanvas.height;' +
+                  'if(ew>1&&eh>1){' +
+                    'var ctx=elCanvas.getContext("2d",{willReadFrequently:true});' +
+                    'var px=ctx.getImageData(0,0,ew,eh).data;' +
+                    // Store text pixel positions (where mask is dark) as flat array [x1,y1,x2,y2,...]
+                    // Sample every 2px for compact storage
+                    'var step=2,pts=[];' +
+                    'for(var y=0;y<eh;y+=step){for(var x=0;x<ew;x+=step){' +
+                      'var i=(y*ew+x)*4;' +
+                      'if((px[i]+px[i+1]+px[i+2])/3<80)pts.push(x,y)' +
+                    '}}' +
+                    'pe.pair._maskPts=pts;' +
+                    'pe.pair._maskW=ew;pe.pair._maskH=eh' +
+                  '}' +
+                  // Reset to white
+                  'pe.el.style.setProperty("color","#fff","important");' +
+                  'pe.el.style.setProperty("-webkit-text-fill-color","#fff","important");' +
+                  'setTimeout(_nextMask,0)' + // next element (async to avoid blocking)
+                '}).catch(function(){' +
+                  'pe.el.style.setProperty("color","#fff","important");' +
+                  'pe.el.style.setProperty("-webkit-text-fill-color","#fff","important");' +
+                  'setTimeout(_nextMask,0)' +
+                '})' +
+              '}' +
+              // Safety timeout
               'var _maskDone=false;' +
-              'var _maskTimer=setTimeout(function(){if(!_maskDone){_maskDone=true;console.warn("[iframe-ss] Mask timed out, sending without");_sendFinal(null)}},8000);' +
-              'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:7000}).then(function(mc){' +
-                'if(_maskDone)return;_maskDone=true;clearTimeout(_maskTimer);' +
-                'console.log("[iframe-ss] Mask: "+mc.width+"x"+mc.height);' +
-                'var maskUri;try{maskUri=mc.toDataURL("image/png")}catch(e){maskUri=""}' +
-                '_sendFinal(maskUri)' +
-              '}).catch(function(e){' +
-                'if(_maskDone)return;_maskDone=true;clearTimeout(_maskTimer);' +
-                'console.warn("[iframe-ss] Mask failed:",e);' +
-                '_sendFinal(null)' +
-              '})' +
+              'var _maskTimer=setTimeout(function(){if(!_maskDone){_maskDone=true;console.warn("[iframe-ss] Masks timed out");_sendFinal(null)}},15000);' +
+              'var _origSendFinal=_sendFinal;' +
+              '_sendFinal=function(m){if(_maskDone)return;_maskDone=true;clearTimeout(_maskTimer);_origSendFinal(m)};' +
+              '_nextMask()' +
             '}).catch(function(e){console.warn("[iframe-ss] capture failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")})' +
           '};' +
           's.onerror=function(){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")};' +
@@ -33661,7 +33703,7 @@ window.MilgIframe = (function() {
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v30</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v30.1</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -34234,17 +34276,27 @@ window.MilgContrastVerify = (function() {
         var r = imgData[idx], g = imgData[idx + 1], b = imgData[idx + 2];
         // Classify text vs background using mask + CSS fg color
         var isText = false;
-        if (maskData) {
-          // Black-on-white mask: dark = text position, light = background
+        // Per-element mask: pair._maskPts has text pixel positions from individual element capture
+        if (pair._maskPts && pair._maskW) {
+          // Map screenshot grid position to element-mask coordinates
+          // Mask coords: element-relative at screenshot scale
+          var mkX = ix; // ix is already relative to bbox left
+          var mkY = iy; // iy is already relative to bbox top
+          // Check if this position is near a mask text pixel (within 1 step)
+          var mStep = 2; // mask was sampled every 2px
+          var pts = pair._maskPts;
+          for (var mp = 0; mp < pts.length; mp += 2) {
+            var dx = mkX - pts[mp], dy = mkY - pts[mp + 1];
+            if (dx * dx + dy * dy <= mStep * mStep) { isText = true; break; }
+          }
+        } else if (maskData) {
+          // Full-page mask fallback (legacy)
           var mr = maskData[idx], mg = maskData[idx + 1], mb = maskData[idx + 2];
-          var maskBright = (mr + mg + mb) / 3;
-          if (maskBright < 80) {
-            // Mask says text here — verify it's THIS pair's text color (not another span's)
+          if ((mr + mg + mb) / 3 < 80) {
             var dr = r - cssFg.r, dg = g - cssFg.g, db = b - cssFg.b;
             isText = dr * dr + dg * dg + db * db < FG_OUTER_SQ;
           }
         } else {
-          // No mask — pure CSS distance fallback
           var dr2 = r - cssFg.r, dg2 = g - cssFg.g, db2 = b - cssFg.b;
           isText = dr2 * dr2 + dg2 * dg2 + db2 * db2 < FG_INNER_SQ;
         }

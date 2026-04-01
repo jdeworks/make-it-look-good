@@ -160,29 +160,71 @@ window.MilgIframe = (function() {
                   'updatedData:updatedData' +
                 '},"*")' +
               '}' +
-              // Step 2: Text mask — black text on white background
-              // Simple and robust: all text black, everything else white.
-              // Force all elements visible (opacity:1) so hidden text appears in mask.
-              '_prog("Capturing text mask...");' +
-              'console.log("[iframe-ss] Step 2/2: Capturing text mask...");' +
+              // Step 2: Per-element text masks — for each contrast pair element,
+              // set ONLY that element to black text, capture just its bbox.
+              // Stores mask pixels directly in each pair's data (no full-page mask image).
+              '_prog("Building per-element text masks...");' +
+              'console.log("[iframe-ss] Step 2/2: Per-element masks...");' +
+              // Set global style: everything white+invisible, opacity forced to 1
               'var _maskStyle=document.createElement("style");' +
               '_maskStyle.setAttribute("data-milg-mask","1");' +
-              '_maskStyle.textContent="*,*::before,*::after{color:#000 !important;background-color:#fff !important;background-image:none !important;background:white !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;-webkit-text-fill-color:#000 !important;opacity:1 !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}";' +
+              '_maskStyle.textContent="*,*::before,*::after{color:#fff !important;background-color:#fff !important;background-image:none !important;background:white !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;-webkit-text-fill-color:#fff !important;opacity:1 !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}";' +
               'document.head.appendChild(_maskStyle);' +
               'void document.body.offsetHeight;' +
-              // Safety timeout: if mask takes >8s, send without it
+              // Collect pair elements from bbox refs
+              'var _refs=window.__milgBboxRefs||[];' +
+              'var _pairs=(window.__milgData&&window.__milgData.colors&&window.__milgData.colors.contrastPairs)||[];' +
+              'var _pairEls=[];' +
+              '_refs.forEach(function(ref){' +
+                'if(!ref.el||!ref.obj||ref.obj.ratio===undefined)return;' +
+                'var idx=_pairs.indexOf(ref.obj);' +
+                'if(idx>=0)_pairEls.push({el:ref.el,pair:ref.obj,idx:idx})' +
+              '});' +
+              'console.log("[iframe-ss] "+_pairEls.length+" elements to mask");' +
+              // Process each element: set to black, capture bbox, reset to white
+              'var _mi=0;' +
+              'function _nextMask(){' +
+                'if(_mi>=_pairEls.length){' +
+                  'console.log("[iframe-ss] All masks done");' +
+                  '_sendFinal(null)' + // no full-page mask — per-element masks stored in pairs
+                  ';return}' +
+                'var pe=_pairEls[_mi];_mi++;' +
+                // Set this element to black
+                'pe.el.style.setProperty("color","#000","important");' +
+                'pe.el.style.setProperty("-webkit-text-fill-color","#000","important");' +
+                // Capture just this element
+                'ms.domToCanvas(pe.el,{scale:_sc,timeout:3000}).then(function(elCanvas){' +
+                  // Read pixels and store mask as compact grid in the pair
+                  'var ew=elCanvas.width,eh=elCanvas.height;' +
+                  'if(ew>1&&eh>1){' +
+                    'var ctx=elCanvas.getContext("2d",{willReadFrequently:true});' +
+                    'var px=ctx.getImageData(0,0,ew,eh).data;' +
+                    // Store text pixel positions (where mask is dark) as flat array [x1,y1,x2,y2,...]
+                    // Sample every 2px for compact storage
+                    'var step=2,pts=[];' +
+                    'for(var y=0;y<eh;y+=step){for(var x=0;x<ew;x+=step){' +
+                      'var i=(y*ew+x)*4;' +
+                      'if((px[i]+px[i+1]+px[i+2])/3<80)pts.push(x,y)' +
+                    '}}' +
+                    'pe.pair._maskPts=pts;' +
+                    'pe.pair._maskW=ew;pe.pair._maskH=eh' +
+                  '}' +
+                  // Reset to white
+                  'pe.el.style.setProperty("color","#fff","important");' +
+                  'pe.el.style.setProperty("-webkit-text-fill-color","#fff","important");' +
+                  'setTimeout(_nextMask,0)' + // next element (async to avoid blocking)
+                '}).catch(function(){' +
+                  'pe.el.style.setProperty("color","#fff","important");' +
+                  'pe.el.style.setProperty("-webkit-text-fill-color","#fff","important");' +
+                  'setTimeout(_nextMask,0)' +
+                '})' +
+              '}' +
+              // Safety timeout
               'var _maskDone=false;' +
-              'var _maskTimer=setTimeout(function(){if(!_maskDone){_maskDone=true;console.warn("[iframe-ss] Mask timed out, sending without");_sendFinal(null)}},8000);' +
-              'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:7000}).then(function(mc){' +
-                'if(_maskDone)return;_maskDone=true;clearTimeout(_maskTimer);' +
-                'console.log("[iframe-ss] Mask: "+mc.width+"x"+mc.height);' +
-                'var maskUri;try{maskUri=mc.toDataURL("image/png")}catch(e){maskUri=""}' +
-                '_sendFinal(maskUri)' +
-              '}).catch(function(e){' +
-                'if(_maskDone)return;_maskDone=true;clearTimeout(_maskTimer);' +
-                'console.warn("[iframe-ss] Mask failed:",e);' +
-                '_sendFinal(null)' +
-              '})' +
+              'var _maskTimer=setTimeout(function(){if(!_maskDone){_maskDone=true;console.warn("[iframe-ss] Masks timed out");_sendFinal(null)}},15000);' +
+              'var _origSendFinal=_sendFinal;' +
+              '_sendFinal=function(m){if(_maskDone)return;_maskDone=true;clearTimeout(_maskTimer);_origSendFinal(m)};' +
+              '_nextMask()' +
             '}).catch(function(e){console.warn("[iframe-ss] capture failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")})' +
           '};' +
           's.onerror=function(){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")};' +
