@@ -10,18 +10,75 @@ window.MilgContrastVerify = (function() {
   var _maskCanvas = document.createElement('canvas');
   var _maskCtx = _maskCanvas.getContext('2d', { willReadFrequently: true });
 
-  // --- Density presets ---
-  // Each defines max grid dimensions for FG [hMax, vMax] and BG [hMax, vMax]
-  // Actual count scales with box size (1 sample per 3px), clamped to these maxima
+  // --- Density presets (for grid fallback) ---
   var DENSITY = {
-    fast:     { fgH: 10, fgV: 3,  bgH: 12, bgV: 8  },  // ~109 samples/pair avg, ~22ms total
-    common:   { fgH: 40, fgV: 10, bgH: 50, bgV: 40 },  // ~1269 samples/pair avg, ~250ms total
-    accurate: { fgH: 80, fgV: 20, bgH: 100, bgV: 80 }   // ~3291 samples/pair avg, ~658ms total
+    fast:     { fgH: 10, fgV: 3,  bgH: 12, bgV: 8  },
+    common:   { fgH: 40, fgV: 10, bgH: 50, bgV: 40 },
+    accurate: { fgH: 80, fgV: 20, bgH: 100, bgV: 80 }
   };
   var _density = DENSITY.common;
+  function setDensity(name) { _density = DENSITY[name] || DENSITY.common; }
 
-  function setDensity(name) {
-    _density = DENSITY[name] || DENSITY.common;
+  // --- Edge detection method ---
+  var _edgeMethod = 'sobel'; // 'sobel' = edge-based (fast), 'grid' = full grid (legacy)
+  function setEdgeMethod(name) { _edgeMethod = (name === 'grid') ? 'grid' : 'sobel'; }
+
+  // --- Sobel edge detection on binary mask ---
+  // Input: flat array of 0/1 values, width w, height h
+  // Returns: Uint8Array(w*h) with 0=OUTSIDE, 1=EDGE, 2=INSIDE
+  function sobelCategorize(mask, w, h) {
+    var cat = new Uint8Array(w * h);
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        var i = y * w + x;
+        if (y === 0 || y === h - 1 || x === 0 || x === w - 1) {
+          cat[i] = mask[i] ? 2 : 0; // borders: just inside/outside
+          continue;
+        }
+        if (!mask[i]) { cat[i] = 0; continue; } // outside mask
+        // Sobel: check if any 8-neighbor is outside mask (=boundary)
+        var isEdge = false;
+        for (var dy = -1; dy <= 1 && !isEdge; dy++) {
+          for (var dx = -1; dx <= 1 && !isEdge; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            if (!mask[(y + dy) * w + (x + dx)]) isEdge = true;
+          }
+        }
+        cat[i] = isEdge ? 1 : 2; // 1=edge, 2=inside
+      }
+    }
+    return cat;
+  }
+
+  // BFS distance from all EDGE pixels, capped at maxDist
+  function bfsEdgeDist(cat, w, h, maxDist) {
+    var dist = new Uint8Array(w * h);
+    var queue = [];
+    for (var i = 0; i < cat.length; i++) {
+      if (cat[i] === 1) { dist[i] = 0; queue.push(i); }
+      else dist[i] = 255; // unvisited
+    }
+    var head = 0;
+    while (head < queue.length) {
+      var ci = queue[head++];
+      var cd = dist[ci];
+      if (cd >= maxDist) continue;
+      var cx = ci % w, cy = (ci - cx) / w;
+      for (var dy = -1; dy <= 1; dy++) {
+        var ny = cy + dy;
+        if (ny < 0 || ny >= h) continue;
+        for (var dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          var nx = cx + dx;
+          if (nx < 0 || nx >= w) continue;
+          var ni = ny * w + nx;
+          if (dist[ni] <= cd + 1) continue; // already visited at same or shorter dist
+          dist[ni] = cd + 1;
+          queue.push(ni);
+        }
+      }
+    }
+    return dist;
   }
 
   // --- Color math (same as scoring/contrast.js) ---
@@ -102,11 +159,227 @@ window.MilgContrastVerify = (function() {
 
   // --- Verification logic ---
 
-  // --- Multi-point sampling strategy ---
-  // Photos, gradients, and dashed patterns need many sample points.
-  // FG: horizontal sweep across text baseline band, take darkest (most likely text)
-  // BG: grid across bbox excluding text band, find worst-case contrast
+  // Dispatcher: use edge-based when mask bitmap available, else fall back to grid
   function verifyPair(pair, sectionCanvases, meta, maskCanvas) {
+    if (_edgeMethod === 'sobel' && pair._maskBmp && pair._maskW && pair._maskDark > 0) {
+      return verifyPairEdge(pair, sectionCanvases, meta, maskCanvas);
+    }
+    return verifyPairGrid(pair, sectionCanvases, meta, maskCanvas);
+  }
+
+  // --- Shared preamble: map bbox to canvas, read pixels ---
+  function prepareContext(pair, sectionCanvases, meta) {
+    if (!pair.bbox || !meta) return null;
+    var scale = meta.scale;
+    var sectionH = Math.round(meta.viewportHeight * scale);
+    var canvasX = pair.bbox.left * scale, canvasY = pair.bbox.top * scale;
+    var canvasW = pair.bbox.width * scale, canvasH = pair.bbox.height * scale;
+    if (canvasW < 4 || canvasH < 4) return null;
+    var sectionIdx, yInSection;
+    if (sectionCanvases.length === 1) { sectionIdx = 0; yInSection = canvasY; }
+    else { sectionIdx = Math.floor(canvasY / sectionH); yInSection = canvasY - (sectionIdx * sectionH); }
+    if (sectionIdx >= sectionCanvases.length || !sectionCanvases[sectionIdx]) return null;
+    var sec = sectionCanvases[sectionIdx];
+    if (yInSection + canvasH > sec.height) canvasH = sec.height - yInSection;
+    if (canvasX + canvasW > sec.width) canvasW = sec.width - canvasX;
+    var bx = Math.max(0, Math.round(canvasX));
+    var by = Math.max(0, Math.round(yInSection));
+    var bw = Math.min(Math.round(canvasW), sec.width - bx);
+    var bh = Math.min(Math.round(canvasH), sec.height - by);
+    if (bw < 4 || bh < 4) return null;
+    var cssFg = parseRgb(pair.fg);
+    if (!cssFg) return null;
+    var cssBg = parseRgb(pair.bg);
+    var opacity = pair.effectiveOpacity !== undefined ? pair.effectiveOpacity : 1;
+    var expectedFg = cssFg;
+    if (opacity < 0.95 && cssBg) {
+      expectedFg = {
+        r: Math.round(cssFg.r * opacity + cssBg.r * (1 - opacity)),
+        g: Math.round(cssFg.g * opacity + cssBg.g * (1 - opacity)),
+        b: Math.round(cssFg.b * opacity + cssBg.b * (1 - opacity))
+      };
+    }
+    return { sec: sec, bx: bx, by: by, bw: bw, bh: bh, cssFg: cssFg, cssBg: cssBg,
+             expectedFg: expectedFg, opacity: opacity, sectionIdx: sectionIdx, scale: scale };
+  }
+
+  // --- Build result object (shared shape) ---
+  function buildResult(pair, ctx, fgPoints, fgColors, bgPoints, bgColors, allPairRatios, worstRatio, bestRatio, worstBg, worstBgPt) {
+    var fgColor = { r: 0, g: 0, b: 0 };
+    fgColors.forEach(function(c) { fgColor.r += c.r; fgColor.g += c.g; fgColor.b += c.b; });
+    if (fgColors.length > 0) {
+      fgColor.r = Math.round(fgColor.r / fgColors.length);
+      fgColor.g = Math.round(fgColor.g / fgColors.length);
+      fgColor.b = Math.round(fgColor.b / fgColors.length);
+    }
+    var avgBg = { r: 0, g: 0, b: 0 };
+    bgColors.forEach(function(c) { avgBg.r += c.r; avgBg.g += c.g; avgBg.b += c.b; });
+    if (bgColors.length > 0) {
+      avgBg.r = Math.round(avgBg.r / bgColors.length); avgBg.g = Math.round(avgBg.g / bgColors.length); avgBg.b = Math.round(avgBg.b / bgColors.length);
+    }
+    var avgRatio = contrastRatio(fgColor, avgBg);
+    allPairRatios.sort(function(a, b) { return a - b; });
+    var p10Idx = Math.floor(allPairRatios.length * 0.1);
+    var p10Ratio = allPairRatios.length > 0 ? Math.round(allPairRatios[Math.min(p10Idx, allPairRatios.length - 1)] * 100) / 100 : 0;
+    var medianRatio = allPairRatios.length > 0 ? Math.round(allPairRatios[Math.floor(allPairRatios.length / 2)] * 100) / 100 : 0;
+    var cssNeeded = pair.needed || 4.5;
+    var cssPasses = pair.ratio >= cssNeeded;
+    var pixelPasses = p10Ratio >= cssNeeded;
+    var ratioDiff = Math.abs(p10Ratio - pair.ratio);
+    var bgVariance = bestRatio - worstRatio;
+    return {
+      cssRatio: pair.ratio, neededRatio: cssNeeded,
+      pixelRatio: worstRatio, pixelRatioAvg: avgRatio, pixelRatioBest: bestRatio,
+      bgVariance: Math.round(bgVariance * 100) / 100,
+      isVariableBg: bgVariance > 2.0, ratioDiff: ratioDiff,
+      cssPasses: cssPasses, pixelPasses: pixelPasses,
+      crossesBoundary: cssPasses !== pixelPasses,
+      significant: (cssPasses !== pixelPasses) || ratioDiff > 1.5 || bgVariance > 2.0,
+      pixelFg: rgbStr(fgColor), expectedFg: rgbStr(ctx.expectedFg), effectiveOpacity: ctx.opacity,
+      pixelRatioP10: p10Ratio, pixelRatioMedian: medianRatio,
+      pixelBgWorst: worstBg ? rgbStr(worstBg) : '', pixelBgAvg: rgbStr(avgBg),
+      cssFg: pair.fg, cssBg: pair.bg, selector: pair.selector, text: pair.text,
+      bbox: pair.bbox, maskLayer: pair._maskLayer || 0, sectionIdx: ctx.sectionIdx,
+      sampleCount: { fg: fgPoints.length, bg: bgPoints.length },
+      samplePoints: {
+        fg: fgPoints.map(function(p, i) { return { x: p.x, y: p.y, r: fgColors[i].r, g: fgColors[i].g, b: fgColors[i].b }; }),
+        bg: bgPoints.map(function(p, i) {
+          var ratio = contrastRatio(fgColor, bgColors[i]);
+          return { x: p.x, y: p.y, r: bgColors[i].r, g: bgColors[i].g, b: bgColors[i].b, ratio: Math.round(ratio * 100) / 100 };
+        })
+      },
+      avgFg: fgColor, worstPoint: worstBgPt || null
+    };
+  }
+
+  // --- Edge-based verification (fast, precise) ---
+  function verifyPairEdge(pair, sectionCanvases, meta, maskCanvas) {
+    var ctx = prepareContext(pair, sectionCanvases, meta);
+    if (!ctx) return null;
+    var bx = ctx.bx, by = ctx.by, bw = ctx.bw, bh = ctx.bh;
+    var imgData = ctx.sec.ctx.getImageData(bx, by, bw, bh).data;
+
+    // Get mask bitmap (should match bw x bh)
+    var mBmp = pair._maskBmp, mW = pair._maskW, mH = pair._maskH;
+    var w = Math.min(mW, bw), h = Math.min(mH, bh);
+    if (w < 4 || h < 4) return null;
+
+    // Step 1: Sobel edge categorization
+    var cat = sobelCategorize(mBmp, mW, mH);
+
+    // Step 2: BFS distance from edge pixels (cap at 5)
+    var edgeDist = bfsEdgeDist(cat, mW, mH, 5);
+
+    // Step 3: Collect FG samples (INSIDE, distance 1-2 from edge)
+    // and BG samples (OUTSIDE, distance 2-4 from edge)
+    var fgPoints = [], fgColors = [];
+    var bgPoints = [], bgColors = [];
+    var BG_MIN_DIST = 2, BG_MAX_DIST = 4;
+    var FG_MAX_DIST = 2;
+
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        var mi = y * mW + x;
+        var d = edgeDist[mi];
+        var c = cat[mi];
+        var pi = (y * bw + x) * 4;
+        if (pi + 2 >= imgData.length) continue;
+
+        if (c === 2 && d > 0 && d <= FG_MAX_DIST) {
+          // INSIDE pixel near edge = FG sample
+          fgPoints.push({ x: bx + x, y: by + y });
+          fgColors.push({ r: imgData[pi], g: imgData[pi + 1], b: imgData[pi + 2] });
+        } else if (c === 0 && d > BG_MIN_DIST && d <= BG_MAX_DIST) {
+          // OUTSIDE pixel in the right distance band = BG sample
+          bgPoints.push({ x: bx + x, y: by + y });
+          bgColors.push({ r: imgData[pi], g: imgData[pi + 1], b: imgData[pi + 2] });
+        } else if (c === 1) {
+          // EDGE pixel itself — also a valid FG sample (right at the boundary)
+          fgPoints.push({ x: bx + x, y: by + y });
+          fgColors.push({ r: imgData[pi], g: imgData[pi + 1], b: imgData[pi + 2] });
+        }
+      }
+    }
+
+    // If no BG samples with strict distance, relax to dist > 1
+    if (bgPoints.length === 0) {
+      for (var y2 = 0; y2 < h; y2++) {
+        for (var x2 = 0; x2 < w; x2++) {
+          var mi2 = y2 * mW + x2;
+          if (cat[mi2] === 0 && edgeDist[mi2] > 1 && edgeDist[mi2] <= 5) {
+            var pi2 = (y2 * bw + x2) * 4;
+            if (pi2 + 2 >= imgData.length) continue;
+            bgPoints.push({ x: bx + x2, y: by + y2 });
+            bgColors.push({ r: imgData[pi2], g: imgData[pi2 + 1], b: imgData[pi2 + 2] });
+          }
+        }
+      }
+    }
+
+    // Subsample if too many points (keep it fast)
+    if (fgPoints.length > 300) {
+      var step = Math.ceil(fgPoints.length / 300);
+      var nfp = [], nfc = [];
+      for (var si = 0; si < fgPoints.length; si += step) { nfp.push(fgPoints[si]); nfc.push(fgColors[si]); }
+      fgPoints = nfp; fgColors = nfc;
+    }
+    if (bgPoints.length > 300) {
+      var bstep = Math.ceil(bgPoints.length / 300);
+      var nbp = [], nbc = [];
+      for (var sj = 0; sj < bgPoints.length; sj += bstep) { nbp.push(bgPoints[sj]); nbc.push(bgColors[sj]); }
+      bgPoints = nbp; bgColors = nbc;
+    }
+
+    if (fgPoints.length === 0 || bgPoints.length === 0) {
+      if (fgPoints.length === 0 && pair.text) console.log('[verify-edge] No FG for "' + pair.text.substring(0, 25) + '" mask:' + mW + 'x' + mH + ' dark:' + pair._maskDark);
+      return null;
+    }
+
+    // Step 4: Pair each FG with nearest BG, average BG cluster within 4px
+    var allPairRatios = [];
+    var worstRatio = 99, bestRatio = 0, worstBg = null, worstBgPt = null;
+    var usedBg = new Set();
+
+    fgPoints.forEach(function(fp, fi) {
+      // Find nearest BG point
+      var nearDist = Infinity, nearIdx = -1;
+      for (var bi = 0; bi < bgPoints.length; bi++) {
+        var dx = fp.x - bgPoints[bi].x, dy = fp.y - bgPoints[bi].y;
+        var d = dx * dx + dy * dy;
+        if (d < nearDist) { nearDist = d; nearIdx = bi; }
+      }
+      if (nearIdx < 0) return;
+
+      // Average BG colors in a 4px cluster around the nearest BG point
+      var nbp = bgPoints[nearIdx];
+      var sumR = 0, sumG = 0, sumB = 0, cnt = 0;
+      for (var ci = 0; ci < bgPoints.length; ci++) {
+        var cdx = nbp.x - bgPoints[ci].x, cdy = nbp.y - bgPoints[ci].y;
+        if (cdx * cdx + cdy * cdy <= 16) { // 4px radius
+          sumR += bgColors[ci].r; sumG += bgColors[ci].g; sumB += bgColors[ci].b; cnt++;
+          usedBg.add(ci);
+        }
+      }
+      var avgBgC = cnt > 0 ? { r: Math.round(sumR / cnt), g: Math.round(sumG / cnt), b: Math.round(sumB / cnt) } : bgColors[nearIdx];
+
+      var ratio = contrastRatio(fgColors[fi], avgBgC);
+      allPairRatios.push(ratio);
+      if (ratio < worstRatio) { worstRatio = ratio; worstBg = avgBgC; worstBgPt = bgPoints[nearIdx]; }
+      if (ratio > bestRatio) bestRatio = ratio;
+    });
+
+    if (allPairRatios.length === 0) return null;
+
+    // Collect unique used BG points for visualization
+    var finalBgPoints = [], finalBgColors = [];
+    usedBg.forEach(function(bi) { finalBgPoints.push(bgPoints[bi]); finalBgColors.push(bgColors[bi]); });
+
+    return buildResult(pair, ctx, fgPoints, fgColors, finalBgPoints, finalBgColors,
+      allPairRatios, worstRatio, bestRatio, worstBg, worstBgPt);
+  }
+
+  // --- Grid-based verification (legacy fallback) ---
+  function verifyPairGrid(pair, sectionCanvases, meta, maskCanvas) {
     if (!pair.bbox || !meta) return null;
 
     var scale = meta.scale;
@@ -669,6 +942,7 @@ window.MilgContrastVerify = (function() {
   return {
     verify: verify,
     setDensity: setDensity,
+    setEdgeMethod: setEdgeMethod,
     formatResult: formatResult,
     buildSummary: buildSummary,
     renderSummaryHtml: renderSummaryHtml,

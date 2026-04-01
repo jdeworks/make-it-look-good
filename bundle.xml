@@ -7131,291 +7131,6 @@ run();
 </html>
 </file>
 
-<file path="docs/tests/test-reduce-dom.js">
-#!/usr/bin/env node
-// Deterministic DOM reduction: capture exact rendered state, confirm reproduction, binary-search reduce.
-var http = require('http'), fs = require('fs'), path = require('path'), puppeteer = require('puppeteer');
-var PORT = 8840, SCALE = 0.75;
-
-var harness = `<!DOCTYPE html><html><head><meta charset="UTF-8">
-<script src="https://cdn.jsdelivr.net/npm/modern-screenshot@4.6.8/dist/index.js"></script>
-</head><body><script>
-var MS = window.modernScreenshot, SC = ${SCALE};
-
-// Serialize entire DOM with computed styles inlined
-window.serializeDOM = function(html) {
-  return new Promise(function(resolve) {
-    var iframe = document.createElement("iframe");
-    iframe.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;";
-    iframe.sandbox = "allow-scripts allow-same-origin";
-    document.body.appendChild(iframe);
-    iframe.srcdoc = html;
-    iframe.onload = function() { setTimeout(function() {
-      var doc = iframe.contentDocument;
-      // Walk entire DOM, inline ALL computed styles on every element
-      var count = 0;
-      doc.querySelectorAll("*").forEach(function(el) {
-        if (el.tagName === "SCRIPT" || el.tagName === "STYLE" || el.tagName === "LINK") return;
-        var cs = getComputedStyle(el);
-        var important = [];
-        for (var i = 0; i < cs.length; i++) {
-          var prop = cs[i];
-          var val = cs.getPropertyValue(prop);
-          if (val && val !== "initial" && val !== "normal" && val !== "none" && val !== "auto" && val !== "0px" && val !== "0s") {
-            important.push(prop + ":" + val);
-          }
-        }
-        el.setAttribute("style", important.join(";"));
-        el.removeAttribute("class");
-        count++;
-      });
-      // Remove all style/link/script tags
-      doc.querySelectorAll("style,link,script,noscript").forEach(function(s) { s.remove(); });
-      // Get serialized HTML
-      var serialized = "<!DOCTYPE html>" + doc.documentElement.outerHTML;
-      iframe.parentNode.removeChild(iframe);
-      resolve({ html: serialized, elements: count });
-    }, 2000); };
-  });
-};
-
-// Test mask on HTML, return list of failing element texts
-window.testMask = function(html) {
-  return new Promise(function(resolve) {
-    var iframe = document.createElement("iframe");
-    iframe.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;";
-    iframe.sandbox = "allow-scripts allow-same-origin";
-    document.body.appendChild(iframe);
-    iframe.srcdoc = html;
-    iframe.onload = function() { setTimeout(function() {
-      try {
-        var doc = iframe.contentDocument;
-        var walker = doc.createTreeWalker(doc.body, 4, null, false);
-        var node, els = [], seen = new Set();
-        while (node = walker.nextNode()) {
-          if (!node.textContent.trim()) continue;
-          var el = node.parentElement;
-          if (!el || el.tagName === "SCRIPT" || el.tagName === "STYLE" || el.tagName === "NOSCRIPT") continue;
-          if (seen.has(el)) continue; seen.add(el);
-          var r = el.getBoundingClientRect();
-          if (r.width < 3 || r.height < 3) continue;
-          els.push({ el: el, text: el.textContent.substring(0, 35).trim(),
-            bbox: { left: r.left, top: r.top, width: r.width, height: r.height } });
-        }
-        var ms = doc.createElement("style");
-        ms.textContent = "*,*::before,*::after{color:#fff !important;background-color:#fff !important;background-image:none !important;background:white !important;-webkit-text-fill-color:#fff !important;opacity:1 !important;transition:none !important;animation:none !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}";
-        doc.head.appendChild(ms);
-        els.forEach(function(te) {
-          te.el.style.setProperty("color", "#000", "important");
-          te.el.style.setProperty("-webkit-text-fill-color", "#000", "important");
-          te.el.querySelectorAll("*").forEach(function(ch) {
-            ch.style.setProperty("color", "#000", "important");
-            ch.style.setProperty("-webkit-text-fill-color", "#000", "important");
-          });
-        });
-        doc.body.offsetHeight;
-        setTimeout(function() {
-          MS.domToCanvas(doc.documentElement, { scale: SC, timeout: 20000 }).then(function(c) {
-            var ctx = c.getContext("2d", { willReadFrequently: true });
-            var fails = [], passes = 0;
-            els.forEach(function(te) {
-              var bx = Math.max(0, Math.round(te.bbox.left * SC));
-              var by = Math.max(0, Math.round(te.bbox.top * SC));
-              var bw = Math.min(Math.round(te.bbox.width * SC), c.width - bx);
-              var bh = Math.min(Math.round(te.bbox.height * SC), c.height - by);
-              if (bw < 2 || bh < 2) return;
-              var px = ctx.getImageData(bx, by, bw, bh).data;
-              var dk = 0;
-              for (var i = 0; i < px.length; i += 4) { if ((px[i]+px[i+1]+px[i+2])/3 < 240) dk++; }
-              if (dk === 0) fails.push(te.text);
-              else passes++;
-            });
-            iframe.parentNode.removeChild(iframe);
-            resolve({ fails: fails, passes: passes, total: els.length });
-          }).catch(function(e) { resolve({ error: "canvas: " + e.message }); });
-        }, 300);
-      } catch(e) { resolve({ error: e.message }); }
-    }, 1500); };
-  });
-};
-</script></body></html>`;
-
-var server = http.createServer(function(req, res) {
-  res.writeHead(200, { 'Content-Type': 'text/html' });
-  res.end(harness);
-});
-server.listen(PORT);
-
-async function run() {
-  console.log('\n\x1b[1m=== Deterministic DOM Reduction ===\x1b[0m\n');
-  var browser = await puppeteer.launch({ headless: 'new', args: ['--no-sandbox', '--disable-web-security'] });
-  var page = await browser.newPage();
-  await page.goto('http://localhost:' + PORT + '/', { waitUntil: 'networkidle2', timeout: 30000 });
-  await page.waitForFunction('window.serializeDOM && window.testMask', { timeout: 15000 });
-
-  // Step 1: Fetch real page
-  console.log('Step 1: Fetching tokenmade.ai...');
-  var srcHtml = await page.evaluate(async function() {
-    var p = ['https://api.allorigins.win/raw?url=', 'https://api.codetabs.com/v1/proxy?quest=', 'https://corsproxy.io/?'];
-    for (var i = 0; i < p.length; i++) {
-      try { var r = await fetch(p[i] + encodeURIComponent('https://www.tokenmade.ai/')); if (r.ok) { var t = await r.text(); if (t.length > 100) return t; } } catch(e) {}
-    }
-    return null;
-  });
-  if (!srcHtml) { console.log('Fetch failed'); process.exit(1); }
-  console.log('  Source: ' + srcHtml.length + ' chars');
-
-  // Step 2: Serialize DOM with computed styles inlined
-  console.log('\nStep 2: Serializing rendered DOM with computed styles...');
-  var serialized = await page.evaluate(function(h) { return window.serializeDOM(h); }, srcHtml);
-  console.log('  Serialized: ' + serialized.html.length + ' chars, ' + serialized.elements + ' elements');
-  fs.writeFileSync('/tmp/serialized-full.html', serialized.html);
-
-  // Step 3: Confirm reproduction with serialized HTML
-  console.log('\nStep 3: Confirming reproduction...');
-  var baseline = await page.evaluate(function(h) { return window.testMask(h); }, serialized.html);
-  if (baseline.error) { console.log('  Error: ' + baseline.error); process.exit(1); }
-  console.log('  Source HTML: ' + baseline.fails.length + '/' + baseline.total + ' fail');
-  if (baseline.fails.length === 0) {
-    console.log('  \x1b[33mSerialized DOM does not reproduce! Trying source HTML directly...\x1b[0m');
-    baseline = await page.evaluate(function(h) { return window.testMask(h); }, srcHtml);
-    console.log('  Source HTML direct: ' + baseline.fails.length + '/' + baseline.total + ' fail');
-    if (baseline.fails.length === 0) {
-      console.log('  \x1b[31mCannot reproduce. Exiting.\x1b[0m');
-      await browser.close(); server.close(); return;
-    }
-    // Use source HTML for reduction
-    serialized.html = srcHtml;
-  }
-
-  var failTexts = baseline.fails;
-  console.log('  Failing: ' + failTexts.slice(0, 5).join(', ') + (failTexts.length > 5 ? '...' : ''));
-  var targetFail = failTexts[0]; // Track this specific element
-  console.log('  Tracking: "' + targetFail + '"');
-
-  // Step 4: Binary reduction — remove top-level body children
-  console.log('\nStep 4: Reducing top-level children...');
-  var workingHtml = serialized.html;
-
-  // Parse and get body children
-  var bodyChildren = await page.evaluate(function(html) {
-    var doc = new DOMParser().parseFromString(html, 'text/html');
-    var head = doc.head ? doc.head.innerHTML : '';
-    var children = [];
-    if (doc.body) {
-      for (var i = 0; i < doc.body.children.length; i++) {
-        children.push({ idx: i, tag: doc.body.children[i].tagName, len: doc.body.children[i].outerHTML.length,
-          text: doc.body.children[i].textContent.substring(0, 30).trim() });
-      }
-    }
-    return { head: head, childCount: children.length, children: children };
-  }, workingHtml);
-
-  console.log('  Body has ' + bodyChildren.childCount + ' children');
-
-  // Try removing each child one at a time; keep those whose removal fixes the bug
-  var removable = [];
-  for (var ci = bodyChildren.childCount - 1; ci >= 0; ci--) {
-    var testHtml = await page.evaluate(function(html, skipIdx) {
-      var doc = new DOMParser().parseFromString(html, 'text/html');
-      if (doc.body.children[skipIdx]) doc.body.children[skipIdx].remove();
-      return '<!DOCTYPE html>' + doc.documentElement.outerHTML;
-    }, workingHtml, ci);
-
-    var r = await page.evaluate(function(h) { return window.testMask(h); }, testHtml);
-    var stillFails = r.fails && r.fails.some(function(f) { return f.indexOf(targetFail.substring(0, 15)) !== -1; });
-
-    if (!stillFails) {
-      removable.push(ci);
-      console.log('  [' + ci + '] ' + bodyChildren.children[ci].tag + ' "' + bodyChildren.children[ci].text.substring(0, 20) + '" — \x1b[33mNEEDED (removal fixes bug)\x1b[0m');
-    } else {
-      // Can safely remove this child — bug persists without it
-      workingHtml = testHtml;
-      console.log('  [' + ci + '] ' + bodyChildren.children[ci].tag + ' "' + bodyChildren.children[ci].text.substring(0, 20) + '" — \x1b[32mremoved (bug persists)\x1b[0m');
-    }
-  }
-
-  // Verify reduced HTML still fails
-  var reduced1 = await page.evaluate(function(h) { return window.testMask(h); }, workingHtml);
-  console.log('\n  After top-level reduction: ' + reduced1.fails.length + ' fails, ' + workingHtml.length + ' chars');
-  fs.writeFileSync('/tmp/reduced-toplevel.html', workingHtml);
-
-  // Step 5: Deep reduction — for each remaining top-level child, try removing ITS children
-  console.log('\nStep 5: Deep reducing remaining children...');
-  for (var depth = 0; depth < 3; depth++) {
-    var changed = false;
-    var deepChildren = await page.evaluate(function(html) {
-      var doc = new DOMParser().parseFromString(html, 'text/html');
-      var paths = [];
-      function walk(el, path) {
-        for (var i = el.children.length - 1; i >= 0; i--) {
-          var child = el.children[i];
-          if (child.tagName === 'SCRIPT' || child.tagName === 'STYLE') continue;
-          var p = path + '>' + i;
-          paths.push({ path: p, tag: child.tagName, len: child.outerHTML.length, text: child.textContent.substring(0, 20).trim() });
-          if (child.children.length > 0) walk(child, p);
-        }
-      }
-      walk(doc.body, 'body');
-      // Sort by size descending (remove biggest first)
-      paths.sort(function(a, b) { return b.len - a.len; });
-      return paths;
-    }, workingHtml);
-
-    console.log('  Depth ' + depth + ': ' + deepChildren.length + ' removable nodes');
-    var removedCount = 0;
-
-    for (var di = 0; di < deepChildren.length; di++) {
-      var dc = deepChildren[di];
-      if (dc.len < 50) continue; // skip tiny nodes
-
-      var testHtml = await page.evaluate(function(html, pathStr) {
-        var doc = new DOMParser().parseFromString(html, 'text/html');
-        var parts = pathStr.split('>');
-        var el = doc.body;
-        for (var i = 1; i < parts.length; i++) {
-          var idx = parseInt(parts[i]);
-          if (!el || !el.children[idx]) return null;
-          el = el.children[idx];
-        }
-        if (el) el.remove();
-        return '<!DOCTYPE html>' + doc.documentElement.outerHTML;
-      }, workingHtml, dc.path);
-
-      if (!testHtml) continue;
-
-      var r = await page.evaluate(function(h) { return window.testMask(h); }, testHtml);
-      if (r.error) continue;
-      var stillFails = r.fails && r.fails.some(function(f) { return f.indexOf(targetFail.substring(0, 15)) !== -1; });
-
-      if (stillFails) {
-        workingHtml = testHtml;
-        removedCount++;
-        changed = true;
-      }
-    }
-    console.log('  Removed ' + removedCount + ' nodes, now ' + workingHtml.length + ' chars');
-    if (!changed) break;
-  }
-
-  // Final verification
-  var finalResult = await page.evaluate(function(h) { return window.testMask(h); }, workingHtml);
-  console.log('\n\x1b[1m=== Final Result ===\x1b[0m');
-  console.log('Reduced from ' + serialized.html.length + ' → ' + workingHtml.length + ' chars');
-  console.log('Fails: ' + finalResult.fails.length + '/' + finalResult.total);
-  console.log('Failing: ' + finalResult.fails.join(', '));
-
-  fs.writeFileSync('/tmp/reduced-final.html', workingHtml);
-  console.log('\nSaved to /tmp/reduced-final.html');
-  console.log('Size: ' + workingHtml.length + ' chars');
-
-  await browser.close();
-  server.close();
-}
-
-run().catch(function(e) { console.error(e); process.exit(1); });
-</file>
-
 <file path="docs/tests/test-scoring.html">
 <!DOCTYPE html>
 <html lang="en">
@@ -27133,6 +26848,291 @@ async function run() {
 run().catch(function(e) { console.error(e); process.exit(1); });
 </file>
 
+<file path="docs/tests/test-reduce-dom.js">
+#!/usr/bin/env node
+// Deterministic DOM reduction: capture exact rendered state, confirm reproduction, binary-search reduce.
+var http = require('http'), fs = require('fs'), path = require('path'), puppeteer = require('puppeteer');
+var PORT = 8840, SCALE = 0.75;
+
+var harness = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<script src="https://cdn.jsdelivr.net/npm/modern-screenshot@4.6.8/dist/index.js"></script>
+</head><body><script>
+var MS = window.modernScreenshot, SC = ${SCALE};
+
+// Serialize entire DOM with computed styles inlined
+window.serializeDOM = function(html) {
+  return new Promise(function(resolve) {
+    var iframe = document.createElement("iframe");
+    iframe.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;";
+    iframe.sandbox = "allow-scripts allow-same-origin";
+    document.body.appendChild(iframe);
+    iframe.srcdoc = html;
+    iframe.onload = function() { setTimeout(function() {
+      var doc = iframe.contentDocument;
+      // Walk entire DOM, inline ALL computed styles on every element
+      var count = 0;
+      doc.querySelectorAll("*").forEach(function(el) {
+        if (el.tagName === "SCRIPT" || el.tagName === "STYLE" || el.tagName === "LINK") return;
+        var cs = getComputedStyle(el);
+        var important = [];
+        for (var i = 0; i < cs.length; i++) {
+          var prop = cs[i];
+          var val = cs.getPropertyValue(prop);
+          if (val && val !== "initial" && val !== "normal" && val !== "none" && val !== "auto" && val !== "0px" && val !== "0s") {
+            important.push(prop + ":" + val);
+          }
+        }
+        el.setAttribute("style", important.join(";"));
+        el.removeAttribute("class");
+        count++;
+      });
+      // Remove all style/link/script tags
+      doc.querySelectorAll("style,link,script,noscript").forEach(function(s) { s.remove(); });
+      // Get serialized HTML
+      var serialized = "<!DOCTYPE html>" + doc.documentElement.outerHTML;
+      iframe.parentNode.removeChild(iframe);
+      resolve({ html: serialized, elements: count });
+    }, 2000); };
+  });
+};
+
+// Test mask on HTML, return list of failing element texts
+window.testMask = function(html) {
+  return new Promise(function(resolve) {
+    var iframe = document.createElement("iframe");
+    iframe.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;";
+    iframe.sandbox = "allow-scripts allow-same-origin";
+    document.body.appendChild(iframe);
+    iframe.srcdoc = html;
+    iframe.onload = function() { setTimeout(function() {
+      try {
+        var doc = iframe.contentDocument;
+        var walker = doc.createTreeWalker(doc.body, 4, null, false);
+        var node, els = [], seen = new Set();
+        while (node = walker.nextNode()) {
+          if (!node.textContent.trim()) continue;
+          var el = node.parentElement;
+          if (!el || el.tagName === "SCRIPT" || el.tagName === "STYLE" || el.tagName === "NOSCRIPT") continue;
+          if (seen.has(el)) continue; seen.add(el);
+          var r = el.getBoundingClientRect();
+          if (r.width < 3 || r.height < 3) continue;
+          els.push({ el: el, text: el.textContent.substring(0, 35).trim(),
+            bbox: { left: r.left, top: r.top, width: r.width, height: r.height } });
+        }
+        var ms = doc.createElement("style");
+        ms.textContent = "*,*::before,*::after{color:#fff !important;background-color:#fff !important;background-image:none !important;background:white !important;-webkit-text-fill-color:#fff !important;opacity:1 !important;transition:none !important;animation:none !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}";
+        doc.head.appendChild(ms);
+        els.forEach(function(te) {
+          te.el.style.setProperty("color", "#000", "important");
+          te.el.style.setProperty("-webkit-text-fill-color", "#000", "important");
+          te.el.querySelectorAll("*").forEach(function(ch) {
+            ch.style.setProperty("color", "#000", "important");
+            ch.style.setProperty("-webkit-text-fill-color", "#000", "important");
+          });
+        });
+        doc.body.offsetHeight;
+        setTimeout(function() {
+          MS.domToCanvas(doc.documentElement, { scale: SC, timeout: 20000 }).then(function(c) {
+            var ctx = c.getContext("2d", { willReadFrequently: true });
+            var fails = [], passes = 0;
+            els.forEach(function(te) {
+              var bx = Math.max(0, Math.round(te.bbox.left * SC));
+              var by = Math.max(0, Math.round(te.bbox.top * SC));
+              var bw = Math.min(Math.round(te.bbox.width * SC), c.width - bx);
+              var bh = Math.min(Math.round(te.bbox.height * SC), c.height - by);
+              if (bw < 2 || bh < 2) return;
+              var px = ctx.getImageData(bx, by, bw, bh).data;
+              var dk = 0;
+              for (var i = 0; i < px.length; i += 4) { if ((px[i]+px[i+1]+px[i+2])/3 < 240) dk++; }
+              if (dk === 0) fails.push(te.text);
+              else passes++;
+            });
+            iframe.parentNode.removeChild(iframe);
+            resolve({ fails: fails, passes: passes, total: els.length });
+          }).catch(function(e) { resolve({ error: "canvas: " + e.message }); });
+        }, 300);
+      } catch(e) { resolve({ error: e.message }); }
+    }, 1500); };
+  });
+};
+</script></body></html>`;
+
+var server = http.createServer(function(req, res) {
+  res.writeHead(200, { 'Content-Type': 'text/html' });
+  res.end(harness);
+});
+server.listen(PORT);
+
+async function run() {
+  console.log('\n\x1b[1m=== Deterministic DOM Reduction ===\x1b[0m\n');
+  var browser = await puppeteer.launch({ headless: 'new', args: ['--no-sandbox', '--disable-web-security'] });
+  var page = await browser.newPage();
+  await page.goto('http://localhost:' + PORT + '/', { waitUntil: 'networkidle2', timeout: 30000 });
+  await page.waitForFunction('window.serializeDOM && window.testMask', { timeout: 15000 });
+
+  // Step 1: Fetch real page
+  console.log('Step 1: Fetching tokenmade.ai...');
+  var srcHtml = await page.evaluate(async function() {
+    var p = ['https://api.allorigins.win/raw?url=', 'https://api.codetabs.com/v1/proxy?quest=', 'https://corsproxy.io/?'];
+    for (var i = 0; i < p.length; i++) {
+      try { var r = await fetch(p[i] + encodeURIComponent('https://www.tokenmade.ai/')); if (r.ok) { var t = await r.text(); if (t.length > 100) return t; } } catch(e) {}
+    }
+    return null;
+  });
+  if (!srcHtml) { console.log('Fetch failed'); process.exit(1); }
+  console.log('  Source: ' + srcHtml.length + ' chars');
+
+  // Step 2: Serialize DOM with computed styles inlined
+  console.log('\nStep 2: Serializing rendered DOM with computed styles...');
+  var serialized = await page.evaluate(function(h) { return window.serializeDOM(h); }, srcHtml);
+  console.log('  Serialized: ' + serialized.html.length + ' chars, ' + serialized.elements + ' elements');
+  fs.writeFileSync('/tmp/serialized-full.html', serialized.html);
+
+  // Step 3: Confirm reproduction with serialized HTML
+  console.log('\nStep 3: Confirming reproduction...');
+  var baseline = await page.evaluate(function(h) { return window.testMask(h); }, serialized.html);
+  if (baseline.error) { console.log('  Error: ' + baseline.error); process.exit(1); }
+  console.log('  Source HTML: ' + baseline.fails.length + '/' + baseline.total + ' fail');
+  if (baseline.fails.length === 0) {
+    console.log('  \x1b[33mSerialized DOM does not reproduce! Trying source HTML directly...\x1b[0m');
+    baseline = await page.evaluate(function(h) { return window.testMask(h); }, srcHtml);
+    console.log('  Source HTML direct: ' + baseline.fails.length + '/' + baseline.total + ' fail');
+    if (baseline.fails.length === 0) {
+      console.log('  \x1b[31mCannot reproduce. Exiting.\x1b[0m');
+      await browser.close(); server.close(); return;
+    }
+    // Use source HTML for reduction
+    serialized.html = srcHtml;
+  }
+
+  var failTexts = baseline.fails;
+  console.log('  Failing: ' + failTexts.slice(0, 5).join(', ') + (failTexts.length > 5 ? '...' : ''));
+  var targetFail = failTexts[0]; // Track this specific element
+  console.log('  Tracking: "' + targetFail + '"');
+
+  // Step 4: Binary reduction — remove top-level body children
+  console.log('\nStep 4: Reducing top-level children...');
+  var workingHtml = serialized.html;
+
+  // Parse and get body children
+  var bodyChildren = await page.evaluate(function(html) {
+    var doc = new DOMParser().parseFromString(html, 'text/html');
+    var head = doc.head ? doc.head.innerHTML : '';
+    var children = [];
+    if (doc.body) {
+      for (var i = 0; i < doc.body.children.length; i++) {
+        children.push({ idx: i, tag: doc.body.children[i].tagName, len: doc.body.children[i].outerHTML.length,
+          text: doc.body.children[i].textContent.substring(0, 30).trim() });
+      }
+    }
+    return { head: head, childCount: children.length, children: children };
+  }, workingHtml);
+
+  console.log('  Body has ' + bodyChildren.childCount + ' children');
+
+  // Try removing each child one at a time; keep those whose removal fixes the bug
+  var removable = [];
+  for (var ci = bodyChildren.childCount - 1; ci >= 0; ci--) {
+    var testHtml = await page.evaluate(function(html, skipIdx) {
+      var doc = new DOMParser().parseFromString(html, 'text/html');
+      if (doc.body.children[skipIdx]) doc.body.children[skipIdx].remove();
+      return '<!DOCTYPE html>' + doc.documentElement.outerHTML;
+    }, workingHtml, ci);
+
+    var r = await page.evaluate(function(h) { return window.testMask(h); }, testHtml);
+    var stillFails = r.fails && r.fails.some(function(f) { return f.indexOf(targetFail.substring(0, 15)) !== -1; });
+
+    if (!stillFails) {
+      removable.push(ci);
+      console.log('  [' + ci + '] ' + bodyChildren.children[ci].tag + ' "' + bodyChildren.children[ci].text.substring(0, 20) + '" — \x1b[33mNEEDED (removal fixes bug)\x1b[0m');
+    } else {
+      // Can safely remove this child — bug persists without it
+      workingHtml = testHtml;
+      console.log('  [' + ci + '] ' + bodyChildren.children[ci].tag + ' "' + bodyChildren.children[ci].text.substring(0, 20) + '" — \x1b[32mremoved (bug persists)\x1b[0m');
+    }
+  }
+
+  // Verify reduced HTML still fails
+  var reduced1 = await page.evaluate(function(h) { return window.testMask(h); }, workingHtml);
+  console.log('\n  After top-level reduction: ' + reduced1.fails.length + ' fails, ' + workingHtml.length + ' chars');
+  fs.writeFileSync('/tmp/reduced-toplevel.html', workingHtml);
+
+  // Step 5: Deep reduction — for each remaining top-level child, try removing ITS children
+  console.log('\nStep 5: Deep reducing remaining children...');
+  for (var depth = 0; depth < 3; depth++) {
+    var changed = false;
+    var deepChildren = await page.evaluate(function(html) {
+      var doc = new DOMParser().parseFromString(html, 'text/html');
+      var paths = [];
+      function walk(el, path) {
+        for (var i = el.children.length - 1; i >= 0; i--) {
+          var child = el.children[i];
+          if (child.tagName === 'SCRIPT' || child.tagName === 'STYLE') continue;
+          var p = path + '>' + i;
+          paths.push({ path: p, tag: child.tagName, len: child.outerHTML.length, text: child.textContent.substring(0, 20).trim() });
+          if (child.children.length > 0) walk(child, p);
+        }
+      }
+      walk(doc.body, 'body');
+      // Sort by size descending (remove biggest first)
+      paths.sort(function(a, b) { return b.len - a.len; });
+      return paths;
+    }, workingHtml);
+
+    console.log('  Depth ' + depth + ': ' + deepChildren.length + ' removable nodes');
+    var removedCount = 0;
+
+    for (var di = 0; di < deepChildren.length; di++) {
+      var dc = deepChildren[di];
+      if (dc.len < 50) continue; // skip tiny nodes
+
+      var testHtml = await page.evaluate(function(html, pathStr) {
+        var doc = new DOMParser().parseFromString(html, 'text/html');
+        var parts = pathStr.split('>');
+        var el = doc.body;
+        for (var i = 1; i < parts.length; i++) {
+          var idx = parseInt(parts[i]);
+          if (!el || !el.children[idx]) return null;
+          el = el.children[idx];
+        }
+        if (el) el.remove();
+        return '<!DOCTYPE html>' + doc.documentElement.outerHTML;
+      }, workingHtml, dc.path);
+
+      if (!testHtml) continue;
+
+      var r = await page.evaluate(function(h) { return window.testMask(h); }, testHtml);
+      if (r.error) continue;
+      var stillFails = r.fails && r.fails.some(function(f) { return f.indexOf(targetFail.substring(0, 15)) !== -1; });
+
+      if (stillFails) {
+        workingHtml = testHtml;
+        removedCount++;
+        changed = true;
+      }
+    }
+    console.log('  Removed ' + removedCount + ' nodes, now ' + workingHtml.length + ' chars');
+    if (!changed) break;
+  }
+
+  // Final verification
+  var finalResult = await page.evaluate(function(h) { return window.testMask(h); }, workingHtml);
+  console.log('\n\x1b[1m=== Final Result ===\x1b[0m');
+  console.log('Reduced from ' + serialized.html.length + ' → ' + workingHtml.length + ' chars');
+  console.log('Fails: ' + finalResult.fails.length + '/' + finalResult.total);
+  console.log('Failing: ' + finalResult.fails.join(', '));
+
+  fs.writeFileSync('/tmp/reduced-final.html', workingHtml);
+  console.log('\nSaved to /tmp/reduced-final.html');
+  console.log('Size: ' + workingHtml.length + ' chars');
+
+  await browser.close();
+  server.close();
+}
+
+run().catch(function(e) { console.error(e); process.exit(1); });
+</file>
+
 <file path="docs/analyzer-crawl-ui.js">
 // make-it-look-good — Crawl UI Wiring
 // Manages multi-page site crawl progress, tabs, and results display.
@@ -39757,18 +39757,75 @@ window.MilgContrastVerify = (function() {
   var _maskCanvas = document.createElement('canvas');
   var _maskCtx = _maskCanvas.getContext('2d', { willReadFrequently: true });
 
-  // --- Density presets ---
-  // Each defines max grid dimensions for FG [hMax, vMax] and BG [hMax, vMax]
-  // Actual count scales with box size (1 sample per 3px), clamped to these maxima
+  // --- Density presets (for grid fallback) ---
   var DENSITY = {
-    fast:     { fgH: 10, fgV: 3,  bgH: 12, bgV: 8  },  // ~109 samples/pair avg, ~22ms total
-    common:   { fgH: 40, fgV: 10, bgH: 50, bgV: 40 },  // ~1269 samples/pair avg, ~250ms total
-    accurate: { fgH: 80, fgV: 20, bgH: 100, bgV: 80 }   // ~3291 samples/pair avg, ~658ms total
+    fast:     { fgH: 10, fgV: 3,  bgH: 12, bgV: 8  },
+    common:   { fgH: 40, fgV: 10, bgH: 50, bgV: 40 },
+    accurate: { fgH: 80, fgV: 20, bgH: 100, bgV: 80 }
   };
   var _density = DENSITY.common;
+  function setDensity(name) { _density = DENSITY[name] || DENSITY.common; }
 
-  function setDensity(name) {
-    _density = DENSITY[name] || DENSITY.common;
+  // --- Edge detection method ---
+  var _edgeMethod = 'sobel'; // 'sobel' = edge-based (fast), 'grid' = full grid (legacy)
+  function setEdgeMethod(name) { _edgeMethod = (name === 'grid') ? 'grid' : 'sobel'; }
+
+  // --- Sobel edge detection on binary mask ---
+  // Input: flat array of 0/1 values, width w, height h
+  // Returns: Uint8Array(w*h) with 0=OUTSIDE, 1=EDGE, 2=INSIDE
+  function sobelCategorize(mask, w, h) {
+    var cat = new Uint8Array(w * h);
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        var i = y * w + x;
+        if (y === 0 || y === h - 1 || x === 0 || x === w - 1) {
+          cat[i] = mask[i] ? 2 : 0; // borders: just inside/outside
+          continue;
+        }
+        if (!mask[i]) { cat[i] = 0; continue; } // outside mask
+        // Sobel: check if any 8-neighbor is outside mask (=boundary)
+        var isEdge = false;
+        for (var dy = -1; dy <= 1 && !isEdge; dy++) {
+          for (var dx = -1; dx <= 1 && !isEdge; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            if (!mask[(y + dy) * w + (x + dx)]) isEdge = true;
+          }
+        }
+        cat[i] = isEdge ? 1 : 2; // 1=edge, 2=inside
+      }
+    }
+    return cat;
+  }
+
+  // BFS distance from all EDGE pixels, capped at maxDist
+  function bfsEdgeDist(cat, w, h, maxDist) {
+    var dist = new Uint8Array(w * h);
+    var queue = [];
+    for (var i = 0; i < cat.length; i++) {
+      if (cat[i] === 1) { dist[i] = 0; queue.push(i); }
+      else dist[i] = 255; // unvisited
+    }
+    var head = 0;
+    while (head < queue.length) {
+      var ci = queue[head++];
+      var cd = dist[ci];
+      if (cd >= maxDist) continue;
+      var cx = ci % w, cy = (ci - cx) / w;
+      for (var dy = -1; dy <= 1; dy++) {
+        var ny = cy + dy;
+        if (ny < 0 || ny >= h) continue;
+        for (var dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          var nx = cx + dx;
+          if (nx < 0 || nx >= w) continue;
+          var ni = ny * w + nx;
+          if (dist[ni] <= cd + 1) continue; // already visited at same or shorter dist
+          dist[ni] = cd + 1;
+          queue.push(ni);
+        }
+      }
+    }
+    return dist;
   }
 
   // --- Color math (same as scoring/contrast.js) ---
@@ -39849,11 +39906,227 @@ window.MilgContrastVerify = (function() {
 
   // --- Verification logic ---
 
-  // --- Multi-point sampling strategy ---
-  // Photos, gradients, and dashed patterns need many sample points.
-  // FG: horizontal sweep across text baseline band, take darkest (most likely text)
-  // BG: grid across bbox excluding text band, find worst-case contrast
+  // Dispatcher: use edge-based when mask bitmap available, else fall back to grid
   function verifyPair(pair, sectionCanvases, meta, maskCanvas) {
+    if (_edgeMethod === 'sobel' && pair._maskBmp && pair._maskW && pair._maskDark > 0) {
+      return verifyPairEdge(pair, sectionCanvases, meta, maskCanvas);
+    }
+    return verifyPairGrid(pair, sectionCanvases, meta, maskCanvas);
+  }
+
+  // --- Shared preamble: map bbox to canvas, read pixels ---
+  function prepareContext(pair, sectionCanvases, meta) {
+    if (!pair.bbox || !meta) return null;
+    var scale = meta.scale;
+    var sectionH = Math.round(meta.viewportHeight * scale);
+    var canvasX = pair.bbox.left * scale, canvasY = pair.bbox.top * scale;
+    var canvasW = pair.bbox.width * scale, canvasH = pair.bbox.height * scale;
+    if (canvasW < 4 || canvasH < 4) return null;
+    var sectionIdx, yInSection;
+    if (sectionCanvases.length === 1) { sectionIdx = 0; yInSection = canvasY; }
+    else { sectionIdx = Math.floor(canvasY / sectionH); yInSection = canvasY - (sectionIdx * sectionH); }
+    if (sectionIdx >= sectionCanvases.length || !sectionCanvases[sectionIdx]) return null;
+    var sec = sectionCanvases[sectionIdx];
+    if (yInSection + canvasH > sec.height) canvasH = sec.height - yInSection;
+    if (canvasX + canvasW > sec.width) canvasW = sec.width - canvasX;
+    var bx = Math.max(0, Math.round(canvasX));
+    var by = Math.max(0, Math.round(yInSection));
+    var bw = Math.min(Math.round(canvasW), sec.width - bx);
+    var bh = Math.min(Math.round(canvasH), sec.height - by);
+    if (bw < 4 || bh < 4) return null;
+    var cssFg = parseRgb(pair.fg);
+    if (!cssFg) return null;
+    var cssBg = parseRgb(pair.bg);
+    var opacity = pair.effectiveOpacity !== undefined ? pair.effectiveOpacity : 1;
+    var expectedFg = cssFg;
+    if (opacity < 0.95 && cssBg) {
+      expectedFg = {
+        r: Math.round(cssFg.r * opacity + cssBg.r * (1 - opacity)),
+        g: Math.round(cssFg.g * opacity + cssBg.g * (1 - opacity)),
+        b: Math.round(cssFg.b * opacity + cssBg.b * (1 - opacity))
+      };
+    }
+    return { sec: sec, bx: bx, by: by, bw: bw, bh: bh, cssFg: cssFg, cssBg: cssBg,
+             expectedFg: expectedFg, opacity: opacity, sectionIdx: sectionIdx, scale: scale };
+  }
+
+  // --- Build result object (shared shape) ---
+  function buildResult(pair, ctx, fgPoints, fgColors, bgPoints, bgColors, allPairRatios, worstRatio, bestRatio, worstBg, worstBgPt) {
+    var fgColor = { r: 0, g: 0, b: 0 };
+    fgColors.forEach(function(c) { fgColor.r += c.r; fgColor.g += c.g; fgColor.b += c.b; });
+    if (fgColors.length > 0) {
+      fgColor.r = Math.round(fgColor.r / fgColors.length);
+      fgColor.g = Math.round(fgColor.g / fgColors.length);
+      fgColor.b = Math.round(fgColor.b / fgColors.length);
+    }
+    var avgBg = { r: 0, g: 0, b: 0 };
+    bgColors.forEach(function(c) { avgBg.r += c.r; avgBg.g += c.g; avgBg.b += c.b; });
+    if (bgColors.length > 0) {
+      avgBg.r = Math.round(avgBg.r / bgColors.length); avgBg.g = Math.round(avgBg.g / bgColors.length); avgBg.b = Math.round(avgBg.b / bgColors.length);
+    }
+    var avgRatio = contrastRatio(fgColor, avgBg);
+    allPairRatios.sort(function(a, b) { return a - b; });
+    var p10Idx = Math.floor(allPairRatios.length * 0.1);
+    var p10Ratio = allPairRatios.length > 0 ? Math.round(allPairRatios[Math.min(p10Idx, allPairRatios.length - 1)] * 100) / 100 : 0;
+    var medianRatio = allPairRatios.length > 0 ? Math.round(allPairRatios[Math.floor(allPairRatios.length / 2)] * 100) / 100 : 0;
+    var cssNeeded = pair.needed || 4.5;
+    var cssPasses = pair.ratio >= cssNeeded;
+    var pixelPasses = p10Ratio >= cssNeeded;
+    var ratioDiff = Math.abs(p10Ratio - pair.ratio);
+    var bgVariance = bestRatio - worstRatio;
+    return {
+      cssRatio: pair.ratio, neededRatio: cssNeeded,
+      pixelRatio: worstRatio, pixelRatioAvg: avgRatio, pixelRatioBest: bestRatio,
+      bgVariance: Math.round(bgVariance * 100) / 100,
+      isVariableBg: bgVariance > 2.0, ratioDiff: ratioDiff,
+      cssPasses: cssPasses, pixelPasses: pixelPasses,
+      crossesBoundary: cssPasses !== pixelPasses,
+      significant: (cssPasses !== pixelPasses) || ratioDiff > 1.5 || bgVariance > 2.0,
+      pixelFg: rgbStr(fgColor), expectedFg: rgbStr(ctx.expectedFg), effectiveOpacity: ctx.opacity,
+      pixelRatioP10: p10Ratio, pixelRatioMedian: medianRatio,
+      pixelBgWorst: worstBg ? rgbStr(worstBg) : '', pixelBgAvg: rgbStr(avgBg),
+      cssFg: pair.fg, cssBg: pair.bg, selector: pair.selector, text: pair.text,
+      bbox: pair.bbox, maskLayer: pair._maskLayer || 0, sectionIdx: ctx.sectionIdx,
+      sampleCount: { fg: fgPoints.length, bg: bgPoints.length },
+      samplePoints: {
+        fg: fgPoints.map(function(p, i) { return { x: p.x, y: p.y, r: fgColors[i].r, g: fgColors[i].g, b: fgColors[i].b }; }),
+        bg: bgPoints.map(function(p, i) {
+          var ratio = contrastRatio(fgColor, bgColors[i]);
+          return { x: p.x, y: p.y, r: bgColors[i].r, g: bgColors[i].g, b: bgColors[i].b, ratio: Math.round(ratio * 100) / 100 };
+        })
+      },
+      avgFg: fgColor, worstPoint: worstBgPt || null
+    };
+  }
+
+  // --- Edge-based verification (fast, precise) ---
+  function verifyPairEdge(pair, sectionCanvases, meta, maskCanvas) {
+    var ctx = prepareContext(pair, sectionCanvases, meta);
+    if (!ctx) return null;
+    var bx = ctx.bx, by = ctx.by, bw = ctx.bw, bh = ctx.bh;
+    var imgData = ctx.sec.ctx.getImageData(bx, by, bw, bh).data;
+
+    // Get mask bitmap (should match bw x bh)
+    var mBmp = pair._maskBmp, mW = pair._maskW, mH = pair._maskH;
+    var w = Math.min(mW, bw), h = Math.min(mH, bh);
+    if (w < 4 || h < 4) return null;
+
+    // Step 1: Sobel edge categorization
+    var cat = sobelCategorize(mBmp, mW, mH);
+
+    // Step 2: BFS distance from edge pixels (cap at 5)
+    var edgeDist = bfsEdgeDist(cat, mW, mH, 5);
+
+    // Step 3: Collect FG samples (INSIDE, distance 1-2 from edge)
+    // and BG samples (OUTSIDE, distance 2-4 from edge)
+    var fgPoints = [], fgColors = [];
+    var bgPoints = [], bgColors = [];
+    var BG_MIN_DIST = 2, BG_MAX_DIST = 4;
+    var FG_MAX_DIST = 2;
+
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        var mi = y * mW + x;
+        var d = edgeDist[mi];
+        var c = cat[mi];
+        var pi = (y * bw + x) * 4;
+        if (pi + 2 >= imgData.length) continue;
+
+        if (c === 2 && d > 0 && d <= FG_MAX_DIST) {
+          // INSIDE pixel near edge = FG sample
+          fgPoints.push({ x: bx + x, y: by + y });
+          fgColors.push({ r: imgData[pi], g: imgData[pi + 1], b: imgData[pi + 2] });
+        } else if (c === 0 && d > BG_MIN_DIST && d <= BG_MAX_DIST) {
+          // OUTSIDE pixel in the right distance band = BG sample
+          bgPoints.push({ x: bx + x, y: by + y });
+          bgColors.push({ r: imgData[pi], g: imgData[pi + 1], b: imgData[pi + 2] });
+        } else if (c === 1) {
+          // EDGE pixel itself — also a valid FG sample (right at the boundary)
+          fgPoints.push({ x: bx + x, y: by + y });
+          fgColors.push({ r: imgData[pi], g: imgData[pi + 1], b: imgData[pi + 2] });
+        }
+      }
+    }
+
+    // If no BG samples with strict distance, relax to dist > 1
+    if (bgPoints.length === 0) {
+      for (var y2 = 0; y2 < h; y2++) {
+        for (var x2 = 0; x2 < w; x2++) {
+          var mi2 = y2 * mW + x2;
+          if (cat[mi2] === 0 && edgeDist[mi2] > 1 && edgeDist[mi2] <= 5) {
+            var pi2 = (y2 * bw + x2) * 4;
+            if (pi2 + 2 >= imgData.length) continue;
+            bgPoints.push({ x: bx + x2, y: by + y2 });
+            bgColors.push({ r: imgData[pi2], g: imgData[pi2 + 1], b: imgData[pi2 + 2] });
+          }
+        }
+      }
+    }
+
+    // Subsample if too many points (keep it fast)
+    if (fgPoints.length > 300) {
+      var step = Math.ceil(fgPoints.length / 300);
+      var nfp = [], nfc = [];
+      for (var si = 0; si < fgPoints.length; si += step) { nfp.push(fgPoints[si]); nfc.push(fgColors[si]); }
+      fgPoints = nfp; fgColors = nfc;
+    }
+    if (bgPoints.length > 300) {
+      var bstep = Math.ceil(bgPoints.length / 300);
+      var nbp = [], nbc = [];
+      for (var sj = 0; sj < bgPoints.length; sj += bstep) { nbp.push(bgPoints[sj]); nbc.push(bgColors[sj]); }
+      bgPoints = nbp; bgColors = nbc;
+    }
+
+    if (fgPoints.length === 0 || bgPoints.length === 0) {
+      if (fgPoints.length === 0 && pair.text) console.log('[verify-edge] No FG for "' + pair.text.substring(0, 25) + '" mask:' + mW + 'x' + mH + ' dark:' + pair._maskDark);
+      return null;
+    }
+
+    // Step 4: Pair each FG with nearest BG, average BG cluster within 4px
+    var allPairRatios = [];
+    var worstRatio = 99, bestRatio = 0, worstBg = null, worstBgPt = null;
+    var usedBg = new Set();
+
+    fgPoints.forEach(function(fp, fi) {
+      // Find nearest BG point
+      var nearDist = Infinity, nearIdx = -1;
+      for (var bi = 0; bi < bgPoints.length; bi++) {
+        var dx = fp.x - bgPoints[bi].x, dy = fp.y - bgPoints[bi].y;
+        var d = dx * dx + dy * dy;
+        if (d < nearDist) { nearDist = d; nearIdx = bi; }
+      }
+      if (nearIdx < 0) return;
+
+      // Average BG colors in a 4px cluster around the nearest BG point
+      var nbp = bgPoints[nearIdx];
+      var sumR = 0, sumG = 0, sumB = 0, cnt = 0;
+      for (var ci = 0; ci < bgPoints.length; ci++) {
+        var cdx = nbp.x - bgPoints[ci].x, cdy = nbp.y - bgPoints[ci].y;
+        if (cdx * cdx + cdy * cdy <= 16) { // 4px radius
+          sumR += bgColors[ci].r; sumG += bgColors[ci].g; sumB += bgColors[ci].b; cnt++;
+          usedBg.add(ci);
+        }
+      }
+      var avgBgC = cnt > 0 ? { r: Math.round(sumR / cnt), g: Math.round(sumG / cnt), b: Math.round(sumB / cnt) } : bgColors[nearIdx];
+
+      var ratio = contrastRatio(fgColors[fi], avgBgC);
+      allPairRatios.push(ratio);
+      if (ratio < worstRatio) { worstRatio = ratio; worstBg = avgBgC; worstBgPt = bgPoints[nearIdx]; }
+      if (ratio > bestRatio) bestRatio = ratio;
+    });
+
+    if (allPairRatios.length === 0) return null;
+
+    // Collect unique used BG points for visualization
+    var finalBgPoints = [], finalBgColors = [];
+    usedBg.forEach(function(bi) { finalBgPoints.push(bgPoints[bi]); finalBgColors.push(bgColors[bi]); });
+
+    return buildResult(pair, ctx, fgPoints, fgColors, finalBgPoints, finalBgColors,
+      allPairRatios, worstRatio, bestRatio, worstBg, worstBgPt);
+  }
+
+  // --- Grid-based verification (legacy fallback) ---
+  function verifyPairGrid(pair, sectionCanvases, meta, maskCanvas) {
     if (!pair.bbox || !meta) return null;
 
     var scale = meta.scale;
@@ -40416,6 +40689,7 @@ window.MilgContrastVerify = (function() {
   return {
     verify: verify,
     setDensity: setDensity,
+    setEdgeMethod: setEdgeMethod,
     formatResult: formatResult,
     buildSummary: buildSummary,
     renderSummaryHtml: renderSummaryHtml,
@@ -41049,7 +41323,7 @@ window.MilgIframe = (function() {
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v36.0</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v36.1</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
