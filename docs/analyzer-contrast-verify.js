@@ -193,9 +193,19 @@ window.MilgContrastVerify = (function() {
         var inTextArea = false;
         // Check if this grid point is in a text area (mask)
         if (pair._maskBmp && pair._maskW) {
-          // Bitmap lookup: O(1) instead of scanning point list
-          if (ix >= 0 && ix < pair._maskW && iy >= 0 && iy < pair._maskH) {
-            inTextArea = pair._maskBmp[iy * pair._maskW + ix] === 1;
+          // Bitmap lookup with 1px dilation: check pixel + 8 neighbors
+          // Catches AA edges that render 1px outside the mask boundary
+          var mW = pair._maskW, mH = pair._maskH, mBmp = pair._maskBmp;
+          if (ix >= 0 && ix < mW && iy >= 0 && iy < mH) {
+            if (mBmp[iy * mW + ix] === 1) { inTextArea = true; }
+            else {
+              for (var dy = -1; dy <= 1 && !inTextArea; dy++) {
+                for (var dx = -1; dx <= 1 && !inTextArea; dx++) {
+                  var nx = ix + dx, ny = iy + dy;
+                  if (nx >= 0 && nx < mW && ny >= 0 && ny < mH && mBmp[ny * mW + nx] === 1) inTextArea = true;
+                }
+              }
+            }
           }
         } else if (pair._maskPts && pair._maskW) {
           // Legacy point list fallback
