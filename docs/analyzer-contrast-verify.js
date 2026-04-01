@@ -134,39 +134,72 @@ window.MilgContrastVerify = (function() {
     if (yInSection + canvasH > sec.height) canvasH = sec.height - yInSection;
     if (canvasX + canvasW > sec.width) canvasW = sec.width - canvasX;
 
-    // --- FG-exclusion approach ---
-    // Sample a grid across the entire bbox. Classify each pixel as "text" (close
-    // to CSS fg color) or "background" (far from CSS fg). Then measure contrast
-    // between text pixels and their neighboring background pixels.
-    // This works for photos, gradients, and solid backgrounds alike.
+    // --- Text mask approach ---
+    // Render the text on a hidden canvas in black-on-white using the exact same
+    // font properties. Use the mask to classify screenshot pixels as text vs background.
+    // This avoids any color-distance guessing and works for all text colors.
     var cssFg = parseRgb(pair.fg);
     if (!cssFg) return null;
 
-    // RGB distance threshold: pixels within this distance from CSS fg are "text"
-    // Wider threshold for anti-aliased text (subpixel rendering blends fg with bg)
-    var FG_DIST_SQ = 8100; // 90^2
-
-    // Read all pixels in the bbox at once (much faster than individual getImageData calls)
     var bx = Math.max(0, Math.round(canvasX));
     var by = Math.max(0, Math.round(yInSection));
     var bw = Math.min(Math.round(canvasW), sec.width - bx);
     var bh = Math.min(Math.round(canvasH), sec.height - by);
-    if (bw < 2 || bh < 2) return null;
+    if (bw < 4 || bh < 4) return null;
 
-    var imgData = sec.ctx.getImageData(bx, by, bw, bh);
-    var px = imgData.data;
+    // Build text mask: render text in black on white at the bbox dimensions
+    var maskCanvas = document.createElement('canvas');
+    maskCanvas.width = bw;
+    maskCanvas.height = bh;
+    var maskCtx = maskCanvas.getContext('2d', { willReadFrequently: true });
+    maskCtx.fillStyle = '#fff';
+    maskCtx.fillRect(0, 0, bw, bh);
+
+    // Set font properties to match the original text exactly
+    var fs = (pair.fontSize || 16) * scale;
+    var ff = pair.fontFamily || 'system-ui, sans-serif';
+    var fw = pair.fontWeight || 400;
+    var fst = pair.fontStyle || 'normal';
+    var lh = pair.lineHeight ? parseFloat(pair.lineHeight) * scale : fs * 1.4;
+    maskCtx.font = fst + ' ' + fw + ' ' + fs + 'px ' + ff;
+    maskCtx.fillStyle = '#000';
+    maskCtx.textBaseline = 'top';
+
+    // Apply text-transform
+    var text = pair.text || '';
+    if (pair.textTransform === 'uppercase') text = text.toUpperCase();
+    else if (pair.textTransform === 'lowercase') text = text.toLowerCase();
+    else if (pair.textTransform === 'capitalize') text = text.replace(/\b\w/g, function(c) { return c.toUpperCase(); });
+
+    // Letter spacing
+    var ls = 0;
+    if (pair.letterSpacing && pair.letterSpacing !== 'normal') ls = parseFloat(pair.letterSpacing) * scale;
+
+    // Render text — approximate vertical centering (CSS centers text in the element)
+    var textY = Math.max(0, (bh - lh) / 2);
+    if (ls !== 0) {
+      // Draw char by char with letter spacing
+      var cx = 1;
+      for (var ci = 0; ci < text.length && cx < bw; ci++) {
+        maskCtx.fillText(text[ci], cx, textY);
+        cx += maskCtx.measureText(text[ci]).width + ls;
+      }
+    } else {
+      maskCtx.fillText(text, 1, textY);
+    }
+
+    // Read mask pixels — dark pixels = text, light = background
+    var maskData = maskCtx.getImageData(0, 0, bw, bh).data;
+    // Read screenshot pixels
+    var imgData = sec.ctx.getImageData(bx, by, bw, bh).data;
 
     // Sample grid (density-controlled)
-    var hSteps = Math.max(4, Math.min(_density.bgH, Math.floor(bw / 2)));
-    var vSteps = Math.max(3, Math.min(_density.bgV, Math.floor(bh / 2)));
+    var hSteps = Math.max(6, Math.min(_density.bgH, Math.floor(bw / 2)));
+    var vSteps = Math.max(4, Math.min(_density.bgV, Math.floor(bh / 2)));
 
-    var fgPoints = []; // text pixel coordinates (for visualization)
-    var bgPoints = []; // background pixel coordinates
-    var fgColors = [];
-    var bgColors = [];
-    var worstRatio = 99, bestRatio = 0;
-    var worstBg = null, bestBg = null;
-    var worstFg = null;
+    var fgPoints = [], bgPoints = [];
+    var fgColors = [], bgColors = [];
+    var MASK_THRESHOLD = 180; // mask pixel below this = text, above = background
 
     for (var vy = 0; vy < vSteps; vy++) {
       var iy = Math.round(bh * vy / (vSteps - 1 || 1));
@@ -175,46 +208,60 @@ window.MilgContrastVerify = (function() {
         var ix = Math.round(bw * hx / (hSteps - 1 || 1));
         if (ix >= bw) ix = bw - 1;
         var idx = (iy * bw + ix) * 4;
-        var r = px[idx], g = px[idx + 1], b = px[idx + 2];
 
-        // Classify: distance from CSS foreground color
-        var dr = r - cssFg.r, dg = g - cssFg.g, db = b - cssFg.b;
-        var distSq = dr * dr + dg * dg + db * db;
+        var maskR = maskData[idx]; // 0=black(text), 255=white(bg), in between=anti-aliased
+        var r = imgData[idx], g = imgData[idx + 1], b = imgData[idx + 2];
         var absX = bx + ix, absY = by + iy;
 
-        if (distSq < FG_DIST_SQ) {
-          // Text pixel
+        if (maskR < MASK_THRESHOLD) {
+          // Text pixel (mask is dark here)
           fgColors.push({ r: r, g: g, b: b });
           fgPoints.push({ x: absX, y: absY });
         } else {
-          // Background pixel
-          bgColors.push({ r: r, g: g, b: b, x: ix, y: iy });
+          // Background pixel (mask is light here)
+          bgColors.push({ r: r, g: g, b: b });
           bgPoints.push({ x: absX, y: absY });
         }
       }
     }
 
-    // Need both FG and BG pixels to compute contrast
+    // Need both text and background pixels
     if (fgColors.length === 0 || bgColors.length === 0) {
-      // Fallback: use CSS values
-      return null;
+      // Mask didn't overlap well — fall back to CSS-distance classification
+      fgColors = []; bgColors = []; fgPoints = []; bgPoints = [];
+      var FG_DIST_SQ = 8100;
+      for (var vy2 = 0; vy2 < vSteps; vy2++) {
+        var iy2 = Math.round(bh * vy2 / (vSteps - 1 || 1));
+        if (iy2 >= bh) iy2 = bh - 1;
+        for (var hx2 = 0; hx2 < hSteps; hx2++) {
+          var ix2 = Math.round(bw * hx2 / (hSteps - 1 || 1));
+          if (ix2 >= bw) ix2 = bw - 1;
+          var idx2 = (iy2 * bw + ix2) * 4;
+          var r2 = imgData[idx2], g2 = imgData[idx2+1], b2 = imgData[idx2+2];
+          var dr = r2-cssFg.r, dg = g2-cssFg.g, db = b2-cssFg.b;
+          var absX2 = bx+ix2, absY2 = by+iy2;
+          if (dr*dr+dg*dg+db*db < FG_DIST_SQ) { fgColors.push({r:r2,g:g2,b:b2}); fgPoints.push({x:absX2,y:absY2}); }
+          else { bgColors.push({r:r2,g:g2,b:b2}); bgPoints.push({x:absX2,y:absY2}); }
+        }
+      }
+      if (fgColors.length === 0 || bgColors.length === 0) return null;
     }
 
-    // Average FG color (text)
+    // Average FG color
     var fgColor = { r: 0, g: 0, b: 0 };
     fgColors.forEach(function(c) { fgColor.r += c.r; fgColor.g += c.g; fgColor.b += c.b; });
     fgColor.r = Math.round(fgColor.r / fgColors.length);
     fgColor.g = Math.round(fgColor.g / fgColors.length);
     fgColor.b = Math.round(fgColor.b / fgColors.length);
 
-    // For each BG pixel, compute contrast against text color — find worst case
+    // Worst/best BG contrast against text
+    var worstRatio = 99, bestRatio = 0, worstBg = null, bestBg = null;
     bgColors.forEach(function(bg) {
       var ratio = contrastRatio(fgColor, bg);
       if (ratio < worstRatio) { worstRatio = ratio; worstBg = bg; }
       if (ratio > bestRatio) { bestRatio = ratio; bestBg = bg; }
     });
 
-    // Average BG
     var avgBg = { r: 0, g: 0, b: 0 };
     bgColors.forEach(function(c) { avgBg.r += c.r; avgBg.g += c.g; avgBg.b += c.b; });
     avgBg.r = Math.round(avgBg.r / bgColors.length);
