@@ -219,7 +219,11 @@ window.MilgIframe = (function() {
                 '});' +
                 'void document.body.offsetHeight;' +
                 'console.log("[iframe-ss] Layer "+_li+": starting domToCanvas...");' +
+                // Race domToCanvas against our own 15s timeout (library timeout may not fire)
+                'var _layerDone=false;' +
+                'var _layerTimer=setTimeout(function(){if(!_layerDone){_layerDone=true;console.warn("[iframe-ss] Layer "+_li+" domToCanvas timed out (15s)");setTimeout(_nextLayer,0)}},15000);' +
                 'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:12000}).then(function(mc){' +
+                  'if(_layerDone)return;_layerDone=true;clearTimeout(_layerTimer);' +
                   'console.log("[iframe-ss] Layer "+_li+" captured: "+mc.width+"x"+mc.height);' +
                   'var mCtx=mc.getContext("2d",{willReadFrequently:true});' +
                   'layer.forEach(function(pe){' +
@@ -250,11 +254,11 @@ window.MilgIframe = (function() {
                       'ch.style.setProperty("-webkit-text-fill-color","#fff","important")})' +
                   '});' +
                   'setTimeout(_nextLayer,0)' +
-                '}).catch(function(e){console.warn("[iframe-ss] Layer "+_li+" failed:",e);setTimeout(_nextLayer,0)})' +
+                '}).catch(function(e){if(_layerDone)return;_layerDone=true;clearTimeout(_layerTimer);console.warn("[iframe-ss] Layer "+_li+" failed:",e);setTimeout(_nextLayer,0)})' +
               '}' +
               'var _maskDone=false;' +
               'var _origSendFinal=_sendFinal;' +
-              'var _maskTimer=setTimeout(function(){if(!_maskDone){_maskDone=true;console.warn("[iframe-ss] Masks timed out");_origSendFinal(null)}},45000);' +
+              'var _maskTimer=setTimeout(function(){if(!_maskDone){_maskDone=true;console.warn("[iframe-ss] Masks timed out (30s)");_origSendFinal(null)}},30000);' +
               '_sendFinal=function(m){if(_maskDone)return;_maskDone=true;clearTimeout(_maskTimer);console.log("[iframe-ss] Sending results (maskResults: "+Object.keys(_maskResults).length+" pairs)");_origSendFinal(m)};' +
               '_nextLayer()' +
             '}).catch(function(e){console.warn("[iframe-ss] capture failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")})' +
