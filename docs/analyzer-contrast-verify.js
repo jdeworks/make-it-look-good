@@ -192,7 +192,8 @@ window.MilgContrastVerify = (function() {
         // Classify text vs background using mask as spatial guide + CSS distance
         var inTextArea = false;
         // Check if this grid point is in a text area (mask)
-        if (pair._maskBmp && pair._maskW) {
+        // Skip bitmap mask if it captured 0 dark pixels (domToCanvas didn't render text)
+        if (pair._maskBmp && pair._maskW && pair._maskDark > 0) {
           // Bitmap lookup with 1px dilation: check pixel + 8 neighbors
           // Catches AA edges that render 1px outside the mask boundary
           var mW = pair._maskW, mH = pair._maskH, mBmp = pair._maskBmp;
@@ -297,7 +298,7 @@ window.MilgContrastVerify = (function() {
     }
 
     if (fgColors.length === 0 || bgColors.length === 0) {
-      if (fgColors.length === 0 && pair.text) console.log('[verify] No FG pixels for "' + pair.text.substring(0, 30) + '" mask:' + !!(pair._maskBmp) + ' bw:' + bw + ' bh:' + bh);
+      if (fgColors.length === 0 && pair.text) console.log('[verify] No FG pixels for "' + pair.text.substring(0, 30) + '" mask:' + !!(pair._maskBmp) + ' dark:' + (pair._maskDark || 0) + ' bw:' + bw + ' bh:' + bh);
       return null;
     }
 
