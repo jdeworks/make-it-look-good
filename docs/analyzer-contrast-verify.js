@@ -163,7 +163,8 @@ window.MilgContrastVerify = (function() {
     var hSteps = Math.max(3, Math.min(500, Math.floor(bw / step)));
     var vSteps = Math.max(3, Math.min(500, Math.floor(bh / step)));
     var EXCL_RADIUS = 5; // pixels within this radius of text are excluded (AA/shadow zone)
-    var FG_INNER_SQ = 3600; // 60^2 — CSS distance fallback
+    var FG_INNER_SQ = 3600;  // 60^2 — tight match for CSS distance fallback
+    var FG_OUTER_SQ = 14400; // 120^2 — generous match for mask+color dual check
 
     // Pass 1: classify each grid point using mask or CSS distance
     // Store classification in a 2D array for efficient radius lookup
@@ -176,15 +177,19 @@ window.MilgContrastVerify = (function() {
         var ix = Math.min(Math.round(bw * hx / (hSteps - 1 || 1)), bw - 1);
         var idx = (iy * bw + ix) * 4;
         var r = imgData[idx], g = imgData[idx + 1], b = imgData[idx + 2];
+        // Classify: must be text AND match this pair's fg color
+        // (mask catches ALL text in bbox including nested spans with different colors)
+        var dr = r - cssFg.r, dg = g - cssFg.g, db = b - cssFg.b;
+        var fgDistSq = dr * dr + dg * dg + db * db;
         var isText = false;
         if (maskData) {
           var mr = maskData[idx], mg = maskData[idx + 1], mb = maskData[idx + 2];
-          // Pure magenta = text. Check magenta strength:
-          // High magenta (R>200, G<80, B>200) = definitely text
-          isText = mr > 200 && mg < 80 && mb > 200;
+          var maskSaysText = mr > 200 && mg < 80 && mb > 200;
+          // Text for THIS pair: mask says text AND pixel color is close to this pair's CSS fg
+          // This prevents purple text inside a grey-text bbox from being classified as grey text
+          isText = maskSaysText && fgDistSq < FG_OUTER_SQ;
         } else {
-          var dr = r - cssFg.r, dg = g - cssFg.g, db = b - cssFg.b;
-          isText = dr * dr + dg * dg + db * db < FG_INNER_SQ;
+          isText = fgDistSq < FG_INNER_SQ;
         }
         isTextGrid[vy * hSteps + hx] = isText ? 1 : 0;
         gridData.push({ r: r, g: g, b: b, absX: bx + ix, absY: by + iy });
