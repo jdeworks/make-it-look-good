@@ -695,14 +695,30 @@ window.MilgViewer = (function() {
         svg.appendChild(label);
       }
 
-      // Sample point dots — show where pixels were actually measured
-      if (vr.samplePoints) {
-        // For full-page screenshots (1 section), no section offset needed
-        var sH = _meta.viewportHeight ? Math.round(_meta.viewportHeight * vScaleX) : 0;
-        var secOff = (vr.sectionIdx && sH) ? vr.sectionIdx * sH : 0;
+      // Sample points stored for on-click reveal
+      rect._samplePoints = vr.samplePoints || null;
+      rect._sectionOffset = (vr.sectionIdx && _meta.viewportHeight) ? vr.sectionIdx * Math.round(_meta.viewportHeight * vScaleX) : 0;
+    });
+
+    // Tooltips + click-to-show-pixels for verify rects
+    svg.querySelectorAll('rect[data-verify]').forEach(function(rect) {
+      rect.addEventListener('mouseenter', function(e) { showVerifyTooltip(e, parseInt(rect.getAttribute('data-verify'))); });
+      rect.addEventListener('mouseleave', hideTooltip);
+      rect.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        // Toggle sample point dots for this rect
+        var existing = svg.querySelectorAll('.milg-sample-dot[data-owner="' + rect.getAttribute('data-verify') + '"]');
+        if (existing.length > 0) {
+          existing.forEach(function(d) { d.parentNode.removeChild(d); });
+          return;
+        }
+        var sp = rect._samplePoints;
+        if (!sp) return;
+        var secOff = rect._sectionOffset || 0;
         var dotR = _zoomLevel >= 1.5 ? '2.5' : '1.5';
-        // FG sample points (cyan = text pixels)
-        (vr.samplePoints.fg || []).forEach(function(pt) {
+        var owner = rect.getAttribute('data-verify');
+        (sp.fg || []).forEach(function(pt) {
           var dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
           dot.setAttribute('cx', pt.x);
           dot.setAttribute('cy', pt.y + secOff);
@@ -710,12 +726,13 @@ window.MilgViewer = (function() {
           dot.setAttribute('fill', '#06b6d4');
           dot.setAttribute('stroke', '#fff');
           dot.setAttribute('stroke-width', '0.5');
-          dot.setAttribute('opacity', '0.85');
+          dot.setAttribute('opacity', '0.9');
           dot.setAttribute('pointer-events', 'none');
+          dot.setAttribute('class', 'milg-sample-dot');
+          dot.setAttribute('data-owner', owner);
           svg.appendChild(dot);
         });
-        // BG sample points (orange = background pixels)
-        (vr.samplePoints.bg || []).forEach(function(pt) {
+        (sp.bg || []).forEach(function(pt) {
           var dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
           dot.setAttribute('cx', pt.x);
           dot.setAttribute('cy', pt.y + secOff);
@@ -723,18 +740,13 @@ window.MilgViewer = (function() {
           dot.setAttribute('fill', '#f97316');
           dot.setAttribute('stroke', '#fff');
           dot.setAttribute('stroke-width', '0.5');
-          dot.setAttribute('opacity', '0.75');
+          dot.setAttribute('opacity', '0.8');
           dot.setAttribute('pointer-events', 'none');
+          dot.setAttribute('class', 'milg-sample-dot');
+          dot.setAttribute('data-owner', owner);
           svg.appendChild(dot);
         });
-      }
-    });
-
-    // Tooltips for verify rects
-    svg.querySelectorAll('rect[data-verify]').forEach(function(rect) {
-      rect.addEventListener('mouseenter', function(e) { showVerifyTooltip(e, parseInt(rect.getAttribute('data-verify'))); });
-      rect.addEventListener('mouseleave', hideTooltip);
-      rect.addEventListener('click', function() { close(); });
+      });
     });
   }
 

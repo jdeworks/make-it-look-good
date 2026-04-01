@@ -134,143 +134,94 @@ window.MilgContrastVerify = (function() {
     if (yInSection + canvasH > sec.height) canvasH = sec.height - yInSection;
     if (canvasX + canvasW > sec.width) canvasW = sec.width - canvasX;
 
-    // --- FG sampling: horizontal sweep across the text baseline area ---
-    // Text typically sits in the middle 40% band of the bbox height.
-    // Sample density scales with box size: ~1 sample per 3px, clamped to [3, 40].
-    var textBandTop = yInSection + canvasH * 0.3;
-    var textBandBottom = yInSection + canvasH * 0.7;
-    var textBandMid = yInSection + canvasH * 0.5;
-    var fgSamples = [];
-    var fgPoints = []; // canvas coordinates for visualization
-    var fgHSteps = Math.max(3, Math.min(_density.fgH, Math.floor(canvasW / 3)));
-    var fgVSteps = Math.max(2, Math.min(_density.fgV, Math.floor(canvasH * 0.4 / 3)));
-    for (var fvi = 0; fvi < fgVSteps; fvi++) {
-      var fy = textBandTop + ((textBandBottom - textBandTop) * fvi / (fgVSteps - 1 || 1));
-      for (var fhi = 0; fhi < fgHSteps; fhi++) {
-        var sx = canvasX + (canvasW * (fhi + 0.5) / fgHSteps);
-        fgSamples.push(samplePixel(sec.ctx, sx, fy, sec.width, sec.height));
-        fgPoints.push({ x: Math.round(sx), y: Math.round(fy) });
-      }
-    }
-    // Text color = the darkest sample in the text band (for dark-on-light)
-    // or lightest (for light-on-dark). Determine from CSS fg color.
+    // --- FG-exclusion approach ---
+    // Sample a grid across the entire bbox. Classify each pixel as "text" (close
+    // to CSS fg color) or "background" (far from CSS fg). Then measure contrast
+    // between text pixels and their neighboring background pixels.
+    // This works for photos, gradients, and solid backgrounds alike.
     var cssFg = parseRgb(pair.fg);
-    var cssFgIsDark = cssFg ? (luminance(cssFg) < 0.5) : true;
-    fgSamples.sort(function(a, b) {
-      var la = luminance(a), lb = luminance(b);
-      return cssFgIsDark ? (la - lb) : (lb - la); // darkest first if fg is dark
-    });
-    // Take median of the darkest/lightest third as FG (avoids outlier anti-aliased pixels)
-    var fgSlice = fgSamples.slice(0, Math.max(3, Math.ceil(fgSamples.length / 3)));
+    if (!cssFg) return null;
+
+    // RGB distance threshold: pixels within this distance from CSS fg are "text"
+    // Wider threshold for anti-aliased text (subpixel rendering blends fg with bg)
+    var FG_DIST_SQ = 8100; // 90^2
+
+    // Read all pixels in the bbox at once (much faster than individual getImageData calls)
+    var bx = Math.max(0, Math.round(canvasX));
+    var by = Math.max(0, Math.round(yInSection));
+    var bw = Math.min(Math.round(canvasW), sec.width - bx);
+    var bh = Math.min(Math.round(canvasH), sec.height - by);
+    if (bw < 2 || bh < 2) return null;
+
+    var imgData = sec.ctx.getImageData(bx, by, bw, bh);
+    var px = imgData.data;
+
+    // Sample grid (density-controlled)
+    var hSteps = Math.max(4, Math.min(_density.bgH, Math.floor(bw / 2)));
+    var vSteps = Math.max(3, Math.min(_density.bgV, Math.floor(bh / 2)));
+
+    var fgPoints = []; // text pixel coordinates (for visualization)
+    var bgPoints = []; // background pixel coordinates
+    var fgColors = [];
+    var bgColors = [];
+    var worstRatio = 99, bestRatio = 0;
+    var worstBg = null, bestBg = null;
+    var worstFg = null;
+
+    for (var vy = 0; vy < vSteps; vy++) {
+      var iy = Math.round(bh * vy / (vSteps - 1 || 1));
+      if (iy >= bh) iy = bh - 1;
+      for (var hx = 0; hx < hSteps; hx++) {
+        var ix = Math.round(bw * hx / (hSteps - 1 || 1));
+        if (ix >= bw) ix = bw - 1;
+        var idx = (iy * bw + ix) * 4;
+        var r = px[idx], g = px[idx + 1], b = px[idx + 2];
+
+        // Classify: distance from CSS foreground color
+        var dr = r - cssFg.r, dg = g - cssFg.g, db = b - cssFg.b;
+        var distSq = dr * dr + dg * dg + db * db;
+        var absX = bx + ix, absY = by + iy;
+
+        if (distSq < FG_DIST_SQ) {
+          // Text pixel
+          fgColors.push({ r: r, g: g, b: b });
+          fgPoints.push({ x: absX, y: absY });
+        } else {
+          // Background pixel
+          bgColors.push({ r: r, g: g, b: b, x: ix, y: iy });
+          bgPoints.push({ x: absX, y: absY });
+        }
+      }
+    }
+
+    // Need both FG and BG pixels to compute contrast
+    if (fgColors.length === 0 || bgColors.length === 0) {
+      // Fallback: use CSS values
+      return null;
+    }
+
+    // Average FG color (text)
     var fgColor = { r: 0, g: 0, b: 0 };
-    fgSlice.forEach(function(s) { fgColor.r += s.r; fgColor.g += s.g; fgColor.b += s.b; });
-    fgColor.r = Math.round(fgColor.r / fgSlice.length);
-    fgColor.g = Math.round(fgColor.g / fgSlice.length);
-    fgColor.b = Math.round(fgColor.b / fgSlice.length);
+    fgColors.forEach(function(c) { fgColor.r += c.r; fgColor.g += c.g; fgColor.b += c.b; });
+    fgColor.r = Math.round(fgColor.r / fgColors.length);
+    fgColor.g = Math.round(fgColor.g / fgColors.length);
+    fgColor.b = Math.round(fgColor.b / fgColors.length);
 
-    // --- BG sampling: edges and margins ONLY, excluding text band ---
-    // The text band (middle 30-70% of height) contains text pixels that would
-    // contaminate BG readings. Sample from:
-    //   1. Top strip (0% - 20% height)
-    //   2. Bottom strip (80% - 100% height)
-    //   3. Left edge strip (0% - 10% width, full height)
-    //   4. Right edge strip (90% - 100% width, full height)
-    //   5. Between-line gaps: horizontal sweeps at 25% and 75% height
-    // This catches the actual background even with dense text.
-    var bgSamples = [];
-    var bgPoints = []; // canvas coordinates for visualization
-    function _bgSample(px, py) {
-      bgSamples.push(samplePixel(sec.ctx, px, py, sec.width, sec.height));
-      bgPoints.push({ x: Math.round(px), y: Math.round(py) });
-    }
-    var bgHSteps = Math.max(3, Math.min(_density.bgH, Math.floor(canvasW / 3)));
-    var bgVSteps = Math.max(3, Math.min(_density.bgV, Math.floor(canvasH / 3)));
-    var insetX = Math.max(1, canvasW * 0.02);
-    var insetY = Math.max(1, canvasH * 0.02);
-
-    // Top strip (above text)
-    var topStripBottom = yInSection + canvasH * 0.2;
-    var topVSteps = Math.max(2, Math.ceil(bgVSteps * 0.2));
-    for (var tx = 0; tx < bgHSteps; tx++) {
-      for (var ty = 0; ty < topVSteps; ty++) {
-        var px = canvasX + insetX + ((canvasW - insetX * 2) * tx / (bgHSteps - 1));
-        var py = yInSection + insetY + ((topStripBottom - yInSection - insetY) * ty / (topVSteps - 1 || 1));
-        _bgSample(px, py);
-      }
-    }
-
-    // Bottom strip (below text)
-    var bottomStripTop = yInSection + canvasH * 0.8;
-    var bottomStripEnd = yInSection + canvasH - insetY;
-    var botVSteps = Math.max(2, Math.ceil(bgVSteps * 0.2));
-    for (var bxb = 0; bxb < bgHSteps; bxb++) {
-      for (var byb = 0; byb < botVSteps; byb++) {
-        var px = canvasX + insetX + ((canvasW - insetX * 2) * bxb / (bgHSteps - 1));
-        var py = bottomStripTop + ((bottomStripEnd - bottomStripTop) * byb / (botVSteps - 1 || 1));
-        _bgSample(px, py);
-      }
-    }
-
-    // Left edge strip (avoid text, sample full height at left margin)
-    var leftEdge = canvasX + insetX;
-    var leftEdgeEnd = canvasX + canvasW * 0.08;
-    var edgeVSteps = Math.max(3, Math.ceil(bgVSteps * 0.4));
-    if (leftEdgeEnd > leftEdge + 1) {
-      for (var ly = 0; ly < edgeVSteps; ly++) {
-        var py = yInSection + insetY + ((canvasH - insetY * 2) * ly / (edgeVSteps - 1));
-        _bgSample(leftEdge, py);
-        _bgSample(leftEdgeEnd, py);
-      }
-    }
-
-    // Right edge strip
-    var rightEdge = canvasX + canvasW - insetX;
-    var rightEdgeStart = canvasX + canvasW * 0.92;
-    if (rightEdge > rightEdgeStart + 1) {
-      for (var ry = 0; ry < edgeVSteps; ry++) {
-        var py = yInSection + insetY + ((canvasH - insetY * 2) * ry / (edgeVSteps - 1));
-        _bgSample(rightEdge, py);
-        _bgSample(rightEdgeStart, py);
-      }
-    }
-
-    // Between-line gap sweeps (25% and 75% of height — between top/text and text/bottom)
-    var gapYs = [yInSection + canvasH * 0.22, yInSection + canvasH * 0.78];
-    for (var gi = 0; gi < gapYs.length; gi++) {
-      for (var gx = 0; gx < bgHSteps; gx++) {
-        var px = canvasX + insetX + ((canvasW - insetX * 2) * gx / (bgHSteps - 1));
-        _bgSample(px, gapYs[gi]);
-      }
-    }
-
-    // Safety: if we got very few samples (tiny box), fall back to corners
-    if (bgSamples.length < 4) {
-      _bgSample(canvasX + 1, yInSection + 1);
-      _bgSample(canvasX + canvasW - 1, yInSection + 1);
-      _bgSample(canvasX + 1, yInSection + canvasH - 1);
-      _bgSample(canvasX + canvasW - 1, yInSection + canvasH - 1);
-    }
-
-    // Find worst-case BG (the one that gives lowest contrast with FG)
-    var worstBg = bgSamples[0];
-    var worstRatio = 99;
-    var bestBg = bgSamples[0];
-    var bestRatio = 0;
-    bgSamples.forEach(function(bg) {
-      var r = contrastRatio(fgColor, bg);
-      if (r < worstRatio) { worstRatio = r; worstBg = bg; }
-      if (r > bestRatio) { bestRatio = r; bestBg = bg; }
+    // For each BG pixel, compute contrast against text color — find worst case
+    bgColors.forEach(function(bg) {
+      var ratio = contrastRatio(fgColor, bg);
+      if (ratio < worstRatio) { worstRatio = ratio; worstBg = bg; }
+      if (ratio > bestRatio) { bestRatio = ratio; bestBg = bg; }
     });
 
-    // Also compute average BG contrast for overall picture
+    // Average BG
     var avgBg = { r: 0, g: 0, b: 0 };
-    bgSamples.forEach(function(s) { avgBg.r += s.r; avgBg.g += s.g; avgBg.b += s.b; });
-    avgBg.r = Math.round(avgBg.r / bgSamples.length);
-    avgBg.g = Math.round(avgBg.g / bgSamples.length);
-    avgBg.b = Math.round(avgBg.b / bgSamples.length);
+    bgColors.forEach(function(c) { avgBg.r += c.r; avgBg.g += c.g; avgBg.b += c.b; });
+    avgBg.r = Math.round(avgBg.r / bgColors.length);
+    avgBg.g = Math.round(avgBg.g / bgColors.length);
+    avgBg.b = Math.round(avgBg.b / bgColors.length);
     var avgRatio = contrastRatio(fgColor, avgBg);
 
-    // Use worst-case ratio as the primary "pixel ratio" — conservative approach
     var pixelRatio = worstRatio;
     var cssRatio = pair.ratio;
 
