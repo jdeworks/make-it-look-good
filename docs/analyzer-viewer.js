@@ -96,7 +96,6 @@ window.MilgViewer = (function() {
       '<select class="milg-viewer-zoom-select" title="Zoom level">' +
         '<option value="0.75">75%</option><option value="1" selected>100%</option><option value="1.5">150%</option><option value="2">200%</option><option value="2.5">250%</option><option value="3">300%</option>' +
       '</select>' +
-      '<label class="milg-viewer-offset-label" title="Adjust Y offset to align boxes with content">Y&nbsp;<input type="range" class="milg-viewer-offset-slider" min="-150" max="150" value="0" step="1"><span class="milg-viewer-offset-val">0</span></label>' +
       '<button class="milg-viewer-debug-btn" title="Copy debug info to clipboard">Debug</button>' +
       '<button class="milg-viewer-close" title="Close (Esc)">&times;</button>';
 
@@ -159,23 +158,6 @@ window.MilgViewer = (function() {
       _zoomLevel = parseFloat(zoomSelect.value) || 1;
       applyZoom(frame);
     });
-
-    // Y offset slider for manual alignment
-    var offsetSlider = toolbar.querySelector('.milg-viewer-offset-slider');
-    var offsetVal = toolbar.querySelector('.milg-viewer-offset-val');
-    if (offsetSlider) {
-      // Set initial value from calibration
-      var initOffset = (_meta && _meta.calibrationOffsetY) || 0;
-      offsetSlider.value = initOffset;
-      offsetVal.textContent = initOffset;
-      _calibrationOffsetY = initOffset;
-
-      offsetSlider.addEventListener('input', function() {
-        _calibrationOffsetY = parseInt(offsetSlider.value) || 0;
-        offsetVal.textContent = _calibrationOffsetY;
-        renderOverlays();
-      });
-    }
 
     // Drag-to-pan (mouse + touch)
     var _dragStart = null;

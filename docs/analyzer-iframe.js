@@ -40,25 +40,28 @@ window.MilgIframe = (function() {
       // Once-guard: extraction may fire twice (load + fallback timeout)
       'if(window.__milgSsDone)return;window.__milgSsDone=true;' +
       'var vh=window.innerHeight||900;' +
-      // Unlock height to get true scrollHeight (sites with html,body{height:100%} clamp it to viewport)
-      // Keep overflow:auto so scrolling still works for pre-scroll phase
-      'document.documentElement.style.cssText+="height:auto !important;";' +
+      // Unlock height to get true scrollHeight (sites with html,body{height:100%} clamp it)
+      // Set overflow:auto explicitly so the inner document is scrollable for IntersectionObservers
+      'document.documentElement.style.cssText+="height:auto !important;overflow-y:auto !important;";' +
       'document.body.style.cssText+="height:auto !important;";' +
       'void document.body.offsetHeight;' + // force reflow
       'var totalH=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);' +
       'var captureH=Math.min(totalH,vh*10);' +
-      'console.log("[iframe-ss] Phase 1: Pre-scrolling "+captureH+"px ("+Math.ceil(captureH/vh)+" steps) to trigger lazy content...");' +
+      'console.log("[iframe-ss] Phase 1: Pre-scrolling "+captureH+"px ("+Math.ceil(captureH/vh)+" steps, vh="+vh+") ...");' +
       // Phase 1: Pre-scroll to trigger IntersectionObservers, lazy images, fade-in animations
       'var _positions=[];for(var p=0;p<captureH;p+=vh)_positions.push(p);' +
       'var _pi=0;' +
       'function _scrollNext(){' +
         'if(_pi>=_positions.length){' +
-          'console.log("[iframe-ss] Phase 1 done. Waiting for content to settle...");' +
-          'setTimeout(_startCapture,500);return' +
+          'console.log("[iframe-ss] Phase 1 done (scrollY="+window.scrollY+"). Waiting for content...");' +
+          'setTimeout(_startCapture,800);return' + // 800ms for lazy content + animations to start
         '}' +
         'window.scrollTo(0,_positions[_pi]);' +
+        // Also scroll documentElement directly (some browsers need this in iframes)
+        'document.documentElement.scrollTop=_positions[_pi];' +
         'try{window.dispatchEvent(new Event("scroll"))}catch(e){}' +
-        '_pi++;setTimeout(_scrollNext,150)' +
+        'console.log("[iframe-ss] scroll to "+_positions[_pi]+" → actual="+window.scrollY);' +
+        '_pi++;setTimeout(_scrollNext,200)' + // 200ms per step (more time for observers)
       '}' +
       '_scrollNext();' +
       // Phase 2: Reset scroll, force height:auto, re-read bboxes, capture
