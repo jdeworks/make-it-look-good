@@ -170,25 +170,16 @@ window.MilgIframe = (function() {
                   'try{parent.postMessage(msg,"*")}catch(e2){console.error("[iframe-ss] postMessage retry failed:",e2)}' +
                 '}' +
               '}' +
-              // Step 2: Layered text masks
+              // Step 2: Layered text masks with transition kill
               '_prog("Building text masks...");' +
               'console.log("[iframe-ss] Step 2: Layered masks...");' +
-              // Phase A: NUKE all stylesheets to eliminate any CSS interference
-              'var _removedSheets=[];' +
-              'document.querySelectorAll("link[rel=stylesheet],style:not([data-milg-mask])").forEach(function(s){' +
-                'if(!s.hasAttribute("data-milg-mask")){_removedSheets.push({el:s,parent:s.parentNode,next:s.nextSibling});s.parentNode.removeChild(s)}' +
-              '});' +
-              'console.log("[iframe-ss] Removed "+_removedSheets.length+" stylesheets");' +
-              // Phase A2: Strip all class attributes and existing inline styles
-              'document.querySelectorAll("*").forEach(function(el){' +
-                'el.removeAttribute("class");' +
-                'el.style.cssText=""' +
-              '});' +
+              // Phase A: Kill ALL transitions on every element BEFORE any color changes
+              'document.querySelectorAll("*").forEach(function(el){el.style.setProperty("transition-duration","0s","important");el.style.setProperty("transition","none","important")});' +
               'void document.body.offsetHeight;' +
-              // Phase B: Add our own minimal mask style — white bg, hide media
+              // Phase B: Global style — everything white, all visible, no transitions
               'var _maskStyle=document.createElement("style");' +
               '_maskStyle.setAttribute("data-milg-mask","1");' +
-              '_maskStyle.textContent="*,*::before,*::after{color:#fff;background:#fff;background-image:none;border-color:transparent;box-shadow:none;text-shadow:none;outline:none;-webkit-text-fill-color:#fff;opacity:1;transition:none;animation:none;text-decoration:none;}img,svg,video,canvas,picture,iframe{opacity:0;}";' +
+              '_maskStyle.textContent="*,*::before,*::after{color:#fff !important;background-color:#fff !important;background-image:none !important;background:white !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;-webkit-text-fill-color:#fff !important;opacity:1 !important;transition:none !important;animation:none !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}";' +
               'document.head.appendChild(_maskStyle);void document.body.offsetHeight;' +
               // Phase C: Collect pair elements and build overlap layers
               'var _refs=window.__milgBboxRefs||[];' +
@@ -218,29 +209,24 @@ window.MilgIframe = (function() {
                 'var layer=_layers[_li];_li++;' +
                 '_prog("Text mask layer "+_li+"/"+_layers.length+"...");' +
                 'console.log("[iframe-ss] Layer "+_li+": "+layer.length+" elements");' +
-                // Set layer elements to black (all stylesheets removed, no !important needed)
+                // Set layer elements to black via INLINE style (transitions already killed)
                 'layer.forEach(function(pe){' +
-                  'pe.el.style.color="#000";' +
-                  'pe.el.style.webkitTextFillColor="#000";' +
+                  'pe.el.style.setProperty("color","#000","important");' +
+                  'pe.el.style.setProperty("-webkit-text-fill-color","#000","important");' +
                   'pe.el.querySelectorAll("*").forEach(function(ch){' +
-                    'ch.style.color="#000";ch.style.webkitTextFillColor="#000"})' +
+                    'ch.style.setProperty("color","#000","important");' +
+                    'ch.style.setProperty("-webkit-text-fill-color","#000","important")})' +
                 '});' +
                 'void document.body.offsetHeight;' +
-                // DEBUG: Log computed style of first few elements to verify override took effect
-                'layer.slice(0,5).forEach(function(pe){' +
-                  'var cs=getComputedStyle(pe.el);' +
-                  'console.log("[mask-dbg] \\""+pe.pair.text.substring(0,20)+"\\" computed: color="+cs.color+" fill="+cs.webkitTextFillColor+" tag="+pe.el.tagName+" cls="+(pe.el.getAttribute("class")||"none"))' +
-                '});' +
-                'console.log("[iframe-ss] Layer "+_li+": starting domToCanvas (capture 1)...");' +
+                'console.log("[iframe-ss] Layer "+_li+": starting domToCanvas...");' +
                 // Race domToCanvas against our own 15s timeout (library timeout may not fire)
                 'var _layerDone=false;' +
                 'var _layerTimer=setTimeout(function(){if(!_layerDone){_layerDone=true;console.warn("[iframe-ss] Layer "+_li+" domToCanvas timed out (15s)");setTimeout(_nextLayer,0)}},15000);' +
                 'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:12000}).then(function(mc){' +
                   'if(_layerDone)return;_layerDone=true;clearTimeout(_layerTimer);' +
-                  'console.log("[iframe-ss] Layer "+_li+" capture 1: "+mc.width+"x"+mc.height);' +
+                  'console.log("[iframe-ss] Layer "+_li+" captured: "+mc.width+"x"+mc.height);' +
                   'var mCtx=mc.getContext("2d",{willReadFrequently:true});' +
-                  // For elements that show no dark pixels, log the center pixel from capture 1
-                  'var _c1Fails=[];' +
+                  'var _fillTextFallbacks=0;' +
                   'layer.forEach(function(pe){' +
                     'if(!pe.bbox)return;' +
                     'var bx=Math.max(0,Math.round(pe.bbox.left*_sc));' +
@@ -253,54 +239,49 @@ window.MilgIframe = (function() {
                       'for(var y=0;y<bh;y++){for(var x=0;x<bw;x++){' +
                         'var i=(y*bw+x)*4;if((px[i]+px[i+1]+px[i+2])/3<240)bmp[y*bw+x]=1}}' +
                       'var _dk=0;for(var _b=0;_b<bmp.length;_b++)if(bmp[_b])_dk++;' +
-                      'if(_dk===0&&bw>5){' +
-                        'var _ci=(Math.floor(bh/2)*bw+Math.floor(bw/2))*4;' +
-                        '_c1Fails.push({pe:pe,bx:bx,by:by,bw:bw,bh:bh,c1:"rgb("+px[_ci]+","+px[_ci+1]+","+px[_ci+2]+")"});' +
-                        'console.log("[mask] C1 no dark: \\""+pe.pair.text.substring(0,25)+"\\" "+bw+"x"+bh+" center=rgb("+px[_ci]+","+px[_ci+1]+","+px[_ci+2]+")")' +
+                      // Fallback: if domToCanvas failed to render text, use canvas.fillText
+                      'if(_dk===0&&bw>3&&pe.pair.text){' +
+                        'try{var cs=getComputedStyle(pe.el);' +
+                          'var _fc=document.createElement("canvas");_fc.width=bw;_fc.height=bh;' +
+                          'var _fx=_fc.getContext("2d");_fx.fillStyle="#fff";_fx.fillRect(0,0,bw,bh);' +
+                          'var _fs=parseFloat(cs.fontSize)*_sc;' +
+                          '_fx.fillStyle="#000";' +
+                          '_fx.font=cs.fontStyle+" "+cs.fontWeight+" "+_fs+"px "+cs.fontFamily;' +
+                          '_fx.textBaseline="top";' +
+                          // Render text — handle multi-line by splitting on natural wrapping
+                          'var _txt=pe.pair.text.replace(/\\[placeholder\\] /,"");' +
+                          'var _lh=parseFloat(cs.lineHeight)*_sc||_fs*1.2;' +
+                          'var _words=_txt.split(/\\s+/);var _line="";var _ty=0;' +
+                          'for(var _w=0;_w<_words.length;_w++){' +
+                            'var _test=_line?_line+" "+_words[_w]:_words[_w];' +
+                            'if(_fx.measureText(_test).width>bw&&_line){' +
+                              '_fx.fillText(_line,0,_ty);_line=_words[_w];_ty+=_lh' +
+                            '}else{_line=_test}' +
+                          '}_fx.fillText(_line,0,_ty);' +
+                          // Re-read as bitmap
+                          'var _fpx=_fx.getImageData(0,0,bw,bh).data;' +
+                          'bmp=new Uint8Array(bw*bh);' +
+                          'for(var _fy=0;_fy<bh;_fy++){for(var _fxx=0;_fxx<bw;_fxx++){' +
+                            'var _fi=(_fy*bw+_fxx)*4;if((_fpx[_fi]+_fpx[_fi+1]+_fpx[_fi+2])/3<240)bmp[_fy*bw+_fxx]=1}}' +
+                          '_dk=0;for(var _fb=0;_fb<bmp.length;_fb++)if(bmp[_fb])_dk++;' +
+                          '_fillTextFallbacks++' +
+                        '}catch(e){}' +
                       '}' +
                       'var _arr=Array.from(bmp);' +
                       'pe.pair._maskBmp=_arr;pe.pair._maskW=bw;pe.pair._maskH=bh;pe.pair._maskLayer=_li;pe.pair._maskDark=_dk;' +
                       '_maskResults[pe.idx]={bmp:_arr,w:bw,h:bh,layer:_li,dark:_dk}' +
                     '}catch(e){}' +
                   '});' +
-                  // DEBUG: If any elements failed, wait 1s and capture again to check for animation drift
-                  'if(_c1Fails.length>0){' +
-                    'console.log("[mask-dbg] "+_c1Fails.length+" elements failed capture 1, re-checking computed styles...");' +
-                    '_c1Fails.forEach(function(f){' +
-                      'var cs=getComputedStyle(f.pe.el);' +
-                      'console.log("[mask-dbg] \\""+f.pe.pair.text.substring(0,20)+"\\" computed: color="+cs.color+" fill="+cs.webkitTextFillColor+" display="+cs.display+" visibility="+cs.visibility+" opacity="+cs.opacity+" position="+cs.position+" tag="+f.pe.el.tagName)' +
-                    '});' +
-                    'console.log("[mask-dbg] Waiting 1s then capture 2...");' +
-                    'setTimeout(function(){' +
-                      'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:12000}).then(function(mc2){' +
-                        'console.log("[mask-dbg] Capture 2: "+mc2.width+"x"+mc2.height);' +
-                        'var ctx2=mc2.getContext("2d",{willReadFrequently:true});' +
-                        '_c1Fails.forEach(function(f){' +
-                          'try{var px2=ctx2.getImageData(f.bx,f.by,f.bw,f.bh).data;' +
-                            'var ci2=(Math.floor(f.bh/2)*f.bw+Math.floor(f.bw/2))*4;' +
-                            'var c2="rgb("+px2[ci2]+","+px2[ci2+1]+","+px2[ci2+2]+")";' +
-                            'var dk2=0;for(var b=0;b<f.bw*f.bh;b++){var ii=b*4;if((px2[ii]+px2[ii+1]+px2[ii+2])/3<240)dk2++}' +
-                            'console.log("[mask-dbg] C2 \\""+f.pe.pair.text.substring(0,25)+"\\" center="+c2+" dark="+dk2+" (C1 was "+f.c1+")")' +
-                          '}catch(e){console.warn("[mask-dbg] C2 read failed:",e)}' +
-                        '});' +
-                        // Reset and continue
-                        'layer.forEach(function(pe){' +
-                          'pe.el.style.color="#fff";pe.el.style.webkitTextFillColor="#fff";' +
-                          'pe.el.querySelectorAll("*").forEach(function(ch){ch.style.color="#fff";ch.style.webkitTextFillColor="#fff"})' +
-                        '});' +
-                        'setTimeout(_nextLayer,0)' +
-                      '}).catch(function(e){console.warn("[mask-dbg] C2 failed:",e);' +
-                        'layer.forEach(function(pe){pe.el.style.color="#fff";pe.el.style.webkitTextFillColor="#fff";pe.el.querySelectorAll("*").forEach(function(ch){ch.style.color="#fff";ch.style.webkitTextFillColor="#fff"})});' +
-                        'setTimeout(_nextLayer,0)})' +
-                    '},1000)' +
-                  '}else{' +
-                    // No failures — reset and move on
-                    'layer.forEach(function(pe){' +
-                      'pe.el.style.color="#fff";pe.el.style.webkitTextFillColor="#fff";' +
-                      'pe.el.querySelectorAll("*").forEach(function(ch){ch.style.color="#fff";ch.style.webkitTextFillColor="#fff"})' +
-                    '});' +
-                    'setTimeout(_nextLayer,0)' +
-                  '}' +
+                  'if(_fillTextFallbacks>0)console.log("[iframe-ss] Layer "+_li+": "+_fillTextFallbacks+" elements used fillText fallback mask");' +
+                  // Reset layer elements to white
+                  'layer.forEach(function(pe){' +
+                    'pe.el.style.setProperty("color","#fff","important");' +
+                    'pe.el.style.setProperty("-webkit-text-fill-color","#fff","important");' +
+                    'pe.el.querySelectorAll("*").forEach(function(ch){' +
+                      'ch.style.setProperty("color","#fff","important");' +
+                      'ch.style.setProperty("-webkit-text-fill-color","#fff","important")})' +
+                  '});' +
+                  'setTimeout(_nextLayer,0)' +
                 '}).catch(function(e){if(_layerDone)return;_layerDone=true;clearTimeout(_layerTimer);console.warn("[iframe-ss] Layer "+_li+" failed:",e);setTimeout(_nextLayer,0)})' +
               '}' +
               'var _maskDone=false;' +
