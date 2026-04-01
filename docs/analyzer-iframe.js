@@ -40,9 +40,14 @@ window.MilgIframe = (function() {
       // Once-guard: extraction may fire twice (load + fallback timeout)
       'if(window.__milgSsDone)return;window.__milgSsDone=true;' +
       'var vh=window.innerHeight||900;' +
+      // Unlock height to get true scrollHeight (sites with html,body{height:100%} clamp it to viewport)
+      // Keep overflow:auto so scrolling still works for pre-scroll phase
+      'document.documentElement.style.cssText+="height:auto !important;";' +
+      'document.body.style.cssText+="height:auto !important;";' +
+      'void document.body.offsetHeight;' + // force reflow
       'var totalH=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);' +
       'var captureH=Math.min(totalH,vh*10);' +
-      'console.log("[iframe-ss] Phase 1: Pre-scrolling "+captureH+"px to trigger lazy content...");' +
+      'console.log("[iframe-ss] Phase 1: Pre-scrolling "+captureH+"px ("+Math.ceil(captureH/vh)+" steps) to trigger lazy content...");' +
       // Phase 1: Pre-scroll to trigger IntersectionObservers, lazy images, fade-in animations
       'var _positions=[];for(var p=0;p<captureH;p+=vh)_positions.push(p);' +
       'var _pi=0;' +
@@ -66,9 +71,9 @@ window.MilgIframe = (function() {
           'if(s.overflow==="auto"||s.overflow==="scroll"||s.overflowY==="auto"||s.overflowY==="scroll"){' +
           'el.style.scrollBehavior="auto";el.scrollTop=0}}' +
         '});' +
-        // Force html+body to auto height so body.scrollHeight reflects full content
-        'document.documentElement.style.cssText+="height:auto !important;overflow:visible !important;";' +
-        'document.body.style.cssText+="height:auto !important;overflow:visible !important;";' +
+        // Switch to overflow:visible for capture (height:auto was set before pre-scroll)
+        'document.documentElement.style.cssText+="overflow:visible !important;";' +
+        'document.body.style.cssText+="overflow:visible !important;";' +
         'void document.body.offsetHeight;' +
         'console.log("[iframe-ss] Phase 2: Waiting for animations...");' +
         'setTimeout(function(){' +
