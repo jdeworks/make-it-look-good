@@ -697,57 +697,108 @@ window.MilgViewer = (function() {
 
       // Sample points stored for on-click reveal
       rect._samplePoints = vr.samplePoints || null;
+      rect._worstPoint = vr.worstPoint || null;
       rect._sectionOffset = (vr.sectionIdx && _meta.viewportHeight) ? vr.sectionIdx * Math.round(_meta.viewportHeight * vScaleX) : 0;
     });
 
-    // Tooltips + click-to-show-pixels for verify rects
+    // Hover: show tooltip + worst-point red ring
+    // Click: toggle sample dots (with overlap picker for nested elements)
     svg.querySelectorAll('rect[data-verify]').forEach(function(rect) {
-      rect.addEventListener('mouseenter', function(e) { showVerifyTooltip(e, parseInt(rect.getAttribute('data-verify'))); });
-      rect.addEventListener('mouseleave', hideTooltip);
+      rect.addEventListener('mouseenter', function(e) {
+        showVerifyTooltip(e, parseInt(rect.getAttribute('data-verify')));
+        // Worst-point red ring on hover
+        var wp = rect._worstPoint;
+        var secOff = rect._sectionOffset || 0;
+        if (wp) {
+          var ring = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          ring.setAttribute('cx', wp.x); ring.setAttribute('cy', wp.y + secOff);
+          ring.setAttribute('r', _zoomLevel >= 1.5 ? '5' : '3');
+          ring.setAttribute('fill', 'none'); ring.setAttribute('stroke', '#ef4444');
+          ring.setAttribute('stroke-width', '2'); ring.setAttribute('class', 'milg-worst-ring');
+          ring.setAttribute('pointer-events', 'none');
+          svg.appendChild(ring);
+        }
+      });
+      rect.addEventListener('mouseleave', function() {
+        hideTooltip();
+        svg.querySelectorAll('.milg-worst-ring').forEach(function(r) { r.parentNode.removeChild(r); });
+      });
       rect.addEventListener('click', function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        // Toggle sample point dots for this rect
-        var existing = svg.querySelectorAll('.milg-sample-dot[data-owner="' + rect.getAttribute('data-verify') + '"]');
-        if (existing.length > 0) {
-          existing.forEach(function(d) { d.parentNode.removeChild(d); });
+        e.preventDefault(); e.stopPropagation();
+        // Check overlapping verify rects
+        var rx = parseFloat(rect.getAttribute('x')), ry = parseFloat(rect.getAttribute('y'));
+        var rw = parseFloat(rect.getAttribute('width')), rh = parseFloat(rect.getAttribute('height'));
+        var overlapping = [];
+        svg.querySelectorAll('rect[data-verify]').forEach(function(r) {
+          var ox = parseFloat(r.getAttribute('x')), oy = parseFloat(r.getAttribute('y'));
+          var ow = parseFloat(r.getAttribute('width')), oh = parseFloat(r.getAttribute('height'));
+          if (ox < rx + rw && ox + ow > rx && oy < ry + rh && oy + oh > ry) overlapping.push(r);
+        });
+        if (overlapping.length > 1) {
+          hideOverlapPicker();
+          var picker = document.createElement('div');
+          picker.className = 'milg-viewer-overlap-picker';
+          picker.innerHTML = '<div class="milg-viewer-overlap-header">' + overlapping.length + ' overlapping</div>';
+          overlapping.forEach(function(or) {
+            var vi = parseInt(or.getAttribute('data-verify'));
+            var vr = (_reportData && _reportData._contrastVerifyResults) ? _reportData._contrastVerifyResults[vi] : null;
+            if (!vr) return;
+            var item = document.createElement('div');
+            item.className = 'milg-viewer-overlap-item';
+            item.innerHTML = '<span class="milg-viewer-overlap-dot" style="background:' + (vr.pixelPasses ? '#22c55e' : '#ef4444') + '"></span>' +
+              '<span class="milg-viewer-overlap-text">' + (vr.text || vr.selector || '').substring(0, 40) + '</span>' +
+              '<span class="milg-viewer-overlap-cat">' + (vr.pixelRatio || '?') + ':1</span>';
+            item.addEventListener('click', function(ev) { ev.stopPropagation(); hideOverlapPicker(); _toggleDots(or, svg); });
+            picker.appendChild(item);
+          });
+          document.body.appendChild(picker);
+          picker.style.left = Math.min(e.clientX + 8, window.innerWidth - 320) + 'px';
+          picker.style.top = Math.min(e.clientY + 8, window.innerHeight - 200) + 'px';
+          _overlapPicker = picker;
+          setTimeout(function() { document.addEventListener('click', function _oa(ev) { if (_overlapPicker && !_overlapPicker.contains(ev.target)) { hideOverlapPicker(); document.removeEventListener('click', _oa); } }); }, 0);
           return;
         }
-        var sp = rect._samplePoints;
-        if (!sp) return;
-        var secOff = rect._sectionOffset || 0;
-        var dotR = _zoomLevel >= 2 ? '1.5' : '1';
-        var owner = rect.getAttribute('data-verify');
-        (sp.fg || []).forEach(function(pt) {
-          var dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-          dot.setAttribute('cx', pt.x);
-          dot.setAttribute('cy', pt.y + secOff);
-          dot.setAttribute('r', dotR);
-          dot.setAttribute('fill', '#06b6d4');
-          dot.setAttribute('stroke', '#fff');
-          dot.setAttribute('stroke-width', '0.3');
-          dot.setAttribute('opacity', '0.9');
-          dot.setAttribute('pointer-events', 'none');
-          dot.setAttribute('class', 'milg-sample-dot');
-          dot.setAttribute('data-owner', owner);
-          svg.appendChild(dot);
-        });
-        (sp.bg || []).forEach(function(pt) {
-          var dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-          dot.setAttribute('cx', pt.x);
-          dot.setAttribute('cy', pt.y + secOff);
-          dot.setAttribute('r', dotR);
-          dot.setAttribute('fill', '#f97316');
-          dot.setAttribute('stroke', '#fff');
-          dot.setAttribute('stroke-width', '0.3');
-          dot.setAttribute('opacity', '0.8');
-          dot.setAttribute('pointer-events', 'none');
-          dot.setAttribute('class', 'milg-sample-dot');
-          dot.setAttribute('data-owner', owner);
-          svg.appendChild(dot);
-        });
+        _toggleDots(rect, svg);
       });
     });
+
+    function _toggleDots(rect, svg) {
+      var owner = rect.getAttribute('data-verify');
+      var existing = svg.querySelectorAll('.milg-sample-dot[data-owner="' + owner + '"]');
+      if (existing.length > 0) { existing.forEach(function(d) { d.parentNode.removeChild(d); }); return; }
+      var sp = rect._samplePoints; if (!sp) return;
+      var secOff = rect._sectionOffset || 0;
+      var dotR = _zoomLevel >= 2 ? '1.5' : '1';
+      (sp.fg || []).forEach(function(pt) {
+        var d = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        d.setAttribute('cx', pt.x); d.setAttribute('cy', pt.y + secOff);
+        d.setAttribute('r', dotR); d.setAttribute('fill', '#06b6d4');
+        d.setAttribute('stroke', '#fff'); d.setAttribute('stroke-width', '0.3');
+        d.setAttribute('opacity', '0.9'); d.setAttribute('pointer-events', 'none');
+        d.setAttribute('class', 'milg-sample-dot'); d.setAttribute('data-owner', owner);
+        svg.appendChild(d);
+      });
+      (sp.bg || []).forEach(function(pt) {
+        var d = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        d.setAttribute('cx', pt.x); d.setAttribute('cy', pt.y + secOff);
+        d.setAttribute('r', dotR); d.setAttribute('fill', '#f97316');
+        d.setAttribute('stroke', '#fff'); d.setAttribute('stroke-width', '0.3');
+        d.setAttribute('opacity', '0.8'); d.setAttribute('pointer-events', 'none');
+        d.setAttribute('class', 'milg-sample-dot'); d.setAttribute('data-owner', owner);
+        svg.appendChild(d);
+      });
+      // Red ring on worst bg pixel
+      var wp = rect._worstPoint;
+      if (wp) {
+        var ring = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        ring.setAttribute('cx', wp.x); ring.setAttribute('cy', wp.y + secOff);
+        ring.setAttribute('r', _zoomLevel >= 1.5 ? '5' : '3.5');
+        ring.setAttribute('fill', 'none'); ring.setAttribute('stroke', '#ef4444');
+        ring.setAttribute('stroke-width', '2'); ring.setAttribute('pointer-events', 'none');
+        ring.setAttribute('class', 'milg-sample-dot'); ring.setAttribute('data-owner', owner);
+        svg.appendChild(ring);
+      }
+    }
   }
 
   function showFindingTooltip(e, findingIdx) {

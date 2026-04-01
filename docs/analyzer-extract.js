@@ -127,7 +127,15 @@ window.MilgExtract = (function() {
     function rgbStr(c) { return 'rgb(' + c.r + ',' + c.g + ',' + c.b + ')'; }
     function isVisible(el) {
       var s = getComputedStyle(el);
-      if (s.display === 'none' || s.visibility === 'hidden' || s.opacity === '0') return false;
+      if (s.display === 'none' || s.visibility === 'hidden') return false;
+      if (s.opacity === '0') {
+        // Check if this is a scroll-animated element (has transition/animation) — treat as visible
+        // These will be force-revealed during the screenshot phase
+        var hasTrans = s.transition && s.transition.indexOf('opacity') !== -1;
+        var hasAnim = s.animationName && s.animationName !== 'none';
+        var cls = (el.className && typeof el.className === 'string') ? el.className.toLowerCase() : '';
+        if (!hasTrans && !hasAnim && !/fade|reveal|animate|aos|slide|appear/.test(cls)) return false;
+      }
       var r = el.getBoundingClientRect();
       return r.width > 0 && r.height > 0;
     }

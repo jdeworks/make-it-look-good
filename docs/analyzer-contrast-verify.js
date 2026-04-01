@@ -158,8 +158,9 @@ window.MilgContrastVerify = (function() {
       try { maskData = maskCanvas.ctx.getImageData(bx, by, bw, bh).data; } catch(e) {}
     }
 
-    var hSteps = Math.max(6, Math.min(_density.bgH, Math.floor(bw / 2)));
-    var vSteps = Math.max(4, Math.min(_density.bgV, Math.floor(bh / 2)));
+    // Fixed density: 1 sample every 3px, clamped to reasonable bounds
+    var hSteps = Math.max(4, Math.min(200, Math.floor(bw / 3)));
+    var vSteps = Math.max(3, Math.min(100, Math.floor(bh / 3)));
 
     var fgPoints = [], bgPoints = [];
     var fgColors = [], bgColors = [];
@@ -214,12 +215,13 @@ window.MilgContrastVerify = (function() {
     fgColor.g = Math.round(fgColor.g / fgColors.length);
     fgColor.b = Math.round(fgColor.b / fgColors.length);
 
-    // Worst/best BG contrast against text
+    // Worst/best BG contrast against text — track positions for highlighting
     var worstRatio = 99, bestRatio = 0, worstBg = null, bestBg = null;
-    bgColors.forEach(function(bg) {
+    var worstBgIdx = -1, bestBgIdx = -1;
+    bgColors.forEach(function(bg, i) {
       var ratio = contrastRatio(fgColor, bg);
-      if (ratio < worstRatio) { worstRatio = ratio; worstBg = bg; }
-      if (ratio > bestRatio) { bestRatio = ratio; bestBg = bg; }
+      if (ratio < worstRatio) { worstRatio = ratio; worstBg = bg; worstBgIdx = i; }
+      if (ratio > bestRatio) { bestRatio = ratio; bestBg = bg; bestBgIdx = i; }
     });
 
     var avgBg = { r: 0, g: 0, b: 0 };
@@ -263,7 +265,8 @@ window.MilgContrastVerify = (function() {
       text: pair.text,
       sectionIdx: sectionIdx,
       sampleCount: { fg: fgColors.length, bg: bgColors.length },
-      samplePoints: { fg: fgPoints, bg: bgPoints }
+      samplePoints: { fg: fgPoints, bg: bgPoints },
+      worstPoint: worstBgIdx >= 0 ? bgPoints[worstBgIdx] : null
     };
   }
 
