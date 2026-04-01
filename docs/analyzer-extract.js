@@ -907,10 +907,11 @@ window.MilgExtract = (function() {
     data._sandboxLog = window.__milgSandboxLog || [];
 
     parent.postMessage({ type: 'milg-analyzer-result', data: data }, '*');
-    // Trigger screenshot capture if configured (function injected by parent)
-    // 500ms delay: parent resizes iframe to full doc height after receiving data
+    // Screenshot capture: triggered by parent via milg-start-capture message
+    // (parent resizes iframe to full docHeight first, then sends the signal)
+    // Legacy fallback for old screenshot script that uses __milgDoScreenshots
     if (typeof window.__milgDoScreenshots === 'function') {
-      setTimeout(window.__milgDoScreenshots, 500);
+      setTimeout(window.__milgDoScreenshots, 300);
     }
   }
 
