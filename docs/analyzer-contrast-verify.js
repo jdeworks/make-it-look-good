@@ -286,20 +286,25 @@ window.MilgContrastVerify = (function() {
 
     if (fgColors.length === 0 || bgColors.length === 0) return null;
 
-    // Cluster-average FG pixels: replace each FG pixel's color with the average
-    // of nearby FG pixels (3px radius). Filters out AA edge blending — gives
-    // the solid text color instead of the half-blended edge color.
+    // Cluster-max FG pixels: replace each FG pixel's color with the one furthest
+    // from the BG in its 3px neighborhood. This picks the "strongest" text color,
+    // filtering out AA edge blending that pulls colors toward the background.
     var CLUSTER_R = 3;
     var clusteredFgColors = fgColors.map(function(c, i) {
       var fp = fgPoints[i];
-      var rSum = 0, gSum = 0, bSum = 0, cnt = 0;
-      fgPoints.forEach(function(op, oi) {
-        var dx = fp.x - op.x, dy = fp.y - op.y;
-        if (dx * dx + dy * dy <= CLUSTER_R * CLUSTER_R) {
-          rSum += fgColors[oi].r; gSum += fgColors[oi].g; bSum += fgColors[oi].b; cnt++;
-        }
-      });
-      return cnt > 0 ? { r: Math.round(rSum / cnt), g: Math.round(gSum / cnt), b: Math.round(bSum / cnt) } : c;
+      var bestColor = c, bestDist = 0;
+      if (cssBg) {
+        fgPoints.forEach(function(op, oi) {
+          var dx = fp.x - op.x, dy = fp.y - op.y;
+          if (dx * dx + dy * dy <= CLUSTER_R * CLUSTER_R) {
+            var nc = fgColors[oi];
+            var dr = nc.r - cssBg.r, dg = nc.g - cssBg.g, db = nc.b - cssBg.b;
+            var dist = dr * dr + dg * dg + db * db;
+            if (dist > bestDist) { bestDist = dist; bestColor = nc; }
+          }
+        });
+      }
+      return bestColor;
     });
 
     // Global average FG color
