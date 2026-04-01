@@ -165,9 +165,9 @@ window.MilgExtract = (function() {
     data.structure.darkModeClasses = /class="[^"]*dark:/.test(htmlStr) || document.body.classList.contains('dark-ui') || document.body.classList.contains('dark-mode') || document.body.classList.contains('dark-theme') || document.documentElement.classList.contains('dark') || document.documentElement.getAttribute('data-theme') === 'dark' || document.body.getAttribute('data-theme') === 'dark' || document.querySelector('[data-bs-theme="dark"]') !== null || Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r.cssText && r.cssText.indexOf('prefers-color-scheme') !== -1; }); } catch(e) { return false; } });
     data.structure.responsiveClasses = /class="[^"]*(?:sm:|md:|lg:|xl:)/.test(htmlStr) || Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r instanceof CSSMediaRule && /max-width|min-width/.test(r.conditionText || ''); }); } catch(e) { return false; } });
 
-    // Decorative element detection
+    // Decorative element detection — only skip aria-hidden if actually hidden
     var decorativeEls = new Set();
-    var defaultExclude = '[aria-hidden="true"], [role="img"], [role="presentation"], [data-decorative]';
+    var defaultExclude = '[role="img"], [role="presentation"], [data-decorative]';
     // User-defined exclude selector (passed via window.__milgExclude)
     var userExclude = window.__milgExclude || '';
     var fullExclude = userExclude ? defaultExclude + ', ' + userExclude : defaultExclude;
@@ -218,20 +218,22 @@ window.MilgExtract = (function() {
     var contrastPairs = [];
     var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
     var node, seenForContrast = new Set();
+    var _contrastStats = { textNodes: 0, empty: 0, noParent: 0, invisible: 0, decorative: 0, seen: 0, noFg: 0, gradientText: 0, captured: 0 };
 
     while (node = walker.nextNode()) {
-      if (!node.textContent.trim()) continue;
+      _contrastStats.textNodes++;
+      if (!node.textContent.trim()) { _contrastStats.empty++; continue; }
       var el = node.parentElement;
-      if (!el || !isVisible(el) || isDecorative(el)) continue;
-      if (seenForContrast.has(el)) continue;
+      if (!el || !isVisible(el)) { _contrastStats.invisible++; continue; }
+      if (isDecorative(el)) { _contrastStats.decorative++; continue; }
+      if (seenForContrast.has(el)) { _contrastStats.seen++; continue; }
       seenForContrast.add(el);
       var style = getComputedStyle(el);
-      // Skip gradient text (uses -webkit-background-clip: text with transparent fill)
       var textFillColor = style.webkitTextFillColor || style.getPropertyValue('-webkit-text-fill-color') || '';
       var bgClip = style.webkitBackgroundClip || style.getPropertyValue('-webkit-background-clip') || style.backgroundClip || '';
-      if (textFillColor === 'transparent' || bgClip === 'text') continue;
+      if (textFillColor === 'transparent' || bgClip === 'text') { _contrastStats.gradientText++; continue; }
       var fg = parseColor(style.color);
-      if (!fg) continue;
+      if (!fg) { _contrastStats.noFg++; continue; }
       var fgBlended = blendOnWhite(fg);
       var bg = getEffectiveBg(el);
       var ratio = contrastRatio(fgBlended, bg);
@@ -258,6 +260,7 @@ window.MilgExtract = (function() {
         var _cpEntry = { fg: rgbStr(fgBlended), bg: rgbStr(bg), ratio: Math.round(ratio * 100) / 100, needed: threshold, passes: ratio >= threshold, fontSize: Math.round(fontSize), fontWeight: fontWeight, isLarge: isLarge, text: (el.textContent || '').trim().substring(0, 200), selector: cssSelector(el), filter: filterValue, backdropFilter: hasBackdropFilter, minBgAlpha: Math.round(minBgAlpha * 100) / 100, fontFamily: style.fontFamily, fontStyle: style.fontStyle, letterSpacing: style.letterSpacing, textTransform: style.textTransform, lineHeight: style.lineHeight, bbox: null };
         trackBbox(el, _cpEntry, 'bbox');
         contrastPairs.push(_cpEntry);
+        _contrastStats.captured++;
       }
       var elWidth = elRect.width;
       var charWidth = fontSize * 0.5;
@@ -269,6 +272,8 @@ window.MilgExtract = (function() {
     }
     contrastPairs.sort(function(a, b) { return a.ratio - b.ratio; });
     data.colors.contrastPairs = contrastPairs; // keep all pairs for pixel verification
+    data.colors._contrastStats = _contrastStats;
+    console.log('[extract] Contrast stats:', JSON.stringify(_contrastStats));
 
     // Area-weighted darkness tracking for accurate page brightness measurement
     var darknessAreas = []; // { darkness: 0-1, area: px² }

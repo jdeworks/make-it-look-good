@@ -158,10 +158,11 @@ window.MilgContrastVerify = (function() {
       try { maskData = maskCanvas.ctx.getImageData(bx, by, bw, bh).data; } catch(e) {}
     }
 
-    // Symmetric grid: same step size in X and Y (every 3px at canvas scale)
-    var step = 3;
-    var hSteps = Math.max(3, Math.min(200, Math.floor(bw / step)));
-    var vSteps = Math.max(3, Math.min(200, Math.floor(bh / step)));
+    // Symmetric grid: same step size in X and Y
+    // TODO: confirm density with user — currently 2px for testing, may revert to 3px
+    var step = 2;
+    var hSteps = Math.max(3, Math.min(300, Math.floor(bw / step)));
+    var vSteps = Math.max(3, Math.min(300, Math.floor(bh / step)));
 
     // Two-pass classification:
     // Pass 1: classify each grid point as text or not (using mask or CSS distance)

@@ -8,8 +8,9 @@ window.MilgIframe = (function() {
   var _screenshotCDN = '';
   var _getViewport = function() { return { w: 1280, h: 900 }; };
   var _showProgress = function() {};
-  var SCREENSHOT_SCALE = 0.5;
-  var SCREENSHOT_QUALITY = 0.8;
+  // TODO: revert to 0.5 after pixel density testing
+  var SCREENSHOT_SCALE = 0.75;
+  var SCREENSHOT_QUALITY = 0.85;
 
   function init(opts) {
     if (opts.screenshotCDN) _screenshotCDN = opts.screenshotCDN;
