@@ -256,11 +256,19 @@ window.MilgExtract = (function() {
       if (seenForContrast.has(el)) { _contrastStats.seen++; continue; }
       seenForContrast.add(el);
       var style = getComputedStyle(el);
-      // Skip gradient/clip text BUT allow normal -webkit-text-fill-color (non-transparent)
       var textFillColor = style.webkitTextFillColor || style.getPropertyValue('-webkit-text-fill-color') || '';
       var bgClip = style.webkitBackgroundClip || style.getPropertyValue('-webkit-background-clip') || style.backgroundClip || '';
-      if (bgClip === 'text' && textFillColor === 'transparent') { _contrastStats.gradientText++; continue; }
-      var fg = textFillColor && textFillColor !== 'transparent' ? parseColor(textFillColor) : parseColor(style.color);
+      var isGradientText = bgClip === 'text' && textFillColor === 'transparent';
+      // For gradient text: CSS fg is meaningless (transparent), use a placeholder
+      // The pixel verification pipeline will measure actual rendered colors from the screenshot
+      var fg;
+      if (isGradientText) {
+        // Sample the gradient at center to get an approximate fg color for CSS-level reporting
+        var gradBg = getGradientBg(el, { x: 0.5, y: 0.5 });
+        fg = gradBg || { r: 128, g: 128, b: 128, a: 1 }; // fallback grey
+      } else {
+        fg = textFillColor && textFillColor !== 'transparent' ? parseColor(textFillColor) : parseColor(style.color);
+      }
       if (!fg) { _contrastStats.noFg++; continue; }
       // Skip emoji-only elements (picture emoji can't be contrast-checked)
       var _textContent = (el.textContent || '').trim();
@@ -297,7 +305,7 @@ window.MilgExtract = (function() {
         _opNode = _opNode.parentElement;
       }
       if (ratio < 22) { // capture all pairs including AAA passes for pixel verification
-        var _cpEntry = { fg: rgbStr(fgBlended), bg: rgbStr(bg), ratio: Math.round(ratio * 100) / 100, needed: threshold, passes: ratio >= threshold, fontSize: Math.round(fontSize), fontWeight: fontWeight, isLarge: isLarge, text: (el.textContent || '').trim().substring(0, 200), selector: cssSelector(el), filter: filterValue, backdropFilter: hasBackdropFilter, minBgAlpha: Math.round(minBgAlpha * 100) / 100, effectiveOpacity: Math.round(_effOpacity * 100) / 100, fontFamily: style.fontFamily, fontStyle: style.fontStyle, letterSpacing: style.letterSpacing, textTransform: style.textTransform, lineHeight: style.lineHeight, bbox: null };
+        var _cpEntry = { fg: rgbStr(fgBlended), bg: rgbStr(bg), ratio: Math.round(ratio * 100) / 100, needed: threshold, passes: ratio >= threshold, fontSize: Math.round(fontSize), fontWeight: fontWeight, isLarge: isLarge, text: (el.textContent || '').trim().substring(0, 200), selector: cssSelector(el), filter: filterValue, backdropFilter: hasBackdropFilter, minBgAlpha: Math.round(minBgAlpha * 100) / 100, effectiveOpacity: Math.round(_effOpacity * 100) / 100, isGradientText: isGradientText, fontFamily: style.fontFamily, fontStyle: style.fontStyle, letterSpacing: style.letterSpacing, textTransform: style.textTransform, lineHeight: style.lineHeight, bbox: null };
         trackBbox(el, _cpEntry, 'bbox');
         contrastPairs.push(_cpEntry);
         _contrastStats.captured++;

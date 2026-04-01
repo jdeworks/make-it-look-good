@@ -224,18 +224,22 @@ window.MilgContrastVerify = (function() {
         // Per-element mask: trust it completely (it only has THIS element's text)
         // Full-page mask or no mask: use CSS distance as classifier
         var isText = false;
-        if (pair._maskPts && inTextArea) {
-          // Per-element mask says text here. But the mask was at opacity:1 while
-          // the screenshot may have lower opacity → mask text area > actual text.
-          // Filter: pixel must be closer to FG than to BG (handles opacity mismatch)
-          var drF = r - expectedFg.r, dgF = g - expectedFg.g, dbF = b - expectedFg.b;
-          var distFg = drF * drF + dgF * dgF + dbF * dbF;
-          if (cssBg) {
-            var drB = r - cssBg.r, dgB = g - cssBg.g, dbB = b - cssBg.b;
-            var distBg = drB * drB + dgB * dgB + dbB * dbB;
-            isText = distFg < distBg; // closer to FG than BG = text
+        var hasMask = pair._maskBmp || pair._maskPts;
+        if (hasMask && inTextArea) {
+          if (pair.isGradientText) {
+            // Gradient text: CSS FG is meaningless — trust mask fully
+            isText = true;
           } else {
-            isText = true; // no BG info, trust mask
+            // Solid text: closer-to-FG-or-BG filter (handles opacity mismatch)
+            var drF = r - expectedFg.r, dgF = g - expectedFg.g, dbF = b - expectedFg.b;
+            var distFg = drF * drF + dgF * dgF + dbF * dbF;
+            if (cssBg) {
+              var drB = r - cssBg.r, dgB = g - cssBg.g, dbB = b - cssBg.b;
+              var distBg = drB * drB + dgB * dgB + dbB * dbB;
+              isText = distFg < distBg;
+            } else {
+              isText = true;
+            }
           }
         } else if (inTextArea) {
           // Full-page mask or no mask — need CSS distance to separate mixed texts
