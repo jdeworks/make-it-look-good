@@ -33350,71 +33350,89 @@ window.MilgIframe = (function() {
                   'updatedData:updatedData' +
                 '},"*")' +
               '}' +
-              // Step 2: Per-element text masks — for each contrast pair element,
-              // set ONLY that element to black text, capture just its bbox.
-              // Stores mask pixels directly in each pair's data (no full-page mask image).
-              '_prog("Building per-element text masks...");' +
-              'console.log("[iframe-ss] Step 2/2: Per-element masks...");' +
-              // Set global style: everything white+invisible, opacity forced to 1
+              // Step 2: Layered text masks — batch by overlap groups.
+              // Layer 0: all non-overlapping elements black, one full-page mask.
+              // Layer 1+: remaining overlapping elements, one capture per layer.
+              // Typically 1-3 layers total.
+              '_prog("Building text masks...");' +
+              'console.log("[iframe-ss] Step 2: Layered masks...");' +
+              // Global style: everything white, all visible
               'var _maskStyle=document.createElement("style");' +
               '_maskStyle.setAttribute("data-milg-mask","1");' +
               '_maskStyle.textContent="*,*::before,*::after{color:#fff !important;background-color:#fff !important;background-image:none !important;background:white !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;-webkit-text-fill-color:#fff !important;opacity:1 !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}";' +
-              'document.head.appendChild(_maskStyle);' +
-              'void document.body.offsetHeight;' +
-              // Collect pair elements from bbox refs
+              'document.head.appendChild(_maskStyle);void document.body.offsetHeight;' +
+              // Collect pair elements
               'var _refs=window.__milgBboxRefs||[];' +
               'var _pairs=(window.__milgData&&window.__milgData.colors&&window.__milgData.colors.contrastPairs)||[];' +
               'var _pairEls=[];' +
               '_refs.forEach(function(ref){' +
                 'if(!ref.el||!ref.obj||ref.obj.ratio===undefined)return;' +
                 'var idx=_pairs.indexOf(ref.obj);' +
-                'if(idx>=0)_pairEls.push({el:ref.el,pair:ref.obj,idx:idx})' +
+                'if(idx>=0)_pairEls.push({el:ref.el,pair:ref.obj,idx:idx,done:false,bbox:ref.obj.bbox})' +
               '});' +
-              'console.log("[iframe-ss] "+_pairEls.length+" elements to mask");' +
-              // Process each element: set to black, capture bbox, reset to white
-              'var _mi=0;' +
-              'function _nextMask(){' +
-                'if(_mi>=_pairEls.length){' +
-                  'console.log("[iframe-ss] All masks done");' +
-                  '_sendFinal(null)' + // no full-page mask — per-element masks stored in pairs
-                  ';return}' +
-                'var pe=_pairEls[_mi];_mi++;' +
-                // Set this element to black
-                'pe.el.style.setProperty("color","#000","important");' +
-                'pe.el.style.setProperty("-webkit-text-fill-color","#000","important");' +
-                // Capture just this element
-                'ms.domToCanvas(pe.el,{scale:_sc,timeout:3000}).then(function(elCanvas){' +
-                  // Read pixels and store mask as compact grid in the pair
-                  'var ew=elCanvas.width,eh=elCanvas.height;' +
-                  'if(ew>1&&eh>1){' +
-                    'var ctx=elCanvas.getContext("2d",{willReadFrequently:true});' +
-                    'var px=ctx.getImageData(0,0,ew,eh).data;' +
-                    // Store text pixel positions (where mask is dark) as flat array [x1,y1,x2,y2,...]
-                    // Sample every 2px for compact storage
-                    'var step=2,pts=[];' +
-                    'for(var y=0;y<eh;y+=step){for(var x=0;x<ew;x+=step){' +
-                      'var i=(y*ew+x)*4;' +
-                      'if((px[i]+px[i+1]+px[i+2])/3<80)pts.push(x,y)' +
-                    '}}' +
-                    'pe.pair._maskPts=pts;' +
-                    'pe.pair._maskW=ew;pe.pair._maskH=eh' +
-                  '}' +
-                  // Reset to white
-                  'pe.el.style.setProperty("color","#fff","important");' +
-                  'pe.el.style.setProperty("-webkit-text-fill-color","#fff","important");' +
-                  'setTimeout(_nextMask,0)' + // next element (async to avoid blocking)
-                '}).catch(function(){' +
-                  'pe.el.style.setProperty("color","#fff","important");' +
-                  'pe.el.style.setProperty("-webkit-text-fill-color","#fff","important");' +
-                  'setTimeout(_nextMask,0)' +
-                '})' +
+              // Check bbox overlap between two pairs
+              'function _overlaps(a,b){' +
+                'if(!a.bbox||!b.bbox)return false;' +
+                'return a.bbox.left<b.bbox.left+b.bbox.width&&a.bbox.left+a.bbox.width>b.bbox.left&&' +
+                       'a.bbox.top<b.bbox.top+b.bbox.height&&a.bbox.top+a.bbox.height>b.bbox.top' +
               '}' +
-              // Safety timeout
+              // Build layers: greedy assignment — add to current layer if no overlap with others in layer
+              'var _layers=[];' +
+              'var _remaining=_pairEls.slice();' +
+              'while(_remaining.length>0){' +
+                'var layer=[];var next=[];' +
+                '_remaining.forEach(function(pe){' +
+                  'var conflicts=layer.some(function(l){return _overlaps(pe,l)});' +
+                  'if(!conflicts){layer.push(pe)}else{next.push(pe)}' +
+                '});' +
+                '_layers.push(layer);_remaining=next' +
+              '}' +
+              'console.log("[iframe-ss] "+_pairEls.length+" elements in "+_layers.length+" layers");' +
+              // Capture one full-page mask per layer
+              'var _li=0;' +
+              'function _nextLayer(){' +
+                'if(_li>=_layers.length){console.log("[iframe-ss] All mask layers done");_sendFinal(null);return}' +
+                'var layer=_layers[_li];_li++;' +
+                '_prog("Text mask layer "+_li+"/"+_layers.length+"...");' +
+                // Set layer elements to black
+                'layer.forEach(function(pe){' +
+                  'pe.el.style.setProperty("color","#000","important");' +
+                  'pe.el.style.setProperty("-webkit-text-fill-color","#000","important")' +
+                '});' +
+                'void document.body.offsetHeight;' +
+                'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:8000}).then(function(mc){' +
+                  'var mCtx=mc.getContext("2d",{willReadFrequently:true});' +
+                  // For each element in this layer, read its bbox from the mask
+                  'layer.forEach(function(pe){' +
+                    'if(!pe.bbox)return;' +
+                    'var bx=Math.max(0,Math.round(pe.bbox.left*_sc));' +
+                    'var by=Math.max(0,Math.round(pe.bbox.top*_sc));' +
+                    'var bw=Math.min(Math.round(pe.bbox.width*_sc),mc.width-bx);' +
+                    'var bh=Math.min(Math.round(pe.bbox.height*_sc),mc.height-by);' +
+                    'if(bw<2||bh<2)return;' +
+                    'try{' +
+                      'var px=mCtx.getImageData(bx,by,bw,bh).data;' +
+                      'var step=2,pts=[];' +
+                      'for(var y=0;y<bh;y+=step){for(var x=0;x<bw;x+=step){' +
+                        'var i=(y*bw+x)*4;' +
+                        'if((px[i]+px[i+1]+px[i+2])/3<80)pts.push(x,y)' +
+                      '}}' +
+                      'pe.pair._maskPts=pts;pe.pair._maskW=bw;pe.pair._maskH=bh' +
+                    '}catch(e){}' +
+                  '});' +
+                  // Reset layer elements to white
+                  'layer.forEach(function(pe){' +
+                    'pe.el.style.setProperty("color","#fff","important");' +
+                    'pe.el.style.setProperty("-webkit-text-fill-color","#fff","important")' +
+                  '});' +
+                  'setTimeout(_nextLayer,0)' +
+                '}).catch(function(e){console.warn("[iframe-ss] Layer "+_li+" failed:",e);setTimeout(_nextLayer,0)})' +
+              '}' +
               'var _maskDone=false;' +
-              'var _maskTimer=setTimeout(function(){if(!_maskDone){_maskDone=true;console.warn("[iframe-ss] Masks timed out");_sendFinal(null)}},15000);' +
+              'var _maskTimer=setTimeout(function(){if(!_maskDone){_maskDone=true;console.warn("[iframe-ss] Masks timed out");_sendFinal(null)}},20000);' +
               'var _origSendFinal=_sendFinal;' +
               '_sendFinal=function(m){if(_maskDone)return;_maskDone=true;clearTimeout(_maskTimer);_origSendFinal(m)};' +
-              '_nextMask()' +
+              '_nextLayer()' +
             '}).catch(function(e){console.warn("[iframe-ss] capture failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")})' +
           '};' +
           's.onerror=function(){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")};' +
@@ -33703,7 +33721,7 @@ window.MilgIframe = (function() {
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v30.1</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v30.2</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
