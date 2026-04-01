@@ -902,15 +902,41 @@ window.MilgViewer = (function() {
         });
         svg.appendChild(d);
       });
-      // Worst bg pixel — red ring
+      // Worst bg pixel — red ring, clickable to copy full debug
       var wp = rect._worstPoint;
       if (wp) {
         var ring = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         ring.setAttribute('cx', wp.x); ring.setAttribute('cy', wp.y + secOff);
-        ring.setAttribute('r', _zoomLevel >= 1.5 ? '5' : '3.5');
-        ring.setAttribute('fill', 'none'); ring.setAttribute('stroke', '#ef4444');
-        ring.setAttribute('stroke-width', '2'); ring.setAttribute('pointer-events', 'none');
+        ring.setAttribute('r', _zoomLevel >= 1.5 ? '6' : '4');
+        ring.setAttribute('fill', 'rgba(239,68,68,0.3)'); ring.setAttribute('stroke', '#ef4444');
+        ring.setAttribute('stroke-width', '2');
+        ring.setAttribute('pointer-events', 'all'); ring.style.cursor = 'copy';
         ring.setAttribute('class', 'milg-sample-dot'); ring.setAttribute('data-owner', owner);
+        ring.addEventListener('click', function(ev) {
+          ev.stopPropagation();
+          var info = '=== WORST CONTRAST PAIR ===\n' +
+            'Selector: ' + (vr ? vr.selector : '?') + '\n' +
+            'Text: "' + (vr ? (vr.text || '').substring(0, 60) : '?') + '"\n\n' +
+            'CSS contrast: ' + (vr ? vr.cssRatio : '?') + ':1 (needed: ' + (vr ? (vr.cssPasses ? 'passes' : 'FAILS') : '?') + ')\n' +
+            'Pixel contrast: ' + (vr ? vr.pixelRatio : '?') + ':1 (worst-case ' + (vr ? (vr.pixelPasses ? 'passes' : 'FAILS') : '?') + ')\n' +
+            'Pixel avg: ' + (vr ? vr.pixelRatioAvg : '?') + ':1\n' +
+            'Pixel best: ' + (vr ? vr.pixelRatioBest : '?') + ':1\n' +
+            'BG variance: ' + (vr ? vr.bgVariance : '?') + '\n\n' +
+            'CSS FG: ' + (vr ? vr.cssFg : '?') + '\n' +
+            'CSS BG: ' + (vr ? vr.cssBg : '?') + '\n' +
+            'Pixel FG (avg): ' + (vr ? vr.pixelFg : '?') + '\n' +
+            'Pixel BG (worst): ' + (vr ? vr.pixelBgWorst : '?') + '\n' +
+            'Pixel BG (avg): ' + (vr ? vr.pixelBgAvg : '?') + '\n\n' +
+            'Worst BG position: (' + wp.x + ', ' + wp.y + ')\n' +
+            'Samples: ' + (vr ? vr.sampleCount.fg + ' FG, ' + vr.sampleCount.bg + ' BG' : '?') + '\n' +
+            'Variable BG: ' + (vr ? vr.isVariableBg : '?');
+          navigator.clipboard.writeText(info).then(function() {
+            alert('Worst pair debug info copied to clipboard!');
+          }).catch(function() {
+            console.log(info);
+            alert(info);
+          });
+        });
         svg.appendChild(ring);
       }
     }
