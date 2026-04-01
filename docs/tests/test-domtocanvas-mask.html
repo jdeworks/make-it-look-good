@@ -27,8 +27,12 @@ button.secondary { background: #64748b; }
 Each variation is captured and checked for dark pixels at the element's position.</p>
 
 <div class="controls">
-  <button onclick="runAllTests()">Run All Tests</button>
-  <button class="secondary" onclick="document.getElementById('results').innerHTML=''">Clear</button>
+  <button onclick="runAllTests()">Run Synthetic Tests</button>
+  <button class="secondary" onclick="document.getElementById('results').innerHTML='';results=[]">Clear</button>
+</div>
+<div style="display:flex;gap:8px;margin-bottom:16px;align-items:center">
+  <input id="urlInput" type="text" placeholder="https://example.com — test with real page HTML" style="flex:1;padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px">
+  <button onclick="runUrlTest()">Test URL</button>
 </div>
 <div id="results"></div>
 
@@ -329,6 +333,115 @@ function runAllTests() {
       runCapture(iframe);
     }, 500); // let animations start
   };
+}
+
+function runUrlTest() {
+  var url = document.getElementById('urlInput').value.trim();
+  if (!url) return;
+  results = [];
+  log('URL Test', 'Fetching ' + url + ' via proxy...');
+
+  var proxies = [
+    'https://api.allorigins.win/raw?url=',
+    'https://api.codetabs.com/v1/proxy?quest=',
+    'https://corsproxy.io/?'
+  ];
+
+  // Try direct then proxies
+  var chain = fetch(url, { mode: 'cors' }).then(function(r) { if (!r.ok) throw new Error(r.status); return r.text(); }).catch(function() {
+    var c = Promise.reject();
+    proxies.forEach(function(p) { c = c.catch(function() { return fetch(p + encodeURIComponent(url)).then(function(r) { if (!r.ok) throw new Error(r.status); return r.text(); }); }); });
+    return c;
+  });
+
+  chain.then(function(html) {
+    log('URL Test', 'Got ' + html.length + ' chars, loading into iframe...');
+
+    // Inject <base> tag for relative URLs
+    try {
+      var base = new URL(url);
+      var baseHref = base.origin + base.pathname.replace(/\/[^/]*$/, '/');
+      var baseTag = '<base href="' + baseHref + '">';
+      if (/<head[\s>]/i.test(html)) html = html.replace(/<head([^>]*)>/i, '<head$1>' + baseTag);
+      else html = baseTag + html;
+    } catch(e) {}
+
+    var iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
+    iframe.sandbox = 'allow-scripts allow-same-origin';
+    document.body.appendChild(iframe);
+    iframe.srcdoc = html;
+
+    iframe.onload = function() {
+      setTimeout(function() {
+        runUrlCapture(iframe, url);
+      }, 2000); // longer wait for real pages to render
+    };
+  }).catch(function(err) {
+    log('URL Test', 'Fetch failed: ' + err.message, 'fail');
+  });
+}
+
+function runUrlCapture(iframe, url) {
+  var doc = iframe.contentDocument;
+
+  // Find ALL text elements (like the real extractor does)
+  var textEls = [];
+  var walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, null, false);
+  var node;
+  while (node = walker.nextNode()) {
+    if (!node.textContent.trim()) continue;
+    var el = node.parentElement;
+    if (!el || el.tagName === 'SCRIPT' || el.tagName === 'STYLE' || el.tagName === 'NOSCRIPT') continue;
+    var r = el.getBoundingClientRect();
+    if (r.width < 3 || r.height < 3) continue;
+    // Deduplicate by element
+    if (textEls.some(function(te) { return te.el === el; })) continue;
+    textEls.push({ el: el, text: el.textContent.substring(0, 40).trim() });
+  }
+
+  log('URL Test', 'Found ' + textEls.length + ' text elements');
+
+  // Collect bboxes
+  var elements = textEls.map(function(te) {
+    var r = te.el.getBoundingClientRect();
+    return {
+      el: te.el,
+      name: te.text.substring(0, 25),
+      text: te.text,
+      bbox: { left: r.left + (iframe.contentWindow.scrollX || 0), top: r.top + (iframe.contentWindow.scrollY || 0), width: r.width, height: r.height },
+      cs: {
+        color: getComputedStyle(te.el).color,
+        display: getComputedStyle(te.el).display,
+        position: getComputedStyle(te.el).position,
+        transition: getComputedStyle(te.el).transition
+      }
+    };
+  });
+
+  // Pass 1: capture as-is
+  capturePass(iframe, 'URL Pass 1: As-is', elements, function() {
+    // Apply mask style
+    applyMaskStyle(doc, elements);
+    killTransitions(doc);
+    setTimeout(function() {
+      // Check drift
+      checkBboxDrift(doc, elements);
+      // Pass 2: mask with pre-mask bboxes
+      capturePass(iframe, 'URL Pass 2: Mask (pre-mask bboxes)', elements, function() {
+        // Pass 3: re-read bboxes after mask
+        elements.forEach(function(e) {
+          var r = e.el.getBoundingClientRect();
+          e.bboxPost = { left: r.left, top: r.top, width: r.width, height: r.height };
+        });
+        capturePassWithBbox(iframe, 'URL Pass 3: Mask (post-mask bboxes)', elements, 'bboxPost', function() {
+          if (iframe.parentNode) document.body.removeChild(iframe);
+          // Summarize URL results
+          summarize(elements);
+        });
+      });
+    }, 500);
+  });
 }
 
 function runCapture(iframe) {
