@@ -145,8 +145,6 @@ window.MilgIframe = (function() {
             'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:15000}).then(function(fc){' +
               'console.log("[iframe-ss] Screenshot: "+fc.width+"x"+fc.height);' +
               'var fullUri;try{fullUri=fc.toDataURL("image/webp",' + ss.quality + ')}catch(e){fullUri=""}' +
-              // Store screenshot canvas for mask comparison (text detection uses diff not absolute threshold)
-              'var _ssCtx=fc.getContext("2d",{willReadFrequently:true});' +
               // Update send helper with actual canvas dimensions
               'var _cw=fc.width,_ch=fc.height;' +
               'function _sendFinal(maskUri){' +
@@ -178,13 +176,31 @@ window.MilgIframe = (function() {
               // Phase A: Kill ALL transitions on every element BEFORE any color changes
               'document.querySelectorAll("*").forEach(function(el){el.style.setProperty("transition-duration","0s","important");el.style.setProperty("transition","none","important")});' +
               'void document.body.offsetHeight;' +
-              // Phase B: Global style — hide all text, keep backgrounds untouched
-              // IMPORTANT: Do NOT override background-color — it breaks modern-screenshot's
-              // domToCanvas for certain elements (SVG foreignObject rendering bug).
-              // Instead, we compare mask vs screenshot to detect text pixels.
+              // Phase A2: Neutralize absolute/fixed overlays that sit on top of text.
+              // When bg becomes white, transparent gradient overlays become solid white,
+              // covering the black text beneath. Fix: make overlay backgrounds fully
+              // transparent BEFORE the mask, so they stay invisible after white override.
+              // Also hide empty absolute elements entirely (decorative shapes/borders).
+              'var _neutralized=0;' +
+              'document.querySelectorAll("*").forEach(function(el){' +
+                'var cs=getComputedStyle(el);' +
+                'if(cs.position==="absolute"||cs.position==="fixed"){' +
+                  'if(!el.textContent.trim()){' +
+                    // No text: fully hide (gradient overlays, decorative shapes, spacers)
+                    'el.style.setProperty("display","none","important");_neutralized++' +
+                  '}else if(cs.pointerEvents==="none"){' +
+                    // Has text but pointer-events:none — decorative text overlay, make bg transparent
+                    'el.style.setProperty("background","transparent","important");' +
+                    'el.style.setProperty("background-image","none","important");_neutralized++' +
+                  '}' +
+                '}' +
+              '});' +
+              'if(_neutralized)console.log("[iframe-ss] Neutralized "+_neutralized+" overlays");' +
+              'void document.body.offsetHeight;' +
+              // Phase B: Global mask style — white bg, white text, hide media
               'var _maskStyle=document.createElement("style");' +
               '_maskStyle.setAttribute("data-milg-mask","1");' +
-              '_maskStyle.textContent="*,*::before,*::after{color:transparent !important;-webkit-text-fill-color:transparent !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;transition:none !important;animation:none !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}";' +
+              '_maskStyle.textContent="*,*::before,*::after{color:#fff !important;background-color:#fff !important;background-image:none !important;background:white !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;-webkit-text-fill-color:#fff !important;opacity:1 !important;transition:none !important;animation:none !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}";' +
               'document.head.appendChild(_maskStyle);void document.body.offsetHeight;' +
               // Phase C: Collect pair elements and build overlap layers
               'var _refs=window.__milgBboxRefs||[];' +
@@ -240,21 +256,11 @@ window.MilgIframe = (function() {
                     'var bh=Math.min(Math.round(pe.bbox.height*_sc),mc.height-by);' +
                     'if(bw<2||bh<2)return;' +
                     'try{var px=mCtx.getImageData(bx,by,bw,bh).data;' +
-                      // Read same region from screenshot for diff-based text detection
-                      // (mask keeps original backgrounds — we detect text by what got DARKER)
-                      'var spx=null;try{spx=_ssCtx.getImageData(bx,by,bw,bh).data}catch(e){}' +
                       'var bmp=new Uint8Array(bw*bh);' +
                       'for(var y=0;y<bh;y++){for(var x=0;x<bw;x++){' +
                         'var i=(y*bw+x)*4;' +
-                        'var mBright=(px[i]+px[i+1]+px[i+2])/3;' +
-                        'if(spx){' +
-                          // Diff mode: pixel got significantly darker than screenshot = text
-                          'var sBright=(spx[i]+spx[i+1]+spx[i+2])/3;' +
-                          'if(sBright-mBright>30)bmp[y*bw+x]=1' +
-                        '}else{' +
-                          // Fallback: absolute threshold (old behavior)
-                          'if(mBright<240)bmp[y*bw+x]=1' +
-                        '}' +
+                        // Detect text: dark pixels on white background = text
+                        'if((px[i]+px[i+1]+px[i+2])/3<240)bmp[y*bw+x]=1' +
                       '}}' +
                       'var _dk=0;for(var _b=0;_b<bmp.length;_b++)if(bmp[_b])_dk++;' +
                       // Fallback: if domToCanvas failed to render text, use canvas.fillText

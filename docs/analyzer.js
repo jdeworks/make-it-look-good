@@ -465,8 +465,10 @@
       saveToHistory(data, reportData.overall, reportData.grade);
     }
 
-    // Run pixel contrast verification asynchronously (if screenshots + bboxes available)
-    if (window.MilgContrastVerify && reportData.raw && reportData.raw.screenshots && reportData.raw.screenshotMeta) {
+    // Run pixel contrast verification asynchronously (if enabled + screenshots + bboxes available)
+    var pixelVerifyCheck = document.getElementById('pixelVerifyCheck');
+    var wantPixelVerify = pixelVerifyCheck ? pixelVerifyCheck.checked : true;
+    if (wantPixelVerify && window.MilgContrastVerify && reportData.raw && reportData.raw.screenshots && reportData.raw.screenshotMeta) {
       var densitySel = document.getElementById('verifyDensity');
       MilgContrastVerify.setDensity(densitySel ? densitySel.value : 'common');
       MilgContrastVerify.verify(reportData, function(results) {
