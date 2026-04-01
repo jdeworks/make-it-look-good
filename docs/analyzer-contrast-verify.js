@@ -252,6 +252,12 @@ window.MilgContrastVerify = (function() {
     var usedBg = {}; // bgIndex → true
     var worstRatio = 99, bestRatio = 0, worstBg = null, worstBgPt = null;
 
+    // Build paired sets: each FG pixel → its nearest BG pixel
+    // Only keep FG pixels that found a BG pair, and only BG pixels that were used
+    var pairedFg = [], pairedFgColors = [];
+    var pairedBg = [], pairedBgColors = [];
+    var usedBgSet = {};
+
     fgPoints.forEach(function(fp, fi) {
       var nearDist = Infinity, nearIdx = -1;
       bgPoints.forEach(function(bp, bi) {
@@ -260,19 +266,20 @@ window.MilgContrastVerify = (function() {
         if (d < nearDist) { nearDist = d; nearIdx = bi; }
       });
       if (nearIdx < 0) return;
-      usedBg[nearIdx] = true;
+      pairedFg.push(fp);
+      pairedFgColors.push(fgColors[fi]);
+      if (!usedBgSet[nearIdx]) {
+        usedBgSet[nearIdx] = true;
+        pairedBg.push(bgPoints[nearIdx]);
+        pairedBgColors.push(bgColors[nearIdx]);
+      }
       var ratio = contrastRatio(fgColors[fi], bgColors[nearIdx]);
       if (ratio < worstRatio) { worstRatio = ratio; worstBg = bgColors[nearIdx]; worstBgPt = bgPoints[nearIdx]; }
       if (ratio > bestRatio) bestRatio = ratio;
     });
 
-    // Filter to only paired BG points
-    var pairedBgPoints = [], pairedBgColors = [];
-    Object.keys(usedBg).forEach(function(k) {
-      var i = parseInt(k);
-      pairedBgPoints.push(bgPoints[i]);
-      pairedBgColors.push(bgColors[i]);
-    });
+    // Replace arrays with only paired data
+    fgPoints = pairedFg; fgColors = pairedFgColors;
 
     var avgBg = { r: 0, g: 0, b: 0 };
     pairedBgColors.forEach(function(c) { avgBg.r += c.r; avgBg.g += c.g; avgBg.b += c.b; });
@@ -316,10 +323,10 @@ window.MilgContrastVerify = (function() {
       selector: pair.selector,
       text: pair.text,
       sectionIdx: sectionIdx,
-      sampleCount: { fg: fgPoints.length, bg: pairedBgPoints.length },
+      sampleCount: { fg: fgPoints.length, bg: pairedBg.length },
       samplePoints: {
         fg: fgPoints.map(function(p, i) { return { x: p.x, y: p.y, r: fgColors[i].r, g: fgColors[i].g, b: fgColors[i].b }; }),
-        bg: pairedBgPoints.map(function(p, i) {
+        bg: pairedBg.map(function(p, i) {
           var ratio = contrastRatio(fgColor, pairedBgColors[i]);
           return { x: p.x, y: p.y, r: pairedBgColors[i].r, g: pairedBgColors[i].g, b: pairedBgColors[i].b, ratio: Math.round(ratio * 100) / 100 };
         })
