@@ -286,20 +286,31 @@ window.MilgContrastVerify = (function() {
 
     if (fgColors.length === 0 || bgColors.length === 0) return null;
 
-    // Average FG color
+    // Cluster-average FG pixels: replace each FG pixel's color with the average
+    // of nearby FG pixels (3px radius). Filters out AA edge blending — gives
+    // the solid text color instead of the half-blended edge color.
+    var CLUSTER_R = 3;
+    var clusteredFgColors = fgColors.map(function(c, i) {
+      var fp = fgPoints[i];
+      var rSum = 0, gSum = 0, bSum = 0, cnt = 0;
+      fgPoints.forEach(function(op, oi) {
+        var dx = fp.x - op.x, dy = fp.y - op.y;
+        if (dx * dx + dy * dy <= CLUSTER_R * CLUSTER_R) {
+          rSum += fgColors[oi].r; gSum += fgColors[oi].g; bSum += fgColors[oi].b; cnt++;
+        }
+      });
+      return cnt > 0 ? { r: Math.round(rSum / cnt), g: Math.round(gSum / cnt), b: Math.round(bSum / cnt) } : c;
+    });
+
+    // Global average FG color
     var fgColor = { r: 0, g: 0, b: 0 };
-    fgColors.forEach(function(c) { fgColor.r += c.r; fgColor.g += c.g; fgColor.b += c.b; });
-    fgColor.r = Math.round(fgColor.r / fgColors.length);
-    fgColor.g = Math.round(fgColor.g / fgColors.length);
-    fgColor.b = Math.round(fgColor.b / fgColors.length);
+    clusteredFgColors.forEach(function(c) { fgColor.r += c.r; fgColor.g += c.g; fgColor.b += c.b; });
+    fgColor.r = Math.round(fgColor.r / clusteredFgColors.length);
+    fgColor.g = Math.round(fgColor.g / clusteredFgColors.length);
+    fgColor.b = Math.round(fgColor.b / clusteredFgColors.length);
 
-    // Pair each FG pixel with its nearest BG pixel
-    // Track which BG pixels are actually used (paired) and find worst pair
-    var usedBg = {}; // bgIndex → true
+    // Pair each FG pixel with its nearest BG pixel using CLUSTERED fg colors
     var worstRatio = 99, bestRatio = 0, worstBg = null, worstBgPt = null;
-
-    // Build paired sets: each FG pixel → its nearest BG pixel
-    // Only keep FG pixels that found a BG pair, and only BG pixels that were used
     var pairedFg = [], pairedFgColors = [];
     var pairedBg = [], pairedBgColors = [];
     var usedBgSet = {};
@@ -313,13 +324,13 @@ window.MilgContrastVerify = (function() {
       });
       if (nearIdx < 0) return;
       pairedFg.push(fp);
-      pairedFgColors.push(fgColors[fi]);
+      pairedFgColors.push(clusteredFgColors[fi]);
       if (!usedBgSet[nearIdx]) {
         usedBgSet[nearIdx] = true;
         pairedBg.push(bgPoints[nearIdx]);
         pairedBgColors.push(bgColors[nearIdx]);
       }
-      var ratio = contrastRatio(fgColors[fi], bgColors[nearIdx]);
+      var ratio = contrastRatio(clusteredFgColors[fi], bgColors[nearIdx]);
       if (ratio < worstRatio) { worstRatio = ratio; worstBg = bgColors[nearIdx]; worstBgPt = bgPoints[nearIdx]; }
       if (ratio > bestRatio) bestRatio = ratio;
     });
