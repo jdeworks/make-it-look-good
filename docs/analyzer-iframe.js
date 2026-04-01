@@ -40,6 +40,7 @@ window.MilgIframe = (function() {
       // Once-guard: extraction may fire twice (load + fallback timeout)
       'if(window.__milgSsDone)return;window.__milgSsDone=true;' +
       'var vh=window.innerHeight||900;' +
+      'function _prog(l){try{parent.postMessage({type:"milg-progress",label:l},"*")}catch(e){}}' +
       // Unlock height to get true scrollHeight (sites with html,body{height:100%} clamp it)
       // Set overflow:auto explicitly so the inner document is scrollable for IntersectionObservers
       'document.documentElement.style.cssText+="height:auto !important;overflow-y:auto !important;";' +
@@ -47,6 +48,7 @@ window.MilgIframe = (function() {
       'void document.body.offsetHeight;' + // force reflow
       'var totalH=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);' +
       'var captureH=Math.min(totalH,vh*10);' +
+      '_prog("Pre-scrolling page to load content...");' +
       'console.log("[iframe-ss] Phase 1: Pre-scrolling "+captureH+"px ("+Math.ceil(captureH/vh)+" steps, vh="+vh+") ...");' +
       // Phase 1: Pre-scroll to trigger IntersectionObservers, lazy images, fade-in animations
       'var _positions=[];for(var p=0;p<captureH;p+=vh)_positions.push(p);' +
@@ -104,6 +106,7 @@ window.MilgIframe = (function() {
         'document.documentElement.style.cssText+="overflow:visible !important;";' +
         'document.body.style.cssText+="overflow:visible !important;";' +
         'void document.body.offsetHeight;' +
+        '_prog("Waiting for animations to settle...");' +
         'console.log("[iframe-ss] Phase 2: Waiting for animations to finalize...");' +
         'setTimeout(function(){' +
           'if(typeof window.__milgReReadBboxes==="function"){' +
@@ -119,25 +122,25 @@ window.MilgIframe = (function() {
             'if(!ms||!ms.domToCanvas){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*");return}' +
             'document.querySelectorAll("img").forEach(function(i){if(i.src&&i.src.indexOf("data:")!==0)i.crossOrigin="anonymous"});' +
             'var _sc=' + ss.scale + ';' +
-            // Phase A: Text mask capture — set all text to magenta, backgrounds to white
-            'console.log("[iframe-ss] Phase A: Capturing text mask...");' +
-            'var _maskStyle=document.createElement("style");' +
-            '_maskStyle.setAttribute("data-milg-mask","1");' +
-            '_maskStyle.textContent="*,*::before,*::after{color:#ff00ff !important;background-color:#fff !important;background-image:none !important;background:white !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;-webkit-text-fill-color:#ff00ff !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}";' +
-            'document.head.appendChild(_maskStyle);' +
-            'void document.body.offsetHeight;' +
-            'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:10000}).then(function(maskCanvas){' +
-              'console.log("[iframe-ss] Mask captured: "+maskCanvas.width+"x"+maskCanvas.height);' +
-              // Remove mask styles, restore original appearance
-              '_maskStyle.parentNode.removeChild(_maskStyle);' +
+            // Step 1: Capture real screenshot FIRST (safe — no DOM modifications)
+            '_prog("Capturing screenshot...");' +
+            'console.log("[iframe-ss] Step 1/2: Capturing screenshot...");' +
+            'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:12000}).then(function(fc){' +
+              'console.log("[iframe-ss] Screenshot captured: "+fc.width+"x"+fc.height);' +
+              'var fullUri;try{fullUri=fc.toDataURL("image/webp",' + ss.quality + ')}catch(e){fullUri=""}' +
+              // Step 2: Text mask (LAST step — modifies DOM then captures)
+              // Even if this fails, we already have the screenshot safe
+              '_prog("Capturing text mask for pixel verification...");' +
+              'console.log("[iframe-ss] Step 2/2: Capturing text mask...");' +
+              'var _maskStyle=document.createElement("style");' +
+              '_maskStyle.setAttribute("data-milg-mask","1");' +
+              '_maskStyle.textContent="*,*::before,*::after{color:#ff00ff !important;background-color:#fff !important;background-image:none !important;background:white !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;-webkit-text-fill-color:#ff00ff !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}";' +
+              'document.head.appendChild(_maskStyle);' +
               'void document.body.offsetHeight;' +
-              // Phase B: Real screenshot capture
-              'console.log("[iframe-ss] Phase B: Capturing real screenshot...");' +
-              'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:12000}).then(function(fc){' +
-                'console.log("[iframe-ss] Screenshot: "+fc.width+"x"+fc.height);' +
-                // Convert mask to data URI for transfer
+              'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:10000}).then(function(maskCanvas){' +
+                'console.log("[iframe-ss] Mask captured: "+maskCanvas.width+"x"+maskCanvas.height);' +
                 'var maskUri;try{maskUri=maskCanvas.toDataURL("image/png")}catch(e){maskUri=""}' +
-                'var fullUri;try{fullUri=fc.toDataURL("image/webp",' + ss.quality + ')}catch(e){fullUri=""}' +
+                // Done — send everything (mask style stays, iframe will be destroyed anyway)
                 'var updatedData=window.__milgData||null;' +
                 'parent.postMessage({type:"' + msgType + '",' +
                   'screenshots:fullUri?[fullUri]:[],' +
@@ -149,18 +152,22 @@ window.MilgIframe = (function() {
                     'calibrationOffsetY:0,calibrationSamples:[]},' +
                   'updatedData:updatedData' +
                 '},"*")' +
-              '}).catch(function(e){console.warn("[iframe-ss] screenshot failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")})' +
-            '}).catch(function(e){' +
-              // Mask failed — fall back to screenshot-only (no mask)
-              'console.warn("[iframe-ss] mask failed, capturing without:",e);' +
-              '_maskStyle.parentNode.removeChild(_maskStyle);' +
-              'void document.body.offsetHeight;' +
-              'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:12000}).then(function(fc){' +
-                'var fullUri;try{fullUri=fc.toDataURL("image/webp",' + ss.quality + ')}catch(e){fullUri=""}' +
+              '}).catch(function(e){' +
+                // Mask failed — send screenshot without mask (still useful)
+                'console.warn("[iframe-ss] Mask failed (screenshot still safe):",e);' +
                 'var updatedData=window.__milgData||null;' +
-                'parent.postMessage({type:"' + msgType + '",screenshots:fullUri?[fullUri]:[],screenshotFull:fullUri||null,textMask:null,screenshotMeta:{scale:_sc,viewportHeight:vh,sectionCount:1,canvasWidth:fc.width,canvasHeight:fc.height,docHeightAtCapture:fullH,calibrationOffsetY:0,calibrationSamples:[]},updatedData:updatedData},"*")' +
-              '}).catch(function(){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")})' +
-            '})' +
+                'parent.postMessage({type:"' + msgType + '",' +
+                  'screenshots:fullUri?[fullUri]:[],' +
+                  'screenshotFull:fullUri||null,' +
+                  'textMask:null,' +
+                  'screenshotMeta:{scale:_sc,viewportHeight:vh,sectionCount:1,' +
+                    'canvasWidth:fc.width,canvasHeight:fc.height,' +
+                    'docHeightAtCapture:fullH,' +
+                    'calibrationOffsetY:0,calibrationSamples:[]},' +
+                  'updatedData:updatedData' +
+                '},"*")' +
+              '})' +
+            '}).catch(function(e){console.warn("[iframe-ss] capture failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")})' +
           '};' +
           's.onerror=function(){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")};' +
           'document.head.appendChild(s)' +
@@ -245,6 +252,11 @@ window.MilgIframe = (function() {
 
     function onMsg(e) {
       if (!e.data) return;
+      // Progress updates from screenshot capture
+      if (e.data.type === 'milg-progress' && e.data.label) {
+        var urlStatus = document.getElementById('urlStatus');
+        if (urlStatus) { urlStatus.style.display = 'block'; urlStatus.textContent = e.data.label; }
+      }
       if (e.data.type === 'milg-analyzer-result') {
         var data = e.data.data;
         data.meta.url = 'Pasted HTML';
