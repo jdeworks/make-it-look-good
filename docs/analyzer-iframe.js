@@ -37,6 +37,8 @@ window.MilgIframe = (function() {
   function buildScreenshotScript(msgType) {
     var ss = { scale: SCREENSHOT_SCALE, quality: SCREENSHOT_QUALITY };
     return '(function(){' +
+      // Capture original viewport height before parent resizes the iframe
+      'var _origVH=window.innerHeight||900;' +
       // Phase 1: Reset all scroll containers
       'var origSB=document.documentElement.style.scrollBehavior;' +
       'document.documentElement.style.scrollBehavior="auto";' +
@@ -54,6 +56,19 @@ window.MilgIframe = (function() {
           'var res=window.__milgReReadBboxes();' +
           'console.log("[iframe-ss] Re-read bboxes: "+res)' +
         '}' +
+        // Expand iframe body to full scroll height so domToCanvas captures everything
+        // (iframe has a fixed viewport height, but the page content may be much taller)
+        'var fullH=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);' +
+        'var origHtmlH=document.documentElement.style.height;' +
+        'var origBodyH=document.body.style.height;' +
+        'var origHtmlO=document.documentElement.style.overflow;' +
+        'var origBodyO=document.body.style.overflow;' +
+        'document.documentElement.style.height=fullH+"px";' +
+        'document.documentElement.style.overflow="visible";' +
+        'document.body.style.height=fullH+"px";' +
+        'document.body.style.overflow="visible";' +
+        'void document.body.offsetHeight;' + // force reflow
+        'console.log("[iframe-ss] Expanded to "+fullH+"px for capture");' +
         // Load screenshot library
         'var s=document.createElement("script");' +
         's.src="' + _screenshotCDN + '";' +
@@ -61,8 +76,9 @@ window.MilgIframe = (function() {
           'var ms=window.modernScreenshot;' +
           'if(!ms||!ms.domToCanvas){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*");return}' +
           'document.querySelectorAll("img").forEach(function(i){if(i.src&&i.src.indexOf("data:")!==0)i.crossOrigin="anonymous"});' +
-          'var vh=window.innerHeight||900;' +
-          'ms.domToCanvas(document.documentElement,{scale:' + ss.scale + ',timeout:8000}).then(function(fc){' +
+          'var vh=_origVH;' +
+          'console.log("[iframe-ss] Capturing: scrollW="+document.documentElement.scrollWidth+" fullH="+fullH+" vh="+vh);' +
+          'ms.domToCanvas(document.documentElement,{scale:' + ss.scale + ',width:document.documentElement.scrollWidth,height:fullH,timeout:12000}).then(function(fc){' +
             // Full-page WebP (single image, no section splitting)
             'var fullUri;try{fullUri=fc.toDataURL("image/webp",' + ss.quality + ')}catch(e){fullUri=""}' +
             'var captureDocH=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);' +
@@ -172,6 +188,12 @@ window.MilgIframe = (function() {
         // Screenshot capture auto-triggers inside the iframe after extraction
         // Store data, wait for screenshots
         iframe._milgData = data;
+        // Expand iframe to full document height so domToCanvas captures the full page
+        // (the iframe script sets html/body height, but the iframe element itself also needs it)
+        var docH = (data.meta && data.meta.docHeight) || 0;
+        if (docH > vp.h) {
+          iframe.style.height = docH + 'px';
+        }
       }
       if (e.data.type === 'milg-screenshots-result' && iframe._milgData) {
         iframe._milgData.screenshots = e.data.screenshots || [];

@@ -139,7 +139,7 @@ window.MilgExtract = (function() {
     }
 
     var data = {
-      meta: { title: document.title, url: location.href, viewportWidth: window.innerWidth, viewportHeight: window.innerHeight, timestamp: new Date().toISOString(), version: 1, isFragment: !!window.__milgIsFragment },
+      meta: { title: document.title, url: location.href, viewportWidth: window.innerWidth, viewportHeight: window.innerHeight, docHeight: Math.max(document.body.scrollHeight, document.documentElement.scrollHeight), scrollX: window.scrollX, scrollY: window.scrollY, timestamp: new Date().toISOString(), version: 1, isFragment: !!window.__milgIsFragment },
       colors: { textColors: [], bgColors: [], contrastPairs: [] },
       typography: { bodyFontSize: '', bodyLineHeight: '', bodyFontFamily: '', fontFamilies: [], fontSizes: [], fontWeights: [], headings: [], lineHeights: [], maxLineLength: { chars: 0, element: '', fontSize: 0, textLength: 0 } },
       spacing: { paddings: [], margins: [], gaps: [], maxContentWidth: '', bodyPaddingHorizontal: '' },
@@ -908,8 +908,9 @@ window.MilgExtract = (function() {
 
     parent.postMessage({ type: 'milg-analyzer-result', data: data }, '*');
     // Trigger screenshot capture if configured (function injected by parent)
+    // 500ms delay: parent resizes iframe to full doc height after receiving data
     if (typeof window.__milgDoScreenshots === 'function') {
-      setTimeout(window.__milgDoScreenshots, 200);
+      setTimeout(window.__milgDoScreenshots, 500);
     }
   }
 
