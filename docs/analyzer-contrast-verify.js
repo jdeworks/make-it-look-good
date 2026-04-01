@@ -217,7 +217,7 @@ window.MilgContrastVerify = (function() {
           }
         } else if (maskData) {
           var mr = maskData[idx], mg = maskData[idx + 1], mb = maskData[idx + 2];
-          inTextArea = (mr + mg + mb) / 3 < 80;
+          inTextArea = (mr + mg + mb) / 3 < 220; // any non-white pixel in mask = text/AA
         } else {
           inTextArea = true; // no mask — treat entire bbox as potential text area
         }

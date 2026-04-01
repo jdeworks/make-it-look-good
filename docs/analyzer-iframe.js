@@ -228,7 +228,9 @@ window.MilgIframe = (function() {
                       'var bmp=new Uint8Array(bw*bh);' +
                       'for(var y=0;y<bh;y++){for(var x=0;x<bw;x++){' +
                         'var i=(y*bw+x)*4;' +
-                        'if((px[i]+px[i+1]+px[i+2])/3<80)bmp[y*bw+x]=1' +
+                        // Mask is black text on pure white — any non-white pixel is text/AA
+                        // Threshold 220 catches light AA from font-smoothing on small text
+                        'if((px[i]+px[i+1]+px[i+2])/3<220)bmp[y*bw+x]=1' +
                       '}}' +
                       'pe.pair._maskBmp=Array.from(bmp);pe.pair._maskW=bw;pe.pair._maskH=bh;pe.pair._maskLayer=_li' +
                     '}catch(e){}' +
