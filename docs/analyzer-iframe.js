@@ -165,6 +165,11 @@ window.MilgIframe = (function() {
               // closer-to-FG-or-BG check in verification.
               '_prog("Capturing text mask...");' +
               'console.log("[iframe-ss] Step 2/2: Capturing text mask...");' +
+              // First: kill ALL transitions by setting transition-duration:0s on every element
+              // This must happen BEFORE the color change so there's no animation to race
+              'document.querySelectorAll("*").forEach(function(el){el.style.setProperty("transition-duration","0s","important");el.style.setProperty("transition","none","important")});' +
+              'void document.body.offsetHeight;' + // force reflow with transitions disabled
+              // Now apply the mask colors — transitions can't fire
               'var _maskStyle=document.createElement("style");' +
               '_maskStyle.setAttribute("data-milg-mask","1");' +
               '_maskStyle.textContent="*,*::before,*::after{color:#000 !important;background-color:#fff !important;background-image:none !important;background:white !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;-webkit-text-fill-color:#000 !important;opacity:1 !important;transition:none !important;animation:none !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}";' +
