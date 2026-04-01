@@ -229,7 +229,7 @@ window.MilgIframe = (function() {
                         'var i=(y*bw+x)*4;' +
                         'if((px[i]+px[i+1]+px[i+2])/3<80)pts.push(x,y)' +
                       '}}' +
-                      'pe.pair._maskPts=pts;pe.pair._maskW=bw;pe.pair._maskH=bh' +
+                      'pe.pair._maskPts=pts;pe.pair._maskW=bw;pe.pair._maskH=bh;pe.pair._maskLayer=_li' +
                     '}catch(e){}' +
                   '});' +
                   // Reset layer elements to white

@@ -342,6 +342,8 @@ window.MilgContrastVerify = (function() {
       crossesBoundary: crossesBoundary,
       significant: crossesBoundary || ratioDiff > 1.5 || isVariableBg,
       pixelFg: rgbStr(fgColor),
+      expectedFg: rgbStr(expectedFg),
+      effectiveOpacity: opacity,
       pixelBgWorst: rgbStr(worstBg),
       pixelBgAvg: rgbStr(avgBg),
       cssFg: pair.fg,
@@ -349,6 +351,7 @@ window.MilgContrastVerify = (function() {
       selector: pair.selector,
       text: pair.text,
       bbox: pair.bbox,
+      maskLayer: pair._maskLayer || 0,
       sectionIdx: sectionIdx,
       sampleCount: { fg: fgPoints.length, bg: pairedBg.length },
       samplePoints: {

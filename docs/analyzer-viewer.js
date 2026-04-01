@@ -108,9 +108,20 @@ window.MilgViewer = (function() {
     var vResults = reportData._contrastVerifyResults || [];
     if (vResults.length > 0) {
       var vFails = vResults.filter(function(r) { return r.crossesBoundary; }).length;
+      // Count layers
+      var layerCounts = {};
+      vResults.forEach(function(r) { var l = r.maskLayer || 0; layerCounts[l] = (layerCounts[l] || 0) + 1; });
+      var layerPills = '';
+      var layerKeys = Object.keys(layerCounts).sort(function(a, b) { return a - b; });
+      if (layerKeys.length > 1) {
+        layerKeys.forEach(function(l) {
+          layerPills += '<button class="milg-viewer-filter-btn" data-filter-type="verify" data-filter-value="layer' + l + '">L' + l + ' <span class="milg-viewer-count">' + layerCounts[l] + '</span></button>';
+        });
+      }
       verifyPill = '<span class="milg-viewer-sep"></span>' +
         '<button class="milg-viewer-filter-btn milg-viewer-sev-verify" data-filter-type="verify" data-filter-value="all">Pixel Verified <span class="milg-viewer-count">' + vResults.length + '</span></button>' +
-        (vFails > 0 ? '<button class="milg-viewer-filter-btn milg-viewer-sev-error" data-filter-type="verify" data-filter-value="fails">Pixel Fails <span class="milg-viewer-count">' + vFails + '</span></button>' : '');
+        (vFails > 0 ? '<button class="milg-viewer-filter-btn milg-viewer-sev-error" data-filter-type="verify" data-filter-value="fails">Pixel Fails <span class="milg-viewer-count">' + vFails + '</span></button>' : '') +
+        layerPills;
     }
 
     toolbar.innerHTML =
@@ -642,9 +653,15 @@ window.MilgViewer = (function() {
     var vScaleX = _meta.scale;
     var vScaleY = _meta.scale;
 
+    // Layer filter: "layerN" shows only that layer
+    var filterLayer = null;
+    if (_activeFilter.value && _activeFilter.value.indexOf('layer') === 0) {
+      filterLayer = parseInt(_activeFilter.value.substring(5));
+    }
+
     results.forEach(function(vr, vIdx) {
       if (showFails && !vr.crossesBoundary) return;
-      // Use bbox directly from verify result (no selector lookup needed)
+      if (filterLayer !== null && (vr.maskLayer || 0) !== filterLayer) return;
       var bbox = vr.bbox;
       if (!bbox) return;
 
@@ -924,12 +941,15 @@ window.MilgViewer = (function() {
             'BG variance: ' + (vr ? vr.bgVariance : '?') + '\n\n' +
             'CSS FG: ' + (vr ? vr.cssFg : '?') + '\n' +
             'CSS BG: ' + (vr ? vr.cssBg : '?') + '\n' +
+            'Expected FG (opacity-blended): ' + (vr ? vr.expectedFg : '?') + '\n' +
+            'Effective opacity: ' + (vr ? vr.effectiveOpacity : '?') + '\n' +
             'Pixel FG (avg): ' + (vr ? vr.pixelFg : '?') + '\n' +
             'Pixel BG (worst): ' + (vr ? vr.pixelBgWorst : '?') + '\n' +
             'Pixel BG (avg): ' + (vr ? vr.pixelBgAvg : '?') + '\n\n' +
             'Worst BG position: (' + wp.x + ', ' + wp.y + ')\n' +
             'Samples: ' + (vr ? vr.sampleCount.fg + ' FG, ' + vr.sampleCount.bg + ' BG' : '?') + '\n' +
-            'Variable BG: ' + (vr ? vr.isVariableBg : '?');
+            'Variable BG: ' + (vr ? vr.isVariableBg : '?') + '\n' +
+            'Has mask: ' + (vr ? !!(vr.samplePoints && vr.samplePoints.fg && vr.samplePoints.fg.length > 0) : '?');
           navigator.clipboard.writeText(info).then(function() {
             alert('Worst pair debug info copied to clipboard!');
           }).catch(function() {
