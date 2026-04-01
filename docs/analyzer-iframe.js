@@ -64,7 +64,7 @@ window.MilgIframe = (function() {
         '_pi++;setTimeout(_scrollNext,200)' + // 200ms per step (more time for observers)
       '}' +
       '_scrollNext();' +
-      // Phase 2: Reset scroll, force height:auto, re-read bboxes, capture
+      // Phase 2: Reset scroll, force-reveal hidden animated content, capture
       'function _startCapture(){' +
         'document.documentElement.style.scrollBehavior="auto";' +
         'document.body.style.scrollBehavior="auto";' +
@@ -74,11 +74,37 @@ window.MilgIframe = (function() {
           'if(s.overflow==="auto"||s.overflow==="scroll"||s.overflowY==="auto"||s.overflowY==="scroll"){' +
           'el.style.scrollBehavior="auto";el.scrollTop=0}}' +
         '});' +
-        // Switch to overflow:visible for capture (height:auto was set before pre-scroll)
+        // Force-finalize scroll-triggered animations:
+        // IntersectionObserver doesn't fire in offscreen iframes (browser optimization).
+        // Find all elements with opacity:0 that have transitions/animations and force them visible.
+        'var _revealed=0;' +
+        'document.querySelectorAll("*").forEach(function(el){' +
+          'var cs=getComputedStyle(el);' +
+          'if(cs.opacity==="0"&&el.tagName!=="SCRIPT"&&el.tagName!=="STYLE"){' +
+            // Check if this is an animation-hidden element (has transition on opacity or a CSS animation)
+            'var hasTrans=cs.transition&&cs.transition.indexOf("opacity")!==-1;' +
+            'var hasAnim=cs.animationName&&cs.animationName!=="none";' +
+            'var hasTransform=cs.transform&&cs.transform!=="none";' +
+            // Also check for common scroll-reveal patterns (classes containing fade, reveal, animate, aos)
+            'var cls=(el.className&&typeof el.className==="string")?el.className.toLowerCase():"";' +
+            'var isScrollAnim=hasTrans||hasAnim||/fade|reveal|animate|aos|scroll|slide|appear/.test(cls);' +
+            'if(isScrollAnim){' +
+              'el.style.cssText+=";opacity:1 !important;transform:none !important;transition:none !important;animation:none !important;";' +
+              '_revealed++' +
+            '}' +
+          '}' +
+        '});' +
+        'if(_revealed>0)console.log("[iframe-ss] Force-revealed "+_revealed+" scroll-animated elements (IO disabled in offscreen iframes)");' +
+        // Also inject a style to fast-forward any remaining CSS animations
+        'var _ffStyle=document.createElement("style");' +
+        '_ffStyle.textContent="*,*::before,*::after{animation-delay:0s !important;animation-duration:0.01s !important;}";' +
+        'document.head.appendChild(_ffStyle);' +
+        'void document.body.offsetHeight;' +
+        // Switch to overflow:visible for capture
         'document.documentElement.style.cssText+="overflow:visible !important;";' +
         'document.body.style.cssText+="overflow:visible !important;";' +
         'void document.body.offsetHeight;' +
-        'console.log("[iframe-ss] Phase 2: Waiting for animations...");' +
+        'console.log("[iframe-ss] Phase 2: Waiting for animations to finalize...");' +
         'setTimeout(function(){' +
           'if(typeof window.__milgReReadBboxes==="function"){' +
             'var res=window.__milgReReadBboxes();' +

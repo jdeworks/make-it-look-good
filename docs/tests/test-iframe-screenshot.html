@@ -135,7 +135,7 @@ function runTests(iframe) {
       scrolled > 0 ? 'pass' : 'fail');
   }
 
-  // Test 4: Pre-scroll triggers IntersectionObserver
+  // Test 4: Pre-scroll (IO won't fire in offscreen iframe — that's expected)
   log('4. Pre-Scroll', 'Starting pre-scroll through ' + Math.ceil(trueH / win.innerHeight) + ' positions...');
   var positions = [];
   for (var p = 0; p < trueH; p += win.innerHeight) positions.push(p);
@@ -143,7 +143,6 @@ function runTests(iframe) {
 
   function scrollNext() {
     if (pi >= positions.length) {
-      // Wait for IO callbacks
       setTimeout(function() { afterPreScroll(iframe); }, 500);
       return;
     }
@@ -162,19 +161,41 @@ function afterPreScroll(iframe) {
 
   var visibleCount = doc.querySelectorAll('.fade-in.visible').length;
   var totalFadeIn = doc.querySelectorAll('.fade-in').length;
-  log('4. Pre-Scroll', 'After pre-scroll: ' + visibleCount + '/' + totalFadeIn + ' fade-in elements visible',
-    visibleCount === totalFadeIn ? 'pass' : 'fail');
-  log('4. Pre-Scroll', 'Scroll events fired: ' + (win.__testScrollCount || 0));
+  log('4a. IO Check', 'After pre-scroll: ' + visibleCount + '/' + totalFadeIn + ' visible via IntersectionObserver',
+    visibleCount === totalFadeIn ? 'pass' : 'info');
+  if (visibleCount === 0) {
+    log('4a. IO Check', 'IO did NOT fire (expected — offscreen iframes suppress IO callbacks)', 'info');
+  }
+  log('4a. IO Check', 'Scroll events fired: ' + (win.__testScrollCount || 0));
+
+  // Test 4b: Force-reveal (the actual fix for offscreen iframes)
+  var revealed = 0;
+  doc.querySelectorAll('*').forEach(function(el) {
+    var cs = win.getComputedStyle(el);
+    if (cs.opacity === '0' && el.tagName !== 'SCRIPT' && el.tagName !== 'STYLE') {
+      var hasTrans = cs.transition && cs.transition.indexOf('opacity') !== -1;
+      var hasAnim = cs.animationName && cs.animationName !== 'none';
+      var cls = (el.className && typeof el.className === 'string') ? el.className.toLowerCase() : '';
+      if (hasTrans || hasAnim || /fade|reveal|animate|aos|scroll|slide|appear/.test(cls)) {
+        el.style.cssText += ';opacity:1 !important;transform:none !important;transition:none !important;';
+        revealed++;
+      }
+    }
+  });
+  log('4b. Force-Reveal', 'Force-revealed ' + revealed + ' animated elements', revealed > 0 ? 'pass' : 'info');
+
+  // Verify they're actually visible now
+  var nowVisible = 0;
+  doc.querySelectorAll('.fade-in').forEach(function(el) {
+    if (win.getComputedStyle(el).opacity !== '0') nowVisible++;
+  });
+  log('4b. Force-Reveal', 'After force-reveal: ' + nowVisible + '/' + totalFadeIn + ' now opacity > 0',
+    nowVisible === totalFadeIn ? 'pass' : 'fail');
 
   // Test 5: Reset scroll
   win.scrollTo(0, 0);
   doc.documentElement.scrollTop = 0;
   log('5. Scroll Reset', 'scrollY after reset: ' + (win.scrollY || doc.documentElement.scrollTop));
-
-  // Test 6: Visibility persists after scroll reset (animations should have completed)
-  var stillVisible = doc.querySelectorAll('.fade-in.visible').length;
-  log('6. Visibility', 'Fade-in elements still visible after reset: ' + stillVisible + '/' + totalFadeIn,
-    stillVisible === totalFadeIn ? 'pass' : 'fail');
 
   // Test 7: Switch to overflow:visible for capture
   doc.documentElement.style.cssText += 'overflow:visible !important;';

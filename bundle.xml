@@ -4894,271 +4894,6 @@ function runTests() {
 </script></body></html>
 </file>
 
-<file path="docs/tests/test-iframe-screenshot.html">
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Iframe Screenshot Test</title>
-<style>
-body { font-family: system-ui, sans-serif; margin: 0; padding: 20px; background: #f8fafc; color: #1e293b; }
-h1 { margin: 0 0 16px; font-size: 20px; }
-.test-section { margin-bottom: 16px; padding: 12px 16px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; }
-.test-section h3 { margin: 0 0 8px; font-size: 14px; }
-.result { font-family: monospace; font-size: 12px; white-space: pre-wrap; background: #f1f5f9; padding: 8px; border-radius: 4px; margin-top: 8px; max-height: 200px; overflow: auto; }
-.pass { color: #16a34a; } .fail { color: #dc2626; } .info { color: #2563eb; }
-button { padding: 8px 16px; background: #3b82f6; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; }
-button:hover { background: #2563eb; }
-#testIframe { position: fixed; top: -9999px; left: -9999px; border: none; }
-</style>
-</head>
-<body>
-<h1>Iframe Screenshot Pipeline Tests</h1>
-<p style="font-size:13px;color:#64748b;margin-bottom:16px">Tests the screenshot capture pipeline inside an offscreen iframe — scroll behavior, IntersectionObserver triggers, domToCanvas capture, and bbox alignment.</p>
-
-<button onclick="runAllTests()">Run All Tests</button>
-<div id="results" style="margin-top:16px"></div>
-
-<script>
-var results = [];
-var resultsEl = document.getElementById('results');
-
-function log(section, msg, type) {
-  results.push({ section: section, msg: msg, type: type || 'info' });
-  render();
-}
-
-function render() {
-  var grouped = {};
-  results.forEach(function(r) {
-    if (!grouped[r.section]) grouped[r.section] = [];
-    grouped[r.section].push(r);
-  });
-  var html = '';
-  Object.keys(grouped).forEach(function(sec) {
-    html += '<div class="test-section"><h3>' + sec + '</h3><div class="result">';
-    grouped[sec].forEach(function(r) {
-      html += '<div class="' + r.type + '">' + r.msg + '</div>';
-    });
-    html += '</div></div>';
-  });
-  resultsEl.innerHTML = html;
-}
-
-// --- Test page HTML: has IntersectionObserver animations, lazy content, gradients ---
-function buildTestPage() {
-  return '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">' +
-    '<meta name="viewport" content="width=device-width,initial-scale=1">' +
-    '<style>' +
-    'html,body{height:100%;margin:0;font-family:system-ui,sans-serif}' + // height:100% — the common culprit
-    'body{background:linear-gradient(180deg,#1e293b 0%,#3b82f6 50%,#f8fafc 100%)}' +
-    '.section{padding:60px 40px;min-height:80vh}' +
-    '.fade-in{opacity:0;transform:translateY(30px);transition:opacity 0.6s,transform 0.6s}' +
-    '.fade-in.visible{opacity:1;transform:translateY(0)}' +
-    'h1{color:#fff;font-size:36px}h2{font-size:24px}p{font-size:16px;line-height:1.6;max-width:600px}' +
-    '.white-text{color:#fff}.dark-text{color:#1e293b}' +
-    '</style></head><body>' +
-    '<div class="section"><h1>Hero Section</h1><p class="white-text">This is the first viewport. Should always be captured.</p></div>' +
-    '<div class="section"><h2 class="fade-in white-text">Section 2 — Fade In</h2><p class="fade-in white-text">This section uses IntersectionObserver to animate in. If pre-scroll works, this should be visible (opacity:1).</p></div>' +
-    '<div class="section"><h2 class="fade-in dark-text">Section 3 — Below Fold</h2><p class="fade-in dark-text">This is well below the initial viewport. Tests deep pre-scroll.</p></div>' +
-    '<div class="section" style="background:#f8fafc"><h2 class="fade-in dark-text">Section 4 — Footer Area</h2><p class="fade-in dark-text">Near the bottom. Gradient background should show different colors here vs hero.</p></div>' +
-    '<div id="test-results" style="display:none"></div>' +
-    '<script>' +
-    // IntersectionObserver for fade-in
-    'var observer=new IntersectionObserver(function(entries){' +
-      'entries.forEach(function(e){if(e.isIntersecting){e.target.classList.add("visible");observer.unobserve(e.target)}})' +
-    '},{threshold:0.1});' +
-    'document.querySelectorAll(".fade-in").forEach(function(el){observer.observe(el)});' +
-    // Report scroll events and IO triggers
-    'window.__testScrollCount=0;window.__testIOCount=0;' +
-    'window.addEventListener("scroll",function(){window.__testScrollCount++});' +
-    'var origObserve=observer.observe.bind(observer);' +
-    // Track visible elements
-    'window.__testVisibleCount=function(){return document.querySelectorAll(".fade-in.visible").length};' +
-    '</' + 'script>' +
-    '</body></html>';
-}
-
-function runAllTests() {
-  results = [];
-  log('Setup', 'Creating test iframe...');
-
-  var iframe = document.createElement('iframe');
-  iframe.id = 'testIframe';
-  iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
-  iframe.sandbox = 'allow-scripts allow-same-origin';
-  document.body.appendChild(iframe);
-
-  iframe.srcdoc = buildTestPage();
-
-  iframe.addEventListener('load', function() {
-    setTimeout(function() { runTests(iframe); }, 1000); // wait for IO setup
-  });
-}
-
-function runTests(iframe) {
-  var win = iframe.contentWindow;
-  var doc = iframe.contentDocument;
-
-  // Test 1: Initial state
-  log('1. Initial State', 'innerHeight: ' + win.innerHeight);
-  log('1. Initial State', 'body.scrollHeight: ' + doc.body.scrollHeight);
-  log('1. Initial State', 'html.scrollHeight: ' + doc.documentElement.scrollHeight);
-  var fadeIns = doc.querySelectorAll('.fade-in');
-  var initialVisible = doc.querySelectorAll('.fade-in.visible').length;
-  log('1. Initial State', 'Fade-in elements: ' + fadeIns.length + ', visible: ' + initialVisible,
-    initialVisible <= 1 ? 'pass' : 'info');
-
-  // Test 2: scrollHeight with height:auto
-  doc.documentElement.style.cssText += 'height:auto !important;overflow-y:auto !important;';
-  doc.body.style.cssText += 'height:auto !important;';
-  void doc.body.offsetHeight;
-  var trueH = doc.body.scrollHeight;
-  log('2. Height Unlock', 'After height:auto → body.scrollHeight: ' + trueH,
-    trueH > win.innerHeight ? 'pass' : 'fail');
-
-  // Test 3: Scroll works
-  win.scrollTo(0, 1000);
-  var scrolled = win.scrollY || doc.documentElement.scrollTop;
-  log('3. Scroll Test', 'scrollTo(0,1000) → scrollY: ' + scrolled,
-    scrolled > 0 ? 'pass' : 'fail');
-
-  if (scrolled === 0) {
-    // Try documentElement.scrollTop directly
-    doc.documentElement.scrollTop = 1000;
-    scrolled = doc.documentElement.scrollTop;
-    log('3. Scroll Test', 'documentElement.scrollTop=1000 → actual: ' + scrolled,
-      scrolled > 0 ? 'pass' : 'fail');
-  }
-
-  // Test 4: Pre-scroll triggers IntersectionObserver
-  log('4. Pre-Scroll', 'Starting pre-scroll through ' + Math.ceil(trueH / win.innerHeight) + ' positions...');
-  var positions = [];
-  for (var p = 0; p < trueH; p += win.innerHeight) positions.push(p);
-  var pi = 0;
-
-  function scrollNext() {
-    if (pi >= positions.length) {
-      // Wait for IO callbacks
-      setTimeout(function() { afterPreScroll(iframe); }, 500);
-      return;
-    }
-    win.scrollTo(0, positions[pi]);
-    doc.documentElement.scrollTop = positions[pi];
-    try { win.dispatchEvent(new Event('scroll')); } catch(e) {}
-    pi++;
-    setTimeout(scrollNext, 200);
-  }
-  scrollNext();
-}
-
-function afterPreScroll(iframe) {
-  var win = iframe.contentWindow;
-  var doc = iframe.contentDocument;
-
-  var visibleCount = doc.querySelectorAll('.fade-in.visible').length;
-  var totalFadeIn = doc.querySelectorAll('.fade-in').length;
-  log('4. Pre-Scroll', 'After pre-scroll: ' + visibleCount + '/' + totalFadeIn + ' fade-in elements visible',
-    visibleCount === totalFadeIn ? 'pass' : 'fail');
-  log('4. Pre-Scroll', 'Scroll events fired: ' + (win.__testScrollCount || 0));
-
-  // Test 5: Reset scroll
-  win.scrollTo(0, 0);
-  doc.documentElement.scrollTop = 0;
-  log('5. Scroll Reset', 'scrollY after reset: ' + (win.scrollY || doc.documentElement.scrollTop));
-
-  // Test 6: Visibility persists after scroll reset (animations should have completed)
-  var stillVisible = doc.querySelectorAll('.fade-in.visible').length;
-  log('6. Visibility', 'Fade-in elements still visible after reset: ' + stillVisible + '/' + totalFadeIn,
-    stillVisible === totalFadeIn ? 'pass' : 'fail');
-
-  // Test 7: Switch to overflow:visible for capture
-  doc.documentElement.style.cssText += 'overflow:visible !important;';
-  doc.body.style.cssText += 'overflow:visible !important;';
-  void doc.body.offsetHeight;
-  log('7. Capture Mode', 'After overflow:visible → body.scrollHeight: ' + doc.body.scrollHeight);
-
-  // Test 8: domToCanvas (if modern-screenshot available)
-  var ms = document.createElement('script');
-  ms.src = 'https://cdn.jsdelivr.net/npm/modern-screenshot@4.4.39/dist/index.js';
-  ms.onload = function() {
-    if (!window.modernScreenshot || !window.modernScreenshot.domToCanvas) {
-      log('8. domToCanvas', 'modern-screenshot not available (CDN blocked?)', 'info');
-      finish(iframe);
-      return;
-    }
-    // Inject into iframe
-    var iframeMs = doc.createElement('script');
-    iframeMs.src = ms.src;
-    iframeMs.onload = function() {
-      var iMs = win.modernScreenshot;
-      if (!iMs || !iMs.domToCanvas) {
-        log('8. domToCanvas', 'Failed to load in iframe', 'fail');
-        finish(iframe);
-        return;
-      }
-      log('8. domToCanvas', 'Capturing document.body at 0.5x scale...');
-      iMs.domToCanvas(doc.body, { scale: 0.5, timeout: 10000 }).then(function(canvas) {
-        log('8. domToCanvas', 'Canvas: ' + canvas.width + 'x' + canvas.height, 'pass');
-        var expectedH = Math.round(doc.body.scrollHeight * 0.5);
-        log('8. domToCanvas', 'Expected height ~' + expectedH + ', got ' + canvas.height,
-          Math.abs(canvas.height - expectedH) < 50 ? 'pass' : 'fail');
-
-        // Test 9: Sample pixels at different Y positions
-        var ctx = canvas.getContext('2d');
-        var topPx = ctx.getImageData(canvas.width / 2, 10, 1, 1).data;
-        var midPx = ctx.getImageData(canvas.width / 2, canvas.height / 2, 1, 1).data;
-        var botPx = ctx.getImageData(canvas.width / 2, canvas.height - 10, 1, 1).data;
-        log('9. Pixel Check', 'Top pixel: rgb(' + topPx[0] + ',' + topPx[1] + ',' + topPx[2] + ')',
-          topPx[3] > 0 ? 'pass' : 'fail');
-        log('9. Pixel Check', 'Mid pixel: rgb(' + midPx[0] + ',' + midPx[1] + ',' + midPx[2] + ')',
-          midPx[3] > 0 ? 'pass' : 'fail');
-        log('9. Pixel Check', 'Bot pixel: rgb(' + botPx[0] + ',' + botPx[1] + ',' + botPx[2] + ')',
-          botPx[3] > 0 ? 'pass' : 'fail');
-        log('9. Pixel Check', 'Colors differ top vs bot: ' +
-          (Math.abs(topPx[0] - botPx[0]) + Math.abs(topPx[1] - botPx[1]) + Math.abs(topPx[2] - botPx[2]) > 30 ? 'yes (gradient captured)' : 'no (may be clipped)'),
-          Math.abs(topPx[0] - botPx[0]) + Math.abs(topPx[1] - botPx[1]) + Math.abs(topPx[2] - botPx[2]) > 30 ? 'pass' : 'fail');
-
-        // Show preview
-        canvas.style.cssText = 'max-width:100%;border:1px solid #e2e8f0;border-radius:4px;margin-top:8px';
-        var preview = document.createElement('div');
-        preview.className = 'test-section';
-        preview.innerHTML = '<h3>Screenshot Preview</h3>';
-        preview.appendChild(canvas);
-        resultsEl.appendChild(preview);
-
-        finish(iframe);
-      }).catch(function(e) {
-        log('8. domToCanvas', 'Failed: ' + e.message, 'fail');
-        finish(iframe);
-      });
-    };
-    iframeMs.onerror = function() {
-      log('8. domToCanvas', 'Failed to load in iframe (CORS?)', 'fail');
-      finish(iframe);
-    };
-    doc.head.appendChild(iframeMs);
-  };
-  ms.onerror = function() {
-    log('8. domToCanvas', 'CDN blocked', 'info');
-    finish(iframe);
-  };
-  document.head.appendChild(ms);
-}
-
-function finish(iframe) {
-  var passes = results.filter(function(r) { return r.type === 'pass'; }).length;
-  var fails = results.filter(function(r) { return r.type === 'fail'; }).length;
-  log('Summary', passes + ' passed, ' + fails + ' failed', fails === 0 ? 'pass' : 'fail');
-  // Cleanup
-  if (iframe && iframe.parentNode) iframe.parentNode.removeChild(iframe);
-}
-</script>
-</body>
-</html>
-</file>
-
 <file path="docs/tests/test-scoring.html">
 <!DOCTYPE html>
 <html lang="en">
@@ -23136,6 +22871,292 @@ async function testExtractionBbox(browser) {
 run();
 </file>
 
+<file path="docs/tests/test-iframe-screenshot.html">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Iframe Screenshot Test</title>
+<style>
+body { font-family: system-ui, sans-serif; margin: 0; padding: 20px; background: #f8fafc; color: #1e293b; }
+h1 { margin: 0 0 16px; font-size: 20px; }
+.test-section { margin-bottom: 16px; padding: 12px 16px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; }
+.test-section h3 { margin: 0 0 8px; font-size: 14px; }
+.result { font-family: monospace; font-size: 12px; white-space: pre-wrap; background: #f1f5f9; padding: 8px; border-radius: 4px; margin-top: 8px; max-height: 200px; overflow: auto; }
+.pass { color: #16a34a; } .fail { color: #dc2626; } .info { color: #2563eb; }
+button { padding: 8px 16px; background: #3b82f6; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; }
+button:hover { background: #2563eb; }
+#testIframe { position: fixed; top: -9999px; left: -9999px; border: none; }
+</style>
+</head>
+<body>
+<h1>Iframe Screenshot Pipeline Tests</h1>
+<p style="font-size:13px;color:#64748b;margin-bottom:16px">Tests the screenshot capture pipeline inside an offscreen iframe — scroll behavior, IntersectionObserver triggers, domToCanvas capture, and bbox alignment.</p>
+
+<button onclick="runAllTests()">Run All Tests</button>
+<div id="results" style="margin-top:16px"></div>
+
+<script>
+var results = [];
+var resultsEl = document.getElementById('results');
+
+function log(section, msg, type) {
+  results.push({ section: section, msg: msg, type: type || 'info' });
+  render();
+}
+
+function render() {
+  var grouped = {};
+  results.forEach(function(r) {
+    if (!grouped[r.section]) grouped[r.section] = [];
+    grouped[r.section].push(r);
+  });
+  var html = '';
+  Object.keys(grouped).forEach(function(sec) {
+    html += '<div class="test-section"><h3>' + sec + '</h3><div class="result">';
+    grouped[sec].forEach(function(r) {
+      html += '<div class="' + r.type + '">' + r.msg + '</div>';
+    });
+    html += '</div></div>';
+  });
+  resultsEl.innerHTML = html;
+}
+
+// --- Test page HTML: has IntersectionObserver animations, lazy content, gradients ---
+function buildTestPage() {
+  return '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">' +
+    '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+    '<style>' +
+    'html,body{height:100%;margin:0;font-family:system-ui,sans-serif}' + // height:100% — the common culprit
+    'body{background:linear-gradient(180deg,#1e293b 0%,#3b82f6 50%,#f8fafc 100%)}' +
+    '.section{padding:60px 40px;min-height:80vh}' +
+    '.fade-in{opacity:0;transform:translateY(30px);transition:opacity 0.6s,transform 0.6s}' +
+    '.fade-in.visible{opacity:1;transform:translateY(0)}' +
+    'h1{color:#fff;font-size:36px}h2{font-size:24px}p{font-size:16px;line-height:1.6;max-width:600px}' +
+    '.white-text{color:#fff}.dark-text{color:#1e293b}' +
+    '</style></head><body>' +
+    '<div class="section"><h1>Hero Section</h1><p class="white-text">This is the first viewport. Should always be captured.</p></div>' +
+    '<div class="section"><h2 class="fade-in white-text">Section 2 — Fade In</h2><p class="fade-in white-text">This section uses IntersectionObserver to animate in. If pre-scroll works, this should be visible (opacity:1).</p></div>' +
+    '<div class="section"><h2 class="fade-in dark-text">Section 3 — Below Fold</h2><p class="fade-in dark-text">This is well below the initial viewport. Tests deep pre-scroll.</p></div>' +
+    '<div class="section" style="background:#f8fafc"><h2 class="fade-in dark-text">Section 4 — Footer Area</h2><p class="fade-in dark-text">Near the bottom. Gradient background should show different colors here vs hero.</p></div>' +
+    '<div id="test-results" style="display:none"></div>' +
+    '<script>' +
+    // IntersectionObserver for fade-in
+    'var observer=new IntersectionObserver(function(entries){' +
+      'entries.forEach(function(e){if(e.isIntersecting){e.target.classList.add("visible");observer.unobserve(e.target)}})' +
+    '},{threshold:0.1});' +
+    'document.querySelectorAll(".fade-in").forEach(function(el){observer.observe(el)});' +
+    // Report scroll events and IO triggers
+    'window.__testScrollCount=0;window.__testIOCount=0;' +
+    'window.addEventListener("scroll",function(){window.__testScrollCount++});' +
+    'var origObserve=observer.observe.bind(observer);' +
+    // Track visible elements
+    'window.__testVisibleCount=function(){return document.querySelectorAll(".fade-in.visible").length};' +
+    '</' + 'script>' +
+    '</body></html>';
+}
+
+function runAllTests() {
+  results = [];
+  log('Setup', 'Creating test iframe...');
+
+  var iframe = document.createElement('iframe');
+  iframe.id = 'testIframe';
+  iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
+  iframe.sandbox = 'allow-scripts allow-same-origin';
+  document.body.appendChild(iframe);
+
+  iframe.srcdoc = buildTestPage();
+
+  iframe.addEventListener('load', function() {
+    setTimeout(function() { runTests(iframe); }, 1000); // wait for IO setup
+  });
+}
+
+function runTests(iframe) {
+  var win = iframe.contentWindow;
+  var doc = iframe.contentDocument;
+
+  // Test 1: Initial state
+  log('1. Initial State', 'innerHeight: ' + win.innerHeight);
+  log('1. Initial State', 'body.scrollHeight: ' + doc.body.scrollHeight);
+  log('1. Initial State', 'html.scrollHeight: ' + doc.documentElement.scrollHeight);
+  var fadeIns = doc.querySelectorAll('.fade-in');
+  var initialVisible = doc.querySelectorAll('.fade-in.visible').length;
+  log('1. Initial State', 'Fade-in elements: ' + fadeIns.length + ', visible: ' + initialVisible,
+    initialVisible <= 1 ? 'pass' : 'info');
+
+  // Test 2: scrollHeight with height:auto
+  doc.documentElement.style.cssText += 'height:auto !important;overflow-y:auto !important;';
+  doc.body.style.cssText += 'height:auto !important;';
+  void doc.body.offsetHeight;
+  var trueH = doc.body.scrollHeight;
+  log('2. Height Unlock', 'After height:auto → body.scrollHeight: ' + trueH,
+    trueH > win.innerHeight ? 'pass' : 'fail');
+
+  // Test 3: Scroll works
+  win.scrollTo(0, 1000);
+  var scrolled = win.scrollY || doc.documentElement.scrollTop;
+  log('3. Scroll Test', 'scrollTo(0,1000) → scrollY: ' + scrolled,
+    scrolled > 0 ? 'pass' : 'fail');
+
+  if (scrolled === 0) {
+    // Try documentElement.scrollTop directly
+    doc.documentElement.scrollTop = 1000;
+    scrolled = doc.documentElement.scrollTop;
+    log('3. Scroll Test', 'documentElement.scrollTop=1000 → actual: ' + scrolled,
+      scrolled > 0 ? 'pass' : 'fail');
+  }
+
+  // Test 4: Pre-scroll (IO won't fire in offscreen iframe — that's expected)
+  log('4. Pre-Scroll', 'Starting pre-scroll through ' + Math.ceil(trueH / win.innerHeight) + ' positions...');
+  var positions = [];
+  for (var p = 0; p < trueH; p += win.innerHeight) positions.push(p);
+  var pi = 0;
+
+  function scrollNext() {
+    if (pi >= positions.length) {
+      setTimeout(function() { afterPreScroll(iframe); }, 500);
+      return;
+    }
+    win.scrollTo(0, positions[pi]);
+    doc.documentElement.scrollTop = positions[pi];
+    try { win.dispatchEvent(new Event('scroll')); } catch(e) {}
+    pi++;
+    setTimeout(scrollNext, 200);
+  }
+  scrollNext();
+}
+
+function afterPreScroll(iframe) {
+  var win = iframe.contentWindow;
+  var doc = iframe.contentDocument;
+
+  var visibleCount = doc.querySelectorAll('.fade-in.visible').length;
+  var totalFadeIn = doc.querySelectorAll('.fade-in').length;
+  log('4a. IO Check', 'After pre-scroll: ' + visibleCount + '/' + totalFadeIn + ' visible via IntersectionObserver',
+    visibleCount === totalFadeIn ? 'pass' : 'info');
+  if (visibleCount === 0) {
+    log('4a. IO Check', 'IO did NOT fire (expected — offscreen iframes suppress IO callbacks)', 'info');
+  }
+  log('4a. IO Check', 'Scroll events fired: ' + (win.__testScrollCount || 0));
+
+  // Test 4b: Force-reveal (the actual fix for offscreen iframes)
+  var revealed = 0;
+  doc.querySelectorAll('*').forEach(function(el) {
+    var cs = win.getComputedStyle(el);
+    if (cs.opacity === '0' && el.tagName !== 'SCRIPT' && el.tagName !== 'STYLE') {
+      var hasTrans = cs.transition && cs.transition.indexOf('opacity') !== -1;
+      var hasAnim = cs.animationName && cs.animationName !== 'none';
+      var cls = (el.className && typeof el.className === 'string') ? el.className.toLowerCase() : '';
+      if (hasTrans || hasAnim || /fade|reveal|animate|aos|scroll|slide|appear/.test(cls)) {
+        el.style.cssText += ';opacity:1 !important;transform:none !important;transition:none !important;';
+        revealed++;
+      }
+    }
+  });
+  log('4b. Force-Reveal', 'Force-revealed ' + revealed + ' animated elements', revealed > 0 ? 'pass' : 'info');
+
+  // Verify they're actually visible now
+  var nowVisible = 0;
+  doc.querySelectorAll('.fade-in').forEach(function(el) {
+    if (win.getComputedStyle(el).opacity !== '0') nowVisible++;
+  });
+  log('4b. Force-Reveal', 'After force-reveal: ' + nowVisible + '/' + totalFadeIn + ' now opacity > 0',
+    nowVisible === totalFadeIn ? 'pass' : 'fail');
+
+  // Test 5: Reset scroll
+  win.scrollTo(0, 0);
+  doc.documentElement.scrollTop = 0;
+  log('5. Scroll Reset', 'scrollY after reset: ' + (win.scrollY || doc.documentElement.scrollTop));
+
+  // Test 7: Switch to overflow:visible for capture
+  doc.documentElement.style.cssText += 'overflow:visible !important;';
+  doc.body.style.cssText += 'overflow:visible !important;';
+  void doc.body.offsetHeight;
+  log('7. Capture Mode', 'After overflow:visible → body.scrollHeight: ' + doc.body.scrollHeight);
+
+  // Test 8: domToCanvas (if modern-screenshot available)
+  var ms = document.createElement('script');
+  ms.src = 'https://cdn.jsdelivr.net/npm/modern-screenshot@4.4.39/dist/index.js';
+  ms.onload = function() {
+    if (!window.modernScreenshot || !window.modernScreenshot.domToCanvas) {
+      log('8. domToCanvas', 'modern-screenshot not available (CDN blocked?)', 'info');
+      finish(iframe);
+      return;
+    }
+    // Inject into iframe
+    var iframeMs = doc.createElement('script');
+    iframeMs.src = ms.src;
+    iframeMs.onload = function() {
+      var iMs = win.modernScreenshot;
+      if (!iMs || !iMs.domToCanvas) {
+        log('8. domToCanvas', 'Failed to load in iframe', 'fail');
+        finish(iframe);
+        return;
+      }
+      log('8. domToCanvas', 'Capturing document.body at 0.5x scale...');
+      iMs.domToCanvas(doc.body, { scale: 0.5, timeout: 10000 }).then(function(canvas) {
+        log('8. domToCanvas', 'Canvas: ' + canvas.width + 'x' + canvas.height, 'pass');
+        var expectedH = Math.round(doc.body.scrollHeight * 0.5);
+        log('8. domToCanvas', 'Expected height ~' + expectedH + ', got ' + canvas.height,
+          Math.abs(canvas.height - expectedH) < 50 ? 'pass' : 'fail');
+
+        // Test 9: Sample pixels at different Y positions
+        var ctx = canvas.getContext('2d');
+        var topPx = ctx.getImageData(canvas.width / 2, 10, 1, 1).data;
+        var midPx = ctx.getImageData(canvas.width / 2, canvas.height / 2, 1, 1).data;
+        var botPx = ctx.getImageData(canvas.width / 2, canvas.height - 10, 1, 1).data;
+        log('9. Pixel Check', 'Top pixel: rgb(' + topPx[0] + ',' + topPx[1] + ',' + topPx[2] + ')',
+          topPx[3] > 0 ? 'pass' : 'fail');
+        log('9. Pixel Check', 'Mid pixel: rgb(' + midPx[0] + ',' + midPx[1] + ',' + midPx[2] + ')',
+          midPx[3] > 0 ? 'pass' : 'fail');
+        log('9. Pixel Check', 'Bot pixel: rgb(' + botPx[0] + ',' + botPx[1] + ',' + botPx[2] + ')',
+          botPx[3] > 0 ? 'pass' : 'fail');
+        log('9. Pixel Check', 'Colors differ top vs bot: ' +
+          (Math.abs(topPx[0] - botPx[0]) + Math.abs(topPx[1] - botPx[1]) + Math.abs(topPx[2] - botPx[2]) > 30 ? 'yes (gradient captured)' : 'no (may be clipped)'),
+          Math.abs(topPx[0] - botPx[0]) + Math.abs(topPx[1] - botPx[1]) + Math.abs(topPx[2] - botPx[2]) > 30 ? 'pass' : 'fail');
+
+        // Show preview
+        canvas.style.cssText = 'max-width:100%;border:1px solid #e2e8f0;border-radius:4px;margin-top:8px';
+        var preview = document.createElement('div');
+        preview.className = 'test-section';
+        preview.innerHTML = '<h3>Screenshot Preview</h3>';
+        preview.appendChild(canvas);
+        resultsEl.appendChild(preview);
+
+        finish(iframe);
+      }).catch(function(e) {
+        log('8. domToCanvas', 'Failed: ' + e.message, 'fail');
+        finish(iframe);
+      });
+    };
+    iframeMs.onerror = function() {
+      log('8. domToCanvas', 'Failed to load in iframe (CORS?)', 'fail');
+      finish(iframe);
+    };
+    doc.head.appendChild(iframeMs);
+  };
+  ms.onerror = function() {
+    log('8. domToCanvas', 'CDN blocked', 'info');
+    finish(iframe);
+  };
+  document.head.appendChild(ms);
+}
+
+function finish(iframe) {
+  var passes = results.filter(function(r) { return r.type === 'pass'; }).length;
+  var fails = results.filter(function(r) { return r.type === 'fail'; }).length;
+  log('Summary', passes + ' passed, ' + fails + ' failed', fails === 0 ? 'pass' : 'fail');
+  // Cleanup
+  if (iframe && iframe.parentNode) iframe.parentNode.removeChild(iframe);
+}
+</script>
+</body>
+</html>
+</file>
+
 <file path="docs/tests/test-presets-rendered.html">
 <!DOCTYPE html>
 <html lang="en">
@@ -28556,7 +28577,7 @@ window.MilgIframe = (function() {
         '_pi++;setTimeout(_scrollNext,200)' + // 200ms per step (more time for observers)
       '}' +
       '_scrollNext();' +
-      // Phase 2: Reset scroll, force height:auto, re-read bboxes, capture
+      // Phase 2: Reset scroll, force-reveal hidden animated content, capture
       'function _startCapture(){' +
         'document.documentElement.style.scrollBehavior="auto";' +
         'document.body.style.scrollBehavior="auto";' +
@@ -28566,11 +28587,37 @@ window.MilgIframe = (function() {
           'if(s.overflow==="auto"||s.overflow==="scroll"||s.overflowY==="auto"||s.overflowY==="scroll"){' +
           'el.style.scrollBehavior="auto";el.scrollTop=0}}' +
         '});' +
-        // Switch to overflow:visible for capture (height:auto was set before pre-scroll)
+        // Force-finalize scroll-triggered animations:
+        // IntersectionObserver doesn't fire in offscreen iframes (browser optimization).
+        // Find all elements with opacity:0 that have transitions/animations and force them visible.
+        'var _revealed=0;' +
+        'document.querySelectorAll("*").forEach(function(el){' +
+          'var cs=getComputedStyle(el);' +
+          'if(cs.opacity==="0"&&el.tagName!=="SCRIPT"&&el.tagName!=="STYLE"){' +
+            // Check if this is an animation-hidden element (has transition on opacity or a CSS animation)
+            'var hasTrans=cs.transition&&cs.transition.indexOf("opacity")!==-1;' +
+            'var hasAnim=cs.animationName&&cs.animationName!=="none";' +
+            'var hasTransform=cs.transform&&cs.transform!=="none";' +
+            // Also check for common scroll-reveal patterns (classes containing fade, reveal, animate, aos)
+            'var cls=(el.className&&typeof el.className==="string")?el.className.toLowerCase():"";' +
+            'var isScrollAnim=hasTrans||hasAnim||/fade|reveal|animate|aos|scroll|slide|appear/.test(cls);' +
+            'if(isScrollAnim){' +
+              'el.style.cssText+=";opacity:1 !important;transform:none !important;transition:none !important;animation:none !important;";' +
+              '_revealed++' +
+            '}' +
+          '}' +
+        '});' +
+        'if(_revealed>0)console.log("[iframe-ss] Force-revealed "+_revealed+" scroll-animated elements (IO disabled in offscreen iframes)");' +
+        // Also inject a style to fast-forward any remaining CSS animations
+        'var _ffStyle=document.createElement("style");' +
+        '_ffStyle.textContent="*,*::before,*::after{animation-delay:0s !important;animation-duration:0.01s !important;}";' +
+        'document.head.appendChild(_ffStyle);' +
+        'void document.body.offsetHeight;' +
+        // Switch to overflow:visible for capture
         'document.documentElement.style.cssText+="overflow:visible !important;";' +
         'document.body.style.cssText+="overflow:visible !important;";' +
         'void document.body.offsetHeight;' +
-        'console.log("[iframe-ss] Phase 2: Waiting for animations...");' +
+        'console.log("[iframe-ss] Phase 2: Waiting for animations to finalize...");' +
         'setTimeout(function(){' +
           'if(typeof window.__milgReReadBboxes==="function"){' +
             'var res=window.__milgReReadBboxes();' +
