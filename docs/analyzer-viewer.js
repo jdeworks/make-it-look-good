@@ -725,8 +725,8 @@ window.MilgViewer = (function() {
         var sp = rect._samplePoints;
         if (!sp || (!sp.fg.length && !sp.bg.length)) return;
         var secOff = rect._sectionOffset || 0;
-        var allFg = (sp.fg || []).map(function(p) { return { x: p.x, y: p.y + secOff }; });
-        var allBg = (sp.bg || []).map(function(p) { return { x: p.x, y: p.y + secOff }; });
+        var allFg = (sp.fg || []).map(function(p) { return { x: p.x, y: p.y + secOff, r: p.r, g: p.g, b: p.b }; });
+        var allBg = (sp.bg || []).map(function(p) { return { x: p.x, y: p.y + secOff, r: p.r, g: p.g, b: p.b }; });
 
         // Create persistent highlight elements
         var hlGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -767,57 +767,56 @@ window.MilgViewer = (function() {
           while (hlGroup.firstChild) hlGroup.removeChild(hlGroup.firstChild);
 
           var r = _zoomLevel >= 1.5 ? 4 : 2.5;
-          if (closestFg) {
-            // FG point — cyan ring
+
+          // Current pair: FG ring + BG ring + connecting line + contrast label
+          if (closestFg && closestBg) {
             var fgRing = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
             fgRing.setAttribute('cx', closestFg.x); fgRing.setAttribute('cy', closestFg.y);
             fgRing.setAttribute('r', r); fgRing.setAttribute('fill', 'none');
             fgRing.setAttribute('stroke', '#06b6d4'); fgRing.setAttribute('stroke-width', '2');
             hlGroup.appendChild(fgRing);
-          }
-          if (closestBg) {
-            // BG point — orange ring
+
             var bgRing = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
             bgRing.setAttribute('cx', closestBg.x); bgRing.setAttribute('cy', closestBg.y);
             bgRing.setAttribute('r', r); bgRing.setAttribute('fill', 'none');
             bgRing.setAttribute('stroke', '#f97316'); bgRing.setAttribute('stroke-width', '2');
             hlGroup.appendChild(bgRing);
-            // Line connecting fg → bg
-            if (closestFg) {
-              var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-              line.setAttribute('x1', closestFg.x); line.setAttribute('y1', closestFg.y);
-              line.setAttribute('x2', closestBg.x); line.setAttribute('y2', closestBg.y);
-              line.setAttribute('stroke', 'rgba(255,255,255,0.6)'); line.setAttribute('stroke-width', '1');
-              line.setAttribute('stroke-dasharray', '3 2');
-              hlGroup.appendChild(line);
+
+            var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', closestFg.x); line.setAttribute('y1', closestFg.y);
+            line.setAttribute('x2', closestBg.x); line.setAttribute('y2', closestBg.y);
+            line.setAttribute('stroke', 'rgba(255,255,255,0.7)'); line.setAttribute('stroke-width', '1');
+            line.setAttribute('stroke-dasharray', '3 2');
+            hlGroup.appendChild(line);
+
+            // Contrast ratio label at midpoint of the line
+            if (closestFg.r !== undefined && closestBg.r !== undefined) {
+              var pairRatio = contrastRatio(closestFg, closestBg);
+              var midX = (closestFg.x + closestBg.x) / 2;
+              var midY = (closestFg.y + closestBg.y) / 2;
+              var label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+              label.setAttribute('x', midX + 4); label.setAttribute('y', midY - 3);
+              label.setAttribute('font-size', _zoomLevel >= 1.5 ? '11' : '8');
+              label.setAttribute('fill', pairRatio >= 4.5 ? '#22c55e' : pairRatio >= 3 ? '#eab308' : '#ef4444');
+              label.setAttribute('font-family', 'system-ui'); label.setAttribute('font-weight', '700');
+              label.textContent = Math.round(pairRatio * 10) / 10 + ':1';
+              hlGroup.appendChild(label);
             }
+          } else if (closestFg) {
+            var fgRing2 = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            fgRing2.setAttribute('cx', closestFg.x); fgRing2.setAttribute('cy', closestFg.y);
+            fgRing2.setAttribute('r', r); fgRing2.setAttribute('fill', 'none');
+            fgRing2.setAttribute('stroke', '#06b6d4'); fgRing2.setAttribute('stroke-width', '2');
+            hlGroup.appendChild(fgRing2);
           }
-          // Worst point: red dot + line to its nearest FG pixel
+
+          // Worst point: subtle small red dot (not dominant)
           var wp = rect._worstPoint;
           if (wp) {
             var wr = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
             wr.setAttribute('cx', wp.x); wr.setAttribute('cy', wp.y + secOff);
-            wr.setAttribute('r', r); wr.setAttribute('fill', '#ef4444');
-            wr.setAttribute('opacity', '0.7');
+            wr.setAttribute('r', 2); wr.setAttribute('fill', '#ef4444'); wr.setAttribute('opacity', '0.4');
             hlGroup.appendChild(wr);
-            // Line from worst BG to its nearest FG
-            var wpNearFg = null, wpNearDist = Infinity;
-            allFg.forEach(function(f) {
-              var d = (f.x - wp.x) * (f.x - wp.x) + (f.y - (wp.y + secOff)) * (f.y - (wp.y + secOff));
-              if (d < wpNearDist) { wpNearDist = d; wpNearFg = f; }
-            });
-            if (wpNearFg) {
-              var wl = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-              wl.setAttribute('x1', wp.x); wl.setAttribute('y1', wp.y + secOff);
-              wl.setAttribute('x2', wpNearFg.x); wl.setAttribute('y2', wpNearFg.y);
-              wl.setAttribute('stroke', '#ef4444'); wl.setAttribute('stroke-width', '1.5');
-              wl.setAttribute('stroke-dasharray', '4 2');
-              hlGroup.appendChild(wl);
-              var wfr = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-              wfr.setAttribute('cx', wpNearFg.x); wfr.setAttribute('cy', wpNearFg.y);
-              wfr.setAttribute('r', r); wfr.setAttribute('fill', '#ef4444'); wfr.setAttribute('opacity', '0.5');
-              hlGroup.appendChild(wfr);
-            }
           }
         }
 
