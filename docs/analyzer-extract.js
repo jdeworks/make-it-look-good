@@ -297,8 +297,46 @@ window.MilgExtract = (function() {
         trackBbox(el, data.typography.maxLineLength, 'bbox');
       }
     }
+    // Placeholder text contrast — inputs/textareas with placeholder attribute
+    document.querySelectorAll('input[placeholder],textarea[placeholder]').forEach(function(inp) {
+      var ph = inp.getAttribute('placeholder');
+      if (!ph || !ph.trim()) return;
+      var inpRect = inp.getBoundingClientRect();
+      if (inpRect.width <= 0 || inpRect.height <= 0) return;
+      // Read ::placeholder color (browser-rendered pseudo-element)
+      var phStyle = getComputedStyle(inp, '::placeholder');
+      var phColor = phStyle ? parseColor(phStyle.color) : null;
+      if (!phColor) {
+        // Fallback: many browsers report placeholder as lighter version of input color
+        var inpColor = parseColor(getComputedStyle(inp).color);
+        if (inpColor) phColor = { r: inpColor.r, g: inpColor.g, b: inpColor.b, a: Math.min(inpColor.a, 0.5) };
+      }
+      if (!phColor) return;
+      var phBlended = blendOnWhite(phColor);
+      var phBg = getEffectiveBg(inp);
+      var phRatio = contrastRatio(phBlended, phBg);
+      var inpStyle = getComputedStyle(inp);
+      var phFontSize = parseFloat(inpStyle.fontSize);
+      var phFontWeight = parseInt(inpStyle.fontWeight) || 400;
+      var phIsLarge = phFontSize >= 24 || (phFontSize >= 18.66 && phFontWeight >= 700);
+      var _phEntry = {
+        fg: rgbStr(phBlended), bg: rgbStr(phBg),
+        ratio: Math.round(phRatio * 100) / 100,
+        needed: phIsLarge ? 3 : 4.5, passes: phRatio >= (phIsLarge ? 3 : 4.5),
+        fontSize: Math.round(phFontSize), fontWeight: phFontWeight, isLarge: phIsLarge,
+        text: '[placeholder] ' + ph.substring(0, 150),
+        selector: cssSelector(inp), filter: '', backdropFilter: false, minBgAlpha: 1,
+        fontFamily: inpStyle.fontFamily, fontStyle: inpStyle.fontStyle,
+        letterSpacing: inpStyle.letterSpacing, textTransform: inpStyle.textTransform,
+        lineHeight: inpStyle.lineHeight, isPlaceholder: true, bbox: null
+      };
+      trackBbox(inp, _phEntry, 'bbox');
+      contrastPairs.push(_phEntry);
+      _contrastStats.captured++;
+    });
+
     contrastPairs.sort(function(a, b) { return a.ratio - b.ratio; });
-    data.colors.contrastPairs = contrastPairs; // keep all pairs for pixel verification
+    data.colors.contrastPairs = contrastPairs;
     data.colors._contrastStats = _contrastStats;
     console.log('[extract] Contrast stats:', JSON.stringify(_contrastStats));
 
