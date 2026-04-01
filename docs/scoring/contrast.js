@@ -150,7 +150,8 @@ function scoreContrast(data) {
         : 'Normal text needs ' + profile.contrast + ':1 minimum. Use a darker text color or lighter background.') + bgNote,
       presetRef: null,
       source: p.isLarge ? 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' : 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum',
-      locator: { selector: p.selector, text: p.text, bboxes: entry.bboxes }
+      locator: { selector: p.selector, text: p.text, bboxes: entry.bboxes },
+      _colors: { fg: p.fg, bg: p.bg, ratio: p.ratio }
     });
   });
 
@@ -183,7 +184,8 @@ function scoreContrast(data) {
       fix: 'Passes AA but consider increasing for AAA (7:1). Slight changes in background could cause failure.',
       presetRef: null,
       source: 'WCAG 2.2 §1.4.6 — https://www.w3.org/TR/WCAG22/#contrast-enhanced',
-      locator: { selector: p.selector, text: p.text, bboxes: entry.bboxes }
+      locator: { selector: p.selector, text: p.text, bboxes: entry.bboxes },
+      _colors: { fg: p.fg, bg: p.bg, ratio: p.ratio }
     });
   });
 

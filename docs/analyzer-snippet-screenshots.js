@@ -93,7 +93,8 @@
     return layers.filter(function(l) { return l.indexOf('gradient') !== -1; });
   }
 
-  function getGradientColor(el) {
+  // samplePos: {x: 0-1, y: 0-1} relative position within the gradient element to sample
+  function getGradientColor(el, samplePos) {
     var bgImage = getComputedStyle(el).backgroundImage;
     if (!bgImage || bgImage === 'none' || bgImage.indexOf('gradient') === -1) return null;
 
@@ -115,8 +116,9 @@
       renderGradientLayer(gradientLayers[li], cw, ch);
     }
 
-    var px = Math.round(cw / 2);
-    var py = Math.round(ch / 2);
+    // Sample at the text element's position within the gradient, not just center
+    var px = samplePos ? Math.round(samplePos.x * (cw - 1)) : Math.round(cw / 2);
+    var py = samplePos ? Math.round(samplePos.y * (ch - 1)) : Math.round(ch / 2);
     var d = _gradCtx.getImageData(Math.min(px, cw - 1), Math.min(py, ch - 1), 1, 1).data;
     if (d[3] === 0) return null;
     return { r: d[0], g: d[1], b: d[2], a: Math.round(d[3] / 255 * 100) / 100 };
@@ -188,12 +190,19 @@
   function getEffectiveBg(el) {
     var node = el;
     var layers = [];
+    var elRect = el.getBoundingClientRect();
+    var elCenterX = elRect.left + elRect.width / 2;
+    var elCenterY = elRect.top + elRect.height / 2;
     while (node && node !== document.documentElement) {
       var bg = getComputedStyle(node).backgroundColor;
       var c = parseColor(bg);
       if (!c || c.a === 0) {
         // backgroundColor is transparent — check for gradient
-        c = getGradientColor(node);
+        // Sample at the text element's position relative to this gradient ancestor
+        var nodeRect = node.getBoundingClientRect();
+        var relX = nodeRect.width > 0 ? (elCenterX - nodeRect.left) / nodeRect.width : 0.5;
+        var relY = nodeRect.height > 0 ? (elCenterY - nodeRect.top) / nodeRect.height : 0.5;
+        c = getGradientColor(node, { x: Math.max(0, Math.min(1, relX)), y: Math.max(0, Math.min(1, relY)) });
       }
       if (!c || c.a === 0) c = getBgImageColor(node);
       if (c && c.a > 0) layers.push(c);
@@ -739,12 +748,18 @@
       if (sameRow) {
         var hGap = Math.round(Math.max(0, b.left - a.right));
         if (hGap < 8) {
-          adjacentIssues.push({ gap: hGap, direction: 'horizontal', selectorA: cssSelector(children[i].el), selectorB: cssSelector(children[i + 1].el), textA: _adjLabel(children[i].el), textB: _adjLabel(children[i + 1].el) });
+          var _adjEntryH = { gap: hGap, direction: 'horizontal', selectorA: cssSelector(children[i].el), selectorB: cssSelector(children[i + 1].el), textA: _adjLabel(children[i].el), textB: _adjLabel(children[i + 1].el), bboxA: null, bboxB: null };
+          trackBbox(children[i].el, _adjEntryH, 'bboxA');
+          trackBbox(children[i + 1].el, _adjEntryH, 'bboxB');
+          adjacentIssues.push(_adjEntryH);
         }
       } else if (sameCol) {
         var vGap = Math.round(Math.max(0, b.top - a.bottom));
         if (vGap < 8) {
-          adjacentIssues.push({ gap: vGap, direction: 'vertical', selectorA: cssSelector(children[i].el), selectorB: cssSelector(children[i + 1].el), textA: _adjLabel(children[i].el), textB: _adjLabel(children[i + 1].el) });
+          var _adjEntryV = { gap: vGap, direction: 'vertical', selectorA: cssSelector(children[i].el), selectorB: cssSelector(children[i + 1].el), textA: _adjLabel(children[i].el), textB: _adjLabel(children[i + 1].el), bboxA: null, bboxB: null };
+          trackBbox(children[i].el, _adjEntryV, 'bboxA');
+          trackBbox(children[i + 1].el, _adjEntryV, 'bboxB');
+          adjacentIssues.push(_adjEntryV);
         }
       }
     }
@@ -782,11 +797,19 @@
 
   // Images without alt
   var images = document.querySelectorAll('img');
-  var noAlt = 0;
+  var noAlt = 0; var noAltElements = [];
   images.forEach(function(img) {
-    if (!img.hasAttribute('alt')) noAlt++;
+    if (!img.hasAttribute('alt')) {
+      noAlt++;
+      if (isVisible(img) && noAltElements.length < 10) {
+        var _naEntry = { selector: cssSelector(img), src: (img.src || '').substring(0, 80), bbox: null };
+        trackBbox(img, _naEntry, 'bbox');
+        noAltElements.push(_naEntry);
+      }
+    }
   });
   data.accessibility.imagesWithoutAlt = noAlt;
+  data.accessibility.imagesWithoutAltElements = noAltElements;
 
   // Image sizing issues
   data.performance = { imageSizing: [] };
@@ -817,16 +840,23 @@
 
   // Form labels
   var inputs = document.querySelectorAll('input:not([type="hidden"]):not([type="submit"]):not([type="button"]), select, textarea');
-  var labeled = 0;
+  var labeled = 0; var unlabeledElements = [];
   inputs.forEach(function(inp) {
     data.accessibility.formLabels.total++;
     var hasLabel = inp.id && document.querySelector('label[for="' + inp.id + '"]');
     var wrapped = inp.closest('label');
     var hasAria = inp.getAttribute('aria-label') || inp.getAttribute('aria-labelledby');
-    if (hasLabel || wrapped || hasAria) labeled++;
+    if (hasLabel || wrapped || hasAria) {
+      labeled++;
+    } else if (isVisible(inp) && unlabeledElements.length < 10) {
+      var _ulEntry = { selector: cssSelector(inp), type: inp.type || inp.tagName.toLowerCase(), bbox: null };
+      trackBbox(inp, _ulEntry, 'bbox');
+      unlabeledElements.push(_ulEntry);
+    }
   });
   data.accessibility.formLabels.withLabel = labeled;
   data.accessibility.formLabels.withoutLabel = data.accessibility.formLabels.total - labeled;
+  data.accessibility.formLabels.unlabeledElements = unlabeledElements;
 
   // Focus indicators — actually focus elements to detect browser defaults and CSS :focus styles
   var focusSample = Array.from(interactive).slice(0, 10);

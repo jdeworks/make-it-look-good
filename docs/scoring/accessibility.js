@@ -44,12 +44,14 @@ function scoreAccessibility(data) {
   if (!hierarchyBroken) {
     passed++;
   } else {
+    var hdgBboxes = (data.typography && data.typography.headings || []).filter(function(h) { return h.bbox; }).map(function(h) { return h.bbox; });
     findings.push({
       severity: 'warning',
       title: 'Heading hierarchy has gaps (e.g., h1 → h3)',
       detail: 'Heading order: ' + headingOrder.join(' → '),
       fix: 'Use headings in order: h1 → h2 → h3. Never skip levels. Style with classes instead of heading tags.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships',
-      presetRef: null
+      presetRef: null,
+      locator: hdgBboxes.length > 0 ? { selector: '', text: '', bboxes: hdgBboxes } : undefined
     });
   }
 
@@ -58,12 +60,14 @@ function scoreAccessibility(data) {
   if (a11y.imagesWithoutAlt === 0) {
     passed++;
   } else {
+    var noAltBboxes = (a11y.imagesWithoutAltElements || []).filter(function(e) { return e.bbox; }).map(function(e) { return e.bbox; });
     findings.push({
       severity: 'error',
       title: a11y.imagesWithoutAlt + ' image(s) missing alt text',
       detail: 'Screen readers cannot describe these images to users',
       fix: 'Add alt="description" to all <img> tags. Use alt="" for decorative images.', source: 'WCAG 2.2 §1.1.1 — https://www.w3.org/TR/WCAG22/#non-text-content',
-      presetRef: null
+      presetRef: null,
+      locator: noAltBboxes.length > 0 ? { selector: (a11y.imagesWithoutAltElements[0] || {}).selector || '', text: '', bboxes: noAltBboxes } : undefined
     });
   }
 
@@ -88,13 +92,15 @@ function scoreAccessibility(data) {
   if (forms.total === 0 || forms.withoutLabel === 0) {
     passed++;
   } else {
+    var ulBboxes = (forms.unlabeledElements || []).filter(function(e) { return e.bbox; }).map(function(e) { return e.bbox; });
     findings.push({
       severity: 'error',
       title: forms.withoutLabel + ' of ' + forms.total + ' form inputs missing labels',
       detail: 'Unlabeled inputs are unusable for screen reader users',
       fix: 'Use <label for="id"> or wrap the input in a <label>. Add aria-label for icon-only inputs.',
       presetRef: 'Form presets always pair inputs with visible labels',
-      source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
+      source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships',
+      locator: ulBboxes.length > 0 ? { selector: (forms.unlabeledElements[0] || {}).selector || '', text: '', bboxes: ulBboxes } : undefined
     });
   }
 

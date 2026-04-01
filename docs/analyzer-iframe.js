@@ -32,36 +32,57 @@ window.MilgIframe = (function() {
   }
 
   // --- Screenshot capture script (injected into iframes after extraction) ---
+  // Mirrors the capture pipeline from analyzer-snippet-screenshots.js:
+  // 1. Reset all scroll containers  2. Wait for animations  3. Re-read bboxes  4. Capture full-page WebP
   function buildScreenshotScript(msgType) {
     var ss = { scale: SCREENSHOT_SCALE, quality: SCREENSHOT_QUALITY };
     return '(function(){' +
-      'var s=document.createElement("script");' +
-      's.src="' + _screenshotCDN + '";' +
-      's.onload=function(){' +
-        'var ms=window.modernScreenshot;' +
-        'if(!ms||!ms.domToCanvas){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*");return}' +
-        // Mark all images as CORS-eligible so canvas isn't tainted in srcdoc iframes
-        'document.querySelectorAll("img").forEach(function(i){if(i.src&&i.src.indexOf("data:")!==0)i.crossOrigin="anonymous"});' +
-        'var totalH=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);' +
-        'var vh=window.innerHeight||900;' +
-        'var captureH=Math.min(totalH,vh*10);' + // max 10 viewports
-        'captureH=Math.min(captureH,vh*10);' +
-        'ms.domToCanvas(document.documentElement,{scale:' + ss.scale + ',timeout:8000}).then(function(fc){' +
-          'var sH=Math.round(vh*' + ss.scale + ');var shots=[];var si=0;var tot=Math.min(Math.ceil(fc.height/sH),10);' +
-          'function sp(){' +
-            'if(si>=tot){parent.postMessage({type:"' + msgType + '",screenshots:shots,screenshotMeta:{scale:' + ss.scale + ',viewportHeight:vh,sectionCount:tot,canvasWidth:fc.width,canvasHeight:fc.height}},"*");return}' +
-            'var sy=si*sH;var sh=Math.min(sH,fc.height-sy);if(sh<=0){si++;sp();return}' +
-            'var sc=document.createElement("canvas");sc.width=fc.width;sc.height=sh;' +
-            'sc.getContext("2d").drawImage(fc,0,sy,fc.width,sh,0,0,fc.width,sh);' +
-            'sc.toBlob(function(b){' +
-              'if(!b){si++;sp();return}' +
-              'var r=new FileReader();r.onloadend=function(){shots.push(r.result);si++;sp()};r.readAsDataURL(b)' +
-            '},"image/webp",' + ss.quality + ')' +
-          '}sp()' +
-        '}).catch(function(){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")})' +
-      '};' +
-      's.onerror=function(){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")};' +
-      'document.head.appendChild(s)' +
+      // Phase 1: Reset all scroll containers
+      'var origSB=document.documentElement.style.scrollBehavior;' +
+      'document.documentElement.style.scrollBehavior="auto";' +
+      'document.body.style.scrollBehavior="auto";' +
+      'window.scrollTo(0,0);document.documentElement.scrollTop=0;document.body.scrollTop=0;' +
+      'document.querySelectorAll("*").forEach(function(el){' +
+        'if(el.scrollTop>0){var s=getComputedStyle(el);' +
+        'if(s.overflow==="auto"||s.overflow==="scroll"||s.overflowY==="auto"||s.overflowY==="scroll"){' +
+        'el.style.scrollBehavior="auto";el.scrollTop=0}}' +
+      '});' +
+      // Phase 2: Wait for animations to settle, then re-read bboxes + capture
+      'setTimeout(function(){' +
+        // Re-read bboxes using getFlowPosition (subtracts CSS transforms)
+        'if(typeof window.__milgReReadBboxes==="function"){' +
+          'var res=window.__milgReReadBboxes();' +
+          'console.log("[iframe-ss] Re-read bboxes: "+res)' +
+        '}' +
+        // Load screenshot library
+        'var s=document.createElement("script");' +
+        's.src="' + _screenshotCDN + '";' +
+        's.onload=function(){' +
+          'var ms=window.modernScreenshot;' +
+          'if(!ms||!ms.domToCanvas){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*");return}' +
+          'document.querySelectorAll("img").forEach(function(i){if(i.src&&i.src.indexOf("data:")!==0)i.crossOrigin="anonymous"});' +
+          'var vh=window.innerHeight||900;' +
+          'ms.domToCanvas(document.documentElement,{scale:' + ss.scale + ',timeout:8000}).then(function(fc){' +
+            // Full-page WebP (single image, no section splitting)
+            'var fullUri;try{fullUri=fc.toDataURL("image/webp",' + ss.quality + ')}catch(e){fullUri=""}' +
+            'var captureDocH=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);' +
+            'document.documentElement.style.scrollBehavior=origSB;' +
+            // Update extraction data with re-read bboxes before posting
+            'var updatedData=window.__milgData||null;' +
+            'parent.postMessage({type:"' + msgType + '",' +
+              'screenshots:fullUri?[fullUri]:[],' +
+              'screenshotFull:fullUri||null,' +
+              'screenshotMeta:{scale:' + ss.scale + ',viewportHeight:vh,sectionCount:1,' +
+                'canvasWidth:fc.width,canvasHeight:fc.height,' +
+                'docHeightAtCapture:captureDocH,' +
+                'calibrationOffsetY:0,calibrationSamples:[]},' +
+              'updatedData:updatedData' +
+            '},"*")' +
+          '}).catch(function(e){console.warn("[iframe-ss] capture failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")})' +
+        '};' +
+        's.onerror=function(){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")};' +
+        'document.head.appendChild(s)' +
+      '},1500)' + // 1.5s delay for animations
     '})()';
   }
 
@@ -154,7 +175,24 @@ window.MilgIframe = (function() {
       }
       if (e.data.type === 'milg-screenshots-result' && iframe._milgData) {
         iframe._milgData.screenshots = e.data.screenshots || [];
+        iframe._milgData.screenshotFull = e.data.screenshotFull || null;
         iframe._milgData.screenshotMeta = e.data.screenshotMeta || null;
+        // Apply re-read bbox data from the iframe (updated after scroll-reset + getFlowPosition)
+        if (e.data.updatedData) {
+          var ud = e.data.updatedData;
+          // Merge re-read bboxes back into our data
+          if (ud.colors && ud.colors.contrastPairs) iframe._milgData.colors.contrastPairs = ud.colors.contrastPairs;
+          if (ud.typography) {
+            if (ud.typography.fontSizes) iframe._milgData.typography.fontSizes = ud.typography.fontSizes;
+            if (ud.typography.headings) iframe._milgData.typography.headings = ud.typography.headings;
+            if (ud.typography.maxLineLength) iframe._milgData.typography.maxLineLength = ud.typography.maxLineLength;
+          }
+          if (ud.interaction && ud.interaction.touchTargets) iframe._milgData.interaction.touchTargets = ud.interaction.touchTargets;
+          if (ud.layout) {
+            if (ud.layout.offscreenElements) iframe._milgData.layout.offscreenElements = ud.layout.offscreenElements;
+            if (ud.layout.hiddenPanelIssues) iframe._milgData.layout.hiddenPanelIssues = ud.layout.hiddenPanelIssues;
+          }
+        }
         // If hidden panels were detected, trigger unhidden screenshot pass
         var hpc = iframe._milgData.layout && iframe._milgData.layout.hiddenPanelCount;
         if (hpc > 0 && iframe.contentWindow && iframe.contentWindow.__milgDoUnhiddenScreenshots) {

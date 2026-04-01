@@ -177,6 +177,21 @@ window.MilgReport = (function() {
         html += '<span class="finding-title">' + escapeHtml(f.title) + '</span>';
         html += '</div>';
         if (f.detail) html += '<p class="finding-detail">' + escapeHtml(f.detail) + '</p>';
+        // Color pair swatches for contrast findings
+        if (f._colors) {
+          html += '<div class="finding-color-pair" style="display:flex;align-items:center;gap:8px;margin:4px 0 6px;font-size:11px;color:var(--text-secondary)">' +
+            '<span style="display:inline-flex;align-items:center;gap:4px">' +
+              '<span style="display:inline-block;width:14px;height:14px;border-radius:3px;border:1px solid var(--border);background:' + escapeHtml(f._colors.fg) + '" title="Foreground: ' + escapeHtml(f._colors.fg) + '"></span>' +
+              '<code style="font-size:10px">' + escapeHtml(f._colors.fg) + '</code>' +
+            '</span>' +
+            '<span style="opacity:0.5">on</span>' +
+            '<span style="display:inline-flex;align-items:center;gap:4px">' +
+              '<span style="display:inline-block;width:14px;height:14px;border-radius:3px;border:1px solid var(--border);background:' + escapeHtml(f._colors.bg) + '" title="Background: ' + escapeHtml(f._colors.bg) + '"></span>' +
+              '<code style="font-size:10px">' + escapeHtml(f._colors.bg) + '</code>' +
+            '</span>' +
+            '<span style="opacity:0.5">=</span> <strong>' + f._colors.ratio + ':1</strong>' +
+          '</div>';
+        }
 
         html += '<div class="finding-fix">';
         html += '<strong>Fix:</strong> ' + escapeHtml(f.fix);

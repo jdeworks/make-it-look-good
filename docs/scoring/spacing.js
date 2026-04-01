@@ -97,7 +97,7 @@ function scoreSpacing(data) {
         fix: 'Add at least ' + minSpacing + 'px gap between interactive elements. In Tailwind: gap-' + (minSpacing / 4) + ' on the parent flex/grid container.',
         presetRef: 'Button presets use gap-2 (8px) or gap-3 (12px) between buttons',
         source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-        locator: { selector: a.selectorA || a.selectorB || '', text: a.textA || '' }
+        locator: { selector: a.selectorA || a.selectorB || '', text: a.textA || '', bboxes: [a.bboxA, a.bboxB].filter(Boolean) }
       });
     });
 
@@ -112,7 +112,7 @@ function scoreSpacing(data) {
         fix: 'Increase gap to at least ' + minSpacing + 'px to prevent mis-taps. In Tailwind: gap-' + (minSpacing / 4) + ' on the parent.',
         presetRef: null,
         source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-        locator: { selector: a.selectorA || a.selectorB || '', text: a.textA || '' }
+        locator: { selector: a.selectorA || a.selectorB || '', text: a.textA || '', bboxes: [a.bboxA, a.bboxB].filter(Boolean) }
       });
     });
 

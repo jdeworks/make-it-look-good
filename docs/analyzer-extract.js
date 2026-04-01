@@ -43,7 +43,9 @@ window.MilgExtract = (function() {
       layers.push(bgi.substring(start).trim());
       return layers.filter(function(l) { return l.indexOf('gradient') !== -1; });
     }
-    function getGradientBg(el) {
+    // samplePos: {x: 0-1, y: 0-1} relative position within the gradient element to sample
+    // If not provided, samples at center (0.5, 0.5)
+    function getGradientBg(el, samplePos) {
       var bgi = getComputedStyle(el).backgroundImage;
       if (!bgi || bgi === 'none' || bgi.indexOf('gradient') === -1) return null;
       var layers = splitGrads(bgi);
@@ -78,17 +80,28 @@ window.MilgExtract = (function() {
           _gx.fillRect(0, 0, 100, 100);
         } catch(e) {}
       }
-      // Sample center pixel from composited result
-      var d = _gx.getImageData(50, 50, 1, 1).data;
+      // Sample at the text element's position within the gradient container
+      var sx = samplePos ? Math.round(samplePos.x * 99) : 50;
+      var sy = samplePos ? Math.round(samplePos.y * 99) : 50;
+      var d = _gx.getImageData(sx, sy, 1, 1).data;
       if (d[3] === 0) return null;
       return { r: d[0], g: d[1], b: d[2], a: Math.round(d[3] / 255 * 100) / 100 };
     }
     function getEffectiveBg(el) {
+      var elRect = el.getBoundingClientRect();
+      var elCenterX = elRect.left + elRect.width / 2;
+      var elCenterY = elRect.top + elRect.height / 2;
       var node = el, layers = [];
       while (node && node !== document.documentElement) {
         var bg = getComputedStyle(node).backgroundColor;
         var c = parseColor(bg);
-        if (!c || c.a === 0) c = getGradientBg(node);
+        if (!c || c.a === 0) {
+          // Sample gradient at the text element's position relative to this ancestor
+          var nodeRect = node.getBoundingClientRect();
+          var relX = nodeRect.width > 0 ? (elCenterX - nodeRect.left) / nodeRect.width : 0.5;
+          var relY = nodeRect.height > 0 ? (elCenterY - nodeRect.top) / nodeRect.height : 0.5;
+          c = getGradientBg(node, { x: Math.max(0, Math.min(1, relX)), y: Math.max(0, Math.min(1, relY)) });
+        }
         if (c && c.a > 0) layers.push(c);
         if (c && c.a >= 1) break;
         node = node.parentElement;
@@ -158,6 +171,20 @@ window.MilgExtract = (function() {
     } catch(e) { /* invalid selector — ignore */ }
     function isDecorative(el) { return decorativeEls.has(el); }
 
+    // Universal bbox tracker: captures bbox AND stores element ref for re-reading
+    // after scroll-reset (which triggers layout shifts from lazy content/animations).
+    // When screenshots are enabled, the screenshot script re-reads all bboxes using
+    // getFlowPosition() which subtracts CSS transforms to get flow position.
+    var _bboxRefs = []; // [{el, obj, key}] — will update obj[key] = newBbox
+    function captureBbox(el) {
+      var r = el.getBoundingClientRect();
+      return { left: Math.round(r.left + window.scrollX), top: Math.round(r.top + window.scrollY), width: Math.round(r.width), height: Math.round(r.height) };
+    }
+    function trackBbox(el, obj, key) {
+      obj[key] = captureBbox(el);
+      _bboxRefs.push({ el: el, obj: obj, key: key });
+    }
+
     // Page context
     data.context = { pageType: 'unknown' };
     var hasHero = !!document.querySelector('.hero, [class*="hero"], section:first-of-type h1');
@@ -220,14 +247,16 @@ window.MilgExtract = (function() {
       }
       var elRect = el.getBoundingClientRect();
       if (ratio < 7.5) {
-        contrastPairs.push({ fg: rgbStr(fgBlended), bg: rgbStr(bg), ratio: Math.round(ratio * 100) / 100, needed: threshold, passes: ratio >= threshold, fontSize: Math.round(fontSize), fontWeight: fontWeight, isLarge: isLarge, text: node.textContent.trim().substring(0, 50), selector: cssSelector(el), filter: filterValue, backdropFilter: hasBackdropFilter, minBgAlpha: Math.round(minBgAlpha * 100) / 100, bbox: { left: Math.round(elRect.left + window.scrollX), top: Math.round(elRect.top + window.scrollY), width: Math.round(elRect.width), height: Math.round(elRect.height) } });
+        var _cpEntry = { fg: rgbStr(fgBlended), bg: rgbStr(bg), ratio: Math.round(ratio * 100) / 100, needed: threshold, passes: ratio >= threshold, fontSize: Math.round(fontSize), fontWeight: fontWeight, isLarge: isLarge, text: node.textContent.trim().substring(0, 50), selector: cssSelector(el), filter: filterValue, backdropFilter: hasBackdropFilter, minBgAlpha: Math.round(minBgAlpha * 100) / 100, bbox: null };
+        trackBbox(el, _cpEntry, 'bbox');
+        contrastPairs.push(_cpEntry);
       }
       var elWidth = elRect.width;
       var charWidth = fontSize * 0.5;
       var charsPerLine = Math.round(elWidth / charWidth);
       if (charsPerLine > data.typography.maxLineLength.chars && el.tagName !== 'SCRIPT' && el.tagName !== 'STYLE' && !el.closest('pre') && !el.closest('code')) {
-        var mlRect = el.getBoundingClientRect();
-        data.typography.maxLineLength = { chars: charsPerLine, element: cssSelector(el), fontSize: Math.round(fontSize), textLength: node.textContent.trim().length, bbox: { left: Math.round(mlRect.left + window.scrollX), top: Math.round(mlRect.top + window.scrollY), width: Math.round(mlRect.width), height: Math.round(mlRect.height) } };
+        data.typography.maxLineLength = { chars: charsPerLine, element: cssSelector(el), fontSize: Math.round(fontSize), textLength: node.textContent.trim().length, bbox: null };
+        trackBbox(el, data.typography.maxLineLength, 'bbox');
       }
     }
     contrastPairs.sort(function(a, b) { return a.ratio - b.ratio; });
@@ -257,10 +286,11 @@ window.MilgExtract = (function() {
       if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE' || el.tagName === 'NOSCRIPT') continue;
       if (!isVisible(el)) continue;
       var s = getComputedStyle(el);
-      var rect = el.getBoundingClientRect();
-      var elBbox = { left: Math.round(rect.left + window.scrollX), top: Math.round(rect.top + window.scrollY), width: Math.round(rect.width), height: Math.round(rect.height) };
       fontSizeMap[s.fontSize] = (fontSizeMap[s.fontSize] || 0) + 1;
-      if (!fontSizeSamples[s.fontSize]) fontSizeSamples[s.fontSize] = { selector: cssSelector(el), bbox: elBbox };
+      if (!fontSizeSamples[s.fontSize]) {
+        fontSizeSamples[s.fontSize] = { selector: cssSelector(el), bbox: null };
+        trackBbox(el, fontSizeSamples[s.fontSize], 'bbox');
+      }
       fontWeightMap[s.fontWeight] = (fontWeightMap[s.fontWeight] || 0) + 1;
       fontFamilySet.add(s.fontFamily.split(',')[0].trim().replace(/['"]/g, ''));
       var lh = s.lineHeight;
@@ -270,6 +300,7 @@ window.MilgExtract = (function() {
       if (bgColor && bgColor !== 'rgba(0, 0, 0, 0)' && bgColor !== 'transparent') { bgColorMap[bgColor] = (bgColorMap[bgColor] || 0) + 1; if (!bgColorSample[bgColor]) bgColorSample[bgColor] = cssSelector(el); }
 
       // Track area-weighted darkness for bg-color and gradients
+      var rect = el.getBoundingClientRect();
       var area = rect.width * rect.height;
       if (area > 100) { // skip tiny elements
         var bgM = bgColor && bgColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
@@ -297,7 +328,7 @@ window.MilgExtract = (function() {
       var w = rect.width;
       if (w > maxContentW && w < window.innerWidth * 0.95) maxContentW = w;
     }
-    function mapToSorted(map, sampleMap, bboxMap) { return Object.keys(map).map(function(k) { var entry = { value: k, count: map[k], sample: sampleMap ? (sampleMap[k] || '') : '' }; if (bboxMap && bboxMap[k]) { entry.sampleSelector = bboxMap[k].selector; entry.bbox = bboxMap[k].bbox; } return entry; }).sort(function(a, b) { return b.count - a.count; }).slice(0, 30); }
+    function mapToSorted(map, sampleMap, bboxMap) { return Object.keys(map).map(function(k) { var entry = { value: k, count: map[k], sample: sampleMap ? (sampleMap[k] || '') : '' }; if (bboxMap && bboxMap[k]) { entry.sampleSelector = bboxMap[k].selector; entry.bbox = bboxMap[k].bbox; entry._sampleRef = bboxMap[k]; } return entry; }).sort(function(a, b) { return b.count - a.count; }).slice(0, 30); }
     data.typography.fontSizes = mapToSorted(fontSizeMap, null, fontSizeSamples);
     data.typography.fontWeights = mapToSorted(fontWeightMap);
     data.typography.fontFamilies = Array.from(fontFamilySet).slice(0, 10);
@@ -345,8 +376,9 @@ window.MilgExtract = (function() {
 
     document.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(function(h) {
       var hs = getComputedStyle(h);
-      var hRect = h.getBoundingClientRect();
-      data.typography.headings.push({ tag: h.tagName.toLowerCase(), text: h.textContent.trim().substring(0, 60), fontSize: hs.fontSize, fontWeight: hs.fontWeight, lineHeight: hs.lineHeight, fontFamily: hs.fontFamily.split(',')[0].trim().replace(/['"]/g, ''), selector: cssSelector(h), bbox: { left: Math.round(hRect.left + window.scrollX), top: Math.round(hRect.top + window.scrollY), width: Math.round(hRect.width), height: Math.round(hRect.height) } });
+      var _hEntry = { tag: h.tagName.toLowerCase(), text: h.textContent.trim().substring(0, 60), fontSize: hs.fontSize, fontWeight: hs.fontWeight, lineHeight: hs.lineHeight, fontFamily: hs.fontFamily.split(',')[0].trim().replace(/['"]/g, ''), selector: cssSelector(h), bbox: null };
+      trackBbox(h, _hEntry, 'bbox');
+      data.typography.headings.push(_hEntry);
       data.accessibility.headingHierarchy.push(h.tagName.toLowerCase());
     });
 
@@ -392,7 +424,9 @@ window.MilgExtract = (function() {
           else if (el.closest('p, blockquote, figcaption, td, th, dd')) linkCtx = 'inline';
           else { var ls = getComputedStyle(el); if ((ls.backgroundColor !== 'rgba(0, 0, 0, 0)' && ls.backgroundColor !== 'transparent') || (ls.borderStyle !== 'none' && ls.borderWidth !== '0px') || parseFloat(ls.paddingTop) > 4 || parseFloat(ls.paddingBottom) > 4) linkCtx = 'button'; else linkCtx = 'standalone'; }
         }
-        touchIssues.push({ element: el.tagName.toLowerCase(), width: w, height: h, text: (el.textContent || el.getAttribute('aria-label') || '').trim().substring(0, 40), selector: cssSelector(el), passes: false, isButton: el.tagName !== 'A' || linkCtx === 'button' || linkCtx === 'nav', linkContext: linkCtx, bbox: { left: Math.round(rect.left + window.scrollX), top: Math.round(rect.top + window.scrollY), width: w, height: h } });
+        var _ttEntry = { element: el.tagName.toLowerCase(), width: w, height: h, text: (el.textContent || el.getAttribute('aria-label') || '').trim().substring(0, 40), selector: cssSelector(el), passes: false, isButton: el.tagName !== 'A' || linkCtx === 'button' || linkCtx === 'nav', linkContext: linkCtx, bbox: null };
+        trackBbox(el, _ttEntry, 'bbox');
+        touchIssues.push(_ttEntry);
       }
     });
     touchIssues.sort(function(a, b) { return (a.width * a.height) - (b.width * b.height); });
@@ -406,12 +440,34 @@ window.MilgExtract = (function() {
     var navEls = document.querySelectorAll('nav'); var navItemCount = 0;
     navEls.forEach(function(nav) { var topLinks = nav.querySelectorAll(':scope > a, :scope > ul > li > a, :scope > ol > li > a, :scope > button, :scope > ul > li > button'); navItemCount += topLinks.length; });
     data.accessibility.navItemCount = navItemCount;
-    var noAlt = 0; document.querySelectorAll('img').forEach(function(img) { if (!img.hasAttribute('alt')) noAlt++; }); data.accessibility.imagesWithoutAlt = noAlt;
+    var noAlt = 0; var noAltElements = [];
+    document.querySelectorAll('img').forEach(function(img) {
+      if (!img.hasAttribute('alt')) {
+        noAlt++;
+        if (isVisible(img) && noAltElements.length < 10) {
+          var _naEntry = { selector: cssSelector(img), src: (img.src || '').substring(0, 80), bbox: null };
+          trackBbox(img, _naEntry, 'bbox');
+          noAltElements.push(_naEntry);
+        }
+      }
+    });
+    data.accessibility.imagesWithoutAlt = noAlt;
+    data.accessibility.imagesWithoutAltElements = noAltElements;
     var inputs = document.querySelectorAll('input:not([type="hidden"]):not([type="submit"]):not([type="button"]),select,textarea');
-    var labeled = 0;
-    inputs.forEach(function(inp) { data.accessibility.formLabels.total++; if ((inp.id && document.querySelector('label[for="' + inp.id + '"]')) || inp.closest('label') || inp.getAttribute('aria-label') || inp.getAttribute('aria-labelledby')) labeled++; });
+    var labeled = 0; var unlabeledElements = [];
+    inputs.forEach(function(inp) {
+      data.accessibility.formLabels.total++;
+      if ((inp.id && document.querySelector('label[for="' + inp.id + '"]')) || inp.closest('label') || inp.getAttribute('aria-label') || inp.getAttribute('aria-labelledby')) {
+        labeled++;
+      } else if (isVisible(inp) && unlabeledElements.length < 10) {
+        var _ulEntry = { selector: cssSelector(inp), type: inp.type || inp.tagName.toLowerCase(), bbox: null };
+        trackBbox(inp, _ulEntry, 'bbox');
+        unlabeledElements.push(_ulEntry);
+      }
+    });
     data.accessibility.formLabels.withLabel = labeled;
     data.accessibility.formLabels.withoutLabel = data.accessibility.formLabels.total - labeled;
+    data.accessibility.formLabels.unlabeledElements = unlabeledElements;
     Array.from(interactive).slice(0, 10).forEach(function(el) { if (!isVisible(el)) return; var s = getComputedStyle(el); data.accessibility.focusIndicators.push({ element: cssSelector(el), outlineStyle: s.outlineStyle, outlineWidth: s.outlineWidth, outlineColor: s.outlineColor, outlineOffset: s.outlineOffset }); });
     var _hasFvCSS = Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r.selectorText && r.selectorText.indexOf('focus-visible') !== -1; }); } catch(e) { return false; } });
     var _hasFvClasses = Array.from(interactive).slice(0, 20).some(function(el) { var cls = el.getAttribute('class') || ''; return cls.indexOf('focus-visible') !== -1 || cls.indexOf('focus:ring') !== -1 || cls.indexOf('focus:outline') !== -1; });
@@ -453,7 +509,7 @@ window.MilgExtract = (function() {
         try { var pel = document.querySelector(rec.selector); return pel && pel.contains(el) && pel !== el; } catch(e) { return false; }
       });
       if (parentAlready) return;
-      data.layout.offscreenElements.push({
+      var _oeEntry = {
         element: el.tagName.toLowerCase(),
         selector: cssSelector(el),
         text: (el.textContent || el.getAttribute('aria-label') || '').trim().substring(0, 50),
@@ -461,8 +517,10 @@ window.MilgExtract = (function() {
         right: Math.round(r.right),
         vpWidth: vpW,
         reason: r.right < 0 ? 'left-overflow' : r.left >= vpW ? 'right-overflow' : 'major-clip',
-        bbox: { left: Math.round(r.left + window.scrollX), top: Math.round(r.top + window.scrollY), width: Math.round(r.width), height: Math.round(r.height) }
-      });
+        bbox: null
+      };
+      trackBbox(el, _oeEntry, 'bbox');
+      data.layout.offscreenElements.push(_oeEntry);
     });
     data.layout.offscreenElements = data.layout.offscreenElements.slice(0, 20);
 
@@ -497,7 +555,7 @@ window.MilgExtract = (function() {
         var sel = cssSelector(child);
         var alreadyReported = data.layout.offscreenElements.some(function(rec) { return rec.selector === sel; });
         if (alreadyReported) return;
-        data.layout.offscreenElements.push({
+        var _hfEntry = {
           element: child.tagName.toLowerCase(),
           selector: sel,
           text: (child.textContent || child.getAttribute('aria-label') || '').trim().substring(0, 50),
@@ -505,8 +563,10 @@ window.MilgExtract = (function() {
           right: Math.round(cr.right),
           vpWidth: vpW,
           reason: 'hidden-fixed-overflow',
-          bbox: { left: Math.round(cr.left + window.scrollX), top: Math.round(cr.top + window.scrollY), width: Math.round(cr.width), height: Math.round(cr.height) }
-        });
+          bbox: null
+        };
+        trackBbox(child, _hfEntry, 'bbox');
+        data.layout.offscreenElements.push(_hfEntry);
       });
       // Restore
       el.style.opacity = origOpacity;
@@ -748,7 +808,7 @@ window.MilgExtract = (function() {
       if (origAriaHidden) panel.setAttribute('aria-hidden', origAriaHidden);
       else if (panel.hasAttribute('aria-hidden')) panel.removeAttribute('aria-hidden');
       if (issues.length > 0) {
-        data.layout.hiddenPanelIssues.push({
+        var _hpEntry = {
           selector: cssSelector(panel),
           role: panel.getAttribute('role') || 'unknown',
           width: Math.round(pr.width),
@@ -757,8 +817,10 @@ window.MilgExtract = (function() {
           right: Math.round(pr.right),
           vpWidth: vpW,
           issues: issues,
-          bbox: { left: Math.round(pr.left + window.scrollX), top: Math.round(pr.top + window.scrollY), width: Math.round(pr.width), height: Math.round(pr.height) }
-        });
+          bbox: null
+        };
+        trackBbox(panel, _hpEntry, 'bbox');
+        data.layout.hiddenPanelIssues.push(_hpEntry);
       }
     });
 
@@ -801,6 +863,48 @@ window.MilgExtract = (function() {
       if (!isVisible(tel)) return;
       if (tel.scrollWidth > tel.clientWidth + 2) data.structure.truncatedElements++;
     });
+
+    // Export bbox tracking for screenshot pipeline to re-read after scroll-reset
+    window.__milgBboxRefs = _bboxRefs;
+    window.__milgData = data;
+    window.__milgGetFlowPosition = function(el) {
+      var r = el.getBoundingClientRect();
+      var top = r.top, left = r.left;
+      var node = el;
+      while (node && node !== document.documentElement) {
+        var transform = getComputedStyle(node).transform;
+        if (transform && transform !== 'none') {
+          var m = transform.match(/matrix\(([^)]+)\)/);
+          if (m) {
+            var parts = m[1].split(',');
+            if (parts.length >= 6) {
+              left -= parseFloat(parts[4]) || 0;
+              top -= parseFloat(parts[5]) || 0;
+            }
+          }
+        }
+        node = node.parentElement;
+      }
+      return { left: Math.round(left), top: Math.round(top), width: Math.round(r.width), height: Math.round(r.height) };
+    };
+    window.__milgReReadBboxes = function() {
+      var updated = 0;
+      _bboxRefs.forEach(function(ref) {
+        if (!ref.el || !ref.obj) return;
+        try {
+          ref.obj[ref.key] = window.__milgGetFlowPosition(ref.el);
+          updated++;
+        } catch(e) {}
+      });
+      // Propagate re-read bboxes to exported fontSizes entries
+      (data.typography.fontSizes || []).forEach(function(entry) {
+        if (entry._sampleRef) entry.bbox = entry._sampleRef.bbox;
+      });
+      return updated + '/' + _bboxRefs.length;
+    };
+
+    // Attach sandbox log if present (JS-enabled mode intercepts)
+    data._sandboxLog = window.__milgSandboxLog || [];
 
     parent.postMessage({ type: 'milg-analyzer-result', data: data }, '*');
     // Trigger screenshot capture if configured (function injected by parent)

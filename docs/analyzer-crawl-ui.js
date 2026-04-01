@@ -66,8 +66,9 @@ window.MilgCrawlUI = (function() {
     renderCrawlTabs();
     var reportContainer = document.getElementById('reportContainer');
     var reportActions = document.getElementById('reportActions');
-    // Always show export/actions in crawl mode
-    if (reportActions) reportActions.style.display = 'flex';
+    // Show export/actions only after crawl is complete (not during progress)
+    var crawlDone = _crawlSession && _crawlSession.status === 'complete';
+    if (reportActions) reportActions.style.display = crawlDone ? 'flex' : 'none';
     if (key === 'summary') {
       var summary = _crawlSession.summary || MilgCrawl.buildSummary(_crawlSession);
       crawlPageContent.innerHTML = MilgReport.renderCrawlSummary(summary);
@@ -159,7 +160,8 @@ window.MilgCrawlUI = (function() {
     if (inputSection) inputSection.style.display = 'none';
     crawlResults.style.display = '';
     if (reportContainer) reportContainer.className = 'report-container';
-    if (reportActions) reportActions.style.display = 'flex';
+    // Hide export bar during crawl — show only when crawl completes
+    if (reportActions) reportActions.style.display = 'none';
     // Scroll to results
     crawlResults.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
@@ -174,6 +176,7 @@ window.MilgCrawlUI = (function() {
         MilgProxy.fetchViaProxy(pageUrl, function(html, err) { cb(html, err); });
       },
       analyzePage: function(html, pageUrl, opts, cb) {
+        var wantShots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
         MilgIframe.analyzeHtmlInIframe(html, function(data) {
           if (data) {
             data.meta.url = pageUrl;
@@ -181,7 +184,7 @@ window.MilgCrawlUI = (function() {
             if (opts.profile) data.profile = opts.profile;
           }
           cb(data);
-        }, pageUrl, opts.excludeSelector || null, false);
+        }, pageUrl, opts.excludeSelector || null, wantShots);
       },
       scorePage: function(data) { return MilgScoring.runScoring(data); },
       onDiscovery: function(urls) {

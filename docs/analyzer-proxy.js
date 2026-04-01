@@ -170,76 +170,12 @@ window.MilgProxy = (function() {
       }
 
       showJsProgress(20, 'Preparing JavaScript environment...');
-
-      // Comprehensive srcdoc environment patches:
-      // Inside srcdoc iframes, many Web APIs break because the document origin is the
-      // parent's origin (jdeworks.github.io) while the page's JS expects the real site.
-      // We patch: URL constructor, History API, and provide error-resilient wrappers.
-      var escapedUrl = url.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-      var urlPatch = '<script>' +
-        '(function(){' +
-          'var _rb="' + escapedUrl + '";' +
-          'var _O=URL;' +
-          'function _P(u,b){' +
-            'if(b){' +
-              'var bs=typeof b==="string"?b:String(b);' +
-              'if(bs==="about:srcdoc"||bs==="about:blank"||bs==="null"||bs.indexOf("about:")===0)b=_rb;' +
-            '}' +
-            'if(!b&&typeof u==="string"&&u.charAt(0)==="/")return new _O(u,_rb);' +
-            'try{return arguments.length===1?new _O(u):new _O(u,b);}' +
-            'catch(e){try{return new _O(u,_rb);}catch(e2){throw e;}}' +
-          '}' +
-          '_P.prototype=_O.prototype;' +
-          '_P.createObjectURL=_O.createObjectURL.bind(_O);' +
-          '_P.revokeObjectURL=_O.revokeObjectURL.bind(_O);' +
-          'if(_O.canParse)_P.canParse=_O.canParse.bind(_O);' +
-          'window.URL=_P;' +
-          'var _hps=history.pushState.bind(history);' +
-          'var _hrs=history.replaceState.bind(history);' +
-          'history.pushState=function(s,t,u){try{_hps(s,t,u);}catch(e){}};' +
-          'history.replaceState=function(s,t,u){try{_hrs(s,t,u);}catch(e){}};' +
-          'var _of=window.fetch;' +
-          'window.fetch=function(u,o){' +
-            'if(typeof u==="string"&&u.charAt(0)==="/")u=_rb.replace(/\\/$/,"")+u;' +
-            'return _of.call(this,u,o);' +
-          '};' +
-        '})();' +
-        '</' + 'script>';
-
-      // Inject BEFORE the first <script> tag so patches run before any framework JS
-      // (Next.js puts inline scripts immediately after <head>)
-      if (/<script[\s>]/i.test(html)) {
-        html = html.replace(/<script[\s>]/i, urlPatch + '<script ');
-      } else if (/<head[\s>]/i.test(html)) {
-        html = html.replace(/<head([^>]*)>/i, '<head$1>' + urlPatch);
-      } else {
-        html = urlPatch + html;
-      }
-
-      showJsProgress(30, 'Running JavaScript & rendering page...');
-
-      // Animate progress while waiting for JS hydration
-      var _jpPct = 30;
-      var _jsProgressTimer = setInterval(function() {
-        _jpPct = Math.min(_jpPct + 3, 90);
-        var label = _jpPct < 50 ? 'Running JavaScript & rendering page...'
-          : _jpPct < 70 ? 'Waiting for framework hydration...'
-          : 'Extracting design data...';
-        showJsProgress(_jpPct, label);
-      }, 600);
-
-      // Delegate to the standard analysis pipeline — handles base tag, extraction,
-      // screenshots, unhidden panels, and timeouts.
-      // Skip screenshots for JS-enabled mode — cross-origin images in srcdoc taint
-      // the canvas, making domToCanvas fail. Screenshots work via Console Snippet.
-      var exclude = window.__milgCombinedExclude || (document.getElementById('excludeSelector') && document.getElementById('excludeSelector').value || '').trim() || null;
-      MilgIframe.analyzeHtmlInIframe(html, function(data) {
-        clearInterval(_jsProgressTimer);
-        data.meta.url = url;
-        data.meta._inputMethod = 'url';
-        data.meta._jsEnabled = true;
-        _runAnalysis(data);
-      }, url, exclude, false); // false = skip screenshots (CORS issues in srcdoc)
+      analyzeWithJs(html, url, {
+        onProgress: showJsProgress,
+        onDone: function(data) {
+          _runAnalysis(data);
+        }
+      });
 
     }).catch(function(e) {
       reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
@@ -248,12 +184,140 @@ window.MilgProxy = (function() {
     });
   }
 
+  // --- Sandbox hardening script ---
+  // Injected before page scripts to intercept storage, cookies, and other sensitive APIs.
+  // Returns safe no-ops and logs all access attempts to window.__milgSandboxLog.
+  function buildSandboxScript() {
+    return '<script>' +
+      '(function(){' +
+        'var _log=window.__milgSandboxLog=[];' +
+        'var _max=100;' +
+        'function _l(api,method,args){' +
+          'if(_log.length<_max)_log.push({api:api,method:method,args:String(args||"").substring(0,80),t:Date.now()})' +
+        '}' +
+        // --- localStorage / sessionStorage ---
+        'function _fakeStorage(name){' +
+          'var _s={};' +
+          'return{' +
+            'getItem:function(k){_l(name,"getItem",k);return _s[k]||null},' +
+            'setItem:function(k,v){_l(name,"setItem",k+"="+v);_s[k]=String(v)},' +
+            'removeItem:function(k){_l(name,"removeItem",k);delete _s[k]},' +
+            'clear:function(){_l(name,"clear");_s={}},' +
+            'key:function(i){_l(name,"key",i);var ks=Object.keys(_s);return ks[i]||null},' +
+            'get length(){return Object.keys(_s).length}' +
+          '}' +
+        '}' +
+        'try{Object.defineProperty(window,"localStorage",{value:_fakeStorage("localStorage"),configurable:true})}catch(e){}' +
+        'try{Object.defineProperty(window,"sessionStorage",{value:_fakeStorage("sessionStorage"),configurable:true})}catch(e){}' +
+        // --- document.cookie ---
+        'try{Object.defineProperty(document,"cookie",{' +
+          'get:function(){_l("cookie","get");return""},' +
+          'set:function(v){_l("cookie","set",v)},' +
+          'configurable:true' +
+        '})}catch(e){}' +
+        // --- indexedDB ---
+        'try{Object.defineProperty(window,"indexedDB",{value:null,configurable:true})}catch(e){}' +
+        // --- window.open ---
+        'var _wo=window.open;' +
+        'window.open=function(){_l("window","open",arguments[0]);return null};' +
+        // --- navigator.sendBeacon ---
+        'if(navigator.sendBeacon){var _sb=navigator.sendBeacon;navigator.sendBeacon=function(u){_l("navigator","sendBeacon",u);return false}}' +
+        // --- navigator.serviceWorker.register ---
+        'try{if(navigator.serviceWorker){Object.defineProperty(navigator.serviceWorker,"register",{value:function(u){_l("serviceWorker","register",u);return Promise.reject(new DOMException("Blocked by sandbox"))}})}}catch(e){}' +
+        // --- Notification.requestPermission ---
+        'try{if(window.Notification){Notification.requestPermission=function(){_l("Notification","requestPermission");return Promise.resolve("denied")}}}catch(e){}' +
+        // --- postMessage: filter to only allow milg-* messages to parent ---
+        'var _pm=window.parent.postMessage.bind(window.parent);' +
+        'window.parent.postMessage=function(msg,origin){' +
+          'if(msg&&typeof msg==="object"&&typeof msg.type==="string"&&msg.type.indexOf("milg-")===0){_pm(msg,origin);return}' +
+          '_l("postMessage","toParent",msg&&msg.type||"unknown");' +
+        '};' +
+      '})();' +
+      '</' + 'script>';
+  }
+
+  // --- Reusable JS-enabled analysis ---
+  // Takes already-fetched HTML, injects sandbox + URL patches, runs analysis.
+  // opts: { onProgress(pct, label), onDone(data), wantShots, exclude }
+  function analyzeWithJs(html, url, opts) {
+    opts = opts || {};
+    var onProgress = opts.onProgress || function() {};
+    var onDone = opts.onDone || _runAnalysis;
+    var wantShots = opts.wantShots !== undefined ? opts.wantShots : (document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked);
+    var exclude = opts.exclude !== undefined ? opts.exclude : (window.__milgCombinedExclude || (document.getElementById('excludeSelector') && document.getElementById('excludeSelector').value || '').trim() || null);
+
+    // Build injection scripts: sandbox first, then URL patch
+    var sandboxScript = buildSandboxScript();
+    var escapedUrl = url.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    var urlPatch = '<script>' +
+      '(function(){' +
+        'var _rb="' + escapedUrl + '";' +
+        'var _O=URL;' +
+        'function _P(u,b){' +
+          'if(b){' +
+            'var bs=typeof b==="string"?b:String(b);' +
+            'if(bs==="about:srcdoc"||bs==="about:blank"||bs==="null"||bs.indexOf("about:")===0)b=_rb;' +
+          '}' +
+          'if(!b&&typeof u==="string"&&u.charAt(0)==="/")return new _O(u,_rb);' +
+          'try{return arguments.length===1?new _O(u):new _O(u,b);}' +
+          'catch(e){try{return new _O(u,_rb);}catch(e2){throw e;}}' +
+        '}' +
+        '_P.prototype=_O.prototype;' +
+        '_P.createObjectURL=_O.createObjectURL.bind(_O);' +
+        '_P.revokeObjectURL=_O.revokeObjectURL.bind(_O);' +
+        'if(_O.canParse)_P.canParse=_O.canParse.bind(_O);' +
+        'window.URL=_P;' +
+        'var _hps=history.pushState.bind(history);' +
+        'var _hrs=history.replaceState.bind(history);' +
+        'history.pushState=function(s,t,u){try{_hps(s,t,u);}catch(e){}};' +
+        'history.replaceState=function(s,t,u){try{_hrs(s,t,u);}catch(e){}};' +
+        'var _of=window.fetch;' +
+        'window.fetch=function(u,o){' +
+          'if(typeof u==="string"&&u.charAt(0)==="/")u=_rb.replace(/\\/$/,"")+u;' +
+          'return _of.call(this,u,o);' +
+        '};' +
+      '})();' +
+      '</' + 'script>';
+
+    var combined = sandboxScript + urlPatch;
+
+    // Inject BEFORE the first <script> tag so patches run before any framework JS
+    if (/<script[\s>]/i.test(html)) {
+      html = html.replace(/<script[\s>]/i, combined + '<script ');
+    } else if (/<head[\s>]/i.test(html)) {
+      html = html.replace(/<head([^>]*)>/i, '<head$1>' + combined);
+    } else {
+      html = combined + html;
+    }
+
+    onProgress(30, 'Running JavaScript & rendering page...');
+
+    // Animate progress while waiting for JS hydration
+    var _jpPct = 30;
+    var _jsProgressTimer = setInterval(function() {
+      _jpPct = Math.min(_jpPct + 3, 90);
+      var label = _jpPct < 50 ? 'Running JavaScript & rendering page...'
+        : _jpPct < 70 ? 'Waiting for framework hydration...'
+        : 'Extracting design data...';
+      onProgress(_jpPct, label);
+    }, 600);
+
+    MilgIframe.analyzeHtmlInIframe(html, function(data) {
+      clearInterval(_jsProgressTimer);
+      data.meta.url = url;
+      data.meta._inputMethod = 'url';
+      data.meta._jsEnabled = true;
+      onDone(data);
+    }, url, exclude, wantShots);
+  }
+
   // Wire up the global handler
   window.__milgTryWithJs = function(url) { tryWithJs(url); };
 
   return {
     init: init,
     fetchWithProxy: fetchWithProxy,
-    fetchViaProxy: fetchViaProxy
+    fetchViaProxy: fetchViaProxy,
+    analyzeWithJs: analyzeWithJs
   };
 })();

@@ -580,7 +580,7 @@ window.MilgViewer = (function() {
         e.stopPropagation();
         if (e.shiftKey) {
           // Shift+click: copy element debug info
-          window.getSelection().removeAllRanges(); // prevent text selection from shift
+          window.getSelection().removeAllRanges();
           var fIdx = parseInt(rect.getAttribute('data-finding'));
           var f = _allFindings[fIdx];
           if (f) {
@@ -607,7 +607,26 @@ window.MilgViewer = (function() {
             });
           }
         } else {
-          scrollToFinding(parseInt(rect.getAttribute('data-finding')));
+          // Check for overlapping rects at this position
+          var clickX = parseFloat(rect.getAttribute('x'));
+          var clickY = parseFloat(rect.getAttribute('y'));
+          var clickW = parseFloat(rect.getAttribute('width'));
+          var clickH = parseFloat(rect.getAttribute('height'));
+          var overlapping = [];
+          svg.querySelectorAll('rect[data-finding]').forEach(function(r) {
+            var rx = parseFloat(r.getAttribute('x')), ry = parseFloat(r.getAttribute('y'));
+            var rw = parseFloat(r.getAttribute('width')), rh = parseFloat(r.getAttribute('height'));
+            // Check if rects overlap (not just same position)
+            if (rx < clickX + clickW && rx + rw > clickX && ry < clickY + clickH && ry + rh > clickY) {
+              var fi = parseInt(r.getAttribute('data-finding'));
+              if (overlapping.indexOf(fi) === -1) overlapping.push(fi);
+            }
+          });
+          if (overlapping.length > 1) {
+            showOverlapPicker(e, overlapping);
+          } else {
+            scrollToFinding(parseInt(rect.getAttribute('data-finding')));
+          }
         }
       });
     });
@@ -760,8 +779,67 @@ window.MilgViewer = (function() {
     _tooltip = null;
   }
 
+  // Overlap picker: shows a popup list when multiple findings overlap at the click position
+  var _overlapPicker = null;
+  function hideOverlapPicker() {
+    if (_overlapPicker && _overlapPicker.parentNode) _overlapPicker.parentNode.removeChild(_overlapPicker);
+    _overlapPicker = null;
+  }
+
+  function showOverlapPicker(e, findingIndices) {
+    hideOverlapPicker();
+    hideTooltip();
+    _overlapPicker = document.createElement('div');
+    _overlapPicker.className = 'milg-viewer-overlap-picker';
+    _overlapPicker.innerHTML = '<div class="milg-viewer-overlap-header">' + findingIndices.length + ' overlapping findings</div>';
+    findingIndices.forEach(function(fIdx) {
+      var f = _allFindings[fIdx];
+      if (!f) return;
+      var sevColor = COLORS[f.severity] || COLORS.info;
+      var item = document.createElement('div');
+      item.className = 'milg-viewer-overlap-item';
+      item.innerHTML = '<span class="milg-viewer-overlap-dot" style="background:' + sevColor.stroke + '"></span>' +
+        '<span class="milg-viewer-overlap-text">' + f.title.substring(0, 60) + '</span>' +
+        '<span class="milg-viewer-overlap-cat">' + f.category + '</span>';
+      item.addEventListener('click', function(ev) {
+        ev.stopPropagation();
+        hideOverlapPicker();
+        scrollToFinding(fIdx);
+      });
+      item.addEventListener('mouseenter', function() {
+        // Highlight the corresponding rect(s)
+        var svg = _overlay && _overlay.querySelector('.milg-viewer-svg');
+        if (svg) svg.querySelectorAll('rect[data-finding="' + fIdx + '"]').forEach(function(r) { r.setAttribute('stroke-width', '3'); });
+      });
+      item.addEventListener('mouseleave', function() {
+        var svg = _overlay && _overlay.querySelector('.milg-viewer-svg');
+        if (svg) svg.querySelectorAll('rect[data-finding="' + fIdx + '"]').forEach(function(r) { r.setAttribute('stroke-width', '1.5'); });
+      });
+      _overlapPicker.appendChild(item);
+    });
+
+    document.body.appendChild(_overlapPicker);
+    var x = e.clientX + 8, y = e.clientY + 8;
+    var pw = _overlapPicker.offsetWidth, ph = _overlapPicker.offsetHeight;
+    if (x + pw > window.innerWidth - 8) x = e.clientX - pw - 8;
+    if (y + ph > window.innerHeight - 8) y = e.clientY - ph - 8;
+    _overlapPicker.style.left = x + 'px';
+    _overlapPicker.style.top = y + 'px';
+
+    // Close picker on outside click
+    setTimeout(function() {
+      document.addEventListener('click', function onClickAway(ev) {
+        if (_overlapPicker && !_overlapPicker.contains(ev.target)) {
+          hideOverlapPicker();
+          document.removeEventListener('click', onClickAway);
+        }
+      });
+    }, 0);
+  }
+
   function close() {
     hideTooltip();
+    hideOverlapPicker();
     if (_overlay) {
       _overlay.classList.remove('visible');
       var el = _overlay;

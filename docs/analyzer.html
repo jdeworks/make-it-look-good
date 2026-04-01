@@ -63,8 +63,10 @@
         Works on phone — no console needed.
       </p>
       <div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;line-height:1.5;padding:8px 12px;background:var(--bg-alt);border:1px solid var(--border);border-radius:var(--radius);">
-        <strong style="color:var(--text)">Note:</strong> Pages behind login, localhost, and sites that block proxies won't work here — use the Console Snippet tab for those.
-        JavaScript is off by default for safety. If a page appears empty (React, Vue, Angular), you'll be offered a <strong style="color:var(--text)">Try with JS</strong> option to re-analyze with scripts enabled in a sandboxed frame.
+        <strong style="color:var(--text)">How it works:</strong> The page is fetched via proxy and rendered in a sandboxed iframe.
+        JavaScript is <strong style="color:var(--text)">off by default</strong> &mdash; for JS-heavy sites (React, Vue, Angular), enable it below.
+        Storage, cookies, and other sensitive APIs are automatically isolated.
+        Pages behind login, localhost, or sites that block proxies/framing need the <strong style="color:var(--text)">Console Snippet</strong> tab instead.
       </div>
       <div class="input-area">
         <label for="urlInput" class="sr-only">Website URL</label>
@@ -87,6 +89,31 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><rect x="2" y="3" width="20" height="14" rx="2"/><rect x="6" y="7" width="12" height="8" rx="1" stroke-dasharray="2 2"/><line x1="8" y1="21" x2="16" y2="21"/></svg>
           Deep scan (multi-viewport + dark mode)
         </label>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+        <label style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="checkbox" id="jsEnabledCheck" style="width:16px;height:16px;cursor:pointer">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+          Enable JavaScript (for React, Vue, etc.)
+        </label>
+      </div>
+      <div id="jsEnabledOptions" style="display:none;margin-top:8px;padding:12px 14px;border-radius:var(--radius)">
+        <div style="font-size:12px;line-height:1.6;margin-bottom:8px">
+          The page's JavaScript will execute in a sandboxed frame. Storage, cookies, and other sensitive APIs are blocked and logged.
+          Scripts still run &mdash; only enable this for sites you recognize.
+        </div>
+        <label style="font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600">
+          <input type="checkbox" id="jsRiskAck" style="width:15px;height:15px;cursor:pointer">
+          I understand the risk
+        </label>
+        <details style="margin-top:8px;font-size:11px">
+          <summary style="cursor:pointer;color:var(--text-secondary)">Prefer the Console Snippet (safer)</summary>
+          <div style="margin-top:6px;color:var(--text-secondary);line-height:1.5">
+            The console snippet runs in the page's own context with zero security concerns and full screenshot support.
+            Open DevTools &rarr; Console, paste the snippet from the <strong>Console Snippet</strong> tab above.
+            <br><button id="jsSnippetBtn" class="btn" style="margin-top:6px;font-size:11px;padding:4px 10px">Switch to Console Snippet tab</button>
+          </div>
+        </details>
       </div>
       <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
         <label style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:6px;cursor:pointer">

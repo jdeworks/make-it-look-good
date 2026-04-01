@@ -350,17 +350,51 @@
     var isBareBones = elCount > 5 && elCount < 50 && textColorCount <= 2 && contentWidth < 200;
     // Show success note for JS-enabled analysis (no screenshots available in srcdoc mode)
     var isJsEnabled = data.meta && data.meta._jsEnabled;
-    if (isJsEnabled && isUrlFetch && !(hasLimitedContent || isJsDependent || isBareBones)) {
-      var isDark = document.body.classList.contains('dark-ui');
-      var nBg = isDark ? '#0c2d1e' : '#f0fdf4';
-      var nBorder = isDark ? '#166534' : '#22c55e';
-      var nText = isDark ? '#86efac' : '#166534';
-      warningHtml = '<div style="padding:12px 16px;background:' + nBg + ';border:1px solid ' + nBorder + ';border-radius:var(--radius);margin-bottom:12px;font-size:13px;color:' + nText + ';display:flex;align-items:center;gap:8px">' +
-        '<span style="font-size:16px">&#9889;</span>' +
-        '<span>Analyzed with JavaScript enabled (' + elCount + ' elements). ' +
-        'Screenshots are not available in this mode — use the <strong>Console Snippet</strong> for screenshots.</span></div>';
+    // Build sandbox log summary (shared between JS success and JS limited content banners)
+    function buildSandboxNote(sandboxLog, noteColor) {
+      if (!sandboxLog || sandboxLog.length === 0) return '';
+      var apiCounts = {};
+      sandboxLog.forEach(function(e) { var k = e.api + '.' + e.method; apiCounts[k] = (apiCounts[k] || 0) + 1; });
+      var apiSummary = Object.keys(apiCounts).map(function(k) { return k + ' \u00d7' + apiCounts[k]; }).join(', ');
+      return '<details style="margin-top:6px;font-size:11px;color:' + noteColor + '">' +
+        '<summary style="cursor:pointer">Sandbox isolated ' + sandboxLog.length + ' API call' + (sandboxLog.length !== 1 ? 's' : '') + ' (normal for iframed pages)</summary>' +
+        '<div style="margin-top:4px;font-size:11px;line-height:1.6">' +
+        '<div style="margin-bottom:4px;opacity:0.8">The page tried to use APIs that are disabled in the sandbox. This is expected &mdash; most sites use storage/cookies for normal operation and don\'t expect to be iframed.</div>' +
+        '<div style="font-family:var(--mono);font-size:10px;max-height:100px;overflow:auto">' + apiSummary + '</div>' +
+        '</div></details>';
     }
-    // Only show JS-required warning for URL fetch — paste/editor/console modes don't need it
+
+    if (isJsEnabled && isUrlFetch) {
+      var isDark = document.body.classList.contains('dark-ui');
+      var sandboxLog = data._sandboxLog || [];
+      if (hasLimitedContent || isJsDependent || isBareBones) {
+        // JS-enabled but still limited content — site may block framing or need auth
+        var wBg = isDark ? '#2d2006' : '#fffbeb';
+        var wBorder = isDark ? '#92400e' : '#f59e0b';
+        var wText = isDark ? '#fbbf24' : '#92400e';
+        var wStrong = isDark ? '#fcd34d' : '#78350f';
+        warningHtml = '<div style="padding:14px 18px;background:' + wBg + ';border:1px solid ' + wBorder + ';border-radius:var(--radius);margin-bottom:14px;font-size:13px;line-height:1.6;color:' + wText + '">' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:16px">&#9889;</span>' +
+          '<strong style="color:' + wStrong + '">Limited content even with JavaScript (' + elCount + ' elements)</strong></div>' +
+          '<p style="margin:4px 0">The site may block framing (X-Frame-Options), require authentication, or use client-side routing that didn\'t resolve in the sandbox.</p>' +
+          '<p style="margin:4px 0">The results below reflect what rendered. For the most accurate analysis, use the <strong>Console Snippet</strong> — it runs directly in the page\'s context.</p>' +
+          '<div style="margin-top:10px"><button onclick="window.__milgSwitchToSnippet()" style="padding:6px 14px;background:' + (isDark ? '#92400e' : '#f59e0b') + ';color:' + (isDark ? '#fef3c7' : '#78350f') + ';border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">Switch to Console Snippet</button></div>' +
+          buildSandboxNote(sandboxLog, wText) +
+          '</div>';
+      } else {
+        // JS-enabled and got good content
+        var nBg = isDark ? '#0c2d1e' : '#f0fdf4';
+        var nBorder = isDark ? '#166534' : '#22c55e';
+        var nText = isDark ? '#86efac' : '#166534';
+        var hasScreenshots = data.screenshots && data.screenshots.length > 0;
+        var ssNote = hasScreenshots ? '' : ' Screenshots may be unavailable if the site blocks cross-origin images.';
+        warningHtml = '<div style="padding:12px 16px;background:' + nBg + ';border:1px solid ' + nBorder + ';border-radius:var(--radius);margin-bottom:12px;font-size:13px;color:' + nText + '">' +
+          '<div style="display:flex;align-items:center;gap:8px"><span style="font-size:16px">&#9889;</span>' +
+          '<span>Analyzed with JavaScript enabled (' + elCount + ' elements).' + ssNote + '</span></div>' +
+          buildSandboxNote(sandboxLog, nText) + '</div>';
+      }
+    }
+    // Only show JS-required warning for URL fetch without JS — paste/editor/console modes don't need it
     if (isUrlFetch && !isJsEnabled && (hasLimitedContent || isJsDependent || isBareBones)) {
       var reason = hasLimitedContent
         ? 'Limited content detected (' + elCount + ' elements)'
@@ -590,6 +624,29 @@
         urlStatus.textContent = 'Rendering and analyzing...';
         showProgress(20, 'Rendering page...');
         var exclude = window.__milgCombinedExclude || (document.getElementById('excludeSelector').value || '').trim();
+
+        // JS-enabled mode: inject sandbox + URL patches, run page's JS
+        var jsCheck = document.getElementById('jsEnabledCheck');
+        var jsAck = document.getElementById('jsRiskAck');
+        var wantJs = jsCheck && jsCheck.checked && jsAck && jsAck.checked;
+        if (wantJs) {
+          urlStatus.textContent = 'Running with JavaScript enabled...';
+          showProgress(25, 'Preparing sandbox...');
+          MilgProxy.analyzeWithJs(html, url, {
+            onProgress: function(pct, label) { showProgress(pct, label); },
+            onDone: function(data) {
+              analyzeUrlBtn.disabled = false;
+              analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
+              urlStatus.style.display = 'none';
+              showProgress(100, 'Done!');
+              setTimeout(hideProgress, 500);
+              runAnalysis(data);
+            },
+            exclude: exclude
+          });
+          return;
+        }
+
         var isDeepScan = document.getElementById('deepScanCheck') && document.getElementById('deepScanCheck').checked;
         if (isDeepScan) {
           // Build viewport list: current + presets, skip duplicates
@@ -695,6 +752,47 @@
       if (e.key === 'Enter') { e.preventDefault(); analyzeUrlBtn.click(); }
     });
 
+    // JS-enabled checkbox — toggle warning panel + disable analyze until acknowledged
+    var jsEnabledCheck = document.getElementById('jsEnabledCheck');
+    var jsEnabledOptions = document.getElementById('jsEnabledOptions');
+    var jsRiskAck = document.getElementById('jsRiskAck');
+    function syncJsGate() {
+      if (!jsEnabledCheck) return;
+      var needsAck = jsEnabledCheck.checked && (!jsRiskAck || !jsRiskAck.checked);
+      analyzeUrlBtn.disabled = needsAck;
+      analyzeUrlBtn.title = needsAck ? 'Check "I understand the risk" to enable' : '';
+    }
+    if (jsEnabledCheck && jsEnabledOptions) {
+      jsEnabledCheck.addEventListener('change', function() {
+        jsEnabledOptions.style.display = jsEnabledCheck.checked ? '' : 'none';
+        if (!jsEnabledCheck.checked && jsRiskAck) jsRiskAck.checked = false;
+        syncJsGate();
+      });
+      // Restore risk ack from session
+      if (jsRiskAck && sessionStorage.getItem('milg-js-risk-ack') === 'true') {
+        jsRiskAck.checked = true;
+      }
+      if (jsRiskAck) {
+        jsRiskAck.addEventListener('change', function() {
+          try { sessionStorage.setItem('milg-js-risk-ack', jsRiskAck.checked ? 'true' : 'false'); } catch(e) {}
+          syncJsGate();
+        });
+      }
+      // Initial state (handles restored session ack)
+      syncJsGate();
+    }
+    // JS snippet switch button
+    var jsSnippetBtn = document.getElementById('jsSnippetBtn');
+    if (jsSnippetBtn) {
+      jsSnippetBtn.addEventListener('click', function() {
+        if (jsEnabledCheck) jsEnabledCheck.checked = false;
+        if (jsEnabledOptions) jsEnabledOptions.style.display = 'none';
+        // Switch to snippet tab
+        var snippetTab = document.querySelector('[data-tab="snippet"]');
+        if (snippetTab) snippetTab.click();
+      });
+    }
+
     // Deep scan checkbox — toggle viewport row visibility
     var deepScanCheck = document.getElementById('deepScanCheck');
     var viewportRow = document.getElementById('viewportRow');
@@ -765,6 +863,8 @@
       // Reset crawl state
       MilgCrawlUI.setCrawlSession(null);
       MilgCrawlUI.resetCrawlState();
+      // Re-check JS gate (button may need to be disabled if JS checkbox is still checked)
+      syncJsGate();
       // Clear hash so refreshing doesn't reload old report
       if (location.hash) history.replaceState(null, '', location.pathname + location.search);
     });

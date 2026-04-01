@@ -69,13 +69,15 @@
       if (smallRatio < 0.05) {
         passed++;
       } else {
+        var smallBboxes = fontSizes.filter(function(f) { return parseFloat(f.value) < 12 && f.bbox; }).map(function(f) { return f.bbox; });
         findings.push({
           severity: 'warning',
           title: smallTextCount + ' element(s) with text smaller than 12px',
           detail: 'Text below 12px is difficult to read for most users and nearly impossible for elderly or low-vision users',
           fix: 'Increase small text to at least 12px. Consider if the information is important enough to display — if not, remove it.',
           presetRef: null,
-          source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text'
+          source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text',
+          locator: smallBboxes.length > 0 ? { selector: '', text: '', bboxes: smallBboxes } : undefined
         });
       }
     }
