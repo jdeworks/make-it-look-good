@@ -305,7 +305,7 @@ window.MilgContrastVerify = (function() {
       selector: pair.selector,
       text: pair.text,
       sectionIdx: sectionIdx,
-      sampleCount: { fg: fgSamples.length, bg: bgSamples.length },
+      sampleCount: { fg: fgColors.length, bg: bgColors.length },
       samplePoints: { fg: fgPoints, bg: bgPoints }
     };
   }
