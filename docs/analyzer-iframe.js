@@ -157,7 +157,8 @@ window.MilgIframe = (function() {
                     'canvasWidth:_cw,canvasHeight:_ch,' +
                     'docHeightAtCapture:fullH,' +
                     'calibrationOffsetY:0,calibrationSamples:[]},' +
-                  'updatedData:updatedData' +
+                  'updatedData:updatedData,' +
+                  'maskResults:typeof _maskResults!=="undefined"?_maskResults:null' +
                 '},"*")' +
               '}' +
               // Step 2: Layered text masks with transition kill
@@ -191,6 +192,7 @@ window.MilgIframe = (function() {
                   'if(layer.some(function(l){return _overlaps(pe,l)})){next.push(pe)}else{layer.push(pe)}' +
                 '});_layers.push(layer);_remaining=next}' +
               'console.log("[iframe-ss] "+_pairEls.length+" elements in "+_layers.length+" layers");' +
+              'var _maskResults={};' + // idx → {bmp, w, h, layer, dark}
               // Phase D: Capture one mask per layer — set layer elements to black via inline style
               'var _li=0;' +
               'function _nextLayer(){' +
@@ -224,7 +226,8 @@ window.MilgIframe = (function() {
                       'var _dk=0;for(var _b=0;_b<bmp.length;_b++)if(bmp[_b])_dk++;' +
                       'if(_dk===0&&bw>5){var _ci=(Math.floor(bh/2)*bw+Math.floor(bw/2))*4;' +
                         'console.log("[mask] No dark: \\""+pe.pair.text.substring(0,25)+"\\" "+bw+"x"+bh+" L"+_li+" rgb("+px[_ci]+","+px[_ci+1]+","+px[_ci+2]+")")}' +
-                      'pe.pair._maskBmp=Array.from(bmp);pe.pair._maskW=bw;pe.pair._maskH=bh;pe.pair._maskLayer=_li;pe.pair._maskDark=_dk' +
+                      'pe.pair._maskBmp=Array.from(bmp);pe.pair._maskW=bw;pe.pair._maskH=bh;pe.pair._maskLayer=_li;pe.pair._maskDark=_dk;' +
+                      '_maskResults[pe.idx]={bmp:Array.from(bmp),w:bw,h:bh,layer:_li,dark:_dk}' +
                     '}catch(e){}' +
                   '});' +
                   // Reset layer elements to white
@@ -241,7 +244,7 @@ window.MilgIframe = (function() {
               'var _maskDone=false;' +
               'var _origSendFinal=_sendFinal;' +
               'var _maskTimer=setTimeout(function(){if(!_maskDone){_maskDone=true;console.warn("[iframe-ss] Masks timed out");_origSendFinal(null)}},45000);' +
-              '_sendFinal=function(m){if(_maskDone)return;_maskDone=true;clearTimeout(_maskTimer);console.log("[iframe-ss] Sending results (mask: "+(m?"yes":"no")+")");_origSendFinal(m)};' +
+              '_sendFinal=function(m){if(_maskDone)return;_maskDone=true;clearTimeout(_maskTimer);console.log("[iframe-ss] Sending results (maskResults: "+Object.keys(_maskResults).length+" pairs)");_origSendFinal(m)};' +
               '_nextLayer()' +
             '}).catch(function(e){console.warn("[iframe-ss] capture failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")})' +
           '};' +
@@ -371,6 +374,26 @@ window.MilgIframe = (function() {
           if (ud.layout) {
             if (ud.layout.offscreenElements) iframe._milgData.layout.offscreenElements = ud.layout.offscreenElements;
             if (ud.layout.hiddenPanelIssues) iframe._milgData.layout.hiddenPanelIssues = ud.layout.hiddenPanelIssues;
+          }
+        }
+        // Apply mask results from separate channel (survives postMessage reliably)
+        if (e.data.maskResults) {
+          var mr = e.data.maskResults;
+          var cp = iframe._milgData.colors && iframe._milgData.colors.contrastPairs;
+          if (cp) {
+            var applied = 0;
+            Object.keys(mr).forEach(function(idx) {
+              var i = parseInt(idx, 10);
+              if (cp[i]) {
+                cp[i]._maskBmp = mr[idx].bmp;
+                cp[i]._maskW = mr[idx].w;
+                cp[i]._maskH = mr[idx].h;
+                cp[i]._maskLayer = mr[idx].layer;
+                cp[i]._maskDark = mr[idx].dark;
+                applied++;
+              }
+            });
+            console.log('[iframe] Applied mask results: ' + applied + '/' + Object.keys(mr).length + ' pairs');
           }
         }
         // If hidden panels were detected, trigger unhidden screenshot pass
