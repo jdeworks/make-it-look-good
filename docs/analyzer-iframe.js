@@ -160,107 +160,28 @@ window.MilgIframe = (function() {
                   'updatedData:updatedData' +
                 '},"*")' +
               '}' +
-              // Step 2: Layered text masks — batch by overlap groups.
-              // Layer 0: all non-overlapping elements black, one full-page mask.
-              // Layer 1+: remaining overlapping elements, one capture per layer.
-              // Typically 1-3 layers total.
-              '_prog("Building text masks...");' +
-              'console.log("[iframe-ss] Step 2: Layered masks...");' +
-              // Global style: everything white, all visible
+              // Step 2: Single full-page text mask — ALL text black on white.
+              // Simple and reliable. Mixed-color nested spans handled by
+              // closer-to-FG-or-BG check in verification.
+              '_prog("Capturing text mask...");' +
+              'console.log("[iframe-ss] Step 2/2: Capturing text mask...");' +
               'var _maskStyle=document.createElement("style");' +
               '_maskStyle.setAttribute("data-milg-mask","1");' +
-              '_maskStyle.textContent="*,*::before,*::after{color:#fff !important;background-color:#fff !important;background-image:none !important;background:white !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;-webkit-text-fill-color:#fff !important;opacity:1 !important;transition:none !important;animation:none !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}";' +
-              'document.head.appendChild(_maskStyle);void document.body.offsetHeight;' +
-              // Collect pair elements
-              'var _refs=window.__milgBboxRefs||[];' +
-              'var _pairs=(window.__milgData&&window.__milgData.colors&&window.__milgData.colors.contrastPairs)||[];' +
-              'var _pairEls=[];' +
-              '_refs.forEach(function(ref){' +
-                'if(!ref.el||!ref.obj||ref.obj.ratio===undefined)return;' +
-                'var idx=_pairs.indexOf(ref.obj);' +
-                'if(idx>=0)_pairEls.push({el:ref.el,pair:ref.obj,idx:idx,done:false,bbox:ref.obj.bbox})' +
-              '});' +
-              // Check bbox overlap between two pairs
-              'function _overlaps(a,b){' +
-                'if(!a.bbox||!b.bbox)return false;' +
-                'return a.bbox.left<b.bbox.left+b.bbox.width&&a.bbox.left+a.bbox.width>b.bbox.left&&' +
-                       'a.bbox.top<b.bbox.top+b.bbox.height&&a.bbox.top+a.bbox.height>b.bbox.top' +
-              '}' +
-              // Build layers: greedy assignment — add to current layer if no overlap with others in layer
-              'var _layers=[];' +
-              'var _remaining=_pairEls.slice();' +
-              'while(_remaining.length>0){' +
-                'var layer=[];var next=[];' +
-                '_remaining.forEach(function(pe){' +
-                  'var conflicts=layer.some(function(l){return _overlaps(pe,l)});' +
-                  'if(!conflicts){layer.push(pe)}else{next.push(pe)}' +
-                '});' +
-                '_layers.push(layer);_remaining=next' +
-              '}' +
-              'console.log("[iframe-ss] "+_pairEls.length+" elements in "+_layers.length+" layers");' +
-              // Capture one full-page mask per layer
-              'var _li=0;' +
-              'function _nextLayer(){' +
-                'if(_li>=_layers.length){console.log("[iframe-ss] All "+_layers.length+" mask layers done");_sendFinal(null);return}' +
-                'var layer=_layers[_li];_li++;' +
-                '_prog("Text mask layer "+_li+"/"+_layers.length+" ("+layer.length+" elements)...");' +
-                'console.log("[iframe-ss] Layer "+_li+": "+layer.length+" elements");' +
-                // Set layer elements to black via class (avoids specificity battle with global style)
-                // The global mask style already sets * to white. We add a higher-specificity
-                // rule for the mask-active class.
-                'if(!document.getElementById("milg-mask-active")){' +
-                  'var _ms2=document.createElement("style");_ms2.id="milg-mask-active";' +
-                  '_ms2.textContent="[data-milg-active],[data-milg-active] *{color:#000 !important;-webkit-text-fill-color:#000 !important;transition:none !important;}";' +
-                  'document.head.appendChild(_ms2)' +
-                '}' +
-                'layer.forEach(function(pe){' +
-                  'pe.el.setAttribute("data-milg-active","1")' +
-                '});' +
-                // Force reflow then wait for paint — transitions need a frame to be cancelled
-                'void document.body.offsetHeight;' +
-                'requestAnimationFrame(function(){setTimeout(function(){' +
-                'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:12000}).then(function(mc){' +
-                  'console.log("[iframe-ss] Layer "+_li+" captured: "+mc.width+"x"+mc.height);' +
-                  'var mCtx=mc.getContext("2d",{willReadFrequently:true});' +
-                  // For each element in this layer, read its bbox from the mask
-                  'layer.forEach(function(pe){' +
-                    'if(!pe.bbox)return;' +
-                    'var bx=Math.max(0,Math.round(pe.bbox.left*_sc));' +
-                    'var by=Math.max(0,Math.round(pe.bbox.top*_sc));' +
-                    'var bw=Math.min(Math.round(pe.bbox.width*_sc),mc.width-bx);' +
-                    'var bh=Math.min(Math.round(pe.bbox.height*_sc),mc.height-by);' +
-                    'if(bw<2||bh<2)return;' +
-                    'try{' +
-                      'var px=mCtx.getImageData(bx,by,bw,bh).data;' +
-                      // Store as bitmap: 1=text, 0=not. 1 byte per pixel.
-                      'var bmp=new Uint8Array(bw*bh);' +
-                      'for(var y=0;y<bh;y++){for(var x=0;x<bw;x++){' +
-                        'var i=(y*bw+x)*4;' +
-                        // Mask is black text on pure white — anything not pure white is text/AA
-                        // Threshold 240: only rgb(240+,240+,240+) is considered pure white bg
-                        'if((px[i]+px[i+1]+px[i+2])/3<240)bmp[y*bw+x]=1' +
-                      '}}' +
-                      'var _dkCount=0;for(var _bi=0;_bi<bmp.length;_bi++)if(bmp[_bi])_dkCount++;' +
-                      'if(_dkCount===0&&bw>5){' +
-                        'var _cx=Math.floor(bw/2),_cy=Math.floor(bh/2),_ci=(_cy*bw+_cx)*4;' +
-                        'console.log("[mask] No dark px: \\""+pe.pair.text.substring(0,25)+"\\" "+bw+"x"+bh+" L"+_li+" center:rgb("+px[_ci]+","+px[_ci+1]+","+px[_ci+2]+")")' +
-                      '};' +
-                      'pe.pair._maskBmp=Array.from(bmp);pe.pair._maskW=bw;pe.pair._maskH=bh;pe.pair._maskLayer=_li;pe.pair._maskDark=_dkCount' +
-                    '}catch(e){}' +
-                  '});' +
-                  // Reset layer elements (remove active marker → falls back to global white)
-                  'layer.forEach(function(pe){' +
-                    'pe.el.removeAttribute("data-milg-active")' +
-                  '});' +
-                  'setTimeout(_nextLayer,0)' +
-                '}).catch(function(e){console.warn("[iframe-ss] Layer "+_li+" failed:",e);setTimeout(_nextLayer,0)})' +
-                '},50)})' + // close requestAnimationFrame + setTimeout (50ms for transitions to cancel)
-              '}' +
+              '_maskStyle.textContent="*,*::before,*::after{color:#000 !important;background-color:#fff !important;background-image:none !important;background:white !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;-webkit-text-fill-color:#000 !important;opacity:1 !important;transition:none !important;animation:none !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}";' +
+              'document.head.appendChild(_maskStyle);' +
+              'void document.body.offsetHeight;' +
               'var _maskDone=false;' +
               'var _origSendFinal=_sendFinal;' +
-              'var _maskTimer=setTimeout(function(){if(!_maskDone){_maskDone=true;console.warn("[iframe-ss] Masks timed out after 45s");_origSendFinal(null)}},45000);' +
+              'var _maskTimer=setTimeout(function(){if(!_maskDone){_maskDone=true;console.warn("[iframe-ss] Mask timed out");_origSendFinal(null)}},15000);' +
               '_sendFinal=function(m){if(_maskDone)return;_maskDone=true;clearTimeout(_maskTimer);console.log("[iframe-ss] Sending results (mask: "+(m?"yes":"no")+")");_origSendFinal(m)};' +
-              '_nextLayer()' +
+              'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:12000}).then(function(mc){' +
+                'console.log("[iframe-ss] Mask captured: "+mc.width+"x"+mc.height);' +
+                'var maskUri;try{maskUri=mc.toDataURL("image/png")}catch(e){maskUri=""}' +
+                '_sendFinal(maskUri)' +
+              '}).catch(function(e){' +
+                'console.warn("[iframe-ss] Mask failed:",e);' +
+                '_sendFinal(null)' +
+              '})' +
             '}).catch(function(e){console.warn("[iframe-ss] capture failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")})' +
           '};' +
           's.onerror=function(){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")};' +
