@@ -205,10 +205,11 @@ window.MilgIframe = (function() {
                 'var layer=_layers[_li];_li++;' +
                 '_prog("Text mask layer "+_li+"/"+_layers.length+" ("+layer.length+" elements)...");' +
                 'console.log("[iframe-ss] Layer "+_li+": "+layer.length+" elements");' +
-                // Set layer elements to black
+                // Set layer elements + all descendants to black (overrides any child styles)
                 'layer.forEach(function(pe){' +
                   'pe.el.style.setProperty("color","#000","important");' +
-                  'pe.el.style.setProperty("-webkit-text-fill-color","#000","important")' +
+                  'pe.el.style.setProperty("-webkit-text-fill-color","#000","important");' +
+                  'pe.el.querySelectorAll("*").forEach(function(ch){ch.style.setProperty("color","#000","important");ch.style.setProperty("-webkit-text-fill-color","#000","important")})' +
                 '});' +
                 'void document.body.offsetHeight;' +
                 'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:12000}).then(function(mc){' +
@@ -228,17 +229,18 @@ window.MilgIframe = (function() {
                       'var bmp=new Uint8Array(bw*bh);' +
                       'for(var y=0;y<bh;y++){for(var x=0;x<bw;x++){' +
                         'var i=(y*bw+x)*4;' +
-                        // Mask is black text on pure white — any non-white pixel is text/AA
-                        // Threshold 220 catches light AA from font-smoothing on small text
-                        'if((px[i]+px[i+1]+px[i+2])/3<220)bmp[y*bw+x]=1' +
+                        // Mask is black text on pure white — anything not pure white is text/AA
+                        // Threshold 240: only rgb(240+,240+,240+) is considered pure white bg
+                        'if((px[i]+px[i+1]+px[i+2])/3<240)bmp[y*bw+x]=1' +
                       '}}' +
                       'pe.pair._maskBmp=Array.from(bmp);pe.pair._maskW=bw;pe.pair._maskH=bh;pe.pair._maskLayer=_li' +
                     '}catch(e){}' +
                   '});' +
-                  // Reset layer elements to white
+                  // Reset layer elements + descendants to white
                   'layer.forEach(function(pe){' +
                     'pe.el.style.setProperty("color","#fff","important");' +
-                    'pe.el.style.setProperty("-webkit-text-fill-color","#fff","important")' +
+                    'pe.el.style.setProperty("-webkit-text-fill-color","#fff","important");' +
+                    'pe.el.querySelectorAll("*").forEach(function(ch){ch.style.setProperty("color","#fff","important");ch.style.setProperty("-webkit-text-fill-color","#fff","important")})' +
                   '});' +
                   'setTimeout(_nextLayer,0)' +
                 '}).catch(function(e){console.warn("[iframe-ss] Layer "+_li+" failed:",e);setTimeout(_nextLayer,0)})' +

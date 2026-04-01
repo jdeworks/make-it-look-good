@@ -453,6 +453,9 @@ window.MilgViewer = (function() {
 
   function applyZoom(frame) {
     if (!frame) return;
+    // At high zoom, left-align so the whole image is scrollable (center clips left edge)
+    var content = frame.parentElement;
+    if (content) content.style.justifyContent = _zoomLevel > 1 ? 'flex-start' : 'center';
     var img = frame.querySelector('.milg-viewer-img');
     var svg = frame.querySelector('.milg-viewer-svg');
     if (!img) return;
@@ -704,7 +707,7 @@ window.MilgViewer = (function() {
         label.setAttribute('font-family', 'system-ui, sans-serif');
         label.setAttribute('font-weight', '600');
         label.setAttribute('pointer-events', 'none');
-        label.textContent = (vr.pixelRatio || vr.pixelRatioAvg || '?') + ':1';
+        label.textContent = (vr.pixelRatioP10 || vr.pixelRatio || '?') + ':1';
         svg.appendChild(label);
       }
 
@@ -1035,7 +1038,8 @@ window.MilgViewer = (function() {
       'CSS: <span style="display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:middle;border:1px solid rgba(0,0,0,0.2);background:' + (vr.cssFg || '') + '"></span> on ' +
       '<span style="display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:middle;border:1px solid rgba(0,0,0,0.2);background:' + (vr.cssBg || '') + '"></span> ' +
       vr.cssRatio + ':1 ' + (vr.cssPasses ? '<span style="color:#22c55e">pass</span>' : '<span style="color:#ef4444">fail</span>') +
-      '<br>Pixel: ' + (vr.pixelRatio || vr.pixelRatioAvg || '?') + ':1 ' + (vr.pixelPasses ? '<span style="color:#22c55e">pass</span>' : '<span style="color:#ef4444">fail</span>') +
+      '<br>Pixel P10: ' + (vr.pixelRatioP10 || '?') + ':1 ' + (vr.pixelPasses ? '<span style="color:#22c55e">pass</span>' : '<span style="color:#ef4444">fail</span>') +
+      '<br>Pixel worst: ' + (vr.pixelRatio || '?') + ':1' +
       (vr.pixelRatioBest && vr.pixelRatioBest !== vr.pixelRatio ? ' (best: ' + vr.pixelRatioBest + ':1)' : '') +
       (vr.isVariableBg ? '<br><span style="color:#eab308">Variable background (gradient/image)</span>' : '') +
       (vr.cssBgConfirmed === false ? '<br><span style="color:#f59e0b">CSS bg differs from actual pixels</span>' : '') +
