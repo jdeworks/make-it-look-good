@@ -143,7 +143,17 @@ window.MilgExtract = (function() {
       if (el.id) return '#' + el.id;
       var tag = el.tagName.toLowerCase();
       var cls = el.className && typeof el.className === 'string' ? '.' + el.className.trim().split(/\s+/).slice(0, 2).join('.') : '';
-      return tag + cls;
+      // Add nth-child to disambiguate siblings with same tag+class
+      var nth = '';
+      if (el.parentElement) {
+        var siblings = el.parentElement.children;
+        var sameCount = 0, pos = 0;
+        for (var i = 0; i < siblings.length; i++) {
+          if (siblings[i].tagName === el.tagName) { sameCount++; if (siblings[i] === el) pos = sameCount; }
+        }
+        if (sameCount > 1) nth = ':nth-of-type(' + pos + ')';
+      }
+      return tag + cls + nth;
     }
 
     var data = {

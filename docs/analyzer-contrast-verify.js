@@ -158,70 +158,85 @@ window.MilgContrastVerify = (function() {
       try { maskData = maskCanvas.ctx.getImageData(bx, by, bw, bh).data; } catch(e) {}
     }
 
-    // Symmetric grid: same step size in X and Y
-    // TODO: confirm density with user — currently 2px for testing, may revert to 3px
-    var step = 2;
-    var hSteps = Math.max(3, Math.min(300, Math.floor(bw / step)));
-    var vSteps = Math.max(3, Math.min(300, Math.floor(bh / step)));
+    // Grid: every 1px for precise testing (TODO: revert to 2-3px after confirmation)
+    var step = 1;
+    var hSteps = Math.max(3, Math.min(500, Math.floor(bw / step)));
+    var vSteps = Math.max(3, Math.min(500, Math.floor(bh / step)));
+    var EXCL_RADIUS = 5; // pixels within this radius of text are excluded (AA/shadow zone)
+    var FG_INNER_SQ = 3600; // 60^2 — CSS distance fallback
 
-    // Two-pass classification:
-    // Pass 1: classify each grid point as text or not (using mask or CSS distance)
-    // Pass 2: exclude BG pixels within 1 grid cell of any text pixel (AA fringe)
-    var FG_INNER_SQ = 3600;  // 60^2 (fallback)
-    var FG_OUTER_SQ = 14400; // 120^2 (fallback)
-    var grid = []; // [{ix, iy, r, g, b, isText, absX, absY}]
+    // Pass 1: classify each grid point using mask or CSS distance
+    // Store classification in a 2D array for efficient radius lookup
+    var isTextGrid = new Uint8Array(hSteps * vSteps); // 0=unknown, 1=text, 2=bg
+    var gridData = []; // parallel array: {r,g,b,absX,absY}
 
     for (var vy = 0; vy < vSteps; vy++) {
-      var iy = Math.round(bh * vy / (vSteps - 1 || 1));
-      if (iy >= bh) iy = bh - 1;
+      var iy = Math.min(Math.round(bh * vy / (vSteps - 1 || 1)), bh - 1);
       for (var hx = 0; hx < hSteps; hx++) {
-        var ix = Math.round(bw * hx / (hSteps - 1 || 1));
-        if (ix >= bw) ix = bw - 1;
+        var ix = Math.min(Math.round(bw * hx / (hSteps - 1 || 1)), bw - 1);
         var idx = (iy * bw + ix) * 4;
         var r = imgData[idx], g = imgData[idx + 1], b = imgData[idx + 2];
-        var isText;
+        var isText = false;
         if (maskData) {
           var mr = maskData[idx], mg = maskData[idx + 1], mb = maskData[idx + 2];
-          isText = mr > 180 && mg < 120 && mb > 180; // magenta (relaxed for AA)
+          // Pure magenta = text. Check magenta strength:
+          // High magenta (R>200, G<80, B>200) = definitely text
+          isText = mr > 200 && mg < 80 && mb > 200;
         } else {
           var dr = r - cssFg.r, dg = g - cssFg.g, db = b - cssFg.b;
           isText = dr * dr + dg * dg + db * db < FG_INNER_SQ;
         }
-        grid.push({ gx: hx, gy: vy, r: r, g: g, b: b, isText: isText, absX: bx + ix, absY: by + iy });
+        isTextGrid[vy * hSteps + hx] = isText ? 1 : 0;
+        gridData.push({ r: r, g: g, b: b, absX: bx + ix, absY: by + iy });
       }
     }
 
-    // Build set of text grid positions for adjacency check
-    var textSet = {};
-    grid.forEach(function(p) { if (p.isText) textSet[p.gx + ',' + p.gy] = true; });
-
-    // Classify: text pixels, and BG pixels NOT adjacent to text (skip AA fringe)
+    // Pass 2: for each non-text pixel, check distance to nearest text pixel
+    // and mask magenta percentage in the exclusion zone
     var fgPoints = [], bgPoints = [];
     var fgColors = [], bgColors = [];
-    grid.forEach(function(p) {
-      if (p.isText) {
+
+    for (var gi = 0; gi < gridData.length; gi++) {
+      var gx = gi % hSteps, gy = Math.floor(gi / hSteps);
+      var p = gridData[gi];
+
+      if (isTextGrid[gi] === 1) {
         fgColors.push({ r: p.r, g: p.g, b: p.b });
         fgPoints.push({ x: p.absX, y: p.absY });
-      } else {
-        // Check if any adjacent grid cell (8-connected) is text — if so, skip (AA fringe)
-        var adjText = false;
-        for (var dy = -1; dy <= 1 && !adjText; dy++) {
-          for (var dx = -1; dx <= 1 && !adjText; dx++) {
-            if (dx === 0 && dy === 0) continue;
-            if (textSet[(p.gx + dx) + ',' + (p.gy + dy)]) adjText = true;
-          }
-        }
-        if (!adjText) {
-          // Also check CSS distance fallback (skip ambiguous pixels even without mask)
-          if (!maskData) {
-            var dr2 = p.r - cssFg.r, dg2 = p.g - cssFg.g, db2 = p.b - cssFg.b;
-            if (dr2 * dr2 + dg2 * dg2 + db2 * db2 < FG_OUTER_SQ) return; // too close to fg
-          }
-          bgColors.push({ r: p.r, g: p.g, b: p.b });
-          bgPoints.push({ x: p.absX, y: p.absY });
+        continue;
+      }
+
+      // Check if within EXCL_RADIUS of any text pixel
+      var nearText = false;
+      var rSq = EXCL_RADIUS * EXCL_RADIUS;
+      for (var dy = -EXCL_RADIUS; dy <= EXCL_RADIUS && !nearText; dy++) {
+        var ny = gy + dy;
+        if (ny < 0 || ny >= vSteps) continue;
+        for (var dx = -EXCL_RADIUS; dx <= EXCL_RADIUS && !nearText; dx++) {
+          var nx = gx + dx;
+          if (nx < 0 || nx >= hSteps) continue;
+          if (dx * dx + dy * dy > rSq) continue; // circular radius
+          if (isTextGrid[ny * hSteps + nx] === 1) nearText = true;
         }
       }
-    });
+      if (nearText) continue; // AA/shadow zone — skip
+
+      // If mask available, also check magenta % at this pixel
+      if (maskData) {
+        var mIdx = ((Math.min(Math.round(bh * gy / (vSteps - 1 || 1)), bh - 1)) * bw + Math.min(Math.round(bw * gx / (hSteps - 1 || 1)), bw - 1)) * 4;
+        var mmr = maskData[mIdx], mmg = maskData[mIdx + 1], mmb = maskData[mIdx + 2];
+        // Pure white = background (R>250, G>250, B>250)
+        var isPureWhite = mmr > 250 && mmg > 250 && mmb > 250;
+        if (!isPureWhite) {
+          // Has some magenta tint — likely shadow/AA. Calculate magenta %
+          var magentaStrength = (mmr + mmb) / 2 - mmg; // high = more magenta
+          if (magentaStrength > 30) continue; // >15% magenta influence — skip
+        }
+      }
+
+      bgColors.push({ r: p.r, g: p.g, b: p.b });
+      bgPoints.push({ x: p.absX, y: p.absY });
+    }
 
     if (fgColors.length === 0 || bgColors.length === 0) return null;
 
