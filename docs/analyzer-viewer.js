@@ -701,25 +701,103 @@ window.MilgViewer = (function() {
 
     // Hover: show tooltip + worst-point red ring
     // Click: toggle sample dots (with overlap picker for nested elements)
+    // Hover highlight: on mouseenter activate mousemove tracker,
+    // find closest sample point to cursor, highlight it + its comparison pair
+    var _hoverCleanup = null;
     svg.querySelectorAll('rect[data-verify]').forEach(function(rect) {
       rect.addEventListener('mouseenter', function(e) {
         showVerifyTooltip(e, parseInt(rect.getAttribute('data-verify')));
-        // Worst-point red ring on hover
-        var wp = rect._worstPoint;
+        var sp = rect._samplePoints;
+        if (!sp || (!sp.fg.length && !sp.bg.length)) return;
         var secOff = rect._sectionOffset || 0;
-        if (wp) {
-          var ring = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-          ring.setAttribute('cx', wp.x); ring.setAttribute('cy', wp.y + secOff);
-          ring.setAttribute('r', _zoomLevel >= 1.5 ? '5' : '3');
-          ring.setAttribute('fill', 'none'); ring.setAttribute('stroke', '#ef4444');
-          ring.setAttribute('stroke-width', '2'); ring.setAttribute('class', 'milg-worst-ring');
-          ring.setAttribute('pointer-events', 'none');
-          svg.appendChild(ring);
+        var allFg = (sp.fg || []).map(function(p) { return { x: p.x, y: p.y + secOff }; });
+        var allBg = (sp.bg || []).map(function(p) { return { x: p.x, y: p.y + secOff }; });
+
+        // Create persistent highlight elements
+        var hlGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        hlGroup.setAttribute('class', 'milg-hover-highlight');
+        hlGroup.setAttribute('pointer-events', 'none');
+        svg.appendChild(hlGroup);
+
+        function onMove(ev) {
+          // Convert mouse to SVG coords
+          var sr = svg.getBoundingClientRect();
+          var vb = svg.viewBox.baseVal;
+          var mx = (ev.clientX - sr.left) * (vb.width / sr.width);
+          var my = (ev.clientY - sr.top) * (vb.height / sr.height);
+
+          // Find closest FG point
+          var closestFg = null, closestFgDist = Infinity;
+          allFg.forEach(function(p) {
+            var d = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
+            if (d < closestFgDist) { closestFgDist = d; closestFg = p; }
+          });
+          // Find closest BG point to that FG point (the actual comparison pair)
+          var closestBg = null, closestBgDist = Infinity;
+          if (closestFg) {
+            allBg.forEach(function(p) {
+              var d = (p.x - closestFg.x) * (p.x - closestFg.x) + (p.y - closestFg.y) * (p.y - closestFg.y);
+              if (d < closestBgDist) { closestBgDist = d; closestBg = p; }
+            });
+          }
+
+          // Also find closest BG to mouse (for when hovering background areas)
+          var closestBgMouse = null, closestBgMouseDist = Infinity;
+          allBg.forEach(function(p) {
+            var d = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
+            if (d < closestBgMouseDist) { closestBgMouseDist = d; closestBgMouse = p; }
+          });
+
+          // Clear previous highlights
+          while (hlGroup.firstChild) hlGroup.removeChild(hlGroup.firstChild);
+
+          var r = _zoomLevel >= 1.5 ? 4 : 2.5;
+          if (closestFg) {
+            // FG point — cyan ring
+            var fgRing = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            fgRing.setAttribute('cx', closestFg.x); fgRing.setAttribute('cy', closestFg.y);
+            fgRing.setAttribute('r', r); fgRing.setAttribute('fill', 'none');
+            fgRing.setAttribute('stroke', '#06b6d4'); fgRing.setAttribute('stroke-width', '2');
+            hlGroup.appendChild(fgRing);
+          }
+          if (closestBg) {
+            // BG point — orange ring
+            var bgRing = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            bgRing.setAttribute('cx', closestBg.x); bgRing.setAttribute('cy', closestBg.y);
+            bgRing.setAttribute('r', r); bgRing.setAttribute('fill', 'none');
+            bgRing.setAttribute('stroke', '#f97316'); bgRing.setAttribute('stroke-width', '2');
+            hlGroup.appendChild(bgRing);
+            // Line connecting fg → bg
+            if (closestFg) {
+              var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+              line.setAttribute('x1', closestFg.x); line.setAttribute('y1', closestFg.y);
+              line.setAttribute('x2', closestBg.x); line.setAttribute('y2', closestBg.y);
+              line.setAttribute('stroke', 'rgba(255,255,255,0.6)'); line.setAttribute('stroke-width', '1');
+              line.setAttribute('stroke-dasharray', '3 2');
+              hlGroup.appendChild(line);
+            }
+          }
+          // Also show worst point as small red dot always
+          var wp = rect._worstPoint;
+          if (wp) {
+            var wr = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            wr.setAttribute('cx', wp.x); wr.setAttribute('cy', wp.y + secOff);
+            wr.setAttribute('r', r * 0.8); wr.setAttribute('fill', '#ef4444');
+            wr.setAttribute('opacity', '0.6');
+            hlGroup.appendChild(wr);
+          }
         }
+
+        rect.addEventListener('mousemove', onMove);
+        _hoverCleanup = function() {
+          rect.removeEventListener('mousemove', onMove);
+          if (hlGroup.parentNode) hlGroup.parentNode.removeChild(hlGroup);
+          _hoverCleanup = null;
+        };
       });
       rect.addEventListener('mouseleave', function() {
         hideTooltip();
-        svg.querySelectorAll('.milg-worst-ring').forEach(function(r) { r.parentNode.removeChild(r); });
+        if (_hoverCleanup) _hoverCleanup();
       });
       rect.addEventListener('click', function(e) {
         e.preventDefault(); e.stopPropagation();
