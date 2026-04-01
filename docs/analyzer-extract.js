@@ -234,7 +234,24 @@ window.MilgExtract = (function() {
       _contrastStats.textNodes++;
       if (!node.textContent.trim()) { _contrastStats.empty++; continue; }
       var el = node.parentElement;
-      if (!el || !isVisible(el)) { _contrastStats.invisible++; continue; }
+      if (!el) { _contrastStats.invisible++; continue; }
+      // Check visibility including ancestors — an ancestor with opacity:0 hides children
+      var _elVisible = true;
+      var _checkNode = el;
+      while (_checkNode && _checkNode !== document.documentElement) {
+        var _cs = getComputedStyle(_checkNode);
+        if (_cs.display === 'none' || _cs.visibility === 'hidden') { _elVisible = false; break; }
+        if (_cs.opacity === '0') {
+          // Allow scroll-animated ancestors
+          var _hasTr = _cs.transition && _cs.transition.indexOf('opacity') !== -1;
+          var _hasAn = _cs.animationName && _cs.animationName !== 'none';
+          var _cls2 = (_checkNode.className && typeof _checkNode.className === 'string') ? _checkNode.className.toLowerCase() : '';
+          if (!_hasTr && !_hasAn && !/fade|reveal|animate|aos|slide|appear/.test(_cls2)) { _elVisible = false; break; }
+        }
+        _checkNode = _checkNode.parentElement;
+      }
+      var _rect = el.getBoundingClientRect();
+      if (!_elVisible || _rect.width <= 0 || _rect.height <= 0) { _contrastStats.invisible++; continue; }
       if (isDecorative(el)) { _contrastStats.decorative++; continue; }
       if (seenForContrast.has(el)) { _contrastStats.seen++; continue; }
       seenForContrast.add(el);

@@ -297,7 +297,14 @@ window.MilgContrastVerify = (function() {
       text: pair.text,
       sectionIdx: sectionIdx,
       sampleCount: { fg: fgColors.length, bg: bgColors.length },
-      samplePoints: { fg: fgPoints, bg: bgPoints },
+      samplePoints: {
+        fg: fgPoints.map(function(p, i) { return { x: p.x, y: p.y, r: fgColors[i].r, g: fgColors[i].g, b: fgColors[i].b }; }),
+        bg: bgPoints.map(function(p, i) {
+          var ratio = contrastRatio(fgColor, bgColors[i]);
+          return { x: p.x, y: p.y, r: bgColors[i].r, g: bgColors[i].g, b: bgColors[i].b, ratio: Math.round(ratio * 100) / 100 };
+        })
+      },
+      avgFg: fgColor,
       worstPoint: worstBgIdx >= 0 ? bgPoints[worstBgIdx] : null
     };
   }

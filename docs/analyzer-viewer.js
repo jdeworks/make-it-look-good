@@ -5,6 +5,10 @@
 window.MilgViewer = (function() {
   "use strict";
 
+  // Local contrast ratio for pixel debug clicks
+  function _lum(c) { var rs=c.r/255,gs=c.g/255,bs=c.b/255; var r=rs<=0.03928?rs/12.92:Math.pow((rs+0.055)/1.055,2.4); var g=gs<=0.03928?gs/12.92:Math.pow((gs+0.055)/1.055,2.4); var b=bs<=0.03928?bs/12.92:Math.pow((bs+0.055)/1.055,2.4); return 0.2126*r+0.7152*g+0.0722*b; }
+  function contrastRatio(c1,c2) { var l1=_lum(c1),l2=_lum(c2); return (Math.max(l1,l2)+0.05)/(Math.min(l1,l2)+0.05); }
+
   var _overlay = null;
   var _activeFilter = null;
   var _allFindings = [];
@@ -847,25 +851,64 @@ window.MilgViewer = (function() {
       var sp = rect._samplePoints; if (!sp) return;
       var secOff = rect._sectionOffset || 0;
       var dotR = _zoomLevel >= 2 ? '1.5' : '1';
-      (sp.fg || []).forEach(function(pt) {
+      var vi = parseInt(rect.getAttribute('data-verify'));
+      var vr = (_reportData && _reportData._contrastVerifyResults) ? _reportData._contrastVerifyResults[vi] : null;
+      var avgFg = vr && vr.avgFg ? vr.avgFg : null;
+
+      // FG dots — clickable for debug
+      (sp.fg || []).forEach(function(pt, idx) {
         var d = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         d.setAttribute('cx', pt.x); d.setAttribute('cy', pt.y + secOff);
         d.setAttribute('r', dotR); d.setAttribute('fill', '#06b6d4');
         d.setAttribute('stroke', '#fff'); d.setAttribute('stroke-width', '0.3');
-        d.setAttribute('opacity', '0.9'); d.setAttribute('pointer-events', 'none');
+        d.setAttribute('opacity', '0.9');
+        d.setAttribute('pointer-events', 'all'); d.style.cursor = 'crosshair';
         d.setAttribute('class', 'milg-sample-dot'); d.setAttribute('data-owner', owner);
+        d.addEventListener('click', function(ev) {
+          ev.stopPropagation();
+          // Find nearest BG pixel to this FG pixel
+          var nearestBg = null, nearestDist = Infinity;
+          (sp.bg || []).forEach(function(bp) {
+            var dd = (bp.x - pt.x) * (bp.x - pt.x) + (bp.y - pt.y) * (bp.y - pt.y);
+            if (dd < nearestDist) { nearestDist = dd; nearestBg = bp; }
+          });
+          var ratio = nearestBg ? contrastRatio({ r: pt.r, g: pt.g, b: pt.b }, { r: nearestBg.r, g: nearestBg.g, b: nearestBg.b }) : '?';
+          var avgFgRatio = avgFg && nearestBg ? contrastRatio(avgFg, { r: nearestBg.r, g: nearestBg.g, b: nearestBg.b }) : '?';
+          var info = 'FG pixel #' + idx + ':\n' +
+            '  Color: rgb(' + pt.r + ',' + pt.g + ',' + pt.b + ')\n' +
+            '  Position: (' + pt.x + ', ' + pt.y + ')\n' +
+            (avgFg ? '  Avg FG: rgb(' + avgFg.r + ',' + avgFg.g + ',' + avgFg.b + ')\n' : '') +
+            (nearestBg ? '\nNearest BG pixel:\n  Color: rgb(' + nearestBg.r + ',' + nearestBg.g + ',' + nearestBg.b + ')\n  Position: (' + nearestBg.x + ', ' + nearestBg.y + ')\n  Distance: ' + Math.round(Math.sqrt(nearestDist)) + 'px\n' : '\nNo BG pixel found\n') +
+            '\nContrast (this FG → nearest BG): ' + (typeof ratio === 'number' ? (Math.round(ratio * 100) / 100) : ratio) + ':1\n' +
+            'Contrast (avg FG → nearest BG): ' + (typeof avgFgRatio === 'number' ? (Math.round(avgFgRatio * 100) / 100) : avgFgRatio) + ':1\n' +
+            (nearestBg && nearestBg.ratio ? 'Contrast (avg FG → this BG): ' + nearestBg.ratio + ':1' : '');
+          console.log(info);
+          alert(info);
+        });
         svg.appendChild(d);
       });
-      (sp.bg || []).forEach(function(pt) {
+      // BG dots — clickable for debug
+      (sp.bg || []).forEach(function(pt, idx) {
         var d = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         d.setAttribute('cx', pt.x); d.setAttribute('cy', pt.y + secOff);
         d.setAttribute('r', dotR); d.setAttribute('fill', '#f97316');
         d.setAttribute('stroke', '#fff'); d.setAttribute('stroke-width', '0.3');
-        d.setAttribute('opacity', '0.8'); d.setAttribute('pointer-events', 'none');
+        d.setAttribute('opacity', '0.8');
+        d.setAttribute('pointer-events', 'all'); d.style.cursor = 'crosshair';
         d.setAttribute('class', 'milg-sample-dot'); d.setAttribute('data-owner', owner);
+        d.addEventListener('click', function(ev) {
+          ev.stopPropagation();
+          var info = 'BG pixel #' + idx + ':\n' +
+            '  Color: rgb(' + pt.r + ',' + pt.g + ',' + pt.b + ')\n' +
+            '  Position: (' + pt.x + ', ' + pt.y + ')\n' +
+            (pt.ratio ? '  Contrast vs avg FG: ' + pt.ratio + ':1\n' : '') +
+            (avgFg ? '  Avg FG: rgb(' + avgFg.r + ',' + avgFg.g + ',' + avgFg.b + ')' : '');
+          console.log(info);
+          alert(info);
+        });
         svg.appendChild(d);
       });
-      // Red ring on worst bg pixel
+      // Worst bg pixel — red ring
       var wp = rect._worstPoint;
       if (wp) {
         var ring = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
