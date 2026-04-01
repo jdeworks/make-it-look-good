@@ -298,7 +298,10 @@ window.MilgContrastVerify = (function() {
       bgPoints.push({ x: p.absX, y: p.absY });
     }
 
-    if (fgColors.length === 0 || bgColors.length === 0) return null;
+    if (fgColors.length === 0 || bgColors.length === 0) {
+      if (fgColors.length === 0 && pair.text) console.log('[verify] No FG pixels for "' + pair.text.substring(0, 30) + '" mask:' + !!(pair._maskBmp) + ' bw:' + bw + ' bh:' + bh);
+      return null;
+    }
 
     // Cluster-max FG pixels: replace each FG pixel's color with the one furthest
     // from the BG in its 3px neighborhood. This picks the "strongest" text color,
@@ -379,8 +382,10 @@ window.MilgContrastVerify = (function() {
 
     var cssNeeded = pair.needed || 4.5;
     var cssPasses = cssRatio >= cssNeeded;
-    var pixelPasses = pixelRatio >= cssNeeded;
-    var ratioDiff = Math.abs(pixelRatio - cssRatio);
+    // Use P10 (not worst) for pass/fail — a few AA edge pixels failing doesn't
+    // mean the text fails. P10 = "90% of text-bg pairs meet this ratio"
+    var pixelPasses = p10Ratio >= cssNeeded;
+    var ratioDiff = Math.abs(p10Ratio - cssRatio);
     var crossesBoundary = cssPasses !== pixelPasses;
 
     // Flag high BG variance as a signal for photo/gradient backgrounds
