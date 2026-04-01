@@ -6,6 +6,10 @@
 window.MilgContrastVerify = (function() {
   "use strict";
 
+  // Reusable mask canvas (avoids creating a new one per pair)
+  var _maskCanvas = document.createElement('canvas');
+  var _maskCtx = _maskCanvas.getContext('2d', { willReadFrequently: true });
+
   // --- Density presets ---
   // Each defines max grid dimensions for FG [hMax, vMax] and BG [hMax, vMax]
   // Actual count scales with box size (1 sample per 3px), clamped to these maxima
@@ -148,10 +152,9 @@ window.MilgContrastVerify = (function() {
     if (bw < 4 || bh < 4) return null;
 
     // Build text mask: render text in black on white at the bbox dimensions
-    var maskCanvas = document.createElement('canvas');
-    maskCanvas.width = bw;
-    maskCanvas.height = bh;
-    var maskCtx = maskCanvas.getContext('2d', { willReadFrequently: true });
+    _maskCanvas.width = bw;
+    _maskCanvas.height = bh;
+    var maskCtx = _maskCtx;
     maskCtx.fillStyle = '#fff';
     maskCtx.fillRect(0, 0, bw, bh);
 
