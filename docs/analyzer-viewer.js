@@ -607,17 +607,15 @@ window.MilgViewer = (function() {
             });
           }
         } else {
-          // Check for overlapping rects at this position
-          var clickX = parseFloat(rect.getAttribute('x'));
-          var clickY = parseFloat(rect.getAttribute('y'));
-          var clickW = parseFloat(rect.getAttribute('width'));
-          var clickH = parseFloat(rect.getAttribute('height'));
+          // Check for overlapping rects at click point (SVG coords)
+          var _svgR = svg.getBoundingClientRect();
+          var _cx = (e.clientX - _svgR.left) * (svg.viewBox.baseVal.width / _svgR.width);
+          var _cy = (e.clientY - _svgR.top) * (svg.viewBox.baseVal.height / _svgR.height);
           var overlapping = [];
           svg.querySelectorAll('rect[data-finding]').forEach(function(r) {
             var rx = parseFloat(r.getAttribute('x')), ry = parseFloat(r.getAttribute('y'));
             var rw = parseFloat(r.getAttribute('width')), rh = parseFloat(r.getAttribute('height'));
-            // Check if rects overlap (not just same position)
-            if (rx < clickX + clickW && rx + rw > clickX && ry < clickY + clickH && ry + rh > clickY) {
+            if (_cx >= rx && _cx <= rx + rw && _cy >= ry && _cy <= ry + rh) {
               var fi = parseInt(r.getAttribute('data-finding'));
               if (overlapping.indexOf(fi) === -1) overlapping.push(fi);
             }
@@ -725,14 +723,16 @@ window.MilgViewer = (function() {
       });
       rect.addEventListener('click', function(e) {
         e.preventDefault(); e.stopPropagation();
-        // Check overlapping verify rects
-        var rx = parseFloat(rect.getAttribute('x')), ry = parseFloat(rect.getAttribute('y'));
-        var rw = parseFloat(rect.getAttribute('width')), rh = parseFloat(rect.getAttribute('height'));
+        // Check overlapping verify rects — use click point (SVG coords) for precision
+        var svgRect = svg.getBoundingClientRect();
+        var clickSvgX = (e.clientX - svgRect.left) * (svg.viewBox.baseVal.width / svgRect.width);
+        var clickSvgY = (e.clientY - svgRect.top) * (svg.viewBox.baseVal.height / svgRect.height);
         var overlapping = [];
         svg.querySelectorAll('rect[data-verify]').forEach(function(r) {
           var ox = parseFloat(r.getAttribute('x')), oy = parseFloat(r.getAttribute('y'));
           var ow = parseFloat(r.getAttribute('width')), oh = parseFloat(r.getAttribute('height'));
-          if (ox < rx + rw && ox + ow > rx && oy < ry + rh && oy + oh > ry) overlapping.push(r);
+          // Click point must be inside this rect
+          if (clickSvgX >= ox && clickSvgX <= ox + ow && clickSvgY >= oy && clickSvgY <= oy + oh) overlapping.push(r);
         });
         if (overlapping.length > 1) {
           hideOverlapPicker();

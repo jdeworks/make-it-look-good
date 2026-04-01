@@ -158,17 +158,17 @@ window.MilgContrastVerify = (function() {
       try { maskData = maskCanvas.ctx.getImageData(bx, by, bw, bh).data; } catch(e) {}
     }
 
-    // Fixed density: 1 sample every 3px, clamped to reasonable bounds
-    var hSteps = Math.max(4, Math.min(200, Math.floor(bw / 3)));
-    var vSteps = Math.max(3, Math.min(100, Math.floor(bh / 3)));
+    // Symmetric grid: same step size in X and Y (every 3px at canvas scale)
+    var step = 3;
+    var hSteps = Math.max(3, Math.min(200, Math.floor(bw / step)));
+    var vSteps = Math.max(3, Math.min(200, Math.floor(bh / step)));
 
-    var fgPoints = [], bgPoints = [];
-    var fgColors = [], bgColors = [];
-    // CSS distance thresholds (fallback when no mask)
-    var FG_INNER_SQ = 3600;  // 60^2
-    var FG_OUTER_SQ = 14400; // 120^2
-    // Mask: magenta (#FF00FF) detection — R>200 && G<100 && B>200 = text
-    var usedMask = false;
+    // Two-pass classification:
+    // Pass 1: classify each grid point as text or not (using mask or CSS distance)
+    // Pass 2: exclude BG pixels within 1 grid cell of any text pixel (AA fringe)
+    var FG_INNER_SQ = 3600;  // 60^2 (fallback)
+    var FG_OUTER_SQ = 14400; // 120^2 (fallback)
+    var grid = []; // [{ix, iy, r, g, b, isText, absX, absY}]
 
     for (var vy = 0; vy < vSteps; vy++) {
       var iy = Math.round(bh * vy / (vSteps - 1 || 1));
@@ -177,34 +177,50 @@ window.MilgContrastVerify = (function() {
         var ix = Math.round(bw * hx / (hSteps - 1 || 1));
         if (ix >= bw) ix = bw - 1;
         var idx = (iy * bw + ix) * 4;
-
         var r = imgData[idx], g = imgData[idx + 1], b = imgData[idx + 2];
-        var absX = bx + ix, absY = by + iy;
-
-        var isText, isBg;
+        var isText;
         if (maskData) {
-          // Mask-based: magenta pixels = text, white = background
           var mr = maskData[idx], mg = maskData[idx + 1], mb = maskData[idx + 2];
-          isText = mr > 200 && mg < 100 && mb > 200; // magenta
-          isBg = mr > 230 && mg > 230 && mb > 230;   // white
-          usedMask = true;
+          isText = mr > 180 && mg < 120 && mb > 180; // magenta (relaxed for AA)
         } else {
-          // Fallback: CSS fg distance with anti-alias exclusion
           var dr = r - cssFg.r, dg = g - cssFg.g, db = b - cssFg.b;
-          var distSq = dr * dr + dg * dg + db * db;
-          isText = distSq < FG_INNER_SQ;
-          isBg = distSq > FG_OUTER_SQ;
+          isText = dr * dr + dg * dg + db * db < FG_INNER_SQ;
         }
-
-        if (isText) {
-          fgColors.push({ r: r, g: g, b: b });
-          fgPoints.push({ x: absX, y: absY });
-        } else if (isBg) {
-          bgColors.push({ r: r, g: g, b: b });
-          bgPoints.push({ x: absX, y: absY });
-        }
+        grid.push({ gx: hx, gy: vy, r: r, g: g, b: b, isText: isText, absX: bx + ix, absY: by + iy });
       }
     }
+
+    // Build set of text grid positions for adjacency check
+    var textSet = {};
+    grid.forEach(function(p) { if (p.isText) textSet[p.gx + ',' + p.gy] = true; });
+
+    // Classify: text pixels, and BG pixels NOT adjacent to text (skip AA fringe)
+    var fgPoints = [], bgPoints = [];
+    var fgColors = [], bgColors = [];
+    grid.forEach(function(p) {
+      if (p.isText) {
+        fgColors.push({ r: p.r, g: p.g, b: p.b });
+        fgPoints.push({ x: p.absX, y: p.absY });
+      } else {
+        // Check if any adjacent grid cell (8-connected) is text — if so, skip (AA fringe)
+        var adjText = false;
+        for (var dy = -1; dy <= 1 && !adjText; dy++) {
+          for (var dx = -1; dx <= 1 && !adjText; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            if (textSet[(p.gx + dx) + ',' + (p.gy + dy)]) adjText = true;
+          }
+        }
+        if (!adjText) {
+          // Also check CSS distance fallback (skip ambiguous pixels even without mask)
+          if (!maskData) {
+            var dr2 = p.r - cssFg.r, dg2 = p.g - cssFg.g, db2 = p.b - cssFg.b;
+            if (dr2 * dr2 + dg2 * dg2 + db2 * db2 < FG_OUTER_SQ) return; // too close to fg
+          }
+          bgColors.push({ r: p.r, g: p.g, b: p.b });
+          bgPoints.push({ x: p.absX, y: p.absY });
+        }
+      }
+    });
 
     if (fgColors.length === 0 || bgColors.length === 0) return null;
 
