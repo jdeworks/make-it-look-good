@@ -788,7 +788,7 @@
         if (jsEnabledCheck) jsEnabledCheck.checked = false;
         if (jsEnabledOptions) jsEnabledOptions.style.display = 'none';
         // Switch to snippet tab
-        var snippetTab = document.querySelector('[data-tab="snippet"]');
+        var snippetTab = document.querySelector('[data-tab="tabSnippet"]');
         if (snippetTab) snippetTab.click();
       });
     }
