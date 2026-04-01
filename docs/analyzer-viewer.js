@@ -716,7 +716,7 @@ window.MilgViewer = (function() {
         var sp = rect._samplePoints;
         if (!sp) return;
         var secOff = rect._sectionOffset || 0;
-        var dotR = _zoomLevel >= 1.5 ? '2.5' : '1.5';
+        var dotR = _zoomLevel >= 2 ? '1.5' : '1';
         var owner = rect.getAttribute('data-verify');
         (sp.fg || []).forEach(function(pt) {
           var dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
@@ -725,7 +725,7 @@ window.MilgViewer = (function() {
           dot.setAttribute('r', dotR);
           dot.setAttribute('fill', '#06b6d4');
           dot.setAttribute('stroke', '#fff');
-          dot.setAttribute('stroke-width', '0.5');
+          dot.setAttribute('stroke-width', '0.3');
           dot.setAttribute('opacity', '0.9');
           dot.setAttribute('pointer-events', 'none');
           dot.setAttribute('class', 'milg-sample-dot');
@@ -739,7 +739,7 @@ window.MilgViewer = (function() {
           dot.setAttribute('r', dotR);
           dot.setAttribute('fill', '#f97316');
           dot.setAttribute('stroke', '#fff');
-          dot.setAttribute('stroke-width', '0.5');
+          dot.setAttribute('stroke-width', '0.3');
           dot.setAttribute('opacity', '0.8');
           dot.setAttribute('pointer-events', 'none');
           dot.setAttribute('class', 'milg-sample-dot');

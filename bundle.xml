@@ -27332,7 +27332,7 @@ window.MilgExtract = (function() {
       }
       var elRect = el.getBoundingClientRect();
       if (ratio < 22) { // capture all pairs including AAA passes for pixel verification
-        var _cpEntry = { fg: rgbStr(fgBlended), bg: rgbStr(bg), ratio: Math.round(ratio * 100) / 100, needed: threshold, passes: ratio >= threshold, fontSize: Math.round(fontSize), fontWeight: fontWeight, isLarge: isLarge, text: node.textContent.trim().substring(0, 50), selector: cssSelector(el), filter: filterValue, backdropFilter: hasBackdropFilter, minBgAlpha: Math.round(minBgAlpha * 100) / 100, fontFamily: style.fontFamily, fontStyle: style.fontStyle, letterSpacing: style.letterSpacing, textTransform: style.textTransform, lineHeight: style.lineHeight, bbox: null };
+        var _cpEntry = { fg: rgbStr(fgBlended), bg: rgbStr(bg), ratio: Math.round(ratio * 100) / 100, needed: threshold, passes: ratio >= threshold, fontSize: Math.round(fontSize), fontWeight: fontWeight, isLarge: isLarge, text: (el.textContent || '').trim().substring(0, 200), selector: cssSelector(el), filter: filterValue, backdropFilter: hasBackdropFilter, minBgAlpha: Math.round(minBgAlpha * 100) / 100, fontFamily: style.fontFamily, fontStyle: style.fontStyle, letterSpacing: style.letterSpacing, textTransform: style.textTransform, lineHeight: style.lineHeight, bbox: null };
         trackBbox(el, _cpEntry, 'bbox');
         contrastPairs.push(_cpEntry);
       }
@@ -28145,10 +28145,12 @@ window.MilgContrastVerify = (function() {
     if (yInSection + canvasH > sec.height) canvasH = sec.height - yInSection;
     if (canvasX + canvasW > sec.width) canvasW = sec.width - canvasX;
 
-    // --- Text mask approach ---
-    // Render the text on a hidden canvas in black-on-white using the exact same
-    // font properties. Use the mask to classify screenshot pixels as text vs background.
-    // This avoids any color-distance guessing and works for all text colors.
+    // --- Dual classification: text mask + CSS fg distance ---
+    // 1. Render text on hidden canvas (black on white) for a mask
+    // 2. Also compute CSS fg distance for each pixel
+    // 3. Classify as "text" if EITHER the mask says text OR the pixel is close to CSS fg
+    //    Classify as "background" if BOTH the mask says background AND pixel is far from CSS fg
+    // This handles: mask misalignment, fonts not matching, multi-line text, nested elements
     var cssFg = parseRgb(pair.fg);
     if (!cssFg) return null;
 
@@ -28158,58 +28160,53 @@ window.MilgContrastVerify = (function() {
     var bh = Math.min(Math.round(canvasH), sec.height - by);
     if (bw < 4 || bh < 4) return null;
 
-    // Build text mask: render text in black on white at the bbox dimensions
-    _maskCanvas.width = bw;
-    _maskCanvas.height = bh;
-    var maskCtx = _maskCtx;
-    maskCtx.fillStyle = '#fff';
-    maskCtx.fillRect(0, 0, bw, bh);
-
-    // Set font properties to match the original text exactly
-    var fs = (pair.fontSize || 16) * scale;
-    var ff = pair.fontFamily || 'system-ui, sans-serif';
-    var fw = pair.fontWeight || 400;
-    var fst = pair.fontStyle || 'normal';
-    var lh = pair.lineHeight ? parseFloat(pair.lineHeight) * scale : fs * 1.4;
-    maskCtx.font = fst + ' ' + fw + ' ' + fs + 'px ' + ff;
-    maskCtx.fillStyle = '#000';
-    maskCtx.textBaseline = 'top';
-
-    // Apply text-transform
+    // Build text mask (best-effort — may not align perfectly)
+    var hasMask = false;
+    var maskData = null;
     var text = pair.text || '';
-    if (pair.textTransform === 'uppercase') text = text.toUpperCase();
-    else if (pair.textTransform === 'lowercase') text = text.toLowerCase();
-    else if (pair.textTransform === 'capitalize') text = text.replace(/\b\w/g, function(c) { return c.toUpperCase(); });
-
-    // Letter spacing
-    var ls = 0;
-    if (pair.letterSpacing && pair.letterSpacing !== 'normal') ls = parseFloat(pair.letterSpacing) * scale;
-
-    // Render text — approximate vertical centering (CSS centers text in the element)
-    var textY = Math.max(0, (bh - lh) / 2);
-    if (ls !== 0) {
-      // Draw char by char with letter spacing
-      var cx = 1;
-      for (var ci = 0; ci < text.length && cx < bw; ci++) {
-        maskCtx.fillText(text[ci], cx, textY);
-        cx += maskCtx.measureText(text[ci]).width + ls;
+    if (text.length > 2) {
+      _maskCanvas.width = bw;
+      _maskCanvas.height = bh;
+      var maskCtx = _maskCtx;
+      maskCtx.fillStyle = '#fff';
+      maskCtx.fillRect(0, 0, bw, bh);
+      var fs = (pair.fontSize || 16) * scale;
+      var ff = pair.fontFamily || 'system-ui, sans-serif';
+      var fw = pair.fontWeight || 400;
+      var fst = pair.fontStyle || 'normal';
+      var lh = pair.lineHeight ? parseFloat(pair.lineHeight) * scale : fs * 1.4;
+      maskCtx.font = fst + ' ' + fw + ' ' + fs + 'px ' + ff;
+      maskCtx.fillStyle = '#000';
+      maskCtx.textBaseline = 'top';
+      if (pair.textTransform === 'uppercase') text = text.toUpperCase();
+      else if (pair.textTransform === 'lowercase') text = text.toLowerCase();
+      else if (pair.textTransform === 'capitalize') text = text.replace(/\b\w/g, function(c) { return c.toUpperCase(); });
+      var ls = 0;
+      if (pair.letterSpacing && pair.letterSpacing !== 'normal') ls = parseFloat(pair.letterSpacing) * scale;
+      var textY = Math.max(0, (bh - lh) / 2);
+      if (ls !== 0) {
+        var cx = 1;
+        for (var ci = 0; ci < text.length && cx < bw; ci++) { maskCtx.fillText(text[ci], cx, textY); cx += maskCtx.measureText(text[ci]).width + ls; }
+      } else {
+        maskCtx.fillText(text, 1, textY);
       }
-    } else {
-      maskCtx.fillText(text, 1, textY);
+      maskData = maskCtx.getImageData(0, 0, bw, bh).data;
+      // Check if mask has any dark pixels (text was rendered)
+      var darkCount = 0;
+      for (var mi = 0; mi < maskData.length; mi += 16) { if (maskData[mi] < 128) darkCount++; }
+      hasMask = darkCount > 2;
     }
 
-    // Read mask pixels — dark pixels = text, light = background
-    var maskData = maskCtx.getImageData(0, 0, bw, bh).data;
     // Read screenshot pixels
     var imgData = sec.ctx.getImageData(bx, by, bw, bh).data;
 
-    // Sample grid (density-controlled)
     var hSteps = Math.max(6, Math.min(_density.bgH, Math.floor(bw / 2)));
     var vSteps = Math.max(4, Math.min(_density.bgV, Math.floor(bh / 2)));
 
     var fgPoints = [], bgPoints = [];
     var fgColors = [], bgColors = [];
-    var MASK_THRESHOLD = 180; // mask pixel below this = text, above = background
+    var FG_DIST_SQ = 10000; // 100^2 — distance from CSS fg to classify as "text-like"
+    var MASK_THRESH = 180;
 
     for (var vy = 0; vy < vSteps; vy++) {
       var iy = Math.round(bh * vy / (vSteps - 1 || 1));
@@ -28219,43 +28216,29 @@ window.MilgContrastVerify = (function() {
         if (ix >= bw) ix = bw - 1;
         var idx = (iy * bw + ix) * 4;
 
-        var maskR = maskData[idx]; // 0=black(text), 255=white(bg), in between=anti-aliased
         var r = imgData[idx], g = imgData[idx + 1], b = imgData[idx + 2];
         var absX = bx + ix, absY = by + iy;
 
-        if (maskR < MASK_THRESHOLD) {
-          // Text pixel (mask is dark here)
+        // CSS fg distance
+        var dr = r - cssFg.r, dg = g - cssFg.g, db = b - cssFg.b;
+        var fgDist = dr * dr + dg * dg + db * db;
+        var isFgByColor = fgDist < FG_DIST_SQ;
+
+        // Mask classification (if available)
+        var isFgByMask = hasMask ? (maskData[idx] < MASK_THRESH) : false;
+
+        // Dual: text if EITHER mask or color says so
+        if (isFgByMask || isFgByColor) {
           fgColors.push({ r: r, g: g, b: b });
           fgPoints.push({ x: absX, y: absY });
         } else {
-          // Background pixel (mask is light here)
           bgColors.push({ r: r, g: g, b: b });
           bgPoints.push({ x: absX, y: absY });
         }
       }
     }
 
-    // Need both text and background pixels
-    if (fgColors.length === 0 || bgColors.length === 0) {
-      // Mask didn't overlap well — fall back to CSS-distance classification
-      fgColors = []; bgColors = []; fgPoints = []; bgPoints = [];
-      var FG_DIST_SQ = 8100;
-      for (var vy2 = 0; vy2 < vSteps; vy2++) {
-        var iy2 = Math.round(bh * vy2 / (vSteps - 1 || 1));
-        if (iy2 >= bh) iy2 = bh - 1;
-        for (var hx2 = 0; hx2 < hSteps; hx2++) {
-          var ix2 = Math.round(bw * hx2 / (hSteps - 1 || 1));
-          if (ix2 >= bw) ix2 = bw - 1;
-          var idx2 = (iy2 * bw + ix2) * 4;
-          var r2 = imgData[idx2], g2 = imgData[idx2+1], b2 = imgData[idx2+2];
-          var dr = r2-cssFg.r, dg = g2-cssFg.g, db = b2-cssFg.b;
-          var absX2 = bx+ix2, absY2 = by+iy2;
-          if (dr*dr+dg*dg+db*db < FG_DIST_SQ) { fgColors.push({r:r2,g:g2,b:b2}); fgPoints.push({x:absX2,y:absY2}); }
-          else { bgColors.push({r:r2,g:g2,b:b2}); bgPoints.push({x:absX2,y:absY2}); }
-        }
-      }
-      if (fgColors.length === 0 || bgColors.length === 0) return null;
-    }
+    if (fgColors.length === 0 || bgColors.length === 0) return null;
 
     // Average FG color
     var fgColor = { r: 0, g: 0, b: 0 };
@@ -35168,7 +35151,7 @@ window.MilgViewer = (function() {
         var sp = rect._samplePoints;
         if (!sp) return;
         var secOff = rect._sectionOffset || 0;
-        var dotR = _zoomLevel >= 1.5 ? '2.5' : '1.5';
+        var dotR = _zoomLevel >= 2 ? '1.5' : '1';
         var owner = rect.getAttribute('data-verify');
         (sp.fg || []).forEach(function(pt) {
           var dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
@@ -35177,7 +35160,7 @@ window.MilgViewer = (function() {
           dot.setAttribute('r', dotR);
           dot.setAttribute('fill', '#06b6d4');
           dot.setAttribute('stroke', '#fff');
-          dot.setAttribute('stroke-width', '0.5');
+          dot.setAttribute('stroke-width', '0.3');
           dot.setAttribute('opacity', '0.9');
           dot.setAttribute('pointer-events', 'none');
           dot.setAttribute('class', 'milg-sample-dot');
@@ -35191,7 +35174,7 @@ window.MilgViewer = (function() {
           dot.setAttribute('r', dotR);
           dot.setAttribute('fill', '#f97316');
           dot.setAttribute('stroke', '#fff');
-          dot.setAttribute('stroke-width', '0.5');
+          dot.setAttribute('stroke-width', '0.3');
           dot.setAttribute('opacity', '0.8');
           dot.setAttribute('pointer-events', 'none');
           dot.setAttribute('class', 'milg-sample-dot');
