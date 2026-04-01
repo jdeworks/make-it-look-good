@@ -420,7 +420,7 @@
 
     // Collect all pairs up to AAA+buffer (7.5) so profile switching works
     var elRect = el.getBoundingClientRect();
-    if (ratio < 7.5) {
+    if (ratio < 22) { // capture all pairs including AAA passes for pixel verification
       var _cpEntry = {
         fg: rgbStr(fgBlended), bg: rgbStr(bg),
         ratio: Math.round(ratio * 100) / 100,
@@ -458,7 +458,7 @@
 
   // Sort contrast pairs by severity, keep worst 50
   contrastPairs.sort(function(a, b) { return a.ratio - b.ratio; });
-  data.colors.contrastPairs = contrastPairs.slice(0, 50);
+  data.colors.contrastPairs = contrastPairs; // keep all pairs for pixel verification
 
   // Walk all elements for sizing, spacing, colors
   var paddingMap = {};

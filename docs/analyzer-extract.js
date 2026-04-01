@@ -246,7 +246,7 @@ window.MilgExtract = (function() {
         filterAncestor = filterAncestor.parentElement;
       }
       var elRect = el.getBoundingClientRect();
-      if (ratio < 7.5) {
+      if (ratio < 22) { // capture all pairs including AAA passes for pixel verification
         var _cpEntry = { fg: rgbStr(fgBlended), bg: rgbStr(bg), ratio: Math.round(ratio * 100) / 100, needed: threshold, passes: ratio >= threshold, fontSize: Math.round(fontSize), fontWeight: fontWeight, isLarge: isLarge, text: node.textContent.trim().substring(0, 50), selector: cssSelector(el), filter: filterValue, backdropFilter: hasBackdropFilter, minBgAlpha: Math.round(minBgAlpha * 100) / 100, fontFamily: style.fontFamily, fontStyle: style.fontStyle, letterSpacing: style.letterSpacing, textTransform: style.textTransform, lineHeight: style.lineHeight, bbox: null };
         trackBbox(el, _cpEntry, 'bbox');
         contrastPairs.push(_cpEntry);
@@ -260,7 +260,7 @@ window.MilgExtract = (function() {
       }
     }
     contrastPairs.sort(function(a, b) { return a.ratio - b.ratio; });
-    data.colors.contrastPairs = contrastPairs.slice(0, 50);
+    data.colors.contrastPairs = contrastPairs; // keep all pairs for pixel verification
 
     // Area-weighted darkness tracking for accurate page brightness measurement
     var darknessAreas = []; // { darkness: 0-1, area: px² }
