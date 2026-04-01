@@ -47,19 +47,23 @@
     setTimeout(function() { t.classList.remove('show'); }, 5000);
   }
 
+  var _progressPct = 0;
   function showProgress(pct, label) {
     var el = document.getElementById('analysisProgress');
     var fill = document.getElementById('progressFill');
     var lbl = document.getElementById('progressLabel');
     if (!el) return;
     el.style.display = 'block';
-    fill.style.width = Math.min(pct, 100) + '%';
+    // Never go backwards — only increase
+    if (pct > _progressPct) _progressPct = pct;
+    fill.style.width = Math.min(_progressPct, 100) + '%';
     if (label) lbl.textContent = label;
   }
 
   function hideProgress() {
     var el = document.getElementById('analysisProgress');
     if (el) el.style.display = 'none';
+    _progressPct = 0; // reset for next analysis
   }
 
   function getSelectedViewport() {

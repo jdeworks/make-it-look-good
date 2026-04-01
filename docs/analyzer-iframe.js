@@ -271,11 +271,10 @@ window.MilgIframe = (function() {
         if (urlStatus) { urlStatus.style.display = 'block'; urlStatus.textContent = e.data.label; }
         // Map labels to progress percentages
         var pctMap = {
-          'Pre-scrolling page to load content...': 45,
-          'Waiting for animations to settle...': 55,
-          'Capturing screenshot...': 70,
-          'Capturing text mask...': 85,
-          'Capturing text mask for pixel verification...': 85
+          'Pre-scrolling page to load content...': 30,
+          'Waiting for animations to settle...': 40,
+          'Capturing screenshot...': 50,
+          'Capturing text mask...': 80
         };
         var pct = pctMap[e.data.label];
         if (pct && typeof _showProgress === 'function') _showProgress(pct, e.data.label);
