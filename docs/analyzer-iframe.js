@@ -145,6 +145,8 @@ window.MilgIframe = (function() {
             'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:15000}).then(function(fc){' +
               'console.log("[iframe-ss] Screenshot: "+fc.width+"x"+fc.height);' +
               'var fullUri;try{fullUri=fc.toDataURL("image/webp",' + ss.quality + ')}catch(e){fullUri=""}' +
+              // Store screenshot canvas for mask comparison (text detection uses diff not absolute threshold)
+              'var _ssCtx=fc.getContext("2d",{willReadFrequently:true});' +
               // Update send helper with actual canvas dimensions
               'var _cw=fc.width,_ch=fc.height;' +
               'function _sendFinal(maskUri){' +
@@ -176,10 +178,13 @@ window.MilgIframe = (function() {
               // Phase A: Kill ALL transitions on every element BEFORE any color changes
               'document.querySelectorAll("*").forEach(function(el){el.style.setProperty("transition-duration","0s","important");el.style.setProperty("transition","none","important")});' +
               'void document.body.offsetHeight;' +
-              // Phase B: Global style — everything white, all visible, no transitions
+              // Phase B: Global style — hide all text, keep backgrounds untouched
+              // IMPORTANT: Do NOT override background-color — it breaks modern-screenshot's
+              // domToCanvas for certain elements (SVG foreignObject rendering bug).
+              // Instead, we compare mask vs screenshot to detect text pixels.
               'var _maskStyle=document.createElement("style");' +
               '_maskStyle.setAttribute("data-milg-mask","1");' +
-              '_maskStyle.textContent="*,*::before,*::after{color:#fff !important;background-color:#fff !important;background-image:none !important;background:white !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;-webkit-text-fill-color:#fff !important;opacity:1 !important;transition:none !important;animation:none !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}";' +
+              '_maskStyle.textContent="*,*::before,*::after{color:transparent !important;-webkit-text-fill-color:transparent !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;transition:none !important;animation:none !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}";' +
               'document.head.appendChild(_maskStyle);void document.body.offsetHeight;' +
               // Phase C: Collect pair elements and build overlap layers
               'var _refs=window.__milgBboxRefs||[];' +
@@ -235,9 +240,22 @@ window.MilgIframe = (function() {
                     'var bh=Math.min(Math.round(pe.bbox.height*_sc),mc.height-by);' +
                     'if(bw<2||bh<2)return;' +
                     'try{var px=mCtx.getImageData(bx,by,bw,bh).data;' +
+                      // Read same region from screenshot for diff-based text detection
+                      // (mask keeps original backgrounds — we detect text by what got DARKER)
+                      'var spx=null;try{spx=_ssCtx.getImageData(bx,by,bw,bh).data}catch(e){}' +
                       'var bmp=new Uint8Array(bw*bh);' +
                       'for(var y=0;y<bh;y++){for(var x=0;x<bw;x++){' +
-                        'var i=(y*bw+x)*4;if((px[i]+px[i+1]+px[i+2])/3<240)bmp[y*bw+x]=1}}' +
+                        'var i=(y*bw+x)*4;' +
+                        'var mBright=(px[i]+px[i+1]+px[i+2])/3;' +
+                        'if(spx){' +
+                          // Diff mode: pixel got significantly darker than screenshot = text
+                          'var sBright=(spx[i]+spx[i+1]+spx[i+2])/3;' +
+                          'if(sBright-mBright>30)bmp[y*bw+x]=1' +
+                        '}else{' +
+                          // Fallback: absolute threshold (old behavior)
+                          'if(mBright<240)bmp[y*bw+x]=1' +
+                        '}' +
+                      '}}' +
                       'var _dk=0;for(var _b=0;_b<bmp.length;_b++)if(bmp[_b])_dk++;' +
                       // Fallback: if domToCanvas failed to render text, use canvas.fillText
                       'if(_dk===0&&bw>3&&pe.pair.text){' +
@@ -273,13 +291,13 @@ window.MilgIframe = (function() {
                     '}catch(e){}' +
                   '});' +
                   'if(_fillTextFallbacks>0)console.log("[iframe-ss] Layer "+_li+": "+_fillTextFallbacks+" elements used fillText fallback mask");' +
-                  // Reset layer elements to white
+                  // Reset layer elements to transparent (mask global style takes over)
                   'layer.forEach(function(pe){' +
-                    'pe.el.style.setProperty("color","#fff","important");' +
-                    'pe.el.style.setProperty("-webkit-text-fill-color","#fff","important");' +
+                    'pe.el.style.removeProperty("color");' +
+                    'pe.el.style.removeProperty("-webkit-text-fill-color");' +
                     'pe.el.querySelectorAll("*").forEach(function(ch){' +
-                      'ch.style.setProperty("color","#fff","important");' +
-                      'ch.style.setProperty("-webkit-text-fill-color","#fff","important")})' +
+                      'ch.style.removeProperty("color");' +
+                      'ch.style.removeProperty("-webkit-text-fill-color")})' +
                   '});' +
                   'setTimeout(_nextLayer,0)' +
                 '}).catch(function(e){if(_layerDone)return;_layerDone=true;clearTimeout(_layerTimer);console.warn("[iframe-ss] Layer "+_li+" failed:",e);setTimeout(_nextLayer,0)})' +
