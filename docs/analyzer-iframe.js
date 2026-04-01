@@ -169,7 +169,7 @@ window.MilgIframe = (function() {
               // Global style: everything white, all visible
               'var _maskStyle=document.createElement("style");' +
               '_maskStyle.setAttribute("data-milg-mask","1");' +
-              '_maskStyle.textContent="*,*::before,*::after{color:#fff !important;background-color:#fff !important;background-image:none !important;background:white !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;-webkit-text-fill-color:#fff !important;opacity:1 !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}";' +
+              '_maskStyle.textContent="*,*::before,*::after{color:#fff !important;background-color:#fff !important;background-image:none !important;background:white !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;-webkit-text-fill-color:#fff !important;opacity:1 !important;transition:none !important;animation:none !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}";' +
               'document.head.appendChild(_maskStyle);void document.body.offsetHeight;' +
               // Collect pair elements
               'var _refs=window.__milgBboxRefs||[];' +
@@ -210,7 +210,7 @@ window.MilgIframe = (function() {
                 // rule for the mask-active class.
                 'if(!document.getElementById("milg-mask-active")){' +
                   'var _ms2=document.createElement("style");_ms2.id="milg-mask-active";' +
-                  '_ms2.textContent="[data-milg-active],[data-milg-active] *{color:#000 !important;-webkit-text-fill-color:#000 !important;}";' +
+                  '_ms2.textContent="[data-milg-active],[data-milg-active] *{color:#000 !important;-webkit-text-fill-color:#000 !important;transition:none !important;}";' +
                   'document.head.appendChild(_ms2)' +
                 '}' +
                 'layer.forEach(function(pe){' +
