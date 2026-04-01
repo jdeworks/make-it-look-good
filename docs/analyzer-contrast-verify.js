@@ -106,7 +106,7 @@ window.MilgContrastVerify = (function() {
   // Photos, gradients, and dashed patterns need many sample points.
   // FG: horizontal sweep across text baseline band, take darkest (most likely text)
   // BG: grid across bbox excluding text band, find worst-case contrast
-  function verifyPair(pair, sectionCanvases, meta, maskCanvas, pairIndex) {
+  function verifyPair(pair, sectionCanvases, meta, maskCanvas) {
     if (!pair.bbox || !meta) return null;
 
     var scale = meta.scale;
@@ -177,29 +177,21 @@ window.MilgContrastVerify = (function() {
         var ix = Math.min(Math.round(bw * hx / (hSteps - 1 || 1)), bw - 1);
         var idx = (iy * bw + ix) * 4;
         var r = imgData[idx], g = imgData[idx + 1], b = imgData[idx + 2];
-        // Classify: must be text AND match this pair's fg color
-        // (mask catches ALL text in bbox including nested spans with different colors)
+        // Classify text vs background using mask + CSS fg color
         var isText = false;
         if (maskData) {
-          // Per-element mask: each element has a unique color rgb(R,G,0)
-          // where pairIndex = R*256+G. White (255,255,255) = background.
+          // Black-on-white mask: dark = text position, light = background
           var mr = maskData[idx], mg = maskData[idx + 1], mb = maskData[idx + 2];
-          var isWhite = mr > 220 && mg > 220 && mb > 220;
-          // Encoded colors have B≈50 (offset). Detect by checking B channel range.
-          // AA blending with white pushes values toward (152,152+,152) range — still decodable
-          if (!isWhite && mb > 20 && mb < 120) {
-            // Decode: pairIndex = (R-50)*200 + (G-50)
-            var decodedR = mr - 50, decodedG = mg - 50;
-            if (decodedR >= 0 && decodedG >= 0) {
-              var maskIdx = decodedR * 200 + decodedG;
-              // Allow some AA tolerance: decoded index within ±1 of target
-              isText = (maskIdx >= pairIndex - 1 && maskIdx <= pairIndex + 1);
-            }
+          var maskBright = (mr + mg + mb) / 3;
+          if (maskBright < 80) {
+            // Mask says text here — verify it's THIS pair's text color (not another span's)
+            var dr = r - cssFg.r, dg = g - cssFg.g, db = b - cssFg.b;
+            isText = dr * dr + dg * dg + db * db < FG_OUTER_SQ;
           }
-          // else: AA fringe or other — skip (isText stays false)
         } else {
-          var dr = r - cssFg.r, dg = g - cssFg.g, db = b - cssFg.b;
-          isText = dr * dr + dg * dg + db * db < FG_INNER_SQ;
+          // No mask — pure CSS distance fallback
+          var dr2 = r - cssFg.r, dg2 = g - cssFg.g, db2 = b - cssFg.b;
+          isText = dr2 * dr2 + dg2 * dg2 + db2 * db2 < FG_INNER_SQ;
         }
         isTextGrid[vy * hSteps + hx] = isText ? 1 : 0;
         gridData.push({ r: r, g: g, b: b, absX: bx + ix, absY: by + iy });
@@ -422,15 +414,11 @@ window.MilgContrastVerify = (function() {
       var _vStats = { total: pairs.length, verified: 0, noFgBg: 0, tooSmall: 0, outOfBounds: 0 };
       // Find pair index in the full contrastPairs array (mask uses this index for encoding)
       var allPairs = (raw.colors && raw.colors.contrastPairs) || [];
-      var _idxMiss = 0;
-      pairs.forEach(function(pair, pi) {
-        var pairIdx = allPairs.indexOf(pair);
-        if (pairIdx < 0) { _idxMiss++; pairIdx = pi; } // fallback: use position in filtered array
-        var result = verifyPair(pair, sectionCanvases, meta, maskCanvasData, pairIdx);
+      pairs.forEach(function(pair) {
+        var result = verifyPair(pair, sectionCanvases, meta, maskCanvasData);
         if (result) { results.push(result); _vStats.verified++; }
         else _vStats.noFgBg++;
       });
-      if (_idxMiss > 0) console.warn('[verify] ' + _idxMiss + ' pairs had indexOf=-1 (using position fallback)');
       console.log('[verify] Stats:', JSON.stringify(_vStats), 'mask:', !!maskCanvasData, 'totalPairs:', allPairs.length, 'withBbox:', pairs.length);
       results.sort(function(a, b) {
         if (a.crossesBoundary !== b.crossesBoundary) return a.crossesBoundary ? -1 : 1;

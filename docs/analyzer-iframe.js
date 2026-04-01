@@ -160,46 +160,15 @@ window.MilgIframe = (function() {
                   'updatedData:updatedData' +
                 '},"*")' +
               '}' +
-              // Step 2: Per-element text mask (LAST step — modifies DOM then captures)
-              // Each contrast pair element gets a unique color encoded as rgb(R,G,0)
-              // where pairIndex = R*256+G. White = background. Non-white non-indexed = skip.
+              // Step 2: Text mask — black text on white background
+              // Simple and robust: all text black, everything else white.
+              // Force all elements visible (opacity:1) so hidden text appears in mask.
               '_prog("Capturing text mask...");' +
-              'console.log("[iframe-ss] Step 2/2: Building per-element mask...");' +
-              // First: set everything to white text on white bg (invisible)
+              'console.log("[iframe-ss] Step 2/2: Capturing text mask...");' +
               'var _maskStyle=document.createElement("style");' +
               '_maskStyle.setAttribute("data-milg-mask","1");' +
-              '_maskStyle.textContent="*,*::before,*::after{color:#fff !important;background-color:#fff !important;background-image:none !important;background:white !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;-webkit-text-fill-color:#fff !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}";' +
+              '_maskStyle.textContent="*,*::before,*::after{color:#000 !important;background-color:#fff !important;background-image:none !important;background:white !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;-webkit-text-fill-color:#000 !important;opacity:1 !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}";' +
               'document.head.appendChild(_maskStyle);' +
-              // Then: set each contrast pair element to a unique encoded color
-              'var _refs=window.__milgBboxRefs||[];' +
-              'var _pairs=(window.__milgData&&window.__milgData.colors&&window.__milgData.colors.contrastPairs)||[];' +
-              'var _pairEls=[];' + // [{el, pairIdx}]
-              '_refs.forEach(function(ref){' +
-                'if(!ref.el||!ref.obj||ref.obj.ratio===undefined)return;' + // only contrast pair refs
-                'var idx=_pairs.indexOf(ref.obj);' +
-                'if(idx<0)return;' +
-                '_pairEls.push({el:ref.el,idx:idx})' +
-              '});' +
-              'console.log("[iframe-ss] Assigning "+_pairEls.length+" unique mask colors");' +
-              '_pairEls.forEach(function(pe){' +
-                // Encode as rgb(R+50, G+50, 50) — offset by 50 to stay far from white(255) and black(0)
-                // AA blending with white: (50+255)/2=152 — still clearly not white
-                'var r=50+Math.floor(pe.idx/200),g=50+(pe.idx%200);' +
-                'var c="rgb("+r+","+g+",50)";' +
-                'pe.el.style.setProperty("color",c,"important");' +
-                'pe.el.style.setProperty("-webkit-text-fill-color",c,"important");' +
-                // Force full visibility on element + ancestors so encoded color renders cleanly
-                'pe.el.style.setProperty("opacity","1","important");' +
-                'pe.el.style.setProperty("visibility","visible","important");' +
-                'var _anc=pe.el.parentElement;' +
-                'while(_anc&&_anc!==document.documentElement){' +
-                  'var _as=getComputedStyle(_anc);' +
-                  'if(_as.opacity!=="1")_anc.style.setProperty("opacity","1","important");' +
-                  'if(_as.visibility==="hidden")_anc.style.setProperty("visibility","visible","important");' +
-                  'if(_as.display==="none")_anc.style.setProperty("display","block","important");' +
-                  '_anc=_anc.parentElement' +
-                '}' +
-              '});' +
               'void document.body.offsetHeight;' +
               // Safety timeout: if mask takes >8s, send without it
               'var _maskDone=false;' +

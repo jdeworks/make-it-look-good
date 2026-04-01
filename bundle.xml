@@ -33350,46 +33350,15 @@ window.MilgIframe = (function() {
                   'updatedData:updatedData' +
                 '},"*")' +
               '}' +
-              // Step 2: Per-element text mask (LAST step — modifies DOM then captures)
-              // Each contrast pair element gets a unique color encoded as rgb(R,G,0)
-              // where pairIndex = R*256+G. White = background. Non-white non-indexed = skip.
+              // Step 2: Text mask — black text on white background
+              // Simple and robust: all text black, everything else white.
+              // Force all elements visible (opacity:1) so hidden text appears in mask.
               '_prog("Capturing text mask...");' +
-              'console.log("[iframe-ss] Step 2/2: Building per-element mask...");' +
-              // First: set everything to white text on white bg (invisible)
+              'console.log("[iframe-ss] Step 2/2: Capturing text mask...");' +
               'var _maskStyle=document.createElement("style");' +
               '_maskStyle.setAttribute("data-milg-mask","1");' +
-              '_maskStyle.textContent="*,*::before,*::after{color:#fff !important;background-color:#fff !important;background-image:none !important;background:white !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;-webkit-text-fill-color:#fff !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}";' +
+              '_maskStyle.textContent="*,*::before,*::after{color:#000 !important;background-color:#fff !important;background-image:none !important;background:white !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;-webkit-text-fill-color:#000 !important;opacity:1 !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}";' +
               'document.head.appendChild(_maskStyle);' +
-              // Then: set each contrast pair element to a unique encoded color
-              'var _refs=window.__milgBboxRefs||[];' +
-              'var _pairs=(window.__milgData&&window.__milgData.colors&&window.__milgData.colors.contrastPairs)||[];' +
-              'var _pairEls=[];' + // [{el, pairIdx}]
-              '_refs.forEach(function(ref){' +
-                'if(!ref.el||!ref.obj||ref.obj.ratio===undefined)return;' + // only contrast pair refs
-                'var idx=_pairs.indexOf(ref.obj);' +
-                'if(idx<0)return;' +
-                '_pairEls.push({el:ref.el,idx:idx})' +
-              '});' +
-              'console.log("[iframe-ss] Assigning "+_pairEls.length+" unique mask colors");' +
-              '_pairEls.forEach(function(pe){' +
-                // Encode as rgb(R+50, G+50, 50) — offset by 50 to stay far from white(255) and black(0)
-                // AA blending with white: (50+255)/2=152 — still clearly not white
-                'var r=50+Math.floor(pe.idx/200),g=50+(pe.idx%200);' +
-                'var c="rgb("+r+","+g+",50)";' +
-                'pe.el.style.setProperty("color",c,"important");' +
-                'pe.el.style.setProperty("-webkit-text-fill-color",c,"important");' +
-                // Force full visibility on element + ancestors so encoded color renders cleanly
-                'pe.el.style.setProperty("opacity","1","important");' +
-                'pe.el.style.setProperty("visibility","visible","important");' +
-                'var _anc=pe.el.parentElement;' +
-                'while(_anc&&_anc!==document.documentElement){' +
-                  'var _as=getComputedStyle(_anc);' +
-                  'if(_as.opacity!=="1")_anc.style.setProperty("opacity","1","important");' +
-                  'if(_as.visibility==="hidden")_anc.style.setProperty("visibility","visible","important");' +
-                  'if(_as.display==="none")_anc.style.setProperty("display","block","important");' +
-                  '_anc=_anc.parentElement' +
-                '}' +
-              '});' +
               'void document.body.offsetHeight;' +
               // Safety timeout: if mask takes >8s, send without it
               'var _maskDone=false;' +
@@ -33692,7 +33661,7 @@ window.MilgIframe = (function() {
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v29.2</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v30</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -34192,7 +34161,7 @@ window.MilgContrastVerify = (function() {
   // Photos, gradients, and dashed patterns need many sample points.
   // FG: horizontal sweep across text baseline band, take darkest (most likely text)
   // BG: grid across bbox excluding text band, find worst-case contrast
-  function verifyPair(pair, sectionCanvases, meta, maskCanvas, pairIndex) {
+  function verifyPair(pair, sectionCanvases, meta, maskCanvas) {
     if (!pair.bbox || !meta) return null;
 
     var scale = meta.scale;
@@ -34263,29 +34232,21 @@ window.MilgContrastVerify = (function() {
         var ix = Math.min(Math.round(bw * hx / (hSteps - 1 || 1)), bw - 1);
         var idx = (iy * bw + ix) * 4;
         var r = imgData[idx], g = imgData[idx + 1], b = imgData[idx + 2];
-        // Classify: must be text AND match this pair's fg color
-        // (mask catches ALL text in bbox including nested spans with different colors)
+        // Classify text vs background using mask + CSS fg color
         var isText = false;
         if (maskData) {
-          // Per-element mask: each element has a unique color rgb(R,G,0)
-          // where pairIndex = R*256+G. White (255,255,255) = background.
+          // Black-on-white mask: dark = text position, light = background
           var mr = maskData[idx], mg = maskData[idx + 1], mb = maskData[idx + 2];
-          var isWhite = mr > 220 && mg > 220 && mb > 220;
-          // Encoded colors have B≈50 (offset). Detect by checking B channel range.
-          // AA blending with white pushes values toward (152,152+,152) range — still decodable
-          if (!isWhite && mb > 20 && mb < 120) {
-            // Decode: pairIndex = (R-50)*200 + (G-50)
-            var decodedR = mr - 50, decodedG = mg - 50;
-            if (decodedR >= 0 && decodedG >= 0) {
-              var maskIdx = decodedR * 200 + decodedG;
-              // Allow some AA tolerance: decoded index within ±1 of target
-              isText = (maskIdx >= pairIndex - 1 && maskIdx <= pairIndex + 1);
-            }
+          var maskBright = (mr + mg + mb) / 3;
+          if (maskBright < 80) {
+            // Mask says text here — verify it's THIS pair's text color (not another span's)
+            var dr = r - cssFg.r, dg = g - cssFg.g, db = b - cssFg.b;
+            isText = dr * dr + dg * dg + db * db < FG_OUTER_SQ;
           }
-          // else: AA fringe or other — skip (isText stays false)
         } else {
-          var dr = r - cssFg.r, dg = g - cssFg.g, db = b - cssFg.b;
-          isText = dr * dr + dg * dg + db * db < FG_INNER_SQ;
+          // No mask — pure CSS distance fallback
+          var dr2 = r - cssFg.r, dg2 = g - cssFg.g, db2 = b - cssFg.b;
+          isText = dr2 * dr2 + dg2 * dg2 + db2 * db2 < FG_INNER_SQ;
         }
         isTextGrid[vy * hSteps + hx] = isText ? 1 : 0;
         gridData.push({ r: r, g: g, b: b, absX: bx + ix, absY: by + iy });
@@ -34508,15 +34469,11 @@ window.MilgContrastVerify = (function() {
       var _vStats = { total: pairs.length, verified: 0, noFgBg: 0, tooSmall: 0, outOfBounds: 0 };
       // Find pair index in the full contrastPairs array (mask uses this index for encoding)
       var allPairs = (raw.colors && raw.colors.contrastPairs) || [];
-      var _idxMiss = 0;
-      pairs.forEach(function(pair, pi) {
-        var pairIdx = allPairs.indexOf(pair);
-        if (pairIdx < 0) { _idxMiss++; pairIdx = pi; } // fallback: use position in filtered array
-        var result = verifyPair(pair, sectionCanvases, meta, maskCanvasData, pairIdx);
+      pairs.forEach(function(pair) {
+        var result = verifyPair(pair, sectionCanvases, meta, maskCanvasData);
         if (result) { results.push(result); _vStats.verified++; }
         else _vStats.noFgBg++;
       });
-      if (_idxMiss > 0) console.warn('[verify] ' + _idxMiss + ' pairs had indexOf=-1 (using position fallback)');
       console.log('[verify] Stats:', JSON.stringify(_vStats), 'mask:', !!maskCanvasData, 'totalPairs:', allPairs.length, 'withBbox:', pairs.length);
       results.sort(function(a, b) {
         if (a.crossesBoundary !== b.crossesBoundary) return a.crossesBoundary ? -1 : 1;
