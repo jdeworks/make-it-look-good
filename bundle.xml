@@ -20650,6 +20650,269 @@ Sources: [research/sources.md](research/sources.md)
 })();
 </file>
 
+<file path="docs/scoring/performance.js">
+// Scoring Module: Performance
+// Weight: 5%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scorePerformance(data) {
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+  var perf = data.performance || {};
+
+  // Font loading
+  var fontIssues = perf.fontLoading || [];
+  if (fontIssues.length > 0) {
+    checks++;
+    findings.push({
+      severity: 'warning',
+      title: fontIssues.length + ' web font(s) without font-display: swap',
+      detail: 'Fonts with display:auto or display:block cause invisible text (FOIT) while loading',
+      fix: 'Add font-display: swap (or optional) to @font-face rules. This shows fallback text immediately.',
+      presetRef: null,
+      source: 'Web.dev — https://web.dev/articles/font-display'
+    });
+  } else {
+    checks++;
+    passed++;
+  }
+
+  // Render-blocking resources
+  var rb = perf.renderBlocking || {};
+  checks++;
+  var blockingCount = (rb.cssInHead || 0) + (rb.jsInHead || 0);
+  if (blockingCount <= 3) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: blockingCount + ' render-blocking resources in <head>',
+      detail: (rb.cssInHead || 0) + ' CSS files, ' + (rb.jsInHead || 0) + ' sync JS scripts',
+      fix: 'Defer non-critical CSS with media="print" onload hack. Add async/defer to scripts.',
+      presetRef: null,
+      source: 'Web.dev — https://web.dev/articles/render-blocking-resources'
+    });
+  }
+
+  // DOM complexity
+  checks++;
+  var domSize = perf.domSize || 0;
+  if (domSize <= 1500) {
+    passed++;
+  } else {
+    findings.push({
+      severity: domSize > 3000 ? 'warning' : 'info',
+      title: domSize + ' DOM elements (' + (domSize > 3000 ? 'excessive' : 'large') + ')',
+      detail: 'Large DOMs slow rendering, increase memory, and hurt interaction responsiveness',
+      fix: 'Consider lazy loading sections, virtualizing long lists, or simplifying markup.',
+      presetRef: null,
+      source: 'Chrome DevTools — https://developer.chrome.com/docs/lighthouse/performance/dom-size'
+    });
+  }
+
+  // DOM depth
+  checks++;
+  var depth = perf.domDepth || 0;
+  if (depth <= 32) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'info',
+      title: 'DOM nesting depth: ' + depth + ' levels (recommended: ≤32)',
+      detail: 'Deep nesting increases CSS selector matching time and layout complexity',
+      fix: 'Flatten nested containers where possible. Avoid wrapping divs that serve no purpose.',
+      presetRef: null,
+      source: 'Chrome DevTools — https://developer.chrome.com/docs/lighthouse/performance/dom-size'
+    });
+  }
+
+  // Third-party scripts
+  if (data.performance && data.performance.thirdPartyScripts !== undefined) {
+    checks++;
+    var tpCount = data.performance.thirdPartyScripts;
+    if (tpCount <= 5) {
+      passed++;
+    } else {
+      findings.push({
+        severity: tpCount > 10 ? 'warning' : 'info',
+        title: tpCount + ' third-party scripts loaded',
+        detail: 'Each third-party script adds latency, potential blocking, and privacy concerns',
+        fix: 'Audit third-party scripts. Remove unused ones, defer non-critical ones, consider self-hosting critical libraries.',
+        presetRef: null,
+        source: 'Web Vitals — https://web.dev/articles/optimizing-third-party-javascript'
+      });
+    }
+  }
+
+  // Image format audit
+  var imgFmt = (data.performance && data.performance.imageFormats) || {};
+  if (imgFmt.legacy > 0) {
+    checks++;
+    if (imgFmt.modern >= imgFmt.legacy) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: imgFmt.legacy + ' image(s) use legacy formats (JPEG/PNG)',
+        detail: imgFmt.modern + ' use modern formats (WebP/AVIF). Modern formats are 25-50% smaller.',
+        fix: 'Convert images to WebP or AVIF. Use <picture> with format fallbacks for broad browser support.',
+        presetRef: null,
+        source: 'Web.dev — https://web.dev/articles/serve-images-webp'
+      });
+    }
+  }
+
+  // CLS (Cumulative Layout Shift)
+  if (data.performance && data.performance.cls !== null && data.performance.cls !== undefined) {
+    checks++;
+    var cls = data.performance.cls;
+    if (cls <= 0.1) {
+      passed++;
+    } else {
+      findings.push({
+        severity: cls > 0.25 ? 'error' : 'warning',
+        title: 'CLS (Cumulative Layout Shift): ' + cls + ' (' + (cls > 0.25 ? 'poor' : 'needs improvement') + ')',
+        detail: 'Layout shifts disrupt user reading and cause mis-clicks. Target: < 0.1.',
+        fix: 'Add explicit width/height to images and ads. Use min-height on dynamic content areas. Avoid inserting content above existing content.',
+        presetRef: null,
+        source: 'Web Vitals — https://web.dev/articles/cls'
+      });
+    }
+  }
+
+  // LCP
+  var lcp = data.performance && data.performance.lcp;
+  if (lcp) {
+    checks++;
+    if (lcp.time <= 2500) {
+      passed++;
+    } else {
+      findings.push({
+        severity: lcp.time > 4000 ? 'error' : 'warning',
+        title: 'LCP: ' + (lcp.time / 1000).toFixed(1) + 's (' + (lcp.time > 4000 ? 'poor' : 'needs improvement') + ')',
+        detail: 'Largest element: <' + lcp.element + '>. Target: < 2.5s.',
+        fix: 'Optimize the largest visible element. For images: preload, use WebP, set fetchpriority="high". For text: ensure fonts load with font-display:swap.',
+        presetRef: null,
+        source: 'Web Vitals — https://web.dev/articles/lcp'
+      });
+    }
+  }
+
+  // LCP lazy loading (heuristic)
+  if (data.performance && data.performance.lcpLazyLoaded) {
+    findings.push({
+      severity: 'error',
+      title: 'LCP image uses loading="lazy"',
+      detail: 'Lazy loading the largest visible image delays LCP significantly',
+      fix: 'Remove loading="lazy" from the hero/LCP image. Only lazy-load below-fold images.',
+      presetRef: null,
+      source: 'Web Vitals — https://web.dev/articles/lcp'
+    });
+  }
+
+  // Non-responsive images
+  var nri = (data.performance && data.performance.nonResponsiveImages) || 0;
+  if (nri > 0) {
+    findings.push({
+      severity: 'warning',
+      title: nri + ' image(s) without responsive sizing',
+      detail: 'Images without max-width: 100% can overflow their containers on small screens',
+      fix: 'Add max-width: 100% and height: auto to all images. In Tailwind: class="max-w-full h-auto".',
+      presetRef: null,
+      source: 'MDN — https://developer.mozilla.org/en-US/docs/Learn/HTML/Multimedia_and_embedding/Responsive_images'
+    });
+  }
+
+  // Upscaled images
+  var upscaled = (data.performance && data.performance.upscaledImages) || [];
+  if (upscaled.length > 0) {
+    var upDetails = upscaled.slice(0, 3).map(function(u) { return u.selector + ' ' + u.natural + ' → ' + u.rendered + ' (' + u.upscale + '%)'; });
+    findings.push({
+      severity: upscaled.some(function(u) { return u.upscale > 150; }) ? 'warning' : 'info',
+      title: upscaled.length + ' image(s) rendered larger than natural size',
+      detail: 'Images are upscaled, causing visible pixelation: ' + upDetails.join('; '),
+      fix: 'Provide higher-resolution source images or use srcset for retina displays.',
+      presetRef: null,
+      source: 'MDN — https://developer.mozilla.org/en-US/docs/Learn/HTML/Multimedia_and_embedding/Responsive_images'
+    });
+  }
+
+  // will-change overuse
+  var willChange = (data.performance && data.performance.willChangeCount) || 0;
+  if (willChange > 10) {
+    findings.push({
+      severity: 'warning',
+      title: willChange + ' elements use will-change (recommend < 10)',
+      detail: 'Excessive will-change creates GPU compositor layers, increasing memory usage.',
+      fix: 'Remove will-change from elements that don\'t animate frequently. Apply only during animation, then remove.',
+      presetRef: null,
+      source: 'MDN — https://developer.mozilla.org/en-US/docs/Web/CSS/will-change'
+    });
+  } else if (willChange > 5) {
+    findings.push({
+      severity: 'info',
+      title: willChange + ' elements use will-change',
+      detail: 'Monitor GPU memory if adding more will-change hints.',
+      fix: 'will-change is fine for elements that animate frequently. Avoid on static elements.',
+      presetRef: null,
+      source: 'MDN — https://developer.mozilla.org/en-US/docs/Web/CSS/will-change'
+    });
+  }
+
+  // Complex CSS filters
+  var complexFilters = (data.performance && data.performance.complexFilters) || 0;
+  if (complexFilters > 0) {
+    findings.push({
+      severity: complexFilters > 5 ? 'warning' : 'info',
+      title: complexFilters + ' element(s) with complex CSS filters (3+ functions)',
+      detail: 'Stacked CSS filters (blur + brightness + contrast) are expensive to render, especially during scroll.',
+      fix: 'Simplify CSS filters to 1-2 functions. Pre-render complex effects as images if possible.',
+      presetRef: null,
+      source: 'web.dev — https://web.dev/articles/animations-guide'
+    });
+  }
+
+  // Forced compositor layers (translateZ(0) / matrix3d)
+  var forcedLayers = (data.performance && data.performance.forcedLayers) || 0;
+  if (forcedLayers > 10) {
+    findings.push({
+      severity: 'warning',
+      title: forcedLayers + ' elements with forced GPU compositor layers',
+      detail: 'Excessive translateZ(0) or 3D transforms create GPU layers, consuming memory.',
+      fix: 'Use will-change on elements that actually animate. Remove translateZ(0) hacks from static elements.',
+      presetRef: null,
+      source: 'web.dev — https://web.dev/articles/animations-guide'
+    });
+  }
+
+  // Non-passive scroll listeners
+  var lStats = (data.interaction && data.interaction.listenerStats) || {};
+  if (lStats.nonPassiveScroll > 0) {
+    findings.push({
+      severity: 'warning',
+      title: lStats.nonPassiveScroll + ' non-passive scroll listener(s)',
+      detail: 'Non-passive scroll listeners block smooth scrolling. The browser must wait for the handler to decide if it calls preventDefault().',
+      fix: 'Add { passive: true } to scroll event listeners that don\'t call preventDefault().',
+      presetRef: null,
+      source: 'web.dev — https://web.dev/articles/passive-listeners'
+    });
+  }
+
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+  return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Performance', icon: 'cognitive' };
+}
+
+
+  S.register("performance", scorePerformance, 5, "Performance", "cognitive");
+})();
+</file>
+
 <file path="docs/tests/test-bbox-alignment.js">
 #!/usr/bin/env node
 // Test: bbox alignment accuracy
@@ -21626,783 +21889,6 @@ run();
 </html>
 </file>
 
-<file path="tests/crawl-flow.test.mjs">
-/**
- * Crawl Multi-Page Flow Tests
- *
- * Tests that:
- * 1. Crawl JSON format is detected correctly (_milgCrawl marker)
- * 2. Multi-page results contain expected structure
- * 3. Single-page data is still accepted as before
- * 4. Link discovery filters correctly (hash, external, extensions, index variants)
- *
- * Run: node tests/crawl-flow.test.mjs
- */
-
-import { readFileSync } from 'fs';
-import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-let passed = 0, failed = 0;
-
-function assert(condition, msg) {
-  if (condition) { passed++; console.log('  ✓ ' + msg); }
-  else { failed++; console.error('  ✗ ' + msg); }
-}
-
-// Load crawl module
-const crawlSrc = readFileSync(resolve(__dirname, '../docs/analyzer-crawl.js'), 'utf-8');
-// Execute in a minimal browser-like context
-const window = { MilgScoring: { runScoring: function(d) { return { overall: 75, grade: 'C', categories: [] }; } } };
-const fn = new Function('window', crawlSrc + '; return window.MilgCrawl;');
-const MilgCrawl = fn(window);
-
-console.log('\n=== Crawl Data Format Tests ===\n');
-
-// Test 1: Crawl JSON marker detection
-const singlePage = { meta: { url: 'https://example.com', title: 'Test' }, colors: { textColors: [], bgColors: [] } };
-const crawlData = { _milgCrawl: true, startUrl: 'https://example.com', results: [
-  { url: 'https://example.com', data: singlePage },
-  { url: 'https://example.com/about', data: { ...singlePage, meta: { ...singlePage.meta, url: 'https://example.com/about' } } }
-]};
-
-assert(crawlData._milgCrawl === true, 'Crawl data has _milgCrawl marker');
-assert(crawlData.results.length === 2, 'Crawl data contains 2 pages');
-assert(crawlData.results[0].url === 'https://example.com', 'First page URL correct');
-assert(crawlData.results[1].url === 'https://example.com/about', 'Second page URL correct');
-
-// Test 2: Single page format detection (no _milgCrawl)
-assert(!singlePage._milgCrawl, 'Single page data has no _milgCrawl marker');
-assert(singlePage.meta && singlePage.colors, 'Single page has meta and colors');
-
-console.log('\n=== Link Discovery Tests ===\n');
-
-// Test 3: URL normalization
-assert(typeof MilgCrawl.normalizeUrl === 'function', 'normalizeUrl exists');
-assert(MilgCrawl.normalizeUrl('https://example.com/page#section') === 'https://example.com/page', 'Hash stripped from URL');
-assert(MilgCrawl.normalizeUrl('https://example.com/page/') === 'https://example.com/page', 'Trailing slash stripped');
-assert(MilgCrawl.normalizeUrl('https://example.com/page?q=1') === 'https://example.com/page', 'Query params stripped');
-
-// Test 4: Blacklist matching
-assert(typeof MilgCrawl.matchesBlacklist === 'function', 'matchesBlacklist exists');
-assert(MilgCrawl.matchesBlacklist('https://example.com/blog/post', ['/blog/*']), 'Wildcard blacklist matches');
-assert(!MilgCrawl.matchesBlacklist('https://example.com/about', ['/blog/*']), 'Wildcard blacklist does not match other paths');
-assert(MilgCrawl.matchesBlacklist('https://example.com/pricing', ['/pricing']), 'Exact blacklist matches');
-
-// Test 5: Link discovery (DOMParser not available in Node — skip if not present)
-try {
-  const htmlWithLinks = `<html><body>
-    <a href="/">Home</a><a href="/about">About</a><a href="#section">Anchor</a>
-    <a href="mailto:test@test.com">Email</a><a href="/file.pdf">PDF</a>
-    <a href="https://other.com/page">External</a><a href="/contact">Contact</a>
-  </body></html>`;
-  const discovered = MilgCrawl.discoverLinks(htmlWithLinks, 'https://example.com/', [], 10);
-  assert(!discovered.some(u => u.includes('#')), 'No hash URLs in discovered links');
-  assert(!discovered.some(u => u.includes('mailto:')), 'No mailto URLs');
-  assert(!discovered.some(u => u.includes('.pdf')), 'No PDF URLs');
-  assert(!discovered.some(u => u.includes('other.com')), 'No external URLs');
-  assert(discovered.some(u => u.includes('/about')), 'Internal /about link discovered');
-  assert(discovered.some(u => u.includes('/contact')), 'Internal /contact link discovered');
-} catch(e) {
-  if (e.message.includes('DOMParser')) {
-    console.log('  ⊘ discoverLinks skipped (DOMParser not available in Node)');
-  } else { throw e; }
-}
-
-console.log('\n=== Session Management Tests ===\n');
-
-// Test 6: Session creation
-const session = MilgCrawl.createSession('https://example.com', { maxPages: 5 });
-assert(session.startUrl === 'https://example.com', 'Session has correct startUrl');
-assert(session.options.maxPages === 5, 'Session has correct maxPages');
-assert(session.status === 'crawling', 'Session starts with crawling status');
-assert(Array.isArray(session.pages), 'Session has pages array');
-
-// Test 7: Summary building
-session.pages.push(
-  { url: 'https://example.com', status: 'done', rawData: singlePage, reportData: { overall: 85, grade: 'B', categories: [] } },
-  { url: 'https://example.com/about', status: 'done', rawData: singlePage, reportData: { overall: 72, grade: 'C', categories: [] } }
-);
-session.status = 'complete';
-const summary = MilgCrawl.buildSummary(session);
-assert(summary.pagesAnalyzed === 2, 'Summary counts 2 pages');
-assert(summary.averageScore === 79, 'Average score is (85+72)/2 = 79 (rounded)');
-assert(summary.bestPage.score === 85, 'Best page score is 85');
-assert(summary.worstPage.score === 72, 'Worst page score is 72');
-
-console.log('\n=== Results ===');
-console.log(`${passed} passed, ${failed} failed\n`);
-process.exit(failed > 0 ? 1 : 0);
-</file>
-
-<file path="docs/scoring/performance.js">
-// Scoring Module: Performance
-// Weight: 5%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scorePerformance(data) {
-  var findings = [];
-  var checks = 0;
-  var passed = 0;
-  var perf = data.performance || {};
-
-  // Font loading
-  var fontIssues = perf.fontLoading || [];
-  if (fontIssues.length > 0) {
-    checks++;
-    findings.push({
-      severity: 'warning',
-      title: fontIssues.length + ' web font(s) without font-display: swap',
-      detail: 'Fonts with display:auto or display:block cause invisible text (FOIT) while loading',
-      fix: 'Add font-display: swap (or optional) to @font-face rules. This shows fallback text immediately.',
-      presetRef: null,
-      source: 'Web.dev — https://web.dev/articles/font-display'
-    });
-  } else {
-    checks++;
-    passed++;
-  }
-
-  // Render-blocking resources
-  var rb = perf.renderBlocking || {};
-  checks++;
-  var blockingCount = (rb.cssInHead || 0) + (rb.jsInHead || 0);
-  if (blockingCount <= 3) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: blockingCount + ' render-blocking resources in <head>',
-      detail: (rb.cssInHead || 0) + ' CSS files, ' + (rb.jsInHead || 0) + ' sync JS scripts',
-      fix: 'Defer non-critical CSS with media="print" onload hack. Add async/defer to scripts.',
-      presetRef: null,
-      source: 'Web.dev — https://web.dev/articles/render-blocking-resources'
-    });
-  }
-
-  // DOM complexity
-  checks++;
-  var domSize = perf.domSize || 0;
-  if (domSize <= 1500) {
-    passed++;
-  } else {
-    findings.push({
-      severity: domSize > 3000 ? 'warning' : 'info',
-      title: domSize + ' DOM elements (' + (domSize > 3000 ? 'excessive' : 'large') + ')',
-      detail: 'Large DOMs slow rendering, increase memory, and hurt interaction responsiveness',
-      fix: 'Consider lazy loading sections, virtualizing long lists, or simplifying markup.',
-      presetRef: null,
-      source: 'Chrome DevTools — https://developer.chrome.com/docs/lighthouse/performance/dom-size'
-    });
-  }
-
-  // DOM depth
-  checks++;
-  var depth = perf.domDepth || 0;
-  if (depth <= 32) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'info',
-      title: 'DOM nesting depth: ' + depth + ' levels (recommended: ≤32)',
-      detail: 'Deep nesting increases CSS selector matching time and layout complexity',
-      fix: 'Flatten nested containers where possible. Avoid wrapping divs that serve no purpose.',
-      presetRef: null,
-      source: 'Chrome DevTools — https://developer.chrome.com/docs/lighthouse/performance/dom-size'
-    });
-  }
-
-  // Third-party scripts
-  if (data.performance && data.performance.thirdPartyScripts !== undefined) {
-    checks++;
-    var tpCount = data.performance.thirdPartyScripts;
-    if (tpCount <= 5) {
-      passed++;
-    } else {
-      findings.push({
-        severity: tpCount > 10 ? 'warning' : 'info',
-        title: tpCount + ' third-party scripts loaded',
-        detail: 'Each third-party script adds latency, potential blocking, and privacy concerns',
-        fix: 'Audit third-party scripts. Remove unused ones, defer non-critical ones, consider self-hosting critical libraries.',
-        presetRef: null,
-        source: 'Web Vitals — https://web.dev/articles/optimizing-third-party-javascript'
-      });
-    }
-  }
-
-  // Image format audit
-  var imgFmt = (data.performance && data.performance.imageFormats) || {};
-  if (imgFmt.legacy > 0) {
-    checks++;
-    if (imgFmt.modern >= imgFmt.legacy) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: imgFmt.legacy + ' image(s) use legacy formats (JPEG/PNG)',
-        detail: imgFmt.modern + ' use modern formats (WebP/AVIF). Modern formats are 25-50% smaller.',
-        fix: 'Convert images to WebP or AVIF. Use <picture> with format fallbacks for broad browser support.',
-        presetRef: null,
-        source: 'Web.dev — https://web.dev/articles/serve-images-webp'
-      });
-    }
-  }
-
-  // CLS (Cumulative Layout Shift)
-  if (data.performance && data.performance.cls !== null && data.performance.cls !== undefined) {
-    checks++;
-    var cls = data.performance.cls;
-    if (cls <= 0.1) {
-      passed++;
-    } else {
-      findings.push({
-        severity: cls > 0.25 ? 'error' : 'warning',
-        title: 'CLS (Cumulative Layout Shift): ' + cls + ' (' + (cls > 0.25 ? 'poor' : 'needs improvement') + ')',
-        detail: 'Layout shifts disrupt user reading and cause mis-clicks. Target: < 0.1.',
-        fix: 'Add explicit width/height to images and ads. Use min-height on dynamic content areas. Avoid inserting content above existing content.',
-        presetRef: null,
-        source: 'Web Vitals — https://web.dev/articles/cls'
-      });
-    }
-  }
-
-  // LCP
-  var lcp = data.performance && data.performance.lcp;
-  if (lcp) {
-    checks++;
-    if (lcp.time <= 2500) {
-      passed++;
-    } else {
-      findings.push({
-        severity: lcp.time > 4000 ? 'error' : 'warning',
-        title: 'LCP: ' + (lcp.time / 1000).toFixed(1) + 's (' + (lcp.time > 4000 ? 'poor' : 'needs improvement') + ')',
-        detail: 'Largest element: <' + lcp.element + '>. Target: < 2.5s.',
-        fix: 'Optimize the largest visible element. For images: preload, use WebP, set fetchpriority="high". For text: ensure fonts load with font-display:swap.',
-        presetRef: null,
-        source: 'Web Vitals — https://web.dev/articles/lcp'
-      });
-    }
-  }
-
-  // LCP lazy loading (heuristic)
-  if (data.performance && data.performance.lcpLazyLoaded) {
-    findings.push({
-      severity: 'error',
-      title: 'LCP image uses loading="lazy"',
-      detail: 'Lazy loading the largest visible image delays LCP significantly',
-      fix: 'Remove loading="lazy" from the hero/LCP image. Only lazy-load below-fold images.',
-      presetRef: null,
-      source: 'Web Vitals — https://web.dev/articles/lcp'
-    });
-  }
-
-  // Non-responsive images
-  var nri = (data.performance && data.performance.nonResponsiveImages) || 0;
-  if (nri > 0) {
-    findings.push({
-      severity: 'warning',
-      title: nri + ' image(s) without responsive sizing',
-      detail: 'Images without max-width: 100% can overflow their containers on small screens',
-      fix: 'Add max-width: 100% and height: auto to all images. In Tailwind: class="max-w-full h-auto".',
-      presetRef: null,
-      source: 'MDN — https://developer.mozilla.org/en-US/docs/Learn/HTML/Multimedia_and_embedding/Responsive_images'
-    });
-  }
-
-  // Upscaled images
-  var upscaled = (data.performance && data.performance.upscaledImages) || [];
-  if (upscaled.length > 0) {
-    var upDetails = upscaled.slice(0, 3).map(function(u) { return u.selector + ' ' + u.natural + ' → ' + u.rendered + ' (' + u.upscale + '%)'; });
-    findings.push({
-      severity: upscaled.some(function(u) { return u.upscale > 150; }) ? 'warning' : 'info',
-      title: upscaled.length + ' image(s) rendered larger than natural size',
-      detail: 'Images are upscaled, causing visible pixelation: ' + upDetails.join('; '),
-      fix: 'Provide higher-resolution source images or use srcset for retina displays.',
-      presetRef: null,
-      source: 'MDN — https://developer.mozilla.org/en-US/docs/Learn/HTML/Multimedia_and_embedding/Responsive_images'
-    });
-  }
-
-  // will-change overuse
-  var willChange = (data.performance && data.performance.willChangeCount) || 0;
-  if (willChange > 10) {
-    findings.push({
-      severity: 'warning',
-      title: willChange + ' elements use will-change (recommend < 10)',
-      detail: 'Excessive will-change creates GPU compositor layers, increasing memory usage.',
-      fix: 'Remove will-change from elements that don\'t animate frequently. Apply only during animation, then remove.',
-      presetRef: null,
-      source: 'MDN — https://developer.mozilla.org/en-US/docs/Web/CSS/will-change'
-    });
-  } else if (willChange > 5) {
-    findings.push({
-      severity: 'info',
-      title: willChange + ' elements use will-change',
-      detail: 'Monitor GPU memory if adding more will-change hints.',
-      fix: 'will-change is fine for elements that animate frequently. Avoid on static elements.',
-      presetRef: null,
-      source: 'MDN — https://developer.mozilla.org/en-US/docs/Web/CSS/will-change'
-    });
-  }
-
-  // Complex CSS filters
-  var complexFilters = (data.performance && data.performance.complexFilters) || 0;
-  if (complexFilters > 0) {
-    findings.push({
-      severity: complexFilters > 5 ? 'warning' : 'info',
-      title: complexFilters + ' element(s) with complex CSS filters (3+ functions)',
-      detail: 'Stacked CSS filters (blur + brightness + contrast) are expensive to render, especially during scroll.',
-      fix: 'Simplify CSS filters to 1-2 functions. Pre-render complex effects as images if possible.',
-      presetRef: null,
-      source: 'web.dev — https://web.dev/articles/animations-guide'
-    });
-  }
-
-  // Forced compositor layers (translateZ(0) / matrix3d)
-  var forcedLayers = (data.performance && data.performance.forcedLayers) || 0;
-  if (forcedLayers > 10) {
-    findings.push({
-      severity: 'warning',
-      title: forcedLayers + ' elements with forced GPU compositor layers',
-      detail: 'Excessive translateZ(0) or 3D transforms create GPU layers, consuming memory.',
-      fix: 'Use will-change on elements that actually animate. Remove translateZ(0) hacks from static elements.',
-      presetRef: null,
-      source: 'web.dev — https://web.dev/articles/animations-guide'
-    });
-  }
-
-  // Non-passive scroll listeners
-  var lStats = (data.interaction && data.interaction.listenerStats) || {};
-  if (lStats.nonPassiveScroll > 0) {
-    findings.push({
-      severity: 'warning',
-      title: lStats.nonPassiveScroll + ' non-passive scroll listener(s)',
-      detail: 'Non-passive scroll listeners block smooth scrolling. The browser must wait for the handler to decide if it calls preventDefault().',
-      fix: 'Add { passive: true } to scroll event listeners that don\'t call preventDefault().',
-      presetRef: null,
-      source: 'web.dev — https://web.dev/articles/passive-listeners'
-    });
-  }
-
-  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-  return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Performance', icon: 'cognitive' };
-}
-
-
-  S.register("performance", scorePerformance, 5, "Performance", "cognitive");
-})();
-</file>
-
-<file path="docs/scoring/spacing.js">
-// Scoring Module: Spacing & Layout
-// Weight: 15%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreSpacing(data) {
-  var profile = S.getProfile(data);
-  var findings = [];
-  var checks = 0;
-  var passed = 0;
-
-  // 4px grid adherence — check if spacing values are multiples of 4
-  checks++;
-  var allSpacing = [].concat(data.spacing.paddings || [], data.spacing.margins || [], data.spacing.gaps || []);
-  var onGrid = 0;
-  var offGrid = 0;
-  allSpacing.forEach(function(s) {
-    var px = parseFloat(s.value);
-    if (isNaN(px) || px === 0) return;
-    if (Math.round(px) % 4 === 0) onGrid += s.count;
-    else offGrid += s.count;
-  });
-  var gridRatio = (onGrid + offGrid) > 0 ? onGrid / (onGrid + offGrid) : 1;
-  if (gridRatio >= 0.7) {
-    passed++;
-    if (gridRatio < 0.85) {
-      findings.push({
-        severity: 'info',
-        title: Math.round(gridRatio * 100) + '% of spacing values on 4px grid',
-        detail: 'Good adherence — a few values could be rounded to the nearest 4px increment',
-        fix: 'Use Tailwind spacing utilities (p-1=4px, p-2=8px, p-3=12px, p-4=16px, ...)',
-        presetRef: null
-      });
-    }
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: 'Only ' + Math.round(gridRatio * 100) + '% of spacing is on a 4px grid',
-      detail: 'Inconsistent spacing makes layouts feel unpolished',
-      fix: 'Align spacing to 4px increments: 4, 8, 12, 16, 24, 32, 48, 64px',
-      presetRef: 'All presets use Tailwind spacing scale (4px base unit)', source: 'Material Design spacing — https://m3.material.io/foundations/layout/applying-layout'
-    });
-  }
-
-  // Content max-width
-  checks++;
-  var maxW = parseFloat(data.spacing.maxContentWidth);
-  if (maxW > 0 && maxW <= 1500) {
-    passed++;
-  } else if (maxW > 1500) {
-    findings.push({
-      severity: 'warning',
-      title: 'Content width is ' + Math.round(maxW) + 'px (recommended: 1200–1440px)',
-      detail: 'Very wide content is harder to scan and looks stretched on large monitors',
-      fix: 'Add a max-width container. In Tailwind: max-w-7xl (1280px) or max-w-screen-xl',
-      presetRef: 'Dashboard presets use max-w-7xl containers',
-      source: 'NNGroup — https://www.nngroup.com/articles/utilize-available-screen-space/'
-    });
-  } else {
-    passed++; // No max width data or narrow — fine
-  }
-
-  // Mobile padding >= 16px
-  checks++;
-  var bodyPad = parseFloat(data.spacing.bodyPaddingHorizontal);
-  if (bodyPad >= 14 || isNaN(bodyPad) || bodyPad === 0) {
-    passed++; // 0 is OK if inner containers have padding
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: 'Body horizontal padding is ' + bodyPad + 'px (minimum: 16px)',
-      detail: 'Content touching screen edges feels cramped on mobile',
-      fix: 'Add px-4 (16px) padding to the body or main container',
-      presetRef: null,
-      source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout'
-    });
-  }
-
-  // Adjacent interactive element spacing (buttons/links too close together)
-  var adjacentIssues = (data.interaction && data.interaction.adjacentIssues) || [];
-  if (adjacentIssues.length > 0) {
-    checks++;
-    var minSpacing = profile.targetSpacing;
-    var touching = adjacentIssues.filter(function(a) { return a.gap < 2; });
-    var tooClose = adjacentIssues.filter(function(a) { return a.gap >= 2 && a.gap < minSpacing; });
-
-    touching.forEach(function(a) {
-      var labelA = a.textA || a.selectorA || '?';
-      var labelB = a.textB || a.selectorB || '?';
-      var selectorHint = (a.selectorA || a.selectorB) ? ' — ' + (a.selectorA || '') : '';
-      findings.push({
-        severity: 'error',
-        title: 'Interactive elements touching (' + a.gap + 'px gap)',
-        detail: labelA + ' and ' + labelB + ' (' + a.direction + ')' + selectorHint,
-        fix: 'Add at least ' + minSpacing + 'px gap between interactive elements. In Tailwind: gap-' + (minSpacing / 4) + ' on the parent flex/grid container.',
-        presetRef: 'Button presets use gap-2 (8px) or gap-3 (12px) between buttons',
-        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-        locator: { selector: a.selectorA || a.selectorB || '', text: a.textA || '', bboxes: [a.bboxA, a.bboxB].filter(Boolean) }
-      });
-    });
-
-    tooClose.forEach(function(a) {
-      var labelA = a.textA || a.selectorA || '?';
-      var labelB = a.textB || a.selectorB || '?';
-      var selectorHint = (a.selectorA || a.selectorB) ? ' — ' + (a.selectorA || '') : '';
-      findings.push({
-        severity: 'warning',
-        title: 'Interactive elements only ' + a.gap + 'px apart (recommended: ≥' + minSpacing + 'px)',
-        detail: labelA + ' and ' + labelB + ' (' + a.direction + ')' + selectorHint,
-        fix: 'Increase gap to at least ' + minSpacing + 'px to prevent mis-taps. In Tailwind: gap-' + (minSpacing / 4) + ' on the parent.',
-        presetRef: null,
-        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-        locator: { selector: a.selectorA || a.selectorB || '', text: a.textA || '', bboxes: [a.bboxA, a.bboxB].filter(Boolean) }
-      });
-    });
-
-    if (touching.length === 0 && tooClose.length === 0) passed++;
-  }
-
-  // Element overflow
-  var overflows = (data.layout && data.layout.overflowElements) || 0;
-  if (overflows > 0) {
-    checks++;
-    findings.push({
-      severity: overflows > 5 ? 'warning' : 'info',
-      title: overflows + ' element(s) with horizontal overflow',
-      detail: 'Content extends beyond its container, causing horizontal scroll or clipping',
-      fix: 'Add overflow-x: hidden or overflow: auto to the container element. Check for fixed-width children inside flexible containers.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
-    });
-  } else {
-    checks++;
-    passed++;
-  }
-
-  // Negative margins
-  var negMargins = (data.spacing && data.spacing.negativeMargins) || 0;
-  if (negMargins > 5) {
-    findings.push({
-      severity: 'info',
-      title: negMargins + ' element(s) use negative margins',
-      detail: 'Negative margins can cause overlapping content and layout fragility',
-      fix: 'Consider using CSS grid/flexbox gap, transform, or absolute positioning instead of negative margins where possible.',
-      presetRef: null,
-      source: 'CSS best practices'
-    });
-  }
-
-  // Container padding consistency
-  var cPaddings = (data.spacing && data.spacing.containerPaddings) || [];
-  if (cPaddings.length >= 4) {
-    findings.push({
-      severity: 'info',
-      title: cPaddings.length + ' distinct container padding values',
-      detail: 'Values: ' + cPaddings.slice(0, 5).map(function(p) { return p.value + ' (' + p.count + 'x)'; }).join(', '),
-      fix: 'Standardize container padding to 2-3 values. In Tailwind: p-4 (16px), p-6 (24px), p-8 (32px).',
-      presetRef: null,
-      source: 'Gestalt proximity — https://lawsofux.com/law-of-proximity/'
-    });
-  }
-
-  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-  return { score: score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Spacing & Layout', icon: 'spacing' };
-}
-
-
-  S.register("spacing", scoreSpacing, 15, "Spacing & Layout", "spacing");
-})();
-</file>
-
-<file path="docs/scoring/typography.js">
-// Scoring Module: Typography
-// Weight: 15%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreTypography(data) {
-  var profile = S.getProfile(data);
-  var findings = [];
-  var checks = 0;
-  var passed = 0;
-
-  // Body font size check against profile minimum
-  checks++;
-  var bodySize = parseFloat(data.typography.bodyFontSize);
-  if (bodySize >= profile.bodyFontMin) {
-    passed++;
-  } else if (bodySize > 0) {
-    findings.push({
-      severity: 'error',
-      title: 'Body font size is ' + bodySize + 'px (minimum: ' + profile.bodyFontMin + 'px)',
-      detail: 'Small body text reduces readability, especially on mobile',
-      fix: 'Set body font-size to at least ' + profile.bodyFontMin + 'px. In Tailwind: text-base (16px) or text-lg (18px)',
-      presetRef: 'All presets use text-base (16px) or larger for body text', source: 'WCAG 2.2 / NNGroup — https://www.w3.org/TR/WCAG22/#text-spacing'
-    });
-  }
-
-  // Line height check against profile range
-  checks++;
-  var bodyLH = data.typography.bodyLineHeight;
-  var bodyLHRatio = 0;
-  if (bodyLH && bodyLH !== 'normal') {
-    bodyLHRatio = parseFloat(bodyLH) / bodySize;
-  }
-  var lhPassMin = profile.lineHeightMin - 0.05;
-  var lhPassMax = profile.lineHeightMax + 0.1;
-  if (bodyLHRatio >= lhPassMin && bodyLHRatio <= lhPassMax) {
-    passed++;
-  } else if (bodyLHRatio > 0) {
-    findings.push({
-      severity: bodyLHRatio < 1.2 || bodyLHRatio > 2 ? 'error' : 'warning',
-      title: 'Body line-height is ' + (Math.round(bodyLHRatio * 100) / 100) + ' (ideal: ' + profile.lineHeightMin + '–' + profile.lineHeightMax + ')',
-      detail: bodyLHRatio < profile.lineHeightMin ? 'Text feels cramped and hard to read' : 'Text feels too loose and wastes vertical space',
-      fix: bodyLHRatio < profile.lineHeightMin ? 'Increase line-height. In Tailwind: leading-relaxed (1.625) or leading-normal (1.5)' : 'Decrease line-height. In Tailwind: leading-normal (1.5)',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.12 — https://www.w3.org/TR/WCAG22/#text-spacing'
-    });
-  }
-
-  // Line length (profile-aware: elderly 65, children 55, default 75)
-  var maxChars = data.typography.maxLineLength ? data.typography.maxLineLength.chars : 0;
-  var lineElement = data.typography.maxLineLength ? data.typography.maxLineLength.element : '';
-  var lineFontSize = data.typography.maxLineLength ? (data.typography.maxLineLength.fontSize || 0) : 0;
-  var lineTextLength = data.typography.maxLineLength ? (data.typography.maxLineLength.textLength || 0) : 0;
-  var isTextElement = /^(p|li|td|th|blockquote|dd|figcaption)/.test(lineElement);
-  // Hero/intro text: large font (>=20px) with short content (<150 chars) is intentionally wide
-  var isHeroText = lineFontSize >= 20 && lineTextLength < 150;
-  if (maxChars > 0 && isTextElement && !isHeroText) {
-    checks++;
-    var lineLimit = profile.maxLineLength || 75;
-    if (maxChars <= lineLimit + 5) {
-      passed++;
-    } else {
-      findings.push({
-        severity: maxChars > lineLimit + 25 ? 'error' : 'warning',
-        title: 'Line length ~' + maxChars + ' characters (max for this audience: ' + lineLimit + ')',
-        detail: lineElement + ' — ' + (lineLimit < 70 ? 'Shorter lines improve readability for this audience.' : 'Long lines make it hard for the eye to track back to the next line.'),
-        fix: 'Constrain content width with max-w-prose (65ch) or max-w-2xl (672px)',
-        presetRef: 'Editorial presets use max-w-prose for reading content',
-        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-length.html',
-        locator: { selector: lineElement, text: '', bboxes: data.typography.maxLineLength && data.typography.maxLineLength.bbox ? [data.typography.maxLineLength.bbox] : [] }
-      });
-    }
-  }
-
-  // Heading scale — check if headings have a consistent ratio
-  checks++;
-  var headings = data.typography.headings || [];
-  if (headings.length >= 2) {
-    var sizes = headings.map(function(h) { return parseFloat(h.fontSize); }).filter(function(s) { return s > 0; });
-    var uniqueSizes = Array.from(new Set(sizes)).sort(function(a, b) { return b - a; });
-    if (uniqueSizes.length >= 2) {
-      var ratio = uniqueSizes[0] / uniqueSizes[uniqueSizes.length - 1];
-      // Marketing/landing pages legitimately use larger hero text (wider range)
-      var pageType = (data.context && data.context.pageType) || 'unknown';
-      var maxRatio = (pageType === 'marketing' || pageType === 'pricing') ? 6 : 4.5;
-      if (ratio >= 1.5 && ratio <= maxRatio) {
-        passed++;
-      } else {
-        var headingBboxes = headings.filter(function(h) { return h.bbox; }).map(function(h) { return h.bbox; });
-        findings.push({
-          severity: ratio > maxRatio + 2 ? 'warning' : 'info',
-          title: 'Heading scale ratio is ' + (Math.round(ratio * 100) / 100) + ' (ideal: 1.5–' + maxRatio + ')',
-          detail: ratio < 1.5 ? 'Headings are too similar in size — weak hierarchy' : 'Heading sizes vary widely — verify the largest heading is intentional (hero text)',
-          fix: 'Use a modular scale (1.200 minor third or 1.250 major third). In Tailwind: text-4xl > text-2xl > text-xl > text-base',
-          presetRef: null,
-          source: 'Modular type scales — https://typescale.com/',
-          locator: { selector: '', text: '', bboxes: headingBboxes }
-        });
-      }
-    } else { passed++; } // Only one heading size — acceptable
-  } else { passed++; } // No headings to check
-
-  // Max 2-3 font weights
-  checks++;
-  var fontWeights = data.typography.fontWeights || [];
-  var weightCount = fontWeights.length;
-  if (weightCount <= 4) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: 'Using ' + weightCount + ' font weights (recommended: 2–3)',
-      detail: 'Too many weights create visual noise and increase font loading time',
-      fix: 'Consolidate to 400 (regular), 500/600 (medium), 700 (bold)',
-      presetRef: null,
-      source: 'Google Fonts best practices — https://fonts.google.com/knowledge/using_type/choosing_reliable_typefaces'
-    });
-  }
-
-  // Profile-specific: minimum font weight (e.g., elderly profile forbids light/thin)
-  if (profile.fontWeightMin > 0 && fontWeights.length > 0) {
-    var lightWeights = fontWeights.filter(function(w) { return parseInt(w) < profile.fontWeightMin; });
-    if (lightWeights.length > 0) {
-      checks++;
-      findings.push({
-        severity: 'warning',
-        title: 'Font weight(s) ' + lightWeights.join(', ') + ' below minimum ' + profile.fontWeightMin + ' for this audience',
-        detail: 'Light and thin font weights reduce readability for users who need higher legibility',
-        fix: 'Use font-weight ' + profile.fontWeightMin + ' (regular) or heavier. Avoid font-weight 100–300.',
-        presetRef: null,
-        source: 'W3C WAI Older Users — https://www.w3.org/WAI/older-users/developing/'
-      });
-    } else {
-      checks++;
-      passed++;
-    }
-  }
-
-  // Letter spacing
-  var lsIssues = (data.typography && data.typography.letterSpacingIssues) || 0;
-  if (lsIssues > 0) {
-    findings.push({
-      severity: 'info',
-      title: lsIssues + ' element(s) with extreme letter-spacing',
-      detail: 'Very tight (< -0.03em) or very loose (> 0.15em) letter spacing reduces readability',
-      fix: 'Keep letter-spacing between -0.02em and 0.1em for body text. Tighter spacing is acceptable for large headings.',
-      presetRef: null,
-      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/letterspacing.html'
-    });
-  }
-
-  // Paragraph spacing
-  var pSpacing = (data.typography && data.typography.paragraphSpacing) || [];
-  if (pSpacing.length >= 3) {
-    checks++;
-    var bodyPx = parseFloat(data.typography.bodyFontSize) || 16;
-    var avgSpacing = pSpacing.reduce(function(s,v){return s+v},0) / pSpacing.length;
-    var spacingEm = avgSpacing / bodyPx;
-    if (spacingEm >= 0.5 && spacingEm <= 1.5) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: 'Paragraph spacing is ' + (Math.round(spacingEm * 100) / 100) + 'em (ideal: 0.75–1em)',
-        detail: spacingEm < 0.5 ? 'Paragraphs feel cramped' : 'Paragraph spacing may be too generous',
-        fix: 'Set paragraph margin-bottom to 0.75em–1em. In Tailwind: space-y-4 on the container or mb-4 on paragraphs.',
-        presetRef: null,
-        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/space-between-paragraphs.html'
-      });
-    }
-  }
-
-  // Max 2 typefaces
-  checks++;
-  var familyCount = (data.typography.fontFamilies || []).length;
-  if (familyCount <= 3) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: 'Using ' + familyCount + ' font families (recommended: max 2)',
-      detail: 'Too many typefaces make the design feel inconsistent',
-      fix: 'Use 1 sans-serif + 1 serif (or monospace for code). In Tailwind: font-sans + font-serif',
-      presetRef: null,
-      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/summary-of-key-rules.html'
-    });
-  }
-
-  // All-caps long text
-  var allCaps = (data.typography && data.typography.allCapsLongText) || 0;
-  if (allCaps > 0) {
-    findings.push({
-      severity: 'warning',
-      title: allCaps + ' block(s) of long text in all-caps (> 50 characters)',
-      detail: 'All-uppercase text reduces reading speed by 10-20%. Reserve for short labels and headings.',
-      fix: 'Remove text-transform: uppercase on body text. Use it only for short labels, buttons, and headings under 5 words.',
-      presetRef: null,
-      source: 'Tinker 1963, Butterick\'s Practical Typography — https://practicaltypography.com/all-caps.html'
-    });
-  }
-
-  // Justified text
-  var justified = (data.typography && data.typography.justifiedText) || 0;
-  if (justified > 0) {
-    findings.push({
-      severity: 'info',
-      title: justified + ' element(s) with text-align: justify',
-      detail: 'Justified text creates uneven word spacing (rivers of white) without proper hyphenation, reducing readability.',
-      fix: 'Use text-align: left for web content. Justified text only works well with automatic hyphenation (hyphens: auto).',
-      presetRef: null,
-      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/justified-text.html'
-    });
-  }
-
-  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-  return { score: score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Typography', icon: 'type' };
-}
-
-
-  S.register("typography", scoreTypography, 15, "Typography", "type");
-})();
-</file>
-
 <file path="docs/tests/test-scoring.html">
 <!DOCTYPE html>
 <html lang="en">
@@ -22818,6 +22304,1279 @@ function scoreTypography(data) {
   </script>
 </body>
 </html>
+</file>
+
+<file path="tests/crawl-flow.test.mjs">
+/**
+ * Crawl Multi-Page Flow Tests
+ *
+ * Tests that:
+ * 1. Crawl JSON format is detected correctly (_milgCrawl marker)
+ * 2. Multi-page results contain expected structure
+ * 3. Single-page data is still accepted as before
+ * 4. Link discovery filters correctly (hash, external, extensions, index variants)
+ *
+ * Run: node tests/crawl-flow.test.mjs
+ */
+
+import { readFileSync } from 'fs';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+let passed = 0, failed = 0;
+
+function assert(condition, msg) {
+  if (condition) { passed++; console.log('  ✓ ' + msg); }
+  else { failed++; console.error('  ✗ ' + msg); }
+}
+
+// Load crawl module
+const crawlSrc = readFileSync(resolve(__dirname, '../docs/analyzer-crawl.js'), 'utf-8');
+// Execute in a minimal browser-like context
+const window = { MilgScoring: { runScoring: function(d) { return { overall: 75, grade: 'C', categories: [] }; } } };
+const fn = new Function('window', crawlSrc + '; return window.MilgCrawl;');
+const MilgCrawl = fn(window);
+
+console.log('\n=== Crawl Data Format Tests ===\n');
+
+// Test 1: Crawl JSON marker detection
+const singlePage = { meta: { url: 'https://example.com', title: 'Test' }, colors: { textColors: [], bgColors: [] } };
+const crawlData = { _milgCrawl: true, startUrl: 'https://example.com', results: [
+  { url: 'https://example.com', data: singlePage },
+  { url: 'https://example.com/about', data: { ...singlePage, meta: { ...singlePage.meta, url: 'https://example.com/about' } } }
+]};
+
+assert(crawlData._milgCrawl === true, 'Crawl data has _milgCrawl marker');
+assert(crawlData.results.length === 2, 'Crawl data contains 2 pages');
+assert(crawlData.results[0].url === 'https://example.com', 'First page URL correct');
+assert(crawlData.results[1].url === 'https://example.com/about', 'Second page URL correct');
+
+// Test 2: Single page format detection (no _milgCrawl)
+assert(!singlePage._milgCrawl, 'Single page data has no _milgCrawl marker');
+assert(singlePage.meta && singlePage.colors, 'Single page has meta and colors');
+
+console.log('\n=== Link Discovery Tests ===\n');
+
+// Test 3: URL normalization
+assert(typeof MilgCrawl.normalizeUrl === 'function', 'normalizeUrl exists');
+assert(MilgCrawl.normalizeUrl('https://example.com/page#section') === 'https://example.com/page', 'Hash stripped from URL');
+assert(MilgCrawl.normalizeUrl('https://example.com/page/') === 'https://example.com/page', 'Trailing slash stripped');
+assert(MilgCrawl.normalizeUrl('https://example.com/page?q=1') === 'https://example.com/page', 'Query params stripped');
+
+// Test 4: Blacklist matching
+assert(typeof MilgCrawl.matchesBlacklist === 'function', 'matchesBlacklist exists');
+assert(MilgCrawl.matchesBlacklist('https://example.com/blog/post', ['/blog/*']), 'Wildcard blacklist matches');
+assert(!MilgCrawl.matchesBlacklist('https://example.com/about', ['/blog/*']), 'Wildcard blacklist does not match other paths');
+assert(MilgCrawl.matchesBlacklist('https://example.com/pricing', ['/pricing']), 'Exact blacklist matches');
+
+// Test 5: Link discovery (DOMParser not available in Node — skip if not present)
+try {
+  const htmlWithLinks = `<html><body>
+    <a href="/">Home</a><a href="/about">About</a><a href="#section">Anchor</a>
+    <a href="mailto:test@test.com">Email</a><a href="/file.pdf">PDF</a>
+    <a href="https://other.com/page">External</a><a href="/contact">Contact</a>
+  </body></html>`;
+  const discovered = MilgCrawl.discoverLinks(htmlWithLinks, 'https://example.com/', [], 10);
+  assert(!discovered.some(u => u.includes('#')), 'No hash URLs in discovered links');
+  assert(!discovered.some(u => u.includes('mailto:')), 'No mailto URLs');
+  assert(!discovered.some(u => u.includes('.pdf')), 'No PDF URLs');
+  assert(!discovered.some(u => u.includes('other.com')), 'No external URLs');
+  assert(discovered.some(u => u.includes('/about')), 'Internal /about link discovered');
+  assert(discovered.some(u => u.includes('/contact')), 'Internal /contact link discovered');
+} catch(e) {
+  if (e.message.includes('DOMParser')) {
+    console.log('  ⊘ discoverLinks skipped (DOMParser not available in Node)');
+  } else { throw e; }
+}
+
+console.log('\n=== Session Management Tests ===\n');
+
+// Test 6: Session creation
+const session = MilgCrawl.createSession('https://example.com', { maxPages: 5 });
+assert(session.startUrl === 'https://example.com', 'Session has correct startUrl');
+assert(session.options.maxPages === 5, 'Session has correct maxPages');
+assert(session.status === 'crawling', 'Session starts with crawling status');
+assert(Array.isArray(session.pages), 'Session has pages array');
+
+// Test 7: Summary building
+session.pages.push(
+  { url: 'https://example.com', status: 'done', rawData: singlePage, reportData: { overall: 85, grade: 'B', categories: [] } },
+  { url: 'https://example.com/about', status: 'done', rawData: singlePage, reportData: { overall: 72, grade: 'C', categories: [] } }
+);
+session.status = 'complete';
+const summary = MilgCrawl.buildSummary(session);
+assert(summary.pagesAnalyzed === 2, 'Summary counts 2 pages');
+assert(summary.averageScore === 79, 'Average score is (85+72)/2 = 79 (rounded)');
+assert(summary.bestPage.score === 85, 'Best page score is 85');
+assert(summary.worstPage.score === 72, 'Worst page score is 72');
+
+console.log('\n=== Results ===');
+console.log(`${passed} passed, ${failed} failed\n`);
+process.exit(failed > 0 ? 1 : 0);
+</file>
+
+<file path="docs/scoring/accessibility.js">
+// Scoring Module: Accessibility
+// Weight: 15%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreAccessibility(data) {
+  var profile = S.getProfile(data);
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+  var a11y = data.accessibility;
+
+  // Semantic elements (relaxed for small components/fragments)
+  var elCount = (data.structure && data.structure.totalElements) || 0;
+  checks++;
+  var semantic = a11y.semanticElements || {};
+  var hasMain = (semantic.main || 0) > 0;
+  var hasNav = (semantic.nav || 0) > 0;
+  var hasHeader = (semantic.header || 0) > 0;
+  var semanticCount = [hasMain, hasNav, hasHeader].filter(Boolean).length;
+  if (semanticCount >= 2 || elCount < 50) {
+    passed++; // Small components don't need full page landmarks
+  } else {
+    findings.push({
+      severity: semanticCount === 0 ? 'error' : 'warning',
+      title: 'Missing semantic HTML elements',
+      detail: 'Found: ' + (hasHeader ? 'header ' : '') + (hasNav ? 'nav ' : '') + (hasMain ? 'main ' : '') + (semantic.footer ? 'footer' : ''),
+      fix: 'Use <header>, <nav>, <main>, <footer> for page structure. Screen readers rely on these landmarks.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships',
+      presetRef: 'All presets use semantic HTML landmarks'
+    });
+  }
+
+  // Heading hierarchy
+  checks++;
+  var headingOrder = a11y.headingHierarchy || [];
+  var hierarchyBroken = false;
+  for (var i = 1; i < headingOrder.length; i++) {
+    var prev = parseInt(headingOrder[i - 1].charAt(1));
+    var curr = parseInt(headingOrder[i].charAt(1));
+    if (curr > prev + 1) { hierarchyBroken = true; break; }
+  }
+  if (!hierarchyBroken) {
+    passed++;
+  } else {
+    var hdgBboxes = (data.typography && data.typography.headings || []).filter(function(h) { return h.bbox; }).map(function(h) { return h.bbox; });
+    findings.push({
+      severity: 'warning',
+      title: 'Heading hierarchy has gaps (e.g., h1 → h3)',
+      detail: 'Heading order: ' + headingOrder.join(' → '),
+      fix: 'Use headings in order: h1 → h2 → h3. Never skip levels. Style with classes instead of heading tags.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships',
+      presetRef: null,
+      locator: hdgBboxes.length > 0 ? { selector: '', text: '', bboxes: hdgBboxes } : undefined
+    });
+  }
+
+  // Images with alt
+  checks++;
+  if (a11y.imagesWithoutAlt === 0) {
+    passed++;
+  } else {
+    var noAltBboxes = (a11y.imagesWithoutAltElements || []).filter(function(e) { return e.bbox; }).map(function(e) { return e.bbox; });
+    findings.push({
+      severity: 'error',
+      title: a11y.imagesWithoutAlt + ' image(s) missing alt text',
+      detail: 'Screen readers cannot describe these images to users',
+      fix: 'Add alt="description" to all <img> tags. Use alt="" for decorative images.', source: 'WCAG 2.2 §1.1.1 — https://www.w3.org/TR/WCAG22/#non-text-content',
+      presetRef: null,
+      locator: noAltBboxes.length > 0 ? { selector: (a11y.imagesWithoutAltElements[0] || {}).selector || '', text: '', bboxes: noAltBboxes } : undefined
+    });
+  }
+
+  // Image sizing (performance impact)
+  var imgIssues = (data.performance && data.performance.imageSizing) || [];
+  var noDimensions = imgIssues.filter(function(i) { return i.issues.indexOf('no-dimensions') !== -1; });
+  var lazyAbove = imgIssues.filter(function(i) { return i.issues.indexOf('lazy-above-fold') !== -1; });
+  var oversized = imgIssues.filter(function(i) { return i.issues.some(function(x) { return x.indexOf('oversized') === 0; }); });
+  if (noDimensions.length > 0) {
+    findings.push({ severity: 'warning', title: noDimensions.length + ' image(s) without explicit dimensions', detail: 'Missing width/height causes layout shift (CLS) when images load', fix: 'Add width and height attributes to all <img> tags, or use CSS aspect-ratio.', presetRef: null, source: 'Web Vitals — https://web.dev/articles/cls' });
+  }
+  if (lazyAbove.length > 0) {
+    findings.push({ severity: 'error', title: lazyAbove.length + ' above-fold image(s) with lazy loading', detail: 'lazy loading on visible images delays LCP (Largest Contentful Paint)', fix: 'Remove loading="lazy" from images visible in the initial viewport. Use it only for below-fold images.', presetRef: null, source: 'Web Vitals — https://web.dev/articles/lcp' });
+  }
+  if (oversized.length > 0) {
+    findings.push({ severity: 'info', title: oversized.length + ' image(s) may be oversized for their display size', detail: 'Serving images much larger than their display size wastes bandwidth', fix: 'Resize images to 2x their display size (for retina). Use srcset for responsive images.', presetRef: null, source: 'MDN — https://developer.mozilla.org/en-US/docs/Learn/HTML/Multimedia_and_embedding/Responsive_images' });
+  }
+
+  // Form labels
+  checks++;
+  var forms = a11y.formLabels || {};
+  if (forms.total === 0 || forms.withoutLabel === 0) {
+    passed++;
+  } else {
+    var ulBboxes = (forms.unlabeledElements || []).filter(function(e) { return e.bbox; }).map(function(e) { return e.bbox; });
+    findings.push({
+      severity: 'error',
+      title: forms.withoutLabel + ' of ' + forms.total + ' form inputs missing labels',
+      detail: 'Unlabeled inputs are unusable for screen reader users',
+      fix: 'Use <label for="id"> or wrap the input in a <label>. Add aria-label for icon-only inputs.',
+      presetRef: 'Form presets always pair inputs with visible labels',
+      source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships',
+      locator: ulBboxes.length > 0 ? { selector: (forms.unlabeledElements[0] || {}).selector || '', text: '', bboxes: ulBboxes } : undefined
+    });
+  }
+
+  // Focus indicators — check if any element shows a visible change when focused
+  checks++;
+  var focusIndicators = a11y.focusIndicators || [];
+  var hasAnyFocus = focusIndicators.some(function(f) {
+    // Element has visible outline when focused, or showed a change on focus
+    return f.hasFocusChange || (f.outlineStyle !== 'none' && f.outlineWidth !== '0px');
+  });
+  var hasFocusVisibleCSS = a11y.hasFocusVisibleCSS || false;
+  if (hasAnyFocus || hasFocusVisibleCSS || focusIndicators.length === 0) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'error',
+      title: 'No visible focus indicators found',
+      detail: 'Keyboard users cannot see which element is focused',
+      fix: 'Ensure focus-visible styles exist. In Tailwind: focus-visible:ring-2 focus-visible:ring-blue-500', source: 'WCAG 2.2 §2.4.7 — https://www.w3.org/TR/WCAG22/#focus-visible',
+      presetRef: 'All interactive presets include focus-visible ring styles'
+    });
+  }
+
+  // Language attribute (skip for HTML fragments — pasted snippets, presets)
+  var isFragment = data.meta && (data.meta.url === 'Pasted HTML' || data.meta.url === 'Editor Preview' || data.meta.isFragment);
+  if (!isFragment) {
+    checks++;
+    if (data.accessibility.langAttribute) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'error',
+        title: 'Missing lang attribute on <html>',
+        detail: 'Screen readers need the language to pronounce content correctly',
+        fix: 'Add lang="en" (or appropriate language) to the <html> element.',
+        presetRef: null,
+        source: 'WCAG 2.2 §3.1.1 — https://www.w3.org/TR/WCAG22/#language-of-page'
+      });
+    }
+  }
+
+  // Skip navigation link (skip for fragments)
+  if (!isFragment && data.structure && data.structure.totalElements > 50) {
+    checks++;
+    if (data.accessibility.hasSkipLink) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: 'No skip navigation link found',
+        detail: 'Keyboard users must tab through all navigation before reaching main content',
+        fix: 'Add a visually hidden skip link as the first focusable element: <a href="#main" class="sr-only focus:not-sr-only">Skip to content</a>',
+        presetRef: null,
+        source: 'WCAG 2.2 §2.4.1 — https://www.w3.org/TR/WCAG22/#bypass-blocks'
+      });
+    }
+  }
+
+  // Bad link texts
+  var badLinks = data.accessibility.badLinkTexts || [];
+  if (badLinks.length > 0) {
+    findings.push({
+      severity: 'warning',
+      title: badLinks.length + ' link(s) with non-descriptive text',
+      detail: 'Found: ' + badLinks.slice(0, 5).map(function(l) { return '"' + l.text + '"'; }).join(', '),
+      fix: 'Replace generic text like "click here" or "read more" with descriptive link text that makes sense out of context.',
+      presetRef: null,
+      source: 'WCAG 2.2 §2.4.4 — https://www.w3.org/TR/WCAG22/#link-purpose-in-context'
+    });
+  }
+
+  // Missing autocomplete on common fields
+  var missingAC = data.accessibility.missingAutocomplete || 0;
+  if (missingAC > 0) {
+    findings.push({
+      severity: 'info',
+      title: missingAC + ' form field(s) missing autocomplete attribute',
+      detail: 'Autocomplete helps users fill forms faster and reduces errors',
+      fix: 'Add autocomplete="name", autocomplete="email", etc. to common input fields.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.3.5 — https://www.w3.org/TR/WCAG22/#identify-input-purpose'
+    });
+  }
+
+  // ARIA audit
+  var ariaIssues = data.accessibility.ariaIssues || [];
+  var btnNoTabindex = ariaIssues.filter(function(a) { return a.type === 'button-no-tabindex'; });
+  var hiddenFocusable = ariaIssues.filter(function(a) { return a.type === 'hidden-focusable'; });
+  if (btnNoTabindex.length > 0) {
+    findings.push({
+      severity: 'error',
+      title: btnNoTabindex.length + ' element(s) with role="button" but no tabindex',
+      detail: 'Non-button elements with role="button" must be keyboard-focusable',
+      fix: 'Add tabindex="0" and a keydown handler for Enter/Space to elements with role="button", or use a real <button> element.',
+      presetRef: null,
+      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
+    });
+  }
+  if (hiddenFocusable.length > 0) {
+    findings.push({
+      severity: 'error',
+      title: hiddenFocusable.length + ' focusable element(s) inside aria-hidden containers',
+      detail: 'Screen readers skip aria-hidden content, but keyboard focus can still reach these elements — creating a confusing experience',
+      fix: 'Add tabindex="-1" to focusable elements inside aria-hidden containers, or restructure to keep them outside.',
+      presetRef: null,
+      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
+    });
+  }
+
+  // Color-only indicators
+  var colorOnly = data.accessibility.colorOnlyIndicators || 0;
+  if (colorOnly > 0) {
+    findings.push({
+      severity: 'warning',
+      title: colorOnly + ' status element(s) may rely on color alone',
+      detail: 'Elements with error/success/warning classes but no icon or text prefix',
+      fix: 'Add an icon (✓, ✗, ⚠) or text label ("Error:", "Success:") alongside color to convey status. Color-blind users cannot distinguish red from green.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.1 — https://www.w3.org/TR/WCAG22/#use-of-color'
+    });
+  }
+
+  // Auto-playing media
+  var autoPlay = data.accessibility.autoPlayMedia || 0;
+  if (autoPlay > 0) {
+    findings.push({
+      severity: 'error',
+      title: autoPlay + ' auto-playing media element(s) without muted attribute',
+      detail: 'Unexpected audio disrupts users, especially those using screen readers',
+      fix: 'Add the muted attribute to auto-playing videos, or remove autoplay entirely. Let users choose to play media.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.2 — https://www.w3.org/TR/WCAG22/#audio-control'
+    });
+  }
+
+  // Profile-specific: font smoothing warning (low_vision)
+  if (profile.warnFontSmoothing && data.typography && data.typography.fontSmoothingAntialiased) {
+    checks++;
+    findings.push({
+      severity: 'warning',
+      title: '-webkit-font-smoothing: antialiased detected',
+      detail: 'Antialiased font smoothing thins fonts on macOS, reducing legibility for low-vision users.',
+      fix: 'Remove -webkit-font-smoothing: antialiased or use auto instead.',
+      source: 'Low Vision TF — https://www.w3.org/WAI/GL/low-vision-a11y-tf/'
+    });
+  }
+
+  // Profile-specific: background images behind text (low_vision)
+  if (profile.warnBackgroundImage && data.accessibility && data.accessibility.bgImageBehindText) {
+    checks++;
+    findings.push({
+      severity: 'warning',
+      title: data.accessibility.bgImageBehindText + ' element(s) with background images behind text',
+      detail: 'Background textures/patterns reduce text legibility for low-vision users.',
+      fix: 'Use solid backgrounds behind text, or add a semi-transparent overlay.',
+      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
+    });
+  }
+
+  // Profile-specific: outline:none without focus replacement (motor_impairment)
+  if (profile.warnOutlineNone && a11y.focusIndicators) {
+    var outlineNone = a11y.focusIndicators.filter(function(f) {
+      return f.outlineStyle === 'none' && !a11y.hasFocusVisibleCSS;
+    }).length;
+    if (outlineNone > 0) {
+      checks++;
+      findings.push({
+        severity: 'error',
+        title: outlineNone + ' element(s) with outline:none and no :focus-visible replacement',
+        detail: 'Removing focus outlines without providing alternative styling makes keyboard navigation impossible.',
+        fix: 'Never use outline:none without a :focus-visible replacement. Use focus-visible:ring-2 in Tailwind.',
+        source: 'WCAG 2.2 §2.4.7 — https://www.w3.org/TR/WCAG22/#focus-visible'
+      });
+    }
+  }
+
+  // --- Structural completeness hints (info only, full pages via URL/snippet) ---
+  // Only for real pages, not pasted fragments or editor previews
+  var inputMethod = (data.meta && data.meta._inputMethod) || '';
+  var isFullPage = (inputMethod === 'url' || inputMethod === 'console') && !isFragment;
+  if (isFullPage && elCount > 50) {
+    // Missing <footer>
+    if (!semantic.footer) {
+      findings.push({
+        severity: 'info',
+        title: 'No <footer> element found',
+        detail: 'Most pages benefit from a footer with copyright, contact info, and secondary navigation. Some pages (SPAs, dashboards, single-purpose tools) legitimately omit it.',
+        fix: 'Add a <footer> with site-wide links, copyright, and contact information. It helps users who scroll to the bottom looking for additional navigation.',
+        presetRef: null,
+        source: 'HTML spec — https://html.spec.whatwg.org/multipage/sections.html#the-footer-element'
+      });
+    }
+    // No dark mode support
+    var hasDarkMode = (data.structure && data.structure.darkModeClasses) ||
+      (data.structure && data.structure.darkModeMethod && data.structure.darkModeMethod !== 'none');
+    if (!hasDarkMode && elCount > 100) {
+      findings.push({
+        severity: 'info',
+        title: 'No dark mode support detected',
+        detail: 'No dark: classes, prefers-color-scheme media query, or dark mode toggle found in static analysis. Note: dark mode can also be implemented purely in JavaScript (runtime class toggling, CSS-in-JS, matchMedia listeners) which this check cannot detect.',
+        fix: 'If your page doesn\'t have dark mode yet, consider adding it via CSS prefers-color-scheme (automatic), Tailwind dark: classes, or a JS-based toggle. Dark mode reduces eye strain and is increasingly expected by users.',
+        presetRef: 'All presets include dark mode variants',
+        source: 'MDN — https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-color-scheme'
+      });
+    }
+    // No <main> landmark (upgrade existing semantic check to also hint here)
+    if (!hasMain) {
+      findings.push({
+        severity: 'info',
+        title: 'No <main> landmark found',
+        detail: 'The <main> element identifies the primary content area. Screen readers use it to let users jump directly to content, skipping navigation.',
+        fix: 'Wrap your primary content in <main>. There should be exactly one per page.',
+        presetRef: null,
+        source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
+      });
+    }
+    // No <h1> on the page
+    var headings = (data.typography && data.typography.headings) || [];
+    var hasH1 = headings.some(function(h) { return h.tag === 'h1'; });
+    if (!hasH1 && headings.length > 0) {
+      findings.push({
+        severity: 'info',
+        title: 'No <h1> heading found',
+        detail: 'The page has headings (' + headings.map(function(h) { return h.tag; }).join(', ') + ') but no <h1>. Every page should have exactly one <h1> describing its primary purpose.',
+        fix: 'Add a single <h1> as the main title. Other headings should follow hierarchically (h2, h3, etc.).',
+        presetRef: null,
+        source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
+      });
+    }
+    // Not responsive (no responsive classes or viewport meta)
+    var hasResponsive = data.structure && data.structure.responsiveClasses;
+    var hasViewportMeta = data.structure && data.structure.viewportMeta && data.structure.viewportMeta.indexOf('width=device-width') !== -1;
+    if (!hasResponsive && !hasViewportMeta) {
+      findings.push({
+        severity: 'info',
+        title: 'No responsive design indicators found',
+        detail: 'No responsive CSS classes (sm:, md:, lg:) or proper viewport meta tag detected. Note: responsive behavior can also be implemented purely in JavaScript (resize listeners, dynamic styles) or via CSS media queries in external stylesheets that this static check may not detect.',
+        fix: 'If your page isn\'t responsive yet, add <meta name="viewport" content="width=device-width, initial-scale=1.0"> and use responsive breakpoints (CSS media queries, Tailwind sm:/md:/lg: classes, or JS-based approaches) for layout adjustments.',
+        presetRef: null,
+        source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
+      });
+    }
+  }
+
+  // --- Extended checks ---
+
+  // Duplicate IDs
+  var dupIds = a11y.duplicateIds || [];
+  if (dupIds.length > 0) {
+    checks++;
+    var ariaIds = dupIds.filter(function(d) { return d.usedInAria; });
+    var details = dupIds.slice(0, 5).map(function(d) { return '#' + d.id + ' (' + d.count + 'x' + (d.usedInAria ? ', used in label/ARIA' : '') + ')'; });
+    findings.push({
+      severity: ariaIds.length > 0 ? 'error' : 'warning',
+      title: dupIds.length + ' duplicate ID(s) found',
+      detail: details.join('; '),
+      fix: 'Each id must be unique on the page. Duplicate IDs break form labels, ARIA references, and anchor links.',
+      presetRef: null,
+      source: 'WCAG 2.2 §4.1.1 — https://www.w3.org/TR/WCAG22/#parsing'
+    });
+  }
+
+  // Scrollable regions without keyboard access
+  var scrollNoKey = a11y.scrollableNoKeyboard || 0;
+  if (scrollNoKey > 0) {
+    checks++;
+    findings.push({
+      severity: 'error',
+      title: scrollNoKey + ' scrollable region(s) not keyboard-accessible',
+      detail: 'Scrollable containers without focusable content or tabindex cannot be scrolled by keyboard users.',
+      fix: 'Add tabindex="0" to scrollable containers, or ensure they contain focusable elements (links, buttons).',
+      presetRef: null,
+      source: 'WCAG 2.2 §2.1.1 — https://www.w3.org/TR/WCAG22/#keyboard'
+    });
+  }
+
+  // Nested interactive elements
+  var nestedInt = a11y.nestedInteractives || [];
+  if (nestedInt.length > 0) {
+    checks++;
+    findings.push({
+      severity: 'error',
+      title: nestedInt.length + ' nested interactive element(s) (e.g. link inside link)',
+      detail: 'Nested clickable elements create undefined behavior. Elements: ' + nestedInt.slice(0, 3).join(', '),
+      fix: 'Never nest interactive elements. Use a single <a> or <button> and handle layout with CSS.',
+      presetRef: null,
+      source: 'HTML spec §4.5.1 — https://html.spec.whatwg.org/multipage/text-level-semantics.html#the-a-element'
+    });
+  }
+
+  // Positive tabindex
+  var posTabindex = a11y.positiveTabindex || 0;
+  if (posTabindex > 0) {
+    checks++;
+    findings.push({
+      severity: 'warning',
+      title: posTabindex + ' element(s) with positive tabindex',
+      detail: 'Positive tabindex disrupts natural tab order and creates confusing keyboard navigation.',
+      fix: 'Remove positive tabindex values. Use DOM order to control tab sequence. tabindex="0" adds to natural order; tabindex="-1" removes from it.',
+      presetRef: null,
+      source: 'WCAG 2.2 §2.4.3 — https://www.w3.org/TR/WCAG22/#focus-order'
+    });
+  }
+
+  // Empty buttons/links
+  var emptyInt = a11y.emptyInteractives || [];
+  if (emptyInt.length > 0) {
+    checks++;
+    findings.push({
+      severity: 'error',
+      title: emptyInt.length + ' interactive element(s) with no accessible name',
+      detail: 'Buttons/links without text, aria-label, or title are invisible to screen readers: ' + emptyInt.slice(0, 3).join(', '),
+      fix: 'Add text content, aria-label="description", or a descriptive title attribute to all interactive elements.',
+      presetRef: null,
+      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
+    });
+  }
+
+  // Non-text contrast (input borders)
+  var ntContrast = a11y.nonTextContrast || [];
+  if (ntContrast.length > 0) {
+    checks++;
+    var ntDetails = ntContrast.slice(0, 3).map(function(n) { return n.selector + ' border ' + n.ratio + ':1'; });
+    findings.push({
+      severity: 'warning',
+      title: ntContrast.length + ' form element(s) with border contrast below 3:1',
+      detail: 'Input borders must have at least 3:1 contrast against their background (WCAG 1.4.11): ' + ntDetails.join('; '),
+      fix: 'Increase border color contrast. In dark mode use border-slate-600 or darker. Light mode: border-slate-300 minimum on white.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.11 — https://www.w3.org/TR/WCAG22/#non-text-contrast'
+    });
+  }
+
+  // Table accessibility
+  var tableIssues = a11y.tableIssues || [];
+  if (tableIssues.length > 0) {
+    checks++;
+    var tblDetails = tableIssues.slice(0, 3).map(function(t) { return t.selector + ': ' + t.issues.join(', '); });
+    findings.push({
+      severity: tableIssues.some(function(t) { return t.issues.indexOf('no-th') !== -1; }) ? 'warning' : 'info',
+      title: tableIssues.length + ' table(s) with accessibility issues',
+      detail: tblDetails.join('; '),
+      fix: 'Data tables need <th> with scope="col" or scope="row". Add <caption> or aria-label for screen reader context.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
+    });
+  }
+
+  // Missing button type
+  var missingBtnType = a11y.missingButtonType || 0;
+  if (missingBtnType > 0) {
+    findings.push({
+      severity: 'info',
+      title: missingBtnType + ' button(s) without explicit type attribute',
+      detail: 'Buttons default to type="submit" which can cause accidental form submissions.',
+      fix: 'Add type="button" to buttons that are not form submit buttons.',
+      presetRef: null,
+      source: 'HTML spec — https://html.spec.whatwg.org/multipage/form-elements.html#the-button-element'
+    });
+  }
+
+  // Text clipping without title
+  var textClipped = a11y.textClippedNoTitle || 0;
+  if (textClipped > 0) {
+    findings.push({
+      severity: textClipped > 5 ? 'warning' : 'info',
+      title: textClipped + ' element(s) truncate text without title attribute',
+      detail: 'Text is clipped with ellipsis but has no title or aria-label, so the full text is inaccessible.',
+      fix: 'Add title="full text here" to elements with text-overflow: ellipsis so users can see the complete content on hover.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
+    });
+  }
+
+  // Placeholder-only labels
+  var placeholderOnly = a11y.placeholderOnlyInputs || 0;
+  if (placeholderOnly > 0) {
+    findings.push({
+      severity: 'warning',
+      title: placeholderOnly + ' input(s) use placeholder as only label',
+      detail: 'Placeholders disappear when the user starts typing, leaving no visible label.',
+      fix: 'Add a visible <label> element. Placeholders are hints, not labels.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
+    });
+  }
+
+  // Invisible links (no underline, no color distinction)
+  var invisLinks = a11y.invisibleLinks || 0;
+  if (invisLinks > 0) {
+    findings.push({
+      severity: 'warning',
+      title: invisLinks + ' link(s) visually indistinguishable from surrounding text',
+      detail: 'Links in body text have no underline, no color difference, and no background — users cannot identify them as clickable.',
+      fix: 'Add text-decoration: underline or a distinct color to in-content links. Nav and button-styled links are exempt.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.1 — https://www.w3.org/TR/WCAG22/#use-of-color'
+    });
+  }
+
+  // Required fields without visual indicator
+  var reqNoIndicator = a11y.requiredNoIndicator || 0;
+  if (reqNoIndicator > 0) {
+    findings.push({
+      severity: 'warning',
+      title: reqNoIndicator + ' required field(s) without visual indicator',
+      detail: 'Required inputs have no asterisk (*) or "Required" text in their label.',
+      fix: 'Add an asterisk (*) to required field labels or include "Required" text.',
+      presetRef: null,
+      source: 'WCAG 2.2 §3.3.2 — https://www.w3.org/TR/WCAG22/#labels-or-instructions'
+    });
+  }
+
+  // Invisible inputs (no border/background/shadow)
+  var invisInputs = a11y.invisibleInputs || 0;
+  if (invisInputs > 0) {
+    findings.push({
+      severity: 'warning',
+      title: invisInputs + ' input(s) without visible boundary',
+      detail: 'Text inputs have no border, no distinct background, and no shadow — users cannot identify where to type.',
+      fix: 'Add a border (border-slate-300) or distinct background to input fields. WCAG 1.4.11 requires 3:1 contrast for input boundaries.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.11 — https://www.w3.org/TR/WCAG22/#non-text-contrast'
+    });
+  }
+
+  // Select without default option
+  var selectNoDefault = a11y.selectNoDefault || 0;
+  if (selectNoDefault > 0) {
+    findings.push({
+      severity: 'info',
+      title: selectNoDefault + ' select element(s) without meaningful default option',
+      detail: 'Select elements have a blank first option. Users see an empty dropdown.',
+      fix: 'Add a descriptive prompt like "Select an option..." as the first disabled option.',
+      presetRef: null,
+      source: 'NNGroup — https://www.nngroup.com/articles/drop-down-menus/'
+    });
+  }
+
+  // Disabled element contrast
+  var disabledLC = a11y.disabledLowContrast || 0;
+  if (disabledLC > 0) {
+    findings.push({
+      severity: 'info',
+      title: disabledLC + ' disabled element(s) with very low contrast (< 2:1)',
+      detail: 'While WCAG exempts disabled elements from contrast rules, users should still be able to read what is disabled.',
+      fix: 'Aim for at least 2:1 contrast on disabled elements so users understand what is unavailable.',
+      presetRef: null,
+      source: 'Usability research — https://www.nngroup.com/articles/disabled-buttons/'
+    });
+  }
+
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+  return { score: score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Accessibility', icon: 'a11y' };
+}
+
+
+  S.register("accessibility", scoreAccessibility, 15, "Accessibility", "a11y");
+})();
+</file>
+
+<file path="docs/scoring/spacing.js">
+// Scoring Module: Spacing & Layout
+// Weight: 15%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreSpacing(data) {
+  var profile = S.getProfile(data);
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+
+  // 4px grid adherence — check if spacing values are multiples of 4
+  checks++;
+  var allSpacing = [].concat(data.spacing.paddings || [], data.spacing.margins || [], data.spacing.gaps || []);
+  var onGrid = 0;
+  var offGrid = 0;
+  allSpacing.forEach(function(s) {
+    var px = parseFloat(s.value);
+    if (isNaN(px) || px === 0) return;
+    if (Math.round(px) % 4 === 0) onGrid += s.count;
+    else offGrid += s.count;
+  });
+  var gridRatio = (onGrid + offGrid) > 0 ? onGrid / (onGrid + offGrid) : 1;
+  if (gridRatio >= 0.7) {
+    passed++;
+    if (gridRatio < 0.85) {
+      findings.push({
+        severity: 'info',
+        title: Math.round(gridRatio * 100) + '% of spacing values on 4px grid',
+        detail: 'Good adherence — a few values could be rounded to the nearest 4px increment',
+        fix: 'Use Tailwind spacing utilities (p-1=4px, p-2=8px, p-3=12px, p-4=16px, ...)',
+        presetRef: null
+      });
+    }
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'Only ' + Math.round(gridRatio * 100) + '% of spacing is on a 4px grid',
+      detail: 'Inconsistent spacing makes layouts feel unpolished',
+      fix: 'Align spacing to 4px increments: 4, 8, 12, 16, 24, 32, 48, 64px',
+      presetRef: 'All presets use Tailwind spacing scale (4px base unit)', source: 'Material Design spacing — https://m3.material.io/foundations/layout/applying-layout'
+    });
+  }
+
+  // Content max-width
+  checks++;
+  var maxW = parseFloat(data.spacing.maxContentWidth);
+  if (maxW > 0 && maxW <= 1500) {
+    passed++;
+  } else if (maxW > 1500) {
+    findings.push({
+      severity: 'warning',
+      title: 'Content width is ' + Math.round(maxW) + 'px (recommended: 1200–1440px)',
+      detail: 'Very wide content is harder to scan and looks stretched on large monitors',
+      fix: 'Add a max-width container. In Tailwind: max-w-7xl (1280px) or max-w-screen-xl',
+      presetRef: 'Dashboard presets use max-w-7xl containers',
+      source: 'NNGroup — https://www.nngroup.com/articles/utilize-available-screen-space/'
+    });
+  } else {
+    passed++; // No max width data or narrow — fine
+  }
+
+  // Mobile padding >= 16px
+  checks++;
+  var bodyPad = parseFloat(data.spacing.bodyPaddingHorizontal);
+  if (bodyPad >= 14 || isNaN(bodyPad) || bodyPad === 0) {
+    passed++; // 0 is OK if inner containers have padding
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'Body horizontal padding is ' + bodyPad + 'px (minimum: 16px)',
+      detail: 'Content touching screen edges feels cramped on mobile',
+      fix: 'Add px-4 (16px) padding to the body or main container',
+      presetRef: null,
+      source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout'
+    });
+  }
+
+  // Adjacent interactive element spacing (buttons/links too close together)
+  var adjacentIssues = (data.interaction && data.interaction.adjacentIssues) || [];
+  if (adjacentIssues.length > 0) {
+    checks++;
+    var minSpacing = profile.targetSpacing;
+    var touching = adjacentIssues.filter(function(a) { return a.gap < 2; });
+    var tooClose = adjacentIssues.filter(function(a) { return a.gap >= 2 && a.gap < minSpacing; });
+
+    touching.forEach(function(a) {
+      var labelA = a.textA || a.selectorA || '?';
+      var labelB = a.textB || a.selectorB || '?';
+      var selectorHint = (a.selectorA || a.selectorB) ? ' — ' + (a.selectorA || '') : '';
+      findings.push({
+        severity: 'error',
+        title: 'Interactive elements touching (' + a.gap + 'px gap)',
+        detail: labelA + ' and ' + labelB + ' (' + a.direction + ')' + selectorHint,
+        fix: 'Add at least ' + minSpacing + 'px gap between interactive elements. In Tailwind: gap-' + (minSpacing / 4) + ' on the parent flex/grid container.',
+        presetRef: 'Button presets use gap-2 (8px) or gap-3 (12px) between buttons',
+        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+        locator: { selector: a.selectorA || a.selectorB || '', text: a.textA || '', bboxes: [a.bboxA, a.bboxB].filter(Boolean) }
+      });
+    });
+
+    tooClose.forEach(function(a) {
+      var labelA = a.textA || a.selectorA || '?';
+      var labelB = a.textB || a.selectorB || '?';
+      var selectorHint = (a.selectorA || a.selectorB) ? ' — ' + (a.selectorA || '') : '';
+      findings.push({
+        severity: 'warning',
+        title: 'Interactive elements only ' + a.gap + 'px apart (recommended: ≥' + minSpacing + 'px)',
+        detail: labelA + ' and ' + labelB + ' (' + a.direction + ')' + selectorHint,
+        fix: 'Increase gap to at least ' + minSpacing + 'px to prevent mis-taps. In Tailwind: gap-' + (minSpacing / 4) + ' on the parent.',
+        presetRef: null,
+        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+        locator: { selector: a.selectorA || a.selectorB || '', text: a.textA || '', bboxes: [a.bboxA, a.bboxB].filter(Boolean) }
+      });
+    });
+
+    if (touching.length === 0 && tooClose.length === 0) passed++;
+  }
+
+  // Element overflow
+  var overflows = (data.layout && data.layout.overflowElements) || 0;
+  if (overflows > 0) {
+    checks++;
+    findings.push({
+      severity: overflows > 5 ? 'warning' : 'info',
+      title: overflows + ' element(s) with horizontal overflow',
+      detail: 'Content extends beyond its container, causing horizontal scroll or clipping',
+      fix: 'Add overflow-x: hidden or overflow: auto to the container element. Check for fixed-width children inside flexible containers.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
+    });
+  } else {
+    checks++;
+    passed++;
+  }
+
+  // Negative margins
+  var negMargins = (data.spacing && data.spacing.negativeMargins) || 0;
+  if (negMargins > 5) {
+    findings.push({
+      severity: 'info',
+      title: negMargins + ' element(s) use negative margins',
+      detail: 'Negative margins can cause overlapping content and layout fragility',
+      fix: 'Consider using CSS grid/flexbox gap, transform, or absolute positioning instead of negative margins where possible.',
+      presetRef: null,
+      source: 'CSS best practices'
+    });
+  }
+
+  // Container padding consistency
+  var cPaddings = (data.spacing && data.spacing.containerPaddings) || [];
+  if (cPaddings.length >= 4) {
+    findings.push({
+      severity: 'info',
+      title: cPaddings.length + ' distinct container padding values',
+      detail: 'Values: ' + cPaddings.slice(0, 5).map(function(p) { return p.value + ' (' + p.count + 'x)'; }).join(', '),
+      fix: 'Standardize container padding to 2-3 values. In Tailwind: p-4 (16px), p-6 (24px), p-8 (32px).',
+      presetRef: null,
+      source: 'Gestalt proximity — https://lawsofux.com/law-of-proximity/'
+    });
+  }
+
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+  return { score: score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Spacing & Layout', icon: 'spacing' };
+}
+
+
+  S.register("spacing", scoreSpacing, 15, "Spacing & Layout", "spacing");
+})();
+</file>
+
+<file path="docs/scoring/touch.js">
+// Scoring Module: Touch & Interaction
+// Weight: 15%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreTouchTargets(data) {
+  var profile = S.getProfile(data);
+  var findings = [];
+  var targets = data.interaction.touchTargets || [];
+
+  // Viewport-aware thresholds, adjusted by profile:
+  var vw = (data.meta && data.meta.viewportWidth) || 1280;
+  var isDesktop = vw >= 1024;
+  var minSize = isDesktop ? profile.touchTargetDesktop : profile.touchTarget;
+  var warnSize = isDesktop ? profile.touchTargetDesktopWarn : profile.touchTarget;
+  var context = isDesktop ? 'desktop' : 'touch/mobile';
+  var issueCount = 0;
+
+  targets.forEach(function(t) {
+    var w = t.width, h = t.height;
+    var minDim = Math.min(w, h);
+
+    // WCAG 2.5.8 exception: inline text links are exempt from target size requirements.
+    // Detect by checking if element is an <a> without button-like styling (no bg, no border, no padding > 4px)
+    var isInlineLink = t.element === 'a' && !t.isButton;
+
+    if (minDim < minSize) {
+      issueCount++;
+      var ctx = t.linkContext || (isInlineLink ? 'inline' : 'button');
+
+      // On desktop, determine severity based on how far below threshold:
+      // - ≥20px (just 4px short of 24px) → info (barely noticeable with mouse)
+      // - ≥16px → warning (small but usable with mouse)
+      // - <16px → error (genuinely too small even for mouse)
+      // On mobile, all failures are errors (fingers need the full 44px)
+      function desktopSeverity(dim) {
+        if (!isDesktop) return 'error';
+        if (dim >= 20) return 'info';
+        if (dim >= 16) return 'warning';
+        return 'error';
+      }
+
+      if (ctx === 'inline') {
+        // True inline text links (inside <p>, <blockquote>, etc.) — WCAG 2.5.8 exempt
+        findings.push({
+          severity: 'info',
+          title: 'Inline text link ' + w + '×' + h + 'px — exempt from target size',
+          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+          fix: 'Inline text links in paragraphs are exempt per WCAG 2.5.8. Consider adding padding for better usability.',
+          source: 'WCAG 2.2 §2.5.8 inline exception — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
+        });
+      } else if (ctx === 'footer') {
+        // Footer links — relaxed but still error below hard minimum (16px)
+        var footerHardMin = isDesktop ? 16 : 24;
+        findings.push({
+          severity: minDim < footerHardMin ? 'error' : 'info',
+          title: 'Footer link ' + w + '×' + h + 'px' + (minDim < footerHardMin ? ' (too small even for footer — min ' + footerHardMin + 'px)' : ' (below ' + minSize + 'px, relaxed for footer)'),
+          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+          fix: minDim < footerHardMin
+            ? 'Even footer links need at least ' + footerHardMin + 'px height. Add padding to increase click area.'
+            : 'Footer links have relaxed sizing expectations. Consider padding for touch accessibility.',
+          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
+        });
+      } else if (ctx === 'nav') {
+        // Navigation links — should be properly sized
+        var navSev = desktopSeverity(minDim);
+        findings.push({
+          severity: navSev,
+          title: 'Nav link ' + w + '×' + h + 'px (minimum: ' + minSize + 'px)',
+          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+          fix: 'Navigation links need adequate sizing. Add padding: py-2 px-4 (min-height ' + minSize + 'px).',
+          presetRef: 'Navigation presets use min-height 44px on nav links',
+          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
+        });
+      } else {
+        // Buttons, styled links, other interactive elements
+        var sev = desktopSeverity(minDim);
+        findings.push({
+          severity: sev,
+          title: t.element + ' is ' + w + '×' + h + 'px (' + (isDesktop ? 'desktop min: ' + minSize + 'px' : 'touch min: ' + minSize + 'px') + ')',
+          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+          fix: isDesktop
+            ? (sev === 'info'
+              ? 'Slightly below ' + minSize + 'px desktop minimum — usable with mouse but consider adding padding.'
+              : 'Click targets need at least ' + minSize + '×' + minSize + 'px. Increase padding or min-height/min-width.')
+            : 'Touch targets need ' + minSize + '×' + minSize + 'px minimum. Add min-h-[' + minSize + 'px] min-w-[' + minSize + 'px] or increase padding.',
+          presetRef: isDesktop ? null : 'Button presets use py-3 px-6 (48px height)',
+          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
+        });
+      }
+    } else if (minDim < warnSize && isDesktop && !isInlineLink) {
+      findings.push({
+        severity: 'warning',
+        title: t.element + ' is ' + w + '×' + h + 'px (recommended for desktop: ≥' + warnSize + 'px)',
+        detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+        fix: 'While ' + minSize + 'px meets minimum, ' + warnSize + 'px+ improves click comfort. Consider adding padding.',
+        presetRef: null,
+        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+        locator: { selector: t.selector, text: t.text || '' }
+      });
+    }
+  });
+
+  // Also flag targets that pass the current threshold but would fail on touch
+  if (isDesktop && targets.length > 0) {
+    var touchMin = profile.touchTarget;
+    var touchFails = targets.filter(function(t) { return Math.min(t.width, t.height) < touchMin; });
+    if (touchFails.length > 0) {
+      findings.push({
+        severity: 'info',
+        title: touchFails.length + ' element(s) below ' + touchMin + 'px touch target (analyzed at ' + vw + 'px desktop viewport)',
+        detail: 'These meet desktop minimums but would fail on touch devices. Consider responsive sizing if the site is also used on mobile.',
+        fix: 'For responsive touch support: add touch-target sizing at mobile breakpoints, e.g. sm:min-h-[' + touchMin + 'px]',
+        presetRef: null,
+        source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout'
+      });
+    }
+  }
+
+  // Note when responsive CSS exists that might fix touch targets on mobile
+  if (isDesktop && data.interaction && data.interaction.hasResponsiveTargetCSS) {
+    findings.push({
+      severity: 'info',
+      title: 'Responsive CSS detected that may adjust target sizes at mobile breakpoints',
+      detail: 'This site has media queries with height/padding rules. Touch targets may be correctly sized on mobile devices.',
+      fix: 'Verify by testing at mobile viewport. Use the viewport selector to re-scan at 375px width.',
+      presetRef: null
+    });
+  }
+
+  // Transitions / animation duration
+  var transitions = data.interaction.transitions || [];
+  transitions.forEach(function(t) {
+    var ms = parseFloat(t) * 1000;
+    if (ms > 500) {
+      findings.push({
+        severity: 'warning',
+        title: 'Transition duration ' + ms + 'ms exceeds 500ms maximum',
+        detail: 'Users perceive animations longer than 500ms as sluggish',
+        fix: 'Keep transitions under 500ms. Enter: 200–300ms, Exit: 150–200ms. In Tailwind: duration-200 or duration-300',
+        presetRef: null,
+        source: 'NNGroup animation — https://www.nngroup.com/articles/animation-usability/'
+      });
+    }
+  });
+
+  // Event listener pattern findings
+  var lPatterns = (data.interaction && data.interaction.listenerPatterns) || {};
+  if (lPatterns.toggleNoAria > 0) {
+    findings.push({
+      severity: 'warning',
+      title: lPatterns.toggleNoAria + ' toggle handler(s) without ARIA state management',
+      detail: 'Click handlers toggle CSS classes but don\'t update aria-expanded or other ARIA states. Screen readers won\'t know the element\'s state changed.',
+      fix: 'Add setAttribute(\'aria-expanded\', isOpen) alongside classList.toggle() in toggle handlers.',
+      presetRef: null,
+      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
+    });
+  }
+  if (lPatterns.navigationInButton > 0) {
+    findings.push({
+      severity: 'info',
+      title: lPatterns.navigationInButton + ' button(s) trigger page navigation',
+      detail: 'Buttons with click handlers that change location.href should typically be <a> elements for proper semantics and accessibility.',
+      fix: 'Use <a href="..."> for navigation instead of <button> with JavaScript location change.',
+      presetRef: null,
+      source: 'HTML spec — https://html.spec.whatwg.org/multipage/text-level-semantics.html#the-a-element'
+    });
+  }
+
+  // Score: deduct per error, less per warning
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var totalTargets = targets.length || 0;
+  var checks = totalTargets;
+  var passed = Math.max(0, totalTargets - errors - warnings);
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 3));
+  var na = totalTargets === 0 && transitions.length === 0;
+  return { score: na ? 100 : score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Touch & Interaction', icon: 'touch', notApplicable: na };
+}
+
+
+  S.register("touch", scoreTouchTargets, 15, "Touch & Interaction", "touch");
+})();
+</file>
+
+<file path="docs/scoring/typography.js">
+// Scoring Module: Typography
+// Weight: 15%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreTypography(data) {
+  var profile = S.getProfile(data);
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+
+  // Body font size check against profile minimum
+  checks++;
+  var bodySize = parseFloat(data.typography.bodyFontSize);
+  if (bodySize >= profile.bodyFontMin) {
+    passed++;
+  } else if (bodySize > 0) {
+    findings.push({
+      severity: 'error',
+      title: 'Body font size is ' + bodySize + 'px (minimum: ' + profile.bodyFontMin + 'px)',
+      detail: 'Small body text reduces readability, especially on mobile',
+      fix: 'Set body font-size to at least ' + profile.bodyFontMin + 'px. In Tailwind: text-base (16px) or text-lg (18px)',
+      presetRef: 'All presets use text-base (16px) or larger for body text', source: 'WCAG 2.2 / NNGroup — https://www.w3.org/TR/WCAG22/#text-spacing'
+    });
+  }
+
+  // Line height check against profile range
+  checks++;
+  var bodyLH = data.typography.bodyLineHeight;
+  var bodyLHRatio = 0;
+  if (bodyLH && bodyLH !== 'normal') {
+    bodyLHRatio = parseFloat(bodyLH) / bodySize;
+  }
+  var lhPassMin = profile.lineHeightMin - 0.05;
+  var lhPassMax = profile.lineHeightMax + 0.1;
+  if (bodyLHRatio >= lhPassMin && bodyLHRatio <= lhPassMax) {
+    passed++;
+  } else if (bodyLHRatio > 0) {
+    findings.push({
+      severity: bodyLHRatio < 1.2 || bodyLHRatio > 2 ? 'error' : 'warning',
+      title: 'Body line-height is ' + (Math.round(bodyLHRatio * 100) / 100) + ' (ideal: ' + profile.lineHeightMin + '–' + profile.lineHeightMax + ')',
+      detail: bodyLHRatio < profile.lineHeightMin ? 'Text feels cramped and hard to read' : 'Text feels too loose and wastes vertical space',
+      fix: bodyLHRatio < profile.lineHeightMin ? 'Increase line-height. In Tailwind: leading-relaxed (1.625) or leading-normal (1.5)' : 'Decrease line-height. In Tailwind: leading-normal (1.5)',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.12 — https://www.w3.org/TR/WCAG22/#text-spacing'
+    });
+  }
+
+  // Line length (profile-aware: elderly 65, children 55, default 75)
+  var maxChars = data.typography.maxLineLength ? data.typography.maxLineLength.chars : 0;
+  var lineElement = data.typography.maxLineLength ? data.typography.maxLineLength.element : '';
+  var lineFontSize = data.typography.maxLineLength ? (data.typography.maxLineLength.fontSize || 0) : 0;
+  var lineTextLength = data.typography.maxLineLength ? (data.typography.maxLineLength.textLength || 0) : 0;
+  var isTextElement = /^(p|li|td|th|blockquote|dd|figcaption)/.test(lineElement);
+  // Hero/intro text: large font (>=20px) with short content (<150 chars) is intentionally wide
+  var isHeroText = lineFontSize >= 20 && lineTextLength < 150;
+  if (maxChars > 0 && isTextElement && !isHeroText) {
+    checks++;
+    var lineLimit = profile.maxLineLength || 75;
+    if (maxChars <= lineLimit + 5) {
+      passed++;
+    } else {
+      findings.push({
+        severity: maxChars > lineLimit + 25 ? 'error' : 'warning',
+        title: 'Line length ~' + maxChars + ' characters (max for this audience: ' + lineLimit + ')',
+        detail: lineElement + ' — ' + (lineLimit < 70 ? 'Shorter lines improve readability for this audience.' : 'Long lines make it hard for the eye to track back to the next line.'),
+        fix: 'Constrain content width with max-w-prose (65ch) or max-w-2xl (672px)',
+        presetRef: 'Editorial presets use max-w-prose for reading content',
+        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-length.html',
+        locator: { selector: lineElement, text: '', bboxes: data.typography.maxLineLength && data.typography.maxLineLength.bbox ? [data.typography.maxLineLength.bbox] : [] }
+      });
+    }
+  }
+
+  // Heading scale — check if headings have a consistent ratio
+  checks++;
+  var headings = data.typography.headings || [];
+  if (headings.length >= 2) {
+    var sizes = headings.map(function(h) { return parseFloat(h.fontSize); }).filter(function(s) { return s > 0; });
+    var uniqueSizes = Array.from(new Set(sizes)).sort(function(a, b) { return b - a; });
+    if (uniqueSizes.length >= 2) {
+      var ratio = uniqueSizes[0] / uniqueSizes[uniqueSizes.length - 1];
+      // Marketing/landing pages legitimately use larger hero text (wider range)
+      var pageType = (data.context && data.context.pageType) || 'unknown';
+      var maxRatio = (pageType === 'marketing' || pageType === 'pricing') ? 6 : 4.5;
+      if (ratio >= 1.5 && ratio <= maxRatio) {
+        passed++;
+      } else {
+        var headingBboxes = headings.filter(function(h) { return h.bbox; }).map(function(h) { return h.bbox; });
+        findings.push({
+          severity: ratio > maxRatio + 2 ? 'warning' : 'info',
+          title: 'Heading scale ratio is ' + (Math.round(ratio * 100) / 100) + ' (ideal: 1.5–' + maxRatio + ')',
+          detail: ratio < 1.5 ? 'Headings are too similar in size — weak hierarchy' : 'Heading sizes vary widely — verify the largest heading is intentional (hero text)',
+          fix: 'Use a modular scale (1.200 minor third or 1.250 major third). In Tailwind: text-4xl > text-2xl > text-xl > text-base',
+          presetRef: null,
+          source: 'Modular type scales — https://typescale.com/',
+          locator: { selector: '', text: '', bboxes: headingBboxes }
+        });
+      }
+    } else { passed++; } // Only one heading size — acceptable
+  } else { passed++; } // No headings to check
+
+  // Max 2-3 font weights
+  checks++;
+  var fontWeights = data.typography.fontWeights || [];
+  var weightCount = fontWeights.length;
+  if (weightCount <= 4) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'Using ' + weightCount + ' font weights (recommended: 2–3)',
+      detail: 'Too many weights create visual noise and increase font loading time',
+      fix: 'Consolidate to 400 (regular), 500/600 (medium), 700 (bold)',
+      presetRef: null,
+      source: 'Google Fonts best practices — https://fonts.google.com/knowledge/using_type/choosing_reliable_typefaces'
+    });
+  }
+
+  // Profile-specific: minimum font weight (e.g., elderly profile forbids light/thin)
+  if (profile.fontWeightMin > 0 && fontWeights.length > 0) {
+    var lightWeights = fontWeights.filter(function(w) { return parseInt(w) < profile.fontWeightMin; });
+    if (lightWeights.length > 0) {
+      checks++;
+      findings.push({
+        severity: 'warning',
+        title: 'Font weight(s) ' + lightWeights.join(', ') + ' below minimum ' + profile.fontWeightMin + ' for this audience',
+        detail: 'Light and thin font weights reduce readability for users who need higher legibility',
+        fix: 'Use font-weight ' + profile.fontWeightMin + ' (regular) or heavier. Avoid font-weight 100–300.',
+        presetRef: null,
+        source: 'W3C WAI Older Users — https://www.w3.org/WAI/older-users/developing/'
+      });
+    } else {
+      checks++;
+      passed++;
+    }
+  }
+
+  // Letter spacing
+  var lsIssues = (data.typography && data.typography.letterSpacingIssues) || 0;
+  if (lsIssues > 0) {
+    findings.push({
+      severity: 'info',
+      title: lsIssues + ' element(s) with extreme letter-spacing',
+      detail: 'Very tight (< -0.03em) or very loose (> 0.15em) letter spacing reduces readability',
+      fix: 'Keep letter-spacing between -0.02em and 0.1em for body text. Tighter spacing is acceptable for large headings.',
+      presetRef: null,
+      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/letterspacing.html'
+    });
+  }
+
+  // Paragraph spacing
+  var pSpacing = (data.typography && data.typography.paragraphSpacing) || [];
+  if (pSpacing.length >= 3) {
+    checks++;
+    var bodyPx = parseFloat(data.typography.bodyFontSize) || 16;
+    var avgSpacing = pSpacing.reduce(function(s,v){return s+v},0) / pSpacing.length;
+    var spacingEm = avgSpacing / bodyPx;
+    if (spacingEm >= 0.5 && spacingEm <= 1.5) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: 'Paragraph spacing is ' + (Math.round(spacingEm * 100) / 100) + 'em (ideal: 0.75–1em)',
+        detail: spacingEm < 0.5 ? 'Paragraphs feel cramped' : 'Paragraph spacing may be too generous',
+        fix: 'Set paragraph margin-bottom to 0.75em–1em. In Tailwind: space-y-4 on the container or mb-4 on paragraphs.',
+        presetRef: null,
+        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/space-between-paragraphs.html'
+      });
+    }
+  }
+
+  // Max 2 typefaces
+  checks++;
+  var familyCount = (data.typography.fontFamilies || []).length;
+  if (familyCount <= 3) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'Using ' + familyCount + ' font families (recommended: max 2)',
+      detail: 'Too many typefaces make the design feel inconsistent',
+      fix: 'Use 1 sans-serif + 1 serif (or monospace for code). In Tailwind: font-sans + font-serif',
+      presetRef: null,
+      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/summary-of-key-rules.html'
+    });
+  }
+
+  // All-caps long text
+  var allCaps = (data.typography && data.typography.allCapsLongText) || 0;
+  if (allCaps > 0) {
+    findings.push({
+      severity: 'warning',
+      title: allCaps + ' block(s) of long text in all-caps (> 50 characters)',
+      detail: 'All-uppercase text reduces reading speed by 10-20%. Reserve for short labels and headings.',
+      fix: 'Remove text-transform: uppercase on body text. Use it only for short labels, buttons, and headings under 5 words.',
+      presetRef: null,
+      source: 'Tinker 1963, Butterick\'s Practical Typography — https://practicaltypography.com/all-caps.html'
+    });
+  }
+
+  // Justified text
+  var justified = (data.typography && data.typography.justifiedText) || 0;
+  if (justified > 0) {
+    findings.push({
+      severity: 'info',
+      title: justified + ' element(s) with text-align: justify',
+      detail: 'Justified text creates uneven word spacing (rivers of white) without proper hyphenation, reducing readability.',
+      fix: 'Use text-align: left for web content. Justified text only works well with automatic hyphenation (hyphens: auto).',
+      presetRef: null,
+      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/justified-text.html'
+    });
+  }
+
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+  return { score: score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Typography', icon: 'type' };
+}
+
+
+  S.register("typography", scoreTypography, 15, "Typography", "type");
+})();
 </file>
 
 <file path="docs/analyzer-crawl-ui.js">
@@ -24016,573 +24775,6 @@ window.MilgProxy = (function() {
 })();
 </file>
 
-<file path="docs/scoring/accessibility.js">
-// Scoring Module: Accessibility
-// Weight: 15%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreAccessibility(data) {
-  var profile = S.getProfile(data);
-  var findings = [];
-  var checks = 0;
-  var passed = 0;
-  var a11y = data.accessibility;
-
-  // Semantic elements (relaxed for small components/fragments)
-  var elCount = (data.structure && data.structure.totalElements) || 0;
-  checks++;
-  var semantic = a11y.semanticElements || {};
-  var hasMain = (semantic.main || 0) > 0;
-  var hasNav = (semantic.nav || 0) > 0;
-  var hasHeader = (semantic.header || 0) > 0;
-  var semanticCount = [hasMain, hasNav, hasHeader].filter(Boolean).length;
-  if (semanticCount >= 2 || elCount < 50) {
-    passed++; // Small components don't need full page landmarks
-  } else {
-    findings.push({
-      severity: semanticCount === 0 ? 'error' : 'warning',
-      title: 'Missing semantic HTML elements',
-      detail: 'Found: ' + (hasHeader ? 'header ' : '') + (hasNav ? 'nav ' : '') + (hasMain ? 'main ' : '') + (semantic.footer ? 'footer' : ''),
-      fix: 'Use <header>, <nav>, <main>, <footer> for page structure. Screen readers rely on these landmarks.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships',
-      presetRef: 'All presets use semantic HTML landmarks'
-    });
-  }
-
-  // Heading hierarchy
-  checks++;
-  var headingOrder = a11y.headingHierarchy || [];
-  var hierarchyBroken = false;
-  for (var i = 1; i < headingOrder.length; i++) {
-    var prev = parseInt(headingOrder[i - 1].charAt(1));
-    var curr = parseInt(headingOrder[i].charAt(1));
-    if (curr > prev + 1) { hierarchyBroken = true; break; }
-  }
-  if (!hierarchyBroken) {
-    passed++;
-  } else {
-    var hdgBboxes = (data.typography && data.typography.headings || []).filter(function(h) { return h.bbox; }).map(function(h) { return h.bbox; });
-    findings.push({
-      severity: 'warning',
-      title: 'Heading hierarchy has gaps (e.g., h1 → h3)',
-      detail: 'Heading order: ' + headingOrder.join(' → '),
-      fix: 'Use headings in order: h1 → h2 → h3. Never skip levels. Style with classes instead of heading tags.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships',
-      presetRef: null,
-      locator: hdgBboxes.length > 0 ? { selector: '', text: '', bboxes: hdgBboxes } : undefined
-    });
-  }
-
-  // Images with alt
-  checks++;
-  if (a11y.imagesWithoutAlt === 0) {
-    passed++;
-  } else {
-    var noAltBboxes = (a11y.imagesWithoutAltElements || []).filter(function(e) { return e.bbox; }).map(function(e) { return e.bbox; });
-    findings.push({
-      severity: 'error',
-      title: a11y.imagesWithoutAlt + ' image(s) missing alt text',
-      detail: 'Screen readers cannot describe these images to users',
-      fix: 'Add alt="description" to all <img> tags. Use alt="" for decorative images.', source: 'WCAG 2.2 §1.1.1 — https://www.w3.org/TR/WCAG22/#non-text-content',
-      presetRef: null,
-      locator: noAltBboxes.length > 0 ? { selector: (a11y.imagesWithoutAltElements[0] || {}).selector || '', text: '', bboxes: noAltBboxes } : undefined
-    });
-  }
-
-  // Image sizing (performance impact)
-  var imgIssues = (data.performance && data.performance.imageSizing) || [];
-  var noDimensions = imgIssues.filter(function(i) { return i.issues.indexOf('no-dimensions') !== -1; });
-  var lazyAbove = imgIssues.filter(function(i) { return i.issues.indexOf('lazy-above-fold') !== -1; });
-  var oversized = imgIssues.filter(function(i) { return i.issues.some(function(x) { return x.indexOf('oversized') === 0; }); });
-  if (noDimensions.length > 0) {
-    findings.push({ severity: 'warning', title: noDimensions.length + ' image(s) without explicit dimensions', detail: 'Missing width/height causes layout shift (CLS) when images load', fix: 'Add width and height attributes to all <img> tags, or use CSS aspect-ratio.', presetRef: null, source: 'Web Vitals — https://web.dev/articles/cls' });
-  }
-  if (lazyAbove.length > 0) {
-    findings.push({ severity: 'error', title: lazyAbove.length + ' above-fold image(s) with lazy loading', detail: 'lazy loading on visible images delays LCP (Largest Contentful Paint)', fix: 'Remove loading="lazy" from images visible in the initial viewport. Use it only for below-fold images.', presetRef: null, source: 'Web Vitals — https://web.dev/articles/lcp' });
-  }
-  if (oversized.length > 0) {
-    findings.push({ severity: 'info', title: oversized.length + ' image(s) may be oversized for their display size', detail: 'Serving images much larger than their display size wastes bandwidth', fix: 'Resize images to 2x their display size (for retina). Use srcset for responsive images.', presetRef: null, source: 'MDN — https://developer.mozilla.org/en-US/docs/Learn/HTML/Multimedia_and_embedding/Responsive_images' });
-  }
-
-  // Form labels
-  checks++;
-  var forms = a11y.formLabels || {};
-  if (forms.total === 0 || forms.withoutLabel === 0) {
-    passed++;
-  } else {
-    var ulBboxes = (forms.unlabeledElements || []).filter(function(e) { return e.bbox; }).map(function(e) { return e.bbox; });
-    findings.push({
-      severity: 'error',
-      title: forms.withoutLabel + ' of ' + forms.total + ' form inputs missing labels',
-      detail: 'Unlabeled inputs are unusable for screen reader users',
-      fix: 'Use <label for="id"> or wrap the input in a <label>. Add aria-label for icon-only inputs.',
-      presetRef: 'Form presets always pair inputs with visible labels',
-      source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships',
-      locator: ulBboxes.length > 0 ? { selector: (forms.unlabeledElements[0] || {}).selector || '', text: '', bboxes: ulBboxes } : undefined
-    });
-  }
-
-  // Focus indicators — check if any element shows a visible change when focused
-  checks++;
-  var focusIndicators = a11y.focusIndicators || [];
-  var hasAnyFocus = focusIndicators.some(function(f) {
-    // Element has visible outline when focused, or showed a change on focus
-    return f.hasFocusChange || (f.outlineStyle !== 'none' && f.outlineWidth !== '0px');
-  });
-  var hasFocusVisibleCSS = a11y.hasFocusVisibleCSS || false;
-  if (hasAnyFocus || hasFocusVisibleCSS || focusIndicators.length === 0) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'error',
-      title: 'No visible focus indicators found',
-      detail: 'Keyboard users cannot see which element is focused',
-      fix: 'Ensure focus-visible styles exist. In Tailwind: focus-visible:ring-2 focus-visible:ring-blue-500', source: 'WCAG 2.2 §2.4.7 — https://www.w3.org/TR/WCAG22/#focus-visible',
-      presetRef: 'All interactive presets include focus-visible ring styles'
-    });
-  }
-
-  // Language attribute (skip for HTML fragments — pasted snippets, presets)
-  var isFragment = data.meta && (data.meta.url === 'Pasted HTML' || data.meta.url === 'Editor Preview' || data.meta.isFragment);
-  if (!isFragment) {
-    checks++;
-    if (data.accessibility.langAttribute) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'error',
-        title: 'Missing lang attribute on <html>',
-        detail: 'Screen readers need the language to pronounce content correctly',
-        fix: 'Add lang="en" (or appropriate language) to the <html> element.',
-        presetRef: null,
-        source: 'WCAG 2.2 §3.1.1 — https://www.w3.org/TR/WCAG22/#language-of-page'
-      });
-    }
-  }
-
-  // Skip navigation link (skip for fragments)
-  if (!isFragment && data.structure && data.structure.totalElements > 50) {
-    checks++;
-    if (data.accessibility.hasSkipLink) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: 'No skip navigation link found',
-        detail: 'Keyboard users must tab through all navigation before reaching main content',
-        fix: 'Add a visually hidden skip link as the first focusable element: <a href="#main" class="sr-only focus:not-sr-only">Skip to content</a>',
-        presetRef: null,
-        source: 'WCAG 2.2 §2.4.1 — https://www.w3.org/TR/WCAG22/#bypass-blocks'
-      });
-    }
-  }
-
-  // Bad link texts
-  var badLinks = data.accessibility.badLinkTexts || [];
-  if (badLinks.length > 0) {
-    findings.push({
-      severity: 'warning',
-      title: badLinks.length + ' link(s) with non-descriptive text',
-      detail: 'Found: ' + badLinks.slice(0, 5).map(function(l) { return '"' + l.text + '"'; }).join(', '),
-      fix: 'Replace generic text like "click here" or "read more" with descriptive link text that makes sense out of context.',
-      presetRef: null,
-      source: 'WCAG 2.2 §2.4.4 — https://www.w3.org/TR/WCAG22/#link-purpose-in-context'
-    });
-  }
-
-  // Missing autocomplete on common fields
-  var missingAC = data.accessibility.missingAutocomplete || 0;
-  if (missingAC > 0) {
-    findings.push({
-      severity: 'info',
-      title: missingAC + ' form field(s) missing autocomplete attribute',
-      detail: 'Autocomplete helps users fill forms faster and reduces errors',
-      fix: 'Add autocomplete="name", autocomplete="email", etc. to common input fields.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.3.5 — https://www.w3.org/TR/WCAG22/#identify-input-purpose'
-    });
-  }
-
-  // ARIA audit
-  var ariaIssues = data.accessibility.ariaIssues || [];
-  var btnNoTabindex = ariaIssues.filter(function(a) { return a.type === 'button-no-tabindex'; });
-  var hiddenFocusable = ariaIssues.filter(function(a) { return a.type === 'hidden-focusable'; });
-  if (btnNoTabindex.length > 0) {
-    findings.push({
-      severity: 'error',
-      title: btnNoTabindex.length + ' element(s) with role="button" but no tabindex',
-      detail: 'Non-button elements with role="button" must be keyboard-focusable',
-      fix: 'Add tabindex="0" and a keydown handler for Enter/Space to elements with role="button", or use a real <button> element.',
-      presetRef: null,
-      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
-    });
-  }
-  if (hiddenFocusable.length > 0) {
-    findings.push({
-      severity: 'error',
-      title: hiddenFocusable.length + ' focusable element(s) inside aria-hidden containers',
-      detail: 'Screen readers skip aria-hidden content, but keyboard focus can still reach these elements — creating a confusing experience',
-      fix: 'Add tabindex="-1" to focusable elements inside aria-hidden containers, or restructure to keep them outside.',
-      presetRef: null,
-      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
-    });
-  }
-
-  // Color-only indicators
-  var colorOnly = data.accessibility.colorOnlyIndicators || 0;
-  if (colorOnly > 0) {
-    findings.push({
-      severity: 'warning',
-      title: colorOnly + ' status element(s) may rely on color alone',
-      detail: 'Elements with error/success/warning classes but no icon or text prefix',
-      fix: 'Add an icon (✓, ✗, ⚠) or text label ("Error:", "Success:") alongside color to convey status. Color-blind users cannot distinguish red from green.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.1 — https://www.w3.org/TR/WCAG22/#use-of-color'
-    });
-  }
-
-  // Auto-playing media
-  var autoPlay = data.accessibility.autoPlayMedia || 0;
-  if (autoPlay > 0) {
-    findings.push({
-      severity: 'error',
-      title: autoPlay + ' auto-playing media element(s) without muted attribute',
-      detail: 'Unexpected audio disrupts users, especially those using screen readers',
-      fix: 'Add the muted attribute to auto-playing videos, or remove autoplay entirely. Let users choose to play media.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.2 — https://www.w3.org/TR/WCAG22/#audio-control'
-    });
-  }
-
-  // Profile-specific: font smoothing warning (low_vision)
-  if (profile.warnFontSmoothing && data.typography && data.typography.fontSmoothingAntialiased) {
-    checks++;
-    findings.push({
-      severity: 'warning',
-      title: '-webkit-font-smoothing: antialiased detected',
-      detail: 'Antialiased font smoothing thins fonts on macOS, reducing legibility for low-vision users.',
-      fix: 'Remove -webkit-font-smoothing: antialiased or use auto instead.',
-      source: 'Low Vision TF — https://www.w3.org/WAI/GL/low-vision-a11y-tf/'
-    });
-  }
-
-  // Profile-specific: background images behind text (low_vision)
-  if (profile.warnBackgroundImage && data.accessibility && data.accessibility.bgImageBehindText) {
-    checks++;
-    findings.push({
-      severity: 'warning',
-      title: data.accessibility.bgImageBehindText + ' element(s) with background images behind text',
-      detail: 'Background textures/patterns reduce text legibility for low-vision users.',
-      fix: 'Use solid backgrounds behind text, or add a semi-transparent overlay.',
-      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
-    });
-  }
-
-  // Profile-specific: outline:none without focus replacement (motor_impairment)
-  if (profile.warnOutlineNone && a11y.focusIndicators) {
-    var outlineNone = a11y.focusIndicators.filter(function(f) {
-      return f.outlineStyle === 'none' && !a11y.hasFocusVisibleCSS;
-    }).length;
-    if (outlineNone > 0) {
-      checks++;
-      findings.push({
-        severity: 'error',
-        title: outlineNone + ' element(s) with outline:none and no :focus-visible replacement',
-        detail: 'Removing focus outlines without providing alternative styling makes keyboard navigation impossible.',
-        fix: 'Never use outline:none without a :focus-visible replacement. Use focus-visible:ring-2 in Tailwind.',
-        source: 'WCAG 2.2 §2.4.7 — https://www.w3.org/TR/WCAG22/#focus-visible'
-      });
-    }
-  }
-
-  // --- Structural completeness hints (info only, full pages via URL/snippet) ---
-  // Only for real pages, not pasted fragments or editor previews
-  var inputMethod = (data.meta && data.meta._inputMethod) || '';
-  var isFullPage = (inputMethod === 'url' || inputMethod === 'console') && !isFragment;
-  if (isFullPage && elCount > 50) {
-    // Missing <footer>
-    if (!semantic.footer) {
-      findings.push({
-        severity: 'info',
-        title: 'No <footer> element found',
-        detail: 'Most pages benefit from a footer with copyright, contact info, and secondary navigation. Some pages (SPAs, dashboards, single-purpose tools) legitimately omit it.',
-        fix: 'Add a <footer> with site-wide links, copyright, and contact information. It helps users who scroll to the bottom looking for additional navigation.',
-        presetRef: null,
-        source: 'HTML spec — https://html.spec.whatwg.org/multipage/sections.html#the-footer-element'
-      });
-    }
-    // No dark mode support
-    var hasDarkMode = (data.structure && data.structure.darkModeClasses) ||
-      (data.structure && data.structure.darkModeMethod && data.structure.darkModeMethod !== 'none');
-    if (!hasDarkMode && elCount > 100) {
-      findings.push({
-        severity: 'info',
-        title: 'No dark mode support detected',
-        detail: 'No dark: classes, prefers-color-scheme media query, or dark mode toggle found in static analysis. Note: dark mode can also be implemented purely in JavaScript (runtime class toggling, CSS-in-JS, matchMedia listeners) which this check cannot detect.',
-        fix: 'If your page doesn\'t have dark mode yet, consider adding it via CSS prefers-color-scheme (automatic), Tailwind dark: classes, or a JS-based toggle. Dark mode reduces eye strain and is increasingly expected by users.',
-        presetRef: 'All presets include dark mode variants',
-        source: 'MDN — https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-color-scheme'
-      });
-    }
-    // No <main> landmark (upgrade existing semantic check to also hint here)
-    if (!hasMain) {
-      findings.push({
-        severity: 'info',
-        title: 'No <main> landmark found',
-        detail: 'The <main> element identifies the primary content area. Screen readers use it to let users jump directly to content, skipping navigation.',
-        fix: 'Wrap your primary content in <main>. There should be exactly one per page.',
-        presetRef: null,
-        source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
-      });
-    }
-    // No <h1> on the page
-    var headings = (data.typography && data.typography.headings) || [];
-    var hasH1 = headings.some(function(h) { return h.tag === 'h1'; });
-    if (!hasH1 && headings.length > 0) {
-      findings.push({
-        severity: 'info',
-        title: 'No <h1> heading found',
-        detail: 'The page has headings (' + headings.map(function(h) { return h.tag; }).join(', ') + ') but no <h1>. Every page should have exactly one <h1> describing its primary purpose.',
-        fix: 'Add a single <h1> as the main title. Other headings should follow hierarchically (h2, h3, etc.).',
-        presetRef: null,
-        source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
-      });
-    }
-    // Not responsive (no responsive classes or viewport meta)
-    var hasResponsive = data.structure && data.structure.responsiveClasses;
-    var hasViewportMeta = data.structure && data.structure.viewportMeta && data.structure.viewportMeta.indexOf('width=device-width') !== -1;
-    if (!hasResponsive && !hasViewportMeta) {
-      findings.push({
-        severity: 'info',
-        title: 'No responsive design indicators found',
-        detail: 'No responsive CSS classes (sm:, md:, lg:) or proper viewport meta tag detected. Note: responsive behavior can also be implemented purely in JavaScript (resize listeners, dynamic styles) or via CSS media queries in external stylesheets that this static check may not detect.',
-        fix: 'If your page isn\'t responsive yet, add <meta name="viewport" content="width=device-width, initial-scale=1.0"> and use responsive breakpoints (CSS media queries, Tailwind sm:/md:/lg: classes, or JS-based approaches) for layout adjustments.',
-        presetRef: null,
-        source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
-      });
-    }
-  }
-
-  // --- Extended checks ---
-
-  // Duplicate IDs
-  var dupIds = a11y.duplicateIds || [];
-  if (dupIds.length > 0) {
-    checks++;
-    var ariaIds = dupIds.filter(function(d) { return d.usedInAria; });
-    var details = dupIds.slice(0, 5).map(function(d) { return '#' + d.id + ' (' + d.count + 'x' + (d.usedInAria ? ', used in label/ARIA' : '') + ')'; });
-    findings.push({
-      severity: ariaIds.length > 0 ? 'error' : 'warning',
-      title: dupIds.length + ' duplicate ID(s) found',
-      detail: details.join('; '),
-      fix: 'Each id must be unique on the page. Duplicate IDs break form labels, ARIA references, and anchor links.',
-      presetRef: null,
-      source: 'WCAG 2.2 §4.1.1 — https://www.w3.org/TR/WCAG22/#parsing'
-    });
-  }
-
-  // Scrollable regions without keyboard access
-  var scrollNoKey = a11y.scrollableNoKeyboard || 0;
-  if (scrollNoKey > 0) {
-    checks++;
-    findings.push({
-      severity: 'error',
-      title: scrollNoKey + ' scrollable region(s) not keyboard-accessible',
-      detail: 'Scrollable containers without focusable content or tabindex cannot be scrolled by keyboard users.',
-      fix: 'Add tabindex="0" to scrollable containers, or ensure they contain focusable elements (links, buttons).',
-      presetRef: null,
-      source: 'WCAG 2.2 §2.1.1 — https://www.w3.org/TR/WCAG22/#keyboard'
-    });
-  }
-
-  // Nested interactive elements
-  var nestedInt = a11y.nestedInteractives || [];
-  if (nestedInt.length > 0) {
-    checks++;
-    findings.push({
-      severity: 'error',
-      title: nestedInt.length + ' nested interactive element(s) (e.g. link inside link)',
-      detail: 'Nested clickable elements create undefined behavior. Elements: ' + nestedInt.slice(0, 3).join(', '),
-      fix: 'Never nest interactive elements. Use a single <a> or <button> and handle layout with CSS.',
-      presetRef: null,
-      source: 'HTML spec §4.5.1 — https://html.spec.whatwg.org/multipage/text-level-semantics.html#the-a-element'
-    });
-  }
-
-  // Positive tabindex
-  var posTabindex = a11y.positiveTabindex || 0;
-  if (posTabindex > 0) {
-    checks++;
-    findings.push({
-      severity: 'warning',
-      title: posTabindex + ' element(s) with positive tabindex',
-      detail: 'Positive tabindex disrupts natural tab order and creates confusing keyboard navigation.',
-      fix: 'Remove positive tabindex values. Use DOM order to control tab sequence. tabindex="0" adds to natural order; tabindex="-1" removes from it.',
-      presetRef: null,
-      source: 'WCAG 2.2 §2.4.3 — https://www.w3.org/TR/WCAG22/#focus-order'
-    });
-  }
-
-  // Empty buttons/links
-  var emptyInt = a11y.emptyInteractives || [];
-  if (emptyInt.length > 0) {
-    checks++;
-    findings.push({
-      severity: 'error',
-      title: emptyInt.length + ' interactive element(s) with no accessible name',
-      detail: 'Buttons/links without text, aria-label, or title are invisible to screen readers: ' + emptyInt.slice(0, 3).join(', '),
-      fix: 'Add text content, aria-label="description", or a descriptive title attribute to all interactive elements.',
-      presetRef: null,
-      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
-    });
-  }
-
-  // Non-text contrast (input borders)
-  var ntContrast = a11y.nonTextContrast || [];
-  if (ntContrast.length > 0) {
-    checks++;
-    var ntDetails = ntContrast.slice(0, 3).map(function(n) { return n.selector + ' border ' + n.ratio + ':1'; });
-    findings.push({
-      severity: 'warning',
-      title: ntContrast.length + ' form element(s) with border contrast below 3:1',
-      detail: 'Input borders must have at least 3:1 contrast against their background (WCAG 1.4.11): ' + ntDetails.join('; '),
-      fix: 'Increase border color contrast. In dark mode use border-slate-600 or darker. Light mode: border-slate-300 minimum on white.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.11 — https://www.w3.org/TR/WCAG22/#non-text-contrast'
-    });
-  }
-
-  // Table accessibility
-  var tableIssues = a11y.tableIssues || [];
-  if (tableIssues.length > 0) {
-    checks++;
-    var tblDetails = tableIssues.slice(0, 3).map(function(t) { return t.selector + ': ' + t.issues.join(', '); });
-    findings.push({
-      severity: tableIssues.some(function(t) { return t.issues.indexOf('no-th') !== -1; }) ? 'warning' : 'info',
-      title: tableIssues.length + ' table(s) with accessibility issues',
-      detail: tblDetails.join('; '),
-      fix: 'Data tables need <th> with scope="col" or scope="row". Add <caption> or aria-label for screen reader context.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
-    });
-  }
-
-  // Missing button type
-  var missingBtnType = a11y.missingButtonType || 0;
-  if (missingBtnType > 0) {
-    findings.push({
-      severity: 'info',
-      title: missingBtnType + ' button(s) without explicit type attribute',
-      detail: 'Buttons default to type="submit" which can cause accidental form submissions.',
-      fix: 'Add type="button" to buttons that are not form submit buttons.',
-      presetRef: null,
-      source: 'HTML spec — https://html.spec.whatwg.org/multipage/form-elements.html#the-button-element'
-    });
-  }
-
-  // Text clipping without title
-  var textClipped = a11y.textClippedNoTitle || 0;
-  if (textClipped > 0) {
-    findings.push({
-      severity: textClipped > 5 ? 'warning' : 'info',
-      title: textClipped + ' element(s) truncate text without title attribute',
-      detail: 'Text is clipped with ellipsis but has no title or aria-label, so the full text is inaccessible.',
-      fix: 'Add title="full text here" to elements with text-overflow: ellipsis so users can see the complete content on hover.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
-    });
-  }
-
-  // Placeholder-only labels
-  var placeholderOnly = a11y.placeholderOnlyInputs || 0;
-  if (placeholderOnly > 0) {
-    findings.push({
-      severity: 'warning',
-      title: placeholderOnly + ' input(s) use placeholder as only label',
-      detail: 'Placeholders disappear when the user starts typing, leaving no visible label.',
-      fix: 'Add a visible <label> element. Placeholders are hints, not labels.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
-    });
-  }
-
-  // Invisible links (no underline, no color distinction)
-  var invisLinks = a11y.invisibleLinks || 0;
-  if (invisLinks > 0) {
-    findings.push({
-      severity: 'warning',
-      title: invisLinks + ' link(s) visually indistinguishable from surrounding text',
-      detail: 'Links in body text have no underline, no color difference, and no background — users cannot identify them as clickable.',
-      fix: 'Add text-decoration: underline or a distinct color to in-content links. Nav and button-styled links are exempt.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.1 — https://www.w3.org/TR/WCAG22/#use-of-color'
-    });
-  }
-
-  // Required fields without visual indicator
-  var reqNoIndicator = a11y.requiredNoIndicator || 0;
-  if (reqNoIndicator > 0) {
-    findings.push({
-      severity: 'warning',
-      title: reqNoIndicator + ' required field(s) without visual indicator',
-      detail: 'Required inputs have no asterisk (*) or "Required" text in their label.',
-      fix: 'Add an asterisk (*) to required field labels or include "Required" text.',
-      presetRef: null,
-      source: 'WCAG 2.2 §3.3.2 — https://www.w3.org/TR/WCAG22/#labels-or-instructions'
-    });
-  }
-
-  // Invisible inputs (no border/background/shadow)
-  var invisInputs = a11y.invisibleInputs || 0;
-  if (invisInputs > 0) {
-    findings.push({
-      severity: 'warning',
-      title: invisInputs + ' input(s) without visible boundary',
-      detail: 'Text inputs have no border, no distinct background, and no shadow — users cannot identify where to type.',
-      fix: 'Add a border (border-slate-300) or distinct background to input fields. WCAG 1.4.11 requires 3:1 contrast for input boundaries.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.11 — https://www.w3.org/TR/WCAG22/#non-text-contrast'
-    });
-  }
-
-  // Select without default option
-  var selectNoDefault = a11y.selectNoDefault || 0;
-  if (selectNoDefault > 0) {
-    findings.push({
-      severity: 'info',
-      title: selectNoDefault + ' select element(s) without meaningful default option',
-      detail: 'Select elements have a blank first option. Users see an empty dropdown.',
-      fix: 'Add a descriptive prompt like "Select an option..." as the first disabled option.',
-      presetRef: null,
-      source: 'NNGroup — https://www.nngroup.com/articles/drop-down-menus/'
-    });
-  }
-
-  // Disabled element contrast
-  var disabledLC = a11y.disabledLowContrast || 0;
-  if (disabledLC > 0) {
-    findings.push({
-      severity: 'info',
-      title: disabledLC + ' disabled element(s) with very low contrast (< 2:1)',
-      detail: 'While WCAG exempts disabled elements from contrast rules, users should still be able to read what is disabled.',
-      fix: 'Aim for at least 2:1 contrast on disabled elements so users understand what is unavailable.',
-      presetRef: null,
-      source: 'Usability research — https://www.nngroup.com/articles/disabled-buttons/'
-    });
-  }
-
-  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-  return { score: score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Accessibility', icon: 'a11y' };
-}
-
-
-  S.register("accessibility", scoreAccessibility, 15, "Accessibility", "a11y");
-})();
-</file>
-
 <file path="docs/scoring/consistency.js">
 // Scoring Module: Visual Consistency
 // Weight: 5%
@@ -24998,198 +25190,6 @@ function scoreVisualConsistency(data) {
   }
 
   S.register("readability", scoreReadability, 5, "Readability", "readability");
-})();
-</file>
-
-<file path="docs/scoring/touch.js">
-// Scoring Module: Touch & Interaction
-// Weight: 15%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreTouchTargets(data) {
-  var profile = S.getProfile(data);
-  var findings = [];
-  var targets = data.interaction.touchTargets || [];
-
-  // Viewport-aware thresholds, adjusted by profile:
-  var vw = (data.meta && data.meta.viewportWidth) || 1280;
-  var isDesktop = vw >= 1024;
-  var minSize = isDesktop ? profile.touchTargetDesktop : profile.touchTarget;
-  var warnSize = isDesktop ? profile.touchTargetDesktopWarn : profile.touchTarget;
-  var context = isDesktop ? 'desktop' : 'touch/mobile';
-  var issueCount = 0;
-
-  targets.forEach(function(t) {
-    var w = t.width, h = t.height;
-    var minDim = Math.min(w, h);
-
-    // WCAG 2.5.8 exception: inline text links are exempt from target size requirements.
-    // Detect by checking if element is an <a> without button-like styling (no bg, no border, no padding > 4px)
-    var isInlineLink = t.element === 'a' && !t.isButton;
-
-    if (minDim < minSize) {
-      issueCount++;
-      var ctx = t.linkContext || (isInlineLink ? 'inline' : 'button');
-
-      // On desktop, determine severity based on how far below threshold:
-      // - ≥20px (just 4px short of 24px) → info (barely noticeable with mouse)
-      // - ≥16px → warning (small but usable with mouse)
-      // - <16px → error (genuinely too small even for mouse)
-      // On mobile, all failures are errors (fingers need the full 44px)
-      function desktopSeverity(dim) {
-        if (!isDesktop) return 'error';
-        if (dim >= 20) return 'info';
-        if (dim >= 16) return 'warning';
-        return 'error';
-      }
-
-      if (ctx === 'inline') {
-        // True inline text links (inside <p>, <blockquote>, etc.) — WCAG 2.5.8 exempt
-        findings.push({
-          severity: 'info',
-          title: 'Inline text link ' + w + '×' + h + 'px — exempt from target size',
-          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-          fix: 'Inline text links in paragraphs are exempt per WCAG 2.5.8. Consider adding padding for better usability.',
-          source: 'WCAG 2.2 §2.5.8 inline exception — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
-        });
-      } else if (ctx === 'footer') {
-        // Footer links — relaxed but still error below hard minimum (16px)
-        var footerHardMin = isDesktop ? 16 : 24;
-        findings.push({
-          severity: minDim < footerHardMin ? 'error' : 'info',
-          title: 'Footer link ' + w + '×' + h + 'px' + (minDim < footerHardMin ? ' (too small even for footer — min ' + footerHardMin + 'px)' : ' (below ' + minSize + 'px, relaxed for footer)'),
-          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-          fix: minDim < footerHardMin
-            ? 'Even footer links need at least ' + footerHardMin + 'px height. Add padding to increase click area.'
-            : 'Footer links have relaxed sizing expectations. Consider padding for touch accessibility.',
-          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
-        });
-      } else if (ctx === 'nav') {
-        // Navigation links — should be properly sized
-        var navSev = desktopSeverity(minDim);
-        findings.push({
-          severity: navSev,
-          title: 'Nav link ' + w + '×' + h + 'px (minimum: ' + minSize + 'px)',
-          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-          fix: 'Navigation links need adequate sizing. Add padding: py-2 px-4 (min-height ' + minSize + 'px).',
-          presetRef: 'Navigation presets use min-height 44px on nav links',
-          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
-        });
-      } else {
-        // Buttons, styled links, other interactive elements
-        var sev = desktopSeverity(minDim);
-        findings.push({
-          severity: sev,
-          title: t.element + ' is ' + w + '×' + h + 'px (' + (isDesktop ? 'desktop min: ' + minSize + 'px' : 'touch min: ' + minSize + 'px') + ')',
-          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-          fix: isDesktop
-            ? (sev === 'info'
-              ? 'Slightly below ' + minSize + 'px desktop minimum — usable with mouse but consider adding padding.'
-              : 'Click targets need at least ' + minSize + '×' + minSize + 'px. Increase padding or min-height/min-width.')
-            : 'Touch targets need ' + minSize + '×' + minSize + 'px minimum. Add min-h-[' + minSize + 'px] min-w-[' + minSize + 'px] or increase padding.',
-          presetRef: isDesktop ? null : 'Button presets use py-3 px-6 (48px height)',
-          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
-        });
-      }
-    } else if (minDim < warnSize && isDesktop && !isInlineLink) {
-      findings.push({
-        severity: 'warning',
-        title: t.element + ' is ' + w + '×' + h + 'px (recommended for desktop: ≥' + warnSize + 'px)',
-        detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-        fix: 'While ' + minSize + 'px meets minimum, ' + warnSize + 'px+ improves click comfort. Consider adding padding.',
-        presetRef: null,
-        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-        locator: { selector: t.selector, text: t.text || '' }
-      });
-    }
-  });
-
-  // Also flag targets that pass the current threshold but would fail on touch
-  if (isDesktop && targets.length > 0) {
-    var touchMin = profile.touchTarget;
-    var touchFails = targets.filter(function(t) { return Math.min(t.width, t.height) < touchMin; });
-    if (touchFails.length > 0) {
-      findings.push({
-        severity: 'info',
-        title: touchFails.length + ' element(s) below ' + touchMin + 'px touch target (analyzed at ' + vw + 'px desktop viewport)',
-        detail: 'These meet desktop minimums but would fail on touch devices. Consider responsive sizing if the site is also used on mobile.',
-        fix: 'For responsive touch support: add touch-target sizing at mobile breakpoints, e.g. sm:min-h-[' + touchMin + 'px]',
-        presetRef: null,
-        source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout'
-      });
-    }
-  }
-
-  // Note when responsive CSS exists that might fix touch targets on mobile
-  if (isDesktop && data.interaction && data.interaction.hasResponsiveTargetCSS) {
-    findings.push({
-      severity: 'info',
-      title: 'Responsive CSS detected that may adjust target sizes at mobile breakpoints',
-      detail: 'This site has media queries with height/padding rules. Touch targets may be correctly sized on mobile devices.',
-      fix: 'Verify by testing at mobile viewport. Use the viewport selector to re-scan at 375px width.',
-      presetRef: null
-    });
-  }
-
-  // Transitions / animation duration
-  var transitions = data.interaction.transitions || [];
-  transitions.forEach(function(t) {
-    var ms = parseFloat(t) * 1000;
-    if (ms > 500) {
-      findings.push({
-        severity: 'warning',
-        title: 'Transition duration ' + ms + 'ms exceeds 500ms maximum',
-        detail: 'Users perceive animations longer than 500ms as sluggish',
-        fix: 'Keep transitions under 500ms. Enter: 200–300ms, Exit: 150–200ms. In Tailwind: duration-200 or duration-300',
-        presetRef: null,
-        source: 'NNGroup animation — https://www.nngroup.com/articles/animation-usability/'
-      });
-    }
-  });
-
-  // Event listener pattern findings
-  var lPatterns = (data.interaction && data.interaction.listenerPatterns) || {};
-  if (lPatterns.toggleNoAria > 0) {
-    findings.push({
-      severity: 'warning',
-      title: lPatterns.toggleNoAria + ' toggle handler(s) without ARIA state management',
-      detail: 'Click handlers toggle CSS classes but don\'t update aria-expanded or other ARIA states. Screen readers won\'t know the element\'s state changed.',
-      fix: 'Add setAttribute(\'aria-expanded\', isOpen) alongside classList.toggle() in toggle handlers.',
-      presetRef: null,
-      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
-    });
-  }
-  if (lPatterns.navigationInButton > 0) {
-    findings.push({
-      severity: 'info',
-      title: lPatterns.navigationInButton + ' button(s) trigger page navigation',
-      detail: 'Buttons with click handlers that change location.href should typically be <a> elements for proper semantics and accessibility.',
-      fix: 'Use <a href="..."> for navigation instead of <button> with JavaScript location change.',
-      presetRef: null,
-      source: 'HTML spec — https://html.spec.whatwg.org/multipage/text-level-semantics.html#the-a-element'
-    });
-  }
-
-  // Score: deduct per error, less per warning
-  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var totalTargets = targets.length || 0;
-  var checks = totalTargets;
-  var passed = Math.max(0, totalTargets - errors - warnings);
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 3));
-  var na = totalTargets === 0 && transitions.length === 0;
-  return { score: na ? 100 : score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Touch & Interaction', icon: 'touch', notApplicable: na };
-}
-
-
-  S.register("touch", scoreTouchTargets, 15, "Touch & Interaction", "touch");
 })();
 </file>
 
@@ -26929,343 +26929,6 @@ window.MilgExtract = (function() {
 })();
 </file>
 
-<file path="docs/analyzer-iframe.js">
-// make-it-look-good — Iframe Analysis & Screenshot Pipeline
-// Handles iframe creation, extraction injection, screenshot capture, and deep scan.
-// Depends on: analyzer-extract.js (MilgExtract)
-
-window.MilgIframe = (function() {
-  "use strict";
-
-  var _screenshotCDN = '';
-  var _getViewport = function() { return { w: 1280, h: 900 }; };
-  var SCREENSHOT_SCALE = 0.5;
-  var SCREENSHOT_QUALITY = 0.8;
-
-  function init(opts) {
-    if (opts.screenshotCDN) _screenshotCDN = opts.screenshotCDN;
-    if (opts.getViewport) _getViewport = opts.getViewport;
-  }
-
-  // Inject a <base> tag so relative URLs (CSS, images, fonts) resolve to the original domain
-  function injectBaseTag(html, url) {
-    if (!url || url === 'Pasted HTML') return html;
-    try {
-      var base = new URL(url);
-      var baseHref = base.origin + base.pathname.replace(/\/[^/]*$/, '/');
-      var baseTag = '<base href="' + baseHref + '">';
-      // Insert after <head> if present
-      if (/<head[\s>]/i.test(html)) {
-        return html.replace(/<head([^>]*)>/i, '<head$1>' + baseTag);
-      }
-      // Otherwise prepend
-      return baseTag + html;
-    } catch(e) { return html; }
-  }
-
-  // --- Screenshot capture script (injected into iframes after extraction) ---
-  // Uses a message-based handshake with the parent:
-  // 1. Extraction posts milg-analyzer-result (with docHeight) → parent resizes iframe
-  // 2. Parent posts milg-start-capture back → iframe runs capture at full height
-  // This ensures the iframe is physically resized before domToCanvas runs.
-  function buildScreenshotScript(msgType) {
-    var ss = { scale: SCREENSHOT_SCALE, quality: SCREENSHOT_QUALITY };
-    return '(function(){' +
-      'var _origVH=window.innerHeight||900;' +
-      // Listen for parent's "go capture" signal (sent after iframe is resized)
-      'window.addEventListener("message",function _onGo(e){' +
-        'if(!e.data||e.data.type!=="milg-start-capture")return;' +
-        'window.removeEventListener("message",_onGo);' +
-        'console.log("[iframe-ss] Parent resized iframe, starting capture. innerHeight="+window.innerHeight);' +
-        // Reset scroll containers
-        'var origSB=document.documentElement.style.scrollBehavior;' +
-        'document.documentElement.style.scrollBehavior="auto";' +
-        'document.body.style.scrollBehavior="auto";' +
-        'window.scrollTo(0,0);document.documentElement.scrollTop=0;document.body.scrollTop=0;' +
-        'document.querySelectorAll("*").forEach(function(el){' +
-          'if(el.scrollTop>0){var s=getComputedStyle(el);' +
-          'if(s.overflow==="auto"||s.overflow==="scroll"||s.overflowY==="auto"||s.overflowY==="scroll"){' +
-          'el.style.scrollBehavior="auto";el.scrollTop=0}}' +
-        '});' +
-        // Wait for reflow + animations after resize, then capture
-        'setTimeout(function(){' +
-          'if(typeof window.__milgReReadBboxes==="function"){' +
-            'var res=window.__milgReReadBboxes();' +
-            'console.log("[iframe-ss] Re-read bboxes: "+res)' +
-          '}' +
-          'var s=document.createElement("script");' +
-          's.src="' + _screenshotCDN + '";' +
-          's.onload=function(){' +
-            'var ms=window.modernScreenshot;' +
-            'if(!ms||!ms.domToCanvas){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*");return}' +
-            'document.querySelectorAll("img").forEach(function(i){if(i.src&&i.src.indexOf("data:")!==0)i.crossOrigin="anonymous"});' +
-            'var vh=_origVH;' +
-            'var fullH=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);' +
-            'console.log("[iframe-ss] domToCanvas: fullH="+fullH+" scrollH="+document.documentElement.scrollHeight+" bodyH="+document.body.scrollHeight+" innerH="+window.innerHeight);' +
-            'ms.domToCanvas(document.documentElement,{scale:' + ss.scale + ',timeout:12000}).then(function(fc){' +
-              'var fullUri;try{fullUri=fc.toDataURL("image/webp",' + ss.quality + ')}catch(e){fullUri=""}' +
-              'document.documentElement.style.scrollBehavior=origSB;' +
-              'var updatedData=window.__milgData||null;' +
-              'parent.postMessage({type:"' + msgType + '",' +
-                'screenshots:fullUri?[fullUri]:[],' +
-                'screenshotFull:fullUri||null,' +
-                'screenshotMeta:{scale:' + ss.scale + ',viewportHeight:vh,sectionCount:1,' +
-                  'canvasWidth:fc.width,canvasHeight:fc.height,' +
-                  'docHeightAtCapture:fullH,' +
-                  'calibrationOffsetY:0,calibrationSamples:[]},' +
-                'updatedData:updatedData' +
-              '},"*")' +
-            '}).catch(function(e){console.warn("[iframe-ss] capture failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")})' +
-          '};' +
-          's.onerror=function(){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")};' +
-          'document.head.appendChild(s)' +
-        '},1500)' +
-      '})' +
-    '})()';
-  }
-
-  function deepScanInIframe(html, url, exclude, vpWidth, vpHeight, callback) {
-    var extractFromDocument = window.MilgExtract;
-    var iframe = document.createElement('iframe');
-    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + vpWidth + 'px;height:' + vpHeight + 'px;border:none;';
-    iframe.sandbox = 'allow-scripts allow-same-origin';
-    document.body.appendChild(iframe);
-
-    var msgType = 'milg-deep-' + vpWidth;
-    var handled = false;
-    function onResult(e) {
-      if (!e.data || e.data.type !== msgType) return;
-      if (handled) return;
-      handled = true;
-      window.removeEventListener('message', onResult);
-      if (iframe.parentNode) document.body.removeChild(iframe);
-      callback(e.data.data);
-    }
-    window.addEventListener('message', onResult);
-
-    var processed = url ? injectBaseTag(html, url) : html;
-    var excludeVar = exclude ? '<script>window.__milgExclude=' + JSON.stringify(exclude) + ';</' + 'script>' : '';
-    var isFullDoc = /<html[\s>]/i.test(processed) || /<!DOCTYPE/i.test(processed);
-
-    var extractStr = extractFromDocument.toString().replace(/milg-analyzer-result/g, msgType);
-    // Auto-scroll inside iframe to trigger intersection observers before extracting
-    var scrollScript = 'window.scrollTo(0,document.body.scrollHeight);setTimeout(function(){window.scrollTo(0,0)},300);';
-    var extractScript = excludeVar + '<script>window.addEventListener("load",function(){' + scrollScript + 'setTimeout(function(){(' + extractStr + ')()},1500)});setTimeout(function(){(' + extractStr + ')()},8000);</' + 'script>';
-
-    var srcdoc;
-    if (isFullDoc) {
-      if (/<\/body>/i.test(processed)) {
-        srcdoc = processed.replace(/<\/body>/i, extractScript + '</body>');
-      } else {
-        srcdoc = processed + extractScript;
-      }
-    } else {
-      srcdoc = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script><style>body{margin:0}</style></head><body>' + processed + extractScript + '</body></html>';
-    }
-    iframe.srcdoc = srcdoc;
-
-    setTimeout(function() {
-      if (handled) return;
-      handled = true;
-      window.removeEventListener('message', onResult);
-      if (iframe.parentNode) document.body.removeChild(iframe);
-      callback(null);
-    }, 15000);
-  }
-
-  function analyzeHtmlInIframe(html, callback, sourceUrlOrDark, excludeSelectorOrEffectCSS, captureScreenshots) {
-    var extractFromDocument = window.MilgExtract;
-    // Support both signatures:
-    // analyzeHtmlInIframe(html, cb, sourceUrl, excludeSelector, screenshots) — URL mode
-    // analyzeHtmlInIframe(html, cb, dark, effectCSS, screenshots) — editor preview mode
-    var sourceUrl = typeof sourceUrlOrDark === 'string' ? sourceUrlOrDark : null;
-    var excludeSelector = typeof excludeSelectorOrEffectCSS === 'string' && !sourceUrl ? null : excludeSelectorOrEffectCSS;
-    var editorDark = typeof sourceUrlOrDark === 'boolean' ? sourceUrlOrDark : false;
-    var editorEffectCSS = (!sourceUrl && typeof excludeSelectorOrEffectCSS === 'string') ? excludeSelectorOrEffectCSS : '';
-    var iframe = document.createElement('iframe');
-    // Use viewport from selector or default
-    var vp = _getViewport();
-    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + vp.w + 'px;height:' + vp.h + 'px;border:none;';
-    iframe.sandbox = 'allow-scripts allow-same-origin';
-    document.body.appendChild(iframe);
-
-    var handled = false;
-    function finish(data) {
-      if (handled) return;
-      handled = true;
-      window.removeEventListener('message', onMsg);
-      if (iframe.parentNode) document.body.removeChild(iframe);
-      callback(data);
-    }
-
-    function onMsg(e) {
-      if (!e.data) return;
-      if (e.data.type === 'milg-analyzer-result') {
-        var data = e.data.data;
-        data.meta.url = 'Pasted HTML';
-        if (!captureScreenshots) {
-          finish(data);
-          return;
-        }
-        // Store data, wait for screenshots
-        iframe._milgData = data;
-        // Resize iframe to full document height so content reflows at full size
-        var docH = (data.meta && data.meta.docHeight) || 0;
-        if (docH > vp.h) {
-          iframe.style.height = Math.min(docH, vp.h * 10) + 'px';
-        }
-        // Tell iframe to start capture (after resize has propagated)
-        setTimeout(function() {
-          try { iframe.contentWindow.postMessage({ type: 'milg-start-capture' }, '*'); }
-          catch(ex) { /* iframe might be gone */ }
-        }, 300);
-      }
-      if (e.data.type === 'milg-screenshots-result' && iframe._milgData) {
-        iframe._milgData.screenshots = e.data.screenshots || [];
-        iframe._milgData.screenshotFull = e.data.screenshotFull || null;
-        iframe._milgData.screenshotMeta = e.data.screenshotMeta || null;
-        // Apply re-read bbox data from the iframe (updated after scroll-reset + getFlowPosition)
-        if (e.data.updatedData) {
-          var ud = e.data.updatedData;
-          // Merge re-read bboxes back into our data
-          if (ud.colors && ud.colors.contrastPairs) iframe._milgData.colors.contrastPairs = ud.colors.contrastPairs;
-          if (ud.typography) {
-            if (ud.typography.fontSizes) iframe._milgData.typography.fontSizes = ud.typography.fontSizes;
-            if (ud.typography.headings) iframe._milgData.typography.headings = ud.typography.headings;
-            if (ud.typography.maxLineLength) iframe._milgData.typography.maxLineLength = ud.typography.maxLineLength;
-          }
-          if (ud.interaction && ud.interaction.touchTargets) iframe._milgData.interaction.touchTargets = ud.interaction.touchTargets;
-          if (ud.layout) {
-            if (ud.layout.offscreenElements) iframe._milgData.layout.offscreenElements = ud.layout.offscreenElements;
-            if (ud.layout.hiddenPanelIssues) iframe._milgData.layout.hiddenPanelIssues = ud.layout.hiddenPanelIssues;
-          }
-        }
-        // If hidden panels were detected, trigger unhidden screenshot pass
-        var hpc = iframe._milgData.layout && iframe._milgData.layout.hiddenPanelCount;
-        if (hpc > 0 && iframe.contentWindow && iframe.contentWindow.__milgDoUnhiddenScreenshots) {
-          try {
-            setTimeout(function() { iframe.contentWindow.__milgDoUnhiddenScreenshots(); }, 100);
-          } catch(ex) { finish(iframe._milgData); }
-        } else {
-          finish(iframe._milgData);
-        }
-      }
-      if (e.data.type === 'milg-screenshots-unhidden' && iframe._milgData) {
-        iframe._milgData.screenshotsUnhidden = e.data.screenshots || [];
-        finish(iframe._milgData);
-      }
-    }
-    window.addEventListener('message', onMsg);
-
-    // If the pasted HTML is a full document (has <html> or <head>), use it as-is
-    // and just append the extraction script. Otherwise wrap in a basic document.
-    var isFullDoc = /<html[\s>]/i.test(html) || /<!DOCTYPE/i.test(html);
-    // Inject <base> tag so relative CSS/image/font URLs resolve to the original domain
-    if (sourceUrl) html = injectBaseTag(html, sourceUrl);
-    // Pass context to extraction
-    var excludeVar = excludeSelector ? '<script>window.__milgExclude=' + JSON.stringify(excludeSelector) + ';</' + 'script>' : '';
-    var fragmentVar = !isFullDoc ? '<script>window.__milgIsFragment=true;</' + 'script>' : '';
-    // Screenshot capture: script that auto-runs after extraction, loads CDN library, captures page
-    // Also includes unhidden-panels screenshot if hidden panels are detected
-    var unhiddenScreenshotFn = 'window.__milgDoUnhiddenScreenshots=function(){' +
-      // Unhide all interactive panels using !important overrides
-      'var panels=document.querySelectorAll("[role=menu],[role=listbox],[role=dialog],[role=tooltip],[role=alertdialog]");' +
-      'var hidden=[];' +
-      'panels.forEach(function(p){' +
-        'var s=getComputedStyle(p);' +
-        'if(s.display==="none"||s.visibility==="hidden"||s.opacity==="0"){' +
-          'hidden.push({el:p,css:p.style.cssText,ariaH:p.getAttribute("aria-hidden"),hadHidden:p.hasAttribute("hidden")});' +
-          'p.style.cssText=p.style.cssText+";display:block !important;visibility:visible !important;opacity:1 !important;";' +
-          'if(p.hasAttribute("hidden"))p.removeAttribute("hidden");' +
-          'if(p.getAttribute("aria-hidden")==="true")p.setAttribute("aria-hidden","false")' +
-        '}' +
-      '});' +
-      // Also check aria-haspopup sibling panels
-      'document.querySelectorAll("[aria-haspopup]").forEach(function(t){' +
-        'var w=t.parentElement;if(!w)return;' +
-        'w.querySelectorAll("[role=menu],[role=listbox],[role=dialog]").forEach(function(p){' +
-          'var s=getComputedStyle(p);' +
-          'if(s.display==="none"||s.visibility==="hidden"||s.opacity==="0"){' +
-            'hidden.push({el:p,css:p.style.cssText,ariaH:p.getAttribute("aria-hidden"),hadHidden:p.hasAttribute("hidden")});' +
-            'p.style.cssText=p.style.cssText+";display:block !important;visibility:visible !important;opacity:1 !important;";' +
-            'if(p.hasAttribute("hidden"))p.removeAttribute("hidden");' +
-            'if(p.getAttribute("aria-hidden")==="true")p.setAttribute("aria-hidden","false")' +
-          '}' +
-        '})' +
-      '});' +
-      'if(hidden.length===0){parent.postMessage({type:"milg-screenshots-unhidden",screenshots:[]},"*");return}' +
-      'void document.body.offsetHeight;' +
-      'setTimeout(function(){' +
-        // Direct capture (iframe already resized from main screenshot pass)
-        'var ms=window.modernScreenshot;' +
-        'if(!ms||!ms.domToCanvas){parent.postMessage({type:"milg-screenshots-unhidden",screenshots:[]},"*");return}' +
-        'ms.domToCanvas(document.documentElement,{scale:' + SCREENSHOT_SCALE + ',timeout:8000}).then(function(fc){' +
-          'var uri;try{uri=fc.toDataURL("image/webp",' + SCREENSHOT_QUALITY + ')}catch(e){uri=""}' +
-          'parent.postMessage({type:"milg-screenshots-unhidden",screenshots:uri?[uri]:[]},"*")' +
-        '}).catch(function(){parent.postMessage({type:"milg-screenshots-unhidden",screenshots:[]},"*")})' +
-      '},300)' +
-    '};';
-    // Screenshot script: sets up message listener immediately (waits for parent to send milg-start-capture after resize)
-    var screenshotScript = captureScreenshots ? '<script>' + buildScreenshotScript('milg-screenshots-result') + ';' + unhiddenScreenshotFn + '</' + 'script>' : '';
-    var srcdoc;
-    if (isFullDoc) {
-      // Wait for window load (CSS/fonts loaded), then extra delay for rendering
-      // JS-enabled mode (URL patch present) needs longer delays for React/Vue hydration
-      var hasJsPatch = html.indexOf('about:srcdoc') !== -1;
-      var postLoadDelay = hasJsPatch ? 2000 : 1000;
-      var fallbackDelay = hasJsPatch ? 8000 : 8000;
-      var extractScript = excludeVar + fragmentVar + screenshotScript + '<script>window.addEventListener("load",function(){setTimeout(function(){(' + extractFromDocument.toString() + ')()},' + postLoadDelay + ')});setTimeout(function(){(' + extractFromDocument.toString() + ')()},' + fallbackDelay + ');</' + 'script>';
-      if (/<\/body>/i.test(html)) {
-        srcdoc = html.replace(/<\/body>/i, extractScript + '</body>');
-      } else {
-        srcdoc = html + extractScript;
-      }
-    } else {
-      var darkClass = editorDark ? ' class="dark"' : '';
-      var darkVariantTag = editorDark ? '<style type="text/tailwindcss">@custom-variant dark (&:where(.dark, .dark *));</style>' : '';
-      var effectTag = editorEffectCSS ? '<style>' + editorEffectCSS + '</style>' : '';
-      srcdoc = '<!DOCTYPE html><html lang="en"' + darkClass + '><head><meta charset="UTF-8">' +
-        '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
-        '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
-        darkVariantTag + effectTag +
-        '<style>body{margin:0}</style></head><body>' +
-        html + excludeVar + fragmentVar + screenshotScript +
-        '<script>setTimeout(function(){(' + extractFromDocument.toString() + ')()}, 1500);</' + 'script>' +
-        '</body></html>';
-    }
-    iframe.srcdoc = srcdoc;
-
-    // Timeout fallback (longer when capturing screenshots)
-    setTimeout(function() {
-      if (!handled && iframe._milgData) {
-        // Extraction succeeded but screenshots timed out — return without screenshots
-        iframe._milgData.screenshots = [];
-        finish(iframe._milgData);
-      } else {
-        finish({
-          meta: { title: '', url: 'Pasted HTML', viewportWidth: 1280, viewportHeight: 900, timestamp: new Date().toISOString(), version: 1 },
-          colors: { textColors: [], bgColors: [], contrastPairs: [] },
-          typography: { bodyFontSize: '16px', bodyLineHeight: '24px', bodyFontFamily: 'sans-serif', fontFamilies: [], fontSizes: [], fontWeights: [], headings: [], lineHeights: [], maxLineLength: { chars: 0, element: '', fontSize: 0, textLength: 0 } },
-          spacing: { paddings: [], margins: [], gaps: [], maxContentWidth: '', bodyPaddingHorizontal: '' },
-          layout: { sectionGaps: [], alignmentEdges: [], visualHierarchy: {} },
-          interaction: { touchTargets: [], transitions: [] },
-          accessibility: { semanticElements: {}, headingHierarchy: [], imagesWithoutAlt: 0, formLabels: { total: 0, withLabel: 0, withoutLabel: 0 }, focusIndicators: [] },
-          structure: { totalElements: 0, darkModeClasses: false, responsiveClasses: false, tailwindDetected: false, cssFramework: 'unknown' }
-        });
-      }
-    }, captureScreenshots ? 25000 : (isFullDoc ? 15000 : 8000));
-  }
-
-  return {
-    init: init,
-    injectBaseTag: injectBaseTag,
-    analyzeHtmlInIframe: analyzeHtmlInIframe,
-    deepScanInIframe: deepScanInIframe,
-    buildScreenshotScript: buildScreenshotScript
-  };
-})();
-</file>
-
 <file path="docs/analyzer-report.js">
 // make-it-look-good — Report Renderers
 // HTML report, markdown export, gauge SVG, progress bars
@@ -28557,6 +28220,330 @@ function scoreLayout(data) {
 
 
   S.register("layout", scoreLayout, 5, "Layout Quality", "layout");
+})();
+</file>
+
+<file path="docs/analyzer-iframe.js">
+// make-it-look-good — Iframe Analysis & Screenshot Pipeline
+// Handles iframe creation, extraction injection, screenshot capture, and deep scan.
+// Depends on: analyzer-extract.js (MilgExtract)
+
+window.MilgIframe = (function() {
+  "use strict";
+
+  var _screenshotCDN = '';
+  var _getViewport = function() { return { w: 1280, h: 900 }; };
+  var SCREENSHOT_SCALE = 0.5;
+  var SCREENSHOT_QUALITY = 0.8;
+
+  function init(opts) {
+    if (opts.screenshotCDN) _screenshotCDN = opts.screenshotCDN;
+    if (opts.getViewport) _getViewport = opts.getViewport;
+  }
+
+  // Inject a <base> tag so relative URLs (CSS, images, fonts) resolve to the original domain
+  function injectBaseTag(html, url) {
+    if (!url || url === 'Pasted HTML') return html;
+    try {
+      var base = new URL(url);
+      var baseHref = base.origin + base.pathname.replace(/\/[^/]*$/, '/');
+      var baseTag = '<base href="' + baseHref + '">';
+      // Insert after <head> if present
+      if (/<head[\s>]/i.test(html)) {
+        return html.replace(/<head([^>]*)>/i, '<head$1>' + baseTag);
+      }
+      // Otherwise prepend
+      return baseTag + html;
+    } catch(e) { return html; }
+  }
+
+  // --- Screenshot capture script (injected into iframes after extraction) ---
+  // Called after extraction via __milgDoScreenshots. Captures the full page by:
+  // 1. Resetting scroll, forcing html/body to height:auto + overflow:visible
+  // 2. Waiting for animations to settle + re-reading bboxes
+  // 3. Capturing document.body (not documentElement — avoids viewport-height doubling)
+  function buildScreenshotScript(msgType) {
+    var ss = { scale: SCREENSHOT_SCALE, quality: SCREENSHOT_QUALITY };
+    return '(function(){' +
+      'var vh=window.innerHeight||900;' +
+      // Reset scroll containers
+      'document.documentElement.style.scrollBehavior="auto";' +
+      'document.body.style.scrollBehavior="auto";' +
+      'window.scrollTo(0,0);document.documentElement.scrollTop=0;document.body.scrollTop=0;' +
+      'document.querySelectorAll("*").forEach(function(el){' +
+        'if(el.scrollTop>0){var s=getComputedStyle(el);' +
+        'if(s.overflow==="auto"||s.overflow==="scroll"||s.overflowY==="auto"||s.overflowY==="scroll"){' +
+        'el.style.scrollBehavior="auto";el.scrollTop=0}}' +
+      '});' +
+      // Force html+body to auto height so body.scrollHeight reflects full content
+      // Many sites set html,body{height:100%} which clips scrollHeight to viewport
+      'document.documentElement.style.cssText+="height:auto !important;overflow:visible !important;";' +
+      'document.body.style.cssText+="height:auto !important;overflow:visible !important;";' +
+      'void document.body.offsetHeight;' +
+      // Wait for animations + reflow
+      'setTimeout(function(){' +
+        'if(typeof window.__milgReReadBboxes==="function"){' +
+          'var res=window.__milgReReadBboxes();' +
+          'console.log("[iframe-ss] Re-read bboxes: "+res)' +
+        '}' +
+        'var fullH=document.body.scrollHeight;' +
+        'console.log("[iframe-ss] body.scrollHeight="+fullH+" vh="+vh+" innerH="+window.innerHeight);' +
+        'var s=document.createElement("script");' +
+        's.src="' + _screenshotCDN + '";' +
+        's.onload=function(){' +
+          'var ms=window.modernScreenshot;' +
+          'if(!ms||!ms.domToCanvas){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*");return}' +
+          'document.querySelectorAll("img").forEach(function(i){if(i.src&&i.src.indexOf("data:")!==0)i.crossOrigin="anonymous"});' +
+          // Capture body (not documentElement) to get pure content without viewport wrapper
+          'ms.domToCanvas(document.body,{scale:' + ss.scale + ',timeout:12000}).then(function(fc){' +
+            'console.log("[iframe-ss] Canvas: "+fc.width+"x"+fc.height);' +
+            'var fullUri;try{fullUri=fc.toDataURL("image/webp",' + ss.quality + ')}catch(e){fullUri=""}' +
+            'var updatedData=window.__milgData||null;' +
+            'parent.postMessage({type:"' + msgType + '",' +
+              'screenshots:fullUri?[fullUri]:[],' +
+              'screenshotFull:fullUri||null,' +
+              'screenshotMeta:{scale:' + ss.scale + ',viewportHeight:vh,sectionCount:1,' +
+                'canvasWidth:fc.width,canvasHeight:fc.height,' +
+                'docHeightAtCapture:fullH,' +
+                'calibrationOffsetY:0,calibrationSamples:[]},' +
+              'updatedData:updatedData' +
+            '},"*")' +
+          '}).catch(function(e){console.warn("[iframe-ss] capture failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")})' +
+        '};' +
+        's.onerror=function(){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")};' +
+        'document.head.appendChild(s)' +
+      '},1500)' +
+    '})()';
+  }
+
+  function deepScanInIframe(html, url, exclude, vpWidth, vpHeight, callback) {
+    var extractFromDocument = window.MilgExtract;
+    var iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + vpWidth + 'px;height:' + vpHeight + 'px;border:none;';
+    iframe.sandbox = 'allow-scripts allow-same-origin';
+    document.body.appendChild(iframe);
+
+    var msgType = 'milg-deep-' + vpWidth;
+    var handled = false;
+    function onResult(e) {
+      if (!e.data || e.data.type !== msgType) return;
+      if (handled) return;
+      handled = true;
+      window.removeEventListener('message', onResult);
+      if (iframe.parentNode) document.body.removeChild(iframe);
+      callback(e.data.data);
+    }
+    window.addEventListener('message', onResult);
+
+    var processed = url ? injectBaseTag(html, url) : html;
+    var excludeVar = exclude ? '<script>window.__milgExclude=' + JSON.stringify(exclude) + ';</' + 'script>' : '';
+    var isFullDoc = /<html[\s>]/i.test(processed) || /<!DOCTYPE/i.test(processed);
+
+    var extractStr = extractFromDocument.toString().replace(/milg-analyzer-result/g, msgType);
+    // Auto-scroll inside iframe to trigger intersection observers before extracting
+    var scrollScript = 'window.scrollTo(0,document.body.scrollHeight);setTimeout(function(){window.scrollTo(0,0)},300);';
+    var extractScript = excludeVar + '<script>window.addEventListener("load",function(){' + scrollScript + 'setTimeout(function(){(' + extractStr + ')()},1500)});setTimeout(function(){(' + extractStr + ')()},8000);</' + 'script>';
+
+    var srcdoc;
+    if (isFullDoc) {
+      if (/<\/body>/i.test(processed)) {
+        srcdoc = processed.replace(/<\/body>/i, extractScript + '</body>');
+      } else {
+        srcdoc = processed + extractScript;
+      }
+    } else {
+      srcdoc = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script><style>body{margin:0}</style></head><body>' + processed + extractScript + '</body></html>';
+    }
+    iframe.srcdoc = srcdoc;
+
+    setTimeout(function() {
+      if (handled) return;
+      handled = true;
+      window.removeEventListener('message', onResult);
+      if (iframe.parentNode) document.body.removeChild(iframe);
+      callback(null);
+    }, 15000);
+  }
+
+  function analyzeHtmlInIframe(html, callback, sourceUrlOrDark, excludeSelectorOrEffectCSS, captureScreenshots) {
+    var extractFromDocument = window.MilgExtract;
+    // Support both signatures:
+    // analyzeHtmlInIframe(html, cb, sourceUrl, excludeSelector, screenshots) — URL mode
+    // analyzeHtmlInIframe(html, cb, dark, effectCSS, screenshots) — editor preview mode
+    var sourceUrl = typeof sourceUrlOrDark === 'string' ? sourceUrlOrDark : null;
+    var excludeSelector = typeof excludeSelectorOrEffectCSS === 'string' && !sourceUrl ? null : excludeSelectorOrEffectCSS;
+    var editorDark = typeof sourceUrlOrDark === 'boolean' ? sourceUrlOrDark : false;
+    var editorEffectCSS = (!sourceUrl && typeof excludeSelectorOrEffectCSS === 'string') ? excludeSelectorOrEffectCSS : '';
+    var iframe = document.createElement('iframe');
+    // Use viewport from selector or default
+    var vp = _getViewport();
+    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + vp.w + 'px;height:' + vp.h + 'px;border:none;';
+    iframe.sandbox = 'allow-scripts allow-same-origin';
+    document.body.appendChild(iframe);
+
+    var handled = false;
+    function finish(data) {
+      if (handled) return;
+      handled = true;
+      window.removeEventListener('message', onMsg);
+      if (iframe.parentNode) document.body.removeChild(iframe);
+      callback(data);
+    }
+
+    function onMsg(e) {
+      if (!e.data) return;
+      if (e.data.type === 'milg-analyzer-result') {
+        var data = e.data.data;
+        data.meta.url = 'Pasted HTML';
+        if (!captureScreenshots) {
+          finish(data);
+          return;
+        }
+        // Store data, wait for screenshots (capture auto-triggers via __milgDoScreenshots)
+        iframe._milgData = data;
+      }
+      if (e.data.type === 'milg-screenshots-result' && iframe._milgData) {
+        iframe._milgData.screenshots = e.data.screenshots || [];
+        iframe._milgData.screenshotFull = e.data.screenshotFull || null;
+        iframe._milgData.screenshotMeta = e.data.screenshotMeta || null;
+        // Apply re-read bbox data from the iframe (updated after scroll-reset + getFlowPosition)
+        if (e.data.updatedData) {
+          var ud = e.data.updatedData;
+          // Merge re-read bboxes back into our data
+          if (ud.colors && ud.colors.contrastPairs) iframe._milgData.colors.contrastPairs = ud.colors.contrastPairs;
+          if (ud.typography) {
+            if (ud.typography.fontSizes) iframe._milgData.typography.fontSizes = ud.typography.fontSizes;
+            if (ud.typography.headings) iframe._milgData.typography.headings = ud.typography.headings;
+            if (ud.typography.maxLineLength) iframe._milgData.typography.maxLineLength = ud.typography.maxLineLength;
+          }
+          if (ud.interaction && ud.interaction.touchTargets) iframe._milgData.interaction.touchTargets = ud.interaction.touchTargets;
+          if (ud.layout) {
+            if (ud.layout.offscreenElements) iframe._milgData.layout.offscreenElements = ud.layout.offscreenElements;
+            if (ud.layout.hiddenPanelIssues) iframe._milgData.layout.hiddenPanelIssues = ud.layout.hiddenPanelIssues;
+          }
+        }
+        // If hidden panels were detected, trigger unhidden screenshot pass
+        var hpc = iframe._milgData.layout && iframe._milgData.layout.hiddenPanelCount;
+        if (hpc > 0 && iframe.contentWindow && iframe.contentWindow.__milgDoUnhiddenScreenshots) {
+          try {
+            setTimeout(function() { iframe.contentWindow.__milgDoUnhiddenScreenshots(); }, 100);
+          } catch(ex) { finish(iframe._milgData); }
+        } else {
+          finish(iframe._milgData);
+        }
+      }
+      if (e.data.type === 'milg-screenshots-unhidden' && iframe._milgData) {
+        iframe._milgData.screenshotsUnhidden = e.data.screenshots || [];
+        finish(iframe._milgData);
+      }
+    }
+    window.addEventListener('message', onMsg);
+
+    // If the pasted HTML is a full document (has <html> or <head>), use it as-is
+    // and just append the extraction script. Otherwise wrap in a basic document.
+    var isFullDoc = /<html[\s>]/i.test(html) || /<!DOCTYPE/i.test(html);
+    // Inject <base> tag so relative CSS/image/font URLs resolve to the original domain
+    if (sourceUrl) html = injectBaseTag(html, sourceUrl);
+    // Pass context to extraction
+    var excludeVar = excludeSelector ? '<script>window.__milgExclude=' + JSON.stringify(excludeSelector) + ';</' + 'script>' : '';
+    var fragmentVar = !isFullDoc ? '<script>window.__milgIsFragment=true;</' + 'script>' : '';
+    // Screenshot capture: script that auto-runs after extraction, loads CDN library, captures page
+    // Also includes unhidden-panels screenshot if hidden panels are detected
+    var unhiddenScreenshotFn = 'window.__milgDoUnhiddenScreenshots=function(){' +
+      // Unhide all interactive panels using !important overrides
+      'var panels=document.querySelectorAll("[role=menu],[role=listbox],[role=dialog],[role=tooltip],[role=alertdialog]");' +
+      'var hidden=[];' +
+      'panels.forEach(function(p){' +
+        'var s=getComputedStyle(p);' +
+        'if(s.display==="none"||s.visibility==="hidden"||s.opacity==="0"){' +
+          'hidden.push({el:p,css:p.style.cssText,ariaH:p.getAttribute("aria-hidden"),hadHidden:p.hasAttribute("hidden")});' +
+          'p.style.cssText=p.style.cssText+";display:block !important;visibility:visible !important;opacity:1 !important;";' +
+          'if(p.hasAttribute("hidden"))p.removeAttribute("hidden");' +
+          'if(p.getAttribute("aria-hidden")==="true")p.setAttribute("aria-hidden","false")' +
+        '}' +
+      '});' +
+      // Also check aria-haspopup sibling panels
+      'document.querySelectorAll("[aria-haspopup]").forEach(function(t){' +
+        'var w=t.parentElement;if(!w)return;' +
+        'w.querySelectorAll("[role=menu],[role=listbox],[role=dialog]").forEach(function(p){' +
+          'var s=getComputedStyle(p);' +
+          'if(s.display==="none"||s.visibility==="hidden"||s.opacity==="0"){' +
+            'hidden.push({el:p,css:p.style.cssText,ariaH:p.getAttribute("aria-hidden"),hadHidden:p.hasAttribute("hidden")});' +
+            'p.style.cssText=p.style.cssText+";display:block !important;visibility:visible !important;opacity:1 !important;";' +
+            'if(p.hasAttribute("hidden"))p.removeAttribute("hidden");' +
+            'if(p.getAttribute("aria-hidden")==="true")p.setAttribute("aria-hidden","false")' +
+          '}' +
+        '})' +
+      '});' +
+      'if(hidden.length===0){parent.postMessage({type:"milg-screenshots-unhidden",screenshots:[]},"*");return}' +
+      'void document.body.offsetHeight;' +
+      'setTimeout(function(){' +
+        // Direct capture (iframe already resized from main screenshot pass)
+        'var ms=window.modernScreenshot;' +
+        'if(!ms||!ms.domToCanvas){parent.postMessage({type:"milg-screenshots-unhidden",screenshots:[]},"*");return}' +
+        'ms.domToCanvas(document.documentElement,{scale:' + SCREENSHOT_SCALE + ',timeout:8000}).then(function(fc){' +
+          'var uri;try{uri=fc.toDataURL("image/webp",' + SCREENSHOT_QUALITY + ')}catch(e){uri=""}' +
+          'parent.postMessage({type:"milg-screenshots-unhidden",screenshots:uri?[uri]:[]},"*")' +
+        '}).catch(function(){parent.postMessage({type:"milg-screenshots-unhidden",screenshots:[]},"*")})' +
+      '},300)' +
+    '};';
+    var screenshotScript = captureScreenshots ? '<script>window.__milgDoScreenshots=function(){' + buildScreenshotScript('milg-screenshots-result') + '};' + unhiddenScreenshotFn + '</' + 'script>' : '';
+    var srcdoc;
+    if (isFullDoc) {
+      // Wait for window load (CSS/fonts loaded), then extra delay for rendering
+      // JS-enabled mode (URL patch present) needs longer delays for React/Vue hydration
+      var hasJsPatch = html.indexOf('about:srcdoc') !== -1;
+      var postLoadDelay = hasJsPatch ? 2000 : 1000;
+      var fallbackDelay = hasJsPatch ? 8000 : 8000;
+      var extractScript = excludeVar + fragmentVar + screenshotScript + '<script>window.addEventListener("load",function(){setTimeout(function(){(' + extractFromDocument.toString() + ')()},' + postLoadDelay + ')});setTimeout(function(){(' + extractFromDocument.toString() + ')()},' + fallbackDelay + ');</' + 'script>';
+      if (/<\/body>/i.test(html)) {
+        srcdoc = html.replace(/<\/body>/i, extractScript + '</body>');
+      } else {
+        srcdoc = html + extractScript;
+      }
+    } else {
+      var darkClass = editorDark ? ' class="dark"' : '';
+      var darkVariantTag = editorDark ? '<style type="text/tailwindcss">@custom-variant dark (&:where(.dark, .dark *));</style>' : '';
+      var effectTag = editorEffectCSS ? '<style>' + editorEffectCSS + '</style>' : '';
+      srcdoc = '<!DOCTYPE html><html lang="en"' + darkClass + '><head><meta charset="UTF-8">' +
+        '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+        '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
+        darkVariantTag + effectTag +
+        '<style>body{margin:0}</style></head><body>' +
+        html + excludeVar + fragmentVar + screenshotScript +
+        '<script>setTimeout(function(){(' + extractFromDocument.toString() + ')()}, 1500);</' + 'script>' +
+        '</body></html>';
+    }
+    iframe.srcdoc = srcdoc;
+
+    // Timeout fallback (longer when capturing screenshots)
+    setTimeout(function() {
+      if (!handled && iframe._milgData) {
+        // Extraction succeeded but screenshots timed out — return without screenshots
+        iframe._milgData.screenshots = [];
+        finish(iframe._milgData);
+      } else {
+        finish({
+          meta: { title: '', url: 'Pasted HTML', viewportWidth: 1280, viewportHeight: 900, timestamp: new Date().toISOString(), version: 1 },
+          colors: { textColors: [], bgColors: [], contrastPairs: [] },
+          typography: { bodyFontSize: '16px', bodyLineHeight: '24px', bodyFontFamily: 'sans-serif', fontFamilies: [], fontSizes: [], fontWeights: [], headings: [], lineHeights: [], maxLineLength: { chars: 0, element: '', fontSize: 0, textLength: 0 } },
+          spacing: { paddings: [], margins: [], gaps: [], maxContentWidth: '', bodyPaddingHorizontal: '' },
+          layout: { sectionGaps: [], alignmentEdges: [], visualHierarchy: {} },
+          interaction: { touchTargets: [], transitions: [] },
+          accessibility: { semanticElements: {}, headingHierarchy: [], imagesWithoutAlt: 0, formLabels: { total: 0, withLabel: 0, withoutLabel: 0 }, focusIndicators: [] },
+          structure: { totalElements: 0, darkModeClasses: false, responsiveClasses: false, tailwindDetected: false, cssFramework: 'unknown' }
+        });
+      }
+    }, captureScreenshots ? 25000 : (isFullDoc ? 15000 : 8000));
+  }
+
+  return {
+    init: init,
+    injectBaseTag: injectBaseTag,
+    analyzeHtmlInIframe: analyzeHtmlInIframe,
+    deepScanInIframe: deepScanInIframe,
+    buildScreenshotScript: buildScreenshotScript
+  };
 })();
 </file>
 
