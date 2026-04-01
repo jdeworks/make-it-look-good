@@ -118,22 +118,49 @@ window.MilgIframe = (function() {
             'var ms=window.modernScreenshot;' +
             'if(!ms||!ms.domToCanvas){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*");return}' +
             'document.querySelectorAll("img").forEach(function(i){if(i.src&&i.src.indexOf("data:")!==0)i.crossOrigin="anonymous"});' +
-            // Capture documentElement (same as console snippet) — no body offset drift
-            // height:auto is already set so documentElement = content height, not viewport
-            'ms.domToCanvas(document.documentElement,{scale:' + ss.scale + ',timeout:12000}).then(function(fc){' +
-              'console.log("[iframe-ss] Canvas: "+fc.width+"x"+fc.height);' +
-              'var fullUri;try{fullUri=fc.toDataURL("image/webp",' + ss.quality + ')}catch(e){fullUri=""}' +
-              'var updatedData=window.__milgData||null;' +
-              'parent.postMessage({type:"' + msgType + '",' +
-                'screenshots:fullUri?[fullUri]:[],' +
-                'screenshotFull:fullUri||null,' +
-                'screenshotMeta:{scale:' + ss.scale + ',viewportHeight:vh,sectionCount:1,' +
-                  'canvasWidth:fc.width,canvasHeight:fc.height,' +
-                  'docHeightAtCapture:fullH,' +
-                  'calibrationOffsetY:0,calibrationSamples:[]},' +
-                'updatedData:updatedData' +
-              '},"*")' +
-            '}).catch(function(e){console.warn("[iframe-ss] capture failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")})' +
+            'var _sc=' + ss.scale + ';' +
+            // Phase A: Text mask capture — set all text to magenta, backgrounds to white
+            'console.log("[iframe-ss] Phase A: Capturing text mask...");' +
+            'var _maskStyle=document.createElement("style");' +
+            '_maskStyle.setAttribute("data-milg-mask","1");' +
+            '_maskStyle.textContent="*,*::before,*::after{color:#ff00ff !important;background-color:#fff !important;background-image:none !important;background:white !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;-webkit-text-fill-color:#ff00ff !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}";' +
+            'document.head.appendChild(_maskStyle);' +
+            'void document.body.offsetHeight;' +
+            'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:10000}).then(function(maskCanvas){' +
+              'console.log("[iframe-ss] Mask captured: "+maskCanvas.width+"x"+maskCanvas.height);' +
+              // Remove mask styles, restore original appearance
+              '_maskStyle.parentNode.removeChild(_maskStyle);' +
+              'void document.body.offsetHeight;' +
+              // Phase B: Real screenshot capture
+              'console.log("[iframe-ss] Phase B: Capturing real screenshot...");' +
+              'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:12000}).then(function(fc){' +
+                'console.log("[iframe-ss] Screenshot: "+fc.width+"x"+fc.height);' +
+                // Convert mask to data URI for transfer
+                'var maskUri;try{maskUri=maskCanvas.toDataURL("image/png")}catch(e){maskUri=""}' +
+                'var fullUri;try{fullUri=fc.toDataURL("image/webp",' + ss.quality + ')}catch(e){fullUri=""}' +
+                'var updatedData=window.__milgData||null;' +
+                'parent.postMessage({type:"' + msgType + '",' +
+                  'screenshots:fullUri?[fullUri]:[],' +
+                  'screenshotFull:fullUri||null,' +
+                  'textMask:maskUri||null,' +
+                  'screenshotMeta:{scale:_sc,viewportHeight:vh,sectionCount:1,' +
+                    'canvasWidth:fc.width,canvasHeight:fc.height,' +
+                    'docHeightAtCapture:fullH,' +
+                    'calibrationOffsetY:0,calibrationSamples:[]},' +
+                  'updatedData:updatedData' +
+                '},"*")' +
+              '}).catch(function(e){console.warn("[iframe-ss] screenshot failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")})' +
+            '}).catch(function(e){' +
+              // Mask failed — fall back to screenshot-only (no mask)
+              'console.warn("[iframe-ss] mask failed, capturing without:",e);' +
+              '_maskStyle.parentNode.removeChild(_maskStyle);' +
+              'void document.body.offsetHeight;' +
+              'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:12000}).then(function(fc){' +
+                'var fullUri;try{fullUri=fc.toDataURL("image/webp",' + ss.quality + ')}catch(e){fullUri=""}' +
+                'var updatedData=window.__milgData||null;' +
+                'parent.postMessage({type:"' + msgType + '",screenshots:fullUri?[fullUri]:[],screenshotFull:fullUri||null,textMask:null,screenshotMeta:{scale:_sc,viewportHeight:vh,sectionCount:1,canvasWidth:fc.width,canvasHeight:fc.height,docHeightAtCapture:fullH,calibrationOffsetY:0,calibrationSamples:[]},updatedData:updatedData},"*")' +
+              '}).catch(function(){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")})' +
+            '})' +
           '};' +
           's.onerror=function(){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")};' +
           'document.head.appendChild(s)' +
@@ -231,6 +258,7 @@ window.MilgIframe = (function() {
       if (e.data.type === 'milg-screenshots-result' && iframe._milgData) {
         iframe._milgData.screenshots = e.data.screenshots || [];
         iframe._milgData.screenshotFull = e.data.screenshotFull || null;
+        iframe._milgData.textMask = e.data.textMask || null;
         iframe._milgData.screenshotMeta = e.data.screenshotMeta || null;
         // Apply re-read bbox data from the iframe (updated after scroll-reset + getFlowPosition)
         if (e.data.updatedData) {

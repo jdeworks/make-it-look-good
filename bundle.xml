@@ -27082,6 +27082,430 @@ window.MilgReport = (function() {
 })();
 </file>
 
+<file path="docs/analyzer.html">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>make-it-look-good — Design Analyzer</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='2' y='2' width='12' height='12' rx='2' fill='%232563eb'/><rect x='18' y='2' width='12' height='12' rx='2' fill='%2393c5fd'/><rect x='2' y='18' width='12' height='12' rx='2' fill='%2393c5fd'/><rect x='18' y='18' width='12' height='12' rx='2' fill='%232563eb'/></svg>">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="analyzer.css">
+</head>
+<body class="analyzer-body">
+
+  <!-- Header -->
+  <header class="header">
+    <div class="header-left">
+      <a href="analyzer.html" class="logo" style="text-decoration:none"><span class="logo-full">make-it-look-good <span class="logo-sub">analyzer</span></span><span class="logo-short">milg</span></a>
+    </div>
+    <nav class="header-right" aria-label="Site navigation">
+      <a href="index.html" class="btn" style="text-decoration:none">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        <span class="hide-mobile">Editor</span>
+      </a>
+      <button class="btn btn-icon" id="darkBtn" title="Toggle dark mode" aria-label="Toggle dark mode">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+    </nav>
+  </header>
+
+  <main>
+  <!-- Input Section -->
+  <div class="input-section" id="inputSection">
+    <div class="input-hero">
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v25</span></h1>
+      <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
+    </div>
+
+    <!-- Tabs -->
+    <div class="input-tabs">
+      <button class="tab-btn active" data-tab="tabUrl">Enter URL<br><span class="tab-sub">(mobile-friendly)</span></button>
+      <button class="tab-btn" data-tab="tabSnippet">Console Snippet<br><span class="tab-sub">(most accurate)</span></button>
+      <button class="tab-btn" data-tab="tabHtml">Paste HTML<br><span class="tab-sub">(approximate)</span></button>
+      <button class="tab-btn" data-tab="tabImport">Import<br><span class="tab-sub">(JSON file)</span></button>
+    </div>
+
+    <!-- Shared screenshot options (applies to all tabs) -->
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;flex-wrap:wrap;font-size:12px;color:var(--text-secondary)">
+      <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
+        <input type="checkbox" id="screenshotCheck" checked style="width:15px;height:15px;cursor:pointer">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="13" r="4"/><path d="M5 3v2"/><path d="M19 3v2"/></svg>
+        Screenshots
+      </label>
+      <select id="verifyDensity" style="font-size:11px;padding:2px 6px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);min-height:24px;cursor:pointer" title="Pixel contrast verification sampling density">
+        <option value="fast">Verify: Fast</option>
+        <option value="common" selected>Verify: Standard</option>
+        <option value="accurate">Verify: Thorough</option>
+      </select>
+    </div>
+
+    <!-- Tab 0: URL fetch -->
+    <div class="tab-content active" id="tabUrl">
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;line-height:1.5;">
+        Enter a URL to analyze. The page is fetched via a CORS proxy and rendered in a hidden iframe with its CSS.
+        Works on phone — no console needed.
+      </p>
+      <div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;line-height:1.5;padding:8px 12px;background:var(--bg-alt);border:1px solid var(--border);border-radius:var(--radius);">
+        <strong style="color:var(--text)">How it works:</strong> The page is fetched via proxy and rendered in a sandboxed iframe.
+        JavaScript is <strong style="color:var(--text)">off by default</strong> &mdash; for JS-heavy sites (React, Vue, Angular), enable it below.
+        Storage, cookies, and other sensitive APIs are automatically isolated.
+        Pages behind login, localhost, or sites that block proxies/framing need the <strong style="color:var(--text)">Console Snippet</strong> tab instead.
+      </div>
+      <div class="input-area">
+        <label for="urlInput" class="sr-only">Website URL</label>
+        <input type="url" id="urlInput" name="url" autocomplete="on" list="urlHistory" placeholder="https://example.com" style="width:100%;padding:12px 16px;border:1px solid var(--border);border-radius:var(--radius);font-size:15px;font-family:var(--font);color:var(--text);background:var(--bg);outline:none;min-height:44px;" />
+        <datalist id="urlHistory"></datalist>
+      </div>
+      <div class="viewport-row" id="viewportRow" style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap">
+        <label style="font-size:12px;color:var(--text-secondary);white-space:nowrap">Viewport:</label>
+        <select id="viewportSelect" class="btn" style="padding:4px 24px 4px 8px;font-size:12px;appearance:auto;cursor:pointer;min-height:36px">
+          <option value="current" selected>Current window size</option>
+          <option value="375x812">Phone (375×812)</option>
+          <option value="768x1024">Tablet (768×1024)</option>
+          <option value="1280x900">Desktop (1280×900)</option>
+          <option value="1920x1080">Large (1920×1080)</option>
+        </select>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+        <label style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="checkbox" id="deepScanCheck" style="width:16px;height:16px;cursor:pointer">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><rect x="2" y="3" width="20" height="14" rx="2"/><rect x="6" y="7" width="12" height="8" rx="1" stroke-dasharray="2 2"/><line x1="8" y1="21" x2="16" y2="21"/></svg>
+          Deep scan (multi-viewport + dark mode)
+        </label>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+        <label style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="checkbox" id="jsEnabledCheck" style="width:16px;height:16px;cursor:pointer">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+          Enable JavaScript (for React, Vue, etc.)
+        </label>
+      </div>
+      <div id="jsEnabledOptions" style="display:none;margin-top:8px;padding:12px 14px;border-radius:var(--radius)">
+        <div style="font-size:12px;line-height:1.6;margin-bottom:8px">
+          The page's JavaScript will execute in a sandboxed frame. Storage, cookies, and other sensitive APIs are blocked and logged.
+          Scripts still run &mdash; only enable this for sites you recognize.
+        </div>
+        <label style="font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600">
+          <input type="checkbox" id="jsRiskAck" style="width:15px;height:15px;cursor:pointer">
+          I understand the risk
+        </label>
+        <details style="margin-top:8px;font-size:11px">
+          <summary style="cursor:pointer;color:var(--text-secondary)">Prefer the Console Snippet (safer)</summary>
+          <div style="margin-top:6px;color:var(--text-secondary);line-height:1.5">
+            The console snippet runs in the page's own context with zero security concerns and full screenshot support.
+            Open DevTools &rarr; Console, paste the snippet from the <strong>Console Snippet</strong> tab above.
+            <br><button id="jsSnippetBtn" class="btn" style="margin-top:6px;font-size:11px;padding:4px 10px">Switch to Console Snippet tab</button>
+          </div>
+        </details>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+        <label style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="checkbox" id="crawlSiteCheck" style="width:16px;height:16px;cursor:pointer">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/><path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10A15.3 15.3 0 0112 2z"/></svg>
+          Crawl site (analyze multiple pages)
+        </label>
+      </div>
+      <div id="crawlOptions" style="display:none;margin-top:8px;padding:10px 14px;background:var(--bg-alt);border:1px solid var(--border);border-radius:var(--radius)">
+        <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:8px">
+          <div>
+            <label for="crawlMaxPages" style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:var(--text-secondary)">Max pages</label>
+            <input type="number" id="crawlMaxPages" min="1" max="10" value="5" class="btn" style="width:70px;padding:6px 8px;font-size:13px;text-align:center">
+          </div>
+          <div style="flex:1;min-width:160px">
+            <label for="crawlBlacklist" style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:var(--text-secondary)">Exclude pages</label>
+            <input type="text" id="crawlBlacklist" placeholder="/blog/*, /login" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-family:var(--mono);color:var(--text);background:var(--bg);outline:none">
+          </div>
+        </div>
+        <div id="crawlProgressArea" style="display:none;margin-top:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <span id="crawlProgressLabel" style="font-size:12px;font-weight:600;color:var(--text-secondary)">Discovering pages...</span>
+            <span id="crawlProgressCount" style="font-size:12px;color:var(--text-secondary)"></span>
+          </div>
+          <div class="progress-bar" style="margin-bottom:8px"><div class="progress-fill" id="crawlProgressFill"></div></div>
+          <div id="crawlProgressList" class="crawl-progress-list"></div>
+        </div>
+      </div>
+      <details style="margin-top:12px" id="excludeDetails">
+        <summary style="font-size:13px;color:var(--text-secondary);cursor:pointer;user-select:none">Skip elements from analysis (optional)</summary>
+        <div style="margin-top:8px">
+          <p style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;line-height:1.4">Elements you skip (and everything inside them) won't be scored. Useful for decorative UI mockups, screenshots, or third-party widgets.</p>
+          <div id="excludePresets" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+            <button type="button" class="exclude-tag" data-selector="[class*='mock']">Mock UI</button>
+            <button type="button" class="exclude-tag" data-selector=".demo, .preview, .screenshot">Demos</button>
+            <button type="button" class="exclude-tag" data-selector="footer">Footer</button>
+            <button type="button" class="exclude-tag" data-selector="iframe">Iframes</button>
+            <button type="button" class="exclude-tag" data-selector="svg">SVGs</button>
+            <button type="button" class="exclude-tag" data-selector=".sidebar, aside">Sidebar</button>
+            <button type="button" class="exclude-tag" data-selector=".ad, .ads, [class*='advert']">Ads</button>
+            <button type="button" class="exclude-tag" data-selector=".cookie, [class*='cookie'], [class*='consent']">Cookie banners</button>
+          </div>
+          <label for="excludeSelector" style="font-size:12px;color:var(--text-secondary)">Or type a CSS selector:</label>
+          <input type="text" id="excludeSelector" placeholder="e.g. .hero-image, #chat-widget" style="width:100%;padding:8px 12px;margin-top:4px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;font-family:var(--mono);color:var(--text);background:var(--bg);outline:none;min-height:44px;" />
+        </div>
+      </details>
+      <div class="input-actions" style="margin-top:12px;display:flex;gap:10px;align-items:center">
+        <button class="btn btn-primary" id="analyzeUrlBtn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          Analyze URL
+        </button>
+        <button class="btn" id="cancelCrawlBtn" style="display:none;min-height:44px">Cancel</button>
+      </div>
+      <div id="urlStatus" style="margin-top:12px;font-size:13px;color:var(--text-secondary);display:none"></div>
+      <div class="analysis-progress" id="analysisProgress" style="display:none">
+        <div class="analysis-progress-bar">
+          <div class="analysis-progress-fill" id="progressFill"></div>
+        </div>
+        <div class="analysis-progress-label" id="progressLabel">Preparing...</div>
+      </div>
+    </div>
+
+    <!-- Tab 1: Snippet extraction -->
+    <div class="tab-content" id="tabSnippet">
+      <div class="guide-steps">
+        <div class="guide-step">
+          <div class="guide-step-num">1</div>
+          <div>Open the website you want to analyze (works with <strong>any URL</strong> including <code>localhost</code> and pages behind login)</div>
+        </div>
+        <div class="guide-step">
+          <div class="guide-step-num">2</div>
+          <div>Open browser DevTools with <code>F12</code> and go to the <strong>Console</strong> tab.
+            <span style="display:block;font-size:12px;color:var(--text-secondary);margin-top:4px">Tip: undock DevTools into a separate window (click <code>⋮</code> → dock side → <strong>undock</strong>) so the page viewport stays at its real size. Docked DevTools shrink the page, which can skew layout and touch-target measurements.</span>
+          </div>
+        </div>
+        <div class="guide-step">
+          <div class="guide-step-num">3</div>
+          <div>Copy the extraction snippet below and <strong>paste it into the console</strong>, then press Enter. It extracts design tokens and copies JSON to your clipboard automatically.</div>
+        </div>
+        <div class="guide-step">
+          <div class="guide-step-num">4</div>
+          <div>Come back here and <strong>paste the JSON</strong> into the box below, then click Analyze.
+            <span style="display:block;font-size:12px;color:var(--text-secondary);margin-top:4px">If auto-copy didn't work, the console will show the JSON — type <code>copy(window.__milgData_json)</code> to copy it manually.</span>
+            <span style="display:block;font-size:12px;color:var(--text-secondary);margin-top:4px">For pages with scroll animations: run <code>window.__milgScrollFirst = true</code> first, then paste the snippet. It scrolls the page to trigger lazy loading before extracting.</span>
+          </div>
+        </div>
+      </div>
+
+
+      <div class="snippet-section">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+          <h2 style="font-size:14px;margin:0">Extraction Snippet</h2>
+          <div style="display:flex;align-items:center;gap:10px">
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px;color:var(--text-secondary)">
+              <input type="checkbox" id="snippetCrawlCheck" style="width:15px;height:15px;cursor:pointer">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10A15.3 15.3 0 0112 2z"/></svg>
+              Crawl site
+            </label>
+            <input type="number" id="snippetCrawlMaxPages" min="1" max="10" value="5" style="display:none;width:50px;padding:2px 6px;font-size:12px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);text-align:center" title="Max pages to crawl">
+          </div>
+          <button class="btn" id="copySnippetBtn">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            Copy snippet
+          </button>
+        </div>
+        <div class="snippet-box">
+          <div class="snippet-header">
+            <span>JavaScript</span>
+          </div>
+          <pre class="snippet-code" id="snippetCode">Loading...</pre>
+        </div>
+      </div>
+
+      <div style="margin-top:24px;">
+        <h2 style="font-size:14px;font-weight:600;margin-bottom:8px;">Paste extracted JSON</h2>
+        <div class="input-area">
+          <label for="pasteInput" class="sr-only">Extracted JSON data</label>
+          <textarea id="pasteInput" placeholder='Paste the JSON data copied by the snippet here...&#10;&#10;It should start with { "meta": { ... }'></textarea>
+        </div>
+        <div class="input-actions">
+          <button class="btn btn-primary" id="analyzeBtn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a8 8 0 0 0-8 8c0 3.4 2.1 6.3 5 7.5V20h6v-2.5c2.9-1.2 5-4.1 5-7.5a8 8 0 0 0-8-8z"/><line x1="10" y1="22" x2="14" y2="22"/></svg>
+            Analyze
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 2: Paste HTML -->
+    <div class="tab-content" id="tabHtml">
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;line-height:1.5;padding:10px 14px;background:var(--bg-alt);border:1px solid var(--border);border-radius:var(--radius);">
+        <strong style="color:var(--text)">Approximate mode.</strong>
+        This renders HTML in an iframe and reads computed styles. External fonts, images, and some CSS (relative URLs, @import chains) won't load — scores may differ from the live site.
+        Use the "Extract from Site" tab for accurate results.
+      </div>
+
+      <div class="console-tip" style="margin-bottom:16px;">
+        <strong>Grab page with CSS inlined:</strong> Open DevTools console (<code>F12</code>) and run:<br>
+        <code style="display:block;margin-top:6px;padding:6px 8px;word-break:break-all;white-space:pre-wrap">(async()=>{let c='';for(const s of document.styleSheets){try{c+=Array.from(s.cssRules).map(r=>r.cssText).join('\n')}catch(e){if(s.href){try{const r=await fetch(s.href);c+=await r.text()}catch(e2){}}}}const h=document.documentElement.cloneNode(true);h.querySelectorAll('script').forEach(s=>s.remove());h.querySelectorAll('link[rel=stylesheet]').forEach(l=>l.remove());const st=document.createElement('style');st.textContent=c;h.querySelector('head').appendChild(st);copy(h.outerHTML);console.log('%c✓ HTML + CSS copied!','color:#16a34a;font-weight:bold;font-size:14px')})()</code>
+        <span style="color:var(--text-secondary);font-size:12px;display:block;margin-top:4px">Inlines all external CSS into the HTML and strips scripts. Works behind logins, on SPAs, localhost.</span>
+      </div>
+
+      <div class="input-area">
+        <label for="htmlInput" class="sr-only">HTML source code</label>
+        <textarea id="htmlInput" placeholder='Paste HTML here...&#10;&#10;<div class="p-8 max-w-4xl mx-auto">&#10;  <h1 class="text-3xl font-bold">...</h1>&#10;</div>'></textarea>
+      </div>
+      <div class="input-actions">
+        <button class="btn btn-primary" id="analyzeHtmlBtn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a8 8 0 0 0-8 8c0 3.4 2.1 6.3 5 7.5V20h6v-2.5c2.9-1.2 5-4.1 5-7.5a8 8 0 0 0-8-8z"/><line x1="10" y1="22" x2="14" y2="22"/></svg>
+          Analyze HTML
+        </button>
+      </div>
+    </div>
+
+    <!-- Tab 3: Import JSON -->
+    <div class="tab-content" id="tabImport">
+      <div class="import-dropzone" id="importDropzone">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--text-secondary);margin-bottom:12px">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        <p style="font-size:14px;font-weight:600;margin-bottom:4px">Drop a JSON file here</p>
+        <p style="font-size:12px;color:var(--text-secondary)">or click to browse — loads a previously exported analysis</p>
+        <input type="file" id="importDropFile" accept=".json" style="display:none">
+      </div>
+    </div>
+  </div>
+
+  <!-- Shared container for all report sections — one max-width/padding for alignment -->
+  <div class="report-wrapper" id="reportWrapper">
+
+  <!-- Report controls (shown when report is visible) -->
+  <div class="report-controls" id="reportActions">
+    <!-- Top row: audience selector + new analysis -->
+    <div class="report-controls-row">
+      <div class="persona-selector">
+        <label for="profileSelect" style="font-size:13px;color:var(--text-secondary);white-space:nowrap;font-weight:600">Audience:</label>
+        <select id="profileSelect" class="btn" style="padding:6px 28px 6px 10px;font-size:13px;appearance:auto;cursor:pointer">
+          <option value="general">General (WCAG AA)</option>
+          <option value="wcag_aaa">Strict (WCAG AAA)</option>
+          <option value="elderly">Elderly (65+)</option>
+          <option value="low_vision">Low Vision</option>
+          <option value="motor_impairment">Motor Impairment</option>
+          <option value="color_blind">Color Vision Deficiency</option>
+          <option value="children">Children (6-12)</option>
+          <option value="cognitive">Cognitive / Learning</option>
+        </select>
+        <button class="btn btn-icon" id="profileInfoBtn" title="What do these profiles do?" aria-label="Profile info" style="padding:6px;min-width:44px;min-height:44px;font-size:15px;font-weight:700">?</button>
+      </div>
+      <button class="btn" id="newAnalysisBtn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New Analysis
+      </button>
+    </div>
+    <!-- Profile explanation (hidden by default) -->
+    <div class="profile-explanation" id="profileExplanation" style="display:none">
+      <button class="profile-explanation-close" onclick="document.getElementById('profileExplanation').style.display='none'" aria-label="Close">&times;</button>
+      <h4>Audience Profiles — Evidence-Based Thresholds</h4>
+      <p>Each profile adjusts scoring thresholds based on published accessibility research. Switching re-scores instantly.</p>
+      <table>
+        <tr><th></th><th>Contrast</th><th>Font min</th><th>Touch</th><th>Key change</th></tr>
+        <tr><td><strong>General</strong></td><td>4.5:1</td><td>16px</td><td>24/44px</td><td>WCAG AA baseline</td></tr>
+        <tr><td><strong>WCAG AAA</strong></td><td>7:1</td><td>16px</td><td>24/44px</td><td>Enhanced contrast</td></tr>
+        <tr><td><strong>Elderly</strong></td><td>7:1</td><td>18px</td><td>48px</td><td>12px spacing, max 7 nav, no thin fonts, reduced motion</td></tr>
+        <tr><td><strong>Low Vision</strong></td><td>7:1</td><td>18px</td><td>44px</td><td>12px spacing, 32px icons, bg image warnings</td></tr>
+        <tr><td><strong>Motor</strong></td><td>4.5:1</td><td>16px</td><td>48px</td><td>12px spacing, focus indicator checks</td></tr>
+        <tr><td><strong>Color Vision</strong></td><td>4.5:1</td><td>16px</td><td>24/44px</td><td>CVD palette simulation, red-green reliance</td></tr>
+        <tr><td><strong>Children</strong></td><td>4.5:1</td><td>18px</td><td>48px</td><td>16px spacing, grade 5 reading, max 5 nav</td></tr>
+        <tr><td><strong>Cognitive</strong></td><td>4.5:1</td><td>16px</td><td>24/44px</td><td>Grade 8 reading, max 5 nav, reduced motion</td></tr>
+      </table>
+      <details style="margin-top:10px">
+        <summary style="font-size:12px;color:var(--text-secondary);cursor:pointer">Sources</summary>
+        <ul style="font-size:11px;color:var(--text-secondary);margin-top:6px;padding-left:18px;line-height:1.6">
+          <li><strong>Contrast 4.5:1 / 7:1</strong> — <a href="https://www.w3.org/TR/WCAG22/#contrast-minimum" target="_blank" rel="noopener">WCAG 2.2 §1.4.3</a> (AA) and <a href="https://www.w3.org/TR/WCAG22/#contrast-enhanced" target="_blank" rel="noopener">§1.4.6</a> (AAA)</li>
+          <li><strong>Touch target 44px</strong> — <a href="https://www.w3.org/TR/WCAG22/#target-size-minimum" target="_blank" rel="noopener">WCAG 2.2 §2.5.8</a>; 48dp from <a href="https://m3.material.io/foundations/layout/applying-layout" target="_blank" rel="noopener">Material Design 3</a></li>
+          <li><strong>Click target 24px</strong> — <a href="https://www.w3.org/TR/WCAG22/#target-size-minimum" target="_blank" rel="noopener">WCAG 2.2 §2.5.8</a> minimum for non-inline targets</li>
+          <li><strong>16px body text</strong> — Browser default; <a href="https://www.nngroup.com/articles/let-users-control-font-size/" target="_blank" rel="noopener">NNGroup research</a> on minimum legibility</li>
+          <li><strong>18px for elderly</strong> — <a href="https://www.w3.org/WAI/older-users/" target="_blank" rel="noopener">W3C WAI Older Users</a> and <a href="https://www.w3.org/TR/WCAG22/#dfn-large-scale" target="_blank" rel="noopener">WCAG large text definition</a> (18pt = 24px, 14pt bold = 18.5px)</li>
+          <li><strong>48px targets for motor/elderly</strong> — <a href="https://m3.material.io/foundations/layout/applying-layout" target="_blank" rel="noopener">Material Design 3</a> (48dp); <a href="https://developer.apple.com/design/human-interface-guidelines/accessibility" target="_blank" rel="noopener">Apple HIG</a> (44pt)</li>
+          <li><strong>12px target spacing</strong> — <a href="https://www.w3.org/TR/WCAG22/#target-size-minimum" target="_blank" rel="noopener">WCAG 2.2 §2.5.8</a> spacing exception; Motor impairment research via <a href="https://www.w3.org/WAI/GL/task-forces/coga/" target="_blank" rel="noopener">COGA Task Force</a></li>
+          <li><strong>Line height 1.4–1.6</strong> — <a href="https://www.w3.org/TR/WCAG22/#text-spacing" target="_blank" rel="noopener">WCAG 2.2 §1.4.12</a> (1.5× minimum); <a href="https://practicaltypography.com/line-spacing.html" target="_blank" rel="noopener">Butterick's Practical Typography</a></li>
+          <li><strong>No thin fonts for elderly</strong> — <a href="https://www.w3.org/WAI/older-users/developing/" target="_blank" rel="noopener">W3C WAI Developing for Older Users</a>: avoid font-weight below 400</li>
+          <li><strong>CVD palette simulation</strong> — <a href="https://www.inf.ufrgs.br/~oliveira/pubs_files/CVD_Simulation/CVD_Simulation.html" target="_blank" rel="noopener">Machado et al. 2009</a>; <a href="https://www.w3.org/TR/WCAG22/#use-of-color" target="_blank" rel="noopener">WCAG 2.2 §1.4.1</a></li>
+          <li><strong>Reading level Grade 5/8</strong> — <a href="https://www.w3.org/TR/WCAG22/#reading-level" target="_blank" rel="noopener">WCAG 2.2 §3.1.5</a>; Flesch-Kincaid / Coleman-Liau index</li>
+          <li><strong>Max 5 nav items</strong> — <a href="https://doi.org/10.1017/S0140525X01003922" target="_blank" rel="noopener">Cowan (2001)</a>: working memory 4±1; <a href="https://www.nngroup.com/articles/childrens-websites-usability-issues/" target="_blank" rel="noopener">NNGroup children UX</a></li>
+          <li><strong>Children touch targets</strong> — <a href="https://www.nngroup.com/articles/children-ux-physical-development/" target="_blank" rel="noopener">NNGroup Physical Development</a>: 48px min, 76px ideal for ages 4-8</li>
+          <li><strong>Cognitive/COGA</strong> — <a href="https://www.w3.org/TR/coga-usable/" target="_blank" rel="noopener">W3C Making Content Usable</a>: short sentences, consistent nav, icon+text</li>
+        </ul>
+      </details>
+    </div>
+    <!-- Bottom row: export actions (collapsible on mobile via CSS) -->
+    <details class="export-details" open>
+      <summary class="export-summary">Export &amp; Share</summary>
+    <div class="report-controls-row">
+      <select id="exportSeverityFilter" class="btn" title="Filter exported findings by severity" style="padding:4px 24px 4px 8px;font-size:12px;appearance:auto;cursor:pointer">
+        <option value="all">All findings</option>
+        <option value="warning">Warnings + Errors</option>
+        <option value="error">Errors only</option>
+      </select>
+      <button class="btn" id="copyMdBtn" title="Copy Markdown without images (for pasting into chat/docs)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        <span class="btn-label">Copy Markdown</span>
+      </button>
+      <button class="btn" id="markdownBtn" title="Download as .md file">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        <span class="btn-label">.md</span>
+      </button>
+      <button class="btn" id="printBtn" title="Print or save as PDF">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+        <span class="btn-label">PDF</span>
+      </button>
+      <button class="btn" id="exportJsonBtn" title="Save analysis as JSON (re-importable)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span class="btn-label">JSON</span>
+      </button>
+      <button class="btn" id="importJsonBtn" title="Load a previously exported analysis">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <span class="btn-label">Import</span>
+      </button>
+      <input type="file" id="importJsonFile" accept=".json" style="display:none">
+    </div>
+    </details>
+  </div>
+
+  <!-- Crawl page tabs (above report, hidden until crawl starts) -->
+  <div id="crawlResults" style="display:none">
+    <div class="crawl-page-tabs" id="crawlPageTabs"></div>
+  </div>
+  <!-- Report container (used for both single-page and crawl per-page reports) -->
+  <div class="report-container" id="reportContainer"></div>
+  <!-- Crawl summary content (shown when summary tab is active) -->
+  <div class="report-container" id="crawlPageContent" style="display:none"></div>
+
+  </div><!-- /report-wrapper -->
+  </main>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+  <!-- Scoring: registry + modular scoring functions -->
+  <script src="scoring/registry.js"></script>
+  <script src="scoring/contrast.js"></script>
+  <script src="scoring/typography.js"></script>
+  <script src="scoring/spacing.js"></script>
+  <script src="scoring/touch.js"></script>
+  <script src="scoring/accessibility.js"></script>
+  <script src="scoring/responsive.js"></script>
+  <script src="scoring/consistency.js"></script>
+  <script src="scoring/cognitive.js"></script>
+  <script src="scoring/layout.js"></script>
+  <script src="scoring/performance.js"></script>
+  <script src="scoring/readability.js"></script>
+  <script src="scoring/filters.js"></script>
+  <script src="scoring/balance.js"></script>
+  <!-- Report rendering + UI -->
+  <script src="analyzer-report.js"></script>
+  <script src="analyzer-crawl.js"></script>
+  <script src="analyzer-extract.js"></script>
+  <script src="analyzer-iframe.js"></script>
+  <script src="analyzer-proxy.js"></script>
+  <script src="analyzer-crawl-ui.js"></script>
+  <script src="analyzer-contrast-verify.js"></script>
+  <script src="analyzer-viewer.js"></script>
+  <script src="analyzer.js"></script>
+</body>
+</html>
+</file>
+
 <file path="docs/analyzer-extract.js">
 // make-it-look-good — Extraction Engine
 // Runs inside iframes to extract design data from rendered pages.
@@ -28004,430 +28428,6 @@ window.MilgExtract = (function() {
 })();
 </file>
 
-<file path="docs/analyzer.html">
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>make-it-look-good — Design Analyzer</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='2' y='2' width='12' height='12' rx='2' fill='%232563eb'/><rect x='18' y='2' width='12' height='12' rx='2' fill='%2393c5fd'/><rect x='2' y='18' width='12' height='12' rx='2' fill='%2393c5fd'/><rect x='18' y='18' width='12' height='12' rx='2' fill='%232563eb'/></svg>">
-  <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="analyzer.css">
-</head>
-<body class="analyzer-body">
-
-  <!-- Header -->
-  <header class="header">
-    <div class="header-left">
-      <a href="analyzer.html" class="logo" style="text-decoration:none"><span class="logo-full">make-it-look-good <span class="logo-sub">analyzer</span></span><span class="logo-short">milg</span></a>
-    </div>
-    <nav class="header-right" aria-label="Site navigation">
-      <a href="index.html" class="btn" style="text-decoration:none">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-        <span class="hide-mobile">Editor</span>
-      </a>
-      <button class="btn btn-icon" id="darkBtn" title="Toggle dark mode" aria-label="Toggle dark mode">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-      </button>
-    </nav>
-  </header>
-
-  <main>
-  <!-- Input Section -->
-  <div class="input-section" id="inputSection">
-    <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v25</span></h1>
-      <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
-    </div>
-
-    <!-- Tabs -->
-    <div class="input-tabs">
-      <button class="tab-btn active" data-tab="tabUrl">Enter URL<br><span class="tab-sub">(mobile-friendly)</span></button>
-      <button class="tab-btn" data-tab="tabSnippet">Console Snippet<br><span class="tab-sub">(most accurate)</span></button>
-      <button class="tab-btn" data-tab="tabHtml">Paste HTML<br><span class="tab-sub">(approximate)</span></button>
-      <button class="tab-btn" data-tab="tabImport">Import<br><span class="tab-sub">(JSON file)</span></button>
-    </div>
-
-    <!-- Shared screenshot options (applies to all tabs) -->
-    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;flex-wrap:wrap;font-size:12px;color:var(--text-secondary)">
-      <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
-        <input type="checkbox" id="screenshotCheck" checked style="width:15px;height:15px;cursor:pointer">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="13" r="4"/><path d="M5 3v2"/><path d="M19 3v2"/></svg>
-        Screenshots
-      </label>
-      <select id="verifyDensity" style="font-size:11px;padding:2px 6px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);min-height:24px;cursor:pointer" title="Pixel contrast verification sampling density">
-        <option value="fast">Verify: Fast</option>
-        <option value="common" selected>Verify: Standard</option>
-        <option value="accurate">Verify: Thorough</option>
-      </select>
-    </div>
-
-    <!-- Tab 0: URL fetch -->
-    <div class="tab-content active" id="tabUrl">
-      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;line-height:1.5;">
-        Enter a URL to analyze. The page is fetched via a CORS proxy and rendered in a hidden iframe with its CSS.
-        Works on phone — no console needed.
-      </p>
-      <div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;line-height:1.5;padding:8px 12px;background:var(--bg-alt);border:1px solid var(--border);border-radius:var(--radius);">
-        <strong style="color:var(--text)">How it works:</strong> The page is fetched via proxy and rendered in a sandboxed iframe.
-        JavaScript is <strong style="color:var(--text)">off by default</strong> &mdash; for JS-heavy sites (React, Vue, Angular), enable it below.
-        Storage, cookies, and other sensitive APIs are automatically isolated.
-        Pages behind login, localhost, or sites that block proxies/framing need the <strong style="color:var(--text)">Console Snippet</strong> tab instead.
-      </div>
-      <div class="input-area">
-        <label for="urlInput" class="sr-only">Website URL</label>
-        <input type="url" id="urlInput" name="url" autocomplete="on" list="urlHistory" placeholder="https://example.com" style="width:100%;padding:12px 16px;border:1px solid var(--border);border-radius:var(--radius);font-size:15px;font-family:var(--font);color:var(--text);background:var(--bg);outline:none;min-height:44px;" />
-        <datalist id="urlHistory"></datalist>
-      </div>
-      <div class="viewport-row" id="viewportRow" style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap">
-        <label style="font-size:12px;color:var(--text-secondary);white-space:nowrap">Viewport:</label>
-        <select id="viewportSelect" class="btn" style="padding:4px 24px 4px 8px;font-size:12px;appearance:auto;cursor:pointer;min-height:36px">
-          <option value="current" selected>Current window size</option>
-          <option value="375x812">Phone (375×812)</option>
-          <option value="768x1024">Tablet (768×1024)</option>
-          <option value="1280x900">Desktop (1280×900)</option>
-          <option value="1920x1080">Large (1920×1080)</option>
-        </select>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
-        <label style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:6px;cursor:pointer">
-          <input type="checkbox" id="deepScanCheck" style="width:16px;height:16px;cursor:pointer">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><rect x="2" y="3" width="20" height="14" rx="2"/><rect x="6" y="7" width="12" height="8" rx="1" stroke-dasharray="2 2"/><line x1="8" y1="21" x2="16" y2="21"/></svg>
-          Deep scan (multi-viewport + dark mode)
-        </label>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
-        <label style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:6px;cursor:pointer">
-          <input type="checkbox" id="jsEnabledCheck" style="width:16px;height:16px;cursor:pointer">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-          Enable JavaScript (for React, Vue, etc.)
-        </label>
-      </div>
-      <div id="jsEnabledOptions" style="display:none;margin-top:8px;padding:12px 14px;border-radius:var(--radius)">
-        <div style="font-size:12px;line-height:1.6;margin-bottom:8px">
-          The page's JavaScript will execute in a sandboxed frame. Storage, cookies, and other sensitive APIs are blocked and logged.
-          Scripts still run &mdash; only enable this for sites you recognize.
-        </div>
-        <label style="font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600">
-          <input type="checkbox" id="jsRiskAck" style="width:15px;height:15px;cursor:pointer">
-          I understand the risk
-        </label>
-        <details style="margin-top:8px;font-size:11px">
-          <summary style="cursor:pointer;color:var(--text-secondary)">Prefer the Console Snippet (safer)</summary>
-          <div style="margin-top:6px;color:var(--text-secondary);line-height:1.5">
-            The console snippet runs in the page's own context with zero security concerns and full screenshot support.
-            Open DevTools &rarr; Console, paste the snippet from the <strong>Console Snippet</strong> tab above.
-            <br><button id="jsSnippetBtn" class="btn" style="margin-top:6px;font-size:11px;padding:4px 10px">Switch to Console Snippet tab</button>
-          </div>
-        </details>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
-        <label style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:6px;cursor:pointer">
-          <input type="checkbox" id="crawlSiteCheck" style="width:16px;height:16px;cursor:pointer">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/><path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10A15.3 15.3 0 0112 2z"/></svg>
-          Crawl site (analyze multiple pages)
-        </label>
-      </div>
-      <div id="crawlOptions" style="display:none;margin-top:8px;padding:10px 14px;background:var(--bg-alt);border:1px solid var(--border);border-radius:var(--radius)">
-        <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:8px">
-          <div>
-            <label for="crawlMaxPages" style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:var(--text-secondary)">Max pages</label>
-            <input type="number" id="crawlMaxPages" min="1" max="10" value="5" class="btn" style="width:70px;padding:6px 8px;font-size:13px;text-align:center">
-          </div>
-          <div style="flex:1;min-width:160px">
-            <label for="crawlBlacklist" style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:var(--text-secondary)">Exclude pages</label>
-            <input type="text" id="crawlBlacklist" placeholder="/blog/*, /login" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-family:var(--mono);color:var(--text);background:var(--bg);outline:none">
-          </div>
-        </div>
-        <div id="crawlProgressArea" style="display:none;margin-top:8px">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-            <span id="crawlProgressLabel" style="font-size:12px;font-weight:600;color:var(--text-secondary)">Discovering pages...</span>
-            <span id="crawlProgressCount" style="font-size:12px;color:var(--text-secondary)"></span>
-          </div>
-          <div class="progress-bar" style="margin-bottom:8px"><div class="progress-fill" id="crawlProgressFill"></div></div>
-          <div id="crawlProgressList" class="crawl-progress-list"></div>
-        </div>
-      </div>
-      <details style="margin-top:12px" id="excludeDetails">
-        <summary style="font-size:13px;color:var(--text-secondary);cursor:pointer;user-select:none">Skip elements from analysis (optional)</summary>
-        <div style="margin-top:8px">
-          <p style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;line-height:1.4">Elements you skip (and everything inside them) won't be scored. Useful for decorative UI mockups, screenshots, or third-party widgets.</p>
-          <div id="excludePresets" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
-            <button type="button" class="exclude-tag" data-selector="[class*='mock']">Mock UI</button>
-            <button type="button" class="exclude-tag" data-selector=".demo, .preview, .screenshot">Demos</button>
-            <button type="button" class="exclude-tag" data-selector="footer">Footer</button>
-            <button type="button" class="exclude-tag" data-selector="iframe">Iframes</button>
-            <button type="button" class="exclude-tag" data-selector="svg">SVGs</button>
-            <button type="button" class="exclude-tag" data-selector=".sidebar, aside">Sidebar</button>
-            <button type="button" class="exclude-tag" data-selector=".ad, .ads, [class*='advert']">Ads</button>
-            <button type="button" class="exclude-tag" data-selector=".cookie, [class*='cookie'], [class*='consent']">Cookie banners</button>
-          </div>
-          <label for="excludeSelector" style="font-size:12px;color:var(--text-secondary)">Or type a CSS selector:</label>
-          <input type="text" id="excludeSelector" placeholder="e.g. .hero-image, #chat-widget" style="width:100%;padding:8px 12px;margin-top:4px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;font-family:var(--mono);color:var(--text);background:var(--bg);outline:none;min-height:44px;" />
-        </div>
-      </details>
-      <div class="input-actions" style="margin-top:12px;display:flex;gap:10px;align-items:center">
-        <button class="btn btn-primary" id="analyzeUrlBtn">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          Analyze URL
-        </button>
-        <button class="btn" id="cancelCrawlBtn" style="display:none;min-height:44px">Cancel</button>
-      </div>
-      <div id="urlStatus" style="margin-top:12px;font-size:13px;color:var(--text-secondary);display:none"></div>
-      <div class="analysis-progress" id="analysisProgress" style="display:none">
-        <div class="analysis-progress-bar">
-          <div class="analysis-progress-fill" id="progressFill"></div>
-        </div>
-        <div class="analysis-progress-label" id="progressLabel">Preparing...</div>
-      </div>
-    </div>
-
-    <!-- Tab 1: Snippet extraction -->
-    <div class="tab-content" id="tabSnippet">
-      <div class="guide-steps">
-        <div class="guide-step">
-          <div class="guide-step-num">1</div>
-          <div>Open the website you want to analyze (works with <strong>any URL</strong> including <code>localhost</code> and pages behind login)</div>
-        </div>
-        <div class="guide-step">
-          <div class="guide-step-num">2</div>
-          <div>Open browser DevTools with <code>F12</code> and go to the <strong>Console</strong> tab.
-            <span style="display:block;font-size:12px;color:var(--text-secondary);margin-top:4px">Tip: undock DevTools into a separate window (click <code>⋮</code> → dock side → <strong>undock</strong>) so the page viewport stays at its real size. Docked DevTools shrink the page, which can skew layout and touch-target measurements.</span>
-          </div>
-        </div>
-        <div class="guide-step">
-          <div class="guide-step-num">3</div>
-          <div>Copy the extraction snippet below and <strong>paste it into the console</strong>, then press Enter. It extracts design tokens and copies JSON to your clipboard automatically.</div>
-        </div>
-        <div class="guide-step">
-          <div class="guide-step-num">4</div>
-          <div>Come back here and <strong>paste the JSON</strong> into the box below, then click Analyze.
-            <span style="display:block;font-size:12px;color:var(--text-secondary);margin-top:4px">If auto-copy didn't work, the console will show the JSON — type <code>copy(window.__milgData_json)</code> to copy it manually.</span>
-            <span style="display:block;font-size:12px;color:var(--text-secondary);margin-top:4px">For pages with scroll animations: run <code>window.__milgScrollFirst = true</code> first, then paste the snippet. It scrolls the page to trigger lazy loading before extracting.</span>
-          </div>
-        </div>
-      </div>
-
-
-      <div class="snippet-section">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px">
-          <h2 style="font-size:14px;margin:0">Extraction Snippet</h2>
-          <div style="display:flex;align-items:center;gap:10px">
-            <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px;color:var(--text-secondary)">
-              <input type="checkbox" id="snippetCrawlCheck" style="width:15px;height:15px;cursor:pointer">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10A15.3 15.3 0 0112 2z"/></svg>
-              Crawl site
-            </label>
-            <input type="number" id="snippetCrawlMaxPages" min="1" max="10" value="5" style="display:none;width:50px;padding:2px 6px;font-size:12px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);text-align:center" title="Max pages to crawl">
-          </div>
-          <button class="btn" id="copySnippetBtn">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-            Copy snippet
-          </button>
-        </div>
-        <div class="snippet-box">
-          <div class="snippet-header">
-            <span>JavaScript</span>
-          </div>
-          <pre class="snippet-code" id="snippetCode">Loading...</pre>
-        </div>
-      </div>
-
-      <div style="margin-top:24px;">
-        <h2 style="font-size:14px;font-weight:600;margin-bottom:8px;">Paste extracted JSON</h2>
-        <div class="input-area">
-          <label for="pasteInput" class="sr-only">Extracted JSON data</label>
-          <textarea id="pasteInput" placeholder='Paste the JSON data copied by the snippet here...&#10;&#10;It should start with { "meta": { ... }'></textarea>
-        </div>
-        <div class="input-actions">
-          <button class="btn btn-primary" id="analyzeBtn">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a8 8 0 0 0-8 8c0 3.4 2.1 6.3 5 7.5V20h6v-2.5c2.9-1.2 5-4.1 5-7.5a8 8 0 0 0-8-8z"/><line x1="10" y1="22" x2="14" y2="22"/></svg>
-            Analyze
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Tab 2: Paste HTML -->
-    <div class="tab-content" id="tabHtml">
-      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;line-height:1.5;padding:10px 14px;background:var(--bg-alt);border:1px solid var(--border);border-radius:var(--radius);">
-        <strong style="color:var(--text)">Approximate mode.</strong>
-        This renders HTML in an iframe and reads computed styles. External fonts, images, and some CSS (relative URLs, @import chains) won't load — scores may differ from the live site.
-        Use the "Extract from Site" tab for accurate results.
-      </div>
-
-      <div class="console-tip" style="margin-bottom:16px;">
-        <strong>Grab page with CSS inlined:</strong> Open DevTools console (<code>F12</code>) and run:<br>
-        <code style="display:block;margin-top:6px;padding:6px 8px;word-break:break-all;white-space:pre-wrap">(async()=>{let c='';for(const s of document.styleSheets){try{c+=Array.from(s.cssRules).map(r=>r.cssText).join('\n')}catch(e){if(s.href){try{const r=await fetch(s.href);c+=await r.text()}catch(e2){}}}}const h=document.documentElement.cloneNode(true);h.querySelectorAll('script').forEach(s=>s.remove());h.querySelectorAll('link[rel=stylesheet]').forEach(l=>l.remove());const st=document.createElement('style');st.textContent=c;h.querySelector('head').appendChild(st);copy(h.outerHTML);console.log('%c✓ HTML + CSS copied!','color:#16a34a;font-weight:bold;font-size:14px')})()</code>
-        <span style="color:var(--text-secondary);font-size:12px;display:block;margin-top:4px">Inlines all external CSS into the HTML and strips scripts. Works behind logins, on SPAs, localhost.</span>
-      </div>
-
-      <div class="input-area">
-        <label for="htmlInput" class="sr-only">HTML source code</label>
-        <textarea id="htmlInput" placeholder='Paste HTML here...&#10;&#10;<div class="p-8 max-w-4xl mx-auto">&#10;  <h1 class="text-3xl font-bold">...</h1>&#10;</div>'></textarea>
-      </div>
-      <div class="input-actions">
-        <button class="btn btn-primary" id="analyzeHtmlBtn">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a8 8 0 0 0-8 8c0 3.4 2.1 6.3 5 7.5V20h6v-2.5c2.9-1.2 5-4.1 5-7.5a8 8 0 0 0-8-8z"/><line x1="10" y1="22" x2="14" y2="22"/></svg>
-          Analyze HTML
-        </button>
-      </div>
-    </div>
-
-    <!-- Tab 3: Import JSON -->
-    <div class="tab-content" id="tabImport">
-      <div class="import-dropzone" id="importDropzone">
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--text-secondary);margin-bottom:12px">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-        </svg>
-        <p style="font-size:14px;font-weight:600;margin-bottom:4px">Drop a JSON file here</p>
-        <p style="font-size:12px;color:var(--text-secondary)">or click to browse — loads a previously exported analysis</p>
-        <input type="file" id="importDropFile" accept=".json" style="display:none">
-      </div>
-    </div>
-  </div>
-
-  <!-- Shared container for all report sections — one max-width/padding for alignment -->
-  <div class="report-wrapper" id="reportWrapper">
-
-  <!-- Report controls (shown when report is visible) -->
-  <div class="report-controls" id="reportActions">
-    <!-- Top row: audience selector + new analysis -->
-    <div class="report-controls-row">
-      <div class="persona-selector">
-        <label for="profileSelect" style="font-size:13px;color:var(--text-secondary);white-space:nowrap;font-weight:600">Audience:</label>
-        <select id="profileSelect" class="btn" style="padding:6px 28px 6px 10px;font-size:13px;appearance:auto;cursor:pointer">
-          <option value="general">General (WCAG AA)</option>
-          <option value="wcag_aaa">Strict (WCAG AAA)</option>
-          <option value="elderly">Elderly (65+)</option>
-          <option value="low_vision">Low Vision</option>
-          <option value="motor_impairment">Motor Impairment</option>
-          <option value="color_blind">Color Vision Deficiency</option>
-          <option value="children">Children (6-12)</option>
-          <option value="cognitive">Cognitive / Learning</option>
-        </select>
-        <button class="btn btn-icon" id="profileInfoBtn" title="What do these profiles do?" aria-label="Profile info" style="padding:6px;min-width:44px;min-height:44px;font-size:15px;font-weight:700">?</button>
-      </div>
-      <button class="btn" id="newAnalysisBtn">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        New Analysis
-      </button>
-    </div>
-    <!-- Profile explanation (hidden by default) -->
-    <div class="profile-explanation" id="profileExplanation" style="display:none">
-      <button class="profile-explanation-close" onclick="document.getElementById('profileExplanation').style.display='none'" aria-label="Close">&times;</button>
-      <h4>Audience Profiles — Evidence-Based Thresholds</h4>
-      <p>Each profile adjusts scoring thresholds based on published accessibility research. Switching re-scores instantly.</p>
-      <table>
-        <tr><th></th><th>Contrast</th><th>Font min</th><th>Touch</th><th>Key change</th></tr>
-        <tr><td><strong>General</strong></td><td>4.5:1</td><td>16px</td><td>24/44px</td><td>WCAG AA baseline</td></tr>
-        <tr><td><strong>WCAG AAA</strong></td><td>7:1</td><td>16px</td><td>24/44px</td><td>Enhanced contrast</td></tr>
-        <tr><td><strong>Elderly</strong></td><td>7:1</td><td>18px</td><td>48px</td><td>12px spacing, max 7 nav, no thin fonts, reduced motion</td></tr>
-        <tr><td><strong>Low Vision</strong></td><td>7:1</td><td>18px</td><td>44px</td><td>12px spacing, 32px icons, bg image warnings</td></tr>
-        <tr><td><strong>Motor</strong></td><td>4.5:1</td><td>16px</td><td>48px</td><td>12px spacing, focus indicator checks</td></tr>
-        <tr><td><strong>Color Vision</strong></td><td>4.5:1</td><td>16px</td><td>24/44px</td><td>CVD palette simulation, red-green reliance</td></tr>
-        <tr><td><strong>Children</strong></td><td>4.5:1</td><td>18px</td><td>48px</td><td>16px spacing, grade 5 reading, max 5 nav</td></tr>
-        <tr><td><strong>Cognitive</strong></td><td>4.5:1</td><td>16px</td><td>24/44px</td><td>Grade 8 reading, max 5 nav, reduced motion</td></tr>
-      </table>
-      <details style="margin-top:10px">
-        <summary style="font-size:12px;color:var(--text-secondary);cursor:pointer">Sources</summary>
-        <ul style="font-size:11px;color:var(--text-secondary);margin-top:6px;padding-left:18px;line-height:1.6">
-          <li><strong>Contrast 4.5:1 / 7:1</strong> — <a href="https://www.w3.org/TR/WCAG22/#contrast-minimum" target="_blank" rel="noopener">WCAG 2.2 §1.4.3</a> (AA) and <a href="https://www.w3.org/TR/WCAG22/#contrast-enhanced" target="_blank" rel="noopener">§1.4.6</a> (AAA)</li>
-          <li><strong>Touch target 44px</strong> — <a href="https://www.w3.org/TR/WCAG22/#target-size-minimum" target="_blank" rel="noopener">WCAG 2.2 §2.5.8</a>; 48dp from <a href="https://m3.material.io/foundations/layout/applying-layout" target="_blank" rel="noopener">Material Design 3</a></li>
-          <li><strong>Click target 24px</strong> — <a href="https://www.w3.org/TR/WCAG22/#target-size-minimum" target="_blank" rel="noopener">WCAG 2.2 §2.5.8</a> minimum for non-inline targets</li>
-          <li><strong>16px body text</strong> — Browser default; <a href="https://www.nngroup.com/articles/let-users-control-font-size/" target="_blank" rel="noopener">NNGroup research</a> on minimum legibility</li>
-          <li><strong>18px for elderly</strong> — <a href="https://www.w3.org/WAI/older-users/" target="_blank" rel="noopener">W3C WAI Older Users</a> and <a href="https://www.w3.org/TR/WCAG22/#dfn-large-scale" target="_blank" rel="noopener">WCAG large text definition</a> (18pt = 24px, 14pt bold = 18.5px)</li>
-          <li><strong>48px targets for motor/elderly</strong> — <a href="https://m3.material.io/foundations/layout/applying-layout" target="_blank" rel="noopener">Material Design 3</a> (48dp); <a href="https://developer.apple.com/design/human-interface-guidelines/accessibility" target="_blank" rel="noopener">Apple HIG</a> (44pt)</li>
-          <li><strong>12px target spacing</strong> — <a href="https://www.w3.org/TR/WCAG22/#target-size-minimum" target="_blank" rel="noopener">WCAG 2.2 §2.5.8</a> spacing exception; Motor impairment research via <a href="https://www.w3.org/WAI/GL/task-forces/coga/" target="_blank" rel="noopener">COGA Task Force</a></li>
-          <li><strong>Line height 1.4–1.6</strong> — <a href="https://www.w3.org/TR/WCAG22/#text-spacing" target="_blank" rel="noopener">WCAG 2.2 §1.4.12</a> (1.5× minimum); <a href="https://practicaltypography.com/line-spacing.html" target="_blank" rel="noopener">Butterick's Practical Typography</a></li>
-          <li><strong>No thin fonts for elderly</strong> — <a href="https://www.w3.org/WAI/older-users/developing/" target="_blank" rel="noopener">W3C WAI Developing for Older Users</a>: avoid font-weight below 400</li>
-          <li><strong>CVD palette simulation</strong> — <a href="https://www.inf.ufrgs.br/~oliveira/pubs_files/CVD_Simulation/CVD_Simulation.html" target="_blank" rel="noopener">Machado et al. 2009</a>; <a href="https://www.w3.org/TR/WCAG22/#use-of-color" target="_blank" rel="noopener">WCAG 2.2 §1.4.1</a></li>
-          <li><strong>Reading level Grade 5/8</strong> — <a href="https://www.w3.org/TR/WCAG22/#reading-level" target="_blank" rel="noopener">WCAG 2.2 §3.1.5</a>; Flesch-Kincaid / Coleman-Liau index</li>
-          <li><strong>Max 5 nav items</strong> — <a href="https://doi.org/10.1017/S0140525X01003922" target="_blank" rel="noopener">Cowan (2001)</a>: working memory 4±1; <a href="https://www.nngroup.com/articles/childrens-websites-usability-issues/" target="_blank" rel="noopener">NNGroup children UX</a></li>
-          <li><strong>Children touch targets</strong> — <a href="https://www.nngroup.com/articles/children-ux-physical-development/" target="_blank" rel="noopener">NNGroup Physical Development</a>: 48px min, 76px ideal for ages 4-8</li>
-          <li><strong>Cognitive/COGA</strong> — <a href="https://www.w3.org/TR/coga-usable/" target="_blank" rel="noopener">W3C Making Content Usable</a>: short sentences, consistent nav, icon+text</li>
-        </ul>
-      </details>
-    </div>
-    <!-- Bottom row: export actions (collapsible on mobile via CSS) -->
-    <details class="export-details" open>
-      <summary class="export-summary">Export &amp; Share</summary>
-    <div class="report-controls-row">
-      <select id="exportSeverityFilter" class="btn" title="Filter exported findings by severity" style="padding:4px 24px 4px 8px;font-size:12px;appearance:auto;cursor:pointer">
-        <option value="all">All findings</option>
-        <option value="warning">Warnings + Errors</option>
-        <option value="error">Errors only</option>
-      </select>
-      <button class="btn" id="copyMdBtn" title="Copy Markdown without images (for pasting into chat/docs)">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-        <span class="btn-label">Copy Markdown</span>
-      </button>
-      <button class="btn" id="markdownBtn" title="Download as .md file">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-        <span class="btn-label">.md</span>
-      </button>
-      <button class="btn" id="printBtn" title="Print or save as PDF">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-        <span class="btn-label">PDF</span>
-      </button>
-      <button class="btn" id="exportJsonBtn" title="Save analysis as JSON (re-importable)">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        <span class="btn-label">JSON</span>
-      </button>
-      <button class="btn" id="importJsonBtn" title="Load a previously exported analysis">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-        <span class="btn-label">Import</span>
-      </button>
-      <input type="file" id="importJsonFile" accept=".json" style="display:none">
-    </div>
-    </details>
-  </div>
-
-  <!-- Crawl page tabs (above report, hidden until crawl starts) -->
-  <div id="crawlResults" style="display:none">
-    <div class="crawl-page-tabs" id="crawlPageTabs"></div>
-  </div>
-  <!-- Report container (used for both single-page and crawl per-page reports) -->
-  <div class="report-container" id="reportContainer"></div>
-  <!-- Crawl summary content (shown when summary tab is active) -->
-  <div class="report-container" id="crawlPageContent" style="display:none"></div>
-
-  </div><!-- /report-wrapper -->
-  </main>
-
-  <!-- Toast -->
-  <div class="toast" id="toast"></div>
-
-  <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js"></script>
-  <script src="scoring/contrast.js"></script>
-  <script src="scoring/typography.js"></script>
-  <script src="scoring/spacing.js"></script>
-  <script src="scoring/touch.js"></script>
-  <script src="scoring/accessibility.js"></script>
-  <script src="scoring/responsive.js"></script>
-  <script src="scoring/consistency.js"></script>
-  <script src="scoring/cognitive.js"></script>
-  <script src="scoring/layout.js"></script>
-  <script src="scoring/performance.js"></script>
-  <script src="scoring/readability.js"></script>
-  <script src="scoring/filters.js"></script>
-  <script src="scoring/balance.js"></script>
-  <!-- Report rendering + UI -->
-  <script src="analyzer-report.js"></script>
-  <script src="analyzer-crawl.js"></script>
-  <script src="analyzer-extract.js"></script>
-  <script src="analyzer-iframe.js"></script>
-  <script src="analyzer-proxy.js"></script>
-  <script src="analyzer-crawl-ui.js"></script>
-  <script src="analyzer-contrast-verify.js"></script>
-  <script src="analyzer-viewer.js"></script>
-  <script src="analyzer.js"></script>
-</body>
-</html>
-</file>
-
 <file path="docs/analyzer-contrast-verify.js">
 // make-it-look-good — Pixel-Sampled Contrast Verification
 // Samples actual pixel colors from screenshots at text element locations,
@@ -28537,7 +28537,7 @@ window.MilgContrastVerify = (function() {
   // Photos, gradients, and dashed patterns need many sample points.
   // FG: horizontal sweep across text baseline band, take darkest (most likely text)
   // BG: grid across bbox excluding text band, find worst-case contrast
-  function verifyPair(pair, sectionCanvases, meta) {
+  function verifyPair(pair, sectionCanvases, meta, maskCanvas) {
     if (!pair.bbox || !meta) return null;
 
     var scale = meta.scale;
@@ -28569,11 +28569,9 @@ window.MilgContrastVerify = (function() {
     if (yInSection + canvasH > sec.height) canvasH = sec.height - yInSection;
     if (canvasX + canvasW > sec.width) canvasW = sec.width - canvasX;
 
-    // --- CSS fg-exclusion classification ---
-    // Classify each sampled pixel as "text" (close to CSS fg color) or "background"
-    // (far from CSS fg). Then compare text pixels to background pixels for contrast.
-    // The CSS fg color is the ground truth — it's what the browser computed.
-    // Anti-aliased pixels (blended fg+bg) are excluded from both groups.
+    // --- Pixel classification ---
+    // Primary: use text mask (DOM-rendered magenta-on-white) for exact text positions
+    // Fallback: CSS fg distance with anti-alias exclusion zone
     var cssFg = parseRgb(pair.fg);
     if (!cssFg) return null;
 
@@ -28583,17 +28581,24 @@ window.MilgContrastVerify = (function() {
     var bh = Math.min(Math.round(canvasH), sec.height - by);
     if (bw < 4 || bh < 4) return null;
 
+    // Read screenshot pixels for this bbox
     var imgData = sec.ctx.getImageData(bx, by, bw, bh).data;
+    // Read mask pixels if available (magenta=#FF00FF = text, white=#FFFFFF = bg)
+    var maskData = null;
+    if (maskCanvas && maskCanvas.ctx && bx + bw <= maskCanvas.width && by + bh <= maskCanvas.height) {
+      try { maskData = maskCanvas.ctx.getImageData(bx, by, bw, bh).data; } catch(e) {}
+    }
 
     var hSteps = Math.max(6, Math.min(_density.bgH, Math.floor(bw / 2)));
     var vSteps = Math.max(4, Math.min(_density.bgV, Math.floor(bh / 2)));
 
     var fgPoints = [], bgPoints = [];
     var fgColors = [], bgColors = [];
-    // Two thresholds: inner = definitely text, outer = definitely background
-    // Between them = anti-aliased edge (skip)
-    var FG_INNER_SQ = 3600;  // 60^2 — within this = text pixel
-    var FG_OUTER_SQ = 14400; // 120^2 — beyond this = background pixel
+    // CSS distance thresholds (fallback when no mask)
+    var FG_INNER_SQ = 3600;  // 60^2
+    var FG_OUTER_SQ = 14400; // 120^2
+    // Mask: magenta (#FF00FF) detection — R>200 && G<100 && B>200 = text
+    var usedMask = false;
 
     for (var vy = 0; vy < vSteps; vy++) {
       var iy = Math.round(bh * vy / (vSteps - 1 || 1));
@@ -28606,19 +28611,28 @@ window.MilgContrastVerify = (function() {
         var r = imgData[idx], g = imgData[idx + 1], b = imgData[idx + 2];
         var absX = bx + ix, absY = by + iy;
 
-        var dr = r - cssFg.r, dg = g - cssFg.g, db = b - cssFg.b;
-        var distSq = dr * dr + dg * dg + db * db;
+        var isText, isBg;
+        if (maskData) {
+          // Mask-based: magenta pixels = text, white = background
+          var mr = maskData[idx], mg = maskData[idx + 1], mb = maskData[idx + 2];
+          isText = mr > 200 && mg < 100 && mb > 200; // magenta
+          isBg = mr > 230 && mg > 230 && mb > 230;   // white
+          usedMask = true;
+        } else {
+          // Fallback: CSS fg distance with anti-alias exclusion
+          var dr = r - cssFg.r, dg = g - cssFg.g, db = b - cssFg.b;
+          var distSq = dr * dr + dg * dg + db * db;
+          isText = distSq < FG_INNER_SQ;
+          isBg = distSq > FG_OUTER_SQ;
+        }
 
-        if (distSq < FG_INNER_SQ) {
-          // Definitely text
+        if (isText) {
           fgColors.push({ r: r, g: g, b: b });
           fgPoints.push({ x: absX, y: absY });
-        } else if (distSq > FG_OUTER_SQ) {
-          // Definitely background
+        } else if (isBg) {
           bgColors.push({ r: r, g: g, b: b });
           bgPoints.push({ x: absX, y: absY });
         }
-        // else: anti-aliased edge pixel — skip (don't contaminate either group)
       }
     }
 
@@ -28743,30 +28757,40 @@ window.MilgContrastVerify = (function() {
     if (!raw.screenshots || !raw.screenshotMeta) { callback([]); return; }
     var meta = raw.screenshotMeta;
 
+    // Load screenshot + optional text mask in parallel
     var sectionCanvases = new Array(raw.screenshots.length);
+    var maskCanvasData = null;
     var loaded = 0;
-    var total = raw.screenshots.length;
+    var toLoad = raw.screenshots.length + (raw.textMask ? 1 : 0);
+
+    function onAllLoaded() {
+      var results = [];
+      pairs.forEach(function(pair) {
+        var result = verifyPair(pair, sectionCanvases, meta, maskCanvasData);
+        if (result) results.push(result);
+      });
+      results.sort(function(a, b) {
+        if (a.crossesBoundary !== b.crossesBoundary) return a.crossesBoundary ? -1 : 1;
+        return b.ratioDiff - a.ratioDiff;
+      });
+      callback(results);
+    }
 
     raw.screenshots.forEach(function(dataUri, idx) {
       loadScreenshotToCanvas(dataUri, function(sec) {
         sectionCanvases[idx] = sec;
         loaded++;
-        if (loaded === total) {
-          var results = [];
-          pairs.forEach(function(pair) {
-            var result = verifyPair(pair, sectionCanvases, meta);
-            if (result) results.push(result);
-          });
-
-          results.sort(function(a, b) {
-            if (a.crossesBoundary !== b.crossesBoundary) return a.crossesBoundary ? -1 : 1;
-            return b.ratioDiff - a.ratioDiff;
-          });
-
-          callback(results);
-        }
+        if (loaded === toLoad) onAllLoaded();
       });
     });
+
+    if (raw.textMask) {
+      loadScreenshotToCanvas(raw.textMask, function(mc) {
+        maskCanvasData = mc;
+        loaded++;
+        if (loaded === toLoad) onAllLoaded();
+      });
+    }
   }
 
   // Format a single verification result as HTML for display in findings
@@ -29037,22 +29061,49 @@ window.MilgIframe = (function() {
             'var ms=window.modernScreenshot;' +
             'if(!ms||!ms.domToCanvas){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*");return}' +
             'document.querySelectorAll("img").forEach(function(i){if(i.src&&i.src.indexOf("data:")!==0)i.crossOrigin="anonymous"});' +
-            // Capture documentElement (same as console snippet) — no body offset drift
-            // height:auto is already set so documentElement = content height, not viewport
-            'ms.domToCanvas(document.documentElement,{scale:' + ss.scale + ',timeout:12000}).then(function(fc){' +
-              'console.log("[iframe-ss] Canvas: "+fc.width+"x"+fc.height);' +
-              'var fullUri;try{fullUri=fc.toDataURL("image/webp",' + ss.quality + ')}catch(e){fullUri=""}' +
-              'var updatedData=window.__milgData||null;' +
-              'parent.postMessage({type:"' + msgType + '",' +
-                'screenshots:fullUri?[fullUri]:[],' +
-                'screenshotFull:fullUri||null,' +
-                'screenshotMeta:{scale:' + ss.scale + ',viewportHeight:vh,sectionCount:1,' +
-                  'canvasWidth:fc.width,canvasHeight:fc.height,' +
-                  'docHeightAtCapture:fullH,' +
-                  'calibrationOffsetY:0,calibrationSamples:[]},' +
-                'updatedData:updatedData' +
-              '},"*")' +
-            '}).catch(function(e){console.warn("[iframe-ss] capture failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")})' +
+            'var _sc=' + ss.scale + ';' +
+            // Phase A: Text mask capture — set all text to magenta, backgrounds to white
+            'console.log("[iframe-ss] Phase A: Capturing text mask...");' +
+            'var _maskStyle=document.createElement("style");' +
+            '_maskStyle.setAttribute("data-milg-mask","1");' +
+            '_maskStyle.textContent="*,*::before,*::after{color:#ff00ff !important;background-color:#fff !important;background-image:none !important;background:white !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;-webkit-text-fill-color:#ff00ff !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}";' +
+            'document.head.appendChild(_maskStyle);' +
+            'void document.body.offsetHeight;' +
+            'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:10000}).then(function(maskCanvas){' +
+              'console.log("[iframe-ss] Mask captured: "+maskCanvas.width+"x"+maskCanvas.height);' +
+              // Remove mask styles, restore original appearance
+              '_maskStyle.parentNode.removeChild(_maskStyle);' +
+              'void document.body.offsetHeight;' +
+              // Phase B: Real screenshot capture
+              'console.log("[iframe-ss] Phase B: Capturing real screenshot...");' +
+              'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:12000}).then(function(fc){' +
+                'console.log("[iframe-ss] Screenshot: "+fc.width+"x"+fc.height);' +
+                // Convert mask to data URI for transfer
+                'var maskUri;try{maskUri=maskCanvas.toDataURL("image/png")}catch(e){maskUri=""}' +
+                'var fullUri;try{fullUri=fc.toDataURL("image/webp",' + ss.quality + ')}catch(e){fullUri=""}' +
+                'var updatedData=window.__milgData||null;' +
+                'parent.postMessage({type:"' + msgType + '",' +
+                  'screenshots:fullUri?[fullUri]:[],' +
+                  'screenshotFull:fullUri||null,' +
+                  'textMask:maskUri||null,' +
+                  'screenshotMeta:{scale:_sc,viewportHeight:vh,sectionCount:1,' +
+                    'canvasWidth:fc.width,canvasHeight:fc.height,' +
+                    'docHeightAtCapture:fullH,' +
+                    'calibrationOffsetY:0,calibrationSamples:[]},' +
+                  'updatedData:updatedData' +
+                '},"*")' +
+              '}).catch(function(e){console.warn("[iframe-ss] screenshot failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")})' +
+            '}).catch(function(e){' +
+              // Mask failed — fall back to screenshot-only (no mask)
+              'console.warn("[iframe-ss] mask failed, capturing without:",e);' +
+              '_maskStyle.parentNode.removeChild(_maskStyle);' +
+              'void document.body.offsetHeight;' +
+              'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:12000}).then(function(fc){' +
+                'var fullUri;try{fullUri=fc.toDataURL("image/webp",' + ss.quality + ')}catch(e){fullUri=""}' +
+                'var updatedData=window.__milgData||null;' +
+                'parent.postMessage({type:"' + msgType + '",screenshots:fullUri?[fullUri]:[],screenshotFull:fullUri||null,textMask:null,screenshotMeta:{scale:_sc,viewportHeight:vh,sectionCount:1,canvasWidth:fc.width,canvasHeight:fc.height,docHeightAtCapture:fullH,calibrationOffsetY:0,calibrationSamples:[]},updatedData:updatedData},"*")' +
+              '}).catch(function(){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")})' +
+            '})' +
           '};' +
           's.onerror=function(){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")};' +
           'document.head.appendChild(s)' +
@@ -29150,6 +29201,7 @@ window.MilgIframe = (function() {
       if (e.data.type === 'milg-screenshots-result' && iframe._milgData) {
         iframe._milgData.screenshots = e.data.screenshots || [];
         iframe._milgData.screenshotFull = e.data.screenshotFull || null;
+        iframe._milgData.textMask = e.data.textMask || null;
         iframe._milgData.screenshotMeta = e.data.screenshotMeta || null;
         // Apply re-read bbox data from the iframe (updated after scroll-reset + getFlowPosition)
         if (e.data.updatedData) {

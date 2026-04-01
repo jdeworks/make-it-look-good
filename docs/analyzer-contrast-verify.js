@@ -106,7 +106,7 @@ window.MilgContrastVerify = (function() {
   // Photos, gradients, and dashed patterns need many sample points.
   // FG: horizontal sweep across text baseline band, take darkest (most likely text)
   // BG: grid across bbox excluding text band, find worst-case contrast
-  function verifyPair(pair, sectionCanvases, meta) {
+  function verifyPair(pair, sectionCanvases, meta, maskCanvas) {
     if (!pair.bbox || !meta) return null;
 
     var scale = meta.scale;
@@ -138,11 +138,9 @@ window.MilgContrastVerify = (function() {
     if (yInSection + canvasH > sec.height) canvasH = sec.height - yInSection;
     if (canvasX + canvasW > sec.width) canvasW = sec.width - canvasX;
 
-    // --- CSS fg-exclusion classification ---
-    // Classify each sampled pixel as "text" (close to CSS fg color) or "background"
-    // (far from CSS fg). Then compare text pixels to background pixels for contrast.
-    // The CSS fg color is the ground truth — it's what the browser computed.
-    // Anti-aliased pixels (blended fg+bg) are excluded from both groups.
+    // --- Pixel classification ---
+    // Primary: use text mask (DOM-rendered magenta-on-white) for exact text positions
+    // Fallback: CSS fg distance with anti-alias exclusion zone
     var cssFg = parseRgb(pair.fg);
     if (!cssFg) return null;
 
@@ -152,17 +150,24 @@ window.MilgContrastVerify = (function() {
     var bh = Math.min(Math.round(canvasH), sec.height - by);
     if (bw < 4 || bh < 4) return null;
 
+    // Read screenshot pixels for this bbox
     var imgData = sec.ctx.getImageData(bx, by, bw, bh).data;
+    // Read mask pixels if available (magenta=#FF00FF = text, white=#FFFFFF = bg)
+    var maskData = null;
+    if (maskCanvas && maskCanvas.ctx && bx + bw <= maskCanvas.width && by + bh <= maskCanvas.height) {
+      try { maskData = maskCanvas.ctx.getImageData(bx, by, bw, bh).data; } catch(e) {}
+    }
 
     var hSteps = Math.max(6, Math.min(_density.bgH, Math.floor(bw / 2)));
     var vSteps = Math.max(4, Math.min(_density.bgV, Math.floor(bh / 2)));
 
     var fgPoints = [], bgPoints = [];
     var fgColors = [], bgColors = [];
-    // Two thresholds: inner = definitely text, outer = definitely background
-    // Between them = anti-aliased edge (skip)
-    var FG_INNER_SQ = 3600;  // 60^2 — within this = text pixel
-    var FG_OUTER_SQ = 14400; // 120^2 — beyond this = background pixel
+    // CSS distance thresholds (fallback when no mask)
+    var FG_INNER_SQ = 3600;  // 60^2
+    var FG_OUTER_SQ = 14400; // 120^2
+    // Mask: magenta (#FF00FF) detection — R>200 && G<100 && B>200 = text
+    var usedMask = false;
 
     for (var vy = 0; vy < vSteps; vy++) {
       var iy = Math.round(bh * vy / (vSteps - 1 || 1));
@@ -175,19 +180,28 @@ window.MilgContrastVerify = (function() {
         var r = imgData[idx], g = imgData[idx + 1], b = imgData[idx + 2];
         var absX = bx + ix, absY = by + iy;
 
-        var dr = r - cssFg.r, dg = g - cssFg.g, db = b - cssFg.b;
-        var distSq = dr * dr + dg * dg + db * db;
+        var isText, isBg;
+        if (maskData) {
+          // Mask-based: magenta pixels = text, white = background
+          var mr = maskData[idx], mg = maskData[idx + 1], mb = maskData[idx + 2];
+          isText = mr > 200 && mg < 100 && mb > 200; // magenta
+          isBg = mr > 230 && mg > 230 && mb > 230;   // white
+          usedMask = true;
+        } else {
+          // Fallback: CSS fg distance with anti-alias exclusion
+          var dr = r - cssFg.r, dg = g - cssFg.g, db = b - cssFg.b;
+          var distSq = dr * dr + dg * dg + db * db;
+          isText = distSq < FG_INNER_SQ;
+          isBg = distSq > FG_OUTER_SQ;
+        }
 
-        if (distSq < FG_INNER_SQ) {
-          // Definitely text
+        if (isText) {
           fgColors.push({ r: r, g: g, b: b });
           fgPoints.push({ x: absX, y: absY });
-        } else if (distSq > FG_OUTER_SQ) {
-          // Definitely background
+        } else if (isBg) {
           bgColors.push({ r: r, g: g, b: b });
           bgPoints.push({ x: absX, y: absY });
         }
-        // else: anti-aliased edge pixel — skip (don't contaminate either group)
       }
     }
 
@@ -312,30 +326,40 @@ window.MilgContrastVerify = (function() {
     if (!raw.screenshots || !raw.screenshotMeta) { callback([]); return; }
     var meta = raw.screenshotMeta;
 
+    // Load screenshot + optional text mask in parallel
     var sectionCanvases = new Array(raw.screenshots.length);
+    var maskCanvasData = null;
     var loaded = 0;
-    var total = raw.screenshots.length;
+    var toLoad = raw.screenshots.length + (raw.textMask ? 1 : 0);
+
+    function onAllLoaded() {
+      var results = [];
+      pairs.forEach(function(pair) {
+        var result = verifyPair(pair, sectionCanvases, meta, maskCanvasData);
+        if (result) results.push(result);
+      });
+      results.sort(function(a, b) {
+        if (a.crossesBoundary !== b.crossesBoundary) return a.crossesBoundary ? -1 : 1;
+        return b.ratioDiff - a.ratioDiff;
+      });
+      callback(results);
+    }
 
     raw.screenshots.forEach(function(dataUri, idx) {
       loadScreenshotToCanvas(dataUri, function(sec) {
         sectionCanvases[idx] = sec;
         loaded++;
-        if (loaded === total) {
-          var results = [];
-          pairs.forEach(function(pair) {
-            var result = verifyPair(pair, sectionCanvases, meta);
-            if (result) results.push(result);
-          });
-
-          results.sort(function(a, b) {
-            if (a.crossesBoundary !== b.crossesBoundary) return a.crossesBoundary ? -1 : 1;
-            return b.ratioDiff - a.ratioDiff;
-          });
-
-          callback(results);
-        }
+        if (loaded === toLoad) onAllLoaded();
       });
     });
+
+    if (raw.textMask) {
+      loadScreenshotToCanvas(raw.textMask, function(mc) {
+        maskCanvasData = mc;
+        loaded++;
+        if (loaded === toLoad) onAllLoaded();
+      });
+    }
   }
 
   // Format a single verification result as HTML for display in findings
