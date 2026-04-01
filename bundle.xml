@@ -26967,8 +26967,16 @@ function scoreContrast(data) {
     });
   });
 
-  // Passing contrast pairs — include as 'pass' severity so they show on screenshot viewer
-  var passingPairs = profilePairs.filter(function(p) { return p.passes && !(p.ratio < p.needed + 0.5); });
+  // Passing contrast pairs — marked as 'pass' for screenshot viewer.
+  // Only include pairs that are NOT near-misses and NOT already in failures.
+  // Note: pixel verification may later override these — the viewer should
+  // check verify results and downgrade pass → fail if pixel check disagrees.
+  var failSelectors = {};
+  Object.keys(failSeen).forEach(function(k) { failSelectors[failSeen[k].p.selector] = true; });
+  Object.keys(nearSeen).forEach(function(k) { failSelectors[nearSeen[k].p.selector] = true; });
+  var passingPairs = profilePairs.filter(function(p) {
+    return p.passes && !(p.ratio < p.needed + 0.5) && !failSelectors[p.selector];
+  });
   var passSeen = {};
   passingPairs.forEach(function(p) {
     var dedup = p.selector;
@@ -36643,6 +36651,15 @@ window.MilgViewer = (function() {
       if (_activeFilter.type === 'category' && finding.icon !== _activeFilter.value) return;
       if (_activeFilter.type === 'severity' && _activeFilter.value !== 'all' && finding.severity !== _activeFilter.value) return;
 
+      // If this is a CSS "pass" but pixel verification says it fails, skip green overlay
+      if (finding.severity === 'pass' && finding.detail) {
+        var passVr = null;
+        Object.keys(verifyMap).forEach(function(sel) {
+          if (finding.detail.indexOf(sel) !== -1) passVr = verifyMap[sel];
+        });
+        if (passVr && passVr.crossesBoundary && passVr.cssPasses && !passVr.pixelPasses) return;
+      }
+
       var color = COLORS[finding.severity] || COLORS.info;
 
       // Check pixel verification
@@ -38019,7 +38036,7 @@ window.MilgContrastVerify = (function() {
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v32.2</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v32.3</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 

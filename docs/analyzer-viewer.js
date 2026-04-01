@@ -541,6 +541,15 @@ window.MilgViewer = (function() {
       if (_activeFilter.type === 'category' && finding.icon !== _activeFilter.value) return;
       if (_activeFilter.type === 'severity' && _activeFilter.value !== 'all' && finding.severity !== _activeFilter.value) return;
 
+      // If this is a CSS "pass" but pixel verification says it fails, skip green overlay
+      if (finding.severity === 'pass' && finding.detail) {
+        var passVr = null;
+        Object.keys(verifyMap).forEach(function(sel) {
+          if (finding.detail.indexOf(sel) !== -1) passVr = verifyMap[sel];
+        });
+        if (passVr && passVr.crossesBoundary && passVr.cssPasses && !passVr.pixelPasses) return;
+      }
+
       var color = COLORS[finding.severity] || COLORS.info;
 
       // Check pixel verification

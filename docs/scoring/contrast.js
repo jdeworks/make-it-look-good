@@ -189,8 +189,16 @@ function scoreContrast(data) {
     });
   });
 
-  // Passing contrast pairs — include as 'pass' severity so they show on screenshot viewer
-  var passingPairs = profilePairs.filter(function(p) { return p.passes && !(p.ratio < p.needed + 0.5); });
+  // Passing contrast pairs — marked as 'pass' for screenshot viewer.
+  // Only include pairs that are NOT near-misses and NOT already in failures.
+  // Note: pixel verification may later override these — the viewer should
+  // check verify results and downgrade pass → fail if pixel check disagrees.
+  var failSelectors = {};
+  Object.keys(failSeen).forEach(function(k) { failSelectors[failSeen[k].p.selector] = true; });
+  Object.keys(nearSeen).forEach(function(k) { failSelectors[nearSeen[k].p.selector] = true; });
+  var passingPairs = profilePairs.filter(function(p) {
+    return p.passes && !(p.ratio < p.needed + 0.5) && !failSelectors[p.selector];
+  });
   var passSeen = {};
   passingPairs.forEach(function(p) {
     var dedup = p.selector;
