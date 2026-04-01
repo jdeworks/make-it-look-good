@@ -89,7 +89,8 @@
   // --- Initialize modules ---
   MilgIframe.init({
     screenshotCDN: SCREENSHOT_CDN,
-    getViewport: getSelectedViewport
+    getViewport: getSelectedViewport,
+    showProgress: showProgress
   });
 
   MilgProxy.init({
