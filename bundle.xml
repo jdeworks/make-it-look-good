@@ -36972,33 +36972,89 @@ window.MilgIframe = (function() {
                   'updatedData:updatedData' +
                 '},"*")' +
               '}' +
-              // Step 2: Single full-page text mask — ALL text black on white.
-              // Simple and reliable. Mixed-color nested spans handled by
-              // closer-to-FG-or-BG check in verification.
-              '_prog("Capturing text mask...");' +
-              'console.log("[iframe-ss] Step 2/2: Capturing text mask...");' +
-              // First: kill ALL transitions by setting transition-duration:0s on every element
-              // This must happen BEFORE the color change so there's no animation to race
+              // Step 2: Layered text masks with transition kill
+              '_prog("Building text masks...");' +
+              'console.log("[iframe-ss] Step 2: Layered masks...");' +
+              // Phase A: Kill ALL transitions on every element BEFORE any color changes
               'document.querySelectorAll("*").forEach(function(el){el.style.setProperty("transition-duration","0s","important");el.style.setProperty("transition","none","important")});' +
-              'void document.body.offsetHeight;' + // force reflow with transitions disabled
-              // Now apply the mask colors — transitions can't fire
+              'void document.body.offsetHeight;' +
+              // Phase B: Global style — everything white, all visible, no transitions
               'var _maskStyle=document.createElement("style");' +
               '_maskStyle.setAttribute("data-milg-mask","1");' +
-              '_maskStyle.textContent="*,*::before,*::after{color:#000 !important;background-color:#fff !important;background-image:none !important;background:white !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;-webkit-text-fill-color:#000 !important;opacity:1 !important;transition:none !important;animation:none !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}";' +
-              'document.head.appendChild(_maskStyle);' +
-              'void document.body.offsetHeight;' +
+              '_maskStyle.textContent="*,*::before,*::after{color:#fff !important;background-color:#fff !important;background-image:none !important;background:white !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;-webkit-text-fill-color:#fff !important;opacity:1 !important;transition:none !important;animation:none !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}";' +
+              'document.head.appendChild(_maskStyle);void document.body.offsetHeight;' +
+              // Phase C: Collect pair elements and build overlap layers
+              'var _refs=window.__milgBboxRefs||[];' +
+              'var _pairs=(window.__milgData&&window.__milgData.colors&&window.__milgData.colors.contrastPairs)||[];' +
+              'var _pairEls=[];' +
+              '_refs.forEach(function(ref){' +
+                'if(!ref.el||!ref.obj||ref.obj.ratio===undefined)return;' +
+                'var idx=_pairs.indexOf(ref.obj);' +
+                'if(idx>=0)_pairEls.push({el:ref.el,pair:ref.obj,idx:idx,bbox:ref.obj.bbox})' +
+              '});' +
+              'function _overlaps(a,b){' +
+                'if(!a.bbox||!b.bbox)return false;' +
+                'return a.bbox.left<b.bbox.left+b.bbox.width&&a.bbox.left+a.bbox.width>b.bbox.left&&' +
+                       'a.bbox.top<b.bbox.top+b.bbox.height&&a.bbox.top+a.bbox.height>b.bbox.top}' +
+              'var _layers=[];var _remaining=_pairEls.slice();' +
+              'while(_remaining.length>0){' +
+                'var layer=[];var next=[];' +
+                '_remaining.forEach(function(pe){' +
+                  'if(layer.some(function(l){return _overlaps(pe,l)})){next.push(pe)}else{layer.push(pe)}' +
+                '});_layers.push(layer);_remaining=next}' +
+              'console.log("[iframe-ss] "+_pairEls.length+" elements in "+_layers.length+" layers");' +
+              // Phase D: Capture one mask per layer — set layer elements to black via inline style
+              'var _li=0;' +
+              'function _nextLayer(){' +
+                'if(_li>=_layers.length){console.log("[iframe-ss] All "+_layers.length+" mask layers done");_sendFinal(null);return}' +
+                'var layer=_layers[_li];_li++;' +
+                '_prog("Text mask layer "+_li+"/"+_layers.length+"...");' +
+                'console.log("[iframe-ss] Layer "+_li+": "+layer.length+" elements");' +
+                // Set layer elements to black via INLINE style (transitions already killed)
+                'layer.forEach(function(pe){' +
+                  'pe.el.style.setProperty("color","#000","important");' +
+                  'pe.el.style.setProperty("-webkit-text-fill-color","#000","important");' +
+                  'pe.el.querySelectorAll("*").forEach(function(ch){' +
+                    'ch.style.setProperty("color","#000","important");' +
+                    'ch.style.setProperty("-webkit-text-fill-color","#000","important")})' +
+                '});' +
+                'void document.body.offsetHeight;' +
+                'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:12000}).then(function(mc){' +
+                  'console.log("[iframe-ss] Layer "+_li+" captured: "+mc.width+"x"+mc.height);' +
+                  'var mCtx=mc.getContext("2d",{willReadFrequently:true});' +
+                  'layer.forEach(function(pe){' +
+                    'if(!pe.bbox)return;' +
+                    'var bx=Math.max(0,Math.round(pe.bbox.left*_sc));' +
+                    'var by=Math.max(0,Math.round(pe.bbox.top*_sc));' +
+                    'var bw=Math.min(Math.round(pe.bbox.width*_sc),mc.width-bx);' +
+                    'var bh=Math.min(Math.round(pe.bbox.height*_sc),mc.height-by);' +
+                    'if(bw<2||bh<2)return;' +
+                    'try{var px=mCtx.getImageData(bx,by,bw,bh).data;' +
+                      'var bmp=new Uint8Array(bw*bh);' +
+                      'for(var y=0;y<bh;y++){for(var x=0;x<bw;x++){' +
+                        'var i=(y*bw+x)*4;if((px[i]+px[i+1]+px[i+2])/3<240)bmp[y*bw+x]=1}}' +
+                      'var _dk=0;for(var _b=0;_b<bmp.length;_b++)if(bmp[_b])_dk++;' +
+                      'if(_dk===0&&bw>5){var _ci=(Math.floor(bh/2)*bw+Math.floor(bw/2))*4;' +
+                        'console.log("[mask] No dark: \\""+pe.pair.text.substring(0,25)+"\\" "+bw+"x"+bh+" L"+_li+" rgb("+px[_ci]+","+px[_ci+1]+","+px[_ci+2]+")")}' +
+                      'pe.pair._maskBmp=Array.from(bmp);pe.pair._maskW=bw;pe.pair._maskH=bh;pe.pair._maskLayer=_li;pe.pair._maskDark=_dk' +
+                    '}catch(e){}' +
+                  '});' +
+                  // Reset layer elements to white
+                  'layer.forEach(function(pe){' +
+                    'pe.el.style.setProperty("color","#fff","important");' +
+                    'pe.el.style.setProperty("-webkit-text-fill-color","#fff","important");' +
+                    'pe.el.querySelectorAll("*").forEach(function(ch){' +
+                      'ch.style.setProperty("color","#fff","important");' +
+                      'ch.style.setProperty("-webkit-text-fill-color","#fff","important")})' +
+                  '});' +
+                  'setTimeout(_nextLayer,0)' +
+                '}).catch(function(e){console.warn("[iframe-ss] Layer "+_li+" failed:",e);setTimeout(_nextLayer,0)})' +
+              '}' +
               'var _maskDone=false;' +
               'var _origSendFinal=_sendFinal;' +
-              'var _maskTimer=setTimeout(function(){if(!_maskDone){_maskDone=true;console.warn("[iframe-ss] Mask timed out");_origSendFinal(null)}},15000);' +
+              'var _maskTimer=setTimeout(function(){if(!_maskDone){_maskDone=true;console.warn("[iframe-ss] Masks timed out");_origSendFinal(null)}},45000);' +
               '_sendFinal=function(m){if(_maskDone)return;_maskDone=true;clearTimeout(_maskTimer);console.log("[iframe-ss] Sending results (mask: "+(m?"yes":"no")+")");_origSendFinal(m)};' +
-              'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:12000}).then(function(mc){' +
-                'console.log("[iframe-ss] Mask captured: "+mc.width+"x"+mc.height);' +
-                'var maskUri;try{maskUri=mc.toDataURL("image/png")}catch(e){maskUri=""}' +
-                '_sendFinal(maskUri)' +
-              '}).catch(function(e){' +
-                'console.warn("[iframe-ss] Mask failed:",e);' +
-                '_sendFinal(null)' +
-              '})' +
+              '_nextLayer()' +
             '}).catch(function(e){console.warn("[iframe-ss] capture failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")})' +
           '};' +
           's.onerror=function(){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")};' +
@@ -37966,7 +38022,7 @@ window.MilgContrastVerify = (function() {
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v33.1</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v33.2</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
