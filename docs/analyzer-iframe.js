@@ -216,7 +216,9 @@ window.MilgIframe = (function() {
                 'layer.forEach(function(pe){' +
                   'pe.el.setAttribute("data-milg-active","1")' +
                 '});' +
+                // Force reflow then wait for paint — transitions need a frame to be cancelled
                 'void document.body.offsetHeight;' +
+                'requestAnimationFrame(function(){setTimeout(function(){' +
                 'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:12000}).then(function(mc){' +
                   'console.log("[iframe-ss] Layer "+_li+" captured: "+mc.width+"x"+mc.height);' +
                   'var mCtx=mc.getContext("2d",{willReadFrequently:true});' +
@@ -252,6 +254,7 @@ window.MilgIframe = (function() {
                   '});' +
                   'setTimeout(_nextLayer,0)' +
                 '}).catch(function(e){console.warn("[iframe-ss] Layer "+_li+" failed:",e);setTimeout(_nextLayer,0)})' +
+                '},50)})' + // close requestAnimationFrame + setTimeout (50ms for transitions to cancel)
               '}' +
               'var _maskDone=false;' +
               'var _origSendFinal=_sendFinal;' +

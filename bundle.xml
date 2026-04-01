@@ -37028,7 +37028,9 @@ window.MilgIframe = (function() {
                 'layer.forEach(function(pe){' +
                   'pe.el.setAttribute("data-milg-active","1")' +
                 '});' +
+                // Force reflow then wait for paint — transitions need a frame to be cancelled
                 'void document.body.offsetHeight;' +
+                'requestAnimationFrame(function(){setTimeout(function(){' +
                 'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:12000}).then(function(mc){' +
                   'console.log("[iframe-ss] Layer "+_li+" captured: "+mc.width+"x"+mc.height);' +
                   'var mCtx=mc.getContext("2d",{willReadFrequently:true});' +
@@ -37064,6 +37066,7 @@ window.MilgIframe = (function() {
                   '});' +
                   'setTimeout(_nextLayer,0)' +
                 '}).catch(function(e){console.warn("[iframe-ss] Layer "+_li+" failed:",e);setTimeout(_nextLayer,0)})' +
+                '},50)})' + // close requestAnimationFrame + setTimeout (50ms for transitions to cancel)
               '}' +
               'var _maskDone=false;' +
               'var _origSendFinal=_sendFinal;' +
@@ -38039,7 +38042,7 @@ window.MilgContrastVerify = (function() {
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v32.6</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v32.7</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
