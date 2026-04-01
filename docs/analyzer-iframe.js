@@ -205,16 +205,16 @@ window.MilgIframe = (function() {
                 'var layer=_layers[_li];_li++;' +
                 '_prog("Text mask layer "+_li+"/"+_layers.length+" ("+layer.length+" elements)...");' +
                 'console.log("[iframe-ss] Layer "+_li+": "+layer.length+" elements");' +
-                // Set layer elements + all descendants to black
-                // Save and replace style attribute to ensure total override
+                // Set layer elements to black via class (avoids specificity battle with global style)
+                // The global mask style already sets * to white. We add a higher-specificity
+                // rule for the mask-active class.
+                'if(!document.getElementById("milg-mask-active")){' +
+                  'var _ms2=document.createElement("style");_ms2.id="milg-mask-active";' +
+                  '_ms2.textContent="[data-milg-active],[data-milg-active] *{color:#000 !important;-webkit-text-fill-color:#000 !important;}";' +
+                  'document.head.appendChild(_ms2)' +
+                '}' +
                 'layer.forEach(function(pe){' +
-                  'pe._origStyle=pe.el.getAttribute("style")||"";' +
-                  'pe.el.setAttribute("style",pe._origStyle+";color:#000 !important;-webkit-text-fill-color:#000 !important;");' +
-                  'pe._childStyles=[];' +
-                  'pe.el.querySelectorAll("*").forEach(function(ch,ci){' +
-                    'pe._childStyles[ci]=ch.getAttribute("style")||"";' +
-                    'ch.setAttribute("style",pe._childStyles[ci]+";color:#000 !important;-webkit-text-fill-color:#000 !important;")' +
-                  '})' +
+                  'pe.el.setAttribute("data-milg-active","1")' +
                 '});' +
                 'void document.body.offsetHeight;' +
                 'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:12000}).then(function(mc){' +
@@ -246,12 +246,9 @@ window.MilgIframe = (function() {
                       'pe.pair._maskBmp=Array.from(bmp);pe.pair._maskW=bw;pe.pair._maskH=bh;pe.pair._maskLayer=_li;pe.pair._maskDark=_dkCount' +
                     '}catch(e){}' +
                   '});' +
-                  // Reset layer elements + descendants to white (restore original + white override)
+                  // Reset layer elements (remove active marker → falls back to global white)
                   'layer.forEach(function(pe){' +
-                    'pe.el.setAttribute("style",pe._origStyle+";color:#fff !important;-webkit-text-fill-color:#fff !important;");' +
-                    'pe.el.querySelectorAll("*").forEach(function(ch,ci){' +
-                      'ch.setAttribute("style",(pe._childStyles[ci]||"")+";color:#fff !important;-webkit-text-fill-color:#fff !important;")' +
-                    '})' +
+                    'pe.el.removeAttribute("data-milg-active")' +
                   '});' +
                   'setTimeout(_nextLayer,0)' +
                 '}).catch(function(e){console.warn("[iframe-ss] Layer "+_li+" failed:",e);setTimeout(_nextLayer,0)})' +
