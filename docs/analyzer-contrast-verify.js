@@ -247,20 +247,40 @@ window.MilgContrastVerify = (function() {
     fgColor.g = Math.round(fgColor.g / fgColors.length);
     fgColor.b = Math.round(fgColor.b / fgColors.length);
 
-    // Worst/best BG contrast against text — track positions for highlighting
-    var worstRatio = 99, bestRatio = 0, worstBg = null, bestBg = null;
-    var worstBgIdx = -1, bestBgIdx = -1;
-    bgColors.forEach(function(bg, i) {
-      var ratio = contrastRatio(fgColor, bg);
-      if (ratio < worstRatio) { worstRatio = ratio; worstBg = bg; worstBgIdx = i; }
-      if (ratio > bestRatio) { bestRatio = ratio; bestBg = bg; bestBgIdx = i; }
+    // Pair each FG pixel with its nearest BG pixel
+    // Track which BG pixels are actually used (paired) and find worst pair
+    var usedBg = {}; // bgIndex → true
+    var worstRatio = 99, bestRatio = 0, worstBg = null, worstBgPt = null;
+
+    fgPoints.forEach(function(fp, fi) {
+      var nearDist = Infinity, nearIdx = -1;
+      bgPoints.forEach(function(bp, bi) {
+        var dx = fp.x - bp.x, dy = fp.y - bp.y;
+        var d = dx * dx + dy * dy;
+        if (d < nearDist) { nearDist = d; nearIdx = bi; }
+      });
+      if (nearIdx < 0) return;
+      usedBg[nearIdx] = true;
+      var ratio = contrastRatio(fgColors[fi], bgColors[nearIdx]);
+      if (ratio < worstRatio) { worstRatio = ratio; worstBg = bgColors[nearIdx]; worstBgPt = bgPoints[nearIdx]; }
+      if (ratio > bestRatio) bestRatio = ratio;
+    });
+
+    // Filter to only paired BG points
+    var pairedBgPoints = [], pairedBgColors = [];
+    Object.keys(usedBg).forEach(function(k) {
+      var i = parseInt(k);
+      pairedBgPoints.push(bgPoints[i]);
+      pairedBgColors.push(bgColors[i]);
     });
 
     var avgBg = { r: 0, g: 0, b: 0 };
-    bgColors.forEach(function(c) { avgBg.r += c.r; avgBg.g += c.g; avgBg.b += c.b; });
-    avgBg.r = Math.round(avgBg.r / bgColors.length);
-    avgBg.g = Math.round(avgBg.g / bgColors.length);
-    avgBg.b = Math.round(avgBg.b / bgColors.length);
+    pairedBgColors.forEach(function(c) { avgBg.r += c.r; avgBg.g += c.g; avgBg.b += c.b; });
+    if (pairedBgColors.length > 0) {
+      avgBg.r = Math.round(avgBg.r / pairedBgColors.length);
+      avgBg.g = Math.round(avgBg.g / pairedBgColors.length);
+      avgBg.b = Math.round(avgBg.b / pairedBgColors.length);
+    }
     var avgRatio = contrastRatio(fgColor, avgBg);
 
     var pixelRatio = worstRatio;
@@ -296,16 +316,16 @@ window.MilgContrastVerify = (function() {
       selector: pair.selector,
       text: pair.text,
       sectionIdx: sectionIdx,
-      sampleCount: { fg: fgColors.length, bg: bgColors.length },
+      sampleCount: { fg: fgPoints.length, bg: pairedBgPoints.length },
       samplePoints: {
         fg: fgPoints.map(function(p, i) { return { x: p.x, y: p.y, r: fgColors[i].r, g: fgColors[i].g, b: fgColors[i].b }; }),
-        bg: bgPoints.map(function(p, i) {
-          var ratio = contrastRatio(fgColor, bgColors[i]);
-          return { x: p.x, y: p.y, r: bgColors[i].r, g: bgColors[i].g, b: bgColors[i].b, ratio: Math.round(ratio * 100) / 100 };
+        bg: pairedBgPoints.map(function(p, i) {
+          var ratio = contrastRatio(fgColor, pairedBgColors[i]);
+          return { x: p.x, y: p.y, r: pairedBgColors[i].r, g: pairedBgColors[i].g, b: pairedBgColors[i].b, ratio: Math.round(ratio * 100) / 100 };
         })
       },
       avgFg: fgColor,
-      worstPoint: worstBgIdx >= 0 ? bgPoints[worstBgIdx] : null
+      worstPoint: worstBgPt || null
     };
   }
 
@@ -376,10 +396,13 @@ window.MilgContrastVerify = (function() {
 
     function onAllLoaded() {
       var results = [];
+      var _vStats = { total: pairs.length, verified: 0, noFgBg: 0, tooSmall: 0, outOfBounds: 0 };
       pairs.forEach(function(pair) {
         var result = verifyPair(pair, sectionCanvases, meta, maskCanvasData);
-        if (result) results.push(result);
+        if (result) { results.push(result); _vStats.verified++; }
+        else _vStats.noFgBg++;
       });
+      console.log('[verify] Stats:', JSON.stringify(_vStats), 'mask:', !!maskCanvasData);
       results.sort(function(a, b) {
         if (a.crossesBoundary !== b.crossesBoundary) return a.crossesBoundary ? -1 : 1;
         return b.ratioDiff - a.ratioDiff;
