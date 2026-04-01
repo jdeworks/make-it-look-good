@@ -106,7 +106,7 @@ window.MilgContrastVerify = (function() {
   // Photos, gradients, and dashed patterns need many sample points.
   // FG: horizontal sweep across text baseline band, take darkest (most likely text)
   // BG: grid across bbox excluding text band, find worst-case contrast
-  function verifyPair(pair, sectionCanvases, meta, maskCanvas) {
+  function verifyPair(pair, sectionCanvases, meta, maskCanvas, pairIndex) {
     if (!pair.bbox || !meta) return null;
 
     var scale = meta.scale;
@@ -179,17 +179,21 @@ window.MilgContrastVerify = (function() {
         var r = imgData[idx], g = imgData[idx + 1], b = imgData[idx + 2];
         // Classify: must be text AND match this pair's fg color
         // (mask catches ALL text in bbox including nested spans with different colors)
-        var dr = r - cssFg.r, dg = g - cssFg.g, db = b - cssFg.b;
-        var fgDistSq = dr * dr + dg * dg + db * db;
         var isText = false;
         if (maskData) {
+          // Per-element mask: each element has a unique color rgb(R,G,0)
+          // where pairIndex = R*256+G. White (255,255,255) = background.
           var mr = maskData[idx], mg = maskData[idx + 1], mb = maskData[idx + 2];
-          var maskSaysText = mr > 200 && mg < 80 && mb > 200;
-          // Text for THIS pair: mask says text AND pixel color is close to this pair's CSS fg
-          // This prevents purple text inside a grey-text bbox from being classified as grey text
-          isText = maskSaysText && fgDistSq < FG_OUTER_SQ;
+          var isWhite = mr > 250 && mg > 250 && mb > 250;
+          if (!isWhite && mb < 10) {
+            // Encoded pair color — decode index
+            var maskIdx = mr * 256 + mg;
+            isText = (maskIdx === pairIndex);
+          }
+          // else: AA fringe or other — skip (isText stays false)
         } else {
-          isText = fgDistSq < FG_INNER_SQ;
+          var dr = r - cssFg.r, dg = g - cssFg.g, db = b - cssFg.b;
+          isText = dr * dr + dg * dg + db * db < FG_INNER_SQ;
         }
         isTextGrid[vy * hSteps + hx] = isText ? 1 : 0;
         gridData.push({ r: r, g: g, b: b, absX: bx + ix, absY: by + iy });
@@ -410,8 +414,11 @@ window.MilgContrastVerify = (function() {
     function onAllLoaded() {
       var results = [];
       var _vStats = { total: pairs.length, verified: 0, noFgBg: 0, tooSmall: 0, outOfBounds: 0 };
+      // Find pair index in the full contrastPairs array (mask uses this index for encoding)
+      var allPairs = (raw.colors && raw.colors.contrastPairs) || [];
       pairs.forEach(function(pair) {
-        var result = verifyPair(pair, sectionCanvases, meta, maskCanvasData);
+        var pairIdx = allPairs.indexOf(pair);
+        var result = verifyPair(pair, sectionCanvases, meta, maskCanvasData, pairIdx >= 0 ? pairIdx : 0);
         if (result) { results.push(result); _vStats.verified++; }
         else _vStats.noFgBg++;
       });

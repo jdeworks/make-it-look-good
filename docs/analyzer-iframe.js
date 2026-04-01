@@ -160,13 +160,33 @@ window.MilgIframe = (function() {
                   'updatedData:updatedData' +
                 '},"*")' +
               '}' +
-              // Step 2: Text mask (LAST step — modifies DOM then captures)
+              // Step 2: Per-element text mask (LAST step — modifies DOM then captures)
+              // Each contrast pair element gets a unique color encoded as rgb(R,G,0)
+              // where pairIndex = R*256+G. White = background. Non-white non-indexed = skip.
               '_prog("Capturing text mask...");' +
-              'console.log("[iframe-ss] Step 2/2: Capturing text mask...");' +
+              'console.log("[iframe-ss] Step 2/2: Building per-element mask...");' +
+              // First: set everything to white text on white bg (invisible)
               'var _maskStyle=document.createElement("style");' +
               '_maskStyle.setAttribute("data-milg-mask","1");' +
-              '_maskStyle.textContent="*,*::before,*::after{color:#ff00ff !important;background-color:#fff !important;background-image:none !important;background:white !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;-webkit-text-fill-color:#ff00ff !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}";' +
+              '_maskStyle.textContent="*,*::before,*::after{color:#fff !important;background-color:#fff !important;background-image:none !important;background:white !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;-webkit-text-fill-color:#fff !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}";' +
               'document.head.appendChild(_maskStyle);' +
+              // Then: set each contrast pair element to a unique encoded color
+              'var _refs=window.__milgBboxRefs||[];' +
+              'var _pairs=(window.__milgData&&window.__milgData.colors&&window.__milgData.colors.contrastPairs)||[];' +
+              'var _pairEls=[];' + // [{el, pairIdx}]
+              '_refs.forEach(function(ref){' +
+                'if(!ref.el||!ref.obj||ref.obj.ratio===undefined)return;' + // only contrast pair refs
+                'var idx=_pairs.indexOf(ref.obj);' +
+                'if(idx<0)return;' +
+                '_pairEls.push({el:ref.el,idx:idx})' +
+              '});' +
+              'console.log("[iframe-ss] Assigning "+_pairEls.length+" unique mask colors");' +
+              '_pairEls.forEach(function(pe){' +
+                'var r=Math.floor(pe.idx/256),g=pe.idx%256;' +
+                'var c="rgb("+r+","+g+",0)";' +
+                'pe.el.style.setProperty("color",c,"important");' +
+                'pe.el.style.setProperty("-webkit-text-fill-color",c,"important")' +
+              '});' +
               'void document.body.offsetHeight;' +
               // Safety timeout: if mask takes >8s, send without it
               'var _maskDone=false;' +
