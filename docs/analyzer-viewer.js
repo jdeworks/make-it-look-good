@@ -954,6 +954,8 @@ window.MilgViewer = (function() {
             'Text: "' + (vr ? (vr.text || '').substring(0, 60) : '?') + '"\n\n' +
             'CSS contrast: ' + (vr ? vr.cssRatio : '?') + ':1 (needed: ' + (vr ? (vr.cssPasses ? 'passes' : 'FAILS') : '?') + ')\n' +
             'Pixel contrast: ' + (vr ? vr.pixelRatio : '?') + ':1 (worst-case ' + (vr ? (vr.pixelPasses ? 'passes' : 'FAILS') : '?') + ')\n' +
+            'Pixel P10 (90% meet): ' + (vr ? vr.pixelRatioP10 : '?') + ':1\n' +
+            'Pixel median: ' + (vr ? vr.pixelRatioMedian : '?') + ':1\n' +
             'Pixel avg: ' + (vr ? vr.pixelRatioAvg : '?') + ':1\n' +
             'Pixel best: ' + (vr ? vr.pixelRatioBest : '?') + ':1\n' +
             'BG variance: ' + (vr ? vr.bgVariance : '?') + '\n\n' +

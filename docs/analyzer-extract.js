@@ -256,11 +256,16 @@ window.MilgExtract = (function() {
       if (seenForContrast.has(el)) { _contrastStats.seen++; continue; }
       seenForContrast.add(el);
       var style = getComputedStyle(el);
+      // Skip gradient/clip text BUT allow normal -webkit-text-fill-color (non-transparent)
       var textFillColor = style.webkitTextFillColor || style.getPropertyValue('-webkit-text-fill-color') || '';
       var bgClip = style.webkitBackgroundClip || style.getPropertyValue('-webkit-background-clip') || style.backgroundClip || '';
-      if (textFillColor === 'transparent' || bgClip === 'text') { _contrastStats.gradientText++; continue; }
-      var fg = parseColor(style.color);
+      if (bgClip === 'text' && textFillColor === 'transparent') { _contrastStats.gradientText++; continue; }
+      var fg = textFillColor && textFillColor !== 'transparent' ? parseColor(textFillColor) : parseColor(style.color);
       if (!fg) { _contrastStats.noFg++; continue; }
+      // Skip emoji-only elements (picture emoji can't be contrast-checked)
+      var _textContent = (el.textContent || '').trim();
+      var _noEmoji = _textContent.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1FA00}-\u{1FA9F}\u{200D}]/gu, '').trim();
+      if (_noEmoji.length === 0 && _textContent.length > 0) continue;
       var fgBlended = blendOnWhite(fg);
       var bg = getEffectiveBg(el);
       var ratio = contrastRatio(fgBlended, bg);

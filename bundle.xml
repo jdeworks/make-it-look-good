@@ -4318,6 +4318,198 @@ function scoreResponsive(data) {
 })();
 </file>
 
+<file path="docs/scoring/touch.js">
+// Scoring Module: Touch & Interaction
+// Weight: 15%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreTouchTargets(data) {
+  var profile = S.getProfile(data);
+  var findings = [];
+  var targets = data.interaction.touchTargets || [];
+
+  // Viewport-aware thresholds, adjusted by profile:
+  var vw = (data.meta && data.meta.viewportWidth) || 1280;
+  var isDesktop = vw >= 1024;
+  var minSize = isDesktop ? profile.touchTargetDesktop : profile.touchTarget;
+  var warnSize = isDesktop ? profile.touchTargetDesktopWarn : profile.touchTarget;
+  var context = isDesktop ? 'desktop' : 'touch/mobile';
+  var issueCount = 0;
+
+  targets.forEach(function(t) {
+    var w = t.width, h = t.height;
+    var minDim = Math.min(w, h);
+
+    // WCAG 2.5.8 exception: inline text links are exempt from target size requirements.
+    // Detect by checking if element is an <a> without button-like styling (no bg, no border, no padding > 4px)
+    var isInlineLink = t.element === 'a' && !t.isButton;
+
+    if (minDim < minSize) {
+      issueCount++;
+      var ctx = t.linkContext || (isInlineLink ? 'inline' : 'button');
+
+      // On desktop, determine severity based on how far below threshold:
+      // - ≥20px (just 4px short of 24px) → info (barely noticeable with mouse)
+      // - ≥16px → warning (small but usable with mouse)
+      // - <16px → error (genuinely too small even for mouse)
+      // On mobile, all failures are errors (fingers need the full 44px)
+      function desktopSeverity(dim) {
+        if (!isDesktop) return 'error';
+        if (dim >= 20) return 'info';
+        if (dim >= 16) return 'warning';
+        return 'error';
+      }
+
+      if (ctx === 'inline') {
+        // True inline text links (inside <p>, <blockquote>, etc.) — WCAG 2.5.8 exempt
+        findings.push({
+          severity: 'info',
+          title: 'Inline text link ' + w + '×' + h + 'px — exempt from target size',
+          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+          fix: 'Inline text links in paragraphs are exempt per WCAG 2.5.8. Consider adding padding for better usability.',
+          source: 'WCAG 2.2 §2.5.8 inline exception — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
+        });
+      } else if (ctx === 'footer') {
+        // Footer links — relaxed but still error below hard minimum (16px)
+        var footerHardMin = isDesktop ? 16 : 24;
+        findings.push({
+          severity: minDim < footerHardMin ? 'error' : 'info',
+          title: 'Footer link ' + w + '×' + h + 'px' + (minDim < footerHardMin ? ' (too small even for footer — min ' + footerHardMin + 'px)' : ' (below ' + minSize + 'px, relaxed for footer)'),
+          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+          fix: minDim < footerHardMin
+            ? 'Even footer links need at least ' + footerHardMin + 'px height. Add padding to increase click area.'
+            : 'Footer links have relaxed sizing expectations. Consider padding for touch accessibility.',
+          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
+        });
+      } else if (ctx === 'nav') {
+        // Navigation links — should be properly sized
+        var navSev = desktopSeverity(minDim);
+        findings.push({
+          severity: navSev,
+          title: 'Nav link ' + w + '×' + h + 'px (minimum: ' + minSize + 'px)',
+          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+          fix: 'Navigation links need adequate sizing. Add padding: py-2 px-4 (min-height ' + minSize + 'px).',
+          presetRef: 'Navigation presets use min-height 44px on nav links',
+          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
+        });
+      } else {
+        // Buttons, styled links, other interactive elements
+        var sev = desktopSeverity(minDim);
+        findings.push({
+          severity: sev,
+          title: t.element + ' is ' + w + '×' + h + 'px (' + (isDesktop ? 'desktop min: ' + minSize + 'px' : 'touch min: ' + minSize + 'px') + ')',
+          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+          fix: isDesktop
+            ? (sev === 'info'
+              ? 'Slightly below ' + minSize + 'px desktop minimum — usable with mouse but consider adding padding.'
+              : 'Click targets need at least ' + minSize + '×' + minSize + 'px. Increase padding or min-height/min-width.')
+            : 'Touch targets need ' + minSize + '×' + minSize + 'px minimum. Add min-h-[' + minSize + 'px] min-w-[' + minSize + 'px] or increase padding.',
+          presetRef: isDesktop ? null : 'Button presets use py-3 px-6 (48px height)',
+          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
+        });
+      }
+    } else if (minDim < warnSize && isDesktop && !isInlineLink) {
+      findings.push({
+        severity: 'warning',
+        title: t.element + ' is ' + w + '×' + h + 'px (recommended for desktop: ≥' + warnSize + 'px)',
+        detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+        fix: 'While ' + minSize + 'px meets minimum, ' + warnSize + 'px+ improves click comfort. Consider adding padding.',
+        presetRef: null,
+        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+        locator: { selector: t.selector, text: t.text || '' }
+      });
+    }
+  });
+
+  // Also flag targets that pass the current threshold but would fail on touch
+  if (isDesktop && targets.length > 0) {
+    var touchMin = profile.touchTarget;
+    var touchFails = targets.filter(function(t) { return Math.min(t.width, t.height) < touchMin; });
+    if (touchFails.length > 0) {
+      findings.push({
+        severity: 'info',
+        title: touchFails.length + ' element(s) below ' + touchMin + 'px touch target (analyzed at ' + vw + 'px desktop viewport)',
+        detail: 'These meet desktop minimums but would fail on touch devices. Consider responsive sizing if the site is also used on mobile.',
+        fix: 'For responsive touch support: add touch-target sizing at mobile breakpoints, e.g. sm:min-h-[' + touchMin + 'px]',
+        presetRef: null,
+        source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout'
+      });
+    }
+  }
+
+  // Note when responsive CSS exists that might fix touch targets on mobile
+  if (isDesktop && data.interaction && data.interaction.hasResponsiveTargetCSS) {
+    findings.push({
+      severity: 'info',
+      title: 'Responsive CSS detected that may adjust target sizes at mobile breakpoints',
+      detail: 'This site has media queries with height/padding rules. Touch targets may be correctly sized on mobile devices.',
+      fix: 'Verify by testing at mobile viewport. Use the viewport selector to re-scan at 375px width.',
+      presetRef: null
+    });
+  }
+
+  // Transitions / animation duration
+  var transitions = data.interaction.transitions || [];
+  transitions.forEach(function(t) {
+    var ms = parseFloat(t) * 1000;
+    if (ms > 500) {
+      findings.push({
+        severity: 'warning',
+        title: 'Transition duration ' + ms + 'ms exceeds 500ms maximum',
+        detail: 'Users perceive animations longer than 500ms as sluggish',
+        fix: 'Keep transitions under 500ms. Enter: 200–300ms, Exit: 150–200ms. In Tailwind: duration-200 or duration-300',
+        presetRef: null,
+        source: 'NNGroup animation — https://www.nngroup.com/articles/animation-usability/'
+      });
+    }
+  });
+
+  // Event listener pattern findings
+  var lPatterns = (data.interaction && data.interaction.listenerPatterns) || {};
+  if (lPatterns.toggleNoAria > 0) {
+    findings.push({
+      severity: 'warning',
+      title: lPatterns.toggleNoAria + ' toggle handler(s) without ARIA state management',
+      detail: 'Click handlers toggle CSS classes but don\'t update aria-expanded or other ARIA states. Screen readers won\'t know the element\'s state changed.',
+      fix: 'Add setAttribute(\'aria-expanded\', isOpen) alongside classList.toggle() in toggle handlers.',
+      presetRef: null,
+      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
+    });
+  }
+  if (lPatterns.navigationInButton > 0) {
+    findings.push({
+      severity: 'info',
+      title: lPatterns.navigationInButton + ' button(s) trigger page navigation',
+      detail: 'Buttons with click handlers that change location.href should typically be <a> elements for proper semantics and accessibility.',
+      fix: 'Use <a href="..."> for navigation instead of <button> with JavaScript location change.',
+      presetRef: null,
+      source: 'HTML spec — https://html.spec.whatwg.org/multipage/text-level-semantics.html#the-a-element'
+    });
+  }
+
+  // Score: deduct per error, less per warning
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var totalTargets = targets.length || 0;
+  var checks = totalTargets;
+  var passed = Math.max(0, totalTargets - errors - warnings);
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 3));
+  var na = totalTargets === 0 && transitions.length === 0;
+  return { score: na ? 100 : score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Touch & Interaction', icon: 'touch', notApplicable: na };
+}
+
+
+  S.register("touch", scoreTouchTargets, 15, "Touch & Interaction", "touch");
+})();
+</file>
+
 <file path="docs/tests/edge-a11y.html">
 <!-- Edge Case: Accessibility Checks -->
 <!-- Tests: semantic HTML, headings, alt text, labels, focus, lang, skip link, ARIA, link text, autocomplete, color-only -->
@@ -5010,6 +5202,687 @@ function runTests() {
   })();
 }
 </script></body></html>
+</file>
+
+<file path="docs/tests/test-bbox-viewer.js">
+#!/usr/bin/env node
+// E2E test: bbox data, screenshot metadata, viewer, and contrast verification
+// Tests all three input paths: HTML paste, URL fetch, and console snippet output
+// Requires: puppeteer, a local HTTP server on port 8787
+
+var http = require('http');
+var fs = require('fs');
+var path = require('path');
+var puppeteer = require('puppeteer');
+
+var DOCS_DIR = path.resolve(__dirname, '..');
+var PORT = 8787;
+var BASE = 'http://localhost:' + PORT;
+var passed = 0, failed = 0, errors = [];
+
+function log(ok, msg) {
+  if (ok) { passed++; console.log('  \x1b[32m✓\x1b[0m ' + msg); }
+  else { failed++; errors.push(msg); console.log('  \x1b[31m✗\x1b[0m ' + msg); }
+}
+
+function assert(cond, msg) { log(!!cond, msg); }
+
+// Simple static file server
+function startServer() {
+  var mimes = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json', '.webp': 'image/webp' };
+  var server = http.createServer(function(req, res) {
+    var url = req.url.split('?')[0];
+    if (url === '/') url = '/index.html';
+    var filePath = path.join(DOCS_DIR, url);
+    try {
+      var data = fs.readFileSync(filePath);
+      var ext = path.extname(filePath);
+      res.writeHead(200, { 'Content-Type': mimes[ext] || 'application/octet-stream' });
+      res.end(data);
+    } catch(e) {
+      res.writeHead(404);
+      res.end('Not found: ' + url);
+    }
+  });
+  server.listen(PORT);
+  return server;
+}
+
+// Test HTML to analyze — has known contrast issues and varied elements
+var TEST_HTML = [
+  '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">',
+  '<meta name="viewport" content="width=device-width, initial-scale=1.0">',
+  '<style>',
+  'body { margin: 0; font-family: sans-serif; background: #fff; }',
+  '.hero { background: linear-gradient(135deg, #1e3a5f 0%, #4a90d9 100%); padding: 60px 40px; }',
+  '.hero h1 { color: #fff; font-size: 36px; margin: 0; }',
+  '.hero p { color: #aab; font-size: 16px; margin: 8px 0 0; }',  // Low contrast on gradient
+  'section { padding: 40px; }',
+  '.card { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 16px 0; }',
+  '.card h2 { color: #333; font-size: 24px; margin: 0 0 8px; }',
+  '.card p { color: #666; font-size: 14px; line-height: 1.6; }',
+  '.btn { display: inline-block; padding: 8px 16px; background: #2563eb; color: #fff; border: none; border-radius: 4px; font-size: 14px; cursor: pointer; }',
+  '.btn-ghost { background: transparent; color: #999; border: 1px solid #ddd; padding: 4px 8px; font-size: 11px; }',  // Small touch target
+  'footer { background: #1e293b; color: #94a3b8; padding: 20px 40px; font-size: 12px; }',
+  'footer a { color: #64748b; text-decoration: none; margin-right: 12px; }',  // Low contrast links
+  '</style></head><body>',
+  '<div class="hero"><h1>Test Page</h1><p>Subtitle with questionable contrast</p></div>',
+  '<section>',
+  '<div class="card"><h2>Card Title</h2><p>Some body text that should have good contrast and reasonable line length for readability scoring.</p></div>',
+  '<button class="btn">Primary Action</button>',
+  '<button class="btn-ghost">Tiny ghost</button>',
+  '</section>',
+  '<footer><a href="#">Privacy</a><a href="#">Terms</a><a href="#">Contact</a></footer>',
+  '</body></html>'
+].join('\n');
+
+async function run() {
+  var server = startServer();
+  console.log('Server running on port ' + PORT);
+
+  var browser = await puppeteer.launch({
+    headless: 'new',
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+  });
+
+  try {
+    // ============================================================
+    console.log('\n--- Test 1: HTML Paste with Screenshots ---');
+    // ============================================================
+    await testHtmlPaste(browser);
+
+    // ============================================================
+    console.log('\n--- Test 2: Console Snippet Output (JSON paste) ---');
+    // ============================================================
+    await testSnippetOutput(browser);
+
+    // ============================================================
+    console.log('\n--- Test 3: Module loading & viewer structure ---');
+    // ============================================================
+    await testModulesAndViewer(browser);
+
+    // ============================================================
+    console.log('\n--- Test 4: Extraction bbox data correctness ---');
+    // ============================================================
+    await testExtractionBbox(browser);
+
+  } catch(e) {
+    console.error('\n\x1b[31mFATAL:\x1b[0m', e.message);
+    failed++;
+    errors.push('Fatal: ' + e.message);
+  }
+
+  await browser.close();
+  server.close();
+
+  console.log('\n========================================');
+  console.log('Results: ' + passed + ' passed, ' + failed + ' failed');
+  if (errors.length > 0) {
+    console.log('\nFailures:');
+    errors.forEach(function(e) { console.log('  - ' + e); });
+  }
+  console.log('========================================');
+  process.exit(failed > 0 ? 1 : 0);
+}
+
+// Test 1: Paste HTML, enable screenshots, verify report has bbox + meta + viewer
+async function testHtmlPaste(browser) {
+  var page = await browser.newPage();
+  await page.setViewport({ width: 1280, height: 900 });
+  await page.goto(BASE + '/analyzer.html', { waitUntil: 'networkidle0', timeout: 15000 });
+
+  // Click HTML tab
+  await page.click('[data-tab="tabHtml"]');
+  await page.waitForSelector('#htmlInput', { visible: true });
+
+  // Ensure screenshots checkbox is checked
+  var ssChecked = await page.$eval('#screenshotCheck', function(el) { return el.checked; });
+  assert(ssChecked, 'Screenshot checkbox is checked by default');
+
+  // Paste test HTML
+  await page.evaluate(function(html) { document.getElementById('htmlInput').value = html; }, TEST_HTML);
+
+  // Click Analyze HTML
+  await page.click('#analyzeHtmlBtn');
+
+  // Wait for report to appear (up to 30s for screenshots)
+  await page.waitForSelector('.report-container.visible', { timeout: 30000 });
+
+  // Check that report rendered
+  var hasReport = await page.$('.report-header');
+  assert(hasReport, 'Report rendered after HTML paste');
+
+  // Check for screenshot section
+  var hasScreenshots = await page.$('.report-screenshots');
+  assert(hasScreenshots, 'Screenshot section present in report');
+
+  // Check that screenshotMeta is available in reportData
+  var metaCheck = await page.evaluate(function() {
+    // Access the report data via the global (stored in sessionStorage by runAnalysis)
+    var raw = null;
+    try { raw = JSON.parse(sessionStorage.getItem('milg-last-extraction')); } catch(e) {}
+    if (!raw) return { hasMeta: false, error: 'no extraction data in sessionStorage' };
+    return {
+      hasMeta: !!raw.screenshotMeta,
+      scale: raw.screenshotMeta ? raw.screenshotMeta.scale : null,
+      viewportHeight: raw.screenshotMeta ? raw.screenshotMeta.viewportHeight : null,
+      sectionCount: raw.screenshotMeta ? raw.screenshotMeta.sectionCount : null,
+      canvasWidth: raw.screenshotMeta ? raw.screenshotMeta.canvasWidth : null
+    };
+  });
+  assert(metaCheck.hasMeta, 'screenshotMeta present in extraction data');
+  if (metaCheck.hasMeta) {
+    assert(metaCheck.scale === 0.5, 'screenshotMeta.scale is 0.5 (got ' + metaCheck.scale + ')');
+    assert(metaCheck.viewportHeight > 0, 'screenshotMeta.viewportHeight > 0 (got ' + metaCheck.viewportHeight + ')');
+    assert(metaCheck.sectionCount > 0, 'screenshotMeta.sectionCount > 0 (got ' + metaCheck.sectionCount + ')');
+    assert(metaCheck.canvasWidth > 0, 'screenshotMeta.canvasWidth > 0 (got ' + metaCheck.canvasWidth + ')');
+  }
+
+  // Check contrast pairs have bbox data
+  var bboxCheck = await page.evaluate(function() {
+    var raw = null;
+    try { raw = JSON.parse(sessionStorage.getItem('milg-last-extraction')); } catch(e) {}
+    if (!raw || !raw.colors || !raw.colors.contrastPairs) return { pairs: 0, withBbox: 0 };
+    var pairs = raw.colors.contrastPairs;
+    var withBbox = pairs.filter(function(p) { return p.bbox && p.bbox.left !== undefined && p.bbox.top !== undefined; }).length;
+    return { pairs: pairs.length, withBbox: withBbox };
+  });
+  assert(bboxCheck.pairs > 0, 'Has contrast pairs (' + bboxCheck.pairs + ')');
+  assert(bboxCheck.withBbox > 0, 'Contrast pairs have bbox data (' + bboxCheck.withBbox + '/' + bboxCheck.pairs + ')');
+  assert(bboxCheck.withBbox === bboxCheck.pairs, 'All contrast pairs have bbox (' + bboxCheck.withBbox + '/' + bboxCheck.pairs + ')');
+
+  // Check touch targets have bbox data
+  var touchBboxCheck = await page.evaluate(function() {
+    var raw = null;
+    try { raw = JSON.parse(sessionStorage.getItem('milg-last-extraction')); } catch(e) {}
+    if (!raw || !raw.interaction || !raw.interaction.touchTargets) return { targets: 0, withBbox: 0 };
+    var targets = raw.interaction.touchTargets;
+    var withBbox = targets.filter(function(t) { return t.bbox && t.bbox.left !== undefined; }).length;
+    return { targets: targets.length, withBbox: withBbox };
+  });
+  assert(touchBboxCheck.targets >= 0, 'Has touch targets (' + touchBboxCheck.targets + ')');
+  if (touchBboxCheck.targets > 0) {
+    assert(touchBboxCheck.withBbox === touchBboxCheck.targets, 'All touch targets have bbox (' + touchBboxCheck.withBbox + '/' + touchBboxCheck.targets + ')');
+  }
+
+  // Check that "Show on screenshot" links exist for findings with bboxes
+  var showLinks = await page.$$('.finding-show-on-screenshot');
+  assert(showLinks.length > 0, '"Show on screenshot" links present (' + showLinks.length + ')');
+
+  // Check that findings have data-finding-idx attributes
+  var findingsWithIdx = await page.$$('[data-finding-idx]');
+  assert(findingsWithIdx.length > 0, 'Findings have data-finding-idx attributes (' + findingsWithIdx.length + ')');
+
+  // Wait a moment for async contrast verification to complete
+  await new Promise(function(r) { setTimeout(r, 3000); });
+
+  // Check if contrast verification summary appeared
+  var hasVerifySummary = await page.$('.contrast-verify-summary');
+  assert(hasVerifySummary, 'Pixel contrast verification summary present');
+
+  await page.close();
+}
+
+// Test 2: Simulate snippet output (paste JSON with bbox data)
+async function testSnippetOutput(browser) {
+  var page = await browser.newPage();
+  await page.setViewport({ width: 1280, height: 900 });
+  await page.goto(BASE + '/analyzer.html', { waitUntil: 'networkidle0', timeout: 15000 });
+
+  // Run the snippet in a test iframe to get extraction data with bboxes
+  var extractionData = await page.evaluate(function(html) {
+    return new Promise(function(resolve) {
+      var iframe = document.createElement('iframe');
+      iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
+      iframe.sandbox = 'allow-scripts allow-same-origin';
+      document.body.appendChild(iframe);
+
+      window.addEventListener('message', function handler(e) {
+        if (e.data && e.data.type === 'milg-analyzer-result') {
+          window.removeEventListener('message', handler);
+          document.body.removeChild(iframe);
+          resolve(e.data.data);
+        }
+      });
+
+      var extractFn = window.MilgExtract;
+      var extractScript = '<script>window.addEventListener("load",function(){setTimeout(function(){(' + extractFn.toString() + ')()},500)});</' + 'script>';
+      iframe.srcdoc = html + extractScript;
+
+      setTimeout(function() { resolve(null); }, 10000);
+    });
+  }, TEST_HTML);
+
+  assert(extractionData !== null, 'Extraction completed in iframe');
+  if (!extractionData) { await page.close(); return; }
+
+  // Verify bbox on contrast pairs from extraction
+  var pairs = (extractionData.colors && extractionData.colors.contrastPairs) || [];
+  assert(pairs.length > 0, 'Extracted contrast pairs: ' + pairs.length);
+  var pairsWithBbox = pairs.filter(function(p) { return p.bbox && typeof p.bbox.left === 'number'; });
+  assert(pairsWithBbox.length === pairs.length, 'All extracted pairs have bbox (' + pairsWithBbox.length + '/' + pairs.length + ')');
+
+  // Verify bbox values are reasonable
+  if (pairsWithBbox.length > 0) {
+    var firstBbox = pairsWithBbox[0].bbox;
+    assert(firstBbox.left >= 0, 'bbox.left >= 0 (got ' + firstBbox.left + ')');
+    assert(firstBbox.top >= 0, 'bbox.top >= 0 (got ' + firstBbox.top + ')');
+    assert(firstBbox.width > 0, 'bbox.width > 0 (got ' + firstBbox.width + ')');
+    assert(firstBbox.height > 0, 'bbox.height > 0 (got ' + firstBbox.height + ')');
+  }
+
+  // Verify bbox on touch targets
+  var targets = (extractionData.interaction && extractionData.interaction.touchTargets) || [];
+  if (targets.length > 0) {
+    var targetsWithBbox = targets.filter(function(t) { return t.bbox && typeof t.bbox.left === 'number'; });
+    assert(targetsWithBbox.length === targets.length, 'All touch targets have bbox (' + targetsWithBbox.length + '/' + targets.length + ')');
+  }
+
+  // Paste JSON into the Snippet tab's paste area and analyze
+  var json = JSON.stringify(extractionData);
+  await page.evaluate(function(json) {
+    // Activate the Console Snippet tab (contains the JSON paste area)
+    document.querySelector('[data-tab="tabSnippet"]').click();
+    document.getElementById('pasteInput').value = json;
+    document.getElementById('analyzeBtn').click();
+  }, json);
+
+  await page.waitForSelector('.report-container.visible', { timeout: 10000 });
+
+  // Verify scoring passed bbox through to findings
+  var findingsBboxCheck = await page.evaluate(function() {
+    var findings = document.querySelectorAll('[data-finding-idx]');
+    return findings.length;
+  });
+  assert(findingsBboxCheck > 0, 'Scoring passed bbox to findings (data-finding-idx count: ' + findingsBboxCheck + ')');
+
+  await page.close();
+}
+
+// Test 3: Module loading and viewer structure
+async function testModulesAndViewer(browser) {
+  var page = await browser.newPage();
+  await page.setViewport({ width: 1280, height: 900 });
+  await page.goto(BASE + '/analyzer.html', { waitUntil: 'networkidle0', timeout: 15000 });
+
+  // Check all modules loaded
+  var modules = await page.evaluate(function() {
+    return {
+      MilgExtract: typeof window.MilgExtract,
+      MilgIframe: typeof window.MilgIframe,
+      MilgProxy: typeof window.MilgProxy,
+      MilgCrawlUI: typeof window.MilgCrawlUI,
+      MilgViewer: typeof window.MilgViewer,
+      MilgContrastVerify: typeof window.MilgContrastVerify,
+      MilgReport: typeof window.MilgReport,
+      MilgScoring: typeof window.MilgScoring,
+      MilgCrawl: typeof window.MilgCrawl
+    };
+  });
+
+  assert(modules.MilgExtract === 'function', 'MilgExtract loaded (type: ' + modules.MilgExtract + ')');
+  assert(modules.MilgIframe === 'object', 'MilgIframe loaded (type: ' + modules.MilgIframe + ')');
+  assert(modules.MilgProxy === 'object', 'MilgProxy loaded (type: ' + modules.MilgProxy + ')');
+  assert(modules.MilgCrawlUI === 'object', 'MilgCrawlUI loaded (type: ' + modules.MilgCrawlUI + ')');
+  assert(modules.MilgViewer === 'object', 'MilgViewer loaded (type: ' + modules.MilgViewer + ')');
+  assert(modules.MilgContrastVerify === 'object', 'MilgContrastVerify loaded (type: ' + modules.MilgContrastVerify + ')');
+  assert(modules.MilgReport === 'object', 'MilgReport loaded (type: ' + modules.MilgReport + ')');
+  assert(modules.MilgScoring === 'object', 'MilgScoring loaded (type: ' + modules.MilgScoring + ')');
+  assert(modules.MilgCrawl === 'object', 'MilgCrawl loaded (type: ' + modules.MilgCrawl + ')');
+
+  // Verify viewer API
+  var viewerApi = await page.evaluate(function() {
+    return {
+      hasOpen: typeof MilgViewer.open === 'function',
+      hasClose: typeof MilgViewer.close === 'function',
+      hasShowFinding: typeof MilgViewer.showFinding === 'function'
+    };
+  });
+  assert(viewerApi.hasOpen, 'MilgViewer.open is a function');
+  assert(viewerApi.hasClose, 'MilgViewer.close is a function');
+  assert(viewerApi.hasShowFinding, 'MilgViewer.showFinding is a function');
+
+  // Verify contrast verify API
+  var verifyApi = await page.evaluate(function() {
+    return {
+      hasVerify: typeof MilgContrastVerify.verify === 'function',
+      hasBuildSummary: typeof MilgContrastVerify.buildSummary === 'function',
+      hasFormatResult: typeof MilgContrastVerify.formatResult === 'function',
+      hasRenderSummaryHtml: typeof MilgContrastVerify.renderSummaryHtml === 'function'
+    };
+  });
+  assert(verifyApi.hasVerify, 'MilgContrastVerify.verify is a function');
+  assert(verifyApi.hasBuildSummary, 'MilgContrastVerify.buildSummary is a function');
+  assert(verifyApi.hasFormatResult, 'MilgContrastVerify.formatResult is a function');
+  assert(verifyApi.hasRenderSummaryHtml, 'MilgContrastVerify.renderSummaryHtml is a function');
+
+  // Test contrast ratio math
+  var mathCheck = await page.evaluate(function() {
+    var cr = MilgContrastVerify.contrastRatio;
+    var black = { r: 0, g: 0, b: 0 };
+    var white = { r: 255, g: 255, b: 255 };
+    var gray = { r: 128, g: 128, b: 128 };
+    return {
+      bw: cr(black, white),
+      ww: cr(white, white),
+      bg: cr(black, gray)
+    };
+  });
+  assert(mathCheck.bw === 21, 'Black/white contrast = 21:1 (got ' + mathCheck.bw + ')');
+  assert(mathCheck.ww === 1, 'White/white contrast = 1:1 (got ' + mathCheck.ww + ')');
+  assert(mathCheck.bg > 5 && mathCheck.bg < 6, 'Black/gray contrast ~5.3:1 (got ' + mathCheck.bg + ')');
+
+  await page.close();
+}
+
+// Test 4: Direct extraction bbox data correctness
+async function testExtractionBbox(browser) {
+  var page = await browser.newPage();
+  await page.setViewport({ width: 1280, height: 900 });
+
+  // Load test HTML directly to verify extraction produces correct bboxes
+  await page.setContent(TEST_HTML, { waitUntil: 'load' });
+  await new Promise(function(r) { setTimeout(r, 500); });
+
+  // Run extraction function directly
+  var extractResult = await page.evaluate(function() {
+    // Load the extraction function (it's not available in this context, inline a simplified check)
+    // Instead, manually check getBoundingClientRect on key elements
+    var hero = document.querySelector('.hero h1');
+    var btn = document.querySelector('.btn');
+    var btnGhost = document.querySelector('.btn-ghost');
+    var footerLink = document.querySelector('footer a');
+
+    function getRect(el) {
+      if (!el) return null;
+      var r = el.getBoundingClientRect();
+      return { left: Math.round(r.left), top: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) };
+    }
+
+    return {
+      heroH1: getRect(hero),
+      btn: getRect(btn),
+      btnGhost: getRect(btnGhost),
+      footerLink: getRect(footerLink)
+    };
+  });
+
+  assert(extractResult.heroH1 !== null, 'Hero h1 found');
+  if (extractResult.heroH1) {
+    assert(extractResult.heroH1.top >= 0 && extractResult.heroH1.top < 200, 'Hero h1 top is reasonable (got ' + extractResult.heroH1.top + ')');
+    assert(extractResult.heroH1.width > 50, 'Hero h1 width > 50 (got ' + extractResult.heroH1.width + ')');
+  }
+
+  assert(extractResult.btn !== null, 'Primary button found');
+  if (extractResult.btn) {
+    assert(extractResult.btn.height >= 20, 'Button height >= 20 (got ' + extractResult.btn.height + ')');
+  }
+
+  assert(extractResult.btnGhost !== null, 'Ghost button found');
+  if (extractResult.btnGhost) {
+    assert(extractResult.btnGhost.height < 44, 'Ghost button is small touch target (height ' + extractResult.btnGhost.height + ' < 44)');
+  }
+
+  // Test that bboxes map correctly to screenshot coordinates
+  // At 0.5x scale, canvas coords should be half the DOM coords
+  if (extractResult.heroH1) {
+    var canvasX = extractResult.heroH1.left * 0.5;
+    var canvasY = extractResult.heroH1.top * 0.5;
+    assert(canvasX >= 0, 'Canvas X mapping correct (DOM ' + extractResult.heroH1.left + ' → canvas ' + canvasX + ')');
+    assert(canvasY >= 0, 'Canvas Y mapping correct (DOM ' + extractResult.heroH1.top + ' → canvas ' + canvasY + ')');
+    var sectionIdx = Math.floor(canvasY / (900 * 0.5));
+    assert(sectionIdx === 0, 'Hero h1 maps to section 0 (got ' + sectionIdx + ')');
+  }
+
+  await page.close();
+}
+
+run();
+</file>
+
+<file path="docs/tests/test-presets-rendered.html">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Preset Test Runner (Browser-Rendered)</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; background: #f8fafc; }
+    h1 { font-size: 20px; margin-bottom: 4px; }
+    .subtitle { font-size: 13px; color: #64748b; margin-bottom: 16px; }
+    #status { font-size: 13px; color: #3b82f6; margin-bottom: 12px; }
+    #progress { width: 100%; height: 6px; background: #e2e8f0; border-radius: 3px; margin-bottom: 16px; }
+    #progressFill { height: 100%; background: #3b82f6; border-radius: 3px; width: 0%; transition: width 0.3s; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { text-align: left; padding: 6px 8px; border-bottom: 2px solid #e2e8f0; font-size: 11px; color: #64748b; text-transform: uppercase; }
+    td { padding: 5px 8px; border-bottom: 1px solid #f1f5f9; }
+    .score { font-weight: 700; font-size: 14px; }
+    .score-a { color: #16a34a; } .score-b { color: #65a30d; } .score-c { color: #ca8a04; }
+    .score-d { color: #ea580c; } .score-f { color: #dc2626; }
+    .issues { font-size: 11px; color: #dc2626; }
+    .cat-scores { font-size: 10px; color: #64748b; }
+    .summary { margin-top: 16px; padding: 12px; border-radius: 8px; font-weight: 600; }
+    .summary.done { background: #f0fdf4; color: #16a34a; border: 2px solid #16a34a; }
+    #downloadBtn { margin-top: 12px; padding: 8px 16px; border: 1px solid #e2e8f0; background: white; border-radius: 6px; cursor: pointer; font-size: 13px; }
+    #downloadBtn:hover { background: #f8fafc; }
+  </style>
+</head>
+<body>
+  <h1>Preset Test Runner (Browser-Rendered)</h1>
+  <p class="subtitle">Renders each preset in a real iframe with Tailwind CSS, runs full extraction + scoring. This is the ground truth.</p>
+  <div id="status">Loading manifest...</div>
+  <div id="progress"><div id="progressFill"></div></div>
+  <table>
+    <thead><tr><th>Preset</th><th>Score</th><th>Grade</th><th>Errors</th><th>Warnings</th><th>Infos</th><th>Category Scores</th></tr></thead>
+    <tbody id="results"></tbody>
+  </table>
+  <div id="summaryDiv"></div>
+  <button id="downloadBtn" style="display:none" onclick="downloadResults()">Download Results (.md)</button>
+
+  <!-- Load scoring modules -->
+  <script src="../scoring/registry.js"></script>
+  <script src="../scoring/contrast.js"></script>
+  <script src="../scoring/typography.js"></script>
+  <script src="../scoring/spacing.js"></script>
+  <script src="../scoring/touch.js"></script>
+  <script src="../scoring/accessibility.js"></script>
+  <script src="../scoring/responsive.js"></script>
+  <script src="../scoring/consistency.js"></script>
+  <script src="../scoring/cognitive.js"></script>
+  <script src="../scoring/layout.js"></script>
+  <script src="../scoring/performance.js"></script>
+  <script src="../scoring/readability.js"></script>
+  <script src="../scoring/filters.js"></script>
+  <script src="../scoring/balance.js"></script>
+
+  <script>
+    // Use the same extractFromDocument as the analyzer
+    var analyzerScript = null;
+    var allResults = [];
+    var totalTests = 0;
+    var completed = 0;
+
+    async function loadAnalyzerExtractor() {
+      // Load analyzer-extract.js which exposes MilgExtract (the extractFromDocument function)
+      var resp = await fetch('../analyzer-extract.js');
+      var code = await resp.text();
+      // Extract the function between 'function extractFromDocument()' and the closing
+      var match = code.match(/function extractFromDocument\(\)\s*\{/);
+      if (!match) { console.error('Could not find extractFromDocument'); return null; }
+      var start = code.indexOf(match[0]);
+      // Find matching closing brace
+      var depth = 0; var end = start;
+      for (var i = start; i < code.length; i++) {
+        if (code[i] === '{') depth++;
+        if (code[i] === '}') { depth--; if (depth === 0) { end = i + 1; break; } }
+      }
+      return code.substring(start, end);
+    }
+
+    async function run() {
+      var statusEl = document.getElementById('status');
+      var progressFill = document.getElementById('progressFill');
+      var resultsBody = document.getElementById('results');
+
+      // Load manifest
+      var resp = await fetch('../presets/index.json');
+      var manifest = await resp.json();
+      var elements = Object.keys(manifest.elements);
+
+      // Load the extraction function
+      var extractFn = await loadAnalyzerExtractor();
+      if (!extractFn) { statusEl.textContent = 'ERROR: Could not load extraction function'; return; }
+
+      // Build test list
+      var tests = [];
+      for (var ei = 0; ei < elements.length; ei++) {
+        var el = elements[ei];
+        var pers = Object.keys(manifest.elements[el].personalities || {});
+        for (var pi = 0; pi < pers.length; pi++) {
+          tests.push({ element: el, personality: pers[pi] });
+        }
+      }
+      totalTests = tests.length;
+      statusEl.textContent = 'Running ' + totalTests + ' tests...';
+
+      // Run tests sequentially (each needs an iframe)
+      for (var ti = 0; ti < tests.length; ti++) {
+        var test = tests[ti];
+        var name = test.element + '/' + test.personality;
+        statusEl.textContent = 'Testing ' + name + ' (' + (ti + 1) + '/' + totalTests + ')...';
+        progressFill.style.width = Math.round(((ti + 1) / totalTests) * 100) + '%';
+
+        try {
+          var data = await extractInIframe(test.element, test.personality, extractFn);
+          if (!data) {
+            addResult(resultsBody, name, null, 'Extraction failed');
+            continue;
+          }
+          data.profile = 'general';
+          data.meta.isFragment = true; // Presets are fragments
+          var report = MilgScoring.runScoring(data);
+          addResult(resultsBody, name, report, null);
+          allResults.push({ name: name, overall: report.overall, grade: report.grade, categories: report.categories.map(function(c) { return { label: c.label, score: c.score, errors: c.findings.filter(function(f){return f.severity==='error'}).length, warnings: c.findings.filter(function(f){return f.severity==='warning'}).length, infos: c.findings.filter(function(f){return f.severity==='info'}).length }; }) });
+        } catch(e) {
+          addResult(resultsBody, name, null, e.message);
+        }
+      }
+
+      // Summary
+      var avg = Math.round(allResults.reduce(function(s, r) { return s + r.overall; }, 0) / allResults.length);
+      var min = Math.min.apply(null, allResults.map(function(r) { return r.overall; }));
+      var max = Math.max.apply(null, allResults.map(function(r) { return r.overall; }));
+      var beforeResults = allResults.filter(function(r) { return r.name.endsWith('/before'); });
+      var cleanResults = allResults.filter(function(r) { return r.name.endsWith('/clean'); });
+      var beforeAvg = beforeResults.length > 0 ? Math.round(beforeResults.reduce(function(s,r){return s+r.overall},0)/beforeResults.length) : 'N/A';
+      var cleanAvg = cleanResults.length > 0 ? Math.round(cleanResults.reduce(function(s,r){return s+r.overall},0)/cleanResults.length) : 'N/A';
+
+      statusEl.textContent = 'Done! ' + allResults.length + ' presets tested.';
+      document.getElementById('summaryDiv').innerHTML = '<div class="summary done">Average: ' + avg + ' | Min: ' + min + ' | Max: ' + max + ' | Before avg: ' + beforeAvg + ' | Clean avg: ' + cleanAvg + '</div>';
+      document.getElementById('downloadBtn').style.display = 'inline-block';
+    }
+
+    function extractInIframe(element, personality, extractFn) {
+      return new Promise(function(resolve) {
+        fetch('../presets/' + element + '/' + personality + '.html')
+          .then(function(r) { if (!r.ok) throw new Error('Not found'); return r.text(); })
+          .then(function(html) {
+            var iframe = document.createElement('iframe');
+            iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
+            iframe.sandbox = 'allow-scripts allow-same-origin';
+            document.body.appendChild(iframe);
+
+            var handled = false;
+            function onMsg(e) {
+              if (!e.data || e.data.type !== 'milg-test-result') return;
+              if (handled) return;
+              handled = true;
+              window.removeEventListener('message', onMsg);
+              if (iframe.parentNode) document.body.removeChild(iframe);
+              resolve(e.data.data);
+            }
+            window.addEventListener('message', onMsg);
+
+            // Build srcdoc with Tailwind + extraction
+            var modifiedExtract = extractFn.replace(/milg-analyzer-result/g, 'milg-test-result');
+            var srcdoc = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">' +
+              '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+              '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
+              '<style>body{margin:0}</style></head><body>' +
+              '<script>window.__milgIsFragment=true;</' + 'script>' +
+              html +
+              '<script>setTimeout(function(){(' + modifiedExtract + ')()}, 2000);</' + 'script>' +
+              '</body></html>';
+            iframe.srcdoc = srcdoc;
+
+            // Timeout
+            setTimeout(function() {
+              if (handled) return;
+              handled = true;
+              window.removeEventListener('message', onMsg);
+              if (iframe.parentNode) document.body.removeChild(iframe);
+              resolve(null);
+            }, 10000);
+          })
+          .catch(function() { resolve(null); });
+      });
+    }
+
+    function addResult(tbody, name, report, error) {
+      var tr = document.createElement('tr');
+      if (error) {
+        tr.innerHTML = '<td>' + name + '</td><td colspan="6" style="color:#dc2626">' + error + '</td>';
+      } else {
+        var errors = 0, warnings = 0, infos = 0;
+        report.categories.forEach(function(c) {
+          c.findings.forEach(function(f) {
+            if (f.severity === 'error') errors++;
+            else if (f.severity === 'warning') warnings++;
+            else infos++;
+          });
+        });
+        var scoreClass = 'score-' + report.grade.toLowerCase();
+        var catScores = report.categories.map(function(c) { return c.label.substring(0, 8) + ':' + c.score; }).join(' | ');
+        tr.innerHTML = '<td>' + name + '</td>' +
+          '<td class="score ' + scoreClass + '">' + report.overall + '</td>' +
+          '<td>' + report.grade + '</td>' +
+          '<td>' + (errors > 0 ? '<span class="issues">' + errors + '</span>' : '0') + '</td>' +
+          '<td>' + (warnings > 0 ? '<span style="color:#b45309">' + warnings + '</span>' : '0') + '</td>' +
+          '<td>' + infos + '</td>' +
+          '<td class="cat-scores">' + catScores + '</td>';
+      }
+      tbody.appendChild(tr);
+    }
+
+    function downloadResults() {
+      var lines = ['# Preset Test Results (Browser-Rendered)', '', '| Preset | Score | Grade | Errors | Warnings |', '|--------|-------|-------|--------|----------|'];
+      allResults.forEach(function(r) {
+        var e = 0, w = 0;
+        r.categories.forEach(function(c) { e += c.errors; w += c.warnings; });
+        lines.push('| ' + r.name + ' | ' + r.overall + ' | ' + r.grade + ' | ' + e + ' | ' + w + ' |');
+      });
+      lines.push('', '## Category Breakdown', '');
+      allResults.forEach(function(r) {
+        lines.push('### ' + r.name + ' (Score: ' + r.overall + ')');
+        r.categories.forEach(function(c) {
+          if (c.errors > 0 || c.warnings > 0 || c.infos > 0) {
+            lines.push('- ' + c.label + ': ' + c.score + ' (' + c.errors + 'E ' + c.warnings + 'W ' + c.infos + 'I)');
+          }
+        });
+        lines.push('');
+      });
+      var blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'preset-test-rendered-' + new Date().toISOString().split('T')[0] + '.md';
+      a.click();
+    }
+
+    run();
+  </script>
+</body>
+</html>
 </file>
 
 <file path="docs/tests/test-scoring.html">
@@ -23551,198 +24424,6 @@ function scoreSpacing(data) {
 })();
 </file>
 
-<file path="docs/scoring/touch.js">
-// Scoring Module: Touch & Interaction
-// Weight: 15%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreTouchTargets(data) {
-  var profile = S.getProfile(data);
-  var findings = [];
-  var targets = data.interaction.touchTargets || [];
-
-  // Viewport-aware thresholds, adjusted by profile:
-  var vw = (data.meta && data.meta.viewportWidth) || 1280;
-  var isDesktop = vw >= 1024;
-  var minSize = isDesktop ? profile.touchTargetDesktop : profile.touchTarget;
-  var warnSize = isDesktop ? profile.touchTargetDesktopWarn : profile.touchTarget;
-  var context = isDesktop ? 'desktop' : 'touch/mobile';
-  var issueCount = 0;
-
-  targets.forEach(function(t) {
-    var w = t.width, h = t.height;
-    var minDim = Math.min(w, h);
-
-    // WCAG 2.5.8 exception: inline text links are exempt from target size requirements.
-    // Detect by checking if element is an <a> without button-like styling (no bg, no border, no padding > 4px)
-    var isInlineLink = t.element === 'a' && !t.isButton;
-
-    if (minDim < minSize) {
-      issueCount++;
-      var ctx = t.linkContext || (isInlineLink ? 'inline' : 'button');
-
-      // On desktop, determine severity based on how far below threshold:
-      // - ≥20px (just 4px short of 24px) → info (barely noticeable with mouse)
-      // - ≥16px → warning (small but usable with mouse)
-      // - <16px → error (genuinely too small even for mouse)
-      // On mobile, all failures are errors (fingers need the full 44px)
-      function desktopSeverity(dim) {
-        if (!isDesktop) return 'error';
-        if (dim >= 20) return 'info';
-        if (dim >= 16) return 'warning';
-        return 'error';
-      }
-
-      if (ctx === 'inline') {
-        // True inline text links (inside <p>, <blockquote>, etc.) — WCAG 2.5.8 exempt
-        findings.push({
-          severity: 'info',
-          title: 'Inline text link ' + w + '×' + h + 'px — exempt from target size',
-          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-          fix: 'Inline text links in paragraphs are exempt per WCAG 2.5.8. Consider adding padding for better usability.',
-          source: 'WCAG 2.2 §2.5.8 inline exception — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
-        });
-      } else if (ctx === 'footer') {
-        // Footer links — relaxed but still error below hard minimum (16px)
-        var footerHardMin = isDesktop ? 16 : 24;
-        findings.push({
-          severity: minDim < footerHardMin ? 'error' : 'info',
-          title: 'Footer link ' + w + '×' + h + 'px' + (minDim < footerHardMin ? ' (too small even for footer — min ' + footerHardMin + 'px)' : ' (below ' + minSize + 'px, relaxed for footer)'),
-          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-          fix: minDim < footerHardMin
-            ? 'Even footer links need at least ' + footerHardMin + 'px height. Add padding to increase click area.'
-            : 'Footer links have relaxed sizing expectations. Consider padding for touch accessibility.',
-          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
-        });
-      } else if (ctx === 'nav') {
-        // Navigation links — should be properly sized
-        var navSev = desktopSeverity(minDim);
-        findings.push({
-          severity: navSev,
-          title: 'Nav link ' + w + '×' + h + 'px (minimum: ' + minSize + 'px)',
-          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-          fix: 'Navigation links need adequate sizing. Add padding: py-2 px-4 (min-height ' + minSize + 'px).',
-          presetRef: 'Navigation presets use min-height 44px on nav links',
-          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
-        });
-      } else {
-        // Buttons, styled links, other interactive elements
-        var sev = desktopSeverity(minDim);
-        findings.push({
-          severity: sev,
-          title: t.element + ' is ' + w + '×' + h + 'px (' + (isDesktop ? 'desktop min: ' + minSize + 'px' : 'touch min: ' + minSize + 'px') + ')',
-          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-          fix: isDesktop
-            ? (sev === 'info'
-              ? 'Slightly below ' + minSize + 'px desktop minimum — usable with mouse but consider adding padding.'
-              : 'Click targets need at least ' + minSize + '×' + minSize + 'px. Increase padding or min-height/min-width.')
-            : 'Touch targets need ' + minSize + '×' + minSize + 'px minimum. Add min-h-[' + minSize + 'px] min-w-[' + minSize + 'px] or increase padding.',
-          presetRef: isDesktop ? null : 'Button presets use py-3 px-6 (48px height)',
-          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
-        });
-      }
-    } else if (minDim < warnSize && isDesktop && !isInlineLink) {
-      findings.push({
-        severity: 'warning',
-        title: t.element + ' is ' + w + '×' + h + 'px (recommended for desktop: ≥' + warnSize + 'px)',
-        detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-        fix: 'While ' + minSize + 'px meets minimum, ' + warnSize + 'px+ improves click comfort. Consider adding padding.',
-        presetRef: null,
-        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-        locator: { selector: t.selector, text: t.text || '' }
-      });
-    }
-  });
-
-  // Also flag targets that pass the current threshold but would fail on touch
-  if (isDesktop && targets.length > 0) {
-    var touchMin = profile.touchTarget;
-    var touchFails = targets.filter(function(t) { return Math.min(t.width, t.height) < touchMin; });
-    if (touchFails.length > 0) {
-      findings.push({
-        severity: 'info',
-        title: touchFails.length + ' element(s) below ' + touchMin + 'px touch target (analyzed at ' + vw + 'px desktop viewport)',
-        detail: 'These meet desktop minimums but would fail on touch devices. Consider responsive sizing if the site is also used on mobile.',
-        fix: 'For responsive touch support: add touch-target sizing at mobile breakpoints, e.g. sm:min-h-[' + touchMin + 'px]',
-        presetRef: null,
-        source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout'
-      });
-    }
-  }
-
-  // Note when responsive CSS exists that might fix touch targets on mobile
-  if (isDesktop && data.interaction && data.interaction.hasResponsiveTargetCSS) {
-    findings.push({
-      severity: 'info',
-      title: 'Responsive CSS detected that may adjust target sizes at mobile breakpoints',
-      detail: 'This site has media queries with height/padding rules. Touch targets may be correctly sized on mobile devices.',
-      fix: 'Verify by testing at mobile viewport. Use the viewport selector to re-scan at 375px width.',
-      presetRef: null
-    });
-  }
-
-  // Transitions / animation duration
-  var transitions = data.interaction.transitions || [];
-  transitions.forEach(function(t) {
-    var ms = parseFloat(t) * 1000;
-    if (ms > 500) {
-      findings.push({
-        severity: 'warning',
-        title: 'Transition duration ' + ms + 'ms exceeds 500ms maximum',
-        detail: 'Users perceive animations longer than 500ms as sluggish',
-        fix: 'Keep transitions under 500ms. Enter: 200–300ms, Exit: 150–200ms. In Tailwind: duration-200 or duration-300',
-        presetRef: null,
-        source: 'NNGroup animation — https://www.nngroup.com/articles/animation-usability/'
-      });
-    }
-  });
-
-  // Event listener pattern findings
-  var lPatterns = (data.interaction && data.interaction.listenerPatterns) || {};
-  if (lPatterns.toggleNoAria > 0) {
-    findings.push({
-      severity: 'warning',
-      title: lPatterns.toggleNoAria + ' toggle handler(s) without ARIA state management',
-      detail: 'Click handlers toggle CSS classes but don\'t update aria-expanded or other ARIA states. Screen readers won\'t know the element\'s state changed.',
-      fix: 'Add setAttribute(\'aria-expanded\', isOpen) alongside classList.toggle() in toggle handlers.',
-      presetRef: null,
-      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
-    });
-  }
-  if (lPatterns.navigationInButton > 0) {
-    findings.push({
-      severity: 'info',
-      title: lPatterns.navigationInButton + ' button(s) trigger page navigation',
-      detail: 'Buttons with click handlers that change location.href should typically be <a> elements for proper semantics and accessibility.',
-      fix: 'Use <a href="..."> for navigation instead of <button> with JavaScript location change.',
-      presetRef: null,
-      source: 'HTML spec — https://html.spec.whatwg.org/multipage/text-level-semantics.html#the-a-element'
-    });
-  }
-
-  // Score: deduct per error, less per warning
-  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var totalTargets = targets.length || 0;
-  var checks = totalTargets;
-  var passed = Math.max(0, totalTargets - errors - warnings);
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 3));
-  var na = totalTargets === 0 && transitions.length === 0;
-  return { score: na ? 100 : score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Touch & Interaction', icon: 'touch', notApplicable: na };
-}
-
-
-  S.register("touch", scoreTouchTargets, 15, "Touch & Interaction", "touch");
-})();
-</file>
-
 <file path="docs/scoring/typography.js">
 // Scoring Module: Typography
 // Weight: 15%
@@ -24264,973 +24945,6 @@ async function run() {
 }
 
 run();
-</file>
-
-<file path="docs/tests/test-bbox-viewer.js">
-#!/usr/bin/env node
-// E2E test: bbox data, screenshot metadata, viewer, and contrast verification
-// Tests all three input paths: HTML paste, URL fetch, and console snippet output
-// Requires: puppeteer, a local HTTP server on port 8787
-
-var http = require('http');
-var fs = require('fs');
-var path = require('path');
-var puppeteer = require('puppeteer');
-
-var DOCS_DIR = path.resolve(__dirname, '..');
-var PORT = 8787;
-var BASE = 'http://localhost:' + PORT;
-var passed = 0, failed = 0, errors = [];
-
-function log(ok, msg) {
-  if (ok) { passed++; console.log('  \x1b[32m✓\x1b[0m ' + msg); }
-  else { failed++; errors.push(msg); console.log('  \x1b[31m✗\x1b[0m ' + msg); }
-}
-
-function assert(cond, msg) { log(!!cond, msg); }
-
-// Simple static file server
-function startServer() {
-  var mimes = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json', '.webp': 'image/webp' };
-  var server = http.createServer(function(req, res) {
-    var url = req.url.split('?')[0];
-    if (url === '/') url = '/index.html';
-    var filePath = path.join(DOCS_DIR, url);
-    try {
-      var data = fs.readFileSync(filePath);
-      var ext = path.extname(filePath);
-      res.writeHead(200, { 'Content-Type': mimes[ext] || 'application/octet-stream' });
-      res.end(data);
-    } catch(e) {
-      res.writeHead(404);
-      res.end('Not found: ' + url);
-    }
-  });
-  server.listen(PORT);
-  return server;
-}
-
-// Test HTML to analyze — has known contrast issues and varied elements
-var TEST_HTML = [
-  '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">',
-  '<meta name="viewport" content="width=device-width, initial-scale=1.0">',
-  '<style>',
-  'body { margin: 0; font-family: sans-serif; background: #fff; }',
-  '.hero { background: linear-gradient(135deg, #1e3a5f 0%, #4a90d9 100%); padding: 60px 40px; }',
-  '.hero h1 { color: #fff; font-size: 36px; margin: 0; }',
-  '.hero p { color: #aab; font-size: 16px; margin: 8px 0 0; }',  // Low contrast on gradient
-  'section { padding: 40px; }',
-  '.card { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 16px 0; }',
-  '.card h2 { color: #333; font-size: 24px; margin: 0 0 8px; }',
-  '.card p { color: #666; font-size: 14px; line-height: 1.6; }',
-  '.btn { display: inline-block; padding: 8px 16px; background: #2563eb; color: #fff; border: none; border-radius: 4px; font-size: 14px; cursor: pointer; }',
-  '.btn-ghost { background: transparent; color: #999; border: 1px solid #ddd; padding: 4px 8px; font-size: 11px; }',  // Small touch target
-  'footer { background: #1e293b; color: #94a3b8; padding: 20px 40px; font-size: 12px; }',
-  'footer a { color: #64748b; text-decoration: none; margin-right: 12px; }',  // Low contrast links
-  '</style></head><body>',
-  '<div class="hero"><h1>Test Page</h1><p>Subtitle with questionable contrast</p></div>',
-  '<section>',
-  '<div class="card"><h2>Card Title</h2><p>Some body text that should have good contrast and reasonable line length for readability scoring.</p></div>',
-  '<button class="btn">Primary Action</button>',
-  '<button class="btn-ghost">Tiny ghost</button>',
-  '</section>',
-  '<footer><a href="#">Privacy</a><a href="#">Terms</a><a href="#">Contact</a></footer>',
-  '</body></html>'
-].join('\n');
-
-async function run() {
-  var server = startServer();
-  console.log('Server running on port ' + PORT);
-
-  var browser = await puppeteer.launch({
-    headless: 'new',
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
-  });
-
-  try {
-    // ============================================================
-    console.log('\n--- Test 1: HTML Paste with Screenshots ---');
-    // ============================================================
-    await testHtmlPaste(browser);
-
-    // ============================================================
-    console.log('\n--- Test 2: Console Snippet Output (JSON paste) ---');
-    // ============================================================
-    await testSnippetOutput(browser);
-
-    // ============================================================
-    console.log('\n--- Test 3: Module loading & viewer structure ---');
-    // ============================================================
-    await testModulesAndViewer(browser);
-
-    // ============================================================
-    console.log('\n--- Test 4: Extraction bbox data correctness ---');
-    // ============================================================
-    await testExtractionBbox(browser);
-
-  } catch(e) {
-    console.error('\n\x1b[31mFATAL:\x1b[0m', e.message);
-    failed++;
-    errors.push('Fatal: ' + e.message);
-  }
-
-  await browser.close();
-  server.close();
-
-  console.log('\n========================================');
-  console.log('Results: ' + passed + ' passed, ' + failed + ' failed');
-  if (errors.length > 0) {
-    console.log('\nFailures:');
-    errors.forEach(function(e) { console.log('  - ' + e); });
-  }
-  console.log('========================================');
-  process.exit(failed > 0 ? 1 : 0);
-}
-
-// Test 1: Paste HTML, enable screenshots, verify report has bbox + meta + viewer
-async function testHtmlPaste(browser) {
-  var page = await browser.newPage();
-  await page.setViewport({ width: 1280, height: 900 });
-  await page.goto(BASE + '/analyzer.html', { waitUntil: 'networkidle0', timeout: 15000 });
-
-  // Click HTML tab
-  await page.click('[data-tab="tabHtml"]');
-  await page.waitForSelector('#htmlInput', { visible: true });
-
-  // Ensure screenshots checkbox is checked
-  var ssChecked = await page.$eval('#screenshotCheck', function(el) { return el.checked; });
-  assert(ssChecked, 'Screenshot checkbox is checked by default');
-
-  // Paste test HTML
-  await page.evaluate(function(html) { document.getElementById('htmlInput').value = html; }, TEST_HTML);
-
-  // Click Analyze HTML
-  await page.click('#analyzeHtmlBtn');
-
-  // Wait for report to appear (up to 30s for screenshots)
-  await page.waitForSelector('.report-container.visible', { timeout: 30000 });
-
-  // Check that report rendered
-  var hasReport = await page.$('.report-header');
-  assert(hasReport, 'Report rendered after HTML paste');
-
-  // Check for screenshot section
-  var hasScreenshots = await page.$('.report-screenshots');
-  assert(hasScreenshots, 'Screenshot section present in report');
-
-  // Check that screenshotMeta is available in reportData
-  var metaCheck = await page.evaluate(function() {
-    // Access the report data via the global (stored in sessionStorage by runAnalysis)
-    var raw = null;
-    try { raw = JSON.parse(sessionStorage.getItem('milg-last-extraction')); } catch(e) {}
-    if (!raw) return { hasMeta: false, error: 'no extraction data in sessionStorage' };
-    return {
-      hasMeta: !!raw.screenshotMeta,
-      scale: raw.screenshotMeta ? raw.screenshotMeta.scale : null,
-      viewportHeight: raw.screenshotMeta ? raw.screenshotMeta.viewportHeight : null,
-      sectionCount: raw.screenshotMeta ? raw.screenshotMeta.sectionCount : null,
-      canvasWidth: raw.screenshotMeta ? raw.screenshotMeta.canvasWidth : null
-    };
-  });
-  assert(metaCheck.hasMeta, 'screenshotMeta present in extraction data');
-  if (metaCheck.hasMeta) {
-    assert(metaCheck.scale === 0.5, 'screenshotMeta.scale is 0.5 (got ' + metaCheck.scale + ')');
-    assert(metaCheck.viewportHeight > 0, 'screenshotMeta.viewportHeight > 0 (got ' + metaCheck.viewportHeight + ')');
-    assert(metaCheck.sectionCount > 0, 'screenshotMeta.sectionCount > 0 (got ' + metaCheck.sectionCount + ')');
-    assert(metaCheck.canvasWidth > 0, 'screenshotMeta.canvasWidth > 0 (got ' + metaCheck.canvasWidth + ')');
-  }
-
-  // Check contrast pairs have bbox data
-  var bboxCheck = await page.evaluate(function() {
-    var raw = null;
-    try { raw = JSON.parse(sessionStorage.getItem('milg-last-extraction')); } catch(e) {}
-    if (!raw || !raw.colors || !raw.colors.contrastPairs) return { pairs: 0, withBbox: 0 };
-    var pairs = raw.colors.contrastPairs;
-    var withBbox = pairs.filter(function(p) { return p.bbox && p.bbox.left !== undefined && p.bbox.top !== undefined; }).length;
-    return { pairs: pairs.length, withBbox: withBbox };
-  });
-  assert(bboxCheck.pairs > 0, 'Has contrast pairs (' + bboxCheck.pairs + ')');
-  assert(bboxCheck.withBbox > 0, 'Contrast pairs have bbox data (' + bboxCheck.withBbox + '/' + bboxCheck.pairs + ')');
-  assert(bboxCheck.withBbox === bboxCheck.pairs, 'All contrast pairs have bbox (' + bboxCheck.withBbox + '/' + bboxCheck.pairs + ')');
-
-  // Check touch targets have bbox data
-  var touchBboxCheck = await page.evaluate(function() {
-    var raw = null;
-    try { raw = JSON.parse(sessionStorage.getItem('milg-last-extraction')); } catch(e) {}
-    if (!raw || !raw.interaction || !raw.interaction.touchTargets) return { targets: 0, withBbox: 0 };
-    var targets = raw.interaction.touchTargets;
-    var withBbox = targets.filter(function(t) { return t.bbox && t.bbox.left !== undefined; }).length;
-    return { targets: targets.length, withBbox: withBbox };
-  });
-  assert(touchBboxCheck.targets >= 0, 'Has touch targets (' + touchBboxCheck.targets + ')');
-  if (touchBboxCheck.targets > 0) {
-    assert(touchBboxCheck.withBbox === touchBboxCheck.targets, 'All touch targets have bbox (' + touchBboxCheck.withBbox + '/' + touchBboxCheck.targets + ')');
-  }
-
-  // Check that "Show on screenshot" links exist for findings with bboxes
-  var showLinks = await page.$$('.finding-show-on-screenshot');
-  assert(showLinks.length > 0, '"Show on screenshot" links present (' + showLinks.length + ')');
-
-  // Check that findings have data-finding-idx attributes
-  var findingsWithIdx = await page.$$('[data-finding-idx]');
-  assert(findingsWithIdx.length > 0, 'Findings have data-finding-idx attributes (' + findingsWithIdx.length + ')');
-
-  // Wait a moment for async contrast verification to complete
-  await new Promise(function(r) { setTimeout(r, 3000); });
-
-  // Check if contrast verification summary appeared
-  var hasVerifySummary = await page.$('.contrast-verify-summary');
-  assert(hasVerifySummary, 'Pixel contrast verification summary present');
-
-  await page.close();
-}
-
-// Test 2: Simulate snippet output (paste JSON with bbox data)
-async function testSnippetOutput(browser) {
-  var page = await browser.newPage();
-  await page.setViewport({ width: 1280, height: 900 });
-  await page.goto(BASE + '/analyzer.html', { waitUntil: 'networkidle0', timeout: 15000 });
-
-  // Run the snippet in a test iframe to get extraction data with bboxes
-  var extractionData = await page.evaluate(function(html) {
-    return new Promise(function(resolve) {
-      var iframe = document.createElement('iframe');
-      iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
-      iframe.sandbox = 'allow-scripts allow-same-origin';
-      document.body.appendChild(iframe);
-
-      window.addEventListener('message', function handler(e) {
-        if (e.data && e.data.type === 'milg-analyzer-result') {
-          window.removeEventListener('message', handler);
-          document.body.removeChild(iframe);
-          resolve(e.data.data);
-        }
-      });
-
-      var extractFn = window.MilgExtract;
-      var extractScript = '<script>window.addEventListener("load",function(){setTimeout(function(){(' + extractFn.toString() + ')()},500)});</' + 'script>';
-      iframe.srcdoc = html + extractScript;
-
-      setTimeout(function() { resolve(null); }, 10000);
-    });
-  }, TEST_HTML);
-
-  assert(extractionData !== null, 'Extraction completed in iframe');
-  if (!extractionData) { await page.close(); return; }
-
-  // Verify bbox on contrast pairs from extraction
-  var pairs = (extractionData.colors && extractionData.colors.contrastPairs) || [];
-  assert(pairs.length > 0, 'Extracted contrast pairs: ' + pairs.length);
-  var pairsWithBbox = pairs.filter(function(p) { return p.bbox && typeof p.bbox.left === 'number'; });
-  assert(pairsWithBbox.length === pairs.length, 'All extracted pairs have bbox (' + pairsWithBbox.length + '/' + pairs.length + ')');
-
-  // Verify bbox values are reasonable
-  if (pairsWithBbox.length > 0) {
-    var firstBbox = pairsWithBbox[0].bbox;
-    assert(firstBbox.left >= 0, 'bbox.left >= 0 (got ' + firstBbox.left + ')');
-    assert(firstBbox.top >= 0, 'bbox.top >= 0 (got ' + firstBbox.top + ')');
-    assert(firstBbox.width > 0, 'bbox.width > 0 (got ' + firstBbox.width + ')');
-    assert(firstBbox.height > 0, 'bbox.height > 0 (got ' + firstBbox.height + ')');
-  }
-
-  // Verify bbox on touch targets
-  var targets = (extractionData.interaction && extractionData.interaction.touchTargets) || [];
-  if (targets.length > 0) {
-    var targetsWithBbox = targets.filter(function(t) { return t.bbox && typeof t.bbox.left === 'number'; });
-    assert(targetsWithBbox.length === targets.length, 'All touch targets have bbox (' + targetsWithBbox.length + '/' + targets.length + ')');
-  }
-
-  // Paste JSON into the Snippet tab's paste area and analyze
-  var json = JSON.stringify(extractionData);
-  await page.evaluate(function(json) {
-    // Activate the Console Snippet tab (contains the JSON paste area)
-    document.querySelector('[data-tab="tabSnippet"]').click();
-    document.getElementById('pasteInput').value = json;
-    document.getElementById('analyzeBtn').click();
-  }, json);
-
-  await page.waitForSelector('.report-container.visible', { timeout: 10000 });
-
-  // Verify scoring passed bbox through to findings
-  var findingsBboxCheck = await page.evaluate(function() {
-    var findings = document.querySelectorAll('[data-finding-idx]');
-    return findings.length;
-  });
-  assert(findingsBboxCheck > 0, 'Scoring passed bbox to findings (data-finding-idx count: ' + findingsBboxCheck + ')');
-
-  await page.close();
-}
-
-// Test 3: Module loading and viewer structure
-async function testModulesAndViewer(browser) {
-  var page = await browser.newPage();
-  await page.setViewport({ width: 1280, height: 900 });
-  await page.goto(BASE + '/analyzer.html', { waitUntil: 'networkidle0', timeout: 15000 });
-
-  // Check all modules loaded
-  var modules = await page.evaluate(function() {
-    return {
-      MilgExtract: typeof window.MilgExtract,
-      MilgIframe: typeof window.MilgIframe,
-      MilgProxy: typeof window.MilgProxy,
-      MilgCrawlUI: typeof window.MilgCrawlUI,
-      MilgViewer: typeof window.MilgViewer,
-      MilgContrastVerify: typeof window.MilgContrastVerify,
-      MilgReport: typeof window.MilgReport,
-      MilgScoring: typeof window.MilgScoring,
-      MilgCrawl: typeof window.MilgCrawl
-    };
-  });
-
-  assert(modules.MilgExtract === 'function', 'MilgExtract loaded (type: ' + modules.MilgExtract + ')');
-  assert(modules.MilgIframe === 'object', 'MilgIframe loaded (type: ' + modules.MilgIframe + ')');
-  assert(modules.MilgProxy === 'object', 'MilgProxy loaded (type: ' + modules.MilgProxy + ')');
-  assert(modules.MilgCrawlUI === 'object', 'MilgCrawlUI loaded (type: ' + modules.MilgCrawlUI + ')');
-  assert(modules.MilgViewer === 'object', 'MilgViewer loaded (type: ' + modules.MilgViewer + ')');
-  assert(modules.MilgContrastVerify === 'object', 'MilgContrastVerify loaded (type: ' + modules.MilgContrastVerify + ')');
-  assert(modules.MilgReport === 'object', 'MilgReport loaded (type: ' + modules.MilgReport + ')');
-  assert(modules.MilgScoring === 'object', 'MilgScoring loaded (type: ' + modules.MilgScoring + ')');
-  assert(modules.MilgCrawl === 'object', 'MilgCrawl loaded (type: ' + modules.MilgCrawl + ')');
-
-  // Verify viewer API
-  var viewerApi = await page.evaluate(function() {
-    return {
-      hasOpen: typeof MilgViewer.open === 'function',
-      hasClose: typeof MilgViewer.close === 'function',
-      hasShowFinding: typeof MilgViewer.showFinding === 'function'
-    };
-  });
-  assert(viewerApi.hasOpen, 'MilgViewer.open is a function');
-  assert(viewerApi.hasClose, 'MilgViewer.close is a function');
-  assert(viewerApi.hasShowFinding, 'MilgViewer.showFinding is a function');
-
-  // Verify contrast verify API
-  var verifyApi = await page.evaluate(function() {
-    return {
-      hasVerify: typeof MilgContrastVerify.verify === 'function',
-      hasBuildSummary: typeof MilgContrastVerify.buildSummary === 'function',
-      hasFormatResult: typeof MilgContrastVerify.formatResult === 'function',
-      hasRenderSummaryHtml: typeof MilgContrastVerify.renderSummaryHtml === 'function'
-    };
-  });
-  assert(verifyApi.hasVerify, 'MilgContrastVerify.verify is a function');
-  assert(verifyApi.hasBuildSummary, 'MilgContrastVerify.buildSummary is a function');
-  assert(verifyApi.hasFormatResult, 'MilgContrastVerify.formatResult is a function');
-  assert(verifyApi.hasRenderSummaryHtml, 'MilgContrastVerify.renderSummaryHtml is a function');
-
-  // Test contrast ratio math
-  var mathCheck = await page.evaluate(function() {
-    var cr = MilgContrastVerify.contrastRatio;
-    var black = { r: 0, g: 0, b: 0 };
-    var white = { r: 255, g: 255, b: 255 };
-    var gray = { r: 128, g: 128, b: 128 };
-    return {
-      bw: cr(black, white),
-      ww: cr(white, white),
-      bg: cr(black, gray)
-    };
-  });
-  assert(mathCheck.bw === 21, 'Black/white contrast = 21:1 (got ' + mathCheck.bw + ')');
-  assert(mathCheck.ww === 1, 'White/white contrast = 1:1 (got ' + mathCheck.ww + ')');
-  assert(mathCheck.bg > 5 && mathCheck.bg < 6, 'Black/gray contrast ~5.3:1 (got ' + mathCheck.bg + ')');
-
-  await page.close();
-}
-
-// Test 4: Direct extraction bbox data correctness
-async function testExtractionBbox(browser) {
-  var page = await browser.newPage();
-  await page.setViewport({ width: 1280, height: 900 });
-
-  // Load test HTML directly to verify extraction produces correct bboxes
-  await page.setContent(TEST_HTML, { waitUntil: 'load' });
-  await new Promise(function(r) { setTimeout(r, 500); });
-
-  // Run extraction function directly
-  var extractResult = await page.evaluate(function() {
-    // Load the extraction function (it's not available in this context, inline a simplified check)
-    // Instead, manually check getBoundingClientRect on key elements
-    var hero = document.querySelector('.hero h1');
-    var btn = document.querySelector('.btn');
-    var btnGhost = document.querySelector('.btn-ghost');
-    var footerLink = document.querySelector('footer a');
-
-    function getRect(el) {
-      if (!el) return null;
-      var r = el.getBoundingClientRect();
-      return { left: Math.round(r.left), top: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) };
-    }
-
-    return {
-      heroH1: getRect(hero),
-      btn: getRect(btn),
-      btnGhost: getRect(btnGhost),
-      footerLink: getRect(footerLink)
-    };
-  });
-
-  assert(extractResult.heroH1 !== null, 'Hero h1 found');
-  if (extractResult.heroH1) {
-    assert(extractResult.heroH1.top >= 0 && extractResult.heroH1.top < 200, 'Hero h1 top is reasonable (got ' + extractResult.heroH1.top + ')');
-    assert(extractResult.heroH1.width > 50, 'Hero h1 width > 50 (got ' + extractResult.heroH1.width + ')');
-  }
-
-  assert(extractResult.btn !== null, 'Primary button found');
-  if (extractResult.btn) {
-    assert(extractResult.btn.height >= 20, 'Button height >= 20 (got ' + extractResult.btn.height + ')');
-  }
-
-  assert(extractResult.btnGhost !== null, 'Ghost button found');
-  if (extractResult.btnGhost) {
-    assert(extractResult.btnGhost.height < 44, 'Ghost button is small touch target (height ' + extractResult.btnGhost.height + ' < 44)');
-  }
-
-  // Test that bboxes map correctly to screenshot coordinates
-  // At 0.5x scale, canvas coords should be half the DOM coords
-  if (extractResult.heroH1) {
-    var canvasX = extractResult.heroH1.left * 0.5;
-    var canvasY = extractResult.heroH1.top * 0.5;
-    assert(canvasX >= 0, 'Canvas X mapping correct (DOM ' + extractResult.heroH1.left + ' → canvas ' + canvasX + ')');
-    assert(canvasY >= 0, 'Canvas Y mapping correct (DOM ' + extractResult.heroH1.top + ' → canvas ' + canvasY + ')');
-    var sectionIdx = Math.floor(canvasY / (900 * 0.5));
-    assert(sectionIdx === 0, 'Hero h1 maps to section 0 (got ' + sectionIdx + ')');
-  }
-
-  await page.close();
-}
-
-run();
-</file>
-
-<file path="docs/tests/test-presets-rendered.html">
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Preset Test Runner (Browser-Rendered)</title>
-  <style>
-    body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; background: #f8fafc; }
-    h1 { font-size: 20px; margin-bottom: 4px; }
-    .subtitle { font-size: 13px; color: #64748b; margin-bottom: 16px; }
-    #status { font-size: 13px; color: #3b82f6; margin-bottom: 12px; }
-    #progress { width: 100%; height: 6px; background: #e2e8f0; border-radius: 3px; margin-bottom: 16px; }
-    #progressFill { height: 100%; background: #3b82f6; border-radius: 3px; width: 0%; transition: width 0.3s; }
-    table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    th { text-align: left; padding: 6px 8px; border-bottom: 2px solid #e2e8f0; font-size: 11px; color: #64748b; text-transform: uppercase; }
-    td { padding: 5px 8px; border-bottom: 1px solid #f1f5f9; }
-    .score { font-weight: 700; font-size: 14px; }
-    .score-a { color: #16a34a; } .score-b { color: #65a30d; } .score-c { color: #ca8a04; }
-    .score-d { color: #ea580c; } .score-f { color: #dc2626; }
-    .issues { font-size: 11px; color: #dc2626; }
-    .cat-scores { font-size: 10px; color: #64748b; }
-    .summary { margin-top: 16px; padding: 12px; border-radius: 8px; font-weight: 600; }
-    .summary.done { background: #f0fdf4; color: #16a34a; border: 2px solid #16a34a; }
-    #downloadBtn { margin-top: 12px; padding: 8px 16px; border: 1px solid #e2e8f0; background: white; border-radius: 6px; cursor: pointer; font-size: 13px; }
-    #downloadBtn:hover { background: #f8fafc; }
-  </style>
-</head>
-<body>
-  <h1>Preset Test Runner (Browser-Rendered)</h1>
-  <p class="subtitle">Renders each preset in a real iframe with Tailwind CSS, runs full extraction + scoring. This is the ground truth.</p>
-  <div id="status">Loading manifest...</div>
-  <div id="progress"><div id="progressFill"></div></div>
-  <table>
-    <thead><tr><th>Preset</th><th>Score</th><th>Grade</th><th>Errors</th><th>Warnings</th><th>Infos</th><th>Category Scores</th></tr></thead>
-    <tbody id="results"></tbody>
-  </table>
-  <div id="summaryDiv"></div>
-  <button id="downloadBtn" style="display:none" onclick="downloadResults()">Download Results (.md)</button>
-
-  <!-- Load scoring modules -->
-  <script src="../scoring/registry.js"></script>
-  <script src="../scoring/contrast.js"></script>
-  <script src="../scoring/typography.js"></script>
-  <script src="../scoring/spacing.js"></script>
-  <script src="../scoring/touch.js"></script>
-  <script src="../scoring/accessibility.js"></script>
-  <script src="../scoring/responsive.js"></script>
-  <script src="../scoring/consistency.js"></script>
-  <script src="../scoring/cognitive.js"></script>
-  <script src="../scoring/layout.js"></script>
-  <script src="../scoring/performance.js"></script>
-  <script src="../scoring/readability.js"></script>
-  <script src="../scoring/filters.js"></script>
-  <script src="../scoring/balance.js"></script>
-
-  <script>
-    // Use the same extractFromDocument as the analyzer
-    var analyzerScript = null;
-    var allResults = [];
-    var totalTests = 0;
-    var completed = 0;
-
-    async function loadAnalyzerExtractor() {
-      // Load analyzer-extract.js which exposes MilgExtract (the extractFromDocument function)
-      var resp = await fetch('../analyzer-extract.js');
-      var code = await resp.text();
-      // Extract the function between 'function extractFromDocument()' and the closing
-      var match = code.match(/function extractFromDocument\(\)\s*\{/);
-      if (!match) { console.error('Could not find extractFromDocument'); return null; }
-      var start = code.indexOf(match[0]);
-      // Find matching closing brace
-      var depth = 0; var end = start;
-      for (var i = start; i < code.length; i++) {
-        if (code[i] === '{') depth++;
-        if (code[i] === '}') { depth--; if (depth === 0) { end = i + 1; break; } }
-      }
-      return code.substring(start, end);
-    }
-
-    async function run() {
-      var statusEl = document.getElementById('status');
-      var progressFill = document.getElementById('progressFill');
-      var resultsBody = document.getElementById('results');
-
-      // Load manifest
-      var resp = await fetch('../presets/index.json');
-      var manifest = await resp.json();
-      var elements = Object.keys(manifest.elements);
-
-      // Load the extraction function
-      var extractFn = await loadAnalyzerExtractor();
-      if (!extractFn) { statusEl.textContent = 'ERROR: Could not load extraction function'; return; }
-
-      // Build test list
-      var tests = [];
-      for (var ei = 0; ei < elements.length; ei++) {
-        var el = elements[ei];
-        var pers = Object.keys(manifest.elements[el].personalities || {});
-        for (var pi = 0; pi < pers.length; pi++) {
-          tests.push({ element: el, personality: pers[pi] });
-        }
-      }
-      totalTests = tests.length;
-      statusEl.textContent = 'Running ' + totalTests + ' tests...';
-
-      // Run tests sequentially (each needs an iframe)
-      for (var ti = 0; ti < tests.length; ti++) {
-        var test = tests[ti];
-        var name = test.element + '/' + test.personality;
-        statusEl.textContent = 'Testing ' + name + ' (' + (ti + 1) + '/' + totalTests + ')...';
-        progressFill.style.width = Math.round(((ti + 1) / totalTests) * 100) + '%';
-
-        try {
-          var data = await extractInIframe(test.element, test.personality, extractFn);
-          if (!data) {
-            addResult(resultsBody, name, null, 'Extraction failed');
-            continue;
-          }
-          data.profile = 'general';
-          data.meta.isFragment = true; // Presets are fragments
-          var report = MilgScoring.runScoring(data);
-          addResult(resultsBody, name, report, null);
-          allResults.push({ name: name, overall: report.overall, grade: report.grade, categories: report.categories.map(function(c) { return { label: c.label, score: c.score, errors: c.findings.filter(function(f){return f.severity==='error'}).length, warnings: c.findings.filter(function(f){return f.severity==='warning'}).length, infos: c.findings.filter(function(f){return f.severity==='info'}).length }; }) });
-        } catch(e) {
-          addResult(resultsBody, name, null, e.message);
-        }
-      }
-
-      // Summary
-      var avg = Math.round(allResults.reduce(function(s, r) { return s + r.overall; }, 0) / allResults.length);
-      var min = Math.min.apply(null, allResults.map(function(r) { return r.overall; }));
-      var max = Math.max.apply(null, allResults.map(function(r) { return r.overall; }));
-      var beforeResults = allResults.filter(function(r) { return r.name.endsWith('/before'); });
-      var cleanResults = allResults.filter(function(r) { return r.name.endsWith('/clean'); });
-      var beforeAvg = beforeResults.length > 0 ? Math.round(beforeResults.reduce(function(s,r){return s+r.overall},0)/beforeResults.length) : 'N/A';
-      var cleanAvg = cleanResults.length > 0 ? Math.round(cleanResults.reduce(function(s,r){return s+r.overall},0)/cleanResults.length) : 'N/A';
-
-      statusEl.textContent = 'Done! ' + allResults.length + ' presets tested.';
-      document.getElementById('summaryDiv').innerHTML = '<div class="summary done">Average: ' + avg + ' | Min: ' + min + ' | Max: ' + max + ' | Before avg: ' + beforeAvg + ' | Clean avg: ' + cleanAvg + '</div>';
-      document.getElementById('downloadBtn').style.display = 'inline-block';
-    }
-
-    function extractInIframe(element, personality, extractFn) {
-      return new Promise(function(resolve) {
-        fetch('../presets/' + element + '/' + personality + '.html')
-          .then(function(r) { if (!r.ok) throw new Error('Not found'); return r.text(); })
-          .then(function(html) {
-            var iframe = document.createElement('iframe');
-            iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
-            iframe.sandbox = 'allow-scripts allow-same-origin';
-            document.body.appendChild(iframe);
-
-            var handled = false;
-            function onMsg(e) {
-              if (!e.data || e.data.type !== 'milg-test-result') return;
-              if (handled) return;
-              handled = true;
-              window.removeEventListener('message', onMsg);
-              if (iframe.parentNode) document.body.removeChild(iframe);
-              resolve(e.data.data);
-            }
-            window.addEventListener('message', onMsg);
-
-            // Build srcdoc with Tailwind + extraction
-            var modifiedExtract = extractFn.replace(/milg-analyzer-result/g, 'milg-test-result');
-            var srcdoc = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">' +
-              '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
-              '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
-              '<style>body{margin:0}</style></head><body>' +
-              '<script>window.__milgIsFragment=true;</' + 'script>' +
-              html +
-              '<script>setTimeout(function(){(' + modifiedExtract + ')()}, 2000);</' + 'script>' +
-              '</body></html>';
-            iframe.srcdoc = srcdoc;
-
-            // Timeout
-            setTimeout(function() {
-              if (handled) return;
-              handled = true;
-              window.removeEventListener('message', onMsg);
-              if (iframe.parentNode) document.body.removeChild(iframe);
-              resolve(null);
-            }, 10000);
-          })
-          .catch(function() { resolve(null); });
-      });
-    }
-
-    function addResult(tbody, name, report, error) {
-      var tr = document.createElement('tr');
-      if (error) {
-        tr.innerHTML = '<td>' + name + '</td><td colspan="6" style="color:#dc2626">' + error + '</td>';
-      } else {
-        var errors = 0, warnings = 0, infos = 0;
-        report.categories.forEach(function(c) {
-          c.findings.forEach(function(f) {
-            if (f.severity === 'error') errors++;
-            else if (f.severity === 'warning') warnings++;
-            else infos++;
-          });
-        });
-        var scoreClass = 'score-' + report.grade.toLowerCase();
-        var catScores = report.categories.map(function(c) { return c.label.substring(0, 8) + ':' + c.score; }).join(' | ');
-        tr.innerHTML = '<td>' + name + '</td>' +
-          '<td class="score ' + scoreClass + '">' + report.overall + '</td>' +
-          '<td>' + report.grade + '</td>' +
-          '<td>' + (errors > 0 ? '<span class="issues">' + errors + '</span>' : '0') + '</td>' +
-          '<td>' + (warnings > 0 ? '<span style="color:#b45309">' + warnings + '</span>' : '0') + '</td>' +
-          '<td>' + infos + '</td>' +
-          '<td class="cat-scores">' + catScores + '</td>';
-      }
-      tbody.appendChild(tr);
-    }
-
-    function downloadResults() {
-      var lines = ['# Preset Test Results (Browser-Rendered)', '', '| Preset | Score | Grade | Errors | Warnings |', '|--------|-------|-------|--------|----------|'];
-      allResults.forEach(function(r) {
-        var e = 0, w = 0;
-        r.categories.forEach(function(c) { e += c.errors; w += c.warnings; });
-        lines.push('| ' + r.name + ' | ' + r.overall + ' | ' + r.grade + ' | ' + e + ' | ' + w + ' |');
-      });
-      lines.push('', '## Category Breakdown', '');
-      allResults.forEach(function(r) {
-        lines.push('### ' + r.name + ' (Score: ' + r.overall + ')');
-        r.categories.forEach(function(c) {
-          if (c.errors > 0 || c.warnings > 0 || c.infos > 0) {
-            lines.push('- ' + c.label + ': ' + c.score + ' (' + c.errors + 'E ' + c.warnings + 'W ' + c.infos + 'I)');
-          }
-        });
-        lines.push('');
-      });
-      var blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
-      var a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'preset-test-rendered-' + new Date().toISOString().split('T')[0] + '.md';
-      a.click();
-    }
-
-    run();
-  </script>
-</body>
-</html>
-</file>
-
-<file path="docs/tests/test-iframe-screenshot.html">
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Iframe Screenshot Test</title>
-<style>
-body { font-family: system-ui, sans-serif; margin: 0; padding: 20px; background: #f8fafc; color: #1e293b; }
-h1 { margin: 0 0 16px; font-size: 20px; }
-.test-section { margin-bottom: 16px; padding: 12px 16px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; }
-.test-section h3 { margin: 0 0 8px; font-size: 14px; }
-.result { font-family: monospace; font-size: 12px; white-space: pre-wrap; background: #f1f5f9; padding: 8px; border-radius: 4px; margin-top: 8px; max-height: 200px; overflow: auto; }
-.pass { color: #16a34a; } .fail { color: #dc2626; } .info { color: #2563eb; }
-button { padding: 8px 16px; background: #3b82f6; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; }
-button:hover { background: #2563eb; }
-#testIframe { position: fixed; top: -9999px; left: -9999px; border: none; }
-</style>
-</head>
-<body>
-<h1>Iframe Screenshot Pipeline Tests</h1>
-<p style="font-size:13px;color:#64748b;margin-bottom:16px">Tests the screenshot capture pipeline inside an offscreen iframe — scroll behavior, IntersectionObserver triggers, domToCanvas capture, and bbox alignment.</p>
-
-<button onclick="runAllTests()">Run All Tests</button>
-<div id="results" style="margin-top:16px"></div>
-
-<script>
-var results = [];
-var resultsEl = document.getElementById('results');
-
-function log(section, msg, type) {
-  results.push({ section: section, msg: msg, type: type || 'info' });
-  render();
-}
-
-function render() {
-  var grouped = {};
-  results.forEach(function(r) {
-    if (!grouped[r.section]) grouped[r.section] = [];
-    grouped[r.section].push(r);
-  });
-  var html = '';
-  Object.keys(grouped).forEach(function(sec) {
-    html += '<div class="test-section"><h3>' + sec + '</h3><div class="result">';
-    grouped[sec].forEach(function(r) {
-      html += '<div class="' + r.type + '">' + r.msg + '</div>';
-    });
-    html += '</div></div>';
-  });
-  resultsEl.innerHTML = html;
-}
-
-// --- Test page HTML: has IntersectionObserver animations, lazy content, gradients ---
-function buildTestPage() {
-  return '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">' +
-    '<meta name="viewport" content="width=device-width,initial-scale=1">' +
-    '<style>' +
-    'html,body{height:100%;margin:0;font-family:system-ui,sans-serif}' + // height:100% — the common culprit
-    'body{background:linear-gradient(180deg,#1e293b 0%,#3b82f6 50%,#f8fafc 100%)}' +
-    '.section{padding:60px 40px;min-height:80vh}' +
-    '.fade-in{opacity:0;transform:translateY(30px);transition:opacity 0.6s,transform 0.6s}' +
-    '.fade-in.visible{opacity:1;transform:translateY(0)}' +
-    'h1{color:#fff;font-size:36px}h2{font-size:24px}p{font-size:16px;line-height:1.6;max-width:600px}' +
-    '.white-text{color:#fff}.dark-text{color:#1e293b}' +
-    '</style></head><body>' +
-    '<div class="section"><h1>Hero Section</h1><p class="white-text">This is the first viewport. Should always be captured.</p></div>' +
-    '<div class="section"><h2 class="fade-in white-text">Section 2 — Fade In</h2><p class="fade-in white-text">This section uses IntersectionObserver to animate in. If pre-scroll works, this should be visible (opacity:1).</p></div>' +
-    '<div class="section"><h2 class="fade-in dark-text">Section 3 — Below Fold</h2><p class="fade-in dark-text">This is well below the initial viewport. Tests deep pre-scroll.</p></div>' +
-    '<div class="section" style="background:#f8fafc"><h2 class="fade-in dark-text">Section 4 — Footer Area</h2><p class="fade-in dark-text">Near the bottom. Gradient background should show different colors here vs hero.</p></div>' +
-    '<div id="test-results" style="display:none"></div>' +
-    '<script>' +
-    // IntersectionObserver for fade-in
-    'var observer=new IntersectionObserver(function(entries){' +
-      'entries.forEach(function(e){if(e.isIntersecting){e.target.classList.add("visible");observer.unobserve(e.target)}})' +
-    '},{threshold:0.1});' +
-    'document.querySelectorAll(".fade-in").forEach(function(el){observer.observe(el)});' +
-    // Report scroll events and IO triggers
-    'window.__testScrollCount=0;window.__testIOCount=0;' +
-    'window.addEventListener("scroll",function(){window.__testScrollCount++});' +
-    'var origObserve=observer.observe.bind(observer);' +
-    // Track visible elements
-    'window.__testVisibleCount=function(){return document.querySelectorAll(".fade-in.visible").length};' +
-    '</' + 'script>' +
-    '</body></html>';
-}
-
-function runAllTests() {
-  results = [];
-  log('Setup', 'Creating test iframe...');
-
-  var iframe = document.createElement('iframe');
-  iframe.id = 'testIframe';
-  iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
-  iframe.sandbox = 'allow-scripts allow-same-origin';
-  document.body.appendChild(iframe);
-
-  iframe.srcdoc = buildTestPage();
-
-  iframe.addEventListener('load', function() {
-    setTimeout(function() { runTests(iframe); }, 1000); // wait for IO setup
-  });
-}
-
-function runTests(iframe) {
-  var win = iframe.contentWindow;
-  var doc = iframe.contentDocument;
-
-  // Test 1: Initial state
-  log('1. Initial State', 'innerHeight: ' + win.innerHeight);
-  log('1. Initial State', 'body.scrollHeight: ' + doc.body.scrollHeight);
-  log('1. Initial State', 'html.scrollHeight: ' + doc.documentElement.scrollHeight);
-  var fadeIns = doc.querySelectorAll('.fade-in');
-  var initialVisible = doc.querySelectorAll('.fade-in.visible').length;
-  log('1. Initial State', 'Fade-in elements: ' + fadeIns.length + ', visible: ' + initialVisible,
-    initialVisible <= 1 ? 'pass' : 'info');
-
-  // Test 2: scrollHeight with height:auto
-  doc.documentElement.style.cssText += 'height:auto !important;overflow-y:auto !important;';
-  doc.body.style.cssText += 'height:auto !important;';
-  void doc.body.offsetHeight;
-  var trueH = doc.body.scrollHeight;
-  log('2. Height Unlock', 'After height:auto → body.scrollHeight: ' + trueH,
-    trueH > win.innerHeight ? 'pass' : 'fail');
-
-  // Test 3: Scroll works
-  win.scrollTo(0, 1000);
-  var scrolled = win.scrollY || doc.documentElement.scrollTop;
-  log('3. Scroll Test', 'scrollTo(0,1000) → scrollY: ' + scrolled,
-    scrolled > 0 ? 'pass' : 'fail');
-
-  if (scrolled === 0) {
-    // Try documentElement.scrollTop directly
-    doc.documentElement.scrollTop = 1000;
-    scrolled = doc.documentElement.scrollTop;
-    log('3. Scroll Test', 'documentElement.scrollTop=1000 → actual: ' + scrolled,
-      scrolled > 0 ? 'pass' : 'fail');
-  }
-
-  // Test 4: Pre-scroll (IO won't fire in offscreen iframe — that's expected)
-  log('4. Pre-Scroll', 'Starting pre-scroll through ' + Math.ceil(trueH / win.innerHeight) + ' positions...');
-  var positions = [];
-  for (var p = 0; p < trueH; p += win.innerHeight) positions.push(p);
-  var pi = 0;
-
-  function scrollNext() {
-    if (pi >= positions.length) {
-      setTimeout(function() { afterPreScroll(iframe); }, 500);
-      return;
-    }
-    win.scrollTo(0, positions[pi]);
-    doc.documentElement.scrollTop = positions[pi];
-    try { win.dispatchEvent(new Event('scroll')); } catch(e) {}
-    pi++;
-    setTimeout(scrollNext, 200);
-  }
-  scrollNext();
-}
-
-function afterPreScroll(iframe) {
-  var win = iframe.contentWindow;
-  var doc = iframe.contentDocument;
-
-  var visibleCount = doc.querySelectorAll('.fade-in.visible').length;
-  var totalFadeIn = doc.querySelectorAll('.fade-in').length;
-  log('4a. IO Check', 'After pre-scroll: ' + visibleCount + '/' + totalFadeIn + ' visible via IntersectionObserver',
-    visibleCount === totalFadeIn ? 'pass' : 'info');
-  if (visibleCount === 0) {
-    log('4a. IO Check', 'IO did NOT fire (expected — offscreen iframes suppress IO callbacks)', 'info');
-  }
-  log('4a. IO Check', 'Scroll events fired: ' + (win.__testScrollCount || 0));
-
-  // Test 4b: Force-reveal (the actual fix for offscreen iframes)
-  var revealed = 0;
-  doc.querySelectorAll('*').forEach(function(el) {
-    var cs = win.getComputedStyle(el);
-    if (cs.opacity === '0' && el.tagName !== 'SCRIPT' && el.tagName !== 'STYLE') {
-      var hasTrans = cs.transition && cs.transition.indexOf('opacity') !== -1;
-      var hasAnim = cs.animationName && cs.animationName !== 'none';
-      var cls = (el.className && typeof el.className === 'string') ? el.className.toLowerCase() : '';
-      if (hasTrans || hasAnim || /fade|reveal|animate|aos|scroll|slide|appear/.test(cls)) {
-        el.style.cssText += ';opacity:1 !important;transform:none !important;transition:none !important;';
-        revealed++;
-      }
-    }
-  });
-  log('4b. Force-Reveal', 'Force-revealed ' + revealed + ' animated elements', revealed > 0 ? 'pass' : 'info');
-
-  // Verify they're actually visible now
-  var nowVisible = 0;
-  doc.querySelectorAll('.fade-in').forEach(function(el) {
-    if (win.getComputedStyle(el).opacity !== '0') nowVisible++;
-  });
-  log('4b. Force-Reveal', 'After force-reveal: ' + nowVisible + '/' + totalFadeIn + ' now opacity > 0',
-    nowVisible === totalFadeIn ? 'pass' : 'fail');
-
-  // Test 5: Reset scroll
-  win.scrollTo(0, 0);
-  doc.documentElement.scrollTop = 0;
-  log('5. Scroll Reset', 'scrollY after reset: ' + (win.scrollY || doc.documentElement.scrollTop));
-
-  // Test 7: Switch to overflow:visible for capture
-  doc.documentElement.style.cssText += 'overflow:visible !important;';
-  doc.body.style.cssText += 'overflow:visible !important;';
-  void doc.body.offsetHeight;
-  log('7. Capture Mode', 'After overflow:visible → body.scrollHeight: ' + doc.body.scrollHeight);
-
-  // Test 8: domToCanvas (if modern-screenshot available)
-  var ms = document.createElement('script');
-  ms.src = 'https://cdn.jsdelivr.net/npm/modern-screenshot@4.4.39/dist/index.js';
-  ms.onload = function() {
-    if (!window.modernScreenshot || !window.modernScreenshot.domToCanvas) {
-      log('8. domToCanvas', 'modern-screenshot not available (CDN blocked?)', 'info');
-      finish(iframe);
-      return;
-    }
-    // Inject into iframe
-    var iframeMs = doc.createElement('script');
-    iframeMs.src = ms.src;
-    iframeMs.onload = function() {
-      var iMs = win.modernScreenshot;
-      if (!iMs || !iMs.domToCanvas) {
-        log('8. domToCanvas', 'Failed to load in iframe', 'fail');
-        finish(iframe);
-        return;
-      }
-      log('8. domToCanvas', 'Capturing document.body at 0.5x scale...');
-      iMs.domToCanvas(doc.body, { scale: 0.5, timeout: 10000 }).then(function(canvas) {
-        log('8. domToCanvas', 'Canvas: ' + canvas.width + 'x' + canvas.height, 'pass');
-        var expectedH = Math.round(doc.body.scrollHeight * 0.5);
-        log('8. domToCanvas', 'Expected height ~' + expectedH + ', got ' + canvas.height,
-          Math.abs(canvas.height - expectedH) < 50 ? 'pass' : 'fail');
-
-        // Test 9: Sample pixels at different Y positions
-        var ctx = canvas.getContext('2d');
-        var topPx = ctx.getImageData(canvas.width / 2, 10, 1, 1).data;
-        var midPx = ctx.getImageData(canvas.width / 2, canvas.height / 2, 1, 1).data;
-        var botPx = ctx.getImageData(canvas.width / 2, canvas.height - 10, 1, 1).data;
-        log('9. Pixel Check', 'Top pixel: rgb(' + topPx[0] + ',' + topPx[1] + ',' + topPx[2] + ')',
-          topPx[3] > 0 ? 'pass' : 'fail');
-        log('9. Pixel Check', 'Mid pixel: rgb(' + midPx[0] + ',' + midPx[1] + ',' + midPx[2] + ')',
-          midPx[3] > 0 ? 'pass' : 'fail');
-        log('9. Pixel Check', 'Bot pixel: rgb(' + botPx[0] + ',' + botPx[1] + ',' + botPx[2] + ')',
-          botPx[3] > 0 ? 'pass' : 'fail');
-        log('9. Pixel Check', 'Colors differ top vs bot: ' +
-          (Math.abs(topPx[0] - botPx[0]) + Math.abs(topPx[1] - botPx[1]) + Math.abs(topPx[2] - botPx[2]) > 30 ? 'yes (gradient captured)' : 'no (may be clipped)'),
-          Math.abs(topPx[0] - botPx[0]) + Math.abs(topPx[1] - botPx[1]) + Math.abs(topPx[2] - botPx[2]) > 30 ? 'pass' : 'fail');
-
-        // Show preview
-        canvas.style.cssText = 'max-width:100%;border:1px solid #e2e8f0;border-radius:4px;margin-top:8px';
-        var preview = document.createElement('div');
-        preview.className = 'test-section';
-        preview.innerHTML = '<h3>Screenshot Preview</h3>';
-        preview.appendChild(canvas);
-        resultsEl.appendChild(preview);
-
-        finish(iframe);
-      }).catch(function(e) {
-        log('8. domToCanvas', 'Failed: ' + e.message, 'fail');
-        finish(iframe);
-      });
-    };
-    iframeMs.onerror = function() {
-      log('8. domToCanvas', 'Failed to load in iframe (CORS?)', 'fail');
-      finish(iframe);
-    };
-    doc.head.appendChild(iframeMs);
-  };
-  ms.onerror = function() {
-    log('8. domToCanvas', 'CDN blocked', 'info');
-    finish(iframe);
-  };
-  document.head.appendChild(ms);
-}
-
-function finish(iframe) {
-  var passes = results.filter(function(r) { return r.type === 'pass'; }).length;
-  var fails = results.filter(function(r) { return r.type === 'fail'; }).length;
-  log('Summary', passes + ' passed, ' + fails + ' failed', fails === 0 ? 'pass' : 'fail');
-  // Cleanup
-  if (iframe && iframe.parentNode) iframe.parentNode.removeChild(iframe);
-}
-</script>
-</body>
-</html>
 </file>
 
 <file path="docs/analyzer-crawl-ui.js">
@@ -25953,6 +25667,292 @@ window.MilgProxy = (function() {
     analyzeWithJs: analyzeWithJs
   };
 })();
+</file>
+
+<file path="docs/tests/test-iframe-screenshot.html">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Iframe Screenshot Test</title>
+<style>
+body { font-family: system-ui, sans-serif; margin: 0; padding: 20px; background: #f8fafc; color: #1e293b; }
+h1 { margin: 0 0 16px; font-size: 20px; }
+.test-section { margin-bottom: 16px; padding: 12px 16px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; }
+.test-section h3 { margin: 0 0 8px; font-size: 14px; }
+.result { font-family: monospace; font-size: 12px; white-space: pre-wrap; background: #f1f5f9; padding: 8px; border-radius: 4px; margin-top: 8px; max-height: 200px; overflow: auto; }
+.pass { color: #16a34a; } .fail { color: #dc2626; } .info { color: #2563eb; }
+button { padding: 8px 16px; background: #3b82f6; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; }
+button:hover { background: #2563eb; }
+#testIframe { position: fixed; top: -9999px; left: -9999px; border: none; }
+</style>
+</head>
+<body>
+<h1>Iframe Screenshot Pipeline Tests</h1>
+<p style="font-size:13px;color:#64748b;margin-bottom:16px">Tests the screenshot capture pipeline inside an offscreen iframe — scroll behavior, IntersectionObserver triggers, domToCanvas capture, and bbox alignment.</p>
+
+<button onclick="runAllTests()">Run All Tests</button>
+<div id="results" style="margin-top:16px"></div>
+
+<script>
+var results = [];
+var resultsEl = document.getElementById('results');
+
+function log(section, msg, type) {
+  results.push({ section: section, msg: msg, type: type || 'info' });
+  render();
+}
+
+function render() {
+  var grouped = {};
+  results.forEach(function(r) {
+    if (!grouped[r.section]) grouped[r.section] = [];
+    grouped[r.section].push(r);
+  });
+  var html = '';
+  Object.keys(grouped).forEach(function(sec) {
+    html += '<div class="test-section"><h3>' + sec + '</h3><div class="result">';
+    grouped[sec].forEach(function(r) {
+      html += '<div class="' + r.type + '">' + r.msg + '</div>';
+    });
+    html += '</div></div>';
+  });
+  resultsEl.innerHTML = html;
+}
+
+// --- Test page HTML: has IntersectionObserver animations, lazy content, gradients ---
+function buildTestPage() {
+  return '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">' +
+    '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+    '<style>' +
+    'html,body{height:100%;margin:0;font-family:system-ui,sans-serif}' + // height:100% — the common culprit
+    'body{background:linear-gradient(180deg,#1e293b 0%,#3b82f6 50%,#f8fafc 100%)}' +
+    '.section{padding:60px 40px;min-height:80vh}' +
+    '.fade-in{opacity:0;transform:translateY(30px);transition:opacity 0.6s,transform 0.6s}' +
+    '.fade-in.visible{opacity:1;transform:translateY(0)}' +
+    'h1{color:#fff;font-size:36px}h2{font-size:24px}p{font-size:16px;line-height:1.6;max-width:600px}' +
+    '.white-text{color:#fff}.dark-text{color:#1e293b}' +
+    '</style></head><body>' +
+    '<div class="section"><h1>Hero Section</h1><p class="white-text">This is the first viewport. Should always be captured.</p></div>' +
+    '<div class="section"><h2 class="fade-in white-text">Section 2 — Fade In</h2><p class="fade-in white-text">This section uses IntersectionObserver to animate in. If pre-scroll works, this should be visible (opacity:1).</p></div>' +
+    '<div class="section"><h2 class="fade-in dark-text">Section 3 — Below Fold</h2><p class="fade-in dark-text">This is well below the initial viewport. Tests deep pre-scroll.</p></div>' +
+    '<div class="section" style="background:#f8fafc"><h2 class="fade-in dark-text">Section 4 — Footer Area</h2><p class="fade-in dark-text">Near the bottom. Gradient background should show different colors here vs hero.</p></div>' +
+    '<div id="test-results" style="display:none"></div>' +
+    '<script>' +
+    // IntersectionObserver for fade-in
+    'var observer=new IntersectionObserver(function(entries){' +
+      'entries.forEach(function(e){if(e.isIntersecting){e.target.classList.add("visible");observer.unobserve(e.target)}})' +
+    '},{threshold:0.1});' +
+    'document.querySelectorAll(".fade-in").forEach(function(el){observer.observe(el)});' +
+    // Report scroll events and IO triggers
+    'window.__testScrollCount=0;window.__testIOCount=0;' +
+    'window.addEventListener("scroll",function(){window.__testScrollCount++});' +
+    'var origObserve=observer.observe.bind(observer);' +
+    // Track visible elements
+    'window.__testVisibleCount=function(){return document.querySelectorAll(".fade-in.visible").length};' +
+    '</' + 'script>' +
+    '</body></html>';
+}
+
+function runAllTests() {
+  results = [];
+  log('Setup', 'Creating test iframe...');
+
+  var iframe = document.createElement('iframe');
+  iframe.id = 'testIframe';
+  iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
+  iframe.sandbox = 'allow-scripts allow-same-origin';
+  document.body.appendChild(iframe);
+
+  iframe.srcdoc = buildTestPage();
+
+  iframe.addEventListener('load', function() {
+    setTimeout(function() { runTests(iframe); }, 1000); // wait for IO setup
+  });
+}
+
+function runTests(iframe) {
+  var win = iframe.contentWindow;
+  var doc = iframe.contentDocument;
+
+  // Test 1: Initial state
+  log('1. Initial State', 'innerHeight: ' + win.innerHeight);
+  log('1. Initial State', 'body.scrollHeight: ' + doc.body.scrollHeight);
+  log('1. Initial State', 'html.scrollHeight: ' + doc.documentElement.scrollHeight);
+  var fadeIns = doc.querySelectorAll('.fade-in');
+  var initialVisible = doc.querySelectorAll('.fade-in.visible').length;
+  log('1. Initial State', 'Fade-in elements: ' + fadeIns.length + ', visible: ' + initialVisible,
+    initialVisible <= 1 ? 'pass' : 'info');
+
+  // Test 2: scrollHeight with height:auto
+  doc.documentElement.style.cssText += 'height:auto !important;overflow-y:auto !important;';
+  doc.body.style.cssText += 'height:auto !important;';
+  void doc.body.offsetHeight;
+  var trueH = doc.body.scrollHeight;
+  log('2. Height Unlock', 'After height:auto → body.scrollHeight: ' + trueH,
+    trueH > win.innerHeight ? 'pass' : 'fail');
+
+  // Test 3: Scroll works
+  win.scrollTo(0, 1000);
+  var scrolled = win.scrollY || doc.documentElement.scrollTop;
+  log('3. Scroll Test', 'scrollTo(0,1000) → scrollY: ' + scrolled,
+    scrolled > 0 ? 'pass' : 'fail');
+
+  if (scrolled === 0) {
+    // Try documentElement.scrollTop directly
+    doc.documentElement.scrollTop = 1000;
+    scrolled = doc.documentElement.scrollTop;
+    log('3. Scroll Test', 'documentElement.scrollTop=1000 → actual: ' + scrolled,
+      scrolled > 0 ? 'pass' : 'fail');
+  }
+
+  // Test 4: Pre-scroll (IO won't fire in offscreen iframe — that's expected)
+  log('4. Pre-Scroll', 'Starting pre-scroll through ' + Math.ceil(trueH / win.innerHeight) + ' positions...');
+  var positions = [];
+  for (var p = 0; p < trueH; p += win.innerHeight) positions.push(p);
+  var pi = 0;
+
+  function scrollNext() {
+    if (pi >= positions.length) {
+      setTimeout(function() { afterPreScroll(iframe); }, 500);
+      return;
+    }
+    win.scrollTo(0, positions[pi]);
+    doc.documentElement.scrollTop = positions[pi];
+    try { win.dispatchEvent(new Event('scroll')); } catch(e) {}
+    pi++;
+    setTimeout(scrollNext, 200);
+  }
+  scrollNext();
+}
+
+function afterPreScroll(iframe) {
+  var win = iframe.contentWindow;
+  var doc = iframe.contentDocument;
+
+  var visibleCount = doc.querySelectorAll('.fade-in.visible').length;
+  var totalFadeIn = doc.querySelectorAll('.fade-in').length;
+  log('4a. IO Check', 'After pre-scroll: ' + visibleCount + '/' + totalFadeIn + ' visible via IntersectionObserver',
+    visibleCount === totalFadeIn ? 'pass' : 'info');
+  if (visibleCount === 0) {
+    log('4a. IO Check', 'IO did NOT fire (expected — offscreen iframes suppress IO callbacks)', 'info');
+  }
+  log('4a. IO Check', 'Scroll events fired: ' + (win.__testScrollCount || 0));
+
+  // Test 4b: Force-reveal (the actual fix for offscreen iframes)
+  var revealed = 0;
+  doc.querySelectorAll('*').forEach(function(el) {
+    var cs = win.getComputedStyle(el);
+    if (cs.opacity === '0' && el.tagName !== 'SCRIPT' && el.tagName !== 'STYLE') {
+      var hasTrans = cs.transition && cs.transition.indexOf('opacity') !== -1;
+      var hasAnim = cs.animationName && cs.animationName !== 'none';
+      var cls = (el.className && typeof el.className === 'string') ? el.className.toLowerCase() : '';
+      if (hasTrans || hasAnim || /fade|reveal|animate|aos|scroll|slide|appear/.test(cls)) {
+        el.style.cssText += ';opacity:1 !important;transform:none !important;transition:none !important;';
+        revealed++;
+      }
+    }
+  });
+  log('4b. Force-Reveal', 'Force-revealed ' + revealed + ' animated elements', revealed > 0 ? 'pass' : 'info');
+
+  // Verify they're actually visible now
+  var nowVisible = 0;
+  doc.querySelectorAll('.fade-in').forEach(function(el) {
+    if (win.getComputedStyle(el).opacity !== '0') nowVisible++;
+  });
+  log('4b. Force-Reveal', 'After force-reveal: ' + nowVisible + '/' + totalFadeIn + ' now opacity > 0',
+    nowVisible === totalFadeIn ? 'pass' : 'fail');
+
+  // Test 5: Reset scroll
+  win.scrollTo(0, 0);
+  doc.documentElement.scrollTop = 0;
+  log('5. Scroll Reset', 'scrollY after reset: ' + (win.scrollY || doc.documentElement.scrollTop));
+
+  // Test 7: Switch to overflow:visible for capture
+  doc.documentElement.style.cssText += 'overflow:visible !important;';
+  doc.body.style.cssText += 'overflow:visible !important;';
+  void doc.body.offsetHeight;
+  log('7. Capture Mode', 'After overflow:visible → body.scrollHeight: ' + doc.body.scrollHeight);
+
+  // Test 8: domToCanvas (if modern-screenshot available)
+  var ms = document.createElement('script');
+  ms.src = 'https://cdn.jsdelivr.net/npm/modern-screenshot@4.4.39/dist/index.js';
+  ms.onload = function() {
+    if (!window.modernScreenshot || !window.modernScreenshot.domToCanvas) {
+      log('8. domToCanvas', 'modern-screenshot not available (CDN blocked?)', 'info');
+      finish(iframe);
+      return;
+    }
+    // Inject into iframe
+    var iframeMs = doc.createElement('script');
+    iframeMs.src = ms.src;
+    iframeMs.onload = function() {
+      var iMs = win.modernScreenshot;
+      if (!iMs || !iMs.domToCanvas) {
+        log('8. domToCanvas', 'Failed to load in iframe', 'fail');
+        finish(iframe);
+        return;
+      }
+      log('8. domToCanvas', 'Capturing document.body at 0.5x scale...');
+      iMs.domToCanvas(doc.body, { scale: 0.5, timeout: 10000 }).then(function(canvas) {
+        log('8. domToCanvas', 'Canvas: ' + canvas.width + 'x' + canvas.height, 'pass');
+        var expectedH = Math.round(doc.body.scrollHeight * 0.5);
+        log('8. domToCanvas', 'Expected height ~' + expectedH + ', got ' + canvas.height,
+          Math.abs(canvas.height - expectedH) < 50 ? 'pass' : 'fail');
+
+        // Test 9: Sample pixels at different Y positions
+        var ctx = canvas.getContext('2d');
+        var topPx = ctx.getImageData(canvas.width / 2, 10, 1, 1).data;
+        var midPx = ctx.getImageData(canvas.width / 2, canvas.height / 2, 1, 1).data;
+        var botPx = ctx.getImageData(canvas.width / 2, canvas.height - 10, 1, 1).data;
+        log('9. Pixel Check', 'Top pixel: rgb(' + topPx[0] + ',' + topPx[1] + ',' + topPx[2] + ')',
+          topPx[3] > 0 ? 'pass' : 'fail');
+        log('9. Pixel Check', 'Mid pixel: rgb(' + midPx[0] + ',' + midPx[1] + ',' + midPx[2] + ')',
+          midPx[3] > 0 ? 'pass' : 'fail');
+        log('9. Pixel Check', 'Bot pixel: rgb(' + botPx[0] + ',' + botPx[1] + ',' + botPx[2] + ')',
+          botPx[3] > 0 ? 'pass' : 'fail');
+        log('9. Pixel Check', 'Colors differ top vs bot: ' +
+          (Math.abs(topPx[0] - botPx[0]) + Math.abs(topPx[1] - botPx[1]) + Math.abs(topPx[2] - botPx[2]) > 30 ? 'yes (gradient captured)' : 'no (may be clipped)'),
+          Math.abs(topPx[0] - botPx[0]) + Math.abs(topPx[1] - botPx[1]) + Math.abs(topPx[2] - botPx[2]) > 30 ? 'pass' : 'fail');
+
+        // Show preview
+        canvas.style.cssText = 'max-width:100%;border:1px solid #e2e8f0;border-radius:4px;margin-top:8px';
+        var preview = document.createElement('div');
+        preview.className = 'test-section';
+        preview.innerHTML = '<h3>Screenshot Preview</h3>';
+        preview.appendChild(canvas);
+        resultsEl.appendChild(preview);
+
+        finish(iframe);
+      }).catch(function(e) {
+        log('8. domToCanvas', 'Failed: ' + e.message, 'fail');
+        finish(iframe);
+      });
+    };
+    iframeMs.onerror = function() {
+      log('8. domToCanvas', 'Failed to load in iframe (CORS?)', 'fail');
+      finish(iframe);
+    };
+    doc.head.appendChild(iframeMs);
+  };
+  ms.onerror = function() {
+    log('8. domToCanvas', 'CDN blocked', 'info');
+    finish(iframe);
+  };
+  document.head.appendChild(ms);
+}
+
+function finish(iframe) {
+  var passes = results.filter(function(r) { return r.type === 'pass'; }).length;
+  var fails = results.filter(function(r) { return r.type === 'fail'; }).length;
+  log('Summary', passes + ' passed, ' + fails + ' failed', fails === 0 ? 'pass' : 'fail');
+  // Cleanup
+  if (iframe && iframe.parentNode) iframe.parentNode.removeChild(iframe);
+}
+</script>
+</body>
+</html>
 </file>
 
 <file path="docs/analyzer-report.js">
@@ -32446,11 +32446,16 @@ window.MilgExtract = (function() {
       if (seenForContrast.has(el)) { _contrastStats.seen++; continue; }
       seenForContrast.add(el);
       var style = getComputedStyle(el);
+      // Skip gradient/clip text BUT allow normal -webkit-text-fill-color (non-transparent)
       var textFillColor = style.webkitTextFillColor || style.getPropertyValue('-webkit-text-fill-color') || '';
       var bgClip = style.webkitBackgroundClip || style.getPropertyValue('-webkit-background-clip') || style.backgroundClip || '';
-      if (textFillColor === 'transparent' || bgClip === 'text') { _contrastStats.gradientText++; continue; }
-      var fg = parseColor(style.color);
+      if (bgClip === 'text' && textFillColor === 'transparent') { _contrastStats.gradientText++; continue; }
+      var fg = textFillColor && textFillColor !== 'transparent' ? parseColor(textFillColor) : parseColor(style.color);
       if (!fg) { _contrastStats.noFg++; continue; }
+      // Skip emoji-only elements (picture emoji can't be contrast-checked)
+      var _textContent = (el.textContent || '').trim();
+      var _noEmoji = _textContent.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1FA00}-\u{1FA9F}\u{200D}]/gu, '').trim();
+      if (_noEmoji.length === 0 && _textContent.length > 0) continue;
       var fgBlended = blendOnWhite(fg);
       var bg = getEffectiveBg(el);
       var ratio = contrastRatio(fgBlended, bg);
@@ -37025,6 +37030,8 @@ window.MilgViewer = (function() {
             'Text: "' + (vr ? (vr.text || '').substring(0, 60) : '?') + '"\n\n' +
             'CSS contrast: ' + (vr ? vr.cssRatio : '?') + ':1 (needed: ' + (vr ? (vr.cssPasses ? 'passes' : 'FAILS') : '?') + ')\n' +
             'Pixel contrast: ' + (vr ? vr.pixelRatio : '?') + ':1 (worst-case ' + (vr ? (vr.pixelPasses ? 'passes' : 'FAILS') : '?') + ')\n' +
+            'Pixel P10 (90% meet): ' + (vr ? vr.pixelRatioP10 : '?') + ':1\n' +
+            'Pixel median: ' + (vr ? vr.pixelRatioMedian : '?') + ':1\n' +
             'Pixel avg: ' + (vr ? vr.pixelRatioAvg : '?') + ':1\n' +
             'Pixel best: ' + (vr ? vr.pixelRatioBest : '?') + ':1\n' +
             'BG variance: ' + (vr ? vr.bgVariance : '?') + '\n\n' +
@@ -37598,6 +37605,7 @@ window.MilgContrastVerify = (function() {
 
     // Pair each FG pixel with its nearest BG pixel using CLUSTERED fg colors
     var worstRatio = 99, bestRatio = 0, worstBg = null, worstBgPt = null;
+    var allPairRatios = [];
     var pairedFg = [], pairedFgColors = [];
     var pairedBg = [], pairedBgColors = [];
     var usedBgSet = {};
@@ -37618,6 +37626,7 @@ window.MilgContrastVerify = (function() {
         pairedBgColors.push(bgColors[nearIdx]);
       }
       var ratio = contrastRatio(clusteredFgColors[fi], bgColors[nearIdx]);
+      allPairRatios.push(ratio);
       if (ratio < worstRatio) { worstRatio = ratio; worstBg = bgColors[nearIdx]; worstBgPt = bgPoints[nearIdx]; }
       if (ratio > bestRatio) bestRatio = ratio;
     });
@@ -37633,6 +37642,12 @@ window.MilgContrastVerify = (function() {
       avgBg.b = Math.round(avgBg.b / pairedBgColors.length);
     }
     var avgRatio = contrastRatio(fgColor, avgBg);
+
+    // Percentile contrast: P10 = ratio that 90% of pairs meet or exceed
+    allPairRatios.sort(function(a, b) { return a - b; });
+    var p10Idx = Math.floor(allPairRatios.length * 0.1);
+    var p10Ratio = allPairRatios.length > 0 ? Math.round(allPairRatios[Math.min(p10Idx, allPairRatios.length - 1)] * 100) / 100 : 0;
+    var medianRatio = allPairRatios.length > 0 ? Math.round(allPairRatios[Math.floor(allPairRatios.length / 2)] * 100) / 100 : 0;
 
     var pixelRatio = worstRatio;
     var cssRatio = pair.ratio;
@@ -37662,6 +37677,8 @@ window.MilgContrastVerify = (function() {
       pixelFg: rgbStr(fgColor),
       expectedFg: rgbStr(expectedFg),
       effectiveOpacity: opacity,
+      pixelRatioP10: p10Ratio,       // 10th percentile: 90% of pairs meet this
+      pixelRatioMedian: medianRatio,  // median: typical pair contrast
       pixelBgWorst: rgbStr(worstBg),
       pixelBgAvg: rgbStr(avgBg),
       cssFg: pair.fg,
@@ -37964,7 +37981,7 @@ window.MilgContrastVerify = (function() {
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v31.4</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v31.5</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 

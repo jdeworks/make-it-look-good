@@ -326,6 +326,7 @@ window.MilgContrastVerify = (function() {
 
     // Pair each FG pixel with its nearest BG pixel using CLUSTERED fg colors
     var worstRatio = 99, bestRatio = 0, worstBg = null, worstBgPt = null;
+    var allPairRatios = [];
     var pairedFg = [], pairedFgColors = [];
     var pairedBg = [], pairedBgColors = [];
     var usedBgSet = {};
@@ -346,6 +347,7 @@ window.MilgContrastVerify = (function() {
         pairedBgColors.push(bgColors[nearIdx]);
       }
       var ratio = contrastRatio(clusteredFgColors[fi], bgColors[nearIdx]);
+      allPairRatios.push(ratio);
       if (ratio < worstRatio) { worstRatio = ratio; worstBg = bgColors[nearIdx]; worstBgPt = bgPoints[nearIdx]; }
       if (ratio > bestRatio) bestRatio = ratio;
     });
@@ -361,6 +363,12 @@ window.MilgContrastVerify = (function() {
       avgBg.b = Math.round(avgBg.b / pairedBgColors.length);
     }
     var avgRatio = contrastRatio(fgColor, avgBg);
+
+    // Percentile contrast: P10 = ratio that 90% of pairs meet or exceed
+    allPairRatios.sort(function(a, b) { return a - b; });
+    var p10Idx = Math.floor(allPairRatios.length * 0.1);
+    var p10Ratio = allPairRatios.length > 0 ? Math.round(allPairRatios[Math.min(p10Idx, allPairRatios.length - 1)] * 100) / 100 : 0;
+    var medianRatio = allPairRatios.length > 0 ? Math.round(allPairRatios[Math.floor(allPairRatios.length / 2)] * 100) / 100 : 0;
 
     var pixelRatio = worstRatio;
     var cssRatio = pair.ratio;
@@ -390,6 +398,8 @@ window.MilgContrastVerify = (function() {
       pixelFg: rgbStr(fgColor),
       expectedFg: rgbStr(expectedFg),
       effectiveOpacity: opacity,
+      pixelRatioP10: p10Ratio,       // 10th percentile: 90% of pairs meet this
+      pixelRatioMedian: medianRatio,  // median: typical pair contrast
       pixelBgWorst: rgbStr(worstBg),
       pixelBgAvg: rgbStr(avgBg),
       cssFg: pair.fg,
