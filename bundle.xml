@@ -33375,7 +33375,18 @@ window.MilgIframe = (function() {
                 'var r=Math.floor(pe.idx/256),g=pe.idx%256;' +
                 'var c="rgb("+r+","+g+",0)";' +
                 'pe.el.style.setProperty("color",c,"important");' +
-                'pe.el.style.setProperty("-webkit-text-fill-color",c,"important")' +
+                'pe.el.style.setProperty("-webkit-text-fill-color",c,"important");' +
+                // Force full visibility on element + ancestors so encoded color renders cleanly
+                'pe.el.style.setProperty("opacity","1","important");' +
+                'pe.el.style.setProperty("visibility","visible","important");' +
+                'var _anc=pe.el.parentElement;' +
+                'while(_anc&&_anc!==document.documentElement){' +
+                  'var _as=getComputedStyle(_anc);' +
+                  'if(_as.opacity!=="1")_anc.style.setProperty("opacity","1","important");' +
+                  'if(_as.visibility==="hidden")_anc.style.setProperty("visibility","visible","important");' +
+                  'if(_as.display==="none")_anc.style.setProperty("display","block","important");' +
+                  '_anc=_anc.parentElement' +
+                '}' +
               '});' +
               'void document.body.offsetHeight;' +
               // Safety timeout: if mask takes >8s, send without it
@@ -33679,7 +33690,7 @@ window.MilgIframe = (function() {
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v29</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v29.1</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -34257,9 +34268,9 @@ window.MilgContrastVerify = (function() {
           // Per-element mask: each element has a unique color rgb(R,G,0)
           // where pairIndex = R*256+G. White (255,255,255) = background.
           var mr = maskData[idx], mg = maskData[idx + 1], mb = maskData[idx + 2];
-          var isWhite = mr > 250 && mg > 250 && mb > 250;
-          if (!isWhite && mb < 10) {
-            // Encoded pair color — decode index
+          var isWhite = mr > 245 && mg > 245 && mb > 245;
+          if (!isWhite && mb < 30) {
+            // Encoded pair color — decode index (B≈0 for encoded, may be slightly >0 from AA)
             var maskIdx = mr * 256 + mg;
             isText = (maskIdx === pairIndex);
           }

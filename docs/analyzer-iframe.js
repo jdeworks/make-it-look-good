@@ -185,7 +185,18 @@ window.MilgIframe = (function() {
                 'var r=Math.floor(pe.idx/256),g=pe.idx%256;' +
                 'var c="rgb("+r+","+g+",0)";' +
                 'pe.el.style.setProperty("color",c,"important");' +
-                'pe.el.style.setProperty("-webkit-text-fill-color",c,"important")' +
+                'pe.el.style.setProperty("-webkit-text-fill-color",c,"important");' +
+                // Force full visibility on element + ancestors so encoded color renders cleanly
+                'pe.el.style.setProperty("opacity","1","important");' +
+                'pe.el.style.setProperty("visibility","visible","important");' +
+                'var _anc=pe.el.parentElement;' +
+                'while(_anc&&_anc!==document.documentElement){' +
+                  'var _as=getComputedStyle(_anc);' +
+                  'if(_as.opacity!=="1")_anc.style.setProperty("opacity","1","important");' +
+                  'if(_as.visibility==="hidden")_anc.style.setProperty("visibility","visible","important");' +
+                  'if(_as.display==="none")_anc.style.setProperty("display","block","important");' +
+                  '_anc=_anc.parentElement' +
+                '}' +
               '});' +
               'void document.body.offsetHeight;' +
               // Safety timeout: if mask takes >8s, send without it

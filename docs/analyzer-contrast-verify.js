@@ -184,9 +184,9 @@ window.MilgContrastVerify = (function() {
           // Per-element mask: each element has a unique color rgb(R,G,0)
           // where pairIndex = R*256+G. White (255,255,255) = background.
           var mr = maskData[idx], mg = maskData[idx + 1], mb = maskData[idx + 2];
-          var isWhite = mr > 250 && mg > 250 && mb > 250;
-          if (!isWhite && mb < 10) {
-            // Encoded pair color — decode index
+          var isWhite = mr > 245 && mg > 245 && mb > 245;
+          if (!isWhite && mb < 30) {
+            // Encoded pair color — decode index (B≈0 for encoded, may be slightly >0 from AA)
             var maskIdx = mr * 256 + mg;
             isText = (maskIdx === pairIndex);
           }
