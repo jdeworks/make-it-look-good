@@ -201,16 +201,18 @@ window.MilgIframe = (function() {
               // Capture one full-page mask per layer
               'var _li=0;' +
               'function _nextLayer(){' +
-                'if(_li>=_layers.length){console.log("[iframe-ss] All mask layers done");_sendFinal(null);return}' +
+                'if(_li>=_layers.length){console.log("[iframe-ss] All "+_layers.length+" mask layers done");_sendFinal(null);return}' +
                 'var layer=_layers[_li];_li++;' +
-                '_prog("Text mask layer "+_li+"/"+_layers.length+"...");' +
+                '_prog("Text mask layer "+_li+"/"+_layers.length+" ("+layer.length+" elements)...");' +
+                'console.log("[iframe-ss] Layer "+_li+": "+layer.length+" elements");' +
                 // Set layer elements to black
                 'layer.forEach(function(pe){' +
                   'pe.el.style.setProperty("color","#000","important");' +
                   'pe.el.style.setProperty("-webkit-text-fill-color","#000","important")' +
                 '});' +
                 'void document.body.offsetHeight;' +
-                'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:8000}).then(function(mc){' +
+                'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:12000}).then(function(mc){' +
+                  'console.log("[iframe-ss] Layer "+_li+" captured: "+mc.width+"x"+mc.height);' +
                   'var mCtx=mc.getContext("2d",{willReadFrequently:true});' +
                   // For each element in this layer, read its bbox from the mask
                   'layer.forEach(function(pe){' +
@@ -239,9 +241,9 @@ window.MilgIframe = (function() {
                 '}).catch(function(e){console.warn("[iframe-ss] Layer "+_li+" failed:",e);setTimeout(_nextLayer,0)})' +
               '}' +
               'var _maskDone=false;' +
-              'var _maskTimer=setTimeout(function(){if(!_maskDone){_maskDone=true;console.warn("[iframe-ss] Masks timed out");_sendFinal(null)}},20000);' +
+              'var _maskTimer=setTimeout(function(){if(!_maskDone){_maskDone=true;console.warn("[iframe-ss] Masks timed out after 45s");_sendFinal(null)}},45000);' +
               'var _origSendFinal=_sendFinal;' +
-              '_sendFinal=function(m){if(_maskDone)return;_maskDone=true;clearTimeout(_maskTimer);_origSendFinal(m)};' +
+              '_sendFinal=function(m){if(_maskDone)return;_maskDone=true;clearTimeout(_maskTimer);console.log("[iframe-ss] Sending results (mask: "+(m?"yes":"no")+")");_origSendFinal(m)};' +
               '_nextLayer()' +
             '}).catch(function(e){console.warn("[iframe-ss] capture failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")})' +
           '};' +
@@ -485,7 +487,7 @@ window.MilgIframe = (function() {
           structure: { totalElements: 0, darkModeClasses: false, responsiveClasses: false, tailwindDetected: false, cssFramework: 'unknown' }
         });
       }
-    }, captureScreenshots ? 40000 : (isFullDoc ? 15000 : 8000));
+    }, captureScreenshots ? 70000 : (isFullDoc ? 15000 : 8000));
   }
 
   return {
