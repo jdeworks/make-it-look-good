@@ -275,6 +275,45 @@ function buildTestPage() {
       '<div class="cell" style="border-color:#e2e8f0"><div class="cell-label" style="color:#94a3b8">btn+TW-trans target</div><button class="g9-tw-btn g11-target" style="color:#000;-webkit-text-fill-color:#000" data-test="g11-tw-btn">Mask TW btn</button></div>' +
     '</div>' +
 
+    // === Group 13: Next.js error page pattern (confirmed reproducer) ===
+    // URL test showed even Next.js error page H2 fails with mask!
+    // Multiple <style> blocks + specific layout patterns
+    '.g13-wrap { font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Oxygen, Ubuntu, sans-serif; }' +
+    '.g13-centered { height: 300px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; }' +
+    '.g13-inline-wrap { display: inline-block; }' +
+    '.g13-extra-style { color: #000; font-size: 14px; font-weight: 400; line-height: 49px; margin: 0; }' +
+    '.g13-extra-h1 { display: inline-block; margin: 0 20px 0 0; padding: 0 23px 0 0; font-size: 24px; font-weight: 500; vertical-align: top; line-height: 49px; border-right: 1px solid rgba(0,0,0,.3); }' +
+    '</style>' +
+    // Second style block (Next.js injects multiple <style> tags)
+    '<style>body { color: #000; background: #fff; }</style>' +
+    // Third style block
+    '<style>.g13-third-rule { color: #000; font-weight: 600; }</style>' +
+
+    '<h3>Group 13: Next.js Error Page Pattern (confirmed reproducer)</h3>' +
+    '<div class="g13-wrap">' +
+      // Exact Next.js error page layout: centered flex with inline-block wrapper
+      '<div class="g13-centered" style="background:#000">' +
+        '<div>' +
+          '<h1 class="g13-extra-h1" style="color:#fff" data-test="g13-nextjs-h1">500</h1>' +
+          '<div class="g13-inline-wrap">' +
+            '<h2 class="g13-extra-style" style="color:#fff" data-test="g13-nextjs-h2">Application error: test text</h2>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      // Same elements outside the flex layout
+      '<div style="padding:20px">' +
+        '<h2 class="g13-extra-style" data-test="g13-flat-h2">Same H2 outside flex</h2>' +
+        '<h2 style="color:#000;font-size:14px;margin:0" data-test="g13-inline-h2">H2 inline style only</h2>' +
+        '<p style="color:#000" data-test="g13-plain-p">Plain paragraph</p>' +
+        '<span class="g13-third-rule" data-test="g13-multi-style">From third style block</span>' +
+      '</div>' +
+      '<div style="display:flex;align-items:center;justify-content:center;height:100px">' +
+        '<span style="color:#000" data-test="g13-flex-span">Flex centered span</span>' +
+      '</div>' +
+    '</div>' +
+    // Re-open style tag for remaining groups
+    '<style>' +
+
     // === Group 12: Realistic tall page with sticky nav + bg images (bbox shift test) ===
     '<h3>Group 12: Tall Page Layout (sticky nav, hero bg, sections — tests bbox shift when mask applied)</h3>' +
     '<nav style="position:sticky;top:0;z-index:100;background:#1e293b;padding:12px 20px;display:flex;gap:16px;align-items:center">' +
