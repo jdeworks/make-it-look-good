@@ -170,6 +170,7 @@ window.MilgReport = (function() {
       html += '<h3>' + (categoryIcons[cat.icon] || '') + ' ' + cat.label + '</h3>';
 
       cat.findings.forEach(function(f) {
+        if (f.severity === 'pass') return; // pass findings only show in screenshot viewer
         var hasBboxes = f.locator && f.locator.bboxes && f.locator.bboxes.length > 0;
         html += '<div class="report-finding severity-' + f.severity + '"' + (hasBboxes ? ' data-finding-idx="' + _bboxFindingIdx + '"' : '') + '>';
         html += '<div class="finding-header">';

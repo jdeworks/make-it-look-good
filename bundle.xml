@@ -22140,6 +22140,602 @@ function scoreVisualConsistency(data) {
 })();
 </file>
 
+<file path="docs/scoring/spacing.js">
+// Scoring Module: Spacing & Layout
+// Weight: 15%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreSpacing(data) {
+  var profile = S.getProfile(data);
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+
+  // 4px grid adherence — check if spacing values are multiples of 4
+  checks++;
+  var allSpacing = [].concat(data.spacing.paddings || [], data.spacing.margins || [], data.spacing.gaps || []);
+  var onGrid = 0;
+  var offGrid = 0;
+  allSpacing.forEach(function(s) {
+    var px = parseFloat(s.value);
+    if (isNaN(px) || px === 0) return;
+    if (Math.round(px) % 4 === 0) onGrid += s.count;
+    else offGrid += s.count;
+  });
+  var gridRatio = (onGrid + offGrid) > 0 ? onGrid / (onGrid + offGrid) : 1;
+  if (gridRatio >= 0.7) {
+    passed++;
+    if (gridRatio < 0.85) {
+      findings.push({
+        severity: 'info',
+        title: Math.round(gridRatio * 100) + '% of spacing values on 4px grid',
+        detail: 'Good adherence — a few values could be rounded to the nearest 4px increment',
+        fix: 'Use Tailwind spacing utilities (p-1=4px, p-2=8px, p-3=12px, p-4=16px, ...)',
+        presetRef: null
+      });
+    }
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'Only ' + Math.round(gridRatio * 100) + '% of spacing is on a 4px grid',
+      detail: 'Inconsistent spacing makes layouts feel unpolished',
+      fix: 'Align spacing to 4px increments: 4, 8, 12, 16, 24, 32, 48, 64px',
+      presetRef: 'All presets use Tailwind spacing scale (4px base unit)', source: 'Material Design spacing — https://m3.material.io/foundations/layout/applying-layout'
+    });
+  }
+
+  // Content max-width
+  checks++;
+  var maxW = parseFloat(data.spacing.maxContentWidth);
+  if (maxW > 0 && maxW <= 1500) {
+    passed++;
+  } else if (maxW > 1500) {
+    findings.push({
+      severity: 'warning',
+      title: 'Content width is ' + Math.round(maxW) + 'px (recommended: 1200–1440px)',
+      detail: 'Very wide content is harder to scan and looks stretched on large monitors',
+      fix: 'Add a max-width container. In Tailwind: max-w-7xl (1280px) or max-w-screen-xl',
+      presetRef: 'Dashboard presets use max-w-7xl containers',
+      source: 'NNGroup — https://www.nngroup.com/articles/utilize-available-screen-space/'
+    });
+  } else {
+    passed++; // No max width data or narrow — fine
+  }
+
+  // Mobile padding >= 16px
+  checks++;
+  var bodyPad = parseFloat(data.spacing.bodyPaddingHorizontal);
+  if (bodyPad >= 14 || isNaN(bodyPad) || bodyPad === 0) {
+    passed++; // 0 is OK if inner containers have padding
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'Body horizontal padding is ' + bodyPad + 'px (minimum: 16px)',
+      detail: 'Content touching screen edges feels cramped on mobile',
+      fix: 'Add px-4 (16px) padding to the body or main container',
+      presetRef: null,
+      source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout'
+    });
+  }
+
+  // Adjacent interactive element spacing (buttons/links too close together)
+  var adjacentIssues = (data.interaction && data.interaction.adjacentIssues) || [];
+  if (adjacentIssues.length > 0) {
+    checks++;
+    var minSpacing = profile.targetSpacing;
+    var touching = adjacentIssues.filter(function(a) { return a.gap < 2; });
+    var tooClose = adjacentIssues.filter(function(a) { return a.gap >= 2 && a.gap < minSpacing; });
+
+    touching.forEach(function(a) {
+      var labelA = a.textA || a.selectorA || '?';
+      var labelB = a.textB || a.selectorB || '?';
+      var selectorHint = (a.selectorA || a.selectorB) ? ' — ' + (a.selectorA || '') : '';
+      findings.push({
+        severity: 'error',
+        title: 'Interactive elements touching (' + a.gap + 'px gap)',
+        detail: labelA + ' and ' + labelB + ' (' + a.direction + ')' + selectorHint,
+        fix: 'Add at least ' + minSpacing + 'px gap between interactive elements. In Tailwind: gap-' + (minSpacing / 4) + ' on the parent flex/grid container.',
+        presetRef: 'Button presets use gap-2 (8px) or gap-3 (12px) between buttons',
+        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+        locator: { selector: a.selectorA || a.selectorB || '', text: a.textA || '', bboxes: [a.bboxA, a.bboxB].filter(Boolean) }
+      });
+    });
+
+    tooClose.forEach(function(a) {
+      var labelA = a.textA || a.selectorA || '?';
+      var labelB = a.textB || a.selectorB || '?';
+      var selectorHint = (a.selectorA || a.selectorB) ? ' — ' + (a.selectorA || '') : '';
+      findings.push({
+        severity: 'warning',
+        title: 'Interactive elements only ' + a.gap + 'px apart (recommended: ≥' + minSpacing + 'px)',
+        detail: labelA + ' and ' + labelB + ' (' + a.direction + ')' + selectorHint,
+        fix: 'Increase gap to at least ' + minSpacing + 'px to prevent mis-taps. In Tailwind: gap-' + (minSpacing / 4) + ' on the parent.',
+        presetRef: null,
+        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+        locator: { selector: a.selectorA || a.selectorB || '', text: a.textA || '', bboxes: [a.bboxA, a.bboxB].filter(Boolean) }
+      });
+    });
+
+    if (touching.length === 0 && tooClose.length === 0) passed++;
+  }
+
+  // Element overflow
+  var overflows = (data.layout && data.layout.overflowElements) || 0;
+  if (overflows > 0) {
+    checks++;
+    findings.push({
+      severity: overflows > 5 ? 'warning' : 'info',
+      title: overflows + ' element(s) with horizontal overflow',
+      detail: 'Content extends beyond its container, causing horizontal scroll or clipping',
+      fix: 'Add overflow-x: hidden or overflow: auto to the container element. Check for fixed-width children inside flexible containers.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
+    });
+  } else {
+    checks++;
+    passed++;
+  }
+
+  // Negative margins
+  var negMargins = (data.spacing && data.spacing.negativeMargins) || 0;
+  if (negMargins > 5) {
+    findings.push({
+      severity: 'info',
+      title: negMargins + ' element(s) use negative margins',
+      detail: 'Negative margins can cause overlapping content and layout fragility',
+      fix: 'Consider using CSS grid/flexbox gap, transform, or absolute positioning instead of negative margins where possible.',
+      presetRef: null,
+      source: 'CSS best practices'
+    });
+  }
+
+  // Container padding consistency
+  var cPaddings = (data.spacing && data.spacing.containerPaddings) || [];
+  if (cPaddings.length >= 4) {
+    findings.push({
+      severity: 'info',
+      title: cPaddings.length + ' distinct container padding values',
+      detail: 'Values: ' + cPaddings.slice(0, 5).map(function(p) { return p.value + ' (' + p.count + 'x)'; }).join(', '),
+      fix: 'Standardize container padding to 2-3 values. In Tailwind: p-4 (16px), p-6 (24px), p-8 (32px).',
+      presetRef: null,
+      source: 'Gestalt proximity — https://lawsofux.com/law-of-proximity/'
+    });
+  }
+
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+  return { score: score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Spacing & Layout', icon: 'spacing' };
+}
+
+
+  S.register("spacing", scoreSpacing, 15, "Spacing & Layout", "spacing");
+})();
+</file>
+
+<file path="docs/scoring/touch.js">
+// Scoring Module: Touch & Interaction
+// Weight: 15%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreTouchTargets(data) {
+  var profile = S.getProfile(data);
+  var findings = [];
+  var targets = data.interaction.touchTargets || [];
+
+  // Viewport-aware thresholds, adjusted by profile:
+  var vw = (data.meta && data.meta.viewportWidth) || 1280;
+  var isDesktop = vw >= 1024;
+  var minSize = isDesktop ? profile.touchTargetDesktop : profile.touchTarget;
+  var warnSize = isDesktop ? profile.touchTargetDesktopWarn : profile.touchTarget;
+  var context = isDesktop ? 'desktop' : 'touch/mobile';
+  var issueCount = 0;
+
+  targets.forEach(function(t) {
+    var w = t.width, h = t.height;
+    var minDim = Math.min(w, h);
+
+    // WCAG 2.5.8 exception: inline text links are exempt from target size requirements.
+    // Detect by checking if element is an <a> without button-like styling (no bg, no border, no padding > 4px)
+    var isInlineLink = t.element === 'a' && !t.isButton;
+
+    if (minDim < minSize) {
+      issueCount++;
+      var ctx = t.linkContext || (isInlineLink ? 'inline' : 'button');
+
+      // On desktop, determine severity based on how far below threshold:
+      // - ≥20px (just 4px short of 24px) → info (barely noticeable with mouse)
+      // - ≥16px → warning (small but usable with mouse)
+      // - <16px → error (genuinely too small even for mouse)
+      // On mobile, all failures are errors (fingers need the full 44px)
+      function desktopSeverity(dim) {
+        if (!isDesktop) return 'error';
+        if (dim >= 20) return 'info';
+        if (dim >= 16) return 'warning';
+        return 'error';
+      }
+
+      if (ctx === 'inline') {
+        // True inline text links (inside <p>, <blockquote>, etc.) — WCAG 2.5.8 exempt
+        findings.push({
+          severity: 'info',
+          title: 'Inline text link ' + w + '×' + h + 'px — exempt from target size',
+          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+          fix: 'Inline text links in paragraphs are exempt per WCAG 2.5.8. Consider adding padding for better usability.',
+          source: 'WCAG 2.2 §2.5.8 inline exception — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
+        });
+      } else if (ctx === 'footer') {
+        // Footer links — relaxed but still error below hard minimum (16px)
+        var footerHardMin = isDesktop ? 16 : 24;
+        findings.push({
+          severity: minDim < footerHardMin ? 'error' : 'info',
+          title: 'Footer link ' + w + '×' + h + 'px' + (minDim < footerHardMin ? ' (too small even for footer — min ' + footerHardMin + 'px)' : ' (below ' + minSize + 'px, relaxed for footer)'),
+          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+          fix: minDim < footerHardMin
+            ? 'Even footer links need at least ' + footerHardMin + 'px height. Add padding to increase click area.'
+            : 'Footer links have relaxed sizing expectations. Consider padding for touch accessibility.',
+          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
+        });
+      } else if (ctx === 'nav') {
+        // Navigation links — should be properly sized
+        var navSev = desktopSeverity(minDim);
+        findings.push({
+          severity: navSev,
+          title: 'Nav link ' + w + '×' + h + 'px (minimum: ' + minSize + 'px)',
+          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+          fix: 'Navigation links need adequate sizing. Add padding: py-2 px-4 (min-height ' + minSize + 'px).',
+          presetRef: 'Navigation presets use min-height 44px on nav links',
+          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
+        });
+      } else {
+        // Buttons, styled links, other interactive elements
+        var sev = desktopSeverity(minDim);
+        findings.push({
+          severity: sev,
+          title: t.element + ' is ' + w + '×' + h + 'px (' + (isDesktop ? 'desktop min: ' + minSize + 'px' : 'touch min: ' + minSize + 'px') + ')',
+          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+          fix: isDesktop
+            ? (sev === 'info'
+              ? 'Slightly below ' + minSize + 'px desktop minimum — usable with mouse but consider adding padding.'
+              : 'Click targets need at least ' + minSize + '×' + minSize + 'px. Increase padding or min-height/min-width.')
+            : 'Touch targets need ' + minSize + '×' + minSize + 'px minimum. Add min-h-[' + minSize + 'px] min-w-[' + minSize + 'px] or increase padding.',
+          presetRef: isDesktop ? null : 'Button presets use py-3 px-6 (48px height)',
+          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
+        });
+      }
+    } else if (minDim < warnSize && isDesktop && !isInlineLink) {
+      findings.push({
+        severity: 'warning',
+        title: t.element + ' is ' + w + '×' + h + 'px (recommended for desktop: ≥' + warnSize + 'px)',
+        detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+        fix: 'While ' + minSize + 'px meets minimum, ' + warnSize + 'px+ improves click comfort. Consider adding padding.',
+        presetRef: null,
+        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+        locator: { selector: t.selector, text: t.text || '' }
+      });
+    }
+  });
+
+  // Also flag targets that pass the current threshold but would fail on touch
+  if (isDesktop && targets.length > 0) {
+    var touchMin = profile.touchTarget;
+    var touchFails = targets.filter(function(t) { return Math.min(t.width, t.height) < touchMin; });
+    if (touchFails.length > 0) {
+      findings.push({
+        severity: 'info',
+        title: touchFails.length + ' element(s) below ' + touchMin + 'px touch target (analyzed at ' + vw + 'px desktop viewport)',
+        detail: 'These meet desktop minimums but would fail on touch devices. Consider responsive sizing if the site is also used on mobile.',
+        fix: 'For responsive touch support: add touch-target sizing at mobile breakpoints, e.g. sm:min-h-[' + touchMin + 'px]',
+        presetRef: null,
+        source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout'
+      });
+    }
+  }
+
+  // Note when responsive CSS exists that might fix touch targets on mobile
+  if (isDesktop && data.interaction && data.interaction.hasResponsiveTargetCSS) {
+    findings.push({
+      severity: 'info',
+      title: 'Responsive CSS detected that may adjust target sizes at mobile breakpoints',
+      detail: 'This site has media queries with height/padding rules. Touch targets may be correctly sized on mobile devices.',
+      fix: 'Verify by testing at mobile viewport. Use the viewport selector to re-scan at 375px width.',
+      presetRef: null
+    });
+  }
+
+  // Transitions / animation duration
+  var transitions = data.interaction.transitions || [];
+  transitions.forEach(function(t) {
+    var ms = parseFloat(t) * 1000;
+    if (ms > 500) {
+      findings.push({
+        severity: 'warning',
+        title: 'Transition duration ' + ms + 'ms exceeds 500ms maximum',
+        detail: 'Users perceive animations longer than 500ms as sluggish',
+        fix: 'Keep transitions under 500ms. Enter: 200–300ms, Exit: 150–200ms. In Tailwind: duration-200 or duration-300',
+        presetRef: null,
+        source: 'NNGroup animation — https://www.nngroup.com/articles/animation-usability/'
+      });
+    }
+  });
+
+  // Event listener pattern findings
+  var lPatterns = (data.interaction && data.interaction.listenerPatterns) || {};
+  if (lPatterns.toggleNoAria > 0) {
+    findings.push({
+      severity: 'warning',
+      title: lPatterns.toggleNoAria + ' toggle handler(s) without ARIA state management',
+      detail: 'Click handlers toggle CSS classes but don\'t update aria-expanded or other ARIA states. Screen readers won\'t know the element\'s state changed.',
+      fix: 'Add setAttribute(\'aria-expanded\', isOpen) alongside classList.toggle() in toggle handlers.',
+      presetRef: null,
+      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
+    });
+  }
+  if (lPatterns.navigationInButton > 0) {
+    findings.push({
+      severity: 'info',
+      title: lPatterns.navigationInButton + ' button(s) trigger page navigation',
+      detail: 'Buttons with click handlers that change location.href should typically be <a> elements for proper semantics and accessibility.',
+      fix: 'Use <a href="..."> for navigation instead of <button> with JavaScript location change.',
+      presetRef: null,
+      source: 'HTML spec — https://html.spec.whatwg.org/multipage/text-level-semantics.html#the-a-element'
+    });
+  }
+
+  // Score: deduct per error, less per warning
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var totalTargets = targets.length || 0;
+  var checks = totalTargets;
+  var passed = Math.max(0, totalTargets - errors - warnings);
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 3));
+  var na = totalTargets === 0 && transitions.length === 0;
+  return { score: na ? 100 : score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Touch & Interaction', icon: 'touch', notApplicable: na };
+}
+
+
+  S.register("touch", scoreTouchTargets, 15, "Touch & Interaction", "touch");
+})();
+</file>
+
+<file path="docs/scoring/typography.js">
+// Scoring Module: Typography
+// Weight: 15%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreTypography(data) {
+  var profile = S.getProfile(data);
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+
+  // Body font size check against profile minimum
+  checks++;
+  var bodySize = parseFloat(data.typography.bodyFontSize);
+  if (bodySize >= profile.bodyFontMin) {
+    passed++;
+  } else if (bodySize > 0) {
+    findings.push({
+      severity: 'error',
+      title: 'Body font size is ' + bodySize + 'px (minimum: ' + profile.bodyFontMin + 'px)',
+      detail: 'Small body text reduces readability, especially on mobile',
+      fix: 'Set body font-size to at least ' + profile.bodyFontMin + 'px. In Tailwind: text-base (16px) or text-lg (18px)',
+      presetRef: 'All presets use text-base (16px) or larger for body text', source: 'WCAG 2.2 / NNGroup — https://www.w3.org/TR/WCAG22/#text-spacing'
+    });
+  }
+
+  // Line height check against profile range
+  checks++;
+  var bodyLH = data.typography.bodyLineHeight;
+  var bodyLHRatio = 0;
+  if (bodyLH && bodyLH !== 'normal') {
+    bodyLHRatio = parseFloat(bodyLH) / bodySize;
+  }
+  var lhPassMin = profile.lineHeightMin - 0.05;
+  var lhPassMax = profile.lineHeightMax + 0.1;
+  if (bodyLHRatio >= lhPassMin && bodyLHRatio <= lhPassMax) {
+    passed++;
+  } else if (bodyLHRatio > 0) {
+    findings.push({
+      severity: bodyLHRatio < 1.2 || bodyLHRatio > 2 ? 'error' : 'warning',
+      title: 'Body line-height is ' + (Math.round(bodyLHRatio * 100) / 100) + ' (ideal: ' + profile.lineHeightMin + '–' + profile.lineHeightMax + ')',
+      detail: bodyLHRatio < profile.lineHeightMin ? 'Text feels cramped and hard to read' : 'Text feels too loose and wastes vertical space',
+      fix: bodyLHRatio < profile.lineHeightMin ? 'Increase line-height. In Tailwind: leading-relaxed (1.625) or leading-normal (1.5)' : 'Decrease line-height. In Tailwind: leading-normal (1.5)',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.12 — https://www.w3.org/TR/WCAG22/#text-spacing'
+    });
+  }
+
+  // Line length (profile-aware: elderly 65, children 55, default 75)
+  var maxChars = data.typography.maxLineLength ? data.typography.maxLineLength.chars : 0;
+  var lineElement = data.typography.maxLineLength ? data.typography.maxLineLength.element : '';
+  var lineFontSize = data.typography.maxLineLength ? (data.typography.maxLineLength.fontSize || 0) : 0;
+  var lineTextLength = data.typography.maxLineLength ? (data.typography.maxLineLength.textLength || 0) : 0;
+  var isTextElement = /^(p|li|td|th|blockquote|dd|figcaption)/.test(lineElement);
+  // Hero/intro text: large font (>=20px) with short content (<150 chars) is intentionally wide
+  var isHeroText = lineFontSize >= 20 && lineTextLength < 150;
+  if (maxChars > 0 && isTextElement && !isHeroText) {
+    checks++;
+    var lineLimit = profile.maxLineLength || 75;
+    if (maxChars <= lineLimit + 5) {
+      passed++;
+    } else {
+      findings.push({
+        severity: maxChars > lineLimit + 25 ? 'error' : 'warning',
+        title: 'Line length ~' + maxChars + ' characters (max for this audience: ' + lineLimit + ')',
+        detail: lineElement + ' — ' + (lineLimit < 70 ? 'Shorter lines improve readability for this audience.' : 'Long lines make it hard for the eye to track back to the next line.'),
+        fix: 'Constrain content width with max-w-prose (65ch) or max-w-2xl (672px)',
+        presetRef: 'Editorial presets use max-w-prose for reading content',
+        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-length.html',
+        locator: { selector: lineElement, text: '', bboxes: data.typography.maxLineLength && data.typography.maxLineLength.bbox ? [data.typography.maxLineLength.bbox] : [] }
+      });
+    }
+  }
+
+  // Heading scale — check if headings have a consistent ratio
+  checks++;
+  var headings = data.typography.headings || [];
+  if (headings.length >= 2) {
+    var sizes = headings.map(function(h) { return parseFloat(h.fontSize); }).filter(function(s) { return s > 0; });
+    var uniqueSizes = Array.from(new Set(sizes)).sort(function(a, b) { return b - a; });
+    if (uniqueSizes.length >= 2) {
+      var ratio = uniqueSizes[0] / uniqueSizes[uniqueSizes.length - 1];
+      // Marketing/landing pages legitimately use larger hero text (wider range)
+      var pageType = (data.context && data.context.pageType) || 'unknown';
+      var maxRatio = (pageType === 'marketing' || pageType === 'pricing') ? 6 : 4.5;
+      if (ratio >= 1.5 && ratio <= maxRatio) {
+        passed++;
+      } else {
+        var headingBboxes = headings.filter(function(h) { return h.bbox; }).map(function(h) { return h.bbox; });
+        findings.push({
+          severity: ratio > maxRatio + 2 ? 'warning' : 'info',
+          title: 'Heading scale ratio is ' + (Math.round(ratio * 100) / 100) + ' (ideal: 1.5–' + maxRatio + ')',
+          detail: ratio < 1.5 ? 'Headings are too similar in size — weak hierarchy' : 'Heading sizes vary widely — verify the largest heading is intentional (hero text)',
+          fix: 'Use a modular scale (1.200 minor third or 1.250 major third). In Tailwind: text-4xl > text-2xl > text-xl > text-base',
+          presetRef: null,
+          source: 'Modular type scales — https://typescale.com/',
+          locator: { selector: '', text: '', bboxes: headingBboxes }
+        });
+      }
+    } else { passed++; } // Only one heading size — acceptable
+  } else { passed++; } // No headings to check
+
+  // Max 2-3 font weights
+  checks++;
+  var fontWeights = data.typography.fontWeights || [];
+  var weightCount = fontWeights.length;
+  if (weightCount <= 4) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'Using ' + weightCount + ' font weights (recommended: 2–3)',
+      detail: 'Too many weights create visual noise and increase font loading time',
+      fix: 'Consolidate to 400 (regular), 500/600 (medium), 700 (bold)',
+      presetRef: null,
+      source: 'Google Fonts best practices — https://fonts.google.com/knowledge/using_type/choosing_reliable_typefaces'
+    });
+  }
+
+  // Profile-specific: minimum font weight (e.g., elderly profile forbids light/thin)
+  if (profile.fontWeightMin > 0 && fontWeights.length > 0) {
+    var lightWeights = fontWeights.filter(function(w) { return parseInt(w) < profile.fontWeightMin; });
+    if (lightWeights.length > 0) {
+      checks++;
+      findings.push({
+        severity: 'warning',
+        title: 'Font weight(s) ' + lightWeights.join(', ') + ' below minimum ' + profile.fontWeightMin + ' for this audience',
+        detail: 'Light and thin font weights reduce readability for users who need higher legibility',
+        fix: 'Use font-weight ' + profile.fontWeightMin + ' (regular) or heavier. Avoid font-weight 100–300.',
+        presetRef: null,
+        source: 'W3C WAI Older Users — https://www.w3.org/WAI/older-users/developing/'
+      });
+    } else {
+      checks++;
+      passed++;
+    }
+  }
+
+  // Letter spacing
+  var lsIssues = (data.typography && data.typography.letterSpacingIssues) || 0;
+  if (lsIssues > 0) {
+    findings.push({
+      severity: 'info',
+      title: lsIssues + ' element(s) with extreme letter-spacing',
+      detail: 'Very tight (< -0.03em) or very loose (> 0.15em) letter spacing reduces readability',
+      fix: 'Keep letter-spacing between -0.02em and 0.1em for body text. Tighter spacing is acceptable for large headings.',
+      presetRef: null,
+      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/letterspacing.html'
+    });
+  }
+
+  // Paragraph spacing
+  var pSpacing = (data.typography && data.typography.paragraphSpacing) || [];
+  if (pSpacing.length >= 3) {
+    checks++;
+    var bodyPx = parseFloat(data.typography.bodyFontSize) || 16;
+    var avgSpacing = pSpacing.reduce(function(s,v){return s+v},0) / pSpacing.length;
+    var spacingEm = avgSpacing / bodyPx;
+    if (spacingEm >= 0.5 && spacingEm <= 1.5) {
+      passed++;
+    } else {
+      findings.push({
+        severity: 'info',
+        title: 'Paragraph spacing is ' + (Math.round(spacingEm * 100) / 100) + 'em (ideal: 0.75–1em)',
+        detail: spacingEm < 0.5 ? 'Paragraphs feel cramped' : 'Paragraph spacing may be too generous',
+        fix: 'Set paragraph margin-bottom to 0.75em–1em. In Tailwind: space-y-4 on the container or mb-4 on paragraphs.',
+        presetRef: null,
+        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/space-between-paragraphs.html'
+      });
+    }
+  }
+
+  // Max 2 typefaces
+  checks++;
+  var familyCount = (data.typography.fontFamilies || []).length;
+  if (familyCount <= 3) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'Using ' + familyCount + ' font families (recommended: max 2)',
+      detail: 'Too many typefaces make the design feel inconsistent',
+      fix: 'Use 1 sans-serif + 1 serif (or monospace for code). In Tailwind: font-sans + font-serif',
+      presetRef: null,
+      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/summary-of-key-rules.html'
+    });
+  }
+
+  // All-caps long text
+  var allCaps = (data.typography && data.typography.allCapsLongText) || 0;
+  if (allCaps > 0) {
+    findings.push({
+      severity: 'warning',
+      title: allCaps + ' block(s) of long text in all-caps (> 50 characters)',
+      detail: 'All-uppercase text reduces reading speed by 10-20%. Reserve for short labels and headings.',
+      fix: 'Remove text-transform: uppercase on body text. Use it only for short labels, buttons, and headings under 5 words.',
+      presetRef: null,
+      source: 'Tinker 1963, Butterick\'s Practical Typography — https://practicaltypography.com/all-caps.html'
+    });
+  }
+
+  // Justified text
+  var justified = (data.typography && data.typography.justifiedText) || 0;
+  if (justified > 0) {
+    findings.push({
+      severity: 'info',
+      title: justified + ' element(s) with text-align: justify',
+      detail: 'Justified text creates uneven word spacing (rivers of white) without proper hyphenation, reducing readability.',
+      fix: 'Use text-align: left for web content. Justified text only works well with automatic hyphenation (hyphens: auto).',
+      presetRef: null,
+      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/justified-text.html'
+    });
+  }
+
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+  return { score: score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Typography', icon: 'type' };
+}
+
+
+  S.register("typography", scoreTypography, 15, "Typography", "type");
+})();
+</file>
+
 <file path="docs/tests/test-bbox-alignment.js">
 #!/usr/bin/env node
 // Test: bbox alignment accuracy
@@ -23224,602 +23820,6 @@ assert(summary.worstPage.score === 72, 'Worst page score is 72');
 console.log('\n=== Results ===');
 console.log(`${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);
-</file>
-
-<file path="docs/scoring/spacing.js">
-// Scoring Module: Spacing & Layout
-// Weight: 15%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreSpacing(data) {
-  var profile = S.getProfile(data);
-  var findings = [];
-  var checks = 0;
-  var passed = 0;
-
-  // 4px grid adherence — check if spacing values are multiples of 4
-  checks++;
-  var allSpacing = [].concat(data.spacing.paddings || [], data.spacing.margins || [], data.spacing.gaps || []);
-  var onGrid = 0;
-  var offGrid = 0;
-  allSpacing.forEach(function(s) {
-    var px = parseFloat(s.value);
-    if (isNaN(px) || px === 0) return;
-    if (Math.round(px) % 4 === 0) onGrid += s.count;
-    else offGrid += s.count;
-  });
-  var gridRatio = (onGrid + offGrid) > 0 ? onGrid / (onGrid + offGrid) : 1;
-  if (gridRatio >= 0.7) {
-    passed++;
-    if (gridRatio < 0.85) {
-      findings.push({
-        severity: 'info',
-        title: Math.round(gridRatio * 100) + '% of spacing values on 4px grid',
-        detail: 'Good adherence — a few values could be rounded to the nearest 4px increment',
-        fix: 'Use Tailwind spacing utilities (p-1=4px, p-2=8px, p-3=12px, p-4=16px, ...)',
-        presetRef: null
-      });
-    }
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: 'Only ' + Math.round(gridRatio * 100) + '% of spacing is on a 4px grid',
-      detail: 'Inconsistent spacing makes layouts feel unpolished',
-      fix: 'Align spacing to 4px increments: 4, 8, 12, 16, 24, 32, 48, 64px',
-      presetRef: 'All presets use Tailwind spacing scale (4px base unit)', source: 'Material Design spacing — https://m3.material.io/foundations/layout/applying-layout'
-    });
-  }
-
-  // Content max-width
-  checks++;
-  var maxW = parseFloat(data.spacing.maxContentWidth);
-  if (maxW > 0 && maxW <= 1500) {
-    passed++;
-  } else if (maxW > 1500) {
-    findings.push({
-      severity: 'warning',
-      title: 'Content width is ' + Math.round(maxW) + 'px (recommended: 1200–1440px)',
-      detail: 'Very wide content is harder to scan and looks stretched on large monitors',
-      fix: 'Add a max-width container. In Tailwind: max-w-7xl (1280px) or max-w-screen-xl',
-      presetRef: 'Dashboard presets use max-w-7xl containers',
-      source: 'NNGroup — https://www.nngroup.com/articles/utilize-available-screen-space/'
-    });
-  } else {
-    passed++; // No max width data or narrow — fine
-  }
-
-  // Mobile padding >= 16px
-  checks++;
-  var bodyPad = parseFloat(data.spacing.bodyPaddingHorizontal);
-  if (bodyPad >= 14 || isNaN(bodyPad) || bodyPad === 0) {
-    passed++; // 0 is OK if inner containers have padding
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: 'Body horizontal padding is ' + bodyPad + 'px (minimum: 16px)',
-      detail: 'Content touching screen edges feels cramped on mobile',
-      fix: 'Add px-4 (16px) padding to the body or main container',
-      presetRef: null,
-      source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout'
-    });
-  }
-
-  // Adjacent interactive element spacing (buttons/links too close together)
-  var adjacentIssues = (data.interaction && data.interaction.adjacentIssues) || [];
-  if (adjacentIssues.length > 0) {
-    checks++;
-    var minSpacing = profile.targetSpacing;
-    var touching = adjacentIssues.filter(function(a) { return a.gap < 2; });
-    var tooClose = adjacentIssues.filter(function(a) { return a.gap >= 2 && a.gap < minSpacing; });
-
-    touching.forEach(function(a) {
-      var labelA = a.textA || a.selectorA || '?';
-      var labelB = a.textB || a.selectorB || '?';
-      var selectorHint = (a.selectorA || a.selectorB) ? ' — ' + (a.selectorA || '') : '';
-      findings.push({
-        severity: 'error',
-        title: 'Interactive elements touching (' + a.gap + 'px gap)',
-        detail: labelA + ' and ' + labelB + ' (' + a.direction + ')' + selectorHint,
-        fix: 'Add at least ' + minSpacing + 'px gap between interactive elements. In Tailwind: gap-' + (minSpacing / 4) + ' on the parent flex/grid container.',
-        presetRef: 'Button presets use gap-2 (8px) or gap-3 (12px) between buttons',
-        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-        locator: { selector: a.selectorA || a.selectorB || '', text: a.textA || '', bboxes: [a.bboxA, a.bboxB].filter(Boolean) }
-      });
-    });
-
-    tooClose.forEach(function(a) {
-      var labelA = a.textA || a.selectorA || '?';
-      var labelB = a.textB || a.selectorB || '?';
-      var selectorHint = (a.selectorA || a.selectorB) ? ' — ' + (a.selectorA || '') : '';
-      findings.push({
-        severity: 'warning',
-        title: 'Interactive elements only ' + a.gap + 'px apart (recommended: ≥' + minSpacing + 'px)',
-        detail: labelA + ' and ' + labelB + ' (' + a.direction + ')' + selectorHint,
-        fix: 'Increase gap to at least ' + minSpacing + 'px to prevent mis-taps. In Tailwind: gap-' + (minSpacing / 4) + ' on the parent.',
-        presetRef: null,
-        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-        locator: { selector: a.selectorA || a.selectorB || '', text: a.textA || '', bboxes: [a.bboxA, a.bboxB].filter(Boolean) }
-      });
-    });
-
-    if (touching.length === 0 && tooClose.length === 0) passed++;
-  }
-
-  // Element overflow
-  var overflows = (data.layout && data.layout.overflowElements) || 0;
-  if (overflows > 0) {
-    checks++;
-    findings.push({
-      severity: overflows > 5 ? 'warning' : 'info',
-      title: overflows + ' element(s) with horizontal overflow',
-      detail: 'Content extends beyond its container, causing horizontal scroll or clipping',
-      fix: 'Add overflow-x: hidden or overflow: auto to the container element. Check for fixed-width children inside flexible containers.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
-    });
-  } else {
-    checks++;
-    passed++;
-  }
-
-  // Negative margins
-  var negMargins = (data.spacing && data.spacing.negativeMargins) || 0;
-  if (negMargins > 5) {
-    findings.push({
-      severity: 'info',
-      title: negMargins + ' element(s) use negative margins',
-      detail: 'Negative margins can cause overlapping content and layout fragility',
-      fix: 'Consider using CSS grid/flexbox gap, transform, or absolute positioning instead of negative margins where possible.',
-      presetRef: null,
-      source: 'CSS best practices'
-    });
-  }
-
-  // Container padding consistency
-  var cPaddings = (data.spacing && data.spacing.containerPaddings) || [];
-  if (cPaddings.length >= 4) {
-    findings.push({
-      severity: 'info',
-      title: cPaddings.length + ' distinct container padding values',
-      detail: 'Values: ' + cPaddings.slice(0, 5).map(function(p) { return p.value + ' (' + p.count + 'x)'; }).join(', '),
-      fix: 'Standardize container padding to 2-3 values. In Tailwind: p-4 (16px), p-6 (24px), p-8 (32px).',
-      presetRef: null,
-      source: 'Gestalt proximity — https://lawsofux.com/law-of-proximity/'
-    });
-  }
-
-  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-  return { score: score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Spacing & Layout', icon: 'spacing' };
-}
-
-
-  S.register("spacing", scoreSpacing, 15, "Spacing & Layout", "spacing");
-})();
-</file>
-
-<file path="docs/scoring/touch.js">
-// Scoring Module: Touch & Interaction
-// Weight: 15%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreTouchTargets(data) {
-  var profile = S.getProfile(data);
-  var findings = [];
-  var targets = data.interaction.touchTargets || [];
-
-  // Viewport-aware thresholds, adjusted by profile:
-  var vw = (data.meta && data.meta.viewportWidth) || 1280;
-  var isDesktop = vw >= 1024;
-  var minSize = isDesktop ? profile.touchTargetDesktop : profile.touchTarget;
-  var warnSize = isDesktop ? profile.touchTargetDesktopWarn : profile.touchTarget;
-  var context = isDesktop ? 'desktop' : 'touch/mobile';
-  var issueCount = 0;
-
-  targets.forEach(function(t) {
-    var w = t.width, h = t.height;
-    var minDim = Math.min(w, h);
-
-    // WCAG 2.5.8 exception: inline text links are exempt from target size requirements.
-    // Detect by checking if element is an <a> without button-like styling (no bg, no border, no padding > 4px)
-    var isInlineLink = t.element === 'a' && !t.isButton;
-
-    if (minDim < minSize) {
-      issueCount++;
-      var ctx = t.linkContext || (isInlineLink ? 'inline' : 'button');
-
-      // On desktop, determine severity based on how far below threshold:
-      // - ≥20px (just 4px short of 24px) → info (barely noticeable with mouse)
-      // - ≥16px → warning (small but usable with mouse)
-      // - <16px → error (genuinely too small even for mouse)
-      // On mobile, all failures are errors (fingers need the full 44px)
-      function desktopSeverity(dim) {
-        if (!isDesktop) return 'error';
-        if (dim >= 20) return 'info';
-        if (dim >= 16) return 'warning';
-        return 'error';
-      }
-
-      if (ctx === 'inline') {
-        // True inline text links (inside <p>, <blockquote>, etc.) — WCAG 2.5.8 exempt
-        findings.push({
-          severity: 'info',
-          title: 'Inline text link ' + w + '×' + h + 'px — exempt from target size',
-          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-          fix: 'Inline text links in paragraphs are exempt per WCAG 2.5.8. Consider adding padding for better usability.',
-          source: 'WCAG 2.2 §2.5.8 inline exception — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
-        });
-      } else if (ctx === 'footer') {
-        // Footer links — relaxed but still error below hard minimum (16px)
-        var footerHardMin = isDesktop ? 16 : 24;
-        findings.push({
-          severity: minDim < footerHardMin ? 'error' : 'info',
-          title: 'Footer link ' + w + '×' + h + 'px' + (minDim < footerHardMin ? ' (too small even for footer — min ' + footerHardMin + 'px)' : ' (below ' + minSize + 'px, relaxed for footer)'),
-          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-          fix: minDim < footerHardMin
-            ? 'Even footer links need at least ' + footerHardMin + 'px height. Add padding to increase click area.'
-            : 'Footer links have relaxed sizing expectations. Consider padding for touch accessibility.',
-          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
-        });
-      } else if (ctx === 'nav') {
-        // Navigation links — should be properly sized
-        var navSev = desktopSeverity(minDim);
-        findings.push({
-          severity: navSev,
-          title: 'Nav link ' + w + '×' + h + 'px (minimum: ' + minSize + 'px)',
-          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-          fix: 'Navigation links need adequate sizing. Add padding: py-2 px-4 (min-height ' + minSize + 'px).',
-          presetRef: 'Navigation presets use min-height 44px on nav links',
-          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
-        });
-      } else {
-        // Buttons, styled links, other interactive elements
-        var sev = desktopSeverity(minDim);
-        findings.push({
-          severity: sev,
-          title: t.element + ' is ' + w + '×' + h + 'px (' + (isDesktop ? 'desktop min: ' + minSize + 'px' : 'touch min: ' + minSize + 'px') + ')',
-          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-          fix: isDesktop
-            ? (sev === 'info'
-              ? 'Slightly below ' + minSize + 'px desktop minimum — usable with mouse but consider adding padding.'
-              : 'Click targets need at least ' + minSize + '×' + minSize + 'px. Increase padding or min-height/min-width.')
-            : 'Touch targets need ' + minSize + '×' + minSize + 'px minimum. Add min-h-[' + minSize + 'px] min-w-[' + minSize + 'px] or increase padding.',
-          presetRef: isDesktop ? null : 'Button presets use py-3 px-6 (48px height)',
-          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
-        });
-      }
-    } else if (minDim < warnSize && isDesktop && !isInlineLink) {
-      findings.push({
-        severity: 'warning',
-        title: t.element + ' is ' + w + '×' + h + 'px (recommended for desktop: ≥' + warnSize + 'px)',
-        detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-        fix: 'While ' + minSize + 'px meets minimum, ' + warnSize + 'px+ improves click comfort. Consider adding padding.',
-        presetRef: null,
-        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-        locator: { selector: t.selector, text: t.text || '' }
-      });
-    }
-  });
-
-  // Also flag targets that pass the current threshold but would fail on touch
-  if (isDesktop && targets.length > 0) {
-    var touchMin = profile.touchTarget;
-    var touchFails = targets.filter(function(t) { return Math.min(t.width, t.height) < touchMin; });
-    if (touchFails.length > 0) {
-      findings.push({
-        severity: 'info',
-        title: touchFails.length + ' element(s) below ' + touchMin + 'px touch target (analyzed at ' + vw + 'px desktop viewport)',
-        detail: 'These meet desktop minimums but would fail on touch devices. Consider responsive sizing if the site is also used on mobile.',
-        fix: 'For responsive touch support: add touch-target sizing at mobile breakpoints, e.g. sm:min-h-[' + touchMin + 'px]',
-        presetRef: null,
-        source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout'
-      });
-    }
-  }
-
-  // Note when responsive CSS exists that might fix touch targets on mobile
-  if (isDesktop && data.interaction && data.interaction.hasResponsiveTargetCSS) {
-    findings.push({
-      severity: 'info',
-      title: 'Responsive CSS detected that may adjust target sizes at mobile breakpoints',
-      detail: 'This site has media queries with height/padding rules. Touch targets may be correctly sized on mobile devices.',
-      fix: 'Verify by testing at mobile viewport. Use the viewport selector to re-scan at 375px width.',
-      presetRef: null
-    });
-  }
-
-  // Transitions / animation duration
-  var transitions = data.interaction.transitions || [];
-  transitions.forEach(function(t) {
-    var ms = parseFloat(t) * 1000;
-    if (ms > 500) {
-      findings.push({
-        severity: 'warning',
-        title: 'Transition duration ' + ms + 'ms exceeds 500ms maximum',
-        detail: 'Users perceive animations longer than 500ms as sluggish',
-        fix: 'Keep transitions under 500ms. Enter: 200–300ms, Exit: 150–200ms. In Tailwind: duration-200 or duration-300',
-        presetRef: null,
-        source: 'NNGroup animation — https://www.nngroup.com/articles/animation-usability/'
-      });
-    }
-  });
-
-  // Event listener pattern findings
-  var lPatterns = (data.interaction && data.interaction.listenerPatterns) || {};
-  if (lPatterns.toggleNoAria > 0) {
-    findings.push({
-      severity: 'warning',
-      title: lPatterns.toggleNoAria + ' toggle handler(s) without ARIA state management',
-      detail: 'Click handlers toggle CSS classes but don\'t update aria-expanded or other ARIA states. Screen readers won\'t know the element\'s state changed.',
-      fix: 'Add setAttribute(\'aria-expanded\', isOpen) alongside classList.toggle() in toggle handlers.',
-      presetRef: null,
-      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
-    });
-  }
-  if (lPatterns.navigationInButton > 0) {
-    findings.push({
-      severity: 'info',
-      title: lPatterns.navigationInButton + ' button(s) trigger page navigation',
-      detail: 'Buttons with click handlers that change location.href should typically be <a> elements for proper semantics and accessibility.',
-      fix: 'Use <a href="..."> for navigation instead of <button> with JavaScript location change.',
-      presetRef: null,
-      source: 'HTML spec — https://html.spec.whatwg.org/multipage/text-level-semantics.html#the-a-element'
-    });
-  }
-
-  // Score: deduct per error, less per warning
-  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var totalTargets = targets.length || 0;
-  var checks = totalTargets;
-  var passed = Math.max(0, totalTargets - errors - warnings);
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 3));
-  var na = totalTargets === 0 && transitions.length === 0;
-  return { score: na ? 100 : score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Touch & Interaction', icon: 'touch', notApplicable: na };
-}
-
-
-  S.register("touch", scoreTouchTargets, 15, "Touch & Interaction", "touch");
-})();
-</file>
-
-<file path="docs/scoring/typography.js">
-// Scoring Module: Typography
-// Weight: 15%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreTypography(data) {
-  var profile = S.getProfile(data);
-  var findings = [];
-  var checks = 0;
-  var passed = 0;
-
-  // Body font size check against profile minimum
-  checks++;
-  var bodySize = parseFloat(data.typography.bodyFontSize);
-  if (bodySize >= profile.bodyFontMin) {
-    passed++;
-  } else if (bodySize > 0) {
-    findings.push({
-      severity: 'error',
-      title: 'Body font size is ' + bodySize + 'px (minimum: ' + profile.bodyFontMin + 'px)',
-      detail: 'Small body text reduces readability, especially on mobile',
-      fix: 'Set body font-size to at least ' + profile.bodyFontMin + 'px. In Tailwind: text-base (16px) or text-lg (18px)',
-      presetRef: 'All presets use text-base (16px) or larger for body text', source: 'WCAG 2.2 / NNGroup — https://www.w3.org/TR/WCAG22/#text-spacing'
-    });
-  }
-
-  // Line height check against profile range
-  checks++;
-  var bodyLH = data.typography.bodyLineHeight;
-  var bodyLHRatio = 0;
-  if (bodyLH && bodyLH !== 'normal') {
-    bodyLHRatio = parseFloat(bodyLH) / bodySize;
-  }
-  var lhPassMin = profile.lineHeightMin - 0.05;
-  var lhPassMax = profile.lineHeightMax + 0.1;
-  if (bodyLHRatio >= lhPassMin && bodyLHRatio <= lhPassMax) {
-    passed++;
-  } else if (bodyLHRatio > 0) {
-    findings.push({
-      severity: bodyLHRatio < 1.2 || bodyLHRatio > 2 ? 'error' : 'warning',
-      title: 'Body line-height is ' + (Math.round(bodyLHRatio * 100) / 100) + ' (ideal: ' + profile.lineHeightMin + '–' + profile.lineHeightMax + ')',
-      detail: bodyLHRatio < profile.lineHeightMin ? 'Text feels cramped and hard to read' : 'Text feels too loose and wastes vertical space',
-      fix: bodyLHRatio < profile.lineHeightMin ? 'Increase line-height. In Tailwind: leading-relaxed (1.625) or leading-normal (1.5)' : 'Decrease line-height. In Tailwind: leading-normal (1.5)',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.12 — https://www.w3.org/TR/WCAG22/#text-spacing'
-    });
-  }
-
-  // Line length (profile-aware: elderly 65, children 55, default 75)
-  var maxChars = data.typography.maxLineLength ? data.typography.maxLineLength.chars : 0;
-  var lineElement = data.typography.maxLineLength ? data.typography.maxLineLength.element : '';
-  var lineFontSize = data.typography.maxLineLength ? (data.typography.maxLineLength.fontSize || 0) : 0;
-  var lineTextLength = data.typography.maxLineLength ? (data.typography.maxLineLength.textLength || 0) : 0;
-  var isTextElement = /^(p|li|td|th|blockquote|dd|figcaption)/.test(lineElement);
-  // Hero/intro text: large font (>=20px) with short content (<150 chars) is intentionally wide
-  var isHeroText = lineFontSize >= 20 && lineTextLength < 150;
-  if (maxChars > 0 && isTextElement && !isHeroText) {
-    checks++;
-    var lineLimit = profile.maxLineLength || 75;
-    if (maxChars <= lineLimit + 5) {
-      passed++;
-    } else {
-      findings.push({
-        severity: maxChars > lineLimit + 25 ? 'error' : 'warning',
-        title: 'Line length ~' + maxChars + ' characters (max for this audience: ' + lineLimit + ')',
-        detail: lineElement + ' — ' + (lineLimit < 70 ? 'Shorter lines improve readability for this audience.' : 'Long lines make it hard for the eye to track back to the next line.'),
-        fix: 'Constrain content width with max-w-prose (65ch) or max-w-2xl (672px)',
-        presetRef: 'Editorial presets use max-w-prose for reading content',
-        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-length.html',
-        locator: { selector: lineElement, text: '', bboxes: data.typography.maxLineLength && data.typography.maxLineLength.bbox ? [data.typography.maxLineLength.bbox] : [] }
-      });
-    }
-  }
-
-  // Heading scale — check if headings have a consistent ratio
-  checks++;
-  var headings = data.typography.headings || [];
-  if (headings.length >= 2) {
-    var sizes = headings.map(function(h) { return parseFloat(h.fontSize); }).filter(function(s) { return s > 0; });
-    var uniqueSizes = Array.from(new Set(sizes)).sort(function(a, b) { return b - a; });
-    if (uniqueSizes.length >= 2) {
-      var ratio = uniqueSizes[0] / uniqueSizes[uniqueSizes.length - 1];
-      // Marketing/landing pages legitimately use larger hero text (wider range)
-      var pageType = (data.context && data.context.pageType) || 'unknown';
-      var maxRatio = (pageType === 'marketing' || pageType === 'pricing') ? 6 : 4.5;
-      if (ratio >= 1.5 && ratio <= maxRatio) {
-        passed++;
-      } else {
-        var headingBboxes = headings.filter(function(h) { return h.bbox; }).map(function(h) { return h.bbox; });
-        findings.push({
-          severity: ratio > maxRatio + 2 ? 'warning' : 'info',
-          title: 'Heading scale ratio is ' + (Math.round(ratio * 100) / 100) + ' (ideal: 1.5–' + maxRatio + ')',
-          detail: ratio < 1.5 ? 'Headings are too similar in size — weak hierarchy' : 'Heading sizes vary widely — verify the largest heading is intentional (hero text)',
-          fix: 'Use a modular scale (1.200 minor third or 1.250 major third). In Tailwind: text-4xl > text-2xl > text-xl > text-base',
-          presetRef: null,
-          source: 'Modular type scales — https://typescale.com/',
-          locator: { selector: '', text: '', bboxes: headingBboxes }
-        });
-      }
-    } else { passed++; } // Only one heading size — acceptable
-  } else { passed++; } // No headings to check
-
-  // Max 2-3 font weights
-  checks++;
-  var fontWeights = data.typography.fontWeights || [];
-  var weightCount = fontWeights.length;
-  if (weightCount <= 4) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: 'Using ' + weightCount + ' font weights (recommended: 2–3)',
-      detail: 'Too many weights create visual noise and increase font loading time',
-      fix: 'Consolidate to 400 (regular), 500/600 (medium), 700 (bold)',
-      presetRef: null,
-      source: 'Google Fonts best practices — https://fonts.google.com/knowledge/using_type/choosing_reliable_typefaces'
-    });
-  }
-
-  // Profile-specific: minimum font weight (e.g., elderly profile forbids light/thin)
-  if (profile.fontWeightMin > 0 && fontWeights.length > 0) {
-    var lightWeights = fontWeights.filter(function(w) { return parseInt(w) < profile.fontWeightMin; });
-    if (lightWeights.length > 0) {
-      checks++;
-      findings.push({
-        severity: 'warning',
-        title: 'Font weight(s) ' + lightWeights.join(', ') + ' below minimum ' + profile.fontWeightMin + ' for this audience',
-        detail: 'Light and thin font weights reduce readability for users who need higher legibility',
-        fix: 'Use font-weight ' + profile.fontWeightMin + ' (regular) or heavier. Avoid font-weight 100–300.',
-        presetRef: null,
-        source: 'W3C WAI Older Users — https://www.w3.org/WAI/older-users/developing/'
-      });
-    } else {
-      checks++;
-      passed++;
-    }
-  }
-
-  // Letter spacing
-  var lsIssues = (data.typography && data.typography.letterSpacingIssues) || 0;
-  if (lsIssues > 0) {
-    findings.push({
-      severity: 'info',
-      title: lsIssues + ' element(s) with extreme letter-spacing',
-      detail: 'Very tight (< -0.03em) or very loose (> 0.15em) letter spacing reduces readability',
-      fix: 'Keep letter-spacing between -0.02em and 0.1em for body text. Tighter spacing is acceptable for large headings.',
-      presetRef: null,
-      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/letterspacing.html'
-    });
-  }
-
-  // Paragraph spacing
-  var pSpacing = (data.typography && data.typography.paragraphSpacing) || [];
-  if (pSpacing.length >= 3) {
-    checks++;
-    var bodyPx = parseFloat(data.typography.bodyFontSize) || 16;
-    var avgSpacing = pSpacing.reduce(function(s,v){return s+v},0) / pSpacing.length;
-    var spacingEm = avgSpacing / bodyPx;
-    if (spacingEm >= 0.5 && spacingEm <= 1.5) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: 'Paragraph spacing is ' + (Math.round(spacingEm * 100) / 100) + 'em (ideal: 0.75–1em)',
-        detail: spacingEm < 0.5 ? 'Paragraphs feel cramped' : 'Paragraph spacing may be too generous',
-        fix: 'Set paragraph margin-bottom to 0.75em–1em. In Tailwind: space-y-4 on the container or mb-4 on paragraphs.',
-        presetRef: null,
-        source: 'Butterick\'s Practical Typography — https://practicaltypography.com/space-between-paragraphs.html'
-      });
-    }
-  }
-
-  // Max 2 typefaces
-  checks++;
-  var familyCount = (data.typography.fontFamilies || []).length;
-  if (familyCount <= 3) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: 'Using ' + familyCount + ' font families (recommended: max 2)',
-      detail: 'Too many typefaces make the design feel inconsistent',
-      fix: 'Use 1 sans-serif + 1 serif (or monospace for code). In Tailwind: font-sans + font-serif',
-      presetRef: null,
-      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/summary-of-key-rules.html'
-    });
-  }
-
-  // All-caps long text
-  var allCaps = (data.typography && data.typography.allCapsLongText) || 0;
-  if (allCaps > 0) {
-    findings.push({
-      severity: 'warning',
-      title: allCaps + ' block(s) of long text in all-caps (> 50 characters)',
-      detail: 'All-uppercase text reduces reading speed by 10-20%. Reserve for short labels and headings.',
-      fix: 'Remove text-transform: uppercase on body text. Use it only for short labels, buttons, and headings under 5 words.',
-      presetRef: null,
-      source: 'Tinker 1963, Butterick\'s Practical Typography — https://practicaltypography.com/all-caps.html'
-    });
-  }
-
-  // Justified text
-  var justified = (data.typography && data.typography.justifiedText) || 0;
-  if (justified > 0) {
-    findings.push({
-      severity: 'info',
-      title: justified + ' element(s) with text-align: justify',
-      detail: 'Justified text creates uneven word spacing (rivers of white) without proper hyphenation, reducing readability.',
-      fix: 'Use text-align: left for web content. Justified text only works well with automatic hyphenation (hyphens: auto).',
-      presetRef: null,
-      source: 'Butterick\'s Practical Typography — https://practicaltypography.com/justified-text.html'
-    });
-  }
-
-  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-  return { score: score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Typography', icon: 'type' };
-}
-
-
-  S.register("typography", scoreTypography, 15, "Typography", "type");
-})();
 </file>
 
 <file path="docs/tests/test-iframe-screenshot.html">
@@ -25480,535 +25480,6 @@ window.MilgProxy = (function() {
 })();
 </file>
 
-<file path="docs/analyzer-contrast-verify.js">
-// make-it-look-good — Pixel-Sampled Contrast Verification
-// Samples actual pixel colors from screenshots at text element locations,
-// compares with CSS-derived contrast ratios, and flags discrepancies.
-// Depends on: screenshotMeta + screenshots + contrast pairs with bbox data
-
-window.MilgContrastVerify = (function() {
-  "use strict";
-
-  // --- Density presets ---
-  // Each defines max grid dimensions for FG [hMax, vMax] and BG [hMax, vMax]
-  // Actual count scales with box size (1 sample per 3px), clamped to these maxima
-  var DENSITY = {
-    fast:     { fgH: 10, fgV: 3,  bgH: 12, bgV: 8  },  // ~109 samples/pair avg, ~22ms total
-    common:   { fgH: 40, fgV: 10, bgH: 50, bgV: 40 },  // ~1269 samples/pair avg, ~250ms total
-    accurate: { fgH: 80, fgV: 20, bgH: 100, bgV: 80 }   // ~3291 samples/pair avg, ~658ms total
-  };
-  var _density = DENSITY.common;
-
-  function setDensity(name) {
-    _density = DENSITY[name] || DENSITY.common;
-  }
-
-  // --- Color math (same as scoring/contrast.js) ---
-  function luminance(c) {
-    var rs = c.r / 255, gs = c.g / 255, bs = c.b / 255;
-    var r = rs <= 0.03928 ? rs / 12.92 : Math.pow((rs + 0.055) / 1.055, 2.4);
-    var g = gs <= 0.03928 ? gs / 12.92 : Math.pow((gs + 0.055) / 1.055, 2.4);
-    var b = bs <= 0.03928 ? bs / 12.92 : Math.pow((bs + 0.055) / 1.055, 2.4);
-    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  }
-
-  function contrastRatio(c1, c2) {
-    var l1 = luminance(c1), l2 = luminance(c2);
-    return Math.round(((Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)) * 100) / 100;
-  }
-
-  function parseRgb(str) {
-    var m = str.match(/rgb[a]?\((\d+),\s*(\d+),\s*(\d+)/);
-    if (!m) m = str.match(/rgb[a]?\((\d+)\s+(\d+)\s+(\d+)/);
-    if (!m) return null;
-    return { r: +m[1], g: +m[2], b: +m[3] };
-  }
-
-  function rgbStr(c) { return 'rgb(' + c.r + ',' + c.g + ',' + c.b + ')'; }
-
-  // --- Canvas management ---
-  // Load screenshot data URI into a canvas, return {canvas, ctx, width, height}
-  function loadScreenshotToCanvas(dataUri, callback) {
-    var img = new Image();
-    img.onload = function() {
-      var canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      var ctx = canvas.getContext('2d', { willReadFrequently: true });
-      ctx.drawImage(img, 0, 0);
-      callback({ canvas: canvas, ctx: ctx, width: img.width, height: img.height });
-    };
-    img.onerror = function() { callback(null); };
-    img.src = dataUri;
-  }
-
-  // Sample pixel color at a point, returns {r, g, b} or null
-  function samplePixel(ctx, x, y, width, height) {
-    // Clamp to canvas bounds
-    x = Math.max(0, Math.min(Math.round(x), width - 1));
-    y = Math.max(0, Math.min(Math.round(y), height - 1));
-    var d = ctx.getImageData(x, y, 1, 1).data;
-    return { r: d[0], g: d[1], b: d[2] };
-  }
-
-  // Sample a small area and return the dominant/average color
-  // This is more robust than a single pixel (handles anti-aliasing, subpixel rendering)
-  function sampleArea(ctx, cx, cy, radius, width, height) {
-    var x0 = Math.max(0, Math.round(cx - radius));
-    var y0 = Math.max(0, Math.round(cy - radius));
-    var size = radius * 2 + 1;
-    var x1 = Math.min(x0 + size, width);
-    var y1 = Math.min(y0 + size, height);
-    var w = x1 - x0;
-    var h = y1 - y0;
-    if (w <= 0 || h <= 0) return samplePixel(ctx, cx, cy, width, height);
-
-    var data = ctx.getImageData(x0, y0, w, h).data;
-    var rSum = 0, gSum = 0, bSum = 0, count = 0;
-    for (var i = 0; i < data.length; i += 4) {
-      rSum += data[i];
-      gSum += data[i + 1];
-      bSum += data[i + 2];
-      count++;
-    }
-    if (count === 0) return samplePixel(ctx, cx, cy, width, height);
-    return {
-      r: Math.round(rSum / count),
-      g: Math.round(gSum / count),
-      b: Math.round(bSum / count)
-    };
-  }
-
-  // --- Verification logic ---
-
-  // --- Multi-point sampling strategy ---
-  // Photos, gradients, and dashed patterns need many sample points.
-  // FG: horizontal sweep across text baseline band, take darkest (most likely text)
-  // BG: grid across bbox excluding text band, find worst-case contrast
-  function verifyPair(pair, sectionCanvases, meta) {
-    if (!pair.bbox || !meta) return null;
-
-    var scale = meta.scale;
-    var sectionH = Math.round(meta.viewportHeight * scale);
-
-    // Map bbox to canvas coordinates
-    var canvasX = pair.bbox.left * scale;
-    var canvasY = pair.bbox.top * scale;
-    var canvasW = pair.bbox.width * scale;
-    var canvasH = pair.bbox.height * scale;
-
-    // Skip tiny boxes (less than 4px in either dimension at scale)
-    if (canvasW < 4 || canvasH < 4) return null;
-
-    // Determine which section this bbox falls in
-    var sectionIdx = Math.floor(canvasY / sectionH);
-    if (sectionIdx >= sectionCanvases.length || !sectionCanvases[sectionIdx]) return null;
-
-    var sec = sectionCanvases[sectionIdx];
-    var yInSection = canvasY - (sectionIdx * sectionH);
-    // Clamp to section bounds
-    if (yInSection + canvasH > sec.height) canvasH = sec.height - yInSection;
-    if (canvasX + canvasW > sec.width) canvasW = sec.width - canvasX;
-
-    // --- FG sampling: horizontal sweep across the text baseline area ---
-    // Text typically sits in the middle 40% band of the bbox height.
-    // Sample density scales with box size: ~1 sample per 3px, clamped to [3, 40].
-    var textBandTop = yInSection + canvasH * 0.3;
-    var textBandBottom = yInSection + canvasH * 0.7;
-    var textBandMid = yInSection + canvasH * 0.5;
-    var fgSamples = [];
-    var fgHSteps = Math.max(3, Math.min(_density.fgH, Math.floor(canvasW / 3)));
-    var fgVSteps = Math.max(2, Math.min(_density.fgV, Math.floor(canvasH * 0.4 / 3)));
-    for (var fvi = 0; fvi < fgVSteps; fvi++) {
-      var fy = textBandTop + ((textBandBottom - textBandTop) * fvi / (fgVSteps - 1 || 1));
-      for (var fhi = 0; fhi < fgHSteps; fhi++) {
-        var sx = canvasX + (canvasW * (fhi + 0.5) / fgHSteps);
-        fgSamples.push(samplePixel(sec.ctx, sx, fy, sec.width, sec.height));
-      }
-    }
-    // Text color = the darkest sample in the text band (for dark-on-light)
-    // or lightest (for light-on-dark). Determine from CSS fg color.
-    var cssFg = parseRgb(pair.fg);
-    var cssFgIsDark = cssFg ? (luminance(cssFg) < 0.5) : true;
-    fgSamples.sort(function(a, b) {
-      var la = luminance(a), lb = luminance(b);
-      return cssFgIsDark ? (la - lb) : (lb - la); // darkest first if fg is dark
-    });
-    // Take median of the darkest/lightest third as FG (avoids outlier anti-aliased pixels)
-    var fgSlice = fgSamples.slice(0, Math.max(3, Math.ceil(fgSamples.length / 3)));
-    var fgColor = { r: 0, g: 0, b: 0 };
-    fgSlice.forEach(function(s) { fgColor.r += s.r; fgColor.g += s.g; fgColor.b += s.b; });
-    fgColor.r = Math.round(fgColor.r / fgSlice.length);
-    fgColor.g = Math.round(fgColor.g / fgSlice.length);
-    fgColor.b = Math.round(fgColor.b / fgSlice.length);
-
-    // --- BG sampling: edges and margins ONLY, excluding text band ---
-    // The text band (middle 30-70% of height) contains text pixels that would
-    // contaminate BG readings. Sample from:
-    //   1. Top strip (0% - 20% height)
-    //   2. Bottom strip (80% - 100% height)
-    //   3. Left edge strip (0% - 10% width, full height)
-    //   4. Right edge strip (90% - 100% width, full height)
-    //   5. Between-line gaps: horizontal sweeps at 25% and 75% height
-    // This catches the actual background even with dense text.
-    var bgSamples = [];
-    var bgHSteps = Math.max(3, Math.min(_density.bgH, Math.floor(canvasW / 3)));
-    var bgVSteps = Math.max(3, Math.min(_density.bgV, Math.floor(canvasH / 3)));
-    var insetX = Math.max(1, canvasW * 0.02);
-    var insetY = Math.max(1, canvasH * 0.02);
-
-    // Top strip (above text)
-    var topStripBottom = yInSection + canvasH * 0.2;
-    var topVSteps = Math.max(2, Math.ceil(bgVSteps * 0.2));
-    for (var tx = 0; tx < bgHSteps; tx++) {
-      for (var ty = 0; ty < topVSteps; ty++) {
-        var px = canvasX + insetX + ((canvasW - insetX * 2) * tx / (bgHSteps - 1));
-        var py = yInSection + insetY + ((topStripBottom - yInSection - insetY) * ty / (topVSteps - 1 || 1));
-        bgSamples.push(samplePixel(sec.ctx, px, py, sec.width, sec.height));
-      }
-    }
-
-    // Bottom strip (below text)
-    var bottomStripTop = yInSection + canvasH * 0.8;
-    var bottomStripEnd = yInSection + canvasH - insetY;
-    var botVSteps = Math.max(2, Math.ceil(bgVSteps * 0.2));
-    for (var bxb = 0; bxb < bgHSteps; bxb++) {
-      for (var byb = 0; byb < botVSteps; byb++) {
-        var px = canvasX + insetX + ((canvasW - insetX * 2) * bxb / (bgHSteps - 1));
-        var py = bottomStripTop + ((bottomStripEnd - bottomStripTop) * byb / (botVSteps - 1 || 1));
-        bgSamples.push(samplePixel(sec.ctx, px, py, sec.width, sec.height));
-      }
-    }
-
-    // Left edge strip (avoid text, sample full height at left margin)
-    var leftEdge = canvasX + insetX;
-    var leftEdgeEnd = canvasX + canvasW * 0.08;
-    var edgeVSteps = Math.max(3, Math.ceil(bgVSteps * 0.4));
-    if (leftEdgeEnd > leftEdge + 1) {
-      for (var ly = 0; ly < edgeVSteps; ly++) {
-        var py = yInSection + insetY + ((canvasH - insetY * 2) * ly / (edgeVSteps - 1));
-        bgSamples.push(samplePixel(sec.ctx, leftEdge, py, sec.width, sec.height));
-        bgSamples.push(samplePixel(sec.ctx, leftEdgeEnd, py, sec.width, sec.height));
-      }
-    }
-
-    // Right edge strip
-    var rightEdge = canvasX + canvasW - insetX;
-    var rightEdgeStart = canvasX + canvasW * 0.92;
-    if (rightEdge > rightEdgeStart + 1) {
-      for (var ry = 0; ry < edgeVSteps; ry++) {
-        var py = yInSection + insetY + ((canvasH - insetY * 2) * ry / (edgeVSteps - 1));
-        bgSamples.push(samplePixel(sec.ctx, rightEdge, py, sec.width, sec.height));
-        bgSamples.push(samplePixel(sec.ctx, rightEdgeStart, py, sec.width, sec.height));
-      }
-    }
-
-    // Between-line gap sweeps (25% and 75% of height — between top/text and text/bottom)
-    var gapYs = [yInSection + canvasH * 0.22, yInSection + canvasH * 0.78];
-    for (var gi = 0; gi < gapYs.length; gi++) {
-      for (var gx = 0; gx < bgHSteps; gx++) {
-        var px = canvasX + insetX + ((canvasW - insetX * 2) * gx / (bgHSteps - 1));
-        bgSamples.push(samplePixel(sec.ctx, px, gapYs[gi], sec.width, sec.height));
-      }
-    }
-
-    // Safety: if we got very few samples (tiny box), fall back to corners
-    if (bgSamples.length < 4) {
-      bgSamples.push(samplePixel(sec.ctx, canvasX + 1, yInSection + 1, sec.width, sec.height));
-      bgSamples.push(samplePixel(sec.ctx, canvasX + canvasW - 1, yInSection + 1, sec.width, sec.height));
-      bgSamples.push(samplePixel(sec.ctx, canvasX + 1, yInSection + canvasH - 1, sec.width, sec.height));
-      bgSamples.push(samplePixel(sec.ctx, canvasX + canvasW - 1, yInSection + canvasH - 1, sec.width, sec.height));
-    }
-
-    // Find worst-case BG (the one that gives lowest contrast with FG)
-    var worstBg = bgSamples[0];
-    var worstRatio = 99;
-    var bestBg = bgSamples[0];
-    var bestRatio = 0;
-    bgSamples.forEach(function(bg) {
-      var r = contrastRatio(fgColor, bg);
-      if (r < worstRatio) { worstRatio = r; worstBg = bg; }
-      if (r > bestRatio) { bestRatio = r; bestBg = bg; }
-    });
-
-    // Also compute average BG contrast for overall picture
-    var avgBg = { r: 0, g: 0, b: 0 };
-    bgSamples.forEach(function(s) { avgBg.r += s.r; avgBg.g += s.g; avgBg.b += s.b; });
-    avgBg.r = Math.round(avgBg.r / bgSamples.length);
-    avgBg.g = Math.round(avgBg.g / bgSamples.length);
-    avgBg.b = Math.round(avgBg.b / bgSamples.length);
-    var avgRatio = contrastRatio(fgColor, avgBg);
-
-    // Use worst-case ratio as the primary "pixel ratio" — conservative approach
-    var pixelRatio = worstRatio;
-    var cssRatio = pair.ratio;
-
-    var cssNeeded = pair.needed || 4.5;
-    var cssPasses = cssRatio >= cssNeeded;
-    var pixelPasses = pixelRatio >= cssNeeded;
-    var ratioDiff = Math.abs(pixelRatio - cssRatio);
-    var crossesBoundary = cssPasses !== pixelPasses;
-
-    // Flag high BG variance as a signal for photo/gradient backgrounds
-    var bgVariance = bestRatio - worstRatio;
-    var isVariableBg = bgVariance > 2.0;
-
-    return {
-      cssRatio: cssRatio,
-      pixelRatio: pixelRatio,         // worst-case (conservative)
-      pixelRatioAvg: avgRatio,        // average background
-      pixelRatioBest: bestRatio,      // best-case spot
-      bgVariance: Math.round(bgVariance * 100) / 100,
-      isVariableBg: isVariableBg,     // photo/gradient detected
-      ratioDiff: ratioDiff,
-      cssPasses: cssPasses,
-      pixelPasses: pixelPasses,
-      crossesBoundary: crossesBoundary,
-      significant: crossesBoundary || ratioDiff > 1.5 || isVariableBg,
-      pixelFg: rgbStr(fgColor),
-      pixelBgWorst: rgbStr(worstBg),
-      pixelBgAvg: rgbStr(avgBg),
-      cssFg: pair.fg,
-      cssBg: pair.bg,
-      selector: pair.selector,
-      text: pair.text,
-      sectionIdx: sectionIdx,
-      sampleCount: { fg: fgSamples.length, bg: bgSamples.length }
-    };
-  }
-
-  // Run verification on all contrast pairs with bboxes
-  // Prefers pre-computed pixelVerify data from extraction (pristine canvas).
-  // Falls back to post-hoc screenshot canvas sampling when not available.
-  // callback(results) where results is array of verification objects
-  function verify(reportData, callback) {
-    var raw = reportData && reportData.raw;
-    if (!raw || !raw.colors || !raw.colors.contrastPairs) {
-      callback([]); return;
-    }
-
-    var pairs = raw.colors.contrastPairs.filter(function(p) { return p.bbox; });
-    if (pairs.length === 0) { callback([]); return; }
-
-    // Check if extraction already computed pixel verification (snippet-screenshots path)
-    var hasPrecomputed = raw.pixelVerifyResults || pairs.some(function(p) { return p.pixelVerify; });
-    if (hasPrecomputed) {
-      // Use pre-computed results — these were done on the pristine full-res canvas
-      var results = (raw.pixelVerifyResults || []).slice();
-      // Also collect per-pair results that weren't flagged as discrepancies
-      pairs.forEach(function(pair) {
-        if (!pair.pixelVerify) return;
-        var pv = pair.pixelVerify;
-        // Check if already in results array
-        var alreadyIn = results.some(function(r) { return r.selector === pair.selector; });
-        if (!alreadyIn) {
-          results.push({
-            selector: pair.selector,
-            text: pair.text,
-            cssRatio: pair.ratio,
-            pixelRatio: pv.worstRatio,
-            pixelRatioAvg: pv.dominantRatio,
-            pixelRatioBest: pv.dominantRatio,
-            cssPasses: pair.ratio >= (pair.needed || 4.5),
-            pixelPasses: pv.worstRatio >= (pair.needed || 4.5),
-            crossesBoundary: pv.crossesBoundary,
-            isVariableBg: pv.isVariableBg,
-            significant: false,
-            bgSamples: pv.bgSamples,
-            pixelBgDominant: pv.dominantBg,
-            pixelBgWorst: pv.worstBg,
-            cssBgConfirmed: pv.cssBgConfirmed,
-            ratioDiff: Math.abs(pv.dominantRatio - pair.ratio),
-            bgVariance: 0,
-            sampleCount: { fg: 0, bg: pv.bgSamples }
-          });
-        }
-      });
-      results.sort(function(a, b) {
-        if (a.crossesBoundary !== b.crossesBoundary) return a.crossesBoundary ? -1 : 1;
-        return (b.ratioDiff || 0) - (a.ratioDiff || 0);
-      });
-      callback(results);
-      return;
-    }
-
-    // Fallback: post-hoc verification from screenshot canvases (iframe path)
-    if (!raw.screenshots || !raw.screenshotMeta) { callback([]); return; }
-    var meta = raw.screenshotMeta;
-
-    var sectionCanvases = new Array(raw.screenshots.length);
-    var loaded = 0;
-    var total = raw.screenshots.length;
-
-    raw.screenshots.forEach(function(dataUri, idx) {
-      loadScreenshotToCanvas(dataUri, function(sec) {
-        sectionCanvases[idx] = sec;
-        loaded++;
-        if (loaded === total) {
-          var results = [];
-          pairs.forEach(function(pair) {
-            var result = verifyPair(pair, sectionCanvases, meta);
-            if (result) results.push(result);
-          });
-
-          results.sort(function(a, b) {
-            if (a.crossesBoundary !== b.crossesBoundary) return a.crossesBoundary ? -1 : 1;
-            return b.ratioDiff - a.ratioDiff;
-          });
-
-          callback(results);
-        }
-      });
-    });
-  }
-
-  // Format a single verification result as HTML for display in findings
-  function formatResult(r) {
-    var variableNote = r.isVariableBg
-      ? '<br><span style="font-size:10px;color:var(--text-secondary)">Variable background detected (contrast range: ' + r.pixelRatio + ':1 to ' + r.pixelRatioBest + ':1, variance: ' + r.bgVariance + ')</span>'
-      : '';
-    if (r.crossesBoundary) {
-      if (r.cssPasses && !r.pixelPasses) {
-        return '<span style="color:#ef4444;font-weight:600">Pixel check: FAILS ' + r.pixelRatio + ':1 worst-case</span> ' +
-          '<span style="color:var(--text-secondary);font-size:11px">(CSS reported ' + r.cssRatio + ':1 pass' +
-          (r.isVariableBg ? ' — photo/gradient background' : ' — actual background may differ') + ')</span>' + variableNote;
-      } else {
-        return '<span style="color:#16a34a;font-weight:600">Pixel check: PASSES ' + r.pixelRatio + ':1</span> ' +
-          '<span style="color:var(--text-secondary);font-size:11px">(CSS reported ' + r.cssRatio + ':1 — actual background provides better contrast)</span>' + variableNote;
-      }
-    }
-    if (r.isVariableBg) {
-      return '<span style="color:#f59e0b">Variable background: worst ' + r.pixelRatio + ':1, avg ' + r.pixelRatioAvg + ':1, best ' + r.pixelRatioBest + ':1</span>' +
-        '<br><span style="color:var(--text-secondary);font-size:11px">Photo or gradient background — contrast varies across element' + (r.sampleCount ? ' (' + r.sampleCount.bg + ' points sampled)' : '') + '</span>';
-    }
-    if (r.significant) {
-      return '<span style="color:#f59e0b">Pixel contrast: ' + r.pixelRatio + ':1</span> ' +
-        '<span style="color:var(--text-secondary);font-size:11px">(differs from CSS-derived ' + r.cssRatio + ':1 by ' + r.ratioDiff.toFixed(1) + ')</span>' + variableNote;
-    }
-    return '<span style="color:var(--text-secondary);font-size:11px">Pixel-verified: ' + r.pixelRatio + ':1' +
-      (r.bgVariance > 0.5 ? ' (bg range: ' + r.bgVariance + ')' : '') + '</span>';
-  }
-
-  // Build a summary of verification results
-  function buildSummary(results) {
-    var total = results.length;
-    var falsePassCount = 0; // CSS passes but pixels fail
-    var falseFailCount = 0; // CSS fails but pixels pass
-    var significantDiffs = 0;
-    var variableBgCount = 0;
-    var verified = 0;
-
-    results.forEach(function(r) {
-      if (r.isVariableBg) variableBgCount++;
-      if (r.crossesBoundary) {
-        if (r.cssPasses && !r.pixelPasses) falsePassCount++;
-        else falseFailCount++;
-      } else if (r.significant) {
-        significantDiffs++;
-      } else {
-        verified++;
-      }
-    });
-
-    return {
-      total: total,
-      falsePassCount: falsePassCount,
-      falseFailCount: falseFailCount,
-      significantDiffs: significantDiffs,
-      variableBgCount: variableBgCount,
-      verified: verified,
-      results: results
-    };
-  }
-
-  // Render verification summary as HTML block
-  function renderSummaryHtml(summary) {
-    if (summary.total === 0) return '';
-    var isDark = document.body && document.body.classList.contains('dark-ui');
-
-    var html = '<details class="contrast-verify-summary">';
-    html += '<summary style="cursor:pointer;font-size:13px;font-weight:600;padding:8px 0">';
-    html += 'Pixel Contrast Verification (' + summary.total + ' pairs checked)';
-    if (summary.falsePassCount > 0) {
-      html += ' <span style="color:#ef4444;font-weight:700">' + summary.falsePassCount + ' hidden failure' + (summary.falsePassCount > 1 ? 's' : '') + '</span>';
-    }
-    html += '</summary>';
-
-    html += '<div style="padding:8px 0;font-size:13px;line-height:1.6">';
-
-    if (summary.falsePassCount > 0) {
-      var bg = isDark ? '#2d0f0f' : '#fef2f2';
-      var border = isDark ? '#991b1b' : '#fecaca';
-      html += '<div style="padding:10px 14px;background:' + bg + ';border:1px solid ' + border + ';border-radius:6px;margin-bottom:8px">';
-      html += '<strong style="color:#ef4444">' + summary.falsePassCount + ' element' + (summary.falsePassCount > 1 ? 's' : '') + ' pass CSS contrast but fail in pixels</strong>';
-      html += '<p style="margin:4px 0 0;font-size:12px;color:' + (isDark ? '#fca5a5' : '#991b1b') + '">These elements have backgrounds (gradients, images, overlapping elements) that reduce contrast below what CSS inspection reports.</p>';
-      summary.results.filter(function(r) { return r.cssPasses && !r.pixelPasses; }).forEach(function(r) {
-        html += '<div style="margin-top:6px;padding:6px 8px;background:' + (isDark ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.7)') + ';border-radius:4px;font-size:12px">';
-        html += '<strong>' + r.selector + '</strong>: "' + (r.text || '').substring(0, 30) + '"';
-        html += '<br>CSS: ' + r.cssRatio + ':1 (pass) &rarr; Pixels: ' + r.pixelRatio + ':1 (fail)';
-        html += '<br><span style="color:var(--text-secondary)">Pixel FG: ' + (r.pixelFg || '?') + ' / BG worst: ' + (r.pixelBgWorst || r.pixelBgDominant || '?') + (r.isVariableBg && r.sampleCount ? ' (variable bg, ' + r.sampleCount.bg + ' points)' : '') + '</span>';
-        html += '</div>';
-      });
-      html += '</div>';
-    }
-
-    if (summary.falseFailCount > 0) {
-      var bg = isDark ? '#0c2d1e' : '#f0fdf4';
-      var border = isDark ? '#166534' : '#bbf7d0';
-      html += '<div style="padding:10px 14px;background:' + bg + ';border:1px solid ' + border + ';border-radius:6px;margin-bottom:8px">';
-      html += '<strong style="color:#16a34a">' + summary.falseFailCount + ' false positive' + (summary.falseFailCount > 1 ? 's' : '') + ' detected</strong>';
-      html += '<p style="margin:4px 0 0;font-size:12px;color:' + (isDark ? '#86efac' : '#166534') + '">These elements fail CSS contrast but actually pass when measured from the screenshot. The real background provides better contrast.</p>';
-      summary.results.filter(function(r) { return !r.cssPasses && r.pixelPasses; }).forEach(function(r) {
-        html += '<div style="margin-top:6px;padding:6px 8px;background:' + (isDark ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.7)') + ';border-radius:4px;font-size:12px">';
-        html += '<strong>' + r.selector + '</strong>: "' + (r.text || '').substring(0, 30) + '"';
-        html += '<br>CSS: ' + r.cssRatio + ':1 (fail) &rarr; Pixels: ' + r.pixelRatio + ':1 (pass)';
-        html += '</div>';
-      });
-      html += '</div>';
-    }
-
-    // Variable background warning (photos, gradients)
-    if (summary.variableBgCount > 0) {
-      var vbResults = summary.results.filter(function(r) { return r.isVariableBg; });
-      var bg = isDark ? '#2d2006' : '#fffbeb';
-      var border = isDark ? '#92400e' : '#fde68a';
-      html += '<div style="padding:10px 14px;background:' + bg + ';border:1px solid ' + border + ';border-radius:6px;margin-bottom:8px">';
-      html += '<strong style="color:#f59e0b">' + summary.variableBgCount + ' element' + (summary.variableBgCount > 1 ? 's' : '') + ' with variable backgrounds (photo/gradient)</strong>';
-      html += '<p style="margin:4px 0 0;font-size:12px;color:' + (isDark ? '#fbbf24' : '#92400e') + '">These elements have backgrounds that vary significantly across their area. Contrast depends on where text is positioned relative to the background.</p>';
-      vbResults.slice(0, 5).forEach(function(r) {
-        html += '<div style="margin-top:6px;padding:6px 8px;background:' + (isDark ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.7)') + ';border-radius:4px;font-size:12px">';
-        html += '<strong>' + r.selector + '</strong>: "' + (r.text || '').substring(0, 30) + '"';
-        html += '<br>Contrast range: <span style="color:#ef4444">' + r.pixelRatio + ':1</span> (worst) to <span style="color:#16a34a">' + r.pixelRatioBest + ':1</span> (best), avg ' + r.pixelRatioAvg + ':1';
-        html += '<br><span style="color:var(--text-secondary)">' + (r.sampleCount ? r.sampleCount.bg + ' background points sampled, ' : '') + 'variance: ' + (r.bgVariance || '?') + '</span>';
-        html += '</div>';
-      });
-      if (vbResults.length > 5) html += '<div style="font-size:11px;color:var(--text-secondary);margin-top:4px">...and ' + (vbResults.length - 5) + ' more</div>';
-      html += '</div>';
-    }
-
-    if (summary.verified > 0 || summary.significantDiffs > 0) {
-      html += '<div style="font-size:12px;color:var(--text-secondary);margin-top:4px">';
-      if (summary.verified > 0) html += summary.verified + ' pair' + (summary.verified > 1 ? 's' : '') + ' verified consistent. ';
-      if (summary.significantDiffs > 0) html += summary.significantDiffs + ' with notable pixel deviation (>1.5 ratio difference). ';
-      html += '</div>';
-    }
-
-    html += '</div></details>';
-    return html;
-  }
-
-  return {
-    verify: verify,
-    setDensity: setDensity,
-    formatResult: formatResult,
-    buildSummary: buildSummary,
-    renderSummaryHtml: renderSummaryHtml,
-    contrastRatio: contrastRatio,
-    parseRgb: parseRgb
-  };
-})();
-</file>
-
 <file path="docs/scoring/contrast.js">
 // Scoring Module: Color & Contrast
 // Weight: 20%
@@ -26196,6 +25667,28 @@ function scoreContrast(data) {
       fix: 'Passes AA but consider increasing for AAA (7:1). Slight changes in background could cause failure.',
       presetRef: null,
       source: 'WCAG 2.2 §1.4.6 — https://www.w3.org/TR/WCAG22/#contrast-enhanced',
+      locator: { selector: p.selector, text: p.text, bboxes: entry.bboxes },
+      _colors: { fg: p.fg, bg: p.bg, ratio: p.ratio }
+    });
+  });
+
+  // Passing contrast pairs — include as 'pass' severity so they show on screenshot viewer
+  var passingPairs = profilePairs.filter(function(p) { return p.passes && !(p.ratio < p.needed + 0.5); });
+  var passSeen = {};
+  passingPairs.forEach(function(p) {
+    var dedup = p.selector;
+    if (passSeen[dedup]) { if (p.bbox) passSeen[dedup].bboxes.push(p.bbox); return; }
+    passSeen[dedup] = { p: p, bboxes: p.bbox ? [p.bbox] : [] };
+  });
+  Object.keys(passSeen).forEach(function(key) {
+    var entry = passSeen[key];
+    var p = entry.p;
+    if (entry.bboxes.length === 0) return;
+    findings.push({
+      severity: 'pass',
+      title: 'Contrast ' + p.ratio + ':1 passes (' + p.needed + ':1 needed)',
+      detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector,
+      fix: '',
       locator: { selector: p.selector, text: p.text, bboxes: entry.bboxes },
       _colors: { fg: p.fg, bg: p.bg, ratio: p.ratio }
     });
@@ -26766,6 +26259,543 @@ function scoreLayout(data) {
 
 
   S.register("layout", scoreLayout, 5, "Layout Quality", "layout");
+})();
+</file>
+
+<file path="docs/analyzer-contrast-verify.js">
+// make-it-look-good — Pixel-Sampled Contrast Verification
+// Samples actual pixel colors from screenshots at text element locations,
+// compares with CSS-derived contrast ratios, and flags discrepancies.
+// Depends on: screenshotMeta + screenshots + contrast pairs with bbox data
+
+window.MilgContrastVerify = (function() {
+  "use strict";
+
+  // --- Density presets ---
+  // Each defines max grid dimensions for FG [hMax, vMax] and BG [hMax, vMax]
+  // Actual count scales with box size (1 sample per 3px), clamped to these maxima
+  var DENSITY = {
+    fast:     { fgH: 10, fgV: 3,  bgH: 12, bgV: 8  },  // ~109 samples/pair avg, ~22ms total
+    common:   { fgH: 40, fgV: 10, bgH: 50, bgV: 40 },  // ~1269 samples/pair avg, ~250ms total
+    accurate: { fgH: 80, fgV: 20, bgH: 100, bgV: 80 }   // ~3291 samples/pair avg, ~658ms total
+  };
+  var _density = DENSITY.common;
+
+  function setDensity(name) {
+    _density = DENSITY[name] || DENSITY.common;
+  }
+
+  // --- Color math (same as scoring/contrast.js) ---
+  function luminance(c) {
+    var rs = c.r / 255, gs = c.g / 255, bs = c.b / 255;
+    var r = rs <= 0.03928 ? rs / 12.92 : Math.pow((rs + 0.055) / 1.055, 2.4);
+    var g = gs <= 0.03928 ? gs / 12.92 : Math.pow((gs + 0.055) / 1.055, 2.4);
+    var b = bs <= 0.03928 ? bs / 12.92 : Math.pow((bs + 0.055) / 1.055, 2.4);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  }
+
+  function contrastRatio(c1, c2) {
+    var l1 = luminance(c1), l2 = luminance(c2);
+    return Math.round(((Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)) * 100) / 100;
+  }
+
+  function parseRgb(str) {
+    var m = str.match(/rgb[a]?\((\d+),\s*(\d+),\s*(\d+)/);
+    if (!m) m = str.match(/rgb[a]?\((\d+)\s+(\d+)\s+(\d+)/);
+    if (!m) return null;
+    return { r: +m[1], g: +m[2], b: +m[3] };
+  }
+
+  function rgbStr(c) { return 'rgb(' + c.r + ',' + c.g + ',' + c.b + ')'; }
+
+  // --- Canvas management ---
+  // Load screenshot data URI into a canvas, return {canvas, ctx, width, height}
+  function loadScreenshotToCanvas(dataUri, callback) {
+    var img = new Image();
+    img.onload = function() {
+      var canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      var ctx = canvas.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0);
+      callback({ canvas: canvas, ctx: ctx, width: img.width, height: img.height });
+    };
+    img.onerror = function() { callback(null); };
+    img.src = dataUri;
+  }
+
+  // Sample pixel color at a point, returns {r, g, b} or null
+  function samplePixel(ctx, x, y, width, height) {
+    // Clamp to canvas bounds
+    x = Math.max(0, Math.min(Math.round(x), width - 1));
+    y = Math.max(0, Math.min(Math.round(y), height - 1));
+    var d = ctx.getImageData(x, y, 1, 1).data;
+    return { r: d[0], g: d[1], b: d[2] };
+  }
+
+  // Sample a small area and return the dominant/average color
+  // This is more robust than a single pixel (handles anti-aliasing, subpixel rendering)
+  function sampleArea(ctx, cx, cy, radius, width, height) {
+    var x0 = Math.max(0, Math.round(cx - radius));
+    var y0 = Math.max(0, Math.round(cy - radius));
+    var size = radius * 2 + 1;
+    var x1 = Math.min(x0 + size, width);
+    var y1 = Math.min(y0 + size, height);
+    var w = x1 - x0;
+    var h = y1 - y0;
+    if (w <= 0 || h <= 0) return samplePixel(ctx, cx, cy, width, height);
+
+    var data = ctx.getImageData(x0, y0, w, h).data;
+    var rSum = 0, gSum = 0, bSum = 0, count = 0;
+    for (var i = 0; i < data.length; i += 4) {
+      rSum += data[i];
+      gSum += data[i + 1];
+      bSum += data[i + 2];
+      count++;
+    }
+    if (count === 0) return samplePixel(ctx, cx, cy, width, height);
+    return {
+      r: Math.round(rSum / count),
+      g: Math.round(gSum / count),
+      b: Math.round(bSum / count)
+    };
+  }
+
+  // --- Verification logic ---
+
+  // --- Multi-point sampling strategy ---
+  // Photos, gradients, and dashed patterns need many sample points.
+  // FG: horizontal sweep across text baseline band, take darkest (most likely text)
+  // BG: grid across bbox excluding text band, find worst-case contrast
+  function verifyPair(pair, sectionCanvases, meta) {
+    if (!pair.bbox || !meta) return null;
+
+    var scale = meta.scale;
+    var sectionH = Math.round(meta.viewportHeight * scale);
+
+    // Map bbox to canvas coordinates
+    var canvasX = pair.bbox.left * scale;
+    var canvasY = pair.bbox.top * scale;
+    var canvasW = pair.bbox.width * scale;
+    var canvasH = pair.bbox.height * scale;
+
+    // Skip tiny boxes (less than 4px in either dimension at scale)
+    if (canvasW < 4 || canvasH < 4) return null;
+
+    // Determine which section this bbox falls in
+    var sectionIdx = Math.floor(canvasY / sectionH);
+    if (sectionIdx >= sectionCanvases.length || !sectionCanvases[sectionIdx]) return null;
+
+    var sec = sectionCanvases[sectionIdx];
+    var yInSection = canvasY - (sectionIdx * sectionH);
+    // Clamp to section bounds
+    if (yInSection + canvasH > sec.height) canvasH = sec.height - yInSection;
+    if (canvasX + canvasW > sec.width) canvasW = sec.width - canvasX;
+
+    // --- FG sampling: horizontal sweep across the text baseline area ---
+    // Text typically sits in the middle 40% band of the bbox height.
+    // Sample density scales with box size: ~1 sample per 3px, clamped to [3, 40].
+    var textBandTop = yInSection + canvasH * 0.3;
+    var textBandBottom = yInSection + canvasH * 0.7;
+    var textBandMid = yInSection + canvasH * 0.5;
+    var fgSamples = [];
+    var fgPoints = []; // canvas coordinates for visualization
+    var fgHSteps = Math.max(3, Math.min(_density.fgH, Math.floor(canvasW / 3)));
+    var fgVSteps = Math.max(2, Math.min(_density.fgV, Math.floor(canvasH * 0.4 / 3)));
+    for (var fvi = 0; fvi < fgVSteps; fvi++) {
+      var fy = textBandTop + ((textBandBottom - textBandTop) * fvi / (fgVSteps - 1 || 1));
+      for (var fhi = 0; fhi < fgHSteps; fhi++) {
+        var sx = canvasX + (canvasW * (fhi + 0.5) / fgHSteps);
+        fgSamples.push(samplePixel(sec.ctx, sx, fy, sec.width, sec.height));
+        fgPoints.push({ x: Math.round(sx), y: Math.round(fy) });
+      }
+    }
+    // Text color = the darkest sample in the text band (for dark-on-light)
+    // or lightest (for light-on-dark). Determine from CSS fg color.
+    var cssFg = parseRgb(pair.fg);
+    var cssFgIsDark = cssFg ? (luminance(cssFg) < 0.5) : true;
+    fgSamples.sort(function(a, b) {
+      var la = luminance(a), lb = luminance(b);
+      return cssFgIsDark ? (la - lb) : (lb - la); // darkest first if fg is dark
+    });
+    // Take median of the darkest/lightest third as FG (avoids outlier anti-aliased pixels)
+    var fgSlice = fgSamples.slice(0, Math.max(3, Math.ceil(fgSamples.length / 3)));
+    var fgColor = { r: 0, g: 0, b: 0 };
+    fgSlice.forEach(function(s) { fgColor.r += s.r; fgColor.g += s.g; fgColor.b += s.b; });
+    fgColor.r = Math.round(fgColor.r / fgSlice.length);
+    fgColor.g = Math.round(fgColor.g / fgSlice.length);
+    fgColor.b = Math.round(fgColor.b / fgSlice.length);
+
+    // --- BG sampling: edges and margins ONLY, excluding text band ---
+    // The text band (middle 30-70% of height) contains text pixels that would
+    // contaminate BG readings. Sample from:
+    //   1. Top strip (0% - 20% height)
+    //   2. Bottom strip (80% - 100% height)
+    //   3. Left edge strip (0% - 10% width, full height)
+    //   4. Right edge strip (90% - 100% width, full height)
+    //   5. Between-line gaps: horizontal sweeps at 25% and 75% height
+    // This catches the actual background even with dense text.
+    var bgSamples = [];
+    var bgPoints = []; // canvas coordinates for visualization
+    function _bgSample(px, py) {
+      bgSamples.push(samplePixel(sec.ctx, px, py, sec.width, sec.height));
+      bgPoints.push({ x: Math.round(px), y: Math.round(py) });
+    }
+    var bgHSteps = Math.max(3, Math.min(_density.bgH, Math.floor(canvasW / 3)));
+    var bgVSteps = Math.max(3, Math.min(_density.bgV, Math.floor(canvasH / 3)));
+    var insetX = Math.max(1, canvasW * 0.02);
+    var insetY = Math.max(1, canvasH * 0.02);
+
+    // Top strip (above text)
+    var topStripBottom = yInSection + canvasH * 0.2;
+    var topVSteps = Math.max(2, Math.ceil(bgVSteps * 0.2));
+    for (var tx = 0; tx < bgHSteps; tx++) {
+      for (var ty = 0; ty < topVSteps; ty++) {
+        var px = canvasX + insetX + ((canvasW - insetX * 2) * tx / (bgHSteps - 1));
+        var py = yInSection + insetY + ((topStripBottom - yInSection - insetY) * ty / (topVSteps - 1 || 1));
+        _bgSample(px, py);
+      }
+    }
+
+    // Bottom strip (below text)
+    var bottomStripTop = yInSection + canvasH * 0.8;
+    var bottomStripEnd = yInSection + canvasH - insetY;
+    var botVSteps = Math.max(2, Math.ceil(bgVSteps * 0.2));
+    for (var bxb = 0; bxb < bgHSteps; bxb++) {
+      for (var byb = 0; byb < botVSteps; byb++) {
+        var px = canvasX + insetX + ((canvasW - insetX * 2) * bxb / (bgHSteps - 1));
+        var py = bottomStripTop + ((bottomStripEnd - bottomStripTop) * byb / (botVSteps - 1 || 1));
+        _bgSample(px, py);
+      }
+    }
+
+    // Left edge strip (avoid text, sample full height at left margin)
+    var leftEdge = canvasX + insetX;
+    var leftEdgeEnd = canvasX + canvasW * 0.08;
+    var edgeVSteps = Math.max(3, Math.ceil(bgVSteps * 0.4));
+    if (leftEdgeEnd > leftEdge + 1) {
+      for (var ly = 0; ly < edgeVSteps; ly++) {
+        var py = yInSection + insetY + ((canvasH - insetY * 2) * ly / (edgeVSteps - 1));
+        _bgSample(leftEdge, py);
+        _bgSample(leftEdgeEnd, py);
+      }
+    }
+
+    // Right edge strip
+    var rightEdge = canvasX + canvasW - insetX;
+    var rightEdgeStart = canvasX + canvasW * 0.92;
+    if (rightEdge > rightEdgeStart + 1) {
+      for (var ry = 0; ry < edgeVSteps; ry++) {
+        var py = yInSection + insetY + ((canvasH - insetY * 2) * ry / (edgeVSteps - 1));
+        _bgSample(rightEdge, py);
+        _bgSample(rightEdgeStart, py);
+      }
+    }
+
+    // Between-line gap sweeps (25% and 75% of height — between top/text and text/bottom)
+    var gapYs = [yInSection + canvasH * 0.22, yInSection + canvasH * 0.78];
+    for (var gi = 0; gi < gapYs.length; gi++) {
+      for (var gx = 0; gx < bgHSteps; gx++) {
+        var px = canvasX + insetX + ((canvasW - insetX * 2) * gx / (bgHSteps - 1));
+        _bgSample(px, gapYs[gi]);
+      }
+    }
+
+    // Safety: if we got very few samples (tiny box), fall back to corners
+    if (bgSamples.length < 4) {
+      _bgSample(canvasX + 1, yInSection + 1);
+      _bgSample(canvasX + canvasW - 1, yInSection + 1);
+      _bgSample(canvasX + 1, yInSection + canvasH - 1);
+      _bgSample(canvasX + canvasW - 1, yInSection + canvasH - 1);
+    }
+
+    // Find worst-case BG (the one that gives lowest contrast with FG)
+    var worstBg = bgSamples[0];
+    var worstRatio = 99;
+    var bestBg = bgSamples[0];
+    var bestRatio = 0;
+    bgSamples.forEach(function(bg) {
+      var r = contrastRatio(fgColor, bg);
+      if (r < worstRatio) { worstRatio = r; worstBg = bg; }
+      if (r > bestRatio) { bestRatio = r; bestBg = bg; }
+    });
+
+    // Also compute average BG contrast for overall picture
+    var avgBg = { r: 0, g: 0, b: 0 };
+    bgSamples.forEach(function(s) { avgBg.r += s.r; avgBg.g += s.g; avgBg.b += s.b; });
+    avgBg.r = Math.round(avgBg.r / bgSamples.length);
+    avgBg.g = Math.round(avgBg.g / bgSamples.length);
+    avgBg.b = Math.round(avgBg.b / bgSamples.length);
+    var avgRatio = contrastRatio(fgColor, avgBg);
+
+    // Use worst-case ratio as the primary "pixel ratio" — conservative approach
+    var pixelRatio = worstRatio;
+    var cssRatio = pair.ratio;
+
+    var cssNeeded = pair.needed || 4.5;
+    var cssPasses = cssRatio >= cssNeeded;
+    var pixelPasses = pixelRatio >= cssNeeded;
+    var ratioDiff = Math.abs(pixelRatio - cssRatio);
+    var crossesBoundary = cssPasses !== pixelPasses;
+
+    // Flag high BG variance as a signal for photo/gradient backgrounds
+    var bgVariance = bestRatio - worstRatio;
+    var isVariableBg = bgVariance > 2.0;
+
+    return {
+      cssRatio: cssRatio,
+      pixelRatio: pixelRatio,         // worst-case (conservative)
+      pixelRatioAvg: avgRatio,        // average background
+      pixelRatioBest: bestRatio,      // best-case spot
+      bgVariance: Math.round(bgVariance * 100) / 100,
+      isVariableBg: isVariableBg,     // photo/gradient detected
+      ratioDiff: ratioDiff,
+      cssPasses: cssPasses,
+      pixelPasses: pixelPasses,
+      crossesBoundary: crossesBoundary,
+      significant: crossesBoundary || ratioDiff > 1.5 || isVariableBg,
+      pixelFg: rgbStr(fgColor),
+      pixelBgWorst: rgbStr(worstBg),
+      pixelBgAvg: rgbStr(avgBg),
+      cssFg: pair.fg,
+      cssBg: pair.bg,
+      selector: pair.selector,
+      text: pair.text,
+      sectionIdx: sectionIdx,
+      sampleCount: { fg: fgSamples.length, bg: bgSamples.length },
+      samplePoints: { fg: fgPoints, bg: bgPoints }
+    };
+  }
+
+  // Run verification on all contrast pairs with bboxes
+  // Prefers pre-computed pixelVerify data from extraction (pristine canvas).
+  // Falls back to post-hoc screenshot canvas sampling when not available.
+  // callback(results) where results is array of verification objects
+  function verify(reportData, callback) {
+    var raw = reportData && reportData.raw;
+    if (!raw || !raw.colors || !raw.colors.contrastPairs) {
+      callback([]); return;
+    }
+
+    var pairs = raw.colors.contrastPairs.filter(function(p) { return p.bbox; });
+    if (pairs.length === 0) { callback([]); return; }
+
+    // Check if extraction already computed pixel verification (snippet-screenshots path)
+    var hasPrecomputed = raw.pixelVerifyResults || pairs.some(function(p) { return p.pixelVerify; });
+    if (hasPrecomputed) {
+      // Use pre-computed results — these were done on the pristine full-res canvas
+      var results = (raw.pixelVerifyResults || []).slice();
+      // Also collect per-pair results that weren't flagged as discrepancies
+      pairs.forEach(function(pair) {
+        if (!pair.pixelVerify) return;
+        var pv = pair.pixelVerify;
+        // Check if already in results array
+        var alreadyIn = results.some(function(r) { return r.selector === pair.selector; });
+        if (!alreadyIn) {
+          results.push({
+            selector: pair.selector,
+            text: pair.text,
+            cssRatio: pair.ratio,
+            pixelRatio: pv.worstRatio,
+            pixelRatioAvg: pv.dominantRatio,
+            pixelRatioBest: pv.dominantRatio,
+            cssPasses: pair.ratio >= (pair.needed || 4.5),
+            pixelPasses: pv.worstRatio >= (pair.needed || 4.5),
+            crossesBoundary: pv.crossesBoundary,
+            isVariableBg: pv.isVariableBg,
+            significant: false,
+            bgSamples: pv.bgSamples,
+            pixelBgDominant: pv.dominantBg,
+            pixelBgWorst: pv.worstBg,
+            cssBgConfirmed: pv.cssBgConfirmed,
+            ratioDiff: Math.abs(pv.dominantRatio - pair.ratio),
+            bgVariance: 0,
+            sampleCount: { fg: 0, bg: pv.bgSamples }
+          });
+        }
+      });
+      results.sort(function(a, b) {
+        if (a.crossesBoundary !== b.crossesBoundary) return a.crossesBoundary ? -1 : 1;
+        return (b.ratioDiff || 0) - (a.ratioDiff || 0);
+      });
+      callback(results);
+      return;
+    }
+
+    // Fallback: post-hoc verification from screenshot canvases (iframe path)
+    if (!raw.screenshots || !raw.screenshotMeta) { callback([]); return; }
+    var meta = raw.screenshotMeta;
+
+    var sectionCanvases = new Array(raw.screenshots.length);
+    var loaded = 0;
+    var total = raw.screenshots.length;
+
+    raw.screenshots.forEach(function(dataUri, idx) {
+      loadScreenshotToCanvas(dataUri, function(sec) {
+        sectionCanvases[idx] = sec;
+        loaded++;
+        if (loaded === total) {
+          var results = [];
+          pairs.forEach(function(pair) {
+            var result = verifyPair(pair, sectionCanvases, meta);
+            if (result) results.push(result);
+          });
+
+          results.sort(function(a, b) {
+            if (a.crossesBoundary !== b.crossesBoundary) return a.crossesBoundary ? -1 : 1;
+            return b.ratioDiff - a.ratioDiff;
+          });
+
+          callback(results);
+        }
+      });
+    });
+  }
+
+  // Format a single verification result as HTML for display in findings
+  function formatResult(r) {
+    var variableNote = r.isVariableBg
+      ? '<br><span style="font-size:10px;color:var(--text-secondary)">Variable background detected (contrast range: ' + r.pixelRatio + ':1 to ' + r.pixelRatioBest + ':1, variance: ' + r.bgVariance + ')</span>'
+      : '';
+    if (r.crossesBoundary) {
+      if (r.cssPasses && !r.pixelPasses) {
+        return '<span style="color:#ef4444;font-weight:600">Pixel check: FAILS ' + r.pixelRatio + ':1 worst-case</span> ' +
+          '<span style="color:var(--text-secondary);font-size:11px">(CSS reported ' + r.cssRatio + ':1 pass' +
+          (r.isVariableBg ? ' — photo/gradient background' : ' — actual background may differ') + ')</span>' + variableNote;
+      } else {
+        return '<span style="color:#16a34a;font-weight:600">Pixel check: PASSES ' + r.pixelRatio + ':1</span> ' +
+          '<span style="color:var(--text-secondary);font-size:11px">(CSS reported ' + r.cssRatio + ':1 — actual background provides better contrast)</span>' + variableNote;
+      }
+    }
+    if (r.isVariableBg) {
+      return '<span style="color:#f59e0b">Variable background: worst ' + r.pixelRatio + ':1, avg ' + r.pixelRatioAvg + ':1, best ' + r.pixelRatioBest + ':1</span>' +
+        '<br><span style="color:var(--text-secondary);font-size:11px">Photo or gradient background — contrast varies across element' + (r.sampleCount ? ' (' + r.sampleCount.bg + ' points sampled)' : '') + '</span>';
+    }
+    if (r.significant) {
+      return '<span style="color:#f59e0b">Pixel contrast: ' + r.pixelRatio + ':1</span> ' +
+        '<span style="color:var(--text-secondary);font-size:11px">(differs from CSS-derived ' + r.cssRatio + ':1 by ' + r.ratioDiff.toFixed(1) + ')</span>' + variableNote;
+    }
+    return '<span style="color:var(--text-secondary);font-size:11px">Pixel-verified: ' + r.pixelRatio + ':1' +
+      (r.bgVariance > 0.5 ? ' (bg range: ' + r.bgVariance + ')' : '') + '</span>';
+  }
+
+  // Build a summary of verification results
+  function buildSummary(results) {
+    var total = results.length;
+    var falsePassCount = 0; // CSS passes but pixels fail
+    var falseFailCount = 0; // CSS fails but pixels pass
+    var significantDiffs = 0;
+    var variableBgCount = 0;
+    var verified = 0;
+
+    results.forEach(function(r) {
+      if (r.isVariableBg) variableBgCount++;
+      if (r.crossesBoundary) {
+        if (r.cssPasses && !r.pixelPasses) falsePassCount++;
+        else falseFailCount++;
+      } else if (r.significant) {
+        significantDiffs++;
+      } else {
+        verified++;
+      }
+    });
+
+    return {
+      total: total,
+      falsePassCount: falsePassCount,
+      falseFailCount: falseFailCount,
+      significantDiffs: significantDiffs,
+      variableBgCount: variableBgCount,
+      verified: verified,
+      results: results
+    };
+  }
+
+  // Render verification summary as HTML block
+  function renderSummaryHtml(summary) {
+    if (summary.total === 0) return '';
+    var isDark = document.body && document.body.classList.contains('dark-ui');
+
+    var html = '<details class="contrast-verify-summary">';
+    html += '<summary style="cursor:pointer;font-size:13px;font-weight:600;padding:8px 0">';
+    html += 'Pixel Contrast Verification (' + summary.total + ' pairs checked)';
+    if (summary.falsePassCount > 0) {
+      html += ' <span style="color:#ef4444;font-weight:700">' + summary.falsePassCount + ' hidden failure' + (summary.falsePassCount > 1 ? 's' : '') + '</span>';
+    }
+    html += '</summary>';
+
+    html += '<div style="padding:8px 0;font-size:13px;line-height:1.6">';
+
+    if (summary.falsePassCount > 0) {
+      var bg = isDark ? '#2d0f0f' : '#fef2f2';
+      var border = isDark ? '#991b1b' : '#fecaca';
+      html += '<div style="padding:10px 14px;background:' + bg + ';border:1px solid ' + border + ';border-radius:6px;margin-bottom:8px">';
+      html += '<strong style="color:#ef4444">' + summary.falsePassCount + ' element' + (summary.falsePassCount > 1 ? 's' : '') + ' pass CSS contrast but fail in pixels</strong>';
+      html += '<p style="margin:4px 0 0;font-size:12px;color:' + (isDark ? '#fca5a5' : '#991b1b') + '">These elements have backgrounds (gradients, images, overlapping elements) that reduce contrast below what CSS inspection reports.</p>';
+      summary.results.filter(function(r) { return r.cssPasses && !r.pixelPasses; }).forEach(function(r) {
+        html += '<div style="margin-top:6px;padding:6px 8px;background:' + (isDark ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.7)') + ';border-radius:4px;font-size:12px">';
+        html += '<strong>' + r.selector + '</strong>: "' + (r.text || '').substring(0, 30) + '"';
+        html += '<br>CSS: ' + r.cssRatio + ':1 (pass) &rarr; Pixels: ' + r.pixelRatio + ':1 (fail)';
+        html += '<br><span style="color:var(--text-secondary)">Pixel FG: ' + (r.pixelFg || '?') + ' / BG worst: ' + (r.pixelBgWorst || r.pixelBgDominant || '?') + (r.isVariableBg && r.sampleCount ? ' (variable bg, ' + r.sampleCount.bg + ' points)' : '') + '</span>';
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+
+    if (summary.falseFailCount > 0) {
+      var bg = isDark ? '#0c2d1e' : '#f0fdf4';
+      var border = isDark ? '#166534' : '#bbf7d0';
+      html += '<div style="padding:10px 14px;background:' + bg + ';border:1px solid ' + border + ';border-radius:6px;margin-bottom:8px">';
+      html += '<strong style="color:#16a34a">' + summary.falseFailCount + ' false positive' + (summary.falseFailCount > 1 ? 's' : '') + ' detected</strong>';
+      html += '<p style="margin:4px 0 0;font-size:12px;color:' + (isDark ? '#86efac' : '#166534') + '">These elements fail CSS contrast but actually pass when measured from the screenshot. The real background provides better contrast.</p>';
+      summary.results.filter(function(r) { return !r.cssPasses && r.pixelPasses; }).forEach(function(r) {
+        html += '<div style="margin-top:6px;padding:6px 8px;background:' + (isDark ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.7)') + ';border-radius:4px;font-size:12px">';
+        html += '<strong>' + r.selector + '</strong>: "' + (r.text || '').substring(0, 30) + '"';
+        html += '<br>CSS: ' + r.cssRatio + ':1 (fail) &rarr; Pixels: ' + r.pixelRatio + ':1 (pass)';
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+
+    // Variable background warning (photos, gradients)
+    if (summary.variableBgCount > 0) {
+      var vbResults = summary.results.filter(function(r) { return r.isVariableBg; });
+      var bg = isDark ? '#2d2006' : '#fffbeb';
+      var border = isDark ? '#92400e' : '#fde68a';
+      html += '<div style="padding:10px 14px;background:' + bg + ';border:1px solid ' + border + ';border-radius:6px;margin-bottom:8px">';
+      html += '<strong style="color:#f59e0b">' + summary.variableBgCount + ' element' + (summary.variableBgCount > 1 ? 's' : '') + ' with variable backgrounds (photo/gradient)</strong>';
+      html += '<p style="margin:4px 0 0;font-size:12px;color:' + (isDark ? '#fbbf24' : '#92400e') + '">These elements have backgrounds that vary significantly across their area. Contrast depends on where text is positioned relative to the background.</p>';
+      vbResults.slice(0, 5).forEach(function(r) {
+        html += '<div style="margin-top:6px;padding:6px 8px;background:' + (isDark ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.7)') + ';border-radius:4px;font-size:12px">';
+        html += '<strong>' + r.selector + '</strong>: "' + (r.text || '').substring(0, 30) + '"';
+        html += '<br>Contrast range: <span style="color:#ef4444">' + r.pixelRatio + ':1</span> (worst) to <span style="color:#16a34a">' + r.pixelRatioBest + ':1</span> (best), avg ' + r.pixelRatioAvg + ':1';
+        html += '<br><span style="color:var(--text-secondary)">' + (r.sampleCount ? r.sampleCount.bg + ' background points sampled, ' : '') + 'variance: ' + (r.bgVariance || '?') + '</span>';
+        html += '</div>';
+      });
+      if (vbResults.length > 5) html += '<div style="font-size:11px;color:var(--text-secondary);margin-top:4px">...and ' + (vbResults.length - 5) + ' more</div>';
+      html += '</div>';
+    }
+
+    if (summary.verified > 0 || summary.significantDiffs > 0) {
+      html += '<div style="font-size:12px;color:var(--text-secondary);margin-top:4px">';
+      if (summary.verified > 0) html += summary.verified + ' pair' + (summary.verified > 1 ? 's' : '') + ' verified consistent. ';
+      if (summary.significantDiffs > 0) html += summary.significantDiffs + ' with notable pixel deviation (>1.5 ratio difference). ';
+      html += '</div>';
+    }
+
+    html += '</div></details>';
+    return html;
+  }
+
+  return {
+    verify: verify,
+    setDensity: setDensity,
+    formatResult: formatResult,
+    buildSummary: buildSummary,
+    renderSummaryHtml: renderSummaryHtml,
+    contrastRatio: contrastRatio,
+    parseRgb: parseRgb
+  };
 })();
 </file>
 
@@ -27864,6 +27894,7 @@ window.MilgReport = (function() {
       html += '<h3>' + (categoryIcons[cat.icon] || '') + ' ' + cat.label + '</h3>';
 
       cat.findings.forEach(function(f) {
+        if (f.severity === 'pass') return; // pass findings only show in screenshot viewer
         var hasBboxes = f.locator && f.locator.bboxes && f.locator.bboxes.length > 0;
         html += '<div class="report-finding severity-' + f.severity + '"' + (hasBboxes ? ' data-finding-idx="' + _bboxFindingIdx + '"' : '') + '>';
         html += '<div class="finding-header">';
@@ -28510,393 +28541,6 @@ window.MilgReport = (function() {
 })();
 </file>
 
-<file path="docs/analyzer-iframe.js">
-// make-it-look-good — Iframe Analysis & Screenshot Pipeline
-// Handles iframe creation, extraction injection, screenshot capture, and deep scan.
-// Depends on: analyzer-extract.js (MilgExtract)
-
-window.MilgIframe = (function() {
-  "use strict";
-
-  var _screenshotCDN = '';
-  var _getViewport = function() { return { w: 1280, h: 900 }; };
-  var SCREENSHOT_SCALE = 0.5;
-  var SCREENSHOT_QUALITY = 0.8;
-
-  function init(opts) {
-    if (opts.screenshotCDN) _screenshotCDN = opts.screenshotCDN;
-    if (opts.getViewport) _getViewport = opts.getViewport;
-  }
-
-  // Inject a <base> tag so relative URLs (CSS, images, fonts) resolve to the original domain
-  function injectBaseTag(html, url) {
-    if (!url || url === 'Pasted HTML') return html;
-    try {
-      var base = new URL(url);
-      var baseHref = base.origin + base.pathname.replace(/\/[^/]*$/, '/');
-      var baseTag = '<base href="' + baseHref + '">';
-      // Insert after <head> if present
-      if (/<head[\s>]/i.test(html)) {
-        return html.replace(/<head([^>]*)>/i, '<head$1>' + baseTag);
-      }
-      // Otherwise prepend
-      return baseTag + html;
-    } catch(e) { return html; }
-  }
-
-  // --- Screenshot capture script (injected into iframes after extraction) ---
-  // Called after extraction via __milgDoScreenshots (once-guard prevents double run).
-  // Mirrors console snippet: pre-scroll → reset → wait → re-read bboxes → capture body
-  function buildScreenshotScript(msgType) {
-    var ss = { scale: SCREENSHOT_SCALE, quality: SCREENSHOT_QUALITY };
-    return '(function(){' +
-      // Once-guard: extraction may fire twice (load + fallback timeout)
-      'if(window.__milgSsDone)return;window.__milgSsDone=true;' +
-      'var vh=window.innerHeight||900;' +
-      // Unlock height to get true scrollHeight (sites with html,body{height:100%} clamp it)
-      // Set overflow:auto explicitly so the inner document is scrollable for IntersectionObservers
-      'document.documentElement.style.cssText+="height:auto !important;overflow-y:auto !important;";' +
-      'document.body.style.cssText+="height:auto !important;";' +
-      'void document.body.offsetHeight;' + // force reflow
-      'var totalH=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);' +
-      'var captureH=Math.min(totalH,vh*10);' +
-      'console.log("[iframe-ss] Phase 1: Pre-scrolling "+captureH+"px ("+Math.ceil(captureH/vh)+" steps, vh="+vh+") ...");' +
-      // Phase 1: Pre-scroll to trigger IntersectionObservers, lazy images, fade-in animations
-      'var _positions=[];for(var p=0;p<captureH;p+=vh)_positions.push(p);' +
-      'var _pi=0;' +
-      'function _scrollNext(){' +
-        'if(_pi>=_positions.length){' +
-          'console.log("[iframe-ss] Phase 1 done (scrollY="+window.scrollY+"). Waiting for content...");' +
-          'setTimeout(_startCapture,800);return' + // 800ms for lazy content + animations to start
-        '}' +
-        'window.scrollTo(0,_positions[_pi]);' +
-        // Also scroll documentElement directly (some browsers need this in iframes)
-        'document.documentElement.scrollTop=_positions[_pi];' +
-        'try{window.dispatchEvent(new Event("scroll"))}catch(e){}' +
-        'console.log("[iframe-ss] scroll to "+_positions[_pi]+" → actual="+window.scrollY);' +
-        '_pi++;setTimeout(_scrollNext,200)' + // 200ms per step (more time for observers)
-      '}' +
-      '_scrollNext();' +
-      // Phase 2: Reset scroll, force-reveal hidden animated content, capture
-      'function _startCapture(){' +
-        'document.documentElement.style.scrollBehavior="auto";' +
-        'document.body.style.scrollBehavior="auto";' +
-        'window.scrollTo(0,0);document.documentElement.scrollTop=0;document.body.scrollTop=0;' +
-        'document.querySelectorAll("*").forEach(function(el){' +
-          'if(el.scrollTop>0){var s=getComputedStyle(el);' +
-          'if(s.overflow==="auto"||s.overflow==="scroll"||s.overflowY==="auto"||s.overflowY==="scroll"){' +
-          'el.style.scrollBehavior="auto";el.scrollTop=0}}' +
-        '});' +
-        // Force-finalize scroll-triggered animations:
-        // IntersectionObserver doesn't fire in offscreen iframes (browser optimization).
-        // Find all elements with opacity:0 that have transitions/animations and force them visible.
-        'var _revealed=0;' +
-        'document.querySelectorAll("*").forEach(function(el){' +
-          'var cs=getComputedStyle(el);' +
-          'if(cs.opacity==="0"&&el.tagName!=="SCRIPT"&&el.tagName!=="STYLE"){' +
-            // Check if this is an animation-hidden element (has transition on opacity or a CSS animation)
-            'var hasTrans=cs.transition&&cs.transition.indexOf("opacity")!==-1;' +
-            'var hasAnim=cs.animationName&&cs.animationName!=="none";' +
-            'var hasTransform=cs.transform&&cs.transform!=="none";' +
-            // Also check for common scroll-reveal patterns (classes containing fade, reveal, animate, aos)
-            'var cls=(el.className&&typeof el.className==="string")?el.className.toLowerCase():"";' +
-            'var isScrollAnim=hasTrans||hasAnim||/fade|reveal|animate|aos|scroll|slide|appear/.test(cls);' +
-            'if(isScrollAnim){' +
-              'el.style.cssText+=";opacity:1 !important;transform:none !important;transition:none !important;animation:none !important;";' +
-              '_revealed++' +
-            '}' +
-          '}' +
-        '});' +
-        'if(_revealed>0)console.log("[iframe-ss] Force-revealed "+_revealed+" scroll-animated elements (IO disabled in offscreen iframes)");' +
-        // Also inject a style to fast-forward any remaining CSS animations
-        'var _ffStyle=document.createElement("style");' +
-        '_ffStyle.textContent="*,*::before,*::after{animation-delay:0s !important;animation-duration:0.01s !important;}";' +
-        'document.head.appendChild(_ffStyle);' +
-        'void document.body.offsetHeight;' +
-        // Switch to overflow:visible for capture
-        'document.documentElement.style.cssText+="overflow:visible !important;";' +
-        'document.body.style.cssText+="overflow:visible !important;";' +
-        'void document.body.offsetHeight;' +
-        'console.log("[iframe-ss] Phase 2: Waiting for animations to finalize...");' +
-        'setTimeout(function(){' +
-          // Get body offset — bboxes are in document coords but canvas starts at body's top-left
-          'var bodyRect=document.body.getBoundingClientRect();' +
-          'var bodyOffX=Math.round(bodyRect.left+window.scrollX);' +
-          'var bodyOffY=Math.round(bodyRect.top+window.scrollY);' +
-          'console.log("[iframe-ss] Body offset: "+bodyOffX+","+bodyOffY);' +
-          'if(typeof window.__milgReReadBboxes==="function"){' +
-            'var res=window.__milgReReadBboxes();' +
-            'console.log("[iframe-ss] Re-read bboxes: "+res)' +
-          '}' +
-          // Subtract body offset from all bboxes so they're body-relative (matching canvas origin)
-          'if((bodyOffX!==0||bodyOffY!==0)&&window.__milgBboxRefs){' +
-            'window.__milgBboxRefs.forEach(function(ref){' +
-              'if(ref.obj&&ref.obj[ref.key]){ref.obj[ref.key].left-=bodyOffX;ref.obj[ref.key].top-=bodyOffY}' +
-            '});' +
-            'console.log("[iframe-ss] Shifted "+window.__milgBboxRefs.length+" bboxes by -"+bodyOffX+",-"+bodyOffY)' +
-          '}' +
-          'var fullH=document.body.scrollHeight;' +
-          'console.log("[iframe-ss] body.scrollHeight="+fullH+" vh="+vh);' +
-          'var s=document.createElement("script");' +
-          's.src="' + _screenshotCDN + '";' +
-          's.onload=function(){' +
-            'var ms=window.modernScreenshot;' +
-            'if(!ms||!ms.domToCanvas){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*");return}' +
-            'document.querySelectorAll("img").forEach(function(i){if(i.src&&i.src.indexOf("data:")!==0)i.crossOrigin="anonymous"});' +
-            'ms.domToCanvas(document.body,{scale:' + ss.scale + ',timeout:12000}).then(function(fc){' +
-              'console.log("[iframe-ss] Canvas: "+fc.width+"x"+fc.height);' +
-              'var fullUri;try{fullUri=fc.toDataURL("image/webp",' + ss.quality + ')}catch(e){fullUri=""}' +
-              'var updatedData=window.__milgData||null;' +
-              'parent.postMessage({type:"' + msgType + '",' +
-                'screenshots:fullUri?[fullUri]:[],' +
-                'screenshotFull:fullUri||null,' +
-                'screenshotMeta:{scale:' + ss.scale + ',viewportHeight:vh,sectionCount:1,' +
-                  'canvasWidth:fc.width,canvasHeight:fc.height,' +
-                  'docHeightAtCapture:fullH,' +
-                  'bodyOffsetX:bodyOffX,bodyOffsetY:bodyOffY,' +
-                  'calibrationOffsetY:0,calibrationSamples:[]},' +
-                'updatedData:updatedData' +
-              '},"*")' +
-            '}).catch(function(e){console.warn("[iframe-ss] capture failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")})' +
-          '};' +
-          's.onerror=function(){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")};' +
-          'document.head.appendChild(s)' +
-        '},1500)' +
-      '}' +
-    '})()';
-  }
-
-  function deepScanInIframe(html, url, exclude, vpWidth, vpHeight, callback) {
-    var extractFromDocument = window.MilgExtract;
-    var iframe = document.createElement('iframe');
-    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + vpWidth + 'px;height:' + vpHeight + 'px;border:none;';
-    iframe.sandbox = 'allow-scripts allow-same-origin';
-    document.body.appendChild(iframe);
-
-    var msgType = 'milg-deep-' + vpWidth;
-    var handled = false;
-    function onResult(e) {
-      if (!e.data || e.data.type !== msgType) return;
-      if (handled) return;
-      handled = true;
-      window.removeEventListener('message', onResult);
-      if (iframe.parentNode) document.body.removeChild(iframe);
-      callback(e.data.data);
-    }
-    window.addEventListener('message', onResult);
-
-    var processed = url ? injectBaseTag(html, url) : html;
-    var excludeVar = exclude ? '<script>window.__milgExclude=' + JSON.stringify(exclude) + ';</' + 'script>' : '';
-    var isFullDoc = /<html[\s>]/i.test(processed) || /<!DOCTYPE/i.test(processed);
-
-    var extractStr = extractFromDocument.toString().replace(/milg-analyzer-result/g, msgType);
-    // Auto-scroll inside iframe to trigger intersection observers before extracting
-    var scrollScript = 'window.scrollTo(0,document.body.scrollHeight);setTimeout(function(){window.scrollTo(0,0)},300);';
-    var extractScript = excludeVar + '<script>window.addEventListener("load",function(){' + scrollScript + 'setTimeout(function(){(' + extractStr + ')()},1500)});setTimeout(function(){(' + extractStr + ')()},8000);</' + 'script>';
-
-    var srcdoc;
-    if (isFullDoc) {
-      if (/<\/body>/i.test(processed)) {
-        srcdoc = processed.replace(/<\/body>/i, extractScript + '</body>');
-      } else {
-        srcdoc = processed + extractScript;
-      }
-    } else {
-      srcdoc = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script><style>body{margin:0}</style></head><body>' + processed + extractScript + '</body></html>';
-    }
-    iframe.srcdoc = srcdoc;
-
-    setTimeout(function() {
-      if (handled) return;
-      handled = true;
-      window.removeEventListener('message', onResult);
-      if (iframe.parentNode) document.body.removeChild(iframe);
-      callback(null);
-    }, 15000);
-  }
-
-  function analyzeHtmlInIframe(html, callback, sourceUrlOrDark, excludeSelectorOrEffectCSS, captureScreenshots) {
-    var extractFromDocument = window.MilgExtract;
-    // Support both signatures:
-    // analyzeHtmlInIframe(html, cb, sourceUrl, excludeSelector, screenshots) — URL mode
-    // analyzeHtmlInIframe(html, cb, dark, effectCSS, screenshots) — editor preview mode
-    var sourceUrl = typeof sourceUrlOrDark === 'string' ? sourceUrlOrDark : null;
-    var excludeSelector = typeof excludeSelectorOrEffectCSS === 'string' && !sourceUrl ? null : excludeSelectorOrEffectCSS;
-    var editorDark = typeof sourceUrlOrDark === 'boolean' ? sourceUrlOrDark : false;
-    var editorEffectCSS = (!sourceUrl && typeof excludeSelectorOrEffectCSS === 'string') ? excludeSelectorOrEffectCSS : '';
-    var iframe = document.createElement('iframe');
-    // Use viewport from selector or default
-    var vp = _getViewport();
-    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + vp.w + 'px;height:' + vp.h + 'px;border:none;';
-    iframe.sandbox = 'allow-scripts allow-same-origin';
-    document.body.appendChild(iframe);
-
-    var handled = false;
-    function finish(data) {
-      if (handled) return;
-      handled = true;
-      window.removeEventListener('message', onMsg);
-      if (iframe.parentNode) document.body.removeChild(iframe);
-      callback(data);
-    }
-
-    function onMsg(e) {
-      if (!e.data) return;
-      if (e.data.type === 'milg-analyzer-result') {
-        var data = e.data.data;
-        data.meta.url = 'Pasted HTML';
-        if (!captureScreenshots) {
-          finish(data);
-          return;
-        }
-        // Store data, wait for screenshots (capture auto-triggers via __milgDoScreenshots)
-        iframe._milgData = data;
-      }
-      if (e.data.type === 'milg-screenshots-result' && iframe._milgData) {
-        iframe._milgData.screenshots = e.data.screenshots || [];
-        iframe._milgData.screenshotFull = e.data.screenshotFull || null;
-        iframe._milgData.screenshotMeta = e.data.screenshotMeta || null;
-        // Apply re-read bbox data from the iframe (updated after scroll-reset + getFlowPosition)
-        if (e.data.updatedData) {
-          var ud = e.data.updatedData;
-          // Merge re-read bboxes back into our data
-          if (ud.colors && ud.colors.contrastPairs) iframe._milgData.colors.contrastPairs = ud.colors.contrastPairs;
-          if (ud.typography) {
-            if (ud.typography.fontSizes) iframe._milgData.typography.fontSizes = ud.typography.fontSizes;
-            if (ud.typography.headings) iframe._milgData.typography.headings = ud.typography.headings;
-            if (ud.typography.maxLineLength) iframe._milgData.typography.maxLineLength = ud.typography.maxLineLength;
-          }
-          if (ud.interaction && ud.interaction.touchTargets) iframe._milgData.interaction.touchTargets = ud.interaction.touchTargets;
-          if (ud.layout) {
-            if (ud.layout.offscreenElements) iframe._milgData.layout.offscreenElements = ud.layout.offscreenElements;
-            if (ud.layout.hiddenPanelIssues) iframe._milgData.layout.hiddenPanelIssues = ud.layout.hiddenPanelIssues;
-          }
-        }
-        // If hidden panels were detected, trigger unhidden screenshot pass
-        var hpc = iframe._milgData.layout && iframe._milgData.layout.hiddenPanelCount;
-        if (hpc > 0 && iframe.contentWindow && iframe.contentWindow.__milgDoUnhiddenScreenshots) {
-          try {
-            setTimeout(function() { iframe.contentWindow.__milgDoUnhiddenScreenshots(); }, 100);
-          } catch(ex) { finish(iframe._milgData); }
-        } else {
-          finish(iframe._milgData);
-        }
-      }
-      if (e.data.type === 'milg-screenshots-unhidden' && iframe._milgData) {
-        iframe._milgData.screenshotsUnhidden = e.data.screenshots || [];
-        finish(iframe._milgData);
-      }
-    }
-    window.addEventListener('message', onMsg);
-
-    // If the pasted HTML is a full document (has <html> or <head>), use it as-is
-    // and just append the extraction script. Otherwise wrap in a basic document.
-    var isFullDoc = /<html[\s>]/i.test(html) || /<!DOCTYPE/i.test(html);
-    // Inject <base> tag so relative CSS/image/font URLs resolve to the original domain
-    if (sourceUrl) html = injectBaseTag(html, sourceUrl);
-    // Pass context to extraction
-    var excludeVar = excludeSelector ? '<script>window.__milgExclude=' + JSON.stringify(excludeSelector) + ';</' + 'script>' : '';
-    var fragmentVar = !isFullDoc ? '<script>window.__milgIsFragment=true;</' + 'script>' : '';
-    // Screenshot capture: script that auto-runs after extraction, loads CDN library, captures page
-    // Also includes unhidden-panels screenshot if hidden panels are detected
-    var unhiddenScreenshotFn = 'window.__milgDoUnhiddenScreenshots=function(){' +
-      // Unhide all interactive panels using !important overrides
-      'var panels=document.querySelectorAll("[role=menu],[role=listbox],[role=dialog],[role=tooltip],[role=alertdialog]");' +
-      'var hidden=[];' +
-      'panels.forEach(function(p){' +
-        'var s=getComputedStyle(p);' +
-        'if(s.display==="none"||s.visibility==="hidden"||s.opacity==="0"){' +
-          'hidden.push({el:p,css:p.style.cssText,ariaH:p.getAttribute("aria-hidden"),hadHidden:p.hasAttribute("hidden")});' +
-          'p.style.cssText=p.style.cssText+";display:block !important;visibility:visible !important;opacity:1 !important;";' +
-          'if(p.hasAttribute("hidden"))p.removeAttribute("hidden");' +
-          'if(p.getAttribute("aria-hidden")==="true")p.setAttribute("aria-hidden","false")' +
-        '}' +
-      '});' +
-      // Also check aria-haspopup sibling panels
-      'document.querySelectorAll("[aria-haspopup]").forEach(function(t){' +
-        'var w=t.parentElement;if(!w)return;' +
-        'w.querySelectorAll("[role=menu],[role=listbox],[role=dialog]").forEach(function(p){' +
-          'var s=getComputedStyle(p);' +
-          'if(s.display==="none"||s.visibility==="hidden"||s.opacity==="0"){' +
-            'hidden.push({el:p,css:p.style.cssText,ariaH:p.getAttribute("aria-hidden"),hadHidden:p.hasAttribute("hidden")});' +
-            'p.style.cssText=p.style.cssText+";display:block !important;visibility:visible !important;opacity:1 !important;";' +
-            'if(p.hasAttribute("hidden"))p.removeAttribute("hidden");' +
-            'if(p.getAttribute("aria-hidden")==="true")p.setAttribute("aria-hidden","false")' +
-          '}' +
-        '})' +
-      '});' +
-      'if(hidden.length===0){parent.postMessage({type:"milg-screenshots-unhidden",screenshots:[]},"*");return}' +
-      'void document.body.offsetHeight;' +
-      'setTimeout(function(){' +
-        // Direct capture (iframe already resized from main screenshot pass)
-        'var ms=window.modernScreenshot;' +
-        'if(!ms||!ms.domToCanvas){parent.postMessage({type:"milg-screenshots-unhidden",screenshots:[]},"*");return}' +
-        'ms.domToCanvas(document.documentElement,{scale:' + SCREENSHOT_SCALE + ',timeout:8000}).then(function(fc){' +
-          'var uri;try{uri=fc.toDataURL("image/webp",' + SCREENSHOT_QUALITY + ')}catch(e){uri=""}' +
-          'parent.postMessage({type:"milg-screenshots-unhidden",screenshots:uri?[uri]:[]},"*")' +
-        '}).catch(function(){parent.postMessage({type:"milg-screenshots-unhidden",screenshots:[]},"*")})' +
-      '},300)' +
-    '};';
-    var screenshotScript = captureScreenshots ? '<script>window.__milgDoScreenshots=function(){' + buildScreenshotScript('milg-screenshots-result') + '};' + unhiddenScreenshotFn + '</' + 'script>' : '';
-    var srcdoc;
-    if (isFullDoc) {
-      // Wait for window load (CSS/fonts loaded), then extra delay for rendering
-      // JS-enabled mode (URL patch present) needs longer delays for React/Vue hydration
-      var hasJsPatch = html.indexOf('about:srcdoc') !== -1;
-      var postLoadDelay = hasJsPatch ? 2000 : 1000;
-      var fallbackDelay = hasJsPatch ? 8000 : 8000;
-      var extractScript = excludeVar + fragmentVar + screenshotScript + '<script>window.addEventListener("load",function(){setTimeout(function(){(' + extractFromDocument.toString() + ')()},' + postLoadDelay + ')});setTimeout(function(){(' + extractFromDocument.toString() + ')()},' + fallbackDelay + ');</' + 'script>';
-      if (/<\/body>/i.test(html)) {
-        srcdoc = html.replace(/<\/body>/i, extractScript + '</body>');
-      } else {
-        srcdoc = html + extractScript;
-      }
-    } else {
-      var darkClass = editorDark ? ' class="dark"' : '';
-      var darkVariantTag = editorDark ? '<style type="text/tailwindcss">@custom-variant dark (&:where(.dark, .dark *));</style>' : '';
-      var effectTag = editorEffectCSS ? '<style>' + editorEffectCSS + '</style>' : '';
-      srcdoc = '<!DOCTYPE html><html lang="en"' + darkClass + '><head><meta charset="UTF-8">' +
-        '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
-        '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
-        darkVariantTag + effectTag +
-        '<style>body{margin:0}</style></head><body>' +
-        html + excludeVar + fragmentVar + screenshotScript +
-        '<script>setTimeout(function(){(' + extractFromDocument.toString() + ')()}, 1500);</' + 'script>' +
-        '</body></html>';
-    }
-    iframe.srcdoc = srcdoc;
-
-    // Timeout fallback (longer when capturing screenshots)
-    setTimeout(function() {
-      if (!handled && iframe._milgData) {
-        // Extraction succeeded but screenshots timed out — return without screenshots
-        iframe._milgData.screenshots = [];
-        finish(iframe._milgData);
-      } else {
-        finish({
-          meta: { title: '', url: 'Pasted HTML', viewportWidth: 1280, viewportHeight: 900, timestamp: new Date().toISOString(), version: 1 },
-          colors: { textColors: [], bgColors: [], contrastPairs: [] },
-          typography: { bodyFontSize: '16px', bodyLineHeight: '24px', bodyFontFamily: 'sans-serif', fontFamilies: [], fontSizes: [], fontWeights: [], headings: [], lineHeights: [], maxLineLength: { chars: 0, element: '', fontSize: 0, textLength: 0 } },
-          spacing: { paddings: [], margins: [], gaps: [], maxContentWidth: '', bodyPaddingHorizontal: '' },
-          layout: { sectionGaps: [], alignmentEdges: [], visualHierarchy: {} },
-          interaction: { touchTargets: [], transitions: [] },
-          accessibility: { semanticElements: {}, headingHierarchy: [], imagesWithoutAlt: 0, formLabels: { total: 0, withLabel: 0, withoutLabel: 0 }, focusIndicators: [] },
-          structure: { totalElements: 0, darkModeClasses: false, responsiveClasses: false, tailwindDetected: false, cssFramework: 'unknown' }
-        });
-      }
-    }, captureScreenshots ? 25000 : (isFullDoc ? 15000 : 8000));
-  }
-
-  return {
-    init: init,
-    injectBaseTag: injectBaseTag,
-    analyzeHtmlInIframe: analyzeHtmlInIframe,
-    deepScanInIframe: deepScanInIframe,
-    buildScreenshotScript: buildScreenshotScript
-  };
-})();
-</file>
-
 <file path="docs/analyzer.html">
 <!DOCTYPE html>
 <html lang="en">
@@ -29319,6 +28963,393 @@ window.MilgIframe = (function() {
   <script src="analyzer.js"></script>
 </body>
 </html>
+</file>
+
+<file path="docs/analyzer-iframe.js">
+// make-it-look-good — Iframe Analysis & Screenshot Pipeline
+// Handles iframe creation, extraction injection, screenshot capture, and deep scan.
+// Depends on: analyzer-extract.js (MilgExtract)
+
+window.MilgIframe = (function() {
+  "use strict";
+
+  var _screenshotCDN = '';
+  var _getViewport = function() { return { w: 1280, h: 900 }; };
+  var SCREENSHOT_SCALE = 0.5;
+  var SCREENSHOT_QUALITY = 0.8;
+
+  function init(opts) {
+    if (opts.screenshotCDN) _screenshotCDN = opts.screenshotCDN;
+    if (opts.getViewport) _getViewport = opts.getViewport;
+  }
+
+  // Inject a <base> tag so relative URLs (CSS, images, fonts) resolve to the original domain
+  function injectBaseTag(html, url) {
+    if (!url || url === 'Pasted HTML') return html;
+    try {
+      var base = new URL(url);
+      var baseHref = base.origin + base.pathname.replace(/\/[^/]*$/, '/');
+      var baseTag = '<base href="' + baseHref + '">';
+      // Insert after <head> if present
+      if (/<head[\s>]/i.test(html)) {
+        return html.replace(/<head([^>]*)>/i, '<head$1>' + baseTag);
+      }
+      // Otherwise prepend
+      return baseTag + html;
+    } catch(e) { return html; }
+  }
+
+  // --- Screenshot capture script (injected into iframes after extraction) ---
+  // Called after extraction via __milgDoScreenshots (once-guard prevents double run).
+  // Mirrors console snippet: pre-scroll → reset → wait → re-read bboxes → capture body
+  function buildScreenshotScript(msgType) {
+    var ss = { scale: SCREENSHOT_SCALE, quality: SCREENSHOT_QUALITY };
+    return '(function(){' +
+      // Once-guard: extraction may fire twice (load + fallback timeout)
+      'if(window.__milgSsDone)return;window.__milgSsDone=true;' +
+      'var vh=window.innerHeight||900;' +
+      // Unlock height to get true scrollHeight (sites with html,body{height:100%} clamp it)
+      // Set overflow:auto explicitly so the inner document is scrollable for IntersectionObservers
+      'document.documentElement.style.cssText+="height:auto !important;overflow-y:auto !important;";' +
+      'document.body.style.cssText+="height:auto !important;";' +
+      'void document.body.offsetHeight;' + // force reflow
+      'var totalH=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);' +
+      'var captureH=Math.min(totalH,vh*10);' +
+      'console.log("[iframe-ss] Phase 1: Pre-scrolling "+captureH+"px ("+Math.ceil(captureH/vh)+" steps, vh="+vh+") ...");' +
+      // Phase 1: Pre-scroll to trigger IntersectionObservers, lazy images, fade-in animations
+      'var _positions=[];for(var p=0;p<captureH;p+=vh)_positions.push(p);' +
+      'var _pi=0;' +
+      'function _scrollNext(){' +
+        'if(_pi>=_positions.length){' +
+          'console.log("[iframe-ss] Phase 1 done (scrollY="+window.scrollY+"). Waiting for content...");' +
+          'setTimeout(_startCapture,800);return' + // 800ms for lazy content + animations to start
+        '}' +
+        'window.scrollTo(0,_positions[_pi]);' +
+        // Also scroll documentElement directly (some browsers need this in iframes)
+        'document.documentElement.scrollTop=_positions[_pi];' +
+        'try{window.dispatchEvent(new Event("scroll"))}catch(e){}' +
+        'console.log("[iframe-ss] scroll to "+_positions[_pi]+" → actual="+window.scrollY);' +
+        '_pi++;setTimeout(_scrollNext,200)' + // 200ms per step (more time for observers)
+      '}' +
+      '_scrollNext();' +
+      // Phase 2: Reset scroll, force-reveal hidden animated content, capture
+      'function _startCapture(){' +
+        'document.documentElement.style.scrollBehavior="auto";' +
+        'document.body.style.scrollBehavior="auto";' +
+        'window.scrollTo(0,0);document.documentElement.scrollTop=0;document.body.scrollTop=0;' +
+        'document.querySelectorAll("*").forEach(function(el){' +
+          'if(el.scrollTop>0){var s=getComputedStyle(el);' +
+          'if(s.overflow==="auto"||s.overflow==="scroll"||s.overflowY==="auto"||s.overflowY==="scroll"){' +
+          'el.style.scrollBehavior="auto";el.scrollTop=0}}' +
+        '});' +
+        // Force-finalize scroll-triggered animations:
+        // IntersectionObserver doesn't fire in offscreen iframes (browser optimization).
+        // Find all elements with opacity:0 that have transitions/animations and force them visible.
+        'var _revealed=0;' +
+        'document.querySelectorAll("*").forEach(function(el){' +
+          'var cs=getComputedStyle(el);' +
+          'if(cs.opacity==="0"&&el.tagName!=="SCRIPT"&&el.tagName!=="STYLE"){' +
+            // Check if this is an animation-hidden element (has transition on opacity or a CSS animation)
+            'var hasTrans=cs.transition&&cs.transition.indexOf("opacity")!==-1;' +
+            'var hasAnim=cs.animationName&&cs.animationName!=="none";' +
+            'var hasTransform=cs.transform&&cs.transform!=="none";' +
+            // Also check for common scroll-reveal patterns (classes containing fade, reveal, animate, aos)
+            'var cls=(el.className&&typeof el.className==="string")?el.className.toLowerCase():"";' +
+            'var isScrollAnim=hasTrans||hasAnim||/fade|reveal|animate|aos|scroll|slide|appear/.test(cls);' +
+            'if(isScrollAnim){' +
+              'el.style.cssText+=";opacity:1 !important;transform:none !important;transition:none !important;animation:none !important;";' +
+              '_revealed++' +
+            '}' +
+          '}' +
+        '});' +
+        'if(_revealed>0)console.log("[iframe-ss] Force-revealed "+_revealed+" scroll-animated elements (IO disabled in offscreen iframes)");' +
+        // Also inject a style to fast-forward any remaining CSS animations
+        'var _ffStyle=document.createElement("style");' +
+        '_ffStyle.textContent="*,*::before,*::after{animation-delay:0s !important;animation-duration:0.01s !important;}";' +
+        'document.head.appendChild(_ffStyle);' +
+        'void document.body.offsetHeight;' +
+        // Switch to overflow:visible for capture
+        'document.documentElement.style.cssText+="overflow:visible !important;";' +
+        'document.body.style.cssText+="overflow:visible !important;";' +
+        'void document.body.offsetHeight;' +
+        'console.log("[iframe-ss] Phase 2: Waiting for animations to finalize...");' +
+        'setTimeout(function(){' +
+          // Get body offset — bboxes are in document coords but canvas starts at body's top-left
+          'var bodyRect=document.body.getBoundingClientRect();' +
+          'var bodyOffX=Math.round(bodyRect.left+window.scrollX);' +
+          'var bodyOffY=Math.round(bodyRect.top+window.scrollY);' +
+          'console.log("[iframe-ss] Body offset: "+bodyOffX+","+bodyOffY);' +
+          'if(typeof window.__milgReReadBboxes==="function"){' +
+            'var res=window.__milgReReadBboxes();' +
+            'console.log("[iframe-ss] Re-read bboxes: "+res)' +
+          '}' +
+          // Subtract body offset from all bboxes so they're body-relative (matching canvas origin)
+          'if((bodyOffX!==0||bodyOffY!==0)&&window.__milgBboxRefs){' +
+            'window.__milgBboxRefs.forEach(function(ref){' +
+              'if(ref.obj&&ref.obj[ref.key]){ref.obj[ref.key].left-=bodyOffX;ref.obj[ref.key].top-=bodyOffY}' +
+            '});' +
+            'console.log("[iframe-ss] Shifted "+window.__milgBboxRefs.length+" bboxes by -"+bodyOffX+",-"+bodyOffY)' +
+          '}' +
+          'var fullH=document.body.scrollHeight;' +
+          'console.log("[iframe-ss] body.scrollHeight="+fullH+" vh="+vh);' +
+          'var s=document.createElement("script");' +
+          's.src="' + _screenshotCDN + '";' +
+          's.onload=function(){' +
+            'var ms=window.modernScreenshot;' +
+            'if(!ms||!ms.domToCanvas){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*");return}' +
+            'document.querySelectorAll("img").forEach(function(i){if(i.src&&i.src.indexOf("data:")!==0)i.crossOrigin="anonymous"});' +
+            'ms.domToCanvas(document.body,{scale:' + ss.scale + ',timeout:12000}).then(function(fc){' +
+              'console.log("[iframe-ss] Canvas: "+fc.width+"x"+fc.height);' +
+              'var fullUri;try{fullUri=fc.toDataURL("image/webp",' + ss.quality + ')}catch(e){fullUri=""}' +
+              'var updatedData=window.__milgData||null;' +
+              'parent.postMessage({type:"' + msgType + '",' +
+                'screenshots:fullUri?[fullUri]:[],' +
+                'screenshotFull:fullUri||null,' +
+                'screenshotMeta:{scale:' + ss.scale + ',viewportHeight:vh,sectionCount:1,' +
+                  'canvasWidth:fc.width,canvasHeight:fc.height,' +
+                  'docHeightAtCapture:fullH,' +
+                  'bodyOffsetX:bodyOffX,bodyOffsetY:bodyOffY,' +
+                  'calibrationOffsetY:0,calibrationSamples:[]},' +
+                'updatedData:updatedData' +
+              '},"*")' +
+            '}).catch(function(e){console.warn("[iframe-ss] capture failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")})' +
+          '};' +
+          's.onerror=function(){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")};' +
+          'document.head.appendChild(s)' +
+        '},1500)' +
+      '}' +
+    '})()';
+  }
+
+  function deepScanInIframe(html, url, exclude, vpWidth, vpHeight, callback) {
+    var extractFromDocument = window.MilgExtract;
+    var iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + vpWidth + 'px;height:' + vpHeight + 'px;border:none;';
+    iframe.sandbox = 'allow-scripts allow-same-origin';
+    document.body.appendChild(iframe);
+
+    var msgType = 'milg-deep-' + vpWidth;
+    var handled = false;
+    function onResult(e) {
+      if (!e.data || e.data.type !== msgType) return;
+      if (handled) return;
+      handled = true;
+      window.removeEventListener('message', onResult);
+      if (iframe.parentNode) document.body.removeChild(iframe);
+      callback(e.data.data);
+    }
+    window.addEventListener('message', onResult);
+
+    var processed = url ? injectBaseTag(html, url) : html;
+    var excludeVar = exclude ? '<script>window.__milgExclude=' + JSON.stringify(exclude) + ';</' + 'script>' : '';
+    var isFullDoc = /<html[\s>]/i.test(processed) || /<!DOCTYPE/i.test(processed);
+
+    var extractStr = extractFromDocument.toString().replace(/milg-analyzer-result/g, msgType);
+    // Auto-scroll inside iframe to trigger intersection observers before extracting
+    var scrollScript = 'window.scrollTo(0,document.body.scrollHeight);setTimeout(function(){window.scrollTo(0,0)},300);';
+    var extractScript = excludeVar + '<script>window.addEventListener("load",function(){' + scrollScript + 'setTimeout(function(){(' + extractStr + ')()},1500)});setTimeout(function(){(' + extractStr + ')()},8000);</' + 'script>';
+
+    var srcdoc;
+    if (isFullDoc) {
+      if (/<\/body>/i.test(processed)) {
+        srcdoc = processed.replace(/<\/body>/i, extractScript + '</body>');
+      } else {
+        srcdoc = processed + extractScript;
+      }
+    } else {
+      srcdoc = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script><style>body{margin:0}</style></head><body>' + processed + extractScript + '</body></html>';
+    }
+    iframe.srcdoc = srcdoc;
+
+    setTimeout(function() {
+      if (handled) return;
+      handled = true;
+      window.removeEventListener('message', onResult);
+      if (iframe.parentNode) document.body.removeChild(iframe);
+      callback(null);
+    }, 15000);
+  }
+
+  function analyzeHtmlInIframe(html, callback, sourceUrlOrDark, excludeSelectorOrEffectCSS, captureScreenshots) {
+    var extractFromDocument = window.MilgExtract;
+    // Support both signatures:
+    // analyzeHtmlInIframe(html, cb, sourceUrl, excludeSelector, screenshots) — URL mode
+    // analyzeHtmlInIframe(html, cb, dark, effectCSS, screenshots) — editor preview mode
+    var sourceUrl = typeof sourceUrlOrDark === 'string' ? sourceUrlOrDark : null;
+    var excludeSelector = typeof excludeSelectorOrEffectCSS === 'string' && !sourceUrl ? null : excludeSelectorOrEffectCSS;
+    var editorDark = typeof sourceUrlOrDark === 'boolean' ? sourceUrlOrDark : false;
+    var editorEffectCSS = (!sourceUrl && typeof excludeSelectorOrEffectCSS === 'string') ? excludeSelectorOrEffectCSS : '';
+    var iframe = document.createElement('iframe');
+    // Use viewport from selector or default
+    var vp = _getViewport();
+    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + vp.w + 'px;height:' + vp.h + 'px;border:none;';
+    iframe.sandbox = 'allow-scripts allow-same-origin';
+    document.body.appendChild(iframe);
+
+    var handled = false;
+    function finish(data) {
+      if (handled) return;
+      handled = true;
+      window.removeEventListener('message', onMsg);
+      if (iframe.parentNode) document.body.removeChild(iframe);
+      callback(data);
+    }
+
+    function onMsg(e) {
+      if (!e.data) return;
+      if (e.data.type === 'milg-analyzer-result') {
+        var data = e.data.data;
+        data.meta.url = 'Pasted HTML';
+        if (!captureScreenshots) {
+          finish(data);
+          return;
+        }
+        // Store data, wait for screenshots (capture auto-triggers via __milgDoScreenshots)
+        iframe._milgData = data;
+      }
+      if (e.data.type === 'milg-screenshots-result' && iframe._milgData) {
+        iframe._milgData.screenshots = e.data.screenshots || [];
+        iframe._milgData.screenshotFull = e.data.screenshotFull || null;
+        iframe._milgData.screenshotMeta = e.data.screenshotMeta || null;
+        // Apply re-read bbox data from the iframe (updated after scroll-reset + getFlowPosition)
+        if (e.data.updatedData) {
+          var ud = e.data.updatedData;
+          // Merge re-read bboxes back into our data
+          if (ud.colors && ud.colors.contrastPairs) iframe._milgData.colors.contrastPairs = ud.colors.contrastPairs;
+          if (ud.typography) {
+            if (ud.typography.fontSizes) iframe._milgData.typography.fontSizes = ud.typography.fontSizes;
+            if (ud.typography.headings) iframe._milgData.typography.headings = ud.typography.headings;
+            if (ud.typography.maxLineLength) iframe._milgData.typography.maxLineLength = ud.typography.maxLineLength;
+          }
+          if (ud.interaction && ud.interaction.touchTargets) iframe._milgData.interaction.touchTargets = ud.interaction.touchTargets;
+          if (ud.layout) {
+            if (ud.layout.offscreenElements) iframe._milgData.layout.offscreenElements = ud.layout.offscreenElements;
+            if (ud.layout.hiddenPanelIssues) iframe._milgData.layout.hiddenPanelIssues = ud.layout.hiddenPanelIssues;
+          }
+        }
+        // If hidden panels were detected, trigger unhidden screenshot pass
+        var hpc = iframe._milgData.layout && iframe._milgData.layout.hiddenPanelCount;
+        if (hpc > 0 && iframe.contentWindow && iframe.contentWindow.__milgDoUnhiddenScreenshots) {
+          try {
+            setTimeout(function() { iframe.contentWindow.__milgDoUnhiddenScreenshots(); }, 100);
+          } catch(ex) { finish(iframe._milgData); }
+        } else {
+          finish(iframe._milgData);
+        }
+      }
+      if (e.data.type === 'milg-screenshots-unhidden' && iframe._milgData) {
+        iframe._milgData.screenshotsUnhidden = e.data.screenshots || [];
+        finish(iframe._milgData);
+      }
+    }
+    window.addEventListener('message', onMsg);
+
+    // If the pasted HTML is a full document (has <html> or <head>), use it as-is
+    // and just append the extraction script. Otherwise wrap in a basic document.
+    var isFullDoc = /<html[\s>]/i.test(html) || /<!DOCTYPE/i.test(html);
+    // Inject <base> tag so relative CSS/image/font URLs resolve to the original domain
+    if (sourceUrl) html = injectBaseTag(html, sourceUrl);
+    // Pass context to extraction
+    var excludeVar = excludeSelector ? '<script>window.__milgExclude=' + JSON.stringify(excludeSelector) + ';</' + 'script>' : '';
+    var fragmentVar = !isFullDoc ? '<script>window.__milgIsFragment=true;</' + 'script>' : '';
+    // Screenshot capture: script that auto-runs after extraction, loads CDN library, captures page
+    // Also includes unhidden-panels screenshot if hidden panels are detected
+    var unhiddenScreenshotFn = 'window.__milgDoUnhiddenScreenshots=function(){' +
+      // Unhide all interactive panels using !important overrides
+      'var panels=document.querySelectorAll("[role=menu],[role=listbox],[role=dialog],[role=tooltip],[role=alertdialog]");' +
+      'var hidden=[];' +
+      'panels.forEach(function(p){' +
+        'var s=getComputedStyle(p);' +
+        'if(s.display==="none"||s.visibility==="hidden"||s.opacity==="0"){' +
+          'hidden.push({el:p,css:p.style.cssText,ariaH:p.getAttribute("aria-hidden"),hadHidden:p.hasAttribute("hidden")});' +
+          'p.style.cssText=p.style.cssText+";display:block !important;visibility:visible !important;opacity:1 !important;";' +
+          'if(p.hasAttribute("hidden"))p.removeAttribute("hidden");' +
+          'if(p.getAttribute("aria-hidden")==="true")p.setAttribute("aria-hidden","false")' +
+        '}' +
+      '});' +
+      // Also check aria-haspopup sibling panels
+      'document.querySelectorAll("[aria-haspopup]").forEach(function(t){' +
+        'var w=t.parentElement;if(!w)return;' +
+        'w.querySelectorAll("[role=menu],[role=listbox],[role=dialog]").forEach(function(p){' +
+          'var s=getComputedStyle(p);' +
+          'if(s.display==="none"||s.visibility==="hidden"||s.opacity==="0"){' +
+            'hidden.push({el:p,css:p.style.cssText,ariaH:p.getAttribute("aria-hidden"),hadHidden:p.hasAttribute("hidden")});' +
+            'p.style.cssText=p.style.cssText+";display:block !important;visibility:visible !important;opacity:1 !important;";' +
+            'if(p.hasAttribute("hidden"))p.removeAttribute("hidden");' +
+            'if(p.getAttribute("aria-hidden")==="true")p.setAttribute("aria-hidden","false")' +
+          '}' +
+        '})' +
+      '});' +
+      'if(hidden.length===0){parent.postMessage({type:"milg-screenshots-unhidden",screenshots:[]},"*");return}' +
+      'void document.body.offsetHeight;' +
+      'setTimeout(function(){' +
+        // Direct capture (iframe already resized from main screenshot pass)
+        'var ms=window.modernScreenshot;' +
+        'if(!ms||!ms.domToCanvas){parent.postMessage({type:"milg-screenshots-unhidden",screenshots:[]},"*");return}' +
+        'ms.domToCanvas(document.documentElement,{scale:' + SCREENSHOT_SCALE + ',timeout:8000}).then(function(fc){' +
+          'var uri;try{uri=fc.toDataURL("image/webp",' + SCREENSHOT_QUALITY + ')}catch(e){uri=""}' +
+          'parent.postMessage({type:"milg-screenshots-unhidden",screenshots:uri?[uri]:[]},"*")' +
+        '}).catch(function(){parent.postMessage({type:"milg-screenshots-unhidden",screenshots:[]},"*")})' +
+      '},300)' +
+    '};';
+    var screenshotScript = captureScreenshots ? '<script>window.__milgDoScreenshots=function(){' + buildScreenshotScript('milg-screenshots-result') + '};' + unhiddenScreenshotFn + '</' + 'script>' : '';
+    var srcdoc;
+    if (isFullDoc) {
+      // Wait for window load (CSS/fonts loaded), then extra delay for rendering
+      // JS-enabled mode (URL patch present) needs longer delays for React/Vue hydration
+      var hasJsPatch = html.indexOf('about:srcdoc') !== -1;
+      var postLoadDelay = hasJsPatch ? 2000 : 1000;
+      var fallbackDelay = hasJsPatch ? 8000 : 8000;
+      var extractScript = excludeVar + fragmentVar + screenshotScript + '<script>window.addEventListener("load",function(){setTimeout(function(){(' + extractFromDocument.toString() + ')()},' + postLoadDelay + ')});setTimeout(function(){(' + extractFromDocument.toString() + ')()},' + fallbackDelay + ');</' + 'script>';
+      if (/<\/body>/i.test(html)) {
+        srcdoc = html.replace(/<\/body>/i, extractScript + '</body>');
+      } else {
+        srcdoc = html + extractScript;
+      }
+    } else {
+      var darkClass = editorDark ? ' class="dark"' : '';
+      var darkVariantTag = editorDark ? '<style type="text/tailwindcss">@custom-variant dark (&:where(.dark, .dark *));</style>' : '';
+      var effectTag = editorEffectCSS ? '<style>' + editorEffectCSS + '</style>' : '';
+      srcdoc = '<!DOCTYPE html><html lang="en"' + darkClass + '><head><meta charset="UTF-8">' +
+        '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+        '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
+        darkVariantTag + effectTag +
+        '<style>body{margin:0}</style></head><body>' +
+        html + excludeVar + fragmentVar + screenshotScript +
+        '<script>setTimeout(function(){(' + extractFromDocument.toString() + ')()}, 1500);</' + 'script>' +
+        '</body></html>';
+    }
+    iframe.srcdoc = srcdoc;
+
+    // Timeout fallback (longer when capturing screenshots)
+    setTimeout(function() {
+      if (!handled && iframe._milgData) {
+        // Extraction succeeded but screenshots timed out — return without screenshots
+        iframe._milgData.screenshots = [];
+        finish(iframe._milgData);
+      } else {
+        finish({
+          meta: { title: '', url: 'Pasted HTML', viewportWidth: 1280, viewportHeight: 900, timestamp: new Date().toISOString(), version: 1 },
+          colors: { textColors: [], bgColors: [], contrastPairs: [] },
+          typography: { bodyFontSize: '16px', bodyLineHeight: '24px', bodyFontFamily: 'sans-serif', fontFamilies: [], fontSizes: [], fontWeights: [], headings: [], lineHeights: [], maxLineLength: { chars: 0, element: '', fontSize: 0, textLength: 0 } },
+          spacing: { paddings: [], margins: [], gaps: [], maxContentWidth: '', bodyPaddingHorizontal: '' },
+          layout: { sectionGaps: [], alignmentEdges: [], visualHierarchy: {} },
+          interaction: { touchTargets: [], transitions: [] },
+          accessibility: { semanticElements: {}, headingHierarchy: [], imagesWithoutAlt: 0, formLabels: { total: 0, withLabel: 0, withoutLabel: 0 }, focusIndicators: [] },
+          structure: { totalElements: 0, darkModeClasses: false, responsiveClasses: false, tailwindDetected: false, cssFramework: 'unknown' }
+        });
+      }
+    }, captureScreenshots ? 25000 : (isFullDoc ? 15000 : 8000));
+  }
+
+  return {
+    init: init,
+    injectBaseTag: injectBaseTag,
+    analyzeHtmlInIframe: analyzeHtmlInIframe,
+    deepScanInIframe: deepScanInIframe,
+    buildScreenshotScript: buildScreenshotScript
+  };
+})();
 </file>
 
 <file path="docs/analyzer.css">
@@ -30624,6 +30655,7 @@ body.dark-ui .crawl-issue-group .severity-badge.warning { background:#451a00; co
 .milg-viewer-filter-btn.milg-viewer-sev-error.active { background: rgba(239,68,68,0.3); border-color: #ef4444; }
 .milg-viewer-filter-btn.milg-viewer-sev-warning.active { background: rgba(234,179,8,0.3); border-color: #eab308; }
 .milg-viewer-filter-btn.milg-viewer-sev-info.active { background: rgba(59,130,246,0.3); border-color: #3b82f6; }
+.milg-viewer-filter-btn.milg-viewer-sev-pass.active { background: rgba(34,197,94,0.3); border-color: #22c55e; }
 .milg-viewer-filter-btn.milg-viewer-sev-verify.active { background: rgba(34,197,94,0.3); border-color: #22c55e; }
 .milg-viewer-filter-btn.active:not(.milg-viewer-sev-error):not(.milg-viewer-sev-warning):not(.milg-viewer-sev-info):not(.milg-viewer-sev-verify) {
   background: rgba(255,255,255,0.2); border-color: rgba(255,255,255,0.4);
@@ -30798,11 +30830,12 @@ window.MilgViewer = (function() {
   var _stitchedCanvas = null;
   var _calibrationOffsetY = 0; // detected offset between DOM positions and canvas positions
 
-  // Severity colors: red / yellow / blue
+  // Severity colors: red / yellow / blue / green
   var COLORS = {
     error:   { fill: 'rgba(239,68,68,0.22)', stroke: '#ef4444' },
     warning: { fill: 'rgba(234,179,8,0.22)', stroke: '#eab308' },
-    info:    { fill: 'rgba(59,130,246,0.22)', stroke: '#3b82f6' }
+    info:    { fill: 'rgba(59,130,246,0.22)', stroke: '#3b82f6' },
+    pass:    { fill: 'rgba(34,197,94,0.12)', stroke: '#22c55e' }
   };
 
   function open(img, sectionIndex, reportData) {
@@ -30819,7 +30852,7 @@ window.MilgViewer = (function() {
       return;
     }
 
-    // Collect findings with bboxes from all categories
+    // Collect findings with bboxes from all categories (including pass)
     _allFindings = [];
     var cats = reportData.categories || [];
     cats.forEach(function(cat) {
@@ -30836,6 +30869,21 @@ window.MilgViewer = (function() {
       });
     });
 
+    // Add passing elements from raw data that have bboxes (headings, touch targets that passed)
+    var raw = reportData.raw || {};
+    // Passing headings
+    (raw.typography && raw.typography.headings || []).forEach(function(h) {
+      if (!h.bbox) return;
+      _allFindings.push({ severity: 'pass', title: h.tag.toUpperCase() + ': "' + (h.text || '').substring(0, 40) + '"', detail: h.fontSize + ' ' + h.fontWeight, category: 'Typography', icon: 'type', bboxes: [h.bbox] });
+    });
+    // Passing touch targets (those NOT in the findings = they passed)
+    var failSelectors = {};
+    _allFindings.forEach(function(f) { if (f.icon === 'touch' && f.severity !== 'pass') failSelectors[f.title] = true; });
+    (raw.interaction && raw.interaction.touchTargets || []).forEach(function(t) {
+      if (!t.bbox || Math.min(t.width, t.height) < 24) return; // only show reasonably-sized passing ones
+      _allFindings.push({ severity: 'pass', title: t.element + ' ' + t.width + '\u00d7' + t.height + 'px', detail: (t.text || '') + ' — ' + t.selector, category: 'Touch Targets', icon: 'touch', bboxes: [t.bbox] });
+    });
+
     // Build overlay shell (image will be inserted after stitching)
     _overlay = document.createElement('div');
     _overlay.className = 'milg-viewer-overlay';
@@ -30845,7 +30893,7 @@ window.MilgViewer = (function() {
     toolbar.className = 'milg-viewer-toolbar';
 
     // Count findings per category and severity
-    var catCounts = {}, sevCounts = { error: 0, warning: 0, info: 0 }, catSet = {};
+    var catCounts = {}, sevCounts = { error: 0, warning: 0, info: 0, pass: 0 }, catSet = {};
     _allFindings.forEach(function(f) {
       catSet[f.icon] = f.category;
       catCounts[f.icon] = (catCounts[f.icon] || 0) + 1;
@@ -30861,7 +30909,7 @@ window.MilgViewer = (function() {
       var c = sevCounts[sev] || 0;
       return c > 0 ? '<button class="milg-viewer-filter-btn milg-viewer-sev-' + sev + '" data-filter-type="severity" data-filter-value="' + sev + '">' + label + ' <span class="milg-viewer-count">' + c + '</span></button>' : '';
     }
-    var sevPills = sevPill('error', 'Errors') + sevPill('warning', 'Warnings') + sevPill('info', 'Info');
+    var sevPills = sevPill('error', 'Errors') + sevPill('warning', 'Warnings') + sevPill('info', 'Info') + sevPill('pass', 'Passed');
 
     // Pixel verification pills
     var verifyPill = '';
@@ -31457,6 +31505,34 @@ window.MilgViewer = (function() {
         label.setAttribute('pointer-events', 'none');
         label.textContent = (vr.pixelRatio || vr.pixelRatioAvg || '?') + ':1';
         svg.appendChild(label);
+      }
+
+      // Sample point dots (shown at zoom >= 150%)
+      if (_zoomLevel >= 1.5 && vr.samplePoints) {
+        var sH = _meta.viewportHeight ? Math.round(_meta.viewportHeight * vScaleX) : 0;
+        var secOff = vr.sectionIdx ? vr.sectionIdx * sH : 0;
+        // FG sample points (cyan dots)
+        (vr.samplePoints.fg || []).forEach(function(pt) {
+          var dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          dot.setAttribute('cx', pt.x);
+          dot.setAttribute('cy', pt.y + secOff);
+          dot.setAttribute('r', '1.5');
+          dot.setAttribute('fill', '#06b6d4');
+          dot.setAttribute('opacity', '0.7');
+          dot.setAttribute('pointer-events', 'none');
+          svg.appendChild(dot);
+        });
+        // BG sample points (orange dots)
+        (vr.samplePoints.bg || []).forEach(function(pt) {
+          var dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          dot.setAttribute('cx', pt.x);
+          dot.setAttribute('cy', pt.y + secOff);
+          dot.setAttribute('r', '1.5');
+          dot.setAttribute('fill', '#f97316');
+          dot.setAttribute('opacity', '0.6');
+          dot.setAttribute('pointer-events', 'none');
+          svg.appendChild(dot);
+        });
       }
     });
 

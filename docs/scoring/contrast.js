@@ -189,6 +189,28 @@ function scoreContrast(data) {
     });
   });
 
+  // Passing contrast pairs — include as 'pass' severity so they show on screenshot viewer
+  var passingPairs = profilePairs.filter(function(p) { return p.passes && !(p.ratio < p.needed + 0.5); });
+  var passSeen = {};
+  passingPairs.forEach(function(p) {
+    var dedup = p.selector;
+    if (passSeen[dedup]) { if (p.bbox) passSeen[dedup].bboxes.push(p.bbox); return; }
+    passSeen[dedup] = { p: p, bboxes: p.bbox ? [p.bbox] : [] };
+  });
+  Object.keys(passSeen).forEach(function(key) {
+    var entry = passSeen[key];
+    var p = entry.p;
+    if (entry.bboxes.length === 0) return;
+    findings.push({
+      severity: 'pass',
+      title: 'Contrast ' + p.ratio + ':1 passes (' + p.needed + ':1 needed)',
+      detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector,
+      fix: '',
+      locator: { selector: p.selector, text: p.text, bboxes: entry.bboxes },
+      _colors: { fg: p.fg, bg: p.bg, ratio: p.ratio }
+    });
+  });
+
   // CVD palette safety check (color_blind profile)
   if (profile.checkCVD && pairs.length > 0) {
     var uniqueColors = {};

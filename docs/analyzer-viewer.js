@@ -16,11 +16,12 @@ window.MilgViewer = (function() {
   var _stitchedCanvas = null;
   var _calibrationOffsetY = 0; // detected offset between DOM positions and canvas positions
 
-  // Severity colors: red / yellow / blue
+  // Severity colors: red / yellow / blue / green
   var COLORS = {
     error:   { fill: 'rgba(239,68,68,0.22)', stroke: '#ef4444' },
     warning: { fill: 'rgba(234,179,8,0.22)', stroke: '#eab308' },
-    info:    { fill: 'rgba(59,130,246,0.22)', stroke: '#3b82f6' }
+    info:    { fill: 'rgba(59,130,246,0.22)', stroke: '#3b82f6' },
+    pass:    { fill: 'rgba(34,197,94,0.12)', stroke: '#22c55e' }
   };
 
   function open(img, sectionIndex, reportData) {
@@ -37,7 +38,7 @@ window.MilgViewer = (function() {
       return;
     }
 
-    // Collect findings with bboxes from all categories
+    // Collect findings with bboxes from all categories (including pass)
     _allFindings = [];
     var cats = reportData.categories || [];
     cats.forEach(function(cat) {
@@ -54,6 +55,21 @@ window.MilgViewer = (function() {
       });
     });
 
+    // Add passing elements from raw data that have bboxes (headings, touch targets that passed)
+    var raw = reportData.raw || {};
+    // Passing headings
+    (raw.typography && raw.typography.headings || []).forEach(function(h) {
+      if (!h.bbox) return;
+      _allFindings.push({ severity: 'pass', title: h.tag.toUpperCase() + ': "' + (h.text || '').substring(0, 40) + '"', detail: h.fontSize + ' ' + h.fontWeight, category: 'Typography', icon: 'type', bboxes: [h.bbox] });
+    });
+    // Passing touch targets (those NOT in the findings = they passed)
+    var failSelectors = {};
+    _allFindings.forEach(function(f) { if (f.icon === 'touch' && f.severity !== 'pass') failSelectors[f.title] = true; });
+    (raw.interaction && raw.interaction.touchTargets || []).forEach(function(t) {
+      if (!t.bbox || Math.min(t.width, t.height) < 24) return; // only show reasonably-sized passing ones
+      _allFindings.push({ severity: 'pass', title: t.element + ' ' + t.width + '\u00d7' + t.height + 'px', detail: (t.text || '') + ' — ' + t.selector, category: 'Touch Targets', icon: 'touch', bboxes: [t.bbox] });
+    });
+
     // Build overlay shell (image will be inserted after stitching)
     _overlay = document.createElement('div');
     _overlay.className = 'milg-viewer-overlay';
@@ -63,7 +79,7 @@ window.MilgViewer = (function() {
     toolbar.className = 'milg-viewer-toolbar';
 
     // Count findings per category and severity
-    var catCounts = {}, sevCounts = { error: 0, warning: 0, info: 0 }, catSet = {};
+    var catCounts = {}, sevCounts = { error: 0, warning: 0, info: 0, pass: 0 }, catSet = {};
     _allFindings.forEach(function(f) {
       catSet[f.icon] = f.category;
       catCounts[f.icon] = (catCounts[f.icon] || 0) + 1;
@@ -79,7 +95,7 @@ window.MilgViewer = (function() {
       var c = sevCounts[sev] || 0;
       return c > 0 ? '<button class="milg-viewer-filter-btn milg-viewer-sev-' + sev + '" data-filter-type="severity" data-filter-value="' + sev + '">' + label + ' <span class="milg-viewer-count">' + c + '</span></button>' : '';
     }
-    var sevPills = sevPill('error', 'Errors') + sevPill('warning', 'Warnings') + sevPill('info', 'Info');
+    var sevPills = sevPill('error', 'Errors') + sevPill('warning', 'Warnings') + sevPill('info', 'Info') + sevPill('pass', 'Passed');
 
     // Pixel verification pills
     var verifyPill = '';
@@ -675,6 +691,34 @@ window.MilgViewer = (function() {
         label.setAttribute('pointer-events', 'none');
         label.textContent = (vr.pixelRatio || vr.pixelRatioAvg || '?') + ':1';
         svg.appendChild(label);
+      }
+
+      // Sample point dots (shown at zoom >= 150%)
+      if (_zoomLevel >= 1.5 && vr.samplePoints) {
+        var sH = _meta.viewportHeight ? Math.round(_meta.viewportHeight * vScaleX) : 0;
+        var secOff = vr.sectionIdx ? vr.sectionIdx * sH : 0;
+        // FG sample points (cyan dots)
+        (vr.samplePoints.fg || []).forEach(function(pt) {
+          var dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          dot.setAttribute('cx', pt.x);
+          dot.setAttribute('cy', pt.y + secOff);
+          dot.setAttribute('r', '1.5');
+          dot.setAttribute('fill', '#06b6d4');
+          dot.setAttribute('opacity', '0.7');
+          dot.setAttribute('pointer-events', 'none');
+          svg.appendChild(dot);
+        });
+        // BG sample points (orange dots)
+        (vr.samplePoints.bg || []).forEach(function(pt) {
+          var dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          dot.setAttribute('cx', pt.x);
+          dot.setAttribute('cy', pt.y + secOff);
+          dot.setAttribute('r', '1.5');
+          dot.setAttribute('fill', '#f97316');
+          dot.setAttribute('opacity', '0.6');
+          dot.setAttribute('pointer-events', 'none');
+          svg.appendChild(dot);
+        });
       }
     });
 

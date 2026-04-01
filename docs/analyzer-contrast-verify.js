@@ -134,6 +134,7 @@ window.MilgContrastVerify = (function() {
     var textBandBottom = yInSection + canvasH * 0.7;
     var textBandMid = yInSection + canvasH * 0.5;
     var fgSamples = [];
+    var fgPoints = []; // canvas coordinates for visualization
     var fgHSteps = Math.max(3, Math.min(_density.fgH, Math.floor(canvasW / 3)));
     var fgVSteps = Math.max(2, Math.min(_density.fgV, Math.floor(canvasH * 0.4 / 3)));
     for (var fvi = 0; fvi < fgVSteps; fvi++) {
@@ -141,6 +142,7 @@ window.MilgContrastVerify = (function() {
       for (var fhi = 0; fhi < fgHSteps; fhi++) {
         var sx = canvasX + (canvasW * (fhi + 0.5) / fgHSteps);
         fgSamples.push(samplePixel(sec.ctx, sx, fy, sec.width, sec.height));
+        fgPoints.push({ x: Math.round(sx), y: Math.round(fy) });
       }
     }
     // Text color = the darkest sample in the text band (for dark-on-light)
@@ -169,6 +171,11 @@ window.MilgContrastVerify = (function() {
     //   5. Between-line gaps: horizontal sweeps at 25% and 75% height
     // This catches the actual background even with dense text.
     var bgSamples = [];
+    var bgPoints = []; // canvas coordinates for visualization
+    function _bgSample(px, py) {
+      bgSamples.push(samplePixel(sec.ctx, px, py, sec.width, sec.height));
+      bgPoints.push({ x: Math.round(px), y: Math.round(py) });
+    }
     var bgHSteps = Math.max(3, Math.min(_density.bgH, Math.floor(canvasW / 3)));
     var bgVSteps = Math.max(3, Math.min(_density.bgV, Math.floor(canvasH / 3)));
     var insetX = Math.max(1, canvasW * 0.02);
@@ -181,7 +188,7 @@ window.MilgContrastVerify = (function() {
       for (var ty = 0; ty < topVSteps; ty++) {
         var px = canvasX + insetX + ((canvasW - insetX * 2) * tx / (bgHSteps - 1));
         var py = yInSection + insetY + ((topStripBottom - yInSection - insetY) * ty / (topVSteps - 1 || 1));
-        bgSamples.push(samplePixel(sec.ctx, px, py, sec.width, sec.height));
+        _bgSample(px, py);
       }
     }
 
@@ -193,7 +200,7 @@ window.MilgContrastVerify = (function() {
       for (var byb = 0; byb < botVSteps; byb++) {
         var px = canvasX + insetX + ((canvasW - insetX * 2) * bxb / (bgHSteps - 1));
         var py = bottomStripTop + ((bottomStripEnd - bottomStripTop) * byb / (botVSteps - 1 || 1));
-        bgSamples.push(samplePixel(sec.ctx, px, py, sec.width, sec.height));
+        _bgSample(px, py);
       }
     }
 
@@ -204,8 +211,8 @@ window.MilgContrastVerify = (function() {
     if (leftEdgeEnd > leftEdge + 1) {
       for (var ly = 0; ly < edgeVSteps; ly++) {
         var py = yInSection + insetY + ((canvasH - insetY * 2) * ly / (edgeVSteps - 1));
-        bgSamples.push(samplePixel(sec.ctx, leftEdge, py, sec.width, sec.height));
-        bgSamples.push(samplePixel(sec.ctx, leftEdgeEnd, py, sec.width, sec.height));
+        _bgSample(leftEdge, py);
+        _bgSample(leftEdgeEnd, py);
       }
     }
 
@@ -215,8 +222,8 @@ window.MilgContrastVerify = (function() {
     if (rightEdge > rightEdgeStart + 1) {
       for (var ry = 0; ry < edgeVSteps; ry++) {
         var py = yInSection + insetY + ((canvasH - insetY * 2) * ry / (edgeVSteps - 1));
-        bgSamples.push(samplePixel(sec.ctx, rightEdge, py, sec.width, sec.height));
-        bgSamples.push(samplePixel(sec.ctx, rightEdgeStart, py, sec.width, sec.height));
+        _bgSample(rightEdge, py);
+        _bgSample(rightEdgeStart, py);
       }
     }
 
@@ -225,16 +232,16 @@ window.MilgContrastVerify = (function() {
     for (var gi = 0; gi < gapYs.length; gi++) {
       for (var gx = 0; gx < bgHSteps; gx++) {
         var px = canvasX + insetX + ((canvasW - insetX * 2) * gx / (bgHSteps - 1));
-        bgSamples.push(samplePixel(sec.ctx, px, gapYs[gi], sec.width, sec.height));
+        _bgSample(px, gapYs[gi]);
       }
     }
 
     // Safety: if we got very few samples (tiny box), fall back to corners
     if (bgSamples.length < 4) {
-      bgSamples.push(samplePixel(sec.ctx, canvasX + 1, yInSection + 1, sec.width, sec.height));
-      bgSamples.push(samplePixel(sec.ctx, canvasX + canvasW - 1, yInSection + 1, sec.width, sec.height));
-      bgSamples.push(samplePixel(sec.ctx, canvasX + 1, yInSection + canvasH - 1, sec.width, sec.height));
-      bgSamples.push(samplePixel(sec.ctx, canvasX + canvasW - 1, yInSection + canvasH - 1, sec.width, sec.height));
+      _bgSample(canvasX + 1, yInSection + 1);
+      _bgSample(canvasX + canvasW - 1, yInSection + 1);
+      _bgSample(canvasX + 1, yInSection + canvasH - 1);
+      _bgSample(canvasX + canvasW - 1, yInSection + canvasH - 1);
     }
 
     // Find worst-case BG (the one that gives lowest contrast with FG)
@@ -290,7 +297,8 @@ window.MilgContrastVerify = (function() {
       selector: pair.selector,
       text: pair.text,
       sectionIdx: sectionIdx,
-      sampleCount: { fg: fgSamples.length, bg: bgSamples.length }
+      sampleCount: { fg: fgSamples.length, bg: bgSamples.length },
+      samplePoints: { fg: fgPoints, bg: bgPoints }
     };
   }
 
