@@ -552,12 +552,28 @@ window.MilgViewer = (function() {
 
       var color = COLORS[finding.severity] || COLORS.info;
 
-      // Check pixel verification
+      // Check pixel verification — override color based on P10 ratio
       var verifyResult = null;
       if (finding.detail) {
         Object.keys(verifyMap).forEach(function(sel) {
           if (finding.detail.indexOf(sel) !== -1) verifyResult = verifyMap[sel];
         });
+      }
+
+      // Use pixel-verified P10 ratio for color when available
+      if (verifyResult && verifyResult.pixelRatioP10) {
+        var p10 = parseFloat(verifyResult.pixelRatioP10);
+        var needed = verifyResult.neededRatio || 4.5;
+        if (p10 < needed) {
+          // Fail: P10 below threshold
+          color = COLORS.error;
+        } else if (p10 < needed * 1.2) {
+          // Close call: P10 passes but within 20% of threshold
+          color = COLORS.warning;
+        } else {
+          // Solid pass
+          color = COLORS.pass;
+        }
       }
 
       finding.bboxes.forEach(function(bbox) {
@@ -577,18 +593,11 @@ window.MilgViewer = (function() {
         rect.setAttribute('rx', '2');
         rect.setAttribute('data-finding', fIdx);
 
-        // Pixel verification indicators
+        // Dashed indicator when pixel verification disagrees with CSS
         if (verifyResult) {
-          if (verifyResult.crossesBoundary && verifyResult.cssPasses && !verifyResult.pixelPasses) {
-            rect.setAttribute('stroke', '#ef4444');
+          if (verifyResult.crossesBoundary) {
             rect.setAttribute('stroke-width', '2');
             rect.setAttribute('stroke-dasharray', '6 2');
-            rect.setAttribute('fill', 'rgba(239,68,68,0.25)');
-          } else if (verifyResult.crossesBoundary && !verifyResult.cssPasses && verifyResult.pixelPasses) {
-            rect.setAttribute('stroke', '#22c55e');
-            rect.setAttribute('stroke-width', '1.5');
-            rect.setAttribute('stroke-dasharray', '4 3');
-            rect.setAttribute('fill', 'rgba(34,197,94,0.15)');
           } else if (verifyResult.significant) {
             rect.setAttribute('stroke-dasharray', '4 2');
           }

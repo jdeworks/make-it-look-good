@@ -393,6 +393,7 @@ window.MilgContrastVerify = (function() {
 
     return {
       cssRatio: cssRatio,
+      neededRatio: cssNeeded,
       pixelRatio: pixelRatio,         // worst-case (conservative)
       pixelRatioAvg: avgRatio,        // average background
       pixelRatioBest: bestRatio,      // best-case spot
