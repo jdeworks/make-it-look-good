@@ -729,9 +729,10 @@ window.MilgViewer = (function() {
         svg.appendChild(label);
       }
 
-      // Sample points stored for on-click reveal
+      // Sample points + debug layers stored for on-click reveal
       rect._samplePoints = vr.samplePoints || null;
       rect._worstPoint = vr.worstPoint || null;
+      rect._debug = vr._debug || null;
       rect._sectionOffset = (vr.sectionIdx && _meta.viewportHeight) ? vr.sectionIdx * Math.round(_meta.viewportHeight * vScaleX) : 0;
     });
 
@@ -851,6 +852,16 @@ window.MilgViewer = (function() {
       rect.addEventListener('mouseleave', function() {
         hideTooltip();
         if (_hoverCleanup) _hoverCleanup();
+      });
+      // Right-click: cycle debug layers (mask → edge → clear)
+      rect.addEventListener('contextmenu', function(e) {
+        e.preventDefault(); e.stopPropagation();
+        if (!rect._debug) return;
+        var existing = svg.querySelector('.milg-debug-overlay');
+        var currentMode = rect._debugMode || 'none';
+        if (currentMode === 'none') { rect._debugMode = 'mask'; showDebugLayer(rect, svg, 'mask'); }
+        else if (currentMode === 'mask') { rect._debugMode = 'edge'; showDebugLayer(rect, svg, 'edge'); }
+        else { rect._debugMode = 'none'; svg.querySelectorAll('.milg-debug-overlay').forEach(function(el) { el.remove(); }); }
       });
       rect.addEventListener('click', function(e) {
         e.preventDefault(); e.stopPropagation();
@@ -1000,6 +1011,73 @@ window.MilgViewer = (function() {
         svg.appendChild(ring);
       }
     }
+  }
+
+  // --- Debug layer visualization ---
+  // Creates a small canvas overlay showing mask/edge/distance layers
+  function showDebugLayer(rect, svg, mode) {
+    // Remove existing debug overlay
+    svg.querySelectorAll('.milg-debug-overlay').forEach(function(el) { el.remove(); });
+    var debug = rect._debug;
+    if (!debug || !debug.mask) return;
+
+    var bw = debug.bw, bh = debug.bh, bx = debug.bx, by = debug.by;
+    var secOff = rect._sectionOffset || 0;
+
+    // Create a canvas for the debug visualization
+    var dc = document.createElement('canvas');
+    dc.width = bw; dc.height = bh;
+    var dctx = dc.getContext('2d');
+    var imgd = dctx.createImageData(bw, bh);
+    var d = imgd.data;
+
+    for (var y = 0; y < bh; y++) {
+      for (var x = 0; x < bw; x++) {
+        var mi = y * bw + x;
+        var pi = (y * bw + x) * 4;
+        var mv = debug.mask[mi] || 0;
+
+        if (mode === 'mask') {
+          // White bg, black text mask
+          d[pi] = d[pi + 1] = d[pi + 2] = mv ? 0 : 255;
+          d[pi + 3] = 200;
+        } else if (mode === 'edge') {
+          // Show categorization: red=edge, blue=inside, transparent=outside
+          var isEdge = debug.edge.some(function(e) { return e.x === x && e.y === y; });
+          if (isEdge) { d[pi] = 255; d[pi + 1] = 0; d[pi + 2] = 0; d[pi + 3] = 220; }
+          else if (mv) { d[pi] = 60; d[pi + 1] = 130; d[pi + 2] = 246; d[pi + 3] = 120; }
+          else { d[pi] = d[pi + 1] = d[pi + 2] = 0; d[pi + 3] = 0; }
+        }
+      }
+    }
+
+    dctx.putImageData(imgd, 0, 0);
+
+    // Convert to data URI and embed as SVG image
+    var dataUri = dc.toDataURL();
+    var img = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+    img.setAttribute('x', bx);
+    img.setAttribute('y', by + secOff);
+    img.setAttribute('width', bw);
+    img.setAttribute('height', bh);
+    img.setAttribute('href', dataUri);
+    img.setAttribute('class', 'milg-debug-overlay');
+    img.setAttribute('pointer-events', 'none');
+    img.setAttribute('opacity', '0.85');
+    svg.appendChild(img);
+
+    // Add label
+    var label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    label.setAttribute('x', bx + 2);
+    label.setAttribute('y', by + secOff - 3);
+    label.setAttribute('font-size', '9');
+    label.setAttribute('fill', '#ef4444');
+    label.setAttribute('font-family', 'monospace');
+    label.setAttribute('font-weight', '700');
+    label.setAttribute('pointer-events', 'none');
+    label.setAttribute('class', 'milg-debug-overlay');
+    label.textContent = mode.toUpperCase() + ' | edges:' + debug.edgeCount + ' fg:' + debug.fgCount + ' bg:' + debug.bgCount;
+    svg.appendChild(label);
   }
 
   function showFindingTooltip(e, findingIdx) {

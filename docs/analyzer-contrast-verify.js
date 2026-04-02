@@ -259,23 +259,28 @@ window.MilgContrastVerify = (function() {
     var bx = ctx.bx, by = ctx.by, bw = ctx.bw, bh = ctx.bh;
     var imgData = ctx.sec.ctx.getImageData(bx, by, bw, bh).data;
 
-    // Get mask bitmap (should match bw x bh)
+    // Get mask bitmap — clamp to actual pixel dims
     var mBmp = pair._maskBmp, mW = pair._maskW, mH = pair._maskH;
     var w = Math.min(mW, bw), h = Math.min(mH, bh);
     if (w < 4 || h < 4) return null;
 
-    // Step 1: Sobel edge categorization
+    // Step 1: Sobel edge categorization (0=OUT, 1=EDGE, 2=INSIDE)
     var cat = sobelCategorize(mBmp, mW, mH);
 
-    // Step 2: BFS distance from edge pixels (cap at 5)
-    var edgeDist = bfsEdgeDist(cat, mW, mH, 5);
+    // Step 2: BFS distance from edge pixels
+    // Scale max distance with element size: bigger elements get wider BG search
+    var maxDist = Math.max(5, Math.min(12, Math.round(Math.min(w, h) * 0.15)));
+    var edgeDist = bfsEdgeDist(cat, mW, mH, maxDist);
 
-    // Step 3: Collect FG samples (INSIDE, distance 1-2 from edge)
-    // and BG samples (OUTSIDE, distance 2-4 from edge)
+    // Step 3: Collect FG and BG samples
+    // FG: EDGE pixels + INSIDE within 2px of edge
+    // BG: OUTSIDE at distance 2..maxDist from edge
     var fgPoints = [], fgColors = [];
     var bgPoints = [], bgColors = [];
-    var BG_MIN_DIST = 2, BG_MAX_DIST = 4;
-    var FG_MAX_DIST = 2;
+    var edgePoints = []; // store edge coords for debug viz
+    var FG_MAX_DIST = Math.max(2, Math.round(Math.min(w, h) * 0.04));
+    var BG_MIN_DIST = 2;
+    var BG_MAX_DIST = Math.max(4, Math.round(Math.min(w, h) * 0.12));
 
     for (var y = 0; y < h; y++) {
       for (var x = 0; x < w; x++) {
@@ -284,29 +289,31 @@ window.MilgContrastVerify = (function() {
         var c = cat[mi];
         var pi = (y * bw + x) * 4;
         if (pi + 2 >= imgData.length) continue;
+        var pr = imgData[pi], pg = imgData[pi + 1], pb = imgData[pi + 2];
 
-        if (c === 2 && d > 0 && d <= FG_MAX_DIST) {
-          // INSIDE pixel near edge = FG sample
+        if (c === 1) {
+          // EDGE pixel: FG sample + record for debug
           fgPoints.push({ x: bx + x, y: by + y });
-          fgColors.push({ r: imgData[pi], g: imgData[pi + 1], b: imgData[pi + 2] });
+          fgColors.push({ r: pr, g: pg, b: pb });
+          edgePoints.push({ x: x, y: y });
+        } else if (c === 2 && d > 0 && d <= FG_MAX_DIST) {
+          // INSIDE near edge: FG sample
+          fgPoints.push({ x: bx + x, y: by + y });
+          fgColors.push({ r: pr, g: pg, b: pb });
         } else if (c === 0 && d > BG_MIN_DIST && d <= BG_MAX_DIST) {
-          // OUTSIDE pixel in the right distance band = BG sample
+          // OUTSIDE in right band: BG sample
           bgPoints.push({ x: bx + x, y: by + y });
-          bgColors.push({ r: imgData[pi], g: imgData[pi + 1], b: imgData[pi + 2] });
-        } else if (c === 1) {
-          // EDGE pixel itself — also a valid FG sample (right at the boundary)
-          fgPoints.push({ x: bx + x, y: by + y });
-          fgColors.push({ r: imgData[pi], g: imgData[pi + 1], b: imgData[pi + 2] });
+          bgColors.push({ r: pr, g: pg, b: pb });
         }
       }
     }
 
-    // If no BG samples with strict distance, relax to dist > 1
+    // Relaxed fallback if no BG found (very tight text)
     if (bgPoints.length === 0) {
       for (var y2 = 0; y2 < h; y2++) {
         for (var x2 = 0; x2 < w; x2++) {
           var mi2 = y2 * mW + x2;
-          if (cat[mi2] === 0 && edgeDist[mi2] > 1 && edgeDist[mi2] <= 5) {
+          if (cat[mi2] === 0 && edgeDist[mi2] > 1 && edgeDist[mi2] <= maxDist) {
             var pi2 = (y2 * bw + x2) * 4;
             if (pi2 + 2 >= imgData.length) continue;
             bgPoints.push({ x: bx + x2, y: by + y2 });
@@ -316,66 +323,99 @@ window.MilgContrastVerify = (function() {
       }
     }
 
-    // Subsample if too many points (keep it fast)
-    if (fgPoints.length > 300) {
-      var step = Math.ceil(fgPoints.length / 300);
+    // Scale max samples with element area (small = fewer, large = more)
+    var area = w * h;
+    var maxSamples = Math.max(50, Math.min(600, Math.round(Math.sqrt(area) * 2)));
+
+    if (fgPoints.length > maxSamples) {
+      var fstep = Math.ceil(fgPoints.length / maxSamples);
       var nfp = [], nfc = [];
-      for (var si = 0; si < fgPoints.length; si += step) { nfp.push(fgPoints[si]); nfc.push(fgColors[si]); }
+      for (var si = 0; si < fgPoints.length; si += fstep) { nfp.push(fgPoints[si]); nfc.push(fgColors[si]); }
       fgPoints = nfp; fgColors = nfc;
     }
-    if (bgPoints.length > 300) {
-      var bstep = Math.ceil(bgPoints.length / 300);
+    if (bgPoints.length > maxSamples) {
+      var bstep = Math.ceil(bgPoints.length / maxSamples);
       var nbp = [], nbc = [];
       for (var sj = 0; sj < bgPoints.length; sj += bstep) { nbp.push(bgPoints[sj]); nbc.push(bgColors[sj]); }
       bgPoints = nbp; bgColors = nbc;
     }
 
     if (fgPoints.length === 0 || bgPoints.length === 0) {
-      if (fgPoints.length === 0 && pair.text) console.log('[verify-edge] No FG for "' + pair.text.substring(0, 25) + '" mask:' + mW + 'x' + mH + ' dark:' + pair._maskDark);
+      if (fgPoints.length === 0 && pair.text) console.log('[verify-edge] No FG for "' + pair.text.substring(0, 25) + '" w=' + w + ' h=' + h + ' edges=' + edgePoints.length + ' dark=' + pair._maskDark);
       return null;
     }
 
-    // Step 4: Pair each FG with nearest BG, average BG cluster within 4px
+    // Step 4: Pair each FG with nearest BG cluster (4px radius average)
+    // Track which BG points are used by each FG (many-to-one mapping)
     var allPairRatios = [];
     var worstRatio = 99, bestRatio = 0, worstBg = null, worstBgPt = null;
-    var usedBg = new Set();
+    var fgToBgMap = []; // per-FG: { bgIdx, ratio, avgBgColor }
+    var bgUseCounts = new Array(bgPoints.length);
+    for (var bi = 0; bi < bgUseCounts.length; bi++) bgUseCounts[bi] = 0;
+
+    var CLUSTER_R_SQ = 16; // 4px radius squared for BG averaging
 
     fgPoints.forEach(function(fp, fi) {
-      // Find nearest BG point
       var nearDist = Infinity, nearIdx = -1;
-      for (var bi = 0; bi < bgPoints.length; bi++) {
-        var dx = fp.x - bgPoints[bi].x, dy = fp.y - bgPoints[bi].y;
-        var d = dx * dx + dy * dy;
-        if (d < nearDist) { nearDist = d; nearIdx = bi; }
+      for (var bj = 0; bj < bgPoints.length; bj++) {
+        var dx = fp.x - bgPoints[bj].x, dy = fp.y - bgPoints[bj].y;
+        var d2 = dx * dx + dy * dy;
+        if (d2 < nearDist) { nearDist = d2; nearIdx = bj; }
       }
       if (nearIdx < 0) return;
 
-      // Average BG colors in a 4px cluster around the nearest BG point
-      var nbp = bgPoints[nearIdx];
+      // Average BG cluster around the nearest point
+      var anchor = bgPoints[nearIdx];
       var sumR = 0, sumG = 0, sumB = 0, cnt = 0;
-      for (var ci = 0; ci < bgPoints.length; ci++) {
-        var cdx = nbp.x - bgPoints[ci].x, cdy = nbp.y - bgPoints[ci].y;
-        if (cdx * cdx + cdy * cdy <= 16) { // 4px radius
-          sumR += bgColors[ci].r; sumG += bgColors[ci].g; sumB += bgColors[ci].b; cnt++;
-          usedBg.add(ci);
+      for (var ck = 0; ck < bgPoints.length; ck++) {
+        var cdx = anchor.x - bgPoints[ck].x, cdy = anchor.y - bgPoints[ck].y;
+        if (cdx * cdx + cdy * cdy <= CLUSTER_R_SQ) {
+          sumR += bgColors[ck].r; sumG += bgColors[ck].g; sumB += bgColors[ck].b;
+          cnt++; bgUseCounts[ck]++;
         }
       }
-      var avgBgC = cnt > 0 ? { r: Math.round(sumR / cnt), g: Math.round(sumG / cnt), b: Math.round(sumB / cnt) } : bgColors[nearIdx];
+      var avgC = cnt > 0 ? { r: Math.round(sumR / cnt), g: Math.round(sumG / cnt), b: Math.round(sumB / cnt) } : bgColors[nearIdx];
 
-      var ratio = contrastRatio(fgColors[fi], avgBgC);
+      var ratio = contrastRatio(fgColors[fi], avgC);
       allPairRatios.push(ratio);
-      if (ratio < worstRatio) { worstRatio = ratio; worstBg = avgBgC; worstBgPt = bgPoints[nearIdx]; }
+      fgToBgMap.push({ bgIdx: nearIdx, ratio: ratio, avgBg: avgC });
+      if (ratio < worstRatio) { worstRatio = ratio; worstBg = avgC; worstBgPt = bgPoints[nearIdx]; }
       if (ratio > bestRatio) bestRatio = ratio;
     });
 
     if (allPairRatios.length === 0) return null;
 
-    // Collect unique used BG points for visualization
-    var finalBgPoints = [], finalBgColors = [];
-    usedBg.forEach(function(bi) { finalBgPoints.push(bgPoints[bi]); finalBgColors.push(bgColors[bi]); });
+    // Collect unique used BG points (with their per-point ratio against avg FG)
+    var fgColor = { r: 0, g: 0, b: 0 };
+    fgColors.forEach(function(c) { fgColor.r += c.r; fgColor.g += c.g; fgColor.b += c.b; });
+    fgColor.r = Math.round(fgColor.r / fgColors.length);
+    fgColor.g = Math.round(fgColor.g / fgColors.length);
+    fgColor.b = Math.round(fgColor.b / fgColors.length);
 
-    return buildResult(pair, ctx, fgPoints, fgColors, finalBgPoints, finalBgColors,
+    var finalBgPoints = [], finalBgColors = [];
+    for (var bk = 0; bk < bgPoints.length; bk++) {
+      if (bgUseCounts[bk] > 0) { finalBgPoints.push(bgPoints[bk]); finalBgColors.push(bgColors[bk]); }
+    }
+
+    var result = buildResult(pair, ctx, fgPoints, fgColors, finalBgPoints, finalBgColors,
       allPairRatios, worstRatio, bestRatio, worstBg, worstBgPt);
+
+    // Attach debug visualization data (mask, edges, distance)
+    if (result) {
+      result._debug = {
+        bx: bx, by: by, bw: w, bh: h,
+        // Compact representations: store as typed arrays of category and distance
+        mask: Array.from(mBmp.slice(0, w * h)),    // 0/1 per pixel
+        edge: edgePoints,                           // [{x,y}] edge pixel coords
+        edgeCount: edgePoints.length,
+        fgCount: fgPoints.length,
+        bgCount: bgPoints.length,
+        maxDist: maxDist,
+        method: 'sobel'
+      };
+    }
+
+    return result;
   }
 
   // --- Grid-based verification (legacy fallback) ---
