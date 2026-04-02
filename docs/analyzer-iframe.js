@@ -281,25 +281,6 @@ window.MilgIframe = (function() {
                 '}' +
               '});' +
               'if(_ttFixed)console.log("[iframe-ss] Baked text-transform for "+_ttFixed+" text nodes");' +
-              // Phase C3: Inline critical layout properties that domToCanvas may miss.
-              // Walk all elements and inline: display, position, text-transform, flex props
-              'var _layoutFixed=0;' +
-              'document.querySelectorAll("*").forEach(function(el){' +
-                'try{var cs=getComputedStyle(el);' +
-                  'var props=["display","position","textTransform","alignItems","justifyContent",' +
-                    '"flexDirection","flexWrap","gap","textAlign","verticalAlign","lineHeight",' +
-                    '"letterSpacing","wordSpacing","textIndent","whiteSpace"];' +
-                  'var changed=false;' +
-                  'props.forEach(function(p){' +
-                    'var v=cs[p];if(v&&v!=="normal"&&v!=="static"&&v!=="start"&&v!=="auto"&&v!=="0px"&&v!=="none"&&v!=="visible"&&v!=="nowrap"!==v){' +
-                      'var cssProp=p.replace(/([A-Z])/g,"-$1").toLowerCase();' +
-                      'if(!el.style.getPropertyValue(cssProp)){el.style.setProperty(cssProp,v);changed=true}' +
-                    '}' +
-                  '});' +
-                  'if(changed)_layoutFixed++' +
-                '}catch(e){}' +
-              '});' +
-              'if(_layoutFixed)console.log("[iframe-ss] Inlined layout props on "+_layoutFixed+" elements");' +
               'var _maskResults={};' + // idx → {bmp, w, h, layer, dark}
               // Phase D: Capture one mask per layer — set layer elements to black via inline style
               'var _li=0;' +
