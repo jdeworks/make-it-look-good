@@ -641,29 +641,32 @@ window.MilgContrastVerify = (function() {
       }
       if (outerRing.length === 0) outerRing = thinned; // fallback
 
-      // Step C: Keep only the FURTHEST BG pixel per direction sector.
-      // For each BG, compute its direction from the owning FG, quantized to
-      // a sector key (sign of dx, sign of dy, perpendicular position).
-      // In each sector, keep only the pixel with maximum distance.
-      // This guarantees 1px per direction-lane and preserves connectivity
-      // at angles (adjacent sectors share diagonal pixels).
+      // Step C: Ray-cast from FG in 8 directions. Walk outward pixel by pixel
+      // up to BG_R steps. Keep the FURTHEST BG candidate hit on each ray.
+      // Stop ray if it hits another FG pixel. This produces exactly 1 BG
+      // pixel per direction (max 8 per FG), with correct blocking at stroke edges.
       if (outerRing.length > 1) {
-        var sectors = {}; // "sdx,sdy,perp" → {maxDist, idx}
-        for (var ri = 0; ri < outerRing.length; ri++) {
-          var bg = outerRing[ri].bg;
-          var dx = bg.lx - fg.lx, dy = bg.ly - fg.ly;
-          var sdx = dx > 0 ? 1 : (dx < 0 ? -1 : 0);
-          var sdy = dy > 0 ? 1 : (dy < 0 ? -1 : 0);
-          // Perpendicular position: separates parallel lanes in the same direction
-          var perp = (sdx === 0) ? bg.lx : ((sdy === 0) ? bg.ly : (sdx * bg.ly - sdy * bg.lx));
-          var sk = sdx + ',' + sdy + ',' + perp;
-          var dist = Math.max(Math.abs(dx), Math.abs(dy));
-          if (!sectors[sk] || dist > sectors[sk].dist) {
-            sectors[sk] = { dist: dist, idx: ri };
+        // Build lookup sets
+        var fgLocalSet = {};
+        allFg.forEach(function(f) { fgLocalSet[f.lx + ',' + f.ly] = true; });
+        var candLocalSet = {};
+        outerRing.forEach(function(c, i) { candLocalSet[c.bg.lx + ',' + c.bg.ly] = i; });
+
+        var dirs = [[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
+        var kept = {};
+        for (var di = 0; di < dirs.length; di++) {
+          var ddx = dirs[di][0], ddy = dirs[di][1];
+          var lastBg = null;
+          for (var step = 1; step <= BG_R; step++) {
+            var nx = fg.lx + ddx * step, ny = fg.ly + ddy * step;
+            var nk = nx + ',' + ny;
+            if (nk in fgLocalSet) break; // ray blocked by FG
+            if (nk in candLocalSet) lastBg = nk;
           }
+          if (lastBg) kept[lastBg] = candLocalSet[lastBg];
         }
         var final = [];
-        for (var sk in sectors) final.push(outerRing[sectors[sk].idx]);
+        for (var k in kept) final.push(outerRing[kept[k]]);
         if (final.length > 0) outerRing = final;
       }
 

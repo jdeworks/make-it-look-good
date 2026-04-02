@@ -35782,29 +35782,28 @@ function runThinning(fgPixels, bgPixels, bgR) {
     });
     if(outerRing.length===0)outerRing=thinned;
 
-    // Step C: For each BG pixel, compute its direction from the owning FG.
-    // Group by quantized direction (8 sectors). In each sector, keep only
-    // the FURTHEST pixel. This guarantees 1px per direction and preserves
-    // connectivity at angles (adjacent sectors share diagonal pixels).
+    // Step C: Ray-cast from FG in 8 directions. For each direction, walk
+    // outward pixel by pixel up to BG_R steps. The FIRST BG candidate hit
+    // is the one to keep. Stop the ray if it hits another FG pixel.
+    // This produces exactly 1 BG pixel per direction (max 8 per FG).
     if(outerRing.length>1){
-      // Quantize direction from FG to BG into 8 sectors (N,NE,E,SE,S,SW,W,NW)
-      // Use sign(dx),sign(dy) as the sector key — gives 9 buckets but (0,0) impossible
-      var sectors={}; // "sdx,sdy" → {maxDist, pixel}
-      outerRing.forEach(function(c){
-        var dx=c.x-fg.x, dy=c.y-fg.y;
-        // Quantize to unit direction: sign of each axis
-        var sdx=dx>0?1:(dx<0?-1:0), sdy=dy>0?1:(dy<0?-1:0);
-        // For axis-aligned (one component 0), also separate by the nonzero magnitude
-        // to handle multiple pixels on the same axis at different perpendicular positions
-        var perp = (sdx===0) ? c.x : ((sdy===0) ? c.y : (sdx*c.y - sdy*c.x)); // perpendicular key
-        var sk=sdx+','+sdy+','+perp;
-        var dist=Math.max(Math.abs(dx),Math.abs(dy));
-        if(!sectors[sk]||dist>sectors[sk].dist){
-          sectors[sk]={dist:dist,pixel:c};
+      var fgSet={};fgPixels.forEach(function(f){fgSet[f.x+','+f.y]=true});
+      var candSet={};outerRing.forEach(function(c,i){candSet[c.x+','+c.y]=i});
+      var dirs=[[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]]; // 8 directions
+      var kept={};
+      for(var di=0;di<dirs.length;di++){
+        var ddx=dirs[di][0],ddy=dirs[di][1];
+        var lastBg=null;
+        for(var step=1;step<=bgR;step++){
+          var nx=fg.x+ddx*step, ny=fg.y+ddy*step;
+          var nk=nx+','+ny;
+          if(nk in fgSet) break; // ray blocked by another FG pixel — stop
+          if(nk in candSet) lastBg=nk; // track the furthest BG on this ray
         }
-      });
+        if(lastBg) kept[lastBg]=candSet[lastBg]; // keep only the furthest
+      }
       var final=[];
-      for(var sk in sectors)final.push(sectors[sk].pixel);
+      for(var k in kept)final.push(outerRing[kept[k]]);
       if(final.length>0)outerRing=final;
     }
 
@@ -35836,7 +35835,7 @@ function runThinning(fgPixels, bgPixels, bgR) {
 }
 
 function drawGrid(id, w, h, fg, bg, kept, label) {
-  var scale = 20;
+  var scale = 30;
   var c = document.createElement('canvas');
   c.width = w * scale; c.height = h * scale;
   var ctx = c.getContext('2d');
@@ -35945,12 +35944,13 @@ if(test('Angle: 2px deep BG thins to 1px', 6, 7,
    {x:2,y:3},{x:2,y:4},{x:3,y:3},{x:3,y:2},                      // between strokes
    {x:4,y:2},{x:4,y:1},{x:5,y:2},{x:5,y:3},{x:5,y:4},            // right 2px deep
    {x:3,y:1},{x:2,y:2},{x:2,y:1}],                                // above
-  // Outermost per sector from each FG + between-stroke BG (valid contrast area):
-  ['0,4','0,5','0,6',              // left outer column
-   '1,4','1,6',                    // between strokes left
-   '2,1','2,2','2,3','2,4','2,6', // between + above/below middle FG
-   '3,1','3,3','3,5','3,6',       // between + right of middle
-   '4,1','4,4','4,5',             // between + right
+  // Ray-cast from each FG: furthest BG in 8 directions, stopped by other FG
+  ['1,4','2,4',                    // between strokes
+   '0,5','3,5',                    // left/right of middle FG
+   '1,6','2,6','3,6',             // bottom
+   '2,3','3,3',                    // between strokes
+   '4,4','4,5',                    // right of bottom FG
+   '2,1','4,1',                    // top
    '5,2','5,3','5,4']             // right outer column
 ))passed++;else failed++;
 
@@ -41491,29 +41491,32 @@ window.MilgContrastVerify = (function() {
       }
       if (outerRing.length === 0) outerRing = thinned; // fallback
 
-      // Step C: Keep only the FURTHEST BG pixel per direction sector.
-      // For each BG, compute its direction from the owning FG, quantized to
-      // a sector key (sign of dx, sign of dy, perpendicular position).
-      // In each sector, keep only the pixel with maximum distance.
-      // This guarantees 1px per direction-lane and preserves connectivity
-      // at angles (adjacent sectors share diagonal pixels).
+      // Step C: Ray-cast from FG in 8 directions. Walk outward pixel by pixel
+      // up to BG_R steps. Keep the FURTHEST BG candidate hit on each ray.
+      // Stop ray if it hits another FG pixel. This produces exactly 1 BG
+      // pixel per direction (max 8 per FG), with correct blocking at stroke edges.
       if (outerRing.length > 1) {
-        var sectors = {}; // "sdx,sdy,perp" → {maxDist, idx}
-        for (var ri = 0; ri < outerRing.length; ri++) {
-          var bg = outerRing[ri].bg;
-          var dx = bg.lx - fg.lx, dy = bg.ly - fg.ly;
-          var sdx = dx > 0 ? 1 : (dx < 0 ? -1 : 0);
-          var sdy = dy > 0 ? 1 : (dy < 0 ? -1 : 0);
-          // Perpendicular position: separates parallel lanes in the same direction
-          var perp = (sdx === 0) ? bg.lx : ((sdy === 0) ? bg.ly : (sdx * bg.ly - sdy * bg.lx));
-          var sk = sdx + ',' + sdy + ',' + perp;
-          var dist = Math.max(Math.abs(dx), Math.abs(dy));
-          if (!sectors[sk] || dist > sectors[sk].dist) {
-            sectors[sk] = { dist: dist, idx: ri };
+        // Build lookup sets
+        var fgLocalSet = {};
+        allFg.forEach(function(f) { fgLocalSet[f.lx + ',' + f.ly] = true; });
+        var candLocalSet = {};
+        outerRing.forEach(function(c, i) { candLocalSet[c.bg.lx + ',' + c.bg.ly] = i; });
+
+        var dirs = [[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
+        var kept = {};
+        for (var di = 0; di < dirs.length; di++) {
+          var ddx = dirs[di][0], ddy = dirs[di][1];
+          var lastBg = null;
+          for (var step = 1; step <= BG_R; step++) {
+            var nx = fg.lx + ddx * step, ny = fg.ly + ddy * step;
+            var nk = nx + ',' + ny;
+            if (nk in fgLocalSet) break; // ray blocked by FG
+            if (nk in candLocalSet) lastBg = nk;
           }
+          if (lastBg) kept[lastBg] = candLocalSet[lastBg];
         }
         var final = [];
-        for (var sk in sectors) final.push(outerRing[sectors[sk].idx]);
+        for (var k in kept) final.push(outerRing[kept[k]]);
         if (final.length > 0) outerRing = final;
       }
 
@@ -42216,7 +42219,7 @@ window.MilgContrastVerify = (function() {
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v38.0</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v38.1</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
