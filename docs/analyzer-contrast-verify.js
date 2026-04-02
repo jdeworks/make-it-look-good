@@ -599,23 +599,47 @@ window.MilgContrastVerify = (function() {
         candSet[candidates[ci].bg.lx + ',' + candidates[ci].bg.ly] = ci;
       }
 
-      // Thin to 1px outline: keep a BG pixel only if at least one of its
-      // 8-neighbors is NOT in the candidate set. This gives the outer boundary
-      // of the BG region — a continuous 1px-thick outline.
-      var outerRing = [];
+      // Step A: Thin to 1px outline — keep BG where at least one 8-neighbor
+      // is NOT in the candidate set (outer boundary of BG region)
+      var thinned = [];
       for (var ci = 0; ci < candidates.length; ci++) {
         var bg = candidates[ci].bg;
         var isOuter = false;
         for (var dy = -1; dy <= 1 && !isOuter; dy++) {
           for (var dx = -1; dx <= 1 && !isOuter; dx++) {
             if (dx === 0 && dy === 0) continue;
-            var nk = (bg.lx + dx) + ',' + (bg.ly + dy);
-            if (!(nk in candSet)) isOuter = true;
+            if (!((bg.lx + dx) + ',' + (bg.ly + dy) in candSet)) isOuter = true;
           }
         }
-        if (isOuter) outerRing.push(candidates[ci]);
+        if (isOuter) thinned.push(candidates[ci]);
       }
-      if (outerRing.length === 0) outerRing = candidates;
+      if (thinned.length === 0) thinned = candidates;
+
+      // Step B: Remove BG pixels where a DIFFERENT FG pixel is closer than this FG.
+      // These are on the inward side (facing another text stroke), not outward.
+      var outerRing = [];
+      for (var ti = 0; ti < thinned.length; ti++) {
+        var bg = thinned[ti].bg;
+        var myDist = thinned[ti].cheb; // Chebyshev dist from this FG
+        // Check spatial grid for a closer FG
+        var gcx = Math.floor(bg.lx / cellSize), gcy = Math.floor(bg.ly / cellSize);
+        var closerExists = false;
+        for (var gdy = -1; gdy <= 1 && !closerExists; gdy++) {
+          var ry = gcy + gdy; if (ry < 0 || ry >= gridH) continue;
+          for (var gdx = -1; gdx <= 1 && !closerExists; gdx++) {
+            var rx = gcx + gdx; if (rx < 0 || rx >= gridW) continue;
+            var cell = fgGrid[ry * gridW + rx];
+            for (var cci = 0; cci < cell.length; cci++) {
+              if (cell[cci] === fi) continue; // skip self
+              var otherFg = allFg[cell[cci]];
+              var ocheb = Math.max(Math.abs(otherFg.lx - bg.lx), Math.abs(otherFg.ly - bg.ly));
+              if (ocheb < myDist) { closerExists = true; break; }
+            }
+          }
+        }
+        if (!closerExists) outerRing.push(thinned[ti]);
+      }
+      if (outerRing.length === 0) outerRing = thinned; // fallback
 
       // Average the outer ring BG colors
       var sumR = 0, sumG = 0, sumB = 0;
