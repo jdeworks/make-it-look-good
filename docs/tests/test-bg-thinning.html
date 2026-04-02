@@ -85,27 +85,17 @@ function runThinning(fgPixels, bgPixels, bgR) {
     });
     if(outerRing.length===0)outerRing=thinned;
 
-    // Step C: Ray-cast from FG in 8 directions. For each direction, walk
-    // outward pixel by pixel up to BG_R steps. The FIRST BG candidate hit
-    // is the one to keep. Stop the ray if it hits another FG pixel.
-    // This produces exactly 1 BG pixel per direction (max 8 per FG).
+    // Step C: Per GCD-normalized direction lane, keep only the FURTHEST
+    // visible BG. Visibility = no FG pixel blocking the line of sight.
+    // GCD normalization: (2,1) and (4,2) are same direction → same lane.
     if(outerRing.length>1){
       var fgSet={};fgPixels.forEach(function(f){fgSet[f.x+','+f.y]=true});
-      var candSet={};outerRing.forEach(function(c,i){candSet[c.x+','+c.y]=i});
-      // Cast rays to ALL positions on the Chebyshev ring at distance BG_R.
-      // This covers every possible direction, not just 8 cardinals.
-      // For each candidate BG: check visibility (not blocked by other FG).
-      // Then: per column/row from FG, keep only the FURTHEST visible BG.
-      // A "lane" is defined by the axis perpendicular to the FG→BG direction:
-      // - For BG above/below FG (same column): lane = x coordinate
-      // - For BG left/right of FG (same row): lane = y coordinate
-      // - For diagonal BG: lane = "dx sign, perpendicular position"
-      var laneBest = {}; // "lane_key" → {dist, x, y}
+      var laneBest={}; // "normalized_dir" → {dist, x, y}
       for(var ci=0;ci<outerRing.length;ci++){
         var bg=outerRing[ci];
         var dx=bg.x-fg.x, dy=bg.y-fg.y;
         if(dx===0&&dy===0) continue;
-        // Visibility: walk from FG to BG, check for blocking FG
+        // Visibility: walk from FG toward BG, check for blocking FG
         var steps=Math.max(Math.abs(dx),Math.abs(dy));
         var blocked=false;
         for(var s=1;s<steps;s++){
@@ -114,16 +104,12 @@ function runThinning(fgPixels, bgPixels, bgR) {
           if((nx+','+ny) in fgSet){blocked=true;break;}
         }
         if(blocked) continue;
-        // Lane key: for axis-aligned, use the perpendicular coordinate.
-        // For diagonals, use the column (x) so each column gets its own lane.
+        // GCD-normalize direction
         var sdx=dx>0?1:(dx<0?-1:0), sdy=dy>0?1:(dy<0?-1:0);
-        // Lane key: normalize direction to smallest integer ratio.
-        // e.g., (2,1) and (4,2) are the same direction → same lane.
-        // Use GCD to normalize.
         var adx=Math.abs(dx),ady=Math.abs(dy);
-        var g=adx;var tmp=ady;while(tmp){var t=tmp;tmp=g%tmp;g=t}// GCD
+        var g=adx,tmp=ady;while(tmp){var t=tmp;tmp=g%tmp;g=t}
         if(g===0)g=1;
-        var lk=sdx*(adx/g)+','+(sdy*(ady/g));
+        var lk=(sdx*(adx/g))+','+(sdy*(ady/g));
         var dist=Math.max(Math.abs(dx),Math.abs(dy));
         if(!laneBest[lk]||dist>laneBest[lk].dist){
           laneBest[lk]={dist:dist,x:bg.x,y:bg.y};
@@ -132,8 +118,7 @@ function runThinning(fgPixels, bgPixels, bgR) {
       var kept={};
       for(var lk in laneBest) kept[laneBest[lk].x+','+laneBest[lk].y]=true;
 
-      // (gap filling removed — GCD-normalized lanes cover all directions)
-      // Replace outerRing with only kept
+      // Keep only the winners
       var final=outerRing.filter(function(c){return (c.x+','+c.y) in kept});
       if(final.length>0)outerRing=final;
     }
