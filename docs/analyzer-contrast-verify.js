@@ -642,12 +642,20 @@ window.MilgContrastVerify = (function() {
       if (outerRing.length === 0) outerRing = thinned; // fallback
 
       // Step C: Morphological outer boundary of candidates.
-      // Keep BG pixels where at least one 8-neighbor is NOT in the local
-      // region (candidates + all FG). This is: boundary = region - erode(region)
+      // boundary = region AND NOT erode(region)
+      // Region includes FG 8-neighborhood fill to close diagonal gaps.
       if (outerRing.length > 1) {
         var localRegion = {};
         outerRing.forEach(function(c) { localRegion[c.bg.lx + ',' + c.bg.ly] = true; });
-        allFg.forEach(function(f) { localRegion[f.lx + ',' + f.ly] = true; });
+        allFg.forEach(function(f) {
+          localRegion[f.lx + ',' + f.ly] = true;
+          // Fill FG 8-neighborhood to close diagonal gaps between FG pixels
+          for (var fdy = -1; fdy <= 1; fdy++)
+            for (var fdx = -1; fdx <= 1; fdx++) {
+              var fk = (f.lx + fdx) + ',' + (f.ly + fdy);
+              if (!(fk in localRegion)) localRegion[fk] = true;
+            }
+        });
 
         var boundary = [];
         for (var ci = 0; ci < outerRing.length; ci++) {
@@ -693,14 +701,19 @@ window.MilgContrastVerify = (function() {
     }
 
     // Global morphological boundary: thin combined BG to outer ring.
-    // Region = all kept BG + all FG. Keep BG where at least one 8-neighbor
-    // is outside this region.
     var globalRegion = {};
     Object.keys(allBgUsed).forEach(function(k) {
       var b = allBgUsed[k];
       globalRegion[(b.x - bx) + ',' + (b.y - by)] = true;
     });
-    allFg.forEach(function(f) { globalRegion[f.lx + ',' + f.ly] = true; });
+    allFg.forEach(function(f) {
+      globalRegion[f.lx + ',' + f.ly] = true;
+      for (var fdy = -1; fdy <= 1; fdy++)
+        for (var fdx = -1; fdx <= 1; fdx++) {
+          var fk = (f.lx + fdx) + ',' + (f.ly + fdy);
+          if (!(fk in globalRegion)) globalRegion[fk] = true;
+        }
+    });
 
     var cleanedBg = {};
     Object.keys(allBgUsed).forEach(function(k) {

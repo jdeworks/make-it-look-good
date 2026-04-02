@@ -46,10 +46,21 @@ function runThinning(fgPixels, bgPixels, bgR) {
       candidates.push(bg);
     });
 
-    // Build local region = these candidates + ALL FG pixels
+    // Build local region = candidates + FG + FG 8-neighborhood fill.
+    // The fill closes diagonal gaps between FG pixels so the morphological
+    // boundary correctly identifies inner vs outer BG.
     var localRegion = {};
     candidates.forEach(function(c) { localRegion[c.x + ',' + c.y] = 'bg'; });
-    fgPixels.forEach(function(f) { localRegion[f.x + ',' + f.y] = 'fg'; });
+    fgPixels.forEach(function(f) {
+      localRegion[f.x + ',' + f.y] = 'fg';
+      // Fill 8-neighborhood of each FG pixel — closes diagonal gaps
+      for (var dy = -1; dy <= 1; dy++) {
+        for (var dx = -1; dx <= 1; dx++) {
+          var nk = (f.x + dx) + ',' + (f.y + dy);
+          if (!(nk in localRegion)) localRegion[nk] = 'fill';
+        }
+      }
+    });
 
     // Morphological boundary: keep BG where at least one 8-neighbor is outside localRegion
     candidates.forEach(function(c) {
@@ -65,10 +76,16 @@ function runThinning(fgPixels, bgPixels, bgR) {
   });
 
   // Step 3: Global morphological boundary on the combined kept BG.
-  // Some FG groups may share BG creating 2px-thick bands. Thin again globally.
   var globalRegion = {};
   Object.keys(allKept).forEach(function(k) { globalRegion[k] = 'bg'; });
-  fgPixels.forEach(function(f) { globalRegion[f.x + ',' + f.y] = 'fg'; });
+  fgPixels.forEach(function(f) {
+    globalRegion[f.x + ',' + f.y] = 'fg';
+    for (var dy = -1; dy <= 1; dy++)
+      for (var dx = -1; dx <= 1; dx++) {
+        var nk = (f.x + dx) + ',' + (f.y + dy);
+        if (!(nk in globalRegion)) globalRegion[nk] = 'fill';
+      }
+  });
 
   var final = {};
   Object.keys(allKept).forEach(function(k) {
@@ -347,8 +364,8 @@ if(test('Angle: 5px diagonal 2px deep BG', 10, 10,
   // Inner diagonal (between strokes):
    {x:4,y:7},{x:5,y:6},{x:6,y:5},{x:7,y:4}, // dist=1 from FG, inner side
    {x:3,y:8},{x:2,y:5},{x:3,y:4},{x:4,y:3},{x:5,y:2},{x:6,y:1}], // dist=1 from FG, outer-ish
-  // Morphological outer boundary (1px outline of BG region)
-  ['4,8','3,9','2,8','2,9','5,8','4,9','1,6','1,7','1,8','2,6','3,6','4,7',
+  // Morphological outer boundary with FG fill (inner diagonal removed)
+  ['4,8','3,9','2,8','2,9','5,8','4,9','1,6','1,7','1,8','2,6',
    '2,5','5,7','6,7','3,5','3,4','6,6','7,6','4,4','4,3','7,5','8,5',
    '5,3','5,2','7,1','8,1','8,2','8,3','8,4','6,2','6,1']
 ))passed++;else failed++;
