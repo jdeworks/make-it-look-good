@@ -486,7 +486,7 @@ window.MilgContrastVerify = (function() {
       edgeOwner[edgeIdx[ei]] = ei;
       queue.push(edgeIdx[ei]);
     }
-    var BG_R = 5, FG_R = 2, MAX_DIST = 7;
+    var BG_R = 3, FG_R = 2, MAX_DIST = 5;
     var head = 0;
     while (head < queue.length) {
       var ci = queue[head++];
@@ -567,34 +567,83 @@ window.MilgContrastVerify = (function() {
     }
 
     // Step 5: For each FG pixel, collect its BG group:
-    //   BG pixels within 5px where this FG is the closest FG to that BG
+    //   a) BG within 3px where this FG is the closest FG
+    //   b) Remove any BG that has a DIFFERENT FG within 3px (contested zone)
+    //   c) Keep only the OUTERMOST BG pixels (max distance ring, not fill)
     var fgPoints = [], fgColors = [];
     var allBgUsed = {};
     var allPairRatios = [];
     var worstRatio = 99, bestRatio = 0, worstBg = null, worstBgPt = null;
     var fgGroups = [];
-    var BG_SEARCH_SQ = BG_R * BG_R;
+    var BG_SEARCH_SQ = BG_R * BG_R; // 9 = 3px squared
 
     for (var fi = 0; fi < allFg.length; fi++) {
       var fg = allFg[fi];
-      var myBgKeys = [];
-      var sumR = 0, sumG = 0, sumB = 0, cnt = 0;
 
+      // Collect candidate BG: within 3px, this FG is closest
+      var candidates = []; // [{bi, dist, bg}]
       for (var bi = 0; bi < allBgArr.length; bi++) {
-        if (bgNearestFg[bi] !== fi) continue; // this BG's closest FG isn't us
+        if (bgNearestFg[bi] !== fi) continue;
         var bg = allBgArr[bi];
         var dx = fg.lx - bg.lx, dy = fg.ly - bg.ly;
-        if (dx * dx + dy * dy > BG_SEARCH_SQ) continue; // outside 5px radius
+        var distSq = dx * dx + dy * dy;
+        if (distSq > BG_SEARCH_SQ) continue;
+        candidates.push({ bi: bi, distSq: distSq, bg: bg });
+      }
+      if (candidates.length === 0) continue;
 
-        sumR += bg.r; sumG += bg.g; sumB += bg.b; cnt++;
+      // Filter: remove BG that has any OTHER FG pixel within 3px
+      // Use the spatial grid for fast check
+      var filtered = [];
+      for (var ci = 0; ci < candidates.length; ci++) {
+        var bg = candidates[ci].bg;
+        var gcx = Math.floor(bg.lx / cellSize), gcy = Math.floor(bg.ly / cellSize);
+        var contested = false;
+        for (var gdy = -1; gdy <= 1 && !contested; gdy++) {
+          var ry = gcy + gdy; if (ry < 0 || ry >= gridH) continue;
+          for (var gdx = -1; gdx <= 1 && !contested; gdx++) {
+            var rx = gcx + gdx; if (rx < 0 || rx >= gridW) continue;
+            var cell = fgGrid[ry * gridW + rx];
+            for (var cci = 0; cci < cell.length; cci++) {
+              if (cell[cci] === fi) continue; // skip self
+              var otherFg = allFg[cell[cci]];
+              var odx = otherFg.lx - bg.lx, ody = otherFg.ly - bg.ly;
+              if (odx * odx + ody * ody <= BG_SEARCH_SQ) { contested = true; break; }
+            }
+          }
+        }
+        if (!contested) filtered.push(candidates[ci]);
+      }
+
+      // If all removed by contested filter, fall back to original candidates
+      if (filtered.length === 0) filtered = candidates;
+
+      // Keep only outermost: find max distance, keep only those within 1px of max
+      var maxDistSq = 0;
+      for (var fi2 = 0; fi2 < filtered.length; fi2++) {
+        if (filtered[fi2].distSq > maxDistSq) maxDistSq = filtered[fi2].distSq;
+      }
+      // Keep pixels within 1px of the max distance (the outer ring)
+      var maxDist = Math.sqrt(maxDistSq);
+      var outerRing = [];
+      for (var fi2 = 0; fi2 < filtered.length; fi2++) {
+        var d = Math.sqrt(filtered[fi2].distSq);
+        if (d >= maxDist - 1.0) outerRing.push(filtered[fi2]);
+      }
+      if (outerRing.length === 0) outerRing = filtered; // safety fallback
+
+      // Average the outer ring BG colors
+      var sumR = 0, sumG = 0, sumB = 0;
+      var myBgKeys = [];
+      for (var oi = 0; oi < outerRing.length; oi++) {
+        var bg = outerRing[oi].bg;
+        sumR += bg.r; sumG += bg.g; sumB += bg.b;
         var k = bg.lx + ',' + bg.ly;
         myBgKeys.push(k);
         allBgUsed[k] = { x: bx + bg.lx, y: by + bg.ly, r: bg.r, g: bg.g, b: bg.b };
       }
 
-      if (cnt === 0) continue; // orphan FG
-
-      var avgBg = { r: Math.round(sumR / cnt), g: Math.round(sumG / cnt), b: Math.round(sumB / cnt) };
+      var avgBg = { r: Math.round(sumR / outerRing.length), g: Math.round(sumG / outerRing.length), b: Math.round(sumB / outerRing.length) };
       var fgC = { r: fg.r, g: fg.g, b: fg.b };
       var ratio = contrastRatio(fgC, avgBg);
 
