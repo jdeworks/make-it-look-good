@@ -113,7 +113,29 @@ function runThinning(fgPixels, bgPixels, bgR) {
 
     outerRing.forEach(function(c){allResults[c.x+','+c.y]=fi});
   });
-  return allResults;
+
+  // Step D: Global boundary re-check — remove any BG pixel where ALL its
+  // 8-neighbors are also kept BG pixels. These are interior pixels that
+  // survived sector thinning because they were "furthest" from their FG
+  // but are actually surrounded by other BG (between two strokes).
+  var cleaned = {};
+  var allKeys = Object.keys(allResults);
+  allKeys.forEach(function(k) {
+    var parts = k.split(','), x = parseInt(parts[0]), y = parseInt(parts[1]);
+    var isOuter = false;
+    for (var dy = -1; dy <= 1 && !isOuter; dy++) {
+      for (var dx = -1; dx <= 1 && !isOuter; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        var nk = (x+dx) + ',' + (y+dy);
+        // Outer = at least one neighbor is NOT in the BG result set
+        // (FG neighbors, empty space, outside bbox all count as "not BG")
+        if (!(nk in allResults)) isOuter = true;
+      }
+    }
+    if (isOuter) cleaned[k] = allResults[k];
+  });
+  // Fallback: if cleaning removed everything, keep original
+  return Object.keys(cleaned).length > 0 ? cleaned : allResults;
 }
 
 function drawGrid(id, w, h, fg, bg, kept, label) {
@@ -197,22 +219,42 @@ if(test('Vertical: 2 cols right of FG', 5, 4,
   ['2,0','2,1','2,2','2,3']
 ))passed++;else failed++;
 
-// Test 4: Angle — diagonal FG, BG wraps around outside
-// FG: diagonal from bottom-left to upper-right
-// BG: the outline around it (no overlap with FG!)
-if(test('Angle: diagonal step preserved', 7, 7,
-  [{x:1,y:5},{x:2,y:4},{x:3,y:3}], // diagonal FG
-  [{x:0,y:4},{x:0,y:5},{x:0,y:6}, // left side
-   {x:1,y:3},{x:1,y:4},{x:1,y:6}, // around FG(1,5)
-   {x:2,y:2},{x:2,y:3},{x:2,y:5}, // around FG(2,4)
-   {x:3,y:1},{x:3,y:2},{x:3,y:4},{x:3,y:5},{x:3,y:6}, // right + around FG(3,3)
-   {x:4,y:2},{x:4,y:3},{x:4,y:4}], // far right
-  // Outermost per direction-lane from each FG (includes between-stroke BG):
-  ['0,4','0,5','0,6',  // left column
-   '1,3','1,4','1,6',  // around FG(1,5): 1,4 is valid BG between strokes
-   '2,2','2,3','2,5',  // around FG(2,4): 2,3 between strokes
-   '3,1','3,4','3,5','3,6',  // around FG(3,3): 3,4 between strokes
-   '4,2','4,3','4,4']  // right column
+// Test 4: Angle — diagonal FG with distance=1 BG only (tight outline)
+// FG at (1,4),(2,3),(3,2) — diagonal going up-right
+// BG: only the 8-connected neighbors that aren't FG
+if(test('Angle: tight 1px outline', 5, 6,
+  [{x:1,y:4},{x:2,y:3},{x:3,y:2}], // diagonal FG
+  // All non-FG 8-neighbors of FG pixels:
+  [{x:0,y:3},{x:0,y:4},{x:0,y:5},  // left of FG(1,4)
+   {x:1,y:3},{x:1,y:5},             // above/below FG(1,4)
+   {x:2,y:4},{x:2,y:5},             // below FG(2,3)
+   {x:1,y:2},{x:2,y:2},             // above FG(2,3) and left of FG(3,2)
+   {x:3,y:3},{x:3,y:4},             // below FG(3,2)
+   {x:4,y:1},{x:4,y:2},{x:4,y:3},  // right of FG(3,2)
+   {x:3,y:1},{x:2,y:1}],            // above FG(3,2)
+  // With BG_R=3 all are within range. After sector thinning, we want
+  // the outermost per direction from each FG. All are dist=1 (immediate
+  // neighbors), so all should be kept — they're already a 1px outline.
+  ['0,3','0,4','0,5','1,3','1,5','2,4','2,5',
+   '1,2','2,2','3,3','3,4','4,1','4,2','4,3','3,1','2,1']
+))passed++;else failed++;
+
+// Test 4b: Same angle but with 2px deep BG — should thin to 1px
+if(test('Angle: 2px deep BG thins to 1px', 6, 7,
+  [{x:2,y:5},{x:3,y:4},{x:4,y:3}], // diagonal FG
+  // 2px deep BG on each side:
+  [{x:1,y:4},{x:1,y:5},{x:1,y:6},{x:0,y:4},{x:0,y:5},{x:0,y:6}, // left 2px deep
+   {x:2,y:6},{x:3,y:5},{x:3,y:6},{x:4,y:4},{x:4,y:5},            // below 2px
+   {x:2,y:3},{x:2,y:4},{x:3,y:3},{x:3,y:2},                      // between strokes
+   {x:4,y:2},{x:4,y:1},{x:5,y:2},{x:5,y:3},{x:5,y:4},            // right 2px deep
+   {x:3,y:1},{x:2,y:2},{x:2,y:1}],                                // above
+  // Outermost per sector from each FG + between-stroke BG (valid contrast area):
+  ['0,4','0,5','0,6',              // left outer column
+   '1,4','1,6',                    // between strokes left
+   '2,1','2,2','2,3','2,4','2,6', // between + above/below middle FG
+   '3,1','3,3','3,5','3,6',       // between + right of middle
+   '4,1','4,4','4,5',             // between + right
+   '5,2','5,3','5,4']             // right outer column
 ))passed++;else failed++;
 
 // Test 5: Single FG pixel, BG ring around it

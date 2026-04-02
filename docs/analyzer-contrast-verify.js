@@ -695,6 +695,25 @@ window.MilgContrastVerify = (function() {
       return null;
     }
 
+    // Global boundary re-check: remove BG pixels where ALL 8-neighbors
+    // are also BG (interior of a BG cluster between strokes)
+    var cleanedBg = {};
+    var bgLocalKeys = Object.keys(allBgUsed);
+    bgLocalKeys.forEach(function(k) {
+      var b = allBgUsed[k];
+      var lx = b.x - bx, ly = b.y - by; // back to local coords
+      var isOuter = false;
+      for (var dy = -1; dy <= 1 && !isOuter; dy++) {
+        for (var dx = -1; dx <= 1 && !isOuter; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          var nk = (lx + dx) + ',' + (ly + dy);
+          if (!(nk in allBgUsed)) isOuter = true;
+        }
+      }
+      if (isOuter) cleanedBg[k] = b;
+    });
+    if (Object.keys(cleanedBg).length > 0) allBgUsed = cleanedBg;
+
     // Collect all used BG for visualization
     var finalBgPoints = [], finalBgColors = [];
     Object.keys(allBgUsed).forEach(function(k) {
