@@ -41199,16 +41199,26 @@ window.MilgContrastVerify = (function() {
       }
       if (outerRing.length === 0) outerRing = thinned; // fallback
 
-      // Step C: Remove shadowed BG — a BG pixel is redundant if another BG
-      // in the group is further from the NEAREST FG pixel along the same axis.
-      // We check against ALL nearby FG (not just the owner) so vertical strokes
-      // correctly keep horizontally-stacked BG.
+      // Step C: Remove inner BG pixels while preserving connectivity.
+      // A BG pixel is removable only if it has an 8-connected neighbor in the
+      // group that is FURTHER from the nearest FG. This ensures the outline
+      // chain is never broken — at angles, stepping pixels are kept because
+      // their outer neighbor is diagonal, not on the same axis.
+      //
+      // Only remove if BOTH conditions are true:
+      //   1. An adjacent BG (8-connected) in the group is further from nearest FG
+      //   2. That further neighbor has the same or closer nearest-FG distance
+      //      to some FG pixel (it's a valid outer pixel, not an orphan)
       if (outerRing.length > 1) {
-        // For each BG pixel, find its nearest FG (any FG, using the grid)
-        var bgNearFg = [];
+        // Build set + distance-to-nearest-FG for each BG in the ring
+        var ringSet = {};
+        var ringDist = {}; // key → Chebyshev dist to nearest FG (any FG)
         for (var ri = 0; ri < outerRing.length; ri++) {
           var bg = outerRing[ri].bg;
-          var bestFx = fg.lx, bestFy = fg.ly, bestD = Infinity;
+          var k = bg.lx + ',' + bg.ly;
+          ringSet[k] = ri;
+          // Find nearest FG via grid
+          var bestD = Infinity;
           var gcx = Math.floor(bg.lx / cellSize), gcy = Math.floor(bg.ly / cellSize);
           for (var gdy = -1; gdy <= 1; gdy++) {
             var ry = gcy + gdy; if (ry < 0 || ry >= gridH) continue;
@@ -41218,42 +41228,54 @@ window.MilgContrastVerify = (function() {
               for (var cci = 0; cci < cell.length; cci++) {
                 var nfg = allFg[cell[cci]];
                 var nd = Math.max(Math.abs(nfg.lx - bg.lx), Math.abs(nfg.ly - bg.ly));
-                if (nd < bestD) { bestD = nd; bestFx = nfg.lx; bestFy = nfg.ly; }
+                if (nd < bestD) bestD = nd;
               }
             }
           }
-          bgNearFg.push({ fx: bestFx, fy: bestFy });
+          ringDist[k] = bestD;
         }
 
+        // Iteratively remove inner pixels: a pixel is removable if an adjacent
+        // ring pixel is further from nearest FG. Repeat until stable.
+        var changed = true;
+        while (changed) {
+          changed = false;
+          var toRemove = {};
+          var keys = Object.keys(ringSet);
+          for (var ki = 0; ki < keys.length; ki++) {
+            var k = keys[ki];
+            if (k in toRemove) continue;
+            var ri = ringSet[k];
+            var bg = outerRing[ri].bg;
+            var myD = ringDist[k];
+
+            // Check 8 neighbors: is there an adjacent ring pixel further from FG?
+            var hasFurther = false;
+            for (var dy = -1; dy <= 1 && !hasFurther; dy++) {
+              for (var dx = -1; dx <= 1 && !hasFurther; dx++) {
+                if (dx === 0 && dy === 0) continue;
+                var nk = (bg.lx + dx) + ',' + (bg.ly + dy);
+                if (nk in ringSet && !(nk in toRemove) && ringDist[nk] > myD) {
+                  hasFurther = true;
+                }
+              }
+            }
+            if (hasFurther) toRemove[k] = true;
+          }
+
+          // Apply removals
+          var removeCount = Object.keys(toRemove).length;
+          if (removeCount > 0 && removeCount < keys.length) {
+            for (var rk in toRemove) delete ringSet[rk];
+            changed = true;
+          }
+        }
+
+        // Rebuild outerRing from remaining
         var final = [];
         for (var ri = 0; ri < outerRing.length; ri++) {
-          var bg = outerRing[ri].bg;
-          var nfx = bgNearFg[ri].fx, nfy = bgNearFg[ri].fy;
-          var dx = bg.lx - nfx, dy = bg.ly - nfy;
-          var shadowed = false;
-
-          for (var rj = 0; rj < outerRing.length; rj++) {
-            if (ri === rj) continue;
-            var obg = outerRing[rj].bg;
-            // Direction from the SAME nearest-FG to the other BG
-            var odx = obg.lx - nfx, ody = obg.ly - nfy;
-
-            // Same axis + same direction + other is strictly further out
-            if (dx === 0 && odx === 0 && ((dy > 0 && ody > dy) || (dy < 0 && ody < dy))) {
-              shadowed = true; break; // same column, other further
-            }
-            if (dy === 0 && ody === 0 && ((dx > 0 && odx > dx) || (dx < 0 && odx < dx))) {
-              shadowed = true; break; // same row, other further
-            }
-            // Diagonal: same signs, other strictly further on both axes
-            if (dx !== 0 && dy !== 0 && odx !== 0 && ody !== 0 &&
-                ((dx > 0) === (odx > 0)) && ((dy > 0) === (ody > 0)) &&
-                Math.abs(odx) >= Math.abs(dx) && Math.abs(ody) >= Math.abs(dy) &&
-                (Math.abs(odx) > Math.abs(dx) || Math.abs(ody) > Math.abs(dy))) {
-              shadowed = true; break;
-            }
-          }
-          if (!shadowed) final.push(outerRing[ri]);
+          var k = outerRing[ri].bg.lx + ',' + outerRing[ri].bg.ly;
+          if (k in ringSet) final.push(outerRing[ri]);
         }
         if (final.length > 0) outerRing = final;
       }
@@ -41938,7 +41960,7 @@ window.MilgContrastVerify = (function() {
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v37.7</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v37.8</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
