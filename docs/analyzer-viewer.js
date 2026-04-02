@@ -853,24 +853,26 @@ window.MilgViewer = (function() {
         hideTooltip();
         if (_hoverCleanup) _hoverCleanup();
       });
-      // Right-click: cycle debug layers (mask → edge:sobel → edge:prewitt → edge:canny → edge:roberts → edge:laplacian → clear)
-      rect.addEventListener('contextmenu', function(e) {
+      // Double-click or right-click: cycle debug layers
+      function _cycleDebug(e) {
         e.preventDefault(); e.stopPropagation();
-        if (!rect._debug) return;
+        if (!rect._debug) { console.log('[viewer] No _debug data on rect'); return; }
         var modes = ['none', 'mask', 'edge:sobel', 'edge:prewitt', 'edge:canny', 'edge:roberts', 'edge:laplacian'];
         var current = rect._debugMode || 'none';
         var idx = modes.indexOf(current);
         var next = modes[(idx + 1) % modes.length];
         rect._debugMode = next;
+        console.log('[viewer] Debug layer: ' + next);
         if (next === 'none') {
           svg.querySelectorAll('.milg-debug-overlay').forEach(function(el) { el.remove(); });
         } else if (next === 'mask') {
           showDebugLayer(rect, svg, 'mask', null);
         } else {
-          var method = next.split(':')[1];
-          showDebugLayer(rect, svg, 'edge', method);
+          showDebugLayer(rect, svg, 'edge', next.split(':')[1]);
         }
-      });
+      }
+      rect.addEventListener('contextmenu', _cycleDebug);
+      rect.addEventListener('dblclick', _cycleDebug);
       rect.addEventListener('click', function(e) {
         e.preventDefault(); e.stopPropagation();
         // Check overlapping verify rects — use click point (SVG coords) for precision

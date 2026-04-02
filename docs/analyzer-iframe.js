@@ -310,7 +310,7 @@ window.MilgIframe = (function() {
               '}' +
               'var _maskDone=false;' +
               'var _origSendFinal=_sendFinal;' +
-              'var _maskTimer=setTimeout(function(){if(!_maskDone){_maskDone=true;console.warn("[iframe-ss] Masks timed out (30s)");_origSendFinal(null)}},30000);' +
+              'var _maskTimer=setTimeout(function(){if(!_maskDone){_maskDone=true;console.warn("[iframe-ss] Masks timed out (45s)");_origSendFinal(null)}},45000);' +
               '_sendFinal=function(m){if(_maskDone)return;_maskDone=true;clearTimeout(_maskTimer);console.log("[iframe-ss] Sending results (maskResults: "+Object.keys(_maskResults).length+" pairs)");_origSendFinal(m)};' +
               '_nextLayer()' +
             '}).catch(function(e){console.warn("[iframe-ss] capture failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")})' +
@@ -575,7 +575,7 @@ window.MilgIframe = (function() {
           structure: { totalElements: 0, darkModeClasses: false, responsiveClasses: false, tailwindDetected: false, cssFramework: 'unknown' }
         });
       }
-    }, captureScreenshots ? 70000 : (isFullDoc ? 15000 : 8000));
+    }, captureScreenshots ? 90000 : (isFullDoc ? 15000 : 8000));
   }
 
   return {

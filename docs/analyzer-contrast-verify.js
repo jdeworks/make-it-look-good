@@ -340,7 +340,7 @@ window.MilgContrastVerify = (function() {
 
   // Dispatcher: use edge-based when mask bitmap available, else fall back to grid
   function verifyPair(pair, sectionCanvases, meta, maskCanvas) {
-    if (_edgeMethod === 'sobel' && pair._maskBmp && pair._maskW && pair._maskDark > 0) {
+    if (_edgeMethod !== 'grid' && pair._maskBmp && pair._maskW && pair._maskDark > 0) {
       return verifyPairEdge(pair, sectionCanvases, meta, maskCanvas);
     }
     return verifyPairGrid(pair, sectionCanvases, meta, maskCanvas);
@@ -438,9 +438,15 @@ window.MilgContrastVerify = (function() {
     var bx = ctx.bx, by = ctx.by, bw = ctx.bw, bh = ctx.bh;
     var imgData = ctx.sec.ctx.getImageData(bx, by, bw, bh).data;
 
-    var mBmp = pair._maskBmp, mW = pair._maskW, mH = pair._maskH;
+    var mBmpRaw = pair._maskBmp, mW = pair._maskW, mH = pair._maskH;
     var w = Math.min(mW, bw), h = Math.min(mH, bh);
     if (w < 4 || h < 4) return null;
+
+    // Step 0: Clean mask — threshold gray pixels to pure 0/1
+    // The mask may have anti-aliased edges (values between 0 and 1 from averaging).
+    // For edge detection, we need a crisp binary mask.
+    var mBmp = new Uint8Array(mW * mH);
+    for (var i = 0; i < mW * mH; i++) mBmp[i] = mBmpRaw[i] ? 1 : 0;
 
     // Step 1: Edge detection (configurable method)
     var method = _edgeMethod;
@@ -449,167 +455,134 @@ window.MilgContrastVerify = (function() {
     // Step 2: BFS distance from edge pixels
     var edgeDist = bfsEdgeDist(cat, mW, mH, 6);
 
-    // Step 3: Collect edge pixels + their FG/BG neighbors
-    // For every EDGE pixel:
-    //   - FG: the edge pixel itself + all INSIDE pixels within 1px (3x3)
-    //   - BG: all OUTSIDE pixels within 4px that are NOT within 1px of another EDGE
-    var edgePixels = []; // all edge coords for debug
-    var fgPoints = [], fgColors = [];
-    var bgPoints = [], bgColors = [];
-
-    // First pass: collect all edge pixel positions
+    // Step 3: Collect ALL edge pixels as FG anchors
+    var edgePixels = [];
     for (var y = 0; y < h; y++) {
       for (var x = 0; x < w; x++) {
-        if (cat[y * mW + x] === 1) edgePixels.push({ x: x, y: y });
+        if (cat[y * mW + x] === 1) edgePixels.push(y * mW + x);
       }
     }
 
-    // For each edge pixel, collect FG (itself + 1px inside) and BG (4px outside)
-    // Use sets to avoid duplicate points
-    var fgSet = {}, bgSet = {};
-    var BG_RADIUS = 4;
-    var FG_RADIUS = 1;
-
-    for (var ei = 0; ei < edgePixels.length; ei++) {
-      var ep = edgePixels[ei];
-
-      // FG: edge pixel itself + INSIDE neighbors within 1px
-      for (var dy = -FG_RADIUS; dy <= FG_RADIUS; dy++) {
-        var ny = ep.y + dy;
-        if (ny < 0 || ny >= h) continue;
-        for (var dx = -FG_RADIUS; dx <= FG_RADIUS; dx++) {
-          var nx = ep.x + dx;
-          if (nx < 0 || nx >= w) continue;
-          var ni = ny * mW + nx;
-          var c = cat[ni];
-          if (c === 1 || c === 2) { // edge or inside
-            var fgKey = nx + ',' + ny;
-            if (!fgSet[fgKey]) {
-              fgSet[fgKey] = true;
-              var pi = (ny * bw + nx) * 4;
-              if (pi + 2 < imgData.length) {
-                fgPoints.push({ x: bx + nx, y: by + ny });
-                fgColors.push({ r: imgData[pi], g: imgData[pi+1], b: imgData[pi+2] });
-              }
-            }
-          }
-        }
-      }
-
-      // BG: OUTSIDE pixels within BG_RADIUS, but NOT within 1px of ANY edge pixel
-      for (var dy = -BG_RADIUS; dy <= BG_RADIUS; dy++) {
-        var ny = ep.y + dy;
-        if (ny < 0 || ny >= h) continue;
-        for (var dx = -BG_RADIUS; dx <= BG_RADIUS; dx++) {
-          if (dx * dx + dy * dy > BG_RADIUS * BG_RADIUS) continue; // circular
-          var nx = ep.x + dx;
-          if (nx < 0 || nx >= w) continue;
-          var ni = ny * mW + nx;
-          if (cat[ni] !== 0) continue; // must be OUTSIDE
-          if (edgeDist[ni] < 2) continue; // too close to edge — AA zone
-          var bgKey = nx + ',' + ny;
-          if (!bgSet[bgKey]) {
-            bgSet[bgKey] = true;
-            var pi = (ny * bw + nx) * 4;
-            if (pi + 2 < imgData.length) {
-              bgPoints.push({ x: bx + nx, y: by + ny });
-              bgColors.push({ r: imgData[pi], g: imgData[pi+1], b: imgData[pi+2] });
-            }
-          }
-        }
+    // Collect BG candidate pool: all OUTSIDE pixels within dist 2-5 of edge
+    var bgPool = []; // [{x,y,r,g,b,idx}]
+    var bgSet = {};
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        var mi = y * mW + x;
+        if (cat[mi] !== 0) continue; // must be OUTSIDE (not in mask)
+        var d = edgeDist[mi];
+        if (d < 2 || d > 5) continue; // skip AA zone (<2) and too-far (>5)
+        var pi = (y * bw + x) * 4;
+        if (pi + 2 >= imgData.length) continue;
+        bgPool.push({ x: bx + x, y: by + y, lx: x, ly: y,
+          r: imgData[pi], g: imgData[pi+1], b: imgData[pi+2] });
       }
     }
 
-    if (fgPoints.length === 0 || bgPoints.length === 0) {
-      // Relaxed fallback: any OUTSIDE pixel within 6px of edge
-      if (bgPoints.length === 0) {
-        for (var y2 = 0; y2 < h; y2++) {
-          for (var x2 = 0; x2 < w; x2++) {
-            var mi2 = y2 * mW + x2;
-            if (cat[mi2] === 0 && edgeDist[mi2] > 0 && edgeDist[mi2] <= 6) {
-              var pi2 = (y2 * bw + x2) * 4;
-              if (pi2 + 2 < imgData.length) {
-                bgPoints.push({ x: bx + x2, y: by + y2 });
-                bgColors.push({ r: imgData[pi2], g: imgData[pi2+1], b: imgData[pi2+2] });
-              }
-            }
-          }
-        }
-      }
-      if (fgPoints.length === 0 && pair.text)
-        console.log('[verify-edge] No FG for "' + pair.text.substring(0, 25) + '" ' + w + 'x' + h + ' edges=' + edgePixels.length + ' method=' + method);
-      if (fgPoints.length === 0 || bgPoints.length === 0) return null;
-    }
-
-    // Step 4: Pair each FG pixel with ALL BG within 4px radius → average BG per FG
+    // For each edge pixel: read its FG color from screenshot, find ALL BG within 4px
+    // 1 edge pixel → 1 FG color → average of N nearby BG colors → 1 contrast ratio
+    var fgPoints = [], fgColors = [];
     var allPairRatios = [];
     var worstRatio = 99, bestRatio = 0, worstBg = null, worstBgPt = null;
-    var bgUsed = new Uint8Array(bgPoints.length);
+    var bgUsed = new Uint8Array(bgPool.length);
+    var BG_PAIR_R_SQ = 16; // 4px radius squared
 
-    fgPoints.forEach(function(fp, fi) {
-      // Collect all BG pixels within 4px of this FG pixel
+    for (var ei = 0; ei < edgePixels.length; ei++) {
+      var eidx = edgePixels[ei];
+      var ex = eidx % mW, ey = (eidx - ex) / mW;
+      var fpi = (ey * bw + ex) * 4;
+      if (fpi + 2 >= imgData.length) continue;
+
+      // Also grab 1px inside (INSIDE neighbor) and pick the one most different from bg
+      var bestFgR = imgData[fpi], bestFgG = imgData[fpi+1], bestFgB = imgData[fpi+2];
+      for (var dy = -1; dy <= 1; dy++) {
+        var ny = ey + dy;
+        if (ny < 0 || ny >= h) continue;
+        for (var dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          var nx = ex + dx;
+          if (nx < 0 || nx >= w) continue;
+          if (cat[ny * mW + nx] !== 2) continue; // must be INSIDE
+          var npi = (ny * bw + nx) * 4;
+          if (npi + 2 >= imgData.length) continue;
+          // Pick the pixel further from white (more "text-like")
+          var curBright = (bestFgR + bestFgG + bestFgB);
+          var newBright = (imgData[npi] + imgData[npi+1] + imgData[npi+2]);
+          if (newBright < curBright) {
+            bestFgR = imgData[npi]; bestFgG = imgData[npi+1]; bestFgB = imgData[npi+2];
+          }
+        }
+      }
+
+      var fgC = { r: bestFgR, g: bestFgG, b: bestFgB };
+      fgPoints.push({ x: bx + ex, y: by + ey });
+      fgColors.push(fgC);
+
+      // Find ALL BG within 4px radius → average them → 1 ratio for this FG
       var sumR = 0, sumG = 0, sumB = 0, cnt = 0;
-      for (var bi = 0; bi < bgPoints.length; bi++) {
-        var dx = fp.x - bgPoints[bi].x, dy = fp.y - bgPoints[bi].y;
-        if (dx * dx + dy * dy <= 16) { // 4px radius
-          sumR += bgColors[bi].r; sumG += bgColors[bi].g; sumB += bgColors[bi].b;
+      for (var bi = 0; bi < bgPool.length; bi++) {
+        var bdx = (bx + ex) - bgPool[bi].x, bdy = (by + ey) - bgPool[bi].y;
+        if (bdx * bdx + bdy * bdy <= BG_PAIR_R_SQ) {
+          sumR += bgPool[bi].r; sumG += bgPool[bi].g; sumB += bgPool[bi].b;
           cnt++; bgUsed[bi] = 1;
         }
       }
       if (cnt === 0) {
-        // No BG within 4px — find single nearest
+        // Fallback: nearest single BG
         var nearDist = Infinity, nearIdx = -1;
-        for (var bi = 0; bi < bgPoints.length; bi++) {
-          var dx = fp.x - bgPoints[bi].x, dy = fp.y - bgPoints[bi].y;
-          var d2 = dx * dx + dy * dy;
+        for (var bi = 0; bi < bgPool.length; bi++) {
+          var bdx = (bx + ex) - bgPool[bi].x, bdy = (by + ey) - bgPool[bi].y;
+          var d2 = bdx * bdx + bdy * bdy;
           if (d2 < nearDist) { nearDist = d2; nearIdx = bi; }
         }
         if (nearIdx >= 0) {
-          sumR = bgColors[nearIdx].r; sumG = bgColors[nearIdx].g; sumB = bgColors[nearIdx].b;
+          sumR = bgPool[nearIdx].r; sumG = bgPool[nearIdx].g; sumB = bgPool[nearIdx].b;
           cnt = 1; bgUsed[nearIdx] = 1;
         }
       }
-      if (cnt === 0) return;
+      if (cnt === 0) continue;
 
       var avgBgC = { r: Math.round(sumR / cnt), g: Math.round(sumG / cnt), b: Math.round(sumB / cnt) };
-      var ratio = contrastRatio(fgColors[fi], avgBgC);
+      var ratio = contrastRatio(fgC, avgBgC);
       allPairRatios.push(ratio);
-      if (ratio < worstRatio) { worstRatio = ratio; worstBg = avgBgC; worstBgPt = bgPoints[0]; }
+      if (ratio < worstRatio) { worstRatio = ratio; worstBg = avgBgC; }
       if (ratio > bestRatio) bestRatio = ratio;
-    });
+    }
 
-    if (allPairRatios.length === 0) return null;
+    if (allPairRatios.length === 0) {
+      if (pair.text) console.log('[verify-edge] No pairs for "' + pair.text.substring(0, 25) + '" ' + w + 'x' + h + ' edges=' + edgePixels.length + ' bg=' + bgPool.length + ' method=' + method);
+      return null;
+    }
 
     // Collect used BG points for visualization
     var finalBgPoints = [], finalBgColors = [];
-    for (var bk = 0; bk < bgPoints.length; bk++) {
-      if (bgUsed[bk]) { finalBgPoints.push(bgPoints[bk]); finalBgColors.push(bgColors[bk]); }
+    for (var bk = 0; bk < bgPool.length; bk++) {
+      if (bgUsed[bk]) { finalBgPoints.push({ x: bgPool[bk].x, y: bgPool[bk].y }); finalBgColors.push({ r: bgPool[bk].r, g: bgPool[bk].g, b: bgPool[bk].b }); }
     }
 
-    // Find actual worst BG point (the one producing lowest ratio vs avg FG)
+    // Find worst BG point for the red ring
     var fgColor = { r: 0, g: 0, b: 0 };
     fgColors.forEach(function(c) { fgColor.r += c.r; fgColor.g += c.g; fgColor.b += c.b; });
     fgColor.r = Math.round(fgColor.r / fgColors.length);
     fgColor.g = Math.round(fgColor.g / fgColors.length);
     fgColor.b = Math.round(fgColor.b / fgColors.length);
 
-    var worstBgIdx = 0, worstBgRatio = 99;
+    worstBgPt = null;
+    var wbr = 99;
     finalBgPoints.forEach(function(bp, bi) {
       var r = contrastRatio(fgColor, finalBgColors[bi]);
-      if (r < worstBgRatio) { worstBgRatio = r; worstBgIdx = bi; }
+      if (r < wbr) { wbr = r; worstBgPt = bp; worstBg = finalBgColors[bi]; }
     });
-    worstBgPt = finalBgPoints[worstBgIdx] || null;
-    worstBg = finalBgColors[worstBgIdx] || worstBg;
 
     var result = buildResult(pair, ctx, fgPoints, fgColors, finalBgPoints, finalBgColors,
       allPairRatios, worstRatio, bestRatio, worstBg, worstBgPt);
 
-    // Attach debug data
+    // Attach debug data for viewer layer switching
     if (result) {
       result._debug = {
         bx: bx, by: by, bw: w, bh: h,
         mask: Array.from(mBmp.slice(0, w * h)),
-        edge: edgePixels,
+        edge: edgePixels.map(function(idx) { return { x: idx % mW, y: (idx - idx % mW) / mW }; }),
         edgeCount: edgePixels.length,
         fgCount: fgPoints.length,
         bgCount: finalBgPoints.length,
