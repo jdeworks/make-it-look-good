@@ -138,11 +138,13 @@ function runThinning(fgPixels, bgPixels, bgR) {
 }
 
 function drawGrid(id, w, h, fg, bg, kept, label) {
-  var scale = 30;
+  var scale = 20;
+  var pad = 16; // padding for axis labels
   var c = document.createElement('canvas');
-  c.width = w * scale; c.height = h * scale;
+  c.width = w * scale + pad; c.height = h * scale + pad;
   var ctx = c.getContext('2d');
   ctx.fillStyle = '#333'; ctx.fillRect(0,0,c.width,c.height);
+  ctx.save(); ctx.translate(pad, 0); // shift grid right for y-axis labels
   // Grid lines
   ctx.strokeStyle='#555';
   for(var x=0;x<=w;x++){ctx.beginPath();ctx.moveTo(x*scale,0);ctx.lineTo(x*scale,h*scale);ctx.stroke();}
@@ -156,14 +158,31 @@ function drawGrid(id, w, h, fg, bg, kept, label) {
   });
   // FG
   fg.forEach(function(p){ctx.fillStyle='#06b6d4';ctx.fillRect(p.x*scale+1,p.y*scale+1,scale-2,scale-2)});
-  // Labels
+  // Axis labels — x along top, y along left
+  ctx.font='9px monospace';ctx.fillStyle='#888';
+  for(var x=0;x<w;x++) ctx.fillText(x,x*scale+scale/2-3,h*scale+12);
+  ctx.save();ctx.translate(-pad,0);
+  for(var y=0;y<h;y++) ctx.fillText(y,2,y*scale+scale/2+3);
+  ctx.restore();
+  // (0,0) origin marker
+  ctx.fillStyle='#ff0';ctx.font='8px monospace';ctx.fillText('↗0,0',0,scale-2);
+  // Cell labels
   ctx.font='9px monospace';ctx.fillStyle='#fff';
   bg.forEach(function(p){
     var isKept = (p.x+','+p.y) in kept;
-    ctx.fillText(isKept?'B':'x',p.x*scale+6,p.y*scale+13);
+    ctx.fillText(isKept?'B':'x',p.x*scale+3,p.y*scale+10);
+    ctx.fillStyle='#aaa';ctx.font='7px monospace';
+    ctx.fillText(p.x+','+p.y,p.x*scale+2,p.y*scale+scale-3);
+    ctx.fillStyle='#fff';ctx.font='9px monospace';
   });
-  fg.forEach(function(p){ctx.fillText('F',p.x*scale+6,p.y*scale+13)});
+  fg.forEach(function(p){
+    ctx.fillText('F',p.x*scale+3,p.y*scale+10);
+    ctx.fillStyle='#aaa';ctx.font='7px monospace';
+    ctx.fillText(p.x+','+p.y,p.x*scale+2,p.y*scale+scale-3);
+    ctx.fillStyle='#fff';ctx.font='9px monospace';
+  });
 
+  ctx.restore(); // undo translate
   var div = document.createElement('div');
   div.innerHTML = '<h3>'+label+'</h3>';
   div.appendChild(c);
@@ -193,49 +212,47 @@ function test(name, w, h, fg, bg, expectedKept) {
 
 var passed=0,failed=0;
 
-// Test 1: Horizontal line — only top row should remain
-if(test('Horizontal: 3 rows above FG line', 4, 5,
-  [{x:0,y:4},{x:1,y:4},{x:2,y:4},{x:3,y:4}], // FG row
-  [{x:0,y:1},{x:1,y:1},{x:2,y:1},{x:3,y:1},   // BG rows
-   {x:0,y:2},{x:1,y:2},{x:2,y:2},{x:3,y:2},
-   {x:0,y:3},{x:1,y:3},{x:2,y:3},{x:3,y:3}],
-  ['0,1','1,1','2,1','3,1'] // only outermost row
+// Test 1: Horizontal line — 3 rows of BG above 6-wide FG line
+if(test('Horizontal: 3 rows above 6-wide FG', 6, 6,
+  [{x:0,y:5},{x:1,y:5},{x:2,y:5},{x:3,y:5},{x:4,y:5},{x:5,y:5}], // FG row
+  [{x:0,y:2},{x:1,y:2},{x:2,y:2},{x:3,y:2},{x:4,y:2},{x:5,y:2},   // BG y=2
+   {x:0,y:3},{x:1,y:3},{x:2,y:3},{x:3,y:3},{x:4,y:3},{x:5,y:3},   // BG y=3
+   {x:0,y:4},{x:1,y:4},{x:2,y:4},{x:3,y:4},{x:4,y:4},{x:5,y:4}],  // BG y=4
+  ['0,2','1,2','2,2','3,2','4,2','5,2'] // only outermost row
 ))passed++;else failed++;
 
-// Test 2: Horizontal: 2 rows above — only top should remain
-if(test('Horizontal: 2 rows above FG', 4, 4,
-  [{x:0,y:3},{x:1,y:3},{x:2,y:3},{x:3,y:3}],
-  [{x:0,y:1},{x:1,y:1},{x:2,y:1},{x:3,y:1},
-   {x:0,y:2},{x:1,y:2},{x:2,y:2},{x:3,y:2}],
-  ['0,1','1,1','2,1','3,1']
+// Test 2: Horizontal: 2 rows above 6-wide FG
+if(test('Horizontal: 2 rows above 6-wide FG', 6, 5,
+  [{x:0,y:4},{x:1,y:4},{x:2,y:4},{x:3,y:4},{x:4,y:4},{x:5,y:4}],
+  [{x:0,y:2},{x:1,y:2},{x:2,y:2},{x:3,y:2},{x:4,y:2},{x:5,y:2},
+   {x:0,y:3},{x:1,y:3},{x:2,y:3},{x:3,y:3},{x:4,y:3},{x:5,y:3}],
+  ['0,2','1,2','2,2','3,2','4,2','5,2']
 ))passed++;else failed++;
 
-// Test 3: Vertical line — only rightmost column should remain
-if(test('Vertical: 2 cols right of FG', 5, 4,
-  [{x:0,y:0},{x:0,y:1},{x:0,y:2},{x:0,y:3}],
-  [{x:1,y:0},{x:1,y:1},{x:1,y:2},{x:1,y:3},
-   {x:2,y:0},{x:2,y:1},{x:2,y:2},{x:2,y:3}],
-  ['2,0','2,1','2,2','2,3']
+// Test 3: Vertical line — 3 cols right of 6-tall FG
+if(test('Vertical: 3 cols right of 6-tall FG', 6, 6,
+  [{x:0,y:0},{x:0,y:1},{x:0,y:2},{x:0,y:3},{x:0,y:4},{x:0,y:5}],
+  [{x:1,y:0},{x:1,y:1},{x:1,y:2},{x:1,y:3},{x:1,y:4},{x:1,y:5},
+   {x:2,y:0},{x:2,y:1},{x:2,y:2},{x:2,y:3},{x:2,y:4},{x:2,y:5},
+   {x:3,y:0},{x:3,y:1},{x:3,y:2},{x:3,y:3},{x:3,y:4},{x:3,y:5}],
+  ['3,0','3,1','3,2','3,3','3,4','3,5']
 ))passed++;else failed++;
 
-// Test 4: Angle — diagonal FG with distance=1 BG only (tight outline)
-// FG at (1,4),(2,3),(3,2) — diagonal going up-right
-// BG: only the 8-connected neighbors that aren't FG
-if(test('Angle: tight 1px outline', 5, 6,
-  [{x:1,y:4},{x:2,y:3},{x:3,y:2}], // diagonal FG
-  // All non-FG 8-neighbors of FG pixels:
-  [{x:0,y:3},{x:0,y:4},{x:0,y:5},  // left of FG(1,4)
-   {x:1,y:3},{x:1,y:5},             // above/below FG(1,4)
-   {x:2,y:4},{x:2,y:5},             // below FG(2,3)
-   {x:1,y:2},{x:2,y:2},             // above FG(2,3) and left of FG(3,2)
-   {x:3,y:3},{x:3,y:4},             // below FG(3,2)
-   {x:4,y:1},{x:4,y:2},{x:4,y:3},  // right of FG(3,2)
-   {x:3,y:1},{x:2,y:1}],            // above FG(3,2)
-  // With BG_R=3 all are within range. After sector thinning, we want
-  // the outermost per direction from each FG. All are dist=1 (immediate
-  // neighbors), so all should be kept — they're already a 1px outline.
-  ['0,3','0,4','0,5','1,3','1,5','2,4','2,5',
-   '1,2','2,2','3,3','3,4','4,1','4,2','4,3','3,1','2,1']
+// Test 4: Angle — longer diagonal with 1px BG outline
+// FG at (2,7),(3,6),(4,5),(5,4),(6,3) — 5-pixel diagonal
+if(test('Angle: 5px diagonal tight outline', 9, 9,
+  [{x:2,y:7},{x:3,y:6},{x:4,y:5},{x:5,y:4},{x:6,y:3}],
+  // 8-neighbors of each FG that aren't FG themselves:
+  [{x:1,y:6},{x:1,y:7},{x:1,y:8},{x:2,y:6},{x:2,y:8},{x:3,y:8}, // around (2,7)
+   {x:3,y:5},{x:3,y:7},{x:4,y:7},                                 // around (3,6)
+   {x:4,y:4},{x:4,y:6},{x:5,y:6},                                 // around (4,5)
+   {x:5,y:3},{x:5,y:5},{x:6,y:5},                                 // around (5,4)
+   {x:6,y:2},{x:6,y:4},{x:7,y:2},{x:7,y:3},{x:7,y:4},            // around (6,3)
+   {x:5,y:2},{x:4,y:3},{x:3,y:4},{x:2,y:5}],                     // inner diagonal
+  // All are dist=1 → all kept (already 1px outline)
+  ['1,6','1,7','1,8','2,6','2,8','3,8','3,5','3,7','4,7',
+   '4,4','4,6','5,6','5,3','5,5','6,5','6,2','6,4','7,2','7,3','7,4',
+   '5,2','4,3','3,4','2,5']
 ))passed++;else failed++;
 
 // Test 4b: Same angle but with 2px deep BG — should thin to 1px
@@ -257,14 +274,18 @@ if(test('Angle: 2px deep BG thins to 1px', 6, 7,
    '5,2','5,3','5,4']             // right outer column
 ))passed++;else failed++;
 
-// Test 5: Single FG pixel, BG ring around it
-if(test('Single FG: ring around', 5, 5,
-  [{x:2,y:2}],
-  [{x:1,y:1},{x:2,y:1},{x:3,y:1},
-   {x:1,y:2},{x:3,y:2},
-   {x:1,y:3},{x:2,y:3},{x:3,y:3}],
-  // All should be kept (they're already 1px outline)
-  ['1,1','2,1','3,1','1,2','3,2','1,3','2,3','3,3']
+// Test 5: Single FG pixel with 2px ring — should thin to outer ring
+if(test('Single FG: 2px ring thins to outer', 7, 7,
+  [{x:3,y:3}],
+  // Inner ring (dist 1)
+  [{x:2,y:2},{x:3,y:2},{x:4,y:2},{x:2,y:3},{x:4,y:3},{x:2,y:4},{x:3,y:4},{x:4,y:4},
+  // Outer ring (dist 2)
+   {x:1,y:1},{x:2,y:1},{x:3,y:1},{x:4,y:1},{x:5,y:1},
+   {x:1,y:2},{x:5,y:2},{x:1,y:3},{x:5,y:3},{x:1,y:4},{x:5,y:4},
+   {x:1,y:5},{x:2,y:5},{x:3,y:5},{x:4,y:5},{x:5,y:5}],
+  // Only outer ring kept
+  ['1,1','2,1','3,1','4,1','5,1','1,2','5,2','1,3','5,3','1,4','5,4',
+   '1,5','2,5','3,5','4,5','5,5']
 ))passed++;else failed++;
 
 // Test 6: O-shape — inner and outer BG
