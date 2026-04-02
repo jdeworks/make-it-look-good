@@ -641,32 +641,42 @@ window.MilgContrastVerify = (function() {
       }
       if (outerRing.length === 0) outerRing = thinned; // fallback
 
-      // Step C: Ray-cast from FG in 8 directions. Walk outward pixel by pixel
-      // up to BG_R steps. Keep the FURTHEST BG candidate hit on each ray.
-      // Stop ray if it hits another FG pixel. This produces exactly 1 BG
-      // pixel per direction (max 8 per FG), with correct blocking at stroke edges.
+      // Step C: Per GCD-normalized direction lane, keep only the FURTHEST
+      // visible BG. Visibility = no FG pixel blocking the line of sight.
+      // GCD normalization: (2,1) and (4,2) are same direction → same lane.
       if (outerRing.length > 1) {
-        // Build lookup sets
         var fgLocalSet = {};
         allFg.forEach(function(f) { fgLocalSet[f.lx + ',' + f.ly] = true; });
-        var candLocalSet = {};
-        outerRing.forEach(function(c, i) { candLocalSet[c.bg.lx + ',' + c.bg.ly] = i; });
 
-        var dirs = [[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
-        var kept = {};
-        for (var di = 0; di < dirs.length; di++) {
-          var ddx = dirs[di][0], ddy = dirs[di][1];
-          var lastBg = null;
-          for (var step = 1; step <= BG_R; step++) {
-            var nx = fg.lx + ddx * step, ny = fg.ly + ddy * step;
-            var nk = nx + ',' + ny;
-            if (nk in fgLocalSet) break; // ray blocked by FG
-            if (nk in candLocalSet) lastBg = nk;
+        var laneBest = {}; // "normalized_dir" → {dist, idx}
+        for (var ci = 0; ci < outerRing.length; ci++) {
+          var bg = outerRing[ci].bg;
+          var dx = bg.lx - fg.lx, dy = bg.ly - fg.ly;
+          if (dx === 0 && dy === 0) continue;
+          // Visibility: walk from FG toward BG, check for blocking FG
+          var steps = Math.max(Math.abs(dx), Math.abs(dy));
+          var blocked = false;
+          for (var s = 1; s < steps; s++) {
+            var nx = fg.lx + Math.round(dx * s / steps);
+            var ny = fg.ly + Math.round(dy * s / steps);
+            if ((nx + ',' + ny) in fgLocalSet) { blocked = true; break; }
           }
-          if (lastBg) kept[lastBg] = candLocalSet[lastBg];
+          if (blocked) continue;
+          // GCD-normalize direction
+          var sdx = dx > 0 ? 1 : (dx < 0 ? -1 : 0);
+          var sdy = dy > 0 ? 1 : (dy < 0 ? -1 : 0);
+          var adx = Math.abs(dx), ady = Math.abs(dy);
+          var g = adx, tmp = ady;
+          while (tmp) { var t = tmp; tmp = g % tmp; g = t; }
+          if (g === 0) g = 1;
+          var lk = (sdx * (adx / g)) + ',' + (sdy * (ady / g));
+          var dist = Math.max(adx, ady);
+          if (!laneBest[lk] || dist > laneBest[lk].dist) {
+            laneBest[lk] = { dist: dist, idx: ci };
+          }
         }
         var final = [];
-        for (var k in kept) final.push(outerRing[kept[k]]);
+        for (var lk in laneBest) final.push(outerRing[laneBest[lk].idx]);
         if (final.length > 0) outerRing = final;
       }
 
