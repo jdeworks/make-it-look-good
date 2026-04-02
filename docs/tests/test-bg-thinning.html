@@ -197,13 +197,22 @@ if(test('Vertical: 2 cols right of FG', 5, 4,
   ['2,0','2,1','2,2','2,3']
 ))passed++;else failed++;
 
-// Test 4: Angle — stepping pixel should be kept
-if(test('Angle: diagonal step preserved', 6, 6,
-  [{x:0,y:5},{x:1,y:4},{x:2,y:3}], // diagonal FG
-  [{x:0,y:3},{x:1,y:3},{x:2,y:2},{x:3,y:2},{x:3,y:3},{x:3,y:4},{x:3,y:5}, // BG outline
-   {x:0,y:4},{x:1,y:3},{x:2,y:3}], // some inner BG
-  // The outer ring should be the outermost continuous line
-  ['0,3','1,3','2,2','3,2','3,3','3,4','3,5']
+// Test 4: Angle — diagonal FG, BG wraps around outside
+// FG: diagonal from bottom-left to upper-right
+// BG: the outline around it (no overlap with FG!)
+if(test('Angle: diagonal step preserved', 7, 7,
+  [{x:1,y:5},{x:2,y:4},{x:3,y:3}], // diagonal FG
+  [{x:0,y:4},{x:0,y:5},{x:0,y:6}, // left side
+   {x:1,y:3},{x:1,y:4},{x:1,y:6}, // around FG(1,5)
+   {x:2,y:2},{x:2,y:3},{x:2,y:5}, // around FG(2,4)
+   {x:3,y:1},{x:3,y:2},{x:3,y:4},{x:3,y:5},{x:3,y:6}, // right + around FG(3,3)
+   {x:4,y:2},{x:4,y:3},{x:4,y:4}], // far right
+  // Outermost per direction-lane from each FG (includes between-stroke BG):
+  ['0,4','0,5','0,6',  // left column
+   '1,3','1,4','1,6',  // around FG(1,5): 1,4 is valid BG between strokes
+   '2,2','2,3','2,5',  // around FG(2,4): 2,3 between strokes
+   '3,1','3,4','3,5','3,6',  // around FG(3,3): 3,4 between strokes
+   '4,2','4,3','4,4']  // right column
 ))passed++;else failed++;
 
 // Test 5: Single FG pixel, BG ring around it
