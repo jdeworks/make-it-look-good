@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>BG Thinning Tests</title>
+<style>
+body{font-family:monospace;margin:20px;background:#1e1e1e;color:#d4d4d4}
+.test{margin:10px 0;padding:10px;border:1px solid #444;border-radius:4px}
+.pass{border-color:#22c55e;background:#052e16}.fail{border-color:#ef4444;background:#2d0a0a}
+canvas{image-rendering:pixelated;border:1px solid #555;margin:4px}
+h3{margin:4px 0;font-size:13px}
+pre{font-size:11px;white-space:pre;margin:4px 0}
+</style></head><body>
+<h2>BG Thinning Algorithm Tests</h2>
+<div id="results"></div>
+<script>
+// Reproduce the exact thinning logic from analyzer-contrast-verify.js
+function runThinning(fgPixels, bgPixels, bgR) {
+  bgR = bgR || 3;
+  // Build FG grid
+  var cellSize = bgR;
+  var maxX = 0, maxY = 0;
+  fgPixels.forEach(function(p){if(p.x>maxX)maxX=p.x;if(p.y>maxY)maxY=p.y});
+  bgPixels.forEach(function(p){if(p.x>maxX)maxX=p.x;if(p.y>maxY)maxY=p.y});
+  var gridW = Math.ceil((maxX+1)/cellSize)+1, gridH = Math.ceil((maxY+1)/cellSize)+1;
+  var fgGrid = [];
+  for(var i=0;i<gridW*gridH;i++)fgGrid.push([]);
+  fgPixels.forEach(function(p,i){
+    var gx=Math.floor(p.x/cellSize),gy=Math.floor(p.y/cellSize);
+    fgGrid[gy*gridW+gx].push(i);
+  });
+
+  // For each BG, find nearest FG
+  var bgNearestFg = [];
+  bgPixels.forEach(function(bg){
+    var gcx=Math.floor(bg.x/cellSize),gcy=Math.floor(bg.y/cellSize);
+    var bestFi=-1,bestD=Infinity;
+    for(var gdy=-2;gdy<=2;gdy++){var ry=gcy+gdy;if(ry<0||ry>=gridH)continue;
+    for(var gdx=-2;gdx<=2;gdx++){var rx=gcx+gdx;if(rx<0||rx>=gridW)continue;
+    var cell=fgGrid[ry*gridW+rx];
+    for(var ci=0;ci<cell.length;ci++){var fg=fgPixels[cell[ci]];
+    var ddx=fg.x-bg.x,ddy=fg.y-bg.y,dd=ddx*ddx+ddy*ddy; // Euclidean squared for tie-breaking
+    if(dd<bestD){bestD=dd;bestFi=cell[ci]}}}}
+    bgNearestFg.push(bestFi);
+  });
+
+  // For each FG, run the full pipeline
+  var allResults = {};
+  fgPixels.forEach(function(fg, fi) {
+    // Candidates: BG within bgR Chebyshev where this FG is nearest
+    var candidates = [];
+    bgPixels.forEach(function(bg, bi) {
+      if (bgNearestFg[bi] !== fi) return;
+      var cheb = Math.max(Math.abs(fg.x - bg.x), Math.abs(fg.y - bg.y));
+      if (cheb > bgR) return;
+      candidates.push({ x: bg.x, y: bg.y, cheb: cheb, bi: bi });
+    });
+
+    // Step A: Thin to 1px outline
+    var candSet = {};
+    candidates.forEach(function(c) { candSet[c.x+','+c.y] = true; });
+    var thinned = [];
+    candidates.forEach(function(c) {
+      var isOuter = false;
+      for(var dy=-1;dy<=1&&!isOuter;dy++)for(var dx=-1;dx<=1&&!isOuter;dx++){
+        if(dx===0&&dy===0)continue;
+        if(!((c.x+dx)+','+(c.y+dy) in candSet))isOuter=true;
+      }
+      if(isOuter)thinned.push(c);
+    });
+    if(thinned.length===0)thinned=candidates;
+
+    // Step B: Remove inward-facing (closer-FG check)
+    var outerRing = [];
+    thinned.forEach(function(c) {
+      var myDist = c.cheb;
+      var gcx=Math.floor(c.x/cellSize),gcy=Math.floor(c.y/cellSize);
+      var closerExists=false;
+      for(var gdy=-2;gdy<=2&&!closerExists;gdy++){var ry=gcy+gdy;if(ry<0||ry>=gridH)continue;
+      for(var gdx=-2;gdx<=2&&!closerExists;gdx++){var rx=gcx+gdx;if(rx<0||rx>=gridW)continue;
+      var cell=fgGrid[ry*gridW+rx];
+      for(var cci=0;cci<cell.length;cci++){
+        if(cell[cci]===fi)continue;
+        var ofg=fgPixels[cell[cci]];
+        var ocheb=Math.max(Math.abs(ofg.x-c.x),Math.abs(ofg.y-c.y));
+        if(ocheb<myDist){closerExists=true;break}}}}
+      if(!closerExists)outerRing.push(c);
+    });
+    if(outerRing.length===0)outerRing=thinned;
+
+    // Step C: For each BG pixel, compute its direction from the owning FG.
+    // Group by quantized direction (8 sectors). In each sector, keep only
+    // the FURTHEST pixel. This guarantees 1px per direction and preserves
+    // connectivity at angles (adjacent sectors share diagonal pixels).
+    if(outerRing.length>1){
+      // Quantize direction from FG to BG into 8 sectors (N,NE,E,SE,S,SW,W,NW)
+      // Use sign(dx),sign(dy) as the sector key — gives 9 buckets but (0,0) impossible
+      var sectors={}; // "sdx,sdy" → {maxDist, pixel}
+      outerRing.forEach(function(c){
+        var dx=c.x-fg.x, dy=c.y-fg.y;
+        // Quantize to unit direction: sign of each axis
+        var sdx=dx>0?1:(dx<0?-1:0), sdy=dy>0?1:(dy<0?-1:0);
+        // For axis-aligned (one component 0), also separate by the nonzero magnitude
+        // to handle multiple pixels on the same axis at different perpendicular positions
+        var perp = (sdx===0) ? c.x : ((sdy===0) ? c.y : (sdx*c.y - sdy*c.x)); // perpendicular key
+        var sk=sdx+','+sdy+','+perp;
+        var dist=Math.max(Math.abs(dx),Math.abs(dy));
+        if(!sectors[sk]||dist>sectors[sk].dist){
+          sectors[sk]={dist:dist,pixel:c};
+        }
+      });
+      var final=[];
+      for(var sk in sectors)final.push(sectors[sk].pixel);
+      if(final.length>0)outerRing=final;
+    }
+
+    outerRing.forEach(function(c){allResults[c.x+','+c.y]=fi});
+  });
+  return allResults;
+}
+
+function drawGrid(id, w, h, fg, bg, kept, label) {
+  var scale = 20;
+  var c = document.createElement('canvas');
+  c.width = w * scale; c.height = h * scale;
+  var ctx = c.getContext('2d');
+  ctx.fillStyle = '#333'; ctx.fillRect(0,0,c.width,c.height);
+  // Grid lines
+  ctx.strokeStyle='#555';
+  for(var x=0;x<=w;x++){ctx.beginPath();ctx.moveTo(x*scale,0);ctx.lineTo(x*scale,h*scale);ctx.stroke();}
+  for(var y=0;y<=h;y++){ctx.beginPath();ctx.moveTo(0,y*scale);ctx.lineTo(w*scale,y*scale);ctx.stroke();}
+  // BG
+  bg.forEach(function(p){
+    var isKept = (p.x+','+p.y) in kept;
+    ctx.fillStyle = isKept ? '#f97316' : '#553310';
+    ctx.fillRect(p.x*scale+1,p.y*scale+1,scale-2,scale-2);
+    if(!isKept){ctx.strokeStyle='#666';ctx.strokeRect(p.x*scale+2,p.y*scale+2,scale-4,scale-4);}
+  });
+  // FG
+  fg.forEach(function(p){ctx.fillStyle='#06b6d4';ctx.fillRect(p.x*scale+1,p.y*scale+1,scale-2,scale-2)});
+  // Labels
+  ctx.font='9px monospace';ctx.fillStyle='#fff';
+  bg.forEach(function(p){
+    var isKept = (p.x+','+p.y) in kept;
+    ctx.fillText(isKept?'B':'x',p.x*scale+6,p.y*scale+13);
+  });
+  fg.forEach(function(p){ctx.fillText('F',p.x*scale+6,p.y*scale+13)});
+
+  var div = document.createElement('div');
+  div.innerHTML = '<h3>'+label+'</h3>';
+  div.appendChild(c);
+  return div;
+}
+
+function test(name, w, h, fg, bg, expectedKept) {
+  var result = runThinning(fg, bg, 3);
+  var keptKeys = Object.keys(result);
+  var pass = true;
+  expectedKept.forEach(function(k){if(!(k in result)){pass=false}});
+  // Also check no unexpected kept
+  keptKeys.forEach(function(k){if(expectedKept.indexOf(k)===-1){pass=false}});
+
+  var div = document.createElement('div');
+  div.className = 'test ' + (pass?'pass':'fail');
+  div.innerHTML = '<h3>'+(pass?'✓':'✗')+' '+name+'</h3>';
+  var grid = drawGrid(name, w, h, fg, bg, result,
+    'Kept: '+keptKeys.join(' ')+(pass?'':' EXPECTED: '+expectedKept.join(' ')));
+  div.appendChild(grid);
+  if(!pass){
+    div.innerHTML += '<pre>Expected: '+expectedKept.join(', ')+'\nGot:      '+keptKeys.join(', ')+'</pre>';
+  }
+  document.getElementById('results').appendChild(div);
+  return pass;
+}
+
+var passed=0,failed=0;
+
+// Test 1: Horizontal line — only top row should remain
+if(test('Horizontal: 3 rows above FG line', 4, 5,
+  [{x:0,y:4},{x:1,y:4},{x:2,y:4},{x:3,y:4}], // FG row
+  [{x:0,y:1},{x:1,y:1},{x:2,y:1},{x:3,y:1},   // BG rows
+   {x:0,y:2},{x:1,y:2},{x:2,y:2},{x:3,y:2},
+   {x:0,y:3},{x:1,y:3},{x:2,y:3},{x:3,y:3}],
+  ['0,1','1,1','2,1','3,1'] // only outermost row
+))passed++;else failed++;
+
+// Test 2: Horizontal: 2 rows above — only top should remain
+if(test('Horizontal: 2 rows above FG', 4, 4,
+  [{x:0,y:3},{x:1,y:3},{x:2,y:3},{x:3,y:3}],
+  [{x:0,y:1},{x:1,y:1},{x:2,y:1},{x:3,y:1},
+   {x:0,y:2},{x:1,y:2},{x:2,y:2},{x:3,y:2}],
+  ['0,1','1,1','2,1','3,1']
+))passed++;else failed++;
+
+// Test 3: Vertical line — only rightmost column should remain
+if(test('Vertical: 2 cols right of FG', 5, 4,
+  [{x:0,y:0},{x:0,y:1},{x:0,y:2},{x:0,y:3}],
+  [{x:1,y:0},{x:1,y:1},{x:1,y:2},{x:1,y:3},
+   {x:2,y:0},{x:2,y:1},{x:2,y:2},{x:2,y:3}],
+  ['2,0','2,1','2,2','2,3']
+))passed++;else failed++;
+
+// Test 4: Angle — stepping pixel should be kept
+if(test('Angle: diagonal step preserved', 6, 6,
+  [{x:0,y:5},{x:1,y:4},{x:2,y:3}], // diagonal FG
+  [{x:0,y:3},{x:1,y:3},{x:2,y:2},{x:3,y:2},{x:3,y:3},{x:3,y:4},{x:3,y:5}, // BG outline
+   {x:0,y:4},{x:1,y:3},{x:2,y:3}], // some inner BG
+  // The outer ring should be the outermost continuous line
+  ['0,3','1,3','2,2','3,2','3,3','3,4','3,5']
+))passed++;else failed++;
+
+// Test 5: Single FG pixel, BG ring around it
+if(test('Single FG: ring around', 5, 5,
+  [{x:2,y:2}],
+  [{x:1,y:1},{x:2,y:1},{x:3,y:1},
+   {x:1,y:2},{x:3,y:2},
+   {x:1,y:3},{x:2,y:3},{x:3,y:3}],
+  // All should be kept (they're already 1px outline)
+  ['1,1','2,1','3,1','1,2','3,2','1,3','2,3','3,3']
+))passed++;else failed++;
+
+// Test 6: O-shape — inner and outer BG
+if(test('O-shape: inner counter BG kept', 7, 5,
+  [{x:1,y:1},{x:2,y:1},{x:3,y:1},{x:4,y:1},{x:5,y:1}, // top
+   {x:1,y:2},{x:5,y:2},                                 // sides
+   {x:1,y:3},{x:2,y:3},{x:3,y:3},{x:4,y:3},{x:5,y:3}], // bottom
+  [{x:0,y:0},{x:1,y:0},{x:2,y:0},{x:3,y:0},{x:4,y:0},{x:5,y:0},{x:6,y:0}, // outer top
+   {x:0,y:1},{x:6,y:1},{x:0,y:2},{x:6,y:2},{x:0,y:3},{x:6,y:3},           // outer sides
+   {x:0,y:4},{x:1,y:4},{x:2,y:4},{x:3,y:4},{x:4,y:4},{x:5,y:4},{x:6,y:4}, // outer bottom
+   {x:2,y:2},{x:3,y:2},{x:4,y:2}],                                          // inner counter
+  // Both outer AND inner BG should be kept (inner is valid background)
+  ['0,0','1,0','2,0','3,0','4,0','5,0','6,0',
+   '0,1','6,1','0,2','6,2','0,3','6,3',
+   '0,4','1,4','2,4','3,4','4,4','5,4','6,4',
+   '2,2','3,2','4,2']
+))passed++;else failed++;
+
+document.getElementById('results').insertAdjacentHTML('afterbegin',
+  '<h3 style="font-size:16px">'+passed+' passed, '+failed+' failed</h3>');
+</script></body></html>

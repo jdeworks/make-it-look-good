@@ -641,84 +641,29 @@ window.MilgContrastVerify = (function() {
       }
       if (outerRing.length === 0) outerRing = thinned; // fallback
 
-      // Step C: Remove inner BG pixels while preserving connectivity.
-      // A BG pixel is removable only if it has an 8-connected neighbor in the
-      // group that is FURTHER from the nearest FG. This ensures the outline
-      // chain is never broken — at angles, stepping pixels are kept because
-      // their outer neighbor is diagonal, not on the same axis.
-      //
-      // Only remove if BOTH conditions are true:
-      //   1. An adjacent BG (8-connected) in the group is further from nearest FG
-      //   2. That further neighbor has the same or closer nearest-FG distance
-      //      to some FG pixel (it's a valid outer pixel, not an orphan)
+      // Step C: Keep only the FURTHEST BG pixel per direction sector.
+      // For each BG, compute its direction from the owning FG, quantized to
+      // a sector key (sign of dx, sign of dy, perpendicular position).
+      // In each sector, keep only the pixel with maximum distance.
+      // This guarantees 1px per direction-lane and preserves connectivity
+      // at angles (adjacent sectors share diagonal pixels).
       if (outerRing.length > 1) {
-        // Build set + distance-to-nearest-FG for each BG in the ring
-        var ringSet = {};
-        var ringDist = {}; // key → Chebyshev dist to nearest FG (any FG)
+        var sectors = {}; // "sdx,sdy,perp" → {maxDist, idx}
         for (var ri = 0; ri < outerRing.length; ri++) {
           var bg = outerRing[ri].bg;
-          var k = bg.lx + ',' + bg.ly;
-          ringSet[k] = ri;
-          // Find nearest FG via grid
-          var bestD = Infinity;
-          var gcx = Math.floor(bg.lx / cellSize), gcy = Math.floor(bg.ly / cellSize);
-          for (var gdy = -1; gdy <= 1; gdy++) {
-            var ry = gcy + gdy; if (ry < 0 || ry >= gridH) continue;
-            for (var gdx = -1; gdx <= 1; gdx++) {
-              var rx = gcx + gdx; if (rx < 0 || rx >= gridW) continue;
-              var cell = fgGrid[ry * gridW + rx];
-              for (var cci = 0; cci < cell.length; cci++) {
-                var nfg = allFg[cell[cci]];
-                var nd = Math.max(Math.abs(nfg.lx - bg.lx), Math.abs(nfg.ly - bg.ly));
-                if (nd < bestD) bestD = nd;
-              }
-            }
-          }
-          ringDist[k] = bestD;
-        }
-
-        // Iteratively remove inner pixels: a pixel is removable if an adjacent
-        // ring pixel is further from nearest FG. Repeat until stable.
-        var changed = true;
-        while (changed) {
-          changed = false;
-          var toRemove = {};
-          var keys = Object.keys(ringSet);
-          for (var ki = 0; ki < keys.length; ki++) {
-            var k = keys[ki];
-            if (k in toRemove) continue;
-            var ri = ringSet[k];
-            var bg = outerRing[ri].bg;
-            var myD = ringDist[k];
-
-            // Check 8 neighbors: is there an adjacent ring pixel further from FG?
-            var hasFurther = false;
-            for (var dy = -1; dy <= 1 && !hasFurther; dy++) {
-              for (var dx = -1; dx <= 1 && !hasFurther; dx++) {
-                if (dx === 0 && dy === 0) continue;
-                var nk = (bg.lx + dx) + ',' + (bg.ly + dy);
-                if (nk in ringSet && !(nk in toRemove) && ringDist[nk] > myD) {
-                  hasFurther = true;
-                }
-              }
-            }
-            if (hasFurther) toRemove[k] = true;
-          }
-
-          // Apply removals
-          var removeCount = Object.keys(toRemove).length;
-          if (removeCount > 0 && removeCount < keys.length) {
-            for (var rk in toRemove) delete ringSet[rk];
-            changed = true;
+          var dx = bg.lx - fg.lx, dy = bg.ly - fg.ly;
+          var sdx = dx > 0 ? 1 : (dx < 0 ? -1 : 0);
+          var sdy = dy > 0 ? 1 : (dy < 0 ? -1 : 0);
+          // Perpendicular position: separates parallel lanes in the same direction
+          var perp = (sdx === 0) ? bg.lx : ((sdy === 0) ? bg.ly : (sdx * bg.ly - sdy * bg.lx));
+          var sk = sdx + ',' + sdy + ',' + perp;
+          var dist = Math.max(Math.abs(dx), Math.abs(dy));
+          if (!sectors[sk] || dist > sectors[sk].dist) {
+            sectors[sk] = { dist: dist, idx: ri };
           }
         }
-
-        // Rebuild outerRing from remaining
         var final = [];
-        for (var ri = 0; ri < outerRing.length; ri++) {
-          var k = outerRing[ri].bg.lx + ',' + outerRing[ri].bg.ly;
-          if (k in ringSet) final.push(outerRing[ri]);
-        }
+        for (var sk in sectors) final.push(outerRing[sectors[sk].idx]);
         if (final.length > 0) outerRing = final;
       }
 
