@@ -486,7 +486,9 @@ window.MilgContrastVerify = (function() {
       edgeOwner[edgeIdx[ei]] = ei;
       queue.push(edgeIdx[ei]);
     }
-    var BG_R = 3, FG_R = 2, MAX_DIST = 5;
+    // Scale BG search radius with text size: small text (h<15) → 2px, larger → 3px
+    var BG_R = Math.min(h, w) < 15 ? 2 : 3;
+    var FG_R = 2, MAX_DIST = BG_R + 2;
     var head = 0;
     while (head < queue.length) {
       var ci = queue[head++];
