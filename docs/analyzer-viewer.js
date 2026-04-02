@@ -729,10 +729,11 @@ window.MilgViewer = (function() {
         svg.appendChild(label);
       }
 
-      // Sample points + debug layers stored for on-click reveal
+      // Sample points + debug layers + group data stored for interaction
       rect._samplePoints = vr.samplePoints || null;
       rect._worstPoint = vr.worstPoint || null;
       rect._debug = vr._debug || null;
+      rect._bgKeyMap = vr._bgKeyMap || null;
       rect._sectionOffset = (vr.sectionIdx && _meta.viewportHeight) ? vr.sectionIdx * Math.round(_meta.viewportHeight * vScaleX) : 0;
     });
 
@@ -763,22 +764,14 @@ window.MilgViewer = (function() {
           var mx = (ev.clientX - sr.left) * (vb.width / sr.width);
           var my = (ev.clientY - sr.top) * (vb.height / sr.height);
 
-          // Find closest FG point
-          var closestFg = null, closestFgDist = Infinity;
-          allFg.forEach(function(p) {
+          // Find closest FG point to mouse
+          var closestFg = null, closestFgDist = Infinity, closestFgIdx = -1;
+          allFg.forEach(function(p, i) {
             var d = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
-            if (d < closestFgDist) { closestFgDist = d; closestFg = p; }
+            if (d < closestFgDist) { closestFgDist = d; closestFg = p; closestFgIdx = i; }
           });
-          // Find closest BG point to that FG point (the actual comparison pair)
-          var closestBg = null, closestBgDist = Infinity;
-          if (closestFg) {
-            allBg.forEach(function(p) {
-              var d = (p.x - closestFg.x) * (p.x - closestFg.x) + (p.y - closestFg.y) * (p.y - closestFg.y);
-              if (d < closestBgDist) { closestBgDist = d; closestBg = p; }
-            });
-          }
 
-          // Also find closest BG to mouse (for when hovering background areas)
+          // Also find closest BG to mouse
           var closestBgMouse = null, closestBgMouseDist = Infinity;
           allBg.forEach(function(p) {
             var d = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
@@ -788,57 +781,101 @@ window.MilgViewer = (function() {
           // Clear previous highlights
           while (hlGroup.firstChild) hlGroup.removeChild(hlGroup.firstChild);
 
-          var r = _zoomLevel >= 1.5 ? 4 : 2.5;
+          var dotR = _zoomLevel >= 1.5 ? 4 : 2.5;
 
-          // Current pair: FG ring + BG ring + connecting line + contrast label
-          if (closestFg && closestBg) {
+          // Get the group's BG keys from the FG point (if group data available)
+          var groupBgKeys = (closestFg && closestFg.groupBg) ? closestFg.groupBg : null;
+          var bgKeyMap = (vr && vr._bgKeyMap) ? vr._bgKeyMap : null;
+
+          if (closestFg && groupBgKeys && bgKeyMap && groupBgKeys.length > 0) {
+            // === GROUP HOVER: show FG pixel + ALL its BG group members ===
+            // FG ring
             var fgRing = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
             fgRing.setAttribute('cx', closestFg.x); fgRing.setAttribute('cy', closestFg.y);
-            fgRing.setAttribute('r', r); fgRing.setAttribute('fill', 'none');
+            fgRing.setAttribute('r', dotR); fgRing.setAttribute('fill', 'none');
             fgRing.setAttribute('stroke', '#06b6d4'); fgRing.setAttribute('stroke-width', '2');
             hlGroup.appendChild(fgRing);
 
-            var bgRing = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-            bgRing.setAttribute('cx', closestBg.x); bgRing.setAttribute('cy', closestBg.y);
-            bgRing.setAttribute('r', r); bgRing.setAttribute('fill', 'none');
-            bgRing.setAttribute('stroke', '#f97316'); bgRing.setAttribute('stroke-width', '2');
-            hlGroup.appendChild(bgRing);
+            // All BG in this FG's group
+            var bgSumR = 0, bgSumG = 0, bgSumB = 0, bgCnt = 0;
+            groupBgKeys.forEach(function(k) {
+              var bg = bgKeyMap[k];
+              if (!bg) return;
+              bgSumR += bg.r; bgSumG += bg.g; bgSumB += bg.b; bgCnt++;
+              var bgDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+              bgDot.setAttribute('cx', bg.x); bgDot.setAttribute('cy', bg.y + secOff);
+              bgDot.setAttribute('r', dotR * 0.7); bgDot.setAttribute('fill', 'none');
+              bgDot.setAttribute('stroke', '#f97316'); bgDot.setAttribute('stroke-width', '1.5');
+              hlGroup.appendChild(bgDot);
+              // Line from FG to each BG
+              var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+              line.setAttribute('x1', closestFg.x); line.setAttribute('y1', closestFg.y);
+              line.setAttribute('x2', bg.x); line.setAttribute('y2', bg.y + secOff);
+              line.setAttribute('stroke', 'rgba(255,255,255,0.4)'); line.setAttribute('stroke-width', '0.5');
+              hlGroup.appendChild(line);
+            });
 
-            var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-            line.setAttribute('x1', closestFg.x); line.setAttribute('y1', closestFg.y);
-            line.setAttribute('x2', closestBg.x); line.setAttribute('y2', closestBg.y);
-            line.setAttribute('stroke', 'rgba(255,255,255,0.7)'); line.setAttribute('stroke-width', '1');
-            line.setAttribute('stroke-dasharray', '3 2');
-            hlGroup.appendChild(line);
-
-            // Contrast ratio label at midpoint of the line
-            if (closestFg.r !== undefined && closestBg.r !== undefined) {
-              var pairRatio = contrastRatio(closestFg, closestBg);
-              var midX = (closestFg.x + closestBg.x) / 2;
-              var midY = (closestFg.y + closestBg.y) / 2;
+            // Contrast label: FG color vs avg BG of group
+            if (bgCnt > 0 && closestFg.r !== undefined) {
+              var avgBg = { r: Math.round(bgSumR/bgCnt), g: Math.round(bgSumG/bgCnt), b: Math.round(bgSumB/bgCnt) };
+              var pairRatio = contrastRatio(closestFg, avgBg);
               var label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-              label.setAttribute('x', midX + 4); label.setAttribute('y', midY - 3);
+              label.setAttribute('x', closestFg.x + dotR + 3); label.setAttribute('y', closestFg.y - 3);
               label.setAttribute('font-size', _zoomLevel >= 1.5 ? '11' : '8');
               label.setAttribute('fill', pairRatio >= 4.5 ? '#22c55e' : pairRatio >= 3 ? '#eab308' : '#ef4444');
               label.setAttribute('font-family', 'system-ui'); label.setAttribute('font-weight', '700');
-              label.textContent = Math.round(pairRatio * 10) / 10 + ':1';
+              label.textContent = Math.round(pairRatio * 10) / 10 + ':1 (' + bgCnt + ' bg)';
               hlGroup.appendChild(label);
+              // Color swatches: FG color + avg BG color
+              var swY = closestFg.y + dotR + 2;
+              var fgSw = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+              fgSw.setAttribute('x', closestFg.x + dotR + 3); fgSw.setAttribute('y', swY);
+              fgSw.setAttribute('width', 10); fgSw.setAttribute('height', 10); fgSw.setAttribute('rx', 1);
+              fgSw.setAttribute('fill', 'rgb('+closestFg.r+','+closestFg.g+','+closestFg.b+')');
+              fgSw.setAttribute('stroke', '#fff'); fgSw.setAttribute('stroke-width', '0.5');
+              hlGroup.appendChild(fgSw);
+              var bgSw = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+              bgSw.setAttribute('x', closestFg.x + dotR + 15); bgSw.setAttribute('y', swY);
+              bgSw.setAttribute('width', 10); bgSw.setAttribute('height', 10); bgSw.setAttribute('rx', 1);
+              bgSw.setAttribute('fill', 'rgb('+avgBg.r+','+avgBg.g+','+avgBg.b+')');
+              bgSw.setAttribute('stroke', '#fff'); bgSw.setAttribute('stroke-width', '0.5');
+              hlGroup.appendChild(bgSw);
             }
           } else if (closestFg) {
-            var fgRing2 = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-            fgRing2.setAttribute('cx', closestFg.x); fgRing2.setAttribute('cy', closestFg.y);
-            fgRing2.setAttribute('r', r); fgRing2.setAttribute('fill', 'none');
-            fgRing2.setAttribute('stroke', '#06b6d4'); fgRing2.setAttribute('stroke-width', '2');
-            hlGroup.appendChild(fgRing2);
-          }
-
-          // Worst point: subtle small red dot (not dominant)
-          var wp = rect._worstPoint;
-          if (wp) {
-            var wr = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-            wr.setAttribute('cx', wp.x); wr.setAttribute('cy', wp.y + secOff);
-            wr.setAttribute('r', 2); wr.setAttribute('fill', '#ef4444'); wr.setAttribute('opacity', '0.4');
-            hlGroup.appendChild(wr);
+            // === FALLBACK: no group data, show nearest pair ===
+            var closestBg = null, closestBgDist = Infinity;
+            allBg.forEach(function(p) {
+              var d = (p.x - closestFg.x)*(p.x - closestFg.x) + (p.y - closestFg.y)*(p.y - closestFg.y);
+              if (d < closestBgDist) { closestBgDist = d; closestBg = p; }
+            });
+            var fgRing = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            fgRing.setAttribute('cx', closestFg.x); fgRing.setAttribute('cy', closestFg.y);
+            fgRing.setAttribute('r', dotR); fgRing.setAttribute('fill', 'none');
+            fgRing.setAttribute('stroke', '#06b6d4'); fgRing.setAttribute('stroke-width', '2');
+            hlGroup.appendChild(fgRing);
+            if (closestBg) {
+              var bgRing = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+              bgRing.setAttribute('cx', closestBg.x); bgRing.setAttribute('cy', closestBg.y);
+              bgRing.setAttribute('r', dotR); bgRing.setAttribute('fill', 'none');
+              bgRing.setAttribute('stroke', '#f97316'); bgRing.setAttribute('stroke-width', '2');
+              hlGroup.appendChild(bgRing);
+              var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+              line.setAttribute('x1', closestFg.x); line.setAttribute('y1', closestFg.y);
+              line.setAttribute('x2', closestBg.x); line.setAttribute('y2', closestBg.y);
+              line.setAttribute('stroke', 'rgba(255,255,255,0.7)'); line.setAttribute('stroke-width', '1');
+              line.setAttribute('stroke-dasharray', '3 2');
+              hlGroup.appendChild(line);
+              if (closestFg.r !== undefined && closestBg.r !== undefined) {
+                var pr = contrastRatio(closestFg, closestBg);
+                var lb = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                lb.setAttribute('x', (closestFg.x+closestBg.x)/2 + 4); lb.setAttribute('y', (closestFg.y+closestBg.y)/2 - 3);
+                lb.setAttribute('font-size', _zoomLevel >= 1.5 ? '11' : '8');
+                lb.setAttribute('fill', pr >= 4.5 ? '#22c55e' : pr >= 3 ? '#eab308' : '#ef4444');
+                lb.setAttribute('font-family', 'system-ui'); lb.setAttribute('font-weight', '700');
+                lb.textContent = Math.round(pr * 10) / 10 + ':1';
+                hlGroup.appendChild(lb);
+              }
+            }
           }
         }
 
@@ -857,7 +894,7 @@ window.MilgViewer = (function() {
       function _cycleDebug(e) {
         e.preventDefault(); e.stopPropagation();
         if (!rect._debug) { console.log('[viewer] No _debug data on rect'); return; }
-        var modes = ['none', 'mask', 'edge:sobel', 'edge:prewitt', 'edge:canny', 'edge:roberts', 'edge:laplacian'];
+        var modes = ['none', 'mask', 'edge:combined', 'edge:sobel', 'edge:prewitt', 'edge:canny', 'edge:roberts', 'edge:laplacian'];
         var current = rect._debugMode || 'none';
         var idx = modes.indexOf(current);
         var next = modes[(idx + 1) % modes.length];
@@ -1055,11 +1092,20 @@ window.MilgViewer = (function() {
       }
       edgeCount = insideCount; // for label
     } else if (mode === 'edge' && edgeMethod && window.MilgContrastVerify) {
-      // Run edge detection with the specified method on the mask
-      // We need to call detectEdges — it's inside the IIFE, so we expose it
       var cat = null;
       try {
-        cat = MilgContrastVerify._detectEdges(mask, bw, bh, edgeMethod);
+        if (edgeMethod === 'combined') {
+          // Union of Roberts + Laplacian
+          var catR = MilgContrastVerify._detectEdges(mask, bw, bh, 'roberts');
+          var catL = MilgContrastVerify._detectEdges(mask, bw, bh, 'laplacian');
+          cat = new Uint8Array(bw * bh);
+          for (var ci = 0; ci < bw * bh; ci++) {
+            if (catR[ci] === 1 || catL[ci] === 1) cat[ci] = 1;
+            else if (mask[ci]) cat[ci] = 2;
+          }
+        } else {
+          cat = MilgContrastVerify._detectEdges(mask, bw, bh, edgeMethod);
+        }
       } catch(e) {
         console.warn('Edge detection failed:', e);
         return;
