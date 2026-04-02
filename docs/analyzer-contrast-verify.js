@@ -641,6 +641,43 @@ window.MilgContrastVerify = (function() {
       }
       if (outerRing.length === 0) outerRing = thinned; // fallback
 
+      // Step C: Remove shadowed BG — if another BG in the group is further
+      // from this FG along the same direction, the closer one is redundant.
+      // Direction = the vector from FG to BG. A BG is shadowed if another BG
+      // exists at a greater distance on the same axis (dx same sign, dy same sign,
+      // and the further one "covers" this one).
+      if (outerRing.length > 1) {
+        var final = [];
+        for (var ri = 0; ri < outerRing.length; ri++) {
+          var bg = outerRing[ri].bg;
+          var dx = bg.lx - fg.lx, dy = bg.ly - fg.ly;
+          var shadowed = false;
+          for (var rj = 0; rj < outerRing.length; rj++) {
+            if (ri === rj) continue;
+            var obg = outerRing[rj].bg;
+            var odx = obg.lx - fg.lx, ody = obg.ly - fg.ly;
+            // Same direction: signs match and the other is strictly further out
+            // on at least one axis while not closer on the other
+            if (dx === 0 && odx === 0) {
+              // Same column: keep only the furthest
+              if (Math.abs(ody) > Math.abs(dy) && ((dy >= 0 && ody >= 0) || (dy <= 0 && ody <= 0))) { shadowed = true; break; }
+            } else if (dy === 0 && ody === 0) {
+              // Same row: keep only the furthest
+              if (Math.abs(odx) > Math.abs(dx) && ((dx >= 0 && odx >= 0) || (dx <= 0 && odx <= 0))) { shadowed = true; break; }
+            } else if (dx !== 0 && dy !== 0 && odx !== 0 && ody !== 0) {
+              // Diagonal: same sign on both axes, other is strictly further on both
+              if (((dx > 0) === (odx > 0)) && ((dy > 0) === (ody > 0)) &&
+                  Math.abs(odx) >= Math.abs(dx) && Math.abs(ody) >= Math.abs(dy) &&
+                  (Math.abs(odx) > Math.abs(dx) || Math.abs(ody) > Math.abs(dy))) {
+                shadowed = true; break;
+              }
+            }
+          }
+          if (!shadowed) final.push(outerRing[ri]);
+        }
+        if (final.length > 0) outerRing = final;
+      }
+
       // Average the outer ring BG colors
       var sumR = 0, sumG = 0, sumB = 0;
       var myBgKeys = [];
