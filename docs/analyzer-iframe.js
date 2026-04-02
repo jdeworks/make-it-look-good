@@ -139,6 +139,18 @@ window.MilgIframe = (function() {
                 'updatedData:updatedData' +
               '},"*")' +
             '}' +
+            // Diagnostic: snapshot computed styles of first 5 pair elements BEFORE mask changes
+            'var _styleDiag=[];' +
+            'try{var _dRefs=window.__milgBboxRefs||[];' +
+              'for(var _di=0;_di<Math.min(10,_dRefs.length);_di++){' +
+                'var _de=_dRefs[_di];if(!_de.el)continue;' +
+                'var _dcs=getComputedStyle(_de.el);' +
+                '_styleDiag.push({i:_di,pos:_dcs.position,disp:_dcs.display,tt:_dcs.textTransform,' +
+                  'ai:_dcs.alignItems,jc:_dcs.justifyContent,ff:_dcs.fontFamily.substring(0,30),' +
+                  'text:(_de.el.textContent||"").substring(0,20).trim()})' +
+              '}' +
+              'console.log("[style-diag] PRE-mask styles:",JSON.stringify(_styleDiag))' +
+            '}catch(e){}' +
             // Step 1: Capture real screenshot FIRST (safe — no DOM modifications)
             '_prog("Capturing screenshot...");' +
             'console.log("[iframe-ss] Step 1/2: Capturing screenshot...");' +
@@ -212,6 +224,24 @@ window.MilgIframe = (function() {
                 'var res3=window.__milgReReadBboxes();' +
                 'console.log("[iframe-ss] Re-read bboxes post-mask-style: "+res3)' +
               '}' +
+              // Diagnostic: snapshot computed styles AFTER mask changes
+              'try{var _styleDiag2=[];' +
+                'for(var _di2=0;_di2<Math.min(10,(_dRefs||[]).length);_di2++){' +
+                  'var _de2=_dRefs[_di2];if(!_de2.el)continue;' +
+                  'var _dcs2=getComputedStyle(_de2.el);' +
+                  '_styleDiag2.push({i:_di2,pos:_dcs2.position,disp:_dcs2.display,tt:_dcs2.textTransform,' +
+                    'ai:_dcs2.alignItems,jc:_dcs2.justifyContent,ff:_dcs2.fontFamily.substring(0,30),' +
+                    'text:(_de2.el.textContent||"").substring(0,20).trim()})' +
+                '}' +
+                'console.log("[style-diag] POST-mask styles:",JSON.stringify(_styleDiag2));' +
+                // Compare and flag differences
+                'for(var _ci=0;_ci<_styleDiag2.length;_ci++){' +
+                  'var pre=_styleDiag||[];var post=_styleDiag2;' +
+                  'if(pre[_ci]&&(pre[_ci].pos!==post[_ci].pos||pre[_ci].disp!==post[_ci].disp||pre[_ci].tt!==post[_ci].tt||pre[_ci].ai!==post[_ci].ai)){' +
+                    'console.warn("[style-diag] CHANGED #"+_ci+": "+JSON.stringify(pre[_ci])+" → "+JSON.stringify(post[_ci]))' +
+                  '}' +
+                '}' +
+              '}catch(e){}' +
               // Phase C: Collect pair elements and build overlap layers
               'var _refs=window.__milgBboxRefs||[];' +
               'var _pairs=(window.__milgData&&window.__milgData.colors&&window.__milgData.colors.contrastPairs)||[];' +
