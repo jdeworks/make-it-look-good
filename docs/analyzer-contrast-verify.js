@@ -438,15 +438,17 @@ window.MilgContrastVerify = (function() {
     var bx = ctx.bx, by = ctx.by, bw = ctx.bw, bh = ctx.bh;
 
     var mBmpRaw = pair._maskBmp, mW = pair._maskW, mH = pair._maskH;
-    var mw = Math.min(mW, bw), mh = Math.min(mH, bh);
-    if (mw < 4 || mh < 4) return null;
+    var w = Math.min(mW, bw), h = Math.min(mH, bh);
+    if (w < 4 || h < 4) return null;
 
     // Scale search radii with text size: small text → tighter, larger → wider
-    var BG_R = Math.min(mh, mw) < 15 ? 2 : 3;
-    var FG_R = Math.min(mh, mw) < 15 ? 2 : 3;
+    var BG_R = Math.min(h, w) < 15 ? 2 : 3;
+    var FG_R = Math.min(h, w) < 15 ? 2 : 3;
     var MAX_DIST = BG_R + 2;
 
-    // Expand read area by BG_R to allow BG pixels outside the bounding box
+    // Read expanded area from screenshot for BG sampling outside the bbox.
+    // The mask/BFS grid stays at original bbox size; extra pixels are sampled
+    // from the padded area only during BG collection.
     var PAD = BG_R;
     var padL = Math.min(PAD, bx);
     var padT = Math.min(PAD, by);
@@ -454,55 +456,44 @@ window.MilgContrastVerify = (function() {
     var padB = Math.min(PAD, ctx.sec.height - by - bh);
     var ex = bx - padL, ey = by - padT;
     var ew = bw + padL + padR, eh = bh + padT + padB;
-    var imgData = ctx.sec.ctx.getImageData(ex, ey, ew, eh).data;
+    var imgDataExp = ctx.sec.ctx.getImageData(ex, ey, ew, eh).data;
 
     // Step 0: Clean mask — threshold to crisp 0/1
     var mask = new Uint8Array(mW * mH);
     for (var i = 0; i < mW * mH; i++) mask[i] = mBmpRaw[i] ? 1 : 0;
 
-    // Step 1: Combined edge detection (Roberts ∪ Laplacian) on mask
+    // Step 1: Combined edge detection (Roberts ∪ Laplacian)
     var method = _edgeMethod;
-    var mCat; // mask-space categorization
+    var cat;
     if (method === 'grid') return verifyPairGrid(pair, sectionCanvases, meta, maskCanvas);
     if (method === 'combined' || method === 'canny') {
       var catR = edgeRoberts(mask, mW, mH);
       var catL = edgeLaplacian(mask, mW, mH);
-      mCat = new Uint8Array(mW * mH);
+      cat = new Uint8Array(mW * mH);
       for (var i = 0; i < mW * mH; i++) {
-        if (catR[i] === 1 || catL[i] === 1) mCat[i] = 1;
-        else if (mask[i]) mCat[i] = 2;
-        else mCat[i] = 0;
+        if (catR[i] === 1 || catL[i] === 1) cat[i] = 1;
+        else if (mask[i]) cat[i] = 2;
+        else cat[i] = 0;
       }
     } else {
-      mCat = detectEdges(mask, mW, mH, method);
-    }
-
-    // Map mask categorization into expanded grid (cat: ew × eh)
-    // Mask sits at offset (padL, padT) within the expanded area.
-    // Pixels outside the mask are BG (cat=0).
-    var w = ew, h = eh;
-    var cat = new Uint8Array(w * h); // default 0 = BG
-    for (var my = 0; my < mh; my++) {
-      for (var mx = 0; mx < mw; mx++) {
-        cat[(my + padT) * w + (mx + padL)] = mCat[my * mW + mx];
-      }
+      cat = detectEdges(mask, mW, mH, method);
     }
 
     // Step 2: BFS from edges → distance + Voronoi owner per pixel
     var edgeIdx = [];
     for (var y = 0; y < h; y++)
       for (var x = 0; x < w; x++)
-        if (cat[y * w + x] === 1) edgeIdx.push(y * w + x);
+        if (cat[y * mW + x] === 1) edgeIdx.push(y * mW + x);
 
     if (edgeIdx.length === 0) {
-      if (pair.text) console.log('[verify-edge] No edges for "' + pair.text.substring(0, 25) + '" ' + mw + 'x' + mh);
+      if (pair.text) console.log('[verify-edge] No edges for "' + pair.text.substring(0, 25) + '" ' + w + 'x' + h);
       return null;
     }
 
-    // BFS: propagate distance + owner from all edge pixels simultaneously
-    var edgeDist = new Uint8Array(w * h);
-    var edgeOwner = new Int32Array(w * h);
-    for (var i = 0; i < w * h; i++) { edgeDist[i] = 255; edgeOwner[i] = -1; }
+    // BFS on mask grid (mW × mH)
+    var edgeDist = new Uint8Array(mW * mH);
+    var edgeOwner = new Int32Array(mW * mH);
+    for (var i = 0; i < mW * mH; i++) { edgeDist[i] = 255; edgeOwner[i] = -1; }
     var queue = [];
     for (var ei = 0; ei < edgeIdx.length; ei++) {
       edgeDist[edgeIdx[ei]] = 0;
@@ -514,13 +505,13 @@ window.MilgContrastVerify = (function() {
       var ci = queue[head++];
       var cd = edgeDist[ci];
       if (cd >= MAX_DIST) continue;
-      var cx = ci % w, cy = (ci - cx) / w;
+      var cx = ci % mW, cy = (ci - cx) / mW;
       for (var dy = -1; dy <= 1; dy++) {
         var ny = cy + dy; if (ny < 0 || ny >= h) continue;
         for (var dx = -1; dx <= 1; dx++) {
           if (dx === 0 && dy === 0) continue;
           var nx = cx + dx; if (nx < 0 || nx >= w) continue;
-          var ni = ny * w + nx;
+          var ni = ny * mW + nx;
           if (edgeDist[ni] <= cd + 1) continue;
           edgeDist[ni] = cd + 1;
           edgeOwner[ni] = edgeOwner[ci];
@@ -529,22 +520,66 @@ window.MilgContrastVerify = (function() {
       }
     }
 
-    // Step 3: Collect all FG and BG pixels (from expanded area)
+    // Step 3: Collect FG pixels from mask grid, BG from expanded area
     var allFg = []; // [{lx, ly, r, g, b}]
     var allBgArr = []; // [{lx, ly, r, g, b}]
 
+    // Helper: read pixel color from expanded imgData given bbox-relative coords
+    // (can be negative or beyond w/h for padding area)
+    function readPixel(lx, ly) {
+      var ix = lx + padL, iy = ly + padT; // expanded-area coords
+      if (ix < 0 || ix >= ew || iy < 0 || iy >= eh) return null;
+      var pi = (iy * ew + ix) * 4;
+      if (pi + 2 >= imgDataExp.length) return null;
+      return { r: imgDataExp[pi], g: imgDataExp[pi+1], b: imgDataExp[pi+2] };
+    }
+
+    // Collect FG + BG within mask bounds
     for (var y = 0; y < h; y++) {
       for (var x = 0; x < w; x++) {
-        var gi = y * w + x; // grid index
-        var d = edgeDist[gi];
-        var c = cat[gi];
-        var pi = (y * ew + x) * 4;
-        if (pi + 2 >= imgData.length) continue;
+        var mi = y * mW + x;
+        var d = edgeDist[mi];
+        var c = cat[mi];
+        var px = readPixel(x, y);
+        if (!px) continue;
 
         if ((c === 1 || c === 2) && d <= FG_R) {
-          allFg.push({ lx: x, ly: y, r: imgData[pi], g: imgData[pi+1], b: imgData[pi+2] });
+          allFg.push({ lx: x, ly: y, r: px.r, g: px.g, b: px.b });
         } else if (c === 0 && d >= 1 && d <= BG_R) {
-          allBgArr.push({ lx: x, ly: y, r: imgData[pi], g: imgData[pi+1], b: imgData[pi+2] });
+          allBgArr.push({ lx: x, ly: y, r: px.r, g: px.g, b: px.b });
+        }
+      }
+    }
+
+    // Collect extra BG pixels from padding area (outside bbox).
+    // Only edge pixels near the bbox boundary can reach outside, so filter first.
+    var borderEdges = [];
+    for (var ei = 0; ei < edgeIdx.length; ei++) {
+      var ex2 = edgeIdx[ei] % mW, ey2 = (edgeIdx[ei] - ex2) / mW;
+      if (ex2 < BG_R || ex2 >= w - BG_R || ey2 < BG_R || ey2 >= h - BG_R) {
+        borderEdges.push({ x: ex2, y: ey2 });
+      }
+    }
+    if (borderEdges.length > 0) {
+      var padRanges = [
+        { x0: -padL, x1: w + padR, y0: -padT, y1: 0 },
+        { x0: -padL, x1: w + padR, y0: h, y1: h + padB },
+        { x0: -padL, x1: 0, y0: 0, y1: h },
+        { x0: w, x1: w + padR, y0: 0, y1: h }
+      ];
+      for (var ri = 0; ri < padRanges.length; ri++) {
+        var rng = padRanges[ri];
+        for (var py = rng.y0; py < rng.y1; py++) {
+          for (var ppx = rng.x0; ppx < rng.x1; ppx++) {
+            var minD = Infinity;
+            for (var bei = 0; bei < borderEdges.length; bei++) {
+              var dd = Math.max(Math.abs(borderEdges[bei].x - ppx), Math.abs(borderEdges[bei].y - py));
+              if (dd < minD) { minD = dd; if (dd <= 1) break; }
+            }
+            if (minD < 1 || minD > BG_R) continue;
+            var c = readPixel(ppx, py);
+            if (c) allBgArr.push({ lx: ppx, ly: py, r: c.r, g: c.g, b: c.b });
+          }
         }
       }
     }
@@ -736,7 +771,7 @@ window.MilgContrastVerify = (function() {
     var allBgUsed = {};
     for (var k in keptSet) {
       var b = bgByKey[k];
-      if (b) allBgUsed[k] = { x: ex + b.lx, y: ey + b.ly, r: b.r, g: b.g, b: b.b };
+      if (b) allBgUsed[k] = { x: bx + b.lx, y: by + b.ly, r: b.r, g: b.g, b: b.b };
     }
 
     // Per-FG: assign each kept BG to its nearest FG for contrast measurement.
@@ -784,7 +819,7 @@ window.MilgContrastVerify = (function() {
       var fgC = { r: fg.r, g: fg.g, b: fg.b };
       var ratio = contrastRatio(fgC, avgBg);
 
-      fgPoints.push({ x: ex + fg.lx, y: ey + fg.ly, groupBg: myBgKeys });
+      fgPoints.push({ x: bx + fg.lx, y: by + fg.ly, groupBg: myBgKeys });
       fgColors.push(fgC);
       fgGroups.push(myBgKeys);
       allPairRatios.push(ratio);
@@ -822,18 +857,10 @@ window.MilgContrastVerify = (function() {
       allPairRatios, worstRatio, bestRatio, worstBg, worstBgPt);
 
     if (result) {
-      var edgeCoords = edgeIdx.map(function(idx) { return { x: idx % w, y: (idx - idx % w) / w }; });
+      var edgeCoords = edgeIdx.map(function(idx) { return { x: idx % mW, y: (idx - idx % mW) / mW }; });
       result._debug = {
-        bx: ex, by: ey, bw: w, bh: h,
-        padL: padL, padT: padT, maskW: mw, maskH: mh,
-        mask: (function() {
-          // Store mask in expanded grid coords for debug overlay alignment
-          var em = new Uint8Array(w * h);
-          for (var my = 0; my < mh; my++)
-            for (var mx = 0; mx < mw; mx++)
-              em[(my + padT) * w + (mx + padL)] = mask[my * mW + mx];
-          return Array.from(em);
-        })(),
+        bx: bx, by: by, bw: w, bh: h,
+        mask: Array.from(mask.slice(0, w * h)),
         edge: edgeCoords,
         edgeCount: edgeIdx.length,
         fgCount: fgPoints.length,
