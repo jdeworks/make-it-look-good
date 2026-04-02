@@ -744,11 +744,13 @@ window.MilgViewer = (function() {
     var _hoverCleanup = null;
     svg.querySelectorAll('rect[data-verify]').forEach(function(rect) {
       rect.addEventListener('mouseenter', function(e) {
-        showVerifyTooltip(e, parseInt(rect.getAttribute('data-verify')));
+        var vi = parseInt(rect.getAttribute('data-verify'));
+        showVerifyTooltip(e, vi);
         var sp = rect._samplePoints;
         if (!sp || (!sp.fg.length && !sp.bg.length)) return;
         var secOff = rect._sectionOffset || 0;
-        var allFg = (sp.fg || []).map(function(p) { return { x: p.x, y: p.y + secOff, r: p.r, g: p.g, b: p.b }; });
+        var vr = (_reportData && _reportData._contrastVerifyResults) ? _reportData._contrastVerifyResults[vi] : null;
+        var allFg = (sp.fg || []).map(function(p) { return { x: p.x, y: p.y + secOff, r: p.r, g: p.g, b: p.b, groupBg: p.groupBg }; });
         var allBg = (sp.bg || []).map(function(p) { return { x: p.x, y: p.y + secOff, r: p.r, g: p.g, b: p.b }; });
 
         // Create persistent highlight elements
@@ -894,7 +896,7 @@ window.MilgViewer = (function() {
       function _cycleDebug(e) {
         e.preventDefault(); e.stopPropagation();
         if (!rect._debug) { console.log('[viewer] No _debug data on rect'); return; }
-        var modes = ['none', 'mask', 'edge:combined', 'edge:sobel', 'edge:prewitt', 'edge:canny', 'edge:roberts', 'edge:laplacian'];
+        var modes = ['none', 'mask', 'edge:combined', 'edge:roberts', 'edge:laplacian'];
         var current = rect._debugMode || 'none';
         var idx = modes.indexOf(current);
         var next = modes[(idx + 1) % modes.length];
