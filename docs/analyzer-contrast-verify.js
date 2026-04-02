@@ -607,7 +607,7 @@ window.MilgContrastVerify = (function() {
     }
 
     if (allPairRatios.length === 0) {
-      if (pair.text) console.log('[verify-edge] No pairs for "' + pair.text.substring(0, 25) + '" edges=' + nEdges + ' method=' + method);
+      if (pair.text) console.log('[verify-edge] No pairs for "' + pair.text.substring(0, 25) + '" edges=' + edgeIdx.length + ' fg=' + allFg.length + ' bg=' + allBgArr.length + ' method=' + method);
       return null;
     }
 
@@ -641,7 +641,7 @@ window.MilgContrastVerify = (function() {
         bx: bx, by: by, bw: w, bh: h,
         mask: Array.from(mask.slice(0, w * h)),
         edge: edgeCoords,
-        edgeCount: nEdges,
+        edgeCount: edgeIdx.length,
         fgCount: fgPoints.length,
         bgCount: finalBgPoints.length,
         method: method === 'combined' || method === 'canny' ? 'roberts+laplacian' : method
