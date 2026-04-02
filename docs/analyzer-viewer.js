@@ -975,24 +975,59 @@ window.MilgViewer = (function() {
         d.setAttribute('class', 'milg-sample-dot'); d.setAttribute('data-owner', owner);
         d.addEventListener('click', function(ev) {
           ev.stopPropagation();
-          // Find nearest BG pixel to this FG pixel
-          var nearestBg = null, nearestDist = Infinity;
-          (sp.bg || []).forEach(function(bp) {
-            var dd = (bp.x - pt.x) * (bp.x - pt.x) + (bp.y - pt.y) * (bp.y - pt.y);
-            if (dd < nearestDist) { nearestDist = dd; nearestBg = bp; }
+          var bgKeyMap = rect._bgKeyMap || (vr && vr._bgKeyMap) || {};
+          var groupBgKeys = pt.groupBg || [];
+
+          // Resolve group BG pixels with distances
+          var groupBg = [];
+          groupBgKeys.forEach(function(k) {
+            var bg = bgKeyMap[k];
+            if (!bg) return;
+            var dx = pt.x - bg.x, dy = pt.y - bg.y;
+            var dist = Math.sqrt(dx * dx + dy * dy);
+            var cheb = Math.max(Math.abs(dx), Math.abs(dy));
+            groupBg.push({ x: bg.x, y: bg.y, r: bg.r, g: bg.g, b: bg.b, dist: dist, cheb: cheb });
           });
-          var ratio = nearestBg ? contrastRatio({ r: pt.r, g: pt.g, b: pt.b }, { r: nearestBg.r, g: nearestBg.g, b: nearestBg.b }) : '?';
-          var avgFgRatio = avgFg && nearestBg ? contrastRatio(avgFg, { r: nearestBg.r, g: nearestBg.g, b: nearestBg.b }) : '?';
-          var info = 'FG pixel #' + idx + ':\n' +
-            '  Color: rgb(' + pt.r + ',' + pt.g + ',' + pt.b + ')\n' +
-            '  Position: (' + pt.x + ', ' + pt.y + ')\n' +
-            (avgFg ? '  Avg FG: rgb(' + avgFg.r + ',' + avgFg.g + ',' + avgFg.b + ')\n' : '') +
-            (nearestBg ? '\nNearest BG pixel:\n  Color: rgb(' + nearestBg.r + ',' + nearestBg.g + ',' + nearestBg.b + ')\n  Position: (' + nearestBg.x + ', ' + nearestBg.y + ')\n  Distance: ' + Math.round(Math.sqrt(nearestDist)) + 'px\n' : '\nNo BG pixel found\n') +
-            '\nContrast (this FG → nearest BG): ' + (typeof ratio === 'number' ? (Math.round(ratio * 100) / 100) : ratio) + ':1\n' +
-            'Contrast (avg FG → nearest BG): ' + (typeof avgFgRatio === 'number' ? (Math.round(avgFgRatio * 100) / 100) : avgFgRatio) + ':1\n' +
-            (nearestBg && nearestBg.ratio ? 'Contrast (avg FG → this BG): ' + nearestBg.ratio + ':1' : '');
+          groupBg.sort(function(a, b) { return a.dist - b.dist; });
+
+          // Compute group avg BG
+          var sumR = 0, sumG = 0, sumB = 0;
+          groupBg.forEach(function(b) { sumR += b.r; sumG += b.g; sumB += b.b; });
+          var avgBgC = groupBg.length > 0 ? { r: Math.round(sumR / groupBg.length), g: Math.round(sumG / groupBg.length), b: Math.round(sumB / groupBg.length) } : null;
+          var groupRatio = avgBgC ? contrastRatio({ r: pt.r, g: pt.g, b: pt.b }, avgBgC) : '?';
+
+          var info = '=== FG PIXEL #' + idx + ' GROUP DEBUG ===\n' +
+            'FG Position: (' + pt.x + ', ' + pt.y + ')\n' +
+            'FG Color: rgb(' + pt.r + ',' + pt.g + ',' + pt.b + ')\n' +
+            'BG group size: ' + groupBg.length + ' pixels\n' +
+            (avgBgC ? 'Avg BG: rgb(' + avgBgC.r + ',' + avgBgC.g + ',' + avgBgC.b + ')\n' : '') +
+            'Contrast (FG → avg BG): ' + (typeof groupRatio === 'number' ? Math.round(groupRatio * 100) / 100 : groupRatio) + ':1\n\n' +
+            'BG pixels (sorted by distance):\n';
+          groupBg.forEach(function(b, i) {
+            info += '  [' + i + '] (' + b.x + ',' + b.y + ') rgb(' + b.r + ',' + b.g + ',' + b.b + ') eucl=' + b.dist.toFixed(1) + ' cheb=' + b.cheb + '\n';
+          });
+          if (groupBg.length === 0) info += '  (none — orphan FG pixel)\n';
+
+          // Also find ALL BG dots in the vicinity for comparison
+          var allNearby = [];
+          (sp.bg || []).forEach(function(bp, bi) {
+            var dx = pt.x - bp.x, dy = pt.y - bp.y;
+            var dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist <= 5) allNearby.push({ x: bp.x, y: bp.y, r: bp.r, g: bp.g, b: bp.b, dist: dist, inGroup: groupBgKeys.indexOf(bp.x + ',' + bp.y) !== -1 || groupBgKeys.indexOf((bp.x - Math.round(pt.x - pt.x)) + ',' + (bp.y - Math.round(pt.y - pt.y))) !== -1 });
+          });
+          if (allNearby.length > 0) {
+            info += '\nAll BG within 5px (★ = in group):\n';
+            allNearby.sort(function(a, b) { return a.dist - b.dist; });
+            allNearby.forEach(function(b) {
+              info += '  ' + (b.inGroup ? '★' : ' ') + ' (' + b.x + ',' + b.y + ') rgb(' + b.r + ',' + b.g + ',' + b.b + ') dist=' + b.dist.toFixed(1) + '\n';
+            });
+          }
+
           console.log(info);
-          alert(info);
+          // Copy to clipboard
+          navigator.clipboard.writeText(info).then(function() {
+            console.log('Copied to clipboard');
+          }).catch(function() {});
         });
         svg.appendChild(d);
       });
@@ -1007,13 +1042,41 @@ window.MilgViewer = (function() {
         d.setAttribute('class', 'milg-sample-dot'); d.setAttribute('data-owner', owner);
         d.addEventListener('click', function(ev) {
           ev.stopPropagation();
-          var info = 'BG pixel #' + idx + ':\n' +
-            '  Color: rgb(' + pt.r + ',' + pt.g + ',' + pt.b + ')\n' +
-            '  Position: (' + pt.x + ', ' + pt.y + ')\n' +
-            (pt.ratio ? '  Contrast vs avg FG: ' + pt.ratio + ':1\n' : '') +
-            (avgFg ? '  Avg FG: rgb(' + avgFg.r + ',' + avgFg.g + ',' + avgFg.b + ')' : '');
+          // Find which FG pixels own this BG pixel
+          var ownerFgs = [];
+          (sp.fg || []).forEach(function(fp, fpi) {
+            if (fp.groupBg && fp.groupBg.some(function(k) {
+              var parts = k.split(',');
+              return Math.abs(parseInt(parts[0]) + (vr && vr._debug ? vr._debug.bx : 0) - pt.x) < 1 &&
+                     Math.abs(parseInt(parts[1]) + (vr && vr._debug ? vr._debug.by : 0) - pt.y) < 1;
+            })) {
+              var dx = fp.x - pt.x, dy = fp.y - pt.y;
+              ownerFgs.push({ idx: fpi, x: fp.x, y: fp.y, dist: Math.sqrt(dx*dx+dy*dy).toFixed(1), cheb: Math.max(Math.abs(dx),Math.abs(dy)) });
+            }
+          });
+          // Also find ALL FG within 5px
+          var nearbyFg = [];
+          (sp.fg || []).forEach(function(fp, fpi) {
+            var dx = fp.x - pt.x, dy = fp.y - pt.y;
+            var dist = Math.sqrt(dx*dx+dy*dy);
+            if (dist <= 5) nearbyFg.push({ idx: fpi, x: fp.x, y: fp.y, dist: dist.toFixed(1), cheb: Math.max(Math.abs(dx),Math.abs(dy)), isOwner: ownerFgs.some(function(o){return o.idx===fpi}) });
+          });
+          nearbyFg.sort(function(a,b){return parseFloat(a.dist)-parseFloat(b.dist)});
+
+          var info = '=== BG PIXEL #' + idx + ' DEBUG ===\n' +
+            'BG Position: (' + pt.x + ', ' + pt.y + ')\n' +
+            'BG Color: rgb(' + pt.r + ',' + pt.g + ',' + pt.b + ')\n' +
+            (pt.ratio ? 'Contrast vs avg FG: ' + pt.ratio + ':1\n' : '') +
+            '\nOwned by ' + ownerFgs.length + ' FG pixels:\n';
+          ownerFgs.forEach(function(o) {
+            info += '  FG#' + o.idx + ' (' + o.x + ',' + o.y + ') dist=' + o.dist + ' cheb=' + o.cheb + '\n';
+          });
+          info += '\nAll FG within 5px (★ = owner):\n';
+          nearbyFg.forEach(function(f) {
+            info += '  ' + (f.isOwner ? '★' : ' ') + ' FG#' + f.idx + ' (' + f.x + ',' + f.y + ') dist=' + f.dist + ' cheb=' + f.cheb + '\n';
+          });
           console.log(info);
-          alert(info);
+          navigator.clipboard.writeText(info).then(function(){console.log('Copied')}).catch(function(){});
         });
         svg.appendChild(d);
       });
