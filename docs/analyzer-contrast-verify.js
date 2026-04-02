@@ -641,43 +641,27 @@ window.MilgContrastVerify = (function() {
       }
       if (outerRing.length === 0) outerRing = thinned; // fallback
 
-      // Step C: Per GCD-normalized direction lane, keep only the FURTHEST
-      // visible BG. Visibility = no FG pixel blocking the line of sight.
-      // GCD normalization: (2,1) and (4,2) are same direction → same lane.
+      // Step C: Morphological outer boundary of candidates.
+      // Keep BG pixels where at least one 8-neighbor is NOT in the local
+      // region (candidates + all FG). This is: boundary = region - erode(region)
       if (outerRing.length > 1) {
-        var fgLocalSet = {};
-        allFg.forEach(function(f) { fgLocalSet[f.lx + ',' + f.ly] = true; });
+        var localRegion = {};
+        outerRing.forEach(function(c) { localRegion[c.bg.lx + ',' + c.bg.ly] = true; });
+        allFg.forEach(function(f) { localRegion[f.lx + ',' + f.ly] = true; });
 
-        var laneBest = {}; // "normalized_dir" → {dist, idx}
+        var boundary = [];
         for (var ci = 0; ci < outerRing.length; ci++) {
           var bg = outerRing[ci].bg;
-          var dx = bg.lx - fg.lx, dy = bg.ly - fg.ly;
-          if (dx === 0 && dy === 0) continue;
-          // Visibility: walk from FG toward BG, check for blocking FG
-          var steps = Math.max(Math.abs(dx), Math.abs(dy));
-          var blocked = false;
-          for (var s = 1; s < steps; s++) {
-            var nx = fg.lx + Math.round(dx * s / steps);
-            var ny = fg.ly + Math.round(dy * s / steps);
-            if ((nx + ',' + ny) in fgLocalSet) { blocked = true; break; }
+          var isBoundary = false;
+          for (var dy = -1; dy <= 1 && !isBoundary; dy++) {
+            for (var dx = -1; dx <= 1 && !isBoundary; dx++) {
+              if (dx === 0 && dy === 0) continue;
+              if (!((bg.lx + dx) + ',' + (bg.ly + dy) in localRegion)) isBoundary = true;
+            }
           }
-          if (blocked) continue;
-          // GCD-normalize direction
-          var sdx = dx > 0 ? 1 : (dx < 0 ? -1 : 0);
-          var sdy = dy > 0 ? 1 : (dy < 0 ? -1 : 0);
-          var adx = Math.abs(dx), ady = Math.abs(dy);
-          var g = adx, tmp = ady;
-          while (tmp) { var t = tmp; tmp = g % tmp; g = t; }
-          if (g === 0) g = 1;
-          var lk = (sdx * (adx / g)) + ',' + (sdy * (ady / g));
-          var dist = Math.max(adx, ady);
-          if (!laneBest[lk] || dist > laneBest[lk].dist) {
-            laneBest[lk] = { dist: dist, idx: ci };
-          }
+          if (isBoundary) boundary.push(outerRing[ci]);
         }
-        var final = [];
-        for (var lk in laneBest) final.push(outerRing[laneBest[lk].idx]);
-        if (final.length > 0) outerRing = final;
+        if (boundary.length > 0) outerRing = boundary;
       }
 
       // Average the outer ring BG colors
@@ -708,22 +692,28 @@ window.MilgContrastVerify = (function() {
       return null;
     }
 
-    // Global boundary re-check: remove BG pixels where ALL 8-neighbors
-    // are also BG (interior of a BG cluster between strokes)
-    var cleanedBg = {};
-    var bgLocalKeys = Object.keys(allBgUsed);
-    bgLocalKeys.forEach(function(k) {
+    // Global morphological boundary: thin combined BG to outer ring.
+    // Region = all kept BG + all FG. Keep BG where at least one 8-neighbor
+    // is outside this region.
+    var globalRegion = {};
+    Object.keys(allBgUsed).forEach(function(k) {
       var b = allBgUsed[k];
-      var lx = b.x - bx, ly = b.y - by; // back to local coords
-      var isOuter = false;
-      for (var dy = -1; dy <= 1 && !isOuter; dy++) {
-        for (var dx = -1; dx <= 1 && !isOuter; dx++) {
+      globalRegion[(b.x - bx) + ',' + (b.y - by)] = true;
+    });
+    allFg.forEach(function(f) { globalRegion[f.lx + ',' + f.ly] = true; });
+
+    var cleanedBg = {};
+    Object.keys(allBgUsed).forEach(function(k) {
+      var b = allBgUsed[k];
+      var lx = b.x - bx, ly = b.y - by;
+      var isBoundary = false;
+      for (var dy = -1; dy <= 1 && !isBoundary; dy++) {
+        for (var dx = -1; dx <= 1 && !isBoundary; dx++) {
           if (dx === 0 && dy === 0) continue;
-          var nk = (lx + dx) + ',' + (ly + dy);
-          if (!(nk in allBgUsed)) isOuter = true;
+          if (!((lx + dx) + ',' + (ly + dy) in globalRegion)) isBoundary = true;
         }
       }
-      if (isOuter) cleanedBg[k] = b;
+      if (isBoundary) cleanedBg[k] = b;
     });
     if (Object.keys(cleanedBg).length > 0) allBgUsed = cleanedBg;
 
