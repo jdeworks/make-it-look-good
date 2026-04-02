@@ -37602,7 +37602,56 @@ function runThinning(fgPixels, bgPixels, bgR) {
     if (isBoundary) final[k] = allKept[k];
   });
 
-  return Object.keys(final).length > 0 ? final : allKept;
+  if (Object.keys(final).length === 0) final = allKept;
+
+  // Step 4: Topological thinning — remove simple points.
+  // A BG pixel is removable if:
+  //   a) It has >= 2 BG neighbors in `final`
+  //   b) Those neighbors remain 8-connected after removing this pixel
+  // This strips redundant corner/bridge pixels to minimum connected outline.
+  var changed = true;
+  while (changed) {
+    changed = false;
+    var toRemove = {};
+    Object.keys(final).forEach(function(k) {
+      if (k in toRemove) return;
+      var parts = k.split(','), x = parseInt(parts[0]), y = parseInt(parts[1]);
+      // Collect BG neighbors (in final, not already marked for removal)
+      var neighbors = [];
+      for (var dy = -1; dy <= 1; dy++) {
+        for (var dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          var nk = (x + dx) + ',' + (y + dy);
+          if (nk in final && !(nk in toRemove)) neighbors.push(nk);
+        }
+      }
+      // Don't remove endpoints (0-1 neighbors) or chain links (2 neighbors)
+      // Only consider pixels with 3+ neighbors — those have redundant connections
+      if (neighbors.length < 3) return;
+      // Check: are all neighbors DIRECTLY 8-connected to each other?
+      // (Not via long paths — only check if each pair of neighbors is within
+      // Chebyshev distance 1 of each other, meaning they're adjacent)
+      var allDirectlyConnected = true;
+      for (var ni = 0; ni < neighbors.length && allDirectlyConnected; ni++) {
+        var np1 = neighbors[ni].split(','), nx1 = parseInt(np1[0]), ny1 = parseInt(np1[1]);
+        var hasAdjacent = false;
+        for (var nj = 0; nj < neighbors.length; nj++) {
+          if (ni === nj) continue;
+          var np2 = neighbors[nj].split(','), nx2 = parseInt(np2[0]), ny2 = parseInt(np2[1]);
+          if (Math.max(Math.abs(nx1 - nx2), Math.abs(ny1 - ny2)) <= 1) { hasAdjacent = true; break; }
+        }
+        if (!hasAdjacent) allDirectlyConnected = false;
+      }
+      if (allDirectlyConnected) toRemove[k] = true;
+    });
+    var rc = Object.keys(toRemove).length;
+    if (rc > 0) {
+      for (var rk in toRemove) delete final[rk];
+      changed = true;
+    }
+  }
+
+  return final;
 }
 
 function runThinningOLD(fgPixels, bgPixels, bgR) {
@@ -37866,10 +37915,9 @@ if(test('Angle: 5px diagonal 2px deep BG', 10, 10,
   // Inner diagonal (between strokes):
    {x:4,y:7},{x:5,y:6},{x:6,y:5},{x:7,y:4}, // dist=1 from FG, inner side
    {x:3,y:8},{x:2,y:5},{x:3,y:4},{x:4,y:3},{x:5,y:2},{x:6,y:1}], // dist=1 from FG, outer-ish
-  // Morphological outer boundary with FG fill (inner diagonal removed)
-  ['4,8','3,9','2,8','2,9','5,8','4,9','1,6','1,7','1,8','2,6',
-   '2,5','5,7','6,7','3,5','3,4','6,6','7,6','4,4','4,3','7,5','8,5',
-   '5,3','5,2','7,1','8,1','8,2','8,3','8,4','6,2','6,1']
+  // Morphological boundary + topological thinning (minimal connected outline)
+  ['3,9','2,9','5,8','4,9','1,7','1,8','2,6','6,7','3,5','7,6',
+   '4,4','8,5','5,3','8,1','8,2','8,3','8,4','6,2','6,1']
 ))passed++;else failed++;
 
 // Test 4b: Same angle but with 2px deep BG — should thin to 1px
@@ -37881,9 +37929,9 @@ if(test('Angle: 2px deep BG thins to 1px', 6, 7,
    {x:2,y:3},{x:2,y:4},{x:3,y:3},{x:3,y:2},                      // between strokes
    {x:4,y:2},{x:4,y:1},{x:5,y:2},{x:5,y:3},{x:5,y:4},            // right 2px deep
    {x:3,y:1},{x:2,y:2},{x:2,y:1}],                                // above
-  // Morphological boundary of BG region
-  ['1,4','1,6','0,4','0,5','0,6','2,6','3,5','3,6','2,4','4,4','4,5',
-   '2,3','2,2','4,2','4,1','5,2','5,3','5,4','3,1','2,1']
+  // Morphological boundary + topological thinning
+  ['1,6','0,4','0,5','0,6','2,6','3,5','2,4','4,5',
+   '2,3','2,2','4,1','5,2','5,3','5,4','3,1','2,1']
 ))passed++;else failed++;
 
 // Test 5: Single FG pixel with 2px ring — should thin to outer ring
@@ -41720,6 +41768,46 @@ window.MilgContrastVerify = (function() {
     });
     if (Object.keys(cleanedBg).length > 0) allBgUsed = cleanedBg;
 
+    // Topological thinning: remove BG pixels with 3+ directly-adjacent
+    // BG neighbors (redundant for connectivity). Iterate until stable.
+    var thinChanged = true;
+    while (thinChanged) {
+      thinChanged = false;
+      var thinRemove = {};
+      Object.keys(allBgUsed).forEach(function(k) {
+        if (k in thinRemove) return;
+        var b = allBgUsed[k];
+        var lx = b.x - bx, ly = b.y - by;
+        var neighbors = [];
+        for (var dy = -1; dy <= 1; dy++)
+          for (var dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            var nk = (lx + dx) + ',' + (ly + dy);
+            // Check if neighbor is a kept BG pixel (using local coords as key)
+            var gk = (bx + lx + dx) + ',' + (by + ly + dy);
+            if (gk in allBgUsed && !(gk in thinRemove)) neighbors.push(nk);
+          }
+        if (neighbors.length < 3) return; // chain link or endpoint — keep
+        // All neighbors directly adjacent to each other? → this pixel is redundant
+        var allDirect = true;
+        for (var ni = 0; ni < neighbors.length && allDirect; ni++) {
+          var np1 = neighbors[ni].split(','), nx1 = parseInt(np1[0]), ny1 = parseInt(np1[1]);
+          var hasAdj = false;
+          for (var nj = 0; nj < neighbors.length; nj++) {
+            if (ni === nj) continue;
+            var np2 = neighbors[nj].split(','), nx2 = parseInt(np2[0]), ny2 = parseInt(np2[1]);
+            if (Math.max(Math.abs(nx1 - nx2), Math.abs(ny1 - ny2)) <= 1) { hasAdj = true; break; }
+          }
+          if (!hasAdj) allDirect = false;
+        }
+        if (allDirect) thinRemove[k] = true;
+      });
+      if (Object.keys(thinRemove).length > 0) {
+        for (var rk in thinRemove) delete allBgUsed[rk];
+        thinChanged = true;
+      }
+    }
+
     // Collect all used BG for visualization
     var finalBgPoints = [], finalBgColors = [];
     Object.keys(allBgUsed).forEach(function(k) {
@@ -42372,7 +42460,7 @@ window.MilgContrastVerify = (function() {
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v38.4</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v38.5</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 

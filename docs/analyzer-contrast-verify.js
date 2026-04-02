@@ -730,6 +730,46 @@ window.MilgContrastVerify = (function() {
     });
     if (Object.keys(cleanedBg).length > 0) allBgUsed = cleanedBg;
 
+    // Topological thinning: remove BG pixels with 3+ directly-adjacent
+    // BG neighbors (redundant for connectivity). Iterate until stable.
+    var thinChanged = true;
+    while (thinChanged) {
+      thinChanged = false;
+      var thinRemove = {};
+      Object.keys(allBgUsed).forEach(function(k) {
+        if (k in thinRemove) return;
+        var b = allBgUsed[k];
+        var lx = b.x - bx, ly = b.y - by;
+        var neighbors = [];
+        for (var dy = -1; dy <= 1; dy++)
+          for (var dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            var nk = (lx + dx) + ',' + (ly + dy);
+            // Check if neighbor is a kept BG pixel (using local coords as key)
+            var gk = (bx + lx + dx) + ',' + (by + ly + dy);
+            if (gk in allBgUsed && !(gk in thinRemove)) neighbors.push(nk);
+          }
+        if (neighbors.length < 3) return; // chain link or endpoint — keep
+        // All neighbors directly adjacent to each other? → this pixel is redundant
+        var allDirect = true;
+        for (var ni = 0; ni < neighbors.length && allDirect; ni++) {
+          var np1 = neighbors[ni].split(','), nx1 = parseInt(np1[0]), ny1 = parseInt(np1[1]);
+          var hasAdj = false;
+          for (var nj = 0; nj < neighbors.length; nj++) {
+            if (ni === nj) continue;
+            var np2 = neighbors[nj].split(','), nx2 = parseInt(np2[0]), ny2 = parseInt(np2[1]);
+            if (Math.max(Math.abs(nx1 - nx2), Math.abs(ny1 - ny2)) <= 1) { hasAdj = true; break; }
+          }
+          if (!hasAdj) allDirect = false;
+        }
+        if (allDirect) thinRemove[k] = true;
+      });
+      if (Object.keys(thinRemove).length > 0) {
+        for (var rk in thinRemove) delete allBgUsed[rk];
+        thinChanged = true;
+      }
+    }
+
     // Collect all used BG for visualization
     var finalBgPoints = [], finalBgColors = [];
     Object.keys(allBgUsed).forEach(function(k) {
