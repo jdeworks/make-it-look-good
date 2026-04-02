@@ -507,70 +507,103 @@ window.MilgContrastVerify = (function() {
       }
     }
 
-    // Step 3: Collect FG and BG pixels, assigned to their edge owner
-    // FG: INSIDE or EDGE, dist ≤ FG_R from edge
-    // BG: OUTSIDE mask, dist 2..BG_R from edge (skip AA at dist 1)
-    var nEdges = edgeIdx.length;
-    var groupFg = new Array(nEdges); // per edge: [{lx,ly,r,g,b}]
-    var groupBg = new Array(nEdges);
-    for (var gi = 0; gi < nEdges; gi++) { groupFg[gi] = []; groupBg[gi] = []; }
+    // Step 3: Collect all FG and BG pixels
+    var allFg = []; // [{lx, ly, r, g, b}]
+    var allBgArr = []; // [{lx, ly, r, g, b}]
 
     for (var y = 0; y < h; y++) {
       for (var x = 0; x < w; x++) {
         var mi = y * mW + x;
         var d = edgeDist[mi];
-        var owner = edgeOwner[mi];
-        if (owner < 0) continue;
         var c = cat[mi];
         var pi = (y * bw + x) * 4;
         if (pi + 2 >= imgData.length) continue;
-        var px = { lx: x, ly: y, r: imgData[pi], g: imgData[pi+1], b: imgData[pi+2] };
 
         if ((c === 1 || c === 2) && d <= FG_R) {
-          groupFg[owner].push(px);
+          allFg.push({ lx: x, ly: y, r: imgData[pi], g: imgData[pi+1], b: imgData[pi+2] });
         } else if (c === 0 && d >= 2 && d <= BG_R) {
-          groupBg[owner].push(px);
+          allBgArr.push({ lx: x, ly: y, r: imgData[pi], g: imgData[pi+1], b: imgData[pi+2] });
         }
       }
     }
 
-    // Step 4: For each FG pixel, its BG group is:
-    //   - BG assigned to the SAME edge pixel
-    //   - This keeps pairing spatially local (left edge FG → left side BG,
-    //     inner "O" edge FG → inner "O" BG)
-    //   - BG pixels naturally appear in multiple groups (shared across edges)
+    // Step 4: For each BG pixel, pre-compute which FG pixel is closest.
+    // Then for each FG pixel, its relevant BG = those within 5px where THIS FG is the closest.
+    //
+    // Use a grid-based spatial index for FG pixels to make nearest-FG lookup fast.
+    // Grid cell size = BG_R (5px), so we only need to check 9 cells.
+    var cellSize = BG_R;
+    var gridW = Math.ceil(w / cellSize), gridH = Math.ceil(h / cellSize);
+    var fgGrid = new Array(gridW * gridH);
+    for (var gi = 0; gi < fgGrid.length; gi++) fgGrid[gi] = [];
+    for (var fi = 0; fi < allFg.length; fi++) {
+      var gx = Math.floor(allFg[fi].lx / cellSize);
+      var gy = Math.floor(allFg[fi].ly / cellSize);
+      fgGrid[gy * gridW + gx].push(fi);
+    }
+
+    // For each BG pixel, find the nearest FG pixel index (using grid)
+    var bgNearestFg = new Int32Array(allBgArr.length);
+    var bgNearestDist = new Float32Array(allBgArr.length);
+    for (var bi = 0; bi < allBgArr.length; bi++) {
+      var bg = allBgArr[bi];
+      var gcx = Math.floor(bg.lx / cellSize), gcy = Math.floor(bg.ly / cellSize);
+      var bestFi = -1, bestD = Infinity;
+      for (var gdy = -1; gdy <= 1; gdy++) {
+        var ry = gcy + gdy; if (ry < 0 || ry >= gridH) continue;
+        for (var gdx = -1; gdx <= 1; gdx++) {
+          var rx = gcx + gdx; if (rx < 0 || rx >= gridW) continue;
+          var cell = fgGrid[ry * gridW + rx];
+          for (var ci = 0; ci < cell.length; ci++) {
+            var fg = allFg[cell[ci]];
+            var dx = fg.lx - bg.lx, dy = fg.ly - bg.ly;
+            var dd = dx * dx + dy * dy;
+            if (dd < bestD) { bestD = dd; bestFi = cell[ci]; }
+          }
+        }
+      }
+      bgNearestFg[bi] = bestFi;
+      bgNearestDist[bi] = bestD;
+    }
+
+    // Step 5: For each FG pixel, collect its BG group:
+    //   BG pixels within 5px where this FG is the closest FG to that BG
     var fgPoints = [], fgColors = [];
     var allBgUsed = {};
     var allPairRatios = [];
     var worstRatio = 99, bestRatio = 0, worstBg = null, worstBgPt = null;
     var fgGroups = [];
+    var BG_SEARCH_SQ = BG_R * BG_R;
 
-    for (var ei = 0; ei < nEdges; ei++) {
-      var myBg = groupBg[ei];
-      if (myBg.length === 0) continue; // this edge has no BG — skip its FG too
+    for (var fi = 0; fi < allFg.length; fi++) {
+      var fg = allFg[fi];
+      var myBgKeys = [];
+      var sumR = 0, sumG = 0, sumB = 0, cnt = 0;
 
-      // Pre-compute BG average for this edge's group
-      var bgSumR = 0, bgSumG = 0, bgSumB = 0;
-      var bgKeys = [];
-      myBg.forEach(function(bc) {
-        bgSumR += bc.r; bgSumG += bc.g; bgSumB += bc.b;
-        var k = bc.lx + ',' + bc.ly;
-        bgKeys.push(k);
-        allBgUsed[k] = { x: bx + bc.lx, y: by + bc.ly, r: bc.r, g: bc.g, b: bc.b };
-      });
-      var avgBg = { r: Math.round(bgSumR / myBg.length), g: Math.round(bgSumG / myBg.length), b: Math.round(bgSumB / myBg.length) };
+      for (var bi = 0; bi < allBgArr.length; bi++) {
+        if (bgNearestFg[bi] !== fi) continue; // this BG's closest FG isn't us
+        var bg = allBgArr[bi];
+        var dx = fg.lx - bg.lx, dy = fg.ly - bg.ly;
+        if (dx * dx + dy * dy > BG_SEARCH_SQ) continue; // outside 5px radius
 
-      // Each FG in this group compares against this group's BG
-      groupFg[ei].forEach(function(fc) {
-        var fgC = { r: fc.r, g: fc.g, b: fc.b };
-        var ratio = contrastRatio(fgC, avgBg);
-        fgPoints.push({ x: bx + fc.lx, y: by + fc.ly, groupBg: bgKeys });
-        fgColors.push(fgC);
-        fgGroups.push(bgKeys);
-        allPairRatios.push(ratio);
-        if (ratio < worstRatio) { worstRatio = ratio; worstBg = avgBg; }
-        if (ratio > bestRatio) bestRatio = ratio;
-      });
+        sumR += bg.r; sumG += bg.g; sumB += bg.b; cnt++;
+        var k = bg.lx + ',' + bg.ly;
+        myBgKeys.push(k);
+        allBgUsed[k] = { x: bx + bg.lx, y: by + bg.ly, r: bg.r, g: bg.g, b: bg.b };
+      }
+
+      if (cnt === 0) continue; // orphan FG
+
+      var avgBg = { r: Math.round(sumR / cnt), g: Math.round(sumG / cnt), b: Math.round(sumB / cnt) };
+      var fgC = { r: fg.r, g: fg.g, b: fg.b };
+      var ratio = contrastRatio(fgC, avgBg);
+
+      fgPoints.push({ x: bx + fg.lx, y: by + fg.ly, groupBg: myBgKeys });
+      fgColors.push(fgC);
+      fgGroups.push(myBgKeys);
+      allPairRatios.push(ratio);
+      if (ratio < worstRatio) { worstRatio = ratio; worstBg = avgBg; }
+      if (ratio > bestRatio) bestRatio = ratio;
     }
 
     if (allPairRatios.length === 0) {
