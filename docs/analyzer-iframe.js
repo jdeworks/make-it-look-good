@@ -255,6 +255,15 @@ window.MilgIframe = (function() {
                     'var bw=Math.min(Math.round(pe.bbox.width*_sc),mc.width-bx);' +
                     'var bh=Math.min(Math.round(pe.bbox.height*_sc),mc.height-by);' +
                     'if(bw<2||bh<2)return;' +
+                    // Diagnostic: log fixed/sticky element positions for mask alignment debugging
+                    'try{var _cs=getComputedStyle(pe.el);' +
+                      'if(_cs.position==="fixed"||_cs.position==="sticky"){' +
+                        'var _bcr=pe.el.getBoundingClientRect();' +
+                        'console.log("[mask-diag] "+_cs.position+" el: bbox="+JSON.stringify(pe.bbox)+' +
+                          '" bcr={top:"+_bcr.top+",left:"+_bcr.left+"} scrollY="+window.scrollY+' +
+                          '" extract="+bx+","+by+","+bw+"x"+bh+" canvas="+mc.width+"x"+mc.height+' +
+                          '" text=\\""+((pe.pair.text||"").substring(0,30))+"\\"")}' +
+                    '}catch(e){}' +
                     'try{var px=mCtx.getImageData(bx,by,bw,bh).data;' +
                       'var bmp=new Uint8Array(bw*bh);' +
                       'for(var y=0;y<bh;y++){for(var x=0;x<bw;x++){' +
