@@ -443,7 +443,7 @@ window.MilgContrastVerify = (function() {
 
     // Scale search radii with text size: small text → tighter, larger → wider
     var BG_R = Math.min(h, w) < 15 ? 2 : 3;
-    var FG_R = Math.min(h, w) < 15 ? 2 : 3;
+    var FG_R = 2;
     var MAX_DIST = BG_R + 2;
 
     // Read expanded area from screenshot for BG sampling outside the bbox.
