@@ -41016,7 +41016,8 @@ window.MilgContrastVerify = (function() {
 
         if ((c === 1 || c === 2) && d <= FG_R) {
           allFg.push({ lx: x, ly: y, r: imgData[pi], g: imgData[pi+1], b: imgData[pi+2] });
-        } else if (c === 0 && d >= 2 && d <= BG_R) {
+        } else if (c === 0 && d >= 1 && d <= BG_R) {
+          // Include edgeDist=1 (was excluded as AA zone, but needed for continuous outline)
           allBgArr.push({ lx: x, ly: y, r: imgData[pi], g: imgData[pi+1], b: imgData[pi+2] });
         }
       }
@@ -41070,25 +41071,22 @@ window.MilgContrastVerify = (function() {
     var allPairRatios = [];
     var worstRatio = 99, bestRatio = 0, worstBg = null, worstBgPt = null;
     var fgGroups = [];
-    var BG_SEARCH_SQ = BG_R * BG_R; // 9 = 3px squared
-
     for (var fi = 0; fi < allFg.length; fi++) {
       var fg = allFg[fi];
 
-      // Collect candidate BG: within 3px, this FG is closest
-      var candidates = []; // [{bi, dist, bg}]
+      // Collect candidate BG: within 3px Chebyshev (square), this FG is closest
+      var candidates = [];
       for (var bi = 0; bi < allBgArr.length; bi++) {
         if (bgNearestFg[bi] !== fi) continue;
         var bg = allBgArr[bi];
-        var dx = fg.lx - bg.lx, dy = fg.ly - bg.ly;
-        var distSq = dx * dx + dy * dy;
-        if (distSq > BG_SEARCH_SQ) continue;
-        candidates.push({ bi: bi, distSq: distSq, bg: bg });
+        var adx = Math.abs(fg.lx - bg.lx), ady = Math.abs(fg.ly - bg.ly);
+        var cheb = Math.max(adx, ady); // Chebyshev = square distance (no diagonal gaps)
+        if (cheb > BG_R) continue;
+        candidates.push({ bi: bi, cheb: cheb, bg: bg });
       }
       if (candidates.length === 0) continue;
 
-      // Filter: remove BG that has any OTHER FG pixel within 3px
-      // Use the spatial grid for fast check
+      // Filter: remove BG that has any OTHER FG pixel within 3px Chebyshev
       var filtered = [];
       for (var ci = 0; ci < candidates.length; ci++) {
         var bg = candidates[ci].bg;
@@ -41100,32 +41098,27 @@ window.MilgContrastVerify = (function() {
             var rx = gcx + gdx; if (rx < 0 || rx >= gridW) continue;
             var cell = fgGrid[ry * gridW + rx];
             for (var cci = 0; cci < cell.length; cci++) {
-              if (cell[cci] === fi) continue; // skip self
+              if (cell[cci] === fi) continue;
               var otherFg = allFg[cell[cci]];
-              var odx = otherFg.lx - bg.lx, ody = otherFg.ly - bg.ly;
-              if (odx * odx + ody * ody <= BG_SEARCH_SQ) { contested = true; break; }
+              var oadx = Math.abs(otherFg.lx - bg.lx), oady = Math.abs(otherFg.ly - bg.ly);
+              if (Math.max(oadx, oady) <= BG_R) { contested = true; break; }
             }
           }
         }
         if (!contested) filtered.push(candidates[ci]);
       }
+      if (filtered.length === 0) filtered = candidates; // fallback
 
-      // If all removed by contested filter, fall back to original candidates
-      if (filtered.length === 0) filtered = candidates;
-
-      // Keep only outermost: find max distance, keep only those within 1px of max
-      var maxDistSq = 0;
+      // Keep only outermost ring: max Chebyshev distance (same integer step = same ring)
+      var maxCheb = 0;
       for (var fi2 = 0; fi2 < filtered.length; fi2++) {
-        if (filtered[fi2].distSq > maxDistSq) maxDistSq = filtered[fi2].distSq;
+        if (filtered[fi2].cheb > maxCheb) maxCheb = filtered[fi2].cheb;
       }
-      // Keep pixels within 1px of the max distance (the outer ring)
-      var maxDist = Math.sqrt(maxDistSq);
       var outerRing = [];
       for (var fi2 = 0; fi2 < filtered.length; fi2++) {
-        var d = Math.sqrt(filtered[fi2].distSq);
-        if (d >= maxDist - 1.0) outerRing.push(filtered[fi2]);
+        if (filtered[fi2].cheb >= maxCheb - 1) outerRing.push(filtered[fi2]);
       }
-      if (outerRing.length === 0) outerRing = filtered; // safety fallback
+      if (outerRing.length === 0) outerRing = filtered;
 
       // Average the outer ring BG colors
       var sumR = 0, sumG = 0, sumB = 0;
@@ -41807,7 +41800,7 @@ window.MilgContrastVerify = (function() {
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v37.0</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v37.1</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
