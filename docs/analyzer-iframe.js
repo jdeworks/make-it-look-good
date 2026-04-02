@@ -262,6 +262,44 @@ window.MilgIframe = (function() {
                   'if(layer.some(function(l){return _overlaps(pe,l)})){next.push(pe)}else{layer.push(pe)}' +
                 '});_layers.push(layer);_remaining=next}' +
               'console.log("[iframe-ss] "+_pairEls.length+" elements in "+_layers.length+" layers");' +
+              // Phase C2: Bake text-transform into actual text content.
+              // domToCanvas (modern-screenshot SVG foreignObject) doesn't always
+              // preserve CSS text-transform, so uppercase/lowercase text renders wrong.
+              // Fix: walk all text nodes and apply the transform to the actual content.
+              'var _ttFixed=0;' +
+              'document.querySelectorAll("*").forEach(function(el){' +
+                'var tt=getComputedStyle(el).textTransform;' +
+                'if(tt==="uppercase"||tt==="lowercase"||tt==="capitalize"){' +
+                  'var walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT,null,false);' +
+                  'var tn;while(tn=walker.nextNode()){' +
+                    'var orig=tn.textContent;if(!orig.trim())continue;' +
+                    'if(tt==="uppercase")tn.textContent=orig.toUpperCase();' +
+                    'else if(tt==="lowercase")tn.textContent=orig.toLowerCase();' +
+                    'else if(tt==="capitalize")tn.textContent=orig.replace(/\\b\\w/g,function(c){return c.toUpperCase()});' +
+                    '_ttFixed++' +
+                  '}' +
+                '}' +
+              '});' +
+              'if(_ttFixed)console.log("[iframe-ss] Baked text-transform for "+_ttFixed+" text nodes");' +
+              // Phase C3: Inline critical layout properties that domToCanvas may miss.
+              // Walk all elements and inline: display, position, text-transform, flex props
+              'var _layoutFixed=0;' +
+              'document.querySelectorAll("*").forEach(function(el){' +
+                'try{var cs=getComputedStyle(el);' +
+                  'var props=["display","position","textTransform","alignItems","justifyContent",' +
+                    '"flexDirection","flexWrap","gap","textAlign","verticalAlign","lineHeight",' +
+                    '"letterSpacing","wordSpacing","textIndent","whiteSpace"];' +
+                  'var changed=false;' +
+                  'props.forEach(function(p){' +
+                    'var v=cs[p];if(v&&v!=="normal"&&v!=="static"&&v!=="start"&&v!=="auto"&&v!=="0px"&&v!=="none"&&v!=="visible"&&v!=="nowrap"!==v){' +
+                      'var cssProp=p.replace(/([A-Z])/g,"-$1").toLowerCase();' +
+                      'if(!el.style.getPropertyValue(cssProp)){el.style.setProperty(cssProp,v);changed=true}' +
+                    '}' +
+                  '});' +
+                  'if(changed)_layoutFixed++' +
+                '}catch(e){}' +
+              '});' +
+              'if(_layoutFixed)console.log("[iframe-ss] Inlined layout props on "+_layoutFixed+" elements");' +
               'var _maskResults={};' + // idx → {bmp, w, h, layer, dark}
               // Phase D: Capture one mask per layer — set layer elements to black via inline style
               'var _li=0;' +
