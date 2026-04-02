@@ -242,7 +242,7 @@ window.MilgIframe = (function() {
                 'console.log("[iframe-ss] Layer "+_li+": starting domToCanvas...");' +
                 // Race domToCanvas against our own 15s timeout (library timeout may not fire)
                 'var _layerDone=false;' +
-                'var _layerTimer=setTimeout(function(){if(!_layerDone){_layerDone=true;console.warn("[iframe-ss] Layer "+_li+" domToCanvas timed out (15s)");setTimeout(_nextLayer,0)}},15000);' +
+                'var _layerTimer=setTimeout(function(){if(!_layerDone){_layerDone=true;console.warn("[iframe-ss] Layer "+_li+" domToCanvas timed out (120s)");setTimeout(_nextLayer,0)}},120000);' +
                 'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:12000}).then(function(mc){' +
                   'if(_layerDone)return;_layerDone=true;clearTimeout(_layerTimer);' +
                   'console.log("[iframe-ss] Layer "+_li+" captured: "+mc.width+"x"+mc.height);' +
@@ -310,7 +310,8 @@ window.MilgIframe = (function() {
               '}' +
               'var _maskDone=false;' +
               'var _origSendFinal=_sendFinal;' +
-              'var _maskTimer=setTimeout(function(){if(!_maskDone){_maskDone=true;console.warn("[iframe-ss] Masks timed out (45s)");_origSendFinal(null)}},45000);' +
+              // TODO: reduce timeout after development
+              'var _maskTimer=setTimeout(function(){if(!_maskDone){_maskDone=true;console.warn("[iframe-ss] Masks timed out (10min)");_origSendFinal(null)}},600000);' +
               '_sendFinal=function(m){if(_maskDone)return;_maskDone=true;clearTimeout(_maskTimer);console.log("[iframe-ss] Sending results (maskResults: "+Object.keys(_maskResults).length+" pairs)");_origSendFinal(m)};' +
               '_nextLayer()' +
             '}).catch(function(e){console.warn("[iframe-ss] capture failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")})' +
@@ -575,7 +576,7 @@ window.MilgIframe = (function() {
           structure: { totalElements: 0, darkModeClasses: false, responsiveClasses: false, tailwindDetected: false, cssFramework: 'unknown' }
         });
       }
-    }, captureScreenshots ? 90000 : (isFullDoc ? 15000 : 8000));
+    }, captureScreenshots ? 660000 : (isFullDoc ? 15000 : 8000)); // TODO: reduce after development (was 90s)
   }
 
   return {
