@@ -641,36 +641,58 @@ window.MilgContrastVerify = (function() {
       }
       if (outerRing.length === 0) outerRing = thinned; // fallback
 
-      // Step C: Remove shadowed BG — if another BG in the group is further
-      // from this FG along the same direction, the closer one is redundant.
-      // Direction = the vector from FG to BG. A BG is shadowed if another BG
-      // exists at a greater distance on the same axis (dx same sign, dy same sign,
-      // and the further one "covers" this one).
+      // Step C: Remove shadowed BG — a BG pixel is redundant if another BG
+      // in the group is further from the NEAREST FG pixel along the same axis.
+      // We check against ALL nearby FG (not just the owner) so vertical strokes
+      // correctly keep horizontally-stacked BG.
       if (outerRing.length > 1) {
+        // For each BG pixel, find its nearest FG (any FG, using the grid)
+        var bgNearFg = [];
+        for (var ri = 0; ri < outerRing.length; ri++) {
+          var bg = outerRing[ri].bg;
+          var bestFx = fg.lx, bestFy = fg.ly, bestD = Infinity;
+          var gcx = Math.floor(bg.lx / cellSize), gcy = Math.floor(bg.ly / cellSize);
+          for (var gdy = -1; gdy <= 1; gdy++) {
+            var ry = gcy + gdy; if (ry < 0 || ry >= gridH) continue;
+            for (var gdx = -1; gdx <= 1; gdx++) {
+              var rx = gcx + gdx; if (rx < 0 || rx >= gridW) continue;
+              var cell = fgGrid[ry * gridW + rx];
+              for (var cci = 0; cci < cell.length; cci++) {
+                var nfg = allFg[cell[cci]];
+                var nd = Math.max(Math.abs(nfg.lx - bg.lx), Math.abs(nfg.ly - bg.ly));
+                if (nd < bestD) { bestD = nd; bestFx = nfg.lx; bestFy = nfg.ly; }
+              }
+            }
+          }
+          bgNearFg.push({ fx: bestFx, fy: bestFy });
+        }
+
         var final = [];
         for (var ri = 0; ri < outerRing.length; ri++) {
           var bg = outerRing[ri].bg;
-          var dx = bg.lx - fg.lx, dy = bg.ly - fg.ly;
+          var nfx = bgNearFg[ri].fx, nfy = bgNearFg[ri].fy;
+          var dx = bg.lx - nfx, dy = bg.ly - nfy;
           var shadowed = false;
+
           for (var rj = 0; rj < outerRing.length; rj++) {
             if (ri === rj) continue;
             var obg = outerRing[rj].bg;
-            var odx = obg.lx - fg.lx, ody = obg.ly - fg.ly;
-            // Same direction: signs match and the other is strictly further out
-            // on at least one axis while not closer on the other
-            if (dx === 0 && odx === 0) {
-              // Same column: keep only the furthest
-              if (Math.abs(ody) > Math.abs(dy) && ((dy >= 0 && ody >= 0) || (dy <= 0 && ody <= 0))) { shadowed = true; break; }
-            } else if (dy === 0 && ody === 0) {
-              // Same row: keep only the furthest
-              if (Math.abs(odx) > Math.abs(dx) && ((dx >= 0 && odx >= 0) || (dx <= 0 && odx <= 0))) { shadowed = true; break; }
-            } else if (dx !== 0 && dy !== 0 && odx !== 0 && ody !== 0) {
-              // Diagonal: same sign on both axes, other is strictly further on both
-              if (((dx > 0) === (odx > 0)) && ((dy > 0) === (ody > 0)) &&
-                  Math.abs(odx) >= Math.abs(dx) && Math.abs(ody) >= Math.abs(dy) &&
-                  (Math.abs(odx) > Math.abs(dx) || Math.abs(ody) > Math.abs(dy))) {
-                shadowed = true; break;
-              }
+            // Direction from the SAME nearest-FG to the other BG
+            var odx = obg.lx - nfx, ody = obg.ly - nfy;
+
+            // Same axis + same direction + other is strictly further out
+            if (dx === 0 && odx === 0 && ((dy > 0 && ody > dy) || (dy < 0 && ody < dy))) {
+              shadowed = true; break; // same column, other further
+            }
+            if (dy === 0 && ody === 0 && ((dx > 0 && odx > dx) || (dx < 0 && odx < dx))) {
+              shadowed = true; break; // same row, other further
+            }
+            // Diagonal: same signs, other strictly further on both axes
+            if (dx !== 0 && dy !== 0 && odx !== 0 && ody !== 0 &&
+                ((dx > 0) === (odx > 0)) && ((dy > 0) === (ody > 0)) &&
+                Math.abs(odx) >= Math.abs(dx) && Math.abs(ody) >= Math.abs(dy) &&
+                (Math.abs(odx) > Math.abs(dx) || Math.abs(ody) > Math.abs(dy))) {
+              shadowed = true; break;
             }
           }
           if (!shadowed) final.push(outerRing[ri]);
