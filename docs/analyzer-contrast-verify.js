@@ -569,121 +569,180 @@ window.MilgContrastVerify = (function() {
       bgNearestDist[bi] = bestD;
     }
 
-    // Step 5: For each FG pixel, collect its BG group:
-    //   a) BG within 3px where this FG is the closest FG
-    //   b) Remove any BG that has a DIFFERENT FG within 3px (contested zone)
-    //   c) Keep only the OUTERMOST BG pixels (max distance ring, not fill)
-    var fgPoints = [], fgColors = [];
+    // Step 5: BG thinning — produce a 1px outline of BG pixels around FG.
+    // Uses a 5-step algorithm: hasFurther check → closest-claim → FG-blocking
+    // → inner-duplicate removal with local bridge preservation.
+    var fgSet = {};
+    allFg.forEach(function(f) { fgSet[f.lx + ',' + f.ly] = true; });
+    var bgSet = {};
+    allBgArr.forEach(function(b) { bgSet[b.lx + ',' + b.ly] = true; });
+
+    // Step 5a: For each BG, check hasFurther in sign-direction + FG blocking
+    var bgMarks = {}; // "lx,ly" → [{fi, dist(cheb), bi}]
+    for (var bi = 0; bi < allBgArr.length; bi++) {
+      var bg = allBgArr[bi];
+      var bestFi = bgNearestFg[bi];
+      if (bestFi < 0) continue;
+      var fg = allFg[bestFi];
+      var dx = bg.lx - fg.lx, dy = bg.ly - fg.ly;
+      var cheb = Math.max(Math.abs(dx), Math.abs(dy));
+      if (cheb === 0 || cheb > BG_R) continue;
+
+      // FG blocking between fg and bg
+      var steps = Math.max(Math.abs(dx), Math.abs(dy));
+      var blocked = false;
+      for (var s = 1; s < steps; s++) {
+        var mx = fg.lx + Math.round(dx * s / steps);
+        var my = fg.ly + Math.round(dy * s / steps);
+        if ((mx + ',' + my) in fgSet) { blocked = true; break; }
+      }
+      if (blocked) continue;
+
+      // hasFurther: skip if BG exists beyond in same sign-direction
+      var sdx = dx > 0 ? 1 : (dx < 0 ? -1 : 0);
+      var sdy = dy > 0 ? 1 : (dy < 0 ? -1 : 0);
+      var hasFurther = false;
+      for (var ext = 1; ext <= BG_R; ext++) {
+        var ex = bg.lx + sdx * ext, ey = bg.ly + sdy * ext;
+        if (Math.max(Math.abs(ex - fg.lx), Math.abs(ey - fg.ly)) > BG_R) break;
+        if ((ex + ',' + ey) in fgSet) break;
+        if ((ex + ',' + ey) in bgSet) { hasFurther = true; break; }
+      }
+      if (hasFurther) continue;
+
+      var bk = bg.lx + ',' + bg.ly;
+      if (!bgMarks[bk]) bgMarks[bk] = [];
+      bgMarks[bk].push({ fi: bestFi, dist: cheb, bi: bi });
+    }
+
+    // Step 5b: Keep closest F's claim for multiply-claimed B
+    var bgResult = {};
+    for (var k in bgMarks) {
+      var marks = bgMarks[k];
+      var minD = Infinity;
+      for (var mi = 0; mi < marks.length; mi++) { if (marks[mi].dist < minD) minD = marks[mi].dist; }
+      bgResult[k] = marks.filter(function(m) { return m.dist === minD; });
+    }
+
+    // Step 5c: Remove if FG (not other BG) blocks line of sight
+    var afterBlock = {};
+    for (var k in bgResult) {
+      var parts = k.split(','), blx = parseInt(parts[0]), bly = parseInt(parts[1]);
+      var keepThis = false;
+      for (var mi = 0; mi < bgResult[k].length; mi++) {
+        var m = bgResult[k][mi];
+        var fg = allFg[m.fi];
+        var dx = blx - fg.lx, dy = bly - fg.ly;
+        var steps = Math.max(Math.abs(dx), Math.abs(dy));
+        var blocked = false;
+        for (var s = 1; s < steps; s++) {
+          var mx = fg.lx + Math.round(dx * s / steps);
+          var my = fg.ly + Math.round(dy * s / steps);
+          if ((mx + ',' + my) in fgSet && !(mx === fg.lx && my === fg.ly)) {
+            blocked = true; break;
+          }
+        }
+        if (!blocked) keepThis = true;
+      }
+      if (keepThis) afterBlock[k] = bgResult[k];
+    }
+
+    // Step 5d: Thin inner duplicates — remove lower-cheb pixels that have
+    // a higher-cheb neighbor, using depth-limited BFS to preserve connectivity
+    var chebMap = {};
+    for (var k in afterBlock) { chebMap[k] = afterBlock[k][0].dist; }
+
+    var thinCandidates = [];
+    for (var k in afterBlock) {
+      var myCheb = chebMap[k], hasHigher = false;
+      var parts = k.split(','), blx = parseInt(parts[0]), bly = parseInt(parts[1]);
+      for (var dy = -1; dy <= 1; dy++) {
+        for (var dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          var nk = (blx + dx) + ',' + (bly + dy);
+          if (nk in chebMap && chebMap[nk] > myCheb) hasHigher = true;
+        }
+      }
+      if (hasHigher) thinCandidates.push({ k: k, cheb: myCheb });
+    }
+    thinCandidates.sort(function(a, b) { return a.cheb - b.cheb; });
+
+    var keptSet = {};
+    for (var k in afterBlock) keptSet[k] = true;
+
+    for (var ci = 0; ci < thinCandidates.length; ci++) {
+      var ck = thinCandidates[ci].k;
+      if (!(ck in keptSet)) continue;
+      // Local bridge check: depth-limited BFS (max 4 hops)
+      var cparts = ck.split(','), cx = parseInt(cparts[0]), cy = parseInt(cparts[1]);
+      var neighbors = [];
+      for (var dy = -1; dy <= 1; dy++) {
+        for (var dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          var nk = (cx + dx) + ',' + (cy + dy);
+          if (nk in keptSet && nk !== ck) neighbors.push(nk);
+        }
+      }
+      if (neighbors.length <= 1) continue; // bridge or endpoint
+      var visited = {}; visited[neighbors[0]] = 0;
+      var bfsQ = [neighbors[0]], bfsHead = 0;
+      while (bfsHead < bfsQ.length) {
+        var cur = bfsQ[bfsHead++];
+        var depth = visited[cur];
+        if (depth >= 4) continue;
+        var cp = cur.split(','), cx2 = parseInt(cp[0]), cy2 = parseInt(cp[1]);
+        for (var dy = -1; dy <= 1; dy++) {
+          for (var dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            var nk2 = (cx2 + dx) + ',' + (cy2 + dy);
+            if (nk2 !== ck && nk2 in keptSet && !(nk2 in visited)) {
+              visited[nk2] = depth + 1;
+              bfsQ.push(nk2);
+            }
+          }
+        }
+      }
+      var isBridge = false;
+      for (var ni = 1; ni < neighbors.length; ni++) {
+        if (!(neighbors[ni] in visited)) { isBridge = true; break; }
+      }
+      if (!isBridge) delete keptSet[ck];
+    }
+
+    // Build BG index from kept set
+    var bgByKey = {};
+    allBgArr.forEach(function(b) { bgByKey[b.lx + ',' + b.ly] = b; });
+
+    // Build allBgUsed and per-FG groupings
     var allBgUsed = {};
+    for (var k in keptSet) {
+      var b = bgByKey[k];
+      if (b) allBgUsed[k] = { x: bx + b.lx, y: by + b.ly, r: b.r, g: b.g, b: b.b };
+    }
+
+    // Per-FG: assign each kept BG to its nearest FG for contrast measurement
+    var fgPoints = [], fgColors = [];
     var allPairRatios = [];
     var worstRatio = 99, bestRatio = 0, worstBg = null, worstBgPt = null;
     var fgGroups = [];
+    var fgBgMap = {}; // fi → [bg keys]
+    for (var k in keptSet) {
+      var m = afterBlock[k][0];
+      if (!fgBgMap[m.fi]) fgBgMap[m.fi] = [];
+      fgBgMap[m.fi].push(k);
+    }
+
     for (var fi = 0; fi < allFg.length; fi++) {
       var fg = allFg[fi];
+      var myBgKeys = fgBgMap[fi] || [];
+      if (myBgKeys.length === 0) continue;
 
-      // Collect candidate BG: within 3px Chebyshev (square), this FG is closest
-      var candidates = [];
-      for (var bi = 0; bi < allBgArr.length; bi++) {
-        if (bgNearestFg[bi] !== fi) continue;
-        var bg = allBgArr[bi];
-        var adx = Math.abs(fg.lx - bg.lx), ady = Math.abs(fg.ly - bg.ly);
-        var cheb = Math.max(adx, ady); // Chebyshev = square distance (no diagonal gaps)
-        if (cheb > BG_R) continue;
-        candidates.push({ bi: bi, cheb: cheb, bg: bg });
-      }
-      if (candidates.length === 0) continue;
-
-      // Build a lookup set for fast neighbor check
-      var candSet = {};
-      for (var ci = 0; ci < candidates.length; ci++) {
-        candSet[candidates[ci].bg.lx + ',' + candidates[ci].bg.ly] = ci;
-      }
-
-      // Step A: Thin to 1px outline — keep BG where at least one 8-neighbor
-      // is NOT in the candidate set (outer boundary of BG region)
-      var thinned = [];
-      for (var ci = 0; ci < candidates.length; ci++) {
-        var bg = candidates[ci].bg;
-        var isOuter = false;
-        for (var dy = -1; dy <= 1 && !isOuter; dy++) {
-          for (var dx = -1; dx <= 1 && !isOuter; dx++) {
-            if (dx === 0 && dy === 0) continue;
-            if (!((bg.lx + dx) + ',' + (bg.ly + dy) in candSet)) isOuter = true;
-          }
-        }
-        if (isOuter) thinned.push(candidates[ci]);
-      }
-      if (thinned.length === 0) thinned = candidates;
-
-      // Step B: Remove BG pixels where a DIFFERENT FG pixel is closer than this FG.
-      // These are on the inward side (facing another text stroke), not outward.
-      var outerRing = [];
-      for (var ti = 0; ti < thinned.length; ti++) {
-        var bg = thinned[ti].bg;
-        var myDist = thinned[ti].cheb; // Chebyshev dist from this FG
-        // Check spatial grid for a closer FG
-        var gcx = Math.floor(bg.lx / cellSize), gcy = Math.floor(bg.ly / cellSize);
-        var closerExists = false;
-        for (var gdy = -1; gdy <= 1 && !closerExists; gdy++) {
-          var ry = gcy + gdy; if (ry < 0 || ry >= gridH) continue;
-          for (var gdx = -1; gdx <= 1 && !closerExists; gdx++) {
-            var rx = gcx + gdx; if (rx < 0 || rx >= gridW) continue;
-            var cell = fgGrid[ry * gridW + rx];
-            for (var cci = 0; cci < cell.length; cci++) {
-              if (cell[cci] === fi) continue; // skip self
-              var otherFg = allFg[cell[cci]];
-              var ocheb = Math.max(Math.abs(otherFg.lx - bg.lx), Math.abs(otherFg.ly - bg.ly));
-              if (ocheb < myDist) { closerExists = true; break; }
-            }
-          }
-        }
-        if (!closerExists) outerRing.push(thinned[ti]);
-      }
-      if (outerRing.length === 0) outerRing = thinned; // fallback
-
-      // Step C: Morphological outer boundary of candidates.
-      // boundary = region AND NOT erode(region)
-      // Region includes FG 8-neighborhood fill to close diagonal gaps.
-      if (outerRing.length > 1) {
-        var localRegion = {};
-        outerRing.forEach(function(c) { localRegion[c.bg.lx + ',' + c.bg.ly] = true; });
-        allFg.forEach(function(f) {
-          localRegion[f.lx + ',' + f.ly] = true;
-          // Fill FG 8-neighborhood to close diagonal gaps between FG pixels
-          for (var fdy = -1; fdy <= 1; fdy++)
-            for (var fdx = -1; fdx <= 1; fdx++) {
-              var fk = (f.lx + fdx) + ',' + (f.ly + fdy);
-              if (!(fk in localRegion)) localRegion[fk] = true;
-            }
-        });
-
-        var boundary = [];
-        for (var ci = 0; ci < outerRing.length; ci++) {
-          var bg = outerRing[ci].bg;
-          var isBoundary = false;
-          for (var dy = -1; dy <= 1 && !isBoundary; dy++) {
-            for (var dx = -1; dx <= 1 && !isBoundary; dx++) {
-              if (dx === 0 && dy === 0) continue;
-              if (!((bg.lx + dx) + ',' + (bg.ly + dy) in localRegion)) isBoundary = true;
-            }
-          }
-          if (isBoundary) boundary.push(outerRing[ci]);
-        }
-        if (boundary.length > 0) outerRing = boundary;
-      }
-
-      // Average the outer ring BG colors
       var sumR = 0, sumG = 0, sumB = 0;
-      var myBgKeys = [];
-      for (var oi = 0; oi < outerRing.length; oi++) {
-        var bg = outerRing[oi].bg;
-        sumR += bg.r; sumG += bg.g; sumB += bg.b;
-        var k = bg.lx + ',' + bg.ly;
-        myBgKeys.push(k);
-        allBgUsed[k] = { x: bx + bg.lx, y: by + bg.ly, r: bg.r, g: bg.g, b: bg.b };
+      for (var ki = 0; ki < myBgKeys.length; ki++) {
+        var b = bgByKey[myBgKeys[ki]];
+        if (b) { sumR += b.r; sumG += b.g; sumB += b.b; }
       }
-
-      var avgBg = { r: Math.round(sumR / outerRing.length), g: Math.round(sumG / outerRing.length), b: Math.round(sumB / outerRing.length) };
+      var avgBg = { r: Math.round(sumR / myBgKeys.length), g: Math.round(sumG / myBgKeys.length), b: Math.round(sumB / myBgKeys.length) };
       var fgC = { r: fg.r, g: fg.g, b: fg.b };
       var ratio = contrastRatio(fgC, avgBg);
 
@@ -698,76 +757,6 @@ window.MilgContrastVerify = (function() {
     if (allPairRatios.length === 0) {
       if (pair.text) console.log('[verify-edge] No pairs for "' + pair.text.substring(0, 25) + '" edges=' + edgeIdx.length + ' fg=' + allFg.length + ' bg=' + allBgArr.length + ' method=' + method);
       return null;
-    }
-
-    // Global morphological boundary: thin combined BG to outer ring.
-    var globalRegion = {};
-    Object.keys(allBgUsed).forEach(function(k) {
-      var b = allBgUsed[k];
-      globalRegion[(b.x - bx) + ',' + (b.y - by)] = true;
-    });
-    allFg.forEach(function(f) {
-      globalRegion[f.lx + ',' + f.ly] = true;
-      for (var fdy = -1; fdy <= 1; fdy++)
-        for (var fdx = -1; fdx <= 1; fdx++) {
-          var fk = (f.lx + fdx) + ',' + (f.ly + fdy);
-          if (!(fk in globalRegion)) globalRegion[fk] = true;
-        }
-    });
-
-    var cleanedBg = {};
-    Object.keys(allBgUsed).forEach(function(k) {
-      var b = allBgUsed[k];
-      var lx = b.x - bx, ly = b.y - by;
-      var isBoundary = false;
-      for (var dy = -1; dy <= 1 && !isBoundary; dy++) {
-        for (var dx = -1; dx <= 1 && !isBoundary; dx++) {
-          if (dx === 0 && dy === 0) continue;
-          if (!((lx + dx) + ',' + (ly + dy) in globalRegion)) isBoundary = true;
-        }
-      }
-      if (isBoundary) cleanedBg[k] = b;
-    });
-    if (Object.keys(cleanedBg).length > 0) allBgUsed = cleanedBg;
-
-    // Topological thinning: remove BG pixels with 3+ directly-adjacent
-    // BG neighbors (redundant for connectivity). Iterate until stable.
-    var thinChanged = true;
-    while (thinChanged) {
-      thinChanged = false;
-      var thinRemove = {};
-      Object.keys(allBgUsed).forEach(function(k) {
-        if (k in thinRemove) return;
-        var b = allBgUsed[k];
-        var lx = b.x - bx, ly = b.y - by;
-        var neighbors = [];
-        for (var dy = -1; dy <= 1; dy++)
-          for (var dx = -1; dx <= 1; dx++) {
-            if (dx === 0 && dy === 0) continue;
-            var nk = (lx + dx) + ',' + (ly + dy);
-            // Check if neighbor is a kept BG pixel (using local coords as key)
-            var gk = (bx + lx + dx) + ',' + (by + ly + dy);
-            if (gk in allBgUsed && !(gk in thinRemove)) neighbors.push(nk);
-          }
-        if (neighbors.length < 3) return; // chain link or endpoint — keep
-        // All neighbors directly adjacent to each other? → this pixel is redundant
-        var allDirect = true;
-        for (var ni = 0; ni < neighbors.length && allDirect; ni++) {
-          var np1 = neighbors[ni].split(','), nx1 = parseInt(np1[0]), ny1 = parseInt(np1[1]);
-          var hasAdj = false;
-          for (var nj = 0; nj < neighbors.length; nj++) {
-            if (ni === nj) continue;
-            var np2 = neighbors[nj].split(','), nx2 = parseInt(np2[0]), ny2 = parseInt(np2[1]);
-            if (Math.max(Math.abs(nx1 - nx2), Math.abs(ny1 - ny2)) <= 1) { hasAdj = true; break; }
-          }
-          if (!hasAdj) allDirect = false;
-        }
-        if (allDirect) thinRemove[k] = true;
-      });
-      if (Object.keys(thinRemove).length > 0) {
-        for (var rk in thinRemove) delete allBgUsed[rk];
-        thinChanged = true;
-      }
     }
 
     // Collect all used BG for visualization
