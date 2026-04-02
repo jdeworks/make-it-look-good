@@ -197,11 +197,21 @@ window.MilgIframe = (function() {
               '});' +
               'if(_neutralized)console.log("[iframe-ss] Neutralized "+_neutralized+" overlays");' +
               'void document.body.offsetHeight;' +
+              // Re-read bboxes AFTER neutralization — hiding overlays can shift layout
+              'if(_neutralized>0&&typeof window.__milgReReadBboxes==="function"){' +
+                'var res2=window.__milgReReadBboxes();' +
+                'console.log("[iframe-ss] Re-read bboxes post-neutralize: "+res2)' +
+              '}' +
               // Phase B: Global mask style — white bg, white text, hide media
               'var _maskStyle=document.createElement("style");' +
               '_maskStyle.setAttribute("data-milg-mask","1");' +
               '_maskStyle.textContent="*,*::before,*::after{color:#fff !important;background-color:#fff !important;background-image:none !important;background:white !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;-webkit-text-fill-color:#fff !important;opacity:1 !important;transition:none !important;animation:none !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}";' +
               'document.head.appendChild(_maskStyle);void document.body.offsetHeight;' +
+              // Re-read bboxes AFTER mask style — white bg + hidden media can shift layout
+              'if(typeof window.__milgReReadBboxes==="function"){' +
+                'var res3=window.__milgReReadBboxes();' +
+                'console.log("[iframe-ss] Re-read bboxes post-mask-style: "+res3)' +
+              '}' +
               // Phase C: Collect pair elements and build overlap layers
               'var _refs=window.__milgBboxRefs||[];' +
               'var _pairs=(window.__milgData&&window.__milgData.colors&&window.__milgData.colors.contrastPairs)||[];' +
