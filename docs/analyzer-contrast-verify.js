@@ -486,9 +486,10 @@ window.MilgContrastVerify = (function() {
       edgeOwner[edgeIdx[ei]] = ei;
       queue.push(edgeIdx[ei]);
     }
-    // Scale BG search radius with text size: small text (h<15) → 2px, larger → 3px
+    // Scale search radii with text size: small text → tighter, larger → wider
     var BG_R = Math.min(h, w) < 15 ? 2 : 3;
-    var FG_R = 2, MAX_DIST = BG_R + 2;
+    var FG_R = Math.min(h, w) < 15 ? 2 : 3;
+    var MAX_DIST = BG_R + 2;
     var head = 0;
     while (head < queue.length) {
       var ci = queue[head++];
@@ -720,7 +721,9 @@ window.MilgContrastVerify = (function() {
       if (b) allBgUsed[k] = { x: bx + b.lx, y: by + b.ly, r: b.r, g: b.g, b: b.b };
     }
 
-    // Per-FG: assign each kept BG to its nearest FG for contrast measurement
+    // Per-FG: assign each kept BG to its nearest FG for contrast measurement.
+    // Also ensure every FG pixel gets BG — orphaned FGs (no BG from thinning)
+    // get assigned to the nearest kept BG pixel.
     var fgPoints = [], fgColors = [];
     var allPairRatios = [];
     var worstRatio = 99, bestRatio = 0, worstBg = null, worstBgPt = null;
@@ -732,9 +735,26 @@ window.MilgContrastVerify = (function() {
       fgBgMap[m.fi].push(k);
     }
 
+    // Build kept BG array for nearest-neighbor fallback
+    var keptBgArr = [];
+    for (var k in keptSet) {
+      var b = bgByKey[k];
+      if (b) keptBgArr.push({ k: k, lx: b.lx, ly: b.ly });
+    }
+
     for (var fi = 0; fi < allFg.length; fi++) {
       var fg = allFg[fi];
       var myBgKeys = fgBgMap[fi] || [];
+      // Orphaned FG: find nearest kept BG pixel
+      if (myBgKeys.length === 0 && keptBgArr.length > 0) {
+        var bestK = null, bestD = Infinity;
+        for (var ki = 0; ki < keptBgArr.length; ki++) {
+          var dx = keptBgArr[ki].lx - fg.lx, dy = keptBgArr[ki].ly - fg.ly;
+          var d = dx * dx + dy * dy;
+          if (d < bestD) { bestD = d; bestK = keptBgArr[ki].k; }
+        }
+        if (bestK) myBgKeys = [bestK];
+      }
       if (myBgKeys.length === 0) continue;
 
       var sumR = 0, sumG = 0, sumB = 0;
