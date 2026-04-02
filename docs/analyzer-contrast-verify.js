@@ -593,39 +593,29 @@ window.MilgContrastVerify = (function() {
       }
       if (candidates.length === 0) continue;
 
-      // Filter: remove BG that has any OTHER FG pixel within 3px Chebyshev
-      var filtered = [];
+      // Build a lookup set for fast neighbor check
+      var candSet = {};
+      for (var ci = 0; ci < candidates.length; ci++) {
+        candSet[candidates[ci].bg.lx + ',' + candidates[ci].bg.ly] = ci;
+      }
+
+      // Thin to 1px outline: keep a BG pixel only if at least one of its
+      // 8-neighbors is NOT in the candidate set. This gives the outer boundary
+      // of the BG region — a continuous 1px-thick outline.
+      var outerRing = [];
       for (var ci = 0; ci < candidates.length; ci++) {
         var bg = candidates[ci].bg;
-        var gcx = Math.floor(bg.lx / cellSize), gcy = Math.floor(bg.ly / cellSize);
-        var contested = false;
-        for (var gdy = -1; gdy <= 1 && !contested; gdy++) {
-          var ry = gcy + gdy; if (ry < 0 || ry >= gridH) continue;
-          for (var gdx = -1; gdx <= 1 && !contested; gdx++) {
-            var rx = gcx + gdx; if (rx < 0 || rx >= gridW) continue;
-            var cell = fgGrid[ry * gridW + rx];
-            for (var cci = 0; cci < cell.length; cci++) {
-              if (cell[cci] === fi) continue;
-              var otherFg = allFg[cell[cci]];
-              var oadx = Math.abs(otherFg.lx - bg.lx), oady = Math.abs(otherFg.ly - bg.ly);
-              if (Math.max(oadx, oady) <= BG_R) { contested = true; break; }
-            }
+        var isOuter = false;
+        for (var dy = -1; dy <= 1 && !isOuter; dy++) {
+          for (var dx = -1; dx <= 1 && !isOuter; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            var nk = (bg.lx + dx) + ',' + (bg.ly + dy);
+            if (!(nk in candSet)) isOuter = true;
           }
         }
-        if (!contested) filtered.push(candidates[ci]);
+        if (isOuter) outerRing.push(candidates[ci]);
       }
-      if (filtered.length === 0) filtered = candidates; // fallback
-
-      // Keep only outermost ring: max Chebyshev distance (same integer step = same ring)
-      var maxCheb = 0;
-      for (var fi2 = 0; fi2 < filtered.length; fi2++) {
-        if (filtered[fi2].cheb > maxCheb) maxCheb = filtered[fi2].cheb;
-      }
-      var outerRing = [];
-      for (var fi2 = 0; fi2 < filtered.length; fi2++) {
-        if (filtered[fi2].cheb >= maxCheb - 1) outerRing.push(filtered[fi2]);
-      }
-      if (outerRing.length === 0) outerRing = filtered;
+      if (outerRing.length === 0) outerRing = candidates;
 
       // Average the outer ring BG colors
       var sumR = 0, sumG = 0, sumB = 0;
