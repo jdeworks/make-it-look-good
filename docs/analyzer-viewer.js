@@ -743,8 +743,9 @@ window.MilgViewer = (function() {
     // find closest sample point to cursor, highlight it + its comparison pair
     var _hoverCleanup = null;
     svg.querySelectorAll('rect[data-verify]').forEach(function(rect) {
+      var _viIdx = parseInt(rect.getAttribute('data-verify'));
       rect.addEventListener('mouseenter', function(e) {
-        var vi = parseInt(rect.getAttribute('data-verify'));
+        var vi = _viIdx;
         showVerifyTooltip(e, vi);
         var sp = rect._samplePoints;
         if (!sp || (!sp.fg.length && !sp.bg.length)) return;
@@ -881,9 +882,14 @@ window.MilgViewer = (function() {
           }
         }
 
-        rect.addEventListener('mousemove', onMove);
+        function onMoveWithTooltip(ev) {
+          onMove(ev);
+          // Update tooltip with nearest sample point's colors
+          showVerifyTooltip(ev, _viIdx);
+        }
+        rect.addEventListener('mousemove', onMoveWithTooltip);
         _hoverCleanup = function() {
-          rect.removeEventListener('mousemove', onMove);
+          rect.removeEventListener('mousemove', onMoveWithTooltip);
           if (hlGroup.parentNode) hlGroup.parentNode.removeChild(hlGroup);
           _hoverCleanup = null;
         };
