@@ -311,9 +311,9 @@ window.MilgContrastVerify = (function() {
     if (w < 4 || h < 4) return null;
 
     // Constants — scaled with screenshot resolution (1.5x)
-    var FG_IDEAL_MIN = 3;  // prefer pixels at least 3px inside boundary (skip AA)
+    var FG_IDEAL_MIN = 2;  // prefer pixels at least 2px inside boundary (skip AA)
     var FG_HARD_MIN = 1;   // but accept 1px inside for thin strokes
-    var FG_MAX = 8;        // don't go deeper than 8px
+    var FG_MAX = 6;        // don't go deeper than 6px
     var BG_DIST_MIN = 5;   // BG ring: 5-7px outside boundary
     var BG_DIST_MAX = 7;
     var MAX_DIST = BG_DIST_MAX + 3;
