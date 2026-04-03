@@ -129,7 +129,6 @@ window.MilgViewer = (function() {
       '<select class="milg-viewer-zoom-select" title="Zoom level">' +
         '<option value="0.75">75%</option><option value="1" selected>100%</option><option value="1.5">150%</option><option value="2">200%</option><option value="2.5">250%</option><option value="3">300%</option>' +
       '</select>' +
-      '<button class="milg-viewer-debug-btn" title="Copy debug info to clipboard">Debug</button>' +
       '<button class="milg-viewer-close" title="Close (Esc)">&times;</button>';
 
     _overlay.appendChild(toolbar);
@@ -225,17 +224,6 @@ window.MilgViewer = (function() {
     }, { passive: false });
     content.addEventListener('touchend', function() { _dragStart = null; }, { passive: true });
 
-    // Debug info button
-    toolbar.querySelector('.milg-viewer-debug-btn').addEventListener('click', function() {
-      var debugData = buildDebugInfo();
-      navigator.clipboard.writeText(debugData).then(function() {
-        alert('Debug info copied to clipboard! Paste it to share.');
-      }).catch(function() {
-        // Fallback: show in a prompt
-        prompt('Copy this debug info:', debugData);
-      });
-    });
-
     // Use full-page screenshot if available (pixel-perfect, no section stitching)
     // Fall back to stitching sections only when screenshotFull is missing
     var fullPageSrc = (reportData.raw && reportData.raw.screenshotFull) || null;
@@ -260,7 +248,7 @@ window.MilgViewer = (function() {
       viewImg.addEventListener('load', function() {
         _calibrationOffsetY = (_meta && _meta.calibrationOffsetY) || 0;
         if (_calibrationOffsetY) {
-          console.log('[viewer] Using calibration offset: ' + _calibrationOffsetY + 'px canvas (' + (_calibrationOffsetY * 2) + 'px DOM), samples: ' + JSON.stringify(_meta.calibrationSamples || []));
+          // calibration offset applied silently
         }
 
         updateFilterButtons();
@@ -287,130 +275,6 @@ window.MilgViewer = (function() {
   }
 
   // Build debug info with pixel probing for alignment diagnostics
-  function buildDebugInfo() {
-    var rawMeta = _reportData && _reportData.raw && _reportData.raw.meta ? _reportData.raw.meta : {};
-    var info = { meta: _meta, extractionScroll: { scrollX: rawMeta.scrollX, scrollY: rawMeta.scrollY, docHeight: rawMeta.docHeight }, zoomLevel: _zoomLevel, activeFilter: _activeFilter, findings: [] };
-
-    if (_stitchedCanvas) {
-      info.stitched = { width: _stitchedCanvas.width, height: _stitchedCanvas.height };
-    }
-    info.screenshotCount = _screenshots.length;
-    var imgEl = _overlay && _overlay.querySelector('.milg-viewer-img');
-    if (imgEl) {
-      info.displayedImg = { naturalWidth: imgEl.naturalWidth, naturalHeight: imgEl.naturalHeight, offsetWidth: imgEl.offsetWidth, offsetHeight: imgEl.offsetHeight };
-    }
-    var svgEl = _overlay && _overlay.querySelector('.milg-viewer-svg');
-    if (svgEl) {
-      info.svgViewBox = svgEl.getAttribute('viewBox');
-      info.svgSize = { offsetWidth: svgEl.clientWidth, offsetHeight: svgEl.clientHeight };
-    }
-
-    // Pixel probe: draw the viewer image to a temp canvas and sample at bbox positions
-    // This tells us WHERE elements actually appear vs where we think they are
-    var probeCtx = null;
-    if (imgEl && imgEl.naturalWidth > 0) {
-      try {
-        var probeCanvas = document.createElement('canvas');
-        probeCanvas.width = imgEl.naturalWidth;
-        probeCanvas.height = imgEl.naturalHeight;
-        probeCtx = probeCanvas.getContext('2d', { willReadFrequently: true });
-        probeCtx.drawImage(imgEl, 0, 0);
-      } catch(e) { probeCtx = null; }
-    }
-
-    var scale = _meta ? _meta.scale : 0.5;
-
-    // Pick 5 findings spread across the page (top, 25%, 50%, 75%, bottom)
-    var bboxFindings = _allFindings.filter(function(f) { return f.bboxes.length > 0; });
-    var probeIndices = [];
-    if (bboxFindings.length > 0) {
-      var step = Math.max(1, Math.floor(bboxFindings.length / 5));
-      for (var pi = 0; pi < bboxFindings.length && probeIndices.length < 5; pi += step) {
-        probeIndices.push(pi);
-      }
-      if (probeIndices.indexOf(bboxFindings.length - 1) === -1) probeIndices.push(bboxFindings.length - 1);
-    }
-
-    probeIndices.forEach(function(fi) {
-      var f = bboxFindings[fi];
-      var bbox = f.bboxes[0];
-      var entry = { idx: fi, severity: f.severity, title: f.title.substring(0, 60), category: f.category };
-      entry.dom = bbox;
-      entry.canvas = { x: Math.round(bbox.left * scale), y: Math.round(bbox.top * scale), w: Math.round(bbox.width * scale), h: Math.round(bbox.height * scale) };
-
-      // Pixel probe: sample a column of pixels at the center X of the bbox
-      // Look for a color change (non-background) within ±80px of expected Y
-      if (probeCtx) {
-        var cx = Math.round((bbox.left + bbox.width / 2) * scale);
-        var expectedY = Math.round(bbox.top * scale);
-        // Sample the background color at the top of the page for reference
-        var bgSample = probeCtx.getImageData(cx, 2, 1, 1).data;
-        var bgKey = bgSample[0] + ',' + bgSample[1] + ',' + bgSample[2];
-
-        // Scan ±80px around expected position
-        var scanStart = Math.max(0, expectedY - 80);
-        var scanEnd = Math.min(imgEl.naturalHeight, expectedY + 80);
-        var nonBgPositions = [];
-        for (var sy = scanStart; sy < scanEnd; sy++) {
-          var px = probeCtx.getImageData(cx, sy, 1, 1).data;
-          var pxKey = px[0] + ',' + px[1] + ',' + px[2];
-          // Check if this pixel differs significantly from background
-          var dr = Math.abs(px[0] - bgSample[0]), dg = Math.abs(px[1] - bgSample[1]), db = Math.abs(px[2] - bgSample[2]);
-          if (dr + dg + db > 30) {
-            nonBgPositions.push(sy);
-          }
-        }
-
-        if (nonBgPositions.length > 0) {
-          var firstContent = nonBgPositions[0];
-          var lastContent = nonBgPositions[nonBgPositions.length - 1];
-          entry.probe = {
-            scannedRange: [scanStart, scanEnd],
-            expectedY: expectedY,
-            firstContentY: firstContent,
-            lastContentY: lastContent,
-            offsetFromExpected: expectedY - firstContent,
-            contentSpan: lastContent - firstContent,
-            bgColor: 'rgb(' + bgSample[0] + ',' + bgSample[1] + ',' + bgSample[2] + ')',
-            sampleX: cx
-          };
-        } else {
-          entry.probe = { scannedRange: [scanStart, scanEnd], expectedY: expectedY, noContentFound: true, sampleX: cx };
-        }
-      }
-
-      info.findings.push(entry);
-    });
-
-    // Also add raw pairs for reference
-    if (_reportData && _reportData.raw && _reportData.raw.colors && _reportData.raw.colors.contrastPairs) {
-      info.rawPairs = _reportData.raw.colors.contrastPairs.slice(0, 3).map(function(p) {
-        return { selector: p.selector, text: (p.text || '').substring(0, 30), bbox: p.bbox };
-      });
-    }
-
-    // Legacy format for remaining findings
-    _allFindings.slice(0, 10).forEach(function(f, idx) {
-      var entry = { idx: idx, severity: f.severity, title: f.title.substring(0, 60), category: f.category, bboxes: [] };
-      f.bboxes.forEach(function(bbox) {
-        entry.bboxes.push({
-          dom: bbox,
-          canvas: { x: Math.round(bbox.left * scale), y: Math.round(bbox.top * scale), w: Math.round(bbox.width * scale), h: Math.round(bbox.height * scale) }
-        });
-      });
-      info.findings.push(entry);
-    });
-
-    // Raw contrast pair bboxes (first 5)
-    if (_reportData && _reportData.raw && _reportData.raw.colors && _reportData.raw.colors.contrastPairs) {
-      info.rawPairs = _reportData.raw.colors.contrastPairs.slice(0, 5).map(function(p) {
-        return { selector: p.selector, text: (p.text || '').substring(0, 30), bbox: p.bbox, fg: p.fg, bg: p.bg, ratio: p.ratio };
-      });
-    }
-
-    return JSON.stringify(info, null, 2);
-  }
-
   // Load all screenshot data URIs and stitch into one tall canvas
   function stitchScreenshots(dataUris, callback) {
     var images = [];
@@ -937,13 +801,12 @@ window.MilgViewer = (function() {
       // Double-click or right-click: cycle debug layers
       function _cycleDebug(e) {
         e.preventDefault(); e.stopPropagation();
-        if (!rect._debug) { console.log('[viewer] No _debug data on rect'); return; }
+        if (!rect._debug) return;
         var modes = ['none', 'mask', 'zones'];
         var current = rect._debugMode || 'none';
         var idx = modes.indexOf(current);
         var next = modes[(idx + 1) % modes.length];
         rect._debugMode = next;
-        console.log('[viewer] Debug layer: ' + next);
         if (next === 'none') {
           svg.querySelectorAll('.milg-debug-overlay').forEach(function(el) { el.remove(); });
         } else if (next === 'mask') {

@@ -36347,10 +36347,6 @@ window.MilgExtract = (function() {
       var _rect = el.getBoundingClientRect();
       if (!_elVisible || _rect.width <= 0 || _rect.height <= 0) {
         _contrastStats.invisible++;
-        // Debug: log first few skipped visible-looking elements
-        if (_contrastStats.invisible <= 5 && _rect.width > 0) {
-          console.log('[extract] Skipped (ancestor invisible):', cssSelector(el), '"' + (el.textContent || '').trim().substring(0, 40) + '"');
-        }
         continue;
       }
       if (isDecorative(el)) { _contrastStats.decorative++; continue; }
@@ -36372,7 +36368,6 @@ window.MilgExtract = (function() {
       }
       if (!fg) {
         _contrastStats.noFg++;
-        if (_contrastStats.noFg <= 3) console.log('[extract] No fg color:', cssSelector(el), 'textFill:', textFillColor, 'color:', style.color, '"' + (el.textContent || '').trim().substring(0, 30) + '"');
         continue;
       }
       // Skip emoji-only elements (picture emoji can't be contrast-checked)
@@ -36464,7 +36459,6 @@ window.MilgExtract = (function() {
     contrastPairs.sort(function(a, b) { return a.ratio - b.ratio; });
     data.colors.contrastPairs = contrastPairs;
     data.colors._contrastStats = _contrastStats;
-    console.log('[extract] Contrast stats:', JSON.stringify(_contrastStats));
 
     // Area-weighted darkness tracking for accurate page brightness measurement
     var darknessAreas = []; // { darkness: 0-1, area: px² }
@@ -39885,7 +39879,7 @@ window.MilgIframe = (function() {
                 applied++;
               }
             });
-            console.log('[iframe] Applied mask results: ' + applied + '/' + Object.keys(mr).length + ' pairs');
+            // mask results applied
           }
         }
         // If hidden panels were detected, trigger unhidden screenshot pass
@@ -40707,7 +40701,6 @@ window.MilgViewer = (function() {
       '<select class="milg-viewer-zoom-select" title="Zoom level">' +
         '<option value="0.75">75%</option><option value="1" selected>100%</option><option value="1.5">150%</option><option value="2">200%</option><option value="2.5">250%</option><option value="3">300%</option>' +
       '</select>' +
-      '<button class="milg-viewer-debug-btn" title="Copy debug info to clipboard">Debug</button>' +
       '<button class="milg-viewer-close" title="Close (Esc)">&times;</button>';
 
     _overlay.appendChild(toolbar);
@@ -40803,17 +40796,6 @@ window.MilgViewer = (function() {
     }, { passive: false });
     content.addEventListener('touchend', function() { _dragStart = null; }, { passive: true });
 
-    // Debug info button
-    toolbar.querySelector('.milg-viewer-debug-btn').addEventListener('click', function() {
-      var debugData = buildDebugInfo();
-      navigator.clipboard.writeText(debugData).then(function() {
-        alert('Debug info copied to clipboard! Paste it to share.');
-      }).catch(function() {
-        // Fallback: show in a prompt
-        prompt('Copy this debug info:', debugData);
-      });
-    });
-
     // Use full-page screenshot if available (pixel-perfect, no section stitching)
     // Fall back to stitching sections only when screenshotFull is missing
     var fullPageSrc = (reportData.raw && reportData.raw.screenshotFull) || null;
@@ -40838,7 +40820,7 @@ window.MilgViewer = (function() {
       viewImg.addEventListener('load', function() {
         _calibrationOffsetY = (_meta && _meta.calibrationOffsetY) || 0;
         if (_calibrationOffsetY) {
-          console.log('[viewer] Using calibration offset: ' + _calibrationOffsetY + 'px canvas (' + (_calibrationOffsetY * 2) + 'px DOM), samples: ' + JSON.stringify(_meta.calibrationSamples || []));
+          // calibration offset applied silently
         }
 
         updateFilterButtons();
@@ -40865,130 +40847,6 @@ window.MilgViewer = (function() {
   }
 
   // Build debug info with pixel probing for alignment diagnostics
-  function buildDebugInfo() {
-    var rawMeta = _reportData && _reportData.raw && _reportData.raw.meta ? _reportData.raw.meta : {};
-    var info = { meta: _meta, extractionScroll: { scrollX: rawMeta.scrollX, scrollY: rawMeta.scrollY, docHeight: rawMeta.docHeight }, zoomLevel: _zoomLevel, activeFilter: _activeFilter, findings: [] };
-
-    if (_stitchedCanvas) {
-      info.stitched = { width: _stitchedCanvas.width, height: _stitchedCanvas.height };
-    }
-    info.screenshotCount = _screenshots.length;
-    var imgEl = _overlay && _overlay.querySelector('.milg-viewer-img');
-    if (imgEl) {
-      info.displayedImg = { naturalWidth: imgEl.naturalWidth, naturalHeight: imgEl.naturalHeight, offsetWidth: imgEl.offsetWidth, offsetHeight: imgEl.offsetHeight };
-    }
-    var svgEl = _overlay && _overlay.querySelector('.milg-viewer-svg');
-    if (svgEl) {
-      info.svgViewBox = svgEl.getAttribute('viewBox');
-      info.svgSize = { offsetWidth: svgEl.clientWidth, offsetHeight: svgEl.clientHeight };
-    }
-
-    // Pixel probe: draw the viewer image to a temp canvas and sample at bbox positions
-    // This tells us WHERE elements actually appear vs where we think they are
-    var probeCtx = null;
-    if (imgEl && imgEl.naturalWidth > 0) {
-      try {
-        var probeCanvas = document.createElement('canvas');
-        probeCanvas.width = imgEl.naturalWidth;
-        probeCanvas.height = imgEl.naturalHeight;
-        probeCtx = probeCanvas.getContext('2d', { willReadFrequently: true });
-        probeCtx.drawImage(imgEl, 0, 0);
-      } catch(e) { probeCtx = null; }
-    }
-
-    var scale = _meta ? _meta.scale : 0.5;
-
-    // Pick 5 findings spread across the page (top, 25%, 50%, 75%, bottom)
-    var bboxFindings = _allFindings.filter(function(f) { return f.bboxes.length > 0; });
-    var probeIndices = [];
-    if (bboxFindings.length > 0) {
-      var step = Math.max(1, Math.floor(bboxFindings.length / 5));
-      for (var pi = 0; pi < bboxFindings.length && probeIndices.length < 5; pi += step) {
-        probeIndices.push(pi);
-      }
-      if (probeIndices.indexOf(bboxFindings.length - 1) === -1) probeIndices.push(bboxFindings.length - 1);
-    }
-
-    probeIndices.forEach(function(fi) {
-      var f = bboxFindings[fi];
-      var bbox = f.bboxes[0];
-      var entry = { idx: fi, severity: f.severity, title: f.title.substring(0, 60), category: f.category };
-      entry.dom = bbox;
-      entry.canvas = { x: Math.round(bbox.left * scale), y: Math.round(bbox.top * scale), w: Math.round(bbox.width * scale), h: Math.round(bbox.height * scale) };
-
-      // Pixel probe: sample a column of pixels at the center X of the bbox
-      // Look for a color change (non-background) within ±80px of expected Y
-      if (probeCtx) {
-        var cx = Math.round((bbox.left + bbox.width / 2) * scale);
-        var expectedY = Math.round(bbox.top * scale);
-        // Sample the background color at the top of the page for reference
-        var bgSample = probeCtx.getImageData(cx, 2, 1, 1).data;
-        var bgKey = bgSample[0] + ',' + bgSample[1] + ',' + bgSample[2];
-
-        // Scan ±80px around expected position
-        var scanStart = Math.max(0, expectedY - 80);
-        var scanEnd = Math.min(imgEl.naturalHeight, expectedY + 80);
-        var nonBgPositions = [];
-        for (var sy = scanStart; sy < scanEnd; sy++) {
-          var px = probeCtx.getImageData(cx, sy, 1, 1).data;
-          var pxKey = px[0] + ',' + px[1] + ',' + px[2];
-          // Check if this pixel differs significantly from background
-          var dr = Math.abs(px[0] - bgSample[0]), dg = Math.abs(px[1] - bgSample[1]), db = Math.abs(px[2] - bgSample[2]);
-          if (dr + dg + db > 30) {
-            nonBgPositions.push(sy);
-          }
-        }
-
-        if (nonBgPositions.length > 0) {
-          var firstContent = nonBgPositions[0];
-          var lastContent = nonBgPositions[nonBgPositions.length - 1];
-          entry.probe = {
-            scannedRange: [scanStart, scanEnd],
-            expectedY: expectedY,
-            firstContentY: firstContent,
-            lastContentY: lastContent,
-            offsetFromExpected: expectedY - firstContent,
-            contentSpan: lastContent - firstContent,
-            bgColor: 'rgb(' + bgSample[0] + ',' + bgSample[1] + ',' + bgSample[2] + ')',
-            sampleX: cx
-          };
-        } else {
-          entry.probe = { scannedRange: [scanStart, scanEnd], expectedY: expectedY, noContentFound: true, sampleX: cx };
-        }
-      }
-
-      info.findings.push(entry);
-    });
-
-    // Also add raw pairs for reference
-    if (_reportData && _reportData.raw && _reportData.raw.colors && _reportData.raw.colors.contrastPairs) {
-      info.rawPairs = _reportData.raw.colors.contrastPairs.slice(0, 3).map(function(p) {
-        return { selector: p.selector, text: (p.text || '').substring(0, 30), bbox: p.bbox };
-      });
-    }
-
-    // Legacy format for remaining findings
-    _allFindings.slice(0, 10).forEach(function(f, idx) {
-      var entry = { idx: idx, severity: f.severity, title: f.title.substring(0, 60), category: f.category, bboxes: [] };
-      f.bboxes.forEach(function(bbox) {
-        entry.bboxes.push({
-          dom: bbox,
-          canvas: { x: Math.round(bbox.left * scale), y: Math.round(bbox.top * scale), w: Math.round(bbox.width * scale), h: Math.round(bbox.height * scale) }
-        });
-      });
-      info.findings.push(entry);
-    });
-
-    // Raw contrast pair bboxes (first 5)
-    if (_reportData && _reportData.raw && _reportData.raw.colors && _reportData.raw.colors.contrastPairs) {
-      info.rawPairs = _reportData.raw.colors.contrastPairs.slice(0, 5).map(function(p) {
-        return { selector: p.selector, text: (p.text || '').substring(0, 30), bbox: p.bbox, fg: p.fg, bg: p.bg, ratio: p.ratio };
-      });
-    }
-
-    return JSON.stringify(info, null, 2);
-  }
-
   // Load all screenshot data URIs and stitch into one tall canvas
   function stitchScreenshots(dataUris, callback) {
     var images = [];
@@ -41515,13 +41373,12 @@ window.MilgViewer = (function() {
       // Double-click or right-click: cycle debug layers
       function _cycleDebug(e) {
         e.preventDefault(); e.stopPropagation();
-        if (!rect._debug) { console.log('[viewer] No _debug data on rect'); return; }
+        if (!rect._debug) return;
         var modes = ['none', 'mask', 'zones'];
         var current = rect._debugMode || 'none';
         var idx = modes.indexOf(current);
         var next = modes[(idx + 1) % modes.length];
         rect._debugMode = next;
-        console.log('[viewer] Debug layer: ' + next);
         if (next === 'none') {
           svg.querySelectorAll('.milg-debug-overlay').forEach(function(el) { el.remove(); });
         } else if (next === 'mask') {
@@ -42080,7 +41937,7 @@ window.MilgViewer = (function() {
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v41.1</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v41.2</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -42987,7 +42844,6 @@ window.MilgContrastVerify = (function() {
     }
 
     if (allFg.length === 0 || allBgPixels.length === 0) {
-      if (pair.text) console.log('[verify-boundary] No FG/BG for "' + pair.text.substring(0, 25) + '" fg=' + allFg.length + ' bg=' + allBgPixels.length);
       return null;
     }
 
@@ -43136,7 +42992,6 @@ window.MilgContrastVerify = (function() {
     }
 
     if (allPairRatios.length === 0) {
-      if (pair.text) console.log('[verify-boundary] No pairs for "' + pair.text.substring(0, 25) + '" fg=' + fgClean.length + ' bgClusters=' + bgCells.length);
       return null;
     }
 
@@ -43357,7 +43212,6 @@ window.MilgContrastVerify = (function() {
     }
 
     if (fgColors.length === 0 || bgColors.length === 0) {
-      if (fgColors.length === 0 && pair.text) console.log('[verify] No FG pixels for "' + pair.text.substring(0, 30) + '" mask:' + !!(pair._maskBmp) + ' dark:' + (pair._maskDark || 0) + ' bw:' + bw + ' bh:' + bh);
       return null;
     }
 
@@ -43698,7 +43552,6 @@ window.MilgContrastVerify = (function() {
         if (result) { results.push(result); _vStats.verified++; }
         else _vStats.noFgBg++;
       });
-      console.log('[verify] Stats:', JSON.stringify(_vStats), 'mask:', !!maskCanvasData, 'totalPairs:', allPairs.length, 'withBbox:', pairs.length);
       results.sort(function(a, b) {
         if (a.crossesBoundary !== b.crossesBoundary) return a.crossesBoundary ? -1 : 1;
         return b.ratioDiff - a.ratioDiff;
@@ -43801,6 +43654,12 @@ window.MilgContrastVerify = (function() {
     };
   }
 
+  // Color swatch helper
+  function _swatch(color, isDark) {
+    if (!color) return '';
+    return '<span style="display:inline-block;width:12px;height:12px;border-radius:2px;vertical-align:middle;border:1px solid ' + (isDark ? '#555' : '#ccc') + ';background:' + color + '"></span>';
+  }
+
   // Render verification summary as HTML block
   function renderSummaryHtml(summary) {
     if (summary.total === 0) return '';
@@ -43821,12 +43680,19 @@ window.MilgContrastVerify = (function() {
       var border = isDark ? '#991b1b' : '#fecaca';
       html += '<div style="padding:10px 14px;background:' + bg + ';border:1px solid ' + border + ';border-radius:6px;margin-bottom:8px">';
       html += '<strong style="color:#ef4444">' + summary.falsePassCount + ' element' + (summary.falsePassCount > 1 ? 's' : '') + ' pass CSS contrast but fail in pixels</strong>';
-      html += '<p style="margin:4px 0 0;font-size:12px;color:' + (isDark ? '#fca5a5' : '#991b1b') + '">These elements have backgrounds (gradients, images, overlapping elements) that reduce contrast below what CSS inspection reports.</p>';
+      html += '<p style="margin:4px 0 0;font-size:12px;color:' + (isDark ? '#fca5a5' : '#991b1b') + '">The actual rendered background differs from what CSS reports — contrast drops below the required threshold.</p>';
       summary.results.filter(function(r) { return r.cssPasses && !r.pixelPasses; }).forEach(function(r) {
         html += '<div style="margin-top:6px;padding:6px 8px;background:' + (isDark ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.7)') + ';border-radius:4px;font-size:12px">';
         html += '<strong>' + r.selector + '</strong>: "' + (r.text || '').substring(0, 30) + '"';
-        html += '<br>CSS: ' + r.cssRatio + ':1 (pass) &rarr; Pixels: ' + r.pixelRatio + ':1 (fail)';
-        html += '<br><span style="color:var(--text-secondary)">Pixel FG: ' + (r.pixelFg || '?') + ' / BG worst: ' + (r.pixelBgWorst || r.pixelBgDominant || '?') + (r.isVariableBg && r.sampleCount ? ' (variable bg, ' + r.sampleCount.bg + ' points)' : '') + '</span>';
+        html += '<br>CSS: ' + r.cssRatio + ':1 (pass) &rarr; Pixel: <span style="color:#ef4444;font-weight:600">' + r.pixelRatio + ':1</span> (fail, needs ' + (r.neededRatio || 4.5) + ':1)';
+        // Color swatches
+        html += '<br><span style="font-size:11px">FG: </span>';
+        html += _swatch(r.pixelFg, isDark);
+        html += '<span style="font-size:11px;color:var(--text-secondary)"> ' + (r.pixelFg || '?') + '</span>';
+        html += '<span style="font-size:11px"> BG: </span>';
+        html += _swatch(r.pixelBgWorst || r.pixelBgAvg, isDark);
+        html += '<span style="font-size:11px;color:var(--text-secondary)"> ' + (r.pixelBgWorst || r.pixelBgAvg || '?') + '</span>';
+        if (r.sampleCount) html += '<span style="font-size:10px;color:var(--text-secondary)"> (' + r.sampleCount.fg + ' FG, ' + r.sampleCount.bg + ' BG samples)</span>';
         html += '</div>';
       });
       html += '</div>';
@@ -43837,11 +43703,15 @@ window.MilgContrastVerify = (function() {
       var border = isDark ? '#166534' : '#bbf7d0';
       html += '<div style="padding:10px 14px;background:' + bg + ';border:1px solid ' + border + ';border-radius:6px;margin-bottom:8px">';
       html += '<strong style="color:#16a34a">' + summary.falseFailCount + ' false positive' + (summary.falseFailCount > 1 ? 's' : '') + ' detected</strong>';
-      html += '<p style="margin:4px 0 0;font-size:12px;color:' + (isDark ? '#86efac' : '#166534') + '">These elements fail CSS contrast but actually pass when measured from the screenshot. The real background provides better contrast.</p>';
+      html += '<p style="margin:4px 0 0;font-size:12px;color:' + (isDark ? '#86efac' : '#166534') + '">These elements fail CSS contrast but actually pass when measured from the screenshot — the real background provides better contrast.</p>';
       summary.results.filter(function(r) { return !r.cssPasses && r.pixelPasses; }).forEach(function(r) {
         html += '<div style="margin-top:6px;padding:6px 8px;background:' + (isDark ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.7)') + ';border-radius:4px;font-size:12px">';
         html += '<strong>' + r.selector + '</strong>: "' + (r.text || '').substring(0, 30) + '"';
-        html += '<br>CSS: ' + r.cssRatio + ':1 (fail) &rarr; Pixels: ' + r.pixelRatio + ':1 (pass)';
+        html += '<br>CSS: ' + r.cssRatio + ':1 (fail) &rarr; Pixel: <span style="color:#16a34a;font-weight:600">' + r.pixelRatio + ':1</span> (pass)';
+        html += '<br><span style="font-size:11px">FG: </span>';
+        html += _swatch(r.pixelFg, isDark);
+        html += '<span style="font-size:11px"> BG: </span>';
+        html += _swatch(r.pixelBgAvg || r.pixelBgWorst, isDark);
         html += '</div>';
       });
       html += '</div>';
@@ -43854,12 +43724,17 @@ window.MilgContrastVerify = (function() {
       var border = isDark ? '#92400e' : '#fde68a';
       html += '<div style="padding:10px 14px;background:' + bg + ';border:1px solid ' + border + ';border-radius:6px;margin-bottom:8px">';
       html += '<strong style="color:#f59e0b">' + summary.variableBgCount + ' element' + (summary.variableBgCount > 1 ? 's' : '') + ' with variable backgrounds (photo/gradient)</strong>';
-      html += '<p style="margin:4px 0 0;font-size:12px;color:' + (isDark ? '#fbbf24' : '#92400e') + '">These elements have backgrounds that vary significantly across their area. Contrast depends on where text is positioned relative to the background.</p>';
+      html += '<p style="margin:4px 0 0;font-size:12px;color:' + (isDark ? '#fbbf24' : '#92400e') + '">Contrast varies across the element. The worst-case measurement determines the result.</p>';
       vbResults.slice(0, 5).forEach(function(r) {
         html += '<div style="margin-top:6px;padding:6px 8px;background:' + (isDark ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.7)') + ';border-radius:4px;font-size:12px">';
         html += '<strong>' + r.selector + '</strong>: "' + (r.text || '').substring(0, 30) + '"';
         html += '<br>Contrast range: <span style="color:#ef4444">' + r.pixelRatio + ':1</span> (worst) to <span style="color:#16a34a">' + r.pixelRatioBest + ':1</span> (best), avg ' + r.pixelRatioAvg + ':1';
-        html += '<br><span style="color:var(--text-secondary)">' + (r.sampleCount ? r.sampleCount.bg + ' background points sampled, ' : '') + 'variance: ' + (r.bgVariance || '?') + '</span>';
+        // Color swatches for worst case
+        html += '<br><span style="font-size:11px">FG: </span>';
+        html += _swatch(r.pixelFg, isDark);
+        html += '<span style="font-size:11px"> Worst BG: </span>';
+        html += _swatch(r.pixelBgWorst, isDark);
+        if (r.sampleCount) html += '<span style="font-size:10px;color:var(--text-secondary)"> (' + r.sampleCount.fg + ' FG, ' + r.sampleCount.bg + ' BG samples)</span>';
         html += '</div>';
       });
       if (vbResults.length > 5) html += '<div style="font-size:11px;color:var(--text-secondary);margin-top:4px">...and ' + (vbResults.length - 5) + ' more</div>';

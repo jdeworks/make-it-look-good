@@ -512,7 +512,6 @@ window.MilgContrastVerify = (function() {
     }
 
     if (allFg.length === 0 || allBgPixels.length === 0) {
-      if (pair.text) console.log('[verify-boundary] No FG/BG for "' + pair.text.substring(0, 25) + '" fg=' + allFg.length + ' bg=' + allBgPixels.length);
       return null;
     }
 
@@ -661,7 +660,6 @@ window.MilgContrastVerify = (function() {
     }
 
     if (allPairRatios.length === 0) {
-      if (pair.text) console.log('[verify-boundary] No pairs for "' + pair.text.substring(0, 25) + '" fg=' + fgClean.length + ' bgClusters=' + bgCells.length);
       return null;
     }
 
@@ -882,7 +880,6 @@ window.MilgContrastVerify = (function() {
     }
 
     if (fgColors.length === 0 || bgColors.length === 0) {
-      if (fgColors.length === 0 && pair.text) console.log('[verify] No FG pixels for "' + pair.text.substring(0, 30) + '" mask:' + !!(pair._maskBmp) + ' dark:' + (pair._maskDark || 0) + ' bw:' + bw + ' bh:' + bh);
       return null;
     }
 
@@ -1223,7 +1220,6 @@ window.MilgContrastVerify = (function() {
         if (result) { results.push(result); _vStats.verified++; }
         else _vStats.noFgBg++;
       });
-      console.log('[verify] Stats:', JSON.stringify(_vStats), 'mask:', !!maskCanvasData, 'totalPairs:', allPairs.length, 'withBbox:', pairs.length);
       results.sort(function(a, b) {
         if (a.crossesBoundary !== b.crossesBoundary) return a.crossesBoundary ? -1 : 1;
         return b.ratioDiff - a.ratioDiff;
@@ -1326,6 +1322,12 @@ window.MilgContrastVerify = (function() {
     };
   }
 
+  // Color swatch helper
+  function _swatch(color, isDark) {
+    if (!color) return '';
+    return '<span style="display:inline-block;width:12px;height:12px;border-radius:2px;vertical-align:middle;border:1px solid ' + (isDark ? '#555' : '#ccc') + ';background:' + color + '"></span>';
+  }
+
   // Render verification summary as HTML block
   function renderSummaryHtml(summary) {
     if (summary.total === 0) return '';
@@ -1346,12 +1348,19 @@ window.MilgContrastVerify = (function() {
       var border = isDark ? '#991b1b' : '#fecaca';
       html += '<div style="padding:10px 14px;background:' + bg + ';border:1px solid ' + border + ';border-radius:6px;margin-bottom:8px">';
       html += '<strong style="color:#ef4444">' + summary.falsePassCount + ' element' + (summary.falsePassCount > 1 ? 's' : '') + ' pass CSS contrast but fail in pixels</strong>';
-      html += '<p style="margin:4px 0 0;font-size:12px;color:' + (isDark ? '#fca5a5' : '#991b1b') + '">These elements have backgrounds (gradients, images, overlapping elements) that reduce contrast below what CSS inspection reports.</p>';
+      html += '<p style="margin:4px 0 0;font-size:12px;color:' + (isDark ? '#fca5a5' : '#991b1b') + '">The actual rendered background differs from what CSS reports — contrast drops below the required threshold.</p>';
       summary.results.filter(function(r) { return r.cssPasses && !r.pixelPasses; }).forEach(function(r) {
         html += '<div style="margin-top:6px;padding:6px 8px;background:' + (isDark ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.7)') + ';border-radius:4px;font-size:12px">';
         html += '<strong>' + r.selector + '</strong>: "' + (r.text || '').substring(0, 30) + '"';
-        html += '<br>CSS: ' + r.cssRatio + ':1 (pass) &rarr; Pixels: ' + r.pixelRatio + ':1 (fail)';
-        html += '<br><span style="color:var(--text-secondary)">Pixel FG: ' + (r.pixelFg || '?') + ' / BG worst: ' + (r.pixelBgWorst || r.pixelBgDominant || '?') + (r.isVariableBg && r.sampleCount ? ' (variable bg, ' + r.sampleCount.bg + ' points)' : '') + '</span>';
+        html += '<br>CSS: ' + r.cssRatio + ':1 (pass) &rarr; Pixel: <span style="color:#ef4444;font-weight:600">' + r.pixelRatio + ':1</span> (fail, needs ' + (r.neededRatio || 4.5) + ':1)';
+        // Color swatches
+        html += '<br><span style="font-size:11px">FG: </span>';
+        html += _swatch(r.pixelFg, isDark);
+        html += '<span style="font-size:11px;color:var(--text-secondary)"> ' + (r.pixelFg || '?') + '</span>';
+        html += '<span style="font-size:11px"> BG: </span>';
+        html += _swatch(r.pixelBgWorst || r.pixelBgAvg, isDark);
+        html += '<span style="font-size:11px;color:var(--text-secondary)"> ' + (r.pixelBgWorst || r.pixelBgAvg || '?') + '</span>';
+        if (r.sampleCount) html += '<span style="font-size:10px;color:var(--text-secondary)"> (' + r.sampleCount.fg + ' FG, ' + r.sampleCount.bg + ' BG samples)</span>';
         html += '</div>';
       });
       html += '</div>';
@@ -1362,11 +1371,15 @@ window.MilgContrastVerify = (function() {
       var border = isDark ? '#166534' : '#bbf7d0';
       html += '<div style="padding:10px 14px;background:' + bg + ';border:1px solid ' + border + ';border-radius:6px;margin-bottom:8px">';
       html += '<strong style="color:#16a34a">' + summary.falseFailCount + ' false positive' + (summary.falseFailCount > 1 ? 's' : '') + ' detected</strong>';
-      html += '<p style="margin:4px 0 0;font-size:12px;color:' + (isDark ? '#86efac' : '#166534') + '">These elements fail CSS contrast but actually pass when measured from the screenshot. The real background provides better contrast.</p>';
+      html += '<p style="margin:4px 0 0;font-size:12px;color:' + (isDark ? '#86efac' : '#166534') + '">These elements fail CSS contrast but actually pass when measured from the screenshot — the real background provides better contrast.</p>';
       summary.results.filter(function(r) { return !r.cssPasses && r.pixelPasses; }).forEach(function(r) {
         html += '<div style="margin-top:6px;padding:6px 8px;background:' + (isDark ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.7)') + ';border-radius:4px;font-size:12px">';
         html += '<strong>' + r.selector + '</strong>: "' + (r.text || '').substring(0, 30) + '"';
-        html += '<br>CSS: ' + r.cssRatio + ':1 (fail) &rarr; Pixels: ' + r.pixelRatio + ':1 (pass)';
+        html += '<br>CSS: ' + r.cssRatio + ':1 (fail) &rarr; Pixel: <span style="color:#16a34a;font-weight:600">' + r.pixelRatio + ':1</span> (pass)';
+        html += '<br><span style="font-size:11px">FG: </span>';
+        html += _swatch(r.pixelFg, isDark);
+        html += '<span style="font-size:11px"> BG: </span>';
+        html += _swatch(r.pixelBgAvg || r.pixelBgWorst, isDark);
         html += '</div>';
       });
       html += '</div>';
@@ -1379,12 +1392,17 @@ window.MilgContrastVerify = (function() {
       var border = isDark ? '#92400e' : '#fde68a';
       html += '<div style="padding:10px 14px;background:' + bg + ';border:1px solid ' + border + ';border-radius:6px;margin-bottom:8px">';
       html += '<strong style="color:#f59e0b">' + summary.variableBgCount + ' element' + (summary.variableBgCount > 1 ? 's' : '') + ' with variable backgrounds (photo/gradient)</strong>';
-      html += '<p style="margin:4px 0 0;font-size:12px;color:' + (isDark ? '#fbbf24' : '#92400e') + '">These elements have backgrounds that vary significantly across their area. Contrast depends on where text is positioned relative to the background.</p>';
+      html += '<p style="margin:4px 0 0;font-size:12px;color:' + (isDark ? '#fbbf24' : '#92400e') + '">Contrast varies across the element. The worst-case measurement determines the result.</p>';
       vbResults.slice(0, 5).forEach(function(r) {
         html += '<div style="margin-top:6px;padding:6px 8px;background:' + (isDark ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.7)') + ';border-radius:4px;font-size:12px">';
         html += '<strong>' + r.selector + '</strong>: "' + (r.text || '').substring(0, 30) + '"';
         html += '<br>Contrast range: <span style="color:#ef4444">' + r.pixelRatio + ':1</span> (worst) to <span style="color:#16a34a">' + r.pixelRatioBest + ':1</span> (best), avg ' + r.pixelRatioAvg + ':1';
-        html += '<br><span style="color:var(--text-secondary)">' + (r.sampleCount ? r.sampleCount.bg + ' background points sampled, ' : '') + 'variance: ' + (r.bgVariance || '?') + '</span>';
+        // Color swatches for worst case
+        html += '<br><span style="font-size:11px">FG: </span>';
+        html += _swatch(r.pixelFg, isDark);
+        html += '<span style="font-size:11px"> Worst BG: </span>';
+        html += _swatch(r.pixelBgWorst, isDark);
+        if (r.sampleCount) html += '<span style="font-size:10px;color:var(--text-secondary)"> (' + r.sampleCount.fg + ' FG, ' + r.sampleCount.bg + ' BG samples)</span>';
         html += '</div>';
       });
       if (vbResults.length > 5) html += '<div style="font-size:11px;color:var(--text-secondary);margin-top:4px">...and ' + (vbResults.length - 5) + ' more</div>';

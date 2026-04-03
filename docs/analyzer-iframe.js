@@ -518,7 +518,7 @@ window.MilgIframe = (function() {
                 applied++;
               }
             });
-            console.log('[iframe] Applied mask results: ' + applied + '/' + Object.keys(mr).length + ' pairs');
+            // mask results applied
           }
         }
         // If hidden panels were detected, trigger unhidden screenshot pass

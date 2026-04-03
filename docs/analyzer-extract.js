@@ -253,10 +253,6 @@ window.MilgExtract = (function() {
       var _rect = el.getBoundingClientRect();
       if (!_elVisible || _rect.width <= 0 || _rect.height <= 0) {
         _contrastStats.invisible++;
-        // Debug: log first few skipped visible-looking elements
-        if (_contrastStats.invisible <= 5 && _rect.width > 0) {
-          console.log('[extract] Skipped (ancestor invisible):', cssSelector(el), '"' + (el.textContent || '').trim().substring(0, 40) + '"');
-        }
         continue;
       }
       if (isDecorative(el)) { _contrastStats.decorative++; continue; }
@@ -278,7 +274,6 @@ window.MilgExtract = (function() {
       }
       if (!fg) {
         _contrastStats.noFg++;
-        if (_contrastStats.noFg <= 3) console.log('[extract] No fg color:', cssSelector(el), 'textFill:', textFillColor, 'color:', style.color, '"' + (el.textContent || '').trim().substring(0, 30) + '"');
         continue;
       }
       // Skip emoji-only elements (picture emoji can't be contrast-checked)
@@ -370,7 +365,6 @@ window.MilgExtract = (function() {
     contrastPairs.sort(function(a, b) { return a.ratio - b.ratio; });
     data.colors.contrastPairs = contrastPairs;
     data.colors._contrastStats = _contrastStats;
-    console.log('[extract] Contrast stats:', JSON.stringify(_contrastStats));
 
     // Area-weighted darkness tracking for accurate page brightness measurement
     var darknessAreas = []; // { darkness: 0-1, area: px² }
