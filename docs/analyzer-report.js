@@ -247,7 +247,8 @@ window.MilgReport = (function() {
         { title: 'Heading scale consistent', detail: 'Headings follow a logical size progression from H1 down.', source: 'Modular type scales — https://typescale.com/' },
         { title: 'Font weight count reasonable', detail: 'Uses 2-4 font weights, avoiding visual noise.', source: 'Google Fonts — https://fonts.google.com/knowledge/using_type/choosing_reliable_typefaces' },
         { title: 'Font family count under limit', detail: 'Uses 1-3 font families for visual consistency.', source: 'Butterick\'s Practical Typography — https://practicaltypography.com/summary-of-key-rules.html' },
-        { title: 'Paragraph spacing appropriate', detail: 'Paragraphs have comfortable spacing between them.', source: 'Butterick\'s Practical Typography — https://practicaltypography.com/space-between-paragraphs.html' }
+        { title: 'Paragraph spacing appropriate', detail: 'Paragraphs have comfortable spacing between them.', source: 'Butterick\'s Practical Typography — https://practicaltypography.com/space-between-paragraphs.html' },
+        { title: 'Font weight meets audience minimum', detail: 'All font weights are heavy enough for the target audience\'s legibility requirements.', source: 'W3C WAI Older Users — https://www.w3.org/WAI/older-users/developing/' }
       ],
       spacing: [
         { title: 'Spacing on 4px grid', detail: 'Spacing values align to a consistent base unit.', source: 'Material Design — https://m3.material.io/foundations/layout/applying-layout' },
@@ -270,7 +271,14 @@ window.MilgReport = (function() {
         { title: 'Language attribute set', detail: 'HTML element has a lang attribute for correct pronunciation.', source: 'WCAG 2.2 §3.1.1 — https://www.w3.org/TR/WCAG22/#language-of-page' },
         { title: 'Skip navigation link', detail: 'Keyboard users can skip past navigation to reach main content.', source: 'WCAG 2.2 §2.4.1 — https://www.w3.org/TR/WCAG22/#bypass-blocks' },
         { title: 'Descriptive link text', detail: 'Links use meaningful text instead of "click here" or "read more".', source: 'WCAG 2.2 §2.4.4 — https://www.w3.org/TR/WCAG22/#link-purpose-in-context' },
-        { title: 'No color-only indicators', detail: 'Status information uses icons or text in addition to color.', source: 'WCAG 2.2 §1.4.1 — https://www.w3.org/TR/WCAG22/#use-of-color' }
+        { title: 'No color-only indicators', detail: 'Status information uses icons or text in addition to color.', source: 'WCAG 2.2 §1.4.1 — https://www.w3.org/TR/WCAG22/#use-of-color' },
+        { title: 'No duplicate IDs', detail: 'All element IDs are unique, preserving correct ARIA label associations and anchor links.', source: 'WCAG 2.2 §4.1.1 — https://www.w3.org/TR/WCAG22/#parsing' },
+        { title: 'Scrollable regions keyboard-accessible', detail: 'Scrollable containers are reachable via keyboard, either through focusable children or tabindex.', source: 'WCAG 2.2 §2.1.1 — https://www.w3.org/TR/WCAG22/#keyboard' },
+        { title: 'No nested interactive elements', detail: 'Links and buttons are not nested inside other interactive elements.', source: 'HTML spec §4.5.1 — https://html.spec.whatwg.org/multipage/text-level-semantics.html#the-a-element' },
+        { title: 'No positive tabindex values', detail: 'Tab order follows natural DOM order without manual overrides.', source: 'WCAG 2.2 §2.4.3 — https://www.w3.org/TR/WCAG22/#focus-order' },
+        { title: 'Interactive elements have accessible names', detail: 'All buttons and links have visible text, aria-label, or title so screen readers can announce them.', source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value' },
+        { title: 'Form element borders meet contrast threshold', detail: 'Input boundaries have at least 3:1 contrast against their background, meeting WCAG 1.4.11.', source: 'WCAG 2.2 §1.4.11 — https://www.w3.org/TR/WCAG22/#non-text-contrast' },
+        { title: 'Tables are accessible', detail: 'Data tables use th elements and appropriate scope attributes for screen reader navigation.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships' }
       ],
       responsive: [
         { title: 'Responsive breakpoints detected', detail: 'CSS media queries or responsive utility classes are present.', source: 'NNGroup — https://www.nngroup.com/articles/responsive-web-design-definition/' },
@@ -285,7 +293,9 @@ window.MilgReport = (function() {
         { title: 'Font size scale consistent', detail: 'Uses a limited set of font sizes from a type scale.', source: 'Modular type scales — https://typescale.com/' },
         { title: 'Border radius consistent', detail: 'Uses 2-4 standard border-radius values.', source: 'Material Design 3 — https://m3.material.io/styles/shape/overview' },
         { title: 'Line height consistent', detail: 'Uses a small set of line-height values across the page.', source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-spacing.html' },
-        { title: 'Dark mode supported', detail: 'Page provides a dark color scheme option.', source: 'Apple HIG — https://developer.apple.com/design/human-interface-guidelines/dark-mode' }
+        { title: 'Dark mode supported', detail: 'Page provides a dark color scheme option.', source: 'Apple HIG — https://developer.apple.com/design/human-interface-guidelines/dark-mode' },
+        { title: 'Z-index scale manageable', detail: 'Stacking order uses 8 or fewer distinct z-index values, keeping layering predictable.', source: 'Josh Comeau — https://www.joshwcomeau.com/css/stacking-contexts/' },
+        { title: 'Shadow system consistent', detail: 'Box-shadow values are limited to 3-5 elevation levels for a coherent depth system.', source: 'Material Design 3 — https://m3.material.io/styles/elevation/overview' }
       ],
       cognitive: [
         { title: 'Content sections well-organized', detail: 'Page sections and headings are within cognitive load limits.', source: 'Hick\'s Law — https://lawsofux.com/hicks-law/' },
@@ -293,7 +303,9 @@ window.MilgReport = (function() {
         { title: 'Navigation count appropriate', detail: 'Top-level navigation items are within working memory limits.', source: 'Cowan (2001) — https://doi.org/10.1017/S0140525X01003922' },
         { title: 'Reading level appropriate', detail: 'Content reading level matches the target audience.', source: 'WCAG 2.2 §3.1.5 — https://www.w3.org/TR/WCAG22/#reading-level' },
         { title: 'Visual complexity manageable', detail: 'Number of unique colors doesn\'t overwhelm the user.', source: 'Material Design 3 — https://m3.material.io/styles/color/roles' },
-        { title: 'Heading hierarchy supports scanning', detail: 'Headings follow a logical order for easy content navigation.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships' }
+        { title: 'Heading hierarchy supports scanning', detail: 'Headings follow a logical order for easy content navigation.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships' },
+        { title: 'Interactive element density acceptable', detail: 'The ratio of clickable elements to total content is low enough to avoid overwhelming the user.', source: 'Hick\'s Law — https://lawsofux.com/hicks-law/' },
+        { title: 'Reduced motion respected', detail: 'Animations include a prefers-reduced-motion fallback for users who are sensitive to motion.', source: 'WCAG 2.2 §2.3.3 — https://www.w3.org/TR/WCAG22/#animation-from-interactions' }
       ],
       layout: [
         { title: 'Section spacing consistent', detail: 'Gaps between major sections use uniform spacing.', source: 'Gestalt similarity — https://lawsofux.com/law-of-similarity/' },
@@ -301,7 +313,17 @@ window.MilgReport = (function() {
         { title: 'H1 visual hierarchy clear', detail: 'H1 stands out from body text at 2-4x size.', source: 'Modular type scales — https://typescale.com/' },
         { title: 'H2 visual hierarchy appropriate', detail: 'H2 is clearly distinct from both H1 and body text.', source: 'Modular type scales — https://typescale.com/' },
         { title: 'Border radius standardized', detail: 'Uses a consistent set of border-radius values.', source: 'Material Design 3 — https://m3.material.io/styles/shape/overview' },
-        { title: 'Page density manageable', detail: 'Element count is within comfortable range for the page type.', source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/' }
+        { title: 'Page density manageable', detail: 'Element count is within comfortable range for the page type.', source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/' },
+        { title: 'No elements outside viewport', detail: 'All visible elements are positioned within the horizontal bounds of the viewport.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' },
+        { title: 'No horizontal scroll', detail: 'No containers overflow horizontally, keeping the page free of accidental horizontal scrollbars.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' },
+        { title: 'No nested scrollbars', detail: 'Scrollable containers are not nested inside other scrollable containers.', source: 'NNGroup — https://www.nngroup.com/articles/scrolling-and-scrollbars/' },
+        { title: 'Hidden panels fit viewport', detail: 'Dropdown menus and dialogs remain within the viewport when revealed.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' },
+        { title: 'DOM uses semantic elements', detail: 'Markup favors semantic HTML over generic div-only structure.', source: 'HTML Living Standard — https://html.spec.whatwg.org/multipage/dom.html#semantics-2' },
+        { title: 'No silently clipped content', detail: 'No containers use overflow-x:hidden to hide overflowing content without providing scroll access.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' },
+        { title: 'Fixed elements have opaque backgrounds', detail: 'Fixed and sticky headers have backgrounds that prevent text overlap when scrolling.', source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' },
+        { title: 'Children fit within parent containers', detail: 'No elements unintentionally overflow their parent without explicit overflow handling.', source: 'CSS Box Model — https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_box_model' },
+        { title: 'No flex/grid overflow on mobile', detail: 'Flex and grid containers do not silently overflow on narrow viewports.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' },
+        { title: 'Fixed elements maintain contrast when scrolled', detail: 'Fixed headers and toolbars have backgrounds or adaptive color to stay legible over all page sections.', source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' }
       ],
       readability: [
         { title: 'Heading density adequate', detail: 'Headings break content into scannable sections.', source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/' },

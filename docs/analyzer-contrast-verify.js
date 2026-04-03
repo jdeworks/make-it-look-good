@@ -752,8 +752,7 @@ window.MilgContrastVerify = (function() {
       try { maskData = maskCanvas.ctx.getImageData(bx, by, bw, bh).data; } catch(e) {}
     }
 
-    // Grid: every 1px for precise testing (TODO: revert to 2-3px after confirmation)
-    var step = 1;
+    var step = 2;
     var hSteps = Math.max(3, Math.min(500, Math.floor(bw / step)));
     var vSteps = Math.max(3, Math.min(500, Math.floor(bh / step)));
     var EXCL_RADIUS = 5; // pixels within this radius of text are excluded (AA/shadow zone)
