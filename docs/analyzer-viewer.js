@@ -737,6 +737,42 @@ window.MilgViewer = (function() {
       rect._sectionOffset = (vr.sectionIdx && _meta.viewportHeight) ? vr.sectionIdx * Math.round(_meta.viewportHeight * vScaleX) : 0;
     });
 
+    // BBox edge contrast results — render as dashed yellow rects
+    var bboxEdgeResults = (_reportData && _reportData._bboxEdgeResults) || [];
+    if (bboxEdgeResults.length > 0 && !showFails) {
+      bboxEdgeResults.forEach(function(ber) {
+        if (!ber.bbox || !ber.isWarning) return;
+        var bx = Math.round(ber.bbox.left * vScaleX);
+        var by = Math.round(ber.bbox.top * vScaleY) - _calibrationOffsetY;
+        var bw = Math.round(ber.bbox.width * vScaleX);
+        var bh = Math.round(ber.bbox.height * vScaleY);
+        var rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect.setAttribute('x', bx);
+        rect.setAttribute('y', by);
+        rect.setAttribute('width', Math.max(bw, 4));
+        rect.setAttribute('height', Math.max(bh, 4));
+        rect.setAttribute('fill', 'rgba(234,179,8,0.12)');
+        rect.setAttribute('stroke', '#eab308');
+        rect.setAttribute('stroke-width', '1.5');
+        rect.setAttribute('stroke-dasharray', '4 3');
+        rect.setAttribute('rx', '2');
+        svg.appendChild(rect);
+        // Label
+        if (bw > 40 && bh > 12) {
+          var label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          label.setAttribute('x', bx + 3);
+          label.setAttribute('y', by + 11);
+          label.setAttribute('font-size', '10');
+          label.setAttribute('fill', '#eab308');
+          label.setAttribute('font-family', 'system-ui, sans-serif');
+          label.setAttribute('font-weight', '600');
+          label.setAttribute('pointer-events', 'none');
+          label.textContent = 'edge ' + ber.pixelRatio + ':1';
+          svg.appendChild(label);
+        }
+      });
+    }
+
     // Hover: show tooltip + worst-point red ring
     // Click: toggle sample dots (with overlap picker for nested elements)
     // Hover highlight: on mouseenter activate mousemove tracker,

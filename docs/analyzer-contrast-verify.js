@@ -1015,6 +1015,139 @@ window.MilgContrastVerify = (function() {
     };
   }
 
+  // --- BBox Edge Contrast Verification ---
+  // Samples pixels along element bbox edges (inside strip vs outside strip)
+  // to check if the element visually stands out from its surroundings.
+  // Returns WARNING-level results since border/outline can provide distinction.
+  var EDGE_INNER_DIST = 3;   // sample 3px inside bbox edge
+  var EDGE_OUTER_DIST = 5;   // sample up to 5px outside bbox edge
+  var EDGE_SAMPLE_STEP = 4;  // sample every 4px along edges
+  var EDGE_WARN_RATIO = 1.15; // below this ratio = element blends into bg
+
+  function verifyBboxEdge(entry, sectionCanvases, meta) {
+    if (!entry.bbox || !meta) return null;
+    var scale = meta.scale;
+    var sectionH = Math.round(meta.viewportHeight * scale);
+    var bx = Math.round(entry.bbox.left * scale);
+    var by = Math.round(entry.bbox.top * scale);
+    var bw = Math.round(entry.bbox.width * scale);
+    var bh = Math.round(entry.bbox.height * scale);
+    if (bw < 8 || bh < 8) return null;
+
+    var sectionIdx, yInSection;
+    if (sectionCanvases.length === 1) { sectionIdx = 0; yInSection = by; }
+    else { sectionIdx = Math.floor(by / sectionH); yInSection = by - (sectionIdx * sectionH); }
+    if (sectionIdx >= sectionCanvases.length || !sectionCanvases[sectionIdx]) return null;
+
+    var sec = sectionCanvases[sectionIdx];
+    var PAD = EDGE_OUTER_DIST + 2;
+    var padL = Math.min(PAD, bx), padT = Math.min(PAD, yInSection);
+    var padR = Math.min(PAD, sec.width - bx - bw);
+    var padB = Math.min(PAD, sec.height - yInSection - bh);
+    var ex = bx - padL, ey = yInSection - padT;
+    var ew = bw + padL + padR, eh = bh + padT + padB;
+    if (ew < 1 || eh < 1 || ex + ew > sec.width || ey + eh > sec.height) return null;
+
+    var imgData;
+    try { imgData = sec.ctx.getImageData(ex, ey, ew, eh).data; }
+    catch(e) { return null; }
+
+    function readPx(absX, absY) {
+      var lx = absX - ex, ly = absY - ey;
+      if (lx < 0 || lx >= ew || ly < 0 || ly >= eh) return null;
+      var pi = (ly * ew + lx) * 4;
+      return { r: imgData[pi], g: imgData[pi+1], b: imgData[pi+2] };
+    }
+
+    // Sample along all 4 edges
+    var innerColors = [], outerColors = [];
+    // Top edge
+    for (var x = bx + EDGE_SAMPLE_STEP; x < bx + bw - EDGE_SAMPLE_STEP; x += EDGE_SAMPLE_STEP) {
+      var ic = readPx(x, yInSection + EDGE_INNER_DIST);
+      var oc = readPx(x, yInSection - EDGE_OUTER_DIST);
+      if (ic) innerColors.push(ic);
+      if (oc) outerColors.push(oc);
+    }
+    // Bottom edge
+    for (var x = bx + EDGE_SAMPLE_STEP; x < bx + bw - EDGE_SAMPLE_STEP; x += EDGE_SAMPLE_STEP) {
+      var ic = readPx(x, yInSection + bh - EDGE_INNER_DIST);
+      var oc = readPx(x, yInSection + bh + EDGE_OUTER_DIST);
+      if (ic) innerColors.push(ic);
+      if (oc) outerColors.push(oc);
+    }
+    // Left edge
+    for (var y = yInSection + EDGE_SAMPLE_STEP; y < yInSection + bh - EDGE_SAMPLE_STEP; y += EDGE_SAMPLE_STEP) {
+      var ic = readPx(bx + EDGE_INNER_DIST, y);
+      var oc = readPx(bx - EDGE_OUTER_DIST, y);
+      if (ic) innerColors.push(ic);
+      if (oc) outerColors.push(oc);
+    }
+    // Right edge
+    for (var y = yInSection + EDGE_SAMPLE_STEP; y < yInSection + bh - EDGE_SAMPLE_STEP; y += EDGE_SAMPLE_STEP) {
+      var ic = readPx(bx + bw - EDGE_INNER_DIST, y);
+      var oc = readPx(bx + bw + EDGE_OUTER_DIST, y);
+      if (ic) innerColors.push(ic);
+      if (oc) outerColors.push(oc);
+    }
+
+    if (innerColors.length < 4 || outerColors.length < 4) return null;
+
+    // Average inner and outer colors
+    var avgInner = { r: 0, g: 0, b: 0 }, avgOuter = { r: 0, g: 0, b: 0 };
+    for (var i = 0; i < innerColors.length; i++) {
+      avgInner.r += innerColors[i].r; avgInner.g += innerColors[i].g; avgInner.b += innerColors[i].b;
+    }
+    avgInner.r = Math.round(avgInner.r / innerColors.length);
+    avgInner.g = Math.round(avgInner.g / innerColors.length);
+    avgInner.b = Math.round(avgInner.b / innerColors.length);
+    for (var i = 0; i < outerColors.length; i++) {
+      avgOuter.r += outerColors[i].r; avgOuter.g += outerColors[i].g; avgOuter.b += outerColors[i].b;
+    }
+    avgOuter.r = Math.round(avgOuter.r / outerColors.length);
+    avgOuter.g = Math.round(avgOuter.g / outerColors.length);
+    avgOuter.b = Math.round(avgOuter.b / outerColors.length);
+
+    var pixelRatio = contrastRatio(avgInner, avgOuter);
+
+    // Also compute per-edge ratios for more detail
+    var edgeRatios = [];
+    var edgeLen = Math.floor(innerColors.length / 4);
+    for (var e = 0; e < 4; e++) {
+      var eInner = { r: 0, g: 0, b: 0 }, eOuter = { r: 0, g: 0, b: 0 }, eCnt = 0;
+      for (var i = e * edgeLen; i < Math.min((e + 1) * edgeLen, innerColors.length); i++) {
+        eInner.r += innerColors[i].r; eInner.g += innerColors[i].g; eInner.b += innerColors[i].b;
+        eOuter.r += outerColors[i].r; eOuter.g += outerColors[i].g; eOuter.b += outerColors[i].b;
+        eCnt++;
+      }
+      if (eCnt > 0) {
+        eInner.r = Math.round(eInner.r / eCnt); eInner.g = Math.round(eInner.g / eCnt); eInner.b = Math.round(eInner.b / eCnt);
+        eOuter.r = Math.round(eOuter.r / eCnt); eOuter.g = Math.round(eOuter.g / eCnt); eOuter.b = Math.round(eOuter.b / eCnt);
+        edgeRatios.push(contrastRatio(eInner, eOuter));
+      }
+    }
+    var worstEdge = edgeRatios.length > 0 ? Math.min.apply(null, edgeRatios) : pixelRatio;
+
+    return {
+      type: 'bboxEdge',
+      selector: entry.selector,
+      element: entry.element,
+      text: entry.text,
+      pixelRatio: Math.round(pixelRatio * 100) / 100,
+      worstEdgeRatio: Math.round(worstEdge * 100) / 100,
+      cssBgRatio: entry.cssBgRatio,
+      innerColor: rgbStr(avgInner),
+      outerColor: rgbStr(avgOuter),
+      hasBorder: entry.hasBorder,
+      hasOutline: entry.hasOutline,
+      hasShadow: entry.hasShadow,
+      borderColor: entry.borderColor,
+      bbox: entry.bbox,
+      sectionIdx: sectionIdx,
+      isWarning: pixelRatio < EDGE_WARN_RATIO && !entry.hasBorder && !entry.hasOutline && !entry.hasShadow,
+      sampleCount: { inner: innerColors.length, outer: outerColors.length }
+    };
+  }
+
   // Run verification on all contrast pairs with bboxes
   // Prefers pre-computed pixelVerify data from extraction (pristine canvas).
   // Falls back to post-hoc screenshot canvas sampling when not available.
@@ -1066,7 +1199,7 @@ window.MilgContrastVerify = (function() {
         if (a.crossesBoundary !== b.crossesBoundary) return a.crossesBoundary ? -1 : 1;
         return (b.ratioDiff || 0) - (a.ratioDiff || 0);
       });
-      callback(results);
+      callback(results, []); // no bbox edge results for precomputed path
       return;
     }
 
@@ -1095,7 +1228,18 @@ window.MilgContrastVerify = (function() {
         if (a.crossesBoundary !== b.crossesBoundary) return a.crossesBoundary ? -1 : 1;
         return b.ratioDiff - a.ratioDiff;
       });
-      callback(results);
+
+      // BBox edge contrast verification
+      var bboxEdgeResults = [];
+      var bgEdgePairs = (raw.colors && raw.colors.bgEdgePairs) || [];
+      bgEdgePairs.forEach(function(entry) {
+        if (!entry.bbox) return;
+        var r = verifyBboxEdge(entry, sectionCanvases, meta);
+        if (r) bboxEdgeResults.push(r);
+      });
+      bboxEdgeResults.sort(function(a, b) { return a.pixelRatio - b.pixelRatio; });
+
+      callback(results, bboxEdgeResults);
     }
 
     raw.screenshots.forEach(function(dataUri, idx) {
@@ -1143,7 +1287,7 @@ window.MilgContrastVerify = (function() {
   }
 
   // Build a summary of verification results
-  function buildSummary(results) {
+  function buildSummary(results, bboxEdgeResults) {
     var total = results.length;
     var falsePassCount = 0; // CSS passes but pixels fail
     var falseFailCount = 0; // CSS fails but pixels pass
@@ -1163,6 +1307,11 @@ window.MilgContrastVerify = (function() {
       }
     });
 
+    // BBox edge contrast
+    var bboxEdge = bboxEdgeResults || [];
+    var bboxEdgeWarnings = bboxEdge.filter(function(r) { return r.isWarning; });
+    var bboxEdgeChecked = bboxEdge.length;
+
     return {
       total: total,
       falsePassCount: falsePassCount,
@@ -1170,7 +1319,10 @@ window.MilgContrastVerify = (function() {
       significantDiffs: significantDiffs,
       variableBgCount: variableBgCount,
       verified: verified,
-      results: results
+      results: results,
+      bboxEdgeResults: bboxEdge,
+      bboxEdgeWarnings: bboxEdgeWarnings,
+      bboxEdgeChecked: bboxEdgeChecked
     };
   }
 
@@ -1244,6 +1396,37 @@ window.MilgContrastVerify = (function() {
       if (summary.verified > 0) html += summary.verified + ' pair' + (summary.verified > 1 ? 's' : '') + ' verified consistent. ';
       if (summary.significantDiffs > 0) html += summary.significantDiffs + ' with notable pixel deviation (>1.5 ratio difference). ';
       html += '</div>';
+    }
+
+    // BBox edge contrast warnings
+    if (summary.bboxEdgeWarnings && summary.bboxEdgeWarnings.length > 0) {
+      var bg = isDark ? '#2d2006' : '#fffbeb';
+      var border = isDark ? '#92400e' : '#fde68a';
+      html += '<div style="padding:10px 14px;background:' + bg + ';border:1px solid ' + border + ';border-radius:6px;margin-bottom:8px;margin-top:8px">';
+      html += '<strong style="color:#f59e0b">' + summary.bboxEdgeWarnings.length + ' element' + (summary.bboxEdgeWarnings.length > 1 ? 's' : '') + ' may blend into background</strong>';
+      html += '<p style="margin:4px 0 0;font-size:12px;color:' + (isDark ? '#fbbf24' : '#92400e') + '">These elements have low contrast between their background and their parent\'s background. They may not be visually distinct without additional cues (border, shadow, outline).</p>';
+      summary.bboxEdgeWarnings.forEach(function(r) {
+        html += '<div style="margin-top:6px;padding:6px 8px;background:' + (isDark ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.7)') + ';border-radius:4px;font-size:12px">';
+        html += '<strong>' + r.selector + '</strong> &lt;' + r.element + '&gt;';
+        if (r.text) html += ': "' + r.text.substring(0, 30) + '"';
+        html += '<br>Edge contrast: <span style="color:#f59e0b">' + r.pixelRatio + ':1</span>';
+        if (r.cssBgRatio > 1) html += ' <span style="color:var(--text-secondary)">(CSS: ' + r.cssBgRatio + ':1)</span>';
+        // Color swatches
+        html += '<br><span style="font-size:11px">Inner: </span>';
+        html += '<span style="display:inline-block;width:12px;height:12px;border-radius:2px;vertical-align:middle;border:1px solid ' + (isDark ? '#555' : '#ccc') + ';background:' + r.innerColor + '"></span>';
+        html += '<span style="font-size:11px"> Outer: </span>';
+        html += '<span style="display:inline-block;width:12px;height:12px;border-radius:2px;vertical-align:middle;border:1px solid ' + (isDark ? '#555' : '#ccc') + ';background:' + r.outerColor + '"></span>';
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+    if (summary.bboxEdgeChecked > 0) {
+      html += '<div style="font-size:12px;color:var(--text-secondary);margin-top:4px">';
+      html += summary.bboxEdgeChecked + ' element edge' + (summary.bboxEdgeChecked > 1 ? 's' : '') + ' checked for background distinction';
+      if (summary.bboxEdgeChecked - (summary.bboxEdgeWarnings ? summary.bboxEdgeWarnings.length : 0) > 0) {
+        html += ' (' + (summary.bboxEdgeChecked - summary.bboxEdgeWarnings.length) + ' passed)';
+      }
+      html += '.</div>';
     }
 
     html += '</div></details>';

@@ -469,9 +469,9 @@
     var pixelVerifyCheck = document.getElementById('pixelVerifyCheck');
     var wantPixelVerify = pixelVerifyCheck ? pixelVerifyCheck.checked : true;
     if (wantPixelVerify && window.MilgContrastVerify && reportData.raw && reportData.raw.screenshots && reportData.raw.screenshotMeta) {
-      MilgContrastVerify.verify(reportData, function(results) {
-        if (results.length === 0) return;
-        var summary = MilgContrastVerify.buildSummary(results);
+      MilgContrastVerify.verify(reportData, function(results, bboxEdgeResults) {
+        if (results.length === 0 && (!bboxEdgeResults || bboxEdgeResults.length === 0)) return;
+        var summary = MilgContrastVerify.buildSummary(results, bboxEdgeResults);
         var summaryHtml = MilgContrastVerify.renderSummaryHtml(summary);
         if (!summaryHtml) return;
         // Inject after the screenshots section in the report
@@ -488,6 +488,7 @@
         }
         // Store results for viewer tooltips
         reportData._contrastVerifyResults = results;
+        reportData._bboxEdgeResults = bboxEdgeResults || [];
       });
     }
   }

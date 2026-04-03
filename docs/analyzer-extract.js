@@ -158,7 +158,7 @@ window.MilgExtract = (function() {
 
     var data = {
       meta: { title: document.title, url: location.href, viewportWidth: window.innerWidth, viewportHeight: window.innerHeight, docHeight: Math.max(document.body.scrollHeight, document.documentElement.scrollHeight), scrollX: window.scrollX, scrollY: window.scrollY, timestamp: new Date().toISOString(), version: 1, isFragment: !!window.__milgIsFragment },
-      colors: { textColors: [], bgColors: [], contrastPairs: [] },
+      colors: { textColors: [], bgColors: [], contrastPairs: [], bgEdgePairs: [] },
       typography: { bodyFontSize: '', bodyLineHeight: '', bodyFontFamily: '', fontFamilies: [], fontSizes: [], fontWeights: [], headings: [], lineHeights: [], maxLineLength: { chars: 0, element: '', fontSize: 0, textLength: 0 } },
       spacing: { paddings: [], margins: [], gaps: [], maxContentWidth: '', bodyPaddingHorizontal: '' },
       layout: { sectionGaps: [], alignmentEdges: [], visualHierarchy: {} },
@@ -541,6 +541,98 @@ window.MilgExtract = (function() {
     });
     touchIssues.sort(function(a, b) { return (a.width * a.height) - (b.width * b.height); });
     data.interaction.touchTargets = touchIssues.slice(0, 40);
+
+    // --- BBox edge contrast pairs: elements with own bg vs parent bg ---
+    // Checks whether buttons, cards, inputs, etc. visually stand out from surroundings
+    var bgEdgePairs = [];
+    var bgEdgeSeen = new Set();
+    var bgEdgeCandidates = document.querySelectorAll('button,a,[role="button"],input:not([type="hidden"]),select,textarea,details,summary,.card,[class*="card"],[class*="btn"],[class*="button"],[class*="chip"],[class*="badge"],[class*="tag"],[class*="alert"],[class*="toast"],[class*="banner"]');
+    bgEdgeCandidates.forEach(function(el) {
+      if (!isVisible(el) || isDecorative(el)) return;
+      var rect = el.getBoundingClientRect();
+      if (rect.width < 20 || rect.height < 16) return; // skip tiny
+      var sel = cssSelector(el);
+      if (bgEdgeSeen.has(sel)) return;
+      bgEdgeSeen.add(sel);
+      var s = getComputedStyle(el);
+      var elBg = s.backgroundColor;
+      var hasBg = elBg && elBg !== 'rgba(0, 0, 0, 0)' && elBg !== 'transparent';
+      var hasBorder = s.borderStyle !== 'none' && parseFloat(s.borderWidth) >= 1;
+      var hasOutline = s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) >= 1;
+      var hasShadow = s.boxShadow && s.boxShadow !== 'none';
+      // Get parent effective bg
+      var parentBg = { r: 255, g: 255, b: 255 };
+      var pNode = el.parentElement;
+      while (pNode && pNode !== document.documentElement) {
+        var pBgStr = getComputedStyle(pNode).backgroundColor;
+        var pC = parseColor(pBgStr);
+        if (pC && pC.a >= 0.5) { parentBg = { r: pC.r, g: pC.g, b: pC.b }; break; }
+        pNode = pNode.parentElement;
+      }
+      var elBgParsed = parseColor(elBg);
+      var cssBgRatio = 1;
+      if (hasBg && elBgParsed && elBgParsed.a > 0.1) {
+        var blended = { r: Math.round(elBgParsed.r * elBgParsed.a + parentBg.r * (1 - elBgParsed.a)), g: Math.round(elBgParsed.g * elBgParsed.a + parentBg.g * (1 - elBgParsed.a)), b: Math.round(elBgParsed.b * elBgParsed.a + parentBg.b * (1 - elBgParsed.a)) };
+        cssBgRatio = Math.round(contrastRatio(blended, parentBg) * 100) / 100;
+      }
+      var _beEntry = {
+        selector: sel,
+        element: el.tagName.toLowerCase(),
+        text: (el.textContent || el.getAttribute('aria-label') || '').trim().substring(0, 40),
+        elBg: hasBg ? rgbStr(elBgParsed && elBgParsed.a > 0.1 ? { r: Math.round(elBgParsed.r * (elBgParsed.a || 1) + parentBg.r * (1 - (elBgParsed.a || 1))), g: Math.round(elBgParsed.g * (elBgParsed.a || 1) + parentBg.g * (1 - (elBgParsed.a || 1))), b: Math.round(elBgParsed.b * (elBgParsed.a || 1) + parentBg.b * (1 - (elBgParsed.a || 1))) } : parentBg) : rgbStr(parentBg),
+        parentBg: rgbStr(parentBg),
+        cssBgRatio: cssBgRatio,
+        hasBorder: hasBorder,
+        hasOutline: hasOutline,
+        hasShadow: hasShadow,
+        borderColor: hasBorder ? s.borderColor : '',
+        bbox: null
+      };
+      trackBbox(el, _beEntry, 'bbox');
+      bgEdgePairs.push(_beEntry);
+    });
+    // Also check container elements with distinct backgrounds (cards, sections, etc.)
+    for (var _bei = 0; _bei < allElements.length && bgEdgePairs.length < 80; _bei++) {
+      var _bel = allElements[_bei];
+      if (!isVisible(_bel) || isDecorative(_bel)) continue;
+      var _bRect = _bel.getBoundingClientRect();
+      if (_bRect.width < 40 || _bRect.height < 30) continue;
+      var _bSel = cssSelector(_bel);
+      if (bgEdgeSeen.has(_bSel)) continue;
+      var _bS = getComputedStyle(_bel);
+      var _bBg = _bS.backgroundColor;
+      if (!_bBg || _bBg === 'rgba(0, 0, 0, 0)' || _bBg === 'transparent') continue;
+      var _bC = parseColor(_bBg);
+      if (!_bC || _bC.a < 0.3) continue;
+      // Must have padding or border-radius (signals a visual container, not just a wrapper)
+      var _hasPad = parseFloat(_bS.paddingTop) > 4 || parseFloat(_bS.paddingLeft) > 4;
+      var _hasRadius = parseFloat(_bS.borderRadius) > 0;
+      if (!_hasPad && !_hasRadius) continue;
+      bgEdgeSeen.add(_bSel);
+      var _pBg2 = { r: 255, g: 255, b: 255 };
+      var _pn2 = _bel.parentElement;
+      while (_pn2 && _pn2 !== document.documentElement) {
+        var _pBgStr2 = getComputedStyle(_pn2).backgroundColor;
+        var _pC2 = parseColor(_pBgStr2);
+        if (_pC2 && _pC2.a >= 0.5) { _pBg2 = { r: _pC2.r, g: _pC2.g, b: _pC2.b }; break; }
+        _pn2 = _pn2.parentElement;
+      }
+      var _blended2 = { r: Math.round(_bC.r * _bC.a + _pBg2.r * (1 - _bC.a)), g: Math.round(_bC.g * _bC.a + _pBg2.g * (1 - _bC.a)), b: Math.round(_bC.b * _bC.a + _pBg2.b * (1 - _bC.a)) };
+      var _ratio2 = Math.round(contrastRatio(_blended2, _pBg2) * 100) / 100;
+      bgEdgePairs.push({
+        selector: _bSel, element: _bel.tagName.toLowerCase(),
+        text: (_bel.textContent || '').trim().substring(0, 40),
+        elBg: rgbStr(_blended2), parentBg: rgbStr(_pBg2),
+        cssBgRatio: _ratio2,
+        hasBorder: _bS.borderStyle !== 'none' && parseFloat(_bS.borderWidth) >= 1,
+        hasOutline: false,
+        hasShadow: _bS.boxShadow && _bS.boxShadow !== 'none',
+        borderColor: _bS.borderStyle !== 'none' ? _bS.borderColor : '',
+        bbox: null
+      });
+      trackBbox(_bel, bgEdgePairs[bgEdgePairs.length - 1], 'bbox');
+    }
+    data.colors.bgEdgePairs = bgEdgePairs;
 
     var transitionSet = new Set();
     for (var i = 0; i < allElements.length && transitionSet.size < 20; i++) { var t = getComputedStyle(allElements[i]).transitionDuration; if (t && t !== '0s') transitionSet.add(t); }
