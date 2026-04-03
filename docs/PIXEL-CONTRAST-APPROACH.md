@@ -1,56 +1,25 @@
 # Pixel Contrast Verification — Approach Reference
 
-> **TL;DR:** Capture the whole page twice with domToCanvas (original + mask), detect text boundaries via 4-connected neighbor check, sample FG colors 0.5–1.5px inside and BG colors 3–4px outside the boundary, group connected pixels, average colors per group, calculate WCAG contrast ratio.
-
-## What We Learned (Investigation Log)
-
-### Problem: Mask misalignment on nav bar elements
-- The tokenmade test page nav uses Tailwind `fixed top-0 flex items-center`
-- The saved HTML referenced external `/_next/static/css/` files that don't load in srcdoc iframe
-- **Without CSS, flex/fixed/centering don't apply** — text renders at default block positions
-- This was the primary cause of mask offset (text at top-left of bbox instead of centered)
-
-### fillText fallback is fundamentally broken
-- The analyzer's fillText fallback renders text at `(0,0)` within a bbox-sized canvas
-- Even with padding/flex-centering corrections, it can never match real DOM rendering:
-  - Line breaking differs from browser layout
-  - Font metrics differ between fillText and CSS rendering
-  - No support for flex gap, margin collapse, pseudo-elements, etc.
-- **Decision: abandon fillText, use domToCanvas for masks**
-
-### Edge detection (Roberts/Sobel/etc.) smudges
-- Convolution-based edge detectors widen the boundary by 1-2px
-- For small text this is significant — edges bleed into each other
-- **Decision: use simple 4-connected boundary detection** (is this pixel FG and neighbor BG?)
-
-### Background must be transparent, not white
-- Setting `background: white` on all elements makes overlapping elements (gradient overlays, decorative shapes) render as solid white, blocking text beneath
-- **Decision: `background: transparent` on all elements, `background: white` only on `<html>`**
-- Canvas naturally shows white where nothing is rendered
-
-### Scale matters for small text
-- At 0.5x scale, small text characters lose detail on diagonals and curves
-- At 2x scale, what was anti-aliased at 1x becomes distinct dark/light pixels
-- **Decision: capture at 2x for half-pixel edge accuracy**
+> **TL;DR:** Capture the page twice with domToCanvas (original at 1.5x + text mask), detect text boundaries via 4-connected neighbor check, sample FG at exactly dist=2 inside boundary, BG at dist 2-4 outside, cluster-average FG colors, match each FG pixel to nearest BG cluster, compute WCAG contrast ratio.
 
 ## Pipeline (7 Steps)
 
 ### Step 1: Capture original page
 ```
-domToCanvas(document.documentElement, { scale: 2.0 })
-→ origCanvas (for color sampling)
+domToCanvas(document.documentElement, { scale: 1.5 })
+→ screenshot (WebP 0.8 quality, for color sampling)
 ```
 
-### Step 2: Apply mask CSS + capture mask
+### Step 2: Apply mask CSS + capture per-layer masks
 ```css
 *, *::before, *::after {
-  color: #000 !important;
+  color: #fff !important;
   background: transparent !important;
   background-image: none !important;
   border-color: transparent !important;
   box-shadow: none !important;
   text-shadow: none !important;
-  -webkit-text-fill-color: #000 !important;
+  -webkit-text-fill-color: #fff !important;
   opacity: 1 !important;
   transition: none !important;
   animation: none !important;
@@ -58,17 +27,12 @@ domToCanvas(document.documentElement, { scale: 2.0 })
 html { background: #fff !important; }
 img, svg, video, canvas, picture, iframe { opacity: 0 !important; }
 ```
-```
-domToCanvas(document.documentElement, { scale: 2.0 })
-→ maskCanvas (for boundary detection)
-```
-Remove mask CSS immediately after capture.
+Elements are layered by z-order. Each layer captures its text as white-on-white with text visible as dark pixels.
 
 ### Step 3: Extract binary mask
 ```
-For each pixel: avg(R, G, B) < 180 → mask[i] = 1 (foreground/text)
+For each pixel in layer mask: avg(R, G, B) < 180 → mask[i] = 1 (foreground/text)
 ```
-Threshold 180 at 2x scale captures text cleanly without picking up light artifacts.
 
 ### Step 4: Boundary detection (4-connected)
 ```
@@ -83,43 +47,63 @@ No convolution. No smudging. Exact pixel boundary.
 ### Step 5: BFS distance from boundary
 ```
 Initialize: all boundary pixels → dist = 0, queue
-BFS flood fill: dist[neighbor] = dist[current] + 1, up to MAX_DIST = 10
+BFS flood fill: dist[neighbor] = dist[current] + 1, up to MAX_DIST = 7
 ```
 
-### Step 6: Zone classification + connected component grouping
+### Step 6: Zone classification
 ```
-FG sample zone: mask = 1 AND dist 1–3  (@2x = 0.5–1.5 display px inside)
-BG sample zone: mask = 0 AND dist 6–8  (@2x = 3–4 display px outside)
+FG zone: exactly dist=2 inside boundary (single-pixel inset line)
+  - Tight space (3+ boundary cardinals): promote to FG directly
+  - Fallback for thin strokes: deepest available inside pixel
+BG zone: dist 2-4 outside boundary (thin ring)
+  - Extends outside bbox via padding area sampling
+  - Clustered into 4px grid cells, averaged per cell
 ```
-- FG is constrained to inside the bbox for per-element display
-- **BG can extend outside the bbox** — the background color at 3-4px away is what the eye sees
-- Connected component labeling via flood fill (8-connected) groups adjacent FG/BG pixels
-- Each FG group is matched to the nearest BG group by centroid distance
 
-### Step 7: Color averaging + contrast calculation
+FG cluster averaging: each FG pixel's color = average of nearby FG pixels within 6px radius.
+FG outlier removal: reject pixels with luminance >40 from median.
+Each FG pixel → matched to closest BG cluster by distance.
+
+### Step 7: Contrast calculation
 ```
-For each group: average R, G, B from the ORIGINAL screenshot at those pixel positions
-For each FG/BG pair: WCAG contrast ratio = (L1 + 0.05) / (L2 + 0.05)
+For each FG pixel: ratio = WCAG contrast(smoothedFG, closestBG)
+Report: worst, P10, median, P90, best ratios
+Threshold: P10 ratio used for pass/fail determination
 ```
+
+## BBox Edge Contrast (v42.0)
+
+Separate from text contrast. Checks if interactive/container elements visually stand out:
+- Sample inner strip (3px inside bbox edge) and outer strip (5px outside)
+- Average inner vs outer colors → compute contrast ratio
+- Warning threshold: 1.15:1 (elements with border/shadow/outline exempt)
+- Severity: WARNING only (not error) since border/outline can provide distinction
 
 ## Viewer Display Rules
-- Don't show all FG/BG points at once (too noisy)
-- On element interaction, show FG pixels inside that element's bbox
-- BG pixels for that element can extend outside the bbox
-- Color-code: red = boundary, orange = FG sample, green = BG sample
-- Tooltip: contrast ratio, PASS/AA-lg/FAIL, color swatches
+- On hover over a verify rect, show nearest FG/BG pair with color swatches
+- 5 percentile dots: worst, P10, median, P90, best (with pair-specific tooltips)
+- Right-click on verify rect cycles debug overlay: none → mask → zones
+- BBox edge warnings shown as dashed yellow rects with "edge X:1" labels
 
 ## Key Constants
 | Constant | Value | Rationale |
 |----------|-------|-----------|
-| SCALE | 2.0 | Half-pixel accuracy for small text |
-| Mask threshold | 180 | Clean text detection at 2x |
-| FG zone | dist 1–3 @2x | 0.5–1.5 display px inside boundary |
-| BG zone | dist 6–8 @2x | 3–4 display px outside (thin ring) |
-| BFS max | 10 | Enough for BG zone + margin |
+| SCREENSHOT_SCALE | 1.5 | Good text AA resolution without excessive memory |
+| SCREENSHOT_QUALITY | 0.8 | WebP quality (PNG tested, no improvement) |
+| FG_IDEAL | 2 | 2px inside boundary — skips AA fringe |
+| BG_DIST_MIN | 2 | Background ring starts 2px outside |
+| BG_DIST_MAX | 4 | Background ring ends 4px outside |
+| BG_SEARCH_R | 12 | Max radius for BG cluster matching |
+| FG_CLUSTER_R | 6 | FG color averaging radius |
+| BG_CELL | 4 | BG pixel clustering grid size |
+| LUM_THRESHOLD | 40 | FG outlier rejection (luminance from median) |
+| EDGE_INNER_DIST | 3 | BBox edge: sample 3px inside |
+| EDGE_OUTER_DIST | 5 | BBox edge: sample 5px outside |
+| EDGE_WARN_RATIO | 1.15 | BBox edge: below this = blends into bg |
 
 ## Files
-- `analyzer-iframe.js` — mask capture (Phase B CSS, domToCanvas)
-- `analyzer-contrast-verify.js` — pixel contrast pipeline (this rewrite)
-- `analyzer-viewer.js` — debug overlay display
-- `docs/tests/test-page-small.html` — test page with interactive overlay prototype
+- `analyzer-iframe.js` — screenshot + mask capture pipeline
+- `analyzer-contrast-verify.js` — pixel contrast verification (boundary-based + bbox edge)
+- `analyzer-viewer.js` — viewer overlay, debug layers, tooltips
+- `analyzer-snippet-screenshots.js` — console snippet with screenshot capture
+- `analyzer-extract.js` — DOM data extraction (bgEdgePairs collection)
