@@ -311,11 +311,9 @@ window.MilgContrastVerify = (function() {
     if (w < 4 || h < 4) return null;
 
     // Constants — scaled with screenshot resolution (1.5x)
-    var FG_IDEAL_MIN = 2;  // prefer pixels at least 2px inside boundary (skip AA)
-    var FG_HARD_MIN = 1;   // but accept 1px inside for thin strokes
-    var FG_MAX = 6;        // don't go deeper than 6px
-    var BG_DIST_MIN = 5;   // BG ring: 5-7px outside boundary
-    var BG_DIST_MAX = 7;
+    var FG_IDEAL = 2;      // prefer 2px inside boundary (skip AA fringe)
+    var BG_DIST_MIN = 2;   // BG ring: 2-4px outside boundary (was 5-7, too far)
+    var BG_DIST_MAX = 4;
     var MAX_DIST = BG_DIST_MAX + 3;
     var FG_CLUSTER_R = 6;  // cluster averaging radius
 
@@ -339,83 +337,97 @@ window.MilgContrastVerify = (function() {
     // Step 3: BFS distance from boundary
     var dist = bfsBoundaryDist(cat, w, h, MAX_DIST);
 
-    // Step 4: Classify into zones with adaptive FG depth.
-    // For each mask pixel, determine the local stroke thickness by finding
-    // the max dist within a small neighborhood. Use the deepest available
-    // pixel (at least FG_HARD_MIN), preferring FG_IDEAL_MIN+ when available.
-    // This means thick strokes sample deep (clean colors) while thin strokes
-    // (corners of M, serifs) still get sampled at whatever depth exists.
+    // Step 4: Classify FG as a single-pixel inset line + BG ring.
+    //
+    // Strategy: for each mask pixel, pick it as FG only if it's at
+    // exactly the target depth for its location. Target depth =
+    // FG_IDEAL (2px) if the stroke is thick enough, else the deepest
+    // available (1px, or boundary for very thin strokes like small E/N).
+    //
+    // For tight spaces (boundary on 3+ cardinal sides), there's no room
+    // for inner pixels — use boundary pixels directly as FG.
 
-    // First pass: compute local max dist in a 5px radius for each mask pixel
-    var localMaxDist = new Uint8Array(w * h);
-    var LMR = 5; // local max radius
-    for (var y = 0; y < h; y++) {
-      for (var x = 0; x < w; x++) {
-        var mi = y * w + x;
-        if (!mask[mi]) continue;
-        var maxD = dist[mi];
-        // Check small neighborhood for deeper pixels
-        for (var dy = -LMR; dy <= LMR; dy++) {
-          var ny = y + dy; if (ny < 0 || ny >= h) continue;
-          for (var dx = -LMR; dx <= LMR; dx++) {
-            var nx = x + dx; if (nx < 0 || nx >= w) continue;
-            if (dx * dx + dy * dy > LMR * LMR) continue;
-            var ni = ny * w + nx;
-            if (mask[ni] && dist[ni] < 255 && dist[ni] > maxD) maxD = dist[ni];
-          }
-        }
-        localMaxDist[mi] = maxD;
-      }
-    }
-
-    // Second pass: classify using adaptive threshold
     var zone = new Uint8Array(w * h);
+
+    // Pass 1: classify BG
+    for (var i = 0; i < w * h; i++) {
+      if (!mask[i] && dist[i] >= BG_DIST_MIN && dist[i] <= BG_DIST_MAX) zone[i] = 3;
+      if (cat[i] === 1) zone[i] = 1; // boundary
+    }
+
+    // Pass 2: for each mask pixel, determine if it should be FG.
+    // Pick the pixel at exactly the ideal depth. If no pixel at that depth
+    // exists locally (thin stroke), pick the deepest available ≥ 1.
+    // For very tight spaces, promote boundary to FG.
     for (var y = 0; y < h; y++) {
       for (var x = 0; x < w; x++) {
         var mi = y * w + x;
+        if (!mask[mi] || cat[mi] === 1) continue;
         var dd = dist[mi];
-        if (cat[mi] === 1) { zone[mi] = 1; continue; } // boundary
-        if (!mask[mi]) {
-          if (dd >= BG_DIST_MIN && dd <= BG_DIST_MAX) zone[mi] = 3; // BG
-          continue;
+        if (dd < 1 || dd > 255) continue;
+
+        // Count boundary pixels on cardinal sides (tight space detection)
+        var boundaryCardinals = 0;
+        if (y > 0 && cat[(y-1)*w+x] === 1) boundaryCardinals++;
+        if (y < h-1 && cat[(y+1)*w+x] === 1) boundaryCardinals++;
+        if (x > 0 && cat[mi-1] === 1) boundaryCardinals++;
+        if (x < w-1 && cat[mi+1] === 1) boundaryCardinals++;
+
+        if (boundaryCardinals >= 3) {
+          // Very tight space — boundary on 3+ sides, use this pixel as FG
+          zone[mi] = 2;
+        } else if (dd === FG_IDEAL) {
+          // At ideal depth — always use
+          zone[mi] = 2;
         }
-        // FG: adapt min depth to local stroke thickness
-        var localMax = localMaxDist[mi];
-        var effectiveMin = localMax >= FG_IDEAL_MIN ? FG_IDEAL_MIN : FG_HARD_MIN;
-        if (dd >= effectiveMin && dd <= FG_MAX) zone[mi] = 2; // FG
       }
     }
 
-    // Fallback: if still no FG, promote deepest inside or boundary pixels
+    // Pass 3: fallback for areas with no FG at ideal depth (thin strokes).
+    // For each boundary pixel, check if any FG pixel exists within 3px.
+    // If not, promote the deepest inside pixel adjacent to that boundary.
     var fgCount = 0;
     for (var i = 0; i < w * h; i++) { if (zone[i] === 2) fgCount++; }
+
     if (fgCount === 0) {
+      // No FG at all — promote deepest inside or boundary
       var maxInnerDist = 0;
       for (var i = 0; i < w * h; i++) {
-        if (mask[i] && cat[i] === 2 && dist[i] < 255 && dist[i] > maxInnerDist) maxInnerDist = dist[i];
+        if (mask[i] && cat[i] !== 1 && dist[i] < 255 && dist[i] > maxInnerDist) maxInnerDist = dist[i];
       }
       if (maxInnerDist >= 1) {
-        var promoteMin = Math.max(1, maxInnerDist - 1);
         for (var i = 0; i < w * h; i++) {
-          if (mask[i] && dist[i] >= promoteMin && dist[i] <= maxInnerDist) zone[i] = 2;
+          if (mask[i] && dist[i] === maxInnerDist) zone[i] = 2;
         }
       } else {
+        // 1px wide text — boundary is all we have
         for (var i = 0; i < w * h; i++) { if (cat[i] === 1) zone[i] = 2; }
       }
-    }
-
-    // Step 4c: Thin FG — remove FG pixels that have FG neighbors on all 4
-    // cardinal directions (top, right, bottom, left). These are deep interior
-    // pixels that add nothing to edge contrast. Pixels at corners/turns survive
-    // because they're missing FG on at least one cardinal side.
-    // Single pass — no iteration needed since we only check cardinals.
-    for (var y = 1; y < h - 1; y++) {
-      for (var x = 1; x < w - 1; x++) {
-        var mi = y * w + x;
-        if (zone[mi] !== 2) continue;
-        if (zone[(y-1)*w+x] === 2 && zone[(y+1)*w+x] === 2 &&
-            zone[mi-1] === 2 && zone[mi+1] === 2) {
-          zone[mi] = 0; // has FG on all 4 cardinal sides → interior, remove
+    } else {
+      // Check for boundary pixels without nearby FG — promote dist=1 pixels there
+      for (var y = 0; y < h; y++) {
+        for (var x = 0; x < w; x++) {
+          if (cat[y * w + x] !== 1) continue;
+          // Check 3px radius for any FG pixel
+          var hasFgNearby = false;
+          for (var dy = -3; dy <= 3 && !hasFgNearby; dy++) {
+            var ny = y + dy; if (ny < 0 || ny >= h) continue;
+            for (var dx = -3; dx <= 3 && !hasFgNearby; dx++) {
+              var nx = x + dx; if (nx < 0 || nx >= w) continue;
+              if (zone[ny * w + nx] === 2) hasFgNearby = true;
+            }
+          }
+          if (!hasFgNearby) {
+            // No FG near this boundary — promote adjacent inside pixels at dist 1
+            for (var dy = -1; dy <= 1; dy++) {
+              var ny = y + dy; if (ny < 0 || ny >= h) continue;
+              for (var dx = -1; dx <= 1; dx++) {
+                var nx = x + dx; if (nx < 0 || nx >= w) continue;
+                var ni = ny * w + nx;
+                if (mask[ni] && dist[ni] >= 1 && zone[ni] === 0) zone[ni] = 2;
+              }
+            }
+          }
         }
       }
     }
@@ -475,7 +487,7 @@ window.MilgContrastVerify = (function() {
 
     // Search radius: FG can be at most FG_MAX inside, BG at BG_DIST_MAX outside.
     // Add margin for diagonal paths. Always local to the text edge.
-    var BG_SEARCH_R = FG_MAX + BG_DIST_MAX + 4; // ~19px
+    var BG_SEARCH_R = FG_IDEAL + BG_DIST_MAX + 6; // ~12px
 
     // Collect all FG pixel positions + raw colors
     var allFg = []; // [{idx, lx, ly, r, g, b}]
