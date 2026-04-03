@@ -314,13 +314,19 @@ window.MilgIframe = (function() {
                     'var bw=Math.min(Math.round(pe.bbox.width*_sc),mc.width-bx);' +
                     'var bh=Math.min(Math.round(pe.bbox.height*_sc),mc.height-by);' +
                     'if(bw<2||bh<2)return;' +
-                    // Diagnostic: log fixed/sticky element positions for mask alignment debugging
+                    // Diagnostic: log element positions + parent styles for mask alignment debugging
                     'try{var _cs=getComputedStyle(pe.el);' +
-                      'if(_cs.position==="fixed"||_cs.position==="sticky"){' +
+                      'var _par=pe.el.parentElement;var _pcs=_par?getComputedStyle(_par):null;' +
+                      'if(_cs.position==="fixed"||_cs.position==="sticky"||(_pcs&&_pcs.display.indexOf("flex")>=0)){' +
                         'var _bcr=pe.el.getBoundingClientRect();' +
-                        'console.log("[mask-diag] "+_cs.position+" el: bbox="+JSON.stringify(pe.bbox)+' +
-                          '" bcr={top:"+_bcr.top+",left:"+_bcr.left+"} scrollY="+window.scrollY+' +
-                          '" extract="+bx+","+by+","+bw+"x"+bh+" canvas="+mc.width+"x"+mc.height+' +
+                        'console.log("[mask-diag] el=<"+pe.el.tagName.toLowerCase()+"> pos="+_cs.position+' +
+                          '" bbox="+JSON.stringify(pe.bbox)+' +
+                          '" bcr={t:"+Math.round(_bcr.top)+",l:"+Math.round(_bcr.left)+"} scrollY="+window.scrollY+' +
+                          '" extract="+bx+","+by+","+bw+"x"+bh+' +
+                          '" parent=<"+(_par?_par.tagName.toLowerCase():"?")+"> disp="+(_pcs?_pcs.display:"?")+' +
+                          '" ai="+(_pcs?_pcs.alignItems:"?")+' +
+                          '" parentPos="+(_pcs?_pcs.position:"?")+' +
+                          '" pad="+_cs.paddingTop+"/"+_cs.paddingLeft+' +
                           '" text=\\""+((pe.pair.text||"").substring(0,30))+"\\"")}' +
                     '}catch(e){}' +
                     'try{var px=mCtx.getImageData(bx,by,bw,bh).data;' +
@@ -331,6 +337,19 @@ window.MilgIframe = (function() {
                         'if((px[i]+px[i+1]+px[i+2])/3<240)bmp[y*bw+x]=1' +
                       '}}' +
                       'var _dk=0;for(var _b=0;_b<bmp.length;_b++)if(bmp[_b])_dk++;' +
+                      // Diagnostic: check where dark pixels are concentrated within bbox
+                      'if(_dk>0){' +
+                        'var _minY=bh,_maxY=0,_minX=bw,_maxX=0;' +
+                        'for(var _dy=0;_dy<bh;_dy++)for(var _dx=0;_dx<bw;_dx++){' +
+                          'if(bmp[_dy*bw+_dx]){if(_dy<_minY)_minY=_dy;if(_dy>_maxY)_maxY=_dy;if(_dx<_minX)_minX=_dx;if(_dx>_maxX)_maxX=_dx}' +
+                        '}' +
+                        'var _midY=(_minY+_maxY)/2;var _expectMidY=bh/2;' +
+                        'if(Math.abs(_midY-_expectMidY)>bh*0.2){' +
+                          'console.warn("[mask-pos] OFFSET text=\\""+((pe.pair.text||"").substring(0,25))+"\\" darkPx="+_dk+' +
+                            '" region="+_minX+","+_minY+"→"+_maxX+","+_maxY+" mid="+Math.round(_midY)+" expected="+Math.round(_expectMidY)+' +
+                            '" bbox="+bw+"x"+bh)' +
+                        '}' +
+                      '}' +
                       // Fallback: if domToCanvas failed to render text, use canvas.fillText
                       'if(_dk===0&&bw>3&&pe.pair.text){' +
                         'try{var cs=getComputedStyle(pe.el);' +
@@ -340,16 +359,46 @@ window.MilgIframe = (function() {
                           '_fx.fillStyle="#000";' +
                           '_fx.font=cs.fontStyle+" "+cs.fontWeight+" "+_fs+"px "+cs.fontFamily;' +
                           '_fx.textBaseline="top";' +
+                          // Account for padding and alignment within bbox
+                          'var _pl=(parseFloat(cs.paddingLeft)||0)*_sc;' +
+                          'var _pt=(parseFloat(cs.paddingTop)||0)*_sc;' +
+                          'var _pr=(parseFloat(cs.paddingRight)||0)*_sc;' +
+                          'var _ta=cs.textAlign;' +
                           // Render text — handle multi-line by splitting on natural wrapping
                           'var _txt=pe.pair.text.replace(/\\[placeholder\\] /,"");' +
                           'var _lh=parseFloat(cs.lineHeight)*_sc||_fs*1.2;' +
-                          'var _words=_txt.split(/\\s+/);var _line="";var _ty=0;' +
+                          'var _contentW=bw-_pl-_pr;' +
+                          'var _words=_txt.split(/\\s+/);var _lines=[];var _line="";' +
                           'for(var _w=0;_w<_words.length;_w++){' +
                             'var _test=_line?_line+" "+_words[_w]:_words[_w];' +
-                            'if(_fx.measureText(_test).width>bw&&_line){' +
-                              '_fx.fillText(_line,0,_ty);_line=_words[_w];_ty+=_lh' +
+                            'if(_fx.measureText(_test).width>_contentW&&_line){' +
+                              '_lines.push(_line);_line=_words[_w]' +
                             '}else{_line=_test}' +
-                          '}_fx.fillText(_line,0,_ty);' +
+                          '}_lines.push(_line);' +
+                          // Calculate vertical offset — check flex centering on parent
+                          'var _totalH=_lines.length*_lh;' +
+                          'var _tyStart=_pt;' +
+                          'var _par=pe.el.parentElement;var _pcs=_par?getComputedStyle(_par):null;' +
+                          'if(_pcs){' +
+                            'if(_pcs.display.indexOf("flex")>=0&&_pcs.alignItems==="center"){' +
+                              '_tyStart=Math.max(0,(bh-_totalH)/2)' +
+                            '}else if(bh>_totalH+_pt*2){' +
+                              '_tyStart=_pt' +
+                            '}' +
+                          '}' +
+                          // Draw each line with proper alignment
+                          'for(var _li2=0;_li2<_lines.length;_li2++){' +
+                            'var _lw=_fx.measureText(_lines[_li2]).width;' +
+                            'var _tx=_pl;' +
+                            'if(_ta==="center")_tx=(_contentW-_lw)/2+_pl;' +
+                            'else if(_ta==="right"||_ta==="end")_tx=_contentW-_lw+_pl;' +
+                            '_fx.fillText(_lines[_li2],_tx,_tyStart+_li2*_lh)' +
+                          '};' +
+                          // Log fillText fallback details for debugging
+                          'console.log("[fillText-diag] el=<"+pe.el.tagName.toLowerCase()+"> text=\\""+_txt.substring(0,30)+"\\""+' +
+                            '" bbox="+bw+"x"+bh+" pad="+_pl+","+_pt+" align="+_ta+' +
+                            '" parent="+(_pcs?_pcs.display+"/"+_pcs.alignItems:"none")+' +
+                            '" tyStart="+_tyStart+" lines="+_lines.length);' +
                           // Re-read as bitmap
                           'var _fpx=_fx.getImageData(0,0,bw,bh).data;' +
                           'bmp=new Uint8Array(bw*bh);' +
