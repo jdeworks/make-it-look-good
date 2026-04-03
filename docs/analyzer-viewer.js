@@ -1290,12 +1290,11 @@ window.MilgViewer = (function() {
         var fgCol = 'rgb(' + nearest.r + ',' + nearest.g + ',' + nearest.b + ')';
         var bgCol = 'rgb(' + nearest.bgR + ',' + nearest.bgG + ',' + nearest.bgB + ')';
         var ratio = nearest.ratio || '?';
-        var matches = nearest.matchCount || 1;
         var passColor = ratio >= 4.5 ? '#22c55e' : ratio >= 3 ? '#eab308' : '#ef4444';
         var passLabel = ratio >= 4.5 ? 'PASS' : ratio >= 3 ? 'AA-lg' : 'FAIL';
 
         localBlock = '<div style="margin-top:6px;padding:6px 8px;background:rgba(0,0,0,0.04);border-radius:4px">' +
-          '<div style="font-size:10px;color:#64748b;margin-bottom:4px">Hovered FG → worst of ' + matches + ' BG cluster' + (matches > 1 ? 's' : '') + '</div>' +
+          '<div style="font-size:10px;color:#64748b;margin-bottom:4px">Hovered pair</div>' +
           '<div style="display:flex;align-items:center;gap:8px">' +
             '<div style="text-align:center"><span style="' + sw + 'background:' + fgCol + '"></span><div style="font-size:8px;color:#94a3b8;margin-top:2px">FG</div></div>' +
             '<div style="text-align:center"><span style="' + sw + 'background:' + bgCol + '"></span><div style="font-size:8px;color:#94a3b8;margin-top:2px">BG</div></div>' +

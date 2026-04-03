@@ -40564,12 +40564,11 @@ window.MilgViewer = (function() {
         var fgCol = 'rgb(' + nearest.r + ',' + nearest.g + ',' + nearest.b + ')';
         var bgCol = 'rgb(' + nearest.bgR + ',' + nearest.bgG + ',' + nearest.bgB + ')';
         var ratio = nearest.ratio || '?';
-        var matches = nearest.matchCount || 1;
         var passColor = ratio >= 4.5 ? '#22c55e' : ratio >= 3 ? '#eab308' : '#ef4444';
         var passLabel = ratio >= 4.5 ? 'PASS' : ratio >= 3 ? 'AA-lg' : 'FAIL';
 
         localBlock = '<div style="margin-top:6px;padding:6px 8px;background:rgba(0,0,0,0.04);border-radius:4px">' +
-          '<div style="font-size:10px;color:#64748b;margin-bottom:4px">Hovered FG → worst of ' + matches + ' BG cluster' + (matches > 1 ? 's' : '') + '</div>' +
+          '<div style="font-size:10px;color:#64748b;margin-bottom:4px">Hovered pair</div>' +
           '<div style="display:flex;align-items:center;gap:8px">' +
             '<div style="text-align:center"><span style="' + sw + 'background:' + fgCol + '"></span><div style="font-size:8px;color:#94a3b8;margin-top:2px">FG</div></div>' +
             '<div style="text-align:center"><span style="' + sw + 'background:' + bgCol + '"></span><div style="font-size:8px;color:#94a3b8;margin-top:2px">BG</div></div>' +
@@ -42281,7 +42280,6 @@ window.MilgContrastVerify = (function() {
           return { x: p.x, y: p.y, r: fgColors[i].r, g: fgColors[i].g, b: fgColors[i].b,
                    bgR: bgColors[i].r, bgG: bgColors[i].g, bgB: bgColors[i].b,
                    bgX: bgPoints[i].x, bgY: bgPoints[i].y,
-                   matchCount: p.matchCount || 1,
                    ratio: Math.round(r * 100) / 100 };
         }),
         bg: bgPoints.map(function(p, i) {
@@ -42565,55 +42563,68 @@ window.MilgContrastVerify = (function() {
       }
     }
 
-    // Step 5d: Each FG pixel → ALL BG clusters in range → track worst/best per FG.
-    // Only store ONE summary entry per FG pixel (worst BG match) to keep data lean.
-    // All pair ratios collected for P10/median/worst stats.
+    // Step 5d: Each FG pixel → ALL BG clusters in range → store each pair.
+    // With the tight search radius (~18px) the pair count stays manageable.
     var fgPoints = [], fgColors = [];
     var bgPoints = [], bgColors = [];
     var allPairRatios = [];
     var worstRatio = 99, bestRatio = 0, worstBg = null, worstBgPt = null;
     var searchR2 = BG_SEARCH_R * BG_SEARCH_R;
+    var unmatchedFg = 0;
 
     for (var fi = 0; fi < fgClean.length; fi++) {
       var fp = fgClean[fi];
       var gcx = Math.floor((fp.lx + PAD) / bgClustCellSz);
       var gcy = Math.floor((fp.ly + PAD) / bgClustCellSz);
 
-      // Find all BG clusters in range, track worst/best for this FG pixel
-      var fgWorstR = 99, fgBestR = 0;
-      var fgWorstBc = null, fgBestBc = null;
       var matchCount = 0;
+      var nearestBc = null, nearestD2 = Infinity;
 
-      for (var gdy = -1; gdy <= 1; gdy++) {
+      // Search ±2 cells (wider grid scan to catch edge cases)
+      for (var gdy = -2; gdy <= 2; gdy++) {
         var ry = gcy + gdy; if (ry < 0 || ry >= bgClustRows) continue;
-        for (var gdx = -1; gdx <= 1; gdx++) {
+        for (var gdx = -2; gdx <= 2; gdx++) {
           var rx = gcx + gdx; if (rx < 0 || rx >= bgClustCols) continue;
           var cell = bgClustGrid[ry * bgClustCols + rx];
           for (var ki = 0; ki < cell.length; ki++) {
             var bc = bgCells[cell[ki]];
             var ddx = bc.cx - fp.lx, ddy = bc.cy - fp.ly;
-            if (ddx * ddx + ddy * ddy > searchR2) continue;
+            var d2 = ddx * ddx + ddy * ddy;
+
+            // Track nearest BG cluster regardless (for fallback)
+            if (d2 < nearestD2) { nearestD2 = d2; nearestBc = bc; }
+
+            if (d2 > searchR2) continue;
 
             var ratio = contrastRatio(fp, bc);
             allPairRatios.push(ratio);
             matchCount++;
 
-            if (ratio < fgWorstR) { fgWorstR = ratio; fgWorstBc = bc; }
-            if (ratio > fgBestR) { fgBestR = ratio; fgBestBc = bc; }
+            fgPoints.push({ x: bx + fp.lx, y: by + fp.ly });
+            fgColors.push(fp);
+            bgPoints.push({ x: bx + bc.cx, y: by + bc.cy });
+            bgColors.push(bc);
+
+            if (ratio < worstRatio) { worstRatio = ratio; worstBg = bc; worstBgPt = { x: bx + bc.cx, y: by + bc.cy }; }
+            if (ratio > bestRatio) bestRatio = ratio;
           }
         }
       }
-      if (matchCount === 0) continue;
 
-      // Store one entry per FG pixel: worst BG match (for hover display)
-      fgPoints.push({ x: bx + fp.lx, y: by + fp.ly, matchCount: matchCount });
-      fgColors.push(fp);
-      bgPoints.push({ x: bx + fgWorstBc.cx, y: by + fgWorstBc.cy });
-      bgColors.push(fgWorstBc);
-
-      if (fgWorstR < worstRatio) { worstRatio = fgWorstR; worstBg = fgWorstBc; worstBgPt = { x: bx + fgWorstBc.cx, y: by + fgWorstBc.cy }; }
-      if (fgBestR > bestRatio) bestRatio = fgBestR;
+      // Fallback: if no BG in range, match to nearest BG cluster anyway
+      if (matchCount === 0 && nearestBc) {
+        var ratio = contrastRatio(fp, nearestBc);
+        allPairRatios.push(ratio);
+        fgPoints.push({ x: bx + fp.lx, y: by + fp.ly });
+        fgColors.push(fp);
+        bgPoints.push({ x: bx + nearestBc.cx, y: by + nearestBc.cy });
+        bgColors.push(nearestBc);
+        unmatchedFg++;
+        if (ratio < worstRatio) { worstRatio = ratio; worstBg = nearestBc; worstBgPt = { x: bx + nearestBc.cx, y: by + nearestBc.cy }; }
+        if (ratio > bestRatio) bestRatio = ratio;
+      }
     }
+    if (unmatchedFg > 0) console.log('[verify-boundary] ' + unmatchedFg + '/' + fgClean.length + ' FG pixels matched by fallback (nearest BG) for "' + (pair.text || '').substring(0, 25) + '"');
 
     if (allPairRatios.length === 0) {
       if (pair.text) console.log('[verify-boundary] No pairs for "' + pair.text.substring(0, 25) + '" fg=' + fgClean.length + ' bgClusters=' + bgCells.length);
