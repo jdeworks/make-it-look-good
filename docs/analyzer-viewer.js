@@ -1000,48 +1000,84 @@ window.MilgViewer = (function() {
       var dotR = _zoomLevel >= 2 ? 3 : 2;
       var colors = { worst: '#ef4444', P10: '#f97316', median: '#eab308', P90: '#22c55e', best: '#06b6d4' };
 
+      var sw = 'display:inline-block;width:18px;height:18px;border-radius:3px;border:1px solid rgba(128,128,128,0.3);vertical-align:middle;';
+
       picks.forEach(function(pt, idx) {
         var label = labels[idx];
         var col = colors[label] || '#94a3b8';
+        var fgCol = pt.r !== undefined ? 'rgb(' + pt.r + ',' + pt.g + ',' + pt.b + ')' : '#000';
+        var bgCol = pt.bgR !== undefined ? 'rgb(' + pt.bgR + ',' + pt.bgG + ',' + pt.bgB + ')' : '#fff';
+        var ratio = pt.ratio || '?';
+
+        // Hover group — wraps FG dot, BG dot, line so any part is hoverable
+        var group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        group.setAttribute('class', 'milg-sample-dot'); group.setAttribute('data-owner', owner);
+        group.style.cursor = 'pointer';
+
+        // Hit area (invisible wider line for easier hover)
+        if (pt.bgX !== undefined && pt.bgY !== undefined) {
+          var hitLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          hitLine.setAttribute('x1', pt.x); hitLine.setAttribute('y1', pt.y + secOff);
+          hitLine.setAttribute('x2', pt.bgX); hitLine.setAttribute('y2', pt.bgY + secOff);
+          hitLine.setAttribute('stroke', 'transparent'); hitLine.setAttribute('stroke-width', '8');
+          group.appendChild(hitLine);
+
+          // Visible line
+          var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          line.setAttribute('x1', pt.x); line.setAttribute('y1', pt.y + secOff);
+          line.setAttribute('x2', pt.bgX); line.setAttribute('y2', pt.bgY + secOff);
+          line.setAttribute('stroke', col); line.setAttribute('stroke-width', '0.5');
+          line.setAttribute('stroke-dasharray', '2 1'); line.setAttribute('opacity', '0.6');
+          line.setAttribute('pointer-events', 'none');
+          group.appendChild(line);
+
+          // BG dot
+          var bd = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          bd.setAttribute('cx', pt.bgX); bd.setAttribute('cy', pt.bgY + secOff);
+          bd.setAttribute('r', dotR * 0.7); bd.setAttribute('fill', 'none');
+          bd.setAttribute('stroke', col); bd.setAttribute('stroke-width', '1');
+          bd.setAttribute('pointer-events', 'none');
+          group.appendChild(bd);
+        }
 
         // FG dot
         var d = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         d.setAttribute('cx', pt.x); d.setAttribute('cy', pt.y + secOff);
         d.setAttribute('r', dotR); d.setAttribute('fill', col);
         d.setAttribute('stroke', '#fff'); d.setAttribute('stroke-width', '0.5');
-        d.setAttribute('class', 'milg-sample-dot'); d.setAttribute('data-owner', owner);
         d.setAttribute('pointer-events', 'none');
-        svg.appendChild(d);
-
-        // BG dot + line
-        if (pt.bgX !== undefined && pt.bgY !== undefined) {
-          var bd = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-          bd.setAttribute('cx', pt.bgX); bd.setAttribute('cy', pt.bgY + secOff);
-          bd.setAttribute('r', dotR * 0.7); bd.setAttribute('fill', 'none');
-          bd.setAttribute('stroke', col); bd.setAttribute('stroke-width', '1');
-          bd.setAttribute('class', 'milg-sample-dot'); bd.setAttribute('data-owner', owner);
-          bd.setAttribute('pointer-events', 'none');
-          svg.appendChild(bd);
-
-          var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-          line.setAttribute('x1', pt.x); line.setAttribute('y1', pt.y + secOff);
-          line.setAttribute('x2', pt.bgX); line.setAttribute('y2', pt.bgY + secOff);
-          line.setAttribute('stroke', col); line.setAttribute('stroke-width', '0.5');
-          line.setAttribute('stroke-dasharray', '2 1'); line.setAttribute('opacity', '0.6');
-          line.setAttribute('class', 'milg-sample-dot'); line.setAttribute('data-owner', owner);
-          line.setAttribute('pointer-events', 'none');
-          svg.appendChild(line);
-        }
+        group.appendChild(d);
 
         // Label
         var lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
         lbl.setAttribute('x', pt.x + dotR + 2); lbl.setAttribute('y', pt.y + secOff - 2);
         lbl.setAttribute('font-size', '7'); lbl.setAttribute('fill', col);
         lbl.setAttribute('font-family', 'system-ui'); lbl.setAttribute('font-weight', '700');
-        lbl.setAttribute('class', 'milg-sample-dot'); lbl.setAttribute('data-owner', owner);
         lbl.setAttribute('pointer-events', 'none');
-        lbl.textContent = label + ' ' + (pt.ratio || '?') + ':1';
-        svg.appendChild(lbl);
+        lbl.textContent = label + ' ' + ratio + ':1';
+        group.appendChild(lbl);
+
+        // Hover tooltip on this specific pair
+        group.addEventListener('mouseenter', function(e) {
+          hideTooltip();
+          var passColor = ratio >= 4.5 ? '#22c55e' : ratio >= 3 ? '#eab308' : '#ef4444';
+          var passLabel = ratio >= 4.5 ? 'PASS' : ratio >= 3 ? 'AA-lg' : 'FAIL';
+          _tooltip = document.createElement('div');
+          _tooltip.className = 'milg-viewer-tooltip';
+          _tooltip.innerHTML =
+            '<div style="font-size:10px;color:#64748b;margin-bottom:4px;font-weight:600">' + label.toUpperCase() + ' pair</div>' +
+            '<div style="display:flex;align-items:center;gap:8px">' +
+              '<div style="text-align:center"><span style="' + sw + 'background:' + fgCol + '"></span><div style="font-size:8px;color:#94a3b8;margin-top:2px">FG</div></div>' +
+              '<div style="text-align:center"><span style="' + sw + 'background:' + bgCol + '"></span><div style="font-size:8px;color:#94a3b8;margin-top:2px">BG</div></div>' +
+              '<div style="font-size:16px;font-weight:700;color:' + passColor + '">' + ratio + ':1</div>' +
+              '<div style="font-size:10px;font-weight:600;color:' + passColor + '">' + passLabel + '</div>' +
+            '</div>' +
+            '<div style="font-size:9px;color:#94a3b8;margin-top:4px">' + fgCol + ' on ' + bgCol + '</div>';
+          positionTooltip(e);
+        });
+        group.addEventListener('mouseleave', function() { hideTooltip(); });
+
+        svg.appendChild(group);
       });
     }
   }
