@@ -354,34 +354,30 @@ window.MilgContrastVerify = (function() {
       }
     }
 
-    // Step 4b: Small text FG fallback — when text strokes are too thin (1-2px),
-    // the FG zone (dist 1-2 inside) may be empty. In any 2x2 window that has
-    // boundary pixels but no FG pixels, promote the boundary pixels to FG.
-    var fgCount = 0, boundaryCount = 0;
-    for (var i = 0; i < w * h; i++) {
-      if (zone[i] === 2) fgCount++;
-      if (zone[i] === 1) boundaryCount++;
-    }
-    if (fgCount === 0 && boundaryCount > 0) {
-      // No FG at all — promote ALL boundary pixels to FG
+    // Step 4b: Small text FG fallback — when text strokes are too thin for
+    // the FG zone (dist FG_DIST_MIN-MAX), promote the deepest INSIDE pixels
+    // (highest dist from boundary while still in mask) to FG.
+    // Never use boundary pixels (dist=0) — they're AA-blended.
+    var fgCount = 0;
+    for (var i = 0; i < w * h; i++) { if (zone[i] === 2) fgCount++; }
+
+    if (fgCount === 0) {
+      // No FG pixels at the desired depth. Find the deepest inside pixels.
+      // These are mask pixels with the highest dist from boundary (most interior).
+      var maxInnerDist = 0;
       for (var i = 0; i < w * h; i++) {
-        if (zone[i] === 1) zone[i] = 2;
+        if (mask[i] && cat[i] === 2 && dist[i] < 255 && dist[i] > maxInnerDist) maxInnerDist = dist[i];
       }
-    } else if (boundaryCount > 0) {
-      // Scan 2x2 windows: if boundary pixels exist but no FG in the window, promote
-      for (var y = 0; y < h - 1; y++) {
-        for (var x = 0; x < w - 1; x++) {
-          var z00 = zone[y * w + x], z10 = zone[y * w + x + 1];
-          var z01 = zone[(y + 1) * w + x], z11 = zone[(y + 1) * w + x + 1];
-          var hasBoundary = (z00 === 1 || z10 === 1 || z01 === 1 || z11 === 1);
-          var hasFg = (z00 === 2 || z10 === 2 || z01 === 2 || z11 === 2);
-          if (hasBoundary && !hasFg) {
-            // Promote boundary pixels in this window to FG
-            if (z00 === 1) zone[y * w + x] = 2;
-            if (z10 === 1) zone[y * w + x + 1] = 2;
-            if (z01 === 1) zone[(y + 1) * w + x] = 2;
-            if (z11 === 1) zone[(y + 1) * w + x + 1] = 2;
-          }
+      // Promote mask pixels at dist >= max(1, maxInnerDist-1) — the deepest layer
+      var promoteMin = Math.max(1, maxInnerDist - 1);
+      if (maxInnerDist >= 1) {
+        for (var i = 0; i < w * h; i++) {
+          if (mask[i] && dist[i] >= promoteMin && dist[i] <= maxInnerDist) zone[i] = 2;
+        }
+      } else {
+        // Text is only 1px wide (all boundary, no inside) — use boundary as last resort
+        for (var i = 0; i < w * h; i++) {
+          if (cat[i] === 1) zone[i] = 2;
         }
       }
     }
