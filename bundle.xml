@@ -40499,30 +40499,68 @@ window.MilgViewer = (function() {
 
     _tooltip = document.createElement('div');
     _tooltip.className = 'milg-viewer-tooltip';
-    var sampleInfo = '';
-    if (vr.sampleCount) {
-      var swatchStyle = 'display:inline-block;width:12px;height:12px;border-radius:2px;vertical-align:middle;border:1px solid rgba(0,0,0,0.2);';
-      sampleInfo = '<div style="margin-top:4px;padding-top:4px;border-top:1px solid rgba(0,0,0,0.1);font-size:10px;color:#64748b">' +
-        '<span style="color:#06b6d4">\u25cf</span> ' + vr.sampleCount.fg + ' FG samples' +
-        ' &nbsp; <span style="color:#f97316">\u25cf</span> ' + vr.sampleCount.bg + ' BG samples' +
-        (vr.pixelFg ? '<br>Pixel FG: <span style="' + swatchStyle + 'background:' + vr.pixelFg + '"></span> ' + vr.pixelFg : '') +
-        (vr.pixelBgWorst ? '<br>BG worst: <span style="' + swatchStyle + 'background:' + vr.pixelBgWorst + '"></span> ' + vr.pixelBgWorst : '') +
-        (vr.pixelBgAvg ? '<br>BG avg: <span style="' + swatchStyle + 'background:' + vr.pixelBgAvg + '"></span> ' + vr.pixelBgAvg : '') +
-        (vr.bgVariance ? '<br>BG variance: ' + vr.bgVariance : '') +
+
+    var sw = 'display:inline-block;width:24px;height:24px;border-radius:4px;border:1px solid rgba(128,128,128,0.3);vertical-align:middle;';
+    var swSm = 'display:inline-block;width:14px;height:14px;border-radius:3px;border:1px solid rgba(128,128,128,0.3);vertical-align:middle;';
+    var needed = vr.neededRatio || 4.5;
+
+    // Pixel comparison — prominent swatches
+    var pixelBlock = '';
+    if (vr.pixelFg || vr.pixelBgWorst) {
+      var pRatio = vr.pixelRatio || '?';
+      var pPass = vr.pixelPasses;
+      var passLabel = pRatio >= 4.5 ? 'PASS' : pRatio >= 3 ? 'AA-lg' : 'FAIL';
+      var passColor = pRatio >= 4.5 ? '#22c55e' : pRatio >= 3 ? '#eab308' : '#ef4444';
+      pixelBlock = '<div style="margin-top:6px;padding:6px 8px;background:rgba(0,0,0,0.04);border-radius:4px">' +
+        '<div style="font-size:10px;color:#64748b;margin-bottom:4px">Pixel contrast (worst)</div>' +
+        '<div style="display:flex;align-items:center;gap:8px">' +
+          '<div style="text-align:center"><span style="' + sw + 'background:' + (vr.pixelFg || '#000') + '"></span><div style="font-size:8px;color:#94a3b8;margin-top:2px">FG</div></div>' +
+          '<div style="text-align:center"><span style="' + sw + 'background:' + (vr.pixelBgWorst || vr.pixelBgAvg || '#fff') + '"></span><div style="font-size:8px;color:#94a3b8;margin-top:2px">BG</div></div>' +
+          '<div style="font-size:14px;font-weight:700;color:' + passColor + '">' + pRatio + ':1</div>' +
+          '<div style="font-size:10px;font-weight:600;color:' + passColor + '">' + passLabel + '</div>' +
+        '</div>' +
+        (vr.pixelFg ? '<div style="font-size:9px;color:#94a3b8;margin-top:3px">FG ' + vr.pixelFg + '</div>' : '') +
+        (vr.pixelBgWorst ? '<div style="font-size:9px;color:#94a3b8">BG worst ' + vr.pixelBgWorst + '</div>' : '') +
+        (vr.pixelBgAvg && vr.pixelBgAvg !== vr.pixelBgWorst ? '<div style="font-size:9px;color:#94a3b8">BG avg ' + vr.pixelBgAvg + '</div>' : '') +
+      '</div>';
+
+      // Show P10 and best if different from worst
+      if (vr.pixelRatioP10 && vr.pixelRatioP10 !== vr.pixelRatio) {
+        pixelBlock += '<div style="margin-top:4px;font-size:10px;color:#64748b">' +
+          'P10: ' + vr.pixelRatioP10 + ':1 &middot; ' +
+          'Median: ' + (vr.pixelRatioMedian || '?') + ':1 &middot; ' +
+          'Best: ' + (vr.pixelRatioBest || '?') + ':1' +
         '</div>';
+      }
     }
+
+    // CSS comparison
+    var cssBlock = '<div style="display:flex;align-items:center;gap:6px;margin-top:4px">' +
+      '<span style="font-size:10px;color:#94a3b8;width:24px">CSS</span>' +
+      '<span style="' + swSm + 'background:' + (vr.cssFg || '') + '"></span>' +
+      '<span style="font-size:10px;color:#94a3b8">on</span>' +
+      '<span style="' + swSm + 'background:' + (vr.cssBg || '') + '"></span>' +
+      '<span style="font-size:11px">' + vr.cssRatio + ':1 ' +
+        (vr.cssPasses ? '<span style="color:#22c55e">pass</span>' : '<span style="color:#ef4444">fail</span>') +
+      '</span></div>';
+
+    // Sample counts + flags
+    var flagsBlock = '';
+    if (vr.sampleCount) {
+      flagsBlock = '<div style="font-size:9px;color:#94a3b8;margin-top:4px">' +
+        vr.sampleCount.fg + ' FG &middot; ' + vr.sampleCount.bg + ' BG samples';
+      if (vr.isVariableBg) flagsBlock += ' &middot; <span style="color:#eab308">variable bg</span>';
+      if (vr.bgVariance) flagsBlock += ' &middot; variance ' + vr.bgVariance;
+      flagsBlock += '</div>';
+    }
+    if (vr.crossesBoundary) {
+      flagsBlock += '<div style="font-size:10px;color:#ef4444;font-weight:600;margin-top:2px">' +
+        (vr.cssPasses && !vr.pixelPasses ? 'CSS passes but pixels fail' : 'CSS fails but pixels pass') + '</div>';
+    }
+
     _tooltip.innerHTML = '<div class="milg-viewer-tooltip-title">' + vr.selector + '</div>' +
       '<div class="milg-viewer-tooltip-detail">"' + (vr.text || '').substring(0, 40) + '"</div>' +
-      '<div style="margin-top:4px;font-size:11px">' +
-      'CSS: <span style="display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:middle;border:1px solid rgba(0,0,0,0.2);background:' + (vr.cssFg || '') + '"></span> on ' +
-      '<span style="display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:middle;border:1px solid rgba(0,0,0,0.2);background:' + (vr.cssBg || '') + '"></span> ' +
-      vr.cssRatio + ':1 ' + (vr.cssPasses ? '<span style="color:#22c55e">pass</span>' : '<span style="color:#ef4444">fail</span>') +
-      '<br>Pixel P10: ' + (vr.pixelRatioP10 || '?') + ':1 ' + (vr.pixelPasses ? '<span style="color:#22c55e">pass</span>' : '<span style="color:#ef4444">fail</span>') +
-      '<br>Pixel worst: ' + (vr.pixelRatio || '?') + ':1' +
-      (vr.pixelRatioBest && vr.pixelRatioBest !== vr.pixelRatio ? ' (best: ' + vr.pixelRatioBest + ':1)' : '') +
-      (vr.isVariableBg ? '<br><span style="color:#eab308">Variable background (gradient/image)</span>' : '') +
-      (vr.cssBgConfirmed === false ? '<br><span style="color:#f59e0b">CSS bg differs from actual pixels</span>' : '') +
-      '</div>' + sampleInfo;
+      cssBlock + pixelBlock + flagsBlock;
 
     positionTooltip(e);
   }
