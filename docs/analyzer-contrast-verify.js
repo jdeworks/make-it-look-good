@@ -287,6 +287,7 @@ window.MilgContrastVerify = (function() {
           return { x: p.x, y: p.y, r: fgColors[i].r, g: fgColors[i].g, b: fgColors[i].b,
                    bgR: bgColors[i].r, bgG: bgColors[i].g, bgB: bgColors[i].b,
                    bgX: bgPoints[i].x, bgY: bgPoints[i].y,
+                   bgIdx: p.bgIdx !== undefined ? p.bgIdx : -1,
                    ratio: Math.round(r * 100) / 100 };
         }),
         bg: bgPoints.map(function(p, i) {
@@ -519,18 +520,58 @@ window.MilgContrastVerify = (function() {
     // Fall back to all if too many rejected
     if (fgClean.length < allFg.length * 0.3) fgClean = fgSmoothed;
 
-    // Step 5c: Build BG spatial index
-    var bgCellSz = BG_SEARCH_R;
-    var bgGCols = Math.ceil((w + PAD * 2) / bgCellSz), bgGRows = Math.ceil((h + PAD * 2) / bgCellSz);
-    var bgGrid = new Array(bgGCols * bgGRows);
-    for (var gi = 0; gi < bgGrid.length; gi++) bgGrid[gi] = [];
+    // Step 5c: Cluster BG pixels into small 4px grid cells, average each cell.
+    // Each cell becomes one BG sample point with an averaged color.
+    var BG_CELL = 4; // 4px clusters (~2.7 CSS px at 1.5x scale)
+    var bgCellCols = Math.ceil((w + PAD * 2) / BG_CELL);
+    var bgCellRows = Math.ceil((h + PAD * 2) / BG_CELL);
+    var bgCells = []; // [{cx, cy, r, g, b, n}] — averaged BG clusters
+    var bgCellMap = new Array(bgCellCols * bgCellRows);
+    for (var gi = 0; gi < bgCellMap.length; gi++) bgCellMap[gi] = null;
+
     for (var bi = 0; bi < allBgPixels.length; bi++) {
-      var gx = Math.floor((allBgPixels[bi].lx + PAD) / bgCellSz);
-      var gy = Math.floor((allBgPixels[bi].ly + PAD) / bgCellSz);
-      if (gx >= 0 && gx < bgGCols && gy >= 0 && gy < bgGRows) bgGrid[gy * bgGCols + gx].push(bi);
+      var bp = allBgPixels[bi];
+      var gcx = Math.floor((bp.lx + PAD) / BG_CELL);
+      var gcy = Math.floor((bp.ly + PAD) / BG_CELL);
+      if (gcx < 0 || gcx >= bgCellCols || gcy < 0 || gcy >= bgCellRows) continue;
+      var ci = gcy * bgCellCols + gcx;
+      if (!bgCellMap[ci]) {
+        bgCellMap[ci] = { sumR: 0, sumG: 0, sumB: 0, sumX: 0, sumY: 0, n: 0, idx: bgCells.length };
+        bgCells.push(null); // placeholder
+      }
+      var cm = bgCellMap[ci];
+      cm.sumR += bp.r; cm.sumG += bp.g; cm.sumB += bp.b;
+      cm.sumX += bp.lx; cm.sumY += bp.ly; cm.n++;
+    }
+    // Finalize BG clusters
+    for (var gi = 0; gi < bgCellMap.length; gi++) {
+      var cm = bgCellMap[gi];
+      if (!cm) continue;
+      bgCells[cm.idx] = {
+        cx: Math.round(cm.sumX / cm.n), cy: Math.round(cm.sumY / cm.n),
+        r: Math.round(cm.sumR / cm.n), g: Math.round(cm.sumG / cm.n), b: Math.round(cm.sumB / cm.n),
+        n: cm.n
+      };
+    }
+    bgCells = bgCells.filter(function(c) { return c !== null; });
+
+    // Build spatial index for BG clusters (for fast range search)
+    var bgClustCellSz = Math.max(BG_SEARCH_R, 10);
+    var bgClustCols = Math.ceil((w + PAD * 2) / bgClustCellSz);
+    var bgClustRows = Math.ceil((h + PAD * 2) / bgClustCellSz);
+    var bgClustGrid = new Array(bgClustCols * bgClustRows);
+    for (var gi = 0; gi < bgClustGrid.length; gi++) bgClustGrid[gi] = [];
+    for (var ci = 0; ci < bgCells.length; ci++) {
+      var gc = bgCells[ci];
+      var gx = Math.floor((gc.cx + PAD) / bgClustCellSz);
+      var gy = Math.floor((gc.cy + PAD) / bgClustCellSz);
+      if (gx >= 0 && gx < bgClustCols && gy >= 0 && gy < bgClustRows) {
+        bgClustGrid[gy * bgClustCols + gx].push(ci);
+      }
     }
 
-    // Step 5d: Each cleaned FG pixel → local BG average → contrast
+    // Step 5d: Each FG pixel → ALL BG clusters in range → one contrast ratio per pair
+    // This produces N×M pairs (FG × nearby BG clusters), capturing directional variation.
     var fgPoints = [], fgColors = [];
     var bgPoints = [], bgColors = [];
     var allPairRatios = [];
@@ -538,42 +579,38 @@ window.MilgContrastVerify = (function() {
 
     for (var fi = 0; fi < fgClean.length; fi++) {
       var fp = fgClean[fi];
-      var gcx = Math.floor((fp.lx + PAD) / bgCellSz), gcy = Math.floor((fp.ly + PAD) / bgCellSz);
-      var sumR = 0, sumG = 0, sumB = 0, bgN = 0;
-      var nearestBgDist = Infinity, nearestBgPt = null;
+      var gcx = Math.floor((fp.lx + PAD) / bgClustCellSz);
+      var gcy = Math.floor((fp.ly + PAD) / bgClustCellSz);
+      var matched = false;
+
       for (var gdy = -1; gdy <= 1; gdy++) {
-        var ry = gcy + gdy; if (ry < 0 || ry >= bgGRows) continue;
+        var ry = gcy + gdy; if (ry < 0 || ry >= bgClustRows) continue;
         for (var gdx = -1; gdx <= 1; gdx++) {
-          var rx = gcx + gdx; if (rx < 0 || rx >= bgGCols) continue;
-          var cell = bgGrid[ry * bgGCols + rx];
-          for (var ci = 0; ci < cell.length; ci++) {
-            var bp = allBgPixels[cell[ci]];
-            var ddx = bp.lx - fp.lx, ddy = bp.ly - fp.ly;
+          var rx = gcx + gdx; if (rx < 0 || rx >= bgClustCols) continue;
+          var cell = bgClustGrid[ry * bgClustCols + rx];
+          for (var ki = 0; ki < cell.length; ki++) {
+            var bc = bgCells[cell[ki]];
+            var ddx = bc.cx - fp.lx, ddy = bc.cy - fp.ly;
             var d2 = ddx * ddx + ddy * ddy;
-            if (d2 <= BG_SEARCH_R * BG_SEARCH_R) {
-              sumR += bp.r; sumG += bp.g; sumB += bp.b; bgN++;
-              if (d2 < nearestBgDist) { nearestBgDist = d2; nearestBgPt = bp; }
-            }
+            if (d2 > BG_SEARCH_R * BG_SEARCH_R) continue;
+
+            var ratio = contrastRatio(fp, bc);
+            allPairRatios.push(ratio);
+            fgPoints.push({ x: bx + fp.lx, y: by + fp.ly, bgIdx: cell[ki] });
+            fgColors.push(fp);
+            bgPoints.push({ x: bx + bc.cx, y: by + bc.cy });
+            bgColors.push(bc);
+            matched = true;
+
+            if (ratio < worstRatio) { worstRatio = ratio; worstBg = bc; worstBgPt = { x: bx + bc.cx, y: by + bc.cy }; }
+            if (ratio > bestRatio) bestRatio = ratio;
           }
         }
       }
-      if (bgN === 0) continue;
-
-      var localBg = { r: Math.round(sumR / bgN), g: Math.round(sumG / bgN), b: Math.round(sumB / bgN) };
-      var ratio = contrastRatio(fp, localBg);
-      allPairRatios.push(ratio);
-
-      fgPoints.push({ x: bx + fp.lx, y: by + fp.ly });
-      fgColors.push(fp);
-      bgPoints.push({ x: bx + nearestBgPt.lx, y: by + nearestBgPt.ly });
-      bgColors.push(localBg);
-
-      if (ratio < worstRatio) { worstRatio = ratio; worstBg = localBg; worstBgPt = { x: bx + nearestBgPt.lx, y: by + nearestBgPt.ly }; }
-      if (ratio > bestRatio) bestRatio = ratio;
     }
 
     if (allPairRatios.length === 0) {
-      if (pair.text) console.log('[verify-boundary] No pairs for "' + pair.text.substring(0, 25) + '"');
+      if (pair.text) console.log('[verify-boundary] No pairs for "' + pair.text.substring(0, 25) + '" fg=' + fgClean.length + ' bgClusters=' + bgCells.length);
       return null;
     }
 

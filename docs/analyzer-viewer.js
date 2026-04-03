@@ -1270,7 +1270,7 @@ window.MilgViewer = (function() {
     var sw = 'display:inline-block;width:24px;height:24px;border-radius:4px;border:1px solid rgba(128,128,128,0.3);vertical-align:middle;';
     var swSm = 'display:inline-block;width:14px;height:14px;border-radius:3px;border:1px solid rgba(128,128,128,0.3);vertical-align:middle;';
 
-    // Find the nearest FG sample point to cursor for local comparison
+    // Find nearest sample point to cursor, then show all its connections
     var localBlock = '';
     if (vr.samplePoints && vr.samplePoints.fg && vr.samplePoints.fg.length > 0) {
       var svg = e.target.closest ? e.target.closest('svg') : null;
@@ -1279,30 +1279,89 @@ window.MilgViewer = (function() {
       var mx = svgRect ? (e.clientX - svgRect.left) * scale : 0;
       var my = svgRect ? (e.clientY - svgRect.top) * scale : 0;
 
-      var nearest = null, nearestD = Infinity;
+      // Find nearest FG point
+      var nearestFg = null, nearestFgD = Infinity, nearestFgI = -1;
       for (var i = 0; i < vr.samplePoints.fg.length; i++) {
         var sp = vr.samplePoints.fg[i];
-        var dx = sp.x - mx, dy = sp.y - my;
-        var d2 = dx * dx + dy * dy;
-        if (d2 < nearestD) { nearestD = d2; nearest = sp; }
+        var d2 = (sp.x - mx) * (sp.x - mx) + (sp.y - my) * (sp.y - my);
+        if (d2 < nearestFgD) { nearestFgD = d2; nearestFg = sp; nearestFgI = i; }
       }
 
-      if (nearest && nearest.bgR !== undefined) {
-        var fgCol = 'rgb(' + nearest.r + ',' + nearest.g + ',' + nearest.b + ')';
-        var bgCol = 'rgb(' + nearest.bgR + ',' + nearest.bgG + ',' + nearest.bgB + ')';
-        var ratio = nearest.ratio || '?';
-        var passLabel = ratio >= 4.5 ? 'PASS' : ratio >= 3 ? 'AA-lg' : 'FAIL';
-        var passColor = ratio >= 4.5 ? '#22c55e' : ratio >= 3 ? '#eab308' : '#ef4444';
+      // Find nearest BG point
+      var nearestBg = null, nearestBgD = Infinity;
+      for (var i = 0; i < vr.samplePoints.bg.length; i++) {
+        var bp = vr.samplePoints.bg[i];
+        var d2 = (bp.x - mx) * (bp.x - mx) + (bp.y - my) * (bp.y - my);
+        if (d2 < nearestBgD) { nearestBgD = d2; nearestBg = bp; }
+      }
+
+      // Decide: are we closer to an FG or BG point?
+      if (nearestFg && nearestFgD <= nearestBgD) {
+        // Hovering near FG: show this FG and ALL its matched BG clusters
+        var fgCol = 'rgb(' + nearestFg.r + ',' + nearestFg.g + ',' + nearestFg.b + ')';
+        // Find all pairs from this same FG position
+        var bgMatches = [];
+        for (var i = 0; i < vr.samplePoints.fg.length; i++) {
+          var sp = vr.samplePoints.fg[i];
+          if (sp.x === nearestFg.x && sp.y === nearestFg.y) {
+            bgMatches.push(sp);
+          }
+        }
+        var worstR = 99, bestR = 0;
+        bgMatches.forEach(function(m) { if (m.ratio < worstR) worstR = m.ratio; if (m.ratio > bestR) bestR = m.ratio; });
+        var passColor = worstR >= 4.5 ? '#22c55e' : worstR >= 3 ? '#eab308' : '#ef4444';
+
         localBlock = '<div style="margin-top:6px;padding:6px 8px;background:rgba(0,0,0,0.04);border-radius:4px">' +
-          '<div style="font-size:10px;color:#64748b;margin-bottom:4px">Hovered pixel</div>' +
-          '<div style="display:flex;align-items:center;gap:8px">' +
-            '<div style="text-align:center"><span style="' + sw + 'background:' + fgCol + '"></span><div style="font-size:8px;color:#94a3b8;margin-top:2px">FG</div></div>' +
-            '<div style="text-align:center"><span style="' + sw + 'background:' + bgCol + '"></span><div style="font-size:8px;color:#94a3b8;margin-top:2px">BG</div></div>' +
-            '<div style="font-size:14px;font-weight:700;color:' + passColor + '">' + ratio + ':1</div>' +
-            '<div style="font-size:10px;font-weight:600;color:' + passColor + '">' + passLabel + '</div>' +
-          '</div>' +
-          '<div style="font-size:9px;color:#94a3b8;margin-top:3px">' + fgCol + ' on ' + bgCol + '</div>' +
-        '</div>';
+          '<div style="font-size:10px;color:#64748b;margin-bottom:4px">FG pixel → ' + bgMatches.length + ' BG cluster' + (bgMatches.length > 1 ? 's' : '') + '</div>' +
+          '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">' +
+            '<span style="' + sw + 'background:' + fgCol + '"></span>' +
+            '<span style="font-size:11px;color:#94a3b8">→</span>';
+        bgMatches.slice(0, 6).forEach(function(m) {
+          var bgC = 'rgb(' + m.bgR + ',' + m.bgG + ',' + m.bgB + ')';
+          var pc = m.ratio >= 4.5 ? '#22c55e' : m.ratio >= 3 ? '#eab308' : '#ef4444';
+          localBlock += '<div style="text-align:center">' +
+            '<span style="' + swSm + 'background:' + bgC + '"></span>' +
+            '<div style="font-size:8px;color:' + pc + ';font-weight:600">' + m.ratio + ':1</div></div>';
+        });
+        if (bgMatches.length > 6) localBlock += '<span style="font-size:9px;color:#94a3b8">+' + (bgMatches.length - 6) + '</span>';
+        localBlock += '</div>';
+        if (bgMatches.length > 1) {
+          localBlock += '<div style="font-size:9px;color:#94a3b8;margin-top:3px">Worst: <span style="color:' + passColor + '">' + worstR + ':1</span>' +
+            (bestR !== worstR ? ' Best: ' + bestR + ':1' : '') + '</div>';
+        }
+        localBlock += '</div>';
+
+      } else if (nearestBg) {
+        // Hovering near BG: show this BG and all FG pixels matched to it
+        var bgCol = 'rgb(' + nearestBg.r + ',' + nearestBg.g + ',' + nearestBg.b + ')';
+        // Find all FG points that matched this BG position
+        var fgMatches = [];
+        for (var i = 0; i < vr.samplePoints.fg.length; i++) {
+          var sp = vr.samplePoints.fg[i];
+          if (sp.bgX === nearestBg.x && sp.bgY === nearestBg.y) {
+            fgMatches.push(sp);
+          }
+        }
+        var worstR = 99;
+        fgMatches.forEach(function(m) { if (m.ratio < worstR) worstR = m.ratio; });
+        var passColor = worstR >= 4.5 ? '#22c55e' : worstR >= 3 ? '#eab308' : '#ef4444';
+
+        localBlock = '<div style="margin-top:6px;padding:6px 8px;background:rgba(0,0,0,0.04);border-radius:4px">' +
+          '<div style="font-size:10px;color:#64748b;margin-bottom:4px">BG cluster ← ' + fgMatches.length + ' FG pixel' + (fgMatches.length > 1 ? 's' : '') + '</div>' +
+          '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">';
+        fgMatches.slice(0, 6).forEach(function(m) {
+          var fgC = 'rgb(' + m.r + ',' + m.g + ',' + m.b + ')';
+          var pc = m.ratio >= 4.5 ? '#22c55e' : m.ratio >= 3 ? '#eab308' : '#ef4444';
+          localBlock += '<div style="text-align:center">' +
+            '<span style="' + swSm + 'background:' + fgC + '"></span>' +
+            '<div style="font-size:8px;color:' + pc + ';font-weight:600">' + m.ratio + ':1</div></div>';
+        });
+        localBlock += '<span style="font-size:11px;color:#94a3b8">→</span>' +
+          '<span style="' + sw + 'background:' + bgCol + '"></span>';
+        if (fgMatches.length > 6) localBlock += '<span style="font-size:9px;color:#94a3b8">+' + (fgMatches.length - 6) + '</span>';
+        localBlock += '</div>';
+        localBlock += '<div style="font-size:9px;color:#94a3b8;margin-top:3px">Worst: <span style="color:' + passColor + '">' + worstR + ':1</span></div>';
+        localBlock += '</div>';
       }
     }
 
