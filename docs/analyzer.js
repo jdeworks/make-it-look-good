@@ -917,6 +917,18 @@
     document.getElementById('exportJsonBtn').addEventListener('click', function() {
       if (!lastRawData) return;
       var exportData = JSON.parse(JSON.stringify(lastRawData, function(k, v) { return k === 'viewportData' ? undefined : v; }));
+      // Include pixel verify results if available
+      if (reportData && reportData._contrastVerifyResults) {
+        exportData._contrastVerifyResults = reportData._contrastVerifyResults.map(function(r) {
+          var copy = Object.assign({}, r);
+          delete copy._debug; // strip debug data to reduce size
+          delete copy.samplePoints; // strip per-pixel data
+          return copy;
+        });
+      }
+      if (reportData && reportData._bboxEdgeResults) {
+        exportData._bboxEdgeResults = reportData._bboxEdgeResults;
+      }
       var json = JSON.stringify(exportData, null, 2);
       var blob = new Blob([json], { type: 'application/json' });
       var url = URL.createObjectURL(blob);

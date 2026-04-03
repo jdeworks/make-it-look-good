@@ -368,13 +368,15 @@ window.MilgReport = (function() {
           shown++;
         });
 
-        // If we have more passes than descriptions, show a summary
+        // If we have more passes than descriptions, show the remaining count
         if (shown < passCount) {
-          html += '<div class="report-finding severity-pass" style="border-left:3px solid #16a34a">';
+          var remaining = passCount - shown;
+          html += '<div class="report-finding severity-pass" style="border-left:3px solid #16a34a;opacity:0.7">';
           html += '<div class="finding-header">';
           html += severityBadge('pass');
-          html += '<span class="finding-title">' + (passCount - shown) + ' additional check(s) passed</span>';
+          html += '<span class="finding-title">' + remaining + ' additional check' + (remaining > 1 ? 's' : '') + ' passed</span>';
           html += '</div>';
+          html += '<p class="finding-detail" style="font-size:11px;color:var(--text-secondary)">These checks passed but don\'t have individual descriptions. The category score reflects all checks.</p>';
           html += '</div>';
         }
 

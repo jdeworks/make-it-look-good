@@ -1316,6 +1316,46 @@ window.MilgViewer = (function() {
     _activeFilter = { type: 'category', value: target.icon };
     updateFilterButtons();
     renderOverlays();
+
+    // Scroll to the finding's bbox and highlight it
+    var bbox = target.bboxes[0];
+    var scale = meta.scale;
+    setTimeout(function() {
+      var content = _overlay && _overlay.querySelector('.milg-viewer-content');
+      var svg = _overlay && _overlay.querySelector('.milg-viewer-svg');
+      if (!content || !svg) return;
+
+      // Find the rect matching this finding
+      var targetY = Math.round(bbox.top * scale) - _calibrationOffsetY;
+      var targetX = Math.round(bbox.left * scale);
+
+      // Scroll the viewer content to center the bbox
+      var frame = _overlay.querySelector('.milg-viewer-frame');
+      if (frame) {
+        var imgEl = frame.querySelector('.milg-viewer-img');
+        if (imgEl && imgEl.naturalWidth > 0) {
+          var displayScale = imgEl.offsetWidth / imgEl.naturalWidth;
+          var scrollY = (targetY * displayScale) - content.clientHeight / 2;
+          content.scrollTop = Math.max(0, scrollY);
+        }
+      }
+
+      // Highlight the matching rect
+      svg.querySelectorAll('rect[data-finding]').forEach(function(rect) {
+        var fi = parseInt(rect.getAttribute('data-finding'));
+        // Match by bbox position (since findingIdx may differ between report and viewer)
+        var rectY = parseFloat(rect.getAttribute('y'));
+        var rectX = parseFloat(rect.getAttribute('x'));
+        if (Math.abs(rectY - targetY) < 5 && Math.abs(rectX - targetX) < 5) {
+          rect.setAttribute('stroke-width', '3');
+          rect.setAttribute('stroke', '#f59e0b');
+          setTimeout(function() {
+            rect.setAttribute('stroke-width', '1.5');
+            rect.setAttribute('stroke', (COLORS[target.icon] || COLORS.info).stroke);
+          }, 2000);
+        }
+      });
+    }, 500);
   }
 
   return {
