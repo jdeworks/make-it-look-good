@@ -404,26 +404,20 @@ window.MilgContrastVerify = (function() {
       }
     }
 
-    // Step 4c: Thin FG to a 1px-wide inset line — iteratively strip interior
-    // FG pixels until only those adjacent to non-FG remain. This produces a
-    // clean single-pixel ring inside the boundary, not a filled mesh.
-    for (var pass = 0; pass < 10; pass++) {
-      var stripped = 0;
-      for (var y = 1; y < h - 1; y++) {
-        for (var x = 1; x < w - 1; x++) {
-          var mi = y * w + x;
-          if (zone[mi] !== 2) continue;
-          var hasNonFg = false;
-          for (var dy = -1; dy <= 1 && !hasNonFg; dy++) {
-            for (var dx = -1; dx <= 1 && !hasNonFg; dx++) {
-              if (dx === 0 && dy === 0) continue;
-              if (zone[(y + dy) * w + (x + dx)] !== 2) hasNonFg = true;
-            }
-          }
-          if (!hasNonFg) { zone[mi] = 0; stripped++; }
+    // Step 4c: Thin FG — remove FG pixels that have FG neighbors on all 4
+    // cardinal directions (top, right, bottom, left). These are deep interior
+    // pixels that add nothing to edge contrast. Pixels at corners/turns survive
+    // because they're missing FG on at least one cardinal side.
+    // Single pass — no iteration needed since we only check cardinals.
+    for (var y = 1; y < h - 1; y++) {
+      for (var x = 1; x < w - 1; x++) {
+        var mi = y * w + x;
+        if (zone[mi] !== 2) continue;
+        if (zone[(y-1)*w+x] === 2 && zone[(y+1)*w+x] === 2 &&
+            zone[mi-1] === 2 && zone[mi+1] === 2) {
+          zone[mi] = 0; // has FG on all 4 cardinal sides → interior, remove
         }
       }
-      if (stripped === 0) break; // stable — nothing left to strip
     }
 
     // Also classify BG pixels in the padding area (outside bbox)
