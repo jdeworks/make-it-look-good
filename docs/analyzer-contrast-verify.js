@@ -310,15 +310,16 @@ window.MilgContrastVerify = (function() {
     var w = Math.min(mW, bw), h = Math.min(mH, bh);
     if (w < 4 || h < 4) return null;
 
-    // Constants — adaptive FG depth based on text size
-    // Bigger text → sample further inside where colors are pure (not AA-blended)
+    // Constants — scaled with screenshot resolution
+    // At scale 1.5, 1 CSS pixel ≈ 1.5 mask pixels, so distances are ~2x what they
+    // were at scale 0.75. Sample deeper inside to skip the AA fringe.
     var textSize = Math.min(w, h);
-    var FG_DIST_MIN = textSize > 30 ? 3 : 1; // big text: skip AA fringe
-    var FG_DIST_MAX = textSize > 30 ? 5 : 2; // big text: 3-5px inside, small: 1-2px
-    var BG_DIST_MIN = 3; // BG sample ring: 3-4px outside boundary
-    var BG_DIST_MAX = 4;
-    var MAX_DIST = BG_DIST_MAX + 2;
-    var FG_CLUSTER_R = 4; // radius for FG cluster averaging (smooths AA noise)
+    var FG_DIST_MIN = textSize > 40 ? 4 : 2; // skip AA fringe (was 3/1 at 0.75x)
+    var FG_DIST_MAX = textSize > 40 ? 7 : 4; // big: 4-7px, small: 2-4px inside
+    var BG_DIST_MIN = 5;  // BG ring: 5-7px outside (was 3-4 at 0.75x)
+    var BG_DIST_MAX = 7;
+    var MAX_DIST = BG_DIST_MAX + 3;
+    var FG_CLUSTER_R = 6; // cluster averaging radius (was 4 at 0.75x)
 
     // Read expanded area from screenshot for BG sampling outside bbox
     var PAD = BG_DIST_MAX + 1;
