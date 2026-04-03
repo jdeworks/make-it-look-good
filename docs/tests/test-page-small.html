@@ -130,26 +130,21 @@ tailwind.config = {
     _overlays.push(_maskOverlay);
   }
 
-  // Roberts edge detection on a binary mask (same as analyzer)
-  function edgeRoberts(mask, w, h) {
-    var cat = new Uint8Array(w * h);
+  // Simple boundary detection: mask pixel adjacent to non-mask pixel = edge
+  // No convolution, no smudging — just 4-connected neighbor check
+  function findBoundary(mask, w, h) {
+    var cat = new Uint8Array(w * h); // 0=bg, 1=edge, 2=inside
     for (var y = 0; y < h; y++) {
       for (var x = 0; x < w; x++) {
         var i = y * w + x;
         if (!mask[i]) continue;
-        var isEdge = false;
-        if (x < w - 1 && y < h - 1) {
-          var gx = mask[i] - mask[(y+1)*w+(x+1)];
-          var gy = mask[y*w+(x+1)] - mask[(y+1)*w+x];
-          if (gx !== 0 || gy !== 0) isEdge = true;
+        // Check 4 neighbors — if any is bg, this is a boundary pixel
+        if (x === 0 || x === w-1 || y === 0 || y === h-1 ||
+            !mask[i-1] || !mask[i+1] || !mask[(y-1)*w+x] || !mask[(y+1)*w+x]) {
+          cat[i] = 1;
+        } else {
+          cat[i] = 2;
         }
-        if (!isEdge) {
-          if (x > 0 && !mask[i-1]) isEdge = true;
-          else if (x < w-1 && !mask[i+1]) isEdge = true;
-          else if (y > 0 && !mask[(y-1)*w+x]) isEdge = true;
-          else if (y < h-1 && !mask[(y+1)*w+x]) isEdge = true;
-        }
-        cat[i] = isEdge ? 1 : 2;
       }
     }
     return cat;
@@ -194,11 +189,12 @@ tailwind.config = {
     tmpStyle.setAttribute('data-milg-edge', '1');
     tmpStyle.textContent =
       '*,*::before,*::after{' +
-        'color:#000!important;background-color:#fff!important;background-image:none!important;' +
-        'background:white!important;border-color:transparent!important;box-shadow:none!important;' +
+        'color:#000!important;background-color:transparent!important;background-image:none!important;' +
+        'background:transparent!important;border-color:transparent!important;box-shadow:none!important;' +
         'text-shadow:none!important;outline-color:transparent!important;' +
         '-webkit-text-fill-color:#000!important;opacity:1!important;' +
         'transition:none!important;animation:none!important}' +
+      'html{background:#fff!important}' +
       'img,svg,video,canvas,picture,iframe{opacity:0!important}';
     document.head.appendChild(tmpStyle);
     void document.body.offsetHeight;
@@ -227,7 +223,7 @@ tailwind.config = {
       console.log('[test-page] Mask: ' + totalDark + ' dark pixels');
 
       // Step 4: Roberts edge detection
-      var cat = edgeRoberts(mask, cw, ch);
+      var cat = findBoundary(mask, cw, ch);
 
       // Step 5: BFS distance from edges (keep only near-edge pixels)
       // dist[i] = 0 for edge, 1..N for distance from nearest edge
