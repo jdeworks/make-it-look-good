@@ -683,7 +683,8 @@
                     label: viewports[i].label, width: viewports[i].w,
                     touchTargets: (r.interaction.touchTargets || []).length,
                     contrastFails: (r.colors.contrastPairs || []).filter(function(p) { return !p.passes; }).length,
-                    overflow: r.structure.hasHorizontalOverflow || false
+                    overflow: r.structure.hasHorizontalOverflow || false,
+                    hasScreenshots: !!(r.screenshots && r.screenshots.length > 0)
                   } : { label: viewports[i].label, width: viewports[i].w, error: true };
                 }),
                 viewportData: deepRawResults.map(function(r, i) {
@@ -697,7 +698,7 @@
                 showProgress(Math.round(80 + 15 * (vpIdx / totalSteps)), 'Testing dark mode...');
                 var darkHtml = html.replace(/<html([^>]*)>/i, '<html$1 class="dark" data-theme="dark" style="color-scheme:dark">');
                 darkHtml = darkHtml.replace(/<\/head>/i, '<script>setTimeout(function(){try{Array.from(document.styleSheets).forEach(function(ss){try{var darkRules=[];Array.from(ss.cssRules).forEach(function(r){if(r instanceof CSSMediaRule&&/prefers-color-scheme:\\s*dark/.test(r.conditionText||"")){Array.from(r.cssRules).forEach(function(inner){darkRules.push(inner.cssText)})}});if(darkRules.length>0){var s=document.createElement("style");s.textContent=darkRules.join("\\n");document.head.appendChild(s)}}catch(e){}});}catch(e){}},100);</' + 'script></head>');
-                MilgIframe.deepScanInIframe(darkHtml, url, exclude, 1280, 900, function(darkData) {
+                MilgIframe.analyzeHtmlInIframe(darkHtml, function(darkData) {
                   if (darkData) {
                     primary.deepScan.darkMode = {
                       contrastFails: (darkData.colors.contrastPairs || []).filter(function(p) { return !p.passes; }).length,
@@ -713,7 +714,7 @@
                   primary.meta.url = url;
                   primary.meta._inputMethod = 'url';
                   runAnalysis(primary);
-                });
+                }, url, exclude, false, { w: 1280, h: 900 });
               } else {
                 analyzeUrlBtn.disabled = false;
                 analyzeUrlBtn.textContent = 'Analyze URL';
@@ -730,11 +731,13 @@
             var pct = 20 + Math.round(60 * (vpIdx / totalSteps));
             urlStatus.textContent = 'Deep scan: ' + vp.label + ' (' + vp.w + 'px)...';
             showProgress(pct, 'Scanning ' + vp.label + '...');
-            MilgIframe.deepScanInIframe(html, url, exclude, vp.w, vp.h, function(data) {
+            var deepWantShots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
+            MilgIframe.analyzeHtmlInIframe(html, function(data) {
+              if (data) data.meta.url = url;
               deepRawResults.push(data);
               vpIdx++;
               nextVP();
-            });
+            }, url, exclude, deepWantShots, { w: vp.w, h: vp.h });
           })();
           return;
         }

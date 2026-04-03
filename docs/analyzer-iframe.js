@@ -427,18 +427,19 @@ window.MilgIframe = (function() {
     }, 15000);
   }
 
-  function analyzeHtmlInIframe(html, callback, sourceUrlOrDark, excludeSelectorOrEffectCSS, captureScreenshots) {
+  function analyzeHtmlInIframe(html, callback, sourceUrlOrDark, excludeSelectorOrEffectCSS, captureScreenshots, viewportOverride) {
     var extractFromDocument = window.MilgExtract;
     // Support both signatures:
     // analyzeHtmlInIframe(html, cb, sourceUrl, excludeSelector, screenshots) — URL mode
     // analyzeHtmlInIframe(html, cb, dark, effectCSS, screenshots) — editor preview mode
+    // Optional 6th param: { w, h } viewport override for deep scan
     var sourceUrl = typeof sourceUrlOrDark === 'string' ? sourceUrlOrDark : null;
     var excludeSelector = typeof excludeSelectorOrEffectCSS === 'string' && !sourceUrl ? null : excludeSelectorOrEffectCSS;
     var editorDark = typeof sourceUrlOrDark === 'boolean' ? sourceUrlOrDark : false;
     var editorEffectCSS = (!sourceUrl && typeof excludeSelectorOrEffectCSS === 'string') ? excludeSelectorOrEffectCSS : '';
     var iframe = document.createElement('iframe');
-    // Use viewport from selector or default
-    var vp = _getViewport();
+    // Use viewport override if provided, else from selector/default
+    var vp = viewportOverride || _getViewport();
     iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + vp.w + 'px;height:' + vp.h + 'px;border:none;';
     iframe.sandbox = 'allow-scripts allow-same-origin';
     document.body.appendChild(iframe);
