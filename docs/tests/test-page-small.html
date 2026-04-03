@@ -130,16 +130,14 @@ tailwind.config = {
     _overlays.push(_maskOverlay);
   }
 
-  // Simple boundary detection: foreground pixel adjacent to background = edge
-  // Anti-aliased pixels (mask=2) are treated as foreground for boundary purposes
-  // No convolution, no smudging — just 4-connected neighbor check
+  // Boundary detection: foreground pixel adjacent to background = edge
+  // At 2x scale, this gives half-pixel edge accuracy
   function findBoundary(mask, w, h) {
     var cat = new Uint8Array(w * h); // 0=bg, 1=edge, 2=inside
     for (var y = 0; y < h; y++) {
       for (var x = 0; x < w; x++) {
         var i = y * w + x;
-        if (!mask[i]) continue; // bg pixel
-        // Check 4 neighbors — if any is bg (0), this is a boundary pixel
+        if (!mask[i]) continue;
         if (x === 0 || x === w-1 || y === 0 || y === h-1 ||
             !mask[i-1] || !mask[i+1] || !mask[(y-1)*w+x] || !mask[(y+1)*w+x]) {
           cat[i] = 1;
@@ -181,7 +179,7 @@ tailwind.config = {
       return;
     }
 
-    var SCALE = 1.0;
+    var SCALE = 2.0;
     var vw = window.innerWidth;
     var vh = document.documentElement.scrollHeight;
 
@@ -210,18 +208,19 @@ tailwind.config = {
       var mctx = mc.getContext('2d', { willReadFrequently: true });
       console.log('[test-page] domToCanvas captured: ' + cw + 'x' + ch);
 
-      // Step 3: Extract mask with anti-aliasing awareness
-      // Use two thresholds: < 128 = definite text, 128-220 = anti-aliased edge
+      // Step 3: Extract binary mask at 2x resolution (half-pixel accuracy)
+      // At 2x, anti-aliased pixels from 1x become distinct dark/light pixels
       var px = mctx.getImageData(0, 0, cw, ch).data;
-      var mask = new Uint8Array(cw * ch);   // 0=bg, 1=text, 2=anti-aliased
-      var totalDark = 0, totalAA = 0;
+      var mask = new Uint8Array(cw * ch);
+      var totalDark = 0;
       for (var i = 0; i < cw * ch; i++) {
         var pi = i * 4;
-        var avg = (px[pi] + px[pi + 1] + px[pi + 2]) / 3;
-        if (avg < 128) { mask[i] = 1; totalDark++; }
-        else if (avg < 220) { mask[i] = 2; totalAA++; }
+        if ((px[pi] + px[pi + 1] + px[pi + 2]) / 3 < 180) {
+          mask[i] = 1;
+          totalDark++;
+        }
       }
-      console.log('[test-page] Mask: ' + totalDark + ' dark, ' + totalAA + ' anti-aliased pixels');
+      console.log('[test-page] Mask @2x: ' + totalDark + ' dark pixels, canvas ' + cw + 'x' + ch);
 
       // Step 4: Roberts edge detection
       var cat = findBoundary(mask, cw, ch);
@@ -275,16 +274,12 @@ tailwind.config = {
           // Edge pixel — bright red
           d[pi] = 255; d[pi+1] = 30; d[pi+2] = 30; d[pi+3] = 230;
           edgeCount++;
-        } else if (mask[i] === 2 && dd <= 1) {
-          // Anti-aliased pixel at boundary — yellow
-          d[pi] = 255; d[pi+1] = 220; d[pi+2] = 0; d[pi+3] = 200;
-          edgeCount++;
-        } else if (mask[i] && dd >= 1 && dd <= 2) {
-          // FG sample zone — orange (1-2px inside edge)
+        } else if (mask[i] && dd >= 1 && dd <= 3) {
+          // FG sample zone — orange (1-3 @2x = 0.5-1.5 display px inside)
           d[pi] = 255; d[pi+1] = 160; d[pi+2] = 0; d[pi+3] = 180;
           fgCount++;
-        } else if (!mask[i] && dd >= 3 && dd <= 4) {
-          // BG sample zone — thin ring at distance 3-4 only
+        } else if (!mask[i] && dd >= 6 && dd <= 8) {
+          // BG sample zone — thin ring at 6-8 @2x = 3-4 display px away
           d[pi] = 30; d[pi+1] = 200; d[pi+2] = 80; d[pi+3] = 140;
           bgCount++;
         }
