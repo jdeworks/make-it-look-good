@@ -322,7 +322,7 @@ window.MilgContrastVerify = (function() {
     var FG_CLUSTER_R = 6; // cluster averaging radius (was 4 at 0.75x)
 
     // Read expanded area from screenshot for BG sampling outside bbox
-    var PAD = BG_DIST_MAX + 1;
+    var PAD = BG_DIST_MAX + 2;
     var padL = Math.min(PAD, bx);
     var padT = Math.min(PAD, by);
     var padR = Math.min(PAD, ctx.sec.width - bx - bw);
@@ -435,7 +435,10 @@ window.MilgContrastVerify = (function() {
 
     // Step 5: Collect FG + BG pixels, cluster-average FG, compute contrast
 
-    var BG_SEARCH_R = BG_DIST_MAX + 2;
+    // Search radius must reach from deepest FG pixel across the full text stroke
+    // to the BG ring on the other side. For big text, strokes can be 20-30px wide
+    // at 1.5x scale. Use a generous radius so no FG pixel goes unmatched.
+    var BG_SEARCH_R = Math.max(FG_DIST_MAX + BG_DIST_MAX + 6, Math.round(textSize * 0.6));
 
     // Collect all FG pixel positions + raw colors
     var allFg = []; // [{idx, lx, ly, r, g, b}]
