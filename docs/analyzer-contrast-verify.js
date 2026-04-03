@@ -418,8 +418,9 @@ window.MilgContrastVerify = (function() {
       }
     }
 
-    // Step 5: Connected component grouping for FG and BG zones
-    var fgLabel = labelComponents(zone, w, h, 2);
+    // Step 5: Group BG zones, keep FG pixels individual
+    // BG: connected component grouping — each isolated BG region gets one average color
+    // FG: each pixel matched individually to nearest BG group — more pairs, better coverage
     var bgLabel = labelComponents(zone, w, h, 3);
 
     // Helper: read pixel color from expanded imgData given bbox-relative coords
@@ -431,26 +432,7 @@ window.MilgContrastVerify = (function() {
       return { r: imgDataExp[pi], g: imgDataExp[pi+1], b: imgDataExp[pi+2] };
     }
 
-    // Step 6: Compute per-group average colors from screenshot
-    // FG groups
-    var fgGroupColors = [null]; // fgGroupColors[gid] = {r,g,b}
-    var fgGroupCentroids = [null]; // fgGroupCentroids[gid] = {x,y}
-    for (var gid = 1; gid <= fgLabel.count; gid++) {
-      var pxls = fgLabel.pixels[gid];
-      var sumR = 0, sumG = 0, sumB = 0, sumX = 0, sumY = 0, n = 0;
-      for (var p = 0; p < pxls.length; p++) {
-        var idx = pxls[p];
-        var px = idx % w, py2 = (idx - px) / w;
-        var c = readPixel(px, py2);
-        if (c) { sumR += c.r; sumG += c.g; sumB += c.b; n++; }
-        sumX += px; sumY += py2;
-      }
-      n = n || 1;
-      fgGroupColors.push({ r: Math.round(sumR / n), g: Math.round(sumG / n), b: Math.round(sumB / n) });
-      fgGroupCentroids.push({ x: sumX / pxls.length, y: sumY / pxls.length });
-    }
-
-    // BG groups (inside bbox)
+    // Step 6: Compute BG group average colors + centroids
     var bgGroupColors = [null];
     var bgGroupCentroids = [null];
     for (var gid = 1; gid <= bgLabel.count; gid++) {
@@ -468,23 +450,20 @@ window.MilgContrastVerify = (function() {
       bgGroupCentroids.push({ x: sumX / pxls.length, y: sumY / pxls.length });
     }
 
-    // Add expanded BG pixels as additional BG group(s) — treat as one group per connected region
-    // For simplicity, add them all to the nearest existing BG group or create a new virtual group
+    // Merge expanded BG pixels into nearest BG group
     if (expBgPixels.length > 0 && bgLabel.count > 0) {
-      // Assign each expanded BG pixel to nearest BG group by centroid
       var expByGroup = {};
       for (var i = 0; i < expBgPixels.length; i++) {
         var ep = expBgPixels[i];
         var bestGid = 1, bestD = Infinity;
         for (var gid = 1; gid <= bgLabel.count; gid++) {
           var cx = bgGroupCentroids[gid].x, cy = bgGroupCentroids[gid].y;
-          var d = (ep.lx - cx) * (ep.lx - cx) + (ep.ly - cy) * (ep.ly - cy);
-          if (d < bestD) { bestD = d; bestGid = gid; }
+          var d2 = (ep.lx - cx) * (ep.lx - cx) + (ep.ly - cy) * (ep.ly - cy);
+          if (d2 < bestD) { bestD = d2; bestGid = gid; }
         }
         if (!expByGroup[bestGid]) expByGroup[bestGid] = [];
         expByGroup[bestGid].push(ep);
       }
-      // Merge into BG group averages
       for (var gid in expByGroup) {
         var extras = expByGroup[gid];
         var orig = bgGroupColors[gid];
@@ -498,24 +477,43 @@ window.MilgContrastVerify = (function() {
       }
     }
 
-    // Step 7: Match each FG group to nearest BG group, compute contrast
+    // Step 7: Each FG pixel → nearest BG group → contrast ratio
+    // This gives many more pairs than group-vs-group, catching local contrast variations.
     var fgPoints = [], fgColors = [];
     var bgPoints = [], bgColors = [];
     var allPairRatios = [];
     var worstRatio = 99, bestRatio = 0, worstBg = null, worstBgPt = null;
 
-    for (var fgGid = 1; fgGid <= fgLabel.count; fgGid++) {
-      if (fgLabel.pixels[fgGid].length === 0) continue;
-      var fgC = fgGroupColors[fgGid];
-      var fcx = fgGroupCentroids[fgGid].x, fcy = fgGroupCentroids[fgGid].y;
+    // Collect all FG pixel positions
+    var allFgIdx = [];
+    for (var i = 0; i < w * h; i++) { if (zone[i] === 2) allFgIdx.push(i); }
 
-      // Find nearest BG group by centroid
+    if (allFgIdx.length === 0 || bgLabel.count === 0) {
+      if (pair.text) console.log('[verify-boundary] No FG/BG for "' + pair.text.substring(0, 25) + '" boundary=' + boundaryPts.length + ' fg=' + allFgIdx.length + ' bgGroups=' + bgLabel.count);
+      return null;
+    }
+
+    // Sample FG pixels (cap at 200 to keep performance reasonable)
+    var fgSample = allFgIdx;
+    if (allFgIdx.length > 200) {
+      fgSample = [];
+      var step = allFgIdx.length / 200;
+      for (var i = 0; i < 200; i++) fgSample.push(allFgIdx[Math.floor(i * step)]);
+    }
+
+    for (var fi = 0; fi < fgSample.length; fi++) {
+      var fgIdx = fgSample[fi];
+      var fx = fgIdx % w, fy = (fgIdx - fx) / w;
+      var fgC = readPixel(fx, fy);
+      if (!fgC) continue;
+
+      // Find nearest BG group by pixel distance to centroid
       var bestBgGid = -1, bestD = Infinity;
       for (var bgGid = 1; bgGid <= bgLabel.count; bgGid++) {
-        if (bgLabel.pixels[bgGid].length === 0) continue;
-        var dx = fcx - bgGroupCentroids[bgGid].x, dy = fcy - bgGroupCentroids[bgGid].y;
-        var d = dx * dx + dy * dy;
-        if (d < bestD) { bestD = d; bestBgGid = bgGid; }
+        if (!bgGroupCentroids[bgGid]) continue;
+        var dx = fx - bgGroupCentroids[bgGid].x, dy = fy - bgGroupCentroids[bgGid].y;
+        var d2 = dx * dx + dy * dy;
+        if (d2 < bestD) { bestD = d2; bestBgGid = bgGid; }
       }
       if (bestBgGid < 1) continue;
 
@@ -523,8 +521,7 @@ window.MilgContrastVerify = (function() {
       var ratio = contrastRatio(fgC, bgC);
       allPairRatios.push(ratio);
 
-      // Use centroid as the representative point
-      var fgPt = { x: bx + Math.round(fcx), y: by + Math.round(fcy) };
+      var fgPt = { x: bx + fx, y: by + fy };
       fgPoints.push(fgPt);
       fgColors.push(fgC);
 
@@ -538,7 +535,7 @@ window.MilgContrastVerify = (function() {
     }
 
     if (allPairRatios.length === 0) {
-      if (pair.text) console.log('[verify-boundary] No pairs for "' + pair.text.substring(0, 25) + '" boundary=' + boundaryPts.length + ' fgGroups=' + fgLabel.count + ' bgGroups=' + bgLabel.count);
+      if (pair.text) console.log('[verify-boundary] No pairs for "' + pair.text.substring(0, 25) + '"');
       return null;
     }
 

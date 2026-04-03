@@ -1262,12 +1262,13 @@ window.MilgViewer = (function() {
     _tooltip.className = 'milg-viewer-tooltip';
     var sampleInfo = '';
     if (vr.sampleCount) {
+      var swatchStyle = 'display:inline-block;width:12px;height:12px;border-radius:2px;vertical-align:middle;border:1px solid rgba(0,0,0,0.2);';
       sampleInfo = '<div style="margin-top:4px;padding-top:4px;border-top:1px solid rgba(0,0,0,0.1);font-size:10px;color:#64748b">' +
-        '<span style="color:#06b6d4">\u25cf</span> ' + vr.sampleCount.fg + ' text pixels sampled' +
-        ' &nbsp; <span style="color:#f97316">\u25cf</span> ' + vr.sampleCount.bg + ' background pixels' +
-        (vr.pixelFg ? '<br>Pixel FG: ' + vr.pixelFg : '') +
-        (vr.pixelBgWorst ? '<br>Pixel BG (worst): ' + vr.pixelBgWorst : '') +
-        (vr.pixelBgAvg ? ' / BG (avg): ' + vr.pixelBgAvg : '') +
+        '<span style="color:#06b6d4">\u25cf</span> ' + vr.sampleCount.fg + ' FG samples' +
+        ' &nbsp; <span style="color:#f97316">\u25cf</span> ' + vr.sampleCount.bg + ' BG samples' +
+        (vr.pixelFg ? '<br>Pixel FG: <span style="' + swatchStyle + 'background:' + vr.pixelFg + '"></span> ' + vr.pixelFg : '') +
+        (vr.pixelBgWorst ? '<br>BG worst: <span style="' + swatchStyle + 'background:' + vr.pixelBgWorst + '"></span> ' + vr.pixelBgWorst : '') +
+        (vr.pixelBgAvg ? '<br>BG avg: <span style="' + swatchStyle + 'background:' + vr.pixelBgAvg + '"></span> ' + vr.pixelBgAvg : '') +
         (vr.bgVariance ? '<br>BG variance: ' + vr.bgVariance : '') +
         '</div>';
     }
