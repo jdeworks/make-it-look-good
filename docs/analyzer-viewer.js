@@ -1197,6 +1197,20 @@ window.MilgViewer = (function() {
     img.setAttribute('opacity', '0.85');
     svg.appendChild(img);
 
+    // Render expanded BG pixels outside bbox (if available)
+    if (mode === 'zones' && debug.expBg && debug.expBg.length > 0) {
+      for (var ebi = 0; ebi < debug.expBg.length; ebi++) {
+        var ep = debug.expBg[ebi];
+        var rect2 = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect2.setAttribute('x', bx + ep.x); rect2.setAttribute('y', by + secOff + ep.y);
+        rect2.setAttribute('width', 1); rect2.setAttribute('height', 1);
+        rect2.setAttribute('fill', 'rgba(30,200,80,0.55)');
+        rect2.setAttribute('class', 'milg-debug-overlay');
+        rect2.setAttribute('pointer-events', 'none');
+        svg.appendChild(rect2);
+      }
+    }
+
     var labelText = mode === 'mask'
       ? 'MASK | dark:' + insideCount
       : 'ZONES | boundary:' + edgeCount + ' FG:' + insideCount;

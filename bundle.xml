@@ -35692,6 +35692,370 @@ async function run() {
 run().catch(function(e) { console.error(e); process.exit(1); });
 </file>
 
+<file path="docs/PIXEL-CONTRAST-APPROACH.md">
+# Pixel Contrast Verification — Approach Reference
+
+> **TL;DR:** Capture the whole page twice with domToCanvas (original + mask), detect text boundaries via 4-connected neighbor check, sample FG colors 0.5–1.5px inside and BG colors 3–4px outside the boundary, group connected pixels, average colors per group, calculate WCAG contrast ratio.
+
+## What We Learned (Investigation Log)
+
+### Problem: Mask misalignment on nav bar elements
+- The tokenmade test page nav uses Tailwind `fixed top-0 flex items-center`
+- The saved HTML referenced external `/_next/static/css/` files that don't load in srcdoc iframe
+- **Without CSS, flex/fixed/centering don't apply** — text renders at default block positions
+- This was the primary cause of mask offset (text at top-left of bbox instead of centered)
+
+### fillText fallback is fundamentally broken
+- The analyzer's fillText fallback renders text at `(0,0)` within a bbox-sized canvas
+- Even with padding/flex-centering corrections, it can never match real DOM rendering:
+  - Line breaking differs from browser layout
+  - Font metrics differ between fillText and CSS rendering
+  - No support for flex gap, margin collapse, pseudo-elements, etc.
+- **Decision: abandon fillText, use domToCanvas for masks**
+
+### Edge detection (Roberts/Sobel/etc.) smudges
+- Convolution-based edge detectors widen the boundary by 1-2px
+- For small text this is significant — edges bleed into each other
+- **Decision: use simple 4-connected boundary detection** (is this pixel FG and neighbor BG?)
+
+### Background must be transparent, not white
+- Setting `background: white` on all elements makes overlapping elements (gradient overlays, decorative shapes) render as solid white, blocking text beneath
+- **Decision: `background: transparent` on all elements, `background: white` only on `<html>`**
+- Canvas naturally shows white where nothing is rendered
+
+### Scale matters for small text
+- At 0.5x scale, small text characters lose detail on diagonals and curves
+- At 2x scale, what was anti-aliased at 1x becomes distinct dark/light pixels
+- **Decision: capture at 2x for half-pixel edge accuracy**
+
+## Pipeline (7 Steps)
+
+### Step 1: Capture original page
+```
+domToCanvas(document.documentElement, { scale: 2.0 })
+→ origCanvas (for color sampling)
+```
+
+### Step 2: Apply mask CSS + capture mask
+```css
+*, *::before, *::after {
+  color: #000 !important;
+  background: transparent !important;
+  background-image: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  -webkit-text-fill-color: #000 !important;
+  opacity: 1 !important;
+  transition: none !important;
+  animation: none !important;
+}
+html { background: #fff !important; }
+img, svg, video, canvas, picture, iframe { opacity: 0 !important; }
+```
+```
+domToCanvas(document.documentElement, { scale: 2.0 })
+→ maskCanvas (for boundary detection)
+```
+Remove mask CSS immediately after capture.
+
+### Step 3: Extract binary mask
+```
+For each pixel: avg(R, G, B) < 180 → mask[i] = 1 (foreground/text)
+```
+Threshold 180 at 2x scale captures text cleanly without picking up light artifacts.
+
+### Step 4: Boundary detection (4-connected)
+```
+For each mask[i] = 1:
+  If any of 4 neighbors (up/down/left/right) is mask = 0:
+    cat[i] = 1 (boundary)
+  Else:
+    cat[i] = 2 (inside)
+```
+No convolution. No smudging. Exact pixel boundary.
+
+### Step 5: BFS distance from boundary
+```
+Initialize: all boundary pixels → dist = 0, queue
+BFS flood fill: dist[neighbor] = dist[current] + 1, up to MAX_DIST = 10
+```
+
+### Step 6: Zone classification + connected component grouping
+```
+FG sample zone: mask = 1 AND dist 1–3  (@2x = 0.5–1.5 display px inside)
+BG sample zone: mask = 0 AND dist 6–8  (@2x = 3–4 display px outside)
+```
+- FG is constrained to inside the bbox for per-element display
+- **BG can extend outside the bbox** — the background color at 3-4px away is what the eye sees
+- Connected component labeling via flood fill (8-connected) groups adjacent FG/BG pixels
+- Each FG group is matched to the nearest BG group by centroid distance
+
+### Step 7: Color averaging + contrast calculation
+```
+For each group: average R, G, B from the ORIGINAL screenshot at those pixel positions
+For each FG/BG pair: WCAG contrast ratio = (L1 + 0.05) / (L2 + 0.05)
+```
+
+## Viewer Display Rules
+- Don't show all FG/BG points at once (too noisy)
+- On element interaction, show FG pixels inside that element's bbox
+- BG pixels for that element can extend outside the bbox
+- Color-code: red = boundary, orange = FG sample, green = BG sample
+- Tooltip: contrast ratio, PASS/AA-lg/FAIL, color swatches
+
+## Key Constants
+| Constant | Value | Rationale |
+|----------|-------|-----------|
+| SCALE | 2.0 | Half-pixel accuracy for small text |
+| Mask threshold | 180 | Clean text detection at 2x |
+| FG zone | dist 1–3 @2x | 0.5–1.5 display px inside boundary |
+| BG zone | dist 6–8 @2x | 3–4 display px outside (thin ring) |
+| BFS max | 10 | Enough for BG zone + margin |
+
+## Files
+- `analyzer-iframe.js` — mask capture (Phase B CSS, domToCanvas)
+- `analyzer-contrast-verify.js` — pixel contrast pipeline (this rewrite)
+- `analyzer-viewer.js` — debug overlay display
+- `docs/tests/test-page-small.html` — test page with interactive overlay prototype
+</file>
+
+<file path="docs/tests/test-mask-alignment.html">
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mask Alignment Test</title>
+<style>
+  body { margin: 0; padding: 20px; padding-top: 80px; font-family: system-ui, -apple-system, sans-serif; background: #f5f5f5; }
+  .test-row { margin: 12px 0; padding: 8px 12px; background: white; border-radius: 4px; }
+
+  /* Fixed header — tests mask alignment for position:fixed elements */
+  .fixed-header {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    background: #1e293b; padding: 0 20px; height: 56px;
+    display: flex; align-items: center; gap: 24px;
+  }
+  .fixed-header .logo { font-size: 18px; font-weight: 700; color: white; }
+  .fixed-header .nav-link { font-size: 14px; color: #94a3b8; text-decoration: none; }
+  .fixed-header .nav-link:hover { color: white; }
+  .fixed-header .cta { font-size: 13px; font-weight: 600; color: white; background: #3b82f6; padding: 6px 16px; border-radius: 6px; margin-left: auto; }
+
+  /* Sticky section header */
+  .sticky-header {
+    position: sticky; top: 56px; z-index: 50;
+    background: #e2e8f0; padding: 8px 12px; font-size: 12px; font-weight: 600; color: #475569;
+    border-bottom: 1px solid #cbd5e1;
+  }
+  .dark-row { background: #1a1a2e; }
+  .gradient-row { background: linear-gradient(90deg, #667eea 0%, #764ba2 100%); }
+
+  /* Size variants */
+  .sz-10 { font-size: 10px; color: #333; }
+  .sz-12 { font-size: 12px; color: #333; }
+  .sz-14 { font-size: 14px; color: #333; }
+  .sz-16 { font-size: 16px; color: #333; }
+  .sz-20 { font-size: 20px; color: #333; }
+  .sz-24 { font-size: 24px; color: #333; }
+  .sz-32 { font-size: 32px; color: #333; }
+  .sz-48 { font-size: 48px; color: #333; }
+
+  /* Weight variants */
+  .w-300 { font-weight: 300; }
+  .w-400 { font-weight: 400; }
+  .w-600 { font-weight: 600; }
+  .w-700 { font-weight: 700; }
+  .w-900 { font-weight: 900; }
+
+  /* Style variants */
+  .italic { font-style: italic; }
+  .ls-tight { letter-spacing: -0.5px; }
+  .ls-wide { letter-spacing: 2px; }
+  .lh-tight { line-height: 1.0; }
+  .lh-loose { line-height: 2.0; }
+
+  /* Light on dark */
+  .light-text { color: #e0e0e0; }
+  .light-text-low { color: #888; }
+
+  /* Serif / mono */
+  .serif { font-family: Georgia, 'Times New Roman', serif; }
+  .mono { font-family: 'Courier New', monospace; }
+
+  /* Transform */
+  .uppercase { text-transform: uppercase; }
+  .shadow { text-shadow: 1px 1px 2px rgba(0,0,0,0.3); }
+  .outline { -webkit-text-stroke: 1px #333; color: transparent; }
+
+  .label { display: inline-block; min-width: 180px; font-size: 11px; color: #999; vertical-align: middle; }
+</style>
+</head><body>
+
+<!-- Fixed header with nav links -->
+<header class="fixed-header">
+  <span class="logo">BrandName</span>
+  <a href="#" class="nav-link">Products</a>
+  <a href="#" class="nav-link">Solutions</a>
+  <a href="#" class="nav-link">Pricing</a>
+  <a href="#" class="nav-link">Docs</a>
+  <span class="cta">Get Started</span>
+</header>
+
+<h2 style="font-size:14px;color:#666;margin:0 0 10px">Mask Alignment Test — compare mask overlay vs actual text</h2>
+<p style="font-size:11px;color:#999;margin:0 0 16px">
+  Analyze this page, then double-click verify rects to see the mask overlay.
+  If the mask doesn't perfectly align with the text, the pixel contrast is wrong.
+</p>
+
+<!-- Sticky section header test -->
+<div class="sticky-header">SECTION: Font Size Matrix</div>
+
+<!-- Size matrix -->
+<div class="test-row">
+  <span class="label">10px regular</span>
+  <span class="sz-10 w-400">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row">
+  <span class="label">12px regular</span>
+  <span class="sz-12 w-400">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row">
+  <span class="label">14px regular</span>
+  <span class="sz-14 w-400">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row">
+  <span class="label">16px regular</span>
+  <span class="sz-16 w-400">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row">
+  <span class="label">20px regular</span>
+  <span class="sz-20 w-400">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row">
+  <span class="label">24px regular</span>
+  <span class="sz-24 w-400">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row">
+  <span class="label">32px regular</span>
+  <span class="sz-32 w-400">The quick brown fox jumps</span>
+</div>
+<div class="test-row">
+  <span class="label">48px regular</span>
+  <span class="sz-48 w-400">Quick brown fox</span>
+</div>
+
+<!-- Sticky section header test -->
+<div class="sticky-header">SECTION: Font Weight &amp; Style Variants</div>
+
+<!-- Weight matrix -->
+<div class="test-row">
+  <span class="label">16px light (300)</span>
+  <span class="sz-16 w-300">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row">
+  <span class="label">16px semibold (600)</span>
+  <span class="sz-16 w-600">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row">
+  <span class="label">16px bold (700)</span>
+  <span class="sz-16 w-700">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row">
+  <span class="label">16px black (900)</span>
+  <span class="sz-16 w-900">The quick brown fox jumps over the lazy dog</span>
+</div>
+
+<!-- Style variants -->
+<div class="test-row">
+  <span class="label">16px italic</span>
+  <span class="sz-16 w-400 italic">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row">
+  <span class="label">16px bold italic</span>
+  <span class="sz-16 w-700 italic">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row">
+  <span class="label">16px tight spacing</span>
+  <span class="sz-16 w-400 ls-tight">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row">
+  <span class="label">16px wide spacing</span>
+  <span class="sz-16 w-400 ls-wide">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row">
+  <span class="label">16px tight line-height</span>
+  <span class="sz-16 w-400 lh-tight">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row">
+  <span class="label">16px loose line-height</span>
+  <span class="sz-16 w-400 lh-loose">The quick brown fox jumps over the lazy dog</span>
+</div>
+
+<!-- Font family variants -->
+<div class="test-row">
+  <span class="label">16px serif</span>
+  <span class="sz-16 w-400 serif">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row">
+  <span class="label">16px serif bold</span>
+  <span class="sz-16 w-700 serif">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row">
+  <span class="label">16px mono</span>
+  <span class="sz-16 w-400 mono">The quick brown fox jumps over the lazy dog</span>
+</div>
+
+<!-- Special rendering -->
+<div class="test-row">
+  <span class="label">16px uppercase</span>
+  <span class="sz-16 w-400 uppercase">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row">
+  <span class="label">16px with shadow</span>
+  <span class="sz-16 w-400 shadow">The quick brown fox jumps over the lazy dog</span>
+</div>
+
+<!-- Dark backgrounds -->
+<div class="test-row dark-row">
+  <span class="label" style="color:#666">16px light on dark</span>
+  <span class="sz-16 w-400 light-text">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row dark-row">
+  <span class="label" style="color:#666">16px low contrast on dark</span>
+  <span class="sz-16 w-400 light-text-low">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row dark-row">
+  <span class="label" style="color:#666">12px light on dark</span>
+  <span class="sz-12 w-400 light-text">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row dark-row">
+  <span class="label" style="color:#666">24px bold light on dark</span>
+  <span class="sz-24 w-700 light-text">The quick brown fox jumps</span>
+</div>
+
+<!-- Gradient background -->
+<div class="test-row gradient-row">
+  <span class="label" style="color:rgba(255,255,255,0.5)">16px on gradient</span>
+  <span class="sz-16 w-600" style="color:white">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row gradient-row">
+  <span class="label" style="color:rgba(255,255,255,0.5)">24px on gradient</span>
+  <span class="sz-24 w-700" style="color:white">Quick brown fox jumps</span>
+</div>
+
+<!-- Small text stress tests -->
+<div class="test-row">
+  <span class="label">10px bold</span>
+  <span class="sz-10 w-700">The quick brown fox jumps over the lazy dog 0123456789</span>
+</div>
+<div class="test-row">
+  <span class="label">10px italic serif</span>
+  <span class="sz-10 w-400 italic serif">The quick brown fox jumps over the lazy dog 0123456789</span>
+</div>
+
+</body></html>
+</file>
+
 <file path="docs/analyzer.js">
 // make-it-look-good — Design Analyzer (Main UI Controller)
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
@@ -36755,370 +37119,6 @@ run().catch(function(e) { console.error(e); process.exit(1); });
     init();
   }
 })();
-</file>
-
-<file path="docs/PIXEL-CONTRAST-APPROACH.md">
-# Pixel Contrast Verification — Approach Reference
-
-> **TL;DR:** Capture the whole page twice with domToCanvas (original + mask), detect text boundaries via 4-connected neighbor check, sample FG colors 0.5–1.5px inside and BG colors 3–4px outside the boundary, group connected pixels, average colors per group, calculate WCAG contrast ratio.
-
-## What We Learned (Investigation Log)
-
-### Problem: Mask misalignment on nav bar elements
-- The tokenmade test page nav uses Tailwind `fixed top-0 flex items-center`
-- The saved HTML referenced external `/_next/static/css/` files that don't load in srcdoc iframe
-- **Without CSS, flex/fixed/centering don't apply** — text renders at default block positions
-- This was the primary cause of mask offset (text at top-left of bbox instead of centered)
-
-### fillText fallback is fundamentally broken
-- The analyzer's fillText fallback renders text at `(0,0)` within a bbox-sized canvas
-- Even with padding/flex-centering corrections, it can never match real DOM rendering:
-  - Line breaking differs from browser layout
-  - Font metrics differ between fillText and CSS rendering
-  - No support for flex gap, margin collapse, pseudo-elements, etc.
-- **Decision: abandon fillText, use domToCanvas for masks**
-
-### Edge detection (Roberts/Sobel/etc.) smudges
-- Convolution-based edge detectors widen the boundary by 1-2px
-- For small text this is significant — edges bleed into each other
-- **Decision: use simple 4-connected boundary detection** (is this pixel FG and neighbor BG?)
-
-### Background must be transparent, not white
-- Setting `background: white` on all elements makes overlapping elements (gradient overlays, decorative shapes) render as solid white, blocking text beneath
-- **Decision: `background: transparent` on all elements, `background: white` only on `<html>`**
-- Canvas naturally shows white where nothing is rendered
-
-### Scale matters for small text
-- At 0.5x scale, small text characters lose detail on diagonals and curves
-- At 2x scale, what was anti-aliased at 1x becomes distinct dark/light pixels
-- **Decision: capture at 2x for half-pixel edge accuracy**
-
-## Pipeline (7 Steps)
-
-### Step 1: Capture original page
-```
-domToCanvas(document.documentElement, { scale: 2.0 })
-→ origCanvas (for color sampling)
-```
-
-### Step 2: Apply mask CSS + capture mask
-```css
-*, *::before, *::after {
-  color: #000 !important;
-  background: transparent !important;
-  background-image: none !important;
-  border-color: transparent !important;
-  box-shadow: none !important;
-  text-shadow: none !important;
-  -webkit-text-fill-color: #000 !important;
-  opacity: 1 !important;
-  transition: none !important;
-  animation: none !important;
-}
-html { background: #fff !important; }
-img, svg, video, canvas, picture, iframe { opacity: 0 !important; }
-```
-```
-domToCanvas(document.documentElement, { scale: 2.0 })
-→ maskCanvas (for boundary detection)
-```
-Remove mask CSS immediately after capture.
-
-### Step 3: Extract binary mask
-```
-For each pixel: avg(R, G, B) < 180 → mask[i] = 1 (foreground/text)
-```
-Threshold 180 at 2x scale captures text cleanly without picking up light artifacts.
-
-### Step 4: Boundary detection (4-connected)
-```
-For each mask[i] = 1:
-  If any of 4 neighbors (up/down/left/right) is mask = 0:
-    cat[i] = 1 (boundary)
-  Else:
-    cat[i] = 2 (inside)
-```
-No convolution. No smudging. Exact pixel boundary.
-
-### Step 5: BFS distance from boundary
-```
-Initialize: all boundary pixels → dist = 0, queue
-BFS flood fill: dist[neighbor] = dist[current] + 1, up to MAX_DIST = 10
-```
-
-### Step 6: Zone classification + connected component grouping
-```
-FG sample zone: mask = 1 AND dist 1–3  (@2x = 0.5–1.5 display px inside)
-BG sample zone: mask = 0 AND dist 6–8  (@2x = 3–4 display px outside)
-```
-- FG is constrained to inside the bbox for per-element display
-- **BG can extend outside the bbox** — the background color at 3-4px away is what the eye sees
-- Connected component labeling via flood fill (8-connected) groups adjacent FG/BG pixels
-- Each FG group is matched to the nearest BG group by centroid distance
-
-### Step 7: Color averaging + contrast calculation
-```
-For each group: average R, G, B from the ORIGINAL screenshot at those pixel positions
-For each FG/BG pair: WCAG contrast ratio = (L1 + 0.05) / (L2 + 0.05)
-```
-
-## Viewer Display Rules
-- Don't show all FG/BG points at once (too noisy)
-- On element interaction, show FG pixels inside that element's bbox
-- BG pixels for that element can extend outside the bbox
-- Color-code: red = boundary, orange = FG sample, green = BG sample
-- Tooltip: contrast ratio, PASS/AA-lg/FAIL, color swatches
-
-## Key Constants
-| Constant | Value | Rationale |
-|----------|-------|-----------|
-| SCALE | 2.0 | Half-pixel accuracy for small text |
-| Mask threshold | 180 | Clean text detection at 2x |
-| FG zone | dist 1–3 @2x | 0.5–1.5 display px inside boundary |
-| BG zone | dist 6–8 @2x | 3–4 display px outside (thin ring) |
-| BFS max | 10 | Enough for BG zone + margin |
-
-## Files
-- `analyzer-iframe.js` — mask capture (Phase B CSS, domToCanvas)
-- `analyzer-contrast-verify.js` — pixel contrast pipeline (this rewrite)
-- `analyzer-viewer.js` — debug overlay display
-- `docs/tests/test-page-small.html` — test page with interactive overlay prototype
-</file>
-
-<file path="docs/tests/test-mask-alignment.html">
-<!DOCTYPE html>
-<html lang="en"><head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Mask Alignment Test</title>
-<style>
-  body { margin: 0; padding: 20px; padding-top: 80px; font-family: system-ui, -apple-system, sans-serif; background: #f5f5f5; }
-  .test-row { margin: 12px 0; padding: 8px 12px; background: white; border-radius: 4px; }
-
-  /* Fixed header — tests mask alignment for position:fixed elements */
-  .fixed-header {
-    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-    background: #1e293b; padding: 0 20px; height: 56px;
-    display: flex; align-items: center; gap: 24px;
-  }
-  .fixed-header .logo { font-size: 18px; font-weight: 700; color: white; }
-  .fixed-header .nav-link { font-size: 14px; color: #94a3b8; text-decoration: none; }
-  .fixed-header .nav-link:hover { color: white; }
-  .fixed-header .cta { font-size: 13px; font-weight: 600; color: white; background: #3b82f6; padding: 6px 16px; border-radius: 6px; margin-left: auto; }
-
-  /* Sticky section header */
-  .sticky-header {
-    position: sticky; top: 56px; z-index: 50;
-    background: #e2e8f0; padding: 8px 12px; font-size: 12px; font-weight: 600; color: #475569;
-    border-bottom: 1px solid #cbd5e1;
-  }
-  .dark-row { background: #1a1a2e; }
-  .gradient-row { background: linear-gradient(90deg, #667eea 0%, #764ba2 100%); }
-
-  /* Size variants */
-  .sz-10 { font-size: 10px; color: #333; }
-  .sz-12 { font-size: 12px; color: #333; }
-  .sz-14 { font-size: 14px; color: #333; }
-  .sz-16 { font-size: 16px; color: #333; }
-  .sz-20 { font-size: 20px; color: #333; }
-  .sz-24 { font-size: 24px; color: #333; }
-  .sz-32 { font-size: 32px; color: #333; }
-  .sz-48 { font-size: 48px; color: #333; }
-
-  /* Weight variants */
-  .w-300 { font-weight: 300; }
-  .w-400 { font-weight: 400; }
-  .w-600 { font-weight: 600; }
-  .w-700 { font-weight: 700; }
-  .w-900 { font-weight: 900; }
-
-  /* Style variants */
-  .italic { font-style: italic; }
-  .ls-tight { letter-spacing: -0.5px; }
-  .ls-wide { letter-spacing: 2px; }
-  .lh-tight { line-height: 1.0; }
-  .lh-loose { line-height: 2.0; }
-
-  /* Light on dark */
-  .light-text { color: #e0e0e0; }
-  .light-text-low { color: #888; }
-
-  /* Serif / mono */
-  .serif { font-family: Georgia, 'Times New Roman', serif; }
-  .mono { font-family: 'Courier New', monospace; }
-
-  /* Transform */
-  .uppercase { text-transform: uppercase; }
-  .shadow { text-shadow: 1px 1px 2px rgba(0,0,0,0.3); }
-  .outline { -webkit-text-stroke: 1px #333; color: transparent; }
-
-  .label { display: inline-block; min-width: 180px; font-size: 11px; color: #999; vertical-align: middle; }
-</style>
-</head><body>
-
-<!-- Fixed header with nav links -->
-<header class="fixed-header">
-  <span class="logo">BrandName</span>
-  <a href="#" class="nav-link">Products</a>
-  <a href="#" class="nav-link">Solutions</a>
-  <a href="#" class="nav-link">Pricing</a>
-  <a href="#" class="nav-link">Docs</a>
-  <span class="cta">Get Started</span>
-</header>
-
-<h2 style="font-size:14px;color:#666;margin:0 0 10px">Mask Alignment Test — compare mask overlay vs actual text</h2>
-<p style="font-size:11px;color:#999;margin:0 0 16px">
-  Analyze this page, then double-click verify rects to see the mask overlay.
-  If the mask doesn't perfectly align with the text, the pixel contrast is wrong.
-</p>
-
-<!-- Sticky section header test -->
-<div class="sticky-header">SECTION: Font Size Matrix</div>
-
-<!-- Size matrix -->
-<div class="test-row">
-  <span class="label">10px regular</span>
-  <span class="sz-10 w-400">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row">
-  <span class="label">12px regular</span>
-  <span class="sz-12 w-400">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row">
-  <span class="label">14px regular</span>
-  <span class="sz-14 w-400">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row">
-  <span class="label">16px regular</span>
-  <span class="sz-16 w-400">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row">
-  <span class="label">20px regular</span>
-  <span class="sz-20 w-400">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row">
-  <span class="label">24px regular</span>
-  <span class="sz-24 w-400">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row">
-  <span class="label">32px regular</span>
-  <span class="sz-32 w-400">The quick brown fox jumps</span>
-</div>
-<div class="test-row">
-  <span class="label">48px regular</span>
-  <span class="sz-48 w-400">Quick brown fox</span>
-</div>
-
-<!-- Sticky section header test -->
-<div class="sticky-header">SECTION: Font Weight &amp; Style Variants</div>
-
-<!-- Weight matrix -->
-<div class="test-row">
-  <span class="label">16px light (300)</span>
-  <span class="sz-16 w-300">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row">
-  <span class="label">16px semibold (600)</span>
-  <span class="sz-16 w-600">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row">
-  <span class="label">16px bold (700)</span>
-  <span class="sz-16 w-700">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row">
-  <span class="label">16px black (900)</span>
-  <span class="sz-16 w-900">The quick brown fox jumps over the lazy dog</span>
-</div>
-
-<!-- Style variants -->
-<div class="test-row">
-  <span class="label">16px italic</span>
-  <span class="sz-16 w-400 italic">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row">
-  <span class="label">16px bold italic</span>
-  <span class="sz-16 w-700 italic">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row">
-  <span class="label">16px tight spacing</span>
-  <span class="sz-16 w-400 ls-tight">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row">
-  <span class="label">16px wide spacing</span>
-  <span class="sz-16 w-400 ls-wide">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row">
-  <span class="label">16px tight line-height</span>
-  <span class="sz-16 w-400 lh-tight">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row">
-  <span class="label">16px loose line-height</span>
-  <span class="sz-16 w-400 lh-loose">The quick brown fox jumps over the lazy dog</span>
-</div>
-
-<!-- Font family variants -->
-<div class="test-row">
-  <span class="label">16px serif</span>
-  <span class="sz-16 w-400 serif">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row">
-  <span class="label">16px serif bold</span>
-  <span class="sz-16 w-700 serif">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row">
-  <span class="label">16px mono</span>
-  <span class="sz-16 w-400 mono">The quick brown fox jumps over the lazy dog</span>
-</div>
-
-<!-- Special rendering -->
-<div class="test-row">
-  <span class="label">16px uppercase</span>
-  <span class="sz-16 w-400 uppercase">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row">
-  <span class="label">16px with shadow</span>
-  <span class="sz-16 w-400 shadow">The quick brown fox jumps over the lazy dog</span>
-</div>
-
-<!-- Dark backgrounds -->
-<div class="test-row dark-row">
-  <span class="label" style="color:#666">16px light on dark</span>
-  <span class="sz-16 w-400 light-text">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row dark-row">
-  <span class="label" style="color:#666">16px low contrast on dark</span>
-  <span class="sz-16 w-400 light-text-low">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row dark-row">
-  <span class="label" style="color:#666">12px light on dark</span>
-  <span class="sz-12 w-400 light-text">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row dark-row">
-  <span class="label" style="color:#666">24px bold light on dark</span>
-  <span class="sz-24 w-700 light-text">The quick brown fox jumps</span>
-</div>
-
-<!-- Gradient background -->
-<div class="test-row gradient-row">
-  <span class="label" style="color:rgba(255,255,255,0.5)">16px on gradient</span>
-  <span class="sz-16 w-600" style="color:white">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row gradient-row">
-  <span class="label" style="color:rgba(255,255,255,0.5)">24px on gradient</span>
-  <span class="sz-24 w-700" style="color:white">Quick brown fox jumps</span>
-</div>
-
-<!-- Small text stress tests -->
-<div class="test-row">
-  <span class="label">10px bold</span>
-  <span class="sz-10 w-700">The quick brown fox jumps over the lazy dog 0123456789</span>
-</div>
-<div class="test-row">
-  <span class="label">10px italic serif</span>
-  <span class="sz-10 w-400 italic serif">The quick brown fox jumps over the lazy dog 0123456789</span>
-</div>
-
-</body></html>
 </file>
 
 <file path="docs/tests/test-domtocanvas-mask.html">
@@ -40436,6 +40436,20 @@ window.MilgViewer = (function() {
     img.setAttribute('opacity', '0.85');
     svg.appendChild(img);
 
+    // Render expanded BG pixels outside bbox (if available)
+    if (mode === 'zones' && debug.expBg && debug.expBg.length > 0) {
+      for (var ebi = 0; ebi < debug.expBg.length; ebi++) {
+        var ep = debug.expBg[ebi];
+        var rect2 = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect2.setAttribute('x', bx + ep.x); rect2.setAttribute('y', by + secOff + ep.y);
+        rect2.setAttribute('width', 1); rect2.setAttribute('height', 1);
+        rect2.setAttribute('fill', 'rgba(30,200,80,0.55)');
+        rect2.setAttribute('class', 'milg-debug-overlay');
+        rect2.setAttribute('pointer-events', 'none');
+        svg.appendChild(rect2);
+      }
+    }
+
     var labelText = mode === 'mask'
       ? 'MASK | dark:' + insideCount
       : 'ZONES | boundary:' + edgeCount + ' FG:' + insideCount;
@@ -42222,6 +42236,38 @@ window.MilgContrastVerify = (function() {
       }
     }
 
+    // Step 4b: Small text FG fallback — when text strokes are too thin (1-2px),
+    // the FG zone (dist 1-2 inside) may be empty. In any 2x2 window that has
+    // boundary pixels but no FG pixels, promote the boundary pixels to FG.
+    var fgCount = 0, boundaryCount = 0;
+    for (var i = 0; i < w * h; i++) {
+      if (zone[i] === 2) fgCount++;
+      if (zone[i] === 1) boundaryCount++;
+    }
+    if (fgCount === 0 && boundaryCount > 0) {
+      // No FG at all — promote ALL boundary pixels to FG
+      for (var i = 0; i < w * h; i++) {
+        if (zone[i] === 1) zone[i] = 2;
+      }
+    } else if (boundaryCount > 0) {
+      // Scan 2x2 windows: if boundary pixels exist but no FG in the window, promote
+      for (var y = 0; y < h - 1; y++) {
+        for (var x = 0; x < w - 1; x++) {
+          var z00 = zone[y * w + x], z10 = zone[y * w + x + 1];
+          var z01 = zone[(y + 1) * w + x], z11 = zone[(y + 1) * w + x + 1];
+          var hasBoundary = (z00 === 1 || z10 === 1 || z01 === 1 || z11 === 1);
+          var hasFg = (z00 === 2 || z10 === 2 || z01 === 2 || z11 === 2);
+          if (hasBoundary && !hasFg) {
+            // Promote boundary pixels in this window to FG
+            if (z00 === 1) zone[y * w + x] = 2;
+            if (z10 === 1) zone[y * w + x + 1] = 2;
+            if (z01 === 1) zone[(y + 1) * w + x] = 2;
+            if (z11 === 1) zone[(y + 1) * w + x + 1] = 2;
+          }
+        }
+      }
+    }
+
     // Also classify BG pixels in the padding area (outside bbox)
     // Build a set of boundary pixel positions for distance checks
     var boundaryPts = [];
@@ -42393,6 +42439,11 @@ window.MilgContrastVerify = (function() {
 
     if (result) {
       // Debug data for viewer overlay
+      // Include expanded BG pixel positions (outside bbox) for full BG visualization
+      var expBgZone = [];
+      for (var i = 0; i < expBgPixels.length; i++) {
+        expBgZone.push({ x: expBgPixels[i].lx, y: expBgPixels[i].ly });
+      }
       result._debug = {
         bx: bx, by: by, bw: w, bh: h,
         mask: Array.from(mask.slice(0, w * h)),
@@ -42400,6 +42451,7 @@ window.MilgContrastVerify = (function() {
         fgGroups: fgLabel.count,
         bgGroups: bgLabel.count,
         zone: Array.from(zone.slice(0, w * h)),
+        expBg: expBgZone, // BG pixels outside bbox (bbox-relative coords, can be negative)
         method: 'boundary'
       };
     }

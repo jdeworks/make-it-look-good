@@ -344,6 +344,38 @@ window.MilgContrastVerify = (function() {
       }
     }
 
+    // Step 4b: Small text FG fallback — when text strokes are too thin (1-2px),
+    // the FG zone (dist 1-2 inside) may be empty. In any 2x2 window that has
+    // boundary pixels but no FG pixels, promote the boundary pixels to FG.
+    var fgCount = 0, boundaryCount = 0;
+    for (var i = 0; i < w * h; i++) {
+      if (zone[i] === 2) fgCount++;
+      if (zone[i] === 1) boundaryCount++;
+    }
+    if (fgCount === 0 && boundaryCount > 0) {
+      // No FG at all — promote ALL boundary pixels to FG
+      for (var i = 0; i < w * h; i++) {
+        if (zone[i] === 1) zone[i] = 2;
+      }
+    } else if (boundaryCount > 0) {
+      // Scan 2x2 windows: if boundary pixels exist but no FG in the window, promote
+      for (var y = 0; y < h - 1; y++) {
+        for (var x = 0; x < w - 1; x++) {
+          var z00 = zone[y * w + x], z10 = zone[y * w + x + 1];
+          var z01 = zone[(y + 1) * w + x], z11 = zone[(y + 1) * w + x + 1];
+          var hasBoundary = (z00 === 1 || z10 === 1 || z01 === 1 || z11 === 1);
+          var hasFg = (z00 === 2 || z10 === 2 || z01 === 2 || z11 === 2);
+          if (hasBoundary && !hasFg) {
+            // Promote boundary pixels in this window to FG
+            if (z00 === 1) zone[y * w + x] = 2;
+            if (z10 === 1) zone[y * w + x + 1] = 2;
+            if (z01 === 1) zone[(y + 1) * w + x] = 2;
+            if (z11 === 1) zone[(y + 1) * w + x + 1] = 2;
+          }
+        }
+      }
+    }
+
     // Also classify BG pixels in the padding area (outside bbox)
     // Build a set of boundary pixel positions for distance checks
     var boundaryPts = [];
@@ -515,6 +547,11 @@ window.MilgContrastVerify = (function() {
 
     if (result) {
       // Debug data for viewer overlay
+      // Include expanded BG pixel positions (outside bbox) for full BG visualization
+      var expBgZone = [];
+      for (var i = 0; i < expBgPixels.length; i++) {
+        expBgZone.push({ x: expBgPixels[i].lx, y: expBgPixels[i].ly });
+      }
       result._debug = {
         bx: bx, by: by, bw: w, bh: h,
         mask: Array.from(mask.slice(0, w * h)),
@@ -522,6 +559,7 @@ window.MilgContrastVerify = (function() {
         fgGroups: fgLabel.count,
         bgGroups: bgLabel.count,
         zone: Array.from(zone.slice(0, w * h)),
+        expBg: expBgZone, // BG pixels outside bbox (bbox-relative coords, can be negative)
         method: 'boundary'
       };
     }
