@@ -130,15 +130,16 @@ tailwind.config = {
     _overlays.push(_maskOverlay);
   }
 
-  // Simple boundary detection: mask pixel adjacent to non-mask pixel = edge
+  // Simple boundary detection: foreground pixel adjacent to background = edge
+  // Anti-aliased pixels (mask=2) are treated as foreground for boundary purposes
   // No convolution, no smudging — just 4-connected neighbor check
   function findBoundary(mask, w, h) {
     var cat = new Uint8Array(w * h); // 0=bg, 1=edge, 2=inside
     for (var y = 0; y < h; y++) {
       for (var x = 0; x < w; x++) {
         var i = y * w + x;
-        if (!mask[i]) continue;
-        // Check 4 neighbors — if any is bg, this is a boundary pixel
+        if (!mask[i]) continue; // bg pixel
+        // Check 4 neighbors — if any is bg (0), this is a boundary pixel
         if (x === 0 || x === w-1 || y === 0 || y === h-1 ||
             !mask[i-1] || !mask[i+1] || !mask[(y-1)*w+x] || !mask[(y+1)*w+x]) {
           cat[i] = 1;
@@ -180,7 +181,7 @@ tailwind.config = {
       return;
     }
 
-    var SCALE = 0.5;
+    var SCALE = 1.0;
     var vw = window.innerWidth;
     var vh = document.documentElement.scrollHeight;
 
@@ -209,18 +210,18 @@ tailwind.config = {
       var mctx = mc.getContext('2d', { willReadFrequently: true });
       console.log('[test-page] domToCanvas captured: ' + cw + 'x' + ch);
 
-      // Step 3: Extract binary mask (dark pixels = text)
+      // Step 3: Extract mask with anti-aliasing awareness
+      // Use two thresholds: < 128 = definite text, 128-220 = anti-aliased edge
       var px = mctx.getImageData(0, 0, cw, ch).data;
-      var mask = new Uint8Array(cw * ch);
-      var totalDark = 0;
+      var mask = new Uint8Array(cw * ch);   // 0=bg, 1=text, 2=anti-aliased
+      var totalDark = 0, totalAA = 0;
       for (var i = 0; i < cw * ch; i++) {
         var pi = i * 4;
-        if ((px[pi] + px[pi + 1] + px[pi + 2]) / 3 < 200) {
-          mask[i] = 1;
-          totalDark++;
-        }
+        var avg = (px[pi] + px[pi + 1] + px[pi + 2]) / 3;
+        if (avg < 128) { mask[i] = 1; totalDark++; }
+        else if (avg < 220) { mask[i] = 2; totalAA++; }
       }
-      console.log('[test-page] Mask: ' + totalDark + ' dark pixels');
+      console.log('[test-page] Mask: ' + totalDark + ' dark, ' + totalAA + ' anti-aliased pixels');
 
       // Step 4: Roberts edge detection
       var cat = findBoundary(mask, cw, ch);
@@ -274,12 +275,16 @@ tailwind.config = {
           // Edge pixel — bright red
           d[pi] = 255; d[pi+1] = 30; d[pi+2] = 30; d[pi+3] = 230;
           edgeCount++;
+        } else if (mask[i] === 2 && dd <= 1) {
+          // Anti-aliased pixel at boundary — yellow
+          d[pi] = 255; d[pi+1] = 220; d[pi+2] = 0; d[pi+3] = 200;
+          edgeCount++;
         } else if (mask[i] && dd >= 1 && dd <= 2) {
           // FG sample zone — orange (1-2px inside edge)
           d[pi] = 255; d[pi+1] = 160; d[pi+2] = 0; d[pi+3] = 180;
           fgCount++;
-        } else if (!mask[i] && dd >= 2 && dd <= 5) {
-          // BG sample zone — green (2-5px outside edge)
+        } else if (!mask[i] && dd >= 3 && dd <= 4) {
+          // BG sample zone — thin ring at distance 3-4 only
           d[pi] = 30; d[pi+1] = 200; d[pi+2] = 80; d[pi+3] = 140;
           bgCount++;
         }
@@ -306,8 +311,9 @@ tailwind.config = {
         'background:rgba(0,0,0,0.9);color:#fff;padding:8px 12px;border-radius:6px;' +
         'font:11px/1.6 monospace;pointer-events:none;border:1px solid rgba(255,255,255,0.15);';
       legend.innerHTML = '<span style="color:#ff1e1e">\u2588</span> edge (' + edgeCount + ')  ' +
-        '<span style="color:#ffa000">\u2588</span> FG sample 1-2px (' + fgCount + ')  ' +
-        '<span style="color:#1ec850">\u2588</span> BG sample 2-5px (' + bgCount + ')';
+        '<span style="color:#ffa000">\u2588</span> FG 1-2px (' + fgCount + ')  ' +
+        '<span style="color:#1ec850">\u2588</span> BG 3-4px (' + bgCount + ')  ' +
+        'scale:' + SCALE;
       overlay.appendChild(legend);
 
       document.body.appendChild(overlay);
