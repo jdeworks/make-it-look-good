@@ -38832,6 +38832,7 @@ tailwind.config = {
 
   function removeMask() {
     if (_maskStyle) { _maskStyle.remove(); _maskStyle = null; }
+    if (_maskOverlay) { _maskOverlay.remove(); _maskOverlay = null; }
   }
 
   function showBboxes() {
@@ -38861,26 +38862,48 @@ tailwind.config = {
     });
   }
 
+  var _maskOverlay = null;
   function showMask() {
     clearOverlays();
-    // Apply the exact same mask CSS the analyzer uses (Phase B)
-    _maskStyle = document.createElement('style');
-    _maskStyle.setAttribute('data-milg-diag', '1');
-    _maskStyle.textContent =
-      '*:not(.__milg-status):not(.__milg-diag), *:not(.__milg-status):not(.__milg-diag)::before, *:not(.__milg-status):not(.__milg-diag)::after {' +
-        'color: rgba(255,0,0,0.7) !important;' +
-        'background-color: rgba(255,255,255,0.65) !important;' +
+    removeMask();
+    // Clone the entire page into a fixed overlay with mask styles
+    _maskOverlay = document.createElement('div');
+    _maskOverlay.className = '__milg-mask-root';
+    _maskOverlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:99998;' +
+      'pointer-events:none;opacity:0.7;overflow:hidden;';
+    // Inner scroll container to match page scroll
+    var inner = document.createElement('div');
+    inner.style.cssText = 'position:absolute;top:0;left:0;width:100%;' +
+      'transform:translateY(-' + window.scrollY + 'px);';
+    // Clone body content
+    var clone = document.body.cloneNode(true);
+    // Remove any diagnostic elements from clone
+    clone.querySelectorAll('.__milg-status, .__milg-diag, .__milg-mask-root').forEach(function(el) { el.remove(); });
+    inner.appendChild(clone);
+    _maskOverlay.appendChild(inner);
+    // Inject mask styles scoped to the overlay
+    var style = document.createElement('style');
+    style.textContent =
+      '.__milg-mask-root * {' +
+        'color: #ff0000 !important;' +
+        'background-color: #fff !important;' +
         'background-image: none !important;' +
-        'background: rgba(255,255,255,0.65) !important;' +
+        'background: #fff !important;' +
         'border-color: transparent !important;' +
         'box-shadow: none !important;' +
         'text-shadow: none !important;' +
         'outline-color: transparent !important;' +
-        '-webkit-text-fill-color: rgba(255,0,0,0.7) !important;' +
-        'opacity: 1 !important;' +
+        '-webkit-text-fill-color: #ff0000 !important;' +
       '}' +
-      'img, svg, video, canvas, picture, iframe { opacity: 0 !important; }';
-    document.head.appendChild(_maskStyle);
+      '.__milg-mask-root img, .__milg-mask-root svg, .__milg-mask-root video,' +
+      '.__milg-mask-root canvas, .__milg-mask-root picture, .__milg-mask-root iframe {' +
+        'opacity: 0 !important;' +
+      '}' +
+      // Fix cloned fixed-position elements: they need to stay at their original position
+      '.__milg-mask-root [style*="fixed"] { position: absolute !important; }';
+    _maskOverlay.appendChild(style);
+    document.body.appendChild(_maskOverlay);
+    _overlays.push(_maskOverlay);
   }
 
   function updateStatus() {
@@ -38918,7 +38941,11 @@ tailwind.config = {
     clearTimeout(_scrollTimer);
     _scrollTimer = setTimeout(function() {
       if (_mode === 'bbox') showBboxes();
-    }, 100);
+      else if (_mode === 'mask' && _maskOverlay) {
+        var inner = _maskOverlay.firstElementChild;
+        if (inner) inner.style.transform = 'translateY(-' + window.scrollY + 'px)';
+      }
+    }, 16);
   }, { passive: true });
 
   console.log('[test-page] Mask diagnostic overlay ready. Right-click to cycle: normal → bbox → mask');
