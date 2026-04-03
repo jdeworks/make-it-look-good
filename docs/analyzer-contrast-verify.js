@@ -404,6 +404,25 @@ window.MilgContrastVerify = (function() {
       }
     }
 
+    // Step 4c: Strip interior FG pixels — only keep FG pixels that have at least
+    // one non-FG neighbor (boundary, BG, or empty). Interior FG surrounded entirely
+    // by other FG is redundant for contrast measurement.
+    for (var y = 1; y < h - 1; y++) {
+      for (var x = 1; x < w - 1; x++) {
+        var mi = y * w + x;
+        if (zone[mi] !== 2) continue;
+        var hasEdge = false;
+        for (var dy = -1; dy <= 1 && !hasEdge; dy++) {
+          for (var dx = -1; dx <= 1 && !hasEdge; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            var nz = zone[(y + dy) * w + (x + dx)];
+            if (nz !== 2) hasEdge = true; // neighbor is boundary, BG, or empty
+          }
+        }
+        if (!hasEdge) zone[mi] = 0; // demote to empty — pure interior
+      }
+    }
+
     // Also classify BG pixels in the padding area (outside bbox)
     // Build a set of boundary pixel positions for distance checks
     var boundaryPts = [];
