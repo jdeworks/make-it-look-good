@@ -41352,13 +41352,12 @@ window.MilgIframe = (function() {
   var _screenshotCDN = '';
   var _getViewport = function() { return { w: 1280, h: 900 }; };
   var _showProgress = function() {};
-  // --- Screenshot settings (REVERT NOTES at bottom of this block) ---
-  var SCREENSHOT_SCALE = 0.75;
-  var SCREENSHOT_QUALITY = 0.8;       // WebP quality (reverted from PNG)
-  var DOM_ZOOM = 2;                    // Zoom DOM 2x before capture for better text AA
-  // Effective resolution = SCREENSHOT_SCALE * DOM_ZOOM = 1.5x
-  // REVERT: set DOM_ZOOM = 1 to disable, or revert whole block to:
-  //   SCREENSHOT_SCALE = 0.75; SCREENSHOT_QUALITY = 0.8; DOM_ZOOM = 1;
+  // --- Screenshot settings ---
+  // Scale 1.5 = text renders at 1.5x resolution via SVG foreignObject rasterization.
+  // No DOM modifications needed — the library handles it.
+  // REVERT: set SCREENSHOT_SCALE = 0.75 for original resolution
+  var SCREENSHOT_SCALE = 1.5;
+  var SCREENSHOT_QUALITY = 0.8;
 
   function init(opts) {
     if (opts.screenshotCDN) _screenshotCDN = opts.screenshotCDN;
@@ -41386,7 +41385,7 @@ window.MilgIframe = (function() {
   // Called after extraction via __milgDoScreenshots (once-guard prevents double run).
   // Mirrors console snippet: pre-scroll → reset → wait → re-read bboxes → capture body
   function buildScreenshotScript(msgType) {
-    var ss = { scale: SCREENSHOT_SCALE, quality: SCREENSHOT_QUALITY, zoom: DOM_ZOOM };
+    var ss = { scale: SCREENSHOT_SCALE, quality: SCREENSHOT_QUALITY };
     return '(function(){' +
       // Once-guard: extraction may fire twice (load + fallback timeout)
       'if(window.__milgSsDone)return;window.__milgSsDone=true;' +
@@ -41473,8 +41472,6 @@ window.MilgIframe = (function() {
             'if(!ms||!ms.domToCanvas){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*");return}' +
             'document.querySelectorAll("img").forEach(function(i){if(i.src&&i.src.indexOf("data:")!==0)i.crossOrigin="anonymous"});' +
             'var _sc=' + ss.scale + ';' +
-            'var _zoom=' + ss.zoom + ';' +
-            'var _effectiveScale=_sc*_zoom;' +
             // Helper: send results to parent
             'function _send(fullUri,maskUri){' +
               'var updatedData=window.__milgData||null;' +
@@ -41482,20 +41479,16 @@ window.MilgIframe = (function() {
                 'screenshots:fullUri?[fullUri]:[],' +
                 'screenshotFull:fullUri||null,' +
                 'textMask:maskUri||null,' +
-                'screenshotMeta:{scale:_effectiveScale,viewportHeight:vh,sectionCount:1,' +
+                'screenshotMeta:{scale:_sc,viewportHeight:vh,sectionCount:1,' +
                   'canvasWidth:0,canvasHeight:0,' +
                   'docHeightAtCapture:fullH,' +
                   'calibrationOffsetY:0,calibrationSamples:[]},' +
                 'updatedData:updatedData' +
               '},"*")' +
             '}' +
-            // DOM_ZOOM: scale up HTML for better text rendering before capture
-            // REVERT: remove the zoom lines + change _effectiveScale back to _sc
-            'if(_zoom>1){document.documentElement.style.zoom=_zoom;void document.body.offsetHeight;' +
-              'console.log("[iframe-ss] DOM zoom applied: "+_zoom+"x")}' +
             // Step 1: Capture real screenshot FIRST (safe — no DOM modifications)
             '_prog("Capturing screenshot...");' +
-            'console.log("[iframe-ss] Step 1/2: Capturing screenshot at "+_sc+"x (DOM "+_zoom+"x = "+_effectiveScale+"x effective)...");' +
+            'console.log("[iframe-ss] Step 1/2: Capturing screenshot at "+_sc+"x...");' +
             'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:15000}).then(function(fc){' +
               'console.log("[iframe-ss] Screenshot: "+fc.width+"x"+fc.height);' +
               'var fullUri;try{fullUri=fc.toDataURL("image/webp",' + ss.quality + ')}catch(e){fullUri=""}' +
@@ -41512,7 +41505,7 @@ window.MilgIframe = (function() {
                   'screenshots:fullUri?[fullUri]:[],' +
                   'screenshotFull:fullUri||null,' +
                   'textMask:maskUri||null,' +
-                  'screenshotMeta:{scale:_effectiveScale,viewportHeight:vh,sectionCount:1,' +
+                  'screenshotMeta:{scale:_sc,viewportHeight:vh,sectionCount:1,' +
                     'canvasWidth:_cw,canvasHeight:_ch,' +
                     'docHeightAtCapture:fullH,' +
                     'calibrationOffsetY:0,calibrationSamples:[]},' +
@@ -41633,10 +41626,10 @@ window.MilgIframe = (function() {
                   'var _fillTextFallbacks=0;' +
                   'layer.forEach(function(pe){' +
                     'if(!pe.bbox)return;' +
-                    'var bx=Math.max(0,Math.round(pe.bbox.left*_effectiveScale));' +
-                    'var by=Math.max(0,Math.round(pe.bbox.top*_effectiveScale));' +
-                    'var bw=Math.min(Math.round(pe.bbox.width*_effectiveScale),mc.width-bx);' +
-                    'var bh=Math.min(Math.round(pe.bbox.height*_effectiveScale),mc.height-by);' +
+                    'var bx=Math.max(0,Math.round(pe.bbox.left*_sc));' +
+                    'var by=Math.max(0,Math.round(pe.bbox.top*_sc));' +
+                    'var bw=Math.min(Math.round(pe.bbox.width*_sc),mc.width-bx);' +
+                    'var bh=Math.min(Math.round(pe.bbox.height*_sc),mc.height-by);' +
                     'if(bw<2||bh<2)return;' +
                     'try{var px=mCtx.getImageData(bx,by,bw,bh).data;' +
                       'var bmp=new Uint8Array(bw*bh);' +
@@ -41651,18 +41644,18 @@ window.MilgIframe = (function() {
                         'try{var cs=getComputedStyle(pe.el);' +
                           'var _fc=document.createElement("canvas");_fc.width=bw;_fc.height=bh;' +
                           'var _fx=_fc.getContext("2d");_fx.fillStyle="#fff";_fx.fillRect(0,0,bw,bh);' +
-                          'var _fs=parseFloat(cs.fontSize)*_effectiveScale;' +
+                          'var _fs=parseFloat(cs.fontSize)*_sc;' +
                           '_fx.fillStyle="#000";' +
                           '_fx.font=cs.fontStyle+" "+cs.fontWeight+" "+_fs+"px "+cs.fontFamily;' +
                           '_fx.textBaseline="top";' +
                           // Account for padding and alignment within bbox
-                          'var _pl=(parseFloat(cs.paddingLeft)||0)*_effectiveScale;' +
-                          'var _pt=(parseFloat(cs.paddingTop)||0)*_effectiveScale;' +
-                          'var _pr=(parseFloat(cs.paddingRight)||0)*_effectiveScale;' +
+                          'var _pl=(parseFloat(cs.paddingLeft)||0)*_sc;' +
+                          'var _pt=(parseFloat(cs.paddingTop)||0)*_sc;' +
+                          'var _pr=(parseFloat(cs.paddingRight)||0)*_sc;' +
                           'var _ta=cs.textAlign;' +
                           // Render text — handle multi-line by splitting on natural wrapping
                           'var _txt=pe.pair.text.replace(/\\[placeholder\\] /,"");' +
-                          'var _lh=parseFloat(cs.lineHeight)*_effectiveScale||_fs*1.2;' +
+                          'var _lh=parseFloat(cs.lineHeight)*_sc||_fs*1.2;' +
                           'var _contentW=bw-_pl-_pr;' +
                           'var _words=_txt.split(/\\s+/);var _lines=[];var _line="";' +
                           'for(var _w=0;_w<_words.length;_w++){' +
