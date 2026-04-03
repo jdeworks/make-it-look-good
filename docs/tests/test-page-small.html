@@ -158,133 +158,174 @@ tailwind.config = {
   function showEdges() {
     clearOverlays();
     removeMask();
+
+    // Show loading status
+    updateStatus();
+    if (_statusEl) _statusEl.textContent = 'edges: capturing...';
+
+    // Load modern-screenshot (same lib as analyzer)
+    if (window.modernScreenshot) {
+      _captureEdges();
+    } else {
+      var s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/modern-screenshot@4.6.8/dist/index.js';
+      s.onload = function() { _captureEdges(); };
+      s.onerror = function() {
+        console.warn('[test-page] Failed to load modern-screenshot');
+        if (_statusEl) _statusEl.textContent = 'edges: failed to load lib';
+      };
+      document.head.appendChild(s);
+    }
+  }
+
+  function _captureEdges() {
+    var ms = window.modernScreenshot;
+    if (!ms || !ms.domToCanvas) {
+      console.warn('[test-page] modern-screenshot not available');
+      return;
+    }
+
+    var SCALE = 0.5;
     var vw = window.innerWidth;
     var vh = document.documentElement.scrollHeight;
-    var SCALE = 0.5;
-    var cw = Math.round(vw * SCALE);
-    var ch = Math.round(vh * SCALE);
 
-    // Step 1: build binary mask from text element bounding boxes
-    // This matches how the analyzer extracts mask bitmaps per element
-    var mc = document.createElement('canvas');
-    mc.width = cw; mc.height = ch;
-    var mctx = mc.getContext('2d', { willReadFrequently: true });
-    mctx.fillStyle = '#fff';
-    mctx.fillRect(0, 0, cw, ch);
-
-    // Apply mask CSS temporarily to get correct text rendering
+    // Step 1: Apply mask CSS to real DOM (same as analyzer Phase B)
     var tmpStyle = document.createElement('style');
-    tmpStyle.textContent = '*,*::before,*::after{color:#000!important;background:#fff!important;' +
-      'background-image:none!important;border-color:transparent!important;box-shadow:none!important;' +
-      'text-shadow:none!important;-webkit-text-fill-color:#000!important;opacity:1!important;' +
-      'transition:none!important;animation:none!important}' +
+    tmpStyle.setAttribute('data-milg-edge', '1');
+    tmpStyle.textContent =
+      '*,*::before,*::after{' +
+        'color:#000!important;background-color:#fff!important;background-image:none!important;' +
+        'background:white!important;border-color:transparent!important;box-shadow:none!important;' +
+        'text-shadow:none!important;outline-color:transparent!important;' +
+        '-webkit-text-fill-color:#000!important;opacity:1!important;' +
+        'transition:none!important;animation:none!important}' +
       'img,svg,video,canvas,picture,iframe{opacity:0!important}';
     document.head.appendChild(tmpStyle);
     void document.body.offsetHeight;
 
-    // Render each text element's text onto the mask canvas at its bbox position
-    var els = getTextElements();
-    mctx.fillStyle = '#000';
-    els.forEach(function(el) {
-      var r = el.getBoundingClientRect();
-      var bx = Math.round((r.left + window.scrollX) * SCALE);
-      var by = Math.round((r.top + window.scrollY) * SCALE);
-      var bw = Math.round(r.width * SCALE);
-      var bh = Math.round(r.height * SCALE);
-      if (bw < 2 || bh < 2) return;
-      var cs = getComputedStyle(el);
-      var fs = parseFloat(cs.fontSize) * SCALE;
-      var text = el.textContent.trim();
-      if (!text) return;
+    // Step 2: Capture with domToCanvas (real DOM rendering — pixel-perfect)
+    if (_statusEl) _statusEl.textContent = 'edges: domToCanvas...';
+    ms.domToCanvas(document.documentElement, { scale: SCALE, timeout: 10000 }).then(function(mc) {
+      // Remove mask CSS immediately
+      tmpStyle.remove();
 
-      mctx.save();
-      mctx.beginPath();
-      mctx.rect(bx, by, bw, bh);
-      mctx.clip();
+      var cw = mc.width, ch = mc.height;
+      var mctx = mc.getContext('2d', { willReadFrequently: true });
+      console.log('[test-page] domToCanvas captured: ' + cw + 'x' + ch);
 
-      mctx.font = cs.fontStyle + ' ' + cs.fontWeight + ' ' + fs + 'px ' + cs.fontFamily;
-      mctx.textBaseline = 'top';
-
-      var pl = (parseFloat(cs.paddingLeft) || 0) * SCALE;
-      var pt = (parseFloat(cs.paddingTop) || 0) * SCALE;
-      var pr = (parseFloat(cs.paddingRight) || 0) * SCALE;
-      var lh = parseFloat(cs.lineHeight) * SCALE || fs * 1.2;
-      var contentW = bw - pl - pr;
-
-      var words = text.split(/\s+/);
-      var lines = []; var line = '';
-      for (var w = 0; w < words.length; w++) {
-        var test = line ? line + ' ' + words[w] : words[w];
-        if (mctx.measureText(test).width > contentW && line) {
-          lines.push(line); line = words[w];
-        } else { line = test; }
+      // Step 3: Extract binary mask (dark pixels = text)
+      var px = mctx.getImageData(0, 0, cw, ch).data;
+      var mask = new Uint8Array(cw * ch);
+      var totalDark = 0;
+      for (var i = 0; i < cw * ch; i++) {
+        var pi = i * 4;
+        if ((px[pi] + px[pi + 1] + px[pi + 2]) / 3 < 200) {
+          mask[i] = 1;
+          totalDark++;
+        }
       }
-      lines.push(line);
+      console.log('[test-page] Mask: ' + totalDark + ' dark pixels');
 
-      var totalH = lines.length * lh;
-      var tyStart = by + pt;
-      var par = el.parentElement;
-      if (par) {
-        var pcs = getComputedStyle(par);
-        if (pcs.display.indexOf('flex') >= 0 && pcs.alignItems === 'center') {
-          tyStart = by + Math.max(0, (bh - totalH) / 2);
+      // Step 4: Roberts edge detection
+      var cat = edgeRoberts(mask, cw, ch);
+
+      // Step 5: BFS distance from edges (keep only near-edge pixels)
+      // dist[i] = 0 for edge, 1..N for distance from nearest edge
+      var dist = new Uint8Array(cw * ch);
+      var queue = [];
+      for (var i = 0; i < cw * ch; i++) {
+        if (cat[i] === 1) { dist[i] = 0; queue.push(i); }
+        else dist[i] = 255;
+      }
+      var head = 0;
+      var MAX_DIST = 6; // only keep pixels within 6px of edge
+      while (head < queue.length) {
+        var ci = queue[head++];
+        var cd = dist[ci];
+        if (cd >= MAX_DIST) continue;
+        var cx = ci % cw, cy = (ci - cx) / cw;
+        for (var dy = -1; dy <= 1; dy++) {
+          var ny = cy + dy;
+          if (ny < 0 || ny >= ch) continue;
+          for (var dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            var nx = cx + dx;
+            if (nx < 0 || nx >= cw) continue;
+            var ni = ny * cw + nx;
+            if (dist[ni] <= cd + 1) continue;
+            dist[ni] = cd + 1;
+            queue.push(ni);
+          }
         }
       }
 
-      var ta = cs.textAlign;
-      for (var i = 0; i < lines.length; i++) {
-        var lw = mctx.measureText(lines[i]).width;
-        var tx = bx + pl;
-        if (ta === 'center') tx = bx + (contentW - lw) / 2 + pl;
-        else if (ta === 'right' || ta === 'end') tx = bx + contentW - lw + pl;
-        mctx.fillText(lines[i], tx, tyStart + i * lh);
+      // Step 6: Render edge visualization
+      // Edge pixels (cat=1): bright red
+      // FG sample zone (mask=1, dist 1-2): orange (text color sample zone)
+      // BG sample zone (mask=0, dist 2-5): green (background color sample zone)
+      // Everything else: transparent (discarded)
+      var oc = document.createElement('canvas');
+      oc.width = cw; oc.height = ch;
+      var ox = oc.getContext('2d');
+      var imgd = ox.createImageData(cw, ch);
+      var d = imgd.data;
+      var edgeCount = 0, fgCount = 0, bgCount = 0;
+
+      for (var i = 0; i < cw * ch; i++) {
+        var pi = i * 4;
+        var dd = dist[i];
+        if (cat[i] === 1) {
+          // Edge pixel — bright red
+          d[pi] = 255; d[pi+1] = 30; d[pi+2] = 30; d[pi+3] = 230;
+          edgeCount++;
+        } else if (mask[i] && dd >= 1 && dd <= 2) {
+          // FG sample zone — orange (1-2px inside edge)
+          d[pi] = 255; d[pi+1] = 160; d[pi+2] = 0; d[pi+3] = 180;
+          fgCount++;
+        } else if (!mask[i] && dd >= 2 && dd <= 5) {
+          // BG sample zone — green (2-5px outside edge)
+          d[pi] = 30; d[pi+1] = 200; d[pi+2] = 80; d[pi+3] = 140;
+          bgCount++;
+        }
+        // else: transparent — discarded pixel
       }
-      mctx.restore();
+      ox.putImageData(imgd, 0, 0);
+
+      // Step 7: Overlay on page
+      var overlay = document.createElement('div');
+      overlay.className = '__milg-diag';
+      overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:99998;pointer-events:none;overflow:hidden;';
+      var innerDiv = document.createElement('div');
+      innerDiv.style.cssText = 'position:absolute;top:0;left:0;width:100%;transform:translateY(-' + window.scrollY + 'px);';
+      var edgeImg = document.createElement('img');
+      edgeImg.src = oc.toDataURL();
+      edgeImg.style.cssText = 'width:' + (cw / SCALE) + 'px;height:' + (ch / SCALE) + 'px;opacity:0.85;image-rendering:pixelated;';
+      innerDiv.appendChild(edgeImg);
+      overlay.appendChild(innerDiv);
+
+      // Legend
+      var legend = document.createElement('div');
+      legend.className = '__milg-status';
+      legend.style.cssText = 'position:fixed;bottom:40px;right:12px;z-index:100001;' +
+        'background:rgba(0,0,0,0.9);color:#fff;padding:8px 12px;border-radius:6px;' +
+        'font:11px/1.6 monospace;pointer-events:none;border:1px solid rgba(255,255,255,0.15);';
+      legend.innerHTML = '<span style="color:#ff1e1e">\u2588</span> edge (' + edgeCount + ')  ' +
+        '<span style="color:#ffa000">\u2588</span> FG sample 1-2px (' + fgCount + ')  ' +
+        '<span style="color:#1ec850">\u2588</span> BG sample 2-5px (' + bgCount + ')';
+      overlay.appendChild(legend);
+
+      document.body.appendChild(overlay);
+      _overlays.push(overlay);
+      overlay._inner = innerDiv;
+
+      console.log('[test-page] Edges: ' + edgeCount + ' edge, ' + fgCount + ' FG, ' + bgCount + ' BG');
+      if (_statusEl) _statusEl.textContent = 'overlay: edges (red/orange/green)  [right-click]';
+
+    }).catch(function(e) {
+      tmpStyle.remove();
+      console.warn('[test-page] domToCanvas failed:', e);
+      if (_statusEl) _statusEl.textContent = 'edges: capture failed';
     });
-
-    // Remove temp mask CSS
-    tmpStyle.remove();
-
-    // Step 2: extract binary mask from canvas
-    var px = mctx.getImageData(0, 0, cw, ch).data;
-    var mask = new Uint8Array(cw * ch);
-    for (var i = 0; i < cw * ch; i++) {
-      var pi = i * 4;
-      if ((px[pi] + px[pi+1] + px[pi+2]) / 3 < 200) mask[i] = 1;
-    }
-
-    // Step 3: Roberts edge detection
-    var cat = edgeRoberts(mask, cw, ch);
-
-    // Step 4: render edge overlay
-    var oc = document.createElement('canvas');
-    oc.width = cw; oc.height = ch;
-    var ox = oc.getContext('2d');
-    var imgd = ox.createImageData(cw, ch);
-    var d = imgd.data;
-    var edgeCount = 0, insideCount = 0;
-    for (var i = 0; i < cw * ch; i++) {
-      var pi = i * 4;
-      if (cat[i] === 1) { d[pi]=255; d[pi+1]=30; d[pi+2]=30; d[pi+3]=220; edgeCount++; }
-      else if (cat[i] === 2) { d[pi]=60; d[pi+1]=130; d[pi+2]=246; d[pi+3]=60; insideCount++; }
-    }
-    ox.putImageData(imgd, 0, 0);
-
-    var overlay = document.createElement('div');
-    overlay.className = '__milg-diag';
-    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:99998;pointer-events:none;overflow:hidden;';
-    var innerDiv = document.createElement('div');
-    innerDiv.style.cssText = 'position:absolute;top:0;left:0;width:100%;transform:translateY(-' + window.scrollY + 'px);';
-    var edgeImg = document.createElement('img');
-    edgeImg.src = oc.toDataURL();
-    edgeImg.style.cssText = 'width:' + vw + 'px;height:' + vh + 'px;opacity:0.7;image-rendering:pixelated;';
-    innerDiv.appendChild(edgeImg);
-    overlay.appendChild(innerDiv);
-    document.body.appendChild(overlay);
-    _overlays.push(overlay);
-    overlay._inner = innerDiv;
-
-    console.log('[test-page] Edges: ' + edgeCount + ' edge, ' + insideCount + ' inside, canvas ' + cw + 'x' + ch);
   }
 
   function updateStatus() {
