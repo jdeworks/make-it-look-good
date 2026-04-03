@@ -545,7 +545,7 @@ window.MilgContrastVerify = (function() {
         bx: bx, by: by, bw: w, bh: h,
         mask: Array.from(mask.slice(0, w * h)),
         boundary: boundaryPts.length,
-        fgGroups: fgLabel.count,
+        fgCount: allFgIdx.length,
         bgGroups: bgLabel.count,
         zone: Array.from(zone.slice(0, w * h)),
         expBg: expBgZone, // BG pixels outside bbox (bbox-relative coords, can be negative)
