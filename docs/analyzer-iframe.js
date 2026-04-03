@@ -139,18 +139,6 @@ window.MilgIframe = (function() {
                 'updatedData:updatedData' +
               '},"*")' +
             '}' +
-            // Diagnostic: snapshot computed styles of first 5 pair elements BEFORE mask changes
-            'var _styleDiag=[];' +
-            'try{var _dRefs=window.__milgBboxRefs||[];' +
-              'for(var _di=0;_di<Math.min(10,_dRefs.length);_di++){' +
-                'var _de=_dRefs[_di];if(!_de.el)continue;' +
-                'var _dcs=getComputedStyle(_de.el);' +
-                '_styleDiag.push({i:_di,pos:_dcs.position,disp:_dcs.display,tt:_dcs.textTransform,' +
-                  'ai:_dcs.alignItems,jc:_dcs.justifyContent,ff:_dcs.fontFamily.substring(0,30),' +
-                  'text:(_de.el.textContent||"").substring(0,20).trim()})' +
-              '}' +
-              'console.log("[style-diag] PRE-mask styles:",JSON.stringify(_styleDiag))' +
-            '}catch(e){}' +
             // Step 1: Capture real screenshot FIRST (safe — no DOM modifications)
             '_prog("Capturing screenshot...");' +
             'console.log("[iframe-ss] Step 1/2: Capturing screenshot...");' +
@@ -217,31 +205,13 @@ window.MilgIframe = (function() {
               // Phase B: Global mask style — white bg, white text, hide media
               'var _maskStyle=document.createElement("style");' +
               '_maskStyle.setAttribute("data-milg-mask","1");' +
-              '_maskStyle.textContent="*,*::before,*::after{color:#fff !important;background-color:#fff !important;background-image:none !important;background:white !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;-webkit-text-fill-color:#fff !important;opacity:1 !important;transition:none !important;animation:none !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}";' +
+              '_maskStyle.textContent="*,*::before,*::after{color:#fff !important;background-color:transparent !important;background-image:none !important;background:transparent !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;-webkit-text-fill-color:#fff !important;opacity:1 !important;transition:none !important;animation:none !important;}html{background:#fff !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}";' +
               'document.head.appendChild(_maskStyle);void document.body.offsetHeight;' +
               // Re-read bboxes AFTER mask style — white bg + hidden media can shift layout
               'if(typeof window.__milgReReadBboxes==="function"){' +
                 'var res3=window.__milgReReadBboxes();' +
                 'console.log("[iframe-ss] Re-read bboxes post-mask-style: "+res3)' +
               '}' +
-              // Diagnostic: snapshot computed styles AFTER mask changes
-              'try{var _styleDiag2=[];' +
-                'for(var _di2=0;_di2<Math.min(10,(_dRefs||[]).length);_di2++){' +
-                  'var _de2=_dRefs[_di2];if(!_de2.el)continue;' +
-                  'var _dcs2=getComputedStyle(_de2.el);' +
-                  '_styleDiag2.push({i:_di2,pos:_dcs2.position,disp:_dcs2.display,tt:_dcs2.textTransform,' +
-                    'ai:_dcs2.alignItems,jc:_dcs2.justifyContent,ff:_dcs2.fontFamily.substring(0,30),' +
-                    'text:(_de2.el.textContent||"").substring(0,20).trim()})' +
-                '}' +
-                'console.log("[style-diag] POST-mask styles:",JSON.stringify(_styleDiag2));' +
-                // Compare and flag differences
-                'for(var _ci=0;_ci<_styleDiag2.length;_ci++){' +
-                  'var pre=_styleDiag||[];var post=_styleDiag2;' +
-                  'if(pre[_ci]&&(pre[_ci].pos!==post[_ci].pos||pre[_ci].disp!==post[_ci].disp||pre[_ci].tt!==post[_ci].tt||pre[_ci].ai!==post[_ci].ai)){' +
-                    'console.warn("[style-diag] CHANGED #"+_ci+": "+JSON.stringify(pre[_ci])+" → "+JSON.stringify(post[_ci]))' +
-                  '}' +
-                '}' +
-              '}catch(e){}' +
               // Phase C: Collect pair elements and build overlap layers
               'var _refs=window.__milgBboxRefs||[];' +
               'var _pairs=(window.__milgData&&window.__milgData.colors&&window.__milgData.colors.contrastPairs)||[];' +
@@ -314,21 +284,6 @@ window.MilgIframe = (function() {
                     'var bw=Math.min(Math.round(pe.bbox.width*_sc),mc.width-bx);' +
                     'var bh=Math.min(Math.round(pe.bbox.height*_sc),mc.height-by);' +
                     'if(bw<2||bh<2)return;' +
-                    // Diagnostic: log element positions + parent styles for mask alignment debugging
-                    'try{var _cs=getComputedStyle(pe.el);' +
-                      'var _par=pe.el.parentElement;var _pcs=_par?getComputedStyle(_par):null;' +
-                      'if(_cs.position==="fixed"||_cs.position==="sticky"||(_pcs&&_pcs.display.indexOf("flex")>=0)){' +
-                        'var _bcr=pe.el.getBoundingClientRect();' +
-                        'console.log("[mask-diag] el=<"+pe.el.tagName.toLowerCase()+"> pos="+_cs.position+' +
-                          '" bbox="+JSON.stringify(pe.bbox)+' +
-                          '" bcr={t:"+Math.round(_bcr.top)+",l:"+Math.round(_bcr.left)+"} scrollY="+window.scrollY+' +
-                          '" extract="+bx+","+by+","+bw+"x"+bh+' +
-                          '" parent=<"+(_par?_par.tagName.toLowerCase():"?")+"> disp="+(_pcs?_pcs.display:"?")+' +
-                          '" ai="+(_pcs?_pcs.alignItems:"?")+' +
-                          '" parentPos="+(_pcs?_pcs.position:"?")+' +
-                          '" pad="+_cs.paddingTop+"/"+_cs.paddingLeft+' +
-                          '" text=\\""+((pe.pair.text||"").substring(0,30))+"\\"")}' +
-                    '}catch(e){}' +
                     'try{var px=mCtx.getImageData(bx,by,bw,bh).data;' +
                       'var bmp=new Uint8Array(bw*bh);' +
                       'for(var y=0;y<bh;y++){for(var x=0;x<bw;x++){' +
@@ -337,19 +292,6 @@ window.MilgIframe = (function() {
                         'if((px[i]+px[i+1]+px[i+2])/3<240)bmp[y*bw+x]=1' +
                       '}}' +
                       'var _dk=0;for(var _b=0;_b<bmp.length;_b++)if(bmp[_b])_dk++;' +
-                      // Diagnostic: check where dark pixels are concentrated within bbox
-                      'if(_dk>0){' +
-                        'var _minY=bh,_maxY=0,_minX=bw,_maxX=0;' +
-                        'for(var _dy=0;_dy<bh;_dy++)for(var _dx=0;_dx<bw;_dx++){' +
-                          'if(bmp[_dy*bw+_dx]){if(_dy<_minY)_minY=_dy;if(_dy>_maxY)_maxY=_dy;if(_dx<_minX)_minX=_dx;if(_dx>_maxX)_maxX=_dx}' +
-                        '}' +
-                        'var _midY=(_minY+_maxY)/2;var _expectMidY=bh/2;' +
-                        'if(Math.abs(_midY-_expectMidY)>bh*0.2){' +
-                          'console.warn("[mask-pos] OFFSET text=\\""+((pe.pair.text||"").substring(0,25))+"\\" darkPx="+_dk+' +
-                            '" region="+_minX+","+_minY+"→"+_maxX+","+_maxY+" mid="+Math.round(_midY)+" expected="+Math.round(_expectMidY)+' +
-                            '" bbox="+bw+"x"+bh)' +
-                        '}' +
-                      '}' +
                       // Fallback: if domToCanvas failed to render text, use canvas.fillText
                       'if(_dk===0&&bw>3&&pe.pair.text){' +
                         'try{var cs=getComputedStyle(pe.el);' +
@@ -394,11 +336,6 @@ window.MilgIframe = (function() {
                             'else if(_ta==="right"||_ta==="end")_tx=_contentW-_lw+_pl;' +
                             '_fx.fillText(_lines[_li2],_tx,_tyStart+_li2*_lh)' +
                           '};' +
-                          // Log fillText fallback details for debugging
-                          'console.log("[fillText-diag] el=<"+pe.el.tagName.toLowerCase()+"> text=\\""+_txt.substring(0,30)+"\\""+' +
-                            '" bbox="+bw+"x"+bh+" pad="+_pl+","+_pt+" align="+_ta+' +
-                            '" parent="+(_pcs?_pcs.display+"/"+_pcs.alignItems:"none")+' +
-                            '" tyStart="+_tyStart+" lines="+_lines.length);' +
                           // Re-read as bitmap
                           'var _fpx=_fx.getImageData(0,0,bw,bh).data;' +
                           'bmp=new Uint8Array(bw*bh);' +

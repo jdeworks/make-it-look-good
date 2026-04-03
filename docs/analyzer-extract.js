@@ -1004,14 +1004,6 @@ window.MilgExtract = (function() {
         try {
           var oldBbox = ref.obj[ref.key];
           ref.obj[ref.key] = window.__milgGetFlowPosition(ref.el);
-          var newBbox = ref.obj[ref.key];
-          // Diagnostic: log position changes for fixed/sticky elements
-          var cs = getComputedStyle(ref.el);
-          if (cs.position === 'fixed' || cs.position === 'sticky') {
-            console.log('[bbox-reread] ' + cs.position + ': old=' + JSON.stringify(oldBbox) +
-              ' new=' + JSON.stringify(newBbox) + ' scrollY=' + window.scrollY +
-              ' text="' + (ref.el.textContent || '').substring(0, 30).trim() + '"');
-          }
           updated++;
         } catch(e) {}
       });

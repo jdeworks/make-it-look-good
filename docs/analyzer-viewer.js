@@ -896,7 +896,7 @@ window.MilgViewer = (function() {
       function _cycleDebug(e) {
         e.preventDefault(); e.stopPropagation();
         if (!rect._debug) { console.log('[viewer] No _debug data on rect'); return; }
-        var modes = ['none', 'mask', 'edge:combined', 'edge:roberts', 'edge:laplacian'];
+        var modes = ['none', 'mask', 'zones'];
         var current = rect._debugMode || 'none';
         var idx = modes.indexOf(current);
         var next = modes[(idx + 1) % modes.length];
@@ -906,8 +906,8 @@ window.MilgViewer = (function() {
           svg.querySelectorAll('.milg-debug-overlay').forEach(function(el) { el.remove(); });
         } else if (next === 'mask') {
           showDebugLayer(rect, svg, 'mask', null);
-        } else {
-          showDebugLayer(rect, svg, 'edge', next.split(':')[1]);
+        } else if (next === 'zones') {
+          showDebugLayer(rect, svg, 'zones', null);
         }
       }
       rect.addEventListener('contextmenu', _cycleDebug);
@@ -1156,33 +1156,31 @@ window.MilgViewer = (function() {
         }
       }
       edgeCount = insideCount; // for label
-    } else if (mode === 'edge' && edgeMethod && window.MilgContrastVerify) {
-      var cat = null;
-      try {
-        if (edgeMethod === 'combined') {
-          // Union of Roberts + Laplacian
-          var catR = MilgContrastVerify._detectEdges(mask, bw, bh, 'roberts');
-          var catL = MilgContrastVerify._detectEdges(mask, bw, bh, 'laplacian');
-          cat = new Uint8Array(bw * bh);
-          for (var ci = 0; ci < bw * bh; ci++) {
-            if (catR[ci] === 1 || catL[ci] === 1) cat[ci] = 1;
-            else if (mask[ci]) cat[ci] = 2;
-          }
-        } else {
-          cat = MilgContrastVerify._detectEdges(mask, bw, bh, edgeMethod);
-        }
-      } catch(e) {
-        console.warn('Edge detection failed:', e);
-        return;
-      }
-      if (!cat) return;
-
+    } else if (mode === 'zones' && debug.zone) {
+      // Show FG/BG sample zones from boundary-based verification
+      var zoneData = debug.zone;
       for (var y = 0; y < bh; y++) {
         for (var x = 0; x < bw; x++) {
           var pi = (y * bw + x) * 4;
-          var c = cat[y * bw + x];
-          if (c === 1) { d[pi] = 255; d[pi+1] = 30; d[pi+2] = 30; d[pi+3] = 240; edgeCount++; }
-          else if (c === 2) { d[pi] = 60; d[pi+1] = 130; d[pi+2] = 246; d[pi+3] = 100; insideCount++; }
+          var z = zoneData[y * bw + x] || 0;
+          if (z === 1) { d[pi] = 255; d[pi+1] = 30; d[pi+2] = 30; d[pi+3] = 230; edgeCount++; } // boundary
+          else if (z === 2) { d[pi] = 255; d[pi+1] = 160; d[pi+2] = 0; d[pi+3] = 180; insideCount++; } // FG sample
+          else if (z === 3) { d[pi] = 30; d[pi+1] = 200; d[pi+2] = 80; d[pi+3] = 140; } // BG sample
+          else { d[pi] = d[pi+1] = d[pi+2] = d[pi+3] = 0; }
+        }
+      }
+    } else if (mode === 'zones' && window.MilgContrastVerify) {
+      // Fallback: compute zones from mask using boundary detection
+      var MCV = window.MilgContrastVerify;
+      var cat = MCV._findBoundary(mask, bw, bh);
+      var dist = MCV._bfsBoundaryDist(cat, bw, bh, 6);
+      for (var y = 0; y < bh; y++) {
+        for (var x = 0; x < bw; x++) {
+          var pi = (y * bw + x) * 4;
+          var dd = dist[y * bw + x];
+          if (cat[y * bw + x] === 1) { d[pi] = 255; d[pi+1] = 30; d[pi+2] = 30; d[pi+3] = 230; edgeCount++; }
+          else if (mask[y * bw + x] && dd >= 1 && dd <= 2) { d[pi] = 255; d[pi+1] = 160; d[pi+2] = 0; d[pi+3] = 180; insideCount++; }
+          else if (!mask[y * bw + x] && dd >= 3 && dd <= 4) { d[pi] = 30; d[pi+1] = 200; d[pi+2] = 80; d[pi+3] = 140; }
           else { d[pi] = d[pi+1] = d[pi+2] = d[pi+3] = 0; }
         }
       }
@@ -1201,7 +1199,7 @@ window.MilgViewer = (function() {
 
     var labelText = mode === 'mask'
       ? 'MASK | dark:' + insideCount
-      : edgeMethod.toUpperCase() + ' | edges:' + edgeCount + ' inside:' + insideCount;
+      : 'ZONES | boundary:' + edgeCount + ' FG:' + insideCount;
     var label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
     label.setAttribute('x', bx + 2); label.setAttribute('y', by + secOff - 3);
     label.setAttribute('font-size', '9'); label.setAttribute('fill', '#ef4444');

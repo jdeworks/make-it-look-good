@@ -20,222 +20,41 @@ window.MilgContrastVerify = (function() {
   function setDensity(name) { _density = DENSITY[name] || DENSITY.common; }
 
   // --- Edge detection method ---
-  var EDGE_METHODS = ['combined', 'sobel', 'prewitt', 'canny', 'roberts', 'laplacian', 'grid'];
-  var _edgeMethod = 'combined'; // roberts + laplacian union
+  var EDGE_METHODS = ['boundary', 'grid'];
+  var _edgeMethod = 'boundary';
   function setEdgeMethod(name) {
     if (EDGE_METHODS.indexOf(name) !== -1) _edgeMethod = name;
   }
 
-  // --- 3x3 convolution helper ---
-  // Applies a 3x3 kernel to a binary mask, returns Float32Array of results
-  function convolve3x3(mask, w, h, kernel) {
-    var out = new Float32Array(w * h);
-    for (var y = 1; y < h - 1; y++) {
-      for (var x = 1; x < w - 1; x++) {
-        var sum = 0;
-        for (var ky = -1; ky <= 1; ky++) {
-          for (var kx = -1; kx <= 1; kx++) {
-            sum += mask[(y + ky) * w + (x + kx)] * kernel[(ky + 1) * 3 + (kx + 1)];
-          }
-        }
-        out[y * w + x] = sum;
-      }
-    }
-    return out;
-  }
-
-  // --- Sobel edge detection ---
-  // Returns: Uint8Array(w*h) with 0=OUTSIDE, 1=EDGE, 2=INSIDE
-  function edgeSobel(mask, w, h) {
-    var gx = convolve3x3(mask, w, h, [-1,0,1, -2,0,2, -1,0,1]);
-    var gy = convolve3x3(mask, w, h, [1,2,1, 0,0,0, -1,-2,-1]);
-    var cat = new Uint8Array(w * h);
-    for (var i = 0; i < w * h; i++) {
-      if (!mask[i]) { cat[i] = 0; continue; }
-      var mag = Math.sqrt(gx[i] * gx[i] + gy[i] * gy[i]);
-      cat[i] = mag > 1.5 ? 1 : 2; // edge threshold for binary input
-    }
-    // Border pixels: just classify by mask value
-    for (var x = 0; x < w; x++) { cat[x] = mask[x] ? 2 : 0; cat[(h-1)*w+x] = mask[(h-1)*w+x] ? 2 : 0; }
-    for (var y = 0; y < h; y++) { cat[y*w] = mask[y*w] ? 2 : 0; cat[y*w+w-1] = mask[y*w+w-1] ? 2 : 0; }
-    return cat;
-  }
-
-  // --- Prewitt edge detection ---
-  function edgePrewitt(mask, w, h) {
-    var gx = convolve3x3(mask, w, h, [-1,0,1, -1,0,1, -1,0,1]);
-    var gy = convolve3x3(mask, w, h, [1,1,1, 0,0,0, -1,-1,-1]);
-    var cat = new Uint8Array(w * h);
-    for (var i = 0; i < w * h; i++) {
-      if (!mask[i]) { cat[i] = 0; continue; }
-      var mag = Math.sqrt(gx[i] * gx[i] + gy[i] * gy[i]);
-      cat[i] = mag > 1.0 ? 1 : 2; // lower threshold — Prewitt has smaller magnitudes
-    }
-    for (var x = 0; x < w; x++) { cat[x] = mask[x] ? 2 : 0; cat[(h-1)*w+x] = mask[(h-1)*w+x] ? 2 : 0; }
-    for (var y = 0; y < h; y++) { cat[y*w] = mask[y*w] ? 2 : 0; cat[y*w+w-1] = mask[y*w+w-1] ? 2 : 0; }
-    return cat;
-  }
-
-  // --- Canny edge detection ---
-  // Full pipeline: Gaussian blur → Sobel gradients → non-max suppression → hysteresis
-  function edgeCanny(mask, w, h) {
-    // Stage 1: Gaussian blur (3x3, sigma ≈ 0.85)
-    var blurred = new Float32Array(w * h);
-    var gk = [1,2,1, 2,4,2, 1,2,1]; // /16
-    for (var y = 1; y < h - 1; y++) {
-      for (var x = 1; x < w - 1; x++) {
-        var sum = 0;
-        for (var ky = -1; ky <= 1; ky++)
-          for (var kx = -1; kx <= 1; kx++)
-            sum += mask[(y+ky)*w+(x+kx)] * gk[(ky+1)*3+(kx+1)];
-        blurred[y*w+x] = sum / 16;
-      }
-    }
-
-    // Stage 2: Sobel gradient magnitude + direction on blurred data
-    var mag = new Float32Array(w * h);
-    var dir = new Uint8Array(w * h); // quantized: 0=horiz, 1=diag45, 2=vert, 3=diag135
-    for (var y = 1; y < h - 1; y++) {
-      for (var x = 1; x < w - 1; x++) {
-        var gx = 0, gy = 0;
-        var skx = [-1,0,1,-2,0,2,-1,0,1], sky = [1,2,1,0,0,0,-1,-2,-1];
-        for (var ky = -1; ky <= 1; ky++)
-          for (var kx = -1; kx <= 1; kx++) {
-            var v = blurred[(y+ky)*w+(x+kx)];
-            gx += v * skx[(ky+1)*3+(kx+1)];
-            gy += v * sky[(ky+1)*3+(kx+1)];
-          }
-        var m = Math.sqrt(gx*gx + gy*gy);
-        mag[y*w+x] = m;
-        // Quantize direction to 4 bins
-        var angle = Math.atan2(gy, gx); // -PI to PI
-        if (angle < 0) angle += Math.PI; // 0 to PI
-        if (angle < Math.PI/8 || angle >= 7*Math.PI/8) dir[y*w+x] = 0; // horizontal
-        else if (angle < 3*Math.PI/8) dir[y*w+x] = 1; // 45°
-        else if (angle < 5*Math.PI/8) dir[y*w+x] = 2; // vertical
-        else dir[y*w+x] = 3; // 135°
-      }
-    }
-
-    // Stage 3: Non-maximum suppression — thin edges to 1px
-    var nms = new Float32Array(w * h);
-    // Direction → neighbor offsets: [dx1,dy1, dx2,dy2]
-    var dirOff = [[1,0,-1,0], [1,1,-1,-1], [0,1,0,-1], [-1,1,1,-1]];
-    for (var y = 1; y < h - 1; y++) {
-      for (var x = 1; x < w - 1; x++) {
-        var i = y*w+x;
-        var m = mag[i];
-        if (m < 0.3) continue;
-        var d = dirOff[dir[i]];
-        var m1 = mag[(y+d[1])*w+(x+d[0])];
-        var m2 = mag[(y+d[3])*w+(x+d[2])];
-        if (m >= m1 && m >= m2) nms[i] = m;
-      }
-    }
-
-    // Stage 4: Hysteresis thresholding — connect edges
-    var HIGH = 0.8, LOW = 0.3;
-    var cat = new Uint8Array(w * h);
-    // First pass: mark strong edges
-    var queue = [];
-    for (var i = 0; i < w * h; i++) {
-      if (nms[i] >= HIGH && mask[i]) { cat[i] = 1; queue.push(i); }
-      else if (mask[i]) cat[i] = 2; // inside for now
-      // outside stays 0
-    }
-    // BFS: connect weak edges to strong edges
-    var head = 0;
-    while (head < queue.length) {
-      var ci = queue[head++];
-      var cx = ci % w, cy = (ci - cx) / w;
-      for (var dy = -1; dy <= 1; dy++) {
-        var ny = cy + dy;
-        if (ny < 0 || ny >= h) continue;
-        for (var dx = -1; dx <= 1; dx++) {
-          if (dx === 0 && dy === 0) continue;
-          var nx = cx + dx;
-          if (nx < 0 || nx >= w) continue;
-          var ni = ny * w + nx;
-          if (cat[ni] === 2 && nms[ni] >= LOW) {
-            cat[ni] = 1; // promote weak edge connected to strong edge
-            queue.push(ni);
-          }
-        }
-      }
-    }
-    return cat;
-  }
-
-  // --- Roberts Cross edge detection ---
-  // 2x2 diagonal kernels — high sensitivity, catches ~85% of boundary pixels
-  // Checks both the 2x2 diagonal gradients AND the 4-connected neighbors
-  function edgeRoberts(mask, w, h) {
+  // --- Boundary detection (4-connected) ---
+  // Returns Uint8Array: 0=background, 1=boundary, 2=inside
+  // A foreground pixel adjacent to a background pixel is a boundary pixel.
+  // No convolution, no smudging — exact pixel boundary.
+  function findBoundary(mask, w, h) {
     var cat = new Uint8Array(w * h);
     for (var y = 0; y < h; y++) {
       for (var x = 0; x < w; x++) {
         var i = y * w + x;
         if (!mask[i]) continue;
-        var isEdge = false;
-        // Roberts 2x2 diagonal check
-        if (x < w - 1 && y < h - 1) {
-          var gx = mask[i] - mask[(y+1)*w+(x+1)];
-          var gy = mask[y*w+(x+1)] - mask[(y+1)*w+x];
-          if (gx !== 0 || gy !== 0) isEdge = true;
+        if (x === 0 || x === w - 1 || y === 0 || y === h - 1 ||
+            !mask[i - 1] || !mask[i + 1] || !mask[(y - 1) * w + x] || !mask[(y + 1) * w + x]) {
+          cat[i] = 1;
+        } else {
+          cat[i] = 2;
         }
-        // Also check 4-connected neighbors for high coverage (~85-90%)
-        if (!isEdge) {
-          if (x > 0 && !mask[i-1]) isEdge = true;
-          else if (x < w-1 && !mask[i+1]) isEdge = true;
-          else if (y > 0 && !mask[(y-1)*w+x]) isEdge = true;
-          else if (y < h-1 && !mask[(y+1)*w+x]) isEdge = true;
-        }
-        cat[i] = isEdge ? 1 : 2;
       }
     }
     return cat;
   }
 
-  // --- Laplacian edge detection ---
-  // 3x3 second-derivative with diagonal sensitivity: [1,1,1, 1,-8,1, 1,1,1]
-  // Catches ALL boundary pixels where the mask transitions (high coverage)
-  function edgeLaplacian(mask, w, h) {
-    var cat = new Uint8Array(w * h);
-    var kernel = [1,1,1, 1,-8,1, 1,1,1]; // 8-connected Laplacian
-    for (var y = 1; y < h - 1; y++) {
-      for (var x = 1; x < w - 1; x++) {
-        var i = y * w + x;
-        if (!mask[i]) continue;
-        var sum = 0;
-        for (var ky = -1; ky <= 1; ky++)
-          for (var kx = -1; kx <= 1; kx++)
-            sum += mask[(y+ky)*w+(x+kx)] * kernel[(ky+1)*3+(kx+1)];
-        cat[i] = Math.abs(sum) > 0.5 ? 1 : 2;
-      }
-    }
-    for (var x = 0; x < w; x++) { cat[x] = mask[x] ? 2 : 0; cat[(h-1)*w+x] = mask[(h-1)*w+x] ? 2 : 0; }
-    for (var y = 0; y < h; y++) { cat[y*w] = mask[y*w] ? 2 : 0; cat[y*w+w-1] = mask[y*w+w-1] ? 2 : 0; }
-    return cat;
-  }
-
-  // Dispatcher for edge detection methods
-  function detectEdges(mask, w, h, method) {
-    switch (method || _edgeMethod) {
-      case 'prewitt':   return edgePrewitt(mask, w, h);
-      case 'canny':     return edgeCanny(mask, w, h);
-      case 'roberts':   return edgeRoberts(mask, w, h);
-      case 'laplacian': return edgeLaplacian(mask, w, h);
-      case 'sobel':
-      default:          return edgeSobel(mask, w, h);
-    }
-  }
-
-  // BFS distance from all EDGE pixels, capped at maxDist
-  function bfsEdgeDist(cat, w, h, maxDist) {
+  // --- BFS distance from boundary pixels ---
+  // Returns Uint8Array with distance from nearest boundary pixel (0 = boundary, 255 = unreached)
+  function bfsBoundaryDist(cat, w, h, maxDist) {
     var dist = new Uint8Array(w * h);
     var queue = [];
-    for (var i = 0; i < cat.length; i++) {
+    for (var i = 0; i < w * h; i++) {
       if (cat[i] === 1) { dist[i] = 0; queue.push(i); }
-      else dist[i] = 255; // unvisited
+      else dist[i] = 255;
     }
     var head = 0;
     while (head < queue.length) {
@@ -251,7 +70,7 @@ window.MilgContrastVerify = (function() {
           var nx = cx + dx;
           if (nx < 0 || nx >= w) continue;
           var ni = ny * w + nx;
-          if (dist[ni] <= cd + 1) continue; // already visited at same or shorter dist
+          if (dist[ni] <= cd + 1) continue;
           dist[ni] = cd + 1;
           queue.push(ni);
         }
@@ -259,6 +78,48 @@ window.MilgContrastVerify = (function() {
     }
     return dist;
   }
+
+  // --- Connected component labeling (8-connected flood fill) ---
+  // Labels pixels matching a zone value, returns { groupId: Int32Array, count: number, pixels: [[idx,...], ...] }
+  function labelComponents(zone, w, h, zoneVal) {
+    var groupId = new Int32Array(w * h);
+    var nextGroup = 1;
+    var groupPixels = [null]; // groupPixels[gid] = [idx, ...]
+
+    function flood(startIdx) {
+      var gid = nextGroup++;
+      groupPixels.push([]);
+      var stack = [startIdx];
+      groupId[startIdx] = gid;
+      while (stack.length > 0) {
+        var ci = stack.pop();
+        groupPixels[gid].push(ci);
+        var cx = ci % w, cy = (ci - cx) / w;
+        for (var dy = -1; dy <= 1; dy++) {
+          var ny = cy + dy;
+          if (ny < 0 || ny >= h) continue;
+          for (var dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            var nx = cx + dx;
+            if (nx < 0 || nx >= w) continue;
+            var ni = ny * w + nx;
+            if (groupId[ni] === 0 && zone[ni] === zoneVal) {
+              groupId[ni] = gid;
+              stack.push(ni);
+            }
+          }
+        }
+      }
+      return gid;
+    }
+
+    for (var i = 0; i < w * h; i++) {
+      if (groupId[i] === 0 && zone[i] === zoneVal) flood(i);
+    }
+    return { groupId: groupId, count: nextGroup - 1, pixels: groupPixels };
+  }
+
+  // [old edge detection functions removed — replaced by findBoundary + bfsBoundaryDist above]
 
   // --- Color math (same as scoring/contrast.js) ---
   function luminance(c) {
@@ -431,7 +292,10 @@ window.MilgContrastVerify = (function() {
     };
   }
 
-  // --- Edge-based verification (fast, precise) ---
+  // --- Boundary-based verification ---
+  // Uses 4-connected boundary detection + BFS distance for FG/BG zone classification.
+  // Connected component grouping matches FG groups to nearest BG groups.
+  // FG sampled inside bbox, BG can extend outside.
   function verifyPairEdge(pair, sectionCanvases, meta, maskCanvas) {
     var ctx = prepareContext(pair, sectionCanvases, meta);
     if (!ctx) return null;
@@ -441,15 +305,14 @@ window.MilgContrastVerify = (function() {
     var w = Math.min(mW, bw), h = Math.min(mH, bh);
     if (w < 4 || h < 4) return null;
 
-    // Scale search radii with text size: small text → tighter, larger → wider
-    var BG_R = Math.min(h, w) < 15 ? 2 : 3;
-    var FG_R = 2;
-    var MAX_DIST = BG_R + 2;
+    // Constants (in mask pixel space — mask is at screenshot scale)
+    var FG_INNER = 2;  // FG sample: 1-2px inside boundary
+    var BG_DIST_MIN = 3; // BG sample ring: 3-4px outside boundary
+    var BG_DIST_MAX = 4;
+    var MAX_DIST = BG_DIST_MAX + 2;
 
-    // Read expanded area from screenshot for BG sampling outside the bbox.
-    // The mask/BFS grid stays at original bbox size; extra pixels are sampled
-    // from the padded area only during BG collection.
-    var PAD = BG_R;
+    // Read expanded area from screenshot for BG sampling outside bbox
+    var PAD = BG_DIST_MAX + 1;
     var padL = Math.min(PAD, bx);
     var padT = Math.min(PAD, by);
     var padR = Math.min(PAD, ctx.sec.width - bx - bw);
@@ -458,109 +321,42 @@ window.MilgContrastVerify = (function() {
     var ew = bw + padL + padR, eh = bh + padT + padB;
     var imgDataExp = ctx.sec.ctx.getImageData(ex, ey, ew, eh).data;
 
-    // Step 0: Clean mask — threshold to crisp 0/1
-    var mask = new Uint8Array(mW * mH);
-    for (var i = 0; i < mW * mH; i++) mask[i] = mBmpRaw[i] ? 1 : 0;
+    // Step 1: Clean mask
+    var mask = new Uint8Array(w * h);
+    for (var i = 0; i < w * h; i++) mask[i] = mBmpRaw[i] ? 1 : 0;
 
-    // Step 1: Combined edge detection (Roberts ∪ Laplacian)
-    var method = _edgeMethod;
-    var cat;
-    if (method === 'grid') return verifyPairGrid(pair, sectionCanvases, meta, maskCanvas);
-    if (method === 'combined' || method === 'canny') {
-      var catR = edgeRoberts(mask, mW, mH);
-      var catL = edgeLaplacian(mask, mW, mH);
-      cat = new Uint8Array(mW * mH);
-      for (var i = 0; i < mW * mH; i++) {
-        if (catR[i] === 1 || catL[i] === 1) cat[i] = 1;
-        else if (mask[i]) cat[i] = 2;
-        else cat[i] = 0;
-      }
-    } else {
-      cat = detectEdges(mask, mW, mH, method);
-    }
+    // Step 2: Boundary detection (4-connected)
+    var cat = findBoundary(mask, w, h);
 
-    // Step 2: BFS from edges → distance + Voronoi owner per pixel
-    var edgeIdx = [];
-    for (var y = 0; y < h; y++)
-      for (var x = 0; x < w; x++)
-        if (cat[y * mW + x] === 1) edgeIdx.push(y * mW + x);
+    // Step 3: BFS distance from boundary
+    var dist = bfsBoundaryDist(cat, w, h, MAX_DIST);
 
-    if (edgeIdx.length === 0) {
-      if (pair.text) console.log('[verify-edge] No edges for "' + pair.text.substring(0, 25) + '" ' + w + 'x' + h);
-      return null;
-    }
-
-    // BFS on mask grid (mW × mH)
-    var edgeDist = new Uint8Array(mW * mH);
-    var edgeOwner = new Int32Array(mW * mH);
-    for (var i = 0; i < mW * mH; i++) { edgeDist[i] = 255; edgeOwner[i] = -1; }
-    var queue = [];
-    for (var ei = 0; ei < edgeIdx.length; ei++) {
-      edgeDist[edgeIdx[ei]] = 0;
-      edgeOwner[edgeIdx[ei]] = ei;
-      queue.push(edgeIdx[ei]);
-    }
-    var head = 0;
-    while (head < queue.length) {
-      var ci = queue[head++];
-      var cd = edgeDist[ci];
-      if (cd >= MAX_DIST) continue;
-      var cx = ci % mW, cy = (ci - cx) / mW;
-      for (var dy = -1; dy <= 1; dy++) {
-        var ny = cy + dy; if (ny < 0 || ny >= h) continue;
-        for (var dx = -1; dx <= 1; dx++) {
-          if (dx === 0 && dy === 0) continue;
-          var nx = cx + dx; if (nx < 0 || nx >= w) continue;
-          var ni = ny * mW + nx;
-          if (edgeDist[ni] <= cd + 1) continue;
-          edgeDist[ni] = cd + 1;
-          edgeOwner[ni] = edgeOwner[ci];
-          queue.push(ni);
-        }
-      }
-    }
-
-    // Step 3: Collect FG pixels from mask grid, BG from expanded area
-    var allFg = []; // [{lx, ly, r, g, b}]
-    var allBgArr = []; // [{lx, ly, r, g, b}]
-
-    // Helper: read pixel color from expanded imgData given bbox-relative coords
-    // (can be negative or beyond w/h for padding area)
-    function readPixel(lx, ly) {
-      var ix = lx + padL, iy = ly + padT; // expanded-area coords
-      if (ix < 0 || ix >= ew || iy < 0 || iy >= eh) return null;
-      var pi = (iy * ew + ix) * 4;
-      if (pi + 2 >= imgDataExp.length) return null;
-      return { r: imgDataExp[pi], g: imgDataExp[pi+1], b: imgDataExp[pi+2] };
-    }
-
-    // Collect FG + BG within mask bounds
+    // Step 4: Classify into zones
+    // zone: 0=none, 2=FG sample (inside, dist 1-FG_INNER), 3=BG sample (outside, dist BG_MIN-BG_MAX)
+    var zone = new Uint8Array(w * h);
     for (var y = 0; y < h; y++) {
       for (var x = 0; x < w; x++) {
-        var mi = y * mW + x;
-        var d = edgeDist[mi];
-        var c = cat[mi];
-        var px = readPixel(x, y);
-        if (!px) continue;
-
-        if ((c === 1 || c === 2) && d <= FG_R) {
-          allFg.push({ lx: x, ly: y, r: px.r, g: px.g, b: px.b });
-        } else if (c === 0 && d >= 1 && d <= BG_R) {
-          allBgArr.push({ lx: x, ly: y, r: px.r, g: px.g, b: px.b });
-        }
+        var mi = y * w + x;
+        var dd = dist[mi];
+        if (cat[mi] === 1) zone[mi] = 1; // boundary
+        else if (mask[mi] && dd >= 1 && dd <= FG_INNER) zone[mi] = 2; // FG
+        else if (!mask[mi] && dd >= BG_DIST_MIN && dd <= BG_DIST_MAX) zone[mi] = 3; // BG
       }
     }
 
-    // Collect extra BG pixels from padding area (outside bbox).
-    // Only edge pixels near the bbox boundary can reach outside, so filter first.
-    var borderEdges = [];
-    for (var ei = 0; ei < edgeIdx.length; ei++) {
-      var ex2 = edgeIdx[ei] % mW, ey2 = (edgeIdx[ei] - ex2) / mW;
-      if (ex2 < BG_R || ex2 >= w - BG_R || ey2 < BG_R || ey2 >= h - BG_R) {
-        borderEdges.push({ x: ex2, y: ey2 });
+    // Also classify BG pixels in the padding area (outside bbox)
+    // Build a set of boundary pixel positions for distance checks
+    var boundaryPts = [];
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        if (cat[y * w + x] === 1) boundaryPts.push({ x: x, y: y });
       }
     }
-    if (borderEdges.length > 0) {
+    if (boundaryPts.length === 0) return null;
+
+    // Expanded BG zone: pixels in padding area at BG distance from boundary
+    var expBgPixels = []; // [{lx, ly, r, g, b}] in bbox-relative coords (can be negative)
+    if (padL > 0 || padT > 0 || padR > 0 || padB > 0) {
       var padRanges = [
         { x0: -padL, x1: w + padR, y0: -padT, y1: 0 },
         { x0: -padL, x1: w + padR, y0: h, y1: h + padB },
@@ -571,306 +367,163 @@ window.MilgContrastVerify = (function() {
         var rng = padRanges[ri];
         for (var py = rng.y0; py < rng.y1; py++) {
           for (var ppx = rng.x0; ppx < rng.x1; ppx++) {
+            // Find distance to nearest boundary pixel
             var minD = Infinity;
-            for (var bei = 0; bei < borderEdges.length; bei++) {
-              var dd = Math.max(Math.abs(borderEdges[bei].x - ppx), Math.abs(borderEdges[bei].y - py));
-              if (dd < minD) { minD = dd; if (dd <= 1) break; }
+            for (var bi = 0; bi < boundaryPts.length; bi++) {
+              var bdx = boundaryPts[bi].x - ppx, bdy = boundaryPts[bi].y - py;
+              var d = Math.sqrt(bdx * bdx + bdy * bdy);
+              if (d < minD) { minD = d; if (d <= BG_DIST_MIN) break; }
             }
-            if (minD < 1 || minD > BG_R) continue;
-            var c = readPixel(ppx, py);
-            if (c) allBgArr.push({ lx: ppx, ly: py, r: c.r, g: c.g, b: c.b });
-          }
-        }
-      }
-    }
-
-    // Step 4: For each BG pixel, pre-compute which FG pixel is closest.
-    // Then for each FG pixel, its relevant BG = those within 5px where THIS FG is the closest.
-    //
-    // Use a grid-based spatial index for FG pixels to make nearest-FG lookup fast.
-    // Grid cell size = BG_R (5px), so we only need to check 9 cells.
-    var cellSize = BG_R;
-    var gridW = Math.ceil(w / cellSize), gridH = Math.ceil(h / cellSize);
-    var fgGrid = new Array(gridW * gridH);
-    for (var gi = 0; gi < fgGrid.length; gi++) fgGrid[gi] = [];
-    for (var fi = 0; fi < allFg.length; fi++) {
-      var gx = Math.floor(allFg[fi].lx / cellSize);
-      var gy = Math.floor(allFg[fi].ly / cellSize);
-      fgGrid[gy * gridW + gx].push(fi);
-    }
-
-    // For each BG pixel, find the nearest FG pixel index (using grid)
-    var bgNearestFg = new Int32Array(allBgArr.length);
-    var bgNearestDist = new Float32Array(allBgArr.length);
-    for (var bi = 0; bi < allBgArr.length; bi++) {
-      var bg = allBgArr[bi];
-      var gcx = Math.floor(bg.lx / cellSize), gcy = Math.floor(bg.ly / cellSize);
-      var bestFi = -1, bestD = Infinity;
-      for (var gdy = -1; gdy <= 1; gdy++) {
-        var ry = gcy + gdy; if (ry < 0 || ry >= gridH) continue;
-        for (var gdx = -1; gdx <= 1; gdx++) {
-          var rx = gcx + gdx; if (rx < 0 || rx >= gridW) continue;
-          var cell = fgGrid[ry * gridW + rx];
-          for (var ci = 0; ci < cell.length; ci++) {
-            var fg = allFg[cell[ci]];
-            var dx = fg.lx - bg.lx, dy = fg.ly - bg.ly;
-            var dd = dx * dx + dy * dy;
-            if (dd < bestD) { bestD = dd; bestFi = cell[ci]; }
-          }
-        }
-      }
-      bgNearestFg[bi] = bestFi;
-      bgNearestDist[bi] = bestD;
-    }
-
-    // Step 5: BG thinning — produce a 1px outline of BG pixels around FG.
-    // Uses a 5-step algorithm: hasFurther check → closest-claim → FG-blocking
-    // → inner-duplicate removal with local bridge preservation.
-    var fgSet = {};
-    allFg.forEach(function(f) { fgSet[f.lx + ',' + f.ly] = true; });
-    var bgSet = {};
-    allBgArr.forEach(function(b) { bgSet[b.lx + ',' + b.ly] = true; });
-
-    // Step 5a: For each BG, check hasFurther in sign-direction + FG blocking
-    var bgMarks = {}; // "lx,ly" → [{fi, dist(cheb), bi}]
-    for (var bi = 0; bi < allBgArr.length; bi++) {
-      var bg = allBgArr[bi];
-      var bestFi = bgNearestFg[bi];
-      if (bestFi < 0) continue;
-      var fg = allFg[bestFi];
-      var dx = bg.lx - fg.lx, dy = bg.ly - fg.ly;
-      var cheb = Math.max(Math.abs(dx), Math.abs(dy));
-      if (cheb === 0 || cheb > BG_R) continue;
-
-      // FG blocking between fg and bg
-      var steps = Math.max(Math.abs(dx), Math.abs(dy));
-      var blocked = false;
-      for (var s = 1; s < steps; s++) {
-        var mx = fg.lx + Math.round(dx * s / steps);
-        var my = fg.ly + Math.round(dy * s / steps);
-        if ((mx + ',' + my) in fgSet) { blocked = true; break; }
-      }
-      if (blocked) continue;
-
-      // hasFurther: skip if BG exists beyond in same sign-direction
-      var sdx = dx > 0 ? 1 : (dx < 0 ? -1 : 0);
-      var sdy = dy > 0 ? 1 : (dy < 0 ? -1 : 0);
-      var hasFurther = false;
-      for (var ext = 1; ext <= BG_R; ext++) {
-        var ex = bg.lx + sdx * ext, ey = bg.ly + sdy * ext;
-        if (Math.max(Math.abs(ex - fg.lx), Math.abs(ey - fg.ly)) > BG_R) break;
-        if ((ex + ',' + ey) in fgSet) break;
-        if ((ex + ',' + ey) in bgSet) { hasFurther = true; break; }
-      }
-      if (hasFurther) continue;
-
-      var bk = bg.lx + ',' + bg.ly;
-      if (!bgMarks[bk]) bgMarks[bk] = [];
-      bgMarks[bk].push({ fi: bestFi, dist: cheb, bi: bi });
-    }
-
-    // Step 5b: Keep closest F's claim for multiply-claimed B
-    var bgResult = {};
-    for (var k in bgMarks) {
-      var marks = bgMarks[k];
-      var minD = Infinity;
-      for (var mi = 0; mi < marks.length; mi++) { if (marks[mi].dist < minD) minD = marks[mi].dist; }
-      bgResult[k] = marks.filter(function(m) { return m.dist === minD; });
-    }
-
-    // Step 5c: Remove if FG (not other BG) blocks line of sight
-    var afterBlock = {};
-    for (var k in bgResult) {
-      var parts = k.split(','), blx = parseInt(parts[0]), bly = parseInt(parts[1]);
-      var keepThis = false;
-      for (var mi = 0; mi < bgResult[k].length; mi++) {
-        var m = bgResult[k][mi];
-        var fg = allFg[m.fi];
-        var dx = blx - fg.lx, dy = bly - fg.ly;
-        var steps = Math.max(Math.abs(dx), Math.abs(dy));
-        var blocked = false;
-        for (var s = 1; s < steps; s++) {
-          var mx = fg.lx + Math.round(dx * s / steps);
-          var my = fg.ly + Math.round(dy * s / steps);
-          if ((mx + ',' + my) in fgSet && !(mx === fg.lx && my === fg.ly)) {
-            blocked = true; break;
-          }
-        }
-        if (!blocked) keepThis = true;
-      }
-      if (keepThis) afterBlock[k] = bgResult[k];
-    }
-
-    // Step 5d: Thin inner duplicates — remove lower-cheb pixels that have
-    // a higher-cheb neighbor, using depth-limited BFS to preserve connectivity
-    var chebMap = {};
-    for (var k in afterBlock) { chebMap[k] = afterBlock[k][0].dist; }
-
-    var thinCandidates = [];
-    for (var k in afterBlock) {
-      var myCheb = chebMap[k], hasHigher = false;
-      var parts = k.split(','), blx = parseInt(parts[0]), bly = parseInt(parts[1]);
-      for (var dy = -1; dy <= 1; dy++) {
-        for (var dx = -1; dx <= 1; dx++) {
-          if (dx === 0 && dy === 0) continue;
-          var nk = (blx + dx) + ',' + (bly + dy);
-          if (nk in chebMap && chebMap[nk] > myCheb) hasHigher = true;
-        }
-      }
-      if (hasHigher) thinCandidates.push({ k: k, cheb: myCheb });
-    }
-    thinCandidates.sort(function(a, b) { return a.cheb - b.cheb; });
-
-    var keptSet = {};
-    for (var k in afterBlock) keptSet[k] = true;
-
-    for (var ci = 0; ci < thinCandidates.length; ci++) {
-      var ck = thinCandidates[ci].k;
-      if (!(ck in keptSet)) continue;
-      // Local bridge check: depth-limited BFS (max 4 hops)
-      var cparts = ck.split(','), cx = parseInt(cparts[0]), cy = parseInt(cparts[1]);
-      var neighbors = [];
-      for (var dy = -1; dy <= 1; dy++) {
-        for (var dx = -1; dx <= 1; dx++) {
-          if (dx === 0 && dy === 0) continue;
-          var nk = (cx + dx) + ',' + (cy + dy);
-          if (nk in keptSet && nk !== ck) neighbors.push(nk);
-        }
-      }
-      if (neighbors.length <= 1) continue; // bridge or endpoint
-      var visited = {}; visited[neighbors[0]] = 0;
-      var bfsQ = [neighbors[0]], bfsHead = 0;
-      while (bfsHead < bfsQ.length) {
-        var cur = bfsQ[bfsHead++];
-        var depth = visited[cur];
-        if (depth >= 4) continue;
-        var cp = cur.split(','), cx2 = parseInt(cp[0]), cy2 = parseInt(cp[1]);
-        for (var dy = -1; dy <= 1; dy++) {
-          for (var dx = -1; dx <= 1; dx++) {
-            if (dx === 0 && dy === 0) continue;
-            var nk2 = (cx2 + dx) + ',' + (cy2 + dy);
-            if (nk2 !== ck && nk2 in keptSet && !(nk2 in visited)) {
-              visited[nk2] = depth + 1;
-              bfsQ.push(nk2);
+            if (minD >= BG_DIST_MIN && minD <= BG_DIST_MAX) {
+              var ix = ppx + padL, iy = py + padT;
+              if (ix >= 0 && ix < ew && iy >= 0 && iy < eh) {
+                var pi = (iy * ew + ix) * 4;
+                expBgPixels.push({ lx: ppx, ly: py, r: imgDataExp[pi], g: imgDataExp[pi+1], b: imgDataExp[pi+2] });
+              }
             }
           }
         }
       }
-      var isBridge = false;
-      for (var ni = 1; ni < neighbors.length; ni++) {
-        if (!(neighbors[ni] in visited)) { isBridge = true; break; }
+    }
+
+    // Step 5: Connected component grouping for FG and BG zones
+    var fgLabel = labelComponents(zone, w, h, 2);
+    var bgLabel = labelComponents(zone, w, h, 3);
+
+    // Helper: read pixel color from expanded imgData given bbox-relative coords
+    function readPixel(lx, ly) {
+      var ix = lx + padL, iy = ly + padT;
+      if (ix < 0 || ix >= ew || iy < 0 || iy >= eh) return null;
+      var pi = (iy * ew + ix) * 4;
+      if (pi + 2 >= imgDataExp.length) return null;
+      return { r: imgDataExp[pi], g: imgDataExp[pi+1], b: imgDataExp[pi+2] };
+    }
+
+    // Step 6: Compute per-group average colors from screenshot
+    // FG groups
+    var fgGroupColors = [null]; // fgGroupColors[gid] = {r,g,b}
+    var fgGroupCentroids = [null]; // fgGroupCentroids[gid] = {x,y}
+    for (var gid = 1; gid <= fgLabel.count; gid++) {
+      var pxls = fgLabel.pixels[gid];
+      var sumR = 0, sumG = 0, sumB = 0, sumX = 0, sumY = 0, n = 0;
+      for (var p = 0; p < pxls.length; p++) {
+        var idx = pxls[p];
+        var px = idx % w, py2 = (idx - px) / w;
+        var c = readPixel(px, py2);
+        if (c) { sumR += c.r; sumG += c.g; sumB += c.b; n++; }
+        sumX += px; sumY += py2;
       }
-      if (!isBridge) delete keptSet[ck];
+      n = n || 1;
+      fgGroupColors.push({ r: Math.round(sumR / n), g: Math.round(sumG / n), b: Math.round(sumB / n) });
+      fgGroupCentroids.push({ x: sumX / pxls.length, y: sumY / pxls.length });
     }
 
-    // Build BG index from kept set
-    var bgByKey = {};
-    allBgArr.forEach(function(b) { bgByKey[b.lx + ',' + b.ly] = b; });
-
-    // Build allBgUsed and per-FG groupings
-    var allBgUsed = {};
-    for (var k in keptSet) {
-      var b = bgByKey[k];
-      if (b) allBgUsed[k] = { x: bx + b.lx, y: by + b.ly, r: b.r, g: b.g, b: b.b };
+    // BG groups (inside bbox)
+    var bgGroupColors = [null];
+    var bgGroupCentroids = [null];
+    for (var gid = 1; gid <= bgLabel.count; gid++) {
+      var pxls = bgLabel.pixels[gid];
+      var sumR = 0, sumG = 0, sumB = 0, sumX = 0, sumY = 0, n = 0;
+      for (var p = 0; p < pxls.length; p++) {
+        var idx = pxls[p];
+        var px = idx % w, py2 = (idx - px) / w;
+        var c = readPixel(px, py2);
+        if (c) { sumR += c.r; sumG += c.g; sumB += c.b; n++; }
+        sumX += px; sumY += py2;
+      }
+      n = n || 1;
+      bgGroupColors.push({ r: Math.round(sumR / n), g: Math.round(sumG / n), b: Math.round(sumB / n) });
+      bgGroupCentroids.push({ x: sumX / pxls.length, y: sumY / pxls.length });
     }
 
-    // Per-FG: assign each kept BG to its nearest FG for contrast measurement.
-    // Also ensure every FG pixel gets BG — orphaned FGs (no BG from thinning)
-    // get assigned to the nearest kept BG pixel.
+    // Add expanded BG pixels as additional BG group(s) — treat as one group per connected region
+    // For simplicity, add them all to the nearest existing BG group or create a new virtual group
+    if (expBgPixels.length > 0 && bgLabel.count > 0) {
+      // Assign each expanded BG pixel to nearest BG group by centroid
+      var expByGroup = {};
+      for (var i = 0; i < expBgPixels.length; i++) {
+        var ep = expBgPixels[i];
+        var bestGid = 1, bestD = Infinity;
+        for (var gid = 1; gid <= bgLabel.count; gid++) {
+          var cx = bgGroupCentroids[gid].x, cy = bgGroupCentroids[gid].y;
+          var d = (ep.lx - cx) * (ep.lx - cx) + (ep.ly - cy) * (ep.ly - cy);
+          if (d < bestD) { bestD = d; bestGid = gid; }
+        }
+        if (!expByGroup[bestGid]) expByGroup[bestGid] = [];
+        expByGroup[bestGid].push(ep);
+      }
+      // Merge into BG group averages
+      for (var gid in expByGroup) {
+        var extras = expByGroup[gid];
+        var orig = bgGroupColors[gid];
+        var origCount = bgLabel.pixels[gid] ? bgLabel.pixels[gid].length : 1;
+        var totalN = origCount + extras.length;
+        var sumR = orig.r * origCount, sumG = orig.g * origCount, sumB = orig.b * origCount;
+        for (var i = 0; i < extras.length; i++) {
+          sumR += extras[i].r; sumG += extras[i].g; sumB += extras[i].b;
+        }
+        bgGroupColors[gid] = { r: Math.round(sumR / totalN), g: Math.round(sumG / totalN), b: Math.round(sumB / totalN) };
+      }
+    }
+
+    // Step 7: Match each FG group to nearest BG group, compute contrast
     var fgPoints = [], fgColors = [];
+    var bgPoints = [], bgColors = [];
     var allPairRatios = [];
     var worstRatio = 99, bestRatio = 0, worstBg = null, worstBgPt = null;
-    var fgGroups = [];
-    var fgBgMap = {}; // fi → [bg keys]
-    for (var k in keptSet) {
-      var m = afterBlock[k][0];
-      if (!fgBgMap[m.fi]) fgBgMap[m.fi] = [];
-      fgBgMap[m.fi].push(k);
-    }
 
-    // Build kept BG array for nearest-neighbor fallback
-    var keptBgArr = [];
-    for (var k in keptSet) {
-      var b = bgByKey[k];
-      if (b) keptBgArr.push({ k: k, lx: b.lx, ly: b.ly });
-    }
+    for (var fgGid = 1; fgGid <= fgLabel.count; fgGid++) {
+      if (fgLabel.pixels[fgGid].length === 0) continue;
+      var fgC = fgGroupColors[fgGid];
+      var fcx = fgGroupCentroids[fgGid].x, fcy = fgGroupCentroids[fgGid].y;
 
-    for (var fi = 0; fi < allFg.length; fi++) {
-      var fg = allFg[fi];
-      var myBgKeys = fgBgMap[fi] || [];
-      // Orphaned FG: find nearest kept BG pixel
-      if (myBgKeys.length === 0 && keptBgArr.length > 0) {
-        var bestK = null, bestD = Infinity;
-        for (var ki = 0; ki < keptBgArr.length; ki++) {
-          var dx = keptBgArr[ki].lx - fg.lx, dy = keptBgArr[ki].ly - fg.ly;
-          var d = dx * dx + dy * dy;
-          if (d < bestD) { bestD = d; bestK = keptBgArr[ki].k; }
-        }
-        if (bestK) myBgKeys = [bestK];
+      // Find nearest BG group by centroid
+      var bestBgGid = -1, bestD = Infinity;
+      for (var bgGid = 1; bgGid <= bgLabel.count; bgGid++) {
+        if (bgLabel.pixels[bgGid].length === 0) continue;
+        var dx = fcx - bgGroupCentroids[bgGid].x, dy = fcy - bgGroupCentroids[bgGid].y;
+        var d = dx * dx + dy * dy;
+        if (d < bestD) { bestD = d; bestBgGid = bgGid; }
       }
-      if (myBgKeys.length === 0) continue;
+      if (bestBgGid < 1) continue;
 
-      var sumR = 0, sumG = 0, sumB = 0;
-      for (var ki = 0; ki < myBgKeys.length; ki++) {
-        var b = bgByKey[myBgKeys[ki]];
-        if (b) { sumR += b.r; sumG += b.g; sumB += b.b; }
-      }
-      var avgBg = { r: Math.round(sumR / myBgKeys.length), g: Math.round(sumG / myBgKeys.length), b: Math.round(sumB / myBgKeys.length) };
-      var fgC = { r: fg.r, g: fg.g, b: fg.b };
-      var ratio = contrastRatio(fgC, avgBg);
-
-      fgPoints.push({ x: bx + fg.lx, y: by + fg.ly, groupBg: myBgKeys });
-      fgColors.push(fgC);
-      fgGroups.push(myBgKeys);
+      var bgC = bgGroupColors[bestBgGid];
+      var ratio = contrastRatio(fgC, bgC);
       allPairRatios.push(ratio);
-      if (ratio < worstRatio) { worstRatio = ratio; worstBg = avgBg; }
+
+      // Use centroid as the representative point
+      var fgPt = { x: bx + Math.round(fcx), y: by + Math.round(fcy) };
+      fgPoints.push(fgPt);
+      fgColors.push(fgC);
+
+      var bgCx = bgGroupCentroids[bestBgGid].x, bgCy = bgGroupCentroids[bestBgGid].y;
+      var bgPt = { x: bx + Math.round(bgCx), y: by + Math.round(bgCy) };
+      bgPoints.push(bgPt);
+      bgColors.push(bgC);
+
+      if (ratio < worstRatio) { worstRatio = ratio; worstBg = bgC; worstBgPt = bgPt; }
       if (ratio > bestRatio) bestRatio = ratio;
     }
 
     if (allPairRatios.length === 0) {
-      if (pair.text) console.log('[verify-edge] No pairs for "' + pair.text.substring(0, 25) + '" edges=' + edgeIdx.length + ' fg=' + allFg.length + ' bg=' + allBgArr.length + ' method=' + method);
+      if (pair.text) console.log('[verify-boundary] No pairs for "' + pair.text.substring(0, 25) + '" boundary=' + boundaryPts.length + ' fgGroups=' + fgLabel.count + ' bgGroups=' + bgLabel.count);
       return null;
     }
 
-    // Collect all used BG for visualization
-    var finalBgPoints = [], finalBgColors = [];
-    Object.keys(allBgUsed).forEach(function(k) {
-      var b = allBgUsed[k];
-      finalBgPoints.push({ x: b.x, y: b.y });
-      finalBgColors.push({ r: b.r, g: b.g, b: b.b });
-    });
-
-    // Find worst BG point
-    var fgColor = { r: 0, g: 0, b: 0 };
-    fgColors.forEach(function(c) { fgColor.r += c.r; fgColor.g += c.g; fgColor.b += c.b; });
-    fgColor.r = Math.round(fgColor.r / fgColors.length);
-    fgColor.g = Math.round(fgColor.g / fgColors.length);
-    fgColor.b = Math.round(fgColor.b / fgColors.length);
-    worstBgPt = null;
-    var wbr = 99;
-    finalBgPoints.forEach(function(bp, bi) {
-      var r = contrastRatio(fgColor, finalBgColors[bi]);
-      if (r < wbr) { wbr = r; worstBgPt = bp; worstBg = finalBgColors[bi]; }
-    });
-
-    var result = buildResult(pair, ctx, fgPoints, fgColors, finalBgPoints, finalBgColors,
+    var result = buildResult(pair, ctx, fgPoints, fgColors, bgPoints, bgColors,
       allPairRatios, worstRatio, bestRatio, worstBg, worstBgPt);
 
     if (result) {
-      var edgeCoords = edgeIdx.map(function(idx) { return { x: idx % mW, y: (idx - idx % mW) / mW }; });
+      // Debug data for viewer overlay
       result._debug = {
         bx: bx, by: by, bw: w, bh: h,
         mask: Array.from(mask.slice(0, w * h)),
-        edge: edgeCoords,
-        edgeCount: edgeIdx.length,
-        fgCount: fgPoints.length,
-        bgCount: finalBgPoints.length,
-        method: method === 'combined' || method === 'canny' ? 'roberts+laplacian' : method
+        boundary: boundaryPts.length,
+        fgGroups: fgLabel.count,
+        bgGroups: bgLabel.count,
+        zone: Array.from(zone.slice(0, w * h)),
+        method: 'boundary'
       };
-      if (result.samplePoints && result.samplePoints.fg) {
-        result.samplePoints.fg.forEach(function(fp, i) { fp.groupBg = fgGroups[i] || []; });
-      }
-      result._bgKeyMap = allBgUsed;
     }
     return result;
   }
@@ -1441,7 +1094,8 @@ window.MilgContrastVerify = (function() {
     setDensity: setDensity,
     setEdgeMethod: setEdgeMethod,
     edgeMethods: EDGE_METHODS,
-    _detectEdges: detectEdges, // exposed for debug layer viewer
+    _findBoundary: findBoundary, // exposed for debug layer viewer
+    _bfsBoundaryDist: bfsBoundaryDist,
     formatResult: formatResult,
     buildSummary: buildSummary,
     renderSummaryHtml: renderSummaryHtml,
