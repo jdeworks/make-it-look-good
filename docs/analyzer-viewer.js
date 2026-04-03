@@ -1042,6 +1042,75 @@ window.MilgViewer = (function() {
     }
   }
 
+  function showDebugLayer(rect, svg, mode, edgeMethod) {
+    svg.querySelectorAll('.milg-debug-overlay').forEach(function(el) { el.remove(); });
+    var debug = rect._debug;
+    if (!debug || !debug.mask) return;
+    var bw = debug.bw, bh = debug.bh, bx = debug.bx, by = debug.by;
+    var secOff = rect._sectionOffset || 0;
+    var mask = debug.mask;
+    var dc = document.createElement('canvas');
+    dc.width = bw; dc.height = bh;
+    var dctx = dc.getContext('2d');
+    var imgd = dctx.createImageData(bw, bh);
+    var d = imgd.data;
+    var edgeCount = 0, insideCount = 0;
+    if (mode === 'mask') {
+      for (var y = 0; y < bh; y++) for (var x = 0; x < bw; x++) {
+        var pi = (y * bw + x) * 4; var mv = mask[y * bw + x] || 0;
+        d[pi] = d[pi+1] = d[pi+2] = mv ? 0 : 255; d[pi+3] = 200;
+        if (mv) insideCount++;
+      }
+      edgeCount = insideCount;
+    } else if (mode === 'zones' && debug.zone) {
+      var zoneData = debug.zone;
+      for (var y = 0; y < bh; y++) for (var x = 0; x < bw; x++) {
+        var pi = (y * bw + x) * 4; var z = zoneData[y * bw + x] || 0;
+        if (z === 1) { d[pi]=255;d[pi+1]=30;d[pi+2]=30;d[pi+3]=230;edgeCount++; }
+        else if (z === 2) { d[pi]=255;d[pi+1]=160;d[pi+2]=0;d[pi+3]=180;insideCount++; }
+        else if (z === 3) { d[pi]=30;d[pi+1]=200;d[pi+2]=80;d[pi+3]=140; }
+        else { d[pi]=d[pi+1]=d[pi+2]=d[pi+3]=0; }
+      }
+    } else if (mode === 'zones' && window.MilgContrastVerify) {
+      var MCV = window.MilgContrastVerify;
+      var cat = MCV._findBoundary(mask, bw, bh);
+      var bdist = MCV._bfsBoundaryDist(cat, bw, bh, 6);
+      for (var y = 0; y < bh; y++) for (var x = 0; x < bw; x++) {
+        var pi = (y * bw + x) * 4; var dd = bdist[y * bw + x];
+        if (cat[y*bw+x]===1) { d[pi]=255;d[pi+1]=30;d[pi+2]=30;d[pi+3]=230;edgeCount++; }
+        else if (mask[y*bw+x]&&dd>=1&&dd<=2) { d[pi]=255;d[pi+1]=160;d[pi+2]=0;d[pi+3]=180;insideCount++; }
+        else if (!mask[y*bw+x]&&dd>=3&&dd<=4) { d[pi]=30;d[pi+1]=200;d[pi+2]=80;d[pi+3]=140; }
+        else { d[pi]=d[pi+1]=d[pi+2]=d[pi+3]=0; }
+      }
+    }
+    dctx.putImageData(imgd, 0, 0);
+    var img = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+    img.setAttribute('x', bx); img.setAttribute('y', by + secOff);
+    img.setAttribute('width', bw); img.setAttribute('height', bh);
+    img.setAttribute('href', dc.toDataURL());
+    img.setAttribute('class', 'milg-debug-overlay');
+    img.setAttribute('pointer-events', 'none'); img.setAttribute('opacity', '0.85');
+    svg.appendChild(img);
+    if (mode === 'zones' && debug.expBg && debug.expBg.length > 0) {
+      for (var ebi = 0; ebi < debug.expBg.length; ebi++) {
+        var ep = debug.expBg[ebi];
+        var r2 = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        r2.setAttribute('x', bx+ep.x); r2.setAttribute('y', by+secOff+ep.y);
+        r2.setAttribute('width', 1); r2.setAttribute('height', 1);
+        r2.setAttribute('fill', 'rgba(30,200,80,0.55)');
+        r2.setAttribute('class', 'milg-debug-overlay'); r2.setAttribute('pointer-events', 'none');
+        svg.appendChild(r2);
+      }
+    }
+    var lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    lbl.setAttribute('x', bx+2); lbl.setAttribute('y', by+secOff-3);
+    lbl.setAttribute('font-size', '9'); lbl.setAttribute('fill', '#ef4444');
+    lbl.setAttribute('font-family', 'monospace'); lbl.setAttribute('font-weight', '700');
+    lbl.setAttribute('pointer-events', 'none'); lbl.setAttribute('class', 'milg-debug-overlay');
+    lbl.textContent = mode === 'mask' ? 'MASK | dark:'+insideCount : 'ZONES | boundary:'+edgeCount+' FG:'+insideCount;
+    svg.appendChild(lbl);
+  }
+
   function showFindingTooltip(e, findingIdx) {
     hideTooltip();
     var finding = _allFindings[findingIdx];
