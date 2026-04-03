@@ -2310,38 +2310,59 @@
   // --- Output ---
   var json = JSON.stringify(data, null, 2);
 
-  // Copy to clipboard — multiple fallback strategies
-  function copyFallback() {
-    // Fallback 1: execCommand with temporary textarea
-    var ta = document.createElement('textarea');
-    ta.value = json;
-    ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
-    document.body.appendChild(ta);
-    ta.select();
-    try {
-      var ok = document.execCommand('copy');
-      document.body.removeChild(ta);
-      if (ok) {
-        console.log('%c✓ Design data copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-        return;
-      }
-    } catch(e) {
-      document.body.removeChild(ta);
-    }
-    // Fallback 2: log the full JSON to console so user can right-click → Copy string
-    console.log('%c⚠ Could not copy to clipboard automatically. Right-click the JSON below → "Copy string contents":', 'color: #b45309; font-weight: bold;');
-    console.log(json);
-    // Also store for easy access
-    console.log('%cOr type: copy(window.__milgData_json)', 'color: #64748b;');
-    window.__milgData_json = json;
+  // Export data — file download for large payloads, clipboard for small ones
+  function downloadAsFile(data, filename) {
+    var blob = new Blob([data], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = filename;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function() { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
   }
 
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(json).then(function() {
-      console.log('%c✓ Design data copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-    }).catch(copyFallback);
+  var jsonSize = json.length;
+  var sizeMB = Math.round(jsonSize / 1024 / 1024 * 10) / 10;
+
+  if (jsonSize > 4 * 1024 * 1024) {
+    // >4MB: file download (clipboard would freeze)
+    var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
+    downloadAsFile(json, 'milg-' + hostname + '.json');
+    console.log('%c⬇ Design data downloaded as file (' + sizeMB + ' MB). Import it in the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+    window.__milgData_json = json;
   } else {
-    copyFallback();
+    // Small enough for clipboard
+    function copyFallback() {
+      var ta = document.createElement('textarea');
+      ta.value = json;
+      ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        var ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        if (ok) {
+          console.log('%c✓ Design data copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+          return;
+        }
+      } catch(e) {
+        document.body.removeChild(ta);
+      }
+      // Fallback: file download
+      var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
+      downloadAsFile(json, 'milg-' + hostname + '.json');
+      console.log('%c⬇ Could not copy — downloaded as file instead (' + sizeMB + ' MB).', 'color: #b45309; font-weight: bold;');
+      window.__milgData_json = json;
+    }
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(json).then(function() {
+        console.log('%c✓ Design data copied to clipboard (' + sizeMB + ' MB)! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+      }).catch(copyFallback);
+    } else {
+      copyFallback();
+    }
   }
 
   console.log('%cmake-it-look-good extraction complete', 'color: #3b82f6; font-weight: bold;');
@@ -2391,25 +2412,30 @@
     console.log('%c\uD83D\uDD77 Site Crawl: discovered ' + _crawlLinks.length + ' page(s)', 'color: #8b5cf6; font-weight: bold;');
     _crawlLinks.forEach(function(l, i) { var p; try { p = new URL(l).pathname; } catch(e) { p = l; } console.log('  ' + (i + 1) + '. ' + p); });
 
-    // Copy full crawl results to clipboard (localStorage doesn't work cross-origin)
+    // Export crawl results — file download for large payloads, clipboard for small
     function _copyCrawlResults(results) {
       var crawlJson = JSON.stringify({ _milgCrawl: true, startUrl: location.href, results: results });
       window.__milgCrawlResults = results;
       window.__milgCrawlJson = crawlJson;
       try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) {}
-      if (navigator.clipboard && navigator.clipboard.writeText) {
+      var crawlMB = Math.round(crawlJson.length / 1024 / 1024 * 10) / 10;
+      if (crawlJson.length > 4 * 1024 * 1024) {
+        // Large crawl: file download
+        var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
+        downloadAsFile(crawlJson, 'milg-crawl-' + hostname + '.json');
+        console.log('%c\u2B07 Crawl results downloaded as file (' + crawlMB + ' MB). Import in the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+      } else if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(crawlJson).then(function() {
-          console.log('%c\u2713 Crawl results copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+          console.log('%c\u2713 Crawl results copied to clipboard (' + crawlMB + ' MB)! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
         }).catch(function() {
-          var ta = document.createElement('textarea'); ta.value = crawlJson;
-          ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
-          document.body.appendChild(ta); ta.select();
-          try { document.execCommand('copy'); } catch(e) {}
-          document.body.removeChild(ta);
-          console.log('%c\u26A0 Type: copy(window.__milgCrawlJson) — then paste into the analyzer.', 'color: #b45309; font-weight: bold;');
+          var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
+          downloadAsFile(crawlJson, 'milg-crawl-' + hostname + '.json');
+          console.log('%c\u2B07 Could not copy — downloaded as file instead.', 'color: #b45309; font-weight: bold;');
         });
       } else {
-        console.log('%c\u26A0 Type: copy(window.__milgCrawlJson) — then paste into the analyzer.', 'color: #b45309; font-weight: bold;');
+        var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
+        downloadAsFile(crawlJson, 'milg-crawl-' + hostname + '.json');
+        console.log('%c\u2B07 Crawl results downloaded as file. Import in the analyzer.', 'color: #16a34a; font-weight: bold;');
       }
     }
 
@@ -2446,24 +2472,33 @@
               '<div style="font-size:28px;margin-bottom:12px">\u2713</div>' +
               '<div style="color:#fff;font-size:16px;font-weight:600;margin-bottom:6px">Crawl complete! ' + _crawlResults.length + ' pages analyzed.</div>' +
               '<div style="color:rgba(255,255,255,0.6);font-size:13px;margin-bottom:20px">' + Math.round(crawlJson.length / 1024) + ' KB of design data ready</div>' +
-              '<button id="milg-crawl-copy-btn" style="padding:12px 28px;font-size:14px;font-weight:600;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-bottom:10px">Copy to Clipboard</button>' +
-              '<div style="color:rgba(255,255,255,0.5);font-size:11px;margin-top:8px">Then paste into the analyzer</div>' +
+              '<button id="milg-crawl-copy-btn" style="padding:12px 28px;font-size:14px;font-weight:600;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-bottom:10px">' + (crawlJson.length > 4*1024*1024 ? 'Download JSON' : 'Copy to Clipboard') + '</button>' +
+              '<div style="color:rgba(255,255,255,0.5);font-size:11px;margin-top:8px">Then import in the analyzer</div>' +
               '</div>';
             document.getElementById('milg-crawl-copy-btn').addEventListener('click', function() {
-              navigator.clipboard.writeText(crawlJson).then(function() {
-                document.getElementById('milg-crawl-copy-btn').textContent = 'Copied!';
-                document.getElementById('milg-crawl-copy-btn').style.background = '#16a34a';
-                setTimeout(_removeCrawlOverlay, 800);
-              }).catch(function() {
-                var ta = document.createElement('textarea'); ta.value = crawlJson;
-                ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
-                document.body.appendChild(ta); ta.select();
-                try { document.execCommand('copy'); } catch(e) {}
-                document.body.removeChild(ta);
-                document.getElementById('milg-crawl-copy-btn').textContent = 'Copied!';
-                document.getElementById('milg-crawl-copy-btn').style.background = '#16a34a';
-                setTimeout(_removeCrawlOverlay, 800);
-              });
+              var btn = document.getElementById('milg-crawl-copy-btn');
+              if (crawlJson.length > 4 * 1024 * 1024) {
+                // Large: file download
+                var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
+                downloadAsFile(crawlJson, 'milg-crawl-' + hostname + '.json');
+                btn.textContent = 'Downloaded!';
+                btn.style.background = '#16a34a';
+                setTimeout(_removeCrawlOverlay, 1200);
+              } else {
+                // Small: clipboard
+                navigator.clipboard.writeText(crawlJson).then(function() {
+                  btn.textContent = 'Copied!';
+                  btn.style.background = '#16a34a';
+                  setTimeout(_removeCrawlOverlay, 800);
+                }).catch(function() {
+                  // Fallback: download
+                  var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
+                  downloadAsFile(crawlJson, 'milg-crawl-' + hostname + '.json');
+                  btn.textContent = 'Downloaded!';
+                  btn.style.background = '#16a34a';
+                  setTimeout(_removeCrawlOverlay, 1200);
+                });
+              }
             });
             return;
           }
