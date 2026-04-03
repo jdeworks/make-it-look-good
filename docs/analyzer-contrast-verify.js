@@ -404,23 +404,26 @@ window.MilgContrastVerify = (function() {
       }
     }
 
-    // Step 4c: Strip interior FG pixels — only keep FG pixels that have at least
-    // one non-FG neighbor (boundary, BG, or empty). Interior FG surrounded entirely
-    // by other FG is redundant for contrast measurement.
-    for (var y = 1; y < h - 1; y++) {
-      for (var x = 1; x < w - 1; x++) {
-        var mi = y * w + x;
-        if (zone[mi] !== 2) continue;
-        var hasEdge = false;
-        for (var dy = -1; dy <= 1 && !hasEdge; dy++) {
-          for (var dx = -1; dx <= 1 && !hasEdge; dx++) {
-            if (dx === 0 && dy === 0) continue;
-            var nz = zone[(y + dy) * w + (x + dx)];
-            if (nz !== 2) hasEdge = true; // neighbor is boundary, BG, or empty
+    // Step 4c: Thin FG to a 1px-wide inset line — iteratively strip interior
+    // FG pixels until only those adjacent to non-FG remain. This produces a
+    // clean single-pixel ring inside the boundary, not a filled mesh.
+    for (var pass = 0; pass < 10; pass++) {
+      var stripped = 0;
+      for (var y = 1; y < h - 1; y++) {
+        for (var x = 1; x < w - 1; x++) {
+          var mi = y * w + x;
+          if (zone[mi] !== 2) continue;
+          var hasNonFg = false;
+          for (var dy = -1; dy <= 1 && !hasNonFg; dy++) {
+            for (var dx = -1; dx <= 1 && !hasNonFg; dx++) {
+              if (dx === 0 && dy === 0) continue;
+              if (zone[(y + dy) * w + (x + dx)] !== 2) hasNonFg = true;
+            }
           }
+          if (!hasNonFg) { zone[mi] = 0; stripped++; }
         }
-        if (!hasEdge) zone[mi] = 0; // demote to empty — pure interior
       }
+      if (stripped === 0) break; // stable — nothing left to strip
     }
 
     // Also classify BG pixels in the padding area (outside bbox)
@@ -609,24 +612,21 @@ window.MilgContrastVerify = (function() {
       }
     }
 
-    // Step 5d: Each FG pixel → ALL BG clusters in range → store each pair.
-    // With the tight search radius (~18px) the pair count stays manageable.
+    // Step 5d: Each FG pixel → closest BG cluster → one stored pair.
+    // Also compute ratios against all BG clusters in range for stats.
     var fgPoints = [], fgColors = [];
     var bgPoints = [], bgColors = [];
     var allPairRatios = [];
     var worstRatio = 99, bestRatio = 0, worstBg = null, worstBgPt = null;
     var searchR2 = BG_SEARCH_R * BG_SEARCH_R;
-    var unmatchedFg = 0;
 
     for (var fi = 0; fi < fgClean.length; fi++) {
       var fp = fgClean[fi];
       var gcx = Math.floor((fp.lx + PAD) / bgClustCellSz);
       var gcy = Math.floor((fp.ly + PAD) / bgClustCellSz);
 
-      var matchCount = 0;
-      var nearestBc = null, nearestD2 = Infinity;
+      var closestBc = null, closestD2 = Infinity;
 
-      // Search ±2 cells (wider grid scan to catch edge cases)
       for (var gdy = -2; gdy <= 2; gdy++) {
         var ry = gcy + gdy; if (ry < 0 || ry >= bgClustRows) continue;
         for (var gdx = -2; gdx <= 2; gdx++) {
@@ -636,41 +636,23 @@ window.MilgContrastVerify = (function() {
             var bc = bgCells[cell[ki]];
             var ddx = bc.cx - fp.lx, ddy = bc.cy - fp.ly;
             var d2 = ddx * ddx + ddy * ddy;
-
-            // Track nearest BG cluster regardless (for fallback)
-            if (d2 < nearestD2) { nearestD2 = d2; nearestBc = bc; }
-
-            if (d2 > searchR2) continue;
-
-            var ratio = contrastRatio(fp, bc);
-            allPairRatios.push(ratio);
-            matchCount++;
-
-            fgPoints.push({ x: bx + fp.lx, y: by + fp.ly });
-            fgColors.push(fp);
-            bgPoints.push({ x: bx + bc.cx, y: by + bc.cy });
-            bgColors.push(bc);
-
-            if (ratio < worstRatio) { worstRatio = ratio; worstBg = bc; worstBgPt = { x: bx + bc.cx, y: by + bc.cy }; }
-            if (ratio > bestRatio) bestRatio = ratio;
+            if (d2 < closestD2) { closestD2 = d2; closestBc = bc; }
           }
         }
       }
+      if (!closestBc) continue;
 
-      // Fallback: if no BG in range, match to nearest BG cluster anyway
-      if (matchCount === 0 && nearestBc) {
-        var ratio = contrastRatio(fp, nearestBc);
-        allPairRatios.push(ratio);
-        fgPoints.push({ x: bx + fp.lx, y: by + fp.ly });
-        fgColors.push(fp);
-        bgPoints.push({ x: bx + nearestBc.cx, y: by + nearestBc.cy });
-        bgColors.push(nearestBc);
-        unmatchedFg++;
-        if (ratio < worstRatio) { worstRatio = ratio; worstBg = nearestBc; worstBgPt = { x: bx + nearestBc.cx, y: by + nearestBc.cy }; }
-        if (ratio > bestRatio) bestRatio = ratio;
-      }
+      // Store the closest BG match for this FG pixel
+      var ratio = contrastRatio(fp, closestBc);
+      allPairRatios.push(ratio);
+      fgPoints.push({ x: bx + fp.lx, y: by + fp.ly });
+      fgColors.push(fp);
+      bgPoints.push({ x: bx + closestBc.cx, y: by + closestBc.cy });
+      bgColors.push(closestBc);
+
+      if (ratio < worstRatio) { worstRatio = ratio; worstBg = closestBc; worstBgPt = { x: bx + closestBc.cx, y: by + closestBc.cy }; }
+      if (ratio > bestRatio) bestRatio = ratio;
     }
-    if (unmatchedFg > 0) console.log('[verify-boundary] ' + unmatchedFg + '/' + fgClean.length + ' FG pixels matched by fallback (nearest BG) for "' + (pair.text || '').substring(0, 25) + '"');
 
     if (allPairRatios.length === 0) {
       if (pair.text) console.log('[verify-boundary] No pairs for "' + pair.text.substring(0, 25) + '" fg=' + fgClean.length + ' bgClusters=' + bgCells.length);
