@@ -1263,36 +1263,55 @@ window.MilgViewer = (function() {
 
     var sw = 'display:inline-block;width:24px;height:24px;border-radius:4px;border:1px solid rgba(128,128,128,0.3);vertical-align:middle;';
     var swSm = 'display:inline-block;width:14px;height:14px;border-radius:3px;border:1px solid rgba(128,128,128,0.3);vertical-align:middle;';
-    var needed = vr.neededRatio || 4.5;
 
-    // Pixel comparison — prominent swatches
-    var pixelBlock = '';
-    if (vr.pixelFg || vr.pixelBgWorst) {
-      var pRatio = vr.pixelRatio || '?';
-      var pPass = vr.pixelPasses;
-      var passLabel = pRatio >= 4.5 ? 'PASS' : pRatio >= 3 ? 'AA-lg' : 'FAIL';
-      var passColor = pRatio >= 4.5 ? '#22c55e' : pRatio >= 3 ? '#eab308' : '#ef4444';
-      pixelBlock = '<div style="margin-top:6px;padding:6px 8px;background:rgba(0,0,0,0.04);border-radius:4px">' +
-        '<div style="font-size:10px;color:#64748b;margin-bottom:4px">Pixel contrast (worst)</div>' +
-        '<div style="display:flex;align-items:center;gap:8px">' +
-          '<div style="text-align:center"><span style="' + sw + 'background:' + (vr.pixelFg || '#000') + '"></span><div style="font-size:8px;color:#94a3b8;margin-top:2px">FG</div></div>' +
-          '<div style="text-align:center"><span style="' + sw + 'background:' + (vr.pixelBgWorst || vr.pixelBgAvg || '#fff') + '"></span><div style="font-size:8px;color:#94a3b8;margin-top:2px">BG</div></div>' +
-          '<div style="font-size:14px;font-weight:700;color:' + passColor + '">' + pRatio + ':1</div>' +
-          '<div style="font-size:10px;font-weight:600;color:' + passColor + '">' + passLabel + '</div>' +
-        '</div>' +
-        (vr.pixelFg ? '<div style="font-size:9px;color:#94a3b8;margin-top:3px">FG ' + vr.pixelFg + '</div>' : '') +
-        (vr.pixelBgWorst ? '<div style="font-size:9px;color:#94a3b8">BG worst ' + vr.pixelBgWorst + '</div>' : '') +
-        (vr.pixelBgAvg && vr.pixelBgAvg !== vr.pixelBgWorst ? '<div style="font-size:9px;color:#94a3b8">BG avg ' + vr.pixelBgAvg + '</div>' : '') +
-      '</div>';
+    // Find the nearest FG sample point to cursor for local comparison
+    var localBlock = '';
+    if (vr.samplePoints && vr.samplePoints.fg && vr.samplePoints.fg.length > 0) {
+      var svg = e.target.closest ? e.target.closest('svg') : null;
+      var svgRect = svg ? svg.getBoundingClientRect() : null;
+      var scale = (svg && svg.viewBox && svg.viewBox.baseVal) ? svg.viewBox.baseVal.width / (svgRect ? svgRect.width : 1) : 1;
+      var mx = svgRect ? (e.clientX - svgRect.left) * scale : 0;
+      var my = svgRect ? (e.clientY - svgRect.top) * scale : 0;
 
-      // Show P10 and best if different from worst
-      if (vr.pixelRatioP10 && vr.pixelRatioP10 !== vr.pixelRatio) {
-        pixelBlock += '<div style="margin-top:4px;font-size:10px;color:#64748b">' +
-          'P10: ' + vr.pixelRatioP10 + ':1 &middot; ' +
-          'Median: ' + (vr.pixelRatioMedian || '?') + ':1 &middot; ' +
-          'Best: ' + (vr.pixelRatioBest || '?') + ':1' +
+      var nearest = null, nearestD = Infinity;
+      for (var i = 0; i < vr.samplePoints.fg.length; i++) {
+        var sp = vr.samplePoints.fg[i];
+        var dx = sp.x - mx, dy = sp.y - my;
+        var d2 = dx * dx + dy * dy;
+        if (d2 < nearestD) { nearestD = d2; nearest = sp; }
+      }
+
+      if (nearest && nearest.bgR !== undefined) {
+        var fgCol = 'rgb(' + nearest.r + ',' + nearest.g + ',' + nearest.b + ')';
+        var bgCol = 'rgb(' + nearest.bgR + ',' + nearest.bgG + ',' + nearest.bgB + ')';
+        var ratio = nearest.ratio || '?';
+        var passLabel = ratio >= 4.5 ? 'PASS' : ratio >= 3 ? 'AA-lg' : 'FAIL';
+        var passColor = ratio >= 4.5 ? '#22c55e' : ratio >= 3 ? '#eab308' : '#ef4444';
+        localBlock = '<div style="margin-top:6px;padding:6px 8px;background:rgba(0,0,0,0.04);border-radius:4px">' +
+          '<div style="font-size:10px;color:#64748b;margin-bottom:4px">Hovered pixel</div>' +
+          '<div style="display:flex;align-items:center;gap:8px">' +
+            '<div style="text-align:center"><span style="' + sw + 'background:' + fgCol + '"></span><div style="font-size:8px;color:#94a3b8;margin-top:2px">FG</div></div>' +
+            '<div style="text-align:center"><span style="' + sw + 'background:' + bgCol + '"></span><div style="font-size:8px;color:#94a3b8;margin-top:2px">BG</div></div>' +
+            '<div style="font-size:14px;font-weight:700;color:' + passColor + '">' + ratio + ':1</div>' +
+            '<div style="font-size:10px;font-weight:600;color:' + passColor + '">' + passLabel + '</div>' +
+          '</div>' +
+          '<div style="font-size:9px;color:#94a3b8;margin-top:3px">' + fgCol + ' on ' + bgCol + '</div>' +
         '</div>';
       }
+    }
+
+    // Worst offender
+    var worstBlock = '';
+    if (vr.pixelRatio && vr.pixelFg) {
+      var wRatio = vr.pixelRatio;
+      var wPassColor = wRatio >= 4.5 ? '#22c55e' : wRatio >= 3 ? '#eab308' : '#ef4444';
+      worstBlock = '<div style="margin-top:4px;font-size:10px;color:#64748b">' +
+        'Worst: <span style="' + swSm + 'background:' + vr.pixelFg + '"></span> on ' +
+        '<span style="' + swSm + 'background:' + (vr.pixelBgWorst || '') + '"></span> ' +
+        '<span style="color:' + wPassColor + ';font-weight:600">' + wRatio + ':1</span>' +
+        (vr.pixelRatioP10 ? ' &middot; P10: ' + vr.pixelRatioP10 + ':1' : '') +
+        (vr.pixelRatioBest && vr.pixelRatioBest !== vr.pixelRatio ? ' &middot; Best: ' + vr.pixelRatioBest + ':1' : '') +
+      '</div>';
     }
 
     // CSS comparison
@@ -1305,13 +1324,12 @@ window.MilgViewer = (function() {
         (vr.cssPasses ? '<span style="color:#22c55e">pass</span>' : '<span style="color:#ef4444">fail</span>') +
       '</span></div>';
 
-    // Sample counts + flags
+    // Flags
     var flagsBlock = '';
     if (vr.sampleCount) {
       flagsBlock = '<div style="font-size:9px;color:#94a3b8;margin-top:4px">' +
         vr.sampleCount.fg + ' FG &middot; ' + vr.sampleCount.bg + ' BG samples';
       if (vr.isVariableBg) flagsBlock += ' &middot; <span style="color:#eab308">variable bg</span>';
-      if (vr.bgVariance) flagsBlock += ' &middot; variance ' + vr.bgVariance;
       flagsBlock += '</div>';
     }
     if (vr.crossesBoundary) {
@@ -1321,7 +1339,7 @@ window.MilgViewer = (function() {
 
     _tooltip.innerHTML = '<div class="milg-viewer-tooltip-title">' + vr.selector + '</div>' +
       '<div class="milg-viewer-tooltip-detail">"' + (vr.text || '').substring(0, 40) + '"</div>' +
-      cssBlock + pixelBlock + flagsBlock;
+      cssBlock + localBlock + worstBlock + flagsBlock;
 
     positionTooltip(e);
   }

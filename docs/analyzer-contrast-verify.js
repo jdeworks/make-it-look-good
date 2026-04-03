@@ -282,10 +282,15 @@ window.MilgContrastVerify = (function() {
       bbox: pair.bbox, maskLayer: pair._maskLayer || 0, sectionIdx: ctx.sectionIdx,
       sampleCount: { fg: fgPoints.length, bg: bgPoints.length },
       samplePoints: {
-        fg: fgPoints.map(function(p, i) { return { x: p.x, y: p.y, r: fgColors[i].r, g: fgColors[i].g, b: fgColors[i].b }; }),
+        fg: fgPoints.map(function(p, i) {
+          var r = contrastRatio(fgColors[i], bgColors[i]);
+          return { x: p.x, y: p.y, r: fgColors[i].r, g: fgColors[i].g, b: fgColors[i].b,
+                   bgR: bgColors[i].r, bgG: bgColors[i].g, bgB: bgColors[i].b,
+                   bgX: bgPoints[i].x, bgY: bgPoints[i].y,
+                   ratio: Math.round(r * 100) / 100 };
+        }),
         bg: bgPoints.map(function(p, i) {
-          var ratio = contrastRatio(fgColor, bgColors[i]);
-          return { x: p.x, y: p.y, r: bgColors[i].r, g: bgColors[i].g, b: bgColors[i].b, ratio: Math.round(ratio * 100) / 100 };
+          return { x: p.x, y: p.y, r: bgColors[i].r, g: bgColors[i].g, b: bgColors[i].b };
         })
       },
       avgFg: fgColor, worstPoint: worstBgPt || null
