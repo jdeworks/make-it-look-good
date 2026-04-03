@@ -6,7 +6,7 @@
 
 (function() {
   'use strict';
-  var _MILG_VERSION = '2025-03-31-v12';
+  var _MILG_VERSION = '2026-04-03-v13';
   console.log('%c[milg] Snippet version: ' + _MILG_VERSION, 'color: #64748b;');
 
   // --- Scan mode option ---
@@ -323,7 +323,7 @@
       version: 1,
       scanMode: _scanMode
     },
-    colors: { textColors: [], bgColors: [], contrastPairs: [] },
+    colors: { textColors: [], bgColors: [], contrastPairs: [], bgEdgePairs: [] },
     typography: {
       bodyFontSize: '', bodyLineHeight: '', bodyFontFamily: '',
       fontFamilies: [], fontSizes: [], fontWeights: [],

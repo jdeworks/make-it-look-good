@@ -7,7 +7,7 @@
 
 (function() {
   'use strict';
-  var _MILG_VERSION = '2025-03-31-v23';
+  var _MILG_VERSION = '2026-04-03-v24';
   console.log('%c[milg] Snippet version: ' + _MILG_VERSION, 'color: #64748b;');
 
   // --- Scan mode ---
@@ -268,7 +268,7 @@
       timestamp: new Date().toISOString(),
       version: 1
     },
-    colors: { textColors: [], bgColors: [], contrastPairs: [] },
+    colors: { textColors: [], bgColors: [], contrastPairs: [], bgEdgePairs: [] },
     typography: {
       bodyFontSize: '', bodyLineHeight: '', bodyFontFamily: '',
       fontFamilies: [], fontSizes: [], fontWeights: [],
@@ -711,6 +711,49 @@
   // Keep worst 40
   touchTargetIssues.sort(function(a, b) { return (a.width * a.height) - (b.width * b.height); });
   data.interaction.touchTargets = touchTargetIssues.slice(0, 40);
+
+  // --- BBox edge contrast pairs ---
+  var _bgEdgePairs = [];
+  var _bgEdgeSeen = new Set();
+  var _bgEdgeCandidates = document.querySelectorAll('button,a,[role="button"],input:not([type="hidden"]),select,textarea,details,summary,.card,[class*="card"],[class*="btn"],[class*="button"],[class*="chip"],[class*="badge"],[class*="tag"],[class*="alert"],[class*="toast"],[class*="banner"]');
+  _bgEdgeCandidates.forEach(function(el) {
+    if (!isVisible(el) || isDecorative(el)) return;
+    var rect = el.getBoundingClientRect();
+    if (rect.width < 20 || rect.height < 16) return;
+    var sel = cssSelector(el);
+    if (_bgEdgeSeen.has(sel)) return;
+    _bgEdgeSeen.add(sel);
+    var s = getComputedStyle(el);
+    var elBg = s.backgroundColor;
+    var hasBg = elBg && elBg !== 'rgba(0, 0, 0, 0)' && elBg !== 'transparent';
+    var hasBorder = s.borderStyle !== 'none' && parseFloat(s.borderWidth) >= 1;
+    var hasShadow = s.boxShadow && s.boxShadow !== 'none';
+    var parentBg = { r: 255, g: 255, b: 255 };
+    var pNode = el.parentElement;
+    while (pNode && pNode !== document.documentElement) {
+      var pBgStr = getComputedStyle(pNode).backgroundColor;
+      var pC = parseColor(pBgStr);
+      if (pC && pC.a >= 0.5) { parentBg = { r: pC.r, g: pC.g, b: pC.b }; break; }
+      pNode = pNode.parentElement;
+    }
+    var elBgParsed = parseColor(elBg);
+    var cssBgRatio = 1;
+    if (hasBg && elBgParsed && elBgParsed.a > 0.1) {
+      var blended = { r: Math.round(elBgParsed.r * elBgParsed.a + parentBg.r * (1 - elBgParsed.a)), g: Math.round(elBgParsed.g * elBgParsed.a + parentBg.g * (1 - elBgParsed.a)), b: Math.round(elBgParsed.b * elBgParsed.a + parentBg.b * (1 - elBgParsed.a)) };
+      cssBgRatio = Math.round(contrastRatio(blended, parentBg) * 100) / 100;
+    }
+    var _beEntry = {
+      selector: sel, element: el.tagName.toLowerCase(),
+      text: (el.textContent || el.getAttribute('aria-label') || '').trim().substring(0, 40),
+      elBg: hasBg && elBgParsed ? rgbStr(elBgParsed) : rgbStr(parentBg),
+      parentBg: rgbStr(parentBg), cssBgRatio: cssBgRatio,
+      hasBorder: hasBorder, hasOutline: false, hasShadow: hasShadow,
+      borderColor: hasBorder ? s.borderColor : '', bbox: null
+    };
+    trackBbox(el, _beEntry, 'bbox');
+    _bgEdgePairs.push(_beEntry);
+  });
+  data.colors.bgEdgePairs = _bgEdgePairs.slice(0, 80);
 
   // Adjacent interactive element spacing — siblings only
   // Helper: get a human-readable label for an interactive element
@@ -1873,13 +1916,13 @@
       if (statusEl) statusEl.textContent = 'Rendering page to canvas...';
 
       ms.domToCanvas(document.documentElement, {
-        scale: 0.5,
+        scale: 1.5,
         filter: _ssFilter,
-        timeout: 8000
+        timeout: 12000
       }).then(function(fullCanvas) {
         console.log('[ss] ' + _t() + 'Full canvas captured: ' + fullCanvas.width + 'x' + fullCanvas.height);
 
-        var secScale = 0.5;
+        var secScale = 1.5;
 
         // Log final scroll state for diagnostics
         console.log('[ss] Scroll state at capture: window=' + window.scrollY + ', html=' + document.documentElement.scrollTop + ', body=' + document.body.scrollTop);
