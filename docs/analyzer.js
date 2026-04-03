@@ -469,8 +469,6 @@
     var pixelVerifyCheck = document.getElementById('pixelVerifyCheck');
     var wantPixelVerify = pixelVerifyCheck ? pixelVerifyCheck.checked : true;
     if (wantPixelVerify && window.MilgContrastVerify && reportData.raw && reportData.raw.screenshots && reportData.raw.screenshotMeta) {
-      var densitySel = document.getElementById('verifyDensity');
-      MilgContrastVerify.setDensity(densitySel ? densitySel.value : 'common');
       MilgContrastVerify.verify(reportData, function(results) {
         if (results.length === 0) return;
         var summary = MilgContrastVerify.buildSummary(results);
