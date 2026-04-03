@@ -310,11 +310,15 @@ window.MilgContrastVerify = (function() {
     var w = Math.min(mW, bw), h = Math.min(mH, bh);
     if (w < 4 || h < 4) return null;
 
-    // Constants (in mask pixel space — mask is at screenshot scale)
-    var FG_INNER = 2;  // FG sample: 1-2px inside boundary
+    // Constants — adaptive FG depth based on text size
+    // Bigger text → sample further inside where colors are pure (not AA-blended)
+    var textSize = Math.min(w, h);
+    var FG_DIST_MIN = textSize > 30 ? 3 : 1; // big text: skip AA fringe
+    var FG_DIST_MAX = textSize > 30 ? 5 : 2; // big text: 3-5px inside, small: 1-2px
     var BG_DIST_MIN = 3; // BG sample ring: 3-4px outside boundary
     var BG_DIST_MAX = 4;
     var MAX_DIST = BG_DIST_MAX + 2;
+    var FG_CLUSTER_R = 4; // radius for FG cluster averaging (smooths AA noise)
 
     // Read expanded area from screenshot for BG sampling outside bbox
     var PAD = BG_DIST_MAX + 1;
@@ -337,14 +341,14 @@ window.MilgContrastVerify = (function() {
     var dist = bfsBoundaryDist(cat, w, h, MAX_DIST);
 
     // Step 4: Classify into zones
-    // zone: 0=none, 2=FG sample (inside, dist 1-FG_INNER), 3=BG sample (outside, dist BG_MIN-BG_MAX)
+    // zone: 0=none, 1=boundary, 2=FG sample, 3=BG sample
     var zone = new Uint8Array(w * h);
     for (var y = 0; y < h; y++) {
       for (var x = 0; x < w; x++) {
         var mi = y * w + x;
         var dd = dist[mi];
         if (cat[mi] === 1) zone[mi] = 1; // boundary
-        else if (mask[mi] && dd >= 1 && dd <= FG_INNER) zone[mi] = 2; // FG
+        else if (mask[mi] && dd >= FG_DIST_MIN && dd <= FG_DIST_MAX) zone[mi] = 2; // FG
         else if (!mask[mi] && dd >= BG_DIST_MIN && dd <= BG_DIST_MAX) zone[mi] = 3; // BG
       }
     }
@@ -432,24 +436,20 @@ window.MilgContrastVerify = (function() {
       return { r: imgDataExp[pi], g: imgDataExp[pi+1], b: imgDataExp[pi+2] };
     }
 
-    // Step 5: Each FG pixel → average of nearby BG pixels → contrast ratio
-    // For each FG pixel, find all BG zone pixels within BG_SEARCH_R,
-    // average their actual screenshot colors, and compute contrast.
-    // No grouping — purely local neighborhood sampling.
-    // For each FG pixel, find all BG zone pixels within BG_SEARCH_R and average
-    // their actual colors from the screenshot. No group centroids — purely local.
-    var BG_SEARCH_R = BG_DIST_MAX + 2; // search radius for nearby BG pixels
-    var fgPoints = [], fgColors = [];
-    var bgPoints = [], bgColors = [];
-    var allPairRatios = [];
-    var worstRatio = 99, bestRatio = 0, worstBg = null, worstBgPt = null;
+    // Step 5: Collect FG + BG pixels, cluster-average FG, compute contrast
 
-    // Collect all FG and BG pixel positions for spatial lookup
-    var allFgIdx = [];
-    for (var i = 0; i < w * h; i++) { if (zone[i] === 2) allFgIdx.push(i); }
+    var BG_SEARCH_R = BG_DIST_MAX + 2;
 
-    // Build spatial index for BG pixels (inside bbox + expanded)
-    // Store as [{lx, ly, r, g, b}] — all in bbox-relative coords
+    // Collect all FG pixel positions + raw colors
+    var allFg = []; // [{idx, lx, ly, r, g, b}]
+    for (var i = 0; i < w * h; i++) {
+      if (zone[i] !== 2) continue;
+      var fx = i % w, fy = (i - fx) / w;
+      var c = readPixel(fx, fy);
+      if (c) allFg.push({ idx: i, lx: fx, ly: fy, r: c.r, g: c.g, b: c.b });
+    }
+
+    // Collect all BG pixels (inside bbox + expanded)
     var allBgPixels = [];
     for (var i = 0; i < w * h; i++) {
       if (zone[i] === 3) {
@@ -458,47 +458,97 @@ window.MilgContrastVerify = (function() {
         if (bc) allBgPixels.push({ lx: bpx, ly: bpy, r: bc.r, g: bc.g, b: bc.b });
       }
     }
-    // Add expanded BG pixels
     for (var i = 0; i < expBgPixels.length; i++) {
       allBgPixels.push(expBgPixels[i]);
     }
 
-    if (allFgIdx.length === 0 || allBgPixels.length === 0) {
-      if (pair.text) console.log('[verify-boundary] No FG/BG for "' + pair.text.substring(0, 25) + '" boundary=' + boundaryPts.length + ' fg=' + allFgIdx.length + ' bg=' + allBgPixels.length);
+    if (allFg.length === 0 || allBgPixels.length === 0) {
+      if (pair.text) console.log('[verify-boundary] No FG/BG for "' + pair.text.substring(0, 25) + '" fg=' + allFg.length + ' bg=' + allBgPixels.length);
       return null;
     }
 
-    // Grid index for BG pixels — cell size = BG_SEARCH_R for fast local lookup
-    var cellSz = BG_SEARCH_R;
-    var gCols = Math.ceil((w + PAD * 2) / cellSz), gRows = Math.ceil((h + PAD * 2) / cellSz);
-    var bgGrid = new Array(gCols * gRows);
-    for (var gi = 0; gi < bgGrid.length; gi++) bgGrid[gi] = [];
-    for (var bi = 0; bi < allBgPixels.length; bi++) {
-      var gx = Math.floor((allBgPixels[bi].lx + PAD) / cellSz);
-      var gy = Math.floor((allBgPixels[bi].ly + PAD) / cellSz);
-      if (gx >= 0 && gx < gCols && gy >= 0 && gy < gRows) {
-        bgGrid[gy * gCols + gx].push(bi);
-      }
+    // Step 5a: Cluster-average each FG pixel's color within FG_CLUSTER_R radius.
+    // This smooths out AA noise: each pixel's color = average of nearby FG pixels.
+    var fgCellSz = FG_CLUSTER_R;
+    var fgGCols = Math.ceil(w / fgCellSz), fgGRows = Math.ceil(h / fgCellSz);
+    var fgGrid = new Array(fgGCols * fgGRows);
+    for (var gi = 0; gi < fgGrid.length; gi++) fgGrid[gi] = [];
+    for (var fi = 0; fi < allFg.length; fi++) {
+      var gx = Math.floor(allFg[fi].lx / fgCellSz);
+      var gy = Math.floor(allFg[fi].ly / fgCellSz);
+      if (gx >= 0 && gx < fgGCols && gy >= 0 && gy < fgGRows) fgGrid[gy * fgGCols + gx].push(fi);
     }
 
-    for (var fi = 0; fi < allFgIdx.length; fi++) {
-      var fgIdx = allFgIdx[fi];
-      var fx = fgIdx % w, fy = (fgIdx - fx) / w;
-      var fgC = readPixel(fx, fy);
-      if (!fgC) continue;
+    var fgSmoothed = []; // [{lx, ly, r, g, b}] — cluster-averaged colors
+    for (var fi = 0; fi < allFg.length; fi++) {
+      var fp = allFg[fi];
+      var gcx = Math.floor(fp.lx / fgCellSz), gcy = Math.floor(fp.ly / fgCellSz);
+      var sR = 0, sG = 0, sB = 0, cnt = 0;
+      for (var gdy = -1; gdy <= 1; gdy++) {
+        var ry = gcy + gdy; if (ry < 0 || ry >= fgGRows) continue;
+        for (var gdx = -1; gdx <= 1; gdx++) {
+          var rx = gcx + gdx; if (rx < 0 || rx >= fgGCols) continue;
+          var cell = fgGrid[ry * fgGCols + rx];
+          for (var ci = 0; ci < cell.length; ci++) {
+            var op = allFg[cell[ci]];
+            var ddx = op.lx - fp.lx, ddy = op.ly - fp.ly;
+            if (ddx * ddx + ddy * ddy <= FG_CLUSTER_R * FG_CLUSTER_R) {
+              sR += op.r; sG += op.g; sB += op.b; cnt++;
+            }
+          }
+        }
+      }
+      cnt = cnt || 1;
+      fgSmoothed.push({ lx: fp.lx, ly: fp.ly, r: Math.round(sR / cnt), g: Math.round(sG / cnt), b: Math.round(sB / cnt) });
+    }
 
-      // Find all BG pixels within BG_SEARCH_R using grid
-      var gcx = Math.floor((fx + PAD) / cellSz), gcy = Math.floor((fy + PAD) / cellSz);
+    // Step 5b: Outlier removal — compute median FG color, reject pixels too far from it
+    // Sort by luminance to find median
+    var fgLums = fgSmoothed.map(function(p) { return 0.299 * p.r + 0.587 * p.g + 0.114 * p.b; });
+    fgLums.sort(function(a, b) { return a - b; });
+    var medianLum = fgLums[Math.floor(fgLums.length / 2)];
+    var lumThreshold = 40; // reject pixels with luminance > 40 away from median
+
+    var fgClean = [];
+    for (var fi = 0; fi < fgSmoothed.length; fi++) {
+      var lum = 0.299 * fgSmoothed[fi].r + 0.587 * fgSmoothed[fi].g + 0.114 * fgSmoothed[fi].b;
+      if (Math.abs(lum - medianLum) <= lumThreshold) {
+        fgClean.push(fgSmoothed[fi]);
+      }
+    }
+    // Fall back to all if too many rejected
+    if (fgClean.length < allFg.length * 0.3) fgClean = fgSmoothed;
+
+    // Step 5c: Build BG spatial index
+    var bgCellSz = BG_SEARCH_R;
+    var bgGCols = Math.ceil((w + PAD * 2) / bgCellSz), bgGRows = Math.ceil((h + PAD * 2) / bgCellSz);
+    var bgGrid = new Array(bgGCols * bgGRows);
+    for (var gi = 0; gi < bgGrid.length; gi++) bgGrid[gi] = [];
+    for (var bi = 0; bi < allBgPixels.length; bi++) {
+      var gx = Math.floor((allBgPixels[bi].lx + PAD) / bgCellSz);
+      var gy = Math.floor((allBgPixels[bi].ly + PAD) / bgCellSz);
+      if (gx >= 0 && gx < bgGCols && gy >= 0 && gy < bgGRows) bgGrid[gy * bgGCols + gx].push(bi);
+    }
+
+    // Step 5d: Each cleaned FG pixel → local BG average → contrast
+    var fgPoints = [], fgColors = [];
+    var bgPoints = [], bgColors = [];
+    var allPairRatios = [];
+    var worstRatio = 99, bestRatio = 0, worstBg = null, worstBgPt = null;
+
+    for (var fi = 0; fi < fgClean.length; fi++) {
+      var fp = fgClean[fi];
+      var gcx = Math.floor((fp.lx + PAD) / bgCellSz), gcy = Math.floor((fp.ly + PAD) / bgCellSz);
       var sumR = 0, sumG = 0, sumB = 0, bgN = 0;
       var nearestBgDist = Infinity, nearestBgPt = null;
       for (var gdy = -1; gdy <= 1; gdy++) {
-        var ry = gcy + gdy; if (ry < 0 || ry >= gRows) continue;
+        var ry = gcy + gdy; if (ry < 0 || ry >= bgGRows) continue;
         for (var gdx = -1; gdx <= 1; gdx++) {
-          var rx = gcx + gdx; if (rx < 0 || rx >= gCols) continue;
-          var cell = bgGrid[ry * gCols + rx];
+          var rx = gcx + gdx; if (rx < 0 || rx >= bgGCols) continue;
+          var cell = bgGrid[ry * bgGCols + rx];
           for (var ci = 0; ci < cell.length; ci++) {
             var bp = allBgPixels[cell[ci]];
-            var ddx = bp.lx - fx, ddy = bp.ly - fy;
+            var ddx = bp.lx - fp.lx, ddy = bp.ly - fp.ly;
             var d2 = ddx * ddx + ddy * ddy;
             if (d2 <= BG_SEARCH_R * BG_SEARCH_R) {
               sumR += bp.r; sumG += bp.g; sumB += bp.b; bgN++;
@@ -510,11 +560,11 @@ window.MilgContrastVerify = (function() {
       if (bgN === 0) continue;
 
       var localBg = { r: Math.round(sumR / bgN), g: Math.round(sumG / bgN), b: Math.round(sumB / bgN) };
-      var ratio = contrastRatio(fgC, localBg);
+      var ratio = contrastRatio(fp, localBg);
       allPairRatios.push(ratio);
 
-      fgPoints.push({ x: bx + fx, y: by + fy });
-      fgColors.push(fgC);
+      fgPoints.push({ x: bx + fp.lx, y: by + fp.ly });
+      fgColors.push(fp);
       bgPoints.push({ x: bx + nearestBgPt.lx, y: by + nearestBgPt.ly });
       bgColors.push(localBg);
 
