@@ -14,6 +14,11 @@
   var _scanMode = window.__milgScanMode || 'full';
   var _doExpensive = _scanMode === 'full';
 
+  // --- Pixel verify option ---
+  // Set window.__milgPixelVerify = true before running to enable inline pixel contrast verification.
+  // Default: off (the analyzer can run pixel verify post-hoc from screenshots).
+  var _doPixelVerify = !!window.__milgPixelVerify;
+
   // --- Auto-scroll option ---
   // To scroll the page before extraction (triggers lazy loading + intersection observers):
   // Run: window.__milgScrollFirst = true   then paste the snippet.
@@ -1962,9 +1967,9 @@
             };
             // --- Pixel contrast verification on the pristine full canvas ---
             // Runs on the raw canvas BEFORE WebP compression, so no artifacts.
-            // Uses fg-exclusion: CSS fg color is known, exclude fg-like pixels,
-            // find the dominant background color from remaining pixels.
-            (function() {
+            // Inline pixel contrast verification (opt-in via window.__milgPixelVerify).
+            // When disabled, the analyzer runs pixel verify post-hoc from screenshots.
+            if (!_doPixelVerify) { /* skip inline pixel verify */ } else (function() {
               var pairs = data.colors.contrastPairs || [];
               var pairsWithBbox = pairs.filter(function(p) { return p.bbox; });
               if (pairsWithBbox.length === 0) return;

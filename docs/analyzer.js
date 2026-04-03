@@ -531,18 +531,42 @@
     function reloadSnippet() {
       var crawlOn = snippetCrawlCheck && snippetCrawlCheck.checked;
       var withScreenshots = sharedScreenshotCheck && sharedScreenshotCheck.checked;
+      var wantInlineVerify = document.getElementById('pixelVerifyCheck') && document.getElementById('pixelVerifyCheck').checked;
       loadSnippet(snippetCode, withScreenshots, function() {
+        var prefix = '';
+        if (wantInlineVerify) prefix += 'window.__milgPixelVerify=true;\n';
         if (crawlOn) {
           var maxP = (snippetCrawlMaxPages && parseInt(snippetCrawlMaxPages.value)) || 5;
-          var prefix = 'window.__milgCrawlSite=true; window.__milgCrawlMaxPages=' + maxP + ';\n';
-          snippetCode.textContent = prefix + snippetCode.textContent;
+          prefix += 'window.__milgCrawlSite=true; window.__milgCrawlMaxPages=' + maxP + ';\n';
         }
+        if (prefix) snippetCode.textContent = prefix + snippetCode.textContent;
       });
     }
     reloadSnippet();
 
+    // Pixel verify requires screenshots — disable when screenshots unchecked
+    var pixelVerifyCheck = document.getElementById('pixelVerifyCheck');
+    function syncPixelVerify() {
+      if (!pixelVerifyCheck || !sharedScreenshotCheck) return;
+      if (!sharedScreenshotCheck.checked) {
+        pixelVerifyCheck.checked = false;
+        pixelVerifyCheck.disabled = true;
+        pixelVerifyCheck.parentElement.style.opacity = '0.4';
+      } else {
+        pixelVerifyCheck.disabled = false;
+        pixelVerifyCheck.parentElement.style.opacity = '';
+      }
+    }
+    syncPixelVerify();
+
     if (sharedScreenshotCheck) {
-      sharedScreenshotCheck.addEventListener('change', reloadSnippet);
+      sharedScreenshotCheck.addEventListener('change', function() {
+        syncPixelVerify();
+        reloadSnippet();
+      });
+    }
+    if (pixelVerifyCheck) {
+      pixelVerifyCheck.addEventListener('change', reloadSnippet);
     }
     if (snippetCrawlCheck) {
       snippetCrawlCheck.addEventListener('change', function() {
