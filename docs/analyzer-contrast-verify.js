@@ -310,16 +310,14 @@ window.MilgContrastVerify = (function() {
     var w = Math.min(mW, bw), h = Math.min(mH, bh);
     if (w < 4 || h < 4) return null;
 
-    // Constants — scaled with screenshot resolution
-    // At scale 1.5, 1 CSS pixel ≈ 1.5 mask pixels, so distances are ~2x what they
-    // were at scale 0.75. Sample deeper inside to skip the AA fringe.
-    var textSize = Math.min(w, h);
-    var FG_DIST_MIN = textSize > 40 ? 4 : 2; // skip AA fringe (was 3/1 at 0.75x)
-    var FG_DIST_MAX = textSize > 40 ? 7 : 4; // big: 4-7px, small: 2-4px inside
-    var BG_DIST_MIN = 5;  // BG ring: 5-7px outside (was 3-4 at 0.75x)
+    // Constants — scaled with screenshot resolution (1.5x)
+    var FG_IDEAL_MIN = 3;  // prefer pixels at least 3px inside boundary (skip AA)
+    var FG_HARD_MIN = 1;   // but accept 1px inside for thin strokes
+    var FG_MAX = 8;        // don't go deeper than 8px
+    var BG_DIST_MIN = 5;   // BG ring: 5-7px outside boundary
     var BG_DIST_MAX = 7;
     var MAX_DIST = BG_DIST_MAX + 3;
-    var FG_CLUSTER_R = 6; // cluster averaging radius (was 4 at 0.75x)
+    var FG_CLUSTER_R = 6;  // cluster averaging radius
 
     // Read expanded area from screenshot for BG sampling outside bbox
     var PAD = BG_DIST_MAX + 2;
@@ -341,44 +339,68 @@ window.MilgContrastVerify = (function() {
     // Step 3: BFS distance from boundary
     var dist = bfsBoundaryDist(cat, w, h, MAX_DIST);
 
-    // Step 4: Classify into zones
-    // zone: 0=none, 1=boundary, 2=FG sample, 3=BG sample
+    // Step 4: Classify into zones with adaptive FG depth.
+    // For each mask pixel, determine the local stroke thickness by finding
+    // the max dist within a small neighborhood. Use the deepest available
+    // pixel (at least FG_HARD_MIN), preferring FG_IDEAL_MIN+ when available.
+    // This means thick strokes sample deep (clean colors) while thin strokes
+    // (corners of M, serifs) still get sampled at whatever depth exists.
+
+    // First pass: compute local max dist in a 5px radius for each mask pixel
+    var localMaxDist = new Uint8Array(w * h);
+    var LMR = 5; // local max radius
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        var mi = y * w + x;
+        if (!mask[mi]) continue;
+        var maxD = dist[mi];
+        // Check small neighborhood for deeper pixels
+        for (var dy = -LMR; dy <= LMR; dy++) {
+          var ny = y + dy; if (ny < 0 || ny >= h) continue;
+          for (var dx = -LMR; dx <= LMR; dx++) {
+            var nx = x + dx; if (nx < 0 || nx >= w) continue;
+            if (dx * dx + dy * dy > LMR * LMR) continue;
+            var ni = ny * w + nx;
+            if (mask[ni] && dist[ni] < 255 && dist[ni] > maxD) maxD = dist[ni];
+          }
+        }
+        localMaxDist[mi] = maxD;
+      }
+    }
+
+    // Second pass: classify using adaptive threshold
     var zone = new Uint8Array(w * h);
     for (var y = 0; y < h; y++) {
       for (var x = 0; x < w; x++) {
         var mi = y * w + x;
         var dd = dist[mi];
-        if (cat[mi] === 1) zone[mi] = 1; // boundary
-        else if (mask[mi] && dd >= FG_DIST_MIN && dd <= FG_DIST_MAX) zone[mi] = 2; // FG
-        else if (!mask[mi] && dd >= BG_DIST_MIN && dd <= BG_DIST_MAX) zone[mi] = 3; // BG
+        if (cat[mi] === 1) { zone[mi] = 1; continue; } // boundary
+        if (!mask[mi]) {
+          if (dd >= BG_DIST_MIN && dd <= BG_DIST_MAX) zone[mi] = 3; // BG
+          continue;
+        }
+        // FG: adapt min depth to local stroke thickness
+        var localMax = localMaxDist[mi];
+        var effectiveMin = localMax >= FG_IDEAL_MIN ? FG_IDEAL_MIN : FG_HARD_MIN;
+        if (dd >= effectiveMin && dd <= FG_MAX) zone[mi] = 2; // FG
       }
     }
 
-    // Step 4b: Small text FG fallback — when text strokes are too thin for
-    // the FG zone (dist FG_DIST_MIN-MAX), promote the deepest INSIDE pixels
-    // (highest dist from boundary while still in mask) to FG.
-    // Never use boundary pixels (dist=0) — they're AA-blended.
+    // Fallback: if still no FG, promote deepest inside or boundary pixels
     var fgCount = 0;
     for (var i = 0; i < w * h; i++) { if (zone[i] === 2) fgCount++; }
-
     if (fgCount === 0) {
-      // No FG pixels at the desired depth. Find the deepest inside pixels.
-      // These are mask pixels with the highest dist from boundary (most interior).
       var maxInnerDist = 0;
       for (var i = 0; i < w * h; i++) {
         if (mask[i] && cat[i] === 2 && dist[i] < 255 && dist[i] > maxInnerDist) maxInnerDist = dist[i];
       }
-      // Promote mask pixels at dist >= max(1, maxInnerDist-1) — the deepest layer
-      var promoteMin = Math.max(1, maxInnerDist - 1);
       if (maxInnerDist >= 1) {
+        var promoteMin = Math.max(1, maxInnerDist - 1);
         for (var i = 0; i < w * h; i++) {
           if (mask[i] && dist[i] >= promoteMin && dist[i] <= maxInnerDist) zone[i] = 2;
         }
       } else {
-        // Text is only 1px wide (all boundary, no inside) — use boundary as last resort
-        for (var i = 0; i < w * h; i++) {
-          if (cat[i] === 1) zone[i] = 2;
-        }
+        for (var i = 0; i < w * h; i++) { if (cat[i] === 1) zone[i] = 2; }
       }
     }
 
@@ -435,11 +457,9 @@ window.MilgContrastVerify = (function() {
 
     // Step 5: Collect FG + BG pixels, cluster-average FG, compute contrast
 
-    // Search radius: just enough to cross boundary + reach BG ring from FG zone.
-    // FG is at most FG_DIST_MAX inside, BG starts at BG_DIST_MIN outside.
-    // Total = FG_DIST_MAX + BG_DIST_MAX + small margin for diagonal paths.
-    // NOT proportional to element size — contrast is always local to the text edge.
-    var BG_SEARCH_R = FG_DIST_MAX + BG_DIST_MAX + 4; // ~18px at 1.5x scale
+    // Search radius: FG can be at most FG_MAX inside, BG at BG_DIST_MAX outside.
+    // Add margin for diagonal paths. Always local to the text edge.
+    var BG_SEARCH_R = FG_MAX + BG_DIST_MAX + 4; // ~19px
 
     // Collect all FG pixel positions + raw colors
     var allFg = []; // [{idx, lx, ly, r, g, b}]
