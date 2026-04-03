@@ -41319,7 +41319,7 @@ window.MilgIframe = (function() {
   var _showProgress = function() {};
   // TODO: revert to 0.5 after pixel density testing
   var SCREENSHOT_SCALE = 0.75;
-  var SCREENSHOT_QUALITY = 0.85;
+  var SCREENSHOT_FORMAT = 'image/png'; // PNG = lossless, no compression artifacts on text colors
 
   function init(opts) {
     if (opts.screenshotCDN) _screenshotCDN = opts.screenshotCDN;
@@ -41347,7 +41347,7 @@ window.MilgIframe = (function() {
   // Called after extraction via __milgDoScreenshots (once-guard prevents double run).
   // Mirrors console snippet: pre-scroll → reset → wait → re-read bboxes → capture body
   function buildScreenshotScript(msgType) {
-    var ss = { scale: SCREENSHOT_SCALE, quality: SCREENSHOT_QUALITY };
+    var ss = { scale: SCREENSHOT_SCALE, format: SCREENSHOT_FORMAT };
     return '(function(){' +
       // Once-guard: extraction may fire twice (load + fallback timeout)
       'if(window.__milgSsDone)return;window.__milgSsDone=true;' +
@@ -41453,7 +41453,7 @@ window.MilgIframe = (function() {
             'console.log("[iframe-ss] Step 1/2: Capturing screenshot...");' +
             'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:15000}).then(function(fc){' +
               'console.log("[iframe-ss] Screenshot: "+fc.width+"x"+fc.height);' +
-              'var fullUri;try{fullUri=fc.toDataURL("image/webp",' + ss.quality + ')}catch(e){fullUri=""}' +
+              'var fullUri;try{fullUri=fc.toDataURL("' + ss.format + '")}catch(e){fullUri=""}' +
               // Update send helper with actual canvas dimensions
               'var _cw=fc.width,_ch=fc.height;' +
               'function _sendFinal(maskUri){' +
@@ -41887,7 +41887,7 @@ window.MilgIframe = (function() {
         'var ms=window.modernScreenshot;' +
         'if(!ms||!ms.domToCanvas){parent.postMessage({type:"milg-screenshots-unhidden",screenshots:[]},"*");return}' +
         'ms.domToCanvas(document.documentElement,{scale:' + SCREENSHOT_SCALE + ',timeout:8000}).then(function(fc){' +
-          'var uri;try{uri=fc.toDataURL("image/webp",' + SCREENSHOT_QUALITY + ')}catch(e){uri=""}' +
+          'var uri;try{uri=fc.toDataURL("' + SCREENSHOT_FORMAT + '")}catch(e){uri=""}' +
           'parent.postMessage({type:"milg-screenshots-unhidden",screenshots:uri?[uri]:[]},"*")' +
         '}).catch(function(){parent.postMessage({type:"milg-screenshots-unhidden",screenshots:[]},"*")})' +
       '},300)' +
