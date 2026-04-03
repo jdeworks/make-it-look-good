@@ -968,35 +968,39 @@ window.MilgViewer = (function() {
       var vi = parseInt(rect.getAttribute('data-verify'));
       var vr = (_reportData && _reportData._contrastVerifyResults) ? _reportData._contrastVerifyResults[vi] : null;
 
-      // Only show key percentile points: worst, P10 worst, P10 best, best
+      // Only show key percentile points at distinct FG positions.
+      // Deduplicate by FG position first (keep worst ratio per unique FG pixel),
+      // then pick percentiles from the deduplicated list.
       var fgPairs = (sp.fg || []).slice();
       if (fgPairs.length === 0) return;
 
-      // Sort by ratio to pick percentiles
-      var sorted = fgPairs.map(function(p, i) { return { p: p, ratio: p.ratio || 0 }; });
-      sorted.sort(function(a, b) { return a.ratio - b.ratio; });
+      // Deduplicate: for each unique FG position, keep the entry with worst ratio
+      var byPos = {};
+      fgPairs.forEach(function(p) {
+        var key = p.x + ',' + p.y;
+        if (!byPos[key] || p.ratio < byPos[key].ratio) byPos[key] = p;
+      });
+      var unique = [];
+      for (var k in byPos) unique.push(byPos[k]);
+      if (unique.length === 0) return;
+
+      unique.sort(function(a, b) { return (a.ratio || 0) - (b.ratio || 0); });
 
       var picks = [];
       var labels = [];
-      // Worst
-      picks.push(sorted[0]); labels.push('worst');
-      // P10 worst
-      var p10i = Math.floor(sorted.length * 0.1);
-      if (p10i > 0) { picks.push(sorted[p10i]); labels.push('P10'); }
-      // Median
-      var medI = Math.floor(sorted.length * 0.5);
-      if (medI > p10i) { picks.push(sorted[medI]); labels.push('median'); }
-      // P90 best
-      var p90i = Math.floor(sorted.length * 0.9);
-      if (p90i > medI) { picks.push(sorted[p90i]); labels.push('P90'); }
-      // Best
-      if (sorted.length > 1) { picks.push(sorted[sorted.length - 1]); labels.push('best'); }
+      picks.push(unique[0]); labels.push('worst');
+      var p10i = Math.floor(unique.length * 0.1);
+      if (p10i > 0) { picks.push(unique[p10i]); labels.push('P10'); }
+      var medI = Math.floor(unique.length * 0.5);
+      if (medI > p10i) { picks.push(unique[medI]); labels.push('median'); }
+      var p90i = Math.floor(unique.length * 0.9);
+      if (p90i > medI) { picks.push(unique[p90i]); labels.push('P90'); }
+      if (unique.length > 1) { picks.push(unique[unique.length - 1]); labels.push('best'); }
 
       var dotR = _zoomLevel >= 2 ? 3 : 2;
       var colors = { worst: '#ef4444', P10: '#f97316', median: '#eab308', P90: '#22c55e', best: '#06b6d4' };
 
-      picks.forEach(function(item, idx) {
-        var pt = item.p;
+      picks.forEach(function(pt, idx) {
         var label = labels[idx];
         var col = colors[label] || '#94a3b8';
 
