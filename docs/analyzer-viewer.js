@@ -1065,27 +1065,49 @@ window.MilgViewer = (function() {
     var finding = _allFindings[findingIdx];
     if (!finding) return;
 
-    var sevClass = 'milg-viewer-sev-' + finding.severity;
-    var verifyNote = '';
+    // Find ALL findings that overlap this bbox position
+    var rect = e.target;
+    var rx = parseFloat(rect.getAttribute('x')), ry = parseFloat(rect.getAttribute('y'));
+    var rw = parseFloat(rect.getAttribute('width')), rh = parseFloat(rect.getAttribute('height'));
+    var overlapping = [finding];
+    _allFindings.forEach(function(f, fi) {
+      if (fi === findingIdx) return;
+      f.bboxes.forEach(function(bb) {
+        var bx = Math.round(bb.left * (_meta ? _meta.scale : 1));
+        var by = Math.round(bb.top * (_meta ? _meta.scale : 1)) - _calibrationOffsetY;
+        // Check if this bbox overlaps the hovered rect
+        if (bx < rx + rw && bx + Math.round(bb.width * (_meta ? _meta.scale : 1)) > rx &&
+            by < ry + rh && by + Math.round(bb.height * (_meta ? _meta.scale : 1)) > ry) {
+          if (overlapping.indexOf(f) === -1) overlapping.push(f);
+        }
+      });
+    });
+
+    _tooltip = document.createElement('div');
+    _tooltip.className = 'milg-viewer-tooltip';
+    var html = '';
+    overlapping.forEach(function(f, oi) {
+      if (oi > 0) html += '<div style="border-top:1px solid rgba(255,255,255,0.15);margin:6px 0"></div>';
+      var sevClass = 'milg-viewer-sev-' + f.severity;
+      html += '<div class="milg-viewer-tooltip-header">' +
+        '<span class="milg-viewer-tooltip-badge ' + sevClass + '">' + f.severity + '</span>' +
+        '<span class="milg-viewer-tooltip-cat">' + f.category + '</span>' +
+        '</div>';
+      html += '<div class="milg-viewer-tooltip-title">' + f.title + '</div>';
+      if (f.detail) html += '<div class="milg-viewer-tooltip-detail">' + f.detail.substring(0, 150) + '</div>';
+    });
+    // Pixel verify note for primary finding
     if (_reportData && _reportData._contrastVerifyResults && window.MilgContrastVerify) {
       var vResults = _reportData._contrastVerifyResults;
       for (var vi = 0; vi < vResults.length; vi++) {
         if (finding.detail && finding.detail.indexOf(vResults[vi].selector) !== -1) {
-          verifyNote = '<div class="milg-viewer-tooltip-verify">' + MilgContrastVerify.formatResult(vResults[vi]) + '</div>';
+          html += '<div class="milg-viewer-tooltip-verify">' + MilgContrastVerify.formatResult(vResults[vi]) + '</div>';
           break;
         }
       }
     }
-
-    _tooltip = document.createElement('div');
-    _tooltip.className = 'milg-viewer-tooltip';
-    _tooltip.innerHTML = '<div class="milg-viewer-tooltip-header">' +
-      '<span class="milg-viewer-tooltip-badge ' + sevClass + '">' + finding.severity + '</span>' +
-      '<span class="milg-viewer-tooltip-cat">' + finding.category + '</span>' +
-      '</div>' +
-      '<div class="milg-viewer-tooltip-title">' + finding.title + '</div>' +
-      (finding.detail ? '<div class="milg-viewer-tooltip-detail">' + finding.detail.substring(0, 120) + '</div>' : '') +
-      verifyNote;
+    if (overlapping.length > 1) html += '<div style="font-size:10px;color:rgba(255,255,255,0.4);margin-top:4px">' + overlapping.length + ' findings at this location</div>';
+    _tooltip.innerHTML = html;
 
     positionTooltip(e);
   }

@@ -505,12 +505,21 @@ window.MilgExtract = (function() {
 
     var alignTargets = document.querySelectorAll('h1,h2,h3,h4,p,ul,ol,table,form,img,figure,blockquote');
     var leftEdges = [];
+    var alignmentElements = []; // elements with their edges for bbox tracking
     Array.from(alignTargets).forEach(function(el) {
       if (!isVisible(el) || isDecorative(el)) return;
       var r = el.getBoundingClientRect();
-      if (r.width > 50) leftEdges.push(Math.round(r.left));
+      if (r.width > 50) {
+        leftEdges.push(Math.round(r.left));
+        if (alignmentElements.length < 50) {
+          var _ae = { selector: cssSelector(el), left: Math.round(r.left), bbox: null };
+          trackBbox(el, _ae, 'bbox');
+          alignmentElements.push(_ae);
+        }
+      }
     });
     data.layout.alignmentEdges = leftEdges;
+    data.layout.alignmentElements = alignmentElements;
 
     var bodyFS = parseFloat(data.typography.bodyFontSize) || 16;
     var h1Sizes = data.typography.headings.filter(function(h) { return h.tag === 'h1'; }).map(function(h) { return parseFloat(h.fontSize); });
@@ -888,14 +897,26 @@ window.MilgExtract = (function() {
       data.structure.overflowCulprits = _pageOverflowCulprits.slice(0, 10);
     }
 
-    // Border radii (for layout/consistency scoring)
+    // Border radii (for layout/consistency scoring) — track sample elements per value
     var radiusMap = {};
+    var radiusSamples = {}; // value → [{selector, bbox}]
     Array.from(allElements).slice(0, 500).forEach(function(el) {
       if (!isVisible(el)) return;
       var br = getComputedStyle(el).borderRadius;
-      if (br && br !== '0px') { radiusMap[br] = (radiusMap[br] || 0) + 1; }
+      if (br && br !== '0px') {
+        radiusMap[br] = (radiusMap[br] || 0) + 1;
+        if (!radiusSamples[br]) radiusSamples[br] = [];
+        if (radiusSamples[br].length < 5) {
+          var _rs = { selector: cssSelector(el), bbox: null };
+          trackBbox(el, _rs, 'bbox');
+          radiusSamples[br].push(_rs);
+        }
+      }
     });
-    data.layout.borderRadii = Object.keys(radiusMap).map(function(k) { return { value: k, count: radiusMap[k] }; }).sort(function(a, b) { return b.count - a.count; }).slice(0, 15);
+    data.layout.borderRadii = Object.keys(radiusMap).map(function(k) {
+      var samples = (radiusSamples[k] || []);
+      return { value: k, count: radiusMap[k], bboxes: samples.map(function(s) { return s.bbox; }).filter(Boolean), selectors: samples.map(function(s) { return s.selector; }).filter(Boolean) };
+    }).sort(function(a, b) { return b.count - a.count; }).slice(0, 15);
 
     // Horizontal scroll containers — refined classification
     var _iframeStructuralSel = 'nav,form,section,header,footer,article,aside,main,h1,h2,h3,h4,h5,h6';

@@ -75,13 +75,21 @@ function scoreLayout(data) {
     if (nearMisses === 0 && clusterRatio < 0.5) {
       passed++;
     } else if (nearMisses > 0) {
+      // Collect bboxes of jagged alignment elements
+      var alignElements = layout.alignmentElements || [];
+      var jaggedBboxes = [], jaggedSelectors = [];
+      alignElements.forEach(function(ae) {
+        if (ae.bbox) jaggedBboxes.push(ae.bbox);
+        if (ae.selector) jaggedSelectors.push(ae.selector);
+      });
       findings.push({
         severity: nearMisses >= 3 ? 'warning' : 'info',
         title: nearMisses + ' jagged alignment(s) — elements on same axis but ' + (nearMisses >= 3 ? 'noticeably' : 'slightly') + ' off',
         detail: clusters.length + ' alignment edges across ' + edges.length + ' elements. ' + (jaggedExamples.length > 0 ? 'Offsets: ' + jaggedExamples.join(', ') : ''),
         fix: 'Elements that share a visual axis should be exactly aligned. Check that container padding, margin, and grid column widths are consistent. In Tailwind: use consistent px-4/px-6 and grid/flex alignment.',
         presetRef: null,
-        source: 'Gestalt continuity — https://lawsofux.com/law-of-common-region/'
+        source: 'Gestalt continuity — https://lawsofux.com/law-of-common-region/',
+        locator: jaggedBboxes.length > 0 ? { selector: '', text: '', bboxes: jaggedBboxes, selectors: jaggedSelectors } : undefined
       });
     } else if (clusterRatio >= 0.5) {
       findings.push({
@@ -143,13 +151,20 @@ function scoreLayout(data) {
     if (radii.length <= 4) {
       passed++;
     } else {
+      // Collect sample bboxes from each radius value
+      var radBboxes = [], radSelectors = [];
+      radii.forEach(function(r) {
+        if (r.bboxes) r.bboxes.forEach(function(b) { radBboxes.push(b); });
+        if (r.selectors) r.selectors.forEach(function(s) { radSelectors.push(s); });
+      });
       findings.push({
         severity: 'info',
         title: radii.length + ' distinct border-radius values (recommend 2-4, excluding pill/circle shapes)',
         detail: 'Values: ' + radii.map(function(r) { return r.value + ' (' + r.count + 'x)'; }).join(', '),
         fix: 'Standardize border-radius to 2-4 values. In Tailwind: rounded-sm, rounded, rounded-lg, rounded-xl.',
         presetRef: null,
-        source: 'Material Design 3 — https://m3.material.io/styles/shape/overview'
+        source: 'Material Design 3 — https://m3.material.io/styles/shape/overview',
+        locator: radBboxes.length > 0 ? { selector: '', text: '', bboxes: radBboxes, selectors: radSelectors } : undefined
       });
     }
   }
