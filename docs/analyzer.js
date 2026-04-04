@@ -85,9 +85,22 @@ console.log('[milg] analyzer.js v44.0 loaded');
     _focusModal = overlay;
     _focusModalLog = box.querySelector('#focusModalLog');
   }
+  var _lastModalMsg = '';
+  var _lastModalCount = 0;
   function updateFocusModal(msg) {
     if (!_focusModalLog) return;
-    _focusModalLog.textContent += msg + '\n';
+    if (msg === _lastModalMsg) {
+      _lastModalCount++;
+      // Update the count on the last line
+      var lines = _focusModalLog.textContent.split('\n');
+      lines.pop(); // remove trailing empty
+      if (lines.length > 0) lines[lines.length - 1] = msg + ' ×' + (_lastModalCount + 1);
+      _focusModalLog.textContent = lines.join('\n') + '\n';
+    } else {
+      _lastModalMsg = msg;
+      _lastModalCount = 0;
+      _focusModalLog.textContent += msg + '\n';
+    }
     _focusModalLog.scrollTop = _focusModalLog.scrollHeight;
   }
   function hideFocusModal() {
