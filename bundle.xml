@@ -29196,6 +29196,304 @@ function scoreTouchTargets(data) {
 </body></html>
 </file>
 
+<file path="docs/PIXEL-CONTRAST-APPROACH.md">
+# Pixel Contrast Verification — Approach Reference
+
+> **TL;DR:** Capture the page twice with domToCanvas (original at 1.5x + text mask), detect text boundaries via 4-connected neighbor check, sample FG at exactly dist=2 inside boundary, BG at dist 2-4 outside, cluster-average FG colors, match each FG pixel to nearest BG cluster, compute WCAG contrast ratio.
+
+## Pipeline (7 Steps)
+
+### Step 1: Capture original page
+```
+domToCanvas(document.documentElement, { scale: 1.5 })
+→ screenshot (WebP 0.8 quality, for color sampling)
+```
+
+### Step 2: Apply mask CSS + capture per-layer masks
+```css
+*, *::before, *::after {
+  color: #fff !important;
+  background: transparent !important;
+  background-image: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  -webkit-text-fill-color: #fff !important;
+  opacity: 1 !important;
+  transition: none !important;
+  animation: none !important;
+}
+html { background: #fff !important; }
+img, svg, video, canvas, picture, iframe { opacity: 0 !important; }
+```
+Elements are layered by z-order. Each layer captures its text as white-on-white with text visible as dark pixels.
+
+### Step 3: Extract binary mask
+```
+For each pixel in layer mask: avg(R, G, B) < 180 → mask[i] = 1 (foreground/text)
+```
+
+### Step 4: Boundary detection (4-connected)
+```
+For each mask[i] = 1:
+  If any of 4 neighbors (up/down/left/right) is mask = 0:
+    cat[i] = 1 (boundary)
+  Else:
+    cat[i] = 2 (inside)
+```
+No convolution. No smudging. Exact pixel boundary.
+
+### Step 5: BFS distance from boundary
+```
+Initialize: all boundary pixels → dist = 0, queue
+BFS flood fill: dist[neighbor] = dist[current] + 1, up to MAX_DIST = 7
+```
+
+### Step 6: Zone classification
+```
+FG zone: exactly dist=2 inside boundary (single-pixel inset line)
+  - Tight space (3+ boundary cardinals): promote to FG directly
+  - Fallback for thin strokes: deepest available inside pixel
+BG zone: dist 2-4 outside boundary (thin ring)
+  - Extends outside bbox via padding area sampling
+  - Clustered into 4px grid cells, averaged per cell
+```
+
+FG cluster averaging: each FG pixel's color = average of nearby FG pixels within 6px radius.
+FG outlier removal: reject pixels with luminance >40 from median.
+Each FG pixel → matched to closest BG cluster by distance.
+
+### Step 7: Contrast calculation
+```
+For each FG pixel: ratio = WCAG contrast(smoothedFG, closestBG)
+Report: worst, P10, median, P90, best ratios
+Threshold: P10 ratio used for pass/fail determination
+```
+
+## BBox Edge Contrast (v42.0)
+
+Separate from text contrast. Checks if interactive/container elements visually stand out:
+- Sample inner strip (3px inside bbox edge) and outer strip (5px outside)
+- Average inner vs outer colors → compute contrast ratio
+- Warning threshold: 1.15:1 (elements with border/shadow/outline exempt)
+- Severity: WARNING only (not error) since border/outline can provide distinction
+
+## Viewer Display Rules
+- On hover over a verify rect, show nearest FG/BG pair with color swatches
+- 5 percentile dots: worst, P10, median, P90, best (with pair-specific tooltips)
+- Right-click on verify rect cycles debug overlay: none → mask → zones
+- BBox edge warnings shown as dashed yellow rects with "edge X:1" labels
+
+## Key Constants
+| Constant | Value | Rationale |
+|----------|-------|-----------|
+| SCREENSHOT_SCALE | 1.5 | Good text AA resolution without excessive memory |
+| SCREENSHOT_QUALITY | 0.8 | WebP quality (PNG tested, no improvement) |
+| FG_IDEAL | 2 | 2px inside boundary — skips AA fringe |
+| BG_DIST_MIN | 2 | Background ring starts 2px outside |
+| BG_DIST_MAX | 4 | Background ring ends 4px outside |
+| BG_SEARCH_R | 12 | Max radius for BG cluster matching |
+| FG_CLUSTER_R | 6 | FG color averaging radius |
+| BG_CELL | 4 | BG pixel clustering grid size |
+| LUM_THRESHOLD | 40 | FG outlier rejection (luminance from median) |
+| EDGE_INNER_DIST | 3 | BBox edge: sample 3px inside |
+| EDGE_OUTER_DIST | 5 | BBox edge: sample 5px outside |
+| EDGE_WARN_RATIO | 1.15 | BBox edge: below this = blends into bg |
+
+## Files
+- `analyzer-iframe.js` — screenshot + mask capture pipeline
+- `analyzer-contrast-verify.js` — pixel contrast verification (boundary-based + bbox edge)
+- `analyzer-viewer.js` — viewer overlay, debug layers, tooltips
+- `analyzer-snippet-screenshots.js` — console snippet with screenshot capture
+- `analyzer-extract.js` — DOM data extraction (bgEdgePairs collection)
+</file>
+
+<file path="docs/scoring/readability.js">
+// Scoring Module: Readability & Scanability
+// Weight: 5%
+// Sources: Coleman-Liau Index, NNGroup scanning research
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+  function scoreReadability(data) {
+    var findings = [];
+    var checks = 0;
+    var passed = 0;
+
+    // Extract text content from the raw data
+    // We use heading count and element count as proxies since we don't have raw text in extracted data
+    var headings = (data.typography && data.typography.headings) || [];
+    var totalElements = (data.structure && data.structure.totalElements) || 0;
+
+    // Scanability: heading frequency
+    // Good rule: 1 heading per ~100-150 elements of content
+    if (totalElements > 50) {
+      checks++;
+      var headingRatio = headings.length / (totalElements / 100);
+      if (headingRatio >= 0.5 && headingRatio <= 5) {
+        passed++;
+      } else if (headingRatio < 0.5) {
+        findings.push({
+          severity: 'warning',
+          title: 'Low heading density: ' + headings.length + ' headings for ' + totalElements + ' elements',
+          detail: 'Content without headings is harder to scan. 79% of users scan rather than read (NNGroup)',
+          fix: 'Add descriptive headings to break content into scannable sections. Aim for a heading every 2-3 paragraphs.',
+          presetRef: null,
+          source: 'NNGroup scanning research — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+        });
+      }
+    }
+
+    // Heading descriptiveness: check if headings are too short (likely generic)
+    if (headings.length > 0) {
+      checks++;
+      var shortHeadings = headings.filter(function(h) {
+        return h.text && h.text.length < 3;
+      });
+      if (shortHeadings.length === 0) {
+        passed++;
+      } else {
+        passed++; // Info doesn't reduce score
+        findings.push({
+          severity: 'info',
+          title: shortHeadings.length + ' heading(s) with very short text (< 3 chars)',
+          detail: 'Short headings like numbers or icons don\'t help users scan. Use descriptive text.',
+          fix: 'Replace generic headings with descriptive ones that summarize the section content.',
+          presetRef: null,
+          source: 'NNGroup — https://www.nngroup.com/articles/headings-pickup-lines/'
+        });
+      }
+    }
+
+    // Font size variety as readability signal
+    // Too many sizes = visual noise, harder to establish reading rhythm
+    var fontSizes = (data.typography && data.typography.fontSizes) || [];
+    var smallTextCount = fontSizes.filter(function(f) {
+      return parseFloat(f.value) < 12;
+    }).reduce(function(sum, f) { return sum + f.count; }, 0);
+
+    if (smallTextCount > 0 && totalElements > 20) {
+      checks++;
+      var smallRatio = smallTextCount / totalElements;
+      if (smallRatio < 0.05) {
+        passed++;
+      } else {
+        var smallBboxes = [];
+        var smallSelectors = [];
+        var smallTexts = [];
+        fontSizes.filter(function(f) { return parseFloat(f.value) < 12; }).forEach(function(f) {
+          if (f.bbox) smallBboxes.push(f.bbox);
+          if (f.extraBboxes) f.extraBboxes.forEach(function(b) { smallBboxes.push(b); });
+          if (f.sampleSelector) smallSelectors.push(f.sampleSelector);
+          if (f.extraSelectors) f.extraSelectors.forEach(function(s) { smallSelectors.push(s); });
+          if (f.sampleText) smallTexts.push(f.sampleText);
+          if (f.extraTexts) f.extraTexts.forEach(function(t) { smallTexts.push(t); });
+        });
+        findings.push({
+          severity: 'warning',
+          title: smallTextCount + ' element(s) with text smaller than 12px',
+          detail: 'Text below 12px is difficult to read for most users and nearly impossible for elderly or low-vision users',
+          fix: 'Increase small text to at least 12px. Consider if the information is important enough to display — if not, remove it.',
+          presetRef: null,
+          source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text',
+          locator: smallBboxes.length > 0 ? { selector: '', text: '', bboxes: smallBboxes, selectors: smallSelectors, texts: smallTexts } : undefined
+        });
+      }
+    }
+
+    // Coleman-Liau readability index
+    var rd = data.readability || {};
+    if (rd.totalWords >= 50 && rd.paragraphCount >= 2) {
+      checks++;
+      // Coleman-Liau: 0.0588 * L - 0.296 * S - 15.8
+      // L = avg letters per 100 words, S = avg sentences per 100 words
+      var L = (rd.totalChars / rd.totalWords) * 100;
+      var sentenceCount = 0;
+      (rd.textBlocks || []).forEach(function(b) {
+        sentenceCount += (b.text.match(/[.!?]+/g) || []).length;
+      });
+      var S_val = (sentenceCount / rd.totalWords) * 100;
+      var cli = Math.round(0.0588 * L - 0.296 * S_val - 15.8);
+      // Detect non-English content — Coleman-Liau inflates scores for languages
+      // with long compound words (German, Finnish, Dutch, etc.)
+      var pageLang = (data.meta && data.meta.lang || '').toLowerCase().split('-')[0];
+      var isNonEnglish = pageLang && pageLang !== 'en' && pageLang !== '';
+      // Also heuristic: if avg word length > 6.5 chars, likely non-English
+      var avgWordLen = rd.totalChars / rd.totalWords;
+      if (!isNonEnglish && avgWordLen > 6.5) isNonEnglish = true;
+      var langNote = isNonEnglish ? ' Note: This index is calibrated for English text — non-English languages (detected: ' + (pageLang || 'long words') + ') typically score higher due to longer average word length.' : '';
+
+      if (cli >= 6 && cli <= 12) {
+        passed++;
+      } else {
+        findings.push({
+          severity: isNonEnglish ? 'info' : (cli > 14 ? 'warning' : 'info'),
+          title: 'Reading level: grade ' + cli + ' (Coleman-Liau Index)',
+          detail: (cli > 12 ? 'Content may be too complex for a general audience' : 'Content may be overly simple for the target audience') + langNote,
+          fix: cli > 12 ? 'Shorten sentences, use simpler words, break complex ideas into steps. Aim for grade 8-10 for general audiences.' : 'This reading level is appropriate for broad accessibility.',
+          presetRef: null,
+          source: 'Coleman-Liau Index — https://en.wikipedia.org/wiki/Coleman%E2%80%93Liau_index'
+        });
+      }
+    }
+
+    // Paragraph length audit
+    var longParagraphs = (rd.textBlocks || []).filter(function(b) { return b.wordCount > 150; });
+    if (longParagraphs.length > 0) {
+      findings.push({
+        severity: 'warning',
+        title: longParagraphs.length + ' paragraph(s) exceed 150 words',
+        detail: 'Long paragraphs reduce scanability. Ideal: 40-80 words per paragraph.',
+        fix: 'Break long paragraphs into shorter ones. Use subheadings, bullet lists, or callout boxes to chunk content.',
+        presetRef: null,
+        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+      });
+    }
+
+    // List usage for scanability
+    if (rd.totalWords >= 100 && !rd.hasLists) {
+      findings.push({
+        severity: 'info',
+        title: 'No lists found in content area',
+        detail: 'Lists improve scanability by 47% compared to wall-of-text (NNGroup)',
+        fix: 'Convert sequences, features, or steps into <ul>/<ol> lists where appropriate.',
+        presetRef: null,
+        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+      });
+    }
+
+    // Table cell readability on mobile (cramped/wrapped cells)
+    var tableCellIssues = (data.layout && data.layout.tableCellIssues) || [];
+    if (tableCellIssues.length > 0) {
+      checks++;
+      var tableDetails = tableCellIssues.map(function(t) {
+        var parts = [];
+        if (t.crampedCells > 0) parts.push(t.crampedCells + ' cells lack horizontal padding');
+        if (t.wrappedCells > 0) parts.push(t.wrappedCells + ' cells wrap to multiple lines');
+        return t.selector + ': ' + parts.join(', ') + ' (table ' + t.tableWidth + 'px on ' + t.vpWidth + 'px viewport)';
+      });
+      findings.push({
+        severity: tableCellIssues.some(function(t) { return t.crampedCells > 4 || t.wrappedCells > 4; }) ? 'error' : 'warning',
+        title: 'Table readability issues on mobile (' + tableCellIssues.length + ' table' + (tableCellIssues.length > 1 ? 's' : '') + ')',
+        detail: tableDetails.join('; '),
+        fix: 'Add horizontal padding to table cells (px-3 sm:px-4). For narrow viewports, consider hiding low-priority columns, using a responsive card layout, or reducing font size.',
+        source: 'NNGroup Mobile Tables — https://www.nngroup.com/articles/mobile-tables/',
+        locator: { selector: tableCellIssues[0].selector, text: '' }
+      });
+    }
+
+    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+    var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+    var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+    return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Readability', icon: 'readability' };
+  }
+
+  S.register("readability", scoreReadability, 5, "Readability", "readability");
+})();
+</file>
+
 <file path="docs/analyzer-snippet-screenshots.js">
 // make-it-look-good — Design Extraction Snippet (with screenshots)
 // Version: 2025-03-31-v23
@@ -31188,7 +31486,13 @@ function scoreTouchTargets(data) {
       });
       // Propagate re-read bboxes to exported fontSizes entries
       (data.typography.fontSizes || []).forEach(function(entry) {
-        if (entry._sampleRef) entry.bbox = entry._sampleRef.bbox;
+        if (entry._sampleRef) {
+          entry.bbox = entry._sampleRef.bbox;
+          if (entry._sampleRef.extraBboxes) {
+            entry.extraBboxes = entry._sampleRef.extraBboxes.map(function(eb) { return eb.bbox; }).filter(Boolean);
+            entry.extraSelectors = entry._sampleRef.extraBboxes.map(function(eb) { return eb.selector; }).filter(Boolean);
+          }
+        }
       });
       console.log('[ss] ' + _t() + 'Updated ' + _bboxUpdated + '/' + _bboxRefs.length + ' bboxes after animations settled');
 
@@ -31199,7 +31503,7 @@ function scoreTouchTargets(data) {
       ms.domToCanvas(document.documentElement, {
         scale: 1.5,
         filter: _ssFilter,
-        timeout: 12000
+        timeout: 45000
       }).then(function(fullCanvas) {
         console.log('[ss] ' + _t() + 'Full canvas captured: ' + fullCanvas.width + 'x' + fullCanvas.height);
 
@@ -31449,8 +31753,9 @@ function scoreTouchTargets(data) {
       '<div style="color:#fff;font-size:18px;font-weight:600;margin-bottom:6px">Extraction complete!</div>' +
       '<div style="color:rgba(255,255,255,0.6);font-size:13px;margin-bottom:6px">' + jsonKB + ' KB of design data' + (data.screenshotFull ? ' + full-page screenshot' : '') + '</div>' +
       (jsonKB > 2048 ? '<div style="color:#fbbf24;font-size:12px;margin-bottom:16px">&#9888; Large payload (' + jsonMB + ' MB) — paste may take a moment</div>' : '<div style="margin-bottom:16px"></div>') +
-      '<button id="milg-copy-btn" style="padding:14px 32px;font-size:15px;font-weight:600;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-bottom:12px;min-width:200px">Copy to Clipboard</button>' +
-      '<div style="color:rgba(255,255,255,0.4);font-size:11px">Then paste into the analyzer</div>' +
+      '<button id="milg-copy-btn" style="padding:14px 32px;font-size:15px;font-weight:600;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-bottom:8px;min-width:200px">Copy to Clipboard</button>' +
+      '<button id="milg-download-btn" style="padding:10px 24px;font-size:13px;font-weight:500;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.2);border-radius:8px;cursor:pointer;margin-bottom:12px;min-width:200px">Download JSON</button>' +
+      '<div style="color:rgba(255,255,255,0.4);font-size:11px">Then paste or import into the analyzer</div>' +
       '</div>';
     document.body.appendChild(_copyOverlay);
 
@@ -31491,6 +31796,21 @@ function scoreTouchTargets(data) {
           document.body.removeChild(ta);
         } catch(e) { onFail(); }
       }
+    });
+
+    // Download button (works for any size, no clipboard limit)
+    document.getElementById('milg-download-btn').addEventListener('click', function() {
+      var blob = new Blob([json], { type: 'application/json' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      var siteName = (data.meta && data.meta.url) || location.hostname;
+      a.download = 'milg-report-' + siteName.replace(/[^a-z0-9]/gi, '-').substring(0, 40) + '.json';
+      a.click();
+      URL.revokeObjectURL(url);
+      var btn = document.getElementById('milg-download-btn');
+      btn.textContent = 'Downloaded!';
+      btn.style.background = '#16a34a'; btn.style.color = '#fff'; btn.style.borderColor = '#16a34a';
     });
 
     console.log('%cmake-it-look-good extraction complete (with screenshots)', 'color: #3b82f6; font-weight: bold;');
@@ -31580,13 +31900,16 @@ function scoreTouchTargets(data) {
               window.__milgCrawlJson = crawlJson;
               try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) {}
               console.log('%c\u2713 Crawl complete! ' + _cResults.length + ' pages (' + Math.round(crawlJson.length / 1024) + ' KB)', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-              // Show copy button in overlay (user click = real gesture = clipboard works)
+              // Show copy + download buttons
+              var _crawlKB = Math.round(crawlJson.length / 1024);
               _crawlOverlay.innerHTML = '<div style="text-align:center">' +
                 '<div style="font-size:28px;margin-bottom:12px">\u2713</div>' +
                 '<div style="color:#fff;font-size:16px;font-weight:600;margin-bottom:6px">Crawl complete! ' + _cResults.length + ' pages analyzed.</div>' +
-                '<div style="color:rgba(255,255,255,0.6);font-size:13px;margin-bottom:20px">' + Math.round(crawlJson.length / 1024) + ' KB of design data ready</div>' +
-                '<button id="milg-crawl-copy-btn" style="padding:12px 28px;font-size:14px;font-weight:600;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-bottom:10px">Copy to Clipboard</button>' +
-                '<div style="color:rgba(255,255,255,0.5);font-size:11px;margin-top:8px">Then paste into the analyzer</div>' +
+                '<div style="color:rgba(255,255,255,0.6);font-size:13px;margin-bottom:' + (_crawlKB > 2048 ? '6' : '20') + 'px">' + _crawlKB + ' KB of design data ready</div>' +
+                (_crawlKB > 2048 ? '<div style="color:#fbbf24;font-size:12px;margin-bottom:16px">&#9888; Large payload (' + Math.round(_crawlKB / 1024 * 10) / 10 + ' MB) — download recommended</div>' : '') +
+                '<button id="milg-crawl-copy-btn" style="padding:12px 28px;font-size:14px;font-weight:600;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-bottom:8px;min-width:220px">Copy to Clipboard</button><br>' +
+                '<button id="milg-crawl-dl-btn" style="padding:10px 24px;font-size:13px;font-weight:500;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.2);border-radius:8px;cursor:pointer;margin-bottom:10px;min-width:220px">Download JSON</button>' +
+                '<div style="color:rgba(255,255,255,0.5);font-size:11px;margin-top:8px">Then paste or import into the analyzer</div>' +
                 '</div>';
               document.getElementById('milg-crawl-copy-btn').addEventListener('click', function() {
                 navigator.clipboard.writeText(crawlJson).then(function() {
@@ -31604,6 +31927,18 @@ function scoreTouchTargets(data) {
                   document.getElementById('milg-crawl-copy-btn').style.background = '#16a34a';
                   setTimeout(_removeCrawlOverlay, 800);
                 });
+              });
+              // Download button for crawl
+              document.getElementById('milg-crawl-dl-btn').addEventListener('click', function() {
+                var blob = new Blob([crawlJson], { type: 'application/json' });
+                var dlUrl = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = dlUrl;
+                a.download = 'milg-crawl-' + location.hostname.replace(/[^a-z0-9]/gi, '-') + '.json';
+                a.click();
+                URL.revokeObjectURL(dlUrl);
+                var btn = document.getElementById('milg-crawl-dl-btn');
+                btn.textContent = 'Downloaded!'; btn.style.background = '#16a34a'; btn.style.color = '#fff';
               });
               return;
             }
@@ -34410,304 +34745,6 @@ function scoreTouchTargets(data) {
     }
     return; // Skip normal clipboard copy
   }
-})();
-</file>
-
-<file path="docs/PIXEL-CONTRAST-APPROACH.md">
-# Pixel Contrast Verification — Approach Reference
-
-> **TL;DR:** Capture the page twice with domToCanvas (original at 1.5x + text mask), detect text boundaries via 4-connected neighbor check, sample FG at exactly dist=2 inside boundary, BG at dist 2-4 outside, cluster-average FG colors, match each FG pixel to nearest BG cluster, compute WCAG contrast ratio.
-
-## Pipeline (7 Steps)
-
-### Step 1: Capture original page
-```
-domToCanvas(document.documentElement, { scale: 1.5 })
-→ screenshot (WebP 0.8 quality, for color sampling)
-```
-
-### Step 2: Apply mask CSS + capture per-layer masks
-```css
-*, *::before, *::after {
-  color: #fff !important;
-  background: transparent !important;
-  background-image: none !important;
-  border-color: transparent !important;
-  box-shadow: none !important;
-  text-shadow: none !important;
-  -webkit-text-fill-color: #fff !important;
-  opacity: 1 !important;
-  transition: none !important;
-  animation: none !important;
-}
-html { background: #fff !important; }
-img, svg, video, canvas, picture, iframe { opacity: 0 !important; }
-```
-Elements are layered by z-order. Each layer captures its text as white-on-white with text visible as dark pixels.
-
-### Step 3: Extract binary mask
-```
-For each pixel in layer mask: avg(R, G, B) < 180 → mask[i] = 1 (foreground/text)
-```
-
-### Step 4: Boundary detection (4-connected)
-```
-For each mask[i] = 1:
-  If any of 4 neighbors (up/down/left/right) is mask = 0:
-    cat[i] = 1 (boundary)
-  Else:
-    cat[i] = 2 (inside)
-```
-No convolution. No smudging. Exact pixel boundary.
-
-### Step 5: BFS distance from boundary
-```
-Initialize: all boundary pixels → dist = 0, queue
-BFS flood fill: dist[neighbor] = dist[current] + 1, up to MAX_DIST = 7
-```
-
-### Step 6: Zone classification
-```
-FG zone: exactly dist=2 inside boundary (single-pixel inset line)
-  - Tight space (3+ boundary cardinals): promote to FG directly
-  - Fallback for thin strokes: deepest available inside pixel
-BG zone: dist 2-4 outside boundary (thin ring)
-  - Extends outside bbox via padding area sampling
-  - Clustered into 4px grid cells, averaged per cell
-```
-
-FG cluster averaging: each FG pixel's color = average of nearby FG pixels within 6px radius.
-FG outlier removal: reject pixels with luminance >40 from median.
-Each FG pixel → matched to closest BG cluster by distance.
-
-### Step 7: Contrast calculation
-```
-For each FG pixel: ratio = WCAG contrast(smoothedFG, closestBG)
-Report: worst, P10, median, P90, best ratios
-Threshold: P10 ratio used for pass/fail determination
-```
-
-## BBox Edge Contrast (v42.0)
-
-Separate from text contrast. Checks if interactive/container elements visually stand out:
-- Sample inner strip (3px inside bbox edge) and outer strip (5px outside)
-- Average inner vs outer colors → compute contrast ratio
-- Warning threshold: 1.15:1 (elements with border/shadow/outline exempt)
-- Severity: WARNING only (not error) since border/outline can provide distinction
-
-## Viewer Display Rules
-- On hover over a verify rect, show nearest FG/BG pair with color swatches
-- 5 percentile dots: worst, P10, median, P90, best (with pair-specific tooltips)
-- Right-click on verify rect cycles debug overlay: none → mask → zones
-- BBox edge warnings shown as dashed yellow rects with "edge X:1" labels
-
-## Key Constants
-| Constant | Value | Rationale |
-|----------|-------|-----------|
-| SCREENSHOT_SCALE | 1.5 | Good text AA resolution without excessive memory |
-| SCREENSHOT_QUALITY | 0.8 | WebP quality (PNG tested, no improvement) |
-| FG_IDEAL | 2 | 2px inside boundary — skips AA fringe |
-| BG_DIST_MIN | 2 | Background ring starts 2px outside |
-| BG_DIST_MAX | 4 | Background ring ends 4px outside |
-| BG_SEARCH_R | 12 | Max radius for BG cluster matching |
-| FG_CLUSTER_R | 6 | FG color averaging radius |
-| BG_CELL | 4 | BG pixel clustering grid size |
-| LUM_THRESHOLD | 40 | FG outlier rejection (luminance from median) |
-| EDGE_INNER_DIST | 3 | BBox edge: sample 3px inside |
-| EDGE_OUTER_DIST | 5 | BBox edge: sample 5px outside |
-| EDGE_WARN_RATIO | 1.15 | BBox edge: below this = blends into bg |
-
-## Files
-- `analyzer-iframe.js` — screenshot + mask capture pipeline
-- `analyzer-contrast-verify.js` — pixel contrast verification (boundary-based + bbox edge)
-- `analyzer-viewer.js` — viewer overlay, debug layers, tooltips
-- `analyzer-snippet-screenshots.js` — console snippet with screenshot capture
-- `analyzer-extract.js` — DOM data extraction (bgEdgePairs collection)
-</file>
-
-<file path="docs/scoring/readability.js">
-// Scoring Module: Readability & Scanability
-// Weight: 5%
-// Sources: Coleman-Liau Index, NNGroup scanning research
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-  function scoreReadability(data) {
-    var findings = [];
-    var checks = 0;
-    var passed = 0;
-
-    // Extract text content from the raw data
-    // We use heading count and element count as proxies since we don't have raw text in extracted data
-    var headings = (data.typography && data.typography.headings) || [];
-    var totalElements = (data.structure && data.structure.totalElements) || 0;
-
-    // Scanability: heading frequency
-    // Good rule: 1 heading per ~100-150 elements of content
-    if (totalElements > 50) {
-      checks++;
-      var headingRatio = headings.length / (totalElements / 100);
-      if (headingRatio >= 0.5 && headingRatio <= 5) {
-        passed++;
-      } else if (headingRatio < 0.5) {
-        findings.push({
-          severity: 'warning',
-          title: 'Low heading density: ' + headings.length + ' headings for ' + totalElements + ' elements',
-          detail: 'Content without headings is harder to scan. 79% of users scan rather than read (NNGroup)',
-          fix: 'Add descriptive headings to break content into scannable sections. Aim for a heading every 2-3 paragraphs.',
-          presetRef: null,
-          source: 'NNGroup scanning research — https://www.nngroup.com/articles/how-users-read-on-the-web/'
-        });
-      }
-    }
-
-    // Heading descriptiveness: check if headings are too short (likely generic)
-    if (headings.length > 0) {
-      checks++;
-      var shortHeadings = headings.filter(function(h) {
-        return h.text && h.text.length < 3;
-      });
-      if (shortHeadings.length === 0) {
-        passed++;
-      } else {
-        passed++; // Info doesn't reduce score
-        findings.push({
-          severity: 'info',
-          title: shortHeadings.length + ' heading(s) with very short text (< 3 chars)',
-          detail: 'Short headings like numbers or icons don\'t help users scan. Use descriptive text.',
-          fix: 'Replace generic headings with descriptive ones that summarize the section content.',
-          presetRef: null,
-          source: 'NNGroup — https://www.nngroup.com/articles/headings-pickup-lines/'
-        });
-      }
-    }
-
-    // Font size variety as readability signal
-    // Too many sizes = visual noise, harder to establish reading rhythm
-    var fontSizes = (data.typography && data.typography.fontSizes) || [];
-    var smallTextCount = fontSizes.filter(function(f) {
-      return parseFloat(f.value) < 12;
-    }).reduce(function(sum, f) { return sum + f.count; }, 0);
-
-    if (smallTextCount > 0 && totalElements > 20) {
-      checks++;
-      var smallRatio = smallTextCount / totalElements;
-      if (smallRatio < 0.05) {
-        passed++;
-      } else {
-        var smallBboxes = [];
-        var smallSelectors = [];
-        var smallTexts = [];
-        fontSizes.filter(function(f) { return parseFloat(f.value) < 12; }).forEach(function(f) {
-          if (f.bbox) smallBboxes.push(f.bbox);
-          if (f.extraBboxes) f.extraBboxes.forEach(function(b) { smallBboxes.push(b); });
-          if (f.sampleSelector) smallSelectors.push(f.sampleSelector);
-          if (f.extraSelectors) f.extraSelectors.forEach(function(s) { smallSelectors.push(s); });
-          if (f.sampleText) smallTexts.push(f.sampleText);
-          if (f.extraTexts) f.extraTexts.forEach(function(t) { smallTexts.push(t); });
-        });
-        findings.push({
-          severity: 'warning',
-          title: smallTextCount + ' element(s) with text smaller than 12px',
-          detail: 'Text below 12px is difficult to read for most users and nearly impossible for elderly or low-vision users',
-          fix: 'Increase small text to at least 12px. Consider if the information is important enough to display — if not, remove it.',
-          presetRef: null,
-          source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text',
-          locator: smallBboxes.length > 0 ? { selector: '', text: '', bboxes: smallBboxes, selectors: smallSelectors, texts: smallTexts } : undefined
-        });
-      }
-    }
-
-    // Coleman-Liau readability index
-    var rd = data.readability || {};
-    if (rd.totalWords >= 50 && rd.paragraphCount >= 2) {
-      checks++;
-      // Coleman-Liau: 0.0588 * L - 0.296 * S - 15.8
-      // L = avg letters per 100 words, S = avg sentences per 100 words
-      var L = (rd.totalChars / rd.totalWords) * 100;
-      var sentenceCount = 0;
-      (rd.textBlocks || []).forEach(function(b) {
-        sentenceCount += (b.text.match(/[.!?]+/g) || []).length;
-      });
-      var S_val = (sentenceCount / rd.totalWords) * 100;
-      var cli = Math.round(0.0588 * L - 0.296 * S_val - 15.8);
-      // Detect non-English content — Coleman-Liau inflates scores for languages
-      // with long compound words (German, Finnish, Dutch, etc.)
-      var pageLang = (data.meta && data.meta.lang || '').toLowerCase().split('-')[0];
-      var isNonEnglish = pageLang && pageLang !== 'en' && pageLang !== '';
-      // Also heuristic: if avg word length > 6.5 chars, likely non-English
-      var avgWordLen = rd.totalChars / rd.totalWords;
-      if (!isNonEnglish && avgWordLen > 6.5) isNonEnglish = true;
-      var langNote = isNonEnglish ? ' Note: This index is calibrated for English text — non-English languages (detected: ' + (pageLang || 'long words') + ') typically score higher due to longer average word length.' : '';
-
-      if (cli >= 6 && cli <= 12) {
-        passed++;
-      } else {
-        findings.push({
-          severity: isNonEnglish ? 'info' : (cli > 14 ? 'warning' : 'info'),
-          title: 'Reading level: grade ' + cli + ' (Coleman-Liau Index)',
-          detail: (cli > 12 ? 'Content may be too complex for a general audience' : 'Content may be overly simple for the target audience') + langNote,
-          fix: cli > 12 ? 'Shorten sentences, use simpler words, break complex ideas into steps. Aim for grade 8-10 for general audiences.' : 'This reading level is appropriate for broad accessibility.',
-          presetRef: null,
-          source: 'Coleman-Liau Index — https://en.wikipedia.org/wiki/Coleman%E2%80%93Liau_index'
-        });
-      }
-    }
-
-    // Paragraph length audit
-    var longParagraphs = (rd.textBlocks || []).filter(function(b) { return b.wordCount > 150; });
-    if (longParagraphs.length > 0) {
-      findings.push({
-        severity: 'warning',
-        title: longParagraphs.length + ' paragraph(s) exceed 150 words',
-        detail: 'Long paragraphs reduce scanability. Ideal: 40-80 words per paragraph.',
-        fix: 'Break long paragraphs into shorter ones. Use subheadings, bullet lists, or callout boxes to chunk content.',
-        presetRef: null,
-        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
-      });
-    }
-
-    // List usage for scanability
-    if (rd.totalWords >= 100 && !rd.hasLists) {
-      findings.push({
-        severity: 'info',
-        title: 'No lists found in content area',
-        detail: 'Lists improve scanability by 47% compared to wall-of-text (NNGroup)',
-        fix: 'Convert sequences, features, or steps into <ul>/<ol> lists where appropriate.',
-        presetRef: null,
-        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
-      });
-    }
-
-    // Table cell readability on mobile (cramped/wrapped cells)
-    var tableCellIssues = (data.layout && data.layout.tableCellIssues) || [];
-    if (tableCellIssues.length > 0) {
-      checks++;
-      var tableDetails = tableCellIssues.map(function(t) {
-        var parts = [];
-        if (t.crampedCells > 0) parts.push(t.crampedCells + ' cells lack horizontal padding');
-        if (t.wrappedCells > 0) parts.push(t.wrappedCells + ' cells wrap to multiple lines');
-        return t.selector + ': ' + parts.join(', ') + ' (table ' + t.tableWidth + 'px on ' + t.vpWidth + 'px viewport)';
-      });
-      findings.push({
-        severity: tableCellIssues.some(function(t) { return t.crampedCells > 4 || t.wrappedCells > 4; }) ? 'error' : 'warning',
-        title: 'Table readability issues on mobile (' + tableCellIssues.length + ' table' + (tableCellIssues.length > 1 ? 's' : '') + ')',
-        detail: tableDetails.join('; '),
-        fix: 'Add horizontal padding to table cells (px-3 sm:px-4). For narrow viewports, consider hiding low-priority columns, using a responsive card layout, or reducing font size.',
-        source: 'NNGroup Mobile Tables — https://www.nngroup.com/articles/mobile-tables/',
-        locator: { selector: tableCellIssues[0].selector, text: '' }
-      });
-    }
-
-    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-    var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-    var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-    return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Readability', icon: 'readability' };
-  }
-
-  S.register("readability", scoreReadability, 5, "Readability", "readability");
 })();
 </file>
 
