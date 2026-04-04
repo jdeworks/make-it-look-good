@@ -172,7 +172,7 @@ window.MilgIframe = (function() {
             // Step 1: Capture real screenshot FIRST (safe — no DOM modifications)
             '_prog("Capturing screenshot...");' +
             'console.log("[iframe-ss] Step 1/2: Capturing screenshot at "+_sc+"x...");' +
-            'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:15000}).then(function(fc){' +
+            'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:45000}).then(function(fc){' +
               'console.log("[iframe-ss] Screenshot: "+fc.width+"x"+fc.height);' +
               'var fullUri;try{fullUri=fc.toDataURL("image/webp",' + ss.quality + ')}catch(e){fullUri=""}' +
               // Update send helper with actual canvas dimensions
@@ -301,7 +301,7 @@ window.MilgIframe = (function() {
                 'console.log("[iframe-ss] Layer "+_li+": starting domToCanvas...");' +
                 // Race domToCanvas against our own 15s timeout (library timeout may not fire)
                 'var _layerDone=false;' +
-                'var _layerTimer=setTimeout(function(){if(!_layerDone){_layerDone=true;console.warn("[iframe-ss] Layer "+_li+" domToCanvas timed out (60s)");setTimeout(_nextLayer,0)}},60000);' +
+                'var _layerTimer=setTimeout(function(){if(!_layerDone){_layerDone=true;console.warn("[iframe-ss] Layer "+_li+" domToCanvas timed out (120s)");setTimeout(_nextLayer,0)}},120000);' +
                 'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:12000}).then(function(mc){' +
                   'if(_layerDone)return;_layerDone=true;clearTimeout(_layerTimer);' +
                   'console.log("[iframe-ss] Layer "+_li+" captured: "+mc.width+"x"+mc.height);' +
@@ -394,7 +394,7 @@ window.MilgIframe = (function() {
               '}' +
               'var _maskDone=false;' +
               'var _origSendFinal=_sendFinal;' +
-              'var _maskTimer=setTimeout(function(){if(!_maskDone){_maskDone=true;console.warn("[iframe-ss] Masks timed out (180s)");_origSendFinal(null)}},180000);' +
+              'var _maskTimer=setTimeout(function(){if(!_maskDone){_maskDone=true;console.warn("[iframe-ss] Masks timed out (360s)");_origSendFinal(null)}},360000);' +
               '_sendFinal=function(m){if(_maskDone)return;_maskDone=true;clearTimeout(_maskTimer);console.log("[iframe-ss] Sending results (maskResults: "+Object.keys(_maskResults).length+" pairs)");_origSendFinal(m)};' +
               '_nextLayer()' +
             '}).catch(function(e){console.warn("[iframe-ss] capture failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")})' +
@@ -609,7 +609,7 @@ window.MilgIframe = (function() {
         // Direct capture (iframe already resized from main screenshot pass)
         'var ms=window.modernScreenshot;' +
         'if(!ms||!ms.domToCanvas){parent.postMessage({type:"milg-screenshots-unhidden",screenshots:[]},"*");return}' +
-        'ms.domToCanvas(document.documentElement,{scale:' + SCREENSHOT_SCALE + ',timeout:8000}).then(function(fc){' +
+        'ms.domToCanvas(document.documentElement,{scale:' + SCREENSHOT_SCALE + ',timeout:30000}).then(function(fc){' +
           'var uri;try{uri=fc.toDataURL("image/webp",' + SCREENSHOT_QUALITY + ')}catch(e){uri=""}' +
           'parent.postMessage({type:"milg-screenshots-unhidden",screenshots:uri?[uri]:[]},"*")' +
         '}).catch(function(){parent.postMessage({type:"milg-screenshots-unhidden",screenshots:[]},"*")})' +
@@ -662,7 +662,7 @@ window.MilgIframe = (function() {
           structure: { totalElements: 0, darkModeClasses: false, responsiveClasses: false, tailwindDetected: false, cssFramework: 'unknown' }
         });
       }
-    }, captureScreenshots ? 240000 : (isFullDoc ? 15000 : 8000));
+    }, captureScreenshots ? 480000 : (isFullDoc ? 15000 : 8000));
   }
 
   return {
