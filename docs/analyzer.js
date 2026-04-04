@@ -871,23 +871,54 @@ console.log('[milg] analyzer.js v44.0 loaded');
       });
     });
 
-    // Analyze JSON
-    analyzeBtn.addEventListener('click', function() {
-      var json = pasteInput.value.trim();
-      if (!json) { showToast('Paste the extracted JSON data first'); return; }
-      try {
-        var data = JSON.parse(json);
-        // Detect multi-page crawl format
-        if (data._milgCrawl && data.results) {
-          MilgCrawlUI.loadCrawlResults(data, 'pasted crawl data');
-          return;
-        }
-        if (!data.meta || !data.colors) throw new Error('Invalid format');
-        data.meta._inputMethod = 'console';
-        runAnalysis(data);
-      } catch(e) {
-        showToast('Invalid JSON: ' + e.message);
+    // Decompress gzipped clipboard data (MILG_GZ: header)
+    function decompressPaste(text, callback) {
+      if (!text.startsWith('MILG_GZ:')) { callback(text); return; }
+      if (typeof DecompressionStream === 'undefined') {
+        showToast('Browser does not support DecompressionStream — paste raw JSON instead');
+        callback(null); return;
       }
+      try {
+        var b64 = text.substring(8);
+        var binStr = atob(b64);
+        var bytes = new Uint8Array(binStr.length);
+        for (var i = 0; i < binStr.length; i++) bytes[i] = binStr.charCodeAt(i);
+        var blob = new Blob([bytes]);
+        var ds = new DecompressionStream('gzip');
+        var stream = blob.stream().pipeThrough(ds);
+        new Response(stream).text().then(function(json) {
+          console.log('[milg] Decompressed: ' + Math.round(text.length / 1024) + ' KB → ' + Math.round(json.length / 1024) + ' KB');
+          callback(json);
+        }).catch(function(e) {
+          showToast('Decompression failed: ' + e.message);
+          callback(null);
+        });
+      } catch(e) { showToast('Decompression failed: ' + e.message); callback(null); }
+    }
+
+    // Analyze JSON (supports both raw JSON and MILG_GZ: compressed format)
+    analyzeBtn.addEventListener('click', function() {
+      var raw = pasteInput.value.trim();
+      if (!raw) { showToast('Paste the extracted JSON data first'); return; }
+      analyzeBtn.disabled = true;
+      analyzeBtn.textContent = 'Processing...';
+      decompressPaste(raw, function(json) {
+        analyzeBtn.disabled = false;
+        analyzeBtn.textContent = 'Analyze';
+        if (!json) return;
+        try {
+          var data = JSON.parse(json);
+          if (data._milgCrawl && data.results) {
+            MilgCrawlUI.loadCrawlResults(data, 'pasted crawl data');
+            return;
+          }
+          if (!data.meta || !data.colors) throw new Error('Invalid format');
+          data.meta._inputMethod = 'console';
+          runAnalysis(data);
+        } catch(e) {
+          showToast('Invalid JSON: ' + e.message);
+        }
+      });
     });
 
     // Analyze pasted HTML

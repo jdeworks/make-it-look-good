@@ -372,6 +372,23 @@
     outputData(data);
   });
 
+  // Gzip compress + base64 encode for clipboard (CompressionStream API)
+  function compressForClipboard(jsonStr, callback) {
+    if (typeof CompressionStream === 'undefined') { callback(null); return; }
+    try {
+      var blob = new Blob([jsonStr]);
+      var cs = new CompressionStream('gzip');
+      var stream = blob.stream().pipeThrough(cs);
+      new Response(stream).arrayBuffer().then(function(buf) {
+        var bytes = new Uint8Array(buf);
+        var binStr = '';
+        for (var i = 0; i < bytes.length; i++) binStr += String.fromCharCode(bytes[i]);
+        var b64 = btoa(binStr);
+        callback('MILG_GZ:' + b64);
+      }).catch(function() { callback(null); });
+    } catch(e) { callback(null); }
+  }
+
   function outputData(data) {
     var json = JSON.stringify(data);
     var jsonKB = Math.round(json.length / 1024);
@@ -396,41 +413,48 @@
 
     document.getElementById('milg-copy-btn').addEventListener('click', function() {
       var btn = document.getElementById('milg-copy-btn');
-      btn.textContent = 'Copying...';
+      btn.textContent = 'Compressing...';
       btn.disabled = true;
 
-      function onSuccess() {
-        btn.textContent = 'Copied!';
+      function onSuccess(size) {
+        btn.textContent = 'Copied!' + (size ? ' (' + size + ')' : '');
         btn.style.background = '#16a34a';
         console.log('%c\u2713 Design data copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-        setTimeout(function() { if (_copyOverlay.parentNode) _copyOverlay.parentNode.removeChild(_copyOverlay); }, 800);
+        setTimeout(function() { if (_copyOverlay.parentNode) _copyOverlay.parentNode.removeChild(_copyOverlay); }, 1200);
       }
       function onFail() {
         btn.textContent = 'Copy failed \u2014 use console';
         btn.style.background = '#dc2626';
         console.log('%c\u26A0 Clipboard copy failed. Type: copy(window.__milgData_json)', 'color: #b45309; font-weight: bold;');
       }
-
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(json).then(onSuccess).catch(function() {
-          // Fallback
-          try {
-            var ta = document.createElement('textarea'); ta.value = json;
-            ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
-            document.body.appendChild(ta); ta.select();
-            document.execCommand('copy') ? onSuccess() : onFail();
-            document.body.removeChild(ta);
-          } catch(e) { onFail(); }
-        });
-      } else {
-        try {
-          var ta = document.createElement('textarea'); ta.value = json;
-          ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
-          document.body.appendChild(ta); ta.select();
-          document.execCommand('copy') ? onSuccess() : onFail();
-          document.body.removeChild(ta);
-        } catch(e) { onFail(); }
+      function doCopy(text, sizeLabel) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(function() { onSuccess(sizeLabel); }).catch(function() {
+            try {
+              var ta = document.createElement('textarea'); ta.value = text;
+              ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
+              document.body.appendChild(ta); ta.select();
+              document.execCommand('copy') ? onSuccess(sizeLabel) : onFail();
+              document.body.removeChild(ta);
+            } catch(e) { onFail(); }
+          });
+        } else { onFail(); }
       }
+
+      // Try gzip compression for clipboard (typically 60-80% smaller)
+      compressForClipboard(json, function(compressed) {
+        if (compressed) {
+          var compKB = Math.round(compressed.length / 1024);
+          var ratio = Math.round((1 - compressed.length / json.length) * 100);
+          console.log('[clipboard] Compressed: ' + compKB + ' KB (' + ratio + '% smaller)');
+          btn.textContent = 'Copying ' + compKB + ' KB...';
+          doCopy(compressed, compKB + ' KB, ' + ratio + '% compressed');
+        } else {
+          console.log('[clipboard] CompressionStream not available, copying raw JSON');
+          btn.textContent = 'Copying ' + jsonKB + ' KB...';
+          doCopy(json, jsonKB + ' KB');
+        }
+      });
     });
 
     // Download button (works for any size, no clipboard limit)
