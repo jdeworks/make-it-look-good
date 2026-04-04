@@ -306,6 +306,17 @@ window.MilgContrastVerify = (function() {
     if (!ctx) return null;
     var bx = ctx.bx, by = ctx.by, bw = ctx.bw, bh = ctx.bh;
 
+    // Unpack base64 bit-packed bitmap if needed
+    if (pair._maskPacked && typeof pair._maskBmp === 'string') {
+      var _bin = atob(pair._maskBmp);
+      var _total = pair._maskW * pair._maskH;
+      var _unpacked = new Uint8Array(_total);
+      for (var _ui = 0; _ui < _total; _ui++) {
+        _unpacked[_ui] = (_bin.charCodeAt(_ui >> 3) >> (_ui & 7)) & 1;
+      }
+      pair._maskBmp = _unpacked;
+      pair._maskPacked = false;
+    }
     var mBmpRaw = pair._maskBmp, mW = pair._maskW, mH = pair._maskH;
     var w = Math.min(mW, bw), h = Math.min(mH, bh);
     if (w < 4 || h < 4) return null;
@@ -775,6 +786,17 @@ window.MilgContrastVerify = (function() {
         // Check if this grid point is in a text area (mask)
         // Skip bitmap mask if it captured 0 dark pixels (domToCanvas didn't render text)
         if (pair._maskBmp && pair._maskW && pair._maskDark > 0) {
+          // Unpack base64 bit-packed bitmap if needed (snippet stores compressed)
+          if (pair._maskPacked && typeof pair._maskBmp === 'string') {
+            var _bin = atob(pair._maskBmp);
+            var _total = pair._maskW * pair._maskH;
+            var _unpacked = new Uint8Array(_total);
+            for (var _ui = 0; _ui < _total; _ui++) {
+              _unpacked[_ui] = (_bin.charCodeAt(_ui >> 3) >> (_ui & 7)) & 1;
+            }
+            pair._maskBmp = _unpacked;
+            pair._maskPacked = false;
+          }
           // Bitmap lookup with 1px dilation: check pixel + 8 neighbors
           // Catches AA edges that render 1px outside the mask boundary
           var mW = pair._maskW, mH = pair._maskH, mBmp = pair._maskBmp;

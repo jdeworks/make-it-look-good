@@ -330,7 +330,16 @@
                   if (bright < 128) { bmp[j/4] = 1; darkCount++; }
                 }
                 if (darkCount > 0) {
-                  pair._maskBmp = Array.from(bmp);
+                  // Bit-pack bitmap: 8 pixels per byte, then base64 encode (~8x smaller than JSON array)
+                  var byteLen = Math.ceil(bmp.length / 8);
+                  var packed = new Uint8Array(byteLen);
+                  for (var bi = 0; bi < bmp.length; bi++) {
+                    if (bmp[bi]) packed[bi >> 3] |= (1 << (bi & 7));
+                  }
+                  var binStr = '';
+                  for (var bi2 = 0; bi2 < packed.length; bi2++) binStr += String.fromCharCode(packed[bi2]);
+                  pair._maskBmp = btoa(binStr);
+                  pair._maskPacked = true;
                   pair._maskW = bw;
                   pair._maskH = bh;
                   pair._maskLayer = 1;
