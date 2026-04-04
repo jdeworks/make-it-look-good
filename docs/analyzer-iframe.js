@@ -73,7 +73,8 @@ window.MilgIframe = (function() {
       // Once-guard: extraction may fire twice (load + fallback timeout)
       'if(window.__milgSsDone)return;window.__milgSsDone=true;' +
       'var vh=window.innerHeight||900;' +
-      'function _prog(l){try{parent.postMessage({type:"milg-progress",label:l},"*")}catch(e){}}' +
+      'var _mid=window.__milgIframeId||"";' +
+      'function _prog(l){try{parent.postMessage({type:"milg-progress",label:l,_iframeId:_mid},"*")}catch(e){}}' +
       // Unlock height to get true scrollHeight (sites with html,body{height:100%} clamp it)
       // Set overflow:auto explicitly so the inner document is scrollable for IntersectionObservers
       'document.documentElement.style.cssText+="height:auto !important;overflow-y:auto !important;";' +
@@ -152,13 +153,13 @@ window.MilgIframe = (function() {
           's.src="' + _screenshotCDN + '";' +
           's.onload=function(){' +
             'var ms=window.modernScreenshot;' +
-            'if(!ms||!ms.domToCanvas){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*");return}' +
+            'if(!ms||!ms.domToCanvas){parent.postMessage({type:"' + msgType + '",screenshots:[],_iframeId:_mid},"*");return}' +
             'document.querySelectorAll("img").forEach(function(i){if(i.src&&i.src.indexOf("data:")!==0)i.crossOrigin="anonymous"});' +
             'var _sc=' + ss.scale + ';' +
             // Helper: send results to parent
             'function _send(fullUri,maskUri){' +
               'var updatedData=window.__milgData||null;' +
-              'parent.postMessage({type:"' + msgType + '",' +
+              'parent.postMessage({type:"' + msgType + '",_iframeId:_mid,' +
                 'screenshots:fullUri?[fullUri]:[],' +
                 'screenshotFull:fullUri||null,' +
                 'textMask:maskUri||null,' +
@@ -184,7 +185,7 @@ window.MilgIframe = (function() {
                 'if(updatedData&&updatedData.colors&&updatedData.colors.contrastPairs){' +
                   'updatedData.colors.contrastPairs.forEach(function(p){delete p._maskBmp;delete p._maskPts})}' +
                 'var mr=typeof _maskResults!=="undefined"?_maskResults:null;' +
-                'var msg={type:"' + msgType + '",' +
+                'var msg={type:"' + msgType + '",_iframeId:_mid,' +
                   'screenshots:fullUri?[fullUri]:[],' +
                   'screenshotFull:fullUri||null,' +
                   'textMask:maskUri||null,' +
@@ -397,9 +398,9 @@ window.MilgIframe = (function() {
               'var _maskTimer=setTimeout(function(){if(!_maskDone){_maskDone=true;console.warn("[iframe-ss] Masks timed out (360s)");_origSendFinal(null)}},360000);' +
               '_sendFinal=function(m){if(_maskDone)return;_maskDone=true;clearTimeout(_maskTimer);console.log("[iframe-ss] Sending results (maskResults: "+Object.keys(_maskResults).length+" pairs)");_origSendFinal(m)};' +
               '_nextLayer()' +
-            '}).catch(function(e){console.warn("[iframe-ss] capture failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")})' +
+            '}).catch(function(e){console.warn("[iframe-ss] capture failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[],_iframeId:_mid},"*")})' +
           '};' +
-          's.onerror=function(){parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")};' +
+          's.onerror=function(){parent.postMessage({type:"' + msgType + '",screenshots:[],_iframeId:_mid},"*")};' +
           'document.head.appendChild(s)' +
         '},1500)' +
       '}' +
@@ -466,6 +467,8 @@ window.MilgIframe = (function() {
     var editorDark = typeof sourceUrlOrDark === 'boolean' ? sourceUrlOrDark : false;
     var editorEffectCSS = (!sourceUrl && typeof excludeSelectorOrEffectCSS === 'string') ? excludeSelectorOrEffectCSS : '';
     var iframe = document.createElement('iframe');
+    // Unique ID for this iframe — used to match postMessage responses in parallel mode
+    var _iframeId = 'milg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 8);
     // Use viewport override if provided, else from selector/default
     var vp = viewportOverride || _getViewport();
     iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + vp.w + 'px;height:' + vp.h + 'px;border:none;';
@@ -483,8 +486,8 @@ window.MilgIframe = (function() {
 
     function onMsg(e) {
       if (!e.data) return;
-      // Only process messages from OUR iframe (critical for parallel deep scan)
-      if (e.source !== iframe.contentWindow) return;
+      // Only process messages from OUR iframe (matched by unique ID)
+      if (e.data._iframeId && e.data._iframeId !== _iframeId) return;
       // Progress updates from screenshot capture → drive parent progress bar
       if (e.data.type === 'milg-progress' && e.data.label) {
         var urlStatus = document.getElementById('urlStatus');
@@ -572,7 +575,8 @@ window.MilgIframe = (function() {
     var isFullDoc = /<html[\s>]/i.test(html) || /<!DOCTYPE/i.test(html);
     // Inject <base> tag so relative CSS/image/font URLs resolve to the original domain
     if (sourceUrl) html = injectBaseTag(html, sourceUrl);
-    // Pass context to extraction
+    // Pass context to extraction — include iframe ID for message matching in parallel mode
+    var idVar = '<script>window.__milgIframeId="' + _iframeId + '";</' + 'script>';
     var excludeVar = excludeSelector ? '<script>window.__milgExclude=' + JSON.stringify(excludeSelector) + ';</' + 'script>' : '';
     var fragmentVar = !isFullDoc ? '<script>window.__milgIsFragment=true;</' + 'script>' : '';
     // Screenshot capture: script that auto-runs after extraction, loads CDN library, captures page
@@ -603,16 +607,16 @@ window.MilgIframe = (function() {
           '}' +
         '})' +
       '});' +
-      'if(hidden.length===0){parent.postMessage({type:"milg-screenshots-unhidden",screenshots:[]},"*");return}' +
+      'if(hidden.length===0){parent.postMessage({type:"milg-screenshots-unhidden",screenshots:[],_iframeId:_mid},"*");return}' +
       'void document.body.offsetHeight;' +
       'setTimeout(function(){' +
         // Direct capture (iframe already resized from main screenshot pass)
         'var ms=window.modernScreenshot;' +
-        'if(!ms||!ms.domToCanvas){parent.postMessage({type:"milg-screenshots-unhidden",screenshots:[]},"*");return}' +
+        'if(!ms||!ms.domToCanvas){parent.postMessage({type:"milg-screenshots-unhidden",screenshots:[],_iframeId:_mid},"*");return}' +
         'ms.domToCanvas(document.documentElement,{scale:' + SCREENSHOT_SCALE + ',timeout:30000}).then(function(fc){' +
           'var uri;try{uri=fc.toDataURL("image/webp",' + SCREENSHOT_QUALITY + ')}catch(e){uri=""}' +
-          'parent.postMessage({type:"milg-screenshots-unhidden",screenshots:uri?[uri]:[]},"*")' +
-        '}).catch(function(){parent.postMessage({type:"milg-screenshots-unhidden",screenshots:[]},"*")})' +
+          'parent.postMessage({type:"milg-screenshots-unhidden",screenshots:uri?[uri]:[],_iframeId:_mid},"*")' +
+        '}).catch(function(){parent.postMessage({type:"milg-screenshots-unhidden",screenshots:[],_iframeId:_mid},"*")})' +
       '},300)' +
     '};';
     var screenshotScript = captureScreenshots ? '<script>window.__milgDoScreenshots=function(){' + buildScreenshotScript('milg-screenshots-result') + '};' + unhiddenScreenshotFn + '</' + 'script>' : '';
@@ -623,7 +627,7 @@ window.MilgIframe = (function() {
       var hasJsPatch = html.indexOf('__milgSandboxLog') !== -1;
       var postLoadDelay = hasJsPatch ? 2000 : 1000;
       var fallbackDelay = hasJsPatch ? 8000 : 8000;
-      var extractScript = excludeVar + fragmentVar + screenshotScript + '<script>window.addEventListener("load",function(){setTimeout(function(){(' + extractFromDocument.toString() + ')()},' + postLoadDelay + ')});setTimeout(function(){(' + extractFromDocument.toString() + ')()},' + fallbackDelay + ');</' + 'script>';
+      var extractScript = idVar + excludeVar + fragmentVar + screenshotScript + '<script>window.addEventListener("load",function(){setTimeout(function(){(' + extractFromDocument.toString() + ')()},' + postLoadDelay + ')});setTimeout(function(){(' + extractFromDocument.toString() + ')()},' + fallbackDelay + ');</' + 'script>';
       if (/<\/body>/i.test(html)) {
         srcdoc = html.replace(/<\/body>/i, extractScript + '</body>');
       } else {
@@ -638,7 +642,7 @@ window.MilgIframe = (function() {
         '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
         darkVariantTag + effectTag +
         '<style>body{margin:0}</style></head><body>' +
-        html + excludeVar + fragmentVar + screenshotScript +
+        html + idVar + excludeVar + fragmentVar + screenshotScript +
         '<script>setTimeout(function(){(' + extractFromDocument.toString() + ')()}, 1500);</' + 'script>' +
         '</body></html>';
     }

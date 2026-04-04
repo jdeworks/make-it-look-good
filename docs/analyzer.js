@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v43.6 loaded');
+console.log('[milg] analyzer.js v43.9 loaded');
 
 (function() {
   "use strict";
@@ -50,31 +50,42 @@ console.log('[milg] analyzer.js v43.6 loaded');
   }
 
   // --- Focus modal: warns users that Chrome throttles background tabs ---
+  // --- Focus modal with live progress log ---
   var _focusModal = null;
+  var _focusModalLog = null;
   function showFocusModal() {
-    if (_focusModal) return; // already showing
+    if (_focusModal) return;
     var isDark = document.body.classList.contains('dark-ui');
     var overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;';
     var box = document.createElement('div');
-    box.style.cssText = 'background:' + (isDark ? '#1e293b' : '#fff') + ';border-radius:12px;padding:24px 32px;max-width:440px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.3);color:' + (isDark ? '#e2e8f0' : '#1e293b') + ';';
-    box.innerHTML = '<div style="font-size:28px;margin-bottom:8px">&#9201;</div>' +
-      '<div style="font-size:16px;font-weight:700;margin-bottom:8px">Deep analysis in progress</div>' +
-      '<div style="font-size:13px;line-height:1.6;color:' + (isDark ? '#94a3b8' : '#64748b') + ';margin-bottom:16px">' +
-        'Multiple viewports are being analyzed with screenshots and pixel verification. ' +
-        '<strong style="color:' + (isDark ? '#fbbf24' : '#d97706') + '">Please keep this tab in the foreground.</strong><br>' +
-        'Chrome throttles background tabs — timers slow to 1/sec and canvas operations may stall.' +
+    box.style.cssText = 'background:' + (isDark ? '#1e293b' : '#fff') + ';border-radius:12px;padding:24px 32px;max-width:500px;width:90vw;box-shadow:0 20px 60px rgba(0,0,0,0.3);color:' + (isDark ? '#e2e8f0' : '#1e293b') + ';';
+    box.innerHTML = '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">' +
+        '<div class="milg-spinner" style="width:20px;height:20px;border:2px solid ' + (isDark ? '#475569' : '#e2e8f0') + ';border-top-color:' + (isDark ? '#60a5fa' : '#2563eb') + ';border-radius:50%;animation:milg-spin 0.8s linear infinite"></div>' +
+        '<div style="font-size:16px;font-weight:700">Deep analysis in progress</div>' +
       '</div>' +
-      '<div style="font-size:11px;color:' + (isDark ? '#64748b' : '#94a3b8') + '">The modal will close automatically when analysis completes.</div>';
+      '<div style="font-size:12px;color:' + (isDark ? '#fbbf24' : '#d97706') + ';margin-bottom:12px">' +
+        'Keep this tab in the foreground — Chrome throttles background tabs.' +
+      '</div>' +
+      '<div id="focusModalLog" style="font-family:var(--mono,monospace);font-size:11px;line-height:1.6;' +
+        'background:' + (isDark ? '#0f172a' : '#f8fafc') + ';border:1px solid ' + (isDark ? '#334155' : '#e2e8f0') + ';' +
+        'border-radius:6px;padding:8px 12px;max-height:200px;overflow-y:auto;color:' + (isDark ? '#94a3b8' : '#64748b') + '">' +
+        'Starting...\n</div>' +
+      '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style>';
     overlay.appendChild(box);
-    // Allow clicking overlay to dismiss (but it comes back if still running)
-    overlay.addEventListener('click', function(e) { if (e.target === overlay) hideFocusModal(); });
     document.body.appendChild(overlay);
     _focusModal = overlay;
+    _focusModalLog = box.querySelector('#focusModalLog');
+  }
+  function updateFocusModal(msg) {
+    if (!_focusModalLog) return;
+    _focusModalLog.textContent += msg + '\n';
+    _focusModalLog.scrollTop = _focusModalLog.scrollHeight;
   }
   function hideFocusModal() {
     if (_focusModal && _focusModal.parentNode) _focusModal.parentNode.removeChild(_focusModal);
     _focusModal = null;
+    _focusModalLog = null;
   }
 
   var _progressPct = 0;
@@ -456,20 +467,27 @@ console.log('[milg] analyzer.js v43.6 loaded');
     // Launch ALL viewports in parallel — maximum speed when tab is in foreground.
     // Chrome throttles background tabs (timers → 1/sec, rAF paused), so the focus
     // modal warns users to stay on this tab during analysis.
-    console.log('[milg] Deep scan: launching', viewports.length, 'viewports in parallel', wantShots ? '(with screenshots)' : '(no screenshots)');
+    var launchMsg = 'Launching ' + viewports.length + ' viewports in parallel' + (wantShots ? ' (with screenshots)' : '');
+    console.log('[milg] Deep scan:', launchMsg);
+    updateFocusModal(launchMsg);
     if (onProgress) onProgress('Starting viewports...', 0, totalSteps);
     viewports.forEach(function(vp, i) {
-      console.log('[milg] Starting viewport', i, vp.label, vp.w + 'x' + vp.h);
+      var vpMsg = 'Starting ' + vp.label + ' (' + vp.w + 'x' + vp.h + ')';
+      console.log('[milg]', vpMsg);
+      updateFocusModal(vpMsg);
       MilgIframe.analyzeHtmlInIframe(html, function(data) {
         if (data) data.meta.url = url;
         results[i] = data;
         doneCount++;
-        console.log('[milg] Viewport', i, vp.label, 'complete (' + doneCount + '/' + viewports.length + ')',
-          data ? 'elements=' + (data.structure && data.structure.totalElements) : 'NULL',
-          data && data.screenshots ? 'screenshots=' + data.screenshots.length : '');
-        if (onProgress) onProgress(vp.label + ' done', doneCount, totalSteps);
+        var elCount = data ? (data.structure && data.structure.totalElements || 0) : 0;
+        var ssCount = data && data.screenshots ? data.screenshots.length : 0;
+        var doneMsg = vp.label + ' done (' + doneCount + '/' + viewports.length + ') — ' + elCount + ' elements' + (ssCount ? ', ' + ssCount + ' screenshot' : '');
+        console.log('[milg]', doneMsg);
+        updateFocusModal(doneMsg);
+        if (onProgress) onProgress(doneMsg, doneCount, totalSteps);
         if (doneCount === viewports.length) {
           console.log('[milg] All viewports done, assembling deepScan');
+          updateFocusModal('All viewports done — assembling results...');
           onAllDone();
         }
       }, url, exclude, wantShots, { w: vp.w, h: vp.h });
@@ -852,10 +870,10 @@ console.log('[milg] analyzer.js v43.6 loaded');
               showProgress(15 + Math.round(70 * done / total), label);
             },
             function(primary) {
-              analyzeUrlBtn.disabled = false;
-              analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
-              hideFocusModal();
               if (!primary) {
+                hideFocusModal();
+                analyzeUrlBtn.disabled = false;
+                analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
                 urlStatus.innerHTML = '<span style="color:#dc2626">Deep scan failed — no viewport returned data.</span>';
                 hideProgress();
                 return;
@@ -880,29 +898,35 @@ console.log('[milg] analyzer.js v43.6 loaded');
                   return;
                 }
                 vpToVerify.forEach(function(vp) {
+                  updateFocusModal('Pixel verify: scoring ' + vp.label + '...');
                   var scored = MilgScoring.runScoring(vp.data);
                   MilgContrastVerify.verify(scored, function(results, bboxEdge) {
                     vp.data._contrastVerifyResults = results || [];
                     vp.data._bboxEdgeResults = bboxEdge || [];
                     verifyDone++;
-                    showProgress(88 + Math.round(10 * verifyDone / vpToVerify.length), 'Verified ' + verifyDone + '/' + vpToVerify.length + ' viewports');
+                    var pvMsg = 'Pixel verify: ' + vp.label + ' done (' + verifyDone + '/' + vpToVerify.length + ')';
+                    updateFocusModal(pvMsg);
+                    showProgress(88 + Math.round(10 * verifyDone / vpToVerify.length), pvMsg);
                     if (verifyDone === vpToVerify.length) {
-                      // Also set on primary (which is viewportData[0].data)
+                      updateFocusModal('All done! Rendering report...');
                       urlStatus.style.display = 'none';
                       showProgress(100, 'Done!');
                       setTimeout(hideProgress, 500);
                       analyzeUrlBtn.disabled = false;
                       analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
+                      hideFocusModal();
                       runAnalysis(primary);
                     }
                   });
                 });
               } else {
+                updateFocusModal('All done! Rendering report...');
                 urlStatus.style.display = 'none';
                 showProgress(100, 'Done!');
                 setTimeout(hideProgress, 500);
                 analyzeUrlBtn.disabled = false;
                 analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
+                hideFocusModal();
                 runAnalysis(primary);
               }
             }

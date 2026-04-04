@@ -1116,7 +1116,7 @@ window.MilgExtract = (function() {
     // Attach sandbox log if present (JS-enabled mode intercepts)
     data._sandboxLog = window.__milgSandboxLog || [];
 
-    parent.postMessage({ type: 'milg-analyzer-result', data: data }, '*');
+    parent.postMessage({ type: 'milg-analyzer-result', data: data, _iframeId: window.__milgIframeId || '' }, '*');
     // Screenshot capture: triggered by parent via milg-start-capture message
     // (parent resizes iframe to full docHeight first, then sends the signal)
     // Legacy fallback for old screenshot script that uses __milgDoScreenshots
