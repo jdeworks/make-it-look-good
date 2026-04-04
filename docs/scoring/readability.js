@@ -69,7 +69,11 @@
       if (smallRatio < 0.05) {
         passed++;
       } else {
-        var smallBboxes = fontSizes.filter(function(f) { return parseFloat(f.value) < 12 && f.bbox; }).map(function(f) { return f.bbox; });
+        var smallBboxes = [];
+        fontSizes.filter(function(f) { return parseFloat(f.value) < 12; }).forEach(function(f) {
+          if (f.bbox) smallBboxes.push(f.bbox);
+          if (f.extraBboxes) f.extraBboxes.forEach(function(b) { smallBboxes.push(b); });
+        });
         findings.push({
           severity: 'warning',
           title: smallTextCount + ' element(s) with text smaller than 12px',

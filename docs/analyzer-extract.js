@@ -223,7 +223,7 @@ window.MilgExtract = (function() {
     var fontSizeMap = {}, fontWeightMap = {}, fontFamilySet = new Set(), lineHeightMap = {};
     var textColorMap = {}, bgColorMap = {}, paddingMap = {}, marginMap = {}, gapMap = {};
     var textColorSample = {}, bgColorSample = {}; // Store one sample selector per color
-    var fontSizeSamples = {}; // fontSize → {selector, bbox} for first sample element
+    var fontSizeSamples = {}; // fontSize → {selector, bbox, extraBboxes?} for sample elements
     var maxContentW = 0;
     var contrastPairs = [];
     var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
@@ -392,8 +392,13 @@ window.MilgExtract = (function() {
       var s = getComputedStyle(el);
       fontSizeMap[s.fontSize] = (fontSizeMap[s.fontSize] || 0) + 1;
       if (!fontSizeSamples[s.fontSize]) {
-        fontSizeSamples[s.fontSize] = { selector: cssSelector(el), bbox: null };
+        fontSizeSamples[s.fontSize] = { selector: cssSelector(el), bbox: null, extraBboxes: [] };
         trackBbox(el, fontSizeSamples[s.fontSize], 'bbox');
+      } else if (fontSizeSamples[s.fontSize].extraBboxes && fontSizeSamples[s.fontSize].extraBboxes.length < 29) {
+        // Collect additional bboxes (up to 30 total) for findings that show all instances
+        var _extra = { bbox: null };
+        trackBbox(el, _extra, 'bbox');
+        fontSizeSamples[s.fontSize].extraBboxes.push(_extra);
       }
       fontWeightMap[s.fontWeight] = (fontWeightMap[s.fontWeight] || 0) + 1;
       fontFamilySet.add(s.fontFamily.split(',')[0].trim().replace(/['"]/g, ''));
@@ -432,7 +437,7 @@ window.MilgExtract = (function() {
       var w = rect.width;
       if (w > maxContentW && w < window.innerWidth * 0.95) maxContentW = w;
     }
-    function mapToSorted(map, sampleMap, bboxMap) { return Object.keys(map).map(function(k) { var entry = { value: k, count: map[k], sample: sampleMap ? (sampleMap[k] || '') : '' }; if (bboxMap && bboxMap[k]) { entry.sampleSelector = bboxMap[k].selector; entry.bbox = bboxMap[k].bbox; entry._sampleRef = bboxMap[k]; } return entry; }).sort(function(a, b) { return b.count - a.count; }).slice(0, 30); }
+    function mapToSorted(map, sampleMap, bboxMap) { return Object.keys(map).map(function(k) { var entry = { value: k, count: map[k], sample: sampleMap ? (sampleMap[k] || '') : '' }; if (bboxMap && bboxMap[k]) { entry.sampleSelector = bboxMap[k].selector; entry.bbox = bboxMap[k].bbox; entry._sampleRef = bboxMap[k]; if (bboxMap[k].extraBboxes) { entry.extraBboxes = bboxMap[k].extraBboxes.map(function(eb) { return eb.bbox; }).filter(Boolean); } } return entry; }).sort(function(a, b) { return b.count - a.count; }).slice(0, 30); }
     data.typography.fontSizes = mapToSorted(fontSizeMap, null, fontSizeSamples);
     data.typography.fontWeights = mapToSorted(fontWeightMap);
     data.typography.fontFamilies = Array.from(fontFamilySet).slice(0, 10);
@@ -1095,7 +1100,12 @@ window.MilgExtract = (function() {
       });
       // Propagate re-read bboxes to exported fontSizes entries
       (data.typography.fontSizes || []).forEach(function(entry) {
-        if (entry._sampleRef) entry.bbox = entry._sampleRef.bbox;
+        if (entry._sampleRef) {
+          entry.bbox = entry._sampleRef.bbox;
+          if (entry._sampleRef.extraBboxes) {
+            entry.extraBboxes = entry._sampleRef.extraBboxes.map(function(eb) { return eb.bbox; }).filter(Boolean);
+          }
+        }
       });
       return updated + '/' + _bboxRefs.length;
     };

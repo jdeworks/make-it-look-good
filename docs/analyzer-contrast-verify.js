@@ -1061,29 +1061,25 @@ window.MilgContrastVerify = (function() {
     for (var x = bx + EDGE_SAMPLE_STEP; x < bx + bw - EDGE_SAMPLE_STEP; x += EDGE_SAMPLE_STEP) {
       var ic = readPx(x, yInSection + EDGE_INNER_DIST);
       var oc = readPx(x, yInSection - EDGE_OUTER_DIST);
-      if (ic) innerColors.push(ic);
-      if (oc) outerColors.push(oc);
+      if (ic && oc) { innerColors.push(ic); outerColors.push(oc); }
     }
     // Bottom edge
     for (var x = bx + EDGE_SAMPLE_STEP; x < bx + bw - EDGE_SAMPLE_STEP; x += EDGE_SAMPLE_STEP) {
       var ic = readPx(x, yInSection + bh - EDGE_INNER_DIST);
       var oc = readPx(x, yInSection + bh + EDGE_OUTER_DIST);
-      if (ic) innerColors.push(ic);
-      if (oc) outerColors.push(oc);
+      if (ic && oc) { innerColors.push(ic); outerColors.push(oc); }
     }
     // Left edge
     for (var y = yInSection + EDGE_SAMPLE_STEP; y < yInSection + bh - EDGE_SAMPLE_STEP; y += EDGE_SAMPLE_STEP) {
       var ic = readPx(bx + EDGE_INNER_DIST, y);
       var oc = readPx(bx - EDGE_OUTER_DIST, y);
-      if (ic) innerColors.push(ic);
-      if (oc) outerColors.push(oc);
+      if (ic && oc) { innerColors.push(ic); outerColors.push(oc); }
     }
     // Right edge
     for (var y = yInSection + EDGE_SAMPLE_STEP; y < yInSection + bh - EDGE_SAMPLE_STEP; y += EDGE_SAMPLE_STEP) {
       var ic = readPx(bx + bw - EDGE_INNER_DIST, y);
       var oc = readPx(bx + bw + EDGE_OUTER_DIST, y);
-      if (ic) innerColors.push(ic);
-      if (oc) outerColors.push(oc);
+      if (ic && oc) { innerColors.push(ic); outerColors.push(oc); }
     }
 
     if (innerColors.length < 4 || outerColors.length < 4) return null;

@@ -567,6 +567,7 @@ window.MilgReport = (function() {
             if (vpd && vpd.data) {
               vpScreenshots.push({ label: vpd.label, width: vpd.width, vpIdx: vpIdx, src: vpd.data.screenshotFull || (vpd.data.screenshots && vpd.data.screenshots[0]) || null });
             }
+            // Skip null entries (failed viewports) — don't add to thumbnails
           });
         }
         var hasAnyVpScreenshots = vpScreenshots.some(function(v) { return !!v.src; });

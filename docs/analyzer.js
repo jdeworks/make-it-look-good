@@ -718,7 +718,7 @@
                 }),
                 viewportData: deepRawResults.map(function(r, i) {
                   return r ? { label: viewports[i].label, width: viewports[i].w, data: r } : null;
-                }).filter(Boolean)
+                })
               };
               // Dark mode test
               var htmlHasDark = /class="[^"]*dark:/.test(html) || /prefers-color-scheme/.test(html) || /\.dark\s*\{/.test(html) || /data-theme/.test(html);
