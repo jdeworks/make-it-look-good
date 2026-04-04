@@ -537,6 +537,17 @@ window.MilgExtract = (function() {
       var rect = el.getBoundingClientRect();
       var w = Math.round(rect.width), h = Math.round(rect.height);
       if (w < 44 || h < 44) {
+        // Checkbox/radio: check if label provides adequate touch target
+        if (el.tagName === 'INPUT' && (el.type === 'checkbox' || el.type === 'radio')) {
+          var label = el.closest('label') || (el.id && document.querySelector('label[for="' + el.id + '"]'));
+          if (label) {
+            var lr = label.getBoundingClientRect();
+            // If label is reasonably sized, use label dimensions as touch target
+            if (lr.width >= 24 && lr.height >= 24) { w = Math.round(lr.width); h = Math.round(lr.height); }
+            // If label makes it pass the 44px threshold, skip entirely
+            if (w >= 44 && h >= 44) return;
+          }
+        }
         var linkCtx = 'button';
         if (el.tagName === 'A') {
           if (el.closest('nav')) linkCtx = 'nav';

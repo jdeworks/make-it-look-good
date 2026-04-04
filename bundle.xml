@@ -37848,6 +37848,17 @@ window.MilgExtract = (function() {
       var rect = el.getBoundingClientRect();
       var w = Math.round(rect.width), h = Math.round(rect.height);
       if (w < 44 || h < 44) {
+        // Checkbox/radio: check if label provides adequate touch target
+        if (el.tagName === 'INPUT' && (el.type === 'checkbox' || el.type === 'radio')) {
+          var label = el.closest('label') || (el.id && document.querySelector('label[for="' + el.id + '"]'));
+          if (label) {
+            var lr = label.getBoundingClientRect();
+            // If label is reasonably sized, use label dimensions as touch target
+            if (lr.width >= 24 && lr.height >= 24) { w = Math.round(lr.width); h = Math.round(lr.height); }
+            // If label makes it pass the 44px threshold, skip entirely
+            if (w >= 44 && h >= 44) return;
+          }
+        }
         var linkCtx = 'button';
         if (el.tagName === 'A') {
           if (el.closest('nav')) linkCtx = 'nav';
@@ -44206,7 +44217,7 @@ window.MilgContrastVerify = (function() {
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v45.1</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v45.2</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -44572,30 +44583,30 @@ window.MilgContrastVerify = (function() {
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=45.1"></script>
-  <script src="scoring/contrast.js?v=45.1"></script>
-  <script src="scoring/typography.js?v=45.1"></script>
-  <script src="scoring/spacing.js?v=45.1"></script>
-  <script src="scoring/touch.js?v=45.1"></script>
-  <script src="scoring/accessibility.js?v=45.1"></script>
-  <script src="scoring/responsive.js?v=45.1"></script>
-  <script src="scoring/consistency.js?v=45.1"></script>
-  <script src="scoring/cognitive.js?v=45.1"></script>
-  <script src="scoring/layout.js?v=45.1"></script>
-  <script src="scoring/performance.js?v=45.1"></script>
-  <script src="scoring/readability.js?v=45.1"></script>
-  <script src="scoring/filters.js?v=45.1"></script>
-  <script src="scoring/balance.js?v=45.1"></script>
+  <script src="scoring/registry.js?v=45.2"></script>
+  <script src="scoring/contrast.js?v=45.2"></script>
+  <script src="scoring/typography.js?v=45.2"></script>
+  <script src="scoring/spacing.js?v=45.2"></script>
+  <script src="scoring/touch.js?v=45.2"></script>
+  <script src="scoring/accessibility.js?v=45.2"></script>
+  <script src="scoring/responsive.js?v=45.2"></script>
+  <script src="scoring/consistency.js?v=45.2"></script>
+  <script src="scoring/cognitive.js?v=45.2"></script>
+  <script src="scoring/layout.js?v=45.2"></script>
+  <script src="scoring/performance.js?v=45.2"></script>
+  <script src="scoring/readability.js?v=45.2"></script>
+  <script src="scoring/filters.js?v=45.2"></script>
+  <script src="scoring/balance.js?v=45.2"></script>
   <!-- Report rendering + UI -->
-  <script src="analyzer-report.js?v=45.1"></script>
-  <script src="analyzer-crawl.js?v=45.1"></script>
-  <script src="analyzer-extract.js?v=45.1"></script>
-  <script src="analyzer-iframe.js?v=45.1"></script>
-  <script src="analyzer-proxy.js?v=45.1"></script>
-  <script src="analyzer-crawl-ui.js?v=45.1"></script>
-  <script src="analyzer-contrast-verify.js?v=45.1"></script>
-  <script src="analyzer-viewer.js?v=45.1"></script>
-  <script src="analyzer.js?v=45.1"></script>
+  <script src="analyzer-report.js?v=45.2"></script>
+  <script src="analyzer-crawl.js?v=45.2"></script>
+  <script src="analyzer-extract.js?v=45.2"></script>
+  <script src="analyzer-iframe.js?v=45.2"></script>
+  <script src="analyzer-proxy.js?v=45.2"></script>
+  <script src="analyzer-crawl-ui.js?v=45.2"></script>
+  <script src="analyzer-contrast-verify.js?v=45.2"></script>
+  <script src="analyzer-viewer.js?v=45.2"></script>
+  <script src="analyzer.js?v=45.2"></script>
 </body>
 </html>
 </file>
