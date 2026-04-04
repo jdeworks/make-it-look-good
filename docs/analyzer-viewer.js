@@ -426,21 +426,28 @@ window.MilgViewer = (function() {
           });
         }
 
-        // Override color based on pixel verification
-        var bboxColor = color;
+        // Override color: always use the WORST (most severe) of CSS and pixel verify
+        // Severity rank: error > warning > info > pass
+        var SEV_RANK = { error: 3, warning: 2, info: 1, pass: 0 };
+        var cssSev = finding.severity || 'info';
+        var pixelSev = null;
         if (vr) {
           if (vr.pixelRatioP10) {
             var p10 = parseFloat(vr.pixelRatioP10);
             var needed = vr.neededRatio || 4.5;
-            if (p10 < needed) bboxColor = COLORS.error;
-            else if (p10 < needed * 1.2) bboxColor = COLORS.warning;
-            else bboxColor = COLORS.pass;
-          } else if (vr.crossesBoundary && vr.cssPasses && !vr.pixelPasses) {
-            bboxColor = COLORS.error;
-          } else if (vr.crossesBoundary && !vr.cssPasses && vr.pixelPasses) {
-            bboxColor = COLORS.pass;
+            if (p10 < needed) pixelSev = 'error';
+            else if (p10 < needed * 1.2) pixelSev = 'warning';
+            else pixelSev = 'pass';
+          } else if (vr.crossesBoundary) {
+            pixelSev = (vr.cssPasses && !vr.pixelPasses) ? 'error' : (!vr.cssPasses && vr.pixelPasses) ? 'pass' : null;
           }
         }
+        // Take the worst of CSS severity and pixel severity
+        var finalSev = cssSev;
+        if (pixelSev && (SEV_RANK[pixelSev] || 0) > (SEV_RANK[finalSev] || 0)) {
+          finalSev = pixelSev;
+        }
+        var bboxColor = COLORS[finalSev] || color;
 
         var rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
         rect.setAttribute('x', x);

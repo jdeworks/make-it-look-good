@@ -41375,21 +41375,28 @@ window.MilgViewer = (function() {
           });
         }
 
-        // Override color based on pixel verification
-        var bboxColor = color;
+        // Override color: always use the WORST (most severe) of CSS and pixel verify
+        // Severity rank: error > warning > info > pass
+        var SEV_RANK = { error: 3, warning: 2, info: 1, pass: 0 };
+        var cssSev = finding.severity || 'info';
+        var pixelSev = null;
         if (vr) {
           if (vr.pixelRatioP10) {
             var p10 = parseFloat(vr.pixelRatioP10);
             var needed = vr.neededRatio || 4.5;
-            if (p10 < needed) bboxColor = COLORS.error;
-            else if (p10 < needed * 1.2) bboxColor = COLORS.warning;
-            else bboxColor = COLORS.pass;
-          } else if (vr.crossesBoundary && vr.cssPasses && !vr.pixelPasses) {
-            bboxColor = COLORS.error;
-          } else if (vr.crossesBoundary && !vr.cssPasses && vr.pixelPasses) {
-            bboxColor = COLORS.pass;
+            if (p10 < needed) pixelSev = 'error';
+            else if (p10 < needed * 1.2) pixelSev = 'warning';
+            else pixelSev = 'pass';
+          } else if (vr.crossesBoundary) {
+            pixelSev = (vr.cssPasses && !vr.pixelPasses) ? 'error' : (!vr.cssPasses && vr.pixelPasses) ? 'pass' : null;
           }
         }
+        // Take the worst of CSS severity and pixel severity
+        var finalSev = cssSev;
+        if (pixelSev && (SEV_RANK[pixelSev] || 0) > (SEV_RANK[finalSev] || 0)) {
+          finalSev = pixelSev;
+        }
+        var bboxColor = COLORS[finalSev] || color;
 
         var rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
         rect.setAttribute('x', x);
@@ -43932,7 +43939,7 @@ window.MilgContrastVerify = (function() {
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v44.3</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v44.4</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -44298,30 +44305,30 @@ window.MilgContrastVerify = (function() {
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=44.3"></script>
-  <script src="scoring/contrast.js?v=44.3"></script>
-  <script src="scoring/typography.js?v=44.3"></script>
-  <script src="scoring/spacing.js?v=44.3"></script>
-  <script src="scoring/touch.js?v=44.3"></script>
-  <script src="scoring/accessibility.js?v=44.3"></script>
-  <script src="scoring/responsive.js?v=44.3"></script>
-  <script src="scoring/consistency.js?v=44.3"></script>
-  <script src="scoring/cognitive.js?v=44.3"></script>
-  <script src="scoring/layout.js?v=44.3"></script>
-  <script src="scoring/performance.js?v=44.3"></script>
-  <script src="scoring/readability.js?v=44.3"></script>
-  <script src="scoring/filters.js?v=44.3"></script>
-  <script src="scoring/balance.js?v=44.3"></script>
+  <script src="scoring/registry.js?v=44.4"></script>
+  <script src="scoring/contrast.js?v=44.4"></script>
+  <script src="scoring/typography.js?v=44.4"></script>
+  <script src="scoring/spacing.js?v=44.4"></script>
+  <script src="scoring/touch.js?v=44.4"></script>
+  <script src="scoring/accessibility.js?v=44.4"></script>
+  <script src="scoring/responsive.js?v=44.4"></script>
+  <script src="scoring/consistency.js?v=44.4"></script>
+  <script src="scoring/cognitive.js?v=44.4"></script>
+  <script src="scoring/layout.js?v=44.4"></script>
+  <script src="scoring/performance.js?v=44.4"></script>
+  <script src="scoring/readability.js?v=44.4"></script>
+  <script src="scoring/filters.js?v=44.4"></script>
+  <script src="scoring/balance.js?v=44.4"></script>
   <!-- Report rendering + UI -->
-  <script src="analyzer-report.js?v=44.3"></script>
-  <script src="analyzer-crawl.js?v=44.3"></script>
-  <script src="analyzer-extract.js?v=44.3"></script>
-  <script src="analyzer-iframe.js?v=44.3"></script>
-  <script src="analyzer-proxy.js?v=44.3"></script>
-  <script src="analyzer-crawl-ui.js?v=44.3"></script>
-  <script src="analyzer-contrast-verify.js?v=44.3"></script>
-  <script src="analyzer-viewer.js?v=44.3"></script>
-  <script src="analyzer.js?v=44.3"></script>
+  <script src="analyzer-report.js?v=44.4"></script>
+  <script src="analyzer-crawl.js?v=44.4"></script>
+  <script src="analyzer-extract.js?v=44.4"></script>
+  <script src="analyzer-iframe.js?v=44.4"></script>
+  <script src="analyzer-proxy.js?v=44.4"></script>
+  <script src="analyzer-crawl-ui.js?v=44.4"></script>
+  <script src="analyzer-contrast-verify.js?v=44.4"></script>
+  <script src="analyzer-viewer.js?v=44.4"></script>
+  <script src="analyzer.js?v=44.4"></script>
 </body>
 </html>
 </file>
