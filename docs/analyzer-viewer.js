@@ -1316,44 +1316,35 @@ window.MilgViewer = (function() {
 
   // Open viewer focused on a specific finding — shows ONLY that finding's bboxes
   function showFinding(findingIdx, reportData) {
-    if (!reportData || !reportData.raw || !reportData.raw.screenshots || !reportData.raw.screenshotMeta) return;
-
-    // Map report findingIdx → _allFindings index
-    // Report skips pass findings; _allFindings includes them. Build mapping.
-    var reportIdx = 0;
-    var viewerIdx = -1;
-    var cats = reportData.categories || [];
-    for (var ci = 0; ci < cats.length && viewerIdx === -1; ci++) {
-      var catFindings = cats[ci].findings || [];
-      for (var fi = 0; fi < catFindings.length && viewerIdx === -1; fi++) {
-        var f = catFindings[fi];
-        if (!f.locator || !f.locator.bboxes || f.locator.bboxes.length === 0) continue;
-        if (f.severity === 'pass') continue; // report skips pass
-        if (reportIdx === findingIdx) {
-          // Find the matching _allFindings entry by scanning
-          for (var ai = 0; ai < _allFindings.length; ai++) {
-            if (_allFindings[ai].title === (f.title || '') && _allFindings[ai].detail === (f.detail || '')) {
-              viewerIdx = ai; break;
-            }
-          }
-          if (viewerIdx === -1) viewerIdx = 0; // fallback
-        }
-        reportIdx++;
-      }
+    if (!reportData || !reportData.raw || !reportData.raw.screenshots || !reportData.raw.screenshotMeta) {
+      console.warn('[milg-viewer] showFinding: missing screenshots or meta');
+      return;
     }
-    if (viewerIdx === -1 || !_allFindings[viewerIdx]) return;
+    if (!reportData.raw.screenshots.length) { console.warn('[milg-viewer] showFinding: screenshots array empty'); return; }
+
+    // Open the viewer first — this builds _allFindings from reportData
+    var dummyImg = document.createElement('img');
+    dummyImg.src = reportData.raw.screenshots[0];
+    open(dummyImg, 0, reportData);
+
+    // Now map report findingIdx → _allFindings index
+    // Report counts non-pass findings with bboxes. _allFindings includes pass too.
+    var viewerIdx = -1;
+    var reportCounter = 0;
+    for (var ai = 0; ai < _allFindings.length; ai++) {
+      if (_allFindings[ai].severity === 'pass') continue;
+      if (reportCounter === findingIdx) { viewerIdx = ai; break; }
+      reportCounter++;
+    }
+    if (viewerIdx === -1 || !_allFindings[viewerIdx]) {
+      console.warn('[milg-viewer] showFinding: could not map index', findingIdx, '(counted', reportCounter, 'non-pass in', _allFindings.length, ')');
+      return;
+    }
     var target = _allFindings[viewerIdx];
     if (!target.bboxes || !target.bboxes[0]) return;
 
-    var meta = reportData.raw.screenshotMeta;
-    var sectionIdx = Math.floor(target.bboxes[0].top / meta.viewportHeight);
-    sectionIdx = Math.min(sectionIdx, reportData.raw.screenshots.length - 1);
-
-    var dummyImg = document.createElement('img');
-    dummyImg.src = reportData.raw.screenshots[0];
-    open(dummyImg, sectionIdx, reportData);
-
     // Show ONLY this finding's bboxes (not the whole category)
+    var meta = reportData.raw.screenshotMeta;
     _activeFilter = { type: 'finding', value: viewerIdx };
     updateFilterButtons();
     renderOverlays();
