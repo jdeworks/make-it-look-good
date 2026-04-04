@@ -6,7 +6,7 @@
 
 (function() {
   'use strict';
-  var _MILG_VERSION = '2026-04-03-v13';
+  var _MILG_VERSION = '2026-04-04-v14';
   console.log('%c[milg] Snippet version: ' + _MILG_VERSION, 'color: #64748b;');
 
   // --- Scan mode option ---
@@ -537,8 +537,12 @@
     var fs = s.fontSize;
     fontSizeMap[fs] = (fontSizeMap[fs] || 0) + 1;
     if (!fontSizeSamples[fs]) {
-      var _fsRect = el.getBoundingClientRect();
-      fontSizeSamples[fs] = { selector: cssSelector(el), bbox: { left: Math.round(_fsRect.left + window.scrollX), top: Math.round(_fsRect.top + window.scrollY), width: Math.round(_fsRect.width), height: Math.round(_fsRect.height) } };
+      var _fsText = (el.textContent || '').trim().substring(0, 60);
+      fontSizeSamples[fs] = { selector: cssSelector(el), text: _fsText, bbox: captureBbox(el), extraBboxes: [] };
+    } else if (fontSizeSamples[fs].extraBboxes) {
+      var _fsText2 = (el.textContent || '').trim().substring(0, 60);
+      var _extra = { bbox: captureBbox(el), selector: cssSelector(el), text: _fsText2 };
+      fontSizeSamples[fs].extraBboxes.push(_extra);
     }
     var fw = s.fontWeight;
     fontWeightMap[fw] = (fontWeightMap[fw] || 0) + 1;
@@ -596,19 +600,31 @@
   }
 
   // Convert maps to sorted arrays
-  function mapToSorted(map) {
-    return Object.keys(map).map(function(k) { return { value: k, count: map[k] }; })
-      .sort(function(a, b) { return b.count - a.count; })
-      .slice(0, 30);
+  function captureBbox(el) {
+    var r = el.getBoundingClientRect();
+    return { left: Math.round(r.left + window.scrollX), top: Math.round(r.top + window.scrollY), width: Math.round(r.width), height: Math.round(r.height) };
   }
 
-  data.typography.fontSizes = mapToSorted(fontSizeMap).map(function(entry) {
-    var sample = fontSizeSamples[entry.value];
-    if (sample) { entry.sampleSelector = sample.selector; entry.bbox = sample.bbox; }
-    return entry;
-  });
+  function mapToSorted(map, sampleMap, bboxMap) {
+    return Object.keys(map).map(function(k) {
+      var entry = { value: k, count: map[k], sample: sampleMap ? (sampleMap[k] || '') : '' };
+      if (bboxMap && bboxMap[k]) {
+        entry.sampleSelector = bboxMap[k].selector;
+        entry.sampleText = bboxMap[k].text || '';
+        entry.bbox = bboxMap[k].bbox;
+        if (bboxMap[k].extraBboxes) {
+          entry.extraBboxes = bboxMap[k].extraBboxes.map(function(eb) { return eb.bbox; }).filter(Boolean);
+          entry.extraSelectors = bboxMap[k].extraBboxes.map(function(eb) { return eb.selector; }).filter(Boolean);
+          entry.extraTexts = bboxMap[k].extraBboxes.map(function(eb) { return eb.text || ''; });
+        }
+      }
+      return entry;
+    }).sort(function(a, b) { return b.count - a.count; });
+  }
+
+  data.typography.fontSizes = mapToSorted(fontSizeMap, null, fontSizeSamples);
   data.typography.fontWeights = mapToSorted(fontWeightMap);
-  data.typography.fontFamilies = Array.from(fontFamilySet).slice(0, 10);
+  data.typography.fontFamilies = Array.from(fontFamilySet);
   data.typography.lineHeights = mapToSorted(lineHeightMap);
   data.colors.textColors = mapToSorted(textColorMap);
   data.colors.bgColors = mapToSorted(bgColorMap);
@@ -679,21 +695,22 @@
   }
   data.layout.sectionGaps = sectionGaps;
 
-  // Alignment consistency: collect left edges of major block elements with selectors
+  // Alignment consistency: collect left edges of major block elements
   var alignTargets = document.querySelectorAll('h1,h2,h3,h4,p,ul,ol,table,form,img,figure,blockquote');
   var leftEdges = [];
-  var leftEdgeDetails = [];
+  var alignmentElements = [];
   Array.from(alignTargets).forEach(function(el) {
     if (!isVisible(el) || isDecorative(el)) return;
     var r = el.getBoundingClientRect();
     if (r.width > 50) {
-      var edge = Math.round(r.left);
-      leftEdges.push(edge);
-      leftEdgeDetails.push({ left: edge, selector: cssSelector(el), tag: el.tagName.toLowerCase(), text: (el.textContent || '').trim().substring(0, 30) });
+      leftEdges.push(Math.round(r.left));
+      if (alignmentElements.length < 50) {
+        alignmentElements.push({ selector: cssSelector(el), left: Math.round(r.left), bbox: captureBbox(el) });
+      }
     }
   });
   data.layout.alignmentEdges = leftEdges;
-  data.layout.alignmentEdgeDetails = leftEdgeDetails;
+  data.layout.alignmentElements = alignmentElements;
 
   // Visual hierarchy: heading size to body size ratios
   var bodyFS = parseFloat(data.typography.bodyFontSize) || 16;
@@ -716,6 +733,15 @@
     var passes = w >= 44 && h >= 44;
     // If element fails, check if wrapped in a larger clickable parent
     if (!passes) {
+      // Checkbox/radio: check if label provides adequate touch target
+      if (el.tagName === 'INPUT' && (el.type === 'checkbox' || el.type === 'radio')) {
+        var label = el.closest('label') || (el.id && document.querySelector('label[for="' + el.id + '"]'));
+        if (label) {
+          var lr = label.getBoundingClientRect();
+          if (lr.width >= 24 && lr.height >= 24) { w = Math.round(lr.width); h = Math.round(lr.height); }
+          if (w >= 44 && h >= 44) return;
+        }
+      }
       var clickParent = el.closest('label, a');
       if (clickParent && clickParent !== el) {
         var parentRect = clickParent.getBoundingClientRect();
@@ -764,6 +790,51 @@
   // Keep worst 40
   touchTargetIssues.sort(function(a, b) { return (a.width * a.height) - (b.width * b.height); });
   data.interaction.touchTargets = touchTargetIssues.slice(0, 40);
+
+  // --- BBox edge contrast pairs ---
+  var _bgEdgePairs = [];
+  var _bgEdgeSeen = new Set();
+  var _bgEdgeCandidates = document.querySelectorAll('button,a,[role="button"],input:not([type="hidden"]),select,textarea,details,summary,.card,[class*="card"],[class*="btn"],[class*="button"],[class*="chip"],[class*="badge"],[class*="tag"],[class*="alert"],[class*="toast"],[class*="banner"]');
+  _bgEdgeCandidates.forEach(function(el) {
+    if (!isVisible(el) || isDecorative(el)) return;
+    var rect = el.getBoundingClientRect();
+    if (rect.width < 20 || rect.height < 16) return;
+    var sel = cssSelector(el);
+    if (_bgEdgeSeen.has(sel)) return;
+    _bgEdgeSeen.add(sel);
+    var s = getComputedStyle(el);
+    var elBg = s.backgroundColor;
+    var hasBg = elBg && elBg !== 'rgba(0, 0, 0, 0)' && elBg !== 'transparent';
+    var hasBorder = s.borderStyle !== 'none' && parseFloat(s.borderWidth) >= 1;
+    var hasOutline = s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) >= 1;
+    var hasShadow = s.boxShadow && s.boxShadow !== 'none';
+    // Skip elements with no visual boundary — edge test only makes sense
+    // when the element has its own background, border, or shadow
+    if (!hasBg && !hasBorder && !hasOutline && !hasShadow) return;
+    var parentBg = { r: 255, g: 255, b: 255 };
+    var pNode = el.parentElement;
+    while (pNode && pNode !== document.documentElement) {
+      var pBgStr = getComputedStyle(pNode).backgroundColor;
+      var pC = parseColor(pBgStr);
+      if (pC && pC.a >= 0.5) { parentBg = { r: pC.r, g: pC.g, b: pC.b }; break; }
+      pNode = pNode.parentElement;
+    }
+    var elBgParsed = parseColor(elBg);
+    var cssBgRatio = 1;
+    if (hasBg && elBgParsed && elBgParsed.a > 0.1) {
+      var blended = { r: Math.round(elBgParsed.r * elBgParsed.a + parentBg.r * (1 - elBgParsed.a)), g: Math.round(elBgParsed.g * elBgParsed.a + parentBg.g * (1 - elBgParsed.a)), b: Math.round(elBgParsed.b * elBgParsed.a + parentBg.b * (1 - elBgParsed.a)) };
+      cssBgRatio = Math.round(contrastRatio(blended, parentBg) * 100) / 100;
+    }
+    _bgEdgePairs.push({
+      selector: sel, element: el.tagName.toLowerCase(),
+      text: (el.textContent || el.getAttribute('aria-label') || '').trim().substring(0, 40),
+      elBg: hasBg && elBgParsed ? rgbStr(elBgParsed) : rgbStr(parentBg),
+      parentBg: rgbStr(parentBg), cssBgRatio: cssBgRatio,
+      hasBorder: hasBorder, hasOutline: hasOutline, hasShadow: hasShadow,
+      borderColor: hasBorder ? s.borderColor : '', bbox: captureBbox(el)
+    });
+  });
+  data.colors.bgEdgePairs = _bgEdgePairs.slice(0, 80);
 
   // Adjacent interactive element spacing — siblings only
   // Helper: get a human-readable label for an interactive element
@@ -1048,6 +1119,34 @@
   data.structure.blocksZoom = vpMeta ? /user-scalable\s*=\s*no/i.test(vpMeta.getAttribute('content') || '') : false;
   // Horizontal overflow
   data.structure.hasHorizontalOverflow = document.documentElement.scrollWidth > document.documentElement.clientWidth;
+  // Find the widest element causing page-level overflow
+  // Skip absolutely/fixed positioned elements inside overflow:hidden containers
+  if (data.structure.hasHorizontalOverflow) {
+    var _pageOverflowCulprits = [];
+    var _docW = document.documentElement.clientWidth;
+    function _isClippedByParent(el) {
+      var s = getComputedStyle(el);
+      if (s.position !== 'absolute' && s.position !== 'fixed') return false;
+      var p = el.offsetParent || el.parentElement;
+      while (p && p !== document.documentElement) {
+        var ps = getComputedStyle(p);
+        if (ps.overflow === 'hidden' || ps.overflowX === 'hidden') return true;
+        p = p.parentElement;
+      }
+      return false;
+    }
+    Array.from(allElements).slice(0, 1000).forEach(function(el) {
+      if (!isVisible(el) || el === document.documentElement || el === document.body) return;
+      if (_isClippedByParent(el)) return;
+      var r = el.getBoundingClientRect();
+      if (r.right > _docW + 5 || r.width > _docW + 5) {
+        _pageOverflowCulprits.push({ selector: cssSelector(el), element: el.tagName.toLowerCase(), width: Math.round(r.width), right: Math.round(r.right), overflow: Math.round(r.right - _docW), bbox: captureBbox(el) });
+      }
+    });
+    _pageOverflowCulprits.sort(function(a, b) { return b.overflow - a.overflow; });
+    data.structure.overflowCulprits = _pageOverflowCulprits.slice(0, 10);
+    if (_pageOverflowCulprits.length === 0) data.structure.hasHorizontalOverflow = false;
+  }
 
   // --- Table cell readability on narrow viewports ---
   data.layout.tableCellIssues = [];
@@ -1265,15 +1364,25 @@
   data.performance.imageFormats = imgFormats;
 
   // --- Consistency extras ---
-  // Border radius values
+  // Border radius values — track sample elements per value
   var radiusMap = {};
+  var radiusSamples = {}; // value -> [{selector, bbox}]
   for (var ci = 0; ci < allElements.length && ci < 1000; ci++) {
     var cel = allElements[ci];
     if (!isVisible(cel) || isDecorative(cel)) continue;
     var cr = getComputedStyle(cel).borderRadius;
-    if (cr && cr !== '0px') radiusMap[cr] = (radiusMap[cr] || 0) + 1;
+    if (cr && cr !== '0px') {
+      radiusMap[cr] = (radiusMap[cr] || 0) + 1;
+      if (!radiusSamples[cr]) radiusSamples[cr] = [];
+      if (radiusSamples[cr].length < 5) {
+        radiusSamples[cr].push({ selector: cssSelector(cel), bbox: captureBbox(cel) });
+      }
+    }
   }
-  data.layout.borderRadii = Object.keys(radiusMap).map(function(k) { return { value: k, count: radiusMap[k] }; }).sort(function(a, b) { return b.count - a.count; }).slice(0, 15);
+  data.layout.borderRadii = Object.keys(radiusMap).map(function(k) {
+    var samples = (radiusSamples[k] || []);
+    return { value: k, count: radiusMap[k], bboxes: samples.map(function(s) { return s.bbox; }).filter(Boolean), selectors: samples.map(function(s) { return s.selector; }).filter(Boolean) };
+  }).sort(function(a, b) { return b.count - a.count; }).slice(0, 15);
 
   // --- Readability extras ---
   // Paragraph text extraction for readability scoring

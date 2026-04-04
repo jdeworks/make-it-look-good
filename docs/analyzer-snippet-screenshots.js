@@ -7,7 +7,7 @@
 
 (function() {
   'use strict';
-  var _MILG_VERSION = '2026-04-03-v24';
+  var _MILG_VERSION = '2026-04-04-v25';
   console.log('%c[milg] Snippet version: ' + _MILG_VERSION, 'color: #64748b;');
 
   // --- Scan mode ---
@@ -499,8 +499,14 @@
     var fs = s.fontSize;
     fontSizeMap[fs] = (fontSizeMap[fs] || 0) + 1;
     if (!fontSizeSamples[fs]) {
-      fontSizeSamples[fs] = { selector: cssSelector(el), bbox: null };
+      var _fsText = (el.textContent || '').trim().substring(0, 60);
+      fontSizeSamples[fs] = { selector: cssSelector(el), text: _fsText, bbox: null, extraBboxes: [] };
       trackBbox(el, fontSizeSamples[fs], 'bbox');
+    } else if (fontSizeSamples[fs].extraBboxes) {
+      var _fsText2 = (el.textContent || '').trim().substring(0, 60);
+      var _extra = { bbox: null, selector: cssSelector(el), text: _fsText2 };
+      trackBbox(el, _extra, 'bbox');
+      fontSizeSamples[fs].extraBboxes.push(_extra);
     }
     var fw = s.fontWeight;
     fontWeightMap[fw] = (fontWeightMap[fw] || 0) + 1;
@@ -558,21 +564,29 @@
   }
 
   // Convert maps to sorted arrays
-  function mapToSorted(map) {
-    return Object.keys(map).map(function(k) { return { value: k, count: map[k] }; })
-      .sort(function(a, b) { return b.count - a.count; })
-      .slice(0, 30);
+  function mapToSorted(map, sampleMap, bboxMap) {
+    return Object.keys(map).map(function(k) {
+      var entry = { value: k, count: map[k], sample: sampleMap ? (sampleMap[k] || '') : '' };
+      if (bboxMap && bboxMap[k]) {
+        entry.sampleSelector = bboxMap[k].selector;
+        entry.sampleText = bboxMap[k].text || '';
+        entry.bbox = bboxMap[k].bbox;
+        entry._sampleRef = bboxMap[k];
+        if (bboxMap[k].extraBboxes) {
+          entry.extraBboxes = bboxMap[k].extraBboxes.map(function(eb) { return eb.bbox; }).filter(Boolean);
+          entry.extraSelectors = bboxMap[k].extraBboxes.map(function(eb) { return eb.selector; }).filter(Boolean);
+          entry.extraTexts = bboxMap[k].extraBboxes.map(function(eb) { return eb.text || ''; });
+        }
+      }
+      return entry;
+    }).sort(function(a, b) { return b.count - a.count; });
   }
 
-  data.typography.fontSizes = mapToSorted(fontSizeMap).map(function(entry) {
-    var sample = fontSizeSamples[entry.value];
-    if (sample) { entry.sampleSelector = sample.selector; entry._sampleRef = sample; entry.bbox = sample.bbox; }
-    return entry;
-  });
+  data.typography.fontSizes = mapToSorted(fontSizeMap, null, fontSizeSamples);
   // Store ref so bbox re-read can propagate to exported data
   data.typography._fontSizeSampleRefs = fontSizeSamples;
   data.typography.fontWeights = mapToSorted(fontWeightMap);
-  data.typography.fontFamilies = Array.from(fontFamilySet).slice(0, 10);
+  data.typography.fontFamilies = Array.from(fontFamilySet);
   data.typography.lineHeights = mapToSorted(lineHeightMap);
   data.colors.textColors = mapToSorted(textColorMap);
   data.colors.bgColors = mapToSorted(bgColorMap);
@@ -645,12 +659,21 @@
   // Alignment consistency: collect left edges of major block elements
   var alignTargets = document.querySelectorAll('h1,h2,h3,h4,p,ul,ol,table,form,img,figure,blockquote');
   var leftEdges = [];
+  var alignmentElements = [];
   Array.from(alignTargets).forEach(function(el) {
     if (!isVisible(el) || isDecorative(el)) return;
     var r = el.getBoundingClientRect();
-    if (r.width > 50) leftEdges.push(Math.round(r.left));
+    if (r.width > 50) {
+      leftEdges.push(Math.round(r.left));
+      if (alignmentElements.length < 50) {
+        var _ae = { selector: cssSelector(el), left: Math.round(r.left), bbox: null };
+        trackBbox(el, _ae, 'bbox');
+        alignmentElements.push(_ae);
+      }
+    }
   });
   data.layout.alignmentEdges = leftEdges;
+  data.layout.alignmentElements = alignmentElements;
 
   // Visual hierarchy: heading size to body size ratios
   var bodyFS = parseFloat(data.typography.bodyFontSize) || 16;
@@ -673,6 +696,15 @@
     var passes = w >= 44 && h >= 44;
     // If element fails, check if wrapped in a larger clickable parent
     if (!passes) {
+      // Checkbox/radio: check if label provides adequate touch target
+      if (el.tagName === 'INPUT' && (el.type === 'checkbox' || el.type === 'radio')) {
+        var label = el.closest('label') || (el.id && document.querySelector('label[for="' + el.id + '"]'));
+        if (label) {
+          var lr = label.getBoundingClientRect();
+          if (lr.width >= 24 && lr.height >= 24) { w = Math.round(lr.width); h = Math.round(lr.height); }
+          if (w >= 44 && h >= 44) return;
+        }
+      }
       var clickParent = el.closest('label, a');
       if (clickParent && clickParent !== el) {
         var parentRect = clickParent.getBoundingClientRect();
@@ -732,7 +764,11 @@
     var elBg = s.backgroundColor;
     var hasBg = elBg && elBg !== 'rgba(0, 0, 0, 0)' && elBg !== 'transparent';
     var hasBorder = s.borderStyle !== 'none' && parseFloat(s.borderWidth) >= 1;
+    var hasOutline = s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) >= 1;
     var hasShadow = s.boxShadow && s.boxShadow !== 'none';
+    // Skip elements with no visual boundary — edge test only makes sense
+    // when the element has its own background, border, or shadow
+    if (!hasBg && !hasBorder && !hasOutline && !hasShadow) return;
     var parentBg = { r: 255, g: 255, b: 255 };
     var pNode = el.parentElement;
     while (pNode && pNode !== document.documentElement) {
@@ -752,7 +788,7 @@
       text: (el.textContent || el.getAttribute('aria-label') || '').trim().substring(0, 40),
       elBg: hasBg && elBgParsed ? rgbStr(elBgParsed) : rgbStr(parentBg),
       parentBg: rgbStr(parentBg), cssBgRatio: cssBgRatio,
-      hasBorder: hasBorder, hasOutline: false, hasShadow: hasShadow,
+      hasBorder: hasBorder, hasOutline: hasOutline, hasShadow: hasShadow,
       borderColor: hasBorder ? s.borderColor : '', bbox: null
     };
     trackBbox(el, _beEntry, 'bbox');
@@ -1041,6 +1077,35 @@
   data.structure.blocksZoom = vpMeta ? /user-scalable\s*=\s*no/i.test(vpMeta.getAttribute('content') || '') : false;
   // Horizontal overflow
   data.structure.hasHorizontalOverflow = document.documentElement.scrollWidth > document.documentElement.clientWidth;
+  // Find the widest element causing page-level overflow
+  // Skip absolutely/fixed positioned elements inside overflow:hidden containers
+  if (data.structure.hasHorizontalOverflow) {
+    var _pageOverflowCulprits = [];
+    var _docW = document.documentElement.clientWidth;
+    function _isClippedByParent(el) {
+      var s = getComputedStyle(el);
+      if (s.position !== 'absolute' && s.position !== 'fixed') return false;
+      var p = el.offsetParent || el.parentElement;
+      while (p && p !== document.documentElement) {
+        var ps = getComputedStyle(p);
+        if (ps.overflow === 'hidden' || ps.overflowX === 'hidden') return true;
+        p = p.parentElement;
+      }
+      return false;
+    }
+    Array.from(allElements).slice(0, 1000).forEach(function(el) {
+      if (!isVisible(el) || el === document.documentElement || el === document.body) return;
+      if (_isClippedByParent(el)) return;
+      var r = el.getBoundingClientRect();
+      if (r.right > _docW + 5 || r.width > _docW + 5) {
+        _pageOverflowCulprits.push({ selector: cssSelector(el), element: el.tagName.toLowerCase(), width: Math.round(r.width), right: Math.round(r.right), overflow: Math.round(r.right - _docW), bbox: null });
+        if (_pageOverflowCulprits.length <= 10) trackBbox(el, _pageOverflowCulprits[_pageOverflowCulprits.length - 1], 'bbox');
+      }
+    });
+    _pageOverflowCulprits.sort(function(a, b) { return b.overflow - a.overflow; });
+    data.structure.overflowCulprits = _pageOverflowCulprits.slice(0, 10);
+    if (_pageOverflowCulprits.length === 0) data.structure.hasHorizontalOverflow = false;
+  }
 
   // Hidden overflow clips — elements with overflow-x:hidden that silently clip content
   data.layout.hiddenClipElements = [];
@@ -1174,15 +1239,27 @@
   data.performance.imageFormats = imgFormats;
 
   // --- Consistency extras ---
-  // Border radius values
+  // Border radius values — track sample elements per value
   var radiusMap = {};
+  var radiusSamples = {}; // value -> [{selector, bbox}]
   for (var ci = 0; ci < allElements.length && ci < 1000; ci++) {
     var cel = allElements[ci];
     if (!isVisible(cel) || isDecorative(cel)) continue;
     var cr = getComputedStyle(cel).borderRadius;
-    if (cr && cr !== '0px') radiusMap[cr] = (radiusMap[cr] || 0) + 1;
+    if (cr && cr !== '0px') {
+      radiusMap[cr] = (radiusMap[cr] || 0) + 1;
+      if (!radiusSamples[cr]) radiusSamples[cr] = [];
+      if (radiusSamples[cr].length < 5) {
+        var _rs = { selector: cssSelector(cel), bbox: null };
+        trackBbox(cel, _rs, 'bbox');
+        radiusSamples[cr].push(_rs);
+      }
+    }
   }
-  data.layout.borderRadii = Object.keys(radiusMap).map(function(k) { return { value: k, count: radiusMap[k] }; }).sort(function(a, b) { return b.count - a.count; }).slice(0, 15);
+  data.layout.borderRadii = Object.keys(radiusMap).map(function(k) {
+    var samples = (radiusSamples[k] || []);
+    return { value: k, count: radiusMap[k], bboxes: samples.map(function(s) { return s.bbox; }).filter(Boolean), selectors: samples.map(function(s) { return s.selector; }).filter(Boolean) };
+  }).sort(function(a, b) { return b.count - a.count; }).slice(0, 15);
 
   // --- Readability extras ---
   // Paragraph text extraction for readability scoring
