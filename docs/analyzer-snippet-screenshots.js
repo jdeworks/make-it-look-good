@@ -251,10 +251,102 @@
               calibrationOffsetY: calibOffset,
               calibrationSamples: []
             };
-            // Pixel verify is handled by the analyzer (MilgContrastVerify) post-hoc
-            // from the screenshot — no inline verification needed in the snippet.
-            console.log('%c\u2713 Screenshot captured (' + _t().trim() + ')', 'color: #16a34a; font-weight: bold;');
-            outputData(data);
+            // --- Text mask capture (same technique as iframe buildScreenshotScript) ---
+            // Kill transitions, set all text to black + backgrounds to white, capture mask.
+            // This gives pixel verify the same accuracy as URL/iframe mode.
+            console.log('[ss] ' + _t() + 'Capturing text mask...');
+            var statusEl2 = document.getElementById('milg-ss-status');
+            if (statusEl2) statusEl2.textContent = 'Capturing text mask...';
+
+            // Phase A: Kill ALL transitions
+            document.querySelectorAll('*').forEach(function(el) {
+              el.style.setProperty('transition-duration', '0s', 'important');
+              el.style.setProperty('transition', 'none', 'important');
+            });
+            void document.body.offsetHeight;
+
+            // Phase B: Neutralize absolute/fixed overlays (same as iframe)
+            document.querySelectorAll('*').forEach(function(el) {
+              var cs = getComputedStyle(el);
+              if (cs.position === 'absolute' || cs.position === 'fixed') {
+                if (!el.textContent.trim()) {
+                  el.style.setProperty('display', 'none', 'important');
+                } else if (cs.pointerEvents === 'none') {
+                  el.style.setProperty('background', 'transparent', 'important');
+                  el.style.setProperty('background-image', 'none', 'important');
+                }
+              }
+            });
+            void document.body.offsetHeight;
+
+            // Phase C: Set all backgrounds white, all text black (layer 1 = all text)
+            var _savedStyles = [];
+            document.querySelectorAll('*').forEach(function(el) {
+              var saved = el.style.cssText;
+              _savedStyles.push({ el: el, css: saved });
+              el.style.setProperty('background', '#fff', 'important');
+              el.style.setProperty('background-image', 'none', 'important');
+              el.style.setProperty('color', '#000', 'important');
+              el.style.setProperty('text-shadow', 'none', 'important');
+              el.style.setProperty('box-shadow', 'none', 'important');
+              el.style.setProperty('border-color', 'transparent', 'important');
+            });
+            document.body.style.setProperty('background', '#fff', 'important');
+            document.documentElement.style.setProperty('background', '#fff', 'important');
+            void document.body.offsetHeight;
+
+            ms.domToCanvas(document.documentElement, {
+              scale: secScale,
+              filter: _ssFilter,
+              timeout: 30000
+            }).then(function(maskCanvas) {
+              console.log('[ss] ' + _t() + 'Text mask captured: ' + maskCanvas.width + 'x' + maskCanvas.height);
+
+              // Restore all styles
+              _savedStyles.forEach(function(s) { s.el.style.cssText = s.css; });
+              void document.body.offsetHeight;
+
+              // Store mask as data URI
+              var maskUri;
+              try { maskUri = maskCanvas.toDataURL('image/webp', 0.8); } catch(e) { maskUri = null; }
+              data.textMask = maskUri;
+
+              // Build per-pair mask bitmaps from the mask canvas
+              var maskCtx = maskCanvas.getContext('2d', { willReadFrequently: true });
+              var pairs = (data.colors && data.colors.contrastPairs) || [];
+              var maskResults = {};
+              pairs.forEach(function(pair, pi) {
+                if (!pair.bbox) return;
+                var bx = Math.round(pair.bbox.left * secScale);
+                var by = Math.round(pair.bbox.top * secScale);
+                var bw = Math.round(pair.bbox.width * secScale);
+                var bh = Math.round(pair.bbox.height * secScale);
+                if (bw < 2 || bh < 2 || bx + bw > maskCanvas.width || by + bh > maskCanvas.height) return;
+                var mData = maskCtx.getImageData(bx, by, bw, bh).data;
+                var bmp = new Uint8Array(bw * bh);
+                var darkCount = 0;
+                for (var j = 0; j < mData.length; j += 4) {
+                  var bright = (mData[j] + mData[j+1] + mData[j+2]) / 3;
+                  if (bright < 128) { bmp[j/4] = 1; darkCount++; }
+                }
+                if (darkCount > 0) {
+                  pair._maskBmp = Array.from(bmp);
+                  pair._maskW = bw;
+                  pair._maskH = bh;
+                  pair._maskLayer = 1;
+                  pair._maskDark = darkCount;
+                }
+              });
+
+              console.log('[ss] ' + _t() + 'Mask bitmaps built for ' + Object.keys(maskResults).length + ' pairs');
+              console.log('%c\u2713 Screenshot + mask captured (' + _t().trim() + ')', 'color: #16a34a; font-weight: bold;');
+              outputData(data);
+            }).catch(function(err) {
+              console.warn('[ss] Text mask capture failed:', err);
+              // Continue without mask — pixel verify will use position heuristic
+              console.log('%c\u2713 Screenshot captured (no mask) (' + _t().trim() + ')', 'color: #16a34a; font-weight: bold;');
+              outputData(data);
+            });
         })();
 
       }).catch(function(err) {

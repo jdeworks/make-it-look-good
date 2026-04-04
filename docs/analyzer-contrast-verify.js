@@ -801,9 +801,9 @@ window.MilgContrastVerify = (function() {
           var mr = maskData[idx], mg = maskData[idx + 1], mb = maskData[idx + 2];
           inTextArea = (mr + mg + mb) / 3 < 220; // any non-white pixel in mask = text/AA
         } else {
-          // No mask — use position heuristic: center third of bbox is likely text,
-          // edges are likely background. This avoids classifying all pixels as text
-          // which causes bgColors=0 on dark backgrounds.
+          // No mask — use position heuristic + CSS distance. Center region is more
+          // likely text, edges are more likely background. This ensures both FG and
+          // BG samples when no mask is available (fallback).
           var relX = hx / (hSteps - 1 || 1), relY = vy / (vSteps - 1 || 1);
           inTextArea = (relX > 0.15 && relX < 0.85 && relY > 0.15 && relY < 0.85);
         }
