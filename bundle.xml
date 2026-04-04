@@ -33269,10 +33269,11 @@ window.MilgReport = (function() {
     return; // Exit — re-run snippet after scroll completes
   }
 
+  // Cache-bust for CDN fetches (hourly bucket)
+  var _cacheBust = 'v=' + Math.floor(Date.now() / 3600000);
+
   // --- Load extraction engine from CDN (single source of truth) ---
   console.log('%c[milg] Loading extraction engine...', 'color: #3b82f6;');
-  // Cache-bust with hourly bucket so deploys take effect within ~1 hour
-  var _cacheBust = 'v=' + Math.floor(Date.now() / 3600000);
   // Primary: jsDelivr (fast global CDN, mirrors GitHub). Fallback: GitHub Pages direct.
   var _extractUrls = [
     'https://cdn.jsdelivr.net/gh/jdeworks/make-it-look-good@dev/docs/analyzer-extract.js?' + _cacheBust,
@@ -33647,7 +33648,12 @@ window.MilgReport = (function() {
         btn.textContent = 'Copied!' + (size ? ' (' + size + ')' : '');
         btn.style.background = '#16a34a';
         console.log('%c\u2713 Design data copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-        setTimeout(function() { if (_copyOverlay.parentNode) _copyOverlay.parentNode.removeChild(_copyOverlay); }, 1200);
+        // Reload page after delay to restore styles corrupted by mask capture
+        setTimeout(function() {
+          if (_copyOverlay.parentNode) _copyOverlay.parentNode.removeChild(_copyOverlay);
+          console.log('%c\u21BB Reloading page to restore styles...', 'color: #64748b;');
+          setTimeout(function() { location.reload(); }, 500);
+        }, 1500);
       }
       function onFail() {
         btn.textContent = 'Copy failed \u2014 use console';
@@ -33697,6 +33703,12 @@ window.MilgReport = (function() {
       var btn = document.getElementById('milg-download-btn');
       btn.textContent = 'Downloaded!';
       btn.style.background = '#16a34a'; btn.style.color = '#fff'; btn.style.borderColor = '#16a34a';
+      // Reload page after delay to restore styles corrupted by mask capture
+      setTimeout(function() {
+        if (_copyOverlay.parentNode) _copyOverlay.parentNode.removeChild(_copyOverlay);
+        console.log('%c\u21BB Reloading page to restore styles...', 'color: #64748b;');
+        setTimeout(function() { location.reload(); }, 500);
+      }, 2000);
     });
 
     console.log('%cmake-it-look-good extraction complete (with screenshots)', 'color: #3b82f6; font-weight: bold;');
@@ -40473,7 +40485,7 @@ window.MilgViewer = (function() {
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v47.6</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v47.7</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -40839,30 +40851,30 @@ window.MilgViewer = (function() {
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=47.6"></script>
-  <script src="scoring/contrast.js?v=47.6"></script>
-  <script src="scoring/typography.js?v=47.6"></script>
-  <script src="scoring/spacing.js?v=47.6"></script>
-  <script src="scoring/touch.js?v=47.6"></script>
-  <script src="scoring/accessibility.js?v=47.6"></script>
-  <script src="scoring/responsive.js?v=47.6"></script>
-  <script src="scoring/consistency.js?v=47.6"></script>
-  <script src="scoring/cognitive.js?v=47.6"></script>
-  <script src="scoring/layout.js?v=47.6"></script>
-  <script src="scoring/performance.js?v=47.6"></script>
-  <script src="scoring/readability.js?v=47.6"></script>
-  <script src="scoring/filters.js?v=47.6"></script>
-  <script src="scoring/balance.js?v=47.6"></script>
+  <script src="scoring/registry.js?v=47.7"></script>
+  <script src="scoring/contrast.js?v=47.7"></script>
+  <script src="scoring/typography.js?v=47.7"></script>
+  <script src="scoring/spacing.js?v=47.7"></script>
+  <script src="scoring/touch.js?v=47.7"></script>
+  <script src="scoring/accessibility.js?v=47.7"></script>
+  <script src="scoring/responsive.js?v=47.7"></script>
+  <script src="scoring/consistency.js?v=47.7"></script>
+  <script src="scoring/cognitive.js?v=47.7"></script>
+  <script src="scoring/layout.js?v=47.7"></script>
+  <script src="scoring/performance.js?v=47.7"></script>
+  <script src="scoring/readability.js?v=47.7"></script>
+  <script src="scoring/filters.js?v=47.7"></script>
+  <script src="scoring/balance.js?v=47.7"></script>
   <!-- Report rendering + UI -->
-  <script src="analyzer-report.js?v=47.6"></script>
-  <script src="analyzer-crawl.js?v=47.6"></script>
-  <script src="analyzer-extract.js?v=47.6"></script>
-  <script src="analyzer-iframe.js?v=47.6"></script>
-  <script src="analyzer-proxy.js?v=47.6"></script>
-  <script src="analyzer-crawl-ui.js?v=47.6"></script>
-  <script src="analyzer-contrast-verify.js?v=47.6"></script>
-  <script src="analyzer-viewer.js?v=47.6"></script>
-  <script src="analyzer.js?v=47.6"></script>
+  <script src="analyzer-report.js?v=47.7"></script>
+  <script src="analyzer-crawl.js?v=47.7"></script>
+  <script src="analyzer-extract.js?v=47.7"></script>
+  <script src="analyzer-iframe.js?v=47.7"></script>
+  <script src="analyzer-proxy.js?v=47.7"></script>
+  <script src="analyzer-crawl-ui.js?v=47.7"></script>
+  <script src="analyzer-contrast-verify.js?v=47.7"></script>
+  <script src="analyzer-viewer.js?v=47.7"></script>
+  <script src="analyzer.js?v=47.7"></script>
 </body>
 </html>
 </file>

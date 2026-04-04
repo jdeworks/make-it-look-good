@@ -42,10 +42,11 @@
     return; // Exit — re-run snippet after scroll completes
   }
 
+  // Cache-bust for CDN fetches (hourly bucket)
+  var _cacheBust = 'v=' + Math.floor(Date.now() / 3600000);
+
   // --- Load extraction engine from CDN (single source of truth) ---
   console.log('%c[milg] Loading extraction engine...', 'color: #3b82f6;');
-  // Cache-bust with hourly bucket so deploys take effect within ~1 hour
-  var _cacheBust = 'v=' + Math.floor(Date.now() / 3600000);
   // Primary: jsDelivr (fast global CDN, mirrors GitHub). Fallback: GitHub Pages direct.
   var _extractUrls = [
     'https://cdn.jsdelivr.net/gh/jdeworks/make-it-look-good@dev/docs/analyzer-extract.js?' + _cacheBust,
@@ -420,7 +421,12 @@
         btn.textContent = 'Copied!' + (size ? ' (' + size + ')' : '');
         btn.style.background = '#16a34a';
         console.log('%c\u2713 Design data copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-        setTimeout(function() { if (_copyOverlay.parentNode) _copyOverlay.parentNode.removeChild(_copyOverlay); }, 1200);
+        // Reload page after delay to restore styles corrupted by mask capture
+        setTimeout(function() {
+          if (_copyOverlay.parentNode) _copyOverlay.parentNode.removeChild(_copyOverlay);
+          console.log('%c\u21BB Reloading page to restore styles...', 'color: #64748b;');
+          setTimeout(function() { location.reload(); }, 500);
+        }, 1500);
       }
       function onFail() {
         btn.textContent = 'Copy failed \u2014 use console';
@@ -470,6 +476,12 @@
       var btn = document.getElementById('milg-download-btn');
       btn.textContent = 'Downloaded!';
       btn.style.background = '#16a34a'; btn.style.color = '#fff'; btn.style.borderColor = '#16a34a';
+      // Reload page after delay to restore styles corrupted by mask capture
+      setTimeout(function() {
+        if (_copyOverlay.parentNode) _copyOverlay.parentNode.removeChild(_copyOverlay);
+        console.log('%c\u21BB Reloading page to restore styles...', 'color: #64748b;');
+        setTimeout(function() { location.reload(); }, 500);
+      }, 2000);
     });
 
     console.log('%cmake-it-look-good extraction complete (with screenshots)', 'color: #3b82f6; font-weight: bold;');
