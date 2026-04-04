@@ -338,12 +338,13 @@
   // Render viewport tab bar (called from runAnalysis when deepScan data present)
   function renderViewportTabs(data) {
     var container = document.getElementById('viewportTabs');
-    if (!container) return;
+    if (!container) { console.warn('[milg] viewportTabs container not found'); return; }
     if (!data || !data.deepScan || !data.deepScan.viewports) {
       container.style.display = 'none';
       container.innerHTML = '';
       return;
     }
+    console.log('[milg] Rendering viewport tabs:', data.deepScan.viewports.length, 'viewports, active:', _activeViewportIdx);
     var ds = data.deepScan;
     var isDark = document.body.classList.contains('dark-ui');
     var html = '<div style="display:flex;gap:4px;padding:8px 0;flex-wrap:wrap;align-items:center">';
@@ -370,8 +371,8 @@
   }
 
   // --- Deep scan viewport loop (shared between URL mode and crawl mode) ---
-  // Analyzes HTML at multiple viewports, assembles deepScan summary, optionally tests dark mode.
-  // onProgress(label, idx, total) — optional progress callback
+  // Analyzes HTML at ALL viewports IN PARALLEL, assembles deepScan summary, tests dark mode.
+  // onProgress(label, done, total) — optional progress callback
   // callback(primaryData) — called with primary result (deepScan attached) or null on failure
   function runDeepScanLoop(html, url, exclude, wantShots, onProgress, callback) {
     var viewports = [{w:1280, h:900, label:'Desktop'}, {w:768, h:1024, label:'Tablet'}, {w:375, h:812, label:'Phone'}];
@@ -380,57 +381,68 @@
     var isDupe = viewports.some(function(p) { return Math.abs(curW - p.w) < 50 && Math.abs(curH - p.h) < 50; });
     if (!isDupe) viewports.unshift({w:curW, h:curH, label:'Current (' + curW + '\u00d7' + curH + ')'});
 
-    var results = [];
-    var vpIdx = 0;
-    (function nextVP() {
-      if (vpIdx >= viewports.length) {
-        var primary = results[0];
-        for (var pi = 0; pi < results.length && !primary; pi++) primary = results[pi];
-        if (!primary) { callback(null); return; }
-        primary.deepScan = {
-          viewports: results.map(function(r, i) {
-            return r ? {
-              label: viewports[i].label, width: viewports[i].w,
-              touchTargets: (r.interaction.touchTargets || []).length,
-              contrastFails: (r.colors.contrastPairs || []).filter(function(p) { return !p.passes; }).length,
-              overflow: r.structure.hasHorizontalOverflow || false,
-              hasScreenshots: !!(r.screenshots && r.screenshots.length > 0)
-            } : { label: viewports[i].label, width: viewports[i].w, error: true };
-          }),
-          viewportData: results.map(function(r, i) {
-            return r ? { label: viewports[i].label, width: viewports[i].w, data: r } : null;
-          })
-        };
-        // Dark mode test
-        var htmlHasDark = /class="[^"]*dark:/.test(html) || /prefers-color-scheme/.test(html) || /\.dark\s*\{/.test(html) || /data-theme/.test(html);
-        if (htmlHasDark) {
-          if (onProgress) onProgress('Dark mode', viewports.length, viewports.length + 1);
-          var darkHtml = html.replace(/<html([^>]*)>/i, '<html$1 class="dark" data-theme="dark" style="color-scheme:dark">');
-          darkHtml = darkHtml.replace(/<\/head>/i, '<script>setTimeout(function(){try{Array.from(document.styleSheets).forEach(function(ss){try{var darkRules=[];Array.from(ss.cssRules).forEach(function(r){if(r instanceof CSSMediaRule&&/prefers-color-scheme:\\s*dark/.test(r.conditionText||"")){Array.from(r.cssRules).forEach(function(inner){darkRules.push(inner.cssText)})}});if(darkRules.length>0){var s=document.createElement("style");s.textContent=darkRules.join("\\n");document.head.appendChild(s)}}catch(e){}});}catch(e){}},100);</' + 'script></head>');
-          MilgIframe.analyzeHtmlInIframe(darkHtml, function(darkData) {
-            if (darkData) {
-              primary.deepScan.darkMode = {
-                contrastFails: (darkData.colors.contrastPairs || []).filter(function(p) { return !p.passes; }).length,
-                contrastTotal: (darkData.colors.contrastPairs || []).length,
-                tested: true
-              };
-            }
-            callback(primary);
-          }, url, exclude, false, { w: 1280, h: 900 });
-        } else {
+    var results = new Array(viewports.length);
+    var doneCount = 0;
+    var totalSteps = viewports.length + 1; // +1 for dark mode test
+
+    function onAllDone() {
+      var primary = results[0];
+      for (var pi = 0; pi < results.length && !primary; pi++) primary = results[pi];
+      if (!primary) { callback(null); return; }
+      primary.deepScan = {
+        viewports: results.map(function(r, i) {
+          return r ? {
+            label: viewports[i].label, width: viewports[i].w,
+            touchTargets: (r.interaction.touchTargets || []).length,
+            contrastFails: (r.colors.contrastPairs || []).filter(function(p) { return !p.passes; }).length,
+            overflow: r.structure.hasHorizontalOverflow || false,
+            hasScreenshots: !!(r.screenshots && r.screenshots.length > 0)
+          } : { label: viewports[i].label, width: viewports[i].w, error: true };
+        }),
+        viewportData: results.map(function(r, i) {
+          return r ? { label: viewports[i].label, width: viewports[i].w, data: r } : null;
+        })
+      };
+      // Dark mode test
+      var htmlHasDark = /class="[^"]*dark:/.test(html) || /prefers-color-scheme/.test(html) || /\.dark\s*\{/.test(html) || /data-theme/.test(html);
+      if (htmlHasDark) {
+        if (onProgress) onProgress('Dark mode', viewports.length, totalSteps);
+        var darkHtml = html.replace(/<html([^>]*)>/i, '<html$1 class="dark" data-theme="dark" style="color-scheme:dark">');
+        darkHtml = darkHtml.replace(/<\/head>/i, '<script>setTimeout(function(){try{Array.from(document.styleSheets).forEach(function(ss){try{var darkRules=[];Array.from(ss.cssRules).forEach(function(r){if(r instanceof CSSMediaRule&&/prefers-color-scheme:\\s*dark/.test(r.conditionText||"")){Array.from(r.cssRules).forEach(function(inner){darkRules.push(inner.cssText)})}});if(darkRules.length>0){var s=document.createElement("style");s.textContent=darkRules.join("\\n");document.head.appendChild(s)}}catch(e){}});}catch(e){}},100);</' + 'script></head>');
+        MilgIframe.analyzeHtmlInIframe(darkHtml, function(darkData) {
+          if (darkData) {
+            primary.deepScan.darkMode = {
+              contrastFails: (darkData.colors.contrastPairs || []).filter(function(p) { return !p.passes; }).length,
+              contrastTotal: (darkData.colors.contrastPairs || []).length,
+              tested: true
+            };
+          }
           callback(primary);
-        }
-        return;
+        }, url, exclude, false, { w: 1280, h: 900 });
+      } else {
+        callback(primary);
       }
-      var vp = viewports[vpIdx];
-      if (onProgress) onProgress(vp.label, vpIdx, viewports.length);
+    }
+
+    // Launch ALL viewports in parallel
+    console.log('[milg] Deep scan: launching', viewports.length, 'viewports in parallel', wantShots ? '(with screenshots)' : '(no screenshots)');
+    if (onProgress) onProgress('All viewports', 0, totalSteps);
+    viewports.forEach(function(vp, i) {
+      console.log('[milg] Starting viewport', i, vp.label, vp.w + 'x' + vp.h);
       MilgIframe.analyzeHtmlInIframe(html, function(data) {
         if (data) data.meta.url = url;
-        results.push(data);
-        vpIdx++;
-        nextVP();
+        results[i] = data;
+        doneCount++;
+        console.log('[milg] Viewport', i, vp.label, 'complete (' + doneCount + '/' + viewports.length + ')',
+          data ? 'elements=' + (data.structure && data.structure.totalElements) : 'NULL',
+          data && data.screenshots ? 'screenshots=' + data.screenshots.length : '');
+        if (onProgress) onProgress(vp.label + ' done', doneCount, totalSteps);
+        if (doneCount === viewports.length) {
+          console.log('[milg] All viewports done, assembling deepScan');
+          onAllDone();
+        }
       }, url, exclude, wantShots, { w: vp.w, h: vp.h });
-    })();
+    });
   }
 
   // Switch to Console Snippet tab (from JS-required warning)
