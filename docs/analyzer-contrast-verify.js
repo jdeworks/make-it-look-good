@@ -801,7 +801,11 @@ window.MilgContrastVerify = (function() {
           var mr = maskData[idx], mg = maskData[idx + 1], mb = maskData[idx + 2];
           inTextArea = (mr + mg + mb) / 3 < 220; // any non-white pixel in mask = text/AA
         } else {
-          inTextArea = true; // no mask — treat entire bbox as potential text area
+          // No mask — use position heuristic: center third of bbox is likely text,
+          // edges are likely background. This avoids classifying all pixels as text
+          // which causes bgColors=0 on dark backgrounds.
+          var relX = hx / (hSteps - 1 || 1), relY = vy / (vSteps - 1 || 1);
+          inTextArea = (relX > 0.15 && relX < 0.85 && relY > 0.15 && relY < 0.85);
         }
         // Per-element mask: trust it completely (it only has THIS element's text)
         // Full-page mask or no mask: use CSS distance as classifier
@@ -1208,13 +1212,14 @@ window.MilgContrastVerify = (function() {
     function onAllLoaded() {
       var results = [];
       var _vStats = { total: pairs.length, verified: 0, noFgBg: 0, tooSmall: 0, outOfBounds: 0 };
-      // Find pair index in the full contrastPairs array (mask uses this index for encoding)
+      var _hasMask = !!maskCanvasData;
       var allPairs = (raw.colors && raw.colors.contrastPairs) || [];
       pairs.forEach(function(pair) {
         var result = verifyPair(pair, sectionCanvases, meta, maskCanvasData);
         if (result) { results.push(result); _vStats.verified++; }
         else _vStats.noFgBg++;
       });
+      console.log('[milg-verify] Stats: mask=' + _hasMask + ' total=' + _vStats.total + ' verified=' + _vStats.verified + ' noFgBg=' + _vStats.noFgBg);
       results.sort(function(a, b) {
         if (a.crossesBoundary !== b.crossesBoundary) return a.crossesBoundary ? -1 : 1;
         return b.ratioDiff - a.ratioDiff;
