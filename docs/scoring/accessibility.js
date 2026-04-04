@@ -165,7 +165,7 @@ function scoreAccessibility(data) {
     findings.push({
       severity: 'warning',
       title: badLinks.length + ' link(s) with non-descriptive text',
-      detail: 'Found: ' + badLinks.slice(0, 5).map(function(l) { return '"' + l.text + '"'; }).join(', '),
+      detail: 'Found: ' + badLinks.map(function(l) { return '"' + l.text + '"'; }).join(', '),
       fix: 'Replace generic text like "click here" or "read more" with descriptive link text that makes sense out of context.',
       presetRef: null,
       source: 'WCAG 2.2 §2.4.4 — https://www.w3.org/TR/WCAG22/#link-purpose-in-context'
@@ -196,7 +196,8 @@ function scoreAccessibility(data) {
       detail: 'Non-button elements with role="button" must be keyboard-focusable',
       fix: 'Add tabindex="0" and a keydown handler for Enter/Space to elements with role="button", or use a real <button> element.',
       presetRef: null,
-      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
+      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value',
+      locator: { selector: '', text: '', bboxes: btnNoTabindex.filter(function(e) { return e.bbox; }).map(function(e) { return e.bbox; }), selectors: btnNoTabindex.filter(function(e) { return e.selector; }).map(function(e) { return e.selector; }) }
     });
   }
   if (hiddenFocusable.length > 0) {
@@ -206,7 +207,8 @@ function scoreAccessibility(data) {
       detail: 'Screen readers skip aria-hidden content, but keyboard focus can still reach these elements — creating a confusing experience',
       fix: 'Add tabindex="-1" to focusable elements inside aria-hidden containers, or restructure to keep them outside.',
       presetRef: null,
-      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
+      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value',
+      locator: { selector: '', text: '', bboxes: hiddenFocusable.filter(function(e) { return e.bbox; }).map(function(e) { return e.bbox; }), selectors: hiddenFocusable.filter(function(e) { return e.selector; }).map(function(e) { return e.selector; }) }
     });
   }
 
@@ -352,7 +354,7 @@ function scoreAccessibility(data) {
   if (dupIds.length > 0) {
     checks++;
     var ariaIds = dupIds.filter(function(d) { return d.usedInAria; });
-    var details = dupIds.slice(0, 5).map(function(d) { return '#' + d.id + ' (' + d.count + 'x' + (d.usedInAria ? ', used in label/ARIA' : '') + ')'; });
+    var details = dupIds.map(function(d) { return '#' + d.id + ' (' + d.count + 'x' + (d.usedInAria ? ', used in label/ARIA' : '') + ')'; });
     findings.push({
       severity: ariaIds.length > 0 ? 'error' : 'warning',
       title: dupIds.length + ' duplicate ID(s) found',
@@ -384,10 +386,11 @@ function scoreAccessibility(data) {
     findings.push({
       severity: 'error',
       title: nestedInt.length + ' nested interactive element(s) (e.g. link inside link)',
-      detail: 'Nested clickable elements create undefined behavior. Elements: ' + nestedInt.slice(0, 3).join(', '),
+      detail: 'Nested clickable elements create undefined behavior. Elements: ' + nestedInt.join(', '),
       fix: 'Never nest interactive elements. Use a single <a> or <button> and handle layout with CSS.',
       presetRef: null,
-      source: 'HTML spec §4.5.1 — https://html.spec.whatwg.org/multipage/text-level-semantics.html#the-a-element'
+      source: 'HTML spec §4.5.1 — https://html.spec.whatwg.org/multipage/text-level-semantics.html#the-a-element',
+      locator: { selector: '', text: '', bboxes: [], selectors: nestedInt }
     });
   }
 
@@ -412,10 +415,11 @@ function scoreAccessibility(data) {
     findings.push({
       severity: 'error',
       title: emptyInt.length + ' interactive element(s) with no accessible name',
-      detail: 'Buttons/links without text, aria-label, or title are invisible to screen readers: ' + emptyInt.slice(0, 3).join(', '),
+      detail: 'Buttons/links without text, aria-label, or title are invisible to screen readers: ' + emptyInt.join(', '),
       fix: 'Add text content, aria-label="description", or a descriptive title attribute to all interactive elements.',
       presetRef: null,
-      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
+      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value',
+      locator: { selector: '', text: '', bboxes: [], selectors: emptyInt }
     });
   }
 
@@ -423,14 +427,15 @@ function scoreAccessibility(data) {
   var ntContrast = a11y.nonTextContrast || [];
   if (ntContrast.length > 0) {
     checks++;
-    var ntDetails = ntContrast.slice(0, 3).map(function(n) { return n.selector + ' border ' + n.ratio + ':1'; });
+    var ntDetails = ntContrast.map(function(n) { return n.selector + ' border ' + n.ratio + ':1'; });
     findings.push({
       severity: 'warning',
       title: ntContrast.length + ' form element(s) with border contrast below 3:1',
       detail: 'Input borders must have at least 3:1 contrast against their background (WCAG 1.4.11): ' + ntDetails.join('; '),
       fix: 'Increase border color contrast. In dark mode use border-slate-600 or darker. Light mode: border-slate-300 minimum on white.',
       presetRef: null,
-      source: 'WCAG 2.2 §1.4.11 — https://www.w3.org/TR/WCAG22/#non-text-contrast'
+      source: 'WCAG 2.2 §1.4.11 — https://www.w3.org/TR/WCAG22/#non-text-contrast',
+      locator: { selector: '', text: '', bboxes: ntContrast.filter(function(n) { return n.bbox; }).map(function(n) { return n.bbox; }), selectors: ntContrast.map(function(n) { return n.selector; }) }
     });
   }
 
@@ -438,14 +443,15 @@ function scoreAccessibility(data) {
   var tableIssues = a11y.tableIssues || [];
   if (tableIssues.length > 0) {
     checks++;
-    var tblDetails = tableIssues.slice(0, 3).map(function(t) { return t.selector + ': ' + t.issues.join(', '); });
+    var tblDetails = tableIssues.map(function(t) { return t.selector + ': ' + t.issues.join(', '); });
     findings.push({
       severity: tableIssues.some(function(t) { return t.issues.indexOf('no-th') !== -1; }) ? 'warning' : 'info',
       title: tableIssues.length + ' table(s) with accessibility issues',
       detail: tblDetails.join('; '),
       fix: 'Data tables need <th> with scope="col" or scope="row". Add <caption> or aria-label for screen reader context.',
       presetRef: null,
-      source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
+      source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships',
+      locator: { selector: '', text: '', bboxes: tableIssues.filter(function(t) { return t.bbox; }).map(function(t) { return t.bbox; }), selectors: tableIssues.map(function(t) { return t.selector; }) }
     });
   }
 

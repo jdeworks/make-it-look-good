@@ -1388,7 +1388,7 @@ window.MilgContrastVerify = (function() {
       html += '<div style="padding:10px 14px;background:' + bg + ';border:1px solid ' + border + ';border-radius:6px;margin-bottom:8px">';
       html += '<strong style="color:#f59e0b">' + summary.variableBgCount + ' element' + (summary.variableBgCount > 1 ? 's' : '') + ' with variable backgrounds (photo/gradient)</strong>';
       html += '<p style="margin:4px 0 0;font-size:12px;color:' + (isDark ? '#fbbf24' : '#92400e') + '">Contrast varies across the element. The worst-case measurement determines the result.</p>';
-      vbResults.slice(0, 5).forEach(function(r) {
+      vbResults.forEach(function(r) {
         html += '<div style="margin-top:6px;padding:6px 8px;background:' + (isDark ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.7)') + ';border-radius:4px;font-size:12px">';
         html += '<strong>' + r.selector + '</strong>: "' + (r.text || '').substring(0, 30) + '"';
         html += '<br>Contrast range: <span style="color:#ef4444">' + r.pixelRatio + ':1</span> (worst) to <span style="color:#16a34a">' + r.pixelRatioBest + ':1</span> (best), avg ' + r.pixelRatioAvg + ':1';
@@ -1400,7 +1400,7 @@ window.MilgContrastVerify = (function() {
         if (r.sampleCount) html += '<span style="font-size:10px;color:var(--text-secondary)"> (' + r.sampleCount.fg + ' FG, ' + r.sampleCount.bg + ' BG samples)</span>';
         html += '</div>';
       });
-      if (vbResults.length > 5) html += '<div style="font-size:11px;color:var(--text-secondary);margin-top:4px">...and ' + (vbResults.length - 5) + ' more</div>';
+
       html += '</div>';
     }
 

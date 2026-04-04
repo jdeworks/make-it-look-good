@@ -112,13 +112,16 @@ function scoreTouchTargets(data) {
     var touchMin = profile.touchTarget;
     var touchFails = targets.filter(function(t) { return Math.min(t.width, t.height) < touchMin; });
     if (touchFails.length > 0) {
+      var allBboxes = touchFails.map(function(t) { return t.bbox; }).filter(Boolean);
+      var allSelectors = touchFails.map(function(t) { return t.selector; }).filter(Boolean);
       findings.push({
         severity: 'info',
         title: touchFails.length + ' element(s) below ' + touchMin + 'px touch target (analyzed at ' + vw + 'px desktop viewport)',
         detail: 'These meet desktop minimums but would fail on touch devices. Consider responsive sizing if the site is also used on mobile.',
         fix: 'For responsive touch support: add touch-target sizing at mobile breakpoints, e.g. sm:min-h-[' + touchMin + 'px]',
         presetRef: null,
-        source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout'
+        source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout',
+        locator: { selector: '', text: '', bboxes: allBboxes, selectors: allSelectors }
       });
     }
   }

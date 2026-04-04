@@ -78,7 +78,7 @@ function scoreLayout(data) {
       findings.push({
         severity: nearMisses >= 3 ? 'warning' : 'info',
         title: nearMisses + ' jagged alignment(s) — elements on same axis but ' + (nearMisses >= 3 ? 'noticeably' : 'slightly') + ' off',
-        detail: clusters.length + ' alignment edges across ' + edges.length + ' elements. ' + (jaggedExamples.length > 0 ? 'Offsets: ' + jaggedExamples.slice(0, 3).join(', ') : ''),
+        detail: clusters.length + ' alignment edges across ' + edges.length + ' elements. ' + (jaggedExamples.length > 0 ? 'Offsets: ' + jaggedExamples.join(', ') : ''),
         fix: 'Elements that share a visual axis should be exactly aligned. Check that container padding, margin, and grid column widths are consistent. In Tailwind: use consistent px-4/px-6 and grid/flex alignment.',
         presetRef: null,
         source: 'Gestalt continuity — https://lawsofux.com/law-of-common-region/'
@@ -146,7 +146,7 @@ function scoreLayout(data) {
       findings.push({
         severity: 'info',
         title: radii.length + ' distinct border-radius values (recommend 2-4, excluding pill/circle shapes)',
-        detail: 'Values: ' + radii.slice(0, 6).map(function(r) { return r.value + ' (' + r.count + 'x)'; }).join(', '),
+        detail: 'Values: ' + radii.map(function(r) { return r.value + ' (' + r.count + 'x)'; }).join(', '),
         fix: 'Standardize border-radius to 2-4 values. In Tailwind: rounded-sm, rounded, rounded-lg, rounded-xl.',
         presetRef: null,
         source: 'Material Design 3 — https://m3.material.io/styles/shape/overview'
@@ -177,7 +177,7 @@ function scoreLayout(data) {
   var offscreen = layout.offscreenElements || [];
   if (offscreen.length > 0) {
     checks++;
-    var offDetails = offscreen.slice(0, 5).map(function(e) {
+    var offDetails = offscreen.map(function(e) {
       var label = e.element;
       if (e.text) label += ' ("' + e.text.substring(0, 25) + (e.text.length > 25 ? '…' : '') + '")';
       return label + ' at x=' + e.left + 'px';
@@ -189,7 +189,7 @@ function scoreLayout(data) {
       fix: 'Check absolute/fixed positioning. On mobile, dropdown menus with right-0 may overflow left. Use left-0 sm:right-0 or max-w-[calc(100vw-2rem)]. For elements extending right, check fixed widths wider than viewport.',
       presetRef: null,
       source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
-      locator: { selector: offscreen[0] ? offscreen[0].selector : '', text: offscreen[0] ? (offscreen[0].text || '') : '', bboxes: offscreen.filter(function(o) { return o.bbox; }).map(function(o) { return o.bbox; }) }
+      locator: { selector: offscreen[0] ? offscreen[0].selector : '', text: offscreen[0] ? (offscreen[0].text || '') : '', bboxes: offscreen.filter(function(o) { return o.bbox; }).map(function(o) { return o.bbox; }), selectors: offscreen.filter(function(o) { return o.selector; }).map(function(o) { return o.selector; }) }
     });
   } else {
     checks++;
@@ -201,7 +201,7 @@ function scoreLayout(data) {
   var bugScrollContainers = hScrollContainers.filter(function(c) { return c.classification === 'bug' || !c.intentional; });
   if (bugScrollContainers.length > 0 || data.structure.hasHorizontalOverflow) {
     checks++;
-    var scrollDetails = bugScrollContainers.slice(0, 3).map(function(c) {
+    var scrollDetails = bugScrollContainers.map(function(c) {
       var reasonLabel = c.reason === 'structural-children-in-scroll' ? ' (structural content in scroll container)'
         : c.reason === 'wide-container-scrolls' ? ' (wide container should fill viewport)'
         : c.reason === 'no-overflow-css' ? ' (no overflow CSS — content spills)'
@@ -216,7 +216,7 @@ function scoreLayout(data) {
       fix: 'Fix horizontal overflow: add overflow-x-hidden on the outer wrapper, check for elements with fixed widths wider than viewport, or add max-w-full. Common causes: fixed-width tables, absolute positioned elements, images without max-width. If a wide container has overflow-x-auto but contains page sections (nav, forms, headings), remove the overflow and fix the root cause.',
       presetRef: null,
       source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
-      locator: { selector: bugScrollContainers[0] ? bugScrollContainers[0].selector : '', text: '', bboxes: bugScrollContainers.filter(function(c) { return c.bbox; }).map(function(c) { return c.bbox; }) }
+      locator: { selector: bugScrollContainers[0] ? bugScrollContainers[0].selector : '', text: '', bboxes: bugScrollContainers.filter(function(c) { return c.bbox; }).map(function(c) { return c.bbox; }), selectors: bugScrollContainers.filter(function(c) { return c.selector; }).map(function(c) { return c.selector; }) }
     });
   } else {
     checks++;
@@ -241,7 +241,7 @@ function scoreLayout(data) {
   var hiddenPanelIssues = layout.hiddenPanelIssues || [];
   if (hiddenPanelIssues.length > 0) {
     checks++;
-    var panelDetails = hiddenPanelIssues.slice(0, 3).map(function(p) {
+    var panelDetails = hiddenPanelIssues.map(function(p) {
       var issueTypes = p.issues.map(function(i) {
         return i.type === 'right-overflow' ? 'overflows right by ' + i.overflow + 'px'
           : i.type === 'left-overflow' ? 'overflows left by ' + i.overflow + 'px'
@@ -257,7 +257,7 @@ function scoreLayout(data) {
       fix: 'Dropdown menus and dialogs must fit within the viewport when revealed. Use max-w-[calc(100vw-1rem)], or position with left-0 instead of right-0 on narrow viewports. For dialogs: add max-h-[90vh] overflow-y-auto.',
       presetRef: null,
       source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
-      locator: { selector: hiddenPanelIssues[0] ? hiddenPanelIssues[0].selector : '', text: '', bboxes: hiddenPanelIssues.filter(function(p) { return p.bbox; }).map(function(p) { return p.bbox; }) }
+      locator: { selector: hiddenPanelIssues[0] ? hiddenPanelIssues[0].selector : '', text: '', bboxes: hiddenPanelIssues.filter(function(p) { return p.bbox; }).map(function(p) { return p.bbox; }), selectors: hiddenPanelIssues.filter(function(p) { return p.selector; }).map(function(p) { return p.selector; }) }
     });
   } else if (layout.hiddenPanelCount > 0) {
     checks++;
@@ -303,7 +303,7 @@ function scoreLayout(data) {
   var textOverlaps = layout.textOverlaps || [];
   if (textOverlaps.length > 0) {
     checks++;
-    var overlapDetails = textOverlaps.slice(0, 3).map(function(o) {
+    var overlapDetails = textOverlaps.map(function(o) {
       return o.fixed + ' ("' + o.fixedText.substring(0, 20) + '") overlaps ' + o.under + ' ("' + o.underText.substring(0, 20) + '")';
     });
     findings.push({
@@ -312,7 +312,8 @@ function scoreLayout(data) {
       detail: 'Fixed/sticky elements with transparent backgrounds overlap readable text underneath, making both unreadable: ' + overlapDetails.join('; '),
       fix: 'Add an opaque or semi-opaque background (bg-white/90, backdrop-blur) to fixed elements that overlap content. Or hide the element when it scrolls over content sections.',
       presetRef: null,
-      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
+      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum',
+      locator: { selector: '', text: '', bboxes: textOverlaps.filter(function(o) { return o.bbox; }).map(function(o) { return o.bbox; }), selectors: textOverlaps.filter(function(o) { return o.fixed; }).map(function(o) { return o.fixed; }) }
     });
   }
 
@@ -324,7 +325,7 @@ function scoreLayout(data) {
     var deliberate = childExceeds.filter(function(c) { return c.deliberate; });
     if (accidental.length > 0) {
       checks++;
-      var accDetails = accidental.slice(0, 3).map(function(c) {
+      var accDetails = accidental.map(function(c) {
         return c.childTag + (c.childText ? ' ("' + c.childText.substring(0, 15) + '…")' : '') + ' exceeds ' + c.parent + ' by ' + c.excess + 'px';
       });
       findings.push({
@@ -333,11 +334,12 @@ function scoreLayout(data) {
         detail: 'These elements extend past their parent with no overflow set (likely unintentional): ' + accDetails.join('; '),
         fix: 'Add max-w-full or overflow-x-auto on the parent. If intentional, set overflow-hidden or overflow-visible explicitly.',
         presetRef: null,
-        source: 'CSS Box Model — https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_box_model'
+        source: 'CSS Box Model — https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_box_model',
+        locator: { selector: '', text: '', bboxes: accidental.filter(function(c) { return c.bbox; }).map(function(c) { return c.bbox; }), selectors: accidental.filter(function(c) { return c.selector; }).map(function(c) { return c.selector; }) }
       });
     }
     if (deliberate.length > 0) {
-      var delDetails = deliberate.slice(0, 3).map(function(c) {
+      var delDetails = deliberate.map(function(c) {
         return c.childTag + (c.childText ? ' ("' + c.childText.substring(0, 15) + '…")' : '') + ' exceeds ' + c.parent + ' by ' + c.excess + 'px (overflow: ' + c.parentOverflow + ')';
       });
       findings.push({
@@ -346,7 +348,8 @@ function scoreLayout(data) {
         detail: 'Parent has explicit overflow handling — likely intentional: ' + delDetails.join('; '),
         fix: 'Verify this overflow is intentional. If content is being clipped unexpectedly, use overflow-x-auto for scroll or constrain child width.',
         presetRef: null,
-        source: 'CSS Box Model — https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_box_model'
+        source: 'CSS Box Model — https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_box_model',
+        locator: { selector: '', text: '', bboxes: deliberate.filter(function(c) { return c.bbox; }).map(function(c) { return c.bbox; }), selectors: deliberate.filter(function(c) { return c.selector; }).map(function(c) { return c.selector; }) }
       });
     }
   }
@@ -382,7 +385,7 @@ function scoreLayout(data) {
   var hiddenClips = layout.hiddenClipElements || [];
   if (hiddenClips.length > 0) {
     checks++;
-    var clipDetails = hiddenClips.slice(0, 3).map(function(c) {
+    var clipDetails = hiddenClips.map(function(c) {
       return c.selector + ' clips ' + c.clipped + 'px of content';
     });
     findings.push({
@@ -391,7 +394,8 @@ function scoreLayout(data) {
       detail: 'These elements use overflow-x:hidden to hide content that doesn\'t fit, instead of allowing scroll or fixing the layout: ' + clipDetails.join('; '),
       fix: 'Use overflow-x-auto to allow scrolling, or fix the root cause — constrain child widths with max-w-full. overflow-x-hidden masks layout bugs.',
       presetRef: null,
-      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
+      locator: { selector: '', text: '', bboxes: hiddenClips.filter(function(c) { return c.bbox; }).map(function(c) { return c.bbox; }), selectors: hiddenClips.map(function(c) { return c.selector; }) }
     });
   }
 
@@ -428,7 +432,7 @@ function scoreLayout(data) {
   var clippedOverflow = (data.layout && data.layout.clippedOverflow) || [];
   if (clippedOverflow.length > 0) {
     checks++;
-    var clipDetails = clippedOverflow.slice(0, 3).map(function(c) {
+    var clipDetails = clippedOverflow.map(function(c) {
       return c.selector + ' overflows by ' + c.overflow + 'px (' + c.display + ' container, ' + c.containerWidth + 'px wide)';
     });
     findings.push({
@@ -437,7 +441,7 @@ function scoreLayout(data) {
       detail: clipDetails.join('; '),
       fix: 'Content overflows the container without a scrollbar — may cause horizontal scroll on iOS Safari. Add flex-wrap, reduce gap size on mobile (gap-4 sm:gap-8), or add overflow-x-hidden.',
       source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
-      locator: { selector: clippedOverflow[0].selector, text: '', bboxes: clippedOverflow.filter(function(c) { return c.bbox; }).map(function(c) { return c.bbox; }) }
+      locator: { selector: clippedOverflow[0].selector, text: '', bboxes: clippedOverflow.filter(function(c) { return c.bbox; }).map(function(c) { return c.bbox; }), selectors: clippedOverflow.map(function(c) { return c.selector; }) }
     });
   }
 
@@ -446,7 +450,7 @@ function scoreLayout(data) {
   if (fixedRisks.length > 0) {
     checks++;
     var totalChildren = fixedRisks.reduce(function(sum, r) { return sum + (r.childCount || 1); }, 0);
-    var riskDetails = fixedRisks.slice(0, 3).map(function(r) {
+    var riskDetails = fixedRisks.map(function(r) {
       var label = r.element + (r.text ? ' ("' + r.text.substring(0, 20) + '")' : '');
       var count = r.childCount > 1 ? ' (' + r.childCount + ' children)' : '';
       return label + count + ' — ' + (r.risk === 'light-on-light' ? 'light color may vanish on light sections' : 'dark color may vanish on dark sections');
@@ -457,7 +461,7 @@ function scoreLayout(data) {
       detail: riskDetails.join('; '),
       fix: 'Fixed/sticky elements must adapt their color when scrolling over different-colored sections. Use a scroll listener to toggle text color, or add a semi-opaque background to the fixed container.',
       source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum',
-      locator: { selector: fixedRisks[0].selector, text: fixedRisks[0].text || '', bboxes: fixedRisks.filter(function(r) { return r.bbox; }).map(function(r) { return r.bbox; }) }
+      locator: { selector: fixedRisks[0].selector, text: fixedRisks[0].text || '', bboxes: fixedRisks.filter(function(r) { return r.bbox; }).map(function(r) { return r.bbox; }), selectors: fixedRisks.filter(function(r) { return r.selector; }).map(function(r) { return r.selector; }) }
     });
   }
 

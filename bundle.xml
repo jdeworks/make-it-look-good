@@ -3553,7 +3553,7 @@ function scoreAccessibility(data) {
     findings.push({
       severity: 'warning',
       title: badLinks.length + ' link(s) with non-descriptive text',
-      detail: 'Found: ' + badLinks.slice(0, 5).map(function(l) { return '"' + l.text + '"'; }).join(', '),
+      detail: 'Found: ' + badLinks.map(function(l) { return '"' + l.text + '"'; }).join(', '),
       fix: 'Replace generic text like "click here" or "read more" with descriptive link text that makes sense out of context.',
       presetRef: null,
       source: 'WCAG 2.2 §2.4.4 — https://www.w3.org/TR/WCAG22/#link-purpose-in-context'
@@ -3584,7 +3584,8 @@ function scoreAccessibility(data) {
       detail: 'Non-button elements with role="button" must be keyboard-focusable',
       fix: 'Add tabindex="0" and a keydown handler for Enter/Space to elements with role="button", or use a real <button> element.',
       presetRef: null,
-      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
+      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value',
+      locator: { selector: '', text: '', bboxes: btnNoTabindex.filter(function(e) { return e.bbox; }).map(function(e) { return e.bbox; }), selectors: btnNoTabindex.filter(function(e) { return e.selector; }).map(function(e) { return e.selector; }) }
     });
   }
   if (hiddenFocusable.length > 0) {
@@ -3594,7 +3595,8 @@ function scoreAccessibility(data) {
       detail: 'Screen readers skip aria-hidden content, but keyboard focus can still reach these elements — creating a confusing experience',
       fix: 'Add tabindex="-1" to focusable elements inside aria-hidden containers, or restructure to keep them outside.',
       presetRef: null,
-      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
+      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value',
+      locator: { selector: '', text: '', bboxes: hiddenFocusable.filter(function(e) { return e.bbox; }).map(function(e) { return e.bbox; }), selectors: hiddenFocusable.filter(function(e) { return e.selector; }).map(function(e) { return e.selector; }) }
     });
   }
 
@@ -3740,7 +3742,7 @@ function scoreAccessibility(data) {
   if (dupIds.length > 0) {
     checks++;
     var ariaIds = dupIds.filter(function(d) { return d.usedInAria; });
-    var details = dupIds.slice(0, 5).map(function(d) { return '#' + d.id + ' (' + d.count + 'x' + (d.usedInAria ? ', used in label/ARIA' : '') + ')'; });
+    var details = dupIds.map(function(d) { return '#' + d.id + ' (' + d.count + 'x' + (d.usedInAria ? ', used in label/ARIA' : '') + ')'; });
     findings.push({
       severity: ariaIds.length > 0 ? 'error' : 'warning',
       title: dupIds.length + ' duplicate ID(s) found',
@@ -3772,10 +3774,11 @@ function scoreAccessibility(data) {
     findings.push({
       severity: 'error',
       title: nestedInt.length + ' nested interactive element(s) (e.g. link inside link)',
-      detail: 'Nested clickable elements create undefined behavior. Elements: ' + nestedInt.slice(0, 3).join(', '),
+      detail: 'Nested clickable elements create undefined behavior. Elements: ' + nestedInt.join(', '),
       fix: 'Never nest interactive elements. Use a single <a> or <button> and handle layout with CSS.',
       presetRef: null,
-      source: 'HTML spec §4.5.1 — https://html.spec.whatwg.org/multipage/text-level-semantics.html#the-a-element'
+      source: 'HTML spec §4.5.1 — https://html.spec.whatwg.org/multipage/text-level-semantics.html#the-a-element',
+      locator: { selector: '', text: '', bboxes: [], selectors: nestedInt }
     });
   }
 
@@ -3800,10 +3803,11 @@ function scoreAccessibility(data) {
     findings.push({
       severity: 'error',
       title: emptyInt.length + ' interactive element(s) with no accessible name',
-      detail: 'Buttons/links without text, aria-label, or title are invisible to screen readers: ' + emptyInt.slice(0, 3).join(', '),
+      detail: 'Buttons/links without text, aria-label, or title are invisible to screen readers: ' + emptyInt.join(', '),
       fix: 'Add text content, aria-label="description", or a descriptive title attribute to all interactive elements.',
       presetRef: null,
-      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
+      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value',
+      locator: { selector: '', text: '', bboxes: [], selectors: emptyInt }
     });
   }
 
@@ -3811,14 +3815,15 @@ function scoreAccessibility(data) {
   var ntContrast = a11y.nonTextContrast || [];
   if (ntContrast.length > 0) {
     checks++;
-    var ntDetails = ntContrast.slice(0, 3).map(function(n) { return n.selector + ' border ' + n.ratio + ':1'; });
+    var ntDetails = ntContrast.map(function(n) { return n.selector + ' border ' + n.ratio + ':1'; });
     findings.push({
       severity: 'warning',
       title: ntContrast.length + ' form element(s) with border contrast below 3:1',
       detail: 'Input borders must have at least 3:1 contrast against their background (WCAG 1.4.11): ' + ntDetails.join('; '),
       fix: 'Increase border color contrast. In dark mode use border-slate-600 or darker. Light mode: border-slate-300 minimum on white.',
       presetRef: null,
-      source: 'WCAG 2.2 §1.4.11 — https://www.w3.org/TR/WCAG22/#non-text-contrast'
+      source: 'WCAG 2.2 §1.4.11 — https://www.w3.org/TR/WCAG22/#non-text-contrast',
+      locator: { selector: '', text: '', bboxes: ntContrast.filter(function(n) { return n.bbox; }).map(function(n) { return n.bbox; }), selectors: ntContrast.map(function(n) { return n.selector; }) }
     });
   }
 
@@ -3826,14 +3831,15 @@ function scoreAccessibility(data) {
   var tableIssues = a11y.tableIssues || [];
   if (tableIssues.length > 0) {
     checks++;
-    var tblDetails = tableIssues.slice(0, 3).map(function(t) { return t.selector + ': ' + t.issues.join(', '); });
+    var tblDetails = tableIssues.map(function(t) { return t.selector + ': ' + t.issues.join(', '); });
     findings.push({
       severity: tableIssues.some(function(t) { return t.issues.indexOf('no-th') !== -1; }) ? 'warning' : 'info',
       title: tableIssues.length + ' table(s) with accessibility issues',
       detail: tblDetails.join('; '),
       fix: 'Data tables need <th> with scope="col" or scope="row". Add <caption> or aria-label for screen reader context.',
       presetRef: null,
-      source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
+      source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships',
+      locator: { selector: '', text: '', bboxes: tableIssues.filter(function(t) { return t.bbox; }).map(function(t) { return t.bbox; }), selectors: tableIssues.map(function(t) { return t.selector; }) }
     });
   }
 
@@ -4318,7 +4324,7 @@ function scoreVisualConsistency(data) {
       findings.push({
         severity: 'info',
         title: radii.length + ' distinct border-radius values (recommend 2-4, excluding pill/circle shapes)',
-        detail: 'Values: ' + radii.slice(0, 6).map(function(r) { return r.value + ' (' + r.count + 'x)'; }).join(', '),
+        detail: 'Values: ' + radii.map(function(r) { return r.value + ' (' + r.count + 'x)'; }).join(', '),
         fix: 'Standardize border-radius to 2-4 values in your design tokens. In Tailwind: rounded-sm (2px), rounded (4px), rounded-lg (8px), rounded-xl (12px).',
         presetRef: null,
         source: 'Material Design 3 — https://m3.material.io/styles/shape/overview'
@@ -4617,8 +4623,8 @@ function scoreContrast(data) {
   var failSeen = {};
   failures.forEach(function(p) {
     var dedup = p.ratio + '|' + p.selector;
-    if (failSeen[dedup]) { failSeen[dedup].count++; if (p.bbox) failSeen[dedup].bboxes.push(p.bbox); return; }
-    failSeen[dedup] = { p: p, count: 1, bboxes: p.bbox ? [p.bbox] : [] };
+    if (failSeen[dedup]) { failSeen[dedup].count++; if (p.bbox) failSeen[dedup].bboxes.push(p.bbox); if (p.selector) failSeen[dedup].selectors.push(p.selector); return; }
+    failSeen[dedup] = { p: p, count: 1, bboxes: p.bbox ? [p.bbox] : [], selectors: p.selector ? [p.selector] : [] };
   });
   Object.keys(failSeen).forEach(function(key) {
     var entry = failSeen[key];
@@ -4640,7 +4646,7 @@ function scoreContrast(data) {
         : 'Normal text needs ' + profile.contrast + ':1 minimum. Use a darker text color or lighter background.') + bgNote,
       presetRef: null,
       source: p.isLarge ? 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' : 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum',
-      locator: { selector: p.selector, text: p.text, bboxes: entry.bboxes },
+      locator: { selector: p.selector, text: p.text, bboxes: entry.bboxes, selectors: entry.selectors },
       _colors: { fg: p.fg, bg: p.bg, ratio: p.ratio }
     });
   });
@@ -4649,7 +4655,7 @@ function scoreContrast(data) {
     findings.push({
       severity: 'info',
       title: uncertain.length + ' element(s) with undetermined contrast (background could not be resolved)',
-      detail: 'These elements may use gradients, images, SVGs, or complex CSS that the analyzer cannot parse. Check manually: ' + uncertain.slice(0, 3).map(function(p) { return '"' + p.text + '"'; }).join(', '),
+      detail: 'These elements may use gradients, images, SVGs, or complex CSS that the analyzer cannot parse. Check manually: ' + uncertain.map(function(p) { return '"' + p.text + '"'; }).join(', '),
       fix: 'Verify these elements have sufficient contrast visually. The analyzer reports 1:1 when the effective background cannot be computed.',
       presetRef: null,
       source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
@@ -4660,8 +4666,8 @@ function scoreContrast(data) {
   var nearSeen = {};
   nearMisses.forEach(function(p) {
     var dedup = p.ratio + '|' + p.selector;
-    if (nearSeen[dedup]) { nearSeen[dedup].count++; if (p.bbox) nearSeen[dedup].bboxes.push(p.bbox); return; }
-    nearSeen[dedup] = { p: p, count: 1, bboxes: p.bbox ? [p.bbox] : [] };
+    if (nearSeen[dedup]) { nearSeen[dedup].count++; if (p.bbox) nearSeen[dedup].bboxes.push(p.bbox); if (p.selector) nearSeen[dedup].selectors.push(p.selector); return; }
+    nearSeen[dedup] = { p: p, count: 1, bboxes: p.bbox ? [p.bbox] : [], selectors: p.selector ? [p.selector] : [] };
   });
   Object.keys(nearSeen).forEach(function(key) {
     var entry = nearSeen[key];
@@ -4674,7 +4680,7 @@ function scoreContrast(data) {
       fix: 'Passes AA but consider increasing for AAA (7:1). Slight changes in background could cause failure.',
       presetRef: null,
       source: 'WCAG 2.2 §1.4.6 — https://www.w3.org/TR/WCAG22/#contrast-enhanced',
-      locator: { selector: p.selector, text: p.text, bboxes: entry.bboxes },
+      locator: { selector: p.selector, text: p.text, bboxes: entry.bboxes, selectors: entry.selectors },
       _colors: { fg: p.fg, bg: p.bg, ratio: p.ratio }
     });
   });
@@ -4692,8 +4698,8 @@ function scoreContrast(data) {
   var passSeen = {};
   passingPairs.forEach(function(p) {
     var dedup = p.selector;
-    if (passSeen[dedup]) { if (p.bbox) passSeen[dedup].bboxes.push(p.bbox); return; }
-    passSeen[dedup] = { p: p, bboxes: p.bbox ? [p.bbox] : [] };
+    if (passSeen[dedup]) { if (p.bbox) passSeen[dedup].bboxes.push(p.bbox); if (p.selector) passSeen[dedup].selectors.push(p.selector); return; }
+    passSeen[dedup] = { p: p, bboxes: p.bbox ? [p.bbox] : [], selectors: p.selector ? [p.selector] : [] };
   });
   Object.keys(passSeen).forEach(function(key) {
     var entry = passSeen[key];
@@ -4704,7 +4710,7 @@ function scoreContrast(data) {
       title: 'Contrast ' + p.ratio + ':1 passes (' + p.needed + ':1 needed)',
       detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector,
       fix: '',
-      locator: { selector: p.selector, text: p.text, bboxes: entry.bboxes },
+      locator: { selector: p.selector, text: p.text, bboxes: entry.bboxes, selectors: entry.selectors },
       _colors: { fg: p.fg, bg: p.bg, ratio: p.ratio }
     });
   });
@@ -4760,7 +4766,7 @@ function scoreContrast(data) {
   // Backdrop-filter + translucent backgrounds — contrast ratio may be unreliable
   var backdropPairs = profilePairs.filter(function(p) { return p.backdropFilter && p.minBgAlpha < 0.7; });
   if (backdropPairs.length > 0) {
-    var bdSamples = backdropPairs.slice(0, 3).map(function(p) {
+    var bdSamples = backdropPairs.map(function(p) {
       return '"' + p.text + '" (bg alpha: ' + p.minBgAlpha + ')';
     });
     findings.push({
@@ -4998,7 +5004,7 @@ function scoreLayout(data) {
       findings.push({
         severity: nearMisses >= 3 ? 'warning' : 'info',
         title: nearMisses + ' jagged alignment(s) — elements on same axis but ' + (nearMisses >= 3 ? 'noticeably' : 'slightly') + ' off',
-        detail: clusters.length + ' alignment edges across ' + edges.length + ' elements. ' + (jaggedExamples.length > 0 ? 'Offsets: ' + jaggedExamples.slice(0, 3).join(', ') : ''),
+        detail: clusters.length + ' alignment edges across ' + edges.length + ' elements. ' + (jaggedExamples.length > 0 ? 'Offsets: ' + jaggedExamples.join(', ') : ''),
         fix: 'Elements that share a visual axis should be exactly aligned. Check that container padding, margin, and grid column widths are consistent. In Tailwind: use consistent px-4/px-6 and grid/flex alignment.',
         presetRef: null,
         source: 'Gestalt continuity — https://lawsofux.com/law-of-common-region/'
@@ -5066,7 +5072,7 @@ function scoreLayout(data) {
       findings.push({
         severity: 'info',
         title: radii.length + ' distinct border-radius values (recommend 2-4, excluding pill/circle shapes)',
-        detail: 'Values: ' + radii.slice(0, 6).map(function(r) { return r.value + ' (' + r.count + 'x)'; }).join(', '),
+        detail: 'Values: ' + radii.map(function(r) { return r.value + ' (' + r.count + 'x)'; }).join(', '),
         fix: 'Standardize border-radius to 2-4 values. In Tailwind: rounded-sm, rounded, rounded-lg, rounded-xl.',
         presetRef: null,
         source: 'Material Design 3 — https://m3.material.io/styles/shape/overview'
@@ -5097,7 +5103,7 @@ function scoreLayout(data) {
   var offscreen = layout.offscreenElements || [];
   if (offscreen.length > 0) {
     checks++;
-    var offDetails = offscreen.slice(0, 5).map(function(e) {
+    var offDetails = offscreen.map(function(e) {
       var label = e.element;
       if (e.text) label += ' ("' + e.text.substring(0, 25) + (e.text.length > 25 ? '…' : '') + '")';
       return label + ' at x=' + e.left + 'px';
@@ -5109,7 +5115,7 @@ function scoreLayout(data) {
       fix: 'Check absolute/fixed positioning. On mobile, dropdown menus with right-0 may overflow left. Use left-0 sm:right-0 or max-w-[calc(100vw-2rem)]. For elements extending right, check fixed widths wider than viewport.',
       presetRef: null,
       source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
-      locator: { selector: offscreen[0] ? offscreen[0].selector : '', text: offscreen[0] ? (offscreen[0].text || '') : '', bboxes: offscreen.filter(function(o) { return o.bbox; }).map(function(o) { return o.bbox; }) }
+      locator: { selector: offscreen[0] ? offscreen[0].selector : '', text: offscreen[0] ? (offscreen[0].text || '') : '', bboxes: offscreen.filter(function(o) { return o.bbox; }).map(function(o) { return o.bbox; }), selectors: offscreen.filter(function(o) { return o.selector; }).map(function(o) { return o.selector; }) }
     });
   } else {
     checks++;
@@ -5121,7 +5127,7 @@ function scoreLayout(data) {
   var bugScrollContainers = hScrollContainers.filter(function(c) { return c.classification === 'bug' || !c.intentional; });
   if (bugScrollContainers.length > 0 || data.structure.hasHorizontalOverflow) {
     checks++;
-    var scrollDetails = bugScrollContainers.slice(0, 3).map(function(c) {
+    var scrollDetails = bugScrollContainers.map(function(c) {
       var reasonLabel = c.reason === 'structural-children-in-scroll' ? ' (structural content in scroll container)'
         : c.reason === 'wide-container-scrolls' ? ' (wide container should fill viewport)'
         : c.reason === 'no-overflow-css' ? ' (no overflow CSS — content spills)'
@@ -5136,7 +5142,7 @@ function scoreLayout(data) {
       fix: 'Fix horizontal overflow: add overflow-x-hidden on the outer wrapper, check for elements with fixed widths wider than viewport, or add max-w-full. Common causes: fixed-width tables, absolute positioned elements, images without max-width. If a wide container has overflow-x-auto but contains page sections (nav, forms, headings), remove the overflow and fix the root cause.',
       presetRef: null,
       source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
-      locator: { selector: bugScrollContainers[0] ? bugScrollContainers[0].selector : '', text: '', bboxes: bugScrollContainers.filter(function(c) { return c.bbox; }).map(function(c) { return c.bbox; }) }
+      locator: { selector: bugScrollContainers[0] ? bugScrollContainers[0].selector : '', text: '', bboxes: bugScrollContainers.filter(function(c) { return c.bbox; }).map(function(c) { return c.bbox; }), selectors: bugScrollContainers.filter(function(c) { return c.selector; }).map(function(c) { return c.selector; }) }
     });
   } else {
     checks++;
@@ -5161,7 +5167,7 @@ function scoreLayout(data) {
   var hiddenPanelIssues = layout.hiddenPanelIssues || [];
   if (hiddenPanelIssues.length > 0) {
     checks++;
-    var panelDetails = hiddenPanelIssues.slice(0, 3).map(function(p) {
+    var panelDetails = hiddenPanelIssues.map(function(p) {
       var issueTypes = p.issues.map(function(i) {
         return i.type === 'right-overflow' ? 'overflows right by ' + i.overflow + 'px'
           : i.type === 'left-overflow' ? 'overflows left by ' + i.overflow + 'px'
@@ -5177,7 +5183,7 @@ function scoreLayout(data) {
       fix: 'Dropdown menus and dialogs must fit within the viewport when revealed. Use max-w-[calc(100vw-1rem)], or position with left-0 instead of right-0 on narrow viewports. For dialogs: add max-h-[90vh] overflow-y-auto.',
       presetRef: null,
       source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
-      locator: { selector: hiddenPanelIssues[0] ? hiddenPanelIssues[0].selector : '', text: '', bboxes: hiddenPanelIssues.filter(function(p) { return p.bbox; }).map(function(p) { return p.bbox; }) }
+      locator: { selector: hiddenPanelIssues[0] ? hiddenPanelIssues[0].selector : '', text: '', bboxes: hiddenPanelIssues.filter(function(p) { return p.bbox; }).map(function(p) { return p.bbox; }), selectors: hiddenPanelIssues.filter(function(p) { return p.selector; }).map(function(p) { return p.selector; }) }
     });
   } else if (layout.hiddenPanelCount > 0) {
     checks++;
@@ -5223,7 +5229,7 @@ function scoreLayout(data) {
   var textOverlaps = layout.textOverlaps || [];
   if (textOverlaps.length > 0) {
     checks++;
-    var overlapDetails = textOverlaps.slice(0, 3).map(function(o) {
+    var overlapDetails = textOverlaps.map(function(o) {
       return o.fixed + ' ("' + o.fixedText.substring(0, 20) + '") overlaps ' + o.under + ' ("' + o.underText.substring(0, 20) + '")';
     });
     findings.push({
@@ -5232,7 +5238,8 @@ function scoreLayout(data) {
       detail: 'Fixed/sticky elements with transparent backgrounds overlap readable text underneath, making both unreadable: ' + overlapDetails.join('; '),
       fix: 'Add an opaque or semi-opaque background (bg-white/90, backdrop-blur) to fixed elements that overlap content. Or hide the element when it scrolls over content sections.',
       presetRef: null,
-      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
+      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum',
+      locator: { selector: '', text: '', bboxes: textOverlaps.filter(function(o) { return o.bbox; }).map(function(o) { return o.bbox; }), selectors: textOverlaps.filter(function(o) { return o.fixed; }).map(function(o) { return o.fixed; }) }
     });
   }
 
@@ -5244,7 +5251,7 @@ function scoreLayout(data) {
     var deliberate = childExceeds.filter(function(c) { return c.deliberate; });
     if (accidental.length > 0) {
       checks++;
-      var accDetails = accidental.slice(0, 3).map(function(c) {
+      var accDetails = accidental.map(function(c) {
         return c.childTag + (c.childText ? ' ("' + c.childText.substring(0, 15) + '…")' : '') + ' exceeds ' + c.parent + ' by ' + c.excess + 'px';
       });
       findings.push({
@@ -5253,11 +5260,12 @@ function scoreLayout(data) {
         detail: 'These elements extend past their parent with no overflow set (likely unintentional): ' + accDetails.join('; '),
         fix: 'Add max-w-full or overflow-x-auto on the parent. If intentional, set overflow-hidden or overflow-visible explicitly.',
         presetRef: null,
-        source: 'CSS Box Model — https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_box_model'
+        source: 'CSS Box Model — https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_box_model',
+        locator: { selector: '', text: '', bboxes: accidental.filter(function(c) { return c.bbox; }).map(function(c) { return c.bbox; }), selectors: accidental.filter(function(c) { return c.selector; }).map(function(c) { return c.selector; }) }
       });
     }
     if (deliberate.length > 0) {
-      var delDetails = deliberate.slice(0, 3).map(function(c) {
+      var delDetails = deliberate.map(function(c) {
         return c.childTag + (c.childText ? ' ("' + c.childText.substring(0, 15) + '…")' : '') + ' exceeds ' + c.parent + ' by ' + c.excess + 'px (overflow: ' + c.parentOverflow + ')';
       });
       findings.push({
@@ -5266,7 +5274,8 @@ function scoreLayout(data) {
         detail: 'Parent has explicit overflow handling — likely intentional: ' + delDetails.join('; '),
         fix: 'Verify this overflow is intentional. If content is being clipped unexpectedly, use overflow-x-auto for scroll or constrain child width.',
         presetRef: null,
-        source: 'CSS Box Model — https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_box_model'
+        source: 'CSS Box Model — https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_box_model',
+        locator: { selector: '', text: '', bboxes: deliberate.filter(function(c) { return c.bbox; }).map(function(c) { return c.bbox; }), selectors: deliberate.filter(function(c) { return c.selector; }).map(function(c) { return c.selector; }) }
       });
     }
   }
@@ -5302,7 +5311,7 @@ function scoreLayout(data) {
   var hiddenClips = layout.hiddenClipElements || [];
   if (hiddenClips.length > 0) {
     checks++;
-    var clipDetails = hiddenClips.slice(0, 3).map(function(c) {
+    var clipDetails = hiddenClips.map(function(c) {
       return c.selector + ' clips ' + c.clipped + 'px of content';
     });
     findings.push({
@@ -5311,7 +5320,8 @@ function scoreLayout(data) {
       detail: 'These elements use overflow-x:hidden to hide content that doesn\'t fit, instead of allowing scroll or fixing the layout: ' + clipDetails.join('; '),
       fix: 'Use overflow-x-auto to allow scrolling, or fix the root cause — constrain child widths with max-w-full. overflow-x-hidden masks layout bugs.',
       presetRef: null,
-      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
+      locator: { selector: '', text: '', bboxes: hiddenClips.filter(function(c) { return c.bbox; }).map(function(c) { return c.bbox; }), selectors: hiddenClips.map(function(c) { return c.selector; }) }
     });
   }
 
@@ -5348,7 +5358,7 @@ function scoreLayout(data) {
   var clippedOverflow = (data.layout && data.layout.clippedOverflow) || [];
   if (clippedOverflow.length > 0) {
     checks++;
-    var clipDetails = clippedOverflow.slice(0, 3).map(function(c) {
+    var clipDetails = clippedOverflow.map(function(c) {
       return c.selector + ' overflows by ' + c.overflow + 'px (' + c.display + ' container, ' + c.containerWidth + 'px wide)';
     });
     findings.push({
@@ -5357,7 +5367,7 @@ function scoreLayout(data) {
       detail: clipDetails.join('; '),
       fix: 'Content overflows the container without a scrollbar — may cause horizontal scroll on iOS Safari. Add flex-wrap, reduce gap size on mobile (gap-4 sm:gap-8), or add overflow-x-hidden.',
       source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
-      locator: { selector: clippedOverflow[0].selector, text: '', bboxes: clippedOverflow.filter(function(c) { return c.bbox; }).map(function(c) { return c.bbox; }) }
+      locator: { selector: clippedOverflow[0].selector, text: '', bboxes: clippedOverflow.filter(function(c) { return c.bbox; }).map(function(c) { return c.bbox; }), selectors: clippedOverflow.map(function(c) { return c.selector; }) }
     });
   }
 
@@ -5366,7 +5376,7 @@ function scoreLayout(data) {
   if (fixedRisks.length > 0) {
     checks++;
     var totalChildren = fixedRisks.reduce(function(sum, r) { return sum + (r.childCount || 1); }, 0);
-    var riskDetails = fixedRisks.slice(0, 3).map(function(r) {
+    var riskDetails = fixedRisks.map(function(r) {
       var label = r.element + (r.text ? ' ("' + r.text.substring(0, 20) + '")' : '');
       var count = r.childCount > 1 ? ' (' + r.childCount + ' children)' : '';
       return label + count + ' — ' + (r.risk === 'light-on-light' ? 'light color may vanish on light sections' : 'dark color may vanish on dark sections');
@@ -5377,7 +5387,7 @@ function scoreLayout(data) {
       detail: riskDetails.join('; '),
       fix: 'Fixed/sticky elements must adapt their color when scrolling over different-colored sections. Use a scroll listener to toggle text color, or add a semi-opaque background to the fixed container.',
       source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum',
-      locator: { selector: fixedRisks[0].selector, text: fixedRisks[0].text || '', bboxes: fixedRisks.filter(function(r) { return r.bbox; }).map(function(r) { return r.bbox; }) }
+      locator: { selector: fixedRisks[0].selector, text: fixedRisks[0].text || '', bboxes: fixedRisks.filter(function(r) { return r.bbox; }).map(function(r) { return r.bbox; }), selectors: fixedRisks.filter(function(r) { return r.selector; }).map(function(r) { return r.selector; }) }
     });
   }
 
@@ -5572,7 +5582,7 @@ function scorePerformance(data) {
   // Upscaled images
   var upscaled = (data.performance && data.performance.upscaledImages) || [];
   if (upscaled.length > 0) {
-    var upDetails = upscaled.slice(0, 3).map(function(u) { return u.selector + ' ' + u.natural + ' → ' + u.rendered + ' (' + u.upscale + '%)'; });
+    var upDetails = upscaled.map(function(u) { return u.selector + ' ' + u.natural + ' → ' + u.rendered + ' (' + u.upscale + '%)'; });
     findings.push({
       severity: upscaled.some(function(u) { return u.upscale > 150; }) ? 'warning' : 'info',
       title: upscaled.length + ' image(s) rendered larger than natural size',
@@ -5652,186 +5662,6 @@ function scorePerformance(data) {
 
 
   S.register("performance", scorePerformance, 5, "Performance", "cognitive");
-})();
-</file>
-
-<file path="docs/scoring/readability.js">
-// Scoring Module: Readability & Scanability
-// Weight: 5%
-// Sources: Coleman-Liau Index, NNGroup scanning research
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-  function scoreReadability(data) {
-    var findings = [];
-    var checks = 0;
-    var passed = 0;
-
-    // Extract text content from the raw data
-    // We use heading count and element count as proxies since we don't have raw text in extracted data
-    var headings = (data.typography && data.typography.headings) || [];
-    var totalElements = (data.structure && data.structure.totalElements) || 0;
-
-    // Scanability: heading frequency
-    // Good rule: 1 heading per ~100-150 elements of content
-    if (totalElements > 50) {
-      checks++;
-      var headingRatio = headings.length / (totalElements / 100);
-      if (headingRatio >= 0.5 && headingRatio <= 5) {
-        passed++;
-      } else if (headingRatio < 0.5) {
-        findings.push({
-          severity: 'warning',
-          title: 'Low heading density: ' + headings.length + ' headings for ' + totalElements + ' elements',
-          detail: 'Content without headings is harder to scan. 79% of users scan rather than read (NNGroup)',
-          fix: 'Add descriptive headings to break content into scannable sections. Aim for a heading every 2-3 paragraphs.',
-          presetRef: null,
-          source: 'NNGroup scanning research — https://www.nngroup.com/articles/how-users-read-on-the-web/'
-        });
-      }
-    }
-
-    // Heading descriptiveness: check if headings are too short (likely generic)
-    if (headings.length > 0) {
-      checks++;
-      var shortHeadings = headings.filter(function(h) {
-        return h.text && h.text.length < 3;
-      });
-      if (shortHeadings.length === 0) {
-        passed++;
-      } else {
-        passed++; // Info doesn't reduce score
-        findings.push({
-          severity: 'info',
-          title: shortHeadings.length + ' heading(s) with very short text (< 3 chars)',
-          detail: 'Short headings like numbers or icons don\'t help users scan. Use descriptive text.',
-          fix: 'Replace generic headings with descriptive ones that summarize the section content.',
-          presetRef: null,
-          source: 'NNGroup — https://www.nngroup.com/articles/headings-pickup-lines/'
-        });
-      }
-    }
-
-    // Font size variety as readability signal
-    // Too many sizes = visual noise, harder to establish reading rhythm
-    var fontSizes = (data.typography && data.typography.fontSizes) || [];
-    var smallTextCount = fontSizes.filter(function(f) {
-      return parseFloat(f.value) < 12;
-    }).reduce(function(sum, f) { return sum + f.count; }, 0);
-
-    if (smallTextCount > 0 && totalElements > 20) {
-      checks++;
-      var smallRatio = smallTextCount / totalElements;
-      if (smallRatio < 0.05) {
-        passed++;
-      } else {
-        var smallBboxes = [];
-        fontSizes.filter(function(f) { return parseFloat(f.value) < 12; }).forEach(function(f) {
-          if (f.bbox) smallBboxes.push(f.bbox);
-          if (f.extraBboxes) f.extraBboxes.forEach(function(b) { smallBboxes.push(b); });
-        });
-        findings.push({
-          severity: 'warning',
-          title: smallTextCount + ' element(s) with text smaller than 12px',
-          detail: 'Text below 12px is difficult to read for most users and nearly impossible for elderly or low-vision users',
-          fix: 'Increase small text to at least 12px. Consider if the information is important enough to display — if not, remove it.',
-          presetRef: null,
-          source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text',
-          locator: smallBboxes.length > 0 ? { selector: '', text: '', bboxes: smallBboxes } : undefined
-        });
-      }
-    }
-
-    // Coleman-Liau readability index
-    var rd = data.readability || {};
-    if (rd.totalWords >= 50 && rd.paragraphCount >= 2) {
-      checks++;
-      // Coleman-Liau: 0.0588 * L - 0.296 * S - 15.8
-      // L = avg letters per 100 words, S = avg sentences per 100 words
-      var L = (rd.totalChars / rd.totalWords) * 100;
-      var sentenceCount = 0;
-      (rd.textBlocks || []).forEach(function(b) {
-        sentenceCount += (b.text.match(/[.!?]+/g) || []).length;
-      });
-      var S_val = (sentenceCount / rd.totalWords) * 100;
-      var cli = Math.round(0.0588 * L - 0.296 * S_val - 15.8);
-      // Detect non-English content — Coleman-Liau inflates scores for languages
-      // with long compound words (German, Finnish, Dutch, etc.)
-      var pageLang = (data.meta && data.meta.lang || '').toLowerCase().split('-')[0];
-      var isNonEnglish = pageLang && pageLang !== 'en' && pageLang !== '';
-      // Also heuristic: if avg word length > 6.5 chars, likely non-English
-      var avgWordLen = rd.totalChars / rd.totalWords;
-      if (!isNonEnglish && avgWordLen > 6.5) isNonEnglish = true;
-      var langNote = isNonEnglish ? ' Note: This index is calibrated for English text — non-English languages (detected: ' + (pageLang || 'long words') + ') typically score higher due to longer average word length.' : '';
-
-      if (cli >= 6 && cli <= 12) {
-        passed++;
-      } else {
-        findings.push({
-          severity: isNonEnglish ? 'info' : (cli > 14 ? 'warning' : 'info'),
-          title: 'Reading level: grade ' + cli + ' (Coleman-Liau Index)',
-          detail: (cli > 12 ? 'Content may be too complex for a general audience' : 'Content may be overly simple for the target audience') + langNote,
-          fix: cli > 12 ? 'Shorten sentences, use simpler words, break complex ideas into steps. Aim for grade 8-10 for general audiences.' : 'This reading level is appropriate for broad accessibility.',
-          presetRef: null,
-          source: 'Coleman-Liau Index — https://en.wikipedia.org/wiki/Coleman%E2%80%93Liau_index'
-        });
-      }
-    }
-
-    // Paragraph length audit
-    var longParagraphs = (rd.textBlocks || []).filter(function(b) { return b.wordCount > 150; });
-    if (longParagraphs.length > 0) {
-      findings.push({
-        severity: 'warning',
-        title: longParagraphs.length + ' paragraph(s) exceed 150 words',
-        detail: 'Long paragraphs reduce scanability. Ideal: 40-80 words per paragraph.',
-        fix: 'Break long paragraphs into shorter ones. Use subheadings, bullet lists, or callout boxes to chunk content.',
-        presetRef: null,
-        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
-      });
-    }
-
-    // List usage for scanability
-    if (rd.totalWords >= 100 && !rd.hasLists) {
-      findings.push({
-        severity: 'info',
-        title: 'No lists found in content area',
-        detail: 'Lists improve scanability by 47% compared to wall-of-text (NNGroup)',
-        fix: 'Convert sequences, features, or steps into <ul>/<ol> lists where appropriate.',
-        presetRef: null,
-        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
-      });
-    }
-
-    // Table cell readability on mobile (cramped/wrapped cells)
-    var tableCellIssues = (data.layout && data.layout.tableCellIssues) || [];
-    if (tableCellIssues.length > 0) {
-      checks++;
-      var tableDetails = tableCellIssues.slice(0, 3).map(function(t) {
-        var parts = [];
-        if (t.crampedCells > 0) parts.push(t.crampedCells + ' cells lack horizontal padding');
-        if (t.wrappedCells > 0) parts.push(t.wrappedCells + ' cells wrap to multiple lines');
-        return t.selector + ': ' + parts.join(', ') + ' (table ' + t.tableWidth + 'px on ' + t.vpWidth + 'px viewport)';
-      });
-      findings.push({
-        severity: tableCellIssues.some(function(t) { return t.crampedCells > 4 || t.wrappedCells > 4; }) ? 'error' : 'warning',
-        title: 'Table readability issues on mobile (' + tableCellIssues.length + ' table' + (tableCellIssues.length > 1 ? 's' : '') + ')',
-        detail: tableDetails.join('; '),
-        fix: 'Add horizontal padding to table cells (px-3 sm:px-4). For narrow viewports, consider hiding low-priority columns, using a responsive card layout, or reducing font size.',
-        source: 'NNGroup Mobile Tables — https://www.nngroup.com/articles/mobile-tables/',
-        locator: { selector: tableCellIssues[0].selector, text: '' }
-      });
-    }
-
-    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-    var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-    var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-    return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Readability', icon: 'readability' };
-  }
-
-  S.register("readability", scoreReadability, 5, "Readability", "readability");
 })();
 </file>
 
@@ -6266,7 +6096,7 @@ function scoreSpacing(data) {
     findings.push({
       severity: 'info',
       title: cPaddings.length + ' distinct container padding values',
-      detail: 'Values: ' + cPaddings.slice(0, 5).map(function(p) { return p.value + ' (' + p.count + 'x)'; }).join(', '),
+      detail: 'Values: ' + cPaddings.map(function(p) { return p.value + ' (' + p.count + 'x)'; }).join(', '),
       fix: 'Standardize container padding to 2-3 values. In Tailwind: p-4 (16px), p-6 (24px), p-8 (32px).',
       presetRef: null,
       source: 'Gestalt proximity — https://lawsofux.com/law-of-proximity/'
@@ -6399,13 +6229,16 @@ function scoreTouchTargets(data) {
     var touchMin = profile.touchTarget;
     var touchFails = targets.filter(function(t) { return Math.min(t.width, t.height) < touchMin; });
     if (touchFails.length > 0) {
+      var allBboxes = touchFails.map(function(t) { return t.bbox; }).filter(Boolean);
+      var allSelectors = touchFails.map(function(t) { return t.selector; }).filter(Boolean);
       findings.push({
         severity: 'info',
         title: touchFails.length + ' element(s) below ' + touchMin + 'px touch target (analyzed at ' + vw + 'px desktop viewport)',
         detail: 'These meet desktop minimums but would fail on touch devices. Consider responsive sizing if the site is also used on mobile.',
         fix: 'For responsive touch support: add touch-target sizing at mobile breakpoints, e.g. sm:min-h-[' + touchMin + 'px]',
         presetRef: null,
-        source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout'
+        source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout',
+        locator: { selector: '', text: '', bboxes: allBboxes, selectors: allSelectors }
       });
     }
   }
@@ -30662,6 +30495,189 @@ If this helped you ship something that looks good, [give it a star](../../starga
 Sources: [research/sources.md](research/sources.md)
 </file>
 
+<file path="docs/scoring/readability.js">
+// Scoring Module: Readability & Scanability
+// Weight: 5%
+// Sources: Coleman-Liau Index, NNGroup scanning research
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+  function scoreReadability(data) {
+    var findings = [];
+    var checks = 0;
+    var passed = 0;
+
+    // Extract text content from the raw data
+    // We use heading count and element count as proxies since we don't have raw text in extracted data
+    var headings = (data.typography && data.typography.headings) || [];
+    var totalElements = (data.structure && data.structure.totalElements) || 0;
+
+    // Scanability: heading frequency
+    // Good rule: 1 heading per ~100-150 elements of content
+    if (totalElements > 50) {
+      checks++;
+      var headingRatio = headings.length / (totalElements / 100);
+      if (headingRatio >= 0.5 && headingRatio <= 5) {
+        passed++;
+      } else if (headingRatio < 0.5) {
+        findings.push({
+          severity: 'warning',
+          title: 'Low heading density: ' + headings.length + ' headings for ' + totalElements + ' elements',
+          detail: 'Content without headings is harder to scan. 79% of users scan rather than read (NNGroup)',
+          fix: 'Add descriptive headings to break content into scannable sections. Aim for a heading every 2-3 paragraphs.',
+          presetRef: null,
+          source: 'NNGroup scanning research — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+        });
+      }
+    }
+
+    // Heading descriptiveness: check if headings are too short (likely generic)
+    if (headings.length > 0) {
+      checks++;
+      var shortHeadings = headings.filter(function(h) {
+        return h.text && h.text.length < 3;
+      });
+      if (shortHeadings.length === 0) {
+        passed++;
+      } else {
+        passed++; // Info doesn't reduce score
+        findings.push({
+          severity: 'info',
+          title: shortHeadings.length + ' heading(s) with very short text (< 3 chars)',
+          detail: 'Short headings like numbers or icons don\'t help users scan. Use descriptive text.',
+          fix: 'Replace generic headings with descriptive ones that summarize the section content.',
+          presetRef: null,
+          source: 'NNGroup — https://www.nngroup.com/articles/headings-pickup-lines/'
+        });
+      }
+    }
+
+    // Font size variety as readability signal
+    // Too many sizes = visual noise, harder to establish reading rhythm
+    var fontSizes = (data.typography && data.typography.fontSizes) || [];
+    var smallTextCount = fontSizes.filter(function(f) {
+      return parseFloat(f.value) < 12;
+    }).reduce(function(sum, f) { return sum + f.count; }, 0);
+
+    if (smallTextCount > 0 && totalElements > 20) {
+      checks++;
+      var smallRatio = smallTextCount / totalElements;
+      if (smallRatio < 0.05) {
+        passed++;
+      } else {
+        var smallBboxes = [];
+        var smallSelectors = [];
+        fontSizes.filter(function(f) { return parseFloat(f.value) < 12; }).forEach(function(f) {
+          if (f.bbox) smallBboxes.push(f.bbox);
+          if (f.extraBboxes) f.extraBboxes.forEach(function(b) { smallBboxes.push(b); });
+          if (f.sampleSelector) smallSelectors.push(f.sampleSelector);
+          if (f.extraSelectors) f.extraSelectors.forEach(function(s) { smallSelectors.push(s); });
+        });
+        findings.push({
+          severity: 'warning',
+          title: smallTextCount + ' element(s) with text smaller than 12px',
+          detail: 'Text below 12px is difficult to read for most users and nearly impossible for elderly or low-vision users',
+          fix: 'Increase small text to at least 12px. Consider if the information is important enough to display — if not, remove it.',
+          presetRef: null,
+          source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text',
+          locator: smallBboxes.length > 0 ? { selector: '', text: '', bboxes: smallBboxes, selectors: smallSelectors } : undefined
+        });
+      }
+    }
+
+    // Coleman-Liau readability index
+    var rd = data.readability || {};
+    if (rd.totalWords >= 50 && rd.paragraphCount >= 2) {
+      checks++;
+      // Coleman-Liau: 0.0588 * L - 0.296 * S - 15.8
+      // L = avg letters per 100 words, S = avg sentences per 100 words
+      var L = (rd.totalChars / rd.totalWords) * 100;
+      var sentenceCount = 0;
+      (rd.textBlocks || []).forEach(function(b) {
+        sentenceCount += (b.text.match(/[.!?]+/g) || []).length;
+      });
+      var S_val = (sentenceCount / rd.totalWords) * 100;
+      var cli = Math.round(0.0588 * L - 0.296 * S_val - 15.8);
+      // Detect non-English content — Coleman-Liau inflates scores for languages
+      // with long compound words (German, Finnish, Dutch, etc.)
+      var pageLang = (data.meta && data.meta.lang || '').toLowerCase().split('-')[0];
+      var isNonEnglish = pageLang && pageLang !== 'en' && pageLang !== '';
+      // Also heuristic: if avg word length > 6.5 chars, likely non-English
+      var avgWordLen = rd.totalChars / rd.totalWords;
+      if (!isNonEnglish && avgWordLen > 6.5) isNonEnglish = true;
+      var langNote = isNonEnglish ? ' Note: This index is calibrated for English text — non-English languages (detected: ' + (pageLang || 'long words') + ') typically score higher due to longer average word length.' : '';
+
+      if (cli >= 6 && cli <= 12) {
+        passed++;
+      } else {
+        findings.push({
+          severity: isNonEnglish ? 'info' : (cli > 14 ? 'warning' : 'info'),
+          title: 'Reading level: grade ' + cli + ' (Coleman-Liau Index)',
+          detail: (cli > 12 ? 'Content may be too complex for a general audience' : 'Content may be overly simple for the target audience') + langNote,
+          fix: cli > 12 ? 'Shorten sentences, use simpler words, break complex ideas into steps. Aim for grade 8-10 for general audiences.' : 'This reading level is appropriate for broad accessibility.',
+          presetRef: null,
+          source: 'Coleman-Liau Index — https://en.wikipedia.org/wiki/Coleman%E2%80%93Liau_index'
+        });
+      }
+    }
+
+    // Paragraph length audit
+    var longParagraphs = (rd.textBlocks || []).filter(function(b) { return b.wordCount > 150; });
+    if (longParagraphs.length > 0) {
+      findings.push({
+        severity: 'warning',
+        title: longParagraphs.length + ' paragraph(s) exceed 150 words',
+        detail: 'Long paragraphs reduce scanability. Ideal: 40-80 words per paragraph.',
+        fix: 'Break long paragraphs into shorter ones. Use subheadings, bullet lists, or callout boxes to chunk content.',
+        presetRef: null,
+        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+      });
+    }
+
+    // List usage for scanability
+    if (rd.totalWords >= 100 && !rd.hasLists) {
+      findings.push({
+        severity: 'info',
+        title: 'No lists found in content area',
+        detail: 'Lists improve scanability by 47% compared to wall-of-text (NNGroup)',
+        fix: 'Convert sequences, features, or steps into <ul>/<ol> lists where appropriate.',
+        presetRef: null,
+        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+      });
+    }
+
+    // Table cell readability on mobile (cramped/wrapped cells)
+    var tableCellIssues = (data.layout && data.layout.tableCellIssues) || [];
+    if (tableCellIssues.length > 0) {
+      checks++;
+      var tableDetails = tableCellIssues.map(function(t) {
+        var parts = [];
+        if (t.crampedCells > 0) parts.push(t.crampedCells + ' cells lack horizontal padding');
+        if (t.wrappedCells > 0) parts.push(t.wrappedCells + ' cells wrap to multiple lines');
+        return t.selector + ': ' + parts.join(', ') + ' (table ' + t.tableWidth + 'px on ' + t.vpWidth + 'px viewport)';
+      });
+      findings.push({
+        severity: tableCellIssues.some(function(t) { return t.crampedCells > 4 || t.wrappedCells > 4; }) ? 'error' : 'warning',
+        title: 'Table readability issues on mobile (' + tableCellIssues.length + ' table' + (tableCellIssues.length > 1 ? 's' : '') + ')',
+        detail: tableDetails.join('; '),
+        fix: 'Add horizontal padding to table cells (px-3 sm:px-4). For narrow viewports, consider hiding low-priority columns, using a responsive card layout, or reducing font size.',
+        source: 'NNGroup Mobile Tables — https://www.nngroup.com/articles/mobile-tables/',
+        locator: { selector: tableCellIssues[0].selector, text: '' }
+      });
+    }
+
+    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+    var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+    var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+    return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Readability', icon: 'readability' };
+  }
+
+  S.register("readability", scoreReadability, 5, "Readability", "readability");
+})();
+</file>
+
 <file path="docs/tests/test-page-lower.html">
 <!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="preload" as="image" imagesrcset="/_next/image?url=%2Fimages%2Fhero.webp&amp;w=640&amp;q=75&amp;dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde 640w, /_next/image?url=%2Fimages%2Fhero.webp&amp;w=750&amp;q=75&amp;dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde 750w, /_next/image?url=%2Fimages%2Fhero.webp&amp;w=828&amp;q=75&amp;dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde 828w, /_next/image?url=%2Fimages%2Fhero.webp&amp;w=1080&amp;q=75&amp;dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde 1080w, /_next/image?url=%2Fimages%2Fhero.webp&amp;w=1200&amp;q=75&amp;dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde 1200w, /_next/image?url=%2Fimages%2Fhero.webp&amp;w=1920&amp;q=75&amp;dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde 1920w, /_next/image?url=%2Fimages%2Fhero.webp&amp;w=2048&amp;q=75&amp;dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde 2048w, /_next/image?url=%2Fimages%2Fhero.webp&amp;w=3840&amp;q=75&amp;dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde 3840w" imagesizes="100vw" fetchpriority="high"><link rel="stylesheet" href="/_next/static/css/52520cb54f622506.css?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde" data-precedence="next"><link rel="stylesheet" href="/_next/static/css/1c3a1dae2e9924fc.css?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde" data-precedence="next"><link rel="preload" as="script" fetchpriority="low" href="/_next/static/chunks/webpack-7c72935ca693113a.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde"><script src="/_next/static/chunks/fd9d1056-3f92d29da88fe70d.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde" async=""></script><script src="/_next/static/chunks/117-cd1c363bf990f1cc.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde" async=""></script><script src="/_next/static/chunks/main-app-2dcde4753ea0d175.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde" async=""></script><script src="/_next/static/chunks/972-804638cee5817fc0.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde" async=""></script><script src="/_next/static/chunks/501-3e61319dc477a679.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde" async=""></script><script src="/_next/static/chunks/763-5327424ae8f6d5e2.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde" async=""></script><script src="/_next/static/chunks/318-15af64b41b0d558d.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde" async=""></script><script src="/_next/static/chunks/app/page-6e9a0df48ef2c3a3.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde" async=""></script><script src="/_next/static/chunks/414-4411a60b635630f8.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde" async=""></script><script src="/_next/static/chunks/app/layout-76b28eb65c7fd977.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde" async=""></script><link rel="preload" href="https://plausible.io/js/script.js" as="script"><title>TokenMade — For the builders.</title><meta name="description" content="27 demos. 100 builders. TokenMade is an invite-only showcase of real products built with AI. May 4, 2026 in Hamburg, the evening before OMR Festival."><link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials"><meta name="robots" content="index, follow"><link rel="canonical" href="https://tokenmade.ai"><link rel="alternate" hreflang="en" href="https://tokenmade.ai"><link rel="alternate" hreflang="de" href="https://tokenmade.ai"><link rel="alternate" hreflang="x-default" href="https://tokenmade.ai"><meta property="og:title" content="TokenMade — 27 AI Products Live on Stage | Hamburg 2026"><meta property="og:description" content="No slides, no fluff — 27 real AI products demoed live. An invite-only OMR side event, May 4, 2026 in Hamburg. 100 builders. Be there."><meta property="og:url" content="https://tokenmade.ai"><meta property="og:site_name" content="TokenMade"><meta property="og:locale" content="en_US"><meta property="og:image" content="https://tokenmade.ai/images/tokenmade-ai-social-preview.jpg"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="750"><meta property="og:locale:alternate" content="de_DE"><meta property="og:type" content="website"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="TokenMade — 27 AI Products Live on Stage | Hamburg 2026"><meta name="twitter:description" content="No slides, no fluff — 27 real AI products demoed live. An invite-only OMR side event, May 4, 2026 in Hamburg. 100 builders. Be there."><meta name="twitter:image" content="https://tokenmade.ai/images/tokenmade-ai-social-preview.jpg"><meta name="twitter:image:width" content="1200"><meta name="twitter:image:height" content="750"><link rel="icon" href="/icon?70aad7b5eca08cb0" type="image/png" sizes="32x32"><link rel="apple-touch-icon" href="/apple-icon?40e1ed581177862b" type="image/png" sizes="180x180"><meta name="next-size-adjust"><link rel="preconnect" href="https://plausible.io"><script src="/_next/static/chunks/polyfills-42372ed130431b0a.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde" nomodule=""></script></head><body class="__variable_1f5468 __variable_6b6f87 __variable_fa2f99 font-sans bg-bg-primary text-text-primary antialiased"><a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[10000] focus:bg-purple-vivid focus:text-bg-primary focus:px-4 focus:py-2 focus:rounded-lg focus:font-mono focus:text-sm focus:font-bold">Skip to content</a><script type="application/ld+json">{"@context":"https://schema.org","@type":"Event","name":"TokenMade — For the builders.","description":"27 demos. 100 builders. TokenMade is an invite-only showcase of real products built with AI. May 4, 2026 in Hamburg, the evening before OMR Festival.","startDate":"2026-05-04T17:00:00+02:00","endDate":"2026-05-04T20:00:00+02:00","url":"https://tokenmade.ai","image":"https://tokenmade.ai/images/tokenmade-ai-social-preview.jpg","eventStatus":"https://schema.org/EventScheduled","eventAttendanceMode":"https://schema.org/OfflineEventAttendanceMode","location":{"@type":"Place","name":"TrackMe Hamburg","address":{"@type":"PostalAddress","streetAddress":"TrackMe Hamburg","addressLocality":"Hamburg","addressCountry":"DE"}},"organizer":{"@type":"Organization","name":"TokenMade","url":"https://tokenmade.ai"}}</script><nav aria-label="Main navigation" class="fixed top-0 left-0 right-0 z-[100] px-4 md:px-8 py-5 flex justify-between items-center bg-[rgba(10,10,15,0.8)] backdrop-blur-[20px] border-b border-border-subtle"><a href="#" class="flex items-center gap-2"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" class="w-8 h-8"><rect x="2" y="6" width="12" height="12" rx="2" fill="#A855F7" opacity="0.3"></rect><rect x="8" y="12" width="12" height="12" rx="2" fill="#A855F7" opacity="0.6"></rect><rect x="14" y="18" width="12" height="12" rx="2" fill="#A855F7"></rect><rect x="16" y="20" width="8" height="8" rx="1" fill="#0A0A0F"></rect><rect x="18" y="22" width="4" height="4" rx="0.5" fill="#A855F7"></rect></svg><span class="font-mono font-extrabold text-[1.1rem] tracking-[-0.02em]"><span class="text-purple-vivid">Token</span>Made</span></a><div class="hidden md:flex items-center gap-8"><a href="#about" class="font-mono text-xs font-medium text-text-secondary uppercase tracking-[0.08em] hover:text-text-primary transition-colors">About</a><a href="#details" class="font-mono text-xs font-medium text-text-secondary uppercase tracking-[0.08em] hover:text-text-primary transition-colors">Details</a><a href="#hosts" class="font-mono text-xs font-medium text-text-secondary uppercase tracking-[0.08em] hover:text-text-primary transition-colors">Hosts</a><div class="flex items-center gap-1 font-mono text-xs "><button type="button" class="transition-colors text-text-primary font-bold" aria-label="English (active)">EN</button><span class="text-text-dim select-none" aria-hidden="true">|</span><button type="button" class="transition-colors text-text-dim hover:text-text-secondary" aria-label="Auf Deutsch wechseln">DE</button></div><a href="#apply" class="font-mono text-xs font-bold bg-purple-vivid text-bg-primary px-[1.2rem] py-[0.6rem] rounded-[6px] hover:opacity-90 transition-opacity">Apply Now</a></div><div class="md:hidden flex items-center gap-3"><div class="flex items-center gap-1 font-mono text-xs "><button type="button" class="transition-colors text-text-primary font-bold" aria-label="English (active)">EN</button><span class="text-text-dim select-none" aria-hidden="true">|</span><button type="button" class="transition-colors text-text-dim hover:text-text-secondary" aria-label="Auf Deutsch wechseln">DE</button></div><a href="#apply" class="font-mono text-xs font-bold bg-purple-vivid text-bg-primary px-[1.2rem] py-[0.6rem] rounded-[6px] hover:opacity-90 transition-opacity">Apply Now</a></div></nav><main id="main-content"><section id="details" class="fade-in py-24 px-4 md:px-8 max-w-[1100px] mx-auto"><div class="font-mono text-[0.7rem] font-bold uppercase tracking-[0.15em] text-purple-vivid mb-4">Event Details</div><h2 class="font-serif text-[clamp(2rem,4vw,3.2rem)] font-normal leading-[1.15] mb-6">The evening before <em class="italic text-purple-vivid">OMR</em></h2><div class="grid grid-cols-1 md:grid-cols-2 gap-6"><div class="bg-bg-card border border-border-subtle rounded-xl p-8"><div class="font-mono text-[0.65rem] font-bold uppercase tracking-[0.15em] text-purple-vivid mb-3">Date &amp; Time</div><div class="font-serif text-[1.6rem] leading-[1.3] mb-2">May 4, 2026</div><div class="text-[0.9rem] text-text-secondary leading-[1.6]">5:00 PM — 8:00 PM<br>The evening before OMR Festival</div></div><div class="bg-bg-card border border-border-subtle rounded-xl p-8"><div class="font-mono text-[0.65rem] font-bold uppercase tracking-[0.15em] text-purple-vivid mb-3">Location</div><div class="font-serif text-[1.6rem] leading-[1.3] mb-2">Hamburg</div><div class="text-[0.9rem] text-text-secondary leading-[1.6]">The evening before OMR Festival</div></div><div class="bg-bg-card border border-border-subtle rounded-xl p-8 md:col-span-2"><div class="font-mono text-[0.65rem] font-bold uppercase tracking-[0.15em] text-purple-vivid mb-3">Schedule</div><div class="mt-8"><div class="flex gap-4 md:gap-8 py-5 items-baseline border-b border-border-subtle"><span class="font-mono text-[0.85rem] font-bold text-purple-vivid min-w-[80px] md:min-w-[120px] md:whitespace-nowrap">17:00</span><span class="text-[0.95rem] text-text-secondary leading-[1.5]"><strong class="text-text-primary font-semibold">Doors open.</strong> <!-- -->Welcome drinks. Pick up your voting card.</span></div><div class="flex gap-4 md:gap-8 py-5 items-baseline border-b border-border-subtle"><span class="font-mono text-[0.85rem] font-bold text-purple-vivid min-w-[80px] md:min-w-[120px] md:whitespace-nowrap">17:15</span><span class="text-[0.95rem] text-text-secondary leading-[1.5]"><strong class="text-text-primary font-semibold">Intro</strong> <!-- -->from the hosts. Then it’s all about the builds.</span></div><div class="flex gap-4 md:gap-8 py-5 items-baseline border-b border-border-subtle"><span class="font-mono text-[0.85rem] font-bold text-purple-vivid min-w-[80px] md:min-w-[120px] md:whitespace-nowrap">17:30 – 19:15</span><span class="text-[0.95rem] text-text-secondary leading-[1.5]"><strong class="text-text-primary font-semibold">Demos.</strong> <!-- -->27 demos. 5-minute demos followed by 5 minutes of questions, running on repeat. Rotate freely. Full bar.</span></div><div class="flex gap-4 md:gap-8 py-5 items-baseline border-b border-border-subtle"><span class="font-mono text-[0.85rem] font-bold text-purple-vivid min-w-[80px] md:min-w-[120px] md:whitespace-nowrap">19:15</span><span class="text-[0.95rem] text-text-secondary leading-[1.5]"><strong class="text-text-primary font-semibold">Top 3 announced.</strong> <!-- -->Winners revealed. Prizes awarded.</span></div><div class="flex gap-4 md:gap-8 py-5 items-baseline "><span class="font-mono text-[0.85rem] font-bold text-purple-vivid min-w-[80px] md:min-w-[120px] md:whitespace-nowrap">19:15 – 20:00</span><span class="text-[0.95rem] text-text-secondary leading-[1.5]"><strong class="text-text-primary font-semibold">Drinks &amp; networking.</strong> <!-- -->Stick around, grab a drink, and connect with the builders.</span></div></div></div></div></section><section id="hosts" class="fade-in py-24 px-4 md:px-8 max-w-[1100px] mx-auto"><div class="font-mono text-[0.7rem] font-bold uppercase tracking-[0.15em] text-purple-vivid mb-4">Your Hosts</div><h2 class="font-serif text-[clamp(2rem,4vw,3.2rem)] font-normal leading-[1.15] mb-6">Curated by builders, <em class="italic text-purple-vivid">for builders</em></h2><div class="grid grid-cols-1 md:grid-cols-2 gap-6"><div class="relative overflow-hidden bg-bg-card border border-border-subtle rounded-xl p-10"><div class="absolute bottom-0 left-0 right-0 h-[100px] bg-gradient-to-t from-[rgba(168,85,247,0.15)] to-transparent pointer-events-none"></div><img alt="Philipp Gloeckler" loading="lazy" width="80" height="80" decoding="async" data-nimg="1" class="w-20 h-20 rounded-full object-cover mb-4" style="color:transparent" srcset="/_next/image?url=%2Fimages%2Fphilipp-gloeckler.jpeg&amp;w=96&amp;q=75&amp;dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde 1x, /_next/image?url=%2Fimages%2Fphilipp-gloeckler.jpeg&amp;w=256&amp;q=75&amp;dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde 2x" src="/_next/image?url=%2Fimages%2Fphilipp-gloeckler.jpeg&amp;w=256&amp;q=75&amp;dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde"><h3 class="font-serif text-[1.8rem] mb-1"><a href="https://www.linkedin.com/in/philippgloeckler/" target="_blank" rel="noopener noreferrer" class="hover:text-purple-light transition-colors">Philipp Gloeckler</a></h3><div class="flex flex-col gap-1.5"><span class="font-mono text-[0.7rem] font-semibold uppercase tracking-[0.08em] text-purple-light"><span class="text-purple-dim">./</span><a href="https://www.doppelgaenger.io/" target="_blank" rel="noopener noreferrer" class="hover:text-purple-vivid transition-colors">Doppelgänger Podcast</a></span><span class="font-mono text-[0.7rem] font-semibold uppercase tracking-[0.08em] text-purple-light"><span class="text-purple-dim">./</span><a href="https://www.youtube.com/@TheSecondShotGolf" target="_blank" rel="noopener noreferrer" class="hover:text-purple-vivid transition-colors">Second Shot Golf (YouTube)</a></span></div></div><div class="relative overflow-hidden bg-bg-card border border-border-subtle rounded-xl p-10"><div class="absolute bottom-0 left-0 right-0 h-[100px] bg-gradient-to-t from-[rgba(168,85,247,0.15)] to-transparent pointer-events-none"></div><img alt="Christian Byza" loading="lazy" width="80" height="80" decoding="async" data-nimg="1" class="w-20 h-20 rounded-full object-cover mb-4" style="color:transparent" srcset="/_next/image?url=%2Fimages%2Fchristian-byza-purple-ai.jpg&amp;w=96&amp;q=75&amp;dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde 1x, /_next/image?url=%2Fimages%2Fchristian-byza-purple-ai.jpg&amp;w=256&amp;q=75&amp;dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde 2x" src="/_next/image?url=%2Fimages%2Fchristian-byza-purple-ai.jpg&amp;w=256&amp;q=75&amp;dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde"><h3 class="font-serif text-[1.8rem] mb-1"><a href="https://www.linkedin.com/in/christianbyza/" target="_blank" rel="noopener noreferrer" class="hover:text-purple-light transition-colors">Christian Byza</a></h3><div class="flex flex-col gap-1.5"><span class="font-mono text-[0.7rem] font-semibold uppercase tracking-[0.08em] text-purple-light"><span class="text-purple-dim">./</span><a href="https://www.bepurple.ai" target="_blank" rel="noopener noreferrer" class="hover:text-purple-vivid transition-colors">Co-Founder &amp; CEO, Purple AI</a></span><span class="font-mono text-[0.7rem] font-semibold uppercase tracking-[0.08em] text-purple-light"><span class="text-purple-dim">./</span><a href="https://www.omr.com" target="_blank" rel="noopener noreferrer" class="hover:text-purple-vivid transition-colors">Co-Founder, OMR Festival</a></span></div></div></div></section><section id="apply" class="relative bg-bg-secondary py-24 px-4 md:px-8 border-t border-border-subtle"><div class="absolute -top-[200px] left-1/2 -translate-x-1/2 w-[600px] h-[600px] pointer-events-none" style="background:radial-gradient(circle, rgba(168,85,247,0.08) 0%, transparent 70%)"></div><div class="relative max-w-[1100px] mx-auto"><div class="fade-in relative max-w-[700px] mx-auto"><div class="text-center font-mono text-[0.7rem] font-bold uppercase tracking-[0.15em] text-purple-light mb-4">Apply to Showcase</div><h2 class="text-center font-serif text-[clamp(2rem,4vw,3rem)] text-text-primary leading-[1.1] mb-3">Show us what you <em>built</em></h2><p class="text-center font-mono text-[0.85rem] text-text-secondary leading-[1.7] mx-auto mb-10 max-w-[520px]">Applications close April 20, 2026. We select the best 27 demos from all applications. The only requirement: it has to be real.</p><div class="bg-bg-card border border-border-subtle rounded-2xl p-8 md:p-12"><form novalidate=""><div class="grid grid-cols-1 md:grid-cols-2 gap-4"><div class="mb-6"><label for="app-name" class="block font-mono text-[0.75rem] font-semibold uppercase tracking-[0.08em] text-text-secondary mb-2">Your Name<!-- --> <span class="text-purple-vivid">*</span></label><input id="app-name" type="text" placeholder="Jane Doe" required="" class="w-full bg-bg-primary border border-border-subtle rounded-lg py-3.5 px-4 font-sans text-[0.9rem] text-text-primary outline-none transition-all duration-200 focus:border-purple-vivid focus:shadow-[0_0_0_3px_rgba(168,85,247,0.15)]" value=""></div><div class="mb-6"><label for="app-email" class="block font-mono text-[0.75rem] font-semibold uppercase tracking-[0.08em] text-text-secondary mb-2">Email<!-- --> <span class="text-purple-vivid">*</span></label><input id="app-email" type="email" placeholder="jane@company.com" required="" class="w-full bg-bg-primary border border-border-subtle rounded-lg py-3.5 px-4 font-sans text-[0.9rem] text-text-primary outline-none transition-all duration-200 focus:border-purple-vivid focus:shadow-[0_0_0_3px_rgba(168,85,247,0.15)]" value=""></div></div><div class="grid grid-cols-1 md:grid-cols-2 gap-4"><div class="mb-6"><label for="app-company" class="block font-mono text-[0.75rem] font-semibold uppercase tracking-[0.08em] text-text-secondary mb-2">Company / Project</label><input id="app-company" type="text" placeholder="Acme Corp" class="w-full bg-bg-primary border border-border-subtle rounded-lg py-3.5 px-4 font-sans text-[0.9rem] text-text-primary outline-none transition-all duration-200 focus:border-purple-vivid focus:shadow-[0_0_0_3px_rgba(168,85,247,0.15)]" value=""></div><div class="mb-6"><label for="app-team-size" class="block font-mono text-[0.75rem] font-semibold uppercase tracking-[0.08em] text-text-secondary mb-2">Team Size</label><select id="app-team-size" class="w-full bg-bg-primary border border-border-subtle rounded-lg py-3.5 px-4 font-sans text-[0.9rem] text-text-primary outline-none transition-all duration-200 focus:border-purple-vivid focus:shadow-[0_0_0_3px_rgba(168,85,247,0.15)] cursor-pointer appearance-none"><option value="" disabled="" selected="">Select...</option><option value="solo">Solo builder</option><option value="2-3">2–3 people</option><option value="4-6">4–6 people</option><option value="7+">7+ people</option></select></div></div><div class="mb-6"><label for="app-attendee-count" class="block font-mono text-[0.75rem] font-semibold uppercase tracking-[0.08em] text-text-secondary mb-2">How many people are you bringing?<!-- --> <span class="text-purple-vivid">*</span></label><select id="app-attendee-count" required="" class="w-full bg-bg-primary border border-border-subtle rounded-lg py-3.5 px-4 font-sans text-[0.9rem] text-text-primary outline-none transition-all duration-200 focus:border-purple-vivid focus:shadow-[0_0_0_3px_rgba(168,85,247,0.15)] cursor-pointer appearance-none"><option value="" disabled="" selected="">Select</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option></select><div class="text-[0.78rem] text-text-dim mt-1.5 leading-[1.5]">Tickets are 30 EUR per person. We’ll send an invoice after your application is confirmed.</div></div><div class="mb-6"><label for="app-what-built" class="block font-mono text-[0.75rem] font-semibold uppercase tracking-[0.08em] text-text-secondary mb-2">What did you build?<!-- --> <span class="text-purple-vivid">*</span></label><textarea id="app-what-built" placeholder="Describe the product, tool, or workflow you built. What problem does it solve? What’s the business impact?" required="" class="w-full bg-bg-primary border border-border-subtle rounded-lg py-3.5 px-4 font-sans text-[0.9rem] text-text-primary outline-none transition-all duration-200 focus:border-purple-vivid focus:shadow-[0_0_0_3px_rgba(168,85,247,0.15)] min-h-[120px] resize-y"></textarea><div class="text-[0.78rem] text-text-dim mt-1.5 leading-[1.5]">We’re looking for real business use cases, not weekend experiments. Tell us the story.</div></div><div class="mb-6"><label for="app-ai-role" class="block font-mono text-[0.75rem] font-semibold uppercase tracking-[0.08em] text-text-secondary mb-2">How did AI play a role?<!-- --> <span class="text-purple-vivid">*</span></label><textarea id="app-ai-role" placeholder="Which AI tools did you use (Claude, p0, etc.)? How central was AI to the build process or the product itself?" required="" class="w-full bg-bg-primary border border-border-subtle rounded-lg py-3.5 px-4 font-sans text-[0.9rem] text-text-primary outline-none transition-all duration-200 focus:border-purple-vivid focus:shadow-[0_0_0_3px_rgba(168,85,247,0.15)] min-h-[120px] resize-y"></textarea></div><div class="mb-6"><label for="app-demo-link" class="block font-mono text-[0.75rem] font-semibold uppercase tracking-[0.08em] text-text-secondary mb-2">Link to demo, product, or video</label><input id="app-demo-link" type="url" placeholder="https://..." class="w-full bg-bg-primary border border-border-subtle rounded-lg py-3.5 px-4 font-sans text-[0.9rem] text-text-primary outline-none transition-all duration-200 focus:border-purple-vivid focus:shadow-[0_0_0_3px_rgba(168,85,247,0.15)]" value=""><div class="text-[0.78rem] text-text-dim mt-1.5 leading-[1.5]">Optional but strongly encouraged. Show, don’t tell.</div></div><div class="grid grid-cols-1 md:grid-cols-2 gap-4"><div class="mb-6"><label for="app-linkedin" class="block font-mono text-[0.75rem] font-semibold uppercase tracking-[0.08em] text-text-secondary mb-2">LinkedIn Profile</label><input id="app-linkedin" type="url" placeholder="https://linkedin.com/in/..." class="w-full bg-bg-primary border border-border-subtle rounded-lg py-3.5 px-4 font-sans text-[0.9rem] text-text-primary outline-none transition-all duration-200 focus:border-purple-vivid focus:shadow-[0_0_0_3px_rgba(168,85,247,0.15)]" value=""></div><div class="mb-6"><label for="app-github" class="block font-mono text-[0.75rem] font-semibold uppercase tracking-[0.08em] text-text-secondary mb-2">GitHub Profile</label><input id="app-github" type="url" placeholder="https://github.com/..." class="w-full bg-bg-primary border border-border-subtle rounded-lg py-3.5 px-4 font-sans text-[0.9rem] text-text-primary outline-none transition-all duration-200 focus:border-purple-vivid focus:shadow-[0_0_0_3px_rgba(168,85,247,0.15)]" value=""></div></div><div class="mb-6 space-y-4"><label class="flex items-start gap-3 cursor-pointer group"><input type="checkbox" class="mt-1 h-4 w-4 shrink-0 accent-purple-vivid cursor-pointer"><span class="font-mono text-[0.82rem] text-text-secondary leading-[1.6] group-hover:text-text-primary transition-colors">I understand that if selected, there will be an invoice of 30 EUR per team member.</span></label><label class="flex items-start gap-3 cursor-pointer group"><input type="checkbox" class="mt-1 h-4 w-4 shrink-0 accent-purple-vivid cursor-pointer"><span class="font-mono text-[0.82rem] text-text-secondary leading-[1.6] group-hover:text-text-primary transition-colors">I accept the <a href="/agb" target="_blank" rel="noopener noreferrer" class="text-purple-vivid underline underline-offset-2 hover:text-purple-light transition-colors">Terms &amp; Conditions</a> and allow the TokenMade team to contact me via email.</span></label></div><button type="submit" class="w-full border-none rounded-lg py-4 font-mono text-[0.85rem] font-bold uppercase tracking-[0.08em] mt-2 transition-all duration-200 bg-purple-vivid text-bg-primary cursor-pointer hover:bg-purple-light hover:-translate-y-px hover:shadow-[0_8px_30px_rgba(168,85,247,0.3)]">Submit Application →</button></form></div></div></div></section></main><footer class="py-12 px-4 md:px-8 border-t border-border-subtle text-center"><div class="max-w-[1100px] mx-auto"><div class="flex justify-center items-center gap-6 mb-6"><a href="https://tokenmade.ai" class="font-mono text-[0.8rem] font-bold text-purple-vivid transition-colors hover:text-purple-light">TokenMade.ai</a></div><p class="text-[0.78rem] text-text-dim mb-4">TokenMade is a project collab between<!-- --> <a href="https://www.linkedin.com/in/philippgloeckler/" target="_blank" rel="noopener noreferrer" class="underline transition-colors hover:text-purple-light">Philipp</a> <!-- -->&amp;<!-- --> <a href="https://www.linkedin.com/in/christianbyza/" target="_blank" rel="noopener noreferrer" class="underline transition-colors hover:text-purple-light">Christian</a>, website built with<!-- --> <a href="https://www.bepurple.ai" target="_blank" rel="noopener noreferrer" class="underline transition-colors hover:text-purple-light">p0</a> <!-- -->in 18 min 💜</p><div class="flex justify-center items-center gap-4 flex-wrap"><span class="flex items-center gap-4"><a class="font-mono text-[0.75rem] text-text-dim transition-colors hover:text-purple-light" href="/impressum">Impressum</a></span><span class="flex items-center gap-4"><span class="text-border-subtle">·</span><a class="font-mono text-[0.75rem] text-text-dim transition-colors hover:text-purple-light" href="/datenschutz">Privacy Policy</a></span><span class="flex items-center gap-4"><span class="text-border-subtle">·</span><a class="font-mono text-[0.75rem] text-text-dim transition-colors hover:text-purple-light" href="/agb">Terms</a></span></div></div></footer><script type="application/ld+json">{"@context":"https://schema.org","@type":"Organization","name":"TokenMade","url":"https://tokenmade.ai","logo":"https://tokenmade.ai/images/tokenmade-ai-social-preview.jpg","sameAs":[]}</script><script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"TokenMade","url":"https://tokenmade.ai"}</script><script src="/_next/static/chunks/webpack-7c72935ca693113a.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde" async=""></script><script>(self.__next_f=self.__next_f||[]).push([0]);self.__next_f.push([2,null])</script><script>self.__next_f.push([1,"1:HL[\"/_next/static/media/558ca1a6aa3cb55e-s.p.woff2\",\"font\",{\"crossOrigin\":\"\",\"type\":\"font/woff2\"}]\n2:HL[\"/_next/static/media/9cc5b37ab1350db7-s.p.woff2\",\"font\",{\"crossOrigin\":\"\",\"type\":\"font/woff2\"}]\n3:HL[\"/_next/static/media/e4af272ccee01ff0-s.p.woff2\",\"font\",{\"crossOrigin\":\"\",\"type\":\"font/woff2\"}]\n4:HL[\"/_next/static/media/e6099e249fd938cc-s.p.woff2\",\"font\",{\"crossOrigin\":\"\",\"type\":\"font/woff2\"}]\n5:HL[\"/_next/static/css/52520cb54f622506.css?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"style\"]\n6:HL[\"/_next/static/css/1c3a1dae2e9924fc.css?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"style\"]\n"])</script><script>self.__next_f.push([1,"7:I[2846,[],\"\"]\n9:I[3929,[\"972\",\"static/chunks/972-804638cee5817fc0.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"501\",\"static/chunks/501-3e61319dc477a679.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"763\",\"static/chunks/763-5327424ae8f6d5e2.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"318\",\"static/chunks/318-15af64b41b0d558d.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"931\",\"static/chunks/app/page-6e9a0df48ef2c3a3.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\"],\"Navigation\"]\na:I[8588,[\"972\",\"static/chunks/972-804638cee5817fc0.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"501\",\"static/chunks/501-3e61319dc477a679.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"763\",\"static/chunks/763-5327424ae8f6d5e2.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"318\",\"static/chunks/318-15af64b41b0d558d.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"931\",\"static/chunks/app/page-6e9a0df48ef2c3a3.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\"],\"Hero\"]\nb:I[5072,[\"972\",\"static/chunks/972-804638cee5817fc0.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"501\",\"static/chunks/501-3e61319dc477a679.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"763\",\"static/chunks/763-5327424ae8f6d5e2.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"318\",\"static/chunks/318-15af64b41b0d558d.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"931\",\"static/chunks/app/page-6e9a0df48ef2c3a3.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\"],\"ClaimStrip\"]\nc:I[2573,[\"972\",\"static/chunks/972-804638cee5817fc0.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"501\",\"static/chunks/501-3e61319dc477a679.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"763\",\"static/chunks/763-5327424ae8f6d5e2.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"318\",\"static/chunks/318-15af64b41b0d558d.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"931\",\"static/chunks/app/page-6e9a0df48ef2c3a3.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\"],\"WhatIsTokenMade\"]\nd:I[3195,[\"972\",\"static/chunks/972-804638cee5817fc0.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"501\",\"static/chunks/501-3e61319dc477a679.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"763\",\"static/chunks/763-5327424ae8f6d5e2.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKui"])</script><script>self.__next_f.push([1,"SQde\",\"318\",\"static/chunks/318-15af64b41b0d558d.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"931\",\"static/chunks/app/page-6e9a0df48ef2c3a3.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\"],\"EventDetails\"]\ne:I[9341,[\"972\",\"static/chunks/972-804638cee5817fc0.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"501\",\"static/chunks/501-3e61319dc477a679.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"763\",\"static/chunks/763-5327424ae8f6d5e2.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"318\",\"static/chunks/318-15af64b41b0d558d.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"931\",\"static/chunks/app/page-6e9a0df48ef2c3a3.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\"],\"Hosts\"]\nf:I[951,[\"972\",\"static/chunks/972-804638cee5817fc0.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"501\",\"static/chunks/501-3e61319dc477a679.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"763\",\"static/chunks/763-5327424ae8f6d5e2.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"318\",\"static/chunks/318-15af64b41b0d558d.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"931\",\"static/chunks/app/page-6e9a0df48ef2c3a3.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\"],\"ApplicationForm\"]\n10:I[9338,[\"972\",\"static/chunks/972-804638cee5817fc0.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"501\",\"static/chunks/501-3e61319dc477a679.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"763\",\"static/chunks/763-5327424ae8f6d5e2.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"318\",\"static/chunks/318-15af64b41b0d558d.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"931\",\"static/chunks/app/page-6e9a0df48ef2c3a3.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\"],\"Footer\"]\n11:I[8896,[\"972\",\"static/chunks/972-804638cee5817fc0.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"501\",\"static/chunks/501-3e61319dc477a679.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"763\",\"static/chunks/763-5327424ae8f6d5e2.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"318\",\"static/chunks/318-15af64b41b0d558d.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"931\",\"static/chunks/app/page-6e9a0df48ef2c3a3.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\"],\"ScrollAnimation\"]\n14:I[1060,[],\"\"]\n15:[]\n0:[\"$\",\"$L7\",null,{\"buildId\":\"lvT7xCQKb4l8CouH5C8"])</script><script>self.__next_f.push([1,"F3\",\"assetPrefix\":\"\",\"urlParts\":[\"\",\"\"],\"initialTree\":[\"\",{\"children\":[\"__PAGE__\",{}]},\"$undefined\",\"$undefined\",true],\"initialSeedData\":[\"\",{\"children\":[\"__PAGE__\",{},[[\"$L8\",[[\"$\",\"script\",null,{\"type\":\"application/ld+json\",\"dangerouslySetInnerHTML\":{\"__html\":\"{\\\"@context\\\":\\\"https://schema.org\\\",\\\"@type\\\":\\\"Event\\\",\\\"name\\\":\\\"TokenMade — For the builders.\\\",\\\"description\\\":\\\"27 demos. 100 builders. TokenMade is an invite-only showcase of real products built with AI. May 4, 2026 in Hamburg, the evening before OMR Festival.\\\",\\\"startDate\\\":\\\"2026-05-04T17:00:00+02:00\\\",\\\"endDate\\\":\\\"2026-05-04T20:00:00+02:00\\\",\\\"url\\\":\\\"https://tokenmade.ai\\\",\\\"image\\\":\\\"https://tokenmade.ai/images/tokenmade-ai-social-preview.jpg\\\",\\\"eventStatus\\\":\\\"https://schema.org/EventScheduled\\\",\\\"eventAttendanceMode\\\":\\\"https://schema.org/OfflineEventAttendanceMode\\\",\\\"location\\\":{\\\"@type\\\":\\\"Place\\\",\\\"name\\\":\\\"TrackMe Hamburg\\\",\\\"address\\\":{\\\"@type\\\":\\\"PostalAddress\\\",\\\"streetAddress\\\":\\\"TrackMe Hamburg\\\",\\\"addressLocality\\\":\\\"Hamburg\\\",\\\"addressCountry\\\":\\\"DE\\\"}},\\\"organizer\\\":{\\\"@type\\\":\\\"Organization\\\",\\\"name\\\":\\\"TokenMade\\\",\\\"url\\\":\\\"https://tokenmade.ai\\\"}}\"}}],[\"$\",\"$L9\",null,{}],[\"$\",\"main\",null,{\"id\":\"main-content\",\"children\":[[\"$\",\"$La\",null,{}],[\"$\",\"$Lb\",null,{}],[\"$\",\"$Lc\",null,{}],[\"$\",\"$Ld\",null,{}],[\"$\",\"$Le\",null,{}],[\"$\",\"$Lf\",null,{}]]}],[\"$\",\"$L10\",null,{}],[\"$\",\"$L11\",null,{}]],null],null],null]},[[[[\"$\",\"link\",\"0\",{\"rel\":\"stylesheet\",\"href\":\"/_next/static/css/52520cb54f622506.css?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"precedence\":\"next\",\"crossOrigin\":\"$undefined\"}],[\"$\",\"link\",\"1\",{\"rel\":\"stylesheet\",\"href\":\"/_next/static/css/1c3a1dae2e9924fc.css?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"precedence\":\"next\",\"crossOrigin\":\"$undefined\"}]],\"$L12\"],null],null],\"couldBeIntercepted\":false,\"initialHead\":[null,\"$L13\"],\"globalErrorComponent\":\"$14\",\"missingSlots\":\"$W15\"}]\n"])</script><script>self.__next_f.push([1,"16:I[3618,[\"501\",\"static/chunks/501-3e61319dc477a679.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"414\",\"static/chunks/414-4411a60b635630f8.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"318\",\"static/chunks/318-15af64b41b0d558d.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"185\",\"static/chunks/app/layout-76b28eb65c7fd977.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\"],\"LocaleProvider\"]\n17:I[9156,[\"501\",\"static/chunks/501-3e61319dc477a679.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"414\",\"static/chunks/414-4411a60b635630f8.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"318\",\"static/chunks/318-15af64b41b0d558d.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"185\",\"static/chunks/app/layout-76b28eb65c7fd977.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\"],\"ConvexClientProvider\"]\n18:I[4707,[],\"\"]\n19:I[6423,[],\"\"]\n1a:I[8003,[\"501\",\"static/chunks/501-3e61319dc477a679.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"414\",\"static/chunks/414-4411a60b635630f8.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"318\",\"static/chunks/318-15af64b41b0d558d.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\",\"185\",\"static/chunks/app/layout-76b28eb65c7fd977.js?dpl=dpl_CqMpPSieS9Cyw1d5P3rszKuiSQde\"],\"\"]\n"])</script><script>self.__next_f.push([1,"12:[\"$\",\"html\",null,{\"lang\":\"en\",\"children\":[[\"$\",\"head\",null,{\"children\":[\"$\",\"link\",null,{\"rel\":\"preconnect\",\"href\":\"https://plausible.io\"}]}],[\"$\",\"body\",null,{\"className\":\"__variable_1f5468 __variable_6b6f87 __variable_fa2f99 font-sans bg-bg-primary text-text-primary antialiased\",\"children\":[[\"$\",\"a\",null,{\"href\":\"#main-content\",\"className\":\"sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[10000] focus:bg-purple-vivid focus:text-bg-primary focus:px-4 focus:py-2 focus:rounded-lg focus:font-mono focus:text-sm focus:font-bold\",\"children\":\"Skip to content\"}],[\"$\",\"$L16\",null,{\"initialLocale\":\"en\",\"children\":[\"$\",\"$L17\",null,{\"children\":[\"$\",\"$L18\",null,{\"parallelRouterKey\":\"children\",\"segmentPath\":[\"children\"],\"error\":\"$undefined\",\"errorStyles\":\"$undefined\",\"errorScripts\":\"$undefined\",\"template\":[\"$\",\"$L19\",null,{}],\"templateStyles\":\"$undefined\",\"templateScripts\":\"$undefined\",\"notFound\":[[\"$\",\"title\",null,{\"children\":\"404: This page could not be found.\"}],[\"$\",\"div\",null,{\"style\":{\"fontFamily\":\"system-ui,\\\"Segoe UI\\\",Roboto,Helvetica,Arial,sans-serif,\\\"Apple Color Emoji\\\",\\\"Segoe UI Emoji\\\"\",\"height\":\"100vh\",\"textAlign\":\"center\",\"display\":\"flex\",\"flexDirection\":\"column\",\"alignItems\":\"center\",\"justifyContent\":\"center\"},\"children\":[\"$\",\"div\",null,{\"children\":[[\"$\",\"style\",null,{\"dangerouslySetInnerHTML\":{\"__html\":\"body{color:#000;background:#fff;margin:0}.next-error-h1{border-right:1px solid rgba(0,0,0,.3)}@media (prefers-color-scheme:dark){body{color:#fff;background:#000}.next-error-h1{border-right:1px solid rgba(255,255,255,.3)}}\"}}],[\"$\",\"h1\",null,{\"className\":\"next-error-h1\",\"style\":{\"display\":\"inline-block\",\"margin\":\"0 20px 0 0\",\"padding\":\"0 23px 0 0\",\"fontSize\":24,\"fontWeight\":500,\"verticalAlign\":\"top\",\"lineHeight\":\"49px\"},\"children\":\"404\"}],[\"$\",\"div\",null,{\"style\":{\"display\":\"inline-block\"},\"children\":[\"$\",\"h2\",null,{\"style\":{\"fontSize\":14,\"fontWeight\":400,\"lineHeight\":\"49px\",\"margin\":0},\"children\":\"This page could not be found.\"}]}]]}]}]],\"notFoundStyles\":[]}]}]}],[\"$\",\"script\",null,{\"type\":\"application/ld+json\",\"dangerouslySetInnerHTML\":{\"__html\":\"{\\\"@context\\\":\\\"https://schema.org\\\",\\\"@type\\\":\\\"Organization\\\",\\\"name\\\":\\\"TokenMade\\\",\\\"url\\\":\\\"https://tokenmade.ai\\\",\\\"logo\\\":\\\"https://tokenmade.ai/images/tokenmade-ai-social-preview.jpg\\\",\\\"sameAs\\\":[]}\"}}],[\"$\",\"script\",null,{\"type\":\"application/ld+json\",\"dangerouslySetInnerHTML\":{\"__html\":\"{\\\"@context\\\":\\\"https://schema.org\\\",\\\"@type\\\":\\\"WebSite\\\",\\\"name\\\":\\\"TokenMade\\\",\\\"url\\\":\\\"https://tokenmade.ai\\\"}\"}}],[\"$\",\"$L1a\",null,{\"defer\":true,\"data-domain\":\"tokenmade.ai\",\"src\":\"https://plausible.io/js/script.js\"}]]}]]}]\n"])</script><script>self.__next_f.push([1,"13:[[\"$\",\"meta\",\"0\",{\"name\":\"viewport\",\"content\":\"width=device-width, initial-scale=1\"}],[\"$\",\"meta\",\"1\",{\"charSet\":\"utf-8\"}],[\"$\",\"title\",\"2\",{\"children\":\"TokenMade — For the builders.\"}],[\"$\",\"meta\",\"3\",{\"name\":\"description\",\"content\":\"27 demos. 100 builders. TokenMade is an invite-only showcase of real products built with AI. May 4, 2026 in Hamburg, the evening before OMR Festival.\"}],[\"$\",\"link\",\"4\",{\"rel\":\"manifest\",\"href\":\"/manifest.webmanifest\",\"crossOrigin\":\"use-credentials\"}],[\"$\",\"meta\",\"5\",{\"name\":\"robots\",\"content\":\"index, follow\"}],[\"$\",\"link\",\"6\",{\"rel\":\"canonical\",\"href\":\"https://tokenmade.ai\"}],[\"$\",\"link\",\"7\",{\"rel\":\"alternate\",\"hrefLang\":\"en\",\"href\":\"https://tokenmade.ai\"}],[\"$\",\"link\",\"8\",{\"rel\":\"alternate\",\"hrefLang\":\"de\",\"href\":\"https://tokenmade.ai\"}],[\"$\",\"link\",\"9\",{\"rel\":\"alternate\",\"hrefLang\":\"x-default\",\"href\":\"https://tokenmade.ai\"}],[\"$\",\"meta\",\"10\",{\"property\":\"og:title\",\"content\":\"TokenMade — 27 AI Products Live on Stage | Hamburg 2026\"}],[\"$\",\"meta\",\"11\",{\"property\":\"og:description\",\"content\":\"No slides, no fluff — 27 real AI products demoed live. An invite-only OMR side event, May 4, 2026 in Hamburg. 100 builders. Be there.\"}],[\"$\",\"meta\",\"12\",{\"property\":\"og:url\",\"content\":\"https://tokenmade.ai\"}],[\"$\",\"meta\",\"13\",{\"property\":\"og:site_name\",\"content\":\"TokenMade\"}],[\"$\",\"meta\",\"14\",{\"property\":\"og:locale\",\"content\":\"en_US\"}],[\"$\",\"meta\",\"15\",{\"property\":\"og:image\",\"content\":\"https://tokenmade.ai/images/tokenmade-ai-social-preview.jpg\"}],[\"$\",\"meta\",\"16\",{\"property\":\"og:image:width\",\"content\":\"1200\"}],[\"$\",\"meta\",\"17\",{\"property\":\"og:image:height\",\"content\":\"750\"}],[\"$\",\"meta\",\"18\",{\"property\":\"og:locale:alternate\",\"content\":\"de_DE\"}],[\"$\",\"meta\",\"19\",{\"property\":\"og:type\",\"content\":\"website\"}],[\"$\",\"meta\",\"20\",{\"name\":\"twitter:card\",\"content\":\"summary_large_image\"}],[\"$\",\"meta\",\"21\",{\"name\":\"twitter:title\",\"content\":\"TokenMade — 27 AI Products Live on Stage | Hamburg 2026\"}],[\"$\",\"meta\",\"22\",{\"name\":\"twitter:description\",\"content\":\"No slides, no fluff — 27 real AI products demoed live. An invite-only OMR side event, May 4, 2026 in Hamburg. 100 builders. Be there.\"}],[\"$\",\"meta\",\"23\",{\"name\":\"twitter:image\",\"content\":\"https://tokenmade.ai/images/tokenmade-ai-social-preview.jpg\"}],[\"$\",\"meta\",\"24\",{\"name\":\"twitter:image:width\",\"content\":\"1200\"}],[\"$\",\"meta\",\"25\",{\"name\":\"twitter:image:height\",\"content\":\"750\"}],[\"$\",\"link\",\"26\",{\"rel\":\"icon\",\"href\":\"/icon?70aad7b5eca08cb0\",\"alt\":\"$undefined\",\"type\":\"image/png\",\"sizes\":\"32x32\"}],[\"$\",\"link\",\"27\",{\"rel\":\"apple-touch-icon\",\"href\":\"/apple-icon?40e1ed581177862b\",\"alt\":\"$undefined\",\"type\":\"image/png\",\"sizes\":\"180x180\"}],[\"$\",\"meta\",\"28\",{\"name\":\"next-size-adjust\"}]]\n"])</script><script>self.__next_f.push([1,"8:null\n"])</script></body></html>
 </file>
@@ -36226,6 +36242,16 @@ window.MilgReport = (function() {
         html += '<span class="finding-title">' + escapeHtml(f.title) + '</span>';
         html += '</div>';
         if (f.detail) html += '<p class="finding-detail">' + escapeHtml(f.detail) + '</p>';
+        // Affected elements with selectors (collapsible, for machine-readable reports)
+        if (f.locator && f.locator.selectors && f.locator.selectors.length > 0) {
+          html += '<details class="finding-selectors" style="margin:6px 0;font-size:11px">';
+          html += '<summary style="cursor:pointer;color:var(--text-secondary)">' + f.locator.selectors.length + ' affected element' + (f.locator.selectors.length !== 1 ? 's' : '') + '</summary>';
+          html += '<pre style="margin:4px 0 0;padding:8px;background:var(--bg-alt);border:1px solid var(--border);border-radius:4px;font-size:10px;line-height:1.6;max-height:200px;overflow:auto;white-space:pre-wrap;word-break:break-all">';
+          f.locator.selectors.forEach(function(sel) {
+            html += escapeHtml(sel) + '\n';
+          });
+          html += '</pre></details>';
+        }
         // Color pair swatches for contrast findings
         if (f._colors) {
           html += '<div class="finding-color-pair" style="display:flex;align-items:center;gap:8px;margin:4px 0 6px;font-size:11px;color:var(--text-secondary)">' +
@@ -36865,11 +36891,10 @@ window.MilgReport = (function() {
         html += '<div class="issue-count">' + issue.count + '&times; on ' + uniquePages.length + ' page' + (uniquePages.length > 1 ? 's' : '') + '</div>';
         html += '</div>';
         html += '<div class="issue-pages">';
-        issue.pages.slice(0, 5).forEach(function(p) {
+        issue.pages.forEach(function(p) {
           var path; try { path = new URL(p.url).pathname; } catch(e) { path = p.url; }
           html += '<div>' + escapeHtml(path) + (p.detail ? ' — ' + escapeHtml(p.detail.substring(0, 80)) : '') + '</div>';
         });
-        if (issue.pages.length > 5) html += '<div style="color:var(--text-secondary)">...and ' + (issue.pages.length - 5) + ' more</div>';
         html += '</div>';
         html += '</div>';
       });
@@ -37315,9 +37340,9 @@ window.MilgExtract = (function() {
       if (!fontSizeSamples[s.fontSize]) {
         fontSizeSamples[s.fontSize] = { selector: cssSelector(el), bbox: null, extraBboxes: [] };
         trackBbox(el, fontSizeSamples[s.fontSize], 'bbox');
-      } else if (fontSizeSamples[s.fontSize].extraBboxes && fontSizeSamples[s.fontSize].extraBboxes.length < 29) {
-        // Collect additional bboxes (up to 30 total) for findings that show all instances
-        var _extra = { bbox: null };
+      } else if (fontSizeSamples[s.fontSize].extraBboxes) {
+        // Collect ALL additional bboxes + selectors for findings that show every instance
+        var _extra = { bbox: null, selector: cssSelector(el) };
         trackBbox(el, _extra, 'bbox');
         fontSizeSamples[s.fontSize].extraBboxes.push(_extra);
       }
@@ -37358,10 +37383,10 @@ window.MilgExtract = (function() {
       var w = rect.width;
       if (w > maxContentW && w < window.innerWidth * 0.95) maxContentW = w;
     }
-    function mapToSorted(map, sampleMap, bboxMap) { return Object.keys(map).map(function(k) { var entry = { value: k, count: map[k], sample: sampleMap ? (sampleMap[k] || '') : '' }; if (bboxMap && bboxMap[k]) { entry.sampleSelector = bboxMap[k].selector; entry.bbox = bboxMap[k].bbox; entry._sampleRef = bboxMap[k]; if (bboxMap[k].extraBboxes) { entry.extraBboxes = bboxMap[k].extraBboxes.map(function(eb) { return eb.bbox; }).filter(Boolean); } } return entry; }).sort(function(a, b) { return b.count - a.count; }).slice(0, 30); }
+    function mapToSorted(map, sampleMap, bboxMap) { return Object.keys(map).map(function(k) { var entry = { value: k, count: map[k], sample: sampleMap ? (sampleMap[k] || '') : '' }; if (bboxMap && bboxMap[k]) { entry.sampleSelector = bboxMap[k].selector; entry.bbox = bboxMap[k].bbox; entry._sampleRef = bboxMap[k]; if (bboxMap[k].extraBboxes) { entry.extraBboxes = bboxMap[k].extraBboxes.map(function(eb) { return eb.bbox; }).filter(Boolean); entry.extraSelectors = bboxMap[k].extraBboxes.map(function(eb) { return eb.selector; }).filter(Boolean); } } return entry; }).sort(function(a, b) { return b.count - a.count; }); }
     data.typography.fontSizes = mapToSorted(fontSizeMap, null, fontSizeSamples);
     data.typography.fontWeights = mapToSorted(fontWeightMap);
-    data.typography.fontFamilies = Array.from(fontFamilySet).slice(0, 10);
+    data.typography.fontFamilies = Array.from(fontFamilySet);
     data.typography.lineHeights = mapToSorted(lineHeightMap);
     data.colors.textColors = mapToSorted(textColorMap, textColorSample);
     data.colors.bgColors = mapToSorted(bgColorMap, bgColorSample);
@@ -38025,6 +38050,7 @@ window.MilgExtract = (function() {
           entry.bbox = entry._sampleRef.bbox;
           if (entry._sampleRef.extraBboxes) {
             entry.extraBboxes = entry._sampleRef.extraBboxes.map(function(eb) { return eb.bbox; }).filter(Boolean);
+            entry.extraSelectors = entry._sampleRef.extraBboxes.map(function(eb) { return eb.selector; }).filter(Boolean);
           }
         }
       });
@@ -41144,6 +41170,7 @@ window.MilgViewer = (function() {
     }
 
     _allFindings.forEach(function(finding, fIdx) {
+      if (_activeFilter.type === 'finding' && fIdx !== _activeFilter.value) return;
       if (_activeFilter.type === 'category' && finding.icon !== _activeFilter.value) return;
       if (_activeFilter.type === 'severity' && _activeFilter.value !== 'all' && finding.severity !== _activeFilter.value) return;
 
@@ -42031,21 +42058,36 @@ window.MilgViewer = (function() {
     document.addEventListener('keydown', function onKey(e) { if (e.key === 'Escape') { closeSimple(); document.removeEventListener('keydown', onKey); } });
   }
 
-  // Open viewer focused on a specific finding
+  // Open viewer focused on a specific finding — shows ONLY that finding's bboxes
   function showFinding(findingIdx, reportData) {
     if (!reportData || !reportData.raw || !reportData.raw.screenshots || !reportData.raw.screenshotMeta) return;
 
-    var findings = [];
+    // Map report findingIdx → _allFindings index
+    // Report skips pass findings; _allFindings includes them. Build mapping.
+    var reportIdx = 0;
+    var viewerIdx = -1;
     var cats = reportData.categories || [];
-    cats.forEach(function(cat) {
-      (cat.findings || []).forEach(function(f) {
-        if (!f.locator || !f.locator.bboxes || f.locator.bboxes.length === 0) return;
-        findings.push({ icon: cat.icon, bboxes: f.locator.bboxes });
-      });
-    });
-
-    var target = findings[findingIdx];
-    if (!target || !target.bboxes[0]) return;
+    for (var ci = 0; ci < cats.length && viewerIdx === -1; ci++) {
+      var catFindings = cats[ci].findings || [];
+      for (var fi = 0; fi < catFindings.length && viewerIdx === -1; fi++) {
+        var f = catFindings[fi];
+        if (!f.locator || !f.locator.bboxes || f.locator.bboxes.length === 0) continue;
+        if (f.severity === 'pass') continue; // report skips pass
+        if (reportIdx === findingIdx) {
+          // Find the matching _allFindings entry by scanning
+          for (var ai = 0; ai < _allFindings.length; ai++) {
+            if (_allFindings[ai].title === (f.title || '') && _allFindings[ai].detail === (f.detail || '')) {
+              viewerIdx = ai; break;
+            }
+          }
+          if (viewerIdx === -1) viewerIdx = 0; // fallback
+        }
+        reportIdx++;
+      }
+    }
+    if (viewerIdx === -1 || !_allFindings[viewerIdx]) return;
+    var target = _allFindings[viewerIdx];
+    if (!target.bboxes || !target.bboxes[0]) return;
 
     var meta = reportData.raw.screenshotMeta;
     var sectionIdx = Math.floor(target.bboxes[0].top / meta.viewportHeight);
@@ -42055,11 +42097,34 @@ window.MilgViewer = (function() {
     dummyImg.src = reportData.raw.screenshots[0];
     open(dummyImg, sectionIdx, reportData);
 
-    _activeFilter = { type: 'category', value: target.icon };
+    // Show ONLY this finding's bboxes (not the whole category)
+    _activeFilter = { type: 'finding', value: viewerIdx };
     updateFilterButtons();
     renderOverlays();
 
-    // Scroll to the finding's bbox and highlight it
+    // Auto-zoom for small elements
+    var maxDim = 0;
+    target.bboxes.forEach(function(bb) {
+      var dim = Math.max(bb.width || 0, bb.height || 0);
+      if (dim > maxDim) maxDim = dim;
+    });
+    var frame = _overlay && _overlay.querySelector('.milg-viewer-frame');
+    var zoomSelect = _overlay && _overlay.querySelector('.milg-viewer-zoom-select');
+    if (maxDim > 0 && maxDim < 50) {
+      _zoomLevel = 3;
+    } else if (maxDim > 0 && maxDim < 100) {
+      _zoomLevel = 2;
+    } else {
+      _zoomLevel = 1;
+    }
+    if (zoomSelect) {
+      for (var zi = 0; zi < zoomSelect.options.length; zi++) {
+        if (parseFloat(zoomSelect.options[zi].value) === _zoomLevel) { zoomSelect.selectedIndex = zi; break; }
+      }
+    }
+    if (frame) applyZoom(frame);
+
+    // Scroll to the finding's first bbox and highlight ALL its rects
     var bbox = target.bboxes[0];
     var scale = meta.scale;
     setTimeout(function() {
@@ -42067,14 +42132,12 @@ window.MilgViewer = (function() {
       var svg = _overlay && _overlay.querySelector('.milg-viewer-svg');
       if (!content || !svg) return;
 
-      // Find the rect matching this finding
       var targetY = Math.round(bbox.top * scale) - _calibrationOffsetY;
-      var targetX = Math.round(bbox.left * scale);
 
-      // Scroll the viewer content to center the bbox
-      var frame = _overlay.querySelector('.milg-viewer-frame');
-      if (frame) {
-        var imgEl = frame.querySelector('.milg-viewer-img');
+      // Scroll to center the first bbox
+      var frameEl = _overlay.querySelector('.milg-viewer-frame');
+      if (frameEl) {
+        var imgEl = frameEl.querySelector('.milg-viewer-img');
         if (imgEl && imgEl.naturalWidth > 0) {
           var displayScale = imgEl.offsetWidth / imgEl.naturalWidth;
           var scrollY = (targetY * displayScale) - content.clientHeight / 2;
@@ -42082,21 +42145,32 @@ window.MilgViewer = (function() {
         }
       }
 
-      // Highlight the matching rect
+      // Highlight ALL rects for this finding with orange stroke
       svg.querySelectorAll('rect[data-finding]').forEach(function(rect) {
-        var fi = parseInt(rect.getAttribute('data-finding'));
-        // Match by bbox position (since findingIdx may differ between report and viewer)
-        var rectY = parseFloat(rect.getAttribute('y'));
-        var rectX = parseFloat(rect.getAttribute('x'));
-        if (Math.abs(rectY - targetY) < 5 && Math.abs(rectX - targetX) < 5) {
+        var rfi = parseInt(rect.getAttribute('data-finding'));
+        if (rfi === viewerIdx) {
           rect.setAttribute('stroke-width', '3');
           rect.setAttribute('stroke', '#f59e0b');
           setTimeout(function() {
             rect.setAttribute('stroke-width', '1.5');
-            rect.setAttribute('stroke', (COLORS[target.icon] || COLORS.info).stroke);
+            rect.setAttribute('stroke', (COLORS[target.severity] || COLORS.info).stroke);
           }, 2000);
         }
       });
+
+      // If this finding has pixel verify data, activate verify overlay
+      var verifyResults = (_reportData && _reportData._contrastVerifyResults) || [];
+      if (verifyResults.length > 0 && target.detail) {
+        var matchedVerify = null;
+        verifyResults.forEach(function(vr) {
+          if (vr.selector && target.detail.indexOf(vr.selector) !== -1) matchedVerify = vr;
+        });
+        if (matchedVerify) {
+          _activeFilter = { type: 'verify', value: 'all' };
+          updateFilterButtons();
+          renderOverlays();
+        }
+      }
     }, 500);
   }
 
@@ -42142,7 +42216,7 @@ window.MilgViewer = (function() {
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v42.4</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v43.0</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -43925,7 +43999,7 @@ window.MilgContrastVerify = (function() {
       html += '<div style="padding:10px 14px;background:' + bg + ';border:1px solid ' + border + ';border-radius:6px;margin-bottom:8px">';
       html += '<strong style="color:#f59e0b">' + summary.variableBgCount + ' element' + (summary.variableBgCount > 1 ? 's' : '') + ' with variable backgrounds (photo/gradient)</strong>';
       html += '<p style="margin:4px 0 0;font-size:12px;color:' + (isDark ? '#fbbf24' : '#92400e') + '">Contrast varies across the element. The worst-case measurement determines the result.</p>';
-      vbResults.slice(0, 5).forEach(function(r) {
+      vbResults.forEach(function(r) {
         html += '<div style="margin-top:6px;padding:6px 8px;background:' + (isDark ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.7)') + ';border-radius:4px;font-size:12px">';
         html += '<strong>' + r.selector + '</strong>: "' + (r.text || '').substring(0, 30) + '"';
         html += '<br>Contrast range: <span style="color:#ef4444">' + r.pixelRatio + ':1</span> (worst) to <span style="color:#16a34a">' + r.pixelRatioBest + ':1</span> (best), avg ' + r.pixelRatioAvg + ':1';
@@ -43937,7 +44011,7 @@ window.MilgContrastVerify = (function() {
         if (r.sampleCount) html += '<span style="font-size:10px;color:var(--text-secondary)"> (' + r.sampleCount.fg + ' FG, ' + r.sampleCount.bg + ' BG samples)</span>';
         html += '</div>';
       });
-      if (vbResults.length > 5) html += '<div style="font-size:11px;color:var(--text-secondary);margin-top:4px">...and ' + (vbResults.length - 5) + ' more</div>';
+
       html += '</div>';
     }
 

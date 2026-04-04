@@ -70,7 +70,7 @@ function scoreVisualConsistency(data) {
       findings.push({
         severity: 'info',
         title: radii.length + ' distinct border-radius values (recommend 2-4, excluding pill/circle shapes)',
-        detail: 'Values: ' + radii.slice(0, 6).map(function(r) { return r.value + ' (' + r.count + 'x)'; }).join(', '),
+        detail: 'Values: ' + radii.map(function(r) { return r.value + ' (' + r.count + 'x)'; }).join(', '),
         fix: 'Standardize border-radius to 2-4 values in your design tokens. In Tailwind: rounded-sm (2px), rounded (4px), rounded-lg (8px), rounded-xl (12px).',
         presetRef: null,
         source: 'Material Design 3 — https://m3.material.io/styles/shape/overview'

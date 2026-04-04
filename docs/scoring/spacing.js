@@ -155,7 +155,7 @@ function scoreSpacing(data) {
     findings.push({
       severity: 'info',
       title: cPaddings.length + ' distinct container padding values',
-      detail: 'Values: ' + cPaddings.slice(0, 5).map(function(p) { return p.value + ' (' + p.count + 'x)'; }).join(', '),
+      detail: 'Values: ' + cPaddings.map(function(p) { return p.value + ' (' + p.count + 'x)'; }).join(', '),
       fix: 'Standardize container padding to 2-3 values. In Tailwind: p-4 (16px), p-6 (24px), p-8 (32px).',
       presetRef: null,
       source: 'Gestalt proximity — https://lawsofux.com/law-of-proximity/'

@@ -177,7 +177,7 @@ function scorePerformance(data) {
   // Upscaled images
   var upscaled = (data.performance && data.performance.upscaledImages) || [];
   if (upscaled.length > 0) {
-    var upDetails = upscaled.slice(0, 3).map(function(u) { return u.selector + ' ' + u.natural + ' → ' + u.rendered + ' (' + u.upscale + '%)'; });
+    var upDetails = upscaled.map(function(u) { return u.selector + ' ' + u.natural + ' → ' + u.rendered + ' (' + u.upscale + '%)'; });
     findings.push({
       severity: upscaled.some(function(u) { return u.upscale > 150; }) ? 'warning' : 'info',
       title: upscaled.length + ' image(s) rendered larger than natural size',

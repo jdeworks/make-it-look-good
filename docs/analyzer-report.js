@@ -178,6 +178,16 @@ window.MilgReport = (function() {
         html += '<span class="finding-title">' + escapeHtml(f.title) + '</span>';
         html += '</div>';
         if (f.detail) html += '<p class="finding-detail">' + escapeHtml(f.detail) + '</p>';
+        // Affected elements with selectors (collapsible, for machine-readable reports)
+        if (f.locator && f.locator.selectors && f.locator.selectors.length > 0) {
+          html += '<details class="finding-selectors" style="margin:6px 0;font-size:11px">';
+          html += '<summary style="cursor:pointer;color:var(--text-secondary)">' + f.locator.selectors.length + ' affected element' + (f.locator.selectors.length !== 1 ? 's' : '') + '</summary>';
+          html += '<pre style="margin:4px 0 0;padding:8px;background:var(--bg-alt);border:1px solid var(--border);border-radius:4px;font-size:10px;line-height:1.6;max-height:200px;overflow:auto;white-space:pre-wrap;word-break:break-all">';
+          f.locator.selectors.forEach(function(sel) {
+            html += escapeHtml(sel) + '\n';
+          });
+          html += '</pre></details>';
+        }
         // Color pair swatches for contrast findings
         if (f._colors) {
           html += '<div class="finding-color-pair" style="display:flex;align-items:center;gap:8px;margin:4px 0 6px;font-size:11px;color:var(--text-secondary)">' +
@@ -817,11 +827,10 @@ window.MilgReport = (function() {
         html += '<div class="issue-count">' + issue.count + '&times; on ' + uniquePages.length + ' page' + (uniquePages.length > 1 ? 's' : '') + '</div>';
         html += '</div>';
         html += '<div class="issue-pages">';
-        issue.pages.slice(0, 5).forEach(function(p) {
+        issue.pages.forEach(function(p) {
           var path; try { path = new URL(p.url).pathname; } catch(e) { path = p.url; }
           html += '<div>' + escapeHtml(path) + (p.detail ? ' — ' + escapeHtml(p.detail.substring(0, 80)) : '') + '</div>';
         });
-        if (issue.pages.length > 5) html += '<div style="color:var(--text-secondary)">...and ' + (issue.pages.length - 5) + ' more</div>';
         html += '</div>';
         html += '</div>';
       });

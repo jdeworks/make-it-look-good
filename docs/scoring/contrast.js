@@ -127,8 +127,8 @@ function scoreContrast(data) {
   var failSeen = {};
   failures.forEach(function(p) {
     var dedup = p.ratio + '|' + p.selector;
-    if (failSeen[dedup]) { failSeen[dedup].count++; if (p.bbox) failSeen[dedup].bboxes.push(p.bbox); return; }
-    failSeen[dedup] = { p: p, count: 1, bboxes: p.bbox ? [p.bbox] : [] };
+    if (failSeen[dedup]) { failSeen[dedup].count++; if (p.bbox) failSeen[dedup].bboxes.push(p.bbox); if (p.selector) failSeen[dedup].selectors.push(p.selector); return; }
+    failSeen[dedup] = { p: p, count: 1, bboxes: p.bbox ? [p.bbox] : [], selectors: p.selector ? [p.selector] : [] };
   });
   Object.keys(failSeen).forEach(function(key) {
     var entry = failSeen[key];
@@ -150,7 +150,7 @@ function scoreContrast(data) {
         : 'Normal text needs ' + profile.contrast + ':1 minimum. Use a darker text color or lighter background.') + bgNote,
       presetRef: null,
       source: p.isLarge ? 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' : 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum',
-      locator: { selector: p.selector, text: p.text, bboxes: entry.bboxes },
+      locator: { selector: p.selector, text: p.text, bboxes: entry.bboxes, selectors: entry.selectors },
       _colors: { fg: p.fg, bg: p.bg, ratio: p.ratio }
     });
   });
@@ -159,7 +159,7 @@ function scoreContrast(data) {
     findings.push({
       severity: 'info',
       title: uncertain.length + ' element(s) with undetermined contrast (background could not be resolved)',
-      detail: 'These elements may use gradients, images, SVGs, or complex CSS that the analyzer cannot parse. Check manually: ' + uncertain.slice(0, 3).map(function(p) { return '"' + p.text + '"'; }).join(', '),
+      detail: 'These elements may use gradients, images, SVGs, or complex CSS that the analyzer cannot parse. Check manually: ' + uncertain.map(function(p) { return '"' + p.text + '"'; }).join(', '),
       fix: 'Verify these elements have sufficient contrast visually. The analyzer reports 1:1 when the effective background cannot be computed.',
       presetRef: null,
       source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
@@ -170,8 +170,8 @@ function scoreContrast(data) {
   var nearSeen = {};
   nearMisses.forEach(function(p) {
     var dedup = p.ratio + '|' + p.selector;
-    if (nearSeen[dedup]) { nearSeen[dedup].count++; if (p.bbox) nearSeen[dedup].bboxes.push(p.bbox); return; }
-    nearSeen[dedup] = { p: p, count: 1, bboxes: p.bbox ? [p.bbox] : [] };
+    if (nearSeen[dedup]) { nearSeen[dedup].count++; if (p.bbox) nearSeen[dedup].bboxes.push(p.bbox); if (p.selector) nearSeen[dedup].selectors.push(p.selector); return; }
+    nearSeen[dedup] = { p: p, count: 1, bboxes: p.bbox ? [p.bbox] : [], selectors: p.selector ? [p.selector] : [] };
   });
   Object.keys(nearSeen).forEach(function(key) {
     var entry = nearSeen[key];
@@ -184,7 +184,7 @@ function scoreContrast(data) {
       fix: 'Passes AA but consider increasing for AAA (7:1). Slight changes in background could cause failure.',
       presetRef: null,
       source: 'WCAG 2.2 §1.4.6 — https://www.w3.org/TR/WCAG22/#contrast-enhanced',
-      locator: { selector: p.selector, text: p.text, bboxes: entry.bboxes },
+      locator: { selector: p.selector, text: p.text, bboxes: entry.bboxes, selectors: entry.selectors },
       _colors: { fg: p.fg, bg: p.bg, ratio: p.ratio }
     });
   });
@@ -202,8 +202,8 @@ function scoreContrast(data) {
   var passSeen = {};
   passingPairs.forEach(function(p) {
     var dedup = p.selector;
-    if (passSeen[dedup]) { if (p.bbox) passSeen[dedup].bboxes.push(p.bbox); return; }
-    passSeen[dedup] = { p: p, bboxes: p.bbox ? [p.bbox] : [] };
+    if (passSeen[dedup]) { if (p.bbox) passSeen[dedup].bboxes.push(p.bbox); if (p.selector) passSeen[dedup].selectors.push(p.selector); return; }
+    passSeen[dedup] = { p: p, bboxes: p.bbox ? [p.bbox] : [], selectors: p.selector ? [p.selector] : [] };
   });
   Object.keys(passSeen).forEach(function(key) {
     var entry = passSeen[key];
@@ -214,7 +214,7 @@ function scoreContrast(data) {
       title: 'Contrast ' + p.ratio + ':1 passes (' + p.needed + ':1 needed)',
       detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector,
       fix: '',
-      locator: { selector: p.selector, text: p.text, bboxes: entry.bboxes },
+      locator: { selector: p.selector, text: p.text, bboxes: entry.bboxes, selectors: entry.selectors },
       _colors: { fg: p.fg, bg: p.bg, ratio: p.ratio }
     });
   });
@@ -270,7 +270,7 @@ function scoreContrast(data) {
   // Backdrop-filter + translucent backgrounds — contrast ratio may be unreliable
   var backdropPairs = profilePairs.filter(function(p) { return p.backdropFilter && p.minBgAlpha < 0.7; });
   if (backdropPairs.length > 0) {
-    var bdSamples = backdropPairs.slice(0, 3).map(function(p) {
+    var bdSamples = backdropPairs.map(function(p) {
       return '"' + p.text + '" (bg alpha: ' + p.minBgAlpha + ')';
     });
     findings.push({

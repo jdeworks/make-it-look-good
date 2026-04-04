@@ -70,9 +70,12 @@
         passed++;
       } else {
         var smallBboxes = [];
+        var smallSelectors = [];
         fontSizes.filter(function(f) { return parseFloat(f.value) < 12; }).forEach(function(f) {
           if (f.bbox) smallBboxes.push(f.bbox);
           if (f.extraBboxes) f.extraBboxes.forEach(function(b) { smallBboxes.push(b); });
+          if (f.sampleSelector) smallSelectors.push(f.sampleSelector);
+          if (f.extraSelectors) f.extraSelectors.forEach(function(s) { smallSelectors.push(s); });
         });
         findings.push({
           severity: 'warning',
@@ -81,7 +84,7 @@
           fix: 'Increase small text to at least 12px. Consider if the information is important enough to display — if not, remove it.',
           presetRef: null,
           source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text',
-          locator: smallBboxes.length > 0 ? { selector: '', text: '', bboxes: smallBboxes } : undefined
+          locator: smallBboxes.length > 0 ? { selector: '', text: '', bboxes: smallBboxes, selectors: smallSelectors } : undefined
         });
       }
     }
@@ -151,7 +154,7 @@
     var tableCellIssues = (data.layout && data.layout.tableCellIssues) || [];
     if (tableCellIssues.length > 0) {
       checks++;
-      var tableDetails = tableCellIssues.slice(0, 3).map(function(t) {
+      var tableDetails = tableCellIssues.map(function(t) {
         var parts = [];
         if (t.crampedCells > 0) parts.push(t.crampedCells + ' cells lack horizontal padding');
         if (t.wrappedCells > 0) parts.push(t.wrappedCells + ' cells wrap to multiple lines');

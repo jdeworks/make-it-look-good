@@ -402,6 +402,7 @@ window.MilgViewer = (function() {
     }
 
     _allFindings.forEach(function(finding, fIdx) {
+      if (_activeFilter.type === 'finding' && fIdx !== _activeFilter.value) return;
       if (_activeFilter.type === 'category' && finding.icon !== _activeFilter.value) return;
       if (_activeFilter.type === 'severity' && _activeFilter.value !== 'all' && finding.severity !== _activeFilter.value) return;
 
@@ -1289,21 +1290,36 @@ window.MilgViewer = (function() {
     document.addEventListener('keydown', function onKey(e) { if (e.key === 'Escape') { closeSimple(); document.removeEventListener('keydown', onKey); } });
   }
 
-  // Open viewer focused on a specific finding
+  // Open viewer focused on a specific finding — shows ONLY that finding's bboxes
   function showFinding(findingIdx, reportData) {
     if (!reportData || !reportData.raw || !reportData.raw.screenshots || !reportData.raw.screenshotMeta) return;
 
-    var findings = [];
+    // Map report findingIdx → _allFindings index
+    // Report skips pass findings; _allFindings includes them. Build mapping.
+    var reportIdx = 0;
+    var viewerIdx = -1;
     var cats = reportData.categories || [];
-    cats.forEach(function(cat) {
-      (cat.findings || []).forEach(function(f) {
-        if (!f.locator || !f.locator.bboxes || f.locator.bboxes.length === 0) return;
-        findings.push({ icon: cat.icon, bboxes: f.locator.bboxes });
-      });
-    });
-
-    var target = findings[findingIdx];
-    if (!target || !target.bboxes[0]) return;
+    for (var ci = 0; ci < cats.length && viewerIdx === -1; ci++) {
+      var catFindings = cats[ci].findings || [];
+      for (var fi = 0; fi < catFindings.length && viewerIdx === -1; fi++) {
+        var f = catFindings[fi];
+        if (!f.locator || !f.locator.bboxes || f.locator.bboxes.length === 0) continue;
+        if (f.severity === 'pass') continue; // report skips pass
+        if (reportIdx === findingIdx) {
+          // Find the matching _allFindings entry by scanning
+          for (var ai = 0; ai < _allFindings.length; ai++) {
+            if (_allFindings[ai].title === (f.title || '') && _allFindings[ai].detail === (f.detail || '')) {
+              viewerIdx = ai; break;
+            }
+          }
+          if (viewerIdx === -1) viewerIdx = 0; // fallback
+        }
+        reportIdx++;
+      }
+    }
+    if (viewerIdx === -1 || !_allFindings[viewerIdx]) return;
+    var target = _allFindings[viewerIdx];
+    if (!target.bboxes || !target.bboxes[0]) return;
 
     var meta = reportData.raw.screenshotMeta;
     var sectionIdx = Math.floor(target.bboxes[0].top / meta.viewportHeight);
@@ -1313,11 +1329,34 @@ window.MilgViewer = (function() {
     dummyImg.src = reportData.raw.screenshots[0];
     open(dummyImg, sectionIdx, reportData);
 
-    _activeFilter = { type: 'category', value: target.icon };
+    // Show ONLY this finding's bboxes (not the whole category)
+    _activeFilter = { type: 'finding', value: viewerIdx };
     updateFilterButtons();
     renderOverlays();
 
-    // Scroll to the finding's bbox and highlight it
+    // Auto-zoom for small elements
+    var maxDim = 0;
+    target.bboxes.forEach(function(bb) {
+      var dim = Math.max(bb.width || 0, bb.height || 0);
+      if (dim > maxDim) maxDim = dim;
+    });
+    var frame = _overlay && _overlay.querySelector('.milg-viewer-frame');
+    var zoomSelect = _overlay && _overlay.querySelector('.milg-viewer-zoom-select');
+    if (maxDim > 0 && maxDim < 50) {
+      _zoomLevel = 3;
+    } else if (maxDim > 0 && maxDim < 100) {
+      _zoomLevel = 2;
+    } else {
+      _zoomLevel = 1;
+    }
+    if (zoomSelect) {
+      for (var zi = 0; zi < zoomSelect.options.length; zi++) {
+        if (parseFloat(zoomSelect.options[zi].value) === _zoomLevel) { zoomSelect.selectedIndex = zi; break; }
+      }
+    }
+    if (frame) applyZoom(frame);
+
+    // Scroll to the finding's first bbox and highlight ALL its rects
     var bbox = target.bboxes[0];
     var scale = meta.scale;
     setTimeout(function() {
@@ -1325,14 +1364,12 @@ window.MilgViewer = (function() {
       var svg = _overlay && _overlay.querySelector('.milg-viewer-svg');
       if (!content || !svg) return;
 
-      // Find the rect matching this finding
       var targetY = Math.round(bbox.top * scale) - _calibrationOffsetY;
-      var targetX = Math.round(bbox.left * scale);
 
-      // Scroll the viewer content to center the bbox
-      var frame = _overlay.querySelector('.milg-viewer-frame');
-      if (frame) {
-        var imgEl = frame.querySelector('.milg-viewer-img');
+      // Scroll to center the first bbox
+      var frameEl = _overlay.querySelector('.milg-viewer-frame');
+      if (frameEl) {
+        var imgEl = frameEl.querySelector('.milg-viewer-img');
         if (imgEl && imgEl.naturalWidth > 0) {
           var displayScale = imgEl.offsetWidth / imgEl.naturalWidth;
           var scrollY = (targetY * displayScale) - content.clientHeight / 2;
@@ -1340,21 +1377,32 @@ window.MilgViewer = (function() {
         }
       }
 
-      // Highlight the matching rect
+      // Highlight ALL rects for this finding with orange stroke
       svg.querySelectorAll('rect[data-finding]').forEach(function(rect) {
-        var fi = parseInt(rect.getAttribute('data-finding'));
-        // Match by bbox position (since findingIdx may differ between report and viewer)
-        var rectY = parseFloat(rect.getAttribute('y'));
-        var rectX = parseFloat(rect.getAttribute('x'));
-        if (Math.abs(rectY - targetY) < 5 && Math.abs(rectX - targetX) < 5) {
+        var rfi = parseInt(rect.getAttribute('data-finding'));
+        if (rfi === viewerIdx) {
           rect.setAttribute('stroke-width', '3');
           rect.setAttribute('stroke', '#f59e0b');
           setTimeout(function() {
             rect.setAttribute('stroke-width', '1.5');
-            rect.setAttribute('stroke', (COLORS[target.icon] || COLORS.info).stroke);
+            rect.setAttribute('stroke', (COLORS[target.severity] || COLORS.info).stroke);
           }, 2000);
         }
       });
+
+      // If this finding has pixel verify data, activate verify overlay
+      var verifyResults = (_reportData && _reportData._contrastVerifyResults) || [];
+      if (verifyResults.length > 0 && target.detail) {
+        var matchedVerify = null;
+        verifyResults.forEach(function(vr) {
+          if (vr.selector && target.detail.indexOf(vr.selector) !== -1) matchedVerify = vr;
+        });
+        if (matchedVerify) {
+          _activeFilter = { type: 'verify', value: 'all' };
+          updateFilterButtons();
+          renderOverlays();
+        }
+      }
     }, 500);
   }
 
