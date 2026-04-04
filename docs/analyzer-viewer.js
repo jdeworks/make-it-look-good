@@ -405,12 +405,15 @@ window.MilgViewer = (function() {
 
     _allFindings.forEach(function(finding, fIdx) {
       if (_activeFilter.type === 'finding' && fIdx !== _activeFilter.value) return;
+      if (_activeFilter.type === 'findingBbox' && fIdx !== _activeFilter.value) return;
       if (_activeFilter.type === 'category' && finding.icon !== _activeFilter.value) return;
       if (_activeFilter.type === 'severity' && _activeFilter.value !== 'all' && finding.severity !== _activeFilter.value) return;
 
       var color = COLORS[finding.severity] || COLORS.info;
 
-      finding.bboxes.forEach(function(bbox) {
+      finding.bboxes.forEach(function(bbox, bbIdx) {
+        // For single-bbox filter (magnifying glass), skip other bboxes in this finding
+        if (_activeFilter.type === 'findingBbox' && bbIdx !== _activeFilter.bboxIdx) return;
         var x = Math.round(bbox.left * scaleX);
         var y = Math.round(bbox.top * scaleY) - _calibrationOffsetY;
         var w = Math.round(bbox.width * scaleX);
@@ -1598,9 +1601,9 @@ window.MilgViewer = (function() {
     var bbox = target.bboxes[bboxIdx] || target.bboxes[0];
     if (!bbox) return;
 
-    // Filter to show only this finding
+    // Filter to show only this specific bbox (not the whole finding group)
     var meta = reportData.raw.screenshotMeta;
-    _activeFilter = { type: 'finding', value: viewerIdx };
+    _activeFilter = { type: 'findingBbox', value: viewerIdx, bboxIdx: bboxIdx };
     updateFilterButtons();
     renderOverlays();
 
