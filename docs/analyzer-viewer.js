@@ -562,13 +562,28 @@ window.MilgViewer = (function() {
       var w = Math.round(bbox.width * vScaleX);
       var h = Math.round(bbox.height * vScaleY);
 
+      // Check if any finding at this bbox position has error/warning severity
+      var worstSevAtPos = 'pass';
+      var SEV_R = { error: 3, warning: 2, info: 1, pass: 0 };
+      if (vr.bbox) {
+        var bk = Math.round(vr.bbox.left) + ',' + Math.round(vr.bbox.top);
+        _allFindings.forEach(function(f) {
+          f.bboxes.forEach(function(bb) {
+            if (Math.round(bb.left) + ',' + Math.round(bb.top) === bk) {
+              if ((SEV_R[f.severity] || 0) > (SEV_R[worstSevAtPos] || 0)) worstSevAtPos = f.severity;
+            }
+          });
+        });
+      }
+
       var fill, stroke, dash;
-      if (vr.crossesBoundary && vr.cssPasses && !vr.pixelPasses) {
+      // Worst-severity-wins: if any finding at this position is error, show red regardless of pixel result
+      if (worstSevAtPos === 'error' || (vr.crossesBoundary && vr.cssPasses && !vr.pixelPasses)) {
         fill = 'rgba(239,68,68,0.25)'; stroke = '#ef4444'; dash = '6 2';
+      } else if (worstSevAtPos === 'warning' || vr.isVariableBg) {
+        fill = 'rgba(234,179,8,0.15)'; stroke = '#eab308'; dash = '4 2';
       } else if (vr.crossesBoundary && !vr.cssPasses && vr.pixelPasses) {
         fill = 'rgba(34,197,94,0.2)'; stroke = '#22c55e'; dash = '4 3';
-      } else if (vr.isVariableBg) {
-        fill = 'rgba(234,179,8,0.15)'; stroke = '#eab308'; dash = '4 2';
       } else {
         fill = 'rgba(34,197,94,0.08)'; stroke = '#86efac'; dash = '';
       }
@@ -1095,7 +1110,7 @@ window.MilgViewer = (function() {
     _tooltip.addEventListener('mouseenter', function() { clearTimeout(_tooltipHideTimer); });
     _tooltip.addEventListener('mouseleave', function() { scheduleHideTooltip(); });
 
-    // Compact view: severity badge + short title per finding, click to expand
+    // Compact view: severity badge + short title, click to expand detail
     var html = '';
     overlapping.forEach(function(f, oi) {
       var sevClass = 'milg-viewer-sev-' + f.severity;
@@ -1104,25 +1119,45 @@ window.MilgViewer = (function() {
       html += '<span class="milg-viewer-tooltip-badge ' + sevClass + '" style="flex-shrink:0;font-size:9px;padding:1px 5px">' + f.severity + '</span>';
       html += '<span style="font-size:11px;color:#e2e8f0;line-height:1.3">' + shortTitle + '</span>';
       html += '</div>';
-      // Expandable detail (hidden by default)
+      // Expandable detail (hidden by default) — shows detail + category, not title again
       html += '<div class="milg-tt-detail" data-tt-idx="' + oi + '" style="display:none;padding:4px 0 4px 36px;font-size:10px;color:rgba(255,255,255,0.6);line-height:1.5">';
-      html += '<div>' + f.title + '</div>';
-      if (f.detail) html += '<div style="margin-top:2px;color:rgba(255,255,255,0.5)">' + f.detail.substring(0, 300) + '</div>';
+      if (f.detail) html += '<div style="color:rgba(255,255,255,0.5)">' + f.detail.substring(0, 300) + '</div>';
       html += '<div style="margin-top:2px;color:rgba(255,255,255,0.35)">' + f.category + '</div>';
       html += '</div>';
     });
-    if (overlapping.length > 1) html += '<div style="font-size:9px;color:rgba(255,255,255,0.3);margin-top:3px;text-align:center">' + overlapping.length + ' findings — click to expand</div>';
+    // Copy all + count
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;padding-top:4px;border-top:1px solid rgba(255,255,255,0.1)">';
+    if (overlapping.length > 1) html += '<span style="font-size:9px;color:rgba(255,255,255,0.3)">' + overlapping.length + ' findings</span>';
+    else html += '<span></span>';
+    html += '<button class="milg-tt-copy" style="font-size:9px;color:rgba(255,255,255,0.5);background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:4px;padding:2px 8px;cursor:pointer">Copy</button>';
+    html += '</div>';
     _tooltip.innerHTML = html;
 
-    // Click to toggle detail expansion
+    // Click to toggle detail expansion + reposition tooltip
+    var _tooltipEvent = e;
     _tooltip.querySelectorAll('.milg-tt-row').forEach(function(row) {
       row.addEventListener('click', function(ev) {
         ev.stopPropagation();
         var idx = row.getAttribute('data-tt-idx');
         var detail = _tooltip.querySelector('.milg-tt-detail[data-tt-idx="' + idx + '"]');
-        if (detail) detail.style.display = detail.style.display === 'none' ? '' : 'none';
+        if (detail) {
+          detail.style.display = detail.style.display === 'none' ? '' : 'none';
+          // Reposition after size change
+          setTimeout(function() { if (_tooltip && _tooltip.parentNode) positionTooltip(_tooltipEvent); }, 10);
+        }
       });
     });
+    // Copy button
+    var copyBtn = _tooltip.querySelector('.milg-tt-copy');
+    if (copyBtn) {
+      copyBtn.addEventListener('click', function(ev) {
+        ev.stopPropagation();
+        var text = overlapping.map(function(f) {
+          return '[' + f.severity + '] ' + f.title + (f.detail ? '\n  ' + f.detail : '') + '\n  Category: ' + f.category;
+        }).join('\n\n');
+        navigator.clipboard.writeText(text).then(function() { copyBtn.textContent = 'Copied!'; setTimeout(function() { copyBtn.textContent = 'Copy'; }, 1500); });
+      });
+    }
 
     positionTooltip(e);
   }
