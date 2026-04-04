@@ -27683,6 +27683,242 @@ function scoreSpacing(data) {
 })();
 </file>
 
+<file path="docs/tests/test-mask-alignment.html">
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mask Alignment Test</title>
+<style>
+  body { margin: 0; padding: 20px; padding-top: 80px; font-family: system-ui, -apple-system, sans-serif; background: #f5f5f5; }
+  .test-row { margin: 12px 0; padding: 8px 12px; background: white; border-radius: 4px; }
+
+  /* Fixed header — tests mask alignment for position:fixed elements */
+  .fixed-header {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    background: #1e293b; padding: 0 20px; height: 56px;
+    display: flex; align-items: center; gap: 24px;
+  }
+  .fixed-header .logo { font-size: 18px; font-weight: 700; color: white; }
+  .fixed-header .nav-link { font-size: 14px; color: #94a3b8; text-decoration: none; }
+  .fixed-header .nav-link:hover { color: white; }
+  .fixed-header .cta { font-size: 13px; font-weight: 600; color: white; background: #3b82f6; padding: 6px 16px; border-radius: 6px; margin-left: auto; }
+
+  /* Sticky section header */
+  .sticky-header {
+    position: sticky; top: 56px; z-index: 50;
+    background: #e2e8f0; padding: 8px 12px; font-size: 12px; font-weight: 600; color: #475569;
+    border-bottom: 1px solid #cbd5e1;
+  }
+  .dark-row { background: #1a1a2e; }
+  .gradient-row { background: linear-gradient(90deg, #667eea 0%, #764ba2 100%); }
+
+  /* Size variants */
+  .sz-10 { font-size: 10px; color: #333; }
+  .sz-12 { font-size: 12px; color: #333; }
+  .sz-14 { font-size: 14px; color: #333; }
+  .sz-16 { font-size: 16px; color: #333; }
+  .sz-20 { font-size: 20px; color: #333; }
+  .sz-24 { font-size: 24px; color: #333; }
+  .sz-32 { font-size: 32px; color: #333; }
+  .sz-48 { font-size: 48px; color: #333; }
+
+  /* Weight variants */
+  .w-300 { font-weight: 300; }
+  .w-400 { font-weight: 400; }
+  .w-600 { font-weight: 600; }
+  .w-700 { font-weight: 700; }
+  .w-900 { font-weight: 900; }
+
+  /* Style variants */
+  .italic { font-style: italic; }
+  .ls-tight { letter-spacing: -0.5px; }
+  .ls-wide { letter-spacing: 2px; }
+  .lh-tight { line-height: 1.0; }
+  .lh-loose { line-height: 2.0; }
+
+  /* Light on dark */
+  .light-text { color: #e0e0e0; }
+  .light-text-low { color: #888; }
+
+  /* Serif / mono */
+  .serif { font-family: Georgia, 'Times New Roman', serif; }
+  .mono { font-family: 'Courier New', monospace; }
+
+  /* Transform */
+  .uppercase { text-transform: uppercase; }
+  .shadow { text-shadow: 1px 1px 2px rgba(0,0,0,0.3); }
+  .outline { -webkit-text-stroke: 1px #333; color: transparent; }
+
+  .label { display: inline-block; min-width: 180px; font-size: 11px; color: #999; vertical-align: middle; }
+</style>
+</head><body>
+
+<!-- Fixed header with nav links -->
+<header class="fixed-header">
+  <span class="logo">BrandName</span>
+  <a href="#" class="nav-link">Products</a>
+  <a href="#" class="nav-link">Solutions</a>
+  <a href="#" class="nav-link">Pricing</a>
+  <a href="#" class="nav-link">Docs</a>
+  <span class="cta">Get Started</span>
+</header>
+
+<h2 style="font-size:14px;color:#666;margin:0 0 10px">Mask Alignment Test — compare mask overlay vs actual text</h2>
+<p style="font-size:11px;color:#999;margin:0 0 16px">
+  Analyze this page, then double-click verify rects to see the mask overlay.
+  If the mask doesn't perfectly align with the text, the pixel contrast is wrong.
+</p>
+
+<!-- Sticky section header test -->
+<div class="sticky-header">SECTION: Font Size Matrix</div>
+
+<!-- Size matrix -->
+<div class="test-row">
+  <span class="label">10px regular</span>
+  <span class="sz-10 w-400">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row">
+  <span class="label">12px regular</span>
+  <span class="sz-12 w-400">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row">
+  <span class="label">14px regular</span>
+  <span class="sz-14 w-400">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row">
+  <span class="label">16px regular</span>
+  <span class="sz-16 w-400">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row">
+  <span class="label">20px regular</span>
+  <span class="sz-20 w-400">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row">
+  <span class="label">24px regular</span>
+  <span class="sz-24 w-400">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row">
+  <span class="label">32px regular</span>
+  <span class="sz-32 w-400">The quick brown fox jumps</span>
+</div>
+<div class="test-row">
+  <span class="label">48px regular</span>
+  <span class="sz-48 w-400">Quick brown fox</span>
+</div>
+
+<!-- Sticky section header test -->
+<div class="sticky-header">SECTION: Font Weight &amp; Style Variants</div>
+
+<!-- Weight matrix -->
+<div class="test-row">
+  <span class="label">16px light (300)</span>
+  <span class="sz-16 w-300">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row">
+  <span class="label">16px semibold (600)</span>
+  <span class="sz-16 w-600">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row">
+  <span class="label">16px bold (700)</span>
+  <span class="sz-16 w-700">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row">
+  <span class="label">16px black (900)</span>
+  <span class="sz-16 w-900">The quick brown fox jumps over the lazy dog</span>
+</div>
+
+<!-- Style variants -->
+<div class="test-row">
+  <span class="label">16px italic</span>
+  <span class="sz-16 w-400 italic">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row">
+  <span class="label">16px bold italic</span>
+  <span class="sz-16 w-700 italic">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row">
+  <span class="label">16px tight spacing</span>
+  <span class="sz-16 w-400 ls-tight">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row">
+  <span class="label">16px wide spacing</span>
+  <span class="sz-16 w-400 ls-wide">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row">
+  <span class="label">16px tight line-height</span>
+  <span class="sz-16 w-400 lh-tight">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row">
+  <span class="label">16px loose line-height</span>
+  <span class="sz-16 w-400 lh-loose">The quick brown fox jumps over the lazy dog</span>
+</div>
+
+<!-- Font family variants -->
+<div class="test-row">
+  <span class="label">16px serif</span>
+  <span class="sz-16 w-400 serif">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row">
+  <span class="label">16px serif bold</span>
+  <span class="sz-16 w-700 serif">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row">
+  <span class="label">16px mono</span>
+  <span class="sz-16 w-400 mono">The quick brown fox jumps over the lazy dog</span>
+</div>
+
+<!-- Special rendering -->
+<div class="test-row">
+  <span class="label">16px uppercase</span>
+  <span class="sz-16 w-400 uppercase">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row">
+  <span class="label">16px with shadow</span>
+  <span class="sz-16 w-400 shadow">The quick brown fox jumps over the lazy dog</span>
+</div>
+
+<!-- Dark backgrounds -->
+<div class="test-row dark-row">
+  <span class="label" style="color:#666">16px light on dark</span>
+  <span class="sz-16 w-400 light-text">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row dark-row">
+  <span class="label" style="color:#666">16px low contrast on dark</span>
+  <span class="sz-16 w-400 light-text-low">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row dark-row">
+  <span class="label" style="color:#666">12px light on dark</span>
+  <span class="sz-12 w-400 light-text">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row dark-row">
+  <span class="label" style="color:#666">24px bold light on dark</span>
+  <span class="sz-24 w-700 light-text">The quick brown fox jumps</span>
+</div>
+
+<!-- Gradient background -->
+<div class="test-row gradient-row">
+  <span class="label" style="color:rgba(255,255,255,0.5)">16px on gradient</span>
+  <span class="sz-16 w-600" style="color:white">The quick brown fox jumps over the lazy dog</span>
+</div>
+<div class="test-row gradient-row">
+  <span class="label" style="color:rgba(255,255,255,0.5)">24px on gradient</span>
+  <span class="sz-24 w-700" style="color:white">Quick brown fox jumps</span>
+</div>
+
+<!-- Small text stress tests -->
+<div class="test-row">
+  <span class="label">10px bold</span>
+  <span class="sz-10 w-700">The quick brown fox jumps over the lazy dog 0123456789</span>
+</div>
+<div class="test-row">
+  <span class="label">10px italic serif</span>
+  <span class="sz-10 w-400 italic serif">The quick brown fox jumps over the lazy dog 0123456789</span>
+</div>
+
+</body></html>
+</file>
+
 <file path="docs/analyzer-crawl-ui.js">
 // make-it-look-good — Crawl UI Wiring
 // Manages multi-page site crawl progress, tabs, and results display.
@@ -28958,242 +29194,6 @@ function scoreTouchTargets(data) {
 
   S.register("touch", scoreTouchTargets, 15, "Touch & Interaction", "touch");
 })();
-</file>
-
-<file path="docs/tests/test-mask-alignment.html">
-<!DOCTYPE html>
-<html lang="en"><head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Mask Alignment Test</title>
-<style>
-  body { margin: 0; padding: 20px; padding-top: 80px; font-family: system-ui, -apple-system, sans-serif; background: #f5f5f5; }
-  .test-row { margin: 12px 0; padding: 8px 12px; background: white; border-radius: 4px; }
-
-  /* Fixed header — tests mask alignment for position:fixed elements */
-  .fixed-header {
-    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-    background: #1e293b; padding: 0 20px; height: 56px;
-    display: flex; align-items: center; gap: 24px;
-  }
-  .fixed-header .logo { font-size: 18px; font-weight: 700; color: white; }
-  .fixed-header .nav-link { font-size: 14px; color: #94a3b8; text-decoration: none; }
-  .fixed-header .nav-link:hover { color: white; }
-  .fixed-header .cta { font-size: 13px; font-weight: 600; color: white; background: #3b82f6; padding: 6px 16px; border-radius: 6px; margin-left: auto; }
-
-  /* Sticky section header */
-  .sticky-header {
-    position: sticky; top: 56px; z-index: 50;
-    background: #e2e8f0; padding: 8px 12px; font-size: 12px; font-weight: 600; color: #475569;
-    border-bottom: 1px solid #cbd5e1;
-  }
-  .dark-row { background: #1a1a2e; }
-  .gradient-row { background: linear-gradient(90deg, #667eea 0%, #764ba2 100%); }
-
-  /* Size variants */
-  .sz-10 { font-size: 10px; color: #333; }
-  .sz-12 { font-size: 12px; color: #333; }
-  .sz-14 { font-size: 14px; color: #333; }
-  .sz-16 { font-size: 16px; color: #333; }
-  .sz-20 { font-size: 20px; color: #333; }
-  .sz-24 { font-size: 24px; color: #333; }
-  .sz-32 { font-size: 32px; color: #333; }
-  .sz-48 { font-size: 48px; color: #333; }
-
-  /* Weight variants */
-  .w-300 { font-weight: 300; }
-  .w-400 { font-weight: 400; }
-  .w-600 { font-weight: 600; }
-  .w-700 { font-weight: 700; }
-  .w-900 { font-weight: 900; }
-
-  /* Style variants */
-  .italic { font-style: italic; }
-  .ls-tight { letter-spacing: -0.5px; }
-  .ls-wide { letter-spacing: 2px; }
-  .lh-tight { line-height: 1.0; }
-  .lh-loose { line-height: 2.0; }
-
-  /* Light on dark */
-  .light-text { color: #e0e0e0; }
-  .light-text-low { color: #888; }
-
-  /* Serif / mono */
-  .serif { font-family: Georgia, 'Times New Roman', serif; }
-  .mono { font-family: 'Courier New', monospace; }
-
-  /* Transform */
-  .uppercase { text-transform: uppercase; }
-  .shadow { text-shadow: 1px 1px 2px rgba(0,0,0,0.3); }
-  .outline { -webkit-text-stroke: 1px #333; color: transparent; }
-
-  .label { display: inline-block; min-width: 180px; font-size: 11px; color: #999; vertical-align: middle; }
-</style>
-</head><body>
-
-<!-- Fixed header with nav links -->
-<header class="fixed-header">
-  <span class="logo">BrandName</span>
-  <a href="#" class="nav-link">Products</a>
-  <a href="#" class="nav-link">Solutions</a>
-  <a href="#" class="nav-link">Pricing</a>
-  <a href="#" class="nav-link">Docs</a>
-  <span class="cta">Get Started</span>
-</header>
-
-<h2 style="font-size:14px;color:#666;margin:0 0 10px">Mask Alignment Test — compare mask overlay vs actual text</h2>
-<p style="font-size:11px;color:#999;margin:0 0 16px">
-  Analyze this page, then double-click verify rects to see the mask overlay.
-  If the mask doesn't perfectly align with the text, the pixel contrast is wrong.
-</p>
-
-<!-- Sticky section header test -->
-<div class="sticky-header">SECTION: Font Size Matrix</div>
-
-<!-- Size matrix -->
-<div class="test-row">
-  <span class="label">10px regular</span>
-  <span class="sz-10 w-400">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row">
-  <span class="label">12px regular</span>
-  <span class="sz-12 w-400">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row">
-  <span class="label">14px regular</span>
-  <span class="sz-14 w-400">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row">
-  <span class="label">16px regular</span>
-  <span class="sz-16 w-400">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row">
-  <span class="label">20px regular</span>
-  <span class="sz-20 w-400">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row">
-  <span class="label">24px regular</span>
-  <span class="sz-24 w-400">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row">
-  <span class="label">32px regular</span>
-  <span class="sz-32 w-400">The quick brown fox jumps</span>
-</div>
-<div class="test-row">
-  <span class="label">48px regular</span>
-  <span class="sz-48 w-400">Quick brown fox</span>
-</div>
-
-<!-- Sticky section header test -->
-<div class="sticky-header">SECTION: Font Weight &amp; Style Variants</div>
-
-<!-- Weight matrix -->
-<div class="test-row">
-  <span class="label">16px light (300)</span>
-  <span class="sz-16 w-300">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row">
-  <span class="label">16px semibold (600)</span>
-  <span class="sz-16 w-600">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row">
-  <span class="label">16px bold (700)</span>
-  <span class="sz-16 w-700">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row">
-  <span class="label">16px black (900)</span>
-  <span class="sz-16 w-900">The quick brown fox jumps over the lazy dog</span>
-</div>
-
-<!-- Style variants -->
-<div class="test-row">
-  <span class="label">16px italic</span>
-  <span class="sz-16 w-400 italic">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row">
-  <span class="label">16px bold italic</span>
-  <span class="sz-16 w-700 italic">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row">
-  <span class="label">16px tight spacing</span>
-  <span class="sz-16 w-400 ls-tight">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row">
-  <span class="label">16px wide spacing</span>
-  <span class="sz-16 w-400 ls-wide">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row">
-  <span class="label">16px tight line-height</span>
-  <span class="sz-16 w-400 lh-tight">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row">
-  <span class="label">16px loose line-height</span>
-  <span class="sz-16 w-400 lh-loose">The quick brown fox jumps over the lazy dog</span>
-</div>
-
-<!-- Font family variants -->
-<div class="test-row">
-  <span class="label">16px serif</span>
-  <span class="sz-16 w-400 serif">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row">
-  <span class="label">16px serif bold</span>
-  <span class="sz-16 w-700 serif">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row">
-  <span class="label">16px mono</span>
-  <span class="sz-16 w-400 mono">The quick brown fox jumps over the lazy dog</span>
-</div>
-
-<!-- Special rendering -->
-<div class="test-row">
-  <span class="label">16px uppercase</span>
-  <span class="sz-16 w-400 uppercase">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row">
-  <span class="label">16px with shadow</span>
-  <span class="sz-16 w-400 shadow">The quick brown fox jumps over the lazy dog</span>
-</div>
-
-<!-- Dark backgrounds -->
-<div class="test-row dark-row">
-  <span class="label" style="color:#666">16px light on dark</span>
-  <span class="sz-16 w-400 light-text">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row dark-row">
-  <span class="label" style="color:#666">16px low contrast on dark</span>
-  <span class="sz-16 w-400 light-text-low">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row dark-row">
-  <span class="label" style="color:#666">12px light on dark</span>
-  <span class="sz-12 w-400 light-text">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row dark-row">
-  <span class="label" style="color:#666">24px bold light on dark</span>
-  <span class="sz-24 w-700 light-text">The quick brown fox jumps</span>
-</div>
-
-<!-- Gradient background -->
-<div class="test-row gradient-row">
-  <span class="label" style="color:rgba(255,255,255,0.5)">16px on gradient</span>
-  <span class="sz-16 w-600" style="color:white">The quick brown fox jumps over the lazy dog</span>
-</div>
-<div class="test-row gradient-row">
-  <span class="label" style="color:rgba(255,255,255,0.5)">24px on gradient</span>
-  <span class="sz-24 w-700" style="color:white">Quick brown fox jumps</span>
-</div>
-
-<!-- Small text stress tests -->
-<div class="test-row">
-  <span class="label">10px bold</span>
-  <span class="sz-10 w-700">The quick brown fox jumps over the lazy dog 0123456789</span>
-</div>
-<div class="test-row">
-  <span class="label">10px italic serif</span>
-  <span class="sz-10 w-400 italic serif">The quick brown fox jumps over the lazy dog 0123456789</span>
-</div>
-
-</body></html>
 </file>
 
 <file path="docs/PIXEL-CONTRAST-APPROACH.md">
@@ -40695,30 +40695,11 @@ console.log('[milg] analyzer.js v44.0 loaded');
     }
 
     // Pixel contrast verification
+    // For pasted/imported data with screenshots: always run verify (it's just reading pixel data)
     var pixelVerifyCheck = document.getElementById('pixelVerifyCheck');
-    var wantPixelVerify = pixelVerifyCheck ? pixelVerifyCheck.checked : true;
-    // Convert snippet pixelVerifyResults to _contrastVerifyResults format
-    if (data.pixelVerifyResults && !data._contrastVerifyResults) {
-      var pairs = (data.colors && data.colors.contrastPairs) || [];
-      var pairMap = {};
-      pairs.forEach(function(p) { if (p.selector) pairMap[p.selector] = p; });
-      data._contrastVerifyResults = data.pixelVerifyResults.map(function(r) {
-        var pair = pairMap[r.selector];
-        return {
-          selector: r.selector, text: r.text || '',
-          cssRatio: r.cssRatio, cssFg: pair ? pair.fg : '', cssBg: pair ? pair.bg : '',
-          pixelRatio: r.pixelRatio, pixelRatioP10: r.pixelRatio, pixelRatioMedian: r.pixelRatioAvg || r.pixelRatio,
-          pixelRatioAvg: r.pixelRatioAvg || r.pixelRatio, pixelRatioBest: r.pixelRatioAvg || r.pixelRatio,
-          pixelFg: pair ? pair.fg : '', pixelBgWorst: r.pixelBgDominant || '', pixelBgAvg: r.pixelBgDominant || '',
-          cssPasses: r.cssPasses, pixelPasses: r.pixelPasses,
-          crossesBoundary: r.crossesBoundary, isVariableBg: r.isVariableBg,
-          significant: r.significant, neededRatio: pair ? pair.needed : 4.5,
-          bbox: pair ? pair.bbox : null, maskLayer: 0, sectionIdx: 0,
-          bgVariance: 0, sampleCount: { fg: 0, bg: r.bgSamples || 0 }
-        };
-      });
-    }
-    // Use pre-computed results if available (from deep scan pre-computation or snippet)
+    var isImported = data.meta && (data.meta._inputMethod === 'console' || data.meta._inputMethod === 'snippet');
+    var wantPixelVerify = isImported ? true : (pixelVerifyCheck ? pixelVerifyCheck.checked : true);
+    // Use pre-computed results if available (from deep scan pre-computation)
     if (data._contrastVerifyResults) {
       reportData._contrastVerifyResults = data._contrastVerifyResults;
       reportData._bboxEdgeResults = data._bboxEdgeResults || [];
@@ -44564,7 +44545,7 @@ window.MilgViewer = (function() {
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v46.1</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v46.2</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -44930,30 +44911,30 @@ window.MilgViewer = (function() {
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=46.1"></script>
-  <script src="scoring/contrast.js?v=46.1"></script>
-  <script src="scoring/typography.js?v=46.1"></script>
-  <script src="scoring/spacing.js?v=46.1"></script>
-  <script src="scoring/touch.js?v=46.1"></script>
-  <script src="scoring/accessibility.js?v=46.1"></script>
-  <script src="scoring/responsive.js?v=46.1"></script>
-  <script src="scoring/consistency.js?v=46.1"></script>
-  <script src="scoring/cognitive.js?v=46.1"></script>
-  <script src="scoring/layout.js?v=46.1"></script>
-  <script src="scoring/performance.js?v=46.1"></script>
-  <script src="scoring/readability.js?v=46.1"></script>
-  <script src="scoring/filters.js?v=46.1"></script>
-  <script src="scoring/balance.js?v=46.1"></script>
+  <script src="scoring/registry.js?v=46.2"></script>
+  <script src="scoring/contrast.js?v=46.2"></script>
+  <script src="scoring/typography.js?v=46.2"></script>
+  <script src="scoring/spacing.js?v=46.2"></script>
+  <script src="scoring/touch.js?v=46.2"></script>
+  <script src="scoring/accessibility.js?v=46.2"></script>
+  <script src="scoring/responsive.js?v=46.2"></script>
+  <script src="scoring/consistency.js?v=46.2"></script>
+  <script src="scoring/cognitive.js?v=46.2"></script>
+  <script src="scoring/layout.js?v=46.2"></script>
+  <script src="scoring/performance.js?v=46.2"></script>
+  <script src="scoring/readability.js?v=46.2"></script>
+  <script src="scoring/filters.js?v=46.2"></script>
+  <script src="scoring/balance.js?v=46.2"></script>
   <!-- Report rendering + UI -->
-  <script src="analyzer-report.js?v=46.1"></script>
-  <script src="analyzer-crawl.js?v=46.1"></script>
-  <script src="analyzer-extract.js?v=46.1"></script>
-  <script src="analyzer-iframe.js?v=46.1"></script>
-  <script src="analyzer-proxy.js?v=46.1"></script>
-  <script src="analyzer-crawl-ui.js?v=46.1"></script>
-  <script src="analyzer-contrast-verify.js?v=46.1"></script>
-  <script src="analyzer-viewer.js?v=46.1"></script>
-  <script src="analyzer.js?v=46.1"></script>
+  <script src="analyzer-report.js?v=46.2"></script>
+  <script src="analyzer-crawl.js?v=46.2"></script>
+  <script src="analyzer-extract.js?v=46.2"></script>
+  <script src="analyzer-iframe.js?v=46.2"></script>
+  <script src="analyzer-proxy.js?v=46.2"></script>
+  <script src="analyzer-crawl-ui.js?v=46.2"></script>
+  <script src="analyzer-contrast-verify.js?v=46.2"></script>
+  <script src="analyzer-viewer.js?v=46.2"></script>
+  <script src="analyzer.js?v=46.2"></script>
 </body>
 </html>
 </file>
