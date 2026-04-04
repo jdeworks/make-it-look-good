@@ -942,16 +942,18 @@ console.log('[milg] analyzer.js v44.0 loaded');
 
         // JS-enabled single viewport (no deep scan)
         if (wantJs) {
+          if (wantShots) { showFocusModal(); updateFocusModal('Running with JavaScript enabled...'); }
           urlStatus.textContent = 'Running with JavaScript enabled...';
           showProgress(25, 'Preparing sandbox...');
           MilgProxy.analyzeWithJs(html, url, {
-            onProgress: function(pct, label) { showProgress(pct, label); },
+            onProgress: function(pct, label) { showProgress(pct, label); updateFocusModal(label); },
             onDone: function(data) {
               analyzeUrlBtn.disabled = false;
               analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
               urlStatus.style.display = 'none';
               showProgress(100, 'Done!');
               setTimeout(hideProgress, 500);
+              hideFocusModal();
               runAnalysis(data);
             },
             exclude: exclude
@@ -959,7 +961,7 @@ console.log('[milg] analyzer.js v44.0 loaded');
           return;
         }
         showProgress(40, 'Analyzing styles...');
-        var wantShots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
+        if (wantShots) { showFocusModal(); updateFocusModal('Analyzing page with screenshots...'); }
         MilgIframe.analyzeHtmlInIframe(html, function(data) {
           analyzeUrlBtn.disabled = false;
           analyzeUrlBtn.textContent = 'Analyze URL';
@@ -968,6 +970,7 @@ console.log('[milg] analyzer.js v44.0 loaded');
           setTimeout(hideProgress, 500);
           data.meta.url = url;
           data.meta._inputMethod = 'url';
+          hideFocusModal();
           runAnalysis(data);
         }, url, exclude, wantShots);
       });
