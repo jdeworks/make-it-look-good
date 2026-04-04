@@ -483,6 +483,8 @@ window.MilgIframe = (function() {
 
     function onMsg(e) {
       if (!e.data) return;
+      // Only process messages from OUR iframe (critical for parallel deep scan)
+      if (e.source !== iframe.contentWindow) return;
       // Progress updates from screenshot capture → drive parent progress bar
       if (e.data.type === 'milg-progress' && e.data.label) {
         var urlStatus = document.getElementById('urlStatus');

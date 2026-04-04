@@ -563,61 +563,11 @@ window.MilgReport = (function() {
     html += '<p>For a full design review with context-aware judgment, use this report as input for a <a href="index.html" style="color:var(--primary)">design consultation</a> — the findings give an AI or human reviewer concrete data to work from.</p>';
     html += '</div>';
 
-    // Deep scan results
+    // Deep scan: dark mode test results (viewport data now shown via tabs above)
     if (report.raw.deepScan) {
       var ds = report.raw.deepScan;
-      html += '<div class="report-summary" style="margin-top:16px">';
-      html += '<h2>Deep Scan Results</h2>';
-
-      if (ds.viewports && ds.viewports.length > 0) {
-        // Per-viewport screenshot thumbnails (if viewportData has screenshots)
-        var vpScreenshots = [];
-        if (ds.viewportData) {
-          ds.viewportData.forEach(function(vpd, vpIdx) {
-            if (vpd && vpd.data) {
-              vpScreenshots.push({ label: vpd.label, width: vpd.width, vpIdx: vpIdx, src: vpd.data.screenshotFull || (vpd.data.screenshots && vpd.data.screenshots[0]) || null });
-            }
-            // Skip null entries (failed viewports) — don't add to thumbnails
-          });
-        }
-        var hasAnyVpScreenshots = vpScreenshots.some(function(v) { return !!v.src; });
-
-        if (hasAnyVpScreenshots) {
-          html += '<h4 style="font-size:13px;margin-bottom:8px">Viewport Screenshots</h4>';
-          html += '<div style="display:flex;gap:16px;overflow-x:auto;padding-bottom:8px;margin-bottom:16px">';
-          vpScreenshots.forEach(function(vps) {
-            var maxThumbW = vps.width <= 400 ? 120 : vps.width <= 800 ? 180 : 220;
-            html += '<div style="flex:0 0 auto;text-align:center;min-width:0">';
-            html += '<div style="font-size:11px;font-weight:600;margin-bottom:4px;color:var(--text-secondary)">' + escapeHtml(vps.label) + ' (' + vps.width + 'px)</div>';
-            if (vps.src) {
-              html += '<img src="' + vps.src + '" alt="' + escapeHtml(vps.label) + ' screenshot" style="max-width:' + maxThumbW + 'px;max-height:300px;border:1px solid var(--border);border-radius:6px;cursor:pointer;display:block;margin:0 auto" onclick="window.__milgSwitchViewport(' + vps.vpIdx + ')">';
-            } else {
-              html += '<div style="width:' + maxThumbW + 'px;height:120px;border:1px dashed var(--border);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-dim)">No screenshot</div>';
-            }
-            html += '</div>';
-          });
-          html += '</div>';
-        }
-
-        html += '<h4 style="font-size:13px;margin-bottom:8px">Multi-Viewport Comparison</h4>';
-        html += '<p style="font-size:11px;color:var(--text-secondary);margin-bottom:8px">Use the viewport tabs above to switch between full reports per viewport.</p>';
-        html += '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px">';
-        html += '<tr><th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border)">Viewport</th><th style="padding:4px 8px;border-bottom:1px solid var(--border)">Touch Issues</th><th style="padding:4px 8px;border-bottom:1px solid var(--border)">Contrast Fails</th><th style="padding:4px 8px;border-bottom:1px solid var(--border)">Overflow</th><th style="padding:4px 8px;border-bottom:1px solid var(--border)">Screenshots</th></tr>';
-        ds.viewports.forEach(function(vp, idx) {
-          if (vp.error) {
-            html += '<tr><td style="padding:4px 8px">' + escapeHtml(vp.label) + ' (' + vp.width + 'px)</td><td colspan="4" style="padding:4px 8px;color:#dc2626">Extraction failed</td></tr>';
-          } else {
-            html += '<tr><td style="padding:4px 8px">' + escapeHtml(vp.label) + ' (' + vp.width + 'px)</td>';
-            html += '<td style="padding:4px 8px;text-align:center">' + (vp.touchTargets || 0) + '</td>';
-            html += '<td style="padding:4px 8px;text-align:center">' + (vp.contrastFails || 0) + '</td>';
-            html += '<td style="padding:4px 8px;text-align:center">' + (vp.overflow ? 'Yes' : 'No') + '</td>';
-            html += '<td style="padding:4px 8px;text-align:center">' + (vp.hasScreenshots ? '✓' : '—') + '</td></tr>';
-          }
-        });
-        html += '</table>';
-      }
-
       if (ds.darkMode && ds.darkMode.tested) {
+        html += '<div class="report-summary" style="margin-top:16px">';
         html += '<h4 style="font-size:13px;margin-bottom:8px">Dark Mode Test</h4>';
         var dmFails = ds.darkMode.contrastFails;
         if (dmFails === 0) {
@@ -625,9 +575,8 @@ window.MilgReport = (function() {
         } else {
           html += '<p style="font-size:13px"><span style="color:#dc2626">' + dmFails + ' contrast failure(s) in dark mode (' + ds.darkMode.contrastTotal + ' pairs checked)</span></p>';
         }
+        html += '</div>';
       }
-
-      html += '</div>';
     }
 
     return html;
@@ -706,36 +655,18 @@ window.MilgReport = (function() {
     }
     lines.push('');
 
-    // Deep scan results
-    if (report.raw.deepScan) {
-      var ds = report.raw.deepScan;
-      lines.push('## Deep Scan Results');
+    // Deep scan: dark mode test results
+    if (report.raw.deepScan && report.raw.deepScan.darkMode && report.raw.deepScan.darkMode.tested) {
+      var dsDm = report.raw.deepScan.darkMode;
+      lines.push('## Dark Mode Test');
       lines.push('');
-      if (ds.viewports && ds.viewports.length > 0) {
-        lines.push('### Multi-Viewport Comparison');
-        lines.push('');
-        lines.push('| Viewport | Touch Issues | Contrast Fails | Overflow |');
-        lines.push('|----------|-------------|----------------|----------|');
-        ds.viewports.forEach(function(vp) {
-          if (vp.error) {
-            lines.push('| ' + vp.label + ' (' + vp.width + 'px) | — | — | Extraction failed |');
-          } else {
-            lines.push('| ' + vp.label + ' (' + vp.width + 'px) | ' + (vp.touchTargets || 0) + ' | ' + (vp.contrastFails || 0) + ' | ' + (vp.overflow ? 'Yes' : 'No') + ' |');
-          }
-        });
-        lines.push('');
+      var dmFails = dsDm.contrastFails;
+      if (dmFails === 0) {
+        lines.push('No contrast failures in dark mode.');
+      } else {
+        lines.push(dmFails + ' contrast failure(s) in dark mode (' + dsDm.contrastTotal + ' pairs checked).');
       }
-      if (ds.darkMode && ds.darkMode.tested) {
-        lines.push('### Dark Mode Test');
-        lines.push('');
-        var dmFails = ds.darkMode.contrastFails;
-        if (dmFails === 0) {
-          lines.push('No contrast failures in dark mode.');
-        } else {
-          lines.push(dmFails + ' contrast failure(s) in dark mode (' + ds.darkMode.contrastTotal + ' pairs checked).');
-        }
-        lines.push('');
-      }
+      lines.push('');
     }
 
     // Screenshots (as inline base64 images in markdown) — skip when copying for paste

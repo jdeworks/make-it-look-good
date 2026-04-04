@@ -10059,363 +10059,6 @@ window.MilgCrawl = (function() {
 })();
 </file>
 
-<file path="docs/analyzer-proxy.js">
-// make-it-look-good — CORS Proxy & JS-Enabled Analysis
-// Handles URL fetching via proxy chain and "Try with JS" mode.
-// Depends on: analyzer-iframe.js (MilgIframe)
-
-window.MilgProxy = (function() {
-  "use strict";
-
-  var _corsProxyUrl = '';
-  var _showToast = function() {};
-  var _showProgress = function() {};
-  var _hideProgress = function() {};
-  var _runAnalysis = function() {};
-
-  function init(opts) {
-    if (opts.corsProxyUrl) _corsProxyUrl = opts.corsProxyUrl;
-    if (opts.showToast) _showToast = opts.showToast;
-    if (opts.showProgress) _showProgress = opts.showProgress;
-    if (opts.hideProgress) _hideProgress = opts.hideProgress;
-    if (opts.runAnalysis) _runAnalysis = opts.runAnalysis;
-  }
-
-  // --- URL Fetch via CORS proxy ---
-  // Remembers which proxy worked so subsequent requests (CSS files etc.) skip failed ones
-  var _lastWorkingProxy = -1; // -1 = direct, 0+ = proxy index
-
-  function buildProxyList() {
-    var proxies = [];
-    if (_corsProxyUrl) proxies.push(_corsProxyUrl + '?url=');
-    proxies.push(
-      'https://api.allorigins.win/raw?url=',
-      'https://api.codetabs.com/v1/proxy?quest=',
-      'https://corsproxy.io/?'
-    );
-    return proxies;
-  }
-
-  function fetchWithProxy(url) {
-    var proxies = buildProxyList();
-
-    // If we already know which proxy works, try it first
-    if (_lastWorkingProxy >= 0 && _lastWorkingProxy < proxies.length) {
-      return fetch(proxies[_lastWorkingProxy] + encodeURIComponent(url))
-        .then(function(r) { if (!r.ok) throw new Error(r.status); return r.text(); })
-        .then(function(t) { if (!t || t.length < 50) throw new Error('empty'); return t; })
-        .catch(function() {
-          // Last working proxy failed — reset and try full chain
-          _lastWorkingProxy = -1;
-          return fetchWithProxyFull(url, proxies);
-        });
-    }
-
-    return fetchWithProxyFull(url, proxies);
-  }
-
-  function fetchWithProxyFull(url, proxies) {
-    // Try direct fetch first
-    return fetch(url, { mode: 'cors', redirect: 'follow' })
-      .then(function(r) { if (r.ok) return r.text(); throw new Error(r.status); })
-      .then(function(t) { _lastWorkingProxy = -1; return t; })
-      .catch(function() {
-        // Try proxies in order, remember which one works
-        var chain = Promise.reject();
-        proxies.forEach(function(proxyBase, idx) {
-          chain = chain.catch(function() {
-            return fetch(proxyBase + encodeURIComponent(url)).then(function(r) {
-              if (!r.ok) throw new Error(r.status);
-              return r.text();
-            }).then(function(t) {
-              if (!t || t.length < 50) throw new Error('empty');
-              _lastWorkingProxy = idx;
-              return t;
-            });
-          });
-        });
-        return chain;
-      });
-  }
-
-  function fetchViaProxy(url, callback) {
-    fetchWithProxy(url)
-      .then(function(html) {
-        // Detect proxy error pages (Cloudflare challenges, 4xx/5xx error pages, consent walls)
-        var htmlStart = (html || '').substring(0, 3000);
-        if (html && (
-          /class="no-js.*oldie"/i.test(htmlStart) || // Cloudflare error template
-          /cf-error-details|cf-wrapper/i.test(htmlStart) ||
-          /Access Denied|403 Forbidden/i.test(htmlStart) ||
-          /Just a moment|Checking your browser/i.test(htmlStart) || // Cloudflare challenge
-          /consent\.google|accounts\.google.*ServiceLogin/i.test(htmlStart) // Google consent/login redirect
-        )) {
-          callback(null, 'The site returned an error/challenge page (likely blocking proxy access). Use the Console Snippet tab instead.');
-          return;
-        }
-
-        // Resolve base URL for relative paths
-        var baseUrl;
-        try { var u = new URL(url); baseUrl = u.origin + u.pathname.replace(/\/[^/]*$/, '/'); } catch(e) { baseUrl = url; }
-
-        // Find and inline linked stylesheets so CSS works inside srcdoc iframe
-        var cssLinks = [];
-        var linkRegex = /<link[^>]+rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*>/gi;
-        var altRegex = /<link[^>]+href=["']([^"']+)["'][^>]*rel=["']stylesheet["'][^>]*>/gi;
-        var m;
-        while (m = linkRegex.exec(html)) cssLinks.push(m[1]);
-        while (m = altRegex.exec(html)) { if (cssLinks.indexOf(m[1]) === -1) cssLinks.push(m[1]); }
-
-        if (cssLinks.length === 0) { callback(html, null); return; }
-
-        // Fetch all CSS files and inline them
-        Promise.all(cssLinks.map(function(href) {
-          var cssUrl = href.startsWith('http') ? href : (href.startsWith('/') ? new URL(url).origin + href : baseUrl + href);
-          return fetchWithProxy(cssUrl).catch(function() { return '/* failed: ' + href + ' */'; });
-        })).then(function(cssTexts) {
-          // Remove original link tags and inject inlined styles
-          var processed = html.replace(/<link[^>]+rel=["']stylesheet["'][^>]*>/gi, '');
-          processed = processed.replace(/<link[^>]+href=["'][^"']+\.css[^"']*["'][^>]*rel=["']stylesheet["'][^>]*>/gi, '');
-          var styleBlock = '<style>' + cssTexts.join('\n') + '</style>';
-          if (/<\/head>/i.test(processed)) {
-            processed = processed.replace(/<\/head>/i, styleBlock + '</head>');
-          } else {
-            processed = styleBlock + processed;
-          }
-          callback(processed, null);
-        });
-      })
-      .catch(function(e) {
-        callback(null, e.message || 'All CORS proxies failed');
-      });
-  }
-
-  // Try analyzing with JS enabled — fetches raw HTML via proxy, patches URL constructor
-  // (srcdoc has about:srcdoc as location which breaks new URL(path, location.href)),
-  // then delegates to analyzeHtmlInIframe which handles extraction, screenshots, and timeouts.
-  function tryWithJs(url) {
-    var ok = confirm(
-      'This will fetch the page via proxy and run its JavaScript in a sandboxed frame on this page.\n\n' +
-      'Only do this if you trust the site — its scripts will execute with access to this page\'s origin (XSS risk).\n\n' +
-      'Some sites may not work if they rely on cookies, auth, or same-origin API calls.\n\n' +
-      'Continue?'
-    );
-    if (!ok) return;
-
-    var reportContainer = document.getElementById('reportContainer');
-    var errBtn = 'style="margin-top:12px;padding:8px 16px;border-radius:6px;border:1px solid currentColor;background:none;color:inherit;cursor:pointer;font-size:13px"';
-
-    // Show progress directly in reportContainer (the input section with the
-    // normal progress bar is hidden at this point since the warning is showing)
-    var isDark = document.body.classList.contains('dark-ui');
-    var progBg = isDark ? '#1e293b' : '#f1f5f9';
-    var progText = isDark ? '#94a3b8' : '#475569';
-    var progAccent = isDark ? '#3b82f6' : '#2563eb';
-    function showJsProgress(pct, label) {
-      reportContainer.innerHTML = '<div style="padding:30px 40px;background:' + progBg + ';border-radius:var(--radius);text-align:center">' +
-        '<div style="font-size:13px;color:' + progText + ';margin-bottom:12px;font-weight:500">' + label + '</div>' +
-        '<div style="height:6px;background:' + (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)') + ';border-radius:3px;overflow:hidden">' +
-        '<div style="height:100%;width:' + pct + '%;background:' + progAccent + ';border-radius:3px;transition:width 0.6s ease"></div></div>' +
-        '</div>';
-      reportContainer.classList.add('visible');
-    }
-
-    showJsProgress(5, 'Fetching page via proxy...');
-
-    // Fetch raw HTML via proxy (don't use fetchViaProxy which inlines CSS — let JS handle it)
-    fetchWithProxy(url).then(function(html) {
-      if (!html || html.length < 50) {
-        reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
-          'Could not fetch the page (empty response).<br>' +
-          '<button onclick="window.__milgSwitchToSnippet()" ' + errBtn + '>Use Console Snippet instead</button></div>';
-        return;
-      }
-
-      showJsProgress(20, 'Preparing JavaScript environment...');
-      analyzeWithJs(html, url, {
-        onProgress: showJsProgress,
-        onDone: function(data) {
-          _runAnalysis(data);
-        }
-      });
-
-    }).catch(function(e) {
-      reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
-        'Failed to fetch the page: ' + (e.message || 'proxy error') + '<br>' +
-        '<button onclick="window.__milgSwitchToSnippet()" ' + errBtn + '>Use Console Snippet instead</button></div>';
-    });
-  }
-
-  // --- Sandbox hardening script ---
-  // Injected before page scripts to intercept storage, cookies, and other sensitive APIs.
-  // Returns safe no-ops and logs all access attempts to window.__milgSandboxLog.
-  function buildSandboxScript() {
-    return '<script>' +
-      '(function(){' +
-        'var _log=window.__milgSandboxLog=[];' +
-        'var _max=100;' +
-        'function _l(api,method,args){' +
-          'if(_log.length<_max)_log.push({api:api,method:method,args:String(args||"").substring(0,80),t:Date.now()})' +
-        '}' +
-        // --- localStorage / sessionStorage ---
-        'function _fakeStorage(name){' +
-          'var _s={};' +
-          'return{' +
-            'getItem:function(k){_l(name,"getItem",k);return _s[k]||null},' +
-            'setItem:function(k,v){_l(name,"setItem",k+"="+v);_s[k]=String(v)},' +
-            'removeItem:function(k){_l(name,"removeItem",k);delete _s[k]},' +
-            'clear:function(){_l(name,"clear");_s={}},' +
-            'key:function(i){_l(name,"key",i);var ks=Object.keys(_s);return ks[i]||null},' +
-            'get length(){return Object.keys(_s).length}' +
-          '}' +
-        '}' +
-        'try{Object.defineProperty(window,"localStorage",{value:_fakeStorage("localStorage"),configurable:true})}catch(e){}' +
-        'try{Object.defineProperty(window,"sessionStorage",{value:_fakeStorage("sessionStorage"),configurable:true})}catch(e){}' +
-        // --- document.cookie ---
-        'try{Object.defineProperty(document,"cookie",{' +
-          'get:function(){_l("cookie","get");return""},' +
-          'set:function(v){_l("cookie","set",v)},' +
-          'configurable:true' +
-        '})}catch(e){}' +
-        // --- indexedDB ---
-        'try{Object.defineProperty(window,"indexedDB",{value:null,configurable:true})}catch(e){}' +
-        // --- window.open ---
-        'var _wo=window.open;' +
-        'window.open=function(){_l("window","open",arguments[0]);return null};' +
-        // --- navigator.sendBeacon ---
-        'if(navigator.sendBeacon){var _sb=navigator.sendBeacon;navigator.sendBeacon=function(u){_l("navigator","sendBeacon",u);return false}}' +
-        // --- navigator.serviceWorker.register ---
-        'try{if(navigator.serviceWorker){Object.defineProperty(navigator.serviceWorker,"register",{value:function(u){_l("serviceWorker","register",u);return Promise.reject(new DOMException("Blocked by sandbox"))}})}}catch(e){}' +
-        // --- Notification.requestPermission ---
-        'try{if(window.Notification){Notification.requestPermission=function(){_l("Notification","requestPermission");return Promise.resolve("denied")}}}catch(e){}' +
-        // --- postMessage: filter to only allow milg-* messages to parent ---
-        'var _pm=window.parent.postMessage.bind(window.parent);' +
-        'window.parent.postMessage=function(msg,origin){' +
-          'if(msg&&typeof msg==="object"&&typeof msg.type==="string"&&msg.type.indexOf("milg-")===0){_pm(msg,origin);return}' +
-          '_l("postMessage","toParent",msg&&msg.type||"unknown");' +
-        '};' +
-      '})();' +
-      '</' + 'script>';
-  }
-
-  // --- Reusable JS-enabled analysis ---
-  // Takes already-fetched HTML, injects sandbox + URL patches, runs analysis.
-  // opts: { onProgress(pct, label), onDone(data), wantShots, exclude }
-  function analyzeWithJs(html, url, opts) {
-    opts = opts || {};
-    var onProgress = opts.onProgress || function() {};
-    var onDone = opts.onDone || _runAnalysis;
-    var wantShots = opts.wantShots !== undefined ? opts.wantShots : (document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked);
-    var exclude = opts.exclude !== undefined ? opts.exclude : (window.__milgCombinedExclude || (document.getElementById('excludeSelector') && document.getElementById('excludeSelector').value || '').trim() || null);
-
-    // Build injection scripts: sandbox first, then URL patch
-    var sandboxScript = buildSandboxScript();
-    var escapedUrl = url.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-    var urlPatch = '<script>' +
-      '(function(){' +
-        'var _rb="' + escapedUrl + '";' +
-        'var _O=URL;' +
-        'function _P(u,b){' +
-          'if(b){' +
-            'var bs=typeof b==="string"?b:String(b);' +
-            'if(bs==="about:srcdoc"||bs==="about:blank"||bs==="null"||bs.indexOf("about:")===0)b=_rb;' +
-          '}' +
-          'if(!b&&typeof u==="string"&&u.charAt(0)==="/")return new _O(u,_rb);' +
-          'try{return arguments.length===1?new _O(u):new _O(u,b);}' +
-          'catch(e){try{return new _O(u,_rb);}catch(e2){throw e;}}' +
-        '}' +
-        '_P.prototype=_O.prototype;' +
-        '_P.createObjectURL=_O.createObjectURL.bind(_O);' +
-        '_P.revokeObjectURL=_O.revokeObjectURL.bind(_O);' +
-        'if(_O.canParse)_P.canParse=_O.canParse.bind(_O);' +
-        'window.URL=_P;' +
-        'var _hps=history.pushState.bind(history);' +
-        'var _hrs=history.replaceState.bind(history);' +
-        'history.pushState=function(s,t,u){try{_hps(s,t,u);}catch(e){}};' +
-        'history.replaceState=function(s,t,u){try{_hrs(s,t,u);}catch(e){}};' +
-        'var _of=window.fetch;' +
-        'window.fetch=function(u,o){' +
-          'if(typeof u==="string"&&u.charAt(0)==="/")u=_rb.replace(/\\/$/,"")+u;' +
-          'return _of.call(this,u,o);' +
-        '};' +
-      '})();' +
-      '</' + 'script>';
-
-    var combined = sandboxScript + urlPatch;
-
-    // Inject BEFORE the first <script> tag so patches run before any framework JS
-    if (/<script[\s>]/i.test(html)) {
-      html = html.replace(/<script[\s>]/i, combined + '<script ');
-    } else if (/<head[\s>]/i.test(html)) {
-      html = html.replace(/<head([^>]*)>/i, '<head$1>' + combined);
-    } else {
-      html = combined + html;
-    }
-
-    onProgress(30, 'Running JavaScript & rendering page...');
-
-    // Animate progress while waiting for JS hydration
-    var _jpPct = 30;
-    var _jsProgressTimer = setInterval(function() {
-      _jpPct = Math.min(_jpPct + 3, 90);
-      var label = _jpPct < 50 ? 'Running JavaScript & rendering page...'
-        : _jpPct < 70 ? 'Waiting for framework hydration...'
-        : 'Extracting design data...';
-      onProgress(_jpPct, label);
-    }, 600);
-
-    MilgIframe.analyzeHtmlInIframe(html, function(data) {
-      clearInterval(_jsProgressTimer);
-      data.meta.url = url;
-      data.meta._inputMethod = 'url';
-      data.meta._jsEnabled = true;
-      onDone(data);
-    }, url, exclude, wantShots);
-  }
-
-  // Wire up the global handler
-  window.__milgTryWithJs = function(url) { tryWithJs(url); };
-
-  // Inject sandbox + URL patches into HTML without running analysis.
-  // Used by deep scan to pre-process HTML for JS-enabled multi-viewport analysis.
-  function prepareJsHtml(html, url) {
-    var sandboxScript = buildSandboxScript();
-    var escapedUrl = url.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-    var urlPatch = '<script>' +
-      '(function(){' +
-        'var _rb="' + escapedUrl + '";' +
-        'var _O=URL;' +
-        'function _P(u,b){' +
-          'if(b){var bs=typeof b==="string"?b:String(b);if(bs==="about:srcdoc"||bs==="about:blank"||bs==="null"||bs.indexOf("about:")===0)b=_rb;}' +
-          'if(!b&&typeof u==="string"&&u.charAt(0)==="/")return new _O(u,_rb);' +
-          'try{return arguments.length===1?new _O(u):new _O(u,b);}catch(e){try{return new _O(u,_rb);}catch(e2){throw e;}}' +
-        '}' +
-        '_P.prototype=_O.prototype;_P.createObjectURL=_O.createObjectURL.bind(_O);_P.revokeObjectURL=_O.revokeObjectURL.bind(_O);' +
-        'if(_O.canParse)_P.canParse=_O.canParse.bind(_O);window.URL=_P;' +
-        'var _hps=history.pushState.bind(history);var _hrs=history.replaceState.bind(history);' +
-        'history.pushState=function(s,t,u){try{_hps(s,t,u);}catch(e){}};history.replaceState=function(s,t,u){try{_hrs(s,t,u);}catch(e){}};' +
-        'var _of=window.fetch;window.fetch=function(u,o){if(typeof u==="string"&&u.charAt(0)==="/")u=_rb.replace(/\\/$/,"")+u;return _of.call(this,u,o)};' +
-      '})();' +
-    '</' + 'script>';
-    var combined = sandboxScript + urlPatch;
-    if (/<script[\s>]/i.test(html)) {
-      return html.replace(/<script[\s>]/i, combined + '<script ');
-    } else if (/<head[\s>]/i.test(html)) {
-      return html.replace(/<head([^>]*)>/i, '<head$1>' + combined);
-    }
-    return combined + html;
-  }
-
-  return {
-    init: init,
-    fetchWithProxy: fetchWithProxy,
-    fetchViaProxy: fetchViaProxy,
-    analyzeWithJs: analyzeWithJs,
-    prepareJsHtml: prepareJsHtml
-  };
-})();
-</file>
-
 <file path="docs/ANALYZER-TODO.md">
 # Analyzer TODO
 
@@ -30543,6 +30186,363 @@ window.MilgCrawlUI = (function() {
 })();
 </file>
 
+<file path="docs/analyzer-proxy.js">
+// make-it-look-good — CORS Proxy & JS-Enabled Analysis
+// Handles URL fetching via proxy chain and "Try with JS" mode.
+// Depends on: analyzer-iframe.js (MilgIframe)
+
+window.MilgProxy = (function() {
+  "use strict";
+
+  var _corsProxyUrl = '';
+  var _showToast = function() {};
+  var _showProgress = function() {};
+  var _hideProgress = function() {};
+  var _runAnalysis = function() {};
+
+  function init(opts) {
+    if (opts.corsProxyUrl) _corsProxyUrl = opts.corsProxyUrl;
+    if (opts.showToast) _showToast = opts.showToast;
+    if (opts.showProgress) _showProgress = opts.showProgress;
+    if (opts.hideProgress) _hideProgress = opts.hideProgress;
+    if (opts.runAnalysis) _runAnalysis = opts.runAnalysis;
+  }
+
+  // --- URL Fetch via CORS proxy ---
+  // Remembers which proxy worked so subsequent requests (CSS files etc.) skip failed ones
+  var _lastWorkingProxy = -1; // -1 = direct, 0+ = proxy index
+
+  function buildProxyList() {
+    var proxies = [];
+    if (_corsProxyUrl) proxies.push(_corsProxyUrl + '?url=');
+    proxies.push(
+      'https://api.allorigins.win/raw?url=',
+      'https://api.codetabs.com/v1/proxy?quest=',
+      'https://corsproxy.io/?'
+    );
+    return proxies;
+  }
+
+  function fetchWithProxy(url) {
+    var proxies = buildProxyList();
+
+    // If we already know which proxy works, try it first
+    if (_lastWorkingProxy >= 0 && _lastWorkingProxy < proxies.length) {
+      return fetch(proxies[_lastWorkingProxy] + encodeURIComponent(url))
+        .then(function(r) { if (!r.ok) throw new Error(r.status); return r.text(); })
+        .then(function(t) { if (!t || t.length < 50) throw new Error('empty'); return t; })
+        .catch(function() {
+          // Last working proxy failed — reset and try full chain
+          _lastWorkingProxy = -1;
+          return fetchWithProxyFull(url, proxies);
+        });
+    }
+
+    return fetchWithProxyFull(url, proxies);
+  }
+
+  function fetchWithProxyFull(url, proxies) {
+    // Try direct fetch first
+    return fetch(url, { mode: 'cors', redirect: 'follow' })
+      .then(function(r) { if (r.ok) return r.text(); throw new Error(r.status); })
+      .then(function(t) { _lastWorkingProxy = -1; return t; })
+      .catch(function() {
+        // Try proxies in order, remember which one works
+        var chain = Promise.reject();
+        proxies.forEach(function(proxyBase, idx) {
+          chain = chain.catch(function() {
+            return fetch(proxyBase + encodeURIComponent(url)).then(function(r) {
+              if (!r.ok) throw new Error(r.status);
+              return r.text();
+            }).then(function(t) {
+              if (!t || t.length < 50) throw new Error('empty');
+              _lastWorkingProxy = idx;
+              return t;
+            });
+          });
+        });
+        return chain;
+      });
+  }
+
+  function fetchViaProxy(url, callback) {
+    fetchWithProxy(url)
+      .then(function(html) {
+        // Detect proxy error pages (Cloudflare challenges, 4xx/5xx error pages, consent walls)
+        var htmlStart = (html || '').substring(0, 3000);
+        if (html && (
+          /class="no-js.*oldie"/i.test(htmlStart) || // Cloudflare error template
+          /cf-error-details|cf-wrapper/i.test(htmlStart) ||
+          /Access Denied|403 Forbidden/i.test(htmlStart) ||
+          /Just a moment|Checking your browser/i.test(htmlStart) || // Cloudflare challenge
+          /consent\.google|accounts\.google.*ServiceLogin/i.test(htmlStart) // Google consent/login redirect
+        )) {
+          callback(null, 'The site returned an error/challenge page (likely blocking proxy access). Use the Console Snippet tab instead.');
+          return;
+        }
+
+        // Resolve base URL for relative paths
+        var baseUrl;
+        try { var u = new URL(url); baseUrl = u.origin + u.pathname.replace(/\/[^/]*$/, '/'); } catch(e) { baseUrl = url; }
+
+        // Find and inline linked stylesheets so CSS works inside srcdoc iframe
+        var cssLinks = [];
+        var linkRegex = /<link[^>]+rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*>/gi;
+        var altRegex = /<link[^>]+href=["']([^"']+)["'][^>]*rel=["']stylesheet["'][^>]*>/gi;
+        var m;
+        while (m = linkRegex.exec(html)) cssLinks.push(m[1]);
+        while (m = altRegex.exec(html)) { if (cssLinks.indexOf(m[1]) === -1) cssLinks.push(m[1]); }
+
+        if (cssLinks.length === 0) { callback(html, null); return; }
+
+        // Fetch all CSS files and inline them
+        Promise.all(cssLinks.map(function(href) {
+          var cssUrl = href.startsWith('http') ? href : (href.startsWith('/') ? new URL(url).origin + href : baseUrl + href);
+          return fetchWithProxy(cssUrl).catch(function() { return '/* failed: ' + href + ' */'; });
+        })).then(function(cssTexts) {
+          // Remove original link tags and inject inlined styles
+          var processed = html.replace(/<link[^>]+rel=["']stylesheet["'][^>]*>/gi, '');
+          processed = processed.replace(/<link[^>]+href=["'][^"']+\.css[^"']*["'][^>]*rel=["']stylesheet["'][^>]*>/gi, '');
+          var styleBlock = '<style>' + cssTexts.join('\n') + '</style>';
+          if (/<\/head>/i.test(processed)) {
+            processed = processed.replace(/<\/head>/i, styleBlock + '</head>');
+          } else {
+            processed = styleBlock + processed;
+          }
+          callback(processed, null);
+        });
+      })
+      .catch(function(e) {
+        callback(null, e.message || 'All CORS proxies failed');
+      });
+  }
+
+  // Try analyzing with JS enabled — fetches raw HTML via proxy, patches URL constructor
+  // (srcdoc has about:srcdoc as location which breaks new URL(path, location.href)),
+  // then delegates to analyzeHtmlInIframe which handles extraction, screenshots, and timeouts.
+  function tryWithJs(url) {
+    var ok = confirm(
+      'This will fetch the page via proxy and run its JavaScript in a sandboxed frame on this page.\n\n' +
+      'Only do this if you trust the site — its scripts will execute with access to this page\'s origin (XSS risk).\n\n' +
+      'Some sites may not work if they rely on cookies, auth, or same-origin API calls.\n\n' +
+      'Continue?'
+    );
+    if (!ok) return;
+
+    var reportContainer = document.getElementById('reportContainer');
+    var errBtn = 'style="margin-top:12px;padding:8px 16px;border-radius:6px;border:1px solid currentColor;background:none;color:inherit;cursor:pointer;font-size:13px"';
+
+    // Show progress directly in reportContainer (the input section with the
+    // normal progress bar is hidden at this point since the warning is showing)
+    var isDark = document.body.classList.contains('dark-ui');
+    var progBg = isDark ? '#1e293b' : '#f1f5f9';
+    var progText = isDark ? '#94a3b8' : '#475569';
+    var progAccent = isDark ? '#3b82f6' : '#2563eb';
+    function showJsProgress(pct, label) {
+      reportContainer.innerHTML = '<div style="padding:30px 40px;background:' + progBg + ';border-radius:var(--radius);text-align:center">' +
+        '<div style="font-size:13px;color:' + progText + ';margin-bottom:12px;font-weight:500">' + label + '</div>' +
+        '<div style="height:6px;background:' + (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)') + ';border-radius:3px;overflow:hidden">' +
+        '<div style="height:100%;width:' + pct + '%;background:' + progAccent + ';border-radius:3px;transition:width 0.6s ease"></div></div>' +
+        '</div>';
+      reportContainer.classList.add('visible');
+    }
+
+    showJsProgress(5, 'Fetching page via proxy...');
+
+    // Fetch raw HTML via proxy (don't use fetchViaProxy which inlines CSS — let JS handle it)
+    fetchWithProxy(url).then(function(html) {
+      if (!html || html.length < 50) {
+        reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
+          'Could not fetch the page (empty response).<br>' +
+          '<button onclick="window.__milgSwitchToSnippet()" ' + errBtn + '>Use Console Snippet instead</button></div>';
+        return;
+      }
+
+      showJsProgress(20, 'Preparing JavaScript environment...');
+      analyzeWithJs(html, url, {
+        onProgress: showJsProgress,
+        onDone: function(data) {
+          _runAnalysis(data);
+        }
+      });
+
+    }).catch(function(e) {
+      reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
+        'Failed to fetch the page: ' + (e.message || 'proxy error') + '<br>' +
+        '<button onclick="window.__milgSwitchToSnippet()" ' + errBtn + '>Use Console Snippet instead</button></div>';
+    });
+  }
+
+  // --- Sandbox hardening script ---
+  // Injected before page scripts to intercept storage, cookies, and other sensitive APIs.
+  // Returns safe no-ops and logs all access attempts to window.__milgSandboxLog.
+  function buildSandboxScript() {
+    return '<script>' +
+      '(function(){' +
+        'var _log=window.__milgSandboxLog=[];' +
+        'var _max=100;' +
+        'function _l(api,method,args){' +
+          'if(_log.length<_max)_log.push({api:api,method:method,args:String(args||"").substring(0,80),t:Date.now()})' +
+        '}' +
+        // --- localStorage / sessionStorage ---
+        'function _fakeStorage(name){' +
+          'var _s={};' +
+          'return{' +
+            'getItem:function(k){_l(name,"getItem",k);return _s[k]||null},' +
+            'setItem:function(k,v){_l(name,"setItem",k+"="+v);_s[k]=String(v)},' +
+            'removeItem:function(k){_l(name,"removeItem",k);delete _s[k]},' +
+            'clear:function(){_l(name,"clear");_s={}},' +
+            'key:function(i){_l(name,"key",i);var ks=Object.keys(_s);return ks[i]||null},' +
+            'get length(){return Object.keys(_s).length}' +
+          '}' +
+        '}' +
+        'try{Object.defineProperty(window,"localStorage",{value:_fakeStorage("localStorage"),configurable:true})}catch(e){}' +
+        'try{Object.defineProperty(window,"sessionStorage",{value:_fakeStorage("sessionStorage"),configurable:true})}catch(e){}' +
+        // --- document.cookie ---
+        'try{Object.defineProperty(document,"cookie",{' +
+          'get:function(){_l("cookie","get");return""},' +
+          'set:function(v){_l("cookie","set",v)},' +
+          'configurable:true' +
+        '})}catch(e){}' +
+        // --- indexedDB ---
+        'try{Object.defineProperty(window,"indexedDB",{value:null,configurable:true})}catch(e){}' +
+        // --- window.open ---
+        'var _wo=window.open;' +
+        'window.open=function(){_l("window","open",arguments[0]);return null};' +
+        // --- navigator.sendBeacon ---
+        'if(navigator.sendBeacon){var _sb=navigator.sendBeacon;navigator.sendBeacon=function(u){_l("navigator","sendBeacon",u);return false}}' +
+        // --- navigator.serviceWorker.register ---
+        'try{if(navigator.serviceWorker){Object.defineProperty(navigator.serviceWorker,"register",{value:function(u){_l("serviceWorker","register",u);return Promise.reject(new DOMException("Blocked by sandbox"))}})}}catch(e){}' +
+        // --- Notification.requestPermission ---
+        'try{if(window.Notification){Notification.requestPermission=function(){_l("Notification","requestPermission");return Promise.resolve("denied")}}}catch(e){}' +
+        // --- postMessage: filter to only allow milg-* messages to parent ---
+        'var _pm=window.parent.postMessage.bind(window.parent);' +
+        'window.parent.postMessage=function(msg,origin){' +
+          'if(msg&&typeof msg==="object"&&typeof msg.type==="string"&&msg.type.indexOf("milg-")===0){_pm(msg,origin);return}' +
+          '_l("postMessage","toParent",msg&&msg.type||"unknown");' +
+        '};' +
+      '})();' +
+      '</' + 'script>';
+  }
+
+  // --- Reusable JS-enabled analysis ---
+  // Takes already-fetched HTML, injects sandbox + URL patches, runs analysis.
+  // opts: { onProgress(pct, label), onDone(data), wantShots, exclude }
+  function analyzeWithJs(html, url, opts) {
+    opts = opts || {};
+    var onProgress = opts.onProgress || function() {};
+    var onDone = opts.onDone || _runAnalysis;
+    var wantShots = opts.wantShots !== undefined ? opts.wantShots : (document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked);
+    var exclude = opts.exclude !== undefined ? opts.exclude : (window.__milgCombinedExclude || (document.getElementById('excludeSelector') && document.getElementById('excludeSelector').value || '').trim() || null);
+
+    // Build injection scripts: sandbox first, then URL patch
+    var sandboxScript = buildSandboxScript();
+    var escapedUrl = url.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    var urlPatch = '<script>' +
+      '(function(){' +
+        'var _rb="' + escapedUrl + '";' +
+        'var _O=URL;' +
+        'function _P(u,b){' +
+          'if(b){' +
+            'var bs=typeof b==="string"?b:String(b);' +
+            'if(bs==="about:srcdoc"||bs==="about:blank"||bs==="null"||bs.indexOf("about:")===0)b=_rb;' +
+          '}' +
+          'if(!b&&typeof u==="string"&&u.charAt(0)==="/")return new _O(u,_rb);' +
+          'try{return arguments.length===1?new _O(u):new _O(u,b);}' +
+          'catch(e){try{return new _O(u,_rb);}catch(e2){throw e;}}' +
+        '}' +
+        '_P.prototype=_O.prototype;' +
+        '_P.createObjectURL=_O.createObjectURL.bind(_O);' +
+        '_P.revokeObjectURL=_O.revokeObjectURL.bind(_O);' +
+        'if(_O.canParse)_P.canParse=_O.canParse.bind(_O);' +
+        'window.URL=_P;' +
+        'var _hps=history.pushState.bind(history);' +
+        'var _hrs=history.replaceState.bind(history);' +
+        'history.pushState=function(s,t,u){try{_hps(s,t,u);}catch(e){}};' +
+        'history.replaceState=function(s,t,u){try{_hrs(s,t,u);}catch(e){}};' +
+        'var _of=window.fetch;' +
+        'window.fetch=function(u,o){' +
+          'if(typeof u==="string"&&u.charAt(0)==="/")u=_rb.replace(/\\/$/,"")+u;' +
+          'return _of.call(this,u,o);' +
+        '};' +
+      '})();' +
+      '</' + 'script>';
+
+    var combined = sandboxScript + urlPatch;
+
+    // Inject BEFORE the first <script> tag so patches run before any framework JS
+    if (/<script[\s>]/i.test(html)) {
+      html = html.replace(/<script[\s>]/i, combined + '<script ');
+    } else if (/<head[\s>]/i.test(html)) {
+      html = html.replace(/<head([^>]*)>/i, '<head$1>' + combined);
+    } else {
+      html = combined + html;
+    }
+
+    onProgress(30, 'Running JavaScript & rendering page...');
+
+    // Animate progress while waiting for JS hydration
+    var _jpPct = 30;
+    var _jsProgressTimer = setInterval(function() {
+      _jpPct = Math.min(_jpPct + 3, 90);
+      var label = _jpPct < 50 ? 'Running JavaScript & rendering page...'
+        : _jpPct < 70 ? 'Waiting for framework hydration...'
+        : 'Extracting design data...';
+      onProgress(_jpPct, label);
+    }, 600);
+
+    MilgIframe.analyzeHtmlInIframe(html, function(data) {
+      clearInterval(_jsProgressTimer);
+      data.meta.url = url;
+      data.meta._inputMethod = 'url';
+      data.meta._jsEnabled = true;
+      onDone(data);
+    }, url, exclude, wantShots);
+  }
+
+  // Wire up the global handler
+  window.__milgTryWithJs = function(url) { tryWithJs(url); };
+
+  // Inject sandbox + URL patches into HTML without running analysis.
+  // Used by deep scan to pre-process HTML for JS-enabled multi-viewport analysis.
+  function prepareJsHtml(html, url) {
+    var sandboxScript = buildSandboxScript();
+    var escapedUrl = url.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    var urlPatch = '<script>' +
+      '(function(){' +
+        'var _rb="' + escapedUrl + '";' +
+        'var _O=URL;' +
+        'function _P(u,b){' +
+          'if(b){var bs=typeof b==="string"?b:String(b);if(bs==="about:srcdoc"||bs==="about:blank"||bs==="null"||bs.indexOf("about:")===0)b=_rb;}' +
+          'if(!b&&typeof u==="string"&&u.charAt(0)==="/")return new _O(u,_rb);' +
+          'try{return arguments.length===1?new _O(u):new _O(u,b);}catch(e){try{return new _O(u,_rb);}catch(e2){throw e;}}' +
+        '}' +
+        '_P.prototype=_O.prototype;_P.createObjectURL=_O.createObjectURL.bind(_O);_P.revokeObjectURL=_O.revokeObjectURL.bind(_O);' +
+        'if(_O.canParse)_P.canParse=_O.canParse.bind(_O);window.URL=_P;' +
+        'var _hps=history.pushState.bind(history);var _hrs=history.replaceState.bind(history);' +
+        'history.pushState=function(s,t,u){try{_hps(s,t,u);}catch(e){}};history.replaceState=function(s,t,u){try{_hrs(s,t,u);}catch(e){}};' +
+        'var _of=window.fetch;window.fetch=function(u,o){if(typeof u==="string"&&u.charAt(0)==="/")u=_rb.replace(/\\/$/,"")+u;return _of.call(this,u,o)};' +
+      '})();' +
+    '</' + 'script>';
+    var combined = sandboxScript + urlPatch;
+    if (/<script[\s>]/i.test(html)) {
+      return html.replace(/<script[\s>]/i, combined + '<script ');
+    } else if (/<head[\s>]/i.test(html)) {
+      return html.replace(/<head([^>]*)>/i, '<head$1>' + combined);
+    }
+    return combined + html;
+  }
+
+  return {
+    init: init,
+    fetchWithProxy: fetchWithProxy,
+    fetchViaProxy: fetchViaProxy,
+    analyzeWithJs: analyzeWithJs,
+    prepareJsHtml: prepareJsHtml
+  };
+})();
+</file>
+
 <file path="docs/scoring/readability.js">
 // Scoring Module: Readability & Scanability
 // Weight: 5%
@@ -37801,61 +37801,11 @@ window.MilgReport = (function() {
     html += '<p>For a full design review with context-aware judgment, use this report as input for a <a href="index.html" style="color:var(--primary)">design consultation</a> — the findings give an AI or human reviewer concrete data to work from.</p>';
     html += '</div>';
 
-    // Deep scan results
+    // Deep scan: dark mode test results (viewport data now shown via tabs above)
     if (report.raw.deepScan) {
       var ds = report.raw.deepScan;
-      html += '<div class="report-summary" style="margin-top:16px">';
-      html += '<h2>Deep Scan Results</h2>';
-
-      if (ds.viewports && ds.viewports.length > 0) {
-        // Per-viewport screenshot thumbnails (if viewportData has screenshots)
-        var vpScreenshots = [];
-        if (ds.viewportData) {
-          ds.viewportData.forEach(function(vpd, vpIdx) {
-            if (vpd && vpd.data) {
-              vpScreenshots.push({ label: vpd.label, width: vpd.width, vpIdx: vpIdx, src: vpd.data.screenshotFull || (vpd.data.screenshots && vpd.data.screenshots[0]) || null });
-            }
-            // Skip null entries (failed viewports) — don't add to thumbnails
-          });
-        }
-        var hasAnyVpScreenshots = vpScreenshots.some(function(v) { return !!v.src; });
-
-        if (hasAnyVpScreenshots) {
-          html += '<h4 style="font-size:13px;margin-bottom:8px">Viewport Screenshots</h4>';
-          html += '<div style="display:flex;gap:16px;overflow-x:auto;padding-bottom:8px;margin-bottom:16px">';
-          vpScreenshots.forEach(function(vps) {
-            var maxThumbW = vps.width <= 400 ? 120 : vps.width <= 800 ? 180 : 220;
-            html += '<div style="flex:0 0 auto;text-align:center;min-width:0">';
-            html += '<div style="font-size:11px;font-weight:600;margin-bottom:4px;color:var(--text-secondary)">' + escapeHtml(vps.label) + ' (' + vps.width + 'px)</div>';
-            if (vps.src) {
-              html += '<img src="' + vps.src + '" alt="' + escapeHtml(vps.label) + ' screenshot" style="max-width:' + maxThumbW + 'px;max-height:300px;border:1px solid var(--border);border-radius:6px;cursor:pointer;display:block;margin:0 auto" onclick="window.__milgSwitchViewport(' + vps.vpIdx + ')">';
-            } else {
-              html += '<div style="width:' + maxThumbW + 'px;height:120px;border:1px dashed var(--border);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-dim)">No screenshot</div>';
-            }
-            html += '</div>';
-          });
-          html += '</div>';
-        }
-
-        html += '<h4 style="font-size:13px;margin-bottom:8px">Multi-Viewport Comparison</h4>';
-        html += '<p style="font-size:11px;color:var(--text-secondary);margin-bottom:8px">Use the viewport tabs above to switch between full reports per viewport.</p>';
-        html += '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px">';
-        html += '<tr><th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border)">Viewport</th><th style="padding:4px 8px;border-bottom:1px solid var(--border)">Touch Issues</th><th style="padding:4px 8px;border-bottom:1px solid var(--border)">Contrast Fails</th><th style="padding:4px 8px;border-bottom:1px solid var(--border)">Overflow</th><th style="padding:4px 8px;border-bottom:1px solid var(--border)">Screenshots</th></tr>';
-        ds.viewports.forEach(function(vp, idx) {
-          if (vp.error) {
-            html += '<tr><td style="padding:4px 8px">' + escapeHtml(vp.label) + ' (' + vp.width + 'px)</td><td colspan="4" style="padding:4px 8px;color:#dc2626">Extraction failed</td></tr>';
-          } else {
-            html += '<tr><td style="padding:4px 8px">' + escapeHtml(vp.label) + ' (' + vp.width + 'px)</td>';
-            html += '<td style="padding:4px 8px;text-align:center">' + (vp.touchTargets || 0) + '</td>';
-            html += '<td style="padding:4px 8px;text-align:center">' + (vp.contrastFails || 0) + '</td>';
-            html += '<td style="padding:4px 8px;text-align:center">' + (vp.overflow ? 'Yes' : 'No') + '</td>';
-            html += '<td style="padding:4px 8px;text-align:center">' + (vp.hasScreenshots ? '✓' : '—') + '</td></tr>';
-          }
-        });
-        html += '</table>';
-      }
-
       if (ds.darkMode && ds.darkMode.tested) {
+        html += '<div class="report-summary" style="margin-top:16px">';
         html += '<h4 style="font-size:13px;margin-bottom:8px">Dark Mode Test</h4>';
         var dmFails = ds.darkMode.contrastFails;
         if (dmFails === 0) {
@@ -37863,9 +37813,8 @@ window.MilgReport = (function() {
         } else {
           html += '<p style="font-size:13px"><span style="color:#dc2626">' + dmFails + ' contrast failure(s) in dark mode (' + ds.darkMode.contrastTotal + ' pairs checked)</span></p>';
         }
+        html += '</div>';
       }
-
-      html += '</div>';
     }
 
     return html;
@@ -37944,36 +37893,18 @@ window.MilgReport = (function() {
     }
     lines.push('');
 
-    // Deep scan results
-    if (report.raw.deepScan) {
-      var ds = report.raw.deepScan;
-      lines.push('## Deep Scan Results');
+    // Deep scan: dark mode test results
+    if (report.raw.deepScan && report.raw.deepScan.darkMode && report.raw.deepScan.darkMode.tested) {
+      var dsDm = report.raw.deepScan.darkMode;
+      lines.push('## Dark Mode Test');
       lines.push('');
-      if (ds.viewports && ds.viewports.length > 0) {
-        lines.push('### Multi-Viewport Comparison');
-        lines.push('');
-        lines.push('| Viewport | Touch Issues | Contrast Fails | Overflow |');
-        lines.push('|----------|-------------|----------------|----------|');
-        ds.viewports.forEach(function(vp) {
-          if (vp.error) {
-            lines.push('| ' + vp.label + ' (' + vp.width + 'px) | — | — | Extraction failed |');
-          } else {
-            lines.push('| ' + vp.label + ' (' + vp.width + 'px) | ' + (vp.touchTargets || 0) + ' | ' + (vp.contrastFails || 0) + ' | ' + (vp.overflow ? 'Yes' : 'No') + ' |');
-          }
-        });
-        lines.push('');
+      var dmFails = dsDm.contrastFails;
+      if (dmFails === 0) {
+        lines.push('No contrast failures in dark mode.');
+      } else {
+        lines.push(dmFails + ' contrast failure(s) in dark mode (' + dsDm.contrastTotal + ' pairs checked).');
       }
-      if (ds.darkMode && ds.darkMode.tested) {
-        lines.push('### Dark Mode Test');
-        lines.push('');
-        var dmFails = ds.darkMode.contrastFails;
-        if (dmFails === 0) {
-          lines.push('No contrast failures in dark mode.');
-        } else {
-          lines.push(dmFails + ' contrast failure(s) in dark mode (' + ds.darkMode.contrastTotal + ' pairs checked).');
-        }
-        lines.push('');
-      }
+      lines.push('');
     }
 
     // Screenshots (as inline base64 images in markdown) — skip when copying for paste
@@ -38118,12 +38049,356 @@ window.MilgReport = (function() {
 })();
 </file>
 
+<file path="docs/tests/test-bg-thinning.html">
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>BG Thinning Tests</title>
+<style>
+body{font-family:monospace;margin:20px;background:#1e1e1e;color:#d4d4d4}
+.test{margin:10px 0;padding:10px;border:1px solid #444;border-radius:4px}
+.pass{border-color:#22c55e;background:#052e16}.fail{border-color:#ef4444;background:#2d0a0a}
+canvas{image-rendering:pixelated;border:1px solid #555;margin:4px}
+h3{margin:4px 0;font-size:13px}
+pre{font-size:11px;white-space:pre;margin:4px 0}
+</style></head><body>
+<h2>BG Thinning Algorithm Tests</h2>
+<div id="results"></div>
+<script>
+// BG thinning: produces a 1px outline of BG pixels around FG text edges.
+// Steps:
+//  1. For each BG, find nearest FG. Skip if further BG in same sign-direction.
+//  2. Remove orphans (no FG connection).
+//  3. Keep closest F's claim for multiply-claimed B.
+//  4. Remove B if FG (not other B) blocks line of sight.
+//  5. Thin inner duplicates: remove lower-cheb pixels that have a higher-cheb
+//     neighbor, using depth-limited BFS to preserve local connectivity.
+function runThinning(fgPixels, bgPixels, bgR) {
+  bgR = bgR || 3;
+  var fgSet = {};
+  fgPixels.forEach(function(f) { fgSet[f.x+','+f.y] = true; });
+  var bgSet = {};
+  bgPixels.forEach(function(b) { bgSet[b.x+','+b.y] = true; });
+
+  // Step 1: For each BG within bgR of nearest FG, keep if outermost in direction
+  var bgMarks = {};
+  bgPixels.forEach(function(bg) {
+    var bk = bg.x + ',' + bg.y;
+    // Find nearest FG (Euclidean)
+    var bestFi = -1, bestD = Infinity;
+    fgPixels.forEach(function(fg, fi) {
+      var d = (fg.x-bg.x)*(fg.x-bg.x) + (fg.y-bg.y)*(fg.y-bg.y);
+      if (d < bestD) { bestD = d; bestFi = fi; }
+    });
+    if (bestFi < 0) return;
+    var fg = fgPixels[bestFi];
+    var dx = bg.x - fg.x, dy = bg.y - fg.y;
+    var cheb = Math.max(Math.abs(dx), Math.abs(dy));
+    if (cheb === 0 || cheb > bgR) return;
+
+    // FG blocking between fg and bg
+    var steps = Math.max(Math.abs(dx), Math.abs(dy));
+    var blocked = false;
+    for (var s = 1; s < steps; s++) {
+      var mx = fg.x + Math.round(dx * s / steps);
+      var my = fg.y + Math.round(dy * s / steps);
+      if ((mx+','+my) in fgSet) { blocked = true; break; }
+    }
+    if (blocked) return;
+
+    // hasFurther: skip if a BG exists beyond in same sign-direction
+    var sdx = dx > 0 ? 1 : (dx < 0 ? -1 : 0);
+    var sdy = dy > 0 ? 1 : (dy < 0 ? -1 : 0);
+    var hasFurther = false;
+    for (var ext = 1; ext <= bgR; ext++) {
+      var ex = bg.x + sdx * ext, ey = bg.y + sdy * ext;
+      if (Math.max(Math.abs(ex - fg.x), Math.abs(ey - fg.y)) > bgR) break;
+      if ((ex+','+ey) in fgSet) break;
+      if ((ex+','+ey) in bgSet) { hasFurther = true; break; }
+    }
+    if (hasFurther) return;
+
+    if (!bgMarks[bk]) bgMarks[bk] = [];
+    bgMarks[bk].push({ fi: bestFi, dist: cheb });
+  });
+
+  // Step 2-3: Remove orphans, keep closest F's claim
+  var result = {};
+  for (var k in bgMarks) {
+    if (bgMarks[k].length === 0) continue;
+    var marks = bgMarks[k];
+    var minD = Infinity;
+    marks.forEach(function(m) { if (m.dist < minD) minD = m.dist; });
+    result[k] = marks.filter(function(m) { return m.dist === minD; });
+  }
+
+  // Step 4: Remove if FG (not other BG) blocks line of sight
+  var afterBlock = {};
+  for (var k in result) {
+    var parts = k.split(','), bx = parseInt(parts[0]), by = parseInt(parts[1]);
+    var keepThis = false;
+    result[k].forEach(function(m) {
+      var fg = fgPixels[m.fi];
+      var dx = bx - fg.x, dy = by - fg.y;
+      var steps = Math.max(Math.abs(dx), Math.abs(dy));
+      var blocked = false;
+      for (var s = 1; s < steps; s++) {
+        var mx = fg.x + Math.round(dx * s / steps);
+        var my = fg.y + Math.round(dy * s / steps);
+        if ((mx+','+my) in fgSet && !(mx === fg.x && my === fg.y)) {
+          blocked = true; break;
+        }
+      }
+      if (!blocked) keepThis = true;
+    });
+    if (keepThis) afterBlock[k] = result[k];
+  }
+
+  // Step 5: Thin inner duplicates — remove pixels with lower Chebyshev
+  // distance that have a neighbor at higher Chebyshev distance, but only
+  // if removal doesn't break local connectivity (depth-limited BFS).
+  var chebMap = {};
+  for (var k in afterBlock) { chebMap[k] = afterBlock[k][0].dist; }
+
+  function isLocalBridge(k, keptSet) {
+    var parts = k.split(','), cx = parseInt(parts[0]), cy = parseInt(parts[1]);
+    var neighbors = [];
+    for (var dy = -1; dy <= 1; dy++) {
+      for (var dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        var nk = (cx+dx)+','+(cy+dy);
+        if (nk in keptSet && nk !== k) neighbors.push(nk);
+      }
+    }
+    if (neighbors.length <= 1) return true;
+    // BFS from first neighbor, max 4 hops, excluding k
+    var MAX_DEPTH = 4;
+    var visited = {}; visited[neighbors[0]] = 0;
+    var queue = [neighbors[0]];
+    while (queue.length > 0) {
+      var cur = queue.shift();
+      var depth = visited[cur];
+      if (depth >= MAX_DEPTH) continue;
+      var cp = cur.split(','), cx2 = parseInt(cp[0]), cy2 = parseInt(cp[1]);
+      for (var dy = -1; dy <= 1; dy++) {
+        for (var dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          var nk2 = (cx2+dx)+','+(cy2+dy);
+          if (nk2 !== k && nk2 in keptSet && !(nk2 in visited)) {
+            visited[nk2] = depth + 1;
+            queue.push(nk2);
+          }
+        }
+      }
+    }
+    for (var i = 1; i < neighbors.length; i++) {
+      if (!(neighbors[i] in visited)) return true;
+    }
+    return false;
+  }
+
+  // Collect candidates: pixels with a kept neighbor at higher cheb
+  var candidates = [];
+  for (var k in afterBlock) {
+    var myCheb = chebMap[k], hasHigher = false;
+    var parts = k.split(','), bx = parseInt(parts[0]), by = parseInt(parts[1]);
+    for (var dy = -1; dy <= 1; dy++) {
+      for (var dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        var nk = (bx+dx)+','+(by+dy);
+        if (nk in chebMap && chebMap[nk] > myCheb) hasHigher = true;
+      }
+    }
+    if (hasHigher) candidates.push({ k: k, cheb: myCheb });
+  }
+  // Process inner-most first
+  candidates.sort(function(a,b) { return a.cheb - b.cheb; });
+
+  var keptSet = {};
+  for (var k in afterBlock) keptSet[k] = true;
+
+  candidates.forEach(function(c) {
+    if (!(c.k in keptSet)) return;
+    if (!isLocalBridge(c.k, keptSet)) {
+      delete keptSet[c.k];
+    }
+  });
+
+  var final = {};
+  for (var k in keptSet) { final[k] = afterBlock[k][0].fi; }
+  return Object.keys(final).length > 0 ? final : afterBlock;
+}
+
+function drawGrid(id, w, h, fg, bg, kept, label) {
+  var scale = 20;
+  var pad = 16; // padding for axis labels
+  var c = document.createElement('canvas');
+  c.width = w * scale + pad; c.height = h * scale + pad;
+  var ctx = c.getContext('2d');
+  ctx.fillStyle = '#333'; ctx.fillRect(0,0,c.width,c.height);
+  ctx.save(); ctx.translate(pad, 0); // shift grid right for y-axis labels
+  // Grid lines
+  ctx.strokeStyle='#555';
+  for(var x=0;x<=w;x++){ctx.beginPath();ctx.moveTo(x*scale,0);ctx.lineTo(x*scale,h*scale);ctx.stroke();}
+  for(var y=0;y<=h;y++){ctx.beginPath();ctx.moveTo(0,y*scale);ctx.lineTo(w*scale,y*scale);ctx.stroke();}
+  // BG
+  bg.forEach(function(p){
+    var isKept = (p.x+','+p.y) in kept;
+    ctx.fillStyle = isKept ? '#f97316' : '#553310';
+    ctx.fillRect(p.x*scale+1,p.y*scale+1,scale-2,scale-2);
+    if(!isKept){ctx.strokeStyle='#666';ctx.strokeRect(p.x*scale+2,p.y*scale+2,scale-4,scale-4);}
+  });
+  // FG
+  fg.forEach(function(p){ctx.fillStyle='#06b6d4';ctx.fillRect(p.x*scale+1,p.y*scale+1,scale-2,scale-2)});
+  // Axis labels — x along bottom, y along left
+  ctx.font='9px monospace';ctx.fillStyle='#888';
+  for(var x=0;x<w;x++) ctx.fillText(x,x*scale+scale/2-3,h*scale+12);
+  ctx.save();ctx.translate(-pad,0);
+  for(var y=0;y<h;y++) ctx.fillText(y,2,y*scale+scale/2+3);
+  ctx.restore();
+  // (0,0) origin marker
+  ctx.fillStyle='#ff0';ctx.font='8px monospace';ctx.fillText('↗0,0',0,scale-2);
+  // Cell labels
+  ctx.font='9px monospace';ctx.fillStyle='#fff';
+  bg.forEach(function(p){
+    var isKept = (p.x+','+p.y) in kept;
+    ctx.fillText(isKept?'B':'x',p.x*scale+3,p.y*scale+10);
+    ctx.fillStyle='#aaa';ctx.font='7px monospace';
+    ctx.fillText(p.x+','+p.y,p.x*scale+2,p.y*scale+scale-3);
+    ctx.fillStyle='#fff';ctx.font='9px monospace';
+  });
+  fg.forEach(function(p){
+    ctx.fillText('F',p.x*scale+3,p.y*scale+10);
+    ctx.fillStyle='#aaa';ctx.font='7px monospace';
+    ctx.fillText(p.x+','+p.y,p.x*scale+2,p.y*scale+scale-3);
+    ctx.fillStyle='#fff';ctx.font='9px monospace';
+  });
+
+  ctx.restore(); // undo translate
+  var div = document.createElement('div');
+  div.innerHTML = '<h3>'+label+'</h3>';
+  div.appendChild(c);
+  return div;
+}
+
+function test(name, w, h, fg, bg, expectedKept) {
+  var result = runThinning(fg, bg, 3);
+  var keptKeys = Object.keys(result);
+  var pass = true;
+  expectedKept.forEach(function(k){if(!(k in result)){pass=false}});
+  // Also check no unexpected kept
+  keptKeys.forEach(function(k){if(expectedKept.indexOf(k)===-1){pass=false}});
+
+  var div = document.createElement('div');
+  div.className = 'test ' + (pass?'pass':'fail');
+  div.innerHTML = '<h3>'+(pass?'✓':'✗')+' '+name+'</h3>';
+  var grid = drawGrid(name, w, h, fg, bg, result,
+    'Kept: '+keptKeys.join(' ')+(pass?'':' EXPECTED: '+expectedKept.join(' ')));
+  div.appendChild(grid);
+  if(!pass){
+    var extra = keptKeys.filter(function(k){return expectedKept.indexOf(k)===-1;});
+    var missing = expectedKept.filter(function(k){return !(k in result);});
+    div.innerHTML += '<pre>Expected: '+expectedKept.join(', ')+'\nGot:      '+keptKeys.join(', ')
+      + (extra.length ? '\nExtra:    '+extra.join(', ') : '')
+      + (missing.length ? '\nMissing:  '+missing.join(', ') : '') + '</pre>';
+  }
+  document.getElementById('results').appendChild(div);
+  return pass;
+}
+
+var passed=0,failed=0;
+
+// Test 1: Horizontal line — 3 rows of BG above 6-wide FG line
+// Expected: outermost row only (y=2)
+if(test('Horizontal: 3 rows above 6-wide FG', 6, 6,
+  [{x:0,y:5},{x:1,y:5},{x:2,y:5},{x:3,y:5},{x:4,y:5},{x:5,y:5}],
+  [{x:0,y:2},{x:1,y:2},{x:2,y:2},{x:3,y:2},{x:4,y:2},{x:5,y:2},
+   {x:0,y:3},{x:1,y:3},{x:2,y:3},{x:3,y:3},{x:4,y:3},{x:5,y:3},
+   {x:0,y:4},{x:1,y:4},{x:2,y:4},{x:3,y:4},{x:4,y:4},{x:5,y:4}],
+  ['0,2','1,2','2,2','3,2','4,2','5,2']
+))passed++;else failed++;
+
+// Test 2: Horizontal: 2 rows above 6-wide FG
+if(test('Horizontal: 2 rows above 6-wide FG', 6, 5,
+  [{x:0,y:4},{x:1,y:4},{x:2,y:4},{x:3,y:4},{x:4,y:4},{x:5,y:4}],
+  [{x:0,y:2},{x:1,y:2},{x:2,y:2},{x:3,y:2},{x:4,y:2},{x:5,y:2},
+   {x:0,y:3},{x:1,y:3},{x:2,y:3},{x:3,y:3},{x:4,y:3},{x:5,y:3}],
+  ['0,2','1,2','2,2','3,2','4,2','5,2']
+))passed++;else failed++;
+
+// Test 3: Vertical line — 3 cols right of 6-tall FG
+if(test('Vertical: 3 cols right of 6-tall FG', 6, 6,
+  [{x:0,y:0},{x:0,y:1},{x:0,y:2},{x:0,y:3},{x:0,y:4},{x:0,y:5}],
+  [{x:1,y:0},{x:1,y:1},{x:1,y:2},{x:1,y:3},{x:1,y:4},{x:1,y:5},
+   {x:2,y:0},{x:2,y:1},{x:2,y:2},{x:2,y:3},{x:2,y:4},{x:2,y:5},
+   {x:3,y:0},{x:3,y:1},{x:3,y:2},{x:3,y:3},{x:3,y:4},{x:3,y:5}],
+  ['3,0','3,1','3,2','3,3','3,4','3,5']
+))passed++;else failed++;
+
+// Test 4: Angle — 5px diagonal with 2px deep BG on both sides
+// FG diagonal from (3,7) to (7,3). BG surrounds on both sides.
+// Expected: 1px continuous outline, inner diagonal removed.
+if(test('Angle: 5px diagonal 2px deep BG', 10, 10,
+  [{x:3,y:7},{x:4,y:6},{x:5,y:5},{x:6,y:4},{x:7,y:3}],
+  [{x:7,y:1},{x:8,y:1},{x:8,y:2},{x:8,y:3},{x:8,y:4},{x:7,y:5},{x:6,y:6},{x:5,y:7},{x:4,y:8},{x:3,y:9},{x:2,y:8},{x:2,y:9},
+   {x:7,y:2},{x:8,y:5},{x:7,y:6},{x:6,y:7},{x:5,y:8},{x:4,y:9},
+   {x:1,y:6},{x:1,y:7},{x:1,y:8},{x:2,y:6},{x:2,y:7},{x:3,y:5},{x:3,y:6},{x:4,y:4},{x:4,y:5},{x:5,y:3},{x:5,y:4},{x:6,y:2},{x:6,y:3},
+   {x:4,y:7},{x:5,y:6},{x:6,y:5},{x:7,y:4},
+   {x:3,y:8},{x:2,y:5},{x:3,y:4},{x:4,y:3},{x:5,y:2},{x:6,y:1}],
+  ['1,6','1,7','1,8','2,5','2,9','3,4','3,9','4,3','4,9','5,2','5,8',
+   '6,1','6,7','7,1','7,6','8,1','8,2','8,3','8,4','8,5']
+))passed++;else failed++;
+
+// Test 4b: Smaller angle — 3 FG diagonal with 2px deep BG
+if(test('Angle: 2px deep BG thins to 1px', 6, 7,
+  [{x:2,y:5},{x:3,y:4},{x:4,y:3}],
+  [{x:1,y:4},{x:1,y:5},{x:1,y:6},{x:0,y:4},{x:0,y:5},{x:0,y:6},
+   {x:2,y:6},{x:3,y:5},{x:3,y:6},{x:4,y:4},{x:4,y:5},
+   {x:2,y:3},{x:2,y:4},{x:3,y:3},{x:3,y:2},
+   {x:4,y:2},{x:4,y:1},{x:5,y:2},{x:5,y:3},{x:5,y:4},
+   {x:3,y:1},{x:2,y:2},{x:2,y:1}],
+  ['0,4','0,5','0,6','1,4','1,6','2,1','2,2','2,3','2,6','3,1','3,6',
+   '4,1','4,5','5,2','5,3','5,4']
+))passed++;else failed++;
+
+// Test 5: Single FG pixel with 2px ring — should thin to outer ring
+if(test('Single FG: 2px ring thins to outer', 7, 7,
+  [{x:3,y:3}],
+  [{x:2,y:2},{x:3,y:2},{x:4,y:2},{x:2,y:3},{x:4,y:3},{x:2,y:4},{x:3,y:4},{x:4,y:4},
+   {x:1,y:1},{x:2,y:1},{x:3,y:1},{x:4,y:1},{x:5,y:1},
+   {x:1,y:2},{x:5,y:2},{x:1,y:3},{x:5,y:3},{x:1,y:4},{x:5,y:4},
+   {x:1,y:5},{x:2,y:5},{x:3,y:5},{x:4,y:5},{x:5,y:5}],
+  ['1,1','2,1','3,1','4,1','5,1','1,2','5,2','1,3','5,3','1,4','5,4',
+   '1,5','2,5','3,5','4,5','5,5']
+))passed++;else failed++;
+
+// Test 6: O-shape with 2px walls — outer BG kept, inner counter removed
+if(test('O-shape: inner counter BG removed', 9, 8,
+  [{x:1,y:1},{x:2,y:1},{x:3,y:1},{x:4,y:1},{x:5,y:1},{x:6,y:1},{x:7,y:1},
+   {x:1,y:2},{x:2,y:2},{x:3,y:2},{x:4,y:2},{x:5,y:2},{x:6,y:2},{x:7,y:2},
+   {x:1,y:3},{x:2,y:3},{x:6,y:3},{x:7,y:3},
+   {x:1,y:4},{x:2,y:4},{x:6,y:4},{x:7,y:4},
+   {x:1,y:5},{x:2,y:5},{x:3,y:5},{x:4,y:5},{x:5,y:5},{x:6,y:5},{x:7,y:5},
+   {x:1,y:6},{x:2,y:6},{x:3,y:6},{x:4,y:6},{x:5,y:6},{x:6,y:6},{x:7,y:6}],
+  [{x:0,y:0},{x:1,y:0},{x:2,y:0},{x:3,y:0},{x:4,y:0},{x:5,y:0},{x:6,y:0},{x:7,y:0},{x:8,y:0},
+   {x:0,y:1},{x:8,y:1},{x:0,y:2},{x:8,y:2},{x:0,y:3},{x:8,y:3},{x:0,y:4},{x:8,y:4},
+   {x:0,y:5},{x:8,y:5},{x:0,y:6},{x:8,y:6},
+   {x:0,y:7},{x:1,y:7},{x:2,y:7},{x:3,y:7},{x:4,y:7},{x:5,y:7},{x:6,y:7},{x:7,y:7},{x:8,y:7},
+   {x:3,y:3},{x:4,y:3},{x:5,y:3},{x:3,y:4},{x:4,y:4},{x:5,y:4}],
+  ['0,0','1,0','2,0','3,0','4,0','5,0','6,0','7,0','8,0',
+   '0,1','8,1','0,2','8,2','0,3','8,3','0,4','8,4','0,5','8,5','0,6','8,6',
+   '0,7','1,7','2,7','3,7','4,7','5,7','6,7','7,7','8,7']
+))passed++;else failed++;
+
+document.getElementById('results').insertAdjacentHTML('afterbegin',
+  '<h3 style="font-size:16px">'+passed+' passed, '+failed+' failed</h3>');
+</script></body></html>
+</file>
+
 <file path="docs/analyzer.js">
 // make-it-look-good — Design Analyzer (Main UI Controller) v43.3
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v43.3 loaded');
+console.log('[milg] analyzer.js v43.4 loaded');
 
 (function() {
   "use strict";
@@ -38725,28 +39000,34 @@ console.log('[milg] analyzer.js v43.3 loaded');
       saveToHistory(data, reportData.overall, reportData.grade);
     }
 
-    // Run pixel contrast verification asynchronously (if enabled + screenshots + bboxes available)
+    // Pixel contrast verification
     var pixelVerifyCheck = document.getElementById('pixelVerifyCheck');
     var wantPixelVerify = pixelVerifyCheck ? pixelVerifyCheck.checked : true;
-    if (wantPixelVerify && window.MilgContrastVerify && reportData.raw && reportData.raw.screenshots && reportData.raw.screenshotMeta) {
+    // Use pre-computed results if available (from deep scan pre-computation)
+    if (data._contrastVerifyResults) {
+      reportData._contrastVerifyResults = data._contrastVerifyResults;
+      reportData._bboxEdgeResults = data._bboxEdgeResults || [];
+      var summary = MilgContrastVerify.buildSummary(data._contrastVerifyResults, data._bboxEdgeResults);
+      var summaryHtml = MilgContrastVerify.renderSummaryHtml(summary);
+      if (summaryHtml) {
+        var screenshotDetails = reportContainer.querySelector('.report-screenshots');
+        var div = document.createElement('div');
+        div.innerHTML = summaryHtml;
+        if (screenshotDetails) screenshotDetails.parentNode.insertBefore(div, screenshotDetails.nextSibling);
+        else reportContainer.insertBefore(div, reportContainer.firstChild);
+      }
+    } else if (wantPixelVerify && window.MilgContrastVerify && reportData.raw && reportData.raw.screenshots && reportData.raw.screenshotMeta) {
+      // Run async verification (non-deep-scan path)
       MilgContrastVerify.verify(reportData, function(results, bboxEdgeResults) {
         if (results.length === 0 && (!bboxEdgeResults || bboxEdgeResults.length === 0)) return;
         var summary = MilgContrastVerify.buildSummary(results, bboxEdgeResults);
         var summaryHtml = MilgContrastVerify.renderSummaryHtml(summary);
         if (!summaryHtml) return;
-        // Inject after the screenshots section in the report
         var screenshotDetails = reportContainer.querySelector('.report-screenshots');
-        if (screenshotDetails) {
-          var div = document.createElement('div');
-          div.innerHTML = summaryHtml;
-          screenshotDetails.parentNode.insertBefore(div, screenshotDetails.nextSibling);
-        } else {
-          // No screenshot section visible — prepend to report
-          var div = document.createElement('div');
-          div.innerHTML = summaryHtml;
-          reportContainer.insertBefore(div, reportContainer.firstChild);
-        }
-        // Store results for viewer tooltips
+        var div = document.createElement('div');
+        div.innerHTML = summaryHtml;
+        if (screenshotDetails) screenshotDetails.parentNode.insertBefore(div, screenshotDetails.nextSibling);
+        else reportContainer.insertBefore(div, reportContainer.firstChild);
         reportData._contrastVerifyResults = results;
         reportData._bboxEdgeResults = bboxEdgeResults || [];
       });
@@ -38942,13 +39223,51 @@ console.log('[milg] analyzer.js v43.3 loaded');
                 hideProgress();
                 return;
               }
-              urlStatus.style.display = 'none';
-              showProgress(100, 'Done!');
-              setTimeout(hideProgress, 500);
               primary.meta.url = url;
               primary.meta._inputMethod = 'url';
               if (wantJs) primary.meta._jsEnabled = true;
-              runAnalysis(primary);
+              // Pre-compute pixel verify for all viewports before showing results
+              var pvCheck = document.getElementById('pixelVerifyCheck');
+              var wantPV = pvCheck ? pvCheck.checked : false;
+              if (wantPV && wantShots && window.MilgContrastVerify && primary.deepScan && primary.deepScan.viewportData) {
+                urlStatus.textContent = 'Running pixel verification...';
+                urlStatus.style.display = 'block';
+                showProgress(88, 'Pixel verification...');
+                var vpToVerify = primary.deepScan.viewportData.filter(function(v) { return v && v.data && v.data.screenshots && v.data.screenshots.length > 0; });
+                var verifyDone = 0;
+                if (vpToVerify.length === 0) {
+                  urlStatus.style.display = 'none';
+                  showProgress(100, 'Done!');
+                  setTimeout(hideProgress, 500);
+                  runAnalysis(primary);
+                  return;
+                }
+                vpToVerify.forEach(function(vp) {
+                  var scored = MilgScoring.runScoring(vp.data);
+                  MilgContrastVerify.verify(scored, function(results, bboxEdge) {
+                    vp.data._contrastVerifyResults = results || [];
+                    vp.data._bboxEdgeResults = bboxEdge || [];
+                    verifyDone++;
+                    showProgress(88 + Math.round(10 * verifyDone / vpToVerify.length), 'Verified ' + verifyDone + '/' + vpToVerify.length + ' viewports');
+                    if (verifyDone === vpToVerify.length) {
+                      // Also set on primary (which is viewportData[0].data)
+                      urlStatus.style.display = 'none';
+                      showProgress(100, 'Done!');
+                      setTimeout(hideProgress, 500);
+                      analyzeUrlBtn.disabled = false;
+                      analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
+                      runAnalysis(primary);
+                    }
+                  });
+                });
+              } else {
+                urlStatus.style.display = 'none';
+                showProgress(100, 'Done!');
+                setTimeout(hideProgress, 500);
+                analyzeUrlBtn.disabled = false;
+                analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
+                runAnalysis(primary);
+              }
             }
           );
           return;
@@ -39312,350 +39631,6 @@ console.log('[milg] analyzer.js v43.3 loaded');
     init();
   }
 })();
-</file>
-
-<file path="docs/tests/test-bg-thinning.html">
-<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>BG Thinning Tests</title>
-<style>
-body{font-family:monospace;margin:20px;background:#1e1e1e;color:#d4d4d4}
-.test{margin:10px 0;padding:10px;border:1px solid #444;border-radius:4px}
-.pass{border-color:#22c55e;background:#052e16}.fail{border-color:#ef4444;background:#2d0a0a}
-canvas{image-rendering:pixelated;border:1px solid #555;margin:4px}
-h3{margin:4px 0;font-size:13px}
-pre{font-size:11px;white-space:pre;margin:4px 0}
-</style></head><body>
-<h2>BG Thinning Algorithm Tests</h2>
-<div id="results"></div>
-<script>
-// BG thinning: produces a 1px outline of BG pixels around FG text edges.
-// Steps:
-//  1. For each BG, find nearest FG. Skip if further BG in same sign-direction.
-//  2. Remove orphans (no FG connection).
-//  3. Keep closest F's claim for multiply-claimed B.
-//  4. Remove B if FG (not other B) blocks line of sight.
-//  5. Thin inner duplicates: remove lower-cheb pixels that have a higher-cheb
-//     neighbor, using depth-limited BFS to preserve local connectivity.
-function runThinning(fgPixels, bgPixels, bgR) {
-  bgR = bgR || 3;
-  var fgSet = {};
-  fgPixels.forEach(function(f) { fgSet[f.x+','+f.y] = true; });
-  var bgSet = {};
-  bgPixels.forEach(function(b) { bgSet[b.x+','+b.y] = true; });
-
-  // Step 1: For each BG within bgR of nearest FG, keep if outermost in direction
-  var bgMarks = {};
-  bgPixels.forEach(function(bg) {
-    var bk = bg.x + ',' + bg.y;
-    // Find nearest FG (Euclidean)
-    var bestFi = -1, bestD = Infinity;
-    fgPixels.forEach(function(fg, fi) {
-      var d = (fg.x-bg.x)*(fg.x-bg.x) + (fg.y-bg.y)*(fg.y-bg.y);
-      if (d < bestD) { bestD = d; bestFi = fi; }
-    });
-    if (bestFi < 0) return;
-    var fg = fgPixels[bestFi];
-    var dx = bg.x - fg.x, dy = bg.y - fg.y;
-    var cheb = Math.max(Math.abs(dx), Math.abs(dy));
-    if (cheb === 0 || cheb > bgR) return;
-
-    // FG blocking between fg and bg
-    var steps = Math.max(Math.abs(dx), Math.abs(dy));
-    var blocked = false;
-    for (var s = 1; s < steps; s++) {
-      var mx = fg.x + Math.round(dx * s / steps);
-      var my = fg.y + Math.round(dy * s / steps);
-      if ((mx+','+my) in fgSet) { blocked = true; break; }
-    }
-    if (blocked) return;
-
-    // hasFurther: skip if a BG exists beyond in same sign-direction
-    var sdx = dx > 0 ? 1 : (dx < 0 ? -1 : 0);
-    var sdy = dy > 0 ? 1 : (dy < 0 ? -1 : 0);
-    var hasFurther = false;
-    for (var ext = 1; ext <= bgR; ext++) {
-      var ex = bg.x + sdx * ext, ey = bg.y + sdy * ext;
-      if (Math.max(Math.abs(ex - fg.x), Math.abs(ey - fg.y)) > bgR) break;
-      if ((ex+','+ey) in fgSet) break;
-      if ((ex+','+ey) in bgSet) { hasFurther = true; break; }
-    }
-    if (hasFurther) return;
-
-    if (!bgMarks[bk]) bgMarks[bk] = [];
-    bgMarks[bk].push({ fi: bestFi, dist: cheb });
-  });
-
-  // Step 2-3: Remove orphans, keep closest F's claim
-  var result = {};
-  for (var k in bgMarks) {
-    if (bgMarks[k].length === 0) continue;
-    var marks = bgMarks[k];
-    var minD = Infinity;
-    marks.forEach(function(m) { if (m.dist < minD) minD = m.dist; });
-    result[k] = marks.filter(function(m) { return m.dist === minD; });
-  }
-
-  // Step 4: Remove if FG (not other BG) blocks line of sight
-  var afterBlock = {};
-  for (var k in result) {
-    var parts = k.split(','), bx = parseInt(parts[0]), by = parseInt(parts[1]);
-    var keepThis = false;
-    result[k].forEach(function(m) {
-      var fg = fgPixels[m.fi];
-      var dx = bx - fg.x, dy = by - fg.y;
-      var steps = Math.max(Math.abs(dx), Math.abs(dy));
-      var blocked = false;
-      for (var s = 1; s < steps; s++) {
-        var mx = fg.x + Math.round(dx * s / steps);
-        var my = fg.y + Math.round(dy * s / steps);
-        if ((mx+','+my) in fgSet && !(mx === fg.x && my === fg.y)) {
-          blocked = true; break;
-        }
-      }
-      if (!blocked) keepThis = true;
-    });
-    if (keepThis) afterBlock[k] = result[k];
-  }
-
-  // Step 5: Thin inner duplicates — remove pixels with lower Chebyshev
-  // distance that have a neighbor at higher Chebyshev distance, but only
-  // if removal doesn't break local connectivity (depth-limited BFS).
-  var chebMap = {};
-  for (var k in afterBlock) { chebMap[k] = afterBlock[k][0].dist; }
-
-  function isLocalBridge(k, keptSet) {
-    var parts = k.split(','), cx = parseInt(parts[0]), cy = parseInt(parts[1]);
-    var neighbors = [];
-    for (var dy = -1; dy <= 1; dy++) {
-      for (var dx = -1; dx <= 1; dx++) {
-        if (dx === 0 && dy === 0) continue;
-        var nk = (cx+dx)+','+(cy+dy);
-        if (nk in keptSet && nk !== k) neighbors.push(nk);
-      }
-    }
-    if (neighbors.length <= 1) return true;
-    // BFS from first neighbor, max 4 hops, excluding k
-    var MAX_DEPTH = 4;
-    var visited = {}; visited[neighbors[0]] = 0;
-    var queue = [neighbors[0]];
-    while (queue.length > 0) {
-      var cur = queue.shift();
-      var depth = visited[cur];
-      if (depth >= MAX_DEPTH) continue;
-      var cp = cur.split(','), cx2 = parseInt(cp[0]), cy2 = parseInt(cp[1]);
-      for (var dy = -1; dy <= 1; dy++) {
-        for (var dx = -1; dx <= 1; dx++) {
-          if (dx === 0 && dy === 0) continue;
-          var nk2 = (cx2+dx)+','+(cy2+dy);
-          if (nk2 !== k && nk2 in keptSet && !(nk2 in visited)) {
-            visited[nk2] = depth + 1;
-            queue.push(nk2);
-          }
-        }
-      }
-    }
-    for (var i = 1; i < neighbors.length; i++) {
-      if (!(neighbors[i] in visited)) return true;
-    }
-    return false;
-  }
-
-  // Collect candidates: pixels with a kept neighbor at higher cheb
-  var candidates = [];
-  for (var k in afterBlock) {
-    var myCheb = chebMap[k], hasHigher = false;
-    var parts = k.split(','), bx = parseInt(parts[0]), by = parseInt(parts[1]);
-    for (var dy = -1; dy <= 1; dy++) {
-      for (var dx = -1; dx <= 1; dx++) {
-        if (dx === 0 && dy === 0) continue;
-        var nk = (bx+dx)+','+(by+dy);
-        if (nk in chebMap && chebMap[nk] > myCheb) hasHigher = true;
-      }
-    }
-    if (hasHigher) candidates.push({ k: k, cheb: myCheb });
-  }
-  // Process inner-most first
-  candidates.sort(function(a,b) { return a.cheb - b.cheb; });
-
-  var keptSet = {};
-  for (var k in afterBlock) keptSet[k] = true;
-
-  candidates.forEach(function(c) {
-    if (!(c.k in keptSet)) return;
-    if (!isLocalBridge(c.k, keptSet)) {
-      delete keptSet[c.k];
-    }
-  });
-
-  var final = {};
-  for (var k in keptSet) { final[k] = afterBlock[k][0].fi; }
-  return Object.keys(final).length > 0 ? final : afterBlock;
-}
-
-function drawGrid(id, w, h, fg, bg, kept, label) {
-  var scale = 20;
-  var pad = 16; // padding for axis labels
-  var c = document.createElement('canvas');
-  c.width = w * scale + pad; c.height = h * scale + pad;
-  var ctx = c.getContext('2d');
-  ctx.fillStyle = '#333'; ctx.fillRect(0,0,c.width,c.height);
-  ctx.save(); ctx.translate(pad, 0); // shift grid right for y-axis labels
-  // Grid lines
-  ctx.strokeStyle='#555';
-  for(var x=0;x<=w;x++){ctx.beginPath();ctx.moveTo(x*scale,0);ctx.lineTo(x*scale,h*scale);ctx.stroke();}
-  for(var y=0;y<=h;y++){ctx.beginPath();ctx.moveTo(0,y*scale);ctx.lineTo(w*scale,y*scale);ctx.stroke();}
-  // BG
-  bg.forEach(function(p){
-    var isKept = (p.x+','+p.y) in kept;
-    ctx.fillStyle = isKept ? '#f97316' : '#553310';
-    ctx.fillRect(p.x*scale+1,p.y*scale+1,scale-2,scale-2);
-    if(!isKept){ctx.strokeStyle='#666';ctx.strokeRect(p.x*scale+2,p.y*scale+2,scale-4,scale-4);}
-  });
-  // FG
-  fg.forEach(function(p){ctx.fillStyle='#06b6d4';ctx.fillRect(p.x*scale+1,p.y*scale+1,scale-2,scale-2)});
-  // Axis labels — x along bottom, y along left
-  ctx.font='9px monospace';ctx.fillStyle='#888';
-  for(var x=0;x<w;x++) ctx.fillText(x,x*scale+scale/2-3,h*scale+12);
-  ctx.save();ctx.translate(-pad,0);
-  for(var y=0;y<h;y++) ctx.fillText(y,2,y*scale+scale/2+3);
-  ctx.restore();
-  // (0,0) origin marker
-  ctx.fillStyle='#ff0';ctx.font='8px monospace';ctx.fillText('↗0,0',0,scale-2);
-  // Cell labels
-  ctx.font='9px monospace';ctx.fillStyle='#fff';
-  bg.forEach(function(p){
-    var isKept = (p.x+','+p.y) in kept;
-    ctx.fillText(isKept?'B':'x',p.x*scale+3,p.y*scale+10);
-    ctx.fillStyle='#aaa';ctx.font='7px monospace';
-    ctx.fillText(p.x+','+p.y,p.x*scale+2,p.y*scale+scale-3);
-    ctx.fillStyle='#fff';ctx.font='9px monospace';
-  });
-  fg.forEach(function(p){
-    ctx.fillText('F',p.x*scale+3,p.y*scale+10);
-    ctx.fillStyle='#aaa';ctx.font='7px monospace';
-    ctx.fillText(p.x+','+p.y,p.x*scale+2,p.y*scale+scale-3);
-    ctx.fillStyle='#fff';ctx.font='9px monospace';
-  });
-
-  ctx.restore(); // undo translate
-  var div = document.createElement('div');
-  div.innerHTML = '<h3>'+label+'</h3>';
-  div.appendChild(c);
-  return div;
-}
-
-function test(name, w, h, fg, bg, expectedKept) {
-  var result = runThinning(fg, bg, 3);
-  var keptKeys = Object.keys(result);
-  var pass = true;
-  expectedKept.forEach(function(k){if(!(k in result)){pass=false}});
-  // Also check no unexpected kept
-  keptKeys.forEach(function(k){if(expectedKept.indexOf(k)===-1){pass=false}});
-
-  var div = document.createElement('div');
-  div.className = 'test ' + (pass?'pass':'fail');
-  div.innerHTML = '<h3>'+(pass?'✓':'✗')+' '+name+'</h3>';
-  var grid = drawGrid(name, w, h, fg, bg, result,
-    'Kept: '+keptKeys.join(' ')+(pass?'':' EXPECTED: '+expectedKept.join(' ')));
-  div.appendChild(grid);
-  if(!pass){
-    var extra = keptKeys.filter(function(k){return expectedKept.indexOf(k)===-1;});
-    var missing = expectedKept.filter(function(k){return !(k in result);});
-    div.innerHTML += '<pre>Expected: '+expectedKept.join(', ')+'\nGot:      '+keptKeys.join(', ')
-      + (extra.length ? '\nExtra:    '+extra.join(', ') : '')
-      + (missing.length ? '\nMissing:  '+missing.join(', ') : '') + '</pre>';
-  }
-  document.getElementById('results').appendChild(div);
-  return pass;
-}
-
-var passed=0,failed=0;
-
-// Test 1: Horizontal line — 3 rows of BG above 6-wide FG line
-// Expected: outermost row only (y=2)
-if(test('Horizontal: 3 rows above 6-wide FG', 6, 6,
-  [{x:0,y:5},{x:1,y:5},{x:2,y:5},{x:3,y:5},{x:4,y:5},{x:5,y:5}],
-  [{x:0,y:2},{x:1,y:2},{x:2,y:2},{x:3,y:2},{x:4,y:2},{x:5,y:2},
-   {x:0,y:3},{x:1,y:3},{x:2,y:3},{x:3,y:3},{x:4,y:3},{x:5,y:3},
-   {x:0,y:4},{x:1,y:4},{x:2,y:4},{x:3,y:4},{x:4,y:4},{x:5,y:4}],
-  ['0,2','1,2','2,2','3,2','4,2','5,2']
-))passed++;else failed++;
-
-// Test 2: Horizontal: 2 rows above 6-wide FG
-if(test('Horizontal: 2 rows above 6-wide FG', 6, 5,
-  [{x:0,y:4},{x:1,y:4},{x:2,y:4},{x:3,y:4},{x:4,y:4},{x:5,y:4}],
-  [{x:0,y:2},{x:1,y:2},{x:2,y:2},{x:3,y:2},{x:4,y:2},{x:5,y:2},
-   {x:0,y:3},{x:1,y:3},{x:2,y:3},{x:3,y:3},{x:4,y:3},{x:5,y:3}],
-  ['0,2','1,2','2,2','3,2','4,2','5,2']
-))passed++;else failed++;
-
-// Test 3: Vertical line — 3 cols right of 6-tall FG
-if(test('Vertical: 3 cols right of 6-tall FG', 6, 6,
-  [{x:0,y:0},{x:0,y:1},{x:0,y:2},{x:0,y:3},{x:0,y:4},{x:0,y:5}],
-  [{x:1,y:0},{x:1,y:1},{x:1,y:2},{x:1,y:3},{x:1,y:4},{x:1,y:5},
-   {x:2,y:0},{x:2,y:1},{x:2,y:2},{x:2,y:3},{x:2,y:4},{x:2,y:5},
-   {x:3,y:0},{x:3,y:1},{x:3,y:2},{x:3,y:3},{x:3,y:4},{x:3,y:5}],
-  ['3,0','3,1','3,2','3,3','3,4','3,5']
-))passed++;else failed++;
-
-// Test 4: Angle — 5px diagonal with 2px deep BG on both sides
-// FG diagonal from (3,7) to (7,3). BG surrounds on both sides.
-// Expected: 1px continuous outline, inner diagonal removed.
-if(test('Angle: 5px diagonal 2px deep BG', 10, 10,
-  [{x:3,y:7},{x:4,y:6},{x:5,y:5},{x:6,y:4},{x:7,y:3}],
-  [{x:7,y:1},{x:8,y:1},{x:8,y:2},{x:8,y:3},{x:8,y:4},{x:7,y:5},{x:6,y:6},{x:5,y:7},{x:4,y:8},{x:3,y:9},{x:2,y:8},{x:2,y:9},
-   {x:7,y:2},{x:8,y:5},{x:7,y:6},{x:6,y:7},{x:5,y:8},{x:4,y:9},
-   {x:1,y:6},{x:1,y:7},{x:1,y:8},{x:2,y:6},{x:2,y:7},{x:3,y:5},{x:3,y:6},{x:4,y:4},{x:4,y:5},{x:5,y:3},{x:5,y:4},{x:6,y:2},{x:6,y:3},
-   {x:4,y:7},{x:5,y:6},{x:6,y:5},{x:7,y:4},
-   {x:3,y:8},{x:2,y:5},{x:3,y:4},{x:4,y:3},{x:5,y:2},{x:6,y:1}],
-  ['1,6','1,7','1,8','2,5','2,9','3,4','3,9','4,3','4,9','5,2','5,8',
-   '6,1','6,7','7,1','7,6','8,1','8,2','8,3','8,4','8,5']
-))passed++;else failed++;
-
-// Test 4b: Smaller angle — 3 FG diagonal with 2px deep BG
-if(test('Angle: 2px deep BG thins to 1px', 6, 7,
-  [{x:2,y:5},{x:3,y:4},{x:4,y:3}],
-  [{x:1,y:4},{x:1,y:5},{x:1,y:6},{x:0,y:4},{x:0,y:5},{x:0,y:6},
-   {x:2,y:6},{x:3,y:5},{x:3,y:6},{x:4,y:4},{x:4,y:5},
-   {x:2,y:3},{x:2,y:4},{x:3,y:3},{x:3,y:2},
-   {x:4,y:2},{x:4,y:1},{x:5,y:2},{x:5,y:3},{x:5,y:4},
-   {x:3,y:1},{x:2,y:2},{x:2,y:1}],
-  ['0,4','0,5','0,6','1,4','1,6','2,1','2,2','2,3','2,6','3,1','3,6',
-   '4,1','4,5','5,2','5,3','5,4']
-))passed++;else failed++;
-
-// Test 5: Single FG pixel with 2px ring — should thin to outer ring
-if(test('Single FG: 2px ring thins to outer', 7, 7,
-  [{x:3,y:3}],
-  [{x:2,y:2},{x:3,y:2},{x:4,y:2},{x:2,y:3},{x:4,y:3},{x:2,y:4},{x:3,y:4},{x:4,y:4},
-   {x:1,y:1},{x:2,y:1},{x:3,y:1},{x:4,y:1},{x:5,y:1},
-   {x:1,y:2},{x:5,y:2},{x:1,y:3},{x:5,y:3},{x:1,y:4},{x:5,y:4},
-   {x:1,y:5},{x:2,y:5},{x:3,y:5},{x:4,y:5},{x:5,y:5}],
-  ['1,1','2,1','3,1','4,1','5,1','1,2','5,2','1,3','5,3','1,4','5,4',
-   '1,5','2,5','3,5','4,5','5,5']
-))passed++;else failed++;
-
-// Test 6: O-shape with 2px walls — outer BG kept, inner counter removed
-if(test('O-shape: inner counter BG removed', 9, 8,
-  [{x:1,y:1},{x:2,y:1},{x:3,y:1},{x:4,y:1},{x:5,y:1},{x:6,y:1},{x:7,y:1},
-   {x:1,y:2},{x:2,y:2},{x:3,y:2},{x:4,y:2},{x:5,y:2},{x:6,y:2},{x:7,y:2},
-   {x:1,y:3},{x:2,y:3},{x:6,y:3},{x:7,y:3},
-   {x:1,y:4},{x:2,y:4},{x:6,y:4},{x:7,y:4},
-   {x:1,y:5},{x:2,y:5},{x:3,y:5},{x:4,y:5},{x:5,y:5},{x:6,y:5},{x:7,y:5},
-   {x:1,y:6},{x:2,y:6},{x:3,y:6},{x:4,y:6},{x:5,y:6},{x:6,y:6},{x:7,y:6}],
-  [{x:0,y:0},{x:1,y:0},{x:2,y:0},{x:3,y:0},{x:4,y:0},{x:5,y:0},{x:6,y:0},{x:7,y:0},{x:8,y:0},
-   {x:0,y:1},{x:8,y:1},{x:0,y:2},{x:8,y:2},{x:0,y:3},{x:8,y:3},{x:0,y:4},{x:8,y:4},
-   {x:0,y:5},{x:8,y:5},{x:0,y:6},{x:8,y:6},
-   {x:0,y:7},{x:1,y:7},{x:2,y:7},{x:3,y:7},{x:4,y:7},{x:5,y:7},{x:6,y:7},{x:7,y:7},{x:8,y:7},
-   {x:3,y:3},{x:4,y:3},{x:5,y:3},{x:3,y:4},{x:4,y:4},{x:5,y:4}],
-  ['0,0','1,0','2,0','3,0','4,0','5,0','6,0','7,0','8,0',
-   '0,1','8,1','0,2','8,2','0,3','8,3','0,4','8,4','0,5','8,5','0,6','8,6',
-   '0,7','1,7','2,7','3,7','4,7','5,7','6,7','7,7','8,7']
-))passed++;else failed++;
-
-document.getElementById('results').insertAdjacentHTML('afterbegin',
-  '<h3 style="font-size:16px">'+passed+' passed, '+failed+' failed</h3>');
-</script></body></html>
 </file>
 
 <file path="docs/analyzer-iframe.js">
@@ -40144,6 +40119,8 @@ window.MilgIframe = (function() {
 
     function onMsg(e) {
       if (!e.data) return;
+      // Only process messages from OUR iframe (critical for parallel deep scan)
+      if (e.source !== iframe.contentWindow) return;
       // Progress updates from screenshot capture → drive parent progress bar
       if (e.data.type === 'milg-progress' && e.data.label) {
         var urlStatus = document.getElementById('urlStatus');
@@ -42389,7 +42366,7 @@ window.MilgViewer = (function() {
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v43.3</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v43.4</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -42755,30 +42732,30 @@ window.MilgViewer = (function() {
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=43.3"></script>
-  <script src="scoring/contrast.js?v=43.3"></script>
-  <script src="scoring/typography.js?v=43.3"></script>
-  <script src="scoring/spacing.js?v=43.3"></script>
-  <script src="scoring/touch.js?v=43.3"></script>
-  <script src="scoring/accessibility.js?v=43.3"></script>
-  <script src="scoring/responsive.js?v=43.3"></script>
-  <script src="scoring/consistency.js?v=43.3"></script>
-  <script src="scoring/cognitive.js?v=43.3"></script>
-  <script src="scoring/layout.js?v=43.3"></script>
-  <script src="scoring/performance.js?v=43.3"></script>
-  <script src="scoring/readability.js?v=43.3"></script>
-  <script src="scoring/filters.js?v=43.3"></script>
-  <script src="scoring/balance.js?v=43.3"></script>
+  <script src="scoring/registry.js?v=43.4"></script>
+  <script src="scoring/contrast.js?v=43.4"></script>
+  <script src="scoring/typography.js?v=43.4"></script>
+  <script src="scoring/spacing.js?v=43.4"></script>
+  <script src="scoring/touch.js?v=43.4"></script>
+  <script src="scoring/accessibility.js?v=43.4"></script>
+  <script src="scoring/responsive.js?v=43.4"></script>
+  <script src="scoring/consistency.js?v=43.4"></script>
+  <script src="scoring/cognitive.js?v=43.4"></script>
+  <script src="scoring/layout.js?v=43.4"></script>
+  <script src="scoring/performance.js?v=43.4"></script>
+  <script src="scoring/readability.js?v=43.4"></script>
+  <script src="scoring/filters.js?v=43.4"></script>
+  <script src="scoring/balance.js?v=43.4"></script>
   <!-- Report rendering + UI -->
-  <script src="analyzer-report.js?v=43.3"></script>
-  <script src="analyzer-crawl.js?v=43.3"></script>
-  <script src="analyzer-extract.js?v=43.3"></script>
-  <script src="analyzer-iframe.js?v=43.3"></script>
-  <script src="analyzer-proxy.js?v=43.3"></script>
-  <script src="analyzer-crawl-ui.js?v=43.3"></script>
-  <script src="analyzer-contrast-verify.js?v=43.3"></script>
-  <script src="analyzer-viewer.js?v=43.3"></script>
-  <script src="analyzer.js?v=43.3"></script>
+  <script src="analyzer-report.js?v=43.4"></script>
+  <script src="analyzer-crawl.js?v=43.4"></script>
+  <script src="analyzer-extract.js?v=43.4"></script>
+  <script src="analyzer-iframe.js?v=43.4"></script>
+  <script src="analyzer-proxy.js?v=43.4"></script>
+  <script src="analyzer-crawl-ui.js?v=43.4"></script>
+  <script src="analyzer-contrast-verify.js?v=43.4"></script>
+  <script src="analyzer-viewer.js?v=43.4"></script>
+  <script src="analyzer.js?v=43.4"></script>
 </body>
 </html>
 </file>

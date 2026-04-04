@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v43.3 loaded');
+console.log('[milg] analyzer.js v43.4 loaded');
 
 (function() {
   "use strict";
@@ -604,28 +604,34 @@ console.log('[milg] analyzer.js v43.3 loaded');
       saveToHistory(data, reportData.overall, reportData.grade);
     }
 
-    // Run pixel contrast verification asynchronously (if enabled + screenshots + bboxes available)
+    // Pixel contrast verification
     var pixelVerifyCheck = document.getElementById('pixelVerifyCheck');
     var wantPixelVerify = pixelVerifyCheck ? pixelVerifyCheck.checked : true;
-    if (wantPixelVerify && window.MilgContrastVerify && reportData.raw && reportData.raw.screenshots && reportData.raw.screenshotMeta) {
+    // Use pre-computed results if available (from deep scan pre-computation)
+    if (data._contrastVerifyResults) {
+      reportData._contrastVerifyResults = data._contrastVerifyResults;
+      reportData._bboxEdgeResults = data._bboxEdgeResults || [];
+      var summary = MilgContrastVerify.buildSummary(data._contrastVerifyResults, data._bboxEdgeResults);
+      var summaryHtml = MilgContrastVerify.renderSummaryHtml(summary);
+      if (summaryHtml) {
+        var screenshotDetails = reportContainer.querySelector('.report-screenshots');
+        var div = document.createElement('div');
+        div.innerHTML = summaryHtml;
+        if (screenshotDetails) screenshotDetails.parentNode.insertBefore(div, screenshotDetails.nextSibling);
+        else reportContainer.insertBefore(div, reportContainer.firstChild);
+      }
+    } else if (wantPixelVerify && window.MilgContrastVerify && reportData.raw && reportData.raw.screenshots && reportData.raw.screenshotMeta) {
+      // Run async verification (non-deep-scan path)
       MilgContrastVerify.verify(reportData, function(results, bboxEdgeResults) {
         if (results.length === 0 && (!bboxEdgeResults || bboxEdgeResults.length === 0)) return;
         var summary = MilgContrastVerify.buildSummary(results, bboxEdgeResults);
         var summaryHtml = MilgContrastVerify.renderSummaryHtml(summary);
         if (!summaryHtml) return;
-        // Inject after the screenshots section in the report
         var screenshotDetails = reportContainer.querySelector('.report-screenshots');
-        if (screenshotDetails) {
-          var div = document.createElement('div');
-          div.innerHTML = summaryHtml;
-          screenshotDetails.parentNode.insertBefore(div, screenshotDetails.nextSibling);
-        } else {
-          // No screenshot section visible — prepend to report
-          var div = document.createElement('div');
-          div.innerHTML = summaryHtml;
-          reportContainer.insertBefore(div, reportContainer.firstChild);
-        }
-        // Store results for viewer tooltips
+        var div = document.createElement('div');
+        div.innerHTML = summaryHtml;
+        if (screenshotDetails) screenshotDetails.parentNode.insertBefore(div, screenshotDetails.nextSibling);
+        else reportContainer.insertBefore(div, reportContainer.firstChild);
         reportData._contrastVerifyResults = results;
         reportData._bboxEdgeResults = bboxEdgeResults || [];
       });
@@ -821,13 +827,51 @@ console.log('[milg] analyzer.js v43.3 loaded');
                 hideProgress();
                 return;
               }
-              urlStatus.style.display = 'none';
-              showProgress(100, 'Done!');
-              setTimeout(hideProgress, 500);
               primary.meta.url = url;
               primary.meta._inputMethod = 'url';
               if (wantJs) primary.meta._jsEnabled = true;
-              runAnalysis(primary);
+              // Pre-compute pixel verify for all viewports before showing results
+              var pvCheck = document.getElementById('pixelVerifyCheck');
+              var wantPV = pvCheck ? pvCheck.checked : false;
+              if (wantPV && wantShots && window.MilgContrastVerify && primary.deepScan && primary.deepScan.viewportData) {
+                urlStatus.textContent = 'Running pixel verification...';
+                urlStatus.style.display = 'block';
+                showProgress(88, 'Pixel verification...');
+                var vpToVerify = primary.deepScan.viewportData.filter(function(v) { return v && v.data && v.data.screenshots && v.data.screenshots.length > 0; });
+                var verifyDone = 0;
+                if (vpToVerify.length === 0) {
+                  urlStatus.style.display = 'none';
+                  showProgress(100, 'Done!');
+                  setTimeout(hideProgress, 500);
+                  runAnalysis(primary);
+                  return;
+                }
+                vpToVerify.forEach(function(vp) {
+                  var scored = MilgScoring.runScoring(vp.data);
+                  MilgContrastVerify.verify(scored, function(results, bboxEdge) {
+                    vp.data._contrastVerifyResults = results || [];
+                    vp.data._bboxEdgeResults = bboxEdge || [];
+                    verifyDone++;
+                    showProgress(88 + Math.round(10 * verifyDone / vpToVerify.length), 'Verified ' + verifyDone + '/' + vpToVerify.length + ' viewports');
+                    if (verifyDone === vpToVerify.length) {
+                      // Also set on primary (which is viewportData[0].data)
+                      urlStatus.style.display = 'none';
+                      showProgress(100, 'Done!');
+                      setTimeout(hideProgress, 500);
+                      analyzeUrlBtn.disabled = false;
+                      analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
+                      runAnalysis(primary);
+                    }
+                  });
+                });
+              } else {
+                urlStatus.style.display = 'none';
+                showProgress(100, 'Done!');
+                setTimeout(hideProgress, 500);
+                analyzeUrlBtn.disabled = false;
+                analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
+                runAnalysis(primary);
+              }
             }
           );
           return;
