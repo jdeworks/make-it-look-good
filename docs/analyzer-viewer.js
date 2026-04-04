@@ -1097,15 +1097,18 @@ window.MilgViewer = (function() {
     var rect = e.target;
     var rx = parseFloat(rect.getAttribute('x')), ry = parseFloat(rect.getAttribute('y'));
     var rw = parseFloat(rect.getAttribute('width')), rh = parseFloat(rect.getAttribute('height'));
-    var overlapping = [finding];
+    var overlapping = [{ f: finding, viewerIdx: findingIdx }];
     _allFindings.forEach(function(f, fi) {
       if (fi === findingIdx) return;
+      var matched = false;
       f.bboxes.forEach(function(bb) {
+        if (matched) return;
         var bx = Math.round(bb.left * (_meta ? _meta.scale : 1));
         var by = Math.round(bb.top * (_meta ? _meta.scale : 1)) - _calibrationOffsetY;
         if (bx < rx + rw && bx + Math.round(bb.width * (_meta ? _meta.scale : 1)) > rx &&
             by < ry + rh && by + Math.round(bb.height * (_meta ? _meta.scale : 1)) > ry) {
-          if (overlapping.indexOf(f) === -1) overlapping.push(f);
+          overlapping.push({ f: f, viewerIdx: fi });
+          matched = true;
         }
       });
     });
@@ -1118,14 +1121,17 @@ window.MilgViewer = (function() {
 
     // Compact view: severity badge + short title, click to expand detail
     var html = '';
-    overlapping.forEach(function(f, oi) {
+    overlapping.forEach(function(entry, oi) {
+      var f = entry.f;
       var sevClass = 'milg-viewer-sev-' + f.severity;
       var shortTitle = f.title.length > 60 ? f.title.substring(0, 57) + '...' : f.title;
       html += '<div class="milg-tt-row" data-tt-idx="' + oi + '" style="padding:3px 0;cursor:pointer;display:flex;align-items:baseline;gap:6px' + (oi > 0 ? ';border-top:1px solid rgba(255,255,255,0.1)' : '') + '">';
       html += '<span class="milg-viewer-tooltip-badge ' + sevClass + '" style="flex-shrink:0;font-size:9px;padding:1px 5px">' + f.severity + '</span>';
-      html += '<span style="font-size:11px;color:#e2e8f0;line-height:1.3">' + shortTitle + '</span>';
+      html += '<span style="font-size:11px;color:#e2e8f0;line-height:1.3;flex:1">' + shortTitle + '</span>';
+      // "Show group" button — filters to show all bboxes of this finding
+      html += '<span class="milg-tt-showgroup" data-viewer-idx="' + entry.viewerIdx + '" title="Show all elements in this group" style="flex-shrink:0;cursor:pointer;font-size:12px;opacity:0.5;padding:0 2px">&#9678;</span>';
       html += '</div>';
-      // Expandable detail (hidden by default) — shows detail + category, not title again
+      // Expandable detail (hidden by default)
       html += '<div class="milg-tt-detail" data-tt-idx="' + oi + '" style="display:none;padding:4px 0 4px 36px;font-size:10px;color:rgba(255,255,255,0.6);line-height:1.5">';
       if (f.detail) html += '<div style="color:rgba(255,255,255,0.5)">' + f.detail.substring(0, 300) + '</div>';
       html += '<div style="margin-top:2px;color:rgba(255,255,255,0.35)">' + f.category + '</div>';
@@ -1158,12 +1164,24 @@ window.MilgViewer = (function() {
     if (copyBtn) {
       copyBtn.addEventListener('click', function(ev) {
         ev.stopPropagation();
-        var text = overlapping.map(function(f) {
+        var text = overlapping.map(function(entry) {
+          var f = entry.f;
           return '[' + f.severity + '] ' + f.title + (f.detail ? '\n  ' + f.detail : '') + '\n  Category: ' + f.category;
         }).join('\n\n');
         navigator.clipboard.writeText(text).then(function() { copyBtn.textContent = 'Copied!'; setTimeout(function() { copyBtn.textContent = 'Copy'; }, 1500); });
       });
     }
+    // "Show group" buttons — filter to show all bboxes of that finding
+    _tooltip.querySelectorAll('.milg-tt-showgroup').forEach(function(btn) {
+      btn.addEventListener('click', function(ev) {
+        ev.stopPropagation();
+        var vIdx = parseInt(btn.getAttribute('data-viewer-idx'));
+        hideTooltip();
+        _activeFilter = { type: 'finding', value: vIdx };
+        updateFilterButtons();
+        renderOverlays();
+      });
+    });
 
     positionTooltip(e);
   }

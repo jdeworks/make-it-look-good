@@ -5577,6 +5577,350 @@ async function testExtractionBbox(browser) {
 run();
 </file>
 
+<file path="docs/tests/test-bg-thinning.html">
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>BG Thinning Tests</title>
+<style>
+body{font-family:monospace;margin:20px;background:#1e1e1e;color:#d4d4d4}
+.test{margin:10px 0;padding:10px;border:1px solid #444;border-radius:4px}
+.pass{border-color:#22c55e;background:#052e16}.fail{border-color:#ef4444;background:#2d0a0a}
+canvas{image-rendering:pixelated;border:1px solid #555;margin:4px}
+h3{margin:4px 0;font-size:13px}
+pre{font-size:11px;white-space:pre;margin:4px 0}
+</style></head><body>
+<h2>BG Thinning Algorithm Tests</h2>
+<div id="results"></div>
+<script>
+// BG thinning: produces a 1px outline of BG pixels around FG text edges.
+// Steps:
+//  1. For each BG, find nearest FG. Skip if further BG in same sign-direction.
+//  2. Remove orphans (no FG connection).
+//  3. Keep closest F's claim for multiply-claimed B.
+//  4. Remove B if FG (not other B) blocks line of sight.
+//  5. Thin inner duplicates: remove lower-cheb pixels that have a higher-cheb
+//     neighbor, using depth-limited BFS to preserve local connectivity.
+function runThinning(fgPixels, bgPixels, bgR) {
+  bgR = bgR || 3;
+  var fgSet = {};
+  fgPixels.forEach(function(f) { fgSet[f.x+','+f.y] = true; });
+  var bgSet = {};
+  bgPixels.forEach(function(b) { bgSet[b.x+','+b.y] = true; });
+
+  // Step 1: For each BG within bgR of nearest FG, keep if outermost in direction
+  var bgMarks = {};
+  bgPixels.forEach(function(bg) {
+    var bk = bg.x + ',' + bg.y;
+    // Find nearest FG (Euclidean)
+    var bestFi = -1, bestD = Infinity;
+    fgPixels.forEach(function(fg, fi) {
+      var d = (fg.x-bg.x)*(fg.x-bg.x) + (fg.y-bg.y)*(fg.y-bg.y);
+      if (d < bestD) { bestD = d; bestFi = fi; }
+    });
+    if (bestFi < 0) return;
+    var fg = fgPixels[bestFi];
+    var dx = bg.x - fg.x, dy = bg.y - fg.y;
+    var cheb = Math.max(Math.abs(dx), Math.abs(dy));
+    if (cheb === 0 || cheb > bgR) return;
+
+    // FG blocking between fg and bg
+    var steps = Math.max(Math.abs(dx), Math.abs(dy));
+    var blocked = false;
+    for (var s = 1; s < steps; s++) {
+      var mx = fg.x + Math.round(dx * s / steps);
+      var my = fg.y + Math.round(dy * s / steps);
+      if ((mx+','+my) in fgSet) { blocked = true; break; }
+    }
+    if (blocked) return;
+
+    // hasFurther: skip if a BG exists beyond in same sign-direction
+    var sdx = dx > 0 ? 1 : (dx < 0 ? -1 : 0);
+    var sdy = dy > 0 ? 1 : (dy < 0 ? -1 : 0);
+    var hasFurther = false;
+    for (var ext = 1; ext <= bgR; ext++) {
+      var ex = bg.x + sdx * ext, ey = bg.y + sdy * ext;
+      if (Math.max(Math.abs(ex - fg.x), Math.abs(ey - fg.y)) > bgR) break;
+      if ((ex+','+ey) in fgSet) break;
+      if ((ex+','+ey) in bgSet) { hasFurther = true; break; }
+    }
+    if (hasFurther) return;
+
+    if (!bgMarks[bk]) bgMarks[bk] = [];
+    bgMarks[bk].push({ fi: bestFi, dist: cheb });
+  });
+
+  // Step 2-3: Remove orphans, keep closest F's claim
+  var result = {};
+  for (var k in bgMarks) {
+    if (bgMarks[k].length === 0) continue;
+    var marks = bgMarks[k];
+    var minD = Infinity;
+    marks.forEach(function(m) { if (m.dist < minD) minD = m.dist; });
+    result[k] = marks.filter(function(m) { return m.dist === minD; });
+  }
+
+  // Step 4: Remove if FG (not other BG) blocks line of sight
+  var afterBlock = {};
+  for (var k in result) {
+    var parts = k.split(','), bx = parseInt(parts[0]), by = parseInt(parts[1]);
+    var keepThis = false;
+    result[k].forEach(function(m) {
+      var fg = fgPixels[m.fi];
+      var dx = bx - fg.x, dy = by - fg.y;
+      var steps = Math.max(Math.abs(dx), Math.abs(dy));
+      var blocked = false;
+      for (var s = 1; s < steps; s++) {
+        var mx = fg.x + Math.round(dx * s / steps);
+        var my = fg.y + Math.round(dy * s / steps);
+        if ((mx+','+my) in fgSet && !(mx === fg.x && my === fg.y)) {
+          blocked = true; break;
+        }
+      }
+      if (!blocked) keepThis = true;
+    });
+    if (keepThis) afterBlock[k] = result[k];
+  }
+
+  // Step 5: Thin inner duplicates — remove pixels with lower Chebyshev
+  // distance that have a neighbor at higher Chebyshev distance, but only
+  // if removal doesn't break local connectivity (depth-limited BFS).
+  var chebMap = {};
+  for (var k in afterBlock) { chebMap[k] = afterBlock[k][0].dist; }
+
+  function isLocalBridge(k, keptSet) {
+    var parts = k.split(','), cx = parseInt(parts[0]), cy = parseInt(parts[1]);
+    var neighbors = [];
+    for (var dy = -1; dy <= 1; dy++) {
+      for (var dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        var nk = (cx+dx)+','+(cy+dy);
+        if (nk in keptSet && nk !== k) neighbors.push(nk);
+      }
+    }
+    if (neighbors.length <= 1) return true;
+    // BFS from first neighbor, max 4 hops, excluding k
+    var MAX_DEPTH = 4;
+    var visited = {}; visited[neighbors[0]] = 0;
+    var queue = [neighbors[0]];
+    while (queue.length > 0) {
+      var cur = queue.shift();
+      var depth = visited[cur];
+      if (depth >= MAX_DEPTH) continue;
+      var cp = cur.split(','), cx2 = parseInt(cp[0]), cy2 = parseInt(cp[1]);
+      for (var dy = -1; dy <= 1; dy++) {
+        for (var dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          var nk2 = (cx2+dx)+','+(cy2+dy);
+          if (nk2 !== k && nk2 in keptSet && !(nk2 in visited)) {
+            visited[nk2] = depth + 1;
+            queue.push(nk2);
+          }
+        }
+      }
+    }
+    for (var i = 1; i < neighbors.length; i++) {
+      if (!(neighbors[i] in visited)) return true;
+    }
+    return false;
+  }
+
+  // Collect candidates: pixels with a kept neighbor at higher cheb
+  var candidates = [];
+  for (var k in afterBlock) {
+    var myCheb = chebMap[k], hasHigher = false;
+    var parts = k.split(','), bx = parseInt(parts[0]), by = parseInt(parts[1]);
+    for (var dy = -1; dy <= 1; dy++) {
+      for (var dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        var nk = (bx+dx)+','+(by+dy);
+        if (nk in chebMap && chebMap[nk] > myCheb) hasHigher = true;
+      }
+    }
+    if (hasHigher) candidates.push({ k: k, cheb: myCheb });
+  }
+  // Process inner-most first
+  candidates.sort(function(a,b) { return a.cheb - b.cheb; });
+
+  var keptSet = {};
+  for (var k in afterBlock) keptSet[k] = true;
+
+  candidates.forEach(function(c) {
+    if (!(c.k in keptSet)) return;
+    if (!isLocalBridge(c.k, keptSet)) {
+      delete keptSet[c.k];
+    }
+  });
+
+  var final = {};
+  for (var k in keptSet) { final[k] = afterBlock[k][0].fi; }
+  return Object.keys(final).length > 0 ? final : afterBlock;
+}
+
+function drawGrid(id, w, h, fg, bg, kept, label) {
+  var scale = 20;
+  var pad = 16; // padding for axis labels
+  var c = document.createElement('canvas');
+  c.width = w * scale + pad; c.height = h * scale + pad;
+  var ctx = c.getContext('2d');
+  ctx.fillStyle = '#333'; ctx.fillRect(0,0,c.width,c.height);
+  ctx.save(); ctx.translate(pad, 0); // shift grid right for y-axis labels
+  // Grid lines
+  ctx.strokeStyle='#555';
+  for(var x=0;x<=w;x++){ctx.beginPath();ctx.moveTo(x*scale,0);ctx.lineTo(x*scale,h*scale);ctx.stroke();}
+  for(var y=0;y<=h;y++){ctx.beginPath();ctx.moveTo(0,y*scale);ctx.lineTo(w*scale,y*scale);ctx.stroke();}
+  // BG
+  bg.forEach(function(p){
+    var isKept = (p.x+','+p.y) in kept;
+    ctx.fillStyle = isKept ? '#f97316' : '#553310';
+    ctx.fillRect(p.x*scale+1,p.y*scale+1,scale-2,scale-2);
+    if(!isKept){ctx.strokeStyle='#666';ctx.strokeRect(p.x*scale+2,p.y*scale+2,scale-4,scale-4);}
+  });
+  // FG
+  fg.forEach(function(p){ctx.fillStyle='#06b6d4';ctx.fillRect(p.x*scale+1,p.y*scale+1,scale-2,scale-2)});
+  // Axis labels — x along bottom, y along left
+  ctx.font='9px monospace';ctx.fillStyle='#888';
+  for(var x=0;x<w;x++) ctx.fillText(x,x*scale+scale/2-3,h*scale+12);
+  ctx.save();ctx.translate(-pad,0);
+  for(var y=0;y<h;y++) ctx.fillText(y,2,y*scale+scale/2+3);
+  ctx.restore();
+  // (0,0) origin marker
+  ctx.fillStyle='#ff0';ctx.font='8px monospace';ctx.fillText('↗0,0',0,scale-2);
+  // Cell labels
+  ctx.font='9px monospace';ctx.fillStyle='#fff';
+  bg.forEach(function(p){
+    var isKept = (p.x+','+p.y) in kept;
+    ctx.fillText(isKept?'B':'x',p.x*scale+3,p.y*scale+10);
+    ctx.fillStyle='#aaa';ctx.font='7px monospace';
+    ctx.fillText(p.x+','+p.y,p.x*scale+2,p.y*scale+scale-3);
+    ctx.fillStyle='#fff';ctx.font='9px monospace';
+  });
+  fg.forEach(function(p){
+    ctx.fillText('F',p.x*scale+3,p.y*scale+10);
+    ctx.fillStyle='#aaa';ctx.font='7px monospace';
+    ctx.fillText(p.x+','+p.y,p.x*scale+2,p.y*scale+scale-3);
+    ctx.fillStyle='#fff';ctx.font='9px monospace';
+  });
+
+  ctx.restore(); // undo translate
+  var div = document.createElement('div');
+  div.innerHTML = '<h3>'+label+'</h3>';
+  div.appendChild(c);
+  return div;
+}
+
+function test(name, w, h, fg, bg, expectedKept) {
+  var result = runThinning(fg, bg, 3);
+  var keptKeys = Object.keys(result);
+  var pass = true;
+  expectedKept.forEach(function(k){if(!(k in result)){pass=false}});
+  // Also check no unexpected kept
+  keptKeys.forEach(function(k){if(expectedKept.indexOf(k)===-1){pass=false}});
+
+  var div = document.createElement('div');
+  div.className = 'test ' + (pass?'pass':'fail');
+  div.innerHTML = '<h3>'+(pass?'✓':'✗')+' '+name+'</h3>';
+  var grid = drawGrid(name, w, h, fg, bg, result,
+    'Kept: '+keptKeys.join(' ')+(pass?'':' EXPECTED: '+expectedKept.join(' ')));
+  div.appendChild(grid);
+  if(!pass){
+    var extra = keptKeys.filter(function(k){return expectedKept.indexOf(k)===-1;});
+    var missing = expectedKept.filter(function(k){return !(k in result);});
+    div.innerHTML += '<pre>Expected: '+expectedKept.join(', ')+'\nGot:      '+keptKeys.join(', ')
+      + (extra.length ? '\nExtra:    '+extra.join(', ') : '')
+      + (missing.length ? '\nMissing:  '+missing.join(', ') : '') + '</pre>';
+  }
+  document.getElementById('results').appendChild(div);
+  return pass;
+}
+
+var passed=0,failed=0;
+
+// Test 1: Horizontal line — 3 rows of BG above 6-wide FG line
+// Expected: outermost row only (y=2)
+if(test('Horizontal: 3 rows above 6-wide FG', 6, 6,
+  [{x:0,y:5},{x:1,y:5},{x:2,y:5},{x:3,y:5},{x:4,y:5},{x:5,y:5}],
+  [{x:0,y:2},{x:1,y:2},{x:2,y:2},{x:3,y:2},{x:4,y:2},{x:5,y:2},
+   {x:0,y:3},{x:1,y:3},{x:2,y:3},{x:3,y:3},{x:4,y:3},{x:5,y:3},
+   {x:0,y:4},{x:1,y:4},{x:2,y:4},{x:3,y:4},{x:4,y:4},{x:5,y:4}],
+  ['0,2','1,2','2,2','3,2','4,2','5,2']
+))passed++;else failed++;
+
+// Test 2: Horizontal: 2 rows above 6-wide FG
+if(test('Horizontal: 2 rows above 6-wide FG', 6, 5,
+  [{x:0,y:4},{x:1,y:4},{x:2,y:4},{x:3,y:4},{x:4,y:4},{x:5,y:4}],
+  [{x:0,y:2},{x:1,y:2},{x:2,y:2},{x:3,y:2},{x:4,y:2},{x:5,y:2},
+   {x:0,y:3},{x:1,y:3},{x:2,y:3},{x:3,y:3},{x:4,y:3},{x:5,y:3}],
+  ['0,2','1,2','2,2','3,2','4,2','5,2']
+))passed++;else failed++;
+
+// Test 3: Vertical line — 3 cols right of 6-tall FG
+if(test('Vertical: 3 cols right of 6-tall FG', 6, 6,
+  [{x:0,y:0},{x:0,y:1},{x:0,y:2},{x:0,y:3},{x:0,y:4},{x:0,y:5}],
+  [{x:1,y:0},{x:1,y:1},{x:1,y:2},{x:1,y:3},{x:1,y:4},{x:1,y:5},
+   {x:2,y:0},{x:2,y:1},{x:2,y:2},{x:2,y:3},{x:2,y:4},{x:2,y:5},
+   {x:3,y:0},{x:3,y:1},{x:3,y:2},{x:3,y:3},{x:3,y:4},{x:3,y:5}],
+  ['3,0','3,1','3,2','3,3','3,4','3,5']
+))passed++;else failed++;
+
+// Test 4: Angle — 5px diagonal with 2px deep BG on both sides
+// FG diagonal from (3,7) to (7,3). BG surrounds on both sides.
+// Expected: 1px continuous outline, inner diagonal removed.
+if(test('Angle: 5px diagonal 2px deep BG', 10, 10,
+  [{x:3,y:7},{x:4,y:6},{x:5,y:5},{x:6,y:4},{x:7,y:3}],
+  [{x:7,y:1},{x:8,y:1},{x:8,y:2},{x:8,y:3},{x:8,y:4},{x:7,y:5},{x:6,y:6},{x:5,y:7},{x:4,y:8},{x:3,y:9},{x:2,y:8},{x:2,y:9},
+   {x:7,y:2},{x:8,y:5},{x:7,y:6},{x:6,y:7},{x:5,y:8},{x:4,y:9},
+   {x:1,y:6},{x:1,y:7},{x:1,y:8},{x:2,y:6},{x:2,y:7},{x:3,y:5},{x:3,y:6},{x:4,y:4},{x:4,y:5},{x:5,y:3},{x:5,y:4},{x:6,y:2},{x:6,y:3},
+   {x:4,y:7},{x:5,y:6},{x:6,y:5},{x:7,y:4},
+   {x:3,y:8},{x:2,y:5},{x:3,y:4},{x:4,y:3},{x:5,y:2},{x:6,y:1}],
+  ['1,6','1,7','1,8','2,5','2,9','3,4','3,9','4,3','4,9','5,2','5,8',
+   '6,1','6,7','7,1','7,6','8,1','8,2','8,3','8,4','8,5']
+))passed++;else failed++;
+
+// Test 4b: Smaller angle — 3 FG diagonal with 2px deep BG
+if(test('Angle: 2px deep BG thins to 1px', 6, 7,
+  [{x:2,y:5},{x:3,y:4},{x:4,y:3}],
+  [{x:1,y:4},{x:1,y:5},{x:1,y:6},{x:0,y:4},{x:0,y:5},{x:0,y:6},
+   {x:2,y:6},{x:3,y:5},{x:3,y:6},{x:4,y:4},{x:4,y:5},
+   {x:2,y:3},{x:2,y:4},{x:3,y:3},{x:3,y:2},
+   {x:4,y:2},{x:4,y:1},{x:5,y:2},{x:5,y:3},{x:5,y:4},
+   {x:3,y:1},{x:2,y:2},{x:2,y:1}],
+  ['0,4','0,5','0,6','1,4','1,6','2,1','2,2','2,3','2,6','3,1','3,6',
+   '4,1','4,5','5,2','5,3','5,4']
+))passed++;else failed++;
+
+// Test 5: Single FG pixel with 2px ring — should thin to outer ring
+if(test('Single FG: 2px ring thins to outer', 7, 7,
+  [{x:3,y:3}],
+  [{x:2,y:2},{x:3,y:2},{x:4,y:2},{x:2,y:3},{x:4,y:3},{x:2,y:4},{x:3,y:4},{x:4,y:4},
+   {x:1,y:1},{x:2,y:1},{x:3,y:1},{x:4,y:1},{x:5,y:1},
+   {x:1,y:2},{x:5,y:2},{x:1,y:3},{x:5,y:3},{x:1,y:4},{x:5,y:4},
+   {x:1,y:5},{x:2,y:5},{x:3,y:5},{x:4,y:5},{x:5,y:5}],
+  ['1,1','2,1','3,1','4,1','5,1','1,2','5,2','1,3','5,3','1,4','5,4',
+   '1,5','2,5','3,5','4,5','5,5']
+))passed++;else failed++;
+
+// Test 6: O-shape with 2px walls — outer BG kept, inner counter removed
+if(test('O-shape: inner counter BG removed', 9, 8,
+  [{x:1,y:1},{x:2,y:1},{x:3,y:1},{x:4,y:1},{x:5,y:1},{x:6,y:1},{x:7,y:1},
+   {x:1,y:2},{x:2,y:2},{x:3,y:2},{x:4,y:2},{x:5,y:2},{x:6,y:2},{x:7,y:2},
+   {x:1,y:3},{x:2,y:3},{x:6,y:3},{x:7,y:3},
+   {x:1,y:4},{x:2,y:4},{x:6,y:4},{x:7,y:4},
+   {x:1,y:5},{x:2,y:5},{x:3,y:5},{x:4,y:5},{x:5,y:5},{x:6,y:5},{x:7,y:5},
+   {x:1,y:6},{x:2,y:6},{x:3,y:6},{x:4,y:6},{x:5,y:6},{x:6,y:6},{x:7,y:6}],
+  [{x:0,y:0},{x:1,y:0},{x:2,y:0},{x:3,y:0},{x:4,y:0},{x:5,y:0},{x:6,y:0},{x:7,y:0},{x:8,y:0},
+   {x:0,y:1},{x:8,y:1},{x:0,y:2},{x:8,y:2},{x:0,y:3},{x:8,y:3},{x:0,y:4},{x:8,y:4},
+   {x:0,y:5},{x:8,y:5},{x:0,y:6},{x:8,y:6},
+   {x:0,y:7},{x:1,y:7},{x:2,y:7},{x:3,y:7},{x:4,y:7},{x:5,y:7},{x:6,y:7},{x:7,y:7},{x:8,y:7},
+   {x:3,y:3},{x:4,y:3},{x:5,y:3},{x:3,y:4},{x:4,y:4},{x:5,y:4}],
+  ['0,0','1,0','2,0','3,0','4,0','5,0','6,0','7,0','8,0',
+   '0,1','8,1','0,2','8,2','0,3','8,3','0,4','8,4','0,5','8,5','0,6','8,6',
+   '0,7','1,7','2,7','3,7','4,7','5,7','6,7','7,7','8,7']
+))passed++;else failed++;
+
+document.getElementById('results').insertAdjacentHTML('afterbegin',
+  '<h3 style="font-size:16px">'+passed+' passed, '+failed+' failed</h3>');
+</script></body></html>
+</file>
+
 <file path="docs/tests/test-domtocanvas-headless.js">
 #!/usr/bin/env node
 // Test: domToCanvas mask rendering — headless Puppeteer
@@ -27339,350 +27683,6 @@ function scoreSpacing(data) {
 })();
 </file>
 
-<file path="docs/tests/test-bg-thinning.html">
-<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>BG Thinning Tests</title>
-<style>
-body{font-family:monospace;margin:20px;background:#1e1e1e;color:#d4d4d4}
-.test{margin:10px 0;padding:10px;border:1px solid #444;border-radius:4px}
-.pass{border-color:#22c55e;background:#052e16}.fail{border-color:#ef4444;background:#2d0a0a}
-canvas{image-rendering:pixelated;border:1px solid #555;margin:4px}
-h3{margin:4px 0;font-size:13px}
-pre{font-size:11px;white-space:pre;margin:4px 0}
-</style></head><body>
-<h2>BG Thinning Algorithm Tests</h2>
-<div id="results"></div>
-<script>
-// BG thinning: produces a 1px outline of BG pixels around FG text edges.
-// Steps:
-//  1. For each BG, find nearest FG. Skip if further BG in same sign-direction.
-//  2. Remove orphans (no FG connection).
-//  3. Keep closest F's claim for multiply-claimed B.
-//  4. Remove B if FG (not other B) blocks line of sight.
-//  5. Thin inner duplicates: remove lower-cheb pixels that have a higher-cheb
-//     neighbor, using depth-limited BFS to preserve local connectivity.
-function runThinning(fgPixels, bgPixels, bgR) {
-  bgR = bgR || 3;
-  var fgSet = {};
-  fgPixels.forEach(function(f) { fgSet[f.x+','+f.y] = true; });
-  var bgSet = {};
-  bgPixels.forEach(function(b) { bgSet[b.x+','+b.y] = true; });
-
-  // Step 1: For each BG within bgR of nearest FG, keep if outermost in direction
-  var bgMarks = {};
-  bgPixels.forEach(function(bg) {
-    var bk = bg.x + ',' + bg.y;
-    // Find nearest FG (Euclidean)
-    var bestFi = -1, bestD = Infinity;
-    fgPixels.forEach(function(fg, fi) {
-      var d = (fg.x-bg.x)*(fg.x-bg.x) + (fg.y-bg.y)*(fg.y-bg.y);
-      if (d < bestD) { bestD = d; bestFi = fi; }
-    });
-    if (bestFi < 0) return;
-    var fg = fgPixels[bestFi];
-    var dx = bg.x - fg.x, dy = bg.y - fg.y;
-    var cheb = Math.max(Math.abs(dx), Math.abs(dy));
-    if (cheb === 0 || cheb > bgR) return;
-
-    // FG blocking between fg and bg
-    var steps = Math.max(Math.abs(dx), Math.abs(dy));
-    var blocked = false;
-    for (var s = 1; s < steps; s++) {
-      var mx = fg.x + Math.round(dx * s / steps);
-      var my = fg.y + Math.round(dy * s / steps);
-      if ((mx+','+my) in fgSet) { blocked = true; break; }
-    }
-    if (blocked) return;
-
-    // hasFurther: skip if a BG exists beyond in same sign-direction
-    var sdx = dx > 0 ? 1 : (dx < 0 ? -1 : 0);
-    var sdy = dy > 0 ? 1 : (dy < 0 ? -1 : 0);
-    var hasFurther = false;
-    for (var ext = 1; ext <= bgR; ext++) {
-      var ex = bg.x + sdx * ext, ey = bg.y + sdy * ext;
-      if (Math.max(Math.abs(ex - fg.x), Math.abs(ey - fg.y)) > bgR) break;
-      if ((ex+','+ey) in fgSet) break;
-      if ((ex+','+ey) in bgSet) { hasFurther = true; break; }
-    }
-    if (hasFurther) return;
-
-    if (!bgMarks[bk]) bgMarks[bk] = [];
-    bgMarks[bk].push({ fi: bestFi, dist: cheb });
-  });
-
-  // Step 2-3: Remove orphans, keep closest F's claim
-  var result = {};
-  for (var k in bgMarks) {
-    if (bgMarks[k].length === 0) continue;
-    var marks = bgMarks[k];
-    var minD = Infinity;
-    marks.forEach(function(m) { if (m.dist < minD) minD = m.dist; });
-    result[k] = marks.filter(function(m) { return m.dist === minD; });
-  }
-
-  // Step 4: Remove if FG (not other BG) blocks line of sight
-  var afterBlock = {};
-  for (var k in result) {
-    var parts = k.split(','), bx = parseInt(parts[0]), by = parseInt(parts[1]);
-    var keepThis = false;
-    result[k].forEach(function(m) {
-      var fg = fgPixels[m.fi];
-      var dx = bx - fg.x, dy = by - fg.y;
-      var steps = Math.max(Math.abs(dx), Math.abs(dy));
-      var blocked = false;
-      for (var s = 1; s < steps; s++) {
-        var mx = fg.x + Math.round(dx * s / steps);
-        var my = fg.y + Math.round(dy * s / steps);
-        if ((mx+','+my) in fgSet && !(mx === fg.x && my === fg.y)) {
-          blocked = true; break;
-        }
-      }
-      if (!blocked) keepThis = true;
-    });
-    if (keepThis) afterBlock[k] = result[k];
-  }
-
-  // Step 5: Thin inner duplicates — remove pixels with lower Chebyshev
-  // distance that have a neighbor at higher Chebyshev distance, but only
-  // if removal doesn't break local connectivity (depth-limited BFS).
-  var chebMap = {};
-  for (var k in afterBlock) { chebMap[k] = afterBlock[k][0].dist; }
-
-  function isLocalBridge(k, keptSet) {
-    var parts = k.split(','), cx = parseInt(parts[0]), cy = parseInt(parts[1]);
-    var neighbors = [];
-    for (var dy = -1; dy <= 1; dy++) {
-      for (var dx = -1; dx <= 1; dx++) {
-        if (dx === 0 && dy === 0) continue;
-        var nk = (cx+dx)+','+(cy+dy);
-        if (nk in keptSet && nk !== k) neighbors.push(nk);
-      }
-    }
-    if (neighbors.length <= 1) return true;
-    // BFS from first neighbor, max 4 hops, excluding k
-    var MAX_DEPTH = 4;
-    var visited = {}; visited[neighbors[0]] = 0;
-    var queue = [neighbors[0]];
-    while (queue.length > 0) {
-      var cur = queue.shift();
-      var depth = visited[cur];
-      if (depth >= MAX_DEPTH) continue;
-      var cp = cur.split(','), cx2 = parseInt(cp[0]), cy2 = parseInt(cp[1]);
-      for (var dy = -1; dy <= 1; dy++) {
-        for (var dx = -1; dx <= 1; dx++) {
-          if (dx === 0 && dy === 0) continue;
-          var nk2 = (cx2+dx)+','+(cy2+dy);
-          if (nk2 !== k && nk2 in keptSet && !(nk2 in visited)) {
-            visited[nk2] = depth + 1;
-            queue.push(nk2);
-          }
-        }
-      }
-    }
-    for (var i = 1; i < neighbors.length; i++) {
-      if (!(neighbors[i] in visited)) return true;
-    }
-    return false;
-  }
-
-  // Collect candidates: pixels with a kept neighbor at higher cheb
-  var candidates = [];
-  for (var k in afterBlock) {
-    var myCheb = chebMap[k], hasHigher = false;
-    var parts = k.split(','), bx = parseInt(parts[0]), by = parseInt(parts[1]);
-    for (var dy = -1; dy <= 1; dy++) {
-      for (var dx = -1; dx <= 1; dx++) {
-        if (dx === 0 && dy === 0) continue;
-        var nk = (bx+dx)+','+(by+dy);
-        if (nk in chebMap && chebMap[nk] > myCheb) hasHigher = true;
-      }
-    }
-    if (hasHigher) candidates.push({ k: k, cheb: myCheb });
-  }
-  // Process inner-most first
-  candidates.sort(function(a,b) { return a.cheb - b.cheb; });
-
-  var keptSet = {};
-  for (var k in afterBlock) keptSet[k] = true;
-
-  candidates.forEach(function(c) {
-    if (!(c.k in keptSet)) return;
-    if (!isLocalBridge(c.k, keptSet)) {
-      delete keptSet[c.k];
-    }
-  });
-
-  var final = {};
-  for (var k in keptSet) { final[k] = afterBlock[k][0].fi; }
-  return Object.keys(final).length > 0 ? final : afterBlock;
-}
-
-function drawGrid(id, w, h, fg, bg, kept, label) {
-  var scale = 20;
-  var pad = 16; // padding for axis labels
-  var c = document.createElement('canvas');
-  c.width = w * scale + pad; c.height = h * scale + pad;
-  var ctx = c.getContext('2d');
-  ctx.fillStyle = '#333'; ctx.fillRect(0,0,c.width,c.height);
-  ctx.save(); ctx.translate(pad, 0); // shift grid right for y-axis labels
-  // Grid lines
-  ctx.strokeStyle='#555';
-  for(var x=0;x<=w;x++){ctx.beginPath();ctx.moveTo(x*scale,0);ctx.lineTo(x*scale,h*scale);ctx.stroke();}
-  for(var y=0;y<=h;y++){ctx.beginPath();ctx.moveTo(0,y*scale);ctx.lineTo(w*scale,y*scale);ctx.stroke();}
-  // BG
-  bg.forEach(function(p){
-    var isKept = (p.x+','+p.y) in kept;
-    ctx.fillStyle = isKept ? '#f97316' : '#553310';
-    ctx.fillRect(p.x*scale+1,p.y*scale+1,scale-2,scale-2);
-    if(!isKept){ctx.strokeStyle='#666';ctx.strokeRect(p.x*scale+2,p.y*scale+2,scale-4,scale-4);}
-  });
-  // FG
-  fg.forEach(function(p){ctx.fillStyle='#06b6d4';ctx.fillRect(p.x*scale+1,p.y*scale+1,scale-2,scale-2)});
-  // Axis labels — x along bottom, y along left
-  ctx.font='9px monospace';ctx.fillStyle='#888';
-  for(var x=0;x<w;x++) ctx.fillText(x,x*scale+scale/2-3,h*scale+12);
-  ctx.save();ctx.translate(-pad,0);
-  for(var y=0;y<h;y++) ctx.fillText(y,2,y*scale+scale/2+3);
-  ctx.restore();
-  // (0,0) origin marker
-  ctx.fillStyle='#ff0';ctx.font='8px monospace';ctx.fillText('↗0,0',0,scale-2);
-  // Cell labels
-  ctx.font='9px monospace';ctx.fillStyle='#fff';
-  bg.forEach(function(p){
-    var isKept = (p.x+','+p.y) in kept;
-    ctx.fillText(isKept?'B':'x',p.x*scale+3,p.y*scale+10);
-    ctx.fillStyle='#aaa';ctx.font='7px monospace';
-    ctx.fillText(p.x+','+p.y,p.x*scale+2,p.y*scale+scale-3);
-    ctx.fillStyle='#fff';ctx.font='9px monospace';
-  });
-  fg.forEach(function(p){
-    ctx.fillText('F',p.x*scale+3,p.y*scale+10);
-    ctx.fillStyle='#aaa';ctx.font='7px monospace';
-    ctx.fillText(p.x+','+p.y,p.x*scale+2,p.y*scale+scale-3);
-    ctx.fillStyle='#fff';ctx.font='9px monospace';
-  });
-
-  ctx.restore(); // undo translate
-  var div = document.createElement('div');
-  div.innerHTML = '<h3>'+label+'</h3>';
-  div.appendChild(c);
-  return div;
-}
-
-function test(name, w, h, fg, bg, expectedKept) {
-  var result = runThinning(fg, bg, 3);
-  var keptKeys = Object.keys(result);
-  var pass = true;
-  expectedKept.forEach(function(k){if(!(k in result)){pass=false}});
-  // Also check no unexpected kept
-  keptKeys.forEach(function(k){if(expectedKept.indexOf(k)===-1){pass=false}});
-
-  var div = document.createElement('div');
-  div.className = 'test ' + (pass?'pass':'fail');
-  div.innerHTML = '<h3>'+(pass?'✓':'✗')+' '+name+'</h3>';
-  var grid = drawGrid(name, w, h, fg, bg, result,
-    'Kept: '+keptKeys.join(' ')+(pass?'':' EXPECTED: '+expectedKept.join(' ')));
-  div.appendChild(grid);
-  if(!pass){
-    var extra = keptKeys.filter(function(k){return expectedKept.indexOf(k)===-1;});
-    var missing = expectedKept.filter(function(k){return !(k in result);});
-    div.innerHTML += '<pre>Expected: '+expectedKept.join(', ')+'\nGot:      '+keptKeys.join(', ')
-      + (extra.length ? '\nExtra:    '+extra.join(', ') : '')
-      + (missing.length ? '\nMissing:  '+missing.join(', ') : '') + '</pre>';
-  }
-  document.getElementById('results').appendChild(div);
-  return pass;
-}
-
-var passed=0,failed=0;
-
-// Test 1: Horizontal line — 3 rows of BG above 6-wide FG line
-// Expected: outermost row only (y=2)
-if(test('Horizontal: 3 rows above 6-wide FG', 6, 6,
-  [{x:0,y:5},{x:1,y:5},{x:2,y:5},{x:3,y:5},{x:4,y:5},{x:5,y:5}],
-  [{x:0,y:2},{x:1,y:2},{x:2,y:2},{x:3,y:2},{x:4,y:2},{x:5,y:2},
-   {x:0,y:3},{x:1,y:3},{x:2,y:3},{x:3,y:3},{x:4,y:3},{x:5,y:3},
-   {x:0,y:4},{x:1,y:4},{x:2,y:4},{x:3,y:4},{x:4,y:4},{x:5,y:4}],
-  ['0,2','1,2','2,2','3,2','4,2','5,2']
-))passed++;else failed++;
-
-// Test 2: Horizontal: 2 rows above 6-wide FG
-if(test('Horizontal: 2 rows above 6-wide FG', 6, 5,
-  [{x:0,y:4},{x:1,y:4},{x:2,y:4},{x:3,y:4},{x:4,y:4},{x:5,y:4}],
-  [{x:0,y:2},{x:1,y:2},{x:2,y:2},{x:3,y:2},{x:4,y:2},{x:5,y:2},
-   {x:0,y:3},{x:1,y:3},{x:2,y:3},{x:3,y:3},{x:4,y:3},{x:5,y:3}],
-  ['0,2','1,2','2,2','3,2','4,2','5,2']
-))passed++;else failed++;
-
-// Test 3: Vertical line — 3 cols right of 6-tall FG
-if(test('Vertical: 3 cols right of 6-tall FG', 6, 6,
-  [{x:0,y:0},{x:0,y:1},{x:0,y:2},{x:0,y:3},{x:0,y:4},{x:0,y:5}],
-  [{x:1,y:0},{x:1,y:1},{x:1,y:2},{x:1,y:3},{x:1,y:4},{x:1,y:5},
-   {x:2,y:0},{x:2,y:1},{x:2,y:2},{x:2,y:3},{x:2,y:4},{x:2,y:5},
-   {x:3,y:0},{x:3,y:1},{x:3,y:2},{x:3,y:3},{x:3,y:4},{x:3,y:5}],
-  ['3,0','3,1','3,2','3,3','3,4','3,5']
-))passed++;else failed++;
-
-// Test 4: Angle — 5px diagonal with 2px deep BG on both sides
-// FG diagonal from (3,7) to (7,3). BG surrounds on both sides.
-// Expected: 1px continuous outline, inner diagonal removed.
-if(test('Angle: 5px diagonal 2px deep BG', 10, 10,
-  [{x:3,y:7},{x:4,y:6},{x:5,y:5},{x:6,y:4},{x:7,y:3}],
-  [{x:7,y:1},{x:8,y:1},{x:8,y:2},{x:8,y:3},{x:8,y:4},{x:7,y:5},{x:6,y:6},{x:5,y:7},{x:4,y:8},{x:3,y:9},{x:2,y:8},{x:2,y:9},
-   {x:7,y:2},{x:8,y:5},{x:7,y:6},{x:6,y:7},{x:5,y:8},{x:4,y:9},
-   {x:1,y:6},{x:1,y:7},{x:1,y:8},{x:2,y:6},{x:2,y:7},{x:3,y:5},{x:3,y:6},{x:4,y:4},{x:4,y:5},{x:5,y:3},{x:5,y:4},{x:6,y:2},{x:6,y:3},
-   {x:4,y:7},{x:5,y:6},{x:6,y:5},{x:7,y:4},
-   {x:3,y:8},{x:2,y:5},{x:3,y:4},{x:4,y:3},{x:5,y:2},{x:6,y:1}],
-  ['1,6','1,7','1,8','2,5','2,9','3,4','3,9','4,3','4,9','5,2','5,8',
-   '6,1','6,7','7,1','7,6','8,1','8,2','8,3','8,4','8,5']
-))passed++;else failed++;
-
-// Test 4b: Smaller angle — 3 FG diagonal with 2px deep BG
-if(test('Angle: 2px deep BG thins to 1px', 6, 7,
-  [{x:2,y:5},{x:3,y:4},{x:4,y:3}],
-  [{x:1,y:4},{x:1,y:5},{x:1,y:6},{x:0,y:4},{x:0,y:5},{x:0,y:6},
-   {x:2,y:6},{x:3,y:5},{x:3,y:6},{x:4,y:4},{x:4,y:5},
-   {x:2,y:3},{x:2,y:4},{x:3,y:3},{x:3,y:2},
-   {x:4,y:2},{x:4,y:1},{x:5,y:2},{x:5,y:3},{x:5,y:4},
-   {x:3,y:1},{x:2,y:2},{x:2,y:1}],
-  ['0,4','0,5','0,6','1,4','1,6','2,1','2,2','2,3','2,6','3,1','3,6',
-   '4,1','4,5','5,2','5,3','5,4']
-))passed++;else failed++;
-
-// Test 5: Single FG pixel with 2px ring — should thin to outer ring
-if(test('Single FG: 2px ring thins to outer', 7, 7,
-  [{x:3,y:3}],
-  [{x:2,y:2},{x:3,y:2},{x:4,y:2},{x:2,y:3},{x:4,y:3},{x:2,y:4},{x:3,y:4},{x:4,y:4},
-   {x:1,y:1},{x:2,y:1},{x:3,y:1},{x:4,y:1},{x:5,y:1},
-   {x:1,y:2},{x:5,y:2},{x:1,y:3},{x:5,y:3},{x:1,y:4},{x:5,y:4},
-   {x:1,y:5},{x:2,y:5},{x:3,y:5},{x:4,y:5},{x:5,y:5}],
-  ['1,1','2,1','3,1','4,1','5,1','1,2','5,2','1,3','5,3','1,4','5,4',
-   '1,5','2,5','3,5','4,5','5,5']
-))passed++;else failed++;
-
-// Test 6: O-shape with 2px walls — outer BG kept, inner counter removed
-if(test('O-shape: inner counter BG removed', 9, 8,
-  [{x:1,y:1},{x:2,y:1},{x:3,y:1},{x:4,y:1},{x:5,y:1},{x:6,y:1},{x:7,y:1},
-   {x:1,y:2},{x:2,y:2},{x:3,y:2},{x:4,y:2},{x:5,y:2},{x:6,y:2},{x:7,y:2},
-   {x:1,y:3},{x:2,y:3},{x:6,y:3},{x:7,y:3},
-   {x:1,y:4},{x:2,y:4},{x:6,y:4},{x:7,y:4},
-   {x:1,y:5},{x:2,y:5},{x:3,y:5},{x:4,y:5},{x:5,y:5},{x:6,y:5},{x:7,y:5},
-   {x:1,y:6},{x:2,y:6},{x:3,y:6},{x:4,y:6},{x:5,y:6},{x:6,y:6},{x:7,y:6}],
-  [{x:0,y:0},{x:1,y:0},{x:2,y:0},{x:3,y:0},{x:4,y:0},{x:5,y:0},{x:6,y:0},{x:7,y:0},{x:8,y:0},
-   {x:0,y:1},{x:8,y:1},{x:0,y:2},{x:8,y:2},{x:0,y:3},{x:8,y:3},{x:0,y:4},{x:8,y:4},
-   {x:0,y:5},{x:8,y:5},{x:0,y:6},{x:8,y:6},
-   {x:0,y:7},{x:1,y:7},{x:2,y:7},{x:3,y:7},{x:4,y:7},{x:5,y:7},{x:6,y:7},{x:7,y:7},{x:8,y:7},
-   {x:3,y:3},{x:4,y:3},{x:5,y:3},{x:3,y:4},{x:4,y:4},{x:5,y:4}],
-  ['0,0','1,0','2,0','3,0','4,0','5,0','6,0','7,0','8,0',
-   '0,1','8,1','0,2','8,2','0,3','8,3','0,4','8,4','0,5','8,5','0,6','8,6',
-   '0,7','1,7','2,7','3,7','4,7','5,7','6,7','7,7','8,7']
-))passed++;else failed++;
-
-document.getElementById('results').insertAdjacentHTML('afterbegin',
-  '<h3 style="font-size:16px">'+passed+' passed, '+failed+' failed</h3>');
-</script></body></html>
-</file>
-
 <file path="docs/analyzer-crawl-ui.js">
 // make-it-look-good — Crawl UI Wiring
 // Manages multi-page site crawl progress, tabs, and results display.
@@ -42223,15 +42223,18 @@ window.MilgViewer = (function() {
     var rect = e.target;
     var rx = parseFloat(rect.getAttribute('x')), ry = parseFloat(rect.getAttribute('y'));
     var rw = parseFloat(rect.getAttribute('width')), rh = parseFloat(rect.getAttribute('height'));
-    var overlapping = [finding];
+    var overlapping = [{ f: finding, viewerIdx: findingIdx }];
     _allFindings.forEach(function(f, fi) {
       if (fi === findingIdx) return;
+      var matched = false;
       f.bboxes.forEach(function(bb) {
+        if (matched) return;
         var bx = Math.round(bb.left * (_meta ? _meta.scale : 1));
         var by = Math.round(bb.top * (_meta ? _meta.scale : 1)) - _calibrationOffsetY;
         if (bx < rx + rw && bx + Math.round(bb.width * (_meta ? _meta.scale : 1)) > rx &&
             by < ry + rh && by + Math.round(bb.height * (_meta ? _meta.scale : 1)) > ry) {
-          if (overlapping.indexOf(f) === -1) overlapping.push(f);
+          overlapping.push({ f: f, viewerIdx: fi });
+          matched = true;
         }
       });
     });
@@ -42244,14 +42247,17 @@ window.MilgViewer = (function() {
 
     // Compact view: severity badge + short title, click to expand detail
     var html = '';
-    overlapping.forEach(function(f, oi) {
+    overlapping.forEach(function(entry, oi) {
+      var f = entry.f;
       var sevClass = 'milg-viewer-sev-' + f.severity;
       var shortTitle = f.title.length > 60 ? f.title.substring(0, 57) + '...' : f.title;
       html += '<div class="milg-tt-row" data-tt-idx="' + oi + '" style="padding:3px 0;cursor:pointer;display:flex;align-items:baseline;gap:6px' + (oi > 0 ? ';border-top:1px solid rgba(255,255,255,0.1)' : '') + '">';
       html += '<span class="milg-viewer-tooltip-badge ' + sevClass + '" style="flex-shrink:0;font-size:9px;padding:1px 5px">' + f.severity + '</span>';
-      html += '<span style="font-size:11px;color:#e2e8f0;line-height:1.3">' + shortTitle + '</span>';
+      html += '<span style="font-size:11px;color:#e2e8f0;line-height:1.3;flex:1">' + shortTitle + '</span>';
+      // "Show group" button — filters to show all bboxes of this finding
+      html += '<span class="milg-tt-showgroup" data-viewer-idx="' + entry.viewerIdx + '" title="Show all elements in this group" style="flex-shrink:0;cursor:pointer;font-size:12px;opacity:0.5;padding:0 2px">&#9678;</span>';
       html += '</div>';
-      // Expandable detail (hidden by default) — shows detail + category, not title again
+      // Expandable detail (hidden by default)
       html += '<div class="milg-tt-detail" data-tt-idx="' + oi + '" style="display:none;padding:4px 0 4px 36px;font-size:10px;color:rgba(255,255,255,0.6);line-height:1.5">';
       if (f.detail) html += '<div style="color:rgba(255,255,255,0.5)">' + f.detail.substring(0, 300) + '</div>';
       html += '<div style="margin-top:2px;color:rgba(255,255,255,0.35)">' + f.category + '</div>';
@@ -42284,12 +42290,24 @@ window.MilgViewer = (function() {
     if (copyBtn) {
       copyBtn.addEventListener('click', function(ev) {
         ev.stopPropagation();
-        var text = overlapping.map(function(f) {
+        var text = overlapping.map(function(entry) {
+          var f = entry.f;
           return '[' + f.severity + '] ' + f.title + (f.detail ? '\n  ' + f.detail : '') + '\n  Category: ' + f.category;
         }).join('\n\n');
         navigator.clipboard.writeText(text).then(function() { copyBtn.textContent = 'Copied!'; setTimeout(function() { copyBtn.textContent = 'Copy'; }, 1500); });
       });
     }
+    // "Show group" buttons — filter to show all bboxes of that finding
+    _tooltip.querySelectorAll('.milg-tt-showgroup').forEach(function(btn) {
+      btn.addEventListener('click', function(ev) {
+        ev.stopPropagation();
+        var vIdx = parseInt(btn.getAttribute('data-viewer-idx'));
+        hideTooltip();
+        _activeFilter = { type: 'finding', value: vIdx };
+        updateFilterButtons();
+        renderOverlays();
+      });
+    });
 
     positionTooltip(e);
   }
@@ -44302,7 +44320,7 @@ window.MilgContrastVerify = (function() {
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v45.7</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v45.8</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -44668,30 +44686,30 @@ window.MilgContrastVerify = (function() {
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=45.7"></script>
-  <script src="scoring/contrast.js?v=45.7"></script>
-  <script src="scoring/typography.js?v=45.7"></script>
-  <script src="scoring/spacing.js?v=45.7"></script>
-  <script src="scoring/touch.js?v=45.7"></script>
-  <script src="scoring/accessibility.js?v=45.7"></script>
-  <script src="scoring/responsive.js?v=45.7"></script>
-  <script src="scoring/consistency.js?v=45.7"></script>
-  <script src="scoring/cognitive.js?v=45.7"></script>
-  <script src="scoring/layout.js?v=45.7"></script>
-  <script src="scoring/performance.js?v=45.7"></script>
-  <script src="scoring/readability.js?v=45.7"></script>
-  <script src="scoring/filters.js?v=45.7"></script>
-  <script src="scoring/balance.js?v=45.7"></script>
+  <script src="scoring/registry.js?v=45.8"></script>
+  <script src="scoring/contrast.js?v=45.8"></script>
+  <script src="scoring/typography.js?v=45.8"></script>
+  <script src="scoring/spacing.js?v=45.8"></script>
+  <script src="scoring/touch.js?v=45.8"></script>
+  <script src="scoring/accessibility.js?v=45.8"></script>
+  <script src="scoring/responsive.js?v=45.8"></script>
+  <script src="scoring/consistency.js?v=45.8"></script>
+  <script src="scoring/cognitive.js?v=45.8"></script>
+  <script src="scoring/layout.js?v=45.8"></script>
+  <script src="scoring/performance.js?v=45.8"></script>
+  <script src="scoring/readability.js?v=45.8"></script>
+  <script src="scoring/filters.js?v=45.8"></script>
+  <script src="scoring/balance.js?v=45.8"></script>
   <!-- Report rendering + UI -->
-  <script src="analyzer-report.js?v=45.7"></script>
-  <script src="analyzer-crawl.js?v=45.7"></script>
-  <script src="analyzer-extract.js?v=45.7"></script>
-  <script src="analyzer-iframe.js?v=45.7"></script>
-  <script src="analyzer-proxy.js?v=45.7"></script>
-  <script src="analyzer-crawl-ui.js?v=45.7"></script>
-  <script src="analyzer-contrast-verify.js?v=45.7"></script>
-  <script src="analyzer-viewer.js?v=45.7"></script>
-  <script src="analyzer.js?v=45.7"></script>
+  <script src="analyzer-report.js?v=45.8"></script>
+  <script src="analyzer-crawl.js?v=45.8"></script>
+  <script src="analyzer-extract.js?v=45.8"></script>
+  <script src="analyzer-iframe.js?v=45.8"></script>
+  <script src="analyzer-proxy.js?v=45.8"></script>
+  <script src="analyzer-crawl-ui.js?v=45.8"></script>
+  <script src="analyzer-contrast-verify.js?v=45.8"></script>
+  <script src="analyzer-viewer.js?v=45.8"></script>
+  <script src="analyzer.js?v=45.8"></script>
 </body>
 </html>
 </file>
