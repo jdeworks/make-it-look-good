@@ -171,7 +171,9 @@ console.log('[milg] analyzer.js v44.0 loaded');
       if (callback) callback();
       return;
     }
-    fetch(file)
+    // Cache-bust snippet fetch with same version as the analyzer
+    var cacheBust = '?v=' + Math.floor(Date.now() / 3600000);
+    fetch(file + cacheBust)
       .then(function(r) { return r.text(); })
       .then(function(text) { _snippetCache[file] = text; codeEl.textContent = text; if (callback) callback(); })
       .catch(function() { codeEl.textContent = '// Failed to load snippet — copy from ' + file; });
