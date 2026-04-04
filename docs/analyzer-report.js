@@ -172,15 +172,20 @@ window.MilgReport = (function() {
         // Affected elements with selectors + text (collapsible, for machine-readable reports)
         if (f.locator && f.locator.selectors && f.locator.selectors.length > 0) {
           var _texts = f.locator.texts || [];
+          var _hasBboxList = f.locator.bboxes && f.locator.bboxes.length > 0 && _hasScreenshots;
           html += '<details class="finding-selectors" style="margin:6px 0;font-size:11px">';
           html += '<summary style="cursor:pointer;color:var(--text-secondary)">' + f.locator.selectors.length + ' affected element' + (f.locator.selectors.length !== 1 ? 's' : '') + '</summary>';
           html += '<div style="margin:4px 0 0;padding:8px;background:var(--bg-alt);border:1px solid var(--border);border-radius:4px;font-size:10px;line-height:1.8;max-height:300px;overflow:auto">';
           f.locator.selectors.forEach(function(sel, si) {
             var txt = _texts[si] || '';
-            html += '<div style="padding:2px 0;border-bottom:1px solid var(--border)">';
-            html += '<code style="color:var(--text-primary)">' + escapeHtml(sel) + '</code>';
+            var canShow = _hasBboxList && si < f.locator.bboxes.length && f.locator.bboxes[si];
+            html += '<div style="padding:2px 0;border-bottom:1px solid var(--border);display:flex;align-items:baseline;gap:6px">';
+            if (canShow) {
+              html += '<a style="cursor:pointer;color:var(--accent);text-decoration:none;flex-shrink:0;font-size:9px" onclick="window.__milgShowBboxOnScreenshot(' + _bboxFindingIdx + ',' + si + ')" title="Show on screenshot">&#128269;</a>';
+            }
+            html += '<span style="flex:1;min-width:0"><code style="color:var(--text-primary)">' + escapeHtml(sel) + '</code>';
             if (txt) html += ' <span style="color:var(--text-secondary);font-style:italic">&quot;' + escapeHtml(txt.substring(0, 50)) + (txt.length > 50 ? '…' : '') + '&quot;</span>';
-            html += '</div>';
+            html += '</span></div>';
           });
           html += '</div></details>';
         }

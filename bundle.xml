@@ -4016,13 +4016,23 @@ function scoreResponsive(data) {
   // Horizontal overflow
   if (data.structure && data.structure.hasHorizontalOverflow) {
     checks++;
+    var culprits = (data.structure && data.structure.overflowCulprits) || [];
+    var culpritDetail = 'Content extends beyond viewport width — common responsive design failure';
+    if (culprits.length > 0) {
+      culpritDetail += '. Offending elements: ' + culprits.map(function(c) {
+        return c.selector + ' (' + c.width + 'px wide, overflows by ' + c.overflow + 'px)';
+      }).join('; ');
+    }
+    var culpritBboxes = culprits.filter(function(c) { return c.bbox; }).map(function(c) { return c.bbox; });
+    var culpritSelectors = culprits.map(function(c) { return c.selector; });
     findings.push({
       severity: 'warning',
       title: 'Page has horizontal overflow (horizontal scrollbar)',
-      detail: 'Content extends beyond viewport width — common responsive design failure',
+      detail: culpritDetail,
       fix: 'Find elements with fixed widths wider than the viewport. Add overflow-x: hidden to body or fix the overflowing element.',
       presetRef: null,
-      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
+      locator: culpritBboxes.length > 0 ? { selector: '', text: '', bboxes: culpritBboxes, selectors: culpritSelectors } : undefined
     });
   } else if (data.structure && data.structure.hasHorizontalOverflow === false) {
     checks++;
@@ -33873,6 +33883,304 @@ function scoreTouchTargets(data) {
 })();
 </file>
 
+<file path="docs/PIXEL-CONTRAST-APPROACH.md">
+# Pixel Contrast Verification — Approach Reference
+
+> **TL;DR:** Capture the page twice with domToCanvas (original at 1.5x + text mask), detect text boundaries via 4-connected neighbor check, sample FG at exactly dist=2 inside boundary, BG at dist 2-4 outside, cluster-average FG colors, match each FG pixel to nearest BG cluster, compute WCAG contrast ratio.
+
+## Pipeline (7 Steps)
+
+### Step 1: Capture original page
+```
+domToCanvas(document.documentElement, { scale: 1.5 })
+→ screenshot (WebP 0.8 quality, for color sampling)
+```
+
+### Step 2: Apply mask CSS + capture per-layer masks
+```css
+*, *::before, *::after {
+  color: #fff !important;
+  background: transparent !important;
+  background-image: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  -webkit-text-fill-color: #fff !important;
+  opacity: 1 !important;
+  transition: none !important;
+  animation: none !important;
+}
+html { background: #fff !important; }
+img, svg, video, canvas, picture, iframe { opacity: 0 !important; }
+```
+Elements are layered by z-order. Each layer captures its text as white-on-white with text visible as dark pixels.
+
+### Step 3: Extract binary mask
+```
+For each pixel in layer mask: avg(R, G, B) < 180 → mask[i] = 1 (foreground/text)
+```
+
+### Step 4: Boundary detection (4-connected)
+```
+For each mask[i] = 1:
+  If any of 4 neighbors (up/down/left/right) is mask = 0:
+    cat[i] = 1 (boundary)
+  Else:
+    cat[i] = 2 (inside)
+```
+No convolution. No smudging. Exact pixel boundary.
+
+### Step 5: BFS distance from boundary
+```
+Initialize: all boundary pixels → dist = 0, queue
+BFS flood fill: dist[neighbor] = dist[current] + 1, up to MAX_DIST = 7
+```
+
+### Step 6: Zone classification
+```
+FG zone: exactly dist=2 inside boundary (single-pixel inset line)
+  - Tight space (3+ boundary cardinals): promote to FG directly
+  - Fallback for thin strokes: deepest available inside pixel
+BG zone: dist 2-4 outside boundary (thin ring)
+  - Extends outside bbox via padding area sampling
+  - Clustered into 4px grid cells, averaged per cell
+```
+
+FG cluster averaging: each FG pixel's color = average of nearby FG pixels within 6px radius.
+FG outlier removal: reject pixels with luminance >40 from median.
+Each FG pixel → matched to closest BG cluster by distance.
+
+### Step 7: Contrast calculation
+```
+For each FG pixel: ratio = WCAG contrast(smoothedFG, closestBG)
+Report: worst, P10, median, P90, best ratios
+Threshold: P10 ratio used for pass/fail determination
+```
+
+## BBox Edge Contrast (v42.0)
+
+Separate from text contrast. Checks if interactive/container elements visually stand out:
+- Sample inner strip (3px inside bbox edge) and outer strip (5px outside)
+- Average inner vs outer colors → compute contrast ratio
+- Warning threshold: 1.15:1 (elements with border/shadow/outline exempt)
+- Severity: WARNING only (not error) since border/outline can provide distinction
+
+## Viewer Display Rules
+- On hover over a verify rect, show nearest FG/BG pair with color swatches
+- 5 percentile dots: worst, P10, median, P90, best (with pair-specific tooltips)
+- Right-click on verify rect cycles debug overlay: none → mask → zones
+- BBox edge warnings shown as dashed yellow rects with "edge X:1" labels
+
+## Key Constants
+| Constant | Value | Rationale |
+|----------|-------|-----------|
+| SCREENSHOT_SCALE | 1.5 | Good text AA resolution without excessive memory |
+| SCREENSHOT_QUALITY | 0.8 | WebP quality (PNG tested, no improvement) |
+| FG_IDEAL | 2 | 2px inside boundary — skips AA fringe |
+| BG_DIST_MIN | 2 | Background ring starts 2px outside |
+| BG_DIST_MAX | 4 | Background ring ends 4px outside |
+| BG_SEARCH_R | 12 | Max radius for BG cluster matching |
+| FG_CLUSTER_R | 6 | FG color averaging radius |
+| BG_CELL | 4 | BG pixel clustering grid size |
+| LUM_THRESHOLD | 40 | FG outlier rejection (luminance from median) |
+| EDGE_INNER_DIST | 3 | BBox edge: sample 3px inside |
+| EDGE_OUTER_DIST | 5 | BBox edge: sample 5px outside |
+| EDGE_WARN_RATIO | 1.15 | BBox edge: below this = blends into bg |
+
+## Files
+- `analyzer-iframe.js` — screenshot + mask capture pipeline
+- `analyzer-contrast-verify.js` — pixel contrast verification (boundary-based + bbox edge)
+- `analyzer-viewer.js` — viewer overlay, debug layers, tooltips
+- `analyzer-snippet-screenshots.js` — console snippet with screenshot capture
+- `analyzer-extract.js` — DOM data extraction (bgEdgePairs collection)
+</file>
+
+<file path="docs/scoring/readability.js">
+// Scoring Module: Readability & Scanability
+// Weight: 5%
+// Sources: Coleman-Liau Index, NNGroup scanning research
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+  function scoreReadability(data) {
+    var findings = [];
+    var checks = 0;
+    var passed = 0;
+
+    // Extract text content from the raw data
+    // We use heading count and element count as proxies since we don't have raw text in extracted data
+    var headings = (data.typography && data.typography.headings) || [];
+    var totalElements = (data.structure && data.structure.totalElements) || 0;
+
+    // Scanability: heading frequency
+    // Good rule: 1 heading per ~100-150 elements of content
+    if (totalElements > 50) {
+      checks++;
+      var headingRatio = headings.length / (totalElements / 100);
+      if (headingRatio >= 0.5 && headingRatio <= 5) {
+        passed++;
+      } else if (headingRatio < 0.5) {
+        findings.push({
+          severity: 'warning',
+          title: 'Low heading density: ' + headings.length + ' headings for ' + totalElements + ' elements',
+          detail: 'Content without headings is harder to scan. 79% of users scan rather than read (NNGroup)',
+          fix: 'Add descriptive headings to break content into scannable sections. Aim for a heading every 2-3 paragraphs.',
+          presetRef: null,
+          source: 'NNGroup scanning research — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+        });
+      }
+    }
+
+    // Heading descriptiveness: check if headings are too short (likely generic)
+    if (headings.length > 0) {
+      checks++;
+      var shortHeadings = headings.filter(function(h) {
+        return h.text && h.text.length < 3;
+      });
+      if (shortHeadings.length === 0) {
+        passed++;
+      } else {
+        passed++; // Info doesn't reduce score
+        findings.push({
+          severity: 'info',
+          title: shortHeadings.length + ' heading(s) with very short text (< 3 chars)',
+          detail: 'Short headings like numbers or icons don\'t help users scan. Use descriptive text.',
+          fix: 'Replace generic headings with descriptive ones that summarize the section content.',
+          presetRef: null,
+          source: 'NNGroup — https://www.nngroup.com/articles/headings-pickup-lines/'
+        });
+      }
+    }
+
+    // Font size variety as readability signal
+    // Too many sizes = visual noise, harder to establish reading rhythm
+    var fontSizes = (data.typography && data.typography.fontSizes) || [];
+    var smallTextCount = fontSizes.filter(function(f) {
+      return parseFloat(f.value) < 12;
+    }).reduce(function(sum, f) { return sum + f.count; }, 0);
+
+    if (smallTextCount > 0 && totalElements > 20) {
+      checks++;
+      var smallRatio = smallTextCount / totalElements;
+      if (smallRatio < 0.05) {
+        passed++;
+      } else {
+        var smallBboxes = [];
+        var smallSelectors = [];
+        var smallTexts = [];
+        fontSizes.filter(function(f) { return parseFloat(f.value) < 12; }).forEach(function(f) {
+          if (f.bbox) smallBboxes.push(f.bbox);
+          if (f.extraBboxes) f.extraBboxes.forEach(function(b) { smallBboxes.push(b); });
+          if (f.sampleSelector) smallSelectors.push(f.sampleSelector);
+          if (f.extraSelectors) f.extraSelectors.forEach(function(s) { smallSelectors.push(s); });
+          if (f.sampleText) smallTexts.push(f.sampleText);
+          if (f.extraTexts) f.extraTexts.forEach(function(t) { smallTexts.push(t); });
+        });
+        findings.push({
+          severity: 'warning',
+          title: smallTextCount + ' element(s) with text smaller than 12px',
+          detail: 'Text below 12px is difficult to read for most users and nearly impossible for elderly or low-vision users',
+          fix: 'Increase small text to at least 12px. Consider if the information is important enough to display — if not, remove it.',
+          presetRef: null,
+          source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text',
+          locator: smallBboxes.length > 0 ? { selector: '', text: '', bboxes: smallBboxes, selectors: smallSelectors, texts: smallTexts } : undefined
+        });
+      }
+    }
+
+    // Coleman-Liau readability index
+    var rd = data.readability || {};
+    if (rd.totalWords >= 50 && rd.paragraphCount >= 2) {
+      checks++;
+      // Coleman-Liau: 0.0588 * L - 0.296 * S - 15.8
+      // L = avg letters per 100 words, S = avg sentences per 100 words
+      var L = (rd.totalChars / rd.totalWords) * 100;
+      var sentenceCount = 0;
+      (rd.textBlocks || []).forEach(function(b) {
+        sentenceCount += (b.text.match(/[.!?]+/g) || []).length;
+      });
+      var S_val = (sentenceCount / rd.totalWords) * 100;
+      var cli = Math.round(0.0588 * L - 0.296 * S_val - 15.8);
+      // Detect non-English content — Coleman-Liau inflates scores for languages
+      // with long compound words (German, Finnish, Dutch, etc.)
+      var pageLang = (data.meta && data.meta.lang || '').toLowerCase().split('-')[0];
+      var isNonEnglish = pageLang && pageLang !== 'en' && pageLang !== '';
+      // Also heuristic: if avg word length > 6.5 chars, likely non-English
+      var avgWordLen = rd.totalChars / rd.totalWords;
+      if (!isNonEnglish && avgWordLen > 6.5) isNonEnglish = true;
+      var langNote = isNonEnglish ? ' Note: This index is calibrated for English text — non-English languages (detected: ' + (pageLang || 'long words') + ') typically score higher due to longer average word length.' : '';
+
+      if (cli >= 6 && cli <= 12) {
+        passed++;
+      } else {
+        findings.push({
+          severity: isNonEnglish ? 'info' : (cli > 14 ? 'warning' : 'info'),
+          title: 'Reading level: grade ' + cli + ' (Coleman-Liau Index)',
+          detail: (cli > 12 ? 'Content may be too complex for a general audience' : 'Content may be overly simple for the target audience') + langNote,
+          fix: cli > 12 ? 'Shorten sentences, use simpler words, break complex ideas into steps. Aim for grade 8-10 for general audiences.' : 'This reading level is appropriate for broad accessibility.',
+          presetRef: null,
+          source: 'Coleman-Liau Index — https://en.wikipedia.org/wiki/Coleman%E2%80%93Liau_index'
+        });
+      }
+    }
+
+    // Paragraph length audit
+    var longParagraphs = (rd.textBlocks || []).filter(function(b) { return b.wordCount > 150; });
+    if (longParagraphs.length > 0) {
+      findings.push({
+        severity: 'warning',
+        title: longParagraphs.length + ' paragraph(s) exceed 150 words',
+        detail: 'Long paragraphs reduce scanability. Ideal: 40-80 words per paragraph.',
+        fix: 'Break long paragraphs into shorter ones. Use subheadings, bullet lists, or callout boxes to chunk content.',
+        presetRef: null,
+        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+      });
+    }
+
+    // List usage for scanability
+    if (rd.totalWords >= 100 && !rd.hasLists) {
+      findings.push({
+        severity: 'info',
+        title: 'No lists found in content area',
+        detail: 'Lists improve scanability by 47% compared to wall-of-text (NNGroup)',
+        fix: 'Convert sequences, features, or steps into <ul>/<ol> lists where appropriate.',
+        presetRef: null,
+        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+      });
+    }
+
+    // Table cell readability on mobile (cramped/wrapped cells)
+    var tableCellIssues = (data.layout && data.layout.tableCellIssues) || [];
+    if (tableCellIssues.length > 0) {
+      checks++;
+      var tableDetails = tableCellIssues.map(function(t) {
+        var parts = [];
+        if (t.crampedCells > 0) parts.push(t.crampedCells + ' cells lack horizontal padding');
+        if (t.wrappedCells > 0) parts.push(t.wrappedCells + ' cells wrap to multiple lines');
+        return t.selector + ': ' + parts.join(', ') + ' (table ' + t.tableWidth + 'px on ' + t.vpWidth + 'px viewport)';
+      });
+      findings.push({
+        severity: tableCellIssues.some(function(t) { return t.crampedCells > 4 || t.wrappedCells > 4; }) ? 'error' : 'warning',
+        title: 'Table readability issues on mobile (' + tableCellIssues.length + ' table' + (tableCellIssues.length > 1 ? 's' : '') + ')',
+        detail: tableDetails.join('; '),
+        fix: 'Add horizontal padding to table cells (px-3 sm:px-4). For narrow viewports, consider hiding low-priority columns, using a responsive card layout, or reducing font size.',
+        source: 'NNGroup Mobile Tables — https://www.nngroup.com/articles/mobile-tables/',
+        locator: { selector: tableCellIssues[0].selector, text: '' }
+      });
+    }
+
+    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+    var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+    var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+    return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Readability', icon: 'readability' };
+  }
+
+  S.register("readability", scoreReadability, 5, "Readability", "readability");
+})();
+</file>
+
 <file path="docs/analyzer.css">
 /* Analyzer — inherits vars from style.css */
 
@@ -35332,304 +35640,6 @@ body.dark-ui .milg-viewer-overlap-item:hover { background: #334155; }
 }
 </file>
 
-<file path="docs/PIXEL-CONTRAST-APPROACH.md">
-# Pixel Contrast Verification — Approach Reference
-
-> **TL;DR:** Capture the page twice with domToCanvas (original at 1.5x + text mask), detect text boundaries via 4-connected neighbor check, sample FG at exactly dist=2 inside boundary, BG at dist 2-4 outside, cluster-average FG colors, match each FG pixel to nearest BG cluster, compute WCAG contrast ratio.
-
-## Pipeline (7 Steps)
-
-### Step 1: Capture original page
-```
-domToCanvas(document.documentElement, { scale: 1.5 })
-→ screenshot (WebP 0.8 quality, for color sampling)
-```
-
-### Step 2: Apply mask CSS + capture per-layer masks
-```css
-*, *::before, *::after {
-  color: #fff !important;
-  background: transparent !important;
-  background-image: none !important;
-  border-color: transparent !important;
-  box-shadow: none !important;
-  text-shadow: none !important;
-  -webkit-text-fill-color: #fff !important;
-  opacity: 1 !important;
-  transition: none !important;
-  animation: none !important;
-}
-html { background: #fff !important; }
-img, svg, video, canvas, picture, iframe { opacity: 0 !important; }
-```
-Elements are layered by z-order. Each layer captures its text as white-on-white with text visible as dark pixels.
-
-### Step 3: Extract binary mask
-```
-For each pixel in layer mask: avg(R, G, B) < 180 → mask[i] = 1 (foreground/text)
-```
-
-### Step 4: Boundary detection (4-connected)
-```
-For each mask[i] = 1:
-  If any of 4 neighbors (up/down/left/right) is mask = 0:
-    cat[i] = 1 (boundary)
-  Else:
-    cat[i] = 2 (inside)
-```
-No convolution. No smudging. Exact pixel boundary.
-
-### Step 5: BFS distance from boundary
-```
-Initialize: all boundary pixels → dist = 0, queue
-BFS flood fill: dist[neighbor] = dist[current] + 1, up to MAX_DIST = 7
-```
-
-### Step 6: Zone classification
-```
-FG zone: exactly dist=2 inside boundary (single-pixel inset line)
-  - Tight space (3+ boundary cardinals): promote to FG directly
-  - Fallback for thin strokes: deepest available inside pixel
-BG zone: dist 2-4 outside boundary (thin ring)
-  - Extends outside bbox via padding area sampling
-  - Clustered into 4px grid cells, averaged per cell
-```
-
-FG cluster averaging: each FG pixel's color = average of nearby FG pixels within 6px radius.
-FG outlier removal: reject pixels with luminance >40 from median.
-Each FG pixel → matched to closest BG cluster by distance.
-
-### Step 7: Contrast calculation
-```
-For each FG pixel: ratio = WCAG contrast(smoothedFG, closestBG)
-Report: worst, P10, median, P90, best ratios
-Threshold: P10 ratio used for pass/fail determination
-```
-
-## BBox Edge Contrast (v42.0)
-
-Separate from text contrast. Checks if interactive/container elements visually stand out:
-- Sample inner strip (3px inside bbox edge) and outer strip (5px outside)
-- Average inner vs outer colors → compute contrast ratio
-- Warning threshold: 1.15:1 (elements with border/shadow/outline exempt)
-- Severity: WARNING only (not error) since border/outline can provide distinction
-
-## Viewer Display Rules
-- On hover over a verify rect, show nearest FG/BG pair with color swatches
-- 5 percentile dots: worst, P10, median, P90, best (with pair-specific tooltips)
-- Right-click on verify rect cycles debug overlay: none → mask → zones
-- BBox edge warnings shown as dashed yellow rects with "edge X:1" labels
-
-## Key Constants
-| Constant | Value | Rationale |
-|----------|-------|-----------|
-| SCREENSHOT_SCALE | 1.5 | Good text AA resolution without excessive memory |
-| SCREENSHOT_QUALITY | 0.8 | WebP quality (PNG tested, no improvement) |
-| FG_IDEAL | 2 | 2px inside boundary — skips AA fringe |
-| BG_DIST_MIN | 2 | Background ring starts 2px outside |
-| BG_DIST_MAX | 4 | Background ring ends 4px outside |
-| BG_SEARCH_R | 12 | Max radius for BG cluster matching |
-| FG_CLUSTER_R | 6 | FG color averaging radius |
-| BG_CELL | 4 | BG pixel clustering grid size |
-| LUM_THRESHOLD | 40 | FG outlier rejection (luminance from median) |
-| EDGE_INNER_DIST | 3 | BBox edge: sample 3px inside |
-| EDGE_OUTER_DIST | 5 | BBox edge: sample 5px outside |
-| EDGE_WARN_RATIO | 1.15 | BBox edge: below this = blends into bg |
-
-## Files
-- `analyzer-iframe.js` — screenshot + mask capture pipeline
-- `analyzer-contrast-verify.js` — pixel contrast verification (boundary-based + bbox edge)
-- `analyzer-viewer.js` — viewer overlay, debug layers, tooltips
-- `analyzer-snippet-screenshots.js` — console snippet with screenshot capture
-- `analyzer-extract.js` — DOM data extraction (bgEdgePairs collection)
-</file>
-
-<file path="docs/scoring/readability.js">
-// Scoring Module: Readability & Scanability
-// Weight: 5%
-// Sources: Coleman-Liau Index, NNGroup scanning research
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-  function scoreReadability(data) {
-    var findings = [];
-    var checks = 0;
-    var passed = 0;
-
-    // Extract text content from the raw data
-    // We use heading count and element count as proxies since we don't have raw text in extracted data
-    var headings = (data.typography && data.typography.headings) || [];
-    var totalElements = (data.structure && data.structure.totalElements) || 0;
-
-    // Scanability: heading frequency
-    // Good rule: 1 heading per ~100-150 elements of content
-    if (totalElements > 50) {
-      checks++;
-      var headingRatio = headings.length / (totalElements / 100);
-      if (headingRatio >= 0.5 && headingRatio <= 5) {
-        passed++;
-      } else if (headingRatio < 0.5) {
-        findings.push({
-          severity: 'warning',
-          title: 'Low heading density: ' + headings.length + ' headings for ' + totalElements + ' elements',
-          detail: 'Content without headings is harder to scan. 79% of users scan rather than read (NNGroup)',
-          fix: 'Add descriptive headings to break content into scannable sections. Aim for a heading every 2-3 paragraphs.',
-          presetRef: null,
-          source: 'NNGroup scanning research — https://www.nngroup.com/articles/how-users-read-on-the-web/'
-        });
-      }
-    }
-
-    // Heading descriptiveness: check if headings are too short (likely generic)
-    if (headings.length > 0) {
-      checks++;
-      var shortHeadings = headings.filter(function(h) {
-        return h.text && h.text.length < 3;
-      });
-      if (shortHeadings.length === 0) {
-        passed++;
-      } else {
-        passed++; // Info doesn't reduce score
-        findings.push({
-          severity: 'info',
-          title: shortHeadings.length + ' heading(s) with very short text (< 3 chars)',
-          detail: 'Short headings like numbers or icons don\'t help users scan. Use descriptive text.',
-          fix: 'Replace generic headings with descriptive ones that summarize the section content.',
-          presetRef: null,
-          source: 'NNGroup — https://www.nngroup.com/articles/headings-pickup-lines/'
-        });
-      }
-    }
-
-    // Font size variety as readability signal
-    // Too many sizes = visual noise, harder to establish reading rhythm
-    var fontSizes = (data.typography && data.typography.fontSizes) || [];
-    var smallTextCount = fontSizes.filter(function(f) {
-      return parseFloat(f.value) < 12;
-    }).reduce(function(sum, f) { return sum + f.count; }, 0);
-
-    if (smallTextCount > 0 && totalElements > 20) {
-      checks++;
-      var smallRatio = smallTextCount / totalElements;
-      if (smallRatio < 0.05) {
-        passed++;
-      } else {
-        var smallBboxes = [];
-        var smallSelectors = [];
-        var smallTexts = [];
-        fontSizes.filter(function(f) { return parseFloat(f.value) < 12; }).forEach(function(f) {
-          if (f.bbox) smallBboxes.push(f.bbox);
-          if (f.extraBboxes) f.extraBboxes.forEach(function(b) { smallBboxes.push(b); });
-          if (f.sampleSelector) smallSelectors.push(f.sampleSelector);
-          if (f.extraSelectors) f.extraSelectors.forEach(function(s) { smallSelectors.push(s); });
-          if (f.sampleText) smallTexts.push(f.sampleText);
-          if (f.extraTexts) f.extraTexts.forEach(function(t) { smallTexts.push(t); });
-        });
-        findings.push({
-          severity: 'warning',
-          title: smallTextCount + ' element(s) with text smaller than 12px',
-          detail: 'Text below 12px is difficult to read for most users and nearly impossible for elderly or low-vision users',
-          fix: 'Increase small text to at least 12px. Consider if the information is important enough to display — if not, remove it.',
-          presetRef: null,
-          source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text',
-          locator: smallBboxes.length > 0 ? { selector: '', text: '', bboxes: smallBboxes, selectors: smallSelectors, texts: smallTexts } : undefined
-        });
-      }
-    }
-
-    // Coleman-Liau readability index
-    var rd = data.readability || {};
-    if (rd.totalWords >= 50 && rd.paragraphCount >= 2) {
-      checks++;
-      // Coleman-Liau: 0.0588 * L - 0.296 * S - 15.8
-      // L = avg letters per 100 words, S = avg sentences per 100 words
-      var L = (rd.totalChars / rd.totalWords) * 100;
-      var sentenceCount = 0;
-      (rd.textBlocks || []).forEach(function(b) {
-        sentenceCount += (b.text.match(/[.!?]+/g) || []).length;
-      });
-      var S_val = (sentenceCount / rd.totalWords) * 100;
-      var cli = Math.round(0.0588 * L - 0.296 * S_val - 15.8);
-      // Detect non-English content — Coleman-Liau inflates scores for languages
-      // with long compound words (German, Finnish, Dutch, etc.)
-      var pageLang = (data.meta && data.meta.lang || '').toLowerCase().split('-')[0];
-      var isNonEnglish = pageLang && pageLang !== 'en' && pageLang !== '';
-      // Also heuristic: if avg word length > 6.5 chars, likely non-English
-      var avgWordLen = rd.totalChars / rd.totalWords;
-      if (!isNonEnglish && avgWordLen > 6.5) isNonEnglish = true;
-      var langNote = isNonEnglish ? ' Note: This index is calibrated for English text — non-English languages (detected: ' + (pageLang || 'long words') + ') typically score higher due to longer average word length.' : '';
-
-      if (cli >= 6 && cli <= 12) {
-        passed++;
-      } else {
-        findings.push({
-          severity: isNonEnglish ? 'info' : (cli > 14 ? 'warning' : 'info'),
-          title: 'Reading level: grade ' + cli + ' (Coleman-Liau Index)',
-          detail: (cli > 12 ? 'Content may be too complex for a general audience' : 'Content may be overly simple for the target audience') + langNote,
-          fix: cli > 12 ? 'Shorten sentences, use simpler words, break complex ideas into steps. Aim for grade 8-10 for general audiences.' : 'This reading level is appropriate for broad accessibility.',
-          presetRef: null,
-          source: 'Coleman-Liau Index — https://en.wikipedia.org/wiki/Coleman%E2%80%93Liau_index'
-        });
-      }
-    }
-
-    // Paragraph length audit
-    var longParagraphs = (rd.textBlocks || []).filter(function(b) { return b.wordCount > 150; });
-    if (longParagraphs.length > 0) {
-      findings.push({
-        severity: 'warning',
-        title: longParagraphs.length + ' paragraph(s) exceed 150 words',
-        detail: 'Long paragraphs reduce scanability. Ideal: 40-80 words per paragraph.',
-        fix: 'Break long paragraphs into shorter ones. Use subheadings, bullet lists, or callout boxes to chunk content.',
-        presetRef: null,
-        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
-      });
-    }
-
-    // List usage for scanability
-    if (rd.totalWords >= 100 && !rd.hasLists) {
-      findings.push({
-        severity: 'info',
-        title: 'No lists found in content area',
-        detail: 'Lists improve scanability by 47% compared to wall-of-text (NNGroup)',
-        fix: 'Convert sequences, features, or steps into <ul>/<ol> lists where appropriate.',
-        presetRef: null,
-        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
-      });
-    }
-
-    // Table cell readability on mobile (cramped/wrapped cells)
-    var tableCellIssues = (data.layout && data.layout.tableCellIssues) || [];
-    if (tableCellIssues.length > 0) {
-      checks++;
-      var tableDetails = tableCellIssues.map(function(t) {
-        var parts = [];
-        if (t.crampedCells > 0) parts.push(t.crampedCells + ' cells lack horizontal padding');
-        if (t.wrappedCells > 0) parts.push(t.wrappedCells + ' cells wrap to multiple lines');
-        return t.selector + ': ' + parts.join(', ') + ' (table ' + t.tableWidth + 'px on ' + t.vpWidth + 'px viewport)';
-      });
-      findings.push({
-        severity: tableCellIssues.some(function(t) { return t.crampedCells > 4 || t.wrappedCells > 4; }) ? 'error' : 'warning',
-        title: 'Table readability issues on mobile (' + tableCellIssues.length + ' table' + (tableCellIssues.length > 1 ? 's' : '') + ')',
-        detail: tableDetails.join('; '),
-        fix: 'Add horizontal padding to table cells (px-3 sm:px-4). For narrow viewports, consider hiding low-priority columns, using a responsive card layout, or reducing font size.',
-        source: 'NNGroup Mobile Tables — https://www.nngroup.com/articles/mobile-tables/',
-        locator: { selector: tableCellIssues[0].selector, text: '' }
-      });
-    }
-
-    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-    var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-    var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-    return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Readability', icon: 'readability' };
-  }
-
-  S.register("readability", scoreReadability, 5, "Readability", "readability");
-})();
-</file>
-
 <file path="docs/scoring/layout.js">
 // Scoring Module: Layout Quality
 // Weight: 5%
@@ -36139,6 +36149,350 @@ function scoreLayout(data) {
 })();
 </file>
 
+<file path="docs/tests/test-bg-thinning.html">
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>BG Thinning Tests</title>
+<style>
+body{font-family:monospace;margin:20px;background:#1e1e1e;color:#d4d4d4}
+.test{margin:10px 0;padding:10px;border:1px solid #444;border-radius:4px}
+.pass{border-color:#22c55e;background:#052e16}.fail{border-color:#ef4444;background:#2d0a0a}
+canvas{image-rendering:pixelated;border:1px solid #555;margin:4px}
+h3{margin:4px 0;font-size:13px}
+pre{font-size:11px;white-space:pre;margin:4px 0}
+</style></head><body>
+<h2>BG Thinning Algorithm Tests</h2>
+<div id="results"></div>
+<script>
+// BG thinning: produces a 1px outline of BG pixels around FG text edges.
+// Steps:
+//  1. For each BG, find nearest FG. Skip if further BG in same sign-direction.
+//  2. Remove orphans (no FG connection).
+//  3. Keep closest F's claim for multiply-claimed B.
+//  4. Remove B if FG (not other B) blocks line of sight.
+//  5. Thin inner duplicates: remove lower-cheb pixels that have a higher-cheb
+//     neighbor, using depth-limited BFS to preserve local connectivity.
+function runThinning(fgPixels, bgPixels, bgR) {
+  bgR = bgR || 3;
+  var fgSet = {};
+  fgPixels.forEach(function(f) { fgSet[f.x+','+f.y] = true; });
+  var bgSet = {};
+  bgPixels.forEach(function(b) { bgSet[b.x+','+b.y] = true; });
+
+  // Step 1: For each BG within bgR of nearest FG, keep if outermost in direction
+  var bgMarks = {};
+  bgPixels.forEach(function(bg) {
+    var bk = bg.x + ',' + bg.y;
+    // Find nearest FG (Euclidean)
+    var bestFi = -1, bestD = Infinity;
+    fgPixels.forEach(function(fg, fi) {
+      var d = (fg.x-bg.x)*(fg.x-bg.x) + (fg.y-bg.y)*(fg.y-bg.y);
+      if (d < bestD) { bestD = d; bestFi = fi; }
+    });
+    if (bestFi < 0) return;
+    var fg = fgPixels[bestFi];
+    var dx = bg.x - fg.x, dy = bg.y - fg.y;
+    var cheb = Math.max(Math.abs(dx), Math.abs(dy));
+    if (cheb === 0 || cheb > bgR) return;
+
+    // FG blocking between fg and bg
+    var steps = Math.max(Math.abs(dx), Math.abs(dy));
+    var blocked = false;
+    for (var s = 1; s < steps; s++) {
+      var mx = fg.x + Math.round(dx * s / steps);
+      var my = fg.y + Math.round(dy * s / steps);
+      if ((mx+','+my) in fgSet) { blocked = true; break; }
+    }
+    if (blocked) return;
+
+    // hasFurther: skip if a BG exists beyond in same sign-direction
+    var sdx = dx > 0 ? 1 : (dx < 0 ? -1 : 0);
+    var sdy = dy > 0 ? 1 : (dy < 0 ? -1 : 0);
+    var hasFurther = false;
+    for (var ext = 1; ext <= bgR; ext++) {
+      var ex = bg.x + sdx * ext, ey = bg.y + sdy * ext;
+      if (Math.max(Math.abs(ex - fg.x), Math.abs(ey - fg.y)) > bgR) break;
+      if ((ex+','+ey) in fgSet) break;
+      if ((ex+','+ey) in bgSet) { hasFurther = true; break; }
+    }
+    if (hasFurther) return;
+
+    if (!bgMarks[bk]) bgMarks[bk] = [];
+    bgMarks[bk].push({ fi: bestFi, dist: cheb });
+  });
+
+  // Step 2-3: Remove orphans, keep closest F's claim
+  var result = {};
+  for (var k in bgMarks) {
+    if (bgMarks[k].length === 0) continue;
+    var marks = bgMarks[k];
+    var minD = Infinity;
+    marks.forEach(function(m) { if (m.dist < minD) minD = m.dist; });
+    result[k] = marks.filter(function(m) { return m.dist === minD; });
+  }
+
+  // Step 4: Remove if FG (not other BG) blocks line of sight
+  var afterBlock = {};
+  for (var k in result) {
+    var parts = k.split(','), bx = parseInt(parts[0]), by = parseInt(parts[1]);
+    var keepThis = false;
+    result[k].forEach(function(m) {
+      var fg = fgPixels[m.fi];
+      var dx = bx - fg.x, dy = by - fg.y;
+      var steps = Math.max(Math.abs(dx), Math.abs(dy));
+      var blocked = false;
+      for (var s = 1; s < steps; s++) {
+        var mx = fg.x + Math.round(dx * s / steps);
+        var my = fg.y + Math.round(dy * s / steps);
+        if ((mx+','+my) in fgSet && !(mx === fg.x && my === fg.y)) {
+          blocked = true; break;
+        }
+      }
+      if (!blocked) keepThis = true;
+    });
+    if (keepThis) afterBlock[k] = result[k];
+  }
+
+  // Step 5: Thin inner duplicates — remove pixels with lower Chebyshev
+  // distance that have a neighbor at higher Chebyshev distance, but only
+  // if removal doesn't break local connectivity (depth-limited BFS).
+  var chebMap = {};
+  for (var k in afterBlock) { chebMap[k] = afterBlock[k][0].dist; }
+
+  function isLocalBridge(k, keptSet) {
+    var parts = k.split(','), cx = parseInt(parts[0]), cy = parseInt(parts[1]);
+    var neighbors = [];
+    for (var dy = -1; dy <= 1; dy++) {
+      for (var dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        var nk = (cx+dx)+','+(cy+dy);
+        if (nk in keptSet && nk !== k) neighbors.push(nk);
+      }
+    }
+    if (neighbors.length <= 1) return true;
+    // BFS from first neighbor, max 4 hops, excluding k
+    var MAX_DEPTH = 4;
+    var visited = {}; visited[neighbors[0]] = 0;
+    var queue = [neighbors[0]];
+    while (queue.length > 0) {
+      var cur = queue.shift();
+      var depth = visited[cur];
+      if (depth >= MAX_DEPTH) continue;
+      var cp = cur.split(','), cx2 = parseInt(cp[0]), cy2 = parseInt(cp[1]);
+      for (var dy = -1; dy <= 1; dy++) {
+        for (var dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          var nk2 = (cx2+dx)+','+(cy2+dy);
+          if (nk2 !== k && nk2 in keptSet && !(nk2 in visited)) {
+            visited[nk2] = depth + 1;
+            queue.push(nk2);
+          }
+        }
+      }
+    }
+    for (var i = 1; i < neighbors.length; i++) {
+      if (!(neighbors[i] in visited)) return true;
+    }
+    return false;
+  }
+
+  // Collect candidates: pixels with a kept neighbor at higher cheb
+  var candidates = [];
+  for (var k in afterBlock) {
+    var myCheb = chebMap[k], hasHigher = false;
+    var parts = k.split(','), bx = parseInt(parts[0]), by = parseInt(parts[1]);
+    for (var dy = -1; dy <= 1; dy++) {
+      for (var dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        var nk = (bx+dx)+','+(by+dy);
+        if (nk in chebMap && chebMap[nk] > myCheb) hasHigher = true;
+      }
+    }
+    if (hasHigher) candidates.push({ k: k, cheb: myCheb });
+  }
+  // Process inner-most first
+  candidates.sort(function(a,b) { return a.cheb - b.cheb; });
+
+  var keptSet = {};
+  for (var k in afterBlock) keptSet[k] = true;
+
+  candidates.forEach(function(c) {
+    if (!(c.k in keptSet)) return;
+    if (!isLocalBridge(c.k, keptSet)) {
+      delete keptSet[c.k];
+    }
+  });
+
+  var final = {};
+  for (var k in keptSet) { final[k] = afterBlock[k][0].fi; }
+  return Object.keys(final).length > 0 ? final : afterBlock;
+}
+
+function drawGrid(id, w, h, fg, bg, kept, label) {
+  var scale = 20;
+  var pad = 16; // padding for axis labels
+  var c = document.createElement('canvas');
+  c.width = w * scale + pad; c.height = h * scale + pad;
+  var ctx = c.getContext('2d');
+  ctx.fillStyle = '#333'; ctx.fillRect(0,0,c.width,c.height);
+  ctx.save(); ctx.translate(pad, 0); // shift grid right for y-axis labels
+  // Grid lines
+  ctx.strokeStyle='#555';
+  for(var x=0;x<=w;x++){ctx.beginPath();ctx.moveTo(x*scale,0);ctx.lineTo(x*scale,h*scale);ctx.stroke();}
+  for(var y=0;y<=h;y++){ctx.beginPath();ctx.moveTo(0,y*scale);ctx.lineTo(w*scale,y*scale);ctx.stroke();}
+  // BG
+  bg.forEach(function(p){
+    var isKept = (p.x+','+p.y) in kept;
+    ctx.fillStyle = isKept ? '#f97316' : '#553310';
+    ctx.fillRect(p.x*scale+1,p.y*scale+1,scale-2,scale-2);
+    if(!isKept){ctx.strokeStyle='#666';ctx.strokeRect(p.x*scale+2,p.y*scale+2,scale-4,scale-4);}
+  });
+  // FG
+  fg.forEach(function(p){ctx.fillStyle='#06b6d4';ctx.fillRect(p.x*scale+1,p.y*scale+1,scale-2,scale-2)});
+  // Axis labels — x along bottom, y along left
+  ctx.font='9px monospace';ctx.fillStyle='#888';
+  for(var x=0;x<w;x++) ctx.fillText(x,x*scale+scale/2-3,h*scale+12);
+  ctx.save();ctx.translate(-pad,0);
+  for(var y=0;y<h;y++) ctx.fillText(y,2,y*scale+scale/2+3);
+  ctx.restore();
+  // (0,0) origin marker
+  ctx.fillStyle='#ff0';ctx.font='8px monospace';ctx.fillText('↗0,0',0,scale-2);
+  // Cell labels
+  ctx.font='9px monospace';ctx.fillStyle='#fff';
+  bg.forEach(function(p){
+    var isKept = (p.x+','+p.y) in kept;
+    ctx.fillText(isKept?'B':'x',p.x*scale+3,p.y*scale+10);
+    ctx.fillStyle='#aaa';ctx.font='7px monospace';
+    ctx.fillText(p.x+','+p.y,p.x*scale+2,p.y*scale+scale-3);
+    ctx.fillStyle='#fff';ctx.font='9px monospace';
+  });
+  fg.forEach(function(p){
+    ctx.fillText('F',p.x*scale+3,p.y*scale+10);
+    ctx.fillStyle='#aaa';ctx.font='7px monospace';
+    ctx.fillText(p.x+','+p.y,p.x*scale+2,p.y*scale+scale-3);
+    ctx.fillStyle='#fff';ctx.font='9px monospace';
+  });
+
+  ctx.restore(); // undo translate
+  var div = document.createElement('div');
+  div.innerHTML = '<h3>'+label+'</h3>';
+  div.appendChild(c);
+  return div;
+}
+
+function test(name, w, h, fg, bg, expectedKept) {
+  var result = runThinning(fg, bg, 3);
+  var keptKeys = Object.keys(result);
+  var pass = true;
+  expectedKept.forEach(function(k){if(!(k in result)){pass=false}});
+  // Also check no unexpected kept
+  keptKeys.forEach(function(k){if(expectedKept.indexOf(k)===-1){pass=false}});
+
+  var div = document.createElement('div');
+  div.className = 'test ' + (pass?'pass':'fail');
+  div.innerHTML = '<h3>'+(pass?'✓':'✗')+' '+name+'</h3>';
+  var grid = drawGrid(name, w, h, fg, bg, result,
+    'Kept: '+keptKeys.join(' ')+(pass?'':' EXPECTED: '+expectedKept.join(' ')));
+  div.appendChild(grid);
+  if(!pass){
+    var extra = keptKeys.filter(function(k){return expectedKept.indexOf(k)===-1;});
+    var missing = expectedKept.filter(function(k){return !(k in result);});
+    div.innerHTML += '<pre>Expected: '+expectedKept.join(', ')+'\nGot:      '+keptKeys.join(', ')
+      + (extra.length ? '\nExtra:    '+extra.join(', ') : '')
+      + (missing.length ? '\nMissing:  '+missing.join(', ') : '') + '</pre>';
+  }
+  document.getElementById('results').appendChild(div);
+  return pass;
+}
+
+var passed=0,failed=0;
+
+// Test 1: Horizontal line — 3 rows of BG above 6-wide FG line
+// Expected: outermost row only (y=2)
+if(test('Horizontal: 3 rows above 6-wide FG', 6, 6,
+  [{x:0,y:5},{x:1,y:5},{x:2,y:5},{x:3,y:5},{x:4,y:5},{x:5,y:5}],
+  [{x:0,y:2},{x:1,y:2},{x:2,y:2},{x:3,y:2},{x:4,y:2},{x:5,y:2},
+   {x:0,y:3},{x:1,y:3},{x:2,y:3},{x:3,y:3},{x:4,y:3},{x:5,y:3},
+   {x:0,y:4},{x:1,y:4},{x:2,y:4},{x:3,y:4},{x:4,y:4},{x:5,y:4}],
+  ['0,2','1,2','2,2','3,2','4,2','5,2']
+))passed++;else failed++;
+
+// Test 2: Horizontal: 2 rows above 6-wide FG
+if(test('Horizontal: 2 rows above 6-wide FG', 6, 5,
+  [{x:0,y:4},{x:1,y:4},{x:2,y:4},{x:3,y:4},{x:4,y:4},{x:5,y:4}],
+  [{x:0,y:2},{x:1,y:2},{x:2,y:2},{x:3,y:2},{x:4,y:2},{x:5,y:2},
+   {x:0,y:3},{x:1,y:3},{x:2,y:3},{x:3,y:3},{x:4,y:3},{x:5,y:3}],
+  ['0,2','1,2','2,2','3,2','4,2','5,2']
+))passed++;else failed++;
+
+// Test 3: Vertical line — 3 cols right of 6-tall FG
+if(test('Vertical: 3 cols right of 6-tall FG', 6, 6,
+  [{x:0,y:0},{x:0,y:1},{x:0,y:2},{x:0,y:3},{x:0,y:4},{x:0,y:5}],
+  [{x:1,y:0},{x:1,y:1},{x:1,y:2},{x:1,y:3},{x:1,y:4},{x:1,y:5},
+   {x:2,y:0},{x:2,y:1},{x:2,y:2},{x:2,y:3},{x:2,y:4},{x:2,y:5},
+   {x:3,y:0},{x:3,y:1},{x:3,y:2},{x:3,y:3},{x:3,y:4},{x:3,y:5}],
+  ['3,0','3,1','3,2','3,3','3,4','3,5']
+))passed++;else failed++;
+
+// Test 4: Angle — 5px diagonal with 2px deep BG on both sides
+// FG diagonal from (3,7) to (7,3). BG surrounds on both sides.
+// Expected: 1px continuous outline, inner diagonal removed.
+if(test('Angle: 5px diagonal 2px deep BG', 10, 10,
+  [{x:3,y:7},{x:4,y:6},{x:5,y:5},{x:6,y:4},{x:7,y:3}],
+  [{x:7,y:1},{x:8,y:1},{x:8,y:2},{x:8,y:3},{x:8,y:4},{x:7,y:5},{x:6,y:6},{x:5,y:7},{x:4,y:8},{x:3,y:9},{x:2,y:8},{x:2,y:9},
+   {x:7,y:2},{x:8,y:5},{x:7,y:6},{x:6,y:7},{x:5,y:8},{x:4,y:9},
+   {x:1,y:6},{x:1,y:7},{x:1,y:8},{x:2,y:6},{x:2,y:7},{x:3,y:5},{x:3,y:6},{x:4,y:4},{x:4,y:5},{x:5,y:3},{x:5,y:4},{x:6,y:2},{x:6,y:3},
+   {x:4,y:7},{x:5,y:6},{x:6,y:5},{x:7,y:4},
+   {x:3,y:8},{x:2,y:5},{x:3,y:4},{x:4,y:3},{x:5,y:2},{x:6,y:1}],
+  ['1,6','1,7','1,8','2,5','2,9','3,4','3,9','4,3','4,9','5,2','5,8',
+   '6,1','6,7','7,1','7,6','8,1','8,2','8,3','8,4','8,5']
+))passed++;else failed++;
+
+// Test 4b: Smaller angle — 3 FG diagonal with 2px deep BG
+if(test('Angle: 2px deep BG thins to 1px', 6, 7,
+  [{x:2,y:5},{x:3,y:4},{x:4,y:3}],
+  [{x:1,y:4},{x:1,y:5},{x:1,y:6},{x:0,y:4},{x:0,y:5},{x:0,y:6},
+   {x:2,y:6},{x:3,y:5},{x:3,y:6},{x:4,y:4},{x:4,y:5},
+   {x:2,y:3},{x:2,y:4},{x:3,y:3},{x:3,y:2},
+   {x:4,y:2},{x:4,y:1},{x:5,y:2},{x:5,y:3},{x:5,y:4},
+   {x:3,y:1},{x:2,y:2},{x:2,y:1}],
+  ['0,4','0,5','0,6','1,4','1,6','2,1','2,2','2,3','2,6','3,1','3,6',
+   '4,1','4,5','5,2','5,3','5,4']
+))passed++;else failed++;
+
+// Test 5: Single FG pixel with 2px ring — should thin to outer ring
+if(test('Single FG: 2px ring thins to outer', 7, 7,
+  [{x:3,y:3}],
+  [{x:2,y:2},{x:3,y:2},{x:4,y:2},{x:2,y:3},{x:4,y:3},{x:2,y:4},{x:3,y:4},{x:4,y:4},
+   {x:1,y:1},{x:2,y:1},{x:3,y:1},{x:4,y:1},{x:5,y:1},
+   {x:1,y:2},{x:5,y:2},{x:1,y:3},{x:5,y:3},{x:1,y:4},{x:5,y:4},
+   {x:1,y:5},{x:2,y:5},{x:3,y:5},{x:4,y:5},{x:5,y:5}],
+  ['1,1','2,1','3,1','4,1','5,1','1,2','5,2','1,3','5,3','1,4','5,4',
+   '1,5','2,5','3,5','4,5','5,5']
+))passed++;else failed++;
+
+// Test 6: O-shape with 2px walls — outer BG kept, inner counter removed
+if(test('O-shape: inner counter BG removed', 9, 8,
+  [{x:1,y:1},{x:2,y:1},{x:3,y:1},{x:4,y:1},{x:5,y:1},{x:6,y:1},{x:7,y:1},
+   {x:1,y:2},{x:2,y:2},{x:3,y:2},{x:4,y:2},{x:5,y:2},{x:6,y:2},{x:7,y:2},
+   {x:1,y:3},{x:2,y:3},{x:6,y:3},{x:7,y:3},
+   {x:1,y:4},{x:2,y:4},{x:6,y:4},{x:7,y:4},
+   {x:1,y:5},{x:2,y:5},{x:3,y:5},{x:4,y:5},{x:5,y:5},{x:6,y:5},{x:7,y:5},
+   {x:1,y:6},{x:2,y:6},{x:3,y:6},{x:4,y:6},{x:5,y:6},{x:6,y:6},{x:7,y:6}],
+  [{x:0,y:0},{x:1,y:0},{x:2,y:0},{x:3,y:0},{x:4,y:0},{x:5,y:0},{x:6,y:0},{x:7,y:0},{x:8,y:0},
+   {x:0,y:1},{x:8,y:1},{x:0,y:2},{x:8,y:2},{x:0,y:3},{x:8,y:3},{x:0,y:4},{x:8,y:4},
+   {x:0,y:5},{x:8,y:5},{x:0,y:6},{x:8,y:6},
+   {x:0,y:7},{x:1,y:7},{x:2,y:7},{x:3,y:7},{x:4,y:7},{x:5,y:7},{x:6,y:7},{x:7,y:7},{x:8,y:7},
+   {x:3,y:3},{x:4,y:3},{x:5,y:3},{x:3,y:4},{x:4,y:4},{x:5,y:4}],
+  ['0,0','1,0','2,0','3,0','4,0','5,0','6,0','7,0','8,0',
+   '0,1','8,1','0,2','8,2','0,3','8,3','0,4','8,4','0,5','8,5','0,6','8,6',
+   '0,7','1,7','2,7','3,7','4,7','5,7','6,7','7,7','8,7']
+))passed++;else failed++;
+
+document.getElementById('results').insertAdjacentHTML('afterbegin',
+  '<h3 style="font-size:16px">'+passed+' passed, '+failed+' failed</h3>');
+</script></body></html>
+</file>
+
 <file path="docs/analyzer-report.js">
 // make-it-look-good — Report Renderers
 // HTML report, markdown export, gauge SVG, progress bars
@@ -36314,15 +36668,20 @@ window.MilgReport = (function() {
         // Affected elements with selectors + text (collapsible, for machine-readable reports)
         if (f.locator && f.locator.selectors && f.locator.selectors.length > 0) {
           var _texts = f.locator.texts || [];
+          var _hasBboxList = f.locator.bboxes && f.locator.bboxes.length > 0 && _hasScreenshots;
           html += '<details class="finding-selectors" style="margin:6px 0;font-size:11px">';
           html += '<summary style="cursor:pointer;color:var(--text-secondary)">' + f.locator.selectors.length + ' affected element' + (f.locator.selectors.length !== 1 ? 's' : '') + '</summary>';
           html += '<div style="margin:4px 0 0;padding:8px;background:var(--bg-alt);border:1px solid var(--border);border-radius:4px;font-size:10px;line-height:1.8;max-height:300px;overflow:auto">';
           f.locator.selectors.forEach(function(sel, si) {
             var txt = _texts[si] || '';
-            html += '<div style="padding:2px 0;border-bottom:1px solid var(--border)">';
-            html += '<code style="color:var(--text-primary)">' + escapeHtml(sel) + '</code>';
+            var canShow = _hasBboxList && si < f.locator.bboxes.length && f.locator.bboxes[si];
+            html += '<div style="padding:2px 0;border-bottom:1px solid var(--border);display:flex;align-items:baseline;gap:6px">';
+            if (canShow) {
+              html += '<a style="cursor:pointer;color:var(--accent);text-decoration:none;flex-shrink:0;font-size:9px" onclick="window.__milgShowBboxOnScreenshot(' + _bboxFindingIdx + ',' + si + ')" title="Show on screenshot">&#128269;</a>';
+            }
+            html += '<span style="flex:1;min-width:0"><code style="color:var(--text-primary)">' + escapeHtml(sel) + '</code>';
             if (txt) html += ' <span style="color:var(--text-secondary);font-style:italic">&quot;' + escapeHtml(txt.substring(0, 50)) + (txt.length > 50 ? '…' : '') + '&quot;</span>';
-            html += '</div>';
+            html += '</span></div>';
           });
           html += '</div></details>';
         }
@@ -36947,350 +37306,6 @@ window.MilgReport = (function() {
 
   return { renderReport: renderReport, renderMarkdown: renderMarkdown, renderCrawlSummary: renderCrawlSummary, renderCrawlPageTab: renderCrawlPageTab };
 })();
-</file>
-
-<file path="docs/tests/test-bg-thinning.html">
-<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>BG Thinning Tests</title>
-<style>
-body{font-family:monospace;margin:20px;background:#1e1e1e;color:#d4d4d4}
-.test{margin:10px 0;padding:10px;border:1px solid #444;border-radius:4px}
-.pass{border-color:#22c55e;background:#052e16}.fail{border-color:#ef4444;background:#2d0a0a}
-canvas{image-rendering:pixelated;border:1px solid #555;margin:4px}
-h3{margin:4px 0;font-size:13px}
-pre{font-size:11px;white-space:pre;margin:4px 0}
-</style></head><body>
-<h2>BG Thinning Algorithm Tests</h2>
-<div id="results"></div>
-<script>
-// BG thinning: produces a 1px outline of BG pixels around FG text edges.
-// Steps:
-//  1. For each BG, find nearest FG. Skip if further BG in same sign-direction.
-//  2. Remove orphans (no FG connection).
-//  3. Keep closest F's claim for multiply-claimed B.
-//  4. Remove B if FG (not other B) blocks line of sight.
-//  5. Thin inner duplicates: remove lower-cheb pixels that have a higher-cheb
-//     neighbor, using depth-limited BFS to preserve local connectivity.
-function runThinning(fgPixels, bgPixels, bgR) {
-  bgR = bgR || 3;
-  var fgSet = {};
-  fgPixels.forEach(function(f) { fgSet[f.x+','+f.y] = true; });
-  var bgSet = {};
-  bgPixels.forEach(function(b) { bgSet[b.x+','+b.y] = true; });
-
-  // Step 1: For each BG within bgR of nearest FG, keep if outermost in direction
-  var bgMarks = {};
-  bgPixels.forEach(function(bg) {
-    var bk = bg.x + ',' + bg.y;
-    // Find nearest FG (Euclidean)
-    var bestFi = -1, bestD = Infinity;
-    fgPixels.forEach(function(fg, fi) {
-      var d = (fg.x-bg.x)*(fg.x-bg.x) + (fg.y-bg.y)*(fg.y-bg.y);
-      if (d < bestD) { bestD = d; bestFi = fi; }
-    });
-    if (bestFi < 0) return;
-    var fg = fgPixels[bestFi];
-    var dx = bg.x - fg.x, dy = bg.y - fg.y;
-    var cheb = Math.max(Math.abs(dx), Math.abs(dy));
-    if (cheb === 0 || cheb > bgR) return;
-
-    // FG blocking between fg and bg
-    var steps = Math.max(Math.abs(dx), Math.abs(dy));
-    var blocked = false;
-    for (var s = 1; s < steps; s++) {
-      var mx = fg.x + Math.round(dx * s / steps);
-      var my = fg.y + Math.round(dy * s / steps);
-      if ((mx+','+my) in fgSet) { blocked = true; break; }
-    }
-    if (blocked) return;
-
-    // hasFurther: skip if a BG exists beyond in same sign-direction
-    var sdx = dx > 0 ? 1 : (dx < 0 ? -1 : 0);
-    var sdy = dy > 0 ? 1 : (dy < 0 ? -1 : 0);
-    var hasFurther = false;
-    for (var ext = 1; ext <= bgR; ext++) {
-      var ex = bg.x + sdx * ext, ey = bg.y + sdy * ext;
-      if (Math.max(Math.abs(ex - fg.x), Math.abs(ey - fg.y)) > bgR) break;
-      if ((ex+','+ey) in fgSet) break;
-      if ((ex+','+ey) in bgSet) { hasFurther = true; break; }
-    }
-    if (hasFurther) return;
-
-    if (!bgMarks[bk]) bgMarks[bk] = [];
-    bgMarks[bk].push({ fi: bestFi, dist: cheb });
-  });
-
-  // Step 2-3: Remove orphans, keep closest F's claim
-  var result = {};
-  for (var k in bgMarks) {
-    if (bgMarks[k].length === 0) continue;
-    var marks = bgMarks[k];
-    var minD = Infinity;
-    marks.forEach(function(m) { if (m.dist < minD) minD = m.dist; });
-    result[k] = marks.filter(function(m) { return m.dist === minD; });
-  }
-
-  // Step 4: Remove if FG (not other BG) blocks line of sight
-  var afterBlock = {};
-  for (var k in result) {
-    var parts = k.split(','), bx = parseInt(parts[0]), by = parseInt(parts[1]);
-    var keepThis = false;
-    result[k].forEach(function(m) {
-      var fg = fgPixels[m.fi];
-      var dx = bx - fg.x, dy = by - fg.y;
-      var steps = Math.max(Math.abs(dx), Math.abs(dy));
-      var blocked = false;
-      for (var s = 1; s < steps; s++) {
-        var mx = fg.x + Math.round(dx * s / steps);
-        var my = fg.y + Math.round(dy * s / steps);
-        if ((mx+','+my) in fgSet && !(mx === fg.x && my === fg.y)) {
-          blocked = true; break;
-        }
-      }
-      if (!blocked) keepThis = true;
-    });
-    if (keepThis) afterBlock[k] = result[k];
-  }
-
-  // Step 5: Thin inner duplicates — remove pixels with lower Chebyshev
-  // distance that have a neighbor at higher Chebyshev distance, but only
-  // if removal doesn't break local connectivity (depth-limited BFS).
-  var chebMap = {};
-  for (var k in afterBlock) { chebMap[k] = afterBlock[k][0].dist; }
-
-  function isLocalBridge(k, keptSet) {
-    var parts = k.split(','), cx = parseInt(parts[0]), cy = parseInt(parts[1]);
-    var neighbors = [];
-    for (var dy = -1; dy <= 1; dy++) {
-      for (var dx = -1; dx <= 1; dx++) {
-        if (dx === 0 && dy === 0) continue;
-        var nk = (cx+dx)+','+(cy+dy);
-        if (nk in keptSet && nk !== k) neighbors.push(nk);
-      }
-    }
-    if (neighbors.length <= 1) return true;
-    // BFS from first neighbor, max 4 hops, excluding k
-    var MAX_DEPTH = 4;
-    var visited = {}; visited[neighbors[0]] = 0;
-    var queue = [neighbors[0]];
-    while (queue.length > 0) {
-      var cur = queue.shift();
-      var depth = visited[cur];
-      if (depth >= MAX_DEPTH) continue;
-      var cp = cur.split(','), cx2 = parseInt(cp[0]), cy2 = parseInt(cp[1]);
-      for (var dy = -1; dy <= 1; dy++) {
-        for (var dx = -1; dx <= 1; dx++) {
-          if (dx === 0 && dy === 0) continue;
-          var nk2 = (cx2+dx)+','+(cy2+dy);
-          if (nk2 !== k && nk2 in keptSet && !(nk2 in visited)) {
-            visited[nk2] = depth + 1;
-            queue.push(nk2);
-          }
-        }
-      }
-    }
-    for (var i = 1; i < neighbors.length; i++) {
-      if (!(neighbors[i] in visited)) return true;
-    }
-    return false;
-  }
-
-  // Collect candidates: pixels with a kept neighbor at higher cheb
-  var candidates = [];
-  for (var k in afterBlock) {
-    var myCheb = chebMap[k], hasHigher = false;
-    var parts = k.split(','), bx = parseInt(parts[0]), by = parseInt(parts[1]);
-    for (var dy = -1; dy <= 1; dy++) {
-      for (var dx = -1; dx <= 1; dx++) {
-        if (dx === 0 && dy === 0) continue;
-        var nk = (bx+dx)+','+(by+dy);
-        if (nk in chebMap && chebMap[nk] > myCheb) hasHigher = true;
-      }
-    }
-    if (hasHigher) candidates.push({ k: k, cheb: myCheb });
-  }
-  // Process inner-most first
-  candidates.sort(function(a,b) { return a.cheb - b.cheb; });
-
-  var keptSet = {};
-  for (var k in afterBlock) keptSet[k] = true;
-
-  candidates.forEach(function(c) {
-    if (!(c.k in keptSet)) return;
-    if (!isLocalBridge(c.k, keptSet)) {
-      delete keptSet[c.k];
-    }
-  });
-
-  var final = {};
-  for (var k in keptSet) { final[k] = afterBlock[k][0].fi; }
-  return Object.keys(final).length > 0 ? final : afterBlock;
-}
-
-function drawGrid(id, w, h, fg, bg, kept, label) {
-  var scale = 20;
-  var pad = 16; // padding for axis labels
-  var c = document.createElement('canvas');
-  c.width = w * scale + pad; c.height = h * scale + pad;
-  var ctx = c.getContext('2d');
-  ctx.fillStyle = '#333'; ctx.fillRect(0,0,c.width,c.height);
-  ctx.save(); ctx.translate(pad, 0); // shift grid right for y-axis labels
-  // Grid lines
-  ctx.strokeStyle='#555';
-  for(var x=0;x<=w;x++){ctx.beginPath();ctx.moveTo(x*scale,0);ctx.lineTo(x*scale,h*scale);ctx.stroke();}
-  for(var y=0;y<=h;y++){ctx.beginPath();ctx.moveTo(0,y*scale);ctx.lineTo(w*scale,y*scale);ctx.stroke();}
-  // BG
-  bg.forEach(function(p){
-    var isKept = (p.x+','+p.y) in kept;
-    ctx.fillStyle = isKept ? '#f97316' : '#553310';
-    ctx.fillRect(p.x*scale+1,p.y*scale+1,scale-2,scale-2);
-    if(!isKept){ctx.strokeStyle='#666';ctx.strokeRect(p.x*scale+2,p.y*scale+2,scale-4,scale-4);}
-  });
-  // FG
-  fg.forEach(function(p){ctx.fillStyle='#06b6d4';ctx.fillRect(p.x*scale+1,p.y*scale+1,scale-2,scale-2)});
-  // Axis labels — x along bottom, y along left
-  ctx.font='9px monospace';ctx.fillStyle='#888';
-  for(var x=0;x<w;x++) ctx.fillText(x,x*scale+scale/2-3,h*scale+12);
-  ctx.save();ctx.translate(-pad,0);
-  for(var y=0;y<h;y++) ctx.fillText(y,2,y*scale+scale/2+3);
-  ctx.restore();
-  // (0,0) origin marker
-  ctx.fillStyle='#ff0';ctx.font='8px monospace';ctx.fillText('↗0,0',0,scale-2);
-  // Cell labels
-  ctx.font='9px monospace';ctx.fillStyle='#fff';
-  bg.forEach(function(p){
-    var isKept = (p.x+','+p.y) in kept;
-    ctx.fillText(isKept?'B':'x',p.x*scale+3,p.y*scale+10);
-    ctx.fillStyle='#aaa';ctx.font='7px monospace';
-    ctx.fillText(p.x+','+p.y,p.x*scale+2,p.y*scale+scale-3);
-    ctx.fillStyle='#fff';ctx.font='9px monospace';
-  });
-  fg.forEach(function(p){
-    ctx.fillText('F',p.x*scale+3,p.y*scale+10);
-    ctx.fillStyle='#aaa';ctx.font='7px monospace';
-    ctx.fillText(p.x+','+p.y,p.x*scale+2,p.y*scale+scale-3);
-    ctx.fillStyle='#fff';ctx.font='9px monospace';
-  });
-
-  ctx.restore(); // undo translate
-  var div = document.createElement('div');
-  div.innerHTML = '<h3>'+label+'</h3>';
-  div.appendChild(c);
-  return div;
-}
-
-function test(name, w, h, fg, bg, expectedKept) {
-  var result = runThinning(fg, bg, 3);
-  var keptKeys = Object.keys(result);
-  var pass = true;
-  expectedKept.forEach(function(k){if(!(k in result)){pass=false}});
-  // Also check no unexpected kept
-  keptKeys.forEach(function(k){if(expectedKept.indexOf(k)===-1){pass=false}});
-
-  var div = document.createElement('div');
-  div.className = 'test ' + (pass?'pass':'fail');
-  div.innerHTML = '<h3>'+(pass?'✓':'✗')+' '+name+'</h3>';
-  var grid = drawGrid(name, w, h, fg, bg, result,
-    'Kept: '+keptKeys.join(' ')+(pass?'':' EXPECTED: '+expectedKept.join(' ')));
-  div.appendChild(grid);
-  if(!pass){
-    var extra = keptKeys.filter(function(k){return expectedKept.indexOf(k)===-1;});
-    var missing = expectedKept.filter(function(k){return !(k in result);});
-    div.innerHTML += '<pre>Expected: '+expectedKept.join(', ')+'\nGot:      '+keptKeys.join(', ')
-      + (extra.length ? '\nExtra:    '+extra.join(', ') : '')
-      + (missing.length ? '\nMissing:  '+missing.join(', ') : '') + '</pre>';
-  }
-  document.getElementById('results').appendChild(div);
-  return pass;
-}
-
-var passed=0,failed=0;
-
-// Test 1: Horizontal line — 3 rows of BG above 6-wide FG line
-// Expected: outermost row only (y=2)
-if(test('Horizontal: 3 rows above 6-wide FG', 6, 6,
-  [{x:0,y:5},{x:1,y:5},{x:2,y:5},{x:3,y:5},{x:4,y:5},{x:5,y:5}],
-  [{x:0,y:2},{x:1,y:2},{x:2,y:2},{x:3,y:2},{x:4,y:2},{x:5,y:2},
-   {x:0,y:3},{x:1,y:3},{x:2,y:3},{x:3,y:3},{x:4,y:3},{x:5,y:3},
-   {x:0,y:4},{x:1,y:4},{x:2,y:4},{x:3,y:4},{x:4,y:4},{x:5,y:4}],
-  ['0,2','1,2','2,2','3,2','4,2','5,2']
-))passed++;else failed++;
-
-// Test 2: Horizontal: 2 rows above 6-wide FG
-if(test('Horizontal: 2 rows above 6-wide FG', 6, 5,
-  [{x:0,y:4},{x:1,y:4},{x:2,y:4},{x:3,y:4},{x:4,y:4},{x:5,y:4}],
-  [{x:0,y:2},{x:1,y:2},{x:2,y:2},{x:3,y:2},{x:4,y:2},{x:5,y:2},
-   {x:0,y:3},{x:1,y:3},{x:2,y:3},{x:3,y:3},{x:4,y:3},{x:5,y:3}],
-  ['0,2','1,2','2,2','3,2','4,2','5,2']
-))passed++;else failed++;
-
-// Test 3: Vertical line — 3 cols right of 6-tall FG
-if(test('Vertical: 3 cols right of 6-tall FG', 6, 6,
-  [{x:0,y:0},{x:0,y:1},{x:0,y:2},{x:0,y:3},{x:0,y:4},{x:0,y:5}],
-  [{x:1,y:0},{x:1,y:1},{x:1,y:2},{x:1,y:3},{x:1,y:4},{x:1,y:5},
-   {x:2,y:0},{x:2,y:1},{x:2,y:2},{x:2,y:3},{x:2,y:4},{x:2,y:5},
-   {x:3,y:0},{x:3,y:1},{x:3,y:2},{x:3,y:3},{x:3,y:4},{x:3,y:5}],
-  ['3,0','3,1','3,2','3,3','3,4','3,5']
-))passed++;else failed++;
-
-// Test 4: Angle — 5px diagonal with 2px deep BG on both sides
-// FG diagonal from (3,7) to (7,3). BG surrounds on both sides.
-// Expected: 1px continuous outline, inner diagonal removed.
-if(test('Angle: 5px diagonal 2px deep BG', 10, 10,
-  [{x:3,y:7},{x:4,y:6},{x:5,y:5},{x:6,y:4},{x:7,y:3}],
-  [{x:7,y:1},{x:8,y:1},{x:8,y:2},{x:8,y:3},{x:8,y:4},{x:7,y:5},{x:6,y:6},{x:5,y:7},{x:4,y:8},{x:3,y:9},{x:2,y:8},{x:2,y:9},
-   {x:7,y:2},{x:8,y:5},{x:7,y:6},{x:6,y:7},{x:5,y:8},{x:4,y:9},
-   {x:1,y:6},{x:1,y:7},{x:1,y:8},{x:2,y:6},{x:2,y:7},{x:3,y:5},{x:3,y:6},{x:4,y:4},{x:4,y:5},{x:5,y:3},{x:5,y:4},{x:6,y:2},{x:6,y:3},
-   {x:4,y:7},{x:5,y:6},{x:6,y:5},{x:7,y:4},
-   {x:3,y:8},{x:2,y:5},{x:3,y:4},{x:4,y:3},{x:5,y:2},{x:6,y:1}],
-  ['1,6','1,7','1,8','2,5','2,9','3,4','3,9','4,3','4,9','5,2','5,8',
-   '6,1','6,7','7,1','7,6','8,1','8,2','8,3','8,4','8,5']
-))passed++;else failed++;
-
-// Test 4b: Smaller angle — 3 FG diagonal with 2px deep BG
-if(test('Angle: 2px deep BG thins to 1px', 6, 7,
-  [{x:2,y:5},{x:3,y:4},{x:4,y:3}],
-  [{x:1,y:4},{x:1,y:5},{x:1,y:6},{x:0,y:4},{x:0,y:5},{x:0,y:6},
-   {x:2,y:6},{x:3,y:5},{x:3,y:6},{x:4,y:4},{x:4,y:5},
-   {x:2,y:3},{x:2,y:4},{x:3,y:3},{x:3,y:2},
-   {x:4,y:2},{x:4,y:1},{x:5,y:2},{x:5,y:3},{x:5,y:4},
-   {x:3,y:1},{x:2,y:2},{x:2,y:1}],
-  ['0,4','0,5','0,6','1,4','1,6','2,1','2,2','2,3','2,6','3,1','3,6',
-   '4,1','4,5','5,2','5,3','5,4']
-))passed++;else failed++;
-
-// Test 5: Single FG pixel with 2px ring — should thin to outer ring
-if(test('Single FG: 2px ring thins to outer', 7, 7,
-  [{x:3,y:3}],
-  [{x:2,y:2},{x:3,y:2},{x:4,y:2},{x:2,y:3},{x:4,y:3},{x:2,y:4},{x:3,y:4},{x:4,y:4},
-   {x:1,y:1},{x:2,y:1},{x:3,y:1},{x:4,y:1},{x:5,y:1},
-   {x:1,y:2},{x:5,y:2},{x:1,y:3},{x:5,y:3},{x:1,y:4},{x:5,y:4},
-   {x:1,y:5},{x:2,y:5},{x:3,y:5},{x:4,y:5},{x:5,y:5}],
-  ['1,1','2,1','3,1','4,1','5,1','1,2','5,2','1,3','5,3','1,4','5,4',
-   '1,5','2,5','3,5','4,5','5,5']
-))passed++;else failed++;
-
-// Test 6: O-shape with 2px walls — outer BG kept, inner counter removed
-if(test('O-shape: inner counter BG removed', 9, 8,
-  [{x:1,y:1},{x:2,y:1},{x:3,y:1},{x:4,y:1},{x:5,y:1},{x:6,y:1},{x:7,y:1},
-   {x:1,y:2},{x:2,y:2},{x:3,y:2},{x:4,y:2},{x:5,y:2},{x:6,y:2},{x:7,y:2},
-   {x:1,y:3},{x:2,y:3},{x:6,y:3},{x:7,y:3},
-   {x:1,y:4},{x:2,y:4},{x:6,y:4},{x:7,y:4},
-   {x:1,y:5},{x:2,y:5},{x:3,y:5},{x:4,y:5},{x:5,y:5},{x:6,y:5},{x:7,y:5},
-   {x:1,y:6},{x:2,y:6},{x:3,y:6},{x:4,y:6},{x:5,y:6},{x:6,y:6},{x:7,y:6}],
-  [{x:0,y:0},{x:1,y:0},{x:2,y:0},{x:3,y:0},{x:4,y:0},{x:5,y:0},{x:6,y:0},{x:7,y:0},{x:8,y:0},
-   {x:0,y:1},{x:8,y:1},{x:0,y:2},{x:8,y:2},{x:0,y:3},{x:8,y:3},{x:0,y:4},{x:8,y:4},
-   {x:0,y:5},{x:8,y:5},{x:0,y:6},{x:8,y:6},
-   {x:0,y:7},{x:1,y:7},{x:2,y:7},{x:3,y:7},{x:4,y:7},{x:5,y:7},{x:6,y:7},{x:7,y:7},{x:8,y:7},
-   {x:3,y:3},{x:4,y:3},{x:5,y:3},{x:3,y:4},{x:4,y:4},{x:5,y:4}],
-  ['0,0','1,0','2,0','3,0','4,0','5,0','6,0','7,0','8,0',
-   '0,1','8,1','0,2','8,2','0,3','8,3','0,4','8,4','0,5','8,5','0,6','8,6',
-   '0,7','1,7','2,7','3,7','4,7','5,7','6,7','7,7','8,7']
-))passed++;else failed++;
-
-document.getElementById('results').insertAdjacentHTML('afterbegin',
-  '<h3 style="font-size:16px">'+passed+' passed, '+failed+' failed</h3>');
-</script></body></html>
 </file>
 
 <file path="docs/analyzer-extract.js">
@@ -40081,6 +40096,13 @@ console.log('[milg] analyzer.js v44.0 loaded');
     }
   };
 
+  // Open viewer focused on a specific bbox within a finding (from affected elements list)
+  window.__milgShowBboxOnScreenshot = function(findingIdx, bboxIdx) {
+    if (window.MilgViewer && reportData) {
+      MilgViewer.showFindingBbox(findingIdx, bboxIdx, reportData);
+    }
+  };
+
   // Open viewer in verify mode focused on a specific selector
   window.__milgShowVerifyOnScreenshot = function(selector) {
     if (!window.MilgViewer || !reportData || !reportData.raw || !reportData.raw.screenshots || !reportData.raw.screenshotMeta) return;
@@ -42564,10 +42586,93 @@ window.MilgViewer = (function() {
     }, 300);
   }
 
+  // Open viewer and zoom to a specific bbox within a finding
+  function showFindingBbox(findingIdx, bboxIdx, reportData) {
+    if (!reportData || !reportData.raw || !reportData.raw.screenshots || !reportData.raw.screenshotMeta) return;
+    if (!reportData.raw.screenshots.length) return;
+
+    // Open viewer to build _allFindings
+    var dummyImg = document.createElement('img');
+    dummyImg.src = reportData.raw.screenshots[0];
+    open(dummyImg, 0, reportData);
+
+    // Map findingIdx → viewerIdx (same as showFinding)
+    var viewerIdx = -1;
+    var reportCounter = 0;
+    for (var ai = 0; ai < _allFindings.length; ai++) {
+      if (_allFindings[ai].severity === 'pass') continue;
+      if (reportCounter === findingIdx) { viewerIdx = ai; break; }
+      reportCounter++;
+    }
+    if (viewerIdx === -1 || !_allFindings[viewerIdx]) return;
+    var target = _allFindings[viewerIdx];
+    var bbox = target.bboxes[bboxIdx] || target.bboxes[0];
+    if (!bbox) return;
+
+    // Filter to show only this finding
+    var meta = reportData.raw.screenshotMeta;
+    _activeFilter = { type: 'finding', value: viewerIdx };
+    updateFilterButtons();
+    renderOverlays();
+
+    // Auto-zoom for the specific bbox
+    var dim = Math.max(bbox.width || 0, bbox.height || 0);
+    var frame = _overlay && _overlay.querySelector('.milg-viewer-frame');
+    var zoomSelect = _overlay && _overlay.querySelector('.milg-viewer-zoom-select');
+    _zoomLevel = dim < 50 ? 3 : dim < 100 ? 2 : 1;
+    if (zoomSelect) {
+      for (var zi = 0; zi < zoomSelect.options.length; zi++) {
+        if (parseFloat(zoomSelect.options[zi].value) === _zoomLevel) { zoomSelect.selectedIndex = zi; break; }
+      }
+    }
+    if (frame) applyZoom(frame);
+
+    // Scroll to this specific bbox and flash it
+    var scale = meta.scale;
+    var targetY = Math.round(bbox.top * scale) - _calibrationOffsetY;
+    var targetX = Math.round(bbox.left * scale);
+    setTimeout(function() {
+      var content = _overlay && _overlay.querySelector('.milg-viewer-content');
+      if (content) {
+        var frameEl = _overlay.querySelector('.milg-viewer-frame');
+        var imgEl = frameEl && frameEl.querySelector('.milg-viewer-img');
+        if (imgEl && imgEl.naturalWidth > 0) {
+          var displayScale = imgEl.offsetWidth / imgEl.naturalWidth;
+          content.scrollTop = Math.max(0, (targetY * displayScale) - content.clientHeight / 2);
+          content.scrollLeft = Math.max(0, (targetX * displayScale) - content.clientWidth / 2);
+        }
+      }
+      // Flash the matching rects
+      var svg = _overlay && _overlay.querySelector('.milg-viewer-svg');
+      if (svg) {
+        svg.querySelectorAll('rect[data-finding]').forEach(function(rect) {
+          var rfi = parseInt(rect.getAttribute('data-finding'));
+          var ry = parseFloat(rect.getAttribute('y'));
+          var rx = parseFloat(rect.getAttribute('x'));
+          if (rfi === viewerIdx && Math.abs(ry - targetY) < 5 && Math.abs(rx - targetX) < 5) {
+            var origFill = rect.getAttribute('fill');
+            var origStroke = rect.getAttribute('stroke');
+            var flash = 0;
+            (function pulse() {
+              var on = flash % 2 === 0;
+              rect.setAttribute('fill', on ? 'rgba(245,158,11,0.5)' : origFill);
+              rect.setAttribute('stroke', on ? '#f59e0b' : origStroke);
+              rect.setAttribute('stroke-width', on ? '3' : '1.5');
+              flash++;
+              if (flash < 8) setTimeout(pulse, 200);
+              else { rect.setAttribute('fill', origFill); rect.setAttribute('stroke', origStroke); rect.setAttribute('stroke-width', '1.5'); }
+            })();
+          }
+        });
+      }
+    }, 500);
+  }
+
   return {
     open: open,
     close: close,
     showFinding: showFinding,
+    showFindingBbox: showFindingBbox,
     showVerifyResult: showVerifyResult
   };
 })();
@@ -44076,7 +44181,7 @@ window.MilgContrastVerify = (function() {
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v44.9</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v45.0</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -44442,30 +44547,30 @@ window.MilgContrastVerify = (function() {
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=44.9"></script>
-  <script src="scoring/contrast.js?v=44.9"></script>
-  <script src="scoring/typography.js?v=44.9"></script>
-  <script src="scoring/spacing.js?v=44.9"></script>
-  <script src="scoring/touch.js?v=44.9"></script>
-  <script src="scoring/accessibility.js?v=44.9"></script>
-  <script src="scoring/responsive.js?v=44.9"></script>
-  <script src="scoring/consistency.js?v=44.9"></script>
-  <script src="scoring/cognitive.js?v=44.9"></script>
-  <script src="scoring/layout.js?v=44.9"></script>
-  <script src="scoring/performance.js?v=44.9"></script>
-  <script src="scoring/readability.js?v=44.9"></script>
-  <script src="scoring/filters.js?v=44.9"></script>
-  <script src="scoring/balance.js?v=44.9"></script>
+  <script src="scoring/registry.js?v=45.0"></script>
+  <script src="scoring/contrast.js?v=45.0"></script>
+  <script src="scoring/typography.js?v=45.0"></script>
+  <script src="scoring/spacing.js?v=45.0"></script>
+  <script src="scoring/touch.js?v=45.0"></script>
+  <script src="scoring/accessibility.js?v=45.0"></script>
+  <script src="scoring/responsive.js?v=45.0"></script>
+  <script src="scoring/consistency.js?v=45.0"></script>
+  <script src="scoring/cognitive.js?v=45.0"></script>
+  <script src="scoring/layout.js?v=45.0"></script>
+  <script src="scoring/performance.js?v=45.0"></script>
+  <script src="scoring/readability.js?v=45.0"></script>
+  <script src="scoring/filters.js?v=45.0"></script>
+  <script src="scoring/balance.js?v=45.0"></script>
   <!-- Report rendering + UI -->
-  <script src="analyzer-report.js?v=44.9"></script>
-  <script src="analyzer-crawl.js?v=44.9"></script>
-  <script src="analyzer-extract.js?v=44.9"></script>
-  <script src="analyzer-iframe.js?v=44.9"></script>
-  <script src="analyzer-proxy.js?v=44.9"></script>
-  <script src="analyzer-crawl-ui.js?v=44.9"></script>
-  <script src="analyzer-contrast-verify.js?v=44.9"></script>
-  <script src="analyzer-viewer.js?v=44.9"></script>
-  <script src="analyzer.js?v=44.9"></script>
+  <script src="analyzer-report.js?v=45.0"></script>
+  <script src="analyzer-crawl.js?v=45.0"></script>
+  <script src="analyzer-extract.js?v=45.0"></script>
+  <script src="analyzer-iframe.js?v=45.0"></script>
+  <script src="analyzer-proxy.js?v=45.0"></script>
+  <script src="analyzer-crawl-ui.js?v=45.0"></script>
+  <script src="analyzer-contrast-verify.js?v=45.0"></script>
+  <script src="analyzer-viewer.js?v=45.0"></script>
+  <script src="analyzer.js?v=45.0"></script>
 </body>
 </html>
 </file>

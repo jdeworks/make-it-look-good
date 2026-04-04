@@ -89,13 +89,23 @@ function scoreResponsive(data) {
   // Horizontal overflow
   if (data.structure && data.structure.hasHorizontalOverflow) {
     checks++;
+    var culprits = (data.structure && data.structure.overflowCulprits) || [];
+    var culpritDetail = 'Content extends beyond viewport width — common responsive design failure';
+    if (culprits.length > 0) {
+      culpritDetail += '. Offending elements: ' + culprits.map(function(c) {
+        return c.selector + ' (' + c.width + 'px wide, overflows by ' + c.overflow + 'px)';
+      }).join('; ');
+    }
+    var culpritBboxes = culprits.filter(function(c) { return c.bbox; }).map(function(c) { return c.bbox; });
+    var culpritSelectors = culprits.map(function(c) { return c.selector; });
     findings.push({
       severity: 'warning',
       title: 'Page has horizontal overflow (horizontal scrollbar)',
-      detail: 'Content extends beyond viewport width — common responsive design failure',
+      detail: culpritDetail,
       fix: 'Find elements with fixed widths wider than the viewport. Add overflow-x: hidden to body or fix the overflowing element.',
       presetRef: null,
-      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
+      locator: culpritBboxes.length > 0 ? { selector: '', text: '', bboxes: culpritBboxes, selectors: culpritSelectors } : undefined
     });
   } else if (data.structure && data.structure.hasHorizontalOverflow === false) {
     checks++;

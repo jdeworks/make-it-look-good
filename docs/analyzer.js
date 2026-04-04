@@ -359,6 +359,13 @@ console.log('[milg] analyzer.js v44.0 loaded');
     }
   };
 
+  // Open viewer focused on a specific bbox within a finding (from affected elements list)
+  window.__milgShowBboxOnScreenshot = function(findingIdx, bboxIdx) {
+    if (window.MilgViewer && reportData) {
+      MilgViewer.showFindingBbox(findingIdx, bboxIdx, reportData);
+    }
+  };
+
   // Open viewer in verify mode focused on a specific selector
   window.__milgShowVerifyOnScreenshot = function(selector) {
     if (!window.MilgViewer || !reportData || !reportData.raw || !reportData.raw.screenshots || !reportData.raw.screenshotMeta) return;

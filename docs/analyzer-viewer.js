@@ -1515,10 +1515,93 @@ window.MilgViewer = (function() {
     }, 300);
   }
 
+  // Open viewer and zoom to a specific bbox within a finding
+  function showFindingBbox(findingIdx, bboxIdx, reportData) {
+    if (!reportData || !reportData.raw || !reportData.raw.screenshots || !reportData.raw.screenshotMeta) return;
+    if (!reportData.raw.screenshots.length) return;
+
+    // Open viewer to build _allFindings
+    var dummyImg = document.createElement('img');
+    dummyImg.src = reportData.raw.screenshots[0];
+    open(dummyImg, 0, reportData);
+
+    // Map findingIdx → viewerIdx (same as showFinding)
+    var viewerIdx = -1;
+    var reportCounter = 0;
+    for (var ai = 0; ai < _allFindings.length; ai++) {
+      if (_allFindings[ai].severity === 'pass') continue;
+      if (reportCounter === findingIdx) { viewerIdx = ai; break; }
+      reportCounter++;
+    }
+    if (viewerIdx === -1 || !_allFindings[viewerIdx]) return;
+    var target = _allFindings[viewerIdx];
+    var bbox = target.bboxes[bboxIdx] || target.bboxes[0];
+    if (!bbox) return;
+
+    // Filter to show only this finding
+    var meta = reportData.raw.screenshotMeta;
+    _activeFilter = { type: 'finding', value: viewerIdx };
+    updateFilterButtons();
+    renderOverlays();
+
+    // Auto-zoom for the specific bbox
+    var dim = Math.max(bbox.width || 0, bbox.height || 0);
+    var frame = _overlay && _overlay.querySelector('.milg-viewer-frame');
+    var zoomSelect = _overlay && _overlay.querySelector('.milg-viewer-zoom-select');
+    _zoomLevel = dim < 50 ? 3 : dim < 100 ? 2 : 1;
+    if (zoomSelect) {
+      for (var zi = 0; zi < zoomSelect.options.length; zi++) {
+        if (parseFloat(zoomSelect.options[zi].value) === _zoomLevel) { zoomSelect.selectedIndex = zi; break; }
+      }
+    }
+    if (frame) applyZoom(frame);
+
+    // Scroll to this specific bbox and flash it
+    var scale = meta.scale;
+    var targetY = Math.round(bbox.top * scale) - _calibrationOffsetY;
+    var targetX = Math.round(bbox.left * scale);
+    setTimeout(function() {
+      var content = _overlay && _overlay.querySelector('.milg-viewer-content');
+      if (content) {
+        var frameEl = _overlay.querySelector('.milg-viewer-frame');
+        var imgEl = frameEl && frameEl.querySelector('.milg-viewer-img');
+        if (imgEl && imgEl.naturalWidth > 0) {
+          var displayScale = imgEl.offsetWidth / imgEl.naturalWidth;
+          content.scrollTop = Math.max(0, (targetY * displayScale) - content.clientHeight / 2);
+          content.scrollLeft = Math.max(0, (targetX * displayScale) - content.clientWidth / 2);
+        }
+      }
+      // Flash the matching rects
+      var svg = _overlay && _overlay.querySelector('.milg-viewer-svg');
+      if (svg) {
+        svg.querySelectorAll('rect[data-finding]').forEach(function(rect) {
+          var rfi = parseInt(rect.getAttribute('data-finding'));
+          var ry = parseFloat(rect.getAttribute('y'));
+          var rx = parseFloat(rect.getAttribute('x'));
+          if (rfi === viewerIdx && Math.abs(ry - targetY) < 5 && Math.abs(rx - targetX) < 5) {
+            var origFill = rect.getAttribute('fill');
+            var origStroke = rect.getAttribute('stroke');
+            var flash = 0;
+            (function pulse() {
+              var on = flash % 2 === 0;
+              rect.setAttribute('fill', on ? 'rgba(245,158,11,0.5)' : origFill);
+              rect.setAttribute('stroke', on ? '#f59e0b' : origStroke);
+              rect.setAttribute('stroke-width', on ? '3' : '1.5');
+              flash++;
+              if (flash < 8) setTimeout(pulse, 200);
+              else { rect.setAttribute('fill', origFill); rect.setAttribute('stroke', origStroke); rect.setAttribute('stroke-width', '1.5'); }
+            })();
+          }
+        });
+      }
+    }, 500);
+  }
+
   return {
     open: open,
     close: close,
     showFinding: showFinding,
+    showFindingBbox: showFindingBbox,
     showVerifyResult: showVerifyResult
   };
 })();
