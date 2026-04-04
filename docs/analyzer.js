@@ -1,7 +1,8 @@
-// make-it-look-good — Design Analyzer (Main UI Controller)
+// make-it-look-good — Design Analyzer (Main UI Controller) v43.2
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
+console.log('[milg] analyzer.js v43.2 loaded');
 
 (function() {
   "use strict";
@@ -816,6 +817,7 @@
         }
 
         var isDeepScan = document.getElementById('deepScanCheck') && document.getElementById('deepScanCheck').checked;
+        console.log('[milg] URL analysis — deepScan:', isDeepScan, 'element:', document.getElementById('deepScanCheck'));
         if (isDeepScan) {
           var deepWantShots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
           _activeViewportIdx = 0;
