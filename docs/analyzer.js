@@ -297,6 +297,27 @@
     }
   };
 
+  // Open viewer in verify mode focused on a specific selector
+  window.__milgShowVerifyOnScreenshot = function(selector) {
+    if (!window.MilgViewer || !reportData || !reportData.raw || !reportData.raw.screenshots || !reportData.raw.screenshotMeta) return;
+    // Find the verify result matching this selector
+    var verifyResults = reportData._contrastVerifyResults || [];
+    var match = null;
+    verifyResults.forEach(function(vr) { if (vr.selector === selector) match = vr; });
+    // Also check bbox edge results
+    var bboxEdgeResults = reportData._bboxEdgeResults || [];
+    if (!match) bboxEdgeResults.forEach(function(ber) { if (ber.selector === selector) match = ber; });
+    if (!match || !match.bbox) return;
+    // Open viewer on the correct section
+    var meta = reportData.raw.screenshotMeta;
+    var sectionIdx = Math.floor(match.bbox.top / meta.viewportHeight);
+    sectionIdx = Math.min(sectionIdx, reportData.raw.screenshots.length - 1);
+    var dummyImg = document.createElement('img');
+    dummyImg.src = reportData.raw.screenshots[0];
+    MilgViewer.open(dummyImg, sectionIdx, reportData);
+    MilgViewer.showVerifyResult(selector);
+  };
+
   // Viewport switching for deep scan results
   window.__milgSwitchViewport = function(idx) {
     if (!lastRawData || !lastRawData.deepScan || !lastRawData.deepScan.viewportData) return;

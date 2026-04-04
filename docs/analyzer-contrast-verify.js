@@ -1356,6 +1356,7 @@ window.MilgContrastVerify = (function() {
         html += _swatch(r.pixelBgWorst || r.pixelBgAvg, isDark);
         html += '<span style="font-size:11px;color:var(--text-secondary)"> ' + (r.pixelBgWorst || r.pixelBgAvg || '?') + '</span>';
         if (r.sampleCount) html += '<span style="font-size:10px;color:var(--text-secondary)"> (' + r.sampleCount.fg + ' FG, ' + r.sampleCount.bg + ' BG samples)</span>';
+        if (r.bbox) html += '<br><a class="finding-show-on-screenshot" style="font-size:11px;cursor:pointer;color:var(--accent)" onclick="window.__milgShowVerifyOnScreenshot(\'' + (r.selector || '').replace(/'/g, "\\'") + '\')">Show on screenshot</a>';
         html += '</div>';
       });
       html += '</div>';
@@ -1375,6 +1376,7 @@ window.MilgContrastVerify = (function() {
         html += _swatch(r.pixelFg, isDark);
         html += '<span style="font-size:11px"> BG: </span>';
         html += _swatch(r.pixelBgAvg || r.pixelBgWorst, isDark);
+        if (r.bbox) html += '<br><a class="finding-show-on-screenshot" style="font-size:11px;cursor:pointer;color:var(--accent)" onclick="window.__milgShowVerifyOnScreenshot(\'' + (r.selector || '').replace(/'/g, "\\'") + '\')">Show on screenshot</a>';
         html += '</div>';
       });
       html += '</div>';
@@ -1398,6 +1400,7 @@ window.MilgContrastVerify = (function() {
         html += '<span style="font-size:11px"> Worst BG: </span>';
         html += _swatch(r.pixelBgWorst, isDark);
         if (r.sampleCount) html += '<span style="font-size:10px;color:var(--text-secondary)"> (' + r.sampleCount.fg + ' FG, ' + r.sampleCount.bg + ' BG samples)</span>';
+        if (r.bbox) html += '<br><a class="finding-show-on-screenshot" style="font-size:11px;cursor:pointer;color:var(--accent)" onclick="window.__milgShowVerifyOnScreenshot(\'' + (r.selector || '').replace(/'/g, "\\'") + '\')">Show on screenshot</a>';
         html += '</div>';
       });
 
@@ -1429,6 +1432,7 @@ window.MilgContrastVerify = (function() {
         html += '<span style="display:inline-block;width:12px;height:12px;border-radius:2px;vertical-align:middle;border:1px solid ' + (isDark ? '#555' : '#ccc') + ';background:' + r.innerColor + '"></span>';
         html += '<span style="font-size:11px"> Outer: </span>';
         html += '<span style="display:inline-block;width:12px;height:12px;border-radius:2px;vertical-align:middle;border:1px solid ' + (isDark ? '#555' : '#ccc') + ';background:' + r.outerColor + '"></span>';
+        if (r.bbox) html += '<br><a class="finding-show-on-screenshot" style="font-size:11px;cursor:pointer;color:var(--accent)" onclick="window.__milgShowVerifyOnScreenshot(\'' + (r.selector || '').replace(/'/g, "\\'") + '\')">Show on screenshot</a>';
         html += '</div>';
       });
       html += '</div>';

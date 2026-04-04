@@ -594,7 +594,8 @@ window.MilgViewer = (function() {
         svg.appendChild(label);
       }
 
-      // Sample points + debug layers + group data stored for interaction
+      // Selector + sample points + debug layers + group data stored for interaction
+      rect._selector = vr.selector || null;
       rect._samplePoints = vr.samplePoints || null;
       rect._worstPoint = vr.worstPoint || null;
       rect._debug = vr._debug || null;
@@ -621,6 +622,7 @@ window.MilgViewer = (function() {
         rect.setAttribute('stroke-width', '1.5');
         rect.setAttribute('stroke-dasharray', '4 3');
         rect.setAttribute('rx', '2');
+        rect._selector = ber.selector || null;
         svg.appendChild(rect);
         // Label
         if (bw > 40 && bh > 12) {
@@ -1406,9 +1408,49 @@ window.MilgViewer = (function() {
     }, 500);
   }
 
+  // Open viewer in verify mode focused on a specific selector's bbox
+  function showVerifyResult(selector) {
+    if (!_overlay || !_reportData || !_meta) return;
+    _activeFilter = { type: 'verify', value: 'all' };
+    updateFilterButtons();
+    renderOverlays();
+    // Find the matching verify result to get bbox
+    var verifyResults = (_reportData._contrastVerifyResults || []);
+    var bboxEdgeResults = (_reportData._bboxEdgeResults || []);
+    var match = null;
+    verifyResults.forEach(function(vr) { if (vr.selector === selector) match = vr; });
+    if (!match) bboxEdgeResults.forEach(function(ber) { if (ber.selector === selector) match = ber; });
+    if (!match || !match.bbox) return;
+    var scale = _meta.scale;
+    var targetY = Math.round(match.bbox.top * scale) - _calibrationOffsetY;
+    // Scroll to the element
+    setTimeout(function() {
+      var content = _overlay && _overlay.querySelector('.milg-viewer-content');
+      var frame = _overlay && _overlay.querySelector('.milg-viewer-frame');
+      if (!content || !frame) return;
+      var imgEl = frame.querySelector('.milg-viewer-img');
+      if (imgEl && imgEl.naturalWidth > 0) {
+        var displayScale = imgEl.offsetWidth / imgEl.naturalWidth;
+        content.scrollTop = Math.max(0, (targetY * displayScale) - content.clientHeight / 2);
+      }
+      // Highlight matching rect
+      var svg = _overlay.querySelector('.milg-viewer-svg');
+      if (svg) {
+        svg.querySelectorAll('rect').forEach(function(rect) {
+          if (rect._selector === selector || (rect._verifySelector && rect._verifySelector === selector)) {
+            rect.setAttribute('stroke-width', '3');
+            rect.setAttribute('stroke', '#f59e0b');
+            setTimeout(function() { rect.setAttribute('stroke-width', '1.5'); }, 2000);
+          }
+        });
+      }
+    }, 300);
+  }
+
   return {
     open: open,
     close: close,
-    showFinding: showFinding
+    showFinding: showFinding,
+    showVerifyResult: showVerifyResult
   };
 })();
