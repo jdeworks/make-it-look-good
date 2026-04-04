@@ -537,8 +537,12 @@ window.MilgViewer = (function() {
   }
 
   function renderVerifyOverlays(svg) {
-    if (!_reportData || !_reportData._contrastVerifyResults || !_meta) return;
+    if (!_reportData || !_reportData._contrastVerifyResults || !_meta) {
+      console.warn('[milg-viewer] renderVerifyOverlays: missing data', { hasReport: !!_reportData, hasResults: !!(_reportData && _reportData._contrastVerifyResults), hasMeta: !!_meta });
+      return;
+    }
     var results = _reportData._contrastVerifyResults;
+    console.log('[milg-viewer] renderVerifyOverlays:', results.length, 'results, scale:', _meta.scale, 'canvas:', _meta.canvasWidth + 'x' + _meta.canvasHeight);
     var showFails = _activeFilter.value === 'fails';
 
     var vScaleX = _meta.scale;
@@ -629,6 +633,7 @@ window.MilgViewer = (function() {
       rect._bgKeyMap = vr._bgKeyMap || null;
       rect._sectionOffset = (vr.sectionIdx && _meta.viewportHeight) ? vr.sectionIdx * Math.round(_meta.viewportHeight * vScaleX) : 0;
     });
+    console.log('[milg-viewer] Verify rects created:', svg.querySelectorAll('rect[data-verify]').length);
 
     // BBox edge contrast results — render as dashed yellow rects
     var bboxEdgeResults = (_reportData && _reportData._bboxEdgeResults) || [];
