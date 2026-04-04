@@ -406,16 +406,18 @@ window.MilgViewer = (function() {
       if (_activeFilter.type === 'category' && finding.icon !== _activeFilter.value) return;
       if (_activeFilter.type === 'severity' && _activeFilter.value !== 'all' && finding.severity !== _activeFilter.value) return;
 
-      // If this is a CSS "pass" but pixel verification says it fails, skip green overlay
+      // If CSS says "pass" but pixel verification says it fails, override to error color
+      var _pixelOverride = null;
       if (finding.severity === 'pass' && finding.detail) {
-        var passVr = null;
         Object.keys(verifyMap).forEach(function(sel) {
-          if (finding.detail.indexOf(sel) !== -1) passVr = verifyMap[sel];
+          if (finding.detail.indexOf(sel) !== -1) {
+            var vr = verifyMap[sel];
+            if (vr && vr.crossesBoundary && vr.cssPasses && !vr.pixelPasses) _pixelOverride = 'error';
+          }
         });
-        if (passVr && passVr.crossesBoundary && passVr.cssPasses && !passVr.pixelPasses) return;
       }
 
-      var color = COLORS[finding.severity] || COLORS.info;
+      var color = _pixelOverride ? COLORS[_pixelOverride] : (COLORS[finding.severity] || COLORS.info);
 
       // Check pixel verification — override color based on P10 ratio
       var verifyResult = null;
@@ -1185,13 +1187,28 @@ window.MilgViewer = (function() {
   }
 
   function scrollToFinding(findingIdx) {
-    close();
-    var el = document.querySelector('[data-finding-idx="' + findingIdx + '"]');
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      el.style.transition = 'box-shadow 300ms ease';
-      el.style.boxShadow = '0 0 0 3px var(--primary, #2563eb)';
-      setTimeout(function() { el.style.boxShadow = ''; }, 1500);
+    // Don't close the viewer — just filter to show only this finding
+    _activeFilter = { type: 'finding', value: findingIdx };
+    updateFilterButtons();
+    renderOverlays();
+    // Flash the finding's rects
+    var svg = _overlay && _overlay.querySelector('.milg-viewer-svg');
+    if (svg) {
+      svg.querySelectorAll('rect[data-finding]').forEach(function(rect) {
+        if (parseInt(rect.getAttribute('data-finding')) === findingIdx) {
+          var origFill = rect.getAttribute('fill');
+          var origStroke = rect.getAttribute('stroke');
+          var flash = 0;
+          (function pulse() {
+            var on = flash % 2 === 0;
+            rect.setAttribute('fill', on ? 'rgba(245,158,11,0.4)' : origFill);
+            rect.setAttribute('stroke', on ? '#f59e0b' : origStroke);
+            flash++;
+            if (flash < 6) setTimeout(pulse, 250);
+            else { rect.setAttribute('fill', origFill); rect.setAttribute('stroke', origStroke); }
+          })();
+        }
+      });
     }
   }
 
