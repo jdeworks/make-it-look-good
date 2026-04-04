@@ -393,11 +393,13 @@ window.MilgViewer = (function() {
     var scaleX = _meta.scale;
     var scaleY = _meta.scale;
 
-    // Build pixel verification lookup
-    var verifyMap = {};
+    // Build pixel verification lookups: by selector AND by bbox position
+    var verifyBySelector = {};
+    var verifyByPos = {}; // "left,top" → verify result (for bbox-based matching)
     if (_reportData && _reportData._contrastVerifyResults) {
       _reportData._contrastVerifyResults.forEach(function(vr) {
-        if (vr.selector) verifyMap[vr.selector] = vr;
+        if (vr.selector) verifyBySelector[vr.selector] = vr;
+        if (vr.bbox) verifyByPos[Math.round(vr.bbox.left) + ',' + Math.round(vr.bbox.top)] = vr;
       });
     }
 
@@ -406,42 +408,7 @@ window.MilgViewer = (function() {
       if (_activeFilter.type === 'category' && finding.icon !== _activeFilter.value) return;
       if (_activeFilter.type === 'severity' && _activeFilter.value !== 'all' && finding.severity !== _activeFilter.value) return;
 
-      // If CSS says "pass" but pixel verification says it fails, override to error color
-      var _pixelOverride = null;
-      if (finding.severity === 'pass' && finding.detail) {
-        Object.keys(verifyMap).forEach(function(sel) {
-          if (finding.detail.indexOf(sel) !== -1) {
-            var vr = verifyMap[sel];
-            if (vr && vr.crossesBoundary && vr.cssPasses && !vr.pixelPasses) _pixelOverride = 'error';
-          }
-        });
-      }
-
-      var color = _pixelOverride ? COLORS[_pixelOverride] : (COLORS[finding.severity] || COLORS.info);
-
-      // Check pixel verification — override color based on P10 ratio
-      var verifyResult = null;
-      if (finding.detail) {
-        Object.keys(verifyMap).forEach(function(sel) {
-          if (finding.detail.indexOf(sel) !== -1) verifyResult = verifyMap[sel];
-        });
-      }
-
-      // Use pixel-verified P10 ratio for color when available
-      if (verifyResult && verifyResult.pixelRatioP10) {
-        var p10 = parseFloat(verifyResult.pixelRatioP10);
-        var needed = verifyResult.neededRatio || 4.5;
-        if (p10 < needed) {
-          // Fail: P10 below threshold
-          color = COLORS.error;
-        } else if (p10 < needed * 1.2) {
-          // Close call: P10 passes but within 20% of threshold
-          color = COLORS.warning;
-        } else {
-          // Solid pass
-          color = COLORS.pass;
-        }
-      }
+      var color = COLORS[finding.severity] || COLORS.info;
 
       finding.bboxes.forEach(function(bbox) {
         var x = Math.round(bbox.left * scaleX);
@@ -449,23 +416,49 @@ window.MilgViewer = (function() {
         var w = Math.round(bbox.width * scaleX);
         var h = Math.round(bbox.height * scaleY);
 
+        // Match pixel verify result for THIS specific bbox (by position or selector)
+        var bboxKey = Math.round(bbox.left) + ',' + Math.round(bbox.top);
+        var vr = verifyByPos[bboxKey] || null;
+        // Fallback: match by selector in finding detail
+        if (!vr && finding.detail) {
+          Object.keys(verifyBySelector).forEach(function(sel) {
+            if (finding.detail.indexOf(sel) !== -1) vr = verifyBySelector[sel];
+          });
+        }
+
+        // Override color based on pixel verification
+        var bboxColor = color;
+        if (vr) {
+          if (vr.pixelRatioP10) {
+            var p10 = parseFloat(vr.pixelRatioP10);
+            var needed = vr.neededRatio || 4.5;
+            if (p10 < needed) bboxColor = COLORS.error;
+            else if (p10 < needed * 1.2) bboxColor = COLORS.warning;
+            else bboxColor = COLORS.pass;
+          } else if (vr.crossesBoundary && vr.cssPasses && !vr.pixelPasses) {
+            bboxColor = COLORS.error;
+          } else if (vr.crossesBoundary && !vr.cssPasses && vr.pixelPasses) {
+            bboxColor = COLORS.pass;
+          }
+        }
+
         var rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
         rect.setAttribute('x', x);
         rect.setAttribute('y', y);
         rect.setAttribute('width', Math.max(w, 4));
         rect.setAttribute('height', Math.max(h, 4));
-        rect.setAttribute('fill', color.fill);
-        rect.setAttribute('stroke', color.stroke);
+        rect.setAttribute('fill', bboxColor.fill);
+        rect.setAttribute('stroke', bboxColor.stroke);
         rect.setAttribute('stroke-width', '1.5');
         rect.setAttribute('rx', '2');
         rect.setAttribute('data-finding', fIdx);
 
         // Dashed indicator when pixel verification disagrees with CSS
-        if (verifyResult) {
-          if (verifyResult.crossesBoundary) {
+        if (vr) {
+          if (vr.crossesBoundary) {
             rect.setAttribute('stroke-width', '2');
             rect.setAttribute('stroke-dasharray', '6 2');
-          } else if (verifyResult.significant) {
+          } else if (vr.significant) {
             rect.setAttribute('stroke-dasharray', '4 2');
           }
         }
