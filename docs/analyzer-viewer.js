@@ -381,8 +381,8 @@ window.MilgViewer = (function() {
     }
     if (hint) hint.parentNode.removeChild(hint);
 
-    // Handle pixel verification filter
-    if (_activeFilter.type === 'verify') {
+    // Handle pixel verification filter (including single-selector mode)
+    if (_activeFilter.type === 'verify' || _activeFilter.type === 'verifySelector') {
       renderVerifyOverlays(svg);
       return;
     }
@@ -547,9 +547,13 @@ window.MilgViewer = (function() {
       filterLayer = parseInt(_activeFilter.value.substring(5));
     }
 
+    // Single-selector filter: only show the matching element
+    var filterSelector = _activeFilter.type === 'verifySelector' ? _activeFilter.value : null;
+
     results.forEach(function(vr, vIdx) {
-      if (showFails && !vr.crossesBoundary) return;
-      if (filterLayer !== null && (vr.maskLayer || 0) !== filterLayer) return;
+      if (filterSelector && vr.selector !== filterSelector) return;
+      if (!filterSelector && showFails && !vr.crossesBoundary) return;
+      if (!filterSelector && filterLayer !== null && (vr.maskLayer || 0) !== filterLayer) return;
       var bbox = vr.bbox;
       if (!bbox) return;
 
@@ -607,9 +611,10 @@ window.MilgViewer = (function() {
 
     // BBox edge contrast results — render as dashed yellow rects
     var bboxEdgeResults = (_reportData && _reportData._bboxEdgeResults) || [];
-    if (bboxEdgeResults.length > 0 && !showFails) {
+    if (bboxEdgeResults.length > 0 && (!showFails || filterSelector)) {
       bboxEdgeResults.forEach(function(ber) {
         if (!ber.bbox || !ber.isWarning) return;
+        if (filterSelector && ber.selector !== filterSelector) return;
         var bx = Math.round(ber.bbox.left * vScaleX);
         var by = Math.round(ber.bbox.top * vScaleY) - _calibrationOffsetY;
         var bw = Math.round(ber.bbox.width * vScaleX);
@@ -1436,7 +1441,7 @@ window.MilgViewer = (function() {
   // Open viewer in verify mode focused on a specific selector's bbox
   function showVerifyResult(selector) {
     if (!_overlay || !_reportData || !_meta) return;
-    _activeFilter = { type: 'verify', value: 'all' };
+    _activeFilter = { type: 'verifySelector', value: selector };
     updateFilterButtons();
     renderOverlays();
     // Find the matching verify result to get bbox

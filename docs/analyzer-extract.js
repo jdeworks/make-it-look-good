@@ -561,6 +561,9 @@ window.MilgExtract = (function() {
       var hasBorder = s.borderStyle !== 'none' && parseFloat(s.borderWidth) >= 1;
       var hasOutline = s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) >= 1;
       var hasShadow = s.boxShadow && s.boxShadow !== 'none';
+      // Skip elements with no visual boundary — edge test only makes sense
+      // when the element has its own background, border, or shadow
+      if (!hasBg && !hasBorder && !hasOutline && !hasShadow) return;
       // Get parent effective bg
       var parentBg = { r: 255, g: 255, b: 255 };
       var pNode = el.parentElement;

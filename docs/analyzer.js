@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v43.9 loaded');
+console.log('[milg] analyzer.js v44.0 loaded');
 
 (function() {
   "use strict";
@@ -366,13 +366,19 @@ console.log('[milg] analyzer.js v43.9 loaded');
     var vpData = deepScan.viewportData[idx];
     if (!vpData || !vpData.data) { showToast('No data for this viewport'); return; }
     _activeViewportIdx = idx;
-    // Deep-clone viewport data, skipping deepScan/viewportData to avoid circular refs
-    var switchedData = JSON.parse(JSON.stringify(vpData.data, function(k, v) {
-      return k === 'deepScan' ? undefined : v;
-    }));
-    switchedData.deepScan = deepScan;
-    switchedData.meta.url = lastRawData.meta.url;
-    runAnalysis(switchedData);
+    // Show spinner on the clicked tab while loading
+    renderViewportTabs(lastRawData); // update active state immediately
+    var activeBtn = document.querySelector('#viewportTabs button:nth-child(' + (idx + 2) + ')'); // +2 for the label span
+    if (activeBtn) activeBtn.innerHTML += ' <span style="display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:milg-spin 0.6s linear infinite;vertical-align:middle"></span>';
+    // Defer the heavy work to next frame so spinner renders
+    setTimeout(function() {
+      var switchedData = JSON.parse(JSON.stringify(vpData.data, function(k, v) {
+        return k === 'deepScan' ? undefined : v;
+      }));
+      switchedData.deepScan = deepScan;
+      switchedData.meta.url = lastRawData.meta.url;
+      runAnalysis(switchedData);
+    }, 50);
   };
 
   // Render viewport tab bar (called from runAnalysis when deepScan data present)
