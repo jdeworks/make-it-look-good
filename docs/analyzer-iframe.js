@@ -301,7 +301,7 @@ window.MilgIframe = (function() {
                 'console.log("[iframe-ss] Layer "+_li+": starting domToCanvas...");' +
                 // Race domToCanvas against our own 15s timeout (library timeout may not fire)
                 'var _layerDone=false;' +
-                'var _layerTimer=setTimeout(function(){if(!_layerDone){_layerDone=true;console.warn("[iframe-ss] Layer "+_li+" domToCanvas timed out (30s)");setTimeout(_nextLayer,0)}},30000);' +
+                'var _layerTimer=setTimeout(function(){if(!_layerDone){_layerDone=true;console.warn("[iframe-ss] Layer "+_li+" domToCanvas timed out (60s)");setTimeout(_nextLayer,0)}},60000);' +
                 'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:12000}).then(function(mc){' +
                   'if(_layerDone)return;_layerDone=true;clearTimeout(_layerTimer);' +
                   'console.log("[iframe-ss] Layer "+_li+" captured: "+mc.width+"x"+mc.height);' +
@@ -394,7 +394,7 @@ window.MilgIframe = (function() {
               '}' +
               'var _maskDone=false;' +
               'var _origSendFinal=_sendFinal;' +
-              'var _maskTimer=setTimeout(function(){if(!_maskDone){_maskDone=true;console.warn("[iframe-ss] Masks timed out (90s)");_origSendFinal(null)}},90000);' +
+              'var _maskTimer=setTimeout(function(){if(!_maskDone){_maskDone=true;console.warn("[iframe-ss] Masks timed out (180s)");_origSendFinal(null)}},180000);' +
               '_sendFinal=function(m){if(_maskDone)return;_maskDone=true;clearTimeout(_maskTimer);console.log("[iframe-ss] Sending results (maskResults: "+Object.keys(_maskResults).length+" pairs)");_origSendFinal(m)};' +
               '_nextLayer()' +
             '}).catch(function(e){console.warn("[iframe-ss] capture failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[]},"*")})' +
@@ -662,7 +662,7 @@ window.MilgIframe = (function() {
           structure: { totalElements: 0, darkModeClasses: false, responsiveClasses: false, tailwindDetected: false, cssFramework: 'unknown' }
         });
       }
-    }, captureScreenshots ? 120000 : (isFullDoc ? 15000 : 8000));
+    }, captureScreenshots ? 240000 : (isFullDoc ? 15000 : 8000));
   }
 
   return {

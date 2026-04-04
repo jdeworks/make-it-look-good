@@ -425,25 +425,42 @@ console.log('[milg] analyzer.js v43.5 loaded');
       }
     }
 
-    // Launch ALL viewports in parallel
-    console.log('[milg] Deep scan: launching', viewports.length, 'viewports in parallel', wantShots ? '(with screenshots)' : '(no screenshots)');
-    if (onProgress) onProgress('All viewports', 0, totalSteps);
-    viewports.forEach(function(vp, i) {
-      console.log('[milg] Starting viewport', i, vp.label, vp.w + 'x' + vp.h);
-      MilgIframe.analyzeHtmlInIframe(html, function(data) {
-        if (data) data.meta.url = url;
-        results[i] = data;
-        doneCount++;
-        console.log('[milg] Viewport', i, vp.label, 'complete (' + doneCount + '/' + viewports.length + ')',
-          data ? 'elements=' + (data.structure && data.structure.totalElements) : 'NULL',
-          data && data.screenshots ? 'screenshots=' + data.screenshots.length : '');
-        if (onProgress) onProgress(vp.label + ' done', doneCount, totalSteps);
-        if (doneCount === viewports.length) {
-          console.log('[milg] All viewports done, assembling deepScan');
-          onAllDone();
-        }
-      }, url, exclude, wantShots, { w: vp.w, h: vp.h });
-    });
+    // Launch viewports with controlled concurrency:
+    // Screenshots mode: max 2 at a time (heavy GPU/CPU — 4 parallel causes timeouts)
+    // No screenshots: all parallel (extraction is lightweight)
+    var concurrency = wantShots ? 2 : viewports.length;
+    var nextToLaunch = 0;
+    var running = 0;
+    console.log('[milg] Deep scan: launching', viewports.length, 'viewports (concurrency=' + concurrency + ')', wantShots ? '(with screenshots)' : '(no screenshots)');
+    if (onProgress) onProgress('Starting viewports...', 0, totalSteps);
+
+    function launchNext() {
+      while (running < concurrency && nextToLaunch < viewports.length) {
+        (function(i) {
+          var vp = viewports[i];
+          running++;
+          console.log('[milg] Starting viewport', i, vp.label, vp.w + 'x' + vp.h);
+          MilgIframe.analyzeHtmlInIframe(html, function(data) {
+            if (data) data.meta.url = url;
+            results[i] = data;
+            doneCount++;
+            running--;
+            console.log('[milg] Viewport', i, vp.label, 'complete (' + doneCount + '/' + viewports.length + ')',
+              data ? 'elements=' + (data.structure && data.structure.totalElements) : 'NULL',
+              data && data.screenshots ? 'screenshots=' + data.screenshots.length : '');
+            if (onProgress) onProgress(vp.label + ' done', doneCount, totalSteps);
+            if (doneCount === viewports.length) {
+              console.log('[milg] All viewports done, assembling deepScan');
+              onAllDone();
+            } else {
+              launchNext();
+            }
+          }, url, exclude, wantShots, { w: vp.w, h: vp.h });
+        })(nextToLaunch);
+        nextToLaunch++;
+      }
+    }
+    launchNext();
   }
 
   // Switch to Console Snippet tab (from JS-required warning)
