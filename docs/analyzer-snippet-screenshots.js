@@ -398,6 +398,10 @@
     window.__milgData = data;
     window.__milgData_json = json;
 
+    // In crawl mode, skip the copy overlay — crawl has its own UI
+    if (window.__milgCrawlSite) {
+      // Jump straight to crawl section below
+    } else {
     // Show overlay with copy button (user click = real gesture = clipboard works reliably)
     var _copyOverlay = document.createElement('div');
     _copyOverlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:999999;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui,sans-serif';
@@ -484,6 +488,8 @@
       }, 2000);
     });
 
+    } // end if !crawl (copy overlay block)
+
     console.log('%cmake-it-look-good extraction complete (with screenshots)', 'color: #3b82f6; font-weight: bold;');
     console.log('Elements scanned:', data.structure.totalElements);
     console.log('Screenshots:', (data.screenshots || []).length);
@@ -561,8 +567,12 @@
         }
         function _removeCrawlOverlay() { if (_crawlOverlay.parentNode) _crawlOverlay.parentNode.removeChild(_crawlOverlay); }
 
-        var _ssUrl = 'https://jdeworks.github.io/make-it-look-good/analyzer-snippet-screenshots.js?' + _cacheBust;
-        fetch(_ssUrl).then(function(r) { return r.text(); }).then(function(snippetSrc) {
+        // Build a self-contained extraction script for crawl iframes
+        // (no CDN fetch — inline the extraction function directly)
+        var snippetSrc = 'window.MilgExtract = ' + window.MilgExtract.toString() + ';\n' +
+          'window.__milgOnExtractComplete = function(data) { window.__milgData = data; };\n' +
+          'window.MilgExtract();\n';
+        (function() {
           function _next(idx) {
             if (idx >= _links.length) {
               // Prepare data but show copy button (auto-copy fails in async context)
@@ -686,7 +696,7 @@
             });
           }
           _next(0);
-        }).catch(function() { _removeCrawlOverlay(); console.log('%c\u26A0 Could not fetch snippet for crawl.', 'color: #b45309;'); });
+        })();
       }
       return; // Skip clipboard copy
     }
