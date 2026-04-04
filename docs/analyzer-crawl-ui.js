@@ -12,7 +12,7 @@ window.MilgCrawlUI = (function() {
   var CRAWL_HARD_MAX = 25;
 
   // Dependencies injected via setup()
-  var _showToast, _runAnalysis, _analyzeUrlBtn;
+  var _showToast, _runAnalysis, _analyzeUrlBtn, _runDeepScanLoop;
 
   // DOM refs queried during setup
   var crawlSiteCheck, crawlOptions, cancelCrawlBtn, crawlMaxPages, crawlBlacklist;
@@ -177,14 +177,26 @@ window.MilgCrawlUI = (function() {
       },
       analyzePage: function(html, pageUrl, opts, cb) {
         var wantShots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
-        MilgIframe.analyzeHtmlInIframe(html, function(data) {
-          if (data) {
-            data.meta.url = pageUrl;
-            data.meta._inputMethod = 'crawl';
-            if (opts.profile) data.profile = opts.profile;
-          }
-          cb(data);
-        }, pageUrl, opts.excludeSelector || null, wantShots);
+        var isDeep = _crawlSession && _crawlSession.options && _crawlSession.options.deepScan && _runDeepScanLoop;
+        if (isDeep) {
+          _runDeepScanLoop(html, pageUrl, opts.excludeSelector || null, wantShots, null, function(primary) {
+            if (primary) {
+              primary.meta.url = pageUrl;
+              primary.meta._inputMethod = 'crawl';
+              if (opts.profile) primary.profile = opts.profile;
+            }
+            cb(primary);
+          });
+        } else {
+          MilgIframe.analyzeHtmlInIframe(html, function(data) {
+            if (data) {
+              data.meta.url = pageUrl;
+              data.meta._inputMethod = 'crawl';
+              if (opts.profile) data.profile = opts.profile;
+            }
+            cb(data);
+          }, pageUrl, opts.excludeSelector || null, wantShots);
+        }
       },
       scorePage: function(data) { return MilgScoring.runScoring(data); },
       onDiscovery: function(urls) {
@@ -266,6 +278,7 @@ window.MilgCrawlUI = (function() {
     _showToast = deps.showToast;
     _runAnalysis = deps.runAnalysis;
     _analyzeUrlBtn = deps.analyzeUrlBtn;
+    _runDeepScanLoop = deps.runDeepScanLoop;
 
     // Query DOM refs
     crawlSiteCheck = document.getElementById('crawlSiteCheck');

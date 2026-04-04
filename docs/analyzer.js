@@ -25,6 +25,7 @@
   var darkMode = localStorage.getItem('milg-dark') === 'true';
   var lastRawData = null;
   var _originalRawData = null;
+  var _activeViewportIdx = 0;
 
   // --- Utility functions (shared with modules) ---
   function applyDarkMode() {
@@ -324,16 +325,113 @@
     var deepScan = lastRawData.deepScan;
     var vpData = deepScan.viewportData[idx];
     if (!vpData || !vpData.data) { showToast('No data for this viewport'); return; }
+    _activeViewportIdx = idx;
     // Deep-clone viewport data, skipping deepScan/viewportData to avoid circular refs
-    // (viewportData[0].data IS the primary object which has .deepScan on it)
     var switchedData = JSON.parse(JSON.stringify(vpData.data, function(k, v) {
       return k === 'deepScan' ? undefined : v;
     }));
     switchedData.deepScan = deepScan;
     switchedData.meta.url = lastRawData.meta.url;
     runAnalysis(switchedData);
-    showToast('Showing results for ' + vpData.label);
   };
+
+  // Render viewport tab bar (called from runAnalysis when deepScan data present)
+  function renderViewportTabs(data) {
+    var container = document.getElementById('viewportTabs');
+    if (!container) return;
+    if (!data || !data.deepScan || !data.deepScan.viewports) {
+      container.style.display = 'none';
+      container.innerHTML = '';
+      return;
+    }
+    var ds = data.deepScan;
+    var isDark = document.body.classList.contains('dark-ui');
+    var html = '<div style="display:flex;gap:4px;padding:8px 0;flex-wrap:wrap;align-items:center">';
+    html += '<span style="font-size:11px;color:var(--text-secondary);margin-right:4px">Viewport:</span>';
+    ds.viewports.forEach(function(vp, idx) {
+      var isActive = idx === _activeViewportIdx;
+      var isError = vp.error;
+      var bg = isActive ? (isDark ? '#334155' : '#e2e8f0') : 'transparent';
+      var border = isActive ? 'var(--accent)' : (isDark ? '#475569' : '#cbd5e1');
+      var color = isError ? '#ef4444' : (isActive ? 'var(--text-primary)' : 'var(--text-secondary)');
+      var cursor = isError ? 'not-allowed' : 'pointer';
+      html += '<button onclick="window.__milgSwitchViewport(' + idx + ')" style="';
+      html += 'padding:5px 12px;font-size:12px;border-radius:6px;border:1px solid ' + border + ';';
+      html += 'background:' + bg + ';color:' + color + ';cursor:' + cursor + ';font-weight:' + (isActive ? '600' : '400') + ';';
+      html += 'transition:all 0.15s"' + (isError ? ' disabled' : '') + '>';
+      html += vp.label + ' (' + vp.width + 'px)';
+      if (vp.error) html += ' ✗';
+      if (vp.hasScreenshots) html += ' <span style="font-size:9px;opacity:0.6">📷</span>';
+      html += '</button>';
+    });
+    html += '</div>';
+    container.innerHTML = html;
+    container.style.display = '';
+  }
+
+  // --- Deep scan viewport loop (shared between URL mode and crawl mode) ---
+  // Analyzes HTML at multiple viewports, assembles deepScan summary, optionally tests dark mode.
+  // onProgress(label, idx, total) — optional progress callback
+  // callback(primaryData) — called with primary result (deepScan attached) or null on failure
+  function runDeepScanLoop(html, url, exclude, wantShots, onProgress, callback) {
+    var viewports = [{w:1280, h:900, label:'Desktop'}, {w:768, h:1024, label:'Tablet'}, {w:375, h:812, label:'Phone'}];
+    // Add current viewport if different from presets
+    var curW = window.innerWidth, curH = window.innerHeight;
+    var isDupe = viewports.some(function(p) { return Math.abs(curW - p.w) < 50 && Math.abs(curH - p.h) < 50; });
+    if (!isDupe) viewports.unshift({w:curW, h:curH, label:'Current (' + curW + '\u00d7' + curH + ')'});
+
+    var results = [];
+    var vpIdx = 0;
+    (function nextVP() {
+      if (vpIdx >= viewports.length) {
+        var primary = results[0];
+        for (var pi = 0; pi < results.length && !primary; pi++) primary = results[pi];
+        if (!primary) { callback(null); return; }
+        primary.deepScan = {
+          viewports: results.map(function(r, i) {
+            return r ? {
+              label: viewports[i].label, width: viewports[i].w,
+              touchTargets: (r.interaction.touchTargets || []).length,
+              contrastFails: (r.colors.contrastPairs || []).filter(function(p) { return !p.passes; }).length,
+              overflow: r.structure.hasHorizontalOverflow || false,
+              hasScreenshots: !!(r.screenshots && r.screenshots.length > 0)
+            } : { label: viewports[i].label, width: viewports[i].w, error: true };
+          }),
+          viewportData: results.map(function(r, i) {
+            return r ? { label: viewports[i].label, width: viewports[i].w, data: r } : null;
+          })
+        };
+        // Dark mode test
+        var htmlHasDark = /class="[^"]*dark:/.test(html) || /prefers-color-scheme/.test(html) || /\.dark\s*\{/.test(html) || /data-theme/.test(html);
+        if (htmlHasDark) {
+          if (onProgress) onProgress('Dark mode', viewports.length, viewports.length + 1);
+          var darkHtml = html.replace(/<html([^>]*)>/i, '<html$1 class="dark" data-theme="dark" style="color-scheme:dark">');
+          darkHtml = darkHtml.replace(/<\/head>/i, '<script>setTimeout(function(){try{Array.from(document.styleSheets).forEach(function(ss){try{var darkRules=[];Array.from(ss.cssRules).forEach(function(r){if(r instanceof CSSMediaRule&&/prefers-color-scheme:\\s*dark/.test(r.conditionText||"")){Array.from(r.cssRules).forEach(function(inner){darkRules.push(inner.cssText)})}});if(darkRules.length>0){var s=document.createElement("style");s.textContent=darkRules.join("\\n");document.head.appendChild(s)}}catch(e){}});}catch(e){}},100);</' + 'script></head>');
+          MilgIframe.analyzeHtmlInIframe(darkHtml, function(darkData) {
+            if (darkData) {
+              primary.deepScan.darkMode = {
+                contrastFails: (darkData.colors.contrastPairs || []).filter(function(p) { return !p.passes; }).length,
+                contrastTotal: (darkData.colors.contrastPairs || []).length,
+                tested: true
+              };
+            }
+            callback(primary);
+          }, url, exclude, false, { w: 1280, h: 900 });
+        } else {
+          callback(primary);
+        }
+        return;
+      }
+      var vp = viewports[vpIdx];
+      if (onProgress) onProgress(vp.label, vpIdx, viewports.length);
+      MilgIframe.analyzeHtmlInIframe(html, function(data) {
+        if (data) data.meta.url = url;
+        results.push(data);
+        vpIdx++;
+        nextVP();
+      }, url, exclude, wantShots, { w: vp.w, h: vp.h });
+    })();
+  }
 
   // Switch to Console Snippet tab (from JS-required warning)
   window.__milgSwitchToSnippet = function() {
@@ -478,6 +576,8 @@
     reportContainer.innerHTML = warningHtml + suggestionsHtml + MilgReport.renderReport(reportData);
     reportContainer.classList.add('visible');
     inputSection.style.display = 'none';
+    // Render viewport tabs for deep scan results
+    renderViewportTabs(data);
     document.getElementById('reportActions').style.display = 'flex';
     // Hide crawl containers when showing single-page results (unless crawl session is active)
     var _isCrawlDriven = MilgCrawlUI.getCrawlSession() && MilgCrawlUI.getCrawlSession().pages && MilgCrawlUI.getCrawlSession().pages.length > 0;
@@ -705,90 +805,29 @@
 
         var isDeepScan = document.getElementById('deepScanCheck') && document.getElementById('deepScanCheck').checked;
         if (isDeepScan) {
-          // Build viewport list: current + presets, skip duplicates
-          var curW = window.innerWidth, curH = window.innerHeight;
-          var presets = [{w:1280,h:900,label:'Desktop'},{w:768,h:1024,label:'Tablet'},{w:375,h:812,label:'Phone'}];
-          var viewports = [{w:curW,h:curH,label:'Current (' + curW + '×' + curH + ')'}];
-          presets.forEach(function(p) {
-            if (Math.abs(curW - p.w) < 50 && Math.abs(curH - p.h) < 50) return;
-            viewports.push(p);
-          });
-          var deepRawResults = [];
-          var vpIdx = 0;
-          var totalSteps = viewports.length + 1;
-          (function nextVP() {
-            if (vpIdx >= viewports.length) {
-              var primary = deepRawResults[0];
-              for (var pi = 0; pi < deepRawResults.length && !primary; pi++) primary = deepRawResults[pi];
+          var deepWantShots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
+          _activeViewportIdx = 0;
+          runDeepScanLoop(html, url, exclude, deepWantShots,
+            function(label, idx, total) {
+              urlStatus.textContent = 'Deep scan: ' + label + '...';
+              showProgress(20 + Math.round(60 * idx / total), 'Scanning ' + label + '...');
+            },
+            function(primary) {
+              analyzeUrlBtn.disabled = false;
+              analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
               if (!primary) {
-                analyzeUrlBtn.disabled = false;
-                analyzeUrlBtn.textContent = 'Analyze URL';
                 urlStatus.innerHTML = '<span style="color:#dc2626">Deep scan failed — no viewport returned data.</span>';
                 hideProgress();
                 return;
               }
-              primary.deepScan = {
-                viewports: deepRawResults.map(function(r, i) {
-                  return r ? {
-                    label: viewports[i].label, width: viewports[i].w,
-                    touchTargets: (r.interaction.touchTargets || []).length,
-                    contrastFails: (r.colors.contrastPairs || []).filter(function(p) { return !p.passes; }).length,
-                    overflow: r.structure.hasHorizontalOverflow || false,
-                    hasScreenshots: !!(r.screenshots && r.screenshots.length > 0)
-                  } : { label: viewports[i].label, width: viewports[i].w, error: true };
-                }),
-                viewportData: deepRawResults.map(function(r, i) {
-                  return r ? { label: viewports[i].label, width: viewports[i].w, data: r } : null;
-                })
-              };
-              // Dark mode test
-              var htmlHasDark = /class="[^"]*dark:/.test(html) || /prefers-color-scheme/.test(html) || /\.dark\s*\{/.test(html) || /data-theme/.test(html);
-              if (htmlHasDark) {
-                urlStatus.textContent = 'Testing dark mode...';
-                showProgress(Math.round(80 + 15 * (vpIdx / totalSteps)), 'Testing dark mode...');
-                var darkHtml = html.replace(/<html([^>]*)>/i, '<html$1 class="dark" data-theme="dark" style="color-scheme:dark">');
-                darkHtml = darkHtml.replace(/<\/head>/i, '<script>setTimeout(function(){try{Array.from(document.styleSheets).forEach(function(ss){try{var darkRules=[];Array.from(ss.cssRules).forEach(function(r){if(r instanceof CSSMediaRule&&/prefers-color-scheme:\\s*dark/.test(r.conditionText||"")){Array.from(r.cssRules).forEach(function(inner){darkRules.push(inner.cssText)})}});if(darkRules.length>0){var s=document.createElement("style");s.textContent=darkRules.join("\\n");document.head.appendChild(s)}}catch(e){}});}catch(e){}},100);</' + 'script></head>');
-                MilgIframe.analyzeHtmlInIframe(darkHtml, function(darkData) {
-                  if (darkData) {
-                    primary.deepScan.darkMode = {
-                      contrastFails: (darkData.colors.contrastPairs || []).filter(function(p) { return !p.passes; }).length,
-                      contrastTotal: (darkData.colors.contrastPairs || []).length,
-                      tested: true
-                    };
-                  }
-                  analyzeUrlBtn.disabled = false;
-                  analyzeUrlBtn.textContent = 'Analyze URL';
-                  urlStatus.style.display = 'none';
-                  showProgress(100, 'Done!');
-                  setTimeout(hideProgress, 500);
-                  primary.meta.url = url;
-                  primary.meta._inputMethod = 'url';
-                  runAnalysis(primary);
-                }, url, exclude, false, { w: 1280, h: 900 });
-              } else {
-                analyzeUrlBtn.disabled = false;
-                analyzeUrlBtn.textContent = 'Analyze URL';
-                urlStatus.style.display = 'none';
-                showProgress(100, 'Done!');
-                setTimeout(hideProgress, 500);
-                primary.meta.url = url;
-                primary.meta._inputMethod = 'url';
-                runAnalysis(primary);
-              }
-              return;
+              urlStatus.style.display = 'none';
+              showProgress(100, 'Done!');
+              setTimeout(hideProgress, 500);
+              primary.meta.url = url;
+              primary.meta._inputMethod = 'url';
+              runAnalysis(primary);
             }
-            var vp = viewports[vpIdx];
-            var pct = 20 + Math.round(60 * (vpIdx / totalSteps));
-            urlStatus.textContent = 'Deep scan: ' + vp.label + ' (' + vp.w + 'px)...';
-            showProgress(pct, 'Scanning ' + vp.label + '...');
-            var deepWantShots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
-            MilgIframe.analyzeHtmlInIframe(html, function(data) {
-              if (data) data.meta.url = url;
-              deepRawResults.push(data);
-              vpIdx++;
-              nextVP();
-            }, url, exclude, deepWantShots, { w: vp.w, h: vp.h });
-          })();
+          );
           return;
         }
         showProgress(40, 'Analyzing styles...');
@@ -969,7 +1008,11 @@
     // Export JSON — save analysis data for re-import or sharing
     document.getElementById('exportJsonBtn').addEventListener('click', function() {
       if (!lastRawData) return;
-      var exportData = JSON.parse(JSON.stringify(lastRawData, function(k, v) { return k === 'viewportData' ? undefined : v; }));
+      // Clone data, skipping deepScan to break circular refs, then re-attach it properly
+      var exportData = JSON.parse(JSON.stringify(lastRawData, function(k, v) { return k === 'deepScan' ? undefined : v; }));
+      if (lastRawData.deepScan) {
+        exportData.deepScan = JSON.parse(JSON.stringify(lastRawData.deepScan, function(k, v) { return k === 'deepScan' ? undefined : v; }));
+      }
       // Include pixel verify results if available
       if (reportData && reportData._contrastVerifyResults) {
         exportData._contrastVerifyResults = reportData._contrastVerifyResults.map(function(r) {
@@ -1115,7 +1158,8 @@
     MilgCrawlUI.setup({
       showToast: showToast,
       runAnalysis: runAnalysis,
-      analyzeUrlBtn: analyzeUrlBtn
+      analyzeUrlBtn: analyzeUrlBtn,
+      runDeepScanLoop: runDeepScanLoop
     });
   }
 

@@ -600,8 +600,9 @@ window.MilgReport = (function() {
         }
 
         html += '<h4 style="font-size:13px;margin-bottom:8px">Multi-Viewport Comparison</h4>';
+        html += '<p style="font-size:11px;color:var(--text-secondary);margin-bottom:8px">Use the viewport tabs above to switch between full reports per viewport.</p>';
         html += '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px">';
-        html += '<tr><th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border)">Viewport</th><th style="padding:4px 8px;border-bottom:1px solid var(--border)">Touch Issues</th><th style="padding:4px 8px;border-bottom:1px solid var(--border)">Contrast Fails</th><th style="padding:4px 8px;border-bottom:1px solid var(--border)">Overflow</th><th style="padding:4px 8px;border-bottom:1px solid var(--border)"></th></tr>';
+        html += '<tr><th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border)">Viewport</th><th style="padding:4px 8px;border-bottom:1px solid var(--border)">Touch Issues</th><th style="padding:4px 8px;border-bottom:1px solid var(--border)">Contrast Fails</th><th style="padding:4px 8px;border-bottom:1px solid var(--border)">Overflow</th><th style="padding:4px 8px;border-bottom:1px solid var(--border)">Screenshots</th></tr>';
         ds.viewports.forEach(function(vp, idx) {
           if (vp.error) {
             html += '<tr><td style="padding:4px 8px">' + escapeHtml(vp.label) + ' (' + vp.width + 'px)</td><td colspan="4" style="padding:4px 8px;color:#dc2626">Extraction failed</td></tr>';
@@ -610,7 +611,7 @@ window.MilgReport = (function() {
             html += '<td style="padding:4px 8px;text-align:center">' + (vp.touchTargets || 0) + '</td>';
             html += '<td style="padding:4px 8px;text-align:center">' + (vp.contrastFails || 0) + '</td>';
             html += '<td style="padding:4px 8px;text-align:center">' + (vp.overflow ? 'Yes' : 'No') + '</td>';
-            html += '<td style="padding:4px 8px;text-align:center"><button class="btn" style="font-size:11px;padding:3px 10px;min-height:28px" onclick="window.__milgSwitchViewport(' + idx + ')">View report</button></td></tr>';
+            html += '<td style="padding:4px 8px;text-align:center">' + (vp.hasScreenshots ? '✓' : '—') + '</td></tr>';
           }
         });
         html += '</table>';
