@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v43.5 loaded');
+console.log('[milg] analyzer.js v43.6 loaded');
 
 (function() {
   "use strict";
@@ -47,6 +47,34 @@ console.log('[milg] analyzer.js v43.5 loaded');
     t.classList.add('show');
     console.log('[toast]', msg);
     setTimeout(function() { t.classList.remove('show'); }, 5000);
+  }
+
+  // --- Focus modal: warns users that Chrome throttles background tabs ---
+  var _focusModal = null;
+  function showFocusModal() {
+    if (_focusModal) return; // already showing
+    var isDark = document.body.classList.contains('dark-ui');
+    var overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;';
+    var box = document.createElement('div');
+    box.style.cssText = 'background:' + (isDark ? '#1e293b' : '#fff') + ';border-radius:12px;padding:24px 32px;max-width:440px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.3);color:' + (isDark ? '#e2e8f0' : '#1e293b') + ';';
+    box.innerHTML = '<div style="font-size:28px;margin-bottom:8px">&#9201;</div>' +
+      '<div style="font-size:16px;font-weight:700;margin-bottom:8px">Deep analysis in progress</div>' +
+      '<div style="font-size:13px;line-height:1.6;color:' + (isDark ? '#94a3b8' : '#64748b') + ';margin-bottom:16px">' +
+        'Multiple viewports are being analyzed with screenshots and pixel verification. ' +
+        '<strong style="color:' + (isDark ? '#fbbf24' : '#d97706') + '">Please keep this tab in the foreground.</strong><br>' +
+        'Chrome throttles background tabs — timers slow to 1/sec and canvas operations may stall.' +
+      '</div>' +
+      '<div style="font-size:11px;color:' + (isDark ? '#64748b' : '#94a3b8') + '">The modal will close automatically when analysis completes.</div>';
+    overlay.appendChild(box);
+    // Allow clicking overlay to dismiss (but it comes back if still running)
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) hideFocusModal(); });
+    document.body.appendChild(overlay);
+    _focusModal = overlay;
+  }
+  function hideFocusModal() {
+    if (_focusModal && _focusModal.parentNode) _focusModal.parentNode.removeChild(_focusModal);
+    _focusModal = null;
   }
 
   var _progressPct = 0;
@@ -425,42 +453,27 @@ console.log('[milg] analyzer.js v43.5 loaded');
       }
     }
 
-    // Launch viewports with controlled concurrency:
-    // Screenshots mode: max 2 at a time (heavy GPU/CPU — 4 parallel causes timeouts)
-    // No screenshots: all parallel (extraction is lightweight)
-    var concurrency = wantShots ? 2 : viewports.length;
-    var nextToLaunch = 0;
-    var running = 0;
-    console.log('[milg] Deep scan: launching', viewports.length, 'viewports (concurrency=' + concurrency + ')', wantShots ? '(with screenshots)' : '(no screenshots)');
+    // Launch ALL viewports in parallel — maximum speed when tab is in foreground.
+    // Chrome throttles background tabs (timers → 1/sec, rAF paused), so the focus
+    // modal warns users to stay on this tab during analysis.
+    console.log('[milg] Deep scan: launching', viewports.length, 'viewports in parallel', wantShots ? '(with screenshots)' : '(no screenshots)');
     if (onProgress) onProgress('Starting viewports...', 0, totalSteps);
-
-    function launchNext() {
-      while (running < concurrency && nextToLaunch < viewports.length) {
-        (function(i) {
-          var vp = viewports[i];
-          running++;
-          console.log('[milg] Starting viewport', i, vp.label, vp.w + 'x' + vp.h);
-          MilgIframe.analyzeHtmlInIframe(html, function(data) {
-            if (data) data.meta.url = url;
-            results[i] = data;
-            doneCount++;
-            running--;
-            console.log('[milg] Viewport', i, vp.label, 'complete (' + doneCount + '/' + viewports.length + ')',
-              data ? 'elements=' + (data.structure && data.structure.totalElements) : 'NULL',
-              data && data.screenshots ? 'screenshots=' + data.screenshots.length : '');
-            if (onProgress) onProgress(vp.label + ' done', doneCount, totalSteps);
-            if (doneCount === viewports.length) {
-              console.log('[milg] All viewports done, assembling deepScan');
-              onAllDone();
-            } else {
-              launchNext();
-            }
-          }, url, exclude, wantShots, { w: vp.w, h: vp.h });
-        })(nextToLaunch);
-        nextToLaunch++;
-      }
-    }
-    launchNext();
+    viewports.forEach(function(vp, i) {
+      console.log('[milg] Starting viewport', i, vp.label, vp.w + 'x' + vp.h);
+      MilgIframe.analyzeHtmlInIframe(html, function(data) {
+        if (data) data.meta.url = url;
+        results[i] = data;
+        doneCount++;
+        console.log('[milg] Viewport', i, vp.label, 'complete (' + doneCount + '/' + viewports.length + ')',
+          data ? 'elements=' + (data.structure && data.structure.totalElements) : 'NULL',
+          data && data.screenshots ? 'screenshots=' + data.screenshots.length : '');
+        if (onProgress) onProgress(vp.label + ' done', doneCount, totalSteps);
+        if (doneCount === viewports.length) {
+          console.log('[milg] All viewports done, assembling deepScan');
+          onAllDone();
+        }
+      }, url, exclude, wantShots, { w: vp.w, h: vp.h });
+    });
   }
 
   // Switch to Console Snippet tab (from JS-required warning)
@@ -829,6 +842,8 @@ console.log('[milg] analyzer.js v43.5 loaded');
         if (isDeepScan) {
           var deepHtml = wantJs ? MilgProxy.prepareJsHtml(html, url) : html;
           _activeViewportIdx = 0;
+          // Show focus modal for heavy operations (screenshots + multi-viewport)
+          if (wantShots) showFocusModal();
           urlStatus.textContent = 'Deep scan: preparing viewports...';
           showProgress(15, 'Launching multi-viewport scan...');
           runDeepScanLoop(deepHtml, url, exclude, wantShots,
@@ -839,6 +854,7 @@ console.log('[milg] analyzer.js v43.5 loaded');
             function(primary) {
               analyzeUrlBtn.disabled = false;
               analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
+              hideFocusModal();
               if (!primary) {
                 urlStatus.innerHTML = '<span style="color:#dc2626">Deep scan failed — no viewport returned data.</span>';
                 hideProgress();
