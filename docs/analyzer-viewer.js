@@ -474,10 +474,10 @@ window.MilgViewer = (function() {
       });
     });
 
-    // Event handlers on rects
+    // Event handlers on rects — tooltip hides with delay so user can hover it
     svg.querySelectorAll('rect').forEach(function(rect) {
       rect.addEventListener('mouseenter', function(e) { showFindingTooltip(e, parseInt(rect.getAttribute('data-finding'))); });
-      rect.addEventListener('mouseleave', hideTooltip);
+      rect.addEventListener('mouseleave', function() { scheduleHideTooltip(); });
       rect.addEventListener('click', function(e) {
         e.preventDefault();
         e.stopPropagation();
@@ -1060,7 +1060,14 @@ window.MilgViewer = (function() {
     svg.appendChild(lbl);
   }
 
+  var _tooltipHideTimer = null;
+  function scheduleHideTooltip() {
+    clearTimeout(_tooltipHideTimer);
+    _tooltipHideTimer = setTimeout(function() { hideTooltip(); }, 300);
+  }
+
   function showFindingTooltip(e, findingIdx) {
+    clearTimeout(_tooltipHideTimer);
     hideTooltip();
     var finding = _allFindings[findingIdx];
     if (!finding) return;
@@ -1075,7 +1082,6 @@ window.MilgViewer = (function() {
       f.bboxes.forEach(function(bb) {
         var bx = Math.round(bb.left * (_meta ? _meta.scale : 1));
         var by = Math.round(bb.top * (_meta ? _meta.scale : 1)) - _calibrationOffsetY;
-        // Check if this bbox overlaps the hovered rect
         if (bx < rx + rw && bx + Math.round(bb.width * (_meta ? _meta.scale : 1)) > rx &&
             by < ry + rh && by + Math.round(bb.height * (_meta ? _meta.scale : 1)) > ry) {
           if (overlapping.indexOf(f) === -1) overlapping.push(f);
@@ -1085,29 +1091,38 @@ window.MilgViewer = (function() {
 
     _tooltip = document.createElement('div');
     _tooltip.className = 'milg-viewer-tooltip';
+    // Keep tooltip alive when user hovers over it
+    _tooltip.addEventListener('mouseenter', function() { clearTimeout(_tooltipHideTimer); });
+    _tooltip.addEventListener('mouseleave', function() { scheduleHideTooltip(); });
+
+    // Compact view: severity badge + short title per finding, click to expand
     var html = '';
     overlapping.forEach(function(f, oi) {
-      if (oi > 0) html += '<div style="border-top:1px solid rgba(255,255,255,0.15);margin:6px 0"></div>';
       var sevClass = 'milg-viewer-sev-' + f.severity;
-      html += '<div class="milg-viewer-tooltip-header">' +
-        '<span class="milg-viewer-tooltip-badge ' + sevClass + '">' + f.severity + '</span>' +
-        '<span class="milg-viewer-tooltip-cat">' + f.category + '</span>' +
-        '</div>';
-      html += '<div class="milg-viewer-tooltip-title">' + f.title + '</div>';
-      if (f.detail) html += '<div class="milg-viewer-tooltip-detail">' + f.detail.substring(0, 150) + '</div>';
+      var shortTitle = f.title.length > 60 ? f.title.substring(0, 57) + '...' : f.title;
+      html += '<div class="milg-tt-row" data-tt-idx="' + oi + '" style="padding:3px 0;cursor:pointer;display:flex;align-items:baseline;gap:6px' + (oi > 0 ? ';border-top:1px solid rgba(255,255,255,0.1)' : '') + '">';
+      html += '<span class="milg-viewer-tooltip-badge ' + sevClass + '" style="flex-shrink:0;font-size:9px;padding:1px 5px">' + f.severity + '</span>';
+      html += '<span style="font-size:11px;color:#e2e8f0;line-height:1.3">' + shortTitle + '</span>';
+      html += '</div>';
+      // Expandable detail (hidden by default)
+      html += '<div class="milg-tt-detail" data-tt-idx="' + oi + '" style="display:none;padding:4px 0 4px 36px;font-size:10px;color:rgba(255,255,255,0.6);line-height:1.5">';
+      html += '<div>' + f.title + '</div>';
+      if (f.detail) html += '<div style="margin-top:2px;color:rgba(255,255,255,0.5)">' + f.detail.substring(0, 300) + '</div>';
+      html += '<div style="margin-top:2px;color:rgba(255,255,255,0.35)">' + f.category + '</div>';
+      html += '</div>';
     });
-    // Pixel verify note for primary finding
-    if (_reportData && _reportData._contrastVerifyResults && window.MilgContrastVerify) {
-      var vResults = _reportData._contrastVerifyResults;
-      for (var vi = 0; vi < vResults.length; vi++) {
-        if (finding.detail && finding.detail.indexOf(vResults[vi].selector) !== -1) {
-          html += '<div class="milg-viewer-tooltip-verify">' + MilgContrastVerify.formatResult(vResults[vi]) + '</div>';
-          break;
-        }
-      }
-    }
-    if (overlapping.length > 1) html += '<div style="font-size:10px;color:rgba(255,255,255,0.4);margin-top:4px">' + overlapping.length + ' findings at this location</div>';
+    if (overlapping.length > 1) html += '<div style="font-size:9px;color:rgba(255,255,255,0.3);margin-top:3px;text-align:center">' + overlapping.length + ' findings — click to expand</div>';
     _tooltip.innerHTML = html;
+
+    // Click to toggle detail expansion
+    _tooltip.querySelectorAll('.milg-tt-row').forEach(function(row) {
+      row.addEventListener('click', function(ev) {
+        ev.stopPropagation();
+        var idx = row.getAttribute('data-tt-idx');
+        var detail = _tooltip.querySelector('.milg-tt-detail[data-tt-idx="' + idx + '"]');
+        if (detail) detail.style.display = detail.style.display === 'none' ? '' : 'none';
+      });
+    });
 
     positionTooltip(e);
   }
