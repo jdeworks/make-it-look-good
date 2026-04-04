@@ -560,6 +560,34 @@ window.MilgReport = (function() {
       html += '<h2>Deep Scan Results</h2>';
 
       if (ds.viewports && ds.viewports.length > 0) {
+        // Per-viewport screenshot thumbnails (if viewportData has screenshots)
+        var vpScreenshots = [];
+        if (ds.viewportData) {
+          ds.viewportData.forEach(function(vpd, vpIdx) {
+            if (vpd && vpd.data) {
+              vpScreenshots.push({ label: vpd.label, width: vpd.width, vpIdx: vpIdx, src: vpd.data.screenshotFull || (vpd.data.screenshots && vpd.data.screenshots[0]) || null });
+            }
+          });
+        }
+        var hasAnyVpScreenshots = vpScreenshots.some(function(v) { return !!v.src; });
+
+        if (hasAnyVpScreenshots) {
+          html += '<h4 style="font-size:13px;margin-bottom:8px">Viewport Screenshots</h4>';
+          html += '<div style="display:flex;gap:16px;overflow-x:auto;padding-bottom:8px;margin-bottom:16px">';
+          vpScreenshots.forEach(function(vps) {
+            var maxThumbW = vps.width <= 400 ? 120 : vps.width <= 800 ? 180 : 220;
+            html += '<div style="flex:0 0 auto;text-align:center;min-width:0">';
+            html += '<div style="font-size:11px;font-weight:600;margin-bottom:4px;color:var(--text-secondary)">' + escapeHtml(vps.label) + ' (' + vps.width + 'px)</div>';
+            if (vps.src) {
+              html += '<img src="' + vps.src + '" alt="' + escapeHtml(vps.label) + ' screenshot" style="max-width:' + maxThumbW + 'px;max-height:300px;border:1px solid var(--border);border-radius:6px;cursor:pointer;display:block;margin:0 auto" onclick="window.__milgSwitchViewport(' + vps.vpIdx + ')">';
+            } else {
+              html += '<div style="width:' + maxThumbW + 'px;height:120px;border:1px dashed var(--border);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-dim)">No screenshot</div>';
+            }
+            html += '</div>';
+          });
+          html += '</div>';
+        }
+
         html += '<h4 style="font-size:13px;margin-bottom:8px">Multi-Viewport Comparison</h4>';
         html += '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px">';
         html += '<tr><th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border)">Viewport</th><th style="padding:4px 8px;border-bottom:1px solid var(--border)">Touch Issues</th><th style="padding:4px 8px;border-bottom:1px solid var(--border)">Contrast Fails</th><th style="padding:4px 8px;border-bottom:1px solid var(--border)">Overflow</th><th style="padding:4px 8px;border-bottom:1px solid var(--border)"></th></tr>';

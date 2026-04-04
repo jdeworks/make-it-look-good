@@ -20,19 +20,47 @@ window.MilgIframe = (function() {
     if (opts.showProgress) _showProgress = opts.showProgress;
   }
 
-  // Inject a <base> tag so relative URLs (CSS, images, fonts) resolve to the original domain
+  // Inject a <base> tag so relative URLs (CSS, images, fonts) resolve to the original domain.
+  // Also patches the URL constructor so page JS that does new URL(path, window.location)
+  // works in srcdoc context (where window.location is about:srcdoc, not a valid base).
   function injectBaseTag(html, url) {
     if (!url || url === 'Pasted HTML') return html;
     try {
       var base = new URL(url);
       var baseHref = base.origin + base.pathname.replace(/\/[^/]*$/, '/');
       var baseTag = '<base href="' + baseHref + '">';
+      // Patch URL constructor: in srcdoc iframes window.location.href is "about:srcdoc"
+      // which is not a valid base URL. Intercept and use document.baseURI (set by <base>) instead.
+      var urlPatch = '<script>' +
+        '(function(){' +
+          'var _OrigURL=URL;' +
+          'var _loc=window.location;' +
+          'function _isSrcdocLoc(v){' +
+            'if(v===_loc||v===_loc.href)return true;' +
+            'if(typeof v==="string"&&v.indexOf("about:srcdoc")===0)return true;' +
+            'if(v&&typeof v==="object"&&typeof v.href==="string"&&v.href.indexOf("about:srcdoc")===0)return true;' +
+            'return false' +
+          '}' +
+          'window.URL=function URL(u,b){' +
+            'if(arguments.length>=2&&_isSrcdocLoc(b)){b=document.baseURI||"' + baseHref + '"}' +
+            'return new _OrigURL(u,b)' +
+          '};' +
+          'window.URL.prototype=_OrigURL.prototype;' +
+          // Preserve static methods (createObjectURL, revokeObjectURL, etc.)
+          'Object.keys(_OrigURL).forEach(function(k){try{window.URL[k]=_OrigURL[k]}catch(e){}});' +
+          'window.URL.toString=function(){return _OrigURL.toString()};' +
+          // Also handle location.origin / location.protocol for libraries that read them directly
+          'try{Object.defineProperty(_loc,"origin",{get:function(){' +
+            'try{var u=new _OrigURL(document.baseURI);return u.origin}catch(e){return"null"}' +
+          '},configurable:true})}catch(e){}' +
+        '})();' +
+      '</' + 'script>';
       // Insert after <head> if present
       if (/<head[\s>]/i.test(html)) {
-        return html.replace(/<head([^>]*)>/i, '<head$1>' + baseTag);
+        return html.replace(/<head([^>]*)>/i, '<head$1>' + baseTag + urlPatch);
       }
       // Otherwise prepend
-      return baseTag + html;
+      return baseTag + urlPatch + html;
     } catch(e) { return html; }
   }
 
@@ -590,7 +618,7 @@ window.MilgIframe = (function() {
     if (isFullDoc) {
       // Wait for window load (CSS/fonts loaded), then extra delay for rendering
       // JS-enabled mode (URL patch present) needs longer delays for React/Vue hydration
-      var hasJsPatch = html.indexOf('about:srcdoc') !== -1;
+      var hasJsPatch = html.indexOf('__milgSandboxLog') !== -1;
       var postLoadDelay = hasJsPatch ? 2000 : 1000;
       var fallbackDelay = hasJsPatch ? 8000 : 8000;
       var extractScript = excludeVar + fragmentVar + screenshotScript + '<script>window.addEventListener("load",function(){setTimeout(function(){(' + extractFromDocument.toString() + ')()},' + postLoadDelay + ')});setTimeout(function(){(' + extractFromDocument.toString() + ')()},' + fallbackDelay + ');</' + 'script>';

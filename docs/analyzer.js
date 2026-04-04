@@ -300,10 +300,15 @@
   // Viewport switching for deep scan results
   window.__milgSwitchViewport = function(idx) {
     if (!lastRawData || !lastRawData.deepScan || !lastRawData.deepScan.viewportData) return;
-    var vpData = lastRawData.deepScan.viewportData[idx];
+    var deepScan = lastRawData.deepScan;
+    var vpData = deepScan.viewportData[idx];
     if (!vpData || !vpData.data) { showToast('No data for this viewport'); return; }
-    var switchedData = JSON.parse(JSON.stringify(vpData.data));
-    switchedData.deepScan = lastRawData.deepScan;
+    // Deep-clone viewport data, skipping deepScan/viewportData to avoid circular refs
+    // (viewportData[0].data IS the primary object which has .deepScan on it)
+    var switchedData = JSON.parse(JSON.stringify(vpData.data, function(k, v) {
+      return k === 'deepScan' ? undefined : v;
+    }));
+    switchedData.deepScan = deepScan;
     switchedData.meta.url = lastRawData.meta.url;
     runAnalysis(switchedData);
     showToast('Showing results for ' + vpData.label);
