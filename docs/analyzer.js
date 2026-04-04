@@ -86,24 +86,49 @@ console.log('[milg] analyzer.js v44.0 loaded');
     _focusModalLog = box.querySelector('#focusModalLog');
   }
   var _lastModalMsg = '';
-  var _lastModalCount = 0;
+  var _lastModalStart = 0;
+  var _modalTimer = null;
   function updateFocusModal(msg) {
     if (!_focusModalLog) return;
-    if (msg === _lastModalMsg) {
-      _lastModalCount++;
-      // Update the count on the last line
+    if (msg === _lastModalMsg) return; // same message, timer handles it
+    // Finalize previous step with elapsed time
+    _finalizeModalStep();
+    _lastModalMsg = msg;
+    _lastModalStart = Date.now();
+    _focusModalLog.textContent += msg;
+    // Start a live timer that updates the current line every second
+    clearInterval(_modalTimer);
+    _modalTimer = setInterval(function() {
+      if (!_focusModalLog) { clearInterval(_modalTimer); return; }
+      var elapsed = Math.round((Date.now() - _lastModalStart) / 1000);
+      if (elapsed < 2) return; // don't show for quick steps
       var lines = _focusModalLog.textContent.split('\n');
-      lines.pop(); // remove trailing empty
-      if (lines.length > 0) lines[lines.length - 1] = msg + ' ×' + (_lastModalCount + 1);
-      _focusModalLog.textContent = lines.join('\n') + '\n';
-    } else {
-      _lastModalMsg = msg;
-      _lastModalCount = 0;
-      _focusModalLog.textContent += msg + '\n';
-    }
+      if (lines.length > 0) {
+        var lastLine = lines[lines.length - 1];
+        // Strip old timer suffix
+        var base = lastLine.replace(/ \(\d+s\)$/, '');
+        lines[lines.length - 1] = base + ' (' + elapsed + 's)';
+        _focusModalLog.textContent = lines.join('\n');
+      }
+      _focusModalLog.scrollTop = _focusModalLog.scrollHeight;
+    }, 1000);
     _focusModalLog.scrollTop = _focusModalLog.scrollHeight;
   }
+  function _finalizeModalStep() {
+    if (!_focusModalLog || !_lastModalMsg) return;
+    clearInterval(_modalTimer);
+    var elapsed = Math.round((Date.now() - _lastModalStart) / 1000);
+    var lines = _focusModalLog.textContent.split('\n');
+    if (lines.length > 0) {
+      var base = lines[lines.length - 1].replace(/ \(\d+s\)$/, '');
+      lines[lines.length - 1] = base + (elapsed >= 2 ? ' (' + elapsed + 's)' : '');
+      _focusModalLog.textContent = lines.join('\n') + '\n';
+    }
+  }
   function hideFocusModal() {
+    _finalizeModalStep();
+    clearInterval(_modalTimer);
+    _lastModalMsg = '';
     if (_focusModal && _focusModal.parentNode) _focusModal.parentNode.removeChild(_focusModal);
     _focusModal = null;
     _focusModalLog = null;
@@ -501,27 +526,23 @@ console.log('[milg] analyzer.js v44.0 loaded');
     // Launch ALL viewports in parallel — maximum speed when tab is in foreground.
     // Chrome throttles background tabs (timers → 1/sec, rAF paused), so the focus
     // modal warns users to stay on this tab during analysis.
-    var launchMsg = 'Launching ' + viewports.length + ' viewports in parallel' + (wantShots ? ' (with screenshots)' : '');
-    console.log('[milg] Deep scan:', launchMsg);
-    updateFocusModal(launchMsg);
+    console.log('[milg] Deep scan: launching', viewports.length, 'viewports', wantShots ? '(with screenshots)' : '');
+    updateFocusModal('Scanning ' + viewports.length + ' viewports' + (wantShots ? ' with screenshots' : ''));
     if (onProgress) onProgress('Starting viewports...', 0, totalSteps);
     viewports.forEach(function(vp, i) {
-      var vpMsg = 'Starting ' + vp.label + ' (' + vp.w + 'x' + vp.h + ')';
-      console.log('[milg]', vpMsg);
-      updateFocusModal(vpMsg);
+      console.log('[milg] Starting viewport', i, vp.label, vp.w + 'x' + vp.h);
       MilgIframe.analyzeHtmlInIframe(html, function(data) {
         if (data) data.meta.url = url;
         results[i] = data;
         doneCount++;
         var elCount = data ? (data.structure && data.structure.totalElements || 0) : 0;
         var ssCount = data && data.screenshots ? data.screenshots.length : 0;
-        var doneMsg = vp.label + ' done (' + doneCount + '/' + viewports.length + ') — ' + elCount + ' elements' + (ssCount ? ', ' + ssCount + ' screenshot' : '');
-        console.log('[milg]', doneMsg);
-        updateFocusModal(doneMsg);
-        if (onProgress) onProgress(doneMsg, doneCount, totalSteps);
+        console.log('[milg] Viewport', i, vp.label, 'complete (' + doneCount + '/' + viewports.length + ') elements=' + elCount + ' screenshots=' + ssCount);
+        updateFocusModal(vp.label + ' (' + vp.w + 'px) — ' + elCount + ' elements' + (ssCount ? ', screenshot captured' : ''));
+        if (onProgress) onProgress(vp.label + ' done', doneCount, totalSteps);
         if (doneCount === viewports.length) {
           console.log('[milg] All viewports done, assembling deepScan');
-          updateFocusModal('All viewports done — assembling results...');
+          updateFocusModal('Assembling multi-viewport results');
           onAllDone();
         }
       }, url, exclude, wantShots, { w: vp.w, h: vp.h });
@@ -922,6 +943,7 @@ console.log('[milg] analyzer.js v44.0 loaded');
                 urlStatus.textContent = 'Running pixel verification...';
                 urlStatus.style.display = 'block';
                 showProgress(88, 'Pixel verification...');
+                updateFocusModal('Verifying contrast at pixel level');
                 var vpToVerify = primary.deepScan.viewportData.filter(function(v) { return v && v.data && v.data.screenshots && v.data.screenshots.length > 0; });
                 var verifyDone = 0;
                 if (vpToVerify.length === 0) {
@@ -932,17 +954,15 @@ console.log('[milg] analyzer.js v44.0 loaded');
                   return;
                 }
                 vpToVerify.forEach(function(vp) {
-                  updateFocusModal('Pixel verify: scoring ' + vp.label + '...');
                   var scored = MilgScoring.runScoring(vp.data);
                   MilgContrastVerify.verify(scored, function(results, bboxEdge) {
                     vp.data._contrastVerifyResults = results || [];
                     vp.data._bboxEdgeResults = bboxEdge || [];
                     verifyDone++;
-                    var pvMsg = 'Pixel verify: ' + vp.label + ' done (' + verifyDone + '/' + vpToVerify.length + ')';
-                    updateFocusModal(pvMsg);
-                    showProgress(88 + Math.round(10 * verifyDone / vpToVerify.length), pvMsg);
+                    updateFocusModal('Pixel verified ' + vp.label + ' — ' + (results ? results.length : 0) + ' pairs checked');
+                    showProgress(88 + Math.round(10 * verifyDone / vpToVerify.length), 'Verified ' + verifyDone + '/' + vpToVerify.length);
                     if (verifyDone === vpToVerify.length) {
-                      updateFocusModal('All done! Rendering report...');
+                      updateFocusModal('Rendering report');
                       urlStatus.style.display = 'none';
                       showProgress(100, 'Done!');
                       setTimeout(hideProgress, 500);
@@ -954,7 +974,7 @@ console.log('[milg] analyzer.js v44.0 loaded');
                   });
                 });
               } else {
-                updateFocusModal('All done! Rendering report...');
+                updateFocusModal('Rendering report');
                 urlStatus.style.display = 'none';
                 showProgress(100, 'Done!');
                 setTimeout(hideProgress, 500);
@@ -970,11 +990,19 @@ console.log('[milg] analyzer.js v44.0 loaded');
 
         // JS-enabled single viewport (no deep scan)
         if (wantJs) {
-          if (wantShots) { showFocusModal(); updateFocusModal('Running with JavaScript enabled...'); }
+          if (wantShots) { showFocusModal(); updateFocusModal('Preparing JavaScript sandbox'); }
           urlStatus.textContent = 'Running with JavaScript enabled...';
           showProgress(25, 'Preparing sandbox...');
           MilgProxy.analyzeWithJs(html, url, {
-            onProgress: function(pct, label) { showProgress(pct, label); updateFocusModal(label); },
+            onProgress: function(pct, label) {
+              showProgress(pct, label);
+              // Map raw progress labels to cleaner modal messages
+              var clean = label.indexOf('Running JavaScript') !== -1 ? 'Executing page JavaScript'
+                : label.indexOf('hydration') !== -1 ? 'Waiting for framework hydration'
+                : label.indexOf('Extracting') !== -1 ? 'Extracting design data'
+                : null;
+              if (clean) updateFocusModal(clean);
+            },
             onDone: function(data) {
               analyzeUrlBtn.disabled = false;
               analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
@@ -989,7 +1017,7 @@ console.log('[milg] analyzer.js v44.0 loaded');
           return;
         }
         showProgress(40, 'Analyzing styles...');
-        if (wantShots) { showFocusModal(); updateFocusModal('Analyzing page with screenshots...'); }
+        if (wantShots) { showFocusModal(); updateFocusModal('Rendering page and capturing screenshot'); }
         MilgIframe.analyzeHtmlInIframe(html, function(data) {
           analyzeUrlBtn.disabled = false;
           analyzeUrlBtn.textContent = 'Analyze URL';
