@@ -171,12 +171,31 @@ console.log('[milg] analyzer.js v44.0 loaded');
       if (callback) callback();
       return;
     }
-    // Cache-bust snippet fetch with same version as the analyzer
+    // Fetch both the snippet shell AND the extraction engine, then inline the
+    // extraction into the snippet so it's fully self-contained (no CDN dependency).
     var cacheBust = '?v=' + Math.floor(Date.now() / 3600000);
-    fetch(file + cacheBust)
-      .then(function(r) { return r.text(); })
-      .then(function(text) { _snippetCache[file] = text; codeEl.textContent = text; if (callback) callback(); })
-      .catch(function() { codeEl.textContent = '// Failed to load snippet — copy from ' + file; });
+    Promise.all([
+      fetch(file + cacheBust).then(function(r) { return r.text(); }),
+      fetch('analyzer-extract.js' + cacheBust).then(function(r) { return r.text(); })
+    ]).then(function(results) {
+      var snippetText = results[0];
+      var extractText = results[1];
+      // Replace the CDN fetch block with inlined extraction code.
+      // The snippet has a marker: the _extractUrls / _tryLoad / fetch block.
+      // Replace everything from "// --- Load extraction engine" to the closing
+      // of the else block with: eval the extraction inline + call _runExtraction.
+      var inlined = snippetText.replace(
+        /\/\/ --- Load extraction engine from CDN[\s\S]*?(?=\n  function _runExtraction)/,
+        '// --- Extraction engine (inlined by analyzer) ---\n' +
+        '  ;(function(){\n' + extractText + '\n  })();\n' +
+        '  _runExtraction();\n\n'
+      );
+      _snippetCache[file] = inlined;
+      codeEl.textContent = inlined;
+      if (callback) callback();
+    }).catch(function() {
+      codeEl.textContent = '// Failed to load snippet — copy from ' + file;
+    });
   }
 
   // --- Initialize modules ---
