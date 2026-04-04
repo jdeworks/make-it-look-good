@@ -71,11 +71,14 @@
       } else {
         var smallBboxes = [];
         var smallSelectors = [];
+        var smallTexts = [];
         fontSizes.filter(function(f) { return parseFloat(f.value) < 12; }).forEach(function(f) {
           if (f.bbox) smallBboxes.push(f.bbox);
           if (f.extraBboxes) f.extraBboxes.forEach(function(b) { smallBboxes.push(b); });
           if (f.sampleSelector) smallSelectors.push(f.sampleSelector);
           if (f.extraSelectors) f.extraSelectors.forEach(function(s) { smallSelectors.push(s); });
+          if (f.sampleText) smallTexts.push(f.sampleText);
+          if (f.extraTexts) f.extraTexts.forEach(function(t) { smallTexts.push(t); });
         });
         findings.push({
           severity: 'warning',
@@ -84,7 +87,7 @@
           fix: 'Increase small text to at least 12px. Consider if the information is important enough to display — if not, remove it.',
           presetRef: null,
           source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text',
-          locator: smallBboxes.length > 0 ? { selector: '', text: '', bboxes: smallBboxes, selectors: smallSelectors } : undefined
+          locator: smallBboxes.length > 0 ? { selector: '', text: '', bboxes: smallBboxes, selectors: smallSelectors, texts: smallTexts } : undefined
         });
       }
     }

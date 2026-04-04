@@ -1379,16 +1379,24 @@ window.MilgViewer = (function() {
         }
       }
 
-      // Highlight ALL rects for this finding with orange stroke
+      // Flash ALL rects for this finding with pulsing highlight
       svg.querySelectorAll('rect[data-finding]').forEach(function(rect) {
         var rfi = parseInt(rect.getAttribute('data-finding'));
         if (rfi === viewerIdx) {
-          rect.setAttribute('stroke-width', '3');
-          rect.setAttribute('stroke', '#f59e0b');
-          setTimeout(function() {
-            rect.setAttribute('stroke-width', '1.5');
-            rect.setAttribute('stroke', (COLORS[target.severity] || COLORS.info).stroke);
-          }, 2000);
+          var origFill = rect.getAttribute('fill');
+          var origStroke = rect.getAttribute('stroke');
+          var origWidth = rect.getAttribute('stroke-width');
+          // Flash 3 times
+          var flash = 0;
+          (function pulse() {
+            var on = flash % 2 === 0;
+            rect.setAttribute('fill', on ? 'rgba(245,158,11,0.4)' : origFill);
+            rect.setAttribute('stroke', on ? '#f59e0b' : origStroke);
+            rect.setAttribute('stroke-width', on ? '3' : origWidth);
+            flash++;
+            if (flash < 6) setTimeout(pulse, 300);
+            else { rect.setAttribute('fill', origFill); rect.setAttribute('stroke', origStroke); rect.setAttribute('stroke-width', origWidth); }
+          })();
         }
       });
 
@@ -1433,14 +1441,24 @@ window.MilgViewer = (function() {
         var displayScale = imgEl.offsetWidth / imgEl.naturalWidth;
         content.scrollTop = Math.max(0, (targetY * displayScale) - content.clientHeight / 2);
       }
-      // Highlight matching rect
+      // Flash matching rect
       var svg = _overlay.querySelector('.milg-viewer-svg');
       if (svg) {
         svg.querySelectorAll('rect').forEach(function(rect) {
-          if (rect._selector === selector || (rect._verifySelector && rect._verifySelector === selector)) {
-            rect.setAttribute('stroke-width', '3');
-            rect.setAttribute('stroke', '#f59e0b');
-            setTimeout(function() { rect.setAttribute('stroke-width', '1.5'); }, 2000);
+          if (rect._selector === selector) {
+            var origFill = rect.getAttribute('fill');
+            var origStroke = rect.getAttribute('stroke');
+            var origWidth = rect.getAttribute('stroke-width');
+            var flash = 0;
+            (function pulse() {
+              var on = flash % 2 === 0;
+              rect.setAttribute('fill', on ? 'rgba(245,158,11,0.4)' : origFill);
+              rect.setAttribute('stroke', on ? '#f59e0b' : origStroke);
+              rect.setAttribute('stroke-width', on ? '3' : origWidth);
+              flash++;
+              if (flash < 6) setTimeout(pulse, 300);
+              else { rect.setAttribute('fill', origFill); rect.setAttribute('stroke', origStroke); rect.setAttribute('stroke-width', origWidth); }
+            })();
           }
         });
       }

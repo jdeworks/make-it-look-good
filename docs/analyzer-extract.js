@@ -392,11 +392,13 @@ window.MilgExtract = (function() {
       var s = getComputedStyle(el);
       fontSizeMap[s.fontSize] = (fontSizeMap[s.fontSize] || 0) + 1;
       if (!fontSizeSamples[s.fontSize]) {
-        fontSizeSamples[s.fontSize] = { selector: cssSelector(el), bbox: null, extraBboxes: [] };
+        var _fsText = (el.textContent || '').trim().substring(0, 60);
+        fontSizeSamples[s.fontSize] = { selector: cssSelector(el), text: _fsText, bbox: null, extraBboxes: [] };
         trackBbox(el, fontSizeSamples[s.fontSize], 'bbox');
       } else if (fontSizeSamples[s.fontSize].extraBboxes) {
-        // Collect ALL additional bboxes + selectors for findings that show every instance
-        var _extra = { bbox: null, selector: cssSelector(el) };
+        // Collect ALL additional bboxes + selectors + text for findings that show every instance
+        var _fsText = (el.textContent || '').trim().substring(0, 60);
+        var _extra = { bbox: null, selector: cssSelector(el), text: _fsText };
         trackBbox(el, _extra, 'bbox');
         fontSizeSamples[s.fontSize].extraBboxes.push(_extra);
       }
@@ -437,7 +439,7 @@ window.MilgExtract = (function() {
       var w = rect.width;
       if (w > maxContentW && w < window.innerWidth * 0.95) maxContentW = w;
     }
-    function mapToSorted(map, sampleMap, bboxMap) { return Object.keys(map).map(function(k) { var entry = { value: k, count: map[k], sample: sampleMap ? (sampleMap[k] || '') : '' }; if (bboxMap && bboxMap[k]) { entry.sampleSelector = bboxMap[k].selector; entry.bbox = bboxMap[k].bbox; entry._sampleRef = bboxMap[k]; if (bboxMap[k].extraBboxes) { entry.extraBboxes = bboxMap[k].extraBboxes.map(function(eb) { return eb.bbox; }).filter(Boolean); entry.extraSelectors = bboxMap[k].extraBboxes.map(function(eb) { return eb.selector; }).filter(Boolean); } } return entry; }).sort(function(a, b) { return b.count - a.count; }); }
+    function mapToSorted(map, sampleMap, bboxMap) { return Object.keys(map).map(function(k) { var entry = { value: k, count: map[k], sample: sampleMap ? (sampleMap[k] || '') : '' }; if (bboxMap && bboxMap[k]) { entry.sampleSelector = bboxMap[k].selector; entry.sampleText = bboxMap[k].text || ''; entry.bbox = bboxMap[k].bbox; entry._sampleRef = bboxMap[k]; if (bboxMap[k].extraBboxes) { entry.extraBboxes = bboxMap[k].extraBboxes.map(function(eb) { return eb.bbox; }).filter(Boolean); entry.extraSelectors = bboxMap[k].extraBboxes.map(function(eb) { return eb.selector; }).filter(Boolean); entry.extraTexts = bboxMap[k].extraBboxes.map(function(eb) { return eb.text || ''; }); } } return entry; }).sort(function(a, b) { return b.count - a.count; }); }
     data.typography.fontSizes = mapToSorted(fontSizeMap, null, fontSizeSamples);
     data.typography.fontWeights = mapToSorted(fontWeightMap);
     data.typography.fontFamilies = Array.from(fontFamilySet);

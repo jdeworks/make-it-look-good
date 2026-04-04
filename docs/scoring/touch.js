@@ -114,6 +114,7 @@ function scoreTouchTargets(data) {
     if (touchFails.length > 0) {
       var allBboxes = touchFails.map(function(t) { return t.bbox; }).filter(Boolean);
       var allSelectors = touchFails.map(function(t) { return t.selector; }).filter(Boolean);
+      var allTexts = touchFails.map(function(t) { return t.text || ''; });
       findings.push({
         severity: 'info',
         title: touchFails.length + ' element(s) below ' + touchMin + 'px touch target (analyzed at ' + vw + 'px desktop viewport)',
@@ -121,7 +122,7 @@ function scoreTouchTargets(data) {
         fix: 'For responsive touch support: add touch-target sizing at mobile breakpoints, e.g. sm:min-h-[' + touchMin + 'px]',
         presetRef: null,
         source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout',
-        locator: { selector: '', text: '', bboxes: allBboxes, selectors: allSelectors }
+        locator: { selector: '', text: '', bboxes: allBboxes, selectors: allSelectors, texts: allTexts }
       });
     }
   }

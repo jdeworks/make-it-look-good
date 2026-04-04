@@ -189,7 +189,7 @@ function scoreLayout(data) {
       fix: 'Check absolute/fixed positioning. On mobile, dropdown menus with right-0 may overflow left. Use left-0 sm:right-0 or max-w-[calc(100vw-2rem)]. For elements extending right, check fixed widths wider than viewport.',
       presetRef: null,
       source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
-      locator: { selector: offscreen[0] ? offscreen[0].selector : '', text: offscreen[0] ? (offscreen[0].text || '') : '', bboxes: offscreen.filter(function(o) { return o.bbox; }).map(function(o) { return o.bbox; }), selectors: offscreen.filter(function(o) { return o.selector; }).map(function(o) { return o.selector; }) }
+      locator: { selector: offscreen[0] ? offscreen[0].selector : '', text: offscreen[0] ? (offscreen[0].text || '') : '', bboxes: offscreen.filter(function(o) { return o.bbox; }).map(function(o) { return o.bbox; }), selectors: offscreen.filter(function(o) { return o.selector; }).map(function(o) { return o.selector; }), texts: offscreen.map(function(o) { return o.text || ''; }) }
     });
   } else {
     checks++;
@@ -461,7 +461,7 @@ function scoreLayout(data) {
       detail: riskDetails.join('; '),
       fix: 'Fixed/sticky elements must adapt their color when scrolling over different-colored sections. Use a scroll listener to toggle text color, or add a semi-opaque background to the fixed container.',
       source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum',
-      locator: { selector: fixedRisks[0].selector, text: fixedRisks[0].text || '', bboxes: fixedRisks.filter(function(r) { return r.bbox; }).map(function(r) { return r.bbox; }), selectors: fixedRisks.filter(function(r) { return r.selector; }).map(function(r) { return r.selector; }) }
+      locator: { selector: fixedRisks[0].selector, text: fixedRisks[0].text || '', bboxes: fixedRisks.filter(function(r) { return r.bbox; }).map(function(r) { return r.bbox; }), selectors: fixedRisks.filter(function(r) { return r.selector; }).map(function(r) { return r.selector; }), texts: fixedRisks.map(function(r) { return r.text || ''; }) }
     });
   }
 
