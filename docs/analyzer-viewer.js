@@ -393,13 +393,13 @@ window.MilgViewer = (function() {
     var scaleX = _meta.scale;
     var scaleY = _meta.scale;
 
-    // Build pixel verification lookups: by selector AND by bbox position
+    // Build pixel verification lookups: by selector AND by bbox position+size
     var verifyBySelector = {};
-    var verifyByPos = {}; // "left,top" → verify result (for bbox-based matching)
+    var verifyByPos = {}; // "left,top,width,height" → verify result
     if (_reportData && _reportData._contrastVerifyResults) {
       _reportData._contrastVerifyResults.forEach(function(vr) {
         if (vr.selector) verifyBySelector[vr.selector] = vr;
-        if (vr.bbox) verifyByPos[Math.round(vr.bbox.left) + ',' + Math.round(vr.bbox.top)] = vr;
+        if (vr.bbox) verifyByPos[Math.round(vr.bbox.left) + ',' + Math.round(vr.bbox.top) + ',' + Math.round(vr.bbox.width) + ',' + Math.round(vr.bbox.height)] = vr;
       });
     }
 
@@ -419,8 +419,8 @@ window.MilgViewer = (function() {
         var w = Math.round(bbox.width * scaleX);
         var h = Math.round(bbox.height * scaleY);
 
-        // Match pixel verify result for THIS specific bbox (by position or selector)
-        var bboxKey = Math.round(bbox.left) + ',' + Math.round(bbox.top);
+        // Match pixel verify result for THIS specific bbox (by position+size or selector)
+        var bboxKey = Math.round(bbox.left) + ',' + Math.round(bbox.top) + ',' + Math.round(bbox.width) + ',' + Math.round(bbox.height);
         var vr = verifyByPos[bboxKey] || null;
         // Fallback: match by selector in finding detail
         if (!vr && finding.detail) {
@@ -565,14 +565,17 @@ window.MilgViewer = (function() {
       var w = Math.round(bbox.width * vScaleX);
       var h = Math.round(bbox.height * vScaleY);
 
-      // Check if any finding at this bbox position has error/warning severity
+      // Check if any finding at this EXACT bbox (same position + size) has error/warning severity
       var worstSevAtPos = 'pass';
       var SEV_R = { error: 3, warning: 2, info: 1, pass: 0 };
       if (vr.bbox) {
-        var bk = Math.round(vr.bbox.left) + ',' + Math.round(vr.bbox.top);
+        var bL = Math.round(vr.bbox.left), bT = Math.round(vr.bbox.top);
+        var bW = Math.round(vr.bbox.width), bH = Math.round(vr.bbox.height);
         _allFindings.forEach(function(f) {
           f.bboxes.forEach(function(bb) {
-            if (Math.round(bb.left) + ',' + Math.round(bb.top) === bk) {
+            // Match same element: position AND size must match within 3px
+            if (Math.abs(Math.round(bb.left) - bL) <= 3 && Math.abs(Math.round(bb.top) - bT) <= 3 &&
+                Math.abs(Math.round(bb.width) - bW) <= 3 && Math.abs(Math.round(bb.height) - bH) <= 3) {
               if ((SEV_R[f.severity] || 0) > (SEV_R[worstSevAtPos] || 0)) worstSevAtPos = f.severity;
             }
           });

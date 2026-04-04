@@ -271,10 +271,10 @@ window.MilgContrastVerify = (function() {
       cssRatio: pair.ratio, neededRatio: cssNeeded,
       pixelRatio: worstRatio, pixelRatioAvg: avgRatio, pixelRatioBest: bestRatio,
       bgVariance: Math.round(bgVariance * 100) / 100,
-      isVariableBg: bgVariance > 2.0, ratioDiff: ratioDiff,
+      isVariableBg: bgVariance > 3.0, ratioDiff: ratioDiff,
       cssPasses: cssPasses, pixelPasses: pixelPasses,
       crossesBoundary: cssPasses !== pixelPasses,
-      significant: (cssPasses !== pixelPasses) || ratioDiff > 1.5 || bgVariance > 2.0,
+      significant: (cssPasses !== pixelPasses) || ratioDiff > 1.5 || bgVariance > 3.0,
       pixelFg: rgbStr(fgColor), expectedFg: rgbStr(ctx.expectedFg), effectiveOpacity: ctx.opacity,
       pixelRatioP10: p10Ratio, pixelRatioMedian: medianRatio,
       pixelBgWorst: worstBg ? rgbStr(worstBg) : '', pixelBgAvg: rgbStr(avgBg),
@@ -969,7 +969,7 @@ window.MilgContrastVerify = (function() {
 
     // Flag high BG variance as a signal for photo/gradient backgrounds
     var bgVariance = bestRatio - worstRatio;
-    var isVariableBg = bgVariance > 2.0;
+    var isVariableBg = bgVariance > 3.0;
 
     return {
       cssRatio: cssRatio,
