@@ -3924,158 +3924,6 @@ window.MilgScoring = (function() {
 })();
 </file>
 
-<file path="docs/scoring/responsive.js">
-// Scoring Module: Responsive Design
-// Weight: 10%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreResponsive(data) {
-  var findings = [];
-  var checks = 0;
-  var passed = 0;
-  var struct = data.structure;
-
-  // Responsive classes
-  checks++;
-  if (struct.responsiveClasses) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'warning',
-      title: 'No responsive breakpoint classes detected',
-      detail: struct.cssFramework === 'tailwind' ? 'No sm:/md:/lg: prefixes found' : 'No responsive utilities detected',
-      fix: 'Add responsive variants. In Tailwind: sm:flex, md:grid-cols-2, lg:px-8',
-      presetRef: 'All presets include mobile-first responsive design',
-      source: 'NNGroup mobile — https://www.nngroup.com/articles/responsive-web-design-definition/'
-    });
-  }
-
-  // Dark mode
-  checks++;
-  if (struct.darkModeClasses) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'info',
-      title: 'No dark mode support detected',
-      detail: 'dark: class variants not found',
-      fix: 'Add dark mode variants. In Tailwind: dark:bg-slate-900 dark:text-slate-100',
-      presetRef: 'All presets include dark: variants',
-      source: 'Apple HIG — https://developer.apple.com/design/human-interface-guidelines/dark-mode'
-    });
-  }
-
-  // Viewport width check — if analyzed on desktop, check if content is flexible
-  checks++;
-  var vw = data.meta.viewportWidth;
-  var maxContent = parseFloat(data.spacing.maxContentWidth);
-  if (maxContent > 0 && (maxContent <= vw * 0.95 || struct.responsiveClasses)) {
-    passed++;
-  } else if (!struct.responsiveClasses && maxContent > vw * 0.95) {
-    findings.push({
-      severity: 'warning',
-      title: 'Content fills entire viewport width without constraints',
-      detail: 'Content may not reflow well on smaller screens',
-      fix: 'Use responsive containers and flexible layouts',
-      presetRef: null
-    });
-  } else {
-    passed++; // Can't determine, give benefit of doubt
-  }
-
-  // Viewport meta audit
-  if (data.structure && data.structure.viewportMeta !== undefined) {
-    checks++;
-    var vpContent = data.structure.viewportMeta;
-    if (!vpContent) {
-      findings.push({
-        severity: 'error',
-        title: 'Missing viewport meta tag',
-        detail: 'Without a viewport meta tag, mobile browsers render at desktop width',
-        fix: 'Add <meta name="viewport" content="width=device-width, initial-scale=1.0"> to <head>.',
-        presetRef: null,
-        source: 'MDN — https://developer.mozilla.org/en-US/docs/Web/HTML/Viewport_meta_tag'
-      });
-    } else if (data.structure.blocksZoom) {
-      findings.push({
-        severity: 'error',
-        title: 'Viewport blocks user zoom (user-scalable=no)',
-        detail: 'Preventing zoom is an accessibility barrier for low-vision users',
-        fix: 'Remove user-scalable=no from the viewport meta tag.',
-        presetRef: null,
-        source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text'
-      });
-    } else {
-      passed++;
-    }
-  }
-
-  // Horizontal overflow
-  if (data.structure && data.structure.hasHorizontalOverflow) {
-    checks++;
-    var culprits = (data.structure && data.structure.overflowCulprits) || [];
-    var culpritDetail = 'Content extends beyond viewport width — common responsive design failure';
-    if (culprits.length > 0) {
-      culpritDetail += '. Offending elements: ' + culprits.map(function(c) {
-        return c.selector + ' (' + c.width + 'px wide, overflows by ' + c.overflow + 'px)';
-      }).join('; ');
-    }
-    var culpritBboxes = culprits.filter(function(c) { return c.bbox; }).map(function(c) { return c.bbox; });
-    var culpritSelectors = culprits.map(function(c) { return c.selector; });
-    findings.push({
-      severity: 'warning',
-      title: 'Page has horizontal overflow (horizontal scrollbar)',
-      detail: culpritDetail,
-      fix: 'Find elements with fixed widths wider than the viewport. Add overflow-x: hidden to body or fix the overflowing element.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
-      locator: culpritBboxes.length > 0 ? { selector: '', text: '', bboxes: culpritBboxes, selectors: culpritSelectors } : undefined
-    });
-  } else if (data.structure && data.structure.hasHorizontalOverflow === false) {
-    checks++;
-    passed++;
-  }
-
-  // Fixed-width elements
-  var fixedW = (data.structure && data.structure.fixedWidthElements) || 0;
-  if (fixedW > 0) {
-    findings.push({
-      severity: fixedW > 3 ? 'warning' : 'info',
-      title: fixedW + ' element(s) with fixed pixel widths > 300px',
-      detail: 'Fixed-width elements may overflow on smaller screens',
-      fix: 'Use max-width instead of width, or percentage/viewport units. In Tailwind: max-w-full or w-full.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
-    });
-  }
-
-  // Text truncation
-  var truncated = (data.structure && data.structure.truncatedElements) || 0;
-  if (truncated > 3) {
-    findings.push({
-      severity: 'info',
-      title: truncated + ' element(s) with truncated text (ellipsis)',
-      detail: 'Content is being cut off — may hide important information on smaller screens',
-      fix: 'Consider allowing text to wrap, expanding the container, or using a tooltip to show full content.',
-      presetRef: null,
-      source: 'NNGroup — https://www.nngroup.com/articles/truncation-and-progressive-disclosure/'
-    });
-  }
-
-  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-  return { score: score, findings: findings, checks: checks, passed: passed, weight: 10, label: 'Responsive Design', icon: 'responsive' };
-}
-
-
-  S.register("responsive", scoreResponsive, 10, "Responsive Design", "responsive");
-})();
-</file>
-
 <file path="docs/scoring/typography.js">
 // Scoring Module: Typography
 // Weight: 15%
@@ -27163,6 +27011,158 @@ function scorePerformance(data) {
 })();
 </file>
 
+<file path="docs/scoring/responsive.js">
+// Scoring Module: Responsive Design
+// Weight: 10%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreResponsive(data) {
+  var findings = [];
+  var checks = 0;
+  var passed = 0;
+  var struct = data.structure;
+
+  // Responsive classes
+  checks++;
+  if (struct.responsiveClasses) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'warning',
+      title: 'No responsive breakpoint classes detected',
+      detail: struct.cssFramework === 'tailwind' ? 'No sm:/md:/lg: prefixes found' : 'No responsive utilities detected',
+      fix: 'Add responsive variants. In Tailwind: sm:flex, md:grid-cols-2, lg:px-8',
+      presetRef: 'All presets include mobile-first responsive design',
+      source: 'NNGroup mobile — https://www.nngroup.com/articles/responsive-web-design-definition/'
+    });
+  }
+
+  // Dark mode
+  checks++;
+  if (struct.darkModeClasses) {
+    passed++;
+  } else {
+    findings.push({
+      severity: 'info',
+      title: 'No dark mode support detected',
+      detail: 'dark: class variants not found',
+      fix: 'Add dark mode variants. In Tailwind: dark:bg-slate-900 dark:text-slate-100',
+      presetRef: 'All presets include dark: variants',
+      source: 'Apple HIG — https://developer.apple.com/design/human-interface-guidelines/dark-mode'
+    });
+  }
+
+  // Viewport width check — if analyzed on desktop, check if content is flexible
+  checks++;
+  var vw = data.meta.viewportWidth;
+  var maxContent = parseFloat(data.spacing.maxContentWidth);
+  if (maxContent > 0 && (maxContent <= vw * 0.95 || struct.responsiveClasses)) {
+    passed++;
+  } else if (!struct.responsiveClasses && maxContent > vw * 0.95) {
+    findings.push({
+      severity: 'warning',
+      title: 'Content fills entire viewport width without constraints',
+      detail: 'Content may not reflow well on smaller screens',
+      fix: 'Use responsive containers and flexible layouts',
+      presetRef: null
+    });
+  } else {
+    passed++; // Can't determine, give benefit of doubt
+  }
+
+  // Viewport meta audit
+  if (data.structure && data.structure.viewportMeta !== undefined) {
+    checks++;
+    var vpContent = data.structure.viewportMeta;
+    if (!vpContent) {
+      findings.push({
+        severity: 'error',
+        title: 'Missing viewport meta tag',
+        detail: 'Without a viewport meta tag, mobile browsers render at desktop width',
+        fix: 'Add <meta name="viewport" content="width=device-width, initial-scale=1.0"> to <head>.',
+        presetRef: null,
+        source: 'MDN — https://developer.mozilla.org/en-US/docs/Web/HTML/Viewport_meta_tag'
+      });
+    } else if (data.structure.blocksZoom) {
+      findings.push({
+        severity: 'error',
+        title: 'Viewport blocks user zoom (user-scalable=no)',
+        detail: 'Preventing zoom is an accessibility barrier for low-vision users',
+        fix: 'Remove user-scalable=no from the viewport meta tag.',
+        presetRef: null,
+        source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text'
+      });
+    } else {
+      passed++;
+    }
+  }
+
+  // Horizontal overflow
+  if (data.structure && data.structure.hasHorizontalOverflow) {
+    checks++;
+    var culprits = (data.structure && data.structure.overflowCulprits) || [];
+    var culpritDetail = 'Content extends beyond viewport width — common responsive design failure';
+    if (culprits.length > 0) {
+      culpritDetail += '. Offending elements: ' + culprits.map(function(c) {
+        return c.selector + ' (' + c.width + 'px wide, overflows by ' + c.overflow + 'px)';
+      }).join('; ');
+    }
+    var culpritBboxes = culprits.filter(function(c) { return c.bbox; }).map(function(c) { return c.bbox; });
+    var culpritSelectors = culprits.map(function(c) { return c.selector; });
+    findings.push({
+      severity: 'warning',
+      title: 'Page has horizontal overflow (horizontal scrollbar)',
+      detail: culpritDetail,
+      fix: 'Find elements with fixed widths wider than the viewport. Add overflow-x: hidden to body or fix the overflowing element.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
+      locator: culpritBboxes.length > 0 ? { selector: '', text: '', bboxes: culpritBboxes, selectors: culpritSelectors } : undefined
+    });
+  } else if (data.structure && data.structure.hasHorizontalOverflow === false) {
+    checks++;
+    passed++;
+  }
+
+  // Fixed-width elements
+  var fixedW = (data.structure && data.structure.fixedWidthElements) || 0;
+  if (fixedW > 0) {
+    findings.push({
+      severity: fixedW > 3 ? 'warning' : 'info',
+      title: fixedW + ' element(s) with fixed pixel widths > 300px',
+      detail: 'Fixed-width elements may overflow on smaller screens',
+      fix: 'Use max-width instead of width, or percentage/viewport units. In Tailwind: max-w-full or w-full.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow'
+    });
+  }
+
+  // Text truncation
+  var truncated = (data.structure && data.structure.truncatedElements) || 0;
+  if (truncated > 3) {
+    findings.push({
+      severity: 'info',
+      title: truncated + ' element(s) with truncated text (ellipsis)',
+      detail: 'Content is being cut off — may hide important information on smaller screens',
+      fix: 'Consider allowing text to wrap, expanding the container, or using a tooltip to show full content.',
+      presetRef: null,
+      source: 'NNGroup — https://www.nngroup.com/articles/truncation-and-progressive-disclosure/'
+    });
+  }
+
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+  return { score: score, findings: findings, checks: checks, passed: passed, weight: 10, label: 'Responsive Design', icon: 'responsive' };
+}
+
+
+  S.register("responsive", scoreResponsive, 10, "Responsive Design", "responsive");
+})();
+</file>
+
 <file path="docs/scoring/spacing.js">
 // Scoring Module: Spacing & Layout
 // Weight: 15%
@@ -42291,10 +42291,35 @@ window.MilgViewer = (function() {
 
   function positionTooltip(e) {
     document.body.appendChild(_tooltip);
-    var x = e.clientX + 12, y = e.clientY + 12;
     var tw = _tooltip.offsetWidth, th = _tooltip.offsetHeight;
-    if (x + tw > window.innerWidth - 8) x = e.clientX - tw - 12;
-    if (y + th > window.innerHeight - 8) y = e.clientY - th - 12;
+    var vw = window.innerWidth, vh = window.innerHeight;
+    var mx = e.clientX, my = e.clientY;
+    var gap = 12, pad = 8;
+
+    // Pick horizontal side with more space
+    var x;
+    if (mx + gap + tw + pad <= vw) {
+      x = mx + gap; // right of cursor
+    } else if (mx - gap - tw >= pad) {
+      x = mx - gap - tw; // left of cursor
+    } else {
+      x = Math.max(pad, Math.min(vw - tw - pad, mx - tw / 2)); // center, clamped
+    }
+
+    // Pick vertical side with more space
+    var y;
+    var spaceBelow = vh - my;
+    var spaceAbove = my;
+    if (spaceBelow >= th + gap + pad) {
+      y = my + gap; // below cursor
+    } else if (spaceAbove >= th + gap + pad) {
+      y = my - gap - th; // above cursor
+    } else if (spaceBelow >= spaceAbove) {
+      y = Math.max(pad, vh - th - pad); // pin to bottom
+    } else {
+      y = pad; // pin to top
+    }
+
     _tooltip.style.left = x + 'px';
     _tooltip.style.top = y + 'px';
   }
@@ -44181,7 +44206,7 @@ window.MilgContrastVerify = (function() {
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v45.0</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v45.1</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -44547,30 +44572,30 @@ window.MilgContrastVerify = (function() {
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=45.0"></script>
-  <script src="scoring/contrast.js?v=45.0"></script>
-  <script src="scoring/typography.js?v=45.0"></script>
-  <script src="scoring/spacing.js?v=45.0"></script>
-  <script src="scoring/touch.js?v=45.0"></script>
-  <script src="scoring/accessibility.js?v=45.0"></script>
-  <script src="scoring/responsive.js?v=45.0"></script>
-  <script src="scoring/consistency.js?v=45.0"></script>
-  <script src="scoring/cognitive.js?v=45.0"></script>
-  <script src="scoring/layout.js?v=45.0"></script>
-  <script src="scoring/performance.js?v=45.0"></script>
-  <script src="scoring/readability.js?v=45.0"></script>
-  <script src="scoring/filters.js?v=45.0"></script>
-  <script src="scoring/balance.js?v=45.0"></script>
+  <script src="scoring/registry.js?v=45.1"></script>
+  <script src="scoring/contrast.js?v=45.1"></script>
+  <script src="scoring/typography.js?v=45.1"></script>
+  <script src="scoring/spacing.js?v=45.1"></script>
+  <script src="scoring/touch.js?v=45.1"></script>
+  <script src="scoring/accessibility.js?v=45.1"></script>
+  <script src="scoring/responsive.js?v=45.1"></script>
+  <script src="scoring/consistency.js?v=45.1"></script>
+  <script src="scoring/cognitive.js?v=45.1"></script>
+  <script src="scoring/layout.js?v=45.1"></script>
+  <script src="scoring/performance.js?v=45.1"></script>
+  <script src="scoring/readability.js?v=45.1"></script>
+  <script src="scoring/filters.js?v=45.1"></script>
+  <script src="scoring/balance.js?v=45.1"></script>
   <!-- Report rendering + UI -->
-  <script src="analyzer-report.js?v=45.0"></script>
-  <script src="analyzer-crawl.js?v=45.0"></script>
-  <script src="analyzer-extract.js?v=45.0"></script>
-  <script src="analyzer-iframe.js?v=45.0"></script>
-  <script src="analyzer-proxy.js?v=45.0"></script>
-  <script src="analyzer-crawl-ui.js?v=45.0"></script>
-  <script src="analyzer-contrast-verify.js?v=45.0"></script>
-  <script src="analyzer-viewer.js?v=45.0"></script>
-  <script src="analyzer.js?v=45.0"></script>
+  <script src="analyzer-report.js?v=45.1"></script>
+  <script src="analyzer-crawl.js?v=45.1"></script>
+  <script src="analyzer-extract.js?v=45.1"></script>
+  <script src="analyzer-iframe.js?v=45.1"></script>
+  <script src="analyzer-proxy.js?v=45.1"></script>
+  <script src="analyzer-crawl-ui.js?v=45.1"></script>
+  <script src="analyzer-contrast-verify.js?v=45.1"></script>
+  <script src="analyzer-viewer.js?v=45.1"></script>
+  <script src="analyzer.js?v=45.1"></script>
 </body>
 </html>
 </file>

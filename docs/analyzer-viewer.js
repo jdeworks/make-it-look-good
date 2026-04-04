@@ -1220,10 +1220,35 @@ window.MilgViewer = (function() {
 
   function positionTooltip(e) {
     document.body.appendChild(_tooltip);
-    var x = e.clientX + 12, y = e.clientY + 12;
     var tw = _tooltip.offsetWidth, th = _tooltip.offsetHeight;
-    if (x + tw > window.innerWidth - 8) x = e.clientX - tw - 12;
-    if (y + th > window.innerHeight - 8) y = e.clientY - th - 12;
+    var vw = window.innerWidth, vh = window.innerHeight;
+    var mx = e.clientX, my = e.clientY;
+    var gap = 12, pad = 8;
+
+    // Pick horizontal side with more space
+    var x;
+    if (mx + gap + tw + pad <= vw) {
+      x = mx + gap; // right of cursor
+    } else if (mx - gap - tw >= pad) {
+      x = mx - gap - tw; // left of cursor
+    } else {
+      x = Math.max(pad, Math.min(vw - tw - pad, mx - tw / 2)); // center, clamped
+    }
+
+    // Pick vertical side with more space
+    var y;
+    var spaceBelow = vh - my;
+    var spaceAbove = my;
+    if (spaceBelow >= th + gap + pad) {
+      y = my + gap; // below cursor
+    } else if (spaceAbove >= th + gap + pad) {
+      y = my - gap - th; // above cursor
+    } else if (spaceBelow >= spaceAbove) {
+      y = Math.max(pad, vh - th - pad); // pin to bottom
+    } else {
+      y = pad; // pin to top
+    }
+
     _tooltip.style.left = x + 'px';
     _tooltip.style.top = y + 'px';
   }
