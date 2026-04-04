@@ -424,9 +424,9 @@
         // Reload page after delay to restore styles corrupted by mask capture
         setTimeout(function() {
           if (_copyOverlay.parentNode) _copyOverlay.parentNode.removeChild(_copyOverlay);
-          console.log('%c\u21BB Reloading page to restore styles...', 'color: #64748b;');
-          setTimeout(function() { location.reload(); }, 500);
-        }, 1500);
+          console.log('%c\u21BB Reloading page in 8s to restore styles...', 'color: #64748b;');
+          setTimeout(function() { location.reload(); }, 8000);
+        }, 2000);
       }
       function onFail() {
         btn.textContent = 'Copy failed \u2014 use console';
@@ -479,8 +479,8 @@
       // Reload page after delay to restore styles corrupted by mask capture
       setTimeout(function() {
         if (_copyOverlay.parentNode) _copyOverlay.parentNode.removeChild(_copyOverlay);
-        console.log('%c\u21BB Reloading page to restore styles...', 'color: #64748b;');
-        setTimeout(function() { location.reload(); }, 500);
+        console.log('%c\u21BB Reloading page in 8s to restore styles...', 'color: #64748b;');
+        setTimeout(function() { location.reload(); }, 8000);
       }, 2000);
     });
 
