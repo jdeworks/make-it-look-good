@@ -67,11 +67,19 @@ console.log('[milg] analyzer.js v44.0 loaded');
       '<div style="font-size:12px;color:' + (isDark ? '#fbbf24' : '#d97706') + ';margin-bottom:12px">' +
         'Keep this tab in the foreground — Chrome throttles background tabs.' +
       '</div>' +
-      '<div id="focusModalLog" style="font-family:var(--mono,monospace);font-size:11px;line-height:1.6;' +
+      '<pre id="focusModalLog" style="font-family:var(--mono,monospace);font-size:11px;line-height:1.6;' +
         'background:' + (isDark ? '#0f172a' : '#f8fafc') + ';border:1px solid ' + (isDark ? '#334155' : '#e2e8f0') + ';' +
-        'border-radius:6px;padding:8px 12px;max-height:200px;overflow-y:auto;color:' + (isDark ? '#94a3b8' : '#64748b') + '">' +
-        'Starting...\n</div>' +
-      '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style>';
+        'border-radius:6px;padding:8px 12px;max-height:200px;overflow-y:auto;color:' + (isDark ? '#94a3b8' : '#64748b') + ';' +
+        'margin:0;white-space:pre-wrap;word-break:break-word">' +
+        'Starting...</pre>' +
+      '<style>' +
+        '@keyframes milg-spin{to{transform:rotate(360deg)}}' +
+        '#focusModalLog::-webkit-scrollbar{width:6px}' +
+        '#focusModalLog::-webkit-scrollbar-track{background:' + (isDark ? '#1e293b' : '#f1f5f9') + ';border-radius:3px}' +
+        '#focusModalLog::-webkit-scrollbar-thumb{background:' + (isDark ? '#475569' : '#cbd5e1') + ';border-radius:3px}' +
+        '#focusModalLog::-webkit-scrollbar-thumb:hover{background:' + (isDark ? '#64748b' : '#94a3b8') + '}' +
+        '#focusModalLog{scrollbar-width:thin;scrollbar-color:' + (isDark ? '#475569 #1e293b' : '#cbd5e1 #f1f5f9') + '}' +
+      '</style>';
     overlay.appendChild(box);
     document.body.appendChild(overlay);
     _focusModal = overlay;
