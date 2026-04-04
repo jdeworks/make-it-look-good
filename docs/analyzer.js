@@ -710,6 +710,11 @@ console.log('[milg] analyzer.js v44.0 loaded');
     // Pixel contrast verification — respects checkbox for all modes
     var pixelVerifyCheck = document.getElementById('pixelVerifyCheck');
     var wantPixelVerify = pixelVerifyCheck ? pixelVerifyCheck.checked : false;
+    console.log('[milg] Pixel verify check — want:', wantPixelVerify,
+      'hasPrecomputed:', !!data._contrastVerifyResults,
+      'hasScreenshots:', !!(reportData.raw && reportData.raw.screenshots && reportData.raw.screenshots.length),
+      'hasMeta:', !!(reportData.raw && reportData.raw.screenshotMeta),
+      'hasMilgCV:', !!window.MilgContrastVerify);
     // Use pre-computed results if available (from deep scan pre-computation)
     if (data._contrastVerifyResults) {
       reportData._contrastVerifyResults = data._contrastVerifyResults;
@@ -725,7 +730,11 @@ console.log('[milg] analyzer.js v44.0 loaded');
       }
     } else if (wantPixelVerify && window.MilgContrastVerify && reportData.raw && reportData.raw.screenshots && reportData.raw.screenshotMeta) {
       // Run async verification (non-deep-scan path)
+      console.log('[milg] Running pixel verify — screenshots:', reportData.raw.screenshots.length,
+        'meta:', JSON.stringify(reportData.raw.screenshotMeta).substring(0, 100),
+        'pairs with bbox:', (reportData.raw.colors && reportData.raw.colors.contrastPairs || []).filter(function(p) { return !!p.bbox; }).length);
       MilgContrastVerify.verify(reportData, function(results, bboxEdgeResults) {
+        console.log('[milg] Pixel verify complete:', results.length, 'results,', (bboxEdgeResults || []).length, 'edge results');
         if (results.length === 0 && (!bboxEdgeResults || bboxEdgeResults.length === 0)) return;
         var summary = MilgContrastVerify.buildSummary(results, bboxEdgeResults);
         var summaryHtml = MilgContrastVerify.renderSummaryHtml(summary);
