@@ -707,11 +707,9 @@ console.log('[milg] analyzer.js v44.0 loaded');
       saveToHistory(data, reportData.overall, reportData.grade);
     }
 
-    // Pixel contrast verification
-    // For pasted/imported data with screenshots: always run verify (it's just reading pixel data)
+    // Pixel contrast verification — respects checkbox for all modes
     var pixelVerifyCheck = document.getElementById('pixelVerifyCheck');
-    var isImported = data.meta && (data.meta._inputMethod === 'console' || data.meta._inputMethod === 'snippet');
-    var wantPixelVerify = isImported ? true : (pixelVerifyCheck ? pixelVerifyCheck.checked : true);
+    var wantPixelVerify = pixelVerifyCheck ? pixelVerifyCheck.checked : false;
     // Use pre-computed results if available (from deep scan pre-computation)
     if (data._contrastVerifyResults) {
       reportData._contrastVerifyResults = data._contrastVerifyResults;
