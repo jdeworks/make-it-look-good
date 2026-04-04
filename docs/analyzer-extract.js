@@ -893,11 +893,25 @@ window.MilgExtract = (function() {
     // --- Missing data points expected by scoring modules ---
     data.structure.hasHorizontalOverflow = document.documentElement.scrollWidth > document.documentElement.clientWidth;
     // Find the widest element causing page-level overflow
+    // Skip absolutely/fixed positioned elements inside overflow:hidden containers
+    // — they extend beyond the viewport visually but are clipped, not scrollable
     if (data.structure.hasHorizontalOverflow) {
       var _pageOverflowCulprits = [];
       var _docW = document.documentElement.clientWidth;
+      function _isClippedByParent(el) {
+        var s = getComputedStyle(el);
+        if (s.position !== 'absolute' && s.position !== 'fixed') return false;
+        var p = el.offsetParent || el.parentElement;
+        while (p && p !== document.documentElement) {
+          var ps = getComputedStyle(p);
+          if (ps.overflow === 'hidden' || ps.overflowX === 'hidden') return true;
+          p = p.parentElement;
+        }
+        return false;
+      }
       Array.from(allElements).slice(0, 1000).forEach(function(el) {
         if (!isVisible(el) || el === document.documentElement || el === document.body) return;
+        if (_isClippedByParent(el)) return;
         var r = el.getBoundingClientRect();
         if (r.right > _docW + 5 || r.width > _docW + 5) {
           _pageOverflowCulprits.push({ selector: cssSelector(el), element: el.tagName.toLowerCase(), width: Math.round(r.width), right: Math.round(r.right), overflow: Math.round(r.right - _docW), bbox: null });
@@ -906,6 +920,8 @@ window.MilgExtract = (function() {
       });
       _pageOverflowCulprits.sort(function(a, b) { return b.overflow - a.overflow; });
       data.structure.overflowCulprits = _pageOverflowCulprits.slice(0, 10);
+      // If all culprits were clipped, the overflow might be a false positive
+      if (_pageOverflowCulprits.length === 0) data.structure.hasHorizontalOverflow = false;
     }
 
     // Border radii (for layout/consistency scoring) — track sample elements per value
