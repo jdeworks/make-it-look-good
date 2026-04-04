@@ -1193,9 +1193,16 @@ window.MilgExtract = (function() {
     // Attach sandbox log if present (JS-enabled mode intercepts)
     data._sandboxLog = window.__milgSandboxLog || [];
 
-    parent.postMessage({ type: 'milg-analyzer-result', data: data, _iframeId: window.__milgIframeId || '' }, '*');
+    // Store data globally for snippet access
+    window.__milgData = data;
+
+    // Output: callback (snippet mode) or postMessage (iframe mode)
+    if (typeof window.__milgOnExtractComplete === 'function') {
+      window.__milgOnExtractComplete(data);
+    } else {
+      parent.postMessage({ type: 'milg-analyzer-result', data: data, _iframeId: window.__milgIframeId || '' }, '*');
+    }
     // Screenshot capture: triggered by parent via milg-start-capture message
-    // (parent resizes iframe to full docHeight first, then sends the signal)
     // Legacy fallback for old screenshot script that uses __milgDoScreenshots
     if (typeof window.__milgDoScreenshots === 'function') {
       setTimeout(window.__milgDoScreenshots, 300);
