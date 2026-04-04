@@ -710,7 +710,28 @@ console.log('[milg] analyzer.js v44.0 loaded');
     // Pixel contrast verification
     var pixelVerifyCheck = document.getElementById('pixelVerifyCheck');
     var wantPixelVerify = pixelVerifyCheck ? pixelVerifyCheck.checked : true;
-    // Use pre-computed results if available (from deep scan pre-computation)
+    // Convert snippet pixelVerifyResults to _contrastVerifyResults format
+    if (data.pixelVerifyResults && !data._contrastVerifyResults) {
+      var pairs = (data.colors && data.colors.contrastPairs) || [];
+      var pairMap = {};
+      pairs.forEach(function(p) { if (p.selector) pairMap[p.selector] = p; });
+      data._contrastVerifyResults = data.pixelVerifyResults.map(function(r) {
+        var pair = pairMap[r.selector];
+        return {
+          selector: r.selector, text: r.text || '',
+          cssRatio: r.cssRatio, cssFg: pair ? pair.fg : '', cssBg: pair ? pair.bg : '',
+          pixelRatio: r.pixelRatio, pixelRatioP10: r.pixelRatio, pixelRatioMedian: r.pixelRatioAvg || r.pixelRatio,
+          pixelRatioAvg: r.pixelRatioAvg || r.pixelRatio, pixelRatioBest: r.pixelRatioAvg || r.pixelRatio,
+          pixelFg: pair ? pair.fg : '', pixelBgWorst: r.pixelBgDominant || '', pixelBgAvg: r.pixelBgDominant || '',
+          cssPasses: r.cssPasses, pixelPasses: r.pixelPasses,
+          crossesBoundary: r.crossesBoundary, isVariableBg: r.isVariableBg,
+          significant: r.significant, neededRatio: pair ? pair.needed : 4.5,
+          bbox: pair ? pair.bbox : null, maskLayer: 0, sectionIdx: 0,
+          bgVariance: 0, sampleCount: { fg: 0, bg: r.bgSamples || 0 }
+        };
+      });
+    }
+    // Use pre-computed results if available (from deep scan pre-computation or snippet)
     if (data._contrastVerifyResults) {
       reportData._contrastVerifyResults = data._contrastVerifyResults;
       reportData._bboxEdgeResults = data._bboxEdgeResults || [];
