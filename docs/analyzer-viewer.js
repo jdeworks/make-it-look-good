@@ -557,12 +557,13 @@ window.MilgViewer = (function() {
     // Single-selector filter: only show the matching element
     var filterSelector = _activeFilter.type === 'verifySelector' ? _activeFilter.value : null;
 
+    var _vrNoBbox = 0;
     results.forEach(function(vr, vIdx) {
       if (filterSelector && vr.selector !== filterSelector) return;
       if (!filterSelector && showFails && !vr.crossesBoundary) return;
       if (!filterSelector && filterLayer !== null && (vr.maskLayer || 0) !== filterLayer) return;
       var bbox = vr.bbox;
-      if (!bbox) return;
+      if (!bbox) { _vrNoBbox++; return; }
 
       var x = Math.round(bbox.left * vScaleX);
       var y = Math.round(bbox.top * vScaleY) - _calibrationOffsetY;
@@ -633,7 +634,7 @@ window.MilgViewer = (function() {
       rect._bgKeyMap = vr._bgKeyMap || null;
       rect._sectionOffset = (vr.sectionIdx && _meta.viewportHeight) ? vr.sectionIdx * Math.round(_meta.viewportHeight * vScaleX) : 0;
     });
-    console.log('[milg-viewer] Verify rects created:', svg.querySelectorAll('rect[data-verify]').length);
+    console.log('[milg-viewer] Verify rects created:', svg.querySelectorAll('rect[data-verify]').length, 'noBbox:', _vrNoBbox);
 
     // BBox edge contrast results — render as dashed yellow rects
     var bboxEdgeResults = (_reportData && _reportData._bboxEdgeResults) || [];

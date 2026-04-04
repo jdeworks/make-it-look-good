@@ -43384,12 +43384,13 @@ window.MilgViewer = (function() {
     // Single-selector filter: only show the matching element
     var filterSelector = _activeFilter.type === 'verifySelector' ? _activeFilter.value : null;
 
+    var _vrNoBbox = 0;
     results.forEach(function(vr, vIdx) {
       if (filterSelector && vr.selector !== filterSelector) return;
       if (!filterSelector && showFails && !vr.crossesBoundary) return;
       if (!filterSelector && filterLayer !== null && (vr.maskLayer || 0) !== filterLayer) return;
       var bbox = vr.bbox;
-      if (!bbox) return;
+      if (!bbox) { _vrNoBbox++; return; }
 
       var x = Math.round(bbox.left * vScaleX);
       var y = Math.round(bbox.top * vScaleY) - _calibrationOffsetY;
@@ -43460,7 +43461,7 @@ window.MilgViewer = (function() {
       rect._bgKeyMap = vr._bgKeyMap || null;
       rect._sectionOffset = (vr.sectionIdx && _meta.viewportHeight) ? vr.sectionIdx * Math.round(_meta.viewportHeight * vScaleX) : 0;
     });
-    console.log('[milg-viewer] Verify rects created:', svg.querySelectorAll('rect[data-verify]').length);
+    console.log('[milg-viewer] Verify rects created:', svg.querySelectorAll('rect[data-verify]').length, 'noBbox:', _vrNoBbox);
 
     // BBox edge contrast results — render as dashed yellow rects
     var bboxEdgeResults = (_reportData && _reportData._bboxEdgeResults) || [];
@@ -44557,7 +44558,7 @@ window.MilgViewer = (function() {
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v46.5</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v46.6</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -44923,30 +44924,30 @@ window.MilgViewer = (function() {
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=46.5"></script>
-  <script src="scoring/contrast.js?v=46.5"></script>
-  <script src="scoring/typography.js?v=46.5"></script>
-  <script src="scoring/spacing.js?v=46.5"></script>
-  <script src="scoring/touch.js?v=46.5"></script>
-  <script src="scoring/accessibility.js?v=46.5"></script>
-  <script src="scoring/responsive.js?v=46.5"></script>
-  <script src="scoring/consistency.js?v=46.5"></script>
-  <script src="scoring/cognitive.js?v=46.5"></script>
-  <script src="scoring/layout.js?v=46.5"></script>
-  <script src="scoring/performance.js?v=46.5"></script>
-  <script src="scoring/readability.js?v=46.5"></script>
-  <script src="scoring/filters.js?v=46.5"></script>
-  <script src="scoring/balance.js?v=46.5"></script>
+  <script src="scoring/registry.js?v=46.6"></script>
+  <script src="scoring/contrast.js?v=46.6"></script>
+  <script src="scoring/typography.js?v=46.6"></script>
+  <script src="scoring/spacing.js?v=46.6"></script>
+  <script src="scoring/touch.js?v=46.6"></script>
+  <script src="scoring/accessibility.js?v=46.6"></script>
+  <script src="scoring/responsive.js?v=46.6"></script>
+  <script src="scoring/consistency.js?v=46.6"></script>
+  <script src="scoring/cognitive.js?v=46.6"></script>
+  <script src="scoring/layout.js?v=46.6"></script>
+  <script src="scoring/performance.js?v=46.6"></script>
+  <script src="scoring/readability.js?v=46.6"></script>
+  <script src="scoring/filters.js?v=46.6"></script>
+  <script src="scoring/balance.js?v=46.6"></script>
   <!-- Report rendering + UI -->
-  <script src="analyzer-report.js?v=46.5"></script>
-  <script src="analyzer-crawl.js?v=46.5"></script>
-  <script src="analyzer-extract.js?v=46.5"></script>
-  <script src="analyzer-iframe.js?v=46.5"></script>
-  <script src="analyzer-proxy.js?v=46.5"></script>
-  <script src="analyzer-crawl-ui.js?v=46.5"></script>
-  <script src="analyzer-contrast-verify.js?v=46.5"></script>
-  <script src="analyzer-viewer.js?v=46.5"></script>
-  <script src="analyzer.js?v=46.5"></script>
+  <script src="analyzer-report.js?v=46.6"></script>
+  <script src="analyzer-crawl.js?v=46.6"></script>
+  <script src="analyzer-extract.js?v=46.6"></script>
+  <script src="analyzer-iframe.js?v=46.6"></script>
+  <script src="analyzer-proxy.js?v=46.6"></script>
+  <script src="analyzer-crawl-ui.js?v=46.6"></script>
+  <script src="analyzer-contrast-verify.js?v=46.6"></script>
+  <script src="analyzer-viewer.js?v=46.6"></script>
+  <script src="analyzer.js?v=46.6"></script>
 </body>
 </html>
 </file>
