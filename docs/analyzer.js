@@ -729,6 +729,13 @@ console.log('[milg] analyzer.js v44.0 loaded');
         else reportContainer.insertBefore(div, reportContainer.firstChild);
       }
     } else if (wantPixelVerify && window.MilgContrastVerify && reportData.raw && reportData.raw.screenshots && reportData.raw.screenshotMeta) {
+      // Strip snippet's inline pixel verify data so MilgContrastVerify runs the full
+      // canvas-based pipeline (with bbox, samplePoints, P10 etc.) instead of using
+      // the snippet's simplified pre-computed results which lack bbox data.
+      if (reportData.raw.pixelVerifyResults) delete reportData.raw.pixelVerifyResults;
+      if (reportData.raw.colors && reportData.raw.colors.contrastPairs) {
+        reportData.raw.colors.contrastPairs.forEach(function(p) { delete p.pixelVerify; });
+      }
       // Run async verification (non-deep-scan path)
       console.log('[milg] Running pixel verify — screenshots:', reportData.raw.screenshots.length,
         'meta:', JSON.stringify(reportData.raw.screenshotMeta).substring(0, 100),
