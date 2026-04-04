@@ -314,10 +314,41 @@ window.MilgProxy = (function() {
   // Wire up the global handler
   window.__milgTryWithJs = function(url) { tryWithJs(url); };
 
+  // Inject sandbox + URL patches into HTML without running analysis.
+  // Used by deep scan to pre-process HTML for JS-enabled multi-viewport analysis.
+  function prepareJsHtml(html, url) {
+    var sandboxScript = buildSandboxScript();
+    var escapedUrl = url.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    var urlPatch = '<script>' +
+      '(function(){' +
+        'var _rb="' + escapedUrl + '";' +
+        'var _O=URL;' +
+        'function _P(u,b){' +
+          'if(b){var bs=typeof b==="string"?b:String(b);if(bs==="about:srcdoc"||bs==="about:blank"||bs==="null"||bs.indexOf("about:")===0)b=_rb;}' +
+          'if(!b&&typeof u==="string"&&u.charAt(0)==="/")return new _O(u,_rb);' +
+          'try{return arguments.length===1?new _O(u):new _O(u,b);}catch(e){try{return new _O(u,_rb);}catch(e2){throw e;}}' +
+        '}' +
+        '_P.prototype=_O.prototype;_P.createObjectURL=_O.createObjectURL.bind(_O);_P.revokeObjectURL=_O.revokeObjectURL.bind(_O);' +
+        'if(_O.canParse)_P.canParse=_O.canParse.bind(_O);window.URL=_P;' +
+        'var _hps=history.pushState.bind(history);var _hrs=history.replaceState.bind(history);' +
+        'history.pushState=function(s,t,u){try{_hps(s,t,u);}catch(e){}};history.replaceState=function(s,t,u){try{_hrs(s,t,u);}catch(e){}};' +
+        'var _of=window.fetch;window.fetch=function(u,o){if(typeof u==="string"&&u.charAt(0)==="/")u=_rb.replace(/\\/$/,"")+u;return _of.call(this,u,o)};' +
+      '})();' +
+    '</' + 'script>';
+    var combined = sandboxScript + urlPatch;
+    if (/<script[\s>]/i.test(html)) {
+      return html.replace(/<script[\s>]/i, combined + '<script ');
+    } else if (/<head[\s>]/i.test(html)) {
+      return html.replace(/<head([^>]*)>/i, '<head$1>' + combined);
+    }
+    return combined + html;
+  }
+
   return {
     init: init,
     fetchWithProxy: fetchWithProxy,
     fetchViaProxy: fetchViaProxy,
-    analyzeWithJs: analyzeWithJs
+    analyzeWithJs: analyzeWithJs,
+    prepareJsHtml: prepareJsHtml
   };
 })();

@@ -1,8 +1,8 @@
-// make-it-look-good — Design Analyzer (Main UI Controller) v43.2
+// make-it-look-good — Design Analyzer (Main UI Controller) v43.3
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v43.2 loaded');
+console.log('[milg] analyzer.js v43.3 loaded');
 
 (function() {
   "use strict";
@@ -794,10 +794,46 @@ console.log('[milg] analyzer.js v43.2 loaded');
         showProgress(20, 'Rendering page...');
         var exclude = window.__milgCombinedExclude || (document.getElementById('excludeSelector').value || '').trim();
 
-        // JS-enabled mode: inject sandbox + URL patches, run page's JS
+        // Check settings
         var jsCheck = document.getElementById('jsEnabledCheck');
         var jsAck = document.getElementById('jsRiskAck');
         var wantJs = jsCheck && jsCheck.checked && jsAck && jsAck.checked;
+        var isDeepScan = document.getElementById('deepScanCheck') && document.getElementById('deepScanCheck').checked;
+        var wantShots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
+        console.log('[milg] URL analysis — js:', wantJs, 'deepScan:', isDeepScan, 'screenshots:', wantShots);
+
+        // Deep scan: multi-viewport analysis (with optional JS-enabled pre-processing)
+        if (isDeepScan) {
+          var deepHtml = wantJs ? MilgProxy.prepareJsHtml(html, url) : html;
+          _activeViewportIdx = 0;
+          urlStatus.textContent = 'Deep scan: preparing viewports...';
+          showProgress(15, 'Launching multi-viewport scan...');
+          runDeepScanLoop(deepHtml, url, exclude, wantShots,
+            function(label, done, total) {
+              urlStatus.textContent = 'Deep scan: ' + label + ' (' + done + '/' + total + ')';
+              showProgress(15 + Math.round(70 * done / total), label);
+            },
+            function(primary) {
+              analyzeUrlBtn.disabled = false;
+              analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
+              if (!primary) {
+                urlStatus.innerHTML = '<span style="color:#dc2626">Deep scan failed — no viewport returned data.</span>';
+                hideProgress();
+                return;
+              }
+              urlStatus.style.display = 'none';
+              showProgress(100, 'Done!');
+              setTimeout(hideProgress, 500);
+              primary.meta.url = url;
+              primary.meta._inputMethod = 'url';
+              if (wantJs) primary.meta._jsEnabled = true;
+              runAnalysis(primary);
+            }
+          );
+          return;
+        }
+
+        // JS-enabled single viewport (no deep scan)
         if (wantJs) {
           urlStatus.textContent = 'Running with JavaScript enabled...';
           showProgress(25, 'Preparing sandbox...');
@@ -813,35 +849,6 @@ console.log('[milg] analyzer.js v43.2 loaded');
             },
             exclude: exclude
           });
-          return;
-        }
-
-        var isDeepScan = document.getElementById('deepScanCheck') && document.getElementById('deepScanCheck').checked;
-        console.log('[milg] URL analysis — deepScan:', isDeepScan, 'element:', document.getElementById('deepScanCheck'));
-        if (isDeepScan) {
-          var deepWantShots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
-          _activeViewportIdx = 0;
-          runDeepScanLoop(html, url, exclude, deepWantShots,
-            function(label, idx, total) {
-              urlStatus.textContent = 'Deep scan: ' + label + '...';
-              showProgress(20 + Math.round(60 * idx / total), 'Scanning ' + label + '...');
-            },
-            function(primary) {
-              analyzeUrlBtn.disabled = false;
-              analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
-              if (!primary) {
-                urlStatus.innerHTML = '<span style="color:#dc2626">Deep scan failed — no viewport returned data.</span>';
-                hideProgress();
-                return;
-              }
-              urlStatus.style.display = 'none';
-              showProgress(100, 'Done!');
-              setTimeout(hideProgress, 500);
-              primary.meta.url = url;
-              primary.meta._inputMethod = 'url';
-              runAnalysis(primary);
-            }
-          );
           return;
         }
         showProgress(40, 'Analyzing styles...');

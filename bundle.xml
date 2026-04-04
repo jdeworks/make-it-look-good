@@ -10376,11 +10376,42 @@ window.MilgProxy = (function() {
   // Wire up the global handler
   window.__milgTryWithJs = function(url) { tryWithJs(url); };
 
+  // Inject sandbox + URL patches into HTML without running analysis.
+  // Used by deep scan to pre-process HTML for JS-enabled multi-viewport analysis.
+  function prepareJsHtml(html, url) {
+    var sandboxScript = buildSandboxScript();
+    var escapedUrl = url.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    var urlPatch = '<script>' +
+      '(function(){' +
+        'var _rb="' + escapedUrl + '";' +
+        'var _O=URL;' +
+        'function _P(u,b){' +
+          'if(b){var bs=typeof b==="string"?b:String(b);if(bs==="about:srcdoc"||bs==="about:blank"||bs==="null"||bs.indexOf("about:")===0)b=_rb;}' +
+          'if(!b&&typeof u==="string"&&u.charAt(0)==="/")return new _O(u,_rb);' +
+          'try{return arguments.length===1?new _O(u):new _O(u,b);}catch(e){try{return new _O(u,_rb);}catch(e2){throw e;}}' +
+        '}' +
+        '_P.prototype=_O.prototype;_P.createObjectURL=_O.createObjectURL.bind(_O);_P.revokeObjectURL=_O.revokeObjectURL.bind(_O);' +
+        'if(_O.canParse)_P.canParse=_O.canParse.bind(_O);window.URL=_P;' +
+        'var _hps=history.pushState.bind(history);var _hrs=history.replaceState.bind(history);' +
+        'history.pushState=function(s,t,u){try{_hps(s,t,u);}catch(e){}};history.replaceState=function(s,t,u){try{_hrs(s,t,u);}catch(e){}};' +
+        'var _of=window.fetch;window.fetch=function(u,o){if(typeof u==="string"&&u.charAt(0)==="/")u=_rb.replace(/\\/$/,"")+u;return _of.call(this,u,o)};' +
+      '})();' +
+    '</' + 'script>';
+    var combined = sandboxScript + urlPatch;
+    if (/<script[\s>]/i.test(html)) {
+      return html.replace(/<script[\s>]/i, combined + '<script ');
+    } else if (/<head[\s>]/i.test(html)) {
+      return html.replace(/<head([^>]*)>/i, '<head$1>' + combined);
+    }
+    return combined + html;
+  }
+
   return {
     init: init,
     fetchWithProxy: fetchWithProxy,
     fetchViaProxy: fetchViaProxy,
-    analyzeWithJs: analyzeWithJs
+    analyzeWithJs: analyzeWithJs,
+    prepareJsHtml: prepareJsHtml
   };
 })();
 </file>
@@ -38088,11 +38119,11 @@ window.MilgReport = (function() {
 </file>
 
 <file path="docs/analyzer.js">
-// make-it-look-good — Design Analyzer (Main UI Controller) v43.2
+// make-it-look-good — Design Analyzer (Main UI Controller) v43.3
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v43.2 loaded');
+console.log('[milg] analyzer.js v43.3 loaded');
 
 (function() {
   "use strict";
@@ -38884,10 +38915,46 @@ console.log('[milg] analyzer.js v43.2 loaded');
         showProgress(20, 'Rendering page...');
         var exclude = window.__milgCombinedExclude || (document.getElementById('excludeSelector').value || '').trim();
 
-        // JS-enabled mode: inject sandbox + URL patches, run page's JS
+        // Check settings
         var jsCheck = document.getElementById('jsEnabledCheck');
         var jsAck = document.getElementById('jsRiskAck');
         var wantJs = jsCheck && jsCheck.checked && jsAck && jsAck.checked;
+        var isDeepScan = document.getElementById('deepScanCheck') && document.getElementById('deepScanCheck').checked;
+        var wantShots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
+        console.log('[milg] URL analysis — js:', wantJs, 'deepScan:', isDeepScan, 'screenshots:', wantShots);
+
+        // Deep scan: multi-viewport analysis (with optional JS-enabled pre-processing)
+        if (isDeepScan) {
+          var deepHtml = wantJs ? MilgProxy.prepareJsHtml(html, url) : html;
+          _activeViewportIdx = 0;
+          urlStatus.textContent = 'Deep scan: preparing viewports...';
+          showProgress(15, 'Launching multi-viewport scan...');
+          runDeepScanLoop(deepHtml, url, exclude, wantShots,
+            function(label, done, total) {
+              urlStatus.textContent = 'Deep scan: ' + label + ' (' + done + '/' + total + ')';
+              showProgress(15 + Math.round(70 * done / total), label);
+            },
+            function(primary) {
+              analyzeUrlBtn.disabled = false;
+              analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
+              if (!primary) {
+                urlStatus.innerHTML = '<span style="color:#dc2626">Deep scan failed — no viewport returned data.</span>';
+                hideProgress();
+                return;
+              }
+              urlStatus.style.display = 'none';
+              showProgress(100, 'Done!');
+              setTimeout(hideProgress, 500);
+              primary.meta.url = url;
+              primary.meta._inputMethod = 'url';
+              if (wantJs) primary.meta._jsEnabled = true;
+              runAnalysis(primary);
+            }
+          );
+          return;
+        }
+
+        // JS-enabled single viewport (no deep scan)
         if (wantJs) {
           urlStatus.textContent = 'Running with JavaScript enabled...';
           showProgress(25, 'Preparing sandbox...');
@@ -38903,35 +38970,6 @@ console.log('[milg] analyzer.js v43.2 loaded');
             },
             exclude: exclude
           });
-          return;
-        }
-
-        var isDeepScan = document.getElementById('deepScanCheck') && document.getElementById('deepScanCheck').checked;
-        console.log('[milg] URL analysis — deepScan:', isDeepScan, 'element:', document.getElementById('deepScanCheck'));
-        if (isDeepScan) {
-          var deepWantShots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
-          _activeViewportIdx = 0;
-          runDeepScanLoop(html, url, exclude, deepWantShots,
-            function(label, idx, total) {
-              urlStatus.textContent = 'Deep scan: ' + label + '...';
-              showProgress(20 + Math.round(60 * idx / total), 'Scanning ' + label + '...');
-            },
-            function(primary) {
-              analyzeUrlBtn.disabled = false;
-              analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
-              if (!primary) {
-                urlStatus.innerHTML = '<span style="color:#dc2626">Deep scan failed — no viewport returned data.</span>';
-                hideProgress();
-                return;
-              }
-              urlStatus.style.display = 'none';
-              showProgress(100, 'Done!');
-              setTimeout(hideProgress, 500);
-              primary.meta.url = url;
-              primary.meta._inputMethod = 'url';
-              runAnalysis(primary);
-            }
-          );
           return;
         }
         showProgress(40, 'Analyzing styles...');
@@ -42351,7 +42389,7 @@ window.MilgViewer = (function() {
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v43.2</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v43.3</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -42717,30 +42755,30 @@ window.MilgViewer = (function() {
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=43.2"></script>
-  <script src="scoring/contrast.js?v=43.2"></script>
-  <script src="scoring/typography.js?v=43.2"></script>
-  <script src="scoring/spacing.js?v=43.2"></script>
-  <script src="scoring/touch.js?v=43.2"></script>
-  <script src="scoring/accessibility.js?v=43.2"></script>
-  <script src="scoring/responsive.js?v=43.2"></script>
-  <script src="scoring/consistency.js?v=43.2"></script>
-  <script src="scoring/cognitive.js?v=43.2"></script>
-  <script src="scoring/layout.js?v=43.2"></script>
-  <script src="scoring/performance.js?v=43.2"></script>
-  <script src="scoring/readability.js?v=43.2"></script>
-  <script src="scoring/filters.js?v=43.2"></script>
-  <script src="scoring/balance.js?v=43.2"></script>
+  <script src="scoring/registry.js?v=43.3"></script>
+  <script src="scoring/contrast.js?v=43.3"></script>
+  <script src="scoring/typography.js?v=43.3"></script>
+  <script src="scoring/spacing.js?v=43.3"></script>
+  <script src="scoring/touch.js?v=43.3"></script>
+  <script src="scoring/accessibility.js?v=43.3"></script>
+  <script src="scoring/responsive.js?v=43.3"></script>
+  <script src="scoring/consistency.js?v=43.3"></script>
+  <script src="scoring/cognitive.js?v=43.3"></script>
+  <script src="scoring/layout.js?v=43.3"></script>
+  <script src="scoring/performance.js?v=43.3"></script>
+  <script src="scoring/readability.js?v=43.3"></script>
+  <script src="scoring/filters.js?v=43.3"></script>
+  <script src="scoring/balance.js?v=43.3"></script>
   <!-- Report rendering + UI -->
-  <script src="analyzer-report.js?v=43.2"></script>
-  <script src="analyzer-crawl.js?v=43.2"></script>
-  <script src="analyzer-extract.js?v=43.2"></script>
-  <script src="analyzer-iframe.js?v=43.2"></script>
-  <script src="analyzer-proxy.js?v=43.2"></script>
-  <script src="analyzer-crawl-ui.js?v=43.2"></script>
-  <script src="analyzer-contrast-verify.js?v=43.2"></script>
-  <script src="analyzer-viewer.js?v=43.2"></script>
-  <script src="analyzer.js?v=43.2"></script>
+  <script src="analyzer-report.js?v=43.3"></script>
+  <script src="analyzer-crawl.js?v=43.3"></script>
+  <script src="analyzer-extract.js?v=43.3"></script>
+  <script src="analyzer-iframe.js?v=43.3"></script>
+  <script src="analyzer-proxy.js?v=43.3"></script>
+  <script src="analyzer-crawl-ui.js?v=43.3"></script>
+  <script src="analyzer-contrast-verify.js?v=43.3"></script>
+  <script src="analyzer-viewer.js?v=43.3"></script>
+  <script src="analyzer.js?v=43.3"></script>
 </body>
 </html>
 </file>
