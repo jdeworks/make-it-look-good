@@ -28619,9 +28619,24 @@ function scoreLayout(data) {
         : c.reason === 'wide-container-scrolls' ? ' (wide container should fill viewport)'
         : c.reason === 'no-overflow-css' ? ' (no overflow CSS — content spills)'
         : '';
-      return c.selector + ' overflows by ' + c.overflow + 'px' + reasonLabel;
+      var culpritNote = c.culprit ? ' — caused by: ' + c.culprit + ' (' + c.culpritWidth + 'px wide)' : '';
+      return c.selector + ' overflows by ' + c.overflow + 'px' + reasonLabel + culpritNote;
     });
-    if (data.structure.hasHorizontalOverflow) scrollDetails.unshift('Page body has horizontal scroll');
+    // Page-level overflow culprits (elements extending beyond viewport)
+    var overflowCulprits = (data.structure && data.structure.overflowCulprits) || [];
+    if (data.structure.hasHorizontalOverflow) {
+      var culpritMsg = 'Page body has horizontal scroll';
+      if (overflowCulprits.length > 0) {
+        culpritMsg += ' — widest offenders: ' + overflowCulprits.slice(0, 5).map(function(c) {
+          return c.selector + ' (' + c.width + 'px, overflows by ' + c.overflow + 'px)';
+        }).join('; ');
+      }
+      scrollDetails.unshift(culpritMsg);
+    }
+    // Collect bboxes from containers + page-level culprits
+    var overflowBboxes = bugScrollContainers.filter(function(c) { return c.bbox; }).map(function(c) { return c.bbox; });
+    var overflowSelectors = bugScrollContainers.filter(function(c) { return c.selector; }).map(function(c) { return c.selector; });
+    overflowCulprits.forEach(function(c) { if (c.bbox) overflowBboxes.push(c.bbox); if (c.selector) overflowSelectors.push(c.selector); });
     findings.push({
       severity: 'error',
       title: (data.structure.hasHorizontalOverflow ? 'Page has horizontal scroll' : bugScrollContainers.length + ' container(s) overflow horizontally'),
@@ -28629,7 +28644,7 @@ function scoreLayout(data) {
       fix: 'Fix horizontal overflow: add overflow-x-hidden on the outer wrapper, check for elements with fixed widths wider than viewport, or add max-w-full. Common causes: fixed-width tables, absolute positioned elements, images without max-width. If a wide container has overflow-x-auto but contains page sections (nav, forms, headings), remove the overflow and fix the root cause.',
       presetRef: null,
       source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
-      locator: { selector: bugScrollContainers[0] ? bugScrollContainers[0].selector : '', text: '', bboxes: bugScrollContainers.filter(function(c) { return c.bbox; }).map(function(c) { return c.bbox; }), selectors: bugScrollContainers.filter(function(c) { return c.selector; }).map(function(c) { return c.selector; }) }
+      locator: overflowBboxes.length > 0 ? { selector: '', text: '', bboxes: overflowBboxes, selectors: overflowSelectors } : undefined
     });
   } else {
     checks++;
@@ -37792,6 +37807,21 @@ window.MilgExtract = (function() {
 
     // --- Missing data points expected by scoring modules ---
     data.structure.hasHorizontalOverflow = document.documentElement.scrollWidth > document.documentElement.clientWidth;
+    // Find the widest element causing page-level overflow
+    if (data.structure.hasHorizontalOverflow) {
+      var _pageOverflowCulprits = [];
+      var _docW = document.documentElement.clientWidth;
+      Array.from(allElements).slice(0, 1000).forEach(function(el) {
+        if (!isVisible(el) || el === document.documentElement || el === document.body) return;
+        var r = el.getBoundingClientRect();
+        if (r.right > _docW + 5 || r.width > _docW + 5) {
+          _pageOverflowCulprits.push({ selector: cssSelector(el), element: el.tagName.toLowerCase(), width: Math.round(r.width), right: Math.round(r.right), overflow: Math.round(r.right - _docW), bbox: null });
+          if (_pageOverflowCulprits.length <= 10) trackBbox(el, _pageOverflowCulprits[_pageOverflowCulprits.length - 1], 'bbox');
+        }
+      });
+      _pageOverflowCulprits.sort(function(a, b) { return b.overflow - a.overflow; });
+      data.structure.overflowCulprits = _pageOverflowCulprits.slice(0, 10);
+    }
 
     // Border radii (for layout/consistency scoring)
     var radiusMap = {};
@@ -37826,7 +37856,13 @@ window.MilgExtract = (function() {
         if (!hasOverflowCSS) classification = 'bug';
         if (isWideContainer && hasOverflowCSS && !isDataContent) classification = 'bug';
 
-        data.layout.horizontalScrollContainers.push({
+        // Find the widest child causing the overflow
+        var _widestChild = null, _widestW = oel.clientWidth;
+        Array.from(oel.children).forEach(function(ch) {
+          var cr = ch.getBoundingClientRect();
+          if (cr.width > _widestW) { _widestW = cr.width; _widestChild = ch; }
+        });
+        var _hscEntry = {
           selector: cssSelector(oel),
           intentional: classification === 'intentional',
           classification: classification,
@@ -37836,8 +37872,13 @@ window.MilgExtract = (function() {
                   isDataContent ? 'data-content' : 'unknown',
           scrollWidth: oel.scrollWidth,
           overflow: Math.round(oel.scrollWidth - oel.clientWidth),
-          element: tag
-        });
+          element: tag,
+          bbox: null,
+          culprit: _widestChild ? cssSelector(_widestChild) : null,
+          culpritWidth: _widestChild ? Math.round(_widestW) : null
+        };
+        trackBbox(oel, _hscEntry, 'bbox');
+        data.layout.horizontalScrollContainers.push(_hscEntry);
         // Nested scrollbar check
         var scrollParent = oel.parentElement;
         while (scrollParent && scrollParent !== document.body) {
@@ -43947,7 +43988,7 @@ window.MilgContrastVerify = (function() {
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v44.5</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v44.6</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -44313,30 +44354,30 @@ window.MilgContrastVerify = (function() {
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=44.5"></script>
-  <script src="scoring/contrast.js?v=44.5"></script>
-  <script src="scoring/typography.js?v=44.5"></script>
-  <script src="scoring/spacing.js?v=44.5"></script>
-  <script src="scoring/touch.js?v=44.5"></script>
-  <script src="scoring/accessibility.js?v=44.5"></script>
-  <script src="scoring/responsive.js?v=44.5"></script>
-  <script src="scoring/consistency.js?v=44.5"></script>
-  <script src="scoring/cognitive.js?v=44.5"></script>
-  <script src="scoring/layout.js?v=44.5"></script>
-  <script src="scoring/performance.js?v=44.5"></script>
-  <script src="scoring/readability.js?v=44.5"></script>
-  <script src="scoring/filters.js?v=44.5"></script>
-  <script src="scoring/balance.js?v=44.5"></script>
+  <script src="scoring/registry.js?v=44.6"></script>
+  <script src="scoring/contrast.js?v=44.6"></script>
+  <script src="scoring/typography.js?v=44.6"></script>
+  <script src="scoring/spacing.js?v=44.6"></script>
+  <script src="scoring/touch.js?v=44.6"></script>
+  <script src="scoring/accessibility.js?v=44.6"></script>
+  <script src="scoring/responsive.js?v=44.6"></script>
+  <script src="scoring/consistency.js?v=44.6"></script>
+  <script src="scoring/cognitive.js?v=44.6"></script>
+  <script src="scoring/layout.js?v=44.6"></script>
+  <script src="scoring/performance.js?v=44.6"></script>
+  <script src="scoring/readability.js?v=44.6"></script>
+  <script src="scoring/filters.js?v=44.6"></script>
+  <script src="scoring/balance.js?v=44.6"></script>
   <!-- Report rendering + UI -->
-  <script src="analyzer-report.js?v=44.5"></script>
-  <script src="analyzer-crawl.js?v=44.5"></script>
-  <script src="analyzer-extract.js?v=44.5"></script>
-  <script src="analyzer-iframe.js?v=44.5"></script>
-  <script src="analyzer-proxy.js?v=44.5"></script>
-  <script src="analyzer-crawl-ui.js?v=44.5"></script>
-  <script src="analyzer-contrast-verify.js?v=44.5"></script>
-  <script src="analyzer-viewer.js?v=44.5"></script>
-  <script src="analyzer.js?v=44.5"></script>
+  <script src="analyzer-report.js?v=44.6"></script>
+  <script src="analyzer-crawl.js?v=44.6"></script>
+  <script src="analyzer-extract.js?v=44.6"></script>
+  <script src="analyzer-iframe.js?v=44.6"></script>
+  <script src="analyzer-proxy.js?v=44.6"></script>
+  <script src="analyzer-crawl-ui.js?v=44.6"></script>
+  <script src="analyzer-contrast-verify.js?v=44.6"></script>
+  <script src="analyzer-viewer.js?v=44.6"></script>
+  <script src="analyzer.js?v=44.6"></script>
 </body>
 </html>
 </file>

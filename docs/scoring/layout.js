@@ -206,9 +206,24 @@ function scoreLayout(data) {
         : c.reason === 'wide-container-scrolls' ? ' (wide container should fill viewport)'
         : c.reason === 'no-overflow-css' ? ' (no overflow CSS — content spills)'
         : '';
-      return c.selector + ' overflows by ' + c.overflow + 'px' + reasonLabel;
+      var culpritNote = c.culprit ? ' — caused by: ' + c.culprit + ' (' + c.culpritWidth + 'px wide)' : '';
+      return c.selector + ' overflows by ' + c.overflow + 'px' + reasonLabel + culpritNote;
     });
-    if (data.structure.hasHorizontalOverflow) scrollDetails.unshift('Page body has horizontal scroll');
+    // Page-level overflow culprits (elements extending beyond viewport)
+    var overflowCulprits = (data.structure && data.structure.overflowCulprits) || [];
+    if (data.structure.hasHorizontalOverflow) {
+      var culpritMsg = 'Page body has horizontal scroll';
+      if (overflowCulprits.length > 0) {
+        culpritMsg += ' — widest offenders: ' + overflowCulprits.slice(0, 5).map(function(c) {
+          return c.selector + ' (' + c.width + 'px, overflows by ' + c.overflow + 'px)';
+        }).join('; ');
+      }
+      scrollDetails.unshift(culpritMsg);
+    }
+    // Collect bboxes from containers + page-level culprits
+    var overflowBboxes = bugScrollContainers.filter(function(c) { return c.bbox; }).map(function(c) { return c.bbox; });
+    var overflowSelectors = bugScrollContainers.filter(function(c) { return c.selector; }).map(function(c) { return c.selector; });
+    overflowCulprits.forEach(function(c) { if (c.bbox) overflowBboxes.push(c.bbox); if (c.selector) overflowSelectors.push(c.selector); });
     findings.push({
       severity: 'error',
       title: (data.structure.hasHorizontalOverflow ? 'Page has horizontal scroll' : bugScrollContainers.length + ' container(s) overflow horizontally'),
@@ -216,7 +231,7 @@ function scoreLayout(data) {
       fix: 'Fix horizontal overflow: add overflow-x-hidden on the outer wrapper, check for elements with fixed widths wider than viewport, or add max-w-full. Common causes: fixed-width tables, absolute positioned elements, images without max-width. If a wide container has overflow-x-auto but contains page sections (nav, forms, headings), remove the overflow and fix the root cause.',
       presetRef: null,
       source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
-      locator: { selector: bugScrollContainers[0] ? bugScrollContainers[0].selector : '', text: '', bboxes: bugScrollContainers.filter(function(c) { return c.bbox; }).map(function(c) { return c.bbox; }), selectors: bugScrollContainers.filter(function(c) { return c.selector; }).map(function(c) { return c.selector; }) }
+      locator: overflowBboxes.length > 0 ? { selector: '', text: '', bboxes: overflowBboxes, selectors: overflowSelectors } : undefined
     });
   } else {
     checks++;
