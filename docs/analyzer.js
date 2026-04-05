@@ -636,6 +636,11 @@ console.log('[milg] analyzer.js v52.6 loaded');
         viewport: { w: vp.w, h: vp.h }
       }, function(data) {
         if (data) data.meta.url = url;
+        // Diagnostic: check if masks survive from analyzeHtml
+        if (data && data.colors && data.colors.contrastPairs) {
+          var _mc = data.colors.contrastPairs.filter(function(p) { return !!p._maskBmp; }).length;
+          console.log('[milg] Viewport', i, 'masks:', _mc + '/' + data.colors.contrastPairs.length);
+        }
         results[i] = data;
         doneCount++;
         var elCount = data ? (data.structure && data.structure.totalElements || 0) : 0;
