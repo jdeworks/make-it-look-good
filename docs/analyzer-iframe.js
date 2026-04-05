@@ -6,6 +6,7 @@ window.MilgIframe = (function() {
   "use strict";
 
   var _screenshotCDN = '';
+  var _proxyUrl = ''; // CORS proxy for font routing in iframes
   var _getViewport = function() { return { w: 1280, h: 900 }; };
   var _showProgress = function() {};
   // --- Screenshot settings ---
@@ -16,6 +17,7 @@ window.MilgIframe = (function() {
 
   function init(opts) {
     if (opts.screenshotCDN) _screenshotCDN = opts.screenshotCDN;
+    if (opts.proxyUrl) _proxyUrl = opts.proxyUrl;
     if (opts.getViewport) _getViewport = opts.getViewport;
     if (opts.showProgress) _showProgress = opts.showProgress;
   }
@@ -55,12 +57,31 @@ window.MilgIframe = (function() {
           '},configurable:true})}catch(e){}' +
         '})();' +
       '</' + 'script>';
+      // Font proxy: route font requests through CORS proxy (all iframe paths)
+      var fontProxyScript = '';
+      if (_proxyUrl) {
+        fontProxyScript = '<script>(function(){' +
+          'var _of=window.fetch;' +
+          'var _px="' + _proxyUrl.replace(/"/g, '\\"') + '";' +
+          'try{if(!parent.__milgFontCache)parent.__milgFontCache={}}catch(e){}' +
+          'var _fc=((typeof parent!=="undefined")&&parent.__milgFontCache)||{};' +
+          'window.fetch=function(u,o){' +
+            'if(_px&&typeof u==="string"&&/\\.(woff2?|ttf|otf|eot)(\\?|$)/i.test(u)){' +
+              'if(_fc[u])return _fc[u].then(function(r){return r.clone()});' +
+              'var p=_of.call(this,_px+"?url="+encodeURIComponent(u),o).catch(function(){return _of.call(this,u,o)});' +
+              '_fc[u]=p;return p' +
+            '}' +
+            'return _of.call(this,u,o)' +
+          '};' +
+        '})();</' + 'script>';
+      }
+      var combined = baseTag + urlPatch + fontProxyScript;
       // Insert after <head> if present
       if (/<head[\s>]/i.test(html)) {
-        return html.replace(/<head([^>]*)>/i, '<head$1>' + baseTag + urlPatch);
+        return html.replace(/<head([^>]*)>/i, '<head$1>' + combined);
       }
       // Otherwise prepend
-      return baseTag + urlPatch + html;
+      return combined + html;
     } catch(e) { return html; }
   }
 

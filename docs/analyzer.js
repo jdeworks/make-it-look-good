@@ -203,6 +203,7 @@ console.log('[milg] analyzer.js v48.1 loaded');
   // --- Initialize modules ---
   MilgIframe.init({
     screenshotCDN: SCREENSHOT_CDN,
+    proxyUrl: CORS_PROXY_URL,
     getViewport: getSelectedViewport,
     showProgress: showProgress
   });
