@@ -31,7 +31,7 @@
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v48.4</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v48.5</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -40,7 +40,7 @@
       <button class="tab-btn active" data-tab="tabUrl">Enter URL<br><span class="tab-sub">(mobile-friendly)</span></button>
       <button class="tab-btn" data-tab="tabSnippet">Console Snippet<br><span class="tab-sub">(most accurate)</span></button>
       <button class="tab-btn" data-tab="tabHtml">Paste HTML<br><span class="tab-sub">(approximate)</span></button>
-      <button class="tab-btn" data-tab="tabImport">Import<br><span class="tab-sub">(JSON file)</span></button>
+      <button class="tab-btn" data-tab="tabImport">Load Saved<br><span class="tab-sub">(re-open analysis)</span></button>
     </div>
 
     <!-- Shared screenshot options (applies to all tabs) -->
@@ -235,11 +235,17 @@
           <label for="pasteInput" class="sr-only">Extracted JSON data</label>
           <textarea id="pasteInput" placeholder='Paste the JSON data copied by the snippet here...&#10;&#10;It should start with { "meta": { ... }'></textarea>
         </div>
-        <div class="input-actions">
+        <div class="input-actions" style="gap:10px">
           <button class="btn btn-primary" id="analyzeBtn">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a8 8 0 0 0-8 8c0 3.4 2.1 6.3 5 7.5V20h6v-2.5c2.9-1.2 5-4.1 5-7.5a8 8 0 0 0-8-8z"/><line x1="10" y1="22" x2="14" y2="22"/></svg>
             Analyze
           </button>
+          <span style="font-size:12px;color:var(--text-secondary)">or</span>
+          <button class="btn" id="importSnippetFileBtn" title="Import a JSON file downloaded by the snippet (single page or crawl)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Import File
+          </button>
+          <input type="file" id="importSnippetFile" accept=".json" style="display:none">
         </div>
       </div>
     </div>
@@ -270,14 +276,14 @@
       </div>
     </div>
 
-    <!-- Tab 3: Import JSON -->
+    <!-- Tab 3: Load Saved Analysis -->
     <div class="tab-content" id="tabImport">
       <div class="import-dropzone" id="importDropzone">
         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--text-secondary);margin-bottom:12px">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
         </svg>
-        <p style="font-size:14px;font-weight:600;margin-bottom:4px">Drop a JSON file here</p>
-        <p style="font-size:12px;color:var(--text-secondary)">or click to browse — loads a previously exported analysis</p>
+        <p style="font-size:14px;font-weight:600;margin-bottom:4px">Re-open a saved analysis</p>
+        <p style="font-size:12px;color:var(--text-secondary)">Drop or click to load a JSON file you previously exported via the Export &amp; Share bar</p>
         <input type="file" id="importDropFile" accept=".json" style="display:none">
       </div>
     </div>
@@ -370,9 +376,9 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         <span class="btn-label">JSON</span>
       </button>
-      <button class="btn" id="importJsonBtn" title="Load a previously exported analysis">
+      <button class="btn" id="importJsonBtn" title="Re-open a previously exported analysis">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-        <span class="btn-label">Import</span>
+        <span class="btn-label">Load Saved</span>
       </button>
       <input type="file" id="importJsonFile" accept=".json" style="display:none">
     </div>

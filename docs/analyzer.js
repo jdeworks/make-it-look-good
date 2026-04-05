@@ -1345,6 +1345,17 @@ console.log('[milg] analyzer.js v48.1 loaded');
       importFileInput.value = '';
     });
 
+    // Snippet tab file import (for crawl downloads and snippet file exports)
+    var snippetFileBtn = document.getElementById('importSnippetFileBtn');
+    var snippetFileInput = document.getElementById('importSnippetFile');
+    if (snippetFileBtn && snippetFileInput) {
+      snippetFileBtn.addEventListener('click', function() { snippetFileInput.click(); });
+      snippetFileInput.addEventListener('change', function() {
+        handleImportFile(snippetFileInput.files[0]);
+        snippetFileInput.value = '';
+      });
+    }
+
     // Dark mode toggle
     document.getElementById('darkBtn').addEventListener('click', function() {
       darkMode = !darkMode;
