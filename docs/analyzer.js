@@ -1300,6 +1300,10 @@ console.log('[milg] analyzer.js v48.1 loaded');
       reader.onload = function() {
         try {
           var data = JSON.parse(reader.result);
+          if (data._milgCrawl && data.results) {
+            MilgCrawlUI.loadCrawlResults(data, 'imported file');
+            return;
+          }
           if (!data.meta || !data.colors) throw new Error('Invalid format');
           runAnalysis(data);
           showToast('Analysis imported: ' + (data.meta.url || 'unknown'));
