@@ -28845,7 +28845,7 @@ function scoreResponsive(data) {
 <file path="docs/analyzer-crawl.js">
 // Site Crawl Module — multi-page analysis with progressive results
 // Provides: link discovery, session management, summary building, export helpers
-// Pipeline orchestration lives in analyzer.js (has access to fetchViaProxy, analyzeHtmlInIframe)
+// Pipeline orchestration lives in analyzer.js (has access to fetchViaProxy, MilgIframe.analyzeHtml)
 
 window.MilgCrawl = (function() {
   "use strict";
@@ -29255,25 +29255,6 @@ window.MilgCrawl = (function() {
     return lines.join('\n');
   }
 
-  function renderCrawlCSV(session) {
-    var summary = session.summary || buildSummary(session);
-    var lines = ['URL,Path,Title,Score,Grade,Errors,Warnings'];
-    session.pages.forEach(function(page) {
-      if (page.status !== 'done' || !page.reportData) return;
-      var path; try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
-      var errors = 0, warnings = 0;
-      (page.reportData.categories || []).forEach(function(cat) {
-        cat.findings.forEach(function(f) {
-          if (f.severity === 'error') errors++;
-          if (f.severity === 'warning') warnings++;
-        });
-      });
-      var title = (page.title || '').replace(/,/g, ' ').replace(/"/g, "'");
-      lines.push('"' + page.url + '","' + path + '","' + title + '",' + page.reportData.overall + ',' + page.reportData.grade + ',' + errors + ',' + warnings);
-    });
-    return lines.join('\n');
-  }
-
   function renderCrawlJSON(session, severityFilter) {
     var out = {
       startUrl: session.startUrl,
@@ -29311,7 +29292,6 @@ window.MilgCrawl = (function() {
     buildSummary: buildSummary,
     filterFindings: filterFindings,
     renderCrawlMarkdown: renderCrawlMarkdown,
-    renderCrawlCSV: renderCrawlCSV,
     renderCrawlJSON: renderCrawlJSON
   };
 })();
@@ -32312,17 +32292,10 @@ window.MilgProxy = (function() {
   // Wire up the global handler
   window.__milgTryWithJs = function(url) { tryWithJs(url); };
 
-  // Legacy wrappers — delegate to MilgIframe's unified pipeline
-  function prepareJsHtml(html, url) {
-    return MilgIframe.preprocessHtml(html, url, { sandbox: true, fetchPatch: true, baseTag: true });
-  }
-
   return {
     init: init,
     fetchWithProxy: fetchWithProxy,
-    fetchViaProxy: fetchViaProxy,
-    // Legacy — callers should use MilgIframe.analyzeHtml({jsEnabled:true}) directly
-    prepareJsHtml: prepareJsHtml
+    fetchViaProxy: fetchViaProxy
   };
 })();
 </file>
@@ -33004,7 +32977,14 @@ window.MilgExtract = (function() {
     for (var i = 0; i < allElements.length && transitionSet.size < 20; i++) { var t = getComputedStyle(allElements[i]).transitionDuration; if (t && t !== '0s') transitionSet.add(t); }
     data.interaction.transitions = Array.from(transitionSet);
 
-    data.accessibility.semanticElements = { header: document.querySelectorAll('header').length, nav: document.querySelectorAll('nav').length, main: document.querySelectorAll('main').length, footer: document.querySelectorAll('footer').length, section: document.querySelectorAll('section').length, article: document.querySelectorAll('article').length, aside: document.querySelectorAll('aside').length };
+    var _semTags = ['header','nav','main','footer','section','article','aside'];
+    var _semEls = {};
+    _semTags.forEach(function(tag) { _semEls[tag] = 0; });
+    for (var _si = 0; _si < allElements.length; _si++) {
+      var _tn = allElements[_si].tagName.toLowerCase();
+      if (_semEls.hasOwnProperty(_tn)) _semEls[_tn]++;
+    }
+    data.accessibility.semanticElements = _semEls;
     var navEls = document.querySelectorAll('nav'); var navItemCount = 0;
     navEls.forEach(function(nav) { var topLinks = nav.querySelectorAll(':scope > a, :scope > ul > li > a, :scope > ol > li > a, :scope > button, :scope > ul > li > button'); navItemCount += topLinks.length; });
     data.accessibility.navItemCount = navItemCount;
@@ -39101,11 +39081,6 @@ window.MilgIframe = (function() {
     } catch(e) { return html; }
   }
 
-  // Legacy wrapper — kept for any external callers
-  function injectBaseTag(html, url) {
-    return preprocessHtml(html, url, { baseTag: true, urlPatch: true, fontProxy: true });
-  }
-
   // --- Font prefetch ---
   // Prefetch fonts through CORS proxy before launching viewports.
   // Populates parent.__milgFontCache so all iframes get cache hits.
@@ -39516,55 +39491,6 @@ window.MilgIframe = (function() {
     '})()';
   }
 
-  function deepScanInIframe(html, url, exclude, vpWidth, vpHeight, callback) {
-    var extractFromDocument = window.MilgExtract;
-    var iframe = document.createElement('iframe');
-    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + vpWidth + 'px;height:' + vpHeight + 'px;border:none;';
-    iframe.sandbox = 'allow-scripts allow-same-origin';
-    document.body.appendChild(iframe);
-
-    var msgType = 'milg-deep-' + vpWidth;
-    var handled = false;
-    function onResult(e) {
-      if (!e.data || e.data.type !== msgType) return;
-      if (handled) return;
-      handled = true;
-      window.removeEventListener('message', onResult);
-      if (iframe.parentNode) document.body.removeChild(iframe);
-      callback(e.data.data);
-    }
-    window.addEventListener('message', onResult);
-
-    var processed = html; // preprocessing done by caller (analyzeHtml or runDeepScanLoop)
-    var excludeVar = exclude ? '<script>window.__milgExclude=' + JSON.stringify(exclude) + ';</' + 'script>' : '';
-    var isFullDoc = /<html[\s>]/i.test(processed) || /<!DOCTYPE/i.test(processed);
-
-    var extractStr = extractFromDocument.toString().replace(/milg-analyzer-result/g, msgType);
-    // Auto-scroll inside iframe to trigger intersection observers before extracting
-    var scrollScript = 'window.scrollTo(0,document.body.scrollHeight);setTimeout(function(){window.scrollTo(0,0)},300);';
-    var extractScript = excludeVar + '<script>window.addEventListener("load",function(){' + scrollScript + 'setTimeout(function(){(' + extractStr + ')()},1500)});setTimeout(function(){(' + extractStr + ')()},8000);</' + 'script>';
-
-    var srcdoc;
-    if (isFullDoc) {
-      if (/<\/body>/i.test(processed)) {
-        srcdoc = processed.replace(/<\/body>/i, extractScript + '</body>');
-      } else {
-        srcdoc = processed + extractScript;
-      }
-    } else {
-      srcdoc = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script><style>body{margin:0}</style></head><body>' + processed + extractScript + '</body></html>';
-    }
-    iframe.srcdoc = srcdoc;
-
-    setTimeout(function() {
-      if (handled) return;
-      handled = true;
-      window.removeEventListener('message', onResult);
-      if (iframe.parentNode) document.body.removeChild(iframe);
-      callback(null);
-    }, 15000);
-  }
-
   // --- Unified analysis entry point ---
   // analyzeHtml(html, opts, callback)
   // opts: { url, jsEnabled, screenshots, viewport, exclude, editorDark, editorEffectCSS }
@@ -39588,35 +39514,7 @@ window.MilgIframe = (function() {
       fetchPatch: jsEnabled && !!sourceUrl
     });
 
-    // Diagnostic: verify base tag is present in preprocessed HTML
-    if (sourceUrl) {
-      var hasBase = /<base\s+href=/i.test(html);
-      var basePos = html.indexOf('<base ');
-      var firstScript = html.search(/<script[\s>]/i);
-      console.log('[milg-iframe] preprocessHtml: hasBase=' + hasBase + ' basePos=' + basePos + ' firstScript=' + firstScript + ' js=' + jsEnabled);
-    }
     _analyzeHtmlInIframe(html, callback, sourceUrl, excludeSelector, captureScreenshots, viewportOverride, editorDark, editorEffectCSS, jsEnabled);
-  }
-
-  // Backward-compatible wrapper: old positional API → new options API
-  function analyzeHtmlInIframe(html, callback, sourceUrlOrDark, excludeSelectorOrEffectCSS, captureScreenshots, viewportOverride) {
-    // Detect if HTML was already preprocessed (JS mode or runDeepScanLoop)
-    var alreadyPreprocessed = html.indexOf('__milgSandboxLog') !== -1 || html.indexOf('<!--milg-preprocessed-->') !== -1;
-    var sourceUrl = typeof sourceUrlOrDark === 'string' ? sourceUrlOrDark : null;
-    var excludeSelector = typeof excludeSelectorOrEffectCSS === 'string' && !sourceUrl ? null : excludeSelectorOrEffectCSS;
-    var editorDark = typeof sourceUrlOrDark === 'boolean' ? sourceUrlOrDark : false;
-    var editorEffectCSS = (!sourceUrl && typeof excludeSelectorOrEffectCSS === 'string') ? excludeSelectorOrEffectCSS : '';
-
-    if (!alreadyPreprocessed) {
-      // Apply preprocessing for non-JS paths (base tag, URL patch, font proxy)
-      html = preprocessHtml(html, sourceUrl, {
-        baseTag: !!sourceUrl,
-        urlPatch: !!sourceUrl,
-        fontProxy: !!_proxyUrl
-      });
-    }
-
-    _analyzeHtmlInIframe(html, callback, sourceUrl, excludeSelector, captureScreenshots, viewportOverride, editorDark, editorEffectCSS, alreadyPreprocessed);
   }
 
   // Internal implementation: creates iframe, injects extraction, handles messages.
@@ -39650,7 +39548,6 @@ window.MilgIframe = (function() {
           applied++;
         }
       });
-      console.log('[milg-iframe] Mask results applied: ' + applied + '/' + Object.keys(mr).length + ' pairs');
     }
     function finish(data) {
       if (handled) return;
@@ -39696,8 +39593,6 @@ window.MilgIframe = (function() {
         // Apply re-read bbox data from the iframe (updated after scroll-reset + getFlowPosition)
         if (e.data.updatedData) {
           var ud = e.data.updatedData;
-          var _udMasks = ud.colors && ud.colors.contrastPairs ? ud.colors.contrastPairs.filter(function(p) { return !!p._maskBmp; }).length : 0;
-          console.log('[milg-iframe] updatedData received: ' + (ud.colors && ud.colors.contrastPairs ? ud.colors.contrastPairs.length : 0) + ' pairs, ' + _udMasks + ' have masks');
           // Merge re-read bboxes back into our data
           if (ud.colors && ud.colors.contrastPairs) iframe._milgData.colors.contrastPairs = ud.colors.contrastPairs;
           if (ud.typography) {
@@ -39710,12 +39605,6 @@ window.MilgIframe = (function() {
             if (ud.layout.offscreenElements) iframe._milgData.layout.offscreenElements = ud.layout.offscreenElements;
             if (ud.layout.hiddenPanelIssues) iframe._milgData.layout.hiddenPanelIssues = ud.layout.hiddenPanelIssues;
           }
-        }
-        // Masks are on the pairs in updatedData (bit-packed base64 from mask layers).
-        // Verify: count how many pairs have _maskBmp after updatedData merge.
-        if (iframe._milgData && iframe._milgData.colors) {
-          var _mc = iframe._milgData.colors.contrastPairs.filter(function(p) { return !!p._maskBmp; }).length;
-          console.log('[milg-iframe] Pairs with masks after merge: ' + _mc + '/' + iframe._milgData.colors.contrastPairs.length);
         }
         // If hidden panels were detected, trigger unhidden screenshot pass
         var hpc = iframe._milgData.layout && iframe._milgData.layout.hiddenPanelCount;
@@ -39835,13 +39724,7 @@ window.MilgIframe = (function() {
     init: init,
     preprocessHtml: preprocessHtml,
     prefetchFonts: prefetchFonts,
-    analyzeHtml: analyzeHtml,
-    // Backward-compatible legacy API
-    injectBaseTag: injectBaseTag,
-    analyzeHtmlInIframe: analyzeHtmlInIframe,
-    deepScanInIframe: deepScanInIframe,
-    buildScreenshotScript: buildScreenshotScript,
-    buildSandboxScript: buildSandboxScript
+    analyzeHtml: analyzeHtml
   };
 })();
 </file>
@@ -39851,7 +39734,7 @@ window.MilgIframe = (function() {
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v52.6 loaded');
+console.log('[milg] analyzer.js v54.1 loaded');
 
 (function() {
   "use strict";
@@ -40203,10 +40086,10 @@ console.log('[milg] analyzer.js v52.6 loaded');
     active.forEach(function(btn) { if (btn.dataset.selector) selectors.push(btn.dataset.selector); });
     if (selectors.length === 0) { showToast('Select patterns to exclude first'); return; }
     // Clone data for re-scoring — break circular refs from deepScan.viewportData
-    var filtered = JSON.parse(JSON.stringify(lastRawData, function(key, val) {
-      if (key === 'viewportData') return undefined;
-      return val;
-    }));
+    var _cloneReplacer = function(key, val) { return key === 'viewportData' ? undefined : val; };
+    var filtered = typeof structuredClone === 'function'
+      ? (function() { var tmp = lastRawData.deepScan && lastRawData.deepScan.viewportData; if (tmp) lastRawData.deepScan.viewportData = undefined; var c = structuredClone(lastRawData); if (tmp) lastRawData.deepScan.viewportData = tmp; return c; })()
+      : JSON.parse(JSON.stringify(lastRawData, _cloneReplacer));
     // Restore viewportData reference (not cloned, just re-attached)
     if (lastRawData.deepScan && lastRawData.deepScan.viewportData) {
       if (!filtered.deepScan) filtered.deepScan = {};
@@ -40408,32 +40291,8 @@ console.log('[milg] analyzer.js v52.6 loaded');
           return r ? { label: viewports[i].label, width: viewports[i].w, data: r } : null;
         })
       };
-      // Copy screenshots + masks + verify results from primary viewport to top-level
-      // so the crawl page tab view has them (it shows page.rawData, not viewport data)
-      if (primary.deepScan.viewportData[0] && primary.deepScan.viewportData[0].data) {
-        var vpd = primary.deepScan.viewportData[0].data;
-        if (vpd.screenshots && !primary.screenshots) primary.screenshots = vpd.screenshots;
-        if (vpd.screenshotFull && !primary.screenshotFull) primary.screenshotFull = vpd.screenshotFull;
-        if (vpd.screenshotMeta && !primary.screenshotMeta) primary.screenshotMeta = vpd.screenshotMeta;
-        if (vpd.textMask && !primary.textMask) primary.textMask = vpd.textMask;
-        if (vpd._contrastVerifyResults) {
-          primary._contrastVerifyResults = vpd._contrastVerifyResults;
-          primary._bboxEdgeResults = vpd._bboxEdgeResults;
-        }
-        // Copy mask bitmaps to primary pairs (match by selector)
-        if (vpd.colors && vpd.colors.contrastPairs && primary.colors && primary.colors.contrastPairs) {
-          var vpPairMap = {};
-          vpd.colors.contrastPairs.forEach(function(p) { if (p._maskBmp && p.selector) vpPairMap[p.selector] = p; });
-          primary.colors.contrastPairs.forEach(function(p) {
-            var vp = vpPairMap[p.selector];
-            if (vp && !p._maskBmp) {
-              p._maskBmp = vp._maskBmp; p._maskPacked = vp._maskPacked;
-              p._maskW = vp._maskW; p._maskH = vp._maskH;
-              p._maskLayer = vp._maskLayer; p._maskDark = vp._maskDark;
-            }
-          });
-        }
-      }
+      // primary IS results[0] — it already has screenshots, masks, and verify results
+      // from the analyzeHtml pipeline. No need to copy from viewportData[0].
 
       // Dark mode test
       var htmlHasDark = /class="[^"]*dark:/.test(html) || /prefers-color-scheme/.test(html) || /\.dark\s*\{/.test(html) || /data-theme/.test(html);
@@ -40483,11 +40342,6 @@ console.log('[milg] analyzer.js v52.6 loaded');
         viewport: { w: vp.w, h: vp.h }
       }, function(data) {
         if (data) data.meta.url = url;
-        // Diagnostic: check if masks survive from analyzeHtml
-        if (data && data.colors && data.colors.contrastPairs) {
-          var _mc = data.colors.contrastPairs.filter(function(p) { return !!p._maskBmp; }).length;
-          console.log('[milg] Viewport', i, 'masks:', _mc + '/' + data.colors.contrastPairs.length);
-        }
         results[i] = data;
         doneCount++;
         var elCount = data ? (data.structure && data.structure.totalElements || 0) : 0;
@@ -40532,13 +40386,6 @@ console.log('[milg] analyzer.js v52.6 loaded');
 
   // --- Core analysis runner ---
   function runAnalysis(data, skipExclusionDetection) {
-    // Diagnostic: check if mask data survives to runAnalysis
-    if (data && data.colors && data.colors.contrastPairs) {
-      var _mc = data.colors.contrastPairs.filter(function(p) { return !!p._maskBmp; }).length;
-      if (data.screenshots && data.screenshots.length > 0 && _mc === 0 && data.colors.contrastPairs.length > 0) {
-        console.warn('[milg-warn] Mask data MISSING at runAnalysis entry — ' + data.colors.contrastPairs.length + ' pairs, 0 have _maskBmp');
-      }
-    }
     lastRawData = data;
     if (!_originalRawData || (!skipExclusionDetection && skipExclusionDetection !== 'viewport')) { _originalRawData = data; _viewportCache = {}; }
     // Analysis data saved/restored via Export JSON + Import — no sessionStorage (too large with screenshots/fonts)
@@ -41199,9 +41046,17 @@ console.log('[milg] analyzer.js v52.6 loaded');
     document.getElementById('exportJsonBtn').addEventListener('click', function() {
       if (!lastRawData) return;
       // Clone data, skipping deepScan to break circular refs, then re-attach it properly
-      var exportData = JSON.parse(JSON.stringify(lastRawData, function(k, v) { return k === 'deepScan' ? undefined : v; }));
-      if (lastRawData.deepScan) {
-        exportData.deepScan = JSON.parse(JSON.stringify(lastRawData.deepScan, function(k, v) { return k === 'deepScan' ? undefined : v; }));
+      var exportData;
+      if (typeof structuredClone === 'function') {
+        var _tmpDs = lastRawData.deepScan;
+        if (_tmpDs) lastRawData.deepScan = undefined;
+        exportData = structuredClone(lastRawData);
+        if (_tmpDs) { lastRawData.deepScan = _tmpDs; var _tmpNested = _tmpDs.viewportData; if (_tmpNested) _tmpDs.viewportData = undefined; exportData.deepScan = structuredClone(_tmpDs); if (_tmpNested) _tmpDs.viewportData = _tmpNested; }
+      } else {
+        exportData = JSON.parse(JSON.stringify(lastRawData, function(k, v) { return k === 'deepScan' ? undefined : v; }));
+        if (lastRawData.deepScan) {
+          exportData.deepScan = JSON.parse(JSON.stringify(lastRawData.deepScan, function(k, v) { return k === 'deepScan' ? undefined : v; }));
+        }
       }
       // Include pixel verify results if available
       if (reportData && reportData._contrastVerifyResults) {
@@ -41419,7 +41274,7 @@ console.log('[milg] analyzer.js v52.6 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v54.0</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v54.1</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -41790,30 +41645,30 @@ console.log('[milg] analyzer.js v52.6 loaded');
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=54.0"></script>
-  <script src="scoring/contrast.js?v=54.0"></script>
-  <script src="scoring/typography.js?v=54.0"></script>
-  <script src="scoring/spacing.js?v=54.0"></script>
-  <script src="scoring/touch.js?v=54.0"></script>
-  <script src="scoring/accessibility.js?v=54.0"></script>
-  <script src="scoring/responsive.js?v=54.0"></script>
-  <script src="scoring/consistency.js?v=54.0"></script>
-  <script src="scoring/cognitive.js?v=54.0"></script>
-  <script src="scoring/layout.js?v=54.0"></script>
-  <script src="scoring/performance.js?v=54.0"></script>
-  <script src="scoring/readability.js?v=54.0"></script>
-  <script src="scoring/filters.js?v=54.0"></script>
-  <script src="scoring/balance.js?v=54.0"></script>
+  <script src="scoring/registry.js?v=54.1"></script>
+  <script src="scoring/contrast.js?v=54.1"></script>
+  <script src="scoring/typography.js?v=54.1"></script>
+  <script src="scoring/spacing.js?v=54.1"></script>
+  <script src="scoring/touch.js?v=54.1"></script>
+  <script src="scoring/accessibility.js?v=54.1"></script>
+  <script src="scoring/responsive.js?v=54.1"></script>
+  <script src="scoring/consistency.js?v=54.1"></script>
+  <script src="scoring/cognitive.js?v=54.1"></script>
+  <script src="scoring/layout.js?v=54.1"></script>
+  <script src="scoring/performance.js?v=54.1"></script>
+  <script src="scoring/readability.js?v=54.1"></script>
+  <script src="scoring/filters.js?v=54.1"></script>
+  <script src="scoring/balance.js?v=54.1"></script>
   <!-- Report rendering + UI -->
-  <script src="analyzer-report.js?v=54.0"></script>
-  <script src="analyzer-crawl.js?v=54.0"></script>
-  <script src="analyzer-extract.js?v=54.0"></script>
-  <script src="analyzer-iframe.js?v=54.0"></script>
-  <script src="analyzer-proxy.js?v=54.0"></script>
-  <script src="analyzer-crawl-ui.js?v=54.0"></script>
-  <script src="analyzer-contrast-verify.js?v=54.0"></script>
-  <script src="analyzer-viewer.js?v=54.0"></script>
-  <script src="analyzer.js?v=54.0"></script>
+  <script src="analyzer-report.js?v=54.1"></script>
+  <script src="analyzer-crawl.js?v=54.1"></script>
+  <script src="analyzer-extract.js?v=54.1"></script>
+  <script src="analyzer-iframe.js?v=54.1"></script>
+  <script src="analyzer-proxy.js?v=54.1"></script>
+  <script src="analyzer-crawl-ui.js?v=54.1"></script>
+  <script src="analyzer-contrast-verify.js?v=54.1"></script>
+  <script src="analyzer-viewer.js?v=54.1"></script>
+  <script src="analyzer.js?v=54.1"></script>
 </body>
 </html>
 </file>

@@ -209,16 +209,9 @@ window.MilgProxy = (function() {
   // Wire up the global handler
   window.__milgTryWithJs = function(url) { tryWithJs(url); };
 
-  // Legacy wrappers — delegate to MilgIframe's unified pipeline
-  function prepareJsHtml(html, url) {
-    return MilgIframe.preprocessHtml(html, url, { sandbox: true, fetchPatch: true, baseTag: true });
-  }
-
   return {
     init: init,
     fetchWithProxy: fetchWithProxy,
-    fetchViaProxy: fetchViaProxy,
-    // Legacy — callers should use MilgIframe.analyzeHtml({jsEnabled:true}) directly
-    prepareJsHtml: prepareJsHtml
+    fetchViaProxy: fetchViaProxy
   };
 })();

@@ -319,11 +319,6 @@ window.MilgIframe = (function() {
     } catch(e) { return html; }
   }
 
-  // Legacy wrapper — kept for any external callers
-  function injectBaseTag(html, url) {
-    return preprocessHtml(html, url, { baseTag: true, urlPatch: true, fontProxy: true });
-  }
-
   // --- Font prefetch ---
   // Prefetch fonts through CORS proxy before launching viewports.
   // Populates parent.__milgFontCache so all iframes get cache hits.
@@ -734,55 +729,6 @@ window.MilgIframe = (function() {
     '})()';
   }
 
-  function deepScanInIframe(html, url, exclude, vpWidth, vpHeight, callback) {
-    var extractFromDocument = window.MilgExtract;
-    var iframe = document.createElement('iframe');
-    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + vpWidth + 'px;height:' + vpHeight + 'px;border:none;';
-    iframe.sandbox = 'allow-scripts allow-same-origin';
-    document.body.appendChild(iframe);
-
-    var msgType = 'milg-deep-' + vpWidth;
-    var handled = false;
-    function onResult(e) {
-      if (!e.data || e.data.type !== msgType) return;
-      if (handled) return;
-      handled = true;
-      window.removeEventListener('message', onResult);
-      if (iframe.parentNode) document.body.removeChild(iframe);
-      callback(e.data.data);
-    }
-    window.addEventListener('message', onResult);
-
-    var processed = html; // preprocessing done by caller (analyzeHtml or runDeepScanLoop)
-    var excludeVar = exclude ? '<script>window.__milgExclude=' + JSON.stringify(exclude) + ';</' + 'script>' : '';
-    var isFullDoc = /<html[\s>]/i.test(processed) || /<!DOCTYPE/i.test(processed);
-
-    var extractStr = extractFromDocument.toString().replace(/milg-analyzer-result/g, msgType);
-    // Auto-scroll inside iframe to trigger intersection observers before extracting
-    var scrollScript = 'window.scrollTo(0,document.body.scrollHeight);setTimeout(function(){window.scrollTo(0,0)},300);';
-    var extractScript = excludeVar + '<script>window.addEventListener("load",function(){' + scrollScript + 'setTimeout(function(){(' + extractStr + ')()},1500)});setTimeout(function(){(' + extractStr + ')()},8000);</' + 'script>';
-
-    var srcdoc;
-    if (isFullDoc) {
-      if (/<\/body>/i.test(processed)) {
-        srcdoc = processed.replace(/<\/body>/i, extractScript + '</body>');
-      } else {
-        srcdoc = processed + extractScript;
-      }
-    } else {
-      srcdoc = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script><style>body{margin:0}</style></head><body>' + processed + extractScript + '</body></html>';
-    }
-    iframe.srcdoc = srcdoc;
-
-    setTimeout(function() {
-      if (handled) return;
-      handled = true;
-      window.removeEventListener('message', onResult);
-      if (iframe.parentNode) document.body.removeChild(iframe);
-      callback(null);
-    }, 15000);
-  }
-
   // --- Unified analysis entry point ---
   // analyzeHtml(html, opts, callback)
   // opts: { url, jsEnabled, screenshots, viewport, exclude, editorDark, editorEffectCSS }
@@ -806,35 +752,7 @@ window.MilgIframe = (function() {
       fetchPatch: jsEnabled && !!sourceUrl
     });
 
-    // Diagnostic: verify base tag is present in preprocessed HTML
-    if (sourceUrl) {
-      var hasBase = /<base\s+href=/i.test(html);
-      var basePos = html.indexOf('<base ');
-      var firstScript = html.search(/<script[\s>]/i);
-      console.log('[milg-iframe] preprocessHtml: hasBase=' + hasBase + ' basePos=' + basePos + ' firstScript=' + firstScript + ' js=' + jsEnabled);
-    }
     _analyzeHtmlInIframe(html, callback, sourceUrl, excludeSelector, captureScreenshots, viewportOverride, editorDark, editorEffectCSS, jsEnabled);
-  }
-
-  // Backward-compatible wrapper: old positional API → new options API
-  function analyzeHtmlInIframe(html, callback, sourceUrlOrDark, excludeSelectorOrEffectCSS, captureScreenshots, viewportOverride) {
-    // Detect if HTML was already preprocessed (JS mode or runDeepScanLoop)
-    var alreadyPreprocessed = html.indexOf('__milgSandboxLog') !== -1 || html.indexOf('<!--milg-preprocessed-->') !== -1;
-    var sourceUrl = typeof sourceUrlOrDark === 'string' ? sourceUrlOrDark : null;
-    var excludeSelector = typeof excludeSelectorOrEffectCSS === 'string' && !sourceUrl ? null : excludeSelectorOrEffectCSS;
-    var editorDark = typeof sourceUrlOrDark === 'boolean' ? sourceUrlOrDark : false;
-    var editorEffectCSS = (!sourceUrl && typeof excludeSelectorOrEffectCSS === 'string') ? excludeSelectorOrEffectCSS : '';
-
-    if (!alreadyPreprocessed) {
-      // Apply preprocessing for non-JS paths (base tag, URL patch, font proxy)
-      html = preprocessHtml(html, sourceUrl, {
-        baseTag: !!sourceUrl,
-        urlPatch: !!sourceUrl,
-        fontProxy: !!_proxyUrl
-      });
-    }
-
-    _analyzeHtmlInIframe(html, callback, sourceUrl, excludeSelector, captureScreenshots, viewportOverride, editorDark, editorEffectCSS, alreadyPreprocessed);
   }
 
   // Internal implementation: creates iframe, injects extraction, handles messages.
@@ -868,7 +786,6 @@ window.MilgIframe = (function() {
           applied++;
         }
       });
-      console.log('[milg-iframe] Mask results applied: ' + applied + '/' + Object.keys(mr).length + ' pairs');
     }
     function finish(data) {
       if (handled) return;
@@ -914,8 +831,6 @@ window.MilgIframe = (function() {
         // Apply re-read bbox data from the iframe (updated after scroll-reset + getFlowPosition)
         if (e.data.updatedData) {
           var ud = e.data.updatedData;
-          var _udMasks = ud.colors && ud.colors.contrastPairs ? ud.colors.contrastPairs.filter(function(p) { return !!p._maskBmp; }).length : 0;
-          console.log('[milg-iframe] updatedData received: ' + (ud.colors && ud.colors.contrastPairs ? ud.colors.contrastPairs.length : 0) + ' pairs, ' + _udMasks + ' have masks');
           // Merge re-read bboxes back into our data
           if (ud.colors && ud.colors.contrastPairs) iframe._milgData.colors.contrastPairs = ud.colors.contrastPairs;
           if (ud.typography) {
@@ -928,12 +843,6 @@ window.MilgIframe = (function() {
             if (ud.layout.offscreenElements) iframe._milgData.layout.offscreenElements = ud.layout.offscreenElements;
             if (ud.layout.hiddenPanelIssues) iframe._milgData.layout.hiddenPanelIssues = ud.layout.hiddenPanelIssues;
           }
-        }
-        // Masks are on the pairs in updatedData (bit-packed base64 from mask layers).
-        // Verify: count how many pairs have _maskBmp after updatedData merge.
-        if (iframe._milgData && iframe._milgData.colors) {
-          var _mc = iframe._milgData.colors.contrastPairs.filter(function(p) { return !!p._maskBmp; }).length;
-          console.log('[milg-iframe] Pairs with masks after merge: ' + _mc + '/' + iframe._milgData.colors.contrastPairs.length);
         }
         // If hidden panels were detected, trigger unhidden screenshot pass
         var hpc = iframe._milgData.layout && iframe._milgData.layout.hiddenPanelCount;
@@ -1053,12 +962,6 @@ window.MilgIframe = (function() {
     init: init,
     preprocessHtml: preprocessHtml,
     prefetchFonts: prefetchFonts,
-    analyzeHtml: analyzeHtml,
-    // Backward-compatible legacy API
-    injectBaseTag: injectBaseTag,
-    analyzeHtmlInIframe: analyzeHtmlInIframe,
-    deepScanInIframe: deepScanInIframe,
-    buildScreenshotScript: buildScreenshotScript,
-    buildSandboxScript: buildSandboxScript
+    analyzeHtml: analyzeHtml
   };
 })();

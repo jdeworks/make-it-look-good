@@ -1,6 +1,6 @@
 // Site Crawl Module — multi-page analysis with progressive results
 // Provides: link discovery, session management, summary building, export helpers
-// Pipeline orchestration lives in analyzer.js (has access to fetchViaProxy, analyzeHtmlInIframe)
+// Pipeline orchestration lives in analyzer.js (has access to fetchViaProxy, MilgIframe.analyzeHtml)
 
 window.MilgCrawl = (function() {
   "use strict";
@@ -410,25 +410,6 @@ window.MilgCrawl = (function() {
     return lines.join('\n');
   }
 
-  function renderCrawlCSV(session) {
-    var summary = session.summary || buildSummary(session);
-    var lines = ['URL,Path,Title,Score,Grade,Errors,Warnings'];
-    session.pages.forEach(function(page) {
-      if (page.status !== 'done' || !page.reportData) return;
-      var path; try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
-      var errors = 0, warnings = 0;
-      (page.reportData.categories || []).forEach(function(cat) {
-        cat.findings.forEach(function(f) {
-          if (f.severity === 'error') errors++;
-          if (f.severity === 'warning') warnings++;
-        });
-      });
-      var title = (page.title || '').replace(/,/g, ' ').replace(/"/g, "'");
-      lines.push('"' + page.url + '","' + path + '","' + title + '",' + page.reportData.overall + ',' + page.reportData.grade + ',' + errors + ',' + warnings);
-    });
-    return lines.join('\n');
-  }
-
   function renderCrawlJSON(session, severityFilter) {
     var out = {
       startUrl: session.startUrl,
@@ -466,7 +447,6 @@ window.MilgCrawl = (function() {
     buildSummary: buildSummary,
     filterFindings: filterFindings,
     renderCrawlMarkdown: renderCrawlMarkdown,
-    renderCrawlCSV: renderCrawlCSV,
     renderCrawlJSON: renderCrawlJSON
   };
 })();

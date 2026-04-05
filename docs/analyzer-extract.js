@@ -674,7 +674,14 @@ window.MilgExtract = (function() {
     for (var i = 0; i < allElements.length && transitionSet.size < 20; i++) { var t = getComputedStyle(allElements[i]).transitionDuration; if (t && t !== '0s') transitionSet.add(t); }
     data.interaction.transitions = Array.from(transitionSet);
 
-    data.accessibility.semanticElements = { header: document.querySelectorAll('header').length, nav: document.querySelectorAll('nav').length, main: document.querySelectorAll('main').length, footer: document.querySelectorAll('footer').length, section: document.querySelectorAll('section').length, article: document.querySelectorAll('article').length, aside: document.querySelectorAll('aside').length };
+    var _semTags = ['header','nav','main','footer','section','article','aside'];
+    var _semEls = {};
+    _semTags.forEach(function(tag) { _semEls[tag] = 0; });
+    for (var _si = 0; _si < allElements.length; _si++) {
+      var _tn = allElements[_si].tagName.toLowerCase();
+      if (_semEls.hasOwnProperty(_tn)) _semEls[_tn]++;
+    }
+    data.accessibility.semanticElements = _semEls;
     var navEls = document.querySelectorAll('nav'); var navItemCount = 0;
     navEls.forEach(function(nav) { var topLinks = nav.querySelectorAll(':scope > a, :scope > ul > li > a, :scope > ol > li > a, :scope > button, :scope > ul > li > button'); navItemCount += topLinks.length; });
     data.accessibility.navItemCount = navItemCount;

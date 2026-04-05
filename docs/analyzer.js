@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v52.6 loaded');
+console.log('[milg] analyzer.js v54.1 loaded');
 
 (function() {
   "use strict";
@@ -354,10 +354,10 @@ console.log('[milg] analyzer.js v52.6 loaded');
     active.forEach(function(btn) { if (btn.dataset.selector) selectors.push(btn.dataset.selector); });
     if (selectors.length === 0) { showToast('Select patterns to exclude first'); return; }
     // Clone data for re-scoring — break circular refs from deepScan.viewportData
-    var filtered = JSON.parse(JSON.stringify(lastRawData, function(key, val) {
-      if (key === 'viewportData') return undefined;
-      return val;
-    }));
+    var _cloneReplacer = function(key, val) { return key === 'viewportData' ? undefined : val; };
+    var filtered = typeof structuredClone === 'function'
+      ? (function() { var tmp = lastRawData.deepScan && lastRawData.deepScan.viewportData; if (tmp) lastRawData.deepScan.viewportData = undefined; var c = structuredClone(lastRawData); if (tmp) lastRawData.deepScan.viewportData = tmp; return c; })()
+      : JSON.parse(JSON.stringify(lastRawData, _cloneReplacer));
     // Restore viewportData reference (not cloned, just re-attached)
     if (lastRawData.deepScan && lastRawData.deepScan.viewportData) {
       if (!filtered.deepScan) filtered.deepScan = {};
@@ -559,32 +559,8 @@ console.log('[milg] analyzer.js v52.6 loaded');
           return r ? { label: viewports[i].label, width: viewports[i].w, data: r } : null;
         })
       };
-      // Copy screenshots + masks + verify results from primary viewport to top-level
-      // so the crawl page tab view has them (it shows page.rawData, not viewport data)
-      if (primary.deepScan.viewportData[0] && primary.deepScan.viewportData[0].data) {
-        var vpd = primary.deepScan.viewportData[0].data;
-        if (vpd.screenshots && !primary.screenshots) primary.screenshots = vpd.screenshots;
-        if (vpd.screenshotFull && !primary.screenshotFull) primary.screenshotFull = vpd.screenshotFull;
-        if (vpd.screenshotMeta && !primary.screenshotMeta) primary.screenshotMeta = vpd.screenshotMeta;
-        if (vpd.textMask && !primary.textMask) primary.textMask = vpd.textMask;
-        if (vpd._contrastVerifyResults) {
-          primary._contrastVerifyResults = vpd._contrastVerifyResults;
-          primary._bboxEdgeResults = vpd._bboxEdgeResults;
-        }
-        // Copy mask bitmaps to primary pairs (match by selector)
-        if (vpd.colors && vpd.colors.contrastPairs && primary.colors && primary.colors.contrastPairs) {
-          var vpPairMap = {};
-          vpd.colors.contrastPairs.forEach(function(p) { if (p._maskBmp && p.selector) vpPairMap[p.selector] = p; });
-          primary.colors.contrastPairs.forEach(function(p) {
-            var vp = vpPairMap[p.selector];
-            if (vp && !p._maskBmp) {
-              p._maskBmp = vp._maskBmp; p._maskPacked = vp._maskPacked;
-              p._maskW = vp._maskW; p._maskH = vp._maskH;
-              p._maskLayer = vp._maskLayer; p._maskDark = vp._maskDark;
-            }
-          });
-        }
-      }
+      // primary IS results[0] — it already has screenshots, masks, and verify results
+      // from the analyzeHtml pipeline. No need to copy from viewportData[0].
 
       // Dark mode test
       var htmlHasDark = /class="[^"]*dark:/.test(html) || /prefers-color-scheme/.test(html) || /\.dark\s*\{/.test(html) || /data-theme/.test(html);
@@ -634,11 +610,6 @@ console.log('[milg] analyzer.js v52.6 loaded');
         viewport: { w: vp.w, h: vp.h }
       }, function(data) {
         if (data) data.meta.url = url;
-        // Diagnostic: check if masks survive from analyzeHtml
-        if (data && data.colors && data.colors.contrastPairs) {
-          var _mc = data.colors.contrastPairs.filter(function(p) { return !!p._maskBmp; }).length;
-          console.log('[milg] Viewport', i, 'masks:', _mc + '/' + data.colors.contrastPairs.length);
-        }
         results[i] = data;
         doneCount++;
         var elCount = data ? (data.structure && data.structure.totalElements || 0) : 0;
@@ -683,13 +654,6 @@ console.log('[milg] analyzer.js v52.6 loaded');
 
   // --- Core analysis runner ---
   function runAnalysis(data, skipExclusionDetection) {
-    // Diagnostic: check if mask data survives to runAnalysis
-    if (data && data.colors && data.colors.contrastPairs) {
-      var _mc = data.colors.contrastPairs.filter(function(p) { return !!p._maskBmp; }).length;
-      if (data.screenshots && data.screenshots.length > 0 && _mc === 0 && data.colors.contrastPairs.length > 0) {
-        console.warn('[milg-warn] Mask data MISSING at runAnalysis entry — ' + data.colors.contrastPairs.length + ' pairs, 0 have _maskBmp');
-      }
-    }
     lastRawData = data;
     if (!_originalRawData || (!skipExclusionDetection && skipExclusionDetection !== 'viewport')) { _originalRawData = data; _viewportCache = {}; }
     // Analysis data saved/restored via Export JSON + Import — no sessionStorage (too large with screenshots/fonts)
@@ -1350,9 +1314,17 @@ console.log('[milg] analyzer.js v52.6 loaded');
     document.getElementById('exportJsonBtn').addEventListener('click', function() {
       if (!lastRawData) return;
       // Clone data, skipping deepScan to break circular refs, then re-attach it properly
-      var exportData = JSON.parse(JSON.stringify(lastRawData, function(k, v) { return k === 'deepScan' ? undefined : v; }));
-      if (lastRawData.deepScan) {
-        exportData.deepScan = JSON.parse(JSON.stringify(lastRawData.deepScan, function(k, v) { return k === 'deepScan' ? undefined : v; }));
+      var exportData;
+      if (typeof structuredClone === 'function') {
+        var _tmpDs = lastRawData.deepScan;
+        if (_tmpDs) lastRawData.deepScan = undefined;
+        exportData = structuredClone(lastRawData);
+        if (_tmpDs) { lastRawData.deepScan = _tmpDs; var _tmpNested = _tmpDs.viewportData; if (_tmpNested) _tmpDs.viewportData = undefined; exportData.deepScan = structuredClone(_tmpDs); if (_tmpNested) _tmpDs.viewportData = _tmpNested; }
+      } else {
+        exportData = JSON.parse(JSON.stringify(lastRawData, function(k, v) { return k === 'deepScan' ? undefined : v; }));
+        if (lastRawData.deepScan) {
+          exportData.deepScan = JSON.parse(JSON.stringify(lastRawData.deepScan, function(k, v) { return k === 'deepScan' ? undefined : v; }));
+        }
       }
       // Include pixel verify results if available
       if (reportData && reportData._contrastVerifyResults) {
