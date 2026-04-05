@@ -39126,17 +39126,21 @@ window.MilgIframe = (function() {
     });
     if (resolved.length === 0 || !_proxyUrl) { cb(); return; }
     if (!window.__milgFontCache) window.__milgFontCache = {};
-    var toFetch = resolved.slice(0, 20); // cap prefetch; export script falls back to proxy for any misses
-    var done = 0;
-    console.log('[milg] Prefetching ' + toFetch.length + ' fonts through proxy');
-    toFetch.forEach(function(fontUrl) {
-      if (window.__milgFontCache[fontUrl]) { done++; if (done === toFetch.length) cb(); return; }
+    // Filter out already-cached fonts (same-site crawl pages share fonts)
+    var toFetch = resolved.filter(function(u) { return !window.__milgFontCache[u]; }).slice(0, 20);
+    if (toFetch.length === 0) { console.log('[milg] All ' + resolved.length + ' fonts already cached'); cb(); return; }
+    console.log('[milg] Prefetching ' + toFetch.length + ' fonts through proxy (' + (resolved.length - toFetch.length) + ' cached)');
+    // Sequential fetch to avoid rate limiting
+    var fi = 0;
+    function _nextFont() {
+      if (fi >= toFetch.length) { cb(); return; }
+      var fontUrl = toFetch[fi]; fi++;
       var p = fetch((_proxyUrl || '') + '?url=' + encodeURIComponent(fontUrl)).catch(function(e) { console.warn('[milg-warn] Font prefetch failed:', fontUrl, e && e.message || ''); return new Response('', { status: 404 }); });
       window.__milgFontCache[fontUrl] = p;
-      p.then(function() { done++; if (done === toFetch.length) cb(); })
-       .catch(function() { done++; if (done === toFetch.length) cb(); });
-    });
-    setTimeout(function() { if (done < toFetch.length) { console.log('[milg] Font prefetch timeout, continuing'); cb(); } }, 8000);
+      p.then(_nextFont).catch(_nextFont);
+    }
+    _nextFont();
+    setTimeout(function() { if (fi < toFetch.length) { console.log('[milg] Font prefetch timeout, continuing'); fi = toFetch.length; cb(); } }, 15000);
   }
 
   // --- Screenshot capture script (injected into iframes after extraction) ---
@@ -41444,7 +41448,7 @@ console.log('[milg] analyzer.js v52.6 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v53.7</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v53.8</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -41815,30 +41819,30 @@ console.log('[milg] analyzer.js v52.6 loaded');
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=53.7"></script>
-  <script src="scoring/contrast.js?v=53.7"></script>
-  <script src="scoring/typography.js?v=53.7"></script>
-  <script src="scoring/spacing.js?v=53.7"></script>
-  <script src="scoring/touch.js?v=53.7"></script>
-  <script src="scoring/accessibility.js?v=53.7"></script>
-  <script src="scoring/responsive.js?v=53.7"></script>
-  <script src="scoring/consistency.js?v=53.7"></script>
-  <script src="scoring/cognitive.js?v=53.7"></script>
-  <script src="scoring/layout.js?v=53.7"></script>
-  <script src="scoring/performance.js?v=53.7"></script>
-  <script src="scoring/readability.js?v=53.7"></script>
-  <script src="scoring/filters.js?v=53.7"></script>
-  <script src="scoring/balance.js?v=53.7"></script>
+  <script src="scoring/registry.js?v=53.8"></script>
+  <script src="scoring/contrast.js?v=53.8"></script>
+  <script src="scoring/typography.js?v=53.8"></script>
+  <script src="scoring/spacing.js?v=53.8"></script>
+  <script src="scoring/touch.js?v=53.8"></script>
+  <script src="scoring/accessibility.js?v=53.8"></script>
+  <script src="scoring/responsive.js?v=53.8"></script>
+  <script src="scoring/consistency.js?v=53.8"></script>
+  <script src="scoring/cognitive.js?v=53.8"></script>
+  <script src="scoring/layout.js?v=53.8"></script>
+  <script src="scoring/performance.js?v=53.8"></script>
+  <script src="scoring/readability.js?v=53.8"></script>
+  <script src="scoring/filters.js?v=53.8"></script>
+  <script src="scoring/balance.js?v=53.8"></script>
   <!-- Report rendering + UI -->
-  <script src="analyzer-report.js?v=53.7"></script>
-  <script src="analyzer-crawl.js?v=53.7"></script>
-  <script src="analyzer-extract.js?v=53.7"></script>
-  <script src="analyzer-iframe.js?v=53.7"></script>
-  <script src="analyzer-proxy.js?v=53.7"></script>
-  <script src="analyzer-crawl-ui.js?v=53.7"></script>
-  <script src="analyzer-contrast-verify.js?v=53.7"></script>
-  <script src="analyzer-viewer.js?v=53.7"></script>
-  <script src="analyzer.js?v=53.7"></script>
+  <script src="analyzer-report.js?v=53.8"></script>
+  <script src="analyzer-crawl.js?v=53.8"></script>
+  <script src="analyzer-extract.js?v=53.8"></script>
+  <script src="analyzer-iframe.js?v=53.8"></script>
+  <script src="analyzer-proxy.js?v=53.8"></script>
+  <script src="analyzer-crawl-ui.js?v=53.8"></script>
+  <script src="analyzer-contrast-verify.js?v=53.8"></script>
+  <script src="analyzer-viewer.js?v=53.8"></script>
+  <script src="analyzer.js?v=53.8"></script>
 </body>
 </html>
 </file>

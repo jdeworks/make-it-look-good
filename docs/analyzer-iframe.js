@@ -344,17 +344,21 @@ window.MilgIframe = (function() {
     });
     if (resolved.length === 0 || !_proxyUrl) { cb(); return; }
     if (!window.__milgFontCache) window.__milgFontCache = {};
-    var toFetch = resolved.slice(0, 20); // cap prefetch; export script falls back to proxy for any misses
-    var done = 0;
-    console.log('[milg] Prefetching ' + toFetch.length + ' fonts through proxy');
-    toFetch.forEach(function(fontUrl) {
-      if (window.__milgFontCache[fontUrl]) { done++; if (done === toFetch.length) cb(); return; }
+    // Filter out already-cached fonts (same-site crawl pages share fonts)
+    var toFetch = resolved.filter(function(u) { return !window.__milgFontCache[u]; }).slice(0, 20);
+    if (toFetch.length === 0) { console.log('[milg] All ' + resolved.length + ' fonts already cached'); cb(); return; }
+    console.log('[milg] Prefetching ' + toFetch.length + ' fonts through proxy (' + (resolved.length - toFetch.length) + ' cached)');
+    // Sequential fetch to avoid rate limiting
+    var fi = 0;
+    function _nextFont() {
+      if (fi >= toFetch.length) { cb(); return; }
+      var fontUrl = toFetch[fi]; fi++;
       var p = fetch((_proxyUrl || '') + '?url=' + encodeURIComponent(fontUrl)).catch(function(e) { console.warn('[milg-warn] Font prefetch failed:', fontUrl, e && e.message || ''); return new Response('', { status: 404 }); });
       window.__milgFontCache[fontUrl] = p;
-      p.then(function() { done++; if (done === toFetch.length) cb(); })
-       .catch(function() { done++; if (done === toFetch.length) cb(); });
-    });
-    setTimeout(function() { if (done < toFetch.length) { console.log('[milg] Font prefetch timeout, continuing'); cb(); } }, 8000);
+      p.then(_nextFont).catch(_nextFont);
+    }
+    _nextFont();
+    setTimeout(function() { if (fi < toFetch.length) { console.log('[milg] Font prefetch timeout, continuing'); fi = toFetch.length; cb(); } }, 15000);
   }
 
   // --- Screenshot capture script (injected into iframes after extraction) ---
