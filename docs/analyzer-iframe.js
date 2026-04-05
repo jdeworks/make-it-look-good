@@ -151,11 +151,14 @@ window.MilgIframe = (function() {
             // Share font cache across iframes via parent (deep scan reuses fonts across viewports)
             'try{if(!parent.__milgFontCache)parent.__milgFontCache={}}catch(e){}' +
             'var _fc=((typeof parent!=="undefined")&&parent.__milgFontCache)||{};' +
+            'if(!window.__milgFontBlobs)window.__milgFontBlobs={};' +
             'window.fetch=function(u,o){' +
               'if(typeof u==="string"&&u.charAt(0)==="/")u=_rb.replace(/\\/$/,"")+u;' +
               'if(_px&&typeof u==="string"&&u.indexOf(_px)===-1&&/\\.(woff2?|ttf|otf|eot)(\\?|$)/i.test(u)){' +
                 'if(_fc[u])return _fc[u].then(function(r){return r.clone()});' +
-                'var p=_of.call(this,_px+"?url="+encodeURIComponent(u),o).catch(function(e){console.warn("[milg-warn] Font proxy failed:",u,e&&e.message||"");return new Response("",{status:404})});' +
+                'var p=_of.call(this,_px+"?url="+encodeURIComponent(u),o)' +
+                  '.then(function(r){var r2=r.clone();r2.blob().then(function(b){if(b.size>0)window.__milgFontBlobs[u]=URL.createObjectURL(b)}).catch(function(){});return r})' +
+                  '.catch(function(e){console.warn("[milg-warn] Font proxy failed:",u,e&&e.message||"");return new Response("",{status:404})});' +
                 '_fc[u]=p;return p;' +
               '}' +
               'return _of.call(this,u,o);' +

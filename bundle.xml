@@ -28935,6 +28935,192 @@ function scoreContrast(data) {
 })();
 </file>
 
+<file path="docs/scoring/readability.js">
+// Scoring Module: Readability & Scanability
+// Weight: 5%
+// Sources: Coleman-Liau Index, NNGroup scanning research
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+  function scoreReadability(data) {
+    var findings = [];
+    var checks = 0;
+    var passed = 0;
+
+    // Extract text content from the raw data
+    // We use heading count and element count as proxies since we don't have raw text in extracted data
+    var headings = (data.typography && data.typography.headings) || [];
+    var totalElements = (data.structure && data.structure.totalElements) || 0;
+
+    // Scanability: heading frequency
+    // Good rule: 1 heading per ~100-150 elements of content
+    if (totalElements > 50) {
+      checks++;
+      var headingRatio = headings.length / (totalElements / 100);
+      if (headingRatio >= 0.5 && headingRatio <= 5) {
+        passed++;
+      } else if (headingRatio < 0.5) {
+        findings.push({
+          severity: 'warning',
+          title: 'Low heading density: ' + headings.length + ' headings for ' + totalElements + ' elements',
+          detail: 'Content without headings is harder to scan. 79% of users scan rather than read (NNGroup)',
+          fix: 'Add descriptive headings to break content into scannable sections. Aim for a heading every 2-3 paragraphs.',
+          presetRef: null,
+          source: 'NNGroup scanning research — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+        });
+      }
+    }
+
+    // Heading descriptiveness: check if headings are too short (likely generic)
+    if (headings.length > 0) {
+      checks++;
+      var shortHeadings = headings.filter(function(h) {
+        return h.text && h.text.length < 3;
+      });
+      if (shortHeadings.length === 0) {
+        passed++;
+      } else {
+        passed++; // Info doesn't reduce score
+        findings.push({
+          severity: 'info',
+          title: shortHeadings.length + ' heading(s) with very short text (< 3 chars)',
+          detail: 'Short headings like numbers or icons don\'t help users scan. Use descriptive text.',
+          fix: 'Replace generic headings with descriptive ones that summarize the section content.',
+          presetRef: null,
+          source: 'NNGroup — https://www.nngroup.com/articles/headings-pickup-lines/'
+        });
+      }
+    }
+
+    // Font size variety as readability signal
+    // Too many sizes = visual noise, harder to establish reading rhythm
+    var fontSizes = (data.typography && data.typography.fontSizes) || [];
+    var smallTextCount = fontSizes.filter(function(f) {
+      return parseFloat(f.value) < 12;
+    }).reduce(function(sum, f) { return sum + f.count; }, 0);
+
+    if (smallTextCount > 0 && totalElements > 20) {
+      checks++;
+      var smallRatio = smallTextCount / totalElements;
+      if (smallRatio < 0.05) {
+        passed++;
+      } else {
+        var smallBboxes = [];
+        var smallSelectors = [];
+        var smallTexts = [];
+        fontSizes.filter(function(f) { return parseFloat(f.value) < 12; }).forEach(function(f) {
+          if (f.bbox) smallBboxes.push(f.bbox);
+          if (f.extraBboxes) f.extraBboxes.forEach(function(b) { smallBboxes.push(b); });
+          if (f.sampleSelector) smallSelectors.push(f.sampleSelector);
+          if (f.extraSelectors) f.extraSelectors.forEach(function(s) { smallSelectors.push(s); });
+          if (f.sampleText) smallTexts.push(f.sampleText);
+          if (f.extraTexts) f.extraTexts.forEach(function(t) { smallTexts.push(t); });
+        });
+        findings.push({
+          severity: 'warning',
+          title: smallTextCount + ' element(s) with text smaller than 12px',
+          detail: 'Text below 12px is difficult to read for most users and nearly impossible for elderly or low-vision users',
+          fix: 'Increase small text to at least 12px. Consider if the information is important enough to display — if not, remove it.',
+          presetRef: null,
+          source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text',
+          locator: smallBboxes.length > 0 ? { selector: '', text: '', bboxes: smallBboxes, selectors: smallSelectors, texts: smallTexts } : undefined
+        });
+      }
+    }
+
+    // Coleman-Liau readability index
+    var rd = data.readability || {};
+    if (rd.totalWords >= 50 && rd.paragraphCount >= 2) {
+      checks++;
+      // Coleman-Liau: 0.0588 * L - 0.296 * S - 15.8
+      // L = avg letters per 100 words, S = avg sentences per 100 words
+      var L = (rd.totalChars / rd.totalWords) * 100;
+      var sentenceCount = 0;
+      (rd.textBlocks || []).forEach(function(b) {
+        sentenceCount += (b.text.match(/[.!?]+/g) || []).length;
+      });
+      var S_val = (sentenceCount / rd.totalWords) * 100;
+      var cli = Math.round(0.0588 * L - 0.296 * S_val - 15.8);
+      // Detect non-English content — Coleman-Liau inflates scores for languages
+      // with long compound words (German, Finnish, Dutch, etc.)
+      var pageLang = (data.meta && data.meta.lang || '').toLowerCase().split('-')[0];
+      var isNonEnglish = pageLang && pageLang !== 'en' && pageLang !== '';
+      // Also heuristic: if avg word length > 6.5 chars, likely non-English
+      var avgWordLen = rd.totalChars / rd.totalWords;
+      if (!isNonEnglish && avgWordLen > 6.5) isNonEnglish = true;
+      var langNote = isNonEnglish ? ' Note: This index is calibrated for English text — non-English languages (detected: ' + (pageLang || 'long words') + ') typically score higher due to longer average word length.' : '';
+
+      if (cli >= 6 && cli <= 12) {
+        passed++;
+      } else {
+        findings.push({
+          severity: isNonEnglish ? 'info' : (cli > 14 ? 'warning' : 'info'),
+          title: 'Reading level: grade ' + cli + ' (Coleman-Liau Index)',
+          detail: (cli > 12 ? 'Content may be too complex for a general audience' : 'Content may be overly simple for the target audience') + langNote,
+          fix: cli > 12 ? 'Shorten sentences, use simpler words, break complex ideas into steps. Aim for grade 8-10 for general audiences.' : 'This reading level is appropriate for broad accessibility.',
+          presetRef: null,
+          source: 'Coleman-Liau Index — https://en.wikipedia.org/wiki/Coleman%E2%80%93Liau_index'
+        });
+      }
+    }
+
+    // Paragraph length audit
+    var longParagraphs = (rd.textBlocks || []).filter(function(b) { return b.wordCount > 150; });
+    if (longParagraphs.length > 0) {
+      findings.push({
+        severity: 'warning',
+        title: longParagraphs.length + ' paragraph(s) exceed 150 words',
+        detail: 'Long paragraphs reduce scanability. Ideal: 40-80 words per paragraph.',
+        fix: 'Break long paragraphs into shorter ones. Use subheadings, bullet lists, or callout boxes to chunk content.',
+        presetRef: null,
+        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+      });
+    }
+
+    // List usage for scanability
+    if (rd.totalWords >= 100 && !rd.hasLists) {
+      findings.push({
+        severity: 'info',
+        title: 'No lists found in content area',
+        detail: 'Lists improve scanability by 47% compared to wall-of-text (NNGroup)',
+        fix: 'Convert sequences, features, or steps into <ul>/<ol> lists where appropriate.',
+        presetRef: null,
+        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+      });
+    }
+
+    // Table cell readability on mobile (cramped/wrapped cells)
+    var tableCellIssues = (data.layout && data.layout.tableCellIssues) || [];
+    if (tableCellIssues.length > 0) {
+      checks++;
+      var tableDetails = tableCellIssues.map(function(t) {
+        var parts = [];
+        if (t.crampedCells > 0) parts.push(t.crampedCells + ' cells lack horizontal padding');
+        if (t.wrappedCells > 0) parts.push(t.wrappedCells + ' cells wrap to multiple lines');
+        return t.selector + ': ' + parts.join(', ') + ' (table ' + t.tableWidth + 'px on ' + t.vpWidth + 'px viewport)';
+      });
+      findings.push({
+        severity: tableCellIssues.some(function(t) { return t.crampedCells > 4 || t.wrappedCells > 4; }) ? 'error' : 'warning',
+        title: 'Table readability issues on mobile (' + tableCellIssues.length + ' table' + (tableCellIssues.length > 1 ? 's' : '') + ')',
+        detail: tableDetails.join('; '),
+        fix: 'Add horizontal padding to table cells (px-3 sm:px-4). For narrow viewports, consider hiding low-priority columns, using a responsive card layout, or reducing font size.',
+        source: 'NNGroup Mobile Tables — https://www.nngroup.com/articles/mobile-tables/',
+        locator: { selector: tableCellIssues[0].selector, text: '' }
+      });
+    }
+
+    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+    var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+    var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+    return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Readability', icon: 'readability' };
+  }
+
+  S.register("readability", scoreReadability, 5, "Readability", "readability");
+})();
+</file>
+
 <file path="docs/scoring/touch.js">
 // Scoring Module: Touch & Interaction
 // Weight: 15%
@@ -29128,192 +29314,6 @@ function scoreTouchTargets(data) {
 
 
   S.register("touch", scoreTouchTargets, 15, "Touch & Interaction", "touch");
-})();
-</file>
-
-<file path="docs/scoring/readability.js">
-// Scoring Module: Readability & Scanability
-// Weight: 5%
-// Sources: Coleman-Liau Index, NNGroup scanning research
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-  function scoreReadability(data) {
-    var findings = [];
-    var checks = 0;
-    var passed = 0;
-
-    // Extract text content from the raw data
-    // We use heading count and element count as proxies since we don't have raw text in extracted data
-    var headings = (data.typography && data.typography.headings) || [];
-    var totalElements = (data.structure && data.structure.totalElements) || 0;
-
-    // Scanability: heading frequency
-    // Good rule: 1 heading per ~100-150 elements of content
-    if (totalElements > 50) {
-      checks++;
-      var headingRatio = headings.length / (totalElements / 100);
-      if (headingRatio >= 0.5 && headingRatio <= 5) {
-        passed++;
-      } else if (headingRatio < 0.5) {
-        findings.push({
-          severity: 'warning',
-          title: 'Low heading density: ' + headings.length + ' headings for ' + totalElements + ' elements',
-          detail: 'Content without headings is harder to scan. 79% of users scan rather than read (NNGroup)',
-          fix: 'Add descriptive headings to break content into scannable sections. Aim for a heading every 2-3 paragraphs.',
-          presetRef: null,
-          source: 'NNGroup scanning research — https://www.nngroup.com/articles/how-users-read-on-the-web/'
-        });
-      }
-    }
-
-    // Heading descriptiveness: check if headings are too short (likely generic)
-    if (headings.length > 0) {
-      checks++;
-      var shortHeadings = headings.filter(function(h) {
-        return h.text && h.text.length < 3;
-      });
-      if (shortHeadings.length === 0) {
-        passed++;
-      } else {
-        passed++; // Info doesn't reduce score
-        findings.push({
-          severity: 'info',
-          title: shortHeadings.length + ' heading(s) with very short text (< 3 chars)',
-          detail: 'Short headings like numbers or icons don\'t help users scan. Use descriptive text.',
-          fix: 'Replace generic headings with descriptive ones that summarize the section content.',
-          presetRef: null,
-          source: 'NNGroup — https://www.nngroup.com/articles/headings-pickup-lines/'
-        });
-      }
-    }
-
-    // Font size variety as readability signal
-    // Too many sizes = visual noise, harder to establish reading rhythm
-    var fontSizes = (data.typography && data.typography.fontSizes) || [];
-    var smallTextCount = fontSizes.filter(function(f) {
-      return parseFloat(f.value) < 12;
-    }).reduce(function(sum, f) { return sum + f.count; }, 0);
-
-    if (smallTextCount > 0 && totalElements > 20) {
-      checks++;
-      var smallRatio = smallTextCount / totalElements;
-      if (smallRatio < 0.05) {
-        passed++;
-      } else {
-        var smallBboxes = [];
-        var smallSelectors = [];
-        var smallTexts = [];
-        fontSizes.filter(function(f) { return parseFloat(f.value) < 12; }).forEach(function(f) {
-          if (f.bbox) smallBboxes.push(f.bbox);
-          if (f.extraBboxes) f.extraBboxes.forEach(function(b) { smallBboxes.push(b); });
-          if (f.sampleSelector) smallSelectors.push(f.sampleSelector);
-          if (f.extraSelectors) f.extraSelectors.forEach(function(s) { smallSelectors.push(s); });
-          if (f.sampleText) smallTexts.push(f.sampleText);
-          if (f.extraTexts) f.extraTexts.forEach(function(t) { smallTexts.push(t); });
-        });
-        findings.push({
-          severity: 'warning',
-          title: smallTextCount + ' element(s) with text smaller than 12px',
-          detail: 'Text below 12px is difficult to read for most users and nearly impossible for elderly or low-vision users',
-          fix: 'Increase small text to at least 12px. Consider if the information is important enough to display — if not, remove it.',
-          presetRef: null,
-          source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text',
-          locator: smallBboxes.length > 0 ? { selector: '', text: '', bboxes: smallBboxes, selectors: smallSelectors, texts: smallTexts } : undefined
-        });
-      }
-    }
-
-    // Coleman-Liau readability index
-    var rd = data.readability || {};
-    if (rd.totalWords >= 50 && rd.paragraphCount >= 2) {
-      checks++;
-      // Coleman-Liau: 0.0588 * L - 0.296 * S - 15.8
-      // L = avg letters per 100 words, S = avg sentences per 100 words
-      var L = (rd.totalChars / rd.totalWords) * 100;
-      var sentenceCount = 0;
-      (rd.textBlocks || []).forEach(function(b) {
-        sentenceCount += (b.text.match(/[.!?]+/g) || []).length;
-      });
-      var S_val = (sentenceCount / rd.totalWords) * 100;
-      var cli = Math.round(0.0588 * L - 0.296 * S_val - 15.8);
-      // Detect non-English content — Coleman-Liau inflates scores for languages
-      // with long compound words (German, Finnish, Dutch, etc.)
-      var pageLang = (data.meta && data.meta.lang || '').toLowerCase().split('-')[0];
-      var isNonEnglish = pageLang && pageLang !== 'en' && pageLang !== '';
-      // Also heuristic: if avg word length > 6.5 chars, likely non-English
-      var avgWordLen = rd.totalChars / rd.totalWords;
-      if (!isNonEnglish && avgWordLen > 6.5) isNonEnglish = true;
-      var langNote = isNonEnglish ? ' Note: This index is calibrated for English text — non-English languages (detected: ' + (pageLang || 'long words') + ') typically score higher due to longer average word length.' : '';
-
-      if (cli >= 6 && cli <= 12) {
-        passed++;
-      } else {
-        findings.push({
-          severity: isNonEnglish ? 'info' : (cli > 14 ? 'warning' : 'info'),
-          title: 'Reading level: grade ' + cli + ' (Coleman-Liau Index)',
-          detail: (cli > 12 ? 'Content may be too complex for a general audience' : 'Content may be overly simple for the target audience') + langNote,
-          fix: cli > 12 ? 'Shorten sentences, use simpler words, break complex ideas into steps. Aim for grade 8-10 for general audiences.' : 'This reading level is appropriate for broad accessibility.',
-          presetRef: null,
-          source: 'Coleman-Liau Index — https://en.wikipedia.org/wiki/Coleman%E2%80%93Liau_index'
-        });
-      }
-    }
-
-    // Paragraph length audit
-    var longParagraphs = (rd.textBlocks || []).filter(function(b) { return b.wordCount > 150; });
-    if (longParagraphs.length > 0) {
-      findings.push({
-        severity: 'warning',
-        title: longParagraphs.length + ' paragraph(s) exceed 150 words',
-        detail: 'Long paragraphs reduce scanability. Ideal: 40-80 words per paragraph.',
-        fix: 'Break long paragraphs into shorter ones. Use subheadings, bullet lists, or callout boxes to chunk content.',
-        presetRef: null,
-        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
-      });
-    }
-
-    // List usage for scanability
-    if (rd.totalWords >= 100 && !rd.hasLists) {
-      findings.push({
-        severity: 'info',
-        title: 'No lists found in content area',
-        detail: 'Lists improve scanability by 47% compared to wall-of-text (NNGroup)',
-        fix: 'Convert sequences, features, or steps into <ul>/<ol> lists where appropriate.',
-        presetRef: null,
-        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
-      });
-    }
-
-    // Table cell readability on mobile (cramped/wrapped cells)
-    var tableCellIssues = (data.layout && data.layout.tableCellIssues) || [];
-    if (tableCellIssues.length > 0) {
-      checks++;
-      var tableDetails = tableCellIssues.map(function(t) {
-        var parts = [];
-        if (t.crampedCells > 0) parts.push(t.crampedCells + ' cells lack horizontal padding');
-        if (t.wrappedCells > 0) parts.push(t.wrappedCells + ' cells wrap to multiple lines');
-        return t.selector + ': ' + parts.join(', ') + ' (table ' + t.tableWidth + 'px on ' + t.vpWidth + 'px viewport)';
-      });
-      findings.push({
-        severity: tableCellIssues.some(function(t) { return t.crampedCells > 4 || t.wrappedCells > 4; }) ? 'error' : 'warning',
-        title: 'Table readability issues on mobile (' + tableCellIssues.length + ' table' + (tableCellIssues.length > 1 ? 's' : '') + ')',
-        detail: tableDetails.join('; '),
-        fix: 'Add horizontal padding to table cells (px-3 sm:px-4). For narrow viewports, consider hiding low-priority columns, using a responsive card layout, or reducing font size.',
-        source: 'NNGroup Mobile Tables — https://www.nngroup.com/articles/mobile-tables/',
-        locator: { selector: tableCellIssues[0].selector, text: '' }
-      });
-    }
-
-    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-    var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-    var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-    return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Readability', icon: 'readability' };
-  }
-
-  S.register("readability", scoreReadability, 5, "Readability", "readability");
 })();
 </file>
 
@@ -31285,233 +31285,6 @@ function scoreLayout(data) {
 })();
 </file>
 
-<file path="docs/analyzer-proxy.js">
-// make-it-look-good — CORS Proxy & JS-Enabled Analysis
-// Handles URL fetching via proxy chain and "Try with JS" mode.
-// Depends on: analyzer-iframe.js (MilgIframe)
-
-window.MilgProxy = (function() {
-  "use strict";
-
-  var _corsProxyUrl = '';
-  var _showToast = function() {};
-  var _showProgress = function() {};
-  var _hideProgress = function() {};
-  var _runAnalysis = function() {};
-
-  function init(opts) {
-    if (opts.corsProxyUrl) _corsProxyUrl = opts.corsProxyUrl;
-    if (opts.showToast) _showToast = opts.showToast;
-    if (opts.showProgress) _showProgress = opts.showProgress;
-    if (opts.hideProgress) _hideProgress = opts.hideProgress;
-    if (opts.runAnalysis) _runAnalysis = opts.runAnalysis;
-  }
-
-  // --- URL Fetch via CORS proxy ---
-  // Remembers which proxy worked so subsequent requests (CSS files etc.) skip failed ones
-  var _lastWorkingProxy = -1; // -1 = direct, 0+ = proxy index
-
-  function buildProxyList() {
-    var proxies = [];
-    if (_corsProxyUrl) proxies.push(_corsProxyUrl + '?url=');
-    proxies.push(
-      'https://api.allorigins.win/raw?url=',
-      'https://api.codetabs.com/v1/proxy?quest=',
-      'https://corsproxy.io/?'
-    );
-    return proxies;
-  }
-
-  function fetchWithProxy(url) {
-    var proxies = buildProxyList();
-
-    // If we already know which proxy works, try it first
-    if (_lastWorkingProxy >= 0 && _lastWorkingProxy < proxies.length) {
-      return fetch(proxies[_lastWorkingProxy] + encodeURIComponent(url))
-        .then(function(r) { if (!r.ok) throw new Error(r.status); return r.text(); })
-        .then(function(t) { if (!t || t.length < 50) throw new Error('empty'); return t; })
-        .catch(function() {
-          // Last working proxy failed — reset and try full chain
-          _lastWorkingProxy = -1;
-          return fetchWithProxyFull(url, proxies);
-        });
-    }
-
-    return fetchWithProxyFull(url, proxies);
-  }
-
-  function fetchWithProxyFull(url, proxies) {
-    // Try direct fetch first
-    return fetch(url, { mode: 'cors', redirect: 'follow' })
-      .then(function(r) { if (r.ok) return r.text(); throw new Error(r.status); })
-      .then(function(t) { _lastWorkingProxy = -1; return t; })
-      .catch(function() {
-        // Try proxies in order, remember which one works
-        var chain = Promise.reject();
-        proxies.forEach(function(proxyBase, idx) {
-          chain = chain.catch(function() {
-            return fetch(proxyBase + encodeURIComponent(url)).then(function(r) {
-              if (!r.ok) throw new Error(r.status);
-              return r.text();
-            }).then(function(t) {
-              if (!t || t.length < 50) throw new Error('empty');
-              _lastWorkingProxy = idx;
-              return t;
-            });
-          });
-        });
-        return chain;
-      });
-  }
-
-  function fetchViaProxy(url, callback) {
-    fetchWithProxy(url)
-      .then(function(html) {
-        // Detect proxy error pages (Cloudflare challenges, 4xx/5xx error pages, consent walls)
-        var htmlStart = (html || '').substring(0, 3000);
-        if (html && (
-          /class="no-js.*oldie"/i.test(htmlStart) || // Cloudflare error template
-          /cf-error-details|cf-wrapper/i.test(htmlStart) ||
-          /Access Denied|403 Forbidden/i.test(htmlStart) ||
-          /Just a moment|Checking your browser/i.test(htmlStart) || // Cloudflare challenge
-          /consent\.google|accounts\.google.*ServiceLogin/i.test(htmlStart) // Google consent/login redirect
-        )) {
-          callback(null, 'The site returned an error/challenge page (likely blocking proxy access). Use the Console Snippet tab instead.');
-          return;
-        }
-
-        // Resolve base URL for relative paths
-        var baseUrl;
-        try { var u = new URL(url); baseUrl = u.origin + u.pathname.replace(/\/[^/]*$/, '/'); } catch(e) { baseUrl = url; }
-
-        // Find and inline linked stylesheets so CSS works inside srcdoc iframe
-        var cssLinks = [];
-        var linkRegex = /<link[^>]+rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*>/gi;
-        var altRegex = /<link[^>]+href=["']([^"']+)["'][^>]*rel=["']stylesheet["'][^>]*>/gi;
-        var m;
-        while (m = linkRegex.exec(html)) cssLinks.push(m[1]);
-        while (m = altRegex.exec(html)) { if (cssLinks.indexOf(m[1]) === -1) cssLinks.push(m[1]); }
-
-        if (cssLinks.length === 0) { callback(html, null); return; }
-
-        // Fetch all CSS files and inline them
-        Promise.all(cssLinks.map(function(href) {
-          var cssUrl = href.startsWith('http') ? href : (href.startsWith('/') ? new URL(url).origin + href : baseUrl + href);
-          return fetchWithProxy(cssUrl).catch(function() { return '/* failed: ' + href + ' */'; });
-        })).then(function(cssTexts) {
-          // Remove original link tags and inject inlined styles
-          var processed = html.replace(/<link[^>]+rel=["']stylesheet["'][^>]*>/gi, '');
-          processed = processed.replace(/<link[^>]+href=["'][^"']+\.css[^"']*["'][^>]*rel=["']stylesheet["'][^>]*>/gi, '');
-          var styleBlock = '<style>' + cssTexts.join('\n') + '</style>';
-          if (/<\/head>/i.test(processed)) {
-            processed = processed.replace(/<\/head>/i, styleBlock + '</head>');
-          } else {
-            processed = styleBlock + processed;
-          }
-          callback(processed, null);
-        });
-      })
-      .catch(function(e) {
-        callback(null, e.message || 'All CORS proxies failed');
-      });
-  }
-
-  // Try analyzing with JS enabled — fetches raw HTML via proxy, then delegates to
-  // MilgIframe.analyzeHtml which handles sandbox injection, URL patching, extraction,
-  // screenshots, and timeouts via the unified preprocessHtml pipeline.
-  function tryWithJs(url) {
-    var ok = confirm(
-      'This will fetch the page via proxy and run its JavaScript in a sandboxed frame on this page.\n\n' +
-      'Only do this if you trust the site — its scripts will execute with access to this page\'s origin (XSS risk).\n\n' +
-      'Some sites may not work if they rely on cookies, auth, or same-origin API calls.\n\n' +
-      'Continue?'
-    );
-    if (!ok) return;
-
-    var reportContainer = document.getElementById('reportContainer');
-    var errBtn = 'style="margin-top:12px;padding:8px 16px;border-radius:6px;border:1px solid currentColor;background:none;color:inherit;cursor:pointer;font-size:13px"';
-
-    // Show progress directly in reportContainer (the input section with the
-    // normal progress bar is hidden at this point since the warning is showing)
-    var isDark = document.body.classList.contains('dark-ui');
-    var progBg = isDark ? '#1e293b' : '#f1f5f9';
-    var progText = isDark ? '#94a3b8' : '#475569';
-    var progAccent = isDark ? '#3b82f6' : '#2563eb';
-    function showJsProgress(pct, label) {
-      reportContainer.innerHTML = '<div style="padding:30px 40px;background:' + progBg + ';border-radius:var(--radius);text-align:center">' +
-        '<div style="font-size:13px;color:' + progText + ';margin-bottom:12px;font-weight:500">' + label + '</div>' +
-        '<div style="height:6px;background:' + (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)') + ';border-radius:3px;overflow:hidden">' +
-        '<div style="height:100%;width:' + pct + '%;background:' + progAccent + ';border-radius:3px;transition:width 0.6s ease"></div></div>' +
-        '</div>';
-      reportContainer.classList.add('visible');
-    }
-
-    showJsProgress(5, 'Fetching page via proxy...');
-
-    // Fetch raw HTML via proxy (don't use fetchViaProxy which inlines CSS — let JS handle it)
-    fetchWithProxy(url).then(function(html) {
-      if (!html || html.length < 50) {
-        reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
-          'Could not fetch the page (empty response).<br>' +
-          '<button onclick="window.__milgSwitchToSnippet()" ' + errBtn + '>Use Console Snippet instead</button></div>';
-        return;
-      }
-
-      showJsProgress(20, 'Preparing JavaScript environment...');
-
-      var wantShots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
-      var exclude = window.__milgCombinedExclude || (document.getElementById('excludeSelector') && document.getElementById('excludeSelector').value || '').trim() || null;
-
-      showJsProgress(30, 'Running JavaScript & rendering page...');
-
-      // Animate progress while waiting for JS hydration
-      var _jpPct = 30;
-      var _jsProgressTimer = setInterval(function() {
-        _jpPct = Math.min(_jpPct + 3, 90);
-        var label = _jpPct < 50 ? 'Running JavaScript & rendering page...'
-          : _jpPct < 70 ? 'Waiting for framework hydration...'
-          : 'Extracting design data...';
-        showJsProgress(_jpPct, label);
-      }, 600);
-
-      MilgIframe.analyzeHtml(html, {
-        url: url,
-        jsEnabled: true,
-        screenshots: wantShots,
-        exclude: exclude
-      }, function(data) {
-        clearInterval(_jsProgressTimer);
-        data.meta.url = url;
-        data.meta._inputMethod = 'url';
-        data.meta._jsEnabled = true;
-        _runAnalysis(data);
-      });
-
-    }).catch(function(e) {
-      reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
-        'Failed to fetch the page: ' + (e.message || 'proxy error') + '<br>' +
-        '<button onclick="window.__milgSwitchToSnippet()" ' + errBtn + '>Use Console Snippet instead</button></div>';
-    });
-  }
-
-  // Wire up the global handler
-  window.__milgTryWithJs = function(url) { tryWithJs(url); };
-
-  // Legacy wrappers — delegate to MilgIframe's unified pipeline
-  function prepareJsHtml(html, url) {
-    return MilgIframe.preprocessHtml(html, url, { sandbox: true, fetchPatch: true, baseTag: true });
-  }
-
-  return {
-    init: init,
-    fetchWithProxy: fetchWithProxy,
-    fetchViaProxy: fetchViaProxy,
-    // Legacy — callers should use MilgIframe.analyzeHtml({jsEnabled:true}) directly
-    prepareJsHtml: prepareJsHtml
-  };
-})();
-</file>
-
 <file path="docs/analyzer-report.js">
 // make-it-look-good — Report Renderers
 // HTML report, markdown export, gauge SVG, progress bars
@@ -32327,6 +32100,233 @@ window.MilgReport = (function() {
 })();
 </file>
 
+<file path="docs/analyzer-proxy.js">
+// make-it-look-good — CORS Proxy & JS-Enabled Analysis
+// Handles URL fetching via proxy chain and "Try with JS" mode.
+// Depends on: analyzer-iframe.js (MilgIframe)
+
+window.MilgProxy = (function() {
+  "use strict";
+
+  var _corsProxyUrl = '';
+  var _showToast = function() {};
+  var _showProgress = function() {};
+  var _hideProgress = function() {};
+  var _runAnalysis = function() {};
+
+  function init(opts) {
+    if (opts.corsProxyUrl) _corsProxyUrl = opts.corsProxyUrl;
+    if (opts.showToast) _showToast = opts.showToast;
+    if (opts.showProgress) _showProgress = opts.showProgress;
+    if (opts.hideProgress) _hideProgress = opts.hideProgress;
+    if (opts.runAnalysis) _runAnalysis = opts.runAnalysis;
+  }
+
+  // --- URL Fetch via CORS proxy ---
+  // Remembers which proxy worked so subsequent requests (CSS files etc.) skip failed ones
+  var _lastWorkingProxy = -1; // -1 = direct, 0+ = proxy index
+
+  function buildProxyList() {
+    var proxies = [];
+    if (_corsProxyUrl) proxies.push(_corsProxyUrl + '?url=');
+    proxies.push(
+      'https://api.allorigins.win/raw?url=',
+      'https://api.codetabs.com/v1/proxy?quest=',
+      'https://corsproxy.io/?'
+    );
+    return proxies;
+  }
+
+  function fetchWithProxy(url) {
+    var proxies = buildProxyList();
+
+    // If we already know which proxy works, try it first
+    if (_lastWorkingProxy >= 0 && _lastWorkingProxy < proxies.length) {
+      return fetch(proxies[_lastWorkingProxy] + encodeURIComponent(url))
+        .then(function(r) { if (!r.ok) throw new Error(r.status); return r.text(); })
+        .then(function(t) { if (!t || t.length < 50) throw new Error('empty'); return t; })
+        .catch(function() {
+          // Last working proxy failed — reset and try full chain
+          _lastWorkingProxy = -1;
+          return fetchWithProxyFull(url, proxies);
+        });
+    }
+
+    return fetchWithProxyFull(url, proxies);
+  }
+
+  function fetchWithProxyFull(url, proxies) {
+    // Try direct fetch first
+    return fetch(url, { mode: 'cors', redirect: 'follow' })
+      .then(function(r) { if (r.ok) return r.text(); throw new Error(r.status); })
+      .then(function(t) { _lastWorkingProxy = -1; return t; })
+      .catch(function() {
+        // Try proxies in order, remember which one works
+        var chain = Promise.reject();
+        proxies.forEach(function(proxyBase, idx) {
+          chain = chain.catch(function() {
+            return fetch(proxyBase + encodeURIComponent(url)).then(function(r) {
+              if (!r.ok) throw new Error(r.status);
+              return r.text();
+            }).then(function(t) {
+              if (!t || t.length < 50) throw new Error('empty');
+              _lastWorkingProxy = idx;
+              return t;
+            });
+          });
+        });
+        return chain;
+      });
+  }
+
+  function fetchViaProxy(url, callback) {
+    fetchWithProxy(url)
+      .then(function(html) {
+        // Detect proxy error pages (Cloudflare challenges, 4xx/5xx error pages, consent walls)
+        var htmlStart = (html || '').substring(0, 3000);
+        if (html && (
+          /class="no-js.*oldie"/i.test(htmlStart) || // Cloudflare error template
+          /cf-error-details|cf-wrapper/i.test(htmlStart) ||
+          /Access Denied|403 Forbidden/i.test(htmlStart) ||
+          /Just a moment|Checking your browser/i.test(htmlStart) || // Cloudflare challenge
+          /consent\.google|accounts\.google.*ServiceLogin/i.test(htmlStart) // Google consent/login redirect
+        )) {
+          callback(null, 'The site returned an error/challenge page (likely blocking proxy access). Use the Console Snippet tab instead.');
+          return;
+        }
+
+        // Resolve base URL for relative paths
+        var baseUrl;
+        try { var u = new URL(url); baseUrl = u.origin + u.pathname.replace(/\/[^/]*$/, '/'); } catch(e) { baseUrl = url; }
+
+        // Find and inline linked stylesheets so CSS works inside srcdoc iframe
+        var cssLinks = [];
+        var linkRegex = /<link[^>]+rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*>/gi;
+        var altRegex = /<link[^>]+href=["']([^"']+)["'][^>]*rel=["']stylesheet["'][^>]*>/gi;
+        var m;
+        while (m = linkRegex.exec(html)) cssLinks.push(m[1]);
+        while (m = altRegex.exec(html)) { if (cssLinks.indexOf(m[1]) === -1) cssLinks.push(m[1]); }
+
+        if (cssLinks.length === 0) { callback(html, null); return; }
+
+        // Fetch all CSS files and inline them
+        Promise.all(cssLinks.map(function(href) {
+          var cssUrl = href.startsWith('http') ? href : (href.startsWith('/') ? new URL(url).origin + href : baseUrl + href);
+          return fetchWithProxy(cssUrl).catch(function() { return '/* failed: ' + href + ' */'; });
+        })).then(function(cssTexts) {
+          // Remove original link tags and inject inlined styles
+          var processed = html.replace(/<link[^>]+rel=["']stylesheet["'][^>]*>/gi, '');
+          processed = processed.replace(/<link[^>]+href=["'][^"']+\.css[^"']*["'][^>]*rel=["']stylesheet["'][^>]*>/gi, '');
+          var styleBlock = '<style>' + cssTexts.join('\n') + '</style>';
+          if (/<\/head>/i.test(processed)) {
+            processed = processed.replace(/<\/head>/i, styleBlock + '</head>');
+          } else {
+            processed = styleBlock + processed;
+          }
+          callback(processed, null);
+        });
+      })
+      .catch(function(e) {
+        callback(null, e.message || 'All CORS proxies failed');
+      });
+  }
+
+  // Try analyzing with JS enabled — fetches raw HTML via proxy, then delegates to
+  // MilgIframe.analyzeHtml which handles sandbox injection, URL patching, extraction,
+  // screenshots, and timeouts via the unified preprocessHtml pipeline.
+  function tryWithJs(url) {
+    var ok = confirm(
+      'This will fetch the page via proxy and run its JavaScript in a sandboxed frame on this page.\n\n' +
+      'Only do this if you trust the site — its scripts will execute with access to this page\'s origin (XSS risk).\n\n' +
+      'Some sites may not work if they rely on cookies, auth, or same-origin API calls.\n\n' +
+      'Continue?'
+    );
+    if (!ok) return;
+
+    var reportContainer = document.getElementById('reportContainer');
+    var errBtn = 'style="margin-top:12px;padding:8px 16px;border-radius:6px;border:1px solid currentColor;background:none;color:inherit;cursor:pointer;font-size:13px"';
+
+    // Show progress directly in reportContainer (the input section with the
+    // normal progress bar is hidden at this point since the warning is showing)
+    var isDark = document.body.classList.contains('dark-ui');
+    var progBg = isDark ? '#1e293b' : '#f1f5f9';
+    var progText = isDark ? '#94a3b8' : '#475569';
+    var progAccent = isDark ? '#3b82f6' : '#2563eb';
+    function showJsProgress(pct, label) {
+      reportContainer.innerHTML = '<div style="padding:30px 40px;background:' + progBg + ';border-radius:var(--radius);text-align:center">' +
+        '<div style="font-size:13px;color:' + progText + ';margin-bottom:12px;font-weight:500">' + label + '</div>' +
+        '<div style="height:6px;background:' + (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)') + ';border-radius:3px;overflow:hidden">' +
+        '<div style="height:100%;width:' + pct + '%;background:' + progAccent + ';border-radius:3px;transition:width 0.6s ease"></div></div>' +
+        '</div>';
+      reportContainer.classList.add('visible');
+    }
+
+    showJsProgress(5, 'Fetching page via proxy...');
+
+    // Fetch raw HTML via proxy (don't use fetchViaProxy which inlines CSS — let JS handle it)
+    fetchWithProxy(url).then(function(html) {
+      if (!html || html.length < 50) {
+        reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
+          'Could not fetch the page (empty response).<br>' +
+          '<button onclick="window.__milgSwitchToSnippet()" ' + errBtn + '>Use Console Snippet instead</button></div>';
+        return;
+      }
+
+      showJsProgress(20, 'Preparing JavaScript environment...');
+
+      var wantShots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
+      var exclude = window.__milgCombinedExclude || (document.getElementById('excludeSelector') && document.getElementById('excludeSelector').value || '').trim() || null;
+
+      showJsProgress(30, 'Running JavaScript & rendering page...');
+
+      // Animate progress while waiting for JS hydration
+      var _jpPct = 30;
+      var _jsProgressTimer = setInterval(function() {
+        _jpPct = Math.min(_jpPct + 3, 90);
+        var label = _jpPct < 50 ? 'Running JavaScript & rendering page...'
+          : _jpPct < 70 ? 'Waiting for framework hydration...'
+          : 'Extracting design data...';
+        showJsProgress(_jpPct, label);
+      }, 600);
+
+      MilgIframe.analyzeHtml(html, {
+        url: url,
+        jsEnabled: true,
+        screenshots: wantShots,
+        exclude: exclude
+      }, function(data) {
+        clearInterval(_jsProgressTimer);
+        data.meta.url = url;
+        data.meta._inputMethod = 'url';
+        data.meta._jsEnabled = true;
+        _runAnalysis(data);
+      });
+
+    }).catch(function(e) {
+      reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
+        'Failed to fetch the page: ' + (e.message || 'proxy error') + '<br>' +
+        '<button onclick="window.__milgSwitchToSnippet()" ' + errBtn + '>Use Console Snippet instead</button></div>';
+    });
+  }
+
+  // Wire up the global handler
+  window.__milgTryWithJs = function(url) { tryWithJs(url); };
+
+  // Legacy wrappers — delegate to MilgIframe's unified pipeline
+  function prepareJsHtml(html, url) {
+    return MilgIframe.preprocessHtml(html, url, { sandbox: true, fetchPatch: true, baseTag: true });
+  }
+
+  return {
+    init: init,
+    fetchWithProxy: fetchWithProxy,
+    fetchViaProxy: fetchViaProxy,
+    // Legacy — callers should use MilgIframe.analyzeHtml({jsEnabled:true}) directly
+    prepareJsHtml: prepareJsHtml
+  };
+})();
+</file>
+
 <file path="docs/analyzer-snippet.js">
 // make-it-look-good — Design Extraction Snippet
 // Version: 2026-04-04-v15
@@ -32710,618 +32710,6 @@ window.MilgReport = (function() {
     // Run the extraction
     window.MilgExtract();
   }
-})();
-</file>
-
-<file path="docs/analyzer-crawl-ui.js">
-// make-it-look-good — Crawl UI Wiring
-// Manages multi-page site crawl progress, tabs, and results display.
-// Depends on: analyzer-crawl.js (MilgCrawl), analyzer-report.js (MilgReport),
-//             analyzer-iframe.js (MilgIframe), analyzer-proxy.js (MilgProxy)
-
-window.MilgCrawlUI = (function() {
-  "use strict";
-
-  var _crawlSession = null;
-  var _crawlPageReports = {}; // pageIndex → rendered HTML cache
-  var _crawlActivePageTab = 'summary';
-  var CRAWL_HARD_MAX = 25;
-
-  // Dependencies injected via setup()
-  var _showToast, _runAnalysis, _restoreCachedAnalysis, _analyzeUrlBtn, _runDeepScanLoop;
-  var _showFocusModal, _updateFocusModal, _hideFocusModal;
-
-  // DOM refs queried during setup
-  var crawlSiteCheck, crawlOptions, cancelCrawlBtn, crawlMaxPages, crawlBlacklist;
-  var crawlProgressArea, crawlProgressLabel, crawlProgressCount, crawlProgressFill, crawlProgressList;
-  var crawlResults, crawlPageTabs, crawlPageContent;
-
-  function _esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
-
-  // Use the shared focus modal for crawl progress (same as single-URL deep scan).
-  // The modal has a close button so users can dismiss it and browse results.
-  var _crawlModalDismissed = false;
-  function _crawlModal(msg) {
-    if (_crawlModalDismissed) return;
-    if (_showFocusModal) _showFocusModal();
-    if (_updateFocusModal) _updateFocusModal(msg + '\n');
-  }
-  function _crawlModalClose() {
-    _crawlModalDismissed = false;
-    if (_hideFocusModal) _hideFocusModal();
-  }
-
-  function getCrawlSession() { return _crawlSession; }
-  function setCrawlSession(s) { _crawlSession = s; }
-  function getActiveTab() { return _crawlActivePageTab; }
-
-  function isCrawlMode() { return crawlSiteCheck && crawlSiteCheck.checked; }
-  function isCrawlActive() { return _crawlSession && _crawlSession.pages.length > 0 && crawlResults && crawlResults.style.display !== 'none'; }
-
-  function crawlStatusIcon(status) {
-    if (status === 'done') return '<span class="status-icon done"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></span>';
-    if (status === 'error') return '<span class="status-icon error"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>';
-    if (status === 'fetching' || status === 'analyzing') return '<span class="status-icon active"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/></svg></span>';
-    return '<span class="status-icon pending"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-dasharray="20" stroke-dashoffset="10"/></svg></span>';
-  }
-
-  function updateCrawlProgressItem(page) {
-    var existing = document.getElementById('crawl-progress-' + encodeURIComponent(page.url));
-    var path; try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
-    var scoreText = page.status === 'done' && page.reportData ? ' ' + page.reportData.overall + '/100' : '';
-    var errorText = page.status === 'error' ? ' <span style="color:#dc2626;font-size:12px">' + (page.error || 'Failed').substring(0, 40) + '</span>' : '';
-    var html = crawlStatusIcon(page.status) +
-      '<span class="page-url" title="' + page.url + '">' + path + '</span>' +
-      '<span class="page-score">' + scoreText + errorText + '</span>';
-    if (existing) {
-      existing.innerHTML = html;
-    } else {
-      var div = document.createElement('div');
-      div.className = 'crawl-progress-item';
-      div.id = 'crawl-progress-' + encodeURIComponent(page.url);
-      div.innerHTML = html;
-      crawlProgressList.appendChild(div);
-    }
-  }
-
-  function renderCrawlTabs() {
-    if (!_crawlSession || !crawlPageTabs) return;
-    var html = '<button class="crawl-page-tab' + (_crawlActivePageTab === 'summary' ? ' active' : '') + '" data-crawl-page="summary">Summary</button>';
-    _crawlSession.pages.forEach(function(page, idx) {
-      html += MilgReport.renderCrawlPageTab(page, idx, _crawlActivePageTab === String(idx));
-    });
-    crawlPageTabs.innerHTML = html;
-  }
-
-  var _spinnerHtml = '<div style="padding:60px;text-align:center">' +
-    '<div style="width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite;margin:0 auto"></div>' +
-    '<div style="color:var(--text-secondary);margin-top:12px;font-size:13px">Loading report\u2026</div>' +
-    '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style></div>';
-
-  function showCrawlPageContent(key) {
-    _crawlActivePageTab = key;
-    renderCrawlTabs();
-    var reportContainer = document.getElementById('reportContainer');
-    var reportActions = document.getElementById('reportActions');
-    // Show export/actions only after crawl is complete (not during progress)
-    var crawlDone = _crawlSession && _crawlSession.status === 'complete';
-    if (reportActions) reportActions.style.display = crawlDone ? 'flex' : 'none';
-    if (key === 'summary') {
-      var summary = _crawlSession.summary || MilgCrawl.buildSummary(_crawlSession);
-      crawlPageContent.innerHTML = MilgReport.renderCrawlSummary(summary);
-      crawlPageContent.style.display = '';
-      crawlPageContent.className = 'report-container visible';
-      if (reportContainer) { reportContainer.style.display = 'none'; reportContainer.className = 'report-container'; }
-    } else {
-      var idx = parseInt(key);
-      var page = _crawlSession.pages[idx];
-      if (!page || page.status !== 'done') {
-        crawlPageContent.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-secondary)">' +
-          (page && page.status === 'error' ? 'Error: ' + (page.error || 'Analysis failed') : 'Analyzing\u2026') + '</div>';
-        crawlPageContent.style.display = '';
-        crawlPageContent.className = 'report-container visible';
-        if (reportContainer) { reportContainer.style.display = 'none'; reportContainer.className = 'report-container'; }
-        return;
-      }
-
-      crawlPageContent.style.display = 'none';
-      crawlPageContent.className = 'report-container';
-      if (reportContainer) reportContainer.style.display = '';
-
-      // Cache hit: restore instantly (no scoring, no rendering)
-      if (_crawlPageReports[idx]) {
-        var cached = _crawlPageReports[idx];
-        _restoreCachedAnalysis(page.rawData, cached.reportData);
-        reportContainer.innerHTML = cached.html;
-        reportContainer.classList.add('visible');
-        return;
-      }
-
-      // Cache miss: show spinner, defer heavy work so spinner paints
-      reportContainer.innerHTML = _spinnerHtml;
-      reportContainer.classList.add('visible');
-      setTimeout(function() {
-        // Guard: user may have switched tabs during the setTimeout
-        if (_crawlActivePageTab !== String(idx)) return;
-        page.rawData.meta = page.rawData.meta || {};
-        var origMethod = page.rawData.meta._inputMethod;
-        _runAnalysis(page.rawData, 'crawl-page');
-        page.rawData.meta._inputMethod = origMethod;
-        // Cache the rendered report + scored data for instant restore
-        _crawlPageReports[idx] = {
-          html: reportContainer.innerHTML,
-          reportData: page.rawData._cachedReportData
-        };
-      }, 0);
-    }
-  }
-
-  // Load multi-page crawl results into the tabbed view
-  function loadCrawlResults(crawlState, source) {
-    if (!crawlState || !crawlState.results || crawlState.results.length === 0) return false;
-    _showToast('Loaded crawl results' + (source ? ' from ' + source : '') + ' (' + crawlState.results.length + ' pages)');
-    _crawlSession = MilgCrawl.createSession(crawlState.startUrl || crawlState.results[0].url, {
-      maxPages: crawlState.results.length,
-      profile: document.getElementById('profileSelect') ? document.getElementById('profileSelect').value : 'general'
-    });
-    crawlState.results.forEach(function(r) {
-      var report = MilgScoring.runScoring(r.data);
-      _crawlSession.pages.push({
-        url: r.url, status: 'done', title: (r.data.meta && r.data.meta.title) || '',
-        rawData: r.data, reportData: report, error: null,
-        startedAt: r.data.meta.timestamp, completedAt: r.data.meta.timestamp
-      });
-    });
-    _crawlSession.status = 'complete';
-    _crawlSession.summary = MilgCrawl.buildSummary(_crawlSession);
-    crawlResults.style.display = '';
-    var reportActions = document.getElementById('reportActions');
-    if (reportActions) reportActions.style.display = '';
-    document.getElementById('inputSection').style.display = 'none';
-    renderCrawlTabs();
-    showCrawlPageContent('summary');
-
-    // Pre-compute pixel verify for each page with screenshots (async, best-effort).
-    // Results are cached on rawData._contrastVerifyResults so tab switches use cache.
-    _preComputePixelVerify();
-
-    return true;
-  }
-
-  function _preComputePixelVerify() {
-    if (!_crawlSession || !window.MilgContrastVerify) return;
-    var pagesToVerify = _crawlSession.pages.filter(function(p) {
-      return p.status === 'done' && p.rawData && !p.rawData._contrastVerifyResults &&
-        p.rawData.screenshots && p.rawData.screenshots.length && p.rawData.screenshotMeta;
-    });
-    if (pagesToVerify.length === 0) return;
-    var doneCount = 0;
-    var totalCount = pagesToVerify.length;
-
-    // Show pixel verify progress on summary page
-    _updateVerifySummary(0, totalCount, null);
-
-    // Serialize: one page at a time so the UI stays responsive between verifications
-    var qi = 0;
-    function _verifyNext() {
-      if (qi >= pagesToVerify.length) return;
-      var page = pagesToVerify[qi]; qi++;
-      var report = page.reportData || MilgScoring.runScoring(page.rawData);
-      MilgContrastVerify.verify(report, function(results, bboxEdgeResults) {
-        page.rawData._contrastVerifyResults = results;
-        page.rawData._bboxEdgeResults = bboxEdgeResults || [];
-        doneCount++;
-        var idx = _crawlSession.pages.indexOf(page);
-        if (idx >= 0) delete _crawlPageReports[idx];
-        _crawlModal('Pixel verify ' + doneCount + '/' + totalCount + ' pages');
-        _updateVerifySummary(doneCount, totalCount, doneCount === totalCount ? _crawlSession : null);
-        if (doneCount === totalCount) setTimeout(_crawlModalClose, 2000);
-        // Yield to the event loop before starting the next page
-        setTimeout(_verifyNext, 50);
-      });
-    }
-    _verifyNext();
-  }
-
-  function _updateVerifySummary(done, total, completedSession) {
-    var container = document.getElementById('milg-crawl-verify-summary');
-    if (!container && crawlPageContent) {
-      // Insert verify section near the top of the summary (after Site Overview stats, before Page Scores)
-      container = document.createElement('div');
-      container.id = 'milg-crawl-verify-summary';
-      container.style.marginTop = '24px';
-      var summaryDiv = crawlPageContent.querySelector('.crawl-summary');
-      var firstH3 = summaryDiv ? summaryDiv.querySelector('h3') : null;
-      if (firstH3) {
-        firstH3.parentNode.insertBefore(container, firstH3);
-      } else if (summaryDiv) {
-        summaryDiv.appendChild(container);
-      } else {
-        crawlPageContent.appendChild(container);
-      }
-    }
-    if (!container) return;
-
-    if (!completedSession) {
-      // Still running — show spinner with progress
-      container.innerHTML = '<div class="crawl-summary">' +
-        '<h3 style="display:flex;align-items:center;gap:8px">' +
-        '<span style="display:inline-block;width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite"></span>' +
-        'Pixel Contrast Verification (' + done + '/' + total + ' pages)' +
-        '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style>' +
-        '</h3></div>';
-      return;
-    }
-
-    // All done — build the pixel verify summary across all pages
-    var falsePassTotal = 0, falseFailTotal = 0, verifiedTotal = 0;
-    var pageIssues = []; // [{url, path, falsePass, results}]
-    completedSession.pages.forEach(function(page) {
-      if (!page.rawData || !page.rawData._contrastVerifyResults) return;
-      var results = page.rawData._contrastVerifyResults;
-      var fp = 0, ff = 0, v = 0;
-      results.forEach(function(r) {
-        if (r.crossesBoundary) {
-          if (r.cssPasses && !r.pixelPasses) fp++;
-          else ff++;
-        } else { v++; }
-      });
-      falsePassTotal += fp; falseFailTotal += ff; verifiedTotal += v;
-      if (fp > 0) {
-        var path; try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
-        pageIssues.push({ url: page.url, path: path, falsePass: fp, results: results });
-      }
-    });
-
-    var isDark = document.body && document.body.classList.contains('dark-ui');
-    var html = '<div class="crawl-summary"><h3>Pixel Contrast Verification</h3>';
-    html += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px">';
-    html += '<div style="padding:8px 16px;border-radius:8px;background:var(--surface);border:1px solid var(--border);font-size:13px">' +
-      '<span style="font-weight:600">' + verifiedTotal + '</span> <span style="color:var(--text-secondary)">verified</span></div>';
-    if (falsePassTotal > 0) {
-      html += '<div style="padding:8px 16px;border-radius:8px;background:' + (isDark ? '#2d0f0f' : '#fef2f2') + ';border:1px solid ' + (isDark ? '#991b1b' : '#fecaca') + ';font-size:13px">' +
-        '<span style="font-weight:700;color:#ef4444">' + falsePassTotal + '</span> <span style="color:#ef4444">hidden failure' + (falsePassTotal > 1 ? 's' : '') + '</span></div>';
-    }
-    if (falseFailTotal > 0) {
-      html += '<div style="padding:8px 16px;border-radius:8px;background:' + (isDark ? '#0c2d1e' : '#f0fdf4') + ';border:1px solid ' + (isDark ? '#166534' : '#bbf7d0') + ';font-size:13px">' +
-        '<span style="font-weight:600;color:#16a34a">' + falseFailTotal + '</span> <span style="color:#16a34a">better than CSS</span></div>';
-    }
-    if (falsePassTotal === 0 && falseFailTotal === 0) {
-      html += '<div style="padding:8px 16px;border-radius:8px;background:' + (isDark ? '#0c2d1e' : '#f0fdf4') + ';border:1px solid ' + (isDark ? '#166534' : '#bbf7d0') + ';font-size:13px">' +
-        '<span style="color:#16a34a">All pixel checks match CSS — no hidden issues</span></div>';
-    }
-    html += '</div>';
-
-    // Per-page breakdown of failures
-    if (pageIssues.length > 0) {
-      html += '<div style="font-size:13px;line-height:1.6">';
-      pageIssues.forEach(function(pi) {
-        html += '<div style="padding:6px 10px;margin-bottom:4px;border-radius:6px;background:var(--surface);border:1px solid var(--border)">';
-        html += '<span style="color:#ef4444;font-weight:600">' + pi.falsePass + ' hidden failure' + (pi.falsePass > 1 ? 's' : '') + '</span>';
-        html += ' on <span style="font-weight:500">' + _esc(pi.path) + '</span>';
-        html += '</div>';
-      });
-      html += '</div>';
-    }
-
-    html += '</div>';
-    container.innerHTML = html;
-  }
-
-  function startCrawl(url) {
-    var maxPages = parseInt(crawlMaxPages.value) || 5;
-    maxPages = Math.min(Math.max(maxPages, 1), CRAWL_HARD_MAX);
-
-    var blacklist = (crawlBlacklist.value || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
-    var deepScan = document.getElementById('deepScanCheck') && document.getElementById('deepScanCheck').checked;
-    var jsCheck = document.getElementById('jsEnabledCheck');
-    var jsAck = document.getElementById('jsRiskAck');
-    var wantJs = jsCheck && jsCheck.checked && jsAck && jsAck.checked;
-    var profile = document.getElementById('profileSelect');
-
-    _crawlSession = MilgCrawl.createSession(url, {
-      maxPages: maxPages,
-      blacklist: blacklist,
-      deepScan: deepScan,
-      jsEnabled: wantJs,
-      profile: profile ? profile.value : 'general'
-    });
-    _crawlPageReports = {};
-    _crawlActivePageTab = 'summary';
-
-    // Show progress
-    _analyzeUrlBtn.disabled = true;
-    _analyzeUrlBtn.textContent = 'Crawling\u2026';
-    cancelCrawlBtn.style.display = '';
-    crawlProgressArea.style.display = '';
-    crawlProgressList.innerHTML = '';
-    crawlProgressFill.style.width = '0%';
-    crawlProgressLabel.textContent = 'Fetching starting page\u2026';
-    crawlProgressCount.textContent = '0 / ' + maxPages;
-    _crawlModalDismissed = false;
-    window._milgFocusModalDismissed = false;
-    _showFocusModal(true); // dismissable
-    _crawlModal('Fetching starting page\u2026');
-
-    // Show crawl results area, hide input section
-    var inputSection = document.getElementById('inputSection');
-    var reportActions = document.getElementById('reportActions');
-    var reportContainer = document.getElementById('reportContainer');
-    if (inputSection) inputSection.style.display = 'none';
-    crawlResults.style.display = '';
-    if (reportContainer) reportContainer.className = 'report-container';
-    // Hide export bar during crawl — show only when crawl completes
-    if (reportActions) reportActions.style.display = 'none';
-    // Scroll to results
-    crawlResults.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-    renderCrawlTabs();
-    showCrawlPageContent('summary');
-
-    var doneCount = 0;
-    var totalPages = 1;
-
-    MilgCrawl.startCrawl(_crawlSession, {
-      fetchPage: function(pageUrl, cb) {
-        MilgProxy.fetchViaProxy(pageUrl, function(html, err) { cb(html, err); });
-      },
-      analyzePage: function(html, pageUrl, opts, cb) {
-        var wantShots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
-        var isDeep = _crawlSession && _crawlSession.options && _crawlSession.options.deepScan && _runDeepScanLoop;
-        var jsOn = _crawlSession && _crawlSession.options && _crawlSession.options.jsEnabled;
-        var analysisOpts = { jsEnabled: jsOn, screenshots: wantShots, exclude: opts.excludeSelector || null };
-        if (isDeep) {
-          _runDeepScanLoop(html, pageUrl, analysisOpts, null, function(primary) {
-            if (primary) {
-              primary.meta.url = pageUrl;
-              primary.meta._inputMethod = 'crawl';
-              if (jsOn) primary.meta._jsEnabled = true;
-              if (opts.profile) primary.profile = opts.profile;
-            }
-            cb(primary);
-          });
-        } else {
-          MilgIframe.analyzeHtml(html, {
-            url: pageUrl,
-            jsEnabled: jsOn,
-            screenshots: wantShots,
-            exclude: opts.excludeSelector || null
-          }, function(data) {
-            if (data) {
-              data.meta.url = pageUrl;
-              data.meta._inputMethod = 'crawl';
-              if (jsOn) data.meta._jsEnabled = true;
-              if (opts.profile) data.profile = opts.profile;
-            }
-            cb(data);
-          });
-        }
-      },
-      scorePage: function(data) { return MilgScoring.runScoring(data); },
-      onDiscovery: function(urls) {
-        totalPages = 1 + urls.length;
-        crawlProgressCount.textContent = '0 / ' + totalPages;
-        crawlProgressLabel.textContent = 'Found ' + urls.length + ' page' + (urls.length !== 1 ? 's' : '') + ' to crawl';
-        _crawlModal('Found ' + urls.length + ' pages to crawl');
-      },
-      onPageStart: function(page) {
-        updateCrawlProgressItem(page);
-        var path = page.url.replace(/^https?:\/\/[^/]+/, '');
-        crawlProgressLabel.textContent = 'Analyzing ' + path + '\u2026';
-        _crawlModal('Page ' + (doneCount + 1) + '/' + totalPages + ': ' + path);
-        renderCrawlTabs();
-      },
-      onPageComplete: function(page) {
-        doneCount++;
-        updateCrawlProgressItem(page);
-        crawlProgressCount.textContent = doneCount + ' / ' + totalPages;
-        crawlProgressFill.style.width = Math.round(doneCount / totalPages * 100) + '%';
-        renderCrawlTabs();
-        if (_crawlActivePageTab === 'summary') showCrawlPageContent('summary');
-        // Pre-compute pixel verify as soon as page completes (async, best-effort)
-        if (page.rawData && page.rawData.screenshots && page.rawData.screenshots.length && page.rawData.screenshotMeta && window.MilgContrastVerify) {
-          var report = page.reportData || MilgScoring.runScoring(page.rawData);
-          MilgContrastVerify.verify(report, function(results, bboxEdgeResults) {
-            page.rawData._contrastVerifyResults = results;
-            page.rawData._bboxEdgeResults = bboxEdgeResults || [];
-          });
-        }
-      },
-      onPageError: function(page) {
-        doneCount++;
-        updateCrawlProgressItem(page);
-        crawlProgressCount.textContent = doneCount + ' / ' + totalPages;
-        crawlProgressFill.style.width = Math.round(doneCount / totalPages * 100) + '%';
-        renderCrawlTabs();
-      },
-      onComplete: function(session) {
-        _analyzeUrlBtn.disabled = false;
-        _analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
-        cancelCrawlBtn.style.display = 'none';
-        crawlProgressLabel.textContent = 'Crawl complete!';
-        crawlProgressFill.style.width = '100%';
-        _crawlModal('Crawl complete! ' + _crawlSession.pages.length + ' pages analyzed');
-        setTimeout(_crawlModalClose, 3000);
-        renderCrawlTabs();
-        showCrawlPageContent('summary');
-      }
-    });
-  }
-
-  function setupCrawlExports(exportSeverityFilter) {
-    var copyMdBtn = document.getElementById('copyMdBtn');
-    var markdownBtn = document.getElementById('markdownBtn');
-    var exportJsonBtn = document.getElementById('exportJsonBtn');
-
-    if (copyMdBtn) {
-      copyMdBtn.addEventListener('click', function(e) {
-        if (!isCrawlActive()) return; // let original handler run
-        e.stopImmediatePropagation();
-        var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
-        var md = MilgCrawl.renderCrawlMarkdown(_crawlSession, filter);
-        navigator.clipboard.writeText(md).then(function() { _showToast('Crawl report copied as Markdown!'); }).catch(function() { _showToast('Copy failed'); });
-      });
-    }
-    if (markdownBtn) {
-      markdownBtn.addEventListener('click', function(e) {
-        if (!isCrawlActive()) return;
-        e.stopImmediatePropagation();
-        var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
-        var md = MilgCrawl.renderCrawlMarkdown(_crawlSession, filter);
-        var blob = new Blob([md], { type: 'text/markdown' });
-        var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-        a.download = 'site-crawl-report.md'; a.click();
-      });
-    }
-    if (exportJsonBtn) {
-      exportJsonBtn.addEventListener('click', function(e) {
-        if (!isCrawlActive()) return;
-        e.stopImmediatePropagation();
-        var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
-        var json = MilgCrawl.renderCrawlJSON(_crawlSession, filter);
-        var blob = new Blob([json], { type: 'application/json' });
-        var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-        a.download = 'site-crawl-data.json'; a.click();
-      });
-    }
-  }
-
-  function setup(deps) {
-    _showToast = deps.showToast;
-    _runAnalysis = deps.runAnalysis;
-    _restoreCachedAnalysis = deps.restoreCachedAnalysis;
-    _analyzeUrlBtn = deps.analyzeUrlBtn;
-    _runDeepScanLoop = deps.runDeepScanLoop;
-    _showFocusModal = deps.showFocusModal;
-    _updateFocusModal = deps.updateFocusModal;
-    _hideFocusModal = deps.hideFocusModal;
-
-    // Query DOM refs
-    crawlSiteCheck = document.getElementById('crawlSiteCheck');
-    crawlOptions = document.getElementById('crawlOptions');
-    cancelCrawlBtn = document.getElementById('cancelCrawlBtn');
-    crawlMaxPages = document.getElementById('crawlMaxPages');
-    crawlBlacklist = document.getElementById('crawlBlacklist');
-    crawlProgressArea = document.getElementById('crawlProgressArea');
-    crawlProgressLabel = document.getElementById('crawlProgressLabel');
-    crawlProgressCount = document.getElementById('crawlProgressCount');
-    crawlProgressFill = document.getElementById('crawlProgressFill');
-    crawlProgressList = document.getElementById('crawlProgressList');
-    crawlResults = document.getElementById('crawlResults');
-    crawlPageTabs = document.getElementById('crawlPageTabs');
-    crawlPageContent = document.getElementById('crawlPageContent');
-
-    // Crawl site toggle — show/hide crawl options
-    if (crawlSiteCheck && crawlOptions) {
-      crawlSiteCheck.addEventListener('change', function() {
-        crawlOptions.style.display = crawlSiteCheck.checked ? '' : 'none';
-      });
-    }
-
-    // Page limit easter egg — MutationObserver on max attr + input value check
-    var _crawlEasterEggShown = false;
-    if (crawlMaxPages) {
-      var _crawlMaxObserver = new MutationObserver(function(mutations) {
-        mutations.forEach(function(m) {
-          if (m.attributeName === 'max') {
-            var newMax = parseInt(crawlMaxPages.getAttribute('max'));
-            if (newMax > 10 && !_crawlEasterEggShown) {
-              _crawlEasterEggShown = true;
-              _showToast('Nice try! We see you editing the DOM \uD83D\uDE0F Fine, ' + CRAWL_HARD_MAX + ' is the real limit\u2026 but your proxy rate limit isn\u2019t.');
-              crawlMaxPages.setAttribute('max', CRAWL_HARD_MAX);
-            }
-          }
-        });
-      });
-      _crawlMaxObserver.observe(crawlMaxPages, { attributes: true, attributeFilter: ['max'] });
-      // Also catch when someone types >10 directly
-      crawlMaxPages.addEventListener('input', function() {
-        var val = parseInt(crawlMaxPages.value);
-        if (val > 10 && !_crawlEasterEggShown) {
-          _crawlEasterEggShown = true;
-          _showToast('Going beyond 10? Bold move \uD83D\uDE0F We\u2019ll allow up to ' + CRAWL_HARD_MAX + '. You found the secret ceiling!');
-          crawlMaxPages.setAttribute('max', CRAWL_HARD_MAX);
-        }
-      });
-    }
-
-    // Tab click delegation
-    if (crawlPageTabs) {
-      crawlPageTabs.addEventListener('click', function(e) {
-        var tab = e.target.closest('[data-crawl-page]');
-        if (!tab) return;
-        showCrawlPageContent(tab.getAttribute('data-crawl-page'));
-      });
-    }
-
-    // Cancel crawl
-    if (cancelCrawlBtn) {
-      cancelCrawlBtn.addEventListener('click', function() {
-        if (_crawlSession) MilgCrawl.abortCrawl(_crawlSession);
-        _analyzeUrlBtn.disabled = false;
-        _analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
-        cancelCrawlBtn.style.display = 'none';
-        crawlProgressLabel.textContent = 'Crawl cancelled';
-      });
-    }
-
-    // Check for completed snippet crawl on load
-    try {
-      var snippetCrawlData = localStorage.getItem('milg-crawl-complete');
-      if (snippetCrawlData) {
-        localStorage.removeItem('milg-crawl-complete');
-        var crawlState = JSON.parse(snippetCrawlData);
-        if (loadCrawlResults(crawlState, 'console snippet')) {
-          if (crawlSiteCheck) crawlSiteCheck.checked = true;
-          if (crawlOptions) crawlOptions.style.display = '';
-        }
-      }
-    } catch(e) { console.error('Failed to load snippet crawl data:', e); }
-
-    // Crawl export wiring
-    setupCrawlExports(document.getElementById('exportSeverityFilter'));
-  }
-
-  function resetCrawlState() {
-    _crawlSession = null;
-    _crawlPageReports = {};
-    if (crawlResults) crawlResults.style.display = 'none';
-    if (crawlPageContent) { crawlPageContent.style.display = 'none'; crawlPageContent.innerHTML = ''; }
-    if (crawlProgressArea) crawlProgressArea.style.display = 'none';
-  }
-
-  // Re-score all crawl pages (e.g. when profile changes)
-  function rescorePages() {
-    if (!_crawlSession || !_crawlSession.pages || _crawlSession.pages.length === 0) return false;
-    // Invalidate caches — profile change means all scores/reports are stale
-    _crawlPageReports = {};
-    _crawlSession.pages.forEach(function(page) {
-      if (page.status === 'done' && page.rawData) {
-        page.rawData.profile = document.getElementById('profileSelect').value;
-        delete page.rawData._cachedReportData;
-        page.reportData = MilgScoring.runScoring(page.rawData);
-      }
-    });
-    _crawlSession.summary = MilgCrawl.buildSummary(_crawlSession);
-    renderCrawlTabs();
-    showCrawlPageContent(_crawlActivePageTab);
-    return true;
-  }
-
-  return {
-    setup: setup,
-    getCrawlSession: getCrawlSession,
-    setCrawlSession: setCrawlSession,
-    getActiveTab: getActiveTab,
-    isCrawlMode: isCrawlMode,
-    isCrawlActive: isCrawlActive,
-    startCrawl: startCrawl,
-    loadCrawlResults: loadCrawlResults,
-    renderCrawlTabs: renderCrawlTabs,
-    showCrawlPageContent: showCrawlPageContent,
-    resetCrawlState: resetCrawlState,
-    rescorePages: rescorePages
-  };
 })();
 </file>
 
@@ -34826,6 +34214,618 @@ window.MilgContrastVerify = (function() {
 })();
 </file>
 
+<file path="docs/analyzer-crawl-ui.js">
+// make-it-look-good — Crawl UI Wiring
+// Manages multi-page site crawl progress, tabs, and results display.
+// Depends on: analyzer-crawl.js (MilgCrawl), analyzer-report.js (MilgReport),
+//             analyzer-iframe.js (MilgIframe), analyzer-proxy.js (MilgProxy)
+
+window.MilgCrawlUI = (function() {
+  "use strict";
+
+  var _crawlSession = null;
+  var _crawlPageReports = {}; // pageIndex → rendered HTML cache
+  var _crawlActivePageTab = 'summary';
+  var CRAWL_HARD_MAX = 25;
+
+  // Dependencies injected via setup()
+  var _showToast, _runAnalysis, _restoreCachedAnalysis, _analyzeUrlBtn, _runDeepScanLoop;
+  var _showFocusModal, _updateFocusModal, _hideFocusModal;
+
+  // DOM refs queried during setup
+  var crawlSiteCheck, crawlOptions, cancelCrawlBtn, crawlMaxPages, crawlBlacklist;
+  var crawlProgressArea, crawlProgressLabel, crawlProgressCount, crawlProgressFill, crawlProgressList;
+  var crawlResults, crawlPageTabs, crawlPageContent;
+
+  function _esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+  // Use the shared focus modal for crawl progress (same as single-URL deep scan).
+  // The modal has a close button so users can dismiss it and browse results.
+  var _crawlModalDismissed = false;
+  function _crawlModal(msg) {
+    if (_crawlModalDismissed) return;
+    if (_showFocusModal) _showFocusModal();
+    if (_updateFocusModal) _updateFocusModal(msg + '\n');
+  }
+  function _crawlModalClose() {
+    _crawlModalDismissed = false;
+    if (_hideFocusModal) _hideFocusModal();
+  }
+
+  function getCrawlSession() { return _crawlSession; }
+  function setCrawlSession(s) { _crawlSession = s; }
+  function getActiveTab() { return _crawlActivePageTab; }
+
+  function isCrawlMode() { return crawlSiteCheck && crawlSiteCheck.checked; }
+  function isCrawlActive() { return _crawlSession && _crawlSession.pages.length > 0 && crawlResults && crawlResults.style.display !== 'none'; }
+
+  function crawlStatusIcon(status) {
+    if (status === 'done') return '<span class="status-icon done"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></span>';
+    if (status === 'error') return '<span class="status-icon error"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>';
+    if (status === 'fetching' || status === 'analyzing') return '<span class="status-icon active"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/></svg></span>';
+    return '<span class="status-icon pending"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-dasharray="20" stroke-dashoffset="10"/></svg></span>';
+  }
+
+  function updateCrawlProgressItem(page) {
+    var existing = document.getElementById('crawl-progress-' + encodeURIComponent(page.url));
+    var path; try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
+    var scoreText = page.status === 'done' && page.reportData ? ' ' + page.reportData.overall + '/100' : '';
+    var errorText = page.status === 'error' ? ' <span style="color:#dc2626;font-size:12px">' + (page.error || 'Failed').substring(0, 40) + '</span>' : '';
+    var html = crawlStatusIcon(page.status) +
+      '<span class="page-url" title="' + page.url + '">' + path + '</span>' +
+      '<span class="page-score">' + scoreText + errorText + '</span>';
+    if (existing) {
+      existing.innerHTML = html;
+    } else {
+      var div = document.createElement('div');
+      div.className = 'crawl-progress-item';
+      div.id = 'crawl-progress-' + encodeURIComponent(page.url);
+      div.innerHTML = html;
+      crawlProgressList.appendChild(div);
+    }
+  }
+
+  function renderCrawlTabs() {
+    if (!_crawlSession || !crawlPageTabs) return;
+    var html = '<button class="crawl-page-tab' + (_crawlActivePageTab === 'summary' ? ' active' : '') + '" data-crawl-page="summary">Summary</button>';
+    _crawlSession.pages.forEach(function(page, idx) {
+      html += MilgReport.renderCrawlPageTab(page, idx, _crawlActivePageTab === String(idx));
+    });
+    crawlPageTabs.innerHTML = html;
+  }
+
+  var _spinnerHtml = '<div style="padding:60px;text-align:center">' +
+    '<div style="width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite;margin:0 auto"></div>' +
+    '<div style="color:var(--text-secondary);margin-top:12px;font-size:13px">Loading report\u2026</div>' +
+    '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style></div>';
+
+  function showCrawlPageContent(key) {
+    _crawlActivePageTab = key;
+    renderCrawlTabs();
+    var reportContainer = document.getElementById('reportContainer');
+    var reportActions = document.getElementById('reportActions');
+    // Show export/actions only after crawl is complete (not during progress)
+    var crawlDone = _crawlSession && _crawlSession.status === 'complete';
+    if (reportActions) reportActions.style.display = crawlDone ? 'flex' : 'none';
+    if (key === 'summary') {
+      var summary = _crawlSession.summary || MilgCrawl.buildSummary(_crawlSession);
+      crawlPageContent.innerHTML = MilgReport.renderCrawlSummary(summary);
+      crawlPageContent.style.display = '';
+      crawlPageContent.className = 'report-container visible';
+      if (reportContainer) { reportContainer.style.display = 'none'; reportContainer.className = 'report-container'; }
+    } else {
+      var idx = parseInt(key);
+      var page = _crawlSession.pages[idx];
+      if (!page || page.status !== 'done') {
+        crawlPageContent.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-secondary)">' +
+          (page && page.status === 'error' ? 'Error: ' + (page.error || 'Analysis failed') : 'Analyzing\u2026') + '</div>';
+        crawlPageContent.style.display = '';
+        crawlPageContent.className = 'report-container visible';
+        if (reportContainer) { reportContainer.style.display = 'none'; reportContainer.className = 'report-container'; }
+        return;
+      }
+
+      crawlPageContent.style.display = 'none';
+      crawlPageContent.className = 'report-container';
+      if (reportContainer) reportContainer.style.display = '';
+
+      // Cache hit: restore instantly (no scoring, no rendering)
+      if (_crawlPageReports[idx]) {
+        var cached = _crawlPageReports[idx];
+        _restoreCachedAnalysis(page.rawData, cached.reportData);
+        reportContainer.innerHTML = cached.html;
+        reportContainer.classList.add('visible');
+        return;
+      }
+
+      // Cache miss: show spinner, defer heavy work so spinner paints
+      reportContainer.innerHTML = _spinnerHtml;
+      reportContainer.classList.add('visible');
+      setTimeout(function() {
+        // Guard: user may have switched tabs during the setTimeout
+        if (_crawlActivePageTab !== String(idx)) return;
+        page.rawData.meta = page.rawData.meta || {};
+        var origMethod = page.rawData.meta._inputMethod;
+        _runAnalysis(page.rawData, 'crawl-page');
+        page.rawData.meta._inputMethod = origMethod;
+        // Cache the rendered report + scored data for instant restore
+        _crawlPageReports[idx] = {
+          html: reportContainer.innerHTML,
+          reportData: page.rawData._cachedReportData
+        };
+      }, 0);
+    }
+  }
+
+  // Load multi-page crawl results into the tabbed view
+  function loadCrawlResults(crawlState, source) {
+    if (!crawlState || !crawlState.results || crawlState.results.length === 0) return false;
+    _showToast('Loaded crawl results' + (source ? ' from ' + source : '') + ' (' + crawlState.results.length + ' pages)');
+    _crawlSession = MilgCrawl.createSession(crawlState.startUrl || crawlState.results[0].url, {
+      maxPages: crawlState.results.length,
+      profile: document.getElementById('profileSelect') ? document.getElementById('profileSelect').value : 'general'
+    });
+    crawlState.results.forEach(function(r) {
+      var report = MilgScoring.runScoring(r.data);
+      _crawlSession.pages.push({
+        url: r.url, status: 'done', title: (r.data.meta && r.data.meta.title) || '',
+        rawData: r.data, reportData: report, error: null,
+        startedAt: r.data.meta.timestamp, completedAt: r.data.meta.timestamp
+      });
+    });
+    _crawlSession.status = 'complete';
+    _crawlSession.summary = MilgCrawl.buildSummary(_crawlSession);
+    crawlResults.style.display = '';
+    var reportActions = document.getElementById('reportActions');
+    if (reportActions) reportActions.style.display = '';
+    document.getElementById('inputSection').style.display = 'none';
+    renderCrawlTabs();
+    showCrawlPageContent('summary');
+
+    // Pre-compute pixel verify for each page with screenshots (async, best-effort).
+    // Results are cached on rawData._contrastVerifyResults so tab switches use cache.
+    _preComputePixelVerify();
+
+    return true;
+  }
+
+  function _preComputePixelVerify() {
+    if (!_crawlSession || !window.MilgContrastVerify) return;
+    var pagesToVerify = _crawlSession.pages.filter(function(p) {
+      return p.status === 'done' && p.rawData && !p.rawData._contrastVerifyResults &&
+        p.rawData.screenshots && p.rawData.screenshots.length && p.rawData.screenshotMeta;
+    });
+    if (pagesToVerify.length === 0) return;
+    var doneCount = 0;
+    var totalCount = pagesToVerify.length;
+
+    // Show pixel verify progress on summary page
+    _updateVerifySummary(0, totalCount, null);
+
+    // Serialize: one page at a time so the UI stays responsive between verifications
+    var qi = 0;
+    function _verifyNext() {
+      if (qi >= pagesToVerify.length) return;
+      var page = pagesToVerify[qi]; qi++;
+      var report = page.reportData || MilgScoring.runScoring(page.rawData);
+      MilgContrastVerify.verify(report, function(results, bboxEdgeResults) {
+        page.rawData._contrastVerifyResults = results;
+        page.rawData._bboxEdgeResults = bboxEdgeResults || [];
+        doneCount++;
+        var idx = _crawlSession.pages.indexOf(page);
+        if (idx >= 0) delete _crawlPageReports[idx];
+        _crawlModal('Pixel verify ' + doneCount + '/' + totalCount + ' pages');
+        _updateVerifySummary(doneCount, totalCount, doneCount === totalCount ? _crawlSession : null);
+        if (doneCount === totalCount) setTimeout(_crawlModalClose, 2000);
+        // Yield to the event loop before starting the next page
+        setTimeout(_verifyNext, 50);
+      });
+    }
+    _verifyNext();
+  }
+
+  function _updateVerifySummary(done, total, completedSession) {
+    var container = document.getElementById('milg-crawl-verify-summary');
+    if (!container && crawlPageContent) {
+      // Insert verify section near the top of the summary (after Site Overview stats, before Page Scores)
+      container = document.createElement('div');
+      container.id = 'milg-crawl-verify-summary';
+      container.style.marginTop = '24px';
+      var summaryDiv = crawlPageContent.querySelector('.crawl-summary');
+      var firstH3 = summaryDiv ? summaryDiv.querySelector('h3') : null;
+      if (firstH3) {
+        firstH3.parentNode.insertBefore(container, firstH3);
+      } else if (summaryDiv) {
+        summaryDiv.appendChild(container);
+      } else {
+        crawlPageContent.appendChild(container);
+      }
+    }
+    if (!container) return;
+
+    if (!completedSession) {
+      // Still running — show spinner with progress
+      container.innerHTML = '<div class="crawl-summary">' +
+        '<h3 style="display:flex;align-items:center;gap:8px">' +
+        '<span style="display:inline-block;width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite"></span>' +
+        'Pixel Contrast Verification (' + done + '/' + total + ' pages)' +
+        '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style>' +
+        '</h3></div>';
+      return;
+    }
+
+    // All done — build the pixel verify summary across all pages
+    var falsePassTotal = 0, falseFailTotal = 0, verifiedTotal = 0;
+    var pageIssues = []; // [{url, path, falsePass, results}]
+    completedSession.pages.forEach(function(page) {
+      if (!page.rawData || !page.rawData._contrastVerifyResults) return;
+      var results = page.rawData._contrastVerifyResults;
+      var fp = 0, ff = 0, v = 0;
+      results.forEach(function(r) {
+        if (r.crossesBoundary) {
+          if (r.cssPasses && !r.pixelPasses) fp++;
+          else ff++;
+        } else { v++; }
+      });
+      falsePassTotal += fp; falseFailTotal += ff; verifiedTotal += v;
+      if (fp > 0) {
+        var path; try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
+        pageIssues.push({ url: page.url, path: path, falsePass: fp, results: results });
+      }
+    });
+
+    var isDark = document.body && document.body.classList.contains('dark-ui');
+    var html = '<div class="crawl-summary"><h3>Pixel Contrast Verification</h3>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px">';
+    html += '<div style="padding:8px 16px;border-radius:8px;background:var(--surface);border:1px solid var(--border);font-size:13px">' +
+      '<span style="font-weight:600">' + verifiedTotal + '</span> <span style="color:var(--text-secondary)">verified</span></div>';
+    if (falsePassTotal > 0) {
+      html += '<div style="padding:8px 16px;border-radius:8px;background:' + (isDark ? '#2d0f0f' : '#fef2f2') + ';border:1px solid ' + (isDark ? '#991b1b' : '#fecaca') + ';font-size:13px">' +
+        '<span style="font-weight:700;color:#ef4444">' + falsePassTotal + '</span> <span style="color:#ef4444">hidden failure' + (falsePassTotal > 1 ? 's' : '') + '</span></div>';
+    }
+    if (falseFailTotal > 0) {
+      html += '<div style="padding:8px 16px;border-radius:8px;background:' + (isDark ? '#0c2d1e' : '#f0fdf4') + ';border:1px solid ' + (isDark ? '#166534' : '#bbf7d0') + ';font-size:13px">' +
+        '<span style="font-weight:600;color:#16a34a">' + falseFailTotal + '</span> <span style="color:#16a34a">better than CSS</span></div>';
+    }
+    if (falsePassTotal === 0 && falseFailTotal === 0) {
+      html += '<div style="padding:8px 16px;border-radius:8px;background:' + (isDark ? '#0c2d1e' : '#f0fdf4') + ';border:1px solid ' + (isDark ? '#166534' : '#bbf7d0') + ';font-size:13px">' +
+        '<span style="color:#16a34a">All pixel checks match CSS — no hidden issues</span></div>';
+    }
+    html += '</div>';
+
+    // Per-page breakdown of failures
+    if (pageIssues.length > 0) {
+      html += '<div style="font-size:13px;line-height:1.6">';
+      pageIssues.forEach(function(pi) {
+        html += '<div style="padding:6px 10px;margin-bottom:4px;border-radius:6px;background:var(--surface);border:1px solid var(--border)">';
+        html += '<span style="color:#ef4444;font-weight:600">' + pi.falsePass + ' hidden failure' + (pi.falsePass > 1 ? 's' : '') + '</span>';
+        html += ' on <span style="font-weight:500">' + _esc(pi.path) + '</span>';
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+
+    html += '</div>';
+    container.innerHTML = html;
+  }
+
+  function startCrawl(url) {
+    var maxPages = parseInt(crawlMaxPages.value) || 5;
+    maxPages = Math.min(Math.max(maxPages, 1), CRAWL_HARD_MAX);
+
+    var blacklist = (crawlBlacklist.value || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+    var deepScan = document.getElementById('deepScanCheck') && document.getElementById('deepScanCheck').checked;
+    var jsCheck = document.getElementById('jsEnabledCheck');
+    var jsAck = document.getElementById('jsRiskAck');
+    var wantJs = jsCheck && jsCheck.checked && jsAck && jsAck.checked;
+    var profile = document.getElementById('profileSelect');
+
+    _crawlSession = MilgCrawl.createSession(url, {
+      maxPages: maxPages,
+      blacklist: blacklist,
+      deepScan: deepScan,
+      jsEnabled: wantJs,
+      profile: profile ? profile.value : 'general'
+    });
+    _crawlPageReports = {};
+    _crawlActivePageTab = 'summary';
+
+    // Show progress
+    _analyzeUrlBtn.disabled = true;
+    _analyzeUrlBtn.textContent = 'Crawling\u2026';
+    cancelCrawlBtn.style.display = '';
+    crawlProgressArea.style.display = '';
+    crawlProgressList.innerHTML = '';
+    crawlProgressFill.style.width = '0%';
+    crawlProgressLabel.textContent = 'Fetching starting page\u2026';
+    crawlProgressCount.textContent = '0 / ' + maxPages;
+    _crawlModalDismissed = false;
+    window._milgFocusModalDismissed = false;
+    _showFocusModal(true); // dismissable
+    _crawlModal('Fetching starting page\u2026');
+
+    // Show crawl results area, hide input section
+    var inputSection = document.getElementById('inputSection');
+    var reportActions = document.getElementById('reportActions');
+    var reportContainer = document.getElementById('reportContainer');
+    if (inputSection) inputSection.style.display = 'none';
+    crawlResults.style.display = '';
+    if (reportContainer) reportContainer.className = 'report-container';
+    // Hide export bar during crawl — show only when crawl completes
+    if (reportActions) reportActions.style.display = 'none';
+    // Scroll to results
+    crawlResults.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    renderCrawlTabs();
+    showCrawlPageContent('summary');
+
+    var doneCount = 0;
+    var totalPages = 1;
+
+    MilgCrawl.startCrawl(_crawlSession, {
+      fetchPage: function(pageUrl, cb) {
+        MilgProxy.fetchViaProxy(pageUrl, function(html, err) { cb(html, err); });
+      },
+      analyzePage: function(html, pageUrl, opts, cb) {
+        var wantShots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
+        var isDeep = _crawlSession && _crawlSession.options && _crawlSession.options.deepScan && _runDeepScanLoop;
+        var jsOn = _crawlSession && _crawlSession.options && _crawlSession.options.jsEnabled;
+        var analysisOpts = { jsEnabled: jsOn, screenshots: wantShots, exclude: opts.excludeSelector || null };
+        if (isDeep) {
+          _runDeepScanLoop(html, pageUrl, analysisOpts, null, function(primary) {
+            if (primary) {
+              primary.meta.url = pageUrl;
+              primary.meta._inputMethod = 'crawl';
+              if (jsOn) primary.meta._jsEnabled = true;
+              if (opts.profile) primary.profile = opts.profile;
+            }
+            cb(primary);
+          });
+        } else {
+          MilgIframe.analyzeHtml(html, {
+            url: pageUrl,
+            jsEnabled: jsOn,
+            screenshots: wantShots,
+            exclude: opts.excludeSelector || null
+          }, function(data) {
+            if (data) {
+              data.meta.url = pageUrl;
+              data.meta._inputMethod = 'crawl';
+              if (jsOn) data.meta._jsEnabled = true;
+              if (opts.profile) data.profile = opts.profile;
+            }
+            cb(data);
+          });
+        }
+      },
+      scorePage: function(data) { return MilgScoring.runScoring(data); },
+      onDiscovery: function(urls) {
+        totalPages = 1 + urls.length;
+        crawlProgressCount.textContent = '0 / ' + totalPages;
+        crawlProgressLabel.textContent = 'Found ' + urls.length + ' page' + (urls.length !== 1 ? 's' : '') + ' to crawl';
+        _crawlModal('Found ' + urls.length + ' pages to crawl');
+      },
+      onPageStart: function(page) {
+        updateCrawlProgressItem(page);
+        var path = page.url.replace(/^https?:\/\/[^/]+/, '');
+        crawlProgressLabel.textContent = 'Analyzing ' + path + '\u2026';
+        _crawlModal('Page ' + (doneCount + 1) + '/' + totalPages + ': ' + path);
+        renderCrawlTabs();
+      },
+      onPageComplete: function(page) {
+        doneCount++;
+        updateCrawlProgressItem(page);
+        crawlProgressCount.textContent = doneCount + ' / ' + totalPages;
+        crawlProgressFill.style.width = Math.round(doneCount / totalPages * 100) + '%';
+        renderCrawlTabs();
+        if (_crawlActivePageTab === 'summary') showCrawlPageContent('summary');
+        // Pre-compute pixel verify as soon as page completes (async, best-effort)
+        if (page.rawData && page.rawData.screenshots && page.rawData.screenshots.length && page.rawData.screenshotMeta && window.MilgContrastVerify) {
+          var report = page.reportData || MilgScoring.runScoring(page.rawData);
+          MilgContrastVerify.verify(report, function(results, bboxEdgeResults) {
+            page.rawData._contrastVerifyResults = results;
+            page.rawData._bboxEdgeResults = bboxEdgeResults || [];
+          });
+        }
+      },
+      onPageError: function(page) {
+        doneCount++;
+        updateCrawlProgressItem(page);
+        crawlProgressCount.textContent = doneCount + ' / ' + totalPages;
+        crawlProgressFill.style.width = Math.round(doneCount / totalPages * 100) + '%';
+        renderCrawlTabs();
+      },
+      onComplete: function(session) {
+        _analyzeUrlBtn.disabled = false;
+        _analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
+        cancelCrawlBtn.style.display = 'none';
+        crawlProgressLabel.textContent = 'Crawl complete!';
+        crawlProgressFill.style.width = '100%';
+        _crawlModal('Crawl complete! ' + _crawlSession.pages.length + ' pages analyzed');
+        setTimeout(_crawlModalClose, 3000);
+        renderCrawlTabs();
+        showCrawlPageContent('summary');
+      }
+    });
+  }
+
+  function setupCrawlExports(exportSeverityFilter) {
+    var copyMdBtn = document.getElementById('copyMdBtn');
+    var markdownBtn = document.getElementById('markdownBtn');
+    var exportJsonBtn = document.getElementById('exportJsonBtn');
+
+    if (copyMdBtn) {
+      copyMdBtn.addEventListener('click', function(e) {
+        if (!isCrawlActive()) return; // let original handler run
+        e.stopImmediatePropagation();
+        var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
+        var md = MilgCrawl.renderCrawlMarkdown(_crawlSession, filter);
+        navigator.clipboard.writeText(md).then(function() { _showToast('Crawl report copied as Markdown!'); }).catch(function() { _showToast('Copy failed'); });
+      });
+    }
+    if (markdownBtn) {
+      markdownBtn.addEventListener('click', function(e) {
+        if (!isCrawlActive()) return;
+        e.stopImmediatePropagation();
+        var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
+        var md = MilgCrawl.renderCrawlMarkdown(_crawlSession, filter);
+        var blob = new Blob([md], { type: 'text/markdown' });
+        var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+        a.download = 'site-crawl-report.md'; a.click();
+      });
+    }
+    if (exportJsonBtn) {
+      exportJsonBtn.addEventListener('click', function(e) {
+        if (!isCrawlActive()) return;
+        e.stopImmediatePropagation();
+        var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
+        var json = MilgCrawl.renderCrawlJSON(_crawlSession, filter);
+        var blob = new Blob([json], { type: 'application/json' });
+        var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+        a.download = 'site-crawl-data.json'; a.click();
+      });
+    }
+  }
+
+  function setup(deps) {
+    _showToast = deps.showToast;
+    _runAnalysis = deps.runAnalysis;
+    _restoreCachedAnalysis = deps.restoreCachedAnalysis;
+    _analyzeUrlBtn = deps.analyzeUrlBtn;
+    _runDeepScanLoop = deps.runDeepScanLoop;
+    _showFocusModal = deps.showFocusModal;
+    _updateFocusModal = deps.updateFocusModal;
+    _hideFocusModal = deps.hideFocusModal;
+
+    // Query DOM refs
+    crawlSiteCheck = document.getElementById('crawlSiteCheck');
+    crawlOptions = document.getElementById('crawlOptions');
+    cancelCrawlBtn = document.getElementById('cancelCrawlBtn');
+    crawlMaxPages = document.getElementById('crawlMaxPages');
+    crawlBlacklist = document.getElementById('crawlBlacklist');
+    crawlProgressArea = document.getElementById('crawlProgressArea');
+    crawlProgressLabel = document.getElementById('crawlProgressLabel');
+    crawlProgressCount = document.getElementById('crawlProgressCount');
+    crawlProgressFill = document.getElementById('crawlProgressFill');
+    crawlProgressList = document.getElementById('crawlProgressList');
+    crawlResults = document.getElementById('crawlResults');
+    crawlPageTabs = document.getElementById('crawlPageTabs');
+    crawlPageContent = document.getElementById('crawlPageContent');
+
+    // Crawl site toggle — show/hide crawl options
+    if (crawlSiteCheck && crawlOptions) {
+      crawlSiteCheck.addEventListener('change', function() {
+        crawlOptions.style.display = crawlSiteCheck.checked ? '' : 'none';
+      });
+    }
+
+    // Page limit easter egg — MutationObserver on max attr + input value check
+    var _crawlEasterEggShown = false;
+    if (crawlMaxPages) {
+      var _crawlMaxObserver = new MutationObserver(function(mutations) {
+        mutations.forEach(function(m) {
+          if (m.attributeName === 'max') {
+            var newMax = parseInt(crawlMaxPages.getAttribute('max'));
+            if (newMax > 10 && !_crawlEasterEggShown) {
+              _crawlEasterEggShown = true;
+              _showToast('Nice try! We see you editing the DOM \uD83D\uDE0F Fine, ' + CRAWL_HARD_MAX + ' is the real limit\u2026 but your proxy rate limit isn\u2019t.');
+              crawlMaxPages.setAttribute('max', CRAWL_HARD_MAX);
+            }
+          }
+        });
+      });
+      _crawlMaxObserver.observe(crawlMaxPages, { attributes: true, attributeFilter: ['max'] });
+      // Also catch when someone types >10 directly
+      crawlMaxPages.addEventListener('input', function() {
+        var val = parseInt(crawlMaxPages.value);
+        if (val > 10 && !_crawlEasterEggShown) {
+          _crawlEasterEggShown = true;
+          _showToast('Going beyond 10? Bold move \uD83D\uDE0F We\u2019ll allow up to ' + CRAWL_HARD_MAX + '. You found the secret ceiling!');
+          crawlMaxPages.setAttribute('max', CRAWL_HARD_MAX);
+        }
+      });
+    }
+
+    // Tab click delegation
+    if (crawlPageTabs) {
+      crawlPageTabs.addEventListener('click', function(e) {
+        var tab = e.target.closest('[data-crawl-page]');
+        if (!tab) return;
+        showCrawlPageContent(tab.getAttribute('data-crawl-page'));
+      });
+    }
+
+    // Cancel crawl
+    if (cancelCrawlBtn) {
+      cancelCrawlBtn.addEventListener('click', function() {
+        if (_crawlSession) MilgCrawl.abortCrawl(_crawlSession);
+        _analyzeUrlBtn.disabled = false;
+        _analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
+        cancelCrawlBtn.style.display = 'none';
+        crawlProgressLabel.textContent = 'Crawl cancelled';
+      });
+    }
+
+    // Check for completed snippet crawl on load
+    try {
+      var snippetCrawlData = localStorage.getItem('milg-crawl-complete');
+      if (snippetCrawlData) {
+        localStorage.removeItem('milg-crawl-complete');
+        var crawlState = JSON.parse(snippetCrawlData);
+        if (loadCrawlResults(crawlState, 'console snippet')) {
+          if (crawlSiteCheck) crawlSiteCheck.checked = true;
+          if (crawlOptions) crawlOptions.style.display = '';
+        }
+      }
+    } catch(e) { console.error('Failed to load snippet crawl data:', e); }
+
+    // Crawl export wiring
+    setupCrawlExports(document.getElementById('exportSeverityFilter'));
+  }
+
+  function resetCrawlState() {
+    _crawlSession = null;
+    _crawlPageReports = {};
+    if (crawlResults) crawlResults.style.display = 'none';
+    if (crawlPageContent) { crawlPageContent.style.display = 'none'; crawlPageContent.innerHTML = ''; }
+    if (crawlProgressArea) crawlProgressArea.style.display = 'none';
+  }
+
+  // Re-score all crawl pages (e.g. when profile changes)
+  function rescorePages() {
+    if (!_crawlSession || !_crawlSession.pages || _crawlSession.pages.length === 0) return false;
+    // Invalidate caches — profile change means all scores/reports are stale
+    _crawlPageReports = {};
+    _crawlSession.pages.forEach(function(page) {
+      if (page.status === 'done' && page.rawData) {
+        page.rawData.profile = document.getElementById('profileSelect').value;
+        delete page.rawData._cachedReportData;
+        page.reportData = MilgScoring.runScoring(page.rawData);
+      }
+    });
+    _crawlSession.summary = MilgCrawl.buildSummary(_crawlSession);
+    renderCrawlTabs();
+    showCrawlPageContent(_crawlActivePageTab);
+    return true;
+  }
+
+  return {
+    setup: setup,
+    getCrawlSession: getCrawlSession,
+    setCrawlSession: setCrawlSession,
+    getActiveTab: getActiveTab,
+    isCrawlMode: isCrawlMode,
+    isCrawlActive: isCrawlActive,
+    startCrawl: startCrawl,
+    loadCrawlResults: loadCrawlResults,
+    renderCrawlTabs: renderCrawlTabs,
+    showCrawlPageContent: showCrawlPageContent,
+    resetCrawlState: resetCrawlState,
+    rescorePages: rescorePages
+  };
+})();
+</file>
+
 <file path="docs/analyzer-extract.js">
 // make-it-look-good — Extraction Engine
 // Runs inside iframes to extract design data from rendered pages.
@@ -36219,11 +36219,14 @@ window.MilgIframe = (function() {
             // Share font cache across iframes via parent (deep scan reuses fonts across viewports)
             'try{if(!parent.__milgFontCache)parent.__milgFontCache={}}catch(e){}' +
             'var _fc=((typeof parent!=="undefined")&&parent.__milgFontCache)||{};' +
+            'if(!window.__milgFontBlobs)window.__milgFontBlobs={};' +
             'window.fetch=function(u,o){' +
               'if(typeof u==="string"&&u.charAt(0)==="/")u=_rb.replace(/\\/$/,"")+u;' +
               'if(_px&&typeof u==="string"&&u.indexOf(_px)===-1&&/\\.(woff2?|ttf|otf|eot)(\\?|$)/i.test(u)){' +
                 'if(_fc[u])return _fc[u].then(function(r){return r.clone()});' +
-                'var p=_of.call(this,_px+"?url="+encodeURIComponent(u),o).catch(function(e){console.warn("[milg-warn] Font proxy failed:",u,e&&e.message||"");return new Response("",{status:404})});' +
+                'var p=_of.call(this,_px+"?url="+encodeURIComponent(u),o)' +
+                  '.then(function(r){var r2=r.clone();r2.blob().then(function(b){if(b.size>0)window.__milgFontBlobs[u]=URL.createObjectURL(b)}).catch(function(){});return r})' +
+                  '.catch(function(e){console.warn("[milg-warn] Font proxy failed:",u,e&&e.message||"");return new Response("",{status:404})});' +
                 '_fc[u]=p;return p;' +
               '}' +
               'return _of.call(this,u,o);' +
@@ -39803,7 +39806,7 @@ window.MilgViewer = (function() {
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v52.2 loaded');
+console.log('[milg] analyzer.js v52.6 loaded');
 
 (function() {
   "use strict";
