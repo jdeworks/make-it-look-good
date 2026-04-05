@@ -31642,6 +31642,392 @@ function scoreLayout(data) {
 })();
 </file>
 
+<file path="docs/analyzer-snippet.js">
+// make-it-look-good — Design Extraction Snippet
+// Version: 2026-04-04-v15
+// Run this in the browser console on any page, or use as a bookmarklet.
+// Loads extraction engine from CDN (single source of truth), extracts design tokens,
+// and copies JSON to your clipboard.
+// Then paste into the analyzer at: https://jdeworks.github.io/make-it-look-good/analyzer.html
+
+(function() {
+  'use strict';
+  var _MILG_VERSION = '2026-04-04-v15';
+  console.log('%c[milg] Snippet version: ' + _MILG_VERSION, 'color: #64748b;');
+
+  // --- Auto-scroll option ---
+  // To scroll the page before extraction (triggers lazy loading + intersection observers):
+  // Run: window.__milgScrollFirst = true   then paste the snippet.
+  // The snippet will scroll the full page, wait for content to load, then extract.
+  if (window.__milgScrollFirst && !window.__milgScrollDone) {
+    window.__milgScrollDone = true;
+    console.log('%c\u23F3 Scrolling page to trigger lazy loading and intersection observers...', 'color: #3b82f6; font-weight: bold;');
+    var _scrollH = document.body.scrollHeight;
+    var _pos = 0;
+    var _step = Math.max(window.innerHeight * 0.8, 400);
+    var _si = setInterval(function() {
+      _pos += _step;
+      window.scrollTo(0, _pos);
+      if (_pos >= _scrollH) {
+        clearInterval(_si);
+        setTimeout(function() { window.scrollTo(0, 0); }, 300);
+        // Wait for newly loaded content, then user must re-run snippet
+        setTimeout(function() {
+          console.log('%c\u2713 Scroll complete! Page content should now be fully loaded.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+          console.log('%cRe-run the snippet now for complete analysis.', 'color: #3b82f6;');
+          window.__milgScrollFirst = false;
+        }, 1500);
+      }
+    }, 150);
+    return; // Exit — re-run snippet after scroll completes
+  }
+
+  // --- Load extraction engine from CDN (single source of truth) ---
+  console.log('%c[milg] Loading extraction engine...', 'color: #3b82f6;');
+  var _cacheBust = 'v=' + Math.floor(Date.now() / 3600000);
+  var _extractUrls = [
+    'https://cdn.jsdelivr.net/gh/jdeworks/make-it-look-good@dev/docs/analyzer-extract.js?' + _cacheBust,
+    'https://jdeworks.github.io/make-it-look-good/analyzer-extract.js?' + _cacheBust
+  ];
+
+  if (window.MilgExtract) {
+    _runExtraction();
+  } else {
+    (function _tryLoad(idx) {
+      if (idx >= _extractUrls.length) {
+        console.error('[milg] Cannot load extraction engine from any CDN.');
+        return;
+      }
+      var url = _extractUrls[idx];
+      console.log('[milg] Fetching:', url.split('?')[0]);
+      fetch(url).then(function(r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.text();
+      }).then(function(code) {
+        (new Function(code))();
+        if (!window.MilgExtract) throw new Error('MilgExtract not defined after eval');
+        _runExtraction();
+      }).catch(function(err) {
+        console.warn('[milg] CDN ' + (idx + 1) + ' failed:', err.message || err);
+        _tryLoad(idx + 1);
+      });
+    })(0);
+  }
+
+  function _runExtraction() {
+    window.__milgOnExtractComplete = function(data) {
+      window.__milgData = data;
+
+  // --- Output ---
+  var json = JSON.stringify(data, null, 2);
+
+  // Export data — file download for large payloads, clipboard for small ones
+  function downloadAsFile(data, filename) {
+    var blob = new Blob([data], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = filename;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function() { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+  }
+
+  var jsonSize = json.length;
+  var sizeMB = Math.round(jsonSize / 1024 / 1024 * 10) / 10;
+
+  if (jsonSize > 4 * 1024 * 1024) {
+    // >4MB: file download (clipboard would freeze)
+    var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
+    downloadAsFile(json, 'milg-' + hostname + '.json');
+    console.log('%c\u2B07 Design data downloaded as file (' + sizeMB + ' MB). Import it in the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+    window.__milgData_json = json;
+  } else {
+    // Small enough for clipboard
+    function copyFallback() {
+      var ta = document.createElement('textarea');
+      ta.value = json;
+      ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        var ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        if (ok) {
+          console.log('%c\u2713 Design data copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+          return;
+        }
+      } catch(e) {
+        document.body.removeChild(ta);
+      }
+      // Fallback: file download
+      var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
+      downloadAsFile(json, 'milg-' + hostname + '.json');
+      console.log('%c\u2B07 Could not copy \u2014 downloaded as file instead (' + sizeMB + ' MB).', 'color: #b45309; font-weight: bold;');
+      window.__milgData_json = json;
+    }
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(json).then(function() {
+        console.log('%c\u2713 Design data copied to clipboard (' + sizeMB + ' MB)! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+      }).catch(copyFallback);
+    } else {
+      copyFallback();
+    }
+  }
+
+  console.log('%cmake-it-look-good extraction complete', 'color: #3b82f6; font-weight: bold;');
+  console.log('Elements scanned:', data.structure.totalElements);
+  console.log('Contrast pairs:', data.colors.contrastPairs.length);
+  console.log('Touch target issues:', data.interaction.touchTargets.length);
+
+  // --- Site Crawl Mode (same-origin iframe with src=, full JS execution) ---
+  // Set window.__milgCrawlSite = true before running.
+  // Loads each page in a hidden same-origin iframe (src=url), waits for full JS
+  // execution, then injects the extraction snippet. Stays on current page.
+  if (window.__milgCrawlSite) {
+    var _crawlMax = Math.min(Math.max(window.__milgCrawlMaxPages || 5, 1), 25);
+    var _crawlBlacklist = window.__milgCrawlBlacklist || [];
+    var _crawlOrigin = location.origin;
+    var _crawlSeen = {};
+    var _curPath = location.pathname.replace(/\/$/, '');
+    _crawlSeen[_crawlOrigin + _curPath] = true;
+    // Also mark index variants as seen to avoid re-crawling the current page
+    if (_curPath === '' || _curPath === '/index.html' || _curPath === '/index.htm') {
+      _crawlSeen[_crawlOrigin] = true; _crawlSeen[_crawlOrigin + '/index.html'] = true; _crawlSeen[_crawlOrigin + '/index.htm'] = true;
+    }
+
+    var _crawlLinks = [];
+    document.querySelectorAll('a[href]').forEach(function(a) {
+      var href = a.getAttribute('href');
+      if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('javascript:')) return;
+      try {
+        var u = new URL(href, location.href);
+        if (u.origin !== _crawlOrigin) return;
+        if (/\.(pdf|zip|png|jpg|svg|css|js|json|xml|woff2?)$/i.test(u.pathname)) return;
+        u.hash = '';
+        var key = u.origin + u.pathname.replace(/\/$/, '');
+        if (_crawlSeen[key]) return;
+        var blocked = _crawlBlacklist.some(function(pat) { pat = pat.trim(); if (!pat) return false; if (pat.endsWith('*')) return u.pathname.startsWith(pat.slice(0, -1)); return u.pathname === pat; });
+        if (blocked) return;
+        _crawlSeen[key] = true;
+        _crawlLinks.push(u.origin + u.pathname);
+      } catch(e) {}
+    });
+    _crawlLinks = _crawlLinks.slice(0, _crawlMax - 1);
+
+    var _crawlResults = [{ url: location.href, data: data }];
+    console.log('%c\uD83D\uDD77 Site Crawl: discovered ' + _crawlLinks.length + ' page(s)', 'color: #8b5cf6; font-weight: bold;');
+    _crawlLinks.forEach(function(l, i) { var p; try { p = new URL(l).pathname; } catch(e) { p = l; } console.log('  ' + (i + 1) + '. ' + p); });
+
+    // Export crawl results — file download for large payloads, clipboard for small
+    function _copyCrawlResults(results) {
+      var crawlJson = JSON.stringify({ _milgCrawl: true, startUrl: location.href, results: results });
+      window.__milgCrawlResults = results;
+      window.__milgCrawlJson = crawlJson;
+      try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) {}
+      var crawlMB = Math.round(crawlJson.length / 1024 / 1024 * 10) / 10;
+      if (crawlJson.length > 4 * 1024 * 1024) {
+        // Large crawl: file download
+        var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
+        downloadAsFile(crawlJson, 'milg-crawl-' + hostname + '.json');
+        console.log('%c\u2B07 Crawl results downloaded as file (' + crawlMB + ' MB). Import in the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+      } else if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(crawlJson).then(function() {
+          console.log('%c\u2713 Crawl results copied to clipboard (' + crawlMB + ' MB)! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+        }).catch(function() {
+          var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
+          downloadAsFile(crawlJson, 'milg-crawl-' + hostname + '.json');
+          console.log('%c\u2B07 Could not copy \u2014 downloaded as file instead.', 'color: #b45309; font-weight: bold;');
+        });
+      } else {
+        var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
+        downloadAsFile(crawlJson, 'milg-crawl-' + hostname + '.json');
+        console.log('%c\u2B07 Crawl results downloaded as file. Import in the analyzer.', 'color: #16a34a; font-weight: bold;');
+      }
+    }
+
+    if (_crawlLinks.length === 0) {
+      _copyCrawlResults(_crawlResults);
+      console.log('%c\u2713 Crawl complete (1 page). Open the analyzer.', 'color: #16a34a; font-weight: bold;');
+    } else {
+      // Show crawl progress overlay
+      var _crawlOverlay = document.createElement('div');
+      _crawlOverlay.setAttribute('data-milg-overlay', '1');
+      _crawlOverlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.6);display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui,sans-serif;';
+      _crawlOverlay.innerHTML = '<div style="width:40px;height:40px;border:3px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:milg-spin 0.8s linear infinite"></div>' +
+        '<div id="milg-crawl-status" style="color:#fff;margin-top:16px;font-size:14px;font-weight:500">Crawling site...</div>' +
+        '<div id="milg-crawl-detail" style="color:rgba(255,255,255,0.6);margin-top:6px;font-size:12px">Loading extraction snippet...</div>' +
+        '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style>';
+      document.body.appendChild(_crawlOverlay);
+      function _updateCrawlOverlay(status, detail) {
+        var s = document.getElementById('milg-crawl-status'); if (s) s.textContent = status;
+        var d = document.getElementById('milg-crawl-detail'); if (d) d.textContent = detail;
+      }
+      function _removeCrawlOverlay() { if (_crawlOverlay.parentNode) _crawlOverlay.parentNode.removeChild(_crawlOverlay); }
+
+      // Build self-contained extraction script (no CDN fetch — inline the function directly)
+      var snippetSrc = 'window.MilgExtract = ' + window.MilgExtract.toString() + ';\n' +
+        'window.__milgOnExtractComplete = function(data) { window.__milgData = data; };\n' +
+        'window.MilgExtract();\n';
+
+      (function() {
+        function processNext(idx) {
+          if (idx >= _crawlLinks.length) {
+            var crawlJson = JSON.stringify({ _milgCrawl: true, startUrl: location.href, results: _crawlResults });
+            window.__milgCrawlResults = _crawlResults;
+            window.__milgCrawlJson = crawlJson;
+            try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) {}
+            console.log('%c\u2713 Crawl complete! ' + _crawlResults.length + ' pages (' + Math.round(crawlJson.length / 1024) + ' KB)', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+            var _cKB = Math.round(crawlJson.length / 1024);
+            var _cLarge = _cKB > 2048;
+            var _priStyle = 'padding:12px 28px;font-size:14px;font-weight:600;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-bottom:8px;min-width:220px';
+            var _secStyle = 'padding:10px 24px;font-size:13px;font-weight:500;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.2);border-radius:8px;cursor:pointer;margin-bottom:10px;min-width:220px';
+            _crawlOverlay.innerHTML = '<div style="text-align:center">' +
+              '<div style="font-size:28px;margin-bottom:12px">\u2713</div>' +
+              '<div style="color:#fff;font-size:16px;font-weight:600;margin-bottom:6px">Crawl complete! ' + _crawlResults.length + ' pages analyzed.</div>' +
+              '<div style="color:rgba(255,255,255,0.6);font-size:13px;margin-bottom:' + (_cLarge ? '6' : '20') + 'px">' + _cKB + ' KB of design data ready</div>' +
+              (_cLarge ? '<div style="color:#fbbf24;font-size:12px;margin-bottom:16px">&#9888; Large payload \u2014 download recommended</div>' : '') +
+              (_cLarge
+                ? '<button id="milg-crawl-dl-btn" style="' + _priStyle + '">Download JSON</button><br><button id="milg-crawl-copy-btn" style="' + _secStyle + '">Copy to Clipboard</button>'
+                : '<button id="milg-crawl-copy-btn" style="' + _priStyle + '">Copy to Clipboard</button><br><button id="milg-crawl-dl-btn" style="' + _secStyle + '">Download JSON</button>') +
+              '<div style="color:rgba(255,255,255,0.5);font-size:11px;margin-top:8px">Then ' + (_cLarge ? 'import' : 'paste') + ' into the analyzer</div>' +
+              '</div>';
+            function _crawlDone() { setTimeout(function() { _removeCrawlOverlay(); }, 1500); }
+            document.getElementById('milg-crawl-copy-btn').addEventListener('click', function() {
+              var btn = document.getElementById('milg-crawl-copy-btn');
+              if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(crawlJson).then(function() {
+                  btn.textContent = 'Copied!'; btn.style.background = '#16a34a'; _crawlDone();
+                }).catch(function() {
+                  downloadAsFile(crawlJson, 'milg-crawl-' + location.hostname.replace(/[^a-z0-9]/gi, '-') + '.json');
+                  btn.textContent = 'Downloaded!'; btn.style.background = '#16a34a'; _crawlDone();
+                });
+              } else {
+                downloadAsFile(crawlJson, 'milg-crawl-' + location.hostname.replace(/[^a-z0-9]/gi, '-') + '.json');
+                btn.textContent = 'Downloaded!'; btn.style.background = '#16a34a'; _crawlDone();
+              }
+            });
+            document.getElementById('milg-crawl-dl-btn').addEventListener('click', function() {
+              downloadAsFile(crawlJson, 'milg-crawl-' + location.hostname.replace(/[^a-z0-9]/gi, '-') + '.json');
+              var btn = document.getElementById('milg-crawl-dl-btn');
+              btn.textContent = 'Downloaded!'; btn.style.background = '#16a34a'; btn.style.color = '#fff'; _crawlDone();
+            });
+            return;
+          }
+
+          var url = _crawlLinks[idx];
+          var path; try { path = new URL(url).pathname; } catch(e) { path = url; }
+          _updateCrawlOverlay('Crawling page ' + (idx + 1) + ' of ' + _crawlLinks.length, path);
+          console.log('%c\u2192 [' + (idx + 1) + '/' + _crawlLinks.length + '] ' + path, 'color: #3b82f6;');
+
+          // Fetch page HTML (same-origin) then load as srcdoc (bypasses X-Frame-Options)
+          fetch(url).then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.text();
+          }).then(function(html) {
+            // Srcdoc environment patches (URL constructor, History API, fetch)
+            var eu = url.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+            var envPatch = '<script>(function(){' +
+              'var _rb="' + eu + '";var _O=URL;' +
+              'function _P(u,b){if(b){var bs=typeof b==="string"?b:String(b);if(bs==="about:srcdoc"||bs==="about:blank"||bs==="null"||bs.indexOf("about:")===0)b=_rb;}' +
+              'if(!b&&typeof u==="string"&&u.charAt(0)==="/")return new _O(u,_rb);try{return (arguments.length===1||!b)?new _O(u):new _O(u,b);}catch(e){try{return new _O(u,_rb);}catch(e2){throw e;}}}' +
+              '_P.prototype=_O.prototype;_P.createObjectURL=_O.createObjectURL.bind(_O);_P.revokeObjectURL=_O.revokeObjectURL.bind(_O);if(_O.canParse)_P.canParse=_O.canParse.bind(_O);window.URL=_P;' +
+              'var _hps=history.pushState.bind(history);var _hrs=history.replaceState.bind(history);' +
+              'history.pushState=function(s,t,u){try{_hps(s,t,u);}catch(e){}};history.replaceState=function(s,t,u){try{_hrs(s,t,u);}catch(e){}};' +
+              'var _of=window.fetch;window.fetch=function(u,o){if(typeof u==="string"&&u.charAt(0)==="/")u=_rb.replace(/\\/$/,"")+u;return _of.call(this,u,o);};' +
+              '})();</' + 'script>';
+            var baseTag = '<base href="' + url + '">';
+            var headPatch = envPatch + baseTag;
+            // Inject BEFORE the first <script> tag so patches run before any framework JS
+            if (/<script[\s>]/i.test(html)) {
+              html = html.replace(/<script[\s>]/i, headPatch + '<script ');
+            } else if (/<head[\s>]/i.test(html)) {
+              html = html.replace(/<head([^>]*)>/i, '<head$1>' + headPatch);
+            } else {
+              html = headPatch + html;
+            }
+            html = html.replace(/<meta[^>]*http-equiv=["']?X-Frame-Options["']?[^>]*>/gi, '');
+
+            var iframe = document.createElement('iframe');
+            iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
+            iframe.sandbox = 'allow-scripts allow-same-origin allow-forms';
+            document.body.appendChild(iframe);
+
+            var done = false;
+            function cleanup() { if (iframe.parentNode) document.body.removeChild(iframe); }
+
+            iframe.addEventListener('load', function() {
+              if (done) return;
+              setTimeout(function() {
+                if (done) return;
+                try {
+                  var iWin = iframe.contentWindow;
+                  var iDoc = iframe.contentDocument || iWin.document;
+                  var script = iDoc.createElement('script');
+                  script.textContent = 'window.__milgCrawlSite=false;\n' + snippetSrc;
+                  iDoc.body.appendChild(script);
+
+                  var polls = 0;
+                  var poller = setInterval(function() {
+                    if (done) { clearInterval(poller); return; }
+                    polls++;
+                    try {
+                      var iData = iWin.__milgData;
+                      if (iData) {
+                        clearInterval(poller); done = true;
+                        iData.meta.url = url;
+                        _crawlResults.push({ url: url, data: iData });
+                        cleanup();
+                        console.log('%c  \u2713 ' + path + ' (' + (iData.structure.totalElements || 0) + ' elements)', 'color: #16a34a;');
+                        setTimeout(function() { processNext(idx + 1); }, 500);
+                      } else if (polls > 20) {
+                        clearInterval(poller); done = true;
+                        console.log('%c  \u2717 Timeout: ' + path, 'color: #dc2626;');
+                        cleanup();
+                        setTimeout(function() { processNext(idx + 1); }, 500);
+                      }
+                    } catch(e) {
+                      clearInterval(poller); done = true;
+                      console.log('%c  \u2717 Error: ' + path + ' (' + e.message + ')', 'color: #dc2626;');
+                      cleanup();
+                      setTimeout(function() { processNext(idx + 1); }, 500);
+                    }
+                  }, 500);
+                } catch(e) {
+                  done = true;
+                  console.log('%c  \u2717 Cannot inject snippet: ' + path + ' (' + e.message + ')', 'color: #dc2626;');
+                  cleanup();
+                  setTimeout(function() { processNext(idx + 1); }, 500);
+                }
+              }, 1500);
+            });
+            iframe.srcdoc = html;
+            setTimeout(function() {
+              if (done) return; done = true;
+              console.log('%c  \u2717 Timeout (10s): ' + path, 'color: #dc2626;');
+              cleanup();
+              setTimeout(function() { processNext(idx + 1); }, 500);
+            }, 10000);
+          }).catch(function(e) {
+            console.log('%c  \u2717 Fetch failed: ' + path + ' (' + (e.message || e) + ')', 'color: #dc2626;');
+            setTimeout(function() { processNext(idx + 1); }, 500);
+          });
+        }
+        processNext(0);
+      })();
+    }
+    return; // Skip normal clipboard copy
+  }
+
+    }; // end __milgOnExtractComplete callback
+
+    // Run the extraction
+    window.MilgExtract();
+  }
+})();
+</file>
+
 <file path="docs/analyzer-crawl-ui.js">
 // make-it-look-good — Crawl UI Wiring
 // Manages multi-page site crawl progress, tabs, and results display.
@@ -32250,389 +32636,685 @@ window.MilgCrawlUI = (function() {
 })();
 </file>
 
-<file path="docs/analyzer-snippet.js">
-// make-it-look-good — Design Extraction Snippet
-// Version: 2026-04-04-v15
-// Run this in the browser console on any page, or use as a bookmarklet.
-// Loads extraction engine from CDN (single source of truth), extracts design tokens,
-// and copies JSON to your clipboard.
-// Then paste into the analyzer at: https://jdeworks.github.io/make-it-look-good/analyzer.html
+<file path="docs/analyzer-iframe.js">
+// make-it-look-good — Iframe Analysis & Screenshot Pipeline
+// Handles iframe creation, extraction injection, screenshot capture, and deep scan.
+// Depends on: analyzer-extract.js (MilgExtract)
 
-(function() {
-  'use strict';
-  var _MILG_VERSION = '2026-04-04-v15';
-  console.log('%c[milg] Snippet version: ' + _MILG_VERSION, 'color: #64748b;');
+window.MilgIframe = (function() {
+  "use strict";
 
-  // --- Auto-scroll option ---
-  // To scroll the page before extraction (triggers lazy loading + intersection observers):
-  // Run: window.__milgScrollFirst = true   then paste the snippet.
-  // The snippet will scroll the full page, wait for content to load, then extract.
-  if (window.__milgScrollFirst && !window.__milgScrollDone) {
-    window.__milgScrollDone = true;
-    console.log('%c\u23F3 Scrolling page to trigger lazy loading and intersection observers...', 'color: #3b82f6; font-weight: bold;');
-    var _scrollH = document.body.scrollHeight;
-    var _pos = 0;
-    var _step = Math.max(window.innerHeight * 0.8, 400);
-    var _si = setInterval(function() {
-      _pos += _step;
-      window.scrollTo(0, _pos);
-      if (_pos >= _scrollH) {
-        clearInterval(_si);
-        setTimeout(function() { window.scrollTo(0, 0); }, 300);
-        // Wait for newly loaded content, then user must re-run snippet
-        setTimeout(function() {
-          console.log('%c\u2713 Scroll complete! Page content should now be fully loaded.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-          console.log('%cRe-run the snippet now for complete analysis.', 'color: #3b82f6;');
-          window.__milgScrollFirst = false;
-        }, 1500);
+  var _screenshotCDN = '';
+  var _getViewport = function() { return { w: 1280, h: 900 }; };
+  var _showProgress = function() {};
+  // --- Screenshot settings ---
+  // Scale 1.5 = text renders at 1.5x resolution via SVG foreignObject rasterization.
+  // No DOM modifications needed — the library handles it.
+  var SCREENSHOT_SCALE = 1.5;
+  var SCREENSHOT_QUALITY = 0.8;
+
+  function init(opts) {
+    if (opts.screenshotCDN) _screenshotCDN = opts.screenshotCDN;
+    if (opts.getViewport) _getViewport = opts.getViewport;
+    if (opts.showProgress) _showProgress = opts.showProgress;
+  }
+
+  // Inject a <base> tag so relative URLs (CSS, images, fonts) resolve to the original domain.
+  // Also patches the URL constructor so page JS that does new URL(path, window.location)
+  // works in srcdoc context (where window.location is about:srcdoc, not a valid base).
+  function injectBaseTag(html, url) {
+    if (!url || url === 'Pasted HTML') return html;
+    try {
+      var base = new URL(url);
+      var baseHref = base.origin + base.pathname.replace(/\/[^/]*$/, '/');
+      var baseTag = '<base href="' + baseHref + '">';
+      // Patch URL constructor: in srcdoc iframes window.location.href is "about:srcdoc"
+      // which is not a valid base URL. Intercept and use document.baseURI (set by <base>) instead.
+      var urlPatch = '<script>' +
+        '(function(){' +
+          'var _OrigURL=URL;' +
+          'var _loc=window.location;' +
+          'function _isSrcdocLoc(v){' +
+            'if(v===_loc||v===_loc.href)return true;' +
+            'if(typeof v==="string"&&v.indexOf("about:srcdoc")===0)return true;' +
+            'if(v&&typeof v==="object"&&typeof v.href==="string"&&v.href.indexOf("about:srcdoc")===0)return true;' +
+            'return false' +
+          '}' +
+          'window.URL=function URL(u,b){' +
+            'if(arguments.length>=2&&_isSrcdocLoc(b)){b=document.baseURI||"' + baseHref + '"}' +
+            'return new _OrigURL(u,b)' +
+          '};' +
+          'window.URL.prototype=_OrigURL.prototype;' +
+          // Preserve static methods (createObjectURL, revokeObjectURL, etc.)
+          'Object.keys(_OrigURL).forEach(function(k){try{window.URL[k]=_OrigURL[k]}catch(e){}});' +
+          'window.URL.toString=function(){return _OrigURL.toString()};' +
+          // Also handle location.origin / location.protocol for libraries that read them directly
+          'try{Object.defineProperty(_loc,"origin",{get:function(){' +
+            'try{var u=new _OrigURL(document.baseURI);return u.origin}catch(e){return"null"}' +
+          '},configurable:true})}catch(e){}' +
+        '})();' +
+      '</' + 'script>';
+      // Insert after <head> if present
+      if (/<head[\s>]/i.test(html)) {
+        return html.replace(/<head([^>]*)>/i, '<head$1>' + baseTag + urlPatch);
       }
-    }, 150);
-    return; // Exit — re-run snippet after scroll completes
+      // Otherwise prepend
+      return baseTag + urlPatch + html;
+    } catch(e) { return html; }
   }
 
-  // --- Load extraction engine from CDN (single source of truth) ---
-  console.log('%c[milg] Loading extraction engine...', 'color: #3b82f6;');
-  var _cacheBust = 'v=' + Math.floor(Date.now() / 3600000);
-  var _extractUrls = [
-    'https://cdn.jsdelivr.net/gh/jdeworks/make-it-look-good@dev/docs/analyzer-extract.js?' + _cacheBust,
-    'https://jdeworks.github.io/make-it-look-good/analyzer-extract.js?' + _cacheBust
-  ];
+  // --- Screenshot capture script (injected into iframes after extraction) ---
+  // Called after extraction via __milgDoScreenshots (once-guard prevents double run).
+  // Mirrors console snippet: pre-scroll → reset → wait → re-read bboxes → capture body
+  function buildScreenshotScript(msgType) {
+    var ss = { scale: SCREENSHOT_SCALE, quality: SCREENSHOT_QUALITY };
+    return '(function(){' +
+      // Once-guard: extraction may fire twice (load + fallback timeout)
+      'if(window.__milgSsDone)return;window.__milgSsDone=true;' +
+      'var vh=window.innerHeight||900;' +
+      'var _mid=window.__milgIframeId||"";' +
+      'function _prog(l){try{parent.postMessage({type:"milg-progress",label:l,_iframeId:_mid},"*")}catch(e){}}' +
+      // Unlock height to get true scrollHeight (sites with html,body{height:100%} clamp it)
+      // Set overflow:auto explicitly so the inner document is scrollable for IntersectionObservers
+      'document.documentElement.style.cssText+="height:auto !important;overflow-y:auto !important;";' +
+      'document.body.style.cssText+="height:auto !important;";' +
+      'void document.body.offsetHeight;' + // force reflow
+      'var totalH=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);' +
+      'var captureH=Math.min(totalH,vh*10);' +
+      '_prog("Pre-scrolling page to load content...");' +
+      'console.log("[iframe-ss] Phase 1: Pre-scrolling "+captureH+"px ("+Math.ceil(captureH/vh)+" steps, vh="+vh+") ...");' +
+      // Phase 1: Pre-scroll to trigger IntersectionObservers, lazy images, fade-in animations
+      'var _positions=[];for(var p=0;p<captureH;p+=vh)_positions.push(p);' +
+      'var _pi=0;' +
+      'function _scrollNext(){' +
+        'if(_pi>=_positions.length){' +
+          'console.log("[iframe-ss] Phase 1 done (scrollY="+window.scrollY+"). Waiting for content...");' +
+          'setTimeout(_startCapture,800);return' + // 800ms for lazy content + animations to start
+        '}' +
+        'window.scrollTo(0,_positions[_pi]);' +
+        // Also scroll documentElement directly (some browsers need this in iframes)
+        'document.documentElement.scrollTop=_positions[_pi];' +
+        'try{window.dispatchEvent(new Event("scroll"))}catch(e){}' +
+        'console.log("[iframe-ss] scroll to "+_positions[_pi]+" → actual="+window.scrollY);' +
+        '_pi++;setTimeout(_scrollNext,200)' + // 200ms per step (more time for observers)
+      '}' +
+      '_scrollNext();' +
+      // Phase 2: Reset scroll, force-reveal hidden animated content, capture
+      'function _startCapture(){' +
+        'document.documentElement.style.scrollBehavior="auto";' +
+        'document.body.style.scrollBehavior="auto";' +
+        'window.scrollTo(0,0);document.documentElement.scrollTop=0;document.body.scrollTop=0;' +
+        'document.querySelectorAll("*").forEach(function(el){' +
+          'if(el.scrollTop>0){var s=getComputedStyle(el);' +
+          'if(s.overflow==="auto"||s.overflow==="scroll"||s.overflowY==="auto"||s.overflowY==="scroll"){' +
+          'el.style.scrollBehavior="auto";el.scrollTop=0}}' +
+        '});' +
+        // Force-finalize scroll-triggered animations:
+        // IntersectionObserver doesn't fire in offscreen iframes (browser optimization).
+        // Find all elements with opacity:0 that have transitions/animations and force them visible.
+        'var _revealed=0;' +
+        'document.querySelectorAll("*").forEach(function(el){' +
+          'var cs=getComputedStyle(el);' +
+          'if(cs.opacity==="0"&&el.tagName!=="SCRIPT"&&el.tagName!=="STYLE"){' +
+            // Check if this is an animation-hidden element (has transition on opacity or a CSS animation)
+            'var hasTrans=cs.transition&&cs.transition.indexOf("opacity")!==-1;' +
+            'var hasAnim=cs.animationName&&cs.animationName!=="none";' +
+            'var hasTransform=cs.transform&&cs.transform!=="none";' +
+            // Also check for common scroll-reveal patterns (classes containing fade, reveal, animate, aos)
+            'var cls=(el.className&&typeof el.className==="string")?el.className.toLowerCase():"";' +
+            'var isScrollAnim=hasTrans||hasAnim||/fade|reveal|animate|aos|scroll|slide|appear/.test(cls);' +
+            'if(isScrollAnim){' +
+              'el.style.cssText+=";opacity:1 !important;transform:none !important;transition:none !important;animation:none !important;";' +
+              '_revealed++' +
+            '}' +
+          '}' +
+        '});' +
+        'if(_revealed>0)console.log("[iframe-ss] Force-revealed "+_revealed+" scroll-animated elements (IO disabled in offscreen iframes)");' +
+        // Also inject a style to fast-forward any remaining CSS animations
+        'var _ffStyle=document.createElement("style");' +
+        '_ffStyle.textContent="*,*::before,*::after{animation-delay:0s !important;animation-duration:0.01s !important;}";' +
+        'document.head.appendChild(_ffStyle);' +
+        'void document.body.offsetHeight;' +
+        // Switch to overflow:visible for capture
+        'document.documentElement.style.cssText+="overflow:visible !important;";' +
+        'document.body.style.cssText+="overflow:visible !important;";' +
+        'void document.body.offsetHeight;' +
+        '_prog("Waiting for animations to settle...");' +
+        'console.log("[iframe-ss] Phase 2: Waiting for animations to finalize...");' +
+        'setTimeout(function(){' +
+          'if(typeof window.__milgReReadBboxes==="function"){' +
+            'var res=window.__milgReReadBboxes();' +
+            'console.log("[iframe-ss] Re-read bboxes: "+res)' +
+          '}' +
+          'var fullH=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);' +
+          'console.log("[iframe-ss] scrollHeight="+fullH+" vh="+vh);' +
+          'var s=document.createElement("script");' +
+          's.src="' + _screenshotCDN + '";' +
+          's.onload=function(){' +
+            'var ms=window.modernScreenshot;' +
+            'if(!ms||!ms.domToCanvas){parent.postMessage({type:"' + msgType + '",screenshots:[],_iframeId:_mid},"*");return}' +
+            'document.querySelectorAll("img").forEach(function(i){if(i.src&&i.src.indexOf("data:")!==0)i.crossOrigin="anonymous"});' +
+            'var _sc=' + ss.scale + ';' +
+            // Helper: send results to parent
+            'function _send(fullUri,maskUri){' +
+              'var updatedData=window.__milgData||null;' +
+              'parent.postMessage({type:"' + msgType + '",_iframeId:_mid,' +
+                'screenshots:fullUri?[fullUri]:[],' +
+                'screenshotFull:fullUri||null,' +
+                'textMask:maskUri||null,' +
+                'screenshotMeta:{scale:_sc,viewportHeight:vh,sectionCount:1,' +
+                  'canvasWidth:0,canvasHeight:0,' +
+                  'docHeightAtCapture:fullH,' +
+                  'calibrationOffsetY:0,calibrationSamples:[]},' +
+                'updatedData:updatedData' +
+              '},"*")' +
+            '}' +
+            // Step 1: Capture real screenshot FIRST (safe — no DOM modifications)
+            '_prog("Capturing screenshot...");' +
+            'console.log("[iframe-ss] Step 1/2: Capturing screenshot at "+_sc+"x...");' +
+            'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:45000}).then(function(fc){' +
+              'console.log("[iframe-ss] Screenshot: "+fc.width+"x"+fc.height);' +
+              'var fullUri;try{fullUri=fc.toDataURL("image/webp",' + ss.quality + ')}catch(e){fullUri=""}' +
+              // Update send helper with actual canvas dimensions
+              'var _cw=fc.width,_ch=fc.height;' +
+              'function _sendFinal(maskUri){' +
+                'var updatedData=window.__milgData||null;' +
+                // Strip mask bitmap data from pair objects to keep updatedData lean
+                // (masks are sent separately via maskResults)
+                'if(updatedData&&updatedData.colors&&updatedData.colors.contrastPairs){' +
+                  'updatedData.colors.contrastPairs.forEach(function(p){delete p._maskBmp;delete p._maskPts})}' +
+                'var mr=typeof _maskResults!=="undefined"?_maskResults:null;' +
+                'var msg={type:"' + msgType + '",_iframeId:_mid,' +
+                  'screenshots:fullUri?[fullUri]:[],' +
+                  'screenshotFull:fullUri||null,' +
+                  'textMask:maskUri||null,' +
+                  'screenshotMeta:{scale:_sc,viewportHeight:vh,sectionCount:1,' +
+                    'canvasWidth:_cw,canvasHeight:_ch,' +
+                    'docHeightAtCapture:fullH,' +
+                    'calibrationOffsetY:0,calibrationSamples:[]},' +
+                  'updatedData:updatedData,' +
+                  'maskResults:mr};' +
+                'try{parent.postMessage(msg,"*")}catch(e){' +
+                  'console.warn("[iframe-ss] postMessage failed ("+e.message+"), retrying without masks");' +
+                  'msg.maskResults=null;msg.updatedData=null;' +
+                  'try{parent.postMessage(msg,"*")}catch(e2){console.error("[iframe-ss] postMessage retry failed:",e2)}' +
+                '}' +
+              '}' +
+              // Step 2: Layered text masks with transition kill
+              '_prog("Building text masks...");' +
+              'console.log("[iframe-ss] Step 2: Layered masks...");' +
+              // Phase A: Kill ALL transitions on every element BEFORE any color changes
+              'document.querySelectorAll("*").forEach(function(el){el.style.setProperty("transition-duration","0s","important");el.style.setProperty("transition","none","important")});' +
+              'void document.body.offsetHeight;' +
+              // Phase A2: Neutralize absolute/fixed overlays that sit on top of text.
+              // When bg becomes white, transparent gradient overlays become solid white,
+              // covering the black text beneath. Fix: make overlay backgrounds fully
+              // transparent BEFORE the mask, so they stay invisible after white override.
+              // Also hide empty absolute elements entirely (decorative shapes/borders).
+              'var _neutralized=0;' +
+              'document.querySelectorAll("*").forEach(function(el){' +
+                'var cs=getComputedStyle(el);' +
+                'if(cs.position==="absolute"||cs.position==="fixed"){' +
+                  'if(!el.textContent.trim()){' +
+                    // No text: fully hide (gradient overlays, decorative shapes, spacers)
+                    'el.style.setProperty("display","none","important");_neutralized++' +
+                  '}else if(cs.pointerEvents==="none"){' +
+                    // Has text but pointer-events:none — decorative text overlay, make bg transparent
+                    'el.style.setProperty("background","transparent","important");' +
+                    'el.style.setProperty("background-image","none","important");_neutralized++' +
+                  '}' +
+                '}' +
+              '});' +
+              'if(_neutralized)console.log("[iframe-ss] Neutralized "+_neutralized+" overlays");' +
+              'void document.body.offsetHeight;' +
+              // Re-read bboxes AFTER neutralization — hiding overlays can shift layout
+              'if(_neutralized>0&&typeof window.__milgReReadBboxes==="function"){' +
+                'var res2=window.__milgReReadBboxes();' +
+                'console.log("[iframe-ss] Re-read bboxes post-neutralize: "+res2)' +
+              '}' +
+              // Phase B: Global mask style — white bg, white text, hide media
+              'var _maskStyle=document.createElement("style");' +
+              '_maskStyle.setAttribute("data-milg-mask","1");' +
+              '_maskStyle.textContent="*,*::before,*::after{color:#fff !important;background-color:transparent !important;background-image:none !important;background:transparent !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;-webkit-text-fill-color:#fff !important;opacity:1 !important;transition:none !important;animation:none !important;}html{background:#fff !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}";' +
+              'document.head.appendChild(_maskStyle);void document.body.offsetHeight;' +
+              // Re-read bboxes AFTER mask style — white bg + hidden media can shift layout
+              'if(typeof window.__milgReReadBboxes==="function"){' +
+                'var res3=window.__milgReReadBboxes();' +
+                'console.log("[iframe-ss] Re-read bboxes post-mask-style: "+res3)' +
+              '}' +
+              // Phase C: Collect pair elements and build overlap layers
+              'var _refs=window.__milgBboxRefs||[];' +
+              'var _pairs=(window.__milgData&&window.__milgData.colors&&window.__milgData.colors.contrastPairs)||[];' +
+              'var _pairEls=[];' +
+              '_refs.forEach(function(ref){' +
+                'if(!ref.el||!ref.obj||ref.obj.ratio===undefined)return;' +
+                'var idx=_pairs.indexOf(ref.obj);' +
+                'if(idx>=0)_pairEls.push({el:ref.el,pair:ref.obj,idx:idx,bbox:ref.obj.bbox})' +
+              '});' +
+              'function _overlaps(a,b){' +
+                'if(!a.bbox||!b.bbox)return false;' +
+                'return a.bbox.left<b.bbox.left+b.bbox.width&&a.bbox.left+a.bbox.width>b.bbox.left&&' +
+                       'a.bbox.top<b.bbox.top+b.bbox.height&&a.bbox.top+a.bbox.height>b.bbox.top}' +
+              'var _layers=[];var _remaining=_pairEls.slice();' +
+              'while(_remaining.length>0){' +
+                'var layer=[];var next=[];' +
+                '_remaining.forEach(function(pe){' +
+                  'if(layer.some(function(l){return _overlaps(pe,l)})){next.push(pe)}else{layer.push(pe)}' +
+                '});_layers.push(layer);_remaining=next}' +
+              'console.log("[iframe-ss] "+_pairEls.length+" elements in "+_layers.length+" layers");' +
+              // Phase C2: Bake text-transform into actual text content.
+              // domToCanvas (modern-screenshot SVG foreignObject) doesn't always
+              // preserve CSS text-transform, so uppercase/lowercase text renders wrong.
+              // Fix: walk all text nodes and apply the transform to the actual content.
+              'var _ttFixed=0;' +
+              'document.querySelectorAll("*").forEach(function(el){' +
+                'var tt=getComputedStyle(el).textTransform;' +
+                'if(tt==="uppercase"||tt==="lowercase"||tt==="capitalize"){' +
+                  'var walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT,null,false);' +
+                  'var tn;while(tn=walker.nextNode()){' +
+                    'var orig=tn.textContent;if(!orig.trim())continue;' +
+                    'if(tt==="uppercase")tn.textContent=orig.toUpperCase();' +
+                    'else if(tt==="lowercase")tn.textContent=orig.toLowerCase();' +
+                    'else if(tt==="capitalize")tn.textContent=orig.replace(/\\b\\w/g,function(c){return c.toUpperCase()});' +
+                    '_ttFixed++' +
+                  '}' +
+                '}' +
+              '});' +
+              'if(_ttFixed)console.log("[iframe-ss] Baked text-transform for "+_ttFixed+" text nodes");' +
+              'var _maskResults={};' + // idx → {bmp, w, h, layer, dark}
+              // Phase D: Capture one mask per layer — set layer elements to black via inline style
+              'var _li=0;' +
+              'function _nextLayer(){' +
+                'if(_li>=_layers.length){console.log("[iframe-ss] All "+_layers.length+" mask layers done");_sendFinal(null);return}' +
+                'var layer=_layers[_li];_li++;' +
+                '_prog("Text mask layer "+_li+"/"+_layers.length+"...");' +
+                'console.log("[iframe-ss] Layer "+_li+": "+layer.length+" elements");' +
+                // Set layer elements to black via INLINE style (transitions already killed)
+                'layer.forEach(function(pe){' +
+                  'pe.el.style.setProperty("color","#000","important");' +
+                  'pe.el.style.setProperty("-webkit-text-fill-color","#000","important");' +
+                  'pe.el.querySelectorAll("*").forEach(function(ch){' +
+                    'ch.style.setProperty("color","#000","important");' +
+                    'ch.style.setProperty("-webkit-text-fill-color","#000","important")})' +
+                '});' +
+                'void document.body.offsetHeight;' +
+                'console.log("[iframe-ss] Layer "+_li+": starting domToCanvas...");' +
+                // Race domToCanvas against our own 15s timeout (library timeout may not fire)
+                'var _layerDone=false;' +
+                'var _layerTimer=setTimeout(function(){if(!_layerDone){_layerDone=true;console.warn("[iframe-ss] Layer "+_li+" domToCanvas timed out (120s)");setTimeout(_nextLayer,0)}},120000);' +
+                'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:12000}).then(function(mc){' +
+                  'if(_layerDone)return;_layerDone=true;clearTimeout(_layerTimer);' +
+                  'console.log("[iframe-ss] Layer "+_li+" captured: "+mc.width+"x"+mc.height);' +
+                  'var mCtx=mc.getContext("2d",{willReadFrequently:true});' +
+                  'var _fillTextFallbacks=0;' +
+                  'layer.forEach(function(pe){' +
+                    'if(!pe.bbox)return;' +
+                    'var bx=Math.max(0,Math.round(pe.bbox.left*_sc));' +
+                    'var by=Math.max(0,Math.round(pe.bbox.top*_sc));' +
+                    'var bw=Math.min(Math.round(pe.bbox.width*_sc),mc.width-bx);' +
+                    'var bh=Math.min(Math.round(pe.bbox.height*_sc),mc.height-by);' +
+                    'if(bw<2||bh<2)return;' +
+                    'try{var px=mCtx.getImageData(bx,by,bw,bh).data;' +
+                      'var bmp=new Uint8Array(bw*bh);' +
+                      'for(var y=0;y<bh;y++){for(var x=0;x<bw;x++){' +
+                        'var i=(y*bw+x)*4;' +
+                        // Detect text: dark pixels on white background = text
+                        'if((px[i]+px[i+1]+px[i+2])/3<240)bmp[y*bw+x]=1' +
+                      '}}' +
+                      'var _dk=0;for(var _b=0;_b<bmp.length;_b++)if(bmp[_b])_dk++;' +
+                      // Fallback: if domToCanvas failed to render text, use canvas.fillText
+                      'if(_dk===0&&bw>3&&pe.pair.text){' +
+                        'try{var cs=getComputedStyle(pe.el);' +
+                          'var _fc=document.createElement("canvas");_fc.width=bw;_fc.height=bh;' +
+                          'var _fx=_fc.getContext("2d");_fx.fillStyle="#fff";_fx.fillRect(0,0,bw,bh);' +
+                          'var _fs=parseFloat(cs.fontSize)*_sc;' +
+                          '_fx.fillStyle="#000";' +
+                          '_fx.font=cs.fontStyle+" "+cs.fontWeight+" "+_fs+"px "+cs.fontFamily;' +
+                          '_fx.textBaseline="top";' +
+                          // Account for padding and alignment within bbox
+                          'var _pl=(parseFloat(cs.paddingLeft)||0)*_sc;' +
+                          'var _pt=(parseFloat(cs.paddingTop)||0)*_sc;' +
+                          'var _pr=(parseFloat(cs.paddingRight)||0)*_sc;' +
+                          'var _ta=cs.textAlign;' +
+                          // Render text — handle multi-line by splitting on natural wrapping
+                          'var _txt=pe.pair.text.replace(/\\[placeholder\\] /,"");' +
+                          'var _lh=parseFloat(cs.lineHeight)*_sc||_fs*1.2;' +
+                          'var _contentW=bw-_pl-_pr;' +
+                          'var _words=_txt.split(/\\s+/);var _lines=[];var _line="";' +
+                          'for(var _w=0;_w<_words.length;_w++){' +
+                            'var _test=_line?_line+" "+_words[_w]:_words[_w];' +
+                            'if(_fx.measureText(_test).width>_contentW&&_line){' +
+                              '_lines.push(_line);_line=_words[_w]' +
+                            '}else{_line=_test}' +
+                          '}_lines.push(_line);' +
+                          // Calculate vertical offset — check flex centering on parent
+                          'var _totalH=_lines.length*_lh;' +
+                          'var _tyStart=_pt;' +
+                          'var _par=pe.el.parentElement;var _pcs=_par?getComputedStyle(_par):null;' +
+                          'if(_pcs){' +
+                            'if(_pcs.display.indexOf("flex")>=0&&_pcs.alignItems==="center"){' +
+                              '_tyStart=Math.max(0,(bh-_totalH)/2)' +
+                            '}else if(bh>_totalH+_pt*2){' +
+                              '_tyStart=_pt' +
+                            '}' +
+                          '}' +
+                          // Draw each line with proper alignment
+                          'for(var _li2=0;_li2<_lines.length;_li2++){' +
+                            'var _lw=_fx.measureText(_lines[_li2]).width;' +
+                            'var _tx=_pl;' +
+                            'if(_ta==="center")_tx=(_contentW-_lw)/2+_pl;' +
+                            'else if(_ta==="right"||_ta==="end")_tx=_contentW-_lw+_pl;' +
+                            '_fx.fillText(_lines[_li2],_tx,_tyStart+_li2*_lh)' +
+                          '};' +
+                          // Re-read as bitmap
+                          'var _fpx=_fx.getImageData(0,0,bw,bh).data;' +
+                          'bmp=new Uint8Array(bw*bh);' +
+                          'for(var _fy=0;_fy<bh;_fy++){for(var _fxx=0;_fxx<bw;_fxx++){' +
+                            'var _fi=(_fy*bw+_fxx)*4;if((_fpx[_fi]+_fpx[_fi+1]+_fpx[_fi+2])/3<240)bmp[_fy*bw+_fxx]=1}}' +
+                          '_dk=0;for(var _fb=0;_fb<bmp.length;_fb++)if(bmp[_fb])_dk++;' +
+                          '_fillTextFallbacks++' +
+                        '}catch(e){}' +
+                      '}' +
+                      'var _arr=Array.from(bmp);' +
+                      'pe.pair._maskBmp=_arr;pe.pair._maskW=bw;pe.pair._maskH=bh;pe.pair._maskLayer=_li;pe.pair._maskDark=_dk;' +
+                      '_maskResults[pe.idx]={bmp:_arr,w:bw,h:bh,layer:_li,dark:_dk}' +
+                    '}catch(e){}' +
+                  '});' +
+                  'if(_fillTextFallbacks>0)console.log("[iframe-ss] Layer "+_li+": "+_fillTextFallbacks+" elements used fillText fallback mask");' +
+                  // Reset layer elements to transparent (mask global style takes over)
+                  'layer.forEach(function(pe){' +
+                    'pe.el.style.removeProperty("color");' +
+                    'pe.el.style.removeProperty("-webkit-text-fill-color");' +
+                    'pe.el.querySelectorAll("*").forEach(function(ch){' +
+                      'ch.style.removeProperty("color");' +
+                      'ch.style.removeProperty("-webkit-text-fill-color")})' +
+                  '});' +
+                  'setTimeout(_nextLayer,0)' +
+                '}).catch(function(e){if(_layerDone)return;_layerDone=true;clearTimeout(_layerTimer);console.warn("[iframe-ss] Layer "+_li+" failed:",e);setTimeout(_nextLayer,0)})' +
+              '}' +
+              'var _maskDone=false;' +
+              'var _origSendFinal=_sendFinal;' +
+              'var _maskTimer=setTimeout(function(){if(!_maskDone){_maskDone=true;console.warn("[iframe-ss] Masks timed out (360s)");_origSendFinal(null)}},360000);' +
+              '_sendFinal=function(m){if(_maskDone)return;_maskDone=true;clearTimeout(_maskTimer);console.log("[iframe-ss] Sending results (maskResults: "+Object.keys(_maskResults).length+" pairs)");_origSendFinal(m)};' +
+              '_nextLayer()' +
+            '}).catch(function(e){console.warn("[iframe-ss] capture failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[],_iframeId:_mid},"*")})' +
+          '};' +
+          's.onerror=function(){parent.postMessage({type:"' + msgType + '",screenshots:[],_iframeId:_mid},"*")};' +
+          'document.head.appendChild(s)' +
+        '},1500)' +
+      '}' +
+    '})()';
+  }
 
-  if (window.MilgExtract) {
-    _runExtraction();
-  } else {
-    (function _tryLoad(idx) {
-      if (idx >= _extractUrls.length) {
-        console.error('[milg] Cannot load extraction engine from any CDN.');
-        return;
+  function deepScanInIframe(html, url, exclude, vpWidth, vpHeight, callback) {
+    var extractFromDocument = window.MilgExtract;
+    var iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + vpWidth + 'px;height:' + vpHeight + 'px;border:none;';
+    iframe.sandbox = 'allow-scripts allow-same-origin';
+    document.body.appendChild(iframe);
+
+    var msgType = 'milg-deep-' + vpWidth;
+    var handled = false;
+    function onResult(e) {
+      if (!e.data || e.data.type !== msgType) return;
+      if (handled) return;
+      handled = true;
+      window.removeEventListener('message', onResult);
+      if (iframe.parentNode) document.body.removeChild(iframe);
+      callback(e.data.data);
+    }
+    window.addEventListener('message', onResult);
+
+    var processed = url ? injectBaseTag(html, url) : html;
+    var excludeVar = exclude ? '<script>window.__milgExclude=' + JSON.stringify(exclude) + ';</' + 'script>' : '';
+    var isFullDoc = /<html[\s>]/i.test(processed) || /<!DOCTYPE/i.test(processed);
+
+    var extractStr = extractFromDocument.toString().replace(/milg-analyzer-result/g, msgType);
+    // Auto-scroll inside iframe to trigger intersection observers before extracting
+    var scrollScript = 'window.scrollTo(0,document.body.scrollHeight);setTimeout(function(){window.scrollTo(0,0)},300);';
+    var extractScript = excludeVar + '<script>window.addEventListener("load",function(){' + scrollScript + 'setTimeout(function(){(' + extractStr + ')()},1500)});setTimeout(function(){(' + extractStr + ')()},8000);</' + 'script>';
+
+    var srcdoc;
+    if (isFullDoc) {
+      if (/<\/body>/i.test(processed)) {
+        srcdoc = processed.replace(/<\/body>/i, extractScript + '</body>');
+      } else {
+        srcdoc = processed + extractScript;
       }
-      var url = _extractUrls[idx];
-      console.log('[milg] Fetching:', url.split('?')[0]);
-      fetch(url).then(function(r) {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.text();
-      }).then(function(code) {
-        (new Function(code))();
-        if (!window.MilgExtract) throw new Error('MilgExtract not defined after eval');
-        _runExtraction();
-      }).catch(function(err) {
-        console.warn('[milg] CDN ' + (idx + 1) + ' failed:', err.message || err);
-        _tryLoad(idx + 1);
-      });
-    })(0);
+    } else {
+      srcdoc = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script><style>body{margin:0}</style></head><body>' + processed + extractScript + '</body></html>';
+    }
+    iframe.srcdoc = srcdoc;
+
+    setTimeout(function() {
+      if (handled) return;
+      handled = true;
+      window.removeEventListener('message', onResult);
+      if (iframe.parentNode) document.body.removeChild(iframe);
+      callback(null);
+    }, 15000);
   }
 
-  function _runExtraction() {
-    window.__milgOnExtractComplete = function(data) {
-      window.__milgData = data;
+  function analyzeHtmlInIframe(html, callback, sourceUrlOrDark, excludeSelectorOrEffectCSS, captureScreenshots, viewportOverride) {
+    var extractFromDocument = window.MilgExtract;
+    // Support both signatures:
+    // analyzeHtmlInIframe(html, cb, sourceUrl, excludeSelector, screenshots) — URL mode
+    // analyzeHtmlInIframe(html, cb, dark, effectCSS, screenshots) — editor preview mode
+    // Optional 6th param: { w, h } viewport override for deep scan
+    var sourceUrl = typeof sourceUrlOrDark === 'string' ? sourceUrlOrDark : null;
+    var excludeSelector = typeof excludeSelectorOrEffectCSS === 'string' && !sourceUrl ? null : excludeSelectorOrEffectCSS;
+    var editorDark = typeof sourceUrlOrDark === 'boolean' ? sourceUrlOrDark : false;
+    var editorEffectCSS = (!sourceUrl && typeof excludeSelectorOrEffectCSS === 'string') ? excludeSelectorOrEffectCSS : '';
+    var iframe = document.createElement('iframe');
+    // Unique ID for this iframe — used to match postMessage responses in parallel mode
+    var _iframeId = 'milg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 8);
+    // Use viewport override if provided, else from selector/default
+    var vp = viewportOverride || _getViewport();
+    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + vp.w + 'px;height:' + vp.h + 'px;border:none;';
+    iframe.sandbox = 'allow-scripts allow-same-origin';
+    document.body.appendChild(iframe);
 
-  // --- Output ---
-  var json = JSON.stringify(data, null, 2);
+    var handled = false;
+    function finish(data) {
+      if (handled) return;
+      handled = true;
+      window.removeEventListener('message', onMsg);
+      if (iframe.parentNode) document.body.removeChild(iframe);
+      callback(data);
+    }
 
-  // Export data — file download for large payloads, clipboard for small ones
-  function downloadAsFile(data, filename) {
-    var blob = new Blob([data], { type: 'application/json' });
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    a.href = url; a.download = filename;
-    a.style.display = 'none';
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(function() { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
-  }
-
-  var jsonSize = json.length;
-  var sizeMB = Math.round(jsonSize / 1024 / 1024 * 10) / 10;
-
-  if (jsonSize > 4 * 1024 * 1024) {
-    // >4MB: file download (clipboard would freeze)
-    var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
-    downloadAsFile(json, 'milg-' + hostname + '.json');
-    console.log('%c\u2B07 Design data downloaded as file (' + sizeMB + ' MB). Import it in the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-    window.__milgData_json = json;
-  } else {
-    // Small enough for clipboard
-    function copyFallback() {
-      var ta = document.createElement('textarea');
-      ta.value = json;
-      ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
-      document.body.appendChild(ta);
-      ta.select();
-      try {
-        var ok = document.execCommand('copy');
-        document.body.removeChild(ta);
-        if (ok) {
-          console.log('%c\u2713 Design data copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+    function onMsg(e) {
+      if (!e.data) return;
+      // Only process messages from OUR iframe (matched by unique ID)
+      if (e.data._iframeId && e.data._iframeId !== _iframeId) return;
+      // Progress updates from screenshot capture → drive parent progress bar
+      if (e.data.type === 'milg-progress' && e.data.label) {
+        var urlStatus = document.getElementById('urlStatus');
+        if (urlStatus) { urlStatus.style.display = 'block'; urlStatus.textContent = e.data.label; }
+        // Map labels to progress percentages
+        var pctMap = {
+          'Pre-scrolling page to load content...': 30,
+          'Waiting for animations to settle...': 40,
+          'Capturing screenshot...': 50,
+          'Capturing text mask...': 80
+        };
+        var pct = pctMap[e.data.label];
+        if (pct && typeof _showProgress === 'function') _showProgress(pct, e.data.label);
+      }
+      if (e.data.type === 'milg-analyzer-result') {
+        var data = e.data.data;
+        data.meta.url = 'Pasted HTML';
+        if (!captureScreenshots) {
+          finish(data);
           return;
         }
-      } catch(e) {
-        document.body.removeChild(ta);
+        // Store data, wait for screenshots (capture auto-triggers via __milgDoScreenshots)
+        iframe._milgData = data;
       }
-      // Fallback: file download
-      var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
-      downloadAsFile(json, 'milg-' + hostname + '.json');
-      console.log('%c\u2B07 Could not copy \u2014 downloaded as file instead (' + sizeMB + ' MB).', 'color: #b45309; font-weight: bold;');
-      window.__milgData_json = json;
-    }
-
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(json).then(function() {
-        console.log('%c\u2713 Design data copied to clipboard (' + sizeMB + ' MB)! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-      }).catch(copyFallback);
-    } else {
-      copyFallback();
-    }
-  }
-
-  console.log('%cmake-it-look-good extraction complete', 'color: #3b82f6; font-weight: bold;');
-  console.log('Elements scanned:', data.structure.totalElements);
-  console.log('Contrast pairs:', data.colors.contrastPairs.length);
-  console.log('Touch target issues:', data.interaction.touchTargets.length);
-
-  // --- Site Crawl Mode (same-origin iframe with src=, full JS execution) ---
-  // Set window.__milgCrawlSite = true before running.
-  // Loads each page in a hidden same-origin iframe (src=url), waits for full JS
-  // execution, then injects the extraction snippet. Stays on current page.
-  if (window.__milgCrawlSite) {
-    var _crawlMax = Math.min(Math.max(window.__milgCrawlMaxPages || 5, 1), 25);
-    var _crawlBlacklist = window.__milgCrawlBlacklist || [];
-    var _crawlOrigin = location.origin;
-    var _crawlSeen = {};
-    var _curPath = location.pathname.replace(/\/$/, '');
-    _crawlSeen[_crawlOrigin + _curPath] = true;
-    // Also mark index variants as seen to avoid re-crawling the current page
-    if (_curPath === '' || _curPath === '/index.html' || _curPath === '/index.htm') {
-      _crawlSeen[_crawlOrigin] = true; _crawlSeen[_crawlOrigin + '/index.html'] = true; _crawlSeen[_crawlOrigin + '/index.htm'] = true;
-    }
-
-    var _crawlLinks = [];
-    document.querySelectorAll('a[href]').forEach(function(a) {
-      var href = a.getAttribute('href');
-      if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('javascript:')) return;
-      try {
-        var u = new URL(href, location.href);
-        if (u.origin !== _crawlOrigin) return;
-        if (/\.(pdf|zip|png|jpg|svg|css|js|json|xml|woff2?)$/i.test(u.pathname)) return;
-        u.hash = '';
-        var key = u.origin + u.pathname.replace(/\/$/, '');
-        if (_crawlSeen[key]) return;
-        var blocked = _crawlBlacklist.some(function(pat) { pat = pat.trim(); if (!pat) return false; if (pat.endsWith('*')) return u.pathname.startsWith(pat.slice(0, -1)); return u.pathname === pat; });
-        if (blocked) return;
-        _crawlSeen[key] = true;
-        _crawlLinks.push(u.origin + u.pathname);
-      } catch(e) {}
-    });
-    _crawlLinks = _crawlLinks.slice(0, _crawlMax - 1);
-
-    var _crawlResults = [{ url: location.href, data: data }];
-    console.log('%c\uD83D\uDD77 Site Crawl: discovered ' + _crawlLinks.length + ' page(s)', 'color: #8b5cf6; font-weight: bold;');
-    _crawlLinks.forEach(function(l, i) { var p; try { p = new URL(l).pathname; } catch(e) { p = l; } console.log('  ' + (i + 1) + '. ' + p); });
-
-    // Export crawl results — file download for large payloads, clipboard for small
-    function _copyCrawlResults(results) {
-      var crawlJson = JSON.stringify({ _milgCrawl: true, startUrl: location.href, results: results });
-      window.__milgCrawlResults = results;
-      window.__milgCrawlJson = crawlJson;
-      try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) {}
-      var crawlMB = Math.round(crawlJson.length / 1024 / 1024 * 10) / 10;
-      if (crawlJson.length > 4 * 1024 * 1024) {
-        // Large crawl: file download
-        var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
-        downloadAsFile(crawlJson, 'milg-crawl-' + hostname + '.json');
-        console.log('%c\u2B07 Crawl results downloaded as file (' + crawlMB + ' MB). Import in the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-      } else if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(crawlJson).then(function() {
-          console.log('%c\u2713 Crawl results copied to clipboard (' + crawlMB + ' MB)! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-        }).catch(function() {
-          var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
-          downloadAsFile(crawlJson, 'milg-crawl-' + hostname + '.json');
-          console.log('%c\u2B07 Could not copy \u2014 downloaded as file instead.', 'color: #b45309; font-weight: bold;');
-        });
-      } else {
-        var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
-        downloadAsFile(crawlJson, 'milg-crawl-' + hostname + '.json');
-        console.log('%c\u2B07 Crawl results downloaded as file. Import in the analyzer.', 'color: #16a34a; font-weight: bold;');
-      }
-    }
-
-    if (_crawlLinks.length === 0) {
-      _copyCrawlResults(_crawlResults);
-      console.log('%c\u2713 Crawl complete (1 page). Open the analyzer.', 'color: #16a34a; font-weight: bold;');
-    } else {
-      // Show crawl progress overlay
-      var _crawlOverlay = document.createElement('div');
-      _crawlOverlay.setAttribute('data-milg-overlay', '1');
-      _crawlOverlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.6);display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui,sans-serif;';
-      _crawlOverlay.innerHTML = '<div style="width:40px;height:40px;border:3px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:milg-spin 0.8s linear infinite"></div>' +
-        '<div id="milg-crawl-status" style="color:#fff;margin-top:16px;font-size:14px;font-weight:500">Crawling site...</div>' +
-        '<div id="milg-crawl-detail" style="color:rgba(255,255,255,0.6);margin-top:6px;font-size:12px">Loading extraction snippet...</div>' +
-        '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style>';
-      document.body.appendChild(_crawlOverlay);
-      function _updateCrawlOverlay(status, detail) {
-        var s = document.getElementById('milg-crawl-status'); if (s) s.textContent = status;
-        var d = document.getElementById('milg-crawl-detail'); if (d) d.textContent = detail;
-      }
-      function _removeCrawlOverlay() { if (_crawlOverlay.parentNode) _crawlOverlay.parentNode.removeChild(_crawlOverlay); }
-
-      // Build self-contained extraction script (no CDN fetch — inline the function directly)
-      var snippetSrc = 'window.MilgExtract = ' + window.MilgExtract.toString() + ';\n' +
-        'window.__milgOnExtractComplete = function(data) { window.__milgData = data; };\n' +
-        'window.MilgExtract();\n';
-
-      (function() {
-        function processNext(idx) {
-          if (idx >= _crawlLinks.length) {
-            var crawlJson = JSON.stringify({ _milgCrawl: true, startUrl: location.href, results: _crawlResults });
-            window.__milgCrawlResults = _crawlResults;
-            window.__milgCrawlJson = crawlJson;
-            try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) {}
-            console.log('%c\u2713 Crawl complete! ' + _crawlResults.length + ' pages (' + Math.round(crawlJson.length / 1024) + ' KB)', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-            var _cKB = Math.round(crawlJson.length / 1024);
-            var _cLarge = _cKB > 2048;
-            var _priStyle = 'padding:12px 28px;font-size:14px;font-weight:600;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-bottom:8px;min-width:220px';
-            var _secStyle = 'padding:10px 24px;font-size:13px;font-weight:500;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.2);border-radius:8px;cursor:pointer;margin-bottom:10px;min-width:220px';
-            _crawlOverlay.innerHTML = '<div style="text-align:center">' +
-              '<div style="font-size:28px;margin-bottom:12px">\u2713</div>' +
-              '<div style="color:#fff;font-size:16px;font-weight:600;margin-bottom:6px">Crawl complete! ' + _crawlResults.length + ' pages analyzed.</div>' +
-              '<div style="color:rgba(255,255,255,0.6);font-size:13px;margin-bottom:' + (_cLarge ? '6' : '20') + 'px">' + _cKB + ' KB of design data ready</div>' +
-              (_cLarge ? '<div style="color:#fbbf24;font-size:12px;margin-bottom:16px">&#9888; Large payload \u2014 download recommended</div>' : '') +
-              (_cLarge
-                ? '<button id="milg-crawl-dl-btn" style="' + _priStyle + '">Download JSON</button><br><button id="milg-crawl-copy-btn" style="' + _secStyle + '">Copy to Clipboard</button>'
-                : '<button id="milg-crawl-copy-btn" style="' + _priStyle + '">Copy to Clipboard</button><br><button id="milg-crawl-dl-btn" style="' + _secStyle + '">Download JSON</button>') +
-              '<div style="color:rgba(255,255,255,0.5);font-size:11px;margin-top:8px">Then ' + (_cLarge ? 'import' : 'paste') + ' into the analyzer</div>' +
-              '</div>';
-            function _crawlDone() { setTimeout(function() { _removeCrawlOverlay(); }, 1500); }
-            document.getElementById('milg-crawl-copy-btn').addEventListener('click', function() {
-              var btn = document.getElementById('milg-crawl-copy-btn');
-              if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(crawlJson).then(function() {
-                  btn.textContent = 'Copied!'; btn.style.background = '#16a34a'; _crawlDone();
-                }).catch(function() {
-                  downloadAsFile(crawlJson, 'milg-crawl-' + location.hostname.replace(/[^a-z0-9]/gi, '-') + '.json');
-                  btn.textContent = 'Downloaded!'; btn.style.background = '#16a34a'; _crawlDone();
-                });
-              } else {
-                downloadAsFile(crawlJson, 'milg-crawl-' + location.hostname.replace(/[^a-z0-9]/gi, '-') + '.json');
-                btn.textContent = 'Downloaded!'; btn.style.background = '#16a34a'; _crawlDone();
+      if (e.data.type === 'milg-screenshots-result' && iframe._milgData) {
+        iframe._milgData.screenshots = e.data.screenshots || [];
+        iframe._milgData.screenshotFull = e.data.screenshotFull || null;
+        iframe._milgData.textMask = e.data.textMask || null;
+        iframe._milgData.screenshotMeta = e.data.screenshotMeta || null;
+        // Apply re-read bbox data from the iframe (updated after scroll-reset + getFlowPosition)
+        if (e.data.updatedData) {
+          var ud = e.data.updatedData;
+          // Merge re-read bboxes back into our data
+          if (ud.colors && ud.colors.contrastPairs) iframe._milgData.colors.contrastPairs = ud.colors.contrastPairs;
+          if (ud.typography) {
+            if (ud.typography.fontSizes) iframe._milgData.typography.fontSizes = ud.typography.fontSizes;
+            if (ud.typography.headings) iframe._milgData.typography.headings = ud.typography.headings;
+            if (ud.typography.maxLineLength) iframe._milgData.typography.maxLineLength = ud.typography.maxLineLength;
+          }
+          if (ud.interaction && ud.interaction.touchTargets) iframe._milgData.interaction.touchTargets = ud.interaction.touchTargets;
+          if (ud.layout) {
+            if (ud.layout.offscreenElements) iframe._milgData.layout.offscreenElements = ud.layout.offscreenElements;
+            if (ud.layout.hiddenPanelIssues) iframe._milgData.layout.hiddenPanelIssues = ud.layout.hiddenPanelIssues;
+          }
+        }
+        // Apply mask results from separate channel (survives postMessage reliably)
+        if (e.data.maskResults) {
+          var mr = e.data.maskResults;
+          var cp = iframe._milgData.colors && iframe._milgData.colors.contrastPairs;
+          if (cp) {
+            var applied = 0;
+            Object.keys(mr).forEach(function(idx) {
+              var i = parseInt(idx, 10);
+              if (cp[i]) {
+                cp[i]._maskBmp = mr[idx].bmp;
+                cp[i]._maskW = mr[idx].w;
+                cp[i]._maskH = mr[idx].h;
+                cp[i]._maskLayer = mr[idx].layer;
+                cp[i]._maskDark = mr[idx].dark;
+                applied++;
               }
             });
-            document.getElementById('milg-crawl-dl-btn').addEventListener('click', function() {
-              downloadAsFile(crawlJson, 'milg-crawl-' + location.hostname.replace(/[^a-z0-9]/gi, '-') + '.json');
-              var btn = document.getElementById('milg-crawl-dl-btn');
-              btn.textContent = 'Downloaded!'; btn.style.background = '#16a34a'; btn.style.color = '#fff'; _crawlDone();
-            });
-            return;
+            // mask results applied
           }
-
-          var url = _crawlLinks[idx];
-          var path; try { path = new URL(url).pathname; } catch(e) { path = url; }
-          _updateCrawlOverlay('Crawling page ' + (idx + 1) + ' of ' + _crawlLinks.length, path);
-          console.log('%c\u2192 [' + (idx + 1) + '/' + _crawlLinks.length + '] ' + path, 'color: #3b82f6;');
-
-          // Fetch page HTML (same-origin) then load as srcdoc (bypasses X-Frame-Options)
-          fetch(url).then(function(r) {
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            return r.text();
-          }).then(function(html) {
-            // Srcdoc environment patches (URL constructor, History API, fetch)
-            var eu = url.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-            var envPatch = '<script>(function(){' +
-              'var _rb="' + eu + '";var _O=URL;' +
-              'function _P(u,b){if(b){var bs=typeof b==="string"?b:String(b);if(bs==="about:srcdoc"||bs==="about:blank"||bs==="null"||bs.indexOf("about:")===0)b=_rb;}' +
-              'if(!b&&typeof u==="string"&&u.charAt(0)==="/")return new _O(u,_rb);try{return (arguments.length===1||!b)?new _O(u):new _O(u,b);}catch(e){try{return new _O(u,_rb);}catch(e2){throw e;}}}' +
-              '_P.prototype=_O.prototype;_P.createObjectURL=_O.createObjectURL.bind(_O);_P.revokeObjectURL=_O.revokeObjectURL.bind(_O);if(_O.canParse)_P.canParse=_O.canParse.bind(_O);window.URL=_P;' +
-              'var _hps=history.pushState.bind(history);var _hrs=history.replaceState.bind(history);' +
-              'history.pushState=function(s,t,u){try{_hps(s,t,u);}catch(e){}};history.replaceState=function(s,t,u){try{_hrs(s,t,u);}catch(e){}};' +
-              'var _of=window.fetch;window.fetch=function(u,o){if(typeof u==="string"&&u.charAt(0)==="/")u=_rb.replace(/\\/$/,"")+u;return _of.call(this,u,o);};' +
-              '})();</' + 'script>';
-            var baseTag = '<base href="' + url + '">';
-            var headPatch = envPatch + baseTag;
-            // Inject BEFORE the first <script> tag so patches run before any framework JS
-            if (/<script[\s>]/i.test(html)) {
-              html = html.replace(/<script[\s>]/i, headPatch + '<script ');
-            } else if (/<head[\s>]/i.test(html)) {
-              html = html.replace(/<head([^>]*)>/i, '<head$1>' + headPatch);
-            } else {
-              html = headPatch + html;
-            }
-            html = html.replace(/<meta[^>]*http-equiv=["']?X-Frame-Options["']?[^>]*>/gi, '');
-
-            var iframe = document.createElement('iframe');
-            iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
-            iframe.sandbox = 'allow-scripts allow-same-origin allow-forms';
-            document.body.appendChild(iframe);
-
-            var done = false;
-            function cleanup() { if (iframe.parentNode) document.body.removeChild(iframe); }
-
-            iframe.addEventListener('load', function() {
-              if (done) return;
-              setTimeout(function() {
-                if (done) return;
-                try {
-                  var iWin = iframe.contentWindow;
-                  var iDoc = iframe.contentDocument || iWin.document;
-                  var script = iDoc.createElement('script');
-                  script.textContent = 'window.__milgCrawlSite=false;\n' + snippetSrc;
-                  iDoc.body.appendChild(script);
-
-                  var polls = 0;
-                  var poller = setInterval(function() {
-                    if (done) { clearInterval(poller); return; }
-                    polls++;
-                    try {
-                      var iData = iWin.__milgData;
-                      if (iData) {
-                        clearInterval(poller); done = true;
-                        iData.meta.url = url;
-                        _crawlResults.push({ url: url, data: iData });
-                        cleanup();
-                        console.log('%c  \u2713 ' + path + ' (' + (iData.structure.totalElements || 0) + ' elements)', 'color: #16a34a;');
-                        setTimeout(function() { processNext(idx + 1); }, 500);
-                      } else if (polls > 20) {
-                        clearInterval(poller); done = true;
-                        console.log('%c  \u2717 Timeout: ' + path, 'color: #dc2626;');
-                        cleanup();
-                        setTimeout(function() { processNext(idx + 1); }, 500);
-                      }
-                    } catch(e) {
-                      clearInterval(poller); done = true;
-                      console.log('%c  \u2717 Error: ' + path + ' (' + e.message + ')', 'color: #dc2626;');
-                      cleanup();
-                      setTimeout(function() { processNext(idx + 1); }, 500);
-                    }
-                  }, 500);
-                } catch(e) {
-                  done = true;
-                  console.log('%c  \u2717 Cannot inject snippet: ' + path + ' (' + e.message + ')', 'color: #dc2626;');
-                  cleanup();
-                  setTimeout(function() { processNext(idx + 1); }, 500);
-                }
-              }, 1500);
-            });
-            iframe.srcdoc = html;
-            setTimeout(function() {
-              if (done) return; done = true;
-              console.log('%c  \u2717 Timeout (10s): ' + path, 'color: #dc2626;');
-              cleanup();
-              setTimeout(function() { processNext(idx + 1); }, 500);
-            }, 10000);
-          }).catch(function(e) {
-            console.log('%c  \u2717 Fetch failed: ' + path + ' (' + (e.message || e) + ')', 'color: #dc2626;');
-            setTimeout(function() { processNext(idx + 1); }, 500);
-          });
         }
-        processNext(0);
-      })();
+        // If hidden panels were detected, trigger unhidden screenshot pass
+        var hpc = iframe._milgData.layout && iframe._milgData.layout.hiddenPanelCount;
+        if (hpc > 0 && iframe.contentWindow && iframe.contentWindow.__milgDoUnhiddenScreenshots) {
+          try {
+            setTimeout(function() { iframe.contentWindow.__milgDoUnhiddenScreenshots(); }, 100);
+          } catch(ex) { finish(iframe._milgData); }
+        } else {
+          finish(iframe._milgData);
+        }
+      }
+      if (e.data.type === 'milg-screenshots-unhidden' && iframe._milgData) {
+        iframe._milgData.screenshotsUnhidden = e.data.screenshots || [];
+        finish(iframe._milgData);
+      }
     }
-    return; // Skip normal clipboard copy
+    window.addEventListener('message', onMsg);
+
+    // If the pasted HTML is a full document (has <html> or <head>), use it as-is
+    // and just append the extraction script. Otherwise wrap in a basic document.
+    var isFullDoc = /<html[\s>]/i.test(html) || /<!DOCTYPE/i.test(html);
+    // Inject <base> tag so relative CSS/image/font URLs resolve to the original domain
+    if (sourceUrl) html = injectBaseTag(html, sourceUrl);
+    // Pass context to extraction — include iframe ID for message matching in parallel mode
+    var idVar = '<script>window.__milgIframeId="' + _iframeId + '";</' + 'script>';
+    var excludeVar = excludeSelector ? '<script>window.__milgExclude=' + JSON.stringify(excludeSelector) + ';</' + 'script>' : '';
+    var fragmentVar = !isFullDoc ? '<script>window.__milgIsFragment=true;</' + 'script>' : '';
+    // Screenshot capture: script that auto-runs after extraction, loads CDN library, captures page
+    // Also includes unhidden-panels screenshot if hidden panels are detected
+    var unhiddenScreenshotFn = 'window.__milgDoUnhiddenScreenshots=function(){' +
+      // Unhide all interactive panels using !important overrides
+      'var panels=document.querySelectorAll("[role=menu],[role=listbox],[role=dialog],[role=tooltip],[role=alertdialog]");' +
+      'var hidden=[];' +
+      'panels.forEach(function(p){' +
+        'var s=getComputedStyle(p);' +
+        'if(s.display==="none"||s.visibility==="hidden"||s.opacity==="0"){' +
+          'hidden.push({el:p,css:p.style.cssText,ariaH:p.getAttribute("aria-hidden"),hadHidden:p.hasAttribute("hidden")});' +
+          'p.style.cssText=p.style.cssText+";display:block !important;visibility:visible !important;opacity:1 !important;";' +
+          'if(p.hasAttribute("hidden"))p.removeAttribute("hidden");' +
+          'if(p.getAttribute("aria-hidden")==="true")p.setAttribute("aria-hidden","false")' +
+        '}' +
+      '});' +
+      // Also check aria-haspopup sibling panels
+      'document.querySelectorAll("[aria-haspopup]").forEach(function(t){' +
+        'var w=t.parentElement;if(!w)return;' +
+        'w.querySelectorAll("[role=menu],[role=listbox],[role=dialog]").forEach(function(p){' +
+          'var s=getComputedStyle(p);' +
+          'if(s.display==="none"||s.visibility==="hidden"||s.opacity==="0"){' +
+            'hidden.push({el:p,css:p.style.cssText,ariaH:p.getAttribute("aria-hidden"),hadHidden:p.hasAttribute("hidden")});' +
+            'p.style.cssText=p.style.cssText+";display:block !important;visibility:visible !important;opacity:1 !important;";' +
+            'if(p.hasAttribute("hidden"))p.removeAttribute("hidden");' +
+            'if(p.getAttribute("aria-hidden")==="true")p.setAttribute("aria-hidden","false")' +
+          '}' +
+        '})' +
+      '});' +
+      'if(hidden.length===0){parent.postMessage({type:"milg-screenshots-unhidden",screenshots:[],_iframeId:_mid},"*");return}' +
+      'void document.body.offsetHeight;' +
+      'setTimeout(function(){' +
+        // Direct capture (iframe already resized from main screenshot pass)
+        'var ms=window.modernScreenshot;' +
+        'if(!ms||!ms.domToCanvas){parent.postMessage({type:"milg-screenshots-unhidden",screenshots:[],_iframeId:_mid},"*");return}' +
+        'ms.domToCanvas(document.documentElement,{scale:' + SCREENSHOT_SCALE + ',timeout:30000}).then(function(fc){' +
+          'var uri;try{uri=fc.toDataURL("image/webp",' + SCREENSHOT_QUALITY + ')}catch(e){uri=""}' +
+          'parent.postMessage({type:"milg-screenshots-unhidden",screenshots:uri?[uri]:[],_iframeId:_mid},"*")' +
+        '}).catch(function(){parent.postMessage({type:"milg-screenshots-unhidden",screenshots:[],_iframeId:_mid},"*")})' +
+      '},300)' +
+    '};';
+    var screenshotScript = captureScreenshots ? '<script>window.__milgDoScreenshots=function(){' + buildScreenshotScript('milg-screenshots-result') + '};' + unhiddenScreenshotFn + '</' + 'script>' : '';
+    var srcdoc;
+    if (isFullDoc) {
+      // Wait for window load (CSS/fonts loaded), then extra delay for rendering
+      // JS-enabled mode (URL patch present) needs longer delays for React/Vue hydration
+      var hasJsPatch = html.indexOf('__milgSandboxLog') !== -1;
+      var postLoadDelay = hasJsPatch ? 2000 : 1000;
+      var fallbackDelay = hasJsPatch ? 8000 : 8000;
+      var extractScript = idVar + excludeVar + fragmentVar + screenshotScript + '<script>window.addEventListener("load",function(){setTimeout(function(){(' + extractFromDocument.toString() + ')()},' + postLoadDelay + ')});setTimeout(function(){(' + extractFromDocument.toString() + ')()},' + fallbackDelay + ');</' + 'script>';
+      if (/<\/body>/i.test(html)) {
+        srcdoc = html.replace(/<\/body>/i, extractScript + '</body>');
+      } else {
+        srcdoc = html + extractScript;
+      }
+    } else {
+      var darkClass = editorDark ? ' class="dark"' : '';
+      var darkVariantTag = editorDark ? '<style type="text/tailwindcss">@custom-variant dark (&:where(.dark, .dark *));</style>' : '';
+      var effectTag = editorEffectCSS ? '<style>' + editorEffectCSS + '</style>' : '';
+      srcdoc = '<!DOCTYPE html><html lang="en"' + darkClass + '><head><meta charset="UTF-8">' +
+        '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+        '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
+        darkVariantTag + effectTag +
+        '<style>body{margin:0}</style></head><body>' +
+        html + idVar + excludeVar + fragmentVar + screenshotScript +
+        '<script>setTimeout(function(){(' + extractFromDocument.toString() + ')()}, 1500);</' + 'script>' +
+        '</body></html>';
+    }
+    iframe.srcdoc = srcdoc;
+
+    // Timeout fallback (longer when capturing screenshots)
+    setTimeout(function() {
+      if (!handled && iframe._milgData) {
+        // Extraction succeeded but screenshots timed out — return without screenshots
+        iframe._milgData.screenshots = [];
+        finish(iframe._milgData);
+      } else {
+        finish({
+          meta: { title: '', url: 'Pasted HTML', viewportWidth: 1280, viewportHeight: 900, timestamp: new Date().toISOString(), version: 1 },
+          colors: { textColors: [], bgColors: [], contrastPairs: [] },
+          typography: { bodyFontSize: '16px', bodyLineHeight: '24px', bodyFontFamily: 'sans-serif', fontFamilies: [], fontSizes: [], fontWeights: [], headings: [], lineHeights: [], maxLineLength: { chars: 0, element: '', fontSize: 0, textLength: 0 } },
+          spacing: { paddings: [], margins: [], gaps: [], maxContentWidth: '', bodyPaddingHorizontal: '' },
+          layout: { sectionGaps: [], alignmentEdges: [], visualHierarchy: {} },
+          interaction: { touchTargets: [], transitions: [] },
+          accessibility: { semanticElements: {}, headingHierarchy: [], imagesWithoutAlt: 0, formLabels: { total: 0, withLabel: 0, withoutLabel: 0 }, focusIndicators: [] },
+          structure: { totalElements: 0, darkModeClasses: false, responsiveClasses: false, tailwindDetected: false, cssFramework: 'unknown' }
+        });
+      }
+    }, captureScreenshots ? 480000 : (isFullDoc ? 15000 : 8000));
   }
 
-    }; // end __milgOnExtractComplete callback
-
-    // Run the extraction
-    window.MilgExtract();
-  }
+  return {
+    init: init,
+    injectBaseTag: injectBaseTag,
+    analyzeHtmlInIframe: analyzeHtmlInIframe,
+    deepScanInIframe: deepScanInIframe,
+    buildScreenshotScript: buildScreenshotScript
+  };
 })();
 </file>
 
@@ -33448,688 +34130,6 @@ window.MilgReport = (function() {
   }
 
   return { renderReport: renderReport, renderMarkdown: renderMarkdown, renderCrawlSummary: renderCrawlSummary, renderCrawlPageTab: renderCrawlPageTab };
-})();
-</file>
-
-<file path="docs/analyzer-iframe.js">
-// make-it-look-good — Iframe Analysis & Screenshot Pipeline
-// Handles iframe creation, extraction injection, screenshot capture, and deep scan.
-// Depends on: analyzer-extract.js (MilgExtract)
-
-window.MilgIframe = (function() {
-  "use strict";
-
-  var _screenshotCDN = '';
-  var _getViewport = function() { return { w: 1280, h: 900 }; };
-  var _showProgress = function() {};
-  // --- Screenshot settings ---
-  // Scale 1.5 = text renders at 1.5x resolution via SVG foreignObject rasterization.
-  // No DOM modifications needed — the library handles it.
-  var SCREENSHOT_SCALE = 1.5;
-  var SCREENSHOT_QUALITY = 0.8;
-
-  function init(opts) {
-    if (opts.screenshotCDN) _screenshotCDN = opts.screenshotCDN;
-    if (opts.getViewport) _getViewport = opts.getViewport;
-    if (opts.showProgress) _showProgress = opts.showProgress;
-  }
-
-  // Inject a <base> tag so relative URLs (CSS, images, fonts) resolve to the original domain.
-  // Also patches the URL constructor so page JS that does new URL(path, window.location)
-  // works in srcdoc context (where window.location is about:srcdoc, not a valid base).
-  function injectBaseTag(html, url) {
-    if (!url || url === 'Pasted HTML') return html;
-    try {
-      var base = new URL(url);
-      var baseHref = base.origin + base.pathname.replace(/\/[^/]*$/, '/');
-      var baseTag = '<base href="' + baseHref + '">';
-      // Patch URL constructor: in srcdoc iframes window.location.href is "about:srcdoc"
-      // which is not a valid base URL. Intercept and use document.baseURI (set by <base>) instead.
-      var urlPatch = '<script>' +
-        '(function(){' +
-          'var _OrigURL=URL;' +
-          'var _loc=window.location;' +
-          'function _isSrcdocLoc(v){' +
-            'if(v===_loc||v===_loc.href)return true;' +
-            'if(typeof v==="string"&&v.indexOf("about:srcdoc")===0)return true;' +
-            'if(v&&typeof v==="object"&&typeof v.href==="string"&&v.href.indexOf("about:srcdoc")===0)return true;' +
-            'return false' +
-          '}' +
-          'window.URL=function URL(u,b){' +
-            'if(arguments.length>=2&&_isSrcdocLoc(b)){b=document.baseURI||"' + baseHref + '"}' +
-            'return new _OrigURL(u,b)' +
-          '};' +
-          'window.URL.prototype=_OrigURL.prototype;' +
-          // Preserve static methods (createObjectURL, revokeObjectURL, etc.)
-          'Object.keys(_OrigURL).forEach(function(k){try{window.URL[k]=_OrigURL[k]}catch(e){}});' +
-          'window.URL.toString=function(){return _OrigURL.toString()};' +
-          // Also handle location.origin / location.protocol for libraries that read them directly
-          'try{Object.defineProperty(_loc,"origin",{get:function(){' +
-            'try{var u=new _OrigURL(document.baseURI);return u.origin}catch(e){return"null"}' +
-          '},configurable:true})}catch(e){}' +
-        '})();' +
-      '</' + 'script>';
-      // Insert after <head> if present
-      if (/<head[\s>]/i.test(html)) {
-        return html.replace(/<head([^>]*)>/i, '<head$1>' + baseTag + urlPatch);
-      }
-      // Otherwise prepend
-      return baseTag + urlPatch + html;
-    } catch(e) { return html; }
-  }
-
-  // --- Screenshot capture script (injected into iframes after extraction) ---
-  // Called after extraction via __milgDoScreenshots (once-guard prevents double run).
-  // Mirrors console snippet: pre-scroll → reset → wait → re-read bboxes → capture body
-  function buildScreenshotScript(msgType) {
-    var ss = { scale: SCREENSHOT_SCALE, quality: SCREENSHOT_QUALITY };
-    return '(function(){' +
-      // Once-guard: extraction may fire twice (load + fallback timeout)
-      'if(window.__milgSsDone)return;window.__milgSsDone=true;' +
-      'var vh=window.innerHeight||900;' +
-      'var _mid=window.__milgIframeId||"";' +
-      'function _prog(l){try{parent.postMessage({type:"milg-progress",label:l,_iframeId:_mid},"*")}catch(e){}}' +
-      // Unlock height to get true scrollHeight (sites with html,body{height:100%} clamp it)
-      // Set overflow:auto explicitly so the inner document is scrollable for IntersectionObservers
-      'document.documentElement.style.cssText+="height:auto !important;overflow-y:auto !important;";' +
-      'document.body.style.cssText+="height:auto !important;";' +
-      'void document.body.offsetHeight;' + // force reflow
-      'var totalH=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);' +
-      'var captureH=Math.min(totalH,vh*10);' +
-      '_prog("Pre-scrolling page to load content...");' +
-      'console.log("[iframe-ss] Phase 1: Pre-scrolling "+captureH+"px ("+Math.ceil(captureH/vh)+" steps, vh="+vh+") ...");' +
-      // Phase 1: Pre-scroll to trigger IntersectionObservers, lazy images, fade-in animations
-      'var _positions=[];for(var p=0;p<captureH;p+=vh)_positions.push(p);' +
-      'var _pi=0;' +
-      'function _scrollNext(){' +
-        'if(_pi>=_positions.length){' +
-          'console.log("[iframe-ss] Phase 1 done (scrollY="+window.scrollY+"). Waiting for content...");' +
-          'setTimeout(_startCapture,800);return' + // 800ms for lazy content + animations to start
-        '}' +
-        'window.scrollTo(0,_positions[_pi]);' +
-        // Also scroll documentElement directly (some browsers need this in iframes)
-        'document.documentElement.scrollTop=_positions[_pi];' +
-        'try{window.dispatchEvent(new Event("scroll"))}catch(e){}' +
-        'console.log("[iframe-ss] scroll to "+_positions[_pi]+" → actual="+window.scrollY);' +
-        '_pi++;setTimeout(_scrollNext,200)' + // 200ms per step (more time for observers)
-      '}' +
-      '_scrollNext();' +
-      // Phase 2: Reset scroll, force-reveal hidden animated content, capture
-      'function _startCapture(){' +
-        'document.documentElement.style.scrollBehavior="auto";' +
-        'document.body.style.scrollBehavior="auto";' +
-        'window.scrollTo(0,0);document.documentElement.scrollTop=0;document.body.scrollTop=0;' +
-        'document.querySelectorAll("*").forEach(function(el){' +
-          'if(el.scrollTop>0){var s=getComputedStyle(el);' +
-          'if(s.overflow==="auto"||s.overflow==="scroll"||s.overflowY==="auto"||s.overflowY==="scroll"){' +
-          'el.style.scrollBehavior="auto";el.scrollTop=0}}' +
-        '});' +
-        // Force-finalize scroll-triggered animations:
-        // IntersectionObserver doesn't fire in offscreen iframes (browser optimization).
-        // Find all elements with opacity:0 that have transitions/animations and force them visible.
-        'var _revealed=0;' +
-        'document.querySelectorAll("*").forEach(function(el){' +
-          'var cs=getComputedStyle(el);' +
-          'if(cs.opacity==="0"&&el.tagName!=="SCRIPT"&&el.tagName!=="STYLE"){' +
-            // Check if this is an animation-hidden element (has transition on opacity or a CSS animation)
-            'var hasTrans=cs.transition&&cs.transition.indexOf("opacity")!==-1;' +
-            'var hasAnim=cs.animationName&&cs.animationName!=="none";' +
-            'var hasTransform=cs.transform&&cs.transform!=="none";' +
-            // Also check for common scroll-reveal patterns (classes containing fade, reveal, animate, aos)
-            'var cls=(el.className&&typeof el.className==="string")?el.className.toLowerCase():"";' +
-            'var isScrollAnim=hasTrans||hasAnim||/fade|reveal|animate|aos|scroll|slide|appear/.test(cls);' +
-            'if(isScrollAnim){' +
-              'el.style.cssText+=";opacity:1 !important;transform:none !important;transition:none !important;animation:none !important;";' +
-              '_revealed++' +
-            '}' +
-          '}' +
-        '});' +
-        'if(_revealed>0)console.log("[iframe-ss] Force-revealed "+_revealed+" scroll-animated elements (IO disabled in offscreen iframes)");' +
-        // Also inject a style to fast-forward any remaining CSS animations
-        'var _ffStyle=document.createElement("style");' +
-        '_ffStyle.textContent="*,*::before,*::after{animation-delay:0s !important;animation-duration:0.01s !important;}";' +
-        'document.head.appendChild(_ffStyle);' +
-        'void document.body.offsetHeight;' +
-        // Switch to overflow:visible for capture
-        'document.documentElement.style.cssText+="overflow:visible !important;";' +
-        'document.body.style.cssText+="overflow:visible !important;";' +
-        'void document.body.offsetHeight;' +
-        '_prog("Waiting for animations to settle...");' +
-        'console.log("[iframe-ss] Phase 2: Waiting for animations to finalize...");' +
-        'setTimeout(function(){' +
-          'if(typeof window.__milgReReadBboxes==="function"){' +
-            'var res=window.__milgReReadBboxes();' +
-            'console.log("[iframe-ss] Re-read bboxes: "+res)' +
-          '}' +
-          'var fullH=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);' +
-          'console.log("[iframe-ss] scrollHeight="+fullH+" vh="+vh);' +
-          'var s=document.createElement("script");' +
-          's.src="' + _screenshotCDN + '";' +
-          's.onload=function(){' +
-            'var ms=window.modernScreenshot;' +
-            'if(!ms||!ms.domToCanvas){parent.postMessage({type:"' + msgType + '",screenshots:[],_iframeId:_mid},"*");return}' +
-            'document.querySelectorAll("img").forEach(function(i){if(i.src&&i.src.indexOf("data:")!==0)i.crossOrigin="anonymous"});' +
-            'var _sc=' + ss.scale + ';' +
-            // Helper: send results to parent
-            'function _send(fullUri,maskUri){' +
-              'var updatedData=window.__milgData||null;' +
-              'parent.postMessage({type:"' + msgType + '",_iframeId:_mid,' +
-                'screenshots:fullUri?[fullUri]:[],' +
-                'screenshotFull:fullUri||null,' +
-                'textMask:maskUri||null,' +
-                'screenshotMeta:{scale:_sc,viewportHeight:vh,sectionCount:1,' +
-                  'canvasWidth:0,canvasHeight:0,' +
-                  'docHeightAtCapture:fullH,' +
-                  'calibrationOffsetY:0,calibrationSamples:[]},' +
-                'updatedData:updatedData' +
-              '},"*")' +
-            '}' +
-            // Step 1: Capture real screenshot FIRST (safe — no DOM modifications)
-            '_prog("Capturing screenshot...");' +
-            'console.log("[iframe-ss] Step 1/2: Capturing screenshot at "+_sc+"x...");' +
-            'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:45000}).then(function(fc){' +
-              'console.log("[iframe-ss] Screenshot: "+fc.width+"x"+fc.height);' +
-              'var fullUri;try{fullUri=fc.toDataURL("image/webp",' + ss.quality + ')}catch(e){fullUri=""}' +
-              // Update send helper with actual canvas dimensions
-              'var _cw=fc.width,_ch=fc.height;' +
-              'function _sendFinal(maskUri){' +
-                'var updatedData=window.__milgData||null;' +
-                // Strip mask bitmap data from pair objects to keep updatedData lean
-                // (masks are sent separately via maskResults)
-                'if(updatedData&&updatedData.colors&&updatedData.colors.contrastPairs){' +
-                  'updatedData.colors.contrastPairs.forEach(function(p){delete p._maskBmp;delete p._maskPts})}' +
-                'var mr=typeof _maskResults!=="undefined"?_maskResults:null;' +
-                'var msg={type:"' + msgType + '",_iframeId:_mid,' +
-                  'screenshots:fullUri?[fullUri]:[],' +
-                  'screenshotFull:fullUri||null,' +
-                  'textMask:maskUri||null,' +
-                  'screenshotMeta:{scale:_sc,viewportHeight:vh,sectionCount:1,' +
-                    'canvasWidth:_cw,canvasHeight:_ch,' +
-                    'docHeightAtCapture:fullH,' +
-                    'calibrationOffsetY:0,calibrationSamples:[]},' +
-                  'updatedData:updatedData,' +
-                  'maskResults:mr};' +
-                'try{parent.postMessage(msg,"*")}catch(e){' +
-                  'console.warn("[iframe-ss] postMessage failed ("+e.message+"), retrying without masks");' +
-                  'msg.maskResults=null;msg.updatedData=null;' +
-                  'try{parent.postMessage(msg,"*")}catch(e2){console.error("[iframe-ss] postMessage retry failed:",e2)}' +
-                '}' +
-              '}' +
-              // Step 2: Layered text masks with transition kill
-              '_prog("Building text masks...");' +
-              'console.log("[iframe-ss] Step 2: Layered masks...");' +
-              // Phase A: Kill ALL transitions on every element BEFORE any color changes
-              'document.querySelectorAll("*").forEach(function(el){el.style.setProperty("transition-duration","0s","important");el.style.setProperty("transition","none","important")});' +
-              'void document.body.offsetHeight;' +
-              // Phase A2: Neutralize absolute/fixed overlays that sit on top of text.
-              // When bg becomes white, transparent gradient overlays become solid white,
-              // covering the black text beneath. Fix: make overlay backgrounds fully
-              // transparent BEFORE the mask, so they stay invisible after white override.
-              // Also hide empty absolute elements entirely (decorative shapes/borders).
-              'var _neutralized=0;' +
-              'document.querySelectorAll("*").forEach(function(el){' +
-                'var cs=getComputedStyle(el);' +
-                'if(cs.position==="absolute"||cs.position==="fixed"){' +
-                  'if(!el.textContent.trim()){' +
-                    // No text: fully hide (gradient overlays, decorative shapes, spacers)
-                    'el.style.setProperty("display","none","important");_neutralized++' +
-                  '}else if(cs.pointerEvents==="none"){' +
-                    // Has text but pointer-events:none — decorative text overlay, make bg transparent
-                    'el.style.setProperty("background","transparent","important");' +
-                    'el.style.setProperty("background-image","none","important");_neutralized++' +
-                  '}' +
-                '}' +
-              '});' +
-              'if(_neutralized)console.log("[iframe-ss] Neutralized "+_neutralized+" overlays");' +
-              'void document.body.offsetHeight;' +
-              // Re-read bboxes AFTER neutralization — hiding overlays can shift layout
-              'if(_neutralized>0&&typeof window.__milgReReadBboxes==="function"){' +
-                'var res2=window.__milgReReadBboxes();' +
-                'console.log("[iframe-ss] Re-read bboxes post-neutralize: "+res2)' +
-              '}' +
-              // Phase B: Global mask style — white bg, white text, hide media
-              'var _maskStyle=document.createElement("style");' +
-              '_maskStyle.setAttribute("data-milg-mask","1");' +
-              '_maskStyle.textContent="*,*::before,*::after{color:#fff !important;background-color:transparent !important;background-image:none !important;background:transparent !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;-webkit-text-fill-color:#fff !important;opacity:1 !important;transition:none !important;animation:none !important;}html{background:#fff !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}";' +
-              'document.head.appendChild(_maskStyle);void document.body.offsetHeight;' +
-              // Re-read bboxes AFTER mask style — white bg + hidden media can shift layout
-              'if(typeof window.__milgReReadBboxes==="function"){' +
-                'var res3=window.__milgReReadBboxes();' +
-                'console.log("[iframe-ss] Re-read bboxes post-mask-style: "+res3)' +
-              '}' +
-              // Phase C: Collect pair elements and build overlap layers
-              'var _refs=window.__milgBboxRefs||[];' +
-              'var _pairs=(window.__milgData&&window.__milgData.colors&&window.__milgData.colors.contrastPairs)||[];' +
-              'var _pairEls=[];' +
-              '_refs.forEach(function(ref){' +
-                'if(!ref.el||!ref.obj||ref.obj.ratio===undefined)return;' +
-                'var idx=_pairs.indexOf(ref.obj);' +
-                'if(idx>=0)_pairEls.push({el:ref.el,pair:ref.obj,idx:idx,bbox:ref.obj.bbox})' +
-              '});' +
-              'function _overlaps(a,b){' +
-                'if(!a.bbox||!b.bbox)return false;' +
-                'return a.bbox.left<b.bbox.left+b.bbox.width&&a.bbox.left+a.bbox.width>b.bbox.left&&' +
-                       'a.bbox.top<b.bbox.top+b.bbox.height&&a.bbox.top+a.bbox.height>b.bbox.top}' +
-              'var _layers=[];var _remaining=_pairEls.slice();' +
-              'while(_remaining.length>0){' +
-                'var layer=[];var next=[];' +
-                '_remaining.forEach(function(pe){' +
-                  'if(layer.some(function(l){return _overlaps(pe,l)})){next.push(pe)}else{layer.push(pe)}' +
-                '});_layers.push(layer);_remaining=next}' +
-              'console.log("[iframe-ss] "+_pairEls.length+" elements in "+_layers.length+" layers");' +
-              // Phase C2: Bake text-transform into actual text content.
-              // domToCanvas (modern-screenshot SVG foreignObject) doesn't always
-              // preserve CSS text-transform, so uppercase/lowercase text renders wrong.
-              // Fix: walk all text nodes and apply the transform to the actual content.
-              'var _ttFixed=0;' +
-              'document.querySelectorAll("*").forEach(function(el){' +
-                'var tt=getComputedStyle(el).textTransform;' +
-                'if(tt==="uppercase"||tt==="lowercase"||tt==="capitalize"){' +
-                  'var walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT,null,false);' +
-                  'var tn;while(tn=walker.nextNode()){' +
-                    'var orig=tn.textContent;if(!orig.trim())continue;' +
-                    'if(tt==="uppercase")tn.textContent=orig.toUpperCase();' +
-                    'else if(tt==="lowercase")tn.textContent=orig.toLowerCase();' +
-                    'else if(tt==="capitalize")tn.textContent=orig.replace(/\\b\\w/g,function(c){return c.toUpperCase()});' +
-                    '_ttFixed++' +
-                  '}' +
-                '}' +
-              '});' +
-              'if(_ttFixed)console.log("[iframe-ss] Baked text-transform for "+_ttFixed+" text nodes");' +
-              'var _maskResults={};' + // idx → {bmp, w, h, layer, dark}
-              // Phase D: Capture one mask per layer — set layer elements to black via inline style
-              'var _li=0;' +
-              'function _nextLayer(){' +
-                'if(_li>=_layers.length){console.log("[iframe-ss] All "+_layers.length+" mask layers done");_sendFinal(null);return}' +
-                'var layer=_layers[_li];_li++;' +
-                '_prog("Text mask layer "+_li+"/"+_layers.length+"...");' +
-                'console.log("[iframe-ss] Layer "+_li+": "+layer.length+" elements");' +
-                // Set layer elements to black via INLINE style (transitions already killed)
-                'layer.forEach(function(pe){' +
-                  'pe.el.style.setProperty("color","#000","important");' +
-                  'pe.el.style.setProperty("-webkit-text-fill-color","#000","important");' +
-                  'pe.el.querySelectorAll("*").forEach(function(ch){' +
-                    'ch.style.setProperty("color","#000","important");' +
-                    'ch.style.setProperty("-webkit-text-fill-color","#000","important")})' +
-                '});' +
-                'void document.body.offsetHeight;' +
-                'console.log("[iframe-ss] Layer "+_li+": starting domToCanvas...");' +
-                // Race domToCanvas against our own 15s timeout (library timeout may not fire)
-                'var _layerDone=false;' +
-                'var _layerTimer=setTimeout(function(){if(!_layerDone){_layerDone=true;console.warn("[iframe-ss] Layer "+_li+" domToCanvas timed out (120s)");setTimeout(_nextLayer,0)}},120000);' +
-                'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:12000}).then(function(mc){' +
-                  'if(_layerDone)return;_layerDone=true;clearTimeout(_layerTimer);' +
-                  'console.log("[iframe-ss] Layer "+_li+" captured: "+mc.width+"x"+mc.height);' +
-                  'var mCtx=mc.getContext("2d",{willReadFrequently:true});' +
-                  'var _fillTextFallbacks=0;' +
-                  'layer.forEach(function(pe){' +
-                    'if(!pe.bbox)return;' +
-                    'var bx=Math.max(0,Math.round(pe.bbox.left*_sc));' +
-                    'var by=Math.max(0,Math.round(pe.bbox.top*_sc));' +
-                    'var bw=Math.min(Math.round(pe.bbox.width*_sc),mc.width-bx);' +
-                    'var bh=Math.min(Math.round(pe.bbox.height*_sc),mc.height-by);' +
-                    'if(bw<2||bh<2)return;' +
-                    'try{var px=mCtx.getImageData(bx,by,bw,bh).data;' +
-                      'var bmp=new Uint8Array(bw*bh);' +
-                      'for(var y=0;y<bh;y++){for(var x=0;x<bw;x++){' +
-                        'var i=(y*bw+x)*4;' +
-                        // Detect text: dark pixels on white background = text
-                        'if((px[i]+px[i+1]+px[i+2])/3<240)bmp[y*bw+x]=1' +
-                      '}}' +
-                      'var _dk=0;for(var _b=0;_b<bmp.length;_b++)if(bmp[_b])_dk++;' +
-                      // Fallback: if domToCanvas failed to render text, use canvas.fillText
-                      'if(_dk===0&&bw>3&&pe.pair.text){' +
-                        'try{var cs=getComputedStyle(pe.el);' +
-                          'var _fc=document.createElement("canvas");_fc.width=bw;_fc.height=bh;' +
-                          'var _fx=_fc.getContext("2d");_fx.fillStyle="#fff";_fx.fillRect(0,0,bw,bh);' +
-                          'var _fs=parseFloat(cs.fontSize)*_sc;' +
-                          '_fx.fillStyle="#000";' +
-                          '_fx.font=cs.fontStyle+" "+cs.fontWeight+" "+_fs+"px "+cs.fontFamily;' +
-                          '_fx.textBaseline="top";' +
-                          // Account for padding and alignment within bbox
-                          'var _pl=(parseFloat(cs.paddingLeft)||0)*_sc;' +
-                          'var _pt=(parseFloat(cs.paddingTop)||0)*_sc;' +
-                          'var _pr=(parseFloat(cs.paddingRight)||0)*_sc;' +
-                          'var _ta=cs.textAlign;' +
-                          // Render text — handle multi-line by splitting on natural wrapping
-                          'var _txt=pe.pair.text.replace(/\\[placeholder\\] /,"");' +
-                          'var _lh=parseFloat(cs.lineHeight)*_sc||_fs*1.2;' +
-                          'var _contentW=bw-_pl-_pr;' +
-                          'var _words=_txt.split(/\\s+/);var _lines=[];var _line="";' +
-                          'for(var _w=0;_w<_words.length;_w++){' +
-                            'var _test=_line?_line+" "+_words[_w]:_words[_w];' +
-                            'if(_fx.measureText(_test).width>_contentW&&_line){' +
-                              '_lines.push(_line);_line=_words[_w]' +
-                            '}else{_line=_test}' +
-                          '}_lines.push(_line);' +
-                          // Calculate vertical offset — check flex centering on parent
-                          'var _totalH=_lines.length*_lh;' +
-                          'var _tyStart=_pt;' +
-                          'var _par=pe.el.parentElement;var _pcs=_par?getComputedStyle(_par):null;' +
-                          'if(_pcs){' +
-                            'if(_pcs.display.indexOf("flex")>=0&&_pcs.alignItems==="center"){' +
-                              '_tyStart=Math.max(0,(bh-_totalH)/2)' +
-                            '}else if(bh>_totalH+_pt*2){' +
-                              '_tyStart=_pt' +
-                            '}' +
-                          '}' +
-                          // Draw each line with proper alignment
-                          'for(var _li2=0;_li2<_lines.length;_li2++){' +
-                            'var _lw=_fx.measureText(_lines[_li2]).width;' +
-                            'var _tx=_pl;' +
-                            'if(_ta==="center")_tx=(_contentW-_lw)/2+_pl;' +
-                            'else if(_ta==="right"||_ta==="end")_tx=_contentW-_lw+_pl;' +
-                            '_fx.fillText(_lines[_li2],_tx,_tyStart+_li2*_lh)' +
-                          '};' +
-                          // Re-read as bitmap
-                          'var _fpx=_fx.getImageData(0,0,bw,bh).data;' +
-                          'bmp=new Uint8Array(bw*bh);' +
-                          'for(var _fy=0;_fy<bh;_fy++){for(var _fxx=0;_fxx<bw;_fxx++){' +
-                            'var _fi=(_fy*bw+_fxx)*4;if((_fpx[_fi]+_fpx[_fi+1]+_fpx[_fi+2])/3<240)bmp[_fy*bw+_fxx]=1}}' +
-                          '_dk=0;for(var _fb=0;_fb<bmp.length;_fb++)if(bmp[_fb])_dk++;' +
-                          '_fillTextFallbacks++' +
-                        '}catch(e){}' +
-                      '}' +
-                      'var _arr=Array.from(bmp);' +
-                      'pe.pair._maskBmp=_arr;pe.pair._maskW=bw;pe.pair._maskH=bh;pe.pair._maskLayer=_li;pe.pair._maskDark=_dk;' +
-                      '_maskResults[pe.idx]={bmp:_arr,w:bw,h:bh,layer:_li,dark:_dk}' +
-                    '}catch(e){}' +
-                  '});' +
-                  'if(_fillTextFallbacks>0)console.log("[iframe-ss] Layer "+_li+": "+_fillTextFallbacks+" elements used fillText fallback mask");' +
-                  // Reset layer elements to transparent (mask global style takes over)
-                  'layer.forEach(function(pe){' +
-                    'pe.el.style.removeProperty("color");' +
-                    'pe.el.style.removeProperty("-webkit-text-fill-color");' +
-                    'pe.el.querySelectorAll("*").forEach(function(ch){' +
-                      'ch.style.removeProperty("color");' +
-                      'ch.style.removeProperty("-webkit-text-fill-color")})' +
-                  '});' +
-                  'setTimeout(_nextLayer,0)' +
-                '}).catch(function(e){if(_layerDone)return;_layerDone=true;clearTimeout(_layerTimer);console.warn("[iframe-ss] Layer "+_li+" failed:",e);setTimeout(_nextLayer,0)})' +
-              '}' +
-              'var _maskDone=false;' +
-              'var _origSendFinal=_sendFinal;' +
-              'var _maskTimer=setTimeout(function(){if(!_maskDone){_maskDone=true;console.warn("[iframe-ss] Masks timed out (360s)");_origSendFinal(null)}},360000);' +
-              '_sendFinal=function(m){if(_maskDone)return;_maskDone=true;clearTimeout(_maskTimer);console.log("[iframe-ss] Sending results (maskResults: "+Object.keys(_maskResults).length+" pairs)");_origSendFinal(m)};' +
-              '_nextLayer()' +
-            '}).catch(function(e){console.warn("[iframe-ss] capture failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[],_iframeId:_mid},"*")})' +
-          '};' +
-          's.onerror=function(){parent.postMessage({type:"' + msgType + '",screenshots:[],_iframeId:_mid},"*")};' +
-          'document.head.appendChild(s)' +
-        '},1500)' +
-      '}' +
-    '})()';
-  }
-
-  function deepScanInIframe(html, url, exclude, vpWidth, vpHeight, callback) {
-    var extractFromDocument = window.MilgExtract;
-    var iframe = document.createElement('iframe');
-    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + vpWidth + 'px;height:' + vpHeight + 'px;border:none;';
-    iframe.sandbox = 'allow-scripts allow-same-origin';
-    document.body.appendChild(iframe);
-
-    var msgType = 'milg-deep-' + vpWidth;
-    var handled = false;
-    function onResult(e) {
-      if (!e.data || e.data.type !== msgType) return;
-      if (handled) return;
-      handled = true;
-      window.removeEventListener('message', onResult);
-      if (iframe.parentNode) document.body.removeChild(iframe);
-      callback(e.data.data);
-    }
-    window.addEventListener('message', onResult);
-
-    var processed = url ? injectBaseTag(html, url) : html;
-    var excludeVar = exclude ? '<script>window.__milgExclude=' + JSON.stringify(exclude) + ';</' + 'script>' : '';
-    var isFullDoc = /<html[\s>]/i.test(processed) || /<!DOCTYPE/i.test(processed);
-
-    var extractStr = extractFromDocument.toString().replace(/milg-analyzer-result/g, msgType);
-    // Auto-scroll inside iframe to trigger intersection observers before extracting
-    var scrollScript = 'window.scrollTo(0,document.body.scrollHeight);setTimeout(function(){window.scrollTo(0,0)},300);';
-    var extractScript = excludeVar + '<script>window.addEventListener("load",function(){' + scrollScript + 'setTimeout(function(){(' + extractStr + ')()},1500)});setTimeout(function(){(' + extractStr + ')()},8000);</' + 'script>';
-
-    var srcdoc;
-    if (isFullDoc) {
-      if (/<\/body>/i.test(processed)) {
-        srcdoc = processed.replace(/<\/body>/i, extractScript + '</body>');
-      } else {
-        srcdoc = processed + extractScript;
-      }
-    } else {
-      srcdoc = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script><style>body{margin:0}</style></head><body>' + processed + extractScript + '</body></html>';
-    }
-    iframe.srcdoc = srcdoc;
-
-    setTimeout(function() {
-      if (handled) return;
-      handled = true;
-      window.removeEventListener('message', onResult);
-      if (iframe.parentNode) document.body.removeChild(iframe);
-      callback(null);
-    }, 15000);
-  }
-
-  function analyzeHtmlInIframe(html, callback, sourceUrlOrDark, excludeSelectorOrEffectCSS, captureScreenshots, viewportOverride) {
-    var extractFromDocument = window.MilgExtract;
-    // Support both signatures:
-    // analyzeHtmlInIframe(html, cb, sourceUrl, excludeSelector, screenshots) — URL mode
-    // analyzeHtmlInIframe(html, cb, dark, effectCSS, screenshots) — editor preview mode
-    // Optional 6th param: { w, h } viewport override for deep scan
-    var sourceUrl = typeof sourceUrlOrDark === 'string' ? sourceUrlOrDark : null;
-    var excludeSelector = typeof excludeSelectorOrEffectCSS === 'string' && !sourceUrl ? null : excludeSelectorOrEffectCSS;
-    var editorDark = typeof sourceUrlOrDark === 'boolean' ? sourceUrlOrDark : false;
-    var editorEffectCSS = (!sourceUrl && typeof excludeSelectorOrEffectCSS === 'string') ? excludeSelectorOrEffectCSS : '';
-    var iframe = document.createElement('iframe');
-    // Unique ID for this iframe — used to match postMessage responses in parallel mode
-    var _iframeId = 'milg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 8);
-    // Use viewport override if provided, else from selector/default
-    var vp = viewportOverride || _getViewport();
-    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + vp.w + 'px;height:' + vp.h + 'px;border:none;';
-    iframe.sandbox = 'allow-scripts allow-same-origin';
-    document.body.appendChild(iframe);
-
-    var handled = false;
-    function finish(data) {
-      if (handled) return;
-      handled = true;
-      window.removeEventListener('message', onMsg);
-      if (iframe.parentNode) document.body.removeChild(iframe);
-      callback(data);
-    }
-
-    function onMsg(e) {
-      if (!e.data) return;
-      // Only process messages from OUR iframe (matched by unique ID)
-      if (e.data._iframeId && e.data._iframeId !== _iframeId) return;
-      // Progress updates from screenshot capture → drive parent progress bar
-      if (e.data.type === 'milg-progress' && e.data.label) {
-        var urlStatus = document.getElementById('urlStatus');
-        if (urlStatus) { urlStatus.style.display = 'block'; urlStatus.textContent = e.data.label; }
-        // Map labels to progress percentages
-        var pctMap = {
-          'Pre-scrolling page to load content...': 30,
-          'Waiting for animations to settle...': 40,
-          'Capturing screenshot...': 50,
-          'Capturing text mask...': 80
-        };
-        var pct = pctMap[e.data.label];
-        if (pct && typeof _showProgress === 'function') _showProgress(pct, e.data.label);
-      }
-      if (e.data.type === 'milg-analyzer-result') {
-        var data = e.data.data;
-        data.meta.url = 'Pasted HTML';
-        if (!captureScreenshots) {
-          finish(data);
-          return;
-        }
-        // Store data, wait for screenshots (capture auto-triggers via __milgDoScreenshots)
-        iframe._milgData = data;
-      }
-      if (e.data.type === 'milg-screenshots-result' && iframe._milgData) {
-        iframe._milgData.screenshots = e.data.screenshots || [];
-        iframe._milgData.screenshotFull = e.data.screenshotFull || null;
-        iframe._milgData.textMask = e.data.textMask || null;
-        iframe._milgData.screenshotMeta = e.data.screenshotMeta || null;
-        // Apply re-read bbox data from the iframe (updated after scroll-reset + getFlowPosition)
-        if (e.data.updatedData) {
-          var ud = e.data.updatedData;
-          // Merge re-read bboxes back into our data
-          if (ud.colors && ud.colors.contrastPairs) iframe._milgData.colors.contrastPairs = ud.colors.contrastPairs;
-          if (ud.typography) {
-            if (ud.typography.fontSizes) iframe._milgData.typography.fontSizes = ud.typography.fontSizes;
-            if (ud.typography.headings) iframe._milgData.typography.headings = ud.typography.headings;
-            if (ud.typography.maxLineLength) iframe._milgData.typography.maxLineLength = ud.typography.maxLineLength;
-          }
-          if (ud.interaction && ud.interaction.touchTargets) iframe._milgData.interaction.touchTargets = ud.interaction.touchTargets;
-          if (ud.layout) {
-            if (ud.layout.offscreenElements) iframe._milgData.layout.offscreenElements = ud.layout.offscreenElements;
-            if (ud.layout.hiddenPanelIssues) iframe._milgData.layout.hiddenPanelIssues = ud.layout.hiddenPanelIssues;
-          }
-        }
-        // Apply mask results from separate channel (survives postMessage reliably)
-        if (e.data.maskResults) {
-          var mr = e.data.maskResults;
-          var cp = iframe._milgData.colors && iframe._milgData.colors.contrastPairs;
-          if (cp) {
-            var applied = 0;
-            Object.keys(mr).forEach(function(idx) {
-              var i = parseInt(idx, 10);
-              if (cp[i]) {
-                cp[i]._maskBmp = mr[idx].bmp;
-                cp[i]._maskW = mr[idx].w;
-                cp[i]._maskH = mr[idx].h;
-                cp[i]._maskLayer = mr[idx].layer;
-                cp[i]._maskDark = mr[idx].dark;
-                applied++;
-              }
-            });
-            // mask results applied
-          }
-        }
-        // If hidden panels were detected, trigger unhidden screenshot pass
-        var hpc = iframe._milgData.layout && iframe._milgData.layout.hiddenPanelCount;
-        if (hpc > 0 && iframe.contentWindow && iframe.contentWindow.__milgDoUnhiddenScreenshots) {
-          try {
-            setTimeout(function() { iframe.contentWindow.__milgDoUnhiddenScreenshots(); }, 100);
-          } catch(ex) { finish(iframe._milgData); }
-        } else {
-          finish(iframe._milgData);
-        }
-      }
-      if (e.data.type === 'milg-screenshots-unhidden' && iframe._milgData) {
-        iframe._milgData.screenshotsUnhidden = e.data.screenshots || [];
-        finish(iframe._milgData);
-      }
-    }
-    window.addEventListener('message', onMsg);
-
-    // If the pasted HTML is a full document (has <html> or <head>), use it as-is
-    // and just append the extraction script. Otherwise wrap in a basic document.
-    var isFullDoc = /<html[\s>]/i.test(html) || /<!DOCTYPE/i.test(html);
-    // Inject <base> tag so relative CSS/image/font URLs resolve to the original domain
-    if (sourceUrl) html = injectBaseTag(html, sourceUrl);
-    // Pass context to extraction — include iframe ID for message matching in parallel mode
-    var idVar = '<script>window.__milgIframeId="' + _iframeId + '";</' + 'script>';
-    var excludeVar = excludeSelector ? '<script>window.__milgExclude=' + JSON.stringify(excludeSelector) + ';</' + 'script>' : '';
-    var fragmentVar = !isFullDoc ? '<script>window.__milgIsFragment=true;</' + 'script>' : '';
-    // Screenshot capture: script that auto-runs after extraction, loads CDN library, captures page
-    // Also includes unhidden-panels screenshot if hidden panels are detected
-    var unhiddenScreenshotFn = 'window.__milgDoUnhiddenScreenshots=function(){' +
-      // Unhide all interactive panels using !important overrides
-      'var panels=document.querySelectorAll("[role=menu],[role=listbox],[role=dialog],[role=tooltip],[role=alertdialog]");' +
-      'var hidden=[];' +
-      'panels.forEach(function(p){' +
-        'var s=getComputedStyle(p);' +
-        'if(s.display==="none"||s.visibility==="hidden"||s.opacity==="0"){' +
-          'hidden.push({el:p,css:p.style.cssText,ariaH:p.getAttribute("aria-hidden"),hadHidden:p.hasAttribute("hidden")});' +
-          'p.style.cssText=p.style.cssText+";display:block !important;visibility:visible !important;opacity:1 !important;";' +
-          'if(p.hasAttribute("hidden"))p.removeAttribute("hidden");' +
-          'if(p.getAttribute("aria-hidden")==="true")p.setAttribute("aria-hidden","false")' +
-        '}' +
-      '});' +
-      // Also check aria-haspopup sibling panels
-      'document.querySelectorAll("[aria-haspopup]").forEach(function(t){' +
-        'var w=t.parentElement;if(!w)return;' +
-        'w.querySelectorAll("[role=menu],[role=listbox],[role=dialog]").forEach(function(p){' +
-          'var s=getComputedStyle(p);' +
-          'if(s.display==="none"||s.visibility==="hidden"||s.opacity==="0"){' +
-            'hidden.push({el:p,css:p.style.cssText,ariaH:p.getAttribute("aria-hidden"),hadHidden:p.hasAttribute("hidden")});' +
-            'p.style.cssText=p.style.cssText+";display:block !important;visibility:visible !important;opacity:1 !important;";' +
-            'if(p.hasAttribute("hidden"))p.removeAttribute("hidden");' +
-            'if(p.getAttribute("aria-hidden")==="true")p.setAttribute("aria-hidden","false")' +
-          '}' +
-        '})' +
-      '});' +
-      'if(hidden.length===0){parent.postMessage({type:"milg-screenshots-unhidden",screenshots:[],_iframeId:_mid},"*");return}' +
-      'void document.body.offsetHeight;' +
-      'setTimeout(function(){' +
-        // Direct capture (iframe already resized from main screenshot pass)
-        'var ms=window.modernScreenshot;' +
-        'if(!ms||!ms.domToCanvas){parent.postMessage({type:"milg-screenshots-unhidden",screenshots:[],_iframeId:_mid},"*");return}' +
-        'ms.domToCanvas(document.documentElement,{scale:' + SCREENSHOT_SCALE + ',timeout:30000}).then(function(fc){' +
-          'var uri;try{uri=fc.toDataURL("image/webp",' + SCREENSHOT_QUALITY + ')}catch(e){uri=""}' +
-          'parent.postMessage({type:"milg-screenshots-unhidden",screenshots:uri?[uri]:[],_iframeId:_mid},"*")' +
-        '}).catch(function(){parent.postMessage({type:"milg-screenshots-unhidden",screenshots:[],_iframeId:_mid},"*")})' +
-      '},300)' +
-    '};';
-    var screenshotScript = captureScreenshots ? '<script>window.__milgDoScreenshots=function(){' + buildScreenshotScript('milg-screenshots-result') + '};' + unhiddenScreenshotFn + '</' + 'script>' : '';
-    var srcdoc;
-    if (isFullDoc) {
-      // Wait for window load (CSS/fonts loaded), then extra delay for rendering
-      // JS-enabled mode (URL patch present) needs longer delays for React/Vue hydration
-      var hasJsPatch = html.indexOf('__milgSandboxLog') !== -1;
-      var postLoadDelay = hasJsPatch ? 2000 : 1000;
-      var fallbackDelay = hasJsPatch ? 8000 : 8000;
-      var extractScript = idVar + excludeVar + fragmentVar + screenshotScript + '<script>window.addEventListener("load",function(){setTimeout(function(){(' + extractFromDocument.toString() + ')()},' + postLoadDelay + ')});setTimeout(function(){(' + extractFromDocument.toString() + ')()},' + fallbackDelay + ');</' + 'script>';
-      if (/<\/body>/i.test(html)) {
-        srcdoc = html.replace(/<\/body>/i, extractScript + '</body>');
-      } else {
-        srcdoc = html + extractScript;
-      }
-    } else {
-      var darkClass = editorDark ? ' class="dark"' : '';
-      var darkVariantTag = editorDark ? '<style type="text/tailwindcss">@custom-variant dark (&:where(.dark, .dark *));</style>' : '';
-      var effectTag = editorEffectCSS ? '<style>' + editorEffectCSS + '</style>' : '';
-      srcdoc = '<!DOCTYPE html><html lang="en"' + darkClass + '><head><meta charset="UTF-8">' +
-        '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
-        '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>' +
-        darkVariantTag + effectTag +
-        '<style>body{margin:0}</style></head><body>' +
-        html + idVar + excludeVar + fragmentVar + screenshotScript +
-        '<script>setTimeout(function(){(' + extractFromDocument.toString() + ')()}, 1500);</' + 'script>' +
-        '</body></html>';
-    }
-    iframe.srcdoc = srcdoc;
-
-    // Timeout fallback (longer when capturing screenshots)
-    setTimeout(function() {
-      if (!handled && iframe._milgData) {
-        // Extraction succeeded but screenshots timed out — return without screenshots
-        iframe._milgData.screenshots = [];
-        finish(iframe._milgData);
-      } else {
-        finish({
-          meta: { title: '', url: 'Pasted HTML', viewportWidth: 1280, viewportHeight: 900, timestamp: new Date().toISOString(), version: 1 },
-          colors: { textColors: [], bgColors: [], contrastPairs: [] },
-          typography: { bodyFontSize: '16px', bodyLineHeight: '24px', bodyFontFamily: 'sans-serif', fontFamilies: [], fontSizes: [], fontWeights: [], headings: [], lineHeights: [], maxLineLength: { chars: 0, element: '', fontSize: 0, textLength: 0 } },
-          spacing: { paddings: [], margins: [], gaps: [], maxContentWidth: '', bodyPaddingHorizontal: '' },
-          layout: { sectionGaps: [], alignmentEdges: [], visualHierarchy: {} },
-          interaction: { touchTargets: [], transitions: [] },
-          accessibility: { semanticElements: {}, headingHierarchy: [], imagesWithoutAlt: 0, formLabels: { total: 0, withLabel: 0, withoutLabel: 0 }, focusIndicators: [] },
-          structure: { totalElements: 0, darkModeClasses: false, responsiveClasses: false, tailwindDetected: false, cssFramework: 'unknown' }
-        });
-      }
-    }, captureScreenshots ? 480000 : (isFullDoc ? 15000 : 8000));
-  }
-
-  return {
-    init: init,
-    injectBaseTag: injectBaseTag,
-    analyzeHtmlInIframe: analyzeHtmlInIframe,
-    deepScanInIframe: deepScanInIframe,
-    buildScreenshotScript: buildScreenshotScript
-  };
 })();
 </file>
 
@@ -40016,25 +40016,52 @@ console.log('[milg] analyzer.js v48.1 loaded');
     MilgViewer.showVerifyResult(selector);
   };
 
-  // Viewport switching for deep scan results
+  // Viewport switching for deep scan results — cached per viewport index
+  var _viewportCache = {}; // idx → { data, reportData, html }
   window.__milgSwitchViewport = function(idx) {
     if (!lastRawData || !lastRawData.deepScan || !lastRawData.deepScan.viewportData) return;
     var deepScan = lastRawData.deepScan;
     var vpData = deepScan.viewportData[idx];
     if (!vpData || !vpData.data) { showToast('No data for this viewport'); return; }
     _activeViewportIdx = idx;
-    // Show spinner on the clicked tab while loading
-    renderViewportTabs(lastRawData); // update active state immediately
-    var activeBtn = document.querySelector('#viewportTabs button:nth-child(' + (idx + 2) + ')'); // +2 for the label span
+    renderViewportTabs(lastRawData);
+
+    var reportContainer = document.getElementById('reportContainer');
+
+    // Cache hit: restore instantly
+    if (_viewportCache[idx]) {
+      var cached = _viewportCache[idx];
+      lastRawData = cached.data;
+      reportData = cached.reportData;
+      if (reportContainer && cached.html) {
+        reportContainer.innerHTML = cached.html;
+        reportContainer.classList.add('visible');
+      }
+      renderViewportTabs(cached.data);
+      return;
+    }
+
+    // Cache miss: show spinner, defer heavy work
+    var activeBtn = document.querySelector('#viewportTabs button:nth-child(' + (idx + 2) + ')');
     if (activeBtn) activeBtn.innerHTML += ' <span style="display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:milg-spin 0.6s linear infinite;vertical-align:middle"></span>';
-    // Defer the heavy work to next frame so spinner renders
     setTimeout(function() {
       var switchedData = JSON.parse(JSON.stringify(vpData.data, function(k, v) {
-        return k === 'deepScan' ? undefined : v;
+        return (k === 'deepScan' || k === '_cachedReportData') ? undefined : v;
       }));
       switchedData.deepScan = deepScan;
       switchedData.meta.url = lastRawData.meta.url;
+      // Preserve pre-computed pixel verify results from deep scan
+      if (vpData.data._contrastVerifyResults) {
+        switchedData._contrastVerifyResults = vpData.data._contrastVerifyResults;
+        switchedData._bboxEdgeResults = vpData.data._bboxEdgeResults;
+      }
       runAnalysis(switchedData);
+      // Cache for instant restore on next switch
+      _viewportCache[idx] = {
+        data: switchedData,
+        reportData: reportData,
+        html: reportContainer ? reportContainer.innerHTML : ''
+      };
     }, 50);
   };
 
@@ -40180,7 +40207,7 @@ console.log('[milg] analyzer.js v48.1 loaded');
   // --- Core analysis runner ---
   function runAnalysis(data, skipExclusionDetection) {
     lastRawData = data;
-    if (!_originalRawData || !skipExclusionDetection) _originalRawData = data;
+    if (!_originalRawData || !skipExclusionDetection) { _originalRawData = data; _viewportCache = {}; }
     try { sessionStorage.setItem('milg-last-extraction', JSON.stringify(data, function(k, v) { return (k === 'viewportData' || k === '_cachedReportData') ? undefined : v; })); } catch(e) {}
     // Apply selected profile
     var profile = document.getElementById('profileSelect');
@@ -41076,7 +41103,7 @@ console.log('[milg] analyzer.js v48.1 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v50.0</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v50.1</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 

@@ -435,25 +435,52 @@ console.log('[milg] analyzer.js v48.1 loaded');
     MilgViewer.showVerifyResult(selector);
   };
 
-  // Viewport switching for deep scan results
+  // Viewport switching for deep scan results — cached per viewport index
+  var _viewportCache = {}; // idx → { data, reportData, html }
   window.__milgSwitchViewport = function(idx) {
     if (!lastRawData || !lastRawData.deepScan || !lastRawData.deepScan.viewportData) return;
     var deepScan = lastRawData.deepScan;
     var vpData = deepScan.viewportData[idx];
     if (!vpData || !vpData.data) { showToast('No data for this viewport'); return; }
     _activeViewportIdx = idx;
-    // Show spinner on the clicked tab while loading
-    renderViewportTabs(lastRawData); // update active state immediately
-    var activeBtn = document.querySelector('#viewportTabs button:nth-child(' + (idx + 2) + ')'); // +2 for the label span
+    renderViewportTabs(lastRawData);
+
+    var reportContainer = document.getElementById('reportContainer');
+
+    // Cache hit: restore instantly
+    if (_viewportCache[idx]) {
+      var cached = _viewportCache[idx];
+      lastRawData = cached.data;
+      reportData = cached.reportData;
+      if (reportContainer && cached.html) {
+        reportContainer.innerHTML = cached.html;
+        reportContainer.classList.add('visible');
+      }
+      renderViewportTabs(cached.data);
+      return;
+    }
+
+    // Cache miss: show spinner, defer heavy work
+    var activeBtn = document.querySelector('#viewportTabs button:nth-child(' + (idx + 2) + ')');
     if (activeBtn) activeBtn.innerHTML += ' <span style="display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:milg-spin 0.6s linear infinite;vertical-align:middle"></span>';
-    // Defer the heavy work to next frame so spinner renders
     setTimeout(function() {
       var switchedData = JSON.parse(JSON.stringify(vpData.data, function(k, v) {
-        return k === 'deepScan' ? undefined : v;
+        return (k === 'deepScan' || k === '_cachedReportData') ? undefined : v;
       }));
       switchedData.deepScan = deepScan;
       switchedData.meta.url = lastRawData.meta.url;
+      // Preserve pre-computed pixel verify results from deep scan
+      if (vpData.data._contrastVerifyResults) {
+        switchedData._contrastVerifyResults = vpData.data._contrastVerifyResults;
+        switchedData._bboxEdgeResults = vpData.data._bboxEdgeResults;
+      }
       runAnalysis(switchedData);
+      // Cache for instant restore on next switch
+      _viewportCache[idx] = {
+        data: switchedData,
+        reportData: reportData,
+        html: reportContainer ? reportContainer.innerHTML : ''
+      };
     }, 50);
   };
 
@@ -599,7 +626,7 @@ console.log('[milg] analyzer.js v48.1 loaded');
   // --- Core analysis runner ---
   function runAnalysis(data, skipExclusionDetection) {
     lastRawData = data;
-    if (!_originalRawData || !skipExclusionDetection) _originalRawData = data;
+    if (!_originalRawData || !skipExclusionDetection) { _originalRawData = data; _viewportCache = {}; }
     try { sessionStorage.setItem('milg-last-extraction', JSON.stringify(data, function(k, v) { return (k === 'viewportData' || k === '_cachedReportData') ? undefined : v; })); } catch(e) {}
     // Apply selected profile
     var profile = document.getElementById('profileSelect');
