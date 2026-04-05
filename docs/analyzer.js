@@ -53,14 +53,15 @@ console.log('[milg] analyzer.js v48.1 loaded');
   // --- Focus modal with live progress log ---
   var _focusModal = null;
   var _focusModalLog = null;
-  function showFocusModal() {
+  function showFocusModal(dismissable) {
     if (_focusModal) return;
     var isDark = document.body.classList.contains('dark-ui');
     var overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;';
     var box = document.createElement('div');
-    box.style.cssText = 'background:' + (isDark ? '#1e293b' : '#fff') + ';border-radius:12px;padding:24px 32px;max-width:500px;width:90vw;box-shadow:0 20px 60px rgba(0,0,0,0.3);color:' + (isDark ? '#e2e8f0' : '#1e293b') + ';';
-    box.innerHTML = '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">' +
+    box.style.cssText = 'background:' + (isDark ? '#1e293b' : '#fff') + ';border-radius:12px;padding:24px 32px;max-width:500px;width:90vw;box-shadow:0 20px 60px rgba(0,0,0,0.3);color:' + (isDark ? '#e2e8f0' : '#1e293b') + ';position:relative;';
+    box.innerHTML = (dismissable ? '<button onclick="this.closest(\'div[style*=fixed]\').remove();window._milgFocusModalDismissed=true" style="position:absolute;top:10px;right:14px;background:none;border:none;font-size:22px;cursor:pointer;color:' + (isDark ? '#94a3b8' : '#64748b') + ';line-height:1" title="Dismiss and browse results">&times;</button>' : '') +
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">' +
         '<div class="milg-spinner" style="width:20px;height:20px;border:2px solid ' + (isDark ? '#475569' : '#e2e8f0') + ';border-top-color:' + (isDark ? '#60a5fa' : '#2563eb') + ';border-radius:50%;animation:milg-spin 0.8s linear infinite"></div>' +
         '<div style="font-size:16px;font-weight:700">Deep analysis in progress</div>' +
       '</div>' +
@@ -89,6 +90,7 @@ console.log('[milg] analyzer.js v48.1 loaded');
   var _lastModalStart = 0;
   var _modalTimer = null;
   function updateFocusModal(msg) {
+    if (window._milgFocusModalDismissed) { _focusModal = null; _focusModalLog = null; return; }
     if (!_focusModalLog) return;
     if (msg === _lastModalMsg) return; // same message, timer handles it
     // Finalize previous step with elapsed time
@@ -598,7 +600,7 @@ console.log('[milg] analyzer.js v48.1 loaded');
   function runAnalysis(data, skipExclusionDetection) {
     lastRawData = data;
     if (!_originalRawData || !skipExclusionDetection) _originalRawData = data;
-    try { sessionStorage.setItem('milg-last-extraction', JSON.stringify(data, function(k, v) { return k === 'viewportData' ? undefined : v; })); } catch(e) {}
+    try { sessionStorage.setItem('milg-last-extraction', JSON.stringify(data, function(k, v) { return (k === 'viewportData' || k === '_cachedReportData') ? undefined : v; })); } catch(e) {}
     // Apply selected profile
     var profile = document.getElementById('profileSelect');
     if (profile) data.profile = profile.value;
@@ -1443,7 +1445,10 @@ console.log('[milg] analyzer.js v48.1 loaded');
       runAnalysis: runAnalysis,
       restoreCachedAnalysis: restoreCachedAnalysis,
       analyzeUrlBtn: analyzeUrlBtn,
-      runDeepScanLoop: runDeepScanLoop
+      runDeepScanLoop: runDeepScanLoop,
+      showFocusModal: showFocusModal,
+      updateFocusModal: updateFocusModal,
+      hideFocusModal: hideFocusModal
     });
   }
 
