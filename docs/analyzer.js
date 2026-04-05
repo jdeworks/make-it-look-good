@@ -485,7 +485,7 @@ console.log('[milg] analyzer.js v48.1 loaded');
       var savedEdge = switchedData._bboxEdgeResults;
       delete switchedData._contrastVerifyResults; // don't inject into first render
       delete switchedData._bboxEdgeResults;
-      runAnalysis(switchedData);
+      runAnalysis(switchedData, 'viewport');
 
       // Restore verify results if pre-computed, and re-cache with report HTML
       if (savedVerify) {
@@ -506,7 +506,7 @@ console.log('[milg] analyzer.js v48.1 loaded');
         // Re-run to pick up cached verify results (will hit the precomputed path)
         setTimeout(function() {
           if (_activeViewportIdx !== idx) return;
-          runAnalysis(switchedData, true);
+          runAnalysis(switchedData, 'viewport');
           _viewportCache[idx].html = reportContainer ? reportContainer.innerHTML : '';
           _viewportCache[idx].reportData = reportData;
         }, 50);
@@ -695,17 +695,18 @@ console.log('[milg] analyzer.js v48.1 loaded');
   // --- Core analysis runner ---
   function runAnalysis(data, skipExclusionDetection) {
     lastRawData = data;
-    if (!_originalRawData || !skipExclusionDetection) { _originalRawData = data; _viewportCache = {}; }
+    if (!_originalRawData || (!skipExclusionDetection && skipExclusionDetection !== 'viewport')) { _originalRawData = data; _viewportCache = {}; }
     try { sessionStorage.setItem('milg-last-extraction', JSON.stringify(data, function(k, v) { return (k === 'viewportData' || k === '_cachedReportData') ? undefined : v; })); } catch(e) {}
     // Apply selected profile
     var profile = document.getElementById('profileSelect');
     if (profile) data.profile = profile.value;
-    // Reuse cached scoring for crawl page tabs (avoids re-scoring on every tab switch)
-    if (skipExclusionDetection === 'crawl-page' && data._cachedReportData) {
+    // Reuse cached scoring for crawl page tabs and viewport switches
+    var _isTabSwitch = (skipExclusionDetection === 'crawl-page' || skipExclusionDetection === 'viewport');
+    if (_isTabSwitch && data._cachedReportData) {
       reportData = data._cachedReportData;
     } else {
       reportData = MilgScoring.runScoring(data);
-      if (skipExclusionDetection === 'crawl-page') data._cachedReportData = reportData;
+      if (_isTabSwitch) data._cachedReportData = reportData;
     }
     var reportContainer = document.getElementById('reportContainer');
     var inputSection = document.getElementById('inputSection');
