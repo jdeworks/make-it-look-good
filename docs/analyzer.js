@@ -694,6 +694,13 @@ console.log('[milg] analyzer.js v51.0 loaded');
 
   // --- Core analysis runner ---
   function runAnalysis(data, skipExclusionDetection) {
+    // Diagnostic: check if mask data survives to runAnalysis
+    if (data && data.colors && data.colors.contrastPairs) {
+      var _mc = data.colors.contrastPairs.filter(function(p) { return !!p._maskBmp; }).length;
+      if (data.screenshots && data.screenshots.length > 0 && _mc === 0 && data.colors.contrastPairs.length > 0) {
+        console.warn('[milg-warn] Mask data MISSING at runAnalysis entry — ' + data.colors.contrastPairs.length + ' pairs, 0 have _maskBmp');
+      }
+    }
     lastRawData = data;
     if (!_originalRawData || (!skipExclusionDetection && skipExclusionDetection !== 'viewport')) { _originalRawData = data; _viewportCache = {}; }
     try { sessionStorage.setItem('milg-last-extraction', JSON.stringify(data, function(k, v) { return (k === 'viewportData' || k === '_cachedReportData') ? undefined : v; })); } catch(e) { console.warn('[milg-warn] sessionStorage save failed:', e.message); }

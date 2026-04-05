@@ -614,8 +614,10 @@ window.MilgIframe = (function() {
                 applied++;
               }
             });
-            // mask results applied
+            console.log('[milg-iframe] Mask results applied: ' + applied + '/' + Object.keys(mr).length + ' pairs, cp.length=' + cp.length);
           }
+        } else if (iframe._milgData) {
+          console.warn('[milg-warn] No maskResults in screenshot message — masks will be missing');
         }
         // If hidden panels were detected, trigger unhidden screenshot pass
         var hpc = iframe._milgData.layout && iframe._milgData.layout.hiddenPanelCount;
