@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v54.1 loaded');
+console.log('[milg] analyzer.js v55.0 loaded');
 
 (function() {
   "use strict";
@@ -831,8 +831,24 @@ console.log('[milg] analyzer.js v54.1 loaded');
       console.log('[milg] Running pixel verify — screenshots:', reportData.raw.screenshots.length,
         'meta:', JSON.stringify(reportData.raw.screenshotMeta).substring(0, 100),
         'pairs with bbox:', (reportData.raw.colors && reportData.raw.colors.contrastPairs || []).filter(function(p) { return !!p.bbox; }).length);
+      // Show spinner while verify runs
+      var _verifySpinner = document.createElement('div');
+      _verifySpinner.id = 'milg-verify-spinner';
+      _verifySpinner.innerHTML = '<details class="contrast-verify-summary" open>' +
+        '<summary style="cursor:pointer;font-size:13px;font-weight:600;padding:8px 0;display:flex;align-items:center;gap:8px">' +
+        '<span style="display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite;flex-shrink:0"></span>' +
+        'Pixel Contrast Verification\u2026' +
+        '</summary>' +
+        '<div style="padding:8px 0;font-size:12px;color:var(--text-secondary)">Sampling pixel colors from screenshots to verify CSS contrast ratios\u2026</div>' +
+        '</details>';
+      var _spinnerAnchor = reportContainer.querySelector('.report-screenshots');
+      if (_spinnerAnchor) _spinnerAnchor.parentNode.insertBefore(_verifySpinner, _spinnerAnchor.nextSibling);
+      else reportContainer.insertBefore(_verifySpinner, reportContainer.firstChild);
       MilgContrastVerify.verify(reportData, function(results, bboxEdgeResults) {
         console.log('[milg] Pixel verify complete:', results.length, 'results,', (bboxEdgeResults || []).length, 'edge results');
+        // Remove spinner
+        var spinner = document.getElementById('milg-verify-spinner');
+        if (spinner) spinner.parentNode.removeChild(spinner);
         if (results.length === 0 && (!bboxEdgeResults || bboxEdgeResults.length === 0)) return;
         var summary = MilgContrastVerify.buildSummary(results, bboxEdgeResults);
         var summaryHtml = MilgContrastVerify.renderSummaryHtml(summary);
@@ -1312,18 +1328,39 @@ console.log('[milg] analyzer.js v54.1 loaded');
     // Export JSON — save analysis data for re-import or sharing
     document.getElementById('exportJsonBtn').addEventListener('click', function() {
       if (!lastRawData) return;
-      // Clone data, skipping deepScan to break circular refs, then re-attach it properly
+      // Clone data, handling deepScan carefully (has circular refs via viewportData[].data.deepScan)
       var exportData;
+      var _replacer = function(k, v) { return k === 'deepScan' ? undefined : v; };
       if (typeof structuredClone === 'function') {
         var _tmpDs = lastRawData.deepScan;
         if (_tmpDs) lastRawData.deepScan = undefined;
         exportData = structuredClone(lastRawData);
-        if (_tmpDs) { lastRawData.deepScan = _tmpDs; var _tmpNested = _tmpDs.viewportData; if (_tmpNested) _tmpDs.viewportData = undefined; exportData.deepScan = structuredClone(_tmpDs); if (_tmpNested) _tmpDs.viewportData = _tmpNested; }
+        if (_tmpDs) lastRawData.deepScan = _tmpDs;
       } else {
-        exportData = JSON.parse(JSON.stringify(lastRawData, function(k, v) { return k === 'deepScan' ? undefined : v; }));
-        if (lastRawData.deepScan) {
-          exportData.deepScan = JSON.parse(JSON.stringify(lastRawData.deepScan, function(k, v) { return k === 'deepScan' ? undefined : v; }));
+        exportData = JSON.parse(JSON.stringify(lastRawData, _replacer));
+      }
+      // Re-attach deepScan with viewportData (strip screenshots from non-primary viewports + break circular refs)
+      if (lastRawData.deepScan) {
+        var ds = lastRawData.deepScan;
+        var exportDs = { viewports: ds.viewports, darkMode: ds.darkMode };
+        if (ds.viewportData) {
+          exportDs.viewportData = ds.viewportData.map(function(vd, vi) {
+            if (!vd || !vd.data) return null;
+            // Clone viewport data without circular deepScan ref
+            var vpClone = JSON.parse(JSON.stringify(vd.data, _replacer));
+            // Strip screenshots from non-primary viewports to keep export size down
+            if (vi > 0) { delete vpClone.screenshots; delete vpClone.screenshotsUnhidden; }
+            // Include pixel verify results if cached on this viewport
+            if (vd.data._contrastVerifyResults) {
+              vpClone._contrastVerifyResults = vd.data._contrastVerifyResults.map(function(r) {
+                var copy = Object.assign({}, r); delete copy._debug; delete copy.samplePoints; return copy;
+              });
+              vpClone._bboxEdgeResults = vd.data._bboxEdgeResults || [];
+            }
+            return { label: vd.label, width: vd.width, data: vpClone };
+          });
         }
+        exportData.deepScan = exportDs;
       }
       // Include pixel verify results if available
       if (reportData && reportData._contrastVerifyResults) {

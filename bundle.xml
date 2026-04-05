@@ -31124,6 +31124,82 @@ window.MilgCrawl = (function() {
       };
     });
 
+    // Deep scan viewport aggregation
+    var viewportSummary = null;
+    var deepPages = donePages.filter(function(p) { return p.rawData && p.rawData.deepScan && p.rawData.deepScan.viewports; });
+    if (deepPages.length > 0) {
+      var vpLabels = deepPages[0].rawData.deepScan.viewports.map(function(v) { return v.label; });
+      var vpCount = vpLabels.length;
+      // Per-viewport aggregated findings
+      var vpStats = vpLabels.map(function(label, vi) {
+        var touchTotal = 0, contrastTotal = 0, overflowCount = 0;
+        deepPages.forEach(function(p) {
+          var vp = p.rawData.deepScan.viewports[vi];
+          if (!vp || vp.error) return;
+          touchTotal += vp.touchTargets || 0;
+          contrastTotal += vp.contrastFails || 0;
+          if (vp.overflow) overflowCount++;
+        });
+        return { label: label, width: deepPages[0].rawData.deepScan.viewports[vi].width, touchTargets: touchTotal, contrastFails: contrastTotal, overflowPages: overflowCount };
+      });
+
+      // Cross-viewport issue matching: identify universal vs viewport-specific issues
+      var vpIssueMap = {}; // issueKey → Set of viewport labels where it appears
+      deepPages.forEach(function(p) {
+        var vds = p.rawData.deepScan.viewportData;
+        if (!vds) return;
+        vds.forEach(function(vd, vi) {
+          if (!vd || !vd.data) return;
+          var scored = p.reportData; // primary viewport scoring
+          // Use per-viewport data to find issues
+          var vpData = vd.data;
+          // Touch target fails per viewport
+          var touches = (vpData.interaction && vpData.interaction.touchTargets) || [];
+          touches.forEach(function(t) {
+            var key = 'touch|' + (t.selector || t.element || 'unknown');
+            if (!vpIssueMap[key]) vpIssueMap[key] = { title: 'Touch target: ' + (t.selector || t.element || '').substring(0, 60), type: 'touch', viewports: [], pages: [] };
+            if (vpIssueMap[key].viewports.indexOf(vpLabels[vi]) === -1) vpIssueMap[key].viewports.push(vpLabels[vi]);
+            vpIssueMap[key].pages.push(p.url);
+          });
+          // Contrast fails per viewport
+          var pairs = (vpData.colors && vpData.colors.contrastPairs) || [];
+          pairs.forEach(function(cp) {
+            if (cp.passes) return;
+            var key = 'contrast|' + (cp.selector || '') + '|' + (cp.text || '').substring(0, 20);
+            if (!vpIssueMap[key]) vpIssueMap[key] = { title: 'Contrast: ' + (cp.selector || '').substring(0, 40) + ' "' + (cp.text || '').substring(0, 20) + '"', type: 'contrast', viewports: [], pages: [] };
+            if (vpIssueMap[key].viewports.indexOf(vpLabels[vi]) === -1) vpIssueMap[key].viewports.push(vpLabels[vi]);
+            vpIssueMap[key].pages.push(p.url);
+          });
+        });
+      });
+
+      // Classify issues: universal (all viewports) vs viewport-specific
+      var universalIssues = [];
+      var viewportSpecific = [];
+      Object.keys(vpIssueMap).forEach(function(k) {
+        var issue = vpIssueMap[k];
+        var uniquePages = []; issue.pages.forEach(function(u) { if (uniquePages.indexOf(u) === -1) uniquePages.push(u); });
+        issue.pageCount = uniquePages.length;
+        if (issue.viewports.length >= vpCount) {
+          universalIssues.push(issue);
+        } else {
+          viewportSpecific.push(issue);
+        }
+      });
+      // Sort by page count desc
+      universalIssues.sort(function(a, b) { return b.pageCount - a.pageCount; });
+      viewportSpecific.sort(function(a, b) { return b.pageCount - a.pageCount; });
+
+      viewportSummary = {
+        viewportCount: vpCount,
+        viewportLabels: vpLabels,
+        viewportStats: vpStats,
+        universalIssues: universalIssues.slice(0, 20),
+        viewportSpecific: viewportSpecific.slice(0, 20),
+        deepPageCount: deepPages.length
+      };
+    }
+
     return {
       pagesAnalyzed: donePages.length,
       pagesFailed: failedPages.length,
@@ -31132,7 +31208,8 @@ window.MilgCrawl = (function() {
       bestPage: { url: donePages[bestIdx].url, score: scores[bestIdx] },
       scoreGrid: scoreGrid,
       crossPageIssues: crossPageIssues,
-      categoryAverages: categoryAverages
+      categoryAverages: categoryAverages,
+      viewportSummary: viewportSummary
     };
   }
 
@@ -31160,6 +31237,9 @@ window.MilgCrawl = (function() {
     lines.push('**Date:** ' + new Date(session.startedAt).toLocaleString());
     lines.push('**Pages analyzed:** ' + summary.pagesAnalyzed + ' (failed: ' + summary.pagesFailed + ')');
     lines.push('**Average score:** ' + summary.averageScore + '/100');
+    if (summary.viewportSummary) {
+      lines.push('**Viewports:** ' + summary.viewportSummary.viewportCount + ' (' + summary.viewportSummary.viewportLabels.join(', ') + ')');
+    }
     if (severityFilter && severityFilter !== 'all') {
       lines.push('**Filter:** ' + (severityFilter === 'error' ? 'Errors only' : 'Warnings + Errors'));
     }
@@ -31196,6 +31276,35 @@ window.MilgCrawl = (function() {
       });
     }
 
+    // Viewport breakdown (deep scan)
+    if (summary.viewportSummary) {
+      var vs = summary.viewportSummary;
+      lines.push('## Viewport Breakdown');
+      lines.push('');
+      lines.push('| Viewport | Width | Contrast Fails | Touch Targets | Overflow Pages |');
+      lines.push('|----------|-------|---------------|---------------|----------------|');
+      vs.viewportStats.forEach(function(vp) {
+        lines.push('| ' + vp.label + ' | ' + vp.width + 'px | ' + vp.contrastFails + ' | ' + vp.touchTargets + ' | ' + vp.overflowPages + ' |');
+      });
+      lines.push('');
+      if (vs.universalIssues.length > 0) {
+        lines.push('### Universal Issues (all viewports)');
+        lines.push('');
+        vs.universalIssues.forEach(function(issue) {
+          lines.push('- ' + issue.title + ' (' + issue.pageCount + ' page' + (issue.pageCount > 1 ? 's' : '') + ')');
+        });
+        lines.push('');
+      }
+      if (vs.viewportSpecific.length > 0) {
+        lines.push('### Viewport-Specific Issues');
+        lines.push('');
+        vs.viewportSpecific.forEach(function(issue) {
+          lines.push('- ' + issue.title + ' — *' + issue.viewports.join(', ') + ' only* (' + issue.pageCount + ' page' + (issue.pageCount > 1 ? 's' : '') + ')');
+        });
+        lines.push('');
+      }
+    }
+
     // Per-page reports
     lines.push('## Per-Page Reports');
     lines.push('');
@@ -31218,23 +31327,55 @@ window.MilgCrawl = (function() {
         });
         lines.push('');
       });
+      // Per-page pixel verify summary
+      if (page.rawData && page.rawData._contrastVerifyResults && page.rawData._contrastVerifyResults.length > 0) {
+        var pvr = page.rawData._contrastVerifyResults;
+        var pvFp = pvr.filter(function(r) { return r.cssPasses && !r.pixelPasses; });
+        var pvFf = pvr.filter(function(r) { return !r.cssPasses && r.pixelPasses; });
+        if (pvFp.length > 0 || pvFf.length > 0) {
+          lines.push('#### Pixel Verification');
+          if (pvFp.length > 0) lines.push('- ' + pvFp.length + ' hidden failure(s)');
+          if (pvFf.length > 0) lines.push('- ' + pvFf.length + ' false positive(s)');
+          lines.push('');
+        }
+      }
     });
 
     return lines.join('\n');
   }
 
   function renderCrawlJSON(session, severityFilter) {
+    var _replacer = function(k, v) { return k === 'deepScan' ? undefined : v; };
     var out = {
+      _milgCrawl: true,
       startUrl: session.startUrl,
       startedAt: session.startedAt,
       options: session.options,
       summary: session.summary,
+      // results: re-importable raw extraction data (loadCrawlResults compatible)
+      results: session.pages.filter(function(p) { return p.status === 'done' && p.rawData; }).map(function(p) {
+        var rawClone = JSON.parse(JSON.stringify(p.rawData, _replacer));
+        // Strip screenshots to keep export size manageable
+        delete rawClone.screenshots; delete rawClone.screenshotsUnhidden;
+        // Include deep scan summary (without full viewport data)
+        if (p.rawData.deepScan) {
+          rawClone.deepScan = { viewports: p.rawData.deepScan.viewports, darkMode: p.rawData.deepScan.darkMode || null };
+        }
+        // Include cached pixel verify
+        if (p.rawData._contrastVerifyResults) {
+          rawClone._contrastVerifyResults = p.rawData._contrastVerifyResults.map(function(r) {
+            var copy = Object.assign({}, r); delete copy._debug; delete copy.samplePoints; return copy;
+          });
+          rawClone._bboxEdgeResults = p.rawData._bboxEdgeResults || [];
+        }
+        return { url: p.url, data: rawClone };
+      }),
       pages: session.pages.map(function(p) {
         if (p.status !== 'done' || !p.reportData) {
           return { url: p.url, status: p.status, error: p.error };
         }
         var cats = filterFindings(p.reportData.categories, severityFilter);
-        return {
+        var pageOut = {
           url: p.url,
           title: p.title,
           score: p.reportData.overall,
@@ -31243,6 +31384,40 @@ window.MilgCrawl = (function() {
             return { label: c.label, score: c.score, findings: c.findings };
           })
         };
+        // Include deep scan viewport data if available
+        if (p.rawData && p.rawData.deepScan && p.rawData.deepScan.viewports) {
+          pageOut.deepScan = {
+            viewports: p.rawData.deepScan.viewports,
+            darkMode: p.rawData.deepScan.darkMode || null
+          };
+          if (p.rawData.deepScan.viewportData) {
+            pageOut.deepScan.viewportData = p.rawData.deepScan.viewportData.map(function(vd) {
+              if (!vd || !vd.data) return null;
+              var vpOut = { label: vd.label, width: vd.width };
+              var d = vd.data;
+              vpOut.contrastFails = (d.colors && d.colors.contrastPairs || []).filter(function(cp) { return !cp.passes; }).length;
+              vpOut.touchTargets = (d.interaction && d.interaction.touchTargets || []).length;
+              vpOut.overflow = (d.structure && d.structure.hasHorizontalOverflow) || false;
+              if (d._contrastVerifyResults) {
+                vpOut.pixelVerify = {
+                  total: d._contrastVerifyResults.length,
+                  falsePass: d._contrastVerifyResults.filter(function(r) { return r.cssPasses && !r.pixelPasses; }).length,
+                  falseFail: d._contrastVerifyResults.filter(function(r) { return !r.cssPasses && r.pixelPasses; }).length
+                };
+              }
+              return vpOut;
+            });
+          }
+        }
+        // Include pixel verify if available
+        if (p.rawData && p.rawData._contrastVerifyResults) {
+          pageOut.pixelVerify = {
+            total: p.rawData._contrastVerifyResults.length,
+            falsePass: p.rawData._contrastVerifyResults.filter(function(r) { return r.cssPasses && !r.pixelPasses; }).length,
+            falseFail: p.rawData._contrastVerifyResults.filter(function(r) { return !r.cssPasses && r.pixelPasses; }).length
+          };
+        }
+        return pageOut;
       })
     };
     return JSON.stringify(out, null, 2);
@@ -31925,6 +32100,61 @@ window.MilgReport = (function() {
     }
     lines.push('');
 
+    // Deep scan: viewport results
+    if (report.raw.deepScan && report.raw.deepScan.viewports) {
+      var dsVps = report.raw.deepScan.viewports;
+      var dsVpData = report.raw.deepScan.viewportData;
+      lines.push('## Multi-Viewport Analysis');
+      lines.push('');
+      lines.push('Analyzed across ' + dsVps.length + ' viewports:');
+      lines.push('');
+      lines.push('| Viewport | Width | Contrast Fails | Touch Targets | Overflow |');
+      lines.push('|----------|-------|---------------|---------------|----------|');
+      dsVps.forEach(function(vp, vi) {
+        lines.push('| ' + vp.label + ' | ' + vp.width + 'px | ' + (vp.contrastFails || 0) + ' | ' + (vp.touchTargets || 0) + ' | ' + (vp.overflow ? 'Yes' : 'No') + ' |');
+      });
+      lines.push('');
+      // Per-viewport detailed findings
+      if (dsVpData) {
+        dsVpData.forEach(function(vd, vi) {
+          if (!vd || !vd.data) return;
+          var vpData = vd.data;
+          var contrastFails = (vpData.colors && vpData.colors.contrastPairs || []).filter(function(p) { return !p.passes; });
+          var touchIssues = vpData.interaction && vpData.interaction.touchTargets || [];
+          if (contrastFails.length === 0 && touchIssues.length === 0) return;
+          lines.push('### ' + vd.label + ' (' + vd.width + 'px)');
+          lines.push('');
+          if (contrastFails.length > 0) {
+            lines.push('**Contrast failures (' + contrastFails.length + '):**');
+            contrastFails.slice(0, 10).forEach(function(cf) {
+              lines.push('- `' + (cf.selector || 'unknown') + '` — ratio ' + cf.ratio + ':1 (needs ' + (cf.neededRatio || 4.5) + ':1)');
+            });
+            if (contrastFails.length > 10) lines.push('- ...and ' + (contrastFails.length - 10) + ' more');
+            lines.push('');
+          }
+          if (touchIssues.length > 0) {
+            lines.push('**Touch target issues (' + touchIssues.length + '):**');
+            touchIssues.slice(0, 10).forEach(function(tt) {
+              lines.push('- `' + (tt.selector || tt.element || 'unknown') + '` — ' + tt.width + '×' + tt.height + 'px');
+            });
+            if (touchIssues.length > 10) lines.push('- ...and ' + (touchIssues.length - 10) + ' more');
+            lines.push('');
+          }
+          // Pixel verify results
+          if (vpData._contrastVerifyResults && vpData._contrastVerifyResults.length > 0) {
+            var fp = vpData._contrastVerifyResults.filter(function(r) { return r.cssPasses && !r.pixelPasses; });
+            var ff = vpData._contrastVerifyResults.filter(function(r) { return !r.cssPasses && r.pixelPasses; });
+            if (fp.length > 0 || ff.length > 0) {
+              lines.push('**Pixel verification:**');
+              if (fp.length > 0) lines.push('- ' + fp.length + ' hidden failure(s) — pass CSS but fail in pixels');
+              if (ff.length > 0) lines.push('- ' + ff.length + ' false positive(s) — fail CSS but pass in pixels');
+              lines.push('');
+            }
+          }
+        });
+      }
+    }
+
     // Deep scan: dark mode test results
     if (report.raw.deepScan && report.raw.deepScan.darkMode && report.raw.deepScan.darkMode.tested) {
       var dsDm = report.raw.deepScan.darkMode;
@@ -31935,6 +32165,31 @@ window.MilgReport = (function() {
         lines.push('No contrast failures in dark mode.');
       } else {
         lines.push(dmFails + ' contrast failure(s) in dark mode (' + dsDm.contrastTotal + ' pairs checked).');
+      }
+      lines.push('');
+    }
+
+    // Pixel contrast verification results (top-level, for single-URL reports)
+    if (report._contrastVerifyResults && report._contrastVerifyResults.length > 0) {
+      var pvr = report._contrastVerifyResults;
+      var pvFp = pvr.filter(function(r) { return r.cssPasses && !r.pixelPasses; });
+      var pvFf = pvr.filter(function(r) { return !r.cssPasses && r.pixelPasses; });
+      var pvOk = pvr.length - pvFp.length - pvFf.length;
+      lines.push('## Pixel Contrast Verification');
+      lines.push('');
+      lines.push('- **' + pvr.length + '** pairs checked');
+      if (pvOk > 0) lines.push('- **' + pvOk + '** verified consistent');
+      if (pvFp.length > 0) {
+        lines.push('- **' + pvFp.length + '** hidden failure(s) — pass CSS but fail in pixels:');
+        pvFp.forEach(function(r) {
+          lines.push('  - `' + (r.selector || 'unknown') + '` CSS ' + r.cssRatio + ':1 → Pixel ' + r.pixelRatio + ':1');
+        });
+      }
+      if (pvFf.length > 0) {
+        lines.push('- **' + pvFf.length + '** false positive(s) — fail CSS but pass in pixels:');
+        pvFf.forEach(function(r) {
+          lines.push('  - `' + (r.selector || 'unknown') + '` CSS ' + r.cssRatio + ':1 → Pixel ' + r.pixelRatio + ':1');
+        });
       }
       lines.push('');
     }
@@ -31990,6 +32245,9 @@ window.MilgReport = (function() {
 
     // Overall stats
     html += '<h2>Site Overview</h2>';
+    if (summary.viewportSummary) {
+      html += '<div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">Analyzed across ' + summary.viewportSummary.viewportCount + ' viewports: ' + summary.viewportSummary.viewportLabels.map(function(l) { return escapeHtml(l); }).join(', ') + '</div>';
+    }
     html += '<div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:24px">';
     html += '<div style="padding:12px 20px;border-radius:10px;background:var(--surface);border:1px solid var(--border);text-align:center">';
     html += '<div style="font-size:32px;font-weight:700;font-variant-numeric:tabular-nums">' + summary.averageScore + '</div>';
@@ -31997,6 +32255,11 @@ window.MilgReport = (function() {
     html += '<div style="padding:12px 20px;border-radius:10px;background:var(--surface);border:1px solid var(--border);text-align:center">';
     html += '<div style="font-size:32px;font-weight:700">' + summary.pagesAnalyzed + '</div>';
     html += '<div style="font-size:12px;color:var(--text-secondary)">Pages Analyzed</div></div>';
+    if (summary.viewportSummary) {
+      html += '<div style="padding:12px 20px;border-radius:10px;background:var(--surface);border:1px solid var(--border);text-align:center">';
+      html += '<div style="font-size:32px;font-weight:700">' + summary.viewportSummary.viewportCount + '</div>';
+      html += '<div style="font-size:12px;color:var(--text-secondary)">Viewports</div></div>';
+    }
     if (summary.pagesFailed > 0) {
       html += '<div style="padding:12px 20px;border-radius:10px;background:#fef2f2;border:1px solid #fecaca;text-align:center">';
       html += '<div style="font-size:32px;font-weight:700;color:#dc2626">' + summary.pagesFailed + '</div>';
@@ -32051,6 +32314,52 @@ window.MilgReport = (function() {
         html += '</div>';
       });
       html += '</div>';
+    }
+
+    // Viewport breakdown (deep scan)
+    var vs = summary.viewportSummary;
+    if (vs) {
+      html += '<h3>Viewport Breakdown</h3>';
+      html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;margin-bottom:16px">';
+      vs.viewportStats.forEach(function(vp) {
+        html += '<div style="padding:10px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);font-size:13px">';
+        html += '<div style="font-weight:600;margin-bottom:4px">' + escapeHtml(vp.label) + ' <span style="color:var(--text-secondary);font-weight:400">(' + vp.width + 'px)</span></div>';
+        if (vp.contrastFails > 0) html += '<div style="color:#ef4444">Contrast fails: ' + vp.contrastFails + '</div>';
+        if (vp.touchTargets > 0) html += '<div style="color:#f59e0b">Touch targets: ' + vp.touchTargets + '</div>';
+        if (vp.overflowPages > 0) html += '<div style="color:#ef4444">Overflow on ' + vp.overflowPages + ' page' + (vp.overflowPages > 1 ? 's' : '') + '</div>';
+        if (vp.contrastFails === 0 && vp.touchTargets === 0 && vp.overflowPages === 0) {
+          html += '<div style="color:#16a34a">No issues found</div>';
+        }
+        html += '</div>';
+      });
+      html += '</div>';
+
+      // Universal issues (appear in ALL viewports)
+      if (vs.universalIssues.length > 0) {
+        html += '<h3>Universal Issues <span style="font-size:12px;color:var(--text-secondary);font-weight:400">(all viewports)</span></h3>';
+        html += '<div style="font-size:13px;line-height:1.6">';
+        vs.universalIssues.slice(0, 10).forEach(function(issue) {
+          html += '<div style="padding:6px 10px;margin-bottom:4px;border-radius:6px;background:var(--surface);border:1px solid var(--border)">';
+          html += '<span style="font-weight:500">' + escapeHtml(issue.title) + '</span>';
+          html += ' <span style="color:var(--text-secondary);font-size:12px">' + issue.pageCount + ' page' + (issue.pageCount > 1 ? 's' : '') + '</span>';
+          html += '</div>';
+        });
+        html += '</div>';
+      }
+
+      // Viewport-specific issues (only some viewports)
+      if (vs.viewportSpecific.length > 0) {
+        html += '<h3>Viewport-Specific Issues</h3>';
+        html += '<div style="font-size:13px;line-height:1.6">';
+        vs.viewportSpecific.slice(0, 10).forEach(function(issue) {
+          html += '<div style="padding:6px 10px;margin-bottom:4px;border-radius:6px;background:var(--surface);border:1px solid var(--border)">';
+          html += '<span style="font-weight:500">' + escapeHtml(issue.title) + '</span>';
+          html += ' <span style="font-size:12px;padding:1px 6px;border-radius:4px;background:var(--bg-alt);color:var(--text-secondary)">' + issue.viewports.map(function(v) { return escapeHtml(v); }).join(', ') + ' only</span>';
+          html += ' <span style="color:var(--text-secondary);font-size:12px">' + issue.pageCount + ' page' + (issue.pageCount > 1 ? 's' : '') + '</span>';
+          html += '</div>';
+        });
+        html += '</div>';
+      }
     }
 
     html += '</div>';
@@ -39736,7 +40045,7 @@ window.MilgIframe = (function() {
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v54.1 loaded');
+console.log('[milg] analyzer.js v55.0 loaded');
 
 (function() {
   "use strict";
@@ -40565,8 +40874,24 @@ console.log('[milg] analyzer.js v54.1 loaded');
       console.log('[milg] Running pixel verify — screenshots:', reportData.raw.screenshots.length,
         'meta:', JSON.stringify(reportData.raw.screenshotMeta).substring(0, 100),
         'pairs with bbox:', (reportData.raw.colors && reportData.raw.colors.contrastPairs || []).filter(function(p) { return !!p.bbox; }).length);
+      // Show spinner while verify runs
+      var _verifySpinner = document.createElement('div');
+      _verifySpinner.id = 'milg-verify-spinner';
+      _verifySpinner.innerHTML = '<details class="contrast-verify-summary" open>' +
+        '<summary style="cursor:pointer;font-size:13px;font-weight:600;padding:8px 0;display:flex;align-items:center;gap:8px">' +
+        '<span style="display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite;flex-shrink:0"></span>' +
+        'Pixel Contrast Verification\u2026' +
+        '</summary>' +
+        '<div style="padding:8px 0;font-size:12px;color:var(--text-secondary)">Sampling pixel colors from screenshots to verify CSS contrast ratios\u2026</div>' +
+        '</details>';
+      var _spinnerAnchor = reportContainer.querySelector('.report-screenshots');
+      if (_spinnerAnchor) _spinnerAnchor.parentNode.insertBefore(_verifySpinner, _spinnerAnchor.nextSibling);
+      else reportContainer.insertBefore(_verifySpinner, reportContainer.firstChild);
       MilgContrastVerify.verify(reportData, function(results, bboxEdgeResults) {
         console.log('[milg] Pixel verify complete:', results.length, 'results,', (bboxEdgeResults || []).length, 'edge results');
+        // Remove spinner
+        var spinner = document.getElementById('milg-verify-spinner');
+        if (spinner) spinner.parentNode.removeChild(spinner);
         if (results.length === 0 && (!bboxEdgeResults || bboxEdgeResults.length === 0)) return;
         var summary = MilgContrastVerify.buildSummary(results, bboxEdgeResults);
         var summaryHtml = MilgContrastVerify.renderSummaryHtml(summary);
@@ -41046,18 +41371,39 @@ console.log('[milg] analyzer.js v54.1 loaded');
     // Export JSON — save analysis data for re-import or sharing
     document.getElementById('exportJsonBtn').addEventListener('click', function() {
       if (!lastRawData) return;
-      // Clone data, skipping deepScan to break circular refs, then re-attach it properly
+      // Clone data, handling deepScan carefully (has circular refs via viewportData[].data.deepScan)
       var exportData;
+      var _replacer = function(k, v) { return k === 'deepScan' ? undefined : v; };
       if (typeof structuredClone === 'function') {
         var _tmpDs = lastRawData.deepScan;
         if (_tmpDs) lastRawData.deepScan = undefined;
         exportData = structuredClone(lastRawData);
-        if (_tmpDs) { lastRawData.deepScan = _tmpDs; var _tmpNested = _tmpDs.viewportData; if (_tmpNested) _tmpDs.viewportData = undefined; exportData.deepScan = structuredClone(_tmpDs); if (_tmpNested) _tmpDs.viewportData = _tmpNested; }
+        if (_tmpDs) lastRawData.deepScan = _tmpDs;
       } else {
-        exportData = JSON.parse(JSON.stringify(lastRawData, function(k, v) { return k === 'deepScan' ? undefined : v; }));
-        if (lastRawData.deepScan) {
-          exportData.deepScan = JSON.parse(JSON.stringify(lastRawData.deepScan, function(k, v) { return k === 'deepScan' ? undefined : v; }));
+        exportData = JSON.parse(JSON.stringify(lastRawData, _replacer));
+      }
+      // Re-attach deepScan with viewportData (strip screenshots from non-primary viewports + break circular refs)
+      if (lastRawData.deepScan) {
+        var ds = lastRawData.deepScan;
+        var exportDs = { viewports: ds.viewports, darkMode: ds.darkMode };
+        if (ds.viewportData) {
+          exportDs.viewportData = ds.viewportData.map(function(vd, vi) {
+            if (!vd || !vd.data) return null;
+            // Clone viewport data without circular deepScan ref
+            var vpClone = JSON.parse(JSON.stringify(vd.data, _replacer));
+            // Strip screenshots from non-primary viewports to keep export size down
+            if (vi > 0) { delete vpClone.screenshots; delete vpClone.screenshotsUnhidden; }
+            // Include pixel verify results if cached on this viewport
+            if (vd.data._contrastVerifyResults) {
+              vpClone._contrastVerifyResults = vd.data._contrastVerifyResults.map(function(r) {
+                var copy = Object.assign({}, r); delete copy._debug; delete copy.samplePoints; return copy;
+              });
+              vpClone._bboxEdgeResults = vd.data._bboxEdgeResults || [];
+            }
+            return { label: vd.label, width: vd.width, data: vpClone };
+          });
         }
+        exportData.deepScan = exportDs;
       }
       // Include pixel verify results if available
       if (reportData && reportData._contrastVerifyResults) {
@@ -41275,7 +41621,7 @@ console.log('[milg] analyzer.js v54.1 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v54.4</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v55.0</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
