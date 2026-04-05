@@ -444,11 +444,10 @@ console.log('[milg] analyzer.js v48.1 loaded');
     var vpData = deepScan.viewportData[idx];
     if (!vpData || !vpData.data) { showToast('No data for this viewport'); return; }
     _activeViewportIdx = idx;
-    renderViewportTabs(lastRawData);
 
     var reportContainer = document.getElementById('reportContainer');
 
-    // Cache hit: restore instantly
+    // Cache hit: restore instantly (no scoring, no rendering, no pixel verify)
     if (_viewportCache[idx]) {
       var cached = _viewportCache[idx];
       lastRawData = cached.data;
@@ -461,28 +460,58 @@ console.log('[milg] analyzer.js v48.1 loaded');
       return;
     }
 
-    // Cache miss: show spinner, defer heavy work
-    var activeBtn = document.querySelector('#viewportTabs button:nth-child(' + (idx + 2) + ')');
-    if (activeBtn) activeBtn.innerHTML += ' <span style="display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:milg-spin 0.6s linear infinite;vertical-align:middle"></span>';
+    // Cache miss: show spinner immediately, defer all heavy work
+    renderViewportTabs(lastRawData);
+    if (reportContainer) {
+      reportContainer.innerHTML = '<div style="padding:60px;text-align:center">' +
+        '<div style="width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite;margin:0 auto"></div>' +
+        '<div style="color:var(--text-secondary);margin-top:12px;font-size:13px">Loading viewport report\u2026</div>' +
+        '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style></div>';
+      reportContainer.classList.add('visible');
+    }
     setTimeout(function() {
-      var switchedData = JSON.parse(JSON.stringify(vpData.data, function(k, v) {
-        return (k === 'deepScan' || k === '_cachedReportData') ? undefined : v;
-      }));
+      if (_activeViewportIdx !== idx) return; // user switched again
+      // Reuse the original data object directly (no deep copy needed — we cache it)
+      var srcData = vpData.data;
+      // Build a shallow wrapper that has deepScan + correct URL but shares all extraction data
+      var switchedData = Object.assign({}, srcData);
       switchedData.deepScan = deepScan;
-      switchedData.meta.url = lastRawData.meta.url;
-      // Preserve pre-computed pixel verify results from deep scan
-      if (vpData.data._contrastVerifyResults) {
-        switchedData._contrastVerifyResults = vpData.data._contrastVerifyResults;
-        switchedData._bboxEdgeResults = vpData.data._bboxEdgeResults;
-      }
+      switchedData.meta = Object.assign({}, srcData.meta, { url: lastRawData.meta.url });
+      // Remove stale cache keys (force fresh scoring, preserve pixel verify)
+      delete switchedData._cachedReportData;
+
+      // Score + render (no pixel verify yet — that runs async below)
+      var savedVerify = switchedData._contrastVerifyResults;
+      var savedEdge = switchedData._bboxEdgeResults;
+      delete switchedData._contrastVerifyResults; // don't inject into first render
+      delete switchedData._bboxEdgeResults;
       runAnalysis(switchedData);
-      // Cache for instant restore on next switch
+
+      // Restore verify results if pre-computed, and re-cache with report HTML
+      if (savedVerify) {
+        switchedData._contrastVerifyResults = savedVerify;
+        switchedData._bboxEdgeResults = savedEdge;
+      }
       _viewportCache[idx] = {
         data: switchedData,
         reportData: reportData,
         html: reportContainer ? reportContainer.innerHTML : ''
       };
-    }, 50);
+
+      // If pixel verify was pre-computed, re-render to include the summary
+      if (savedVerify && savedVerify.length > 0 && window.MilgContrastVerify) {
+        switchedData._contrastVerifyResults = savedVerify;
+        switchedData._bboxEdgeResults = savedEdge || [];
+        switchedData._cachedReportData = reportData;
+        // Re-run to pick up cached verify results (will hit the precomputed path)
+        setTimeout(function() {
+          if (_activeViewportIdx !== idx) return;
+          runAnalysis(switchedData, true);
+          _viewportCache[idx].html = reportContainer ? reportContainer.innerHTML : '';
+          _viewportCache[idx].reportData = reportData;
+        }, 50);
+      }
+    }, 0);
   };
 
   // Render viewport tab bar (called from runAnalysis when deepScan data present)
