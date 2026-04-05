@@ -588,6 +588,33 @@ console.log('[milg] analyzer.js v52.6 loaded');
           return r ? { label: viewports[i].label, width: viewports[i].w, data: r } : null;
         })
       };
+      // Copy screenshots + masks + verify results from primary viewport to top-level
+      // so the crawl page tab view has them (it shows page.rawData, not viewport data)
+      if (primary.deepScan.viewportData[0] && primary.deepScan.viewportData[0].data) {
+        var vpd = primary.deepScan.viewportData[0].data;
+        if (vpd.screenshots && !primary.screenshots) primary.screenshots = vpd.screenshots;
+        if (vpd.screenshotFull && !primary.screenshotFull) primary.screenshotFull = vpd.screenshotFull;
+        if (vpd.screenshotMeta && !primary.screenshotMeta) primary.screenshotMeta = vpd.screenshotMeta;
+        if (vpd.textMask && !primary.textMask) primary.textMask = vpd.textMask;
+        if (vpd._contrastVerifyResults) {
+          primary._contrastVerifyResults = vpd._contrastVerifyResults;
+          primary._bboxEdgeResults = vpd._bboxEdgeResults;
+        }
+        // Copy mask bitmaps to primary pairs (match by selector)
+        if (vpd.colors && vpd.colors.contrastPairs && primary.colors && primary.colors.contrastPairs) {
+          var vpPairMap = {};
+          vpd.colors.contrastPairs.forEach(function(p) { if (p._maskBmp && p.selector) vpPairMap[p.selector] = p; });
+          primary.colors.contrastPairs.forEach(function(p) {
+            var vp = vpPairMap[p.selector];
+            if (vp && !p._maskBmp) {
+              p._maskBmp = vp._maskBmp; p._maskPacked = vp._maskPacked;
+              p._maskW = vp._maskW; p._maskH = vp._maskH;
+              p._maskLayer = vp._maskLayer; p._maskDark = vp._maskDark;
+            }
+          });
+        }
+      }
+
       // Dark mode test
       var htmlHasDark = /class="[^"]*dark:/.test(html) || /prefers-color-scheme/.test(html) || /\.dark\s*\{/.test(html) || /data-theme/.test(html);
       if (htmlHasDark) {

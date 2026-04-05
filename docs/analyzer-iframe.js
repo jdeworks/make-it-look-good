@@ -476,8 +476,20 @@ window.MilgIframe = (function() {
                 // Build a lean updatedData with ONLY re-read bboxes (not full extraction + screenshots).
                 'var updatedData=null;' +
                 'if(_raw){updatedData={colors:{contrastPairs:_raw.colors?_raw.colors.contrastPairs:[]},typography:{fontSizes:_raw.typography?_raw.typography.fontSizes:[],headings:_raw.typography?_raw.typography.headings:[],maxLineLength:_raw.typography?_raw.typography.maxLineLength:null},interaction:{touchTargets:_raw.interaction?_raw.interaction.touchTargets:[]},layout:{offscreenElements:_raw.layout?_raw.layout.offscreenElements:[],hiddenPanelIssues:_raw.layout?_raw.layout.hiddenPanelIssues:[]}}}' +
-                // Masks are on the pairs in updatedData (bit-packed base64 — small).
-                // updatedData is lean (no screenshots), so total message fits in postMessage.
+                // Explicitly copy mask results onto updatedData pairs (don't rely on object identity)
+                'if(updatedData&&updatedData.colors&&updatedData.colors.contrastPairs&&typeof _maskResults!=="undefined"){' +
+                  'Object.keys(_maskResults).forEach(function(idx){' +
+                    'var i=parseInt(idx,10);var mr=_maskResults[idx];' +
+                    'if(updatedData.colors.contrastPairs[i]&&mr){' +
+                      'updatedData.colors.contrastPairs[i]._maskBmp=mr.bmp;' +
+                      'updatedData.colors.contrastPairs[i]._maskPacked=!!mr.packed;' +
+                      'updatedData.colors.contrastPairs[i]._maskW=mr.w;' +
+                      'updatedData.colors.contrastPairs[i]._maskH=mr.h;' +
+                      'updatedData.colors.contrastPairs[i]._maskLayer=mr.layer;' +
+                      'updatedData.colors.contrastPairs[i]._maskDark=mr.dark' +
+                    '}' +
+                  '})' +
+                '}' +
                 'var msg={type:"' + msgType + '",_iframeId:_mid,' +
                   'screenshots:fullUri?[fullUri]:[],' +
                   'screenshotFull:fullUri||null,' +
