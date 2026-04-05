@@ -171,19 +171,24 @@ window.MilgCrawlUI = (function() {
     // Show pixel verify progress on summary page
     _updateVerifySummary(0, totalCount, null);
 
-    pagesToVerify.forEach(function(page) {
+    // Serialize: one page at a time so the UI stays responsive between verifications
+    var qi = 0;
+    function _verifyNext() {
+      if (qi >= pagesToVerify.length) return;
+      var page = pagesToVerify[qi]; qi++;
       var report = page.reportData || MilgScoring.runScoring(page.rawData);
       MilgContrastVerify.verify(report, function(results, bboxEdgeResults) {
         page.rawData._contrastVerifyResults = results;
         page.rawData._bboxEdgeResults = bboxEdgeResults || [];
         doneCount++;
-        // Invalidate cached report HTML for this page (now has verify results)
         var idx = _crawlSession.pages.indexOf(page);
         if (idx >= 0) delete _crawlPageReports[idx];
-        // Update verify summary on the summary page
         _updateVerifySummary(doneCount, totalCount, doneCount === totalCount ? _crawlSession : null);
+        // Yield to the event loop before starting the next page
+        setTimeout(_verifyNext, 50);
       });
-    });
+    }
+    _verifyNext();
   }
 
   function _updateVerifySummary(done, total, completedSession) {
