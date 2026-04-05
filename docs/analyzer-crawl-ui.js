@@ -12,7 +12,7 @@ window.MilgCrawlUI = (function() {
   var CRAWL_HARD_MAX = 25;
 
   // Dependencies injected via setup()
-  var _showToast, _runAnalysis, _analyzeUrlBtn, _runDeepScanLoop;
+  var _showToast, _runAnalysis, _restoreCachedAnalysis, _analyzeUrlBtn, _runDeepScanLoop;
 
   // DOM refs queried during setup
   var crawlSiteCheck, crawlOptions, cancelCrawlBtn, crawlMaxPages, crawlBlacklist;
@@ -61,6 +61,11 @@ window.MilgCrawlUI = (function() {
     crawlPageTabs.innerHTML = html;
   }
 
+  var _spinnerHtml = '<div style="padding:60px;text-align:center">' +
+    '<div style="width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite;margin:0 auto"></div>' +
+    '<div style="color:var(--text-secondary);margin-top:12px;font-size:13px">Loading report\u2026</div>' +
+    '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style></div>';
+
   function showCrawlPageContent(key) {
     _crawlActivePageTab = key;
     renderCrawlTabs();
@@ -86,16 +91,36 @@ window.MilgCrawlUI = (function() {
         if (reportContainer) { reportContainer.style.display = 'none'; reportContainer.className = 'report-container'; }
         return;
       }
-      // Show page report — use runAnalysis but skip exclusion detection
-      // (exclusion patterns are per-page noise that doesn't apply in crawl context)
+
       crawlPageContent.style.display = 'none';
       crawlPageContent.className = 'report-container';
       if (reportContainer) reportContainer.style.display = '';
-      // Temporarily mark as crawl-driven so runAnalysis doesn't hide tabs
-      page.rawData.meta = page.rawData.meta || {};
-      var origMethod = page.rawData.meta._inputMethod;
-      _runAnalysis(page.rawData, 'crawl-page');
-      page.rawData.meta._inputMethod = origMethod;
+
+      // Cache hit: restore instantly (no scoring, no rendering)
+      if (_crawlPageReports[idx]) {
+        var cached = _crawlPageReports[idx];
+        _restoreCachedAnalysis(page.rawData, cached.reportData);
+        reportContainer.innerHTML = cached.html;
+        reportContainer.classList.add('visible');
+        return;
+      }
+
+      // Cache miss: show spinner, defer heavy work so spinner paints
+      reportContainer.innerHTML = _spinnerHtml;
+      reportContainer.classList.add('visible');
+      setTimeout(function() {
+        // Guard: user may have switched tabs during the setTimeout
+        if (_crawlActivePageTab !== String(idx)) return;
+        page.rawData.meta = page.rawData.meta || {};
+        var origMethod = page.rawData.meta._inputMethod;
+        _runAnalysis(page.rawData, 'crawl-page');
+        page.rawData.meta._inputMethod = origMethod;
+        // Cache the rendered report + scored data for instant restore
+        _crawlPageReports[idx] = {
+          html: reportContainer.innerHTML,
+          reportData: page.rawData._cachedReportData
+        };
+      }, 0);
     }
   }
 
@@ -304,6 +329,7 @@ window.MilgCrawlUI = (function() {
   function setup(deps) {
     _showToast = deps.showToast;
     _runAnalysis = deps.runAnalysis;
+    _restoreCachedAnalysis = deps.restoreCachedAnalysis;
     _analyzeUrlBtn = deps.analyzeUrlBtn;
     _runDeepScanLoop = deps.runDeepScanLoop;
 
@@ -404,9 +430,12 @@ window.MilgCrawlUI = (function() {
   // Re-score all crawl pages (e.g. when profile changes)
   function rescorePages() {
     if (!_crawlSession || !_crawlSession.pages || _crawlSession.pages.length === 0) return false;
+    // Invalidate caches — profile change means all scores/reports are stale
+    _crawlPageReports = {};
     _crawlSession.pages.forEach(function(page) {
       if (page.status === 'done' && page.rawData) {
         page.rawData.profile = document.getElementById('profileSelect').value;
+        delete page.rawData._cachedReportData;
         page.reportData = MilgScoring.runScoring(page.rawData);
       }
     });

@@ -328,7 +328,7 @@
                 var darkCount = 0;
                 for (var j = 0; j < mData.length; j += 4) {
                   var bright = (mData[j] + mData[j+1] + mData[j+2]) / 3;
-                  if (bright < 128) { bmp[j/4] = 1; darkCount++; }
+                  if (bright < 240) { bmp[j/4] = 1; darkCount++; }
                 }
                 if (darkCount > 0) {
                   // Bit-pack bitmap: 8 pixels per byte, then base64 encode (~8x smaller than JSON array)
@@ -724,7 +724,7 @@
                       var bmp = new Uint8Array(bw * bh);
                       var darkCount = 0;
                       for (var j = 0; j < mData.length; j += 4) {
-                        if ((mData[j] + mData[j+1] + mData[j+2]) / 3 < 128) { bmp[j/4] = 1; darkCount++; }
+                        if ((mData[j] + mData[j+1] + mData[j+2]) / 3 < 240) { bmp[j/4] = 1; darkCount++; }
                       }
                       if (darkCount > 0) {
                         var byteLen = Math.ceil(bmp.length / 8);

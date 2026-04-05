@@ -587,6 +587,13 @@ console.log('[milg] analyzer.js v48.1 loaded');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // Lightweight restore for cached crawl pages — sets globals without re-scoring/re-rendering.
+  // The crawl UI calls this on cache hit so viewer interactions and exports work.
+  function restoreCachedAnalysis(data, cachedReportData) {
+    lastRawData = data;
+    reportData = cachedReportData;
+  }
+
   // --- Core analysis runner ---
   function runAnalysis(data, skipExclusionDetection) {
     lastRawData = data;
@@ -595,7 +602,13 @@ console.log('[milg] analyzer.js v48.1 loaded');
     // Apply selected profile
     var profile = document.getElementById('profileSelect');
     if (profile) data.profile = profile.value;
-    reportData = MilgScoring.runScoring(data);
+    // Reuse cached scoring for crawl page tabs (avoids re-scoring on every tab switch)
+    if (skipExclusionDetection === 'crawl-page' && data._cachedReportData) {
+      reportData = data._cachedReportData;
+    } else {
+      reportData = MilgScoring.runScoring(data);
+      if (skipExclusionDetection === 'crawl-page') data._cachedReportData = reportData;
+    }
     var reportContainer = document.getElementById('reportContainer');
     var inputSection = document.getElementById('inputSection');
 
@@ -1417,6 +1430,7 @@ console.log('[milg] analyzer.js v48.1 loaded');
     MilgCrawlUI.setup({
       showToast: showToast,
       runAnalysis: runAnalysis,
+      restoreCachedAnalysis: restoreCachedAnalysis,
       analyzeUrlBtn: analyzeUrlBtn,
       runDeepScanLoop: runDeepScanLoop
     });
