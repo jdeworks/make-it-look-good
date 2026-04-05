@@ -558,16 +558,7 @@ console.log('[milg] analyzer.js v52.6 loaded');
     var exclude = opts.exclude || null;
     var jsEnabled = opts.jsEnabled || false;
 
-    // Preprocess HTML ONCE for all viewports
-    var processedHtml = MilgIframe.preprocessHtml(html, url, {
-      baseTag: !!url,
-      urlPatch: !!url && !jsEnabled,
-      fontProxy: true,
-      sandbox: jsEnabled,
-      fetchPatch: jsEnabled && !!url
-    });
-    // Mark as preprocessed so analyzeHtmlInIframe doesn't double-preprocess
-    processedHtml = '<!--milg-preprocessed-->' + processedHtml;
+    // No manual preprocessing — analyzeHtml handles it per viewport
 
     var viewports = [{w:1280, h:900, label:'Desktop'}, {w:768, h:1024, label:'Tablet'}, {w:375, h:812, label:'Phone'}];
     // Add current viewport if different from presets
@@ -604,7 +595,13 @@ console.log('[milg] analyzer.js v52.6 loaded');
         var darkHtml = processedHtml.replace(/<html([^>]*)>/i, '<html$1 class="dark" data-theme="dark" style="color-scheme:dark">');
         darkHtml = darkHtml.replace(/<\/head>/i, '<script>setTimeout(function(){try{Array.from(document.styleSheets).forEach(function(ss){try{var darkRules=[];Array.from(ss.cssRules).forEach(function(r){if(r instanceof CSSMediaRule&&/prefers-color-scheme:\\s*dark/.test(r.conditionText||"")){Array.from(r.cssRules).forEach(function(inner){darkRules.push(inner.cssText)})}});if(darkRules.length>0){var s=document.createElement("style");s.textContent=darkRules.join("\\n");document.head.appendChild(s)}}catch(e){}});}catch(e){}},100);</' + 'script></head>');
         // Dark mode test: HTML already preprocessed, pass directly to legacy API
-        MilgIframe.analyzeHtmlInIframe(darkHtml, function(darkData) {
+        MilgIframe.analyzeHtml(darkHtml, {
+          url: url,
+          jsEnabled: jsEnabled,
+          screenshots: false,
+          exclude: exclude,
+          viewport: { w: 1280, h: 900 }
+        }, function(darkData) {
           if (darkData) {
             primary.deepScan.darkMode = {
               contrastFails: (darkData.colors.contrastPairs || []).filter(function(p) { return !p.passes; }).length,
@@ -613,7 +610,7 @@ console.log('[milg] analyzer.js v52.6 loaded');
             };
           }
           callback(primary);
-        }, url, exclude, false, { w: 1280, h: 900 });
+        });
       } else {
         callback(primary);
       }
@@ -630,8 +627,14 @@ console.log('[milg] analyzer.js v52.6 loaded');
     if (onProgress) onProgress('Starting viewports...', 0, totalSteps);
     viewports.forEach(function(vp, i) {
       console.log('[milg] Starting viewport', i, vp.label, vp.w + 'x' + vp.h);
-      // HTML already preprocessed — pass directly to legacy API with viewport override
-      MilgIframe.analyzeHtmlInIframe(processedHtml, function(data) {
+      // Same unified analyzeHtml for every path — no legacy wrapper
+      MilgIframe.analyzeHtml(html, {
+        url: url,
+        jsEnabled: jsEnabled,
+        screenshots: wantShots,
+        exclude: exclude,
+        viewport: { w: vp.w, h: vp.h }
+      }, function(data) {
         if (data) data.meta.url = url;
         results[i] = data;
         doneCount++;
@@ -645,7 +648,7 @@ console.log('[milg] analyzer.js v52.6 loaded');
           updateFocusModal('Assembling multi-viewport results');
           onAllDone();
         }
-      }, url, exclude, wantShots, { w: vp.w, h: vp.h });
+      });
     });
     }); // end prefetchFonts callback
   }
