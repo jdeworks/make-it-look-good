@@ -74,6 +74,41 @@ window.MilgIframe = (function() {
             'return _of.call(this,u,o)' +
           '};' +
         '})();</' + 'script>';
+        // After page loads, re-register failed CSS @font-face via proxy + FontFace API.
+        // CSS @font-face doesn't use fetch(), so CORS blocks them even with our proxy.
+        // This script scans stylesheets, finds font URLs, fetches through proxy, registers as blobs.
+        fontProxyScript += '<script>(function(){' +
+          'var _px="' + _proxyUrl.replace(/"/g, '\\"') + '";' +
+          'if(!_px||typeof FontFace==="undefined")return;' +
+          'function _fixFonts(){' +
+            'var loaded={};' +
+            'document.fonts.forEach(function(f){if(f.status==="loaded")loaded[f.family.replace(/["\x27]/g,"")]=true});' +
+            'var toFix=[];' +
+            'try{Array.from(document.styleSheets).forEach(function(ss){' +
+              'try{Array.from(ss.cssRules).forEach(function(r){' +
+                'if(!(r instanceof CSSFontFaceRule))return;' +
+                'var fam=(r.style.fontFamily||"").replace(/["\x27]/g,"").trim();' +
+                'if(!fam||loaded[fam])return;' +
+                'var src=r.style.getPropertyValue("src")||"";' +
+                'var m=src.match(/url\\(["\x27]?([^")\x27]+\\.woff2?)["\x27]?\\)/i);' +
+                'if(m)toFix.push({family:fam,url:m[1],weight:r.style.fontWeight||"400",style:r.style.fontStyle||"normal"})' +
+              '})}catch(e){}})}catch(e){}' +
+            'if(toFix.length===0)return;' +
+            'console.log("[milg-iframe] Fixing "+toFix.length+" CSS fonts via proxy");' +
+            'toFix.forEach(function(f){' +
+              'fetch(_px+"?url="+encodeURIComponent(f.url)).then(function(r){' +
+                'if(!r.ok)return;return r.blob()' +
+              '}).then(function(blob){' +
+                'if(!blob)return;' +
+                'var burl=URL.createObjectURL(blob);' +
+                'var ff=new FontFace(f.family,"url("+burl+")",{weight:f.weight,style:f.style});' +
+                'return ff.load().then(function(){document.fonts.add(ff)})' +
+              '}).catch(function(){})' +
+            '})' +
+          '}' +
+          'if(document.readyState==="complete")setTimeout(_fixFonts,500);' +
+          'else window.addEventListener("load",function(){setTimeout(_fixFonts,500)})' +
+        '})();</' + 'script>';
       }
       var combined = baseTag + urlPatch + fontProxyScript;
       // Insert after <head> if present
@@ -222,9 +257,11 @@ window.MilgIframe = (function() {
                   'try{parent.postMessage(msg,"*")}catch(e2){console.error("[iframe-ss] postMessage retry failed:",e2)}' +
                 '}' +
               '}' +
+              // Wait for fonts to be fully loaded before mask capture (avoids fallback font mismatch)
+              '(document.fonts&&document.fonts.ready?document.fonts.ready:Promise.resolve()).then(function(){' +
               // Step 2: Layered text masks with transition kill
               '_prog("Building text masks...");' +
-              'console.log("[iframe-ss] Step 2: Layered masks...");' +
+              'console.log("[iframe-ss] Step 2: Layered masks (fonts: "+document.fonts.size+" loaded)...");' +
               // Phase A: Kill ALL transitions on every element BEFORE any color changes
               'document.querySelectorAll("*").forEach(function(el){el.style.setProperty("transition-duration","0s","important");el.style.setProperty("transition","none","important")});' +
               'void document.body.offsetHeight;' +
@@ -419,6 +456,7 @@ window.MilgIframe = (function() {
               'var _maskTimer=setTimeout(function(){if(!_maskDone){_maskDone=true;console.warn("[iframe-ss] Masks timed out (360s)");_origSendFinal(null)}},360000);' +
               '_sendFinal=function(m){if(_maskDone)return;_maskDone=true;clearTimeout(_maskTimer);console.log("[iframe-ss] Sending results (maskResults: "+Object.keys(_maskResults).length+" pairs)");_origSendFinal(m)};' +
               '_nextLayer()' +
+            '})' + // end document.fonts.ready.then
             '}).catch(function(e){console.warn("[iframe-ss] capture failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[],_iframeId:_mid},"*")})' +
           '};' +
           's.onerror=function(){parent.postMessage({type:"' + msgType + '",screenshots:[],_iframeId:_mid},"*")};' +
