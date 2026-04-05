@@ -567,10 +567,187 @@
         }
         function _removeCrawlOverlay() { if (_crawlOverlay.parentNode) _crawlOverlay.parentNode.removeChild(_crawlOverlay); }
 
-        // Build a self-contained extraction script for crawl iframes
-        // (no CDN fetch — inline the extraction function directly)
+        // Build a self-contained extraction + screenshot + mask script for crawl iframes.
+        // _crawlScreenshotCallback is serialized via .toString() into the iframe —
+        // it must be fully self-contained (no closure references).
+        function _crawlScreenshotCallback(data) {
+          // Don't set __milgData yet — wait for screenshot + mask pipeline to complete.
+          // The parent polls __milgData to know when this page is ready.
+          function _finalize() { window.__milgData = data; }
+
+          var s = document.createElement('script');
+          s.src = 'https://cdn.jsdelivr.net/npm/modern-screenshot@4.6.8/dist/index.js';
+          s.onload = function() {
+            var ms = window.modernScreenshot;
+            if (!ms || !ms.domToCanvas) { data.screenshots = []; _finalize(); return; }
+
+            // Unlock height (sites with html,body{height:100%} clamp scrollHeight)
+            document.documentElement.style.cssText += 'height:auto !important;overflow-y:auto !important;';
+            document.body.style.cssText += 'height:auto !important;';
+            void document.body.offsetHeight;
+
+            var vh = window.innerHeight || 900;
+            var totalH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+            var captureH = Math.min(totalH, vh * 10);
+            var secScale = 1.5;
+
+            // Phase 1: Pre-scroll to trigger lazy content + IntersectionObservers
+            var positions = []; for (var p = 0; p < captureH; p += vh) positions.push(p);
+            var pi = 0;
+            function scrollNext() {
+              if (pi >= positions.length) { setTimeout(startCapture, 800); return; }
+              window.scrollTo(0, positions[pi]);
+              document.documentElement.scrollTop = positions[pi];
+              try { window.dispatchEvent(new Event('scroll')); } catch(e) {}
+              pi++; setTimeout(scrollNext, 200);
+            }
+            scrollNext();
+
+            function startCapture() {
+              // Reset scroll
+              document.documentElement.style.scrollBehavior = 'auto';
+              document.body.style.scrollBehavior = 'auto';
+              window.scrollTo(0, 0); document.documentElement.scrollTop = 0; document.body.scrollTop = 0;
+              document.querySelectorAll('*').forEach(function(el) {
+                if (el.scrollTop > 0) {
+                  var cs = getComputedStyle(el);
+                  if (cs.overflow === 'auto' || cs.overflow === 'scroll' || cs.overflowY === 'auto' || cs.overflowY === 'scroll') {
+                    el.style.scrollBehavior = 'auto'; el.scrollTop = 0;
+                  }
+                }
+              });
+
+              // Force-reveal hidden animated elements (IO disabled in offscreen iframes)
+              var revealed = 0;
+              document.querySelectorAll('*').forEach(function(el) {
+                var cs = getComputedStyle(el);
+                if (cs.opacity === '0' && el.tagName !== 'SCRIPT' && el.tagName !== 'STYLE') {
+                  var hasTrans = cs.transition && cs.transition.indexOf('opacity') !== -1;
+                  var hasAnim = cs.animationName && cs.animationName !== 'none';
+                  var cls = (el.className && typeof el.className === 'string') ? el.className.toLowerCase() : '';
+                  var isScrollAnim = hasTrans || hasAnim || /fade|reveal|animate|aos|scroll|slide|appear/.test(cls);
+                  if (isScrollAnim) {
+                    el.style.cssText += ';opacity:1 !important;transform:none !important;transition:none !important;animation:none !important;';
+                    revealed++;
+                  }
+                }
+              });
+
+              // Fast-forward remaining CSS animations
+              var ffStyle = document.createElement('style');
+              ffStyle.textContent = '*,*::before,*::after{animation-delay:0s !important;animation-duration:0.01s !important;}';
+              document.head.appendChild(ffStyle);
+              void document.body.offsetHeight;
+
+              // Switch to overflow:visible for capture
+              document.documentElement.style.cssText += 'overflow:visible !important;';
+              document.body.style.cssText += 'overflow:visible !important;';
+              void document.body.offsetHeight;
+
+              setTimeout(function() {
+                // Re-read bboxes after scroll reset + reveal
+                if (typeof window.__milgReReadBboxes === 'function') window.__milgReReadBboxes();
+
+                // Step 1: Capture screenshot
+                ms.domToCanvas(document.documentElement, { scale: secScale, timeout: 45000 }).then(function(fullCanvas) {
+                  var fullUri;
+                  try { fullUri = fullCanvas.toDataURL('image/webp', 0.8); } catch(e) { fullUri = ''; }
+
+                  data.screenshots = fullUri ? [fullUri] : [];
+                  data.screenshotFull = fullUri || null;
+                  data.screenshotMeta = {
+                    scale: secScale, viewportHeight: vh,
+                    sectionCount: data.screenshots.length,
+                    canvasWidth: fullCanvas.width, canvasHeight: fullCanvas.height,
+                    docHeightAtCapture: Math.max(document.body.scrollHeight, document.documentElement.scrollHeight),
+                    docHeightAtExtraction: (data.meta && data.meta.docHeight) || 0,
+                    captureScrollY: 0, calibrationOffsetY: 0, calibrationSamples: []
+                  };
+
+                  // Step 2: Text mask capture (single-layer: all text black, all bg white)
+                  // Kill transitions
+                  document.querySelectorAll('*').forEach(function(el) {
+                    el.style.setProperty('transition-duration', '0s', 'important');
+                    el.style.setProperty('transition', 'none', 'important');
+                  });
+                  void document.body.offsetHeight;
+
+                  // Neutralize absolute/fixed overlays
+                  document.querySelectorAll('*').forEach(function(el) {
+                    var cs = getComputedStyle(el);
+                    if (cs.position === 'absolute' || cs.position === 'fixed') {
+                      if (!el.textContent.trim()) {
+                        el.style.setProperty('display', 'none', 'important');
+                      } else if (cs.pointerEvents === 'none') {
+                        el.style.setProperty('background', 'transparent', 'important');
+                        el.style.setProperty('background-image', 'none', 'important');
+                      }
+                    }
+                  });
+                  void document.body.offsetHeight;
+
+                  // Set all backgrounds white, all text black
+                  document.querySelectorAll('*').forEach(function(el) {
+                    el.style.setProperty('background', '#fff', 'important');
+                    el.style.setProperty('background-image', 'none', 'important');
+                    el.style.setProperty('color', '#000', 'important');
+                    el.style.setProperty('text-shadow', 'none', 'important');
+                    el.style.setProperty('box-shadow', 'none', 'important');
+                    el.style.setProperty('border-color', 'transparent', 'important');
+                  });
+                  document.body.style.setProperty('background', '#fff', 'important');
+                  document.documentElement.style.setProperty('background', '#fff', 'important');
+                  void document.body.offsetHeight;
+
+                  ms.domToCanvas(document.documentElement, { scale: secScale, timeout: 30000 }).then(function(maskCanvas) {
+                    var maskUri;
+                    try { maskUri = maskCanvas.toDataURL('image/webp', 0.8); } catch(e) { maskUri = null; }
+                    data.textMask = maskUri;
+
+                    // Build per-pair mask bitmaps (bit-packed base64)
+                    var maskCtx = maskCanvas.getContext('2d', { willReadFrequently: true });
+                    var pairs = (data.colors && data.colors.contrastPairs) || [];
+                    pairs.forEach(function(pair) {
+                      if (!pair.bbox) return;
+                      var bx = Math.round(pair.bbox.left * secScale);
+                      var by = Math.round(pair.bbox.top * secScale);
+                      var bw = Math.round(pair.bbox.width * secScale);
+                      var bh = Math.round(pair.bbox.height * secScale);
+                      if (bw < 2 || bh < 2 || bx + bw > maskCanvas.width || by + bh > maskCanvas.height) return;
+                      var mData = maskCtx.getImageData(bx, by, bw, bh).data;
+                      var bmp = new Uint8Array(bw * bh);
+                      var darkCount = 0;
+                      for (var j = 0; j < mData.length; j += 4) {
+                        if ((mData[j] + mData[j+1] + mData[j+2]) / 3 < 128) { bmp[j/4] = 1; darkCount++; }
+                      }
+                      if (darkCount > 0) {
+                        var byteLen = Math.ceil(bmp.length / 8);
+                        var packed = new Uint8Array(byteLen);
+                        for (var bi = 0; bi < bmp.length; bi++) {
+                          if (bmp[bi]) packed[bi >> 3] |= (1 << (bi & 7));
+                        }
+                        var binStr = '';
+                        for (var bi2 = 0; bi2 < packed.length; bi2++) binStr += String.fromCharCode(packed[bi2]);
+                        pair._maskBmp = btoa(binStr);
+                        pair._maskPacked = true;
+                        pair._maskW = bw; pair._maskH = bh; pair._maskLayer = 1; pair._maskDark = darkCount;
+                      }
+                    });
+                    _finalize();
+                  }).catch(function() { _finalize(); });
+                }).catch(function() { data.screenshots = []; _finalize(); });
+              }, 1500);
+            }
+          };
+          s.onerror = function() {
+            // modern-screenshot unavailable — finalize without screenshots
+            data.screenshots = [];
+            _finalize();
+          };
+          document.head.appendChild(s);
+        }
         var snippetSrc = 'window.MilgExtract = ' + window.MilgExtract.toString() + ';\n' +
-          'window.__milgOnExtractComplete = function(data) { window.__milgData = data; };\n' +
+          'window.__milgOnExtractComplete = ' + _crawlScreenshotCallback.toString() + ';\n' +
           'window.MilgExtract();\n';
         (function() {
           function _next(idx) {
@@ -625,7 +802,7 @@
             }
             var url = _links[idx];
             var path; try { path = new URL(url).pathname; } catch(e) { path = url; }
-            _updateCrawlOverlay('Crawling page ' + (idx + 1) + ' of ' + _links.length, path);
+            _updateCrawlOverlay('Crawling page ' + (idx + 1) + ' of ' + _links.length + ' (with screenshots)', path);
             console.log('%c\u2192 [' + (idx+1) + '/' + _links.length + '] ' + path, 'color: #3b82f6;');
 
             // Fetch page HTML (same-origin — we're on the site) then load as srcdoc
@@ -682,14 +859,14 @@
                       try {
                         var d = iWin.__milgData;
                         if (d) { clearInterval(pi); done = true; d.meta.url = url; _cResults.push({ url: url, data: d }); cleanup(); console.log('%c  \u2713 ' + path, 'color: #16a34a;'); setTimeout(function() { _next(idx + 1); }, 500); }
-                        else if (polls > 20) { clearInterval(pi); done = true; cleanup(); console.log('%c  \u2717 Timeout: ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }
+                        else if (polls > 80) { clearInterval(pi); done = true; cleanup(); console.log('%c  \u2717 Timeout: ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }
                       } catch(e) { clearInterval(pi); done = true; cleanup(); console.log('%c  \u2717 Error: ' + path + ' (' + e.message + ')', 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }
                     }, 500);
                   } catch(e) { done = true; cleanup(); console.log('%c  \u2717 Cannot inject snippet: ' + path + ' (' + e.message + ')', 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }
                 }, 1500);
               });
               iframe.srcdoc = html;
-              setTimeout(function() { if (done) return; done = true; cleanup(); console.log('%c  \u2717 Timeout (10s): ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }, 10000);
+              setTimeout(function() { if (done) return; done = true; cleanup(); console.log('%c  \u2717 Timeout (45s): ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }, 45000);
             }).catch(function(e) {
               console.log('%c  \u2717 Fetch failed: ' + path + ' (' + (e.message || e) + ')', 'color: #dc2626;');
               setTimeout(function() { _next(idx + 1); }, 500);

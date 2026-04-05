@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v44.0 loaded');
+console.log('[milg] analyzer.js v48.0 loaded');
 
 (function() {
   "use strict";
@@ -464,7 +464,6 @@ console.log('[milg] analyzer.js v44.0 loaded');
       container.innerHTML = '';
       return;
     }
-    console.log('[milg] Rendering viewport tabs:', data.deepScan.viewports.length, 'viewports, active:', _activeViewportIdx);
     var ds = data.deepScan;
     var isDark = document.body.classList.contains('dark-ui');
     var html = '<div style="display:flex;gap:4px;padding:8px 0;flex-wrap:wrap;align-items:center">';
@@ -977,8 +976,6 @@ console.log('[milg] analyzer.js v44.0 loaded');
         var wantJs = jsCheck && jsCheck.checked && jsAck && jsAck.checked;
         var isDeepScan = document.getElementById('deepScanCheck') && document.getElementById('deepScanCheck').checked;
         var wantShots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
-        console.log('[milg] URL analysis — js:', wantJs, 'deepScan:', isDeepScan, 'screenshots:', wantShots);
-
         // Deep scan: multi-viewport analysis (with optional JS-enabled pre-processing)
         if (isDeepScan) {
           var deepHtml = wantJs ? MilgProxy.prepareJsHtml(html, url) : html;

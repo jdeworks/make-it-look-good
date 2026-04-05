@@ -221,9 +221,12 @@
       }
       function _removeCrawlOverlay() { if (_crawlOverlay.parentNode) _crawlOverlay.parentNode.removeChild(_crawlOverlay); }
 
-      var _snippetUrl = 'https://jdeworks.github.io/make-it-look-good/analyzer-snippet.js?' + _cacheBust;
+      // Build self-contained extraction script (no CDN fetch — inline the function directly)
+      var snippetSrc = 'window.MilgExtract = ' + window.MilgExtract.toString() + ';\n' +
+        'window.__milgOnExtractComplete = function(data) { window.__milgData = data; };\n' +
+        'window.MilgExtract();\n';
 
-      fetch(_snippetUrl).then(function(r) { return r.text(); }).then(function(snippetSrc) {
+      (function() {
         function processNext(idx) {
           if (idx >= _crawlLinks.length) {
             var crawlJson = JSON.stringify({ _milgCrawl: true, startUrl: location.href, results: _crawlResults });
@@ -365,11 +368,7 @@
           });
         }
         processNext(0);
-
-      }).catch(function(e) {
-        _removeCrawlOverlay();
-        console.log('%c\u26A0 Could not fetch snippet source: ' + e.message, 'color: #b45309;');
-      });
+      })();
     }
     return; // Skip normal clipboard copy
   }
