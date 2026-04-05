@@ -139,6 +139,18 @@ window.MilgExtract = (function() {
       var r = el.getBoundingClientRect();
       return r.width > 0 && r.height > 0;
     }
+    // Detect sr-only / visually-hidden elements (visible to screen readers but not to users).
+    // These use clip, tiny dimensions, or specific class names to hide visually.
+    function _isScreenReaderOnly(el) {
+      var r = el.getBoundingClientRect();
+      if (r.width <= 1 && r.height <= 1) {
+        var s = getComputedStyle(el);
+        if (s.overflow === 'hidden' || s.clip !== 'auto' || s.clipPath === 'inset(50%)') return true;
+      }
+      var cls = (el.className && typeof el.className === 'string') ? el.className : '';
+      if (/\b(sr-only|visually-hidden|screen-reader|clip-hide|offscreen)\b/.test(cls)) return true;
+      return false;
+    }
     function cssSelector(el) {
       if (el.id) return '#' + el.id;
       var tag = el.tagName.toLowerCase();
@@ -533,7 +545,7 @@ window.MilgExtract = (function() {
     var interactive = document.querySelectorAll('a,button,input,select,textarea,[role="button"],[tabindex]');
     var touchIssues = [];
     interactive.forEach(function(el) {
-      if (!isVisible(el) || isDecorative(el)) return;
+      if (!isVisible(el) || isDecorative(el) || _isScreenReaderOnly(el)) return;
       var rect = el.getBoundingClientRect();
       var w = Math.round(rect.width), h = Math.round(rect.height);
       if (w < 44 || h < 44) {
@@ -698,6 +710,17 @@ window.MilgExtract = (function() {
     var _hasFvCSS = Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r.selectorText && r.selectorText.indexOf('focus-visible') !== -1; }); } catch(e) { return false; } });
     var _hasFvClasses = Array.from(interactive).slice(0, 20).some(function(el) { var cls = el.getAttribute('class') || ''; return cls.indexOf('focus-visible') !== -1 || cls.indexOf('focus:ring') !== -1 || cls.indexOf('focus:outline') !== -1; });
     data.accessibility.hasFocusVisibleCSS = _hasFvCSS || _hasFvClasses;
+    // Skip link detection: an <a href="#..."> among the first focusable elements.
+    // Detected by structure (internal anchor link early in tab order), not by text content (multilingual).
+    data.accessibility.hasSkipLink = false;
+    var _firstFocusable = document.querySelectorAll('a[href],button,input,select,textarea,[tabindex]');
+    for (var _fi = 0; _fi < Math.min(_firstFocusable.length, 5); _fi++) {
+      var _fe = _firstFocusable[_fi];
+      if (_fe.tagName === 'A' && _fe.getAttribute('href') && /^#\w/.test(_fe.getAttribute('href'))) {
+        data.accessibility.hasSkipLink = true;
+        break;
+      }
+    }
     // Font smoothing + bg image behind text (profile-specific)
     data.typography.fontSmoothingAntialiased = false;
     try { var bs = getComputedStyle(document.body).webkitFontSmoothing; if (bs === 'antialiased') data.typography.fontSmoothingAntialiased = true; } catch(e) {}
