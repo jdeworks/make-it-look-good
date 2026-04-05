@@ -572,6 +572,44 @@ console.log('[milg] analyzer.js v48.1 loaded');
       }
     }
 
+    // Prefetch fonts through CORS proxy before launching viewports.
+    // Populates parent.__milgFontCache so all iframes get cache hits.
+    function _prefetchFonts(html, url, cb) {
+      var fontUrls = [];
+      // Find font URLs in <link rel="preload" as="font"> and @font-face src: url(...)
+      var preloadRe = /<link[^>]+rel=["']preload["'][^>]+as=["']font["'][^>]+href=["']([^"']+)["']/gi;
+      var m; while ((m = preloadRe.exec(html)) !== null) fontUrls.push(m[1]);
+      var faceRe = /url\(["']?([^"')]+\.(?:woff2?|ttf|otf|eot)[^"')]*?)["']?\)/gi;
+      while ((m = faceRe.exec(html)) !== null) fontUrls.push(m[1]);
+      // Resolve relative URLs
+      var seen = {};
+      var resolved = [];
+      fontUrls.forEach(function(u) {
+        try {
+          var abs = u.charAt(0) === '/' ? url.replace(/\/[^/]*$/, '') + u : (u.indexOf('://') > 0 ? u : url.replace(/\/[^/]*$/, '/') + u);
+          if (!seen[abs]) { seen[abs] = true; resolved.push(abs); }
+        } catch(e) {}
+      });
+      if (resolved.length === 0 || !CORS_PROXY_URL) { cb(); return; }
+      // Fetch up to 10 fonts through proxy (populate cache for iframe reuse)
+      if (!window.__milgFontCache) window.__milgFontCache = {};
+      var toFetch = resolved.slice(0, 10);
+      var done = 0;
+      console.log('[milg] Prefetching ' + toFetch.length + ' fonts through proxy');
+      updateFocusModal('Prefetching ' + toFetch.length + ' fonts\u2026');
+      toFetch.forEach(function(fontUrl) {
+        if (window.__milgFontCache[fontUrl]) { done++; if (done === toFetch.length) cb(); return; }
+        var p = fetch((CORS_PROXY_URL || '') + '?url=' + encodeURIComponent(fontUrl)).catch(function() { return new Response('', { status: 404 }); });
+        window.__milgFontCache[fontUrl] = p;
+        p.then(function() { done++; if (done === toFetch.length) cb(); })
+         .catch(function() { done++; if (done === toFetch.length) cb(); });
+      });
+      // Timeout: don't wait forever for fonts
+      setTimeout(function() { if (done < toFetch.length) { console.log('[milg] Font prefetch timeout, continuing'); cb(); } }, 8000);
+    }
+
+    // Prefetch fonts, then launch viewports
+    _prefetchFonts(html, url || '', function() {
     // Launch ALL viewports in parallel — maximum speed when tab is in foreground.
     // Chrome throttles background tabs (timers → 1/sec, rAF paused), so the focus
     // modal warns users to stay on this tab during analysis.
@@ -596,6 +634,7 @@ console.log('[milg] analyzer.js v48.1 loaded');
         }
       }, url, exclude, wantShots, { w: vp.w, h: vp.h });
     });
+    }); // end _prefetchFonts callback
   }
 
   // Switch to Console Snippet tab (from JS-required warning)

@@ -29131,6 +29131,192 @@ function scoreTouchTargets(data) {
 })();
 </file>
 
+<file path="docs/scoring/readability.js">
+// Scoring Module: Readability & Scanability
+// Weight: 5%
+// Sources: Coleman-Liau Index, NNGroup scanning research
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+  function scoreReadability(data) {
+    var findings = [];
+    var checks = 0;
+    var passed = 0;
+
+    // Extract text content from the raw data
+    // We use heading count and element count as proxies since we don't have raw text in extracted data
+    var headings = (data.typography && data.typography.headings) || [];
+    var totalElements = (data.structure && data.structure.totalElements) || 0;
+
+    // Scanability: heading frequency
+    // Good rule: 1 heading per ~100-150 elements of content
+    if (totalElements > 50) {
+      checks++;
+      var headingRatio = headings.length / (totalElements / 100);
+      if (headingRatio >= 0.5 && headingRatio <= 5) {
+        passed++;
+      } else if (headingRatio < 0.5) {
+        findings.push({
+          severity: 'warning',
+          title: 'Low heading density: ' + headings.length + ' headings for ' + totalElements + ' elements',
+          detail: 'Content without headings is harder to scan. 79% of users scan rather than read (NNGroup)',
+          fix: 'Add descriptive headings to break content into scannable sections. Aim for a heading every 2-3 paragraphs.',
+          presetRef: null,
+          source: 'NNGroup scanning research — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+        });
+      }
+    }
+
+    // Heading descriptiveness: check if headings are too short (likely generic)
+    if (headings.length > 0) {
+      checks++;
+      var shortHeadings = headings.filter(function(h) {
+        return h.text && h.text.length < 3;
+      });
+      if (shortHeadings.length === 0) {
+        passed++;
+      } else {
+        passed++; // Info doesn't reduce score
+        findings.push({
+          severity: 'info',
+          title: shortHeadings.length + ' heading(s) with very short text (< 3 chars)',
+          detail: 'Short headings like numbers or icons don\'t help users scan. Use descriptive text.',
+          fix: 'Replace generic headings with descriptive ones that summarize the section content.',
+          presetRef: null,
+          source: 'NNGroup — https://www.nngroup.com/articles/headings-pickup-lines/'
+        });
+      }
+    }
+
+    // Font size variety as readability signal
+    // Too many sizes = visual noise, harder to establish reading rhythm
+    var fontSizes = (data.typography && data.typography.fontSizes) || [];
+    var smallTextCount = fontSizes.filter(function(f) {
+      return parseFloat(f.value) < 12;
+    }).reduce(function(sum, f) { return sum + f.count; }, 0);
+
+    if (smallTextCount > 0 && totalElements > 20) {
+      checks++;
+      var smallRatio = smallTextCount / totalElements;
+      if (smallRatio < 0.05) {
+        passed++;
+      } else {
+        var smallBboxes = [];
+        var smallSelectors = [];
+        var smallTexts = [];
+        fontSizes.filter(function(f) { return parseFloat(f.value) < 12; }).forEach(function(f) {
+          if (f.bbox) smallBboxes.push(f.bbox);
+          if (f.extraBboxes) f.extraBboxes.forEach(function(b) { smallBboxes.push(b); });
+          if (f.sampleSelector) smallSelectors.push(f.sampleSelector);
+          if (f.extraSelectors) f.extraSelectors.forEach(function(s) { smallSelectors.push(s); });
+          if (f.sampleText) smallTexts.push(f.sampleText);
+          if (f.extraTexts) f.extraTexts.forEach(function(t) { smallTexts.push(t); });
+        });
+        findings.push({
+          severity: 'warning',
+          title: smallTextCount + ' element(s) with text smaller than 12px',
+          detail: 'Text below 12px is difficult to read for most users and nearly impossible for elderly or low-vision users',
+          fix: 'Increase small text to at least 12px. Consider if the information is important enough to display — if not, remove it.',
+          presetRef: null,
+          source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text',
+          locator: smallBboxes.length > 0 ? { selector: '', text: '', bboxes: smallBboxes, selectors: smallSelectors, texts: smallTexts } : undefined
+        });
+      }
+    }
+
+    // Coleman-Liau readability index
+    var rd = data.readability || {};
+    if (rd.totalWords >= 50 && rd.paragraphCount >= 2) {
+      checks++;
+      // Coleman-Liau: 0.0588 * L - 0.296 * S - 15.8
+      // L = avg letters per 100 words, S = avg sentences per 100 words
+      var L = (rd.totalChars / rd.totalWords) * 100;
+      var sentenceCount = 0;
+      (rd.textBlocks || []).forEach(function(b) {
+        sentenceCount += (b.text.match(/[.!?]+/g) || []).length;
+      });
+      var S_val = (sentenceCount / rd.totalWords) * 100;
+      var cli = Math.round(0.0588 * L - 0.296 * S_val - 15.8);
+      // Detect non-English content — Coleman-Liau inflates scores for languages
+      // with long compound words (German, Finnish, Dutch, etc.)
+      var pageLang = (data.meta && data.meta.lang || '').toLowerCase().split('-')[0];
+      var isNonEnglish = pageLang && pageLang !== 'en' && pageLang !== '';
+      // Also heuristic: if avg word length > 6.5 chars, likely non-English
+      var avgWordLen = rd.totalChars / rd.totalWords;
+      if (!isNonEnglish && avgWordLen > 6.5) isNonEnglish = true;
+      var langNote = isNonEnglish ? ' Note: This index is calibrated for English text — non-English languages (detected: ' + (pageLang || 'long words') + ') typically score higher due to longer average word length.' : '';
+
+      if (cli >= 6 && cli <= 12) {
+        passed++;
+      } else {
+        findings.push({
+          severity: isNonEnglish ? 'info' : (cli > 14 ? 'warning' : 'info'),
+          title: 'Reading level: grade ' + cli + ' (Coleman-Liau Index)',
+          detail: (cli > 12 ? 'Content may be too complex for a general audience' : 'Content may be overly simple for the target audience') + langNote,
+          fix: cli > 12 ? 'Shorten sentences, use simpler words, break complex ideas into steps. Aim for grade 8-10 for general audiences.' : 'This reading level is appropriate for broad accessibility.',
+          presetRef: null,
+          source: 'Coleman-Liau Index — https://en.wikipedia.org/wiki/Coleman%E2%80%93Liau_index'
+        });
+      }
+    }
+
+    // Paragraph length audit
+    var longParagraphs = (rd.textBlocks || []).filter(function(b) { return b.wordCount > 150; });
+    if (longParagraphs.length > 0) {
+      findings.push({
+        severity: 'warning',
+        title: longParagraphs.length + ' paragraph(s) exceed 150 words',
+        detail: 'Long paragraphs reduce scanability. Ideal: 40-80 words per paragraph.',
+        fix: 'Break long paragraphs into shorter ones. Use subheadings, bullet lists, or callout boxes to chunk content.',
+        presetRef: null,
+        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+      });
+    }
+
+    // List usage for scanability
+    if (rd.totalWords >= 100 && !rd.hasLists) {
+      findings.push({
+        severity: 'info',
+        title: 'No lists found in content area',
+        detail: 'Lists improve scanability by 47% compared to wall-of-text (NNGroup)',
+        fix: 'Convert sequences, features, or steps into <ul>/<ol> lists where appropriate.',
+        presetRef: null,
+        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+      });
+    }
+
+    // Table cell readability on mobile (cramped/wrapped cells)
+    var tableCellIssues = (data.layout && data.layout.tableCellIssues) || [];
+    if (tableCellIssues.length > 0) {
+      checks++;
+      var tableDetails = tableCellIssues.map(function(t) {
+        var parts = [];
+        if (t.crampedCells > 0) parts.push(t.crampedCells + ' cells lack horizontal padding');
+        if (t.wrappedCells > 0) parts.push(t.wrappedCells + ' cells wrap to multiple lines');
+        return t.selector + ': ' + parts.join(', ') + ' (table ' + t.tableWidth + 'px on ' + t.vpWidth + 'px viewport)';
+      });
+      findings.push({
+        severity: tableCellIssues.some(function(t) { return t.crampedCells > 4 || t.wrappedCells > 4; }) ? 'error' : 'warning',
+        title: 'Table readability issues on mobile (' + tableCellIssues.length + ' table' + (tableCellIssues.length > 1 ? 's' : '') + ')',
+        detail: tableDetails.join('; '),
+        fix: 'Add horizontal padding to table cells (px-3 sm:px-4). For narrow viewports, consider hiding low-priority columns, using a responsive card layout, or reducing font size.',
+        source: 'NNGroup Mobile Tables — https://www.nngroup.com/articles/mobile-tables/',
+        locator: { selector: tableCellIssues[0].selector, text: '' }
+      });
+    }
+
+    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+    var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+    var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+    return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Readability', icon: 'readability' };
+  }
+
+  S.register("readability", scoreReadability, 5, "Readability", "readability");
+})();
+</file>
+
 <file path="docs/analyzer-proxy.js">
 // make-it-look-good — CORS Proxy & JS-Enabled Analysis
 // Handles URL fetching via proxy chain and "Try with JS" mode.
@@ -29499,192 +29685,6 @@ window.MilgProxy = (function() {
     analyzeWithJs: analyzeWithJs,
     prepareJsHtml: prepareJsHtml
   };
-})();
-</file>
-
-<file path="docs/scoring/readability.js">
-// Scoring Module: Readability & Scanability
-// Weight: 5%
-// Sources: Coleman-Liau Index, NNGroup scanning research
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-  function scoreReadability(data) {
-    var findings = [];
-    var checks = 0;
-    var passed = 0;
-
-    // Extract text content from the raw data
-    // We use heading count and element count as proxies since we don't have raw text in extracted data
-    var headings = (data.typography && data.typography.headings) || [];
-    var totalElements = (data.structure && data.structure.totalElements) || 0;
-
-    // Scanability: heading frequency
-    // Good rule: 1 heading per ~100-150 elements of content
-    if (totalElements > 50) {
-      checks++;
-      var headingRatio = headings.length / (totalElements / 100);
-      if (headingRatio >= 0.5 && headingRatio <= 5) {
-        passed++;
-      } else if (headingRatio < 0.5) {
-        findings.push({
-          severity: 'warning',
-          title: 'Low heading density: ' + headings.length + ' headings for ' + totalElements + ' elements',
-          detail: 'Content without headings is harder to scan. 79% of users scan rather than read (NNGroup)',
-          fix: 'Add descriptive headings to break content into scannable sections. Aim for a heading every 2-3 paragraphs.',
-          presetRef: null,
-          source: 'NNGroup scanning research — https://www.nngroup.com/articles/how-users-read-on-the-web/'
-        });
-      }
-    }
-
-    // Heading descriptiveness: check if headings are too short (likely generic)
-    if (headings.length > 0) {
-      checks++;
-      var shortHeadings = headings.filter(function(h) {
-        return h.text && h.text.length < 3;
-      });
-      if (shortHeadings.length === 0) {
-        passed++;
-      } else {
-        passed++; // Info doesn't reduce score
-        findings.push({
-          severity: 'info',
-          title: shortHeadings.length + ' heading(s) with very short text (< 3 chars)',
-          detail: 'Short headings like numbers or icons don\'t help users scan. Use descriptive text.',
-          fix: 'Replace generic headings with descriptive ones that summarize the section content.',
-          presetRef: null,
-          source: 'NNGroup — https://www.nngroup.com/articles/headings-pickup-lines/'
-        });
-      }
-    }
-
-    // Font size variety as readability signal
-    // Too many sizes = visual noise, harder to establish reading rhythm
-    var fontSizes = (data.typography && data.typography.fontSizes) || [];
-    var smallTextCount = fontSizes.filter(function(f) {
-      return parseFloat(f.value) < 12;
-    }).reduce(function(sum, f) { return sum + f.count; }, 0);
-
-    if (smallTextCount > 0 && totalElements > 20) {
-      checks++;
-      var smallRatio = smallTextCount / totalElements;
-      if (smallRatio < 0.05) {
-        passed++;
-      } else {
-        var smallBboxes = [];
-        var smallSelectors = [];
-        var smallTexts = [];
-        fontSizes.filter(function(f) { return parseFloat(f.value) < 12; }).forEach(function(f) {
-          if (f.bbox) smallBboxes.push(f.bbox);
-          if (f.extraBboxes) f.extraBboxes.forEach(function(b) { smallBboxes.push(b); });
-          if (f.sampleSelector) smallSelectors.push(f.sampleSelector);
-          if (f.extraSelectors) f.extraSelectors.forEach(function(s) { smallSelectors.push(s); });
-          if (f.sampleText) smallTexts.push(f.sampleText);
-          if (f.extraTexts) f.extraTexts.forEach(function(t) { smallTexts.push(t); });
-        });
-        findings.push({
-          severity: 'warning',
-          title: smallTextCount + ' element(s) with text smaller than 12px',
-          detail: 'Text below 12px is difficult to read for most users and nearly impossible for elderly or low-vision users',
-          fix: 'Increase small text to at least 12px. Consider if the information is important enough to display — if not, remove it.',
-          presetRef: null,
-          source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text',
-          locator: smallBboxes.length > 0 ? { selector: '', text: '', bboxes: smallBboxes, selectors: smallSelectors, texts: smallTexts } : undefined
-        });
-      }
-    }
-
-    // Coleman-Liau readability index
-    var rd = data.readability || {};
-    if (rd.totalWords >= 50 && rd.paragraphCount >= 2) {
-      checks++;
-      // Coleman-Liau: 0.0588 * L - 0.296 * S - 15.8
-      // L = avg letters per 100 words, S = avg sentences per 100 words
-      var L = (rd.totalChars / rd.totalWords) * 100;
-      var sentenceCount = 0;
-      (rd.textBlocks || []).forEach(function(b) {
-        sentenceCount += (b.text.match(/[.!?]+/g) || []).length;
-      });
-      var S_val = (sentenceCount / rd.totalWords) * 100;
-      var cli = Math.round(0.0588 * L - 0.296 * S_val - 15.8);
-      // Detect non-English content — Coleman-Liau inflates scores for languages
-      // with long compound words (German, Finnish, Dutch, etc.)
-      var pageLang = (data.meta && data.meta.lang || '').toLowerCase().split('-')[0];
-      var isNonEnglish = pageLang && pageLang !== 'en' && pageLang !== '';
-      // Also heuristic: if avg word length > 6.5 chars, likely non-English
-      var avgWordLen = rd.totalChars / rd.totalWords;
-      if (!isNonEnglish && avgWordLen > 6.5) isNonEnglish = true;
-      var langNote = isNonEnglish ? ' Note: This index is calibrated for English text — non-English languages (detected: ' + (pageLang || 'long words') + ') typically score higher due to longer average word length.' : '';
-
-      if (cli >= 6 && cli <= 12) {
-        passed++;
-      } else {
-        findings.push({
-          severity: isNonEnglish ? 'info' : (cli > 14 ? 'warning' : 'info'),
-          title: 'Reading level: grade ' + cli + ' (Coleman-Liau Index)',
-          detail: (cli > 12 ? 'Content may be too complex for a general audience' : 'Content may be overly simple for the target audience') + langNote,
-          fix: cli > 12 ? 'Shorten sentences, use simpler words, break complex ideas into steps. Aim for grade 8-10 for general audiences.' : 'This reading level is appropriate for broad accessibility.',
-          presetRef: null,
-          source: 'Coleman-Liau Index — https://en.wikipedia.org/wiki/Coleman%E2%80%93Liau_index'
-        });
-      }
-    }
-
-    // Paragraph length audit
-    var longParagraphs = (rd.textBlocks || []).filter(function(b) { return b.wordCount > 150; });
-    if (longParagraphs.length > 0) {
-      findings.push({
-        severity: 'warning',
-        title: longParagraphs.length + ' paragraph(s) exceed 150 words',
-        detail: 'Long paragraphs reduce scanability. Ideal: 40-80 words per paragraph.',
-        fix: 'Break long paragraphs into shorter ones. Use subheadings, bullet lists, or callout boxes to chunk content.',
-        presetRef: null,
-        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
-      });
-    }
-
-    // List usage for scanability
-    if (rd.totalWords >= 100 && !rd.hasLists) {
-      findings.push({
-        severity: 'info',
-        title: 'No lists found in content area',
-        detail: 'Lists improve scanability by 47% compared to wall-of-text (NNGroup)',
-        fix: 'Convert sequences, features, or steps into <ul>/<ol> lists where appropriate.',
-        presetRef: null,
-        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
-      });
-    }
-
-    // Table cell readability on mobile (cramped/wrapped cells)
-    var tableCellIssues = (data.layout && data.layout.tableCellIssues) || [];
-    if (tableCellIssues.length > 0) {
-      checks++;
-      var tableDetails = tableCellIssues.map(function(t) {
-        var parts = [];
-        if (t.crampedCells > 0) parts.push(t.crampedCells + ' cells lack horizontal padding');
-        if (t.wrappedCells > 0) parts.push(t.wrappedCells + ' cells wrap to multiple lines');
-        return t.selector + ': ' + parts.join(', ') + ' (table ' + t.tableWidth + 'px on ' + t.vpWidth + 'px viewport)';
-      });
-      findings.push({
-        severity: tableCellIssues.some(function(t) { return t.crampedCells > 4 || t.wrappedCells > 4; }) ? 'error' : 'warning',
-        title: 'Table readability issues on mobile (' + tableCellIssues.length + ' table' + (tableCellIssues.length > 1 ? 's' : '') + ')',
-        detail: tableDetails.join('; '),
-        fix: 'Add horizontal padding to table cells (px-3 sm:px-4). For narrow viewports, consider hiding low-priority columns, using a responsive card layout, or reducing font size.',
-        source: 'NNGroup Mobile Tables — https://www.nngroup.com/articles/mobile-tables/',
-        locator: { selector: tableCellIssues[0].selector, text: '' }
-      });
-    }
-
-    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-    var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-    var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-    return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Readability', icon: 'readability' };
-  }
-
-  S.register("readability", scoreReadability, 5, "Readability", "readability");
 })();
 </file>
 
@@ -40167,6 +40167,44 @@ console.log('[milg] analyzer.js v48.1 loaded');
       }
     }
 
+    // Prefetch fonts through CORS proxy before launching viewports.
+    // Populates parent.__milgFontCache so all iframes get cache hits.
+    function _prefetchFonts(html, url, cb) {
+      var fontUrls = [];
+      // Find font URLs in <link rel="preload" as="font"> and @font-face src: url(...)
+      var preloadRe = /<link[^>]+rel=["']preload["'][^>]+as=["']font["'][^>]+href=["']([^"']+)["']/gi;
+      var m; while ((m = preloadRe.exec(html)) !== null) fontUrls.push(m[1]);
+      var faceRe = /url\(["']?([^"')]+\.(?:woff2?|ttf|otf|eot)[^"')]*?)["']?\)/gi;
+      while ((m = faceRe.exec(html)) !== null) fontUrls.push(m[1]);
+      // Resolve relative URLs
+      var seen = {};
+      var resolved = [];
+      fontUrls.forEach(function(u) {
+        try {
+          var abs = u.charAt(0) === '/' ? url.replace(/\/[^/]*$/, '') + u : (u.indexOf('://') > 0 ? u : url.replace(/\/[^/]*$/, '/') + u);
+          if (!seen[abs]) { seen[abs] = true; resolved.push(abs); }
+        } catch(e) {}
+      });
+      if (resolved.length === 0 || !CORS_PROXY_URL) { cb(); return; }
+      // Fetch up to 10 fonts through proxy (populate cache for iframe reuse)
+      if (!window.__milgFontCache) window.__milgFontCache = {};
+      var toFetch = resolved.slice(0, 10);
+      var done = 0;
+      console.log('[milg] Prefetching ' + toFetch.length + ' fonts through proxy');
+      updateFocusModal('Prefetching ' + toFetch.length + ' fonts\u2026');
+      toFetch.forEach(function(fontUrl) {
+        if (window.__milgFontCache[fontUrl]) { done++; if (done === toFetch.length) cb(); return; }
+        var p = fetch((CORS_PROXY_URL || '') + '?url=' + encodeURIComponent(fontUrl)).catch(function() { return new Response('', { status: 404 }); });
+        window.__milgFontCache[fontUrl] = p;
+        p.then(function() { done++; if (done === toFetch.length) cb(); })
+         .catch(function() { done++; if (done === toFetch.length) cb(); });
+      });
+      // Timeout: don't wait forever for fonts
+      setTimeout(function() { if (done < toFetch.length) { console.log('[milg] Font prefetch timeout, continuing'); cb(); } }, 8000);
+    }
+
+    // Prefetch fonts, then launch viewports
+    _prefetchFonts(html, url || '', function() {
     // Launch ALL viewports in parallel — maximum speed when tab is in foreground.
     // Chrome throttles background tabs (timers → 1/sec, rAF paused), so the focus
     // modal warns users to stay on this tab during analysis.
@@ -40191,6 +40229,7 @@ console.log('[milg] analyzer.js v48.1 loaded');
         }
       }, url, exclude, wantShots, { w: vp.w, h: vp.h });
     });
+    }); // end _prefetchFonts callback
   }
 
   // Switch to Console Snippet tab (from JS-required warning)
@@ -41117,7 +41156,7 @@ console.log('[milg] analyzer.js v48.1 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v50.2</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v50.3</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
