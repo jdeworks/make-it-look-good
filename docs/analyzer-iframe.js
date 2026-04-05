@@ -471,6 +471,7 @@ window.MilgIframe = (function() {
               'var fullUri;try{fullUri=fc.toDataURL("image/webp",' + ss.quality + ')}catch(e){console.warn("[milg-warn] WebP conversion failed:",e.message);fullUri=""}' +
               // Update send helper with actual canvas dimensions
               'var _cw=fc.width,_ch=fc.height;' +
+              'var _maskResults={};' + // Defined HERE so _sendFinal can access it (same scope)
               'function _sendFinal(maskUri){' +
                 'var _raw=window.__milgData||null;' +
                 // Build a lean updatedData with ONLY re-read bboxes (not full extraction + screenshots).
@@ -599,7 +600,7 @@ window.MilgIframe = (function() {
                 '}' +
               '});' +
               'if(_ttFixed)console.log("[iframe-ss] Baked text-transform for "+_ttFixed+" text nodes");' +
-              'var _maskResults={};' + // idx → {bmp, w, h, layer, dark}
+              // _maskResults already declared in domToCanvas.then scope (shared with _sendFinal)
               // Phase D: Capture one mask per layer — set layer elements to black via inline style
               'var _li=0;' +
               'function _nextLayer(){' +
