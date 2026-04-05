@@ -197,53 +197,72 @@ window.MilgIframe = (function() {
           'var _px="' + _proxyUrl.replace(/"/g, '\\"') + '";' +
           'try{if(!parent.__milgFontCache)parent.__milgFontCache={}}catch(e){}' +
           'var _fc=((typeof parent!=="undefined")&&parent.__milgFontCache)||{};' +
+          'if(!window.__milgFontBlobs)window.__milgFontBlobs={};' +
           'window.fetch=function(u,o){' +
             'if(_px&&typeof u==="string"&&u.indexOf(_px)===-1&&/\\.(woff2?|ttf|otf|eot)(\\?|$)/i.test(u)){' +
               'if(_fc[u])return _fc[u].then(function(r){return r.clone()});' +
-              'var p=_of.call(this,_px+"?url="+encodeURIComponent(u),o).catch(function(){return _of.call(this,u,o)});' +
+              'var p=_of.call(this,_px+"?url="+encodeURIComponent(u),o)' +
+                '.then(function(r){' +
+                  // Clone response and save blob URL for CSS @font-face export
+                  'var r2=r.clone();' +
+                  'r2.blob().then(function(b){if(b.size>0)window.__milgFontBlobs[u]=URL.createObjectURL(b)}).catch(function(){});' +
+                  'return r' +
+                '})' +
+                '.catch(function(){return _of.call(this,u,o)});' +
               '_fc[u]=p;return p' +
             '}' +
             'return _of.call(this,u,o)' +
           '};' +
         '})();</' + 'script>';
-        // After page loads, re-register failed CSS @font-face via proxy + FontFace API.
+        // After page loads, export ALL JS-loaded fonts to CSS @font-face rules using blob URLs.
+        // domToCanvas (SVG foreignObject) only sees fonts from CSS, not FontFace JS API.
+        // The font proxy fetch wrapper saves blob URLs in window.__milgFontBlobs.
         scripts += '<script>(function(){' +
-          'var _px="' + _proxyUrl.replace(/"/g, '\\"') + '";' +
-          'if(!_px||typeof FontFace==="undefined")return;' +
-          'function _fixFonts(){' +
-            'var loaded={};' +
-            'document.fonts.forEach(function(f){if(f.status==="loaded")loaded[f.family.replace(/["\x27]/g,"")]=true});' +
-            'var toFix=[];' +
+          'if(typeof FontFace==="undefined")return;' +
+          'function _exportFontsToCss(){' +
+            'var blobs=window.__milgFontBlobs||{};' +
+            'var blobUrls=Object.keys(blobs);' +
+            'if(blobUrls.length===0)return;' +
+            'var _s=document.createElement("style");_s.setAttribute("data-milg-fonts","1");' +
+            // For each font blob, find which font-family uses it by scanning document.fonts
+            // and matching against known @font-face src URLs
+            'var _added=0;' +
             'try{Array.from(document.styleSheets).forEach(function(ss){' +
               'try{Array.from(ss.cssRules).forEach(function(r){' +
                 'if(!(r instanceof CSSFontFaceRule))return;' +
                 'var fam=(r.style.fontFamily||"").replace(/["\x27]/g,"").trim();' +
-                'if(!fam||loaded[fam])return;' +
                 'var src=r.style.getPropertyValue("src")||"";' +
-                'var m=src.match(/url\\(["\x27]?([^")\x27]+\\.woff2?)["\x27]?\\)/i);' +
-                'if(m)toFix.push({family:fam,url:m[1],weight:r.style.fontWeight||"400",style:r.style.fontStyle||"normal"})' +
+                'var srcUrl=src.match(/url\\(["\x27]?([^")\x27]+)["\x27]?\\)/i);' +
+                'if(!srcUrl)return;' +
+                'var originalUrl=srcUrl[1];' +
+                // Check if we have a blob for this URL
+                'var blobUrl=blobs[originalUrl];' +
+                'if(!blobUrl){' +
+                  // Also check if the URL matches after resolving (proxy might have different base)
+                  'blobUrls.forEach(function(k){if(originalUrl.indexOf(k)>=0||k.indexOf(originalUrl)>=0)blobUrl=blobs[k]})' +
+                '}' +
+                'if(blobUrl){' +
+                  '_s.textContent+="@font-face{font-family:\\""+fam+"\\";src:url("+blobUrl+");font-weight:"+(r.style.fontWeight||"400")+";font-style:"+(r.style.fontStyle||"normal")+";font-display:swap;}\\n";' +
+                  '_added++' +
+                '}' +
               '})}catch(e){}})}catch(e){}' +
-            'if(toFix.length===0)return;' +
-            'console.log("[milg-iframe] Fixing "+toFix.length+" CSS fonts via proxy");' +
-            'var _fontStyleEl=document.createElement("style");_fontStyleEl.setAttribute("data-milg-fonts","1");document.head.appendChild(_fontStyleEl);' +
-            'toFix.forEach(function(f){' +
-              'fetch(_px+"?url="+encodeURIComponent(f.url)).then(function(r){' +
-                'if(!r.ok)return;return r.blob()' +
-              '}).then(function(blob){' +
-                'if(!blob)return;' +
-                'var burl=URL.createObjectURL(blob);' +
-                // Register via FontFace API (for page rendering)
-                'var ff=new FontFace(f.family,"url("+burl+")",{weight:f.weight,style:f.style});' +
-                'return ff.load().then(function(){' +
-                  'document.fonts.add(ff);' +
-                  // ALSO add @font-face CSS rule (for domToCanvas SVG foreignObject serialization)
-                  '_fontStyleEl.textContent+="@font-face{font-family:\\""+f.family+"\\";src:url("+burl+");font-weight:"+f.weight+";font-style:"+f.style+";font-display:swap;}\\n"' +
-                '})' +
-              '}).catch(function(e){console.warn("[milg-warn] Font re-register failed:",f.family,e&&e.message||"")})' +
-            '})' +
+            // Also create rules for fonts that have no CSS @font-face (pure JS-loaded)
+            'document.fonts.forEach(function(f){' +
+              'if(f.status!=="loaded")return;' +
+              'var fam=f.family.replace(/["\x27]/g,"");' +
+              // Find any blob URL — match by checking if font was loaded from a known URL
+              'blobUrls.forEach(function(u){' +
+                'if(_s.textContent.indexOf(fam)>=0)return;' + // already added
+                'var burl=blobs[u];if(!burl)return;' +
+                // Heuristic: if URL contains part of the font family name (lowercase match)
+                'if(u.toLowerCase().indexOf(fam.toLowerCase().replace(/\\s+/g,""))>=0||fam.toLowerCase().indexOf("__")===-1){return}' +
+              '})' +
+            '});' +
+            'if(_s.textContent){document.head.appendChild(_s)}' +
+            'console.log("[milg-iframe] Exported "+_added+" fonts to CSS @font-face (blob URLs from proxy)")' +
           '}' +
-          'if(document.readyState==="complete")setTimeout(_fixFonts,500);' +
-          'else window.addEventListener("load",function(){setTimeout(_fixFonts,500)})' +
+          'if(document.readyState==="complete")setTimeout(_exportFontsToCss,800);' +
+          'else window.addEventListener("load",function(){setTimeout(_exportFontsToCss,800)})' +
         '})();</' + 'script>';
       }
 
