@@ -10611,6 +10611,118 @@ Key metrics to track:
 - **No module should average below 40** except Contrast (known issue with Tailwind color scale)
 </file>
 
+<file path="docs/PIXEL-CONTRAST-APPROACH.md">
+# Pixel Contrast Verification — Approach Reference
+
+> **TL;DR:** Capture the page twice with domToCanvas (original at 1.5x + text mask), detect text boundaries via 4-connected neighbor check, sample FG at exactly dist=2 inside boundary, BG at dist 2-4 outside, cluster-average FG colors, match each FG pixel to nearest BG cluster, compute WCAG contrast ratio.
+
+## Pipeline (7 Steps)
+
+### Step 1: Capture original page
+```
+domToCanvas(document.documentElement, { scale: 1.5 })
+→ screenshot (WebP 0.8 quality, for color sampling)
+```
+
+### Step 2: Apply mask CSS + capture per-layer masks
+```css
+*, *::before, *::after {
+  color: #fff !important;
+  background: transparent !important;
+  background-image: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  -webkit-text-fill-color: #fff !important;
+  opacity: 1 !important;
+  transition: none !important;
+  animation: none !important;
+}
+html { background: #fff !important; }
+img, svg, video, canvas, picture, iframe { opacity: 0 !important; }
+```
+Elements are layered by z-order. Each layer captures its text as white-on-white with text visible as dark pixels.
+
+### Step 3: Extract binary mask
+```
+For each pixel in layer mask: avg(R, G, B) < 180 → mask[i] = 1 (foreground/text)
+```
+
+### Step 4: Boundary detection (4-connected)
+```
+For each mask[i] = 1:
+  If any of 4 neighbors (up/down/left/right) is mask = 0:
+    cat[i] = 1 (boundary)
+  Else:
+    cat[i] = 2 (inside)
+```
+No convolution. No smudging. Exact pixel boundary.
+
+### Step 5: BFS distance from boundary
+```
+Initialize: all boundary pixels → dist = 0, queue
+BFS flood fill: dist[neighbor] = dist[current] + 1, up to MAX_DIST = 7
+```
+
+### Step 6: Zone classification
+```
+FG zone: exactly dist=2 inside boundary (single-pixel inset line)
+  - Tight space (3+ boundary cardinals): promote to FG directly
+  - Fallback for thin strokes: deepest available inside pixel
+BG zone: dist 2-4 outside boundary (thin ring)
+  - Extends outside bbox via padding area sampling
+  - Clustered into 4px grid cells, averaged per cell
+```
+
+FG cluster averaging: each FG pixel's color = average of nearby FG pixels within 6px radius.
+FG outlier removal: reject pixels with luminance >40 from median.
+Each FG pixel → matched to closest BG cluster by distance.
+
+### Step 7: Contrast calculation
+```
+For each FG pixel: ratio = WCAG contrast(smoothedFG, closestBG)
+Report: worst, P10, median, P90, best ratios
+Threshold: P10 ratio used for pass/fail determination
+```
+
+## BBox Edge Contrast (v42.0)
+
+Separate from text contrast. Checks if interactive/container elements visually stand out:
+- Sample inner strip (3px inside bbox edge) and outer strip (5px outside)
+- Average inner vs outer colors → compute contrast ratio
+- Warning threshold: 1.15:1 (elements with border/shadow/outline exempt)
+- Severity: WARNING only (not error) since border/outline can provide distinction
+
+## Viewer Display Rules
+- On hover over a verify rect, show nearest FG/BG pair with color swatches
+- 5 percentile dots: worst, P10, median, P90, best (with pair-specific tooltips)
+- Right-click on verify rect cycles debug overlay: none → mask → zones
+- BBox edge warnings shown as dashed yellow rects with "edge X:1" labels
+
+## Key Constants
+| Constant | Value | Rationale |
+|----------|-------|-----------|
+| SCREENSHOT_SCALE | 1.5 | Good text AA resolution without excessive memory |
+| SCREENSHOT_QUALITY | 0.8 | WebP quality (PNG tested, no improvement) |
+| FG_IDEAL | 2 | 2px inside boundary — skips AA fringe |
+| BG_DIST_MIN | 2 | Background ring starts 2px outside |
+| BG_DIST_MAX | 4 | Background ring ends 4px outside |
+| BG_SEARCH_R | 12 | Max radius for BG cluster matching |
+| FG_CLUSTER_R | 6 | FG color averaging radius |
+| BG_CELL | 4 | BG pixel clustering grid size |
+| LUM_THRESHOLD | 40 | FG outlier rejection (luminance from median) |
+| EDGE_INNER_DIST | 3 | BBox edge: sample 3px inside |
+| EDGE_OUTER_DIST | 5 | BBox edge: sample 5px outside |
+| EDGE_WARN_RATIO | 1.15 | BBox edge: below this = blends into bg |
+
+## Files
+- `analyzer-iframe.js` — screenshot + mask capture pipeline
+- `analyzer-contrast-verify.js` — pixel contrast verification (boundary-based + bbox edge)
+- `analyzer-viewer.js` — viewer overlay, debug layers, tooltips
+- `analyzer-snippet-screenshots.js` — console snippet with screenshot capture
+- `analyzer-extract.js` — DOM data extraction (bgEdgePairs collection)
+</file>
+
 <file path="docs/test-sites.html">
 <!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -28508,118 +28620,6 @@ window.MilgCrawl = (function() {
 })();
 </file>
 
-<file path="docs/PIXEL-CONTRAST-APPROACH.md">
-# Pixel Contrast Verification — Approach Reference
-
-> **TL;DR:** Capture the page twice with domToCanvas (original at 1.5x + text mask), detect text boundaries via 4-connected neighbor check, sample FG at exactly dist=2 inside boundary, BG at dist 2-4 outside, cluster-average FG colors, match each FG pixel to nearest BG cluster, compute WCAG contrast ratio.
-
-## Pipeline (7 Steps)
-
-### Step 1: Capture original page
-```
-domToCanvas(document.documentElement, { scale: 1.5 })
-→ screenshot (WebP 0.8 quality, for color sampling)
-```
-
-### Step 2: Apply mask CSS + capture per-layer masks
-```css
-*, *::before, *::after {
-  color: #fff !important;
-  background: transparent !important;
-  background-image: none !important;
-  border-color: transparent !important;
-  box-shadow: none !important;
-  text-shadow: none !important;
-  -webkit-text-fill-color: #fff !important;
-  opacity: 1 !important;
-  transition: none !important;
-  animation: none !important;
-}
-html { background: #fff !important; }
-img, svg, video, canvas, picture, iframe { opacity: 0 !important; }
-```
-Elements are layered by z-order. Each layer captures its text as white-on-white with text visible as dark pixels.
-
-### Step 3: Extract binary mask
-```
-For each pixel in layer mask: avg(R, G, B) < 180 → mask[i] = 1 (foreground/text)
-```
-
-### Step 4: Boundary detection (4-connected)
-```
-For each mask[i] = 1:
-  If any of 4 neighbors (up/down/left/right) is mask = 0:
-    cat[i] = 1 (boundary)
-  Else:
-    cat[i] = 2 (inside)
-```
-No convolution. No smudging. Exact pixel boundary.
-
-### Step 5: BFS distance from boundary
-```
-Initialize: all boundary pixels → dist = 0, queue
-BFS flood fill: dist[neighbor] = dist[current] + 1, up to MAX_DIST = 7
-```
-
-### Step 6: Zone classification
-```
-FG zone: exactly dist=2 inside boundary (single-pixel inset line)
-  - Tight space (3+ boundary cardinals): promote to FG directly
-  - Fallback for thin strokes: deepest available inside pixel
-BG zone: dist 2-4 outside boundary (thin ring)
-  - Extends outside bbox via padding area sampling
-  - Clustered into 4px grid cells, averaged per cell
-```
-
-FG cluster averaging: each FG pixel's color = average of nearby FG pixels within 6px radius.
-FG outlier removal: reject pixels with luminance >40 from median.
-Each FG pixel → matched to closest BG cluster by distance.
-
-### Step 7: Contrast calculation
-```
-For each FG pixel: ratio = WCAG contrast(smoothedFG, closestBG)
-Report: worst, P10, median, P90, best ratios
-Threshold: P10 ratio used for pass/fail determination
-```
-
-## BBox Edge Contrast (v42.0)
-
-Separate from text contrast. Checks if interactive/container elements visually stand out:
-- Sample inner strip (3px inside bbox edge) and outer strip (5px outside)
-- Average inner vs outer colors → compute contrast ratio
-- Warning threshold: 1.15:1 (elements with border/shadow/outline exempt)
-- Severity: WARNING only (not error) since border/outline can provide distinction
-
-## Viewer Display Rules
-- On hover over a verify rect, show nearest FG/BG pair with color swatches
-- 5 percentile dots: worst, P10, median, P90, best (with pair-specific tooltips)
-- Right-click on verify rect cycles debug overlay: none → mask → zones
-- BBox edge warnings shown as dashed yellow rects with "edge X:1" labels
-
-## Key Constants
-| Constant | Value | Rationale |
-|----------|-------|-----------|
-| SCREENSHOT_SCALE | 1.5 | Good text AA resolution without excessive memory |
-| SCREENSHOT_QUALITY | 0.8 | WebP quality (PNG tested, no improvement) |
-| FG_IDEAL | 2 | 2px inside boundary — skips AA fringe |
-| BG_DIST_MIN | 2 | Background ring starts 2px outside |
-| BG_DIST_MAX | 4 | Background ring ends 4px outside |
-| BG_SEARCH_R | 12 | Max radius for BG cluster matching |
-| FG_CLUSTER_R | 6 | FG color averaging radius |
-| BG_CELL | 4 | BG pixel clustering grid size |
-| LUM_THRESHOLD | 40 | FG outlier rejection (luminance from median) |
-| EDGE_INNER_DIST | 3 | BBox edge: sample 3px inside |
-| EDGE_OUTER_DIST | 5 | BBox edge: sample 5px outside |
-| EDGE_WARN_RATIO | 1.15 | BBox edge: below this = blends into bg |
-
-## Files
-- `analyzer-iframe.js` — screenshot + mask capture pipeline
-- `analyzer-contrast-verify.js` — pixel contrast verification (boundary-based + bbox edge)
-- `analyzer-viewer.js` — viewer overlay, debug layers, tooltips
-- `analyzer-snippet-screenshots.js` — console snippet with screenshot capture
-- `analyzer-extract.js` — DOM data extraction (bgEdgePairs collection)
-</file>
-
 <file path="docs/scoring/contrast.js">
 // Scoring Module: Color & Contrast
 // Weight: 20%
@@ -36309,6 +36309,16 @@ window.MilgIframe = (function() {
         '})();</' + 'script>';
       }
 
+      // Rewrite relative URLs to absolute — more reliable than <base> in srcdoc iframes.
+      // <base> doesn't always take effect before the browser starts fetching resources.
+      if (url && baseHref) {
+        var origin = new URL(url).origin;
+        // Rewrite src="/" and href="/" attributes to absolute URLs
+        html = html.replace(/((?:src|href|action)\s*=\s*["'])(\/[^"']*)/gi, function(m, prefix, path) {
+          return prefix + origin + path;
+        });
+      }
+
       if (!scripts) return html;
 
       // Injection point: for JS mode (sandbox/fetchPatch), inject BEFORE first <script>
@@ -39755,7 +39765,7 @@ window.MilgViewer = (function() {
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v52.1 loaded');
+console.log('[milg] analyzer.js v52.2 loaded');
 
 (function() {
   "use strict";
@@ -41315,7 +41325,7 @@ console.log('[milg] analyzer.js v52.1 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v52.1</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v52.2</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -41686,30 +41696,30 @@ console.log('[milg] analyzer.js v52.1 loaded');
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=52.1"></script>
-  <script src="scoring/contrast.js?v=52.1"></script>
-  <script src="scoring/typography.js?v=52.1"></script>
-  <script src="scoring/spacing.js?v=52.1"></script>
-  <script src="scoring/touch.js?v=52.1"></script>
-  <script src="scoring/accessibility.js?v=52.1"></script>
-  <script src="scoring/responsive.js?v=52.1"></script>
-  <script src="scoring/consistency.js?v=52.1"></script>
-  <script src="scoring/cognitive.js?v=52.1"></script>
-  <script src="scoring/layout.js?v=52.1"></script>
-  <script src="scoring/performance.js?v=52.1"></script>
-  <script src="scoring/readability.js?v=52.1"></script>
-  <script src="scoring/filters.js?v=52.1"></script>
-  <script src="scoring/balance.js?v=52.1"></script>
+  <script src="scoring/registry.js?v=52.2"></script>
+  <script src="scoring/contrast.js?v=52.2"></script>
+  <script src="scoring/typography.js?v=52.2"></script>
+  <script src="scoring/spacing.js?v=52.2"></script>
+  <script src="scoring/touch.js?v=52.2"></script>
+  <script src="scoring/accessibility.js?v=52.2"></script>
+  <script src="scoring/responsive.js?v=52.2"></script>
+  <script src="scoring/consistency.js?v=52.2"></script>
+  <script src="scoring/cognitive.js?v=52.2"></script>
+  <script src="scoring/layout.js?v=52.2"></script>
+  <script src="scoring/performance.js?v=52.2"></script>
+  <script src="scoring/readability.js?v=52.2"></script>
+  <script src="scoring/filters.js?v=52.2"></script>
+  <script src="scoring/balance.js?v=52.2"></script>
   <!-- Report rendering + UI -->
-  <script src="analyzer-report.js?v=52.1"></script>
-  <script src="analyzer-crawl.js?v=52.1"></script>
-  <script src="analyzer-extract.js?v=52.1"></script>
-  <script src="analyzer-iframe.js?v=52.1"></script>
-  <script src="analyzer-proxy.js?v=52.1"></script>
-  <script src="analyzer-crawl-ui.js?v=52.1"></script>
-  <script src="analyzer-contrast-verify.js?v=52.1"></script>
-  <script src="analyzer-viewer.js?v=52.1"></script>
-  <script src="analyzer.js?v=52.1"></script>
+  <script src="analyzer-report.js?v=52.2"></script>
+  <script src="analyzer-crawl.js?v=52.2"></script>
+  <script src="analyzer-extract.js?v=52.2"></script>
+  <script src="analyzer-iframe.js?v=52.2"></script>
+  <script src="analyzer-proxy.js?v=52.2"></script>
+  <script src="analyzer-crawl-ui.js?v=52.2"></script>
+  <script src="analyzer-contrast-verify.js?v=52.2"></script>
+  <script src="analyzer-viewer.js?v=52.2"></script>
+  <script src="analyzer.js?v=52.2"></script>
 </body>
 </html>
 </file>

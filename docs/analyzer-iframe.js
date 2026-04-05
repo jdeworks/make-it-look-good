@@ -241,6 +241,16 @@ window.MilgIframe = (function() {
         '})();</' + 'script>';
       }
 
+      // Rewrite relative URLs to absolute — more reliable than <base> in srcdoc iframes.
+      // <base> doesn't always take effect before the browser starts fetching resources.
+      if (url && baseHref) {
+        var origin = new URL(url).origin;
+        // Rewrite src="/" and href="/" attributes to absolute URLs
+        html = html.replace(/((?:src|href|action)\s*=\s*["'])(\/[^"']*)/gi, function(m, prefix, path) {
+          return prefix + origin + path;
+        });
+      }
+
       if (!scripts) return html;
 
       // Injection point: for JS mode (sandbox/fetchPatch), inject BEFORE first <script>
