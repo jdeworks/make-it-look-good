@@ -431,12 +431,13 @@ window.MilgReport = (function() {
         var ca = parseColorToHSL(a.value);
         var cb = parseColorToHSL(b.value);
         if (!ca || !cb) return 0;
-        // Achromatic (grays) first, sorted by lightness
-        if (ca.s < 5 && cb.s < 5) return ca.l - cb.l;
-        if (ca.s < 5) return -1;
-        if (cb.s < 5) return 1;
-        // Chromatic: sort by hue, then lightness
-        if (Math.abs(ca.h - cb.h) > 10) return ca.h - cb.h;
+        // Achromatic (grays) first, sorted dark → light
+        if (ca.s < 8 && cb.s < 8) return ca.l - cb.l;
+        if (ca.s < 8) return -1;
+        if (cb.s < 8) return 1;
+        // Chromatic: group by 30° hue band, then lightness within each band
+        var hueA = Math.floor(ca.h / 30), hueB = Math.floor(cb.h / 30);
+        if (hueA !== hueB) return hueA - hueB;
         return ca.l - cb.l;
       });
     }

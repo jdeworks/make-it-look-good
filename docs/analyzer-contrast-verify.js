@@ -276,7 +276,8 @@ window.MilgContrastVerify = (function() {
       isVariableBg: bgVariance > 3.0, ratioDiff: ratioDiff,
       cssPasses: cssPasses, pixelPasses: pixelPasses,
       crossesBoundary: cssPasses !== pixelPasses,
-      significant: (cssPasses !== pixelPasses) || ratioDiff > 1.5 || bgVariance > 3.0,
+      // Skip flagging high-contrast pairs (P10 > 12.5:1 and CSS > 12.5:1) — excellent regardless of variance
+      significant: (p10Ratio > 12.5 && pair.ratio > 12.5) ? false : ((cssPasses !== pixelPasses) || ratioDiff > 1.5 || bgVariance > 3.0),
       pixelFg: rgbStr(fgColor), expectedFg: rgbStr(ctx.expectedFg), effectiveOpacity: ctx.opacity,
       pixelRatioP10: p10Ratio, pixelRatioMedian: medianRatio,
       pixelBgWorst: worstBg ? rgbStr(worstBg) : '', pixelBgAvg: rgbStr(avgBg),
@@ -1013,7 +1014,7 @@ window.MilgContrastVerify = (function() {
       cssPasses: cssPasses,
       pixelPasses: pixelPasses,
       crossesBoundary: crossesBoundary,
-      significant: crossesBoundary || ratioDiff > 1.5 || isVariableBg,
+      significant: (p10Ratio > 12.5 && cssRatio > 12.5) ? false : (crossesBoundary || ratioDiff > 1.5 || isVariableBg),
       pixelFg: rgbStr(fgColor),
       expectedFg: rgbStr(expectedFg),
       effectiveOpacity: opacity,

@@ -443,15 +443,11 @@ console.log('[milg] analyzer.js v54.1 loaded');
 
     var reportContainer = document.getElementById('reportContainer');
 
-    // Cache hit: restore instantly (no scoring, no rendering, no pixel verify)
+    // Cache hit: fast restore (scoring cached, verify precomputed, just re-render)
     if (_viewportCache[idx]) {
       var cached = _viewportCache[idx];
-      lastRawData = cached.data;
-      reportData = cached.reportData;
-      if (reportContainer && cached.html) {
-        reportContainer.innerHTML = cached.html;
-        reportContainer.classList.add('visible');
-      }
+      // runAnalysis with cached scoring + precomputed verify = fast render with overlays
+      runAnalysis(cached.data, 'viewport');
       renderViewportTabs(cached.data);
       return;
     }
