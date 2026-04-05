@@ -1245,7 +1245,8 @@ window.MilgContrastVerify = (function() {
         if (result) { results.push(result); _vStats.verified++; }
         else _vStats.noFgBg++;
       });
-      console.log('[milg-verify] Stats: mask=' + _hasMask + ' total=' + _vStats.total + ' verified=' + _vStats.verified + ' noFgBg=' + _vStats.noFgBg);
+      var _maskBmpCount = pairs.filter(function(p) { return !!p._maskBmp; }).length;
+      console.log('[milg-verify] Stats: mask=' + _hasMask + ' maskBmp=' + _maskBmpCount + '/' + pairs.length + ' total=' + _vStats.total + ' verified=' + _vStats.verified + ' noFgBg=' + _vStats.noFgBg);
       results.sort(function(a, b) {
         if (a.crossesBoundary !== b.crossesBoundary) return a.crossesBoundary ? -1 : 1;
         return b.ratioDiff - a.ratioDiff;
