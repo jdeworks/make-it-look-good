@@ -234,37 +234,39 @@
             window.__milgCrawlJson = crawlJson;
             try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) {}
             console.log('%c\u2713 Crawl complete! ' + _crawlResults.length + ' pages (' + Math.round(crawlJson.length / 1024) + ' KB)', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+            var _cKB = Math.round(crawlJson.length / 1024);
+            var _cLarge = _cKB > 2048;
+            var _priStyle = 'padding:12px 28px;font-size:14px;font-weight:600;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-bottom:8px;min-width:220px';
+            var _secStyle = 'padding:10px 24px;font-size:13px;font-weight:500;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.2);border-radius:8px;cursor:pointer;margin-bottom:10px;min-width:220px';
             _crawlOverlay.innerHTML = '<div style="text-align:center">' +
               '<div style="font-size:28px;margin-bottom:12px">\u2713</div>' +
               '<div style="color:#fff;font-size:16px;font-weight:600;margin-bottom:6px">Crawl complete! ' + _crawlResults.length + ' pages analyzed.</div>' +
-              '<div style="color:rgba(255,255,255,0.6);font-size:13px;margin-bottom:20px">' + Math.round(crawlJson.length / 1024) + ' KB of design data ready</div>' +
-              '<button id="milg-crawl-copy-btn" style="padding:12px 28px;font-size:14px;font-weight:600;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-bottom:10px">' + (crawlJson.length > 4*1024*1024 ? 'Download JSON' : 'Copy to Clipboard') + '</button>' +
-              '<div style="color:rgba(255,255,255,0.5);font-size:11px;margin-top:8px">Then import in the analyzer</div>' +
+              '<div style="color:rgba(255,255,255,0.6);font-size:13px;margin-bottom:' + (_cLarge ? '6' : '20') + 'px">' + _cKB + ' KB of design data ready</div>' +
+              (_cLarge ? '<div style="color:#fbbf24;font-size:12px;margin-bottom:16px">&#9888; Large payload \u2014 download recommended</div>' : '') +
+              (_cLarge
+                ? '<button id="milg-crawl-dl-btn" style="' + _priStyle + '">Download JSON</button><br><button id="milg-crawl-copy-btn" style="' + _secStyle + '">Copy to Clipboard</button>'
+                : '<button id="milg-crawl-copy-btn" style="' + _priStyle + '">Copy to Clipboard</button><br><button id="milg-crawl-dl-btn" style="' + _secStyle + '">Download JSON</button>') +
+              '<div style="color:rgba(255,255,255,0.5);font-size:11px;margin-top:8px">Then ' + (_cLarge ? 'import' : 'paste') + ' into the analyzer</div>' +
               '</div>';
+            function _crawlDone() { setTimeout(function() { _removeCrawlOverlay(); }, 1500); }
             document.getElementById('milg-crawl-copy-btn').addEventListener('click', function() {
               var btn = document.getElementById('milg-crawl-copy-btn');
-              if (crawlJson.length > 4 * 1024 * 1024) {
-                // Large: file download
-                var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
-                downloadAsFile(crawlJson, 'milg-crawl-' + hostname + '.json');
-                btn.textContent = 'Downloaded!';
-                btn.style.background = '#16a34a';
-                setTimeout(_removeCrawlOverlay, 1200);
-              } else {
-                // Small: clipboard
+              if (navigator.clipboard && navigator.clipboard.writeText) {
                 navigator.clipboard.writeText(crawlJson).then(function() {
-                  btn.textContent = 'Copied!';
-                  btn.style.background = '#16a34a';
-                  setTimeout(_removeCrawlOverlay, 800);
+                  btn.textContent = 'Copied!'; btn.style.background = '#16a34a'; _crawlDone();
                 }).catch(function() {
-                  // Fallback: download
-                  var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
-                  downloadAsFile(crawlJson, 'milg-crawl-' + hostname + '.json');
-                  btn.textContent = 'Downloaded!';
-                  btn.style.background = '#16a34a';
-                  setTimeout(_removeCrawlOverlay, 1200);
+                  downloadAsFile(crawlJson, 'milg-crawl-' + location.hostname.replace(/[^a-z0-9]/gi, '-') + '.json');
+                  btn.textContent = 'Downloaded!'; btn.style.background = '#16a34a'; _crawlDone();
                 });
+              } else {
+                downloadAsFile(crawlJson, 'milg-crawl-' + location.hostname.replace(/[^a-z0-9]/gi, '-') + '.json');
+                btn.textContent = 'Downloaded!'; btn.style.background = '#16a34a'; _crawlDone();
               }
+            });
+            document.getElementById('milg-crawl-dl-btn').addEventListener('click', function() {
+              downloadAsFile(crawlJson, 'milg-crawl-' + location.hostname.replace(/[^a-z0-9]/gi, '-') + '.json');
+              var btn = document.getElementById('milg-crawl-dl-btn');
+              btn.textContent = 'Downloaded!'; btn.style.background = '#16a34a'; btn.style.color = '#fff'; _crawlDone();
             });
             return;
           }

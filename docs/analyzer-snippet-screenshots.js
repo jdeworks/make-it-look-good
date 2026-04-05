@@ -373,6 +373,18 @@
     outputData(data);
   });
 
+  // Reliable file download — appends to DOM and delays revoke so all browsers work
+  function downloadFile(content, filename) {
+    var blob = new Blob([content], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = filename;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function() { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
+  }
+
   // Gzip compress + base64 encode for clipboard (CompressionStream API)
   function compressForClipboard(jsonStr, callback) {
     if (typeof CompressionStream === 'undefined') { callback(null); return; }
@@ -472,18 +484,11 @@
 
     // Download button (works for any size, no clipboard limit)
     document.getElementById('milg-download-btn').addEventListener('click', function() {
-      var blob = new Blob([json], { type: 'application/json' });
-      var url = URL.createObjectURL(blob);
-      var a = document.createElement('a');
-      a.href = url;
       var siteName = (data.meta && data.meta.url) || location.hostname;
-      a.download = 'milg-report-' + siteName.replace(/[^a-z0-9]/gi, '-').substring(0, 40) + '.json';
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadFile(json, 'milg-report-' + siteName.replace(/[^a-z0-9]/gi, '-').substring(0, 40) + '.json');
       var btn = document.getElementById('milg-download-btn');
       btn.textContent = 'Downloaded!';
       btn.style.background = '#16a34a'; btn.style.color = '#fff'; btn.style.borderColor = '#16a34a';
-      // Reload page after delay to restore styles corrupted by mask capture
       setTimeout(function() {
         if (_copyOverlay.parentNode) _copyOverlay.parentNode.removeChild(_copyOverlay);
         console.log('%c\u21BB Reloading page in 8s to restore styles...', 'color: #64748b;');
@@ -806,13 +811,7 @@
                 });
               });
               document.getElementById('milg-crawl-dl-btn').addEventListener('click', function() {
-                var blob = new Blob([crawlJson], { type: 'application/json' });
-                var dlUrl = URL.createObjectURL(blob);
-                var a = document.createElement('a');
-                a.href = dlUrl;
-                a.download = 'milg-crawl-' + location.hostname.replace(/[^a-z0-9]/gi, '-') + '.json';
-                a.click();
-                URL.revokeObjectURL(dlUrl);
+                downloadFile(crawlJson, 'milg-crawl-' + location.hostname.replace(/[^a-z0-9]/gi, '-') + '.json');
                 var btn = document.getElementById('milg-crawl-dl-btn');
                 btn.textContent = 'Downloaded!'; btn.style.background = '#16a34a'; btn.style.color = '#fff';
                 _crawlDoneAction();
