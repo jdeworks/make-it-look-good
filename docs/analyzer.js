@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v51.6 loaded');
+console.log('[milg] analyzer.js v52.0 loaded');
 
 (function() {
   "use strict";
@@ -550,9 +550,23 @@ console.log('[milg] analyzer.js v51.6 loaded');
 
   // --- Deep scan viewport loop (shared between URL mode and crawl mode) ---
   // Analyzes HTML at ALL viewports IN PARALLEL, assembles deepScan summary, tests dark mode.
+  // opts: { jsEnabled, screenshots, exclude } — passed through to analyzeHtml per viewport
   // onProgress(label, done, total) — optional progress callback
   // callback(primaryData) — called with primary result (deepScan attached) or null on failure
-  function runDeepScanLoop(html, url, exclude, wantShots, onProgress, callback) {
+  function runDeepScanLoop(html, url, opts, onProgress, callback) {
+    var wantShots = opts.screenshots || false;
+    var exclude = opts.exclude || null;
+    var jsEnabled = opts.jsEnabled || false;
+
+    // Preprocess HTML ONCE for all viewports (base tag, URL patch/sandbox, font proxy)
+    var processedHtml = MilgIframe.preprocessHtml(html, url, {
+      baseTag: !!url,
+      urlPatch: !!url && !jsEnabled,
+      fontProxy: true,
+      sandbox: jsEnabled,
+      fetchPatch: jsEnabled && !!url
+    });
+
     var viewports = [{w:1280, h:900, label:'Desktop'}, {w:768, h:1024, label:'Tablet'}, {w:375, h:812, label:'Phone'}];
     // Add current viewport if different from presets
     var curW = window.innerWidth, curH = window.innerHeight;
@@ -585,8 +599,9 @@ console.log('[milg] analyzer.js v51.6 loaded');
       var htmlHasDark = /class="[^"]*dark:/.test(html) || /prefers-color-scheme/.test(html) || /\.dark\s*\{/.test(html) || /data-theme/.test(html);
       if (htmlHasDark) {
         if (onProgress) onProgress('Dark mode', viewports.length, totalSteps);
-        var darkHtml = html.replace(/<html([^>]*)>/i, '<html$1 class="dark" data-theme="dark" style="color-scheme:dark">');
+        var darkHtml = processedHtml.replace(/<html([^>]*)>/i, '<html$1 class="dark" data-theme="dark" style="color-scheme:dark">');
         darkHtml = darkHtml.replace(/<\/head>/i, '<script>setTimeout(function(){try{Array.from(document.styleSheets).forEach(function(ss){try{var darkRules=[];Array.from(ss.cssRules).forEach(function(r){if(r instanceof CSSMediaRule&&/prefers-color-scheme:\\s*dark/.test(r.conditionText||"")){Array.from(r.cssRules).forEach(function(inner){darkRules.push(inner.cssText)})}});if(darkRules.length>0){var s=document.createElement("style");s.textContent=darkRules.join("\\n");document.head.appendChild(s)}}catch(e){}});}catch(e){}},100);</' + 'script></head>');
+        // Dark mode test: HTML already preprocessed, pass directly to legacy API
         MilgIframe.analyzeHtmlInIframe(darkHtml, function(darkData) {
           if (darkData) {
             primary.deepScan.darkMode = {
@@ -602,44 +617,9 @@ console.log('[milg] analyzer.js v51.6 loaded');
       }
     }
 
-    // Prefetch fonts through CORS proxy before launching viewports.
-    // Populates parent.__milgFontCache so all iframes get cache hits.
-    function _prefetchFonts(html, url, cb) {
-      var fontUrls = [];
-      // Find font URLs in <link rel="preload" as="font"> and @font-face src: url(...)
-      var preloadRe = /<link[^>]+rel=["']preload["'][^>]+as=["']font["'][^>]+href=["']([^"']+)["']/gi;
-      var m; while ((m = preloadRe.exec(html)) !== null) fontUrls.push(m[1]);
-      var faceRe = /url\(["']?([^"')]+\.(?:woff2?|ttf|otf|eot)[^"')]*?)["']?\)/gi;
-      while ((m = faceRe.exec(html)) !== null) fontUrls.push(m[1]);
-      // Resolve relative URLs
-      var seen = {};
-      var resolved = [];
-      fontUrls.forEach(function(u) {
-        try {
-          var abs = u.charAt(0) === '/' ? url.replace(/\/[^/]*$/, '') + u : (u.indexOf('://') > 0 ? u : url.replace(/\/[^/]*$/, '/') + u);
-          if (!seen[abs]) { seen[abs] = true; resolved.push(abs); }
-        } catch(e) {}
-      });
-      if (resolved.length === 0 || !CORS_PROXY_URL) { cb(); return; }
-      // Fetch up to 10 fonts through proxy (populate cache for iframe reuse)
-      if (!window.__milgFontCache) window.__milgFontCache = {};
-      var toFetch = resolved.slice(0, 10);
-      var done = 0;
-      console.log('[milg] Prefetching ' + toFetch.length + ' fonts through proxy');
-      updateFocusModal('Prefetching ' + toFetch.length + ' fonts\u2026');
-      toFetch.forEach(function(fontUrl) {
-        if (window.__milgFontCache[fontUrl]) { done++; if (done === toFetch.length) cb(); return; }
-        var p = fetch((CORS_PROXY_URL || '') + '?url=' + encodeURIComponent(fontUrl)).catch(function(e) { console.warn('[milg-warn] Font prefetch failed:', fontUrl, e && e.message || ''); return new Response('', { status: 404 }); });
-        window.__milgFontCache[fontUrl] = p;
-        p.then(function() { done++; if (done === toFetch.length) cb(); })
-         .catch(function() { done++; if (done === toFetch.length) cb(); });
-      });
-      // Timeout: don't wait forever for fonts
-      setTimeout(function() { if (done < toFetch.length) { console.log('[milg] Font prefetch timeout, continuing'); cb(); } }, 8000);
-    }
-
     // Prefetch fonts, then launch viewports
-    _prefetchFonts(html, url || '', function() {
+    updateFocusModal('Prefetching fonts\u2026');
+    MilgIframe.prefetchFonts(html, url || '', function() {
     // Launch ALL viewports in parallel — maximum speed when tab is in foreground.
     // Chrome throttles background tabs (timers → 1/sec, rAF paused), so the focus
     // modal warns users to stay on this tab during analysis.
@@ -648,7 +628,8 @@ console.log('[milg] analyzer.js v51.6 loaded');
     if (onProgress) onProgress('Starting viewports...', 0, totalSteps);
     viewports.forEach(function(vp, i) {
       console.log('[milg] Starting viewport', i, vp.label, vp.w + 'x' + vp.h);
-      MilgIframe.analyzeHtmlInIframe(html, function(data) {
+      // HTML already preprocessed — pass directly to legacy API with viewport override
+      MilgIframe.analyzeHtmlInIframe(processedHtml, function(data) {
         if (data) data.meta.url = url;
         results[i] = data;
         doneCount++;
@@ -664,7 +645,7 @@ console.log('[milg] analyzer.js v51.6 loaded');
         }
       }, url, exclude, wantShots, { w: vp.w, h: vp.h });
     });
-    }); // end _prefetchFonts callback
+    }); // end prefetchFonts callback
   }
 
   // Switch to Console Snippet tab (from JS-required warning)
@@ -1049,12 +1030,12 @@ console.log('[milg] analyzer.js v51.6 loaded');
       analyzeHtmlBtn.textContent = 'Analyzing...';
       analyzeHtmlBtn.disabled = true;
       var wantScreenshots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
-      MilgIframe.analyzeHtmlInIframe(html, function(data) {
+      MilgIframe.analyzeHtml(html, { screenshots: wantScreenshots }, function(data) {
         analyzeHtmlBtn.textContent = 'Analyze HTML';
         analyzeHtmlBtn.disabled = false;
         data.meta._inputMethod = 'paste';
         runAnalysis(data);
-      }, null, null, wantScreenshots);
+      });
     });
 
     // Analyze URL
@@ -1098,15 +1079,30 @@ console.log('[milg] analyzer.js v51.6 loaded');
         var wantJs = jsCheck && jsCheck.checked && jsAck && jsAck.checked;
         var isDeepScan = document.getElementById('deepScanCheck') && document.getElementById('deepScanCheck').checked;
         var wantShots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
-        // Deep scan: multi-viewport analysis (with optional JS-enabled pre-processing)
+        var analysisOpts = { jsEnabled: wantJs, screenshots: wantShots, exclude: exclude };
+
+        // Helper: finish single-page URL analysis
+        var _analyzeUrlIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
+        function _finishUrl(data) {
+          analyzeUrlBtn.disabled = false;
+          analyzeUrlBtn.innerHTML = _analyzeUrlIcon;
+          urlStatus.style.display = 'none';
+          showProgress(100, 'Done!');
+          setTimeout(hideProgress, 500);
+          data.meta.url = url;
+          data.meta._inputMethod = 'url';
+          if (wantJs) data.meta._jsEnabled = true;
+          hideFocusModal();
+          runAnalysis(data);
+        }
+
+        // --- Deep scan: multi-viewport analysis ---
         if (isDeepScan) {
-          var deepHtml = wantJs ? MilgProxy.prepareJsHtml(html, url) : html;
           _activeViewportIdx = 0;
-          // Show focus modal for heavy operations (screenshots + multi-viewport)
           if (wantShots) showFocusModal();
           urlStatus.textContent = 'Deep scan: preparing viewports...';
           showProgress(15, 'Launching multi-viewport scan...');
-          runDeepScanLoop(deepHtml, url, exclude, wantShots,
+          runDeepScanLoop(html, url, analysisOpts,
             function(label, done, total) {
               urlStatus.textContent = 'Deep scan: ' + label + ' (' + done + '/' + total + ')';
               showProgress(15 + Math.round(70 * done / total), label);
@@ -1115,7 +1111,7 @@ console.log('[milg] analyzer.js v51.6 loaded');
               if (!primary) {
                 hideFocusModal();
                 analyzeUrlBtn.disabled = false;
-                analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
+                analyzeUrlBtn.innerHTML = _analyzeUrlIcon;
                 urlStatus.innerHTML = '<span style="color:#dc2626">Deep scan failed — no viewport returned data.</span>';
                 hideProgress();
                 return;
@@ -1133,13 +1129,7 @@ console.log('[milg] analyzer.js v51.6 loaded');
                 updateFocusModal('Verifying contrast at pixel level');
                 var vpToVerify = primary.deepScan.viewportData.filter(function(v) { return v && v.data && v.data.screenshots && v.data.screenshots.length > 0; });
                 var verifyDone = 0;
-                if (vpToVerify.length === 0) {
-                  urlStatus.style.display = 'none';
-                  showProgress(100, 'Done!');
-                  setTimeout(hideProgress, 500);
-                  runAnalysis(primary);
-                  return;
-                }
+                if (vpToVerify.length === 0) { _finishUrl(primary); return; }
                 vpToVerify.forEach(function(vp) {
                   var scored = MilgScoring.runScoring(vp.data);
                   MilgContrastVerify.verify(scored, function(results, bboxEdge) {
@@ -1150,77 +1140,38 @@ console.log('[milg] analyzer.js v51.6 loaded');
                     showProgress(88 + Math.round(10 * verifyDone / vpToVerify.length), 'Verified ' + verifyDone + '/' + vpToVerify.length);
                     if (verifyDone === vpToVerify.length) {
                       updateFocusModal('Rendering report');
-                      urlStatus.style.display = 'none';
-                      showProgress(100, 'Done!');
-                      setTimeout(hideProgress, 500);
-                      analyzeUrlBtn.disabled = false;
-                      analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
-                      hideFocusModal();
-                      runAnalysis(primary);
+                      _finishUrl(primary);
                     }
                   });
                 });
               } else {
                 updateFocusModal('Rendering report');
-                urlStatus.style.display = 'none';
-                showProgress(100, 'Done!');
-                setTimeout(hideProgress, 500);
-                analyzeUrlBtn.disabled = false;
-                analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
-                hideFocusModal();
-                runAnalysis(primary);
+                _finishUrl(primary);
               }
             }
           );
           return;
         }
 
+        // --- Single viewport analysis (basic or JS-enabled) ---
+        if (wantShots) { showFocusModal(); updateFocusModal(wantJs ? 'Preparing JavaScript sandbox' : 'Rendering page and capturing screenshot'); }
+        showProgress(wantJs ? 25 : 40, wantJs ? 'Preparing sandbox...' : 'Analyzing styles...');
+        if (wantJs) urlStatus.textContent = 'Running with JavaScript enabled...';
+
         // Prefetch fonts for single-viewport paths too (same as deep scan).
         // Without this, mask capture falls back to system fonts → misaligned masks.
         function _launchSingleAnalysis() {
-        // JS-enabled single viewport (no deep scan)
-        if (wantJs) {
-          if (wantShots) { showFocusModal(); updateFocusModal('Preparing JavaScript sandbox'); }
-          urlStatus.textContent = 'Running with JavaScript enabled...';
-          showProgress(25, 'Preparing sandbox...');
-          MilgProxy.analyzeWithJs(html, url, {
-            onProgress: function(pct, label) {
-              showProgress(pct, label);
-              var clean = label.indexOf('Running JavaScript') !== -1 ? 'Executing page JavaScript'
-                : label.indexOf('hydration') !== -1 ? 'Waiting for framework hydration'
-                : label.indexOf('Extracting') !== -1 ? 'Extracting design data'
-                : null;
-              if (clean) updateFocusModal(clean);
-            },
-            onDone: function(data) {
-              analyzeUrlBtn.disabled = false;
-              analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
-              urlStatus.style.display = 'none';
-              showProgress(100, 'Done!');
-              setTimeout(hideProgress, 500);
-              hideFocusModal();
-              runAnalysis(data);
-            },
+          MilgIframe.analyzeHtml(html, {
+            url: url,
+            jsEnabled: wantJs,
+            screenshots: wantShots,
             exclude: exclude
+          }, function(data) {
+            _finishUrl(data);
           });
-          return;
-        }
-        showProgress(40, 'Analyzing styles...');
-        if (wantShots) { showFocusModal(); updateFocusModal('Rendering page and capturing screenshot'); }
-        MilgIframe.analyzeHtmlInIframe(html, function(data) {
-          analyzeUrlBtn.disabled = false;
-          analyzeUrlBtn.textContent = 'Analyze URL';
-          urlStatus.style.display = 'none';
-          showProgress(100, 'Done!');
-          setTimeout(hideProgress, 500);
-          data.meta.url = url;
-          data.meta._inputMethod = 'url';
-          hideFocusModal();
-          runAnalysis(data);
-        }, url, exclude, wantShots);
         }
         if (wantShots && CORS_PROXY_URL) {
-          _prefetchFonts(html, url, _launchSingleAnalysis);
+          MilgIframe.prefetchFonts(html, url, _launchSingleAnalysis);
         } else {
           _launchSingleAnalysis();
         }
@@ -1488,11 +1439,15 @@ console.log('[milg] analyzer.js v51.6 loaded');
           sessionStorage.removeItem('milg-preview-context');
           var ctxLabel = (previewCtx.dark ? ' (dark mode)' : '') + (previewCtx.effectName && previewCtx.effectName !== 'None' ? ' + ' + previewCtx.effectName : '');
           inputSection.innerHTML = '<div style="text-align:center;padding:64px 24px"><div class="analysis-progress" style="display:block;max-width:400px;margin:0 auto"><div class="analysis-progress-bar"><div class="analysis-progress-fill" style="width:30%;animation:pulse 1.5s ease infinite"></div></div><div class="analysis-progress-label" style="margin-top:12px;font-size:14px">Analyzing editor preview' + ctxLabel + '...</div></div></div>';
-          MilgIframe.analyzeHtmlInIframe(previewHtml, function(data) {
+          MilgIframe.analyzeHtml(previewHtml, {
+            screenshots: true,
+            editorDark: previewCtx.dark || false,
+            editorEffectCSS: previewCtx.effectCSS || ''
+          }, function(data) {
             data.meta.url = 'Editor Preview' + ctxLabel;
             data.meta._inputMethod = 'editor';
             runAnalysis(data);
-          }, previewCtx.dark || false, previewCtx.effectCSS || '', true);
+          });
         }
       } catch(e) {
         console.error('Failed to analyze preview HTML:', e);

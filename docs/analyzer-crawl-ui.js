@@ -352,11 +352,10 @@ window.MilgCrawlUI = (function() {
       analyzePage: function(html, pageUrl, opts, cb) {
         var wantShots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
         var isDeep = _crawlSession && _crawlSession.options && _crawlSession.options.deepScan && _runDeepScanLoop;
-        // Pre-process HTML for JS-enabled mode (URL patch + sandbox) — same as single-URL path
         var jsOn = _crawlSession && _crawlSession.options && _crawlSession.options.jsEnabled;
-        var preparedHtml = jsOn ? MilgProxy.prepareJsHtml(html, pageUrl) : html;
+        var analysisOpts = { jsEnabled: jsOn, screenshots: wantShots, exclude: opts.excludeSelector || null };
         if (isDeep) {
-          _runDeepScanLoop(preparedHtml, pageUrl, opts.excludeSelector || null, wantShots, null, function(primary) {
+          _runDeepScanLoop(html, pageUrl, analysisOpts, null, function(primary) {
             if (primary) {
               primary.meta.url = pageUrl;
               primary.meta._inputMethod = 'crawl';
@@ -366,7 +365,12 @@ window.MilgCrawlUI = (function() {
             cb(primary);
           });
         } else {
-          MilgIframe.analyzeHtmlInIframe(preparedHtml, function(data) {
+          MilgIframe.analyzeHtml(html, {
+            url: pageUrl,
+            jsEnabled: jsOn,
+            screenshots: wantShots,
+            exclude: opts.excludeSelector || null
+          }, function(data) {
             if (data) {
               data.meta.url = pageUrl;
               data.meta._inputMethod = 'crawl';
@@ -374,7 +378,7 @@ window.MilgCrawlUI = (function() {
               if (opts.profile) data.profile = opts.profile;
             }
             cb(data);
-          }, pageUrl, opts.excludeSelector || null, wantShots);
+          });
         }
       },
       scorePage: function(data) { return MilgScoring.runScoring(data); },

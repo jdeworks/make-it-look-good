@@ -1,5 +1,6 @@
 // make-it-look-good — Iframe Analysis & Screenshot Pipeline
 // Handles iframe creation, extraction injection, screenshot capture, and deep scan.
+// Unified HTML preprocessing for all analysis paths (URL, paste, JS, deep scan, crawl).
 // Depends on: analyzer-extract.js (MilgExtract)
 
 window.MilgIframe = (function() {
@@ -22,45 +23,174 @@ window.MilgIframe = (function() {
     if (opts.showProgress) _showProgress = opts.showProgress;
   }
 
-  // Inject a <base> tag so relative URLs (CSS, images, fonts) resolve to the original domain.
-  // Also patches the URL constructor so page JS that does new URL(path, window.location)
-  // works in srcdoc context (where window.location is about:srcdoc, not a valid base).
-  function injectBaseTag(html, url) {
-    if (!url || url === 'Pasted HTML') return html;
-    try {
-      var base = new URL(url);
-      var baseHref = base.origin + base.pathname.replace(/\/[^/]*$/, '/');
-      var baseTag = '<base href="' + baseHref + '">';
-      // Patch URL constructor: in srcdoc iframes window.location.href is "about:srcdoc"
-      // which is not a valid base URL. Intercept and use document.baseURI (set by <base>) instead.
-      var urlPatch = '<script>' +
-        '(function(){' +
-          'var _OrigURL=URL;' +
-          'var _loc=window.location;' +
-          'function _isSrcdocLoc(v){' +
-            'if(v===_loc||v===_loc.href)return true;' +
-            'if(typeof v==="string"&&v.indexOf("about:srcdoc")===0)return true;' +
-            'if(v&&typeof v==="object"&&typeof v.href==="string"&&v.href.indexOf("about:srcdoc")===0)return true;' +
-            'return false' +
+  // --- Sandbox hardening script ---
+  // Injected before page scripts to intercept storage, cookies, and other sensitive APIs.
+  // Returns safe no-ops and logs all access attempts to window.__milgSandboxLog.
+  function buildSandboxScript() {
+    return '<script>' +
+      '(function(){' +
+        'var _log=window.__milgSandboxLog=[];' +
+        'var _max=100;' +
+        'function _l(api,method,args){' +
+          'if(_log.length<_max)_log.push({api:api,method:method,args:String(args||"").substring(0,80),t:Date.now()})' +
+        '}' +
+        // --- localStorage / sessionStorage ---
+        'function _fakeStorage(name){' +
+          'var _s={};' +
+          'return{' +
+            'getItem:function(k){_l(name,"getItem",k);return _s[k]||null},' +
+            'setItem:function(k,v){_l(name,"setItem",k+"="+v);_s[k]=String(v)},' +
+            'removeItem:function(k){_l(name,"removeItem",k);delete _s[k]},' +
+            'clear:function(){_l(name,"clear");_s={}},' +
+            'key:function(i){_l(name,"key",i);var ks=Object.keys(_s);return ks[i]||null},' +
+            'get length(){return Object.keys(_s).length}' +
           '}' +
-          'window.URL=function URL(u,b){' +
-            'if(arguments.length>=2&&_isSrcdocLoc(b)){b=document.baseURI||"' + baseHref + '"}' +
-            'return new _OrigURL(u,b)' +
-          '};' +
-          'window.URL.prototype=_OrigURL.prototype;' +
-          // Preserve static methods (createObjectURL, revokeObjectURL, etc.)
-          'Object.keys(_OrigURL).forEach(function(k){try{window.URL[k]=_OrigURL[k]}catch(e){}});' +
-          'window.URL.toString=function(){return _OrigURL.toString()};' +
-          // Also handle location.origin / location.protocol for libraries that read them directly
-          'try{Object.defineProperty(_loc,"origin",{get:function(){' +
-            'try{var u=new _OrigURL(document.baseURI);return u.origin}catch(e){return"null"}' +
-          '},configurable:true})}catch(e){}' +
-        '})();' +
+        '}' +
+        'try{Object.defineProperty(window,"localStorage",{value:_fakeStorage("localStorage"),configurable:true})}catch(e){}' +
+        'try{Object.defineProperty(window,"sessionStorage",{value:_fakeStorage("sessionStorage"),configurable:true})}catch(e){}' +
+        // --- document.cookie ---
+        'try{Object.defineProperty(document,"cookie",{' +
+          'get:function(){_l("cookie","get");return""},' +
+          'set:function(v){_l("cookie","set",v)},' +
+          'configurable:true' +
+        '})}catch(e){}' +
+        // --- indexedDB ---
+        'try{Object.defineProperty(window,"indexedDB",{value:null,configurable:true})}catch(e){}' +
+        // --- window.open ---
+        'var _wo=window.open;' +
+        'window.open=function(){_l("window","open",arguments[0]);return null};' +
+        // --- navigator.sendBeacon ---
+        'if(navigator.sendBeacon){var _sb=navigator.sendBeacon;navigator.sendBeacon=function(u){_l("navigator","sendBeacon",u);return false}}' +
+        // --- navigator.serviceWorker.register ---
+        'try{if(navigator.serviceWorker){Object.defineProperty(navigator.serviceWorker,"register",{value:function(u){_l("serviceWorker","register",u);return Promise.reject(new DOMException("Blocked by sandbox"))}})}}catch(e){}' +
+        // --- Notification.requestPermission ---
+        'try{if(window.Notification){Notification.requestPermission=function(){_l("Notification","requestPermission");return Promise.resolve("denied")}}}catch(e){}' +
+        // --- postMessage: filter to only allow milg-* messages to parent ---
+        'var _pm=window.parent.postMessage.bind(window.parent);' +
+        'window.parent.postMessage=function(msg,origin){' +
+          'if(msg&&typeof msg==="object"&&typeof msg.type==="string"&&msg.type.indexOf("milg-")===0){_pm(msg,origin);return}' +
+          '_l("postMessage","toParent",msg&&msg.type||"unknown");' +
+        '};' +
+      '})();' +
       '</' + 'script>';
-      // Font proxy: route font requests through CORS proxy (all iframe paths)
-      var fontProxyScript = '';
-      if (_proxyUrl) {
-        fontProxyScript = '<script>(function(){' +
+  }
+
+  // --- Unified HTML preprocessor ---
+  // Merges ALL HTML preprocessing into one function. Called by analyzeHtml before iframe creation.
+  // opts.baseTag (default: true when url): inject <base href> tag
+  // opts.urlPatch (default: true when url): inject URL constructor srcdoc patch
+  // opts.fontProxy (default: true when _proxyUrl set): inject font proxy fetch wrapper + font re-registration
+  // opts.sandbox (default: false): inject sandbox script that blocks localStorage/cookies/etc.
+  // opts.fetchPatch (default: false): inject enhanced fetch wrapper with relative URL fix + font proxy
+  //   When fetchPatch is true, it supersedes urlPatch (more comprehensive — handles both URL and fetch).
+  function preprocessHtml(html, url, opts) {
+    opts = opts || {};
+    var wantBase = opts.baseTag !== undefined ? opts.baseTag : !!url;
+    var wantUrlPatch = opts.urlPatch !== undefined ? opts.urlPatch : !!url;
+    var wantFontProxy = opts.fontProxy !== undefined ? opts.fontProxy : !!_proxyUrl;
+    var wantSandbox = !!opts.sandbox;
+    var wantFetchPatch = !!opts.fetchPatch;
+
+    // fetchPatch supersedes urlPatch (it's more comprehensive)
+    if (wantFetchPatch) wantUrlPatch = false;
+
+    if (!url || url === 'Pasted HTML') {
+      wantBase = false;
+      wantUrlPatch = false;
+      wantFetchPatch = false;
+    }
+
+    var scripts = '';
+
+    try {
+      var baseHref = '';
+      if (url) {
+        var base = new URL(url);
+        baseHref = base.origin + base.pathname.replace(/\/[^/]*$/, '/');
+      }
+
+      // 1. Sandbox (must come first — blocks storage/cookies before any page JS)
+      if (wantSandbox) {
+        scripts += buildSandboxScript();
+      }
+
+      // 2. Base tag
+      if (wantBase && baseHref) {
+        scripts += '<base href="' + baseHref + '">';
+      }
+
+      // 3a. Enhanced fetch patch (JS mode): URL constructor + fetch relative URL fix + font proxy
+      if (wantFetchPatch && url) {
+        var escapedUrl = url.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        scripts += '<script>' +
+          '(function(){' +
+            'var _rb="' + escapedUrl + '";' +
+            'var _O=URL;' +
+            'function _P(u,b){' +
+              'if(b){' +
+                'var bs=typeof b==="string"?b:String(b);' +
+                'if(bs==="about:srcdoc"||bs==="about:blank"||bs==="null"||bs.indexOf("about:")===0)b=_rb;' +
+              '}' +
+              'if(!b&&typeof u==="string"&&u.charAt(0)==="/")return new _O(u,_rb);' +
+              'try{return (arguments.length===1||!b)?new _O(u):new _O(u,b);}' +
+              'catch(e){try{return new _O(u,_rb);}catch(e2){throw e;}}' +
+            '}' +
+            '_P.prototype=_O.prototype;' +
+            '_P.createObjectURL=_O.createObjectURL.bind(_O);' +
+            '_P.revokeObjectURL=_O.revokeObjectURL.bind(_O);' +
+            'if(_O.canParse)_P.canParse=_O.canParse.bind(_O);' +
+            'window.URL=_P;' +
+            'var _hps=history.pushState.bind(history);' +
+            'var _hrs=history.replaceState.bind(history);' +
+            'history.pushState=function(s,t,u){try{_hps(s,t,u);}catch(e){}};' +
+            'history.replaceState=function(s,t,u){try{_hrs(s,t,u);}catch(e){}};' +
+            'var _of=window.fetch;' +
+            'var _px="' + (_proxyUrl || '').replace(/"/g, '\\"') + '";' +
+            // Share font cache across iframes via parent (deep scan reuses fonts across viewports)
+            'try{if(!parent.__milgFontCache)parent.__milgFontCache={}}catch(e){}' +
+            'var _fc=((typeof parent!=="undefined")&&parent.__milgFontCache)||{};' +
+            'window.fetch=function(u,o){' +
+              'if(typeof u==="string"&&u.charAt(0)==="/")u=_rb.replace(/\\/$/,"")+u;' +
+              'if(_px&&typeof u==="string"&&u.indexOf(_px)===-1&&/\\.(woff2?|ttf|otf|eot)(\\?|$)/i.test(u)){' +
+                'if(_fc[u])return _fc[u].then(function(r){return r.clone()});' +
+                'var p=_of.call(this,_px+"?url="+encodeURIComponent(u),o).catch(function(e){console.warn("[milg-warn] Font proxy failed:",u,e&&e.message||"");return new Response("",{status:404})});' +
+                '_fc[u]=p;return p;' +
+              '}' +
+              'return _of.call(this,u,o);' +
+            '};' +
+          '})();' +
+          '</' + 'script>';
+      }
+
+      // 3b. Simple URL patch (non-JS mode): just fix URL constructor for srcdoc
+      if (wantUrlPatch && baseHref) {
+        scripts += '<script>' +
+          '(function(){' +
+            'var _OrigURL=URL;' +
+            'var _loc=window.location;' +
+            'function _isSrcdocLoc(v){' +
+              'if(v===_loc||v===_loc.href)return true;' +
+              'if(typeof v==="string"&&v.indexOf("about:srcdoc")===0)return true;' +
+              'if(v&&typeof v==="object"&&typeof v.href==="string"&&v.href.indexOf("about:srcdoc")===0)return true;' +
+              'return false' +
+            '}' +
+            'window.URL=function URL(u,b){' +
+              'if(arguments.length>=2&&_isSrcdocLoc(b)){b=document.baseURI||"' + baseHref + '"}' +
+              'return new _OrigURL(u,b)' +
+            '};' +
+            'window.URL.prototype=_OrigURL.prototype;' +
+            'Object.keys(_OrigURL).forEach(function(k){try{window.URL[k]=_OrigURL[k]}catch(e){}});' +
+            'window.URL.toString=function(){return _OrigURL.toString()};' +
+            'try{Object.defineProperty(_loc,"origin",{get:function(){' +
+              'try{var u=new _OrigURL(document.baseURI);return u.origin}catch(e){return"null"}' +
+            '},configurable:true})}catch(e){}' +
+          '})();' +
+        '</' + 'script>';
+      }
+
+      // 4. Font proxy (non-fetchPatch mode only — fetchPatch already includes font proxying)
+      if (wantFontProxy && _proxyUrl && !wantFetchPatch) {
+        scripts += '<script>(function(){' +
           'var _of=window.fetch;' +
           'var _px="' + _proxyUrl.replace(/"/g, '\\"') + '";' +
           'try{if(!parent.__milgFontCache)parent.__milgFontCache={}}catch(e){}' +
@@ -75,9 +205,7 @@ window.MilgIframe = (function() {
           '};' +
         '})();</' + 'script>';
         // After page loads, re-register failed CSS @font-face via proxy + FontFace API.
-        // CSS @font-face doesn't use fetch(), so CORS blocks them even with our proxy.
-        // This script scans stylesheets, finds font URLs, fetches through proxy, registers as blobs.
-        fontProxyScript += '<script>(function(){' +
+        scripts += '<script>(function(){' +
           'var _px="' + _proxyUrl.replace(/"/g, '\\"') + '";' +
           'if(!_px||typeof FontFace==="undefined")return;' +
           'function _fixFonts(){' +
@@ -110,14 +238,58 @@ window.MilgIframe = (function() {
           'else window.addEventListener("load",function(){setTimeout(_fixFonts,500)})' +
         '})();</' + 'script>';
       }
-      var combined = baseTag + urlPatch + fontProxyScript;
-      // Insert after <head> if present
-      if (/<head[\s>]/i.test(html)) {
-        return html.replace(/<head([^>]*)>/i, '<head$1>' + combined);
+
+      if (!scripts) return html;
+
+      // Injection point: for JS mode (sandbox/fetchPatch), inject BEFORE first <script>
+      // so patches run before any framework JS. For non-JS mode, inject after <head>.
+      if (wantSandbox || wantFetchPatch) {
+        if (/<script[\s>]/i.test(html)) {
+          return html.replace(/<script[\s>]/i, scripts + '<script ');
+        }
       }
-      // Otherwise prepend
-      return combined + html;
+      if (/<head[\s>]/i.test(html)) {
+        return html.replace(/<head([^>]*)>/i, '<head$1>' + scripts);
+      }
+      return scripts + html;
     } catch(e) { return html; }
+  }
+
+  // Legacy wrapper — kept for any external callers
+  function injectBaseTag(html, url) {
+    return preprocessHtml(html, url, { baseTag: true, urlPatch: true, fontProxy: true });
+  }
+
+  // --- Font prefetch ---
+  // Prefetch fonts through CORS proxy before launching viewports.
+  // Populates parent.__milgFontCache so all iframes get cache hits.
+  function prefetchFonts(html, url, cb) {
+    var fontUrls = [];
+    var preloadRe = /<link[^>]+rel=["']preload["'][^>]+as=["']font["'][^>]+href=["']([^"']+)["']/gi;
+    var m; while ((m = preloadRe.exec(html)) !== null) fontUrls.push(m[1]);
+    var faceRe = /url\(["']?([^"')]+\.(?:woff2?|ttf|otf|eot)[^"')]*?)["']?\)/gi;
+    while ((m = faceRe.exec(html)) !== null) fontUrls.push(m[1]);
+    var seen = {};
+    var resolved = [];
+    fontUrls.forEach(function(u) {
+      try {
+        var abs = u.charAt(0) === '/' ? url.replace(/\/[^/]*$/, '') + u : (u.indexOf('://') > 0 ? u : url.replace(/\/[^/]*$/, '/') + u);
+        if (!seen[abs]) { seen[abs] = true; resolved.push(abs); }
+      } catch(e) {}
+    });
+    if (resolved.length === 0 || !_proxyUrl) { cb(); return; }
+    if (!window.__milgFontCache) window.__milgFontCache = {};
+    var toFetch = resolved.slice(0, 10);
+    var done = 0;
+    console.log('[milg] Prefetching ' + toFetch.length + ' fonts through proxy');
+    toFetch.forEach(function(fontUrl) {
+      if (window.__milgFontCache[fontUrl]) { done++; if (done === toFetch.length) cb(); return; }
+      var p = fetch((_proxyUrl || '') + '?url=' + encodeURIComponent(fontUrl)).catch(function(e) { console.warn('[milg-warn] Font prefetch failed:', fontUrl, e && e.message || ''); return new Response('', { status: 404 }); });
+      window.__milgFontCache[fontUrl] = p;
+      p.then(function() { done++; if (done === toFetch.length) cb(); })
+       .catch(function() { done++; if (done === toFetch.length) cb(); });
+    });
+    setTimeout(function() { if (done < toFetch.length) { console.log('[milg] Font prefetch timeout, continuing'); cb(); } }, 8000);
   }
 
   // --- Screenshot capture script (injected into iframes after extraction) ---
@@ -493,7 +665,7 @@ window.MilgIframe = (function() {
     }
     window.addEventListener('message', onResult);
 
-    var processed = url ? injectBaseTag(html, url) : html;
+    var processed = html; // preprocessing done by caller (analyzeHtml or runDeepScanLoop)
     var excludeVar = exclude ? '<script>window.__milgExclude=' + JSON.stringify(exclude) + ';</' + 'script>' : '';
     var isFullDoc = /<html[\s>]/i.test(processed) || /<!DOCTYPE/i.test(processed);
 
@@ -523,16 +695,57 @@ window.MilgIframe = (function() {
     }, 15000);
   }
 
+  // --- Unified analysis entry point ---
+  // analyzeHtml(html, opts, callback)
+  // opts: { url, jsEnabled, screenshots, viewport, exclude, editorDark, editorEffectCSS }
+  // Preprocesses HTML (base tag, URL patch, sandbox, font proxy) then creates iframe.
+  function analyzeHtml(html, opts, callback) {
+    opts = opts || {};
+    var sourceUrl = opts.url || null;
+    var jsEnabled = !!opts.jsEnabled;
+    var captureScreenshots = opts.screenshots !== undefined ? opts.screenshots : false;
+    var excludeSelector = opts.exclude || null;
+    var viewportOverride = opts.viewport || null;
+    var editorDark = !!opts.editorDark;
+    var editorEffectCSS = opts.editorEffectCSS || '';
+
+    // Preprocess HTML based on mode
+    html = preprocessHtml(html, sourceUrl, {
+      baseTag: !!sourceUrl,
+      urlPatch: !!sourceUrl && !jsEnabled,
+      fontProxy: !!_proxyUrl && !jsEnabled,
+      sandbox: jsEnabled,
+      fetchPatch: jsEnabled && !!sourceUrl
+    });
+
+    _analyzeHtmlInIframe(html, callback, sourceUrl, excludeSelector, captureScreenshots, viewportOverride, editorDark, editorEffectCSS, jsEnabled);
+  }
+
+  // Backward-compatible wrapper: old positional API → new options API
   function analyzeHtmlInIframe(html, callback, sourceUrlOrDark, excludeSelectorOrEffectCSS, captureScreenshots, viewportOverride) {
-    var extractFromDocument = window.MilgExtract;
-    // Support both signatures:
-    // analyzeHtmlInIframe(html, cb, sourceUrl, excludeSelector, screenshots) — URL mode
-    // analyzeHtmlInIframe(html, cb, dark, effectCSS, screenshots) — editor preview mode
-    // Optional 6th param: { w, h } viewport override for deep scan
+    // Detect if HTML was already preprocessed (JS mode injects sandbox before calling this)
+    var alreadyPreprocessed = html.indexOf('__milgSandboxLog') !== -1;
     var sourceUrl = typeof sourceUrlOrDark === 'string' ? sourceUrlOrDark : null;
     var excludeSelector = typeof excludeSelectorOrEffectCSS === 'string' && !sourceUrl ? null : excludeSelectorOrEffectCSS;
     var editorDark = typeof sourceUrlOrDark === 'boolean' ? sourceUrlOrDark : false;
     var editorEffectCSS = (!sourceUrl && typeof excludeSelectorOrEffectCSS === 'string') ? excludeSelectorOrEffectCSS : '';
+
+    if (!alreadyPreprocessed) {
+      // Apply preprocessing for non-JS paths (base tag, URL patch, font proxy)
+      html = preprocessHtml(html, sourceUrl, {
+        baseTag: !!sourceUrl,
+        urlPatch: !!sourceUrl,
+        fontProxy: !!_proxyUrl
+      });
+    }
+
+    _analyzeHtmlInIframe(html, callback, sourceUrl, excludeSelector, captureScreenshots, viewportOverride, editorDark, editorEffectCSS, alreadyPreprocessed);
+  }
+
+  // Internal implementation: creates iframe, injects extraction, handles messages.
+  // HTML must already be preprocessed (base tag, URL patch, etc.) before calling this.
+  function _analyzeHtmlInIframe(html, callback, sourceUrl, excludeSelector, captureScreenshots, viewportOverride, editorDark, editorEffectCSS, jsEnabled) {
+    var extractFromDocument = window.MilgExtract;
     var iframe = document.createElement('iframe');
     // Unique ID for this iframe — used to match postMessage responses in parallel mode
     var _iframeId = 'milg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 8);
@@ -645,9 +858,8 @@ window.MilgIframe = (function() {
     // If the pasted HTML is a full document (has <html> or <head>), use it as-is
     // and just append the extraction script. Otherwise wrap in a basic document.
     var isFullDoc = /<html[\s>]/i.test(html) || /<!DOCTYPE/i.test(html);
-    // Inject <base> tag so relative CSS/image/font URLs resolve to the original domain
-    if (sourceUrl) html = injectBaseTag(html, sourceUrl);
-    // Pass context to extraction — include iframe ID for message matching in parallel mode
+    // HTML preprocessing (base tag, URL patch, font proxy, sandbox) is done by the caller.
+    // Pass context to extraction �� include iframe ID for message matching in parallel mode
     var idVar = '<script>window.__milgIframeId="' + _iframeId + '";</' + 'script>';
     var excludeVar = excludeSelector ? '<script>window.__milgExclude=' + JSON.stringify(excludeSelector) + ';</' + 'script>' : '';
     var fragmentVar = !isFullDoc ? '<script>window.__milgIsFragment=true;</' + 'script>' : '';
@@ -695,10 +907,9 @@ window.MilgIframe = (function() {
     var srcdoc;
     if (isFullDoc) {
       // Wait for window load (CSS/fonts loaded), then extra delay for rendering
-      // JS-enabled mode (URL patch present) needs longer delays for React/Vue hydration
-      var hasJsPatch = html.indexOf('__milgSandboxLog') !== -1;
-      var postLoadDelay = hasJsPatch ? 2000 : 1000;
-      var fallbackDelay = hasJsPatch ? 8000 : 8000;
+      // JS-enabled mode needs longer delays for React/Vue hydration
+      var postLoadDelay = jsEnabled ? 2000 : 1000;
+      var fallbackDelay = jsEnabled ? 8000 : 8000;
       var extractScript = idVar + excludeVar + fragmentVar + screenshotScript + '<script>window.addEventListener("load",function(){setTimeout(function(){(' + extractFromDocument.toString() + ')()},' + postLoadDelay + ')});setTimeout(function(){(' + extractFromDocument.toString() + ')()},' + fallbackDelay + ');</' + 'script>';
       if (/<\/body>/i.test(html)) {
         srcdoc = html.replace(/<\/body>/i, extractScript + '</body>');
@@ -743,9 +954,14 @@ window.MilgIframe = (function() {
 
   return {
     init: init,
+    preprocessHtml: preprocessHtml,
+    prefetchFonts: prefetchFonts,
+    analyzeHtml: analyzeHtml,
+    // Backward-compatible legacy API
     injectBaseTag: injectBaseTag,
     analyzeHtmlInIframe: analyzeHtmlInIframe,
     deepScanInIframe: deepScanInIframe,
-    buildScreenshotScript: buildScreenshotScript
+    buildScreenshotScript: buildScreenshotScript,
+    buildSandboxScript: buildSandboxScript
   };
 })();
