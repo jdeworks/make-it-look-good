@@ -317,12 +317,21 @@ window.MilgViewer = (function() {
 
   function applyZoom(frame) {
     if (!frame) return;
-    // At high zoom, left-align so the whole image is scrollable (center clips left edge)
     var content = frame.parentElement;
-    if (content) content.style.justifyContent = _zoomLevel > 1 ? 'flex-start' : 'center';
     var img = frame.querySelector('.milg-viewer-img');
     var svg = frame.querySelector('.milg-viewer-svg');
     if (!img) return;
+
+    // Capture the normalized center point before zoom (0-1 range in content space)
+    var oldW = img.offsetWidth || 1, oldH = img.offsetHeight || 1;
+    var cx = 0.5, cy = 0.5;
+    if (content && oldW > 0) {
+      cx = (content.scrollLeft + content.clientWidth / 2) / oldW;
+      cy = (content.scrollTop + content.clientHeight / 2) / oldH;
+    }
+
+    // At high zoom, left-align so the whole image is scrollable (center clips left edge)
+    if (content) content.style.justifyContent = _zoomLevel > 1 ? 'flex-start' : 'center';
     if (_zoomLevel === 1) {
       img.style.width = '';
       img.style.maxWidth = '95vw';
@@ -332,16 +341,21 @@ window.MilgViewer = (function() {
       var zoomedWidth = Math.round(baseWidth * _zoomLevel);
       img.style.maxWidth = 'none';
       img.style.width = zoomedWidth + 'px';
-      // Force SVG to match image dimensions exactly
       if (svg) {
         svg.style.width = zoomedWidth + 'px';
-        // Height follows aspect ratio from viewBox automatically, but set explicitly
         var vb = svg.getAttribute('viewBox');
         if (vb && _stitchedCanvas) {
           var ratio = _stitchedCanvas.height / _stitchedCanvas.width;
           svg.style.height = Math.round(zoomedWidth * ratio) + 'px';
         }
       }
+    }
+
+    // Restore scroll so the same content point stays at viewport center
+    if (content) {
+      var newW = img.offsetWidth || 1, newH = img.offsetHeight || 1;
+      content.scrollLeft = cx * newW - content.clientWidth / 2;
+      content.scrollTop = cy * newH - content.clientHeight / 2;
     }
   }
 
