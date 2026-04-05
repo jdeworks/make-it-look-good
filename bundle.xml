@@ -33465,1245 +33465,6 @@ window.MilgReport = (function() {
 })();
 </file>
 
-<file path="docs/analyzer-extract.js">
-// make-it-look-good — Extraction Engine
-// Runs inside iframes to extract design data from rendered pages.
-// Exposed as window.MilgExtract for use by analyzer.js and test harnesses.
-
-window.MilgExtract = (function() {
-  "use strict";
-
-  // This runs inside an iframe to extract data — mirrors analyzer-snippet.js logic
-  function extractFromDocument() {
-    var _parseCanvas = document.createElement('canvas');
-    _parseCanvas.width = 1; _parseCanvas.height = 1;
-    var _parseCtx = _parseCanvas.getContext('2d', { willReadFrequently: true });
-    function parseColor(str) {
-      if (!str || str === 'transparent' || str === 'rgba(0, 0, 0, 0)') return null;
-      var m = str.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
-      if (m) return { r: +m[1], g: +m[2], b: +m[3], a: m[4] !== undefined ? +m[4] : 1 };
-      var m2 = str.match(/rgba?\((\d+)\s+(\d+)\s+(\d+)(?:\s*\/\s*([\d.]+%?))?\)/);
-      if (m2) { var a = m2[4] !== undefined ? (m2[4].indexOf('%') !== -1 ? parseFloat(m2[4]) / 100 : +m2[4]) : 1; return { r: +m2[1], g: +m2[2], b: +m2[3], a: a }; }
-      if (/\/\s*0\s*[\)%]/.test(str)) return null;
-      _parseCtx.clearRect(0, 0, 1, 1);
-      _parseCtx.fillStyle = 'rgba(0,0,0,0)';
-      _parseCtx.fillStyle = str;
-      _parseCtx.fillRect(0, 0, 1, 1);
-      var d = _parseCtx.getImageData(0, 0, 1, 1).data;
-      if (d[3] === 0) return null;
-      return { r: d[0], g: d[1], b: d[2], a: Math.round(d[3] / 255 * 100) / 100 };
-    }
-    function blendOnWhite(c) {
-      if (!c) return { r: 255, g: 255, b: 255 };
-      var a = c.a;
-      return { r: Math.round(c.r * a + 255 * (1 - a)), g: Math.round(c.g * a + 255 * (1 - a)), b: Math.round(c.b * a + 255 * (1 - a)) };
-    }
-    // Gradient sampler for iframe extractor — handles multiple backgrounds + alpha
-    var _gc = document.createElement('canvas'); _gc.width = 100; _gc.height = 100;
-    var _gx = _gc.getContext('2d', { willReadFrequently: true });
-    function splitGrads(bgi) {
-      var layers = [], depth = 0, start = 0;
-      for (var i = 0; i < bgi.length; i++) {
-        if (bgi[i] === '(') depth++;
-        else if (bgi[i] === ')') depth--;
-        else if (bgi[i] === ',' && depth === 0) { layers.push(bgi.substring(start, i).trim()); start = i + 1; }
-      }
-      layers.push(bgi.substring(start).trim());
-      return layers.filter(function(l) { return l.indexOf('gradient') !== -1; });
-    }
-    // samplePos: {x: 0-1, y: 0-1} relative position within the gradient element to sample
-    // If not provided, samples at center (0.5, 0.5)
-    function getGradientBg(el, samplePos) {
-      var bgi = getComputedStyle(el).backgroundImage;
-      if (!bgi || bgi === 'none' || bgi.indexOf('gradient') === -1) return null;
-      var layers = splitGrads(bgi);
-      if (layers.length === 0) return null;
-      _gc.width = 100; _gc.height = 100;
-      _gx.clearRect(0, 0, 100, 100);
-      // Render bottom-to-top (CSS: first = top)
-      for (var li = layers.length - 1; li >= 0; li--) {
-        var layer = layers[li];
-        if (layer.indexOf('radial') !== -1) {
-          var rs = layer.match(/(?:rgba?\([^)]+\)|hsla?\([^)]+\)|#[0-9a-fA-F]{3,8})/g);
-          if (rs && rs.length > 0) { var fc = parseColor(rs[0]); if (fc && fc.a > 0) { _gx.fillStyle = 'rgba(' + fc.r + ',' + fc.g + ',' + fc.b + ',' + fc.a + ')'; _gx.fillRect(0, 0, 100, 100); } }
-          continue;
-        }
-        // Linear gradient — extract stops from THIS layer only
-        var sr = /(rgba?\([^)]+\)|hsla?\([^)]+\)|#[0-9a-fA-F]{3,8})\s*([\d.]+%)?/g;
-        var stops = [], m;
-        while ((m = sr.exec(layer)) !== null) { var sc = parseColor(m[1]); if (sc) stops.push({ c: sc, p: m[2] ? parseFloat(m[2]) / 100 : null }); }
-        if (stops.length === 0) continue;
-        if (stops.length === 1) { _gx.fillStyle = 'rgba(' + stops[0].c.r + ',' + stops[0].c.g + ',' + stops[0].c.b + ',' + stops[0].c.a + ')'; _gx.fillRect(0, 0, 100, 100); continue; }
-        if (stops[0].p === null) stops[0].p = 0;
-        if (stops[stops.length - 1].p === null) stops[stops.length - 1].p = 1;
-        var angleMatch = layer.match(/linear-gradient\(\s*(\d+(?:\.\d+)?)deg/);
-        var deg = angleMatch ? parseFloat(angleMatch[1]) : 180;
-        var rad = (deg - 90) * Math.PI / 180;
-        var diag = Math.sqrt(100 * 100 + 100 * 100) / 2;
-        var dx = Math.cos(rad) * diag, dy = Math.sin(rad) * diag;
-        try {
-          var grad = _gx.createLinearGradient(50 - dx, 50 - dy, 50 + dx, 50 + dy);
-          for (var si = 0; si < stops.length; si++) { var c = stops[si].c; grad.addColorStop(Math.max(0, Math.min(1, stops[si].p || 0)), 'rgba(' + c.r + ',' + c.g + ',' + c.b + ',' + c.a + ')'); }
-          _gx.fillStyle = grad;
-          _gx.fillRect(0, 0, 100, 100);
-        } catch(e) {}
-      }
-      // Sample at the text element's position within the gradient container
-      var sx = samplePos ? Math.round(samplePos.x * 99) : 50;
-      var sy = samplePos ? Math.round(samplePos.y * 99) : 50;
-      var d = _gx.getImageData(sx, sy, 1, 1).data;
-      if (d[3] === 0) return null;
-      return { r: d[0], g: d[1], b: d[2], a: Math.round(d[3] / 255 * 100) / 100 };
-    }
-    function getEffectiveBg(el) {
-      var elRect = el.getBoundingClientRect();
-      var elCenterX = elRect.left + elRect.width / 2;
-      var elCenterY = elRect.top + elRect.height / 2;
-      var node = el, layers = [];
-      while (node && node !== document.documentElement) {
-        var bg = getComputedStyle(node).backgroundColor;
-        var c = parseColor(bg);
-        if (!c || c.a === 0) {
-          // Sample gradient at the text element's position relative to this ancestor
-          var nodeRect = node.getBoundingClientRect();
-          var relX = nodeRect.width > 0 ? (elCenterX - nodeRect.left) / nodeRect.width : 0.5;
-          var relY = nodeRect.height > 0 ? (elCenterY - nodeRect.top) / nodeRect.height : 0.5;
-          c = getGradientBg(node, { x: Math.max(0, Math.min(1, relX)), y: Math.max(0, Math.min(1, relY)) });
-        }
-        if (c && c.a > 0) layers.push(c);
-        if (c && c.a >= 1) break;
-        node = node.parentElement;
-      }
-      var result = { r: 255, g: 255, b: 255 };
-      for (var i = layers.length - 1; i >= 0; i--) {
-        var l = layers[i], a = l.a;
-        result = { r: Math.round(l.r * a + result.r * (1 - a)), g: Math.round(l.g * a + result.g * (1 - a)), b: Math.round(l.b * a + result.b * (1 - a)) };
-      }
-      return result;
-    }
-    function luminance(c) {
-      var rs = c.r / 255, gs = c.g / 255, bs = c.b / 255;
-      var r = rs <= 0.03928 ? rs / 12.92 : Math.pow((rs + 0.055) / 1.055, 2.4);
-      var g = gs <= 0.03928 ? gs / 12.92 : Math.pow((gs + 0.055) / 1.055, 2.4);
-      var b = bs <= 0.03928 ? bs / 12.92 : Math.pow((bs + 0.055) / 1.055, 2.4);
-      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-    }
-    function contrastRatio(c1, c2) {
-      var l1 = luminance(c1), l2 = luminance(c2);
-      return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
-    }
-    function rgbStr(c) { return 'rgb(' + c.r + ',' + c.g + ',' + c.b + ')'; }
-    function isVisible(el) {
-      var s = getComputedStyle(el);
-      if (s.display === 'none' || s.visibility === 'hidden') return false;
-      if (s.opacity === '0') {
-        // Check if this is a scroll-animated element (has transition/animation) — treat as visible
-        // These will be force-revealed during the screenshot phase
-        var hasTrans = s.transition && s.transition.indexOf('opacity') !== -1;
-        var hasAnim = s.animationName && s.animationName !== 'none';
-        var cls = (el.className && typeof el.className === 'string') ? el.className.toLowerCase() : '';
-        if (!hasTrans && !hasAnim && !/fade|reveal|animate|aos|slide|appear/.test(cls)) return false;
-      }
-      var r = el.getBoundingClientRect();
-      return r.width > 0 && r.height > 0;
-    }
-    // Detect sr-only / visually-hidden elements (visible to screen readers but not to users).
-    // These use clip, tiny dimensions, or specific class names to hide visually.
-    function _isScreenReaderOnly(el) {
-      var r = el.getBoundingClientRect();
-      if (r.width <= 1 && r.height <= 1) {
-        var s = getComputedStyle(el);
-        if (s.overflow === 'hidden' || s.clip !== 'auto' || s.clipPath === 'inset(50%)') return true;
-      }
-      var cls = (el.className && typeof el.className === 'string') ? el.className : '';
-      if (/\b(sr-only|visually-hidden|screen-reader|clip-hide|offscreen)\b/.test(cls)) return true;
-      return false;
-    }
-    function cssSelector(el) {
-      if (el.id) return '#' + el.id;
-      var tag = el.tagName.toLowerCase();
-      var cls = el.className && typeof el.className === 'string' ? '.' + el.className.trim().split(/\s+/).slice(0, 2).join('.') : '';
-      // Add nth-child to disambiguate siblings with same tag+class
-      var nth = '';
-      if (el.parentElement) {
-        var siblings = el.parentElement.children;
-        var sameCount = 0, pos = 0;
-        for (var i = 0; i < siblings.length; i++) {
-          if (siblings[i].tagName === el.tagName) { sameCount++; if (siblings[i] === el) pos = sameCount; }
-        }
-        if (sameCount > 1) nth = ':nth-of-type(' + pos + ')';
-      }
-      return tag + cls + nth;
-    }
-
-    var data = {
-      meta: { title: document.title, url: location.href, viewportWidth: window.innerWidth, viewportHeight: window.innerHeight, docHeight: Math.max(document.body.scrollHeight, document.documentElement.scrollHeight), scrollX: window.scrollX, scrollY: window.scrollY, timestamp: new Date().toISOString(), version: 1, isFragment: !!window.__milgIsFragment },
-      colors: { textColors: [], bgColors: [], contrastPairs: [], bgEdgePairs: [] },
-      typography: { bodyFontSize: '', bodyLineHeight: '', bodyFontFamily: '', fontFamilies: [], fontSizes: [], fontWeights: [], headings: [], lineHeights: [], maxLineLength: { chars: 0, element: '', fontSize: 0, textLength: 0 } },
-      spacing: { paddings: [], margins: [], gaps: [], maxContentWidth: '', bodyPaddingHorizontal: '' },
-      layout: { sectionGaps: [], alignmentEdges: [], visualHierarchy: {} },
-      interaction: { touchTargets: [], transitions: [] },
-      accessibility: { semanticElements: {}, headingHierarchy: [], imagesWithoutAlt: 0, formLabels: { total: 0, withLabel: 0, withoutLabel: 0 }, focusIndicators: [] },
-      structure: { totalElements: 0, darkModeClasses: false, responsiveClasses: false, tailwindDetected: false, cssFramework: 'unknown' }
-    };
-
-    var allElements = document.body.querySelectorAll('*');
-    data.structure.totalElements = allElements.length;
-    var htmlStr = document.body.innerHTML;
-    if (/class="[^"]*(?:sm:|md:|lg:|xl:)/.test(htmlStr) || /class="[^"]*(?:flex|grid|text-|bg-|p-|m-)/.test(htmlStr)) { data.structure.tailwindDetected = true; data.structure.cssFramework = 'tailwind'; }
-    else if (/class="[^"]*(?:col-md|col-sm|btn-primary|container-fluid)/.test(htmlStr)) { data.structure.cssFramework = 'bootstrap'; }
-    data.structure.darkModeClasses = /class="[^"]*dark:/.test(htmlStr) || document.body.classList.contains('dark-ui') || document.body.classList.contains('dark-mode') || document.body.classList.contains('dark-theme') || document.documentElement.classList.contains('dark') || document.documentElement.getAttribute('data-theme') === 'dark' || document.body.getAttribute('data-theme') === 'dark' || document.querySelector('[data-bs-theme="dark"]') !== null || Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r.cssText && r.cssText.indexOf('prefers-color-scheme') !== -1; }); } catch(e) { return false; } });
-    data.structure.responsiveClasses = /class="[^"]*(?:sm:|md:|lg:|xl:)/.test(htmlStr) || Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r instanceof CSSMediaRule && /max-width|min-width/.test(r.conditionText || ''); }); } catch(e) { return false; } });
-
-    // Decorative element detection — only skip aria-hidden if actually hidden
-    var decorativeEls = new Set();
-    var defaultExclude = '[role="img"], [role="presentation"], [data-decorative]';
-    // User-defined exclude selector (passed via window.__milgExclude)
-    var userExclude = window.__milgExclude || '';
-    var fullExclude = userExclude ? defaultExclude + ', ' + userExclude : defaultExclude;
-    try {
-      document.querySelectorAll(fullExclude).forEach(function(el) {
-        decorativeEls.add(el);
-        el.querySelectorAll('*').forEach(function(child) { decorativeEls.add(child); });
-      });
-    } catch(e) { /* invalid selector — ignore */ }
-    function isDecorative(el) { return decorativeEls.has(el); }
-
-    // Universal bbox tracker: captures bbox AND stores element ref for re-reading
-    // after scroll-reset (which triggers layout shifts from lazy content/animations).
-    // When screenshots are enabled, the screenshot script re-reads all bboxes using
-    // getFlowPosition() which subtracts CSS transforms to get flow position.
-    var _bboxRefs = []; // [{el, obj, key}] — will update obj[key] = newBbox
-    function captureBbox(el) {
-      var r = el.getBoundingClientRect();
-      return { left: Math.round(r.left + window.scrollX), top: Math.round(r.top + window.scrollY), width: Math.round(r.width), height: Math.round(r.height) };
-    }
-    function trackBbox(el, obj, key) {
-      obj[key] = captureBbox(el);
-      _bboxRefs.push({ el: el, obj: obj, key: key });
-    }
-
-    // Page context
-    data.context = { pageType: 'unknown' };
-    var hasHero = !!document.querySelector('.hero, [class*="hero"], section:first-of-type h1');
-    var hasPricing = !!document.querySelector('[class*="pricing"], [class*="price"], .plan, .tier');
-    var formCount = document.querySelectorAll('form').length;
-    var sectionCount = document.querySelectorAll('section').length;
-    if (hasPricing) data.context.pageType = 'pricing';
-    else if (formCount > 0 && data.structure.totalElements < 80) data.context.pageType = 'form';
-    else if (hasHero && sectionCount >= 3) data.context.pageType = 'marketing';
-    else if (sectionCount >= 2) data.context.pageType = 'content';
-
-    var bodyStyle = getComputedStyle(document.body);
-    data.typography.bodyFontSize = bodyStyle.fontSize;
-    data.typography.bodyLineHeight = bodyStyle.lineHeight;
-    data.typography.bodyFontFamily = bodyStyle.fontFamily;
-    data.spacing.bodyPaddingHorizontal = bodyStyle.paddingLeft;
-
-    var fontSizeMap = {}, fontWeightMap = {}, fontFamilySet = new Set(), lineHeightMap = {};
-    var textColorMap = {}, bgColorMap = {}, paddingMap = {}, marginMap = {}, gapMap = {};
-    var textColorSample = {}, bgColorSample = {}; // Store one sample selector per color
-    var fontSizeSamples = {}; // fontSize → {selector, bbox, extraBboxes?} for sample elements
-    var maxContentW = 0;
-    var contrastPairs = [];
-    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
-    var node, seenForContrast = new Set();
-    var _contrastStats = { textNodes: 0, empty: 0, noParent: 0, invisible: 0, decorative: 0, seen: 0, noFg: 0, gradientText: 0, captured: 0 };
-
-    while (node = walker.nextNode()) {
-      _contrastStats.textNodes++;
-      if (!node.textContent.trim()) { _contrastStats.empty++; continue; }
-      var el = node.parentElement;
-      if (!el) { _contrastStats.invisible++; continue; }
-      // Check visibility including ancestors — an ancestor with opacity:0 hides children
-      var _elVisible = true;
-      var _checkNode = el;
-      while (_checkNode && _checkNode !== document.documentElement) {
-        var _cs = getComputedStyle(_checkNode);
-        if (_cs.display === 'none' || _cs.visibility === 'hidden') { _elVisible = false; break; }
-        if (_cs.opacity === '0') {
-          // Allow scroll-animated ancestors
-          var _hasTr = _cs.transition && _cs.transition.indexOf('opacity') !== -1;
-          var _hasAn = _cs.animationName && _cs.animationName !== 'none';
-          var _cls2 = (_checkNode.className && typeof _checkNode.className === 'string') ? _checkNode.className.toLowerCase() : '';
-          if (!_hasTr && !_hasAn && !/fade|reveal|animate|aos|slide|appear/.test(_cls2)) { _elVisible = false; break; }
-        }
-        _checkNode = _checkNode.parentElement;
-      }
-      var _rect = el.getBoundingClientRect();
-      if (!_elVisible || _rect.width <= 0 || _rect.height <= 0) {
-        _contrastStats.invisible++;
-        continue;
-      }
-      if (isDecorative(el)) { _contrastStats.decorative++; continue; }
-      if (seenForContrast.has(el)) { _contrastStats.seen++; continue; }
-      seenForContrast.add(el);
-      var style = getComputedStyle(el);
-      var textFillColor = style.webkitTextFillColor || style.getPropertyValue('-webkit-text-fill-color') || '';
-      var bgClip = style.webkitBackgroundClip || style.getPropertyValue('-webkit-background-clip') || style.backgroundClip || '';
-      var isGradientText = bgClip === 'text' && textFillColor === 'transparent';
-      // For gradient text: CSS fg is meaningless (transparent), use a placeholder
-      // The pixel verification pipeline will measure actual rendered colors from the screenshot
-      var fg;
-      if (isGradientText) {
-        // Sample the gradient at center to get an approximate fg color for CSS-level reporting
-        var gradBg = getGradientBg(el, { x: 0.5, y: 0.5 });
-        fg = gradBg || { r: 128, g: 128, b: 128, a: 1 }; // fallback grey
-      } else {
-        fg = textFillColor && textFillColor !== 'transparent' ? parseColor(textFillColor) : parseColor(style.color);
-      }
-      if (!fg) {
-        _contrastStats.noFg++;
-        continue;
-      }
-      // Skip emoji-only elements (picture emoji can't be contrast-checked)
-      var _textContent = (el.textContent || '').trim();
-      var _noEmoji = _textContent.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1FA00}-\u{1FA9F}\u{200D}]/gu, '').trim();
-      if (_noEmoji.length === 0 && _textContent.length > 0) continue;
-      var fgBlended = blendOnWhite(fg);
-      var bg = getEffectiveBg(el);
-      var ratio = contrastRatio(fgBlended, bg);
-      var fontSize = parseFloat(style.fontSize);
-      var fontWeight = parseInt(style.fontWeight) || 400;
-      var isLarge = fontSize >= 24 || (fontSize >= 18.66 && fontWeight >= 700);
-      var threshold = isLarge ? 3 : 4.5;
-      var filterAncestor = el;
-      var filterValue = '';
-      var hasBackdropFilter = false;
-      var minBgAlpha = 1;
-      while (filterAncestor && filterAncestor !== document.documentElement) {
-        var aStyle = getComputedStyle(filterAncestor);
-        var f = aStyle.filter;
-        if (f && f !== 'none' && !filterValue) { filterValue = f; }
-        var bf = aStyle.backdropFilter || aStyle.webkitBackdropFilter || '';
-        if (bf && bf !== 'none') hasBackdropFilter = true;
-        var aBg = parseColor(aStyle.backgroundColor);
-        if (aBg && aBg.a > 0 && aBg.a < 1 && aBg.a < minBgAlpha) minBgAlpha = aBg.a;
-        filterAncestor = filterAncestor.parentElement;
-      }
-      var elRect = el.getBoundingClientRect();
-      // Compute effective opacity (element × ancestors)
-      var _effOpacity = 1;
-      var _opNode = el;
-      while (_opNode && _opNode !== document.documentElement) {
-        var _opVal = parseFloat(getComputedStyle(_opNode).opacity);
-        if (!isNaN(_opVal) && _opVal < 1) _effOpacity *= _opVal;
-        _opNode = _opNode.parentElement;
-      }
-      if (ratio < 22) { // capture all pairs including AAA passes for pixel verification
-        var _cpEntry = { fg: rgbStr(fgBlended), bg: rgbStr(bg), ratio: Math.round(ratio * 100) / 100, needed: threshold, passes: ratio >= threshold, fontSize: Math.round(fontSize), fontWeight: fontWeight, isLarge: isLarge, text: (el.textContent || '').trim().substring(0, 200), selector: cssSelector(el), filter: filterValue, backdropFilter: hasBackdropFilter, minBgAlpha: Math.round(minBgAlpha * 100) / 100, effectiveOpacity: Math.round(_effOpacity * 100) / 100, isGradientText: isGradientText, fontFamily: style.fontFamily, fontStyle: style.fontStyle, letterSpacing: style.letterSpacing, textTransform: style.textTransform, lineHeight: style.lineHeight, bbox: null };
-        trackBbox(el, _cpEntry, 'bbox');
-        contrastPairs.push(_cpEntry);
-        _contrastStats.captured++;
-      }
-      var elWidth = elRect.width;
-      var charWidth = fontSize * 0.5;
-      var charsPerLine = Math.round(elWidth / charWidth);
-      if (charsPerLine > data.typography.maxLineLength.chars && el.tagName !== 'SCRIPT' && el.tagName !== 'STYLE' && !el.closest('pre') && !el.closest('code')) {
-        data.typography.maxLineLength = { chars: charsPerLine, element: cssSelector(el), fontSize: Math.round(fontSize), textLength: node.textContent.trim().length, bbox: null };
-        trackBbox(el, data.typography.maxLineLength, 'bbox');
-      }
-    }
-    // Placeholder text contrast — inputs/textareas with placeholder attribute
-    document.querySelectorAll('input[placeholder],textarea[placeholder]').forEach(function(inp) {
-      var ph = inp.getAttribute('placeholder');
-      if (!ph || !ph.trim()) return;
-      var inpRect = inp.getBoundingClientRect();
-      if (inpRect.width <= 0 || inpRect.height <= 0) return;
-      // Read ::placeholder color (browser-rendered pseudo-element)
-      var phStyle = getComputedStyle(inp, '::placeholder');
-      var phColor = phStyle ? parseColor(phStyle.color) : null;
-      if (!phColor) {
-        // Fallback: many browsers report placeholder as lighter version of input color
-        var inpColor = parseColor(getComputedStyle(inp).color);
-        if (inpColor) phColor = { r: inpColor.r, g: inpColor.g, b: inpColor.b, a: Math.min(inpColor.a, 0.5) };
-      }
-      if (!phColor) return;
-      var phBlended = blendOnWhite(phColor);
-      var phBg = getEffectiveBg(inp);
-      var phRatio = contrastRatio(phBlended, phBg);
-      var inpStyle = getComputedStyle(inp);
-      var phFontSize = parseFloat(inpStyle.fontSize);
-      var phFontWeight = parseInt(inpStyle.fontWeight) || 400;
-      var phIsLarge = phFontSize >= 24 || (phFontSize >= 18.66 && phFontWeight >= 700);
-      var _phEntry = {
-        fg: rgbStr(phBlended), bg: rgbStr(phBg),
-        ratio: Math.round(phRatio * 100) / 100,
-        needed: phIsLarge ? 3 : 4.5, passes: phRatio >= (phIsLarge ? 3 : 4.5),
-        fontSize: Math.round(phFontSize), fontWeight: phFontWeight, isLarge: phIsLarge,
-        text: '[placeholder] ' + ph.substring(0, 150),
-        selector: cssSelector(inp), filter: '', backdropFilter: false, minBgAlpha: 1,
-        fontFamily: inpStyle.fontFamily, fontStyle: inpStyle.fontStyle,
-        letterSpacing: inpStyle.letterSpacing, textTransform: inpStyle.textTransform,
-        lineHeight: inpStyle.lineHeight, isPlaceholder: true, bbox: null
-      };
-      trackBbox(inp, _phEntry, 'bbox');
-      contrastPairs.push(_phEntry);
-      _contrastStats.captured++;
-    });
-
-    contrastPairs.sort(function(a, b) { return a.ratio - b.ratio; });
-    data.colors.contrastPairs = contrastPairs;
-    data.colors._contrastStats = _contrastStats;
-
-    // Area-weighted darkness tracking for accurate page brightness measurement
-    var darknessAreas = []; // { darkness: 0-1, area: px² }
-    function parseGradientColors(bgImage) {
-      // Extract color stops from linear-gradient, radial-gradient
-      var colors = [];
-      var re = /(?:rgb|rgba)\(\s*(\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\s*\)|#([0-9a-fA-F]{3,8})/g;
-      var m;
-      while ((m = re.exec(bgImage)) !== null) {
-        if (m[4]) {
-          var hex = m[4];
-          if (hex.length === 3) hex = hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2];
-          colors.push({ r: parseInt(hex.substr(0,2),16), g: parseInt(hex.substr(2,2),16), b: parseInt(hex.substr(4,2),16) });
-        } else {
-          colors.push({ r: parseInt(m[1]), g: parseInt(m[2]), b: parseInt(m[3]) });
-        }
-      }
-      return colors;
-    }
-
-    for (var i = 0; i < allElements.length; i++) {
-      var el = allElements[i];
-      if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE' || el.tagName === 'NOSCRIPT') continue;
-      if (!isVisible(el)) continue;
-      var s = getComputedStyle(el);
-      fontSizeMap[s.fontSize] = (fontSizeMap[s.fontSize] || 0) + 1;
-      if (!fontSizeSamples[s.fontSize]) {
-        var _fsText = (el.textContent || '').trim().substring(0, 60);
-        fontSizeSamples[s.fontSize] = { selector: cssSelector(el), text: _fsText, bbox: null, extraBboxes: [] };
-        trackBbox(el, fontSizeSamples[s.fontSize], 'bbox');
-      } else if (fontSizeSamples[s.fontSize].extraBboxes) {
-        // Collect ALL additional bboxes + selectors + text for findings that show every instance
-        var _fsText = (el.textContent || '').trim().substring(0, 60);
-        var _extra = { bbox: null, selector: cssSelector(el), text: _fsText };
-        trackBbox(el, _extra, 'bbox');
-        fontSizeSamples[s.fontSize].extraBboxes.push(_extra);
-      }
-      fontWeightMap[s.fontWeight] = (fontWeightMap[s.fontWeight] || 0) + 1;
-      fontFamilySet.add(s.fontFamily.split(',')[0].trim().replace(/['"]/g, ''));
-      var lh = s.lineHeight;
-      if (lh !== 'normal') { var lhR = parseFloat(lh) / parseFloat(s.fontSize); lineHeightMap[Math.round(lhR * 100) / 100] = (lineHeightMap[Math.round(lhR * 100) / 100] || 0) + 1; }
-      if (s.color) { textColorMap[s.color] = (textColorMap[s.color] || 0) + 1; if (!textColorSample[s.color]) textColorSample[s.color] = cssSelector(el); }
-      var bgColor = s.backgroundColor;
-      if (bgColor && bgColor !== 'rgba(0, 0, 0, 0)' && bgColor !== 'transparent') { bgColorMap[bgColor] = (bgColorMap[bgColor] || 0) + 1; if (!bgColorSample[bgColor]) bgColorSample[bgColor] = cssSelector(el); }
-
-      // Track area-weighted darkness for bg-color and gradients
-      var rect = el.getBoundingClientRect();
-      var area = rect.width * rect.height;
-      if (area > 100) { // skip tiny elements
-        var bgM = bgColor && bgColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-        if (bgM) {
-          var bgLum = (parseInt(bgM[1]) * 0.299 + parseInt(bgM[2]) * 0.587 + parseInt(bgM[3]) * 0.114) / 255;
-          var bgAlpha = 1;
-          var alphaM = bgColor.match(/rgba\(\d+,\s*\d+,\s*\d+,\s*([\d.]+)/);
-          if (alphaM) bgAlpha = parseFloat(alphaM[1]);
-          if (bgAlpha > 0.3) darknessAreas.push({ darkness: 1 - bgLum, area: area * bgAlpha });
-        }
-        // Also check background-image for gradients
-        var bgImg = s.backgroundImage;
-        if (bgImg && bgImg !== 'none' && /gradient/.test(bgImg)) {
-          var gradColors = parseGradientColors(bgImg);
-          if (gradColors.length > 0) {
-            var avgGradLum = gradColors.reduce(function(sum, c) { return sum + (c.r * 0.299 + c.g * 0.587 + c.b * 0.114) / 255; }, 0) / gradColors.length;
-            darknessAreas.push({ darkness: 1 - avgGradLum, area: area });
-          }
-        }
-      }
-
-      [s.paddingTop, s.paddingRight, s.paddingBottom, s.paddingLeft].filter(function(v) { return v !== '0px'; }).forEach(function(v) { paddingMap[v] = (paddingMap[v] || 0) + 1; });
-      [s.marginTop, s.marginRight, s.marginBottom, s.marginLeft].filter(function(v) { return v !== '0px' && v !== 'auto'; }).forEach(function(v) { marginMap[v] = (marginMap[v] || 0) + 1; });
-      if (s.gap && s.gap !== 'normal' && s.gap !== '0px') gapMap[s.gap] = (gapMap[s.gap] || 0) + 1;
-      var w = rect.width;
-      if (w > maxContentW && w < window.innerWidth * 0.95) maxContentW = w;
-    }
-    function mapToSorted(map, sampleMap, bboxMap) { return Object.keys(map).map(function(k) { var entry = { value: k, count: map[k], sample: sampleMap ? (sampleMap[k] || '') : '' }; if (bboxMap && bboxMap[k]) { entry.sampleSelector = bboxMap[k].selector; entry.sampleText = bboxMap[k].text || ''; entry.bbox = bboxMap[k].bbox; entry._sampleRef = bboxMap[k]; if (bboxMap[k].extraBboxes) { entry.extraBboxes = bboxMap[k].extraBboxes.map(function(eb) { return eb.bbox; }).filter(Boolean); entry.extraSelectors = bboxMap[k].extraBboxes.map(function(eb) { return eb.selector; }).filter(Boolean); entry.extraTexts = bboxMap[k].extraBboxes.map(function(eb) { return eb.text || ''; }); } } return entry; }).sort(function(a, b) { return b.count - a.count; }); }
-    data.typography.fontSizes = mapToSorted(fontSizeMap, null, fontSizeSamples);
-    data.typography.fontWeights = mapToSorted(fontWeightMap);
-    data.typography.fontFamilies = Array.from(fontFamilySet);
-    data.typography.lineHeights = mapToSorted(lineHeightMap);
-    data.colors.textColors = mapToSorted(textColorMap, textColorSample);
-    data.colors.bgColors = mapToSorted(bgColorMap, bgColorSample);
-
-    // Darkness level: 1 = white page, 10 = black page (area-weighted, includes gradients)
-    var totalPixelWeight = 0;
-    var totalDarkness = 0;
-    if (darknessAreas.length > 0) {
-      // Use area-weighted calculation (accounts for element size and gradients)
-      for (var da = 0; da < darknessAreas.length; da++) {
-        totalDarkness += darknessAreas[da].darkness * darknessAreas[da].area;
-        totalPixelWeight += darknessAreas[da].area;
-      }
-    } else {
-      // Fallback: simple element-count weighting
-      for (var bgC in bgColorMap) {
-        var count = bgColorMap[bgC] || 1;
-        var m = bgC.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-        if (m) {
-          var lum = (parseInt(m[1]) * 0.299 + parseInt(m[2]) * 0.587 + parseInt(m[3]) * 0.114) / 255;
-          totalDarkness += (1 - lum) * count;
-          totalPixelWeight += count;
-        }
-      }
-    }
-    data.colors.darknessLevel = totalPixelWeight > 0 ? Math.max(1, Math.min(10, Math.round((totalDarkness / totalPixelWeight) * 9 + 1))) : 5;
-
-    // Smart dark mode detection: check multiple signals
-    var isDarkPage = data.colors.darknessLevel >= 6;
-    data.structure.isDarkPage = isDarkPage;
-    data.structure.darkModeMethod = 'none';
-    if (document.documentElement.classList.contains('dark')) data.structure.darkModeMethod = 'tailwind-class';
-    else if (document.body.classList.contains('dark-ui') || document.body.classList.contains('dark-mode') || document.body.classList.contains('dark-theme')) data.structure.darkModeMethod = 'body-class';
-    else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) data.structure.darkModeMethod = 'media-query';
-    else if (document.querySelector('[data-theme="dark"]') || document.documentElement.getAttribute('data-theme') === 'dark' || document.body.getAttribute('data-theme') === 'dark') data.structure.darkModeMethod = 'data-attribute';
-    else if (isDarkPage) data.structure.darkModeMethod = 'inferred-from-colors';
-
-    data.spacing.paddings = mapToSorted(paddingMap);
-    data.spacing.margins = mapToSorted(marginMap);
-    data.spacing.gaps = mapToSorted(gapMap);
-    data.spacing.maxContentWidth = Math.round(maxContentW) + 'px';
-
-    document.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(function(h) {
-      var hs = getComputedStyle(h);
-      var _hEntry = { tag: h.tagName.toLowerCase(), text: h.textContent.trim().substring(0, 60), fontSize: hs.fontSize, fontWeight: hs.fontWeight, lineHeight: hs.lineHeight, fontFamily: hs.fontFamily.split(',')[0].trim().replace(/['"]/g, ''), selector: cssSelector(h), bbox: null };
-      trackBbox(h, _hEntry, 'bbox');
-      data.typography.headings.push(_hEntry);
-      data.accessibility.headingHierarchy.push(h.tagName.toLowerCase());
-    });
-
-    // Layout: section gaps, alignment edges, visual hierarchy
-    var sections = document.querySelectorAll('section, [class*="section"], main > div, article');
-    var sortedSections = Array.from(sections).filter(function(el) { return isVisible(el); }).sort(function(a, b) { return a.getBoundingClientRect().top - b.getBoundingClientRect().top; });
-    var sectionGaps = [];
-    for (var si = 1; si < sortedSections.length; si++) {
-      var gapVal = Math.round(sortedSections[si].getBoundingClientRect().top - sortedSections[si - 1].getBoundingClientRect().bottom);
-      if (gapVal >= 0) sectionGaps.push(gapVal);
-    }
-    data.layout.sectionGaps = sectionGaps;
-
-    var alignTargets = document.querySelectorAll('h1,h2,h3,h4,p,ul,ol,table,form,img,figure,blockquote');
-    var leftEdges = [];
-    var alignmentElements = []; // elements with their edges for bbox tracking
-    Array.from(alignTargets).forEach(function(el) {
-      if (!isVisible(el) || isDecorative(el)) return;
-      var r = el.getBoundingClientRect();
-      if (r.width > 50) {
-        leftEdges.push(Math.round(r.left));
-        if (alignmentElements.length < 50) {
-          var _ae = { selector: cssSelector(el), left: Math.round(r.left), bbox: null };
-          trackBbox(el, _ae, 'bbox');
-          alignmentElements.push(_ae);
-        }
-      }
-    });
-    data.layout.alignmentEdges = leftEdges;
-    data.layout.alignmentElements = alignmentElements;
-
-    var bodyFS = parseFloat(data.typography.bodyFontSize) || 16;
-    var h1Sizes = data.typography.headings.filter(function(h) { return h.tag === 'h1'; }).map(function(h) { return parseFloat(h.fontSize); });
-    var h2Sizes = data.typography.headings.filter(function(h) { return h.tag === 'h2'; }).map(function(h) { return parseFloat(h.fontSize); });
-    data.layout.visualHierarchy = {
-      h1ToBody: h1Sizes.length > 0 ? Math.round((h1Sizes[0] / bodyFS) * 100) / 100 : 0,
-      h2ToBody: h2Sizes.length > 0 ? Math.round((h2Sizes[0] / bodyFS) * 100) / 100 : 0,
-      bodySize: bodyFS
-    };
-
-    var interactive = document.querySelectorAll('a,button,input,select,textarea,[role="button"],[tabindex]');
-    var touchIssues = [];
-    interactive.forEach(function(el) {
-      if (!isVisible(el) || isDecorative(el) || _isScreenReaderOnly(el)) return;
-      var rect = el.getBoundingClientRect();
-      var w = Math.round(rect.width), h = Math.round(rect.height);
-      if (w < 44 || h < 44) {
-        // Checkbox/radio: check if label provides adequate touch target
-        if (el.tagName === 'INPUT' && (el.type === 'checkbox' || el.type === 'radio')) {
-          var label = el.closest('label') || (el.id && document.querySelector('label[for="' + el.id + '"]'));
-          if (label) {
-            var lr = label.getBoundingClientRect();
-            // If label is reasonably sized, use label dimensions as touch target
-            if (lr.width >= 24 && lr.height >= 24) { w = Math.round(lr.width); h = Math.round(lr.height); }
-            // If label makes it pass the 44px threshold, skip entirely
-            if (w >= 44 && h >= 44) return;
-          }
-        }
-        var linkCtx = 'button';
-        if (el.tagName === 'A') {
-          if (el.closest('nav')) linkCtx = 'nav';
-          else if (el.closest('footer')) linkCtx = 'footer';
-          else if (el.closest('p, blockquote, figcaption, td, th, dd')) linkCtx = 'inline';
-          else { var ls = getComputedStyle(el); if ((ls.backgroundColor !== 'rgba(0, 0, 0, 0)' && ls.backgroundColor !== 'transparent') || (ls.borderStyle !== 'none' && ls.borderWidth !== '0px') || parseFloat(ls.paddingTop) > 4 || parseFloat(ls.paddingBottom) > 4) linkCtx = 'button'; else linkCtx = 'standalone'; }
-        }
-        var _ttEntry = { element: el.tagName.toLowerCase(), width: w, height: h, text: (el.textContent || el.getAttribute('aria-label') || '').trim().substring(0, 40), selector: cssSelector(el), passes: false, isButton: el.tagName !== 'A' || linkCtx === 'button' || linkCtx === 'nav', linkContext: linkCtx, bbox: null };
-        trackBbox(el, _ttEntry, 'bbox');
-        touchIssues.push(_ttEntry);
-      }
-    });
-    touchIssues.sort(function(a, b) { return (a.width * a.height) - (b.width * b.height); });
-    data.interaction.touchTargets = touchIssues.slice(0, 40);
-
-    // --- BBox edge contrast pairs: elements with own bg vs parent bg ---
-    // Checks whether buttons, cards, inputs, etc. visually stand out from surroundings
-    var bgEdgePairs = [];
-    var bgEdgeSeen = new Set();
-    var bgEdgeCandidates = document.querySelectorAll('button,a,[role="button"],input:not([type="hidden"]),select,textarea,details,summary,.card,[class*="card"],[class*="btn"],[class*="button"],[class*="chip"],[class*="badge"],[class*="tag"],[class*="alert"],[class*="toast"],[class*="banner"]');
-    bgEdgeCandidates.forEach(function(el) {
-      if (!isVisible(el) || isDecorative(el)) return;
-      var rect = el.getBoundingClientRect();
-      if (rect.width < 20 || rect.height < 16) return; // skip tiny
-      var sel = cssSelector(el);
-      if (bgEdgeSeen.has(sel)) return;
-      bgEdgeSeen.add(sel);
-      var s = getComputedStyle(el);
-      var elBg = s.backgroundColor;
-      var hasBg = elBg && elBg !== 'rgba(0, 0, 0, 0)' && elBg !== 'transparent';
-      var hasBorder = s.borderStyle !== 'none' && parseFloat(s.borderWidth) >= 1;
-      var hasOutline = s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) >= 1;
-      var hasShadow = s.boxShadow && s.boxShadow !== 'none';
-      // Skip elements with no visual boundary — edge test only makes sense
-      // when the element has its own background, border, or shadow
-      if (!hasBg && !hasBorder && !hasOutline && !hasShadow) return;
-      // Get parent effective bg
-      var parentBg = { r: 255, g: 255, b: 255 };
-      var pNode = el.parentElement;
-      while (pNode && pNode !== document.documentElement) {
-        var pBgStr = getComputedStyle(pNode).backgroundColor;
-        var pC = parseColor(pBgStr);
-        if (pC && pC.a >= 0.5) { parentBg = { r: pC.r, g: pC.g, b: pC.b }; break; }
-        pNode = pNode.parentElement;
-      }
-      var elBgParsed = parseColor(elBg);
-      var cssBgRatio = 1;
-      if (hasBg && elBgParsed && elBgParsed.a > 0.1) {
-        var blended = { r: Math.round(elBgParsed.r * elBgParsed.a + parentBg.r * (1 - elBgParsed.a)), g: Math.round(elBgParsed.g * elBgParsed.a + parentBg.g * (1 - elBgParsed.a)), b: Math.round(elBgParsed.b * elBgParsed.a + parentBg.b * (1 - elBgParsed.a)) };
-        cssBgRatio = Math.round(contrastRatio(blended, parentBg) * 100) / 100;
-      }
-      var _beEntry = {
-        selector: sel,
-        element: el.tagName.toLowerCase(),
-        text: (el.textContent || el.getAttribute('aria-label') || '').trim().substring(0, 40),
-        elBg: hasBg ? rgbStr(elBgParsed && elBgParsed.a > 0.1 ? { r: Math.round(elBgParsed.r * (elBgParsed.a || 1) + parentBg.r * (1 - (elBgParsed.a || 1))), g: Math.round(elBgParsed.g * (elBgParsed.a || 1) + parentBg.g * (1 - (elBgParsed.a || 1))), b: Math.round(elBgParsed.b * (elBgParsed.a || 1) + parentBg.b * (1 - (elBgParsed.a || 1))) } : parentBg) : rgbStr(parentBg),
-        parentBg: rgbStr(parentBg),
-        cssBgRatio: cssBgRatio,
-        hasBorder: hasBorder,
-        hasOutline: hasOutline,
-        hasShadow: hasShadow,
-        borderColor: hasBorder ? s.borderColor : '',
-        bbox: null
-      };
-      trackBbox(el, _beEntry, 'bbox');
-      bgEdgePairs.push(_beEntry);
-    });
-    // Also check container elements with distinct backgrounds (cards, sections, etc.)
-    for (var _bei = 0; _bei < allElements.length && bgEdgePairs.length < 80; _bei++) {
-      var _bel = allElements[_bei];
-      if (!isVisible(_bel) || isDecorative(_bel)) continue;
-      var _bRect = _bel.getBoundingClientRect();
-      if (_bRect.width < 40 || _bRect.height < 30) continue;
-      var _bSel = cssSelector(_bel);
-      if (bgEdgeSeen.has(_bSel)) continue;
-      var _bS = getComputedStyle(_bel);
-      var _bBg = _bS.backgroundColor;
-      if (!_bBg || _bBg === 'rgba(0, 0, 0, 0)' || _bBg === 'transparent') continue;
-      var _bC = parseColor(_bBg);
-      if (!_bC || _bC.a < 0.3) continue;
-      // Must have padding or border-radius (signals a visual container, not just a wrapper)
-      var _hasPad = parseFloat(_bS.paddingTop) > 4 || parseFloat(_bS.paddingLeft) > 4;
-      var _hasRadius = parseFloat(_bS.borderRadius) > 0;
-      if (!_hasPad && !_hasRadius) continue;
-      bgEdgeSeen.add(_bSel);
-      var _pBg2 = { r: 255, g: 255, b: 255 };
-      var _pn2 = _bel.parentElement;
-      while (_pn2 && _pn2 !== document.documentElement) {
-        var _pBgStr2 = getComputedStyle(_pn2).backgroundColor;
-        var _pC2 = parseColor(_pBgStr2);
-        if (_pC2 && _pC2.a >= 0.5) { _pBg2 = { r: _pC2.r, g: _pC2.g, b: _pC2.b }; break; }
-        _pn2 = _pn2.parentElement;
-      }
-      var _blended2 = { r: Math.round(_bC.r * _bC.a + _pBg2.r * (1 - _bC.a)), g: Math.round(_bC.g * _bC.a + _pBg2.g * (1 - _bC.a)), b: Math.round(_bC.b * _bC.a + _pBg2.b * (1 - _bC.a)) };
-      var _ratio2 = Math.round(contrastRatio(_blended2, _pBg2) * 100) / 100;
-      bgEdgePairs.push({
-        selector: _bSel, element: _bel.tagName.toLowerCase(),
-        text: (_bel.textContent || '').trim().substring(0, 40),
-        elBg: rgbStr(_blended2), parentBg: rgbStr(_pBg2),
-        cssBgRatio: _ratio2,
-        hasBorder: _bS.borderStyle !== 'none' && parseFloat(_bS.borderWidth) >= 1,
-        hasOutline: false,
-        hasShadow: _bS.boxShadow && _bS.boxShadow !== 'none',
-        borderColor: _bS.borderStyle !== 'none' ? _bS.borderColor : '',
-        bbox: null
-      });
-      trackBbox(_bel, bgEdgePairs[bgEdgePairs.length - 1], 'bbox');
-    }
-    data.colors.bgEdgePairs = bgEdgePairs;
-
-    var transitionSet = new Set();
-    for (var i = 0; i < allElements.length && transitionSet.size < 20; i++) { var t = getComputedStyle(allElements[i]).transitionDuration; if (t && t !== '0s') transitionSet.add(t); }
-    data.interaction.transitions = Array.from(transitionSet);
-
-    data.accessibility.semanticElements = { header: document.querySelectorAll('header').length, nav: document.querySelectorAll('nav').length, main: document.querySelectorAll('main').length, footer: document.querySelectorAll('footer').length, section: document.querySelectorAll('section').length, article: document.querySelectorAll('article').length, aside: document.querySelectorAll('aside').length };
-    var navEls = document.querySelectorAll('nav'); var navItemCount = 0;
-    navEls.forEach(function(nav) { var topLinks = nav.querySelectorAll(':scope > a, :scope > ul > li > a, :scope > ol > li > a, :scope > button, :scope > ul > li > button'); navItemCount += topLinks.length; });
-    data.accessibility.navItemCount = navItemCount;
-    var noAlt = 0; var noAltElements = [];
-    document.querySelectorAll('img').forEach(function(img) {
-      if (!img.hasAttribute('alt')) {
-        noAlt++;
-        if (isVisible(img) && noAltElements.length < 10) {
-          var _naEntry = { selector: cssSelector(img), src: (img.src || '').substring(0, 80), bbox: null };
-          trackBbox(img, _naEntry, 'bbox');
-          noAltElements.push(_naEntry);
-        }
-      }
-    });
-    data.accessibility.imagesWithoutAlt = noAlt;
-    data.accessibility.imagesWithoutAltElements = noAltElements;
-    var inputs = document.querySelectorAll('input:not([type="hidden"]):not([type="submit"]):not([type="button"]),select,textarea');
-    var labeled = 0; var unlabeledElements = [];
-    inputs.forEach(function(inp) {
-      data.accessibility.formLabels.total++;
-      if ((inp.id && document.querySelector('label[for="' + inp.id + '"]')) || inp.closest('label') || inp.getAttribute('aria-label') || inp.getAttribute('aria-labelledby')) {
-        labeled++;
-      } else if (isVisible(inp) && unlabeledElements.length < 10) {
-        var _ulEntry = { selector: cssSelector(inp), type: inp.type || inp.tagName.toLowerCase(), bbox: null };
-        trackBbox(inp, _ulEntry, 'bbox');
-        unlabeledElements.push(_ulEntry);
-      }
-    });
-    data.accessibility.formLabels.withLabel = labeled;
-    data.accessibility.formLabels.withoutLabel = data.accessibility.formLabels.total - labeled;
-    data.accessibility.formLabels.unlabeledElements = unlabeledElements;
-    Array.from(interactive).slice(0, 10).forEach(function(el) { if (!isVisible(el)) return; var s = getComputedStyle(el); data.accessibility.focusIndicators.push({ element: cssSelector(el), outlineStyle: s.outlineStyle, outlineWidth: s.outlineWidth, outlineColor: s.outlineColor, outlineOffset: s.outlineOffset }); });
-    var _hasFvCSS = Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r.selectorText && r.selectorText.indexOf('focus-visible') !== -1; }); } catch(e) { return false; } });
-    var _hasFvClasses = Array.from(interactive).slice(0, 20).some(function(el) { var cls = el.getAttribute('class') || ''; return cls.indexOf('focus-visible') !== -1 || cls.indexOf('focus:ring') !== -1 || cls.indexOf('focus:outline') !== -1; });
-    data.accessibility.hasFocusVisibleCSS = _hasFvCSS || _hasFvClasses;
-    // Skip link detection: an <a href="#..."> among the first focusable elements.
-    // Detected by structure (internal anchor link early in tab order), not by text content (multilingual).
-    data.accessibility.hasSkipLink = false;
-    var _firstFocusable = document.querySelectorAll('a[href],button,input,select,textarea,[tabindex]');
-    for (var _fi = 0; _fi < Math.min(_firstFocusable.length, 5); _fi++) {
-      var _fe = _firstFocusable[_fi];
-      if (_fe.tagName === 'A' && _fe.getAttribute('href') && /^#\w/.test(_fe.getAttribute('href'))) {
-        data.accessibility.hasSkipLink = true;
-        break;
-      }
-    }
-    // Font smoothing + bg image behind text (profile-specific)
-    data.typography.fontSmoothingAntialiased = false;
-    try { var bs = getComputedStyle(document.body).webkitFontSmoothing; if (bs === 'antialiased') data.typography.fontSmoothingAntialiased = true; } catch(e) {}
-    data.accessibility.bgImageBehindText = 0;
-    document.querySelectorAll('p,h1,h2,h3,h4,h5,h6,li,span').forEach(function(el) { if (!isVisible(el)) return; var bgi = getComputedStyle(el).backgroundImage; if (bgi && bgi !== 'none' && bgi.indexOf('url(') !== -1 && el.textContent.trim().length > 10) data.accessibility.bgImageBehindText++; });
-
-    // --- Viewport visibility: detect elements positioned off-screen on x-axis ---
-    var vpW = window.innerWidth;
-    var _iframeDataContentTags = { table: 1, pre: 1, code: 1 };
-    data.layout.offscreenElements = [];
-    var meaningfulSel = 'button,a,[role="menuitem"],[role="menu"],li,p,h1,h2,h3,h4,h5,h6,img,input,select,textarea,td,th,label,span,div';
-    document.querySelectorAll(meaningfulSel).forEach(function(el) {
-      if (!isVisible(el) || isDecorative(el)) return;
-      var r = el.getBoundingClientRect();
-      if (r.width < 4 || r.height < 4) return;
-      var fullyOff = r.right < 0 || r.left >= vpW;
-      var majorClip = r.left < vpW && r.right > vpW && (r.right - vpW) > r.width * 0.5;
-      if (!fullyOff && !majorClip) return;
-      // Only skip if inside a genuinely intentional scroll container (data content)
-      var anc = el.parentElement;
-      var inIntentionalScroll = false;
-      while (anc && anc !== document.body && anc !== document.documentElement) {
-        var ox = getComputedStyle(anc).overflowX;
-        if (ox === 'auto' || ox === 'scroll') {
-          var ancTag = anc.tagName.toLowerCase();
-          var isData = !!_iframeDataContentTags[ancTag] || !!anc.closest('table,pre,code');
-          var isWide = anc.clientWidth >= vpW * 0.8;
-          if (isData && !isWide) { inIntentionalScroll = true; break; }
-          break;
-        }
-        anc = anc.parentElement;
-      }
-      if (inIntentionalScroll) return;
-      var parentAlready = data.layout.offscreenElements.some(function(rec) {
-        try { var pel = document.querySelector(rec.selector); return pel && pel.contains(el) && pel !== el; } catch(e) { return false; }
-      });
-      if (parentAlready) return;
-      var _oeEntry = {
-        element: el.tagName.toLowerCase(),
-        selector: cssSelector(el),
-        text: (el.textContent || el.getAttribute('aria-label') || '').trim().substring(0, 50),
-        left: Math.round(r.left),
-        right: Math.round(r.right),
-        vpWidth: vpW,
-        reason: r.right < 0 ? 'left-overflow' : r.left >= vpW ? 'right-overflow' : 'major-clip',
-        bbox: null
-      };
-      trackBbox(el, _oeEntry, 'bbox');
-      data.layout.offscreenElements.push(_oeEntry);
-    });
-    data.layout.offscreenElements = data.layout.offscreenElements.slice(0, 20);
-
-    // --- Second pass: check hidden fixed/sticky elements for potential overflow ---
-    // Elements like scroll-triggered headers may be hidden (opacity:0) at extraction time
-    // but overflow the viewport when they become visible after scrolling
-    document.querySelectorAll('*').forEach(function(el) {
-      var s = getComputedStyle(el);
-      if (s.position !== 'fixed' && s.position !== 'sticky') return;
-      // Only check elements that are currently hidden
-      if (s.opacity !== '0' && s.display !== 'none' && s.visibility !== 'hidden') return;
-      // Temporarily reveal to measure
-      var origOpacity = el.style.opacity;
-      var origVisibility = el.style.visibility;
-      var origPointerEvents = el.style.pointerEvents;
-      el.style.opacity = '0.001';
-      el.style.visibility = 'visible';
-      el.style.pointerEvents = 'none';
-      // Force reflow
-      void el.offsetWidth;
-      // Check children for overflow
-      var children = el.querySelectorAll(meaningfulSel);
-      children.forEach(function(child) {
-        var cs = getComputedStyle(child);
-        if (cs.display === 'none') return;
-        var cr = child.getBoundingClientRect();
-        if (cr.width < 4 || cr.height < 4) return;
-        var fullyOff = cr.right < 0 || cr.left >= vpW;
-        var majorClip = cr.left < vpW && cr.right > vpW && (cr.right - vpW) > cr.width * 0.5;
-        if (!fullyOff && !majorClip) return;
-        // Skip if already reported
-        var sel = cssSelector(child);
-        var alreadyReported = data.layout.offscreenElements.some(function(rec) { return rec.selector === sel; });
-        if (alreadyReported) return;
-        var _hfEntry = {
-          element: child.tagName.toLowerCase(),
-          selector: sel,
-          text: (child.textContent || child.getAttribute('aria-label') || '').trim().substring(0, 50),
-          left: Math.round(cr.left),
-          right: Math.round(cr.right),
-          vpWidth: vpW,
-          reason: 'hidden-fixed-overflow',
-          bbox: null
-        };
-        trackBbox(child, _hfEntry, 'bbox');
-        data.layout.offscreenElements.push(_hfEntry);
-      });
-      // Restore
-      el.style.opacity = origOpacity;
-      el.style.visibility = origVisibility;
-      el.style.pointerEvents = origPointerEvents;
-    });
-    data.layout.offscreenElements = data.layout.offscreenElements.slice(0, 20);
-
-    // --- Table cell readability on narrow viewports ---
-    data.layout.tableCellIssues = [];
-    if (vpW < 768) {
-      document.querySelectorAll('table').forEach(function(table) {
-        var cells = table.querySelectorAll('td, th');
-        var cramped = 0, wrappedCells = 0;
-        cells.forEach(function(cell) {
-          if (!isVisible(cell)) return;
-          var cs = getComputedStyle(cell);
-          var r = cell.getBoundingClientRect();
-          var hPad = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
-          // Check for very tight horizontal padding (<8px total)
-          if (hPad < 8 && r.width > 0) cramped++;
-          // Check for wrapped content (cell height > 1.8x line height = multi-line)
-          var lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.4;
-          if (r.height > lh * 1.8 && cell.textContent.trim().length > 0) wrappedCells++;
-        });
-        if (cramped > 2 || wrappedCells > 2) {
-          data.layout.tableCellIssues.push({
-            selector: cssSelector(table),
-            totalCells: cells.length,
-            crampedCells: cramped,
-            wrappedCells: wrappedCells,
-            tableWidth: Math.round(table.getBoundingClientRect().width),
-            vpWidth: vpW
-          });
-        }
-      });
-    }
-
-    // --- Fixed element scroll-contrast risk detection ---
-    // Detect fixed/sticky elements with static colors that may lose contrast
-    // when scrolled over sections with different background luminance
-    data.layout.fixedContrastRisks = [];
-    (function() {
-      function luminance(r, g, b) { var a = [r,g,b].map(function(v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return 0.2126 * a[0] + 0.7152 * a[1] + 0.0722 * a[2]; }
-      function parseColor(str) { var m = str.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/); return m ? { r: +m[1], g: +m[2], b: +m[3] } : null; }
-
-      // Sample section background colors at different scroll positions
-      var sections = document.querySelectorAll('section,main>div,[class*="bg-"]');
-      var sectionBgs = [];
-      sections.forEach(function(sec) {
-        var bg = getComputedStyle(sec).backgroundColor;
-        var c = parseColor(bg);
-        if (c) sectionBgs.push({ lum: luminance(c.r, c.g, c.b), element: cssSelector(sec) });
-      });
-      var hasLightSections = sectionBgs.some(function(s) { return s.lum > 0.4; });
-      var hasDarkSections = sectionBgs.some(function(s) { return s.lum < 0.15; });
-
-      // Check visible fixed elements for contrast risk (report per container, not per child)
-      // Only position:fixed — sticky elements are anchored within their section context
-      document.querySelectorAll('header,nav,[class*="fixed"]').forEach(function(el) {
-        var s = getComputedStyle(el);
-        if (s.position !== 'fixed') return;
-        var lightCount = 0, darkCount = 0, firstLight = null, firstDark = null;
-        var coloredChildren = el.querySelectorAll('a,button,span,svg,h1,h2,h3,p');
-        coloredChildren.forEach(function(child) {
-          if (!isVisible(child)) return; // skip display:none / hidden children
-          var cs = getComputedStyle(child);
-          var color = parseColor(cs.color);
-          if (!color) return;
-          var colorLum = luminance(color.r, color.g, color.b);
-          if (colorLum > 0.6 && hasLightSections) { lightCount++; if (!firstLight) firstLight = child; }
-          if (colorLum < 0.15 && hasDarkSections) { darkCount++; if (!firstDark) firstDark = child; }
-        });
-        if (lightCount > 0 && firstLight) {
-          data.layout.fixedContrastRisks.push({
-            selector: cssSelector(el),
-            text: (firstLight.textContent || firstLight.getAttribute('aria-label') || '').trim().substring(0, 30),
-            color: getComputedStyle(firstLight).color,
-            risk: 'light-on-light',
-            element: el.tagName.toLowerCase(),
-            childCount: lightCount
-          });
-        }
-        if (darkCount > 0 && firstDark) {
-          data.layout.fixedContrastRisks.push({
-            selector: cssSelector(el),
-            text: (firstDark.textContent || firstDark.getAttribute('aria-label') || '').trim().substring(0, 30),
-            color: getComputedStyle(firstDark).color,
-            risk: 'dark-on-dark',
-            element: el.tagName.toLowerCase(),
-            childCount: darkCount
-          });
-        }
-      });
-      data.layout.fixedContrastRisks = data.layout.fixedContrastRisks.slice(0, 10);
-    })();
-
-    // --- Missing data points expected by scoring modules ---
-    data.structure.hasHorizontalOverflow = document.documentElement.scrollWidth > document.documentElement.clientWidth;
-    // Find the widest element causing page-level overflow
-    // Skip absolutely/fixed positioned elements inside overflow:hidden containers
-    // — they extend beyond the viewport visually but are clipped, not scrollable
-    if (data.structure.hasHorizontalOverflow) {
-      var _pageOverflowCulprits = [];
-      var _docW = document.documentElement.clientWidth;
-      function _isClippedByParent(el) {
-        var s = getComputedStyle(el);
-        if (s.position !== 'absolute' && s.position !== 'fixed') return false;
-        var p = el.offsetParent || el.parentElement;
-        while (p && p !== document.documentElement) {
-          var ps = getComputedStyle(p);
-          if (ps.overflow === 'hidden' || ps.overflowX === 'hidden') return true;
-          p = p.parentElement;
-        }
-        return false;
-      }
-      Array.from(allElements).slice(0, 1000).forEach(function(el) {
-        if (!isVisible(el) || el === document.documentElement || el === document.body) return;
-        if (_isClippedByParent(el)) return;
-        var r = el.getBoundingClientRect();
-        if (r.right > _docW + 5 || r.width > _docW + 5) {
-          _pageOverflowCulprits.push({ selector: cssSelector(el), element: el.tagName.toLowerCase(), width: Math.round(r.width), right: Math.round(r.right), overflow: Math.round(r.right - _docW), bbox: null });
-          if (_pageOverflowCulprits.length <= 10) trackBbox(el, _pageOverflowCulprits[_pageOverflowCulprits.length - 1], 'bbox');
-        }
-      });
-      _pageOverflowCulprits.sort(function(a, b) { return b.overflow - a.overflow; });
-      data.structure.overflowCulprits = _pageOverflowCulprits.slice(0, 10);
-      // If all culprits were clipped, the overflow might be a false positive
-      if (_pageOverflowCulprits.length === 0) data.structure.hasHorizontalOverflow = false;
-    }
-
-    // Border radii (for layout/consistency scoring) — track sample elements per value
-    var radiusMap = {};
-    var radiusSamples = {}; // value → [{selector, bbox}]
-    Array.from(allElements).slice(0, 500).forEach(function(el) {
-      if (!isVisible(el)) return;
-      var br = getComputedStyle(el).borderRadius;
-      if (br && br !== '0px') {
-        radiusMap[br] = (radiusMap[br] || 0) + 1;
-        if (!radiusSamples[br]) radiusSamples[br] = [];
-        if (radiusSamples[br].length < 5) {
-          var _rs = { selector: cssSelector(el), bbox: null };
-          trackBbox(el, _rs, 'bbox');
-          radiusSamples[br].push(_rs);
-        }
-      }
-    });
-    data.layout.borderRadii = Object.keys(radiusMap).map(function(k) {
-      var samples = (radiusSamples[k] || []);
-      return { value: k, count: radiusMap[k], bboxes: samples.map(function(s) { return s.bbox; }).filter(Boolean), selectors: samples.map(function(s) { return s.selector; }).filter(Boolean) };
-    }).sort(function(a, b) { return b.count - a.count; }).slice(0, 15);
-
-    // Horizontal scroll containers — refined classification
-    var _iframeStructuralSel = 'nav,form,section,header,footer,article,aside,main,h1,h2,h3,h4,h5,h6';
-    data.layout.horizontalScrollContainers = [];
-    data.layout.nestedScrollbars = 0;
-    var overflowEls = document.querySelectorAll('[style*="overflow"],[class*="overflow"]');
-    overflowEls.forEach(function(oel) {
-      if (oel.scrollWidth > oel.clientWidth + 2 && oel.clientWidth > 0) {
-        var tag = oel.tagName.toLowerCase();
-        var oelStyle = getComputedStyle(oel);
-        var hasOverflowCSS = oelStyle.overflowX === 'auto' || oelStyle.overflowX === 'scroll' ||
-          /overflow-x-(auto|scroll)/.test(oel.className || '');
-        var isDataContent = !!_iframeDataContentTags[tag] || !!oel.closest('table,pre,code');
-        var hasStructuralChildren = !isDataContent && oel.querySelector(_iframeStructuralSel);
-        var isWideContainer = oel.clientWidth >= vpW * 0.8;
-
-        var classification = 'bug';
-        if (hasOverflowCSS && isDataContent && !hasStructuralChildren) {
-          classification = 'intentional';
-        } else if (hasOverflowCSS && !isDataContent && !hasStructuralChildren && !isWideContainer) {
-          classification = 'intentional';
-        }
-        if (!hasOverflowCSS) classification = 'bug';
-        if (isWideContainer && hasOverflowCSS && !isDataContent) classification = 'bug';
-
-        // Find the widest child causing the overflow
-        var _widestChild = null, _widestW = oel.clientWidth;
-        Array.from(oel.children).forEach(function(ch) {
-          var cr = ch.getBoundingClientRect();
-          if (cr.width > _widestW) { _widestW = cr.width; _widestChild = ch; }
-        });
-        var _hscEntry = {
-          selector: cssSelector(oel),
-          intentional: classification === 'intentional',
-          classification: classification,
-          reason: !hasOverflowCSS ? 'no-overflow-css' :
-                  hasStructuralChildren ? 'structural-children-in-scroll' :
-                  isWideContainer ? 'wide-container-scrolls' :
-                  isDataContent ? 'data-content' : 'unknown',
-          scrollWidth: oel.scrollWidth,
-          overflow: Math.round(oel.scrollWidth - oel.clientWidth),
-          element: tag,
-          bbox: null,
-          culprit: _widestChild ? cssSelector(_widestChild) : null,
-          culpritWidth: _widestChild ? Math.round(_widestW) : null
-        };
-        trackBbox(oel, _hscEntry, 'bbox');
-        data.layout.horizontalScrollContainers.push(_hscEntry);
-        // Nested scrollbar check
-        var scrollParent = oel.parentElement;
-        while (scrollParent && scrollParent !== document.body) {
-          var ps = getComputedStyle(scrollParent);
-          if (ps.overflowY === 'auto' || ps.overflowY === 'scroll') {
-            data.layout.nestedScrollbars++;
-            break;
-          }
-          scrollParent = scrollParent.parentElement;
-        }
-      }
-    });
-
-    // --- Silently clipped content: flex/grid containers where content overflows without scroll ---
-    // These won't cause page-level scrollbar in Chromium but can on iOS Safari
-    data.layout.clippedOverflow = [];
-    if (vpW < 768) {
-      document.querySelectorAll('div,section,nav,footer,header').forEach(function(el) {
-        if (!isVisible(el)) return;
-        if (el.scrollWidth <= el.clientWidth + 4 || el.clientWidth < 50) return;
-        var s = getComputedStyle(el);
-        // Only check flex/grid rows (not block elements which wrap naturally)
-        var isFlex = s.display === 'flex' || s.display === 'inline-flex';
-        var isGrid = s.display === 'grid' || s.display === 'inline-grid';
-        if (!isFlex && !isGrid) return;
-        // Skip if already has overflow handling
-        if (s.overflowX === 'auto' || s.overflowX === 'scroll' || s.overflowX === 'hidden') return;
-        // Skip if flex-wrap is enabled (content wraps instead of overflowing)
-        if (isFlex && s.flexWrap !== 'nowrap') return;
-        var overflowPx = el.scrollWidth - el.clientWidth;
-        if (overflowPx > 8) {
-          data.layout.clippedOverflow.push({
-            selector: cssSelector(el),
-            overflow: overflowPx,
-            containerWidth: el.clientWidth,
-            contentWidth: el.scrollWidth,
-            vpWidth: vpW,
-            display: s.display
-          });
-        }
-      });
-      data.layout.clippedOverflow = data.layout.clippedOverflow.slice(0, 10);
-    }
-
-    // Hidden panel detection — find all invisible interactive panels
-    data.layout.hiddenPanelIssues = [];
-    var _iframeHiddenPanels = [];
-    document.querySelectorAll('[role="menu"], [role="listbox"], [role="dialog"], [role="tooltip"], [role="alertdialog"]').forEach(function(el) {
-      if (!isVisible(el) && _iframeHiddenPanels.indexOf(el) === -1) _iframeHiddenPanels.push(el);
-    });
-    var _iframeInlineRoles = { region: 1, tabpanel: 1, tab: 1 };
-    document.querySelectorAll('[aria-controls]').forEach(function(trigger) {
-      var targetId = trigger.getAttribute('aria-controls');
-      if (targetId) {
-        var target = document.getElementById(targetId);
-        if (target && !isVisible(target) && _iframeHiddenPanels.indexOf(target) === -1) {
-          var targetRole = (target.getAttribute('role') || '').toLowerCase();
-          if (!_iframeInlineRoles[targetRole]) _iframeHiddenPanels.push(target);
-        }
-      }
-    });
-    document.querySelectorAll('[aria-haspopup="true"], [aria-haspopup="menu"], [aria-haspopup="dialog"], [aria-haspopup="listbox"]').forEach(function(trigger) {
-      var ctrlId = trigger.getAttribute('aria-controls');
-      if (ctrlId) {
-        var t = document.getElementById(ctrlId);
-        if (t && !isVisible(t) && _iframeHiddenPanels.indexOf(t) === -1) _iframeHiddenPanels.push(t);
-        return;
-      }
-      var wrapper = trigger.parentElement;
-      if (!wrapper) return;
-      wrapper.querySelectorAll('[role="menu"], [role="listbox"], [role="dialog"]').forEach(function(c) {
-        if (!isVisible(c) && _iframeHiddenPanels.indexOf(c) === -1) _iframeHiddenPanels.push(c);
-      });
-    });
-    data.layout.hiddenPanelCount = _iframeHiddenPanels.length;
-    _iframeHiddenPanels.slice(0, 15).forEach(function(panel) {
-      var origCssText = panel.style.cssText;
-      var origAriaHidden = panel.getAttribute('aria-hidden');
-      var origHidden = panel.hasAttribute('hidden');
-      panel.style.cssText = origCssText + '; display: block !important; visibility: visible !important; opacity: 1 !important; pointer-events: none !important;';
-      if (origHidden) panel.removeAttribute('hidden');
-      if (origAriaHidden) panel.setAttribute('aria-hidden', 'false');
-      void panel.offsetHeight;
-      var pr = panel.getBoundingClientRect();
-      var issues = [];
-      if (pr.width > 0 && pr.height > 0) {
-        if (pr.right > vpW + 2) issues.push({ type: 'right-overflow', overflow: Math.round(pr.right - vpW) });
-        if (pr.left < -2) issues.push({ type: 'left-overflow', overflow: Math.round(Math.abs(pr.left)) });
-        if (pr.bottom > window.innerHeight * 2) issues.push({ type: 'extreme-bottom', bottom: Math.round(pr.bottom) });
-        if (panel.scrollWidth > panel.clientWidth + 2) issues.push({ type: 'internal-overflow', overflow: Math.round(panel.scrollWidth - panel.clientWidth) });
-      }
-      panel.style.cssText = origCssText;
-      if (origHidden) panel.setAttribute('hidden', '');
-      if (origAriaHidden) panel.setAttribute('aria-hidden', origAriaHidden);
-      else if (panel.hasAttribute('aria-hidden')) panel.removeAttribute('aria-hidden');
-      if (issues.length > 0) {
-        var _hpEntry = {
-          selector: cssSelector(panel),
-          role: panel.getAttribute('role') || 'unknown',
-          width: Math.round(pr.width),
-          height: Math.round(pr.height),
-          left: Math.round(pr.left),
-          right: Math.round(pr.right),
-          vpWidth: vpW,
-          issues: issues,
-          bbox: null
-        };
-        trackBbox(panel, _hpEntry, 'bbox');
-        data.layout.hiddenPanelIssues.push(_hpEntry);
-      }
-    });
-
-    // DOM statistics
-    var _iframeTagCounts = {};
-    var _iframeDisplayNone = 0;
-    var _iframeAriaHidden = 0;
-    Array.from(allElements).forEach(function(el) {
-      var t = el.tagName.toLowerCase();
-      _iframeTagCounts[t] = (_iframeTagCounts[t] || 0) + 1;
-      if (t === 'script' || t === 'style' || t === 'link') return;
-      if (getComputedStyle(el).display === 'none') _iframeDisplayNone++;
-      if (el.getAttribute('aria-hidden') === 'true') _iframeAriaHidden++;
-    });
-    var _iframeSemTags = ['nav','header','footer','main','article','section','aside','figure','figcaption','details','summary','dialog','ul','ol','li','table','form','fieldset','label'];
-    var _iframeSemCount = 0;
-    _iframeSemTags.forEach(function(t) { _iframeSemCount += (_iframeTagCounts[t] || 0); });
-    data.structure.domStats = {
-      divCount: _iframeTagCounts['div'] || 0,
-      spanCount: _iframeTagCounts['span'] || 0,
-      semanticCount: _iframeSemCount,
-      displayNoneCount: _iframeDisplayNone,
-      ariaHiddenCount: _iframeAriaHidden,
-      divRatio: allElements.length > 0 ? Math.round((_iframeTagCounts['div'] || 0) / allElements.length * 100) : 0,
-      topTags: Object.keys(_iframeTagCounts).filter(function(t) { return t !== 'script' && t !== 'style' && t !== 'link'; }).sort(function(a, b) { return _iframeTagCounts[b] - _iframeTagCounts[a]; }).slice(0, 5).map(function(t) { return { tag: t, count: _iframeTagCounts[t] }; })
-    };
-
-    // Fixed-width and truncated elements
-    data.structure.fixedWidthElements = 0;
-    document.querySelectorAll('[style*="width"]').forEach(function(el) {
-      if (!isVisible(el)) return;
-      var w = el.style.width;
-      if (w && /^\d+(px)?$/.test(w) && parseFloat(w) > 300) {
-        var parentW = el.parentElement ? el.parentElement.getBoundingClientRect().width : vpW;
-        if (parseFloat(w) > parentW * 0.8) data.structure.fixedWidthElements++;
-      }
-    });
-    data.structure.truncatedElements = 0;
-    document.querySelectorAll('[class*="truncate"],[class*="ellipsis"],[style*="text-overflow"]').forEach(function(tel) {
-      if (!isVisible(tel)) return;
-      if (tel.scrollWidth > tel.clientWidth + 2) data.structure.truncatedElements++;
-    });
-
-    // Export bbox tracking for screenshot pipeline to re-read after scroll-reset
-    window.__milgBboxRefs = _bboxRefs;
-    window.__milgData = data;
-    window.__milgGetFlowPosition = function(el) {
-      var r = el.getBoundingClientRect();
-      var top = r.top, left = r.left;
-      var node = el;
-      while (node && node !== document.documentElement) {
-        var transform = getComputedStyle(node).transform;
-        if (transform && transform !== 'none') {
-          var m = transform.match(/matrix\(([^)]+)\)/);
-          if (m) {
-            var parts = m[1].split(',');
-            if (parts.length >= 6) {
-              left -= parseFloat(parts[4]) || 0;
-              top -= parseFloat(parts[5]) || 0;
-            }
-          }
-        }
-        node = node.parentElement;
-      }
-      return { left: Math.round(left), top: Math.round(top), width: Math.round(r.width), height: Math.round(r.height) };
-    };
-    window.__milgReReadBboxes = function() {
-      var updated = 0;
-      _bboxRefs.forEach(function(ref) {
-        if (!ref.el || !ref.obj) return;
-        try {
-          var oldBbox = ref.obj[ref.key];
-          ref.obj[ref.key] = window.__milgGetFlowPosition(ref.el);
-          updated++;
-        } catch(e) {}
-      });
-      // Propagate re-read bboxes to exported fontSizes entries
-      (data.typography.fontSizes || []).forEach(function(entry) {
-        if (entry._sampleRef) {
-          entry.bbox = entry._sampleRef.bbox;
-          if (entry._sampleRef.extraBboxes) {
-            entry.extraBboxes = entry._sampleRef.extraBboxes.map(function(eb) { return eb.bbox; }).filter(Boolean);
-            entry.extraSelectors = entry._sampleRef.extraBboxes.map(function(eb) { return eb.selector; }).filter(Boolean);
-          }
-        }
-      });
-      return updated + '/' + _bboxRefs.length;
-    };
-
-    // Attach sandbox log if present (JS-enabled mode intercepts)
-    data._sandboxLog = window.__milgSandboxLog || [];
-
-    // Store data globally for snippet access
-    window.__milgData = data;
-
-    // Output: callback (snippet mode) or postMessage (iframe mode)
-    if (typeof window.__milgOnExtractComplete === 'function') {
-      window.__milgOnExtractComplete(data);
-    } else {
-      parent.postMessage({ type: 'milg-analyzer-result', data: data, _iframeId: window.__milgIframeId || '' }, '*');
-    }
-    // Screenshot capture: triggered by parent via milg-start-capture message
-    // Legacy fallback for old screenshot script that uses __milgDoScreenshots
-    if (typeof window.__milgDoScreenshots === 'function') {
-      setTimeout(window.__milgDoScreenshots, 300);
-    }
-  }
-
-  return extractFromDocument;
-})();
-</file>
-
 <file path="docs/analyzer-contrast-verify.js">
 // make-it-look-good — Pixel-Sampled Contrast Verification
 // Samples actual pixel colors from screenshots at text element locations,
@@ -36205,6 +34966,1245 @@ window.MilgContrastVerify = (function() {
 })();
 </file>
 
+<file path="docs/analyzer-extract.js">
+// make-it-look-good — Extraction Engine
+// Runs inside iframes to extract design data from rendered pages.
+// Exposed as window.MilgExtract for use by analyzer.js and test harnesses.
+
+window.MilgExtract = (function() {
+  "use strict";
+
+  // This runs inside an iframe to extract data — mirrors analyzer-snippet.js logic
+  function extractFromDocument() {
+    var _parseCanvas = document.createElement('canvas');
+    _parseCanvas.width = 1; _parseCanvas.height = 1;
+    var _parseCtx = _parseCanvas.getContext('2d', { willReadFrequently: true });
+    function parseColor(str) {
+      if (!str || str === 'transparent' || str === 'rgba(0, 0, 0, 0)') return null;
+      var m = str.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
+      if (m) return { r: +m[1], g: +m[2], b: +m[3], a: m[4] !== undefined ? +m[4] : 1 };
+      var m2 = str.match(/rgba?\((\d+)\s+(\d+)\s+(\d+)(?:\s*\/\s*([\d.]+%?))?\)/);
+      if (m2) { var a = m2[4] !== undefined ? (m2[4].indexOf('%') !== -1 ? parseFloat(m2[4]) / 100 : +m2[4]) : 1; return { r: +m2[1], g: +m2[2], b: +m2[3], a: a }; }
+      if (/\/\s*0\s*[\)%]/.test(str)) return null;
+      _parseCtx.clearRect(0, 0, 1, 1);
+      _parseCtx.fillStyle = 'rgba(0,0,0,0)';
+      _parseCtx.fillStyle = str;
+      _parseCtx.fillRect(0, 0, 1, 1);
+      var d = _parseCtx.getImageData(0, 0, 1, 1).data;
+      if (d[3] === 0) return null;
+      return { r: d[0], g: d[1], b: d[2], a: Math.round(d[3] / 255 * 100) / 100 };
+    }
+    function blendOnWhite(c) {
+      if (!c) return { r: 255, g: 255, b: 255 };
+      var a = c.a;
+      return { r: Math.round(c.r * a + 255 * (1 - a)), g: Math.round(c.g * a + 255 * (1 - a)), b: Math.round(c.b * a + 255 * (1 - a)) };
+    }
+    // Gradient sampler for iframe extractor — handles multiple backgrounds + alpha
+    var _gc = document.createElement('canvas'); _gc.width = 100; _gc.height = 100;
+    var _gx = _gc.getContext('2d', { willReadFrequently: true });
+    function splitGrads(bgi) {
+      var layers = [], depth = 0, start = 0;
+      for (var i = 0; i < bgi.length; i++) {
+        if (bgi[i] === '(') depth++;
+        else if (bgi[i] === ')') depth--;
+        else if (bgi[i] === ',' && depth === 0) { layers.push(bgi.substring(start, i).trim()); start = i + 1; }
+      }
+      layers.push(bgi.substring(start).trim());
+      return layers.filter(function(l) { return l.indexOf('gradient') !== -1; });
+    }
+    // samplePos: {x: 0-1, y: 0-1} relative position within the gradient element to sample
+    // If not provided, samples at center (0.5, 0.5)
+    function getGradientBg(el, samplePos) {
+      var bgi = getComputedStyle(el).backgroundImage;
+      if (!bgi || bgi === 'none' || bgi.indexOf('gradient') === -1) return null;
+      var layers = splitGrads(bgi);
+      if (layers.length === 0) return null;
+      _gc.width = 100; _gc.height = 100;
+      _gx.clearRect(0, 0, 100, 100);
+      // Render bottom-to-top (CSS: first = top)
+      for (var li = layers.length - 1; li >= 0; li--) {
+        var layer = layers[li];
+        if (layer.indexOf('radial') !== -1) {
+          var rs = layer.match(/(?:rgba?\([^)]+\)|hsla?\([^)]+\)|#[0-9a-fA-F]{3,8})/g);
+          if (rs && rs.length > 0) { var fc = parseColor(rs[0]); if (fc && fc.a > 0) { _gx.fillStyle = 'rgba(' + fc.r + ',' + fc.g + ',' + fc.b + ',' + fc.a + ')'; _gx.fillRect(0, 0, 100, 100); } }
+          continue;
+        }
+        // Linear gradient — extract stops from THIS layer only
+        var sr = /(rgba?\([^)]+\)|hsla?\([^)]+\)|#[0-9a-fA-F]{3,8})\s*([\d.]+%)?/g;
+        var stops = [], m;
+        while ((m = sr.exec(layer)) !== null) { var sc = parseColor(m[1]); if (sc) stops.push({ c: sc, p: m[2] ? parseFloat(m[2]) / 100 : null }); }
+        if (stops.length === 0) continue;
+        if (stops.length === 1) { _gx.fillStyle = 'rgba(' + stops[0].c.r + ',' + stops[0].c.g + ',' + stops[0].c.b + ',' + stops[0].c.a + ')'; _gx.fillRect(0, 0, 100, 100); continue; }
+        if (stops[0].p === null) stops[0].p = 0;
+        if (stops[stops.length - 1].p === null) stops[stops.length - 1].p = 1;
+        var angleMatch = layer.match(/linear-gradient\(\s*(\d+(?:\.\d+)?)deg/);
+        var deg = angleMatch ? parseFloat(angleMatch[1]) : 180;
+        var rad = (deg - 90) * Math.PI / 180;
+        var diag = Math.sqrt(100 * 100 + 100 * 100) / 2;
+        var dx = Math.cos(rad) * diag, dy = Math.sin(rad) * diag;
+        try {
+          var grad = _gx.createLinearGradient(50 - dx, 50 - dy, 50 + dx, 50 + dy);
+          for (var si = 0; si < stops.length; si++) { var c = stops[si].c; grad.addColorStop(Math.max(0, Math.min(1, stops[si].p || 0)), 'rgba(' + c.r + ',' + c.g + ',' + c.b + ',' + c.a + ')'); }
+          _gx.fillStyle = grad;
+          _gx.fillRect(0, 0, 100, 100);
+        } catch(e) {}
+      }
+      // Sample at the text element's position within the gradient container
+      var sx = samplePos ? Math.round(samplePos.x * 99) : 50;
+      var sy = samplePos ? Math.round(samplePos.y * 99) : 50;
+      var d = _gx.getImageData(sx, sy, 1, 1).data;
+      if (d[3] === 0) return null;
+      return { r: d[0], g: d[1], b: d[2], a: Math.round(d[3] / 255 * 100) / 100 };
+    }
+    function getEffectiveBg(el) {
+      var elRect = el.getBoundingClientRect();
+      var elCenterX = elRect.left + elRect.width / 2;
+      var elCenterY = elRect.top + elRect.height / 2;
+      var node = el, layers = [];
+      while (node && node !== document.documentElement) {
+        var bg = getComputedStyle(node).backgroundColor;
+        var c = parseColor(bg);
+        if (!c || c.a === 0) {
+          // Sample gradient at the text element's position relative to this ancestor
+          var nodeRect = node.getBoundingClientRect();
+          var relX = nodeRect.width > 0 ? (elCenterX - nodeRect.left) / nodeRect.width : 0.5;
+          var relY = nodeRect.height > 0 ? (elCenterY - nodeRect.top) / nodeRect.height : 0.5;
+          c = getGradientBg(node, { x: Math.max(0, Math.min(1, relX)), y: Math.max(0, Math.min(1, relY)) });
+        }
+        if (c && c.a > 0) layers.push(c);
+        if (c && c.a >= 1) break;
+        node = node.parentElement;
+      }
+      var result = { r: 255, g: 255, b: 255 };
+      for (var i = layers.length - 1; i >= 0; i--) {
+        var l = layers[i], a = l.a;
+        result = { r: Math.round(l.r * a + result.r * (1 - a)), g: Math.round(l.g * a + result.g * (1 - a)), b: Math.round(l.b * a + result.b * (1 - a)) };
+      }
+      return result;
+    }
+    function luminance(c) {
+      var rs = c.r / 255, gs = c.g / 255, bs = c.b / 255;
+      var r = rs <= 0.03928 ? rs / 12.92 : Math.pow((rs + 0.055) / 1.055, 2.4);
+      var g = gs <= 0.03928 ? gs / 12.92 : Math.pow((gs + 0.055) / 1.055, 2.4);
+      var b = bs <= 0.03928 ? bs / 12.92 : Math.pow((bs + 0.055) / 1.055, 2.4);
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    }
+    function contrastRatio(c1, c2) {
+      var l1 = luminance(c1), l2 = luminance(c2);
+      return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+    }
+    function rgbStr(c) { return 'rgb(' + c.r + ',' + c.g + ',' + c.b + ')'; }
+    function isVisible(el) {
+      var s = getComputedStyle(el);
+      if (s.display === 'none' || s.visibility === 'hidden') return false;
+      if (s.opacity === '0') {
+        // Check if this is a scroll-animated element (has transition/animation) — treat as visible
+        // These will be force-revealed during the screenshot phase
+        var hasTrans = s.transition && s.transition.indexOf('opacity') !== -1;
+        var hasAnim = s.animationName && s.animationName !== 'none';
+        var cls = (el.className && typeof el.className === 'string') ? el.className.toLowerCase() : '';
+        if (!hasTrans && !hasAnim && !/fade|reveal|animate|aos|slide|appear/.test(cls)) return false;
+      }
+      var r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0;
+    }
+    // Detect sr-only / visually-hidden elements (visible to screen readers but not to users).
+    // These use clip, tiny dimensions, or specific class names to hide visually.
+    function _isScreenReaderOnly(el) {
+      var r = el.getBoundingClientRect();
+      if (r.width <= 1 && r.height <= 1) {
+        var s = getComputedStyle(el);
+        if (s.overflow === 'hidden' || s.clip !== 'auto' || s.clipPath === 'inset(50%)') return true;
+      }
+      var cls = (el.className && typeof el.className === 'string') ? el.className : '';
+      if (/\b(sr-only|visually-hidden|screen-reader|clip-hide|offscreen)\b/.test(cls)) return true;
+      return false;
+    }
+    function cssSelector(el) {
+      if (el.id) return '#' + el.id;
+      var tag = el.tagName.toLowerCase();
+      var cls = el.className && typeof el.className === 'string' ? '.' + el.className.trim().split(/\s+/).slice(0, 2).join('.') : '';
+      // Add nth-child to disambiguate siblings with same tag+class
+      var nth = '';
+      if (el.parentElement) {
+        var siblings = el.parentElement.children;
+        var sameCount = 0, pos = 0;
+        for (var i = 0; i < siblings.length; i++) {
+          if (siblings[i].tagName === el.tagName) { sameCount++; if (siblings[i] === el) pos = sameCount; }
+        }
+        if (sameCount > 1) nth = ':nth-of-type(' + pos + ')';
+      }
+      return tag + cls + nth;
+    }
+
+    var data = {
+      meta: { title: document.title, url: location.href, viewportWidth: window.innerWidth, viewportHeight: window.innerHeight, docHeight: Math.max(document.body.scrollHeight, document.documentElement.scrollHeight), scrollX: window.scrollX, scrollY: window.scrollY, timestamp: new Date().toISOString(), version: 1, isFragment: !!window.__milgIsFragment },
+      colors: { textColors: [], bgColors: [], contrastPairs: [], bgEdgePairs: [] },
+      typography: { bodyFontSize: '', bodyLineHeight: '', bodyFontFamily: '', fontFamilies: [], fontSizes: [], fontWeights: [], headings: [], lineHeights: [], maxLineLength: { chars: 0, element: '', fontSize: 0, textLength: 0 } },
+      spacing: { paddings: [], margins: [], gaps: [], maxContentWidth: '', bodyPaddingHorizontal: '' },
+      layout: { sectionGaps: [], alignmentEdges: [], visualHierarchy: {} },
+      interaction: { touchTargets: [], transitions: [] },
+      accessibility: { semanticElements: {}, headingHierarchy: [], imagesWithoutAlt: 0, formLabels: { total: 0, withLabel: 0, withoutLabel: 0 }, focusIndicators: [] },
+      structure: { totalElements: 0, darkModeClasses: false, responsiveClasses: false, tailwindDetected: false, cssFramework: 'unknown' }
+    };
+
+    var allElements = document.body.querySelectorAll('*');
+    data.structure.totalElements = allElements.length;
+    var htmlStr = document.body.innerHTML;
+    if (/class="[^"]*(?:sm:|md:|lg:|xl:)/.test(htmlStr) || /class="[^"]*(?:flex|grid|text-|bg-|p-|m-)/.test(htmlStr)) { data.structure.tailwindDetected = true; data.structure.cssFramework = 'tailwind'; }
+    else if (/class="[^"]*(?:col-md|col-sm|btn-primary|container-fluid)/.test(htmlStr)) { data.structure.cssFramework = 'bootstrap'; }
+    data.structure.darkModeClasses = /class="[^"]*dark:/.test(htmlStr) || document.body.classList.contains('dark-ui') || document.body.classList.contains('dark-mode') || document.body.classList.contains('dark-theme') || document.documentElement.classList.contains('dark') || document.documentElement.getAttribute('data-theme') === 'dark' || document.body.getAttribute('data-theme') === 'dark' || document.querySelector('[data-bs-theme="dark"]') !== null || Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r.cssText && r.cssText.indexOf('prefers-color-scheme') !== -1; }); } catch(e) { return false; } });
+    data.structure.responsiveClasses = /class="[^"]*(?:sm:|md:|lg:|xl:)/.test(htmlStr) || Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r instanceof CSSMediaRule && /max-width|min-width/.test(r.conditionText || ''); }); } catch(e) { return false; } });
+
+    // Decorative element detection — only skip aria-hidden if actually hidden
+    var decorativeEls = new Set();
+    var defaultExclude = '[role="img"], [role="presentation"], [data-decorative]';
+    // User-defined exclude selector (passed via window.__milgExclude)
+    var userExclude = window.__milgExclude || '';
+    var fullExclude = userExclude ? defaultExclude + ', ' + userExclude : defaultExclude;
+    try {
+      document.querySelectorAll(fullExclude).forEach(function(el) {
+        decorativeEls.add(el);
+        el.querySelectorAll('*').forEach(function(child) { decorativeEls.add(child); });
+      });
+    } catch(e) { /* invalid selector — ignore */ }
+    function isDecorative(el) { return decorativeEls.has(el); }
+
+    // Universal bbox tracker: captures bbox AND stores element ref for re-reading
+    // after scroll-reset (which triggers layout shifts from lazy content/animations).
+    // When screenshots are enabled, the screenshot script re-reads all bboxes using
+    // getFlowPosition() which subtracts CSS transforms to get flow position.
+    var _bboxRefs = []; // [{el, obj, key}] — will update obj[key] = newBbox
+    function captureBbox(el) {
+      var r = el.getBoundingClientRect();
+      return { left: Math.round(r.left + window.scrollX), top: Math.round(r.top + window.scrollY), width: Math.round(r.width), height: Math.round(r.height) };
+    }
+    function trackBbox(el, obj, key) {
+      obj[key] = captureBbox(el);
+      _bboxRefs.push({ el: el, obj: obj, key: key });
+    }
+
+    // Page context
+    data.context = { pageType: 'unknown' };
+    var hasHero = !!document.querySelector('.hero, [class*="hero"], section:first-of-type h1');
+    var hasPricing = !!document.querySelector('[class*="pricing"], [class*="price"], .plan, .tier');
+    var formCount = document.querySelectorAll('form').length;
+    var sectionCount = document.querySelectorAll('section').length;
+    if (hasPricing) data.context.pageType = 'pricing';
+    else if (formCount > 0 && data.structure.totalElements < 80) data.context.pageType = 'form';
+    else if (hasHero && sectionCount >= 3) data.context.pageType = 'marketing';
+    else if (sectionCount >= 2) data.context.pageType = 'content';
+
+    var bodyStyle = getComputedStyle(document.body);
+    data.typography.bodyFontSize = bodyStyle.fontSize;
+    data.typography.bodyLineHeight = bodyStyle.lineHeight;
+    data.typography.bodyFontFamily = bodyStyle.fontFamily;
+    data.spacing.bodyPaddingHorizontal = bodyStyle.paddingLeft;
+
+    var fontSizeMap = {}, fontWeightMap = {}, fontFamilySet = new Set(), lineHeightMap = {};
+    var textColorMap = {}, bgColorMap = {}, paddingMap = {}, marginMap = {}, gapMap = {};
+    var textColorSample = {}, bgColorSample = {}; // Store one sample selector per color
+    var fontSizeSamples = {}; // fontSize → {selector, bbox, extraBboxes?} for sample elements
+    var maxContentW = 0;
+    var contrastPairs = [];
+    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
+    var node, seenForContrast = new Set();
+    var _contrastStats = { textNodes: 0, empty: 0, noParent: 0, invisible: 0, decorative: 0, seen: 0, noFg: 0, gradientText: 0, captured: 0 };
+
+    while (node = walker.nextNode()) {
+      _contrastStats.textNodes++;
+      if (!node.textContent.trim()) { _contrastStats.empty++; continue; }
+      var el = node.parentElement;
+      if (!el) { _contrastStats.invisible++; continue; }
+      // Check visibility including ancestors — an ancestor with opacity:0 hides children
+      var _elVisible = true;
+      var _checkNode = el;
+      while (_checkNode && _checkNode !== document.documentElement) {
+        var _cs = getComputedStyle(_checkNode);
+        if (_cs.display === 'none' || _cs.visibility === 'hidden') { _elVisible = false; break; }
+        if (_cs.opacity === '0') {
+          // Allow scroll-animated ancestors
+          var _hasTr = _cs.transition && _cs.transition.indexOf('opacity') !== -1;
+          var _hasAn = _cs.animationName && _cs.animationName !== 'none';
+          var _cls2 = (_checkNode.className && typeof _checkNode.className === 'string') ? _checkNode.className.toLowerCase() : '';
+          if (!_hasTr && !_hasAn && !/fade|reveal|animate|aos|slide|appear/.test(_cls2)) { _elVisible = false; break; }
+        }
+        _checkNode = _checkNode.parentElement;
+      }
+      var _rect = el.getBoundingClientRect();
+      if (!_elVisible || _rect.width <= 0 || _rect.height <= 0) {
+        _contrastStats.invisible++;
+        continue;
+      }
+      if (isDecorative(el)) { _contrastStats.decorative++; continue; }
+      if (seenForContrast.has(el)) { _contrastStats.seen++; continue; }
+      seenForContrast.add(el);
+      var style = getComputedStyle(el);
+      var textFillColor = style.webkitTextFillColor || style.getPropertyValue('-webkit-text-fill-color') || '';
+      var bgClip = style.webkitBackgroundClip || style.getPropertyValue('-webkit-background-clip') || style.backgroundClip || '';
+      var isGradientText = bgClip === 'text' && textFillColor === 'transparent';
+      // For gradient text: CSS fg is meaningless (transparent), use a placeholder
+      // The pixel verification pipeline will measure actual rendered colors from the screenshot
+      var fg;
+      if (isGradientText) {
+        // Sample the gradient at center to get an approximate fg color for CSS-level reporting
+        var gradBg = getGradientBg(el, { x: 0.5, y: 0.5 });
+        fg = gradBg || { r: 128, g: 128, b: 128, a: 1 }; // fallback grey
+      } else {
+        fg = textFillColor && textFillColor !== 'transparent' ? parseColor(textFillColor) : parseColor(style.color);
+      }
+      if (!fg) {
+        _contrastStats.noFg++;
+        continue;
+      }
+      // Skip emoji-only elements (picture emoji can't be contrast-checked)
+      var _textContent = (el.textContent || '').trim();
+      var _noEmoji = _textContent.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1FA00}-\u{1FA9F}\u{200D}]/gu, '').trim();
+      if (_noEmoji.length === 0 && _textContent.length > 0) continue;
+      var fgBlended = blendOnWhite(fg);
+      var bg = getEffectiveBg(el);
+      var ratio = contrastRatio(fgBlended, bg);
+      var fontSize = parseFloat(style.fontSize);
+      var fontWeight = parseInt(style.fontWeight) || 400;
+      var isLarge = fontSize >= 24 || (fontSize >= 18.66 && fontWeight >= 700);
+      var threshold = isLarge ? 3 : 4.5;
+      var filterAncestor = el;
+      var filterValue = '';
+      var hasBackdropFilter = false;
+      var minBgAlpha = 1;
+      while (filterAncestor && filterAncestor !== document.documentElement) {
+        var aStyle = getComputedStyle(filterAncestor);
+        var f = aStyle.filter;
+        if (f && f !== 'none' && !filterValue) { filterValue = f; }
+        var bf = aStyle.backdropFilter || aStyle.webkitBackdropFilter || '';
+        if (bf && bf !== 'none') hasBackdropFilter = true;
+        var aBg = parseColor(aStyle.backgroundColor);
+        if (aBg && aBg.a > 0 && aBg.a < 1 && aBg.a < minBgAlpha) minBgAlpha = aBg.a;
+        filterAncestor = filterAncestor.parentElement;
+      }
+      var elRect = el.getBoundingClientRect();
+      // Compute effective opacity (element × ancestors)
+      var _effOpacity = 1;
+      var _opNode = el;
+      while (_opNode && _opNode !== document.documentElement) {
+        var _opVal = parseFloat(getComputedStyle(_opNode).opacity);
+        if (!isNaN(_opVal) && _opVal < 1) _effOpacity *= _opVal;
+        _opNode = _opNode.parentElement;
+      }
+      if (ratio < 22) { // capture all pairs including AAA passes for pixel verification
+        var _cpEntry = { fg: rgbStr(fgBlended), bg: rgbStr(bg), ratio: Math.round(ratio * 100) / 100, needed: threshold, passes: ratio >= threshold, fontSize: Math.round(fontSize), fontWeight: fontWeight, isLarge: isLarge, text: (el.textContent || '').trim().substring(0, 200), selector: cssSelector(el), filter: filterValue, backdropFilter: hasBackdropFilter, minBgAlpha: Math.round(minBgAlpha * 100) / 100, effectiveOpacity: Math.round(_effOpacity * 100) / 100, isGradientText: isGradientText, fontFamily: style.fontFamily, fontStyle: style.fontStyle, letterSpacing: style.letterSpacing, textTransform: style.textTransform, lineHeight: style.lineHeight, bbox: null };
+        trackBbox(el, _cpEntry, 'bbox');
+        contrastPairs.push(_cpEntry);
+        _contrastStats.captured++;
+      }
+      var elWidth = elRect.width;
+      var charWidth = fontSize * 0.5;
+      var charsPerLine = Math.round(elWidth / charWidth);
+      if (charsPerLine > data.typography.maxLineLength.chars && el.tagName !== 'SCRIPT' && el.tagName !== 'STYLE' && !el.closest('pre') && !el.closest('code')) {
+        data.typography.maxLineLength = { chars: charsPerLine, element: cssSelector(el), fontSize: Math.round(fontSize), textLength: node.textContent.trim().length, bbox: null };
+        trackBbox(el, data.typography.maxLineLength, 'bbox');
+      }
+    }
+    // Placeholder text contrast — inputs/textareas with placeholder attribute
+    document.querySelectorAll('input[placeholder],textarea[placeholder]').forEach(function(inp) {
+      var ph = inp.getAttribute('placeholder');
+      if (!ph || !ph.trim()) return;
+      var inpRect = inp.getBoundingClientRect();
+      if (inpRect.width <= 0 || inpRect.height <= 0) return;
+      // Read ::placeholder color (browser-rendered pseudo-element)
+      var phStyle = getComputedStyle(inp, '::placeholder');
+      var phColor = phStyle ? parseColor(phStyle.color) : null;
+      if (!phColor) {
+        // Fallback: many browsers report placeholder as lighter version of input color
+        var inpColor = parseColor(getComputedStyle(inp).color);
+        if (inpColor) phColor = { r: inpColor.r, g: inpColor.g, b: inpColor.b, a: Math.min(inpColor.a, 0.5) };
+      }
+      if (!phColor) return;
+      var phBlended = blendOnWhite(phColor);
+      var phBg = getEffectiveBg(inp);
+      var phRatio = contrastRatio(phBlended, phBg);
+      var inpStyle = getComputedStyle(inp);
+      var phFontSize = parseFloat(inpStyle.fontSize);
+      var phFontWeight = parseInt(inpStyle.fontWeight) || 400;
+      var phIsLarge = phFontSize >= 24 || (phFontSize >= 18.66 && phFontWeight >= 700);
+      var _phEntry = {
+        fg: rgbStr(phBlended), bg: rgbStr(phBg),
+        ratio: Math.round(phRatio * 100) / 100,
+        needed: phIsLarge ? 3 : 4.5, passes: phRatio >= (phIsLarge ? 3 : 4.5),
+        fontSize: Math.round(phFontSize), fontWeight: phFontWeight, isLarge: phIsLarge,
+        text: '[placeholder] ' + ph.substring(0, 150),
+        selector: cssSelector(inp), filter: '', backdropFilter: false, minBgAlpha: 1,
+        fontFamily: inpStyle.fontFamily, fontStyle: inpStyle.fontStyle,
+        letterSpacing: inpStyle.letterSpacing, textTransform: inpStyle.textTransform,
+        lineHeight: inpStyle.lineHeight, isPlaceholder: true, bbox: null
+      };
+      trackBbox(inp, _phEntry, 'bbox');
+      contrastPairs.push(_phEntry);
+      _contrastStats.captured++;
+    });
+
+    contrastPairs.sort(function(a, b) { return a.ratio - b.ratio; });
+    data.colors.contrastPairs = contrastPairs;
+    data.colors._contrastStats = _contrastStats;
+
+    // Area-weighted darkness tracking for accurate page brightness measurement
+    var darknessAreas = []; // { darkness: 0-1, area: px² }
+    function parseGradientColors(bgImage) {
+      // Extract color stops from linear-gradient, radial-gradient
+      var colors = [];
+      var re = /(?:rgb|rgba)\(\s*(\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\s*\)|#([0-9a-fA-F]{3,8})/g;
+      var m;
+      while ((m = re.exec(bgImage)) !== null) {
+        if (m[4]) {
+          var hex = m[4];
+          if (hex.length === 3) hex = hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2];
+          colors.push({ r: parseInt(hex.substr(0,2),16), g: parseInt(hex.substr(2,2),16), b: parseInt(hex.substr(4,2),16) });
+        } else {
+          colors.push({ r: parseInt(m[1]), g: parseInt(m[2]), b: parseInt(m[3]) });
+        }
+      }
+      return colors;
+    }
+
+    for (var i = 0; i < allElements.length; i++) {
+      var el = allElements[i];
+      if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE' || el.tagName === 'NOSCRIPT') continue;
+      if (!isVisible(el)) continue;
+      var s = getComputedStyle(el);
+      fontSizeMap[s.fontSize] = (fontSizeMap[s.fontSize] || 0) + 1;
+      if (!fontSizeSamples[s.fontSize]) {
+        var _fsText = (el.textContent || '').trim().substring(0, 60);
+        fontSizeSamples[s.fontSize] = { selector: cssSelector(el), text: _fsText, bbox: null, extraBboxes: [] };
+        trackBbox(el, fontSizeSamples[s.fontSize], 'bbox');
+      } else if (fontSizeSamples[s.fontSize].extraBboxes) {
+        // Collect ALL additional bboxes + selectors + text for findings that show every instance
+        var _fsText = (el.textContent || '').trim().substring(0, 60);
+        var _extra = { bbox: null, selector: cssSelector(el), text: _fsText };
+        trackBbox(el, _extra, 'bbox');
+        fontSizeSamples[s.fontSize].extraBboxes.push(_extra);
+      }
+      fontWeightMap[s.fontWeight] = (fontWeightMap[s.fontWeight] || 0) + 1;
+      fontFamilySet.add(s.fontFamily.split(',')[0].trim().replace(/['"]/g, ''));
+      var lh = s.lineHeight;
+      if (lh !== 'normal') { var lhR = parseFloat(lh) / parseFloat(s.fontSize); lineHeightMap[Math.round(lhR * 100) / 100] = (lineHeightMap[Math.round(lhR * 100) / 100] || 0) + 1; }
+      if (s.color) { textColorMap[s.color] = (textColorMap[s.color] || 0) + 1; if (!textColorSample[s.color]) textColorSample[s.color] = cssSelector(el); }
+      var bgColor = s.backgroundColor;
+      if (bgColor && bgColor !== 'rgba(0, 0, 0, 0)' && bgColor !== 'transparent') { bgColorMap[bgColor] = (bgColorMap[bgColor] || 0) + 1; if (!bgColorSample[bgColor]) bgColorSample[bgColor] = cssSelector(el); }
+
+      // Track area-weighted darkness for bg-color and gradients
+      var rect = el.getBoundingClientRect();
+      var area = rect.width * rect.height;
+      if (area > 100) { // skip tiny elements
+        var bgM = bgColor && bgColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+        if (bgM) {
+          var bgLum = (parseInt(bgM[1]) * 0.299 + parseInt(bgM[2]) * 0.587 + parseInt(bgM[3]) * 0.114) / 255;
+          var bgAlpha = 1;
+          var alphaM = bgColor.match(/rgba\(\d+,\s*\d+,\s*\d+,\s*([\d.]+)/);
+          if (alphaM) bgAlpha = parseFloat(alphaM[1]);
+          if (bgAlpha > 0.3) darknessAreas.push({ darkness: 1 - bgLum, area: area * bgAlpha });
+        }
+        // Also check background-image for gradients
+        var bgImg = s.backgroundImage;
+        if (bgImg && bgImg !== 'none' && /gradient/.test(bgImg)) {
+          var gradColors = parseGradientColors(bgImg);
+          if (gradColors.length > 0) {
+            var avgGradLum = gradColors.reduce(function(sum, c) { return sum + (c.r * 0.299 + c.g * 0.587 + c.b * 0.114) / 255; }, 0) / gradColors.length;
+            darknessAreas.push({ darkness: 1 - avgGradLum, area: area });
+          }
+        }
+      }
+
+      [s.paddingTop, s.paddingRight, s.paddingBottom, s.paddingLeft].filter(function(v) { return v !== '0px'; }).forEach(function(v) { paddingMap[v] = (paddingMap[v] || 0) + 1; });
+      [s.marginTop, s.marginRight, s.marginBottom, s.marginLeft].filter(function(v) { return v !== '0px' && v !== 'auto'; }).forEach(function(v) { marginMap[v] = (marginMap[v] || 0) + 1; });
+      if (s.gap && s.gap !== 'normal' && s.gap !== '0px') gapMap[s.gap] = (gapMap[s.gap] || 0) + 1;
+      var w = rect.width;
+      if (w > maxContentW && w < window.innerWidth * 0.95) maxContentW = w;
+    }
+    function mapToSorted(map, sampleMap, bboxMap) { return Object.keys(map).map(function(k) { var entry = { value: k, count: map[k], sample: sampleMap ? (sampleMap[k] || '') : '' }; if (bboxMap && bboxMap[k]) { entry.sampleSelector = bboxMap[k].selector; entry.sampleText = bboxMap[k].text || ''; entry.bbox = bboxMap[k].bbox; entry._sampleRef = bboxMap[k]; if (bboxMap[k].extraBboxes) { entry.extraBboxes = bboxMap[k].extraBboxes.map(function(eb) { return eb.bbox; }).filter(Boolean); entry.extraSelectors = bboxMap[k].extraBboxes.map(function(eb) { return eb.selector; }).filter(Boolean); entry.extraTexts = bboxMap[k].extraBboxes.map(function(eb) { return eb.text || ''; }); } } return entry; }).sort(function(a, b) { return b.count - a.count; }); }
+    data.typography.fontSizes = mapToSorted(fontSizeMap, null, fontSizeSamples);
+    data.typography.fontWeights = mapToSorted(fontWeightMap);
+    data.typography.fontFamilies = Array.from(fontFamilySet);
+    data.typography.lineHeights = mapToSorted(lineHeightMap);
+    data.colors.textColors = mapToSorted(textColorMap, textColorSample);
+    data.colors.bgColors = mapToSorted(bgColorMap, bgColorSample);
+
+    // Darkness level: 1 = white page, 10 = black page (area-weighted, includes gradients)
+    var totalPixelWeight = 0;
+    var totalDarkness = 0;
+    if (darknessAreas.length > 0) {
+      // Use area-weighted calculation (accounts for element size and gradients)
+      for (var da = 0; da < darknessAreas.length; da++) {
+        totalDarkness += darknessAreas[da].darkness * darknessAreas[da].area;
+        totalPixelWeight += darknessAreas[da].area;
+      }
+    } else {
+      // Fallback: simple element-count weighting
+      for (var bgC in bgColorMap) {
+        var count = bgColorMap[bgC] || 1;
+        var m = bgC.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+        if (m) {
+          var lum = (parseInt(m[1]) * 0.299 + parseInt(m[2]) * 0.587 + parseInt(m[3]) * 0.114) / 255;
+          totalDarkness += (1 - lum) * count;
+          totalPixelWeight += count;
+        }
+      }
+    }
+    data.colors.darknessLevel = totalPixelWeight > 0 ? Math.max(1, Math.min(10, Math.round((totalDarkness / totalPixelWeight) * 9 + 1))) : 5;
+
+    // Smart dark mode detection: check multiple signals
+    var isDarkPage = data.colors.darknessLevel >= 6;
+    data.structure.isDarkPage = isDarkPage;
+    data.structure.darkModeMethod = 'none';
+    if (document.documentElement.classList.contains('dark')) data.structure.darkModeMethod = 'tailwind-class';
+    else if (document.body.classList.contains('dark-ui') || document.body.classList.contains('dark-mode') || document.body.classList.contains('dark-theme')) data.structure.darkModeMethod = 'body-class';
+    else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) data.structure.darkModeMethod = 'media-query';
+    else if (document.querySelector('[data-theme="dark"]') || document.documentElement.getAttribute('data-theme') === 'dark' || document.body.getAttribute('data-theme') === 'dark') data.structure.darkModeMethod = 'data-attribute';
+    else if (isDarkPage) data.structure.darkModeMethod = 'inferred-from-colors';
+
+    data.spacing.paddings = mapToSorted(paddingMap);
+    data.spacing.margins = mapToSorted(marginMap);
+    data.spacing.gaps = mapToSorted(gapMap);
+    data.spacing.maxContentWidth = Math.round(maxContentW) + 'px';
+
+    document.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(function(h) {
+      var hs = getComputedStyle(h);
+      var _hEntry = { tag: h.tagName.toLowerCase(), text: h.textContent.trim().substring(0, 60), fontSize: hs.fontSize, fontWeight: hs.fontWeight, lineHeight: hs.lineHeight, fontFamily: hs.fontFamily.split(',')[0].trim().replace(/['"]/g, ''), selector: cssSelector(h), bbox: null };
+      trackBbox(h, _hEntry, 'bbox');
+      data.typography.headings.push(_hEntry);
+      data.accessibility.headingHierarchy.push(h.tagName.toLowerCase());
+    });
+
+    // Layout: section gaps, alignment edges, visual hierarchy
+    var sections = document.querySelectorAll('section, [class*="section"], main > div, article');
+    var sortedSections = Array.from(sections).filter(function(el) { return isVisible(el); }).sort(function(a, b) { return a.getBoundingClientRect().top - b.getBoundingClientRect().top; });
+    var sectionGaps = [];
+    for (var si = 1; si < sortedSections.length; si++) {
+      var gapVal = Math.round(sortedSections[si].getBoundingClientRect().top - sortedSections[si - 1].getBoundingClientRect().bottom);
+      if (gapVal >= 0) sectionGaps.push(gapVal);
+    }
+    data.layout.sectionGaps = sectionGaps;
+
+    var alignTargets = document.querySelectorAll('h1,h2,h3,h4,p,ul,ol,table,form,img,figure,blockquote');
+    var leftEdges = [];
+    var alignmentElements = []; // elements with their edges for bbox tracking
+    Array.from(alignTargets).forEach(function(el) {
+      if (!isVisible(el) || isDecorative(el)) return;
+      var r = el.getBoundingClientRect();
+      if (r.width > 50) {
+        leftEdges.push(Math.round(r.left));
+        if (alignmentElements.length < 50) {
+          var _ae = { selector: cssSelector(el), left: Math.round(r.left), bbox: null };
+          trackBbox(el, _ae, 'bbox');
+          alignmentElements.push(_ae);
+        }
+      }
+    });
+    data.layout.alignmentEdges = leftEdges;
+    data.layout.alignmentElements = alignmentElements;
+
+    var bodyFS = parseFloat(data.typography.bodyFontSize) || 16;
+    var h1Sizes = data.typography.headings.filter(function(h) { return h.tag === 'h1'; }).map(function(h) { return parseFloat(h.fontSize); });
+    var h2Sizes = data.typography.headings.filter(function(h) { return h.tag === 'h2'; }).map(function(h) { return parseFloat(h.fontSize); });
+    data.layout.visualHierarchy = {
+      h1ToBody: h1Sizes.length > 0 ? Math.round((h1Sizes[0] / bodyFS) * 100) / 100 : 0,
+      h2ToBody: h2Sizes.length > 0 ? Math.round((h2Sizes[0] / bodyFS) * 100) / 100 : 0,
+      bodySize: bodyFS
+    };
+
+    var interactive = document.querySelectorAll('a,button,input,select,textarea,[role="button"],[tabindex]');
+    var touchIssues = [];
+    interactive.forEach(function(el) {
+      if (!isVisible(el) || isDecorative(el) || _isScreenReaderOnly(el)) return;
+      var rect = el.getBoundingClientRect();
+      var w = Math.round(rect.width), h = Math.round(rect.height);
+      if (w < 44 || h < 44) {
+        // Checkbox/radio: check if label provides adequate touch target
+        if (el.tagName === 'INPUT' && (el.type === 'checkbox' || el.type === 'radio')) {
+          var label = el.closest('label') || (el.id && document.querySelector('label[for="' + el.id + '"]'));
+          if (label) {
+            var lr = label.getBoundingClientRect();
+            // If label is reasonably sized, use label dimensions as touch target
+            if (lr.width >= 24 && lr.height >= 24) { w = Math.round(lr.width); h = Math.round(lr.height); }
+            // If label makes it pass the 44px threshold, skip entirely
+            if (w >= 44 && h >= 44) return;
+          }
+        }
+        var linkCtx = 'button';
+        if (el.tagName === 'A') {
+          if (el.closest('nav')) linkCtx = 'nav';
+          else if (el.closest('footer')) linkCtx = 'footer';
+          else if (el.closest('p, blockquote, figcaption, td, th, dd')) linkCtx = 'inline';
+          else { var ls = getComputedStyle(el); if ((ls.backgroundColor !== 'rgba(0, 0, 0, 0)' && ls.backgroundColor !== 'transparent') || (ls.borderStyle !== 'none' && ls.borderWidth !== '0px') || parseFloat(ls.paddingTop) > 4 || parseFloat(ls.paddingBottom) > 4) linkCtx = 'button'; else linkCtx = 'standalone'; }
+        }
+        var _ttEntry = { element: el.tagName.toLowerCase(), width: w, height: h, text: (el.textContent || el.getAttribute('aria-label') || '').trim().substring(0, 40), selector: cssSelector(el), passes: false, isButton: el.tagName !== 'A' || linkCtx === 'button' || linkCtx === 'nav', linkContext: linkCtx, bbox: null };
+        trackBbox(el, _ttEntry, 'bbox');
+        touchIssues.push(_ttEntry);
+      }
+    });
+    touchIssues.sort(function(a, b) { return (a.width * a.height) - (b.width * b.height); });
+    data.interaction.touchTargets = touchIssues.slice(0, 40);
+
+    // --- BBox edge contrast pairs: elements with own bg vs parent bg ---
+    // Checks whether buttons, cards, inputs, etc. visually stand out from surroundings
+    var bgEdgePairs = [];
+    var bgEdgeSeen = new Set();
+    var bgEdgeCandidates = document.querySelectorAll('button,a,[role="button"],input:not([type="hidden"]),select,textarea,details,summary,.card,[class*="card"],[class*="btn"],[class*="button"],[class*="chip"],[class*="badge"],[class*="tag"],[class*="alert"],[class*="toast"],[class*="banner"]');
+    bgEdgeCandidates.forEach(function(el) {
+      if (!isVisible(el) || isDecorative(el)) return;
+      var rect = el.getBoundingClientRect();
+      if (rect.width < 20 || rect.height < 16) return; // skip tiny
+      var sel = cssSelector(el);
+      if (bgEdgeSeen.has(sel)) return;
+      bgEdgeSeen.add(sel);
+      var s = getComputedStyle(el);
+      var elBg = s.backgroundColor;
+      var hasBg = elBg && elBg !== 'rgba(0, 0, 0, 0)' && elBg !== 'transparent';
+      var hasBorder = s.borderStyle !== 'none' && parseFloat(s.borderWidth) >= 1;
+      var hasOutline = s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) >= 1;
+      var hasShadow = s.boxShadow && s.boxShadow !== 'none';
+      // Skip elements with no visual boundary — edge test only makes sense
+      // when the element has its own background, border, or shadow
+      if (!hasBg && !hasBorder && !hasOutline && !hasShadow) return;
+      // Get parent effective bg
+      var parentBg = { r: 255, g: 255, b: 255 };
+      var pNode = el.parentElement;
+      while (pNode && pNode !== document.documentElement) {
+        var pBgStr = getComputedStyle(pNode).backgroundColor;
+        var pC = parseColor(pBgStr);
+        if (pC && pC.a >= 0.5) { parentBg = { r: pC.r, g: pC.g, b: pC.b }; break; }
+        pNode = pNode.parentElement;
+      }
+      var elBgParsed = parseColor(elBg);
+      var cssBgRatio = 1;
+      if (hasBg && elBgParsed && elBgParsed.a > 0.1) {
+        var blended = { r: Math.round(elBgParsed.r * elBgParsed.a + parentBg.r * (1 - elBgParsed.a)), g: Math.round(elBgParsed.g * elBgParsed.a + parentBg.g * (1 - elBgParsed.a)), b: Math.round(elBgParsed.b * elBgParsed.a + parentBg.b * (1 - elBgParsed.a)) };
+        cssBgRatio = Math.round(contrastRatio(blended, parentBg) * 100) / 100;
+      }
+      var _beEntry = {
+        selector: sel,
+        element: el.tagName.toLowerCase(),
+        text: (el.textContent || el.getAttribute('aria-label') || '').trim().substring(0, 40),
+        elBg: hasBg ? rgbStr(elBgParsed && elBgParsed.a > 0.1 ? { r: Math.round(elBgParsed.r * (elBgParsed.a || 1) + parentBg.r * (1 - (elBgParsed.a || 1))), g: Math.round(elBgParsed.g * (elBgParsed.a || 1) + parentBg.g * (1 - (elBgParsed.a || 1))), b: Math.round(elBgParsed.b * (elBgParsed.a || 1) + parentBg.b * (1 - (elBgParsed.a || 1))) } : parentBg) : rgbStr(parentBg),
+        parentBg: rgbStr(parentBg),
+        cssBgRatio: cssBgRatio,
+        hasBorder: hasBorder,
+        hasOutline: hasOutline,
+        hasShadow: hasShadow,
+        borderColor: hasBorder ? s.borderColor : '',
+        bbox: null
+      };
+      trackBbox(el, _beEntry, 'bbox');
+      bgEdgePairs.push(_beEntry);
+    });
+    // Also check container elements with distinct backgrounds (cards, sections, etc.)
+    for (var _bei = 0; _bei < allElements.length && bgEdgePairs.length < 80; _bei++) {
+      var _bel = allElements[_bei];
+      if (!isVisible(_bel) || isDecorative(_bel)) continue;
+      var _bRect = _bel.getBoundingClientRect();
+      if (_bRect.width < 40 || _bRect.height < 30) continue;
+      var _bSel = cssSelector(_bel);
+      if (bgEdgeSeen.has(_bSel)) continue;
+      var _bS = getComputedStyle(_bel);
+      var _bBg = _bS.backgroundColor;
+      if (!_bBg || _bBg === 'rgba(0, 0, 0, 0)' || _bBg === 'transparent') continue;
+      var _bC = parseColor(_bBg);
+      if (!_bC || _bC.a < 0.3) continue;
+      // Must have padding or border-radius (signals a visual container, not just a wrapper)
+      var _hasPad = parseFloat(_bS.paddingTop) > 4 || parseFloat(_bS.paddingLeft) > 4;
+      var _hasRadius = parseFloat(_bS.borderRadius) > 0;
+      if (!_hasPad && !_hasRadius) continue;
+      bgEdgeSeen.add(_bSel);
+      var _pBg2 = { r: 255, g: 255, b: 255 };
+      var _pn2 = _bel.parentElement;
+      while (_pn2 && _pn2 !== document.documentElement) {
+        var _pBgStr2 = getComputedStyle(_pn2).backgroundColor;
+        var _pC2 = parseColor(_pBgStr2);
+        if (_pC2 && _pC2.a >= 0.5) { _pBg2 = { r: _pC2.r, g: _pC2.g, b: _pC2.b }; break; }
+        _pn2 = _pn2.parentElement;
+      }
+      var _blended2 = { r: Math.round(_bC.r * _bC.a + _pBg2.r * (1 - _bC.a)), g: Math.round(_bC.g * _bC.a + _pBg2.g * (1 - _bC.a)), b: Math.round(_bC.b * _bC.a + _pBg2.b * (1 - _bC.a)) };
+      var _ratio2 = Math.round(contrastRatio(_blended2, _pBg2) * 100) / 100;
+      bgEdgePairs.push({
+        selector: _bSel, element: _bel.tagName.toLowerCase(),
+        text: (_bel.textContent || '').trim().substring(0, 40),
+        elBg: rgbStr(_blended2), parentBg: rgbStr(_pBg2),
+        cssBgRatio: _ratio2,
+        hasBorder: _bS.borderStyle !== 'none' && parseFloat(_bS.borderWidth) >= 1,
+        hasOutline: false,
+        hasShadow: _bS.boxShadow && _bS.boxShadow !== 'none',
+        borderColor: _bS.borderStyle !== 'none' ? _bS.borderColor : '',
+        bbox: null
+      });
+      trackBbox(_bel, bgEdgePairs[bgEdgePairs.length - 1], 'bbox');
+    }
+    data.colors.bgEdgePairs = bgEdgePairs;
+
+    var transitionSet = new Set();
+    for (var i = 0; i < allElements.length && transitionSet.size < 20; i++) { var t = getComputedStyle(allElements[i]).transitionDuration; if (t && t !== '0s') transitionSet.add(t); }
+    data.interaction.transitions = Array.from(transitionSet);
+
+    data.accessibility.semanticElements = { header: document.querySelectorAll('header').length, nav: document.querySelectorAll('nav').length, main: document.querySelectorAll('main').length, footer: document.querySelectorAll('footer').length, section: document.querySelectorAll('section').length, article: document.querySelectorAll('article').length, aside: document.querySelectorAll('aside').length };
+    var navEls = document.querySelectorAll('nav'); var navItemCount = 0;
+    navEls.forEach(function(nav) { var topLinks = nav.querySelectorAll(':scope > a, :scope > ul > li > a, :scope > ol > li > a, :scope > button, :scope > ul > li > button'); navItemCount += topLinks.length; });
+    data.accessibility.navItemCount = navItemCount;
+    var noAlt = 0; var noAltElements = [];
+    document.querySelectorAll('img').forEach(function(img) {
+      if (!img.hasAttribute('alt')) {
+        noAlt++;
+        if (isVisible(img) && noAltElements.length < 10) {
+          var _naEntry = { selector: cssSelector(img), src: (img.src || '').substring(0, 80), bbox: null };
+          trackBbox(img, _naEntry, 'bbox');
+          noAltElements.push(_naEntry);
+        }
+      }
+    });
+    data.accessibility.imagesWithoutAlt = noAlt;
+    data.accessibility.imagesWithoutAltElements = noAltElements;
+    var inputs = document.querySelectorAll('input:not([type="hidden"]):not([type="submit"]):not([type="button"]),select,textarea');
+    var labeled = 0; var unlabeledElements = [];
+    inputs.forEach(function(inp) {
+      data.accessibility.formLabels.total++;
+      if ((inp.id && document.querySelector('label[for="' + inp.id + '"]')) || inp.closest('label') || inp.getAttribute('aria-label') || inp.getAttribute('aria-labelledby')) {
+        labeled++;
+      } else if (isVisible(inp) && unlabeledElements.length < 10) {
+        var _ulEntry = { selector: cssSelector(inp), type: inp.type || inp.tagName.toLowerCase(), bbox: null };
+        trackBbox(inp, _ulEntry, 'bbox');
+        unlabeledElements.push(_ulEntry);
+      }
+    });
+    data.accessibility.formLabels.withLabel = labeled;
+    data.accessibility.formLabels.withoutLabel = data.accessibility.formLabels.total - labeled;
+    data.accessibility.formLabels.unlabeledElements = unlabeledElements;
+    Array.from(interactive).slice(0, 10).forEach(function(el) { if (!isVisible(el)) return; var s = getComputedStyle(el); data.accessibility.focusIndicators.push({ element: cssSelector(el), outlineStyle: s.outlineStyle, outlineWidth: s.outlineWidth, outlineColor: s.outlineColor, outlineOffset: s.outlineOffset }); });
+    var _hasFvCSS = Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r.selectorText && r.selectorText.indexOf('focus-visible') !== -1; }); } catch(e) { return false; } });
+    var _hasFvClasses = Array.from(interactive).slice(0, 20).some(function(el) { var cls = el.getAttribute('class') || ''; return cls.indexOf('focus-visible') !== -1 || cls.indexOf('focus:ring') !== -1 || cls.indexOf('focus:outline') !== -1; });
+    data.accessibility.hasFocusVisibleCSS = _hasFvCSS || _hasFvClasses;
+    // Skip link detection: an <a href="#..."> among the first focusable elements.
+    // Detected by structure (internal anchor link early in tab order), not by text content (multilingual).
+    data.accessibility.hasSkipLink = false;
+    var _firstFocusable = document.querySelectorAll('a[href],button,input,select,textarea,[tabindex]');
+    for (var _fi = 0; _fi < Math.min(_firstFocusable.length, 5); _fi++) {
+      var _fe = _firstFocusable[_fi];
+      if (_fe.tagName === 'A' && _fe.getAttribute('href') && /^#\w/.test(_fe.getAttribute('href'))) {
+        data.accessibility.hasSkipLink = true;
+        break;
+      }
+    }
+    // Font smoothing + bg image behind text (profile-specific)
+    data.typography.fontSmoothingAntialiased = false;
+    try { var bs = getComputedStyle(document.body).webkitFontSmoothing; if (bs === 'antialiased') data.typography.fontSmoothingAntialiased = true; } catch(e) {}
+    data.accessibility.bgImageBehindText = 0;
+    document.querySelectorAll('p,h1,h2,h3,h4,h5,h6,li,span').forEach(function(el) { if (!isVisible(el)) return; var bgi = getComputedStyle(el).backgroundImage; if (bgi && bgi !== 'none' && bgi.indexOf('url(') !== -1 && el.textContent.trim().length > 10) data.accessibility.bgImageBehindText++; });
+
+    // --- Viewport visibility: detect elements positioned off-screen on x-axis ---
+    var vpW = window.innerWidth;
+    var _iframeDataContentTags = { table: 1, pre: 1, code: 1 };
+    data.layout.offscreenElements = [];
+    var meaningfulSel = 'button,a,[role="menuitem"],[role="menu"],li,p,h1,h2,h3,h4,h5,h6,img,input,select,textarea,td,th,label,span,div';
+    document.querySelectorAll(meaningfulSel).forEach(function(el) {
+      if (!isVisible(el) || isDecorative(el)) return;
+      var r = el.getBoundingClientRect();
+      if (r.width < 4 || r.height < 4) return;
+      var fullyOff = r.right < 0 || r.left >= vpW;
+      var majorClip = r.left < vpW && r.right > vpW && (r.right - vpW) > r.width * 0.5;
+      if (!fullyOff && !majorClip) return;
+      // Only skip if inside a genuinely intentional scroll container (data content)
+      var anc = el.parentElement;
+      var inIntentionalScroll = false;
+      while (anc && anc !== document.body && anc !== document.documentElement) {
+        var ox = getComputedStyle(anc).overflowX;
+        if (ox === 'auto' || ox === 'scroll') {
+          var ancTag = anc.tagName.toLowerCase();
+          var isData = !!_iframeDataContentTags[ancTag] || !!anc.closest('table,pre,code');
+          var isWide = anc.clientWidth >= vpW * 0.8;
+          if (isData && !isWide) { inIntentionalScroll = true; break; }
+          break;
+        }
+        anc = anc.parentElement;
+      }
+      if (inIntentionalScroll) return;
+      var parentAlready = data.layout.offscreenElements.some(function(rec) {
+        try { var pel = document.querySelector(rec.selector); return pel && pel.contains(el) && pel !== el; } catch(e) { return false; }
+      });
+      if (parentAlready) return;
+      var _oeEntry = {
+        element: el.tagName.toLowerCase(),
+        selector: cssSelector(el),
+        text: (el.textContent || el.getAttribute('aria-label') || '').trim().substring(0, 50),
+        left: Math.round(r.left),
+        right: Math.round(r.right),
+        vpWidth: vpW,
+        reason: r.right < 0 ? 'left-overflow' : r.left >= vpW ? 'right-overflow' : 'major-clip',
+        bbox: null
+      };
+      trackBbox(el, _oeEntry, 'bbox');
+      data.layout.offscreenElements.push(_oeEntry);
+    });
+    data.layout.offscreenElements = data.layout.offscreenElements.slice(0, 20);
+
+    // --- Second pass: check hidden fixed/sticky elements for potential overflow ---
+    // Elements like scroll-triggered headers may be hidden (opacity:0) at extraction time
+    // but overflow the viewport when they become visible after scrolling
+    document.querySelectorAll('*').forEach(function(el) {
+      var s = getComputedStyle(el);
+      if (s.position !== 'fixed' && s.position !== 'sticky') return;
+      // Only check elements that are currently hidden
+      if (s.opacity !== '0' && s.display !== 'none' && s.visibility !== 'hidden') return;
+      // Temporarily reveal to measure
+      var origOpacity = el.style.opacity;
+      var origVisibility = el.style.visibility;
+      var origPointerEvents = el.style.pointerEvents;
+      el.style.opacity = '0.001';
+      el.style.visibility = 'visible';
+      el.style.pointerEvents = 'none';
+      // Force reflow
+      void el.offsetWidth;
+      // Check children for overflow
+      var children = el.querySelectorAll(meaningfulSel);
+      children.forEach(function(child) {
+        var cs = getComputedStyle(child);
+        if (cs.display === 'none') return;
+        var cr = child.getBoundingClientRect();
+        if (cr.width < 4 || cr.height < 4) return;
+        var fullyOff = cr.right < 0 || cr.left >= vpW;
+        var majorClip = cr.left < vpW && cr.right > vpW && (cr.right - vpW) > cr.width * 0.5;
+        if (!fullyOff && !majorClip) return;
+        // Skip if already reported
+        var sel = cssSelector(child);
+        var alreadyReported = data.layout.offscreenElements.some(function(rec) { return rec.selector === sel; });
+        if (alreadyReported) return;
+        var _hfEntry = {
+          element: child.tagName.toLowerCase(),
+          selector: sel,
+          text: (child.textContent || child.getAttribute('aria-label') || '').trim().substring(0, 50),
+          left: Math.round(cr.left),
+          right: Math.round(cr.right),
+          vpWidth: vpW,
+          reason: 'hidden-fixed-overflow',
+          bbox: null
+        };
+        trackBbox(child, _hfEntry, 'bbox');
+        data.layout.offscreenElements.push(_hfEntry);
+      });
+      // Restore
+      el.style.opacity = origOpacity;
+      el.style.visibility = origVisibility;
+      el.style.pointerEvents = origPointerEvents;
+    });
+    data.layout.offscreenElements = data.layout.offscreenElements.slice(0, 20);
+
+    // --- Table cell readability on narrow viewports ---
+    data.layout.tableCellIssues = [];
+    if (vpW < 768) {
+      document.querySelectorAll('table').forEach(function(table) {
+        var cells = table.querySelectorAll('td, th');
+        var cramped = 0, wrappedCells = 0;
+        cells.forEach(function(cell) {
+          if (!isVisible(cell)) return;
+          var cs = getComputedStyle(cell);
+          var r = cell.getBoundingClientRect();
+          var hPad = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+          // Check for very tight horizontal padding (<8px total)
+          if (hPad < 8 && r.width > 0) cramped++;
+          // Check for wrapped content (cell height > 1.8x line height = multi-line)
+          var lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.4;
+          if (r.height > lh * 1.8 && cell.textContent.trim().length > 0) wrappedCells++;
+        });
+        if (cramped > 2 || wrappedCells > 2) {
+          data.layout.tableCellIssues.push({
+            selector: cssSelector(table),
+            totalCells: cells.length,
+            crampedCells: cramped,
+            wrappedCells: wrappedCells,
+            tableWidth: Math.round(table.getBoundingClientRect().width),
+            vpWidth: vpW
+          });
+        }
+      });
+    }
+
+    // --- Fixed element scroll-contrast risk detection ---
+    // Detect fixed/sticky elements with static colors that may lose contrast
+    // when scrolled over sections with different background luminance
+    data.layout.fixedContrastRisks = [];
+    (function() {
+      function luminance(r, g, b) { var a = [r,g,b].map(function(v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return 0.2126 * a[0] + 0.7152 * a[1] + 0.0722 * a[2]; }
+      function parseColor(str) { var m = str.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/); return m ? { r: +m[1], g: +m[2], b: +m[3] } : null; }
+
+      // Sample section background colors at different scroll positions
+      var sections = document.querySelectorAll('section,main>div,[class*="bg-"]');
+      var sectionBgs = [];
+      sections.forEach(function(sec) {
+        var bg = getComputedStyle(sec).backgroundColor;
+        var c = parseColor(bg);
+        if (c) sectionBgs.push({ lum: luminance(c.r, c.g, c.b), element: cssSelector(sec) });
+      });
+      var hasLightSections = sectionBgs.some(function(s) { return s.lum > 0.4; });
+      var hasDarkSections = sectionBgs.some(function(s) { return s.lum < 0.15; });
+
+      // Check visible fixed elements for contrast risk (report per container, not per child)
+      // Only position:fixed — sticky elements are anchored within their section context
+      document.querySelectorAll('header,nav,[class*="fixed"]').forEach(function(el) {
+        var s = getComputedStyle(el);
+        if (s.position !== 'fixed') return;
+        var lightCount = 0, darkCount = 0, firstLight = null, firstDark = null;
+        var coloredChildren = el.querySelectorAll('a,button,span,svg,h1,h2,h3,p');
+        coloredChildren.forEach(function(child) {
+          if (!isVisible(child)) return; // skip display:none / hidden children
+          var cs = getComputedStyle(child);
+          var color = parseColor(cs.color);
+          if (!color) return;
+          var colorLum = luminance(color.r, color.g, color.b);
+          if (colorLum > 0.6 && hasLightSections) { lightCount++; if (!firstLight) firstLight = child; }
+          if (colorLum < 0.15 && hasDarkSections) { darkCount++; if (!firstDark) firstDark = child; }
+        });
+        if (lightCount > 0 && firstLight) {
+          data.layout.fixedContrastRisks.push({
+            selector: cssSelector(el),
+            text: (firstLight.textContent || firstLight.getAttribute('aria-label') || '').trim().substring(0, 30),
+            color: getComputedStyle(firstLight).color,
+            risk: 'light-on-light',
+            element: el.tagName.toLowerCase(),
+            childCount: lightCount
+          });
+        }
+        if (darkCount > 0 && firstDark) {
+          data.layout.fixedContrastRisks.push({
+            selector: cssSelector(el),
+            text: (firstDark.textContent || firstDark.getAttribute('aria-label') || '').trim().substring(0, 30),
+            color: getComputedStyle(firstDark).color,
+            risk: 'dark-on-dark',
+            element: el.tagName.toLowerCase(),
+            childCount: darkCount
+          });
+        }
+      });
+      data.layout.fixedContrastRisks = data.layout.fixedContrastRisks.slice(0, 10);
+    })();
+
+    // --- Missing data points expected by scoring modules ---
+    data.structure.hasHorizontalOverflow = document.documentElement.scrollWidth > document.documentElement.clientWidth;
+    // Find the widest element causing page-level overflow
+    // Skip absolutely/fixed positioned elements inside overflow:hidden containers
+    // — they extend beyond the viewport visually but are clipped, not scrollable
+    if (data.structure.hasHorizontalOverflow) {
+      var _pageOverflowCulprits = [];
+      var _docW = document.documentElement.clientWidth;
+      function _isClippedByParent(el) {
+        var s = getComputedStyle(el);
+        if (s.position !== 'absolute' && s.position !== 'fixed') return false;
+        var p = el.offsetParent || el.parentElement;
+        while (p && p !== document.documentElement) {
+          var ps = getComputedStyle(p);
+          if (ps.overflow === 'hidden' || ps.overflowX === 'hidden') return true;
+          p = p.parentElement;
+        }
+        return false;
+      }
+      Array.from(allElements).slice(0, 1000).forEach(function(el) {
+        if (!isVisible(el) || el === document.documentElement || el === document.body) return;
+        if (_isClippedByParent(el)) return;
+        var r = el.getBoundingClientRect();
+        if (r.right > _docW + 5 || r.width > _docW + 5) {
+          _pageOverflowCulprits.push({ selector: cssSelector(el), element: el.tagName.toLowerCase(), width: Math.round(r.width), right: Math.round(r.right), overflow: Math.round(r.right - _docW), bbox: null });
+          if (_pageOverflowCulprits.length <= 10) trackBbox(el, _pageOverflowCulprits[_pageOverflowCulprits.length - 1], 'bbox');
+        }
+      });
+      _pageOverflowCulprits.sort(function(a, b) { return b.overflow - a.overflow; });
+      data.structure.overflowCulprits = _pageOverflowCulprits.slice(0, 10);
+      // If all culprits were clipped, the overflow might be a false positive
+      if (_pageOverflowCulprits.length === 0) data.structure.hasHorizontalOverflow = false;
+    }
+
+    // Border radii (for layout/consistency scoring) — track sample elements per value
+    var radiusMap = {};
+    var radiusSamples = {}; // value → [{selector, bbox}]
+    Array.from(allElements).slice(0, 500).forEach(function(el) {
+      if (!isVisible(el)) return;
+      var br = getComputedStyle(el).borderRadius;
+      if (br && br !== '0px') {
+        radiusMap[br] = (radiusMap[br] || 0) + 1;
+        if (!radiusSamples[br]) radiusSamples[br] = [];
+        if (radiusSamples[br].length < 5) {
+          var _rs = { selector: cssSelector(el), bbox: null };
+          trackBbox(el, _rs, 'bbox');
+          radiusSamples[br].push(_rs);
+        }
+      }
+    });
+    data.layout.borderRadii = Object.keys(radiusMap).map(function(k) {
+      var samples = (radiusSamples[k] || []);
+      return { value: k, count: radiusMap[k], bboxes: samples.map(function(s) { return s.bbox; }).filter(Boolean), selectors: samples.map(function(s) { return s.selector; }).filter(Boolean) };
+    }).sort(function(a, b) { return b.count - a.count; }).slice(0, 15);
+
+    // Horizontal scroll containers — refined classification
+    var _iframeStructuralSel = 'nav,form,section,header,footer,article,aside,main,h1,h2,h3,h4,h5,h6';
+    data.layout.horizontalScrollContainers = [];
+    data.layout.nestedScrollbars = 0;
+    var overflowEls = document.querySelectorAll('[style*="overflow"],[class*="overflow"]');
+    overflowEls.forEach(function(oel) {
+      if (oel.scrollWidth > oel.clientWidth + 2 && oel.clientWidth > 0) {
+        var tag = oel.tagName.toLowerCase();
+        var oelStyle = getComputedStyle(oel);
+        var hasOverflowCSS = oelStyle.overflowX === 'auto' || oelStyle.overflowX === 'scroll' ||
+          /overflow-x-(auto|scroll)/.test(oel.className || '');
+        var isDataContent = !!_iframeDataContentTags[tag] || !!oel.closest('table,pre,code');
+        var hasStructuralChildren = !isDataContent && oel.querySelector(_iframeStructuralSel);
+        var isWideContainer = oel.clientWidth >= vpW * 0.8;
+
+        var classification = 'bug';
+        if (hasOverflowCSS && isDataContent && !hasStructuralChildren) {
+          classification = 'intentional';
+        } else if (hasOverflowCSS && !isDataContent && !hasStructuralChildren && !isWideContainer) {
+          classification = 'intentional';
+        }
+        if (!hasOverflowCSS) classification = 'bug';
+        if (isWideContainer && hasOverflowCSS && !isDataContent) classification = 'bug';
+
+        // Find the widest child causing the overflow
+        var _widestChild = null, _widestW = oel.clientWidth;
+        Array.from(oel.children).forEach(function(ch) {
+          var cr = ch.getBoundingClientRect();
+          if (cr.width > _widestW) { _widestW = cr.width; _widestChild = ch; }
+        });
+        var _hscEntry = {
+          selector: cssSelector(oel),
+          intentional: classification === 'intentional',
+          classification: classification,
+          reason: !hasOverflowCSS ? 'no-overflow-css' :
+                  hasStructuralChildren ? 'structural-children-in-scroll' :
+                  isWideContainer ? 'wide-container-scrolls' :
+                  isDataContent ? 'data-content' : 'unknown',
+          scrollWidth: oel.scrollWidth,
+          overflow: Math.round(oel.scrollWidth - oel.clientWidth),
+          element: tag,
+          bbox: null,
+          culprit: _widestChild ? cssSelector(_widestChild) : null,
+          culpritWidth: _widestChild ? Math.round(_widestW) : null
+        };
+        trackBbox(oel, _hscEntry, 'bbox');
+        data.layout.horizontalScrollContainers.push(_hscEntry);
+        // Nested scrollbar check
+        var scrollParent = oel.parentElement;
+        while (scrollParent && scrollParent !== document.body) {
+          var ps = getComputedStyle(scrollParent);
+          if (ps.overflowY === 'auto' || ps.overflowY === 'scroll') {
+            data.layout.nestedScrollbars++;
+            break;
+          }
+          scrollParent = scrollParent.parentElement;
+        }
+      }
+    });
+
+    // --- Silently clipped content: flex/grid containers where content overflows without scroll ---
+    // These won't cause page-level scrollbar in Chromium but can on iOS Safari
+    data.layout.clippedOverflow = [];
+    if (vpW < 768) {
+      document.querySelectorAll('div,section,nav,footer,header').forEach(function(el) {
+        if (!isVisible(el)) return;
+        if (el.scrollWidth <= el.clientWidth + 4 || el.clientWidth < 50) return;
+        var s = getComputedStyle(el);
+        // Only check flex/grid rows (not block elements which wrap naturally)
+        var isFlex = s.display === 'flex' || s.display === 'inline-flex';
+        var isGrid = s.display === 'grid' || s.display === 'inline-grid';
+        if (!isFlex && !isGrid) return;
+        // Skip if already has overflow handling
+        if (s.overflowX === 'auto' || s.overflowX === 'scroll' || s.overflowX === 'hidden') return;
+        // Skip if flex-wrap is enabled (content wraps instead of overflowing)
+        if (isFlex && s.flexWrap !== 'nowrap') return;
+        var overflowPx = el.scrollWidth - el.clientWidth;
+        if (overflowPx > 8) {
+          data.layout.clippedOverflow.push({
+            selector: cssSelector(el),
+            overflow: overflowPx,
+            containerWidth: el.clientWidth,
+            contentWidth: el.scrollWidth,
+            vpWidth: vpW,
+            display: s.display
+          });
+        }
+      });
+      data.layout.clippedOverflow = data.layout.clippedOverflow.slice(0, 10);
+    }
+
+    // Hidden panel detection — find all invisible interactive panels
+    data.layout.hiddenPanelIssues = [];
+    var _iframeHiddenPanels = [];
+    document.querySelectorAll('[role="menu"], [role="listbox"], [role="dialog"], [role="tooltip"], [role="alertdialog"]').forEach(function(el) {
+      if (!isVisible(el) && _iframeHiddenPanels.indexOf(el) === -1) _iframeHiddenPanels.push(el);
+    });
+    var _iframeInlineRoles = { region: 1, tabpanel: 1, tab: 1 };
+    document.querySelectorAll('[aria-controls]').forEach(function(trigger) {
+      var targetId = trigger.getAttribute('aria-controls');
+      if (targetId) {
+        var target = document.getElementById(targetId);
+        if (target && !isVisible(target) && _iframeHiddenPanels.indexOf(target) === -1) {
+          var targetRole = (target.getAttribute('role') || '').toLowerCase();
+          if (!_iframeInlineRoles[targetRole]) _iframeHiddenPanels.push(target);
+        }
+      }
+    });
+    document.querySelectorAll('[aria-haspopup="true"], [aria-haspopup="menu"], [aria-haspopup="dialog"], [aria-haspopup="listbox"]').forEach(function(trigger) {
+      var ctrlId = trigger.getAttribute('aria-controls');
+      if (ctrlId) {
+        var t = document.getElementById(ctrlId);
+        if (t && !isVisible(t) && _iframeHiddenPanels.indexOf(t) === -1) _iframeHiddenPanels.push(t);
+        return;
+      }
+      var wrapper = trigger.parentElement;
+      if (!wrapper) return;
+      wrapper.querySelectorAll('[role="menu"], [role="listbox"], [role="dialog"]').forEach(function(c) {
+        if (!isVisible(c) && _iframeHiddenPanels.indexOf(c) === -1) _iframeHiddenPanels.push(c);
+      });
+    });
+    data.layout.hiddenPanelCount = _iframeHiddenPanels.length;
+    _iframeHiddenPanels.slice(0, 15).forEach(function(panel) {
+      var origCssText = panel.style.cssText;
+      var origAriaHidden = panel.getAttribute('aria-hidden');
+      var origHidden = panel.hasAttribute('hidden');
+      panel.style.cssText = origCssText + '; display: block !important; visibility: visible !important; opacity: 1 !important; pointer-events: none !important;';
+      if (origHidden) panel.removeAttribute('hidden');
+      if (origAriaHidden) panel.setAttribute('aria-hidden', 'false');
+      void panel.offsetHeight;
+      var pr = panel.getBoundingClientRect();
+      var issues = [];
+      if (pr.width > 0 && pr.height > 0) {
+        if (pr.right > vpW + 2) issues.push({ type: 'right-overflow', overflow: Math.round(pr.right - vpW) });
+        if (pr.left < -2) issues.push({ type: 'left-overflow', overflow: Math.round(Math.abs(pr.left)) });
+        if (pr.bottom > window.innerHeight * 2) issues.push({ type: 'extreme-bottom', bottom: Math.round(pr.bottom) });
+        if (panel.scrollWidth > panel.clientWidth + 2) issues.push({ type: 'internal-overflow', overflow: Math.round(panel.scrollWidth - panel.clientWidth) });
+      }
+      panel.style.cssText = origCssText;
+      if (origHidden) panel.setAttribute('hidden', '');
+      if (origAriaHidden) panel.setAttribute('aria-hidden', origAriaHidden);
+      else if (panel.hasAttribute('aria-hidden')) panel.removeAttribute('aria-hidden');
+      if (issues.length > 0) {
+        var _hpEntry = {
+          selector: cssSelector(panel),
+          role: panel.getAttribute('role') || 'unknown',
+          width: Math.round(pr.width),
+          height: Math.round(pr.height),
+          left: Math.round(pr.left),
+          right: Math.round(pr.right),
+          vpWidth: vpW,
+          issues: issues,
+          bbox: null
+        };
+        trackBbox(panel, _hpEntry, 'bbox');
+        data.layout.hiddenPanelIssues.push(_hpEntry);
+      }
+    });
+
+    // DOM statistics
+    var _iframeTagCounts = {};
+    var _iframeDisplayNone = 0;
+    var _iframeAriaHidden = 0;
+    Array.from(allElements).forEach(function(el) {
+      var t = el.tagName.toLowerCase();
+      _iframeTagCounts[t] = (_iframeTagCounts[t] || 0) + 1;
+      if (t === 'script' || t === 'style' || t === 'link') return;
+      if (getComputedStyle(el).display === 'none') _iframeDisplayNone++;
+      if (el.getAttribute('aria-hidden') === 'true') _iframeAriaHidden++;
+    });
+    var _iframeSemTags = ['nav','header','footer','main','article','section','aside','figure','figcaption','details','summary','dialog','ul','ol','li','table','form','fieldset','label'];
+    var _iframeSemCount = 0;
+    _iframeSemTags.forEach(function(t) { _iframeSemCount += (_iframeTagCounts[t] || 0); });
+    data.structure.domStats = {
+      divCount: _iframeTagCounts['div'] || 0,
+      spanCount: _iframeTagCounts['span'] || 0,
+      semanticCount: _iframeSemCount,
+      displayNoneCount: _iframeDisplayNone,
+      ariaHiddenCount: _iframeAriaHidden,
+      divRatio: allElements.length > 0 ? Math.round((_iframeTagCounts['div'] || 0) / allElements.length * 100) : 0,
+      topTags: Object.keys(_iframeTagCounts).filter(function(t) { return t !== 'script' && t !== 'style' && t !== 'link'; }).sort(function(a, b) { return _iframeTagCounts[b] - _iframeTagCounts[a]; }).slice(0, 5).map(function(t) { return { tag: t, count: _iframeTagCounts[t] }; })
+    };
+
+    // Fixed-width and truncated elements
+    data.structure.fixedWidthElements = 0;
+    document.querySelectorAll('[style*="width"]').forEach(function(el) {
+      if (!isVisible(el)) return;
+      var w = el.style.width;
+      if (w && /^\d+(px)?$/.test(w) && parseFloat(w) > 300) {
+        var parentW = el.parentElement ? el.parentElement.getBoundingClientRect().width : vpW;
+        if (parseFloat(w) > parentW * 0.8) data.structure.fixedWidthElements++;
+      }
+    });
+    data.structure.truncatedElements = 0;
+    document.querySelectorAll('[class*="truncate"],[class*="ellipsis"],[style*="text-overflow"]').forEach(function(tel) {
+      if (!isVisible(tel)) return;
+      if (tel.scrollWidth > tel.clientWidth + 2) data.structure.truncatedElements++;
+    });
+
+    // Export bbox tracking for screenshot pipeline to re-read after scroll-reset
+    window.__milgBboxRefs = _bboxRefs;
+    window.__milgData = data;
+    window.__milgGetFlowPosition = function(el) {
+      var r = el.getBoundingClientRect();
+      var top = r.top, left = r.left;
+      var node = el;
+      while (node && node !== document.documentElement) {
+        var transform = getComputedStyle(node).transform;
+        if (transform && transform !== 'none') {
+          var m = transform.match(/matrix\(([^)]+)\)/);
+          if (m) {
+            var parts = m[1].split(',');
+            if (parts.length >= 6) {
+              left -= parseFloat(parts[4]) || 0;
+              top -= parseFloat(parts[5]) || 0;
+            }
+          }
+        }
+        node = node.parentElement;
+      }
+      return { left: Math.round(left), top: Math.round(top), width: Math.round(r.width), height: Math.round(r.height) };
+    };
+    window.__milgReReadBboxes = function() {
+      var updated = 0;
+      _bboxRefs.forEach(function(ref) {
+        if (!ref.el || !ref.obj) return;
+        try {
+          var oldBbox = ref.obj[ref.key];
+          ref.obj[ref.key] = window.__milgGetFlowPosition(ref.el);
+          updated++;
+        } catch(e) {}
+      });
+      // Propagate re-read bboxes to exported fontSizes entries
+      (data.typography.fontSizes || []).forEach(function(entry) {
+        if (entry._sampleRef) {
+          entry.bbox = entry._sampleRef.bbox;
+          if (entry._sampleRef.extraBboxes) {
+            entry.extraBboxes = entry._sampleRef.extraBboxes.map(function(eb) { return eb.bbox; }).filter(Boolean);
+            entry.extraSelectors = entry._sampleRef.extraBboxes.map(function(eb) { return eb.selector; }).filter(Boolean);
+          }
+        }
+      });
+      return updated + '/' + _bboxRefs.length;
+    };
+
+    // Attach sandbox log if present (JS-enabled mode intercepts)
+    data._sandboxLog = window.__milgSandboxLog || [];
+
+    // Store data globally for snippet access
+    window.__milgData = data;
+
+    // Output: callback (snippet mode) or postMessage (iframe mode)
+    if (typeof window.__milgOnExtractComplete === 'function') {
+      window.__milgOnExtractComplete(data);
+    } else {
+      parent.postMessage({ type: 'milg-analyzer-result', data: data, _iframeId: window.__milgIframeId || '' }, '*');
+    }
+    // Screenshot capture: triggered by parent via milg-start-capture message
+    // Legacy fallback for old screenshot script that uses __milgDoScreenshots
+    if (typeof window.__milgDoScreenshots === 'function') {
+      setTimeout(window.__milgDoScreenshots, 300);
+    }
+  }
+
+  return extractFromDocument;
+})();
+</file>
+
 <file path="docs/analyzer-iframe.js">
 // make-it-look-good — Iframe Analysis & Screenshot Pipeline
 // Handles iframe creation, extraction injection, screenshot capture, and deep scan.
@@ -36445,14 +36445,10 @@ window.MilgIframe = (function() {
               'function _sendFinal(maskUri){' +
                 'var _raw=window.__milgData||null;' +
                 // Build a lean updatedData with ONLY re-read bboxes (not full extraction + screenshots).
-                // Sending the full __milgData doubled the screenshot in the message and caused postMessage to fail.
                 'var updatedData=null;' +
                 'if(_raw){updatedData={colors:{contrastPairs:_raw.colors?_raw.colors.contrastPairs:[]},typography:{fontSizes:_raw.typography?_raw.typography.fontSizes:[],headings:_raw.typography?_raw.typography.headings:[],maxLineLength:_raw.typography?_raw.typography.maxLineLength:null},interaction:{touchTargets:_raw.interaction?_raw.interaction.touchTargets:[]},layout:{offscreenElements:_raw.layout?_raw.layout.offscreenElements:[],hiddenPanelIssues:_raw.layout?_raw.layout.hiddenPanelIssues:[]}}}' +
-                // Strip mask bitmap data from pairs (masks sent separately via maskResults)
-                'if(updatedData&&updatedData.colors&&updatedData.colors.contrastPairs){' +
-                  'updatedData.colors.contrastPairs.forEach(function(p){delete p._maskBmp;delete p._maskPts})}' +
-                'var mr=typeof _maskResults!=="undefined"?_maskResults:null;' +
-                // Send screenshot + metadata in one message (heavy but no masks)
+                // Masks are on the pairs in updatedData (bit-packed base64 — small).
+                // updatedData is lean (no screenshots), so total message fits in postMessage.
                 'var msg={type:"' + msgType + '",_iframeId:_mid,' +
                   'screenshots:fullUri?[fullUri]:[],' +
                   'screenshotFull:fullUri||null,' +
@@ -36462,16 +36458,14 @@ window.MilgIframe = (function() {
                     'docHeightAtCapture:fullH,' +
                     'calibrationOffsetY:0,calibrationSamples:[]},' +
                   'updatedData:updatedData};' +
+                'console.log("[iframe-ss] postMessage size estimate: ss="+((fullUri||"").length/1024|0)+"KB ud="+(JSON.stringify(updatedData||{}).length/1024|0)+"KB");' +
                 'try{parent.postMessage(msg,"*")}catch(e){' +
-                  'console.warn("[milg-warn] Screenshot postMessage failed:",e.message);' +
-                  'msg.screenshots=[];msg.screenshotFull=null;msg.updatedData=null;' +
-                  'try{parent.postMessage(msg,"*")}catch(e2){}' +
-                '}' +
-                // Send masks in a SEPARATE lightweight message (avoids size limit with screenshot)
-                'if(mr&&Object.keys(mr).length>0){' +
-                  'var maskMsg={type:"milg-mask-results",_iframeId:_mid,maskResults:mr};' +
-                  'try{parent.postMessage(maskMsg,"*")}catch(e){' +
-                    'console.warn("[milg-warn] Mask postMessage failed:",e.message,Object.keys(mr).length,"pairs")' +
+                  'console.warn("[milg-warn] postMessage failed ("+e.message+"), retrying without updatedData");' +
+                  'msg.updatedData=null;' +
+                  'try{parent.postMessage(msg,"*")}catch(e2){' +
+                    'console.warn("[milg-warn] Retry failed, dropping screenshots");' +
+                    'msg.screenshots=[];msg.screenshotFull=null;' +
+                    'try{parent.postMessage(msg,"*")}catch(e3){}' +
                   '}' +
                 '}' +
               '}' +
@@ -36833,34 +36827,24 @@ window.MilgIframe = (function() {
             if (ud.layout.hiddenPanelIssues) iframe._milgData.layout.hiddenPanelIssues = ud.layout.hiddenPanelIssues;
           }
         }
-        // Masks now sent in separate message — just log if old-style inline masks present
-        if (e.data.maskResults) {
-          _applyMaskResults(e.data.maskResults);
+        // Masks are on the pairs in updatedData (bit-packed base64 from mask layers).
+        // Verify: count how many pairs have _maskBmp after updatedData merge.
+        if (iframe._milgData && iframe._milgData.colors) {
+          var _mc = iframe._milgData.colors.contrastPairs.filter(function(p) { return !!p._maskBmp; }).length;
+          console.log('[milg-iframe] Pairs with masks after merge: ' + _mc + '/' + iframe._milgData.colors.contrastPairs.length);
         }
-        // Wait for separate mask message before finishing (masks arrive right after screenshot msg)
-        iframe._ssReady = true;
-        if (iframe._masksReady || !captureScreenshots) _finishWithMasks();
-        else setTimeout(function() { if (!iframe._masksReady) { console.warn('[milg-warn] Mask message timeout — finishing without masks'); _finishWithMasks(); } }, 3000);
+        // If hidden panels were detected, trigger unhidden screenshot pass
+        var hpc = iframe._milgData.layout && iframe._milgData.layout.hiddenPanelCount;
+        if (hpc > 0 && iframe.contentWindow && iframe.contentWindow.__milgDoUnhiddenScreenshots) {
+          try {
+            setTimeout(function() { iframe.contentWindow.__milgDoUnhiddenScreenshots(); }, 100);
+          } catch(ex) { finish(iframe._milgData); }
+        } else {
+          finish(iframe._milgData);
+        }
       }
       if (e.data.type === 'milg-screenshots-unhidden' && iframe._milgData) {
         iframe._milgData.screenshotsUnhidden = e.data.screenshots || [];
-        finish(iframe._milgData);
-      }
-      // Separate mask results message (sent after screenshot message to avoid size limits)
-      if (e.data.type === 'milg-mask-results' && e.data._iframeId === _iframeId && iframe._milgData) {
-        _applyMaskResults(e.data.maskResults);
-        iframe._masksReady = true;
-        if (iframe._ssReady) _finishWithMasks();
-      }
-    }
-    function _finishWithMasks() {
-      if (!iframe._milgData) return;
-      var hpc = iframe._milgData.layout && iframe._milgData.layout.hiddenPanelCount;
-      if (hpc > 0 && iframe.contentWindow && iframe.contentWindow.__milgDoUnhiddenScreenshots) {
-        try {
-          setTimeout(function() { iframe.contentWindow.__milgDoUnhiddenScreenshots(); }, 100);
-        } catch(ex) { finish(iframe._milgData); }
-      } else {
         finish(iframe._milgData);
       }
     }
@@ -39686,7 +39670,7 @@ window.MilgViewer = (function() {
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v51.4 loaded');
+console.log('[milg] analyzer.js v51.5 loaded');
 
 (function() {
   "use strict";
@@ -41283,7 +41267,7 @@ console.log('[milg] analyzer.js v51.4 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v51.4</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v51.5</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -41654,30 +41638,30 @@ console.log('[milg] analyzer.js v51.4 loaded');
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=51.4"></script>
-  <script src="scoring/contrast.js?v=51.4"></script>
-  <script src="scoring/typography.js?v=51.4"></script>
-  <script src="scoring/spacing.js?v=51.4"></script>
-  <script src="scoring/touch.js?v=51.4"></script>
-  <script src="scoring/accessibility.js?v=51.4"></script>
-  <script src="scoring/responsive.js?v=51.4"></script>
-  <script src="scoring/consistency.js?v=51.4"></script>
-  <script src="scoring/cognitive.js?v=51.4"></script>
-  <script src="scoring/layout.js?v=51.4"></script>
-  <script src="scoring/performance.js?v=51.4"></script>
-  <script src="scoring/readability.js?v=51.4"></script>
-  <script src="scoring/filters.js?v=51.4"></script>
-  <script src="scoring/balance.js?v=51.4"></script>
+  <script src="scoring/registry.js?v=51.5"></script>
+  <script src="scoring/contrast.js?v=51.5"></script>
+  <script src="scoring/typography.js?v=51.5"></script>
+  <script src="scoring/spacing.js?v=51.5"></script>
+  <script src="scoring/touch.js?v=51.5"></script>
+  <script src="scoring/accessibility.js?v=51.5"></script>
+  <script src="scoring/responsive.js?v=51.5"></script>
+  <script src="scoring/consistency.js?v=51.5"></script>
+  <script src="scoring/cognitive.js?v=51.5"></script>
+  <script src="scoring/layout.js?v=51.5"></script>
+  <script src="scoring/performance.js?v=51.5"></script>
+  <script src="scoring/readability.js?v=51.5"></script>
+  <script src="scoring/filters.js?v=51.5"></script>
+  <script src="scoring/balance.js?v=51.5"></script>
   <!-- Report rendering + UI -->
-  <script src="analyzer-report.js?v=51.4"></script>
-  <script src="analyzer-crawl.js?v=51.4"></script>
-  <script src="analyzer-extract.js?v=51.4"></script>
-  <script src="analyzer-iframe.js?v=51.4"></script>
-  <script src="analyzer-proxy.js?v=51.4"></script>
-  <script src="analyzer-crawl-ui.js?v=51.4"></script>
-  <script src="analyzer-contrast-verify.js?v=51.4"></script>
-  <script src="analyzer-viewer.js?v=51.4"></script>
-  <script src="analyzer.js?v=51.4"></script>
+  <script src="analyzer-report.js?v=51.5"></script>
+  <script src="analyzer-crawl.js?v=51.5"></script>
+  <script src="analyzer-extract.js?v=51.5"></script>
+  <script src="analyzer-iframe.js?v=51.5"></script>
+  <script src="analyzer-proxy.js?v=51.5"></script>
+  <script src="analyzer-crawl-ui.js?v=51.5"></script>
+  <script src="analyzer-contrast-verify.js?v=51.5"></script>
+  <script src="analyzer-viewer.js?v=51.5"></script>
+  <script src="analyzer.js?v=51.5"></script>
 </body>
 </html>
 </file>

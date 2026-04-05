@@ -237,14 +237,10 @@ window.MilgIframe = (function() {
               'function _sendFinal(maskUri){' +
                 'var _raw=window.__milgData||null;' +
                 // Build a lean updatedData with ONLY re-read bboxes (not full extraction + screenshots).
-                // Sending the full __milgData doubled the screenshot in the message and caused postMessage to fail.
                 'var updatedData=null;' +
                 'if(_raw){updatedData={colors:{contrastPairs:_raw.colors?_raw.colors.contrastPairs:[]},typography:{fontSizes:_raw.typography?_raw.typography.fontSizes:[],headings:_raw.typography?_raw.typography.headings:[],maxLineLength:_raw.typography?_raw.typography.maxLineLength:null},interaction:{touchTargets:_raw.interaction?_raw.interaction.touchTargets:[]},layout:{offscreenElements:_raw.layout?_raw.layout.offscreenElements:[],hiddenPanelIssues:_raw.layout?_raw.layout.hiddenPanelIssues:[]}}}' +
-                // Strip mask bitmap data from pairs (masks sent separately via maskResults)
-                'if(updatedData&&updatedData.colors&&updatedData.colors.contrastPairs){' +
-                  'updatedData.colors.contrastPairs.forEach(function(p){delete p._maskBmp;delete p._maskPts})}' +
-                'var mr=typeof _maskResults!=="undefined"?_maskResults:null;' +
-                // Send screenshot + metadata in one message (heavy but no masks)
+                // Masks are on the pairs in updatedData (bit-packed base64 — small).
+                // updatedData is lean (no screenshots), so total message fits in postMessage.
                 'var msg={type:"' + msgType + '",_iframeId:_mid,' +
                   'screenshots:fullUri?[fullUri]:[],' +
                   'screenshotFull:fullUri||null,' +
@@ -254,16 +250,14 @@ window.MilgIframe = (function() {
                     'docHeightAtCapture:fullH,' +
                     'calibrationOffsetY:0,calibrationSamples:[]},' +
                   'updatedData:updatedData};' +
+                'console.log("[iframe-ss] postMessage size estimate: ss="+((fullUri||"").length/1024|0)+"KB ud="+(JSON.stringify(updatedData||{}).length/1024|0)+"KB");' +
                 'try{parent.postMessage(msg,"*")}catch(e){' +
-                  'console.warn("[milg-warn] Screenshot postMessage failed:",e.message);' +
-                  'msg.screenshots=[];msg.screenshotFull=null;msg.updatedData=null;' +
-                  'try{parent.postMessage(msg,"*")}catch(e2){}' +
-                '}' +
-                // Send masks in a SEPARATE lightweight message (avoids size limit with screenshot)
-                'if(mr&&Object.keys(mr).length>0){' +
-                  'var maskMsg={type:"milg-mask-results",_iframeId:_mid,maskResults:mr};' +
-                  'try{parent.postMessage(maskMsg,"*")}catch(e){' +
-                    'console.warn("[milg-warn] Mask postMessage failed:",e.message,Object.keys(mr).length,"pairs")' +
+                  'console.warn("[milg-warn] postMessage failed ("+e.message+"), retrying without updatedData");' +
+                  'msg.updatedData=null;' +
+                  'try{parent.postMessage(msg,"*")}catch(e2){' +
+                    'console.warn("[milg-warn] Retry failed, dropping screenshots");' +
+                    'msg.screenshots=[];msg.screenshotFull=null;' +
+                    'try{parent.postMessage(msg,"*")}catch(e3){}' +
                   '}' +
                 '}' +
               '}' +
@@ -625,34 +619,24 @@ window.MilgIframe = (function() {
             if (ud.layout.hiddenPanelIssues) iframe._milgData.layout.hiddenPanelIssues = ud.layout.hiddenPanelIssues;
           }
         }
-        // Masks now sent in separate message — just log if old-style inline masks present
-        if (e.data.maskResults) {
-          _applyMaskResults(e.data.maskResults);
+        // Masks are on the pairs in updatedData (bit-packed base64 from mask layers).
+        // Verify: count how many pairs have _maskBmp after updatedData merge.
+        if (iframe._milgData && iframe._milgData.colors) {
+          var _mc = iframe._milgData.colors.contrastPairs.filter(function(p) { return !!p._maskBmp; }).length;
+          console.log('[milg-iframe] Pairs with masks after merge: ' + _mc + '/' + iframe._milgData.colors.contrastPairs.length);
         }
-        // Wait for separate mask message before finishing (masks arrive right after screenshot msg)
-        iframe._ssReady = true;
-        if (iframe._masksReady || !captureScreenshots) _finishWithMasks();
-        else setTimeout(function() { if (!iframe._masksReady) { console.warn('[milg-warn] Mask message timeout — finishing without masks'); _finishWithMasks(); } }, 3000);
+        // If hidden panels were detected, trigger unhidden screenshot pass
+        var hpc = iframe._milgData.layout && iframe._milgData.layout.hiddenPanelCount;
+        if (hpc > 0 && iframe.contentWindow && iframe.contentWindow.__milgDoUnhiddenScreenshots) {
+          try {
+            setTimeout(function() { iframe.contentWindow.__milgDoUnhiddenScreenshots(); }, 100);
+          } catch(ex) { finish(iframe._milgData); }
+        } else {
+          finish(iframe._milgData);
+        }
       }
       if (e.data.type === 'milg-screenshots-unhidden' && iframe._milgData) {
         iframe._milgData.screenshotsUnhidden = e.data.screenshots || [];
-        finish(iframe._milgData);
-      }
-      // Separate mask results message (sent after screenshot message to avoid size limits)
-      if (e.data.type === 'milg-mask-results' && e.data._iframeId === _iframeId && iframe._milgData) {
-        _applyMaskResults(e.data.maskResults);
-        iframe._masksReady = true;
-        if (iframe._ssReady) _finishWithMasks();
-      }
-    }
-    function _finishWithMasks() {
-      if (!iframe._milgData) return;
-      var hpc = iframe._milgData.layout && iframe._milgData.layout.hiddenPanelCount;
-      if (hpc > 0 && iframe.contentWindow && iframe.contentWindow.__milgDoUnhiddenScreenshots) {
-        try {
-          setTimeout(function() { iframe.contentWindow.__milgDoUnhiddenScreenshots(); }, 100);
-        } catch(ex) { finish(iframe._milgData); }
-      } else {
         finish(iframe._milgData);
       }
     }
