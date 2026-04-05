@@ -19,6 +19,8 @@ window.MilgCrawlUI = (function() {
   var crawlProgressArea, crawlProgressLabel, crawlProgressCount, crawlProgressFill, crawlProgressList;
   var crawlResults, crawlPageTabs, crawlPageContent;
 
+  function _esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
   function getCrawlSession() { return _crawlSession; }
   function setCrawlSession(s) { _crawlSession = s; }
   function getActiveTab() { return _crawlActivePageTab; }
@@ -158,16 +160,107 @@ window.MilgCrawlUI = (function() {
 
   function _preComputePixelVerify() {
     if (!_crawlSession || !window.MilgContrastVerify) return;
-    _crawlSession.pages.forEach(function(page) {
-      if (page.status !== 'done' || !page.rawData || page.rawData._contrastVerifyResults) return;
-      var d = page.rawData;
-      if (!d.screenshots || !d.screenshots.length || !d.screenshotMeta) return;
-      var report = page.reportData || MilgScoring.runScoring(d);
+    var pagesToVerify = _crawlSession.pages.filter(function(p) {
+      return p.status === 'done' && p.rawData && !p.rawData._contrastVerifyResults &&
+        p.rawData.screenshots && p.rawData.screenshots.length && p.rawData.screenshotMeta;
+    });
+    if (pagesToVerify.length === 0) return;
+    var doneCount = 0;
+    var totalCount = pagesToVerify.length;
+
+    // Show pixel verify progress on summary page
+    _updateVerifySummary(0, totalCount, null);
+
+    pagesToVerify.forEach(function(page) {
+      var report = page.reportData || MilgScoring.runScoring(page.rawData);
       MilgContrastVerify.verify(report, function(results, bboxEdgeResults) {
-        d._contrastVerifyResults = results;
-        d._bboxEdgeResults = bboxEdgeResults || [];
+        page.rawData._contrastVerifyResults = results;
+        page.rawData._bboxEdgeResults = bboxEdgeResults || [];
+        doneCount++;
+        // Invalidate cached report HTML for this page (now has verify results)
+        var idx = _crawlSession.pages.indexOf(page);
+        if (idx >= 0) delete _crawlPageReports[idx];
+        // Update verify summary on the summary page
+        _updateVerifySummary(doneCount, totalCount, doneCount === totalCount ? _crawlSession : null);
       });
     });
+  }
+
+  function _updateVerifySummary(done, total, completedSession) {
+    var container = document.getElementById('milg-crawl-verify-summary');
+    if (!container && crawlPageContent) {
+      // Append the verify section to the summary page if we're on it
+      container = document.createElement('div');
+      container.id = 'milg-crawl-verify-summary';
+      container.style.marginTop = '24px';
+      crawlPageContent.appendChild(container);
+    }
+    if (!container) return;
+
+    if (!completedSession) {
+      // Still running — show spinner with progress
+      container.innerHTML = '<div class="crawl-summary">' +
+        '<h3 style="display:flex;align-items:center;gap:8px">' +
+        '<span style="display:inline-block;width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite"></span>' +
+        'Pixel Contrast Verification (' + done + '/' + total + ' pages)' +
+        '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style>' +
+        '</h3></div>';
+      return;
+    }
+
+    // All done — build the pixel verify summary across all pages
+    var falsePassTotal = 0, falseFailTotal = 0, verifiedTotal = 0;
+    var pageIssues = []; // [{url, path, falsePass, results}]
+    completedSession.pages.forEach(function(page) {
+      if (!page.rawData || !page.rawData._contrastVerifyResults) return;
+      var results = page.rawData._contrastVerifyResults;
+      var fp = 0, ff = 0, v = 0;
+      results.forEach(function(r) {
+        if (r.crossesBoundary) {
+          if (r.cssPasses && !r.pixelPasses) fp++;
+          else ff++;
+        } else { v++; }
+      });
+      falsePassTotal += fp; falseFailTotal += ff; verifiedTotal += v;
+      if (fp > 0) {
+        var path; try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
+        pageIssues.push({ url: page.url, path: path, falsePass: fp, results: results });
+      }
+    });
+
+    var isDark = document.body && document.body.classList.contains('dark-ui');
+    var html = '<div class="crawl-summary"><h3>Pixel Contrast Verification</h3>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px">';
+    html += '<div style="padding:8px 16px;border-radius:8px;background:var(--surface);border:1px solid var(--border);font-size:13px">' +
+      '<span style="font-weight:600">' + verifiedTotal + '</span> <span style="color:var(--text-secondary)">verified</span></div>';
+    if (falsePassTotal > 0) {
+      html += '<div style="padding:8px 16px;border-radius:8px;background:' + (isDark ? '#2d0f0f' : '#fef2f2') + ';border:1px solid ' + (isDark ? '#991b1b' : '#fecaca') + ';font-size:13px">' +
+        '<span style="font-weight:700;color:#ef4444">' + falsePassTotal + '</span> <span style="color:#ef4444">hidden failure' + (falsePassTotal > 1 ? 's' : '') + '</span></div>';
+    }
+    if (falseFailTotal > 0) {
+      html += '<div style="padding:8px 16px;border-radius:8px;background:' + (isDark ? '#0c2d1e' : '#f0fdf4') + ';border:1px solid ' + (isDark ? '#166534' : '#bbf7d0') + ';font-size:13px">' +
+        '<span style="font-weight:600;color:#16a34a">' + falseFailTotal + '</span> <span style="color:#16a34a">better than CSS</span></div>';
+    }
+    if (falsePassTotal === 0 && falseFailTotal === 0) {
+      html += '<div style="padding:8px 16px;border-radius:8px;background:' + (isDark ? '#0c2d1e' : '#f0fdf4') + ';border:1px solid ' + (isDark ? '#166534' : '#bbf7d0') + ';font-size:13px">' +
+        '<span style="color:#16a34a">All pixel checks match CSS — no hidden issues</span></div>';
+    }
+    html += '</div>';
+
+    // Per-page breakdown of failures
+    if (pageIssues.length > 0) {
+      html += '<div style="font-size:13px;line-height:1.6">';
+      pageIssues.forEach(function(pi) {
+        html += '<div style="padding:6px 10px;margin-bottom:4px;border-radius:6px;background:var(--surface);border:1px solid var(--border)">';
+        html += '<span style="color:#ef4444;font-weight:600">' + pi.falsePass + ' hidden failure' + (pi.falsePass > 1 ? 's' : '') + '</span>';
+        html += ' on <span style="font-weight:500">' + _esc(pi.path) + '</span>';
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+
+    html += '</div>';
+    container.innerHTML = html;
   }
 
   function startCrawl(url) {

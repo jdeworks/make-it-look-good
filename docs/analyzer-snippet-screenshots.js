@@ -776,24 +776,29 @@
                 '<button id="milg-crawl-dl-btn" style="padding:10px 24px;font-size:13px;font-weight:500;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.2);border-radius:8px;cursor:pointer;margin-bottom:10px;min-width:220px">Download JSON</button>' +
                 '<div style="color:rgba(255,255,255,0.5);font-size:11px;margin-top:8px">Then paste or import into the analyzer</div>' +
                 '</div>';
+              function _crawlDoneAction() {
+                // Close overlay and reload page to restore styles corrupted by mask capture
+                setTimeout(function() {
+                  _removeCrawlOverlay();
+                  console.log('%c\u21BB Reloading page in 8s to restore styles...', 'color: #64748b;');
+                  setTimeout(function() { location.reload(); }, 8000);
+                }, 2000);
+              }
               document.getElementById('milg-crawl-copy-btn').addEventListener('click', function() {
+                var btn = document.getElementById('milg-crawl-copy-btn');
                 navigator.clipboard.writeText(crawlJson).then(function() {
-                  document.getElementById('milg-crawl-copy-btn').textContent = 'Copied!';
-                  document.getElementById('milg-crawl-copy-btn').style.background = '#16a34a';
-                  setTimeout(_removeCrawlOverlay, 800);
+                  btn.textContent = 'Copied!'; btn.style.background = '#16a34a';
+                  _crawlDoneAction();
                 }).catch(function() {
-                  // Fallback for older browsers
                   var ta = document.createElement('textarea'); ta.value = crawlJson;
                   ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
                   document.body.appendChild(ta); ta.select();
                   try { document.execCommand('copy'); } catch(e) {}
                   document.body.removeChild(ta);
-                  document.getElementById('milg-crawl-copy-btn').textContent = 'Copied!';
-                  document.getElementById('milg-crawl-copy-btn').style.background = '#16a34a';
-                  setTimeout(_removeCrawlOverlay, 800);
+                  btn.textContent = 'Copied!'; btn.style.background = '#16a34a';
+                  _crawlDoneAction();
                 });
               });
-              // Download button for crawl
               document.getElementById('milg-crawl-dl-btn').addEventListener('click', function() {
                 var blob = new Blob([crawlJson], { type: 'application/json' });
                 var dlUrl = URL.createObjectURL(blob);
@@ -804,6 +809,7 @@
                 URL.revokeObjectURL(dlUrl);
                 var btn = document.getElementById('milg-crawl-dl-btn');
                 btn.textContent = 'Downloaded!'; btn.style.background = '#16a34a'; btn.style.color = '#fff';
+                _crawlDoneAction();
               });
               return;
             }
