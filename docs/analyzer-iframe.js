@@ -225,14 +225,20 @@ window.MilgIframe = (function() {
               '})}catch(e){}})}catch(e){}' +
             'if(toFix.length===0)return;' +
             'console.log("[milg-iframe] Fixing "+toFix.length+" CSS fonts via proxy");' +
+            'var _fontStyleEl=document.createElement("style");_fontStyleEl.setAttribute("data-milg-fonts","1");document.head.appendChild(_fontStyleEl);' +
             'toFix.forEach(function(f){' +
               'fetch(_px+"?url="+encodeURIComponent(f.url)).then(function(r){' +
                 'if(!r.ok)return;return r.blob()' +
               '}).then(function(blob){' +
                 'if(!blob)return;' +
                 'var burl=URL.createObjectURL(blob);' +
+                // Register via FontFace API (for page rendering)
                 'var ff=new FontFace(f.family,"url("+burl+")",{weight:f.weight,style:f.style});' +
-                'return ff.load().then(function(){document.fonts.add(ff)})' +
+                'return ff.load().then(function(){' +
+                  'document.fonts.add(ff);' +
+                  // ALSO add @font-face CSS rule (for domToCanvas SVG foreignObject serialization)
+                  '_fontStyleEl.textContent+="@font-face{font-family:\\""+f.family+"\\";src:url("+burl+");font-weight:"+f.weight+";font-style:"+f.style+";font-display:swap;}\\n"' +
+                '})' +
               '}).catch(function(e){console.warn("[milg-warn] Font re-register failed:",f.family,e&&e.message||"")})' +
             '})' +
           '}' +
@@ -451,8 +457,13 @@ window.MilgIframe = (function() {
                   '}' +
                 '}' +
               '}' +
-              // Wait for fonts to be fully loaded before mask capture (avoids fallback font mismatch)
+              // Wait for fonts, then inline them as @font-face data URIs before mask capture.
+              // domToCanvas (SVG foreignObject) can't access fonts loaded via FontFace API —
+              // it only sees fonts declared in stylesheets with accessible src URLs.
               '(document.fonts&&document.fonts.ready?document.fonts.ready:Promise.resolve()).then(function(){' +
+              // Count fonts available via @font-face CSS (the ones domToCanvas can use)
+              'var _cssFontCount=0;try{Array.from(document.styleSheets).forEach(function(ss){try{Array.from(ss.cssRules).forEach(function(r){if(r instanceof CSSFontFaceRule)_cssFontCount++})}catch(e){}})}catch(e){}' +
+              'console.log("[iframe-ss] Font prep: "+document.fonts.size+" API fonts, "+_cssFontCount+" CSS @font-face rules");' +
               // Step 2: Layered text masks with transition kill
               '_prog("Building text masks...");' +
               'console.log("[iframe-ss] Step 2: Layered masks (fonts: "+document.fonts.size+" loaded)...");' +
