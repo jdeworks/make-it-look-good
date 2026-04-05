@@ -235,9 +235,12 @@ window.MilgIframe = (function() {
               // Update send helper with actual canvas dimensions
               'var _cw=fc.width,_ch=fc.height;' +
               'function _sendFinal(maskUri){' +
-                'var updatedData=window.__milgData||null;' +
-                // Strip mask bitmap data from pair objects to keep updatedData lean
-                // (masks are sent separately via maskResults)
+                'var _raw=window.__milgData||null;' +
+                // Build a lean updatedData with ONLY re-read bboxes (not full extraction + screenshots).
+                // Sending the full __milgData doubled the screenshot in the message and caused postMessage to fail.
+                'var updatedData=null;' +
+                'if(_raw){updatedData={colors:{contrastPairs:_raw.colors?_raw.colors.contrastPairs:[]},typography:{fontSizes:_raw.typography?_raw.typography.fontSizes:[],headings:_raw.typography?_raw.typography.headings:[],maxLineLength:_raw.typography?_raw.typography.maxLineLength:null},interaction:{touchTargets:_raw.interaction?_raw.interaction.touchTargets:[]},layout:{offscreenElements:_raw.layout?_raw.layout.offscreenElements:[],hiddenPanelIssues:_raw.layout?_raw.layout.hiddenPanelIssues:[]}}}' +
+                // Strip mask bitmap data from pairs (masks sent separately via maskResults)
                 'if(updatedData&&updatedData.colors&&updatedData.colors.contrastPairs){' +
                   'updatedData.colors.contrastPairs.forEach(function(p){delete p._maskBmp;delete p._maskPts})}' +
                 'var mr=typeof _maskResults!=="undefined"?_maskResults:null;' +
