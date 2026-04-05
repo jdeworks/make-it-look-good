@@ -66,7 +66,7 @@ window.MilgIframe = (function() {
           'try{if(!parent.__milgFontCache)parent.__milgFontCache={}}catch(e){}' +
           'var _fc=((typeof parent!=="undefined")&&parent.__milgFontCache)||{};' +
           'window.fetch=function(u,o){' +
-            'if(_px&&typeof u==="string"&&/\\.(woff2?|ttf|otf|eot)(\\?|$)/i.test(u)){' +
+            'if(_px&&typeof u==="string"&&u.indexOf(_px)===-1&&/\\.(woff2?|ttf|otf|eot)(\\?|$)/i.test(u)){' +
               'if(_fc[u])return _fc[u].then(function(r){return r.clone()});' +
               'var p=_of.call(this,_px+"?url="+encodeURIComponent(u),o).catch(function(){return _of.call(this,u,o)});' +
               '_fc[u]=p;return p' +

@@ -278,7 +278,7 @@ window.MilgProxy = (function() {
         'var _fc=((typeof parent!=="undefined")&&parent.__milgFontCache)||{};' +
         'window.fetch=function(u,o){' +
           'if(typeof u==="string"&&u.charAt(0)==="/")u=_rb.replace(/\\/$/,"")+u;' +
-          'if(_px&&typeof u==="string"&&/\\.(woff2?|ttf|otf|eot)(\\?|$)/i.test(u)){' +
+          'if(_px&&typeof u==="string"&&u.indexOf(_px)===-1&&/\\.(woff2?|ttf|otf|eot)(\\?|$)/i.test(u)){' +
             'if(_fc[u])return _fc[u].then(function(r){return r.clone()});' +
             'var p=_of.call(this,_px+"?url="+encodeURIComponent(u),o).catch(function(){return new Response("",{status:404})});' +
             '_fc[u]=p;return p;' +
@@ -345,7 +345,7 @@ window.MilgProxy = (function() {
         'try{if(!parent.__milgFontCache)parent.__milgFontCache={}}catch(e){}' +
         'var _fc=((typeof parent!=="undefined")&&parent.__milgFontCache)||{};' +
         'window.fetch=function(u,o){if(typeof u==="string"&&u.charAt(0)==="/")u=_rb.replace(/\\/$/,"")+u;' +
-        'if(_px&&typeof u==="string"&&/\\.(woff2?|ttf|otf|eot)(\\?|$)/i.test(u)){if(_fc[u])return _fc[u].then(function(r){return r.clone()});var p=_of.call(this,_px+"?url="+encodeURIComponent(u),o).catch(function(){return new Response("",{status:404})});_fc[u]=p;return p}' +
+        'if(_px&&typeof u==="string"&&u.indexOf(_px)===-1&&/\\.(woff2?|ttf|otf|eot)(\\?|$)/i.test(u)){if(_fc[u])return _fc[u].then(function(r){return r.clone()});var p=_of.call(this,_px+"?url="+encodeURIComponent(u),o).catch(function(){return new Response("",{status:404})});_fc[u]=p;return p}' +
         'return _of.call(this,u,o)};' +
       '})();' +
     '</' + 'script>';
