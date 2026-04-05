@@ -29647,564 +29647,6 @@ function scoreTouchTargets(data) {
 })();
 </file>
 
-<file path="docs/analyzer-crawl-ui.js">
-// make-it-look-good — Crawl UI Wiring
-// Manages multi-page site crawl progress, tabs, and results display.
-// Depends on: analyzer-crawl.js (MilgCrawl), analyzer-report.js (MilgReport),
-//             analyzer-iframe.js (MilgIframe), analyzer-proxy.js (MilgProxy)
-
-window.MilgCrawlUI = (function() {
-  "use strict";
-
-  var _crawlSession = null;
-  var _crawlPageReports = {}; // pageIndex → rendered HTML cache
-  var _crawlActivePageTab = 'summary';
-  var CRAWL_HARD_MAX = 25;
-
-  // Dependencies injected via setup()
-  var _showToast, _runAnalysis, _restoreCachedAnalysis, _analyzeUrlBtn, _runDeepScanLoop;
-
-  // DOM refs queried during setup
-  var crawlSiteCheck, crawlOptions, cancelCrawlBtn, crawlMaxPages, crawlBlacklist;
-  var crawlProgressArea, crawlProgressLabel, crawlProgressCount, crawlProgressFill, crawlProgressList;
-  var crawlResults, crawlPageTabs, crawlPageContent;
-
-  function _esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
-
-  function getCrawlSession() { return _crawlSession; }
-  function setCrawlSession(s) { _crawlSession = s; }
-  function getActiveTab() { return _crawlActivePageTab; }
-
-  function isCrawlMode() { return crawlSiteCheck && crawlSiteCheck.checked; }
-  function isCrawlActive() { return _crawlSession && _crawlSession.pages.length > 0 && crawlResults && crawlResults.style.display !== 'none'; }
-
-  function crawlStatusIcon(status) {
-    if (status === 'done') return '<span class="status-icon done"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></span>';
-    if (status === 'error') return '<span class="status-icon error"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>';
-    if (status === 'fetching' || status === 'analyzing') return '<span class="status-icon active"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/></svg></span>';
-    return '<span class="status-icon pending"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-dasharray="20" stroke-dashoffset="10"/></svg></span>';
-  }
-
-  function updateCrawlProgressItem(page) {
-    var existing = document.getElementById('crawl-progress-' + encodeURIComponent(page.url));
-    var path; try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
-    var scoreText = page.status === 'done' && page.reportData ? ' ' + page.reportData.overall + '/100' : '';
-    var errorText = page.status === 'error' ? ' <span style="color:#dc2626;font-size:12px">' + (page.error || 'Failed').substring(0, 40) + '</span>' : '';
-    var html = crawlStatusIcon(page.status) +
-      '<span class="page-url" title="' + page.url + '">' + path + '</span>' +
-      '<span class="page-score">' + scoreText + errorText + '</span>';
-    if (existing) {
-      existing.innerHTML = html;
-    } else {
-      var div = document.createElement('div');
-      div.className = 'crawl-progress-item';
-      div.id = 'crawl-progress-' + encodeURIComponent(page.url);
-      div.innerHTML = html;
-      crawlProgressList.appendChild(div);
-    }
-  }
-
-  function renderCrawlTabs() {
-    if (!_crawlSession || !crawlPageTabs) return;
-    var html = '<button class="crawl-page-tab' + (_crawlActivePageTab === 'summary' ? ' active' : '') + '" data-crawl-page="summary">Summary</button>';
-    _crawlSession.pages.forEach(function(page, idx) {
-      html += MilgReport.renderCrawlPageTab(page, idx, _crawlActivePageTab === String(idx));
-    });
-    crawlPageTabs.innerHTML = html;
-  }
-
-  var _spinnerHtml = '<div style="padding:60px;text-align:center">' +
-    '<div style="width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite;margin:0 auto"></div>' +
-    '<div style="color:var(--text-secondary);margin-top:12px;font-size:13px">Loading report\u2026</div>' +
-    '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style></div>';
-
-  function showCrawlPageContent(key) {
-    _crawlActivePageTab = key;
-    renderCrawlTabs();
-    var reportContainer = document.getElementById('reportContainer');
-    var reportActions = document.getElementById('reportActions');
-    // Show export/actions only after crawl is complete (not during progress)
-    var crawlDone = _crawlSession && _crawlSession.status === 'complete';
-    if (reportActions) reportActions.style.display = crawlDone ? 'flex' : 'none';
-    if (key === 'summary') {
-      var summary = _crawlSession.summary || MilgCrawl.buildSummary(_crawlSession);
-      crawlPageContent.innerHTML = MilgReport.renderCrawlSummary(summary);
-      crawlPageContent.style.display = '';
-      crawlPageContent.className = 'report-container visible';
-      if (reportContainer) { reportContainer.style.display = 'none'; reportContainer.className = 'report-container'; }
-    } else {
-      var idx = parseInt(key);
-      var page = _crawlSession.pages[idx];
-      if (!page || page.status !== 'done') {
-        crawlPageContent.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-secondary)">' +
-          (page && page.status === 'error' ? 'Error: ' + (page.error || 'Analysis failed') : 'Analyzing\u2026') + '</div>';
-        crawlPageContent.style.display = '';
-        crawlPageContent.className = 'report-container visible';
-        if (reportContainer) { reportContainer.style.display = 'none'; reportContainer.className = 'report-container'; }
-        return;
-      }
-
-      crawlPageContent.style.display = 'none';
-      crawlPageContent.className = 'report-container';
-      if (reportContainer) reportContainer.style.display = '';
-
-      // Cache hit: restore instantly (no scoring, no rendering)
-      if (_crawlPageReports[idx]) {
-        var cached = _crawlPageReports[idx];
-        _restoreCachedAnalysis(page.rawData, cached.reportData);
-        reportContainer.innerHTML = cached.html;
-        reportContainer.classList.add('visible');
-        return;
-      }
-
-      // Cache miss: show spinner, defer heavy work so spinner paints
-      reportContainer.innerHTML = _spinnerHtml;
-      reportContainer.classList.add('visible');
-      setTimeout(function() {
-        // Guard: user may have switched tabs during the setTimeout
-        if (_crawlActivePageTab !== String(idx)) return;
-        page.rawData.meta = page.rawData.meta || {};
-        var origMethod = page.rawData.meta._inputMethod;
-        _runAnalysis(page.rawData, 'crawl-page');
-        page.rawData.meta._inputMethod = origMethod;
-        // Cache the rendered report + scored data for instant restore
-        _crawlPageReports[idx] = {
-          html: reportContainer.innerHTML,
-          reportData: page.rawData._cachedReportData
-        };
-      }, 0);
-    }
-  }
-
-  // Load multi-page crawl results into the tabbed view
-  function loadCrawlResults(crawlState, source) {
-    if (!crawlState || !crawlState.results || crawlState.results.length === 0) return false;
-    _showToast('Loaded crawl results' + (source ? ' from ' + source : '') + ' (' + crawlState.results.length + ' pages)');
-    _crawlSession = MilgCrawl.createSession(crawlState.startUrl || crawlState.results[0].url, {
-      maxPages: crawlState.results.length,
-      profile: document.getElementById('profileSelect') ? document.getElementById('profileSelect').value : 'general'
-    });
-    crawlState.results.forEach(function(r) {
-      var report = MilgScoring.runScoring(r.data);
-      _crawlSession.pages.push({
-        url: r.url, status: 'done', title: (r.data.meta && r.data.meta.title) || '',
-        rawData: r.data, reportData: report, error: null,
-        startedAt: r.data.meta.timestamp, completedAt: r.data.meta.timestamp
-      });
-    });
-    _crawlSession.status = 'complete';
-    _crawlSession.summary = MilgCrawl.buildSummary(_crawlSession);
-    crawlResults.style.display = '';
-    var reportActions = document.getElementById('reportActions');
-    if (reportActions) reportActions.style.display = '';
-    document.getElementById('inputSection').style.display = 'none';
-    renderCrawlTabs();
-    showCrawlPageContent('summary');
-
-    // Pre-compute pixel verify for each page with screenshots (async, best-effort).
-    // Results are cached on rawData._contrastVerifyResults so tab switches use cache.
-    _preComputePixelVerify();
-
-    return true;
-  }
-
-  function _preComputePixelVerify() {
-    if (!_crawlSession || !window.MilgContrastVerify) return;
-    var pagesToVerify = _crawlSession.pages.filter(function(p) {
-      return p.status === 'done' && p.rawData && !p.rawData._contrastVerifyResults &&
-        p.rawData.screenshots && p.rawData.screenshots.length && p.rawData.screenshotMeta;
-    });
-    if (pagesToVerify.length === 0) return;
-    var doneCount = 0;
-    var totalCount = pagesToVerify.length;
-
-    // Show pixel verify progress on summary page
-    _updateVerifySummary(0, totalCount, null);
-
-    pagesToVerify.forEach(function(page) {
-      var report = page.reportData || MilgScoring.runScoring(page.rawData);
-      MilgContrastVerify.verify(report, function(results, bboxEdgeResults) {
-        page.rawData._contrastVerifyResults = results;
-        page.rawData._bboxEdgeResults = bboxEdgeResults || [];
-        doneCount++;
-        // Invalidate cached report HTML for this page (now has verify results)
-        var idx = _crawlSession.pages.indexOf(page);
-        if (idx >= 0) delete _crawlPageReports[idx];
-        // Update verify summary on the summary page
-        _updateVerifySummary(doneCount, totalCount, doneCount === totalCount ? _crawlSession : null);
-      });
-    });
-  }
-
-  function _updateVerifySummary(done, total, completedSession) {
-    var container = document.getElementById('milg-crawl-verify-summary');
-    if (!container && crawlPageContent) {
-      // Append the verify section to the summary page if we're on it
-      container = document.createElement('div');
-      container.id = 'milg-crawl-verify-summary';
-      container.style.marginTop = '24px';
-      crawlPageContent.appendChild(container);
-    }
-    if (!container) return;
-
-    if (!completedSession) {
-      // Still running — show spinner with progress
-      container.innerHTML = '<div class="crawl-summary">' +
-        '<h3 style="display:flex;align-items:center;gap:8px">' +
-        '<span style="display:inline-block;width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite"></span>' +
-        'Pixel Contrast Verification (' + done + '/' + total + ' pages)' +
-        '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style>' +
-        '</h3></div>';
-      return;
-    }
-
-    // All done — build the pixel verify summary across all pages
-    var falsePassTotal = 0, falseFailTotal = 0, verifiedTotal = 0;
-    var pageIssues = []; // [{url, path, falsePass, results}]
-    completedSession.pages.forEach(function(page) {
-      if (!page.rawData || !page.rawData._contrastVerifyResults) return;
-      var results = page.rawData._contrastVerifyResults;
-      var fp = 0, ff = 0, v = 0;
-      results.forEach(function(r) {
-        if (r.crossesBoundary) {
-          if (r.cssPasses && !r.pixelPasses) fp++;
-          else ff++;
-        } else { v++; }
-      });
-      falsePassTotal += fp; falseFailTotal += ff; verifiedTotal += v;
-      if (fp > 0) {
-        var path; try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
-        pageIssues.push({ url: page.url, path: path, falsePass: fp, results: results });
-      }
-    });
-
-    var isDark = document.body && document.body.classList.contains('dark-ui');
-    var html = '<div class="crawl-summary"><h3>Pixel Contrast Verification</h3>';
-    html += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px">';
-    html += '<div style="padding:8px 16px;border-radius:8px;background:var(--surface);border:1px solid var(--border);font-size:13px">' +
-      '<span style="font-weight:600">' + verifiedTotal + '</span> <span style="color:var(--text-secondary)">verified</span></div>';
-    if (falsePassTotal > 0) {
-      html += '<div style="padding:8px 16px;border-radius:8px;background:' + (isDark ? '#2d0f0f' : '#fef2f2') + ';border:1px solid ' + (isDark ? '#991b1b' : '#fecaca') + ';font-size:13px">' +
-        '<span style="font-weight:700;color:#ef4444">' + falsePassTotal + '</span> <span style="color:#ef4444">hidden failure' + (falsePassTotal > 1 ? 's' : '') + '</span></div>';
-    }
-    if (falseFailTotal > 0) {
-      html += '<div style="padding:8px 16px;border-radius:8px;background:' + (isDark ? '#0c2d1e' : '#f0fdf4') + ';border:1px solid ' + (isDark ? '#166534' : '#bbf7d0') + ';font-size:13px">' +
-        '<span style="font-weight:600;color:#16a34a">' + falseFailTotal + '</span> <span style="color:#16a34a">better than CSS</span></div>';
-    }
-    if (falsePassTotal === 0 && falseFailTotal === 0) {
-      html += '<div style="padding:8px 16px;border-radius:8px;background:' + (isDark ? '#0c2d1e' : '#f0fdf4') + ';border:1px solid ' + (isDark ? '#166534' : '#bbf7d0') + ';font-size:13px">' +
-        '<span style="color:#16a34a">All pixel checks match CSS — no hidden issues</span></div>';
-    }
-    html += '</div>';
-
-    // Per-page breakdown of failures
-    if (pageIssues.length > 0) {
-      html += '<div style="font-size:13px;line-height:1.6">';
-      pageIssues.forEach(function(pi) {
-        html += '<div style="padding:6px 10px;margin-bottom:4px;border-radius:6px;background:var(--surface);border:1px solid var(--border)">';
-        html += '<span style="color:#ef4444;font-weight:600">' + pi.falsePass + ' hidden failure' + (pi.falsePass > 1 ? 's' : '') + '</span>';
-        html += ' on <span style="font-weight:500">' + _esc(pi.path) + '</span>';
-        html += '</div>';
-      });
-      html += '</div>';
-    }
-
-    html += '</div>';
-    container.innerHTML = html;
-  }
-
-  function startCrawl(url) {
-    var maxPages = parseInt(crawlMaxPages.value) || 5;
-    maxPages = Math.min(Math.max(maxPages, 1), CRAWL_HARD_MAX);
-
-    var blacklist = (crawlBlacklist.value || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
-    var deepScan = document.getElementById('deepScanCheck') && document.getElementById('deepScanCheck').checked;
-    var profile = document.getElementById('profileSelect');
-
-    _crawlSession = MilgCrawl.createSession(url, {
-      maxPages: maxPages,
-      blacklist: blacklist,
-      deepScan: deepScan,
-      profile: profile ? profile.value : 'general'
-    });
-    _crawlPageReports = {};
-    _crawlActivePageTab = 'summary';
-
-    // Show progress
-    _analyzeUrlBtn.disabled = true;
-    _analyzeUrlBtn.textContent = 'Crawling\u2026';
-    cancelCrawlBtn.style.display = '';
-    crawlProgressArea.style.display = '';
-    crawlProgressList.innerHTML = '';
-    crawlProgressFill.style.width = '0%';
-    crawlProgressLabel.textContent = 'Fetching starting page\u2026';
-    crawlProgressCount.textContent = '0 / ' + maxPages;
-
-    // Show crawl results area, hide input section
-    var inputSection = document.getElementById('inputSection');
-    var reportActions = document.getElementById('reportActions');
-    var reportContainer = document.getElementById('reportContainer');
-    if (inputSection) inputSection.style.display = 'none';
-    crawlResults.style.display = '';
-    if (reportContainer) reportContainer.className = 'report-container';
-    // Hide export bar during crawl — show only when crawl completes
-    if (reportActions) reportActions.style.display = 'none';
-    // Scroll to results
-    crawlResults.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-    renderCrawlTabs();
-    showCrawlPageContent('summary');
-
-    var doneCount = 0;
-    var totalPages = 1;
-
-    MilgCrawl.startCrawl(_crawlSession, {
-      fetchPage: function(pageUrl, cb) {
-        MilgProxy.fetchViaProxy(pageUrl, function(html, err) { cb(html, err); });
-      },
-      analyzePage: function(html, pageUrl, opts, cb) {
-        var wantShots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
-        var isDeep = _crawlSession && _crawlSession.options && _crawlSession.options.deepScan && _runDeepScanLoop;
-        if (isDeep) {
-          _runDeepScanLoop(html, pageUrl, opts.excludeSelector || null, wantShots, null, function(primary) {
-            if (primary) {
-              primary.meta.url = pageUrl;
-              primary.meta._inputMethod = 'crawl';
-              if (opts.profile) primary.profile = opts.profile;
-            }
-            cb(primary);
-          });
-        } else {
-          MilgIframe.analyzeHtmlInIframe(html, function(data) {
-            if (data) {
-              data.meta.url = pageUrl;
-              data.meta._inputMethod = 'crawl';
-              if (opts.profile) data.profile = opts.profile;
-            }
-            cb(data);
-          }, pageUrl, opts.excludeSelector || null, wantShots);
-        }
-      },
-      scorePage: function(data) { return MilgScoring.runScoring(data); },
-      onDiscovery: function(urls) {
-        totalPages = 1 + urls.length;
-        crawlProgressCount.textContent = '0 / ' + totalPages;
-        crawlProgressLabel.textContent = 'Found ' + urls.length + ' page' + (urls.length !== 1 ? 's' : '') + ' to crawl';
-      },
-      onPageStart: function(page) {
-        updateCrawlProgressItem(page);
-        crawlProgressLabel.textContent = 'Analyzing ' + page.url.replace(/^https?:\/\/[^/]+/, '') + '\u2026';
-        renderCrawlTabs();
-      },
-      onPageComplete: function(page) {
-        doneCount++;
-        updateCrawlProgressItem(page);
-        crawlProgressCount.textContent = doneCount + ' / ' + totalPages;
-        crawlProgressFill.style.width = Math.round(doneCount / totalPages * 100) + '%';
-        renderCrawlTabs();
-        if (_crawlActivePageTab === 'summary') showCrawlPageContent('summary');
-        // Pre-compute pixel verify as soon as page completes (async, best-effort)
-        if (page.rawData && page.rawData.screenshots && page.rawData.screenshots.length && page.rawData.screenshotMeta && window.MilgContrastVerify) {
-          var report = page.reportData || MilgScoring.runScoring(page.rawData);
-          MilgContrastVerify.verify(report, function(results, bboxEdgeResults) {
-            page.rawData._contrastVerifyResults = results;
-            page.rawData._bboxEdgeResults = bboxEdgeResults || [];
-          });
-        }
-      },
-      onPageError: function(page) {
-        doneCount++;
-        updateCrawlProgressItem(page);
-        crawlProgressCount.textContent = doneCount + ' / ' + totalPages;
-        crawlProgressFill.style.width = Math.round(doneCount / totalPages * 100) + '%';
-        renderCrawlTabs();
-      },
-      onComplete: function(session) {
-        _analyzeUrlBtn.disabled = false;
-        _analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
-        cancelCrawlBtn.style.display = 'none';
-        crawlProgressLabel.textContent = 'Crawl complete!';
-        crawlProgressFill.style.width = '100%';
-        renderCrawlTabs();
-        showCrawlPageContent('summary');
-      }
-    });
-  }
-
-  function setupCrawlExports(exportSeverityFilter) {
-    var copyMdBtn = document.getElementById('copyMdBtn');
-    var markdownBtn = document.getElementById('markdownBtn');
-    var exportJsonBtn = document.getElementById('exportJsonBtn');
-
-    if (copyMdBtn) {
-      copyMdBtn.addEventListener('click', function(e) {
-        if (!isCrawlActive()) return; // let original handler run
-        e.stopImmediatePropagation();
-        var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
-        var md = MilgCrawl.renderCrawlMarkdown(_crawlSession, filter);
-        navigator.clipboard.writeText(md).then(function() { _showToast('Crawl report copied as Markdown!'); }).catch(function() { _showToast('Copy failed'); });
-      });
-    }
-    if (markdownBtn) {
-      markdownBtn.addEventListener('click', function(e) {
-        if (!isCrawlActive()) return;
-        e.stopImmediatePropagation();
-        var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
-        var md = MilgCrawl.renderCrawlMarkdown(_crawlSession, filter);
-        var blob = new Blob([md], { type: 'text/markdown' });
-        var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-        a.download = 'site-crawl-report.md'; a.click();
-      });
-    }
-    if (exportJsonBtn) {
-      exportJsonBtn.addEventListener('click', function(e) {
-        if (!isCrawlActive()) return;
-        e.stopImmediatePropagation();
-        var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
-        var json = MilgCrawl.renderCrawlJSON(_crawlSession, filter);
-        var blob = new Blob([json], { type: 'application/json' });
-        var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-        a.download = 'site-crawl-data.json'; a.click();
-      });
-    }
-  }
-
-  function setup(deps) {
-    _showToast = deps.showToast;
-    _runAnalysis = deps.runAnalysis;
-    _restoreCachedAnalysis = deps.restoreCachedAnalysis;
-    _analyzeUrlBtn = deps.analyzeUrlBtn;
-    _runDeepScanLoop = deps.runDeepScanLoop;
-
-    // Query DOM refs
-    crawlSiteCheck = document.getElementById('crawlSiteCheck');
-    crawlOptions = document.getElementById('crawlOptions');
-    cancelCrawlBtn = document.getElementById('cancelCrawlBtn');
-    crawlMaxPages = document.getElementById('crawlMaxPages');
-    crawlBlacklist = document.getElementById('crawlBlacklist');
-    crawlProgressArea = document.getElementById('crawlProgressArea');
-    crawlProgressLabel = document.getElementById('crawlProgressLabel');
-    crawlProgressCount = document.getElementById('crawlProgressCount');
-    crawlProgressFill = document.getElementById('crawlProgressFill');
-    crawlProgressList = document.getElementById('crawlProgressList');
-    crawlResults = document.getElementById('crawlResults');
-    crawlPageTabs = document.getElementById('crawlPageTabs');
-    crawlPageContent = document.getElementById('crawlPageContent');
-
-    // Crawl site toggle — show/hide crawl options
-    if (crawlSiteCheck && crawlOptions) {
-      crawlSiteCheck.addEventListener('change', function() {
-        crawlOptions.style.display = crawlSiteCheck.checked ? '' : 'none';
-      });
-    }
-
-    // Page limit easter egg — MutationObserver on max attr + input value check
-    var _crawlEasterEggShown = false;
-    if (crawlMaxPages) {
-      var _crawlMaxObserver = new MutationObserver(function(mutations) {
-        mutations.forEach(function(m) {
-          if (m.attributeName === 'max') {
-            var newMax = parseInt(crawlMaxPages.getAttribute('max'));
-            if (newMax > 10 && !_crawlEasterEggShown) {
-              _crawlEasterEggShown = true;
-              _showToast('Nice try! We see you editing the DOM \uD83D\uDE0F Fine, ' + CRAWL_HARD_MAX + ' is the real limit\u2026 but your proxy rate limit isn\u2019t.');
-              crawlMaxPages.setAttribute('max', CRAWL_HARD_MAX);
-            }
-          }
-        });
-      });
-      _crawlMaxObserver.observe(crawlMaxPages, { attributes: true, attributeFilter: ['max'] });
-      // Also catch when someone types >10 directly
-      crawlMaxPages.addEventListener('input', function() {
-        var val = parseInt(crawlMaxPages.value);
-        if (val > 10 && !_crawlEasterEggShown) {
-          _crawlEasterEggShown = true;
-          _showToast('Going beyond 10? Bold move \uD83D\uDE0F We\u2019ll allow up to ' + CRAWL_HARD_MAX + '. You found the secret ceiling!');
-          crawlMaxPages.setAttribute('max', CRAWL_HARD_MAX);
-        }
-      });
-    }
-
-    // Tab click delegation
-    if (crawlPageTabs) {
-      crawlPageTabs.addEventListener('click', function(e) {
-        var tab = e.target.closest('[data-crawl-page]');
-        if (!tab) return;
-        showCrawlPageContent(tab.getAttribute('data-crawl-page'));
-      });
-    }
-
-    // Cancel crawl
-    if (cancelCrawlBtn) {
-      cancelCrawlBtn.addEventListener('click', function() {
-        if (_crawlSession) MilgCrawl.abortCrawl(_crawlSession);
-        _analyzeUrlBtn.disabled = false;
-        _analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
-        cancelCrawlBtn.style.display = 'none';
-        crawlProgressLabel.textContent = 'Crawl cancelled';
-      });
-    }
-
-    // Check for completed snippet crawl on load
-    try {
-      var snippetCrawlData = localStorage.getItem('milg-crawl-complete');
-      if (snippetCrawlData) {
-        localStorage.removeItem('milg-crawl-complete');
-        var crawlState = JSON.parse(snippetCrawlData);
-        if (loadCrawlResults(crawlState, 'console snippet')) {
-          if (crawlSiteCheck) crawlSiteCheck.checked = true;
-          if (crawlOptions) crawlOptions.style.display = '';
-        }
-      }
-    } catch(e) { console.error('Failed to load snippet crawl data:', e); }
-
-    // Crawl export wiring
-    setupCrawlExports(document.getElementById('exportSeverityFilter'));
-  }
-
-  function resetCrawlState() {
-    _crawlSession = null;
-    _crawlPageReports = {};
-    if (crawlResults) crawlResults.style.display = 'none';
-    if (crawlPageContent) { crawlPageContent.style.display = 'none'; crawlPageContent.innerHTML = ''; }
-    if (crawlProgressArea) crawlProgressArea.style.display = 'none';
-  }
-
-  // Re-score all crawl pages (e.g. when profile changes)
-  function rescorePages() {
-    if (!_crawlSession || !_crawlSession.pages || _crawlSession.pages.length === 0) return false;
-    // Invalidate caches — profile change means all scores/reports are stale
-    _crawlPageReports = {};
-    _crawlSession.pages.forEach(function(page) {
-      if (page.status === 'done' && page.rawData) {
-        page.rawData.profile = document.getElementById('profileSelect').value;
-        delete page.rawData._cachedReportData;
-        page.reportData = MilgScoring.runScoring(page.rawData);
-      }
-    });
-    _crawlSession.summary = MilgCrawl.buildSummary(_crawlSession);
-    renderCrawlTabs();
-    showCrawlPageContent(_crawlActivePageTab);
-    return true;
-  }
-
-  return {
-    setup: setup,
-    getCrawlSession: getCrawlSession,
-    setCrawlSession: setCrawlSession,
-    getActiveTab: getActiveTab,
-    isCrawlMode: isCrawlMode,
-    isCrawlActive: isCrawlActive,
-    startCrawl: startCrawl,
-    loadCrawlResults: loadCrawlResults,
-    renderCrawlTabs: renderCrawlTabs,
-    showCrawlPageContent: showCrawlPageContent,
-    resetCrawlState: resetCrawlState,
-    rescorePages: rescorePages
-  };
-})();
-</file>
-
 <file path="docs/analyzer.css">
 /* Analyzer — inherits vars from style.css */
 
@@ -32170,6 +31612,564 @@ function scoreLayout(data) {
 
 
   S.register("layout", scoreLayout, 5, "Layout Quality", "layout");
+})();
+</file>
+
+<file path="docs/analyzer-crawl-ui.js">
+// make-it-look-good — Crawl UI Wiring
+// Manages multi-page site crawl progress, tabs, and results display.
+// Depends on: analyzer-crawl.js (MilgCrawl), analyzer-report.js (MilgReport),
+//             analyzer-iframe.js (MilgIframe), analyzer-proxy.js (MilgProxy)
+
+window.MilgCrawlUI = (function() {
+  "use strict";
+
+  var _crawlSession = null;
+  var _crawlPageReports = {}; // pageIndex → rendered HTML cache
+  var _crawlActivePageTab = 'summary';
+  var CRAWL_HARD_MAX = 25;
+
+  // Dependencies injected via setup()
+  var _showToast, _runAnalysis, _restoreCachedAnalysis, _analyzeUrlBtn, _runDeepScanLoop;
+
+  // DOM refs queried during setup
+  var crawlSiteCheck, crawlOptions, cancelCrawlBtn, crawlMaxPages, crawlBlacklist;
+  var crawlProgressArea, crawlProgressLabel, crawlProgressCount, crawlProgressFill, crawlProgressList;
+  var crawlResults, crawlPageTabs, crawlPageContent;
+
+  function _esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+  function getCrawlSession() { return _crawlSession; }
+  function setCrawlSession(s) { _crawlSession = s; }
+  function getActiveTab() { return _crawlActivePageTab; }
+
+  function isCrawlMode() { return crawlSiteCheck && crawlSiteCheck.checked; }
+  function isCrawlActive() { return _crawlSession && _crawlSession.pages.length > 0 && crawlResults && crawlResults.style.display !== 'none'; }
+
+  function crawlStatusIcon(status) {
+    if (status === 'done') return '<span class="status-icon done"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></span>';
+    if (status === 'error') return '<span class="status-icon error"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>';
+    if (status === 'fetching' || status === 'analyzing') return '<span class="status-icon active"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/></svg></span>';
+    return '<span class="status-icon pending"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-dasharray="20" stroke-dashoffset="10"/></svg></span>';
+  }
+
+  function updateCrawlProgressItem(page) {
+    var existing = document.getElementById('crawl-progress-' + encodeURIComponent(page.url));
+    var path; try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
+    var scoreText = page.status === 'done' && page.reportData ? ' ' + page.reportData.overall + '/100' : '';
+    var errorText = page.status === 'error' ? ' <span style="color:#dc2626;font-size:12px">' + (page.error || 'Failed').substring(0, 40) + '</span>' : '';
+    var html = crawlStatusIcon(page.status) +
+      '<span class="page-url" title="' + page.url + '">' + path + '</span>' +
+      '<span class="page-score">' + scoreText + errorText + '</span>';
+    if (existing) {
+      existing.innerHTML = html;
+    } else {
+      var div = document.createElement('div');
+      div.className = 'crawl-progress-item';
+      div.id = 'crawl-progress-' + encodeURIComponent(page.url);
+      div.innerHTML = html;
+      crawlProgressList.appendChild(div);
+    }
+  }
+
+  function renderCrawlTabs() {
+    if (!_crawlSession || !crawlPageTabs) return;
+    var html = '<button class="crawl-page-tab' + (_crawlActivePageTab === 'summary' ? ' active' : '') + '" data-crawl-page="summary">Summary</button>';
+    _crawlSession.pages.forEach(function(page, idx) {
+      html += MilgReport.renderCrawlPageTab(page, idx, _crawlActivePageTab === String(idx));
+    });
+    crawlPageTabs.innerHTML = html;
+  }
+
+  var _spinnerHtml = '<div style="padding:60px;text-align:center">' +
+    '<div style="width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite;margin:0 auto"></div>' +
+    '<div style="color:var(--text-secondary);margin-top:12px;font-size:13px">Loading report\u2026</div>' +
+    '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style></div>';
+
+  function showCrawlPageContent(key) {
+    _crawlActivePageTab = key;
+    renderCrawlTabs();
+    var reportContainer = document.getElementById('reportContainer');
+    var reportActions = document.getElementById('reportActions');
+    // Show export/actions only after crawl is complete (not during progress)
+    var crawlDone = _crawlSession && _crawlSession.status === 'complete';
+    if (reportActions) reportActions.style.display = crawlDone ? 'flex' : 'none';
+    if (key === 'summary') {
+      var summary = _crawlSession.summary || MilgCrawl.buildSummary(_crawlSession);
+      crawlPageContent.innerHTML = MilgReport.renderCrawlSummary(summary);
+      crawlPageContent.style.display = '';
+      crawlPageContent.className = 'report-container visible';
+      if (reportContainer) { reportContainer.style.display = 'none'; reportContainer.className = 'report-container'; }
+    } else {
+      var idx = parseInt(key);
+      var page = _crawlSession.pages[idx];
+      if (!page || page.status !== 'done') {
+        crawlPageContent.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-secondary)">' +
+          (page && page.status === 'error' ? 'Error: ' + (page.error || 'Analysis failed') : 'Analyzing\u2026') + '</div>';
+        crawlPageContent.style.display = '';
+        crawlPageContent.className = 'report-container visible';
+        if (reportContainer) { reportContainer.style.display = 'none'; reportContainer.className = 'report-container'; }
+        return;
+      }
+
+      crawlPageContent.style.display = 'none';
+      crawlPageContent.className = 'report-container';
+      if (reportContainer) reportContainer.style.display = '';
+
+      // Cache hit: restore instantly (no scoring, no rendering)
+      if (_crawlPageReports[idx]) {
+        var cached = _crawlPageReports[idx];
+        _restoreCachedAnalysis(page.rawData, cached.reportData);
+        reportContainer.innerHTML = cached.html;
+        reportContainer.classList.add('visible');
+        return;
+      }
+
+      // Cache miss: show spinner, defer heavy work so spinner paints
+      reportContainer.innerHTML = _spinnerHtml;
+      reportContainer.classList.add('visible');
+      setTimeout(function() {
+        // Guard: user may have switched tabs during the setTimeout
+        if (_crawlActivePageTab !== String(idx)) return;
+        page.rawData.meta = page.rawData.meta || {};
+        var origMethod = page.rawData.meta._inputMethod;
+        _runAnalysis(page.rawData, 'crawl-page');
+        page.rawData.meta._inputMethod = origMethod;
+        // Cache the rendered report + scored data for instant restore
+        _crawlPageReports[idx] = {
+          html: reportContainer.innerHTML,
+          reportData: page.rawData._cachedReportData
+        };
+      }, 0);
+    }
+  }
+
+  // Load multi-page crawl results into the tabbed view
+  function loadCrawlResults(crawlState, source) {
+    if (!crawlState || !crawlState.results || crawlState.results.length === 0) return false;
+    _showToast('Loaded crawl results' + (source ? ' from ' + source : '') + ' (' + crawlState.results.length + ' pages)');
+    _crawlSession = MilgCrawl.createSession(crawlState.startUrl || crawlState.results[0].url, {
+      maxPages: crawlState.results.length,
+      profile: document.getElementById('profileSelect') ? document.getElementById('profileSelect').value : 'general'
+    });
+    crawlState.results.forEach(function(r) {
+      var report = MilgScoring.runScoring(r.data);
+      _crawlSession.pages.push({
+        url: r.url, status: 'done', title: (r.data.meta && r.data.meta.title) || '',
+        rawData: r.data, reportData: report, error: null,
+        startedAt: r.data.meta.timestamp, completedAt: r.data.meta.timestamp
+      });
+    });
+    _crawlSession.status = 'complete';
+    _crawlSession.summary = MilgCrawl.buildSummary(_crawlSession);
+    crawlResults.style.display = '';
+    var reportActions = document.getElementById('reportActions');
+    if (reportActions) reportActions.style.display = '';
+    document.getElementById('inputSection').style.display = 'none';
+    renderCrawlTabs();
+    showCrawlPageContent('summary');
+
+    // Pre-compute pixel verify for each page with screenshots (async, best-effort).
+    // Results are cached on rawData._contrastVerifyResults so tab switches use cache.
+    _preComputePixelVerify();
+
+    return true;
+  }
+
+  function _preComputePixelVerify() {
+    if (!_crawlSession || !window.MilgContrastVerify) return;
+    var pagesToVerify = _crawlSession.pages.filter(function(p) {
+      return p.status === 'done' && p.rawData && !p.rawData._contrastVerifyResults &&
+        p.rawData.screenshots && p.rawData.screenshots.length && p.rawData.screenshotMeta;
+    });
+    if (pagesToVerify.length === 0) return;
+    var doneCount = 0;
+    var totalCount = pagesToVerify.length;
+
+    // Show pixel verify progress on summary page
+    _updateVerifySummary(0, totalCount, null);
+
+    pagesToVerify.forEach(function(page) {
+      var report = page.reportData || MilgScoring.runScoring(page.rawData);
+      MilgContrastVerify.verify(report, function(results, bboxEdgeResults) {
+        page.rawData._contrastVerifyResults = results;
+        page.rawData._bboxEdgeResults = bboxEdgeResults || [];
+        doneCount++;
+        // Invalidate cached report HTML for this page (now has verify results)
+        var idx = _crawlSession.pages.indexOf(page);
+        if (idx >= 0) delete _crawlPageReports[idx];
+        // Update verify summary on the summary page
+        _updateVerifySummary(doneCount, totalCount, doneCount === totalCount ? _crawlSession : null);
+      });
+    });
+  }
+
+  function _updateVerifySummary(done, total, completedSession) {
+    var container = document.getElementById('milg-crawl-verify-summary');
+    if (!container && crawlPageContent) {
+      // Append the verify section to the summary page if we're on it
+      container = document.createElement('div');
+      container.id = 'milg-crawl-verify-summary';
+      container.style.marginTop = '24px';
+      crawlPageContent.appendChild(container);
+    }
+    if (!container) return;
+
+    if (!completedSession) {
+      // Still running — show spinner with progress
+      container.innerHTML = '<div class="crawl-summary">' +
+        '<h3 style="display:flex;align-items:center;gap:8px">' +
+        '<span style="display:inline-block;width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite"></span>' +
+        'Pixel Contrast Verification (' + done + '/' + total + ' pages)' +
+        '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style>' +
+        '</h3></div>';
+      return;
+    }
+
+    // All done — build the pixel verify summary across all pages
+    var falsePassTotal = 0, falseFailTotal = 0, verifiedTotal = 0;
+    var pageIssues = []; // [{url, path, falsePass, results}]
+    completedSession.pages.forEach(function(page) {
+      if (!page.rawData || !page.rawData._contrastVerifyResults) return;
+      var results = page.rawData._contrastVerifyResults;
+      var fp = 0, ff = 0, v = 0;
+      results.forEach(function(r) {
+        if (r.crossesBoundary) {
+          if (r.cssPasses && !r.pixelPasses) fp++;
+          else ff++;
+        } else { v++; }
+      });
+      falsePassTotal += fp; falseFailTotal += ff; verifiedTotal += v;
+      if (fp > 0) {
+        var path; try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
+        pageIssues.push({ url: page.url, path: path, falsePass: fp, results: results });
+      }
+    });
+
+    var isDark = document.body && document.body.classList.contains('dark-ui');
+    var html = '<div class="crawl-summary"><h3>Pixel Contrast Verification</h3>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px">';
+    html += '<div style="padding:8px 16px;border-radius:8px;background:var(--surface);border:1px solid var(--border);font-size:13px">' +
+      '<span style="font-weight:600">' + verifiedTotal + '</span> <span style="color:var(--text-secondary)">verified</span></div>';
+    if (falsePassTotal > 0) {
+      html += '<div style="padding:8px 16px;border-radius:8px;background:' + (isDark ? '#2d0f0f' : '#fef2f2') + ';border:1px solid ' + (isDark ? '#991b1b' : '#fecaca') + ';font-size:13px">' +
+        '<span style="font-weight:700;color:#ef4444">' + falsePassTotal + '</span> <span style="color:#ef4444">hidden failure' + (falsePassTotal > 1 ? 's' : '') + '</span></div>';
+    }
+    if (falseFailTotal > 0) {
+      html += '<div style="padding:8px 16px;border-radius:8px;background:' + (isDark ? '#0c2d1e' : '#f0fdf4') + ';border:1px solid ' + (isDark ? '#166534' : '#bbf7d0') + ';font-size:13px">' +
+        '<span style="font-weight:600;color:#16a34a">' + falseFailTotal + '</span> <span style="color:#16a34a">better than CSS</span></div>';
+    }
+    if (falsePassTotal === 0 && falseFailTotal === 0) {
+      html += '<div style="padding:8px 16px;border-radius:8px;background:' + (isDark ? '#0c2d1e' : '#f0fdf4') + ';border:1px solid ' + (isDark ? '#166534' : '#bbf7d0') + ';font-size:13px">' +
+        '<span style="color:#16a34a">All pixel checks match CSS — no hidden issues</span></div>';
+    }
+    html += '</div>';
+
+    // Per-page breakdown of failures
+    if (pageIssues.length > 0) {
+      html += '<div style="font-size:13px;line-height:1.6">';
+      pageIssues.forEach(function(pi) {
+        html += '<div style="padding:6px 10px;margin-bottom:4px;border-radius:6px;background:var(--surface);border:1px solid var(--border)">';
+        html += '<span style="color:#ef4444;font-weight:600">' + pi.falsePass + ' hidden failure' + (pi.falsePass > 1 ? 's' : '') + '</span>';
+        html += ' on <span style="font-weight:500">' + _esc(pi.path) + '</span>';
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+
+    html += '</div>';
+    container.innerHTML = html;
+  }
+
+  function startCrawl(url) {
+    var maxPages = parseInt(crawlMaxPages.value) || 5;
+    maxPages = Math.min(Math.max(maxPages, 1), CRAWL_HARD_MAX);
+
+    var blacklist = (crawlBlacklist.value || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+    var deepScan = document.getElementById('deepScanCheck') && document.getElementById('deepScanCheck').checked;
+    var profile = document.getElementById('profileSelect');
+
+    _crawlSession = MilgCrawl.createSession(url, {
+      maxPages: maxPages,
+      blacklist: blacklist,
+      deepScan: deepScan,
+      profile: profile ? profile.value : 'general'
+    });
+    _crawlPageReports = {};
+    _crawlActivePageTab = 'summary';
+
+    // Show progress
+    _analyzeUrlBtn.disabled = true;
+    _analyzeUrlBtn.textContent = 'Crawling\u2026';
+    cancelCrawlBtn.style.display = '';
+    crawlProgressArea.style.display = '';
+    crawlProgressList.innerHTML = '';
+    crawlProgressFill.style.width = '0%';
+    crawlProgressLabel.textContent = 'Fetching starting page\u2026';
+    crawlProgressCount.textContent = '0 / ' + maxPages;
+
+    // Show crawl results area, hide input section
+    var inputSection = document.getElementById('inputSection');
+    var reportActions = document.getElementById('reportActions');
+    var reportContainer = document.getElementById('reportContainer');
+    if (inputSection) inputSection.style.display = 'none';
+    crawlResults.style.display = '';
+    if (reportContainer) reportContainer.className = 'report-container';
+    // Hide export bar during crawl — show only when crawl completes
+    if (reportActions) reportActions.style.display = 'none';
+    // Scroll to results
+    crawlResults.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    renderCrawlTabs();
+    showCrawlPageContent('summary');
+
+    var doneCount = 0;
+    var totalPages = 1;
+
+    MilgCrawl.startCrawl(_crawlSession, {
+      fetchPage: function(pageUrl, cb) {
+        MilgProxy.fetchViaProxy(pageUrl, function(html, err) { cb(html, err); });
+      },
+      analyzePage: function(html, pageUrl, opts, cb) {
+        var wantShots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
+        var isDeep = _crawlSession && _crawlSession.options && _crawlSession.options.deepScan && _runDeepScanLoop;
+        if (isDeep) {
+          _runDeepScanLoop(html, pageUrl, opts.excludeSelector || null, wantShots, null, function(primary) {
+            if (primary) {
+              primary.meta.url = pageUrl;
+              primary.meta._inputMethod = 'crawl';
+              if (opts.profile) primary.profile = opts.profile;
+            }
+            cb(primary);
+          });
+        } else {
+          MilgIframe.analyzeHtmlInIframe(html, function(data) {
+            if (data) {
+              data.meta.url = pageUrl;
+              data.meta._inputMethod = 'crawl';
+              if (opts.profile) data.profile = opts.profile;
+            }
+            cb(data);
+          }, pageUrl, opts.excludeSelector || null, wantShots);
+        }
+      },
+      scorePage: function(data) { return MilgScoring.runScoring(data); },
+      onDiscovery: function(urls) {
+        totalPages = 1 + urls.length;
+        crawlProgressCount.textContent = '0 / ' + totalPages;
+        crawlProgressLabel.textContent = 'Found ' + urls.length + ' page' + (urls.length !== 1 ? 's' : '') + ' to crawl';
+      },
+      onPageStart: function(page) {
+        updateCrawlProgressItem(page);
+        crawlProgressLabel.textContent = 'Analyzing ' + page.url.replace(/^https?:\/\/[^/]+/, '') + '\u2026';
+        renderCrawlTabs();
+      },
+      onPageComplete: function(page) {
+        doneCount++;
+        updateCrawlProgressItem(page);
+        crawlProgressCount.textContent = doneCount + ' / ' + totalPages;
+        crawlProgressFill.style.width = Math.round(doneCount / totalPages * 100) + '%';
+        renderCrawlTabs();
+        if (_crawlActivePageTab === 'summary') showCrawlPageContent('summary');
+        // Pre-compute pixel verify as soon as page completes (async, best-effort)
+        if (page.rawData && page.rawData.screenshots && page.rawData.screenshots.length && page.rawData.screenshotMeta && window.MilgContrastVerify) {
+          var report = page.reportData || MilgScoring.runScoring(page.rawData);
+          MilgContrastVerify.verify(report, function(results, bboxEdgeResults) {
+            page.rawData._contrastVerifyResults = results;
+            page.rawData._bboxEdgeResults = bboxEdgeResults || [];
+          });
+        }
+      },
+      onPageError: function(page) {
+        doneCount++;
+        updateCrawlProgressItem(page);
+        crawlProgressCount.textContent = doneCount + ' / ' + totalPages;
+        crawlProgressFill.style.width = Math.round(doneCount / totalPages * 100) + '%';
+        renderCrawlTabs();
+      },
+      onComplete: function(session) {
+        _analyzeUrlBtn.disabled = false;
+        _analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
+        cancelCrawlBtn.style.display = 'none';
+        crawlProgressLabel.textContent = 'Crawl complete!';
+        crawlProgressFill.style.width = '100%';
+        renderCrawlTabs();
+        showCrawlPageContent('summary');
+      }
+    });
+  }
+
+  function setupCrawlExports(exportSeverityFilter) {
+    var copyMdBtn = document.getElementById('copyMdBtn');
+    var markdownBtn = document.getElementById('markdownBtn');
+    var exportJsonBtn = document.getElementById('exportJsonBtn');
+
+    if (copyMdBtn) {
+      copyMdBtn.addEventListener('click', function(e) {
+        if (!isCrawlActive()) return; // let original handler run
+        e.stopImmediatePropagation();
+        var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
+        var md = MilgCrawl.renderCrawlMarkdown(_crawlSession, filter);
+        navigator.clipboard.writeText(md).then(function() { _showToast('Crawl report copied as Markdown!'); }).catch(function() { _showToast('Copy failed'); });
+      });
+    }
+    if (markdownBtn) {
+      markdownBtn.addEventListener('click', function(e) {
+        if (!isCrawlActive()) return;
+        e.stopImmediatePropagation();
+        var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
+        var md = MilgCrawl.renderCrawlMarkdown(_crawlSession, filter);
+        var blob = new Blob([md], { type: 'text/markdown' });
+        var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+        a.download = 'site-crawl-report.md'; a.click();
+      });
+    }
+    if (exportJsonBtn) {
+      exportJsonBtn.addEventListener('click', function(e) {
+        if (!isCrawlActive()) return;
+        e.stopImmediatePropagation();
+        var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
+        var json = MilgCrawl.renderCrawlJSON(_crawlSession, filter);
+        var blob = new Blob([json], { type: 'application/json' });
+        var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+        a.download = 'site-crawl-data.json'; a.click();
+      });
+    }
+  }
+
+  function setup(deps) {
+    _showToast = deps.showToast;
+    _runAnalysis = deps.runAnalysis;
+    _restoreCachedAnalysis = deps.restoreCachedAnalysis;
+    _analyzeUrlBtn = deps.analyzeUrlBtn;
+    _runDeepScanLoop = deps.runDeepScanLoop;
+
+    // Query DOM refs
+    crawlSiteCheck = document.getElementById('crawlSiteCheck');
+    crawlOptions = document.getElementById('crawlOptions');
+    cancelCrawlBtn = document.getElementById('cancelCrawlBtn');
+    crawlMaxPages = document.getElementById('crawlMaxPages');
+    crawlBlacklist = document.getElementById('crawlBlacklist');
+    crawlProgressArea = document.getElementById('crawlProgressArea');
+    crawlProgressLabel = document.getElementById('crawlProgressLabel');
+    crawlProgressCount = document.getElementById('crawlProgressCount');
+    crawlProgressFill = document.getElementById('crawlProgressFill');
+    crawlProgressList = document.getElementById('crawlProgressList');
+    crawlResults = document.getElementById('crawlResults');
+    crawlPageTabs = document.getElementById('crawlPageTabs');
+    crawlPageContent = document.getElementById('crawlPageContent');
+
+    // Crawl site toggle — show/hide crawl options
+    if (crawlSiteCheck && crawlOptions) {
+      crawlSiteCheck.addEventListener('change', function() {
+        crawlOptions.style.display = crawlSiteCheck.checked ? '' : 'none';
+      });
+    }
+
+    // Page limit easter egg — MutationObserver on max attr + input value check
+    var _crawlEasterEggShown = false;
+    if (crawlMaxPages) {
+      var _crawlMaxObserver = new MutationObserver(function(mutations) {
+        mutations.forEach(function(m) {
+          if (m.attributeName === 'max') {
+            var newMax = parseInt(crawlMaxPages.getAttribute('max'));
+            if (newMax > 10 && !_crawlEasterEggShown) {
+              _crawlEasterEggShown = true;
+              _showToast('Nice try! We see you editing the DOM \uD83D\uDE0F Fine, ' + CRAWL_HARD_MAX + ' is the real limit\u2026 but your proxy rate limit isn\u2019t.');
+              crawlMaxPages.setAttribute('max', CRAWL_HARD_MAX);
+            }
+          }
+        });
+      });
+      _crawlMaxObserver.observe(crawlMaxPages, { attributes: true, attributeFilter: ['max'] });
+      // Also catch when someone types >10 directly
+      crawlMaxPages.addEventListener('input', function() {
+        var val = parseInt(crawlMaxPages.value);
+        if (val > 10 && !_crawlEasterEggShown) {
+          _crawlEasterEggShown = true;
+          _showToast('Going beyond 10? Bold move \uD83D\uDE0F We\u2019ll allow up to ' + CRAWL_HARD_MAX + '. You found the secret ceiling!');
+          crawlMaxPages.setAttribute('max', CRAWL_HARD_MAX);
+        }
+      });
+    }
+
+    // Tab click delegation
+    if (crawlPageTabs) {
+      crawlPageTabs.addEventListener('click', function(e) {
+        var tab = e.target.closest('[data-crawl-page]');
+        if (!tab) return;
+        showCrawlPageContent(tab.getAttribute('data-crawl-page'));
+      });
+    }
+
+    // Cancel crawl
+    if (cancelCrawlBtn) {
+      cancelCrawlBtn.addEventListener('click', function() {
+        if (_crawlSession) MilgCrawl.abortCrawl(_crawlSession);
+        _analyzeUrlBtn.disabled = false;
+        _analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
+        cancelCrawlBtn.style.display = 'none';
+        crawlProgressLabel.textContent = 'Crawl cancelled';
+      });
+    }
+
+    // Check for completed snippet crawl on load
+    try {
+      var snippetCrawlData = localStorage.getItem('milg-crawl-complete');
+      if (snippetCrawlData) {
+        localStorage.removeItem('milg-crawl-complete');
+        var crawlState = JSON.parse(snippetCrawlData);
+        if (loadCrawlResults(crawlState, 'console snippet')) {
+          if (crawlSiteCheck) crawlSiteCheck.checked = true;
+          if (crawlOptions) crawlOptions.style.display = '';
+        }
+      }
+    } catch(e) { console.error('Failed to load snippet crawl data:', e); }
+
+    // Crawl export wiring
+    setupCrawlExports(document.getElementById('exportSeverityFilter'));
+  }
+
+  function resetCrawlState() {
+    _crawlSession = null;
+    _crawlPageReports = {};
+    if (crawlResults) crawlResults.style.display = 'none';
+    if (crawlPageContent) { crawlPageContent.style.display = 'none'; crawlPageContent.innerHTML = ''; }
+    if (crawlProgressArea) crawlProgressArea.style.display = 'none';
+  }
+
+  // Re-score all crawl pages (e.g. when profile changes)
+  function rescorePages() {
+    if (!_crawlSession || !_crawlSession.pages || _crawlSession.pages.length === 0) return false;
+    // Invalidate caches — profile change means all scores/reports are stale
+    _crawlPageReports = {};
+    _crawlSession.pages.forEach(function(page) {
+      if (page.status === 'done' && page.rawData) {
+        page.rawData.profile = document.getElementById('profileSelect').value;
+        delete page.rawData._cachedReportData;
+        page.reportData = MilgScoring.runScoring(page.rawData);
+      }
+    });
+    _crawlSession.summary = MilgCrawl.buildSummary(_crawlSession);
+    renderCrawlTabs();
+    showCrawlPageContent(_crawlActivePageTab);
+    return true;
+  }
+
+  return {
+    setup: setup,
+    getCrawlSession: getCrawlSession,
+    setCrawlSession: setCrawlSession,
+    getActiveTab: getActiveTab,
+    isCrawlMode: isCrawlMode,
+    isCrawlActive: isCrawlActive,
+    startCrawl: startCrawl,
+    loadCrawlResults: loadCrawlResults,
+    renderCrawlTabs: renderCrawlTabs,
+    showCrawlPageContent: showCrawlPageContent,
+    resetCrawlState: resetCrawlState,
+    rescorePages: rescorePages
+  };
 })();
 </file>
 
@@ -38574,22 +38574,28 @@ window.MilgViewer = (function() {
       });
     });
 
+    // Click-cycle modes: all dots (no labels) → worst → P10 → median → P90 → best → off
+    var _dotModes = ['all', 'worst', 'P10', 'median', 'P90', 'best', 'off'];
+    var _dotState = {}; // owner → mode index
+
     function _toggleDots(rect, svg) {
       var owner = rect.getAttribute('data-verify');
-      var existing = svg.querySelectorAll('.milg-sample-dot[data-owner="' + owner + '"]');
-      if (existing.length > 0) { existing.forEach(function(d) { d.parentNode.removeChild(d); }); return; }
       var sp = rect._samplePoints; if (!sp) return;
       var secOff = rect._sectionOffset || 0;
-      var vi = parseInt(rect.getAttribute('data-verify'));
-      var vr = (_reportData && _reportData._contrastVerifyResults) ? _reportData._contrastVerifyResults[vi] : null;
 
-      // Only show key percentile points at distinct FG positions.
-      // Deduplicate by FG position first (keep worst ratio per unique FG pixel),
-      // then pick percentiles from the deduplicated list.
+      // Advance cycle
+      var modeIdx = (_dotState[owner] !== undefined) ? (_dotState[owner] + 1) % _dotModes.length : 0;
+      _dotState[owner] = modeIdx;
+      var mode = _dotModes[modeIdx];
+
+      // Clear existing dots
+      svg.querySelectorAll('.milg-sample-dot[data-owner="' + owner + '"]').forEach(function(d) { d.remove(); });
+      if (mode === 'off') { delete _dotState[owner]; return; }
+
       var fgPairs = (sp.fg || []).slice();
       if (fgPairs.length === 0) return;
 
-      // Deduplicate: for each unique FG position, keep the entry with worst ratio
+      // Deduplicate by FG position (keep worst ratio per unique pixel)
       var byPos = {};
       fgPairs.forEach(function(p) {
         var key = p.x + ',' + p.y;
@@ -38598,102 +38604,125 @@ window.MilgViewer = (function() {
       var unique = [];
       for (var k in byPos) unique.push(byPos[k]);
       if (unique.length === 0) return;
-
       unique.sort(function(a, b) { return (a.ratio || 0) - (b.ratio || 0); });
 
-      var picks = [];
-      var labels = [];
-      picks.push(unique[0]); labels.push('worst');
-      var p10i = Math.floor(unique.length * 0.1);
-      if (p10i > 0) { picks.push(unique[p10i]); labels.push('P10'); }
-      var medI = Math.floor(unique.length * 0.5);
-      if (medI > p10i) { picks.push(unique[medI]); labels.push('median'); }
+      // Build the named percentile points
+      var namedPts = {};
+      namedPts.worst = unique[0];
+      var p10i = Math.max(1, Math.floor(unique.length * 0.1));
+      namedPts.P10 = unique[Math.min(p10i, unique.length - 1)];
+      namedPts.median = unique[Math.floor(unique.length * 0.5)];
       var p90i = Math.floor(unique.length * 0.9);
-      if (p90i > medI) { picks.push(unique[p90i]); labels.push('P90'); }
-      if (unique.length > 1) { picks.push(unique[unique.length - 1]); labels.push('best'); }
+      namedPts.P90 = unique[Math.min(p90i, unique.length - 1)];
+      namedPts.best = unique[unique.length - 1];
 
       var dotR = _zoomLevel >= 2 ? 3 : 2;
       var colors = { worst: '#ef4444', P10: '#f97316', median: '#eab308', P90: '#22c55e', best: '#06b6d4' };
-
       var sw = 'display:inline-block;width:18px;height:18px;border-radius:3px;border:1px solid rgba(128,128,128,0.3);vertical-align:middle;';
 
-      picks.forEach(function(pt, idx) {
-        var label = labels[idx];
-        var col = colors[label] || '#94a3b8';
-        var fgCol = pt.r !== undefined ? 'rgb(' + pt.r + ',' + pt.g + ',' + pt.b + ')' : '#000';
-        var bgCol = pt.bgR !== undefined ? 'rgb(' + pt.bgR + ',' + pt.bgG + ',' + pt.bgB + ')' : '#fff';
-        var ratio = pt.ratio || '?';
+      if (mode === 'all') {
+        // Show all percentile dots without labels
+        var allLabels = ['worst', 'P10', 'median', 'P90', 'best'];
+        var seen = {};
+        allLabels.forEach(function(lbl) {
+          var pt = namedPts[lbl]; if (!pt) return;
+          var key = pt.x + ',' + pt.y;
+          if (seen[key]) return; seen[key] = true;
+          _renderDot(svg, pt, lbl, colors[lbl], dotR, secOff, owner, false, sw);
+        });
+      } else {
+        // Single highlighted point with label + dim others
+        var allLabels = ['worst', 'P10', 'median', 'P90', 'best'];
+        var seen = {};
+        allLabels.forEach(function(lbl) {
+          var pt = namedPts[lbl]; if (!pt) return;
+          var key = pt.x + ',' + pt.y;
+          if (seen[key] && lbl !== mode) return;
+          seen[key] = true;
+          var isActive = (lbl === mode);
+          _renderDot(svg, pt, lbl, colors[lbl], dotR, secOff, owner, isActive, sw, !isActive);
+        });
+      }
+    }
 
-        // Hover group — wraps FG dot, BG dot, line so any part is hoverable
-        var group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        group.setAttribute('class', 'milg-sample-dot'); group.setAttribute('data-owner', owner);
-        group.style.cursor = 'pointer';
+    function _renderDot(svg, pt, label, col, dotR, secOff, owner, showLabel, sw, dimmed) {
+      var fgCol = pt.r !== undefined ? 'rgb(' + pt.r + ',' + pt.g + ',' + pt.b + ')' : '#000';
+      var bgCol = pt.bgR !== undefined ? 'rgb(' + pt.bgR + ',' + pt.bgG + ',' + pt.bgB + ')' : '#fff';
+      var ratio = pt.ratio || '?';
+      var opacity = dimmed ? '0.25' : '1';
 
-        // Hit area (invisible wider line for easier hover)
-        if (pt.bgX !== undefined && pt.bgY !== undefined) {
-          var hitLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-          hitLine.setAttribute('x1', pt.x); hitLine.setAttribute('y1', pt.y + secOff);
-          hitLine.setAttribute('x2', pt.bgX); hitLine.setAttribute('y2', pt.bgY + secOff);
-          hitLine.setAttribute('stroke', 'transparent'); hitLine.setAttribute('stroke-width', '8');
-          group.appendChild(hitLine);
+      var group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      group.setAttribute('class', 'milg-sample-dot');
+      group.setAttribute('data-owner', owner);
+      group.style.cursor = 'pointer';
+      group.style.opacity = opacity;
 
-          // Visible line
-          var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-          line.setAttribute('x1', pt.x); line.setAttribute('y1', pt.y + secOff);
-          line.setAttribute('x2', pt.bgX); line.setAttribute('y2', pt.bgY + secOff);
-          line.setAttribute('stroke', col); line.setAttribute('stroke-width', '0.5');
-          line.setAttribute('stroke-dasharray', '2 1'); line.setAttribute('opacity', '0.6');
-          line.setAttribute('pointer-events', 'none');
-          group.appendChild(line);
+      // Hit area + visible line to BG
+      if (pt.bgX !== undefined && pt.bgY !== undefined) {
+        var hitLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        hitLine.setAttribute('x1', pt.x); hitLine.setAttribute('y1', pt.y + secOff);
+        hitLine.setAttribute('x2', pt.bgX); hitLine.setAttribute('y2', pt.bgY + secOff);
+        hitLine.setAttribute('stroke', 'transparent'); hitLine.setAttribute('stroke-width', '8');
+        group.appendChild(hitLine);
 
-          // BG dot
-          var bd = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-          bd.setAttribute('cx', pt.bgX); bd.setAttribute('cy', pt.bgY + secOff);
-          bd.setAttribute('r', dotR * 0.7); bd.setAttribute('fill', 'none');
-          bd.setAttribute('stroke', col); bd.setAttribute('stroke-width', '1');
-          bd.setAttribute('pointer-events', 'none');
-          group.appendChild(bd);
-        }
+        var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', pt.x); line.setAttribute('y1', pt.y + secOff);
+        line.setAttribute('x2', pt.bgX); line.setAttribute('y2', pt.bgY + secOff);
+        line.setAttribute('stroke', col); line.setAttribute('stroke-width', '0.5');
+        line.setAttribute('stroke-dasharray', '2 1'); line.setAttribute('opacity', '0.6');
+        line.setAttribute('pointer-events', 'none');
+        group.appendChild(line);
 
-        // FG dot
-        var d = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        d.setAttribute('cx', pt.x); d.setAttribute('cy', pt.y + secOff);
-        d.setAttribute('r', dotR); d.setAttribute('fill', col);
-        d.setAttribute('stroke', '#fff'); d.setAttribute('stroke-width', '0.5');
-        d.setAttribute('pointer-events', 'none');
-        group.appendChild(d);
+        var bd = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        bd.setAttribute('cx', pt.bgX); bd.setAttribute('cy', pt.bgY + secOff);
+        bd.setAttribute('r', dotR * 0.7); bd.setAttribute('fill', 'none');
+        bd.setAttribute('stroke', col); bd.setAttribute('stroke-width', '1');
+        bd.setAttribute('pointer-events', 'none');
+        group.appendChild(bd);
+      }
 
-        // Label
+      // FG dot
+      var d = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      d.setAttribute('cx', pt.x); d.setAttribute('cy', pt.y + secOff);
+      d.setAttribute('r', showLabel ? dotR * 1.5 : dotR); d.setAttribute('fill', col);
+      d.setAttribute('stroke', '#fff'); d.setAttribute('stroke-width', showLabel ? '1' : '0.5');
+      d.setAttribute('pointer-events', 'none');
+      group.appendChild(d);
+
+      // Label (only when actively highlighted)
+      if (showLabel) {
         var lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        lbl.setAttribute('x', pt.x + dotR + 2); lbl.setAttribute('y', pt.y + secOff - 2);
-        lbl.setAttribute('font-size', '7'); lbl.setAttribute('fill', col);
+        lbl.setAttribute('x', pt.x + dotR + 4); lbl.setAttribute('y', pt.y + secOff - 3);
+        lbl.setAttribute('font-size', '8'); lbl.setAttribute('fill', col);
         lbl.setAttribute('font-family', 'system-ui'); lbl.setAttribute('font-weight', '700');
         lbl.setAttribute('pointer-events', 'none');
+        lbl.setAttribute('stroke', 'rgba(0,0,0,0.6)'); lbl.setAttribute('stroke-width', '2.5');
+        lbl.setAttribute('paint-order', 'stroke');
         lbl.textContent = label + ' ' + ratio + ':1';
         group.appendChild(lbl);
+      }
 
-        // Hover tooltip on this specific pair
-        group.addEventListener('mouseenter', function(e) {
-          hideTooltip();
-          var passColor = ratio >= 4.5 ? '#22c55e' : ratio >= 3 ? '#eab308' : '#ef4444';
-          var passLabel = ratio >= 4.5 ? 'PASS' : ratio >= 3 ? 'AA-lg' : 'FAIL';
-          _tooltip = document.createElement('div');
-          _tooltip.className = 'milg-viewer-tooltip';
-          _tooltip.innerHTML =
-            '<div style="font-size:10px;color:#64748b;margin-bottom:4px;font-weight:600">' + label.toUpperCase() + ' pair</div>' +
-            '<div style="display:flex;align-items:center;gap:8px">' +
-              '<div style="text-align:center"><span style="' + sw + 'background:' + fgCol + '"></span><div style="font-size:8px;color:#94a3b8;margin-top:2px">FG</div></div>' +
-              '<div style="text-align:center"><span style="' + sw + 'background:' + bgCol + '"></span><div style="font-size:8px;color:#94a3b8;margin-top:2px">BG</div></div>' +
-              '<div style="font-size:16px;font-weight:700;color:' + passColor + '">' + ratio + ':1</div>' +
-              '<div style="font-size:10px;font-weight:600;color:' + passColor + '">' + passLabel + '</div>' +
-            '</div>' +
-            '<div style="font-size:9px;color:#94a3b8;margin-top:4px">' + fgCol + ' on ' + bgCol + '</div>';
-          positionTooltip(e);
-        });
-        group.addEventListener('mouseleave', function() { hideTooltip(); });
-
-        svg.appendChild(group);
+      // Hover tooltip
+      group.addEventListener('mouseenter', function(e) {
+        hideTooltip();
+        var passColor = ratio >= 4.5 ? '#22c55e' : ratio >= 3 ? '#eab308' : '#ef4444';
+        var passLabel = ratio >= 4.5 ? 'PASS' : ratio >= 3 ? 'AA-lg' : 'FAIL';
+        _tooltip = document.createElement('div');
+        _tooltip.className = 'milg-viewer-tooltip';
+        _tooltip.innerHTML =
+          '<div style="font-size:10px;color:#64748b;margin-bottom:4px;font-weight:600">' + label.toUpperCase() + ' pair</div>' +
+          '<div style="display:flex;align-items:center;gap:8px">' +
+            '<div style="text-align:center"><span style="' + sw + 'background:' + fgCol + '"></span><div style="font-size:8px;color:#94a3b8;margin-top:2px">FG</div></div>' +
+            '<div style="text-align:center"><span style="' + sw + 'background:' + bgCol + '"></span><div style="font-size:8px;color:#94a3b8;margin-top:2px">BG</div></div>' +
+            '<div style="font-size:16px;font-weight:700;color:' + passColor + '">' + ratio + ':1</div>' +
+            '<div style="font-size:10px;font-weight:600;color:' + passColor + '">' + passLabel + '</div>' +
+          '</div>' +
+          '<div style="font-size:9px;color:#94a3b8;margin-top:4px">' + fgCol + ' on ' + bgCol + '</div>';
+        positionTooltip(e);
       });
+      group.addEventListener('mouseleave', function() { hideTooltip(); });
+
+      svg.appendChild(group);
     }
   }
 
@@ -40869,7 +40898,7 @@ console.log('[milg] analyzer.js v48.1 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v48.8</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v48.9</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
