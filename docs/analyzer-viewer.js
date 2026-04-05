@@ -995,23 +995,23 @@ window.MilgViewer = (function() {
         line.setAttribute('pointer-events', 'none');
         group.appendChild(line);
 
-        // BG dot — larger ring when highlighted
+        // BG dot — larger ring when highlighted, always category color
         var bd = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         bd.setAttribute('cx', pt.bgX); bd.setAttribute('cy', pt.bgY + secOff);
         bd.setAttribute('r', showLabel ? dotR * 1.3 : dotR * 0.7);
-        bd.setAttribute('fill', showLabel ? bgCol : 'none');
-        bd.setAttribute('stroke', showLabel ? '#fff' : col);
-        bd.setAttribute('stroke-width', showLabel ? '1' : '0.5');
+        bd.setAttribute('fill', 'none');
+        bd.setAttribute('stroke', col);
+        bd.setAttribute('stroke-width', showLabel ? '1.5' : '0.5');
         bd.setAttribute('pointer-events', 'none');
         group.appendChild(bd);
       }
 
-      // FG dot — show actual FG color when highlighted, category color otherwise
+      // FG dot — always category color for scannability (swatches show actual colors)
       var d = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
       d.setAttribute('cx', pt.x); d.setAttribute('cy', pt.y + secOff);
       d.setAttribute('r', showLabel ? dotR * 1.5 : dotR);
-      d.setAttribute('fill', showLabel ? fgCol : col);
-      d.setAttribute('stroke', showLabel ? '#fff' : '#fff');
+      d.setAttribute('fill', col);
+      d.setAttribute('stroke', '#fff');
       d.setAttribute('stroke-width', showLabel ? '1' : '0.5');
       d.setAttribute('pointer-events', 'none');
       group.appendChild(d);
