@@ -801,8 +801,8 @@ window.MilgIframe = (function() {
 
   // Backward-compatible wrapper: old positional API → new options API
   function analyzeHtmlInIframe(html, callback, sourceUrlOrDark, excludeSelectorOrEffectCSS, captureScreenshots, viewportOverride) {
-    // Detect if HTML was already preprocessed (JS mode injects sandbox before calling this)
-    var alreadyPreprocessed = html.indexOf('__milgSandboxLog') !== -1;
+    // Detect if HTML was already preprocessed (JS mode or runDeepScanLoop)
+    var alreadyPreprocessed = html.indexOf('__milgSandboxLog') !== -1 || html.indexOf('<!--milg-preprocessed-->') !== -1;
     var sourceUrl = typeof sourceUrlOrDark === 'string' ? sourceUrlOrDark : null;
     var excludeSelector = typeof excludeSelectorOrEffectCSS === 'string' && !sourceUrl ? null : excludeSelectorOrEffectCSS;
     var editorDark = typeof sourceUrlOrDark === 'boolean' ? sourceUrlOrDark : false;

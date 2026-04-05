@@ -365,20 +365,28 @@ window.MilgCrawlUI = (function() {
             cb(primary);
           });
         } else {
-          MilgIframe.analyzeHtml(html, {
-            url: pageUrl,
-            jsEnabled: jsOn,
-            screenshots: wantShots,
-            exclude: opts.excludeSelector || null
-          }, function(data) {
-            if (data) {
-              data.meta.url = pageUrl;
-              data.meta._inputMethod = 'crawl';
-              if (jsOn) data.meta._jsEnabled = true;
-              if (opts.profile) data.profile = opts.profile;
-            }
-            cb(data);
+          function _doCrawlAnalysis() {
+            MilgIframe.analyzeHtml(html, {
+              url: pageUrl,
+              jsEnabled: jsOn,
+              screenshots: wantShots,
+              exclude: opts.excludeSelector || null
+            }, function(data) {
+              if (data) {
+                data.meta.url = pageUrl;
+                data.meta._inputMethod = 'crawl';
+                if (jsOn) data.meta._jsEnabled = true;
+                if (opts.profile) data.profile = opts.profile;
+              }
+              cb(data);
           });
+          }
+          // Prefetch fonts for crawl pages (first page warms cache, subsequent get hits)
+          if (wantShots) {
+            MilgIframe.prefetchFonts(html, pageUrl, _doCrawlAnalysis);
+          } else {
+            _doCrawlAnalysis();
+          }
         }
       },
       scorePage: function(data) { return MilgScoring.runScoring(data); },

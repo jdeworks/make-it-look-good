@@ -558,7 +558,7 @@ console.log('[milg] analyzer.js v52.6 loaded');
     var exclude = opts.exclude || null;
     var jsEnabled = opts.jsEnabled || false;
 
-    // Preprocess HTML ONCE for all viewports (base tag, URL patch/sandbox, font proxy)
+    // Preprocess HTML ONCE for all viewports
     var processedHtml = MilgIframe.preprocessHtml(html, url, {
       baseTag: !!url,
       urlPatch: !!url && !jsEnabled,
@@ -566,6 +566,8 @@ console.log('[milg] analyzer.js v52.6 loaded');
       sandbox: jsEnabled,
       fetchPatch: jsEnabled && !!url
     });
+    // Mark as preprocessed so analyzeHtmlInIframe doesn't double-preprocess
+    processedHtml = '<!--milg-preprocessed-->' + processedHtml;
 
     var viewports = [{w:1280, h:900, label:'Desktop'}, {w:768, h:1024, label:'Tablet'}, {w:375, h:812, label:'Phone'}];
     // Add current viewport if different from presets
