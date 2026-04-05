@@ -434,9 +434,13 @@ window.MilgIframe = (function() {
                           '_fillTextFallbacks++' +
                         '}catch(e){}' +
                       '}' +
-                      'var _arr=Array.from(bmp);' +
-                      'pe.pair._maskBmp=_arr;pe.pair._maskW=bw;pe.pair._maskH=bh;pe.pair._maskLayer=_li;pe.pair._maskDark=_dk;' +
-                      '_maskResults[pe.idx]={bmp:_arr,w:bw,h:bh,layer:_li,dark:_dk}' +
+                      // Bit-pack bitmap: 8 pixels per byte, then base64 encode (~8x smaller for postMessage)
+                      'var _byteLen=Math.ceil(bmp.length/8);var _packed=new Uint8Array(_byteLen);' +
+                      'for(var _bi=0;_bi<bmp.length;_bi++){if(bmp[_bi])_packed[_bi>>3]|=(1<<(_bi&7))}' +
+                      'var _binStr="";for(var _bi2=0;_bi2<_packed.length;_bi2++)_binStr+=String.fromCharCode(_packed[_bi2]);' +
+                      'var _b64=btoa(_binStr);' +
+                      'pe.pair._maskBmp=_b64;pe.pair._maskPacked=true;pe.pair._maskW=bw;pe.pair._maskH=bh;pe.pair._maskLayer=_li;pe.pair._maskDark=_dk;' +
+                      '_maskResults[pe.idx]={bmp:_b64,packed:true,w:bw,h:bh,layer:_li,dark:_dk}' +
                     '}catch(e){}' +
                   '});' +
                   'if(_fillTextFallbacks>0)console.log("[iframe-ss] Layer "+_li+": "+_fillTextFallbacks+" elements used fillText fallback mask");' +
@@ -602,6 +606,7 @@ window.MilgIframe = (function() {
               var i = parseInt(idx, 10);
               if (cp[i]) {
                 cp[i]._maskBmp = mr[idx].bmp;
+                cp[i]._maskPacked = !!mr[idx].packed;
                 cp[i]._maskW = mr[idx].w;
                 cp[i]._maskH = mr[idx].h;
                 cp[i]._maskLayer = mr[idx].layer;
