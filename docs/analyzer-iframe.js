@@ -720,6 +720,13 @@ window.MilgIframe = (function() {
       fetchPatch: jsEnabled && !!sourceUrl
     });
 
+    // Diagnostic: verify base tag is present in preprocessed HTML
+    if (sourceUrl) {
+      var hasBase = /<base\s+href=/i.test(html);
+      var basePos = html.indexOf('<base ');
+      var firstScript = html.search(/<script[\s>]/i);
+      console.log('[milg-iframe] preprocessHtml: hasBase=' + hasBase + ' basePos=' + basePos + ' firstScript=' + firstScript + ' js=' + jsEnabled);
+    }
     _analyzeHtmlInIframe(html, callback, sourceUrl, excludeSelector, captureScreenshots, viewportOverride, editorDark, editorEffectCSS, jsEnabled);
   }
 
