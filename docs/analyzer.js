@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v51.5 loaded');
+console.log('[milg] analyzer.js v51.6 loaded');
 
 (function() {
   "use strict";
@@ -1175,6 +1175,9 @@ console.log('[milg] analyzer.js v51.5 loaded');
           return;
         }
 
+        // Prefetch fonts for single-viewport paths too (same as deep scan).
+        // Without this, mask capture falls back to system fonts → misaligned masks.
+        function _launchSingleAnalysis() {
         // JS-enabled single viewport (no deep scan)
         if (wantJs) {
           if (wantShots) { showFocusModal(); updateFocusModal('Preparing JavaScript sandbox'); }
@@ -1183,7 +1186,6 @@ console.log('[milg] analyzer.js v51.5 loaded');
           MilgProxy.analyzeWithJs(html, url, {
             onProgress: function(pct, label) {
               showProgress(pct, label);
-              // Map raw progress labels to cleaner modal messages
               var clean = label.indexOf('Running JavaScript') !== -1 ? 'Executing page JavaScript'
                 : label.indexOf('hydration') !== -1 ? 'Waiting for framework hydration'
                 : label.indexOf('Extracting') !== -1 ? 'Extracting design data'
@@ -1216,6 +1218,12 @@ console.log('[milg] analyzer.js v51.5 loaded');
           hideFocusModal();
           runAnalysis(data);
         }, url, exclude, wantShots);
+        }
+        if (wantShots && CORS_PROXY_URL) {
+          _prefetchFonts(html, url, _launchSingleAnalysis);
+        } else {
+          _launchSingleAnalysis();
+        }
       });
     });
 
