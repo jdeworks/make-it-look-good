@@ -259,7 +259,9 @@ window.MilgContrastVerify = (function() {
     }
     var avgRatio = contrastRatio(fgColor, avgBg);
     allPairRatios.sort(function(a, b) { return a - b; });
-    var p10Idx = Math.floor(allPairRatios.length * 0.1);
+    // Always skip at least 1 worst sample — for small elements (n<10),
+    // floor(n*0.1)=0 degrades P10 to worst-case, letting AA fringe pixels dominate.
+    var p10Idx = Math.max(1, Math.floor(allPairRatios.length * 0.1));
     var p10Ratio = allPairRatios.length > 0 ? Math.round(allPairRatios[Math.min(p10Idx, allPairRatios.length - 1)] * 100) / 100 : 0;
     var medianRatio = allPairRatios.length > 0 ? Math.round(allPairRatios[Math.floor(allPairRatios.length / 2)] * 100) / 100 : 0;
     var cssNeeded = pair.needed || 4.5;
@@ -269,7 +271,7 @@ window.MilgContrastVerify = (function() {
     var bgVariance = bestRatio - worstRatio;
     return {
       cssRatio: pair.ratio, neededRatio: cssNeeded,
-      pixelRatio: worstRatio, pixelRatioAvg: avgRatio, pixelRatioBest: bestRatio,
+      pixelRatio: p10Ratio, pixelRatioWorst: worstRatio, pixelRatioAvg: avgRatio, pixelRatioBest: bestRatio,
       bgVariance: Math.round(bgVariance * 100) / 100,
       isVariableBg: bgVariance > 3.0, ratioDiff: ratioDiff,
       cssPasses: cssPasses, pixelPasses: pixelPasses,
@@ -978,11 +980,12 @@ window.MilgContrastVerify = (function() {
 
     // Percentile contrast: P10 = ratio that 90% of pairs meet or exceed
     allPairRatios.sort(function(a, b) { return a - b; });
-    var p10Idx = Math.floor(allPairRatios.length * 0.1);
+    // Always skip at least 1 worst sample (see buildResult comment)
+    var p10Idx = Math.max(1, Math.floor(allPairRatios.length * 0.1));
     var p10Ratio = allPairRatios.length > 0 ? Math.round(allPairRatios[Math.min(p10Idx, allPairRatios.length - 1)] * 100) / 100 : 0;
     var medianRatio = allPairRatios.length > 0 ? Math.round(allPairRatios[Math.floor(allPairRatios.length / 2)] * 100) / 100 : 0;
 
-    var pixelRatio = worstRatio;
+    var pixelRatio = p10Ratio;
     var cssRatio = pair.ratio;
 
     var cssNeeded = pair.needed || 4.5;
@@ -1000,7 +1003,8 @@ window.MilgContrastVerify = (function() {
     return {
       cssRatio: cssRatio,
       neededRatio: cssNeeded,
-      pixelRatio: pixelRatio,         // worst-case (conservative)
+      pixelRatio: pixelRatio,         // P10 (10th percentile — robust against AA fringe)
+      pixelRatioWorst: worstRatio,    // absolute worst-case
       pixelRatioAvg: avgRatio,        // average background
       pixelRatioBest: bestRatio,      // best-case spot
       bgVariance: Math.round(bgVariance * 100) / 100,
