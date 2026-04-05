@@ -219,39 +219,48 @@ window.MilgIframe = (function() {
         '})();</' + 'script>';
       }
 
-      // 5. Font CSS export (runs for BOTH fontProxy and fetchPatch modes)
-      // Exports proxied font blob URLs as CSS @font-face rules for domToCanvas
+      // 5. Font CSS export: re-fetch @font-face fonts through proxy → blob URLs → new CSS rules.
+      // domToCanvas (SVG foreignObject) can't use fonts loaded via FontFace JS API or
+      // cross-origin CSS @font-face. We must create new @font-face rules with same-origin blob URLs.
       if ((wantFontProxy || wantFetchPatch) && _proxyUrl) {
         scripts += '<script>(function(){' +
-          'if(typeof FontFace==="undefined")return;' +
-          'function _exportFontsToCss(){' +
-            'var blobs=window.__milgFontBlobs||{};' +
-            'var blobUrls=Object.keys(blobs);' +
-            'if(blobUrls.length===0){console.log("[milg-iframe] No font blobs to export");return}' +
-            'var _s=document.createElement("style");_s.setAttribute("data-milg-fonts","1");' +
-            'var _added=0;' +
+          'var _px="' + _proxyUrl.replace(/"/g, '\\"') + '";' +
+          'if(!_px)return;' +
+          'function _fixFontsForCanvas(){' +
+            'var toFix=[];' +
             'try{Array.from(document.styleSheets).forEach(function(ss){' +
               'try{Array.from(ss.cssRules).forEach(function(r){' +
                 'if(!(r instanceof CSSFontFaceRule))return;' +
                 'var fam=(r.style.fontFamily||"").replace(/["\x27]/g,"").trim();' +
                 'var src=r.style.getPropertyValue("src")||"";' +
-                'var srcUrl=src.match(/url\\(["\x27]?([^")\x27]+)["\x27]?\\)/i);' +
-                'if(!srcUrl)return;' +
-                'var originalUrl=srcUrl[1];' +
-                'var blobUrl=blobs[originalUrl];' +
-                'if(!blobUrl){' +
-                  'blobUrls.forEach(function(k){if(originalUrl.indexOf(k)>=0||k.indexOf(originalUrl)>=0)blobUrl=blobs[k]})' +
-                '}' +
-                'if(blobUrl){' +
-                  '_s.textContent+="@font-face{font-family:\\""+fam+"\\";src:url("+blobUrl+");font-weight:"+(r.style.fontWeight||"400")+";font-style:"+(r.style.fontStyle||"normal")+";font-display:swap;}\\n";' +
-                  '_added++' +
-                '}' +
+                // Skip if already using blob: URL
+                'if(src.indexOf("blob:")>=0)return;' +
+                'var m=src.match(/url\\(["\x27]?([^")\x27]+\\.woff2?)["\x27]?\\)/i);' +
+                'if(m)toFix.push({family:fam,url:m[1],weight:r.style.fontWeight||"400",style:r.style.fontStyle||"normal"})' +
               '})}catch(e){}})}catch(e){}' +
-            'if(_s.textContent){document.head.appendChild(_s)}' +
-            'console.log("[milg-iframe] Exported "+_added+" fonts to CSS @font-face ("+blobUrls.length+" blobs available)")' +
+            'if(toFix.length===0){console.log("[milg-iframe] No @font-face rules to re-fetch");return}' +
+            'console.log("[milg-iframe] Re-fetching "+toFix.length+" fonts through proxy for domToCanvas");' +
+            'var _s=document.createElement("style");_s.setAttribute("data-milg-fonts","1");' +
+            'var _done=0;' +
+            'toFix.forEach(function(f){' +
+              'fetch(_px+"?url="+encodeURIComponent(f.url)).then(function(r){' +
+                'if(!r.ok)throw new Error(r.status);return r.blob()' +
+              '}).then(function(blob){' +
+                'if(!blob||blob.size===0)return;' +
+                'var burl=URL.createObjectURL(blob);' +
+                '_s.textContent+="@font-face{font-family:\\""+f.family+"\\";src:url("+burl+");font-weight:"+f.weight+";font-style:"+f.style+";font-display:swap;}\\n";' +
+                '_done++' +
+              '}).catch(function(){_done++})' +
+              '.finally(function(){' +
+                'if(_done===toFix.length){' +
+                  'if(_s.textContent)document.head.appendChild(_s);' +
+                  'console.log("[milg-iframe] Re-fetched "+_done+"/"+toFix.length+" fonts as blob @font-face rules")' +
+                '}' +
+              '})' +
+            '})' +
           '}' +
-          'if(document.readyState==="complete")setTimeout(_exportFontsToCss,800);' +
-          'else window.addEventListener("load",function(){setTimeout(_exportFontsToCss,800)})' +
+          'if(document.readyState==="complete")setTimeout(_fixFontsForCanvas,500);' +
+          'else window.addEventListener("load",function(){setTimeout(_fixFontsForCanvas,500)})' +
         '})();</' + 'script>';
       }
 
