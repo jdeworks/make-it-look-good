@@ -235,14 +235,15 @@ console.log('[milg] analyzer.js v54.1 loaded');
       } else {
         var entry = {
           url: entryUrl,
+          title: (data.meta && data.meta.title) || '',
           timestamp: new Date().toISOString(),
           score: score,
           grade: grade,
-          profile: entryProfile
+          profile: entryProfile,
+          elements: (data.structure && data.structure.totalElements) || 0,
+          contrastPairs: (data.colors && data.colors.contrastPairs) ? data.colors.contrastPairs.length : 0,
+          inputMethod: (data.meta && data.meta._inputMethod) || ''
         };
-        // Store lightweight metadata only (no extraction data — use Export JSON for that)
-        entry.elements = (data.structure && data.structure.totalElements) || 0;
-        entry.contrastPairs = (data.colors && data.colors.contrastPairs) ? data.colors.contrastPairs.length : 0;
         history.unshift(entry);
       }
       if (history.length > HISTORY_MAX) history = history.slice(0, HISTORY_MAX);
@@ -263,9 +264,10 @@ console.log('[milg] analyzer.js v54.1 loaded');
       var date = new Date(entry.timestamp);
       var dateStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       var urlShort = (entry.url || '').replace(/^https?:\/\//, '').substring(0, 40);
-      html += '<div class="history-item">';
-      html += '<span class="history-score" style="color:' + (entry.score >= 80 ? '#16a34a' : entry.score >= 60 ? '#ca8a04' : '#dc2626') + '" onclick="window.__milgLoadHistory(' + idx + ')">' + entry.score + '</span>';
-      html += '<span class="history-url" onclick="window.__milgLoadHistory(' + idx + ')">' + urlShort + '</span>';
+      var label = entry.title ? entry.title.substring(0, 30) : urlShort;
+      html += '<div class="history-item" title="' + (entry.url || '').replace(/"/g, '&quot;') + (entry.elements ? '\n' + entry.elements + ' elements, ' + (entry.contrastPairs || 0) + ' contrast pairs' : '') + '">';
+      html += '<span class="history-score" style="color:' + (entry.score >= 80 ? '#16a34a' : entry.score >= 60 ? '#ca8a04' : '#dc2626') + '">' + entry.score + '</span>';
+      html += '<span class="history-url">' + label + '</span>';
       html += '<span class="history-date">' + dateStr + '</span>';
       html += '<button class="history-delete" onclick="event.stopPropagation();window.__milgDeleteHistory(' + idx + ')" title="Remove from history">&times;</button>';
       html += '</div>';
