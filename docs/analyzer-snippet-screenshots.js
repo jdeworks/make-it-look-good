@@ -575,7 +575,8 @@
           // Clear it immediately so the parent poller doesn't grab data before
           // the screenshot + mask pipeline completes.
           window.__milgData = null;
-          function _finalize() { window.__milgData = data; }
+          window.__milgProgress = 'Loading screenshot library\u2026';
+          function _finalize() { window.__milgProgress = null; window.__milgData = data; }
 
           var s = document.createElement('script');
           s.src = 'https://cdn.jsdelivr.net/npm/modern-screenshot@4.6.8/dist/index.js';
@@ -594,6 +595,7 @@
             var secScale = 1.5;
 
             // Phase 1: Pre-scroll to trigger lazy content + IntersectionObservers
+            window.__milgProgress = 'Pre-scrolling page\u2026';
             var positions = []; for (var p = 0; p < captureH; p += vh) positions.push(p);
             var pi = 0;
             function scrollNext() {
@@ -651,6 +653,7 @@
                 if (typeof window.__milgReReadBboxes === 'function') window.__milgReReadBboxes();
 
                 // Step 1: Capture screenshot
+                window.__milgProgress = 'Capturing screenshot\u2026';
                 ms.domToCanvas(document.documentElement, { scale: secScale, timeout: 45000 }).then(function(fullCanvas) {
                   var fullUri;
                   try { fullUri = fullCanvas.toDataURL('image/webp', 0.8); } catch(e) { fullUri = ''; }
@@ -667,6 +670,7 @@
                   };
 
                   // Step 2: Text mask capture (single-layer: all text black, all bg white)
+                  window.__milgProgress = 'Building text mask\u2026';
                   // Kill transitions
                   document.querySelectorAll('*').forEach(function(el) {
                     el.style.setProperty('transition-duration', '0s', 'important');
@@ -748,7 +752,8 @@
           };
           document.head.appendChild(s);
         }
-        var snippetSrc = 'window.MilgExtract = ' + window.MilgExtract.toString() + ';\n' +
+        var snippetSrc = 'window.__milgProgress = "Extracting design data\\u2026";\n' +
+          'window.MilgExtract = ' + window.MilgExtract.toString() + ';\n' +
           'window.__milgOnExtractComplete = ' + _crawlScreenshotCallback.toString() + ';\n' +
           'window.MilgExtract();\n';
         (function() {
@@ -859,8 +864,11 @@
                       if (done) { clearInterval(pi); return; }
                       polls++;
                       try {
+                        // Show progress from inside the iframe (extraction → screenshot → mask phases)
+                        var prog = iWin.__milgProgress;
+                        if (prog) _updateCrawlOverlay('Page ' + (idx + 1) + '/' + _links.length + ': ' + prog, path);
                         var d = iWin.__milgData;
-                        if (d) { clearInterval(pi); done = true; d.meta.url = url; _cResults.push({ url: url, data: d }); cleanup(); console.log('%c  \u2713 ' + path, 'color: #16a34a;'); setTimeout(function() { _next(idx + 1); }, 500); }
+                        if (d) { clearInterval(pi); done = true; d.meta.url = url; _cResults.push({ url: url, data: d }); cleanup(); var hasShots = d.screenshots && d.screenshots.length > 0; console.log('%c  \u2713 ' + path + (hasShots ? ' (with screenshots)' : ''), 'color: #16a34a;'); setTimeout(function() { _next(idx + 1); }, 500); }
                         else if (polls > 80) { clearInterval(pi); done = true; cleanup(); console.log('%c  \u2717 Timeout: ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }
                       } catch(e) { clearInterval(pi); done = true; cleanup(); console.log('%c  \u2717 Error: ' + path + ' (' + e.message + ')', 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }
                     }, 500);
