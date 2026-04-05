@@ -18,51 +18,77 @@
     if (edges.length >= 10) {
       checks++;
 
-      // Estimate content center points from left edges:
-      // For each left-edge, estimate center as edge + avgWidth/2
-      // where avgWidth is derived from the spread of edges
       var sortedEdges = edges.slice().sort(function(a, b) { return a - b; });
       var minEdge = sortedEdges[0];
       var maxEdge = sortedEdges[sortedEdges.length - 1];
-      // Estimate average element width from the content span
       var contentSpan = maxEdge - minEdge;
-      var estWidth = contentSpan > 0 ? Math.min(contentSpan / 2, vw * 0.4) : vw * 0.3;
-
-      var leftCount = 0;
-      var rightCount = 0;
       var midpoint = vw / 2;
 
-      edges.forEach(function(edge) {
-        // Use estimated center of element, not left edge
-        var center = edge + estWidth / 2;
-        if (center < midpoint) leftCount++;
-        else rightCount++;
-      });
+      // Detect single-column layout: if most edges cluster tightly (within 10% of vw),
+      // the page uses a single content column. Check if that column is centered.
+      var edgeSpreadRatio = contentSpan / vw;
+      var meanEdge = edges.reduce(function(s,v){return s+v},0) / edges.length;
 
-      var total = leftCount + rightCount;
-      var ratio = total > 0 ? Math.max(leftCount, rightCount) / Math.min(leftCount || 1, rightCount || 1) : 1;
-
-      if (ratio <= 2) {
-        passed++;
-      } else if (ratio <= 3) {
-        passed++; // Info findings don't reduce score
-        findings.push({
-          severity: 'info',
-          title: 'Content distribution is ' + Math.round(leftCount / total * 100) + '% left / ' + Math.round(rightCount / total * 100) + '% right',
-          detail: 'Moderate imbalance — may be intentional (sidebar layout) or indicate uneven content distribution',
-          fix: 'If using a sidebar layout, this is expected. Otherwise, distribute content more evenly or use a centered layout.',
-          presetRef: null,
-          source: 'Ngo et al. 2003 — Visual balance and aesthetic preference'
-        });
+      if (edgeSpreadRatio < 0.1) {
+        // Single-column: all elements share roughly the same left edge.
+        // The layout is "balanced" if the column is roughly centered.
+        // A centered 60% column has left edge at ~20% of vw, right edge at ~80%.
+        // We check if the mean edge falls within a reasonable centered range.
+        var edgeAsRatio = meanEdge / vw; // 0 = flush left, 0.5 = centered start
+        if (edgeAsRatio > 0.05 && edgeAsRatio < 0.35) {
+          // Column starts between 5-35% of viewport — typical centered layout
+          passed++;
+        } else if (edgeAsRatio <= 0.05) {
+          // Flush left, no margin
+          findings.push({
+            severity: 'info',
+            title: 'Content column is flush-left (left edge at ' + Math.round(meanEdge) + 'px)',
+            detail: 'Single-column layout without centering — can look unbalanced on wide screens',
+            fix: 'Center the content column. In Tailwind: mx-auto max-w-prose.',
+            presetRef: null,
+            source: 'Ngo et al. 2003 — Visual balance and aesthetic preference'
+          });
+        } else {
+          passed++; // Right-shifted single column — unusual but not imbalanced
+        }
       } else {
-        findings.push({
-          severity: 'info',
-          title: 'Content heavily weighted to one side (' + Math.round(leftCount / total * 100) + '% / ' + Math.round(rightCount / total * 100) + '%)',
-          detail: 'Strong left-right imbalance — often intentional in sidebar or marketing layouts',
-          fix: 'If using a sidebar or asymmetric layout, this is expected. Otherwise, distribute content more evenly.',
-          presetRef: null,
-          source: 'Ngo et al. 2003 — Visual balance and aesthetic preference'
+        // Multi-column or mixed layout: measure left/right distribution
+        // Use actual element centers estimated from edges and content width
+        var estWidth = Math.min(contentSpan / 2, vw * 0.4);
+        var leftCount = 0;
+        var rightCount = 0;
+
+        edges.forEach(function(edge) {
+          var center = edge + estWidth / 2;
+          if (center < midpoint) leftCount++;
+          else rightCount++;
         });
+
+        var total = leftCount + rightCount;
+        var ratio = total > 0 ? Math.max(leftCount, rightCount) / Math.min(leftCount || 1, rightCount || 1) : 1;
+
+        if (ratio <= 2) {
+          passed++;
+        } else if (ratio <= 3) {
+          passed++;
+          findings.push({
+            severity: 'info',
+            title: 'Content distribution is ' + Math.round(leftCount / total * 100) + '% left / ' + Math.round(rightCount / total * 100) + '% right',
+            detail: 'Moderate imbalance — may be intentional (sidebar layout) or indicate uneven content distribution',
+            fix: 'If using a sidebar layout, this is expected. Otherwise, distribute content more evenly or use a centered layout.',
+            presetRef: null,
+            source: 'Ngo et al. 2003 — Visual balance and aesthetic preference'
+          });
+        } else {
+          findings.push({
+            severity: 'info',
+            title: 'Content heavily weighted to one side (' + Math.round(leftCount / total * 100) + '% / ' + Math.round(rightCount / total * 100) + '%)',
+            detail: 'Strong left-right imbalance — often intentional in sidebar or marketing layouts',
+            fix: 'If using a sidebar or asymmetric layout, this is expected. Otherwise, distribute content more evenly.',
+            presetRef: null,
+            source: 'Ngo et al. 2003 — Visual balance and aesthetic preference'
+          });
+        }
       }
     }
 
