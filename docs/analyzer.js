@@ -240,12 +240,9 @@ console.log('[milg] analyzer.js v52.6 loaded');
           grade: grade,
           profile: entryProfile
         };
-        // Store extraction data (without screenshots to save space)
-        var stored = JSON.parse(JSON.stringify(data, function(k, v) {
-          if (k === 'screenshots' || k === 'viewportData') return undefined;
-          return v;
-        }));
-        entry.data = stored;
+        // Store lightweight metadata only (no extraction data — use Export JSON for that)
+        entry.elements = (data.structure && data.structure.totalElements) || 0;
+        entry.contrastPairs = (data.colors && data.colors.contrastPairs) ? data.colors.contrastPairs.length : 0;
         history.unshift(entry);
       }
       if (history.length > HISTORY_MAX) history = history.slice(0, HISTORY_MAX);
@@ -297,9 +294,8 @@ console.log('[milg] analyzer.js v52.6 loaded');
 
   window.__milgLoadHistory = function(idx) {
     var history = getHistory();
-    if (history[idx] && history[idx].data) {
-      runAnalysis(history[idx].data);
-      showToast('Loaded: ' + (history[idx].url || 'analysis'));
+    if (history[idx]) {
+      showToast('To re-analyze, use Export JSON to save and Load Saved to restore');
     }
   };
 
@@ -696,7 +692,7 @@ console.log('[milg] analyzer.js v52.6 loaded');
     }
     lastRawData = data;
     if (!_originalRawData || (!skipExclusionDetection && skipExclusionDetection !== 'viewport')) { _originalRawData = data; _viewportCache = {}; }
-    if (!skipExclusionDetection) { try { sessionStorage.setItem('milg-last-extraction', JSON.stringify(data, function(k, v) { return (k === 'viewportData' || k === '_cachedReportData') ? undefined : v; })); } catch(e) {} }
+    // Analysis data saved/restored via Export JSON + Import — no sessionStorage (too large with screenshots/fonts)
     // Apply selected profile
     var profile = document.getElementById('profileSelect');
     if (profile) data.profile = profile.value;

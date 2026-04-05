@@ -40089,12 +40089,9 @@ console.log('[milg] analyzer.js v52.6 loaded');
           grade: grade,
           profile: entryProfile
         };
-        // Store extraction data (without screenshots to save space)
-        var stored = JSON.parse(JSON.stringify(data, function(k, v) {
-          if (k === 'screenshots' || k === 'viewportData') return undefined;
-          return v;
-        }));
-        entry.data = stored;
+        // Store lightweight metadata only (no extraction data — use Export JSON for that)
+        entry.elements = (data.structure && data.structure.totalElements) || 0;
+        entry.contrastPairs = (data.colors && data.colors.contrastPairs) ? data.colors.contrastPairs.length : 0;
         history.unshift(entry);
       }
       if (history.length > HISTORY_MAX) history = history.slice(0, HISTORY_MAX);
@@ -40146,9 +40143,8 @@ console.log('[milg] analyzer.js v52.6 loaded');
 
   window.__milgLoadHistory = function(idx) {
     var history = getHistory();
-    if (history[idx] && history[idx].data) {
-      runAnalysis(history[idx].data);
-      showToast('Loaded: ' + (history[idx].url || 'analysis'));
+    if (history[idx]) {
+      showToast('To re-analyze, use Export JSON to save and Load Saved to restore');
     }
   };
 
@@ -40545,7 +40541,7 @@ console.log('[milg] analyzer.js v52.6 loaded');
     }
     lastRawData = data;
     if (!_originalRawData || (!skipExclusionDetection && skipExclusionDetection !== 'viewport')) { _originalRawData = data; _viewportCache = {}; }
-    if (!skipExclusionDetection) { try { sessionStorage.setItem('milg-last-extraction', JSON.stringify(data, function(k, v) { return (k === 'viewportData' || k === '_cachedReportData') ? undefined : v; })); } catch(e) {} }
+    // Analysis data saved/restored via Export JSON + Import — no sessionStorage (too large with screenshots/fonts)
     // Apply selected profile
     var profile = document.getElementById('profileSelect');
     if (profile) data.profile = profile.value;
@@ -41423,7 +41419,7 @@ console.log('[milg] analyzer.js v52.6 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v53.9</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v54.0</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -41794,30 +41790,30 @@ console.log('[milg] analyzer.js v52.6 loaded');
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=53.9"></script>
-  <script src="scoring/contrast.js?v=53.9"></script>
-  <script src="scoring/typography.js?v=53.9"></script>
-  <script src="scoring/spacing.js?v=53.9"></script>
-  <script src="scoring/touch.js?v=53.9"></script>
-  <script src="scoring/accessibility.js?v=53.9"></script>
-  <script src="scoring/responsive.js?v=53.9"></script>
-  <script src="scoring/consistency.js?v=53.9"></script>
-  <script src="scoring/cognitive.js?v=53.9"></script>
-  <script src="scoring/layout.js?v=53.9"></script>
-  <script src="scoring/performance.js?v=53.9"></script>
-  <script src="scoring/readability.js?v=53.9"></script>
-  <script src="scoring/filters.js?v=53.9"></script>
-  <script src="scoring/balance.js?v=53.9"></script>
+  <script src="scoring/registry.js?v=54.0"></script>
+  <script src="scoring/contrast.js?v=54.0"></script>
+  <script src="scoring/typography.js?v=54.0"></script>
+  <script src="scoring/spacing.js?v=54.0"></script>
+  <script src="scoring/touch.js?v=54.0"></script>
+  <script src="scoring/accessibility.js?v=54.0"></script>
+  <script src="scoring/responsive.js?v=54.0"></script>
+  <script src="scoring/consistency.js?v=54.0"></script>
+  <script src="scoring/cognitive.js?v=54.0"></script>
+  <script src="scoring/layout.js?v=54.0"></script>
+  <script src="scoring/performance.js?v=54.0"></script>
+  <script src="scoring/readability.js?v=54.0"></script>
+  <script src="scoring/filters.js?v=54.0"></script>
+  <script src="scoring/balance.js?v=54.0"></script>
   <!-- Report rendering + UI -->
-  <script src="analyzer-report.js?v=53.9"></script>
-  <script src="analyzer-crawl.js?v=53.9"></script>
-  <script src="analyzer-extract.js?v=53.9"></script>
-  <script src="analyzer-iframe.js?v=53.9"></script>
-  <script src="analyzer-proxy.js?v=53.9"></script>
-  <script src="analyzer-crawl-ui.js?v=53.9"></script>
-  <script src="analyzer-contrast-verify.js?v=53.9"></script>
-  <script src="analyzer-viewer.js?v=53.9"></script>
-  <script src="analyzer.js?v=53.9"></script>
+  <script src="analyzer-report.js?v=54.0"></script>
+  <script src="analyzer-crawl.js?v=54.0"></script>
+  <script src="analyzer-extract.js?v=54.0"></script>
+  <script src="analyzer-iframe.js?v=54.0"></script>
+  <script src="analyzer-proxy.js?v=54.0"></script>
+  <script src="analyzer-crawl-ui.js?v=54.0"></script>
+  <script src="analyzer-contrast-verify.js?v=54.0"></script>
+  <script src="analyzer-viewer.js?v=54.0"></script>
+  <script src="analyzer.js?v=54.0"></script>
 </body>
 </html>
 </file>
