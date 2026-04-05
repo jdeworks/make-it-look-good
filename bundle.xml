@@ -40326,40 +40326,15 @@ console.log('[milg] analyzer.js v52.6 loaded');
       var switchedData = Object.assign({}, srcData);
       switchedData.deepScan = deepScan;
       switchedData.meta = Object.assign({}, srcData.meta, { url: lastRawData.meta.url });
-      // Remove stale cache keys (force fresh scoring, preserve pixel verify)
+      // Remove stale scoring cache (force fresh scoring) but preserve pixel verify
       delete switchedData._cachedReportData;
-
-      // Score + render (no pixel verify yet — that runs async below)
-      var savedVerify = switchedData._contrastVerifyResults;
-      var savedEdge = switchedData._bboxEdgeResults;
-      delete switchedData._contrastVerifyResults; // don't inject into first render
-      delete switchedData._bboxEdgeResults;
+      // Keep _contrastVerifyResults so runAnalysis sees them as precomputed (no re-verify)
       runAnalysis(switchedData, 'viewport');
-
-      // Restore verify results if pre-computed, and re-cache with report HTML
-      if (savedVerify) {
-        switchedData._contrastVerifyResults = savedVerify;
-        switchedData._bboxEdgeResults = savedEdge;
-      }
       _viewportCache[idx] = {
         data: switchedData,
         reportData: reportData,
         html: reportContainer ? reportContainer.innerHTML : ''
       };
-
-      // If pixel verify was pre-computed, re-render to include the summary
-      if (savedVerify && savedVerify.length > 0 && window.MilgContrastVerify) {
-        switchedData._contrastVerifyResults = savedVerify;
-        switchedData._bboxEdgeResults = savedEdge || [];
-        switchedData._cachedReportData = reportData;
-        // Re-run to pick up cached verify results (will hit the precomputed path)
-        setTimeout(function() {
-          if (_activeViewportIdx !== idx) return;
-          runAnalysis(switchedData, 'viewport');
-          _viewportCache[idx].html = reportContainer ? reportContainer.innerHTML : '';
-          _viewportCache[idx].reportData = reportData;
-        }, 50);
-      }
     }, 0);
   };
 
@@ -40570,7 +40545,7 @@ console.log('[milg] analyzer.js v52.6 loaded');
     }
     lastRawData = data;
     if (!_originalRawData || (!skipExclusionDetection && skipExclusionDetection !== 'viewport')) { _originalRawData = data; _viewportCache = {}; }
-    try { sessionStorage.setItem('milg-last-extraction', JSON.stringify(data, function(k, v) { return (k === 'viewportData' || k === '_cachedReportData') ? undefined : v; })); } catch(e) { console.warn('[milg-warn] sessionStorage save failed:', e.message); }
+    if (!skipExclusionDetection) { try { sessionStorage.setItem('milg-last-extraction', JSON.stringify(data, function(k, v) { return (k === 'viewportData' || k === '_cachedReportData') ? undefined : v; })); } catch(e) {} }
     // Apply selected profile
     var profile = document.getElementById('profileSelect');
     if (profile) data.profile = profile.value;
@@ -41448,7 +41423,7 @@ console.log('[milg] analyzer.js v52.6 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v53.8</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v53.9</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -41819,30 +41794,30 @@ console.log('[milg] analyzer.js v52.6 loaded');
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=53.8"></script>
-  <script src="scoring/contrast.js?v=53.8"></script>
-  <script src="scoring/typography.js?v=53.8"></script>
-  <script src="scoring/spacing.js?v=53.8"></script>
-  <script src="scoring/touch.js?v=53.8"></script>
-  <script src="scoring/accessibility.js?v=53.8"></script>
-  <script src="scoring/responsive.js?v=53.8"></script>
-  <script src="scoring/consistency.js?v=53.8"></script>
-  <script src="scoring/cognitive.js?v=53.8"></script>
-  <script src="scoring/layout.js?v=53.8"></script>
-  <script src="scoring/performance.js?v=53.8"></script>
-  <script src="scoring/readability.js?v=53.8"></script>
-  <script src="scoring/filters.js?v=53.8"></script>
-  <script src="scoring/balance.js?v=53.8"></script>
+  <script src="scoring/registry.js?v=53.9"></script>
+  <script src="scoring/contrast.js?v=53.9"></script>
+  <script src="scoring/typography.js?v=53.9"></script>
+  <script src="scoring/spacing.js?v=53.9"></script>
+  <script src="scoring/touch.js?v=53.9"></script>
+  <script src="scoring/accessibility.js?v=53.9"></script>
+  <script src="scoring/responsive.js?v=53.9"></script>
+  <script src="scoring/consistency.js?v=53.9"></script>
+  <script src="scoring/cognitive.js?v=53.9"></script>
+  <script src="scoring/layout.js?v=53.9"></script>
+  <script src="scoring/performance.js?v=53.9"></script>
+  <script src="scoring/readability.js?v=53.9"></script>
+  <script src="scoring/filters.js?v=53.9"></script>
+  <script src="scoring/balance.js?v=53.9"></script>
   <!-- Report rendering + UI -->
-  <script src="analyzer-report.js?v=53.8"></script>
-  <script src="analyzer-crawl.js?v=53.8"></script>
-  <script src="analyzer-extract.js?v=53.8"></script>
-  <script src="analyzer-iframe.js?v=53.8"></script>
-  <script src="analyzer-proxy.js?v=53.8"></script>
-  <script src="analyzer-crawl-ui.js?v=53.8"></script>
-  <script src="analyzer-contrast-verify.js?v=53.8"></script>
-  <script src="analyzer-viewer.js?v=53.8"></script>
-  <script src="analyzer.js?v=53.8"></script>
+  <script src="analyzer-report.js?v=53.9"></script>
+  <script src="analyzer-crawl.js?v=53.9"></script>
+  <script src="analyzer-extract.js?v=53.9"></script>
+  <script src="analyzer-iframe.js?v=53.9"></script>
+  <script src="analyzer-proxy.js?v=53.9"></script>
+  <script src="analyzer-crawl-ui.js?v=53.9"></script>
+  <script src="analyzer-contrast-verify.js?v=53.9"></script>
+  <script src="analyzer-viewer.js?v=53.9"></script>
+  <script src="analyzer.js?v=53.9"></script>
 </body>
 </html>
 </file>

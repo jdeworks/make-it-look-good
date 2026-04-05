@@ -477,40 +477,15 @@ console.log('[milg] analyzer.js v52.6 loaded');
       var switchedData = Object.assign({}, srcData);
       switchedData.deepScan = deepScan;
       switchedData.meta = Object.assign({}, srcData.meta, { url: lastRawData.meta.url });
-      // Remove stale cache keys (force fresh scoring, preserve pixel verify)
+      // Remove stale scoring cache (force fresh scoring) but preserve pixel verify
       delete switchedData._cachedReportData;
-
-      // Score + render (no pixel verify yet — that runs async below)
-      var savedVerify = switchedData._contrastVerifyResults;
-      var savedEdge = switchedData._bboxEdgeResults;
-      delete switchedData._contrastVerifyResults; // don't inject into first render
-      delete switchedData._bboxEdgeResults;
+      // Keep _contrastVerifyResults so runAnalysis sees them as precomputed (no re-verify)
       runAnalysis(switchedData, 'viewport');
-
-      // Restore verify results if pre-computed, and re-cache with report HTML
-      if (savedVerify) {
-        switchedData._contrastVerifyResults = savedVerify;
-        switchedData._bboxEdgeResults = savedEdge;
-      }
       _viewportCache[idx] = {
         data: switchedData,
         reportData: reportData,
         html: reportContainer ? reportContainer.innerHTML : ''
       };
-
-      // If pixel verify was pre-computed, re-render to include the summary
-      if (savedVerify && savedVerify.length > 0 && window.MilgContrastVerify) {
-        switchedData._contrastVerifyResults = savedVerify;
-        switchedData._bboxEdgeResults = savedEdge || [];
-        switchedData._cachedReportData = reportData;
-        // Re-run to pick up cached verify results (will hit the precomputed path)
-        setTimeout(function() {
-          if (_activeViewportIdx !== idx) return;
-          runAnalysis(switchedData, 'viewport');
-          _viewportCache[idx].html = reportContainer ? reportContainer.innerHTML : '';
-          _viewportCache[idx].reportData = reportData;
-        }, 50);
-      }
     }, 0);
   };
 
@@ -721,7 +696,7 @@ console.log('[milg] analyzer.js v52.6 loaded');
     }
     lastRawData = data;
     if (!_originalRawData || (!skipExclusionDetection && skipExclusionDetection !== 'viewport')) { _originalRawData = data; _viewportCache = {}; }
-    try { sessionStorage.setItem('milg-last-extraction', JSON.stringify(data, function(k, v) { return (k === 'viewportData' || k === '_cachedReportData') ? undefined : v; })); } catch(e) { console.warn('[milg-warn] sessionStorage save failed:', e.message); }
+    if (!skipExclusionDetection) { try { sessionStorage.setItem('milg-last-extraction', JSON.stringify(data, function(k, v) { return (k === 'viewportData' || k === '_cachedReportData') ? undefined : v; })); } catch(e) {} }
     // Apply selected profile
     var profile = document.getElementById('profileSelect');
     if (profile) data.profile = profile.value;
