@@ -237,31 +237,35 @@ window.MilgIframe = (function() {
                 'if(!(r instanceof CSSFontFaceRule))return;' +
                 'var fam=(r.style.fontFamily||"").replace(/["\x27]/g,"").trim();' +
                 'var src=r.style.getPropertyValue("src")||"";' +
-                'if(src.indexOf("blob:")>=0)return;' +
+                'if(src.indexOf("data:")>=0)return;' + // already inlined
                 'var m=src.match(/url\\(["\x27]?([^")\x27]+\\.woff2?)["\x27]?\\)/i);' +
                 'if(!m)return;' +
                 'var fontUrl=m[1];' +
                 'if(fontUrl.charAt(0)==="/")fontUrl=_origin+fontUrl;' +
                 'else if(fontUrl.indexOf("://")===-1)fontUrl=_origin+"/"+fontUrl;' +
                 'if(seen[fontUrl])return;seen[fontUrl]=true;' +
-                // Look up in parent font cache
                 'var cached=_fc[fontUrl];' +
-                'if(cached)toFix.push({family:fam,url:fontUrl,weight:r.style.fontWeight||"400",style:r.style.fontStyle||"normal",promise:cached})' +
+                'var isWoff2=fontUrl.indexOf(".woff2")>=0;' +
+                'if(cached)toFix.push({family:fam,url:fontUrl,weight:r.style.fontWeight||"400",style:r.style.fontStyle||"normal",promise:cached,woff2:isWoff2})' +
               '})}catch(e){}})}catch(e){}' +
             'if(toFix.length===0){console.log("[milg-iframe] No cached fonts to export (cache has "+Object.keys(_fc).length+" entries)");return}' +
-            'console.log("[milg-iframe] Exporting "+toFix.length+" cached fonts to CSS @font-face");' +
+            'console.log("[milg-iframe] Inlining "+toFix.length+" cached fonts as base64 @font-face");' +
             'var _s=document.createElement("style");_s.setAttribute("data-milg-fonts","1");' +
             'var _ok=0;' +
             'Promise.all(toFix.map(function(f){' +
-              'return f.promise.then(function(r){return r.clone().blob()}).then(function(blob){' +
-                'if(blob&&blob.size>0){' +
-                  'var burl=URL.createObjectURL(blob);' +
-                  '_s.textContent+="@font-face{font-family:\\""+f.family+"\\";src:url("+burl+");font-weight:"+f.weight+";font-style:"+f.style+";font-display:swap;}\\n";' +
-                  '_ok++}' +
+              'return f.promise.then(function(r){return r.clone().arrayBuffer()}).then(function(buf){' +
+                'if(!buf||buf.byteLength===0)return;' +
+                // Convert to base64 data URI (inline — SVG foreignObject CAN use these)
+                'var bytes=new Uint8Array(buf);var bin="";' +
+                'for(var i=0;i<bytes.length;i++)bin+=String.fromCharCode(bytes[i]);' +
+                'var b64=btoa(bin);' +
+                'var mime=f.woff2?"font/woff2":"font/woff";' +
+                '_s.textContent+="@font-face{font-family:\\""+f.family+"\\";src:url(data:"+mime+";base64,"+b64+");font-weight:"+f.weight+";font-style:"+f.style+";font-display:swap;}\\n";' +
+                '_ok++' +
               '}).catch(function(){})' +
             '})).then(function(){' +
               'if(_s.textContent)document.head.appendChild(_s);' +
-              'console.log("[milg-iframe] Exported "+_ok+"/"+toFix.length+" fonts as blob @font-face rules (0 proxy requests)")' +
+              'console.log("[milg-iframe] Inlined "+_ok+"/"+toFix.length+" fonts as base64 data URI @font-face (0 proxy requests)")' +
             '})' +
           '}' +
           'if(document.readyState==="complete")setTimeout(_fixFontsForCanvas,500);' +
