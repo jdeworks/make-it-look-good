@@ -434,7 +434,8 @@ window.MilgIframe = (function() {
                     'docHeightAtCapture:fullH,' +
                     'calibrationOffsetY:0,calibrationSamples:[]},' +
                   'updatedData:updatedData};' +
-                'console.log("[iframe-ss] postMessage size estimate: ss="+((fullUri||"").length/1024|0)+"KB ud="+(JSON.stringify(updatedData||{}).length/1024|0)+"KB");' +
+                'var _maskCount=updatedData&&updatedData.colors&&updatedData.colors.contrastPairs?updatedData.colors.contrastPairs.filter(function(p){return !!p._maskBmp}).length:0;' +
+                'console.log("[iframe-ss] postMessage: ss="+((fullUri||"").length/1024|0)+"KB ud="+(JSON.stringify(updatedData||{}).length/1024|0)+"KB masks="+_maskCount+"/"+((updatedData&&updatedData.colors&&updatedData.colors.contrastPairs||[]).length));' +
                 'try{parent.postMessage(msg,"*")}catch(e){' +
                   'console.warn("[milg-warn] postMessage failed ("+e.message+"), retrying without updatedData");' +
                   'msg.updatedData=null;' +
@@ -838,6 +839,8 @@ window.MilgIframe = (function() {
         // Apply re-read bbox data from the iframe (updated after scroll-reset + getFlowPosition)
         if (e.data.updatedData) {
           var ud = e.data.updatedData;
+          var _udMasks = ud.colors && ud.colors.contrastPairs ? ud.colors.contrastPairs.filter(function(p) { return !!p._maskBmp; }).length : 0;
+          console.log('[milg-iframe] updatedData received: ' + (ud.colors && ud.colors.contrastPairs ? ud.colors.contrastPairs.length : 0) + ' pairs, ' + _udMasks + ' have masks');
           // Merge re-read bboxes back into our data
           if (ud.colors && ud.colors.contrastPairs) iframe._milgData.colors.contrastPairs = ud.colors.contrastPairs;
           if (ud.typography) {
