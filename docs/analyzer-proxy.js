@@ -259,7 +259,7 @@ window.MilgProxy = (function() {
             'if(bs==="about:srcdoc"||bs==="about:blank"||bs==="null"||bs.indexOf("about:")===0)b=_rb;' +
           '}' +
           'if(!b&&typeof u==="string"&&u.charAt(0)==="/")return new _O(u,_rb);' +
-          'try{return arguments.length===1?new _O(u):new _O(u,b);}' +
+          'try{return (arguments.length===1||!b)?new _O(u):new _O(u,b);}' +
           'catch(e){try{return new _O(u,_rb);}catch(e2){throw e;}}' +
         '}' +
         '_P.prototype=_O.prototype;' +
@@ -326,7 +326,7 @@ window.MilgProxy = (function() {
         'function _P(u,b){' +
           'if(b){var bs=typeof b==="string"?b:String(b);if(bs==="about:srcdoc"||bs==="about:blank"||bs==="null"||bs.indexOf("about:")===0)b=_rb;}' +
           'if(!b&&typeof u==="string"&&u.charAt(0)==="/")return new _O(u,_rb);' +
-          'try{return arguments.length===1?new _O(u):new _O(u,b);}catch(e){try{return new _O(u,_rb);}catch(e2){throw e;}}' +
+          'try{return (arguments.length===1||!b)?new _O(u):new _O(u,b);}catch(e){try{return new _O(u,_rb);}catch(e2){throw e;}}' +
         '}' +
         '_P.prototype=_O.prototype;_P.createObjectURL=_O.createObjectURL.bind(_O);_P.revokeObjectURL=_O.revokeObjectURL.bind(_O);' +
         'if(_O.canParse)_P.canParse=_O.canParse.bind(_O);window.URL=_P;' +
