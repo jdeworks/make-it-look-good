@@ -112,12 +112,13 @@ window.MilgCrawlUI = (function() {
       crawlPageContent.className = 'report-container';
       if (reportContainer) reportContainer.style.display = '';
 
-      // Cache hit: restore instantly (no scoring, no rendering)
+      // Clear viewport cache when switching crawl pages (viewport indices collide across pages)
+      if (typeof window.__milgClearViewportCache === 'function') window.__milgClearViewportCache();
+
+      // Cache hit: re-run with cached scoring + precomputed verify (fast, preserves overlays)
       if (_crawlPageReports[idx]) {
         var cached = _crawlPageReports[idx];
-        _restoreCachedAnalysis(page.rawData, cached.reportData);
-        reportContainer.innerHTML = cached.html;
-        reportContainer.classList.add('visible');
+        _runAnalysis(cached.data || page.rawData, 'crawl-page');
         return;
       }
 
@@ -131,10 +132,9 @@ window.MilgCrawlUI = (function() {
         var origMethod = page.rawData.meta._inputMethod;
         _runAnalysis(page.rawData, 'crawl-page');
         page.rawData.meta._inputMethod = origMethod;
-        // Cache the rendered report + scored data for instant restore
+        // Cache the data for instant restore (runAnalysis uses _cachedReportData + _contrastVerifyResults)
         _crawlPageReports[idx] = {
-          html: reportContainer.innerHTML,
-          reportData: page.rawData._cachedReportData
+          data: page.rawData
         };
       }, 0);
     }

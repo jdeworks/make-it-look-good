@@ -433,7 +433,8 @@ console.log('[milg] analyzer.js v54.1 loaded');
   };
 
   // Viewport switching for deep scan results — cached per viewport index
-  var _viewportCache = {}; // idx → { data, reportData, html }
+  var _viewportCache = {}; // idx → { data, reportData }
+  window.__milgClearViewportCache = function() { _viewportCache = {}; };
   window.__milgSwitchViewport = function(idx) {
     if (!lastRawData || !lastRawData.deepScan || !lastRawData.deepScan.viewportData) return;
     var deepScan = lastRawData.deepScan;
