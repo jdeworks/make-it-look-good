@@ -86,6 +86,7 @@ window.MilgCrawl = (function() {
         maxPages: Math.min(Math.max(opts.maxPages || 5, 1), 25),
         blacklist: opts.blacklist || [],
         deepScan: !!opts.deepScan,
+        jsEnabled: !!opts.jsEnabled,
         screenshots: !!opts.screenshots,
         excludeSelector: opts.excludeSelector || '',
         profile: opts.profile || 'general'
