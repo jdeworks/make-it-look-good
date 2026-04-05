@@ -245,9 +245,14 @@ window.MilgIframe = (function() {
       // <base> doesn't always take effect before the browser starts fetching resources.
       if (url && baseHref) {
         var origin = new URL(url).origin;
-        // Rewrite src="/" and href="/" attributes to absolute URLs
-        html = html.replace(/((?:src|href|action)\s*=\s*["'])(\/[^"']*)/gi, function(m, prefix, path) {
+        // Rewrite src, href, action, srcset, imagesrcset attributes with /path to absolute
+        html = html.replace(/((?:src|href|action|srcset|imagesrcset)\s*=\s*["'])(\/[^"']*)/gi, function(m, prefix, path) {
           return prefix + origin + path;
+        });
+        // Also rewrite srcset entries that have /path (srcset="/_next/image 1x, /_next/image 2x")
+        html = html.replace(/(srcset|imagesrcset)\s*=\s*"([^"]*)"/gi, function(m, attr, val) {
+          var fixed = val.replace(/(^|,\s*)(\/\S+)/g, function(sm, sep, p) { return sep + origin + p; });
+          return attr + '="' + fixed + '"';
         });
       }
 
