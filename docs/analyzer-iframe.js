@@ -103,7 +103,7 @@ window.MilgIframe = (function() {
                 'var burl=URL.createObjectURL(blob);' +
                 'var ff=new FontFace(f.family,"url("+burl+")",{weight:f.weight,style:f.style});' +
                 'return ff.load().then(function(){document.fonts.add(ff)})' +
-              '}).catch(function(){})' +
+              '}).catch(function(e){console.warn("[milg-warn] Font re-register failed:",f.family,e&&e.message||"")})' +
             '})' +
           '}' +
           'if(document.readyState==="complete")setTimeout(_fixFonts,500);' +
@@ -231,7 +231,7 @@ window.MilgIframe = (function() {
             'console.log("[iframe-ss] Step 1/2: Capturing screenshot at "+_sc+"x...");' +
             'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:45000}).then(function(fc){' +
               'console.log("[iframe-ss] Screenshot: "+fc.width+"x"+fc.height);' +
-              'var fullUri;try{fullUri=fc.toDataURL("image/webp",' + ss.quality + ')}catch(e){fullUri=""}' +
+              'var fullUri;try{fullUri=fc.toDataURL("image/webp",' + ss.quality + ')}catch(e){console.warn("[milg-warn] WebP conversion failed:",e.message);fullUri=""}' +
               // Update send helper with actual canvas dimensions
               'var _cw=fc.width,_ch=fc.height;' +
               'function _sendFinal(maskUri){' +
@@ -252,9 +252,9 @@ window.MilgIframe = (function() {
                   'updatedData:updatedData,' +
                   'maskResults:mr};' +
                 'try{parent.postMessage(msg,"*")}catch(e){' +
-                  'console.warn("[iframe-ss] postMessage failed ("+e.message+"), retrying without masks");' +
+                  'console.warn("[milg-warn] postMessage failed ("+e.message+"), masks: "+(msg.maskResults?Object.keys(msg.maskResults).length:0)+", retrying without");' +
                   'msg.maskResults=null;msg.updatedData=null;' +
-                  'try{parent.postMessage(msg,"*")}catch(e2){console.error("[iframe-ss] postMessage retry failed:",e2)}' +
+                  'try{parent.postMessage(msg,"*")}catch(e2){console.error("[milg-warn] postMessage retry also failed:",e2)}' +
                 '}' +
               '}' +
               // Wait for fonts to be fully loaded before mask capture (avoids fallback font mismatch)

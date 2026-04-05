@@ -762,7 +762,7 @@ window.MilgContrastVerify = (function() {
     // Read mask pixels if available (magenta=#FF00FF = text, white=#FFFFFF = bg)
     var maskData = null;
     if (maskCanvas && maskCanvas.ctx && bx + bw <= maskCanvas.width && by + bh <= maskCanvas.height) {
-      try { maskData = maskCanvas.ctx.getImageData(bx, by, bw, bh).data; } catch(e) {}
+      try { maskData = maskCanvas.ctx.getImageData(bx, by, bw, bh).data; } catch(e) { console.warn('[milg-warn] Mask getImageData failed:', e.message); }
     }
 
     var step = 2;

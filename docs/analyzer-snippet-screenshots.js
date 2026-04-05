@@ -531,7 +531,7 @@
         console.log('[crawl] Total crawl JSON: ' + Math.round(crawlJson.length / 1024) + ' KB');
         window.__milgCrawlResults = results;
         window.__milgCrawlJson = crawlJson;
-        try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) {}
+        try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) { console.warn('[milg-warn] localStorage save failed:', e.message); }
         // Try clipboard (both methods may fail — console loses focus/gesture context)
         function _crawlCopyFallback() {
           var ta = document.createElement('textarea'); ta.value = crawlJson;
@@ -771,7 +771,7 @@
               var crawlJson = JSON.stringify({ _milgCrawl: true, startUrl: location.href, results: _cResults });
               window.__milgCrawlResults = _cResults;
               window.__milgCrawlJson = crawlJson;
-              try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) {}
+              try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) { console.warn('[milg-warn] localStorage save failed:', e.message); }
               console.log('%c\u2713 Crawl complete! ' + _cResults.length + ' pages (' + Math.round(crawlJson.length / 1024) + ' KB)', 'color: #16a34a; font-weight: bold; font-size: 14px;');
               // Show copy + download buttons
               var _crawlKB = Math.round(crawlJson.length / 1024);

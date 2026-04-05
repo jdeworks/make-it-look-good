@@ -629,7 +629,7 @@ console.log('[milg] analyzer.js v48.1 loaded');
       updateFocusModal('Prefetching ' + toFetch.length + ' fonts\u2026');
       toFetch.forEach(function(fontUrl) {
         if (window.__milgFontCache[fontUrl]) { done++; if (done === toFetch.length) cb(); return; }
-        var p = fetch((CORS_PROXY_URL || '') + '?url=' + encodeURIComponent(fontUrl)).catch(function() { return new Response('', { status: 404 }); });
+        var p = fetch((CORS_PROXY_URL || '') + '?url=' + encodeURIComponent(fontUrl)).catch(function(e) { console.warn('[milg-warn] Font prefetch failed:', fontUrl, e && e.message || ''); return new Response('', { status: 404 }); });
         window.__milgFontCache[fontUrl] = p;
         p.then(function() { done++; if (done === toFetch.length) cb(); })
          .catch(function() { done++; if (done === toFetch.length) cb(); });
@@ -696,7 +696,7 @@ console.log('[milg] analyzer.js v48.1 loaded');
   function runAnalysis(data, skipExclusionDetection) {
     lastRawData = data;
     if (!_originalRawData || (!skipExclusionDetection && skipExclusionDetection !== 'viewport')) { _originalRawData = data; _viewportCache = {}; }
-    try { sessionStorage.setItem('milg-last-extraction', JSON.stringify(data, function(k, v) { return (k === 'viewportData' || k === '_cachedReportData') ? undefined : v; })); } catch(e) {}
+    try { sessionStorage.setItem('milg-last-extraction', JSON.stringify(data, function(k, v) { return (k === 'viewportData' || k === '_cachedReportData') ? undefined : v; })); } catch(e) { console.warn('[milg-warn] sessionStorage save failed:', e.message); }
     // Apply selected profile
     var profile = document.getElementById('profileSelect');
     if (profile) data.profile = profile.value;

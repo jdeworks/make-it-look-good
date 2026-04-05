@@ -180,7 +180,7 @@
       var crawlJson = JSON.stringify({ _milgCrawl: true, startUrl: location.href, results: results });
       window.__milgCrawlResults = results;
       window.__milgCrawlJson = crawlJson;
-      try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) {}
+      try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) { console.warn('[milg-warn] localStorage save failed:', e.message); }
       var crawlMB = Math.round(crawlJson.length / 1024 / 1024 * 10) / 10;
       if (crawlJson.length > 4 * 1024 * 1024) {
         // Large crawl: file download
@@ -232,7 +232,7 @@
             var crawlJson = JSON.stringify({ _milgCrawl: true, startUrl: location.href, results: _crawlResults });
             window.__milgCrawlResults = _crawlResults;
             window.__milgCrawlJson = crawlJson;
-            try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) {}
+            try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) { console.warn('[milg-warn] localStorage save failed:', e.message); }
             console.log('%c\u2713 Crawl complete! ' + _crawlResults.length + ' pages (' + Math.round(crawlJson.length / 1024) + ' KB)', 'color: #16a34a; font-weight: bold; font-size: 14px;');
             var _cKB = Math.round(crawlJson.length / 1024);
             var _cLarge = _cKB > 2048;

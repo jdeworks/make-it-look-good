@@ -31568,7 +31568,7 @@ window.MilgProxy = (function() {
           'if(typeof u==="string"&&u.charAt(0)==="/")u=_rb.replace(/\\/$/,"")+u;' +
           'if(_px&&typeof u==="string"&&u.indexOf(_px)===-1&&/\\.(woff2?|ttf|otf|eot)(\\?|$)/i.test(u)){' +
             'if(_fc[u])return _fc[u].then(function(r){return r.clone()});' +
-            'var p=_of.call(this,_px+"?url="+encodeURIComponent(u),o).catch(function(){return new Response("",{status:404})});' +
+            'var p=_of.call(this,_px+"?url="+encodeURIComponent(u),o).catch(function(e){console.warn("[milg-warn] Font proxy failed:",u,e&&e.message||"");return new Response("",{status:404})});' +
             '_fc[u]=p;return p;' +
           '}' +
           'return _of.call(this,u,o);' +
@@ -31633,7 +31633,7 @@ window.MilgProxy = (function() {
         'try{if(!parent.__milgFontCache)parent.__milgFontCache={}}catch(e){}' +
         'var _fc=((typeof parent!=="undefined")&&parent.__milgFontCache)||{};' +
         'window.fetch=function(u,o){if(typeof u==="string"&&u.charAt(0)==="/")u=_rb.replace(/\\/$/,"")+u;' +
-        'if(_px&&typeof u==="string"&&u.indexOf(_px)===-1&&/\\.(woff2?|ttf|otf|eot)(\\?|$)/i.test(u)){if(_fc[u])return _fc[u].then(function(r){return r.clone()});var p=_of.call(this,_px+"?url="+encodeURIComponent(u),o).catch(function(){return new Response("",{status:404})});_fc[u]=p;return p}' +
+        'if(_px&&typeof u==="string"&&u.indexOf(_px)===-1&&/\\.(woff2?|ttf|otf|eot)(\\?|$)/i.test(u)){if(_fc[u])return _fc[u].then(function(r){return r.clone()});var p=_of.call(this,_px+"?url="+encodeURIComponent(u),o).catch(function(e){console.warn("[milg-warn] Font proxy failed:",u,e&&e.message||"");return new Response("",{status:404})});_fc[u]=p;return p}' +
         'return _of.call(this,u,o)};' +
       '})();' +
     '</' + 'script>';
@@ -31839,7 +31839,7 @@ window.MilgProxy = (function() {
       var crawlJson = JSON.stringify({ _milgCrawl: true, startUrl: location.href, results: results });
       window.__milgCrawlResults = results;
       window.__milgCrawlJson = crawlJson;
-      try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) {}
+      try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) { console.warn('[milg-warn] localStorage save failed:', e.message); }
       var crawlMB = Math.round(crawlJson.length / 1024 / 1024 * 10) / 10;
       if (crawlJson.length > 4 * 1024 * 1024) {
         // Large crawl: file download
@@ -31891,7 +31891,7 @@ window.MilgProxy = (function() {
             var crawlJson = JSON.stringify({ _milgCrawl: true, startUrl: location.href, results: _crawlResults });
             window.__milgCrawlResults = _crawlResults;
             window.__milgCrawlJson = crawlJson;
-            try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) {}
+            try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) { console.warn('[milg-warn] localStorage save failed:', e.message); }
             console.log('%c\u2713 Crawl complete! ' + _crawlResults.length + ' pages (' + Math.round(crawlJson.length / 1024) + ' KB)', 'color: #16a34a; font-weight: bold; font-size: 14px;');
             var _cKB = Math.round(crawlJson.length / 1024);
             var _cLarge = _cKB > 2048;
@@ -33571,7 +33571,7 @@ window.MilgIframe = (function() {
                 'var burl=URL.createObjectURL(blob);' +
                 'var ff=new FontFace(f.family,"url("+burl+")",{weight:f.weight,style:f.style});' +
                 'return ff.load().then(function(){document.fonts.add(ff)})' +
-              '}).catch(function(){})' +
+              '}).catch(function(e){console.warn("[milg-warn] Font re-register failed:",f.family,e&&e.message||"")})' +
             '})' +
           '}' +
           'if(document.readyState==="complete")setTimeout(_fixFonts,500);' +
@@ -33699,7 +33699,7 @@ window.MilgIframe = (function() {
             'console.log("[iframe-ss] Step 1/2: Capturing screenshot at "+_sc+"x...");' +
             'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:45000}).then(function(fc){' +
               'console.log("[iframe-ss] Screenshot: "+fc.width+"x"+fc.height);' +
-              'var fullUri;try{fullUri=fc.toDataURL("image/webp",' + ss.quality + ')}catch(e){fullUri=""}' +
+              'var fullUri;try{fullUri=fc.toDataURL("image/webp",' + ss.quality + ')}catch(e){console.warn("[milg-warn] WebP conversion failed:",e.message);fullUri=""}' +
               // Update send helper with actual canvas dimensions
               'var _cw=fc.width,_ch=fc.height;' +
               'function _sendFinal(maskUri){' +
@@ -33720,9 +33720,9 @@ window.MilgIframe = (function() {
                   'updatedData:updatedData,' +
                   'maskResults:mr};' +
                 'try{parent.postMessage(msg,"*")}catch(e){' +
-                  'console.warn("[iframe-ss] postMessage failed ("+e.message+"), retrying without masks");' +
+                  'console.warn("[milg-warn] postMessage failed ("+e.message+"), masks: "+(msg.maskResults?Object.keys(msg.maskResults).length:0)+", retrying without");' +
                   'msg.maskResults=null;msg.updatedData=null;' +
-                  'try{parent.postMessage(msg,"*")}catch(e2){console.error("[iframe-ss] postMessage retry failed:",e2)}' +
+                  'try{parent.postMessage(msg,"*")}catch(e2){console.error("[milg-warn] postMessage retry also failed:",e2)}' +
                 '}' +
               '}' +
               // Wait for fonts to be fully loaded before mask capture (avoids fallback font mismatch)
@@ -36215,7 +36215,7 @@ window.MilgContrastVerify = (function() {
     // Read mask pixels if available (magenta=#FF00FF = text, white=#FFFFFF = bg)
     var maskData = null;
     if (maskCanvas && maskCanvas.ctx && bx + bw <= maskCanvas.width && by + bh <= maskCanvas.height) {
-      try { maskData = maskCanvas.ctx.getImageData(bx, by, bw, bh).data; } catch(e) {}
+      try { maskData = maskCanvas.ctx.getImageData(bx, by, bw, bh).data; } catch(e) { console.warn('[milg-warn] Mask getImageData failed:', e.message); }
     }
 
     var step = 2;
@@ -37484,7 +37484,7 @@ window.MilgContrastVerify = (function() {
         console.log('[crawl] Total crawl JSON: ' + Math.round(crawlJson.length / 1024) + ' KB');
         window.__milgCrawlResults = results;
         window.__milgCrawlJson = crawlJson;
-        try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) {}
+        try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) { console.warn('[milg-warn] localStorage save failed:', e.message); }
         // Try clipboard (both methods may fail — console loses focus/gesture context)
         function _crawlCopyFallback() {
           var ta = document.createElement('textarea'); ta.value = crawlJson;
@@ -37724,7 +37724,7 @@ window.MilgContrastVerify = (function() {
               var crawlJson = JSON.stringify({ _milgCrawl: true, startUrl: location.href, results: _cResults });
               window.__milgCrawlResults = _cResults;
               window.__milgCrawlJson = crawlJson;
-              try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) {}
+              try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) { console.warn('[milg-warn] localStorage save failed:', e.message); }
               console.log('%c\u2713 Crawl complete! ' + _cResults.length + ' pages (' + Math.round(crawlJson.length / 1024) + ' KB)', 'color: #16a34a; font-weight: bold; font-size: 14px;');
               // Show copy + download buttons
               var _crawlKB = Math.round(crawlJson.length / 1024);
@@ -40288,7 +40288,7 @@ console.log('[milg] analyzer.js v48.1 loaded');
       updateFocusModal('Prefetching ' + toFetch.length + ' fonts\u2026');
       toFetch.forEach(function(fontUrl) {
         if (window.__milgFontCache[fontUrl]) { done++; if (done === toFetch.length) cb(); return; }
-        var p = fetch((CORS_PROXY_URL || '') + '?url=' + encodeURIComponent(fontUrl)).catch(function() { return new Response('', { status: 404 }); });
+        var p = fetch((CORS_PROXY_URL || '') + '?url=' + encodeURIComponent(fontUrl)).catch(function(e) { console.warn('[milg-warn] Font prefetch failed:', fontUrl, e && e.message || ''); return new Response('', { status: 404 }); });
         window.__milgFontCache[fontUrl] = p;
         p.then(function() { done++; if (done === toFetch.length) cb(); })
          .catch(function() { done++; if (done === toFetch.length) cb(); });
@@ -40355,7 +40355,7 @@ console.log('[milg] analyzer.js v48.1 loaded');
   function runAnalysis(data, skipExclusionDetection) {
     lastRawData = data;
     if (!_originalRawData || (!skipExclusionDetection && skipExclusionDetection !== 'viewport')) { _originalRawData = data; _viewportCache = {}; }
-    try { sessionStorage.setItem('milg-last-extraction', JSON.stringify(data, function(k, v) { return (k === 'viewportData' || k === '_cachedReportData') ? undefined : v; })); } catch(e) {}
+    try { sessionStorage.setItem('milg-last-extraction', JSON.stringify(data, function(k, v) { return (k === 'viewportData' || k === '_cachedReportData') ? undefined : v; })); } catch(e) { console.warn('[milg-warn] sessionStorage save failed:', e.message); }
     // Apply selected profile
     var profile = document.getElementById('profileSelect');
     if (profile) data.profile = profile.value;
@@ -41251,7 +41251,7 @@ console.log('[milg] analyzer.js v48.1 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v50.9</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v51.0</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
