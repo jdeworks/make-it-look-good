@@ -228,8 +228,8 @@ window.MilgIframe = (function() {
         try { _baseOrigin = url ? new URL(url).origin : ''; } catch(e) {}
         scripts += '<script>(function(){' +
           'var _origin="' + _baseOrigin.replace(/"/g, '\\"') + '";' +
+          'var _px="' + _proxyUrl.replace(/"/g, '\\"') + '";' +
           'function _fixFontsForCanvas(){' +
-            // Use the font proxy cache (already populated by prefetchFonts + iframe fetch wrapper)
             'var _fc;try{_fc=parent.__milgFontCache||{}}catch(e){_fc={}}' +
             'var toFix=[];var seen={};' +
             'try{Array.from(document.styleSheets).forEach(function(ss){' +
@@ -246,6 +246,8 @@ window.MilgIframe = (function() {
                 'if(seen[fontUrl])return;seen[fontUrl]=true;' +
                 'var cached=_fc[fontUrl];' +
                 'var isWoff2=fontUrl.indexOf(".woff2")>=0;' +
+                // If not in cache, create a proxy fetch promise as fallback
+                'if(!cached&&_px){cached=fetch(_px+"?url="+encodeURIComponent(fontUrl)).catch(function(){return new Response("",{status:404})})}' +
                 'if(cached)toFix.push({family:fam,url:fontUrl,weight:r.style.fontWeight||"400",style:r.style.fontStyle||"normal",promise:cached,woff2:isWoff2})' +
               '})}catch(e){}})}catch(e){}' +
             'if(toFix.length===0){console.log("[milg-iframe] No cached fonts to export (cache has "+Object.keys(_fc).length+" entries)");return}' +
@@ -320,15 +322,16 @@ window.MilgIframe = (function() {
     while ((m = faceRe.exec(html)) !== null) fontUrls.push(m[1]);
     var seen = {};
     var resolved = [];
+    var origin; try { origin = new URL(url).origin; } catch(e) { origin = url.replace(/\/[^/]*$/, ''); }
     fontUrls.forEach(function(u) {
       try {
-        var abs = u.charAt(0) === '/' ? url.replace(/\/[^/]*$/, '') + u : (u.indexOf('://') > 0 ? u : url.replace(/\/[^/]*$/, '/') + u);
+        var abs = u.charAt(0) === '/' ? origin + u : (u.indexOf('://') > 0 ? u : origin + '/' + u);
         if (!seen[abs]) { seen[abs] = true; resolved.push(abs); }
       } catch(e) {}
     });
     if (resolved.length === 0 || !_proxyUrl) { cb(); return; }
     if (!window.__milgFontCache) window.__milgFontCache = {};
-    var toFetch = resolved.slice(0, 10);
+    var toFetch = resolved; // no limit — fetch ALL unique font URLs
     var done = 0;
     console.log('[milg] Prefetching ' + toFetch.length + ' fonts through proxy');
     toFetch.forEach(function(fontUrl) {
