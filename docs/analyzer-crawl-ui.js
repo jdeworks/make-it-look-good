@@ -123,7 +123,26 @@ window.MilgCrawlUI = (function() {
     document.getElementById('inputSection').style.display = 'none';
     renderCrawlTabs();
     showCrawlPageContent('summary');
+
+    // Pre-compute pixel verify for each page with screenshots (async, best-effort).
+    // Results are cached on rawData._contrastVerifyResults so tab switches use cache.
+    _preComputePixelVerify();
+
     return true;
+  }
+
+  function _preComputePixelVerify() {
+    if (!_crawlSession || !window.MilgContrastVerify) return;
+    _crawlSession.pages.forEach(function(page) {
+      if (page.status !== 'done' || !page.rawData || page.rawData._contrastVerifyResults) return;
+      var d = page.rawData;
+      if (!d.screenshots || !d.screenshots.length || !d.screenshotMeta) return;
+      var report = page.reportData || MilgScoring.runScoring(d);
+      MilgContrastVerify.verify(report, function(results, bboxEdgeResults) {
+        d._contrastVerifyResults = results;
+        d._bboxEdgeResults = bboxEdgeResults || [];
+      });
+    });
   }
 
   function startCrawl(url) {
@@ -216,6 +235,14 @@ window.MilgCrawlUI = (function() {
         crawlProgressFill.style.width = Math.round(doneCount / totalPages * 100) + '%';
         renderCrawlTabs();
         if (_crawlActivePageTab === 'summary') showCrawlPageContent('summary');
+        // Pre-compute pixel verify as soon as page completes (async, best-effort)
+        if (page.rawData && page.rawData.screenshots && page.rawData.screenshots.length && page.rawData.screenshotMeta && window.MilgContrastVerify) {
+          var report = page.reportData || MilgScoring.runScoring(page.rawData);
+          MilgContrastVerify.verify(report, function(results, bboxEdgeResults) {
+            page.rawData._contrastVerifyResults = results;
+            page.rawData._bboxEdgeResults = bboxEdgeResults || [];
+          });
+        }
       },
       onPageError: function(page) {
         doneCount++;

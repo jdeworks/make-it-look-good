@@ -571,8 +571,10 @@
         // _crawlScreenshotCallback is serialized via .toString() into the iframe —
         // it must be fully self-contained (no closure references).
         function _crawlScreenshotCallback(data) {
-          // Don't set __milgData yet — wait for screenshot + mask pipeline to complete.
-          // The parent polls __milgData to know when this page is ready.
+          // The extraction engine sets __milgData before calling this callback.
+          // Clear it immediately so the parent poller doesn't grab data before
+          // the screenshot + mask pipeline completes.
+          window.__milgData = null;
           function _finalize() { window.__milgData = data; }
 
           var s = document.createElement('script');

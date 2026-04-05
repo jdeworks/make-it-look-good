@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v48.0 loaded');
+console.log('[milg] analyzer.js v48.1 loaded');
 
 (function() {
   "use strict";
@@ -773,6 +773,9 @@ console.log('[milg] analyzer.js v48.0 loaded');
         else reportContainer.insertBefore(div, reportContainer.firstChild);
         reportData._contrastVerifyResults = results;
         reportData._bboxEdgeResults = bboxEdgeResults || [];
+        // Cache on raw data so crawl tab switches reuse results instead of re-computing
+        data._contrastVerifyResults = results;
+        data._bboxEdgeResults = bboxEdgeResults || [];
       });
     }
   }
