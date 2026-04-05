@@ -272,8 +272,17 @@ window.MilgProxy = (function() {
         'history.pushState=function(s,t,u){try{_hps(s,t,u);}catch(e){}};' +
         'history.replaceState=function(s,t,u){try{_hrs(s,t,u);}catch(e){}};' +
         'var _of=window.fetch;' +
+        'var _px="' + (_corsProxyUrl || '').replace(/"/g, '\\"') + '";' +
+        // Share font cache across iframes via parent (deep scan reuses fonts across viewports)
+        'try{if(!parent.__milgFontCache)parent.__milgFontCache={}}catch(e){}' +
+        'var _fc=((typeof parent!=="undefined")&&parent.__milgFontCache)||{};' +
         'window.fetch=function(u,o){' +
           'if(typeof u==="string"&&u.charAt(0)==="/")u=_rb.replace(/\\/$/,"")+u;' +
+          'if(_px&&typeof u==="string"&&/\\.(woff2?|ttf|otf|eot)(\\?|$)/i.test(u)){' +
+            'if(_fc[u])return _fc[u].then(function(r){return r.clone()});' +
+            'var p=_of.call(this,_px+"?url="+encodeURIComponent(u),o).catch(function(){return new Response("",{status:404})});' +
+            '_fc[u]=p;return p;' +
+          '}' +
           'return _of.call(this,u,o);' +
         '};' +
       '})();' +
@@ -332,7 +341,12 @@ window.MilgProxy = (function() {
         'if(_O.canParse)_P.canParse=_O.canParse.bind(_O);window.URL=_P;' +
         'var _hps=history.pushState.bind(history);var _hrs=history.replaceState.bind(history);' +
         'history.pushState=function(s,t,u){try{_hps(s,t,u);}catch(e){}};history.replaceState=function(s,t,u){try{_hrs(s,t,u);}catch(e){}};' +
-        'var _of=window.fetch;window.fetch=function(u,o){if(typeof u==="string"&&u.charAt(0)==="/")u=_rb.replace(/\\/$/,"")+u;return _of.call(this,u,o)};' +
+        'var _of=window.fetch;var _px="' + (_corsProxyUrl || '').replace(/"/g, '\\"') + '";' +
+        'try{if(!parent.__milgFontCache)parent.__milgFontCache={}}catch(e){}' +
+        'var _fc=((typeof parent!=="undefined")&&parent.__milgFontCache)||{};' +
+        'window.fetch=function(u,o){if(typeof u==="string"&&u.charAt(0)==="/")u=_rb.replace(/\\/$/,"")+u;' +
+        'if(_px&&typeof u==="string"&&/\\.(woff2?|ttf|otf|eot)(\\?|$)/i.test(u)){if(_fc[u])return _fc[u].then(function(r){return r.clone()});var p=_of.call(this,_px+"?url="+encodeURIComponent(u),o).catch(function(){return new Response("",{status:404})});_fc[u]=p;return p}' +
+        'return _of.call(this,u,o)};' +
       '})();' +
     '</' + 'script>';
     var combined = sandboxScript + urlPatch;
