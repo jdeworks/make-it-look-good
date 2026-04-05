@@ -109,14 +109,16 @@ window.MilgIframe = (function() {
         baseHref = base.origin + base.pathname.replace(/\/[^/]*$/, '/');
       }
 
-      // 1. Sandbox (must come first — blocks storage/cookies before any page JS)
-      if (wantSandbox) {
-        scripts += buildSandboxScript();
-      }
-
-      // 2. Base tag
+      // 1. Base tag (MUST come first — relative URLs in subsequent scripts and page
+      //    elements resolve against <base href>. Without it, /_next/... resolves to
+      //    the iframe origin jdeworks.github.io instead of the target site.)
       if (wantBase && baseHref) {
         scripts += '<base href="' + baseHref + '">';
+      }
+
+      // 2. Sandbox (blocks storage/cookies before any page JS)
+      if (wantSandbox) {
+        scripts += buildSandboxScript();
       }
 
       // 3a. Enhanced fetch patch (JS mode): URL constructor + fetch relative URL fix + font proxy
