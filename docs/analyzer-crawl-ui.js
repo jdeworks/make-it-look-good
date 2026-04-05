@@ -189,11 +189,19 @@ window.MilgCrawlUI = (function() {
   function _updateVerifySummary(done, total, completedSession) {
     var container = document.getElementById('milg-crawl-verify-summary');
     if (!container && crawlPageContent) {
-      // Append the verify section to the summary page if we're on it
+      // Insert verify section near the top of the summary (after Site Overview stats, before Page Scores)
       container = document.createElement('div');
       container.id = 'milg-crawl-verify-summary';
       container.style.marginTop = '24px';
-      crawlPageContent.appendChild(container);
+      var summaryDiv = crawlPageContent.querySelector('.crawl-summary');
+      var firstH3 = summaryDiv ? summaryDiv.querySelector('h3') : null;
+      if (firstH3) {
+        firstH3.parentNode.insertBefore(container, firstH3);
+      } else if (summaryDiv) {
+        summaryDiv.appendChild(container);
+      } else {
+        crawlPageContent.appendChild(container);
+      }
     }
     if (!container) return;
 

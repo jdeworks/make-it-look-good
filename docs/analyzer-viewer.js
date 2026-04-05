@@ -989,38 +989,90 @@ window.MilgViewer = (function() {
         var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
         line.setAttribute('x1', pt.x); line.setAttribute('y1', pt.y + secOff);
         line.setAttribute('x2', pt.bgX); line.setAttribute('y2', pt.bgY + secOff);
-        line.setAttribute('stroke', col); line.setAttribute('stroke-width', '0.5');
-        line.setAttribute('stroke-dasharray', '2 1'); line.setAttribute('opacity', '0.6');
+        line.setAttribute('stroke', col);
+        line.setAttribute('stroke-width', showLabel ? '1.5' : '0.5');
+        if (!showLabel) { line.setAttribute('stroke-dasharray', '2 1'); line.setAttribute('opacity', '0.6'); }
         line.setAttribute('pointer-events', 'none');
         group.appendChild(line);
 
+        // BG dot — larger ring when highlighted
         var bd = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         bd.setAttribute('cx', pt.bgX); bd.setAttribute('cy', pt.bgY + secOff);
-        bd.setAttribute('r', dotR * 0.7); bd.setAttribute('fill', 'none');
-        bd.setAttribute('stroke', col); bd.setAttribute('stroke-width', '1');
+        bd.setAttribute('r', showLabel ? dotR * 1.3 : dotR * 0.7);
+        bd.setAttribute('fill', showLabel ? bgCol : 'none');
+        bd.setAttribute('stroke', showLabel ? '#fff' : col);
+        bd.setAttribute('stroke-width', showLabel ? '1' : '0.5');
         bd.setAttribute('pointer-events', 'none');
         group.appendChild(bd);
       }
 
-      // FG dot
+      // FG dot — show actual FG color when highlighted, category color otherwise
       var d = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
       d.setAttribute('cx', pt.x); d.setAttribute('cy', pt.y + secOff);
-      d.setAttribute('r', showLabel ? dotR * 1.5 : dotR); d.setAttribute('fill', col);
-      d.setAttribute('stroke', '#fff'); d.setAttribute('stroke-width', showLabel ? '1' : '0.5');
+      d.setAttribute('r', showLabel ? dotR * 1.5 : dotR);
+      d.setAttribute('fill', showLabel ? fgCol : col);
+      d.setAttribute('stroke', showLabel ? '#fff' : '#fff');
+      d.setAttribute('stroke-width', showLabel ? '1' : '0.5');
       d.setAttribute('pointer-events', 'none');
       group.appendChild(d);
 
-      // Label (only when actively highlighted)
+      // Label + color swatches (only when actively highlighted)
       if (showLabel) {
+        var passColor = ratio >= 4.5 ? '#22c55e' : ratio >= 3 ? '#eab308' : '#ef4444';
+        var lx = pt.x + dotR + 5, ly = pt.y + secOff;
+        var swSz = 7; // swatch size
+
+        // Background panel for readability
+        var bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        bg.setAttribute('x', lx - 2); bg.setAttribute('y', ly - 12);
+        bg.setAttribute('width', 64); bg.setAttribute('height', 24);
+        bg.setAttribute('rx', 3); bg.setAttribute('fill', 'rgba(0,0,0,0.75)');
+        bg.setAttribute('pointer-events', 'none');
+        group.appendChild(bg);
+
+        // Label text (e.g. "P10 4.8:1")
         var lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        lbl.setAttribute('x', pt.x + dotR + 4); lbl.setAttribute('y', pt.y + secOff - 3);
-        lbl.setAttribute('font-size', '8'); lbl.setAttribute('fill', col);
+        lbl.setAttribute('x', lx); lbl.setAttribute('y', ly - 3);
+        lbl.setAttribute('font-size', '7'); lbl.setAttribute('fill', col);
         lbl.setAttribute('font-family', 'system-ui'); lbl.setAttribute('font-weight', '700');
         lbl.setAttribute('pointer-events', 'none');
-        lbl.setAttribute('stroke', 'rgba(0,0,0,0.6)'); lbl.setAttribute('stroke-width', '2.5');
-        lbl.setAttribute('paint-order', 'stroke');
         lbl.textContent = label + ' ' + ratio + ':1';
         group.appendChild(lbl);
+
+        // FG swatch
+        var fgSw = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        fgSw.setAttribute('x', lx); fgSw.setAttribute('y', ly + 1);
+        fgSw.setAttribute('width', swSz); fgSw.setAttribute('height', swSz);
+        fgSw.setAttribute('rx', 1); fgSw.setAttribute('fill', fgCol);
+        fgSw.setAttribute('stroke', 'rgba(255,255,255,0.5)'); fgSw.setAttribute('stroke-width', '0.5');
+        fgSw.setAttribute('pointer-events', 'none');
+        group.appendChild(fgSw);
+
+        // Arrow
+        var arrow = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        arrow.setAttribute('x', lx + swSz + 1.5); arrow.setAttribute('y', ly + swSz);
+        arrow.setAttribute('font-size', '6'); arrow.setAttribute('fill', 'rgba(255,255,255,0.6)');
+        arrow.setAttribute('font-family', 'system-ui'); arrow.setAttribute('pointer-events', 'none');
+        arrow.textContent = '\u2192';
+        group.appendChild(arrow);
+
+        // BG swatch
+        var bgSw = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        bgSw.setAttribute('x', lx + swSz + 8); bgSw.setAttribute('y', ly + 1);
+        bgSw.setAttribute('width', swSz); bgSw.setAttribute('height', swSz);
+        bgSw.setAttribute('rx', 1); bgSw.setAttribute('fill', bgCol);
+        bgSw.setAttribute('stroke', 'rgba(255,255,255,0.5)'); bgSw.setAttribute('stroke-width', '0.5');
+        bgSw.setAttribute('pointer-events', 'none');
+        group.appendChild(bgSw);
+
+        // Pass/fail badge
+        var badge = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        badge.setAttribute('x', lx + swSz * 2 + 11); badge.setAttribute('y', ly + swSz);
+        badge.setAttribute('font-size', '6'); badge.setAttribute('fill', passColor);
+        badge.setAttribute('font-family', 'system-ui'); badge.setAttribute('font-weight', '700');
+        badge.setAttribute('pointer-events', 'none');
+        badge.textContent = ratio >= 4.5 ? 'PASS' : ratio >= 3 ? 'AA-lg' : 'FAIL';
+        group.appendChild(badge);
       }
 
       // Hover tooltip

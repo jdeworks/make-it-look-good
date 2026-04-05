@@ -31807,11 +31807,19 @@ window.MilgCrawlUI = (function() {
   function _updateVerifySummary(done, total, completedSession) {
     var container = document.getElementById('milg-crawl-verify-summary');
     if (!container && crawlPageContent) {
-      // Append the verify section to the summary page if we're on it
+      // Insert verify section near the top of the summary (after Site Overview stats, before Page Scores)
       container = document.createElement('div');
       container.id = 'milg-crawl-verify-summary';
       container.style.marginTop = '24px';
-      crawlPageContent.appendChild(container);
+      var summaryDiv = crawlPageContent.querySelector('.crawl-summary');
+      var firstH3 = summaryDiv ? summaryDiv.querySelector('h3') : null;
+      if (firstH3) {
+        firstH3.parentNode.insertBefore(container, firstH3);
+      } else if (summaryDiv) {
+        summaryDiv.appendChild(container);
+      } else {
+        crawlPageContent.appendChild(container);
+      }
     }
     if (!container) return;
 
@@ -35682,10 +35690,13 @@ window.MilgExtract = (function() {
       '<div style="font-size:32px;margin-bottom:12px">&#10003;</div>' +
       '<div style="color:#fff;font-size:18px;font-weight:600;margin-bottom:6px">Extraction complete!</div>' +
       '<div style="color:rgba(255,255,255,0.6);font-size:13px;margin-bottom:6px">' + jsonKB + ' KB of design data' + (data.screenshotFull ? ' + full-page screenshot' : '') + '</div>' +
-      (jsonKB > 2048 ? '<div style="color:#fbbf24;font-size:12px;margin-bottom:16px">&#9888; Large payload (' + jsonMB + ' MB) \u2014 paste may take a moment</div>' : '<div style="margin-bottom:16px"></div>') +
-      '<button id="milg-copy-btn" style="padding:14px 32px;font-size:15px;font-weight:600;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-bottom:8px;min-width:200px">Copy to Clipboard</button>' +
-      '<button id="milg-download-btn" style="padding:10px 24px;font-size:13px;font-weight:500;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.2);border-radius:8px;cursor:pointer;margin-bottom:12px;min-width:200px">Download JSON</button>' +
-      '<div style="color:rgba(255,255,255,0.4);font-size:11px">Then paste or import into the analyzer</div>' +
+      (jsonKB > 2048 ? '<div style="color:#fbbf24;font-size:12px;margin-bottom:16px">&#9888; Large payload (' + jsonMB + ' MB) \u2014 download recommended</div>' : '<div style="margin-bottom:16px"></div>') +
+      (jsonKB > 2048
+        ? '<button id="milg-download-btn" style="padding:14px 32px;font-size:15px;font-weight:600;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-bottom:8px;min-width:200px">Download JSON</button>' +
+          '<button id="milg-copy-btn" style="padding:10px 24px;font-size:13px;font-weight:500;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.2);border-radius:8px;cursor:pointer;margin-bottom:12px;min-width:200px">Copy to Clipboard</button>'
+        : '<button id="milg-copy-btn" style="padding:14px 32px;font-size:15px;font-weight:600;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-bottom:8px;min-width:200px">Copy to Clipboard</button>' +
+          '<button id="milg-download-btn" style="padding:10px 24px;font-size:13px;font-weight:500;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.2);border-radius:8px;cursor:pointer;margin-bottom:12px;min-width:200px">Download JSON</button>') +
+      '<div style="color:rgba(255,255,255,0.4);font-size:11px">Then ' + (jsonKB > 2048 ? 'import' : 'paste') + ' into the analyzer</div>' +
       '</div>';
     document.body.appendChild(_copyOverlay);
 
@@ -36045,9 +36056,12 @@ window.MilgExtract = (function() {
                 '<div style="color:#fff;font-size:16px;font-weight:600;margin-bottom:6px">Crawl complete! ' + _cResults.length + ' pages analyzed.</div>' +
                 '<div style="color:rgba(255,255,255,0.6);font-size:13px;margin-bottom:' + (_crawlKB > 2048 ? '6' : '20') + 'px">' + _crawlKB + ' KB of design data ready</div>' +
                 (_crawlKB > 2048 ? '<div style="color:#fbbf24;font-size:12px;margin-bottom:16px">&#9888; Large payload (' + Math.round(_crawlKB / 1024 * 10) / 10 + ' MB) \u2014 download recommended</div>' : '') +
-                '<button id="milg-crawl-copy-btn" style="padding:12px 28px;font-size:14px;font-weight:600;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-bottom:8px;min-width:220px">Copy to Clipboard</button><br>' +
-                '<button id="milg-crawl-dl-btn" style="padding:10px 24px;font-size:13px;font-weight:500;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.2);border-radius:8px;cursor:pointer;margin-bottom:10px;min-width:220px">Download JSON</button>' +
-                '<div style="color:rgba(255,255,255,0.5);font-size:11px;margin-top:8px">Then paste or import into the analyzer</div>' +
+                (_crawlKB > 2048
+                  ? '<button id="milg-crawl-dl-btn" style="padding:12px 28px;font-size:14px;font-weight:600;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-bottom:8px;min-width:220px">Download JSON</button><br>' +
+                    '<button id="milg-crawl-copy-btn" style="padding:10px 24px;font-size:13px;font-weight:500;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.2);border-radius:8px;cursor:pointer;margin-bottom:10px;min-width:220px">Copy to Clipboard</button>'
+                  : '<button id="milg-crawl-copy-btn" style="padding:12px 28px;font-size:14px;font-weight:600;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-bottom:8px;min-width:220px">Copy to Clipboard</button><br>' +
+                    '<button id="milg-crawl-dl-btn" style="padding:10px 24px;font-size:13px;font-weight:500;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.2);border-radius:8px;cursor:pointer;margin-bottom:10px;min-width:220px">Download JSON</button>') +
+                '<div style="color:rgba(255,255,255,0.5);font-size:11px;margin-top:8px">Then ' + (_crawlKB > 2048 ? 'import' : 'paste') + ' into the analyzer</div>' +
                 '</div>';
               function _crawlDoneAction() {
                 // Close overlay and reload page to restore styles corrupted by mask capture
@@ -38668,38 +38682,90 @@ window.MilgViewer = (function() {
         var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
         line.setAttribute('x1', pt.x); line.setAttribute('y1', pt.y + secOff);
         line.setAttribute('x2', pt.bgX); line.setAttribute('y2', pt.bgY + secOff);
-        line.setAttribute('stroke', col); line.setAttribute('stroke-width', '0.5');
-        line.setAttribute('stroke-dasharray', '2 1'); line.setAttribute('opacity', '0.6');
+        line.setAttribute('stroke', col);
+        line.setAttribute('stroke-width', showLabel ? '1.5' : '0.5');
+        if (!showLabel) { line.setAttribute('stroke-dasharray', '2 1'); line.setAttribute('opacity', '0.6'); }
         line.setAttribute('pointer-events', 'none');
         group.appendChild(line);
 
+        // BG dot — larger ring when highlighted
         var bd = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         bd.setAttribute('cx', pt.bgX); bd.setAttribute('cy', pt.bgY + secOff);
-        bd.setAttribute('r', dotR * 0.7); bd.setAttribute('fill', 'none');
-        bd.setAttribute('stroke', col); bd.setAttribute('stroke-width', '1');
+        bd.setAttribute('r', showLabel ? dotR * 1.3 : dotR * 0.7);
+        bd.setAttribute('fill', showLabel ? bgCol : 'none');
+        bd.setAttribute('stroke', showLabel ? '#fff' : col);
+        bd.setAttribute('stroke-width', showLabel ? '1' : '0.5');
         bd.setAttribute('pointer-events', 'none');
         group.appendChild(bd);
       }
 
-      // FG dot
+      // FG dot — show actual FG color when highlighted, category color otherwise
       var d = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
       d.setAttribute('cx', pt.x); d.setAttribute('cy', pt.y + secOff);
-      d.setAttribute('r', showLabel ? dotR * 1.5 : dotR); d.setAttribute('fill', col);
-      d.setAttribute('stroke', '#fff'); d.setAttribute('stroke-width', showLabel ? '1' : '0.5');
+      d.setAttribute('r', showLabel ? dotR * 1.5 : dotR);
+      d.setAttribute('fill', showLabel ? fgCol : col);
+      d.setAttribute('stroke', showLabel ? '#fff' : '#fff');
+      d.setAttribute('stroke-width', showLabel ? '1' : '0.5');
       d.setAttribute('pointer-events', 'none');
       group.appendChild(d);
 
-      // Label (only when actively highlighted)
+      // Label + color swatches (only when actively highlighted)
       if (showLabel) {
+        var passColor = ratio >= 4.5 ? '#22c55e' : ratio >= 3 ? '#eab308' : '#ef4444';
+        var lx = pt.x + dotR + 5, ly = pt.y + secOff;
+        var swSz = 7; // swatch size
+
+        // Background panel for readability
+        var bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        bg.setAttribute('x', lx - 2); bg.setAttribute('y', ly - 12);
+        bg.setAttribute('width', 64); bg.setAttribute('height', 24);
+        bg.setAttribute('rx', 3); bg.setAttribute('fill', 'rgba(0,0,0,0.75)');
+        bg.setAttribute('pointer-events', 'none');
+        group.appendChild(bg);
+
+        // Label text (e.g. "P10 4.8:1")
         var lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        lbl.setAttribute('x', pt.x + dotR + 4); lbl.setAttribute('y', pt.y + secOff - 3);
-        lbl.setAttribute('font-size', '8'); lbl.setAttribute('fill', col);
+        lbl.setAttribute('x', lx); lbl.setAttribute('y', ly - 3);
+        lbl.setAttribute('font-size', '7'); lbl.setAttribute('fill', col);
         lbl.setAttribute('font-family', 'system-ui'); lbl.setAttribute('font-weight', '700');
         lbl.setAttribute('pointer-events', 'none');
-        lbl.setAttribute('stroke', 'rgba(0,0,0,0.6)'); lbl.setAttribute('stroke-width', '2.5');
-        lbl.setAttribute('paint-order', 'stroke');
         lbl.textContent = label + ' ' + ratio + ':1';
         group.appendChild(lbl);
+
+        // FG swatch
+        var fgSw = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        fgSw.setAttribute('x', lx); fgSw.setAttribute('y', ly + 1);
+        fgSw.setAttribute('width', swSz); fgSw.setAttribute('height', swSz);
+        fgSw.setAttribute('rx', 1); fgSw.setAttribute('fill', fgCol);
+        fgSw.setAttribute('stroke', 'rgba(255,255,255,0.5)'); fgSw.setAttribute('stroke-width', '0.5');
+        fgSw.setAttribute('pointer-events', 'none');
+        group.appendChild(fgSw);
+
+        // Arrow
+        var arrow = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        arrow.setAttribute('x', lx + swSz + 1.5); arrow.setAttribute('y', ly + swSz);
+        arrow.setAttribute('font-size', '6'); arrow.setAttribute('fill', 'rgba(255,255,255,0.6)');
+        arrow.setAttribute('font-family', 'system-ui'); arrow.setAttribute('pointer-events', 'none');
+        arrow.textContent = '\u2192';
+        group.appendChild(arrow);
+
+        // BG swatch
+        var bgSw = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        bgSw.setAttribute('x', lx + swSz + 8); bgSw.setAttribute('y', ly + 1);
+        bgSw.setAttribute('width', swSz); bgSw.setAttribute('height', swSz);
+        bgSw.setAttribute('rx', 1); bgSw.setAttribute('fill', bgCol);
+        bgSw.setAttribute('stroke', 'rgba(255,255,255,0.5)'); bgSw.setAttribute('stroke-width', '0.5');
+        bgSw.setAttribute('pointer-events', 'none');
+        group.appendChild(bgSw);
+
+        // Pass/fail badge
+        var badge = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        badge.setAttribute('x', lx + swSz * 2 + 11); badge.setAttribute('y', ly + swSz);
+        badge.setAttribute('font-size', '6'); badge.setAttribute('fill', passColor);
+        badge.setAttribute('font-family', 'system-ui'); badge.setAttribute('font-weight', '700');
+        badge.setAttribute('pointer-events', 'none');
+        badge.textContent = ratio >= 4.5 ? 'PASS' : ratio >= 3 ? 'AA-lg' : 'FAIL';
+        group.appendChild(badge);
       }
 
       // Hover tooltip
@@ -40898,7 +40964,7 @@ console.log('[milg] analyzer.js v48.1 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v48.9</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v49.0</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
