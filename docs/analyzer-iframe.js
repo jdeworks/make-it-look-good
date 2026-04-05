@@ -127,6 +127,7 @@ window.MilgIframe = (function() {
         scripts += '<script>' +
           '(function(){' +
             'var _rb="' + escapedUrl + '";' +
+            'var _ro=(function(){try{return new URL(_rb).origin}catch(e){return _rb.replace(/\\/\\/[^/]+\\/.*$/,"//"+_rb.split("//")[1].split("/")[0])}})();' +
             'var _O=URL;' +
             'function _P(u,b){' +
               'if(b){' +
@@ -153,7 +154,7 @@ window.MilgIframe = (function() {
             'var _fc=((typeof parent!=="undefined")&&parent.__milgFontCache)||{};' +
             'if(!window.__milgFontBlobs)window.__milgFontBlobs={};' +
             'window.fetch=function(u,o){' +
-              'if(typeof u==="string"&&u.charAt(0)==="/")u=_rb.replace(/\\/$/,"")+u;' +
+              'if(typeof u==="string"&&u.charAt(0)==="/")u=_ro+u;' +
               'if(_px&&typeof u==="string"&&u.indexOf(_px)===-1&&/\\.(woff2?|ttf|otf|eot)(\\?|$)/i.test(u)){' +
                 'if(_fc[u])return _fc[u].then(function(r){return r.clone()});' +
                 'var p=_of.call(this,_px+"?url="+encodeURIComponent(u),o)' +

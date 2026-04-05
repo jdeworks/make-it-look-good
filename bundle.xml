@@ -4375,6 +4375,321 @@ function scoreVisualConsistency(data) {
 })();
 </file>
 
+<file path="docs/scoring/contrast.js">
+// Scoring Module: Color & Contrast
+// Weight: 20%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function parseRgb(str) {
+  var m = str.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+  if (!m) m = str.match(/rgb\((\d+)\s+(\d+)\s+(\d+)\)/);
+  if (!m) return null;
+  return { r: +m[1], g: +m[2], b: +m[3] };
+}
+
+function applyFilterToColor(c, filterStr) {
+  if (!c || !filterStr) return c;
+  var r = c.r, g = c.g, b = c.b;
+  var re = /brightness\(([\d.]+)\)|contrast\(([\d.]+)\)|opacity\(([\d.]+)\)/g;
+  var m;
+  while ((m = re.exec(filterStr)) !== null) {
+    if (m[1] !== undefined) {
+      var br = parseFloat(m[1]);
+      r = Math.min(255, Math.round(r * br));
+      g = Math.min(255, Math.round(g * br));
+      b = Math.min(255, Math.round(b * br));
+    } else if (m[2] !== undefined) {
+      var ct = parseFloat(m[2]);
+      r = Math.min(255, Math.max(0, Math.round(((r - 128) * ct) + 128)));
+      g = Math.min(255, Math.max(0, Math.round(((g - 128) * ct) + 128)));
+      b = Math.min(255, Math.max(0, Math.round(((b - 128) * ct) + 128)));
+    }
+    // opacity affects alpha, not RGB channels for contrast purposes
+  }
+  return { r: r, g: g, b: b };
+}
+
+function luminance(c) {
+  var rs = c.r / 255, gs = c.g / 255, bs = c.b / 255;
+  var r = rs <= 0.03928 ? rs / 12.92 : Math.pow((rs + 0.055) / 1.055, 2.4);
+  var g = gs <= 0.03928 ? gs / 12.92 : Math.pow((gs + 0.055) / 1.055, 2.4);
+  var b = bs <= 0.03928 ? bs / 12.92 : Math.pow((bs + 0.055) / 1.055, 2.4);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function contrastRatio(c1, c2) {
+  var l1 = luminance(c1), l2 = luminance(c2);
+  return Math.round(((Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)) * 100) / 100;
+}
+
+// APCA contrast (Lc value)
+// Simplified APCA-W3 calculation
+function sRGBtoY(rgb) {
+  // Linearize sRGB
+  function lin(v) { v = v / 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
+  return 0.2126729 * lin(rgb.r) + 0.7151522 * lin(rgb.g) + 0.0721750 * lin(rgb.b);
+}
+
+function apcaContrast(txtRgb, bgRgb) {
+  var txtY = sRGBtoY(txtRgb);
+  var bgY = sRGBtoY(bgRgb);
+  // Clamp
+  if (txtY < 0) txtY = 0;
+  if (bgY < 0) bgY = 0;
+  // SAPC power curve
+  var normBG = Math.pow(bgY, 0.56);
+  var normTXT = Math.pow(txtY, 0.57);
+  var rawContrast;
+  if (bgY > txtY) {
+    rawContrast = (normBG - normTXT) * 1.14;
+  } else {
+    rawContrast = (normBG - normTXT) * 1.14;
+  }
+  // Scale and clamp
+  if (Math.abs(rawContrast) < 0.1) return 0;
+  return Math.round(rawContrast * 100);
+}
+
+function scoreContrast(data) {
+  var profile = S.getProfile(data);
+  var findings = [];
+  var pairs = data.colors.contrastPairs || [];
+
+  // Re-evaluate each pair against profile thresholds
+  var profilePairs = pairs.filter(function(p) { return p && p.fg && p.bg; }).map(function(p) {
+    var needed = p.isLarge ? profile.contrastLarge : profile.contrast;
+    var ratio = p.ratio;
+
+    // If a CSS filter is present, re-compute contrast with adjusted bg
+    if (p.filter) {
+      var bgParsed = parseRgb(p.bg);
+      if (bgParsed) {
+        var adjustedBg = applyFilterToColor(bgParsed, p.filter);
+        var fgParsed = parseRgb(p.fg);
+        if (fgParsed) {
+          ratio = contrastRatio(fgParsed, adjustedBg);
+        }
+      }
+    }
+
+    var passes = ratio >= needed;
+    return { ratio: ratio, needed: needed, passes: passes, isLarge: p.isLarge, text: p.text, fontSize: p.fontSize, selector: p.selector, fg: p.fg, bg: p.bg, filter: p.filter || '', bbox: p.bbox };
+  });
+
+  // Separate uncertain results (very low ratio usually means bg couldn't be determined — gradient, SVG, image, etc.)
+  // Cases: fg===bg (exact 1:1), or ratio < 1.5 with light text on light bg (white text on gradient that resolved to white)
+  function isUncertain(p) {
+    if (p.passes) return false;
+    if (p.ratio <= 1.01 && p.fg === p.bg) return true;
+    // Very low ratio with light fg+bg suggests unresolved gradient background
+    if (p.ratio < 1.5) {
+      var fgC = parseRgb(p.fg);
+      var bgC = parseRgb(p.bg);
+      if (fgC && bgC) {
+        var fgBright = (fgC.r + fgC.g + fgC.b) / 3;
+        var bgBright = (bgC.r + bgC.g + bgC.b) / 3;
+        // Both very light (white text on resolved-to-white bg) or both very dark
+        if ((fgBright > 200 && bgBright > 200) || (fgBright < 55 && bgBright < 55)) return true;
+      }
+    }
+    return false;
+  }
+  var uncertain = profilePairs.filter(function(p) { return isUncertain(p); });
+  var failures = profilePairs.filter(function(p) { return !p.passes && !isUncertain(p); });
+  var nearMisses = profilePairs.filter(function(p) { return p.passes && p.ratio < p.needed + 0.5; });
+
+  // Deduplicate failures with identical ratio + selector
+  var failSeen = {};
+  failures.forEach(function(p) {
+    var dedup = p.ratio + '|' + p.selector;
+    if (failSeen[dedup]) { failSeen[dedup].count++; if (p.bbox) failSeen[dedup].bboxes.push(p.bbox); if (p.selector) failSeen[dedup].selectors.push(p.selector); failSeen[dedup].texts.push(p.text || ''); return; }
+    failSeen[dedup] = { p: p, count: 1, bboxes: p.bbox ? [p.bbox] : [], selectors: p.selector ? [p.selector] : [], texts: [p.text || ''] };
+  });
+  Object.keys(failSeen).forEach(function(key) {
+    var entry = failSeen[key];
+    var p = entry.p;
+    var apcaVal = '';
+    var fgP = parseRgb(p.fg);
+    var bgP = parseRgb(p.bg);
+    if (fgP && bgP) { apcaVal = ' (APCA: Lc ' + apcaContrast(fgP, bgP) + ')'; }
+    var countNote = entry.count > 1 ? ' (' + entry.count + ' instances)' : '';
+    // Detect if the bg is likely white fallback (image/gradient bg we couldn't resolve)
+    var bgIsWhite = p.bg === 'rgb(255, 255, 255)' || p.bg === 'rgba(255, 255, 255, 1)';
+    var bgNote = bgIsWhite ? ' The detected background is white — if the actual background is an image or gradient, the real contrast may differ.' : '';
+    findings.push({
+      severity: 'error',
+      title: 'Text fails contrast ' + p.ratio + ':1 (needs ' + p.needed + ':1)' + countNote,
+      detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector + apcaVal,
+      fix: (p.isLarge
+        ? 'Large text needs ' + profile.contrastLarge + ':1 minimum. Darken the text or lighten the background.'
+        : 'Normal text needs ' + profile.contrast + ':1 minimum. Use a darker text color or lighter background.') + bgNote,
+      presetRef: null,
+      source: p.isLarge ? 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' : 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum',
+      locator: { selector: p.selector, text: p.text, bboxes: entry.bboxes, selectors: entry.selectors, texts: entry.texts },
+      _colors: { fg: p.fg, bg: p.bg, ratio: p.ratio }
+    });
+  });
+
+  if (uncertain.length > 0) {
+    findings.push({
+      severity: 'info',
+      title: uncertain.length + ' element(s) with undetermined contrast (background could not be resolved)',
+      detail: 'These elements may use gradients, images, SVGs, or complex CSS that the analyzer cannot parse. Check manually: ' + uncertain.map(function(p) { return '"' + p.text + '"'; }).join(', '),
+      fix: 'Verify these elements have sufficient contrast visually. The analyzer reports 1:1 when the effective background cannot be computed.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
+    });
+  }
+
+  // Deduplicate near-misses with identical ratio + selector
+  var nearSeen = {};
+  nearMisses.forEach(function(p) {
+    var dedup = p.ratio + '|' + p.selector;
+    if (nearSeen[dedup]) { nearSeen[dedup].count++; if (p.bbox) nearSeen[dedup].bboxes.push(p.bbox); if (p.selector) nearSeen[dedup].selectors.push(p.selector); nearSeen[dedup].texts.push(p.text || ''); return; }
+    nearSeen[dedup] = { p: p, count: 1, bboxes: p.bbox ? [p.bbox] : [], selectors: p.selector ? [p.selector] : [], texts: [p.text || ''] };
+  });
+  Object.keys(nearSeen).forEach(function(key) {
+    var entry = nearSeen[key];
+    var p = entry.p;
+    var countNote = entry.count > 1 ? ' (' + entry.count + ' instances)' : '';
+    findings.push({
+      severity: 'info',
+      title: 'Text passes contrast but close to threshold: ' + p.ratio + ':1 (needs ' + p.needed + ':1)' + countNote,
+      detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector,
+      fix: 'Passes AA but consider increasing for AAA (7:1). Slight changes in background could cause failure.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.6 — https://www.w3.org/TR/WCAG22/#contrast-enhanced',
+      locator: { selector: p.selector, text: p.text, bboxes: entry.bboxes, selectors: entry.selectors, texts: entry.texts },
+      _colors: { fg: p.fg, bg: p.bg, ratio: p.ratio }
+    });
+  });
+
+  // Passing contrast pairs — marked as 'pass' for screenshot viewer.
+  // Only include pairs that are NOT near-misses and NOT already in failures.
+  // Note: pixel verification may later override these — the viewer should
+  // check verify results and downgrade pass → fail if pixel check disagrees.
+  var failSelectors = {};
+  Object.keys(failSeen).forEach(function(k) { failSelectors[failSeen[k].p.selector] = true; });
+  Object.keys(nearSeen).forEach(function(k) { failSelectors[nearSeen[k].p.selector] = true; });
+  var passingPairs = profilePairs.filter(function(p) {
+    return p.passes && !(p.ratio < p.needed + 0.5) && !failSelectors[p.selector];
+  });
+  var passSeen = {};
+  passingPairs.forEach(function(p) {
+    var dedup = p.selector;
+    if (passSeen[dedup]) { if (p.bbox) passSeen[dedup].bboxes.push(p.bbox); if (p.selector) passSeen[dedup].selectors.push(p.selector); passSeen[dedup].texts.push(p.text || ''); return; }
+    passSeen[dedup] = { p: p, bboxes: p.bbox ? [p.bbox] : [], selectors: p.selector ? [p.selector] : [], texts: [p.text || ''] };
+  });
+  Object.keys(passSeen).forEach(function(key) {
+    var entry = passSeen[key];
+    var p = entry.p;
+    if (entry.bboxes.length === 0) return;
+    findings.push({
+      severity: 'pass',
+      title: 'Contrast ' + p.ratio + ':1 passes (' + p.needed + ':1 needed)',
+      detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector,
+      fix: '',
+      locator: { selector: p.selector, text: p.text, bboxes: entry.bboxes, selectors: entry.selectors, texts: entry.texts },
+      _colors: { fg: p.fg, bg: p.bg, ratio: p.ratio }
+    });
+  });
+
+  // CVD palette safety check (color_blind profile)
+  if (profile.checkCVD && pairs.length > 0) {
+    var uniqueColors = {};
+    pairs.forEach(function(p) {
+      if (p.fg) uniqueColors[p.fg] = true;
+      if (p.bg) uniqueColors[p.bg] = true;
+    });
+    var colorList = Object.keys(uniqueColors).map(function(c) { return parseRgb(c); }).filter(Boolean);
+    var cvdTypes = ['protanopia', 'deuteranopia', 'tritanopia'];
+    var cvdIssues = {};
+    cvdTypes.forEach(function(type) { cvdIssues[type] = 0; });
+
+    // Check all color pairs through CVD simulation
+    for (var ci = 0; ci < colorList.length && ci < 20; ci++) {
+      for (var cj = ci + 1; cj < colorList.length && cj < 20; cj++) {
+        var origRatio = contrastRatio(colorList[ci], colorList[cj]);
+        if (origRatio < 2) continue; // Skip colors already too similar
+        cvdTypes.forEach(function(type) {
+          var matrix = S.CVD_MATRICES[type];
+          var simA = S.simulateCVD(colorList[ci], matrix);
+          var simB = S.simulateCVD(colorList[cj], matrix);
+          var simRatio = contrastRatio(simA, simB);
+          if (simRatio < 1.5 && origRatio >= 2) cvdIssues[type]++;
+        });
+      }
+    }
+
+    var totalCvdIssues = cvdIssues.protanopia + cvdIssues.deuteranopia + cvdIssues.tritanopia;
+    if (totalCvdIssues > 0) {
+      var cvdDetails = cvdTypes.filter(function(t) { return cvdIssues[t] > 0; }).map(function(t) { return t + ': ' + cvdIssues[t] + ' pair(s)'; }).join(', ');
+      findings.push({
+        severity: totalCvdIssues > 3 ? 'error' : 'warning',
+        title: totalCvdIssues + ' color pair(s) become indistinguishable under color vision deficiency',
+        detail: cvdDetails + '. These colors look distinct to typical vision but collapse for ~8% of men.',
+        fix: 'Add non-color indicators (icons, patterns, text labels) alongside color. Avoid red-green as the only differentiator.',
+        source: 'WCAG 2.2 §1.4.1 — https://www.w3.org/TR/WCAG22/#use-of-color'
+      });
+    } else if (colorList.length >= 3) {
+      findings.push({
+        severity: 'info',
+        title: 'Color palette passes CVD simulation (' + colorList.length + ' colors checked)',
+        detail: 'All color pairs remain distinguishable under protanopia, deuteranopia, and tritanopia simulation.',
+        fix: 'No action needed. This palette is CVD-safe.',
+        source: 'Machado et al. 2009 — https://www.inf.ufrgs.br/~oliveira/pubs_files/CVD_Simulation/CVD_Simulation.html'
+      });
+    }
+  }
+
+  // Backdrop-filter + translucent backgrounds — contrast ratio may be unreliable
+  var backdropPairs = profilePairs.filter(function(p) { return p.backdropFilter && p.minBgAlpha < 0.7; });
+  if (backdropPairs.length > 0) {
+    var bdSamples = backdropPairs.map(function(p) {
+      return '"' + p.text + '" (bg alpha: ' + p.minBgAlpha + ')';
+    });
+    findings.push({
+      severity: 'warning',
+      title: backdropPairs.length + ' text element(s) on translucent backdrop-filter surfaces',
+      detail: 'These elements sit on semi-transparent backgrounds with backdrop-filter (frosted glass effect). The computed contrast ratio assumes the blended background color, but the actual perceived contrast depends on what is visible through the translucent surface, which varies across the page. Elements: ' + bdSamples.join('; '),
+      fix: 'Increase background opacity to at least 0.75 for text containers, or add a solid fallback background. For frosted glass effects, use a minimum alpha of 0.7-0.8 to ensure text remains readable regardless of what shows through.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
+    });
+  }
+
+  // Don't count uncertain results as failures in the score
+  var total = (profilePairs.length - uncertain.length) || 1;
+  var passing = total - failures.length;
+  // Scale deduction by total pairs: more pairs = less impact per failure (large pages shouldn't be punished more)
+  var failPenalty = total > 10 ? Math.max(3, Math.round(100 / total)) : 10;
+  var score = Math.max(0, 100 - (failures.length * failPenalty) - (nearMisses.length * 1));
+
+  // Add baseline checks
+  var checks = Math.max(total, 1);
+  var passed = Math.max(passing, 0);
+  // Text existence check
+  if (pairs.length === 0 && (data.structure && data.structure.totalElements > 20)) {
+    findings.push({
+      severity: 'info',
+      title: 'No text contrast pairs found to check',
+      detail: 'The page may use images for text, or text may not be visible at scan time.',
+      fix: 'Ensure text is rendered as real HTML text, not embedded in images.',
+      source: 'WCAG 2.2 §1.4.5 — https://www.w3.org/TR/WCAG22/#images-of-text'
+    });
+  }
+  var na = pairs.length === 0;
+  return { score: score, findings: findings, checks: checks, passed: passed, weight: 20, label: 'Color & Contrast', icon: 'contrast', notApplicable: na };
+}
+
+
+  S.register("contrast", scoreContrast, 20, "Color & Contrast", "contrast");
+})();
+</file>
+
 <file path="docs/scoring/filters.js">
 // Scoring Module: Motion, Animation & Filters
 // Weight: 3%
@@ -4753,6 +5068,192 @@ function scorePerformance(data) {
 })();
 </file>
 
+<file path="docs/scoring/readability.js">
+// Scoring Module: Readability & Scanability
+// Weight: 5%
+// Sources: Coleman-Liau Index, NNGroup scanning research
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+  function scoreReadability(data) {
+    var findings = [];
+    var checks = 0;
+    var passed = 0;
+
+    // Extract text content from the raw data
+    // We use heading count and element count as proxies since we don't have raw text in extracted data
+    var headings = (data.typography && data.typography.headings) || [];
+    var totalElements = (data.structure && data.structure.totalElements) || 0;
+
+    // Scanability: heading frequency
+    // Good rule: 1 heading per ~100-150 elements of content
+    if (totalElements > 50) {
+      checks++;
+      var headingRatio = headings.length / (totalElements / 100);
+      if (headingRatio >= 0.5 && headingRatio <= 5) {
+        passed++;
+      } else if (headingRatio < 0.5) {
+        findings.push({
+          severity: 'warning',
+          title: 'Low heading density: ' + headings.length + ' headings for ' + totalElements + ' elements',
+          detail: 'Content without headings is harder to scan. 79% of users scan rather than read (NNGroup)',
+          fix: 'Add descriptive headings to break content into scannable sections. Aim for a heading every 2-3 paragraphs.',
+          presetRef: null,
+          source: 'NNGroup scanning research — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+        });
+      }
+    }
+
+    // Heading descriptiveness: check if headings are too short (likely generic)
+    if (headings.length > 0) {
+      checks++;
+      var shortHeadings = headings.filter(function(h) {
+        return h.text && h.text.length < 3;
+      });
+      if (shortHeadings.length === 0) {
+        passed++;
+      } else {
+        passed++; // Info doesn't reduce score
+        findings.push({
+          severity: 'info',
+          title: shortHeadings.length + ' heading(s) with very short text (< 3 chars)',
+          detail: 'Short headings like numbers or icons don\'t help users scan. Use descriptive text.',
+          fix: 'Replace generic headings with descriptive ones that summarize the section content.',
+          presetRef: null,
+          source: 'NNGroup — https://www.nngroup.com/articles/headings-pickup-lines/'
+        });
+      }
+    }
+
+    // Font size variety as readability signal
+    // Too many sizes = visual noise, harder to establish reading rhythm
+    var fontSizes = (data.typography && data.typography.fontSizes) || [];
+    var smallTextCount = fontSizes.filter(function(f) {
+      return parseFloat(f.value) < 12;
+    }).reduce(function(sum, f) { return sum + f.count; }, 0);
+
+    if (smallTextCount > 0 && totalElements > 20) {
+      checks++;
+      var smallRatio = smallTextCount / totalElements;
+      if (smallRatio < 0.05) {
+        passed++;
+      } else {
+        var smallBboxes = [];
+        var smallSelectors = [];
+        var smallTexts = [];
+        fontSizes.filter(function(f) { return parseFloat(f.value) < 12; }).forEach(function(f) {
+          if (f.bbox) smallBboxes.push(f.bbox);
+          if (f.extraBboxes) f.extraBboxes.forEach(function(b) { smallBboxes.push(b); });
+          if (f.sampleSelector) smallSelectors.push(f.sampleSelector);
+          if (f.extraSelectors) f.extraSelectors.forEach(function(s) { smallSelectors.push(s); });
+          if (f.sampleText) smallTexts.push(f.sampleText);
+          if (f.extraTexts) f.extraTexts.forEach(function(t) { smallTexts.push(t); });
+        });
+        findings.push({
+          severity: 'warning',
+          title: smallTextCount + ' element(s) with text smaller than 12px',
+          detail: 'Text below 12px is difficult to read for most users and nearly impossible for elderly or low-vision users',
+          fix: 'Increase small text to at least 12px. Consider if the information is important enough to display — if not, remove it.',
+          presetRef: null,
+          source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text',
+          locator: smallBboxes.length > 0 ? { selector: '', text: '', bboxes: smallBboxes, selectors: smallSelectors, texts: smallTexts } : undefined
+        });
+      }
+    }
+
+    // Coleman-Liau readability index
+    var rd = data.readability || {};
+    if (rd.totalWords >= 50 && rd.paragraphCount >= 2) {
+      checks++;
+      // Coleman-Liau: 0.0588 * L - 0.296 * S - 15.8
+      // L = avg letters per 100 words, S = avg sentences per 100 words
+      var L = (rd.totalChars / rd.totalWords) * 100;
+      var sentenceCount = 0;
+      (rd.textBlocks || []).forEach(function(b) {
+        sentenceCount += (b.text.match(/[.!?]+/g) || []).length;
+      });
+      var S_val = (sentenceCount / rd.totalWords) * 100;
+      var cli = Math.round(0.0588 * L - 0.296 * S_val - 15.8);
+      // Detect non-English content — Coleman-Liau inflates scores for languages
+      // with long compound words (German, Finnish, Dutch, etc.)
+      var pageLang = (data.meta && data.meta.lang || '').toLowerCase().split('-')[0];
+      var isNonEnglish = pageLang && pageLang !== 'en' && pageLang !== '';
+      // Also heuristic: if avg word length > 6.5 chars, likely non-English
+      var avgWordLen = rd.totalChars / rd.totalWords;
+      if (!isNonEnglish && avgWordLen > 6.5) isNonEnglish = true;
+      var langNote = isNonEnglish ? ' Note: This index is calibrated for English text — non-English languages (detected: ' + (pageLang || 'long words') + ') typically score higher due to longer average word length.' : '';
+
+      if (cli >= 6 && cli <= 12) {
+        passed++;
+      } else {
+        findings.push({
+          severity: isNonEnglish ? 'info' : (cli > 14 ? 'warning' : 'info'),
+          title: 'Reading level: grade ' + cli + ' (Coleman-Liau Index)',
+          detail: (cli > 12 ? 'Content may be too complex for a general audience' : 'Content may be overly simple for the target audience') + langNote,
+          fix: cli > 12 ? 'Shorten sentences, use simpler words, break complex ideas into steps. Aim for grade 8-10 for general audiences.' : 'This reading level is appropriate for broad accessibility.',
+          presetRef: null,
+          source: 'Coleman-Liau Index — https://en.wikipedia.org/wiki/Coleman%E2%80%93Liau_index'
+        });
+      }
+    }
+
+    // Paragraph length audit
+    var longParagraphs = (rd.textBlocks || []).filter(function(b) { return b.wordCount > 150; });
+    if (longParagraphs.length > 0) {
+      findings.push({
+        severity: 'warning',
+        title: longParagraphs.length + ' paragraph(s) exceed 150 words',
+        detail: 'Long paragraphs reduce scanability. Ideal: 40-80 words per paragraph.',
+        fix: 'Break long paragraphs into shorter ones. Use subheadings, bullet lists, or callout boxes to chunk content.',
+        presetRef: null,
+        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+      });
+    }
+
+    // List usage for scanability
+    if (rd.totalWords >= 100 && !rd.hasLists) {
+      findings.push({
+        severity: 'info',
+        title: 'No lists found in content area',
+        detail: 'Lists improve scanability by 47% compared to wall-of-text (NNGroup)',
+        fix: 'Convert sequences, features, or steps into <ul>/<ol> lists where appropriate.',
+        presetRef: null,
+        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
+      });
+    }
+
+    // Table cell readability on mobile (cramped/wrapped cells)
+    var tableCellIssues = (data.layout && data.layout.tableCellIssues) || [];
+    if (tableCellIssues.length > 0) {
+      checks++;
+      var tableDetails = tableCellIssues.map(function(t) {
+        var parts = [];
+        if (t.crampedCells > 0) parts.push(t.crampedCells + ' cells lack horizontal padding');
+        if (t.wrappedCells > 0) parts.push(t.wrappedCells + ' cells wrap to multiple lines');
+        return t.selector + ': ' + parts.join(', ') + ' (table ' + t.tableWidth + 'px on ' + t.vpWidth + 'px viewport)';
+      });
+      findings.push({
+        severity: tableCellIssues.some(function(t) { return t.crampedCells > 4 || t.wrappedCells > 4; }) ? 'error' : 'warning',
+        title: 'Table readability issues on mobile (' + tableCellIssues.length + ' table' + (tableCellIssues.length > 1 ? 's' : '') + ')',
+        detail: tableDetails.join('; '),
+        fix: 'Add horizontal padding to table cells (px-3 sm:px-4). For narrow viewports, consider hiding low-priority columns, using a responsive card layout, or reducing font size.',
+        source: 'NNGroup Mobile Tables — https://www.nngroup.com/articles/mobile-tables/',
+        locator: { selector: tableCellIssues[0].selector, text: '' }
+      });
+    }
+
+    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+    var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+    var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
+    return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Readability', icon: 'readability' };
+  }
+
+  S.register("readability", scoreReadability, 5, "Readability", "readability");
+})();
+</file>
+
 <file path="docs/scoring/registry.js">
 // Scoring Module Registry
 // Each module calls MilgScoring.register() to add its scoring function.
@@ -5057,6 +5558,202 @@ function scoreSpacing(data) {
 
 
   S.register("spacing", scoreSpacing, 15, "Spacing & Layout", "spacing");
+})();
+</file>
+
+<file path="docs/scoring/touch.js">
+// Scoring Module: Touch & Interaction
+// Weight: 15%
+
+(function() {
+  "use strict";
+  var S = window.MilgScoring;
+
+function scoreTouchTargets(data) {
+  var profile = S.getProfile(data);
+  var findings = [];
+  var targets = data.interaction.touchTargets || [];
+
+  // Viewport-aware thresholds, adjusted by profile:
+  var vw = (data.meta && data.meta.viewportWidth) || 1280;
+  var isDesktop = vw >= 1024;
+  var minSize = isDesktop ? profile.touchTargetDesktop : profile.touchTarget;
+  var warnSize = isDesktop ? profile.touchTargetDesktopWarn : profile.touchTarget;
+  var context = isDesktop ? 'desktop' : 'touch/mobile';
+  var issueCount = 0;
+
+  targets.forEach(function(t) {
+    var w = t.width, h = t.height;
+    var minDim = Math.min(w, h);
+
+    // WCAG 2.5.8 exception: inline text links are exempt from target size requirements.
+    // Detect by checking if element is an <a> without button-like styling (no bg, no border, no padding > 4px)
+    var isInlineLink = t.element === 'a' && !t.isButton;
+
+    if (minDim < minSize) {
+      issueCount++;
+      var ctx = t.linkContext || (isInlineLink ? 'inline' : 'button');
+
+      // On desktop, determine severity based on how far below threshold:
+      // - ≥20px (just 4px short of 24px) → info (barely noticeable with mouse)
+      // - ≥16px → warning (small but usable with mouse)
+      // - <16px → error (genuinely too small even for mouse)
+      // On mobile, all failures are errors (fingers need the full 44px)
+      function desktopSeverity(dim) {
+        if (!isDesktop) return 'error';
+        if (dim >= 20) return 'info';
+        if (dim >= 16) return 'warning';
+        return 'error';
+      }
+
+      if (ctx === 'inline') {
+        // True inline text links (inside <p>, <blockquote>, etc.) — WCAG 2.5.8 exempt
+        findings.push({
+          severity: 'info',
+          title: 'Inline text link ' + w + '×' + h + 'px — exempt from target size',
+          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+          fix: 'Inline text links in paragraphs are exempt per WCAG 2.5.8. Consider adding padding for better usability.',
+          source: 'WCAG 2.2 §2.5.8 inline exception — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
+        });
+      } else if (ctx === 'footer') {
+        // Footer links — relaxed but still error below hard minimum (16px)
+        var footerHardMin = isDesktop ? 16 : 24;
+        findings.push({
+          severity: minDim < footerHardMin ? 'error' : 'info',
+          title: 'Footer link ' + w + '×' + h + 'px' + (minDim < footerHardMin ? ' (too small even for footer — min ' + footerHardMin + 'px)' : ' (below ' + minSize + 'px, relaxed for footer)'),
+          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+          fix: minDim < footerHardMin
+            ? 'Even footer links need at least ' + footerHardMin + 'px height. Add padding to increase click area.'
+            : 'Footer links have relaxed sizing expectations. Consider padding for touch accessibility.',
+          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
+        });
+      } else if (ctx === 'nav') {
+        // Navigation links — should be properly sized
+        var navSev = desktopSeverity(minDim);
+        findings.push({
+          severity: navSev,
+          title: 'Nav link ' + w + '×' + h + 'px (minimum: ' + minSize + 'px)',
+          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+          fix: 'Navigation links need adequate sizing. Add padding: py-2 px-4 (min-height ' + minSize + 'px).',
+          presetRef: 'Navigation presets use min-height 44px on nav links',
+          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
+        });
+      } else {
+        // Buttons, styled links, other interactive elements
+        var sev = desktopSeverity(minDim);
+        findings.push({
+          severity: sev,
+          title: t.element + ' is ' + w + '×' + h + 'px (' + (isDesktop ? 'desktop min: ' + minSize + 'px' : 'touch min: ' + minSize + 'px') + ')',
+          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+          fix: isDesktop
+            ? (sev === 'info'
+              ? 'Slightly below ' + minSize + 'px desktop minimum — usable with mouse but consider adding padding.'
+              : 'Click targets need at least ' + minSize + '×' + minSize + 'px. Increase padding or min-height/min-width.')
+            : 'Touch targets need ' + minSize + '×' + minSize + 'px minimum. Add min-h-[' + minSize + 'px] min-w-[' + minSize + 'px] or increase padding.',
+          presetRef: isDesktop ? null : 'Button presets use py-3 px-6 (48px height)',
+          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
+        });
+      }
+    } else if (minDim < warnSize && isDesktop && !isInlineLink) {
+      findings.push({
+        severity: 'warning',
+        title: t.element + ' is ' + w + '×' + h + 'px (recommended for desktop: ≥' + warnSize + 'px)',
+        detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
+        fix: 'While ' + minSize + 'px meets minimum, ' + warnSize + 'px+ improves click comfort. Consider adding padding.',
+        presetRef: null,
+        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
+        locator: { selector: t.selector, text: t.text || '' }
+      });
+    }
+  });
+
+  // Also flag targets that pass the current threshold but would fail on touch
+  if (isDesktop && targets.length > 0) {
+    var touchMin = profile.touchTarget;
+    var touchFails = targets.filter(function(t) { return Math.min(t.width, t.height) < touchMin; });
+    if (touchFails.length > 0) {
+      var allBboxes = touchFails.map(function(t) { return t.bbox; }).filter(Boolean);
+      var allSelectors = touchFails.map(function(t) { return t.selector; }).filter(Boolean);
+      var allTexts = touchFails.map(function(t) { return t.text || ''; });
+      findings.push({
+        severity: 'info',
+        title: touchFails.length + ' element(s) below ' + touchMin + 'px touch target (analyzed at ' + vw + 'px desktop viewport)',
+        detail: 'These meet desktop minimums but would fail on touch devices. Consider responsive sizing if the site is also used on mobile.',
+        fix: 'For responsive touch support: add touch-target sizing at mobile breakpoints, e.g. sm:min-h-[' + touchMin + 'px]',
+        presetRef: null,
+        source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout',
+        locator: { selector: '', text: '', bboxes: allBboxes, selectors: allSelectors, texts: allTexts }
+      });
+    }
+  }
+
+  // Note when responsive CSS exists that might fix touch targets on mobile
+  if (isDesktop && data.interaction && data.interaction.hasResponsiveTargetCSS) {
+    findings.push({
+      severity: 'info',
+      title: 'Responsive CSS detected that may adjust target sizes at mobile breakpoints',
+      detail: 'This site has media queries with height/padding rules. Touch targets may be correctly sized on mobile devices.',
+      fix: 'Verify by testing at mobile viewport. Use the viewport selector to re-scan at 375px width.',
+      presetRef: null
+    });
+  }
+
+  // Transitions / animation duration
+  var transitions = data.interaction.transitions || [];
+  transitions.forEach(function(t) {
+    var ms = parseFloat(t) * 1000;
+    if (ms > 500) {
+      findings.push({
+        severity: 'warning',
+        title: 'Transition duration ' + ms + 'ms exceeds 500ms maximum',
+        detail: 'Users perceive animations longer than 500ms as sluggish',
+        fix: 'Keep transitions under 500ms. Enter: 200–300ms, Exit: 150–200ms. In Tailwind: duration-200 or duration-300',
+        presetRef: null,
+        source: 'NNGroup animation — https://www.nngroup.com/articles/animation-usability/'
+      });
+    }
+  });
+
+  // Event listener pattern findings
+  var lPatterns = (data.interaction && data.interaction.listenerPatterns) || {};
+  if (lPatterns.toggleNoAria > 0) {
+    findings.push({
+      severity: 'warning',
+      title: lPatterns.toggleNoAria + ' toggle handler(s) without ARIA state management',
+      detail: 'Click handlers toggle CSS classes but don\'t update aria-expanded or other ARIA states. Screen readers won\'t know the element\'s state changed.',
+      fix: 'Add setAttribute(\'aria-expanded\', isOpen) alongside classList.toggle() in toggle handlers.',
+      presetRef: null,
+      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
+    });
+  }
+  if (lPatterns.navigationInButton > 0) {
+    findings.push({
+      severity: 'info',
+      title: lPatterns.navigationInButton + ' button(s) trigger page navigation',
+      detail: 'Buttons with click handlers that change location.href should typically be <a> elements for proper semantics and accessibility.',
+      fix: 'Use <a href="..."> for navigation instead of <button> with JavaScript location change.',
+      presetRef: null,
+      source: 'HTML spec — https://html.spec.whatwg.org/multipage/text-level-semantics.html#the-a-element'
+    });
+  }
+
+  // Score: deduct per error, less per warning
+  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
+  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
+  var totalTargets = targets.length || 0;
+  var checks = totalTargets;
+  var passed = Math.max(0, totalTargets - errors - warnings);
+  var score = Math.max(0, 100 - (errors * 10) - (warnings * 3));
+  var na = totalTargets === 0 && transitions.length === 0;
+  return { score: na ? 100 : score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Touch & Interaction', icon: 'touch', notApplicable: na };
+}
+
+
+  S.register("touch", scoreTouchTargets, 15, "Touch & Interaction", "touch");
 })();
 </file>
 
@@ -27993,507 +28690,6 @@ Sources: [research/sources.md](research/sources.md)
 })();
 </file>
 
-<file path="docs/scoring/contrast.js">
-// Scoring Module: Color & Contrast
-// Weight: 20%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function parseRgb(str) {
-  var m = str.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
-  if (!m) m = str.match(/rgb\((\d+)\s+(\d+)\s+(\d+)\)/);
-  if (!m) return null;
-  return { r: +m[1], g: +m[2], b: +m[3] };
-}
-
-function applyFilterToColor(c, filterStr) {
-  if (!c || !filterStr) return c;
-  var r = c.r, g = c.g, b = c.b;
-  var re = /brightness\(([\d.]+)\)|contrast\(([\d.]+)\)|opacity\(([\d.]+)\)/g;
-  var m;
-  while ((m = re.exec(filterStr)) !== null) {
-    if (m[1] !== undefined) {
-      var br = parseFloat(m[1]);
-      r = Math.min(255, Math.round(r * br));
-      g = Math.min(255, Math.round(g * br));
-      b = Math.min(255, Math.round(b * br));
-    } else if (m[2] !== undefined) {
-      var ct = parseFloat(m[2]);
-      r = Math.min(255, Math.max(0, Math.round(((r - 128) * ct) + 128)));
-      g = Math.min(255, Math.max(0, Math.round(((g - 128) * ct) + 128)));
-      b = Math.min(255, Math.max(0, Math.round(((b - 128) * ct) + 128)));
-    }
-    // opacity affects alpha, not RGB channels for contrast purposes
-  }
-  return { r: r, g: g, b: b };
-}
-
-function luminance(c) {
-  var rs = c.r / 255, gs = c.g / 255, bs = c.b / 255;
-  var r = rs <= 0.03928 ? rs / 12.92 : Math.pow((rs + 0.055) / 1.055, 2.4);
-  var g = gs <= 0.03928 ? gs / 12.92 : Math.pow((gs + 0.055) / 1.055, 2.4);
-  var b = bs <= 0.03928 ? bs / 12.92 : Math.pow((bs + 0.055) / 1.055, 2.4);
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
-
-function contrastRatio(c1, c2) {
-  var l1 = luminance(c1), l2 = luminance(c2);
-  return Math.round(((Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)) * 100) / 100;
-}
-
-// APCA contrast (Lc value)
-// Simplified APCA-W3 calculation
-function sRGBtoY(rgb) {
-  // Linearize sRGB
-  function lin(v) { v = v / 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
-  return 0.2126729 * lin(rgb.r) + 0.7151522 * lin(rgb.g) + 0.0721750 * lin(rgb.b);
-}
-
-function apcaContrast(txtRgb, bgRgb) {
-  var txtY = sRGBtoY(txtRgb);
-  var bgY = sRGBtoY(bgRgb);
-  // Clamp
-  if (txtY < 0) txtY = 0;
-  if (bgY < 0) bgY = 0;
-  // SAPC power curve
-  var normBG = Math.pow(bgY, 0.56);
-  var normTXT = Math.pow(txtY, 0.57);
-  var rawContrast;
-  if (bgY > txtY) {
-    rawContrast = (normBG - normTXT) * 1.14;
-  } else {
-    rawContrast = (normBG - normTXT) * 1.14;
-  }
-  // Scale and clamp
-  if (Math.abs(rawContrast) < 0.1) return 0;
-  return Math.round(rawContrast * 100);
-}
-
-function scoreContrast(data) {
-  var profile = S.getProfile(data);
-  var findings = [];
-  var pairs = data.colors.contrastPairs || [];
-
-  // Re-evaluate each pair against profile thresholds
-  var profilePairs = pairs.filter(function(p) { return p && p.fg && p.bg; }).map(function(p) {
-    var needed = p.isLarge ? profile.contrastLarge : profile.contrast;
-    var ratio = p.ratio;
-
-    // If a CSS filter is present, re-compute contrast with adjusted bg
-    if (p.filter) {
-      var bgParsed = parseRgb(p.bg);
-      if (bgParsed) {
-        var adjustedBg = applyFilterToColor(bgParsed, p.filter);
-        var fgParsed = parseRgb(p.fg);
-        if (fgParsed) {
-          ratio = contrastRatio(fgParsed, adjustedBg);
-        }
-      }
-    }
-
-    var passes = ratio >= needed;
-    return { ratio: ratio, needed: needed, passes: passes, isLarge: p.isLarge, text: p.text, fontSize: p.fontSize, selector: p.selector, fg: p.fg, bg: p.bg, filter: p.filter || '', bbox: p.bbox };
-  });
-
-  // Separate uncertain results (very low ratio usually means bg couldn't be determined — gradient, SVG, image, etc.)
-  // Cases: fg===bg (exact 1:1), or ratio < 1.5 with light text on light bg (white text on gradient that resolved to white)
-  function isUncertain(p) {
-    if (p.passes) return false;
-    if (p.ratio <= 1.01 && p.fg === p.bg) return true;
-    // Very low ratio with light fg+bg suggests unresolved gradient background
-    if (p.ratio < 1.5) {
-      var fgC = parseRgb(p.fg);
-      var bgC = parseRgb(p.bg);
-      if (fgC && bgC) {
-        var fgBright = (fgC.r + fgC.g + fgC.b) / 3;
-        var bgBright = (bgC.r + bgC.g + bgC.b) / 3;
-        // Both very light (white text on resolved-to-white bg) or both very dark
-        if ((fgBright > 200 && bgBright > 200) || (fgBright < 55 && bgBright < 55)) return true;
-      }
-    }
-    return false;
-  }
-  var uncertain = profilePairs.filter(function(p) { return isUncertain(p); });
-  var failures = profilePairs.filter(function(p) { return !p.passes && !isUncertain(p); });
-  var nearMisses = profilePairs.filter(function(p) { return p.passes && p.ratio < p.needed + 0.5; });
-
-  // Deduplicate failures with identical ratio + selector
-  var failSeen = {};
-  failures.forEach(function(p) {
-    var dedup = p.ratio + '|' + p.selector;
-    if (failSeen[dedup]) { failSeen[dedup].count++; if (p.bbox) failSeen[dedup].bboxes.push(p.bbox); if (p.selector) failSeen[dedup].selectors.push(p.selector); failSeen[dedup].texts.push(p.text || ''); return; }
-    failSeen[dedup] = { p: p, count: 1, bboxes: p.bbox ? [p.bbox] : [], selectors: p.selector ? [p.selector] : [], texts: [p.text || ''] };
-  });
-  Object.keys(failSeen).forEach(function(key) {
-    var entry = failSeen[key];
-    var p = entry.p;
-    var apcaVal = '';
-    var fgP = parseRgb(p.fg);
-    var bgP = parseRgb(p.bg);
-    if (fgP && bgP) { apcaVal = ' (APCA: Lc ' + apcaContrast(fgP, bgP) + ')'; }
-    var countNote = entry.count > 1 ? ' (' + entry.count + ' instances)' : '';
-    // Detect if the bg is likely white fallback (image/gradient bg we couldn't resolve)
-    var bgIsWhite = p.bg === 'rgb(255, 255, 255)' || p.bg === 'rgba(255, 255, 255, 1)';
-    var bgNote = bgIsWhite ? ' The detected background is white — if the actual background is an image or gradient, the real contrast may differ.' : '';
-    findings.push({
-      severity: 'error',
-      title: 'Text fails contrast ' + p.ratio + ':1 (needs ' + p.needed + ':1)' + countNote,
-      detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector + apcaVal,
-      fix: (p.isLarge
-        ? 'Large text needs ' + profile.contrastLarge + ':1 minimum. Darken the text or lighten the background.'
-        : 'Normal text needs ' + profile.contrast + ':1 minimum. Use a darker text color or lighter background.') + bgNote,
-      presetRef: null,
-      source: p.isLarge ? 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' : 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum',
-      locator: { selector: p.selector, text: p.text, bboxes: entry.bboxes, selectors: entry.selectors, texts: entry.texts },
-      _colors: { fg: p.fg, bg: p.bg, ratio: p.ratio }
-    });
-  });
-
-  if (uncertain.length > 0) {
-    findings.push({
-      severity: 'info',
-      title: uncertain.length + ' element(s) with undetermined contrast (background could not be resolved)',
-      detail: 'These elements may use gradients, images, SVGs, or complex CSS that the analyzer cannot parse. Check manually: ' + uncertain.map(function(p) { return '"' + p.text + '"'; }).join(', '),
-      fix: 'Verify these elements have sufficient contrast visually. The analyzer reports 1:1 when the effective background cannot be computed.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
-    });
-  }
-
-  // Deduplicate near-misses with identical ratio + selector
-  var nearSeen = {};
-  nearMisses.forEach(function(p) {
-    var dedup = p.ratio + '|' + p.selector;
-    if (nearSeen[dedup]) { nearSeen[dedup].count++; if (p.bbox) nearSeen[dedup].bboxes.push(p.bbox); if (p.selector) nearSeen[dedup].selectors.push(p.selector); nearSeen[dedup].texts.push(p.text || ''); return; }
-    nearSeen[dedup] = { p: p, count: 1, bboxes: p.bbox ? [p.bbox] : [], selectors: p.selector ? [p.selector] : [], texts: [p.text || ''] };
-  });
-  Object.keys(nearSeen).forEach(function(key) {
-    var entry = nearSeen[key];
-    var p = entry.p;
-    var countNote = entry.count > 1 ? ' (' + entry.count + ' instances)' : '';
-    findings.push({
-      severity: 'info',
-      title: 'Text passes contrast but close to threshold: ' + p.ratio + ':1 (needs ' + p.needed + ':1)' + countNote,
-      detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector,
-      fix: 'Passes AA but consider increasing for AAA (7:1). Slight changes in background could cause failure.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.6 — https://www.w3.org/TR/WCAG22/#contrast-enhanced',
-      locator: { selector: p.selector, text: p.text, bboxes: entry.bboxes, selectors: entry.selectors, texts: entry.texts },
-      _colors: { fg: p.fg, bg: p.bg, ratio: p.ratio }
-    });
-  });
-
-  // Passing contrast pairs — marked as 'pass' for screenshot viewer.
-  // Only include pairs that are NOT near-misses and NOT already in failures.
-  // Note: pixel verification may later override these — the viewer should
-  // check verify results and downgrade pass → fail if pixel check disagrees.
-  var failSelectors = {};
-  Object.keys(failSeen).forEach(function(k) { failSelectors[failSeen[k].p.selector] = true; });
-  Object.keys(nearSeen).forEach(function(k) { failSelectors[nearSeen[k].p.selector] = true; });
-  var passingPairs = profilePairs.filter(function(p) {
-    return p.passes && !(p.ratio < p.needed + 0.5) && !failSelectors[p.selector];
-  });
-  var passSeen = {};
-  passingPairs.forEach(function(p) {
-    var dedup = p.selector;
-    if (passSeen[dedup]) { if (p.bbox) passSeen[dedup].bboxes.push(p.bbox); if (p.selector) passSeen[dedup].selectors.push(p.selector); passSeen[dedup].texts.push(p.text || ''); return; }
-    passSeen[dedup] = { p: p, bboxes: p.bbox ? [p.bbox] : [], selectors: p.selector ? [p.selector] : [], texts: [p.text || ''] };
-  });
-  Object.keys(passSeen).forEach(function(key) {
-    var entry = passSeen[key];
-    var p = entry.p;
-    if (entry.bboxes.length === 0) return;
-    findings.push({
-      severity: 'pass',
-      title: 'Contrast ' + p.ratio + ':1 passes (' + p.needed + ':1 needed)',
-      detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector,
-      fix: '',
-      locator: { selector: p.selector, text: p.text, bboxes: entry.bboxes, selectors: entry.selectors, texts: entry.texts },
-      _colors: { fg: p.fg, bg: p.bg, ratio: p.ratio }
-    });
-  });
-
-  // CVD palette safety check (color_blind profile)
-  if (profile.checkCVD && pairs.length > 0) {
-    var uniqueColors = {};
-    pairs.forEach(function(p) {
-      if (p.fg) uniqueColors[p.fg] = true;
-      if (p.bg) uniqueColors[p.bg] = true;
-    });
-    var colorList = Object.keys(uniqueColors).map(function(c) { return parseRgb(c); }).filter(Boolean);
-    var cvdTypes = ['protanopia', 'deuteranopia', 'tritanopia'];
-    var cvdIssues = {};
-    cvdTypes.forEach(function(type) { cvdIssues[type] = 0; });
-
-    // Check all color pairs through CVD simulation
-    for (var ci = 0; ci < colorList.length && ci < 20; ci++) {
-      for (var cj = ci + 1; cj < colorList.length && cj < 20; cj++) {
-        var origRatio = contrastRatio(colorList[ci], colorList[cj]);
-        if (origRatio < 2) continue; // Skip colors already too similar
-        cvdTypes.forEach(function(type) {
-          var matrix = S.CVD_MATRICES[type];
-          var simA = S.simulateCVD(colorList[ci], matrix);
-          var simB = S.simulateCVD(colorList[cj], matrix);
-          var simRatio = contrastRatio(simA, simB);
-          if (simRatio < 1.5 && origRatio >= 2) cvdIssues[type]++;
-        });
-      }
-    }
-
-    var totalCvdIssues = cvdIssues.protanopia + cvdIssues.deuteranopia + cvdIssues.tritanopia;
-    if (totalCvdIssues > 0) {
-      var cvdDetails = cvdTypes.filter(function(t) { return cvdIssues[t] > 0; }).map(function(t) { return t + ': ' + cvdIssues[t] + ' pair(s)'; }).join(', ');
-      findings.push({
-        severity: totalCvdIssues > 3 ? 'error' : 'warning',
-        title: totalCvdIssues + ' color pair(s) become indistinguishable under color vision deficiency',
-        detail: cvdDetails + '. These colors look distinct to typical vision but collapse for ~8% of men.',
-        fix: 'Add non-color indicators (icons, patterns, text labels) alongside color. Avoid red-green as the only differentiator.',
-        source: 'WCAG 2.2 §1.4.1 — https://www.w3.org/TR/WCAG22/#use-of-color'
-      });
-    } else if (colorList.length >= 3) {
-      findings.push({
-        severity: 'info',
-        title: 'Color palette passes CVD simulation (' + colorList.length + ' colors checked)',
-        detail: 'All color pairs remain distinguishable under protanopia, deuteranopia, and tritanopia simulation.',
-        fix: 'No action needed. This palette is CVD-safe.',
-        source: 'Machado et al. 2009 — https://www.inf.ufrgs.br/~oliveira/pubs_files/CVD_Simulation/CVD_Simulation.html'
-      });
-    }
-  }
-
-  // Backdrop-filter + translucent backgrounds — contrast ratio may be unreliable
-  var backdropPairs = profilePairs.filter(function(p) { return p.backdropFilter && p.minBgAlpha < 0.7; });
-  if (backdropPairs.length > 0) {
-    var bdSamples = backdropPairs.map(function(p) {
-      return '"' + p.text + '" (bg alpha: ' + p.minBgAlpha + ')';
-    });
-    findings.push({
-      severity: 'warning',
-      title: backdropPairs.length + ' text element(s) on translucent backdrop-filter surfaces',
-      detail: 'These elements sit on semi-transparent backgrounds with backdrop-filter (frosted glass effect). The computed contrast ratio assumes the blended background color, but the actual perceived contrast depends on what is visible through the translucent surface, which varies across the page. Elements: ' + bdSamples.join('; '),
-      fix: 'Increase background opacity to at least 0.75 for text containers, or add a solid fallback background. For frosted glass effects, use a minimum alpha of 0.7-0.8 to ensure text remains readable regardless of what shows through.',
-      presetRef: null,
-      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
-    });
-  }
-
-  // Don't count uncertain results as failures in the score
-  var total = (profilePairs.length - uncertain.length) || 1;
-  var passing = total - failures.length;
-  // Scale deduction by total pairs: more pairs = less impact per failure (large pages shouldn't be punished more)
-  var failPenalty = total > 10 ? Math.max(3, Math.round(100 / total)) : 10;
-  var score = Math.max(0, 100 - (failures.length * failPenalty) - (nearMisses.length * 1));
-
-  // Add baseline checks
-  var checks = Math.max(total, 1);
-  var passed = Math.max(passing, 0);
-  // Text existence check
-  if (pairs.length === 0 && (data.structure && data.structure.totalElements > 20)) {
-    findings.push({
-      severity: 'info',
-      title: 'No text contrast pairs found to check',
-      detail: 'The page may use images for text, or text may not be visible at scan time.',
-      fix: 'Ensure text is rendered as real HTML text, not embedded in images.',
-      source: 'WCAG 2.2 §1.4.5 — https://www.w3.org/TR/WCAG22/#images-of-text'
-    });
-  }
-  var na = pairs.length === 0;
-  return { score: score, findings: findings, checks: checks, passed: passed, weight: 20, label: 'Color & Contrast', icon: 'contrast', notApplicable: na };
-}
-
-
-  S.register("contrast", scoreContrast, 20, "Color & Contrast", "contrast");
-})();
-</file>
-
-<file path="docs/scoring/readability.js">
-// Scoring Module: Readability & Scanability
-// Weight: 5%
-// Sources: Coleman-Liau Index, NNGroup scanning research
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-  function scoreReadability(data) {
-    var findings = [];
-    var checks = 0;
-    var passed = 0;
-
-    // Extract text content from the raw data
-    // We use heading count and element count as proxies since we don't have raw text in extracted data
-    var headings = (data.typography && data.typography.headings) || [];
-    var totalElements = (data.structure && data.structure.totalElements) || 0;
-
-    // Scanability: heading frequency
-    // Good rule: 1 heading per ~100-150 elements of content
-    if (totalElements > 50) {
-      checks++;
-      var headingRatio = headings.length / (totalElements / 100);
-      if (headingRatio >= 0.5 && headingRatio <= 5) {
-        passed++;
-      } else if (headingRatio < 0.5) {
-        findings.push({
-          severity: 'warning',
-          title: 'Low heading density: ' + headings.length + ' headings for ' + totalElements + ' elements',
-          detail: 'Content without headings is harder to scan. 79% of users scan rather than read (NNGroup)',
-          fix: 'Add descriptive headings to break content into scannable sections. Aim for a heading every 2-3 paragraphs.',
-          presetRef: null,
-          source: 'NNGroup scanning research — https://www.nngroup.com/articles/how-users-read-on-the-web/'
-        });
-      }
-    }
-
-    // Heading descriptiveness: check if headings are too short (likely generic)
-    if (headings.length > 0) {
-      checks++;
-      var shortHeadings = headings.filter(function(h) {
-        return h.text && h.text.length < 3;
-      });
-      if (shortHeadings.length === 0) {
-        passed++;
-      } else {
-        passed++; // Info doesn't reduce score
-        findings.push({
-          severity: 'info',
-          title: shortHeadings.length + ' heading(s) with very short text (< 3 chars)',
-          detail: 'Short headings like numbers or icons don\'t help users scan. Use descriptive text.',
-          fix: 'Replace generic headings with descriptive ones that summarize the section content.',
-          presetRef: null,
-          source: 'NNGroup — https://www.nngroup.com/articles/headings-pickup-lines/'
-        });
-      }
-    }
-
-    // Font size variety as readability signal
-    // Too many sizes = visual noise, harder to establish reading rhythm
-    var fontSizes = (data.typography && data.typography.fontSizes) || [];
-    var smallTextCount = fontSizes.filter(function(f) {
-      return parseFloat(f.value) < 12;
-    }).reduce(function(sum, f) { return sum + f.count; }, 0);
-
-    if (smallTextCount > 0 && totalElements > 20) {
-      checks++;
-      var smallRatio = smallTextCount / totalElements;
-      if (smallRatio < 0.05) {
-        passed++;
-      } else {
-        var smallBboxes = [];
-        var smallSelectors = [];
-        var smallTexts = [];
-        fontSizes.filter(function(f) { return parseFloat(f.value) < 12; }).forEach(function(f) {
-          if (f.bbox) smallBboxes.push(f.bbox);
-          if (f.extraBboxes) f.extraBboxes.forEach(function(b) { smallBboxes.push(b); });
-          if (f.sampleSelector) smallSelectors.push(f.sampleSelector);
-          if (f.extraSelectors) f.extraSelectors.forEach(function(s) { smallSelectors.push(s); });
-          if (f.sampleText) smallTexts.push(f.sampleText);
-          if (f.extraTexts) f.extraTexts.forEach(function(t) { smallTexts.push(t); });
-        });
-        findings.push({
-          severity: 'warning',
-          title: smallTextCount + ' element(s) with text smaller than 12px',
-          detail: 'Text below 12px is difficult to read for most users and nearly impossible for elderly or low-vision users',
-          fix: 'Increase small text to at least 12px. Consider if the information is important enough to display — if not, remove it.',
-          presetRef: null,
-          source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text',
-          locator: smallBboxes.length > 0 ? { selector: '', text: '', bboxes: smallBboxes, selectors: smallSelectors, texts: smallTexts } : undefined
-        });
-      }
-    }
-
-    // Coleman-Liau readability index
-    var rd = data.readability || {};
-    if (rd.totalWords >= 50 && rd.paragraphCount >= 2) {
-      checks++;
-      // Coleman-Liau: 0.0588 * L - 0.296 * S - 15.8
-      // L = avg letters per 100 words, S = avg sentences per 100 words
-      var L = (rd.totalChars / rd.totalWords) * 100;
-      var sentenceCount = 0;
-      (rd.textBlocks || []).forEach(function(b) {
-        sentenceCount += (b.text.match(/[.!?]+/g) || []).length;
-      });
-      var S_val = (sentenceCount / rd.totalWords) * 100;
-      var cli = Math.round(0.0588 * L - 0.296 * S_val - 15.8);
-      // Detect non-English content — Coleman-Liau inflates scores for languages
-      // with long compound words (German, Finnish, Dutch, etc.)
-      var pageLang = (data.meta && data.meta.lang || '').toLowerCase().split('-')[0];
-      var isNonEnglish = pageLang && pageLang !== 'en' && pageLang !== '';
-      // Also heuristic: if avg word length > 6.5 chars, likely non-English
-      var avgWordLen = rd.totalChars / rd.totalWords;
-      if (!isNonEnglish && avgWordLen > 6.5) isNonEnglish = true;
-      var langNote = isNonEnglish ? ' Note: This index is calibrated for English text — non-English languages (detected: ' + (pageLang || 'long words') + ') typically score higher due to longer average word length.' : '';
-
-      if (cli >= 6 && cli <= 12) {
-        passed++;
-      } else {
-        findings.push({
-          severity: isNonEnglish ? 'info' : (cli > 14 ? 'warning' : 'info'),
-          title: 'Reading level: grade ' + cli + ' (Coleman-Liau Index)',
-          detail: (cli > 12 ? 'Content may be too complex for a general audience' : 'Content may be overly simple for the target audience') + langNote,
-          fix: cli > 12 ? 'Shorten sentences, use simpler words, break complex ideas into steps. Aim for grade 8-10 for general audiences.' : 'This reading level is appropriate for broad accessibility.',
-          presetRef: null,
-          source: 'Coleman-Liau Index — https://en.wikipedia.org/wiki/Coleman%E2%80%93Liau_index'
-        });
-      }
-    }
-
-    // Paragraph length audit
-    var longParagraphs = (rd.textBlocks || []).filter(function(b) { return b.wordCount > 150; });
-    if (longParagraphs.length > 0) {
-      findings.push({
-        severity: 'warning',
-        title: longParagraphs.length + ' paragraph(s) exceed 150 words',
-        detail: 'Long paragraphs reduce scanability. Ideal: 40-80 words per paragraph.',
-        fix: 'Break long paragraphs into shorter ones. Use subheadings, bullet lists, or callout boxes to chunk content.',
-        presetRef: null,
-        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
-      });
-    }
-
-    // List usage for scanability
-    if (rd.totalWords >= 100 && !rd.hasLists) {
-      findings.push({
-        severity: 'info',
-        title: 'No lists found in content area',
-        detail: 'Lists improve scanability by 47% compared to wall-of-text (NNGroup)',
-        fix: 'Convert sequences, features, or steps into <ul>/<ol> lists where appropriate.',
-        presetRef: null,
-        source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/'
-      });
-    }
-
-    // Table cell readability on mobile (cramped/wrapped cells)
-    var tableCellIssues = (data.layout && data.layout.tableCellIssues) || [];
-    if (tableCellIssues.length > 0) {
-      checks++;
-      var tableDetails = tableCellIssues.map(function(t) {
-        var parts = [];
-        if (t.crampedCells > 0) parts.push(t.crampedCells + ' cells lack horizontal padding');
-        if (t.wrappedCells > 0) parts.push(t.wrappedCells + ' cells wrap to multiple lines');
-        return t.selector + ': ' + parts.join(', ') + ' (table ' + t.tableWidth + 'px on ' + t.vpWidth + 'px viewport)';
-      });
-      findings.push({
-        severity: tableCellIssues.some(function(t) { return t.crampedCells > 4 || t.wrappedCells > 4; }) ? 'error' : 'warning',
-        title: 'Table readability issues on mobile (' + tableCellIssues.length + ' table' + (tableCellIssues.length > 1 ? 's' : '') + ')',
-        detail: tableDetails.join('; '),
-        fix: 'Add horizontal padding to table cells (px-3 sm:px-4). For narrow viewports, consider hiding low-priority columns, using a responsive card layout, or reducing font size.',
-        source: 'NNGroup Mobile Tables — https://www.nngroup.com/articles/mobile-tables/',
-        locator: { selector: tableCellIssues[0].selector, text: '' }
-      });
-    }
-
-    var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-    var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-    var score = Math.max(0, 100 - (errors * 10) - (warnings * 5));
-    return { score: score, findings: findings, checks: checks, passed: passed, weight: 5, label: 'Readability', icon: 'readability' };
-  }
-
-  S.register("readability", scoreReadability, 5, "Readability", "readability");
-})();
-</file>
-
 <file path="docs/scoring/responsive.js">
 // Scoring Module: Responsive Design
 // Weight: 10%
@@ -28643,202 +28839,6 @@ function scoreResponsive(data) {
 
 
   S.register("responsive", scoreResponsive, 10, "Responsive Design", "responsive");
-})();
-</file>
-
-<file path="docs/scoring/touch.js">
-// Scoring Module: Touch & Interaction
-// Weight: 15%
-
-(function() {
-  "use strict";
-  var S = window.MilgScoring;
-
-function scoreTouchTargets(data) {
-  var profile = S.getProfile(data);
-  var findings = [];
-  var targets = data.interaction.touchTargets || [];
-
-  // Viewport-aware thresholds, adjusted by profile:
-  var vw = (data.meta && data.meta.viewportWidth) || 1280;
-  var isDesktop = vw >= 1024;
-  var minSize = isDesktop ? profile.touchTargetDesktop : profile.touchTarget;
-  var warnSize = isDesktop ? profile.touchTargetDesktopWarn : profile.touchTarget;
-  var context = isDesktop ? 'desktop' : 'touch/mobile';
-  var issueCount = 0;
-
-  targets.forEach(function(t) {
-    var w = t.width, h = t.height;
-    var minDim = Math.min(w, h);
-
-    // WCAG 2.5.8 exception: inline text links are exempt from target size requirements.
-    // Detect by checking if element is an <a> without button-like styling (no bg, no border, no padding > 4px)
-    var isInlineLink = t.element === 'a' && !t.isButton;
-
-    if (minDim < minSize) {
-      issueCount++;
-      var ctx = t.linkContext || (isInlineLink ? 'inline' : 'button');
-
-      // On desktop, determine severity based on how far below threshold:
-      // - ≥20px (just 4px short of 24px) → info (barely noticeable with mouse)
-      // - ≥16px → warning (small but usable with mouse)
-      // - <16px → error (genuinely too small even for mouse)
-      // On mobile, all failures are errors (fingers need the full 44px)
-      function desktopSeverity(dim) {
-        if (!isDesktop) return 'error';
-        if (dim >= 20) return 'info';
-        if (dim >= 16) return 'warning';
-        return 'error';
-      }
-
-      if (ctx === 'inline') {
-        // True inline text links (inside <p>, <blockquote>, etc.) — WCAG 2.5.8 exempt
-        findings.push({
-          severity: 'info',
-          title: 'Inline text link ' + w + '×' + h + 'px — exempt from target size',
-          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-          fix: 'Inline text links in paragraphs are exempt per WCAG 2.5.8. Consider adding padding for better usability.',
-          source: 'WCAG 2.2 §2.5.8 inline exception — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
-        });
-      } else if (ctx === 'footer') {
-        // Footer links — relaxed but still error below hard minimum (16px)
-        var footerHardMin = isDesktop ? 16 : 24;
-        findings.push({
-          severity: minDim < footerHardMin ? 'error' : 'info',
-          title: 'Footer link ' + w + '×' + h + 'px' + (minDim < footerHardMin ? ' (too small even for footer — min ' + footerHardMin + 'px)' : ' (below ' + minSize + 'px, relaxed for footer)'),
-          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-          fix: minDim < footerHardMin
-            ? 'Even footer links need at least ' + footerHardMin + 'px height. Add padding to increase click area.'
-            : 'Footer links have relaxed sizing expectations. Consider padding for touch accessibility.',
-          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
-        });
-      } else if (ctx === 'nav') {
-        // Navigation links — should be properly sized
-        var navSev = desktopSeverity(minDim);
-        findings.push({
-          severity: navSev,
-          title: 'Nav link ' + w + '×' + h + 'px (minimum: ' + minSize + 'px)',
-          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-          fix: 'Navigation links need adequate sizing. Add padding: py-2 px-4 (min-height ' + minSize + 'px).',
-          presetRef: 'Navigation presets use min-height 44px on nav links',
-          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
-        });
-      } else {
-        // Buttons, styled links, other interactive elements
-        var sev = desktopSeverity(minDim);
-        findings.push({
-          severity: sev,
-          title: t.element + ' is ' + w + '×' + h + 'px (' + (isDesktop ? 'desktop min: ' + minSize + 'px' : 'touch min: ' + minSize + 'px') + ')',
-          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-          fix: isDesktop
-            ? (sev === 'info'
-              ? 'Slightly below ' + minSize + 'px desktop minimum — usable with mouse but consider adding padding.'
-              : 'Click targets need at least ' + minSize + '×' + minSize + 'px. Increase padding or min-height/min-width.')
-            : 'Touch targets need ' + minSize + '×' + minSize + 'px minimum. Add min-h-[' + minSize + 'px] min-w-[' + minSize + 'px] or increase padding.',
-          presetRef: isDesktop ? null : 'Button presets use py-3 px-6 (48px height)',
-          source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
-        });
-      }
-    } else if (minDim < warnSize && isDesktop && !isInlineLink) {
-      findings.push({
-        severity: 'warning',
-        title: t.element + ' is ' + w + '×' + h + 'px (recommended for desktop: ≥' + warnSize + 'px)',
-        detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-        fix: 'While ' + minSize + 'px meets minimum, ' + warnSize + 'px+ improves click comfort. Consider adding padding.',
-        presetRef: null,
-        source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-        locator: { selector: t.selector, text: t.text || '' }
-      });
-    }
-  });
-
-  // Also flag targets that pass the current threshold but would fail on touch
-  if (isDesktop && targets.length > 0) {
-    var touchMin = profile.touchTarget;
-    var touchFails = targets.filter(function(t) { return Math.min(t.width, t.height) < touchMin; });
-    if (touchFails.length > 0) {
-      var allBboxes = touchFails.map(function(t) { return t.bbox; }).filter(Boolean);
-      var allSelectors = touchFails.map(function(t) { return t.selector; }).filter(Boolean);
-      var allTexts = touchFails.map(function(t) { return t.text || ''; });
-      findings.push({
-        severity: 'info',
-        title: touchFails.length + ' element(s) below ' + touchMin + 'px touch target (analyzed at ' + vw + 'px desktop viewport)',
-        detail: 'These meet desktop minimums but would fail on touch devices. Consider responsive sizing if the site is also used on mobile.',
-        fix: 'For responsive touch support: add touch-target sizing at mobile breakpoints, e.g. sm:min-h-[' + touchMin + 'px]',
-        presetRef: null,
-        source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout',
-        locator: { selector: '', text: '', bboxes: allBboxes, selectors: allSelectors, texts: allTexts }
-      });
-    }
-  }
-
-  // Note when responsive CSS exists that might fix touch targets on mobile
-  if (isDesktop && data.interaction && data.interaction.hasResponsiveTargetCSS) {
-    findings.push({
-      severity: 'info',
-      title: 'Responsive CSS detected that may adjust target sizes at mobile breakpoints',
-      detail: 'This site has media queries with height/padding rules. Touch targets may be correctly sized on mobile devices.',
-      fix: 'Verify by testing at mobile viewport. Use the viewport selector to re-scan at 375px width.',
-      presetRef: null
-    });
-  }
-
-  // Transitions / animation duration
-  var transitions = data.interaction.transitions || [];
-  transitions.forEach(function(t) {
-    var ms = parseFloat(t) * 1000;
-    if (ms > 500) {
-      findings.push({
-        severity: 'warning',
-        title: 'Transition duration ' + ms + 'ms exceeds 500ms maximum',
-        detail: 'Users perceive animations longer than 500ms as sluggish',
-        fix: 'Keep transitions under 500ms. Enter: 200–300ms, Exit: 150–200ms. In Tailwind: duration-200 or duration-300',
-        presetRef: null,
-        source: 'NNGroup animation — https://www.nngroup.com/articles/animation-usability/'
-      });
-    }
-  });
-
-  // Event listener pattern findings
-  var lPatterns = (data.interaction && data.interaction.listenerPatterns) || {};
-  if (lPatterns.toggleNoAria > 0) {
-    findings.push({
-      severity: 'warning',
-      title: lPatterns.toggleNoAria + ' toggle handler(s) without ARIA state management',
-      detail: 'Click handlers toggle CSS classes but don\'t update aria-expanded or other ARIA states. Screen readers won\'t know the element\'s state changed.',
-      fix: 'Add setAttribute(\'aria-expanded\', isOpen) alongside classList.toggle() in toggle handlers.',
-      presetRef: null,
-      source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value'
-    });
-  }
-  if (lPatterns.navigationInButton > 0) {
-    findings.push({
-      severity: 'info',
-      title: lPatterns.navigationInButton + ' button(s) trigger page navigation',
-      detail: 'Buttons with click handlers that change location.href should typically be <a> elements for proper semantics and accessibility.',
-      fix: 'Use <a href="..."> for navigation instead of <button> with JavaScript location change.',
-      presetRef: null,
-      source: 'HTML spec — https://html.spec.whatwg.org/multipage/text-level-semantics.html#the-a-element'
-    });
-  }
-
-  // Score: deduct per error, less per warning
-  var errors = findings.filter(function(f) { return f.severity === 'error'; }).length;
-  var warnings = findings.filter(function(f) { return f.severity === 'warning'; }).length;
-  var totalTargets = targets.length || 0;
-  var checks = totalTargets;
-  var passed = Math.max(0, totalTargets - errors - warnings);
-  var score = Math.max(0, 100 - (errors * 10) - (warnings * 3));
-  var na = totalTargets === 0 && transitions.length === 0;
-  return { score: na ? 100 : score, findings: findings, checks: checks, passed: passed, weight: 15, label: 'Touch & Interaction', icon: 'touch', notApplicable: na };
-}
-
-
-  S.register("touch", scoreTouchTargets, 15, "Touch & Interaction", "touch");
 })();
 </file>
 
@@ -38901,6 +38901,7 @@ window.MilgIframe = (function() {
         scripts += '<script>' +
           '(function(){' +
             'var _rb="' + escapedUrl + '";' +
+            'var _ro=(function(){try{return new URL(_rb).origin}catch(e){return _rb.replace(/\\/\\/[^/]+\\/.*$/,"//"+_rb.split("//")[1].split("/")[0])}})();' +
             'var _O=URL;' +
             'function _P(u,b){' +
               'if(b){' +
@@ -38927,7 +38928,7 @@ window.MilgIframe = (function() {
             'var _fc=((typeof parent!=="undefined")&&parent.__milgFontCache)||{};' +
             'if(!window.__milgFontBlobs)window.__milgFontBlobs={};' +
             'window.fetch=function(u,o){' +
-              'if(typeof u==="string"&&u.charAt(0)==="/")u=_rb.replace(/\\/$/,"")+u;' +
+              'if(typeof u==="string"&&u.charAt(0)==="/")u=_ro+u;' +
               'if(_px&&typeof u==="string"&&u.indexOf(_px)===-1&&/\\.(woff2?|ttf|otf|eot)(\\?|$)/i.test(u)){' +
                 'if(_fc[u])return _fc[u].then(function(r){return r.clone()});' +
                 'var p=_of.call(this,_px+"?url="+encodeURIComponent(u),o)' +
@@ -41385,7 +41386,7 @@ console.log('[milg] analyzer.js v52.6 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v53.2</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v53.3</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -41756,30 +41757,30 @@ console.log('[milg] analyzer.js v52.6 loaded');
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=53.2"></script>
-  <script src="scoring/contrast.js?v=53.2"></script>
-  <script src="scoring/typography.js?v=53.2"></script>
-  <script src="scoring/spacing.js?v=53.2"></script>
-  <script src="scoring/touch.js?v=53.2"></script>
-  <script src="scoring/accessibility.js?v=53.2"></script>
-  <script src="scoring/responsive.js?v=53.2"></script>
-  <script src="scoring/consistency.js?v=53.2"></script>
-  <script src="scoring/cognitive.js?v=53.2"></script>
-  <script src="scoring/layout.js?v=53.2"></script>
-  <script src="scoring/performance.js?v=53.2"></script>
-  <script src="scoring/readability.js?v=53.2"></script>
-  <script src="scoring/filters.js?v=53.2"></script>
-  <script src="scoring/balance.js?v=53.2"></script>
+  <script src="scoring/registry.js?v=53.3"></script>
+  <script src="scoring/contrast.js?v=53.3"></script>
+  <script src="scoring/typography.js?v=53.3"></script>
+  <script src="scoring/spacing.js?v=53.3"></script>
+  <script src="scoring/touch.js?v=53.3"></script>
+  <script src="scoring/accessibility.js?v=53.3"></script>
+  <script src="scoring/responsive.js?v=53.3"></script>
+  <script src="scoring/consistency.js?v=53.3"></script>
+  <script src="scoring/cognitive.js?v=53.3"></script>
+  <script src="scoring/layout.js?v=53.3"></script>
+  <script src="scoring/performance.js?v=53.3"></script>
+  <script src="scoring/readability.js?v=53.3"></script>
+  <script src="scoring/filters.js?v=53.3"></script>
+  <script src="scoring/balance.js?v=53.3"></script>
   <!-- Report rendering + UI -->
-  <script src="analyzer-report.js?v=53.2"></script>
-  <script src="analyzer-crawl.js?v=53.2"></script>
-  <script src="analyzer-extract.js?v=53.2"></script>
-  <script src="analyzer-iframe.js?v=53.2"></script>
-  <script src="analyzer-proxy.js?v=53.2"></script>
-  <script src="analyzer-crawl-ui.js?v=53.2"></script>
-  <script src="analyzer-contrast-verify.js?v=53.2"></script>
-  <script src="analyzer-viewer.js?v=53.2"></script>
-  <script src="analyzer.js?v=53.2"></script>
+  <script src="analyzer-report.js?v=53.3"></script>
+  <script src="analyzer-crawl.js?v=53.3"></script>
+  <script src="analyzer-extract.js?v=53.3"></script>
+  <script src="analyzer-iframe.js?v=53.3"></script>
+  <script src="analyzer-proxy.js?v=53.3"></script>
+  <script src="analyzer-crawl-ui.js?v=53.3"></script>
+  <script src="analyzer-contrast-verify.js?v=53.3"></script>
+  <script src="analyzer-viewer.js?v=53.3"></script>
+  <script src="analyzer.js?v=53.3"></script>
 </body>
 </html>
 </file>
