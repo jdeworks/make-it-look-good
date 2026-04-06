@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v1.9 loaded');
+console.log('[milg] analyzer.js v2.0 loaded');
 
 (function() {
   "use strict";
@@ -966,12 +966,15 @@ console.log('[milg] analyzer.js v1.9 loaded');
     var _originalInputSectionHTML = inputSection.innerHTML;
 
     // Tab switching
+    var _analysisOptions = document.getElementById('analysisOptions');
     document.querySelectorAll('.tab-btn').forEach(function(btn) {
       btn.addEventListener('click', function() {
         document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
         document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
         btn.classList.add('active');
         document.getElementById(btn.dataset.tab).classList.add('active');
+        // Hide analysis options on Import tab — imported data has its own settings
+        if (_analysisOptions) _analysisOptions.style.display = (btn.dataset.tab === 'tabImport') ? 'none' : '';
       });
     });
 
@@ -1363,6 +1366,8 @@ console.log('[milg] analyzer.js v1.9 loaded');
             btn.classList.add('active');
             var target = document.getElementById(btn.dataset.tab);
             if (target) target.classList.add('active');
+            var ao = document.getElementById('analysisOptions');
+            if (ao) ao.style.display = (btn.dataset.tab === 'tabImport') ? 'none' : '';
           });
         });
       }

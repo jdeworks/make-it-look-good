@@ -33323,6 +33323,392 @@ window.MilgReport = (function() {
 })();
 </file>
 
+<file path="docs/analyzer-snippet.js">
+// make-it-look-good — Design Extraction Snippet
+// Version: v1.1
+// Run this in the browser console on any page, or use as a bookmarklet.
+// Loads extraction engine from CDN (single source of truth), extracts design tokens,
+// and copies JSON to your clipboard.
+// Then paste into the analyzer at: https://jdeworks.github.io/make-it-look-good/analyzer.html
+
+(function() {
+  'use strict';
+  var _MILG_VERSION = 'v1.1';
+  console.log('%c[milg] Snippet version: ' + _MILG_VERSION, 'color: #64748b;');
+
+  // --- Auto-scroll option ---
+  // To scroll the page before extraction (triggers lazy loading + intersection observers):
+  // Run: window.__milgScrollFirst = true   then paste the snippet.
+  // The snippet will scroll the full page, wait for content to load, then extract.
+  if (window.__milgScrollFirst && !window.__milgScrollDone) {
+    window.__milgScrollDone = true;
+    console.log('%c\u23F3 Scrolling page to trigger lazy loading and intersection observers...', 'color: #3b82f6; font-weight: bold;');
+    var _scrollH = document.body.scrollHeight;
+    var _pos = 0;
+    var _step = Math.max(window.innerHeight * 0.8, 400);
+    var _si = setInterval(function() {
+      _pos += _step;
+      window.scrollTo(0, _pos);
+      if (_pos >= _scrollH) {
+        clearInterval(_si);
+        setTimeout(function() { window.scrollTo(0, 0); }, 300);
+        // Wait for newly loaded content, then user must re-run snippet
+        setTimeout(function() {
+          console.log('%c\u2713 Scroll complete! Page content should now be fully loaded.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+          console.log('%cRe-run the snippet now for complete analysis.', 'color: #3b82f6;');
+          window.__milgScrollFirst = false;
+        }, 1500);
+      }
+    }, 150);
+    return; // Exit — re-run snippet after scroll completes
+  }
+
+  // --- Load extraction engine from CDN (single source of truth) ---
+  console.log('%c[milg] Loading extraction engine...', 'color: #3b82f6;');
+  var _cacheBust = 'v=' + Math.floor(Date.now() / 3600000);
+  var _extractUrls = [
+    'https://cdn.jsdelivr.net/gh/jdeworks/make-it-look-good@dev/docs/analyzer-extract.js?' + _cacheBust,
+    'https://jdeworks.github.io/make-it-look-good/analyzer-extract.js?' + _cacheBust
+  ];
+
+  if (window.MilgExtract) {
+    _runExtraction();
+  } else {
+    (function _tryLoad(idx) {
+      if (idx >= _extractUrls.length) {
+        console.error('[milg] Cannot load extraction engine from any CDN.');
+        return;
+      }
+      var url = _extractUrls[idx];
+      console.log('[milg] Fetching:', url.split('?')[0]);
+      fetch(url).then(function(r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.text();
+      }).then(function(code) {
+        (new Function(code))();
+        if (!window.MilgExtract) throw new Error('MilgExtract not defined after eval');
+        _runExtraction();
+      }).catch(function(err) {
+        console.warn('[milg] CDN ' + (idx + 1) + ' failed:', err.message || err);
+        _tryLoad(idx + 1);
+      });
+    })(0);
+  }
+
+  function _runExtraction() {
+    window.__milgOnExtractComplete = function(data) {
+      window.__milgData = data;
+
+  // --- Output ---
+  var json = JSON.stringify(data, null, 2);
+
+  // Export data — file download for large payloads, clipboard for small ones
+  function downloadAsFile(data, filename) {
+    var blob = new Blob([data], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = filename;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function() { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+  }
+
+  var jsonSize = json.length;
+  var sizeMB = Math.round(jsonSize / 1024 / 1024 * 10) / 10;
+
+  if (jsonSize > 4 * 1024 * 1024) {
+    // >4MB: file download (clipboard would freeze)
+    var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
+    downloadAsFile(json, 'milg-' + hostname + '.json');
+    console.log('%c\u2B07 Design data downloaded as file (' + sizeMB + ' MB). Import it in the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+    window.__milgData_json = json;
+  } else {
+    // Small enough for clipboard
+    function copyFallback() {
+      var ta = document.createElement('textarea');
+      ta.value = json;
+      ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        var ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        if (ok) {
+          console.log('%c\u2713 Design data copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+          return;
+        }
+      } catch(e) {
+        document.body.removeChild(ta);
+      }
+      // Fallback: file download
+      var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
+      downloadAsFile(json, 'milg-' + hostname + '.json');
+      console.log('%c\u2B07 Could not copy \u2014 downloaded as file instead (' + sizeMB + ' MB).', 'color: #b45309; font-weight: bold;');
+      window.__milgData_json = json;
+    }
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(json).then(function() {
+        console.log('%c\u2713 Design data copied to clipboard (' + sizeMB + ' MB)! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+      }).catch(copyFallback);
+    } else {
+      copyFallback();
+    }
+  }
+
+  console.log('%cmake-it-look-good extraction complete', 'color: #3b82f6; font-weight: bold;');
+  console.log('Elements scanned:', data.structure.totalElements);
+  console.log('Contrast pairs:', data.colors.contrastPairs.length);
+  console.log('Touch target issues:', data.interaction.touchTargets.length);
+
+  // --- Site Crawl Mode (same-origin iframe with src=, full JS execution) ---
+  // Set window.__milgCrawlSite = true before running.
+  // Loads each page in a hidden same-origin iframe (src=url), waits for full JS
+  // execution, then injects the extraction snippet. Stays on current page.
+  if (window.__milgCrawlSite) {
+    var _crawlMax = Math.min(Math.max(window.__milgCrawlMaxPages || 5, 1), 25);
+    var _crawlBlacklist = window.__milgCrawlBlacklist || [];
+    var _crawlOrigin = location.origin;
+    var _crawlSeen = {};
+    var _curPath = location.pathname.replace(/\/$/, '');
+    _crawlSeen[_crawlOrigin + _curPath] = true;
+    // Also mark index variants as seen to avoid re-crawling the current page
+    if (_curPath === '' || _curPath === '/index.html' || _curPath === '/index.htm') {
+      _crawlSeen[_crawlOrigin] = true; _crawlSeen[_crawlOrigin + '/index.html'] = true; _crawlSeen[_crawlOrigin + '/index.htm'] = true;
+    }
+
+    var _crawlLinks = [];
+    document.querySelectorAll('a[href]').forEach(function(a) {
+      var href = a.getAttribute('href');
+      if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('javascript:')) return;
+      try {
+        var u = new URL(href, location.href);
+        if (u.origin !== _crawlOrigin) return;
+        if (/\.(pdf|zip|png|jpg|svg|css|js|json|xml|woff2?)$/i.test(u.pathname)) return;
+        u.hash = '';
+        var key = u.origin + u.pathname.replace(/\/$/, '');
+        if (_crawlSeen[key]) return;
+        var blocked = _crawlBlacklist.some(function(pat) { pat = pat.trim(); if (!pat) return false; if (pat.endsWith('*')) return u.pathname.startsWith(pat.slice(0, -1)); return u.pathname === pat; });
+        if (blocked) return;
+        _crawlSeen[key] = true;
+        _crawlLinks.push(u.origin + u.pathname);
+      } catch(e) {}
+    });
+    _crawlLinks = _crawlLinks.slice(0, _crawlMax - 1);
+
+    var _crawlResults = [{ url: location.href, data: data }];
+    console.log('%c\uD83D\uDD77 Site Crawl: discovered ' + _crawlLinks.length + ' page(s)', 'color: #8b5cf6; font-weight: bold;');
+    _crawlLinks.forEach(function(l, i) { var p; try { p = new URL(l).pathname; } catch(e) { p = l; } console.log('  ' + (i + 1) + '. ' + p); });
+
+    // Export crawl results — file download for large payloads, clipboard for small
+    function _copyCrawlResults(results) {
+      var crawlJson = JSON.stringify({ _milgCrawl: true, startUrl: location.href, results: results });
+      window.__milgCrawlResults = results;
+      window.__milgCrawlJson = crawlJson;
+      try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) { console.warn('[milg-warn] localStorage save failed:', e.message); }
+      var crawlMB = Math.round(crawlJson.length / 1024 / 1024 * 10) / 10;
+      if (crawlJson.length > 4 * 1024 * 1024) {
+        // Large crawl: file download
+        var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
+        downloadAsFile(crawlJson, 'milg-crawl-' + hostname + '.json');
+        console.log('%c\u2B07 Crawl results downloaded as file (' + crawlMB + ' MB). Import in the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+      } else if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(crawlJson).then(function() {
+          console.log('%c\u2713 Crawl results copied to clipboard (' + crawlMB + ' MB)! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+        }).catch(function() {
+          var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
+          downloadAsFile(crawlJson, 'milg-crawl-' + hostname + '.json');
+          console.log('%c\u2B07 Could not copy \u2014 downloaded as file instead.', 'color: #b45309; font-weight: bold;');
+        });
+      } else {
+        var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
+        downloadAsFile(crawlJson, 'milg-crawl-' + hostname + '.json');
+        console.log('%c\u2B07 Crawl results downloaded as file. Import in the analyzer.', 'color: #16a34a; font-weight: bold;');
+      }
+    }
+
+    if (_crawlLinks.length === 0) {
+      _copyCrawlResults(_crawlResults);
+      console.log('%c\u2713 Crawl complete (1 page). Open the analyzer.', 'color: #16a34a; font-weight: bold;');
+    } else {
+      // Show crawl progress overlay
+      var _crawlOverlay = document.createElement('div');
+      _crawlOverlay.setAttribute('data-milg-overlay', '1');
+      _crawlOverlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.6);display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui,sans-serif;';
+      _crawlOverlay.innerHTML = '<div style="width:40px;height:40px;border:3px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:milg-spin 0.8s linear infinite"></div>' +
+        '<div id="milg-crawl-status" style="color:#fff;margin-top:16px;font-size:14px;font-weight:500">Crawling site...</div>' +
+        '<div id="milg-crawl-detail" style="color:rgba(255,255,255,0.6);margin-top:6px;font-size:12px">Loading extraction snippet...</div>' +
+        '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style>';
+      document.body.appendChild(_crawlOverlay);
+      function _updateCrawlOverlay(status, detail) {
+        var s = document.getElementById('milg-crawl-status'); if (s) s.textContent = status;
+        var d = document.getElementById('milg-crawl-detail'); if (d) d.textContent = detail;
+      }
+      function _removeCrawlOverlay() { if (_crawlOverlay.parentNode) _crawlOverlay.parentNode.removeChild(_crawlOverlay); }
+
+      // Build self-contained extraction script (no CDN fetch — inline the function directly)
+      var snippetSrc = 'window.MilgExtract = ' + window.MilgExtract.toString() + ';\n' +
+        'window.__milgOnExtractComplete = function(data) { window.__milgData = data; };\n' +
+        'window.MilgExtract();\n';
+
+      (function() {
+        function processNext(idx) {
+          if (idx >= _crawlLinks.length) {
+            var crawlJson = JSON.stringify({ _milgCrawl: true, startUrl: location.href, results: _crawlResults });
+            window.__milgCrawlResults = _crawlResults;
+            window.__milgCrawlJson = crawlJson;
+            try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) { console.warn('[milg-warn] localStorage save failed:', e.message); }
+            console.log('%c\u2713 Crawl complete! ' + _crawlResults.length + ' pages (' + Math.round(crawlJson.length / 1024) + ' KB)', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+            var _cKB = Math.round(crawlJson.length / 1024);
+            var _cLarge = _cKB > 2048;
+            var _priStyle = 'padding:12px 28px;font-size:14px;font-weight:600;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-bottom:8px;min-width:220px';
+            var _secStyle = 'padding:10px 24px;font-size:13px;font-weight:500;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.2);border-radius:8px;cursor:pointer;margin-bottom:10px;min-width:220px';
+            _crawlOverlay.innerHTML = '<div style="text-align:center">' +
+              '<div style="font-size:28px;margin-bottom:12px">\u2713</div>' +
+              '<div style="color:#fff;font-size:16px;font-weight:600;margin-bottom:6px">Crawl complete! ' + _crawlResults.length + ' pages analyzed.</div>' +
+              '<div style="color:rgba(255,255,255,0.6);font-size:13px;margin-bottom:' + (_cLarge ? '6' : '20') + 'px">' + _cKB + ' KB of design data ready</div>' +
+              (_cLarge ? '<div style="color:#fbbf24;font-size:12px;margin-bottom:16px">&#9888; Large payload \u2014 download recommended</div>' : '') +
+              (_cLarge
+                ? '<button id="milg-crawl-dl-btn" style="' + _priStyle + '">Download JSON</button><br><button id="milg-crawl-copy-btn" style="' + _secStyle + '">Copy to Clipboard</button>'
+                : '<button id="milg-crawl-copy-btn" style="' + _priStyle + '">Copy to Clipboard</button><br><button id="milg-crawl-dl-btn" style="' + _secStyle + '">Download JSON</button>') +
+              '<div style="color:rgba(255,255,255,0.5);font-size:11px;margin-top:8px">Then ' + (_cLarge ? 'import' : 'paste') + ' into the analyzer</div>' +
+              '</div>';
+            function _crawlDone() { setTimeout(function() { _removeCrawlOverlay(); }, 1500); }
+            document.getElementById('milg-crawl-copy-btn').addEventListener('click', function() {
+              var btn = document.getElementById('milg-crawl-copy-btn');
+              if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(crawlJson).then(function() {
+                  btn.textContent = 'Copied!'; btn.style.background = '#16a34a'; _crawlDone();
+                }).catch(function() {
+                  downloadAsFile(crawlJson, 'milg-crawl-' + location.hostname.replace(/[^a-z0-9]/gi, '-') + '.json');
+                  btn.textContent = 'Downloaded!'; btn.style.background = '#16a34a'; _crawlDone();
+                });
+              } else {
+                downloadAsFile(crawlJson, 'milg-crawl-' + location.hostname.replace(/[^a-z0-9]/gi, '-') + '.json');
+                btn.textContent = 'Downloaded!'; btn.style.background = '#16a34a'; _crawlDone();
+              }
+            });
+            document.getElementById('milg-crawl-dl-btn').addEventListener('click', function() {
+              downloadAsFile(crawlJson, 'milg-crawl-' + location.hostname.replace(/[^a-z0-9]/gi, '-') + '.json');
+              var btn = document.getElementById('milg-crawl-dl-btn');
+              btn.textContent = 'Downloaded!'; btn.style.background = '#16a34a'; btn.style.color = '#fff'; _crawlDone();
+            });
+            return;
+          }
+
+          var url = _crawlLinks[idx];
+          var path; try { path = new URL(url).pathname; } catch(e) { path = url; }
+          _updateCrawlOverlay('Crawling page ' + (idx + 1) + ' of ' + _crawlLinks.length, path);
+          console.log('%c\u2192 [' + (idx + 1) + '/' + _crawlLinks.length + '] ' + path, 'color: #3b82f6;');
+
+          // Fetch page HTML (same-origin) then load as srcdoc (bypasses X-Frame-Options)
+          fetch(url).then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.text();
+          }).then(function(html) {
+            // Srcdoc environment patches (URL constructor, History API, fetch)
+            var eu = url.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+            var envPatch = '<script>(function(){' +
+              'var _rb="' + eu + '";var _O=URL;' +
+              'function _P(u,b){if(b){var bs=typeof b==="string"?b:String(b);if(bs==="about:srcdoc"||bs==="about:blank"||bs==="null"||bs.indexOf("about:")===0)b=_rb;}' +
+              'if(!b&&typeof u==="string"&&u.charAt(0)==="/")return new _O(u,_rb);try{return (arguments.length===1||!b)?new _O(u):new _O(u,b);}catch(e){try{return new _O(u,_rb);}catch(e2){throw e;}}}' +
+              '_P.prototype=_O.prototype;_P.createObjectURL=_O.createObjectURL.bind(_O);_P.revokeObjectURL=_O.revokeObjectURL.bind(_O);if(_O.canParse)_P.canParse=_O.canParse.bind(_O);window.URL=_P;' +
+              'var _hps=history.pushState.bind(history);var _hrs=history.replaceState.bind(history);' +
+              'history.pushState=function(s,t,u){try{_hps(s,t,u);}catch(e){}};history.replaceState=function(s,t,u){try{_hrs(s,t,u);}catch(e){}};' +
+              'var _of=window.fetch;window.fetch=function(u,o){if(typeof u==="string"&&u.charAt(0)==="/")u=_rb.replace(/\\/$/,"")+u;return _of.call(this,u,o);};' +
+              '})();</' + 'script>';
+            var baseTag = '<base href="' + url + '">';
+            var headPatch = envPatch + baseTag;
+            // Inject BEFORE the first <script> tag so patches run before any framework JS
+            if (/<script[\s>]/i.test(html)) {
+              html = html.replace(/<script[\s>]/i, headPatch + '<script ');
+            } else if (/<head[\s>]/i.test(html)) {
+              html = html.replace(/<head([^>]*)>/i, '<head$1>' + headPatch);
+            } else {
+              html = headPatch + html;
+            }
+            html = html.replace(/<meta[^>]*http-equiv=["']?X-Frame-Options["']?[^>]*>/gi, '');
+
+            var iframe = document.createElement('iframe');
+            iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
+            iframe.sandbox = 'allow-scripts allow-same-origin allow-forms';
+            document.body.appendChild(iframe);
+
+            var done = false;
+            function cleanup() { if (iframe.parentNode) document.body.removeChild(iframe); }
+
+            iframe.addEventListener('load', function() {
+              if (done) return;
+              setTimeout(function() {
+                if (done) return;
+                try {
+                  var iWin = iframe.contentWindow;
+                  var iDoc = iframe.contentDocument || iWin.document;
+                  var script = iDoc.createElement('script');
+                  script.textContent = 'window.__milgCrawlSite=false;\n' + snippetSrc;
+                  iDoc.body.appendChild(script);
+
+                  var polls = 0;
+                  var poller = setInterval(function() {
+                    if (done) { clearInterval(poller); return; }
+                    polls++;
+                    try {
+                      var iData = iWin.__milgData;
+                      if (iData) {
+                        clearInterval(poller); done = true;
+                        iData.meta.url = url;
+                        _crawlResults.push({ url: url, data: iData });
+                        cleanup();
+                        console.log('%c  \u2713 ' + path + ' (' + (iData.structure.totalElements || 0) + ' elements)', 'color: #16a34a;');
+                        setTimeout(function() { processNext(idx + 1); }, 500);
+                      } else if (polls > 20) {
+                        clearInterval(poller); done = true;
+                        console.log('%c  \u2717 Timeout: ' + path, 'color: #dc2626;');
+                        cleanup();
+                        setTimeout(function() { processNext(idx + 1); }, 500);
+                      }
+                    } catch(e) {
+                      clearInterval(poller); done = true;
+                      console.log('%c  \u2717 Error: ' + path + ' (' + e.message + ')', 'color: #dc2626;');
+                      cleanup();
+                      setTimeout(function() { processNext(idx + 1); }, 500);
+                    }
+                  }, 500);
+                } catch(e) {
+                  done = true;
+                  console.log('%c  \u2717 Cannot inject snippet: ' + path + ' (' + e.message + ')', 'color: #dc2626;');
+                  cleanup();
+                  setTimeout(function() { processNext(idx + 1); }, 500);
+                }
+              }, 1500);
+            });
+            iframe.srcdoc = html;
+            setTimeout(function() {
+              if (done) return; done = true;
+              console.log('%c  \u2717 Timeout (10s): ' + path, 'color: #dc2626;');
+              cleanup();
+              setTimeout(function() { processNext(idx + 1); }, 500);
+            }, 10000);
+          }).catch(function(e) {
+            console.log('%c  \u2717 Fetch failed: ' + path + ' (' + (e.message || e) + ')', 'color: #dc2626;');
+            setTimeout(function() { processNext(idx + 1); }, 500);
+          });
+        }
+        processNext(0);
+      })();
+    }
+    return; // Skip normal clipboard copy
+  }
+
+    }; // end __milgOnExtractComplete callback
+
+    // Run the extraction
+    window.MilgExtract();
+  }
+})();
+</file>
+
 <file path="docs/analyzer-viewer.js">
 // make-it-look-good — Screenshot Viewer with Bbox Overlays
 // Stitches screenshot sections into one continuous scrollable image
@@ -35338,392 +35724,6 @@ window.MilgProxy = (function() {
     fetchWithProxy: fetchWithProxy,
     fetchViaProxy: fetchViaProxy
   };
-})();
-</file>
-
-<file path="docs/analyzer-snippet.js">
-// make-it-look-good — Design Extraction Snippet
-// Version: v1.1
-// Run this in the browser console on any page, or use as a bookmarklet.
-// Loads extraction engine from CDN (single source of truth), extracts design tokens,
-// and copies JSON to your clipboard.
-// Then paste into the analyzer at: https://jdeworks.github.io/make-it-look-good/analyzer.html
-
-(function() {
-  'use strict';
-  var _MILG_VERSION = 'v1.1';
-  console.log('%c[milg] Snippet version: ' + _MILG_VERSION, 'color: #64748b;');
-
-  // --- Auto-scroll option ---
-  // To scroll the page before extraction (triggers lazy loading + intersection observers):
-  // Run: window.__milgScrollFirst = true   then paste the snippet.
-  // The snippet will scroll the full page, wait for content to load, then extract.
-  if (window.__milgScrollFirst && !window.__milgScrollDone) {
-    window.__milgScrollDone = true;
-    console.log('%c\u23F3 Scrolling page to trigger lazy loading and intersection observers...', 'color: #3b82f6; font-weight: bold;');
-    var _scrollH = document.body.scrollHeight;
-    var _pos = 0;
-    var _step = Math.max(window.innerHeight * 0.8, 400);
-    var _si = setInterval(function() {
-      _pos += _step;
-      window.scrollTo(0, _pos);
-      if (_pos >= _scrollH) {
-        clearInterval(_si);
-        setTimeout(function() { window.scrollTo(0, 0); }, 300);
-        // Wait for newly loaded content, then user must re-run snippet
-        setTimeout(function() {
-          console.log('%c\u2713 Scroll complete! Page content should now be fully loaded.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-          console.log('%cRe-run the snippet now for complete analysis.', 'color: #3b82f6;');
-          window.__milgScrollFirst = false;
-        }, 1500);
-      }
-    }, 150);
-    return; // Exit — re-run snippet after scroll completes
-  }
-
-  // --- Load extraction engine from CDN (single source of truth) ---
-  console.log('%c[milg] Loading extraction engine...', 'color: #3b82f6;');
-  var _cacheBust = 'v=' + Math.floor(Date.now() / 3600000);
-  var _extractUrls = [
-    'https://cdn.jsdelivr.net/gh/jdeworks/make-it-look-good@dev/docs/analyzer-extract.js?' + _cacheBust,
-    'https://jdeworks.github.io/make-it-look-good/analyzer-extract.js?' + _cacheBust
-  ];
-
-  if (window.MilgExtract) {
-    _runExtraction();
-  } else {
-    (function _tryLoad(idx) {
-      if (idx >= _extractUrls.length) {
-        console.error('[milg] Cannot load extraction engine from any CDN.');
-        return;
-      }
-      var url = _extractUrls[idx];
-      console.log('[milg] Fetching:', url.split('?')[0]);
-      fetch(url).then(function(r) {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.text();
-      }).then(function(code) {
-        (new Function(code))();
-        if (!window.MilgExtract) throw new Error('MilgExtract not defined after eval');
-        _runExtraction();
-      }).catch(function(err) {
-        console.warn('[milg] CDN ' + (idx + 1) + ' failed:', err.message || err);
-        _tryLoad(idx + 1);
-      });
-    })(0);
-  }
-
-  function _runExtraction() {
-    window.__milgOnExtractComplete = function(data) {
-      window.__milgData = data;
-
-  // --- Output ---
-  var json = JSON.stringify(data, null, 2);
-
-  // Export data — file download for large payloads, clipboard for small ones
-  function downloadAsFile(data, filename) {
-    var blob = new Blob([data], { type: 'application/json' });
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    a.href = url; a.download = filename;
-    a.style.display = 'none';
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(function() { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
-  }
-
-  var jsonSize = json.length;
-  var sizeMB = Math.round(jsonSize / 1024 / 1024 * 10) / 10;
-
-  if (jsonSize > 4 * 1024 * 1024) {
-    // >4MB: file download (clipboard would freeze)
-    var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
-    downloadAsFile(json, 'milg-' + hostname + '.json');
-    console.log('%c\u2B07 Design data downloaded as file (' + sizeMB + ' MB). Import it in the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-    window.__milgData_json = json;
-  } else {
-    // Small enough for clipboard
-    function copyFallback() {
-      var ta = document.createElement('textarea');
-      ta.value = json;
-      ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
-      document.body.appendChild(ta);
-      ta.select();
-      try {
-        var ok = document.execCommand('copy');
-        document.body.removeChild(ta);
-        if (ok) {
-          console.log('%c\u2713 Design data copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-          return;
-        }
-      } catch(e) {
-        document.body.removeChild(ta);
-      }
-      // Fallback: file download
-      var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
-      downloadAsFile(json, 'milg-' + hostname + '.json');
-      console.log('%c\u2B07 Could not copy \u2014 downloaded as file instead (' + sizeMB + ' MB).', 'color: #b45309; font-weight: bold;');
-      window.__milgData_json = json;
-    }
-
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(json).then(function() {
-        console.log('%c\u2713 Design data copied to clipboard (' + sizeMB + ' MB)! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-      }).catch(copyFallback);
-    } else {
-      copyFallback();
-    }
-  }
-
-  console.log('%cmake-it-look-good extraction complete', 'color: #3b82f6; font-weight: bold;');
-  console.log('Elements scanned:', data.structure.totalElements);
-  console.log('Contrast pairs:', data.colors.contrastPairs.length);
-  console.log('Touch target issues:', data.interaction.touchTargets.length);
-
-  // --- Site Crawl Mode (same-origin iframe with src=, full JS execution) ---
-  // Set window.__milgCrawlSite = true before running.
-  // Loads each page in a hidden same-origin iframe (src=url), waits for full JS
-  // execution, then injects the extraction snippet. Stays on current page.
-  if (window.__milgCrawlSite) {
-    var _crawlMax = Math.min(Math.max(window.__milgCrawlMaxPages || 5, 1), 25);
-    var _crawlBlacklist = window.__milgCrawlBlacklist || [];
-    var _crawlOrigin = location.origin;
-    var _crawlSeen = {};
-    var _curPath = location.pathname.replace(/\/$/, '');
-    _crawlSeen[_crawlOrigin + _curPath] = true;
-    // Also mark index variants as seen to avoid re-crawling the current page
-    if (_curPath === '' || _curPath === '/index.html' || _curPath === '/index.htm') {
-      _crawlSeen[_crawlOrigin] = true; _crawlSeen[_crawlOrigin + '/index.html'] = true; _crawlSeen[_crawlOrigin + '/index.htm'] = true;
-    }
-
-    var _crawlLinks = [];
-    document.querySelectorAll('a[href]').forEach(function(a) {
-      var href = a.getAttribute('href');
-      if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('javascript:')) return;
-      try {
-        var u = new URL(href, location.href);
-        if (u.origin !== _crawlOrigin) return;
-        if (/\.(pdf|zip|png|jpg|svg|css|js|json|xml|woff2?)$/i.test(u.pathname)) return;
-        u.hash = '';
-        var key = u.origin + u.pathname.replace(/\/$/, '');
-        if (_crawlSeen[key]) return;
-        var blocked = _crawlBlacklist.some(function(pat) { pat = pat.trim(); if (!pat) return false; if (pat.endsWith('*')) return u.pathname.startsWith(pat.slice(0, -1)); return u.pathname === pat; });
-        if (blocked) return;
-        _crawlSeen[key] = true;
-        _crawlLinks.push(u.origin + u.pathname);
-      } catch(e) {}
-    });
-    _crawlLinks = _crawlLinks.slice(0, _crawlMax - 1);
-
-    var _crawlResults = [{ url: location.href, data: data }];
-    console.log('%c\uD83D\uDD77 Site Crawl: discovered ' + _crawlLinks.length + ' page(s)', 'color: #8b5cf6; font-weight: bold;');
-    _crawlLinks.forEach(function(l, i) { var p; try { p = new URL(l).pathname; } catch(e) { p = l; } console.log('  ' + (i + 1) + '. ' + p); });
-
-    // Export crawl results — file download for large payloads, clipboard for small
-    function _copyCrawlResults(results) {
-      var crawlJson = JSON.stringify({ _milgCrawl: true, startUrl: location.href, results: results });
-      window.__milgCrawlResults = results;
-      window.__milgCrawlJson = crawlJson;
-      try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) { console.warn('[milg-warn] localStorage save failed:', e.message); }
-      var crawlMB = Math.round(crawlJson.length / 1024 / 1024 * 10) / 10;
-      if (crawlJson.length > 4 * 1024 * 1024) {
-        // Large crawl: file download
-        var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
-        downloadAsFile(crawlJson, 'milg-crawl-' + hostname + '.json');
-        console.log('%c\u2B07 Crawl results downloaded as file (' + crawlMB + ' MB). Import in the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-      } else if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(crawlJson).then(function() {
-          console.log('%c\u2713 Crawl results copied to clipboard (' + crawlMB + ' MB)! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-        }).catch(function() {
-          var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
-          downloadAsFile(crawlJson, 'milg-crawl-' + hostname + '.json');
-          console.log('%c\u2B07 Could not copy \u2014 downloaded as file instead.', 'color: #b45309; font-weight: bold;');
-        });
-      } else {
-        var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
-        downloadAsFile(crawlJson, 'milg-crawl-' + hostname + '.json');
-        console.log('%c\u2B07 Crawl results downloaded as file. Import in the analyzer.', 'color: #16a34a; font-weight: bold;');
-      }
-    }
-
-    if (_crawlLinks.length === 0) {
-      _copyCrawlResults(_crawlResults);
-      console.log('%c\u2713 Crawl complete (1 page). Open the analyzer.', 'color: #16a34a; font-weight: bold;');
-    } else {
-      // Show crawl progress overlay
-      var _crawlOverlay = document.createElement('div');
-      _crawlOverlay.setAttribute('data-milg-overlay', '1');
-      _crawlOverlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.6);display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui,sans-serif;';
-      _crawlOverlay.innerHTML = '<div style="width:40px;height:40px;border:3px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:milg-spin 0.8s linear infinite"></div>' +
-        '<div id="milg-crawl-status" style="color:#fff;margin-top:16px;font-size:14px;font-weight:500">Crawling site...</div>' +
-        '<div id="milg-crawl-detail" style="color:rgba(255,255,255,0.6);margin-top:6px;font-size:12px">Loading extraction snippet...</div>' +
-        '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style>';
-      document.body.appendChild(_crawlOverlay);
-      function _updateCrawlOverlay(status, detail) {
-        var s = document.getElementById('milg-crawl-status'); if (s) s.textContent = status;
-        var d = document.getElementById('milg-crawl-detail'); if (d) d.textContent = detail;
-      }
-      function _removeCrawlOverlay() { if (_crawlOverlay.parentNode) _crawlOverlay.parentNode.removeChild(_crawlOverlay); }
-
-      // Build self-contained extraction script (no CDN fetch — inline the function directly)
-      var snippetSrc = 'window.MilgExtract = ' + window.MilgExtract.toString() + ';\n' +
-        'window.__milgOnExtractComplete = function(data) { window.__milgData = data; };\n' +
-        'window.MilgExtract();\n';
-
-      (function() {
-        function processNext(idx) {
-          if (idx >= _crawlLinks.length) {
-            var crawlJson = JSON.stringify({ _milgCrawl: true, startUrl: location.href, results: _crawlResults });
-            window.__milgCrawlResults = _crawlResults;
-            window.__milgCrawlJson = crawlJson;
-            try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) { console.warn('[milg-warn] localStorage save failed:', e.message); }
-            console.log('%c\u2713 Crawl complete! ' + _crawlResults.length + ' pages (' + Math.round(crawlJson.length / 1024) + ' KB)', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-            var _cKB = Math.round(crawlJson.length / 1024);
-            var _cLarge = _cKB > 2048;
-            var _priStyle = 'padding:12px 28px;font-size:14px;font-weight:600;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-bottom:8px;min-width:220px';
-            var _secStyle = 'padding:10px 24px;font-size:13px;font-weight:500;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.2);border-radius:8px;cursor:pointer;margin-bottom:10px;min-width:220px';
-            _crawlOverlay.innerHTML = '<div style="text-align:center">' +
-              '<div style="font-size:28px;margin-bottom:12px">\u2713</div>' +
-              '<div style="color:#fff;font-size:16px;font-weight:600;margin-bottom:6px">Crawl complete! ' + _crawlResults.length + ' pages analyzed.</div>' +
-              '<div style="color:rgba(255,255,255,0.6);font-size:13px;margin-bottom:' + (_cLarge ? '6' : '20') + 'px">' + _cKB + ' KB of design data ready</div>' +
-              (_cLarge ? '<div style="color:#fbbf24;font-size:12px;margin-bottom:16px">&#9888; Large payload \u2014 download recommended</div>' : '') +
-              (_cLarge
-                ? '<button id="milg-crawl-dl-btn" style="' + _priStyle + '">Download JSON</button><br><button id="milg-crawl-copy-btn" style="' + _secStyle + '">Copy to Clipboard</button>'
-                : '<button id="milg-crawl-copy-btn" style="' + _priStyle + '">Copy to Clipboard</button><br><button id="milg-crawl-dl-btn" style="' + _secStyle + '">Download JSON</button>') +
-              '<div style="color:rgba(255,255,255,0.5);font-size:11px;margin-top:8px">Then ' + (_cLarge ? 'import' : 'paste') + ' into the analyzer</div>' +
-              '</div>';
-            function _crawlDone() { setTimeout(function() { _removeCrawlOverlay(); }, 1500); }
-            document.getElementById('milg-crawl-copy-btn').addEventListener('click', function() {
-              var btn = document.getElementById('milg-crawl-copy-btn');
-              if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(crawlJson).then(function() {
-                  btn.textContent = 'Copied!'; btn.style.background = '#16a34a'; _crawlDone();
-                }).catch(function() {
-                  downloadAsFile(crawlJson, 'milg-crawl-' + location.hostname.replace(/[^a-z0-9]/gi, '-') + '.json');
-                  btn.textContent = 'Downloaded!'; btn.style.background = '#16a34a'; _crawlDone();
-                });
-              } else {
-                downloadAsFile(crawlJson, 'milg-crawl-' + location.hostname.replace(/[^a-z0-9]/gi, '-') + '.json');
-                btn.textContent = 'Downloaded!'; btn.style.background = '#16a34a'; _crawlDone();
-              }
-            });
-            document.getElementById('milg-crawl-dl-btn').addEventListener('click', function() {
-              downloadAsFile(crawlJson, 'milg-crawl-' + location.hostname.replace(/[^a-z0-9]/gi, '-') + '.json');
-              var btn = document.getElementById('milg-crawl-dl-btn');
-              btn.textContent = 'Downloaded!'; btn.style.background = '#16a34a'; btn.style.color = '#fff'; _crawlDone();
-            });
-            return;
-          }
-
-          var url = _crawlLinks[idx];
-          var path; try { path = new URL(url).pathname; } catch(e) { path = url; }
-          _updateCrawlOverlay('Crawling page ' + (idx + 1) + ' of ' + _crawlLinks.length, path);
-          console.log('%c\u2192 [' + (idx + 1) + '/' + _crawlLinks.length + '] ' + path, 'color: #3b82f6;');
-
-          // Fetch page HTML (same-origin) then load as srcdoc (bypasses X-Frame-Options)
-          fetch(url).then(function(r) {
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            return r.text();
-          }).then(function(html) {
-            // Srcdoc environment patches (URL constructor, History API, fetch)
-            var eu = url.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-            var envPatch = '<script>(function(){' +
-              'var _rb="' + eu + '";var _O=URL;' +
-              'function _P(u,b){if(b){var bs=typeof b==="string"?b:String(b);if(bs==="about:srcdoc"||bs==="about:blank"||bs==="null"||bs.indexOf("about:")===0)b=_rb;}' +
-              'if(!b&&typeof u==="string"&&u.charAt(0)==="/")return new _O(u,_rb);try{return (arguments.length===1||!b)?new _O(u):new _O(u,b);}catch(e){try{return new _O(u,_rb);}catch(e2){throw e;}}}' +
-              '_P.prototype=_O.prototype;_P.createObjectURL=_O.createObjectURL.bind(_O);_P.revokeObjectURL=_O.revokeObjectURL.bind(_O);if(_O.canParse)_P.canParse=_O.canParse.bind(_O);window.URL=_P;' +
-              'var _hps=history.pushState.bind(history);var _hrs=history.replaceState.bind(history);' +
-              'history.pushState=function(s,t,u){try{_hps(s,t,u);}catch(e){}};history.replaceState=function(s,t,u){try{_hrs(s,t,u);}catch(e){}};' +
-              'var _of=window.fetch;window.fetch=function(u,o){if(typeof u==="string"&&u.charAt(0)==="/")u=_rb.replace(/\\/$/,"")+u;return _of.call(this,u,o);};' +
-              '})();</' + 'script>';
-            var baseTag = '<base href="' + url + '">';
-            var headPatch = envPatch + baseTag;
-            // Inject BEFORE the first <script> tag so patches run before any framework JS
-            if (/<script[\s>]/i.test(html)) {
-              html = html.replace(/<script[\s>]/i, headPatch + '<script ');
-            } else if (/<head[\s>]/i.test(html)) {
-              html = html.replace(/<head([^>]*)>/i, '<head$1>' + headPatch);
-            } else {
-              html = headPatch + html;
-            }
-            html = html.replace(/<meta[^>]*http-equiv=["']?X-Frame-Options["']?[^>]*>/gi, '');
-
-            var iframe = document.createElement('iframe');
-            iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
-            iframe.sandbox = 'allow-scripts allow-same-origin allow-forms';
-            document.body.appendChild(iframe);
-
-            var done = false;
-            function cleanup() { if (iframe.parentNode) document.body.removeChild(iframe); }
-
-            iframe.addEventListener('load', function() {
-              if (done) return;
-              setTimeout(function() {
-                if (done) return;
-                try {
-                  var iWin = iframe.contentWindow;
-                  var iDoc = iframe.contentDocument || iWin.document;
-                  var script = iDoc.createElement('script');
-                  script.textContent = 'window.__milgCrawlSite=false;\n' + snippetSrc;
-                  iDoc.body.appendChild(script);
-
-                  var polls = 0;
-                  var poller = setInterval(function() {
-                    if (done) { clearInterval(poller); return; }
-                    polls++;
-                    try {
-                      var iData = iWin.__milgData;
-                      if (iData) {
-                        clearInterval(poller); done = true;
-                        iData.meta.url = url;
-                        _crawlResults.push({ url: url, data: iData });
-                        cleanup();
-                        console.log('%c  \u2713 ' + path + ' (' + (iData.structure.totalElements || 0) + ' elements)', 'color: #16a34a;');
-                        setTimeout(function() { processNext(idx + 1); }, 500);
-                      } else if (polls > 20) {
-                        clearInterval(poller); done = true;
-                        console.log('%c  \u2717 Timeout: ' + path, 'color: #dc2626;');
-                        cleanup();
-                        setTimeout(function() { processNext(idx + 1); }, 500);
-                      }
-                    } catch(e) {
-                      clearInterval(poller); done = true;
-                      console.log('%c  \u2717 Error: ' + path + ' (' + e.message + ')', 'color: #dc2626;');
-                      cleanup();
-                      setTimeout(function() { processNext(idx + 1); }, 500);
-                    }
-                  }, 500);
-                } catch(e) {
-                  done = true;
-                  console.log('%c  \u2717 Cannot inject snippet: ' + path + ' (' + e.message + ')', 'color: #dc2626;');
-                  cleanup();
-                  setTimeout(function() { processNext(idx + 1); }, 500);
-                }
-              }, 1500);
-            });
-            iframe.srcdoc = html;
-            setTimeout(function() {
-              if (done) return; done = true;
-              console.log('%c  \u2717 Timeout (10s): ' + path, 'color: #dc2626;');
-              cleanup();
-              setTimeout(function() { processNext(idx + 1); }, 500);
-            }, 10000);
-          }).catch(function(e) {
-            console.log('%c  \u2717 Fetch failed: ' + path + ' (' + (e.message || e) + ')', 'color: #dc2626;');
-            setTimeout(function() { processNext(idx + 1); }, 500);
-          });
-        }
-        processNext(0);
-      })();
-    }
-    return; // Skip normal clipboard copy
-  }
-
-    }; // end __milgOnExtractComplete callback
-
-    // Run the extraction
-    window.MilgExtract();
-  }
 })();
 </file>
 
@@ -37945,682 +37945,6 @@ window.MilgContrastVerify = (function() {
 })();
 </file>
 
-<file path="docs/analyzer-crawl-ui.js">
-// make-it-look-good — Crawl UI Wiring
-// Manages multi-page site crawl progress, tabs, and results display.
-// Depends on: analyzer-crawl.js (MilgCrawl), analyzer-report.js (MilgReport),
-//             analyzer-iframe.js (MilgIframe), analyzer-proxy.js (MilgProxy)
-
-window.MilgCrawlUI = (function() {
-  "use strict";
-
-  var _crawlSession = null;
-  var _crawlPageReports = {}; // pageIndex → rendered HTML cache
-  var _crawlActivePageTab = 'summary';
-  var CRAWL_HARD_MAX = 25;
-
-  // Dependencies injected via setup()
-  var _showToast, _runAnalysis, _restoreCachedAnalysis, _analyzeUrlBtn, _runDeepScanLoop;
-  var _showFocusModal, _updateFocusModal, _hideFocusModal;
-
-  // DOM refs queried during setup
-  var crawlSiteCheck, crawlOptions, cancelCrawlBtn, crawlMaxPages, crawlBlacklist;
-  var crawlProgressArea, crawlProgressLabel, crawlProgressCount, crawlProgressFill, crawlProgressList;
-  var crawlResults, crawlPageTabs, crawlPageContent;
-
-  function _esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
-
-  // Use the shared focus modal for crawl progress (same as single-URL deep scan).
-  // The modal has a close button so users can dismiss it and browse results.
-  var _crawlModalDismissed = false;
-  function _crawlModal(msg) {
-    if (_crawlModalDismissed) return;
-    if (_showFocusModal) _showFocusModal();
-    if (_updateFocusModal) _updateFocusModal(msg + '\n');
-  }
-  function _crawlModalClose() {
-    _crawlModalDismissed = false;
-    if (_hideFocusModal) _hideFocusModal();
-  }
-
-  function getCrawlSession() { return _crawlSession; }
-  function setCrawlSession(s) { _crawlSession = s; }
-  function getActiveTab() { return _crawlActivePageTab; }
-
-  function isCrawlMode() { return crawlSiteCheck && crawlSiteCheck.checked; }
-  function isCrawlActive() { return _crawlSession && _crawlSession.pages.length > 0 && crawlResults && crawlResults.style.display !== 'none'; }
-
-  function crawlStatusIcon(status) {
-    if (status === 'done') return '<span class="status-icon done"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></span>';
-    if (status === 'error') return '<span class="status-icon error"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>';
-    if (status === 'fetching' || status === 'analyzing') return '<span class="status-icon active"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/></svg></span>';
-    return '<span class="status-icon pending"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-dasharray="20" stroke-dashoffset="10"/></svg></span>';
-  }
-
-  function updateCrawlProgressItem(page) {
-    var existing = document.getElementById('crawl-progress-' + encodeURIComponent(page.url));
-    var path; try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
-    var scoreText = page.status === 'done' && page.reportData ? ' ' + page.reportData.overall + '/100' : '';
-    var errorText = page.status === 'error' ? ' <span style="color:#dc2626;font-size:12px">' + (page.error || 'Failed').substring(0, 40) + '</span>' : '';
-    var html = crawlStatusIcon(page.status) +
-      '<span class="page-url" title="' + page.url + '">' + path + '</span>' +
-      '<span class="page-score">' + scoreText + errorText + '</span>';
-    if (existing) {
-      existing.innerHTML = html;
-    } else {
-      var div = document.createElement('div');
-      div.className = 'crawl-progress-item';
-      div.id = 'crawl-progress-' + encodeURIComponent(page.url);
-      div.innerHTML = html;
-      crawlProgressList.appendChild(div);
-    }
-  }
-
-  function renderCrawlTabs() {
-    if (!_crawlSession || !crawlPageTabs) return;
-    var html = '<button class="crawl-page-tab' + (_crawlActivePageTab === 'summary' ? ' active' : '') + '" data-crawl-page="summary">Summary</button>';
-    _crawlSession.pages.forEach(function(page, idx) {
-      html += MilgReport.renderCrawlPageTab(page, idx, _crawlActivePageTab === String(idx));
-    });
-    crawlPageTabs.innerHTML = html;
-  }
-
-  var _spinnerHtml = '<div style="padding:60px;text-align:center">' +
-    '<div style="width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite;margin:0 auto"></div>' +
-    '<div style="color:var(--text-secondary);margin-top:12px;font-size:13px">Loading report\u2026</div>' +
-    '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style></div>';
-
-  function showCrawlPageContent(key) {
-    _crawlActivePageTab = key;
-    // Promote this page's verify to front of queue so it completes first
-    if (key !== 'summary' && window.MilgQueue) {
-      MilgQueue.promote('crawl-verify-' + key);
-    }
-    renderCrawlTabs();
-    var reportContainer = document.getElementById('reportContainer');
-    var reportActions = document.getElementById('reportActions');
-    // Show export/actions only after crawl is complete (not during progress)
-    var crawlDone = _crawlSession && _crawlSession.status === 'complete';
-    if (reportActions) reportActions.style.display = crawlDone ? 'flex' : 'none';
-    if (key === 'summary') {
-      var summary = _crawlSession.summary || MilgCrawl.buildSummary(_crawlSession);
-      var ephBanner = document.getElementById('ephemeralBanner');
-      if (ephBanner && crawlDone) ephBanner.style.display = 'flex';
-      crawlPageContent.innerHTML = MilgReport.renderCrawlSummary(summary);
-      crawlPageContent.style.display = '';
-      crawlPageContent.className = 'report-container visible';
-      if (reportContainer) { reportContainer.style.display = 'none'; reportContainer.className = 'report-container'; }
-      // Re-inject pixel verify summary if all pages have been verified
-      if (crawlDone && _crawlSession.pages.some(function(p) { return p.rawData && p.rawData._contrastVerifyResults; })) {
-        var allVerified = _crawlSession.pages.filter(function(p) { return p.status === 'done'; })
-          .every(function(p) { return p.rawData && p.rawData._contrastVerifyResults; });
-        if (allVerified) _updateVerifySummary(_crawlSession.pages.length, _crawlSession.pages.length, _crawlSession);
-      }
-    } else {
-      var idx = parseInt(key);
-      var page = _crawlSession.pages[idx];
-      if (!page || page.status !== 'done') {
-        crawlPageContent.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-secondary)">' +
-          (page && page.status === 'error' ? 'Error: ' + (page.error || 'Analysis failed') : 'Analyzing\u2026') + '</div>';
-        crawlPageContent.style.display = '';
-        crawlPageContent.className = 'report-container visible';
-        if (reportContainer) { reportContainer.style.display = 'none'; reportContainer.className = 'report-container'; }
-        return;
-      }
-
-      crawlPageContent.style.display = 'none';
-      crawlPageContent.className = 'report-container';
-      if (reportContainer) reportContainer.style.display = '';
-
-      // Clear viewport cache when switching crawl pages (viewport indices collide across pages)
-      if (typeof window.__milgClearViewportCache === 'function') window.__milgClearViewportCache();
-
-      // Cache hit: re-run with cached scoring + precomputed verify (fast, preserves overlays)
-      if (_crawlPageReports[idx]) {
-        var cached = _crawlPageReports[idx];
-        _runAnalysis(cached.data || page.rawData, 'crawl-page');
-        return;
-      }
-
-      // Cache miss: show spinner, defer heavy work so spinner paints
-      reportContainer.innerHTML = _spinnerHtml;
-      reportContainer.classList.add('visible');
-      setTimeout(function() {
-        // Guard: user may have switched tabs during the setTimeout
-        if (_crawlActivePageTab !== String(idx)) return;
-        page.rawData.meta = page.rawData.meta || {};
-        var origMethod = page.rawData.meta._inputMethod;
-        _runAnalysis(page.rawData, 'crawl-page');
-        page.rawData.meta._inputMethod = origMethod;
-        // Cache the data for instant restore (runAnalysis uses _cachedReportData + _contrastVerifyResults)
-        _crawlPageReports[idx] = {
-          data: page.rawData
-        };
-      }, 0);
-    }
-  }
-
-  // Load multi-page crawl results into the tabbed view
-  function loadCrawlResults(crawlState, source) {
-    if (!crawlState || !crawlState.results || crawlState.results.length === 0) return false;
-    _showToast('Loaded crawl results' + (source ? ' from ' + source : '') + ' (' + crawlState.results.length + ' pages)');
-    _crawlSession = MilgCrawl.createSession(crawlState.startUrl || crawlState.results[0].url, {
-      maxPages: crawlState.results.length,
-      profile: document.getElementById('profileSelect') ? document.getElementById('profileSelect').value : 'general'
-    });
-    crawlState.results.forEach(function(r) {
-      var report = MilgScoring.runScoring(r.data);
-      _crawlSession.pages.push({
-        url: r.url, status: 'done', title: (r.data.meta && r.data.meta.title) || '',
-        rawData: r.data, reportData: report, error: null,
-        startedAt: (r.data.meta && r.data.meta.timestamp) || null, completedAt: (r.data.meta && r.data.meta.timestamp) || null
-      });
-    });
-    _crawlSession.status = 'complete';
-    _crawlSession.summary = MilgCrawl.buildSummary(_crawlSession);
-    crawlResults.style.display = '';
-    var reportActions = document.getElementById('reportActions');
-    if (reportActions) reportActions.style.display = '';
-    document.getElementById('inputSection').style.display = 'none';
-    renderCrawlTabs();
-    showCrawlPageContent('summary');
-
-    // Pre-compute pixel verify for each page with screenshots (async, best-effort).
-    // Results are cached on rawData._contrastVerifyResults so tab switches use cache.
-    _preComputePixelVerify();
-
-    return true;
-  }
-
-  function _preComputePixelVerify() {
-    if (!_crawlSession || !window.MilgContrastVerify || !window.MilgQueue) return;
-    var pagesToVerify = _crawlSession.pages.filter(function(p) {
-      return p.status === 'done' && p.rawData && !p.rawData._contrastVerifyResults &&
-        p.rawData.screenshots && p.rawData.screenshots.length && p.rawData.screenshotMeta;
-    });
-    if (pagesToVerify.length === 0) return;
-    var doneCount = 0;
-    var totalCount = pagesToVerify.length;
-
-    // Show pixel verify progress on summary page
-    _updateVerifySummary(0, totalCount, null);
-
-    // Queue all page verifies — active page tab gets highest priority
-    MilgQueue.clear();
-    pagesToVerify.forEach(function(page, pi) {
-      var pageIdx = _crawlSession.pages.indexOf(page);
-      var priority = (_crawlActivePageTab === String(pageIdx)) ? 100 : (totalCount - pi);
-      MilgQueue.enqueue('crawl-verify-' + pageIdx, function(done) {
-        // Skip if already verified by another path
-        if (page.rawData._contrastVerifyResults) { done(null); return; }
-        var report = page.reportData || MilgScoring.runScoring(page.rawData);
-        MilgContrastVerify.verify(report, function(results, bboxEdgeResults) {
-          if (!page.rawData._contrastVerifyResults) {
-            page.rawData._contrastVerifyResults = results;
-            page.rawData._bboxEdgeResults = bboxEdgeResults || [];
-            if (pageIdx >= 0) delete _crawlPageReports[pageIdx];
-          }
-          done(results);
-        });
-      }, function() {
-        doneCount++;
-        _crawlModal('Pixel verify ' + doneCount + '/' + totalCount + ' pages');
-        _updateVerifySummary(doneCount, totalCount, doneCount === totalCount ? _crawlSession : null);
-        if (doneCount === totalCount) setTimeout(_crawlModalClose, 2000);
-      }, priority);
-    });
-  }
-
-  function _updateVerifySummary(done, total, completedSession) {
-    var container = document.getElementById('milg-crawl-verify-summary');
-    if (!container && crawlPageContent) {
-      // Insert verify section near the top of the summary (after Site Overview stats, before Page Scores)
-      container = document.createElement('div');
-      container.id = 'milg-crawl-verify-summary';
-      container.style.marginTop = '24px';
-      var summaryDiv = crawlPageContent.querySelector('.crawl-summary');
-      var firstH3 = summaryDiv ? summaryDiv.querySelector('h3') : null;
-      if (firstH3) {
-        firstH3.parentNode.insertBefore(container, firstH3);
-      } else if (summaryDiv) {
-        summaryDiv.appendChild(container);
-      } else {
-        crawlPageContent.appendChild(container);
-      }
-    }
-    if (!container) return;
-
-    if (!completedSession) {
-      // Still running — show spinner with progress
-      container.innerHTML = '<div class="crawl-summary">' +
-        '<h3 style="display:flex;align-items:center;gap:8px">' +
-        '<span style="display:inline-block;width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite"></span>' +
-        'Pixel Contrast Verification (' + done + '/' + total + ' pages)' +
-        '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style>' +
-        '</h3></div>';
-      return;
-    }
-
-    // All done — build the pixel verify summary across all pages
-    var falsePassTotal = 0, falseFailTotal = 0, verifiedTotal = 0;
-    var pageIssues = []; // [{url, path, falsePass, results}]
-    completedSession.pages.forEach(function(page) {
-      if (!page.rawData || !page.rawData._contrastVerifyResults) return;
-      var results = page.rawData._contrastVerifyResults;
-      var fp = 0, ff = 0, v = 0;
-      results.forEach(function(r) {
-        if (r.crossesBoundary) {
-          if (r.cssPasses && !r.pixelPasses) fp++;
-          else ff++;
-        } else { v++; }
-      });
-      falsePassTotal += fp; falseFailTotal += ff; verifiedTotal += v;
-      if (fp > 0) {
-        var path; try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
-        pageIssues.push({ url: page.url, path: path, falsePass: fp, results: results });
-      }
-    });
-
-    var isDark = document.body && document.body.classList.contains('dark-ui');
-    var html = '<div class="crawl-summary"><h3>Pixel Contrast Verification</h3>';
-    html += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px">';
-    html += '<div style="padding:8px 16px;border-radius:8px;background:var(--surface);border:1px solid var(--border);font-size:13px">' +
-      '<span style="font-weight:600">' + verifiedTotal + '</span> <span style="color:var(--text-secondary)">verified</span></div>';
-    if (falsePassTotal > 0) {
-      html += '<div style="padding:8px 16px;border-radius:8px;background:' + (isDark ? '#2d0f0f' : '#fef2f2') + ';border:1px solid ' + (isDark ? '#991b1b' : '#fecaca') + ';font-size:13px">' +
-        '<span style="font-weight:700;color:#ef4444">' + falsePassTotal + '</span> <span style="color:#ef4444">hidden failure' + (falsePassTotal > 1 ? 's' : '') + '</span></div>';
-    }
-    if (falseFailTotal > 0) {
-      html += '<div style="padding:8px 16px;border-radius:8px;background:' + (isDark ? '#0c2d1e' : '#f0fdf4') + ';border:1px solid ' + (isDark ? '#166534' : '#bbf7d0') + ';font-size:13px">' +
-        '<span style="font-weight:600;color:#16a34a">' + falseFailTotal + '</span> <span style="color:#16a34a">better than CSS</span></div>';
-    }
-    if (falsePassTotal === 0 && falseFailTotal === 0) {
-      html += '<div style="padding:8px 16px;border-radius:8px;background:' + (isDark ? '#0c2d1e' : '#f0fdf4') + ';border:1px solid ' + (isDark ? '#166534' : '#bbf7d0') + ';font-size:13px">' +
-        '<span style="color:#16a34a">All pixel checks match CSS — no hidden issues</span></div>';
-    }
-    html += '</div>';
-
-    // Per-page breakdown of failures
-    if (pageIssues.length > 0) {
-      html += '<div style="font-size:13px;line-height:1.6">';
-      pageIssues.forEach(function(pi) {
-        html += '<div style="padding:6px 10px;margin-bottom:4px;border-radius:6px;background:var(--surface);border:1px solid var(--border)">';
-        html += '<span style="color:#ef4444;font-weight:600">' + pi.falsePass + ' hidden failure' + (pi.falsePass > 1 ? 's' : '') + '</span>';
-        html += ' on <span style="font-weight:500">' + _esc(pi.path) + '</span>';
-        html += '</div>';
-      });
-      html += '</div>';
-    }
-
-    html += '</div>';
-    container.innerHTML = html;
-  }
-
-  function startCrawl(url) {
-    var maxPages = parseInt(crawlMaxPages.value) || 5;
-    maxPages = Math.min(Math.max(maxPages, 1), CRAWL_HARD_MAX);
-
-    var blacklist = (crawlBlacklist.value || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
-    var deepScan = document.getElementById('deepScanCheck') && document.getElementById('deepScanCheck').checked;
-    var jsCheck = document.getElementById('jsEnabledCheck');
-    var jsAck = document.getElementById('jsRiskAck');
-    var wantJs = jsCheck && jsCheck.checked && jsAck && jsAck.checked;
-    var profile = document.getElementById('profileSelect');
-
-    _crawlSession = MilgCrawl.createSession(url, {
-      maxPages: maxPages,
-      blacklist: blacklist,
-      deepScan: deepScan,
-      jsEnabled: wantJs,
-      profile: profile ? profile.value : 'general'
-    });
-    _crawlPageReports = {};
-    _crawlActivePageTab = 'summary';
-
-    // Show progress
-    _analyzeUrlBtn.disabled = true;
-    _analyzeUrlBtn.textContent = 'Crawling\u2026';
-    cancelCrawlBtn.style.display = '';
-    crawlProgressArea.style.display = '';
-    crawlProgressList.innerHTML = '';
-    crawlProgressFill.style.width = '0%';
-    crawlProgressLabel.textContent = 'Fetching starting page\u2026';
-    crawlProgressCount.textContent = '0 / ' + maxPages;
-    _crawlModalDismissed = false;
-    window._milgFocusModalDismissed = false;
-    _showFocusModal(true); // dismissable
-    _crawlModal('Fetching starting page\u2026');
-
-    // Show crawl results area, hide input section
-    var inputSection = document.getElementById('inputSection');
-    var reportActions = document.getElementById('reportActions');
-    var reportContainer = document.getElementById('reportContainer');
-    if (inputSection) inputSection.style.display = 'none';
-    crawlResults.style.display = '';
-    if (reportContainer) reportContainer.className = 'report-container';
-    // Hide export bar during crawl — show only when crawl completes
-    if (reportActions) reportActions.style.display = 'none';
-    // Scroll to results
-    crawlResults.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-    renderCrawlTabs();
-    showCrawlPageContent('summary');
-
-    var doneCount = 0;
-    var totalPages = 1;
-
-    MilgCrawl.startCrawl(_crawlSession, {
-      fetchPage: function(pageUrl, cb) {
-        MilgProxy.fetchViaProxy(pageUrl, function(html, err) { cb(html, err); });
-      },
-      analyzePage: function(html, pageUrl, opts, cb) {
-        var wantShots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
-        var isDeep = _crawlSession && _crawlSession.options && _crawlSession.options.deepScan && _runDeepScanLoop;
-        var jsOn = _crawlSession && _crawlSession.options && _crawlSession.options.jsEnabled;
-        var analysisOpts = { jsEnabled: jsOn, screenshots: wantShots, exclude: opts.excludeSelector || null };
-        if (isDeep) {
-          _runDeepScanLoop(html, pageUrl, analysisOpts, null, function(primary) {
-            if (primary) {
-              primary.meta.url = pageUrl;
-              primary.meta._inputMethod = 'crawl';
-              if (jsOn) primary.meta._jsEnabled = true;
-              if (opts.profile) primary.profile = opts.profile;
-            }
-            cb(primary);
-          });
-        } else {
-          function _doCrawlAnalysis() {
-            MilgIframe.analyzeHtml(html, {
-              url: pageUrl,
-              jsEnabled: jsOn,
-              screenshots: wantShots,
-              exclude: opts.excludeSelector || null
-            }, function(data) {
-              if (data) {
-                data.meta.url = pageUrl;
-                data.meta._inputMethod = 'crawl';
-                if (jsOn) data.meta._jsEnabled = true;
-                if (opts.profile) data.profile = opts.profile;
-              }
-              cb(data);
-          });
-          }
-          // Prefetch fonts for crawl pages (first page warms cache, subsequent get hits)
-          if (wantShots) {
-            MilgIframe.prefetchFonts(html, pageUrl, _doCrawlAnalysis);
-          } else {
-            _doCrawlAnalysis();
-          }
-        }
-      },
-      scorePage: function(data) { return MilgScoring.runScoring(data); },
-      onDiscovery: function(urls) {
-        totalPages = 1 + urls.length;
-        crawlProgressCount.textContent = '0 / ' + totalPages;
-        crawlProgressLabel.textContent = 'Found ' + urls.length + ' page' + (urls.length !== 1 ? 's' : '') + ' to crawl';
-        _crawlModal('Found ' + urls.length + ' pages to crawl');
-      },
-      onPageStart: function(page) {
-        updateCrawlProgressItem(page);
-        var path = page.url.replace(/^https?:\/\/[^/]+/, '');
-        crawlProgressLabel.textContent = 'Analyzing ' + path + '\u2026';
-        _crawlModal('Page ' + (doneCount + 1) + '/' + totalPages + ': ' + path);
-        renderCrawlTabs();
-      },
-      onPageComplete: function(page) {
-        doneCount++;
-        updateCrawlProgressItem(page);
-        crawlProgressCount.textContent = doneCount + ' / ' + totalPages;
-        crawlProgressFill.style.width = Math.round(doneCount / totalPages * 100) + '%';
-        renderCrawlTabs();
-        if (_crawlActivePageTab === 'summary') showCrawlPageContent('summary');
-        // Pre-compute pixel verify as soon as page completes (async, best-effort)
-        if (page.rawData && page.rawData.screenshots && page.rawData.screenshots.length && page.rawData.screenshotMeta && window.MilgContrastVerify) {
-          var report = page.reportData || MilgScoring.runScoring(page.rawData);
-          MilgContrastVerify.verify(report, function(results, bboxEdgeResults) {
-            page.rawData._contrastVerifyResults = results;
-            page.rawData._bboxEdgeResults = bboxEdgeResults || [];
-          });
-        }
-      },
-      onPageError: function(page) {
-        doneCount++;
-        updateCrawlProgressItem(page);
-        crawlProgressCount.textContent = doneCount + ' / ' + totalPages;
-        crawlProgressFill.style.width = Math.round(doneCount / totalPages * 100) + '%';
-        renderCrawlTabs();
-      },
-      onComplete: function(session) {
-        _analyzeUrlBtn.disabled = false;
-        _analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
-        cancelCrawlBtn.style.display = 'none';
-        crawlProgressLabel.textContent = 'Crawl complete!';
-        crawlProgressFill.style.width = '100%';
-        _crawlModal('Crawl complete! ' + _crawlSession.pages.length + ' pages analyzed');
-        setTimeout(_crawlModalClose, 3000);
-        renderCrawlTabs();
-        showCrawlPageContent('summary');
-      }
-    });
-  }
-
-  function setupCrawlExports(exportSeverityFilter) {
-    var copyMdBtn = document.getElementById('copyMdBtn');
-    var markdownBtn = document.getElementById('markdownBtn');
-    var exportJsonBtn = document.getElementById('exportJsonBtn');
-
-    if (copyMdBtn) {
-      copyMdBtn.addEventListener('click', function(e) {
-        if (!isCrawlActive()) return; // let original handler run
-        e.stopImmediatePropagation();
-        var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
-        var md = MilgCrawl.renderCrawlMarkdown(_crawlSession, filter);
-        navigator.clipboard.writeText(md).then(function() { _showToast('Crawl report copied as Markdown!'); }).catch(function() { _showToast('Copy failed'); });
-      });
-    }
-    if (markdownBtn) {
-      markdownBtn.addEventListener('click', function(e) {
-        if (!isCrawlActive()) return;
-        e.stopImmediatePropagation();
-        var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
-        var md = MilgCrawl.renderCrawlMarkdown(_crawlSession, filter);
-        var blob = new Blob([md], { type: 'text/markdown' });
-        var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-        a.download = 'site-crawl-report.md'; a.click();
-        URL.revokeObjectURL(a.href);
-      });
-    }
-    if (exportJsonBtn) {
-      exportJsonBtn.addEventListener('click', function(e) {
-        if (!isCrawlActive()) return;
-        e.stopImmediatePropagation();
-        var origLabel = exportJsonBtn.innerHTML;
-        exportJsonBtn.disabled = true;
-        exportJsonBtn.innerHTML = '<span style="display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite;vertical-align:middle"></span> <span class="btn-label">Exporting\u2026</span>';
-        requestAnimationFrame(function() { setTimeout(function() {
-          try {
-            var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
-            var json = MilgCrawl.renderCrawlJSON(_crawlSession, filter);
-            // Compress with gzip
-            if (typeof CompressionStream !== 'undefined') {
-              exportJsonBtn.innerHTML = '<span style="display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite;vertical-align:middle"></span> <span class="btn-label">Compressing\u2026</span>';
-              var blob = new Blob([json]);
-              var cs = new CompressionStream('gzip');
-              new Response(blob.stream().pipeThrough(cs)).blob().then(function(compressed) {
-                var a = document.createElement('a');
-                a.href = URL.createObjectURL(compressed);
-                a.download = 'site-crawl-data.milg'; a.click();
-                URL.revokeObjectURL(a.href);
-                _showToast('Crawl exported (' + Math.round(json.length / 1048576) + ' MB → ' + Math.round(compressed.size / 1024) + ' KB)');
-                exportJsonBtn.disabled = false;
-                exportJsonBtn.innerHTML = origLabel;
-              }).catch(function() {
-                var a = document.createElement('a');
-                a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
-                a.download = 'site-crawl-data.json'; a.click();
-                URL.revokeObjectURL(a.href);
-                _showToast('Crawl exported (' + Math.round(json.length / 1024) + ' KB)');
-                exportJsonBtn.disabled = false;
-                exportJsonBtn.innerHTML = origLabel;
-              });
-            } else {
-              var a = document.createElement('a');
-              a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
-              a.download = 'site-crawl-data.json'; a.click();
-              URL.revokeObjectURL(a.href);
-              _showToast('Crawl exported (' + Math.round(json.length / 1024) + ' KB)');
-              exportJsonBtn.disabled = false;
-              exportJsonBtn.innerHTML = origLabel;
-            }
-          } catch(err) {
-            _showToast('Export failed: ' + err.message);
-            exportJsonBtn.disabled = false;
-            exportJsonBtn.innerHTML = origLabel;
-          }
-        }, 0); });
-      });
-    }
-  }
-
-  function setup(deps) {
-    _showToast = deps.showToast;
-    _runAnalysis = deps.runAnalysis;
-    _restoreCachedAnalysis = deps.restoreCachedAnalysis;
-    _analyzeUrlBtn = deps.analyzeUrlBtn;
-    _runDeepScanLoop = deps.runDeepScanLoop;
-    _showFocusModal = deps.showFocusModal;
-    _updateFocusModal = deps.updateFocusModal;
-    _hideFocusModal = deps.hideFocusModal;
-
-    // Query DOM refs
-    crawlSiteCheck = document.getElementById('crawlSiteCheck');
-    crawlOptions = document.getElementById('crawlOptions');
-    cancelCrawlBtn = document.getElementById('cancelCrawlBtn');
-    crawlMaxPages = document.getElementById('crawlMaxPages');
-    crawlBlacklist = document.getElementById('crawlBlacklist');
-    crawlProgressArea = document.getElementById('crawlProgressArea');
-    crawlProgressLabel = document.getElementById('crawlProgressLabel');
-    crawlProgressCount = document.getElementById('crawlProgressCount');
-    crawlProgressFill = document.getElementById('crawlProgressFill');
-    crawlProgressList = document.getElementById('crawlProgressList');
-    crawlResults = document.getElementById('crawlResults');
-    crawlPageTabs = document.getElementById('crawlPageTabs');
-    crawlPageContent = document.getElementById('crawlPageContent');
-
-    // Crawl site toggle — show/hide crawl options
-    if (crawlSiteCheck && crawlOptions) {
-      crawlSiteCheck.addEventListener('change', function() {
-        crawlOptions.style.display = crawlSiteCheck.checked ? '' : 'none';
-      });
-    }
-
-    // Page limit easter egg — MutationObserver on max attr + input value check
-    var _crawlEasterEggShown = false;
-    if (crawlMaxPages) {
-      var _crawlMaxObserver = new MutationObserver(function(mutations) {
-        mutations.forEach(function(m) {
-          if (m.attributeName === 'max') {
-            var newMax = parseInt(crawlMaxPages.getAttribute('max'));
-            if (newMax > 10 && !_crawlEasterEggShown) {
-              _crawlEasterEggShown = true;
-              _showToast('Nice try! We see you editing the DOM \uD83D\uDE0F Fine, ' + CRAWL_HARD_MAX + ' is the real limit\u2026 but your proxy rate limit isn\u2019t.');
-              crawlMaxPages.setAttribute('max', CRAWL_HARD_MAX);
-            }
-          }
-        });
-      });
-      _crawlMaxObserver.observe(crawlMaxPages, { attributes: true, attributeFilter: ['max'] });
-      // Also catch when someone types >10 directly
-      crawlMaxPages.addEventListener('input', function() {
-        var val = parseInt(crawlMaxPages.value);
-        if (val > 10 && !_crawlEasterEggShown) {
-          _crawlEasterEggShown = true;
-          _showToast('Going beyond 10? Bold move \uD83D\uDE0F We\u2019ll allow up to ' + CRAWL_HARD_MAX + '. You found the secret ceiling!');
-          crawlMaxPages.setAttribute('max', CRAWL_HARD_MAX);
-        }
-      });
-    }
-
-    // Tab click delegation
-    if (crawlPageTabs) {
-      crawlPageTabs.addEventListener('click', function(e) {
-        var tab = e.target.closest('[data-crawl-page]');
-        if (!tab) return;
-        showCrawlPageContent(tab.getAttribute('data-crawl-page'));
-      });
-    }
-
-    // Cancel crawl
-    if (cancelCrawlBtn) {
-      cancelCrawlBtn.addEventListener('click', function() {
-        if (_crawlSession) MilgCrawl.abortCrawl(_crawlSession);
-        _analyzeUrlBtn.disabled = false;
-        _analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
-        cancelCrawlBtn.style.display = 'none';
-        crawlProgressLabel.textContent = 'Crawl cancelled';
-      });
-    }
-
-    // Check for completed snippet crawl on load
-    try {
-      var snippetCrawlData = localStorage.getItem('milg-crawl-complete');
-      if (snippetCrawlData) {
-        localStorage.removeItem('milg-crawl-complete');
-        var crawlState = JSON.parse(snippetCrawlData);
-        if (loadCrawlResults(crawlState, 'console snippet')) {
-          if (crawlSiteCheck) crawlSiteCheck.checked = true;
-          if (crawlOptions) crawlOptions.style.display = '';
-        }
-      }
-    } catch(e) { console.error('Failed to load snippet crawl data:', e); }
-
-    // Crawl export wiring
-    setupCrawlExports(document.getElementById('exportSeverityFilter'));
-  }
-
-  function resetCrawlState() {
-    _crawlSession = null;
-    _crawlPageReports = {};
-    if (crawlResults) crawlResults.style.display = 'none';
-    if (crawlPageContent) { crawlPageContent.style.display = 'none'; crawlPageContent.innerHTML = ''; }
-    if (crawlProgressArea) crawlProgressArea.style.display = 'none';
-  }
-
-  // Re-score all crawl pages (e.g. when profile changes)
-  function rescorePages() {
-    if (!_crawlSession || !_crawlSession.pages || _crawlSession.pages.length === 0) return false;
-    // Invalidate caches — profile change means all scores/reports are stale
-    _crawlPageReports = {};
-    _crawlSession.pages.forEach(function(page) {
-      if (page.status === 'done' && page.rawData) {
-        page.rawData.profile = document.getElementById('profileSelect').value;
-        delete page.rawData._cachedReportData;
-        page.reportData = MilgScoring.runScoring(page.rawData);
-      }
-    });
-    _crawlSession.summary = MilgCrawl.buildSummary(_crawlSession);
-    renderCrawlTabs();
-    showCrawlPageContent(_crawlActivePageTab);
-    return true;
-  }
-
-  return {
-    setup: setup,
-    getCrawlSession: getCrawlSession,
-    setCrawlSession: setCrawlSession,
-    getActiveTab: getActiveTab,
-    isCrawlMode: isCrawlMode,
-    isCrawlActive: isCrawlActive,
-    startCrawl: startCrawl,
-    loadCrawlResults: loadCrawlResults,
-    renderCrawlTabs: renderCrawlTabs,
-    showCrawlPageContent: showCrawlPageContent,
-    resetCrawlState: resetCrawlState,
-    rescorePages: rescorePages
-  };
-})();
-</file>
-
 <file path="docs/analyzer-snippet-screenshots.js">
 // make-it-look-good — Design Extraction Snippet (with screenshots)
 // Version: v1.1
@@ -39529,6 +38853,682 @@ window.MilgCrawlUI = (function() {
     // Run the extraction
     window.MilgExtract();
   }
+})();
+</file>
+
+<file path="docs/analyzer-crawl-ui.js">
+// make-it-look-good — Crawl UI Wiring
+// Manages multi-page site crawl progress, tabs, and results display.
+// Depends on: analyzer-crawl.js (MilgCrawl), analyzer-report.js (MilgReport),
+//             analyzer-iframe.js (MilgIframe), analyzer-proxy.js (MilgProxy)
+
+window.MilgCrawlUI = (function() {
+  "use strict";
+
+  var _crawlSession = null;
+  var _crawlPageReports = {}; // pageIndex → rendered HTML cache
+  var _crawlActivePageTab = 'summary';
+  var CRAWL_HARD_MAX = 25;
+
+  // Dependencies injected via setup()
+  var _showToast, _runAnalysis, _restoreCachedAnalysis, _analyzeUrlBtn, _runDeepScanLoop;
+  var _showFocusModal, _updateFocusModal, _hideFocusModal;
+
+  // DOM refs queried during setup
+  var crawlSiteCheck, crawlOptions, cancelCrawlBtn, crawlMaxPages, crawlBlacklist;
+  var crawlProgressArea, crawlProgressLabel, crawlProgressCount, crawlProgressFill, crawlProgressList;
+  var crawlResults, crawlPageTabs, crawlPageContent;
+
+  function _esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+  // Use the shared focus modal for crawl progress (same as single-URL deep scan).
+  // The modal has a close button so users can dismiss it and browse results.
+  var _crawlModalDismissed = false;
+  function _crawlModal(msg) {
+    if (_crawlModalDismissed) return;
+    if (_showFocusModal) _showFocusModal();
+    if (_updateFocusModal) _updateFocusModal(msg + '\n');
+  }
+  function _crawlModalClose() {
+    _crawlModalDismissed = false;
+    if (_hideFocusModal) _hideFocusModal();
+  }
+
+  function getCrawlSession() { return _crawlSession; }
+  function setCrawlSession(s) { _crawlSession = s; }
+  function getActiveTab() { return _crawlActivePageTab; }
+
+  function isCrawlMode() { return crawlSiteCheck && crawlSiteCheck.checked; }
+  function isCrawlActive() { return _crawlSession && _crawlSession.pages.length > 0 && crawlResults && crawlResults.style.display !== 'none'; }
+
+  function crawlStatusIcon(status) {
+    if (status === 'done') return '<span class="status-icon done"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></span>';
+    if (status === 'error') return '<span class="status-icon error"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>';
+    if (status === 'fetching' || status === 'analyzing') return '<span class="status-icon active"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/></svg></span>';
+    return '<span class="status-icon pending"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-dasharray="20" stroke-dashoffset="10"/></svg></span>';
+  }
+
+  function updateCrawlProgressItem(page) {
+    var existing = document.getElementById('crawl-progress-' + encodeURIComponent(page.url));
+    var path; try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
+    var scoreText = page.status === 'done' && page.reportData ? ' ' + page.reportData.overall + '/100' : '';
+    var errorText = page.status === 'error' ? ' <span style="color:#dc2626;font-size:12px">' + (page.error || 'Failed').substring(0, 40) + '</span>' : '';
+    var html = crawlStatusIcon(page.status) +
+      '<span class="page-url" title="' + page.url + '">' + path + '</span>' +
+      '<span class="page-score">' + scoreText + errorText + '</span>';
+    if (existing) {
+      existing.innerHTML = html;
+    } else {
+      var div = document.createElement('div');
+      div.className = 'crawl-progress-item';
+      div.id = 'crawl-progress-' + encodeURIComponent(page.url);
+      div.innerHTML = html;
+      crawlProgressList.appendChild(div);
+    }
+  }
+
+  function renderCrawlTabs() {
+    if (!_crawlSession || !crawlPageTabs) return;
+    var html = '<button class="crawl-page-tab' + (_crawlActivePageTab === 'summary' ? ' active' : '') + '" data-crawl-page="summary">Summary</button>';
+    _crawlSession.pages.forEach(function(page, idx) {
+      html += MilgReport.renderCrawlPageTab(page, idx, _crawlActivePageTab === String(idx));
+    });
+    crawlPageTabs.innerHTML = html;
+  }
+
+  var _spinnerHtml = '<div style="padding:60px;text-align:center">' +
+    '<div style="width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite;margin:0 auto"></div>' +
+    '<div style="color:var(--text-secondary);margin-top:12px;font-size:13px">Loading report\u2026</div>' +
+    '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style></div>';
+
+  function showCrawlPageContent(key) {
+    _crawlActivePageTab = key;
+    // Promote this page's verify to front of queue so it completes first
+    if (key !== 'summary' && window.MilgQueue) {
+      MilgQueue.promote('crawl-verify-' + key);
+    }
+    renderCrawlTabs();
+    var reportContainer = document.getElementById('reportContainer');
+    var reportActions = document.getElementById('reportActions');
+    // Show export/actions only after crawl is complete (not during progress)
+    var crawlDone = _crawlSession && _crawlSession.status === 'complete';
+    if (reportActions) reportActions.style.display = crawlDone ? 'flex' : 'none';
+    if (key === 'summary') {
+      var summary = _crawlSession.summary || MilgCrawl.buildSummary(_crawlSession);
+      var ephBanner = document.getElementById('ephemeralBanner');
+      if (ephBanner && crawlDone) ephBanner.style.display = 'flex';
+      crawlPageContent.innerHTML = MilgReport.renderCrawlSummary(summary);
+      crawlPageContent.style.display = '';
+      crawlPageContent.className = 'report-container visible';
+      if (reportContainer) { reportContainer.style.display = 'none'; reportContainer.className = 'report-container'; }
+      // Re-inject pixel verify summary if all pages have been verified
+      if (crawlDone && _crawlSession.pages.some(function(p) { return p.rawData && p.rawData._contrastVerifyResults; })) {
+        var allVerified = _crawlSession.pages.filter(function(p) { return p.status === 'done'; })
+          .every(function(p) { return p.rawData && p.rawData._contrastVerifyResults; });
+        if (allVerified) _updateVerifySummary(_crawlSession.pages.length, _crawlSession.pages.length, _crawlSession);
+      }
+    } else {
+      var idx = parseInt(key);
+      var page = _crawlSession.pages[idx];
+      if (!page || page.status !== 'done') {
+        crawlPageContent.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-secondary)">' +
+          (page && page.status === 'error' ? 'Error: ' + (page.error || 'Analysis failed') : 'Analyzing\u2026') + '</div>';
+        crawlPageContent.style.display = '';
+        crawlPageContent.className = 'report-container visible';
+        if (reportContainer) { reportContainer.style.display = 'none'; reportContainer.className = 'report-container'; }
+        return;
+      }
+
+      crawlPageContent.style.display = 'none';
+      crawlPageContent.className = 'report-container';
+      if (reportContainer) reportContainer.style.display = '';
+
+      // Clear viewport cache when switching crawl pages (viewport indices collide across pages)
+      if (typeof window.__milgClearViewportCache === 'function') window.__milgClearViewportCache();
+
+      // Cache hit: re-run with cached scoring + precomputed verify (fast, preserves overlays)
+      if (_crawlPageReports[idx]) {
+        var cached = _crawlPageReports[idx];
+        _runAnalysis(cached.data || page.rawData, 'crawl-page');
+        return;
+      }
+
+      // Cache miss: show spinner, defer heavy work so spinner paints
+      reportContainer.innerHTML = _spinnerHtml;
+      reportContainer.classList.add('visible');
+      setTimeout(function() {
+        // Guard: user may have switched tabs during the setTimeout
+        if (_crawlActivePageTab !== String(idx)) return;
+        page.rawData.meta = page.rawData.meta || {};
+        var origMethod = page.rawData.meta._inputMethod;
+        _runAnalysis(page.rawData, 'crawl-page');
+        page.rawData.meta._inputMethod = origMethod;
+        // Cache the data for instant restore (runAnalysis uses _cachedReportData + _contrastVerifyResults)
+        _crawlPageReports[idx] = {
+          data: page.rawData
+        };
+      }, 0);
+    }
+  }
+
+  // Load multi-page crawl results into the tabbed view
+  function loadCrawlResults(crawlState, source) {
+    if (!crawlState || !crawlState.results || crawlState.results.length === 0) return false;
+    _showToast('Loaded crawl results' + (source ? ' from ' + source : '') + ' (' + crawlState.results.length + ' pages)');
+    _crawlSession = MilgCrawl.createSession(crawlState.startUrl || crawlState.results[0].url, {
+      maxPages: crawlState.results.length,
+      profile: document.getElementById('profileSelect') ? document.getElementById('profileSelect').value : 'general'
+    });
+    crawlState.results.forEach(function(r) {
+      var report = MilgScoring.runScoring(r.data);
+      _crawlSession.pages.push({
+        url: r.url, status: 'done', title: (r.data.meta && r.data.meta.title) || '',
+        rawData: r.data, reportData: report, error: null,
+        startedAt: (r.data.meta && r.data.meta.timestamp) || null, completedAt: (r.data.meta && r.data.meta.timestamp) || null
+      });
+    });
+    _crawlSession.status = 'complete';
+    _crawlSession.summary = MilgCrawl.buildSummary(_crawlSession);
+    crawlResults.style.display = '';
+    var reportActions = document.getElementById('reportActions');
+    if (reportActions) reportActions.style.display = '';
+    document.getElementById('inputSection').style.display = 'none';
+    renderCrawlTabs();
+    showCrawlPageContent('summary');
+
+    // Pre-compute pixel verify for each page with screenshots (async, best-effort).
+    // Results are cached on rawData._contrastVerifyResults so tab switches use cache.
+    _preComputePixelVerify();
+
+    return true;
+  }
+
+  function _preComputePixelVerify() {
+    if (!_crawlSession || !window.MilgContrastVerify || !window.MilgQueue) return;
+    var pagesToVerify = _crawlSession.pages.filter(function(p) {
+      return p.status === 'done' && p.rawData && !p.rawData._contrastVerifyResults &&
+        p.rawData.screenshots && p.rawData.screenshots.length && p.rawData.screenshotMeta;
+    });
+    if (pagesToVerify.length === 0) return;
+    var doneCount = 0;
+    var totalCount = pagesToVerify.length;
+
+    // Show pixel verify progress on summary page
+    _updateVerifySummary(0, totalCount, null);
+
+    // Queue all page verifies — active page tab gets highest priority
+    MilgQueue.clear();
+    pagesToVerify.forEach(function(page, pi) {
+      var pageIdx = _crawlSession.pages.indexOf(page);
+      var priority = (_crawlActivePageTab === String(pageIdx)) ? 100 : (totalCount - pi);
+      MilgQueue.enqueue('crawl-verify-' + pageIdx, function(done) {
+        // Skip if already verified by another path
+        if (page.rawData._contrastVerifyResults) { done(null); return; }
+        var report = page.reportData || MilgScoring.runScoring(page.rawData);
+        MilgContrastVerify.verify(report, function(results, bboxEdgeResults) {
+          if (!page.rawData._contrastVerifyResults) {
+            page.rawData._contrastVerifyResults = results;
+            page.rawData._bboxEdgeResults = bboxEdgeResults || [];
+            if (pageIdx >= 0) delete _crawlPageReports[pageIdx];
+          }
+          done(results);
+        });
+      }, function() {
+        doneCount++;
+        _crawlModal('Pixel verify ' + doneCount + '/' + totalCount + ' pages');
+        _updateVerifySummary(doneCount, totalCount, doneCount === totalCount ? _crawlSession : null);
+        if (doneCount === totalCount) setTimeout(_crawlModalClose, 2000);
+      }, priority);
+    });
+  }
+
+  function _updateVerifySummary(done, total, completedSession) {
+    var container = document.getElementById('milg-crawl-verify-summary');
+    if (!container && crawlPageContent) {
+      // Insert verify section near the top of the summary (after Site Overview stats, before Page Scores)
+      container = document.createElement('div');
+      container.id = 'milg-crawl-verify-summary';
+      container.style.marginTop = '24px';
+      var summaryDiv = crawlPageContent.querySelector('.crawl-summary');
+      var firstH3 = summaryDiv ? summaryDiv.querySelector('h3') : null;
+      if (firstH3) {
+        firstH3.parentNode.insertBefore(container, firstH3);
+      } else if (summaryDiv) {
+        summaryDiv.appendChild(container);
+      } else {
+        crawlPageContent.appendChild(container);
+      }
+    }
+    if (!container) return;
+
+    if (!completedSession) {
+      // Still running — show spinner with progress
+      container.innerHTML = '<div class="crawl-summary">' +
+        '<h3 style="display:flex;align-items:center;gap:8px">' +
+        '<span style="display:inline-block;width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite"></span>' +
+        'Pixel Contrast Verification (' + done + '/' + total + ' pages)' +
+        '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style>' +
+        '</h3></div>';
+      return;
+    }
+
+    // All done — build the pixel verify summary across all pages
+    var falsePassTotal = 0, falseFailTotal = 0, verifiedTotal = 0;
+    var pageIssues = []; // [{url, path, falsePass, results}]
+    completedSession.pages.forEach(function(page) {
+      if (!page.rawData || !page.rawData._contrastVerifyResults) return;
+      var results = page.rawData._contrastVerifyResults;
+      var fp = 0, ff = 0, v = 0;
+      results.forEach(function(r) {
+        if (r.crossesBoundary) {
+          if (r.cssPasses && !r.pixelPasses) fp++;
+          else ff++;
+        } else { v++; }
+      });
+      falsePassTotal += fp; falseFailTotal += ff; verifiedTotal += v;
+      if (fp > 0) {
+        var path; try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
+        pageIssues.push({ url: page.url, path: path, falsePass: fp, results: results });
+      }
+    });
+
+    var isDark = document.body && document.body.classList.contains('dark-ui');
+    var html = '<div class="crawl-summary"><h3>Pixel Contrast Verification</h3>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px">';
+    html += '<div style="padding:8px 16px;border-radius:8px;background:var(--surface);border:1px solid var(--border);font-size:13px">' +
+      '<span style="font-weight:600">' + verifiedTotal + '</span> <span style="color:var(--text-secondary)">verified</span></div>';
+    if (falsePassTotal > 0) {
+      html += '<div style="padding:8px 16px;border-radius:8px;background:' + (isDark ? '#2d0f0f' : '#fef2f2') + ';border:1px solid ' + (isDark ? '#991b1b' : '#fecaca') + ';font-size:13px">' +
+        '<span style="font-weight:700;color:#ef4444">' + falsePassTotal + '</span> <span style="color:#ef4444">hidden failure' + (falsePassTotal > 1 ? 's' : '') + '</span></div>';
+    }
+    if (falseFailTotal > 0) {
+      html += '<div style="padding:8px 16px;border-radius:8px;background:' + (isDark ? '#0c2d1e' : '#f0fdf4') + ';border:1px solid ' + (isDark ? '#166534' : '#bbf7d0') + ';font-size:13px">' +
+        '<span style="font-weight:600;color:#16a34a">' + falseFailTotal + '</span> <span style="color:#16a34a">better than CSS</span></div>';
+    }
+    if (falsePassTotal === 0 && falseFailTotal === 0) {
+      html += '<div style="padding:8px 16px;border-radius:8px;background:' + (isDark ? '#0c2d1e' : '#f0fdf4') + ';border:1px solid ' + (isDark ? '#166534' : '#bbf7d0') + ';font-size:13px">' +
+        '<span style="color:#16a34a">All pixel checks match CSS — no hidden issues</span></div>';
+    }
+    html += '</div>';
+
+    // Per-page breakdown of failures
+    if (pageIssues.length > 0) {
+      html += '<div style="font-size:13px;line-height:1.6">';
+      pageIssues.forEach(function(pi) {
+        html += '<div style="padding:6px 10px;margin-bottom:4px;border-radius:6px;background:var(--surface);border:1px solid var(--border)">';
+        html += '<span style="color:#ef4444;font-weight:600">' + pi.falsePass + ' hidden failure' + (pi.falsePass > 1 ? 's' : '') + '</span>';
+        html += ' on <span style="font-weight:500">' + _esc(pi.path) + '</span>';
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+
+    html += '</div>';
+    container.innerHTML = html;
+  }
+
+  function startCrawl(url) {
+    var maxPages = parseInt(crawlMaxPages.value) || 5;
+    maxPages = Math.min(Math.max(maxPages, 1), CRAWL_HARD_MAX);
+
+    var blacklist = (crawlBlacklist.value || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+    var deepScan = document.getElementById('deepScanCheck') && document.getElementById('deepScanCheck').checked;
+    var jsCheck = document.getElementById('jsEnabledCheck');
+    var jsAck = document.getElementById('jsRiskAck');
+    var wantJs = jsCheck && jsCheck.checked && jsAck && jsAck.checked;
+    var profile = document.getElementById('profileSelect');
+
+    _crawlSession = MilgCrawl.createSession(url, {
+      maxPages: maxPages,
+      blacklist: blacklist,
+      deepScan: deepScan,
+      jsEnabled: wantJs,
+      profile: profile ? profile.value : 'general'
+    });
+    _crawlPageReports = {};
+    _crawlActivePageTab = 'summary';
+
+    // Show progress
+    _analyzeUrlBtn.disabled = true;
+    _analyzeUrlBtn.textContent = 'Crawling\u2026';
+    cancelCrawlBtn.style.display = '';
+    crawlProgressArea.style.display = '';
+    crawlProgressList.innerHTML = '';
+    crawlProgressFill.style.width = '0%';
+    crawlProgressLabel.textContent = 'Fetching starting page\u2026';
+    crawlProgressCount.textContent = '0 / ' + maxPages;
+    _crawlModalDismissed = false;
+    window._milgFocusModalDismissed = false;
+    _showFocusModal(true); // dismissable
+    _crawlModal('Fetching starting page\u2026');
+
+    // Show crawl results area, hide input section
+    var inputSection = document.getElementById('inputSection');
+    var reportActions = document.getElementById('reportActions');
+    var reportContainer = document.getElementById('reportContainer');
+    if (inputSection) inputSection.style.display = 'none';
+    crawlResults.style.display = '';
+    if (reportContainer) reportContainer.className = 'report-container';
+    // Hide export bar during crawl — show only when crawl completes
+    if (reportActions) reportActions.style.display = 'none';
+    // Scroll to results
+    crawlResults.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    renderCrawlTabs();
+    showCrawlPageContent('summary');
+
+    var doneCount = 0;
+    var totalPages = 1;
+
+    MilgCrawl.startCrawl(_crawlSession, {
+      fetchPage: function(pageUrl, cb) {
+        MilgProxy.fetchViaProxy(pageUrl, function(html, err) { cb(html, err); });
+      },
+      analyzePage: function(html, pageUrl, opts, cb) {
+        var wantShots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
+        var isDeep = _crawlSession && _crawlSession.options && _crawlSession.options.deepScan && _runDeepScanLoop;
+        var jsOn = _crawlSession && _crawlSession.options && _crawlSession.options.jsEnabled;
+        var analysisOpts = { jsEnabled: jsOn, screenshots: wantShots, exclude: opts.excludeSelector || null };
+        if (isDeep) {
+          _runDeepScanLoop(html, pageUrl, analysisOpts, null, function(primary) {
+            if (primary) {
+              primary.meta.url = pageUrl;
+              primary.meta._inputMethod = 'crawl';
+              if (jsOn) primary.meta._jsEnabled = true;
+              if (opts.profile) primary.profile = opts.profile;
+            }
+            cb(primary);
+          });
+        } else {
+          function _doCrawlAnalysis() {
+            MilgIframe.analyzeHtml(html, {
+              url: pageUrl,
+              jsEnabled: jsOn,
+              screenshots: wantShots,
+              exclude: opts.excludeSelector || null
+            }, function(data) {
+              if (data) {
+                data.meta.url = pageUrl;
+                data.meta._inputMethod = 'crawl';
+                if (jsOn) data.meta._jsEnabled = true;
+                if (opts.profile) data.profile = opts.profile;
+              }
+              cb(data);
+          });
+          }
+          // Prefetch fonts for crawl pages (first page warms cache, subsequent get hits)
+          if (wantShots) {
+            MilgIframe.prefetchFonts(html, pageUrl, _doCrawlAnalysis);
+          } else {
+            _doCrawlAnalysis();
+          }
+        }
+      },
+      scorePage: function(data) { return MilgScoring.runScoring(data); },
+      onDiscovery: function(urls) {
+        totalPages = 1 + urls.length;
+        crawlProgressCount.textContent = '0 / ' + totalPages;
+        crawlProgressLabel.textContent = 'Found ' + urls.length + ' page' + (urls.length !== 1 ? 's' : '') + ' to crawl';
+        _crawlModal('Found ' + urls.length + ' pages to crawl');
+      },
+      onPageStart: function(page) {
+        updateCrawlProgressItem(page);
+        var path = page.url.replace(/^https?:\/\/[^/]+/, '');
+        crawlProgressLabel.textContent = 'Analyzing ' + path + '\u2026';
+        _crawlModal('Page ' + (doneCount + 1) + '/' + totalPages + ': ' + path);
+        renderCrawlTabs();
+      },
+      onPageComplete: function(page) {
+        doneCount++;
+        updateCrawlProgressItem(page);
+        crawlProgressCount.textContent = doneCount + ' / ' + totalPages;
+        crawlProgressFill.style.width = Math.round(doneCount / totalPages * 100) + '%';
+        renderCrawlTabs();
+        if (_crawlActivePageTab === 'summary') showCrawlPageContent('summary');
+        // Pre-compute pixel verify as soon as page completes (async, best-effort)
+        if (page.rawData && page.rawData.screenshots && page.rawData.screenshots.length && page.rawData.screenshotMeta && window.MilgContrastVerify) {
+          var report = page.reportData || MilgScoring.runScoring(page.rawData);
+          MilgContrastVerify.verify(report, function(results, bboxEdgeResults) {
+            page.rawData._contrastVerifyResults = results;
+            page.rawData._bboxEdgeResults = bboxEdgeResults || [];
+          });
+        }
+      },
+      onPageError: function(page) {
+        doneCount++;
+        updateCrawlProgressItem(page);
+        crawlProgressCount.textContent = doneCount + ' / ' + totalPages;
+        crawlProgressFill.style.width = Math.round(doneCount / totalPages * 100) + '%';
+        renderCrawlTabs();
+      },
+      onComplete: function(session) {
+        _analyzeUrlBtn.disabled = false;
+        _analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
+        cancelCrawlBtn.style.display = 'none';
+        crawlProgressLabel.textContent = 'Crawl complete!';
+        crawlProgressFill.style.width = '100%';
+        _crawlModal('Crawl complete! ' + _crawlSession.pages.length + ' pages analyzed');
+        setTimeout(_crawlModalClose, 3000);
+        renderCrawlTabs();
+        showCrawlPageContent('summary');
+      }
+    });
+  }
+
+  function setupCrawlExports(exportSeverityFilter) {
+    var copyMdBtn = document.getElementById('copyMdBtn');
+    var markdownBtn = document.getElementById('markdownBtn');
+    var exportJsonBtn = document.getElementById('exportJsonBtn');
+
+    if (copyMdBtn) {
+      copyMdBtn.addEventListener('click', function(e) {
+        if (!isCrawlActive()) return; // let original handler run
+        e.stopImmediatePropagation();
+        var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
+        var md = MilgCrawl.renderCrawlMarkdown(_crawlSession, filter);
+        navigator.clipboard.writeText(md).then(function() { _showToast('Crawl report copied as Markdown!'); }).catch(function() { _showToast('Copy failed'); });
+      });
+    }
+    if (markdownBtn) {
+      markdownBtn.addEventListener('click', function(e) {
+        if (!isCrawlActive()) return;
+        e.stopImmediatePropagation();
+        var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
+        var md = MilgCrawl.renderCrawlMarkdown(_crawlSession, filter);
+        var blob = new Blob([md], { type: 'text/markdown' });
+        var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+        a.download = 'site-crawl-report.md'; a.click();
+        URL.revokeObjectURL(a.href);
+      });
+    }
+    if (exportJsonBtn) {
+      exportJsonBtn.addEventListener('click', function(e) {
+        if (!isCrawlActive()) return;
+        e.stopImmediatePropagation();
+        var origLabel = exportJsonBtn.innerHTML;
+        exportJsonBtn.disabled = true;
+        exportJsonBtn.innerHTML = '<span style="display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite;vertical-align:middle"></span> <span class="btn-label">Exporting\u2026</span>';
+        requestAnimationFrame(function() { setTimeout(function() {
+          try {
+            var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
+            var json = MilgCrawl.renderCrawlJSON(_crawlSession, filter);
+            // Compress with gzip
+            if (typeof CompressionStream !== 'undefined') {
+              exportJsonBtn.innerHTML = '<span style="display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite;vertical-align:middle"></span> <span class="btn-label">Compressing\u2026</span>';
+              var blob = new Blob([json]);
+              var cs = new CompressionStream('gzip');
+              new Response(blob.stream().pipeThrough(cs)).blob().then(function(compressed) {
+                var a = document.createElement('a');
+                a.href = URL.createObjectURL(compressed);
+                a.download = 'site-crawl-data.milg'; a.click();
+                URL.revokeObjectURL(a.href);
+                _showToast('Crawl exported (' + Math.round(json.length / 1048576) + ' MB → ' + Math.round(compressed.size / 1024) + ' KB)');
+                exportJsonBtn.disabled = false;
+                exportJsonBtn.innerHTML = origLabel;
+              }).catch(function() {
+                var a = document.createElement('a');
+                a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+                a.download = 'site-crawl-data.json'; a.click();
+                URL.revokeObjectURL(a.href);
+                _showToast('Crawl exported (' + Math.round(json.length / 1024) + ' KB)');
+                exportJsonBtn.disabled = false;
+                exportJsonBtn.innerHTML = origLabel;
+              });
+            } else {
+              var a = document.createElement('a');
+              a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+              a.download = 'site-crawl-data.json'; a.click();
+              URL.revokeObjectURL(a.href);
+              _showToast('Crawl exported (' + Math.round(json.length / 1024) + ' KB)');
+              exportJsonBtn.disabled = false;
+              exportJsonBtn.innerHTML = origLabel;
+            }
+          } catch(err) {
+            _showToast('Export failed: ' + err.message);
+            exportJsonBtn.disabled = false;
+            exportJsonBtn.innerHTML = origLabel;
+          }
+        }, 0); });
+      });
+    }
+  }
+
+  function setup(deps) {
+    _showToast = deps.showToast;
+    _runAnalysis = deps.runAnalysis;
+    _restoreCachedAnalysis = deps.restoreCachedAnalysis;
+    _analyzeUrlBtn = deps.analyzeUrlBtn;
+    _runDeepScanLoop = deps.runDeepScanLoop;
+    _showFocusModal = deps.showFocusModal;
+    _updateFocusModal = deps.updateFocusModal;
+    _hideFocusModal = deps.hideFocusModal;
+
+    // Query DOM refs
+    crawlSiteCheck = document.getElementById('crawlSiteCheck');
+    crawlOptions = document.getElementById('crawlOptions');
+    cancelCrawlBtn = document.getElementById('cancelCrawlBtn');
+    crawlMaxPages = document.getElementById('crawlMaxPages');
+    crawlBlacklist = document.getElementById('crawlBlacklist');
+    crawlProgressArea = document.getElementById('crawlProgressArea');
+    crawlProgressLabel = document.getElementById('crawlProgressLabel');
+    crawlProgressCount = document.getElementById('crawlProgressCount');
+    crawlProgressFill = document.getElementById('crawlProgressFill');
+    crawlProgressList = document.getElementById('crawlProgressList');
+    crawlResults = document.getElementById('crawlResults');
+    crawlPageTabs = document.getElementById('crawlPageTabs');
+    crawlPageContent = document.getElementById('crawlPageContent');
+
+    // Crawl site toggle — show/hide crawl options
+    if (crawlSiteCheck && crawlOptions) {
+      crawlSiteCheck.addEventListener('change', function() {
+        crawlOptions.style.display = crawlSiteCheck.checked ? '' : 'none';
+      });
+    }
+
+    // Page limit easter egg — MutationObserver on max attr + input value check
+    var _crawlEasterEggShown = false;
+    if (crawlMaxPages) {
+      var _crawlMaxObserver = new MutationObserver(function(mutations) {
+        mutations.forEach(function(m) {
+          if (m.attributeName === 'max') {
+            var newMax = parseInt(crawlMaxPages.getAttribute('max'));
+            if (newMax > 10 && !_crawlEasterEggShown) {
+              _crawlEasterEggShown = true;
+              _showToast('Nice try! We see you editing the DOM \uD83D\uDE0F Fine, ' + CRAWL_HARD_MAX + ' is the real limit\u2026 but your proxy rate limit isn\u2019t.');
+              crawlMaxPages.setAttribute('max', CRAWL_HARD_MAX);
+            }
+          }
+        });
+      });
+      _crawlMaxObserver.observe(crawlMaxPages, { attributes: true, attributeFilter: ['max'] });
+      // Also catch when someone types >10 directly
+      crawlMaxPages.addEventListener('input', function() {
+        var val = parseInt(crawlMaxPages.value);
+        if (val > 10 && !_crawlEasterEggShown) {
+          _crawlEasterEggShown = true;
+          _showToast('Going beyond 10? Bold move \uD83D\uDE0F We\u2019ll allow up to ' + CRAWL_HARD_MAX + '. You found the secret ceiling!');
+          crawlMaxPages.setAttribute('max', CRAWL_HARD_MAX);
+        }
+      });
+    }
+
+    // Tab click delegation
+    if (crawlPageTabs) {
+      crawlPageTabs.addEventListener('click', function(e) {
+        var tab = e.target.closest('[data-crawl-page]');
+        if (!tab) return;
+        showCrawlPageContent(tab.getAttribute('data-crawl-page'));
+      });
+    }
+
+    // Cancel crawl
+    if (cancelCrawlBtn) {
+      cancelCrawlBtn.addEventListener('click', function() {
+        if (_crawlSession) MilgCrawl.abortCrawl(_crawlSession);
+        _analyzeUrlBtn.disabled = false;
+        _analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
+        cancelCrawlBtn.style.display = 'none';
+        crawlProgressLabel.textContent = 'Crawl cancelled';
+      });
+    }
+
+    // Check for completed snippet crawl on load
+    try {
+      var snippetCrawlData = localStorage.getItem('milg-crawl-complete');
+      if (snippetCrawlData) {
+        localStorage.removeItem('milg-crawl-complete');
+        var crawlState = JSON.parse(snippetCrawlData);
+        if (loadCrawlResults(crawlState, 'console snippet')) {
+          if (crawlSiteCheck) crawlSiteCheck.checked = true;
+          if (crawlOptions) crawlOptions.style.display = '';
+        }
+      }
+    } catch(e) { console.error('Failed to load snippet crawl data:', e); }
+
+    // Crawl export wiring
+    setupCrawlExports(document.getElementById('exportSeverityFilter'));
+  }
+
+  function resetCrawlState() {
+    _crawlSession = null;
+    _crawlPageReports = {};
+    if (crawlResults) crawlResults.style.display = 'none';
+    if (crawlPageContent) { crawlPageContent.style.display = 'none'; crawlPageContent.innerHTML = ''; }
+    if (crawlProgressArea) crawlProgressArea.style.display = 'none';
+  }
+
+  // Re-score all crawl pages (e.g. when profile changes)
+  function rescorePages() {
+    if (!_crawlSession || !_crawlSession.pages || _crawlSession.pages.length === 0) return false;
+    // Invalidate caches — profile change means all scores/reports are stale
+    _crawlPageReports = {};
+    _crawlSession.pages.forEach(function(page) {
+      if (page.status === 'done' && page.rawData) {
+        page.rawData.profile = document.getElementById('profileSelect').value;
+        delete page.rawData._cachedReportData;
+        page.reportData = MilgScoring.runScoring(page.rawData);
+      }
+    });
+    _crawlSession.summary = MilgCrawl.buildSummary(_crawlSession);
+    renderCrawlTabs();
+    showCrawlPageContent(_crawlActivePageTab);
+    return true;
+  }
+
+  return {
+    setup: setup,
+    getCrawlSession: getCrawlSession,
+    setCrawlSession: setCrawlSession,
+    getActiveTab: getActiveTab,
+    isCrawlMode: isCrawlMode,
+    isCrawlActive: isCrawlActive,
+    startCrawl: startCrawl,
+    loadCrawlResults: loadCrawlResults,
+    renderCrawlTabs: renderCrawlTabs,
+    showCrawlPageContent: showCrawlPageContent,
+    resetCrawlState: resetCrawlState,
+    rescorePages: rescorePages
+  };
 })();
 </file>
 
@@ -40507,7 +40507,7 @@ window.MilgIframe = (function() {
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v1.9 loaded');
+console.log('[milg] analyzer.js v2.0 loaded');
 
 (function() {
   "use strict";
@@ -41471,12 +41471,15 @@ console.log('[milg] analyzer.js v1.9 loaded');
     var _originalInputSectionHTML = inputSection.innerHTML;
 
     // Tab switching
+    var _analysisOptions = document.getElementById('analysisOptions');
     document.querySelectorAll('.tab-btn').forEach(function(btn) {
       btn.addEventListener('click', function() {
         document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
         document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
         btn.classList.add('active');
         document.getElementById(btn.dataset.tab).classList.add('active');
+        // Hide analysis options on Import tab — imported data has its own settings
+        if (_analysisOptions) _analysisOptions.style.display = (btn.dataset.tab === 'tabImport') ? 'none' : '';
       });
     });
 
@@ -41868,6 +41871,8 @@ console.log('[milg] analyzer.js v1.9 loaded');
             btn.classList.add('active');
             var target = document.getElementById(btn.dataset.tab);
             if (target) target.classList.add('active');
+            var ao = document.getElementById('analysisOptions');
+            if (ao) ao.style.display = (btn.dataset.tab === 'tabImport') ? 'none' : '';
           });
         });
       }
@@ -42244,7 +42249,7 @@ console.log('[milg] analyzer.js v1.9 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v1.9</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v2.0</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -42256,8 +42261,8 @@ console.log('[milg] analyzer.js v1.9 loaded');
       <button class="tab-btn" data-tab="tabImport">Load Saved<br><span class="tab-sub">(re-open analysis)</span></button>
     </div>
 
-    <!-- Shared screenshot options (applies to all tabs) -->
-    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;flex-wrap:wrap;font-size:12px;color:var(--text-secondary)">
+    <!-- Shared analysis options (hidden on Import tab — imported data has its own settings) -->
+    <div id="analysisOptions" style="display:flex;align-items:center;gap:10px;padding:8px 0;flex-wrap:wrap;font-size:12px;color:var(--text-secondary)">
       <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
         <input type="checkbox" id="screenshotCheck" checked style="width:15px;height:15px;cursor:pointer">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="13" r="4"/><path d="M5 3v2"/><path d="M19 3v2"/></svg>
@@ -42682,31 +42687,31 @@ console.log('[milg] analyzer.js v1.9 loaded');
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=1.9"></script>
-  <script src="scoring/contrast.js?v=1.9"></script>
-  <script src="scoring/typography.js?v=1.9"></script>
-  <script src="scoring/spacing.js?v=1.9"></script>
-  <script src="scoring/touch.js?v=1.9"></script>
-  <script src="scoring/accessibility.js?v=1.9"></script>
-  <script src="scoring/responsive.js?v=1.9"></script>
-  <script src="scoring/consistency.js?v=1.9"></script>
-  <script src="scoring/cognitive.js?v=1.9"></script>
-  <script src="scoring/layout.js?v=1.9"></script>
-  <script src="scoring/performance.js?v=1.9"></script>
-  <script src="scoring/readability.js?v=1.9"></script>
-  <script src="scoring/filters.js?v=1.9"></script>
-  <script src="scoring/balance.js?v=1.9"></script>
+  <script src="scoring/registry.js?v=2.0"></script>
+  <script src="scoring/contrast.js?v=2.0"></script>
+  <script src="scoring/typography.js?v=2.0"></script>
+  <script src="scoring/spacing.js?v=2.0"></script>
+  <script src="scoring/touch.js?v=2.0"></script>
+  <script src="scoring/accessibility.js?v=2.0"></script>
+  <script src="scoring/responsive.js?v=2.0"></script>
+  <script src="scoring/consistency.js?v=2.0"></script>
+  <script src="scoring/cognitive.js?v=2.0"></script>
+  <script src="scoring/layout.js?v=2.0"></script>
+  <script src="scoring/performance.js?v=2.0"></script>
+  <script src="scoring/readability.js?v=2.0"></script>
+  <script src="scoring/filters.js?v=2.0"></script>
+  <script src="scoring/balance.js?v=2.0"></script>
   <!-- Queue + Report rendering + UI -->
-  <script src="analyzer-queue.js?v=1.9"></script>
-  <script src="analyzer-report.js?v=1.9"></script>
-  <script src="analyzer-crawl.js?v=1.9"></script>
-  <script src="analyzer-extract.js?v=1.9"></script>
-  <script src="analyzer-iframe.js?v=1.9"></script>
-  <script src="analyzer-proxy.js?v=1.9"></script>
-  <script src="analyzer-crawl-ui.js?v=1.9"></script>
-  <script src="analyzer-contrast-verify.js?v=1.9"></script>
-  <script src="analyzer-viewer.js?v=1.9"></script>
-  <script src="analyzer.js?v=1.9"></script>
+  <script src="analyzer-queue.js?v=2.0"></script>
+  <script src="analyzer-report.js?v=2.0"></script>
+  <script src="analyzer-crawl.js?v=2.0"></script>
+  <script src="analyzer-extract.js?v=2.0"></script>
+  <script src="analyzer-iframe.js?v=2.0"></script>
+  <script src="analyzer-proxy.js?v=2.0"></script>
+  <script src="analyzer-crawl-ui.js?v=2.0"></script>
+  <script src="analyzer-contrast-verify.js?v=2.0"></script>
+  <script src="analyzer-viewer.js?v=2.0"></script>
+  <script src="analyzer.js?v=2.0"></script>
 </body>
 </html>
 </file>
