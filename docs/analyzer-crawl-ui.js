@@ -92,7 +92,12 @@ window.MilgCrawlUI = (function() {
     if (reportActions) reportActions.style.display = crawlDone ? 'flex' : 'none';
     if (key === 'summary') {
       var summary = _crawlSession.summary || MilgCrawl.buildSummary(_crawlSession);
-      crawlPageContent.innerHTML = MilgReport.renderCrawlSummary(summary);
+      var _ephBanner = crawlDone ? '<div style="padding:8px 14px;margin-bottom:12px;background:var(--surface);border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+        '<span style="font-size:14px">&#9432;</span>' +
+        '<span>Crawl results are temporary and will be lost when you close this page.</span>' +
+        '<button class="btn" style="font-size:11px;padding:3px 10px;min-height:26px;margin-left:auto" onclick="document.getElementById(\'crawlExportJson\').click()">Export JSON</button>' +
+        '</div>' : '';
+      crawlPageContent.innerHTML = _ephBanner + MilgReport.renderCrawlSummary(summary);
       crawlPageContent.style.display = '';
       crawlPageContent.className = 'report-container visible';
       if (reportContainer) { reportContainer.style.display = 'none'; reportContainer.className = 'report-container'; }

@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v55.2 loaded');
+console.log('[milg] analyzer.js v55.3 loaded');
 
 (function() {
   "use strict";
@@ -220,18 +220,41 @@ console.log('[milg] analyzer.js v55.2 loaded');
   var HISTORY_KEY = 'milg-analysis-history';
   var HISTORY_MAX = 10;
 
+  function _settingsKey() {
+    var parts = [];
+    var profile = document.getElementById('profileSelect');
+    if (profile) parts.push(profile.value);
+    var deep = document.getElementById('deepScanCheck');
+    if (deep && deep.checked) parts.push('deep');
+    var vp = document.getElementById('viewportSelect');
+    if (vp) parts.push(vp.value);
+    var pv = document.getElementById('pixelVerifyCheck');
+    if (pv && pv.checked) parts.push('pxv');
+    return parts.join('|');
+  }
+
   function saveToHistory(data, score, grade) {
     try {
       var history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
       var entryUrl = (data.meta && data.meta.url) || 'Unknown';
       var entryProfile = data.profile || 'general';
+      var settingsHash = _settingsKey();
 
-      // Dedup: don't add if same URL + profile already exists as the most recent entry
-      if (history.length > 0 && history[0].url === entryUrl && history[0].profile === entryProfile) {
-        // Update existing entry instead of adding duplicate
-        history[0].timestamp = new Date().toISOString();
-        history[0].score = score;
-        history[0].grade = grade;
+      // Dedup: find existing entry with same URL + settings, update it instead of adding duplicate
+      var existingIdx = -1;
+      for (var i = 0; i < history.length; i++) {
+        if (history[i].url === entryUrl && (history[i].settings || '') === settingsHash) {
+          existingIdx = i; break;
+        }
+      }
+      if (existingIdx >= 0) {
+        // Update existing entry and move to top
+        var existing = history.splice(existingIdx, 1)[0];
+        existing.timestamp = new Date().toISOString();
+        existing.score = score;
+        existing.grade = grade;
+        existing.title = (data.meta && data.meta.title) || existing.title;
+        history.unshift(existing);
       } else {
         var entry = {
           url: entryUrl,
@@ -240,6 +263,7 @@ console.log('[milg] analyzer.js v55.2 loaded');
           score: score,
           grade: grade,
           profile: entryProfile,
+          settings: settingsHash,
           elements: (data.structure && data.structure.totalElements) || 0,
           contrastPairs: (data.colors && data.colors.contrastPairs) ? data.colors.contrastPairs.length : 0,
           inputMethod: (data.meta && data.meta._inputMethod) || ''
@@ -265,9 +289,17 @@ console.log('[milg] analyzer.js v55.2 loaded');
       var dateStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       var urlShort = (entry.url || '').replace(/^https?:\/\//, '').substring(0, 40);
       var label = entry.title ? entry.title.substring(0, 30) : urlShort;
-      html += '<div class="history-item" title="' + (entry.url || '').replace(/"/g, '&quot;') + (entry.elements ? '\n' + entry.elements + ' elements, ' + (entry.contrastPairs || 0) + ' contrast pairs' : '') + '">';
+      var settingsBadges = '';
+      if (entry.settings) {
+        var parts = entry.settings.split('|');
+        parts.forEach(function(p) {
+          if (p === 'deep') settingsBadges += '<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:var(--accent);color:#fff;margin-left:3px">deep</span>';
+          else if (p === 'pxv') settingsBadges += '<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:#8b5cf6;color:#fff;margin-left:3px">verify</span>';
+        });
+      }
+      html += '<div class="history-item" title="' + (entry.url || '').replace(/"/g, '&quot;') + (entry.elements ? '\n' + entry.elements + ' elements, ' + (entry.contrastPairs || 0) + ' contrast pairs' : '') + (entry.settings ? '\nSettings: ' + entry.settings : '') + '">';
       html += '<span class="history-score" style="color:' + (entry.score >= 80 ? '#16a34a' : entry.score >= 60 ? '#ca8a04' : '#dc2626') + '">' + entry.score + '</span>';
-      html += '<span class="history-url">' + label + '</span>';
+      html += '<span class="history-url">' + label + settingsBadges + '</span>';
       html += '<span class="history-date">' + dateStr + '</span>';
       html += '<button class="history-delete" onclick="event.stopPropagation();window.__milgDeleteHistory(' + idx + ')" title="Remove from history">&times;</button>';
       html += '</div>';
@@ -780,7 +812,12 @@ console.log('[milg] analyzer.js v55.2 loaded');
         '</div>';
     }
 
-    reportContainer.innerHTML = warningHtml + suggestionsHtml + MilgReport.renderReport(reportData);
+    var ephemeralBanner = '<div style="padding:8px 14px;margin-bottom:12px;background:var(--surface);border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+      '<span style="font-size:14px">&#9432;</span>' +
+      '<span>Results are temporary and will be lost when you close this page.</span>' +
+      '<button class="btn" style="font-size:11px;padding:3px 10px;min-height:26px;margin-left:auto" onclick="document.getElementById(\'exportJsonBtn\').click()">Export JSON</button>' +
+      '</div>';
+    reportContainer.innerHTML = ephemeralBanner + warningHtml + suggestionsHtml + MilgReport.renderReport(reportData);
     reportContainer.classList.add('visible');
     inputSection.style.display = 'none';
     // Render viewport tabs for deep scan results
