@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v55.6 loaded');
+console.log('[milg] analyzer.js v55.7 loaded');
 
 (function() {
   "use strict";
@@ -517,37 +517,14 @@ console.log('[milg] analyzer.js v55.6 loaded');
       delete switchedData._cachedReportData;
       // Keep _contrastVerifyResults so runAnalysis sees them as precomputed (no re-verify)
       runAnalysis(switchedData, 'viewport');
-      _viewportCache[idx] = {
-        data: switchedData,
-        reportData: reportData,
-        html: reportContainer ? reportContainer.innerHTML : ''
-      };
-      // On-demand verify: if verify wasn't precomputed for this viewport but user wants it
-      var pvCheck = document.getElementById('pixelVerifyCheck');
-      var wantPV = pvCheck ? pvCheck.checked : false;
-      if (wantPV && !switchedData._contrastVerifyResults && window.MilgContrastVerify &&
-          switchedData.screenshots && switchedData.screenshots.length && switchedData.screenshotMeta) {
-        var scored = reportData; // already scored above
-        MilgContrastVerify.verify(scored, function(results, bboxEdge) {
-          if (_activeViewportIdx !== idx) return; // user switched away during verify
-          switchedData._contrastVerifyResults = results || [];
-          switchedData._bboxEdgeResults = bboxEdge || [];
-          srcData._contrastVerifyResults = results || [];
-          srcData._bboxEdgeResults = bboxEdge || [];
-          // Re-render verify section into the current report
-          var summary = MilgContrastVerify.buildSummary(results || [], bboxEdge || []);
-          var summaryHtml = MilgContrastVerify.renderSummaryHtml(summary);
-          if (summaryHtml && reportContainer) {
-            var screenshotDetails = reportContainer.querySelector('.report-screenshots');
-            var div = document.createElement('div');
-            div.innerHTML = summaryHtml;
-            if (screenshotDetails) screenshotDetails.parentNode.insertBefore(div, screenshotDetails.nextSibling);
-            else reportContainer.insertBefore(div, reportContainer.firstChild);
-          }
-          // Update cache
-          delete _viewportCache[idx];
-          _viewportCache[idx] = { data: switchedData, reportData: reportData, html: reportContainer ? reportContainer.innerHTML : '' };
-        });
+      // Don't cache yet — verify may run async and update the DOM. Cache after verify completes.
+      // For precomputed verify: results are rendered synchronously inside runAnalysis, cache now.
+      // For async verify: the verify callback will update the cache (see runAnalysis verify callback).
+      if (switchedData._contrastVerifyResults) {
+        _viewportCache[idx] = { data: switchedData, reportData: reportData, html: reportContainer ? reportContainer.innerHTML : '' };
+      } else {
+        // Mark that this viewport needs cache update after verify completes
+        switchedData._vpCacheIdx = idx;
       }
     }, 0);
   };
@@ -913,26 +890,39 @@ console.log('[milg] analyzer.js v55.6 loaded');
       var _spinnerAnchor = reportContainer.querySelector('.report-screenshots');
       if (_spinnerAnchor) _spinnerAnchor.parentNode.insertBefore(_verifySpinner, _spinnerAnchor.nextSibling);
       else reportContainer.insertBefore(_verifySpinner, reportContainer.firstChild);
-      MilgContrastVerify.verify(reportData, function(results, bboxEdgeResults) {
-        console.log('[milg] Pixel verify complete:', results.length, 'results,', (bboxEdgeResults || []).length, 'edge results');
-        // Remove spinner
-        var spinner = document.getElementById('milg-verify-spinner');
-        if (spinner) spinner.parentNode.removeChild(spinner);
-        if (results.length === 0 && (!bboxEdgeResults || bboxEdgeResults.length === 0)) return;
-        var summary = MilgContrastVerify.buildSummary(results, bboxEdgeResults);
-        var summaryHtml = MilgContrastVerify.renderSummaryHtml(summary);
-        if (!summaryHtml) return;
-        var screenshotDetails = reportContainer.querySelector('.report-screenshots');
-        var div = document.createElement('div');
-        div.innerHTML = summaryHtml;
-        if (screenshotDetails) screenshotDetails.parentNode.insertBefore(div, screenshotDetails.nextSibling);
-        else reportContainer.insertBefore(div, reportContainer.firstChild);
-        reportData._contrastVerifyResults = results;
-        reportData._bboxEdgeResults = bboxEdgeResults || [];
-        // Cache on raw data so crawl tab switches reuse results instead of re-computing
-        data._contrastVerifyResults = results;
-        data._bboxEdgeResults = bboxEdgeResults || [];
-      });
+      // Yield a frame so the spinner paints and animates before verify starts
+      var _verifyData = data;
+      var _verifyReportData = reportData;
+      var _verifyContainer = reportContainer;
+      requestAnimationFrame(function() { setTimeout(function() {
+        MilgContrastVerify.verify(_verifyReportData, function(results, bboxEdgeResults) {
+          console.log('[milg] Pixel verify complete:', results.length, 'results,', (bboxEdgeResults || []).length, 'edge results');
+          // Remove spinner
+          var spinner = document.getElementById('milg-verify-spinner');
+          if (spinner) spinner.parentNode.removeChild(spinner);
+          if (results.length === 0 && (!bboxEdgeResults || bboxEdgeResults.length === 0)) return;
+          var summary = MilgContrastVerify.buildSummary(results, bboxEdgeResults);
+          var summaryHtml = MilgContrastVerify.renderSummaryHtml(summary);
+          if (!summaryHtml) return;
+          var screenshotDetails = _verifyContainer.querySelector('.report-screenshots');
+          var div = document.createElement('div');
+          div.innerHTML = summaryHtml;
+          if (screenshotDetails) screenshotDetails.parentNode.insertBefore(div, screenshotDetails.nextSibling);
+          else _verifyContainer.insertBefore(div, _verifyContainer.firstChild);
+          _verifyReportData._contrastVerifyResults = results;
+          _verifyReportData._bboxEdgeResults = bboxEdgeResults || [];
+          // Cache on raw data so viewport/crawl tab switches reuse results
+          _verifyData._contrastVerifyResults = results;
+          _verifyData._bboxEdgeResults = bboxEdgeResults || [];
+          // Update viewport cache if this was a viewport switch
+          if (_verifyData._vpCacheIdx !== undefined) {
+            _viewportCache[_verifyData._vpCacheIdx] = {
+              data: _verifyData, reportData: _verifyReportData,
+              html: _verifyContainer ? _verifyContainer.innerHTML : ''
+            };
+          }
+        });
+      }, 0); });
     }
   }
 
