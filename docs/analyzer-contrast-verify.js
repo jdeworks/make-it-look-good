@@ -270,10 +270,8 @@ window.MilgContrastVerify = (function() {
     var ratioDiff = Math.abs(p10Ratio - pair.ratio);
     var bgVariance = bestRatio - worstRatio;
     // Distinguish real BG variance (gradient/photo) from FG AA pixel variance on solid BG
-    // Check if CSS declares a single bg color — if so, BG is solid and variance is from FG AA
-    var cssBgIsSolid = pair.bg && !/gradient|image|url/i.test(pair.bg);
-    // Also measure actual BG color spread: max channel delta across all BG samples
-    var bgColorSpread = 0;
+    // Measure actual pixel color spread for both FG and BG samples
+    var bgColorSpread = 0, fgColorSpread = 0;
     if (bgColors.length > 1) {
       var bgMinR = 255, bgMaxR = 0, bgMinG = 255, bgMaxG = 0, bgMinB = 255, bgMaxB = 0;
       bgColors.forEach(function(c) {
@@ -283,14 +281,24 @@ window.MilgContrastVerify = (function() {
       });
       bgColorSpread = Math.max(bgMaxR - bgMinR, bgMaxG - bgMinG, bgMaxB - bgMinB);
     }
-    // Variable BG = large ratio spread AND BG pixels actually differ (not just FG AA)
-    var isVariableBg = bgVariance > 3.0 && (bgColorSpread > 15 || !cssBgIsSolid);
-    var isFgAaVariance = bgVariance > 3.0 && !isVariableBg;
+    if (fgColors.length > 1) {
+      var fgMinR = 255, fgMaxR = 0, fgMinG = 255, fgMaxG = 0, fgMinB = 255, fgMaxB = 0;
+      fgColors.forEach(function(c) {
+        if (c.r < fgMinR) fgMinR = c.r; if (c.r > fgMaxR) fgMaxR = c.r;
+        if (c.g < fgMinG) fgMinG = c.g; if (c.g > fgMaxG) fgMaxG = c.g;
+        if (c.b < fgMinB) fgMinB = c.b; if (c.b > fgMaxB) fgMaxB = c.b;
+      });
+      fgColorSpread = Math.max(fgMaxR - fgMinR, fgMaxG - fgMinG, fgMaxB - fgMinB);
+    }
+    // Variable BG: BG pixels actually differ significantly (gradient/photo)
+    // FG AA variance: BG is uniform but FG varies from sub-pixel antialiasing
+    var isVariableBg = bgVariance > 3.0 && bgColorSpread > 15;
+    var isFgAaVariance = bgVariance > 3.0 && bgColorSpread <= 15 && fgColorSpread > 10;
     return {
       cssRatio: pair.ratio, neededRatio: cssNeeded,
       pixelRatio: p10Ratio, pixelRatioWorst: worstRatio, pixelRatioAvg: avgRatio, pixelRatioBest: bestRatio,
       bgVariance: Math.round(bgVariance * 100) / 100,
-      bgColorSpread: bgColorSpread,
+      bgColorSpread: bgColorSpread, fgColorSpread: fgColorSpread,
       isVariableBg: isVariableBg, isFgAaVariance: isFgAaVariance, ratioDiff: ratioDiff,
       cssPasses: cssPasses, pixelPasses: pixelPasses,
       crossesBoundary: cssPasses !== pixelPasses,
@@ -1017,9 +1025,8 @@ window.MilgContrastVerify = (function() {
 
     // Flag high BG variance as a signal for photo/gradient backgrounds
     var bgVariance = bestRatio - worstRatio;
-    // Distinguish real BG variance from FG AA variance (same logic as buildResult)
-    var cssBgIsSolid = pair.bg && !/gradient|image|url/i.test(pair.bg);
-    var bgColorSpread = 0;
+    // Distinguish real BG variance from FG AA variance — sample both FG and BG spread
+    var bgColorSpread = 0, fgColorSpread = 0;
     if (pairedBgColors.length > 1) {
       var bgMinR = 255, bgMaxR = 0, bgMinG = 255, bgMaxG = 0, bgMinB = 255, bgMaxB = 0;
       pairedBgColors.forEach(function(c) {
@@ -1029,8 +1036,17 @@ window.MilgContrastVerify = (function() {
       });
       bgColorSpread = Math.max(bgMaxR - bgMinR, bgMaxG - bgMinG, bgMaxB - bgMinB);
     }
-    var isVariableBg = bgVariance > 3.0 && (bgColorSpread > 15 || !cssBgIsSolid);
-    var isFgAaVariance = bgVariance > 3.0 && !isVariableBg;
+    if (pairedFgColors.length > 1) {
+      var fgMinR = 255, fgMaxR = 0, fgMinG = 255, fgMaxG = 0, fgMinB = 255, fgMaxB = 0;
+      pairedFgColors.forEach(function(c) {
+        if (c.r < fgMinR) fgMinR = c.r; if (c.r > fgMaxR) fgMaxR = c.r;
+        if (c.g < fgMinG) fgMinG = c.g; if (c.g > fgMaxG) fgMaxG = c.g;
+        if (c.b < fgMinB) fgMinB = c.b; if (c.b > fgMaxB) fgMaxB = c.b;
+      });
+      fgColorSpread = Math.max(fgMaxR - fgMinR, fgMaxG - fgMinG, fgMaxB - fgMinB);
+    }
+    var isVariableBg = bgVariance > 3.0 && bgColorSpread > 15;
+    var isFgAaVariance = bgVariance > 3.0 && bgColorSpread <= 15 && fgColorSpread > 10;
 
     return {
       cssRatio: cssRatio,
@@ -1040,7 +1056,7 @@ window.MilgContrastVerify = (function() {
       pixelRatioAvg: avgRatio,        // average background
       pixelRatioBest: bestRatio,      // best-case spot
       bgVariance: Math.round(bgVariance * 100) / 100,
-      bgColorSpread: bgColorSpread,
+      bgColorSpread: bgColorSpread, fgColorSpread: fgColorSpread,
       isVariableBg: isVariableBg,     // photo/gradient detected
       isFgAaVariance: isFgAaVariance, // ratio spread from FG antialiasing, not BG
       ratioDiff: ratioDiff,
