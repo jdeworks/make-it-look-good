@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v1.4 loaded');
+console.log('[milg] analyzer.js v1.5 loaded');
 
 (function() {
   "use strict";
@@ -956,7 +956,6 @@ console.log('[milg] analyzer.js v1.4 loaded');
     var snippetCode = document.getElementById('snippetCode');
     var copySnippetBtn = document.getElementById('copySnippetBtn');
     var newAnalysisBtn = document.getElementById('newAnalysisBtn');
-    var printBtn = document.getElementById('printBtn');
     var analyzeUrlBtn = document.getElementById('analyzeUrlBtn');
     var urlInput = document.getElementById('urlInput');
     var urlStatus = document.getElementById('urlStatus');
@@ -1393,12 +1392,14 @@ console.log('[milg] analyzer.js v1.4 loaded');
       showToast('Markdown report downloaded');
     });
 
-    // Copy markdown to clipboard (without images for easy pasting)
+    // Copy for LLM — filtered findings only, no images/masks
     document.getElementById('copyMdBtn').addEventListener('click', function() {
       if (!reportData) return;
-      var md = MilgReport.renderMarkdown(reportData, { skipImages: true });
+      var filter = document.getElementById('exportSeverityFilter');
+      var severity = filter ? filter.value : 'all';
+      var md = MilgReport.renderMarkdown(reportData, { skipImages: true, severityFilter: severity });
       navigator.clipboard.writeText(md).then(function() {
-        showToast('Markdown copied (without images)');
+        showToast('Findings copied for LLM (' + severity + ')');
       }).catch(function() {
         // Fallback
         var ta = document.createElement('textarea');
@@ -1412,26 +1413,14 @@ console.log('[milg] analyzer.js v1.4 loaded');
       });
     });
 
-    // Print/PDF
-    printBtn.addEventListener('click', function() {
-      window.print();
-    });
-
-    // Export JSON — save analysis data for re-import or sharing
+    // Export .milg — compressed dump with full analysis data (screenshots, masks, verify)
     var _exportJsonBtn = document.getElementById('exportJsonBtn');
-    _exportJsonBtn.addEventListener('click', function() {
-      if (!lastRawData) return;
-      var origLabel = _exportJsonBtn.innerHTML;
-      _exportJsonBtn.disabled = true;
-      _exportJsonBtn.innerHTML = '<span style="display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite;vertical-align:middle"></span> <span class="btn-label">Exporting\u2026</span>';
-      requestAnimationFrame(function() { setTimeout(function() {
-      try {
-      // Clone data, handling deepScan carefully (has circular refs via viewportData[].data.deepScan)
-      var exportData;
+    // Shared: build export data object (breaks circular refs, keeps all content)
+    function _buildExportData() {
       var _replacer = function(k, v) { return (k === 'deepScan' || k === '_cachedReportData' || k === '_vpCacheIdx') ? undefined : v; };
+      var exportData;
       if (typeof structuredClone === 'function') {
-        var _tmpDs = lastRawData.deepScan;
-        var _tmpCached = lastRawData._cachedReportData;
+        var _tmpDs = lastRawData.deepScan, _tmpCached = lastRawData._cachedReportData;
         if (_tmpDs) lastRawData.deepScan = undefined;
         if (_tmpCached) lastRawData._cachedReportData = undefined;
         exportData = structuredClone(lastRawData);
@@ -1440,22 +1429,17 @@ console.log('[milg] analyzer.js v1.4 loaded');
       } else {
         exportData = JSON.parse(JSON.stringify(lastRawData, _replacer));
       }
-      // Re-attach deepScan with viewportData (strip screenshots from non-primary viewports + break circular refs)
+      // Re-attach deepScan with viewportData (break circular deepScan refs but keep all data)
       if (lastRawData.deepScan) {
         var ds = lastRawData.deepScan;
         var exportDs = { viewports: ds.viewports, darkMode: ds.darkMode };
         if (ds.viewportData) {
-          exportDs.viewportData = ds.viewportData.map(function(vd, vi) {
+          exportDs.viewportData = ds.viewportData.map(function(vd) {
             if (!vd || !vd.data) return null;
-            // Clone viewport data without circular deepScan ref
             var vpClone = JSON.parse(JSON.stringify(vd.data, _replacer));
-            // Strip screenshots from non-primary viewports to keep export size down
-            if (vi > 0) { delete vpClone.screenshots; delete vpClone.screenshotsUnhidden; }
-            // Include pixel verify results if cached on this viewport
+            // Include verify results
             if (vd.data._contrastVerifyResults) {
-              vpClone._contrastVerifyResults = vd.data._contrastVerifyResults.map(function(r) {
-                var copy = Object.assign({}, r); delete copy._debug; delete copy.samplePoints; return copy;
-              });
+              vpClone._contrastVerifyResults = vd.data._contrastVerifyResults;
               vpClone._bboxEdgeResults = vd.data._bboxEdgeResults || [];
             }
             return { label: vd.label, width: vd.width, data: vpClone };
@@ -1463,61 +1447,109 @@ console.log('[milg] analyzer.js v1.4 loaded');
         }
         exportData.deepScan = exportDs;
       }
-      // Include pixel verify results if available
       if (reportData && reportData._contrastVerifyResults) {
-        exportData._contrastVerifyResults = reportData._contrastVerifyResults.map(function(r) {
-          var copy = Object.assign({}, r);
-          delete copy._debug; // strip debug data to reduce size
-          delete copy.samplePoints; // strip per-pixel data
-          return copy;
-        });
+        exportData._contrastVerifyResults = reportData._contrastVerifyResults;
       }
       if (reportData && reportData._bboxEdgeResults) {
         exportData._bboxEdgeResults = reportData._bboxEdgeResults;
       }
-      var json = JSON.stringify(exportData, null, 2);
-      var blob = new Blob([json], { type: 'application/json' });
-      var url = URL.createObjectURL(blob);
-      var a = document.createElement('a');
-      a.href = url;
-      var siteName = (exportData.meta && exportData.meta.url) || 'analysis';
-      a.download = 'milg-report-' + siteName.replace(/[^a-z0-9]/gi, '-').substring(0, 40) + '.json';
-      a.click();
-      URL.revokeObjectURL(url);
-      showToast('JSON exported (' + Math.round(json.length / 1024) + ' KB)');
-      } catch(err) { showToast('Export failed: ' + err.message); }
-      _exportJsonBtn.disabled = false;
-      _exportJsonBtn.innerHTML = origLabel;
+      return exportData;
+    }
+
+    // Compress JSON to gzip blob
+    function _compressToBlob(json, callback) {
+      if (typeof CompressionStream === 'undefined') {
+        // Fallback: save as uncompressed JSON
+        callback(new Blob([json], { type: 'application/json' }), json.length, false);
+        return;
+      }
+      var blob = new Blob([json]);
+      var cs = new CompressionStream('gzip');
+      var stream = blob.stream().pipeThrough(cs);
+      new Response(stream).blob().then(function(compressed) {
+        callback(compressed, json.length, true);
+      }).catch(function() {
+        callback(new Blob([json], { type: 'application/json' }), json.length, false);
+      });
+    }
+
+    _exportJsonBtn.addEventListener('click', function() {
+      if (!lastRawData) return;
+      var origLabel = _exportJsonBtn.innerHTML;
+      _exportJsonBtn.disabled = true;
+      _exportJsonBtn.innerHTML = '<span style="display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite;vertical-align:middle"></span> <span class="btn-label">Exporting\u2026</span>';
+      requestAnimationFrame(function() { setTimeout(function() {
+        try {
+          var exportData = _buildExportData();
+          var json = JSON.stringify(exportData);
+          _compressToBlob(json, function(blob, rawSize, compressed) {
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            var siteName = (exportData.meta && exportData.meta.url) || 'analysis';
+            a.download = 'milg-report-' + siteName.replace(/[^a-z0-9]/gi, '-').substring(0, 40) + (compressed ? '.milg' : '.json');
+            a.click();
+            URL.revokeObjectURL(url);
+            var sizeKB = Math.round(blob.size / 1024);
+            var ratio = compressed ? ' (' + Math.round(rawSize / 1024) + ' KB → ' + sizeKB + ' KB)' : '';
+            showToast('Exported ' + sizeKB + ' KB' + ratio);
+            _exportJsonBtn.disabled = false;
+            _exportJsonBtn.innerHTML = origLabel;
+          });
+        } catch(err) {
+          showToast('Export failed: ' + err.message);
+          _exportJsonBtn.disabled = false;
+          _exportJsonBtn.innerHTML = origLabel;
+        }
       }, 0); });
     });
 
     // Import JSON — load a previously exported analysis (report action bar + drop zone)
     var importFileInput = document.getElementById('importJsonFile');
+    function _processImportedData(data) {
+      if (data._milgCrawl && data.results) {
+        MilgCrawlUI.loadCrawlResults(data, 'imported file');
+        return;
+      }
+      if (!data.meta || !data.colors) throw new Error('Invalid format');
+      var ssCheck = document.getElementById('screenshotCheck');
+      var pvCheck = document.getElementById('pixelVerifyCheck');
+      var dsCheck = document.getElementById('deepScanCheck');
+      if (ssCheck) ssCheck.checked = !!(data.screenshots && data.screenshots.length);
+      if (pvCheck) pvCheck.checked = !!data._contrastVerifyResults;
+      if (dsCheck) dsCheck.checked = !!(data.deepScan && data.deepScan.viewportData);
+      runAnalysis(data);
+      showToast('Analysis imported: ' + (data.meta.url || 'unknown'));
+    }
     function handleImportFile(file) {
       if (!file) return;
+      // Try JSON first (quick check of first bytes), then gzip decompress
       var reader = new FileReader();
       reader.onload = function() {
-        try {
-          var data = JSON.parse(reader.result);
-          if (data._milgCrawl && data.results) {
-            MilgCrawlUI.loadCrawlResults(data, 'imported file');
+        var buf = reader.result;
+        var firstBytes = new Uint8Array(buf, 0, 2);
+        var isGzip = (firstBytes[0] === 0x1f && firstBytes[1] === 0x8b);
+        if (isGzip) {
+          if (typeof DecompressionStream === 'undefined') {
+            showToast('Browser does not support DecompressionStream for .milg files');
             return;
           }
-          if (!data.meta || !data.colors) throw new Error('Invalid format');
-          // Disable options that don't apply to imported data — analysis settings are baked in
-          var ssCheck = document.getElementById('screenshotCheck');
-          var pvCheck = document.getElementById('pixelVerifyCheck');
-          var dsCheck = document.getElementById('deepScanCheck');
-          if (ssCheck) ssCheck.checked = !!(data.screenshots && data.screenshots.length);
-          if (pvCheck) pvCheck.checked = !!data._contrastVerifyResults;
-          if (dsCheck) dsCheck.checked = !!(data.deepScan && data.deepScan.viewportData);
-          runAnalysis(data);
-          showToast('Analysis imported: ' + (data.meta.url || 'unknown'));
-        } catch(e) {
-          showToast('Invalid JSON: ' + e.message);
+          var ds = new DecompressionStream('gzip');
+          var stream = new Blob([buf]).stream().pipeThrough(ds);
+          new Response(stream).text().then(function(json) {
+            try { _processImportedData(JSON.parse(json)); }
+            catch(e) { showToast('Invalid .milg file: ' + e.message); }
+          }).catch(function(e) { showToast('Decompression failed: ' + e.message); });
+        } else {
+          try {
+            var text = new TextDecoder().decode(buf);
+            _processImportedData(JSON.parse(text));
+          } catch(e) {
+            showToast('Invalid file: ' + e.message);
+          }
         }
       };
-      reader.readAsText(file);
+      reader.readAsArrayBuffer(file);
     }
 
     // Drop zone (Import tab)

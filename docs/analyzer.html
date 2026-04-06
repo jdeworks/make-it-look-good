@@ -31,7 +31,7 @@
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v1.4</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v1.5</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -283,8 +283,8 @@
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
         </svg>
         <p style="font-size:14px;font-weight:600;margin-bottom:4px">Load a saved analysis</p>
-        <p style="font-size:12px;color:var(--text-secondary)">Drop a <code>.json</code> file here or click to browse. Supports single-page and crawl exports.</p>
-        <input type="file" id="importDropFile" accept=".json" style="display:none">
+        <p style="font-size:12px;color:var(--text-secondary)">Drop a <code>.milg</code> or <code>.json</code> file here or click to browse.</p>
+        <input type="file" id="importDropFile" accept=".milg,.json" style="display:none">
       </div>
     </div>
   </div>
@@ -296,7 +296,7 @@
   <div id="ephemeralBanner" style="display:none;padding:8px 14px;margin-bottom:8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--text-secondary);align-items:center;gap:8px;flex-wrap:wrap">
     <span style="font-size:14px">&#9432;</span>
     <span>Results are temporary and will be lost when you close this page.</span>
-    <button class="btn" style="font-size:11px;padding:3px 10px;min-height:26px;margin-left:auto" onclick="document.getElementById('exportJsonBtn').click()">Export JSON</button>
+    <button class="btn" style="font-size:11px;padding:3px 10px;min-height:26px;margin-left:auto" onclick="document.getElementById('exportJsonBtn').click()">Export .milg</button>
   </div>
   <!-- Report controls (shown when report is visible) -->
   <div class="report-controls" id="reportActions">
@@ -365,29 +365,25 @@
     <details class="export-details" open>
       <summary class="export-summary">Export &amp; Share</summary>
     <div class="report-controls-row">
-      <select id="exportSeverityFilter" class="btn" title="Filter exported findings by severity" style="padding:4px 24px 4px 8px;font-size:12px;appearance:auto;cursor:pointer">
+      <button class="btn" id="exportJsonBtn" title="Save full analysis as compressed .milg file (screenshots, masks, verify data — re-importable)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span class="btn-label">Export .milg</span>
+      </button>
+      <button class="btn" id="markdownBtn" title="Download full Markdown report with embedded images">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        <span class="btn-label">Export .md</span>
+      </button>
+      <span style="border-left:1px solid var(--border);height:24px;margin:0 4px"></span>
+      <select id="exportSeverityFilter" class="btn" title="Filter findings for LLM copy" style="padding:4px 24px 4px 8px;font-size:12px;appearance:auto;cursor:pointer">
         <option value="all">All findings</option>
         <option value="warning">Warnings + Errors</option>
         <option value="error">Errors only</option>
       </select>
-      <button class="btn" id="copyMdBtn" title="Copy Markdown without images (for pasting into chat/docs)">
+      <button class="btn" id="copyMdBtn" title="Copy findings as Markdown for LLM — images and masks excluded, only actionable issues. Respects the severity filter.">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-        <span class="btn-label">Copy Markdown</span>
+        <span class="btn-label">Copy for LLM</span>
       </button>
-      <button class="btn" id="markdownBtn" title="Download as .md file">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-        <span class="btn-label">.md</span>
-      </button>
-      <button class="btn" id="printBtn" title="Print or save as PDF">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-        <span class="btn-label">PDF</span>
-      </button>
-      <button class="btn" id="exportJsonBtn" title="Save analysis as JSON (re-importable)">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        <span class="btn-label">JSON</span>
-      </button>
-      <!-- Load Saved is on the Import tab only, not in report actions -->
-      <input type="file" id="importJsonFile" accept=".json" style="display:none">
+      <input type="file" id="importJsonFile" accept=".json,.milg" style="display:none">
     </div>
     </details>
   </div>
@@ -473,30 +469,30 @@
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=1.4"></script>
-  <script src="scoring/contrast.js?v=1.4"></script>
-  <script src="scoring/typography.js?v=1.4"></script>
-  <script src="scoring/spacing.js?v=1.4"></script>
-  <script src="scoring/touch.js?v=1.4"></script>
-  <script src="scoring/accessibility.js?v=1.4"></script>
-  <script src="scoring/responsive.js?v=1.4"></script>
-  <script src="scoring/consistency.js?v=1.4"></script>
-  <script src="scoring/cognitive.js?v=1.4"></script>
-  <script src="scoring/layout.js?v=1.4"></script>
-  <script src="scoring/performance.js?v=1.4"></script>
-  <script src="scoring/readability.js?v=1.4"></script>
-  <script src="scoring/filters.js?v=1.4"></script>
-  <script src="scoring/balance.js?v=1.4"></script>
+  <script src="scoring/registry.js?v=1.5"></script>
+  <script src="scoring/contrast.js?v=1.5"></script>
+  <script src="scoring/typography.js?v=1.5"></script>
+  <script src="scoring/spacing.js?v=1.5"></script>
+  <script src="scoring/touch.js?v=1.5"></script>
+  <script src="scoring/accessibility.js?v=1.5"></script>
+  <script src="scoring/responsive.js?v=1.5"></script>
+  <script src="scoring/consistency.js?v=1.5"></script>
+  <script src="scoring/cognitive.js?v=1.5"></script>
+  <script src="scoring/layout.js?v=1.5"></script>
+  <script src="scoring/performance.js?v=1.5"></script>
+  <script src="scoring/readability.js?v=1.5"></script>
+  <script src="scoring/filters.js?v=1.5"></script>
+  <script src="scoring/balance.js?v=1.5"></script>
   <!-- Queue + Report rendering + UI -->
-  <script src="analyzer-queue.js?v=1.4"></script>
-  <script src="analyzer-report.js?v=1.4"></script>
-  <script src="analyzer-crawl.js?v=1.4"></script>
-  <script src="analyzer-extract.js?v=1.4"></script>
-  <script src="analyzer-iframe.js?v=1.4"></script>
-  <script src="analyzer-proxy.js?v=1.4"></script>
-  <script src="analyzer-crawl-ui.js?v=1.4"></script>
-  <script src="analyzer-contrast-verify.js?v=1.4"></script>
-  <script src="analyzer-viewer.js?v=1.4"></script>
-  <script src="analyzer.js?v=1.4"></script>
+  <script src="analyzer-queue.js?v=1.5"></script>
+  <script src="analyzer-report.js?v=1.5"></script>
+  <script src="analyzer-crawl.js?v=1.5"></script>
+  <script src="analyzer-extract.js?v=1.5"></script>
+  <script src="analyzer-iframe.js?v=1.5"></script>
+  <script src="analyzer-proxy.js?v=1.5"></script>
+  <script src="analyzer-crawl-ui.js?v=1.5"></script>
+  <script src="analyzer-contrast-verify.js?v=1.5"></script>
+  <script src="analyzer-viewer.js?v=1.5"></script>
+  <script src="analyzer.js?v=1.5"></script>
 </body>
 </html>

@@ -532,8 +532,8 @@ window.MilgCrawl = (function() {
   }
 
   function renderCrawlJSON(session, severityFilter) {
-    // Strip large binary data and circular refs during serialization (not after)
-    var _skipKeys = { deepScan: 1, _cachedReportData: 1, _vpCacheIdx: 1, screenshots: 1, screenshotsUnhidden: 1, textMask: 1, _maskBmp: 1, samplePoints: 1, _debug: 1 };
+    // Break circular refs and strip debug data — keep screenshots, masks, verify for full export
+    var _skipKeys = { deepScan: 1, _cachedReportData: 1, _vpCacheIdx: 1, _maskBmp: 1, _debug: 1 };
     var _replacer = function(k, v) { return _skipKeys[k] ? undefined : v; };
     var out = {
       _milgCrawl: true,

@@ -30992,27 +30992,23 @@ test.describe('HTML Analysis', () => {
 
 test.describe('Export and Import', () => {
 
-  test('export JSON and re-import produces same score', async ({ page }) => {
+  test('export .milg and re-import produces same score', async ({ page }) => {
     await analyzeHtml(page, loadPreset('buttons'));
     const originalScore = await getScore(page);
 
-    // Download JSON
+    // Download .milg (compressed) or .json (fallback)
     const [download] = await Promise.all([
       page.waitForEvent('download'),
       page.click('#exportJsonBtn'),
     ]);
-    const jsonPath = await download.path();
-    const exportedData = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
-
-    // Verify structure
-    expect(exportedData.meta).toBeDefined();
-    expect(exportedData.colors).toBeDefined();
-    expect(exportedData.typography).toBeDefined();
+    const exportPath = await download.path();
+    const fileName = download.suggestedFilename();
+    expect(fileName).toMatch(/\.(milg|json)$/);
 
     // Re-import
     await page.click('#newAnalysisBtn');
     await page.click('[data-tab="tabImport"]');
-    await page.locator('#importDropFile').setInputFiles(jsonPath);
+    await page.locator('#importDropFile').setInputFiles(exportPath);
     await page.waitForSelector('.report-container.visible', { timeout: 30000 });
 
     const reimportedScore = await getScore(page);
@@ -31714,6 +31710,13 @@ window.MilgReport = (function() {
   function renderMarkdown(report, options) {
     var opts = options || {};
     var skipImages = opts.skipImages || false;
+    var severityFilter = opts.severityFilter || 'all';
+    var _passSev = function(sev) {
+      if (severityFilter === 'all') return true;
+      if (severityFilter === 'error') return sev === 'error';
+      if (severityFilter === 'warning') return sev === 'error' || sev === 'warning';
+      return true;
+    };
     var lines = [];
     lines.push('# Design Analysis Report');
     lines.push('');
@@ -31740,10 +31743,11 @@ window.MilgReport = (function() {
     lines.push('## Detailed Findings');
     lines.push('');
     report.categories.forEach(function(cat) {
-      if (cat.findings.length === 0) return;
+      var filtered = cat.findings.filter(function(f) { return _passSev(f.severity); });
+      if (filtered.length === 0) return;
       lines.push('### ' + cat.label);
       lines.push('');
-      cat.findings.forEach(function(f) {
+      filtered.forEach(function(f) {
         var icon = f.severity === 'error' ? '❌' : f.severity === 'warning' ? '⚠️' : 'ℹ️';
         lines.push('- ' + icon + ' **[' + f.severity + ']** ' + f.title);
         if (f.detail) lines.push('  - ' + f.detail);
@@ -33854,8 +33858,8 @@ window.MilgCrawl = (function() {
   }
 
   function renderCrawlJSON(session, severityFilter) {
-    // Strip large binary data and circular refs during serialization (not after)
-    var _skipKeys = { deepScan: 1, _cachedReportData: 1, _vpCacheIdx: 1, screenshots: 1, screenshotsUnhidden: 1, textMask: 1, _maskBmp: 1, samplePoints: 1, _debug: 1 };
+    // Break circular refs and strip debug data — keep screenshots, masks, verify for full export
+    var _skipKeys = { deepScan: 1, _cachedReportData: 1, _vpCacheIdx: 1, _maskBmp: 1, _debug: 1 };
     var _replacer = function(k, v) { return _skipKeys[k] ? undefined : v; };
     var out = {
       _milgCrawl: true,
@@ -38420,7 +38424,6 @@ window.MilgCrawlUI = (function() {
       exportJsonBtn.addEventListener('click', function(e) {
         if (!isCrawlActive()) return;
         e.stopImmediatePropagation();
-        // Show spinner — serialization can take seconds for large crawls
         var origLabel = exportJsonBtn.innerHTML;
         exportJsonBtn.disabled = true;
         exportJsonBtn.innerHTML = '<span style="display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite;vertical-align:middle"></span> <span class="btn-label">Exporting\u2026</span>';
@@ -38428,16 +38431,43 @@ window.MilgCrawlUI = (function() {
           try {
             var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
             var json = MilgCrawl.renderCrawlJSON(_crawlSession, filter);
-            var blob = new Blob([json], { type: 'application/json' });
-            var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-            a.download = 'site-crawl-data.json'; a.click();
-            URL.revokeObjectURL(a.href);
-            _showToast('Crawl JSON exported (' + Math.round(json.length / 1024) + ' KB)');
+            // Compress with gzip if available
+            if (typeof CompressionStream !== 'undefined') {
+              var blob = new Blob([json]);
+              var cs = new CompressionStream('gzip');
+              var stream = blob.stream().pipeThrough(cs);
+              new Response(stream).blob().then(function(compressed) {
+                var a = document.createElement('a');
+                a.href = URL.createObjectURL(compressed);
+                a.download = 'site-crawl-data.milg'; a.click();
+                URL.revokeObjectURL(a.href);
+                _showToast('Crawl exported (' + Math.round(json.length / 1024) + ' KB → ' + Math.round(compressed.size / 1024) + ' KB)');
+                exportJsonBtn.disabled = false;
+                exportJsonBtn.innerHTML = origLabel;
+              }).catch(function() {
+                // Fallback to uncompressed
+                var a = document.createElement('a');
+                a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+                a.download = 'site-crawl-data.json'; a.click();
+                URL.revokeObjectURL(a.href);
+                _showToast('Crawl exported uncompressed (' + Math.round(json.length / 1024) + ' KB)');
+                exportJsonBtn.disabled = false;
+                exportJsonBtn.innerHTML = origLabel;
+              });
+            } else {
+              var a = document.createElement('a');
+              a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+              a.download = 'site-crawl-data.json'; a.click();
+              URL.revokeObjectURL(a.href);
+              _showToast('Crawl exported (' + Math.round(json.length / 1024) + ' KB)');
+              exportJsonBtn.disabled = false;
+              exportJsonBtn.innerHTML = origLabel;
+            }
           } catch(err) {
             _showToast('Export failed: ' + err.message);
+            exportJsonBtn.disabled = false;
+            exportJsonBtn.innerHTML = origLabel;
           }
-          exportJsonBtn.disabled = false;
-          exportJsonBtn.innerHTML = origLabel;
         }, 0); });
       });
     }
@@ -40468,7 +40498,7 @@ window.MilgIframe = (function() {
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v1.4 loaded');
+console.log('[milg] analyzer.js v1.5 loaded');
 
 (function() {
   "use strict";
@@ -41422,7 +41452,6 @@ console.log('[milg] analyzer.js v1.4 loaded');
     var snippetCode = document.getElementById('snippetCode');
     var copySnippetBtn = document.getElementById('copySnippetBtn');
     var newAnalysisBtn = document.getElementById('newAnalysisBtn');
-    var printBtn = document.getElementById('printBtn');
     var analyzeUrlBtn = document.getElementById('analyzeUrlBtn');
     var urlInput = document.getElementById('urlInput');
     var urlStatus = document.getElementById('urlStatus');
@@ -41859,12 +41888,14 @@ console.log('[milg] analyzer.js v1.4 loaded');
       showToast('Markdown report downloaded');
     });
 
-    // Copy markdown to clipboard (without images for easy pasting)
+    // Copy for LLM — filtered findings only, no images/masks
     document.getElementById('copyMdBtn').addEventListener('click', function() {
       if (!reportData) return;
-      var md = MilgReport.renderMarkdown(reportData, { skipImages: true });
+      var filter = document.getElementById('exportSeverityFilter');
+      var severity = filter ? filter.value : 'all';
+      var md = MilgReport.renderMarkdown(reportData, { skipImages: true, severityFilter: severity });
       navigator.clipboard.writeText(md).then(function() {
-        showToast('Markdown copied (without images)');
+        showToast('Findings copied for LLM (' + severity + ')');
       }).catch(function() {
         // Fallback
         var ta = document.createElement('textarea');
@@ -41878,26 +41909,14 @@ console.log('[milg] analyzer.js v1.4 loaded');
       });
     });
 
-    // Print/PDF
-    printBtn.addEventListener('click', function() {
-      window.print();
-    });
-
-    // Export JSON — save analysis data for re-import or sharing
+    // Export .milg — compressed dump with full analysis data (screenshots, masks, verify)
     var _exportJsonBtn = document.getElementById('exportJsonBtn');
-    _exportJsonBtn.addEventListener('click', function() {
-      if (!lastRawData) return;
-      var origLabel = _exportJsonBtn.innerHTML;
-      _exportJsonBtn.disabled = true;
-      _exportJsonBtn.innerHTML = '<span style="display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite;vertical-align:middle"></span> <span class="btn-label">Exporting\u2026</span>';
-      requestAnimationFrame(function() { setTimeout(function() {
-      try {
-      // Clone data, handling deepScan carefully (has circular refs via viewportData[].data.deepScan)
-      var exportData;
+    // Shared: build export data object (breaks circular refs, keeps all content)
+    function _buildExportData() {
       var _replacer = function(k, v) { return (k === 'deepScan' || k === '_cachedReportData' || k === '_vpCacheIdx') ? undefined : v; };
+      var exportData;
       if (typeof structuredClone === 'function') {
-        var _tmpDs = lastRawData.deepScan;
-        var _tmpCached = lastRawData._cachedReportData;
+        var _tmpDs = lastRawData.deepScan, _tmpCached = lastRawData._cachedReportData;
         if (_tmpDs) lastRawData.deepScan = undefined;
         if (_tmpCached) lastRawData._cachedReportData = undefined;
         exportData = structuredClone(lastRawData);
@@ -41906,22 +41925,17 @@ console.log('[milg] analyzer.js v1.4 loaded');
       } else {
         exportData = JSON.parse(JSON.stringify(lastRawData, _replacer));
       }
-      // Re-attach deepScan with viewportData (strip screenshots from non-primary viewports + break circular refs)
+      // Re-attach deepScan with viewportData (break circular deepScan refs but keep all data)
       if (lastRawData.deepScan) {
         var ds = lastRawData.deepScan;
         var exportDs = { viewports: ds.viewports, darkMode: ds.darkMode };
         if (ds.viewportData) {
-          exportDs.viewportData = ds.viewportData.map(function(vd, vi) {
+          exportDs.viewportData = ds.viewportData.map(function(vd) {
             if (!vd || !vd.data) return null;
-            // Clone viewport data without circular deepScan ref
             var vpClone = JSON.parse(JSON.stringify(vd.data, _replacer));
-            // Strip screenshots from non-primary viewports to keep export size down
-            if (vi > 0) { delete vpClone.screenshots; delete vpClone.screenshotsUnhidden; }
-            // Include pixel verify results if cached on this viewport
+            // Include verify results
             if (vd.data._contrastVerifyResults) {
-              vpClone._contrastVerifyResults = vd.data._contrastVerifyResults.map(function(r) {
-                var copy = Object.assign({}, r); delete copy._debug; delete copy.samplePoints; return copy;
-              });
+              vpClone._contrastVerifyResults = vd.data._contrastVerifyResults;
               vpClone._bboxEdgeResults = vd.data._bboxEdgeResults || [];
             }
             return { label: vd.label, width: vd.width, data: vpClone };
@@ -41929,61 +41943,109 @@ console.log('[milg] analyzer.js v1.4 loaded');
         }
         exportData.deepScan = exportDs;
       }
-      // Include pixel verify results if available
       if (reportData && reportData._contrastVerifyResults) {
-        exportData._contrastVerifyResults = reportData._contrastVerifyResults.map(function(r) {
-          var copy = Object.assign({}, r);
-          delete copy._debug; // strip debug data to reduce size
-          delete copy.samplePoints; // strip per-pixel data
-          return copy;
-        });
+        exportData._contrastVerifyResults = reportData._contrastVerifyResults;
       }
       if (reportData && reportData._bboxEdgeResults) {
         exportData._bboxEdgeResults = reportData._bboxEdgeResults;
       }
-      var json = JSON.stringify(exportData, null, 2);
-      var blob = new Blob([json], { type: 'application/json' });
-      var url = URL.createObjectURL(blob);
-      var a = document.createElement('a');
-      a.href = url;
-      var siteName = (exportData.meta && exportData.meta.url) || 'analysis';
-      a.download = 'milg-report-' + siteName.replace(/[^a-z0-9]/gi, '-').substring(0, 40) + '.json';
-      a.click();
-      URL.revokeObjectURL(url);
-      showToast('JSON exported (' + Math.round(json.length / 1024) + ' KB)');
-      } catch(err) { showToast('Export failed: ' + err.message); }
-      _exportJsonBtn.disabled = false;
-      _exportJsonBtn.innerHTML = origLabel;
+      return exportData;
+    }
+
+    // Compress JSON to gzip blob
+    function _compressToBlob(json, callback) {
+      if (typeof CompressionStream === 'undefined') {
+        // Fallback: save as uncompressed JSON
+        callback(new Blob([json], { type: 'application/json' }), json.length, false);
+        return;
+      }
+      var blob = new Blob([json]);
+      var cs = new CompressionStream('gzip');
+      var stream = blob.stream().pipeThrough(cs);
+      new Response(stream).blob().then(function(compressed) {
+        callback(compressed, json.length, true);
+      }).catch(function() {
+        callback(new Blob([json], { type: 'application/json' }), json.length, false);
+      });
+    }
+
+    _exportJsonBtn.addEventListener('click', function() {
+      if (!lastRawData) return;
+      var origLabel = _exportJsonBtn.innerHTML;
+      _exportJsonBtn.disabled = true;
+      _exportJsonBtn.innerHTML = '<span style="display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite;vertical-align:middle"></span> <span class="btn-label">Exporting\u2026</span>';
+      requestAnimationFrame(function() { setTimeout(function() {
+        try {
+          var exportData = _buildExportData();
+          var json = JSON.stringify(exportData);
+          _compressToBlob(json, function(blob, rawSize, compressed) {
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            var siteName = (exportData.meta && exportData.meta.url) || 'analysis';
+            a.download = 'milg-report-' + siteName.replace(/[^a-z0-9]/gi, '-').substring(0, 40) + (compressed ? '.milg' : '.json');
+            a.click();
+            URL.revokeObjectURL(url);
+            var sizeKB = Math.round(blob.size / 1024);
+            var ratio = compressed ? ' (' + Math.round(rawSize / 1024) + ' KB → ' + sizeKB + ' KB)' : '';
+            showToast('Exported ' + sizeKB + ' KB' + ratio);
+            _exportJsonBtn.disabled = false;
+            _exportJsonBtn.innerHTML = origLabel;
+          });
+        } catch(err) {
+          showToast('Export failed: ' + err.message);
+          _exportJsonBtn.disabled = false;
+          _exportJsonBtn.innerHTML = origLabel;
+        }
       }, 0); });
     });
 
     // Import JSON — load a previously exported analysis (report action bar + drop zone)
     var importFileInput = document.getElementById('importJsonFile');
+    function _processImportedData(data) {
+      if (data._milgCrawl && data.results) {
+        MilgCrawlUI.loadCrawlResults(data, 'imported file');
+        return;
+      }
+      if (!data.meta || !data.colors) throw new Error('Invalid format');
+      var ssCheck = document.getElementById('screenshotCheck');
+      var pvCheck = document.getElementById('pixelVerifyCheck');
+      var dsCheck = document.getElementById('deepScanCheck');
+      if (ssCheck) ssCheck.checked = !!(data.screenshots && data.screenshots.length);
+      if (pvCheck) pvCheck.checked = !!data._contrastVerifyResults;
+      if (dsCheck) dsCheck.checked = !!(data.deepScan && data.deepScan.viewportData);
+      runAnalysis(data);
+      showToast('Analysis imported: ' + (data.meta.url || 'unknown'));
+    }
     function handleImportFile(file) {
       if (!file) return;
+      // Try JSON first (quick check of first bytes), then gzip decompress
       var reader = new FileReader();
       reader.onload = function() {
-        try {
-          var data = JSON.parse(reader.result);
-          if (data._milgCrawl && data.results) {
-            MilgCrawlUI.loadCrawlResults(data, 'imported file');
+        var buf = reader.result;
+        var firstBytes = new Uint8Array(buf, 0, 2);
+        var isGzip = (firstBytes[0] === 0x1f && firstBytes[1] === 0x8b);
+        if (isGzip) {
+          if (typeof DecompressionStream === 'undefined') {
+            showToast('Browser does not support DecompressionStream for .milg files');
             return;
           }
-          if (!data.meta || !data.colors) throw new Error('Invalid format');
-          // Disable options that don't apply to imported data — analysis settings are baked in
-          var ssCheck = document.getElementById('screenshotCheck');
-          var pvCheck = document.getElementById('pixelVerifyCheck');
-          var dsCheck = document.getElementById('deepScanCheck');
-          if (ssCheck) ssCheck.checked = !!(data.screenshots && data.screenshots.length);
-          if (pvCheck) pvCheck.checked = !!data._contrastVerifyResults;
-          if (dsCheck) dsCheck.checked = !!(data.deepScan && data.deepScan.viewportData);
-          runAnalysis(data);
-          showToast('Analysis imported: ' + (data.meta.url || 'unknown'));
-        } catch(e) {
-          showToast('Invalid JSON: ' + e.message);
+          var ds = new DecompressionStream('gzip');
+          var stream = new Blob([buf]).stream().pipeThrough(ds);
+          new Response(stream).text().then(function(json) {
+            try { _processImportedData(JSON.parse(json)); }
+            catch(e) { showToast('Invalid .milg file: ' + e.message); }
+          }).catch(function(e) { showToast('Decompression failed: ' + e.message); });
+        } else {
+          try {
+            var text = new TextDecoder().decode(buf);
+            _processImportedData(JSON.parse(text));
+          } catch(e) {
+            showToast('Invalid file: ' + e.message);
+          }
         }
       };
-      reader.readAsText(file);
+      reader.readAsArrayBuffer(file);
     }
 
     // Drop zone (Import tab)
@@ -42157,7 +42219,7 @@ console.log('[milg] analyzer.js v1.4 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v1.4</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v1.5</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -42409,8 +42471,8 @@ console.log('[milg] analyzer.js v1.4 loaded');
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
         </svg>
         <p style="font-size:14px;font-weight:600;margin-bottom:4px">Load a saved analysis</p>
-        <p style="font-size:12px;color:var(--text-secondary)">Drop a <code>.json</code> file here or click to browse. Supports single-page and crawl exports.</p>
-        <input type="file" id="importDropFile" accept=".json" style="display:none">
+        <p style="font-size:12px;color:var(--text-secondary)">Drop a <code>.milg</code> or <code>.json</code> file here or click to browse.</p>
+        <input type="file" id="importDropFile" accept=".milg,.json" style="display:none">
       </div>
     </div>
   </div>
@@ -42422,7 +42484,7 @@ console.log('[milg] analyzer.js v1.4 loaded');
   <div id="ephemeralBanner" style="display:none;padding:8px 14px;margin-bottom:8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--text-secondary);align-items:center;gap:8px;flex-wrap:wrap">
     <span style="font-size:14px">&#9432;</span>
     <span>Results are temporary and will be lost when you close this page.</span>
-    <button class="btn" style="font-size:11px;padding:3px 10px;min-height:26px;margin-left:auto" onclick="document.getElementById('exportJsonBtn').click()">Export JSON</button>
+    <button class="btn" style="font-size:11px;padding:3px 10px;min-height:26px;margin-left:auto" onclick="document.getElementById('exportJsonBtn').click()">Export .milg</button>
   </div>
   <!-- Report controls (shown when report is visible) -->
   <div class="report-controls" id="reportActions">
@@ -42491,29 +42553,25 @@ console.log('[milg] analyzer.js v1.4 loaded');
     <details class="export-details" open>
       <summary class="export-summary">Export &amp; Share</summary>
     <div class="report-controls-row">
-      <select id="exportSeverityFilter" class="btn" title="Filter exported findings by severity" style="padding:4px 24px 4px 8px;font-size:12px;appearance:auto;cursor:pointer">
+      <button class="btn" id="exportJsonBtn" title="Save full analysis as compressed .milg file (screenshots, masks, verify data — re-importable)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span class="btn-label">Export .milg</span>
+      </button>
+      <button class="btn" id="markdownBtn" title="Download full Markdown report with embedded images">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        <span class="btn-label">Export .md</span>
+      </button>
+      <span style="border-left:1px solid var(--border);height:24px;margin:0 4px"></span>
+      <select id="exportSeverityFilter" class="btn" title="Filter findings for LLM copy" style="padding:4px 24px 4px 8px;font-size:12px;appearance:auto;cursor:pointer">
         <option value="all">All findings</option>
         <option value="warning">Warnings + Errors</option>
         <option value="error">Errors only</option>
       </select>
-      <button class="btn" id="copyMdBtn" title="Copy Markdown without images (for pasting into chat/docs)">
+      <button class="btn" id="copyMdBtn" title="Copy findings as Markdown for LLM — images and masks excluded, only actionable issues. Respects the severity filter.">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-        <span class="btn-label">Copy Markdown</span>
+        <span class="btn-label">Copy for LLM</span>
       </button>
-      <button class="btn" id="markdownBtn" title="Download as .md file">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-        <span class="btn-label">.md</span>
-      </button>
-      <button class="btn" id="printBtn" title="Print or save as PDF">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-        <span class="btn-label">PDF</span>
-      </button>
-      <button class="btn" id="exportJsonBtn" title="Save analysis as JSON (re-importable)">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        <span class="btn-label">JSON</span>
-      </button>
-      <!-- Load Saved is on the Import tab only, not in report actions -->
-      <input type="file" id="importJsonFile" accept=".json" style="display:none">
+      <input type="file" id="importJsonFile" accept=".json,.milg" style="display:none">
     </div>
     </details>
   </div>
@@ -42599,31 +42657,31 @@ console.log('[milg] analyzer.js v1.4 loaded');
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=1.4"></script>
-  <script src="scoring/contrast.js?v=1.4"></script>
-  <script src="scoring/typography.js?v=1.4"></script>
-  <script src="scoring/spacing.js?v=1.4"></script>
-  <script src="scoring/touch.js?v=1.4"></script>
-  <script src="scoring/accessibility.js?v=1.4"></script>
-  <script src="scoring/responsive.js?v=1.4"></script>
-  <script src="scoring/consistency.js?v=1.4"></script>
-  <script src="scoring/cognitive.js?v=1.4"></script>
-  <script src="scoring/layout.js?v=1.4"></script>
-  <script src="scoring/performance.js?v=1.4"></script>
-  <script src="scoring/readability.js?v=1.4"></script>
-  <script src="scoring/filters.js?v=1.4"></script>
-  <script src="scoring/balance.js?v=1.4"></script>
+  <script src="scoring/registry.js?v=1.5"></script>
+  <script src="scoring/contrast.js?v=1.5"></script>
+  <script src="scoring/typography.js?v=1.5"></script>
+  <script src="scoring/spacing.js?v=1.5"></script>
+  <script src="scoring/touch.js?v=1.5"></script>
+  <script src="scoring/accessibility.js?v=1.5"></script>
+  <script src="scoring/responsive.js?v=1.5"></script>
+  <script src="scoring/consistency.js?v=1.5"></script>
+  <script src="scoring/cognitive.js?v=1.5"></script>
+  <script src="scoring/layout.js?v=1.5"></script>
+  <script src="scoring/performance.js?v=1.5"></script>
+  <script src="scoring/readability.js?v=1.5"></script>
+  <script src="scoring/filters.js?v=1.5"></script>
+  <script src="scoring/balance.js?v=1.5"></script>
   <!-- Queue + Report rendering + UI -->
-  <script src="analyzer-queue.js?v=1.4"></script>
-  <script src="analyzer-report.js?v=1.4"></script>
-  <script src="analyzer-crawl.js?v=1.4"></script>
-  <script src="analyzer-extract.js?v=1.4"></script>
-  <script src="analyzer-iframe.js?v=1.4"></script>
-  <script src="analyzer-proxy.js?v=1.4"></script>
-  <script src="analyzer-crawl-ui.js?v=1.4"></script>
-  <script src="analyzer-contrast-verify.js?v=1.4"></script>
-  <script src="analyzer-viewer.js?v=1.4"></script>
-  <script src="analyzer.js?v=1.4"></script>
+  <script src="analyzer-queue.js?v=1.5"></script>
+  <script src="analyzer-report.js?v=1.5"></script>
+  <script src="analyzer-crawl.js?v=1.5"></script>
+  <script src="analyzer-extract.js?v=1.5"></script>
+  <script src="analyzer-iframe.js?v=1.5"></script>
+  <script src="analyzer-proxy.js?v=1.5"></script>
+  <script src="analyzer-crawl-ui.js?v=1.5"></script>
+  <script src="analyzer-contrast-verify.js?v=1.5"></script>
+  <script src="analyzer-viewer.js?v=1.5"></script>
+  <script src="analyzer.js?v=1.5"></script>
 </body>
 </html>
 </file>

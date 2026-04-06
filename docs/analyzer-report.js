@@ -588,6 +588,13 @@ window.MilgReport = (function() {
   function renderMarkdown(report, options) {
     var opts = options || {};
     var skipImages = opts.skipImages || false;
+    var severityFilter = opts.severityFilter || 'all';
+    var _passSev = function(sev) {
+      if (severityFilter === 'all') return true;
+      if (severityFilter === 'error') return sev === 'error';
+      if (severityFilter === 'warning') return sev === 'error' || sev === 'warning';
+      return true;
+    };
     var lines = [];
     lines.push('# Design Analysis Report');
     lines.push('');
@@ -614,10 +621,11 @@ window.MilgReport = (function() {
     lines.push('## Detailed Findings');
     lines.push('');
     report.categories.forEach(function(cat) {
-      if (cat.findings.length === 0) return;
+      var filtered = cat.findings.filter(function(f) { return _passSev(f.severity); });
+      if (filtered.length === 0) return;
       lines.push('### ' + cat.label);
       lines.push('');
-      cat.findings.forEach(function(f) {
+      filtered.forEach(function(f) {
         var icon = f.severity === 'error' ? '❌' : f.severity === 'warning' ? '⚠️' : 'ℹ️';
         lines.push('- ' + icon + ' **[' + f.severity + ']** ' + f.title);
         if (f.detail) lines.push('  - ' + f.detail);

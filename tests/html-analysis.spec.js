@@ -59,27 +59,23 @@ test.describe('HTML Analysis', () => {
 
 test.describe('Export and Import', () => {
 
-  test('export JSON and re-import produces same score', async ({ page }) => {
+  test('export .milg and re-import produces same score', async ({ page }) => {
     await analyzeHtml(page, loadPreset('buttons'));
     const originalScore = await getScore(page);
 
-    // Download JSON
+    // Download .milg (compressed) or .json (fallback)
     const [download] = await Promise.all([
       page.waitForEvent('download'),
       page.click('#exportJsonBtn'),
     ]);
-    const jsonPath = await download.path();
-    const exportedData = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
-
-    // Verify structure
-    expect(exportedData.meta).toBeDefined();
-    expect(exportedData.colors).toBeDefined();
-    expect(exportedData.typography).toBeDefined();
+    const exportPath = await download.path();
+    const fileName = download.suggestedFilename();
+    expect(fileName).toMatch(/\.(milg|json)$/);
 
     // Re-import
     await page.click('#newAnalysisBtn');
     await page.click('[data-tab="tabImport"]');
-    await page.locator('#importDropFile').setInputFiles(jsonPath);
+    await page.locator('#importDropFile').setInputFiles(exportPath);
     await page.waitForSelector('.report-container.visible', { timeout: 30000 });
 
     const reimportedScore = await getScore(page);
