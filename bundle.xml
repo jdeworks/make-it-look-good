@@ -30930,6 +30930,31 @@ window.MilgQueue = (function() {
 })();
 </file>
 
+<file path="playwright.config.js">
+// @ts-check
+const { defineConfig } = require('@playwright/test');
+
+module.exports = defineConfig({
+  testDir: './tests',
+  timeout: 60000,
+  retries: 0,
+  use: {
+    headless: true,
+    viewport: { width: 1280, height: 900 },
+  },
+  projects: [
+    { name: 'chromium', use: { browserName: 'chromium' } },
+  ],
+  webServer: {
+    command: 'npx serve docs -l 8384 --no-clipboard',
+    port: 8384,
+    reuseExistingServer: true,
+    timeout: 10000,
+  },
+  workers: 1,
+});
+</file>
+
 <file path="tests/html-analysis.spec.js">
 // @ts-check
 const { test, expect } = require('@playwright/test');
@@ -31092,989 +31117,6 @@ test.describe('Preset Scoring', () => {
     });
   }
 });
-</file>
-
-<file path="playwright.config.js">
-// @ts-check
-const { defineConfig } = require('@playwright/test');
-
-module.exports = defineConfig({
-  testDir: './tests',
-  timeout: 60000,
-  retries: 0,
-  use: {
-    headless: true,
-    viewport: { width: 1280, height: 900 },
-  },
-  projects: [
-    { name: 'chromium', use: { browserName: 'chromium' } },
-  ],
-  webServer: {
-    command: 'npx serve docs -l 8384 --no-clipboard',
-    port: 8384,
-    reuseExistingServer: true,
-    timeout: 10000,
-  },
-  workers: 1,
-});
-</file>
-
-<file path="docs/analyzer-report.js">
-// make-it-look-good — Report Renderers
-// HTML report, markdown export, gauge SVG, progress bars
-
-window.MilgReport = (function() {
-  "use strict";
-
-  // --- Report Rendering ---
-  var categoryIcons = {
-    contrast: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2v20"/><path d="M12 2a10 10 0 0 1 0 20"/></svg>',
-    type: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>',
-    spacing: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>',
-    touch: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 11V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v0"/><path d="M14 10V4a2 2 0 0 0-2-2 2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>',
-    a11y: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="4" r="2"/><path d="M6 8h12"/><path d="M12 8v8"/><path d="M9 20l3-4 3 4"/></svg>',
-    responsive: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>',
-    consistency: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l9 4.5v5c0 4.1-3.6 8-9 10.5-5.4-2.5-9-6.4-9-10.5v-5L12 3z"/></svg>',
-    cognitive: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a8 8 0 0 0-8 8c0 3.4 2.1 6.3 5 7.5V20h6v-2.5c2.9-1.2 5-4.1 5-7.5a8 8 0 0 0-8-8z"/><line x1="10" y1="22" x2="14" y2="22"/></svg>',
-    layout: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="12" y1="3" x2="12" y2="12"/></svg>',
-    readability: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>'
-  };
-
-  function isDarkUi() {
-    return document.body && document.body.classList.contains('dark-ui');
-  }
-
-  function scoreColor(score) {
-    var dark = isDarkUi();
-    if (score >= 90) return dark ? '#4ade80' : '#16a34a';
-    if (score >= 70) return dark ? '#facc15' : '#ca8a04';
-    if (score >= 50) return dark ? '#fb923c' : '#ea580c';
-    return dark ? '#f87171' : '#dc2626';
-  }
-
-  function gradeColor(grade) {
-    var dark = isDarkUi();
-    var light = { A: '#16a34a', B: '#65a30d', C: '#ca8a04', D: '#ea580c', F: '#dc2626' };
-    var darkC = { A: '#4ade80', B: '#a3e635', C: '#facc15', D: '#fb923c', F: '#f87171' };
-    return (dark ? darkC : light)[grade] || '#64748b';
-  }
-
-  function severityBadge(severity) {
-    var cls = 'severity-badge-' + (severity || 'info');
-    return '<span class="' + cls + '" style="display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px">' + severity + '</span>';
-  }
-
-  function renderReport(report) {
-    var html = '';
-
-    // --- Header ---
-    html += '<div class="report-header">';
-    html += '<div class="report-header-info">';
-    html += '<h1>Design Analysis Report</h1>';
-    var reportUrl = report.meta.url || 'Pasted HTML';
-    if (/^https?:\/\//.test(reportUrl)) {
-      html += '<p class="report-url"><a href="' + escapeHtml(reportUrl) + '" target="_blank" rel="noopener" style="color:var(--primary);text-decoration:underline">' + escapeHtml(reportUrl) + '</a></p>';
-    } else {
-      html += '<p class="report-url">' + escapeHtml(reportUrl) + '</p>';
-    }
-    var ctxType = (report.raw.context && report.raw.context.pageType) || 'unknown';
-    var ctxLabel = { marketing: 'Marketing / Landing', pricing: 'Pricing Page', form: 'Form Page', app: 'Application', content: 'Content Page', component: 'Component / Snippet', unknown: 'General' }[ctxType] || ctxType;
-    html += '<p class="report-timestamp">' + new Date(report.meta.timestamp).toLocaleString() + ' &middot; ' + report.meta.viewportWidth + '&times;' + report.meta.viewportHeight + 'px &middot; Detected: ' + ctxLabel + '</p>';
-    html += '</div>';
-
-    // Overall score gauge
-    html += '<div class="report-gauge">';
-    html += renderGauge(report.overall, report.grade);
-    html += '<div class="report-grade-label">' + report.gradeLabel + '</div>';
-    html += '</div>';
-    html += '</div>';
-
-    // Deep scan viewport info handled by persistent tabs above report — no inline bar needed
-
-    // --- Screenshots (collapsible, before scores) ---
-    if (report.raw.screenshots && report.raw.screenshots.length > 0) {
-      html += '<details class="report-screenshots">';
-      html += '<summary style="cursor:pointer;font-size:14px;font-weight:600;padding:8px 0;color:var(--text-secondary)">Page Screenshots (' + report.raw.screenshots.length + ')</summary>';
-      html += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;margin-bottom:16px">';
-      report.raw.screenshots.forEach(function(src, idx) {
-        html += '<div class="screenshot-thumb" style="flex:1;min-width:200px;max-width:400px">';
-        if (report.raw.screenshots.length > 1) {
-          html += '<div style="padding:4px 8px;font-size:10px;color:var(--text-secondary);border-bottom:1px solid var(--border);background:var(--bg-alt)">Section ' + (idx + 1) + '</div>';
-        }
-        html += '<img src="' + src + '" alt="Page screenshot ' + (idx + 1) + '" class="screenshot-img" style="width:100%;display:block;cursor:zoom-in" onclick="window.__milgZoomScreenshot(this,' + idx + ')" loading="lazy">';
-        html += '</div>';
-      });
-      html += '</div>';
-      // Unhidden panels screenshots (shown when hidden panels were detected)
-      if (report.raw.screenshotsUnhidden && report.raw.screenshotsUnhidden.length > 0) {
-        html += '<div style="margin-top:12px;padding:12px;border:2px dashed var(--border);border-radius:8px;background:var(--bg-alt)">';
-        html += '<div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text-error,#ef4444)">With hidden panels revealed (' + (report.raw.layout.hiddenPanelCount || '?') + ' panels unhidden)</div>';
-        html += '<div style="display:flex;flex-wrap:wrap;gap:12px">';
-        report.raw.screenshotsUnhidden.forEach(function(src, idx) {
-          html += '<div class="screenshot-thumb" style="flex:1;min-width:200px;max-width:400px">';
-          if (report.raw.screenshotsUnhidden.length > 1) {
-            html += '<div style="padding:4px 8px;font-size:10px;color:var(--text-secondary);border-bottom:1px solid var(--border);background:var(--bg-alt)">Section ' + (idx + 1) + '</div>';
-          }
-          html += '<img src="' + src + '" alt="Page with panels revealed ' + (idx + 1) + '" class="screenshot-img" style="width:100%;display:block;cursor:zoom-in" onclick="window.__milgZoomScreenshot(this,' + idx + ')" loading="lazy">';
-          html += '</div>';
-        });
-        html += '</div>';
-        html += '</div>';
-      }
-      html += '</details>';
-    }
-
-    // --- Category cards ---
-    html += '<div class="report-categories">';
-    report.categories.forEach(function(cat) {
-      var catId = 'findings-' + cat.icon;
-      var hasFindings = cat.findings.length > 0;
-      // All cards are clickable — scroll to findings if present, otherwise to passed checks
-      var scrollTarget = hasFindings ? catId : 'passed-checks';
-      html += '<div class="report-card report-card-clickable" onclick="var el=document.getElementById(\'' + scrollTarget + '\');if(el){el.scrollIntoView({behavior:\'smooth\',block:\'start\'});if(!el.open&&el.tagName===\'DETAILS\')el.open=true;}">';
-      html += '<div class="report-card-header">';
-      html += '<div class="report-card-icon" style="color:' + scoreColor(cat.score) + '">' + (categoryIcons[cat.icon] || '') + '</div>';
-      html += '<div class="report-card-title">';
-      html += '<h3>' + cat.label + '</h3>';
-      html += '<span class="report-card-weight">' + cat.weight + '% weight</span>';
-      html += '</div>';
-      if (cat.notApplicable) {
-        html += '<div class="report-card-score" style="color:var(--text-secondary);font-size:13px">N/A</div>';
-      } else {
-        html += '<div class="report-card-score" style="color:' + scoreColor(cat.score) + '">' + cat.score + '</div>';
-      }
-      html += '</div>';
-      html += renderProgressBar(cat.score);
-
-      // Finding count with color-coded badges and tooltips
-      var errors = cat.findings.filter(function(f) { return f.severity === 'error'; }).length;
-      var warnings = cat.findings.filter(function(f) { return f.severity === 'warning'; }).length;
-      var infos = cat.findings.filter(function(f) { return f.severity === 'info'; }).length;
-      var passed = (cat.checks || 0) - errors - warnings;
-      if (passed < 0) passed = 0;
-      // If module didn't report checks, estimate from findings
-      var totalChecks = cat.checks || (errors + warnings + infos + (cat.findings.length === 0 ? 1 : 0));
-      var notApplicable = Math.max(0, totalChecks - errors - warnings - infos - passed);
-
-      var catId = 'findings-' + cat.icon;
-      html += '<div class="report-card-counts">';
-      if (totalChecks > 0 || cat.findings.length === 0) {
-        if (errors > 0) html += '<span class="count-error" title="' + errors + ' error(s)" onclick="event.stopPropagation();document.getElementById(\'' + catId + '\').scrollIntoView({behavior:\'smooth\',block:\'start\'})">' + errors + '</span>';
-        if (warnings > 0) html += '<span class="count-warning" title="' + warnings + ' warning(s)" onclick="event.stopPropagation();document.getElementById(\'' + catId + '\').scrollIntoView({behavior:\'smooth\',block:\'start\'})">' + warnings + '</span>';
-        if (infos > 0) html += '<span class="count-info" title="' + infos + ' info" onclick="event.stopPropagation();document.getElementById(\'' + catId + '\').scrollIntoView({behavior:\'smooth\',block:\'start\'})">' + infos + '</span>';
-        if (passed > 0 || cat.findings.length === 0) html += '<span class="count-pass" title="' + (passed || totalChecks) + ' passed">' + (passed || totalChecks) + '</span>';
-      }
-      html += '</div>';
-
-      html += '</div>';
-    });
-    html += '</div>';
-
-    // --- Detailed findings ---
-    html += '<div class="report-findings">';
-    html += '<h2>Detailed Findings</h2>';
-
-    var _bboxFindingIdx = 0; // Global finding index for "show on screenshot" links
-    var _hasScreenshots = report.raw && report.raw.screenshots && report.raw.screenshots.length > 0 && report.raw.screenshotMeta;
-    report.categories.forEach(function(cat) {
-      if (cat.findings.length === 0) return;
-
-      html += '<div class="report-finding-group" id="findings-' + cat.icon + '">';
-      html += '<h3>' + (categoryIcons[cat.icon] || '') + ' ' + cat.label + '</h3>';
-
-      cat.findings.forEach(function(f) {
-        if (f.severity === 'pass') return; // pass findings only show in screenshot viewer
-        var hasBboxes = f.locator && f.locator.bboxes && f.locator.bboxes.length > 0;
-        html += '<div class="report-finding severity-' + f.severity + '"' + (hasBboxes ? ' data-finding-idx="' + _bboxFindingIdx + '"' : '') + '>';
-        html += '<div class="finding-header">';
-        html += severityBadge(f.severity);
-        html += '<span class="finding-title">' + escapeHtml(f.title) + '</span>';
-        html += '</div>';
-        if (f.detail) html += '<p class="finding-detail">' + escapeHtml(f.detail) + '</p>';
-        // Affected elements with selectors + text (collapsible, for machine-readable reports)
-        if (f.locator && f.locator.selectors && f.locator.selectors.length > 0) {
-          var _texts = f.locator.texts || [];
-          var _hasBboxList = f.locator.bboxes && f.locator.bboxes.length > 0 && _hasScreenshots;
-          html += '<details class="finding-selectors" style="margin:6px 0;font-size:11px">';
-          html += '<summary style="cursor:pointer;color:var(--text-secondary)">' + f.locator.selectors.length + ' affected element' + (f.locator.selectors.length !== 1 ? 's' : '') + '</summary>';
-          html += '<div style="margin:4px 0 0;padding:8px;background:var(--bg-alt);border:1px solid var(--border);border-radius:4px;font-size:10px;line-height:1.8;max-height:300px;overflow:auto">';
-          f.locator.selectors.forEach(function(sel, si) {
-            var txt = _texts[si] || '';
-            var canShow = _hasBboxList && si < f.locator.bboxes.length && f.locator.bboxes[si];
-            html += '<div style="padding:2px 0;border-bottom:1px solid var(--border);display:flex;align-items:baseline;gap:6px">';
-            if (canShow) {
-              html += '<a style="cursor:pointer;color:var(--accent);text-decoration:none;flex-shrink:0;font-size:9px" onclick="window.__milgShowBboxOnScreenshot(' + _bboxFindingIdx + ',' + si + ')" title="Show on screenshot">&#128269;</a>';
-            }
-            html += '<span style="flex:1;min-width:0"><code style="color:var(--text-primary)">' + escapeHtml(sel) + '</code>';
-            if (txt) html += ' <span style="color:var(--text-secondary);font-style:italic">&quot;' + escapeHtml(txt.substring(0, 50)) + (txt.length > 50 ? '…' : '') + '&quot;</span>';
-            html += '</span></div>';
-          });
-          html += '</div></details>';
-        }
-        // Color pair swatches for contrast findings
-        if (f._colors) {
-          html += '<div class="finding-color-pair" style="display:flex;align-items:center;gap:8px;margin:4px 0 6px;font-size:11px;color:var(--text-secondary)">' +
-            '<span style="display:inline-flex;align-items:center;gap:4px">' +
-              '<span style="display:inline-block;width:14px;height:14px;border-radius:3px;border:1px solid var(--border);background:' + escapeHtml(f._colors.fg) + '" title="Foreground: ' + escapeHtml(f._colors.fg) + '"></span>' +
-              '<code style="font-size:10px">' + escapeHtml(f._colors.fg) + '</code>' +
-            '</span>' +
-            '<span style="opacity:0.5">on</span>' +
-            '<span style="display:inline-flex;align-items:center;gap:4px">' +
-              '<span style="display:inline-block;width:14px;height:14px;border-radius:3px;border:1px solid var(--border);background:' + escapeHtml(f._colors.bg) + '" title="Background: ' + escapeHtml(f._colors.bg) + '"></span>' +
-              '<code style="font-size:10px">' + escapeHtml(f._colors.bg) + '</code>' +
-            '</span>' +
-            '<span style="opacity:0.5">=</span> <strong>' + f._colors.ratio + ':1</strong>' +
-          '</div>';
-        }
-
-        html += '<div class="finding-fix">';
-        html += '<strong>Fix:</strong> ' + escapeHtml(f.fix);
-        html += '</div>';
-
-        if (f.presetRef) {
-          html += '<div class="finding-preset">';
-          html += '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> ';
-          html += escapeHtml(f.presetRef);
-          html += '</div>';
-        }
-
-        if (f.source) {
-          var srcParts = f.source.split(' — ');
-          var srcLabel = srcParts[0];
-          var srcUrl = srcParts[1] || '';
-          html += '<div class="finding-source">';
-          if (srcUrl) {
-            html += '<a href="' + escapeHtml(srcUrl) + '" target="_blank" rel="noopener">' + escapeHtml(srcLabel) + '</a>';
-          } else {
-            html += escapeHtml(srcLabel);
-          }
-          html += '</div>';
-        }
-
-        if (hasBboxes && _hasScreenshots) {
-          html += '<a class="finding-show-on-screenshot" onclick="window.__milgShowFindingOnScreenshot(' + _bboxFindingIdx + ')">Show on screenshot</a>';
-        }
-        if (hasBboxes) _bboxFindingIdx++;
-
-        html += '</div>';
-      });
-
-      html += '</div>';
-    });
-
-    html += '</div>';
-
-    // --- Passed checks ---
-    // Check descriptions per category (what was checked and passed)
-    var checkDescriptions = {
-      contrast: [
-        { title: 'Text contrast ratio meets threshold', detail: 'All text elements have sufficient contrast against their backgrounds.', source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' },
-        { title: 'No undetermined contrast issues', detail: 'All background colors could be resolved (no complex gradients or images blocking analysis).', source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' },
-        { title: 'Text uses real HTML (not images)', detail: 'Text is rendered as selectable HTML, not embedded in images.', source: 'WCAG 2.2 §1.4.5 — https://www.w3.org/TR/WCAG22/#images-of-text' },
-        { title: 'CVD-safe color palette', detail: 'Color pairs remain distinguishable under color vision deficiency simulation.', source: 'Machado et al. 2009 — https://www.inf.ufrgs.br/~oliveira/pubs_files/CVD_Simulation/CVD_Simulation.html' }
-      ],
-      type: [
-        { title: 'Body font size adequate', detail: 'Body text meets the minimum font size for this audience.', source: 'NNGroup — https://www.nngroup.com/articles/let-users-control-font-size/' },
-        { title: 'Line height within range', detail: 'Body line-height provides comfortable reading spacing.', source: 'WCAG 2.2 §1.4.12 — https://www.w3.org/TR/WCAG22/#text-spacing' },
-        { title: 'Line length under limit', detail: 'Content width constrains lines to a readable character count.', source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-length.html' },
-        { title: 'Heading scale consistent', detail: 'Headings follow a logical size progression from H1 down.', source: 'Modular type scales — https://typescale.com/' },
-        { title: 'Font weight count reasonable', detail: 'Uses 2-4 font weights, avoiding visual noise.', source: 'Google Fonts — https://fonts.google.com/knowledge/using_type/choosing_reliable_typefaces' },
-        { title: 'Font family count under limit', detail: 'Uses 1-3 font families for visual consistency.', source: 'Butterick\'s Practical Typography — https://practicaltypography.com/summary-of-key-rules.html' },
-        { title: 'Paragraph spacing appropriate', detail: 'Paragraphs have comfortable spacing between them.', source: 'Butterick\'s Practical Typography — https://practicaltypography.com/space-between-paragraphs.html' },
-        { title: 'Font weight meets audience minimum', detail: 'All font weights are heavy enough for the target audience\'s legibility requirements.', source: 'W3C WAI Older Users — https://www.w3.org/WAI/older-users/developing/' }
-      ],
-      spacing: [
-        { title: 'Spacing on 4px grid', detail: 'Spacing values align to a consistent base unit.', source: 'Material Design — https://m3.material.io/foundations/layout/applying-layout' },
-        { title: 'Content width constrained', detail: 'Content doesn\'t stretch to excessive widths.', source: 'NNGroup — https://www.nngroup.com/articles/utilize-available-screen-space/' },
-        { title: 'Body padding adequate', detail: 'Content has proper edge padding, not touching screen sides.', source: 'Material Design — https://m3.material.io/foundations/layout/applying-layout' },
-        { title: 'No element overflow', detail: 'No content extends beyond its container boundaries.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' },
-        { title: 'Interactive element spacing adequate', detail: 'Buttons and links have enough gap between them to prevent mis-clicks.', source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum' }
-      ],
-      touch: [
-        { title: 'Interactive targets properly sized', detail: 'Buttons, links, and inputs meet minimum target size.', source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum' },
-        { title: 'Transition durations appropriate', detail: 'Animations stay under 500ms for responsive feel.', source: 'NNGroup — https://www.nngroup.com/articles/animation-usability/' },
-        { title: 'Touch-friendly on mobile', detail: 'Elements would pass touch target requirements on mobile viewports.', source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout' }
-      ],
-      a11y: [
-        { title: 'Semantic HTML landmarks', detail: 'Page uses header, nav, main, and/or footer elements.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships' },
-        { title: 'Heading hierarchy intact', detail: 'Headings follow sequential order without gaps (h1 → h2 → h3).', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships' },
-        { title: 'Images have alt text', detail: 'All img elements include alt attributes for screen readers.', source: 'WCAG 2.2 §1.1.1 — https://www.w3.org/TR/WCAG22/#non-text-content' },
-        { title: 'Form inputs labeled', detail: 'All form fields have associated labels or aria-label.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships' },
-        { title: 'Focus indicators visible', detail: 'Interactive elements show visible focus styling for keyboard users.', source: 'WCAG 2.2 §2.4.7 — https://www.w3.org/TR/WCAG22/#focus-visible' },
-        { title: 'Language attribute set', detail: 'HTML element has a lang attribute for correct pronunciation.', source: 'WCAG 2.2 §3.1.1 — https://www.w3.org/TR/WCAG22/#language-of-page' },
-        { title: 'Skip navigation link', detail: 'Keyboard users can skip past navigation to reach main content.', source: 'WCAG 2.2 §2.4.1 — https://www.w3.org/TR/WCAG22/#bypass-blocks' },
-        { title: 'Descriptive link text', detail: 'Links use meaningful text instead of "click here" or "read more".', source: 'WCAG 2.2 §2.4.4 — https://www.w3.org/TR/WCAG22/#link-purpose-in-context' },
-        { title: 'No color-only indicators', detail: 'Status information uses icons or text in addition to color.', source: 'WCAG 2.2 §1.4.1 — https://www.w3.org/TR/WCAG22/#use-of-color' },
-        { title: 'No duplicate IDs', detail: 'All element IDs are unique, preserving correct ARIA label associations and anchor links.', source: 'WCAG 2.2 §4.1.1 — https://www.w3.org/TR/WCAG22/#parsing' },
-        { title: 'Scrollable regions keyboard-accessible', detail: 'Scrollable containers are reachable via keyboard, either through focusable children or tabindex.', source: 'WCAG 2.2 §2.1.1 — https://www.w3.org/TR/WCAG22/#keyboard' },
-        { title: 'No nested interactive elements', detail: 'Links and buttons are not nested inside other interactive elements.', source: 'HTML spec §4.5.1 — https://html.spec.whatwg.org/multipage/text-level-semantics.html#the-a-element' },
-        { title: 'No positive tabindex values', detail: 'Tab order follows natural DOM order without manual overrides.', source: 'WCAG 2.2 §2.4.3 — https://www.w3.org/TR/WCAG22/#focus-order' },
-        { title: 'Interactive elements have accessible names', detail: 'All buttons and links have visible text, aria-label, or title so screen readers can announce them.', source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value' },
-        { title: 'Form element borders meet contrast threshold', detail: 'Input boundaries have at least 3:1 contrast against their background, meeting WCAG 1.4.11.', source: 'WCAG 2.2 §1.4.11 — https://www.w3.org/TR/WCAG22/#non-text-contrast' },
-        { title: 'Tables are accessible', detail: 'Data tables use th elements and appropriate scope attributes for screen reader navigation.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships' }
-      ],
-      responsive: [
-        { title: 'Responsive breakpoints detected', detail: 'CSS media queries or responsive utility classes are present.', source: 'NNGroup — https://www.nngroup.com/articles/responsive-web-design-definition/' },
-        { title: 'Dark mode support', detail: 'Page supports dark color scheme.', source: 'Apple HIG — https://developer.apple.com/design/human-interface-guidelines/dark-mode' },
-        { title: 'Viewport meta tag correct', detail: 'Proper viewport configuration for mobile rendering.', source: 'MDN — https://developer.mozilla.org/en-US/docs/Web/HTML/Viewport_meta_tag' },
-        { title: 'User zoom not blocked', detail: 'Viewport doesn\'t prevent pinch-to-zoom.', source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text' },
-        { title: 'No horizontal overflow', detail: 'Page content fits within viewport width.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' },
-        { title: 'No fixed-width elements', detail: 'Elements use flexible widths that adapt to screen size.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' }
-      ],
-      consistency: [
-        { title: 'Color palette coherent', detail: 'Number of unique colors is within expected range.', source: 'Material Design 3 — https://m3.material.io/styles/color/roles' },
-        { title: 'Font size scale consistent', detail: 'Uses a limited set of font sizes from a type scale.', source: 'Modular type scales — https://typescale.com/' },
-        { title: 'Border radius consistent', detail: 'Uses 2-4 standard border-radius values.', source: 'Material Design 3 — https://m3.material.io/styles/shape/overview' },
-        { title: 'Line height consistent', detail: 'Uses a small set of line-height values across the page.', source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-spacing.html' },
-        { title: 'Dark mode supported', detail: 'Page provides a dark color scheme option.', source: 'Apple HIG — https://developer.apple.com/design/human-interface-guidelines/dark-mode' },
-        { title: 'Z-index scale manageable', detail: 'Stacking order uses 8 or fewer distinct z-index values, keeping layering predictable.', source: 'Josh Comeau — https://www.joshwcomeau.com/css/stacking-contexts/' },
-        { title: 'Shadow system consistent', detail: 'Box-shadow values are limited to 3-5 elevation levels for a coherent depth system.', source: 'Material Design 3 — https://m3.material.io/styles/elevation/overview' }
-      ],
-      cognitive: [
-        { title: 'Content sections well-organized', detail: 'Page sections and headings are within cognitive load limits.', source: 'Hick\'s Law — https://lawsofux.com/hicks-law/' },
-        { title: 'Form complexity manageable', detail: 'Visible form fields stay within recommended limits.', source: 'Miller\'s Law — https://lawsofux.com/millers-law/' },
-        { title: 'Navigation count appropriate', detail: 'Top-level navigation items are within working memory limits.', source: 'Cowan (2001) — https://doi.org/10.1017/S0140525X01003922' },
-        { title: 'Reading level appropriate', detail: 'Content reading level matches the target audience.', source: 'WCAG 2.2 §3.1.5 — https://www.w3.org/TR/WCAG22/#reading-level' },
-        { title: 'Visual complexity manageable', detail: 'Number of unique colors doesn\'t overwhelm the user.', source: 'Material Design 3 — https://m3.material.io/styles/color/roles' },
-        { title: 'Heading hierarchy supports scanning', detail: 'Headings follow a logical order for easy content navigation.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships' },
-        { title: 'Interactive element density acceptable', detail: 'The ratio of clickable elements to total content is low enough to avoid overwhelming the user.', source: 'Hick\'s Law — https://lawsofux.com/hicks-law/' },
-        { title: 'Reduced motion respected', detail: 'Animations include a prefers-reduced-motion fallback for users who are sensitive to motion.', source: 'WCAG 2.2 §2.3.3 — https://www.w3.org/TR/WCAG22/#animation-from-interactions' }
-      ],
-      layout: [
-        { title: 'Section spacing consistent', detail: 'Gaps between major sections use uniform spacing.', source: 'Gestalt similarity — https://lawsofux.com/law-of-similarity/' },
-        { title: 'Alignment grid clean', detail: 'Elements share consistent alignment edges without jagged offsets.', source: 'Gestalt continuity — https://lawsofux.com/law-of-common-region/' },
-        { title: 'H1 visual hierarchy clear', detail: 'H1 stands out from body text at 2-4x size.', source: 'Modular type scales — https://typescale.com/' },
-        { title: 'H2 visual hierarchy appropriate', detail: 'H2 is clearly distinct from both H1 and body text.', source: 'Modular type scales — https://typescale.com/' },
-        { title: 'Border radius standardized', detail: 'Uses a consistent set of border-radius values.', source: 'Material Design 3 — https://m3.material.io/styles/shape/overview' },
-        { title: 'Page density manageable', detail: 'Element count is within comfortable range for the page type.', source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/' },
-        { title: 'No elements outside viewport', detail: 'All visible elements are positioned within the horizontal bounds of the viewport.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' },
-        { title: 'No horizontal scroll', detail: 'No containers overflow horizontally, keeping the page free of accidental horizontal scrollbars.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' },
-        { title: 'No nested scrollbars', detail: 'Scrollable containers are not nested inside other scrollable containers.', source: 'NNGroup — https://www.nngroup.com/articles/scrolling-and-scrollbars/' },
-        { title: 'Hidden panels fit viewport', detail: 'Dropdown menus and dialogs remain within the viewport when revealed.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' },
-        { title: 'DOM uses semantic elements', detail: 'Markup favors semantic HTML over generic div-only structure.', source: 'HTML Living Standard — https://html.spec.whatwg.org/multipage/dom.html#semantics-2' },
-        { title: 'No silently clipped content', detail: 'No containers use overflow-x:hidden to hide overflowing content without providing scroll access.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' },
-        { title: 'Fixed elements have opaque backgrounds', detail: 'Fixed and sticky headers have backgrounds that prevent text overlap when scrolling.', source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' },
-        { title: 'Children fit within parent containers', detail: 'No elements unintentionally overflow their parent without explicit overflow handling.', source: 'CSS Box Model — https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_box_model' },
-        { title: 'No flex/grid overflow on mobile', detail: 'Flex and grid containers do not silently overflow on narrow viewports.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' },
-        { title: 'Fixed elements maintain contrast when scrolled', detail: 'Fixed headers and toolbars have backgrounds or adaptive color to stay legible over all page sections.', source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' }
-      ],
-      readability: [
-        { title: 'Heading density adequate', detail: 'Headings break content into scannable sections.', source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/' },
-        { title: 'Headings are descriptive', detail: 'Heading text is long enough to be meaningful (not just icons/numbers).', source: 'NNGroup — https://www.nngroup.com/articles/headings-pickup-lines/' },
-        { title: 'No tiny text', detail: 'All text is at least 12px for readability.', source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text' },
-        { title: 'Reading level appropriate', detail: 'Coleman-Liau index indicates content matches target audience.', source: 'Coleman-Liau Index — https://en.wikipedia.org/wiki/Coleman%E2%80%93Liau_index' },
-        { title: 'Paragraph length manageable', detail: 'No paragraphs exceed 150 words.', source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/' },
-        { title: 'Lists used for scanability', detail: 'Content uses lists to break up sequences and improve scanning.', source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/' }
-      ],
-      performance: [
-        { title: 'Web fonts use font-display', detail: 'Font loading doesn\'t block text rendering.', source: 'Web.dev — https://web.dev/articles/font-display' },
-        { title: 'Render-blocking resources limited', detail: 'Few CSS/JS files block initial page render.', source: 'Web.dev — https://web.dev/articles/render-blocking-resources' },
-        { title: 'DOM size reasonable', detail: 'Page has a manageable number of DOM elements.', source: 'Chrome DevTools — https://developer.chrome.com/docs/lighthouse/performance/dom-size' },
-        { title: 'DOM nesting depth OK', detail: 'HTML nesting doesn\'t exceed recommended depth.', source: 'Chrome DevTools — https://developer.chrome.com/docs/lighthouse/performance/dom-size' },
-        { title: 'Third-party scripts limited', detail: 'External script count is within reasonable bounds.', source: 'Web.dev — https://web.dev/articles/optimizing-third-party-javascript' },
-        { title: 'Modern image formats used', detail: 'Images use WebP or AVIF for smaller file sizes.', source: 'Web.dev — https://web.dev/articles/serve-images-webp' },
-        { title: 'CLS within target', detail: 'Cumulative Layout Shift is below 0.1 threshold.', source: 'Web Vitals — https://web.dev/articles/cls' },
-        { title: 'LCP within target', detail: 'Largest Contentful Paint is below 2.5s threshold.', source: 'Web Vitals — https://web.dev/articles/lcp' }
-      ]
-    };
-
-    var passedCategories = report.categories.filter(function(cat) { return cat.passed > 0 || cat.findings.length === 0; });
-    if (passedCategories.length > 0) {
-      html += '<div class="report-findings" style="margin-top:16px">';
-      html += '<details id="passed-checks">';
-      html += '<summary style="cursor:pointer;font-size:18px;font-weight:700;padding:8px 0">Passed Checks</summary>';
-
-      passedCategories.forEach(function(cat) {
-        var passCount = cat.passed || 0;
-        if (cat.findings.length === 0) passCount = cat.checks || 1;
-        if (passCount <= 0) return;
-
-        var failedTitles = {};
-        cat.findings.forEach(function(f) { failedTitles[f.title.substring(0, 30)] = true; });
-
-        html += '<div class="report-finding-group">';
-        html += '<h3>' + (categoryIcons[cat.icon] || '') + ' ' + cat.label + ' <span style="font-size:12px;color:var(--text-secondary);font-weight:400">(' + passCount + ' passed)</span></h3>';
-
-        // Show check descriptions that weren't in the failures
-        var descs = checkDescriptions[cat.icon] || [];
-        var shown = 0;
-        descs.forEach(function(desc) {
-          // Skip if a similar title appears in failures
-          var isFailure = cat.findings.some(function(f) {
-            return f.title.toLowerCase().indexOf(desc.title.toLowerCase().substring(0, 15)) !== -1;
-          });
-          if (isFailure) return;
-          if (shown >= passCount) return;
-
-          html += '<div class="report-finding severity-pass" style="border-left:3px solid #16a34a">';
-          html += '<div class="finding-header">';
-          html += severityBadge('pass');
-          html += '<span class="finding-title">' + escapeHtml(desc.title) + '</span>';
-          html += '</div>';
-          html += '<p class="finding-detail">' + escapeHtml(desc.detail) + '</p>';
-          if (desc.source) {
-            var sp = desc.source.split(' — ');
-            html += '<div class="finding-source">';
-            if (sp[1]) html += '<a href="' + escapeHtml(sp[1]) + '" target="_blank" rel="noopener">' + escapeHtml(sp[0]) + '</a>';
-            else html += escapeHtml(sp[0]);
-            html += '</div>';
-          }
-          html += '</div>';
-          shown++;
-        });
-
-        // If we have more passes than descriptions, show the remaining count
-        if (shown < passCount) {
-          var remaining = passCount - shown;
-          html += '<div class="report-finding severity-pass" style="border-left:3px solid #16a34a;opacity:0.7">';
-          html += '<div class="finding-header">';
-          html += severityBadge('pass');
-          html += '<span class="finding-title">' + remaining + ' additional check' + (remaining > 1 ? 's' : '') + ' passed</span>';
-          html += '</div>';
-          html += '<p class="finding-detail" style="font-size:11px;color:var(--text-secondary)">These checks passed but don\'t have individual descriptions. The category score reflects all checks.</p>';
-          html += '</div>';
-        }
-
-        html += '</div>';
-      });
-
-      html += '</details>';
-      html += '</div>';
-    }
-
-    // --- Extracted data summary ---
-    html += '<div class="report-summary">';
-    html += '<h2>Design Token Summary</h2>';
-    html += '<div class="summary-grid">';
-
-    // Color palette — sorted by hue then lightness for visual grouping
-    function sortByHue(colors) {
-      return colors.slice().sort(function(a, b) {
-        var ca = parseColorToHSL(a.value);
-        var cb = parseColorToHSL(b.value);
-        if (!ca || !cb) return 0;
-        // Achromatic (grays) first, sorted dark → light
-        if (ca.s < 8 && cb.s < 8) return ca.l - cb.l;
-        if (ca.s < 8) return -1;
-        if (cb.s < 8) return 1;
-        // Chromatic: group by 30° hue band, then lightness within each band
-        var hueA = Math.floor(ca.h / 30), hueB = Math.floor(cb.h / 30);
-        if (hueA !== hueB) return hueA - hueB;
-        return ca.l - cb.l;
-      });
-    }
-    function parseColorToHSL(str) {
-      if (!str) return null;
-      // Parse rgb/rgba
-      var m = str.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
-      if (!m) return null;
-      var r = parseInt(m[1]) / 255, g = parseInt(m[2]) / 255, b = parseInt(m[3]) / 255;
-      var max = Math.max(r, g, b), min = Math.min(r, g, b);
-      var h = 0, s = 0, l = (max + min) / 2;
-      if (max !== min) {
-        var d = max - min;
-        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-        if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
-        else if (max === g) h = ((b - r) / d + 2) / 6;
-        else h = ((r - g) / d + 4) / 6;
-      }
-      return { h: Math.round(h * 360), s: Math.round(s * 100), l: Math.round(l * 100) };
-    }
-    html += '<div class="summary-section">';
-    html += '<h4>Color Palette</h4>';
-    html += '<div class="color-swatches">';
-    function swatchTitle(c, label) {
-      var t = c.value + '\n' + c.count + '× ' + label;
-      if (c.sample) t += '\n' + c.sample;
-      return t.replace(/"/g, '&quot;');
-    }
-    var bgColors = sortByHue((report.raw.colors.bgColors || []).slice(0, 12));
-    bgColors.forEach(function(c) {
-      html += '<div class="color-swatch" style="background:' + c.value + '" title="' + swatchTitle(c, 'background') + '"></div>';
-    });
-    html += '</div>';
-    html += '<div class="color-swatches" style="margin-top:4px">';
-    var textColors = sortByHue((report.raw.colors.textColors || []).slice(0, 12));
-    textColors.forEach(function(c) {
-      html += '<div class="color-swatch" style="background:' + c.value + '" title="' + swatchTitle(c, 'text') + '"></div>';
-    });
-    html += '</div>';
-    html += '</div>';
-
-    // Typography
-    html += '<div class="summary-section">';
-    html += '<h4>Typography</h4>';
-    html += '<div class="summary-list">';
-    html += '<div>Body: ' + escapeHtml(report.raw.typography.bodyFontSize) + ' / ' + escapeHtml(report.raw.typography.bodyLineHeight) + '</div>';
-    html += '<div>Families: ' + escapeHtml((report.raw.typography.fontFamilies || []).join(', ')) + '</div>';
-    var headings = report.raw.typography.headings || [];
-    if (headings.length > 0) {
-      html += '<div>Headings: ' + headings.map(function(h) { return h.tag + '=' + h.fontSize; }).join(', ') + '</div>';
-    }
-    html += '</div>';
-    html += '</div>';
-
-    // Spacing
-    html += '<div class="summary-section">';
-    html += '<h4>Spacing</h4>';
-    html += '<div class="summary-list">';
-    html += '<div>Max content width: ' + escapeHtml(report.raw.spacing.maxContentWidth) + '</div>';
-    var topPaddings = (report.raw.spacing.paddings || []).slice(0, 5);
-    html += '<div>Common paddings: ' + topPaddings.map(function(p) { return p.value; }).join(', ') + '</div>';
-    html += '</div>';
-    html += '</div>';
-
-    // Structure
-    html += '<div class="summary-section">';
-    html += '<h4>Structure</h4>';
-    html += '<div class="summary-list">';
-    html += '<div>Elements: ' + report.raw.structure.totalElements + '</div>';
-    html += '<div>Framework: ' + report.raw.structure.cssFramework + '</div>';
-    html += '<div>Responsive: ' + (report.raw.structure.responsiveClasses ? 'Yes' : 'No') + '</div>';
-    html += '<div>Dark mode: ' + (report.raw.structure.darkModeClasses ? 'Yes' : 'No') + '</div>';
-    var ds = report.raw.structure.domStats;
-    if (ds) {
-      html += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">';
-      html += '<div style="font-weight:600;margin-bottom:4px">Element Distribution</div>';
-      if (ds.topTags && ds.topTags.length > 0) {
-        html += '<div style="display:flex;flex-wrap:wrap;gap:4px 10px;font-size:12px">';
-        ds.topTags.forEach(function(t) {
-          html += '<span>&lt;' + t.tag + '&gt; <strong>' + t.count + '</strong></span>';
-        });
-        html += '</div>';
-      }
-      html += '<div style="font-size:12px;margin-top:4px;color:var(--text-secondary)">';
-      html += 'Semantic: ' + ds.semanticCount + ' · Divs: ' + ds.divCount + ' (' + ds.divRatio + '%)';
-      if (ds.displayNoneCount > 0) html += ' · Hidden (display:none): ' + ds.displayNoneCount;
-      if (ds.ariaHiddenCount > 0) html += ' · aria-hidden: ' + ds.ariaHiddenCount;
-      html += '</div>';
-      html += '</div>';
-    }
-    var hpc = report.raw.layout && report.raw.layout.hiddenPanelCount;
-    var hpi = report.raw.layout && report.raw.layout.hiddenPanelIssues;
-    if (hpc > 0) {
-      html += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">';
-      html += '<div style="font-weight:600;margin-bottom:4px">Hidden Panels Detected: ' + hpc + '</div>';
-      if (hpi && hpi.length > 0) {
-        html += '<div style="font-size:12px;color:var(--text-error,#ef4444)">' + hpi.length + ' panel(s) overflow when revealed:</div>';
-        hpi.forEach(function(p) {
-          var issueStr = p.issues.map(function(i) {
-            return i.type === 'right-overflow' ? 'right +' + i.overflow + 'px'
-              : i.type === 'left-overflow' ? 'left -' + i.overflow + 'px'
-              : i.type === 'internal-overflow' ? 'internal +' + i.overflow + 'px'
-              : i.type;
-          }).join(', ');
-          html += '<div style="font-size:12px;margin-top:2px"><code style="font-size:11px">' + p.selector + '</code> (' + p.role + '): ' + issueStr + '</div>';
-        });
-      } else {
-        html += '<div style="font-size:12px;color:var(--text-secondary)">All panels fit within viewport when revealed</div>';
-      }
-      html += '</div>';
-    }
-    html += '</div>';
-    html += '</div>';
-
-    html += '</div>';
-    html += '</div>';
-
-    // --- Methodology note ---
-    html += '<div class="report-methodology">';
-    html += '<h2>About this Report</h2>';
-    html += '<p>This report checks <strong>computed styles</strong> against concrete, evidence-based rules from WCAG 2.2, Material Design, and typography research. ';
-    html += 'It does not use AI — every finding is a deterministic comparison of measured values against documented thresholds.</p>';
-    html += '<p><strong>What it catches well:</strong> contrast ratios, font sizes, touch targets, spacing grid adherence, semantic HTML, heading hierarchy — anything with a hard number.</p>';
-    html += '<p><strong>What it cannot judge:</strong> visual balance, color harmony, whether a layout "feels right", design personality, or context-dependent choices (e.g., a 14px caption is fine but 14px body text is not).</p>';
-    html += '<p>For a full design review with context-aware judgment, use this report as input for a <a href="index.html" style="color:var(--primary)">design consultation</a> — the findings give an AI or human reviewer concrete data to work from.</p>';
-    html += '</div>';
-
-    // Deep scan: dark mode test results (viewport data now shown via tabs above)
-    if (report.raw.deepScan) {
-      var ds = report.raw.deepScan;
-      if (ds.darkMode && ds.darkMode.tested) {
-        html += '<div class="report-summary" style="margin-top:16px">';
-        html += '<h4 style="font-size:13px;margin-bottom:8px">Dark Mode Test</h4>';
-        var dmFails = ds.darkMode.contrastFails;
-        if (dmFails === 0) {
-          html += '<p style="font-size:13px"><span style="color:#16a34a">No contrast failures in dark mode</span></p>';
-        } else {
-          html += '<p style="font-size:13px"><span style="color:#dc2626">' + dmFails + ' contrast failure(s) in dark mode (' + ds.darkMode.contrastTotal + ' pairs checked)</span></p>';
-        }
-        html += '</div>';
-      }
-    }
-
-    return html;
-  }
-
-  // --- Markdown Export ---
-  function renderMarkdown(report, options) {
-    var opts = options || {};
-    var skipImages = opts.skipImages || false;
-    var severityFilter = opts.severityFilter || 'all';
-    var _passSev = function(sev) {
-      if (severityFilter === 'all') return true;
-      if (severityFilter === 'error') return sev === 'error';
-      if (severityFilter === 'warning') return sev === 'error' || sev === 'warning';
-      return true;
-    };
-    var lines = [];
-    lines.push('# Design Analysis Report');
-    lines.push('');
-    lines.push('**URL:** ' + (report.meta.url || 'Pasted HTML'));
-    lines.push('**Date:** ' + new Date(report.meta.timestamp).toLocaleString());
-    lines.push('**Viewport:** ' + report.meta.viewportWidth + '×' + report.meta.viewportHeight + 'px');
-    lines.push('**Overall Score:** ' + report.overall + '/100 (' + report.grade + ' — ' + report.gradeLabel + ')');
-    lines.push('');
-
-    lines.push('## Category Scores');
-    lines.push('');
-    lines.push('| Category | Score | Weight | Issues |');
-    lines.push('|----------|-------|--------|--------|');
-    report.categories.forEach(function(cat) {
-      var errors = cat.findings.filter(function(f) { return f.severity === 'error'; }).length;
-      var warnings = cat.findings.filter(function(f) { return f.severity === 'warning'; }).length;
-      var issues = [];
-      if (errors > 0) issues.push(errors + ' error' + (errors > 1 ? 's' : ''));
-      if (warnings > 0) issues.push(warnings + ' warning' + (warnings > 1 ? 's' : ''));
-      lines.push('| ' + cat.label + ' | ' + cat.score + '/100 | ' + cat.weight + '% | ' + (issues.length > 0 ? issues.join(', ') : 'All passed') + ' |');
-    });
-    lines.push('');
-
-    lines.push('## Detailed Findings');
-    lines.push('');
-    report.categories.forEach(function(cat) {
-      var filtered = cat.findings.filter(function(f) { return _passSev(f.severity); });
-      if (filtered.length === 0) return;
-      lines.push('### ' + cat.label);
-      lines.push('');
-      filtered.forEach(function(f) {
-        var icon = f.severity === 'error' ? '❌' : f.severity === 'warning' ? '⚠️' : 'ℹ️';
-        lines.push('- ' + icon + ' **[' + f.severity + ']** ' + f.title);
-        if (f.detail) lines.push('  - ' + f.detail);
-        lines.push('  - **Fix:** ' + f.fix);
-        if (f.presetRef) lines.push('  - **Example:** ' + f.presetRef);
-        if (f.source) {
-          var sp = f.source.split(' — ');
-          lines.push('  - **Source:** [' + sp[0] + '](' + (sp[1] || '') + ')');
-        }
-        lines.push('');
-      });
-    });
-
-    lines.push('## Design Token Summary');
-    lines.push('');
-    lines.push('- **Body font:** ' + report.raw.typography.bodyFontSize + ' / ' + report.raw.typography.bodyLineHeight);
-    lines.push('- **Font families:** ' + (report.raw.typography.fontFamilies || []).join(', '));
-    var headings = report.raw.typography.headings || [];
-    if (headings.length > 0) {
-      lines.push('- **Headings:** ' + headings.map(function(h) { return h.tag + '=' + h.fontSize; }).join(', '));
-    }
-    lines.push('- **Max content width:** ' + report.raw.spacing.maxContentWidth);
-    lines.push('- **Elements:** ' + report.raw.structure.totalElements);
-    lines.push('- **Framework:** ' + report.raw.structure.cssFramework);
-    lines.push('- **Responsive:** ' + (report.raw.structure.responsiveClasses ? 'Yes' : 'No'));
-    lines.push('- **Dark mode:** ' + (report.raw.structure.darkModeClasses ? 'Yes' : 'No'));
-    var mds = report.raw.structure.domStats;
-    if (mds) {
-      lines.push('- **Element distribution:** ' + (mds.topTags || []).map(function(t) { return '<' + t.tag + '> ×' + t.count; }).join(', '));
-      lines.push('- **Semantic elements:** ' + mds.semanticCount + ' · Divs: ' + mds.divCount + ' (' + mds.divRatio + '%)');
-      if (mds.displayNoneCount > 0) lines.push('- **Hidden (display:none):** ' + mds.displayNoneCount);
-    }
-    var mhpc = report.raw.layout && report.raw.layout.hiddenPanelCount;
-    var mhpi = report.raw.layout && report.raw.layout.hiddenPanelIssues;
-    if (mhpc > 0) {
-      lines.push('- **Hidden panels:** ' + mhpc + ' detected' + (mhpi && mhpi.length > 0 ? ', ' + mhpi.length + ' overflow when revealed' : ', all fit viewport'));
-    }
-    lines.push('');
-
-    // Deep scan: viewport results
-    if (report.raw.deepScan && report.raw.deepScan.viewports) {
-      var dsVps = report.raw.deepScan.viewports;
-      var dsVpData = report.raw.deepScan.viewportData;
-      lines.push('## Multi-Viewport Analysis');
-      lines.push('');
-      lines.push('Analyzed across ' + dsVps.length + ' viewports:');
-      lines.push('');
-      lines.push('| Viewport | Width | Contrast Fails | Touch Targets | Overflow |');
-      lines.push('|----------|-------|---------------|---------------|----------|');
-      dsVps.forEach(function(vp, vi) {
-        lines.push('| ' + vp.label + ' | ' + vp.width + 'px | ' + (vp.contrastFails || 0) + ' | ' + (vp.touchTargets || 0) + ' | ' + (vp.overflow ? 'Yes' : 'No') + ' |');
-      });
-      lines.push('');
-      // Per-viewport detailed findings
-      if (dsVpData) {
-        dsVpData.forEach(function(vd, vi) {
-          if (!vd || !vd.data) return;
-          var vpData = vd.data;
-          var contrastFails = (vpData.colors && vpData.colors.contrastPairs || []).filter(function(p) { return !p.passes; });
-          var touchIssues = vpData.interaction && vpData.interaction.touchTargets || [];
-          if (contrastFails.length === 0 && touchIssues.length === 0) return;
-          lines.push('### ' + vd.label + ' (' + vd.width + 'px)');
-          lines.push('');
-          if (contrastFails.length > 0) {
-            lines.push('**Contrast failures (' + contrastFails.length + '):**');
-            contrastFails.slice(0, 10).forEach(function(cf) {
-              lines.push('- `' + (cf.selector || 'unknown') + '` — ratio ' + cf.ratio + ':1 (needs ' + (cf.neededRatio || 4.5) + ':1)');
-            });
-            if (contrastFails.length > 10) lines.push('- ...and ' + (contrastFails.length - 10) + ' more');
-            lines.push('');
-          }
-          if (touchIssues.length > 0) {
-            lines.push('**Touch target issues (' + touchIssues.length + '):**');
-            touchIssues.slice(0, 10).forEach(function(tt) {
-              lines.push('- `' + (tt.selector || tt.element || 'unknown') + '` — ' + tt.width + '×' + tt.height + 'px');
-            });
-            if (touchIssues.length > 10) lines.push('- ...and ' + (touchIssues.length - 10) + ' more');
-            lines.push('');
-          }
-          // Pixel verify results
-          if (vpData._contrastVerifyResults && vpData._contrastVerifyResults.length > 0) {
-            var fp = vpData._contrastVerifyResults.filter(function(r) { return r.cssPasses && !r.pixelPasses; });
-            var ff = vpData._contrastVerifyResults.filter(function(r) { return !r.cssPasses && r.pixelPasses; });
-            if (fp.length > 0 || ff.length > 0) {
-              lines.push('**Pixel verification:**');
-              if (fp.length > 0) lines.push('- ' + fp.length + ' hidden failure(s) — pass CSS but fail in pixels');
-              if (ff.length > 0) lines.push('- ' + ff.length + ' false positive(s) — fail CSS but pass in pixels');
-              lines.push('');
-            }
-          }
-        });
-      }
-    }
-
-    // Deep scan: dark mode test results
-    if (report.raw.deepScan && report.raw.deepScan.darkMode && report.raw.deepScan.darkMode.tested) {
-      var dsDm = report.raw.deepScan.darkMode;
-      lines.push('## Dark Mode Test');
-      lines.push('');
-      var dmFails = dsDm.contrastFails;
-      if (dmFails === 0) {
-        lines.push('No contrast failures in dark mode.');
-      } else {
-        lines.push(dmFails + ' contrast failure(s) in dark mode (' + dsDm.contrastTotal + ' pairs checked).');
-      }
-      lines.push('');
-    }
-
-    // Pixel contrast verification results (top-level, for single-URL reports)
-    if (report._contrastVerifyResults && report._contrastVerifyResults.length > 0) {
-      var pvr = report._contrastVerifyResults;
-      var pvFp = pvr.filter(function(r) { return r.cssPasses && !r.pixelPasses; });
-      var pvFf = pvr.filter(function(r) { return !r.cssPasses && r.pixelPasses; });
-      var pvOk = pvr.length - pvFp.length - pvFf.length;
-      lines.push('## Pixel Contrast Verification');
-      lines.push('');
-      lines.push('- **' + pvr.length + '** pairs checked');
-      if (pvOk > 0) lines.push('- **' + pvOk + '** verified consistent');
-      if (pvFp.length > 0) {
-        lines.push('- **' + pvFp.length + '** hidden failure(s) — pass CSS but fail in pixels:');
-        pvFp.forEach(function(r) {
-          lines.push('  - `' + (r.selector || 'unknown') + '` CSS ' + r.cssRatio + ':1 → Pixel ' + r.pixelRatio + ':1');
-        });
-      }
-      if (pvFf.length > 0) {
-        lines.push('- **' + pvFf.length + '** false positive(s) — fail CSS but pass in pixels:');
-        pvFf.forEach(function(r) {
-          lines.push('  - `' + (r.selector || 'unknown') + '` CSS ' + r.cssRatio + ':1 → Pixel ' + r.pixelRatio + ':1');
-        });
-      }
-      lines.push('');
-    }
-
-    // Screenshots (as inline base64 images in markdown) — skip when copying for paste
-    if (!skipImages && report.raw.screenshots && report.raw.screenshots.length > 0) {
-      lines.push('## Page Screenshots');
-      lines.push('');
-      report.raw.screenshots.forEach(function(src, idx) {
-        lines.push('### Screenshot ' + (idx + 1));
-        lines.push('');
-        lines.push('![Page screenshot ' + (idx + 1) + '](' + src + ')');
-        lines.push('');
-      });
-    }
-
-    lines.push('---');
-    lines.push('*Generated by [make-it-look-good](https://github.com/jdeworks/make-it-look-good) Design Analyzer — rule-based scoring, no AI.*');
-
-    return lines.join('\n');
-  }
-
-  function renderGauge(score, grade) {
-    var color = gradeColor(grade);
-    var circumference = 2 * Math.PI * 54;
-    var offset = circumference - (score / 100) * circumference;
-    return '<svg width="120" height="120" viewBox="0 0 120 120">' +
-      '<circle cx="60" cy="60" r="54" fill="none" stroke="var(--border)" stroke-width="8"/>' +
-      '<circle cx="60" cy="60" r="54" fill="none" stroke="' + color + '" stroke-width="8" ' +
-      'stroke-dasharray="' + circumference + '" stroke-dashoffset="' + offset + '" ' +
-      'stroke-linecap="round" transform="rotate(-90 60 60)" style="transition:stroke-dashoffset 0.8s ease"/>' +
-      '<text x="60" y="55" text-anchor="middle" font-size="32" font-weight="700" fill="' + color + '">' + score + '</text>' +
-      '<text x="60" y="75" text-anchor="middle" font-size="14" font-weight="600" fill="' + color + '">' + grade + '</text>' +
-      '</svg>';
-  }
-
-  function renderProgressBar(score) {
-    var color = scoreColor(score);
-    return '<div class="progress-bar"><div class="progress-fill" style="width:' + score + '%;background:' + color + '"></div></div>';
-  }
-
-  function escapeHtml(str) {
-    if (!str) return '';
-    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  }
-
-  function renderCrawlSummary(summary) {
-    if (!summary || summary.pagesAnalyzed === 0) {
-      return '<div class="crawl-summary"><p style="color:var(--text-secondary)">No pages analyzed yet.</p></div>';
-    }
-
-    var html = '<div class="crawl-summary">';
-
-    // Overall stats
-    html += '<h2>Site Overview</h2>';
-    if (summary.viewportSummary) {
-      html += '<div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">Analyzed across ' + summary.viewportSummary.viewportCount + ' viewports: ' + summary.viewportSummary.viewportLabels.map(function(l) { return escapeHtml(l); }).join(', ') + '</div>';
-    }
-    html += '<div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:24px">';
-    html += '<div style="padding:12px 20px;border-radius:10px;background:var(--surface);border:1px solid var(--border);text-align:center">';
-    html += '<div style="font-size:32px;font-weight:700;font-variant-numeric:tabular-nums">' + summary.averageScore + '</div>';
-    html += '<div style="font-size:12px;color:var(--text-secondary)">Average Score</div></div>';
-    html += '<div style="padding:12px 20px;border-radius:10px;background:var(--surface);border:1px solid var(--border);text-align:center">';
-    html += '<div style="font-size:32px;font-weight:700">' + summary.pagesAnalyzed + '</div>';
-    html += '<div style="font-size:12px;color:var(--text-secondary)">Pages Analyzed</div></div>';
-    if (summary.viewportSummary) {
-      html += '<div style="padding:12px 20px;border-radius:10px;background:var(--surface);border:1px solid var(--border);text-align:center">';
-      html += '<div style="font-size:32px;font-weight:700">' + summary.viewportSummary.viewportCount + '</div>';
-      html += '<div style="font-size:12px;color:var(--text-secondary)">Viewports</div></div>';
-    }
-    if (summary.pagesFailed > 0) {
-      html += '<div style="padding:12px 20px;border-radius:10px;background:#fef2f2;border:1px solid #fecaca;text-align:center">';
-      html += '<div style="font-size:32px;font-weight:700;color:#dc2626">' + summary.pagesFailed + '</div>';
-      html += '<div style="font-size:12px;color:#dc2626">Failed</div></div>';
-    }
-    html += '</div>';
-
-    // Score grid
-    html += '<h3>Page Scores</h3>';
-    html += '<div class="crawl-score-grid">';
-    summary.scoreGrid.forEach(function(row) {
-      var gradeClass = 'grade-' + row.grade.toLowerCase();
-      html += '<div class="crawl-score-card">';
-      html += '<div class="score ' + gradeClass + '">' + row.score + '</div>';
-      html += '<div class="grade ' + gradeClass + '">' + row.grade + '</div>';
-      html += '<div class="page-path" title="' + escapeHtml(row.url) + '">' + escapeHtml(row.path || '/') + '</div>';
-      html += '</div>';
-    });
-    html += '</div>';
-
-    // Cross-page issues
-    var issues = summary.crossPageIssues;
-    if (issues.length > 0) {
-      html += '<h3>Issues Across Pages</h3>';
-      issues.slice(0, 30).forEach(function(issue) {
-        html += '<div class="crawl-issue-group">';
-        html += '<div class="issue-header">';
-        html += '<div class="issue-title"><span class="severity-badge ' + issue.severity + '">' + issue.severity + '</span>' + escapeHtml(issue.title) + '</div>';
-        var uniquePages = []; issue.pages.forEach(function(p) { if (uniquePages.indexOf(p.url) === -1) uniquePages.push(p.url); });
-        html += '<div class="issue-count">' + issue.count + '&times; on ' + uniquePages.length + ' page' + (uniquePages.length > 1 ? 's' : '') + '</div>';
-        html += '</div>';
-        html += '<div class="issue-pages">';
-        issue.pages.forEach(function(p) {
-          var path; try { path = new URL(p.url).pathname; } catch(e) { path = p.url; }
-          html += '<div>' + escapeHtml(path) + (p.detail ? ' — ' + escapeHtml(p.detail.substring(0, 80)) : '') + '</div>';
-        });
-        html += '</div>';
-        html += '</div>';
-      });
-    }
-
-    // Category averages
-    if (summary.categoryAverages.length > 0) {
-      html += '<h3>Category Averages</h3>';
-      html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px">';
-      summary.categoryAverages.forEach(function(cat) {
-        var barColor = cat.avgScore >= 90 ? '#16a34a' : cat.avgScore >= 80 ? '#ca8a04' : cat.avgScore >= 70 ? '#ea580c' : '#dc2626';
-        html += '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;background:var(--surface);border:1px solid var(--border)">';
-        html += '<div style="flex:1;font-size:13px;font-weight:500">' + escapeHtml(cat.label) + '</div>';
-        html += '<div style="width:50px;height:6px;border-radius:3px;background:var(--border);overflow:hidden"><div style="height:100%;width:' + cat.avgScore + '%;background:' + barColor + ';border-radius:3px"></div></div>';
-        html += '<div style="font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;width:28px;text-align:right">' + cat.avgScore + '</div>';
-        html += '</div>';
-      });
-      html += '</div>';
-    }
-
-    // Viewport breakdown (deep scan)
-    var vs = summary.viewportSummary;
-    if (vs) {
-      html += '<h3>Viewport Breakdown</h3>';
-      html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;margin-bottom:16px">';
-      vs.viewportStats.forEach(function(vp) {
-        html += '<div style="padding:10px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);font-size:13px">';
-        html += '<div style="font-weight:600;margin-bottom:4px">' + escapeHtml(vp.label) + ' <span style="color:var(--text-secondary);font-weight:400">(' + vp.width + 'px)</span></div>';
-        if (vp.contrastFails > 0) html += '<div style="color:#ef4444">Contrast fails: ' + vp.contrastFails + '</div>';
-        if (vp.touchTargets > 0) html += '<div style="color:#f59e0b">Touch targets: ' + vp.touchTargets + '</div>';
-        if (vp.overflowPages > 0) html += '<div style="color:#ef4444">Overflow on ' + vp.overflowPages + ' page' + (vp.overflowPages > 1 ? 's' : '') + '</div>';
-        if (vp.contrastFails === 0 && vp.touchTargets === 0 && vp.overflowPages === 0) {
-          html += '<div style="color:#16a34a">No issues found</div>';
-        }
-        html += '</div>';
-      });
-      html += '</div>';
-
-      // Universal issues (appear in ALL viewports)
-      if (vs.universalIssues.length > 0) {
-        html += '<h3>Universal Issues <span style="font-size:12px;color:var(--text-secondary);font-weight:400">(all viewports)</span></h3>';
-        html += '<div style="font-size:13px;line-height:1.6">';
-        vs.universalIssues.slice(0, 10).forEach(function(issue) {
-          html += '<div style="padding:6px 10px;margin-bottom:4px;border-radius:6px;background:var(--surface);border:1px solid var(--border)">';
-          html += '<span style="font-weight:500">' + escapeHtml(issue.title) + '</span>';
-          html += ' <span style="color:var(--text-secondary);font-size:12px">' + issue.pageCount + ' page' + (issue.pageCount > 1 ? 's' : '') + '</span>';
-          html += '</div>';
-        });
-        html += '</div>';
-      }
-
-      // Viewport-specific issues (only some viewports)
-      if (vs.viewportSpecific.length > 0) {
-        html += '<h3>Viewport-Specific Issues</h3>';
-        html += '<div style="font-size:13px;line-height:1.6">';
-        vs.viewportSpecific.slice(0, 10).forEach(function(issue) {
-          html += '<div style="padding:6px 10px;margin-bottom:4px;border-radius:6px;background:var(--surface);border:1px solid var(--border)">';
-          html += '<span style="font-weight:500">' + escapeHtml(issue.title) + '</span>';
-          html += ' <span style="font-size:12px;padding:1px 6px;border-radius:4px;background:var(--bg-alt);color:var(--text-secondary)">' + issue.viewports.map(function(v) { return escapeHtml(v); }).join(', ') + ' only</span>';
-          html += ' <span style="color:var(--text-secondary);font-size:12px">' + issue.pageCount + ' page' + (issue.pageCount > 1 ? 's' : '') + '</span>';
-          html += '</div>';
-        });
-        html += '</div>';
-      }
-    }
-
-    html += '</div>';
-    return html;
-  }
-
-  function renderCrawlPageTab(page, index, isActive) {
-    var path;
-    try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
-    if (path === '/') path = '/ (home)';
-    var label = page.title ? page.title.substring(0, 25) : path;
-
-    var dotClass = 'pending';
-    if (page.status === 'done' && page.reportData) {
-      dotClass = 'grade-' + page.reportData.grade.toLowerCase();
-    } else if (page.status === 'error') {
-      dotClass = 'error';
-    }
-
-    return '<button class="crawl-page-tab' + (isActive ? ' active' : '') + '" data-crawl-page="' + index + '" title="' + escapeHtml(page.url) + '">' +
-      '<span class="score-dot ' + dotClass + '"></span>' +
-      escapeHtml(label) +
-      (page.status === 'done' && page.reportData ? ' <span style="font-size:11px;color:var(--text-secondary)">' + page.reportData.overall + '</span>' : '') +
-      '</button>';
-  }
-
-  return { renderReport: renderReport, renderMarkdown: renderMarkdown, renderCrawlSummary: renderCrawlSummary, renderCrawlPageTab: renderCrawlPageTab };
-})();
 </file>
 
 <file path="docs/analyzer-extract.js">
@@ -33323,6 +32365,964 @@ window.MilgExtract = (function() {
 })();
 </file>
 
+<file path="docs/analyzer-report.js">
+// make-it-look-good — Report Renderers
+// HTML report, markdown export, gauge SVG, progress bars
+
+window.MilgReport = (function() {
+  "use strict";
+
+  // --- Report Rendering ---
+  var categoryIcons = {
+    contrast: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2v20"/><path d="M12 2a10 10 0 0 1 0 20"/></svg>',
+    type: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>',
+    spacing: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>',
+    touch: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 11V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v0"/><path d="M14 10V4a2 2 0 0 0-2-2 2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>',
+    a11y: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="4" r="2"/><path d="M6 8h12"/><path d="M12 8v8"/><path d="M9 20l3-4 3 4"/></svg>',
+    responsive: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>',
+    consistency: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l9 4.5v5c0 4.1-3.6 8-9 10.5-5.4-2.5-9-6.4-9-10.5v-5L12 3z"/></svg>',
+    cognitive: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a8 8 0 0 0-8 8c0 3.4 2.1 6.3 5 7.5V20h6v-2.5c2.9-1.2 5-4.1 5-7.5a8 8 0 0 0-8-8z"/><line x1="10" y1="22" x2="14" y2="22"/></svg>',
+    layout: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="12" y1="3" x2="12" y2="12"/></svg>',
+    readability: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>'
+  };
+
+  function isDarkUi() {
+    return document.body && document.body.classList.contains('dark-ui');
+  }
+
+  function scoreColor(score) {
+    var dark = isDarkUi();
+    if (score >= 90) return dark ? '#4ade80' : '#16a34a';
+    if (score >= 70) return dark ? '#facc15' : '#ca8a04';
+    if (score >= 50) return dark ? '#fb923c' : '#ea580c';
+    return dark ? '#f87171' : '#dc2626';
+  }
+
+  function gradeColor(grade) {
+    var dark = isDarkUi();
+    var light = { A: '#16a34a', B: '#65a30d', C: '#ca8a04', D: '#ea580c', F: '#dc2626' };
+    var darkC = { A: '#4ade80', B: '#a3e635', C: '#facc15', D: '#fb923c', F: '#f87171' };
+    return (dark ? darkC : light)[grade] || '#64748b';
+  }
+
+  function severityBadge(severity) {
+    var cls = 'severity-badge-' + (severity || 'info');
+    return '<span class="' + cls + '" style="display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px">' + severity + '</span>';
+  }
+
+  function renderReport(report) {
+    var html = '';
+
+    // --- Header ---
+    html += '<div class="report-header">';
+    html += '<div class="report-header-info">';
+    html += '<h1>Design Analysis Report</h1>';
+    var reportUrl = report.meta.url || 'Pasted HTML';
+    if (/^https?:\/\//.test(reportUrl)) {
+      html += '<p class="report-url"><a href="' + escapeHtml(reportUrl) + '" target="_blank" rel="noopener" style="color:var(--primary);text-decoration:underline">' + escapeHtml(reportUrl) + '</a></p>';
+    } else {
+      html += '<p class="report-url">' + escapeHtml(reportUrl) + '</p>';
+    }
+    var ctxType = (report.raw.context && report.raw.context.pageType) || 'unknown';
+    var ctxLabel = { marketing: 'Marketing / Landing', pricing: 'Pricing Page', form: 'Form Page', app: 'Application', content: 'Content Page', component: 'Component / Snippet', unknown: 'General' }[ctxType] || ctxType;
+    html += '<p class="report-timestamp">' + new Date(report.meta.timestamp).toLocaleString() + ' &middot; ' + report.meta.viewportWidth + '&times;' + report.meta.viewportHeight + 'px &middot; Detected: ' + ctxLabel + '</p>';
+    html += '</div>';
+
+    // Overall score gauge
+    html += '<div class="report-gauge">';
+    html += renderGauge(report.overall, report.grade);
+    html += '<div class="report-grade-label">' + report.gradeLabel + '</div>';
+    html += '</div>';
+    html += '</div>';
+
+    // Deep scan viewport info handled by persistent tabs above report — no inline bar needed
+
+    // --- Screenshots (collapsible, before scores) ---
+    if (report.raw.screenshots && report.raw.screenshots.length > 0) {
+      html += '<details class="report-screenshots">';
+      html += '<summary style="cursor:pointer;font-size:14px;font-weight:600;padding:8px 0;color:var(--text-secondary)">Page Screenshots (' + report.raw.screenshots.length + ')</summary>';
+      html += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;margin-bottom:16px">';
+      report.raw.screenshots.forEach(function(src, idx) {
+        html += '<div class="screenshot-thumb" style="flex:1;min-width:200px;max-width:400px">';
+        if (report.raw.screenshots.length > 1) {
+          html += '<div style="padding:4px 8px;font-size:10px;color:var(--text-secondary);border-bottom:1px solid var(--border);background:var(--bg-alt)">Section ' + (idx + 1) + '</div>';
+        }
+        html += '<img src="' + src + '" alt="Page screenshot ' + (idx + 1) + '" class="screenshot-img" style="width:100%;display:block;cursor:zoom-in" onclick="window.__milgZoomScreenshot(this,' + idx + ')" loading="lazy">';
+        html += '</div>';
+      });
+      html += '</div>';
+      // Unhidden panels screenshots (shown when hidden panels were detected)
+      if (report.raw.screenshotsUnhidden && report.raw.screenshotsUnhidden.length > 0) {
+        html += '<div style="margin-top:12px;padding:12px;border:2px dashed var(--border);border-radius:8px;background:var(--bg-alt)">';
+        html += '<div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text-error,#ef4444)">With hidden panels revealed (' + (report.raw.layout.hiddenPanelCount || '?') + ' panels unhidden)</div>';
+        html += '<div style="display:flex;flex-wrap:wrap;gap:12px">';
+        report.raw.screenshotsUnhidden.forEach(function(src, idx) {
+          html += '<div class="screenshot-thumb" style="flex:1;min-width:200px;max-width:400px">';
+          if (report.raw.screenshotsUnhidden.length > 1) {
+            html += '<div style="padding:4px 8px;font-size:10px;color:var(--text-secondary);border-bottom:1px solid var(--border);background:var(--bg-alt)">Section ' + (idx + 1) + '</div>';
+          }
+          html += '<img src="' + src + '" alt="Page with panels revealed ' + (idx + 1) + '" class="screenshot-img" style="width:100%;display:block;cursor:zoom-in" onclick="window.__milgZoomScreenshot(this,' + idx + ')" loading="lazy">';
+          html += '</div>';
+        });
+        html += '</div>';
+        html += '</div>';
+      }
+      html += '</details>';
+    }
+
+    // --- Category cards ---
+    html += '<div class="report-categories">';
+    report.categories.forEach(function(cat) {
+      var catId = 'findings-' + cat.icon;
+      var hasFindings = cat.findings.length > 0;
+      // All cards are clickable — scroll to findings if present, otherwise to passed checks
+      var scrollTarget = hasFindings ? catId : 'passed-checks';
+      html += '<div class="report-card report-card-clickable" onclick="var el=document.getElementById(\'' + scrollTarget + '\');if(el){el.scrollIntoView({behavior:\'smooth\',block:\'start\'});if(!el.open&&el.tagName===\'DETAILS\')el.open=true;}">';
+      html += '<div class="report-card-header">';
+      html += '<div class="report-card-icon" style="color:' + scoreColor(cat.score) + '">' + (categoryIcons[cat.icon] || '') + '</div>';
+      html += '<div class="report-card-title">';
+      html += '<h3>' + cat.label + '</h3>';
+      html += '<span class="report-card-weight">' + cat.weight + '% weight</span>';
+      html += '</div>';
+      if (cat.notApplicable) {
+        html += '<div class="report-card-score" style="color:var(--text-secondary);font-size:13px">N/A</div>';
+      } else {
+        html += '<div class="report-card-score" style="color:' + scoreColor(cat.score) + '">' + cat.score + '</div>';
+      }
+      html += '</div>';
+      html += renderProgressBar(cat.score);
+
+      // Finding count with color-coded badges and tooltips
+      var errors = cat.findings.filter(function(f) { return f.severity === 'error'; }).length;
+      var warnings = cat.findings.filter(function(f) { return f.severity === 'warning'; }).length;
+      var infos = cat.findings.filter(function(f) { return f.severity === 'info'; }).length;
+      var passed = (cat.checks || 0) - errors - warnings;
+      if (passed < 0) passed = 0;
+      // If module didn't report checks, estimate from findings
+      var totalChecks = cat.checks || (errors + warnings + infos + (cat.findings.length === 0 ? 1 : 0));
+      var notApplicable = Math.max(0, totalChecks - errors - warnings - infos - passed);
+
+      var catId = 'findings-' + cat.icon;
+      html += '<div class="report-card-counts">';
+      if (totalChecks > 0 || cat.findings.length === 0) {
+        if (errors > 0) html += '<span class="count-error" title="' + errors + ' error(s)" onclick="event.stopPropagation();document.getElementById(\'' + catId + '\').scrollIntoView({behavior:\'smooth\',block:\'start\'})">' + errors + '</span>';
+        if (warnings > 0) html += '<span class="count-warning" title="' + warnings + ' warning(s)" onclick="event.stopPropagation();document.getElementById(\'' + catId + '\').scrollIntoView({behavior:\'smooth\',block:\'start\'})">' + warnings + '</span>';
+        if (infos > 0) html += '<span class="count-info" title="' + infos + ' info" onclick="event.stopPropagation();document.getElementById(\'' + catId + '\').scrollIntoView({behavior:\'smooth\',block:\'start\'})">' + infos + '</span>';
+        if (passed > 0 || cat.findings.length === 0) html += '<span class="count-pass" title="' + (passed || totalChecks) + ' passed">' + (passed || totalChecks) + '</span>';
+      }
+      html += '</div>';
+
+      html += '</div>';
+    });
+    html += '</div>';
+
+    // --- Detailed findings ---
+    html += '<div class="report-findings">';
+    html += '<h2>Detailed Findings</h2>';
+
+    var _bboxFindingIdx = 0; // Global finding index for "show on screenshot" links
+    var _hasScreenshots = report.raw && report.raw.screenshots && report.raw.screenshots.length > 0 && report.raw.screenshotMeta;
+    report.categories.forEach(function(cat) {
+      if (cat.findings.length === 0) return;
+
+      html += '<div class="report-finding-group" id="findings-' + cat.icon + '">';
+      html += '<h3>' + (categoryIcons[cat.icon] || '') + ' ' + cat.label + '</h3>';
+
+      cat.findings.forEach(function(f) {
+        if (f.severity === 'pass') return; // pass findings only show in screenshot viewer
+        var hasBboxes = f.locator && f.locator.bboxes && f.locator.bboxes.length > 0;
+        html += '<div class="report-finding severity-' + f.severity + '"' + (hasBboxes ? ' data-finding-idx="' + _bboxFindingIdx + '"' : '') + '>';
+        html += '<div class="finding-header">';
+        html += severityBadge(f.severity);
+        html += '<span class="finding-title">' + escapeHtml(f.title) + '</span>';
+        html += '</div>';
+        if (f.detail) html += '<p class="finding-detail">' + escapeHtml(f.detail) + '</p>';
+        // Affected elements with selectors + text (collapsible, for machine-readable reports)
+        if (f.locator && f.locator.selectors && f.locator.selectors.length > 0) {
+          var _texts = f.locator.texts || [];
+          var _hasBboxList = f.locator.bboxes && f.locator.bboxes.length > 0 && _hasScreenshots;
+          html += '<details class="finding-selectors" style="margin:6px 0;font-size:11px">';
+          html += '<summary style="cursor:pointer;color:var(--text-secondary)">' + f.locator.selectors.length + ' affected element' + (f.locator.selectors.length !== 1 ? 's' : '') + '</summary>';
+          html += '<div style="margin:4px 0 0;padding:8px;background:var(--bg-alt);border:1px solid var(--border);border-radius:4px;font-size:10px;line-height:1.8;max-height:300px;overflow:auto">';
+          f.locator.selectors.forEach(function(sel, si) {
+            var txt = _texts[si] || '';
+            var canShow = _hasBboxList && si < f.locator.bboxes.length && f.locator.bboxes[si];
+            html += '<div style="padding:2px 0;border-bottom:1px solid var(--border);display:flex;align-items:baseline;gap:6px">';
+            if (canShow) {
+              html += '<a style="cursor:pointer;color:var(--accent);text-decoration:none;flex-shrink:0;font-size:9px" onclick="window.__milgShowBboxOnScreenshot(' + _bboxFindingIdx + ',' + si + ')" title="Show on screenshot">&#128269;</a>';
+            }
+            html += '<span style="flex:1;min-width:0"><code style="color:var(--text-primary)">' + escapeHtml(sel) + '</code>';
+            if (txt) html += ' <span style="color:var(--text-secondary);font-style:italic">&quot;' + escapeHtml(txt.substring(0, 50)) + (txt.length > 50 ? '…' : '') + '&quot;</span>';
+            html += '</span></div>';
+          });
+          html += '</div></details>';
+        }
+        // Color pair swatches for contrast findings
+        if (f._colors) {
+          html += '<div class="finding-color-pair" style="display:flex;align-items:center;gap:8px;margin:4px 0 6px;font-size:11px;color:var(--text-secondary)">' +
+            '<span style="display:inline-flex;align-items:center;gap:4px">' +
+              '<span style="display:inline-block;width:14px;height:14px;border-radius:3px;border:1px solid var(--border);background:' + escapeHtml(f._colors.fg) + '" title="Foreground: ' + escapeHtml(f._colors.fg) + '"></span>' +
+              '<code style="font-size:10px">' + escapeHtml(f._colors.fg) + '</code>' +
+            '</span>' +
+            '<span style="opacity:0.5">on</span>' +
+            '<span style="display:inline-flex;align-items:center;gap:4px">' +
+              '<span style="display:inline-block;width:14px;height:14px;border-radius:3px;border:1px solid var(--border);background:' + escapeHtml(f._colors.bg) + '" title="Background: ' + escapeHtml(f._colors.bg) + '"></span>' +
+              '<code style="font-size:10px">' + escapeHtml(f._colors.bg) + '</code>' +
+            '</span>' +
+            '<span style="opacity:0.5">=</span> <strong>' + f._colors.ratio + ':1</strong>' +
+          '</div>';
+        }
+
+        html += '<div class="finding-fix">';
+        html += '<strong>Fix:</strong> ' + escapeHtml(f.fix);
+        html += '</div>';
+
+        if (f.presetRef) {
+          html += '<div class="finding-preset">';
+          html += '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> ';
+          html += escapeHtml(f.presetRef);
+          html += '</div>';
+        }
+
+        if (f.source) {
+          var srcParts = f.source.split(' — ');
+          var srcLabel = srcParts[0];
+          var srcUrl = srcParts[1] || '';
+          html += '<div class="finding-source">';
+          if (srcUrl) {
+            html += '<a href="' + escapeHtml(srcUrl) + '" target="_blank" rel="noopener">' + escapeHtml(srcLabel) + '</a>';
+          } else {
+            html += escapeHtml(srcLabel);
+          }
+          html += '</div>';
+        }
+
+        if (hasBboxes && _hasScreenshots) {
+          html += '<a class="finding-show-on-screenshot" onclick="window.__milgShowFindingOnScreenshot(' + _bboxFindingIdx + ')">Show on screenshot</a>';
+        }
+        if (hasBboxes) _bboxFindingIdx++;
+
+        html += '</div>';
+      });
+
+      html += '</div>';
+    });
+
+    html += '</div>';
+
+    // --- Passed checks ---
+    // Check descriptions per category (what was checked and passed)
+    var checkDescriptions = {
+      contrast: [
+        { title: 'Text contrast ratio meets threshold', detail: 'All text elements have sufficient contrast against their backgrounds.', source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' },
+        { title: 'No undetermined contrast issues', detail: 'All background colors could be resolved (no complex gradients or images blocking analysis).', source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' },
+        { title: 'Text uses real HTML (not images)', detail: 'Text is rendered as selectable HTML, not embedded in images.', source: 'WCAG 2.2 §1.4.5 — https://www.w3.org/TR/WCAG22/#images-of-text' },
+        { title: 'CVD-safe color palette', detail: 'Color pairs remain distinguishable under color vision deficiency simulation.', source: 'Machado et al. 2009 — https://www.inf.ufrgs.br/~oliveira/pubs_files/CVD_Simulation/CVD_Simulation.html' }
+      ],
+      type: [
+        { title: 'Body font size adequate', detail: 'Body text meets the minimum font size for this audience.', source: 'NNGroup — https://www.nngroup.com/articles/let-users-control-font-size/' },
+        { title: 'Line height within range', detail: 'Body line-height provides comfortable reading spacing.', source: 'WCAG 2.2 §1.4.12 — https://www.w3.org/TR/WCAG22/#text-spacing' },
+        { title: 'Line length under limit', detail: 'Content width constrains lines to a readable character count.', source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-length.html' },
+        { title: 'Heading scale consistent', detail: 'Headings follow a logical size progression from H1 down.', source: 'Modular type scales — https://typescale.com/' },
+        { title: 'Font weight count reasonable', detail: 'Uses 2-4 font weights, avoiding visual noise.', source: 'Google Fonts — https://fonts.google.com/knowledge/using_type/choosing_reliable_typefaces' },
+        { title: 'Font family count under limit', detail: 'Uses 1-3 font families for visual consistency.', source: 'Butterick\'s Practical Typography — https://practicaltypography.com/summary-of-key-rules.html' },
+        { title: 'Paragraph spacing appropriate', detail: 'Paragraphs have comfortable spacing between them.', source: 'Butterick\'s Practical Typography — https://practicaltypography.com/space-between-paragraphs.html' },
+        { title: 'Font weight meets audience minimum', detail: 'All font weights are heavy enough for the target audience\'s legibility requirements.', source: 'W3C WAI Older Users — https://www.w3.org/WAI/older-users/developing/' }
+      ],
+      spacing: [
+        { title: 'Spacing on 4px grid', detail: 'Spacing values align to a consistent base unit.', source: 'Material Design — https://m3.material.io/foundations/layout/applying-layout' },
+        { title: 'Content width constrained', detail: 'Content doesn\'t stretch to excessive widths.', source: 'NNGroup — https://www.nngroup.com/articles/utilize-available-screen-space/' },
+        { title: 'Body padding adequate', detail: 'Content has proper edge padding, not touching screen sides.', source: 'Material Design — https://m3.material.io/foundations/layout/applying-layout' },
+        { title: 'No element overflow', detail: 'No content extends beyond its container boundaries.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' },
+        { title: 'Interactive element spacing adequate', detail: 'Buttons and links have enough gap between them to prevent mis-clicks.', source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum' }
+      ],
+      touch: [
+        { title: 'Interactive targets properly sized', detail: 'Buttons, links, and inputs meet minimum target size.', source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum' },
+        { title: 'Transition durations appropriate', detail: 'Animations stay under 500ms for responsive feel.', source: 'NNGroup — https://www.nngroup.com/articles/animation-usability/' },
+        { title: 'Touch-friendly on mobile', detail: 'Elements would pass touch target requirements on mobile viewports.', source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout' }
+      ],
+      a11y: [
+        { title: 'Semantic HTML landmarks', detail: 'Page uses header, nav, main, and/or footer elements.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships' },
+        { title: 'Heading hierarchy intact', detail: 'Headings follow sequential order without gaps (h1 → h2 → h3).', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships' },
+        { title: 'Images have alt text', detail: 'All img elements include alt attributes for screen readers.', source: 'WCAG 2.2 §1.1.1 — https://www.w3.org/TR/WCAG22/#non-text-content' },
+        { title: 'Form inputs labeled', detail: 'All form fields have associated labels or aria-label.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships' },
+        { title: 'Focus indicators visible', detail: 'Interactive elements show visible focus styling for keyboard users.', source: 'WCAG 2.2 §2.4.7 — https://www.w3.org/TR/WCAG22/#focus-visible' },
+        { title: 'Language attribute set', detail: 'HTML element has a lang attribute for correct pronunciation.', source: 'WCAG 2.2 §3.1.1 — https://www.w3.org/TR/WCAG22/#language-of-page' },
+        { title: 'Skip navigation link', detail: 'Keyboard users can skip past navigation to reach main content.', source: 'WCAG 2.2 §2.4.1 — https://www.w3.org/TR/WCAG22/#bypass-blocks' },
+        { title: 'Descriptive link text', detail: 'Links use meaningful text instead of "click here" or "read more".', source: 'WCAG 2.2 §2.4.4 — https://www.w3.org/TR/WCAG22/#link-purpose-in-context' },
+        { title: 'No color-only indicators', detail: 'Status information uses icons or text in addition to color.', source: 'WCAG 2.2 §1.4.1 — https://www.w3.org/TR/WCAG22/#use-of-color' },
+        { title: 'No duplicate IDs', detail: 'All element IDs are unique, preserving correct ARIA label associations and anchor links.', source: 'WCAG 2.2 §4.1.1 — https://www.w3.org/TR/WCAG22/#parsing' },
+        { title: 'Scrollable regions keyboard-accessible', detail: 'Scrollable containers are reachable via keyboard, either through focusable children or tabindex.', source: 'WCAG 2.2 §2.1.1 — https://www.w3.org/TR/WCAG22/#keyboard' },
+        { title: 'No nested interactive elements', detail: 'Links and buttons are not nested inside other interactive elements.', source: 'HTML spec §4.5.1 — https://html.spec.whatwg.org/multipage/text-level-semantics.html#the-a-element' },
+        { title: 'No positive tabindex values', detail: 'Tab order follows natural DOM order without manual overrides.', source: 'WCAG 2.2 §2.4.3 — https://www.w3.org/TR/WCAG22/#focus-order' },
+        { title: 'Interactive elements have accessible names', detail: 'All buttons and links have visible text, aria-label, or title so screen readers can announce them.', source: 'WCAG 2.2 §4.1.2 — https://www.w3.org/TR/WCAG22/#name-role-value' },
+        { title: 'Form element borders meet contrast threshold', detail: 'Input boundaries have at least 3:1 contrast against their background, meeting WCAG 1.4.11.', source: 'WCAG 2.2 §1.4.11 — https://www.w3.org/TR/WCAG22/#non-text-contrast' },
+        { title: 'Tables are accessible', detail: 'Data tables use th elements and appropriate scope attributes for screen reader navigation.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships' }
+      ],
+      responsive: [
+        { title: 'Responsive breakpoints detected', detail: 'CSS media queries or responsive utility classes are present.', source: 'NNGroup — https://www.nngroup.com/articles/responsive-web-design-definition/' },
+        { title: 'Dark mode support', detail: 'Page supports dark color scheme.', source: 'Apple HIG — https://developer.apple.com/design/human-interface-guidelines/dark-mode' },
+        { title: 'Viewport meta tag correct', detail: 'Proper viewport configuration for mobile rendering.', source: 'MDN — https://developer.mozilla.org/en-US/docs/Web/HTML/Viewport_meta_tag' },
+        { title: 'User zoom not blocked', detail: 'Viewport doesn\'t prevent pinch-to-zoom.', source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text' },
+        { title: 'No horizontal overflow', detail: 'Page content fits within viewport width.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' },
+        { title: 'No fixed-width elements', detail: 'Elements use flexible widths that adapt to screen size.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' }
+      ],
+      consistency: [
+        { title: 'Color palette coherent', detail: 'Number of unique colors is within expected range.', source: 'Material Design 3 — https://m3.material.io/styles/color/roles' },
+        { title: 'Font size scale consistent', detail: 'Uses a limited set of font sizes from a type scale.', source: 'Modular type scales — https://typescale.com/' },
+        { title: 'Border radius consistent', detail: 'Uses 2-4 standard border-radius values.', source: 'Material Design 3 — https://m3.material.io/styles/shape/overview' },
+        { title: 'Line height consistent', detail: 'Uses a small set of line-height values across the page.', source: 'Butterick\'s Practical Typography — https://practicaltypography.com/line-spacing.html' },
+        { title: 'Dark mode supported', detail: 'Page provides a dark color scheme option.', source: 'Apple HIG — https://developer.apple.com/design/human-interface-guidelines/dark-mode' },
+        { title: 'Z-index scale manageable', detail: 'Stacking order uses 8 or fewer distinct z-index values, keeping layering predictable.', source: 'Josh Comeau — https://www.joshwcomeau.com/css/stacking-contexts/' },
+        { title: 'Shadow system consistent', detail: 'Box-shadow values are limited to 3-5 elevation levels for a coherent depth system.', source: 'Material Design 3 — https://m3.material.io/styles/elevation/overview' }
+      ],
+      cognitive: [
+        { title: 'Content sections well-organized', detail: 'Page sections and headings are within cognitive load limits.', source: 'Hick\'s Law — https://lawsofux.com/hicks-law/' },
+        { title: 'Form complexity manageable', detail: 'Visible form fields stay within recommended limits.', source: 'Miller\'s Law — https://lawsofux.com/millers-law/' },
+        { title: 'Navigation count appropriate', detail: 'Top-level navigation items are within working memory limits.', source: 'Cowan (2001) — https://doi.org/10.1017/S0140525X01003922' },
+        { title: 'Reading level appropriate', detail: 'Content reading level matches the target audience.', source: 'WCAG 2.2 §3.1.5 — https://www.w3.org/TR/WCAG22/#reading-level' },
+        { title: 'Visual complexity manageable', detail: 'Number of unique colors doesn\'t overwhelm the user.', source: 'Material Design 3 — https://m3.material.io/styles/color/roles' },
+        { title: 'Heading hierarchy supports scanning', detail: 'Headings follow a logical order for easy content navigation.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships' },
+        { title: 'Interactive element density acceptable', detail: 'The ratio of clickable elements to total content is low enough to avoid overwhelming the user.', source: 'Hick\'s Law — https://lawsofux.com/hicks-law/' },
+        { title: 'Reduced motion respected', detail: 'Animations include a prefers-reduced-motion fallback for users who are sensitive to motion.', source: 'WCAG 2.2 §2.3.3 — https://www.w3.org/TR/WCAG22/#animation-from-interactions' }
+      ],
+      layout: [
+        { title: 'Section spacing consistent', detail: 'Gaps between major sections use uniform spacing.', source: 'Gestalt similarity — https://lawsofux.com/law-of-similarity/' },
+        { title: 'Alignment grid clean', detail: 'Elements share consistent alignment edges without jagged offsets.', source: 'Gestalt continuity — https://lawsofux.com/law-of-common-region/' },
+        { title: 'H1 visual hierarchy clear', detail: 'H1 stands out from body text at 2-4x size.', source: 'Modular type scales — https://typescale.com/' },
+        { title: 'H2 visual hierarchy appropriate', detail: 'H2 is clearly distinct from both H1 and body text.', source: 'Modular type scales — https://typescale.com/' },
+        { title: 'Border radius standardized', detail: 'Uses a consistent set of border-radius values.', source: 'Material Design 3 — https://m3.material.io/styles/shape/overview' },
+        { title: 'Page density manageable', detail: 'Element count is within comfortable range for the page type.', source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/' },
+        { title: 'No elements outside viewport', detail: 'All visible elements are positioned within the horizontal bounds of the viewport.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' },
+        { title: 'No horizontal scroll', detail: 'No containers overflow horizontally, keeping the page free of accidental horizontal scrollbars.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' },
+        { title: 'No nested scrollbars', detail: 'Scrollable containers are not nested inside other scrollable containers.', source: 'NNGroup — https://www.nngroup.com/articles/scrolling-and-scrollbars/' },
+        { title: 'Hidden panels fit viewport', detail: 'Dropdown menus and dialogs remain within the viewport when revealed.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' },
+        { title: 'DOM uses semantic elements', detail: 'Markup favors semantic HTML over generic div-only structure.', source: 'HTML Living Standard — https://html.spec.whatwg.org/multipage/dom.html#semantics-2' },
+        { title: 'No silently clipped content', detail: 'No containers use overflow-x:hidden to hide overflowing content without providing scroll access.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' },
+        { title: 'Fixed elements have opaque backgrounds', detail: 'Fixed and sticky headers have backgrounds that prevent text overlap when scrolling.', source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' },
+        { title: 'Children fit within parent containers', detail: 'No elements unintentionally overflow their parent without explicit overflow handling.', source: 'CSS Box Model — https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_box_model' },
+        { title: 'No flex/grid overflow on mobile', detail: 'Flex and grid containers do not silently overflow on narrow viewports.', source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow' },
+        { title: 'Fixed elements maintain contrast when scrolled', detail: 'Fixed headers and toolbars have backgrounds or adaptive color to stay legible over all page sections.', source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' }
+      ],
+      readability: [
+        { title: 'Heading density adequate', detail: 'Headings break content into scannable sections.', source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/' },
+        { title: 'Headings are descriptive', detail: 'Heading text is long enough to be meaningful (not just icons/numbers).', source: 'NNGroup — https://www.nngroup.com/articles/headings-pickup-lines/' },
+        { title: 'No tiny text', detail: 'All text is at least 12px for readability.', source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text' },
+        { title: 'Reading level appropriate', detail: 'Coleman-Liau index indicates content matches target audience.', source: 'Coleman-Liau Index — https://en.wikipedia.org/wiki/Coleman%E2%80%93Liau_index' },
+        { title: 'Paragraph length manageable', detail: 'No paragraphs exceed 150 words.', source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/' },
+        { title: 'Lists used for scanability', detail: 'Content uses lists to break up sequences and improve scanning.', source: 'NNGroup — https://www.nngroup.com/articles/how-users-read-on-the-web/' }
+      ],
+      performance: [
+        { title: 'Web fonts use font-display', detail: 'Font loading doesn\'t block text rendering.', source: 'Web.dev — https://web.dev/articles/font-display' },
+        { title: 'Render-blocking resources limited', detail: 'Few CSS/JS files block initial page render.', source: 'Web.dev — https://web.dev/articles/render-blocking-resources' },
+        { title: 'DOM size reasonable', detail: 'Page has a manageable number of DOM elements.', source: 'Chrome DevTools — https://developer.chrome.com/docs/lighthouse/performance/dom-size' },
+        { title: 'DOM nesting depth OK', detail: 'HTML nesting doesn\'t exceed recommended depth.', source: 'Chrome DevTools — https://developer.chrome.com/docs/lighthouse/performance/dom-size' },
+        { title: 'Third-party scripts limited', detail: 'External script count is within reasonable bounds.', source: 'Web.dev — https://web.dev/articles/optimizing-third-party-javascript' },
+        { title: 'Modern image formats used', detail: 'Images use WebP or AVIF for smaller file sizes.', source: 'Web.dev — https://web.dev/articles/serve-images-webp' },
+        { title: 'CLS within target', detail: 'Cumulative Layout Shift is below 0.1 threshold.', source: 'Web Vitals — https://web.dev/articles/cls' },
+        { title: 'LCP within target', detail: 'Largest Contentful Paint is below 2.5s threshold.', source: 'Web Vitals — https://web.dev/articles/lcp' }
+      ]
+    };
+
+    var passedCategories = report.categories.filter(function(cat) { return cat.passed > 0 || cat.findings.length === 0; });
+    if (passedCategories.length > 0) {
+      html += '<div class="report-findings" style="margin-top:16px">';
+      html += '<details id="passed-checks">';
+      html += '<summary style="cursor:pointer;font-size:18px;font-weight:700;padding:8px 0">Passed Checks</summary>';
+
+      passedCategories.forEach(function(cat) {
+        var passCount = cat.passed || 0;
+        if (cat.findings.length === 0) passCount = cat.checks || 1;
+        if (passCount <= 0) return;
+
+        var failedTitles = {};
+        cat.findings.forEach(function(f) { failedTitles[f.title.substring(0, 30)] = true; });
+
+        html += '<div class="report-finding-group">';
+        html += '<h3>' + (categoryIcons[cat.icon] || '') + ' ' + cat.label + ' <span style="font-size:12px;color:var(--text-secondary);font-weight:400">(' + passCount + ' passed)</span></h3>';
+
+        // Show check descriptions that weren't in the failures
+        var descs = checkDescriptions[cat.icon] || [];
+        var shown = 0;
+        descs.forEach(function(desc) {
+          // Skip if a similar title appears in failures
+          var isFailure = cat.findings.some(function(f) {
+            return f.title.toLowerCase().indexOf(desc.title.toLowerCase().substring(0, 15)) !== -1;
+          });
+          if (isFailure) return;
+          if (shown >= passCount) return;
+
+          html += '<div class="report-finding severity-pass" style="border-left:3px solid #16a34a">';
+          html += '<div class="finding-header">';
+          html += severityBadge('pass');
+          html += '<span class="finding-title">' + escapeHtml(desc.title) + '</span>';
+          html += '</div>';
+          html += '<p class="finding-detail">' + escapeHtml(desc.detail) + '</p>';
+          if (desc.source) {
+            var sp = desc.source.split(' — ');
+            html += '<div class="finding-source">';
+            if (sp[1]) html += '<a href="' + escapeHtml(sp[1]) + '" target="_blank" rel="noopener">' + escapeHtml(sp[0]) + '</a>';
+            else html += escapeHtml(sp[0]);
+            html += '</div>';
+          }
+          html += '</div>';
+          shown++;
+        });
+
+        // If we have more passes than descriptions, show the remaining count
+        if (shown < passCount) {
+          var remaining = passCount - shown;
+          html += '<div class="report-finding severity-pass" style="border-left:3px solid #16a34a;opacity:0.7">';
+          html += '<div class="finding-header">';
+          html += severityBadge('pass');
+          html += '<span class="finding-title">' + remaining + ' additional check' + (remaining > 1 ? 's' : '') + ' passed</span>';
+          html += '</div>';
+          html += '<p class="finding-detail" style="font-size:11px;color:var(--text-secondary)">These checks passed but don\'t have individual descriptions. The category score reflects all checks.</p>';
+          html += '</div>';
+        }
+
+        html += '</div>';
+      });
+
+      html += '</details>';
+      html += '</div>';
+    }
+
+    // --- Extracted data summary ---
+    html += '<div class="report-summary">';
+    html += '<h2>Design Token Summary</h2>';
+    html += '<div class="summary-grid">';
+
+    // Color palette — sorted by hue then lightness for visual grouping
+    function sortByHue(colors) {
+      return colors.slice().sort(function(a, b) {
+        var ca = parseColorToHSL(a.value);
+        var cb = parseColorToHSL(b.value);
+        if (!ca || !cb) return 0;
+        // Achromatic (grays) first, sorted dark → light
+        if (ca.s < 8 && cb.s < 8) return ca.l - cb.l;
+        if (ca.s < 8) return -1;
+        if (cb.s < 8) return 1;
+        // Chromatic: group by 30° hue band, then lightness within each band
+        var hueA = Math.floor(ca.h / 30), hueB = Math.floor(cb.h / 30);
+        if (hueA !== hueB) return hueA - hueB;
+        return ca.l - cb.l;
+      });
+    }
+    function parseColorToHSL(str) {
+      if (!str) return null;
+      // Parse rgb/rgba
+      var m = str.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+      if (!m) return null;
+      var r = parseInt(m[1]) / 255, g = parseInt(m[2]) / 255, b = parseInt(m[3]) / 255;
+      var max = Math.max(r, g, b), min = Math.min(r, g, b);
+      var h = 0, s = 0, l = (max + min) / 2;
+      if (max !== min) {
+        var d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+        else if (max === g) h = ((b - r) / d + 2) / 6;
+        else h = ((r - g) / d + 4) / 6;
+      }
+      return { h: Math.round(h * 360), s: Math.round(s * 100), l: Math.round(l * 100) };
+    }
+    html += '<div class="summary-section">';
+    html += '<h4>Color Palette</h4>';
+    html += '<div class="color-swatches">';
+    function swatchTitle(c, label) {
+      var t = c.value + '\n' + c.count + '× ' + label;
+      if (c.sample) t += '\n' + c.sample;
+      return t.replace(/"/g, '&quot;');
+    }
+    var bgColors = sortByHue((report.raw.colors.bgColors || []).slice(0, 12));
+    bgColors.forEach(function(c) {
+      html += '<div class="color-swatch" style="background:' + c.value + '" title="' + swatchTitle(c, 'background') + '"></div>';
+    });
+    html += '</div>';
+    html += '<div class="color-swatches" style="margin-top:4px">';
+    var textColors = sortByHue((report.raw.colors.textColors || []).slice(0, 12));
+    textColors.forEach(function(c) {
+      html += '<div class="color-swatch" style="background:' + c.value + '" title="' + swatchTitle(c, 'text') + '"></div>';
+    });
+    html += '</div>';
+    html += '</div>';
+
+    // Typography
+    html += '<div class="summary-section">';
+    html += '<h4>Typography</h4>';
+    html += '<div class="summary-list">';
+    html += '<div>Body: ' + escapeHtml(report.raw.typography.bodyFontSize) + ' / ' + escapeHtml(report.raw.typography.bodyLineHeight) + '</div>';
+    html += '<div>Families: ' + escapeHtml((report.raw.typography.fontFamilies || []).join(', ')) + '</div>';
+    var headings = report.raw.typography.headings || [];
+    if (headings.length > 0) {
+      html += '<div>Headings: ' + headings.map(function(h) { return h.tag + '=' + h.fontSize; }).join(', ') + '</div>';
+    }
+    html += '</div>';
+    html += '</div>';
+
+    // Spacing
+    html += '<div class="summary-section">';
+    html += '<h4>Spacing</h4>';
+    html += '<div class="summary-list">';
+    html += '<div>Max content width: ' + escapeHtml(report.raw.spacing.maxContentWidth) + '</div>';
+    var topPaddings = (report.raw.spacing.paddings || []).slice(0, 5);
+    html += '<div>Common paddings: ' + topPaddings.map(function(p) { return p.value; }).join(', ') + '</div>';
+    html += '</div>';
+    html += '</div>';
+
+    // Structure
+    html += '<div class="summary-section">';
+    html += '<h4>Structure</h4>';
+    html += '<div class="summary-list">';
+    html += '<div>Elements: ' + report.raw.structure.totalElements + '</div>';
+    html += '<div>Framework: ' + report.raw.structure.cssFramework + '</div>';
+    html += '<div>Responsive: ' + (report.raw.structure.responsiveClasses ? 'Yes' : 'No') + '</div>';
+    html += '<div>Dark mode: ' + (report.raw.structure.darkModeClasses ? 'Yes' : 'No') + '</div>';
+    var ds = report.raw.structure.domStats;
+    if (ds) {
+      html += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">';
+      html += '<div style="font-weight:600;margin-bottom:4px">Element Distribution</div>';
+      if (ds.topTags && ds.topTags.length > 0) {
+        html += '<div style="display:flex;flex-wrap:wrap;gap:4px 10px;font-size:12px">';
+        ds.topTags.forEach(function(t) {
+          html += '<span>&lt;' + t.tag + '&gt; <strong>' + t.count + '</strong></span>';
+        });
+        html += '</div>';
+      }
+      html += '<div style="font-size:12px;margin-top:4px;color:var(--text-secondary)">';
+      html += 'Semantic: ' + ds.semanticCount + ' · Divs: ' + ds.divCount + ' (' + ds.divRatio + '%)';
+      if (ds.displayNoneCount > 0) html += ' · Hidden (display:none): ' + ds.displayNoneCount;
+      if (ds.ariaHiddenCount > 0) html += ' · aria-hidden: ' + ds.ariaHiddenCount;
+      html += '</div>';
+      html += '</div>';
+    }
+    var hpc = report.raw.layout && report.raw.layout.hiddenPanelCount;
+    var hpi = report.raw.layout && report.raw.layout.hiddenPanelIssues;
+    if (hpc > 0) {
+      html += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">';
+      html += '<div style="font-weight:600;margin-bottom:4px">Hidden Panels Detected: ' + hpc + '</div>';
+      if (hpi && hpi.length > 0) {
+        html += '<div style="font-size:12px;color:var(--text-error,#ef4444)">' + hpi.length + ' panel(s) overflow when revealed:</div>';
+        hpi.forEach(function(p) {
+          var issueStr = p.issues.map(function(i) {
+            return i.type === 'right-overflow' ? 'right +' + i.overflow + 'px'
+              : i.type === 'left-overflow' ? 'left -' + i.overflow + 'px'
+              : i.type === 'internal-overflow' ? 'internal +' + i.overflow + 'px'
+              : i.type;
+          }).join(', ');
+          html += '<div style="font-size:12px;margin-top:2px"><code style="font-size:11px">' + p.selector + '</code> (' + p.role + '): ' + issueStr + '</div>';
+        });
+      } else {
+        html += '<div style="font-size:12px;color:var(--text-secondary)">All panels fit within viewport when revealed</div>';
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+    html += '</div>';
+
+    html += '</div>';
+    html += '</div>';
+
+    // --- Methodology note ---
+    html += '<div class="report-methodology">';
+    html += '<h2>About this Report</h2>';
+    html += '<p>This report checks <strong>computed styles</strong> against concrete, evidence-based rules from WCAG 2.2, Material Design, and typography research. ';
+    html += 'It does not use AI — every finding is a deterministic comparison of measured values against documented thresholds.</p>';
+    html += '<p><strong>What it catches well:</strong> contrast ratios, font sizes, touch targets, spacing grid adherence, semantic HTML, heading hierarchy — anything with a hard number.</p>';
+    html += '<p><strong>What it cannot judge:</strong> visual balance, color harmony, whether a layout "feels right", design personality, or context-dependent choices (e.g., a 14px caption is fine but 14px body text is not).</p>';
+    html += '<p>For a full design review with context-aware judgment, use this report as input for a <a href="index.html" style="color:var(--primary)">design consultation</a> — the findings give an AI or human reviewer concrete data to work from.</p>';
+    html += '</div>';
+
+    // Deep scan: dark mode test results (viewport data now shown via tabs above)
+    if (report.raw.deepScan) {
+      var ds = report.raw.deepScan;
+      if (ds.darkMode && ds.darkMode.tested) {
+        html += '<div class="report-summary" style="margin-top:16px">';
+        html += '<h4 style="font-size:13px;margin-bottom:8px">Dark Mode Test</h4>';
+        var dmFails = ds.darkMode.contrastFails;
+        if (dmFails === 0) {
+          html += '<p style="font-size:13px"><span style="color:#16a34a">No contrast failures in dark mode</span></p>';
+        } else {
+          html += '<p style="font-size:13px"><span style="color:#dc2626">' + dmFails + ' contrast failure(s) in dark mode (' + ds.darkMode.contrastTotal + ' pairs checked)</span></p>';
+        }
+        html += '</div>';
+      }
+    }
+
+    return html;
+  }
+
+  // --- Markdown Export ---
+  function renderMarkdown(report, options) {
+    var opts = options || {};
+    var skipImages = opts.skipImages || false;
+    var severityFilter = opts.severityFilter || 'all';
+    var _passSev = function(sev) {
+      if (severityFilter === 'all') return true;
+      if (severityFilter === 'error') return sev === 'error';
+      if (severityFilter === 'warning') return sev === 'error' || sev === 'warning';
+      return true;
+    };
+    var lines = [];
+    lines.push('# Design Analysis Report');
+    lines.push('');
+    lines.push('**URL:** ' + (report.meta.url || 'Pasted HTML'));
+    lines.push('**Date:** ' + new Date(report.meta.timestamp).toLocaleString());
+    lines.push('**Viewport:** ' + report.meta.viewportWidth + '×' + report.meta.viewportHeight + 'px');
+    lines.push('**Overall Score:** ' + report.overall + '/100 (' + report.grade + ' — ' + report.gradeLabel + ')');
+    lines.push('');
+
+    lines.push('## Category Scores');
+    lines.push('');
+    lines.push('| Category | Score | Weight | Issues |');
+    lines.push('|----------|-------|--------|--------|');
+    report.categories.forEach(function(cat) {
+      var errors = cat.findings.filter(function(f) { return f.severity === 'error'; }).length;
+      var warnings = cat.findings.filter(function(f) { return f.severity === 'warning'; }).length;
+      var issues = [];
+      if (errors > 0) issues.push(errors + ' error' + (errors > 1 ? 's' : ''));
+      if (warnings > 0) issues.push(warnings + ' warning' + (warnings > 1 ? 's' : ''));
+      lines.push('| ' + cat.label + ' | ' + cat.score + '/100 | ' + cat.weight + '% | ' + (issues.length > 0 ? issues.join(', ') : 'All passed') + ' |');
+    });
+    lines.push('');
+
+    lines.push('## Detailed Findings');
+    lines.push('');
+    report.categories.forEach(function(cat) {
+      var filtered = cat.findings.filter(function(f) { return _passSev(f.severity); });
+      if (filtered.length === 0) return;
+      lines.push('### ' + cat.label);
+      lines.push('');
+      filtered.forEach(function(f) {
+        var icon = f.severity === 'error' ? '❌' : f.severity === 'warning' ? '⚠️' : 'ℹ️';
+        lines.push('- ' + icon + ' **[' + f.severity + ']** ' + f.title);
+        if (f.detail) lines.push('  - ' + f.detail);
+        lines.push('  - **Fix:** ' + f.fix);
+        if (f.presetRef) lines.push('  - **Example:** ' + f.presetRef);
+        if (f.source) {
+          var sp = f.source.split(' — ');
+          lines.push('  - **Source:** [' + sp[0] + '](' + (sp[1] || '') + ')');
+        }
+        lines.push('');
+      });
+    });
+
+    lines.push('## Design Token Summary');
+    lines.push('');
+    lines.push('- **Body font:** ' + report.raw.typography.bodyFontSize + ' / ' + report.raw.typography.bodyLineHeight);
+    lines.push('- **Font families:** ' + (report.raw.typography.fontFamilies || []).join(', '));
+    var headings = report.raw.typography.headings || [];
+    if (headings.length > 0) {
+      lines.push('- **Headings:** ' + headings.map(function(h) { return h.tag + '=' + h.fontSize; }).join(', '));
+    }
+    lines.push('- **Max content width:** ' + report.raw.spacing.maxContentWidth);
+    lines.push('- **Elements:** ' + report.raw.structure.totalElements);
+    lines.push('- **Framework:** ' + report.raw.structure.cssFramework);
+    lines.push('- **Responsive:** ' + (report.raw.structure.responsiveClasses ? 'Yes' : 'No'));
+    lines.push('- **Dark mode:** ' + (report.raw.structure.darkModeClasses ? 'Yes' : 'No'));
+    var mds = report.raw.structure.domStats;
+    if (mds) {
+      lines.push('- **Element distribution:** ' + (mds.topTags || []).map(function(t) { return '<' + t.tag + '> ×' + t.count; }).join(', '));
+      lines.push('- **Semantic elements:** ' + mds.semanticCount + ' · Divs: ' + mds.divCount + ' (' + mds.divRatio + '%)');
+      if (mds.displayNoneCount > 0) lines.push('- **Hidden (display:none):** ' + mds.displayNoneCount);
+    }
+    var mhpc = report.raw.layout && report.raw.layout.hiddenPanelCount;
+    var mhpi = report.raw.layout && report.raw.layout.hiddenPanelIssues;
+    if (mhpc > 0) {
+      lines.push('- **Hidden panels:** ' + mhpc + ' detected' + (mhpi && mhpi.length > 0 ? ', ' + mhpi.length + ' overflow when revealed' : ', all fit viewport'));
+    }
+    lines.push('');
+
+    // Deep scan: viewport results
+    if (report.raw.deepScan && report.raw.deepScan.viewports) {
+      var dsVps = report.raw.deepScan.viewports;
+      var dsVpData = report.raw.deepScan.viewportData;
+      lines.push('## Multi-Viewport Analysis');
+      lines.push('');
+      lines.push('Analyzed across ' + dsVps.length + ' viewports:');
+      lines.push('');
+      lines.push('| Viewport | Width | Contrast Fails | Touch Targets | Overflow |');
+      lines.push('|----------|-------|---------------|---------------|----------|');
+      dsVps.forEach(function(vp, vi) {
+        lines.push('| ' + vp.label + ' | ' + vp.width + 'px | ' + (vp.contrastFails || 0) + ' | ' + (vp.touchTargets || 0) + ' | ' + (vp.overflow ? 'Yes' : 'No') + ' |');
+      });
+      lines.push('');
+      // Per-viewport detailed findings
+      if (dsVpData) {
+        dsVpData.forEach(function(vd, vi) {
+          if (!vd || !vd.data) return;
+          var vpData = vd.data;
+          var contrastFails = (vpData.colors && vpData.colors.contrastPairs || []).filter(function(p) { return !p.passes; });
+          var touchIssues = vpData.interaction && vpData.interaction.touchTargets || [];
+          if (contrastFails.length === 0 && touchIssues.length === 0) return;
+          lines.push('### ' + vd.label + ' (' + vd.width + 'px)');
+          lines.push('');
+          if (contrastFails.length > 0) {
+            lines.push('**Contrast failures (' + contrastFails.length + '):**');
+            contrastFails.slice(0, 10).forEach(function(cf) {
+              lines.push('- `' + (cf.selector || 'unknown') + '` — ratio ' + cf.ratio + ':1 (needs ' + (cf.neededRatio || 4.5) + ':1)');
+            });
+            if (contrastFails.length > 10) lines.push('- ...and ' + (contrastFails.length - 10) + ' more');
+            lines.push('');
+          }
+          if (touchIssues.length > 0) {
+            lines.push('**Touch target issues (' + touchIssues.length + '):**');
+            touchIssues.slice(0, 10).forEach(function(tt) {
+              lines.push('- `' + (tt.selector || tt.element || 'unknown') + '` — ' + tt.width + '×' + tt.height + 'px');
+            });
+            if (touchIssues.length > 10) lines.push('- ...and ' + (touchIssues.length - 10) + ' more');
+            lines.push('');
+          }
+          // Pixel verify results
+          if (vpData._contrastVerifyResults && vpData._contrastVerifyResults.length > 0) {
+            var fp = vpData._contrastVerifyResults.filter(function(r) { return r.cssPasses && !r.pixelPasses; });
+            var ff = vpData._contrastVerifyResults.filter(function(r) { return !r.cssPasses && r.pixelPasses; });
+            if (fp.length > 0 || ff.length > 0) {
+              lines.push('**Pixel verification:**');
+              if (fp.length > 0) lines.push('- ' + fp.length + ' hidden failure(s) — pass CSS but fail in pixels');
+              if (ff.length > 0) lines.push('- ' + ff.length + ' false positive(s) — fail CSS but pass in pixels');
+              lines.push('');
+            }
+          }
+        });
+      }
+    }
+
+    // Deep scan: dark mode test results
+    if (report.raw.deepScan && report.raw.deepScan.darkMode && report.raw.deepScan.darkMode.tested) {
+      var dsDm = report.raw.deepScan.darkMode;
+      lines.push('## Dark Mode Test');
+      lines.push('');
+      var dmFails = dsDm.contrastFails;
+      if (dmFails === 0) {
+        lines.push('No contrast failures in dark mode.');
+      } else {
+        lines.push(dmFails + ' contrast failure(s) in dark mode (' + dsDm.contrastTotal + ' pairs checked).');
+      }
+      lines.push('');
+    }
+
+    // Pixel contrast verification results (top-level, for single-URL reports)
+    if (report._contrastVerifyResults && report._contrastVerifyResults.length > 0) {
+      var pvr = report._contrastVerifyResults;
+      var pvFp = pvr.filter(function(r) { return r.cssPasses && !r.pixelPasses; });
+      var pvFf = pvr.filter(function(r) { return !r.cssPasses && r.pixelPasses; });
+      var pvOk = pvr.length - pvFp.length - pvFf.length;
+      lines.push('## Pixel Contrast Verification');
+      lines.push('');
+      lines.push('- **' + pvr.length + '** pairs checked');
+      if (pvOk > 0) lines.push('- **' + pvOk + '** verified consistent');
+      if (pvFp.length > 0) {
+        lines.push('- **' + pvFp.length + '** hidden failure(s) — pass CSS but fail in pixels:');
+        pvFp.forEach(function(r) {
+          lines.push('  - `' + (r.selector || 'unknown') + '` CSS ' + r.cssRatio + ':1 → Pixel ' + r.pixelRatio + ':1');
+        });
+      }
+      if (pvFf.length > 0) {
+        lines.push('- **' + pvFf.length + '** false positive(s) — fail CSS but pass in pixels:');
+        pvFf.forEach(function(r) {
+          lines.push('  - `' + (r.selector || 'unknown') + '` CSS ' + r.cssRatio + ':1 → Pixel ' + r.pixelRatio + ':1');
+        });
+      }
+      lines.push('');
+    }
+
+    // Screenshots (as inline base64 images in markdown) — skip when copying for paste
+    if (!skipImages && report.raw.screenshots && report.raw.screenshots.length > 0) {
+      lines.push('## Page Screenshots');
+      lines.push('');
+      report.raw.screenshots.forEach(function(src, idx) {
+        lines.push('### Screenshot ' + (idx + 1));
+        lines.push('');
+        lines.push('![Page screenshot ' + (idx + 1) + '](' + src + ')');
+        lines.push('');
+      });
+    }
+
+    lines.push('---');
+    lines.push('*Generated by [make-it-look-good](https://github.com/jdeworks/make-it-look-good) Design Analyzer — rule-based scoring, no AI.*');
+
+    return lines.join('\n');
+  }
+
+  function renderGauge(score, grade) {
+    var color = gradeColor(grade);
+    var circumference = 2 * Math.PI * 54;
+    var offset = circumference - (score / 100) * circumference;
+    return '<svg width="120" height="120" viewBox="0 0 120 120">' +
+      '<circle cx="60" cy="60" r="54" fill="none" stroke="var(--border)" stroke-width="8"/>' +
+      '<circle cx="60" cy="60" r="54" fill="none" stroke="' + color + '" stroke-width="8" ' +
+      'stroke-dasharray="' + circumference + '" stroke-dashoffset="' + offset + '" ' +
+      'stroke-linecap="round" transform="rotate(-90 60 60)" style="transition:stroke-dashoffset 0.8s ease"/>' +
+      '<text x="60" y="55" text-anchor="middle" font-size="32" font-weight="700" fill="' + color + '">' + score + '</text>' +
+      '<text x="60" y="75" text-anchor="middle" font-size="14" font-weight="600" fill="' + color + '">' + grade + '</text>' +
+      '</svg>';
+  }
+
+  function renderProgressBar(score) {
+    var color = scoreColor(score);
+    return '<div class="progress-bar"><div class="progress-fill" style="width:' + score + '%;background:' + color + '"></div></div>';
+  }
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function renderCrawlSummary(summary) {
+    if (!summary || summary.pagesAnalyzed === 0) {
+      return '<div class="crawl-summary"><p style="color:var(--text-secondary)">No pages analyzed yet.</p></div>';
+    }
+
+    var html = '<div class="crawl-summary">';
+
+    // Overall stats
+    html += '<h2>Site Overview</h2>';
+    if (summary.viewportSummary) {
+      html += '<div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">Analyzed across ' + summary.viewportSummary.viewportCount + ' viewports: ' + summary.viewportSummary.viewportLabels.map(function(l) { return escapeHtml(l); }).join(', ') + '</div>';
+    }
+    html += '<div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:24px">';
+    html += '<div style="padding:12px 20px;border-radius:10px;background:var(--surface);border:1px solid var(--border);text-align:center">';
+    html += '<div style="font-size:32px;font-weight:700;font-variant-numeric:tabular-nums">' + summary.averageScore + '</div>';
+    html += '<div style="font-size:12px;color:var(--text-secondary)">Average Score</div></div>';
+    html += '<div style="padding:12px 20px;border-radius:10px;background:var(--surface);border:1px solid var(--border);text-align:center">';
+    html += '<div style="font-size:32px;font-weight:700">' + summary.pagesAnalyzed + '</div>';
+    html += '<div style="font-size:12px;color:var(--text-secondary)">Pages Analyzed</div></div>';
+    if (summary.viewportSummary) {
+      html += '<div style="padding:12px 20px;border-radius:10px;background:var(--surface);border:1px solid var(--border);text-align:center">';
+      html += '<div style="font-size:32px;font-weight:700">' + summary.viewportSummary.viewportCount + '</div>';
+      html += '<div style="font-size:12px;color:var(--text-secondary)">Viewports</div></div>';
+    }
+    if (summary.pagesFailed > 0) {
+      html += '<div style="padding:12px 20px;border-radius:10px;background:#fef2f2;border:1px solid #fecaca;text-align:center">';
+      html += '<div style="font-size:32px;font-weight:700;color:#dc2626">' + summary.pagesFailed + '</div>';
+      html += '<div style="font-size:12px;color:#dc2626">Failed</div></div>';
+    }
+    html += '</div>';
+
+    // Score grid
+    html += '<h3>Page Scores</h3>';
+    html += '<div class="crawl-score-grid">';
+    summary.scoreGrid.forEach(function(row) {
+      var gradeClass = 'grade-' + row.grade.toLowerCase();
+      html += '<div class="crawl-score-card">';
+      html += '<div class="score ' + gradeClass + '">' + row.score + '</div>';
+      html += '<div class="grade ' + gradeClass + '">' + row.grade + '</div>';
+      html += '<div class="page-path" title="' + escapeHtml(row.url) + '">' + escapeHtml(row.path || '/') + '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+
+    // Cross-page issues
+    var issues = summary.crossPageIssues;
+    if (issues.length > 0) {
+      html += '<h3>Issues Across Pages</h3>';
+      issues.slice(0, 30).forEach(function(issue) {
+        html += '<div class="crawl-issue-group">';
+        html += '<div class="issue-header">';
+        html += '<div class="issue-title"><span class="severity-badge ' + issue.severity + '">' + issue.severity + '</span>' + escapeHtml(issue.title) + '</div>';
+        var uniquePages = []; issue.pages.forEach(function(p) { if (uniquePages.indexOf(p.url) === -1) uniquePages.push(p.url); });
+        html += '<div class="issue-count">' + issue.count + '&times; on ' + uniquePages.length + ' page' + (uniquePages.length > 1 ? 's' : '') + '</div>';
+        html += '</div>';
+        html += '<div class="issue-pages">';
+        issue.pages.forEach(function(p) {
+          var path; try { path = new URL(p.url).pathname; } catch(e) { path = p.url; }
+          html += '<div>' + escapeHtml(path) + (p.detail ? ' — ' + escapeHtml(p.detail.substring(0, 80)) : '') + '</div>';
+        });
+        html += '</div>';
+        html += '</div>';
+      });
+    }
+
+    // Category averages
+    if (summary.categoryAverages.length > 0) {
+      html += '<h3>Category Averages</h3>';
+      html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px">';
+      summary.categoryAverages.forEach(function(cat) {
+        var barColor = cat.avgScore >= 90 ? '#16a34a' : cat.avgScore >= 80 ? '#ca8a04' : cat.avgScore >= 70 ? '#ea580c' : '#dc2626';
+        html += '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;background:var(--surface);border:1px solid var(--border)">';
+        html += '<div style="flex:1;font-size:13px;font-weight:500">' + escapeHtml(cat.label) + '</div>';
+        html += '<div style="width:50px;height:6px;border-radius:3px;background:var(--border);overflow:hidden"><div style="height:100%;width:' + cat.avgScore + '%;background:' + barColor + ';border-radius:3px"></div></div>';
+        html += '<div style="font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;width:28px;text-align:right">' + cat.avgScore + '</div>';
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+
+    // Viewport breakdown (deep scan)
+    var vs = summary.viewportSummary;
+    if (vs) {
+      html += '<h3>Viewport Breakdown</h3>';
+      html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;margin-bottom:16px">';
+      vs.viewportStats.forEach(function(vp) {
+        html += '<div style="padding:10px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);font-size:13px">';
+        html += '<div style="font-weight:600;margin-bottom:4px">' + escapeHtml(vp.label) + ' <span style="color:var(--text-secondary);font-weight:400">(' + vp.width + 'px)</span></div>';
+        if (vp.contrastFails > 0) html += '<div style="color:#ef4444">Contrast fails: ' + vp.contrastFails + '</div>';
+        if (vp.touchTargets > 0) html += '<div style="color:#f59e0b">Touch targets: ' + vp.touchTargets + '</div>';
+        if (vp.overflowPages > 0) html += '<div style="color:#ef4444">Overflow on ' + vp.overflowPages + ' page' + (vp.overflowPages > 1 ? 's' : '') + '</div>';
+        if (vp.contrastFails === 0 && vp.touchTargets === 0 && vp.overflowPages === 0) {
+          html += '<div style="color:#16a34a">No issues found</div>';
+        }
+        html += '</div>';
+      });
+      html += '</div>';
+
+      // Universal issues (appear in ALL viewports)
+      if (vs.universalIssues.length > 0) {
+        html += '<h3>Universal Issues <span style="font-size:12px;color:var(--text-secondary);font-weight:400">(all viewports)</span></h3>';
+        html += '<div style="font-size:13px;line-height:1.6">';
+        vs.universalIssues.slice(0, 10).forEach(function(issue) {
+          html += '<div style="padding:6px 10px;margin-bottom:4px;border-radius:6px;background:var(--surface);border:1px solid var(--border)">';
+          html += '<span style="font-weight:500">' + escapeHtml(issue.title) + '</span>';
+          html += ' <span style="color:var(--text-secondary);font-size:12px">' + issue.pageCount + ' page' + (issue.pageCount > 1 ? 's' : '') + '</span>';
+          html += '</div>';
+        });
+        html += '</div>';
+      }
+
+      // Viewport-specific issues (only some viewports)
+      if (vs.viewportSpecific.length > 0) {
+        html += '<h3>Viewport-Specific Issues</h3>';
+        html += '<div style="font-size:13px;line-height:1.6">';
+        vs.viewportSpecific.slice(0, 10).forEach(function(issue) {
+          html += '<div style="padding:6px 10px;margin-bottom:4px;border-radius:6px;background:var(--surface);border:1px solid var(--border)">';
+          html += '<span style="font-weight:500">' + escapeHtml(issue.title) + '</span>';
+          html += ' <span style="font-size:12px;padding:1px 6px;border-radius:4px;background:var(--bg-alt);color:var(--text-secondary)">' + issue.viewports.map(function(v) { return escapeHtml(v); }).join(', ') + ' only</span>';
+          html += ' <span style="color:var(--text-secondary);font-size:12px">' + issue.pageCount + ' page' + (issue.pageCount > 1 ? 's' : '') + '</span>';
+          html += '</div>';
+        });
+        html += '</div>';
+      }
+    }
+
+    html += '</div>';
+    return html;
+  }
+
+  function renderCrawlPageTab(page, index, isActive) {
+    var path;
+    try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
+    if (path === '/') path = '/ (home)';
+    var label = page.title ? page.title.substring(0, 25) : path;
+
+    var dotClass = 'pending';
+    if (page.status === 'done' && page.reportData) {
+      dotClass = 'grade-' + page.reportData.grade.toLowerCase();
+    } else if (page.status === 'error') {
+      dotClass = 'error';
+    }
+
+    return '<button class="crawl-page-tab' + (isActive ? ' active' : '') + '" data-crawl-page="' + index + '" title="' + escapeHtml(page.url) + '">' +
+      '<span class="score-dot ' + dotClass + '"></span>' +
+      escapeHtml(label) +
+      (page.status === 'done' && page.reportData ? ' <span style="font-size:11px;color:var(--text-secondary)">' + page.reportData.overall + '</span>' : '') +
+      '</button>';
+  }
+
+  return { renderReport: renderReport, renderMarkdown: renderMarkdown, renderCrawlSummary: renderCrawlSummary, renderCrawlPageTab: renderCrawlPageTab };
+})();
+</file>
+
 <file path="docs/analyzer-crawl.js">
 // Site Crawl Module — multi-page analysis with progressive results
 // Provides: link discovery, session management, summary building, export helpers
@@ -33840,6 +33840,14 @@ window.MilgCrawl = (function() {
         });
         lines.push('');
       });
+      // Per-page screenshots
+      if (page.rawData && page.rawData.screenshots && page.rawData.screenshots.length > 0) {
+        lines.push('#### Screenshots');
+        page.rawData.screenshots.forEach(function(src, si) {
+          lines.push('![' + path + ' screenshot ' + (si + 1) + '](' + src + ')');
+          lines.push('');
+        });
+      }
       // Per-page pixel verify summary
       if (page.rawData && page.rawData._contrastVerifyResults && page.rawData._contrastVerifyResults.length > 0) {
         var pvr = page.rawData._contrastVerifyResults;
@@ -33859,7 +33867,7 @@ window.MilgCrawl = (function() {
 
   function renderCrawlJSON(session, severityFilter) {
     // Break circular refs and strip debug data — keep screenshots, masks, verify for full export
-    var _skipKeys = { deepScan: 1, _cachedReportData: 1, _vpCacheIdx: 1, _maskBmp: 1, _debug: 1 };
+    var _skipKeys = { deepScan: 1, _cachedReportData: 1, _vpCacheIdx: 1, _maskBmp: 1, _debug: 1, samplePoints: 1 };
     var _replacer = function(k, v) { return _skipKeys[k] ? undefined : v; };
     var out = {
       _milgCrawl: true,
@@ -33928,7 +33936,7 @@ window.MilgCrawl = (function() {
         return pageOut;
       })
     };
-    return JSON.stringify(out, null, 2);
+    return JSON.stringify(out);
   }
 
   // --- Public API ---
@@ -34165,392 +34173,6 @@ window.MilgProxy = (function() {
     fetchWithProxy: fetchWithProxy,
     fetchViaProxy: fetchViaProxy
   };
-})();
-</file>
-
-<file path="docs/analyzer-snippet.js">
-// make-it-look-good — Design Extraction Snippet
-// Version: v1.1
-// Run this in the browser console on any page, or use as a bookmarklet.
-// Loads extraction engine from CDN (single source of truth), extracts design tokens,
-// and copies JSON to your clipboard.
-// Then paste into the analyzer at: https://jdeworks.github.io/make-it-look-good/analyzer.html
-
-(function() {
-  'use strict';
-  var _MILG_VERSION = 'v1.1';
-  console.log('%c[milg] Snippet version: ' + _MILG_VERSION, 'color: #64748b;');
-
-  // --- Auto-scroll option ---
-  // To scroll the page before extraction (triggers lazy loading + intersection observers):
-  // Run: window.__milgScrollFirst = true   then paste the snippet.
-  // The snippet will scroll the full page, wait for content to load, then extract.
-  if (window.__milgScrollFirst && !window.__milgScrollDone) {
-    window.__milgScrollDone = true;
-    console.log('%c\u23F3 Scrolling page to trigger lazy loading and intersection observers...', 'color: #3b82f6; font-weight: bold;');
-    var _scrollH = document.body.scrollHeight;
-    var _pos = 0;
-    var _step = Math.max(window.innerHeight * 0.8, 400);
-    var _si = setInterval(function() {
-      _pos += _step;
-      window.scrollTo(0, _pos);
-      if (_pos >= _scrollH) {
-        clearInterval(_si);
-        setTimeout(function() { window.scrollTo(0, 0); }, 300);
-        // Wait for newly loaded content, then user must re-run snippet
-        setTimeout(function() {
-          console.log('%c\u2713 Scroll complete! Page content should now be fully loaded.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-          console.log('%cRe-run the snippet now for complete analysis.', 'color: #3b82f6;');
-          window.__milgScrollFirst = false;
-        }, 1500);
-      }
-    }, 150);
-    return; // Exit — re-run snippet after scroll completes
-  }
-
-  // --- Load extraction engine from CDN (single source of truth) ---
-  console.log('%c[milg] Loading extraction engine...', 'color: #3b82f6;');
-  var _cacheBust = 'v=' + Math.floor(Date.now() / 3600000);
-  var _extractUrls = [
-    'https://cdn.jsdelivr.net/gh/jdeworks/make-it-look-good@dev/docs/analyzer-extract.js?' + _cacheBust,
-    'https://jdeworks.github.io/make-it-look-good/analyzer-extract.js?' + _cacheBust
-  ];
-
-  if (window.MilgExtract) {
-    _runExtraction();
-  } else {
-    (function _tryLoad(idx) {
-      if (idx >= _extractUrls.length) {
-        console.error('[milg] Cannot load extraction engine from any CDN.');
-        return;
-      }
-      var url = _extractUrls[idx];
-      console.log('[milg] Fetching:', url.split('?')[0]);
-      fetch(url).then(function(r) {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.text();
-      }).then(function(code) {
-        (new Function(code))();
-        if (!window.MilgExtract) throw new Error('MilgExtract not defined after eval');
-        _runExtraction();
-      }).catch(function(err) {
-        console.warn('[milg] CDN ' + (idx + 1) + ' failed:', err.message || err);
-        _tryLoad(idx + 1);
-      });
-    })(0);
-  }
-
-  function _runExtraction() {
-    window.__milgOnExtractComplete = function(data) {
-      window.__milgData = data;
-
-  // --- Output ---
-  var json = JSON.stringify(data, null, 2);
-
-  // Export data — file download for large payloads, clipboard for small ones
-  function downloadAsFile(data, filename) {
-    var blob = new Blob([data], { type: 'application/json' });
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    a.href = url; a.download = filename;
-    a.style.display = 'none';
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(function() { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
-  }
-
-  var jsonSize = json.length;
-  var sizeMB = Math.round(jsonSize / 1024 / 1024 * 10) / 10;
-
-  if (jsonSize > 4 * 1024 * 1024) {
-    // >4MB: file download (clipboard would freeze)
-    var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
-    downloadAsFile(json, 'milg-' + hostname + '.json');
-    console.log('%c\u2B07 Design data downloaded as file (' + sizeMB + ' MB). Import it in the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-    window.__milgData_json = json;
-  } else {
-    // Small enough for clipboard
-    function copyFallback() {
-      var ta = document.createElement('textarea');
-      ta.value = json;
-      ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
-      document.body.appendChild(ta);
-      ta.select();
-      try {
-        var ok = document.execCommand('copy');
-        document.body.removeChild(ta);
-        if (ok) {
-          console.log('%c\u2713 Design data copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-          return;
-        }
-      } catch(e) {
-        document.body.removeChild(ta);
-      }
-      // Fallback: file download
-      var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
-      downloadAsFile(json, 'milg-' + hostname + '.json');
-      console.log('%c\u2B07 Could not copy \u2014 downloaded as file instead (' + sizeMB + ' MB).', 'color: #b45309; font-weight: bold;');
-      window.__milgData_json = json;
-    }
-
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(json).then(function() {
-        console.log('%c\u2713 Design data copied to clipboard (' + sizeMB + ' MB)! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-      }).catch(copyFallback);
-    } else {
-      copyFallback();
-    }
-  }
-
-  console.log('%cmake-it-look-good extraction complete', 'color: #3b82f6; font-weight: bold;');
-  console.log('Elements scanned:', data.structure.totalElements);
-  console.log('Contrast pairs:', data.colors.contrastPairs.length);
-  console.log('Touch target issues:', data.interaction.touchTargets.length);
-
-  // --- Site Crawl Mode (same-origin iframe with src=, full JS execution) ---
-  // Set window.__milgCrawlSite = true before running.
-  // Loads each page in a hidden same-origin iframe (src=url), waits for full JS
-  // execution, then injects the extraction snippet. Stays on current page.
-  if (window.__milgCrawlSite) {
-    var _crawlMax = Math.min(Math.max(window.__milgCrawlMaxPages || 5, 1), 25);
-    var _crawlBlacklist = window.__milgCrawlBlacklist || [];
-    var _crawlOrigin = location.origin;
-    var _crawlSeen = {};
-    var _curPath = location.pathname.replace(/\/$/, '');
-    _crawlSeen[_crawlOrigin + _curPath] = true;
-    // Also mark index variants as seen to avoid re-crawling the current page
-    if (_curPath === '' || _curPath === '/index.html' || _curPath === '/index.htm') {
-      _crawlSeen[_crawlOrigin] = true; _crawlSeen[_crawlOrigin + '/index.html'] = true; _crawlSeen[_crawlOrigin + '/index.htm'] = true;
-    }
-
-    var _crawlLinks = [];
-    document.querySelectorAll('a[href]').forEach(function(a) {
-      var href = a.getAttribute('href');
-      if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('javascript:')) return;
-      try {
-        var u = new URL(href, location.href);
-        if (u.origin !== _crawlOrigin) return;
-        if (/\.(pdf|zip|png|jpg|svg|css|js|json|xml|woff2?)$/i.test(u.pathname)) return;
-        u.hash = '';
-        var key = u.origin + u.pathname.replace(/\/$/, '');
-        if (_crawlSeen[key]) return;
-        var blocked = _crawlBlacklist.some(function(pat) { pat = pat.trim(); if (!pat) return false; if (pat.endsWith('*')) return u.pathname.startsWith(pat.slice(0, -1)); return u.pathname === pat; });
-        if (blocked) return;
-        _crawlSeen[key] = true;
-        _crawlLinks.push(u.origin + u.pathname);
-      } catch(e) {}
-    });
-    _crawlLinks = _crawlLinks.slice(0, _crawlMax - 1);
-
-    var _crawlResults = [{ url: location.href, data: data }];
-    console.log('%c\uD83D\uDD77 Site Crawl: discovered ' + _crawlLinks.length + ' page(s)', 'color: #8b5cf6; font-weight: bold;');
-    _crawlLinks.forEach(function(l, i) { var p; try { p = new URL(l).pathname; } catch(e) { p = l; } console.log('  ' + (i + 1) + '. ' + p); });
-
-    // Export crawl results — file download for large payloads, clipboard for small
-    function _copyCrawlResults(results) {
-      var crawlJson = JSON.stringify({ _milgCrawl: true, startUrl: location.href, results: results });
-      window.__milgCrawlResults = results;
-      window.__milgCrawlJson = crawlJson;
-      try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) { console.warn('[milg-warn] localStorage save failed:', e.message); }
-      var crawlMB = Math.round(crawlJson.length / 1024 / 1024 * 10) / 10;
-      if (crawlJson.length > 4 * 1024 * 1024) {
-        // Large crawl: file download
-        var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
-        downloadAsFile(crawlJson, 'milg-crawl-' + hostname + '.json');
-        console.log('%c\u2B07 Crawl results downloaded as file (' + crawlMB + ' MB). Import in the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-      } else if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(crawlJson).then(function() {
-          console.log('%c\u2713 Crawl results copied to clipboard (' + crawlMB + ' MB)! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-        }).catch(function() {
-          var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
-          downloadAsFile(crawlJson, 'milg-crawl-' + hostname + '.json');
-          console.log('%c\u2B07 Could not copy \u2014 downloaded as file instead.', 'color: #b45309; font-weight: bold;');
-        });
-      } else {
-        var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
-        downloadAsFile(crawlJson, 'milg-crawl-' + hostname + '.json');
-        console.log('%c\u2B07 Crawl results downloaded as file. Import in the analyzer.', 'color: #16a34a; font-weight: bold;');
-      }
-    }
-
-    if (_crawlLinks.length === 0) {
-      _copyCrawlResults(_crawlResults);
-      console.log('%c\u2713 Crawl complete (1 page). Open the analyzer.', 'color: #16a34a; font-weight: bold;');
-    } else {
-      // Show crawl progress overlay
-      var _crawlOverlay = document.createElement('div');
-      _crawlOverlay.setAttribute('data-milg-overlay', '1');
-      _crawlOverlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.6);display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui,sans-serif;';
-      _crawlOverlay.innerHTML = '<div style="width:40px;height:40px;border:3px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:milg-spin 0.8s linear infinite"></div>' +
-        '<div id="milg-crawl-status" style="color:#fff;margin-top:16px;font-size:14px;font-weight:500">Crawling site...</div>' +
-        '<div id="milg-crawl-detail" style="color:rgba(255,255,255,0.6);margin-top:6px;font-size:12px">Loading extraction snippet...</div>' +
-        '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style>';
-      document.body.appendChild(_crawlOverlay);
-      function _updateCrawlOverlay(status, detail) {
-        var s = document.getElementById('milg-crawl-status'); if (s) s.textContent = status;
-        var d = document.getElementById('milg-crawl-detail'); if (d) d.textContent = detail;
-      }
-      function _removeCrawlOverlay() { if (_crawlOverlay.parentNode) _crawlOverlay.parentNode.removeChild(_crawlOverlay); }
-
-      // Build self-contained extraction script (no CDN fetch — inline the function directly)
-      var snippetSrc = 'window.MilgExtract = ' + window.MilgExtract.toString() + ';\n' +
-        'window.__milgOnExtractComplete = function(data) { window.__milgData = data; };\n' +
-        'window.MilgExtract();\n';
-
-      (function() {
-        function processNext(idx) {
-          if (idx >= _crawlLinks.length) {
-            var crawlJson = JSON.stringify({ _milgCrawl: true, startUrl: location.href, results: _crawlResults });
-            window.__milgCrawlResults = _crawlResults;
-            window.__milgCrawlJson = crawlJson;
-            try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) { console.warn('[milg-warn] localStorage save failed:', e.message); }
-            console.log('%c\u2713 Crawl complete! ' + _crawlResults.length + ' pages (' + Math.round(crawlJson.length / 1024) + ' KB)', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-            var _cKB = Math.round(crawlJson.length / 1024);
-            var _cLarge = _cKB > 2048;
-            var _priStyle = 'padding:12px 28px;font-size:14px;font-weight:600;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-bottom:8px;min-width:220px';
-            var _secStyle = 'padding:10px 24px;font-size:13px;font-weight:500;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.2);border-radius:8px;cursor:pointer;margin-bottom:10px;min-width:220px';
-            _crawlOverlay.innerHTML = '<div style="text-align:center">' +
-              '<div style="font-size:28px;margin-bottom:12px">\u2713</div>' +
-              '<div style="color:#fff;font-size:16px;font-weight:600;margin-bottom:6px">Crawl complete! ' + _crawlResults.length + ' pages analyzed.</div>' +
-              '<div style="color:rgba(255,255,255,0.6);font-size:13px;margin-bottom:' + (_cLarge ? '6' : '20') + 'px">' + _cKB + ' KB of design data ready</div>' +
-              (_cLarge ? '<div style="color:#fbbf24;font-size:12px;margin-bottom:16px">&#9888; Large payload \u2014 download recommended</div>' : '') +
-              (_cLarge
-                ? '<button id="milg-crawl-dl-btn" style="' + _priStyle + '">Download JSON</button><br><button id="milg-crawl-copy-btn" style="' + _secStyle + '">Copy to Clipboard</button>'
-                : '<button id="milg-crawl-copy-btn" style="' + _priStyle + '">Copy to Clipboard</button><br><button id="milg-crawl-dl-btn" style="' + _secStyle + '">Download JSON</button>') +
-              '<div style="color:rgba(255,255,255,0.5);font-size:11px;margin-top:8px">Then ' + (_cLarge ? 'import' : 'paste') + ' into the analyzer</div>' +
-              '</div>';
-            function _crawlDone() { setTimeout(function() { _removeCrawlOverlay(); }, 1500); }
-            document.getElementById('milg-crawl-copy-btn').addEventListener('click', function() {
-              var btn = document.getElementById('milg-crawl-copy-btn');
-              if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(crawlJson).then(function() {
-                  btn.textContent = 'Copied!'; btn.style.background = '#16a34a'; _crawlDone();
-                }).catch(function() {
-                  downloadAsFile(crawlJson, 'milg-crawl-' + location.hostname.replace(/[^a-z0-9]/gi, '-') + '.json');
-                  btn.textContent = 'Downloaded!'; btn.style.background = '#16a34a'; _crawlDone();
-                });
-              } else {
-                downloadAsFile(crawlJson, 'milg-crawl-' + location.hostname.replace(/[^a-z0-9]/gi, '-') + '.json');
-                btn.textContent = 'Downloaded!'; btn.style.background = '#16a34a'; _crawlDone();
-              }
-            });
-            document.getElementById('milg-crawl-dl-btn').addEventListener('click', function() {
-              downloadAsFile(crawlJson, 'milg-crawl-' + location.hostname.replace(/[^a-z0-9]/gi, '-') + '.json');
-              var btn = document.getElementById('milg-crawl-dl-btn');
-              btn.textContent = 'Downloaded!'; btn.style.background = '#16a34a'; btn.style.color = '#fff'; _crawlDone();
-            });
-            return;
-          }
-
-          var url = _crawlLinks[idx];
-          var path; try { path = new URL(url).pathname; } catch(e) { path = url; }
-          _updateCrawlOverlay('Crawling page ' + (idx + 1) + ' of ' + _crawlLinks.length, path);
-          console.log('%c\u2192 [' + (idx + 1) + '/' + _crawlLinks.length + '] ' + path, 'color: #3b82f6;');
-
-          // Fetch page HTML (same-origin) then load as srcdoc (bypasses X-Frame-Options)
-          fetch(url).then(function(r) {
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            return r.text();
-          }).then(function(html) {
-            // Srcdoc environment patches (URL constructor, History API, fetch)
-            var eu = url.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-            var envPatch = '<script>(function(){' +
-              'var _rb="' + eu + '";var _O=URL;' +
-              'function _P(u,b){if(b){var bs=typeof b==="string"?b:String(b);if(bs==="about:srcdoc"||bs==="about:blank"||bs==="null"||bs.indexOf("about:")===0)b=_rb;}' +
-              'if(!b&&typeof u==="string"&&u.charAt(0)==="/")return new _O(u,_rb);try{return (arguments.length===1||!b)?new _O(u):new _O(u,b);}catch(e){try{return new _O(u,_rb);}catch(e2){throw e;}}}' +
-              '_P.prototype=_O.prototype;_P.createObjectURL=_O.createObjectURL.bind(_O);_P.revokeObjectURL=_O.revokeObjectURL.bind(_O);if(_O.canParse)_P.canParse=_O.canParse.bind(_O);window.URL=_P;' +
-              'var _hps=history.pushState.bind(history);var _hrs=history.replaceState.bind(history);' +
-              'history.pushState=function(s,t,u){try{_hps(s,t,u);}catch(e){}};history.replaceState=function(s,t,u){try{_hrs(s,t,u);}catch(e){}};' +
-              'var _of=window.fetch;window.fetch=function(u,o){if(typeof u==="string"&&u.charAt(0)==="/")u=_rb.replace(/\\/$/,"")+u;return _of.call(this,u,o);};' +
-              '})();</' + 'script>';
-            var baseTag = '<base href="' + url + '">';
-            var headPatch = envPatch + baseTag;
-            // Inject BEFORE the first <script> tag so patches run before any framework JS
-            if (/<script[\s>]/i.test(html)) {
-              html = html.replace(/<script[\s>]/i, headPatch + '<script ');
-            } else if (/<head[\s>]/i.test(html)) {
-              html = html.replace(/<head([^>]*)>/i, '<head$1>' + headPatch);
-            } else {
-              html = headPatch + html;
-            }
-            html = html.replace(/<meta[^>]*http-equiv=["']?X-Frame-Options["']?[^>]*>/gi, '');
-
-            var iframe = document.createElement('iframe');
-            iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
-            iframe.sandbox = 'allow-scripts allow-same-origin allow-forms';
-            document.body.appendChild(iframe);
-
-            var done = false;
-            function cleanup() { if (iframe.parentNode) document.body.removeChild(iframe); }
-
-            iframe.addEventListener('load', function() {
-              if (done) return;
-              setTimeout(function() {
-                if (done) return;
-                try {
-                  var iWin = iframe.contentWindow;
-                  var iDoc = iframe.contentDocument || iWin.document;
-                  var script = iDoc.createElement('script');
-                  script.textContent = 'window.__milgCrawlSite=false;\n' + snippetSrc;
-                  iDoc.body.appendChild(script);
-
-                  var polls = 0;
-                  var poller = setInterval(function() {
-                    if (done) { clearInterval(poller); return; }
-                    polls++;
-                    try {
-                      var iData = iWin.__milgData;
-                      if (iData) {
-                        clearInterval(poller); done = true;
-                        iData.meta.url = url;
-                        _crawlResults.push({ url: url, data: iData });
-                        cleanup();
-                        console.log('%c  \u2713 ' + path + ' (' + (iData.structure.totalElements || 0) + ' elements)', 'color: #16a34a;');
-                        setTimeout(function() { processNext(idx + 1); }, 500);
-                      } else if (polls > 20) {
-                        clearInterval(poller); done = true;
-                        console.log('%c  \u2717 Timeout: ' + path, 'color: #dc2626;');
-                        cleanup();
-                        setTimeout(function() { processNext(idx + 1); }, 500);
-                      }
-                    } catch(e) {
-                      clearInterval(poller); done = true;
-                      console.log('%c  \u2717 Error: ' + path + ' (' + e.message + ')', 'color: #dc2626;');
-                      cleanup();
-                      setTimeout(function() { processNext(idx + 1); }, 500);
-                    }
-                  }, 500);
-                } catch(e) {
-                  done = true;
-                  console.log('%c  \u2717 Cannot inject snippet: ' + path + ' (' + e.message + ')', 'color: #dc2626;');
-                  cleanup();
-                  setTimeout(function() { processNext(idx + 1); }, 500);
-                }
-              }, 1500);
-            });
-            iframe.srcdoc = html;
-            setTimeout(function() {
-              if (done) return; done = true;
-              console.log('%c  \u2717 Timeout (10s): ' + path, 'color: #dc2626;');
-              cleanup();
-              setTimeout(function() { processNext(idx + 1); }, 500);
-            }, 10000);
-          }).catch(function(e) {
-            console.log('%c  \u2717 Fetch failed: ' + path + ' (' + (e.message || e) + ')', 'color: #dc2626;');
-            setTimeout(function() { processNext(idx + 1); }, 500);
-          });
-        }
-        processNext(0);
-      })();
-    }
-    return; // Skip normal clipboard copy
-  }
-
-    }; // end __milgOnExtractComplete callback
-
-    // Run the extraction
-    window.MilgExtract();
-  }
 })();
 </file>
 
@@ -36349,6 +35971,392 @@ window.MilgViewer = (function() {
     showFindingBbox: showFindingBbox,
     showVerifyResult: showVerifyResult
   };
+})();
+</file>
+
+<file path="docs/analyzer-snippet.js">
+// make-it-look-good — Design Extraction Snippet
+// Version: v1.1
+// Run this in the browser console on any page, or use as a bookmarklet.
+// Loads extraction engine from CDN (single source of truth), extracts design tokens,
+// and copies JSON to your clipboard.
+// Then paste into the analyzer at: https://jdeworks.github.io/make-it-look-good/analyzer.html
+
+(function() {
+  'use strict';
+  var _MILG_VERSION = 'v1.1';
+  console.log('%c[milg] Snippet version: ' + _MILG_VERSION, 'color: #64748b;');
+
+  // --- Auto-scroll option ---
+  // To scroll the page before extraction (triggers lazy loading + intersection observers):
+  // Run: window.__milgScrollFirst = true   then paste the snippet.
+  // The snippet will scroll the full page, wait for content to load, then extract.
+  if (window.__milgScrollFirst && !window.__milgScrollDone) {
+    window.__milgScrollDone = true;
+    console.log('%c\u23F3 Scrolling page to trigger lazy loading and intersection observers...', 'color: #3b82f6; font-weight: bold;');
+    var _scrollH = document.body.scrollHeight;
+    var _pos = 0;
+    var _step = Math.max(window.innerHeight * 0.8, 400);
+    var _si = setInterval(function() {
+      _pos += _step;
+      window.scrollTo(0, _pos);
+      if (_pos >= _scrollH) {
+        clearInterval(_si);
+        setTimeout(function() { window.scrollTo(0, 0); }, 300);
+        // Wait for newly loaded content, then user must re-run snippet
+        setTimeout(function() {
+          console.log('%c\u2713 Scroll complete! Page content should now be fully loaded.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+          console.log('%cRe-run the snippet now for complete analysis.', 'color: #3b82f6;');
+          window.__milgScrollFirst = false;
+        }, 1500);
+      }
+    }, 150);
+    return; // Exit — re-run snippet after scroll completes
+  }
+
+  // --- Load extraction engine from CDN (single source of truth) ---
+  console.log('%c[milg] Loading extraction engine...', 'color: #3b82f6;');
+  var _cacheBust = 'v=' + Math.floor(Date.now() / 3600000);
+  var _extractUrls = [
+    'https://cdn.jsdelivr.net/gh/jdeworks/make-it-look-good@dev/docs/analyzer-extract.js?' + _cacheBust,
+    'https://jdeworks.github.io/make-it-look-good/analyzer-extract.js?' + _cacheBust
+  ];
+
+  if (window.MilgExtract) {
+    _runExtraction();
+  } else {
+    (function _tryLoad(idx) {
+      if (idx >= _extractUrls.length) {
+        console.error('[milg] Cannot load extraction engine from any CDN.');
+        return;
+      }
+      var url = _extractUrls[idx];
+      console.log('[milg] Fetching:', url.split('?')[0]);
+      fetch(url).then(function(r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.text();
+      }).then(function(code) {
+        (new Function(code))();
+        if (!window.MilgExtract) throw new Error('MilgExtract not defined after eval');
+        _runExtraction();
+      }).catch(function(err) {
+        console.warn('[milg] CDN ' + (idx + 1) + ' failed:', err.message || err);
+        _tryLoad(idx + 1);
+      });
+    })(0);
+  }
+
+  function _runExtraction() {
+    window.__milgOnExtractComplete = function(data) {
+      window.__milgData = data;
+
+  // --- Output ---
+  var json = JSON.stringify(data, null, 2);
+
+  // Export data — file download for large payloads, clipboard for small ones
+  function downloadAsFile(data, filename) {
+    var blob = new Blob([data], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = filename;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function() { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+  }
+
+  var jsonSize = json.length;
+  var sizeMB = Math.round(jsonSize / 1024 / 1024 * 10) / 10;
+
+  if (jsonSize > 4 * 1024 * 1024) {
+    // >4MB: file download (clipboard would freeze)
+    var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
+    downloadAsFile(json, 'milg-' + hostname + '.json');
+    console.log('%c\u2B07 Design data downloaded as file (' + sizeMB + ' MB). Import it in the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+    window.__milgData_json = json;
+  } else {
+    // Small enough for clipboard
+    function copyFallback() {
+      var ta = document.createElement('textarea');
+      ta.value = json;
+      ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        var ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        if (ok) {
+          console.log('%c\u2713 Design data copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+          return;
+        }
+      } catch(e) {
+        document.body.removeChild(ta);
+      }
+      // Fallback: file download
+      var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
+      downloadAsFile(json, 'milg-' + hostname + '.json');
+      console.log('%c\u2B07 Could not copy \u2014 downloaded as file instead (' + sizeMB + ' MB).', 'color: #b45309; font-weight: bold;');
+      window.__milgData_json = json;
+    }
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(json).then(function() {
+        console.log('%c\u2713 Design data copied to clipboard (' + sizeMB + ' MB)! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+      }).catch(copyFallback);
+    } else {
+      copyFallback();
+    }
+  }
+
+  console.log('%cmake-it-look-good extraction complete', 'color: #3b82f6; font-weight: bold;');
+  console.log('Elements scanned:', data.structure.totalElements);
+  console.log('Contrast pairs:', data.colors.contrastPairs.length);
+  console.log('Touch target issues:', data.interaction.touchTargets.length);
+
+  // --- Site Crawl Mode (same-origin iframe with src=, full JS execution) ---
+  // Set window.__milgCrawlSite = true before running.
+  // Loads each page in a hidden same-origin iframe (src=url), waits for full JS
+  // execution, then injects the extraction snippet. Stays on current page.
+  if (window.__milgCrawlSite) {
+    var _crawlMax = Math.min(Math.max(window.__milgCrawlMaxPages || 5, 1), 25);
+    var _crawlBlacklist = window.__milgCrawlBlacklist || [];
+    var _crawlOrigin = location.origin;
+    var _crawlSeen = {};
+    var _curPath = location.pathname.replace(/\/$/, '');
+    _crawlSeen[_crawlOrigin + _curPath] = true;
+    // Also mark index variants as seen to avoid re-crawling the current page
+    if (_curPath === '' || _curPath === '/index.html' || _curPath === '/index.htm') {
+      _crawlSeen[_crawlOrigin] = true; _crawlSeen[_crawlOrigin + '/index.html'] = true; _crawlSeen[_crawlOrigin + '/index.htm'] = true;
+    }
+
+    var _crawlLinks = [];
+    document.querySelectorAll('a[href]').forEach(function(a) {
+      var href = a.getAttribute('href');
+      if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('javascript:')) return;
+      try {
+        var u = new URL(href, location.href);
+        if (u.origin !== _crawlOrigin) return;
+        if (/\.(pdf|zip|png|jpg|svg|css|js|json|xml|woff2?)$/i.test(u.pathname)) return;
+        u.hash = '';
+        var key = u.origin + u.pathname.replace(/\/$/, '');
+        if (_crawlSeen[key]) return;
+        var blocked = _crawlBlacklist.some(function(pat) { pat = pat.trim(); if (!pat) return false; if (pat.endsWith('*')) return u.pathname.startsWith(pat.slice(0, -1)); return u.pathname === pat; });
+        if (blocked) return;
+        _crawlSeen[key] = true;
+        _crawlLinks.push(u.origin + u.pathname);
+      } catch(e) {}
+    });
+    _crawlLinks = _crawlLinks.slice(0, _crawlMax - 1);
+
+    var _crawlResults = [{ url: location.href, data: data }];
+    console.log('%c\uD83D\uDD77 Site Crawl: discovered ' + _crawlLinks.length + ' page(s)', 'color: #8b5cf6; font-weight: bold;');
+    _crawlLinks.forEach(function(l, i) { var p; try { p = new URL(l).pathname; } catch(e) { p = l; } console.log('  ' + (i + 1) + '. ' + p); });
+
+    // Export crawl results — file download for large payloads, clipboard for small
+    function _copyCrawlResults(results) {
+      var crawlJson = JSON.stringify({ _milgCrawl: true, startUrl: location.href, results: results });
+      window.__milgCrawlResults = results;
+      window.__milgCrawlJson = crawlJson;
+      try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) { console.warn('[milg-warn] localStorage save failed:', e.message); }
+      var crawlMB = Math.round(crawlJson.length / 1024 / 1024 * 10) / 10;
+      if (crawlJson.length > 4 * 1024 * 1024) {
+        // Large crawl: file download
+        var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
+        downloadAsFile(crawlJson, 'milg-crawl-' + hostname + '.json');
+        console.log('%c\u2B07 Crawl results downloaded as file (' + crawlMB + ' MB). Import in the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+      } else if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(crawlJson).then(function() {
+          console.log('%c\u2713 Crawl results copied to clipboard (' + crawlMB + ' MB)! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+        }).catch(function() {
+          var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
+          downloadAsFile(crawlJson, 'milg-crawl-' + hostname + '.json');
+          console.log('%c\u2B07 Could not copy \u2014 downloaded as file instead.', 'color: #b45309; font-weight: bold;');
+        });
+      } else {
+        var hostname = location.hostname.replace(/[^a-z0-9]/gi, '-');
+        downloadAsFile(crawlJson, 'milg-crawl-' + hostname + '.json');
+        console.log('%c\u2B07 Crawl results downloaded as file. Import in the analyzer.', 'color: #16a34a; font-weight: bold;');
+      }
+    }
+
+    if (_crawlLinks.length === 0) {
+      _copyCrawlResults(_crawlResults);
+      console.log('%c\u2713 Crawl complete (1 page). Open the analyzer.', 'color: #16a34a; font-weight: bold;');
+    } else {
+      // Show crawl progress overlay
+      var _crawlOverlay = document.createElement('div');
+      _crawlOverlay.setAttribute('data-milg-overlay', '1');
+      _crawlOverlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.6);display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui,sans-serif;';
+      _crawlOverlay.innerHTML = '<div style="width:40px;height:40px;border:3px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:milg-spin 0.8s linear infinite"></div>' +
+        '<div id="milg-crawl-status" style="color:#fff;margin-top:16px;font-size:14px;font-weight:500">Crawling site...</div>' +
+        '<div id="milg-crawl-detail" style="color:rgba(255,255,255,0.6);margin-top:6px;font-size:12px">Loading extraction snippet...</div>' +
+        '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style>';
+      document.body.appendChild(_crawlOverlay);
+      function _updateCrawlOverlay(status, detail) {
+        var s = document.getElementById('milg-crawl-status'); if (s) s.textContent = status;
+        var d = document.getElementById('milg-crawl-detail'); if (d) d.textContent = detail;
+      }
+      function _removeCrawlOverlay() { if (_crawlOverlay.parentNode) _crawlOverlay.parentNode.removeChild(_crawlOverlay); }
+
+      // Build self-contained extraction script (no CDN fetch — inline the function directly)
+      var snippetSrc = 'window.MilgExtract = ' + window.MilgExtract.toString() + ';\n' +
+        'window.__milgOnExtractComplete = function(data) { window.__milgData = data; };\n' +
+        'window.MilgExtract();\n';
+
+      (function() {
+        function processNext(idx) {
+          if (idx >= _crawlLinks.length) {
+            var crawlJson = JSON.stringify({ _milgCrawl: true, startUrl: location.href, results: _crawlResults });
+            window.__milgCrawlResults = _crawlResults;
+            window.__milgCrawlJson = crawlJson;
+            try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) { console.warn('[milg-warn] localStorage save failed:', e.message); }
+            console.log('%c\u2713 Crawl complete! ' + _crawlResults.length + ' pages (' + Math.round(crawlJson.length / 1024) + ' KB)', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+            var _cKB = Math.round(crawlJson.length / 1024);
+            var _cLarge = _cKB > 2048;
+            var _priStyle = 'padding:12px 28px;font-size:14px;font-weight:600;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-bottom:8px;min-width:220px';
+            var _secStyle = 'padding:10px 24px;font-size:13px;font-weight:500;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.2);border-radius:8px;cursor:pointer;margin-bottom:10px;min-width:220px';
+            _crawlOverlay.innerHTML = '<div style="text-align:center">' +
+              '<div style="font-size:28px;margin-bottom:12px">\u2713</div>' +
+              '<div style="color:#fff;font-size:16px;font-weight:600;margin-bottom:6px">Crawl complete! ' + _crawlResults.length + ' pages analyzed.</div>' +
+              '<div style="color:rgba(255,255,255,0.6);font-size:13px;margin-bottom:' + (_cLarge ? '6' : '20') + 'px">' + _cKB + ' KB of design data ready</div>' +
+              (_cLarge ? '<div style="color:#fbbf24;font-size:12px;margin-bottom:16px">&#9888; Large payload \u2014 download recommended</div>' : '') +
+              (_cLarge
+                ? '<button id="milg-crawl-dl-btn" style="' + _priStyle + '">Download JSON</button><br><button id="milg-crawl-copy-btn" style="' + _secStyle + '">Copy to Clipboard</button>'
+                : '<button id="milg-crawl-copy-btn" style="' + _priStyle + '">Copy to Clipboard</button><br><button id="milg-crawl-dl-btn" style="' + _secStyle + '">Download JSON</button>') +
+              '<div style="color:rgba(255,255,255,0.5);font-size:11px;margin-top:8px">Then ' + (_cLarge ? 'import' : 'paste') + ' into the analyzer</div>' +
+              '</div>';
+            function _crawlDone() { setTimeout(function() { _removeCrawlOverlay(); }, 1500); }
+            document.getElementById('milg-crawl-copy-btn').addEventListener('click', function() {
+              var btn = document.getElementById('milg-crawl-copy-btn');
+              if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(crawlJson).then(function() {
+                  btn.textContent = 'Copied!'; btn.style.background = '#16a34a'; _crawlDone();
+                }).catch(function() {
+                  downloadAsFile(crawlJson, 'milg-crawl-' + location.hostname.replace(/[^a-z0-9]/gi, '-') + '.json');
+                  btn.textContent = 'Downloaded!'; btn.style.background = '#16a34a'; _crawlDone();
+                });
+              } else {
+                downloadAsFile(crawlJson, 'milg-crawl-' + location.hostname.replace(/[^a-z0-9]/gi, '-') + '.json');
+                btn.textContent = 'Downloaded!'; btn.style.background = '#16a34a'; _crawlDone();
+              }
+            });
+            document.getElementById('milg-crawl-dl-btn').addEventListener('click', function() {
+              downloadAsFile(crawlJson, 'milg-crawl-' + location.hostname.replace(/[^a-z0-9]/gi, '-') + '.json');
+              var btn = document.getElementById('milg-crawl-dl-btn');
+              btn.textContent = 'Downloaded!'; btn.style.background = '#16a34a'; btn.style.color = '#fff'; _crawlDone();
+            });
+            return;
+          }
+
+          var url = _crawlLinks[idx];
+          var path; try { path = new URL(url).pathname; } catch(e) { path = url; }
+          _updateCrawlOverlay('Crawling page ' + (idx + 1) + ' of ' + _crawlLinks.length, path);
+          console.log('%c\u2192 [' + (idx + 1) + '/' + _crawlLinks.length + '] ' + path, 'color: #3b82f6;');
+
+          // Fetch page HTML (same-origin) then load as srcdoc (bypasses X-Frame-Options)
+          fetch(url).then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.text();
+          }).then(function(html) {
+            // Srcdoc environment patches (URL constructor, History API, fetch)
+            var eu = url.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+            var envPatch = '<script>(function(){' +
+              'var _rb="' + eu + '";var _O=URL;' +
+              'function _P(u,b){if(b){var bs=typeof b==="string"?b:String(b);if(bs==="about:srcdoc"||bs==="about:blank"||bs==="null"||bs.indexOf("about:")===0)b=_rb;}' +
+              'if(!b&&typeof u==="string"&&u.charAt(0)==="/")return new _O(u,_rb);try{return (arguments.length===1||!b)?new _O(u):new _O(u,b);}catch(e){try{return new _O(u,_rb);}catch(e2){throw e;}}}' +
+              '_P.prototype=_O.prototype;_P.createObjectURL=_O.createObjectURL.bind(_O);_P.revokeObjectURL=_O.revokeObjectURL.bind(_O);if(_O.canParse)_P.canParse=_O.canParse.bind(_O);window.URL=_P;' +
+              'var _hps=history.pushState.bind(history);var _hrs=history.replaceState.bind(history);' +
+              'history.pushState=function(s,t,u){try{_hps(s,t,u);}catch(e){}};history.replaceState=function(s,t,u){try{_hrs(s,t,u);}catch(e){}};' +
+              'var _of=window.fetch;window.fetch=function(u,o){if(typeof u==="string"&&u.charAt(0)==="/")u=_rb.replace(/\\/$/,"")+u;return _of.call(this,u,o);};' +
+              '})();</' + 'script>';
+            var baseTag = '<base href="' + url + '">';
+            var headPatch = envPatch + baseTag;
+            // Inject BEFORE the first <script> tag so patches run before any framework JS
+            if (/<script[\s>]/i.test(html)) {
+              html = html.replace(/<script[\s>]/i, headPatch + '<script ');
+            } else if (/<head[\s>]/i.test(html)) {
+              html = html.replace(/<head([^>]*)>/i, '<head$1>' + headPatch);
+            } else {
+              html = headPatch + html;
+            }
+            html = html.replace(/<meta[^>]*http-equiv=["']?X-Frame-Options["']?[^>]*>/gi, '');
+
+            var iframe = document.createElement('iframe');
+            iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
+            iframe.sandbox = 'allow-scripts allow-same-origin allow-forms';
+            document.body.appendChild(iframe);
+
+            var done = false;
+            function cleanup() { if (iframe.parentNode) document.body.removeChild(iframe); }
+
+            iframe.addEventListener('load', function() {
+              if (done) return;
+              setTimeout(function() {
+                if (done) return;
+                try {
+                  var iWin = iframe.contentWindow;
+                  var iDoc = iframe.contentDocument || iWin.document;
+                  var script = iDoc.createElement('script');
+                  script.textContent = 'window.__milgCrawlSite=false;\n' + snippetSrc;
+                  iDoc.body.appendChild(script);
+
+                  var polls = 0;
+                  var poller = setInterval(function() {
+                    if (done) { clearInterval(poller); return; }
+                    polls++;
+                    try {
+                      var iData = iWin.__milgData;
+                      if (iData) {
+                        clearInterval(poller); done = true;
+                        iData.meta.url = url;
+                        _crawlResults.push({ url: url, data: iData });
+                        cleanup();
+                        console.log('%c  \u2713 ' + path + ' (' + (iData.structure.totalElements || 0) + ' elements)', 'color: #16a34a;');
+                        setTimeout(function() { processNext(idx + 1); }, 500);
+                      } else if (polls > 20) {
+                        clearInterval(poller); done = true;
+                        console.log('%c  \u2717 Timeout: ' + path, 'color: #dc2626;');
+                        cleanup();
+                        setTimeout(function() { processNext(idx + 1); }, 500);
+                      }
+                    } catch(e) {
+                      clearInterval(poller); done = true;
+                      console.log('%c  \u2717 Error: ' + path + ' (' + e.message + ')', 'color: #dc2626;');
+                      cleanup();
+                      setTimeout(function() { processNext(idx + 1); }, 500);
+                    }
+                  }, 500);
+                } catch(e) {
+                  done = true;
+                  console.log('%c  \u2717 Cannot inject snippet: ' + path + ' (' + e.message + ')', 'color: #dc2626;');
+                  cleanup();
+                  setTimeout(function() { processNext(idx + 1); }, 500);
+                }
+              }, 1500);
+            });
+            iframe.srcdoc = html;
+            setTimeout(function() {
+              if (done) return; done = true;
+              console.log('%c  \u2717 Timeout (10s): ' + path, 'color: #dc2626;');
+              cleanup();
+              setTimeout(function() { processNext(idx + 1); }, 500);
+            }, 10000);
+          }).catch(function(e) {
+            console.log('%c  \u2717 Fetch failed: ' + path + ' (' + (e.message || e) + ')', 'color: #dc2626;');
+            setTimeout(function() { processNext(idx + 1); }, 500);
+          });
+        }
+        processNext(0);
+      })();
+    }
+    return; // Skip normal clipboard copy
+  }
+
+    }; // end __milgOnExtractComplete callback
+
+    // Run the extraction
+    window.MilgExtract();
+  }
 })();
 </file>
 
@@ -40498,7 +40506,7 @@ window.MilgIframe = (function() {
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v1.5 loaded');
+console.log('[milg] analyzer.js v1.6 loaded');
 
 (function() {
   "use strict";
@@ -42219,7 +42227,7 @@ console.log('[milg] analyzer.js v1.5 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v1.5</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v1.6</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -42657,31 +42665,31 @@ console.log('[milg] analyzer.js v1.5 loaded');
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=1.5"></script>
-  <script src="scoring/contrast.js?v=1.5"></script>
-  <script src="scoring/typography.js?v=1.5"></script>
-  <script src="scoring/spacing.js?v=1.5"></script>
-  <script src="scoring/touch.js?v=1.5"></script>
-  <script src="scoring/accessibility.js?v=1.5"></script>
-  <script src="scoring/responsive.js?v=1.5"></script>
-  <script src="scoring/consistency.js?v=1.5"></script>
-  <script src="scoring/cognitive.js?v=1.5"></script>
-  <script src="scoring/layout.js?v=1.5"></script>
-  <script src="scoring/performance.js?v=1.5"></script>
-  <script src="scoring/readability.js?v=1.5"></script>
-  <script src="scoring/filters.js?v=1.5"></script>
-  <script src="scoring/balance.js?v=1.5"></script>
+  <script src="scoring/registry.js?v=1.6"></script>
+  <script src="scoring/contrast.js?v=1.6"></script>
+  <script src="scoring/typography.js?v=1.6"></script>
+  <script src="scoring/spacing.js?v=1.6"></script>
+  <script src="scoring/touch.js?v=1.6"></script>
+  <script src="scoring/accessibility.js?v=1.6"></script>
+  <script src="scoring/responsive.js?v=1.6"></script>
+  <script src="scoring/consistency.js?v=1.6"></script>
+  <script src="scoring/cognitive.js?v=1.6"></script>
+  <script src="scoring/layout.js?v=1.6"></script>
+  <script src="scoring/performance.js?v=1.6"></script>
+  <script src="scoring/readability.js?v=1.6"></script>
+  <script src="scoring/filters.js?v=1.6"></script>
+  <script src="scoring/balance.js?v=1.6"></script>
   <!-- Queue + Report rendering + UI -->
-  <script src="analyzer-queue.js?v=1.5"></script>
-  <script src="analyzer-report.js?v=1.5"></script>
-  <script src="analyzer-crawl.js?v=1.5"></script>
-  <script src="analyzer-extract.js?v=1.5"></script>
-  <script src="analyzer-iframe.js?v=1.5"></script>
-  <script src="analyzer-proxy.js?v=1.5"></script>
-  <script src="analyzer-crawl-ui.js?v=1.5"></script>
-  <script src="analyzer-contrast-verify.js?v=1.5"></script>
-  <script src="analyzer-viewer.js?v=1.5"></script>
-  <script src="analyzer.js?v=1.5"></script>
+  <script src="analyzer-queue.js?v=1.6"></script>
+  <script src="analyzer-report.js?v=1.6"></script>
+  <script src="analyzer-crawl.js?v=1.6"></script>
+  <script src="analyzer-extract.js?v=1.6"></script>
+  <script src="analyzer-iframe.js?v=1.6"></script>
+  <script src="analyzer-proxy.js?v=1.6"></script>
+  <script src="analyzer-crawl-ui.js?v=1.6"></script>
+  <script src="analyzer-contrast-verify.js?v=1.6"></script>
+  <script src="analyzer-viewer.js?v=1.6"></script>
+  <script src="analyzer.js?v=1.6"></script>
 </body>
 </html>
 </file>

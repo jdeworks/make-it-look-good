@@ -514,6 +514,14 @@ window.MilgCrawl = (function() {
         });
         lines.push('');
       });
+      // Per-page screenshots
+      if (page.rawData && page.rawData.screenshots && page.rawData.screenshots.length > 0) {
+        lines.push('#### Screenshots');
+        page.rawData.screenshots.forEach(function(src, si) {
+          lines.push('![' + path + ' screenshot ' + (si + 1) + '](' + src + ')');
+          lines.push('');
+        });
+      }
       // Per-page pixel verify summary
       if (page.rawData && page.rawData._contrastVerifyResults && page.rawData._contrastVerifyResults.length > 0) {
         var pvr = page.rawData._contrastVerifyResults;
@@ -533,7 +541,7 @@ window.MilgCrawl = (function() {
 
   function renderCrawlJSON(session, severityFilter) {
     // Break circular refs and strip debug data — keep screenshots, masks, verify for full export
-    var _skipKeys = { deepScan: 1, _cachedReportData: 1, _vpCacheIdx: 1, _maskBmp: 1, _debug: 1 };
+    var _skipKeys = { deepScan: 1, _cachedReportData: 1, _vpCacheIdx: 1, _maskBmp: 1, _debug: 1, samplePoints: 1 };
     var _replacer = function(k, v) { return _skipKeys[k] ? undefined : v; };
     var out = {
       _milgCrawl: true,
@@ -602,7 +610,7 @@ window.MilgCrawl = (function() {
         return pageOut;
       })
     };
-    return JSON.stringify(out, null, 2);
+    return JSON.stringify(out);
   }
 
   // --- Public API ---
