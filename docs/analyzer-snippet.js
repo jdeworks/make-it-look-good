@@ -1,5 +1,5 @@
 // make-it-look-good — Design Extraction Snippet
-// Version: 2026-04-04-v15
+// Version: v1.1
 // Run this in the browser console on any page, or use as a bookmarklet.
 // Loads extraction engine from CDN (single source of truth), extracts design tokens,
 // and copies JSON to your clipboard.
@@ -7,7 +7,7 @@
 
 (function() {
   'use strict';
-  var _MILG_VERSION = '2026-04-04-v15';
+  var _MILG_VERSION = 'v1.1';
   console.log('%c[milg] Snippet version: ' + _MILG_VERSION, 'color: #64748b;');
 
   // --- Auto-scroll option ---

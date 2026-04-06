@@ -33858,7 +33858,7 @@ window.MilgProxy = (function() {
 
 <file path="docs/analyzer-snippet.js">
 // make-it-look-good — Design Extraction Snippet
-// Version: 2026-04-04-v15
+// Version: v1.1
 // Run this in the browser console on any page, or use as a bookmarklet.
 // Loads extraction engine from CDN (single source of truth), extracts design tokens,
 // and copies JSON to your clipboard.
@@ -33866,7 +33866,7 @@ window.MilgProxy = (function() {
 
 (function() {
   'use strict';
-  var _MILG_VERSION = '2026-04-04-v15';
+  var _MILG_VERSION = 'v1.1';
   console.log('%c[milg] Snippet version: ' + _MILG_VERSION, 'color: #64748b;');
 
   // --- Auto-scroll option ---
@@ -38259,7 +38259,7 @@ window.MilgCrawlUI = (function() {
 
 <file path="docs/analyzer-snippet-screenshots.js">
 // make-it-look-good — Design Extraction Snippet (with screenshots)
-// Version: 2026-04-04-v26
+// Version: v1.1
 // Run this in the browser console on any page.
 // Loads extraction engine from CDN (single source of truth), then captures screenshots.
 // Output is larger (~200-800KB extra) but includes visual reference.
@@ -38267,7 +38267,7 @@ window.MilgCrawlUI = (function() {
 
 (function() {
   'use strict';
-  var _MILG_VERSION = '2026-04-04-v26';
+  var _MILG_VERSION = 'v1.1';
   console.log('%c[milg] Snippet version: ' + _MILG_VERSION, 'color: #64748b;');
 
   // --- Pixel verify option ---
@@ -40139,11 +40139,11 @@ window.MilgIframe = (function() {
 </file>
 
 <file path="docs/analyzer.js">
-// make-it-look-good — Design Analyzer (Main UI Controller) v43.3
+// make-it-look-good — Design Analyzer (Main UI Controller) v1.1
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v56.0 loaded');
+console.log('[milg] analyzer.js v1.1 loaded');
 
 (function() {
   "use strict";
@@ -40161,6 +40161,10 @@ console.log('[milg] analyzer.js v56.0 loaded');
 
   // Screenshot library (loaded inside iframes via script tag)
   var SCREENSHOT_CDN = 'https://cdn.jsdelivr.net/npm/modern-screenshot@4.6.8/dist/index.js';
+
+  // --- Debug ---
+  var _debug = (location.search.indexOf('debug') !== -1) || localStorage.getItem('milg-debug') === 'true';
+  function _log() { if (_debug) console.log.apply(console, arguments); }
 
   // --- State ---
   var reportData = null;
@@ -40783,11 +40787,11 @@ console.log('[milg] analyzer.js v56.0 loaded');
     // Launch ALL viewports in parallel — maximum speed when tab is in foreground.
     // Chrome throttles background tabs (timers → 1/sec, rAF paused), so the focus
     // modal warns users to stay on this tab during analysis.
-    console.log('[milg] Deep scan: launching', viewports.length, 'viewports', wantShots ? '(with screenshots)' : '');
+    _log('[milg] Deep scan: launching', viewports.length, 'viewports', wantShots ? '(with screenshots)' : '');
     updateFocusModal('Scanning ' + viewports.length + ' viewports' + (wantShots ? ' with screenshots' : ''));
     if (onProgress) onProgress('Starting viewports...', 0, totalSteps);
     viewports.forEach(function(vp, i) {
-      console.log('[milg] Starting viewport', i, vp.label, vp.w + 'x' + vp.h);
+      _log('[milg] Starting viewport', i, vp.label, vp.w + 'x' + vp.h);
       // Same unified analyzeHtml for every path — no legacy wrapper
       MilgIframe.analyzeHtml(html, {
         url: url,
@@ -40801,11 +40805,11 @@ console.log('[milg] analyzer.js v56.0 loaded');
         doneCount++;
         var elCount = data ? (data.structure && data.structure.totalElements || 0) : 0;
         var ssCount = data && data.screenshots ? data.screenshots.length : 0;
-        console.log('[milg] Viewport', i, vp.label, 'complete (' + doneCount + '/' + viewports.length + ') elements=' + elCount + ' screenshots=' + ssCount);
+        _log('[milg] Viewport', i, vp.label, 'complete (' + doneCount + '/' + viewports.length + ') elements=' + elCount + ' screenshots=' + ssCount);
         updateFocusModal(vp.label + ' (' + vp.w + 'px) — ' + elCount + ' elements' + (ssCount ? ', screenshot captured' : ''));
         if (onProgress) onProgress(vp.label + ' done', doneCount, totalSteps);
         if (doneCount === viewports.length) {
-          console.log('[milg] All viewports done, assembling deepScan');
+          _log('[milg] All viewports done, assembling deepScan');
           updateFocusModal('Assembling multi-viewport results');
           onAllDone();
         }
@@ -40992,7 +40996,7 @@ console.log('[milg] analyzer.js v56.0 loaded');
     // Pixel contrast verification — respects checkbox for all modes
     var pixelVerifyCheck = document.getElementById('pixelVerifyCheck');
     var wantPixelVerify = pixelVerifyCheck ? pixelVerifyCheck.checked : false;
-    console.log('[milg] Pixel verify check — want:', wantPixelVerify,
+    _log('[milg] Pixel verify check — want:', wantPixelVerify,
       'hasPrecomputed:', !!data._contrastVerifyResults,
       'hasScreenshots:', !!(reportData.raw && reportData.raw.screenshots && reportData.raw.screenshots.length),
       'hasMeta:', !!(reportData.raw && reportData.raw.screenshotMeta),
@@ -41019,7 +41023,7 @@ console.log('[milg] analyzer.js v56.0 loaded');
         reportData.raw.colors.contrastPairs.forEach(function(p) { delete p.pixelVerify; });
       }
       // Run async verification (non-deep-scan path)
-      console.log('[milg] Running pixel verify — screenshots:', reportData.raw.screenshots.length,
+      _log('[milg] Running pixel verify — screenshots:', reportData.raw.screenshots.length,
         'meta:', JSON.stringify(reportData.raw.screenshotMeta).substring(0, 100),
         'pairs with bbox:', (reportData.raw.colors && reportData.raw.colors.contrastPairs || []).filter(function(p) { return !!p.bbox; }).length);
       // Show spinner while verify runs
@@ -41051,7 +41055,7 @@ console.log('[milg] analyzer.js v56.0 loaded');
           _verifyData._bboxEdgeResults = bboxEdgeResults || [];
           _verifyReportData._contrastVerifyResults = results || [];
           _verifyReportData._bboxEdgeResults = bboxEdgeResults || [];
-          console.log('[milg] Pixel verify complete:', results.length, 'results,', (bboxEdgeResults || []).length, 'edge results');
+          _log('[milg] Pixel verify complete:', results.length, 'results,', (bboxEdgeResults || []).length, 'edge results');
           // Remove spinner regardless
           var spinner = document.getElementById('milg-verify-spinner');
           if (spinner) spinner.parentNode.removeChild(spinner);
@@ -41187,7 +41191,7 @@ console.log('[milg] analyzer.js v56.0 loaded');
         var ds = new DecompressionStream('gzip');
         var stream = blob.stream().pipeThrough(ds);
         new Response(stream).text().then(function(json) {
-          console.log('[milg] Decompressed: ' + Math.round(text.length / 1024) + ' KB → ' + Math.round(json.length / 1024) + ' KB');
+          _log('[milg] Decompressed: ' + Math.round(text.length / 1024) + ' KB → ' + Math.round(json.length / 1024) + ' KB');
           callback(json);
         }).catch(function(e) {
           showToast('Decompression failed: ' + e.message);
@@ -41622,6 +41626,13 @@ console.log('[milg] analyzer.js v56.0 loaded');
             return;
           }
           if (!data.meta || !data.colors) throw new Error('Invalid format');
+          // Disable options that don't apply to imported data — analysis settings are baked in
+          var ssCheck = document.getElementById('screenshotCheck');
+          var pvCheck = document.getElementById('pixelVerifyCheck');
+          var dsCheck = document.getElementById('deepScanCheck');
+          if (ssCheck) ssCheck.checked = !!(data.screenshots && data.screenshots.length);
+          if (pvCheck) pvCheck.checked = !!data._contrastVerifyResults;
+          if (dsCheck) dsCheck.checked = !!(data.deepScan && data.deepScan.viewportData);
           runAnalysis(data);
           showToast('Analysis imported: ' + (data.meta.url || 'unknown'));
         } catch(e) {
@@ -41802,7 +41813,7 @@ console.log('[milg] analyzer.js v56.0 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v56.0</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v1.1</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -41954,23 +41965,24 @@ console.log('[milg] analyzer.js v56.0 loaded');
       <div class="guide-steps">
         <div class="guide-step">
           <div class="guide-step-num">1</div>
-          <div>Open the website you want to analyze (works with <strong>any URL</strong> including <code>localhost</code> and pages behind login)</div>
+          <div>Open the page you want to analyze in any browser (works with <code>localhost</code>, staging, pages behind login)</div>
         </div>
         <div class="guide-step">
           <div class="guide-step-num">2</div>
-          <div>Open browser DevTools with <code>F12</code> and go to the <strong>Console</strong> tab.
-            <span style="display:block;font-size:12px;color:var(--text-secondary);margin-top:4px">Tip: undock DevTools into a separate window (click <code>⋮</code> → dock side → <strong>undock</strong>) so the page viewport stays at its real size. Docked DevTools shrink the page, which can skew layout and touch-target measurements.</span>
+          <div>Press <code>F12</code> to open DevTools &rarr; <strong>Console</strong> tab
+            <span style="display:block;font-size:12px;color:var(--text-secondary);margin-top:4px">Tip: undock DevTools (<code>⋮</code> &rarr; undock into separate window) so the page viewport stays at its real size.</span>
           </div>
         </div>
         <div class="guide-step">
           <div class="guide-step-num">3</div>
-          <div>Copy the extraction snippet below and <strong>paste it into the console</strong>, then press Enter. It extracts design tokens and copies JSON to your clipboard automatically.</div>
+          <div>Copy the snippet below, paste into the console, press Enter. The extracted JSON is copied to your clipboard automatically.
+            <span style="display:block;font-size:12px;color:var(--text-secondary);margin-top:4px">With screenshots enabled, it captures the page and includes pixel data for contrast verification.</span>
+          </div>
         </div>
         <div class="guide-step">
           <div class="guide-step-num">4</div>
-          <div>Come back here and <strong>paste the JSON</strong> into the box below, then click Analyze.
-            <span style="display:block;font-size:12px;color:var(--text-secondary);margin-top:4px">If auto-copy didn't work, the console will show the JSON — type <code>copy(window.__milgData_json)</code> to copy it manually.</span>
-            <span style="display:block;font-size:12px;color:var(--text-secondary);margin-top:4px">For pages with scroll animations: run <code>window.__milgScrollFirst = true</code> first, then paste the snippet. It scrolls the page to trigger lazy loading before extracting.</span>
+          <div>Come back here and <strong>paste</strong> (Ctrl+V) into the box below, then click Analyze.
+            <span style="display:block;font-size:12px;color:var(--text-secondary);margin-top:4px">Fallback: if auto-copy failed, type <code>copy(window.__milgData_json)</code> in the console.</span>
           </div>
         </div>
       </div>
@@ -42243,30 +42255,30 @@ console.log('[milg] analyzer.js v56.0 loaded');
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=56.0"></script>
-  <script src="scoring/contrast.js?v=56.0"></script>
-  <script src="scoring/typography.js?v=56.0"></script>
-  <script src="scoring/spacing.js?v=56.0"></script>
-  <script src="scoring/touch.js?v=56.0"></script>
-  <script src="scoring/accessibility.js?v=56.0"></script>
-  <script src="scoring/responsive.js?v=56.0"></script>
-  <script src="scoring/consistency.js?v=56.0"></script>
-  <script src="scoring/cognitive.js?v=56.0"></script>
-  <script src="scoring/layout.js?v=56.0"></script>
-  <script src="scoring/performance.js?v=56.0"></script>
-  <script src="scoring/readability.js?v=56.0"></script>
-  <script src="scoring/filters.js?v=56.0"></script>
-  <script src="scoring/balance.js?v=56.0"></script>
+  <script src="scoring/registry.js?v=1.1"></script>
+  <script src="scoring/contrast.js?v=1.1"></script>
+  <script src="scoring/typography.js?v=1.1"></script>
+  <script src="scoring/spacing.js?v=1.1"></script>
+  <script src="scoring/touch.js?v=1.1"></script>
+  <script src="scoring/accessibility.js?v=1.1"></script>
+  <script src="scoring/responsive.js?v=1.1"></script>
+  <script src="scoring/consistency.js?v=1.1"></script>
+  <script src="scoring/cognitive.js?v=1.1"></script>
+  <script src="scoring/layout.js?v=1.1"></script>
+  <script src="scoring/performance.js?v=1.1"></script>
+  <script src="scoring/readability.js?v=1.1"></script>
+  <script src="scoring/filters.js?v=1.1"></script>
+  <script src="scoring/balance.js?v=1.1"></script>
   <!-- Report rendering + UI -->
-  <script src="analyzer-report.js?v=56.0"></script>
-  <script src="analyzer-crawl.js?v=56.0"></script>
-  <script src="analyzer-extract.js?v=56.0"></script>
-  <script src="analyzer-iframe.js?v=56.0"></script>
-  <script src="analyzer-proxy.js?v=56.0"></script>
-  <script src="analyzer-crawl-ui.js?v=56.0"></script>
-  <script src="analyzer-contrast-verify.js?v=56.0"></script>
-  <script src="analyzer-viewer.js?v=56.0"></script>
-  <script src="analyzer.js?v=56.0"></script>
+  <script src="analyzer-report.js?v=1.1"></script>
+  <script src="analyzer-crawl.js?v=1.1"></script>
+  <script src="analyzer-extract.js?v=1.1"></script>
+  <script src="analyzer-iframe.js?v=1.1"></script>
+  <script src="analyzer-proxy.js?v=1.1"></script>
+  <script src="analyzer-crawl-ui.js?v=1.1"></script>
+  <script src="analyzer-contrast-verify.js?v=1.1"></script>
+  <script src="analyzer-viewer.js?v=1.1"></script>
+  <script src="analyzer.js?v=1.1"></script>
 </body>
 </html>
 </file>

@@ -1,8 +1,8 @@
-// make-it-look-good — Design Analyzer (Main UI Controller) v43.3
+// make-it-look-good — Design Analyzer (Main UI Controller) v1.1
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v56.0 loaded');
+console.log('[milg] analyzer.js v1.1 loaded');
 
 (function() {
   "use strict";
@@ -20,6 +20,10 @@ console.log('[milg] analyzer.js v56.0 loaded');
 
   // Screenshot library (loaded inside iframes via script tag)
   var SCREENSHOT_CDN = 'https://cdn.jsdelivr.net/npm/modern-screenshot@4.6.8/dist/index.js';
+
+  // --- Debug ---
+  var _debug = (location.search.indexOf('debug') !== -1) || localStorage.getItem('milg-debug') === 'true';
+  function _log() { if (_debug) console.log.apply(console, arguments); }
 
   // --- State ---
   var reportData = null;
@@ -642,11 +646,11 @@ console.log('[milg] analyzer.js v56.0 loaded');
     // Launch ALL viewports in parallel — maximum speed when tab is in foreground.
     // Chrome throttles background tabs (timers → 1/sec, rAF paused), so the focus
     // modal warns users to stay on this tab during analysis.
-    console.log('[milg] Deep scan: launching', viewports.length, 'viewports', wantShots ? '(with screenshots)' : '');
+    _log('[milg] Deep scan: launching', viewports.length, 'viewports', wantShots ? '(with screenshots)' : '');
     updateFocusModal('Scanning ' + viewports.length + ' viewports' + (wantShots ? ' with screenshots' : ''));
     if (onProgress) onProgress('Starting viewports...', 0, totalSteps);
     viewports.forEach(function(vp, i) {
-      console.log('[milg] Starting viewport', i, vp.label, vp.w + 'x' + vp.h);
+      _log('[milg] Starting viewport', i, vp.label, vp.w + 'x' + vp.h);
       // Same unified analyzeHtml for every path — no legacy wrapper
       MilgIframe.analyzeHtml(html, {
         url: url,
@@ -660,11 +664,11 @@ console.log('[milg] analyzer.js v56.0 loaded');
         doneCount++;
         var elCount = data ? (data.structure && data.structure.totalElements || 0) : 0;
         var ssCount = data && data.screenshots ? data.screenshots.length : 0;
-        console.log('[milg] Viewport', i, vp.label, 'complete (' + doneCount + '/' + viewports.length + ') elements=' + elCount + ' screenshots=' + ssCount);
+        _log('[milg] Viewport', i, vp.label, 'complete (' + doneCount + '/' + viewports.length + ') elements=' + elCount + ' screenshots=' + ssCount);
         updateFocusModal(vp.label + ' (' + vp.w + 'px) — ' + elCount + ' elements' + (ssCount ? ', screenshot captured' : ''));
         if (onProgress) onProgress(vp.label + ' done', doneCount, totalSteps);
         if (doneCount === viewports.length) {
-          console.log('[milg] All viewports done, assembling deepScan');
+          _log('[milg] All viewports done, assembling deepScan');
           updateFocusModal('Assembling multi-viewport results');
           onAllDone();
         }
@@ -851,7 +855,7 @@ console.log('[milg] analyzer.js v56.0 loaded');
     // Pixel contrast verification — respects checkbox for all modes
     var pixelVerifyCheck = document.getElementById('pixelVerifyCheck');
     var wantPixelVerify = pixelVerifyCheck ? pixelVerifyCheck.checked : false;
-    console.log('[milg] Pixel verify check — want:', wantPixelVerify,
+    _log('[milg] Pixel verify check — want:', wantPixelVerify,
       'hasPrecomputed:', !!data._contrastVerifyResults,
       'hasScreenshots:', !!(reportData.raw && reportData.raw.screenshots && reportData.raw.screenshots.length),
       'hasMeta:', !!(reportData.raw && reportData.raw.screenshotMeta),
@@ -878,7 +882,7 @@ console.log('[milg] analyzer.js v56.0 loaded');
         reportData.raw.colors.contrastPairs.forEach(function(p) { delete p.pixelVerify; });
       }
       // Run async verification (non-deep-scan path)
-      console.log('[milg] Running pixel verify — screenshots:', reportData.raw.screenshots.length,
+      _log('[milg] Running pixel verify — screenshots:', reportData.raw.screenshots.length,
         'meta:', JSON.stringify(reportData.raw.screenshotMeta).substring(0, 100),
         'pairs with bbox:', (reportData.raw.colors && reportData.raw.colors.contrastPairs || []).filter(function(p) { return !!p.bbox; }).length);
       // Show spinner while verify runs
@@ -910,7 +914,7 @@ console.log('[milg] analyzer.js v56.0 loaded');
           _verifyData._bboxEdgeResults = bboxEdgeResults || [];
           _verifyReportData._contrastVerifyResults = results || [];
           _verifyReportData._bboxEdgeResults = bboxEdgeResults || [];
-          console.log('[milg] Pixel verify complete:', results.length, 'results,', (bboxEdgeResults || []).length, 'edge results');
+          _log('[milg] Pixel verify complete:', results.length, 'results,', (bboxEdgeResults || []).length, 'edge results');
           // Remove spinner regardless
           var spinner = document.getElementById('milg-verify-spinner');
           if (spinner) spinner.parentNode.removeChild(spinner);
@@ -1046,7 +1050,7 @@ console.log('[milg] analyzer.js v56.0 loaded');
         var ds = new DecompressionStream('gzip');
         var stream = blob.stream().pipeThrough(ds);
         new Response(stream).text().then(function(json) {
-          console.log('[milg] Decompressed: ' + Math.round(text.length / 1024) + ' KB → ' + Math.round(json.length / 1024) + ' KB');
+          _log('[milg] Decompressed: ' + Math.round(text.length / 1024) + ' KB → ' + Math.round(json.length / 1024) + ' KB');
           callback(json);
         }).catch(function(e) {
           showToast('Decompression failed: ' + e.message);
@@ -1481,6 +1485,13 @@ console.log('[milg] analyzer.js v56.0 loaded');
             return;
           }
           if (!data.meta || !data.colors) throw new Error('Invalid format');
+          // Disable options that don't apply to imported data — analysis settings are baked in
+          var ssCheck = document.getElementById('screenshotCheck');
+          var pvCheck = document.getElementById('pixelVerifyCheck');
+          var dsCheck = document.getElementById('deepScanCheck');
+          if (ssCheck) ssCheck.checked = !!(data.screenshots && data.screenshots.length);
+          if (pvCheck) pvCheck.checked = !!data._contrastVerifyResults;
+          if (dsCheck) dsCheck.checked = !!(data.deepScan && data.deepScan.viewportData);
           runAnalysis(data);
           showToast('Analysis imported: ' + (data.meta.url || 'unknown'));
         } catch(e) {
