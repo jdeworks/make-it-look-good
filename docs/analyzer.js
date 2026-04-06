@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v1.7 loaded');
+console.log('[milg] analyzer.js v1.8 loaded');
 
 (function() {
   "use strict";
@@ -1420,24 +1420,16 @@ console.log('[milg] analyzer.js v1.7 loaded');
     var _exportJsonBtn = document.getElementById('exportJsonBtn');
     // Shared: build export data object (breaks circular refs, keeps all content)
     function _buildExportData() {
-      // Only strip circular refs, transient state, and non-serializable objects — keep all pixel/bbox/mask data
-      var _replacer = function(k, v) { return (k === 'deepScan' || k === '_cachedReportData' || k === '_vpCacheIdx' || k === '_maskBmp' || k === '_debug') ? undefined : v; };
+      // Only strip circular refs, transient state, and debug data — keep all pixel/bbox/mask data
+      var _replacer = function(k, v) { return (k === 'deepScan' || k === '_cachedReportData' || k === '_vpCacheIdx' || k === '_debug') ? undefined : v; };
       var exportData;
       if (typeof structuredClone === 'function') {
         var _tmpDs = lastRawData.deepScan, _tmpCached = lastRawData._cachedReportData;
         if (_tmpDs) lastRawData.deepScan = undefined;
         if (_tmpCached) lastRawData._cachedReportData = undefined;
-        // Strip _maskBmp (ImageBitmap — not cloneable) from contrast pairs
-        var _tmpMaskBmps = [];
-        if (lastRawData.colors && lastRawData.colors.contrastPairs) {
-          lastRawData.colors.contrastPairs.forEach(function(p, i) {
-            if (p._maskBmp) { _tmpMaskBmps.push({ i: i, v: p._maskBmp }); p._maskBmp = undefined; }
-          });
-        }
         exportData = structuredClone(lastRawData);
         if (_tmpDs) lastRawData.deepScan = _tmpDs;
         if (_tmpCached) lastRawData._cachedReportData = _tmpCached;
-        _tmpMaskBmps.forEach(function(m) { lastRawData.colors.contrastPairs[m.i]._maskBmp = m.v; });
       } else {
         exportData = JSON.parse(JSON.stringify(lastRawData, _replacer));
       }
