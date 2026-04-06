@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v2.1 loaded');
+console.log('[milg] analyzer.js v2.2 loaded');
 
 (function() {
   "use strict";
@@ -1427,8 +1427,8 @@ console.log('[milg] analyzer.js v2.1 loaded');
     var _exportJsonBtn = document.getElementById('exportJsonBtn');
     // Shared: build export data object (breaks circular refs, keeps all content)
     function _buildExportData() {
-      // Only strip circular refs, transient state, and debug data — keep all pixel/bbox/mask data
-      var _replacer = function(k, v) { return (k === 'deepScan' || k === '_cachedReportData' || k === '_vpCacheIdx' || k === '_debug') ? undefined : v; };
+      // Only strip circular refs and transient state — keep ALL analysis data for full reimport
+      var _replacer = function(k, v) { return (k === 'deepScan' || k === '_cachedReportData' || k === '_vpCacheIdx') ? undefined : v; };
       var exportData;
       if (typeof structuredClone === 'function') {
         var _tmpDs = lastRawData.deepScan, _tmpCached = lastRawData._cachedReportData;
