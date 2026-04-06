@@ -98,6 +98,12 @@ window.MilgCrawlUI = (function() {
       crawlPageContent.style.display = '';
       crawlPageContent.className = 'report-container visible';
       if (reportContainer) { reportContainer.style.display = 'none'; reportContainer.className = 'report-container'; }
+      // Re-inject pixel verify summary if all pages have been verified
+      if (crawlDone && _crawlSession.pages.some(function(p) { return p.rawData && p.rawData._contrastVerifyResults; })) {
+        var allVerified = _crawlSession.pages.filter(function(p) { return p.status === 'done'; })
+          .every(function(p) { return p.rawData && p.rawData._contrastVerifyResults; });
+        if (allVerified) _updateVerifySummary(_crawlSession.pages.length, _crawlSession.pages.length, _crawlSession);
+      }
     } else {
       var idx = parseInt(key);
       var page = _crawlSession.pages[idx];

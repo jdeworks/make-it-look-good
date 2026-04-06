@@ -532,7 +532,7 @@ window.MilgCrawl = (function() {
   }
 
   function renderCrawlJSON(session, severityFilter) {
-    var _replacer = function(k, v) { return k === 'deepScan' ? undefined : v; };
+    var _replacer = function(k, v) { return (k === 'deepScan' || k === '_cachedReportData' || k === '_vpCacheIdx') ? undefined : v; };
     var out = {
       _milgCrawl: true,
       startUrl: session.startUrl,

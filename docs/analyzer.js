@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v55.7 loaded');
+console.log('[milg] analyzer.js v55.8 loaded');
 
 (function() {
   "use strict";
@@ -27,6 +27,7 @@ console.log('[milg] analyzer.js v55.7 loaded');
   var lastRawData = null;
   var _originalRawData = null;
   var _activeViewportIdx = 0;
+  var _verifyInProgress = false; // guard against concurrent verify runs
 
   // --- Utility functions (shared with modules) ---
   function applyDarkMode() {
@@ -865,7 +866,7 @@ console.log('[milg] analyzer.js v55.7 loaded');
         if (screenshotDetails) screenshotDetails.parentNode.insertBefore(div, screenshotDetails.nextSibling);
         else reportContainer.insertBefore(div, reportContainer.firstChild);
       }
-    } else if (wantPixelVerify && window.MilgContrastVerify && reportData.raw && reportData.raw.screenshots && reportData.raw.screenshotMeta) {
+    } else if (!_verifyInProgress && wantPixelVerify && window.MilgContrastVerify && reportData.raw && reportData.raw.screenshots && reportData.raw.screenshotMeta) {
       // Strip snippet's inline pixel verify data so MilgContrastVerify runs the full
       // canvas-based pipeline (with bbox, samplePoints, P10 etc.) instead of using
       // the snippet's simplified pre-computed results which lack bbox data.
@@ -891,11 +892,13 @@ console.log('[milg] analyzer.js v55.7 loaded');
       if (_spinnerAnchor) _spinnerAnchor.parentNode.insertBefore(_verifySpinner, _spinnerAnchor.nextSibling);
       else reportContainer.insertBefore(_verifySpinner, reportContainer.firstChild);
       // Yield a frame so the spinner paints and animates before verify starts
+      _verifyInProgress = true;
       var _verifyData = data;
       var _verifyReportData = reportData;
       var _verifyContainer = reportContainer;
       requestAnimationFrame(function() { setTimeout(function() {
         MilgContrastVerify.verify(_verifyReportData, function(results, bboxEdgeResults) {
+          _verifyInProgress = false;
           console.log('[milg] Pixel verify complete:', results.length, 'results,', (bboxEdgeResults || []).length, 'edge results');
           // Remove spinner
           var spinner = document.getElementById('milg-verify-spinner');
@@ -1398,12 +1401,15 @@ console.log('[milg] analyzer.js v55.7 loaded');
       if (!lastRawData) return;
       // Clone data, handling deepScan carefully (has circular refs via viewportData[].data.deepScan)
       var exportData;
-      var _replacer = function(k, v) { return k === 'deepScan' ? undefined : v; };
+      var _replacer = function(k, v) { return (k === 'deepScan' || k === '_cachedReportData' || k === '_vpCacheIdx') ? undefined : v; };
       if (typeof structuredClone === 'function') {
         var _tmpDs = lastRawData.deepScan;
+        var _tmpCached = lastRawData._cachedReportData;
         if (_tmpDs) lastRawData.deepScan = undefined;
+        if (_tmpCached) lastRawData._cachedReportData = undefined;
         exportData = structuredClone(lastRawData);
         if (_tmpDs) lastRawData.deepScan = _tmpDs;
+        if (_tmpCached) lastRawData._cachedReportData = _tmpCached;
       } else {
         exportData = JSON.parse(JSON.stringify(lastRawData, _replacer));
       }
@@ -1486,7 +1492,8 @@ console.log('[milg] analyzer.js v55.7 loaded');
       dropzone.addEventListener('dragleave', function() { dropzone.classList.remove('dragover'); });
       dropzone.addEventListener('drop', function(e) { e.preventDefault(); dropzone.classList.remove('dragover'); if (e.dataTransfer.files.length > 0) handleImportFile(e.dataTransfer.files[0]); });
     }
-    document.getElementById('importJsonBtn').addEventListener('click', function() {
+    var importJsonBtn = document.getElementById('importJsonBtn');
+    if (importJsonBtn) importJsonBtn.addEventListener('click', function() {
       importFileInput.click();
     });
     importFileInput.addEventListener('change', function() {

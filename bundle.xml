@@ -32295,7 +32295,7 @@ window.MilgCrawl = (function() {
   }
 
   function renderCrawlJSON(session, severityFilter) {
-    var _replacer = function(k, v) { return k === 'deepScan' ? undefined : v; };
+    var _replacer = function(k, v) { return (k === 'deepScan' || k === '_cachedReportData' || k === '_vpCacheIdx') ? undefined : v; };
     var out = {
       _milgCrawl: true,
       startUrl: session.startUrl,
@@ -37724,6 +37724,12 @@ window.MilgCrawlUI = (function() {
       crawlPageContent.style.display = '';
       crawlPageContent.className = 'report-container visible';
       if (reportContainer) { reportContainer.style.display = 'none'; reportContainer.className = 'report-container'; }
+      // Re-inject pixel verify summary if all pages have been verified
+      if (crawlDone && _crawlSession.pages.some(function(p) { return p.rawData && p.rawData._contrastVerifyResults; })) {
+        var allVerified = _crawlSession.pages.filter(function(p) { return p.status === 'done'; })
+          .every(function(p) { return p.rawData && p.rawData._contrastVerifyResults; });
+        if (allVerified) _updateVerifySummary(_crawlSession.pages.length, _crawlSession.pages.length, _crawlSession);
+      }
     } else {
       var idx = parseInt(key);
       var page = _crawlSession.pages[idx];
@@ -40133,7 +40139,7 @@ window.MilgIframe = (function() {
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v55.7 loaded');
+console.log('[milg] analyzer.js v55.8 loaded');
 
 (function() {
   "use strict";
@@ -40158,6 +40164,7 @@ console.log('[milg] analyzer.js v55.7 loaded');
   var lastRawData = null;
   var _originalRawData = null;
   var _activeViewportIdx = 0;
+  var _verifyInProgress = false; // guard against concurrent verify runs
 
   // --- Utility functions (shared with modules) ---
   function applyDarkMode() {
@@ -40996,7 +41003,7 @@ console.log('[milg] analyzer.js v55.7 loaded');
         if (screenshotDetails) screenshotDetails.parentNode.insertBefore(div, screenshotDetails.nextSibling);
         else reportContainer.insertBefore(div, reportContainer.firstChild);
       }
-    } else if (wantPixelVerify && window.MilgContrastVerify && reportData.raw && reportData.raw.screenshots && reportData.raw.screenshotMeta) {
+    } else if (!_verifyInProgress && wantPixelVerify && window.MilgContrastVerify && reportData.raw && reportData.raw.screenshots && reportData.raw.screenshotMeta) {
       // Strip snippet's inline pixel verify data so MilgContrastVerify runs the full
       // canvas-based pipeline (with bbox, samplePoints, P10 etc.) instead of using
       // the snippet's simplified pre-computed results which lack bbox data.
@@ -41022,11 +41029,13 @@ console.log('[milg] analyzer.js v55.7 loaded');
       if (_spinnerAnchor) _spinnerAnchor.parentNode.insertBefore(_verifySpinner, _spinnerAnchor.nextSibling);
       else reportContainer.insertBefore(_verifySpinner, reportContainer.firstChild);
       // Yield a frame so the spinner paints and animates before verify starts
+      _verifyInProgress = true;
       var _verifyData = data;
       var _verifyReportData = reportData;
       var _verifyContainer = reportContainer;
       requestAnimationFrame(function() { setTimeout(function() {
         MilgContrastVerify.verify(_verifyReportData, function(results, bboxEdgeResults) {
+          _verifyInProgress = false;
           console.log('[milg] Pixel verify complete:', results.length, 'results,', (bboxEdgeResults || []).length, 'edge results');
           // Remove spinner
           var spinner = document.getElementById('milg-verify-spinner');
@@ -41529,12 +41538,15 @@ console.log('[milg] analyzer.js v55.7 loaded');
       if (!lastRawData) return;
       // Clone data, handling deepScan carefully (has circular refs via viewportData[].data.deepScan)
       var exportData;
-      var _replacer = function(k, v) { return k === 'deepScan' ? undefined : v; };
+      var _replacer = function(k, v) { return (k === 'deepScan' || k === '_cachedReportData' || k === '_vpCacheIdx') ? undefined : v; };
       if (typeof structuredClone === 'function') {
         var _tmpDs = lastRawData.deepScan;
+        var _tmpCached = lastRawData._cachedReportData;
         if (_tmpDs) lastRawData.deepScan = undefined;
+        if (_tmpCached) lastRawData._cachedReportData = undefined;
         exportData = structuredClone(lastRawData);
         if (_tmpDs) lastRawData.deepScan = _tmpDs;
+        if (_tmpCached) lastRawData._cachedReportData = _tmpCached;
       } else {
         exportData = JSON.parse(JSON.stringify(lastRawData, _replacer));
       }
@@ -41617,7 +41629,8 @@ console.log('[milg] analyzer.js v55.7 loaded');
       dropzone.addEventListener('dragleave', function() { dropzone.classList.remove('dragover'); });
       dropzone.addEventListener('drop', function(e) { e.preventDefault(); dropzone.classList.remove('dragover'); if (e.dataTransfer.files.length > 0) handleImportFile(e.dataTransfer.files[0]); });
     }
-    document.getElementById('importJsonBtn').addEventListener('click', function() {
+    var importJsonBtn = document.getElementById('importJsonBtn');
+    if (importJsonBtn) importJsonBtn.addEventListener('click', function() {
       importFileInput.click();
     });
     importFileInput.addEventListener('change', function() {
@@ -41777,7 +41790,7 @@ console.log('[milg] analyzer.js v55.7 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v55.7</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v55.8</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -42131,10 +42144,7 @@ console.log('[milg] analyzer.js v55.7 loaded');
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         <span class="btn-label">JSON</span>
       </button>
-      <button class="btn" id="importJsonBtn" title="Re-open a previously exported analysis">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-        <span class="btn-label">Load Saved</span>
-      </button>
+      <!-- Load Saved is on the Import tab only, not in report actions -->
       <input type="file" id="importJsonFile" accept=".json" style="display:none">
     </div>
     </details>
@@ -42221,30 +42231,30 @@ console.log('[milg] analyzer.js v55.7 loaded');
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=55.7"></script>
-  <script src="scoring/contrast.js?v=55.7"></script>
-  <script src="scoring/typography.js?v=55.7"></script>
-  <script src="scoring/spacing.js?v=55.7"></script>
-  <script src="scoring/touch.js?v=55.7"></script>
-  <script src="scoring/accessibility.js?v=55.7"></script>
-  <script src="scoring/responsive.js?v=55.7"></script>
-  <script src="scoring/consistency.js?v=55.7"></script>
-  <script src="scoring/cognitive.js?v=55.7"></script>
-  <script src="scoring/layout.js?v=55.7"></script>
-  <script src="scoring/performance.js?v=55.7"></script>
-  <script src="scoring/readability.js?v=55.7"></script>
-  <script src="scoring/filters.js?v=55.7"></script>
-  <script src="scoring/balance.js?v=55.7"></script>
+  <script src="scoring/registry.js?v=55.8"></script>
+  <script src="scoring/contrast.js?v=55.8"></script>
+  <script src="scoring/typography.js?v=55.8"></script>
+  <script src="scoring/spacing.js?v=55.8"></script>
+  <script src="scoring/touch.js?v=55.8"></script>
+  <script src="scoring/accessibility.js?v=55.8"></script>
+  <script src="scoring/responsive.js?v=55.8"></script>
+  <script src="scoring/consistency.js?v=55.8"></script>
+  <script src="scoring/cognitive.js?v=55.8"></script>
+  <script src="scoring/layout.js?v=55.8"></script>
+  <script src="scoring/performance.js?v=55.8"></script>
+  <script src="scoring/readability.js?v=55.8"></script>
+  <script src="scoring/filters.js?v=55.8"></script>
+  <script src="scoring/balance.js?v=55.8"></script>
   <!-- Report rendering + UI -->
-  <script src="analyzer-report.js?v=55.7"></script>
-  <script src="analyzer-crawl.js?v=55.7"></script>
-  <script src="analyzer-extract.js?v=55.7"></script>
-  <script src="analyzer-iframe.js?v=55.7"></script>
-  <script src="analyzer-proxy.js?v=55.7"></script>
-  <script src="analyzer-crawl-ui.js?v=55.7"></script>
-  <script src="analyzer-contrast-verify.js?v=55.7"></script>
-  <script src="analyzer-viewer.js?v=55.7"></script>
-  <script src="analyzer.js?v=55.7"></script>
+  <script src="analyzer-report.js?v=55.8"></script>
+  <script src="analyzer-crawl.js?v=55.8"></script>
+  <script src="analyzer-extract.js?v=55.8"></script>
+  <script src="analyzer-iframe.js?v=55.8"></script>
+  <script src="analyzer-proxy.js?v=55.8"></script>
+  <script src="analyzer-crawl-ui.js?v=55.8"></script>
+  <script src="analyzer-contrast-verify.js?v=55.8"></script>
+  <script src="analyzer-viewer.js?v=55.8"></script>
+  <script src="analyzer.js?v=55.8"></script>
 </body>
 </html>
 </file>
