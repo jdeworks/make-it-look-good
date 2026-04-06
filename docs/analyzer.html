@@ -31,7 +31,7 @@
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v55.3</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v55.4</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -313,6 +313,7 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         New Analysis
       </button>
+      <button class="btn btn-icon" id="helpBtn" title="Help &amp; keyboard shortcuts" aria-label="Help" style="padding:6px;min-width:44px;min-height:44px;font-size:15px;font-weight:700">?</button>
     </div>
     <!-- Profile explanation (hidden by default) -->
     <div class="profile-explanation" id="profileExplanation" style="display:none">
@@ -398,33 +399,96 @@
   </div><!-- /report-wrapper -->
   </main>
 
+  <!-- Help modal -->
+  <div id="helpModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.5);backdrop-filter:blur(2px);overflow-y:auto;padding:24px">
+    <div style="max-width:640px;margin:40px auto;background:var(--bg);border:1px solid var(--border);border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.3);overflow:hidden">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)">
+        <h2 style="margin:0;font-size:16px">Help &amp; Tips</h2>
+        <button onclick="document.getElementById('helpModal').style.display='none'" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-secondary);padding:4px 8px;line-height:1" aria-label="Close">&times;</button>
+      </div>
+      <div style="padding:20px;font-size:13px;line-height:1.7;max-height:70vh;overflow-y:auto">
+
+        <h3 style="font-size:14px;margin:0 0 8px;color:var(--accent)">Screenshot Viewer</h3>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:16px;font-size:12px">
+          <tr><td style="padding:4px 8px;white-space:nowrap;font-weight:600;color:var(--text-secondary);width:140px">Click finding</td><td style="padding:4px 8px">Jump to that issue in the report</td></tr>
+          <tr><td style="padding:4px 8px;white-space:nowrap;font-weight:600;color:var(--text-secondary)">Shift + click</td><td style="padding:4px 8px">Copy element debug info (bbox, selector, coords) to clipboard</td></tr>
+          <tr><td style="padding:4px 8px;white-space:nowrap;font-weight:600;color:var(--text-secondary)">Right-click</td><td style="padding:4px 8px">Cycle debug layers: none &rarr; text mask &rarr; pixel boundary zones</td></tr>
+          <tr><td style="padding:4px 8px;white-space:nowrap;font-weight:600;color:var(--text-secondary)">Double-click</td><td style="padding:4px 8px">Step zoom level (25% &rarr; 200%, then reset)</td></tr>
+          <tr><td style="padding:4px 8px;white-space:nowrap;font-weight:600;color:var(--text-secondary)">Drag</td><td style="padding:4px 8px">Pan the image</td></tr>
+          <tr><td style="padding:4px 8px;white-space:nowrap;font-weight:600;color:var(--text-secondary)">Hover finding</td><td style="padding:4px 8px">Tooltip with severity, details, and sample colors</td></tr>
+          <tr><td style="padding:4px 8px;white-space:nowrap;font-weight:600;color:var(--text-secondary)">Hover pixel rect</td><td style="padding:4px 8px">Live FG/BG color pair under cursor with contrast ratio</td></tr>
+          <tr><td style="padding:4px 8px;white-space:nowrap;font-weight:600;color:var(--text-secondary)">Overlapping items</td><td style="padding:4px 8px">Click shows a picker to select which element</td></tr>
+          <tr><td style="padding:4px 8px;white-space:nowrap;font-weight:600;color:var(--text-secondary)">Esc</td><td style="padding:4px 8px">Close the viewer</td></tr>
+        </table>
+
+        <h3 style="font-size:14px;margin:0 0 8px;color:var(--accent)">Report</h3>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:16px;font-size:12px">
+          <tr><td style="padding:4px 8px;white-space:nowrap;font-weight:600;color:var(--text-secondary);width:140px">Category card</td><td style="padding:4px 8px">Click score card to scroll to that category's findings</td></tr>
+          <tr><td style="padding:4px 8px;white-space:nowrap;font-weight:600;color:var(--text-secondary)">Show on screenshot</td><td style="padding:4px 8px">Opens viewer zoomed to that specific element</td></tr>
+          <tr><td style="padding:4px 8px;white-space:nowrap;font-weight:600;color:var(--text-secondary)">Exclusion tags</td><td style="padding:4px 8px">Toggle tags to exclude patterns (cookie banners, etc.), then re-score</td></tr>
+          <tr><td style="padding:4px 8px;white-space:nowrap;font-weight:600;color:var(--text-secondary)">Audience selector</td><td style="padding:4px 8px">Switch profile (WCAG AA, AAA, Elderly, etc.) &mdash; re-scores instantly</td></tr>
+        </table>
+
+        <h3 style="font-size:14px;margin:0 0 8px;color:var(--accent)">Analysis Options</h3>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:16px;font-size:12px">
+          <tr><td style="padding:4px 8px;white-space:nowrap;font-weight:600;color:var(--text-secondary);width:140px">Screenshots</td><td style="padding:4px 8px">Capture page screenshots for visual verification and the screenshot viewer</td></tr>
+          <tr><td style="padding:4px 8px;white-space:nowrap;font-weight:600;color:var(--text-secondary)">Pixel Verify</td><td style="padding:4px 8px">Sample actual pixel colors from screenshots to verify CSS contrast ratios</td></tr>
+          <tr><td style="padding:4px 8px;white-space:nowrap;font-weight:600;color:var(--text-secondary)">Deep Scan</td><td style="padding:4px 8px">Analyze at multiple viewport widths (Desktop, Tablet, Phone)</td></tr>
+          <tr><td style="padding:4px 8px;white-space:nowrap;font-weight:600;color:var(--text-secondary)">Crawl</td><td style="padding:4px 8px">Follow links and analyze multiple pages from the same site</td></tr>
+          <tr><td style="padding:4px 8px;white-space:nowrap;font-weight:600;color:var(--text-secondary)">Enable JavaScript</td><td style="padding:4px 8px">Run page JS in sandbox (for SPAs). The Console Snippet is safer.</td></tr>
+        </table>
+
+        <h3 style="font-size:14px;margin:0 0 8px;color:var(--accent)">Pixel Verification</h3>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:16px;font-size:12px">
+          <tr><td style="padding:4px 8px;white-space:nowrap;font-weight:600;color:var(--text-secondary);width:140px">P10 ratio</td><td style="padding:4px 8px">10th percentile of all FG/BG sample pairs &mdash; used for pass/fail (robust against anti-aliasing)</td></tr>
+          <tr><td style="padding:4px 8px;white-space:nowrap;font-weight:600;color:var(--text-secondary)">Hidden failures</td><td style="padding:4px 8px">CSS says pass but pixels say fail &mdash; real background differs (gradient, image, overlay)</td></tr>
+          <tr><td style="padding:4px 8px;white-space:nowrap;font-weight:600;color:var(--text-secondary)">False positives</td><td style="padding:4px 8px">CSS says fail but pixels show the actual background provides enough contrast</td></tr>
+          <tr><td style="padding:4px 8px;white-space:nowrap;font-weight:600;color:var(--text-secondary)">Edge contrast</td><td style="padding:4px 8px">Checks if element backgrounds are distinct from their parent (buttons on same-color bg)</td></tr>
+        </table>
+
+        <h3 style="font-size:14px;margin:0 0 8px;color:var(--accent)">Data &amp; Export</h3>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:16px;font-size:12px">
+          <tr><td style="padding:4px 8px;white-space:nowrap;font-weight:600;color:var(--text-secondary);width:140px">Export JSON</td><td style="padding:4px 8px">Full analysis data &mdash; can be re-imported via Load Saved</td></tr>
+          <tr><td style="padding:4px 8px;white-space:nowrap;font-weight:600;color:var(--text-secondary)">Export Markdown</td><td style="padding:4px 8px">Human-readable report with all findings and viewport data</td></tr>
+          <tr><td style="padding:4px 8px;white-space:nowrap;font-weight:600;color:var(--text-secondary)">Copy Markdown</td><td style="padding:4px 8px">Same as above but copies to clipboard (without images)</td></tr>
+          <tr><td style="padding:4px 8px;white-space:nowrap;font-weight:600;color:var(--text-secondary)">Load Saved</td><td style="padding:4px 8px">Re-open a previously exported JSON (single page or crawl)</td></tr>
+          <tr><td style="padding:4px 8px;white-space:nowrap;font-weight:600;color:var(--text-secondary)">Drag &amp; drop</td><td style="padding:4px 8px">Drop a JSON file onto the Import tab to load it</td></tr>
+        </table>
+
+        <div style="padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:6px;font-size:11px;color:var(--text-secondary);line-height:1.6">
+          <strong>Tip:</strong> Results are not stored on any server. Export JSON to save your analysis for later. The Console Snippet input method gives the most accurate results since it runs inside the actual page.
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast -->
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=55.3"></script>
-  <script src="scoring/contrast.js?v=55.3"></script>
-  <script src="scoring/typography.js?v=55.3"></script>
-  <script src="scoring/spacing.js?v=55.3"></script>
-  <script src="scoring/touch.js?v=55.3"></script>
-  <script src="scoring/accessibility.js?v=55.3"></script>
-  <script src="scoring/responsive.js?v=55.3"></script>
-  <script src="scoring/consistency.js?v=55.3"></script>
-  <script src="scoring/cognitive.js?v=55.3"></script>
-  <script src="scoring/layout.js?v=55.3"></script>
-  <script src="scoring/performance.js?v=55.3"></script>
-  <script src="scoring/readability.js?v=55.3"></script>
-  <script src="scoring/filters.js?v=55.3"></script>
-  <script src="scoring/balance.js?v=55.3"></script>
+  <script src="scoring/registry.js?v=55.4"></script>
+  <script src="scoring/contrast.js?v=55.4"></script>
+  <script src="scoring/typography.js?v=55.4"></script>
+  <script src="scoring/spacing.js?v=55.4"></script>
+  <script src="scoring/touch.js?v=55.4"></script>
+  <script src="scoring/accessibility.js?v=55.4"></script>
+  <script src="scoring/responsive.js?v=55.4"></script>
+  <script src="scoring/consistency.js?v=55.4"></script>
+  <script src="scoring/cognitive.js?v=55.4"></script>
+  <script src="scoring/layout.js?v=55.4"></script>
+  <script src="scoring/performance.js?v=55.4"></script>
+  <script src="scoring/readability.js?v=55.4"></script>
+  <script src="scoring/filters.js?v=55.4"></script>
+  <script src="scoring/balance.js?v=55.4"></script>
   <!-- Report rendering + UI -->
-  <script src="analyzer-report.js?v=55.3"></script>
-  <script src="analyzer-crawl.js?v=55.3"></script>
-  <script src="analyzer-extract.js?v=55.3"></script>
-  <script src="analyzer-iframe.js?v=55.3"></script>
-  <script src="analyzer-proxy.js?v=55.3"></script>
-  <script src="analyzer-crawl-ui.js?v=55.3"></script>
-  <script src="analyzer-contrast-verify.js?v=55.3"></script>
-  <script src="analyzer-viewer.js?v=55.3"></script>
-  <script src="analyzer.js?v=55.3"></script>
+  <script src="analyzer-report.js?v=55.4"></script>
+  <script src="analyzer-crawl.js?v=55.4"></script>
+  <script src="analyzer-extract.js?v=55.4"></script>
+  <script src="analyzer-iframe.js?v=55.4"></script>
+  <script src="analyzer-proxy.js?v=55.4"></script>
+  <script src="analyzer-crawl-ui.js?v=55.4"></script>
+  <script src="analyzer-contrast-verify.js?v=55.4"></script>
+  <script src="analyzer-viewer.js?v=55.4"></script>
+  <script src="analyzer.js?v=55.4"></script>
 </body>
 </html>

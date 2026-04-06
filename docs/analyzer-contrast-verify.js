@@ -269,11 +269,29 @@ window.MilgContrastVerify = (function() {
     var pixelPasses = p10Ratio >= cssNeeded;
     var ratioDiff = Math.abs(p10Ratio - pair.ratio);
     var bgVariance = bestRatio - worstRatio;
+    // Distinguish real BG variance (gradient/photo) from FG AA pixel variance on solid BG
+    // Check if CSS declares a single bg color — if so, BG is solid and variance is from FG AA
+    var cssBgIsSolid = pair.bg && !/gradient|image|url/i.test(pair.bg);
+    // Also measure actual BG color spread: max channel delta across all BG samples
+    var bgColorSpread = 0;
+    if (bgColors.length > 1) {
+      var bgMinR = 255, bgMaxR = 0, bgMinG = 255, bgMaxG = 0, bgMinB = 255, bgMaxB = 0;
+      bgColors.forEach(function(c) {
+        if (c.r < bgMinR) bgMinR = c.r; if (c.r > bgMaxR) bgMaxR = c.r;
+        if (c.g < bgMinG) bgMinG = c.g; if (c.g > bgMaxG) bgMaxG = c.g;
+        if (c.b < bgMinB) bgMinB = c.b; if (c.b > bgMaxB) bgMaxB = c.b;
+      });
+      bgColorSpread = Math.max(bgMaxR - bgMinR, bgMaxG - bgMinG, bgMaxB - bgMinB);
+    }
+    // Variable BG = large ratio spread AND BG pixels actually differ (not just FG AA)
+    var isVariableBg = bgVariance > 3.0 && (bgColorSpread > 15 || !cssBgIsSolid);
+    var isFgAaVariance = bgVariance > 3.0 && !isVariableBg;
     return {
       cssRatio: pair.ratio, neededRatio: cssNeeded,
       pixelRatio: p10Ratio, pixelRatioWorst: worstRatio, pixelRatioAvg: avgRatio, pixelRatioBest: bestRatio,
       bgVariance: Math.round(bgVariance * 100) / 100,
-      isVariableBg: bgVariance > 3.0, ratioDiff: ratioDiff,
+      bgColorSpread: bgColorSpread,
+      isVariableBg: isVariableBg, isFgAaVariance: isFgAaVariance, ratioDiff: ratioDiff,
       cssPasses: cssPasses, pixelPasses: pixelPasses,
       crossesBoundary: cssPasses !== pixelPasses,
       // Skip flagging high-contrast pairs (P10 > 12.5:1 and CSS > 12.5:1) — excellent regardless of variance
@@ -999,7 +1017,20 @@ window.MilgContrastVerify = (function() {
 
     // Flag high BG variance as a signal for photo/gradient backgrounds
     var bgVariance = bestRatio - worstRatio;
-    var isVariableBg = bgVariance > 3.0;
+    // Distinguish real BG variance from FG AA variance (same logic as buildResult)
+    var cssBgIsSolid = pair.bg && !/gradient|image|url/i.test(pair.bg);
+    var bgColorSpread = 0;
+    if (pairedBgColors.length > 1) {
+      var bgMinR = 255, bgMaxR = 0, bgMinG = 255, bgMaxG = 0, bgMinB = 255, bgMaxB = 0;
+      pairedBgColors.forEach(function(c) {
+        if (c.r < bgMinR) bgMinR = c.r; if (c.r > bgMaxR) bgMaxR = c.r;
+        if (c.g < bgMinG) bgMinG = c.g; if (c.g > bgMaxG) bgMaxG = c.g;
+        if (c.b < bgMinB) bgMinB = c.b; if (c.b > bgMaxB) bgMaxB = c.b;
+      });
+      bgColorSpread = Math.max(bgMaxR - bgMinR, bgMaxG - bgMinG, bgMaxB - bgMinB);
+    }
+    var isVariableBg = bgVariance > 3.0 && (bgColorSpread > 15 || !cssBgIsSolid);
+    var isFgAaVariance = bgVariance > 3.0 && !isVariableBg;
 
     return {
       cssRatio: cssRatio,
@@ -1009,7 +1040,9 @@ window.MilgContrastVerify = (function() {
       pixelRatioAvg: avgRatio,        // average background
       pixelRatioBest: bestRatio,      // best-case spot
       bgVariance: Math.round(bgVariance * 100) / 100,
+      bgColorSpread: bgColorSpread,
       isVariableBg: isVariableBg,     // photo/gradient detected
+      isFgAaVariance: isFgAaVariance, // ratio spread from FG antialiasing, not BG
       ratioDiff: ratioDiff,
       cssPasses: cssPasses,
       pixelPasses: pixelPasses,
@@ -1314,6 +1347,9 @@ window.MilgContrastVerify = (function() {
       return '<span style="color:#f59e0b">Variable background: worst ' + r.pixelRatio + ':1, avg ' + r.pixelRatioAvg + ':1, best ' + r.pixelRatioBest + ':1</span>' +
         '<br><span style="color:var(--text-secondary);font-size:11px">Photo or gradient background — contrast varies across element' + (r.sampleCount ? ' (' + r.sampleCount.bg + ' points sampled)' : '') + '</span>';
     }
+    if (r.isFgAaVariance) {
+      return '<span style="color:var(--text-secondary);font-size:11px">Pixel-verified: ' + r.pixelRatio + ':1 (range ' + r.pixelRatioWorst + ':1–' + r.pixelRatioBest + ':1 from font AA)</span>';
+    }
     if (r.significant) {
       return '<span style="color:#f59e0b">Pixel contrast: ' + r.pixelRatio + ':1</span> ' +
         '<span style="color:var(--text-secondary);font-size:11px">(differs from CSS-derived ' + r.cssRatio + ':1 by ' + r.ratioDiff.toFixed(1) + ')</span>' + variableNote;
@@ -1329,10 +1365,12 @@ window.MilgContrastVerify = (function() {
     var falseFailCount = 0; // CSS fails but pixels pass
     var significantDiffs = 0;
     var variableBgCount = 0;
+    var fgAaVarianceCount = 0;
     var verified = 0;
 
     results.forEach(function(r) {
       if (r.isVariableBg) variableBgCount++;
+      else if (r.isFgAaVariance) fgAaVarianceCount++;
       if (r.crossesBoundary) {
         if (r.cssPasses && !r.pixelPasses) falsePassCount++;
         else falseFailCount++;
@@ -1354,6 +1392,7 @@ window.MilgContrastVerify = (function() {
       falseFailCount: falseFailCount,
       significantDiffs: significantDiffs,
       variableBgCount: variableBgCount,
+      fgAaVarianceCount: fgAaVarianceCount,
       verified: verified,
       results: results,
       bboxEdgeResults: bboxEdge,
@@ -1427,7 +1466,7 @@ window.MilgContrastVerify = (function() {
       html += '</div>';
     }
 
-    // Variable background warning (photos, gradients)
+    // Variable background warning (photos, gradients) — only real BG variance
     if (summary.variableBgCount > 0) {
       var vbResults = summary.results.filter(function(r) { return r.isVariableBg; });
       var bg = isDark ? '#2d2006' : '#fffbeb';
@@ -1439,7 +1478,6 @@ window.MilgContrastVerify = (function() {
         html += '<div style="margin-top:6px;padding:6px 8px;background:' + (isDark ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.7)') + ';border-radius:4px;font-size:12px">';
         html += '<strong>' + r.selector + '</strong>: "' + (r.text || '').substring(0, 30) + '"';
         html += '<br>Contrast range: <span style="color:#ef4444">' + r.pixelRatio + ':1</span> (worst) to <span style="color:#16a34a">' + r.pixelRatioBest + ':1</span> (best), avg ' + r.pixelRatioAvg + ':1';
-        // Color swatches for worst case
         html += '<br><span style="font-size:11px">FG: </span>';
         html += _swatch(r.pixelFg, isDark);
         html += '<span style="font-size:11px"> Worst BG: </span>';
@@ -1448,7 +1486,22 @@ window.MilgContrastVerify = (function() {
         if (r.bbox) html += '<br><a class="finding-show-on-screenshot" style="font-size:11px;cursor:pointer;color:var(--accent)" onclick="window.__milgShowVerifyOnScreenshot(\'' + (r.selector || '').replace(/'/g, "\\'") + '\')">Show on screenshot</a>';
         html += '</div>';
       });
+      html += '</div>';
+    }
 
+    // FG antialiasing variance (info, not warning) — solid BG but ratio spread from AA pixels
+    if (summary.fgAaVarianceCount > 0) {
+      var aaResults = summary.results.filter(function(r) { return r.isFgAaVariance; });
+      html += '<div style="padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:6px;margin-bottom:8px">';
+      html += '<span style="color:var(--text-secondary)">' + summary.fgAaVarianceCount + ' element' + (summary.fgAaVarianceCount > 1 ? 's' : '') + ' with contrast range from font antialiasing</span>';
+      html += '<p style="margin:4px 0 0;font-size:12px;color:var(--text-secondary)">Background is solid — the contrast range comes from sub-pixel font rendering. The P10 ratio (ignoring the worst 10% of AA fringe pixels) is used for pass/fail.</p>';
+      aaResults.forEach(function(r) {
+        html += '<div style="margin-top:6px;padding:6px 8px;background:' + (isDark ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.03)') + ';border-radius:4px;font-size:12px;color:var(--text-secondary)">';
+        html += '<strong style="color:var(--text-primary)">' + r.selector + '</strong>: "' + (r.text || '').substring(0, 30) + '"';
+        html += '<br>P10: ' + r.pixelRatio + ':1, range ' + r.pixelRatioWorst + ':1 to ' + r.pixelRatioBest + ':1';
+        if (r.sampleCount) html += ' (' + r.sampleCount.fg + ' FG, ' + r.sampleCount.bg + ' BG samples)';
+        html += '</div>';
+      });
       html += '</div>';
     }
 

@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v55.3 loaded');
+console.log('[milg] analyzer.js v55.4 loaded');
 
 (function() {
   "use strict";
@@ -1288,6 +1288,14 @@ console.log('[milg] analyzer.js v55.3 loaded');
     document.getElementById('profileInfoBtn').addEventListener('click', function() {
       var el = document.getElementById('profileExplanation');
       el.style.display = el.style.display === 'none' ? 'block' : 'none';
+    });
+
+    // Help modal
+    document.getElementById('helpBtn').addEventListener('click', function() {
+      document.getElementById('helpModal').style.display = '';
+    });
+    document.getElementById('helpModal').addEventListener('click', function(e) {
+      if (e.target === this) this.style.display = 'none';
     });
 
     // New analysis
