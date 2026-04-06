@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v55.5 loaded');
+console.log('[milg] analyzer.js v55.6 loaded');
 
 (function() {
   "use strict";
@@ -32,6 +32,15 @@ console.log('[milg] analyzer.js v55.5 loaded');
   function applyDarkMode() {
     document.body.classList.toggle('dark-ui', darkMode);
     document.getElementById('darkBtn').classList.toggle('active', darkMode);
+  }
+
+  function _showEphemeralBanner() {
+    var b = document.getElementById('ephemeralBanner');
+    if (b) b.style.display = 'flex';
+  }
+  function _hideEphemeralBanner() {
+    var b = document.getElementById('ephemeralBanner');
+    if (b) b.style.display = 'none';
   }
 
   function showToast(msg) {
@@ -513,6 +522,33 @@ console.log('[milg] analyzer.js v55.5 loaded');
         reportData: reportData,
         html: reportContainer ? reportContainer.innerHTML : ''
       };
+      // On-demand verify: if verify wasn't precomputed for this viewport but user wants it
+      var pvCheck = document.getElementById('pixelVerifyCheck');
+      var wantPV = pvCheck ? pvCheck.checked : false;
+      if (wantPV && !switchedData._contrastVerifyResults && window.MilgContrastVerify &&
+          switchedData.screenshots && switchedData.screenshots.length && switchedData.screenshotMeta) {
+        var scored = reportData; // already scored above
+        MilgContrastVerify.verify(scored, function(results, bboxEdge) {
+          if (_activeViewportIdx !== idx) return; // user switched away during verify
+          switchedData._contrastVerifyResults = results || [];
+          switchedData._bboxEdgeResults = bboxEdge || [];
+          srcData._contrastVerifyResults = results || [];
+          srcData._bboxEdgeResults = bboxEdge || [];
+          // Re-render verify section into the current report
+          var summary = MilgContrastVerify.buildSummary(results || [], bboxEdge || []);
+          var summaryHtml = MilgContrastVerify.renderSummaryHtml(summary);
+          if (summaryHtml && reportContainer) {
+            var screenshotDetails = reportContainer.querySelector('.report-screenshots');
+            var div = document.createElement('div');
+            div.innerHTML = summaryHtml;
+            if (screenshotDetails) screenshotDetails.parentNode.insertBefore(div, screenshotDetails.nextSibling);
+            else reportContainer.insertBefore(div, reportContainer.firstChild);
+          }
+          // Update cache
+          delete _viewportCache[idx];
+          _viewportCache[idx] = { data: switchedData, reportData: reportData, html: reportContainer ? reportContainer.innerHTML : '' };
+        });
+      }
     }, 0);
   };
 
@@ -812,12 +848,8 @@ console.log('[milg] analyzer.js v55.5 loaded');
         '</div>';
     }
 
-    var ephemeralBanner = '<div style="padding:8px 14px;margin-bottom:12px;background:var(--surface);border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
-      '<span style="font-size:14px">&#9432;</span>' +
-      '<span>Results are temporary and will be lost when you close this page.</span>' +
-      '<button class="btn" style="font-size:11px;padding:3px 10px;min-height:26px;margin-left:auto" onclick="document.getElementById(\'exportJsonBtn\').click()">Export JSON</button>' +
-      '</div>';
-    reportContainer.innerHTML = ephemeralBanner + warningHtml + suggestionsHtml + MilgReport.renderReport(reportData);
+    _showEphemeralBanner();
+    reportContainer.innerHTML = warningHtml + suggestionsHtml + MilgReport.renderReport(reportData);
     reportContainer.classList.add('visible');
     inputSection.style.display = 'none';
     // Render viewport tabs for deep scan results
@@ -1300,6 +1332,7 @@ console.log('[milg] analyzer.js v55.5 loaded');
 
     // New analysis
     newAnalysisBtn.addEventListener('click', function() {
+      _hideEphemeralBanner();
       reportContainer.classList.remove('visible');
       reportContainer.innerHTML = '';
       inputSection.style.display = '';
