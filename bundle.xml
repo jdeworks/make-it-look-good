@@ -103,6 +103,7 @@ docs/
   analyzer-extract.js
   analyzer-iframe.js
   analyzer-proxy.js
+  analyzer-queue.js
   analyzer-report.js
   analyzer-snippet-screenshots.js
   analyzer-snippet.js
@@ -13081,6 +13082,114 @@ run().catch(function(e) { console.error(e); process.exit(1); });
   </script>
 </body>
 </html>
+</file>
+
+<file path="docs/analyzer-queue.js">
+// make-it-look-good — Background Computation Queue v1.1
+// Async work queue with priority promotion. Items run one at a time,
+// yielding to the event loop between items so the UI stays responsive.
+// Clicking a viewport/page tab promotes that item to front of queue.
+
+window.MilgQueue = (function() {
+  "use strict";
+
+  var _items = [];     // { id, priority, fn, onComplete, status }
+  var _running = null; // currently executing item
+  var _paused = false;
+
+  // Add an item to the queue.
+  // fn(callback): the work function. Must call callback(result) when done.
+  // onComplete(result): called after fn finishes.
+  // Returns the item (for later promote/cancel).
+  function enqueue(id, fn, onComplete, priority) {
+    // Dedup: if an item with same id is already queued or running, skip
+    if (_running && _running.id === id) return _running;
+    for (var i = 0; i < _items.length; i++) {
+      if (_items[i].id === id) return _items[i];
+    }
+    var item = { id: id, priority: priority || 0, fn: fn, onComplete: onComplete || null, status: 'queued' };
+    _items.push(item);
+    _items.sort(function(a, b) { return b.priority - a.priority; });
+    _scheduleNext();
+    return item;
+  }
+
+  // Promote an item to highest priority (front of queue).
+  // If an item with this id is currently running, no-op (already active).
+  function promote(id) {
+    if (_running && _running.id === id) return; // already running
+    for (var i = 0; i < _items.length; i++) {
+      if (_items[i].id === id) {
+        var maxPri = _items.length > 0 ? _items[0].priority : 0;
+        _items[i].priority = maxPri + 1;
+        _items.sort(function(a, b) { return b.priority - a.priority; });
+        return;
+      }
+    }
+  }
+
+  // Check if an item is done (result cached)
+  function isDone(id) {
+    // Not in queue and not running = either done or never queued
+    if (_running && _running.id === id) return false;
+    for (var i = 0; i < _items.length; i++) {
+      if (_items[i].id === id) return false;
+    }
+    return true; // not found = already completed or never queued
+  }
+
+  // Cancel all items and reset
+  function clear() {
+    _items = [];
+    _running = null;
+    _paused = false;
+  }
+
+  // Pause processing (current item finishes, next doesn't start)
+  function pause() { _paused = true; }
+  function resume() { _paused = false; _scheduleNext(); }
+
+  function _scheduleNext() {
+    if (_running || _paused || _items.length === 0) return;
+    setTimeout(_processNext, 0);
+  }
+
+  function _processNext() {
+    if (_running || _paused || _items.length === 0) return;
+    _running = _items.shift();
+    _running.status = 'running';
+    try {
+      _running.fn(function(result) {
+        var completed = _running;
+        _running = null;
+        completed.status = 'done';
+        if (completed.onComplete) {
+          try { completed.onComplete(result); } catch(e) { console.warn('[milg-queue] onComplete error:', e); }
+        }
+        // Yield then process next
+        setTimeout(_processNext, 0);
+      });
+    } catch(e) {
+      console.warn('[milg-queue] fn error:', e);
+      _running = null;
+      setTimeout(_processNext, 0);
+    }
+  }
+
+  function pending() { return _items.length + (_running ? 1 : 0); }
+  function currentId() { return _running ? _running.id : null; }
+
+  return {
+    enqueue: enqueue,
+    promote: promote,
+    isDone: isDone,
+    clear: clear,
+    pause: pause,
+    resume: resume,
+    pending: pending,
+    currentId: currentId
+  };
+})();
 </file>
 
 <file path="docs/ANALYZER-TODO.md">
@@ -37710,6 +37819,10 @@ window.MilgCrawlUI = (function() {
 
   function showCrawlPageContent(key) {
     _crawlActivePageTab = key;
+    // Promote this page's verify to front of queue so it completes first
+    if (key !== 'summary' && window.MilgQueue) {
+      MilgQueue.promote('crawl-verify-' + key);
+    }
     renderCrawlTabs();
     var reportContainer = document.getElementById('reportContainer');
     var reportActions = document.getElementById('reportActions');
@@ -37807,7 +37920,7 @@ window.MilgCrawlUI = (function() {
   }
 
   function _preComputePixelVerify() {
-    if (!_crawlSession || !window.MilgContrastVerify) return;
+    if (!_crawlSession || !window.MilgContrastVerify || !window.MilgQueue) return;
     var pagesToVerify = _crawlSession.pages.filter(function(p) {
       return p.status === 'done' && p.rawData && !p.rawData._contrastVerifyResults &&
         p.rawData.screenshots && p.rawData.screenshots.length && p.rawData.screenshotMeta;
@@ -37819,30 +37932,30 @@ window.MilgCrawlUI = (function() {
     // Show pixel verify progress on summary page
     _updateVerifySummary(0, totalCount, null);
 
-    // Serialize: one page at a time so the UI stays responsive between verifications
-    var qi = 0;
-    function _verifyNext() {
-      if (qi >= pagesToVerify.length) return;
-      var page = pagesToVerify[qi]; qi++;
-      // Skip if already verified (another path may have completed it, e.g. user clicked the page tab)
-      if (page.rawData._contrastVerifyResults) { doneCount++; _verifyNext(); return; }
-      var report = page.reportData || MilgScoring.runScoring(page.rawData);
-      MilgContrastVerify.verify(report, function(results, bboxEdgeResults) {
-        // Guard: don't overwrite if another verify path already cached results
-        if (page.rawData._contrastVerifyResults) { doneCount++; setTimeout(_verifyNext, 50); return; }
-        page.rawData._contrastVerifyResults = results;
-        page.rawData._bboxEdgeResults = bboxEdgeResults || [];
+    // Queue all page verifies — active page tab gets highest priority
+    MilgQueue.clear();
+    pagesToVerify.forEach(function(page, pi) {
+      var pageIdx = _crawlSession.pages.indexOf(page);
+      var priority = (_crawlActivePageTab === String(pageIdx)) ? 100 : (totalCount - pi);
+      MilgQueue.enqueue('crawl-verify-' + pageIdx, function(done) {
+        // Skip if already verified by another path
+        if (page.rawData._contrastVerifyResults) { done(null); return; }
+        var report = page.reportData || MilgScoring.runScoring(page.rawData);
+        MilgContrastVerify.verify(report, function(results, bboxEdgeResults) {
+          if (!page.rawData._contrastVerifyResults) {
+            page.rawData._contrastVerifyResults = results;
+            page.rawData._bboxEdgeResults = bboxEdgeResults || [];
+            if (pageIdx >= 0) delete _crawlPageReports[pageIdx];
+          }
+          done(results);
+        });
+      }, function() {
         doneCount++;
-        var idx = _crawlSession.pages.indexOf(page);
-        if (idx >= 0) delete _crawlPageReports[idx];
         _crawlModal('Pixel verify ' + doneCount + '/' + totalCount + ' pages');
         _updateVerifySummary(doneCount, totalCount, doneCount === totalCount ? _crawlSession : null);
         if (doneCount === totalCount) setTimeout(_crawlModalClose, 2000);
-        // Yield to the event loop before starting the next page
-        setTimeout(_verifyNext, 50);
-      });
-    }
-    _verifyNext();
+      }, priority);
+    });
   }
 
   function _updateVerifySummary(done, total, completedSession) {
@@ -40143,7 +40256,7 @@ window.MilgIframe = (function() {
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v1.1 loaded');
+console.log('[milg] analyzer.js v1.2 loaded');
 
 (function() {
   "use strict";
@@ -40626,6 +40739,8 @@ console.log('[milg] analyzer.js v1.1 loaded');
   var _viewportCache = {}; // idx → { data, reportData }
   window.__milgClearViewportCache = function() { _viewportCache = {}; };
   window.__milgSwitchViewport = function(idx) {
+    // Promote this viewport's verify to front of queue
+    if (window.MilgQueue) MilgQueue.promote('vp-verify-' + idx);
     if (!lastRawData || !lastRawData.deepScan || !lastRawData.deepScan.viewportData) return;
     var deepScan = lastRawData.deepScan;
     var vpData = deepScan.viewportData[idx];
@@ -41324,7 +41439,7 @@ console.log('[milg] analyzer.js v1.1 loaded');
               // Pre-compute pixel verify for all viewports before showing results
               var pvCheck = document.getElementById('pixelVerifyCheck');
               var wantPV = pvCheck ? pvCheck.checked : false;
-              if (wantPV && wantShots && window.MilgContrastVerify && primary.deepScan && primary.deepScan.viewportData) {
+              if (wantPV && wantShots && window.MilgContrastVerify && window.MilgQueue && primary.deepScan && primary.deepScan.viewportData) {
                 urlStatus.textContent = 'Running pixel verification...';
                 urlStatus.style.display = 'block';
                 showProgress(88, 'Pixel verification...');
@@ -41332,19 +41447,26 @@ console.log('[milg] analyzer.js v1.1 loaded');
                 var vpToVerify = primary.deepScan.viewportData.filter(function(v) { return v && v.data && v.data.screenshots && v.data.screenshots.length > 0; });
                 var verifyDone = 0;
                 if (vpToVerify.length === 0) { _finishUrl(primary); return; }
-                vpToVerify.forEach(function(vp) {
-                  var scored = MilgScoring.runScoring(vp.data);
-                  MilgContrastVerify.verify(scored, function(results, bboxEdge) {
-                    vp.data._contrastVerifyResults = results || [];
-                    vp.data._bboxEdgeResults = bboxEdge || [];
+                // Queue all viewport verifies — active viewport gets highest priority
+                MilgQueue.clear();
+                vpToVerify.forEach(function(vp, vi) {
+                  var priority = (vi === _activeViewportIdx) ? 100 : (vpToVerify.length - vi);
+                  MilgQueue.enqueue('vp-verify-' + vi, function(done) {
+                    var scored = MilgScoring.runScoring(vp.data);
+                    MilgContrastVerify.verify(scored, function(results, bboxEdge) {
+                      vp.data._contrastVerifyResults = results || [];
+                      vp.data._bboxEdgeResults = bboxEdge || [];
+                      done({ vp: vp, results: results, bboxEdge: bboxEdge });
+                    });
+                  }, function(result) {
                     verifyDone++;
-                    updateFocusModal('Pixel verified ' + vp.label + ' — ' + (results ? results.length : 0) + ' pairs checked');
+                    updateFocusModal('Pixel verified ' + result.vp.label + ' — ' + (result.results ? result.results.length : 0) + ' pairs checked');
                     showProgress(88 + Math.round(10 * verifyDone / vpToVerify.length), 'Verified ' + verifyDone + '/' + vpToVerify.length);
                     if (verifyDone === vpToVerify.length) {
                       updateFocusModal('Rendering report');
                       _finishUrl(primary);
                     }
-                  });
+                  }, priority);
                 });
               } else {
                 updateFocusModal('Rendering report');
@@ -41813,7 +41935,7 @@ console.log('[milg] analyzer.js v1.1 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v1.1</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v1.2</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -42255,30 +42377,31 @@ console.log('[milg] analyzer.js v1.1 loaded');
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=1.1"></script>
-  <script src="scoring/contrast.js?v=1.1"></script>
-  <script src="scoring/typography.js?v=1.1"></script>
-  <script src="scoring/spacing.js?v=1.1"></script>
-  <script src="scoring/touch.js?v=1.1"></script>
-  <script src="scoring/accessibility.js?v=1.1"></script>
-  <script src="scoring/responsive.js?v=1.1"></script>
-  <script src="scoring/consistency.js?v=1.1"></script>
-  <script src="scoring/cognitive.js?v=1.1"></script>
-  <script src="scoring/layout.js?v=1.1"></script>
-  <script src="scoring/performance.js?v=1.1"></script>
-  <script src="scoring/readability.js?v=1.1"></script>
-  <script src="scoring/filters.js?v=1.1"></script>
-  <script src="scoring/balance.js?v=1.1"></script>
-  <!-- Report rendering + UI -->
-  <script src="analyzer-report.js?v=1.1"></script>
-  <script src="analyzer-crawl.js?v=1.1"></script>
-  <script src="analyzer-extract.js?v=1.1"></script>
-  <script src="analyzer-iframe.js?v=1.1"></script>
-  <script src="analyzer-proxy.js?v=1.1"></script>
-  <script src="analyzer-crawl-ui.js?v=1.1"></script>
-  <script src="analyzer-contrast-verify.js?v=1.1"></script>
-  <script src="analyzer-viewer.js?v=1.1"></script>
-  <script src="analyzer.js?v=1.1"></script>
+  <script src="scoring/registry.js?v=1.2"></script>
+  <script src="scoring/contrast.js?v=1.2"></script>
+  <script src="scoring/typography.js?v=1.2"></script>
+  <script src="scoring/spacing.js?v=1.2"></script>
+  <script src="scoring/touch.js?v=1.2"></script>
+  <script src="scoring/accessibility.js?v=1.2"></script>
+  <script src="scoring/responsive.js?v=1.2"></script>
+  <script src="scoring/consistency.js?v=1.2"></script>
+  <script src="scoring/cognitive.js?v=1.2"></script>
+  <script src="scoring/layout.js?v=1.2"></script>
+  <script src="scoring/performance.js?v=1.2"></script>
+  <script src="scoring/readability.js?v=1.2"></script>
+  <script src="scoring/filters.js?v=1.2"></script>
+  <script src="scoring/balance.js?v=1.2"></script>
+  <!-- Queue + Report rendering + UI -->
+  <script src="analyzer-queue.js?v=1.2"></script>
+  <script src="analyzer-report.js?v=1.2"></script>
+  <script src="analyzer-crawl.js?v=1.2"></script>
+  <script src="analyzer-extract.js?v=1.2"></script>
+  <script src="analyzer-iframe.js?v=1.2"></script>
+  <script src="analyzer-proxy.js?v=1.2"></script>
+  <script src="analyzer-crawl-ui.js?v=1.2"></script>
+  <script src="analyzer-contrast-verify.js?v=1.2"></script>
+  <script src="analyzer-viewer.js?v=1.2"></script>
+  <script src="analyzer.js?v=1.2"></script>
 </body>
 </html>
 </file>

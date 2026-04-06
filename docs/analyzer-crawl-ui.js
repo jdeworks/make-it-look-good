@@ -84,6 +84,10 @@ window.MilgCrawlUI = (function() {
 
   function showCrawlPageContent(key) {
     _crawlActivePageTab = key;
+    // Promote this page's verify to front of queue so it completes first
+    if (key !== 'summary' && window.MilgQueue) {
+      MilgQueue.promote('crawl-verify-' + key);
+    }
     renderCrawlTabs();
     var reportContainer = document.getElementById('reportContainer');
     var reportActions = document.getElementById('reportActions');
@@ -181,7 +185,7 @@ window.MilgCrawlUI = (function() {
   }
 
   function _preComputePixelVerify() {
-    if (!_crawlSession || !window.MilgContrastVerify) return;
+    if (!_crawlSession || !window.MilgContrastVerify || !window.MilgQueue) return;
     var pagesToVerify = _crawlSession.pages.filter(function(p) {
       return p.status === 'done' && p.rawData && !p.rawData._contrastVerifyResults &&
         p.rawData.screenshots && p.rawData.screenshots.length && p.rawData.screenshotMeta;
@@ -193,30 +197,30 @@ window.MilgCrawlUI = (function() {
     // Show pixel verify progress on summary page
     _updateVerifySummary(0, totalCount, null);
 
-    // Serialize: one page at a time so the UI stays responsive between verifications
-    var qi = 0;
-    function _verifyNext() {
-      if (qi >= pagesToVerify.length) return;
-      var page = pagesToVerify[qi]; qi++;
-      // Skip if already verified (another path may have completed it, e.g. user clicked the page tab)
-      if (page.rawData._contrastVerifyResults) { doneCount++; _verifyNext(); return; }
-      var report = page.reportData || MilgScoring.runScoring(page.rawData);
-      MilgContrastVerify.verify(report, function(results, bboxEdgeResults) {
-        // Guard: don't overwrite if another verify path already cached results
-        if (page.rawData._contrastVerifyResults) { doneCount++; setTimeout(_verifyNext, 50); return; }
-        page.rawData._contrastVerifyResults = results;
-        page.rawData._bboxEdgeResults = bboxEdgeResults || [];
+    // Queue all page verifies — active page tab gets highest priority
+    MilgQueue.clear();
+    pagesToVerify.forEach(function(page, pi) {
+      var pageIdx = _crawlSession.pages.indexOf(page);
+      var priority = (_crawlActivePageTab === String(pageIdx)) ? 100 : (totalCount - pi);
+      MilgQueue.enqueue('crawl-verify-' + pageIdx, function(done) {
+        // Skip if already verified by another path
+        if (page.rawData._contrastVerifyResults) { done(null); return; }
+        var report = page.reportData || MilgScoring.runScoring(page.rawData);
+        MilgContrastVerify.verify(report, function(results, bboxEdgeResults) {
+          if (!page.rawData._contrastVerifyResults) {
+            page.rawData._contrastVerifyResults = results;
+            page.rawData._bboxEdgeResults = bboxEdgeResults || [];
+            if (pageIdx >= 0) delete _crawlPageReports[pageIdx];
+          }
+          done(results);
+        });
+      }, function() {
         doneCount++;
-        var idx = _crawlSession.pages.indexOf(page);
-        if (idx >= 0) delete _crawlPageReports[idx];
         _crawlModal('Pixel verify ' + doneCount + '/' + totalCount + ' pages');
         _updateVerifySummary(doneCount, totalCount, doneCount === totalCount ? _crawlSession : null);
         if (doneCount === totalCount) setTimeout(_crawlModalClose, 2000);
-        // Yield to the event loop before starting the next page
-        setTimeout(_verifyNext, 50);
-      });
-    }
-    _verifyNext();
+      }, priority);
+    });
   }
 
   function _updateVerifySummary(done, total, completedSession) {

@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v1.1 loaded');
+console.log('[milg] analyzer.js v1.2 loaded');
 
 (function() {
   "use strict";
@@ -485,6 +485,8 @@ console.log('[milg] analyzer.js v1.1 loaded');
   var _viewportCache = {}; // idx → { data, reportData }
   window.__milgClearViewportCache = function() { _viewportCache = {}; };
   window.__milgSwitchViewport = function(idx) {
+    // Promote this viewport's verify to front of queue
+    if (window.MilgQueue) MilgQueue.promote('vp-verify-' + idx);
     if (!lastRawData || !lastRawData.deepScan || !lastRawData.deepScan.viewportData) return;
     var deepScan = lastRawData.deepScan;
     var vpData = deepScan.viewportData[idx];
@@ -1183,7 +1185,7 @@ console.log('[milg] analyzer.js v1.1 loaded');
               // Pre-compute pixel verify for all viewports before showing results
               var pvCheck = document.getElementById('pixelVerifyCheck');
               var wantPV = pvCheck ? pvCheck.checked : false;
-              if (wantPV && wantShots && window.MilgContrastVerify && primary.deepScan && primary.deepScan.viewportData) {
+              if (wantPV && wantShots && window.MilgContrastVerify && window.MilgQueue && primary.deepScan && primary.deepScan.viewportData) {
                 urlStatus.textContent = 'Running pixel verification...';
                 urlStatus.style.display = 'block';
                 showProgress(88, 'Pixel verification...');
@@ -1191,19 +1193,26 @@ console.log('[milg] analyzer.js v1.1 loaded');
                 var vpToVerify = primary.deepScan.viewportData.filter(function(v) { return v && v.data && v.data.screenshots && v.data.screenshots.length > 0; });
                 var verifyDone = 0;
                 if (vpToVerify.length === 0) { _finishUrl(primary); return; }
-                vpToVerify.forEach(function(vp) {
-                  var scored = MilgScoring.runScoring(vp.data);
-                  MilgContrastVerify.verify(scored, function(results, bboxEdge) {
-                    vp.data._contrastVerifyResults = results || [];
-                    vp.data._bboxEdgeResults = bboxEdge || [];
+                // Queue all viewport verifies — active viewport gets highest priority
+                MilgQueue.clear();
+                vpToVerify.forEach(function(vp, vi) {
+                  var priority = (vi === _activeViewportIdx) ? 100 : (vpToVerify.length - vi);
+                  MilgQueue.enqueue('vp-verify-' + vi, function(done) {
+                    var scored = MilgScoring.runScoring(vp.data);
+                    MilgContrastVerify.verify(scored, function(results, bboxEdge) {
+                      vp.data._contrastVerifyResults = results || [];
+                      vp.data._bboxEdgeResults = bboxEdge || [];
+                      done({ vp: vp, results: results, bboxEdge: bboxEdge });
+                    });
+                  }, function(result) {
                     verifyDone++;
-                    updateFocusModal('Pixel verified ' + vp.label + ' — ' + (results ? results.length : 0) + ' pairs checked');
+                    updateFocusModal('Pixel verified ' + result.vp.label + ' — ' + (result.results ? result.results.length : 0) + ' pairs checked');
                     showProgress(88 + Math.round(10 * verifyDone / vpToVerify.length), 'Verified ' + verifyDone + '/' + vpToVerify.length);
                     if (verifyDone === vpToVerify.length) {
                       updateFocusModal('Rendering report');
                       _finishUrl(primary);
                     }
-                  });
+                  }, priority);
                 });
               } else {
                 updateFocusModal('Rendering report');
