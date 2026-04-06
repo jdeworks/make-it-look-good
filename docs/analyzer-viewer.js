@@ -1334,17 +1334,20 @@ window.MilgViewer = (function() {
       }
     }
 
-    // Worst offender
+    // Pixel measurement summary: P10 (used for pass/fail) + worst-case + best
     var worstBlock = '';
     if (vr.pixelRatio && vr.pixelFg) {
-      var wRatio = vr.pixelRatio;
-      var wPassColor = wRatio >= 4.5 ? '#22c55e' : wRatio >= 3 ? '#eab308' : '#ef4444';
+      var needed = vr.neededRatio || 4.5;
+      var p10Ratio = vr.pixelRatio;
+      var p10Color = p10Ratio >= needed ? '#22c55e' : p10Ratio >= (needed * 0.67) ? '#eab308' : '#ef4444';
+      var p10Label = p10Ratio >= needed ? 'PASS' : 'FAIL';
       worstBlock = '<div style="margin-top:4px;font-size:10px;color:#64748b">' +
-        'Worst: <span style="' + swSm + 'background:' + vr.pixelFg + '"></span> on ' +
+        'P10: <span style="' + swSm + 'background:' + vr.pixelFg + '"></span> on ' +
         '<span style="' + swSm + 'background:' + (vr.pixelBgWorst || '') + '"></span> ' +
-        '<span style="color:' + wPassColor + ';font-weight:600">' + wRatio + ':1</span>' +
-        (vr.pixelRatioP10 ? ' &middot; P10: ' + vr.pixelRatioP10 + ':1' : '') +
-        (vr.pixelRatioBest && vr.pixelRatioBest !== vr.pixelRatio ? ' &middot; Best: ' + vr.pixelRatioBest + ':1' : '') +
+        '<span style="color:' + p10Color + ';font-weight:600">' + p10Ratio + ':1 ' + p10Label + '</span>' +
+        ' <span style="color:#94a3b8">(needs ' + needed + ':1)</span>' +
+        (vr.pixelRatioWorst && vr.pixelRatioWorst !== p10Ratio ? '<br>Worst: <span style="font-weight:600">' + vr.pixelRatioWorst + ':1</span>' : '') +
+        (vr.pixelRatioBest && vr.pixelRatioBest !== p10Ratio ? ' &middot; Best: ' + vr.pixelRatioBest + ':1' : '') +
       '</div>';
     }
 

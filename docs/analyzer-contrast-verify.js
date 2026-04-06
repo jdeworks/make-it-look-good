@@ -1240,30 +1240,42 @@ window.MilgContrastVerify = (function() {
       var results = [];
       var _vStats = { total: pairs.length, verified: 0, noFgBg: 0, tooSmall: 0, outOfBounds: 0 };
       var _hasMask = !!maskCanvasData;
-      var allPairs = (raw.colors && raw.colors.contrastPairs) || [];
-      pairs.forEach(function(pair) {
-        var result = verifyPair(pair, sectionCanvases, meta, maskCanvasData);
-        if (result) { results.push(result); _vStats.verified++; }
-        else _vStats.noFgBg++;
-      });
-      var _maskBmpCount = pairs.filter(function(p) { return !!p._maskBmp; }).length;
-      console.log('[milg-verify] Stats: mask=' + _hasMask + ' maskBmp=' + _maskBmpCount + '/' + pairs.length + ' total=' + _vStats.total + ' verified=' + _vStats.verified + ' noFgBg=' + _vStats.noFgBg);
-      results.sort(function(a, b) {
-        if (a.crossesBoundary !== b.crossesBoundary) return a.crossesBoundary ? -1 : 1;
-        return b.ratioDiff - a.ratioDiff;
-      });
+      var BATCH_SIZE = 8; // yield to event loop every N pairs so spinner animates
+      var qi = 0;
 
-      // BBox edge contrast verification
-      var bboxEdgeResults = [];
-      var bgEdgePairs = (raw.colors && raw.colors.bgEdgePairs) || [];
-      bgEdgePairs.forEach(function(entry) {
-        if (!entry.bbox) return;
-        var r = verifyBboxEdge(entry, sectionCanvases, meta);
-        if (r) bboxEdgeResults.push(r);
-      });
-      bboxEdgeResults.sort(function(a, b) { return a.pixelRatio - b.pixelRatio; });
+      function processBatch() {
+        var end = Math.min(qi + BATCH_SIZE, pairs.length);
+        for (var i = qi; i < end; i++) {
+          var result = verifyPair(pairs[i], sectionCanvases, meta, maskCanvasData);
+          if (result) { results.push(result); _vStats.verified++; }
+          else _vStats.noFgBg++;
+        }
+        qi = end;
+        if (qi < pairs.length) {
+          setTimeout(processBatch, 0);
+          return;
+        }
+        // All pairs done — finish up
+        var _maskBmpCount = pairs.filter(function(p) { return !!p._maskBmp; }).length;
+        console.log('[milg-verify] Stats: mask=' + _hasMask + ' maskBmp=' + _maskBmpCount + '/' + pairs.length + ' total=' + _vStats.total + ' verified=' + _vStats.verified + ' noFgBg=' + _vStats.noFgBg);
+        results.sort(function(a, b) {
+          if (a.crossesBoundary !== b.crossesBoundary) return a.crossesBoundary ? -1 : 1;
+          return b.ratioDiff - a.ratioDiff;
+        });
 
-      callback(results, bboxEdgeResults);
+        // BBox edge contrast verification
+        var bboxEdgeResults = [];
+        var bgEdgePairs = (raw.colors && raw.colors.bgEdgePairs) || [];
+        bgEdgePairs.forEach(function(entry) {
+          if (!entry.bbox) return;
+          var r = verifyBboxEdge(entry, sectionCanvases, meta);
+          if (r) bboxEdgeResults.push(r);
+        });
+        bboxEdgeResults.sort(function(a, b) { return a.pixelRatio - b.pixelRatio; });
+
+        callback(results, bboxEdgeResults);
+      }
+      processBatch();
     }
 
     raw.screenshots.forEach(function(dataUri, idx) {
