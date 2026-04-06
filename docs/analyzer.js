@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v1.8 loaded');
+console.log('[milg] analyzer.js v1.9 loaded');
 
 (function() {
   "use strict";
@@ -1381,8 +1381,9 @@ console.log('[milg] analyzer.js v1.8 loaded');
       if (location.hash) history.replaceState(null, '', location.pathname + location.search);
     });
 
-    // Markdown export (download)
+    // Markdown export (download) — single-URL only, crawl-ui handles crawl
     document.getElementById('markdownBtn').addEventListener('click', function() {
+      if (MilgCrawlUI.getCrawlSession && MilgCrawlUI.getCrawlSession()) return;
       if (!reportData) return;
       var md = MilgReport.renderMarkdown(reportData);
       var blob = new Blob([md], { type: 'text/markdown' });
@@ -1395,8 +1396,9 @@ console.log('[milg] analyzer.js v1.8 loaded');
       showToast('Markdown report downloaded');
     });
 
-    // Copy for LLM — filtered findings only, no images/masks
+    // Copy for LLM — filtered findings only, no images/masks (single-URL; crawl-ui handles crawl)
     document.getElementById('copyMdBtn').addEventListener('click', function() {
+      if (MilgCrawlUI.getCrawlSession && MilgCrawlUI.getCrawlSession()) return;
       if (!reportData) return;
       var filter = document.getElementById('exportSeverityFilter');
       var severity = filter ? filter.value : 'all';
@@ -1479,6 +1481,8 @@ console.log('[milg] analyzer.js v1.8 loaded');
     }
 
     _exportJsonBtn.addEventListener('click', function() {
+      // Skip if crawl is active — crawl-ui handles its own export
+      if (MilgCrawlUI.getCrawlSession && MilgCrawlUI.getCrawlSession()) return;
       if (!lastRawData) return;
       var origLabel = _exportJsonBtn.innerHTML;
       _exportJsonBtn.disabled = true;

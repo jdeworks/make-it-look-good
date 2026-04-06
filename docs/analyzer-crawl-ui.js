@@ -493,26 +493,25 @@ window.MilgCrawlUI = (function() {
           try {
             var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
             var json = MilgCrawl.renderCrawlJSON(_crawlSession, filter);
-            // Compress with gzip if available
+            // Compress with gzip
             if (typeof CompressionStream !== 'undefined') {
+              exportJsonBtn.innerHTML = '<span style="display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite;vertical-align:middle"></span> <span class="btn-label">Compressing\u2026</span>';
               var blob = new Blob([json]);
               var cs = new CompressionStream('gzip');
-              var stream = blob.stream().pipeThrough(cs);
-              new Response(stream).blob().then(function(compressed) {
+              new Response(blob.stream().pipeThrough(cs)).blob().then(function(compressed) {
                 var a = document.createElement('a');
                 a.href = URL.createObjectURL(compressed);
                 a.download = 'site-crawl-data.milg'; a.click();
                 URL.revokeObjectURL(a.href);
-                _showToast('Crawl exported (' + Math.round(json.length / 1024) + ' KB → ' + Math.round(compressed.size / 1024) + ' KB)');
+                _showToast('Crawl exported (' + Math.round(json.length / 1048576) + ' MB → ' + Math.round(compressed.size / 1024) + ' KB)');
                 exportJsonBtn.disabled = false;
                 exportJsonBtn.innerHTML = origLabel;
               }).catch(function() {
-                // Fallback to uncompressed
                 var a = document.createElement('a');
                 a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
                 a.download = 'site-crawl-data.json'; a.click();
                 URL.revokeObjectURL(a.href);
-                _showToast('Crawl exported uncompressed (' + Math.round(json.length / 1024) + ' KB)');
+                _showToast('Crawl exported (' + Math.round(json.length / 1024) + ' KB)');
                 exportJsonBtn.disabled = false;
                 exportJsonBtn.innerHTML = origLabel;
               });
