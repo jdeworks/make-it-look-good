@@ -153,7 +153,7 @@ window.MilgCrawlUI = (function() {
       _crawlSession.pages.push({
         url: r.url, status: 'done', title: (r.data.meta && r.data.meta.title) || '',
         rawData: r.data, reportData: report, error: null,
-        startedAt: r.data.meta.timestamp, completedAt: r.data.meta.timestamp
+        startedAt: (r.data.meta && r.data.meta.timestamp) || null, completedAt: (r.data.meta && r.data.meta.timestamp) || null
       });
     });
     _crawlSession.status = 'complete';
@@ -463,6 +463,7 @@ window.MilgCrawlUI = (function() {
         var blob = new Blob([md], { type: 'text/markdown' });
         var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
         a.download = 'site-crawl-report.md'; a.click();
+        URL.revokeObjectURL(a.href);
       });
     }
     if (exportJsonBtn) {
@@ -474,6 +475,7 @@ window.MilgCrawlUI = (function() {
         var blob = new Blob([json], { type: 'application/json' });
         var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
         a.download = 'site-crawl-data.json'; a.click();
+        URL.revokeObjectURL(a.href);
       });
     }
   }
