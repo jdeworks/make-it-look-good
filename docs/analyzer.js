@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v1.3 loaded');
+console.log('[milg] analyzer.js v1.4 loaded');
 
 (function() {
   "use strict";
@@ -541,7 +541,7 @@ console.log('[milg] analyzer.js v1.3 loaded');
   function renderViewportTabs(data) {
     var container = document.getElementById('viewportTabs');
     if (!container) { console.warn('[milg] viewportTabs container not found'); return; }
-    if (!data || !data.deepScan || !data.deepScan.viewports) {
+    if (!data || !data.deepScan || !data.deepScan.viewports || !data.deepScan.viewportData) {
       container.style.display = 'none';
       container.innerHTML = '';
       return;
@@ -1418,8 +1418,14 @@ console.log('[milg] analyzer.js v1.3 loaded');
     });
 
     // Export JSON — save analysis data for re-import or sharing
-    document.getElementById('exportJsonBtn').addEventListener('click', function() {
+    var _exportJsonBtn = document.getElementById('exportJsonBtn');
+    _exportJsonBtn.addEventListener('click', function() {
       if (!lastRawData) return;
+      var origLabel = _exportJsonBtn.innerHTML;
+      _exportJsonBtn.disabled = true;
+      _exportJsonBtn.innerHTML = '<span style="display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite;vertical-align:middle"></span> <span class="btn-label">Exporting\u2026</span>';
+      requestAnimationFrame(function() { setTimeout(function() {
+      try {
       // Clone data, handling deepScan carefully (has circular refs via viewportData[].data.deepScan)
       var exportData;
       var _replacer = function(k, v) { return (k === 'deepScan' || k === '_cachedReportData' || k === '_vpCacheIdx') ? undefined : v; };
@@ -1478,7 +1484,11 @@ console.log('[milg] analyzer.js v1.3 loaded');
       a.download = 'milg-report-' + siteName.replace(/[^a-z0-9]/gi, '-').substring(0, 40) + '.json';
       a.click();
       URL.revokeObjectURL(url);
-      showToast('Analysis JSON exported');
+      showToast('JSON exported (' + Math.round(json.length / 1024) + ' KB)');
+      } catch(err) { showToast('Export failed: ' + err.message); }
+      _exportJsonBtn.disabled = false;
+      _exportJsonBtn.innerHTML = origLabel;
+      }, 0); });
     });
 
     // Import JSON — load a previously exported analysis (report action bar + drop zone)

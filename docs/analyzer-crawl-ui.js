@@ -486,12 +486,25 @@ window.MilgCrawlUI = (function() {
       exportJsonBtn.addEventListener('click', function(e) {
         if (!isCrawlActive()) return;
         e.stopImmediatePropagation();
-        var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
-        var json = MilgCrawl.renderCrawlJSON(_crawlSession, filter);
-        var blob = new Blob([json], { type: 'application/json' });
-        var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-        a.download = 'site-crawl-data.json'; a.click();
-        URL.revokeObjectURL(a.href);
+        // Show spinner — serialization can take seconds for large crawls
+        var origLabel = exportJsonBtn.innerHTML;
+        exportJsonBtn.disabled = true;
+        exportJsonBtn.innerHTML = '<span style="display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite;vertical-align:middle"></span> <span class="btn-label">Exporting\u2026</span>';
+        requestAnimationFrame(function() { setTimeout(function() {
+          try {
+            var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
+            var json = MilgCrawl.renderCrawlJSON(_crawlSession, filter);
+            var blob = new Blob([json], { type: 'application/json' });
+            var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+            a.download = 'site-crawl-data.json'; a.click();
+            URL.revokeObjectURL(a.href);
+            _showToast('Crawl JSON exported (' + Math.round(json.length / 1024) + ' KB)');
+          } catch(err) {
+            _showToast('Export failed: ' + err.message);
+          }
+          exportJsonBtn.disabled = false;
+          exportJsonBtn.innerHTML = origLabel;
+        }, 0); });
       });
     }
   }

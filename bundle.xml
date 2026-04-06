@@ -27200,174 +27200,6 @@ This test case demonstrates several important patterns for handling minimal inpu
 4. **Offer a system, not just a component.** When someone asks for "a button," giving them a system (with variants, states, and sizes) is more useful than giving them one perfect button they cannot adapt.
 </file>
 
-<file path="tests/html-analysis.spec.js">
-// @ts-check
-const { test, expect } = require('@playwright/test');
-const fs = require('fs');
-const path = require('path');
-
-const ANALYZER_URL = 'http://localhost:8384/analyzer.html';
-
-function loadPreset(name) {
-  return fs.readFileSync(path.join(__dirname, '..', 'docs', 'presets', name, 'clean.html'), 'utf8');
-}
-
-async function analyzeHtml(page, html) {
-  await page.goto(ANALYZER_URL);
-  await page.click('[data-tab="tabHtml"]');
-  await page.fill('#htmlInput', html);
-  await page.click('#analyzeHtmlBtn');
-  await page.waitForSelector('.report-container.visible', { timeout: 30000 });
-}
-
-async function getScore(page) {
-  const text = await page.locator('.report-gauge svg text').first().textContent();
-  return parseInt(text, 10);
-}
-
-// ── HTML Analysis ──
-
-test.describe('HTML Analysis', () => {
-
-  test('buttons preset produces valid scores', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('buttons'));
-    const score = await getScore(page);
-    expect(score).toBeGreaterThanOrEqual(0);
-    expect(score).toBeLessThanOrEqual(100);
-    // Category cards rendered
-    const cards = await page.locator('.report-card').count();
-    expect(cards).toBeGreaterThan(0);
-  });
-
-  test('form preset produces report with findings', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('form'));
-    const findings = await page.locator('.finding-header').count();
-    expect(findings).toBeGreaterThan(0);
-  });
-
-  test('landing preset scores above 50', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('landing'));
-    const score = await getScore(page);
-    expect(score).toBeGreaterThanOrEqual(50);
-  });
-
-  test('dashboard preset renders category cards', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('dashboard'));
-    const cards = await page.locator('.report-card').count();
-    expect(cards).toBeGreaterThanOrEqual(5);
-  });
-});
-
-// ── Export & Import Round-Trip ──
-
-test.describe('Export and Import', () => {
-
-  test('export JSON and re-import produces same score', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('buttons'));
-    const originalScore = await getScore(page);
-
-    // Download JSON
-    const [download] = await Promise.all([
-      page.waitForEvent('download'),
-      page.click('#exportJsonBtn'),
-    ]);
-    const jsonPath = await download.path();
-    const exportedData = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
-
-    // Verify structure
-    expect(exportedData.meta).toBeDefined();
-    expect(exportedData.colors).toBeDefined();
-    expect(exportedData.typography).toBeDefined();
-
-    // Re-import
-    await page.click('#newAnalysisBtn');
-    await page.click('[data-tab="tabImport"]');
-    await page.locator('#importDropFile').setInputFiles(jsonPath);
-    await page.waitForSelector('.report-container.visible', { timeout: 30000 });
-
-    const reimportedScore = await getScore(page);
-    expect(reimportedScore).toBe(originalScore);
-  });
-
-  test('export Markdown contains expected sections', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('cards'));
-
-    const [download] = await Promise.all([
-      page.waitForEvent('download'),
-      page.click('#markdownBtn'),
-    ]);
-    const mdContent = fs.readFileSync(await download.path(), 'utf8');
-
-    expect(mdContent).toContain('Design Analysis');
-    expect(mdContent).toContain('Contrast');
-    expect(mdContent).toContain('Typography');
-  });
-});
-
-// ── UI Controls ──
-
-test.describe('UI Controls', () => {
-
-  test('audience profile switch re-scores', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('form'));
-    const originalScore = await getScore(page);
-
-    await page.selectOption('#profileSelect', 'wcag_aaa');
-    await page.waitForTimeout(300);
-
-    const strictScore = await getScore(page);
-    expect(strictScore).toBeLessThanOrEqual(originalScore);
-  });
-
-  test('new analysis button resets view', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('buttons'));
-    await page.click('#newAnalysisBtn');
-    await expect(page.locator('#inputSection')).toBeVisible();
-    await expect(page.locator('#reportContainer')).not.toHaveClass(/visible/);
-  });
-
-  test('dark mode toggle works', async ({ page }) => {
-    await page.goto(ANALYZER_URL);
-    const hasDarkBefore = await page.locator('body').evaluate(el => el.classList.contains('dark-ui'));
-    await page.click('#darkBtn');
-    const hasDarkAfter = await page.locator('body').evaluate(el => el.classList.contains('dark-ui'));
-    expect(hasDarkBefore).not.toBe(hasDarkAfter);
-  });
-
-  test('help modal opens and closes', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('buttons'));
-    await page.click('#helpBtn');
-    await expect(page.locator('#helpModal')).toBeVisible();
-    // Close via X button
-    await page.locator('#helpModal button[aria-label="Close"]').click();
-    await expect(page.locator('#helpModal')).toBeHidden();
-  });
-
-  test('ephemeral banner visible after analysis', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('buttons'));
-    await expect(page.locator('#ephemeralBanner')).toBeVisible();
-    await expect(page.locator('#ephemeralBanner')).toContainText('temporary');
-  });
-});
-
-// ── Multiple Presets ──
-
-test.describe('Preset Scoring', () => {
-  const presets = ['hero', 'cards', 'stats-row', 'pricing', 'feature-grid'];
-
-  for (const preset of presets) {
-    test(`${preset} produces valid analysis`, async ({ page }) => {
-      await analyzeHtml(page, loadPreset(preset));
-      const score = await getScore(page);
-      expect(score).toBeGreaterThanOrEqual(0);
-      expect(score).toBeLessThanOrEqual(100);
-      const findings = await page.locator('.finding-header').count();
-      expect(findings).toBeGreaterThan(0);
-    });
-  }
-});
-</file>
-
 <file path="tests/README.md">
 # Test Cases
 
@@ -30607,31 +30439,6 @@ Each test case has:
 Use these to calibrate your output quality and verify the flow works.
 </file>
 
-<file path="playwright.config.js">
-// @ts-check
-const { defineConfig } = require('@playwright/test');
-
-module.exports = defineConfig({
-  testDir: './tests',
-  timeout: 60000,
-  retries: 0,
-  use: {
-    headless: true,
-    viewport: { width: 1280, height: 900 },
-  },
-  projects: [
-    { name: 'chromium', use: { browserName: 'chromium' } },
-  ],
-  webServer: {
-    command: 'npx serve docs -l 8384 --no-clipboard',
-    port: 8384,
-    reuseExistingServer: true,
-    timeout: 10000,
-  },
-  workers: 1,
-});
-</file>
-
 <file path="README.md">
 # make-it-look-good
 
@@ -31121,6 +30928,199 @@ window.MilgQueue = (function() {
     currentId: currentId
   };
 })();
+</file>
+
+<file path="tests/html-analysis.spec.js">
+// @ts-check
+const { test, expect } = require('@playwright/test');
+const fs = require('fs');
+const path = require('path');
+
+const ANALYZER_URL = 'http://localhost:8384/analyzer.html';
+
+function loadPreset(name) {
+  return fs.readFileSync(path.join(__dirname, '..', 'docs', 'presets', name, 'clean.html'), 'utf8');
+}
+
+async function analyzeHtml(page, html) {
+  await page.goto(ANALYZER_URL);
+  await page.click('[data-tab="tabHtml"]');
+  await page.fill('#htmlInput', html);
+  await page.click('#analyzeHtmlBtn');
+  await page.waitForSelector('.report-container.visible', { timeout: 30000 });
+}
+
+async function getScore(page) {
+  const text = await page.locator('.report-gauge svg text').first().textContent();
+  return parseInt(text, 10);
+}
+
+// ── HTML Analysis ──
+
+test.describe('HTML Analysis', () => {
+
+  test('buttons preset produces valid scores', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('buttons'));
+    const score = await getScore(page);
+    expect(score).toBeGreaterThanOrEqual(0);
+    expect(score).toBeLessThanOrEqual(100);
+    // Category cards rendered
+    const cards = await page.locator('.report-card').count();
+    expect(cards).toBeGreaterThan(0);
+  });
+
+  test('form preset produces report with findings', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('form'));
+    const findings = await page.locator('.finding-header').count();
+    expect(findings).toBeGreaterThan(0);
+  });
+
+  test('landing preset scores above 50', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('landing'));
+    const score = await getScore(page);
+    expect(score).toBeGreaterThanOrEqual(50);
+  });
+
+  test('dashboard preset renders category cards', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('dashboard'));
+    const cards = await page.locator('.report-card').count();
+    expect(cards).toBeGreaterThanOrEqual(5);
+  });
+});
+
+// ── Export & Import Round-Trip ──
+
+test.describe('Export and Import', () => {
+
+  test('export JSON and re-import produces same score', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('buttons'));
+    const originalScore = await getScore(page);
+
+    // Download JSON
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.click('#exportJsonBtn'),
+    ]);
+    const jsonPath = await download.path();
+    const exportedData = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+
+    // Verify structure
+    expect(exportedData.meta).toBeDefined();
+    expect(exportedData.colors).toBeDefined();
+    expect(exportedData.typography).toBeDefined();
+
+    // Re-import
+    await page.click('#newAnalysisBtn');
+    await page.click('[data-tab="tabImport"]');
+    await page.locator('#importDropFile').setInputFiles(jsonPath);
+    await page.waitForSelector('.report-container.visible', { timeout: 30000 });
+
+    const reimportedScore = await getScore(page);
+    expect(reimportedScore).toBe(originalScore);
+  });
+
+  test('export Markdown contains expected sections', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('cards'));
+
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.click('#markdownBtn'),
+    ]);
+    const mdContent = fs.readFileSync(await download.path(), 'utf8');
+
+    expect(mdContent).toContain('Design Analysis');
+    expect(mdContent).toContain('Contrast');
+    expect(mdContent).toContain('Typography');
+  });
+});
+
+// ── UI Controls ──
+
+test.describe('UI Controls', () => {
+
+  test('audience profile switch re-scores', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('form'));
+    const originalScore = await getScore(page);
+
+    await page.selectOption('#profileSelect', 'wcag_aaa');
+    await page.waitForTimeout(300);
+
+    const strictScore = await getScore(page);
+    expect(strictScore).toBeLessThanOrEqual(originalScore);
+  });
+
+  test('new analysis button resets view', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('buttons'));
+    await page.click('#newAnalysisBtn');
+    await expect(page.locator('#inputSection')).toBeVisible();
+    await expect(page.locator('#reportContainer')).not.toHaveClass(/visible/);
+  });
+
+  test('dark mode toggle works', async ({ page }) => {
+    await page.goto(ANALYZER_URL);
+    const hasDarkBefore = await page.locator('body').evaluate(el => el.classList.contains('dark-ui'));
+    await page.click('#darkBtn');
+    const hasDarkAfter = await page.locator('body').evaluate(el => el.classList.contains('dark-ui'));
+    expect(hasDarkBefore).not.toBe(hasDarkAfter);
+  });
+
+  test('help modal opens and closes', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('buttons'));
+    await page.click('#helpBtn');
+    await expect(page.locator('#helpModal')).toBeVisible();
+    // Close via X button
+    await page.locator('#helpModal button[aria-label="Close"]').click();
+    await expect(page.locator('#helpModal')).toBeHidden();
+  });
+
+  test('ephemeral banner visible after analysis', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('buttons'));
+    await expect(page.locator('#ephemeralBanner')).toBeVisible();
+    await expect(page.locator('#ephemeralBanner')).toContainText('temporary');
+  });
+});
+
+// ── Multiple Presets ──
+
+test.describe('Preset Scoring', () => {
+  const presets = ['hero', 'cards', 'stats-row', 'pricing', 'feature-grid'];
+
+  for (const preset of presets) {
+    test(`${preset} produces valid analysis`, async ({ page }) => {
+      await analyzeHtml(page, loadPreset(preset));
+      const score = await getScore(page);
+      expect(score).toBeGreaterThanOrEqual(0);
+      expect(score).toBeLessThanOrEqual(100);
+      const findings = await page.locator('.finding-header').count();
+      expect(findings).toBeGreaterThan(0);
+    });
+  }
+});
+</file>
+
+<file path="playwright.config.js">
+// @ts-check
+const { defineConfig } = require('@playwright/test');
+
+module.exports = defineConfig({
+  testDir: './tests',
+  timeout: 60000,
+  retries: 0,
+  use: {
+    headless: true,
+    viewport: { width: 1280, height: 900 },
+  },
+  projects: [
+    { name: 'chromium', use: { browserName: 'chromium' } },
+  ],
+  webServer: {
+    command: 'npx serve docs -l 8384 --no-clipboard',
+    port: 8384,
+    reuseExistingServer: true,
+    timeout: 10000,
+  },
+  workers: 1,
+});
 </file>
 
 <file path="docs/analyzer-report.js">
@@ -33854,7 +33854,9 @@ window.MilgCrawl = (function() {
   }
 
   function renderCrawlJSON(session, severityFilter) {
-    var _replacer = function(k, v) { return (k === 'deepScan' || k === '_cachedReportData' || k === '_vpCacheIdx') ? undefined : v; };
+    // Strip large binary data and circular refs during serialization (not after)
+    var _skipKeys = { deepScan: 1, _cachedReportData: 1, _vpCacheIdx: 1, screenshots: 1, screenshotsUnhidden: 1, textMask: 1, _maskBmp: 1, samplePoints: 1, _debug: 1 };
+    var _replacer = function(k, v) { return _skipKeys[k] ? undefined : v; };
     var out = {
       _milgCrawl: true,
       startUrl: session.startUrl,
@@ -33864,19 +33866,12 @@ window.MilgCrawl = (function() {
       // results: re-importable raw extraction data (loadCrawlResults compatible)
       results: session.pages.filter(function(p) { return p.status === 'done' && p.rawData; }).map(function(p) {
         var rawClone = JSON.parse(JSON.stringify(p.rawData, _replacer));
-        // Strip screenshots to keep export size manageable
-        delete rawClone.screenshots; delete rawClone.screenshotsUnhidden;
         // Include deep scan summary (without full viewport data)
         if (p.rawData.deepScan) {
           rawClone.deepScan = { viewports: p.rawData.deepScan.viewports, darkMode: p.rawData.deepScan.darkMode || null };
         }
-        // Include cached pixel verify
-        if (p.rawData._contrastVerifyResults) {
-          rawClone._contrastVerifyResults = p.rawData._contrastVerifyResults.map(function(r) {
-            var copy = Object.assign({}, r); delete copy._debug; delete copy.samplePoints; return copy;
-          });
-          rawClone._bboxEdgeResults = p.rawData._bboxEdgeResults || [];
-        }
+        // Pixel verify results are included automatically via the clone
+        // (samplePoints and _debug already stripped by replacer)
         return { url: p.url, data: rawClone };
       }),
       pages: session.pages.map(function(p) {
@@ -38425,12 +38420,25 @@ window.MilgCrawlUI = (function() {
       exportJsonBtn.addEventListener('click', function(e) {
         if (!isCrawlActive()) return;
         e.stopImmediatePropagation();
-        var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
-        var json = MilgCrawl.renderCrawlJSON(_crawlSession, filter);
-        var blob = new Blob([json], { type: 'application/json' });
-        var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-        a.download = 'site-crawl-data.json'; a.click();
-        URL.revokeObjectURL(a.href);
+        // Show spinner — serialization can take seconds for large crawls
+        var origLabel = exportJsonBtn.innerHTML;
+        exportJsonBtn.disabled = true;
+        exportJsonBtn.innerHTML = '<span style="display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite;vertical-align:middle"></span> <span class="btn-label">Exporting\u2026</span>';
+        requestAnimationFrame(function() { setTimeout(function() {
+          try {
+            var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
+            var json = MilgCrawl.renderCrawlJSON(_crawlSession, filter);
+            var blob = new Blob([json], { type: 'application/json' });
+            var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+            a.download = 'site-crawl-data.json'; a.click();
+            URL.revokeObjectURL(a.href);
+            _showToast('Crawl JSON exported (' + Math.round(json.length / 1024) + ' KB)');
+          } catch(err) {
+            _showToast('Export failed: ' + err.message);
+          }
+          exportJsonBtn.disabled = false;
+          exportJsonBtn.innerHTML = origLabel;
+        }, 0); });
       });
     }
   }
@@ -40460,7 +40468,7 @@ window.MilgIframe = (function() {
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v1.3 loaded');
+console.log('[milg] analyzer.js v1.4 loaded');
 
 (function() {
   "use strict";
@@ -40999,7 +41007,7 @@ console.log('[milg] analyzer.js v1.3 loaded');
   function renderViewportTabs(data) {
     var container = document.getElementById('viewportTabs');
     if (!container) { console.warn('[milg] viewportTabs container not found'); return; }
-    if (!data || !data.deepScan || !data.deepScan.viewports) {
+    if (!data || !data.deepScan || !data.deepScan.viewports || !data.deepScan.viewportData) {
       container.style.display = 'none';
       container.innerHTML = '';
       return;
@@ -41876,8 +41884,14 @@ console.log('[milg] analyzer.js v1.3 loaded');
     });
 
     // Export JSON — save analysis data for re-import or sharing
-    document.getElementById('exportJsonBtn').addEventListener('click', function() {
+    var _exportJsonBtn = document.getElementById('exportJsonBtn');
+    _exportJsonBtn.addEventListener('click', function() {
       if (!lastRawData) return;
+      var origLabel = _exportJsonBtn.innerHTML;
+      _exportJsonBtn.disabled = true;
+      _exportJsonBtn.innerHTML = '<span style="display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite;vertical-align:middle"></span> <span class="btn-label">Exporting\u2026</span>';
+      requestAnimationFrame(function() { setTimeout(function() {
+      try {
       // Clone data, handling deepScan carefully (has circular refs via viewportData[].data.deepScan)
       var exportData;
       var _replacer = function(k, v) { return (k === 'deepScan' || k === '_cachedReportData' || k === '_vpCacheIdx') ? undefined : v; };
@@ -41936,7 +41950,11 @@ console.log('[milg] analyzer.js v1.3 loaded');
       a.download = 'milg-report-' + siteName.replace(/[^a-z0-9]/gi, '-').substring(0, 40) + '.json';
       a.click();
       URL.revokeObjectURL(url);
-      showToast('Analysis JSON exported');
+      showToast('JSON exported (' + Math.round(json.length / 1024) + ' KB)');
+      } catch(err) { showToast('Export failed: ' + err.message); }
+      _exportJsonBtn.disabled = false;
+      _exportJsonBtn.innerHTML = origLabel;
+      }, 0); });
     });
 
     // Import JSON — load a previously exported analysis (report action bar + drop zone)
@@ -42139,7 +42157,7 @@ console.log('[milg] analyzer.js v1.3 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v1.3</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v1.4</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -42581,31 +42599,31 @@ console.log('[milg] analyzer.js v1.3 loaded');
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=1.3"></script>
-  <script src="scoring/contrast.js?v=1.3"></script>
-  <script src="scoring/typography.js?v=1.3"></script>
-  <script src="scoring/spacing.js?v=1.3"></script>
-  <script src="scoring/touch.js?v=1.3"></script>
-  <script src="scoring/accessibility.js?v=1.3"></script>
-  <script src="scoring/responsive.js?v=1.3"></script>
-  <script src="scoring/consistency.js?v=1.3"></script>
-  <script src="scoring/cognitive.js?v=1.3"></script>
-  <script src="scoring/layout.js?v=1.3"></script>
-  <script src="scoring/performance.js?v=1.3"></script>
-  <script src="scoring/readability.js?v=1.3"></script>
-  <script src="scoring/filters.js?v=1.3"></script>
-  <script src="scoring/balance.js?v=1.3"></script>
+  <script src="scoring/registry.js?v=1.4"></script>
+  <script src="scoring/contrast.js?v=1.4"></script>
+  <script src="scoring/typography.js?v=1.4"></script>
+  <script src="scoring/spacing.js?v=1.4"></script>
+  <script src="scoring/touch.js?v=1.4"></script>
+  <script src="scoring/accessibility.js?v=1.4"></script>
+  <script src="scoring/responsive.js?v=1.4"></script>
+  <script src="scoring/consistency.js?v=1.4"></script>
+  <script src="scoring/cognitive.js?v=1.4"></script>
+  <script src="scoring/layout.js?v=1.4"></script>
+  <script src="scoring/performance.js?v=1.4"></script>
+  <script src="scoring/readability.js?v=1.4"></script>
+  <script src="scoring/filters.js?v=1.4"></script>
+  <script src="scoring/balance.js?v=1.4"></script>
   <!-- Queue + Report rendering + UI -->
-  <script src="analyzer-queue.js?v=1.3"></script>
-  <script src="analyzer-report.js?v=1.3"></script>
-  <script src="analyzer-crawl.js?v=1.3"></script>
-  <script src="analyzer-extract.js?v=1.3"></script>
-  <script src="analyzer-iframe.js?v=1.3"></script>
-  <script src="analyzer-proxy.js?v=1.3"></script>
-  <script src="analyzer-crawl-ui.js?v=1.3"></script>
-  <script src="analyzer-contrast-verify.js?v=1.3"></script>
-  <script src="analyzer-viewer.js?v=1.3"></script>
-  <script src="analyzer.js?v=1.3"></script>
+  <script src="analyzer-queue.js?v=1.4"></script>
+  <script src="analyzer-report.js?v=1.4"></script>
+  <script src="analyzer-crawl.js?v=1.4"></script>
+  <script src="analyzer-extract.js?v=1.4"></script>
+  <script src="analyzer-iframe.js?v=1.4"></script>
+  <script src="analyzer-proxy.js?v=1.4"></script>
+  <script src="analyzer-crawl-ui.js?v=1.4"></script>
+  <script src="analyzer-contrast-verify.js?v=1.4"></script>
+  <script src="analyzer-viewer.js?v=1.4"></script>
+  <script src="analyzer.js?v=1.4"></script>
 </body>
 </html>
 </file>

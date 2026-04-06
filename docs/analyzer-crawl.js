@@ -532,7 +532,9 @@ window.MilgCrawl = (function() {
   }
 
   function renderCrawlJSON(session, severityFilter) {
-    var _replacer = function(k, v) { return (k === 'deepScan' || k === '_cachedReportData' || k === '_vpCacheIdx') ? undefined : v; };
+    // Strip large binary data and circular refs during serialization (not after)
+    var _skipKeys = { deepScan: 1, _cachedReportData: 1, _vpCacheIdx: 1, screenshots: 1, screenshotsUnhidden: 1, textMask: 1, _maskBmp: 1, samplePoints: 1, _debug: 1 };
+    var _replacer = function(k, v) { return _skipKeys[k] ? undefined : v; };
     var out = {
       _milgCrawl: true,
       startUrl: session.startUrl,
@@ -542,19 +544,12 @@ window.MilgCrawl = (function() {
       // results: re-importable raw extraction data (loadCrawlResults compatible)
       results: session.pages.filter(function(p) { return p.status === 'done' && p.rawData; }).map(function(p) {
         var rawClone = JSON.parse(JSON.stringify(p.rawData, _replacer));
-        // Strip screenshots to keep export size manageable
-        delete rawClone.screenshots; delete rawClone.screenshotsUnhidden;
         // Include deep scan summary (without full viewport data)
         if (p.rawData.deepScan) {
           rawClone.deepScan = { viewports: p.rawData.deepScan.viewports, darkMode: p.rawData.deepScan.darkMode || null };
         }
-        // Include cached pixel verify
-        if (p.rawData._contrastVerifyResults) {
-          rawClone._contrastVerifyResults = p.rawData._contrastVerifyResults.map(function(r) {
-            var copy = Object.assign({}, r); delete copy._debug; delete copy.samplePoints; return copy;
-          });
-          rawClone._bboxEdgeResults = p.rawData._bboxEdgeResults || [];
-        }
+        // Pixel verify results are included automatically via the clone
+        // (samplePoints and _debug already stripped by replacer)
         return { url: p.url, data: rawClone };
       }),
       pages: session.pages.map(function(p) {
