@@ -164,6 +164,8 @@ systems/
   building-a-system.md
   design-tokens.md
   material-design-3.md
+test-results/
+  .last-run.json
 tests/
   contrast-and-palette.test.mjs
   crawl-flow.test.mjs
@@ -176,6 +178,7 @@ tests/
   edge-email-template-flow.md
   edge-markdown-input-flow.md
   edge-minimal-input-flow.md
+  html-analysis.spec.js
   README.md
   test-case-1-review.md
   test-case-2-review.md
@@ -195,6 +198,7 @@ workflows/
 AGENTS.md
 CLAUDE.md
 CONSULT.md
+playwright.config.js
 README.md
 </directory_structure>
 
@@ -13084,114 +13088,6 @@ run().catch(function(e) { console.error(e); process.exit(1); });
 </html>
 </file>
 
-<file path="docs/analyzer-queue.js">
-// make-it-look-good — Background Computation Queue v1.1
-// Async work queue with priority promotion. Items run one at a time,
-// yielding to the event loop between items so the UI stays responsive.
-// Clicking a viewport/page tab promotes that item to front of queue.
-
-window.MilgQueue = (function() {
-  "use strict";
-
-  var _items = [];     // { id, priority, fn, onComplete, status }
-  var _running = null; // currently executing item
-  var _paused = false;
-
-  // Add an item to the queue.
-  // fn(callback): the work function. Must call callback(result) when done.
-  // onComplete(result): called after fn finishes.
-  // Returns the item (for later promote/cancel).
-  function enqueue(id, fn, onComplete, priority) {
-    // Dedup: if an item with same id is already queued or running, skip
-    if (_running && _running.id === id) return _running;
-    for (var i = 0; i < _items.length; i++) {
-      if (_items[i].id === id) return _items[i];
-    }
-    var item = { id: id, priority: priority || 0, fn: fn, onComplete: onComplete || null, status: 'queued' };
-    _items.push(item);
-    _items.sort(function(a, b) { return b.priority - a.priority; });
-    _scheduleNext();
-    return item;
-  }
-
-  // Promote an item to highest priority (front of queue).
-  // If an item with this id is currently running, no-op (already active).
-  function promote(id) {
-    if (_running && _running.id === id) return; // already running
-    for (var i = 0; i < _items.length; i++) {
-      if (_items[i].id === id) {
-        var maxPri = _items.length > 0 ? _items[0].priority : 0;
-        _items[i].priority = maxPri + 1;
-        _items.sort(function(a, b) { return b.priority - a.priority; });
-        return;
-      }
-    }
-  }
-
-  // Check if an item is done (result cached)
-  function isDone(id) {
-    // Not in queue and not running = either done or never queued
-    if (_running && _running.id === id) return false;
-    for (var i = 0; i < _items.length; i++) {
-      if (_items[i].id === id) return false;
-    }
-    return true; // not found = already completed or never queued
-  }
-
-  // Cancel all items and reset
-  function clear() {
-    _items = [];
-    _running = null;
-    _paused = false;
-  }
-
-  // Pause processing (current item finishes, next doesn't start)
-  function pause() { _paused = true; }
-  function resume() { _paused = false; _scheduleNext(); }
-
-  function _scheduleNext() {
-    if (_running || _paused || _items.length === 0) return;
-    setTimeout(_processNext, 0);
-  }
-
-  function _processNext() {
-    if (_running || _paused || _items.length === 0) return;
-    _running = _items.shift();
-    _running.status = 'running';
-    try {
-      _running.fn(function(result) {
-        var completed = _running;
-        _running = null;
-        completed.status = 'done';
-        if (completed.onComplete) {
-          try { completed.onComplete(result); } catch(e) { console.warn('[milg-queue] onComplete error:', e); }
-        }
-        // Yield then process next
-        setTimeout(_processNext, 0);
-      });
-    } catch(e) {
-      console.warn('[milg-queue] fn error:', e);
-      _running = null;
-      setTimeout(_processNext, 0);
-    }
-  }
-
-  function pending() { return _items.length + (_running ? 1 : 0); }
-  function currentId() { return _running ? _running.id : null; }
-
-  return {
-    enqueue: enqueue,
-    promote: promote,
-    isDone: isDone,
-    clear: clear,
-    pause: pause,
-    resume: resume,
-    pending: pending,
-    currentId: currentId
-  };
-})();
-</file>
-
 <file path="docs/ANALYZER-TODO.md">
 # Analyzer TODO
 
@@ -25151,6 +25047,13 @@ Are you building for Android/Google platforms?
 *Related: [Color Systems](../color/color-systems.md) | [Design Tokens](design-tokens.md) | [Animation Timing](../interaction/animation-timing.md)*
 </file>
 
+<file path="test-results/.last-run.json">
+{
+  "status": "passed",
+  "failedTests": []
+}
+</file>
+
 <file path="tests/contrast-and-palette.test.mjs">
 /**
  * Contrast & Color Palette Visibility Tests
@@ -27295,6 +27198,174 @@ This test case demonstrates several important patterns for handling minimal inpu
 2. **Listen for scope changes.** The user casually said "actually, can you give me a whole set" — this is a 10x scope expansion. Acknowledge it and adjust.
 3. **Derive what you can.** "E-commerce" + "checkout" + "green" gives enough signal to make dozens of informed decisions (audience, tone, accessibility priority, color palette) without asking 20 more questions.
 4. **Offer a system, not just a component.** When someone asks for "a button," giving them a system (with variants, states, and sizes) is more useful than giving them one perfect button they cannot adapt.
+</file>
+
+<file path="tests/html-analysis.spec.js">
+// @ts-check
+const { test, expect } = require('@playwright/test');
+const fs = require('fs');
+const path = require('path');
+
+const ANALYZER_URL = 'http://localhost:8384/analyzer.html';
+
+function loadPreset(name) {
+  return fs.readFileSync(path.join(__dirname, '..', 'docs', 'presets', name, 'clean.html'), 'utf8');
+}
+
+async function analyzeHtml(page, html) {
+  await page.goto(ANALYZER_URL);
+  await page.click('[data-tab="tabHtml"]');
+  await page.fill('#htmlInput', html);
+  await page.click('#analyzeHtmlBtn');
+  await page.waitForSelector('.report-container.visible', { timeout: 30000 });
+}
+
+async function getScore(page) {
+  const text = await page.locator('.report-gauge svg text').first().textContent();
+  return parseInt(text, 10);
+}
+
+// ── HTML Analysis ──
+
+test.describe('HTML Analysis', () => {
+
+  test('buttons preset produces valid scores', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('buttons'));
+    const score = await getScore(page);
+    expect(score).toBeGreaterThanOrEqual(0);
+    expect(score).toBeLessThanOrEqual(100);
+    // Category cards rendered
+    const cards = await page.locator('.report-card').count();
+    expect(cards).toBeGreaterThan(0);
+  });
+
+  test('form preset produces report with findings', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('form'));
+    const findings = await page.locator('.finding-header').count();
+    expect(findings).toBeGreaterThan(0);
+  });
+
+  test('landing preset scores above 50', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('landing'));
+    const score = await getScore(page);
+    expect(score).toBeGreaterThanOrEqual(50);
+  });
+
+  test('dashboard preset renders category cards', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('dashboard'));
+    const cards = await page.locator('.report-card').count();
+    expect(cards).toBeGreaterThanOrEqual(5);
+  });
+});
+
+// ── Export & Import Round-Trip ──
+
+test.describe('Export and Import', () => {
+
+  test('export JSON and re-import produces same score', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('buttons'));
+    const originalScore = await getScore(page);
+
+    // Download JSON
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.click('#exportJsonBtn'),
+    ]);
+    const jsonPath = await download.path();
+    const exportedData = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+
+    // Verify structure
+    expect(exportedData.meta).toBeDefined();
+    expect(exportedData.colors).toBeDefined();
+    expect(exportedData.typography).toBeDefined();
+
+    // Re-import
+    await page.click('#newAnalysisBtn');
+    await page.click('[data-tab="tabImport"]');
+    await page.locator('#importDropFile').setInputFiles(jsonPath);
+    await page.waitForSelector('.report-container.visible', { timeout: 30000 });
+
+    const reimportedScore = await getScore(page);
+    expect(reimportedScore).toBe(originalScore);
+  });
+
+  test('export Markdown contains expected sections', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('cards'));
+
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.click('#markdownBtn'),
+    ]);
+    const mdContent = fs.readFileSync(await download.path(), 'utf8');
+
+    expect(mdContent).toContain('Design Analysis');
+    expect(mdContent).toContain('Contrast');
+    expect(mdContent).toContain('Typography');
+  });
+});
+
+// ── UI Controls ──
+
+test.describe('UI Controls', () => {
+
+  test('audience profile switch re-scores', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('form'));
+    const originalScore = await getScore(page);
+
+    await page.selectOption('#profileSelect', 'wcag_aaa');
+    await page.waitForTimeout(300);
+
+    const strictScore = await getScore(page);
+    expect(strictScore).toBeLessThanOrEqual(originalScore);
+  });
+
+  test('new analysis button resets view', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('buttons'));
+    await page.click('#newAnalysisBtn');
+    await expect(page.locator('#inputSection')).toBeVisible();
+    await expect(page.locator('#reportContainer')).not.toHaveClass(/visible/);
+  });
+
+  test('dark mode toggle works', async ({ page }) => {
+    await page.goto(ANALYZER_URL);
+    const hasDarkBefore = await page.locator('body').evaluate(el => el.classList.contains('dark-ui'));
+    await page.click('#darkBtn');
+    const hasDarkAfter = await page.locator('body').evaluate(el => el.classList.contains('dark-ui'));
+    expect(hasDarkBefore).not.toBe(hasDarkAfter);
+  });
+
+  test('help modal opens and closes', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('buttons'));
+    await page.click('#helpBtn');
+    await expect(page.locator('#helpModal')).toBeVisible();
+    // Close via X button
+    await page.locator('#helpModal button[aria-label="Close"]').click();
+    await expect(page.locator('#helpModal')).toBeHidden();
+  });
+
+  test('ephemeral banner visible after analysis', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('buttons'));
+    await expect(page.locator('#ephemeralBanner')).toBeVisible();
+    await expect(page.locator('#ephemeralBanner')).toContainText('temporary');
+  });
+});
+
+// ── Multiple Presets ──
+
+test.describe('Preset Scoring', () => {
+  const presets = ['hero', 'cards', 'stats-row', 'pricing', 'feature-grid'];
+
+  for (const preset of presets) {
+    test(`${preset} produces valid analysis`, async ({ page }) => {
+      await analyzeHtml(page, loadPreset(preset));
+      const score = await getScore(page);
+      expect(score).toBeGreaterThanOrEqual(0);
+      expect(score).toBeLessThanOrEqual(100);
+      const findings = await page.locator('.finding-header').count();
+      expect(findings).toBeGreaterThan(0);
+    });
+  }
+});
 </file>
 
 <file path="tests/README.md">
@@ -30536,6 +30607,31 @@ Each test case has:
 Use these to calibrate your output quality and verify the flow works.
 </file>
 
+<file path="playwright.config.js">
+// @ts-check
+const { defineConfig } = require('@playwright/test');
+
+module.exports = defineConfig({
+  testDir: './tests',
+  timeout: 60000,
+  retries: 0,
+  use: {
+    headless: true,
+    viewport: { width: 1280, height: 900 },
+  },
+  projects: [
+    { name: 'chromium', use: { browserName: 'chromium' } },
+  ],
+  webServer: {
+    command: 'npx serve docs -l 8384 --no-clipboard',
+    port: 8384,
+    reuseExistingServer: true,
+    timeout: 10000,
+  },
+  workers: 1,
+});
+</file>
+
 <file path="README.md">
 # make-it-look-good
 
@@ -30916,6 +31012,114 @@ Sources: [research/sources.md](research/sources.md)
   }
 
   S.register("balance", scoreBalance, 3, "Visual Balance", "consistency");
+})();
+</file>
+
+<file path="docs/analyzer-queue.js">
+// make-it-look-good — Background Computation Queue v1.1
+// Async work queue with priority promotion. Items run one at a time,
+// yielding to the event loop between items so the UI stays responsive.
+// Clicking a viewport/page tab promotes that item to front of queue.
+
+window.MilgQueue = (function() {
+  "use strict";
+
+  var _items = [];     // { id, priority, fn, onComplete, status }
+  var _running = null; // currently executing item
+  var _paused = false;
+
+  // Add an item to the queue.
+  // fn(callback): the work function. Must call callback(result) when done.
+  // onComplete(result): called after fn finishes.
+  // Returns the item (for later promote/cancel).
+  function enqueue(id, fn, onComplete, priority) {
+    // Dedup: if an item with same id is already queued or running, skip
+    if (_running && _running.id === id) return _running;
+    for (var i = 0; i < _items.length; i++) {
+      if (_items[i].id === id) return _items[i];
+    }
+    var item = { id: id, priority: priority || 0, fn: fn, onComplete: onComplete || null, status: 'queued' };
+    _items.push(item);
+    _items.sort(function(a, b) { return b.priority - a.priority; });
+    _scheduleNext();
+    return item;
+  }
+
+  // Promote an item to highest priority (front of queue).
+  // If an item with this id is currently running, no-op (already active).
+  function promote(id) {
+    if (_running && _running.id === id) return; // already running
+    for (var i = 0; i < _items.length; i++) {
+      if (_items[i].id === id) {
+        var maxPri = _items.length > 0 ? _items[0].priority : 0;
+        _items[i].priority = maxPri + 1;
+        _items.sort(function(a, b) { return b.priority - a.priority; });
+        return;
+      }
+    }
+  }
+
+  // Check if an item is done (result cached)
+  function isDone(id) {
+    // Not in queue and not running = either done or never queued
+    if (_running && _running.id === id) return false;
+    for (var i = 0; i < _items.length; i++) {
+      if (_items[i].id === id) return false;
+    }
+    return true; // not found = already completed or never queued
+  }
+
+  // Cancel all items and reset
+  function clear() {
+    _items = [];
+    _running = null;
+    _paused = false;
+  }
+
+  // Pause processing (current item finishes, next doesn't start)
+  function pause() { _paused = true; }
+  function resume() { _paused = false; _scheduleNext(); }
+
+  function _scheduleNext() {
+    if (_running || _paused || _items.length === 0) return;
+    setTimeout(_processNext, 0);
+  }
+
+  function _processNext() {
+    if (_running || _paused || _items.length === 0) return;
+    _running = _items.shift();
+    _running.status = 'running';
+    try {
+      _running.fn(function(result) {
+        var completed = _running;
+        _running = null;
+        completed.status = 'done';
+        if (completed.onComplete) {
+          try { completed.onComplete(result); } catch(e) { console.warn('[milg-queue] onComplete error:', e); }
+        }
+        // Yield then process next
+        setTimeout(_processNext, 0);
+      });
+    } catch(e) {
+      console.warn('[milg-queue] fn error:', e);
+      _running = null;
+      setTimeout(_processNext, 0);
+    }
+  }
+
+  function pending() { return _items.length + (_running ? 1 : 0); }
+  function currentId() { return _running ? _running.id : null; }
+
+  return {
+    enqueue: enqueue,
+    promote: promote,
+    isDone: isDone,
+    clear: clear,
+    pause: pause,
+    resume: resume,
+    pending: pending,
+    currentId: currentId
+  };
 })();
 </file>
 
@@ -40256,7 +40460,7 @@ window.MilgIframe = (function() {
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v1.2 loaded');
+console.log('[milg] analyzer.js v1.3 loaded');
 
 (function() {
   "use strict";
@@ -40552,7 +40756,7 @@ console.log('[milg] analyzer.js v1.2 loaded');
     var history = getHistory();
     if (history.length === 0) return '';
     var html = '<div class="history-section">';
-    html += '<h3 style="font-size:14px;font-weight:600;margin-bottom:8px">Recent Analyses <span style="font-size:11px;color:var(--text-secondary);font-weight:400">(max ' + HISTORY_MAX + ', stored locally)</span></h3>';
+    html += '<h3 style="font-size:14px;font-weight:600;margin-bottom:8px">Recent Analyses</h3>';
     history.forEach(function(entry, idx) {
       var date = new Date(entry.timestamp);
       var dateStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -40573,7 +40777,7 @@ console.log('[milg] analyzer.js v1.2 loaded');
       html += '<button class="history-delete" onclick="event.stopPropagation();window.__milgDeleteHistory(' + idx + ')" title="Remove from history">&times;</button>';
       html += '</div>';
     });
-    html += '<p style="font-size:11px;color:var(--text-secondary);margin-top:6px">Oldest removed after ' + HISTORY_MAX + ' scans. Export JSON to keep permanently.</p>';
+    html += '<p style="font-size:11px;color:var(--text-secondary);margin-top:6px">Score and settings only &mdash; export JSON to keep the full analysis.</p>';
     html += '</div>';
     return html;
   }
@@ -41935,7 +42139,7 @@ console.log('[milg] analyzer.js v1.2 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v1.2</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v1.3</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -42186,8 +42390,8 @@ console.log('[milg] analyzer.js v1.2 loaded');
         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--text-secondary);margin-bottom:12px">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
         </svg>
-        <p style="font-size:14px;font-weight:600;margin-bottom:4px">Re-open a saved analysis</p>
-        <p style="font-size:12px;color:var(--text-secondary)">Drop or click to load a JSON file you previously exported via the Export &amp; Share bar</p>
+        <p style="font-size:14px;font-weight:600;margin-bottom:4px">Load a saved analysis</p>
+        <p style="font-size:12px;color:var(--text-secondary)">Drop a <code>.json</code> file here or click to browse. Supports single-page and crawl exports.</p>
         <input type="file" id="importDropFile" accept=".json" style="display:none">
       </div>
     </div>
@@ -42377,31 +42581,31 @@ console.log('[milg] analyzer.js v1.2 loaded');
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=1.2"></script>
-  <script src="scoring/contrast.js?v=1.2"></script>
-  <script src="scoring/typography.js?v=1.2"></script>
-  <script src="scoring/spacing.js?v=1.2"></script>
-  <script src="scoring/touch.js?v=1.2"></script>
-  <script src="scoring/accessibility.js?v=1.2"></script>
-  <script src="scoring/responsive.js?v=1.2"></script>
-  <script src="scoring/consistency.js?v=1.2"></script>
-  <script src="scoring/cognitive.js?v=1.2"></script>
-  <script src="scoring/layout.js?v=1.2"></script>
-  <script src="scoring/performance.js?v=1.2"></script>
-  <script src="scoring/readability.js?v=1.2"></script>
-  <script src="scoring/filters.js?v=1.2"></script>
-  <script src="scoring/balance.js?v=1.2"></script>
+  <script src="scoring/registry.js?v=1.3"></script>
+  <script src="scoring/contrast.js?v=1.3"></script>
+  <script src="scoring/typography.js?v=1.3"></script>
+  <script src="scoring/spacing.js?v=1.3"></script>
+  <script src="scoring/touch.js?v=1.3"></script>
+  <script src="scoring/accessibility.js?v=1.3"></script>
+  <script src="scoring/responsive.js?v=1.3"></script>
+  <script src="scoring/consistency.js?v=1.3"></script>
+  <script src="scoring/cognitive.js?v=1.3"></script>
+  <script src="scoring/layout.js?v=1.3"></script>
+  <script src="scoring/performance.js?v=1.3"></script>
+  <script src="scoring/readability.js?v=1.3"></script>
+  <script src="scoring/filters.js?v=1.3"></script>
+  <script src="scoring/balance.js?v=1.3"></script>
   <!-- Queue + Report rendering + UI -->
-  <script src="analyzer-queue.js?v=1.2"></script>
-  <script src="analyzer-report.js?v=1.2"></script>
-  <script src="analyzer-crawl.js?v=1.2"></script>
-  <script src="analyzer-extract.js?v=1.2"></script>
-  <script src="analyzer-iframe.js?v=1.2"></script>
-  <script src="analyzer-proxy.js?v=1.2"></script>
-  <script src="analyzer-crawl-ui.js?v=1.2"></script>
-  <script src="analyzer-contrast-verify.js?v=1.2"></script>
-  <script src="analyzer-viewer.js?v=1.2"></script>
-  <script src="analyzer.js?v=1.2"></script>
+  <script src="analyzer-queue.js?v=1.3"></script>
+  <script src="analyzer-report.js?v=1.3"></script>
+  <script src="analyzer-crawl.js?v=1.3"></script>
+  <script src="analyzer-extract.js?v=1.3"></script>
+  <script src="analyzer-iframe.js?v=1.3"></script>
+  <script src="analyzer-proxy.js?v=1.3"></script>
+  <script src="analyzer-crawl-ui.js?v=1.3"></script>
+  <script src="analyzer-contrast-verify.js?v=1.3"></script>
+  <script src="analyzer-viewer.js?v=1.3"></script>
+  <script src="analyzer.js?v=1.3"></script>
 </body>
 </html>
 </file>

@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v1.2 loaded');
+console.log('[milg] analyzer.js v1.3 loaded');
 
 (function() {
   "use strict";
@@ -298,7 +298,7 @@ console.log('[milg] analyzer.js v1.2 loaded');
     var history = getHistory();
     if (history.length === 0) return '';
     var html = '<div class="history-section">';
-    html += '<h3 style="font-size:14px;font-weight:600;margin-bottom:8px">Recent Analyses <span style="font-size:11px;color:var(--text-secondary);font-weight:400">(max ' + HISTORY_MAX + ', stored locally)</span></h3>';
+    html += '<h3 style="font-size:14px;font-weight:600;margin-bottom:8px">Recent Analyses</h3>';
     history.forEach(function(entry, idx) {
       var date = new Date(entry.timestamp);
       var dateStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -319,7 +319,7 @@ console.log('[milg] analyzer.js v1.2 loaded');
       html += '<button class="history-delete" onclick="event.stopPropagation();window.__milgDeleteHistory(' + idx + ')" title="Remove from history">&times;</button>';
       html += '</div>';
     });
-    html += '<p style="font-size:11px;color:var(--text-secondary);margin-top:6px">Oldest removed after ' + HISTORY_MAX + ' scans. Export JSON to keep permanently.</p>';
+    html += '<p style="font-size:11px;color:var(--text-secondary);margin-top:6px">Score and settings only &mdash; export JSON to keep the full analysis.</p>';
     html += '</div>';
     return html;
   }
