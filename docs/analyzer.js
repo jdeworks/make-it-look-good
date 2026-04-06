@@ -2,10 +2,13 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v1.6 loaded');
+console.log('[milg] analyzer.js v1.7 loaded');
 
 (function() {
   "use strict";
+
+  var MILG_EXPORT_VERSION = '1.6';
+  window.MILG_EXPORT_VERSION = MILG_EXPORT_VERSION;
 
   // --- Configuration ---
   // Self-hosted CORS proxy (Cloudflare Worker).
@@ -1417,15 +1420,24 @@ console.log('[milg] analyzer.js v1.6 loaded');
     var _exportJsonBtn = document.getElementById('exportJsonBtn');
     // Shared: build export data object (breaks circular refs, keeps all content)
     function _buildExportData() {
-      var _replacer = function(k, v) { return (k === 'deepScan' || k === '_cachedReportData' || k === '_vpCacheIdx') ? undefined : v; };
+      // Only strip circular refs, transient state, and non-serializable objects — keep all pixel/bbox/mask data
+      var _replacer = function(k, v) { return (k === 'deepScan' || k === '_cachedReportData' || k === '_vpCacheIdx' || k === '_maskBmp' || k === '_debug') ? undefined : v; };
       var exportData;
       if (typeof structuredClone === 'function') {
         var _tmpDs = lastRawData.deepScan, _tmpCached = lastRawData._cachedReportData;
         if (_tmpDs) lastRawData.deepScan = undefined;
         if (_tmpCached) lastRawData._cachedReportData = undefined;
+        // Strip _maskBmp (ImageBitmap — not cloneable) from contrast pairs
+        var _tmpMaskBmps = [];
+        if (lastRawData.colors && lastRawData.colors.contrastPairs) {
+          lastRawData.colors.contrastPairs.forEach(function(p, i) {
+            if (p._maskBmp) { _tmpMaskBmps.push({ i: i, v: p._maskBmp }); p._maskBmp = undefined; }
+          });
+        }
         exportData = structuredClone(lastRawData);
         if (_tmpDs) lastRawData.deepScan = _tmpDs;
         if (_tmpCached) lastRawData._cachedReportData = _tmpCached;
+        _tmpMaskBmps.forEach(function(m) { lastRawData.colors.contrastPairs[m.i]._maskBmp = m.v; });
       } else {
         exportData = JSON.parse(JSON.stringify(lastRawData, _replacer));
       }
@@ -1453,6 +1465,7 @@ console.log('[milg] analyzer.js v1.6 loaded');
       if (reportData && reportData._bboxEdgeResults) {
         exportData._bboxEdgeResults = reportData._bboxEdgeResults;
       }
+      exportData._milgVersion = MILG_EXPORT_VERSION;
       return exportData;
     }
 
@@ -1507,6 +1520,13 @@ console.log('[milg] analyzer.js v1.6 loaded');
     // Import JSON — load a previously exported analysis (report action bar + drop zone)
     var importFileInput = document.getElementById('importJsonFile');
     function _processImportedData(data) {
+      // Version compatibility check
+      var importVersion = data._milgVersion || null;
+      if (!importVersion) {
+        showToast('Warning: This export has no version tag — it may be from an older analyzer version. Some features (pixel verify, viewport data) may not display correctly.');
+      } else if (importVersion !== MILG_EXPORT_VERSION) {
+        showToast('Note: This export is from v' + importVersion + ' (current: v' + MILG_EXPORT_VERSION + '). Results may differ slightly due to scoring changes.');
+      }
       if (data._milgCrawl && data.results) {
         MilgCrawlUI.loadCrawlResults(data, 'imported file');
         return;

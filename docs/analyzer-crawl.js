@@ -541,10 +541,12 @@ window.MilgCrawl = (function() {
 
   function renderCrawlJSON(session, severityFilter) {
     // Break circular refs and strip debug data — keep screenshots, masks, verify for full export
-    var _skipKeys = { deepScan: 1, _cachedReportData: 1, _vpCacheIdx: 1, _maskBmp: 1, _debug: 1, samplePoints: 1 };
+    // Only strip non-serializable objects and transient state — keep all pixel/bbox/mask data
+    var _skipKeys = { deepScan: 1, _cachedReportData: 1, _vpCacheIdx: 1, _maskBmp: 1, _debug: 1 };
     var _replacer = function(k, v) { return _skipKeys[k] ? undefined : v; };
     var out = {
       _milgCrawl: true,
+      _milgVersion: window.MILG_EXPORT_VERSION || '1.6',
       startUrl: session.startUrl,
       startedAt: session.startedAt,
       options: session.options,
