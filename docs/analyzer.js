@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v55.8 loaded');
+console.log('[milg] analyzer.js v55.9 loaded');
 
 (function() {
   "use strict";
@@ -28,6 +28,7 @@ console.log('[milg] analyzer.js v55.8 loaded');
   var _originalRawData = null;
   var _activeViewportIdx = 0;
   var _verifyInProgress = false; // guard against concurrent verify runs
+  var _verifyGeneration = 0; // incremented each runAnalysis to invalidate stale verify callbacks
 
   // --- Utility functions (shared with modules) ---
   function applyDarkMode() {
@@ -699,6 +700,8 @@ console.log('[milg] analyzer.js v55.8 loaded');
 
   // --- Core analysis runner ---
   function runAnalysis(data, skipExclusionDetection) {
+    _verifyGeneration++;
+    _verifyInProgress = false; // cancel any in-flight verify from previous analysis
     lastRawData = data;
     if (!_originalRawData || (!skipExclusionDetection && skipExclusionDetection !== 'viewport')) { _originalRawData = data; _viewportCache = {}; }
     // Analysis data saved/restored via Export JSON + Import — no sessionStorage (too large with screenshots/fonts)
@@ -896,13 +899,23 @@ console.log('[milg] analyzer.js v55.8 loaded');
       var _verifyData = data;
       var _verifyReportData = reportData;
       var _verifyContainer = reportContainer;
+      var _verifyGen = _verifyGeneration;
       requestAnimationFrame(function() { setTimeout(function() {
+        // Bail if a newer runAnalysis has started since we queued this verify
+        if (_verifyGen !== _verifyGeneration) return;
         MilgContrastVerify.verify(_verifyReportData, function(results, bboxEdgeResults) {
           _verifyInProgress = false;
+          // Always cache results on the data object (even if stale — saves re-computation)
+          _verifyData._contrastVerifyResults = results || [];
+          _verifyData._bboxEdgeResults = bboxEdgeResults || [];
+          _verifyReportData._contrastVerifyResults = results || [];
+          _verifyReportData._bboxEdgeResults = bboxEdgeResults || [];
           console.log('[milg] Pixel verify complete:', results.length, 'results,', (bboxEdgeResults || []).length, 'edge results');
-          // Remove spinner
+          // Remove spinner regardless
           var spinner = document.getElementById('milg-verify-spinner');
           if (spinner) spinner.parentNode.removeChild(spinner);
+          // Only inject into DOM if this is still the active analysis
+          if (_verifyGen !== _verifyGeneration) return;
           if (results.length === 0 && (!bboxEdgeResults || bboxEdgeResults.length === 0)) return;
           var summary = MilgContrastVerify.buildSummary(results, bboxEdgeResults);
           var summaryHtml = MilgContrastVerify.renderSummaryHtml(summary);
@@ -912,11 +925,6 @@ console.log('[milg] analyzer.js v55.8 loaded');
           div.innerHTML = summaryHtml;
           if (screenshotDetails) screenshotDetails.parentNode.insertBefore(div, screenshotDetails.nextSibling);
           else _verifyContainer.insertBefore(div, _verifyContainer.firstChild);
-          _verifyReportData._contrastVerifyResults = results;
-          _verifyReportData._bboxEdgeResults = bboxEdgeResults || [];
-          // Cache on raw data so viewport/crawl tab switches reuse results
-          _verifyData._contrastVerifyResults = results;
-          _verifyData._bboxEdgeResults = bboxEdgeResults || [];
           // Update viewport cache if this was a viewport switch
           if (_verifyData._vpCacheIdx !== undefined) {
             _viewportCache[_verifyData._vpCacheIdx] = {

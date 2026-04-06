@@ -198,8 +198,12 @@ window.MilgCrawlUI = (function() {
     function _verifyNext() {
       if (qi >= pagesToVerify.length) return;
       var page = pagesToVerify[qi]; qi++;
+      // Skip if already verified (another path may have completed it, e.g. user clicked the page tab)
+      if (page.rawData._contrastVerifyResults) { doneCount++; _verifyNext(); return; }
       var report = page.reportData || MilgScoring.runScoring(page.rawData);
       MilgContrastVerify.verify(report, function(results, bboxEdgeResults) {
+        // Guard: don't overwrite if another verify path already cached results
+        if (page.rawData._contrastVerifyResults) { doneCount++; setTimeout(_verifyNext, 50); return; }
         page.rawData._contrastVerifyResults = results;
         page.rawData._bboxEdgeResults = bboxEdgeResults || [];
         doneCount++;
