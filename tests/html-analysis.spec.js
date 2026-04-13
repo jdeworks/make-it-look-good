@@ -202,6 +202,12 @@ test.describe('Screenshot Pipeline', () => {
     expect(score).toBeGreaterThanOrEqual(0);
     expect(score).toBeLessThanOrEqual(100);
 
+    // Verify two-pass capture: clean + expanded screenshots
+    const cleanLog = consoleLogs.find(l => l.includes('Clean screenshot:'));
+    expect(cleanLog).toBeTruthy();
+    const expandedLog = consoleLogs.find(l => l.includes('Expanded screenshot:'));
+    expect(expandedLog).toBeTruthy();
+
     // Verify carousel expansion happened (searches descendants, not just children)
     const expandLog = consoleLogs.find(l => l.includes('Expanded') && l.includes('overflow:hidden') && l.includes('descendants'));
     expect(expandLog).toBeTruthy();

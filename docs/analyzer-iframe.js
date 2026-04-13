@@ -449,34 +449,7 @@ window.MilgIframe = (function() {
         // Switch to overflow:visible for capture
         'document.documentElement.style.cssText+="overflow:visible !important;";' +
         'document.body.style.cssText+="overflow:visible !important;";' +
-        // Expand overflow:hidden containers with transformed descendants (carousels/sliders)
-        'var _expanded=0;' +
-        'document.querySelectorAll("*").forEach(function(container){' +
-          'var cs=getComputedStyle(container);' +
-          'var ov=cs.overflow||"";var ovx=cs.overflowX||"";var ovy=cs.overflowY||"";' +
-          'var isClipping=ov==="hidden"||ov==="clip"||ovx==="hidden"||ovx==="clip"||ovy==="hidden"||ovy==="clip";' +
-          'if(!isClipping)return;' +
-          'var cr=container.getBoundingClientRect();' +
-          'if(cr.width<100||cr.height<30)return;' +
-          // Search ALL descendants for significant transforms (carousel track may be nested)
-          'var transEls=[];' +
-          'container.querySelectorAll("*").forEach(function(desc){' +
-            'var ct=getComputedStyle(desc).transform;' +
-            'if(!ct||ct==="none")return;' +
-            'var _m=ct.match(/matrix\\(([^)]+)\\)/);' +
-            'if(!_m)return;' +
-            'var _p=_m[1].split(",");' +
-            'var _tx=Math.abs(parseFloat(_p[4])||0);' +
-            'var _ty=Math.abs(parseFloat(_p[5])||0);' +
-            'if(_tx>5||_ty>5)transEls.push(desc)' +
-          '});' +
-          'if(transEls.length===0)return;' +
-          'container.style.cssText+=";overflow:visible !important;";' +
-          // Neutralize transforms on all translated descendants
-          'transEls.forEach(function(el){el.style.cssText+=";transform:none !important;"});' +
-          '_expanded++' +
-        '});' +
-        'if(_expanded>0)console.log("[iframe-ss] Expanded "+_expanded+" overflow:hidden containers with transformed descendants");' +
+        // Overflow expansion for carousels is deferred — happens AFTER clean screenshot capture
         'void document.body.offsetHeight;' +
         '_prog("Waiting for animations to settle...");' +
         'console.log("[iframe-ss] Phase 2: Waiting for animations to finalize...");' +
@@ -585,10 +558,74 @@ window.MilgIframe = (function() {
             '}' +
             // Preload images via proxy → data URI, then capture
             '_preloadImages(function(){_preloadBgImages(function(){' +
-            '_prog("Capturing screenshot...");' +
-            'console.log("[iframe-ss] Step 1/2: Capturing screenshot at "+_sc+"x...");' +
-            'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:45000}).then(function(fc){' +
-              'console.log("[iframe-ss] Screenshot: "+fc.width+"x"+fc.height);' +
+            // Phase A: Clean screenshot (page as-rendered, before overflow expansion)
+            '_prog("Capturing clean screenshot...");' +
+            'console.log("[iframe-ss] Capturing clean screenshot at "+_sc+"x...");' +
+            'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:45000}).then(function(_cleanCanvas){' +
+              'var _cleanUri;try{_cleanUri=_cleanCanvas.toDataURL("image/webp",' + ss.quality + ')}catch(e){_cleanUri=""}' +
+              'var _cleanW=_cleanCanvas.width,_cleanH=_cleanCanvas.height;' +
+              'console.log("[iframe-ss] Clean screenshot: "+_cleanW+"x"+_cleanH);' +
+              // Mark contrast pairs as clipped if inside overflow:hidden ancestor
+              'if(window.__milgBboxRefs&&window.__milgData&&window.__milgData.colors){' +
+                'var _cp=window.__milgData.colors.contrastPairs||[];' +
+                'window.__milgBboxRefs.forEach(function(ref){' +
+                  'if(!ref.el||!ref.obj||ref.key!=="bbox")return;' +
+                  'var el=ref.el;var pair=ref.obj;' +
+                  'var er=el.getBoundingClientRect();' +
+                  'var anc=el.parentElement;' +
+                  'while(anc&&anc!==document.documentElement){' +
+                    'var as=getComputedStyle(anc);' +
+                    'var aov=as.overflow||"";var aovx=as.overflowX||"";var aovy=as.overflowY||"";' +
+                    'if(aov==="hidden"||aov==="clip"||aovx==="hidden"||aovx==="clip"||aovy==="hidden"||aovy==="clip"){' +
+                      'var ar=anc.getBoundingClientRect();' +
+                      // Check if element bbox is outside the clipping ancestor's visible rect
+                      'if(er.right<ar.left+1||er.left>ar.right-1||er.bottom<ar.top+1||er.top>ar.bottom-1){' +
+                        'pair._isClipped=true;break' +
+                      '}' +
+                    '}' +
+                    'anc=anc.parentElement' +
+                  '}' +
+                '})' +
+              '}' +
+              // Phase B: Expand overflow:hidden containers with transformed descendants (carousels/sliders)
+              'var _expanded=0;' +
+              'document.querySelectorAll("*").forEach(function(container){' +
+                'var cs=getComputedStyle(container);' +
+                'var ov=cs.overflow||"";var ovx=cs.overflowX||"";var ovy=cs.overflowY||"";' +
+                'var isClipping=ov==="hidden"||ov==="clip"||ovx==="hidden"||ovx==="clip"||ovy==="hidden"||ovy==="clip";' +
+                'if(!isClipping)return;' +
+                'var cr=container.getBoundingClientRect();' +
+                'if(cr.width<100||cr.height<30)return;' +
+                'var transEls=[];' +
+                'container.querySelectorAll("*").forEach(function(desc){' +
+                  'var ct=getComputedStyle(desc).transform;' +
+                  'if(!ct||ct==="none")return;' +
+                  'var _m=ct.match(/matrix\\(([^)]+)\\)/);' +
+                  'if(!_m)return;' +
+                  'var _p=_m[1].split(",");' +
+                  'var _tx=Math.abs(parseFloat(_p[4])||0);' +
+                  'var _ty=Math.abs(parseFloat(_p[5])||0);' +
+                  'if(_tx>5||_ty>5)transEls.push(desc)' +
+                '});' +
+                'if(transEls.length===0)return;' +
+                'container.style.cssText+=";overflow:visible !important;";' +
+                'transEls.forEach(function(el){el.style.cssText+=";transform:none !important;"});' +
+                '_expanded++' +
+              '});' +
+              'if(_expanded>0)console.log("[iframe-ss] Expanded "+_expanded+" overflow:hidden containers with transformed descendants");' +
+              'void document.body.offsetHeight;' +
+              // Re-read bboxes after expansion so they match the expanded layout
+              'if(_expanded>0&&typeof window.__milgReReadBboxes==="function"){' +
+                'var _res2=window.__milgReReadBboxes();' +
+                'console.log("[iframe-ss] Re-read bboxes after expansion: "+_res2)' +
+              '}' +
+              // Recalculate doc height after expansion (may have grown)
+              'fullH=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);' +
+              // Phase C: Expanded screenshot (all carousel content visible, bboxes aligned)
+              '_prog("Capturing expanded screenshot...");' +
+              'console.log("[iframe-ss] Capturing expanded screenshot at "+_sc+"x...");' +
+              'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:45000}).then(function(fc){' +
+              'console.log("[iframe-ss] Expanded screenshot: "+fc.width+"x"+fc.height);' +
               'var fullUri;try{fullUri=fc.toDataURL("image/webp",' + ss.quality + ')}catch(e){console.warn("[milg-warn] WebP conversion failed:",e.message);fullUri=""}' +
               // Update send helper with actual canvas dimensions
               'var _cw=fc.width,_ch=fc.height;' +
@@ -615,11 +652,13 @@ window.MilgIframe = (function() {
                 'var msg={type:"' + msgType + '",_iframeId:_mid,' +
                   'screenshots:fullUri?[fullUri]:[],' +
                   'screenshotFull:fullUri||null,' +
+                  'screenshotClean:_cleanUri||null,' +
                   'textMask:maskUri||null,' +
                   'screenshotMeta:{scale:_sc,viewportHeight:vh,sectionCount:1,' +
                     'canvasWidth:_cw,canvasHeight:_ch,' +
                     'docHeightAtCapture:fullH,' +
                     'calibrationOffsetY:0,calibrationSamples:[]},' +
+                  'screenshotCleanMeta:{canvasWidth:_cleanW,canvasHeight:_cleanH},' +
                   'updatedData:updatedData};' +
                 'var _maskCount=updatedData&&updatedData.colors&&updatedData.colors.contrastPairs?updatedData.colors.contrastPairs.filter(function(p){return !!p._maskBmp}).length:0;' +
                 'console.log("[iframe-ss] postMessage: ss="+((fullUri||"").length/1024|0)+"KB ud="+(JSON.stringify(updatedData||{}).length/1024|0)+"KB masks="+_maskCount+"/"+((updatedData&&updatedData.colors&&updatedData.colors.contrastPairs||[]).length));' +
@@ -842,7 +881,8 @@ window.MilgIframe = (function() {
               '_sendFinal=function(m){if(_maskDone)return;_maskDone=true;clearTimeout(_maskTimer);console.log("[iframe-ss] Sending results (maskResults: "+Object.keys(_maskResults).length+" pairs)");_origSendFinal(m)};' +
               '_nextLayer()' +
             '})' + // end document.fonts.ready.then
-            '}).catch(function(e){console.warn("[iframe-ss] capture failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[],_iframeId:_mid},"*")})' +
+            '}).catch(function(e){console.warn("[iframe-ss] expanded capture failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[],_iframeId:_mid},"*")})' +
+            '}).catch(function(e){console.warn("[iframe-ss] clean capture failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[],_iframeId:_mid},"*")})' +
           '})})' + // close _preloadBgImages + _preloadImages callbacks
           '};' +
           's.onerror=function(){parent.postMessage({type:"' + msgType + '",screenshots:[],_iframeId:_mid},"*")};' +
@@ -949,6 +989,8 @@ window.MilgIframe = (function() {
       if (e.data.type === 'milg-screenshots-result' && iframe._milgData) {
         iframe._milgData.screenshots = e.data.screenshots || [];
         iframe._milgData.screenshotFull = e.data.screenshotFull || null;
+        iframe._milgData.screenshotClean = e.data.screenshotClean || null;
+        iframe._milgData.screenshotCleanMeta = e.data.screenshotCleanMeta || null;
         iframe._milgData.textMask = e.data.textMask || null;
         iframe._milgData.screenshotMeta = e.data.screenshotMeta || null;
         // Apply re-read bbox data from the iframe (updated after scroll-reset + getFlowPosition)

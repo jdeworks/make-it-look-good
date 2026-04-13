@@ -19,6 +19,7 @@ window.MilgViewer = (function() {
   var _zoomLevel = 1;
   var _stitchedCanvas = null;
   var _calibrationOffsetY = 0; // detected offset between DOM positions and canvas positions
+  var _showExpanded = false; // toggle between clean and expanded screenshot views
 
   // Severity colors: red / yellow / blue / green
   var COLORS = {
@@ -224,16 +225,21 @@ window.MilgViewer = (function() {
     }, { passive: false });
     content.addEventListener('touchend', function() { _dragStart = null; }, { passive: true });
 
-    // Use full-page screenshot if available (pixel-perfect, no section stitching)
-    // Fall back to stitching sections only when screenshotFull is missing
-    var fullPageSrc = (reportData.raw && reportData.raw.screenshotFull) || null;
+    // Screenshot sources: clean (page as-rendered) and expanded (overflow containers expanded)
+    var cleanSrc = (reportData.raw && reportData.raw.screenshotClean) || null;
+    var cleanMeta = (reportData.raw && reportData.raw.screenshotCleanMeta) || null;
+    var expandedSrc = (reportData.raw && reportData.raw.screenshotFull) || null;
+    // Determine which to show: prefer clean, fall back to expanded
+    var hasClean = !!cleanSrc && !!cleanMeta;
+    var hasExpanded = !!expandedSrc;
+    _showExpanded = false;
 
     function onImageReady(imgSrc, canvasW, canvasH) {
       frame.innerHTML = '';
       var viewImg = document.createElement('img');
       viewImg.className = 'milg-viewer-img';
       viewImg.src = imgSrc;
-      viewImg.alt = 'Full page screenshot';
+      viewImg.alt = _showExpanded ? 'Expanded screenshot (all content visible)' : 'Full page screenshot';
 
       // SVG viewBox = original canvas dimensions (matches dom * scale exactly)
       var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -261,17 +267,46 @@ window.MilgViewer = (function() {
       });
     }
 
-    if (fullPageSrc) {
-      // Direct full-page image — no stitching needed
-      _stitchedCanvas = { width: _meta.canvasWidth, height: _meta.canvasHeight };
-      onImageReady(fullPageSrc, _meta.canvasWidth, _meta.canvasHeight);
-    } else {
-      // Stitch sections as fallback
-      stitchScreenshots(_screenshots, function(stitched) {
-        _stitchedCanvas = stitched;
-        onImageReady(stitched.canvas.toDataURL('image/png'), stitched.width, stitched.height);
-      });
+    function showScreenshot(expanded) {
+      _showExpanded = expanded;
+      if (expanded && hasExpanded) {
+        _stitchedCanvas = { width: _meta.canvasWidth, height: _meta.canvasHeight };
+        onImageReady(expandedSrc, _meta.canvasWidth, _meta.canvasHeight);
+      } else if (!expanded && hasClean) {
+        _stitchedCanvas = { width: cleanMeta.canvasWidth, height: cleanMeta.canvasHeight };
+        onImageReady(cleanSrc, cleanMeta.canvasWidth, cleanMeta.canvasHeight);
+      } else if (expandedSrc) {
+        _stitchedCanvas = { width: _meta.canvasWidth, height: _meta.canvasHeight };
+        onImageReady(expandedSrc, _meta.canvasWidth, _meta.canvasHeight);
+      } else {
+        stitchScreenshots(_screenshots, function(stitched) {
+          _stitchedCanvas = stitched;
+          onImageReady(stitched.canvas.toDataURL('image/png'), stitched.width, stitched.height);
+        });
+      }
+      // Update toggle button state
+      var toggleBtn = _overlay && _overlay.querySelector('.milg-viewer-expand-toggle');
+      if (toggleBtn) {
+        toggleBtn.textContent = expanded ? 'Show clean' : 'Show expanded';
+        toggleBtn.title = expanded ? 'Show page as rendered (clean)' : 'Show all content including hidden carousel slides';
+      }
     }
+
+    // Add expand toggle button if both screenshots exist
+    if (hasClean && hasExpanded) {
+      var toggleBtn = document.createElement('button');
+      toggleBtn.className = 'milg-viewer-expand-toggle';
+      toggleBtn.textContent = 'Show expanded';
+      toggleBtn.title = 'Show all content including hidden carousel slides';
+      toggleBtn.style.cssText = 'position:absolute;top:8px;right:8px;z-index:10;padding:4px 10px;border-radius:4px;border:1px solid rgba(255,255,255,0.3);background:rgba(0,0,0,0.6);color:#fff;font-size:12px;cursor:pointer;';
+      toggleBtn.addEventListener('click', function() {
+        showScreenshot(!_showExpanded);
+      });
+      content.appendChild(toggleBtn);
+    }
+
+    // Initial display: prefer clean screenshot
+    showScreenshot(false);
   }
 
   // Build debug info with pixel probing for alignment diagnostics
@@ -407,6 +442,16 @@ window.MilgViewer = (function() {
     var scaleX = _meta.scale;
     var scaleY = _meta.scale;
 
+    // Build set of clipped bbox positions (for clean screenshot mode)
+    var _clippedBboxKeys = {};
+    if (!_showExpanded && _reportData && _reportData.raw && _reportData.raw.colors) {
+      (_reportData.raw.colors.contrastPairs || []).forEach(function(cp) {
+        if (cp._isClipped && cp.bbox) {
+          _clippedBboxKeys[Math.round(cp.bbox.left) + ',' + Math.round(cp.bbox.top) + ',' + Math.round(cp.bbox.width) + ',' + Math.round(cp.bbox.height)] = true;
+        }
+      });
+    }
+
     // Build pixel verification lookups: by selector AND by bbox position+size
     var verifyBySelector = {};
     var verifyByPos = {}; // "left,top,width,height" → verify result
@@ -428,6 +473,11 @@ window.MilgViewer = (function() {
       finding.bboxes.forEach(function(bbox, bbIdx) {
         // For single-bbox filter (magnifying glass), skip other bboxes in this finding
         if (_activeFilter.type === 'findingBbox' && bbIdx !== _activeFilter.bboxIdx) return;
+        // Skip clipped bboxes on clean screenshot (they're only visible in expanded view)
+        if (!_showExpanded && bbox) {
+          var _bk = Math.round(bbox.left) + ',' + Math.round(bbox.top) + ',' + Math.round(bbox.width) + ',' + Math.round(bbox.height);
+          if (_clippedBboxKeys[_bk]) return;
+        }
         var x = Math.round(bbox.left * scaleX);
         var y = Math.round(bbox.top * scaleY) - _calibrationOffsetY;
         var w = Math.round(bbox.width * scaleX);

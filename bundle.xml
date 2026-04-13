@@ -33516,6 +33516,12 @@ test.describe('Screenshot Pipeline', () => {
     expect(score).toBeGreaterThanOrEqual(0);
     expect(score).toBeLessThanOrEqual(100);
 
+    // Verify two-pass capture: clean + expanded screenshots
+    const cleanLog = consoleLogs.find(l => l.includes('Clean screenshot:'));
+    expect(cleanLog).toBeTruthy();
+    const expandedLog = consoleLogs.find(l => l.includes('Expanded screenshot:'));
+    expect(expandedLog).toBeTruthy();
+
     // Verify carousel expansion happened (searches descendants, not just children)
     const expandLog = consoleLogs.find(l => l.includes('Expanded') && l.includes('overflow:hidden') && l.includes('descendants'));
     expect(expandLog).toBeTruthy();
@@ -33967,6 +33973,7 @@ window.MilgViewer = (function() {
   var _zoomLevel = 1;
   var _stitchedCanvas = null;
   var _calibrationOffsetY = 0; // detected offset between DOM positions and canvas positions
+  var _showExpanded = false; // toggle between clean and expanded screenshot views
 
   // Severity colors: red / yellow / blue / green
   var COLORS = {
@@ -34172,16 +34179,21 @@ window.MilgViewer = (function() {
     }, { passive: false });
     content.addEventListener('touchend', function() { _dragStart = null; }, { passive: true });
 
-    // Use full-page screenshot if available (pixel-perfect, no section stitching)
-    // Fall back to stitching sections only when screenshotFull is missing
-    var fullPageSrc = (reportData.raw && reportData.raw.screenshotFull) || null;
+    // Screenshot sources: clean (page as-rendered) and expanded (overflow containers expanded)
+    var cleanSrc = (reportData.raw && reportData.raw.screenshotClean) || null;
+    var cleanMeta = (reportData.raw && reportData.raw.screenshotCleanMeta) || null;
+    var expandedSrc = (reportData.raw && reportData.raw.screenshotFull) || null;
+    // Determine which to show: prefer clean, fall back to expanded
+    var hasClean = !!cleanSrc && !!cleanMeta;
+    var hasExpanded = !!expandedSrc;
+    _showExpanded = false;
 
     function onImageReady(imgSrc, canvasW, canvasH) {
       frame.innerHTML = '';
       var viewImg = document.createElement('img');
       viewImg.className = 'milg-viewer-img';
       viewImg.src = imgSrc;
-      viewImg.alt = 'Full page screenshot';
+      viewImg.alt = _showExpanded ? 'Expanded screenshot (all content visible)' : 'Full page screenshot';
 
       // SVG viewBox = original canvas dimensions (matches dom * scale exactly)
       var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -34209,17 +34221,46 @@ window.MilgViewer = (function() {
       });
     }
 
-    if (fullPageSrc) {
-      // Direct full-page image — no stitching needed
-      _stitchedCanvas = { width: _meta.canvasWidth, height: _meta.canvasHeight };
-      onImageReady(fullPageSrc, _meta.canvasWidth, _meta.canvasHeight);
-    } else {
-      // Stitch sections as fallback
-      stitchScreenshots(_screenshots, function(stitched) {
-        _stitchedCanvas = stitched;
-        onImageReady(stitched.canvas.toDataURL('image/png'), stitched.width, stitched.height);
-      });
+    function showScreenshot(expanded) {
+      _showExpanded = expanded;
+      if (expanded && hasExpanded) {
+        _stitchedCanvas = { width: _meta.canvasWidth, height: _meta.canvasHeight };
+        onImageReady(expandedSrc, _meta.canvasWidth, _meta.canvasHeight);
+      } else if (!expanded && hasClean) {
+        _stitchedCanvas = { width: cleanMeta.canvasWidth, height: cleanMeta.canvasHeight };
+        onImageReady(cleanSrc, cleanMeta.canvasWidth, cleanMeta.canvasHeight);
+      } else if (expandedSrc) {
+        _stitchedCanvas = { width: _meta.canvasWidth, height: _meta.canvasHeight };
+        onImageReady(expandedSrc, _meta.canvasWidth, _meta.canvasHeight);
+      } else {
+        stitchScreenshots(_screenshots, function(stitched) {
+          _stitchedCanvas = stitched;
+          onImageReady(stitched.canvas.toDataURL('image/png'), stitched.width, stitched.height);
+        });
+      }
+      // Update toggle button state
+      var toggleBtn = _overlay && _overlay.querySelector('.milg-viewer-expand-toggle');
+      if (toggleBtn) {
+        toggleBtn.textContent = expanded ? 'Show clean' : 'Show expanded';
+        toggleBtn.title = expanded ? 'Show page as rendered (clean)' : 'Show all content including hidden carousel slides';
+      }
     }
+
+    // Add expand toggle button if both screenshots exist
+    if (hasClean && hasExpanded) {
+      var toggleBtn = document.createElement('button');
+      toggleBtn.className = 'milg-viewer-expand-toggle';
+      toggleBtn.textContent = 'Show expanded';
+      toggleBtn.title = 'Show all content including hidden carousel slides';
+      toggleBtn.style.cssText = 'position:absolute;top:8px;right:8px;z-index:10;padding:4px 10px;border-radius:4px;border:1px solid rgba(255,255,255,0.3);background:rgba(0,0,0,0.6);color:#fff;font-size:12px;cursor:pointer;';
+      toggleBtn.addEventListener('click', function() {
+        showScreenshot(!_showExpanded);
+      });
+      content.appendChild(toggleBtn);
+    }
+
+    // Initial display: prefer clean screenshot
+    showScreenshot(false);
   }
 
   // Build debug info with pixel probing for alignment diagnostics
@@ -34355,6 +34396,16 @@ window.MilgViewer = (function() {
     var scaleX = _meta.scale;
     var scaleY = _meta.scale;
 
+    // Build set of clipped bbox positions (for clean screenshot mode)
+    var _clippedBboxKeys = {};
+    if (!_showExpanded && _reportData && _reportData.raw && _reportData.raw.colors) {
+      (_reportData.raw.colors.contrastPairs || []).forEach(function(cp) {
+        if (cp._isClipped && cp.bbox) {
+          _clippedBboxKeys[Math.round(cp.bbox.left) + ',' + Math.round(cp.bbox.top) + ',' + Math.round(cp.bbox.width) + ',' + Math.round(cp.bbox.height)] = true;
+        }
+      });
+    }
+
     // Build pixel verification lookups: by selector AND by bbox position+size
     var verifyBySelector = {};
     var verifyByPos = {}; // "left,top,width,height" → verify result
@@ -34376,6 +34427,11 @@ window.MilgViewer = (function() {
       finding.bboxes.forEach(function(bbox, bbIdx) {
         // For single-bbox filter (magnifying glass), skip other bboxes in this finding
         if (_activeFilter.type === 'findingBbox' && bbIdx !== _activeFilter.bboxIdx) return;
+        // Skip clipped bboxes on clean screenshot (they're only visible in expanded view)
+        if (!_showExpanded && bbox) {
+          var _bk = Math.round(bbox.left) + ',' + Math.round(bbox.top) + ',' + Math.round(bbox.width) + ',' + Math.round(bbox.height);
+          if (_clippedBboxKeys[_bk]) return;
+        }
         var x = Math.round(bbox.left * scaleX);
         var y = Math.round(bbox.top * scaleY) - _calibrationOffsetY;
         var w = Math.round(bbox.width * scaleX);
@@ -40220,34 +40276,7 @@ window.MilgIframe = (function() {
         // Switch to overflow:visible for capture
         'document.documentElement.style.cssText+="overflow:visible !important;";' +
         'document.body.style.cssText+="overflow:visible !important;";' +
-        // Expand overflow:hidden containers with transformed descendants (carousels/sliders)
-        'var _expanded=0;' +
-        'document.querySelectorAll("*").forEach(function(container){' +
-          'var cs=getComputedStyle(container);' +
-          'var ov=cs.overflow||"";var ovx=cs.overflowX||"";var ovy=cs.overflowY||"";' +
-          'var isClipping=ov==="hidden"||ov==="clip"||ovx==="hidden"||ovx==="clip"||ovy==="hidden"||ovy==="clip";' +
-          'if(!isClipping)return;' +
-          'var cr=container.getBoundingClientRect();' +
-          'if(cr.width<100||cr.height<30)return;' +
-          // Search ALL descendants for significant transforms (carousel track may be nested)
-          'var transEls=[];' +
-          'container.querySelectorAll("*").forEach(function(desc){' +
-            'var ct=getComputedStyle(desc).transform;' +
-            'if(!ct||ct==="none")return;' +
-            'var _m=ct.match(/matrix\\(([^)]+)\\)/);' +
-            'if(!_m)return;' +
-            'var _p=_m[1].split(",");' +
-            'var _tx=Math.abs(parseFloat(_p[4])||0);' +
-            'var _ty=Math.abs(parseFloat(_p[5])||0);' +
-            'if(_tx>5||_ty>5)transEls.push(desc)' +
-          '});' +
-          'if(transEls.length===0)return;' +
-          'container.style.cssText+=";overflow:visible !important;";' +
-          // Neutralize transforms on all translated descendants
-          'transEls.forEach(function(el){el.style.cssText+=";transform:none !important;"});' +
-          '_expanded++' +
-        '});' +
-        'if(_expanded>0)console.log("[iframe-ss] Expanded "+_expanded+" overflow:hidden containers with transformed descendants");' +
+        // Overflow expansion for carousels is deferred — happens AFTER clean screenshot capture
         'void document.body.offsetHeight;' +
         '_prog("Waiting for animations to settle...");' +
         'console.log("[iframe-ss] Phase 2: Waiting for animations to finalize...");' +
@@ -40356,10 +40385,74 @@ window.MilgIframe = (function() {
             '}' +
             // Preload images via proxy → data URI, then capture
             '_preloadImages(function(){_preloadBgImages(function(){' +
-            '_prog("Capturing screenshot...");' +
-            'console.log("[iframe-ss] Step 1/2: Capturing screenshot at "+_sc+"x...");' +
-            'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:45000}).then(function(fc){' +
-              'console.log("[iframe-ss] Screenshot: "+fc.width+"x"+fc.height);' +
+            // Phase A: Clean screenshot (page as-rendered, before overflow expansion)
+            '_prog("Capturing clean screenshot...");' +
+            'console.log("[iframe-ss] Capturing clean screenshot at "+_sc+"x...");' +
+            'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:45000}).then(function(_cleanCanvas){' +
+              'var _cleanUri;try{_cleanUri=_cleanCanvas.toDataURL("image/webp",' + ss.quality + ')}catch(e){_cleanUri=""}' +
+              'var _cleanW=_cleanCanvas.width,_cleanH=_cleanCanvas.height;' +
+              'console.log("[iframe-ss] Clean screenshot: "+_cleanW+"x"+_cleanH);' +
+              // Mark contrast pairs as clipped if inside overflow:hidden ancestor
+              'if(window.__milgBboxRefs&&window.__milgData&&window.__milgData.colors){' +
+                'var _cp=window.__milgData.colors.contrastPairs||[];' +
+                'window.__milgBboxRefs.forEach(function(ref){' +
+                  'if(!ref.el||!ref.obj||ref.key!=="bbox")return;' +
+                  'var el=ref.el;var pair=ref.obj;' +
+                  'var er=el.getBoundingClientRect();' +
+                  'var anc=el.parentElement;' +
+                  'while(anc&&anc!==document.documentElement){' +
+                    'var as=getComputedStyle(anc);' +
+                    'var aov=as.overflow||"";var aovx=as.overflowX||"";var aovy=as.overflowY||"";' +
+                    'if(aov==="hidden"||aov==="clip"||aovx==="hidden"||aovx==="clip"||aovy==="hidden"||aovy==="clip"){' +
+                      'var ar=anc.getBoundingClientRect();' +
+                      // Check if element bbox is outside the clipping ancestor's visible rect
+                      'if(er.right<ar.left+1||er.left>ar.right-1||er.bottom<ar.top+1||er.top>ar.bottom-1){' +
+                        'pair._isClipped=true;break' +
+                      '}' +
+                    '}' +
+                    'anc=anc.parentElement' +
+                  '}' +
+                '})' +
+              '}' +
+              // Phase B: Expand overflow:hidden containers with transformed descendants (carousels/sliders)
+              'var _expanded=0;' +
+              'document.querySelectorAll("*").forEach(function(container){' +
+                'var cs=getComputedStyle(container);' +
+                'var ov=cs.overflow||"";var ovx=cs.overflowX||"";var ovy=cs.overflowY||"";' +
+                'var isClipping=ov==="hidden"||ov==="clip"||ovx==="hidden"||ovx==="clip"||ovy==="hidden"||ovy==="clip";' +
+                'if(!isClipping)return;' +
+                'var cr=container.getBoundingClientRect();' +
+                'if(cr.width<100||cr.height<30)return;' +
+                'var transEls=[];' +
+                'container.querySelectorAll("*").forEach(function(desc){' +
+                  'var ct=getComputedStyle(desc).transform;' +
+                  'if(!ct||ct==="none")return;' +
+                  'var _m=ct.match(/matrix\\(([^)]+)\\)/);' +
+                  'if(!_m)return;' +
+                  'var _p=_m[1].split(",");' +
+                  'var _tx=Math.abs(parseFloat(_p[4])||0);' +
+                  'var _ty=Math.abs(parseFloat(_p[5])||0);' +
+                  'if(_tx>5||_ty>5)transEls.push(desc)' +
+                '});' +
+                'if(transEls.length===0)return;' +
+                'container.style.cssText+=";overflow:visible !important;";' +
+                'transEls.forEach(function(el){el.style.cssText+=";transform:none !important;"});' +
+                '_expanded++' +
+              '});' +
+              'if(_expanded>0)console.log("[iframe-ss] Expanded "+_expanded+" overflow:hidden containers with transformed descendants");' +
+              'void document.body.offsetHeight;' +
+              // Re-read bboxes after expansion so they match the expanded layout
+              'if(_expanded>0&&typeof window.__milgReReadBboxes==="function"){' +
+                'var _res2=window.__milgReReadBboxes();' +
+                'console.log("[iframe-ss] Re-read bboxes after expansion: "+_res2)' +
+              '}' +
+              // Recalculate doc height after expansion (may have grown)
+              'fullH=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);' +
+              // Phase C: Expanded screenshot (all carousel content visible, bboxes aligned)
+              '_prog("Capturing expanded screenshot...");' +
+              'console.log("[iframe-ss] Capturing expanded screenshot at "+_sc+"x...");' +
+              'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:45000}).then(function(fc){' +
+              'console.log("[iframe-ss] Expanded screenshot: "+fc.width+"x"+fc.height);' +
               'var fullUri;try{fullUri=fc.toDataURL("image/webp",' + ss.quality + ')}catch(e){console.warn("[milg-warn] WebP conversion failed:",e.message);fullUri=""}' +
               // Update send helper with actual canvas dimensions
               'var _cw=fc.width,_ch=fc.height;' +
@@ -40386,11 +40479,13 @@ window.MilgIframe = (function() {
                 'var msg={type:"' + msgType + '",_iframeId:_mid,' +
                   'screenshots:fullUri?[fullUri]:[],' +
                   'screenshotFull:fullUri||null,' +
+                  'screenshotClean:_cleanUri||null,' +
                   'textMask:maskUri||null,' +
                   'screenshotMeta:{scale:_sc,viewportHeight:vh,sectionCount:1,' +
                     'canvasWidth:_cw,canvasHeight:_ch,' +
                     'docHeightAtCapture:fullH,' +
                     'calibrationOffsetY:0,calibrationSamples:[]},' +
+                  'screenshotCleanMeta:{canvasWidth:_cleanW,canvasHeight:_cleanH},' +
                   'updatedData:updatedData};' +
                 'var _maskCount=updatedData&&updatedData.colors&&updatedData.colors.contrastPairs?updatedData.colors.contrastPairs.filter(function(p){return !!p._maskBmp}).length:0;' +
                 'console.log("[iframe-ss] postMessage: ss="+((fullUri||"").length/1024|0)+"KB ud="+(JSON.stringify(updatedData||{}).length/1024|0)+"KB masks="+_maskCount+"/"+((updatedData&&updatedData.colors&&updatedData.colors.contrastPairs||[]).length));' +
@@ -40613,7 +40708,8 @@ window.MilgIframe = (function() {
               '_sendFinal=function(m){if(_maskDone)return;_maskDone=true;clearTimeout(_maskTimer);console.log("[iframe-ss] Sending results (maskResults: "+Object.keys(_maskResults).length+" pairs)");_origSendFinal(m)};' +
               '_nextLayer()' +
             '})' + // end document.fonts.ready.then
-            '}).catch(function(e){console.warn("[iframe-ss] capture failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[],_iframeId:_mid},"*")})' +
+            '}).catch(function(e){console.warn("[iframe-ss] expanded capture failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[],_iframeId:_mid},"*")})' +
+            '}).catch(function(e){console.warn("[iframe-ss] clean capture failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[],_iframeId:_mid},"*")})' +
           '})})' + // close _preloadBgImages + _preloadImages callbacks
           '};' +
           's.onerror=function(){parent.postMessage({type:"' + msgType + '",screenshots:[],_iframeId:_mid},"*")};' +
@@ -40720,6 +40816,8 @@ window.MilgIframe = (function() {
       if (e.data.type === 'milg-screenshots-result' && iframe._milgData) {
         iframe._milgData.screenshots = e.data.screenshots || [];
         iframe._milgData.screenshotFull = e.data.screenshotFull || null;
+        iframe._milgData.screenshotClean = e.data.screenshotClean || null;
+        iframe._milgData.screenshotCleanMeta = e.data.screenshotCleanMeta || null;
         iframe._milgData.textMask = e.data.textMask || null;
         iframe._milgData.screenshotMeta = e.data.screenshotMeta || null;
         // Apply re-read bbox data from the iframe (updated after scroll-reset + getFlowPosition)
@@ -40867,7 +40965,7 @@ window.MilgIframe = (function() {
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v2.6 loaded');
+console.log('[milg] analyzer.js v2.7 loaded');
 
 (function() {
   "use strict";
@@ -42609,7 +42707,7 @@ console.log('[milg] analyzer.js v2.6 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v2.6</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v2.7</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
