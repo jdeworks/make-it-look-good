@@ -208,9 +208,11 @@ test.describe('Screenshot Pipeline', () => {
     const expandedLog = consoleLogs.find(l => l.includes('Expanded screenshot:'));
     expect(expandedLog).toBeTruthy();
 
-    // Verify carousel expansion happened (searches descendants, not just children)
-    const expandLog = consoleLogs.find(l => l.includes('Expanded') && l.includes('overflow:hidden') && l.includes('descendants'));
-    expect(expandLog).toBeTruthy();
+    // Verify region screenshot detection and capture
+    const regionDetect = consoleLogs.find(l => l.includes('clipping regions'));
+    expect(regionDetect).toBeTruthy();
+    const regionDone = consoleLogs.find(l => l.includes('Region screenshots done:') || l.includes('Region screenshots: 0'));
+    expect(regionDone).toBeTruthy();
 
     // Verify no %23 (encoded #) fetch errors
     const hashError = consoleLogs.find(l => l.includes('%23') && (l.includes('ERR_FAILED') || l.includes('404')));

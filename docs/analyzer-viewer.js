@@ -307,6 +307,64 @@ window.MilgViewer = (function() {
 
     // Initial display: prefer clean screenshot
     showScreenshot(false);
+
+    // Render region screenshots (expanded views of hidden overflow content)
+    var regions = (reportData.raw && reportData.raw.regionScreenshots) || [];
+    if (regions.length > 0) {
+      var regionSection = document.createElement('div');
+      regionSection.className = 'milg-viewer-regions';
+      regionSection.style.cssText = 'padding:8px 0;border-top:1px dashed rgba(255,255,255,0.2);margin-top:8px;';
+      var regionLabel = document.createElement('div');
+      regionLabel.style.cssText = 'font-size:11px;color:rgba(255,255,255,0.6);margin-bottom:6px;padding:0 8px;';
+      regionLabel.textContent = 'Expanded hidden content (' + regions.length + ' region' + (regions.length > 1 ? 's' : '') + ')';
+      regionSection.appendChild(regionLabel);
+
+      regions.forEach(function(rgn, rIdx) {
+        if (!rgn.screenshot || !rgn.screenshotMeta) return;
+        var rgnWrap = document.createElement('div');
+        rgnWrap.className = 'milg-viewer-region';
+        rgnWrap.style.cssText = 'position:relative;margin:4px 8px 8px;border:1px dashed rgba(59,130,246,0.4);border-radius:4px;overflow:hidden;';
+
+        var rgnImg = document.createElement('img');
+        rgnImg.src = rgn.screenshot;
+        rgnImg.alt = 'Region ' + (rIdx + 1) + ' expanded';
+        rgnImg.style.cssText = 'display:block;width:100%;height:auto;';
+
+        var rgnSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        rgnSvg.setAttribute('class', 'milg-viewer-region-svg');
+        rgnSvg.setAttribute('viewBox', '0 0 ' + rgn.screenshotMeta.canvasWidth + ' ' + rgn.screenshotMeta.canvasHeight);
+        rgnSvg.setAttribute('preserveAspectRatio', 'xMinYMin meet');
+        rgnSvg.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;';
+
+        // Render local bboxes for this region's contrast pairs
+        if (rgn.localBboxes && rgn.pairIndices && _reportData && _reportData.raw && _reportData.raw.colors) {
+          var pairs = _reportData.raw.colors.contrastPairs || [];
+          var scale = rgn.screenshotMeta.scale || 1.5;
+          rgn.pairIndices.forEach(function(pi) {
+            var pair = pairs[pi];
+            if (!pair) return;
+            var lb = rgn.localBboxes[pi];
+            if (!lb) return;
+            var color = pair.passes ? COLORS.pass : (pair.ratio < pair.needed * 0.7 ? COLORS.error : COLORS.warning);
+            var rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            rect.setAttribute('x', Math.round(lb.left * scale));
+            rect.setAttribute('y', Math.round(lb.top * scale));
+            rect.setAttribute('width', Math.max(Math.round(lb.width * scale), 4));
+            rect.setAttribute('height', Math.max(Math.round(lb.height * scale), 4));
+            rect.setAttribute('fill', color.fill);
+            rect.setAttribute('stroke', color.stroke);
+            rect.setAttribute('stroke-width', '1.5');
+            rgnSvg.appendChild(rect);
+          });
+        }
+
+        rgnWrap.appendChild(rgnImg);
+        rgnWrap.appendChild(rgnSvg);
+        regionSection.appendChild(rgnWrap);
+      });
+
+      content.appendChild(regionSection);
+    }
   }
 
   // Build debug info with pixel probing for alignment diagnostics

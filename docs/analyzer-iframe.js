@@ -374,6 +374,133 @@ window.MilgIframe = (function() {
     setTimeout(function() { if (fi < toFetch.length) { console.log('[milg] Font prefetch timeout, continuing'); fi = toFetch.length; cb(); } }, 15000);
   }
 
+  // Region screenshot function — serialized via .toString() into the iframe script.
+  // Detects overflow:hidden containers that clip tracked contrast pairs,
+  // clones each into a mini-page iframe, and captures screenshots in parallel.
+  function _regionScreenshotFn(_sc, _quality, _prog, _cp2) {
+    return function _buildRegionScreenshots(rgnCb) {
+      // Detect clipping containers
+      var _rgnCounter = 0, _clipContainerList = [], _clipContainers = {};
+      if (window.__milgBboxRefs) {
+        window.__milgBboxRefs.forEach(function(ref) {
+          if (!ref.el || !ref.obj || ref.key !== 'bbox' || !ref.obj._isClipped) return;
+          var clipAnc = null, anc = ref.el.parentElement;
+          while (anc && anc !== document.documentElement) {
+            var as = getComputedStyle(anc);
+            var aov = as.overflow || '', aovx = as.overflowX || '', aovy = as.overflowY || '';
+            if (aov === 'hidden' || aov === 'clip' || aovx === 'hidden' || aovx === 'clip' || aovy === 'hidden' || aovy === 'clip') {
+              var ar = anc.getBoundingClientRect();
+              if (ar.width >= 100 && ar.height >= 30) clipAnc = anc;
+            }
+            anc = anc.parentElement;
+          }
+          if (!clipAnc) return;
+          var cid = clipAnc._milgRegionId;
+          if (!cid) {
+            cid = 'rgn-' + (++_rgnCounter); clipAnc._milgRegionId = cid;
+            _clipContainerList.push({ el: clipAnc, id: cid, pairIndices: [] });
+            _clipContainers[cid] = _clipContainerList[_clipContainerList.length - 1];
+          }
+          var pi = _cp2.indexOf(ref.obj);
+          if (pi >= 0 && _clipContainers[cid].pairIndices.indexOf(pi) < 0)
+            _clipContainers[cid].pairIndices.push(pi);
+        });
+      }
+      _clipContainerList.sort(function(a, b) {
+        var ar = a.el.getBoundingClientRect(), br = b.el.getBoundingClientRect();
+        return (br.width * br.height) - (ar.width * ar.height);
+      });
+      _clipContainerList = _clipContainerList.slice(0, 5);
+      console.log('[iframe-ss] Found ' + _clipContainerList.length + ' clipping regions with hidden content');
+      if (_clipContainerList.length === 0) { rgnCb([]); return; }
+
+      var _rgnResults = [], _rgnDone = 0, _rgnTotal = _clipContainerList.length;
+      var _rgnOverall = setTimeout(function() {
+        console.warn('[iframe-ss] Region screenshots overall timeout (30s)');
+        rgnCb(_rgnResults);
+      }, 30000);
+
+      // Collect styles from the current document for the mini-pages
+      var allStyles = '';
+      document.querySelectorAll('style').forEach(function(s) { allStyles += s.outerHTML; });
+      var allLinks = '';
+      document.querySelectorAll('link[rel=stylesheet]').forEach(function(l) { allLinks += l.outerHTML; });
+      var baseHref = (document.querySelector('base') || {}).href || '';
+      _prog('Capturing ' + _rgnTotal + ' region screenshots...');
+
+      _clipContainerList.forEach(function(rgn, rIdx) {
+        var container = rgn.el, cr = container.getBoundingClientRect();
+        var clone = container.cloneNode(true);
+        clone.style.cssText += ';overflow:visible !important;max-height:none !important;';
+        // Neutralize transforms on all descendants (carousel slides)
+        clone.querySelectorAll('*').forEach(function(d) {
+          d.style.cssText += ';transform:none !important;overflow:visible !important;';
+        });
+        for (var ci = 0; ci < clone.children.length; ci++) {
+          clone.children[ci].style.cssText += ';transform:none !important;';
+        }
+
+        var miniHtml = '<!DOCTYPE html><html><head><meta charset=UTF-8>' +
+          (baseHref ? '<base href="' + baseHref.replace(/"/g, '&quot;') + '">' : '') +
+          allLinks + allStyles +
+          '<style>*,*::before,*::after{transition:none !important;animation:none !important;}</style>' +
+          '</head><body style="margin:0;padding:0;overflow:visible">' + clone.outerHTML + '</body></html>';
+
+        var mf = document.createElement('iframe');
+        mf.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + Math.max(Math.ceil(cr.width * 4), 800) + 'px;height:2000px;border:none;visibility:hidden;';
+        mf.setAttribute('sandbox', 'allow-same-origin allow-scripts');
+        document.body.appendChild(mf);
+
+        var rgnTimer = setTimeout(function() {
+          console.warn('[iframe-ss] Region ' + rIdx + ' timed out');
+          _rgnFinish(rIdx, mf, null);
+        }, 15000);
+
+        mf.srcdoc = miniHtml;
+        mf.addEventListener('load', function() {
+          setTimeout(function() {
+            try {
+              var mDoc = mf.contentDocument;
+              if (!mDoc) { _rgnFinish(rIdx, mf, null); return; }
+              var cW = Math.max(mDoc.body.scrollWidth, mDoc.documentElement.scrollWidth);
+              var cH = Math.max(mDoc.body.scrollHeight, mDoc.documentElement.scrollHeight);
+              mf.style.width = cW + 'px'; mf.style.height = cH + 'px';
+              void mDoc.body.offsetHeight;
+              var pms = window.modernScreenshot;
+              if (!pms || !pms.domToCanvas) { _rgnFinish(rIdx, mf, null); return; }
+              pms.domToCanvas(mDoc.documentElement, { scale: _sc, timeout: 12000 }).then(function(rc) {
+                var rUri; try { rUri = rc.toDataURL('image/webp', _quality); } catch(e) { rUri = ''; }
+                var localBboxes = {};
+                rgn.pairIndices.forEach(function(pi) {
+                  var pair = _cp2[pi]; if (!pair || !pair.bbox) return;
+                  localBboxes[pi] = { left: pair.bbox.left - Math.round(cr.left), top: pair.bbox.top - Math.round(cr.top), width: pair.bbox.width, height: pair.bbox.height };
+                });
+                clearTimeout(rgnTimer);
+                _rgnFinish(rIdx, mf, {
+                  screenshot: rUri,
+                  screenshotMeta: { scale: _sc, canvasWidth: rc.width, canvasHeight: rc.height },
+                  pairIndices: rgn.pairIndices, localBboxes: localBboxes,
+                  containerRect: { left: Math.round(cr.left), top: Math.round(cr.top), width: Math.round(cr.width), height: Math.round(cr.height) }
+                });
+              }).catch(function(e) { clearTimeout(rgnTimer); _rgnFinish(rIdx, mf, null); });
+            } catch(e) { clearTimeout(rgnTimer); _rgnFinish(rIdx, mf, null); }
+          }, 600);
+        });
+      });
+
+      function _rgnFinish(idx, mf, result) {
+        if (result) _rgnResults.push(result);
+        try { if (mf && mf.parentNode) mf.parentNode.removeChild(mf); } catch(e) {}
+        _rgnDone++;
+        if (_rgnDone >= _rgnTotal) {
+          clearTimeout(_rgnOverall);
+          console.log('[iframe-ss] Region screenshots done: ' + _rgnResults.length + '/' + _rgnTotal);
+          rgnCb(_rgnResults);
+        }
+      }
+    };
+  }
+
   // --- Screenshot capture script (injected into iframes after extraction) ---
   // Called after extraction via __milgDoScreenshots (once-guard prevents double run).
   // Mirrors console snippet: pre-scroll → reset → wait → re-read bboxes → capture body
@@ -587,6 +714,11 @@ window.MilgIframe = (function() {
                   '}' +
                 '})' +
               '}' +
+              // Inject and run region screenshot function (serialized to avoid escaping issues)
+              'var _cp2=window.__milgData&&window.__milgData.colors?window.__milgData.colors.contrastPairs||[]:[];' +
+              'var _buildRegionScreenshots=(' + _regionScreenshotFn.toString() + ')(_sc,' + ss.quality + ',_prog,_cp2);' +
+              '_buildRegionScreenshots(function(_regionResults){' +
+              'window.__milgRegionScreenshots=_regionResults;' +
               // Phase B: Expand overflow:hidden containers with transformed descendants (carousels/sliders)
               'var _expanded=0;' +
               'document.querySelectorAll("*").forEach(function(container){' +
@@ -659,6 +791,7 @@ window.MilgIframe = (function() {
                     'docHeightAtCapture:fullH,' +
                     'calibrationOffsetY:0,calibrationSamples:[]},' +
                   'screenshotCleanMeta:{canvasWidth:_cleanW,canvasHeight:_cleanH},' +
+                  'regionScreenshots:window.__milgRegionScreenshots||[],' +
                   'updatedData:updatedData};' +
                 'var _maskCount=updatedData&&updatedData.colors&&updatedData.colors.contrastPairs?updatedData.colors.contrastPairs.filter(function(p){return !!p._maskBmp}).length:0;' +
                 'console.log("[iframe-ss] postMessage: ss="+((fullUri||"").length/1024|0)+"KB ud="+(JSON.stringify(updatedData||{}).length/1024|0)+"KB masks="+_maskCount+"/"+((updatedData&&updatedData.colors&&updatedData.colors.contrastPairs||[]).length));' +
@@ -882,6 +1015,7 @@ window.MilgIframe = (function() {
               '_nextLayer()' +
             '})' + // end document.fonts.ready.then
             '}).catch(function(e){console.warn("[iframe-ss] expanded capture failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[],_iframeId:_mid},"*")})' +
+            '})' + // close _buildRegionScreenshots callback
             '}).catch(function(e){console.warn("[iframe-ss] clean capture failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[],_iframeId:_mid},"*")})' +
           '})})' + // close _preloadBgImages + _preloadImages callbacks
           '};' +
@@ -993,6 +1127,7 @@ window.MilgIframe = (function() {
         iframe._milgData.screenshotCleanMeta = e.data.screenshotCleanMeta || null;
         iframe._milgData.textMask = e.data.textMask || null;
         iframe._milgData.screenshotMeta = e.data.screenshotMeta || null;
+        iframe._milgData.regionScreenshots = e.data.regionScreenshots || [];
         // Apply re-read bbox data from the iframe (updated after scroll-reset + getFlowPosition)
         if (e.data.updatedData) {
           var ud = e.data.updatedData;

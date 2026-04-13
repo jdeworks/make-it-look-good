@@ -235,6 +235,92 @@
         if (_overlay.parentNode) _overlay.parentNode.removeChild(_overlay);
         data.screenshots = fullPageDataUri ? [fullPageDataUri] : [];
         data.screenshotFull = fullPageDataUri || null;
+        // Also store as clean screenshot (snippet captures the page as-is)
+        data.screenshotClean = fullPageDataUri || null;
+        data.screenshotCleanMeta = fullPageDataUri ? { canvasWidth: fullCanvas.width, canvasHeight: fullCanvas.height } : null;
+
+        // --- Region screenshots for hidden overflow content ---
+        (function captureRegions(regionCb) {
+          if (!window.__milgBboxRefs || !data.colors || !data.colors.contrastPairs) { regionCb([]); return; }
+          var _cp = data.colors.contrastPairs;
+          var _rgnCounter = 0, _clipContainers = {}, _clipList = [];
+          // Mark clipped pairs and detect outermost clipping containers
+          window.__milgBboxRefs.forEach(function(ref) {
+            if (!ref.el || !ref.obj || ref.key !== 'bbox') return;
+            var el = ref.el, pair = ref.obj;
+            var er = el.getBoundingClientRect();
+            var clipAnc = null, anc = el.parentElement;
+            while (anc && anc !== document.documentElement) {
+              var as = getComputedStyle(anc);
+              var aov = as.overflow || '', aovx = as.overflowX || '', aovy = as.overflowY || '';
+              if (aov === 'hidden' || aov === 'clip' || aovx === 'hidden' || aovx === 'clip' || aovy === 'hidden' || aovy === 'clip') {
+                var ar = anc.getBoundingClientRect();
+                if (ar.width >= 100 && ar.height >= 30) {
+                  if (er.right < ar.left + 1 || er.left > ar.right - 1 || er.bottom < ar.top + 1 || er.top > ar.bottom - 1) {
+                    pair._isClipped = true;
+                    clipAnc = anc;
+                  }
+                }
+              }
+              anc = anc.parentElement;
+            }
+            if (!clipAnc) return;
+            var cid = clipAnc._milgRegionId;
+            if (!cid) { cid = 'rgn-' + (++_rgnCounter); clipAnc._milgRegionId = cid; _clipList.push({ el: clipAnc, id: cid, pairIndices: [] }); _clipContainers[cid] = _clipList[_clipList.length - 1]; }
+            var pi = _cp.indexOf(pair);
+            if (pi >= 0 && _clipContainers[cid].pairIndices.indexOf(pi) < 0) _clipContainers[cid].pairIndices.push(pi);
+          });
+          _clipList.sort(function(a, b) { var ar = a.el.getBoundingClientRect(), br = b.el.getBoundingClientRect(); return (br.width * br.height) - (ar.width * ar.height); });
+          _clipList = _clipList.slice(0, 5);
+          if (_clipList.length === 0) { regionCb([]); return; }
+          console.log('[ss] ' + _t() + 'Found ' + _clipList.length + ' clipping regions, capturing...');
+          var _rgnResults = [], _rgnDone = 0, _rgnTotal = _clipList.length;
+          var _rgnOverall = setTimeout(function() { console.warn('[ss] Region timeout (30s)'); regionCb(_rgnResults); }, 30000);
+          // Collect styles
+          var allStyles = ''; document.querySelectorAll('style').forEach(function(s) { allStyles += s.outerHTML; });
+          var allLinks = ''; document.querySelectorAll('link[rel="stylesheet"]').forEach(function(l) { allLinks += l.outerHTML; });
+          var baseHref = location.href;
+          _clipList.forEach(function(rgn, rIdx) {
+            var container = rgn.el, cr = container.getBoundingClientRect();
+            var clone = container.cloneNode(true);
+            clone.style.cssText += ';overflow:visible !important;max-height:none !important;';
+            clone.querySelectorAll('*').forEach(function(d) { d.style.cssText += ';transform:none !important;overflow:visible !important;'; });
+            var miniHtml = '<!DOCTYPE html><html><head><meta charset=UTF-8><base href="' + baseHref.replace(/"/g, '&quot;') + '">' + allLinks + allStyles +
+              '<style>*,*::before,*::after{transition:none !important;animation:none !important;}</style></head><body style="margin:0;padding:0;overflow:visible">' + clone.outerHTML + '</body></html>';
+            var mf = document.createElement('iframe');
+            mf.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + Math.max(Math.ceil(cr.width * 4), 800) + 'px;height:2000px;border:none;visibility:hidden;';
+            document.body.appendChild(mf);
+            var rgnTimer = setTimeout(function() { rgnFinish(rIdx, mf, null); }, 15000);
+            mf.srcdoc = miniHtml;
+            mf.addEventListener('load', function() {
+              setTimeout(function() {
+                try {
+                  var mDoc = mf.contentDocument; if (!mDoc) { rgnFinish(rIdx, mf, null); return; }
+                  var cW = Math.max(mDoc.body.scrollWidth, mDoc.documentElement.scrollWidth);
+                  var cH = Math.max(mDoc.body.scrollHeight, mDoc.documentElement.scrollHeight);
+                  mf.style.width = cW + 'px'; mf.style.height = cH + 'px';
+                  void mDoc.body.offsetHeight;
+                  ms.domToCanvas(mDoc.documentElement, { scale: 1.5, timeout: 12000 }).then(function(rc) {
+                    var rUri; try { rUri = rc.toDataURL('image/webp', 0.8); } catch(e) { rUri = ''; }
+                    var localBboxes = {};
+                    rgn.pairIndices.forEach(function(pi) {
+                      var pair = _cp[pi]; if (!pair || !pair.bbox) return;
+                      localBboxes[pi] = { left: pair.bbox.left - Math.round(cr.left), top: pair.bbox.top - Math.round(cr.top), width: pair.bbox.width, height: pair.bbox.height };
+                    });
+                    clearTimeout(rgnTimer);
+                    rgnFinish(rIdx, mf, { screenshot: rUri, screenshotMeta: { scale: 1.5, canvasWidth: rc.width, canvasHeight: rc.height }, pairIndices: rgn.pairIndices, localBboxes: localBboxes, containerRect: { left: Math.round(cr.left), top: Math.round(cr.top), width: Math.round(cr.width), height: Math.round(cr.height) } });
+                  }).catch(function(e) { clearTimeout(rgnTimer); rgnFinish(rIdx, mf, null); });
+                } catch(e) { clearTimeout(rgnTimer); rgnFinish(rIdx, mf, null); }
+              }, 600);
+            });
+          });
+          function rgnFinish(idx, mf, result) {
+            if (result) _rgnResults.push(result);
+            try { if (mf && mf.parentNode) mf.parentNode.removeChild(mf); } catch(e) {}
+            _rgnDone++; if (_rgnDone >= _rgnTotal) { clearTimeout(_rgnOverall); console.log('[ss] Regions done: ' + _rgnResults.length + '/' + _rgnTotal); regionCb(_rgnResults); }
+          }
+        })(function(regionResults) {
+          data.regionScreenshots = regionResults;
 
         (function finalize() {
             var captureDocH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
@@ -358,6 +444,7 @@
               outputData(data);
             });
         })();
+        }); // close captureRegions callback
 
       }).catch(function(err) {
         console.log('[ss] ' + _t() + '\u2717 Full page capture failed: ' + (err && err.message || err));

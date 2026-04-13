@@ -33311,260 +33311,6 @@ window.MilgReport = (function() {
 })();
 </file>
 
-<file path="tests/html-analysis.spec.js">
-// @ts-check
-const { test, expect } = require('@playwright/test');
-const fs = require('fs');
-const path = require('path');
-
-const ANALYZER_URL = 'http://localhost:8384/analyzer.html';
-
-function loadPreset(name) {
-  return fs.readFileSync(path.join(__dirname, '..', 'docs', 'presets', name, 'clean.html'), 'utf8');
-}
-
-async function analyzeHtml(page, html) {
-  await page.goto(ANALYZER_URL);
-  await page.click('[data-tab="tabHtml"]');
-  await page.fill('#htmlInput', html);
-  await page.click('#analyzeHtmlBtn');
-  await page.waitForSelector('.report-container.visible', { timeout: 30000 });
-}
-
-async function getScore(page) {
-  const text = await page.locator('.report-gauge svg text').first().textContent();
-  return parseInt(text, 10);
-}
-
-// ── HTML Analysis ──
-
-test.describe('HTML Analysis', () => {
-
-  test('buttons preset produces valid scores', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('buttons'));
-    const score = await getScore(page);
-    expect(score).toBeGreaterThanOrEqual(0);
-    expect(score).toBeLessThanOrEqual(100);
-    // Category cards rendered
-    const cards = await page.locator('.report-card').count();
-    expect(cards).toBeGreaterThan(0);
-  });
-
-  test('form preset produces report with findings', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('form'));
-    const findings = await page.locator('.finding-header').count();
-    expect(findings).toBeGreaterThan(0);
-  });
-
-  test('landing preset scores above 50', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('landing'));
-    const score = await getScore(page);
-    expect(score).toBeGreaterThanOrEqual(50);
-  });
-
-  test('dashboard preset renders category cards', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('dashboard'));
-    const cards = await page.locator('.report-card').count();
-    expect(cards).toBeGreaterThanOrEqual(5);
-  });
-});
-
-// ── Export & Import Round-Trip ──
-
-test.describe('Export and Import', () => {
-
-  test('export .milg and re-import produces same score', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('buttons'));
-    const originalScore = await getScore(page);
-
-    // Download .milg (compressed) or .json (fallback)
-    const [download] = await Promise.all([
-      page.waitForEvent('download'),
-      page.click('#exportJsonBtn'),
-    ]);
-    const exportPath = await download.path();
-    const fileName = download.suggestedFilename();
-    expect(fileName).toMatch(/\.(milg|json)$/);
-
-    // Re-import
-    await page.click('#newAnalysisBtn');
-    await page.click('[data-tab="tabImport"]');
-    await page.locator('#importDropFile').setInputFiles(exportPath);
-    await page.waitForSelector('.report-container.visible', { timeout: 30000 });
-
-    const reimportedScore = await getScore(page);
-    expect(reimportedScore).toBe(originalScore);
-  });
-
-  test('export Markdown contains expected sections', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('cards'));
-
-    const [download] = await Promise.all([
-      page.waitForEvent('download'),
-      page.click('#markdownBtn'),
-    ]);
-    const mdContent = fs.readFileSync(await download.path(), 'utf8');
-
-    expect(mdContent).toContain('Design Analysis');
-    expect(mdContent).toContain('Contrast');
-    expect(mdContent).toContain('Typography');
-  });
-});
-
-// ── UI Controls ──
-
-test.describe('UI Controls', () => {
-
-  test('audience profile switch re-scores', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('form'));
-    const originalScore = await getScore(page);
-
-    await page.selectOption('#profileSelect', 'wcag_aaa');
-    await page.waitForTimeout(300);
-
-    const strictScore = await getScore(page);
-    expect(strictScore).toBeLessThanOrEqual(originalScore);
-  });
-
-  test('new analysis button resets view', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('buttons'));
-    await page.click('#newAnalysisBtn');
-    await expect(page.locator('#inputSection')).toBeVisible();
-    await expect(page.locator('#reportContainer')).not.toHaveClass(/visible/);
-  });
-
-  test('dark mode toggle works', async ({ page }) => {
-    await page.goto(ANALYZER_URL);
-    const hasDarkBefore = await page.locator('body').evaluate(el => el.classList.contains('dark-ui'));
-    await page.click('#darkBtn');
-    const hasDarkAfter = await page.locator('body').evaluate(el => el.classList.contains('dark-ui'));
-    expect(hasDarkBefore).not.toBe(hasDarkAfter);
-  });
-
-  test('help modal opens and closes', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('buttons'));
-    await page.click('#helpBtn');
-    await expect(page.locator('#helpModal')).toBeVisible();
-    // Close via X button
-    await page.locator('#helpModal button[aria-label="Close"]').click();
-    await expect(page.locator('#helpModal')).toBeHidden();
-  });
-
-  test('ephemeral banner visible after analysis', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('buttons'));
-    await expect(page.locator('#ephemeralBanner')).toBeVisible();
-    await expect(page.locator('#ephemeralBanner')).toContainText('temporary');
-  });
-});
-
-// ── Screenshot & Carousel Alignment ──
-
-test.describe('Screenshot Pipeline', () => {
-
-  // HTML with a nested carousel pattern (like fink-translate.com):
-  // overflow:hidden container > intermediate wrapper > track[transform]
-  // Also includes a fragment-only img src and an <a href="#n"> to test filtering
-  const CAROUSEL_HTML = `<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"><title>Carousel Test</title>
-<style>
-  body { font-family: sans-serif; margin: 0; padding: 20px; background: #fff; }
-  .carousel-container { overflow: hidden; width: 400px; position: relative; }
-  .carousel-inner { position: relative; }
-  .carousel-track-container { position: relative; }
-  .carousel-track { display: flex; transform: translateX(-400px); transition: transform 0.5s ease; }
-  .carousel-slide { min-width: 400px; padding: 20px; box-sizing: border-box; }
-  .slide-1 { background: #f0f0f0; }
-  .slide-2 { background: #e0e0ff; }
-  .slide-3 { background: #ffe0e0; }
-  h2 { color: #111; margin: 0 0 8px; }
-  p { color: #333; }
-</style></head><body>
-  <h1>Carousel Test Page</h1>
-  <a href="#n">Skip nav</a>
-  <div class="carousel-container">
-    <div class="carousel-inner">
-      <div class="carousel-track-container">
-        <div class="carousel-track">
-          <div class="carousel-slide slide-1"><h2>Slide One</h2><p>First slide content here.</p></div>
-          <div class="carousel-slide slide-2"><h2>Slide Two</h2><p>Second slide visible.</p></div>
-          <div class="carousel-slide slide-3"><h2>Slide Three</h2><p>Third slide content.</p></div>
-        </div>
-      </div>
-    </div>
-  </div>
-  <img src="#fragment" alt="fragment-only test">
-  <p>Below the carousel.</p>
-</body></html>`;
-
-  async function analyzeWithScreenshots(page, html) {
-    await page.goto(ANALYZER_URL);
-    // Enable screenshot checkbox
-    await page.check('#screenshotCheck');
-    await page.click('[data-tab="tabHtml"]');
-    await page.fill('#htmlInput', html);
-    await page.click('#analyzeHtmlBtn');
-    await page.waitForSelector('.report-container.visible', { timeout: 45000 });
-  }
-
-  test('carousel overflow:hidden containers get expanded for screenshots', async ({ page }) => {
-    const consoleLogs = [];
-    page.on('console', msg => consoleLogs.push(msg.text()));
-
-    await analyzeWithScreenshots(page, CAROUSEL_HTML);
-
-    const score = await getScore(page);
-    expect(score).toBeGreaterThanOrEqual(0);
-    expect(score).toBeLessThanOrEqual(100);
-
-    // Verify two-pass capture: clean + expanded screenshots
-    const cleanLog = consoleLogs.find(l => l.includes('Clean screenshot:'));
-    expect(cleanLog).toBeTruthy();
-    const expandedLog = consoleLogs.find(l => l.includes('Expanded screenshot:'));
-    expect(expandedLog).toBeTruthy();
-
-    // Verify carousel expansion happened (searches descendants, not just children)
-    const expandLog = consoleLogs.find(l => l.includes('Expanded') && l.includes('overflow:hidden') && l.includes('descendants'));
-    expect(expandLog).toBeTruthy();
-
-    // Verify no %23 (encoded #) fetch errors
-    const hashError = consoleLogs.find(l => l.includes('%23') && (l.includes('ERR_FAILED') || l.includes('404')));
-    expect(hashError).toBeFalsy();
-  });
-
-  test('fragment-only img src is skipped during preload', async ({ page }) => {
-    const consoleLogs = [];
-    const consoleWarnings = [];
-    page.on('console', msg => {
-      consoleLogs.push(msg.text());
-      if (msg.type() === 'warning') consoleWarnings.push(msg.text());
-    });
-
-    await analyzeWithScreenshots(page, CAROUSEL_HTML);
-
-    // Should NOT have a preload warning for fragment URLs
-    const fragWarn = consoleWarnings.find(w => w.includes('#fragment') || w.includes('%23fragment'));
-    expect(fragWarn).toBeFalsy();
-  });
-});
-
-// ── Multiple Presets ──
-
-test.describe('Preset Scoring', () => {
-  const presets = ['hero', 'cards', 'stats-row', 'pricing', 'feature-grid'];
-
-  for (const preset of presets) {
-    test(`${preset} produces valid analysis`, async ({ page }) => {
-      await analyzeHtml(page, loadPreset(preset));
-      const score = await getScore(page);
-      expect(score).toBeGreaterThanOrEqual(0);
-      expect(score).toBeLessThanOrEqual(100);
-      const findings = await page.locator('.finding-header').count();
-      expect(findings).toBeGreaterThan(0);
-    });
-  }
-});
-</file>
-
 <file path="docs/analyzer-snippet.js">
 // make-it-look-good — Design Extraction Snippet
 // Version: v1.1
@@ -33951,6 +33697,482 @@ test.describe('Preset Scoring', () => {
 })();
 </file>
 
+<file path="tests/html-analysis.spec.js">
+// @ts-check
+const { test, expect } = require('@playwright/test');
+const fs = require('fs');
+const path = require('path');
+
+const ANALYZER_URL = 'http://localhost:8384/analyzer.html';
+
+function loadPreset(name) {
+  return fs.readFileSync(path.join(__dirname, '..', 'docs', 'presets', name, 'clean.html'), 'utf8');
+}
+
+async function analyzeHtml(page, html) {
+  await page.goto(ANALYZER_URL);
+  await page.click('[data-tab="tabHtml"]');
+  await page.fill('#htmlInput', html);
+  await page.click('#analyzeHtmlBtn');
+  await page.waitForSelector('.report-container.visible', { timeout: 30000 });
+}
+
+async function getScore(page) {
+  const text = await page.locator('.report-gauge svg text').first().textContent();
+  return parseInt(text, 10);
+}
+
+// ── HTML Analysis ──
+
+test.describe('HTML Analysis', () => {
+
+  test('buttons preset produces valid scores', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('buttons'));
+    const score = await getScore(page);
+    expect(score).toBeGreaterThanOrEqual(0);
+    expect(score).toBeLessThanOrEqual(100);
+    // Category cards rendered
+    const cards = await page.locator('.report-card').count();
+    expect(cards).toBeGreaterThan(0);
+  });
+
+  test('form preset produces report with findings', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('form'));
+    const findings = await page.locator('.finding-header').count();
+    expect(findings).toBeGreaterThan(0);
+  });
+
+  test('landing preset scores above 50', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('landing'));
+    const score = await getScore(page);
+    expect(score).toBeGreaterThanOrEqual(50);
+  });
+
+  test('dashboard preset renders category cards', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('dashboard'));
+    const cards = await page.locator('.report-card').count();
+    expect(cards).toBeGreaterThanOrEqual(5);
+  });
+});
+
+// ── Export & Import Round-Trip ──
+
+test.describe('Export and Import', () => {
+
+  test('export .milg and re-import produces same score', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('buttons'));
+    const originalScore = await getScore(page);
+
+    // Download .milg (compressed) or .json (fallback)
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.click('#exportJsonBtn'),
+    ]);
+    const exportPath = await download.path();
+    const fileName = download.suggestedFilename();
+    expect(fileName).toMatch(/\.(milg|json)$/);
+
+    // Re-import
+    await page.click('#newAnalysisBtn');
+    await page.click('[data-tab="tabImport"]');
+    await page.locator('#importDropFile').setInputFiles(exportPath);
+    await page.waitForSelector('.report-container.visible', { timeout: 30000 });
+
+    const reimportedScore = await getScore(page);
+    expect(reimportedScore).toBe(originalScore);
+  });
+
+  test('export Markdown contains expected sections', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('cards'));
+
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.click('#markdownBtn'),
+    ]);
+    const mdContent = fs.readFileSync(await download.path(), 'utf8');
+
+    expect(mdContent).toContain('Design Analysis');
+    expect(mdContent).toContain('Contrast');
+    expect(mdContent).toContain('Typography');
+  });
+});
+
+// ── UI Controls ──
+
+test.describe('UI Controls', () => {
+
+  test('audience profile switch re-scores', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('form'));
+    const originalScore = await getScore(page);
+
+    await page.selectOption('#profileSelect', 'wcag_aaa');
+    await page.waitForTimeout(300);
+
+    const strictScore = await getScore(page);
+    expect(strictScore).toBeLessThanOrEqual(originalScore);
+  });
+
+  test('new analysis button resets view', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('buttons'));
+    await page.click('#newAnalysisBtn');
+    await expect(page.locator('#inputSection')).toBeVisible();
+    await expect(page.locator('#reportContainer')).not.toHaveClass(/visible/);
+  });
+
+  test('dark mode toggle works', async ({ page }) => {
+    await page.goto(ANALYZER_URL);
+    const hasDarkBefore = await page.locator('body').evaluate(el => el.classList.contains('dark-ui'));
+    await page.click('#darkBtn');
+    const hasDarkAfter = await page.locator('body').evaluate(el => el.classList.contains('dark-ui'));
+    expect(hasDarkBefore).not.toBe(hasDarkAfter);
+  });
+
+  test('help modal opens and closes', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('buttons'));
+    await page.click('#helpBtn');
+    await expect(page.locator('#helpModal')).toBeVisible();
+    // Close via X button
+    await page.locator('#helpModal button[aria-label="Close"]').click();
+    await expect(page.locator('#helpModal')).toBeHidden();
+  });
+
+  test('ephemeral banner visible after analysis', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('buttons'));
+    await expect(page.locator('#ephemeralBanner')).toBeVisible();
+    await expect(page.locator('#ephemeralBanner')).toContainText('temporary');
+  });
+});
+
+// ── Screenshot & Carousel Alignment ──
+
+test.describe('Screenshot Pipeline', () => {
+
+  // HTML with a nested carousel pattern (like fink-translate.com):
+  // overflow:hidden container > intermediate wrapper > track[transform]
+  // Also includes a fragment-only img src and an <a href="#n"> to test filtering
+  const CAROUSEL_HTML = `<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Carousel Test</title>
+<style>
+  body { font-family: sans-serif; margin: 0; padding: 20px; background: #fff; }
+  .carousel-container { overflow: hidden; width: 400px; position: relative; }
+  .carousel-inner { position: relative; }
+  .carousel-track-container { position: relative; }
+  .carousel-track { display: flex; transform: translateX(-400px); transition: transform 0.5s ease; }
+  .carousel-slide { min-width: 400px; padding: 20px; box-sizing: border-box; }
+  .slide-1 { background: #f0f0f0; }
+  .slide-2 { background: #e0e0ff; }
+  .slide-3 { background: #ffe0e0; }
+  h2 { color: #111; margin: 0 0 8px; }
+  p { color: #333; }
+</style></head><body>
+  <h1>Carousel Test Page</h1>
+  <a href="#n">Skip nav</a>
+  <div class="carousel-container">
+    <div class="carousel-inner">
+      <div class="carousel-track-container">
+        <div class="carousel-track">
+          <div class="carousel-slide slide-1"><h2>Slide One</h2><p>First slide content here.</p></div>
+          <div class="carousel-slide slide-2"><h2>Slide Two</h2><p>Second slide visible.</p></div>
+          <div class="carousel-slide slide-3"><h2>Slide Three</h2><p>Third slide content.</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <img src="#fragment" alt="fragment-only test">
+  <p>Below the carousel.</p>
+</body></html>`;
+
+  async function analyzeWithScreenshots(page, html) {
+    await page.goto(ANALYZER_URL);
+    // Enable screenshot checkbox
+    await page.check('#screenshotCheck');
+    await page.click('[data-tab="tabHtml"]');
+    await page.fill('#htmlInput', html);
+    await page.click('#analyzeHtmlBtn');
+    await page.waitForSelector('.report-container.visible', { timeout: 45000 });
+  }
+
+  test('carousel overflow:hidden containers get expanded for screenshots', async ({ page }) => {
+    const consoleLogs = [];
+    page.on('console', msg => consoleLogs.push(msg.text()));
+
+    await analyzeWithScreenshots(page, CAROUSEL_HTML);
+
+    const score = await getScore(page);
+    expect(score).toBeGreaterThanOrEqual(0);
+    expect(score).toBeLessThanOrEqual(100);
+
+    // Verify two-pass capture: clean + expanded screenshots
+    const cleanLog = consoleLogs.find(l => l.includes('Clean screenshot:'));
+    expect(cleanLog).toBeTruthy();
+    const expandedLog = consoleLogs.find(l => l.includes('Expanded screenshot:'));
+    expect(expandedLog).toBeTruthy();
+
+    // Verify region screenshot detection and capture
+    const regionDetect = consoleLogs.find(l => l.includes('clipping regions'));
+    expect(regionDetect).toBeTruthy();
+    const regionDone = consoleLogs.find(l => l.includes('Region screenshots done:') || l.includes('Region screenshots: 0'));
+    expect(regionDone).toBeTruthy();
+
+    // Verify no %23 (encoded #) fetch errors
+    const hashError = consoleLogs.find(l => l.includes('%23') && (l.includes('ERR_FAILED') || l.includes('404')));
+    expect(hashError).toBeFalsy();
+  });
+
+  test('fragment-only img src is skipped during preload', async ({ page }) => {
+    const consoleLogs = [];
+    const consoleWarnings = [];
+    page.on('console', msg => {
+      consoleLogs.push(msg.text());
+      if (msg.type() === 'warning') consoleWarnings.push(msg.text());
+    });
+
+    await analyzeWithScreenshots(page, CAROUSEL_HTML);
+
+    // Should NOT have a preload warning for fragment URLs
+    const fragWarn = consoleWarnings.find(w => w.includes('#fragment') || w.includes('%23fragment'));
+    expect(fragWarn).toBeFalsy();
+  });
+});
+
+// ── Multiple Presets ──
+
+test.describe('Preset Scoring', () => {
+  const presets = ['hero', 'cards', 'stats-row', 'pricing', 'feature-grid'];
+
+  for (const preset of presets) {
+    test(`${preset} produces valid analysis`, async ({ page }) => {
+      await analyzeHtml(page, loadPreset(preset));
+      const score = await getScore(page);
+      expect(score).toBeGreaterThanOrEqual(0);
+      expect(score).toBeLessThanOrEqual(100);
+      const findings = await page.locator('.finding-header').count();
+      expect(findings).toBeGreaterThan(0);
+    });
+  }
+});
+</file>
+
+<file path="docs/analyzer-proxy.js">
+// make-it-look-good — CORS Proxy & JS-Enabled Analysis
+// Handles URL fetching via proxy chain and "Try with JS" mode.
+// Depends on: analyzer-iframe.js (MilgIframe)
+
+window.MilgProxy = (function() {
+  "use strict";
+
+  var _corsProxyUrl = '';
+  var _showToast = function() {};
+  var _showProgress = function() {};
+  var _hideProgress = function() {};
+  var _runAnalysis = function() {};
+
+  function init(opts) {
+    if (opts.corsProxyUrl) _corsProxyUrl = opts.corsProxyUrl;
+    if (opts.showToast) _showToast = opts.showToast;
+    if (opts.showProgress) _showProgress = opts.showProgress;
+    if (opts.hideProgress) _hideProgress = opts.hideProgress;
+    if (opts.runAnalysis) _runAnalysis = opts.runAnalysis;
+  }
+
+  // --- URL Fetch via CORS proxy ---
+  // Remembers which proxy worked so subsequent requests (CSS files etc.) skip failed ones
+  var _lastWorkingProxy = -1; // -1 = direct, 0+ = proxy index
+
+  function buildProxyList() {
+    var proxies = [];
+    if (_corsProxyUrl) proxies.push(_corsProxyUrl + '?url=');
+    proxies.push(
+      'https://api.allorigins.win/raw?url=',
+      'https://api.codetabs.com/v1/proxy?quest=',
+      'https://corsproxy.io/?'
+    );
+    return proxies;
+  }
+
+  function fetchWithProxy(url) {
+    var proxies = buildProxyList();
+
+    // If we already know which proxy works, try it first
+    if (_lastWorkingProxy >= 0 && _lastWorkingProxy < proxies.length) {
+      return fetch(proxies[_lastWorkingProxy] + encodeURIComponent(url))
+        .then(function(r) { if (!r.ok) throw new Error(r.status); return r.text(); })
+        .then(function(t) { if (!t || t.length < 50) throw new Error('empty'); return t; })
+        .catch(function() {
+          // Last working proxy failed — reset and try full chain
+          _lastWorkingProxy = -1;
+          return fetchWithProxyFull(url, proxies);
+        });
+    }
+
+    return fetchWithProxyFull(url, proxies);
+  }
+
+  function fetchWithProxyFull(url, proxies) {
+    // Try direct fetch first
+    return fetch(url, { mode: 'cors', redirect: 'follow' })
+      .then(function(r) { if (r.ok) return r.text(); throw new Error(r.status); })
+      .then(function(t) { _lastWorkingProxy = -1; return t; })
+      .catch(function() {
+        // Try proxies in order, remember which one works
+        var chain = Promise.reject();
+        proxies.forEach(function(proxyBase, idx) {
+          chain = chain.catch(function() {
+            return fetch(proxyBase + encodeURIComponent(url)).then(function(r) {
+              if (!r.ok) throw new Error(r.status);
+              return r.text();
+            }).then(function(t) {
+              if (!t || t.length < 50) throw new Error('empty');
+              _lastWorkingProxy = idx;
+              return t;
+            });
+          });
+        });
+        return chain;
+      });
+  }
+
+  function fetchViaProxy(url, callback) {
+    fetchWithProxy(url)
+      .then(function(html) {
+        // Detect proxy error pages (Cloudflare challenges, 4xx/5xx error pages, consent walls)
+        var htmlStart = (html || '').substring(0, 3000);
+        if (html && (
+          /class="no-js.*oldie"/i.test(htmlStart) || // Cloudflare error template
+          /cf-error-details|cf-wrapper/i.test(htmlStart) ||
+          /Access Denied|403 Forbidden/i.test(htmlStart) ||
+          /Just a moment|Checking your browser/i.test(htmlStart) || // Cloudflare challenge
+          /consent\.google|accounts\.google.*ServiceLogin/i.test(htmlStart) // Google consent/login redirect
+        )) {
+          callback(null, 'The site returned an error/challenge page (likely blocking proxy access). Use the Console Snippet tab instead.');
+          return;
+        }
+
+        // Resolve base URL for relative paths
+        var baseUrl;
+        try { var u = new URL(url); baseUrl = u.origin + u.pathname.replace(/\/[^/]*$/, '/'); } catch(e) { baseUrl = url; }
+
+        // Find and inline linked stylesheets so CSS works inside srcdoc iframe
+        var cssLinks = [];
+        var linkRegex = /<link[^>]+rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*>/gi;
+        var altRegex = /<link[^>]+href=["']([^"']+)["'][^>]*rel=["']stylesheet["'][^>]*>/gi;
+        var m;
+        while (m = linkRegex.exec(html)) cssLinks.push(m[1]);
+        while (m = altRegex.exec(html)) { if (cssLinks.indexOf(m[1]) === -1) cssLinks.push(m[1]); }
+
+        if (cssLinks.length === 0) { callback(html, null); return; }
+
+        // Fetch all CSS files and inline them
+        Promise.all(cssLinks.map(function(href) {
+          var cssUrl = href.startsWith('http') ? href : (href.startsWith('/') ? new URL(url).origin + href : baseUrl + href);
+          return fetchWithProxy(cssUrl).catch(function() { return '/* failed: ' + href + ' */'; });
+        })).then(function(cssTexts) {
+          // Remove original link tags and inject inlined styles
+          var processed = html.replace(/<link[^>]+rel=["']stylesheet["'][^>]*>/gi, '');
+          processed = processed.replace(/<link[^>]+href=["'][^"']+\.css[^"']*["'][^>]*rel=["']stylesheet["'][^>]*>/gi, '');
+          var styleBlock = '<style>' + cssTexts.join('\n') + '</style>';
+          if (/<\/head>/i.test(processed)) {
+            processed = processed.replace(/<\/head>/i, styleBlock + '</head>');
+          } else {
+            processed = styleBlock + processed;
+          }
+          callback(processed, null);
+        });
+      })
+      .catch(function(e) {
+        callback(null, e.message || 'All CORS proxies failed');
+      });
+  }
+
+  // Try analyzing with JS enabled — fetches raw HTML via proxy, then delegates to
+  // MilgIframe.analyzeHtml which handles sandbox injection, URL patching, extraction,
+  // screenshots, and timeouts via the unified preprocessHtml pipeline.
+  function tryWithJs(url) {
+    var ok = confirm(
+      'This will fetch the page via proxy and run its JavaScript in a sandboxed frame on this page.\n\n' +
+      'Only do this if you trust the site — its scripts will execute with access to this page\'s origin (XSS risk).\n\n' +
+      'Some sites may not work if they rely on cookies, auth, or same-origin API calls.\n\n' +
+      'Continue?'
+    );
+    if (!ok) return;
+
+    var reportContainer = document.getElementById('reportContainer');
+    var errBtn = 'style="margin-top:12px;padding:8px 16px;border-radius:6px;border:1px solid currentColor;background:none;color:inherit;cursor:pointer;font-size:13px"';
+
+    // Show progress directly in reportContainer (the input section with the
+    // normal progress bar is hidden at this point since the warning is showing)
+    var isDark = document.body.classList.contains('dark-ui');
+    var progBg = isDark ? '#1e293b' : '#f1f5f9';
+    var progText = isDark ? '#94a3b8' : '#475569';
+    var progAccent = isDark ? '#3b82f6' : '#2563eb';
+    function showJsProgress(pct, label) {
+      reportContainer.innerHTML = '<div style="padding:30px 40px;background:' + progBg + ';border-radius:var(--radius);text-align:center">' +
+        '<div style="font-size:13px;color:' + progText + ';margin-bottom:12px;font-weight:500">' + label + '</div>' +
+        '<div style="height:6px;background:' + (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)') + ';border-radius:3px;overflow:hidden">' +
+        '<div style="height:100%;width:' + pct + '%;background:' + progAccent + ';border-radius:3px;transition:width 0.6s ease"></div></div>' +
+        '</div>';
+      reportContainer.classList.add('visible');
+    }
+
+    showJsProgress(5, 'Fetching page via proxy...');
+
+    // Fetch raw HTML via proxy (don't use fetchViaProxy which inlines CSS — let JS handle it)
+    fetchWithProxy(url).then(function(html) {
+      if (!html || html.length < 50) {
+        reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
+          'Could not fetch the page (empty response).<br>' +
+          '<button onclick="window.__milgSwitchToSnippet()" ' + errBtn + '>Use Console Snippet instead</button></div>';
+        return;
+      }
+
+      showJsProgress(20, 'Preparing JavaScript environment...');
+
+      var wantShots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
+      var exclude = window.__milgCombinedExclude || (document.getElementById('excludeSelector') && document.getElementById('excludeSelector').value || '').trim() || null;
+
+      showJsProgress(30, 'Running JavaScript & rendering page...');
+
+      // Animate progress while waiting for JS hydration
+      var _jpPct = 30;
+      var _jsProgressTimer = setInterval(function() {
+        _jpPct = Math.min(_jpPct + 3, 90);
+        var label = _jpPct < 50 ? 'Running JavaScript & rendering page...'
+          : _jpPct < 70 ? 'Waiting for framework hydration...'
+          : 'Extracting design data...';
+        showJsProgress(_jpPct, label);
+      }, 600);
+
+      MilgIframe.analyzeHtml(html, {
+        url: url,
+        jsEnabled: true,
+        screenshots: wantShots,
+        exclude: exclude
+      }, function(data) {
+        clearInterval(_jsProgressTimer);
+        data.meta.url = url;
+        data.meta._inputMethod = 'url';
+        data.meta._jsEnabled = true;
+        _runAnalysis(data);
+      });
+
+    }).catch(function(e) {
+      reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
+        'Failed to fetch the page: ' + (e.message || 'proxy error') + '<br>' +
+        '<button onclick="window.__milgSwitchToSnippet()" ' + errBtn + '>Use Console Snippet instead</button></div>';
+    });
+  }
+
+  // Wire up the global handler
+  window.__milgTryWithJs = function(url) { tryWithJs(url); };
+
+  return {
+    init: init,
+    fetchWithProxy: fetchWithProxy,
+    fetchViaProxy: fetchViaProxy
+  };
+})();
+</file>
+
 <file path="docs/analyzer-viewer.js">
 // make-it-look-good — Screenshot Viewer with Bbox Overlays
 // Stitches screenshot sections into one continuous scrollable image
@@ -34261,6 +34483,64 @@ window.MilgViewer = (function() {
 
     // Initial display: prefer clean screenshot
     showScreenshot(false);
+
+    // Render region screenshots (expanded views of hidden overflow content)
+    var regions = (reportData.raw && reportData.raw.regionScreenshots) || [];
+    if (regions.length > 0) {
+      var regionSection = document.createElement('div');
+      regionSection.className = 'milg-viewer-regions';
+      regionSection.style.cssText = 'padding:8px 0;border-top:1px dashed rgba(255,255,255,0.2);margin-top:8px;';
+      var regionLabel = document.createElement('div');
+      regionLabel.style.cssText = 'font-size:11px;color:rgba(255,255,255,0.6);margin-bottom:6px;padding:0 8px;';
+      regionLabel.textContent = 'Expanded hidden content (' + regions.length + ' region' + (regions.length > 1 ? 's' : '') + ')';
+      regionSection.appendChild(regionLabel);
+
+      regions.forEach(function(rgn, rIdx) {
+        if (!rgn.screenshot || !rgn.screenshotMeta) return;
+        var rgnWrap = document.createElement('div');
+        rgnWrap.className = 'milg-viewer-region';
+        rgnWrap.style.cssText = 'position:relative;margin:4px 8px 8px;border:1px dashed rgba(59,130,246,0.4);border-radius:4px;overflow:hidden;';
+
+        var rgnImg = document.createElement('img');
+        rgnImg.src = rgn.screenshot;
+        rgnImg.alt = 'Region ' + (rIdx + 1) + ' expanded';
+        rgnImg.style.cssText = 'display:block;width:100%;height:auto;';
+
+        var rgnSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        rgnSvg.setAttribute('class', 'milg-viewer-region-svg');
+        rgnSvg.setAttribute('viewBox', '0 0 ' + rgn.screenshotMeta.canvasWidth + ' ' + rgn.screenshotMeta.canvasHeight);
+        rgnSvg.setAttribute('preserveAspectRatio', 'xMinYMin meet');
+        rgnSvg.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;';
+
+        // Render local bboxes for this region's contrast pairs
+        if (rgn.localBboxes && rgn.pairIndices && _reportData && _reportData.raw && _reportData.raw.colors) {
+          var pairs = _reportData.raw.colors.contrastPairs || [];
+          var scale = rgn.screenshotMeta.scale || 1.5;
+          rgn.pairIndices.forEach(function(pi) {
+            var pair = pairs[pi];
+            if (!pair) return;
+            var lb = rgn.localBboxes[pi];
+            if (!lb) return;
+            var color = pair.passes ? COLORS.pass : (pair.ratio < pair.needed * 0.7 ? COLORS.error : COLORS.warning);
+            var rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            rect.setAttribute('x', Math.round(lb.left * scale));
+            rect.setAttribute('y', Math.round(lb.top * scale));
+            rect.setAttribute('width', Math.max(Math.round(lb.width * scale), 4));
+            rect.setAttribute('height', Math.max(Math.round(lb.height * scale), 4));
+            rect.setAttribute('fill', color.fill);
+            rect.setAttribute('stroke', color.stroke);
+            rect.setAttribute('stroke-width', '1.5');
+            rgnSvg.appendChild(rect);
+          });
+        }
+
+        rgnWrap.appendChild(rgnImg);
+        rgnWrap.appendChild(rgnSvg);
+        regionSection.appendChild(rgnWrap);
+      });
+
+      content.appendChild(regionSection);
+    }
   }
 
   // Build debug info with pixel probing for alignment diagnostics
@@ -35795,226 +36075,6 @@ window.MilgViewer = (function() {
     showFinding: showFinding,
     showFindingBbox: showFindingBbox,
     showVerifyResult: showVerifyResult
-  };
-})();
-</file>
-
-<file path="docs/analyzer-proxy.js">
-// make-it-look-good — CORS Proxy & JS-Enabled Analysis
-// Handles URL fetching via proxy chain and "Try with JS" mode.
-// Depends on: analyzer-iframe.js (MilgIframe)
-
-window.MilgProxy = (function() {
-  "use strict";
-
-  var _corsProxyUrl = '';
-  var _showToast = function() {};
-  var _showProgress = function() {};
-  var _hideProgress = function() {};
-  var _runAnalysis = function() {};
-
-  function init(opts) {
-    if (opts.corsProxyUrl) _corsProxyUrl = opts.corsProxyUrl;
-    if (opts.showToast) _showToast = opts.showToast;
-    if (opts.showProgress) _showProgress = opts.showProgress;
-    if (opts.hideProgress) _hideProgress = opts.hideProgress;
-    if (opts.runAnalysis) _runAnalysis = opts.runAnalysis;
-  }
-
-  // --- URL Fetch via CORS proxy ---
-  // Remembers which proxy worked so subsequent requests (CSS files etc.) skip failed ones
-  var _lastWorkingProxy = -1; // -1 = direct, 0+ = proxy index
-
-  function buildProxyList() {
-    var proxies = [];
-    if (_corsProxyUrl) proxies.push(_corsProxyUrl + '?url=');
-    proxies.push(
-      'https://api.allorigins.win/raw?url=',
-      'https://api.codetabs.com/v1/proxy?quest=',
-      'https://corsproxy.io/?'
-    );
-    return proxies;
-  }
-
-  function fetchWithProxy(url) {
-    var proxies = buildProxyList();
-
-    // If we already know which proxy works, try it first
-    if (_lastWorkingProxy >= 0 && _lastWorkingProxy < proxies.length) {
-      return fetch(proxies[_lastWorkingProxy] + encodeURIComponent(url))
-        .then(function(r) { if (!r.ok) throw new Error(r.status); return r.text(); })
-        .then(function(t) { if (!t || t.length < 50) throw new Error('empty'); return t; })
-        .catch(function() {
-          // Last working proxy failed — reset and try full chain
-          _lastWorkingProxy = -1;
-          return fetchWithProxyFull(url, proxies);
-        });
-    }
-
-    return fetchWithProxyFull(url, proxies);
-  }
-
-  function fetchWithProxyFull(url, proxies) {
-    // Try direct fetch first
-    return fetch(url, { mode: 'cors', redirect: 'follow' })
-      .then(function(r) { if (r.ok) return r.text(); throw new Error(r.status); })
-      .then(function(t) { _lastWorkingProxy = -1; return t; })
-      .catch(function() {
-        // Try proxies in order, remember which one works
-        var chain = Promise.reject();
-        proxies.forEach(function(proxyBase, idx) {
-          chain = chain.catch(function() {
-            return fetch(proxyBase + encodeURIComponent(url)).then(function(r) {
-              if (!r.ok) throw new Error(r.status);
-              return r.text();
-            }).then(function(t) {
-              if (!t || t.length < 50) throw new Error('empty');
-              _lastWorkingProxy = idx;
-              return t;
-            });
-          });
-        });
-        return chain;
-      });
-  }
-
-  function fetchViaProxy(url, callback) {
-    fetchWithProxy(url)
-      .then(function(html) {
-        // Detect proxy error pages (Cloudflare challenges, 4xx/5xx error pages, consent walls)
-        var htmlStart = (html || '').substring(0, 3000);
-        if (html && (
-          /class="no-js.*oldie"/i.test(htmlStart) || // Cloudflare error template
-          /cf-error-details|cf-wrapper/i.test(htmlStart) ||
-          /Access Denied|403 Forbidden/i.test(htmlStart) ||
-          /Just a moment|Checking your browser/i.test(htmlStart) || // Cloudflare challenge
-          /consent\.google|accounts\.google.*ServiceLogin/i.test(htmlStart) // Google consent/login redirect
-        )) {
-          callback(null, 'The site returned an error/challenge page (likely blocking proxy access). Use the Console Snippet tab instead.');
-          return;
-        }
-
-        // Resolve base URL for relative paths
-        var baseUrl;
-        try { var u = new URL(url); baseUrl = u.origin + u.pathname.replace(/\/[^/]*$/, '/'); } catch(e) { baseUrl = url; }
-
-        // Find and inline linked stylesheets so CSS works inside srcdoc iframe
-        var cssLinks = [];
-        var linkRegex = /<link[^>]+rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*>/gi;
-        var altRegex = /<link[^>]+href=["']([^"']+)["'][^>]*rel=["']stylesheet["'][^>]*>/gi;
-        var m;
-        while (m = linkRegex.exec(html)) cssLinks.push(m[1]);
-        while (m = altRegex.exec(html)) { if (cssLinks.indexOf(m[1]) === -1) cssLinks.push(m[1]); }
-
-        if (cssLinks.length === 0) { callback(html, null); return; }
-
-        // Fetch all CSS files and inline them
-        Promise.all(cssLinks.map(function(href) {
-          var cssUrl = href.startsWith('http') ? href : (href.startsWith('/') ? new URL(url).origin + href : baseUrl + href);
-          return fetchWithProxy(cssUrl).catch(function() { return '/* failed: ' + href + ' */'; });
-        })).then(function(cssTexts) {
-          // Remove original link tags and inject inlined styles
-          var processed = html.replace(/<link[^>]+rel=["']stylesheet["'][^>]*>/gi, '');
-          processed = processed.replace(/<link[^>]+href=["'][^"']+\.css[^"']*["'][^>]*rel=["']stylesheet["'][^>]*>/gi, '');
-          var styleBlock = '<style>' + cssTexts.join('\n') + '</style>';
-          if (/<\/head>/i.test(processed)) {
-            processed = processed.replace(/<\/head>/i, styleBlock + '</head>');
-          } else {
-            processed = styleBlock + processed;
-          }
-          callback(processed, null);
-        });
-      })
-      .catch(function(e) {
-        callback(null, e.message || 'All CORS proxies failed');
-      });
-  }
-
-  // Try analyzing with JS enabled — fetches raw HTML via proxy, then delegates to
-  // MilgIframe.analyzeHtml which handles sandbox injection, URL patching, extraction,
-  // screenshots, and timeouts via the unified preprocessHtml pipeline.
-  function tryWithJs(url) {
-    var ok = confirm(
-      'This will fetch the page via proxy and run its JavaScript in a sandboxed frame on this page.\n\n' +
-      'Only do this if you trust the site — its scripts will execute with access to this page\'s origin (XSS risk).\n\n' +
-      'Some sites may not work if they rely on cookies, auth, or same-origin API calls.\n\n' +
-      'Continue?'
-    );
-    if (!ok) return;
-
-    var reportContainer = document.getElementById('reportContainer');
-    var errBtn = 'style="margin-top:12px;padding:8px 16px;border-radius:6px;border:1px solid currentColor;background:none;color:inherit;cursor:pointer;font-size:13px"';
-
-    // Show progress directly in reportContainer (the input section with the
-    // normal progress bar is hidden at this point since the warning is showing)
-    var isDark = document.body.classList.contains('dark-ui');
-    var progBg = isDark ? '#1e293b' : '#f1f5f9';
-    var progText = isDark ? '#94a3b8' : '#475569';
-    var progAccent = isDark ? '#3b82f6' : '#2563eb';
-    function showJsProgress(pct, label) {
-      reportContainer.innerHTML = '<div style="padding:30px 40px;background:' + progBg + ';border-radius:var(--radius);text-align:center">' +
-        '<div style="font-size:13px;color:' + progText + ';margin-bottom:12px;font-weight:500">' + label + '</div>' +
-        '<div style="height:6px;background:' + (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)') + ';border-radius:3px;overflow:hidden">' +
-        '<div style="height:100%;width:' + pct + '%;background:' + progAccent + ';border-radius:3px;transition:width 0.6s ease"></div></div>' +
-        '</div>';
-      reportContainer.classList.add('visible');
-    }
-
-    showJsProgress(5, 'Fetching page via proxy...');
-
-    // Fetch raw HTML via proxy (don't use fetchViaProxy which inlines CSS — let JS handle it)
-    fetchWithProxy(url).then(function(html) {
-      if (!html || html.length < 50) {
-        reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
-          'Could not fetch the page (empty response).<br>' +
-          '<button onclick="window.__milgSwitchToSnippet()" ' + errBtn + '>Use Console Snippet instead</button></div>';
-        return;
-      }
-
-      showJsProgress(20, 'Preparing JavaScript environment...');
-
-      var wantShots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
-      var exclude = window.__milgCombinedExclude || (document.getElementById('excludeSelector') && document.getElementById('excludeSelector').value || '').trim() || null;
-
-      showJsProgress(30, 'Running JavaScript & rendering page...');
-
-      // Animate progress while waiting for JS hydration
-      var _jpPct = 30;
-      var _jsProgressTimer = setInterval(function() {
-        _jpPct = Math.min(_jpPct + 3, 90);
-        var label = _jpPct < 50 ? 'Running JavaScript & rendering page...'
-          : _jpPct < 70 ? 'Waiting for framework hydration...'
-          : 'Extracting design data...';
-        showJsProgress(_jpPct, label);
-      }, 600);
-
-      MilgIframe.analyzeHtml(html, {
-        url: url,
-        jsEnabled: true,
-        screenshots: wantShots,
-        exclude: exclude
-      }, function(data) {
-        clearInterval(_jsProgressTimer);
-        data.meta.url = url;
-        data.meta._inputMethod = 'url';
-        data.meta._jsEnabled = true;
-        _runAnalysis(data);
-      });
-
-    }).catch(function(e) {
-      reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
-        'Failed to fetch the page: ' + (e.message || 'proxy error') + '<br>' +
-        '<button onclick="window.__milgSwitchToSnippet()" ' + errBtn + '>Use Console Snippet instead</button></div>';
-    });
-  }
-
-  // Wire up the global handler
-  window.__milgTryWithJs = function(url) { tryWithJs(url); };
-
-  return {
-    init: init,
-    fetchWithProxy: fetchWithProxy,
-    fetchViaProxy: fetchViaProxy
   };
 })();
 </file>
@@ -38475,6 +38535,92 @@ window.MilgCrawl = (function() {
         if (_overlay.parentNode) _overlay.parentNode.removeChild(_overlay);
         data.screenshots = fullPageDataUri ? [fullPageDataUri] : [];
         data.screenshotFull = fullPageDataUri || null;
+        // Also store as clean screenshot (snippet captures the page as-is)
+        data.screenshotClean = fullPageDataUri || null;
+        data.screenshotCleanMeta = fullPageDataUri ? { canvasWidth: fullCanvas.width, canvasHeight: fullCanvas.height } : null;
+
+        // --- Region screenshots for hidden overflow content ---
+        (function captureRegions(regionCb) {
+          if (!window.__milgBboxRefs || !data.colors || !data.colors.contrastPairs) { regionCb([]); return; }
+          var _cp = data.colors.contrastPairs;
+          var _rgnCounter = 0, _clipContainers = {}, _clipList = [];
+          // Mark clipped pairs and detect outermost clipping containers
+          window.__milgBboxRefs.forEach(function(ref) {
+            if (!ref.el || !ref.obj || ref.key !== 'bbox') return;
+            var el = ref.el, pair = ref.obj;
+            var er = el.getBoundingClientRect();
+            var clipAnc = null, anc = el.parentElement;
+            while (anc && anc !== document.documentElement) {
+              var as = getComputedStyle(anc);
+              var aov = as.overflow || '', aovx = as.overflowX || '', aovy = as.overflowY || '';
+              if (aov === 'hidden' || aov === 'clip' || aovx === 'hidden' || aovx === 'clip' || aovy === 'hidden' || aovy === 'clip') {
+                var ar = anc.getBoundingClientRect();
+                if (ar.width >= 100 && ar.height >= 30) {
+                  if (er.right < ar.left + 1 || er.left > ar.right - 1 || er.bottom < ar.top + 1 || er.top > ar.bottom - 1) {
+                    pair._isClipped = true;
+                    clipAnc = anc;
+                  }
+                }
+              }
+              anc = anc.parentElement;
+            }
+            if (!clipAnc) return;
+            var cid = clipAnc._milgRegionId;
+            if (!cid) { cid = 'rgn-' + (++_rgnCounter); clipAnc._milgRegionId = cid; _clipList.push({ el: clipAnc, id: cid, pairIndices: [] }); _clipContainers[cid] = _clipList[_clipList.length - 1]; }
+            var pi = _cp.indexOf(pair);
+            if (pi >= 0 && _clipContainers[cid].pairIndices.indexOf(pi) < 0) _clipContainers[cid].pairIndices.push(pi);
+          });
+          _clipList.sort(function(a, b) { var ar = a.el.getBoundingClientRect(), br = b.el.getBoundingClientRect(); return (br.width * br.height) - (ar.width * ar.height); });
+          _clipList = _clipList.slice(0, 5);
+          if (_clipList.length === 0) { regionCb([]); return; }
+          console.log('[ss] ' + _t() + 'Found ' + _clipList.length + ' clipping regions, capturing...');
+          var _rgnResults = [], _rgnDone = 0, _rgnTotal = _clipList.length;
+          var _rgnOverall = setTimeout(function() { console.warn('[ss] Region timeout (30s)'); regionCb(_rgnResults); }, 30000);
+          // Collect styles
+          var allStyles = ''; document.querySelectorAll('style').forEach(function(s) { allStyles += s.outerHTML; });
+          var allLinks = ''; document.querySelectorAll('link[rel="stylesheet"]').forEach(function(l) { allLinks += l.outerHTML; });
+          var baseHref = location.href;
+          _clipList.forEach(function(rgn, rIdx) {
+            var container = rgn.el, cr = container.getBoundingClientRect();
+            var clone = container.cloneNode(true);
+            clone.style.cssText += ';overflow:visible !important;max-height:none !important;';
+            clone.querySelectorAll('*').forEach(function(d) { d.style.cssText += ';transform:none !important;overflow:visible !important;'; });
+            var miniHtml = '<!DOCTYPE html><html><head><meta charset=UTF-8><base href="' + baseHref.replace(/"/g, '&quot;') + '">' + allLinks + allStyles +
+              '<style>*,*::before,*::after{transition:none !important;animation:none !important;}</style></head><body style="margin:0;padding:0;overflow:visible">' + clone.outerHTML + '</body></html>';
+            var mf = document.createElement('iframe');
+            mf.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + Math.max(Math.ceil(cr.width * 4), 800) + 'px;height:2000px;border:none;visibility:hidden;';
+            document.body.appendChild(mf);
+            var rgnTimer = setTimeout(function() { rgnFinish(rIdx, mf, null); }, 15000);
+            mf.srcdoc = miniHtml;
+            mf.addEventListener('load', function() {
+              setTimeout(function() {
+                try {
+                  var mDoc = mf.contentDocument; if (!mDoc) { rgnFinish(rIdx, mf, null); return; }
+                  var cW = Math.max(mDoc.body.scrollWidth, mDoc.documentElement.scrollWidth);
+                  var cH = Math.max(mDoc.body.scrollHeight, mDoc.documentElement.scrollHeight);
+                  mf.style.width = cW + 'px'; mf.style.height = cH + 'px';
+                  void mDoc.body.offsetHeight;
+                  ms.domToCanvas(mDoc.documentElement, { scale: 1.5, timeout: 12000 }).then(function(rc) {
+                    var rUri; try { rUri = rc.toDataURL('image/webp', 0.8); } catch(e) { rUri = ''; }
+                    var localBboxes = {};
+                    rgn.pairIndices.forEach(function(pi) {
+                      var pair = _cp[pi]; if (!pair || !pair.bbox) return;
+                      localBboxes[pi] = { left: pair.bbox.left - Math.round(cr.left), top: pair.bbox.top - Math.round(cr.top), width: pair.bbox.width, height: pair.bbox.height };
+                    });
+                    clearTimeout(rgnTimer);
+                    rgnFinish(rIdx, mf, { screenshot: rUri, screenshotMeta: { scale: 1.5, canvasWidth: rc.width, canvasHeight: rc.height }, pairIndices: rgn.pairIndices, localBboxes: localBboxes, containerRect: { left: Math.round(cr.left), top: Math.round(cr.top), width: Math.round(cr.width), height: Math.round(cr.height) } });
+                  }).catch(function(e) { clearTimeout(rgnTimer); rgnFinish(rIdx, mf, null); });
+                } catch(e) { clearTimeout(rgnTimer); rgnFinish(rIdx, mf, null); }
+              }, 600);
+            });
+          });
+          function rgnFinish(idx, mf, result) {
+            if (result) _rgnResults.push(result);
+            try { if (mf && mf.parentNode) mf.parentNode.removeChild(mf); } catch(e) {}
+            _rgnDone++; if (_rgnDone >= _rgnTotal) { clearTimeout(_rgnOverall); console.log('[ss] Regions done: ' + _rgnResults.length + '/' + _rgnTotal); regionCb(_rgnResults); }
+          }
+        })(function(regionResults) {
+          data.regionScreenshots = regionResults;
 
         (function finalize() {
             var captureDocH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
@@ -38598,6 +38744,7 @@ window.MilgCrawl = (function() {
               outputData(data);
             });
         })();
+        }); // close captureRegions callback
 
       }).catch(function(err) {
         console.log('[ss] ' + _t() + '\u2717 Full page capture failed: ' + (err && err.message || err));
@@ -40201,6 +40348,133 @@ window.MilgIframe = (function() {
     setTimeout(function() { if (fi < toFetch.length) { console.log('[milg] Font prefetch timeout, continuing'); fi = toFetch.length; cb(); } }, 15000);
   }
 
+  // Region screenshot function — serialized via .toString() into the iframe script.
+  // Detects overflow:hidden containers that clip tracked contrast pairs,
+  // clones each into a mini-page iframe, and captures screenshots in parallel.
+  function _regionScreenshotFn(_sc, _quality, _prog, _cp2) {
+    return function _buildRegionScreenshots(rgnCb) {
+      // Detect clipping containers
+      var _rgnCounter = 0, _clipContainerList = [], _clipContainers = {};
+      if (window.__milgBboxRefs) {
+        window.__milgBboxRefs.forEach(function(ref) {
+          if (!ref.el || !ref.obj || ref.key !== 'bbox' || !ref.obj._isClipped) return;
+          var clipAnc = null, anc = ref.el.parentElement;
+          while (anc && anc !== document.documentElement) {
+            var as = getComputedStyle(anc);
+            var aov = as.overflow || '', aovx = as.overflowX || '', aovy = as.overflowY || '';
+            if (aov === 'hidden' || aov === 'clip' || aovx === 'hidden' || aovx === 'clip' || aovy === 'hidden' || aovy === 'clip') {
+              var ar = anc.getBoundingClientRect();
+              if (ar.width >= 100 && ar.height >= 30) clipAnc = anc;
+            }
+            anc = anc.parentElement;
+          }
+          if (!clipAnc) return;
+          var cid = clipAnc._milgRegionId;
+          if (!cid) {
+            cid = 'rgn-' + (++_rgnCounter); clipAnc._milgRegionId = cid;
+            _clipContainerList.push({ el: clipAnc, id: cid, pairIndices: [] });
+            _clipContainers[cid] = _clipContainerList[_clipContainerList.length - 1];
+          }
+          var pi = _cp2.indexOf(ref.obj);
+          if (pi >= 0 && _clipContainers[cid].pairIndices.indexOf(pi) < 0)
+            _clipContainers[cid].pairIndices.push(pi);
+        });
+      }
+      _clipContainerList.sort(function(a, b) {
+        var ar = a.el.getBoundingClientRect(), br = b.el.getBoundingClientRect();
+        return (br.width * br.height) - (ar.width * ar.height);
+      });
+      _clipContainerList = _clipContainerList.slice(0, 5);
+      console.log('[iframe-ss] Found ' + _clipContainerList.length + ' clipping regions with hidden content');
+      if (_clipContainerList.length === 0) { rgnCb([]); return; }
+
+      var _rgnResults = [], _rgnDone = 0, _rgnTotal = _clipContainerList.length;
+      var _rgnOverall = setTimeout(function() {
+        console.warn('[iframe-ss] Region screenshots overall timeout (30s)');
+        rgnCb(_rgnResults);
+      }, 30000);
+
+      // Collect styles from the current document for the mini-pages
+      var allStyles = '';
+      document.querySelectorAll('style').forEach(function(s) { allStyles += s.outerHTML; });
+      var allLinks = '';
+      document.querySelectorAll('link[rel=stylesheet]').forEach(function(l) { allLinks += l.outerHTML; });
+      var baseHref = (document.querySelector('base') || {}).href || '';
+      _prog('Capturing ' + _rgnTotal + ' region screenshots...');
+
+      _clipContainerList.forEach(function(rgn, rIdx) {
+        var container = rgn.el, cr = container.getBoundingClientRect();
+        var clone = container.cloneNode(true);
+        clone.style.cssText += ';overflow:visible !important;max-height:none !important;';
+        // Neutralize transforms on all descendants (carousel slides)
+        clone.querySelectorAll('*').forEach(function(d) {
+          d.style.cssText += ';transform:none !important;overflow:visible !important;';
+        });
+        for (var ci = 0; ci < clone.children.length; ci++) {
+          clone.children[ci].style.cssText += ';transform:none !important;';
+        }
+
+        var miniHtml = '<!DOCTYPE html><html><head><meta charset=UTF-8>' +
+          (baseHref ? '<base href="' + baseHref.replace(/"/g, '&quot;') + '">' : '') +
+          allLinks + allStyles +
+          '<style>*,*::before,*::after{transition:none !important;animation:none !important;}</style>' +
+          '</head><body style="margin:0;padding:0;overflow:visible">' + clone.outerHTML + '</body></html>';
+
+        var mf = document.createElement('iframe');
+        mf.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + Math.max(Math.ceil(cr.width * 4), 800) + 'px;height:2000px;border:none;visibility:hidden;';
+        mf.setAttribute('sandbox', 'allow-same-origin allow-scripts');
+        document.body.appendChild(mf);
+
+        var rgnTimer = setTimeout(function() {
+          console.warn('[iframe-ss] Region ' + rIdx + ' timed out');
+          _rgnFinish(rIdx, mf, null);
+        }, 15000);
+
+        mf.srcdoc = miniHtml;
+        mf.addEventListener('load', function() {
+          setTimeout(function() {
+            try {
+              var mDoc = mf.contentDocument;
+              if (!mDoc) { _rgnFinish(rIdx, mf, null); return; }
+              var cW = Math.max(mDoc.body.scrollWidth, mDoc.documentElement.scrollWidth);
+              var cH = Math.max(mDoc.body.scrollHeight, mDoc.documentElement.scrollHeight);
+              mf.style.width = cW + 'px'; mf.style.height = cH + 'px';
+              void mDoc.body.offsetHeight;
+              var pms = window.modernScreenshot;
+              if (!pms || !pms.domToCanvas) { _rgnFinish(rIdx, mf, null); return; }
+              pms.domToCanvas(mDoc.documentElement, { scale: _sc, timeout: 12000 }).then(function(rc) {
+                var rUri; try { rUri = rc.toDataURL('image/webp', _quality); } catch(e) { rUri = ''; }
+                var localBboxes = {};
+                rgn.pairIndices.forEach(function(pi) {
+                  var pair = _cp2[pi]; if (!pair || !pair.bbox) return;
+                  localBboxes[pi] = { left: pair.bbox.left - Math.round(cr.left), top: pair.bbox.top - Math.round(cr.top), width: pair.bbox.width, height: pair.bbox.height };
+                });
+                clearTimeout(rgnTimer);
+                _rgnFinish(rIdx, mf, {
+                  screenshot: rUri,
+                  screenshotMeta: { scale: _sc, canvasWidth: rc.width, canvasHeight: rc.height },
+                  pairIndices: rgn.pairIndices, localBboxes: localBboxes,
+                  containerRect: { left: Math.round(cr.left), top: Math.round(cr.top), width: Math.round(cr.width), height: Math.round(cr.height) }
+                });
+              }).catch(function(e) { clearTimeout(rgnTimer); _rgnFinish(rIdx, mf, null); });
+            } catch(e) { clearTimeout(rgnTimer); _rgnFinish(rIdx, mf, null); }
+          }, 600);
+        });
+      });
+
+      function _rgnFinish(idx, mf, result) {
+        if (result) _rgnResults.push(result);
+        try { if (mf && mf.parentNode) mf.parentNode.removeChild(mf); } catch(e) {}
+        _rgnDone++;
+        if (_rgnDone >= _rgnTotal) {
+          clearTimeout(_rgnOverall);
+          console.log('[iframe-ss] Region screenshots done: ' + _rgnResults.length + '/' + _rgnTotal);
+          rgnCb(_rgnResults);
+        }
+      }
+    };
+  }
+
   // --- Screenshot capture script (injected into iframes after extraction) ---
   // Called after extraction via __milgDoScreenshots (once-guard prevents double run).
   // Mirrors console snippet: pre-scroll → reset → wait → re-read bboxes → capture body
@@ -40414,6 +40688,11 @@ window.MilgIframe = (function() {
                   '}' +
                 '})' +
               '}' +
+              // Inject and run region screenshot function (serialized to avoid escaping issues)
+              'var _cp2=window.__milgData&&window.__milgData.colors?window.__milgData.colors.contrastPairs||[]:[];' +
+              'var _buildRegionScreenshots=(' + _regionScreenshotFn.toString() + ')(_sc,' + ss.quality + ',_prog,_cp2);' +
+              '_buildRegionScreenshots(function(_regionResults){' +
+              'window.__milgRegionScreenshots=_regionResults;' +
               // Phase B: Expand overflow:hidden containers with transformed descendants (carousels/sliders)
               'var _expanded=0;' +
               'document.querySelectorAll("*").forEach(function(container){' +
@@ -40486,6 +40765,7 @@ window.MilgIframe = (function() {
                     'docHeightAtCapture:fullH,' +
                     'calibrationOffsetY:0,calibrationSamples:[]},' +
                   'screenshotCleanMeta:{canvasWidth:_cleanW,canvasHeight:_cleanH},' +
+                  'regionScreenshots:window.__milgRegionScreenshots||[],' +
                   'updatedData:updatedData};' +
                 'var _maskCount=updatedData&&updatedData.colors&&updatedData.colors.contrastPairs?updatedData.colors.contrastPairs.filter(function(p){return !!p._maskBmp}).length:0;' +
                 'console.log("[iframe-ss] postMessage: ss="+((fullUri||"").length/1024|0)+"KB ud="+(JSON.stringify(updatedData||{}).length/1024|0)+"KB masks="+_maskCount+"/"+((updatedData&&updatedData.colors&&updatedData.colors.contrastPairs||[]).length));' +
@@ -40709,6 +40989,7 @@ window.MilgIframe = (function() {
               '_nextLayer()' +
             '})' + // end document.fonts.ready.then
             '}).catch(function(e){console.warn("[iframe-ss] expanded capture failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[],_iframeId:_mid},"*")})' +
+            '})' + // close _buildRegionScreenshots callback
             '}).catch(function(e){console.warn("[iframe-ss] clean capture failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[],_iframeId:_mid},"*")})' +
           '})})' + // close _preloadBgImages + _preloadImages callbacks
           '};' +
@@ -40820,6 +41101,7 @@ window.MilgIframe = (function() {
         iframe._milgData.screenshotCleanMeta = e.data.screenshotCleanMeta || null;
         iframe._milgData.textMask = e.data.textMask || null;
         iframe._milgData.screenshotMeta = e.data.screenshotMeta || null;
+        iframe._milgData.regionScreenshots = e.data.regionScreenshots || [];
         // Apply re-read bbox data from the iframe (updated after scroll-reset + getFlowPosition)
         if (e.data.updatedData) {
           var ud = e.data.updatedData;
@@ -40965,7 +41247,7 @@ window.MilgIframe = (function() {
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v2.7 loaded');
+console.log('[milg] analyzer.js v2.8 loaded');
 
 (function() {
   "use strict";
@@ -42707,7 +42989,7 @@ console.log('[milg] analyzer.js v2.7 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v2.7</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v2.8</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
