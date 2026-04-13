@@ -147,14 +147,17 @@ test.describe('UI Controls', () => {
 
 test.describe('Screenshot Pipeline', () => {
 
-  // HTML with a carousel pattern: overflow:hidden container + CSS-transformed child
-  // Also includes a fragment-only img src to verify #fragment filtering
+  // HTML with a nested carousel pattern (like fink-translate.com):
+  // overflow:hidden container > intermediate wrapper > track[transform]
+  // Also includes a fragment-only img src and an <a href="#n"> to test filtering
   const CAROUSEL_HTML = `<!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8"><title>Carousel Test</title>
 <style>
   body { font-family: sans-serif; margin: 0; padding: 20px; background: #fff; }
-  .carousel-wrap { overflow: hidden; width: 400px; height: 200px; position: relative; }
-  .carousel-track { display: flex; transform: translateX(-100%); transition: none; }
+  .carousel-container { overflow: hidden; width: 400px; position: relative; }
+  .carousel-inner { position: relative; }
+  .carousel-track-container { position: relative; }
+  .carousel-track { display: flex; transform: translateX(-400px); transition: transform 0.5s ease; }
   .carousel-slide { min-width: 400px; padding: 20px; box-sizing: border-box; }
   .slide-1 { background: #f0f0f0; }
   .slide-2 { background: #e0e0ff; }
@@ -163,11 +166,16 @@ test.describe('Screenshot Pipeline', () => {
   p { color: #333; }
 </style></head><body>
   <h1>Carousel Test Page</h1>
-  <div class="carousel-wrap">
-    <div class="carousel-track">
-      <div class="carousel-slide slide-1"><h2>Slide One</h2><p>First slide content here.</p></div>
-      <div class="carousel-slide slide-2"><h2>Slide Two</h2><p>Second slide visible.</p></div>
-      <div class="carousel-slide slide-3"><h2>Slide Three</h2><p>Third slide content.</p></div>
+  <a href="#n">Skip nav</a>
+  <div class="carousel-container">
+    <div class="carousel-inner">
+      <div class="carousel-track-container">
+        <div class="carousel-track">
+          <div class="carousel-slide slide-1"><h2>Slide One</h2><p>First slide content here.</p></div>
+          <div class="carousel-slide slide-2"><h2>Slide Two</h2><p>Second slide visible.</p></div>
+          <div class="carousel-slide slide-3"><h2>Slide Three</h2><p>Third slide content.</p></div>
+        </div>
+      </div>
     </div>
   </div>
   <img src="#fragment" alt="fragment-only test">
@@ -194,8 +202,8 @@ test.describe('Screenshot Pipeline', () => {
     expect(score).toBeGreaterThanOrEqual(0);
     expect(score).toBeLessThanOrEqual(100);
 
-    // Verify carousel expansion happened
-    const expandLog = consoleLogs.find(l => l.includes('Expanded') && l.includes('overflow:hidden'));
+    // Verify carousel expansion happened (searches descendants, not just children)
+    const expandLog = consoleLogs.find(l => l.includes('Expanded') && l.includes('overflow:hidden') && l.includes('descendants'));
     expect(expandLog).toBeTruthy();
 
     // Verify no %23 (encoded #) fetch errors

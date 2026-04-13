@@ -155,6 +155,11 @@ window.MilgIframe = (function() {
             'if(!window.__milgFontBlobs)window.__milgFontBlobs={};' +
             'window.fetch=function(u,o){' +
               'if(typeof u==="string"&&u.charAt(0)==="/")u=_ro+u;' +
+              // Skip fragment-only URLs (e.g. #n encoded as %23n by modernScreenshot)
+              'if(typeof u==="string"&&(u.indexOf("%23")!==-1||u.indexOf("#")!==-1)){' +
+                'var _uf=u.replace(/%23.*/,"").replace(/#.*/,"");' +
+                'if(!_uf||_uf===_ro||_uf===_ro+"/")return Promise.resolve(new Response("",{status:200}))' +
+              '}' +
               'if(_px&&typeof u==="string"&&u.indexOf(_px)===-1&&/\\.(woff2?|ttf|otf|eot)(\\?|$)/i.test(u)){' +
                 'if(_fc[u])return _fc[u].then(function(r){return r.clone()});' +
                 'var p=_of.call(this,_px+"?url="+encodeURIComponent(u),o)' +
@@ -207,6 +212,11 @@ window.MilgIframe = (function() {
           'var _fc=((typeof parent!=="undefined")&&parent.__milgFontCache)||{};' +
           'if(!window.__milgFontBlobs)window.__milgFontBlobs={};' +
           'window.fetch=function(u,o){' +
+            // Skip fragment-only URLs
+            'if(typeof u==="string"&&(u.indexOf("%23")!==-1||u.indexOf("#")!==-1)){' +
+              'var _uf=u.replace(/%23.*/,"").replace(/#.*/,"");' +
+              'if(!_uf||/^https?:\\/\\/[^/]+\\/?$/.test(_uf))return Promise.resolve(new Response("",{status:200}))' +
+            '}' +
             'if(_px&&typeof u==="string"&&u.indexOf(_px)===-1&&/\\.(woff2?|ttf|otf|eot)(\\?|$)/i.test(u)){' +
               'if(_fc[u])return _fc[u].then(function(r){return r.clone()});' +
               'var p=_of.call(this,_px+"?url="+encodeURIComponent(u),o)' +
@@ -439,7 +449,7 @@ window.MilgIframe = (function() {
         // Switch to overflow:visible for capture
         'document.documentElement.style.cssText+="overflow:visible !important;";' +
         'document.body.style.cssText+="overflow:visible !important;";' +
-        // Expand overflow:hidden containers with transformed children (carousels/sliders)
+        // Expand overflow:hidden containers with transformed descendants (carousels/sliders)
         'var _expanded=0;' +
         'document.querySelectorAll("*").forEach(function(container){' +
           'var cs=getComputedStyle(container);' +
@@ -448,26 +458,25 @@ window.MilgIframe = (function() {
           'if(!isClipping)return;' +
           'var cr=container.getBoundingClientRect();' +
           'if(cr.width<100||cr.height<30)return;' +
-          'var hasTransChild=false;' +
-          'for(var k=0;k<container.children.length;k++){' +
-            'var ct=getComputedStyle(container.children[k]).transform;' +
-            'if(ct&&ct!=="none"){' +
-              'var _m=ct.match(/matrix\\(([^)]+)\\)/);' +
-              'if(_m){var _p=_m[1].split(",");' +
-                'var _tx=Math.abs(parseFloat(_p[4])||0);' +
-                'var _ty=Math.abs(parseFloat(_p[5])||0);' +
-                'if(_tx>5||_ty>5){hasTransChild=true;break}' +
-              '}' +
-            '}' +
-          '}' +
-          'if(!hasTransChild)return;' +
+          // Search ALL descendants for significant transforms (carousel track may be nested)
+          'var transEls=[];' +
+          'container.querySelectorAll("*").forEach(function(desc){' +
+            'var ct=getComputedStyle(desc).transform;' +
+            'if(!ct||ct==="none")return;' +
+            'var _m=ct.match(/matrix\\(([^)]+)\\)/);' +
+            'if(!_m)return;' +
+            'var _p=_m[1].split(",");' +
+            'var _tx=Math.abs(parseFloat(_p[4])||0);' +
+            'var _ty=Math.abs(parseFloat(_p[5])||0);' +
+            'if(_tx>5||_ty>5)transEls.push(desc)' +
+          '});' +
+          'if(transEls.length===0)return;' +
           'container.style.cssText+=";overflow:visible !important;";' +
-          'for(var k2=0;k2<container.children.length;k2++){' +
-            'container.children[k2].style.cssText+=";transform:none !important;"' +
-          '}' +
+          // Neutralize transforms on all translated descendants
+          'transEls.forEach(function(el){el.style.cssText+=";transform:none !important;"});' +
           '_expanded++' +
         '});' +
-        'if(_expanded>0)console.log("[iframe-ss] Expanded "+_expanded+" overflow:hidden containers with transformed children");' +
+        'if(_expanded>0)console.log("[iframe-ss] Expanded "+_expanded+" overflow:hidden containers with transformed descendants");' +
         'void document.body.offsetHeight;' +
         '_prog("Waiting for animations to settle...");' +
         'console.log("[iframe-ss] Phase 2: Waiting for animations to finalize...");' +

@@ -33461,14 +33461,17 @@ test.describe('UI Controls', () => {
 
 test.describe('Screenshot Pipeline', () => {
 
-  // HTML with a carousel pattern: overflow:hidden container + CSS-transformed child
-  // Also includes a fragment-only img src to verify #fragment filtering
+  // HTML with a nested carousel pattern (like fink-translate.com):
+  // overflow:hidden container > intermediate wrapper > track[transform]
+  // Also includes a fragment-only img src and an <a href="#n"> to test filtering
   const CAROUSEL_HTML = `<!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8"><title>Carousel Test</title>
 <style>
   body { font-family: sans-serif; margin: 0; padding: 20px; background: #fff; }
-  .carousel-wrap { overflow: hidden; width: 400px; height: 200px; position: relative; }
-  .carousel-track { display: flex; transform: translateX(-100%); transition: none; }
+  .carousel-container { overflow: hidden; width: 400px; position: relative; }
+  .carousel-inner { position: relative; }
+  .carousel-track-container { position: relative; }
+  .carousel-track { display: flex; transform: translateX(-400px); transition: transform 0.5s ease; }
   .carousel-slide { min-width: 400px; padding: 20px; box-sizing: border-box; }
   .slide-1 { background: #f0f0f0; }
   .slide-2 { background: #e0e0ff; }
@@ -33477,11 +33480,16 @@ test.describe('Screenshot Pipeline', () => {
   p { color: #333; }
 </style></head><body>
   <h1>Carousel Test Page</h1>
-  <div class="carousel-wrap">
-    <div class="carousel-track">
-      <div class="carousel-slide slide-1"><h2>Slide One</h2><p>First slide content here.</p></div>
-      <div class="carousel-slide slide-2"><h2>Slide Two</h2><p>Second slide visible.</p></div>
-      <div class="carousel-slide slide-3"><h2>Slide Three</h2><p>Third slide content.</p></div>
+  <a href="#n">Skip nav</a>
+  <div class="carousel-container">
+    <div class="carousel-inner">
+      <div class="carousel-track-container">
+        <div class="carousel-track">
+          <div class="carousel-slide slide-1"><h2>Slide One</h2><p>First slide content here.</p></div>
+          <div class="carousel-slide slide-2"><h2>Slide Two</h2><p>Second slide visible.</p></div>
+          <div class="carousel-slide slide-3"><h2>Slide Three</h2><p>Third slide content.</p></div>
+        </div>
+      </div>
     </div>
   </div>
   <img src="#fragment" alt="fragment-only test">
@@ -33508,8 +33516,8 @@ test.describe('Screenshot Pipeline', () => {
     expect(score).toBeGreaterThanOrEqual(0);
     expect(score).toBeLessThanOrEqual(100);
 
-    // Verify carousel expansion happened
-    const expandLog = consoleLogs.find(l => l.includes('Expanded') && l.includes('overflow:hidden'));
+    // Verify carousel expansion happened (searches descendants, not just children)
+    const expandLog = consoleLogs.find(l => l.includes('Expanded') && l.includes('overflow:hidden') && l.includes('descendants'));
     expect(expandLog).toBeTruthy();
 
     // Verify no %23 (encoded #) fetch errors
@@ -39918,6 +39926,11 @@ window.MilgIframe = (function() {
             'if(!window.__milgFontBlobs)window.__milgFontBlobs={};' +
             'window.fetch=function(u,o){' +
               'if(typeof u==="string"&&u.charAt(0)==="/")u=_ro+u;' +
+              // Skip fragment-only URLs (e.g. #n encoded as %23n by modernScreenshot)
+              'if(typeof u==="string"&&(u.indexOf("%23")!==-1||u.indexOf("#")!==-1)){' +
+                'var _uf=u.replace(/%23.*/,"").replace(/#.*/,"");' +
+                'if(!_uf||_uf===_ro||_uf===_ro+"/")return Promise.resolve(new Response("",{status:200}))' +
+              '}' +
               'if(_px&&typeof u==="string"&&u.indexOf(_px)===-1&&/\\.(woff2?|ttf|otf|eot)(\\?|$)/i.test(u)){' +
                 'if(_fc[u])return _fc[u].then(function(r){return r.clone()});' +
                 'var p=_of.call(this,_px+"?url="+encodeURIComponent(u),o)' +
@@ -39970,6 +39983,11 @@ window.MilgIframe = (function() {
           'var _fc=((typeof parent!=="undefined")&&parent.__milgFontCache)||{};' +
           'if(!window.__milgFontBlobs)window.__milgFontBlobs={};' +
           'window.fetch=function(u,o){' +
+            // Skip fragment-only URLs
+            'if(typeof u==="string"&&(u.indexOf("%23")!==-1||u.indexOf("#")!==-1)){' +
+              'var _uf=u.replace(/%23.*/,"").replace(/#.*/,"");' +
+              'if(!_uf||/^https?:\\/\\/[^/]+\\/?$/.test(_uf))return Promise.resolve(new Response("",{status:200}))' +
+            '}' +
             'if(_px&&typeof u==="string"&&u.indexOf(_px)===-1&&/\\.(woff2?|ttf|otf|eot)(\\?|$)/i.test(u)){' +
               'if(_fc[u])return _fc[u].then(function(r){return r.clone()});' +
               'var p=_of.call(this,_px+"?url="+encodeURIComponent(u),o)' +
@@ -40202,7 +40220,7 @@ window.MilgIframe = (function() {
         // Switch to overflow:visible for capture
         'document.documentElement.style.cssText+="overflow:visible !important;";' +
         'document.body.style.cssText+="overflow:visible !important;";' +
-        // Expand overflow:hidden containers with transformed children (carousels/sliders)
+        // Expand overflow:hidden containers with transformed descendants (carousels/sliders)
         'var _expanded=0;' +
         'document.querySelectorAll("*").forEach(function(container){' +
           'var cs=getComputedStyle(container);' +
@@ -40211,26 +40229,25 @@ window.MilgIframe = (function() {
           'if(!isClipping)return;' +
           'var cr=container.getBoundingClientRect();' +
           'if(cr.width<100||cr.height<30)return;' +
-          'var hasTransChild=false;' +
-          'for(var k=0;k<container.children.length;k++){' +
-            'var ct=getComputedStyle(container.children[k]).transform;' +
-            'if(ct&&ct!=="none"){' +
-              'var _m=ct.match(/matrix\\(([^)]+)\\)/);' +
-              'if(_m){var _p=_m[1].split(",");' +
-                'var _tx=Math.abs(parseFloat(_p[4])||0);' +
-                'var _ty=Math.abs(parseFloat(_p[5])||0);' +
-                'if(_tx>5||_ty>5){hasTransChild=true;break}' +
-              '}' +
-            '}' +
-          '}' +
-          'if(!hasTransChild)return;' +
+          // Search ALL descendants for significant transforms (carousel track may be nested)
+          'var transEls=[];' +
+          'container.querySelectorAll("*").forEach(function(desc){' +
+            'var ct=getComputedStyle(desc).transform;' +
+            'if(!ct||ct==="none")return;' +
+            'var _m=ct.match(/matrix\\(([^)]+)\\)/);' +
+            'if(!_m)return;' +
+            'var _p=_m[1].split(",");' +
+            'var _tx=Math.abs(parseFloat(_p[4])||0);' +
+            'var _ty=Math.abs(parseFloat(_p[5])||0);' +
+            'if(_tx>5||_ty>5)transEls.push(desc)' +
+          '});' +
+          'if(transEls.length===0)return;' +
           'container.style.cssText+=";overflow:visible !important;";' +
-          'for(var k2=0;k2<container.children.length;k2++){' +
-            'container.children[k2].style.cssText+=";transform:none !important;"' +
-          '}' +
+          // Neutralize transforms on all translated descendants
+          'transEls.forEach(function(el){el.style.cssText+=";transform:none !important;"});' +
           '_expanded++' +
         '});' +
-        'if(_expanded>0)console.log("[iframe-ss] Expanded "+_expanded+" overflow:hidden containers with transformed children");' +
+        'if(_expanded>0)console.log("[iframe-ss] Expanded "+_expanded+" overflow:hidden containers with transformed descendants");' +
         'void document.body.offsetHeight;' +
         '_prog("Waiting for animations to settle...");' +
         'console.log("[iframe-ss] Phase 2: Waiting for animations to finalize...");' +
