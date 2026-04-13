@@ -40142,13 +40142,74 @@ window.MilgIframe = (function() {
             'var ms=window.modernScreenshot;' +
             'if(!ms||!ms.domToCanvas){parent.postMessage({type:"' + msgType + '",screenshots:[],_iframeId:_mid},"*");return}' +
             'var _imgPx="' + (_proxyUrl || '').replace(/"/g, '\\"') + '";' +
-            'document.querySelectorAll("img").forEach(function(i){' +
-              'if(!i.src||i.src.indexOf("data:")===0)return;' +
-              'i.crossOrigin="anonymous";' +
-              'if(_imgPx&&i.src.indexOf(_imgPx)===-1&&i.src.indexOf(location.origin)!==0){' +
-                'i.src=_imgPx+"?url="+encodeURIComponent(i.src)' +
-              '}' +
-            '});' +
+            // Preload cross-origin images via proxy → data URI before capture
+            'function _preloadImages(cb){' +
+              'if(!_imgPx){cb();return}' +
+              'var imgs=document.querySelectorAll("img");' +
+              'var srcs=document.querySelectorAll("source[srcset]");' +
+              'var jobs=[];' +
+              // Collect cross-origin img elements
+              'imgs.forEach(function(i){' +
+                'if(!i.src||i.src.indexOf("data:")===0||i.src.indexOf("blob:")===0)return;' +
+                'if(i.src.indexOf(location.origin)===0)return;' +
+                'jobs.push({el:i,url:i.src,attr:"src"})' +
+              '});' +
+              // Collect cross-origin source[srcset] (picture elements)
+              'srcs.forEach(function(s){' +
+                'var ss=s.getAttribute("srcset");if(!ss)return;' +
+                'var u=ss.split(",")[0].trim().split(/\\s+/)[0];' +
+                'if(!u||u.indexOf("data:")===0||u.indexOf("blob:")===0)return;' +
+                'if(u.indexOf(location.origin)===0)return;' +
+                'jobs.push({el:s,url:u,attr:"srcset"})' +
+              '});' +
+              'if(jobs.length===0){cb();return}' +
+              '_prog("Preloading "+jobs.length+" images via proxy...");' +
+              'console.log("[iframe-ss] Preloading "+jobs.length+" cross-origin images via proxy");' +
+              'var done=0;' +
+              'jobs.forEach(function(j){' +
+                'var pxUrl=_imgPx+"?url="+encodeURIComponent(j.url);' +
+                'fetch(pxUrl).then(function(r){' +
+                  'if(!r.ok)throw new Error(r.status);return r.blob()' +
+                '}).then(function(blob){' +
+                  'return new Promise(function(res){' +
+                    'var fr=new FileReader();fr.onload=function(){res(fr.result)};fr.onerror=function(){res(null)};fr.readAsDataURL(blob)' +
+                  '})' +
+                '}).then(function(dataUri){' +
+                  'if(dataUri){' +
+                    'if(j.attr==="src")j.el.src=dataUri;' +
+                    'else if(j.attr==="srcset")j.el.setAttribute("srcset",dataUri)' +
+                  '}' +
+                '}).catch(function(e){' +
+                  'console.warn("[iframe-ss] Image preload failed:",j.url,e&&e.message||"")' +
+                '}).finally(function(){' +
+                  'done++;if(done>=jobs.length)cb()' +
+                '})' +
+              '})' +
+            '}' +
+            // Also inline CSS background-image URLs
+            'function _preloadBgImages(cb){' +
+              'if(!_imgPx){cb();return}' +
+              'var jobs=[];' +
+              'document.querySelectorAll("*").forEach(function(el){' +
+                'var bg=getComputedStyle(el).backgroundImage;' +
+                'if(!bg||bg==="none")return;' +
+                'var m=bg.match(/url\\("?(https?:\\/\\/[^"\\)]+)"?\\)/);' +
+                'if(!m||!m[1]||m[1].indexOf(location.origin)===0)return;' +
+                'jobs.push({el:el,url:m[1],fullBg:bg})' +
+              '});' +
+              'if(jobs.length===0){cb();return}' +
+              'console.log("[iframe-ss] Preloading "+jobs.length+" background images via proxy");' +
+              'var done=0;' +
+              'jobs.forEach(function(j){' +
+                'fetch(_imgPx+"?url="+encodeURIComponent(j.url)).then(function(r){' +
+                  'if(!r.ok)throw new Error(r.status);return r.blob()' +
+                '}).then(function(blob){' +
+                  'return new Promise(function(res){var fr=new FileReader();fr.onload=function(){res(fr.result)};fr.onerror=function(){res(null)};fr.readAsDataURL(blob)})' +
+                '}).then(function(d){' +
+                  'if(d)j.el.style.backgroundImage=j.fullBg.replace(j.url,d)' +
+                '}).catch(function(){}).finally(function(){done++;if(done>=jobs.length)cb()})' +
+              '})' +
+            '}' +
             'var _sc=' + ss.scale + ';' +
             // Helper: send results to parent
             'function _send(fullUri,maskUri){' +
@@ -40164,7 +40225,8 @@ window.MilgIframe = (function() {
                 'updatedData:updatedData' +
               '},"*")' +
             '}' +
-            // Step 1: Capture real screenshot FIRST (safe — no DOM modifications)
+            // Preload images via proxy → data URI, then capture
+            '_preloadImages(function(){_preloadBgImages(function(){' +
             '_prog("Capturing screenshot...");' +
             'console.log("[iframe-ss] Step 1/2: Capturing screenshot at "+_sc+"x...");' +
             'ms.domToCanvas(document.documentElement,{scale:_sc,timeout:45000}).then(function(fc){' +
@@ -40423,6 +40485,7 @@ window.MilgIframe = (function() {
               '_nextLayer()' +
             '})' + // end document.fonts.ready.then
             '}).catch(function(e){console.warn("[iframe-ss] capture failed:",e);parent.postMessage({type:"' + msgType + '",screenshots:[],_iframeId:_mid},"*")})' +
+          '})})' + // close _preloadBgImages + _preloadImages callbacks
           '};' +
           's.onerror=function(){parent.postMessage({type:"' + msgType + '",screenshots:[],_iframeId:_mid},"*")};' +
           'document.head.appendChild(s)' +
@@ -42417,7 +42480,7 @@ console.log('[milg] analyzer.js v2.2 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v2.4</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v2.5</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
