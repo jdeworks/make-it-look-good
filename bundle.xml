@@ -153,6 +153,7 @@ responsive/
   mobile-first.md
   responsive-patterns.md
 scripts/
+  analyze-narratu.mjs
   build-screenshot-snippet.sh
   inject-proxy.sh
   test-full-matrix.mjs
@@ -21899,6 +21900,157 @@ Choosing a responsive pattern?
 - Ethan Marcotte (2011). "Responsive Web Design." A Book Apart.
 </file>
 
+<file path="scripts/analyze-narratu.mjs">
+#!/usr/bin/env node
+/**
+ * Run make-it-look-good Design Analyzer against Narratu SPA.
+ * Uses Puppeteer to navigate, inject extraction engine, extract, then score.
+ */
+import puppeteer from 'puppeteer';
+import { createServer } from 'http';
+import { readFileSync, existsSync } from 'fs';
+import { join, extname } from 'path';
+
+const MILG_DIR = join(import.meta.dirname, '..', 'docs');
+const NARRATU_URL = 'http://localhost:4173/narratu/';
+const MILG_PORT = 8765;
+
+function startServer(dir, port) {
+  const mimeTypes = {
+    '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css',
+    '.json': 'application/json', '.svg': 'image/svg+xml',
+  };
+  const server = createServer((req, res) => {
+    let url = req.url.split('?')[0];
+    let filePath = join(dir, url === '/' ? 'index.html' : url);
+    if (!existsSync(filePath)) { res.writeHead(404); res.end('Not found'); return; }
+    res.writeHead(200, {
+      'Content-Type': mimeTypes[extname(filePath)] || 'application/octet-stream',
+      'Access-Control-Allow-Origin': '*',
+    });
+    res.end(readFileSync(filePath));
+  });
+  server.listen(port);
+  return server;
+}
+
+async function main() {
+  console.log('Narratu Design Analysis\n');
+  const milgServer = startServer(MILG_DIR, MILG_PORT);
+
+  // Read extraction engine source
+  const extractCode = readFileSync(join(MILG_DIR, 'analyzer-extract.js'), 'utf8');
+
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  });
+
+  const viewports = [
+    { w: 1280, h: 900, label: 'desktop' },
+    { w: 768, h: 1024, label: 'tablet' },
+    { w: 375, h: 812, label: 'phone' },
+  ];
+
+  for (const vp of viewports) {
+    console.log(`\n=== ${vp.label} (${vp.w}x${vp.h}) ===`);
+    const page = await browser.newPage();
+    await page.setViewport({ width: vp.w, height: vp.h });
+
+    // Navigate to Narratu
+    await page.goto(NARRATU_URL, { waitUntil: 'networkidle0', timeout: 15000 });
+    await new Promise(r => setTimeout(r, 3000)); // Wait for React
+
+    // Inject extraction engine and run it
+    const data = await page.evaluate((code) => {
+      return new Promise((resolve, reject) => {
+        try {
+          // Eval the extraction engine — it sets window.MilgExtract
+          (new Function(code))();
+          if (!window.MilgExtract) { reject('MilgExtract not defined'); return; }
+
+          // Set callback and run extraction
+          // MilgExtract IS extractFromDocument — call it directly
+          window.__milgOnExtractComplete = function(data) {
+            resolve(data);
+          };
+          window.MilgExtract();
+        } catch(err) {
+          reject(err.message || String(err));
+        }
+
+        // Timeout
+        setTimeout(() => reject('Extraction timeout (15s)'), 15000);
+      });
+    }, extractCode).catch(err => ({ _error: String(err) }));
+
+    if (data._error) {
+      console.log(`  ERROR: ${data._error}`);
+      await page.close();
+      continue;
+    }
+
+    // Score using the scoring engine
+    const scoringPage = await browser.newPage();
+    await scoringPage.goto(`http://localhost:${MILG_PORT}/tests/test-presets-rendered.html`, {
+      waitUntil: 'networkidle0', timeout: 15000
+    });
+
+    const result = await scoringPage.evaluate((data, label) => {
+      data.profile = 'general';
+      data.meta = data.meta || {};
+      data.meta.url = label;
+      try {
+        const report = window.MilgScoring.runScoring(data);
+        return {
+          overall: report.overall,
+          grade: report.grade,
+          categories: report.categories.map(c => ({
+            label: c.label,
+            score: c.score,
+            errors: c.findings.filter(f => f.severity === 'error').length,
+            warnings: c.findings.filter(f => f.severity === 'warning').length,
+            findings: c.findings
+              .filter(f => f.severity === 'error' || f.severity === 'warning')
+              .map(f => ({ severity: f.severity, title: f.title, detail: (f.detail || '').slice(0, 150) }))
+          }))
+        };
+      } catch(err) {
+        return { _error: 'Scoring error: ' + err.message };
+      }
+    }, data, `narratu-${vp.label}`);
+
+    await scoringPage.close();
+    await page.close();
+
+    if (result._error) {
+      console.log(`  ERROR: ${result._error}`);
+      continue;
+    }
+
+    const totalE = result.categories.reduce((s, c) => s + c.errors, 0);
+    const totalW = result.categories.reduce((s, c) => s + c.warnings, 0);
+    console.log(`  Score: ${result.overall}/100 (${result.grade}) — ${totalE} errors, ${totalW} warnings\n`);
+
+    for (const cat of result.categories) {
+      const icon = cat.errors > 0 ? 'X' : cat.warnings > 0 ? '!' : ' ';
+      const detail = (cat.errors > 0 || cat.warnings > 0) ? ` (${cat.errors}E ${cat.warnings}W)` : '';
+      console.log(`  [${icon}] ${cat.label}: ${cat.score}${detail}`);
+      for (const f of cat.findings) {
+        const fi = f.severity === 'error' ? 'X' : '!';
+        console.log(`      [${fi}] ${f.title}${f.detail ? ' — ' + f.detail : ''}`);
+      }
+    }
+  }
+
+  await browser.close();
+  milgServer.close();
+  console.log('\nDone.');
+}
+
+main().catch(e => { console.error(e); process.exit(1); });
+</file>
+
 <file path="scripts/build-screenshot-snippet.sh">
 #!/usr/bin/env bash
 # Downloads modern-screenshot and inlines it into the screenshot snippet.
@@ -39697,6 +39849,10 @@ window.MilgIframe = (function() {
                   '.catch(function(e){console.warn("[milg-warn] Font proxy failed:",u,e&&e.message||"");return new Response("",{status:404})});' +
                 '_fc[u]=p;return p;' +
               '}' +
+              'if(_px&&typeof u==="string"&&u.indexOf(_px)===-1&&/\\.(png|jpe?g|gif|webp|svg|avif|ico|bmp)(\\?|$)/i.test(u)){' +
+                'return _of.call(this,_px+"?url="+encodeURIComponent(u),o)' +
+                  '.catch(function(){return _of.call(this,u,o)})' +
+              '}' +
               'return _of.call(this,u,o);' +
             '};' +
           '})();' +
@@ -39749,6 +39905,10 @@ window.MilgIframe = (function() {
                 '})' +
                 '.catch(function(){return _of.call(this,u,o)});' +
               '_fc[u]=p;return p' +
+            '}' +
+            'if(_px&&typeof u==="string"&&u.indexOf(_px)===-1&&/\\.(png|jpe?g|gif|webp|svg|avif|ico|bmp)(\\?|$)/i.test(u)){' +
+              'return _of.call(this,_px+"?url="+encodeURIComponent(u),o)' +
+                '.catch(function(){return _of.call(this,u,o)})' +
             '}' +
             'return _of.call(this,u,o)' +
           '};' +
@@ -39981,7 +40141,14 @@ window.MilgIframe = (function() {
           's.onload=function(){' +
             'var ms=window.modernScreenshot;' +
             'if(!ms||!ms.domToCanvas){parent.postMessage({type:"' + msgType + '",screenshots:[],_iframeId:_mid},"*");return}' +
-            'document.querySelectorAll("img").forEach(function(i){if(i.src&&i.src.indexOf("data:")!==0)i.crossOrigin="anonymous"});' +
+            'var _imgPx="' + (_proxyUrl || '').replace(/"/g, '\\"') + '";' +
+            'document.querySelectorAll("img").forEach(function(i){' +
+              'if(!i.src||i.src.indexOf("data:")===0)return;' +
+              'i.crossOrigin="anonymous";' +
+              'if(_imgPx&&i.src.indexOf(_imgPx)===-1&&i.src.indexOf(location.origin)!==0){' +
+                'i.src=_imgPx+"?url="+encodeURIComponent(i.src)' +
+              '}' +
+            '});' +
             'var _sc=' + ss.scale + ';' +
             // Helper: send results to parent
             'function _send(fullUri,maskUri){' +
@@ -40407,6 +40574,7 @@ window.MilgIframe = (function() {
     // Screenshot capture: script that auto-runs after extraction, loads CDN library, captures page
     // Also includes unhidden-panels screenshot if hidden panels are detected
     var unhiddenScreenshotFn = 'window.__milgDoUnhiddenScreenshots=function(){' +
+      'var _mid=window.__milgIframeId||"";' +
       // Unhide all interactive panels using !important overrides
       'var panels=document.querySelectorAll("[role=menu],[role=listbox],[role=dialog],[role=tooltip],[role=alertdialog]");' +
       'var hidden=[];' +
@@ -42249,7 +42417,7 @@ console.log('[milg] analyzer.js v2.2 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v2.3</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v2.4</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 

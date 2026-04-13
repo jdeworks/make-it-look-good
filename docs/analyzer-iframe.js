@@ -162,6 +162,10 @@ window.MilgIframe = (function() {
                   '.catch(function(e){console.warn("[milg-warn] Font proxy failed:",u,e&&e.message||"");return new Response("",{status:404})});' +
                 '_fc[u]=p;return p;' +
               '}' +
+              'if(_px&&typeof u==="string"&&u.indexOf(_px)===-1&&/\\.(png|jpe?g|gif|webp|svg|avif|ico|bmp)(\\?|$)/i.test(u)){' +
+                'return _of.call(this,_px+"?url="+encodeURIComponent(u),o)' +
+                  '.catch(function(){return _of.call(this,u,o)})' +
+              '}' +
               'return _of.call(this,u,o);' +
             '};' +
           '})();' +
@@ -214,6 +218,10 @@ window.MilgIframe = (function() {
                 '})' +
                 '.catch(function(){return _of.call(this,u,o)});' +
               '_fc[u]=p;return p' +
+            '}' +
+            'if(_px&&typeof u==="string"&&u.indexOf(_px)===-1&&/\\.(png|jpe?g|gif|webp|svg|avif|ico|bmp)(\\?|$)/i.test(u)){' +
+              'return _of.call(this,_px+"?url="+encodeURIComponent(u),o)' +
+                '.catch(function(){return _of.call(this,u,o)})' +
             '}' +
             'return _of.call(this,u,o)' +
           '};' +
@@ -446,7 +454,14 @@ window.MilgIframe = (function() {
           's.onload=function(){' +
             'var ms=window.modernScreenshot;' +
             'if(!ms||!ms.domToCanvas){parent.postMessage({type:"' + msgType + '",screenshots:[],_iframeId:_mid},"*");return}' +
-            'document.querySelectorAll("img").forEach(function(i){if(i.src&&i.src.indexOf("data:")!==0)i.crossOrigin="anonymous"});' +
+            'var _imgPx="' + (_proxyUrl || '').replace(/"/g, '\\"') + '";' +
+            'document.querySelectorAll("img").forEach(function(i){' +
+              'if(!i.src||i.src.indexOf("data:")===0)return;' +
+              'i.crossOrigin="anonymous";' +
+              'if(_imgPx&&i.src.indexOf(_imgPx)===-1&&i.src.indexOf(location.origin)!==0){' +
+                'i.src=_imgPx+"?url="+encodeURIComponent(i.src)' +
+              '}' +
+            '});' +
             'var _sc=' + ss.scale + ';' +
             // Helper: send results to parent
             'function _send(fullUri,maskUri){' +
@@ -872,6 +887,7 @@ window.MilgIframe = (function() {
     // Screenshot capture: script that auto-runs after extraction, loads CDN library, captures page
     // Also includes unhidden-panels screenshot if hidden panels are detected
     var unhiddenScreenshotFn = 'window.__milgDoUnhiddenScreenshots=function(){' +
+      'var _mid=window.__milgIframeId||"";' +
       // Unhide all interactive panels using !important overrides
       'var panels=document.querySelectorAll("[role=menu],[role=listbox],[role=dialog],[role=tooltip],[role=alertdialog]");' +
       'var hidden=[];' +
