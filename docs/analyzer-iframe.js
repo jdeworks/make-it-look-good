@@ -439,6 +439,35 @@ window.MilgIframe = (function() {
         // Switch to overflow:visible for capture
         'document.documentElement.style.cssText+="overflow:visible !important;";' +
         'document.body.style.cssText+="overflow:visible !important;";' +
+        // Expand overflow:hidden containers with transformed children (carousels/sliders)
+        'var _expanded=0;' +
+        'document.querySelectorAll("*").forEach(function(container){' +
+          'var cs=getComputedStyle(container);' +
+          'var ov=cs.overflow||"";var ovx=cs.overflowX||"";var ovy=cs.overflowY||"";' +
+          'var isClipping=ov==="hidden"||ov==="clip"||ovx==="hidden"||ovx==="clip"||ovy==="hidden"||ovy==="clip";' +
+          'if(!isClipping)return;' +
+          'var cr=container.getBoundingClientRect();' +
+          'if(cr.width<100||cr.height<30)return;' +
+          'var hasTransChild=false;' +
+          'for(var k=0;k<container.children.length;k++){' +
+            'var ct=getComputedStyle(container.children[k]).transform;' +
+            'if(ct&&ct!=="none"){' +
+              'var _m=ct.match(/matrix\\(([^)]+)\\)/);' +
+              'if(_m){var _p=_m[1].split(",");' +
+                'var _tx=Math.abs(parseFloat(_p[4])||0);' +
+                'var _ty=Math.abs(parseFloat(_p[5])||0);' +
+                'if(_tx>5||_ty>5){hasTransChild=true;break}' +
+              '}' +
+            '}' +
+          '}' +
+          'if(!hasTransChild)return;' +
+          'container.style.cssText+=";overflow:visible !important;";' +
+          'for(var k2=0;k2<container.children.length;k2++){' +
+            'container.children[k2].style.cssText+=";transform:none !important;"' +
+          '}' +
+          '_expanded++' +
+        '});' +
+        'if(_expanded>0)console.log("[iframe-ss] Expanded "+_expanded+" overflow:hidden containers with transformed children");' +
         'void document.body.offsetHeight;' +
         '_prog("Waiting for animations to settle...");' +
         'console.log("[iframe-ss] Phase 2: Waiting for animations to finalize...");' +
@@ -465,15 +494,21 @@ window.MilgIframe = (function() {
               'imgs.forEach(function(i){' +
                 'if(!i.src||i.src.indexOf("data:")===0||i.src.indexOf("blob:")===0)return;' +
                 'if(i.src.indexOf(location.origin)===0)return;' +
-                'jobs.push({el:i,url:i.src,attr:"src"})' +
+                // Skip fragment-only src (e.g. src="#n") and strip hash before proxying
+                'var _rawSrc=i.getAttribute("src");' +
+                'if(_rawSrc&&_rawSrc.charAt(0)==="#")return;' +
+                'var _cleanUrl=i.src.split("#")[0];if(!_cleanUrl)return;' +
+                'jobs.push({el:i,url:_cleanUrl,attr:"src"})' +
               '});' +
               // Collect cross-origin source[srcset] (picture elements)
               'srcs.forEach(function(s){' +
                 'var ss=s.getAttribute("srcset");if(!ss)return;' +
+                'if(ss.charAt(0)==="#")return;' +
                 'var u=ss.split(",")[0].trim().split(/\\s+/)[0];' +
                 'if(!u||u.indexOf("data:")===0||u.indexOf("blob:")===0)return;' +
                 'if(u.indexOf(location.origin)===0)return;' +
-                'jobs.push({el:s,url:u,attr:"srcset"})' +
+                'var _cleanU=u.split("#")[0];if(!_cleanU)return;' +
+                'jobs.push({el:s,url:_cleanU,attr:"srcset"})' +
               '});' +
               'if(jobs.length===0){cb();return}' +
               '_prog("Preloading "+jobs.length+" images via proxy...");' +
@@ -508,7 +543,8 @@ window.MilgIframe = (function() {
                 'if(!bg||bg==="none")return;' +
                 'var m=bg.match(/url\\("?(https?:\\/\\/[^"\\)]+)"?\\)/);' +
                 'if(!m||!m[1]||m[1].indexOf(location.origin)===0)return;' +
-                'jobs.push({el:el,url:m[1],fullBg:bg})' +
+                'var _bgUrl=m[1].split("#")[0];if(!_bgUrl)return;' +
+                'jobs.push({el:el,url:_bgUrl,fullBg:bg})' +
               '});' +
               'if(jobs.length===0){cb();return}' +
               'console.log("[iframe-ss] Preloading "+jobs.length+" background images via proxy");' +

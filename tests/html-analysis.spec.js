@@ -143,6 +143,82 @@ test.describe('UI Controls', () => {
   });
 });
 
+// ── Screenshot & Carousel Alignment ──
+
+test.describe('Screenshot Pipeline', () => {
+
+  // HTML with a carousel pattern: overflow:hidden container + CSS-transformed child
+  // Also includes a fragment-only img src to verify #fragment filtering
+  const CAROUSEL_HTML = `<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Carousel Test</title>
+<style>
+  body { font-family: sans-serif; margin: 0; padding: 20px; background: #fff; }
+  .carousel-wrap { overflow: hidden; width: 400px; height: 200px; position: relative; }
+  .carousel-track { display: flex; transform: translateX(-100%); transition: none; }
+  .carousel-slide { min-width: 400px; padding: 20px; box-sizing: border-box; }
+  .slide-1 { background: #f0f0f0; }
+  .slide-2 { background: #e0e0ff; }
+  .slide-3 { background: #ffe0e0; }
+  h2 { color: #111; margin: 0 0 8px; }
+  p { color: #333; }
+</style></head><body>
+  <h1>Carousel Test Page</h1>
+  <div class="carousel-wrap">
+    <div class="carousel-track">
+      <div class="carousel-slide slide-1"><h2>Slide One</h2><p>First slide content here.</p></div>
+      <div class="carousel-slide slide-2"><h2>Slide Two</h2><p>Second slide visible.</p></div>
+      <div class="carousel-slide slide-3"><h2>Slide Three</h2><p>Third slide content.</p></div>
+    </div>
+  </div>
+  <img src="#fragment" alt="fragment-only test">
+  <p>Below the carousel.</p>
+</body></html>`;
+
+  async function analyzeWithScreenshots(page, html) {
+    await page.goto(ANALYZER_URL);
+    // Enable screenshot checkbox
+    await page.check('#screenshotCheck');
+    await page.click('[data-tab="tabHtml"]');
+    await page.fill('#htmlInput', html);
+    await page.click('#analyzeHtmlBtn');
+    await page.waitForSelector('.report-container.visible', { timeout: 45000 });
+  }
+
+  test('carousel overflow:hidden containers get expanded for screenshots', async ({ page }) => {
+    const consoleLogs = [];
+    page.on('console', msg => consoleLogs.push(msg.text()));
+
+    await analyzeWithScreenshots(page, CAROUSEL_HTML);
+
+    const score = await getScore(page);
+    expect(score).toBeGreaterThanOrEqual(0);
+    expect(score).toBeLessThanOrEqual(100);
+
+    // Verify carousel expansion happened
+    const expandLog = consoleLogs.find(l => l.includes('Expanded') && l.includes('overflow:hidden'));
+    expect(expandLog).toBeTruthy();
+
+    // Verify no %23 (encoded #) fetch errors
+    const hashError = consoleLogs.find(l => l.includes('%23') && (l.includes('ERR_FAILED') || l.includes('404')));
+    expect(hashError).toBeFalsy();
+  });
+
+  test('fragment-only img src is skipped during preload', async ({ page }) => {
+    const consoleLogs = [];
+    const consoleWarnings = [];
+    page.on('console', msg => {
+      consoleLogs.push(msg.text());
+      if (msg.type() === 'warning') consoleWarnings.push(msg.text());
+    });
+
+    await analyzeWithScreenshots(page, CAROUSEL_HTML);
+
+    // Should NOT have a preload warning for fragment URLs
+    const fragWarn = consoleWarnings.find(w => w.includes('#fragment') || w.includes('%23fragment'));
+    expect(fragWarn).toBeFalsy();
+  });
+});
+
 // ── Multiple Presets ──
 
 test.describe('Preset Scoring', () => {
