@@ -32353,246 +32353,6 @@ window.MilgExtract = (function() {
 })();
 </file>
 
-<file path="tests/html-analysis.spec.js">
-// @ts-check
-const { test, expect } = require('@playwright/test');
-const fs = require('fs');
-const path = require('path');
-
-const ANALYZER_URL = 'http://localhost:8384/analyzer.html';
-
-function loadPreset(name) {
-  return fs.readFileSync(path.join(__dirname, '..', 'docs', 'presets', name, 'clean.html'), 'utf8');
-}
-
-async function analyzeHtml(page, html) {
-  await page.goto(ANALYZER_URL);
-  await page.click('[data-tab="tabHtml"]');
-  await page.fill('#htmlInput', html);
-  await page.click('#analyzeHtmlBtn');
-  await page.waitForSelector('.report-container.visible', { timeout: 30000 });
-}
-
-async function getScore(page) {
-  const text = await page.locator('.report-gauge svg text').first().textContent();
-  return parseInt(text, 10);
-}
-
-// ── HTML Analysis ──
-
-test.describe('HTML Analysis', () => {
-
-  test('buttons preset produces valid scores', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('buttons'));
-    const score = await getScore(page);
-    expect(score).toBeGreaterThanOrEqual(0);
-    expect(score).toBeLessThanOrEqual(100);
-    // Category cards rendered
-    const cards = await page.locator('.report-card').count();
-    expect(cards).toBeGreaterThan(0);
-  });
-
-  test('form preset produces report with findings', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('form'));
-    const findings = await page.locator('.finding-header').count();
-    expect(findings).toBeGreaterThan(0);
-  });
-
-  test('landing preset scores above 50', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('landing'));
-    const score = await getScore(page);
-    expect(score).toBeGreaterThanOrEqual(50);
-  });
-
-  test('dashboard preset renders category cards', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('dashboard'));
-    const cards = await page.locator('.report-card').count();
-    expect(cards).toBeGreaterThanOrEqual(5);
-  });
-});
-
-// ── Export & Import Round-Trip ──
-
-test.describe('Export and Import', () => {
-
-  test('export .milg and re-import produces same score', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('buttons'));
-    const originalScore = await getScore(page);
-
-    // Download .milg (compressed) or .json (fallback)
-    const [download] = await Promise.all([
-      page.waitForEvent('download'),
-      page.click('#exportJsonBtn'),
-    ]);
-    const exportPath = await download.path();
-    const fileName = download.suggestedFilename();
-    expect(fileName).toMatch(/\.(milg|json)$/);
-
-    // Re-import
-    await page.click('#newAnalysisBtn');
-    await page.click('[data-tab="tabImport"]');
-    await page.locator('#importDropFile').setInputFiles(exportPath);
-    await page.waitForSelector('.report-container.visible', { timeout: 30000 });
-
-    const reimportedScore = await getScore(page);
-    expect(reimportedScore).toBe(originalScore);
-  });
-
-  test('export Markdown contains expected sections', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('cards'));
-
-    const [download] = await Promise.all([
-      page.waitForEvent('download'),
-      page.click('#markdownBtn'),
-    ]);
-    const mdContent = fs.readFileSync(await download.path(), 'utf8');
-
-    expect(mdContent).toContain('Design Analysis');
-    expect(mdContent).toContain('Contrast');
-    expect(mdContent).toContain('Typography');
-  });
-});
-
-// ── UI Controls ──
-
-test.describe('UI Controls', () => {
-
-  test('audience profile switch re-scores', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('form'));
-    const originalScore = await getScore(page);
-
-    await page.selectOption('#profileSelect', 'wcag_aaa');
-    await page.waitForTimeout(300);
-
-    const strictScore = await getScore(page);
-    expect(strictScore).toBeLessThanOrEqual(originalScore);
-  });
-
-  test('new analysis button resets view', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('buttons'));
-    await page.click('#newAnalysisBtn');
-    await expect(page.locator('#inputSection')).toBeVisible();
-    await expect(page.locator('#reportContainer')).not.toHaveClass(/visible/);
-  });
-
-  test('dark mode toggle works', async ({ page }) => {
-    await page.goto(ANALYZER_URL);
-    const hasDarkBefore = await page.locator('body').evaluate(el => el.classList.contains('dark-ui'));
-    await page.click('#darkBtn');
-    const hasDarkAfter = await page.locator('body').evaluate(el => el.classList.contains('dark-ui'));
-    expect(hasDarkBefore).not.toBe(hasDarkAfter);
-  });
-
-  test('help modal opens and closes', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('buttons'));
-    await page.click('#helpBtn');
-    await expect(page.locator('#helpModal')).toBeVisible();
-    // Close via X button
-    await page.locator('#helpModal button[aria-label="Close"]').click();
-    await expect(page.locator('#helpModal')).toBeHidden();
-  });
-
-  test('ephemeral banner visible after analysis', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('buttons'));
-    await expect(page.locator('#ephemeralBanner')).toBeVisible();
-    await expect(page.locator('#ephemeralBanner')).toContainText('temporary');
-  });
-});
-
-// ── Screenshot & Carousel Alignment ──
-
-test.describe('Screenshot Pipeline', () => {
-
-  // HTML with a carousel pattern: overflow:hidden container + CSS-transformed child
-  // Also includes a fragment-only img src to verify #fragment filtering
-  const CAROUSEL_HTML = `<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"><title>Carousel Test</title>
-<style>
-  body { font-family: sans-serif; margin: 0; padding: 20px; background: #fff; }
-  .carousel-wrap { overflow: hidden; width: 400px; height: 200px; position: relative; }
-  .carousel-track { display: flex; transform: translateX(-100%); transition: none; }
-  .carousel-slide { min-width: 400px; padding: 20px; box-sizing: border-box; }
-  .slide-1 { background: #f0f0f0; }
-  .slide-2 { background: #e0e0ff; }
-  .slide-3 { background: #ffe0e0; }
-  h2 { color: #111; margin: 0 0 8px; }
-  p { color: #333; }
-</style></head><body>
-  <h1>Carousel Test Page</h1>
-  <div class="carousel-wrap">
-    <div class="carousel-track">
-      <div class="carousel-slide slide-1"><h2>Slide One</h2><p>First slide content here.</p></div>
-      <div class="carousel-slide slide-2"><h2>Slide Two</h2><p>Second slide visible.</p></div>
-      <div class="carousel-slide slide-3"><h2>Slide Three</h2><p>Third slide content.</p></div>
-    </div>
-  </div>
-  <img src="#fragment" alt="fragment-only test">
-  <p>Below the carousel.</p>
-</body></html>`;
-
-  async function analyzeWithScreenshots(page, html) {
-    await page.goto(ANALYZER_URL);
-    // Enable screenshot checkbox
-    await page.check('#screenshotCheck');
-    await page.click('[data-tab="tabHtml"]');
-    await page.fill('#htmlInput', html);
-    await page.click('#analyzeHtmlBtn');
-    await page.waitForSelector('.report-container.visible', { timeout: 45000 });
-  }
-
-  test('carousel overflow:hidden containers get expanded for screenshots', async ({ page }) => {
-    const consoleLogs = [];
-    page.on('console', msg => consoleLogs.push(msg.text()));
-
-    await analyzeWithScreenshots(page, CAROUSEL_HTML);
-
-    const score = await getScore(page);
-    expect(score).toBeGreaterThanOrEqual(0);
-    expect(score).toBeLessThanOrEqual(100);
-
-    // Verify carousel expansion happened
-    const expandLog = consoleLogs.find(l => l.includes('Expanded') && l.includes('overflow:hidden'));
-    expect(expandLog).toBeTruthy();
-
-    // Verify no %23 (encoded #) fetch errors
-    const hashError = consoleLogs.find(l => l.includes('%23') && (l.includes('ERR_FAILED') || l.includes('404')));
-    expect(hashError).toBeFalsy();
-  });
-
-  test('fragment-only img src is skipped during preload', async ({ page }) => {
-    const consoleLogs = [];
-    const consoleWarnings = [];
-    page.on('console', msg => {
-      consoleLogs.push(msg.text());
-      if (msg.type() === 'warning') consoleWarnings.push(msg.text());
-    });
-
-    await analyzeWithScreenshots(page, CAROUSEL_HTML);
-
-    // Should NOT have a preload warning for fragment URLs
-    const fragWarn = consoleWarnings.find(w => w.includes('#fragment') || w.includes('%23fragment'));
-    expect(fragWarn).toBeFalsy();
-  });
-});
-
-// ── Multiple Presets ──
-
-test.describe('Preset Scoring', () => {
-  const presets = ['hero', 'cards', 'stats-row', 'pricing', 'feature-grid'];
-
-  for (const preset of presets) {
-    test(`${preset} produces valid analysis`, async ({ page }) => {
-      await analyzeHtml(page, loadPreset(preset));
-      const score = await getScore(page);
-      expect(score).toBeGreaterThanOrEqual(0);
-      expect(score).toBeLessThanOrEqual(100);
-      const findings = await page.locator('.finding-header').count();
-      expect(findings).toBeGreaterThan(0);
-    });
-  }
-});
-</file>
-
 <file path="docs/analyzer-report.js">
 // make-it-look-good — Report Renderers
 // HTML report, markdown export, gauge SVG, progress bars
@@ -33549,6 +33309,246 @@ window.MilgReport = (function() {
 
   return { renderReport: renderReport, renderMarkdown: renderMarkdown, renderCrawlSummary: renderCrawlSummary, renderCrawlPageTab: renderCrawlPageTab };
 })();
+</file>
+
+<file path="tests/html-analysis.spec.js">
+// @ts-check
+const { test, expect } = require('@playwright/test');
+const fs = require('fs');
+const path = require('path');
+
+const ANALYZER_URL = 'http://localhost:8384/analyzer.html';
+
+function loadPreset(name) {
+  return fs.readFileSync(path.join(__dirname, '..', 'docs', 'presets', name, 'clean.html'), 'utf8');
+}
+
+async function analyzeHtml(page, html) {
+  await page.goto(ANALYZER_URL);
+  await page.click('[data-tab="tabHtml"]');
+  await page.fill('#htmlInput', html);
+  await page.click('#analyzeHtmlBtn');
+  await page.waitForSelector('.report-container.visible', { timeout: 30000 });
+}
+
+async function getScore(page) {
+  const text = await page.locator('.report-gauge svg text').first().textContent();
+  return parseInt(text, 10);
+}
+
+// ── HTML Analysis ──
+
+test.describe('HTML Analysis', () => {
+
+  test('buttons preset produces valid scores', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('buttons'));
+    const score = await getScore(page);
+    expect(score).toBeGreaterThanOrEqual(0);
+    expect(score).toBeLessThanOrEqual(100);
+    // Category cards rendered
+    const cards = await page.locator('.report-card').count();
+    expect(cards).toBeGreaterThan(0);
+  });
+
+  test('form preset produces report with findings', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('form'));
+    const findings = await page.locator('.finding-header').count();
+    expect(findings).toBeGreaterThan(0);
+  });
+
+  test('landing preset scores above 50', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('landing'));
+    const score = await getScore(page);
+    expect(score).toBeGreaterThanOrEqual(50);
+  });
+
+  test('dashboard preset renders category cards', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('dashboard'));
+    const cards = await page.locator('.report-card').count();
+    expect(cards).toBeGreaterThanOrEqual(5);
+  });
+});
+
+// ── Export & Import Round-Trip ──
+
+test.describe('Export and Import', () => {
+
+  test('export .milg and re-import produces same score', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('buttons'));
+    const originalScore = await getScore(page);
+
+    // Download .milg (compressed) or .json (fallback)
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.click('#exportJsonBtn'),
+    ]);
+    const exportPath = await download.path();
+    const fileName = download.suggestedFilename();
+    expect(fileName).toMatch(/\.(milg|json)$/);
+
+    // Re-import
+    await page.click('#newAnalysisBtn');
+    await page.click('[data-tab="tabImport"]');
+    await page.locator('#importDropFile').setInputFiles(exportPath);
+    await page.waitForSelector('.report-container.visible', { timeout: 30000 });
+
+    const reimportedScore = await getScore(page);
+    expect(reimportedScore).toBe(originalScore);
+  });
+
+  test('export Markdown contains expected sections', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('cards'));
+
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.click('#markdownBtn'),
+    ]);
+    const mdContent = fs.readFileSync(await download.path(), 'utf8');
+
+    expect(mdContent).toContain('Design Analysis');
+    expect(mdContent).toContain('Contrast');
+    expect(mdContent).toContain('Typography');
+  });
+});
+
+// ── UI Controls ──
+
+test.describe('UI Controls', () => {
+
+  test('audience profile switch re-scores', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('form'));
+    const originalScore = await getScore(page);
+
+    await page.selectOption('#profileSelect', 'wcag_aaa');
+    await page.waitForTimeout(300);
+
+    const strictScore = await getScore(page);
+    expect(strictScore).toBeLessThanOrEqual(originalScore);
+  });
+
+  test('new analysis button resets view', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('buttons'));
+    await page.click('#newAnalysisBtn');
+    await expect(page.locator('#inputSection')).toBeVisible();
+    await expect(page.locator('#reportContainer')).not.toHaveClass(/visible/);
+  });
+
+  test('dark mode toggle works', async ({ page }) => {
+    await page.goto(ANALYZER_URL);
+    const hasDarkBefore = await page.locator('body').evaluate(el => el.classList.contains('dark-ui'));
+    await page.click('#darkBtn');
+    const hasDarkAfter = await page.locator('body').evaluate(el => el.classList.contains('dark-ui'));
+    expect(hasDarkBefore).not.toBe(hasDarkAfter);
+  });
+
+  test('help modal opens and closes', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('buttons'));
+    await page.click('#helpBtn');
+    await expect(page.locator('#helpModal')).toBeVisible();
+    // Close via X button
+    await page.locator('#helpModal button[aria-label="Close"]').click();
+    await expect(page.locator('#helpModal')).toBeHidden();
+  });
+
+  test('ephemeral banner visible after analysis', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('buttons'));
+    await expect(page.locator('#ephemeralBanner')).toBeVisible();
+    await expect(page.locator('#ephemeralBanner')).toContainText('temporary');
+  });
+});
+
+// ── Screenshot & Carousel Alignment ──
+
+test.describe('Screenshot Pipeline', () => {
+
+  // HTML with a carousel pattern: overflow:hidden container + CSS-transformed child
+  // Also includes a fragment-only img src to verify #fragment filtering
+  const CAROUSEL_HTML = `<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Carousel Test</title>
+<style>
+  body { font-family: sans-serif; margin: 0; padding: 20px; background: #fff; }
+  .carousel-wrap { overflow: hidden; width: 400px; height: 200px; position: relative; }
+  .carousel-track { display: flex; transform: translateX(-100%); transition: none; }
+  .carousel-slide { min-width: 400px; padding: 20px; box-sizing: border-box; }
+  .slide-1 { background: #f0f0f0; }
+  .slide-2 { background: #e0e0ff; }
+  .slide-3 { background: #ffe0e0; }
+  h2 { color: #111; margin: 0 0 8px; }
+  p { color: #333; }
+</style></head><body>
+  <h1>Carousel Test Page</h1>
+  <div class="carousel-wrap">
+    <div class="carousel-track">
+      <div class="carousel-slide slide-1"><h2>Slide One</h2><p>First slide content here.</p></div>
+      <div class="carousel-slide slide-2"><h2>Slide Two</h2><p>Second slide visible.</p></div>
+      <div class="carousel-slide slide-3"><h2>Slide Three</h2><p>Third slide content.</p></div>
+    </div>
+  </div>
+  <img src="#fragment" alt="fragment-only test">
+  <p>Below the carousel.</p>
+</body></html>`;
+
+  async function analyzeWithScreenshots(page, html) {
+    await page.goto(ANALYZER_URL);
+    // Enable screenshot checkbox
+    await page.check('#screenshotCheck');
+    await page.click('[data-tab="tabHtml"]');
+    await page.fill('#htmlInput', html);
+    await page.click('#analyzeHtmlBtn');
+    await page.waitForSelector('.report-container.visible', { timeout: 45000 });
+  }
+
+  test('carousel overflow:hidden containers get expanded for screenshots', async ({ page }) => {
+    const consoleLogs = [];
+    page.on('console', msg => consoleLogs.push(msg.text()));
+
+    await analyzeWithScreenshots(page, CAROUSEL_HTML);
+
+    const score = await getScore(page);
+    expect(score).toBeGreaterThanOrEqual(0);
+    expect(score).toBeLessThanOrEqual(100);
+
+    // Verify carousel expansion happened
+    const expandLog = consoleLogs.find(l => l.includes('Expanded') && l.includes('overflow:hidden'));
+    expect(expandLog).toBeTruthy();
+
+    // Verify no %23 (encoded #) fetch errors
+    const hashError = consoleLogs.find(l => l.includes('%23') && (l.includes('ERR_FAILED') || l.includes('404')));
+    expect(hashError).toBeFalsy();
+  });
+
+  test('fragment-only img src is skipped during preload', async ({ page }) => {
+    const consoleLogs = [];
+    const consoleWarnings = [];
+    page.on('console', msg => {
+      consoleLogs.push(msg.text());
+      if (msg.type() === 'warning') consoleWarnings.push(msg.text());
+    });
+
+    await analyzeWithScreenshots(page, CAROUSEL_HTML);
+
+    // Should NOT have a preload warning for fragment URLs
+    const fragWarn = consoleWarnings.find(w => w.includes('#fragment') || w.includes('%23fragment'));
+    expect(fragWarn).toBeFalsy();
+  });
+});
+
+// ── Multiple Presets ──
+
+test.describe('Preset Scoring', () => {
+  const presets = ['hero', 'cards', 'stats-row', 'pricing', 'feature-grid'];
+
+  for (const preset of presets) {
+    test(`${preset} produces valid analysis`, async ({ page }) => {
+      await analyzeHtml(page, loadPreset(preset));
+      const score = await getScore(page);
+      expect(score).toBeGreaterThanOrEqual(0);
+      expect(score).toBeLessThanOrEqual(100);
+      const findings = await page.locator('.finding-header').count();
+      expect(findings).toBeGreaterThan(0);
+    });
+  }
+});
 </file>
 
 <file path="docs/analyzer-snippet.js">
@@ -40196,7 +40196,7 @@ window.MilgIframe = (function() {
         'if(_revealed>0)console.log("[iframe-ss] Force-revealed "+_revealed+" scroll-animated elements (IO disabled in offscreen iframes)");' +
         // Also inject a style to fast-forward any remaining CSS animations
         'var _ffStyle=document.createElement("style");' +
-        '_ffStyle.textContent="*,*::before,*::after{animation-delay:0s !important;animation-duration:0.01s !important;}";' +
+        '_ffStyle.textContent="*,*::before,*::after{animation-delay:0s !important;animation-duration:0.01s !important;transition-duration:0s !important;transition-delay:0s !important;}";' +
         'document.head.appendChild(_ffStyle);' +
         'void document.body.offsetHeight;' +
         // Switch to overflow:visible for capture

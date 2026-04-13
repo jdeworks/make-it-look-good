@@ -433,7 +433,7 @@ window.MilgIframe = (function() {
         'if(_revealed>0)console.log("[iframe-ss] Force-revealed "+_revealed+" scroll-animated elements (IO disabled in offscreen iframes)");' +
         // Also inject a style to fast-forward any remaining CSS animations
         'var _ffStyle=document.createElement("style");' +
-        '_ffStyle.textContent="*,*::before,*::after{animation-delay:0s !important;animation-duration:0.01s !important;}";' +
+        '_ffStyle.textContent="*,*::before,*::after{animation-delay:0s !important;animation-duration:0.01s !important;transition-duration:0s !important;transition-delay:0s !important;}";' +
         'document.head.appendChild(_ffStyle);' +
         'void document.body.offsetHeight;' +
         // Switch to overflow:visible for capture
