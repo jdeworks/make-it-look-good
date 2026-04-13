@@ -83,22 +83,8 @@ window.MilgReport = (function() {
         html += '</div>';
       });
       html += '</div>';
-      // Unhidden panels screenshots (shown when hidden panels were detected)
-      if (report.raw.screenshotsUnhidden && report.raw.screenshotsUnhidden.length > 0) {
-        html += '<div style="margin-top:12px;padding:12px;border:2px dashed var(--border);border-radius:8px;background:var(--bg-alt)">';
-        html += '<div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text-error,#ef4444)">With hidden panels revealed (' + (report.raw.layout.hiddenPanelCount || '?') + ' panels unhidden)</div>';
-        html += '<div style="display:flex;flex-wrap:wrap;gap:12px">';
-        report.raw.screenshotsUnhidden.forEach(function(src, idx) {
-          html += '<div class="screenshot-thumb" style="flex:1;min-width:200px;max-width:400px">';
-          if (report.raw.screenshotsUnhidden.length > 1) {
-            html += '<div style="padding:4px 8px;font-size:10px;color:var(--text-secondary);border-bottom:1px solid var(--border);background:var(--bg-alt)">Section ' + (idx + 1) + '</div>';
-          }
-          html += '<img src="' + src + '" alt="Page with panels revealed ' + (idx + 1) + '" class="screenshot-img" style="width:100%;display:block;cursor:zoom-in" onclick="window.__milgZoomScreenshot(this,' + idx + ')" loading="lazy">';
-          html += '</div>';
-        });
-        html += '</div>';
-        html += '</div>';
-      }
+      // Note: screenshotsUnhidden (hidden panels revealed) no longer displayed here —
+      // hidden/clipped content is shown via region screenshots in the viewer instead
       html += '</details>';
     }
 

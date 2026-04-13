@@ -19,7 +19,7 @@ window.MilgViewer = (function() {
   var _zoomLevel = 1;
   var _stitchedCanvas = null;
   var _calibrationOffsetY = 0; // detected offset between DOM positions and canvas positions
-  var _showExpanded = false; // toggle between clean and expanded screenshot views
+  var _showExpanded = false; // always false — clean screenshot with region sections below
 
   // Severity colors: red / yellow / blue / green
   var COLORS = {
@@ -225,36 +225,20 @@ window.MilgViewer = (function() {
     }, { passive: false });
     content.addEventListener('touchend', function() { _dragStart = null; }, { passive: true });
 
-    // Screenshot sources: clean (page as-rendered) and expanded (overflow containers expanded)
+    // Screenshot source: always show clean (page as-rendered). Expanded content is
+    // shown via region screenshots below, not a full-page toggle.
     var cleanSrc = (reportData.raw && reportData.raw.screenshotClean) || null;
     var cleanMeta = (reportData.raw && reportData.raw.screenshotCleanMeta) || null;
     var expandedSrc = (reportData.raw && reportData.raw.screenshotFull) || null;
-    // Determine which to show: prefer clean, fall back to expanded
-    var hasClean = !!cleanSrc && !!cleanMeta;
-    var hasExpanded = !!expandedSrc;
     _showExpanded = false;
-
-    // Create expand toggle button if both screenshots exist (stored as ref, re-appended on frame rebuild)
-    var _expandToggle = null;
-    if (hasClean && hasExpanded) {
-      _expandToggle = document.createElement('button');
-      _expandToggle.className = 'milg-viewer-expand-toggle';
-      _expandToggle.textContent = 'Show expanded';
-      _expandToggle.title = 'Show all content including hidden carousel slides';
-      _expandToggle.style.cssText = 'position:absolute;top:8px;right:8px;z-index:10;padding:4px 10px;border-radius:4px;border:1px solid rgba(255,255,255,0.3);background:rgba(0,0,0,0.6);color:#fff;font-size:12px;cursor:pointer;';
-      _expandToggle.addEventListener('click', function() {
-        showScreenshot(!_showExpanded);
-      });
-    }
 
     function onImageReady(imgSrc, canvasW, canvasH) {
       frame.innerHTML = '';
       var viewImg = document.createElement('img');
       viewImg.className = 'milg-viewer-img';
       viewImg.src = imgSrc;
-      viewImg.alt = _showExpanded ? 'Expanded screenshot (all content visible)' : 'Full page screenshot';
+      viewImg.alt = 'Full page screenshot';
 
-      // SVG viewBox = original canvas dimensions (matches dom * scale exactly)
       var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       svg.setAttribute('class', 'milg-viewer-svg');
       svg.setAttribute('viewBox', '0 0 ' + canvasW + ' ' + canvasH);
@@ -262,16 +246,9 @@ window.MilgViewer = (function() {
 
       frame.appendChild(viewImg);
       frame.appendChild(svg);
-      // Re-append toggle button (frame.innerHTML cleared it)
-      if (_expandToggle) frame.appendChild(_expandToggle);
 
-      // Use pre-computed calibration offset from extraction (red marker probing on pristine canvas)
       viewImg.addEventListener('load', function() {
         _calibrationOffsetY = (_meta && _meta.calibrationOffsetY) || 0;
-        if (_calibrationOffsetY) {
-          // calibration offset applied silently
-        }
-
         updateFilterButtons();
         renderOverlays();
 
@@ -282,32 +259,19 @@ window.MilgViewer = (function() {
       });
     }
 
-    function showScreenshot(expanded) {
-      _showExpanded = expanded;
-      if (expanded && hasExpanded) {
-        _stitchedCanvas = { width: _meta.canvasWidth, height: _meta.canvasHeight };
-        onImageReady(expandedSrc, _meta.canvasWidth, _meta.canvasHeight);
-      } else if (!expanded && hasClean) {
-        _stitchedCanvas = { width: cleanMeta.canvasWidth, height: cleanMeta.canvasHeight };
-        onImageReady(cleanSrc, cleanMeta.canvasWidth, cleanMeta.canvasHeight);
-      } else if (expandedSrc) {
-        _stitchedCanvas = { width: _meta.canvasWidth, height: _meta.canvasHeight };
-        onImageReady(expandedSrc, _meta.canvasWidth, _meta.canvasHeight);
-      } else {
-        stitchScreenshots(_screenshots, function(stitched) {
-          _stitchedCanvas = stitched;
-          onImageReady(stitched.canvas.toDataURL('image/png'), stitched.width, stitched.height);
-        });
-      }
-      // Update toggle button state
-      if (_expandToggle) {
-        _expandToggle.textContent = expanded ? 'Show clean' : 'Show expanded';
-        _expandToggle.title = expanded ? 'Show page as rendered (clean)' : 'Show all content including hidden carousel slides';
-      }
+    // Show clean screenshot, fall back to expanded, fall back to stitched sections
+    if (cleanSrc && cleanMeta) {
+      _stitchedCanvas = { width: cleanMeta.canvasWidth, height: cleanMeta.canvasHeight };
+      onImageReady(cleanSrc, cleanMeta.canvasWidth, cleanMeta.canvasHeight);
+    } else if (expandedSrc) {
+      _stitchedCanvas = { width: _meta.canvasWidth, height: _meta.canvasHeight };
+      onImageReady(expandedSrc, _meta.canvasWidth, _meta.canvasHeight);
+    } else {
+      stitchScreenshots(_screenshots, function(stitched) {
+        _stitchedCanvas = stitched;
+        onImageReady(stitched.canvas.toDataURL('image/png'), stitched.width, stitched.height);
+      });
     }
-
-    // Initial display: prefer clean screenshot
-    showScreenshot(false);
 
     // Render region screenshots as independent sections below main screenshot
     var regions = (reportData.raw && reportData.raw.regionScreenshots) || [];

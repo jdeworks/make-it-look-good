@@ -165,8 +165,6 @@ systems/
   building-a-system.md
   design-tokens.md
   material-design-3.md
-test-results/
-  .last-run.json
 tests/
   contrast-and-palette.test.mjs
   crawl-flow.test.mjs
@@ -13229,1465 +13227,6 @@ Key metrics to track:
 - **No module should average below 40** except Contrast (known issue with Tailwind color scale)
 </file>
 
-<file path="docs/analyzer.css">
-/* Analyzer — inherits vars from style.css */
-
-/* JS-enabled warning panel */
-#jsEnabledOptions {
-  background: #fffbeb; border: 1px solid #f59e0b; color: #92400e;
-}
-body.dark-ui #jsEnabledOptions {
-  background: #2d2006; border-color: #92400e; color: #fbbf24;
-}
-#jsEnabledOptions details summary { user-select: none; }
-#jsEnabledOptions details[open] summary { margin-bottom: 2px; }
-/* Disabled state for analyze button (JS gate or during analysis) */
-#analyzeUrlBtn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-.analyzer-body {
-  font-family: var(--font);
-  background: var(--bg);
-  color: var(--text);
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  /* Override style.css body which sets overflow:hidden + height:100vh for the editor */
-  overflow: auto !important;
-  height: auto !important;
-}
-
-/* Screen reader only */
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-/* Focus indicators */
-.analyzer-body .btn:focus-visible,
-.analyzer-body .tab-btn:focus-visible,
-.analyzer-body textarea:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
-}
-
-/* Fix touch targets — minimum 44px height */
-.analyzer-body .btn {
-  min-height: 44px;
-}
-
-.analyzer-body .btn-icon {
-  min-width: 44px;
-  min-height: 44px;
-}
-
-/* Fix contrast on step numbers — use darker blue */
-.guide-step-num {
-  background: #1d4ed8 !important;
-}
-
-/* Fix contrast on primary buttons — use darker blue */
-.analyzer-body .btn-primary {
-  background: #2563eb;
-  border-color: #2563eb;
-}
-.analyzer-body .btn-primary:hover {
-  background: #1d4ed8;
-}
-
-/* Fix tab button min height + contrast */
-.tab-btn {
-  min-height: 44px;
-}
-.tab-btn.active {
-  color: #2563eb;
-  border-bottom-color: #2563eb;
-}
-
-/* Fix logo touch target */
-.analyzer-body .logo {
-  min-height: 44px;
-  display: inline-flex;
-  align-items: center;
-}
-
-/* Snippet code should not affect line-length scoring */
-.snippet-code {
-  max-width: 100%;
-  overflow-x: auto;
-}
-
-/* Exclude tags */
-.exclude-tag {
-  padding: 5px 12px;
-  border: 1px solid var(--border);
-  border-radius: 99px;
-  background: var(--bg);
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-family: var(--font);
-  cursor: pointer;
-  transition: all 0.15s;
-  min-height: 32px;
-}
-
-.exclude-tag:hover { border-color: var(--text-secondary); }
-.exclude-tag.active { background: var(--text); color: var(--bg); border-color: var(--text); }
-
-/* Persona selector */
-.persona-selector {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.persona-selector select {
-  min-height: 44px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--font);
-}
-
-.persona-selector .btn-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* Import drop zone */
-.import-dropzone {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 200px;
-  border: 2px dashed var(--border);
-  border-radius: var(--radius);
-  padding: 32px;
-  text-align: center;
-  cursor: pointer;
-  transition: border-color 0.2s, background 0.2s;
-}
-
-.import-dropzone:hover,
-.import-dropzone.dragover {
-  border-color: var(--primary);
-  background: rgba(59, 130, 246, 0.04);
-}
-
-/* Analysis progress bar */
-.analysis-progress {
-  margin-top: 12px;
-}
-
-.analysis-progress-bar {
-  height: 6px;
-  background: var(--border);
-  border-radius: 3px;
-  overflow: hidden;
-  margin-bottom: 6px;
-}
-
-.analysis-progress-fill {
-  height: 100%;
-  background: var(--primary);
-  border-radius: 3px;
-  width: 0%;
-  transition: width 0.4s ease;
-}
-
-.analysis-progress-label {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-/* Viewport select hidden during deep scan */
-.viewport-row.hidden {
-  display: none !important;
-}
-
-/* Analysis history */
-.history-section {
-  margin-top: 24px;
-  padding: 16px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg-alt);
-}
-
-.history-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  margin: 4px 0;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.15s;
-  border: 1px solid transparent;
-}
-
-.history-item:hover {
-  background: var(--bg);
-  border-color: var(--border);
-}
-
-.history-score {
-  font-size: 18px;
-  font-weight: 700;
-  min-width: 36px;
-  text-align: right;
-}
-
-.history-url {
-  flex: 1;
-  font-size: 13px;
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.history-date {
-  font-size: 11px;
-  color: var(--text-secondary);
-  white-space: nowrap;
-}
-
-.history-delete {
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  font-size: 18px;
-  cursor: pointer;
-  padding: 2px 6px;
-  border-radius: 4px;
-  opacity: 0;
-  transition: opacity 0.15s, color 0.15s;
-}
-
-.history-item:hover .history-delete {
-  opacity: 1;
-}
-
-.history-delete:hover {
-  color: #dc2626;
-  background: #fef2f2;
-}
-
-/* URL input */
-#urlInput:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
-}
-
-/* --- Input section --- */
-.input-section {
-  max-width: 800px;
-  width: 100%;
-  margin: 0 auto;
-  padding: 32px 24px 64px;
-}
-
-.input-hero {
-  text-align: center;
-  margin-bottom: 32px;
-}
-
-.input-hero h1 {
-  font-size: 28px;
-  font-weight: 700;
-  margin-bottom: 8px;
-}
-
-.input-hero p {
-  font-size: 15px;
-  color: var(--text-secondary);
-  max-width: 520px;
-  margin: 0 auto;
-  line-height: 1.5;
-}
-
-/* Tabs */
-.input-tabs {
-  display: flex;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 20px;
-  gap: 0;
-}
-
-.tab-btn {
-  flex: 1;
-  padding: 10px 16px;
-  border: none;
-  background: none;
-  font-size: 13px;
-  font-weight: 600;
-  font-family: var(--font);
-  color: var(--text-secondary);
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  transition: all 0.15s ease;
-}
-
-.tab-btn:hover { color: var(--text); }
-.tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
-
-.tab-sub {
-  font-size: 10px;
-  opacity: 0.7;
-  font-weight: 400;
-}
-
-.tab-content { display: none; }
-.tab-content.active { display: block; }
-
-/* Input areas */
-.input-area textarea {
-  width: 100%;
-  min-height: 180px;
-  padding: 12px 16px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  font-size: 13px;
-  font-family: var(--mono);
-  color: var(--text);
-  background: var(--bg);
-  resize: vertical;
-  outline: none;
-  transition: border-color 0.15s;
-}
-
-.input-area textarea:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
-}
-
-.input-area textarea::placeholder { color: var(--text-secondary); }
-
-.input-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.input-actions .btn-primary {
-  flex: 1;
-  justify-content: center;
-  padding: 10px 20px;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-/* Snippet section */
-.snippet-section {
-  margin-top: 24px;
-}
-
-.snippet-section h3 {
-  font-size: 14px;
-  font-weight: 600;
-  margin-bottom: 8px;
-}
-
-.snippet-section p {
-  font-size: 13px;
-  color: var(--text-secondary);
-  line-height: 1.5;
-  margin-bottom: 12px;
-}
-
-.snippet-box {
-  background: var(--bg-alt);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-
-.snippet-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg);
-}
-
-.snippet-header span {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.snippet-code {
-  padding: 12px 16px;
-  font-size: 11px;
-  font-family: var(--mono);
-  color: var(--text-secondary);
-  max-height: 200px;
-  overflow-y: auto;
-  white-space: pre;
-  line-height: 1.5;
-}
-
-/* Quick guide */
-.guide-steps {
-  margin-top: 24px;
-  counter-reset: step;
-}
-
-.guide-step {
-  display: flex;
-  gap: 12px;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--border);
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.guide-step:last-child { border-bottom: none; }
-
-.guide-step-num {
-  flex-shrink: 0;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background: var(--primary);
-  color: white;
-  font-size: 12px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.guide-step code {
-  background: var(--bg-alt);
-  padding: 1px 6px;
-  border-radius: 4px;
-  font-size: 12px;
-  font-family: var(--mono);
-  border: 1px solid var(--border);
-}
-
-.guide-step strong { font-weight: 600; }
-
-/* Console tips */
-.console-tip {
-  background: var(--bg-alt);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 12px 16px;
-  margin-top: 16px;
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.console-tip code {
-  background: var(--bg);
-  padding: 1px 6px;
-  border-radius: 4px;
-  font-family: var(--mono);
-  font-size: 12px;
-  border: 1px solid var(--border);
-}
-
-.console-tip strong { font-weight: 600; }
-
-/* --- Report --- */
-/* Shared wrapper for all report sections — single source of max-width + padding */
-.report-wrapper {
-  max-width: 900px;
-  width: 100%;
-  margin: 0 auto;
-  padding: 0 24px;
-}
-
-.report-container {
-  display: none;
-  padding: 32px 0 64px;
-}
-
-.report-container.visible { display: block; }
-
-/* Report controls bar */
-.report-controls {
-  display: none;
-  flex-direction: column;
-  gap: 8px;
-  padding: 0 0 16px;
-}
-
-.report-controls-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.report-controls-row:last-child {
-  padding-top: 4px;
-  border-top: 1px solid var(--border);
-}
-
-/* Profile explanation panel */
-.profile-explanation {
-  background: var(--bg-alt);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 16px;
-  position: relative;
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.profile-explanation h4 {
-  font-size: 14px;
-  font-weight: 600;
-  margin-bottom: 8px;
-}
-
-.profile-explanation p {
-  color: var(--text-secondary);
-  margin-bottom: 10px;
-}
-
-.profile-explanation table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
-}
-
-.profile-explanation th,
-.profile-explanation td {
-  text-align: left;
-  padding: 4px 8px;
-  border-bottom: 1px solid var(--border);
-}
-
-.profile-explanation th {
-  font-weight: 600;
-  color: var(--text-secondary);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
-.profile-explanation-close {
-  position: absolute;
-  top: 8px;
-  right: 12px;
-  background: none;
-  border: none;
-  font-size: 18px;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: 4px;
-}
-
-/* Export details: always open on desktop, collapsible on mobile */
-.export-details { display: contents; } /* Desktop: acts as if not there */
-.export-summary { display: none; } /* Hidden on desktop */
-
-@media (max-width: 640px) {
-  .export-details { display: block; border-top: 1px solid var(--border); padding-top: 8px; }
-  .export-summary {
-    display: block;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text-secondary);
-    cursor: pointer;
-    padding: 6px 0;
-  }
-}
-
-/* Legacy compat */
-.report-actions {
-  display: none;
-  align-items: center;
-  gap: 8px;
-  max-width: 900px;
-  width: 100%;
-  margin: 0 auto;
-  padding: 0 24px 16px;
-}
-
-/* Report header */
-.report-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-bottom: 24px;
-  margin-bottom: 24px;
-  border-bottom: 1px solid var(--border);
-}
-
-.report-header-info h1 {
-  font-size: 24px;
-  font-weight: 700;
-  margin-bottom: 4px;
-}
-
-.report-url {
-  font-size: 14px;
-  color: var(--primary);
-  word-break: break-all;
-  margin-bottom: 2px;
-}
-
-.report-url a {
-  color: var(--primary);
-  text-decoration: underline;
-  cursor: pointer;
-}
-
-.report-url a:hover {
-  color: var(--primary-hover);
-}
-
-.report-timestamp {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.report-gauge {
-  text-align: center;
-  flex-shrink: 0;
-}
-
-.report-grade-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  margin-top: 4px;
-}
-
-/* Category cards */
-.report-categories {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px;
-  margin-bottom: 32px;
-}
-
-.report-card {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 16px;
-  box-shadow: var(--shadow);
-}
-
-.report-card-clickable {
-  cursor: pointer;
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-
-.report-card-clickable:hover {
-  border-color: var(--primary);
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.12);
-}
-
-/* Exclusion suggestions panel */
-.exclusion-suggestions {
-  background: var(--bg-alt);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 14px 16px;
-  margin-bottom: 16px;
-}
-
-/* Viewport bar (deep scan) */
-.report-viewport-bar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  padding: 8px 12px;
-  background: var(--bg-alt);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  margin-bottom: 12px;
-}
-
-.viewport-tag {
-  display: inline-block;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 4px;
-  background: #f0fdf4;
-  color: #16a34a;
-  border: 1px solid #bbf7d0;
-}
-
-.viewport-tag.viewport-error {
-  background: #fef2f2;
-  color: #dc2626;
-  border-color: #fecaca;
-}
-
-body.dark-ui .viewport-tag { background: #052e16; color: #4ade80; border-color: #166534; }
-body.dark-ui .viewport-tag.viewport-error { background: #451a1a; color: #f87171; border-color: #7f1d1d; }
-
-/* Screenshot thumbnails */
-.report-screenshots {
-  margin-bottom: 16px;
-}
-
-.screenshot-thumb {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-
-.screenshot-img {
-  transition: opacity 0.2s;
-}
-
-.screenshot-img:hover {
-  opacity: 0.85;
-}
-
-/* Scroll target offset for sticky headers */
-.report-finding-group {
-  scroll-margin-top: 24px;
-}
-
-.report-card-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.report-card-icon {
-  flex-shrink: 0;
-  display: flex;
-}
-
-.report-card-title {
-  flex: 1;
-  min-width: 0;
-}
-
-.report-card-title h3 {
-  font-size: 13px;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.report-card-weight {
-  font-size: 11px;
-  color: var(--text-secondary);
-}
-
-.report-card-score {
-  font-size: 24px;
-  font-weight: 700;
-  flex-shrink: 0;
-}
-
-.progress-bar {
-  height: 4px;
-  background: var(--border);
-  border-radius: 2px;
-  overflow: hidden;
-  margin-bottom: 8px;
-}
-
-.progress-fill {
-  height: 100%;
-  border-radius: 2px;
-  transition: width 0.6s ease;
-}
-
-.report-card-counts {
-  display: flex;
-  gap: 4px;
-  font-size: 11px;
-}
-
-.report-card-counts span {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 5px;
-  border-radius: 10px;
-  font-weight: 700;
-  font-size: 10px;
-  cursor: default;
-}
-
-.count-error { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; cursor: pointer; }
-.count-warning { background: #fffbeb; color: #b45309; border: 1px solid #fed7aa; cursor: pointer; }
-.count-info { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; cursor: pointer; }
-.count-pass { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
-.count-na { background: #f8fafc; color: #94a3b8; border: 1px solid #e2e8f0; }
-
-.count-error:hover { background: #fee2e2; }
-.count-warning:hover { background: #fef3c7; }
-.count-info:hover { background: #dbeafe; }
-
-/* Severity badge classes (light mode defaults) */
-.severity-badge-error {
-  background: #fef2f2;
-  color: #dc2626;
-  border: 1px solid #fecaca;
-}
-
-.severity-badge-warning {
-  background: #fffbeb;
-  color: #b45309;
-  border: 1px solid #fed7aa;
-}
-
-.severity-badge-info {
-  background: #eff6ff;
-  color: #2563eb;
-  border: 1px solid #bfdbfe;
-}
-
-/* Dark mode overrides for report elements */
-body.dark-ui .count-error { background: #451a1a; color: #f87171; border-color: #7f1d1d; }
-body.dark-ui .count-warning { background: #451a00; color: #fbbf24; border-color: #78350f; }
-body.dark-ui .count-info { background: #172554; color: #60a5fa; border-color: #1e3a5f; }
-body.dark-ui .count-pass { background: #052e16; color: #4ade80; border-color: #166534; }
-body.dark-ui .count-na { background: #1e293b; color: #64748b; border-color: #334155; }
-
-/* Dark mode: fix link readability in profile explanation and finding sources */
-body.dark-ui .profile-explanation a { color: #93c5fd; }
-body.dark-ui .profile-explanation a:hover { color: #bfdbfe; }
-body.dark-ui .finding-source a { color: #94a3b8; }
-body.dark-ui .finding-source a:hover { color: #93c5fd; }
-
-body.dark-ui .report-finding.severity-error { border-left-color: #f87171; }
-body.dark-ui .report-finding.severity-warning { border-left-color: #fbbf24; }
-body.dark-ui .report-finding.severity-info { border-left-color: #60a5fa; }
-
-body.dark-ui .finding-fix {
-  background: var(--bg-alt);
-}
-
-body.dark-ui .color-swatch {
-  border-color: rgba(255, 255, 255, 0.15);
-}
-
-body.dark-ui .progress-bar {
-  background: rgba(255, 255, 255, 0.1);
-}
-
-body.dark-ui .report-card {
-  background: var(--bg);
-}
-
-body.dark-ui .severity-badge-error {
-  background: #451a1a;
-  color: #f87171;
-  border-color: #7f1d1d;
-}
-
-body.dark-ui .severity-badge-warning {
-  background: #451a00;
-  color: #fbbf24;
-  border-color: #78350f;
-}
-
-body.dark-ui .severity-badge-info {
-  background: #172554;
-  color: #60a5fa;
-  border-color: #1e3a5f;
-}
-
-.severity-badge-pass {
-  background: #f0fdf4;
-  color: #16a34a;
-  border: 1px solid #bbf7d0;
-}
-
-body.dark-ui .severity-badge-pass {
-  background: #052e16;
-  color: #4ade80;
-  border-color: #166534;
-}
-
-.report-finding.severity-pass { border-left: 3px solid #16a34a; }
-body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
-
-/* Findings */
-.report-findings {
-  margin-bottom: 32px;
-}
-
-.report-findings > h2 {
-  font-size: 18px;
-  font-weight: 700;
-  margin-bottom: 16px;
-}
-
-.report-finding-group {
-  margin-bottom: 24px;
-}
-
-.report-finding-group > h3 {
-  font-size: 15px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-  color: var(--text);
-}
-
-.report-finding-group > h3 svg {
-  flex-shrink: 0;
-}
-
-.report-finding {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 12px 16px;
-  margin-bottom: 8px;
-}
-
-.report-finding.severity-error { border-left: 3px solid #dc2626; }
-.report-finding.severity-warning { border-left: 3px solid #f59e0b; }
-.report-finding.severity-info { border-left: 3px solid #3b82f6; }
-
-.finding-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-
-.finding-title {
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.finding-detail {
-  font-size: 13px;
-  color: var(--text-secondary);
-  margin: 4px 0;
-  line-height: 1.5;
-}
-
-.finding-fix {
-  font-size: 13px;
-  margin-top: 6px;
-  padding: 8px 10px;
-  background: var(--bg-alt);
-  border-radius: 6px;
-  line-height: 1.5;
-}
-
-.finding-preset {
-  font-size: 12px;
-  color: var(--text-secondary);
-  margin-top: 6px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.finding-source {
-  font-size: 11px;
-  color: var(--text-secondary);
-  margin-top: 4px;
-}
-
-.finding-source a {
-  color: var(--text-secondary);
-  text-decoration: underline;
-  text-decoration-style: dotted;
-}
-
-.finding-source a:hover { color: var(--primary); }
-
-/* Summary */
-.report-summary {
-  border-top: 1px solid var(--border);
-  padding-top: 24px;
-}
-
-.report-summary > h2 {
-  font-size: 18px;
-  font-weight: 700;
-  margin-bottom: 16px;
-}
-
-.summary-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 16px;
-}
-
-.summary-section {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 16px;
-}
-
-.summary-section h4 {
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-secondary);
-  margin-bottom: 8px;
-}
-
-.color-swatches {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-
-.color-swatch {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  cursor: default;
-}
-
-.summary-list {
-  font-size: 13px;
-  line-height: 1.8;
-  word-break: break-word;
-}
-
-/* Methodology note */
-.report-methodology {
-  border-top: 1px solid var(--border);
-  padding-top: 24px;
-  margin-top: 16px;
-}
-
-.report-methodology h2 {
-  font-size: 18px;
-  font-weight: 700;
-  margin-bottom: 12px;
-}
-
-.report-methodology p {
-  font-size: 13px;
-  color: var(--text-secondary);
-  line-height: 1.6;
-  margin-bottom: 8px;
-}
-
-.report-methodology strong {
-  color: var(--text);
-}
-
-/* --- Site Crawl --- */
-.crawl-progress-list { display:flex; flex-direction:column; gap:6px; max-height:200px; overflow-y:auto; }
-.crawl-progress-item { display:flex; align-items:center; gap:8px; font-size:13px; padding:6px 10px; border-radius:8px; background:var(--surface); }
-.crawl-progress-item .status-icon { width:18px; height:18px; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
-.crawl-progress-item .status-icon.pending { color:var(--text-secondary); }
-.crawl-progress-item .status-icon.done { color:#16a34a; }
-.crawl-progress-item .status-icon.error { color:#dc2626; }
-.crawl-progress-item .status-icon.active { color:var(--primary); animation: crawl-pulse 1s ease-in-out infinite; }
-@keyframes crawl-pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
-.crawl-progress-item .page-url { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text); }
-.crawl-progress-item .page-score { font-weight:600; font-variant-numeric:tabular-nums; }
-
-#crawlResults { width:100%; }
-.crawl-page-tabs { display:flex; flex-wrap:wrap; gap:4px; padding:8px 0; border-bottom:1px solid var(--border); background:var(--bg); position:sticky; top:0; z-index:5; }
-.crawl-page-tab { padding:6px 14px; font-size:13px; font-weight:500; color:var(--text-secondary); background:var(--card-bg, var(--bg)); border:1px solid var(--border); border-radius:6px; cursor:pointer; display:flex; align-items:center; gap:6px; white-space:nowrap; transition: color 0.15s, border-color 0.15s, background 0.15s; }
-.crawl-page-tab:hover { color:var(--text); border-color:var(--text-secondary); }
-.crawl-page-tab.active { color:var(--primary); border-color:var(--primary); background:var(--bg); }
-.crawl-page-tab .score-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
-.crawl-page-tab .score-dot.grade-a { background:#16a34a; }
-.crawl-page-tab .score-dot.grade-b { background:#ca8a04; }
-.crawl-page-tab .score-dot.grade-c { background:#ea580c; }
-.crawl-page-tab .score-dot.grade-d, .crawl-page-tab .score-dot.grade-f { background:#dc2626; }
-.crawl-page-tab .score-dot.pending { background:var(--text-secondary); animation: crawl-pulse 1s ease-in-out infinite; }
-.crawl-page-tab .score-dot.error { background:#dc2626; }
-
-.crawl-viewport-subtabs { display:flex; gap:2px; padding:4px 16px; background:var(--surface); border-bottom:1px solid var(--border); }
-.crawl-viewport-subtab { padding:6px 14px; font-size:12px; font-weight:500; color:var(--text-secondary); background:none; border:none; border-bottom:2px solid transparent; cursor:pointer; transition: color 0.15s; }
-.crawl-viewport-subtab:hover { color:var(--text); }
-.crawl-viewport-subtab.active { color:var(--primary); border-bottom-color:var(--primary); }
-
-.crawl-summary { padding:24px 0; }
-.crawl-summary h2 { font-size:20px; font-weight:700; margin:0 0 16px; color:var(--text); }
-.crawl-summary h3 { font-size:15px; font-weight:600; margin:24px 0 12px; color:var(--text); }
-.crawl-score-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:10px; margin-bottom:24px; }
-.crawl-score-card { padding:14px; border-radius:10px; background:var(--surface); border:1px solid var(--border); text-align:center; }
-.crawl-score-card .score { font-size:28px; font-weight:700; font-variant-numeric:tabular-nums; }
-.crawl-score-card .grade { font-size:13px; font-weight:600; margin-top:2px; }
-.crawl-score-card .page-path { font-size:12px; color:var(--text-secondary); margin-top:6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.crawl-score-card .grade-a { color:#16a34a; }
-.crawl-score-card .grade-b { color:#ca8a04; }
-.crawl-score-card .grade-c { color:#ea580c; }
-.crawl-score-card .grade-d, .crawl-score-card .grade-f { color:#dc2626; }
-
-.crawl-issue-group { margin-bottom:12px; padding:12px 14px; border-radius:8px; background:var(--surface); border:1px solid var(--border); }
-.crawl-issue-group .issue-header { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
-.crawl-issue-group .issue-title { font-size:13px; font-weight:600; color:var(--text); }
-.crawl-issue-group .issue-count { font-size:12px; color:var(--text-secondary); white-space:nowrap; }
-.crawl-issue-group .issue-pages { margin-top:6px; font-size:12px; color:var(--text-secondary); }
-.crawl-issue-group .severity-badge { display:inline-block; font-size:11px; font-weight:600; padding:1px 6px; border-radius:4px; margin-right:6px; }
-.crawl-issue-group .severity-badge.error { background:#fef2f2; color:#dc2626; }
-.crawl-issue-group .severity-badge.warning { background:#fffbeb; color:#ca8a04; }
-body.dark-ui .crawl-issue-group .severity-badge.error { background:#451a1a; color:#f87171; }
-body.dark-ui .crawl-issue-group .severity-badge.warning { background:#451a00; color:#fbbf24; }
-
-/* --- Print / PDF --- */
-@media print {
-  body, .analyzer-body {
-    background: white !important;
-    color: #0f172a !important;
-  }
-
-  .header, .input-section, .report-controls, .report-actions, .toast,
-  #newAnalysisBtn, #printBtn, .guide-steps,
-  .snippet-section, .console-tip {
-    display: none !important;
-  }
-
-  .report-container {
-    display: block !important;
-    padding: 0 !important;
-    max-width: 100% !important;
-  }
-
-  .report-header { break-after: avoid; }
-  .report-categories { break-inside: avoid; }
-  .report-finding-group { break-inside: avoid; }
-  .summary-grid { break-inside: avoid; }
-
-  .report-card {
-    border: 1px solid #e2e8f0 !important;
-    box-shadow: none !important;
-  }
-
-  .report-finding {
-    border: 1px solid #e2e8f0 !important;
-  }
-
-  .report-finding.severity-error { border-left: 3px solid #dc2626 !important; }
-  .report-finding.severity-warning { border-left: 3px solid #f59e0b !important; }
-  .report-finding.severity-info { border-left: 3px solid #3b82f6 !important; }
-
-  a { color: #2563eb !important; }
-
-  .finding-fix {
-    background: #f8fafc !important;
-    border: 1px solid #e2e8f0;
-  }
-
-  .report-findings { break-before: page; }
-  .report-summary { break-before: page; }
-}
-
-/* --- Responsive --- */
-@media (max-width: 640px) {
-  .input-section { padding: 16px 16px 48px; }
-  .input-hero h1 { font-size: 22px; }
-  .input-hero p { font-size: 14px; }
-
-  /* Tabs: hide subtitle text on mobile */
-  .tab-sub { display: none; }
-  .input-tabs { gap: 0; }
-  .tab-btn { font-size: 12px; padding: 10px 6px; }
-
-  /* Report — prevent overflow */
-  .report-wrapper { padding: 0 12px; }
-  .report-container { padding: 12px 0 48px; overflow-x: hidden; }
-  .report-header { flex-direction: column; text-align: center; gap: 16px; }
-
-  /* Category cards: single column on narrow screens */
-  .report-categories { grid-template-columns: 1fr; gap: 8px; }
-  .report-card { padding: 12px; }
-  .report-card-score { font-size: 20px; }
-  .report-card-title h3 { font-size: 12px; }
-  .report-card-weight { font-size: 10px; }
-  .report-card-counts { flex-wrap: wrap; }
-  .summary-grid { grid-template-columns: 1fr; }
-
-  /* Viewport bar: wrap tags */
-  .report-viewport-bar { flex-wrap: wrap; gap: 4px; padding: 6px 10px; }
-
-  /* Action buttons: collapse exports into details on mobile */
-  .report-controls { padding: 0 0 12px; }
-  .report-controls-row { flex-direction: column; gap: 6px; }
-  .report-controls-row .btn { justify-content: center; width: 100%; font-size: 12px; }
-  .persona-selector { width: 100%; flex-wrap: wrap; }
-  .persona-selector select { flex: 1; min-width: 0; }
-  .profile-explanation table { font-size: 10px; overflow-x: auto; display: block; }
-  .report-actions { flex-direction: column; gap: 8px; padding: 0 12px 12px; }
-  .report-actions .btn { justify-content: center; }
-
-  /* Export row: icon-only on mobile */
-  .export-details .report-controls-row {
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 4px;
-  }
-  .export-details .report-controls-row .btn {
-    flex: 0;
-    min-width: 44px;
-    min-height: 44px;
-    padding: 10px;
-    justify-content: center;
-  }
-  .export-details .btn-label { display: none; }
-
-  /* Findings */
-  .report-finding { padding: 10px 12px; }
-  .finding-title { font-size: 12px; }
-  .finding-detail { font-size: 12px; }
-  .finding-fix { font-size: 12px; }
-  .finding-source { font-size: 10px; }
-
-  /* Screenshots: prevent overflow */
-  .screenshot-thumb { min-width: 0; max-width: 100%; }
-
-  /* Logo: milg on mobile */
-  .logo-full { display: none; }
-  .logo-short { display: inline; }
-
-  /* Hide Editor link on mobile analyzer */
-  .analyzer-body .hide-mobile { display: none !important; }
-
-  /* History: tighter on mobile */
-  .history-section { padding: 12px; }
-  .history-item { padding: 6px 8px; gap: 6px; }
-  .history-score { font-size: 16px; min-width: 30px; }
-  .history-url { font-size: 12px; }
-  .history-delete { opacity: 1; } /* Always show on mobile (no hover) */
-}
-
-/* --- Screenshot Viewer --- */
-.milg-viewer-overlay {
-  position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-  background: rgba(0,0,0,0.95); z-index: 9999;
-  display: flex; flex-direction: column;
-  opacity: 0; transition: opacity 200ms ease;
-}
-.milg-viewer-overlay.visible { opacity: 1; }
-
-.milg-viewer-toolbar {
-  display: flex; align-items: flex-start; gap: 10px;
-  padding: 8px 16px;
-  background: rgba(0,0,0,0.6);
-  border-bottom: 1px solid rgba(255,255,255,0.1);
-  flex-shrink: 0;
-}
-.milg-viewer-nav {
-  display: flex; align-items: center; gap: 4px;
-  white-space: nowrap;
-}
-.milg-viewer-nav-btn {
-  background: rgba(255,255,255,0.1); border: none; color: #fff;
-  width: 28px; height: 28px; border-radius: 6px; cursor: pointer;
-  font-size: 16px; display: flex; align-items: center; justify-content: center;
-}
-.milg-viewer-nav-btn:hover { background: rgba(255,255,255,0.2); }
-.milg-viewer-nav-label {
-  font-size: 12px; color: rgba(255,255,255,0.7); padding: 0 4px;
-  white-space: nowrap;
-}
-.milg-viewer-filters {
-  display: flex; align-items: center; gap: 6px; flex: 1;
-  flex-wrap: wrap; row-gap: 8px;
-}
-.milg-viewer-sep {
-  width: 1px; height: 20px; background: rgba(255,255,255,0.25); margin: 0 6px; flex-shrink: 0;
-}
-.milg-viewer-filter-btn {
-  background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.1);
-  color: rgba(255,255,255,0.6); border-radius: 12px; padding: 3px 10px;
-  font-size: 11px; cursor: pointer; white-space: nowrap; transition: all 150ms;
-}
-.milg-viewer-filter-btn:hover { background: rgba(255,255,255,0.15); color: #fff; }
-.milg-viewer-count {
-  display: inline-block; background: rgba(255,255,255,0.15); border-radius: 6px;
-  padding: 0 4px; font-size: 10px; min-width: 14px; text-align: center; margin-left: 2px;
-}
-.milg-viewer-filter-btn.active .milg-viewer-count { background: rgba(255,255,255,0.25); }
-.milg-viewer-filter-btn.active { color: #fff; }
-.milg-viewer-filter-btn.milg-viewer-sev-error.active { background: rgba(239,68,68,0.3); border-color: #ef4444; }
-.milg-viewer-filter-btn.milg-viewer-sev-warning.active { background: rgba(234,179,8,0.3); border-color: #eab308; }
-.milg-viewer-filter-btn.milg-viewer-sev-info.active { background: rgba(59,130,246,0.3); border-color: #3b82f6; }
-.milg-viewer-filter-btn.milg-viewer-sev-pass.active { background: rgba(34,197,94,0.3); border-color: #22c55e; }
-.milg-viewer-filter-btn.milg-viewer-sev-verify.active { background: rgba(34,197,94,0.3); border-color: #22c55e; }
-.milg-viewer-filter-btn.active:not(.milg-viewer-sev-error):not(.milg-viewer-sev-warning):not(.milg-viewer-sev-info):not(.milg-viewer-sev-verify) {
-  background: rgba(255,255,255,0.2); border-color: rgba(255,255,255,0.4);
-}
-.milg-viewer-zoom-select {
-  font-size: 11px; color: #fff; background: rgba(255,255,255,0.1);
-  border: 1px solid rgba(255,255,255,0.15); border-radius: 6px;
-  padding: 3px 6px; cursor: pointer; flex-shrink: 0; min-height: 24px;
-}
-.milg-viewer-zoom-select:hover { background: rgba(255,255,255,0.2); }
-.milg-viewer-zoom-select option { background: #1e293b; color: #fff; }
-.milg-viewer-debug-btn {
-  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
-  color: rgba(255,255,255,0.4); border-radius: 4px; padding: 2px 8px;
-  font-size: 10px; cursor: pointer; flex-shrink: 0;
-}
-.milg-viewer-debug-btn:hover { color: rgba(255,255,255,0.8); background: rgba(255,255,255,0.12); }
-.milg-viewer-close {
-  background: none; border: none; color: rgba(255,255,255,0.6); font-size: 24px;
-  cursor: pointer; padding: 0 4px; margin-left: auto; flex-shrink: 0;
-}
-.milg-viewer-close:hover { color: #fff; }
-
-.milg-viewer-content {
-  flex: 1; overflow: auto;
-  display: flex; flex-direction: column; align-items: center;
-  padding: 16px; cursor: grab;
-}
-.milg-viewer-content:active { cursor: grabbing; }
-.milg-viewer-frame {
-  position: relative;
-  line-height: 0;
-  display: inline-block;
-}
-.milg-viewer-frame .milg-viewer-img {
-  max-width: 100%;
-  display: block; border-radius: 4px;
-}
-.milg-viewer-svg {
-  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-  pointer-events: none;
-}
-.milg-viewer-svg rect { pointer-events: all; cursor: pointer; }
-.milg-viewer-svg rect:hover { stroke-width: 2.5; }
-
-.milg-viewer-loading {
-  color: rgba(255,255,255,0.5); font-size: 13px; padding: 40px; text-align: center;
-}
-.milg-viewer-hint {
-  position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
-  background: rgba(0,0,0,0.7); color: rgba(255,255,255,0.7);
-  padding: 8px 16px; border-radius: 8px; font-size: 12px;
-  pointer-events: none; white-space: nowrap;
-}
-.milg-viewer-tooltip {
-  position: fixed; z-index: 10001;
-  background: #fff; color: #1e293b;
-  border-radius: 8px; padding: 8px 12px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.3); max-width: 340px;
-  font-size: 12px; line-height: 1.5;
-  pointer-events: auto;
-  max-height: 50vh; overflow-y: auto;
-  scrollbar-width: thin; scrollbar-color: #cbd5e1 #f1f5f9;
-}
-.milg-viewer-tooltip-header {
-  display: flex; align-items: center; gap: 6px; margin-bottom: 4px;
-}
-.milg-viewer-tooltip-badge {
-  font-size: 10px; font-weight: 600; text-transform: uppercase;
-  padding: 1px 6px; border-radius: 4px; color: #fff;
-}
-.milg-viewer-tooltip-badge.milg-viewer-sev-error { background: #ef4444; }
-.milg-viewer-tooltip-badge.milg-viewer-sev-warning { background: #eab308; color: #713f12; }
-.milg-viewer-tooltip-badge.milg-viewer-sev-info { background: #3b82f6; }
-.milg-viewer-tooltip-cat { font-size: 10px; color: #94a3b8; }
-.milg-viewer-tooltip-title { font-weight: 600; font-size: 12px; margin-bottom: 2px; }
-.milg-viewer-tooltip-detail { font-size: 11px; color: #64748b; }
-.milg-viewer-tooltip-verify { font-size: 11px; margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(0,0,0,0.1); }
-
-body.dark-ui .milg-viewer-tooltip { background: #1e293b; color: #e2e8f0; scrollbar-color: #475569 #1e293b; }
-body.dark-ui .milg-viewer-tooltip-detail { color: #94a3b8; }
-
-/* Overlap picker: shown when multiple bboxes stack at the same position */
-.milg-viewer-overlap-picker {
-  position: fixed; z-index: 10002;
-  background: #fff; color: #1e293b;
-  border-radius: 10px; padding: 6px 0;
-  box-shadow: 0 8px 30px rgba(0,0,0,0.35); max-width: 360px; min-width: 200px;
-  font-size: 12px; line-height: 1.5;
-}
-.milg-viewer-overlap-header {
-  padding: 4px 14px 6px; font-size: 10px; font-weight: 600; text-transform: uppercase;
-  color: #94a3b8; border-bottom: 1px solid #e2e8f0;
-}
-.milg-viewer-overlap-item {
-  display: flex; align-items: center; gap: 8px;
-  padding: 7px 14px; cursor: pointer; transition: background 120ms;
-}
-.milg-viewer-overlap-item:hover { background: #f1f5f9; }
-.milg-viewer-overlap-dot {
-  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
-}
-.milg-viewer-overlap-text {
-  flex: 1; font-size: 12px; font-weight: 500;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.milg-viewer-overlap-cat {
-  font-size: 10px; color: #94a3b8; flex-shrink: 0;
-}
-body.dark-ui .milg-viewer-overlap-picker { background: #1e293b; color: #e2e8f0; }
-body.dark-ui .milg-viewer-overlap-header { color: #64748b; border-color: #334155; }
-body.dark-ui .milg-viewer-overlap-item:hover { background: #334155; }
-
-.contrast-verify-summary {
-  margin: 12px 0;
-  padding: 12px 16px;
-  background: var(--bg-alt);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-}
-.contrast-verify-summary summary { user-select: none; }
-
-.finding-show-on-screenshot {
-  font-size: 11px; color: var(--primary); cursor: pointer;
-  text-decoration: underline; text-decoration-style: dotted;
-  margin-top: 4px; display: inline-block;
-}
-.finding-show-on-screenshot:hover { text-decoration-style: solid; }
-
-@media (max-width: 640px) {
-  .milg-viewer-toolbar {
-    padding: 6px 10px; gap: 6px;
-    flex-wrap: wrap;
-    overflow-x: visible;
-  }
-  .milg-viewer-filters {
-    order: 1; width: 100%;
-    flex-wrap: wrap; row-gap: 4px;
-    padding-bottom: 4px;
-  }
-  .milg-viewer-filter-btn {
-    font-size: 11px; padding: 4px 10px; min-height: 32px;
-  }
-  .milg-viewer-zoom-select {
-    order: 0; min-height: 32px; font-size: 12px;
-  }
-  .milg-viewer-close {
-    order: 0; font-size: 28px; padding: 4px 8px; min-height: 32px;
-  }
-  .milg-viewer-debug-btn { order: 0; min-height: 32px; padding: 4px 10px; }
-  .milg-viewer-content { padding: 4px; }
-  .milg-viewer-frame .milg-viewer-img { max-width: 100vw; border-radius: 0; }
-  .milg-viewer-tooltip { max-width: 280px; font-size: 11px; }
-  .milg-viewer-overlap-picker { max-width: 300px; }
-}
-</file>
-
 <file path="docs/PIXEL-CONTRAST-APPROACH.md">
 # Pixel Contrast Verification — Approach Reference
 
@@ -25199,13 +23738,6 @@ Are you building for Android/Google platforms?
 *Related: [Color Systems](../color/color-systems.md) | [Design Tokens](design-tokens.md) | [Animation Timing](../interaction/animation-timing.md)*
 </file>
 
-<file path="test-results/.last-run.json">
-{
-  "status": "passed",
-  "failedTests": []
-}
-</file>
-
 <file path="tests/contrast-and-palette.test.mjs">
 /**
  * Contrast & Color Palette Visibility Tests
@@ -31082,6 +29614,1466 @@ window.MilgQueue = (function() {
 })();
 </file>
 
+<file path="docs/analyzer.css">
+/* Analyzer — inherits vars from style.css */
+
+/* JS-enabled warning panel */
+#jsEnabledOptions {
+  background: #fffbeb; border: 1px solid #f59e0b; color: #92400e;
+}
+body.dark-ui #jsEnabledOptions {
+  background: #2d2006; border-color: #92400e; color: #fbbf24;
+}
+#jsEnabledOptions details summary { user-select: none; }
+#jsEnabledOptions details[open] summary { margin-bottom: 2px; }
+/* Disabled state for analyze button (JS gate or during analysis) */
+#analyzeUrlBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.analyzer-body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  /* Override style.css body which sets overflow:hidden + height:100vh for the editor */
+  overflow: auto !important;
+  height: auto !important;
+}
+
+/* Screen reader only */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Focus indicators */
+.analyzer-body .btn:focus-visible,
+.analyzer-body .tab-btn:focus-visible,
+.analyzer-body textarea:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Fix touch targets — minimum 44px height */
+.analyzer-body .btn {
+  min-height: 44px;
+}
+
+.analyzer-body .btn-icon {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+/* Fix contrast on step numbers — use darker blue */
+.guide-step-num {
+  background: #1d4ed8 !important;
+}
+
+/* Fix contrast on primary buttons — use darker blue */
+.analyzer-body .btn-primary {
+  background: #2563eb;
+  border-color: #2563eb;
+}
+.analyzer-body .btn-primary:hover {
+  background: #1d4ed8;
+}
+
+/* Fix tab button min height + contrast */
+.tab-btn {
+  min-height: 44px;
+}
+.tab-btn.active {
+  color: #2563eb;
+  border-bottom-color: #2563eb;
+}
+
+/* Fix logo touch target */
+.analyzer-body .logo {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Snippet code should not affect line-length scoring */
+.snippet-code {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* Exclude tags */
+.exclude-tag {
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  background: var(--bg);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: all 0.15s;
+  min-height: 32px;
+}
+
+.exclude-tag:hover { border-color: var(--text-secondary); }
+.exclude-tag.active { background: var(--text); color: var(--bg); border-color: var(--text); }
+
+/* Persona selector */
+.persona-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.persona-selector select {
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+}
+
+.persona-selector .btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Import drop zone */
+.import-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 32px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.import-dropzone:hover,
+.import-dropzone.dragover {
+  border-color: var(--primary);
+  background: rgba(59, 130, 246, 0.04);
+}
+
+/* Analysis progress bar */
+.analysis-progress {
+  margin-top: 12px;
+}
+
+.analysis-progress-bar {
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.analysis-progress-fill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 3px;
+  width: 0%;
+  transition: width 0.4s ease;
+}
+
+.analysis-progress-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* Viewport select hidden during deep scan */
+.viewport-row.hidden {
+  display: none !important;
+}
+
+/* Analysis history */
+.history-section {
+  margin-top: 24px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-alt);
+}
+
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  margin: 4px 0;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+  border: 1px solid transparent;
+}
+
+.history-item:hover {
+  background: var(--bg);
+  border-color: var(--border);
+}
+
+.history-score {
+  font-size: 18px;
+  font-weight: 700;
+  min-width: 36px;
+  text-align: right;
+}
+
+.history-url {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-date {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.history-delete {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.history-item:hover .history-delete {
+  opacity: 1;
+}
+
+.history-delete:hover {
+  color: #dc2626;
+  background: #fef2f2;
+}
+
+/* URL input */
+#urlInput:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+/* --- Input section --- */
+.input-section {
+  max-width: 800px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 32px 24px 64px;
+}
+
+.input-hero {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.input-hero h1 {
+  font-size: 28px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.input-hero p {
+  font-size: 15px;
+  color: var(--text-secondary);
+  max-width: 520px;
+  margin: 0 auto;
+  line-height: 1.5;
+}
+
+/* Tabs */
+.input-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 20px;
+  gap: 0;
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 10px 16px;
+  border: none;
+  background: none;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font);
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s ease;
+}
+
+.tab-btn:hover { color: var(--text); }
+.tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+.tab-sub {
+  font-size: 10px;
+  opacity: 0.7;
+  font-weight: 400;
+}
+
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* Input areas */
+.input-area textarea {
+  width: 100%;
+  min-height: 180px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-family: var(--mono);
+  color: var(--text);
+  background: var(--bg);
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.input-area textarea:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+.input-area textarea::placeholder { color: var(--text-secondary); }
+
+.input-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.input-actions .btn-primary {
+  flex: 1;
+  justify-content: center;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* Snippet section */
+.snippet-section {
+  margin-top: 24px;
+}
+
+.snippet-section h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.snippet-section p {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+.snippet-box {
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.snippet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.snippet-header span {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.snippet-code {
+  padding: 12px 16px;
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--text-secondary);
+  max-height: 200px;
+  overflow-y: auto;
+  white-space: pre;
+  line-height: 1.5;
+}
+
+/* Quick guide */
+.guide-steps {
+  margin-top: 24px;
+  counter-reset: step;
+}
+
+.guide-step {
+  display: flex;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.guide-step:last-child { border-bottom: none; }
+
+.guide-step-num {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: white;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.guide-step code {
+  background: var(--bg-alt);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: var(--mono);
+  border: 1px solid var(--border);
+}
+
+.guide-step strong { font-weight: 600; }
+
+/* Console tips */
+.console-tip {
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  margin-top: 16px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.console-tip code {
+  background: var(--bg);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 12px;
+  border: 1px solid var(--border);
+}
+
+.console-tip strong { font-weight: 600; }
+
+/* --- Report --- */
+/* Shared wrapper for all report sections — single source of max-width + padding */
+.report-wrapper {
+  max-width: 900px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.report-container {
+  display: none;
+  padding: 32px 0 64px;
+}
+
+.report-container.visible { display: block; }
+
+/* Report controls bar */
+.report-controls {
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 0 16px;
+}
+
+.report-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.report-controls-row:last-child {
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+/* Profile explanation panel */
+.profile-explanation {
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  position: relative;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.profile-explanation h4 {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.profile-explanation p {
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+
+.profile-explanation table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.profile-explanation th,
+.profile-explanation td {
+  text-align: left;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.profile-explanation th {
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.profile-explanation-close {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  background: none;
+  border: none;
+  font-size: 18px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px;
+}
+
+/* Export details: always open on desktop, collapsible on mobile */
+.export-details { display: contents; } /* Desktop: acts as if not there */
+.export-summary { display: none; } /* Hidden on desktop */
+
+@media (max-width: 640px) {
+  .export-details { display: block; border-top: 1px solid var(--border); padding-top: 8px; }
+  .export-summary {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 6px 0;
+  }
+}
+
+/* Legacy compat */
+.report-actions {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  max-width: 900px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 24px 16px;
+}
+
+/* Report header */
+.report-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 24px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.report-header-info h1 {
+  font-size: 24px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.report-url {
+  font-size: 14px;
+  color: var(--primary);
+  word-break: break-all;
+  margin-bottom: 2px;
+}
+
+.report-url a {
+  color: var(--primary);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.report-url a:hover {
+  color: var(--primary-hover);
+}
+
+.report-timestamp {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.report-gauge {
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.report-grade-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+/* Category cards */
+.report-categories {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 32px;
+}
+
+.report-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: var(--shadow);
+}
+
+.report-card-clickable {
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.report-card-clickable:hover {
+  border-color: var(--primary);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.12);
+}
+
+/* Exclusion suggestions panel */
+.exclusion-suggestions {
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+
+/* Viewport bar (deep scan) */
+.report-viewport-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 12px;
+}
+
+.viewport-tag {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: #f0fdf4;
+  color: #16a34a;
+  border: 1px solid #bbf7d0;
+}
+
+.viewport-tag.viewport-error {
+  background: #fef2f2;
+  color: #dc2626;
+  border-color: #fecaca;
+}
+
+body.dark-ui .viewport-tag { background: #052e16; color: #4ade80; border-color: #166534; }
+body.dark-ui .viewport-tag.viewport-error { background: #451a1a; color: #f87171; border-color: #7f1d1d; }
+
+/* Screenshot thumbnails */
+.report-screenshots {
+  margin-bottom: 16px;
+}
+
+.screenshot-thumb {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.screenshot-img {
+  transition: opacity 0.2s;
+}
+
+.screenshot-img:hover {
+  opacity: 0.85;
+}
+
+/* Scroll target offset for sticky headers */
+.report-finding-group {
+  scroll-margin-top: 24px;
+}
+
+.report-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.report-card-icon {
+  flex-shrink: 0;
+  display: flex;
+}
+
+.report-card-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.report-card-title h3 {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.report-card-weight {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.report-card-score {
+  font-size: 24px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.progress-bar {
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.6s ease;
+}
+
+.report-card-counts {
+  display: flex;
+  gap: 4px;
+  font-size: 11px;
+}
+
+.report-card-counts span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 10px;
+  cursor: default;
+}
+
+.count-error { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; cursor: pointer; }
+.count-warning { background: #fffbeb; color: #b45309; border: 1px solid #fed7aa; cursor: pointer; }
+.count-info { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; cursor: pointer; }
+.count-pass { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+.count-na { background: #f8fafc; color: #94a3b8; border: 1px solid #e2e8f0; }
+
+.count-error:hover { background: #fee2e2; }
+.count-warning:hover { background: #fef3c7; }
+.count-info:hover { background: #dbeafe; }
+
+/* Severity badge classes (light mode defaults) */
+.severity-badge-error {
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+}
+
+.severity-badge-warning {
+  background: #fffbeb;
+  color: #b45309;
+  border: 1px solid #fed7aa;
+}
+
+.severity-badge-info {
+  background: #eff6ff;
+  color: #2563eb;
+  border: 1px solid #bfdbfe;
+}
+
+/* Dark mode overrides for report elements */
+body.dark-ui .count-error { background: #451a1a; color: #f87171; border-color: #7f1d1d; }
+body.dark-ui .count-warning { background: #451a00; color: #fbbf24; border-color: #78350f; }
+body.dark-ui .count-info { background: #172554; color: #60a5fa; border-color: #1e3a5f; }
+body.dark-ui .count-pass { background: #052e16; color: #4ade80; border-color: #166534; }
+body.dark-ui .count-na { background: #1e293b; color: #64748b; border-color: #334155; }
+
+/* Dark mode: fix link readability in profile explanation and finding sources */
+body.dark-ui .profile-explanation a { color: #93c5fd; }
+body.dark-ui .profile-explanation a:hover { color: #bfdbfe; }
+body.dark-ui .finding-source a { color: #94a3b8; }
+body.dark-ui .finding-source a:hover { color: #93c5fd; }
+
+body.dark-ui .report-finding.severity-error { border-left-color: #f87171; }
+body.dark-ui .report-finding.severity-warning { border-left-color: #fbbf24; }
+body.dark-ui .report-finding.severity-info { border-left-color: #60a5fa; }
+
+body.dark-ui .finding-fix {
+  background: var(--bg-alt);
+}
+
+body.dark-ui .color-swatch {
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+body.dark-ui .progress-bar {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+body.dark-ui .report-card {
+  background: var(--bg);
+}
+
+body.dark-ui .severity-badge-error {
+  background: #451a1a;
+  color: #f87171;
+  border-color: #7f1d1d;
+}
+
+body.dark-ui .severity-badge-warning {
+  background: #451a00;
+  color: #fbbf24;
+  border-color: #78350f;
+}
+
+body.dark-ui .severity-badge-info {
+  background: #172554;
+  color: #60a5fa;
+  border-color: #1e3a5f;
+}
+
+.severity-badge-pass {
+  background: #f0fdf4;
+  color: #16a34a;
+  border: 1px solid #bbf7d0;
+}
+
+body.dark-ui .severity-badge-pass {
+  background: #052e16;
+  color: #4ade80;
+  border-color: #166534;
+}
+
+.report-finding.severity-pass { border-left: 3px solid #16a34a; }
+body.dark-ui .report-finding.severity-pass { border-left-color: #4ade80; }
+
+/* Findings */
+.report-findings {
+  margin-bottom: 32px;
+}
+
+.report-findings > h2 {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+.report-finding-group {
+  margin-bottom: 24px;
+}
+
+.report-finding-group > h3 {
+  font-size: 15px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  color: var(--text);
+}
+
+.report-finding-group > h3 svg {
+  flex-shrink: 0;
+}
+
+.report-finding {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  margin-bottom: 8px;
+}
+
+.report-finding.severity-error { border-left: 3px solid #dc2626; }
+.report-finding.severity-warning { border-left: 3px solid #f59e0b; }
+.report-finding.severity-info { border-left: 3px solid #3b82f6; }
+
+.finding-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.finding-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.finding-detail {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 4px 0;
+  line-height: 1.5;
+}
+
+.finding-fix {
+  font-size: 13px;
+  margin-top: 6px;
+  padding: 8px 10px;
+  background: var(--bg-alt);
+  border-radius: 6px;
+  line-height: 1.5;
+}
+
+.finding-preset {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.finding-source {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+.finding-source a {
+  color: var(--text-secondary);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+}
+
+.finding-source a:hover { color: var(--primary); }
+
+/* Summary */
+.report-summary {
+  border-top: 1px solid var(--border);
+  padding-top: 24px;
+}
+
+.report-summary > h2 {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.summary-section {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+
+.summary-section h4 {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.color-swatches {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.color-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  cursor: default;
+}
+
+.summary-list {
+  font-size: 13px;
+  line-height: 1.8;
+  word-break: break-word;
+}
+
+/* Methodology note */
+.report-methodology {
+  border-top: 1px solid var(--border);
+  padding-top: 24px;
+  margin-top: 16px;
+}
+
+.report-methodology h2 {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.report-methodology p {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 8px;
+}
+
+.report-methodology strong {
+  color: var(--text);
+}
+
+/* --- Site Crawl --- */
+.crawl-progress-list { display:flex; flex-direction:column; gap:6px; max-height:200px; overflow-y:auto; }
+.crawl-progress-item { display:flex; align-items:center; gap:8px; font-size:13px; padding:6px 10px; border-radius:8px; background:var(--surface); }
+.crawl-progress-item .status-icon { width:18px; height:18px; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
+.crawl-progress-item .status-icon.pending { color:var(--text-secondary); }
+.crawl-progress-item .status-icon.done { color:#16a34a; }
+.crawl-progress-item .status-icon.error { color:#dc2626; }
+.crawl-progress-item .status-icon.active { color:var(--primary); animation: crawl-pulse 1s ease-in-out infinite; }
+@keyframes crawl-pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+.crawl-progress-item .page-url { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text); }
+.crawl-progress-item .page-score { font-weight:600; font-variant-numeric:tabular-nums; }
+
+#crawlResults { width:100%; }
+.crawl-page-tabs { display:flex; flex-wrap:wrap; gap:4px; padding:8px 0; border-bottom:1px solid var(--border); background:var(--bg); position:sticky; top:0; z-index:5; }
+.crawl-page-tab { padding:6px 14px; font-size:13px; font-weight:500; color:var(--text-secondary); background:var(--card-bg, var(--bg)); border:1px solid var(--border); border-radius:6px; cursor:pointer; display:flex; align-items:center; gap:6px; white-space:nowrap; transition: color 0.15s, border-color 0.15s, background 0.15s; }
+.crawl-page-tab:hover { color:var(--text); border-color:var(--text-secondary); }
+.crawl-page-tab.active { color:var(--primary); border-color:var(--primary); background:var(--bg); }
+.crawl-page-tab .score-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.crawl-page-tab .score-dot.grade-a { background:#16a34a; }
+.crawl-page-tab .score-dot.grade-b { background:#ca8a04; }
+.crawl-page-tab .score-dot.grade-c { background:#ea580c; }
+.crawl-page-tab .score-dot.grade-d, .crawl-page-tab .score-dot.grade-f { background:#dc2626; }
+.crawl-page-tab .score-dot.pending { background:var(--text-secondary); animation: crawl-pulse 1s ease-in-out infinite; }
+.crawl-page-tab .score-dot.error { background:#dc2626; }
+
+.crawl-viewport-subtabs { display:flex; gap:2px; padding:4px 16px; background:var(--surface); border-bottom:1px solid var(--border); }
+.crawl-viewport-subtab { padding:6px 14px; font-size:12px; font-weight:500; color:var(--text-secondary); background:none; border:none; border-bottom:2px solid transparent; cursor:pointer; transition: color 0.15s; }
+.crawl-viewport-subtab:hover { color:var(--text); }
+.crawl-viewport-subtab.active { color:var(--primary); border-bottom-color:var(--primary); }
+
+.crawl-summary { padding:24px 0; }
+.crawl-summary h2 { font-size:20px; font-weight:700; margin:0 0 16px; color:var(--text); }
+.crawl-summary h3 { font-size:15px; font-weight:600; margin:24px 0 12px; color:var(--text); }
+.crawl-score-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:10px; margin-bottom:24px; }
+.crawl-score-card { padding:14px; border-radius:10px; background:var(--surface); border:1px solid var(--border); text-align:center; }
+.crawl-score-card .score { font-size:28px; font-weight:700; font-variant-numeric:tabular-nums; }
+.crawl-score-card .grade { font-size:13px; font-weight:600; margin-top:2px; }
+.crawl-score-card .page-path { font-size:12px; color:var(--text-secondary); margin-top:6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.crawl-score-card .grade-a { color:#16a34a; }
+.crawl-score-card .grade-b { color:#ca8a04; }
+.crawl-score-card .grade-c { color:#ea580c; }
+.crawl-score-card .grade-d, .crawl-score-card .grade-f { color:#dc2626; }
+
+.crawl-issue-group { margin-bottom:12px; padding:12px 14px; border-radius:8px; background:var(--surface); border:1px solid var(--border); }
+.crawl-issue-group .issue-header { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
+.crawl-issue-group .issue-title { font-size:13px; font-weight:600; color:var(--text); }
+.crawl-issue-group .issue-count { font-size:12px; color:var(--text-secondary); white-space:nowrap; }
+.crawl-issue-group .issue-pages { margin-top:6px; font-size:12px; color:var(--text-secondary); }
+.crawl-issue-group .severity-badge { display:inline-block; font-size:11px; font-weight:600; padding:1px 6px; border-radius:4px; margin-right:6px; }
+.crawl-issue-group .severity-badge.error { background:#fef2f2; color:#dc2626; }
+.crawl-issue-group .severity-badge.warning { background:#fffbeb; color:#ca8a04; }
+body.dark-ui .crawl-issue-group .severity-badge.error { background:#451a1a; color:#f87171; }
+body.dark-ui .crawl-issue-group .severity-badge.warning { background:#451a00; color:#fbbf24; }
+
+/* --- Print / PDF --- */
+@media print {
+  body, .analyzer-body {
+    background: white !important;
+    color: #0f172a !important;
+  }
+
+  .header, .input-section, .report-controls, .report-actions, .toast,
+  #newAnalysisBtn, #printBtn, .guide-steps,
+  .snippet-section, .console-tip {
+    display: none !important;
+  }
+
+  .report-container {
+    display: block !important;
+    padding: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .report-header { break-after: avoid; }
+  .report-categories { break-inside: avoid; }
+  .report-finding-group { break-inside: avoid; }
+  .summary-grid { break-inside: avoid; }
+
+  .report-card {
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: none !important;
+  }
+
+  .report-finding {
+    border: 1px solid #e2e8f0 !important;
+  }
+
+  .report-finding.severity-error { border-left: 3px solid #dc2626 !important; }
+  .report-finding.severity-warning { border-left: 3px solid #f59e0b !important; }
+  .report-finding.severity-info { border-left: 3px solid #3b82f6 !important; }
+
+  a { color: #2563eb !important; }
+
+  .finding-fix {
+    background: #f8fafc !important;
+    border: 1px solid #e2e8f0;
+  }
+
+  .report-findings { break-before: page; }
+  .report-summary { break-before: page; }
+}
+
+/* --- Responsive --- */
+@media (max-width: 640px) {
+  .input-section { padding: 16px 16px 48px; }
+  .input-hero h1 { font-size: 22px; }
+  .input-hero p { font-size: 14px; }
+
+  /* Tabs: hide subtitle text on mobile */
+  .tab-sub { display: none; }
+  .input-tabs { gap: 0; }
+  .tab-btn { font-size: 12px; padding: 10px 6px; }
+
+  /* Report — prevent overflow */
+  .report-wrapper { padding: 0 12px; }
+  .report-container { padding: 12px 0 48px; overflow-x: hidden; }
+  .report-header { flex-direction: column; text-align: center; gap: 16px; }
+
+  /* Category cards: single column on narrow screens */
+  .report-categories { grid-template-columns: 1fr; gap: 8px; }
+  .report-card { padding: 12px; }
+  .report-card-score { font-size: 20px; }
+  .report-card-title h3 { font-size: 12px; }
+  .report-card-weight { font-size: 10px; }
+  .report-card-counts { flex-wrap: wrap; }
+  .summary-grid { grid-template-columns: 1fr; }
+
+  /* Viewport bar: wrap tags */
+  .report-viewport-bar { flex-wrap: wrap; gap: 4px; padding: 6px 10px; }
+
+  /* Action buttons: collapse exports into details on mobile */
+  .report-controls { padding: 0 0 12px; }
+  .report-controls-row { flex-direction: column; gap: 6px; }
+  .report-controls-row .btn { justify-content: center; width: 100%; font-size: 12px; }
+  .persona-selector { width: 100%; flex-wrap: wrap; }
+  .persona-selector select { flex: 1; min-width: 0; }
+  .profile-explanation table { font-size: 10px; overflow-x: auto; display: block; }
+  .report-actions { flex-direction: column; gap: 8px; padding: 0 12px 12px; }
+  .report-actions .btn { justify-content: center; }
+
+  /* Export row: icon-only on mobile */
+  .export-details .report-controls-row {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .export-details .report-controls-row .btn {
+    flex: 0;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 10px;
+    justify-content: center;
+  }
+  .export-details .btn-label { display: none; }
+
+  /* Findings */
+  .report-finding { padding: 10px 12px; }
+  .finding-title { font-size: 12px; }
+  .finding-detail { font-size: 12px; }
+  .finding-fix { font-size: 12px; }
+  .finding-source { font-size: 10px; }
+
+  /* Screenshots: prevent overflow */
+  .screenshot-thumb { min-width: 0; max-width: 100%; }
+
+  /* Logo: milg on mobile */
+  .logo-full { display: none; }
+  .logo-short { display: inline; }
+
+  /* Hide Editor link on mobile analyzer */
+  .analyzer-body .hide-mobile { display: none !important; }
+
+  /* History: tighter on mobile */
+  .history-section { padding: 12px; }
+  .history-item { padding: 6px 8px; gap: 6px; }
+  .history-score { font-size: 16px; min-width: 30px; }
+  .history-url { font-size: 12px; }
+  .history-delete { opacity: 1; } /* Always show on mobile (no hover) */
+}
+
+/* --- Screenshot Viewer --- */
+.milg-viewer-overlay {
+  position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+  background: rgba(0,0,0,0.95); z-index: 9999;
+  display: flex; flex-direction: column;
+  opacity: 0; transition: opacity 200ms ease;
+}
+.milg-viewer-overlay.visible { opacity: 1; }
+
+.milg-viewer-toolbar {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 8px 16px;
+  background: rgba(0,0,0,0.6);
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  flex-shrink: 0;
+}
+.milg-viewer-nav {
+  display: flex; align-items: center; gap: 4px;
+  white-space: nowrap;
+}
+.milg-viewer-nav-btn {
+  background: rgba(255,255,255,0.1); border: none; color: #fff;
+  width: 28px; height: 28px; border-radius: 6px; cursor: pointer;
+  font-size: 16px; display: flex; align-items: center; justify-content: center;
+}
+.milg-viewer-nav-btn:hover { background: rgba(255,255,255,0.2); }
+.milg-viewer-nav-label {
+  font-size: 12px; color: rgba(255,255,255,0.7); padding: 0 4px;
+  white-space: nowrap;
+}
+.milg-viewer-filters {
+  display: flex; align-items: center; gap: 6px; flex: 1;
+  flex-wrap: wrap; row-gap: 8px;
+}
+.milg-viewer-sep {
+  width: 1px; height: 20px; background: rgba(255,255,255,0.25); margin: 0 6px; flex-shrink: 0;
+}
+.milg-viewer-filter-btn {
+  background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.6); border-radius: 12px; padding: 3px 10px;
+  font-size: 11px; cursor: pointer; white-space: nowrap; transition: all 150ms;
+}
+.milg-viewer-filter-btn:hover { background: rgba(255,255,255,0.15); color: #fff; }
+.milg-viewer-count {
+  display: inline-block; background: rgba(255,255,255,0.15); border-radius: 6px;
+  padding: 0 4px; font-size: 10px; min-width: 14px; text-align: center; margin-left: 2px;
+}
+.milg-viewer-filter-btn.active .milg-viewer-count { background: rgba(255,255,255,0.25); }
+.milg-viewer-filter-btn.active { color: #fff; }
+.milg-viewer-filter-btn.milg-viewer-sev-error.active { background: rgba(239,68,68,0.3); border-color: #ef4444; }
+.milg-viewer-filter-btn.milg-viewer-sev-warning.active { background: rgba(234,179,8,0.3); border-color: #eab308; }
+.milg-viewer-filter-btn.milg-viewer-sev-info.active { background: rgba(59,130,246,0.3); border-color: #3b82f6; }
+.milg-viewer-filter-btn.milg-viewer-sev-pass.active { background: rgba(34,197,94,0.3); border-color: #22c55e; }
+.milg-viewer-filter-btn.milg-viewer-sev-verify.active { background: rgba(34,197,94,0.3); border-color: #22c55e; }
+.milg-viewer-filter-btn.active:not(.milg-viewer-sev-error):not(.milg-viewer-sev-warning):not(.milg-viewer-sev-info):not(.milg-viewer-sev-verify) {
+  background: rgba(255,255,255,0.2); border-color: rgba(255,255,255,0.4);
+}
+.milg-viewer-zoom-select {
+  font-size: 11px; color: #fff; background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.15); border-radius: 6px;
+  padding: 3px 6px; cursor: pointer; flex-shrink: 0; min-height: 24px;
+}
+.milg-viewer-zoom-select:hover { background: rgba(255,255,255,0.2); }
+.milg-viewer-zoom-select option { background: #1e293b; color: #fff; }
+.milg-viewer-debug-btn {
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.4); border-radius: 4px; padding: 2px 8px;
+  font-size: 10px; cursor: pointer; flex-shrink: 0;
+}
+.milg-viewer-debug-btn:hover { color: rgba(255,255,255,0.8); background: rgba(255,255,255,0.12); }
+.milg-viewer-close {
+  background: none; border: none; color: rgba(255,255,255,0.6); font-size: 24px;
+  cursor: pointer; padding: 0 4px; margin-left: auto; flex-shrink: 0;
+}
+.milg-viewer-close:hover { color: #fff; }
+
+.milg-viewer-content {
+  flex: 1; overflow: auto;
+  display: flex; flex-direction: column; align-items: center;
+  padding: 16px; cursor: grab;
+}
+.milg-viewer-content:active { cursor: grabbing; }
+.milg-viewer-frame {
+  position: relative;
+  line-height: 0;
+  display: inline-block;
+  max-width: 95vw;
+}
+.milg-viewer-frame .milg-viewer-img {
+  max-width: 95vw;
+  display: block; border-radius: 4px;
+}
+.milg-viewer-svg {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+  pointer-events: none;
+}
+.milg-viewer-svg rect { pointer-events: all; cursor: pointer; }
+.milg-viewer-svg rect:hover { stroke-width: 2.5; }
+
+.milg-viewer-loading {
+  color: rgba(255,255,255,0.5); font-size: 13px; padding: 40px; text-align: center;
+}
+.milg-viewer-hint {
+  position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: rgba(0,0,0,0.7); color: rgba(255,255,255,0.7);
+  padding: 8px 16px; border-radius: 8px; font-size: 12px;
+  pointer-events: none; white-space: nowrap;
+}
+.milg-viewer-tooltip {
+  position: fixed; z-index: 10001;
+  background: #fff; color: #1e293b;
+  border-radius: 8px; padding: 8px 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3); max-width: 340px;
+  font-size: 12px; line-height: 1.5;
+  pointer-events: auto;
+  max-height: 50vh; overflow-y: auto;
+  scrollbar-width: thin; scrollbar-color: #cbd5e1 #f1f5f9;
+}
+.milg-viewer-tooltip-header {
+  display: flex; align-items: center; gap: 6px; margin-bottom: 4px;
+}
+.milg-viewer-tooltip-badge {
+  font-size: 10px; font-weight: 600; text-transform: uppercase;
+  padding: 1px 6px; border-radius: 4px; color: #fff;
+}
+.milg-viewer-tooltip-badge.milg-viewer-sev-error { background: #ef4444; }
+.milg-viewer-tooltip-badge.milg-viewer-sev-warning { background: #eab308; color: #713f12; }
+.milg-viewer-tooltip-badge.milg-viewer-sev-info { background: #3b82f6; }
+.milg-viewer-tooltip-cat { font-size: 10px; color: #94a3b8; }
+.milg-viewer-tooltip-title { font-weight: 600; font-size: 12px; margin-bottom: 2px; }
+.milg-viewer-tooltip-detail { font-size: 11px; color: #64748b; }
+.milg-viewer-tooltip-verify { font-size: 11px; margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(0,0,0,0.1); }
+
+body.dark-ui .milg-viewer-tooltip { background: #1e293b; color: #e2e8f0; scrollbar-color: #475569 #1e293b; }
+body.dark-ui .milg-viewer-tooltip-detail { color: #94a3b8; }
+
+/* Overlap picker: shown when multiple bboxes stack at the same position */
+.milg-viewer-overlap-picker {
+  position: fixed; z-index: 10002;
+  background: #fff; color: #1e293b;
+  border-radius: 10px; padding: 6px 0;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.35); max-width: 360px; min-width: 200px;
+  font-size: 12px; line-height: 1.5;
+}
+.milg-viewer-overlap-header {
+  padding: 4px 14px 6px; font-size: 10px; font-weight: 600; text-transform: uppercase;
+  color: #94a3b8; border-bottom: 1px solid #e2e8f0;
+}
+.milg-viewer-overlap-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 14px; cursor: pointer; transition: background 120ms;
+}
+.milg-viewer-overlap-item:hover { background: #f1f5f9; }
+.milg-viewer-overlap-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.milg-viewer-overlap-text {
+  flex: 1; font-size: 12px; font-weight: 500;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.milg-viewer-overlap-cat {
+  font-size: 10px; color: #94a3b8; flex-shrink: 0;
+}
+body.dark-ui .milg-viewer-overlap-picker { background: #1e293b; color: #e2e8f0; }
+body.dark-ui .milg-viewer-overlap-header { color: #64748b; border-color: #334155; }
+body.dark-ui .milg-viewer-overlap-item:hover { background: #334155; }
+
+.contrast-verify-summary {
+  margin: 12px 0;
+  padding: 12px 16px;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.contrast-verify-summary summary { user-select: none; }
+
+.finding-show-on-screenshot {
+  font-size: 11px; color: var(--primary); cursor: pointer;
+  text-decoration: underline; text-decoration-style: dotted;
+  margin-top: 4px; display: inline-block;
+}
+.finding-show-on-screenshot:hover { text-decoration-style: solid; }
+
+@media (max-width: 640px) {
+  .milg-viewer-toolbar {
+    padding: 6px 10px; gap: 6px;
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+  .milg-viewer-filters {
+    order: 1; width: 100%;
+    flex-wrap: wrap; row-gap: 4px;
+    padding-bottom: 4px;
+  }
+  .milg-viewer-filter-btn {
+    font-size: 11px; padding: 4px 10px; min-height: 32px;
+  }
+  .milg-viewer-zoom-select {
+    order: 0; min-height: 32px; font-size: 12px;
+  }
+  .milg-viewer-close {
+    order: 0; font-size: 28px; padding: 4px 8px; min-height: 32px;
+  }
+  .milg-viewer-debug-btn { order: 0; min-height: 32px; padding: 4px 10px; }
+  .milg-viewer-content { padding: 4px; }
+  .milg-viewer-frame .milg-viewer-img { max-width: 100vw; border-radius: 0; }
+  .milg-viewer-tooltip { max-width: 280px; font-size: 11px; }
+  .milg-viewer-overlap-picker { max-width: 300px; }
+}
+</file>
+
 <file path="playwright.config.js">
 // @ts-check
 const { defineConfig } = require('@playwright/test');
@@ -32439,22 +32431,8 @@ window.MilgReport = (function() {
         html += '</div>';
       });
       html += '</div>';
-      // Unhidden panels screenshots (shown when hidden panels were detected)
-      if (report.raw.screenshotsUnhidden && report.raw.screenshotsUnhidden.length > 0) {
-        html += '<div style="margin-top:12px;padding:12px;border:2px dashed var(--border);border-radius:8px;background:var(--bg-alt)">';
-        html += '<div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text-error,#ef4444)">With hidden panels revealed (' + (report.raw.layout.hiddenPanelCount || '?') + ' panels unhidden)</div>';
-        html += '<div style="display:flex;flex-wrap:wrap;gap:12px">';
-        report.raw.screenshotsUnhidden.forEach(function(src, idx) {
-          html += '<div class="screenshot-thumb" style="flex:1;min-width:200px;max-width:400px">';
-          if (report.raw.screenshotsUnhidden.length > 1) {
-            html += '<div style="padding:4px 8px;font-size:10px;color:var(--text-secondary);border-bottom:1px solid var(--border);background:var(--bg-alt)">Section ' + (idx + 1) + '</div>';
-          }
-          html += '<img src="' + src + '" alt="Page with panels revealed ' + (idx + 1) + '" class="screenshot-img" style="width:100%;display:block;cursor:zoom-in" onclick="window.__milgZoomScreenshot(this,' + idx + ')" loading="lazy">';
-          html += '</div>';
-        });
-        html += '</div>';
-        html += '</div>';
-      }
+      // Note: screenshotsUnhidden (hidden panels revealed) no longer displayed here —
+      // hidden/clipped content is shown via region screenshots in the viewer instead
       html += '</details>';
     }
 
@@ -34219,21 +34197,9 @@ test.describe('Screenshot Pipeline', () => {
         }
       }
 
-      // Verify toggle button doesn't overlap with close button
+      // Verify no expand toggle exists (region screenshots replace the old toggle approach)
       const toggleBtn = page.locator('.milg-viewer-expand-toggle');
-      const closeBtn = page.locator('.milg-viewer-close');
-      if (await toggleBtn.count() > 0 && await closeBtn.count() > 0) {
-        const toggleBox = await toggleBtn.boundingBox();
-        const closeBox = await closeBtn.boundingBox();
-        if (toggleBox && closeBox) {
-          // They should NOT overlap — check that toggle is below toolbar area
-          const overlaps = !(toggleBox.x + toggleBox.width <= closeBox.x ||
-                            closeBox.x + closeBox.width <= toggleBox.x ||
-                            toggleBox.y + toggleBox.height <= closeBox.y ||
-                            closeBox.y + closeBox.height <= toggleBox.y);
-          expect(overlaps).toBe(false);
-        }
-      }
+      expect(await toggleBtn.count()).toBe(0);
 
       // Close the viewer
       await page.keyboard.press('Escape');
@@ -34349,20 +34315,8 @@ test.describe('URL Analysis - fink-translate.com', () => {
         }
       }
 
-      // Verify toggle button doesn't overlap close button
-      const toggleBtn = page.locator('.milg-viewer-expand-toggle');
-      const closeBtn = page.locator('.milg-viewer-close');
-      if (await toggleBtn.count() > 0 && await closeBtn.count() > 0) {
-        const toggleBox = await toggleBtn.boundingBox();
-        const closeBox = await closeBtn.boundingBox();
-        if (toggleBox && closeBox) {
-          const overlaps = !(toggleBox.x + toggleBox.width <= closeBox.x ||
-                            closeBox.x + closeBox.width <= toggleBox.x ||
-                            toggleBox.y + toggleBox.height <= closeBox.y ||
-                            closeBox.y + closeBox.height <= toggleBox.y);
-          expect(overlaps).toBe(false);
-        }
-      }
+      // Verify no expand toggle (region screenshots replace it)
+      expect(await page.locator('.milg-viewer-expand-toggle').count()).toBe(0);
 
       // Close viewer
       await page.keyboard.press('Escape');
@@ -36040,7 +35994,7 @@ window.MilgViewer = (function() {
   var _zoomLevel = 1;
   var _stitchedCanvas = null;
   var _calibrationOffsetY = 0; // detected offset between DOM positions and canvas positions
-  var _showExpanded = false; // toggle between clean and expanded screenshot views
+  var _showExpanded = false; // always false — clean screenshot with region sections below
 
   // Severity colors: red / yellow / blue / green
   var COLORS = {
@@ -36246,36 +36200,20 @@ window.MilgViewer = (function() {
     }, { passive: false });
     content.addEventListener('touchend', function() { _dragStart = null; }, { passive: true });
 
-    // Screenshot sources: clean (page as-rendered) and expanded (overflow containers expanded)
+    // Screenshot source: always show clean (page as-rendered). Expanded content is
+    // shown via region screenshots below, not a full-page toggle.
     var cleanSrc = (reportData.raw && reportData.raw.screenshotClean) || null;
     var cleanMeta = (reportData.raw && reportData.raw.screenshotCleanMeta) || null;
     var expandedSrc = (reportData.raw && reportData.raw.screenshotFull) || null;
-    // Determine which to show: prefer clean, fall back to expanded
-    var hasClean = !!cleanSrc && !!cleanMeta;
-    var hasExpanded = !!expandedSrc;
     _showExpanded = false;
-
-    // Create expand toggle button if both screenshots exist (stored as ref, re-appended on frame rebuild)
-    var _expandToggle = null;
-    if (hasClean && hasExpanded) {
-      _expandToggle = document.createElement('button');
-      _expandToggle.className = 'milg-viewer-expand-toggle';
-      _expandToggle.textContent = 'Show expanded';
-      _expandToggle.title = 'Show all content including hidden carousel slides';
-      _expandToggle.style.cssText = 'position:absolute;top:8px;right:8px;z-index:10;padding:4px 10px;border-radius:4px;border:1px solid rgba(255,255,255,0.3);background:rgba(0,0,0,0.6);color:#fff;font-size:12px;cursor:pointer;';
-      _expandToggle.addEventListener('click', function() {
-        showScreenshot(!_showExpanded);
-      });
-    }
 
     function onImageReady(imgSrc, canvasW, canvasH) {
       frame.innerHTML = '';
       var viewImg = document.createElement('img');
       viewImg.className = 'milg-viewer-img';
       viewImg.src = imgSrc;
-      viewImg.alt = _showExpanded ? 'Expanded screenshot (all content visible)' : 'Full page screenshot';
+      viewImg.alt = 'Full page screenshot';
 
-      // SVG viewBox = original canvas dimensions (matches dom * scale exactly)
       var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       svg.setAttribute('class', 'milg-viewer-svg');
       svg.setAttribute('viewBox', '0 0 ' + canvasW + ' ' + canvasH);
@@ -36283,16 +36221,9 @@ window.MilgViewer = (function() {
 
       frame.appendChild(viewImg);
       frame.appendChild(svg);
-      // Re-append toggle button (frame.innerHTML cleared it)
-      if (_expandToggle) frame.appendChild(_expandToggle);
 
-      // Use pre-computed calibration offset from extraction (red marker probing on pristine canvas)
       viewImg.addEventListener('load', function() {
         _calibrationOffsetY = (_meta && _meta.calibrationOffsetY) || 0;
-        if (_calibrationOffsetY) {
-          // calibration offset applied silently
-        }
-
         updateFilterButtons();
         renderOverlays();
 
@@ -36303,32 +36234,19 @@ window.MilgViewer = (function() {
       });
     }
 
-    function showScreenshot(expanded) {
-      _showExpanded = expanded;
-      if (expanded && hasExpanded) {
-        _stitchedCanvas = { width: _meta.canvasWidth, height: _meta.canvasHeight };
-        onImageReady(expandedSrc, _meta.canvasWidth, _meta.canvasHeight);
-      } else if (!expanded && hasClean) {
-        _stitchedCanvas = { width: cleanMeta.canvasWidth, height: cleanMeta.canvasHeight };
-        onImageReady(cleanSrc, cleanMeta.canvasWidth, cleanMeta.canvasHeight);
-      } else if (expandedSrc) {
-        _stitchedCanvas = { width: _meta.canvasWidth, height: _meta.canvasHeight };
-        onImageReady(expandedSrc, _meta.canvasWidth, _meta.canvasHeight);
-      } else {
-        stitchScreenshots(_screenshots, function(stitched) {
-          _stitchedCanvas = stitched;
-          onImageReady(stitched.canvas.toDataURL('image/png'), stitched.width, stitched.height);
-        });
-      }
-      // Update toggle button state
-      if (_expandToggle) {
-        _expandToggle.textContent = expanded ? 'Show clean' : 'Show expanded';
-        _expandToggle.title = expanded ? 'Show page as rendered (clean)' : 'Show all content including hidden carousel slides';
-      }
+    // Show clean screenshot, fall back to expanded, fall back to stitched sections
+    if (cleanSrc && cleanMeta) {
+      _stitchedCanvas = { width: cleanMeta.canvasWidth, height: cleanMeta.canvasHeight };
+      onImageReady(cleanSrc, cleanMeta.canvasWidth, cleanMeta.canvasHeight);
+    } else if (expandedSrc) {
+      _stitchedCanvas = { width: _meta.canvasWidth, height: _meta.canvasHeight };
+      onImageReady(expandedSrc, _meta.canvasWidth, _meta.canvasHeight);
+    } else {
+      stitchScreenshots(_screenshots, function(stitched) {
+        _stitchedCanvas = stitched;
+        onImageReady(stitched.canvas.toDataURL('image/png'), stitched.width, stitched.height);
+      });
     }
-
-    // Initial display: prefer clean screenshot
-    showScreenshot(false);
 
     // Render region screenshots as independent sections below main screenshot
     var regions = (reportData.raw && reportData.raw.regionScreenshots) || [];
@@ -38047,641 +37965,6 @@ window.MilgViewer = (function() {
 })();
 </file>
 
-<file path="docs/analyzer-crawl.js">
-// Site Crawl Module — multi-page analysis with progressive results
-// Provides: link discovery, session management, summary building, export helpers
-// Pipeline orchestration lives in analyzer.js (has access to fetchViaProxy, MilgIframe.analyzeHtml)
-
-window.MilgCrawl = (function() {
-  "use strict";
-
-  // --- URL utilities ---
-
-  function normalizeUrl(url) {
-    try {
-      var u = new URL(url);
-      u.hash = '';
-      u.search = ''; // ignore query params for dedup (configurable later)
-      if (u.pathname.length > 1 && u.pathname.endsWith('/')) {
-        u.pathname = u.pathname.slice(0, -1);
-      }
-      return u.href;
-    } catch(e) { return url; }
-  }
-
-  function matchesBlacklist(url, patterns) {
-    if (!patterns || patterns.length === 0) return false;
-    var path;
-    try { path = new URL(url).pathname; } catch(e) { return false; }
-    return patterns.some(function(pattern) {
-      pattern = pattern.trim();
-      if (!pattern) return false;
-      if (pattern.endsWith('*')) {
-        return path.startsWith(pattern.slice(0, -1));
-      }
-      return path === pattern || url.includes(pattern);
-    });
-  }
-
-  var SKIP_EXTENSIONS = /\.(pdf|zip|tar|gz|png|jpg|jpeg|gif|svg|webp|ico|css|js|json|xml|woff|woff2|ttf|eot|mp3|mp4|avi|mov)$/i;
-
-  function discoverLinks(html, baseUrl, blacklist, maxPages) {
-    var doc = new DOMParser().parseFromString(html, 'text/html');
-    var origin;
-    try { origin = new URL(baseUrl).origin; } catch(e) { return []; }
-    var seen = new Set();
-    seen.add(normalizeUrl(baseUrl));
-    // Mark index variants as seen to avoid re-crawling the start page
-    try {
-      var baseP = new URL(baseUrl).pathname;
-      if (baseP === '/' || baseP === '/index.html' || baseP === '/index.htm') {
-        var o = new URL(baseUrl).origin;
-        seen.add(normalizeUrl(o + '/')); seen.add(normalizeUrl(o + '/index.html')); seen.add(normalizeUrl(o + '/index.htm'));
-      }
-    } catch(e) {}
-
-    var links = [];
-    var anchors = doc.querySelectorAll('a[href]');
-    for (var i = 0; i < anchors.length; i++) {
-      var href = anchors[i].getAttribute('href');
-      if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('javascript:')) continue;
-      var resolved;
-      try { resolved = new URL(href, baseUrl).href; } catch(e) { continue; }
-      var u;
-      try { u = new URL(resolved); } catch(e) { continue; }
-      if (u.origin !== origin) continue;
-      if (SKIP_EXTENSIONS.test(u.pathname)) continue;
-      var norm = normalizeUrl(resolved);
-      if (seen.has(norm)) continue;
-      if (matchesBlacklist(norm, blacklist)) continue;
-      seen.add(norm);
-      links.push(resolved);
-      if (links.length >= maxPages - 1) break; // -1 because starting page is counted
-    }
-    return links;
-  }
-
-  // --- Session management ---
-
-  var _sessionCounter = 0;
-
-  function createSession(startUrl, options) {
-    var opts = options || {};
-    return {
-      id: 'crawl-' + (++_sessionCounter) + '-' + Date.now(),
-      startUrl: startUrl,
-      startedAt: new Date().toISOString(),
-      status: 'crawling',
-      options: {
-        maxPages: Math.min(Math.max(opts.maxPages || 5, 1), 25),
-        blacklist: opts.blacklist || [],
-        deepScan: !!opts.deepScan,
-        jsEnabled: !!opts.jsEnabled,
-        screenshots: !!opts.screenshots,
-        excludeSelector: opts.excludeSelector || '',
-        profile: opts.profile || 'general'
-      },
-      discoveredUrls: [],
-      queue: [],
-      pages: [],
-      summary: null,
-      _aborted: false
-    };
-  }
-
-  // Start crawl — pipeline is an object with:
-  //   fetchPage(url, callback(html, error))
-  //   analyzePage(html, url, options, callback(data))
-  //   scorePage(data) → reportData
-  //   onPageStart(pageEntry)
-  //   onPageComplete(pageEntry)
-  //   onPageError(pageEntry)
-  //   onDiscovery(urls)
-  //   onComplete(session)
-  function startCrawl(session, pipeline) {
-    var startUrl = session.startUrl;
-    var opts = session.options;
-
-    // Step 1: fetch starting page to discover links
-    var startPage = {
-      url: startUrl,
-      status: 'fetching',
-      title: '',
-      rawData: null,
-      reportData: null,
-      error: null,
-      startedAt: new Date().toISOString(),
-      completedAt: null
-    };
-    session.pages.push(startPage);
-    if (pipeline.onPageStart) pipeline.onPageStart(startPage);
-
-    pipeline.fetchPage(startUrl, function(html, err) {
-      if (session._aborted) return;
-      if (err || !html) {
-        startPage.status = 'error';
-        startPage.error = err || 'Empty response';
-        startPage.completedAt = new Date().toISOString();
-        if (pipeline.onPageError) pipeline.onPageError(startPage);
-        session.status = 'complete';
-        session.summary = buildSummary(session);
-        if (pipeline.onComplete) pipeline.onComplete(session);
-        return;
-      }
-
-      // Discover links from starting page HTML
-      var discovered = discoverLinks(html, startUrl, opts.blacklist, opts.maxPages);
-      session.discoveredUrls = discovered;
-      session.queue = discovered.slice();
-      if (pipeline.onDiscovery) pipeline.onDiscovery(discovered);
-
-      // Analyze starting page
-      startPage.status = 'analyzing';
-      pipeline.analyzePage(html, startUrl, opts, function(data) {
-        if (session._aborted) return;
-        if (data) {
-          startPage.rawData = data;
-          startPage.title = (data.meta && data.meta.title) || '';
-          startPage.reportData = pipeline.scorePage(data);
-          startPage.status = 'done';
-        } else {
-          startPage.status = 'error';
-          startPage.error = 'Analysis failed';
-        }
-        startPage.completedAt = new Date().toISOString();
-        if (startPage.status === 'done') {
-          if (pipeline.onPageComplete) pipeline.onPageComplete(startPage);
-        } else {
-          if (pipeline.onPageError) pipeline.onPageError(startPage);
-        }
-
-        // Process remaining queue
-        processQueue(session, pipeline, 0);
-      });
-    });
-  }
-
-  function processQueue(session, pipeline, idx) {
-    if (session._aborted) {
-      session.status = 'aborted';
-      session.summary = buildSummary(session);
-      if (pipeline.onComplete) pipeline.onComplete(session);
-      return;
-    }
-    if (idx >= session.queue.length) {
-      session.status = 'complete';
-      session.summary = buildSummary(session);
-      if (pipeline.onComplete) pipeline.onComplete(session);
-      return;
-    }
-
-    var url = session.queue[idx];
-    var pageEntry = {
-      url: url,
-      status: 'fetching',
-      title: '',
-      rawData: null,
-      reportData: null,
-      error: null,
-      startedAt: new Date().toISOString(),
-      completedAt: null
-    };
-    session.pages.push(pageEntry);
-    if (pipeline.onPageStart) pipeline.onPageStart(pageEntry);
-
-    pipeline.fetchPage(url, function(html, err) {
-      if (session._aborted) { processQueue(session, pipeline, idx + 1); return; }
-      if (err || !html) {
-        pageEntry.status = 'error';
-        pageEntry.error = err || 'Empty response';
-        pageEntry.completedAt = new Date().toISOString();
-        if (pipeline.onPageError) pipeline.onPageError(pageEntry);
-        // Continue after delay
-        setTimeout(function() { processQueue(session, pipeline, idx + 1); }, 2000);
-        return;
-      }
-
-      pageEntry.status = 'analyzing';
-      pipeline.analyzePage(html, url, session.options, function(data) {
-        if (session._aborted) { processQueue(session, pipeline, idx + 1); return; }
-        if (data) {
-          pageEntry.rawData = data;
-          pageEntry.title = (data.meta && data.meta.title) || '';
-          pageEntry.reportData = pipeline.scorePage(data);
-          pageEntry.status = 'done';
-        } else {
-          pageEntry.status = 'error';
-          pageEntry.error = 'Analysis failed';
-        }
-        pageEntry.completedAt = new Date().toISOString();
-        if (pageEntry.status === 'done') {
-          if (pipeline.onPageComplete) pipeline.onPageComplete(pageEntry);
-        } else {
-          if (pipeline.onPageError) pipeline.onPageError(pageEntry);
-        }
-        // Delay between pages to respect rate limits
-        setTimeout(function() { processQueue(session, pipeline, idx + 1); }, 2000);
-      });
-    });
-  }
-
-  function abortCrawl(session) {
-    session._aborted = true;
-  }
-
-  // --- Summary builder ---
-
-  function buildSummary(session) {
-    var donePages = session.pages.filter(function(p) { return p.status === 'done' && p.reportData; });
-    var failedPages = session.pages.filter(function(p) { return p.status === 'error'; });
-
-    if (donePages.length === 0) {
-      return {
-        pagesAnalyzed: 0, pagesFailed: failedPages.length,
-        averageScore: 0, worstPage: null, bestPage: null,
-        scoreGrid: [], crossPageIssues: [], categoryAverages: []
-      };
-    }
-
-    // Score grid
-    var scoreGrid = donePages.map(function(p) {
-      var path;
-      try { path = new URL(p.url).pathname; } catch(e) { path = p.url; }
-      return { url: p.url, path: path, title: p.title, score: p.reportData.overall, grade: p.reportData.grade };
-    });
-
-    var scores = donePages.map(function(p) { return p.reportData.overall; });
-    var avgScore = Math.round(scores.reduce(function(a, b) { return a + b; }, 0) / scores.length);
-
-    var worstIdx = scores.indexOf(Math.min.apply(null, scores));
-    var bestIdx = scores.indexOf(Math.max.apply(null, scores));
-
-    // Cross-page issue grouping
-    var issueMap = {};
-    donePages.forEach(function(p) {
-      if (!p.reportData || !p.reportData.categories) return;
-      p.reportData.categories.forEach(function(cat) {
-        cat.findings.forEach(function(f) {
-          if (f.severity === 'info') return;
-          var key = f.severity + '|' + f.title;
-          if (!issueMap[key]) {
-            issueMap[key] = { title: f.title, severity: f.severity, fix: f.fix, pages: [], count: 0 };
-          }
-          issueMap[key].pages.push({ url: p.url, detail: f.detail || '' });
-          issueMap[key].count++;
-        });
-      });
-    });
-    var crossPageIssues = Object.keys(issueMap).map(function(k) { return issueMap[k]; });
-    crossPageIssues.sort(function(a, b) {
-      // Errors first, then by count
-      if (a.severity !== b.severity) return a.severity === 'error' ? -1 : 1;
-      return b.count - a.count;
-    });
-
-    // Category averages
-    var catMap = {};
-    donePages.forEach(function(p) {
-      if (!p.reportData || !p.reportData.categories) return;
-      p.reportData.categories.forEach(function(cat) {
-        if (!catMap[cat.label]) catMap[cat.label] = { scores: [], worstScore: 100, worstPage: '' };
-        catMap[cat.label].scores.push(cat.score);
-        if (cat.score < catMap[cat.label].worstScore) {
-          catMap[cat.label].worstScore = cat.score;
-          catMap[cat.label].worstPage = p.url;
-        }
-      });
-    });
-    var categoryAverages = Object.keys(catMap).map(function(label) {
-      var scores = catMap[label].scores;
-      return {
-        label: label,
-        avgScore: Math.round(scores.reduce(function(a, b) { return a + b; }, 0) / scores.length),
-        worstPage: catMap[label].worstPage
-      };
-    });
-
-    // Deep scan viewport aggregation
-    var viewportSummary = null;
-    var deepPages = donePages.filter(function(p) { return p.rawData && p.rawData.deepScan && p.rawData.deepScan.viewports; });
-    if (deepPages.length > 0) {
-      var vpLabels = deepPages[0].rawData.deepScan.viewports.map(function(v) { return v.label; });
-      var vpCount = vpLabels.length;
-      // Per-viewport aggregated findings
-      var vpStats = vpLabels.map(function(label, vi) {
-        var touchTotal = 0, contrastTotal = 0, overflowCount = 0;
-        deepPages.forEach(function(p) {
-          var vp = p.rawData.deepScan.viewports[vi];
-          if (!vp || vp.error) return;
-          touchTotal += vp.touchTargets || 0;
-          contrastTotal += vp.contrastFails || 0;
-          if (vp.overflow) overflowCount++;
-        });
-        return { label: label, width: deepPages[0].rawData.deepScan.viewports[vi].width, touchTargets: touchTotal, contrastFails: contrastTotal, overflowPages: overflowCount };
-      });
-
-      // Cross-viewport issue matching: identify universal vs viewport-specific issues
-      var vpIssueMap = {}; // issueKey → Set of viewport labels where it appears
-      deepPages.forEach(function(p) {
-        var vds = p.rawData.deepScan.viewportData;
-        if (!vds) return;
-        vds.forEach(function(vd, vi) {
-          if (!vd || !vd.data) return;
-          var scored = p.reportData; // primary viewport scoring
-          // Use per-viewport data to find issues
-          var vpData = vd.data;
-          // Touch target fails per viewport
-          var touches = (vpData.interaction && vpData.interaction.touchTargets) || [];
-          touches.forEach(function(t) {
-            var key = 'touch|' + (t.selector || t.element || 'unknown');
-            if (!vpIssueMap[key]) vpIssueMap[key] = { title: 'Touch target: ' + (t.selector || t.element || '').substring(0, 60), type: 'touch', viewports: [], pages: [] };
-            if (vpIssueMap[key].viewports.indexOf(vpLabels[vi]) === -1) vpIssueMap[key].viewports.push(vpLabels[vi]);
-            vpIssueMap[key].pages.push(p.url);
-          });
-          // Contrast fails per viewport
-          var pairs = (vpData.colors && vpData.colors.contrastPairs) || [];
-          pairs.forEach(function(cp) {
-            if (cp.passes) return;
-            var key = 'contrast|' + (cp.selector || '') + '|' + (cp.text || '').substring(0, 20);
-            if (!vpIssueMap[key]) vpIssueMap[key] = { title: 'Contrast: ' + (cp.selector || '').substring(0, 40) + ' "' + (cp.text || '').substring(0, 20) + '"', type: 'contrast', viewports: [], pages: [] };
-            if (vpIssueMap[key].viewports.indexOf(vpLabels[vi]) === -1) vpIssueMap[key].viewports.push(vpLabels[vi]);
-            vpIssueMap[key].pages.push(p.url);
-          });
-        });
-      });
-
-      // Classify issues: universal (all viewports) vs viewport-specific
-      var universalIssues = [];
-      var viewportSpecific = [];
-      Object.keys(vpIssueMap).forEach(function(k) {
-        var issue = vpIssueMap[k];
-        var uniquePages = []; issue.pages.forEach(function(u) { if (uniquePages.indexOf(u) === -1) uniquePages.push(u); });
-        issue.pageCount = uniquePages.length;
-        if (issue.viewports.length >= vpCount) {
-          universalIssues.push(issue);
-        } else {
-          viewportSpecific.push(issue);
-        }
-      });
-      // Sort by page count desc
-      universalIssues.sort(function(a, b) { return b.pageCount - a.pageCount; });
-      viewportSpecific.sort(function(a, b) { return b.pageCount - a.pageCount; });
-
-      viewportSummary = {
-        viewportCount: vpCount,
-        viewportLabels: vpLabels,
-        viewportStats: vpStats,
-        universalIssues: universalIssues.slice(0, 20),
-        viewportSpecific: viewportSpecific.slice(0, 20),
-        deepPageCount: deepPages.length
-      };
-    }
-
-    return {
-      pagesAnalyzed: donePages.length,
-      pagesFailed: failedPages.length,
-      averageScore: avgScore,
-      worstPage: { url: donePages[worstIdx].url, score: scores[worstIdx] },
-      bestPage: { url: donePages[bestIdx].url, score: scores[bestIdx] },
-      scoreGrid: scoreGrid,
-      crossPageIssues: crossPageIssues,
-      categoryAverages: categoryAverages,
-      viewportSummary: viewportSummary
-    };
-  }
-
-  // --- Export helpers ---
-
-  function filterFindings(categories, minSeverity) {
-    if (!minSeverity || minSeverity === 'all') return categories;
-    return categories.map(function(cat) {
-      return Object.assign({}, cat, {
-        findings: cat.findings.filter(function(f) {
-          if (minSeverity === 'error') return f.severity === 'error';
-          if (minSeverity === 'warning') return f.severity === 'error' || f.severity === 'warning';
-          return true;
-        })
-      });
-    });
-  }
-
-  function renderCrawlMarkdown(session, severityFilter) {
-    var summary = session.summary || buildSummary(session);
-    var lines = [];
-    lines.push('# Site Crawl Report');
-    lines.push('');
-    lines.push('**Starting URL:** ' + session.startUrl);
-    lines.push('**Date:** ' + new Date(session.startedAt).toLocaleString());
-    lines.push('**Pages analyzed:** ' + summary.pagesAnalyzed + ' (failed: ' + summary.pagesFailed + ')');
-    lines.push('**Average score:** ' + summary.averageScore + '/100');
-    if (summary.viewportSummary) {
-      lines.push('**Viewports:** ' + summary.viewportSummary.viewportCount + ' (' + summary.viewportSummary.viewportLabels.join(', ') + ')');
-    }
-    if (severityFilter && severityFilter !== 'all') {
-      lines.push('**Filter:** ' + (severityFilter === 'error' ? 'Errors only' : 'Warnings + Errors'));
-    }
-    lines.push('');
-
-    // Score grid
-    lines.push('## Score Summary');
-    lines.push('');
-    lines.push('| Page | Score | Grade |');
-    lines.push('|------|-------|-------|');
-    summary.scoreGrid.forEach(function(row) {
-      lines.push('| ' + row.path + ' | ' + row.score + ' | ' + row.grade + ' |');
-    });
-    lines.push('');
-
-    // Cross-page issues
-    var filteredIssues = summary.crossPageIssues.filter(function(issue) {
-      if (severityFilter === 'error') return issue.severity === 'error';
-      if (severityFilter === 'warning') return issue.severity === 'error' || issue.severity === 'warning';
-      return true;
-    });
-    if (filteredIssues.length > 0) {
-      lines.push('## Cross-Page Issues');
-      lines.push('');
-      filteredIssues.forEach(function(issue) {
-        var icon = issue.severity === 'error' ? 'x' : '!';
-        lines.push('### [' + icon + '] ' + issue.title + ' (' + issue.count + ' page' + (issue.count > 1 ? 's' : '') + ')');
-        issue.pages.forEach(function(p) {
-          var path; try { path = new URL(p.url).pathname; } catch(e) { path = p.url; }
-          lines.push('- ' + path + (p.detail ? ': ' + p.detail : ''));
-        });
-        if (issue.fix) lines.push('- **Fix:** ' + issue.fix);
-        lines.push('');
-      });
-    }
-
-    // Viewport breakdown (deep scan)
-    if (summary.viewportSummary) {
-      var vs = summary.viewportSummary;
-      lines.push('## Viewport Breakdown');
-      lines.push('');
-      lines.push('| Viewport | Width | Contrast Fails | Touch Targets | Overflow Pages |');
-      lines.push('|----------|-------|---------------|---------------|----------------|');
-      vs.viewportStats.forEach(function(vp) {
-        lines.push('| ' + vp.label + ' | ' + vp.width + 'px | ' + vp.contrastFails + ' | ' + vp.touchTargets + ' | ' + vp.overflowPages + ' |');
-      });
-      lines.push('');
-      if (vs.universalIssues.length > 0) {
-        lines.push('### Universal Issues (all viewports)');
-        lines.push('');
-        vs.universalIssues.forEach(function(issue) {
-          lines.push('- ' + issue.title + ' (' + issue.pageCount + ' page' + (issue.pageCount > 1 ? 's' : '') + ')');
-        });
-        lines.push('');
-      }
-      if (vs.viewportSpecific.length > 0) {
-        lines.push('### Viewport-Specific Issues');
-        lines.push('');
-        vs.viewportSpecific.forEach(function(issue) {
-          lines.push('- ' + issue.title + ' — *' + issue.viewports.join(', ') + ' only* (' + issue.pageCount + ' page' + (issue.pageCount > 1 ? 's' : '') + ')');
-        });
-        lines.push('');
-      }
-    }
-
-    // Per-page reports
-    lines.push('## Per-Page Reports');
-    lines.push('');
-    session.pages.forEach(function(page) {
-      if (page.status !== 'done' || !page.reportData) return;
-      var path; try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
-      lines.push('---');
-      lines.push('### ' + path + ' (' + page.reportData.overall + '/100 — ' + page.reportData.grade + ')');
-      lines.push('');
-      var cats = filterFindings(page.reportData.categories, severityFilter);
-      cats.forEach(function(cat) {
-        var relevant = cat.findings.length;
-        if (relevant === 0) return;
-        lines.push('#### ' + cat.label);
-        cat.findings.forEach(function(f) {
-          var icon = f.severity === 'error' ? 'x' : f.severity === 'warning' ? '!' : 'i';
-          lines.push('- [' + icon + '] ' + f.title);
-          if (f.detail) lines.push('  - ' + f.detail);
-          if (f.fix) lines.push('  - **Fix:** ' + f.fix);
-        });
-        lines.push('');
-      });
-      // Per-page screenshots
-      if (page.rawData && page.rawData.screenshots && page.rawData.screenshots.length > 0) {
-        lines.push('#### Screenshots');
-        page.rawData.screenshots.forEach(function(src, si) {
-          lines.push('![' + path + ' screenshot ' + (si + 1) + '](' + src + ')');
-          lines.push('');
-        });
-      }
-      // Per-page pixel verify summary
-      if (page.rawData && page.rawData._contrastVerifyResults && page.rawData._contrastVerifyResults.length > 0) {
-        var pvr = page.rawData._contrastVerifyResults;
-        var pvFp = pvr.filter(function(r) { return r.cssPasses && !r.pixelPasses; });
-        var pvFf = pvr.filter(function(r) { return !r.cssPasses && r.pixelPasses; });
-        if (pvFp.length > 0 || pvFf.length > 0) {
-          lines.push('#### Pixel Verification');
-          if (pvFp.length > 0) lines.push('- ' + pvFp.length + ' hidden failure(s)');
-          if (pvFf.length > 0) lines.push('- ' + pvFf.length + ' false positive(s)');
-          lines.push('');
-        }
-      }
-    });
-
-    return lines.join('\n');
-  }
-
-  function renderCrawlJSON(session, severityFilter) {
-    // Break circular refs and strip debug data — keep screenshots, masks, verify for full export
-    // Only strip circular refs and transient state — keep ALL analysis data for full reimport
-    var _skipKeys = { deepScan: 1, _cachedReportData: 1, _vpCacheIdx: 1 };
-    var _replacer = function(k, v) { return _skipKeys[k] ? undefined : v; };
-    var out = {
-      _milgCrawl: true,
-      _milgVersion: window.MILG_EXPORT_VERSION || '1.6',
-      startUrl: session.startUrl,
-      startedAt: session.startedAt,
-      options: session.options,
-      summary: session.summary,
-      // results: re-importable raw extraction data (loadCrawlResults compatible)
-      results: session.pages.filter(function(p) { return p.status === 'done' && p.rawData; }).map(function(p) {
-        var rawClone = JSON.parse(JSON.stringify(p.rawData, _replacer));
-        // Include deep scan summary (without full viewport data)
-        if (p.rawData.deepScan) {
-          rawClone.deepScan = { viewports: p.rawData.deepScan.viewports, darkMode: p.rawData.deepScan.darkMode || null };
-        }
-        // Pixel verify results are included automatically via the clone
-        // (samplePoints and _debug already stripped by replacer)
-        return { url: p.url, data: rawClone };
-      }),
-      pages: session.pages.map(function(p) {
-        if (p.status !== 'done' || !p.reportData) {
-          return { url: p.url, status: p.status, error: p.error };
-        }
-        var cats = filterFindings(p.reportData.categories, severityFilter);
-        var pageOut = {
-          url: p.url,
-          title: p.title,
-          score: p.reportData.overall,
-          grade: p.reportData.grade,
-          categories: cats.map(function(c) {
-            return { label: c.label, score: c.score, findings: c.findings };
-          })
-        };
-        // Include deep scan viewport data if available
-        if (p.rawData && p.rawData.deepScan && p.rawData.deepScan.viewports) {
-          pageOut.deepScan = {
-            viewports: p.rawData.deepScan.viewports,
-            darkMode: p.rawData.deepScan.darkMode || null
-          };
-          if (p.rawData.deepScan.viewportData) {
-            pageOut.deepScan.viewportData = p.rawData.deepScan.viewportData.map(function(vd) {
-              if (!vd || !vd.data) return null;
-              var vpOut = { label: vd.label, width: vd.width };
-              var d = vd.data;
-              vpOut.contrastFails = (d.colors && d.colors.contrastPairs || []).filter(function(cp) { return !cp.passes; }).length;
-              vpOut.touchTargets = (d.interaction && d.interaction.touchTargets || []).length;
-              vpOut.overflow = (d.structure && d.structure.hasHorizontalOverflow) || false;
-              if (d._contrastVerifyResults) {
-                vpOut.pixelVerify = {
-                  total: d._contrastVerifyResults.length,
-                  falsePass: d._contrastVerifyResults.filter(function(r) { return r.cssPasses && !r.pixelPasses; }).length,
-                  falseFail: d._contrastVerifyResults.filter(function(r) { return !r.cssPasses && r.pixelPasses; }).length
-                };
-              }
-              return vpOut;
-            });
-          }
-        }
-        // Include pixel verify if available
-        if (p.rawData && p.rawData._contrastVerifyResults) {
-          pageOut.pixelVerify = {
-            total: p.rawData._contrastVerifyResults.length,
-            falsePass: p.rawData._contrastVerifyResults.filter(function(r) { return r.cssPasses && !r.pixelPasses; }).length,
-            falseFail: p.rawData._contrastVerifyResults.filter(function(r) { return !r.cssPasses && r.pixelPasses; }).length
-          };
-        }
-        return pageOut;
-      })
-    };
-    return JSON.stringify(out);
-  }
-
-  // --- Public API ---
-
-  return {
-    normalizeUrl: normalizeUrl,
-    matchesBlacklist: matchesBlacklist,
-    discoverLinks: discoverLinks,
-    createSession: createSession,
-    startCrawl: startCrawl,
-    abortCrawl: abortCrawl,
-    buildSummary: buildSummary,
-    filterFindings: filterFindings,
-    renderCrawlMarkdown: renderCrawlMarkdown,
-    renderCrawlJSON: renderCrawlJSON
-  };
-})();
-</file>
-
 <file path="docs/analyzer-snippet-screenshots.js">
 // make-it-look-good — Design Extraction Snippet (with screenshots)
 // Version: v1.1
@@ -39677,6 +38960,641 @@ window.MilgCrawl = (function() {
     // Run the extraction
     window.MilgExtract();
   }
+})();
+</file>
+
+<file path="docs/analyzer-crawl.js">
+// Site Crawl Module — multi-page analysis with progressive results
+// Provides: link discovery, session management, summary building, export helpers
+// Pipeline orchestration lives in analyzer.js (has access to fetchViaProxy, MilgIframe.analyzeHtml)
+
+window.MilgCrawl = (function() {
+  "use strict";
+
+  // --- URL utilities ---
+
+  function normalizeUrl(url) {
+    try {
+      var u = new URL(url);
+      u.hash = '';
+      u.search = ''; // ignore query params for dedup (configurable later)
+      if (u.pathname.length > 1 && u.pathname.endsWith('/')) {
+        u.pathname = u.pathname.slice(0, -1);
+      }
+      return u.href;
+    } catch(e) { return url; }
+  }
+
+  function matchesBlacklist(url, patterns) {
+    if (!patterns || patterns.length === 0) return false;
+    var path;
+    try { path = new URL(url).pathname; } catch(e) { return false; }
+    return patterns.some(function(pattern) {
+      pattern = pattern.trim();
+      if (!pattern) return false;
+      if (pattern.endsWith('*')) {
+        return path.startsWith(pattern.slice(0, -1));
+      }
+      return path === pattern || url.includes(pattern);
+    });
+  }
+
+  var SKIP_EXTENSIONS = /\.(pdf|zip|tar|gz|png|jpg|jpeg|gif|svg|webp|ico|css|js|json|xml|woff|woff2|ttf|eot|mp3|mp4|avi|mov)$/i;
+
+  function discoverLinks(html, baseUrl, blacklist, maxPages) {
+    var doc = new DOMParser().parseFromString(html, 'text/html');
+    var origin;
+    try { origin = new URL(baseUrl).origin; } catch(e) { return []; }
+    var seen = new Set();
+    seen.add(normalizeUrl(baseUrl));
+    // Mark index variants as seen to avoid re-crawling the start page
+    try {
+      var baseP = new URL(baseUrl).pathname;
+      if (baseP === '/' || baseP === '/index.html' || baseP === '/index.htm') {
+        var o = new URL(baseUrl).origin;
+        seen.add(normalizeUrl(o + '/')); seen.add(normalizeUrl(o + '/index.html')); seen.add(normalizeUrl(o + '/index.htm'));
+      }
+    } catch(e) {}
+
+    var links = [];
+    var anchors = doc.querySelectorAll('a[href]');
+    for (var i = 0; i < anchors.length; i++) {
+      var href = anchors[i].getAttribute('href');
+      if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('javascript:')) continue;
+      var resolved;
+      try { resolved = new URL(href, baseUrl).href; } catch(e) { continue; }
+      var u;
+      try { u = new URL(resolved); } catch(e) { continue; }
+      if (u.origin !== origin) continue;
+      if (SKIP_EXTENSIONS.test(u.pathname)) continue;
+      var norm = normalizeUrl(resolved);
+      if (seen.has(norm)) continue;
+      if (matchesBlacklist(norm, blacklist)) continue;
+      seen.add(norm);
+      links.push(resolved);
+      if (links.length >= maxPages - 1) break; // -1 because starting page is counted
+    }
+    return links;
+  }
+
+  // --- Session management ---
+
+  var _sessionCounter = 0;
+
+  function createSession(startUrl, options) {
+    var opts = options || {};
+    return {
+      id: 'crawl-' + (++_sessionCounter) + '-' + Date.now(),
+      startUrl: startUrl,
+      startedAt: new Date().toISOString(),
+      status: 'crawling',
+      options: {
+        maxPages: Math.min(Math.max(opts.maxPages || 5, 1), 25),
+        blacklist: opts.blacklist || [],
+        deepScan: !!opts.deepScan,
+        jsEnabled: !!opts.jsEnabled,
+        screenshots: !!opts.screenshots,
+        excludeSelector: opts.excludeSelector || '',
+        profile: opts.profile || 'general'
+      },
+      discoveredUrls: [],
+      queue: [],
+      pages: [],
+      summary: null,
+      _aborted: false
+    };
+  }
+
+  // Start crawl — pipeline is an object with:
+  //   fetchPage(url, callback(html, error))
+  //   analyzePage(html, url, options, callback(data))
+  //   scorePage(data) → reportData
+  //   onPageStart(pageEntry)
+  //   onPageComplete(pageEntry)
+  //   onPageError(pageEntry)
+  //   onDiscovery(urls)
+  //   onComplete(session)
+  function startCrawl(session, pipeline) {
+    var startUrl = session.startUrl;
+    var opts = session.options;
+
+    // Step 1: fetch starting page to discover links
+    var startPage = {
+      url: startUrl,
+      status: 'fetching',
+      title: '',
+      rawData: null,
+      reportData: null,
+      error: null,
+      startedAt: new Date().toISOString(),
+      completedAt: null
+    };
+    session.pages.push(startPage);
+    if (pipeline.onPageStart) pipeline.onPageStart(startPage);
+
+    pipeline.fetchPage(startUrl, function(html, err) {
+      if (session._aborted) return;
+      if (err || !html) {
+        startPage.status = 'error';
+        startPage.error = err || 'Empty response';
+        startPage.completedAt = new Date().toISOString();
+        if (pipeline.onPageError) pipeline.onPageError(startPage);
+        session.status = 'complete';
+        session.summary = buildSummary(session);
+        if (pipeline.onComplete) pipeline.onComplete(session);
+        return;
+      }
+
+      // Discover links from starting page HTML
+      var discovered = discoverLinks(html, startUrl, opts.blacklist, opts.maxPages);
+      session.discoveredUrls = discovered;
+      session.queue = discovered.slice();
+      if (pipeline.onDiscovery) pipeline.onDiscovery(discovered);
+
+      // Analyze starting page
+      startPage.status = 'analyzing';
+      pipeline.analyzePage(html, startUrl, opts, function(data) {
+        if (session._aborted) return;
+        if (data) {
+          startPage.rawData = data;
+          startPage.title = (data.meta && data.meta.title) || '';
+          startPage.reportData = pipeline.scorePage(data);
+          startPage.status = 'done';
+        } else {
+          startPage.status = 'error';
+          startPage.error = 'Analysis failed';
+        }
+        startPage.completedAt = new Date().toISOString();
+        if (startPage.status === 'done') {
+          if (pipeline.onPageComplete) pipeline.onPageComplete(startPage);
+        } else {
+          if (pipeline.onPageError) pipeline.onPageError(startPage);
+        }
+
+        // Process remaining queue
+        processQueue(session, pipeline, 0);
+      });
+    });
+  }
+
+  function processQueue(session, pipeline, idx) {
+    if (session._aborted) {
+      session.status = 'aborted';
+      session.summary = buildSummary(session);
+      if (pipeline.onComplete) pipeline.onComplete(session);
+      return;
+    }
+    if (idx >= session.queue.length) {
+      session.status = 'complete';
+      session.summary = buildSummary(session);
+      if (pipeline.onComplete) pipeline.onComplete(session);
+      return;
+    }
+
+    var url = session.queue[idx];
+    var pageEntry = {
+      url: url,
+      status: 'fetching',
+      title: '',
+      rawData: null,
+      reportData: null,
+      error: null,
+      startedAt: new Date().toISOString(),
+      completedAt: null
+    };
+    session.pages.push(pageEntry);
+    if (pipeline.onPageStart) pipeline.onPageStart(pageEntry);
+
+    pipeline.fetchPage(url, function(html, err) {
+      if (session._aborted) { processQueue(session, pipeline, idx + 1); return; }
+      if (err || !html) {
+        pageEntry.status = 'error';
+        pageEntry.error = err || 'Empty response';
+        pageEntry.completedAt = new Date().toISOString();
+        if (pipeline.onPageError) pipeline.onPageError(pageEntry);
+        // Continue after delay
+        setTimeout(function() { processQueue(session, pipeline, idx + 1); }, 2000);
+        return;
+      }
+
+      pageEntry.status = 'analyzing';
+      pipeline.analyzePage(html, url, session.options, function(data) {
+        if (session._aborted) { processQueue(session, pipeline, idx + 1); return; }
+        if (data) {
+          pageEntry.rawData = data;
+          pageEntry.title = (data.meta && data.meta.title) || '';
+          pageEntry.reportData = pipeline.scorePage(data);
+          pageEntry.status = 'done';
+        } else {
+          pageEntry.status = 'error';
+          pageEntry.error = 'Analysis failed';
+        }
+        pageEntry.completedAt = new Date().toISOString();
+        if (pageEntry.status === 'done') {
+          if (pipeline.onPageComplete) pipeline.onPageComplete(pageEntry);
+        } else {
+          if (pipeline.onPageError) pipeline.onPageError(pageEntry);
+        }
+        // Delay between pages to respect rate limits
+        setTimeout(function() { processQueue(session, pipeline, idx + 1); }, 2000);
+      });
+    });
+  }
+
+  function abortCrawl(session) {
+    session._aborted = true;
+  }
+
+  // --- Summary builder ---
+
+  function buildSummary(session) {
+    var donePages = session.pages.filter(function(p) { return p.status === 'done' && p.reportData; });
+    var failedPages = session.pages.filter(function(p) { return p.status === 'error'; });
+
+    if (donePages.length === 0) {
+      return {
+        pagesAnalyzed: 0, pagesFailed: failedPages.length,
+        averageScore: 0, worstPage: null, bestPage: null,
+        scoreGrid: [], crossPageIssues: [], categoryAverages: []
+      };
+    }
+
+    // Score grid
+    var scoreGrid = donePages.map(function(p) {
+      var path;
+      try { path = new URL(p.url).pathname; } catch(e) { path = p.url; }
+      return { url: p.url, path: path, title: p.title, score: p.reportData.overall, grade: p.reportData.grade };
+    });
+
+    var scores = donePages.map(function(p) { return p.reportData.overall; });
+    var avgScore = Math.round(scores.reduce(function(a, b) { return a + b; }, 0) / scores.length);
+
+    var worstIdx = scores.indexOf(Math.min.apply(null, scores));
+    var bestIdx = scores.indexOf(Math.max.apply(null, scores));
+
+    // Cross-page issue grouping
+    var issueMap = {};
+    donePages.forEach(function(p) {
+      if (!p.reportData || !p.reportData.categories) return;
+      p.reportData.categories.forEach(function(cat) {
+        cat.findings.forEach(function(f) {
+          if (f.severity === 'info') return;
+          var key = f.severity + '|' + f.title;
+          if (!issueMap[key]) {
+            issueMap[key] = { title: f.title, severity: f.severity, fix: f.fix, pages: [], count: 0 };
+          }
+          issueMap[key].pages.push({ url: p.url, detail: f.detail || '' });
+          issueMap[key].count++;
+        });
+      });
+    });
+    var crossPageIssues = Object.keys(issueMap).map(function(k) { return issueMap[k]; });
+    crossPageIssues.sort(function(a, b) {
+      // Errors first, then by count
+      if (a.severity !== b.severity) return a.severity === 'error' ? -1 : 1;
+      return b.count - a.count;
+    });
+
+    // Category averages
+    var catMap = {};
+    donePages.forEach(function(p) {
+      if (!p.reportData || !p.reportData.categories) return;
+      p.reportData.categories.forEach(function(cat) {
+        if (!catMap[cat.label]) catMap[cat.label] = { scores: [], worstScore: 100, worstPage: '' };
+        catMap[cat.label].scores.push(cat.score);
+        if (cat.score < catMap[cat.label].worstScore) {
+          catMap[cat.label].worstScore = cat.score;
+          catMap[cat.label].worstPage = p.url;
+        }
+      });
+    });
+    var categoryAverages = Object.keys(catMap).map(function(label) {
+      var scores = catMap[label].scores;
+      return {
+        label: label,
+        avgScore: Math.round(scores.reduce(function(a, b) { return a + b; }, 0) / scores.length),
+        worstPage: catMap[label].worstPage
+      };
+    });
+
+    // Deep scan viewport aggregation
+    var viewportSummary = null;
+    var deepPages = donePages.filter(function(p) { return p.rawData && p.rawData.deepScan && p.rawData.deepScan.viewports; });
+    if (deepPages.length > 0) {
+      var vpLabels = deepPages[0].rawData.deepScan.viewports.map(function(v) { return v.label; });
+      var vpCount = vpLabels.length;
+      // Per-viewport aggregated findings
+      var vpStats = vpLabels.map(function(label, vi) {
+        var touchTotal = 0, contrastTotal = 0, overflowCount = 0;
+        deepPages.forEach(function(p) {
+          var vp = p.rawData.deepScan.viewports[vi];
+          if (!vp || vp.error) return;
+          touchTotal += vp.touchTargets || 0;
+          contrastTotal += vp.contrastFails || 0;
+          if (vp.overflow) overflowCount++;
+        });
+        return { label: label, width: deepPages[0].rawData.deepScan.viewports[vi].width, touchTargets: touchTotal, contrastFails: contrastTotal, overflowPages: overflowCount };
+      });
+
+      // Cross-viewport issue matching: identify universal vs viewport-specific issues
+      var vpIssueMap = {}; // issueKey → Set of viewport labels where it appears
+      deepPages.forEach(function(p) {
+        var vds = p.rawData.deepScan.viewportData;
+        if (!vds) return;
+        vds.forEach(function(vd, vi) {
+          if (!vd || !vd.data) return;
+          var scored = p.reportData; // primary viewport scoring
+          // Use per-viewport data to find issues
+          var vpData = vd.data;
+          // Touch target fails per viewport
+          var touches = (vpData.interaction && vpData.interaction.touchTargets) || [];
+          touches.forEach(function(t) {
+            var key = 'touch|' + (t.selector || t.element || 'unknown');
+            if (!vpIssueMap[key]) vpIssueMap[key] = { title: 'Touch target: ' + (t.selector || t.element || '').substring(0, 60), type: 'touch', viewports: [], pages: [] };
+            if (vpIssueMap[key].viewports.indexOf(vpLabels[vi]) === -1) vpIssueMap[key].viewports.push(vpLabels[vi]);
+            vpIssueMap[key].pages.push(p.url);
+          });
+          // Contrast fails per viewport
+          var pairs = (vpData.colors && vpData.colors.contrastPairs) || [];
+          pairs.forEach(function(cp) {
+            if (cp.passes) return;
+            var key = 'contrast|' + (cp.selector || '') + '|' + (cp.text || '').substring(0, 20);
+            if (!vpIssueMap[key]) vpIssueMap[key] = { title: 'Contrast: ' + (cp.selector || '').substring(0, 40) + ' "' + (cp.text || '').substring(0, 20) + '"', type: 'contrast', viewports: [], pages: [] };
+            if (vpIssueMap[key].viewports.indexOf(vpLabels[vi]) === -1) vpIssueMap[key].viewports.push(vpLabels[vi]);
+            vpIssueMap[key].pages.push(p.url);
+          });
+        });
+      });
+
+      // Classify issues: universal (all viewports) vs viewport-specific
+      var universalIssues = [];
+      var viewportSpecific = [];
+      Object.keys(vpIssueMap).forEach(function(k) {
+        var issue = vpIssueMap[k];
+        var uniquePages = []; issue.pages.forEach(function(u) { if (uniquePages.indexOf(u) === -1) uniquePages.push(u); });
+        issue.pageCount = uniquePages.length;
+        if (issue.viewports.length >= vpCount) {
+          universalIssues.push(issue);
+        } else {
+          viewportSpecific.push(issue);
+        }
+      });
+      // Sort by page count desc
+      universalIssues.sort(function(a, b) { return b.pageCount - a.pageCount; });
+      viewportSpecific.sort(function(a, b) { return b.pageCount - a.pageCount; });
+
+      viewportSummary = {
+        viewportCount: vpCount,
+        viewportLabels: vpLabels,
+        viewportStats: vpStats,
+        universalIssues: universalIssues.slice(0, 20),
+        viewportSpecific: viewportSpecific.slice(0, 20),
+        deepPageCount: deepPages.length
+      };
+    }
+
+    return {
+      pagesAnalyzed: donePages.length,
+      pagesFailed: failedPages.length,
+      averageScore: avgScore,
+      worstPage: { url: donePages[worstIdx].url, score: scores[worstIdx] },
+      bestPage: { url: donePages[bestIdx].url, score: scores[bestIdx] },
+      scoreGrid: scoreGrid,
+      crossPageIssues: crossPageIssues,
+      categoryAverages: categoryAverages,
+      viewportSummary: viewportSummary
+    };
+  }
+
+  // --- Export helpers ---
+
+  function filterFindings(categories, minSeverity) {
+    if (!minSeverity || minSeverity === 'all') return categories;
+    return categories.map(function(cat) {
+      return Object.assign({}, cat, {
+        findings: cat.findings.filter(function(f) {
+          if (minSeverity === 'error') return f.severity === 'error';
+          if (minSeverity === 'warning') return f.severity === 'error' || f.severity === 'warning';
+          return true;
+        })
+      });
+    });
+  }
+
+  function renderCrawlMarkdown(session, severityFilter) {
+    var summary = session.summary || buildSummary(session);
+    var lines = [];
+    lines.push('# Site Crawl Report');
+    lines.push('');
+    lines.push('**Starting URL:** ' + session.startUrl);
+    lines.push('**Date:** ' + new Date(session.startedAt).toLocaleString());
+    lines.push('**Pages analyzed:** ' + summary.pagesAnalyzed + ' (failed: ' + summary.pagesFailed + ')');
+    lines.push('**Average score:** ' + summary.averageScore + '/100');
+    if (summary.viewportSummary) {
+      lines.push('**Viewports:** ' + summary.viewportSummary.viewportCount + ' (' + summary.viewportSummary.viewportLabels.join(', ') + ')');
+    }
+    if (severityFilter && severityFilter !== 'all') {
+      lines.push('**Filter:** ' + (severityFilter === 'error' ? 'Errors only' : 'Warnings + Errors'));
+    }
+    lines.push('');
+
+    // Score grid
+    lines.push('## Score Summary');
+    lines.push('');
+    lines.push('| Page | Score | Grade |');
+    lines.push('|------|-------|-------|');
+    summary.scoreGrid.forEach(function(row) {
+      lines.push('| ' + row.path + ' | ' + row.score + ' | ' + row.grade + ' |');
+    });
+    lines.push('');
+
+    // Cross-page issues
+    var filteredIssues = summary.crossPageIssues.filter(function(issue) {
+      if (severityFilter === 'error') return issue.severity === 'error';
+      if (severityFilter === 'warning') return issue.severity === 'error' || issue.severity === 'warning';
+      return true;
+    });
+    if (filteredIssues.length > 0) {
+      lines.push('## Cross-Page Issues');
+      lines.push('');
+      filteredIssues.forEach(function(issue) {
+        var icon = issue.severity === 'error' ? 'x' : '!';
+        lines.push('### [' + icon + '] ' + issue.title + ' (' + issue.count + ' page' + (issue.count > 1 ? 's' : '') + ')');
+        issue.pages.forEach(function(p) {
+          var path; try { path = new URL(p.url).pathname; } catch(e) { path = p.url; }
+          lines.push('- ' + path + (p.detail ? ': ' + p.detail : ''));
+        });
+        if (issue.fix) lines.push('- **Fix:** ' + issue.fix);
+        lines.push('');
+      });
+    }
+
+    // Viewport breakdown (deep scan)
+    if (summary.viewportSummary) {
+      var vs = summary.viewportSummary;
+      lines.push('## Viewport Breakdown');
+      lines.push('');
+      lines.push('| Viewport | Width | Contrast Fails | Touch Targets | Overflow Pages |');
+      lines.push('|----------|-------|---------------|---------------|----------------|');
+      vs.viewportStats.forEach(function(vp) {
+        lines.push('| ' + vp.label + ' | ' + vp.width + 'px | ' + vp.contrastFails + ' | ' + vp.touchTargets + ' | ' + vp.overflowPages + ' |');
+      });
+      lines.push('');
+      if (vs.universalIssues.length > 0) {
+        lines.push('### Universal Issues (all viewports)');
+        lines.push('');
+        vs.universalIssues.forEach(function(issue) {
+          lines.push('- ' + issue.title + ' (' + issue.pageCount + ' page' + (issue.pageCount > 1 ? 's' : '') + ')');
+        });
+        lines.push('');
+      }
+      if (vs.viewportSpecific.length > 0) {
+        lines.push('### Viewport-Specific Issues');
+        lines.push('');
+        vs.viewportSpecific.forEach(function(issue) {
+          lines.push('- ' + issue.title + ' — *' + issue.viewports.join(', ') + ' only* (' + issue.pageCount + ' page' + (issue.pageCount > 1 ? 's' : '') + ')');
+        });
+        lines.push('');
+      }
+    }
+
+    // Per-page reports
+    lines.push('## Per-Page Reports');
+    lines.push('');
+    session.pages.forEach(function(page) {
+      if (page.status !== 'done' || !page.reportData) return;
+      var path; try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
+      lines.push('---');
+      lines.push('### ' + path + ' (' + page.reportData.overall + '/100 — ' + page.reportData.grade + ')');
+      lines.push('');
+      var cats = filterFindings(page.reportData.categories, severityFilter);
+      cats.forEach(function(cat) {
+        var relevant = cat.findings.length;
+        if (relevant === 0) return;
+        lines.push('#### ' + cat.label);
+        cat.findings.forEach(function(f) {
+          var icon = f.severity === 'error' ? 'x' : f.severity === 'warning' ? '!' : 'i';
+          lines.push('- [' + icon + '] ' + f.title);
+          if (f.detail) lines.push('  - ' + f.detail);
+          if (f.fix) lines.push('  - **Fix:** ' + f.fix);
+        });
+        lines.push('');
+      });
+      // Per-page screenshots
+      if (page.rawData && page.rawData.screenshots && page.rawData.screenshots.length > 0) {
+        lines.push('#### Screenshots');
+        page.rawData.screenshots.forEach(function(src, si) {
+          lines.push('![' + path + ' screenshot ' + (si + 1) + '](' + src + ')');
+          lines.push('');
+        });
+      }
+      // Per-page pixel verify summary
+      if (page.rawData && page.rawData._contrastVerifyResults && page.rawData._contrastVerifyResults.length > 0) {
+        var pvr = page.rawData._contrastVerifyResults;
+        var pvFp = pvr.filter(function(r) { return r.cssPasses && !r.pixelPasses; });
+        var pvFf = pvr.filter(function(r) { return !r.cssPasses && r.pixelPasses; });
+        if (pvFp.length > 0 || pvFf.length > 0) {
+          lines.push('#### Pixel Verification');
+          if (pvFp.length > 0) lines.push('- ' + pvFp.length + ' hidden failure(s)');
+          if (pvFf.length > 0) lines.push('- ' + pvFf.length + ' false positive(s)');
+          lines.push('');
+        }
+      }
+    });
+
+    return lines.join('\n');
+  }
+
+  function renderCrawlJSON(session, severityFilter) {
+    // Break circular refs and strip debug data — keep screenshots, masks, verify for full export
+    // Only strip circular refs and transient state — keep ALL analysis data for full reimport
+    var _skipKeys = { deepScan: 1, _cachedReportData: 1, _vpCacheIdx: 1 };
+    var _replacer = function(k, v) { return _skipKeys[k] ? undefined : v; };
+    var out = {
+      _milgCrawl: true,
+      _milgVersion: window.MILG_EXPORT_VERSION || '1.6',
+      startUrl: session.startUrl,
+      startedAt: session.startedAt,
+      options: session.options,
+      summary: session.summary,
+      // results: re-importable raw extraction data (loadCrawlResults compatible)
+      results: session.pages.filter(function(p) { return p.status === 'done' && p.rawData; }).map(function(p) {
+        var rawClone = JSON.parse(JSON.stringify(p.rawData, _replacer));
+        // Include deep scan summary (without full viewport data)
+        if (p.rawData.deepScan) {
+          rawClone.deepScan = { viewports: p.rawData.deepScan.viewports, darkMode: p.rawData.deepScan.darkMode || null };
+        }
+        // Pixel verify results are included automatically via the clone
+        // (samplePoints and _debug already stripped by replacer)
+        return { url: p.url, data: rawClone };
+      }),
+      pages: session.pages.map(function(p) {
+        if (p.status !== 'done' || !p.reportData) {
+          return { url: p.url, status: p.status, error: p.error };
+        }
+        var cats = filterFindings(p.reportData.categories, severityFilter);
+        var pageOut = {
+          url: p.url,
+          title: p.title,
+          score: p.reportData.overall,
+          grade: p.reportData.grade,
+          categories: cats.map(function(c) {
+            return { label: c.label, score: c.score, findings: c.findings };
+          })
+        };
+        // Include deep scan viewport data if available
+        if (p.rawData && p.rawData.deepScan && p.rawData.deepScan.viewports) {
+          pageOut.deepScan = {
+            viewports: p.rawData.deepScan.viewports,
+            darkMode: p.rawData.deepScan.darkMode || null
+          };
+          if (p.rawData.deepScan.viewportData) {
+            pageOut.deepScan.viewportData = p.rawData.deepScan.viewportData.map(function(vd) {
+              if (!vd || !vd.data) return null;
+              var vpOut = { label: vd.label, width: vd.width };
+              var d = vd.data;
+              vpOut.contrastFails = (d.colors && d.colors.contrastPairs || []).filter(function(cp) { return !cp.passes; }).length;
+              vpOut.touchTargets = (d.interaction && d.interaction.touchTargets || []).length;
+              vpOut.overflow = (d.structure && d.structure.hasHorizontalOverflow) || false;
+              if (d._contrastVerifyResults) {
+                vpOut.pixelVerify = {
+                  total: d._contrastVerifyResults.length,
+                  falsePass: d._contrastVerifyResults.filter(function(r) { return r.cssPasses && !r.pixelPasses; }).length,
+                  falseFail: d._contrastVerifyResults.filter(function(r) { return !r.cssPasses && r.pixelPasses; }).length
+                };
+              }
+              return vpOut;
+            });
+          }
+        }
+        // Include pixel verify if available
+        if (p.rawData && p.rawData._contrastVerifyResults) {
+          pageOut.pixelVerify = {
+            total: p.rawData._contrastVerifyResults.length,
+            falsePass: p.rawData._contrastVerifyResults.filter(function(r) { return r.cssPasses && !r.pixelPasses; }).length,
+            falseFail: p.rawData._contrastVerifyResults.filter(function(r) { return !r.cssPasses && r.pixelPasses; }).length
+          };
+        }
+        return pageOut;
+      })
+    };
+    return JSON.stringify(out);
+  }
+
+  // --- Public API ---
+
+  return {
+    normalizeUrl: normalizeUrl,
+    matchesBlacklist: matchesBlacklist,
+    discoverLinks: discoverLinks,
+    createSession: createSession,
+    startCrawl: startCrawl,
+    abortCrawl: abortCrawl,
+    buildSummary: buildSummary,
+    filterFindings: filterFindings,
+    renderCrawlMarkdown: renderCrawlMarkdown,
+    renderCrawlJSON: renderCrawlJSON
+  };
 })();
 </file>
 
@@ -41632,7 +41550,7 @@ window.MilgIframe = (function() {
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v2.9 loaded');
+console.log('[milg] analyzer.js v3.0 loaded');
 
 (function() {
   "use strict";
@@ -43374,7 +43292,7 @@ console.log('[milg] analyzer.js v2.9 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v2.9</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.0</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -43811,31 +43729,31 @@ console.log('[milg] analyzer.js v2.9 loaded');
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=2.9"></script>
-  <script src="scoring/contrast.js?v=2.9"></script>
-  <script src="scoring/typography.js?v=2.9"></script>
-  <script src="scoring/spacing.js?v=2.9"></script>
-  <script src="scoring/touch.js?v=2.9"></script>
-  <script src="scoring/accessibility.js?v=2.9"></script>
-  <script src="scoring/responsive.js?v=2.9"></script>
-  <script src="scoring/consistency.js?v=2.9"></script>
-  <script src="scoring/cognitive.js?v=2.9"></script>
-  <script src="scoring/layout.js?v=2.9"></script>
-  <script src="scoring/performance.js?v=2.9"></script>
-  <script src="scoring/readability.js?v=2.9"></script>
-  <script src="scoring/filters.js?v=2.9"></script>
-  <script src="scoring/balance.js?v=2.9"></script>
+  <script src="scoring/registry.js?v=3.0"></script>
+  <script src="scoring/contrast.js?v=3.0"></script>
+  <script src="scoring/typography.js?v=3.0"></script>
+  <script src="scoring/spacing.js?v=3.0"></script>
+  <script src="scoring/touch.js?v=3.0"></script>
+  <script src="scoring/accessibility.js?v=3.0"></script>
+  <script src="scoring/responsive.js?v=3.0"></script>
+  <script src="scoring/consistency.js?v=3.0"></script>
+  <script src="scoring/cognitive.js?v=3.0"></script>
+  <script src="scoring/layout.js?v=3.0"></script>
+  <script src="scoring/performance.js?v=3.0"></script>
+  <script src="scoring/readability.js?v=3.0"></script>
+  <script src="scoring/filters.js?v=3.0"></script>
+  <script src="scoring/balance.js?v=3.0"></script>
   <!-- Queue + Report rendering + UI -->
-  <script src="analyzer-queue.js?v=2.9"></script>
-  <script src="analyzer-report.js?v=2.9"></script>
-  <script src="analyzer-crawl.js?v=2.9"></script>
-  <script src="analyzer-extract.js?v=2.9"></script>
-  <script src="analyzer-iframe.js?v=2.9"></script>
-  <script src="analyzer-proxy.js?v=2.9"></script>
-  <script src="analyzer-crawl-ui.js?v=2.9"></script>
-  <script src="analyzer-contrast-verify.js?v=2.9"></script>
-  <script src="analyzer-viewer.js?v=2.9"></script>
-  <script src="analyzer.js?v=2.9"></script>
+  <script src="analyzer-queue.js?v=3.0"></script>
+  <script src="analyzer-report.js?v=3.0"></script>
+  <script src="analyzer-crawl.js?v=3.0"></script>
+  <script src="analyzer-extract.js?v=3.0"></script>
+  <script src="analyzer-iframe.js?v=3.0"></script>
+  <script src="analyzer-proxy.js?v=3.0"></script>
+  <script src="analyzer-crawl-ui.js?v=3.0"></script>
+  <script src="analyzer-contrast-verify.js?v=3.0"></script>
+  <script src="analyzer-viewer.js?v=3.0"></script>
+  <script src="analyzer.js?v=3.0"></script>
 </body>
 </html>
 </file>
