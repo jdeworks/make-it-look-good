@@ -1230,8 +1230,28 @@ window.MilgContrastVerify = (function() {
       callback([]); return;
     }
 
-    var pairs = raw.colors.contrastPairs.filter(function(p) { return p.bbox; });
-    if (pairs.length === 0) { callback([]); return; }
+    var allPairsWithBbox = raw.colors.contrastPairs.filter(function(p) { return p.bbox; });
+    if (allPairsWithBbox.length === 0) { callback([]); return; }
+
+    // Separate clipped pairs (hidden in overflow containers) — skip pixel verification
+    var clippedResults = [];
+    var pairs = allPairsWithBbox.filter(function(p) {
+      if (p._isClipped) {
+        clippedResults.push({
+          selector: p.selector,
+          text: p.text,
+          bbox: p.bbox,
+          cssRatio: p.ratio,
+          skipped: true,
+          reason: 'hidden-region',
+          cssPasses: p.ratio >= (p.needed || 4.5),
+          neededRatio: p.needed || 4.5
+        });
+        return false;
+      }
+      return true;
+    });
+    if (pairs.length === 0) { callback(clippedResults); return; }
 
     // Check if extraction already computed pixel verification (snippet-screenshots path)
     var hasPrecomputed = raw.pixelVerifyResults || pairs.some(function(p) { return p.pixelVerify; });
@@ -1267,7 +1287,9 @@ window.MilgContrastVerify = (function() {
           });
         }
       });
+      results = results.concat(clippedResults);
       results.sort(function(a, b) {
+        if (a.skipped !== b.skipped) return a.skipped ? 1 : -1;
         if (a.crossesBoundary !== b.crossesBoundary) return a.crossesBoundary ? -1 : 1;
         return (b.ratioDiff || 0) - (a.ratioDiff || 0);
       });
@@ -1306,10 +1328,12 @@ window.MilgContrastVerify = (function() {
         }
         // All pairs done — finish up
         var _maskBmpCount = pairs.filter(function(p) { return !!p._maskBmp; }).length;
-        console.log('[milg-verify] Stats: mask=' + _hasMask + ' maskBmp=' + _maskBmpCount + '/' + pairs.length + ' total=' + _vStats.total + ' verified=' + _vStats.verified + ' noFgBg=' + _vStats.noFgBg);
+        console.log('[milg-verify] Stats: mask=' + _hasMask + ' maskBmp=' + _maskBmpCount + '/' + pairs.length + ' total=' + _vStats.total + ' verified=' + _vStats.verified + ' noFgBg=' + _vStats.noFgBg + ' clippedSkipped=' + clippedResults.length);
+        results = results.concat(clippedResults);
         results.sort(function(a, b) {
+          if (a.skipped !== b.skipped) return a.skipped ? 1 : -1;
           if (a.crossesBoundary !== b.crossesBoundary) return a.crossesBoundary ? -1 : 1;
-          return b.ratioDiff - a.ratioDiff;
+          return (b.ratioDiff || 0) - (a.ratioDiff || 0);
         });
 
         // BBox edge contrast verification
@@ -1346,6 +1370,9 @@ window.MilgContrastVerify = (function() {
 
   // Format a single verification result as HTML for display in findings
   function formatResult(r) {
+    if (r.skipped && r.reason === 'hidden-region') {
+      return '<span style="color:#60a5fa;font-size:11px">Hidden element \u2014 see expanded view below</span>';
+    }
     var variableNote = r.isVariableBg
       ? '<br><span style="font-size:10px;color:var(--text-secondary)">Variable background detected (contrast range: ' + r.pixelRatio + ':1 to ' + r.pixelRatioBest + ':1, variance: ' + r.bgVariance + ')</span>'
       : '';
@@ -1376,6 +1403,7 @@ window.MilgContrastVerify = (function() {
 
   // Build a summary of verification results
   function buildSummary(results, bboxEdgeResults) {
+    var skippedCount = 0;
     var total = results.length;
     var falsePassCount = 0; // CSS passes but pixels fail
     var falseFailCount = 0; // CSS fails but pixels pass
@@ -1385,6 +1413,7 @@ window.MilgContrastVerify = (function() {
     var verified = 0;
 
     results.forEach(function(r) {
+      if (r.skipped) { skippedCount++; return; }
       if (r.isVariableBg) variableBgCount++;
       else if (r.isFgAaVariance) fgAaVarianceCount++;
       if (r.crossesBoundary) {
@@ -1404,6 +1433,7 @@ window.MilgContrastVerify = (function() {
 
     return {
       total: total,
+      skippedCount: skippedCount,
       falsePassCount: falsePassCount,
       falseFailCount: falseFailCount,
       significantDiffs: significantDiffs,
@@ -1518,6 +1548,14 @@ window.MilgContrastVerify = (function() {
         if (r.sampleCount) html += ' (' + r.sampleCount.fg + ' FG, ' + r.sampleCount.bg + ' BG samples)';
         html += '</div>';
       });
+      html += '</div>';
+    }
+
+    // Hidden region elements (skipped from pixel verification)
+    if (summary.skippedCount > 0) {
+      html += '<div style="padding:10px 14px;background:' + (isDark ? '#0c1d2d' : '#eff6ff') + ';border:1px solid ' + (isDark ? '#1e40af' : '#bfdbfe') + ';border-radius:6px;margin-bottom:8px">';
+      html += '<span style="color:#60a5fa">' + summary.skippedCount + ' element' + (summary.skippedCount > 1 ? 's' : '') + ' in hidden overflow regions</span>';
+      html += '<p style="margin:4px 0 0;font-size:12px;color:' + (isDark ? '#93c5fd' : '#1e40af') + '">These elements are clipped by overflow:hidden containers (e.g., carousels). See the expanded region sections below the main screenshot for their analysis.</p>';
       html += '</div>';
     }
 

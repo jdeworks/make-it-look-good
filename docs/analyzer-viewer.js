@@ -234,6 +234,19 @@ window.MilgViewer = (function() {
     var hasExpanded = !!expandedSrc;
     _showExpanded = false;
 
+    // Create expand toggle button if both screenshots exist (stored as ref, re-appended on frame rebuild)
+    var _expandToggle = null;
+    if (hasClean && hasExpanded) {
+      _expandToggle = document.createElement('button');
+      _expandToggle.className = 'milg-viewer-expand-toggle';
+      _expandToggle.textContent = 'Show expanded';
+      _expandToggle.title = 'Show all content including hidden carousel slides';
+      _expandToggle.style.cssText = 'position:absolute;top:8px;right:8px;z-index:10;padding:4px 10px;border-radius:4px;border:1px solid rgba(255,255,255,0.3);background:rgba(0,0,0,0.6);color:#fff;font-size:12px;cursor:pointer;';
+      _expandToggle.addEventListener('click', function() {
+        showScreenshot(!_showExpanded);
+      });
+    }
+
     function onImageReady(imgSrc, canvasW, canvasH) {
       frame.innerHTML = '';
       var viewImg = document.createElement('img');
@@ -249,6 +262,8 @@ window.MilgViewer = (function() {
 
       frame.appendChild(viewImg);
       frame.appendChild(svg);
+      // Re-append toggle button (frame.innerHTML cleared it)
+      if (_expandToggle) frame.appendChild(_expandToggle);
 
       // Use pre-computed calibration offset from extraction (red marker probing on pristine canvas)
       viewImg.addEventListener('load', function() {
@@ -285,56 +300,81 @@ window.MilgViewer = (function() {
         });
       }
       // Update toggle button state
-      var toggleBtn = _overlay && _overlay.querySelector('.milg-viewer-expand-toggle');
-      if (toggleBtn) {
-        toggleBtn.textContent = expanded ? 'Show clean' : 'Show expanded';
-        toggleBtn.title = expanded ? 'Show page as rendered (clean)' : 'Show all content including hidden carousel slides';
+      if (_expandToggle) {
+        _expandToggle.textContent = expanded ? 'Show clean' : 'Show expanded';
+        _expandToggle.title = expanded ? 'Show page as rendered (clean)' : 'Show all content including hidden carousel slides';
       }
-    }
-
-    // Add expand toggle button if both screenshots exist
-    if (hasClean && hasExpanded) {
-      var toggleBtn = document.createElement('button');
-      toggleBtn.className = 'milg-viewer-expand-toggle';
-      toggleBtn.textContent = 'Show expanded';
-      toggleBtn.title = 'Show all content including hidden carousel slides';
-      toggleBtn.style.cssText = 'position:absolute;top:8px;right:8px;z-index:10;padding:4px 10px;border-radius:4px;border:1px solid rgba(255,255,255,0.3);background:rgba(0,0,0,0.6);color:#fff;font-size:12px;cursor:pointer;';
-      toggleBtn.addEventListener('click', function() {
-        showScreenshot(!_showExpanded);
-      });
-      content.appendChild(toggleBtn);
     }
 
     // Initial display: prefer clean screenshot
     showScreenshot(false);
 
-    // Render region screenshots (expanded views of hidden overflow content)
+    // Render region screenshots as independent sections below main screenshot
     var regions = (reportData.raw && reportData.raw.regionScreenshots) || [];
     if (regions.length > 0) {
       var regionSection = document.createElement('div');
       regionSection.className = 'milg-viewer-regions';
-      regionSection.style.cssText = 'padding:8px 0;border-top:1px dashed rgba(255,255,255,0.2);margin-top:8px;';
-      var regionLabel = document.createElement('div');
-      regionLabel.style.cssText = 'font-size:11px;color:rgba(255,255,255,0.6);margin-bottom:6px;padding:0 8px;';
-      regionLabel.textContent = 'Expanded hidden content (' + regions.length + ' region' + (regions.length > 1 ? 's' : '') + ')';
-      regionSection.appendChild(regionLabel);
+      regionSection.style.cssText = 'padding:16px 0 8px;width:100%;max-width:95vw;';
 
       regions.forEach(function(rgn, rIdx) {
         if (!rgn.screenshot || !rgn.screenshotMeta) return;
-        var rgnWrap = document.createElement('div');
-        rgnWrap.className = 'milg-viewer-region';
-        rgnWrap.style.cssText = 'position:relative;margin:4px 8px 8px;border:1px dashed rgba(59,130,246,0.4);border-radius:4px;overflow:hidden;';
+        var rgnSection = document.createElement('div');
+        rgnSection.className = 'milg-viewer-region-section';
+        rgnSection.id = 'milg-region-' + rIdx;
+        rgnSection.style.cssText = 'margin:0 0 20px;border:1px solid rgba(59,130,246,0.3);border-radius:6px;overflow:hidden;background:rgba(0,0,0,0.3);';
+
+        // Region header with label and back-to-main link
+        var rgnHeader = document.createElement('div');
+        rgnHeader.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:rgba(59,130,246,0.15);border-bottom:1px solid rgba(59,130,246,0.3);';
+        var rgnTitle = document.createElement('span');
+        rgnTitle.style.cssText = 'font-size:12px;font-weight:600;color:#93c5fd;';
+        rgnTitle.textContent = 'Hidden content region ' + (rIdx + 1);
+        var pairCount = (rgn.pairIndices || []).length;
+        if (pairCount > 0) {
+          rgnTitle.textContent += ' \u2014 ' + pairCount + ' contrast pair' + (pairCount !== 1 ? 's' : '');
+        }
+        var backLink = document.createElement('a');
+        backLink.style.cssText = 'font-size:11px;color:#60a5fa;cursor:pointer;text-decoration:none;';
+        backLink.textContent = '\u2191 Back to main screenshot';
+        backLink.addEventListener('click', function() {
+          var mainFrame = _overlay && _overlay.querySelector('.milg-viewer-frame');
+          if (mainFrame) {
+            mainFrame.scrollIntoView({ behavior: 'smooth' });
+            // Flash the container indicator for this region
+            var indicator = _overlay && _overlay.querySelector('.milg-region-indicator-' + rIdx);
+            if (indicator) {
+              var origStroke = indicator.getAttribute('stroke');
+              var origWidth = indicator.getAttribute('stroke-width');
+              var flash = 0;
+              (function pulse() {
+                var on = flash % 2 === 0;
+                indicator.setAttribute('stroke', on ? '#fbbf24' : origStroke);
+                indicator.setAttribute('stroke-width', on ? '3' : origWidth);
+                flash++;
+                if (flash < 6) setTimeout(pulse, 250);
+                else { indicator.setAttribute('stroke', origStroke); indicator.setAttribute('stroke-width', origWidth); }
+              })();
+            }
+          }
+        });
+        rgnHeader.appendChild(rgnTitle);
+        rgnHeader.appendChild(backLink);
+        rgnSection.appendChild(rgnHeader);
+
+        // Region image container with scroll support
+        var rgnFrame = document.createElement('div');
+        rgnFrame.style.cssText = 'position:relative;overflow:auto;max-height:500px;';
 
         var rgnImg = document.createElement('img');
         rgnImg.src = rgn.screenshot;
-        rgnImg.alt = 'Region ' + (rIdx + 1) + ' expanded';
+        rgnImg.alt = 'Hidden content region ' + (rIdx + 1);
         rgnImg.style.cssText = 'display:block;width:100%;height:auto;';
 
         var rgnSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         rgnSvg.setAttribute('class', 'milg-viewer-region-svg');
         rgnSvg.setAttribute('viewBox', '0 0 ' + rgn.screenshotMeta.canvasWidth + ' ' + rgn.screenshotMeta.canvasHeight);
         rgnSvg.setAttribute('preserveAspectRatio', 'xMinYMin meet');
-        rgnSvg.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;';
+        rgnSvg.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:auto;';
 
         // Render local bboxes for this region's contrast pairs
         if (rgn.localBboxes && rgn.pairIndices && _reportData && _reportData.raw && _reportData.raw.colors) {
@@ -354,13 +394,40 @@ window.MilgViewer = (function() {
             rect.setAttribute('fill', color.fill);
             rect.setAttribute('stroke', color.stroke);
             rect.setAttribute('stroke-width', '1.5');
+            rect.setAttribute('rx', '2');
+            rect.setAttribute('data-region', rIdx);
+            rect.setAttribute('data-pair-index', pi);
+            rect.style.cursor = 'pointer';
+            // Click bbox in region → scroll to main and highlight container
+            rect.addEventListener('click', function(e) {
+              e.stopPropagation();
+              var mainFrame = _overlay && _overlay.querySelector('.milg-viewer-frame');
+              if (mainFrame) {
+                mainFrame.scrollIntoView({ behavior: 'smooth' });
+                var indicator = _overlay && _overlay.querySelector('.milg-region-indicator-' + rIdx);
+                if (indicator) {
+                  var origStroke = indicator.getAttribute('stroke');
+                  var origWidth = indicator.getAttribute('stroke-width');
+                  var flash = 0;
+                  (function pulse() {
+                    var on = flash % 2 === 0;
+                    indicator.setAttribute('stroke', on ? '#fbbf24' : origStroke);
+                    indicator.setAttribute('stroke-width', on ? '3' : origWidth);
+                    flash++;
+                    if (flash < 6) setTimeout(pulse, 250);
+                    else { indicator.setAttribute('stroke', origStroke); indicator.setAttribute('stroke-width', origWidth); }
+                  })();
+                }
+              }
+            });
             rgnSvg.appendChild(rect);
           });
         }
 
-        rgnWrap.appendChild(rgnImg);
-        rgnWrap.appendChild(rgnSvg);
-        regionSection.appendChild(rgnWrap);
+        rgnFrame.appendChild(rgnImg);
+        rgnFrame.appendChild(rgnSvg);
+        rgnSection.appendChild(rgnFrame);
+        regionSection.appendChild(rgnSection);
       });
 
       content.appendChild(regionSection);
@@ -424,7 +491,7 @@ window.MilgViewer = (function() {
     }
 
     // At high zoom, left-align so the whole image is scrollable (center clips left edge)
-    if (content) content.style.justifyContent = _zoomLevel > 1 ? 'flex-start' : 'center';
+    if (content) content.style.alignItems = _zoomLevel > 1 ? 'flex-start' : 'center';
     if (_zoomLevel === 1) {
       img.style.width = '';
       img.style.maxWidth = '95vw';
@@ -500,8 +567,10 @@ window.MilgViewer = (function() {
     var scaleX = _meta.scale;
     var scaleY = _meta.scale;
 
-    // Build set of clipped bbox positions (for clean screenshot mode)
+    // Build set of clipped bbox positions and region container indicators
     var _clippedBboxKeys = {};
+    var _regionContainersRendered = {};
+    var regions = (_reportData && _reportData.raw && _reportData.raw.regionScreenshots) || [];
     if (!_showExpanded && _reportData && _reportData.raw && _reportData.raw.colors) {
       (_reportData.raw.colors.contrastPairs || []).forEach(function(cp) {
         if (cp._isClipped && cp.bbox) {
@@ -531,10 +600,63 @@ window.MilgViewer = (function() {
       finding.bboxes.forEach(function(bbox, bbIdx) {
         // For single-bbox filter (magnifying glass), skip other bboxes in this finding
         if (_activeFilter.type === 'findingBbox' && bbIdx !== _activeFilter.bboxIdx) return;
-        // Skip clipped bboxes on clean screenshot (they're only visible in expanded view)
+        // For clipped bboxes on clean screenshot: show container indicator instead of normal bbox
         if (!_showExpanded && bbox) {
           var _bk = Math.round(bbox.left) + ',' + Math.round(bbox.top) + ',' + Math.round(bbox.width) + ',' + Math.round(bbox.height);
-          if (_clippedBboxKeys[_bk]) return;
+          if (_clippedBboxKeys[_bk]) {
+            // Find which region this clipped bbox belongs to and render container indicator
+            for (var ri = 0; ri < regions.length; ri++) {
+              var rgn = regions[ri];
+              if (!rgn.containerRect || !rgn.pairIndices) continue;
+              // Check if this bbox matches any pair in this region
+              var inRegion = rgn.pairIndices.some(function(pi) {
+                var pair = (_reportData.raw.colors.contrastPairs || [])[pi];
+                if (!pair || !pair.bbox) return false;
+                return Math.round(pair.bbox.left) + ',' + Math.round(pair.bbox.top) + ',' + Math.round(pair.bbox.width) + ',' + Math.round(pair.bbox.height) === _bk;
+              });
+              if (inRegion && !_regionContainersRendered[ri]) {
+                _regionContainersRendered[ri] = true;
+                var cr = rgn.containerRect;
+                var cx = Math.round(cr.left * scaleX);
+                var cy = Math.round(cr.top * scaleY) - _calibrationOffsetY;
+                var cw = Math.round(cr.width * scaleX);
+                var ch = Math.round(cr.height * scaleY);
+                var indicator = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                indicator.setAttribute('class', 'milg-region-indicator-' + ri);
+                indicator.setAttribute('x', cx);
+                indicator.setAttribute('y', cy);
+                indicator.setAttribute('width', Math.max(cw, 20));
+                indicator.setAttribute('height', Math.max(ch, 20));
+                indicator.setAttribute('fill', 'rgba(59,130,246,0.08)');
+                indicator.setAttribute('stroke', '#3b82f6');
+                indicator.setAttribute('stroke-width', '2');
+                indicator.setAttribute('stroke-dasharray', '8 4');
+                indicator.setAttribute('rx', '3');
+                indicator.setAttribute('data-region', ri);
+                indicator.style.cursor = 'pointer';
+                // Label
+                var label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                label.setAttribute('x', cx + 6);
+                label.setAttribute('y', cy + 14);
+                label.setAttribute('fill', '#60a5fa');
+                label.setAttribute('font-size', '11');
+                label.setAttribute('font-family', 'system-ui, sans-serif');
+                label.setAttribute('pointer-events', 'none');
+                label.textContent = 'Hidden content \u2014 click to see analysis \u2193';
+                svg.appendChild(indicator);
+                svg.appendChild(label);
+                // Click → scroll to region section
+                indicator.addEventListener('click', function(regionIdx) {
+                  return function(e) {
+                    e.stopPropagation();
+                    var regionEl = document.getElementById('milg-region-' + regionIdx);
+                    if (regionEl) regionEl.scrollIntoView({ behavior: 'smooth' });
+                  };
+                }(ri));
+              }
+            }
+            return; // Don't render normal bbox for clipped element
+          }
         }
         var x = Math.round(bbox.left * scaleX);
         var y = Math.round(bbox.top * scaleY) - _calibrationOffsetY;
@@ -681,6 +803,7 @@ window.MilgViewer = (function() {
 
     var _vrNoBbox = 0;
     results.forEach(function(vr, vIdx) {
+      if (vr.skipped) return; // Hidden region elements — shown in region sections
       if (filterSelector && vr.selector !== filterSelector) return;
       if (!filterSelector && showFails && !vr.crossesBoundary) return;
       if (!filterSelector && filterLayer !== null && (vr.maskLayer || 0) !== filterLayer) return;

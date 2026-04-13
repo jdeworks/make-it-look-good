@@ -154,6 +154,15 @@ window.MilgReport = (function() {
 
     var _bboxFindingIdx = 0; // Global finding index for "show on screenshot" links
     var _hasScreenshots = report.raw && report.raw.screenshots && report.raw.screenshots.length > 0 && report.raw.screenshotMeta;
+    // Build lookup of clipped bbox positions for annotating findings
+    var _clippedBboxSet = {};
+    if (report.raw && report.raw.colors && report.raw.colors.contrastPairs) {
+      report.raw.colors.contrastPairs.forEach(function(cp) {
+        if (cp._isClipped && cp.bbox) {
+          _clippedBboxSet[Math.round(cp.bbox.left) + ',' + Math.round(cp.bbox.top) + ',' + Math.round(cp.bbox.width) + ',' + Math.round(cp.bbox.height)] = true;
+        }
+      });
+    }
     report.categories.forEach(function(cat) {
       if (cat.findings.length === 0) return;
 
@@ -231,6 +240,22 @@ window.MilgReport = (function() {
 
         if (hasBboxes && _hasScreenshots) {
           html += '<a class="finding-show-on-screenshot" onclick="window.__milgShowFindingOnScreenshot(' + _bboxFindingIdx + ')">Show on screenshot</a>';
+        }
+        // Check if any bboxes for this finding are in clipped regions
+        if (hasBboxes && f.locator && f.locator.bboxes) {
+          var clippedCount = 0;
+          f.locator.bboxes.forEach(function(bb) {
+            if (bb) {
+              var key = Math.round(bb.left) + ',' + Math.round(bb.top) + ',' + Math.round(bb.width) + ',' + Math.round(bb.height);
+              if (_clippedBboxSet[key]) clippedCount++;
+            }
+          });
+          if (clippedCount > 0) {
+            html += '<div style="margin-top:4px;font-size:11px;color:#60a5fa;display:flex;align-items:center;gap:4px">' +
+              '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="4 2"/><path d="M9 12h6M12 9v6"/></svg>' +
+              (clippedCount === f.locator.bboxes.length ? 'Hidden in overflow container' : clippedCount + ' of ' + f.locator.bboxes.length + ' elements hidden in overflow container') +
+              ' \u2014 verified in expanded region view</div>';
+          }
         }
         if (hasBboxes) _bboxFindingIdx++;
 
