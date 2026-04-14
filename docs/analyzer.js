@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.2 loaded');
+console.log('[milg] analyzer.js v3.3 loaded');
 
 (function() {
   "use strict";
@@ -725,6 +725,7 @@ console.log('[milg] analyzer.js v3.2 loaded');
       reportData = MilgScoring.runScoring(data);
       if (_isTabSwitch) data._cachedReportData = reportData;
     }
+    window.__milgLastReport = reportData; // Expose for diagnostics/testing
     var reportContainer = document.getElementById('reportContainer');
     var inputSection = document.getElementById('inputSection');
 

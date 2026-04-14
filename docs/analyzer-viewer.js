@@ -249,6 +249,67 @@ window.MilgViewer = (function() {
 
       viewImg.addEventListener('load', function() {
         _calibrationOffsetY = (_meta && _meta.calibrationOffsetY) || 0;
+
+        // Render permanent container indicators for hidden overflow regions.
+        // These are always visible (not gated behind a filter).
+        var _regions = (reportData.raw && reportData.raw.regionScreenshots) || [];
+        if (_regions.length > 0 && _meta) {
+          var _s = _meta.scale || 1.5;
+          var _sw = Math.max(2, Math.round(2 * _s));
+          var _dOn = Math.round(8 * _s); var _dOff = Math.round(4 * _s);
+          var _fs = Math.max(14, Math.round(14 * _s));
+          _regions.forEach(function(rgn, ri) {
+            if (!rgn.containerRect) return;
+            var cr = rgn.containerRect;
+            var cx = Math.round(cr.left * _s);
+            var cy = Math.round(cr.top * _s) - _calibrationOffsetY;
+            var cw = Math.max(Math.round(cr.width * _s), 40);
+            var ch = Math.max(Math.round(cr.height * _s), 40);
+            var ind = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            ind.setAttribute('class', 'milg-region-indicator-' + ri);
+            ind.setAttribute('x', cx); ind.setAttribute('y', cy);
+            ind.setAttribute('width', cw); ind.setAttribute('height', ch);
+            ind.setAttribute('fill', 'rgba(59,130,246,0.12)');
+            ind.setAttribute('stroke', '#3b82f6');
+            ind.setAttribute('stroke-width', _sw);
+            ind.setAttribute('stroke-dasharray', _dOn + ' ' + _dOff);
+            ind.setAttribute('rx', '4');
+            ind.setAttribute('data-region', ri);
+            ind.style.cursor = 'pointer';
+            ind.setAttribute('data-permanent', '1');
+            svg.appendChild(ind);
+            var pCount = (rgn.pairIndices || []).length;
+            var lblText = 'Hidden content' + (pCount ? ' — ' + pCount + ' contrast pairs' : '') + ' ↓';
+            var lx = cx + Math.round(4 * _s);
+            var ly = cy + Math.round(4 * _s);
+            var bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            bg.setAttribute('x', lx); bg.setAttribute('y', ly);
+            bg.setAttribute('width', Math.min(cw - Math.round(8 * _s), Math.round(lblText.length * _fs * 0.55)));
+            bg.setAttribute('height', Math.round(_fs * 1.6));
+            bg.setAttribute('fill', 'rgba(30,58,138,0.85)'); bg.setAttribute('rx', '3');
+            bg.setAttribute('pointer-events', 'none');
+            bg.setAttribute('data-permanent', '1');
+            svg.appendChild(bg);
+            var lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            lbl.setAttribute('x', lx + Math.round(4 * _s));
+            lbl.setAttribute('y', ly + Math.round(_fs * 1.15));
+            lbl.setAttribute('fill', '#93c5fd'); lbl.setAttribute('font-size', _fs);
+            lbl.setAttribute('font-weight', '600');
+            lbl.setAttribute('font-family', 'system-ui, sans-serif');
+            lbl.setAttribute('pointer-events', 'none');
+            lbl.setAttribute('data-permanent', '1');
+            lbl.textContent = lblText;
+            svg.appendChild(lbl);
+            ind.addEventListener('click', (function(idx) {
+              return function(e) {
+                e.stopPropagation();
+                var el = document.getElementById('milg-region-' + idx);
+                if (el) el.scrollIntoView({ behavior: 'smooth' });
+              };
+            })(ri));
+          });
+        }
+
         updateFilterButtons();
         renderOverlays();
 
@@ -325,74 +386,20 @@ window.MilgViewer = (function() {
         rgnHeader.appendChild(backLink);
         rgnSection.appendChild(rgnHeader);
 
-        // Region image container — display at natural CSS-pixel size, scroll if wider than container
+        // Region image container — display at natural CSS-pixel size, scrollable
         var rgnScale = rgn.screenshotMeta.scale || 1.5;
         var rgnDisplayW = Math.round(rgn.screenshotMeta.canvasWidth / rgnScale);
         var rgnDisplayH = Math.round(rgn.screenshotMeta.canvasHeight / rgnScale);
         var rgnFrame = document.createElement('div');
-        rgnFrame.style.cssText = 'position:relative;overflow:auto;max-height:500px;';
+        rgnFrame.style.cssText = 'overflow:auto;max-height:600px;';
 
         var rgnImg = document.createElement('img');
         rgnImg.src = rgn.screenshot;
         rgnImg.alt = 'Hidden content region ' + (rIdx + 1);
-        rgnImg.style.cssText = 'display:block;width:' + rgnDisplayW + 'px;height:' + rgnDisplayH + 'px;max-width:none;';
-
-        var rgnSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        rgnSvg.setAttribute('class', 'milg-viewer-region-svg');
-        rgnSvg.setAttribute('viewBox', '0 0 ' + rgn.screenshotMeta.canvasWidth + ' ' + rgn.screenshotMeta.canvasHeight);
-        rgnSvg.setAttribute('preserveAspectRatio', 'xMinYMin meet');
-        rgnSvg.style.cssText = 'position:absolute;top:0;left:0;width:' + rgnDisplayW + 'px;height:' + rgnDisplayH + 'px;pointer-events:auto;';
-
-        // Render local bboxes for this region's contrast pairs
-        if (rgn.localBboxes && rgn.pairIndices && _reportData && _reportData.raw && _reportData.raw.colors) {
-          var pairs = _reportData.raw.colors.contrastPairs || [];
-          var scale = rgn.screenshotMeta.scale || 1.5;
-          rgn.pairIndices.forEach(function(pi) {
-            var pair = pairs[pi];
-            if (!pair) return;
-            var lb = rgn.localBboxes[pi];
-            if (!lb) return;
-            var color = pair.passes ? COLORS.pass : (pair.ratio < pair.needed * 0.7 ? COLORS.error : COLORS.warning);
-            var rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-            rect.setAttribute('x', Math.round(lb.left * scale));
-            rect.setAttribute('y', Math.round(lb.top * scale));
-            rect.setAttribute('width', Math.max(Math.round(lb.width * scale), 4));
-            rect.setAttribute('height', Math.max(Math.round(lb.height * scale), 4));
-            rect.setAttribute('fill', color.fill);
-            rect.setAttribute('stroke', color.stroke);
-            rect.setAttribute('stroke-width', '1.5');
-            rect.setAttribute('rx', '2');
-            rect.setAttribute('data-region', rIdx);
-            rect.setAttribute('data-pair-index', pi);
-            rect.style.cursor = 'pointer';
-            // Click bbox in region → scroll to main and highlight container
-            rect.addEventListener('click', function(e) {
-              e.stopPropagation();
-              var mainFrame = _overlay && _overlay.querySelector('.milg-viewer-frame');
-              if (mainFrame) {
-                mainFrame.scrollIntoView({ behavior: 'smooth' });
-                var indicator = _overlay && _overlay.querySelector('.milg-region-indicator-' + rIdx);
-                if (indicator) {
-                  var origStroke = indicator.getAttribute('stroke');
-                  var origWidth = indicator.getAttribute('stroke-width');
-                  var flash = 0;
-                  (function pulse() {
-                    var on = flash % 2 === 0;
-                    indicator.setAttribute('stroke', on ? '#fbbf24' : origStroke);
-                    indicator.setAttribute('stroke-width', on ? '3' : origWidth);
-                    flash++;
-                    if (flash < 6) setTimeout(pulse, 250);
-                    else { indicator.setAttribute('stroke', origStroke); indicator.setAttribute('stroke-width', origWidth); }
-                  })();
-                }
-              }
-            });
-            rgnSvg.appendChild(rect);
-          });
-        }
+        // Display at natural size, capped at container width. If wider → horizontal scroll.
+        rgnImg.style.cssText = 'display:block;max-width:100%;height:auto;';
 
         rgnFrame.appendChild(rgnImg);
-        rgnFrame.appendChild(rgnSvg);
         rgnSection.appendChild(rgnFrame);
         regionSection.appendChild(rgnSection);
       });
@@ -506,7 +513,12 @@ window.MilgViewer = (function() {
     var svg = _overlay && _overlay.querySelector('.milg-viewer-svg');
     if (!svg || !_meta) return;
 
-    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    // Clear non-permanent SVG children (keep region indicators which are always visible)
+    var _toRemove = [];
+    for (var ci = 0; ci < svg.childNodes.length; ci++) {
+      if (!svg.childNodes[ci].getAttribute || !svg.childNodes[ci].getAttribute('data-permanent')) _toRemove.push(svg.childNodes[ci]);
+    }
+    _toRemove.forEach(function(n) { svg.removeChild(n); });
 
     // Show hint when no filter is active
     var hint = _overlay.querySelector('.milg-viewer-hint');
@@ -651,67 +663,7 @@ window.MilgViewer = (function() {
       });
     });
 
-    // Render container indicators for ALL regions on the main screenshot.
-    // Unconditional — not dependent on bbox matching. Each region with a containerRect
-    // gets a dashed blue indicator showing where hidden content exists.
-    if (!_showExpanded && regions.length > 0) {
-      var _labelSize = Math.max(14, Math.round(14 * scaleX));
-      var _strokeW = Math.max(2, Math.round(2 * scaleX));
-      var _dashOn = Math.round(8 * scaleX);
-      var _dashOff = Math.round(4 * scaleX);
-      regions.forEach(function(rgn, ri) {
-        if (!rgn.containerRect) return;
-        var cr = rgn.containerRect;
-        var cx = Math.round(cr.left * scaleX);
-        var cy = Math.round(cr.top * scaleY) - _calibrationOffsetY;
-        var cw = Math.max(Math.round(cr.width * scaleX), 40);
-        var ch = Math.max(Math.round(cr.height * scaleY), 40);
-        var indicator = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        indicator.setAttribute('class', 'milg-region-indicator-' + ri);
-        indicator.setAttribute('x', cx);
-        indicator.setAttribute('y', cy);
-        indicator.setAttribute('width', cw);
-        indicator.setAttribute('height', ch);
-        indicator.setAttribute('fill', 'rgba(59,130,246,0.12)');
-        indicator.setAttribute('stroke', '#3b82f6');
-        indicator.setAttribute('stroke-width', _strokeW);
-        indicator.setAttribute('stroke-dasharray', _dashOn + ' ' + _dashOff);
-        indicator.setAttribute('rx', '4');
-        indicator.setAttribute('data-region', ri);
-        indicator.style.cursor = 'pointer';
-        svg.appendChild(indicator);
-        // Label background for readability
-        var labelText = 'Hidden content \u2014 click to see ' + ((rgn.pairIndices || []).length || '') + ' pairs \u2193';
-        var labelBg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        var lx = cx + Math.round(4 * scaleX);
-        var ly = cy + Math.round(4 * scaleX);
-        labelBg.setAttribute('x', lx);
-        labelBg.setAttribute('y', ly);
-        labelBg.setAttribute('width', Math.min(cw - Math.round(8 * scaleX), Math.round(labelText.length * _labelSize * 0.55)));
-        labelBg.setAttribute('height', Math.round(_labelSize * 1.6));
-        labelBg.setAttribute('fill', 'rgba(30,58,138,0.85)');
-        labelBg.setAttribute('rx', '3');
-        labelBg.setAttribute('pointer-events', 'none');
-        svg.appendChild(labelBg);
-        var label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        label.setAttribute('x', lx + Math.round(4 * scaleX));
-        label.setAttribute('y', ly + Math.round(_labelSize * 1.15));
-        label.setAttribute('fill', '#93c5fd');
-        label.setAttribute('font-size', _labelSize);
-        label.setAttribute('font-weight', '600');
-        label.setAttribute('font-family', 'system-ui, sans-serif');
-        label.setAttribute('pointer-events', 'none');
-        label.textContent = labelText;
-        svg.appendChild(label);
-        indicator.addEventListener('click', function(regionIdx) {
-          return function(e) {
-            e.stopPropagation();
-            var regionEl = document.getElementById('milg-region-' + regionIdx);
-            if (regionEl) regionEl.scrollIntoView({ behavior: 'smooth' });
-          };
-        }(ri));
-      });
-    }
+    // Container indicators are rendered permanently in onImageReady() — no need to re-render here.
 
     // Event handlers on rects — tooltip hides with delay so user can hover it
     svg.querySelectorAll('rect').forEach(function(rect) {

@@ -181,6 +181,7 @@ tests/
   edge-minimal-input-flow.md
   html-analysis.spec.js
   README.md
+  region-debug.spec.js
   test-case-1-review.md
   test-case-2-review.md
   test-case-3-review.md
@@ -25996,6 +25997,273 @@ All HTML outputs are loadable as presets in the [preview tool](../docs/index.htm
 - The review notes reference knowledge files that actually have content
 </file>
 
+<file path="tests/region-debug.spec.js">
+// @ts-check
+// Diagnostic test: captures region screenshot data from fink-translate.com
+// and writes debug artifacts to test-results/region-debug/
+const { test, expect } = require('@playwright/test');
+const fs = require('fs');
+const path = require('path');
+
+const ANALYZER_URL = 'http://localhost:8384/analyzer.html';
+const OUT_DIR = path.join(__dirname, '..', 'test-results', 'region-debug');
+
+test.describe('Region Screenshot Debug', () => {
+
+  test('diagnose fink-translate carousel regions', async ({ page }) => {
+    test.setTimeout(420000);
+    fs.mkdirSync(OUT_DIR, { recursive: true });
+
+    const consoleLogs = [];
+    page.on('console', msg => {
+      const text = msg.text();
+      consoleLogs.push(text);
+      // Print region/clipped related logs immediately
+      if (text.includes('region') || text.includes('Region') || text.includes('clipp') || text.includes('milg-viewer'))
+        console.log('[BROWSER]', text);
+    });
+
+    // 1. Run URL analysis
+    await page.goto(ANALYZER_URL);
+    await page.check('#screenshotCheck');
+    await page.click('[data-tab="tabUrl"]');
+    await page.fill('#urlInput', 'https://www.fink-translate.com/');
+    await page.click('#analyzeUrlBtn');
+    await page.waitForSelector('.report-container.visible', { timeout: 360000 });
+
+    // 2. Extract raw report data
+    const reportDump = await page.evaluate(() => {
+      const report = window.__milgLastReport;
+      if (!report || !report.raw) return { error: 'no report data' };
+      const raw = report.raw;
+
+      // Region screenshots
+      const regions = (raw.regionScreenshots || []).map((rgn, i) => ({
+        index: i,
+        hasScreenshot: !!rgn.screenshot,
+        screenshotLen: rgn.screenshot ? rgn.screenshot.length : 0,
+        screenshotMeta: rgn.screenshotMeta || null,
+        pairIndices: rgn.pairIndices || [],
+        localBboxes: rgn.localBboxes || {},
+        containerRect: rgn.containerRect || null,
+      }));
+
+      // Clipped pairs
+      const pairs = raw.colors ? raw.colors.contrastPairs || [] : [];
+      const clippedPairs = pairs.map((p, i) => ({
+        index: i,
+        isClipped: !!p._isClipped,
+        bbox: p.bbox,
+        selector: p.selector ? p.selector.substring(0, 80) : null,
+        text: p.text ? p.text.substring(0, 40) : null,
+        ratio: p.ratio,
+        passes: p.passes,
+      })).filter(p => p.isClipped);
+
+      // All pairs with bboxes (for bbox identity check)
+      const allPairsWithBbox = pairs.filter(p => p.bbox).length;
+
+      // screenshotMeta vs cleanMeta
+      const screenshotMeta = raw.screenshotMeta || null;
+      const cleanMeta = raw.screenshotCleanMeta || null;
+      const hasCleanScreenshot = !!raw.screenshotClean;
+      const hasExpandedScreenshot = !!raw.screenshotFull;
+
+      return {
+        regionCount: regions.length,
+        regions,
+        clippedPairCount: clippedPairs.length,
+        clippedPairs,
+        totalPairs: pairs.length,
+        allPairsWithBbox,
+        screenshotMeta,
+        cleanMeta,
+        hasCleanScreenshot,
+        hasExpandedScreenshot,
+      };
+    });
+
+    // Write the report dump
+    fs.writeFileSync(path.join(OUT_DIR, 'report-dump.json'), JSON.stringify(reportDump, null, 2));
+    console.log('\n=== REPORT DUMP ===');
+    console.log('Region count:', reportDump.regionCount);
+    console.log('Clipped pairs:', reportDump.clippedPairCount, '/', reportDump.totalPairs);
+    console.log('Has clean screenshot:', reportDump.hasCleanScreenshot);
+    console.log('Has expanded screenshot:', reportDump.hasExpandedScreenshot);
+    console.log('Clean meta:', JSON.stringify(reportDump.cleanMeta));
+    console.log('Screenshot meta:', JSON.stringify(reportDump.screenshotMeta));
+    if (reportDump.regions) {
+      reportDump.regions.forEach(r => {
+        console.log(`Region ${r.index}: screenshot=${r.screenshotLen}bytes, meta=${JSON.stringify(r.screenshotMeta)}, containerRect=${JSON.stringify(r.containerRect)}, pairIndices=[${r.pairIndices.join(',')}]`);
+      });
+    }
+    if (reportDump.clippedPairs) {
+      reportDump.clippedPairs.forEach(p => {
+        console.log(`Clipped pair ${p.index}: bbox=${JSON.stringify(p.bbox)} text="${p.text}" ratio=${p.ratio} passes=${p.passes}`);
+      });
+    }
+
+    // 3. Save region screenshot images
+    const regionImages = await page.evaluate(() => {
+      const report = window.__milgLastReport;
+      if (!report || !report.raw || !report.raw.regionScreenshots) return [];
+      return report.raw.regionScreenshots.map((rgn, i) => ({
+        index: i,
+        dataUri: rgn.screenshot || null,
+      }));
+    });
+    regionImages.forEach(ri => {
+      if (ri.dataUri) {
+        const match = ri.dataUri.match(/^data:image\/\w+;base64,(.+)$/);
+        if (match) {
+          fs.writeFileSync(path.join(OUT_DIR, `region-${ri.index}.webp`), Buffer.from(match[1], 'base64'));
+          console.log(`Saved region-${ri.index}.webp`);
+        }
+      }
+    });
+
+    // 4. Save clean screenshot
+    const cleanScreenshot = await page.evaluate(() => {
+      const report = window.__milgLastReport;
+      if (!report || !report.raw) return null;
+      return report.raw.screenshotClean || null;
+    });
+    if (cleanScreenshot) {
+      const match = cleanScreenshot.match(/^data:image\/\w+;base64,(.+)$/);
+      if (match) {
+        fs.writeFileSync(path.join(OUT_DIR, 'clean-screenshot.webp'), Buffer.from(match[1], 'base64'));
+        console.log('Saved clean-screenshot.webp');
+      }
+    }
+
+    // 5. Open viewer and check what renders
+    const screenshotDetails = page.locator('details.report-screenshots');
+    if (await screenshotDetails.count() > 0) {
+      await screenshotDetails.locator('summary').click();
+      const screenshotImg = page.locator('.screenshot-img').first();
+      await screenshotImg.waitFor({ state: 'visible', timeout: 5000 });
+      await screenshotImg.click();
+      await page.waitForSelector('.milg-viewer-overlay.visible', { timeout: 10000 });
+
+      // Click "All" filter
+      const allBtn = page.locator('.milg-viewer-filter-btn[data-filter-value="all"]');
+      if (await allBtn.count() > 0) {
+        await allBtn.click();
+        await page.waitForTimeout(500);
+      }
+
+      // Check SVG overlay state
+      const svgState = await page.evaluate(() => {
+        const svg = document.querySelector('svg.milg-viewer-svg');
+        if (!svg) return { error: 'no SVG found' };
+        const rects = svg.querySelectorAll('rect');
+        const regionIndicators = svg.querySelectorAll('rect[data-region]');
+        const texts = svg.querySelectorAll('text');
+        return {
+          totalRects: rects.length,
+          regionIndicatorCount: regionIndicators.length,
+          regionIndicators: Array.from(regionIndicators).map(r => ({
+            class: r.getAttribute('class'),
+            x: r.getAttribute('x'),
+            y: r.getAttribute('y'),
+            width: r.getAttribute('width'),
+            height: r.getAttribute('height'),
+            stroke: r.getAttribute('stroke'),
+          })),
+          textCount: texts.length,
+          texts: Array.from(texts).map(t => ({
+            x: t.getAttribute('x'),
+            y: t.getAttribute('y'),
+            fontSize: t.getAttribute('font-size'),
+            content: t.textContent.substring(0, 50),
+          })),
+          viewBox: svg.getAttribute('viewBox'),
+          svgWidth: svg.getBoundingClientRect().width,
+          svgHeight: svg.getBoundingClientRect().height,
+        };
+      });
+
+      fs.writeFileSync(path.join(OUT_DIR, 'svg-state.json'), JSON.stringify(svgState, null, 2));
+      console.log('\n=== SVG OVERLAY STATE ===');
+      console.log('viewBox:', svgState.viewBox);
+      console.log('SVG display size:', svgState.svgWidth, 'x', svgState.svgHeight);
+      console.log('Total rects:', svgState.totalRects);
+      console.log('Region indicators:', svgState.regionIndicatorCount);
+      if (svgState.regionIndicators) {
+        svgState.regionIndicators.forEach(ind => {
+          console.log('  Indicator:', JSON.stringify(ind));
+        });
+      }
+      console.log('Texts:', svgState.textCount);
+      if (svgState.texts) {
+        svgState.texts.forEach(t => console.log('  Text:', JSON.stringify(t)));
+      }
+
+      // Check region sections in DOM
+      const regionSections = await page.evaluate(() => {
+        const sections = document.querySelectorAll('.milg-viewer-region-section');
+        return Array.from(sections).map((s, i) => {
+          const img = s.querySelector('img');
+          const rgnSvg = s.querySelector('svg');
+          const rects = rgnSvg ? rgnSvg.querySelectorAll('rect') : [];
+          return {
+            id: s.id,
+            width: s.getBoundingClientRect().width,
+            height: s.getBoundingClientRect().height,
+            imgNaturalWidth: img ? img.naturalWidth : null,
+            imgNaturalHeight: img ? img.naturalHeight : null,
+            imgDisplayWidth: img ? img.getBoundingClientRect().width : null,
+            imgDisplayHeight: img ? img.getBoundingClientRect().height : null,
+            imgStyleWidth: img ? img.style.width : null,
+            svgViewBox: rgnSvg ? rgnSvg.getAttribute('viewBox') : null,
+            svgRectCount: rects.length,
+          };
+        });
+      });
+
+      console.log('\n=== REGION SECTIONS IN DOM ===');
+      regionSections.forEach(s => {
+        console.log(`${s.id}: section=${Math.round(s.width)}x${Math.round(s.height)}px, img=${Math.round(s.imgDisplayWidth)}x${Math.round(s.imgDisplayHeight)}px (natural: ${s.imgNaturalWidth}x${s.imgNaturalHeight}), style.width=${s.imgStyleWidth}, svgViewBox=${s.svgViewBox}, rects=${s.svgRectCount}`);
+      });
+
+      // Take a screenshot of the viewer top
+      await page.screenshot({ path: path.join(OUT_DIR, 'viewer-with-overlays.png'), fullPage: false });
+      console.log('Saved viewer-with-overlays.png');
+
+      // Scroll the viewer content to show the container indicator area
+      const indicatorRect = page.locator('svg.milg-viewer-svg rect[data-region="0"]');
+      if (await indicatorRect.count() > 0) {
+        await indicatorRect.scrollIntoViewIfNeeded();
+        await page.waitForTimeout(300);
+        await page.screenshot({ path: path.join(OUT_DIR, 'viewer-indicator-area.png'), fullPage: false });
+        console.log('Saved viewer-indicator-area.png');
+      }
+
+      // Scroll to first region section and screenshot
+      const firstRegion = page.locator('.milg-viewer-region-section').first();
+      if (await firstRegion.count() > 0) {
+        await firstRegion.scrollIntoViewIfNeeded();
+        await page.waitForTimeout(300);
+        await page.screenshot({ path: path.join(OUT_DIR, 'viewer-region-section.png'), fullPage: false });
+        console.log('Saved viewer-region-section.png');
+      }
+
+      // Grab console logs with milg-viewer prefix
+      const viewerLogs = consoleLogs.filter(l => l.includes('[milg-viewer]'));
+      console.log('\n=== VIEWER CONSOLE LOGS ===');
+      viewerLogs.forEach(l => console.log(l));
+    }
+
+    // Write all console logs
+    fs.writeFileSync(path.join(OUT_DIR, 'console-logs.txt'), consoleLogs.join('\n'));
+
+    // Assertions (loose — this is a diagnostic test)
+    expect(reportDump.regionCount).toBeGreaterThanOrEqual(0);
+    expect(reportDump.hasCleanScreenshot).toBe(true);
+  });
+});
+</file>
+
 <file path="tests/test-case-1-review.md">
 # Design Review Notes
 
@@ -37975,6 +38243,67 @@ window.MilgViewer = (function() {
 
       viewImg.addEventListener('load', function() {
         _calibrationOffsetY = (_meta && _meta.calibrationOffsetY) || 0;
+
+        // Render permanent container indicators for hidden overflow regions.
+        // These are always visible (not gated behind a filter).
+        var _regions = (reportData.raw && reportData.raw.regionScreenshots) || [];
+        if (_regions.length > 0 && _meta) {
+          var _s = _meta.scale || 1.5;
+          var _sw = Math.max(2, Math.round(2 * _s));
+          var _dOn = Math.round(8 * _s); var _dOff = Math.round(4 * _s);
+          var _fs = Math.max(14, Math.round(14 * _s));
+          _regions.forEach(function(rgn, ri) {
+            if (!rgn.containerRect) return;
+            var cr = rgn.containerRect;
+            var cx = Math.round(cr.left * _s);
+            var cy = Math.round(cr.top * _s) - _calibrationOffsetY;
+            var cw = Math.max(Math.round(cr.width * _s), 40);
+            var ch = Math.max(Math.round(cr.height * _s), 40);
+            var ind = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            ind.setAttribute('class', 'milg-region-indicator-' + ri);
+            ind.setAttribute('x', cx); ind.setAttribute('y', cy);
+            ind.setAttribute('width', cw); ind.setAttribute('height', ch);
+            ind.setAttribute('fill', 'rgba(59,130,246,0.12)');
+            ind.setAttribute('stroke', '#3b82f6');
+            ind.setAttribute('stroke-width', _sw);
+            ind.setAttribute('stroke-dasharray', _dOn + ' ' + _dOff);
+            ind.setAttribute('rx', '4');
+            ind.setAttribute('data-region', ri);
+            ind.style.cursor = 'pointer';
+            ind.setAttribute('data-permanent', '1');
+            svg.appendChild(ind);
+            var pCount = (rgn.pairIndices || []).length;
+            var lblText = 'Hidden content' + (pCount ? ' — ' + pCount + ' contrast pairs' : '') + ' ↓';
+            var lx = cx + Math.round(4 * _s);
+            var ly = cy + Math.round(4 * _s);
+            var bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            bg.setAttribute('x', lx); bg.setAttribute('y', ly);
+            bg.setAttribute('width', Math.min(cw - Math.round(8 * _s), Math.round(lblText.length * _fs * 0.55)));
+            bg.setAttribute('height', Math.round(_fs * 1.6));
+            bg.setAttribute('fill', 'rgba(30,58,138,0.85)'); bg.setAttribute('rx', '3');
+            bg.setAttribute('pointer-events', 'none');
+            bg.setAttribute('data-permanent', '1');
+            svg.appendChild(bg);
+            var lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            lbl.setAttribute('x', lx + Math.round(4 * _s));
+            lbl.setAttribute('y', ly + Math.round(_fs * 1.15));
+            lbl.setAttribute('fill', '#93c5fd'); lbl.setAttribute('font-size', _fs);
+            lbl.setAttribute('font-weight', '600');
+            lbl.setAttribute('font-family', 'system-ui, sans-serif');
+            lbl.setAttribute('pointer-events', 'none');
+            lbl.setAttribute('data-permanent', '1');
+            lbl.textContent = lblText;
+            svg.appendChild(lbl);
+            ind.addEventListener('click', (function(idx) {
+              return function(e) {
+                e.stopPropagation();
+                var el = document.getElementById('milg-region-' + idx);
+                if (el) el.scrollIntoView({ behavior: 'smooth' });
+              };
+            })(ri));
+          });
+        }
+
         updateFilterButtons();
         renderOverlays();
 
@@ -38051,74 +38380,20 @@ window.MilgViewer = (function() {
         rgnHeader.appendChild(backLink);
         rgnSection.appendChild(rgnHeader);
 
-        // Region image container — display at natural CSS-pixel size, scroll if wider than container
+        // Region image container — display at natural CSS-pixel size, scrollable
         var rgnScale = rgn.screenshotMeta.scale || 1.5;
         var rgnDisplayW = Math.round(rgn.screenshotMeta.canvasWidth / rgnScale);
         var rgnDisplayH = Math.round(rgn.screenshotMeta.canvasHeight / rgnScale);
         var rgnFrame = document.createElement('div');
-        rgnFrame.style.cssText = 'position:relative;overflow:auto;max-height:500px;';
+        rgnFrame.style.cssText = 'overflow:auto;max-height:600px;';
 
         var rgnImg = document.createElement('img');
         rgnImg.src = rgn.screenshot;
         rgnImg.alt = 'Hidden content region ' + (rIdx + 1);
-        rgnImg.style.cssText = 'display:block;width:' + rgnDisplayW + 'px;height:' + rgnDisplayH + 'px;max-width:none;';
-
-        var rgnSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        rgnSvg.setAttribute('class', 'milg-viewer-region-svg');
-        rgnSvg.setAttribute('viewBox', '0 0 ' + rgn.screenshotMeta.canvasWidth + ' ' + rgn.screenshotMeta.canvasHeight);
-        rgnSvg.setAttribute('preserveAspectRatio', 'xMinYMin meet');
-        rgnSvg.style.cssText = 'position:absolute;top:0;left:0;width:' + rgnDisplayW + 'px;height:' + rgnDisplayH + 'px;pointer-events:auto;';
-
-        // Render local bboxes for this region's contrast pairs
-        if (rgn.localBboxes && rgn.pairIndices && _reportData && _reportData.raw && _reportData.raw.colors) {
-          var pairs = _reportData.raw.colors.contrastPairs || [];
-          var scale = rgn.screenshotMeta.scale || 1.5;
-          rgn.pairIndices.forEach(function(pi) {
-            var pair = pairs[pi];
-            if (!pair) return;
-            var lb = rgn.localBboxes[pi];
-            if (!lb) return;
-            var color = pair.passes ? COLORS.pass : (pair.ratio < pair.needed * 0.7 ? COLORS.error : COLORS.warning);
-            var rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-            rect.setAttribute('x', Math.round(lb.left * scale));
-            rect.setAttribute('y', Math.round(lb.top * scale));
-            rect.setAttribute('width', Math.max(Math.round(lb.width * scale), 4));
-            rect.setAttribute('height', Math.max(Math.round(lb.height * scale), 4));
-            rect.setAttribute('fill', color.fill);
-            rect.setAttribute('stroke', color.stroke);
-            rect.setAttribute('stroke-width', '1.5');
-            rect.setAttribute('rx', '2');
-            rect.setAttribute('data-region', rIdx);
-            rect.setAttribute('data-pair-index', pi);
-            rect.style.cursor = 'pointer';
-            // Click bbox in region → scroll to main and highlight container
-            rect.addEventListener('click', function(e) {
-              e.stopPropagation();
-              var mainFrame = _overlay && _overlay.querySelector('.milg-viewer-frame');
-              if (mainFrame) {
-                mainFrame.scrollIntoView({ behavior: 'smooth' });
-                var indicator = _overlay && _overlay.querySelector('.milg-region-indicator-' + rIdx);
-                if (indicator) {
-                  var origStroke = indicator.getAttribute('stroke');
-                  var origWidth = indicator.getAttribute('stroke-width');
-                  var flash = 0;
-                  (function pulse() {
-                    var on = flash % 2 === 0;
-                    indicator.setAttribute('stroke', on ? '#fbbf24' : origStroke);
-                    indicator.setAttribute('stroke-width', on ? '3' : origWidth);
-                    flash++;
-                    if (flash < 6) setTimeout(pulse, 250);
-                    else { indicator.setAttribute('stroke', origStroke); indicator.setAttribute('stroke-width', origWidth); }
-                  })();
-                }
-              }
-            });
-            rgnSvg.appendChild(rect);
-          });
-        }
+        // Display at natural size, capped at container width. If wider → horizontal scroll.
+        rgnImg.style.cssText = 'display:block;max-width:100%;height:auto;';
 
         rgnFrame.appendChild(rgnImg);
-        rgnFrame.appendChild(rgnSvg);
         rgnSection.appendChild(rgnFrame);
         regionSection.appendChild(rgnSection);
       });
@@ -38232,7 +38507,12 @@ window.MilgViewer = (function() {
     var svg = _overlay && _overlay.querySelector('.milg-viewer-svg');
     if (!svg || !_meta) return;
 
-    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    // Clear non-permanent SVG children (keep region indicators which are always visible)
+    var _toRemove = [];
+    for (var ci = 0; ci < svg.childNodes.length; ci++) {
+      if (!svg.childNodes[ci].getAttribute || !svg.childNodes[ci].getAttribute('data-permanent')) _toRemove.push(svg.childNodes[ci]);
+    }
+    _toRemove.forEach(function(n) { svg.removeChild(n); });
 
     // Show hint when no filter is active
     var hint = _overlay.querySelector('.milg-viewer-hint');
@@ -38377,67 +38657,7 @@ window.MilgViewer = (function() {
       });
     });
 
-    // Render container indicators for ALL regions on the main screenshot.
-    // Unconditional — not dependent on bbox matching. Each region with a containerRect
-    // gets a dashed blue indicator showing where hidden content exists.
-    if (!_showExpanded && regions.length > 0) {
-      var _labelSize = Math.max(14, Math.round(14 * scaleX));
-      var _strokeW = Math.max(2, Math.round(2 * scaleX));
-      var _dashOn = Math.round(8 * scaleX);
-      var _dashOff = Math.round(4 * scaleX);
-      regions.forEach(function(rgn, ri) {
-        if (!rgn.containerRect) return;
-        var cr = rgn.containerRect;
-        var cx = Math.round(cr.left * scaleX);
-        var cy = Math.round(cr.top * scaleY) - _calibrationOffsetY;
-        var cw = Math.max(Math.round(cr.width * scaleX), 40);
-        var ch = Math.max(Math.round(cr.height * scaleY), 40);
-        var indicator = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        indicator.setAttribute('class', 'milg-region-indicator-' + ri);
-        indicator.setAttribute('x', cx);
-        indicator.setAttribute('y', cy);
-        indicator.setAttribute('width', cw);
-        indicator.setAttribute('height', ch);
-        indicator.setAttribute('fill', 'rgba(59,130,246,0.12)');
-        indicator.setAttribute('stroke', '#3b82f6');
-        indicator.setAttribute('stroke-width', _strokeW);
-        indicator.setAttribute('stroke-dasharray', _dashOn + ' ' + _dashOff);
-        indicator.setAttribute('rx', '4');
-        indicator.setAttribute('data-region', ri);
-        indicator.style.cursor = 'pointer';
-        svg.appendChild(indicator);
-        // Label background for readability
-        var labelText = 'Hidden content \u2014 click to see ' + ((rgn.pairIndices || []).length || '') + ' pairs \u2193';
-        var labelBg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        var lx = cx + Math.round(4 * scaleX);
-        var ly = cy + Math.round(4 * scaleX);
-        labelBg.setAttribute('x', lx);
-        labelBg.setAttribute('y', ly);
-        labelBg.setAttribute('width', Math.min(cw - Math.round(8 * scaleX), Math.round(labelText.length * _labelSize * 0.55)));
-        labelBg.setAttribute('height', Math.round(_labelSize * 1.6));
-        labelBg.setAttribute('fill', 'rgba(30,58,138,0.85)');
-        labelBg.setAttribute('rx', '3');
-        labelBg.setAttribute('pointer-events', 'none');
-        svg.appendChild(labelBg);
-        var label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        label.setAttribute('x', lx + Math.round(4 * scaleX));
-        label.setAttribute('y', ly + Math.round(_labelSize * 1.15));
-        label.setAttribute('fill', '#93c5fd');
-        label.setAttribute('font-size', _labelSize);
-        label.setAttribute('font-weight', '600');
-        label.setAttribute('font-family', 'system-ui, sans-serif');
-        label.setAttribute('pointer-events', 'none');
-        label.textContent = labelText;
-        svg.appendChild(label);
-        indicator.addEventListener('click', function(regionIdx) {
-          return function(e) {
-            e.stopPropagation();
-            var regionEl = document.getElementById('milg-region-' + regionIdx);
-            if (regionEl) regionEl.scrollIntoView({ behavior: 'smooth' });
-          };
-        }(ri));
-      });
-    }
+    // Container indicators are rendered permanently in onImageReady() — no need to re-render here.
 
     // Event handlers on rects — tooltip hides with delay so user can hover it
     svg.querySelectorAll('rect').forEach(function(rect) {
@@ -41703,7 +41923,7 @@ window.MilgIframe = (function() {
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.2 loaded');
+console.log('[milg] analyzer.js v3.3 loaded');
 
 (function() {
   "use strict";
@@ -42426,6 +42646,7 @@ console.log('[milg] analyzer.js v3.2 loaded');
       reportData = MilgScoring.runScoring(data);
       if (_isTabSwitch) data._cachedReportData = reportData;
     }
+    window.__milgLastReport = reportData; // Expose for diagnostics/testing
     var reportContainer = document.getElementById('reportContainer');
     var inputSection = document.getElementById('inputSection');
 
@@ -43445,7 +43666,7 @@ console.log('[milg] analyzer.js v3.2 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.2</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.3</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
