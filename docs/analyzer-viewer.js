@@ -278,14 +278,14 @@ window.MilgViewer = (function() {
     if (regions.length > 0) {
       var regionSection = document.createElement('div');
       regionSection.className = 'milg-viewer-regions';
-      regionSection.style.cssText = 'padding:16px 0 8px;width:100%;max-width:95vw;';
+      regionSection.style.cssText = 'padding:16px 0 8px;width:100%;max-width:95vw;display:flex;flex-direction:column;align-items:center;';
 
       regions.forEach(function(rgn, rIdx) {
         if (!rgn.screenshot || !rgn.screenshotMeta) return;
         var rgnSection = document.createElement('div');
         rgnSection.className = 'milg-viewer-region-section';
         rgnSection.id = 'milg-region-' + rIdx;
-        rgnSection.style.cssText = 'margin:0 0 20px;border:1px solid rgba(59,130,246,0.3);border-radius:6px;overflow:hidden;background:rgba(0,0,0,0.3);';
+        rgnSection.style.cssText = 'margin:0 0 20px;border:1px solid rgba(59,130,246,0.3);border-radius:6px;overflow:hidden;background:rgba(0,0,0,0.3);max-width:100%;';
 
         // Region header with label and back-to-main link
         var rgnHeader = document.createElement('div');
@@ -326,8 +326,11 @@ window.MilgViewer = (function() {
         rgnSection.appendChild(rgnHeader);
 
         // Region image container with scroll support
+        var rgnScale = rgn.screenshotMeta.scale || 1.5;
+        var rgnNaturalW = Math.round(rgn.screenshotMeta.canvasWidth / rgnScale);
+        var rgnNaturalH = Math.round(rgn.screenshotMeta.canvasHeight / rgnScale);
         var rgnFrame = document.createElement('div');
-        rgnFrame.style.cssText = 'position:relative;overflow:auto;max-height:500px;';
+        rgnFrame.style.cssText = 'position:relative;overflow:auto;max-height:500px;width:' + rgnNaturalW + 'px;max-width:100%;';
 
         var rgnImg = document.createElement('img');
         rgnImg.src = rgn.screenshot;
@@ -542,6 +545,10 @@ window.MilgViewer = (function() {
         }
       });
     }
+    if (regions.length > 0) {
+      console.log('[milg-viewer] Regions: ' + regions.length + ', clippedBboxKeys: ' + Object.keys(_clippedBboxKeys).length);
+      regions.forEach(function(r, i) { console.log('[milg-viewer] Region ' + i + ': containerRect=' + JSON.stringify(r.containerRect) + ' pairIndices=' + JSON.stringify(r.pairIndices)); });
+    }
 
     // Build pixel verification lookups: by selector AND by bbox position+size
     var verifyBySelector = {};
@@ -585,6 +592,7 @@ window.MilgViewer = (function() {
                 var cy = Math.round(cr.top * scaleY) - _calibrationOffsetY;
                 var cw = Math.round(cr.width * scaleX);
                 var ch = Math.round(cr.height * scaleY);
+                console.log('[milg-viewer] Drawing region indicator ' + ri + ': cx=' + cx + ' cy=' + cy + ' cw=' + cw + ' ch=' + ch + ' containerRect=' + JSON.stringify(cr) + ' scaleX=' + scaleX);
                 var indicator = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
                 indicator.setAttribute('class', 'milg-region-indicator-' + ri);
                 indicator.setAttribute('x', cx);
@@ -593,17 +601,18 @@ window.MilgViewer = (function() {
                 indicator.setAttribute('height', Math.max(ch, 20));
                 indicator.setAttribute('fill', 'rgba(59,130,246,0.08)');
                 indicator.setAttribute('stroke', '#3b82f6');
-                indicator.setAttribute('stroke-width', '2');
-                indicator.setAttribute('stroke-dasharray', '8 4');
+                indicator.setAttribute('stroke-width', Math.max(2, Math.round(scaleX)));
+                indicator.setAttribute('stroke-dasharray', Math.round(8 * scaleX) + ' ' + Math.round(4 * scaleX));
                 indicator.setAttribute('rx', '3');
                 indicator.setAttribute('data-region', ri);
                 indicator.style.cursor = 'pointer';
-                // Label
+                // Label — font-size must be in canvas coordinates (SVG viewBox units)
+                var labelSize = Math.max(11, Math.round(12 * scaleX));
                 var label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-                label.setAttribute('x', cx + 6);
-                label.setAttribute('y', cy + 14);
+                label.setAttribute('x', cx + Math.round(6 * scaleX));
+                label.setAttribute('y', cy + Math.round(labelSize * 1.3));
                 label.setAttribute('fill', '#60a5fa');
-                label.setAttribute('font-size', '11');
+                label.setAttribute('font-size', labelSize);
                 label.setAttribute('font-family', 'system-ui, sans-serif');
                 label.setAttribute('pointer-events', 'none');
                 label.textContent = 'Hidden content \u2014 click to see analysis \u2193';
@@ -684,6 +693,53 @@ window.MilgViewer = (function() {
         svg.appendChild(rect);
       });
     });
+
+    // Fallback: render region indicators that weren't matched via bbox key path.
+    // This handles cases where flow-position bboxes have drifted from finding bboxes.
+    if (!_showExpanded && regions.length > 0) {
+      regions.forEach(function(rgn, ri) {
+        if (_regionContainersRendered[ri]) return;
+        if (!rgn.containerRect || !rgn.pairIndices || rgn.pairIndices.length === 0) return;
+        _regionContainersRendered[ri] = true;
+        var cr = rgn.containerRect;
+        var cx = Math.round(cr.left * scaleX);
+        var cy = Math.round(cr.top * scaleY) - _calibrationOffsetY;
+        var cw = Math.round(cr.width * scaleX);
+        var ch = Math.round(cr.height * scaleY);
+        console.log('[milg-viewer] Fallback region indicator ' + ri + ': cx=' + cx + ' cy=' + cy + ' cw=' + cw + ' ch=' + ch);
+        var indicator = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        indicator.setAttribute('class', 'milg-region-indicator-' + ri);
+        indicator.setAttribute('x', cx);
+        indicator.setAttribute('y', cy);
+        indicator.setAttribute('width', Math.max(cw, 20));
+        indicator.setAttribute('height', Math.max(ch, 20));
+        indicator.setAttribute('fill', 'rgba(59,130,246,0.08)');
+        indicator.setAttribute('stroke', '#3b82f6');
+        indicator.setAttribute('stroke-width', Math.max(2, Math.round(scaleX)));
+        indicator.setAttribute('stroke-dasharray', Math.round(8 * scaleX) + ' ' + Math.round(4 * scaleX));
+        indicator.setAttribute('rx', '3');
+        indicator.setAttribute('data-region', ri);
+        indicator.style.cursor = 'pointer';
+        var labelSize = Math.max(11, Math.round(12 * scaleX));
+        var label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        label.setAttribute('x', cx + Math.round(6 * scaleX));
+        label.setAttribute('y', cy + Math.round(labelSize * 1.3));
+        label.setAttribute('fill', '#60a5fa');
+        label.setAttribute('font-size', labelSize);
+        label.setAttribute('font-family', 'system-ui, sans-serif');
+        label.setAttribute('pointer-events', 'none');
+        label.textContent = 'Hidden content \u2014 click to see analysis \u2193';
+        svg.appendChild(indicator);
+        svg.appendChild(label);
+        indicator.addEventListener('click', function(regionIdx) {
+          return function(e) {
+            e.stopPropagation();
+            var regionEl = document.getElementById('milg-region-' + regionIdx);
+            if (regionEl) regionEl.scrollIntoView({ behavior: 'smooth' });
+          };
+        }(ri));
+      });
+    }
 
     // Event handlers on rects — tooltip hides with delay so user can hover it
     svg.querySelectorAll('rect').forEach(function(rect) {
