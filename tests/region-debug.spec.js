@@ -46,6 +46,10 @@ test.describe('Region Screenshot Debug', () => {
         pairIndices: rgn.pairIndices || [],
         localBboxes: rgn.localBboxes || {},
         containerRect: rgn.containerRect || null,
+        hasExtractedData: !!rgn.extractedData,
+        extractedPairCount: rgn.extractedData && rgn.extractedData.colors ? (rgn.extractedData.colors.contrastPairs || []).length : 0,
+        hasRegionReport: !!rgn.regionReport,
+        regionScore: rgn.regionReport ? rgn.regionReport.overall : null,
       }));
 
       // Clipped pairs

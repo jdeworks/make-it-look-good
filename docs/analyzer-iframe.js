@@ -374,10 +374,11 @@ window.MilgIframe = (function() {
     setTimeout(function() { if (fi < toFetch.length) { console.log('[milg] Font prefetch timeout, continuing'); fi = toFetch.length; cb(); } }, 15000);
   }
 
-  // Region screenshot function — serialized via .toString() into the iframe script.
-  // Detects overflow:hidden containers that clip tracked contrast pairs,
-  // clones each into a mini-page iframe, and captures screenshots in parallel.
-  function _regionScreenshotFn(_sc, _quality, _prog, _cp2) {
+  // Region screenshot function — sourced from MilgRegion shared module.
+  // Serialized via .toString() and injected into the analysis iframe.
+  // The inline fallback below is kept for safety but should not be reached.
+  var _regionScreenshotFn = (typeof window.MilgRegion !== 'undefined') ? window.MilgRegion.getRegionFn() : _regionScreenshotFnFallback;
+  function _regionScreenshotFnFallback(_sc, _quality, _prog, _cp2) {
     return function _buildRegionScreenshots(rgnCb) {
       // Detect clipping containers
       var _rgnCounter = 0, _clipContainerList = [], _clipContainers = {};
