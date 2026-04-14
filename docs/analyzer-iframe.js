@@ -431,30 +431,50 @@ window.MilgIframe = (function() {
       _clipContainerList.forEach(function(rgn, rIdx) {
         var container = rgn.el, cr = container.getBoundingClientRect();
         var clone = container.cloneNode(true);
-        clone.style.cssText += ';overflow:visible !important;max-height:none !important;height:auto !important;clip-path:none !important;';
-        // Force-reveal all descendants: neutralize transforms, overflow, display, visibility, clip
-        clone.querySelectorAll('*').forEach(function(d) {
-          var ds = d.style;
-          ds.cssText += ';transform:none !important;overflow:visible !important;clip-path:none !important;';
-          // Unhide inactive carousel slides (display:none, visibility:hidden, opacity:0)
-          if (ds.display === 'none' || d.getAttribute('aria-hidden') === 'true' || d.hidden) {
-            ds.cssText += ';display:block !important;';
-          }
-          ds.cssText += ';visibility:visible !important;opacity:1 !important;max-height:none !important;height:auto !important;';
-        });
-        for (var ci = 0; ci < clone.children.length; ci++) {
-          var child = clone.children[ci];
-          child.style.cssText += ';transform:none !important;display:block !important;visibility:visible !important;opacity:1 !important;position:relative !important;';
-        }
+        // Inline style overrides on the clone (before it enters the mini-page)
+        clone.style.cssText += ';overflow:visible !important;max-height:none !important;height:auto !important;clip-path:none !important;width:' + Math.round(cr.width) + 'px !important;';
+
+        // Build mini-page HTML with aggressive CSS overrides.
+        // The original stylesheets are included, so CSS class rules like
+        // .carousel-item:not(.active){display:none} still apply. We need
+        // a high-specificity override AND a post-load JS pass to catch everything.
+        var forceRevealCss =
+          '*,*::before,*::after{transition:none !important;animation:none !important;}' +
+          // Force-reveal: override computed display:none from CSS classes
+          'body *{visibility:visible !important;opacity:1 !important;' +
+          'transform:none !important;overflow:visible !important;' +
+          'clip-path:none !important;max-height:none !important;}' +
+          // Common carousel patterns: force-show inactive slides
+          '[aria-hidden="true"],[hidden],.hidden,.d-none,.hide,' +
+          '.carousel-item,.swiper-slide,.slick-slide,' +
+          '[class*="slide"],[class*="panel"],[class*="tab-pane"]{' +
+          'display:block !important;visibility:visible !important;' +
+          'opacity:1 !important;position:relative !important;' +
+          'transform:none !important;left:auto !important;right:auto !important;}';
+
+        // Post-load script: catch any remaining computed display:none elements
+        var forceRevealScript =
+          '<script>document.addEventListener("DOMContentLoaded",function(){' +
+          'document.querySelectorAll("*").forEach(function(el){' +
+          'var cs=getComputedStyle(el);' +
+          'if(cs.display==="none")el.style.setProperty("display","block","important");' +
+          'if(cs.visibility==="hidden")el.style.setProperty("visibility","visible","important");' +
+          'if(parseFloat(cs.opacity)<0.1)el.style.setProperty("opacity","1","important");' +
+          'if(cs.position==="absolute"||cs.position==="fixed")el.style.setProperty("position","relative","important");' +
+          '});' +
+          '});</' + 'script>';
 
         var miniHtml = '<!DOCTYPE html><html><head><meta charset=UTF-8>' +
           (baseHref ? '<base href="' + baseHref.replace(/"/g, '&quot;') + '">' : '') +
           allLinks + allStyles +
-          '<style>*,*::before,*::after{transition:none !important;animation:none !important;}</style>' +
+          '<style>' + forceRevealCss + '</style>' +
+          forceRevealScript +
           '</head><body style="margin:0;padding:0;overflow:visible">' + clone.outerHTML + '</body></html>';
 
+        // Use container width (not 4x) — content flows vertically via force-reveal
+        var iframeW = Math.max(Math.round(cr.width), 320);
         var mf = document.createElement('iframe');
-        mf.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + Math.max(Math.ceil(cr.width * 4), 800) + 'px;height:2000px;border:none;visibility:hidden;';
+        mf.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + iframeW + 'px;height:3000px;border:none;visibility:hidden;';
         mf.setAttribute('sandbox', 'allow-same-origin allow-scripts');
         document.body.appendChild(mf);
 
@@ -469,9 +489,19 @@ window.MilgIframe = (function() {
             try {
               var mDoc = mf.contentDocument;
               if (!mDoc) { _rgnFinish(rIdx, mf, null); return; }
+              // Second pass: force-reveal from parent context (in case script didn't run)
+              try {
+                mDoc.querySelectorAll('*').forEach(function(el) {
+                  var cs = mDoc.defaultView.getComputedStyle(el);
+                  if (cs.display === 'none') el.style.setProperty('display', 'block', 'important');
+                  if (cs.visibility === 'hidden') el.style.setProperty('visibility', 'visible', 'important');
+                  if (parseFloat(cs.opacity) < 0.1) el.style.setProperty('opacity', '1', 'important');
+                });
+              } catch(_e) {}
+              void mDoc.body.offsetHeight; // reflow
               var cW = Math.max(mDoc.body.scrollWidth, mDoc.documentElement.scrollWidth);
               var cH = Math.max(mDoc.body.scrollHeight, mDoc.documentElement.scrollHeight);
-              mf.style.width = cW + 'px'; mf.style.height = cH + 'px';
+              mf.style.width = Math.max(cW, iframeW) + 'px'; mf.style.height = cH + 'px';
               void mDoc.body.offsetHeight;
               var pms = window.modernScreenshot;
               if (!pms || !pms.domToCanvas) { _rgnFinish(rIdx, mf, null); return; }

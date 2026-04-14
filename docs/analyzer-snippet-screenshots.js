@@ -283,18 +283,29 @@
           _clipList.forEach(function(rgn, rIdx) {
             var container = rgn.el, cr = container.getBoundingClientRect();
             var clone = container.cloneNode(true);
-            clone.style.cssText += ';overflow:visible !important;max-height:none !important;height:auto !important;clip-path:none !important;';
-            clone.querySelectorAll('*').forEach(function(d) {
-              d.style.cssText += ';transform:none !important;overflow:visible !important;clip-path:none !important;visibility:visible !important;opacity:1 !important;max-height:none !important;height:auto !important;';
-              if (d.style.display === 'none' || d.getAttribute('aria-hidden') === 'true' || d.hidden) d.style.cssText += ';display:block !important;';
-            });
-            for (var ci = 0; ci < clone.children.length; ci++) {
-              clone.children[ci].style.cssText += ';transform:none !important;display:block !important;visibility:visible !important;opacity:1 !important;position:relative !important;';
-            }
+            clone.style.cssText += ';overflow:visible !important;max-height:none !important;height:auto !important;clip-path:none !important;width:' + Math.round(cr.width) + 'px !important;';
+            var _forceRevealCss =
+              '*,*::before,*::after{transition:none !important;animation:none !important;}' +
+              'body *{visibility:visible !important;opacity:1 !important;transform:none !important;overflow:visible !important;clip-path:none !important;max-height:none !important;}' +
+              '[aria-hidden="true"],[hidden],.hidden,.d-none,.hide,' +
+              '.carousel-item,.swiper-slide,.slick-slide,' +
+              '[class*="slide"],[class*="panel"],[class*="tab-pane"]{' +
+              'display:block !important;visibility:visible !important;opacity:1 !important;position:relative !important;transform:none !important;left:auto !important;right:auto !important;}';
+            var _forceRevealScript =
+              '<script>document.addEventListener("DOMContentLoaded",function(){' +
+              'document.querySelectorAll("*").forEach(function(el){var cs=getComputedStyle(el);' +
+              'if(cs.display==="none")el.style.setProperty("display","block","important");' +
+              'if(cs.visibility==="hidden")el.style.setProperty("visibility","visible","important");' +
+              'if(parseFloat(cs.opacity)<0.1)el.style.setProperty("opacity","1","important");' +
+              'if(cs.position==="absolute"||cs.position==="fixed")el.style.setProperty("position","relative","important");' +
+              '});' +
+              '});</' + 'script>';
             var miniHtml = '<!DOCTYPE html><html><head><meta charset=UTF-8><base href="' + baseHref.replace(/"/g, '&quot;') + '">' + allLinks + allStyles +
-              '<style>*,*::before,*::after{transition:none !important;animation:none !important;}</style></head><body style="margin:0;padding:0;overflow:visible">' + clone.outerHTML + '</body></html>';
+              '<style>' + _forceRevealCss + '</style>' + _forceRevealScript +
+              '</head><body style="margin:0;padding:0;overflow:visible">' + clone.outerHTML + '</body></html>';
+            var _iframeW = Math.max(Math.round(cr.width), 320);
             var mf = document.createElement('iframe');
-            mf.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + Math.max(Math.ceil(cr.width * 4), 800) + 'px;height:2000px;border:none;visibility:hidden;';
+            mf.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + _iframeW + 'px;height:3000px;border:none;visibility:hidden;';
             document.body.appendChild(mf);
             var rgnTimer = setTimeout(function() { rgnFinish(rIdx, mf, null); }, 15000);
             mf.srcdoc = miniHtml;
@@ -302,9 +313,18 @@
               setTimeout(function() {
                 try {
                   var mDoc = mf.contentDocument; if (!mDoc) { rgnFinish(rIdx, mf, null); return; }
+                  try {
+                    mDoc.querySelectorAll('*').forEach(function(el) {
+                      var cs = mDoc.defaultView.getComputedStyle(el);
+                      if (cs.display === 'none') el.style.setProperty('display', 'block', 'important');
+                      if (cs.visibility === 'hidden') el.style.setProperty('visibility', 'visible', 'important');
+                      if (parseFloat(cs.opacity) < 0.1) el.style.setProperty('opacity', '1', 'important');
+                    });
+                  } catch(_e) {}
+                  void mDoc.body.offsetHeight;
                   var cW = Math.max(mDoc.body.scrollWidth, mDoc.documentElement.scrollWidth);
                   var cH = Math.max(mDoc.body.scrollHeight, mDoc.documentElement.scrollHeight);
-                  mf.style.width = cW + 'px'; mf.style.height = cH + 'px';
+                  mf.style.width = Math.max(cW, _iframeW) + 'px'; mf.style.height = cH + 'px';
                   void mDoc.body.offsetHeight;
                   ms.domToCanvas(mDoc.documentElement, { scale: 1.5, timeout: 12000 }).then(function(rc) {
                     var rUri; try { rUri = rc.toDataURL('image/webp', 0.8); } catch(e) { rUri = ''; }

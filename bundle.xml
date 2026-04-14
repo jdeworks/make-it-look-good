@@ -25997,273 +25997,6 @@ All HTML outputs are loadable as presets in the [preview tool](../docs/index.htm
 - The review notes reference knowledge files that actually have content
 </file>
 
-<file path="tests/region-debug.spec.js">
-// @ts-check
-// Diagnostic test: captures region screenshot data from fink-translate.com
-// and writes debug artifacts to test-results/region-debug/
-const { test, expect } = require('@playwright/test');
-const fs = require('fs');
-const path = require('path');
-
-const ANALYZER_URL = 'http://localhost:8384/analyzer.html';
-const OUT_DIR = path.join(__dirname, '..', 'test-results', 'region-debug');
-
-test.describe('Region Screenshot Debug', () => {
-
-  test('diagnose fink-translate carousel regions', async ({ page }) => {
-    test.setTimeout(420000);
-    fs.mkdirSync(OUT_DIR, { recursive: true });
-
-    const consoleLogs = [];
-    page.on('console', msg => {
-      const text = msg.text();
-      consoleLogs.push(text);
-      // Print region/clipped related logs immediately
-      if (text.includes('region') || text.includes('Region') || text.includes('clipp') || text.includes('milg-viewer'))
-        console.log('[BROWSER]', text);
-    });
-
-    // 1. Run URL analysis
-    await page.goto(ANALYZER_URL);
-    await page.check('#screenshotCheck');
-    await page.click('[data-tab="tabUrl"]');
-    await page.fill('#urlInput', 'https://www.fink-translate.com/');
-    await page.click('#analyzeUrlBtn');
-    await page.waitForSelector('.report-container.visible', { timeout: 360000 });
-
-    // 2. Extract raw report data
-    const reportDump = await page.evaluate(() => {
-      const report = window.__milgLastReport;
-      if (!report || !report.raw) return { error: 'no report data' };
-      const raw = report.raw;
-
-      // Region screenshots
-      const regions = (raw.regionScreenshots || []).map((rgn, i) => ({
-        index: i,
-        hasScreenshot: !!rgn.screenshot,
-        screenshotLen: rgn.screenshot ? rgn.screenshot.length : 0,
-        screenshotMeta: rgn.screenshotMeta || null,
-        pairIndices: rgn.pairIndices || [],
-        localBboxes: rgn.localBboxes || {},
-        containerRect: rgn.containerRect || null,
-      }));
-
-      // Clipped pairs
-      const pairs = raw.colors ? raw.colors.contrastPairs || [] : [];
-      const clippedPairs = pairs.map((p, i) => ({
-        index: i,
-        isClipped: !!p._isClipped,
-        bbox: p.bbox,
-        selector: p.selector ? p.selector.substring(0, 80) : null,
-        text: p.text ? p.text.substring(0, 40) : null,
-        ratio: p.ratio,
-        passes: p.passes,
-      })).filter(p => p.isClipped);
-
-      // All pairs with bboxes (for bbox identity check)
-      const allPairsWithBbox = pairs.filter(p => p.bbox).length;
-
-      // screenshotMeta vs cleanMeta
-      const screenshotMeta = raw.screenshotMeta || null;
-      const cleanMeta = raw.screenshotCleanMeta || null;
-      const hasCleanScreenshot = !!raw.screenshotClean;
-      const hasExpandedScreenshot = !!raw.screenshotFull;
-
-      return {
-        regionCount: regions.length,
-        regions,
-        clippedPairCount: clippedPairs.length,
-        clippedPairs,
-        totalPairs: pairs.length,
-        allPairsWithBbox,
-        screenshotMeta,
-        cleanMeta,
-        hasCleanScreenshot,
-        hasExpandedScreenshot,
-      };
-    });
-
-    // Write the report dump
-    fs.writeFileSync(path.join(OUT_DIR, 'report-dump.json'), JSON.stringify(reportDump, null, 2));
-    console.log('\n=== REPORT DUMP ===');
-    console.log('Region count:', reportDump.regionCount);
-    console.log('Clipped pairs:', reportDump.clippedPairCount, '/', reportDump.totalPairs);
-    console.log('Has clean screenshot:', reportDump.hasCleanScreenshot);
-    console.log('Has expanded screenshot:', reportDump.hasExpandedScreenshot);
-    console.log('Clean meta:', JSON.stringify(reportDump.cleanMeta));
-    console.log('Screenshot meta:', JSON.stringify(reportDump.screenshotMeta));
-    if (reportDump.regions) {
-      reportDump.regions.forEach(r => {
-        console.log(`Region ${r.index}: screenshot=${r.screenshotLen}bytes, meta=${JSON.stringify(r.screenshotMeta)}, containerRect=${JSON.stringify(r.containerRect)}, pairIndices=[${r.pairIndices.join(',')}]`);
-      });
-    }
-    if (reportDump.clippedPairs) {
-      reportDump.clippedPairs.forEach(p => {
-        console.log(`Clipped pair ${p.index}: bbox=${JSON.stringify(p.bbox)} text="${p.text}" ratio=${p.ratio} passes=${p.passes}`);
-      });
-    }
-
-    // 3. Save region screenshot images
-    const regionImages = await page.evaluate(() => {
-      const report = window.__milgLastReport;
-      if (!report || !report.raw || !report.raw.regionScreenshots) return [];
-      return report.raw.regionScreenshots.map((rgn, i) => ({
-        index: i,
-        dataUri: rgn.screenshot || null,
-      }));
-    });
-    regionImages.forEach(ri => {
-      if (ri.dataUri) {
-        const match = ri.dataUri.match(/^data:image\/\w+;base64,(.+)$/);
-        if (match) {
-          fs.writeFileSync(path.join(OUT_DIR, `region-${ri.index}.webp`), Buffer.from(match[1], 'base64'));
-          console.log(`Saved region-${ri.index}.webp`);
-        }
-      }
-    });
-
-    // 4. Save clean screenshot
-    const cleanScreenshot = await page.evaluate(() => {
-      const report = window.__milgLastReport;
-      if (!report || !report.raw) return null;
-      return report.raw.screenshotClean || null;
-    });
-    if (cleanScreenshot) {
-      const match = cleanScreenshot.match(/^data:image\/\w+;base64,(.+)$/);
-      if (match) {
-        fs.writeFileSync(path.join(OUT_DIR, 'clean-screenshot.webp'), Buffer.from(match[1], 'base64'));
-        console.log('Saved clean-screenshot.webp');
-      }
-    }
-
-    // 5. Open viewer and check what renders
-    const screenshotDetails = page.locator('details.report-screenshots');
-    if (await screenshotDetails.count() > 0) {
-      await screenshotDetails.locator('summary').click();
-      const screenshotImg = page.locator('.screenshot-img').first();
-      await screenshotImg.waitFor({ state: 'visible', timeout: 5000 });
-      await screenshotImg.click();
-      await page.waitForSelector('.milg-viewer-overlay.visible', { timeout: 10000 });
-
-      // Click "All" filter
-      const allBtn = page.locator('.milg-viewer-filter-btn[data-filter-value="all"]');
-      if (await allBtn.count() > 0) {
-        await allBtn.click();
-        await page.waitForTimeout(500);
-      }
-
-      // Check SVG overlay state
-      const svgState = await page.evaluate(() => {
-        const svg = document.querySelector('svg.milg-viewer-svg');
-        if (!svg) return { error: 'no SVG found' };
-        const rects = svg.querySelectorAll('rect');
-        const regionIndicators = svg.querySelectorAll('rect[data-region]');
-        const texts = svg.querySelectorAll('text');
-        return {
-          totalRects: rects.length,
-          regionIndicatorCount: regionIndicators.length,
-          regionIndicators: Array.from(regionIndicators).map(r => ({
-            class: r.getAttribute('class'),
-            x: r.getAttribute('x'),
-            y: r.getAttribute('y'),
-            width: r.getAttribute('width'),
-            height: r.getAttribute('height'),
-            stroke: r.getAttribute('stroke'),
-          })),
-          textCount: texts.length,
-          texts: Array.from(texts).map(t => ({
-            x: t.getAttribute('x'),
-            y: t.getAttribute('y'),
-            fontSize: t.getAttribute('font-size'),
-            content: t.textContent.substring(0, 50),
-          })),
-          viewBox: svg.getAttribute('viewBox'),
-          svgWidth: svg.getBoundingClientRect().width,
-          svgHeight: svg.getBoundingClientRect().height,
-        };
-      });
-
-      fs.writeFileSync(path.join(OUT_DIR, 'svg-state.json'), JSON.stringify(svgState, null, 2));
-      console.log('\n=== SVG OVERLAY STATE ===');
-      console.log('viewBox:', svgState.viewBox);
-      console.log('SVG display size:', svgState.svgWidth, 'x', svgState.svgHeight);
-      console.log('Total rects:', svgState.totalRects);
-      console.log('Region indicators:', svgState.regionIndicatorCount);
-      if (svgState.regionIndicators) {
-        svgState.regionIndicators.forEach(ind => {
-          console.log('  Indicator:', JSON.stringify(ind));
-        });
-      }
-      console.log('Texts:', svgState.textCount);
-      if (svgState.texts) {
-        svgState.texts.forEach(t => console.log('  Text:', JSON.stringify(t)));
-      }
-
-      // Check region sections in DOM
-      const regionSections = await page.evaluate(() => {
-        const sections = document.querySelectorAll('.milg-viewer-region-section');
-        return Array.from(sections).map((s, i) => {
-          const img = s.querySelector('img');
-          const rgnSvg = s.querySelector('svg');
-          const rects = rgnSvg ? rgnSvg.querySelectorAll('rect') : [];
-          return {
-            id: s.id,
-            width: s.getBoundingClientRect().width,
-            height: s.getBoundingClientRect().height,
-            imgNaturalWidth: img ? img.naturalWidth : null,
-            imgNaturalHeight: img ? img.naturalHeight : null,
-            imgDisplayWidth: img ? img.getBoundingClientRect().width : null,
-            imgDisplayHeight: img ? img.getBoundingClientRect().height : null,
-            imgStyleWidth: img ? img.style.width : null,
-            svgViewBox: rgnSvg ? rgnSvg.getAttribute('viewBox') : null,
-            svgRectCount: rects.length,
-          };
-        });
-      });
-
-      console.log('\n=== REGION SECTIONS IN DOM ===');
-      regionSections.forEach(s => {
-        console.log(`${s.id}: section=${Math.round(s.width)}x${Math.round(s.height)}px, img=${Math.round(s.imgDisplayWidth)}x${Math.round(s.imgDisplayHeight)}px (natural: ${s.imgNaturalWidth}x${s.imgNaturalHeight}), style.width=${s.imgStyleWidth}, svgViewBox=${s.svgViewBox}, rects=${s.svgRectCount}`);
-      });
-
-      // Take a screenshot of the viewer top
-      await page.screenshot({ path: path.join(OUT_DIR, 'viewer-with-overlays.png'), fullPage: false });
-      console.log('Saved viewer-with-overlays.png');
-
-      // Scroll the viewer content to show the container indicator area
-      const indicatorRect = page.locator('svg.milg-viewer-svg rect[data-region="0"]');
-      if (await indicatorRect.count() > 0) {
-        await indicatorRect.scrollIntoViewIfNeeded();
-        await page.waitForTimeout(300);
-        await page.screenshot({ path: path.join(OUT_DIR, 'viewer-indicator-area.png'), fullPage: false });
-        console.log('Saved viewer-indicator-area.png');
-      }
-
-      // Scroll to first region section and screenshot
-      const firstRegion = page.locator('.milg-viewer-region-section').first();
-      if (await firstRegion.count() > 0) {
-        await firstRegion.scrollIntoViewIfNeeded();
-        await page.waitForTimeout(300);
-        await page.screenshot({ path: path.join(OUT_DIR, 'viewer-region-section.png'), fullPage: false });
-        console.log('Saved viewer-region-section.png');
-      }
-
-      // Grab console logs with milg-viewer prefix
-      const viewerLogs = consoleLogs.filter(l => l.includes('[milg-viewer]'));
-      console.log('\n=== VIEWER CONSOLE LOGS ===');
-      viewerLogs.forEach(l => console.log(l));
-    }
-
-    // Write all console logs
-    fs.writeFileSync(path.join(OUT_DIR, 'console-logs.txt'), consoleLogs.join('\n'));
-
-    // Assertions (loose — this is a diagnostic test)
-    expect(reportDump.regionCount).toBeGreaterThanOrEqual(0);
-    expect(reportDump.hasCleanScreenshot).toBe(true);
-  });
-});
-</file>
-
 <file path="tests/test-case-1-review.md">
 # Design Review Notes
 
@@ -29992,6 +29725,273 @@ window.MilgQueue = (function() {
     currentId: currentId
   };
 })();
+</file>
+
+<file path="tests/region-debug.spec.js">
+// @ts-check
+// Diagnostic test: captures region screenshot data from fink-translate.com
+// and writes debug artifacts to test-results/region-debug/
+const { test, expect } = require('@playwright/test');
+const fs = require('fs');
+const path = require('path');
+
+const ANALYZER_URL = 'http://localhost:8384/analyzer.html';
+const OUT_DIR = path.join(__dirname, '..', 'test-results', 'region-debug');
+
+test.describe('Region Screenshot Debug', () => {
+
+  test('diagnose fink-translate carousel regions', async ({ page }) => {
+    test.setTimeout(420000);
+    fs.mkdirSync(OUT_DIR, { recursive: true });
+
+    const consoleLogs = [];
+    page.on('console', msg => {
+      const text = msg.text();
+      consoleLogs.push(text);
+      // Print region/clipped related logs immediately
+      if (text.includes('region') || text.includes('Region') || text.includes('clipp') || text.includes('milg-viewer'))
+        console.log('[BROWSER]', text);
+    });
+
+    // 1. Run URL analysis
+    await page.goto(ANALYZER_URL);
+    await page.check('#screenshotCheck');
+    await page.click('[data-tab="tabUrl"]');
+    await page.fill('#urlInput', 'https://www.fink-translate.com/');
+    await page.click('#analyzeUrlBtn');
+    await page.waitForSelector('.report-container.visible', { timeout: 360000 });
+
+    // 2. Extract raw report data
+    const reportDump = await page.evaluate(() => {
+      const report = window.__milgLastReport;
+      if (!report || !report.raw) return { error: 'no report data' };
+      const raw = report.raw;
+
+      // Region screenshots
+      const regions = (raw.regionScreenshots || []).map((rgn, i) => ({
+        index: i,
+        hasScreenshot: !!rgn.screenshot,
+        screenshotLen: rgn.screenshot ? rgn.screenshot.length : 0,
+        screenshotMeta: rgn.screenshotMeta || null,
+        pairIndices: rgn.pairIndices || [],
+        localBboxes: rgn.localBboxes || {},
+        containerRect: rgn.containerRect || null,
+      }));
+
+      // Clipped pairs
+      const pairs = raw.colors ? raw.colors.contrastPairs || [] : [];
+      const clippedPairs = pairs.map((p, i) => ({
+        index: i,
+        isClipped: !!p._isClipped,
+        bbox: p.bbox,
+        selector: p.selector ? p.selector.substring(0, 80) : null,
+        text: p.text ? p.text.substring(0, 40) : null,
+        ratio: p.ratio,
+        passes: p.passes,
+      })).filter(p => p.isClipped);
+
+      // All pairs with bboxes (for bbox identity check)
+      const allPairsWithBbox = pairs.filter(p => p.bbox).length;
+
+      // screenshotMeta vs cleanMeta
+      const screenshotMeta = raw.screenshotMeta || null;
+      const cleanMeta = raw.screenshotCleanMeta || null;
+      const hasCleanScreenshot = !!raw.screenshotClean;
+      const hasExpandedScreenshot = !!raw.screenshotFull;
+
+      return {
+        regionCount: regions.length,
+        regions,
+        clippedPairCount: clippedPairs.length,
+        clippedPairs,
+        totalPairs: pairs.length,
+        allPairsWithBbox,
+        screenshotMeta,
+        cleanMeta,
+        hasCleanScreenshot,
+        hasExpandedScreenshot,
+      };
+    });
+
+    // Write the report dump
+    fs.writeFileSync(path.join(OUT_DIR, 'report-dump.json'), JSON.stringify(reportDump, null, 2));
+    console.log('\n=== REPORT DUMP ===');
+    console.log('Region count:', reportDump.regionCount);
+    console.log('Clipped pairs:', reportDump.clippedPairCount, '/', reportDump.totalPairs);
+    console.log('Has clean screenshot:', reportDump.hasCleanScreenshot);
+    console.log('Has expanded screenshot:', reportDump.hasExpandedScreenshot);
+    console.log('Clean meta:', JSON.stringify(reportDump.cleanMeta));
+    console.log('Screenshot meta:', JSON.stringify(reportDump.screenshotMeta));
+    if (reportDump.regions) {
+      reportDump.regions.forEach(r => {
+        console.log(`Region ${r.index}: screenshot=${r.screenshotLen}bytes, meta=${JSON.stringify(r.screenshotMeta)}, containerRect=${JSON.stringify(r.containerRect)}, pairIndices=[${r.pairIndices.join(',')}]`);
+      });
+    }
+    if (reportDump.clippedPairs) {
+      reportDump.clippedPairs.forEach(p => {
+        console.log(`Clipped pair ${p.index}: bbox=${JSON.stringify(p.bbox)} text="${p.text}" ratio=${p.ratio} passes=${p.passes}`);
+      });
+    }
+
+    // 3. Save region screenshot images
+    const regionImages = await page.evaluate(() => {
+      const report = window.__milgLastReport;
+      if (!report || !report.raw || !report.raw.regionScreenshots) return [];
+      return report.raw.regionScreenshots.map((rgn, i) => ({
+        index: i,
+        dataUri: rgn.screenshot || null,
+      }));
+    });
+    regionImages.forEach(ri => {
+      if (ri.dataUri) {
+        const match = ri.dataUri.match(/^data:image\/\w+;base64,(.+)$/);
+        if (match) {
+          fs.writeFileSync(path.join(OUT_DIR, `region-${ri.index}.webp`), Buffer.from(match[1], 'base64'));
+          console.log(`Saved region-${ri.index}.webp`);
+        }
+      }
+    });
+
+    // 4. Save clean screenshot
+    const cleanScreenshot = await page.evaluate(() => {
+      const report = window.__milgLastReport;
+      if (!report || !report.raw) return null;
+      return report.raw.screenshotClean || null;
+    });
+    if (cleanScreenshot) {
+      const match = cleanScreenshot.match(/^data:image\/\w+;base64,(.+)$/);
+      if (match) {
+        fs.writeFileSync(path.join(OUT_DIR, 'clean-screenshot.webp'), Buffer.from(match[1], 'base64'));
+        console.log('Saved clean-screenshot.webp');
+      }
+    }
+
+    // 5. Open viewer and check what renders
+    const screenshotDetails = page.locator('details.report-screenshots');
+    if (await screenshotDetails.count() > 0) {
+      await screenshotDetails.locator('summary').click();
+      const screenshotImg = page.locator('.screenshot-img').first();
+      await screenshotImg.waitFor({ state: 'visible', timeout: 5000 });
+      await screenshotImg.click();
+      await page.waitForSelector('.milg-viewer-overlay.visible', { timeout: 10000 });
+
+      // Click "All" filter
+      const allBtn = page.locator('.milg-viewer-filter-btn[data-filter-value="all"]');
+      if (await allBtn.count() > 0) {
+        await allBtn.click();
+        await page.waitForTimeout(500);
+      }
+
+      // Check SVG overlay state
+      const svgState = await page.evaluate(() => {
+        const svg = document.querySelector('svg.milg-viewer-svg');
+        if (!svg) return { error: 'no SVG found' };
+        const rects = svg.querySelectorAll('rect');
+        const regionIndicators = svg.querySelectorAll('rect[data-region]');
+        const texts = svg.querySelectorAll('text');
+        return {
+          totalRects: rects.length,
+          regionIndicatorCount: regionIndicators.length,
+          regionIndicators: Array.from(regionIndicators).map(r => ({
+            class: r.getAttribute('class'),
+            x: r.getAttribute('x'),
+            y: r.getAttribute('y'),
+            width: r.getAttribute('width'),
+            height: r.getAttribute('height'),
+            stroke: r.getAttribute('stroke'),
+          })),
+          textCount: texts.length,
+          texts: Array.from(texts).map(t => ({
+            x: t.getAttribute('x'),
+            y: t.getAttribute('y'),
+            fontSize: t.getAttribute('font-size'),
+            content: t.textContent.substring(0, 50),
+          })),
+          viewBox: svg.getAttribute('viewBox'),
+          svgWidth: svg.getBoundingClientRect().width,
+          svgHeight: svg.getBoundingClientRect().height,
+        };
+      });
+
+      fs.writeFileSync(path.join(OUT_DIR, 'svg-state.json'), JSON.stringify(svgState, null, 2));
+      console.log('\n=== SVG OVERLAY STATE ===');
+      console.log('viewBox:', svgState.viewBox);
+      console.log('SVG display size:', svgState.svgWidth, 'x', svgState.svgHeight);
+      console.log('Total rects:', svgState.totalRects);
+      console.log('Region indicators:', svgState.regionIndicatorCount);
+      if (svgState.regionIndicators) {
+        svgState.regionIndicators.forEach(ind => {
+          console.log('  Indicator:', JSON.stringify(ind));
+        });
+      }
+      console.log('Texts:', svgState.textCount);
+      if (svgState.texts) {
+        svgState.texts.forEach(t => console.log('  Text:', JSON.stringify(t)));
+      }
+
+      // Check region sections in DOM
+      const regionSections = await page.evaluate(() => {
+        const sections = document.querySelectorAll('.milg-viewer-region-section');
+        return Array.from(sections).map((s, i) => {
+          const img = s.querySelector('img');
+          const rgnSvg = s.querySelector('svg');
+          const rects = rgnSvg ? rgnSvg.querySelectorAll('rect') : [];
+          return {
+            id: s.id,
+            width: s.getBoundingClientRect().width,
+            height: s.getBoundingClientRect().height,
+            imgNaturalWidth: img ? img.naturalWidth : null,
+            imgNaturalHeight: img ? img.naturalHeight : null,
+            imgDisplayWidth: img ? img.getBoundingClientRect().width : null,
+            imgDisplayHeight: img ? img.getBoundingClientRect().height : null,
+            imgStyleWidth: img ? img.style.width : null,
+            svgViewBox: rgnSvg ? rgnSvg.getAttribute('viewBox') : null,
+            svgRectCount: rects.length,
+          };
+        });
+      });
+
+      console.log('\n=== REGION SECTIONS IN DOM ===');
+      regionSections.forEach(s => {
+        console.log(`${s.id}: section=${Math.round(s.width)}x${Math.round(s.height)}px, img=${Math.round(s.imgDisplayWidth)}x${Math.round(s.imgDisplayHeight)}px (natural: ${s.imgNaturalWidth}x${s.imgNaturalHeight}), style.width=${s.imgStyleWidth}, svgViewBox=${s.svgViewBox}, rects=${s.svgRectCount}`);
+      });
+
+      // Take a screenshot of the viewer top
+      await page.screenshot({ path: path.join(OUT_DIR, 'viewer-with-overlays.png'), fullPage: false });
+      console.log('Saved viewer-with-overlays.png');
+
+      // Scroll the viewer content to show the container indicator area
+      const indicatorRect = page.locator('svg.milg-viewer-svg rect[data-region="0"]');
+      if (await indicatorRect.count() > 0) {
+        await indicatorRect.scrollIntoViewIfNeeded();
+        await page.waitForTimeout(300);
+        await page.screenshot({ path: path.join(OUT_DIR, 'viewer-indicator-area.png'), fullPage: false });
+        console.log('Saved viewer-indicator-area.png');
+      }
+
+      // Scroll to first region section and screenshot
+      const firstRegion = page.locator('.milg-viewer-region-section').first();
+      if (await firstRegion.count() > 0) {
+        await firstRegion.scrollIntoViewIfNeeded();
+        await page.waitForTimeout(300);
+        await page.screenshot({ path: path.join(OUT_DIR, 'viewer-region-section.png'), fullPage: false });
+        console.log('Saved viewer-region-section.png');
+      }
+
+      // Grab console logs with milg-viewer prefix
+      const viewerLogs = consoleLogs.filter(l => l.includes('[milg-viewer]'));
+      console.log('\n=== VIEWER CONSOLE LOGS ===');
+      viewerLogs.forEach(l => console.log(l));
+    }
+
+    // Write all console logs
+    fs.writeFileSync(path.join(OUT_DIR, 'console-logs.txt'), consoleLogs.join('\n'));
+
+    // Assertions (loose — this is a diagnostic test)
+    expect(reportDump.regionCount).toBeGreaterThanOrEqual(0);
+    expect(reportDump.hasCleanScreenshot).toBe(true);
+  });
+});
 </file>
 
 <file path="playwright.config.js">
@@ -34300,437 +34300,6 @@ window.MilgProxy = (function() {
 })();
 </file>
 
-<file path="tests/html-analysis.spec.js">
-// @ts-check
-const { test, expect } = require('@playwright/test');
-const fs = require('fs');
-const path = require('path');
-
-const ANALYZER_URL = 'http://localhost:8384/analyzer.html';
-
-function loadPreset(name) {
-  return fs.readFileSync(path.join(__dirname, '..', 'docs', 'presets', name, 'clean.html'), 'utf8');
-}
-
-async function analyzeHtml(page, html) {
-  await page.goto(ANALYZER_URL);
-  await page.click('[data-tab="tabHtml"]');
-  await page.fill('#htmlInput', html);
-  await page.click('#analyzeHtmlBtn');
-  await page.waitForSelector('.report-container.visible', { timeout: 30000 });
-}
-
-async function getScore(page) {
-  const text = await page.locator('.report-gauge svg text').first().textContent();
-  return parseInt(text, 10);
-}
-
-// ── HTML Analysis ──
-
-test.describe('HTML Analysis', () => {
-
-  test('buttons preset produces valid scores', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('buttons'));
-    const score = await getScore(page);
-    expect(score).toBeGreaterThanOrEqual(0);
-    expect(score).toBeLessThanOrEqual(100);
-    // Category cards rendered
-    const cards = await page.locator('.report-card').count();
-    expect(cards).toBeGreaterThan(0);
-  });
-
-  test('form preset produces report with findings', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('form'));
-    const findings = await page.locator('.finding-header').count();
-    expect(findings).toBeGreaterThan(0);
-  });
-
-  test('landing preset scores above 50', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('landing'));
-    const score = await getScore(page);
-    expect(score).toBeGreaterThanOrEqual(50);
-  });
-
-  test('dashboard preset renders category cards', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('dashboard'));
-    const cards = await page.locator('.report-card').count();
-    expect(cards).toBeGreaterThanOrEqual(5);
-  });
-});
-
-// ── Export & Import Round-Trip ──
-
-test.describe('Export and Import', () => {
-
-  test('export .milg and re-import produces same score', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('buttons'));
-    const originalScore = await getScore(page);
-
-    // Download .milg (compressed) or .json (fallback)
-    const [download] = await Promise.all([
-      page.waitForEvent('download'),
-      page.click('#exportJsonBtn'),
-    ]);
-    const exportPath = await download.path();
-    const fileName = download.suggestedFilename();
-    expect(fileName).toMatch(/\.(milg|json)$/);
-
-    // Re-import
-    await page.click('#newAnalysisBtn');
-    await page.click('[data-tab="tabImport"]');
-    await page.locator('#importDropFile').setInputFiles(exportPath);
-    await page.waitForSelector('.report-container.visible', { timeout: 30000 });
-
-    const reimportedScore = await getScore(page);
-    expect(reimportedScore).toBe(originalScore);
-  });
-
-  test('export Markdown contains expected sections', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('cards'));
-
-    const [download] = await Promise.all([
-      page.waitForEvent('download'),
-      page.click('#markdownBtn'),
-    ]);
-    const mdContent = fs.readFileSync(await download.path(), 'utf8');
-
-    expect(mdContent).toContain('Design Analysis');
-    expect(mdContent).toContain('Contrast');
-    expect(mdContent).toContain('Typography');
-  });
-});
-
-// ── UI Controls ──
-
-test.describe('UI Controls', () => {
-
-  test('audience profile switch re-scores', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('form'));
-    const originalScore = await getScore(page);
-
-    await page.selectOption('#profileSelect', 'wcag_aaa');
-    await page.waitForTimeout(300);
-
-    const strictScore = await getScore(page);
-    expect(strictScore).toBeLessThanOrEqual(originalScore);
-  });
-
-  test('new analysis button resets view', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('buttons'));
-    await page.click('#newAnalysisBtn');
-    await expect(page.locator('#inputSection')).toBeVisible();
-    await expect(page.locator('#reportContainer')).not.toHaveClass(/visible/);
-  });
-
-  test('dark mode toggle works', async ({ page }) => {
-    await page.goto(ANALYZER_URL);
-    const hasDarkBefore = await page.locator('body').evaluate(el => el.classList.contains('dark-ui'));
-    await page.click('#darkBtn');
-    const hasDarkAfter = await page.locator('body').evaluate(el => el.classList.contains('dark-ui'));
-    expect(hasDarkBefore).not.toBe(hasDarkAfter);
-  });
-
-  test('help modal opens and closes', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('buttons'));
-    await page.click('#helpBtn');
-    await expect(page.locator('#helpModal')).toBeVisible();
-    // Close via X button
-    await page.locator('#helpModal button[aria-label="Close"]').click();
-    await expect(page.locator('#helpModal')).toBeHidden();
-  });
-
-  test('ephemeral banner visible after analysis', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('buttons'));
-    await expect(page.locator('#ephemeralBanner')).toBeVisible();
-    await expect(page.locator('#ephemeralBanner')).toContainText('temporary');
-  });
-});
-
-// ── Screenshot & Carousel Alignment ──
-
-test.describe('Screenshot Pipeline', () => {
-
-  // HTML with a nested carousel pattern (like fink-translate.com):
-  // overflow:hidden container > intermediate wrapper > track[transform]
-  // Also includes a fragment-only img src and an <a href="#n"> to test filtering
-  const CAROUSEL_HTML = `<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"><title>Carousel Test</title>
-<style>
-  body { font-family: sans-serif; margin: 0; padding: 20px; background: #fff; }
-  .carousel-container { overflow: hidden; width: 400px; position: relative; }
-  .carousel-inner { position: relative; }
-  .carousel-track-container { position: relative; }
-  .carousel-track { display: flex; transform: translateX(-400px); transition: transform 0.5s ease; }
-  .carousel-slide { min-width: 400px; padding: 20px; box-sizing: border-box; }
-  .slide-1 { background: #f0f0f0; }
-  .slide-2 { background: #e0e0ff; }
-  .slide-3 { background: #ffe0e0; }
-  h2 { color: #111; margin: 0 0 8px; }
-  p { color: #333; }
-</style></head><body>
-  <h1>Carousel Test Page</h1>
-  <a href="#n">Skip nav</a>
-  <div class="carousel-container">
-    <div class="carousel-inner">
-      <div class="carousel-track-container">
-        <div class="carousel-track">
-          <div class="carousel-slide slide-1"><h2>Slide One</h2><p>First slide content here.</p></div>
-          <div class="carousel-slide slide-2"><h2>Slide Two</h2><p>Second slide visible.</p></div>
-          <div class="carousel-slide slide-3"><h2>Slide Three</h2><p>Third slide content.</p></div>
-        </div>
-      </div>
-    </div>
-  </div>
-  <img src="#fragment" alt="fragment-only test">
-  <p>Below the carousel.</p>
-</body></html>`;
-
-  async function analyzeWithScreenshots(page, html) {
-    await page.goto(ANALYZER_URL);
-    // Enable screenshot checkbox
-    await page.check('#screenshotCheck');
-    await page.click('[data-tab="tabHtml"]');
-    await page.fill('#htmlInput', html);
-    await page.click('#analyzeHtmlBtn');
-    await page.waitForSelector('.report-container.visible', { timeout: 45000 });
-  }
-
-  test('carousel overflow:hidden containers get expanded for screenshots', async ({ page }) => {
-    const consoleLogs = [];
-    page.on('console', msg => consoleLogs.push(msg.text()));
-
-    await analyzeWithScreenshots(page, CAROUSEL_HTML);
-
-    const score = await getScore(page);
-    expect(score).toBeGreaterThanOrEqual(0);
-    expect(score).toBeLessThanOrEqual(100);
-
-    // Verify two-pass capture: clean + expanded screenshots
-    const cleanLog = consoleLogs.find(l => l.includes('Clean screenshot:'));
-    expect(cleanLog).toBeTruthy();
-    const expandedLog = consoleLogs.find(l => l.includes('Expanded screenshot:'));
-    expect(expandedLog).toBeTruthy();
-
-    // Verify region screenshot detection and capture
-    const regionDetect = consoleLogs.find(l => l.includes('clipping regions'));
-    expect(regionDetect).toBeTruthy();
-    const regionDone = consoleLogs.find(l => l.includes('Region screenshots done:') || l.includes('Region screenshots: 0'));
-    expect(regionDone).toBeTruthy();
-
-    // Verify no %23 (encoded #) fetch errors
-    const hashError = consoleLogs.find(l => l.includes('%23') && (l.includes('ERR_FAILED') || l.includes('404')));
-    expect(hashError).toBeFalsy();
-  });
-
-  test('viewer shows region sections below main screenshot for carousel content', async ({ page }) => {
-    const consoleLogs = [];
-    page.on('console', msg => consoleLogs.push(msg.text()));
-
-    await analyzeWithScreenshots(page, CAROUSEL_HTML);
-
-    // Check if region screenshots were captured (may be 0 if carousel slides have passing contrast)
-    const regionDone = consoleLogs.find(l => l.includes('Region screenshots done:'));
-    const regionCount = regionDone ? parseInt((regionDone.match(/done:\s*(\d+)/) || [])[1] || '0') : 0;
-
-    // Open the viewer by expanding the screenshots details and clicking the thumbnail
-    const screenshotDetails = page.locator('details.report-screenshots');
-    if (await screenshotDetails.count() > 0) {
-      await screenshotDetails.locator('summary').click();
-      const screenshotImg = page.locator('.screenshot-img').first();
-      await screenshotImg.waitFor({ state: 'visible', timeout: 5000 });
-      await screenshotImg.click();
-      await page.waitForSelector('.milg-viewer-overlay.visible', { timeout: 10000 });
-
-      // Verify the viewer is open
-      const overlay = page.locator('.milg-viewer-overlay.visible');
-      await expect(overlay).toBeVisible();
-
-      // Verify the main screenshot image is present
-      await expect(page.locator('.milg-viewer-img')).toBeVisible();
-
-      // If regions were captured, verify region sections exist below main screenshot
-      if (regionCount > 0) {
-        const regionSections = page.locator('.milg-viewer-region-section');
-        const sectionCount = await regionSections.count();
-        expect(sectionCount).toBeGreaterThan(0);
-
-        // Verify each region section has a header with label
-        for (let i = 0; i < sectionCount; i++) {
-          const section = regionSections.nth(i);
-          await expect(section).toBeVisible();
-          // Check it has the region ID for navigation
-          const id = await section.getAttribute('id');
-          expect(id).toMatch(/^milg-region-\d+$/);
-        }
-
-        // Verify region sections are positioned below the main frame (not beside)
-        const frame = page.locator('.milg-viewer-frame');
-        const frameBox = await frame.boundingBox();
-        if (frameBox) {
-          for (let i = 0; i < sectionCount; i++) {
-            const sectionBox = await regionSections.nth(i).boundingBox();
-            if (sectionBox) {
-              // Region sections must be below the frame (higher Y value)
-              expect(sectionBox.y).toBeGreaterThan(frameBox.y + frameBox.height - 10);
-            }
-          }
-        }
-      }
-
-      // Verify no expand toggle exists (region screenshots replace the old toggle approach)
-      const toggleBtn = page.locator('.milg-viewer-expand-toggle');
-      expect(await toggleBtn.count()).toBe(0);
-
-      // Close the viewer
-      await page.keyboard.press('Escape');
-    }
-  });
-
-  test('pixel verification skips clipped carousel elements', async ({ page }) => {
-    const consoleLogs = [];
-    page.on('console', msg => consoleLogs.push(msg.text()));
-
-    await analyzeWithScreenshots(page, CAROUSEL_HTML);
-
-    // Check verification log for clippedSkipped count
-    const verifyLog = consoleLogs.find(l => l.includes('clippedSkipped='));
-    if (verifyLog) {
-      const skipped = parseInt((verifyLog.match(/clippedSkipped=(\d+)/) || [])[1] || '0');
-      // If there are clipped elements, they should be reported as skipped
-      expect(skipped).toBeGreaterThanOrEqual(0);
-    }
-  });
-
-  test('fragment-only img src is skipped during preload', async ({ page }) => {
-    const consoleLogs = [];
-    const consoleWarnings = [];
-    page.on('console', msg => {
-      consoleLogs.push(msg.text());
-      if (msg.type() === 'warning') consoleWarnings.push(msg.text());
-    });
-
-    await analyzeWithScreenshots(page, CAROUSEL_HTML);
-
-    // Should NOT have a preload warning for fragment URLs
-    const fragWarn = consoleWarnings.find(w => w.includes('#fragment') || w.includes('%23fragment'));
-    expect(fragWarn).toBeFalsy();
-  });
-});
-
-// ── URL Analysis: Real Sites ──
-
-test.describe('URL Analysis - fink-translate.com', () => {
-
-  test('carousel regions render below main screenshot in viewer', async ({ page }) => {
-    test.setTimeout(420000); // URL analysis: CORS proxy + iframe render + screenshots + masks can take 5+ min
-    const consoleLogs = [];
-    page.on('console', msg => consoleLogs.push(msg.text()));
-
-    await page.goto(ANALYZER_URL);
-    await page.check('#screenshotCheck');
-    // Enter URL
-    await page.click('[data-tab="tabUrl"]');
-    await page.fill('#urlInput', 'https://www.fink-translate.com/');
-    await page.click('#analyzeUrlBtn');
-    // URL analysis can take a while: CORS proxy fetch + iframe render + screenshots + mask pipeline
-    await page.waitForSelector('.report-container.visible', { timeout: 360000 });
-
-    // Verify analysis completed
-    const score = await page.locator('.report-gauge svg text').first().textContent();
-    expect(parseInt(score, 10)).toBeGreaterThanOrEqual(0);
-
-    // Check for region screenshot capture in console
-    const regionLog = consoleLogs.find(l => l.includes('Region screenshots done:') || l.includes('clipping regions'));
-
-    // Check for clipped pairs
-    const clippedPairs = consoleLogs.filter(l => l.includes('_isClipped') || l.includes('clippedSkipped'));
-
-    // Open the viewer
-    const screenshotDetails = page.locator('details.report-screenshots');
-    if (await screenshotDetails.count() > 0) {
-      await screenshotDetails.locator('summary').click();
-      const screenshotImg = page.locator('.screenshot-img').first();
-      await screenshotImg.waitFor({ state: 'visible', timeout: 5000 });
-      await screenshotImg.click();
-      await page.waitForSelector('.milg-viewer-overlay.visible', { timeout: 10000 });
-
-      // Verify the viewer opened
-      await expect(page.locator('.milg-viewer-overlay.visible')).toBeVisible();
-      await expect(page.locator('.milg-viewer-img')).toBeVisible();
-
-      // Check for region sections
-      const regionSections = page.locator('.milg-viewer-region-section');
-      const regionSectionCount = await regionSections.count();
-
-      // If regions exist, verify layout
-      if (regionSectionCount > 0) {
-        // Verify region sections are visible
-        for (let i = 0; i < regionSectionCount; i++) {
-          const section = regionSections.nth(i);
-          const id = await section.getAttribute('id');
-          expect(id).toMatch(/^milg-region-\d+$/);
-        }
-
-        // Verify layout: regions are BELOW the main frame, not beside it
-        const frame = page.locator('.milg-viewer-frame');
-        const frameBox = await frame.boundingBox();
-        const regions = page.locator('.milg-viewer-regions');
-        const regionsBox = await regions.boundingBox();
-        if (frameBox && regionsBox) {
-          expect(regionsBox.y).toBeGreaterThanOrEqual(frameBox.y + frameBox.height - 5);
-        }
-
-        // Click "Contrast" or "All" filter to trigger overlay rendering
-        const allBtn = page.locator('.milg-viewer-filter-btn[data-filter-value="all"]');
-        if (await allBtn.count() > 0) {
-          await allBtn.click();
-          // Wait a moment for overlays to render
-          await page.waitForTimeout(500);
-
-          // Check for container indicators (dashed blue boxes on main screenshot)
-          const indicators = page.locator('svg.milg-viewer-svg rect[data-region]');
-          const indicatorCount = await indicators.count();
-          // Container indicators should exist for each region
-          expect(indicatorCount).toBeGreaterThanOrEqual(regionSectionCount);
-        }
-      }
-
-      // Verify no expand toggle (region screenshots replace it)
-      expect(await page.locator('.milg-viewer-expand-toggle').count()).toBe(0);
-
-      // Close viewer
-      await page.keyboard.press('Escape');
-    }
-
-    // Check pixel verification handled clipped elements
-    const verifyLog = consoleLogs.find(l => l.includes('clippedSkipped='));
-    if (verifyLog) {
-      const match = verifyLog.match(/clippedSkipped=(\d+)/);
-      if (match) {
-        console.log('Clipped pairs skipped from pixel verify:', match[1]);
-      }
-    }
-  });
-});
-
-// ── Multiple Presets ──
-
-test.describe('Preset Scoring', () => {
-  const presets = ['hero', 'cards', 'stats-row', 'pricing', 'feature-grid'];
-
-  for (const preset of presets) {
-    test(`${preset} produces valid analysis`, async ({ page }) => {
-      await analyzeHtml(page, loadPreset(preset));
-      const score = await getScore(page);
-      expect(score).toBeGreaterThanOrEqual(0);
-      expect(score).toBeLessThanOrEqual(100);
-      const findings = await page.locator('.finding-header').count();
-      expect(findings).toBeGreaterThan(0);
-    });
-  }
-});
-</file>
-
 <file path="docs/analyzer-contrast-verify.js">
 // make-it-look-good — Pixel-Sampled Contrast Verification
 // Samples actual pixel colors from screenshots at text element locations,
@@ -36352,6 +35921,437 @@ window.MilgContrastVerify = (function() {
 })();
 </file>
 
+<file path="tests/html-analysis.spec.js">
+// @ts-check
+const { test, expect } = require('@playwright/test');
+const fs = require('fs');
+const path = require('path');
+
+const ANALYZER_URL = 'http://localhost:8384/analyzer.html';
+
+function loadPreset(name) {
+  return fs.readFileSync(path.join(__dirname, '..', 'docs', 'presets', name, 'clean.html'), 'utf8');
+}
+
+async function analyzeHtml(page, html) {
+  await page.goto(ANALYZER_URL);
+  await page.click('[data-tab="tabHtml"]');
+  await page.fill('#htmlInput', html);
+  await page.click('#analyzeHtmlBtn');
+  await page.waitForSelector('.report-container.visible', { timeout: 30000 });
+}
+
+async function getScore(page) {
+  const text = await page.locator('.report-gauge svg text').first().textContent();
+  return parseInt(text, 10);
+}
+
+// ── HTML Analysis ──
+
+test.describe('HTML Analysis', () => {
+
+  test('buttons preset produces valid scores', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('buttons'));
+    const score = await getScore(page);
+    expect(score).toBeGreaterThanOrEqual(0);
+    expect(score).toBeLessThanOrEqual(100);
+    // Category cards rendered
+    const cards = await page.locator('.report-card').count();
+    expect(cards).toBeGreaterThan(0);
+  });
+
+  test('form preset produces report with findings', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('form'));
+    const findings = await page.locator('.finding-header').count();
+    expect(findings).toBeGreaterThan(0);
+  });
+
+  test('landing preset scores above 50', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('landing'));
+    const score = await getScore(page);
+    expect(score).toBeGreaterThanOrEqual(50);
+  });
+
+  test('dashboard preset renders category cards', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('dashboard'));
+    const cards = await page.locator('.report-card').count();
+    expect(cards).toBeGreaterThanOrEqual(5);
+  });
+});
+
+// ── Export & Import Round-Trip ──
+
+test.describe('Export and Import', () => {
+
+  test('export .milg and re-import produces same score', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('buttons'));
+    const originalScore = await getScore(page);
+
+    // Download .milg (compressed) or .json (fallback)
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.click('#exportJsonBtn'),
+    ]);
+    const exportPath = await download.path();
+    const fileName = download.suggestedFilename();
+    expect(fileName).toMatch(/\.(milg|json)$/);
+
+    // Re-import
+    await page.click('#newAnalysisBtn');
+    await page.click('[data-tab="tabImport"]');
+    await page.locator('#importDropFile').setInputFiles(exportPath);
+    await page.waitForSelector('.report-container.visible', { timeout: 30000 });
+
+    const reimportedScore = await getScore(page);
+    expect(reimportedScore).toBe(originalScore);
+  });
+
+  test('export Markdown contains expected sections', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('cards'));
+
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.click('#markdownBtn'),
+    ]);
+    const mdContent = fs.readFileSync(await download.path(), 'utf8');
+
+    expect(mdContent).toContain('Design Analysis');
+    expect(mdContent).toContain('Contrast');
+    expect(mdContent).toContain('Typography');
+  });
+});
+
+// ── UI Controls ──
+
+test.describe('UI Controls', () => {
+
+  test('audience profile switch re-scores', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('form'));
+    const originalScore = await getScore(page);
+
+    await page.selectOption('#profileSelect', 'wcag_aaa');
+    await page.waitForTimeout(300);
+
+    const strictScore = await getScore(page);
+    expect(strictScore).toBeLessThanOrEqual(originalScore);
+  });
+
+  test('new analysis button resets view', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('buttons'));
+    await page.click('#newAnalysisBtn');
+    await expect(page.locator('#inputSection')).toBeVisible();
+    await expect(page.locator('#reportContainer')).not.toHaveClass(/visible/);
+  });
+
+  test('dark mode toggle works', async ({ page }) => {
+    await page.goto(ANALYZER_URL);
+    const hasDarkBefore = await page.locator('body').evaluate(el => el.classList.contains('dark-ui'));
+    await page.click('#darkBtn');
+    const hasDarkAfter = await page.locator('body').evaluate(el => el.classList.contains('dark-ui'));
+    expect(hasDarkBefore).not.toBe(hasDarkAfter);
+  });
+
+  test('help modal opens and closes', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('buttons'));
+    await page.click('#helpBtn');
+    await expect(page.locator('#helpModal')).toBeVisible();
+    // Close via X button
+    await page.locator('#helpModal button[aria-label="Close"]').click();
+    await expect(page.locator('#helpModal')).toBeHidden();
+  });
+
+  test('ephemeral banner visible after analysis', async ({ page }) => {
+    await analyzeHtml(page, loadPreset('buttons'));
+    await expect(page.locator('#ephemeralBanner')).toBeVisible();
+    await expect(page.locator('#ephemeralBanner')).toContainText('temporary');
+  });
+});
+
+// ── Screenshot & Carousel Alignment ──
+
+test.describe('Screenshot Pipeline', () => {
+
+  // HTML with a nested carousel pattern (like fink-translate.com):
+  // overflow:hidden container > intermediate wrapper > track[transform]
+  // Also includes a fragment-only img src and an <a href="#n"> to test filtering
+  const CAROUSEL_HTML = `<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Carousel Test</title>
+<style>
+  body { font-family: sans-serif; margin: 0; padding: 20px; background: #fff; }
+  .carousel-container { overflow: hidden; width: 400px; position: relative; }
+  .carousel-inner { position: relative; }
+  .carousel-track-container { position: relative; }
+  .carousel-track { display: flex; transform: translateX(-400px); transition: transform 0.5s ease; }
+  .carousel-slide { min-width: 400px; padding: 20px; box-sizing: border-box; }
+  .slide-1 { background: #f0f0f0; }
+  .slide-2 { background: #e0e0ff; }
+  .slide-3 { background: #ffe0e0; }
+  h2 { color: #111; margin: 0 0 8px; }
+  p { color: #333; }
+</style></head><body>
+  <h1>Carousel Test Page</h1>
+  <a href="#n">Skip nav</a>
+  <div class="carousel-container">
+    <div class="carousel-inner">
+      <div class="carousel-track-container">
+        <div class="carousel-track">
+          <div class="carousel-slide slide-1"><h2>Slide One</h2><p>First slide content here.</p></div>
+          <div class="carousel-slide slide-2"><h2>Slide Two</h2><p>Second slide visible.</p></div>
+          <div class="carousel-slide slide-3"><h2>Slide Three</h2><p>Third slide content.</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <img src="#fragment" alt="fragment-only test">
+  <p>Below the carousel.</p>
+</body></html>`;
+
+  async function analyzeWithScreenshots(page, html) {
+    await page.goto(ANALYZER_URL);
+    // Enable screenshot checkbox
+    await page.check('#screenshotCheck');
+    await page.click('[data-tab="tabHtml"]');
+    await page.fill('#htmlInput', html);
+    await page.click('#analyzeHtmlBtn');
+    await page.waitForSelector('.report-container.visible', { timeout: 45000 });
+  }
+
+  test('carousel overflow:hidden containers get expanded for screenshots', async ({ page }) => {
+    const consoleLogs = [];
+    page.on('console', msg => consoleLogs.push(msg.text()));
+
+    await analyzeWithScreenshots(page, CAROUSEL_HTML);
+
+    const score = await getScore(page);
+    expect(score).toBeGreaterThanOrEqual(0);
+    expect(score).toBeLessThanOrEqual(100);
+
+    // Verify two-pass capture: clean + expanded screenshots
+    const cleanLog = consoleLogs.find(l => l.includes('Clean screenshot:'));
+    expect(cleanLog).toBeTruthy();
+    const expandedLog = consoleLogs.find(l => l.includes('Expanded screenshot:'));
+    expect(expandedLog).toBeTruthy();
+
+    // Verify region screenshot detection and capture
+    const regionDetect = consoleLogs.find(l => l.includes('clipping regions'));
+    expect(regionDetect).toBeTruthy();
+    const regionDone = consoleLogs.find(l => l.includes('Region screenshots done:') || l.includes('Region screenshots: 0'));
+    expect(regionDone).toBeTruthy();
+
+    // Verify no %23 (encoded #) fetch errors
+    const hashError = consoleLogs.find(l => l.includes('%23') && (l.includes('ERR_FAILED') || l.includes('404')));
+    expect(hashError).toBeFalsy();
+  });
+
+  test('viewer shows region sections below main screenshot for carousel content', async ({ page }) => {
+    const consoleLogs = [];
+    page.on('console', msg => consoleLogs.push(msg.text()));
+
+    await analyzeWithScreenshots(page, CAROUSEL_HTML);
+
+    // Check if region screenshots were captured (may be 0 if carousel slides have passing contrast)
+    const regionDone = consoleLogs.find(l => l.includes('Region screenshots done:'));
+    const regionCount = regionDone ? parseInt((regionDone.match(/done:\s*(\d+)/) || [])[1] || '0') : 0;
+
+    // Open the viewer by expanding the screenshots details and clicking the thumbnail
+    const screenshotDetails = page.locator('details.report-screenshots');
+    if (await screenshotDetails.count() > 0) {
+      await screenshotDetails.locator('summary').click();
+      const screenshotImg = page.locator('.screenshot-img').first();
+      await screenshotImg.waitFor({ state: 'visible', timeout: 5000 });
+      await screenshotImg.click();
+      await page.waitForSelector('.milg-viewer-overlay.visible', { timeout: 10000 });
+
+      // Verify the viewer is open
+      const overlay = page.locator('.milg-viewer-overlay.visible');
+      await expect(overlay).toBeVisible();
+
+      // Verify the main screenshot image is present
+      await expect(page.locator('.milg-viewer-img')).toBeVisible();
+
+      // If regions were captured, verify region sections exist below main screenshot
+      if (regionCount > 0) {
+        const regionSections = page.locator('.milg-viewer-region-section');
+        const sectionCount = await regionSections.count();
+        expect(sectionCount).toBeGreaterThan(0);
+
+        // Verify each region section has a header with label
+        for (let i = 0; i < sectionCount; i++) {
+          const section = regionSections.nth(i);
+          await expect(section).toBeVisible();
+          // Check it has the region ID for navigation
+          const id = await section.getAttribute('id');
+          expect(id).toMatch(/^milg-region-\d+$/);
+        }
+
+        // Verify region sections are positioned below the main frame (not beside)
+        const frame = page.locator('.milg-viewer-frame');
+        const frameBox = await frame.boundingBox();
+        if (frameBox) {
+          for (let i = 0; i < sectionCount; i++) {
+            const sectionBox = await regionSections.nth(i).boundingBox();
+            if (sectionBox) {
+              // Region sections must be below the frame (higher Y value)
+              expect(sectionBox.y).toBeGreaterThan(frameBox.y + frameBox.height - 10);
+            }
+          }
+        }
+      }
+
+      // Verify no expand toggle exists (region screenshots replace the old toggle approach)
+      const toggleBtn = page.locator('.milg-viewer-expand-toggle');
+      expect(await toggleBtn.count()).toBe(0);
+
+      // Close the viewer
+      await page.keyboard.press('Escape');
+    }
+  });
+
+  test('pixel verification skips clipped carousel elements', async ({ page }) => {
+    const consoleLogs = [];
+    page.on('console', msg => consoleLogs.push(msg.text()));
+
+    await analyzeWithScreenshots(page, CAROUSEL_HTML);
+
+    // Check verification log for clippedSkipped count
+    const verifyLog = consoleLogs.find(l => l.includes('clippedSkipped='));
+    if (verifyLog) {
+      const skipped = parseInt((verifyLog.match(/clippedSkipped=(\d+)/) || [])[1] || '0');
+      // If there are clipped elements, they should be reported as skipped
+      expect(skipped).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  test('fragment-only img src is skipped during preload', async ({ page }) => {
+    const consoleLogs = [];
+    const consoleWarnings = [];
+    page.on('console', msg => {
+      consoleLogs.push(msg.text());
+      if (msg.type() === 'warning') consoleWarnings.push(msg.text());
+    });
+
+    await analyzeWithScreenshots(page, CAROUSEL_HTML);
+
+    // Should NOT have a preload warning for fragment URLs
+    const fragWarn = consoleWarnings.find(w => w.includes('#fragment') || w.includes('%23fragment'));
+    expect(fragWarn).toBeFalsy();
+  });
+});
+
+// ── URL Analysis: Real Sites ──
+
+test.describe('URL Analysis - fink-translate.com', () => {
+
+  test('carousel regions render below main screenshot in viewer', async ({ page }) => {
+    test.setTimeout(420000); // URL analysis: CORS proxy + iframe render + screenshots + masks can take 5+ min
+    const consoleLogs = [];
+    page.on('console', msg => consoleLogs.push(msg.text()));
+
+    await page.goto(ANALYZER_URL);
+    await page.check('#screenshotCheck');
+    // Enter URL
+    await page.click('[data-tab="tabUrl"]');
+    await page.fill('#urlInput', 'https://www.fink-translate.com/');
+    await page.click('#analyzeUrlBtn');
+    // URL analysis can take a while: CORS proxy fetch + iframe render + screenshots + mask pipeline
+    await page.waitForSelector('.report-container.visible', { timeout: 360000 });
+
+    // Verify analysis completed
+    const score = await page.locator('.report-gauge svg text').first().textContent();
+    expect(parseInt(score, 10)).toBeGreaterThanOrEqual(0);
+
+    // Check for region screenshot capture in console
+    const regionLog = consoleLogs.find(l => l.includes('Region screenshots done:') || l.includes('clipping regions'));
+
+    // Check for clipped pairs
+    const clippedPairs = consoleLogs.filter(l => l.includes('_isClipped') || l.includes('clippedSkipped'));
+
+    // Open the viewer
+    const screenshotDetails = page.locator('details.report-screenshots');
+    if (await screenshotDetails.count() > 0) {
+      await screenshotDetails.locator('summary').click();
+      const screenshotImg = page.locator('.screenshot-img').first();
+      await screenshotImg.waitFor({ state: 'visible', timeout: 5000 });
+      await screenshotImg.click();
+      await page.waitForSelector('.milg-viewer-overlay.visible', { timeout: 10000 });
+
+      // Verify the viewer opened
+      await expect(page.locator('.milg-viewer-overlay.visible')).toBeVisible();
+      await expect(page.locator('.milg-viewer-img')).toBeVisible();
+
+      // Check for region sections
+      const regionSections = page.locator('.milg-viewer-region-section');
+      const regionSectionCount = await regionSections.count();
+
+      // If regions exist, verify layout
+      if (regionSectionCount > 0) {
+        // Verify region sections are visible
+        for (let i = 0; i < regionSectionCount; i++) {
+          const section = regionSections.nth(i);
+          const id = await section.getAttribute('id');
+          expect(id).toMatch(/^milg-region-\d+$/);
+        }
+
+        // Verify layout: regions are BELOW the main frame, not beside it
+        const frame = page.locator('.milg-viewer-frame');
+        const frameBox = await frame.boundingBox();
+        const regions = page.locator('.milg-viewer-regions');
+        const regionsBox = await regions.boundingBox();
+        if (frameBox && regionsBox) {
+          expect(regionsBox.y).toBeGreaterThanOrEqual(frameBox.y + frameBox.height - 5);
+        }
+
+        // Click "Contrast" or "All" filter to trigger overlay rendering
+        const allBtn = page.locator('.milg-viewer-filter-btn[data-filter-value="all"]');
+        if (await allBtn.count() > 0) {
+          await allBtn.click();
+          // Wait a moment for overlays to render
+          await page.waitForTimeout(500);
+
+          // Check for container indicators (dashed blue boxes on main screenshot)
+          const indicators = page.locator('svg.milg-viewer-svg rect[data-region]');
+          const indicatorCount = await indicators.count();
+          // Container indicators should exist for each region
+          expect(indicatorCount).toBeGreaterThanOrEqual(regionSectionCount);
+        }
+      }
+
+      // Verify no expand toggle (region screenshots replace it)
+      expect(await page.locator('.milg-viewer-expand-toggle').count()).toBe(0);
+
+      // Close viewer
+      await page.keyboard.press('Escape');
+    }
+
+    // Check pixel verification handled clipped elements
+    const verifyLog = consoleLogs.find(l => l.includes('clippedSkipped='));
+    if (verifyLog) {
+      const match = verifyLog.match(/clippedSkipped=(\d+)/);
+      if (match) {
+        console.log('Clipped pairs skipped from pixel verify:', match[1]);
+      }
+    }
+  });
+});
+
+// ── Multiple Presets ──
+
+test.describe('Preset Scoring', () => {
+  const presets = ['hero', 'cards', 'stats-row', 'pricing', 'feature-grid'];
+
+  for (const preset of presets) {
+    test(`${preset} produces valid analysis`, async ({ page }) => {
+      await analyzeHtml(page, loadPreset(preset));
+      const score = await getScore(page);
+      expect(score).toBeGreaterThanOrEqual(0);
+      expect(score).toBeLessThanOrEqual(100);
+      const findings = await page.locator('.finding-header').count();
+      expect(findings).toBeGreaterThan(0);
+    });
+  }
+});
+</file>
+
 <file path="docs/analyzer-snippet-screenshots.js">
 // make-it-look-good — Design Extraction Snippet (with screenshots)
 // Version: v1.1
@@ -36638,18 +36638,29 @@ window.MilgContrastVerify = (function() {
           _clipList.forEach(function(rgn, rIdx) {
             var container = rgn.el, cr = container.getBoundingClientRect();
             var clone = container.cloneNode(true);
-            clone.style.cssText += ';overflow:visible !important;max-height:none !important;height:auto !important;clip-path:none !important;';
-            clone.querySelectorAll('*').forEach(function(d) {
-              d.style.cssText += ';transform:none !important;overflow:visible !important;clip-path:none !important;visibility:visible !important;opacity:1 !important;max-height:none !important;height:auto !important;';
-              if (d.style.display === 'none' || d.getAttribute('aria-hidden') === 'true' || d.hidden) d.style.cssText += ';display:block !important;';
-            });
-            for (var ci = 0; ci < clone.children.length; ci++) {
-              clone.children[ci].style.cssText += ';transform:none !important;display:block !important;visibility:visible !important;opacity:1 !important;position:relative !important;';
-            }
+            clone.style.cssText += ';overflow:visible !important;max-height:none !important;height:auto !important;clip-path:none !important;width:' + Math.round(cr.width) + 'px !important;';
+            var _forceRevealCss =
+              '*,*::before,*::after{transition:none !important;animation:none !important;}' +
+              'body *{visibility:visible !important;opacity:1 !important;transform:none !important;overflow:visible !important;clip-path:none !important;max-height:none !important;}' +
+              '[aria-hidden="true"],[hidden],.hidden,.d-none,.hide,' +
+              '.carousel-item,.swiper-slide,.slick-slide,' +
+              '[class*="slide"],[class*="panel"],[class*="tab-pane"]{' +
+              'display:block !important;visibility:visible !important;opacity:1 !important;position:relative !important;transform:none !important;left:auto !important;right:auto !important;}';
+            var _forceRevealScript =
+              '<script>document.addEventListener("DOMContentLoaded",function(){' +
+              'document.querySelectorAll("*").forEach(function(el){var cs=getComputedStyle(el);' +
+              'if(cs.display==="none")el.style.setProperty("display","block","important");' +
+              'if(cs.visibility==="hidden")el.style.setProperty("visibility","visible","important");' +
+              'if(parseFloat(cs.opacity)<0.1)el.style.setProperty("opacity","1","important");' +
+              'if(cs.position==="absolute"||cs.position==="fixed")el.style.setProperty("position","relative","important");' +
+              '});' +
+              '});</' + 'script>';
             var miniHtml = '<!DOCTYPE html><html><head><meta charset=UTF-8><base href="' + baseHref.replace(/"/g, '&quot;') + '">' + allLinks + allStyles +
-              '<style>*,*::before,*::after{transition:none !important;animation:none !important;}</style></head><body style="margin:0;padding:0;overflow:visible">' + clone.outerHTML + '</body></html>';
+              '<style>' + _forceRevealCss + '</style>' + _forceRevealScript +
+              '</head><body style="margin:0;padding:0;overflow:visible">' + clone.outerHTML + '</body></html>';
+            var _iframeW = Math.max(Math.round(cr.width), 320);
             var mf = document.createElement('iframe');
-            mf.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + Math.max(Math.ceil(cr.width * 4), 800) + 'px;height:2000px;border:none;visibility:hidden;';
+            mf.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + _iframeW + 'px;height:3000px;border:none;visibility:hidden;';
             document.body.appendChild(mf);
             var rgnTimer = setTimeout(function() { rgnFinish(rIdx, mf, null); }, 15000);
             mf.srcdoc = miniHtml;
@@ -36657,9 +36668,18 @@ window.MilgContrastVerify = (function() {
               setTimeout(function() {
                 try {
                   var mDoc = mf.contentDocument; if (!mDoc) { rgnFinish(rIdx, mf, null); return; }
+                  try {
+                    mDoc.querySelectorAll('*').forEach(function(el) {
+                      var cs = mDoc.defaultView.getComputedStyle(el);
+                      if (cs.display === 'none') el.style.setProperty('display', 'block', 'important');
+                      if (cs.visibility === 'hidden') el.style.setProperty('visibility', 'visible', 'important');
+                      if (parseFloat(cs.opacity) < 0.1) el.style.setProperty('opacity', '1', 'important');
+                    });
+                  } catch(_e) {}
+                  void mDoc.body.offsetHeight;
                   var cW = Math.max(mDoc.body.scrollWidth, mDoc.documentElement.scrollWidth);
                   var cH = Math.max(mDoc.body.scrollHeight, mDoc.documentElement.scrollHeight);
-                  mf.style.width = cW + 'px'; mf.style.height = cH + 'px';
+                  mf.style.width = Math.max(cW, _iframeW) + 'px'; mf.style.height = cH + 'px';
                   void mDoc.body.offsetHeight;
                   ms.domToCanvas(mDoc.documentElement, { scale: 1.5, timeout: 12000 }).then(function(rc) {
                     var rUri; try { rUri = rc.toDataURL('image/webp', 0.8); } catch(e) { rUri = ''; }
@@ -41074,30 +41094,50 @@ window.MilgIframe = (function() {
       _clipContainerList.forEach(function(rgn, rIdx) {
         var container = rgn.el, cr = container.getBoundingClientRect();
         var clone = container.cloneNode(true);
-        clone.style.cssText += ';overflow:visible !important;max-height:none !important;height:auto !important;clip-path:none !important;';
-        // Force-reveal all descendants: neutralize transforms, overflow, display, visibility, clip
-        clone.querySelectorAll('*').forEach(function(d) {
-          var ds = d.style;
-          ds.cssText += ';transform:none !important;overflow:visible !important;clip-path:none !important;';
-          // Unhide inactive carousel slides (display:none, visibility:hidden, opacity:0)
-          if (ds.display === 'none' || d.getAttribute('aria-hidden') === 'true' || d.hidden) {
-            ds.cssText += ';display:block !important;';
-          }
-          ds.cssText += ';visibility:visible !important;opacity:1 !important;max-height:none !important;height:auto !important;';
-        });
-        for (var ci = 0; ci < clone.children.length; ci++) {
-          var child = clone.children[ci];
-          child.style.cssText += ';transform:none !important;display:block !important;visibility:visible !important;opacity:1 !important;position:relative !important;';
-        }
+        // Inline style overrides on the clone (before it enters the mini-page)
+        clone.style.cssText += ';overflow:visible !important;max-height:none !important;height:auto !important;clip-path:none !important;width:' + Math.round(cr.width) + 'px !important;';
+
+        // Build mini-page HTML with aggressive CSS overrides.
+        // The original stylesheets are included, so CSS class rules like
+        // .carousel-item:not(.active){display:none} still apply. We need
+        // a high-specificity override AND a post-load JS pass to catch everything.
+        var forceRevealCss =
+          '*,*::before,*::after{transition:none !important;animation:none !important;}' +
+          // Force-reveal: override computed display:none from CSS classes
+          'body *{visibility:visible !important;opacity:1 !important;' +
+          'transform:none !important;overflow:visible !important;' +
+          'clip-path:none !important;max-height:none !important;}' +
+          // Common carousel patterns: force-show inactive slides
+          '[aria-hidden="true"],[hidden],.hidden,.d-none,.hide,' +
+          '.carousel-item,.swiper-slide,.slick-slide,' +
+          '[class*="slide"],[class*="panel"],[class*="tab-pane"]{' +
+          'display:block !important;visibility:visible !important;' +
+          'opacity:1 !important;position:relative !important;' +
+          'transform:none !important;left:auto !important;right:auto !important;}';
+
+        // Post-load script: catch any remaining computed display:none elements
+        var forceRevealScript =
+          '<script>document.addEventListener("DOMContentLoaded",function(){' +
+          'document.querySelectorAll("*").forEach(function(el){' +
+          'var cs=getComputedStyle(el);' +
+          'if(cs.display==="none")el.style.setProperty("display","block","important");' +
+          'if(cs.visibility==="hidden")el.style.setProperty("visibility","visible","important");' +
+          'if(parseFloat(cs.opacity)<0.1)el.style.setProperty("opacity","1","important");' +
+          'if(cs.position==="absolute"||cs.position==="fixed")el.style.setProperty("position","relative","important");' +
+          '});' +
+          '});</' + 'script>';
 
         var miniHtml = '<!DOCTYPE html><html><head><meta charset=UTF-8>' +
           (baseHref ? '<base href="' + baseHref.replace(/"/g, '&quot;') + '">' : '') +
           allLinks + allStyles +
-          '<style>*,*::before,*::after{transition:none !important;animation:none !important;}</style>' +
+          '<style>' + forceRevealCss + '</style>' +
+          forceRevealScript +
           '</head><body style="margin:0;padding:0;overflow:visible">' + clone.outerHTML + '</body></html>';
 
+        // Use container width (not 4x) — content flows vertically via force-reveal
+        var iframeW = Math.max(Math.round(cr.width), 320);
         var mf = document.createElement('iframe');
-        mf.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + Math.max(Math.ceil(cr.width * 4), 800) + 'px;height:2000px;border:none;visibility:hidden;';
+        mf.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + iframeW + 'px;height:3000px;border:none;visibility:hidden;';
         mf.setAttribute('sandbox', 'allow-same-origin allow-scripts');
         document.body.appendChild(mf);
 
@@ -41112,9 +41152,19 @@ window.MilgIframe = (function() {
             try {
               var mDoc = mf.contentDocument;
               if (!mDoc) { _rgnFinish(rIdx, mf, null); return; }
+              // Second pass: force-reveal from parent context (in case script didn't run)
+              try {
+                mDoc.querySelectorAll('*').forEach(function(el) {
+                  var cs = mDoc.defaultView.getComputedStyle(el);
+                  if (cs.display === 'none') el.style.setProperty('display', 'block', 'important');
+                  if (cs.visibility === 'hidden') el.style.setProperty('visibility', 'visible', 'important');
+                  if (parseFloat(cs.opacity) < 0.1) el.style.setProperty('opacity', '1', 'important');
+                });
+              } catch(_e) {}
+              void mDoc.body.offsetHeight; // reflow
               var cW = Math.max(mDoc.body.scrollWidth, mDoc.documentElement.scrollWidth);
               var cH = Math.max(mDoc.body.scrollHeight, mDoc.documentElement.scrollHeight);
-              mf.style.width = cW + 'px'; mf.style.height = cH + 'px';
+              mf.style.width = Math.max(cW, iframeW) + 'px'; mf.style.height = cH + 'px';
               void mDoc.body.offsetHeight;
               var pms = window.modernScreenshot;
               if (!pms || !pms.domToCanvas) { _rgnFinish(rIdx, mf, null); return; }
@@ -41923,7 +41973,7 @@ window.MilgIframe = (function() {
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.3 loaded');
+console.log('[milg] analyzer.js v3.4 loaded');
 
 (function() {
   "use strict";
@@ -43666,7 +43716,7 @@ console.log('[milg] analyzer.js v3.3 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.3</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.4</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
