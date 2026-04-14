@@ -43,30 +43,36 @@ window.MilgRegion = (function() {
   function cleanupMiniPageDom(mDoc) {
     try {
       var dv = mDoc.defaultView;
+      // Force-reveal pass (redundant with script, but covers sandbox/CSP failures)
       mDoc.querySelectorAll('*').forEach(function(el) {
         var cs = dv.getComputedStyle(el);
-        // Force-reveal pass (redundant with script, but covers sandbox/CSP failures)
         if (cs.display === 'none') el.style.setProperty('display', 'block', 'important');
         if (cs.visibility === 'hidden') el.style.setProperty('visibility', 'visible', 'important');
         if (parseFloat(cs.opacity) < 0.1) el.style.setProperty('opacity', '1', 'important');
         if (cs.position === 'absolute' || cs.position === 'fixed') el.style.setProperty('position', 'relative', 'important');
-        // Reset height constraints that cause whitespace
-        var h = cs.height, mh = cs.minHeight;
-        if (h && h !== 'auto' && h !== '0px' && parseInt(h) > 50) el.style.setProperty('height', 'auto', 'important');
-        if (mh && mh !== '0px' && parseInt(mh) > 50) el.style.setProperty('min-height', '0', 'important');
-        el.style.setProperty('max-height', 'none', 'important');
-        // Flex containers: vertical stacking, no gap
-        if (cs.display.indexOf('flex') !== -1) {
-          el.style.setProperty('flex-direction', 'column', 'important');
-          el.style.setProperty('gap', '0', 'important');
+      });
+      // Height cleanup: only on container (body > first child) and its direct children.
+      // Resetting ALL descendants caused massive height inflation.
+      var container = mDoc.body.firstElementChild;
+      if (container) {
+        container.style.setProperty('height', 'auto', 'important');
+        container.style.setProperty('max-height', 'none', 'important');
+        container.style.setProperty('min-height', '0', 'important');
+        container.style.setProperty('overflow', 'visible', 'important');
+        for (var ci = 0; ci < container.children.length; ci++) {
+          var child = container.children[ci];
+          child.style.setProperty('height', 'auto', 'important');
+          child.style.setProperty('max-height', 'none', 'important');
+          child.style.setProperty('min-height', '0', 'important');
+          child.style.setProperty('position', 'relative', 'important');
+          // Flex children of carousel track: force to column layout
+          var cs = dv.getComputedStyle(child);
+          if (cs.display.indexOf('flex') !== -1) {
+            child.style.setProperty('flex-direction', 'column', 'important');
+            child.style.setProperty('gap', '0', 'important');
+          }
         }
-      });
-      // Remove zero-size spacer elements (no text, no children, tiny rect)
-      mDoc.querySelectorAll('*').forEach(function(el) {
-        if (el.children.length > 0 || el.textContent.trim()) return;
-        var rect = el.getBoundingClientRect();
-        if (rect.width < 2 && rect.height < 2) el.style.setProperty('display', 'none', 'important');
-      });
+      }
     } catch (_e) {
       console.warn('[milg-region] DOM cleanup failed:', _e.message);
     }
@@ -228,7 +234,7 @@ window.MilgRegion = (function() {
               var mDoc = mf.contentDocument;
               if (!mDoc) { _rgnFinish(rIdx, mf, null); return; }
 
-              // DOM cleanup: force-reveal + reset height constraints
+              // DOM cleanup: force-reveal + targeted height reset on container/children only
               try {
                 var dv = mDoc.defaultView;
                 mDoc.querySelectorAll('*').forEach(function(el) {
@@ -237,21 +243,24 @@ window.MilgRegion = (function() {
                   if (cs.visibility === 'hidden') el.style.setProperty('visibility', 'visible', 'important');
                   if (parseFloat(cs.opacity) < 0.1) el.style.setProperty('opacity', '1', 'important');
                   if (cs.position === 'absolute' || cs.position === 'fixed') el.style.setProperty('position', 'relative', 'important');
-                  var h = cs.height, mh = cs.minHeight;
-                  if (h && h !== 'auto' && h !== '0px' && parseInt(h) > 50) el.style.setProperty('height', 'auto', 'important');
-                  if (mh && mh !== '0px' && parseInt(mh) > 50) el.style.setProperty('min-height', '0', 'important');
-                  el.style.setProperty('max-height', 'none', 'important');
-                  if (cs.display.indexOf('flex') !== -1) {
-                    el.style.setProperty('flex-direction', 'column', 'important');
-                    el.style.setProperty('gap', '0', 'important');
+                });
+                var _cont = mDoc.body.firstElementChild;
+                if (_cont) {
+                  _cont.style.setProperty('height', 'auto', 'important');
+                  _cont.style.setProperty('max-height', 'none', 'important');
+                  _cont.style.setProperty('overflow', 'visible', 'important');
+                  for (var _ci = 0; _ci < _cont.children.length; _ci++) {
+                    var _ch = _cont.children[_ci];
+                    _ch.style.setProperty('height', 'auto', 'important');
+                    _ch.style.setProperty('max-height', 'none', 'important');
+                    _ch.style.setProperty('position', 'relative', 'important');
+                    var _ccs = dv.getComputedStyle(_ch);
+                    if (_ccs.display.indexOf('flex') !== -1) {
+                      _ch.style.setProperty('flex-direction', 'column', 'important');
+                      _ch.style.setProperty('gap', '0', 'important');
+                    }
                   }
-                });
-                // Remove zero-size spacers
-                mDoc.querySelectorAll('*').forEach(function(el) {
-                  if (el.children.length > 0 || el.textContent.trim()) return;
-                  var rect = el.getBoundingClientRect();
-                  if (rect.width < 2 && rect.height < 2) el.style.setProperty('display', 'none', 'important');
-                });
+                }
               } catch (_e) {}
 
               void mDoc.body.offsetHeight; // reflow

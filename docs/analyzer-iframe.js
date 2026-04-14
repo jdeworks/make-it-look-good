@@ -1250,12 +1250,13 @@ window.MilgIframe = (function() {
     '};';
     var screenshotScript = captureScreenshots ? '<script>window.__milgDoScreenshots=function(){' + buildScreenshotScript('milg-screenshots-result') + '};' + unhiddenScreenshotFn + '</' + 'script>' : '';
     var srcdoc;
+    var _extractFnSrc = extractFromDocument.toString();
     if (isFullDoc) {
       // Wait for window load (CSS/fonts loaded), then extra delay for rendering
       // JS-enabled mode needs longer delays for React/Vue hydration
       var postLoadDelay = jsEnabled ? 2000 : 1000;
       var fallbackDelay = jsEnabled ? 8000 : 8000;
-      var extractScript = idVar + excludeVar + fragmentVar + screenshotScript + '<script>window.addEventListener("load",function(){setTimeout(function(){(' + extractFromDocument.toString() + ')()},' + postLoadDelay + ')});setTimeout(function(){(' + extractFromDocument.toString() + ')()},' + fallbackDelay + ');</' + 'script>';
+      var extractScript = idVar + excludeVar + fragmentVar + screenshotScript + '<script>window.MilgExtract=(' + _extractFnSrc + ');window.addEventListener("load",function(){setTimeout(function(){window.MilgExtract()},' + postLoadDelay + ')});setTimeout(function(){window.MilgExtract()},' + fallbackDelay + ');</' + 'script>';
       if (/<\/body>/i.test(html)) {
         srcdoc = html.replace(/<\/body>/i, extractScript + '</body>');
       } else {
@@ -1271,7 +1272,7 @@ window.MilgIframe = (function() {
         darkVariantTag + effectTag +
         '<style>body{margin:0}</style></head><body>' +
         html + idVar + excludeVar + fragmentVar + screenshotScript +
-        '<script>setTimeout(function(){(' + extractFromDocument.toString() + ')()}, 1500);</' + 'script>' +
+        '<script>window.MilgExtract=(' + _extractFnSrc + ');setTimeout(function(){window.MilgExtract()}, 1500);</' + 'script>' +
         '</body></html>';
     }
     iframe.srcdoc = srcdoc;

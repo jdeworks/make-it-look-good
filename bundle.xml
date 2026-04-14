@@ -170,7 +170,6 @@ test-results/
   region-debug/
     clean-screenshot.webp
     console-logs.txt
-    region-0.webp
     report-dump.json
     svg-state.json
     viewer-indicator-area.png
@@ -13101,318 +13100,6 @@ run().catch(function(e) { console.error(e); process.exit(1); });
 </html>
 </file>
 
-<file path="docs/analyzer-region.js">
-// make-it-look-good — Region Screenshot Module
-// Shared logic for detecting overflow:hidden containers with hidden content,
-// creating mini-page iframes, force-revealing content, and capturing screenshots.
-// Used by analyzer-iframe.js (URL analysis) and the console snippet (assembled at runtime).
-//
-// Exposes window.MilgRegion
-
-window.MilgRegion = (function() {
-  "use strict";
-
-  // --- Force-reveal CSS ---
-  // Injected into mini-page <style> to override CSS class rules that hide carousel slides.
-  // High specificity needed because original stylesheets are included in the mini-page.
-  var FORCE_REVEAL_CSS =
-    '*,*::before,*::after{transition:none !important;animation:none !important;}' +
-    'body *{visibility:visible !important;opacity:1 !important;' +
-    'transform:none !important;overflow:visible !important;' +
-    'clip-path:none !important;max-height:none !important;}' +
-    '[aria-hidden="true"],[hidden],.hidden,.d-none,.hide,' +
-    '.carousel-item,.swiper-slide,.slick-slide,' +
-    '[class*="slide"],[class*="panel"],[class*="tab-pane"]{' +
-    'display:block !important;visibility:visible !important;' +
-    'opacity:1 !important;position:relative !important;' +
-    'transform:none !important;left:auto !important;right:auto !important;}';
-
-  // --- Force-reveal script ---
-  // Runs inside the mini-page on DOMContentLoaded. Catches computed display:none
-  // from CSS classes that the static CSS above can't target generically.
-  var FORCE_REVEAL_SCRIPT =
-    'document.addEventListener("DOMContentLoaded",function(){' +
-    'document.querySelectorAll("*").forEach(function(el){' +
-    'var cs=getComputedStyle(el);' +
-    'if(cs.display==="none")el.style.setProperty("display","block","important");' +
-    'if(cs.visibility==="hidden")el.style.setProperty("visibility","visible","important");' +
-    'if(parseFloat(cs.opacity)<0.1)el.style.setProperty("opacity","1","important");' +
-    'if(cs.position==="absolute"||cs.position==="fixed")el.style.setProperty("position","relative","important");' +
-    '});' +
-    '});';
-
-  // --- DOM cleanup ---
-  // Runs from parent context after mini-page loads. Resets height constraints and
-  // removes spacer elements that cause massive whitespace in the region screenshot.
-  function cleanupMiniPageDom(mDoc) {
-    try {
-      var dv = mDoc.defaultView;
-      mDoc.querySelectorAll('*').forEach(function(el) {
-        var cs = dv.getComputedStyle(el);
-        // Force-reveal pass (redundant with script, but covers sandbox/CSP failures)
-        if (cs.display === 'none') el.style.setProperty('display', 'block', 'important');
-        if (cs.visibility === 'hidden') el.style.setProperty('visibility', 'visible', 'important');
-        if (parseFloat(cs.opacity) < 0.1) el.style.setProperty('opacity', '1', 'important');
-        if (cs.position === 'absolute' || cs.position === 'fixed') el.style.setProperty('position', 'relative', 'important');
-        // Reset height constraints that cause whitespace
-        var h = cs.height, mh = cs.minHeight;
-        if (h && h !== 'auto' && h !== '0px' && parseInt(h) > 50) el.style.setProperty('height', 'auto', 'important');
-        if (mh && mh !== '0px' && parseInt(mh) > 50) el.style.setProperty('min-height', '0', 'important');
-        el.style.setProperty('max-height', 'none', 'important');
-        // Flex containers: vertical stacking, no gap
-        if (cs.display.indexOf('flex') !== -1) {
-          el.style.setProperty('flex-direction', 'column', 'important');
-          el.style.setProperty('gap', '0', 'important');
-        }
-      });
-      // Remove zero-size spacer elements (no text, no children, tiny rect)
-      mDoc.querySelectorAll('*').forEach(function(el) {
-        if (el.children.length > 0 || el.textContent.trim()) return;
-        var rect = el.getBoundingClientRect();
-        if (rect.width < 2 && rect.height < 2) el.style.setProperty('display', 'none', 'important');
-      });
-    } catch (_e) {
-      console.warn('[milg-region] DOM cleanup failed:', _e.message);
-    }
-  }
-
-  // --- Build mini-page HTML ---
-  // Assembles HTML for the mini-page iframe with force-reveal CSS/JS and optional extraction.
-  function buildMiniPageHtml(cloneOuterHtml, baseHref, allLinks, allStyles, opts) {
-    opts = opts || {};
-    var scripts = '<script>' + FORCE_REVEAL_SCRIPT + '</' + 'script>';
-    // Optional: inject extraction engine to run after force-reveal
-    if (opts.extractFnSrc) {
-      scripts += '<script>setTimeout(function(){try{(' + opts.extractFnSrc + ')()}catch(e){console.warn("[milg-region] Extraction failed:",e.message)}},100);</' + 'script>';
-    }
-    return '<!DOCTYPE html><html><head><meta charset=UTF-8>' +
-      (baseHref ? '<base href="' + baseHref.replace(/"/g, '&quot;') + '">' : '') +
-      allLinks + allStyles +
-      '<style>' + FORCE_REVEAL_CSS + '</style>' +
-      scripts +
-      '</head><body style="margin:0;padding:0;overflow:visible">' + cloneOuterHtml + '</body></html>';
-  }
-
-  // --- Build region clone ---
-  // Deep-clones the container element and applies inline style overrides.
-  function buildRegionClone(container, containerRect) {
-    var clone = container.cloneNode(true);
-    clone.style.cssText += ';overflow:visible !important;max-height:none !important;height:auto !important;clip-path:none !important;width:' + Math.round(containerRect.width) + 'px !important;';
-    return clone;
-  }
-
-  // --- Detect clipped pairs ---
-  // Marks contrast pairs as _isClipped if their element bbox is outside an overflow:hidden ancestor.
-  // Returns as a string for injection into iframe scripts.
-  function getClipDetectionScript() {
-    return 'if(window.__milgBboxRefs&&window.__milgData&&window.__milgData.colors){' +
-      'var _cp=window.__milgData.colors.contrastPairs||[];' +
-      'window.__milgBboxRefs.forEach(function(ref){' +
-        'if(!ref.el||!ref.obj||ref.key!=="bbox")return;' +
-        'var el=ref.el;var pair=ref.obj;' +
-        'var er=el.getBoundingClientRect();' +
-        'var anc=el.parentElement;' +
-        'while(anc&&anc!==document.documentElement){' +
-          'var as=getComputedStyle(anc);' +
-          'var aov=as.overflow||"";var aovx=as.overflowX||"";var aovy=as.overflowY||"";' +
-          'if(aov==="hidden"||aov==="clip"||aovx==="hidden"||aovx==="clip"||aovy==="hidden"||aovy==="clip"){' +
-            'var ar=anc.getBoundingClientRect();' +
-            'if(er.right<ar.left+1||er.left>ar.right-1||er.bottom<ar.top+1||er.top>ar.bottom-1){' +
-              'pair._isClipped=true;break' +
-            '}' +
-          '}' +
-          'anc=anc.parentElement' +
-        '}' +
-      '})' +
-    '}';
-  }
-
-  // --- Serializable region screenshot function ---
-  // This function is serialized via .toString() and injected into the analysis iframe.
-  // It MUST be self-contained — no references to outer scope variables.
-  // Parameters are bound at serialization time by the caller.
-  function _regionScreenshotFn(_sc, _quality, _prog, _cp2) {
-    return function _buildRegionScreenshots(rgnCb) {
-      // Detect clipping containers from tracked bbox refs
-      var _rgnCounter = 0, _clipContainerList = [], _clipContainers = {};
-      if (window.__milgBboxRefs) {
-        window.__milgBboxRefs.forEach(function(ref) {
-          if (!ref.el || !ref.obj || ref.key !== 'bbox' || !ref.obj._isClipped) return;
-          var clipAnc = null, anc = ref.el.parentElement;
-          while (anc && anc !== document.documentElement) {
-            var as = getComputedStyle(anc);
-            var aov = as.overflow || '', aovx = as.overflowX || '', aovy = as.overflowY || '';
-            if (aov === 'hidden' || aov === 'clip' || aovx === 'hidden' || aovx === 'clip' || aovy === 'hidden' || aovy === 'clip') {
-              var ar = anc.getBoundingClientRect();
-              if (ar.width >= 100 && ar.height >= 30) clipAnc = anc;
-            }
-            anc = anc.parentElement;
-          }
-          if (!clipAnc) return;
-          var cid = clipAnc._milgRegionId;
-          if (!cid) {
-            cid = 'rgn-' + (++_rgnCounter); clipAnc._milgRegionId = cid;
-            _clipContainerList.push({ el: clipAnc, id: cid, pairIndices: [] });
-            _clipContainers[cid] = _clipContainerList[_clipContainerList.length - 1];
-          }
-          var pi = _cp2.indexOf(ref.obj);
-          if (pi >= 0 && _clipContainers[cid].pairIndices.indexOf(pi) < 0)
-            _clipContainers[cid].pairIndices.push(pi);
-        });
-      }
-      _clipContainerList.sort(function(a, b) {
-        var ar = a.el.getBoundingClientRect(), br = b.el.getBoundingClientRect();
-        return (br.width * br.height) - (ar.width * ar.height);
-      });
-      _clipContainerList = _clipContainerList.slice(0, 5);
-      console.log('[milg-region] Found ' + _clipContainerList.length + ' clipping regions');
-      if (_clipContainerList.length === 0) { rgnCb([]); return; }
-
-      var _rgnResults = [], _rgnDone = 0, _rgnTotal = _clipContainerList.length;
-      var _rgnOverall = setTimeout(function() {
-        console.warn('[milg-region] Overall timeout (30s)');
-        rgnCb(_rgnResults);
-      }, 30000);
-
-      // Collect styles for mini-pages
-      var allStyles = ''; document.querySelectorAll('style').forEach(function(s) { allStyles += s.outerHTML; });
-      var allLinks = ''; document.querySelectorAll('link[rel=stylesheet]').forEach(function(l) { allLinks += l.outerHTML; });
-      var baseHref = (document.querySelector('base') || {}).href || '';
-
-      // Force-reveal CSS (inlined — can't reference MilgRegion from inside serialized fn)
-      var _revealCss =
-        '*,*::before,*::after{transition:none !important;animation:none !important;}' +
-        'body *{visibility:visible !important;opacity:1 !important;transform:none !important;overflow:visible !important;clip-path:none !important;max-height:none !important;}' +
-        '[aria-hidden="true"],[hidden],.hidden,.d-none,.hide,.carousel-item,.swiper-slide,.slick-slide,' +
-        '[class*="slide"],[class*="panel"],[class*="tab-pane"]{display:block !important;visibility:visible !important;opacity:1 !important;position:relative !important;transform:none !important;left:auto !important;right:auto !important;}';
-
-      var _revealScript =
-        '<script>document.addEventListener("DOMContentLoaded",function(){' +
-        'document.querySelectorAll("*").forEach(function(el){var cs=getComputedStyle(el);' +
-        'if(cs.display==="none")el.style.setProperty("display","block","important");' +
-        'if(cs.visibility==="hidden")el.style.setProperty("visibility","visible","important");' +
-        'if(parseFloat(cs.opacity)<0.1)el.style.setProperty("opacity","1","important");' +
-        'if(cs.position==="absolute"||cs.position==="fixed")el.style.setProperty("position","relative","important");' +
-        '});});</' + 'script>';
-
-      // Optional extraction: inject MilgExtract if available
-      var _extractScript = '';
-      if (typeof window.MilgExtract === 'function') {
-        _extractScript = '<script>setTimeout(function(){try{(' + window.MilgExtract.toString() + ')()}catch(e){console.warn("[milg-region] Extraction failed:",e)}},100);</' + 'script>';
-      }
-
-      _prog('Capturing ' + _rgnTotal + ' region screenshots...');
-
-      _clipContainerList.forEach(function(rgn, rIdx) {
-        var container = rgn.el, cr = container.getBoundingClientRect();
-        var clone = container.cloneNode(true);
-        clone.style.cssText += ';overflow:visible !important;max-height:none !important;height:auto !important;clip-path:none !important;width:' + Math.round(cr.width) + 'px !important;';
-
-        var miniHtml = '<!DOCTYPE html><html><head><meta charset=UTF-8>' +
-          (baseHref ? '<base href="' + baseHref.replace(/"/g, '&quot;') + '">' : '') +
-          allLinks + allStyles +
-          '<style>' + _revealCss + '</style>' + _revealScript + _extractScript +
-          '</head><body style="margin:0;padding:0;overflow:visible">' + clone.outerHTML + '</body></html>';
-
-        var iframeW = Math.max(Math.round(cr.width), 320);
-        var mf = document.createElement('iframe');
-        mf.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + iframeW + 'px;height:3000px;border:none;visibility:hidden;';
-        mf.setAttribute('sandbox', 'allow-same-origin allow-scripts');
-        document.body.appendChild(mf);
-
-        var rgnTimer = setTimeout(function() {
-          console.warn('[milg-region] Region ' + rIdx + ' timed out');
-          _rgnFinish(rIdx, mf, null);
-        }, 15000);
-
-        mf.srcdoc = miniHtml;
-        mf.addEventListener('load', function() {
-          setTimeout(function() {
-            try {
-              var mDoc = mf.contentDocument;
-              if (!mDoc) { _rgnFinish(rIdx, mf, null); return; }
-
-              // DOM cleanup: force-reveal + reset height constraints
-              try {
-                var dv = mDoc.defaultView;
-                mDoc.querySelectorAll('*').forEach(function(el) {
-                  var cs = dv.getComputedStyle(el);
-                  if (cs.display === 'none') el.style.setProperty('display', 'block', 'important');
-                  if (cs.visibility === 'hidden') el.style.setProperty('visibility', 'visible', 'important');
-                  if (parseFloat(cs.opacity) < 0.1) el.style.setProperty('opacity', '1', 'important');
-                  if (cs.position === 'absolute' || cs.position === 'fixed') el.style.setProperty('position', 'relative', 'important');
-                  var h = cs.height, mh = cs.minHeight;
-                  if (h && h !== 'auto' && h !== '0px' && parseInt(h) > 50) el.style.setProperty('height', 'auto', 'important');
-                  if (mh && mh !== '0px' && parseInt(mh) > 50) el.style.setProperty('min-height', '0', 'important');
-                  el.style.setProperty('max-height', 'none', 'important');
-                  if (cs.display.indexOf('flex') !== -1) {
-                    el.style.setProperty('flex-direction', 'column', 'important');
-                    el.style.setProperty('gap', '0', 'important');
-                  }
-                });
-                // Remove zero-size spacers
-                mDoc.querySelectorAll('*').forEach(function(el) {
-                  if (el.children.length > 0 || el.textContent.trim()) return;
-                  var rect = el.getBoundingClientRect();
-                  if (rect.width < 2 && rect.height < 2) el.style.setProperty('display', 'none', 'important');
-                });
-              } catch (_e) {}
-
-              void mDoc.body.offsetHeight; // reflow
-
-              // Harvest extraction data if available
-              var extractedData = null;
-              try { extractedData = mf.contentWindow.__milgData || null; } catch (_e) {}
-
-              var cW = Math.max(mDoc.body.scrollWidth, mDoc.documentElement.scrollWidth);
-              var cH = Math.max(mDoc.body.scrollHeight, mDoc.documentElement.scrollHeight);
-              mf.style.width = Math.max(cW, iframeW) + 'px'; mf.style.height = cH + 'px';
-              void mDoc.body.offsetHeight;
-
-              var pms = window.modernScreenshot;
-              if (!pms || !pms.domToCanvas) { _rgnFinish(rIdx, mf, null); return; }
-              pms.domToCanvas(mDoc.documentElement, { scale: _sc, timeout: 12000 }).then(function(rc) {
-                var rUri; try { rUri = rc.toDataURL('image/webp', _quality); } catch (e) { rUri = ''; }
-                clearTimeout(rgnTimer);
-                _rgnFinish(rIdx, mf, {
-                  screenshot: rUri,
-                  screenshotMeta: { scale: _sc, canvasWidth: rc.width, canvasHeight: rc.height },
-                  pairIndices: rgn.pairIndices,
-                  containerRect: { left: Math.round(cr.left), top: Math.round(cr.top), width: Math.round(cr.width), height: Math.round(cr.height) },
-                  extractedData: extractedData
-                });
-              }).catch(function(e) { clearTimeout(rgnTimer); _rgnFinish(rIdx, mf, null); });
-            } catch (e) { clearTimeout(rgnTimer); _rgnFinish(rIdx, mf, null); }
-          }, 800); // 800ms: allow DOMContentLoaded + extraction to complete
-        });
-      });
-
-      function _rgnFinish(idx, mf, result) {
-        if (result) _rgnResults.push(result);
-        try { if (mf && mf.parentNode) mf.parentNode.removeChild(mf); } catch (e) {}
-        _rgnDone++;
-        if (_rgnDone >= _rgnTotal) {
-          clearTimeout(_rgnOverall);
-          console.log('[milg-region] Region screenshots done: ' + _rgnResults.length + '/' + _rgnTotal);
-          rgnCb(_rgnResults);
-        }
-      }
-    };
-  }
-
-  return {
-    FORCE_REVEAL_CSS: FORCE_REVEAL_CSS,
-    FORCE_REVEAL_SCRIPT: FORCE_REVEAL_SCRIPT,
-    cleanupMiniPageDom: cleanupMiniPageDom,
-    buildMiniPageHtml: buildMiniPageHtml,
-    buildRegionClone: buildRegionClone,
-    getClipDetectionScript: getClipDetectionScript,
-    // The serializable function — use: MilgRegion.getRegionFn().toString()
-    getRegionFn: function() { return _regionScreenshotFn; }
-  };
-})();
-</file>
-
 <file path="docs/ANALYZER-TODO.md">
 # Analyzer TODO
 
@@ -24065,7 +23752,7 @@ Are you building for Android/Google platforms?
 </file>
 
 <file path="test-results/region-debug/console-logs.txt">
-[milg] analyzer.js v3.5 loaded
+[milg] analyzer.js v3.6 loaded
 Access to fetch at 'https://www.fink-translate.com/' from origin 'http://localhost:8384' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
 Failed to load resource: net::ERR_FAILED
 Failed to load resource: the server responded with a status of 403 ()
@@ -24089,15 +23776,15 @@ An iframe which has both allow-scripts and allow-same-origin for its sandbox att
 Failed to load resource: the server responded with a status of 403 ()
 [iframe-ss] Image preload failed: https://www.fink-translate.com/assets/fink-logo.png 403
 Failed to load resource: the server responded with a status of 403 ()
-[iframe-ss] Image preload failed: https://www.fink-translate.com/assets/fink-canvas.png 403
-Failed to load resource: the server responded with a status of 403 ()
 [iframe-ss] Image preload failed: https://www.fink-translate.com/assets/fink-back-translation.png 403
 Failed to load resource: the server responded with a status of 403 ()
-[iframe-ss] Image preload failed: https://www.fink-translate.com/assets/fink-logo.webp 403
+[iframe-ss] Image preload failed: https://www.fink-translate.com/assets/fink-canvas.png 403
+Failed to load resource: the server responded with a status of 403 ()
+[iframe-ss] Image preload failed: https://www.fink-translate.com/assets/fink-back-translation.webp 403
 Failed to load resource: the server responded with a status of 403 ()
 [iframe-ss] Image preload failed: https://www.fink-translate.com/assets/fink-canvas.webp 403
 Failed to load resource: the server responded with a status of 403 ()
-[iframe-ss] Image preload failed: https://www.fink-translate.com/assets/fink-back-translation.webp 403
+[iframe-ss] Image preload failed: https://www.fink-translate.com/assets/fink-logo.webp 403
 [iframe-ss] Capturing clean screenshot at 1.5x...
 Failed to load resource: the server responded with a status of 403 ()
 Failed to load resource: the server responded with a status of 403 ()
@@ -24137,7 +23824,7 @@ Canvas2D: Multiple readback operations using getImageData are faster with the wi
 [iframe-ss] Layer 2: 1 elements used fillText fallback mask
 [iframe-ss] All 2 mask layers done
 [iframe-ss] Sending results (maskResults: 88 pairs)
-[iframe-ss] postMessage: ss=528KB ud=626KB masks=88/116
+[iframe-ss] postMessage: ss=559KB ud=626KB masks=88/116
 Failed to load resource: the server responded with a status of 403 ()
 Failed to load resource: the server responded with a status of 403 ()
 Failed to load resource: the server responded with a status of 403 ()
@@ -24150,11 +23837,11 @@ Failed to load resource: the server responded with a status of 403 ()
     {
       "index": 0,
       "hasScreenshot": true,
-      "screenshotLen": 190799,
+      "screenshotLen": 6,
       "screenshotMeta": {
         "scale": 1.5,
         "canvasWidth": 2427,
-        "canvasHeight": 8349
+        "canvasHeight": 17109
       },
       "pairIndices": [
         65,
@@ -24204,7 +23891,11 @@ Failed to load resource: the server responded with a status of 403 ()
         "top": 2154,
         "width": 350,
         "height": 467
-      }
+      },
+      "hasExtractedData": true,
+      "extractedPairCount": 60,
+      "hasRegionReport": true,
+      "regionScore": 82
     }
   ],
   "clippedPairCount": 40,
@@ -30805,275 +30496,325 @@ window.MilgQueue = (function() {
 })();
 </file>
 
-<file path="tests/region-debug.spec.js">
-// @ts-check
-// Diagnostic test: captures region screenshot data from fink-translate.com
-// and writes debug artifacts to test-results/region-debug/
-const { test, expect } = require('@playwright/test');
-const fs = require('fs');
-const path = require('path');
+<file path="docs/analyzer-region.js">
+// make-it-look-good — Region Screenshot Module
+// Shared logic for detecting overflow:hidden containers with hidden content,
+// creating mini-page iframes, force-revealing content, and capturing screenshots.
+// Used by analyzer-iframe.js (URL analysis) and the console snippet (assembled at runtime).
+//
+// Exposes window.MilgRegion
 
-const ANALYZER_URL = 'http://localhost:8384/analyzer.html';
-const OUT_DIR = path.join(__dirname, '..', 'test-results', 'region-debug');
+window.MilgRegion = (function() {
+  "use strict";
 
-test.describe('Region Screenshot Debug', () => {
+  // --- Force-reveal CSS ---
+  // Injected into mini-page <style> to override CSS class rules that hide carousel slides.
+  // High specificity needed because original stylesheets are included in the mini-page.
+  var FORCE_REVEAL_CSS =
+    '*,*::before,*::after{transition:none !important;animation:none !important;}' +
+    'body *{visibility:visible !important;opacity:1 !important;' +
+    'transform:none !important;overflow:visible !important;' +
+    'clip-path:none !important;max-height:none !important;}' +
+    '[aria-hidden="true"],[hidden],.hidden,.d-none,.hide,' +
+    '.carousel-item,.swiper-slide,.slick-slide,' +
+    '[class*="slide"],[class*="panel"],[class*="tab-pane"]{' +
+    'display:block !important;visibility:visible !important;' +
+    'opacity:1 !important;position:relative !important;' +
+    'transform:none !important;left:auto !important;right:auto !important;}';
 
-  test('diagnose fink-translate carousel regions', async ({ page }) => {
-    test.setTimeout(420000);
-    fs.mkdirSync(OUT_DIR, { recursive: true });
+  // --- Force-reveal script ---
+  // Runs inside the mini-page on DOMContentLoaded. Catches computed display:none
+  // from CSS classes that the static CSS above can't target generically.
+  var FORCE_REVEAL_SCRIPT =
+    'document.addEventListener("DOMContentLoaded",function(){' +
+    'document.querySelectorAll("*").forEach(function(el){' +
+    'var cs=getComputedStyle(el);' +
+    'if(cs.display==="none")el.style.setProperty("display","block","important");' +
+    'if(cs.visibility==="hidden")el.style.setProperty("visibility","visible","important");' +
+    'if(parseFloat(cs.opacity)<0.1)el.style.setProperty("opacity","1","important");' +
+    'if(cs.position==="absolute"||cs.position==="fixed")el.style.setProperty("position","relative","important");' +
+    '});' +
+    '});';
 
-    const consoleLogs = [];
-    page.on('console', msg => {
-      const text = msg.text();
-      consoleLogs.push(text);
-      // Print region/clipped related logs immediately
-      if (text.includes('region') || text.includes('Region') || text.includes('clipp') || text.includes('milg-viewer'))
-        console.log('[BROWSER]', text);
-    });
-
-    // 1. Run URL analysis
-    await page.goto(ANALYZER_URL);
-    await page.check('#screenshotCheck');
-    await page.click('[data-tab="tabUrl"]');
-    await page.fill('#urlInput', 'https://www.fink-translate.com/');
-    await page.click('#analyzeUrlBtn');
-    await page.waitForSelector('.report-container.visible', { timeout: 360000 });
-
-    // 2. Extract raw report data
-    const reportDump = await page.evaluate(() => {
-      const report = window.__milgLastReport;
-      if (!report || !report.raw) return { error: 'no report data' };
-      const raw = report.raw;
-
-      // Region screenshots
-      const regions = (raw.regionScreenshots || []).map((rgn, i) => ({
-        index: i,
-        hasScreenshot: !!rgn.screenshot,
-        screenshotLen: rgn.screenshot ? rgn.screenshot.length : 0,
-        screenshotMeta: rgn.screenshotMeta || null,
-        pairIndices: rgn.pairIndices || [],
-        localBboxes: rgn.localBboxes || {},
-        containerRect: rgn.containerRect || null,
-        hasExtractedData: !!rgn.extractedData,
-        extractedPairCount: rgn.extractedData && rgn.extractedData.colors ? (rgn.extractedData.colors.contrastPairs || []).length : 0,
-        hasRegionReport: !!rgn.regionReport,
-        regionScore: rgn.regionReport ? rgn.regionReport.overall : null,
-      }));
-
-      // Clipped pairs
-      const pairs = raw.colors ? raw.colors.contrastPairs || [] : [];
-      const clippedPairs = pairs.map((p, i) => ({
-        index: i,
-        isClipped: !!p._isClipped,
-        bbox: p.bbox,
-        selector: p.selector ? p.selector.substring(0, 80) : null,
-        text: p.text ? p.text.substring(0, 40) : null,
-        ratio: p.ratio,
-        passes: p.passes,
-      })).filter(p => p.isClipped);
-
-      // All pairs with bboxes (for bbox identity check)
-      const allPairsWithBbox = pairs.filter(p => p.bbox).length;
-
-      // screenshotMeta vs cleanMeta
-      const screenshotMeta = raw.screenshotMeta || null;
-      const cleanMeta = raw.screenshotCleanMeta || null;
-      const hasCleanScreenshot = !!raw.screenshotClean;
-      const hasExpandedScreenshot = !!raw.screenshotFull;
-
-      return {
-        regionCount: regions.length,
-        regions,
-        clippedPairCount: clippedPairs.length,
-        clippedPairs,
-        totalPairs: pairs.length,
-        allPairsWithBbox,
-        screenshotMeta,
-        cleanMeta,
-        hasCleanScreenshot,
-        hasExpandedScreenshot,
-      };
-    });
-
-    // Write the report dump
-    fs.writeFileSync(path.join(OUT_DIR, 'report-dump.json'), JSON.stringify(reportDump, null, 2));
-    console.log('\n=== REPORT DUMP ===');
-    console.log('Region count:', reportDump.regionCount);
-    console.log('Clipped pairs:', reportDump.clippedPairCount, '/', reportDump.totalPairs);
-    console.log('Has clean screenshot:', reportDump.hasCleanScreenshot);
-    console.log('Has expanded screenshot:', reportDump.hasExpandedScreenshot);
-    console.log('Clean meta:', JSON.stringify(reportDump.cleanMeta));
-    console.log('Screenshot meta:', JSON.stringify(reportDump.screenshotMeta));
-    if (reportDump.regions) {
-      reportDump.regions.forEach(r => {
-        console.log(`Region ${r.index}: screenshot=${r.screenshotLen}bytes, meta=${JSON.stringify(r.screenshotMeta)}, containerRect=${JSON.stringify(r.containerRect)}, pairIndices=[${r.pairIndices.join(',')}]`);
+  // --- DOM cleanup ---
+  // Runs from parent context after mini-page loads. Resets height constraints and
+  // removes spacer elements that cause massive whitespace in the region screenshot.
+  function cleanupMiniPageDom(mDoc) {
+    try {
+      var dv = mDoc.defaultView;
+      // Force-reveal pass (redundant with script, but covers sandbox/CSP failures)
+      mDoc.querySelectorAll('*').forEach(function(el) {
+        var cs = dv.getComputedStyle(el);
+        if (cs.display === 'none') el.style.setProperty('display', 'block', 'important');
+        if (cs.visibility === 'hidden') el.style.setProperty('visibility', 'visible', 'important');
+        if (parseFloat(cs.opacity) < 0.1) el.style.setProperty('opacity', '1', 'important');
+        if (cs.position === 'absolute' || cs.position === 'fixed') el.style.setProperty('position', 'relative', 'important');
       });
-    }
-    if (reportDump.clippedPairs) {
-      reportDump.clippedPairs.forEach(p => {
-        console.log(`Clipped pair ${p.index}: bbox=${JSON.stringify(p.bbox)} text="${p.text}" ratio=${p.ratio} passes=${p.passes}`);
-      });
-    }
-
-    // 3. Save region screenshot images
-    const regionImages = await page.evaluate(() => {
-      const report = window.__milgLastReport;
-      if (!report || !report.raw || !report.raw.regionScreenshots) return [];
-      return report.raw.regionScreenshots.map((rgn, i) => ({
-        index: i,
-        dataUri: rgn.screenshot || null,
-      }));
-    });
-    regionImages.forEach(ri => {
-      if (ri.dataUri) {
-        const match = ri.dataUri.match(/^data:image\/\w+;base64,(.+)$/);
-        if (match) {
-          fs.writeFileSync(path.join(OUT_DIR, `region-${ri.index}.webp`), Buffer.from(match[1], 'base64'));
-          console.log(`Saved region-${ri.index}.webp`);
+      // Height cleanup: only on container (body > first child) and its direct children.
+      // Resetting ALL descendants caused massive height inflation.
+      var container = mDoc.body.firstElementChild;
+      if (container) {
+        container.style.setProperty('height', 'auto', 'important');
+        container.style.setProperty('max-height', 'none', 'important');
+        container.style.setProperty('min-height', '0', 'important');
+        container.style.setProperty('overflow', 'visible', 'important');
+        for (var ci = 0; ci < container.children.length; ci++) {
+          var child = container.children[ci];
+          child.style.setProperty('height', 'auto', 'important');
+          child.style.setProperty('max-height', 'none', 'important');
+          child.style.setProperty('min-height', '0', 'important');
+          child.style.setProperty('position', 'relative', 'important');
+          // Flex children of carousel track: force to column layout
+          var cs = dv.getComputedStyle(child);
+          if (cs.display.indexOf('flex') !== -1) {
+            child.style.setProperty('flex-direction', 'column', 'important');
+            child.style.setProperty('gap', '0', 'important');
+          }
         }
       }
-    });
-
-    // 4. Save clean screenshot
-    const cleanScreenshot = await page.evaluate(() => {
-      const report = window.__milgLastReport;
-      if (!report || !report.raw) return null;
-      return report.raw.screenshotClean || null;
-    });
-    if (cleanScreenshot) {
-      const match = cleanScreenshot.match(/^data:image\/\w+;base64,(.+)$/);
-      if (match) {
-        fs.writeFileSync(path.join(OUT_DIR, 'clean-screenshot.webp'), Buffer.from(match[1], 'base64'));
-        console.log('Saved clean-screenshot.webp');
-      }
+    } catch (_e) {
+      console.warn('[milg-region] DOM cleanup failed:', _e.message);
     }
+  }
 
-    // 5. Open viewer and check what renders
-    const screenshotDetails = page.locator('details.report-screenshots');
-    if (await screenshotDetails.count() > 0) {
-      await screenshotDetails.locator('summary').click();
-      const screenshotImg = page.locator('.screenshot-img').first();
-      await screenshotImg.waitFor({ state: 'visible', timeout: 5000 });
-      await screenshotImg.click();
-      await page.waitForSelector('.milg-viewer-overlay.visible', { timeout: 10000 });
+  // --- Build mini-page HTML ---
+  // Assembles HTML for the mini-page iframe with force-reveal CSS/JS and optional extraction.
+  function buildMiniPageHtml(cloneOuterHtml, baseHref, allLinks, allStyles, opts) {
+    opts = opts || {};
+    var scripts = '<script>' + FORCE_REVEAL_SCRIPT + '</' + 'script>';
+    // Optional: inject extraction engine to run after force-reveal
+    if (opts.extractFnSrc) {
+      scripts += '<script>setTimeout(function(){try{(' + opts.extractFnSrc + ')()}catch(e){console.warn("[milg-region] Extraction failed:",e.message)}},100);</' + 'script>';
+    }
+    return '<!DOCTYPE html><html><head><meta charset=UTF-8>' +
+      (baseHref ? '<base href="' + baseHref.replace(/"/g, '&quot;') + '">' : '') +
+      allLinks + allStyles +
+      '<style>' + FORCE_REVEAL_CSS + '</style>' +
+      scripts +
+      '</head><body style="margin:0;padding:0;overflow:visible">' + cloneOuterHtml + '</body></html>';
+  }
 
-      // Click "All" filter
-      const allBtn = page.locator('.milg-viewer-filter-btn[data-filter-value="all"]');
-      if (await allBtn.count() > 0) {
-        await allBtn.click();
-        await page.waitForTimeout(500);
-      }
+  // --- Build region clone ---
+  // Deep-clones the container element and applies inline style overrides.
+  function buildRegionClone(container, containerRect) {
+    var clone = container.cloneNode(true);
+    clone.style.cssText += ';overflow:visible !important;max-height:none !important;height:auto !important;clip-path:none !important;width:' + Math.round(containerRect.width) + 'px !important;';
+    return clone;
+  }
 
-      // Check SVG overlay state
-      const svgState = await page.evaluate(() => {
-        const svg = document.querySelector('svg.milg-viewer-svg');
-        if (!svg) return { error: 'no SVG found' };
-        const rects = svg.querySelectorAll('rect');
-        const regionIndicators = svg.querySelectorAll('rect[data-region]');
-        const texts = svg.querySelectorAll('text');
-        return {
-          totalRects: rects.length,
-          regionIndicatorCount: regionIndicators.length,
-          regionIndicators: Array.from(regionIndicators).map(r => ({
-            class: r.getAttribute('class'),
-            x: r.getAttribute('x'),
-            y: r.getAttribute('y'),
-            width: r.getAttribute('width'),
-            height: r.getAttribute('height'),
-            stroke: r.getAttribute('stroke'),
-          })),
-          textCount: texts.length,
-          texts: Array.from(texts).map(t => ({
-            x: t.getAttribute('x'),
-            y: t.getAttribute('y'),
-            fontSize: t.getAttribute('font-size'),
-            content: t.textContent.substring(0, 50),
-          })),
-          viewBox: svg.getAttribute('viewBox'),
-          svgWidth: svg.getBoundingClientRect().width,
-          svgHeight: svg.getBoundingClientRect().height,
-        };
-      });
+  // --- Detect clipped pairs ---
+  // Marks contrast pairs as _isClipped if their element bbox is outside an overflow:hidden ancestor.
+  // Returns as a string for injection into iframe scripts.
+  function getClipDetectionScript() {
+    return 'if(window.__milgBboxRefs&&window.__milgData&&window.__milgData.colors){' +
+      'var _cp=window.__milgData.colors.contrastPairs||[];' +
+      'window.__milgBboxRefs.forEach(function(ref){' +
+        'if(!ref.el||!ref.obj||ref.key!=="bbox")return;' +
+        'var el=ref.el;var pair=ref.obj;' +
+        'var er=el.getBoundingClientRect();' +
+        'var anc=el.parentElement;' +
+        'while(anc&&anc!==document.documentElement){' +
+          'var as=getComputedStyle(anc);' +
+          'var aov=as.overflow||"";var aovx=as.overflowX||"";var aovy=as.overflowY||"";' +
+          'if(aov==="hidden"||aov==="clip"||aovx==="hidden"||aovx==="clip"||aovy==="hidden"||aovy==="clip"){' +
+            'var ar=anc.getBoundingClientRect();' +
+            'if(er.right<ar.left+1||er.left>ar.right-1||er.bottom<ar.top+1||er.top>ar.bottom-1){' +
+              'pair._isClipped=true;break' +
+            '}' +
+          '}' +
+          'anc=anc.parentElement' +
+        '}' +
+      '})' +
+    '}';
+  }
 
-      fs.writeFileSync(path.join(OUT_DIR, 'svg-state.json'), JSON.stringify(svgState, null, 2));
-      console.log('\n=== SVG OVERLAY STATE ===');
-      console.log('viewBox:', svgState.viewBox);
-      console.log('SVG display size:', svgState.svgWidth, 'x', svgState.svgHeight);
-      console.log('Total rects:', svgState.totalRects);
-      console.log('Region indicators:', svgState.regionIndicatorCount);
-      if (svgState.regionIndicators) {
-        svgState.regionIndicators.forEach(ind => {
-          console.log('  Indicator:', JSON.stringify(ind));
+  // --- Serializable region screenshot function ---
+  // This function is serialized via .toString() and injected into the analysis iframe.
+  // It MUST be self-contained — no references to outer scope variables.
+  // Parameters are bound at serialization time by the caller.
+  function _regionScreenshotFn(_sc, _quality, _prog, _cp2) {
+    return function _buildRegionScreenshots(rgnCb) {
+      // Detect clipping containers from tracked bbox refs
+      var _rgnCounter = 0, _clipContainerList = [], _clipContainers = {};
+      if (window.__milgBboxRefs) {
+        window.__milgBboxRefs.forEach(function(ref) {
+          if (!ref.el || !ref.obj || ref.key !== 'bbox' || !ref.obj._isClipped) return;
+          var clipAnc = null, anc = ref.el.parentElement;
+          while (anc && anc !== document.documentElement) {
+            var as = getComputedStyle(anc);
+            var aov = as.overflow || '', aovx = as.overflowX || '', aovy = as.overflowY || '';
+            if (aov === 'hidden' || aov === 'clip' || aovx === 'hidden' || aovx === 'clip' || aovy === 'hidden' || aovy === 'clip') {
+              var ar = anc.getBoundingClientRect();
+              if (ar.width >= 100 && ar.height >= 30) clipAnc = anc;
+            }
+            anc = anc.parentElement;
+          }
+          if (!clipAnc) return;
+          var cid = clipAnc._milgRegionId;
+          if (!cid) {
+            cid = 'rgn-' + (++_rgnCounter); clipAnc._milgRegionId = cid;
+            _clipContainerList.push({ el: clipAnc, id: cid, pairIndices: [] });
+            _clipContainers[cid] = _clipContainerList[_clipContainerList.length - 1];
+          }
+          var pi = _cp2.indexOf(ref.obj);
+          if (pi >= 0 && _clipContainers[cid].pairIndices.indexOf(pi) < 0)
+            _clipContainers[cid].pairIndices.push(pi);
         });
       }
-      console.log('Texts:', svgState.textCount);
-      if (svgState.texts) {
-        svgState.texts.forEach(t => console.log('  Text:', JSON.stringify(t)));
+      _clipContainerList.sort(function(a, b) {
+        var ar = a.el.getBoundingClientRect(), br = b.el.getBoundingClientRect();
+        return (br.width * br.height) - (ar.width * ar.height);
+      });
+      _clipContainerList = _clipContainerList.slice(0, 5);
+      console.log('[milg-region] Found ' + _clipContainerList.length + ' clipping regions');
+      if (_clipContainerList.length === 0) { rgnCb([]); return; }
+
+      var _rgnResults = [], _rgnDone = 0, _rgnTotal = _clipContainerList.length;
+      var _rgnOverall = setTimeout(function() {
+        console.warn('[milg-region] Overall timeout (30s)');
+        rgnCb(_rgnResults);
+      }, 30000);
+
+      // Collect styles for mini-pages
+      var allStyles = ''; document.querySelectorAll('style').forEach(function(s) { allStyles += s.outerHTML; });
+      var allLinks = ''; document.querySelectorAll('link[rel=stylesheet]').forEach(function(l) { allLinks += l.outerHTML; });
+      var baseHref = (document.querySelector('base') || {}).href || '';
+
+      // Force-reveal CSS (inlined — can't reference MilgRegion from inside serialized fn)
+      var _revealCss =
+        '*,*::before,*::after{transition:none !important;animation:none !important;}' +
+        'body *{visibility:visible !important;opacity:1 !important;transform:none !important;overflow:visible !important;clip-path:none !important;max-height:none !important;}' +
+        '[aria-hidden="true"],[hidden],.hidden,.d-none,.hide,.carousel-item,.swiper-slide,.slick-slide,' +
+        '[class*="slide"],[class*="panel"],[class*="tab-pane"]{display:block !important;visibility:visible !important;opacity:1 !important;position:relative !important;transform:none !important;left:auto !important;right:auto !important;}';
+
+      var _revealScript =
+        '<script>document.addEventListener("DOMContentLoaded",function(){' +
+        'document.querySelectorAll("*").forEach(function(el){var cs=getComputedStyle(el);' +
+        'if(cs.display==="none")el.style.setProperty("display","block","important");' +
+        'if(cs.visibility==="hidden")el.style.setProperty("visibility","visible","important");' +
+        'if(parseFloat(cs.opacity)<0.1)el.style.setProperty("opacity","1","important");' +
+        'if(cs.position==="absolute"||cs.position==="fixed")el.style.setProperty("position","relative","important");' +
+        '});});</' + 'script>';
+
+      // Optional extraction: inject MilgExtract if available
+      var _extractScript = '';
+      if (typeof window.MilgExtract === 'function') {
+        _extractScript = '<script>setTimeout(function(){try{(' + window.MilgExtract.toString() + ')()}catch(e){console.warn("[milg-region] Extraction failed:",e)}},100);</' + 'script>';
       }
 
-      // Check region sections in DOM
-      const regionSections = await page.evaluate(() => {
-        const sections = document.querySelectorAll('.milg-viewer-region-section');
-        return Array.from(sections).map((s, i) => {
-          const img = s.querySelector('img');
-          const rgnSvg = s.querySelector('svg');
-          const rects = rgnSvg ? rgnSvg.querySelectorAll('rect') : [];
-          return {
-            id: s.id,
-            width: s.getBoundingClientRect().width,
-            height: s.getBoundingClientRect().height,
-            imgNaturalWidth: img ? img.naturalWidth : null,
-            imgNaturalHeight: img ? img.naturalHeight : null,
-            imgDisplayWidth: img ? img.getBoundingClientRect().width : null,
-            imgDisplayHeight: img ? img.getBoundingClientRect().height : null,
-            imgStyleWidth: img ? img.style.width : null,
-            svgViewBox: rgnSvg ? rgnSvg.getAttribute('viewBox') : null,
-            svgRectCount: rects.length,
-          };
+      _prog('Capturing ' + _rgnTotal + ' region screenshots...');
+
+      _clipContainerList.forEach(function(rgn, rIdx) {
+        var container = rgn.el, cr = container.getBoundingClientRect();
+        var clone = container.cloneNode(true);
+        clone.style.cssText += ';overflow:visible !important;max-height:none !important;height:auto !important;clip-path:none !important;width:' + Math.round(cr.width) + 'px !important;';
+
+        var miniHtml = '<!DOCTYPE html><html><head><meta charset=UTF-8>' +
+          (baseHref ? '<base href="' + baseHref.replace(/"/g, '&quot;') + '">' : '') +
+          allLinks + allStyles +
+          '<style>' + _revealCss + '</style>' + _revealScript + _extractScript +
+          '</head><body style="margin:0;padding:0;overflow:visible">' + clone.outerHTML + '</body></html>';
+
+        var iframeW = Math.max(Math.round(cr.width), 320);
+        var mf = document.createElement('iframe');
+        mf.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + iframeW + 'px;height:3000px;border:none;visibility:hidden;';
+        mf.setAttribute('sandbox', 'allow-same-origin allow-scripts');
+        document.body.appendChild(mf);
+
+        var rgnTimer = setTimeout(function() {
+          console.warn('[milg-region] Region ' + rIdx + ' timed out');
+          _rgnFinish(rIdx, mf, null);
+        }, 15000);
+
+        mf.srcdoc = miniHtml;
+        mf.addEventListener('load', function() {
+          setTimeout(function() {
+            try {
+              var mDoc = mf.contentDocument;
+              if (!mDoc) { _rgnFinish(rIdx, mf, null); return; }
+
+              // DOM cleanup: force-reveal + targeted height reset on container/children only
+              try {
+                var dv = mDoc.defaultView;
+                mDoc.querySelectorAll('*').forEach(function(el) {
+                  var cs = dv.getComputedStyle(el);
+                  if (cs.display === 'none') el.style.setProperty('display', 'block', 'important');
+                  if (cs.visibility === 'hidden') el.style.setProperty('visibility', 'visible', 'important');
+                  if (parseFloat(cs.opacity) < 0.1) el.style.setProperty('opacity', '1', 'important');
+                  if (cs.position === 'absolute' || cs.position === 'fixed') el.style.setProperty('position', 'relative', 'important');
+                });
+                var _cont = mDoc.body.firstElementChild;
+                if (_cont) {
+                  _cont.style.setProperty('height', 'auto', 'important');
+                  _cont.style.setProperty('max-height', 'none', 'important');
+                  _cont.style.setProperty('overflow', 'visible', 'important');
+                  for (var _ci = 0; _ci < _cont.children.length; _ci++) {
+                    var _ch = _cont.children[_ci];
+                    _ch.style.setProperty('height', 'auto', 'important');
+                    _ch.style.setProperty('max-height', 'none', 'important');
+                    _ch.style.setProperty('position', 'relative', 'important');
+                    var _ccs = dv.getComputedStyle(_ch);
+                    if (_ccs.display.indexOf('flex') !== -1) {
+                      _ch.style.setProperty('flex-direction', 'column', 'important');
+                      _ch.style.setProperty('gap', '0', 'important');
+                    }
+                  }
+                }
+              } catch (_e) {}
+
+              void mDoc.body.offsetHeight; // reflow
+
+              // Harvest extraction data if available
+              var extractedData = null;
+              try { extractedData = mf.contentWindow.__milgData || null; } catch (_e) {}
+
+              var cW = Math.max(mDoc.body.scrollWidth, mDoc.documentElement.scrollWidth);
+              var cH = Math.max(mDoc.body.scrollHeight, mDoc.documentElement.scrollHeight);
+              mf.style.width = Math.max(cW, iframeW) + 'px'; mf.style.height = cH + 'px';
+              void mDoc.body.offsetHeight;
+
+              var pms = window.modernScreenshot;
+              if (!pms || !pms.domToCanvas) { _rgnFinish(rIdx, mf, null); return; }
+              pms.domToCanvas(mDoc.documentElement, { scale: _sc, timeout: 12000 }).then(function(rc) {
+                var rUri; try { rUri = rc.toDataURL('image/webp', _quality); } catch (e) { rUri = ''; }
+                clearTimeout(rgnTimer);
+                _rgnFinish(rIdx, mf, {
+                  screenshot: rUri,
+                  screenshotMeta: { scale: _sc, canvasWidth: rc.width, canvasHeight: rc.height },
+                  pairIndices: rgn.pairIndices,
+                  containerRect: { left: Math.round(cr.left), top: Math.round(cr.top), width: Math.round(cr.width), height: Math.round(cr.height) },
+                  extractedData: extractedData
+                });
+              }).catch(function(e) { clearTimeout(rgnTimer); _rgnFinish(rIdx, mf, null); });
+            } catch (e) { clearTimeout(rgnTimer); _rgnFinish(rIdx, mf, null); }
+          }, 800); // 800ms: allow DOMContentLoaded + extraction to complete
         });
       });
 
-      console.log('\n=== REGION SECTIONS IN DOM ===');
-      regionSections.forEach(s => {
-        console.log(`${s.id}: section=${Math.round(s.width)}x${Math.round(s.height)}px, img=${Math.round(s.imgDisplayWidth)}x${Math.round(s.imgDisplayHeight)}px (natural: ${s.imgNaturalWidth}x${s.imgNaturalHeight}), style.width=${s.imgStyleWidth}, svgViewBox=${s.svgViewBox}, rects=${s.svgRectCount}`);
-      });
-
-      // Take a screenshot of the viewer top
-      await page.screenshot({ path: path.join(OUT_DIR, 'viewer-with-overlays.png'), fullPage: false });
-      console.log('Saved viewer-with-overlays.png');
-
-      // Scroll the viewer content to show the container indicator area
-      const indicatorRect = page.locator('svg.milg-viewer-svg rect[data-region="0"]');
-      if (await indicatorRect.count() > 0) {
-        await indicatorRect.scrollIntoViewIfNeeded();
-        await page.waitForTimeout(300);
-        await page.screenshot({ path: path.join(OUT_DIR, 'viewer-indicator-area.png'), fullPage: false });
-        console.log('Saved viewer-indicator-area.png');
+      function _rgnFinish(idx, mf, result) {
+        if (result) _rgnResults.push(result);
+        try { if (mf && mf.parentNode) mf.parentNode.removeChild(mf); } catch (e) {}
+        _rgnDone++;
+        if (_rgnDone >= _rgnTotal) {
+          clearTimeout(_rgnOverall);
+          console.log('[milg-region] Region screenshots done: ' + _rgnResults.length + '/' + _rgnTotal);
+          rgnCb(_rgnResults);
+        }
       }
+    };
+  }
 
-      // Scroll to first region section and screenshot
-      const firstRegion = page.locator('.milg-viewer-region-section').first();
-      if (await firstRegion.count() > 0) {
-        await firstRegion.scrollIntoViewIfNeeded();
-        await page.waitForTimeout(300);
-        await page.screenshot({ path: path.join(OUT_DIR, 'viewer-region-section.png'), fullPage: false });
-        console.log('Saved viewer-region-section.png');
-      }
-
-      // Grab console logs with milg-viewer prefix
-      const viewerLogs = consoleLogs.filter(l => l.includes('[milg-viewer]'));
-      console.log('\n=== VIEWER CONSOLE LOGS ===');
-      viewerLogs.forEach(l => console.log(l));
-    }
-
-    // Write all console logs
-    fs.writeFileSync(path.join(OUT_DIR, 'console-logs.txt'), consoleLogs.join('\n'));
-
-    // Assertions (loose — this is a diagnostic test)
-    expect(reportDump.regionCount).toBeGreaterThanOrEqual(0);
-    expect(reportDump.hasCleanScreenshot).toBe(true);
-  });
-});
+  return {
+    FORCE_REVEAL_CSS: FORCE_REVEAL_CSS,
+    FORCE_REVEAL_SCRIPT: FORCE_REVEAL_SCRIPT,
+    cleanupMiniPageDom: cleanupMiniPageDom,
+    buildMiniPageHtml: buildMiniPageHtml,
+    buildRegionClone: buildRegionClone,
+    getClipDetectionScript: getClipDetectionScript,
+    // The serializable function — use: MilgRegion.getRegionFn().toString()
+    getRegionFn: function() { return _regionScreenshotFn; }
+  };
+})();
 </file>
 
 <file path="playwright.config.js">
@@ -33805,6 +33546,277 @@ body.dark-ui .milg-viewer-overlap-item:hover { background: #334155; }
   .milg-viewer-tooltip { max-width: 280px; font-size: 11px; }
   .milg-viewer-overlap-picker { max-width: 300px; }
 }
+</file>
+
+<file path="tests/region-debug.spec.js">
+// @ts-check
+// Diagnostic test: captures region screenshot data from fink-translate.com
+// and writes debug artifacts to test-results/region-debug/
+const { test, expect } = require('@playwright/test');
+const fs = require('fs');
+const path = require('path');
+
+const ANALYZER_URL = 'http://localhost:8384/analyzer.html';
+const OUT_DIR = path.join(__dirname, '..', 'test-results', 'region-debug');
+
+test.describe('Region Screenshot Debug', () => {
+
+  test('diagnose fink-translate carousel regions', async ({ page }) => {
+    test.setTimeout(420000);
+    fs.mkdirSync(OUT_DIR, { recursive: true });
+
+    const consoleLogs = [];
+    page.on('console', msg => {
+      const text = msg.text();
+      consoleLogs.push(text);
+      // Print region/clipped related logs immediately
+      if (text.includes('region') || text.includes('Region') || text.includes('clipp') || text.includes('milg-viewer'))
+        console.log('[BROWSER]', text);
+    });
+
+    // 1. Run URL analysis
+    await page.goto(ANALYZER_URL);
+    await page.check('#screenshotCheck');
+    await page.click('[data-tab="tabUrl"]');
+    await page.fill('#urlInput', 'https://www.fink-translate.com/');
+    await page.click('#analyzeUrlBtn');
+    await page.waitForSelector('.report-container.visible', { timeout: 360000 });
+
+    // 2. Extract raw report data
+    const reportDump = await page.evaluate(() => {
+      const report = window.__milgLastReport;
+      if (!report || !report.raw) return { error: 'no report data' };
+      const raw = report.raw;
+
+      // Region screenshots
+      const regions = (raw.regionScreenshots || []).map((rgn, i) => ({
+        index: i,
+        hasScreenshot: !!rgn.screenshot,
+        screenshotLen: rgn.screenshot ? rgn.screenshot.length : 0,
+        screenshotMeta: rgn.screenshotMeta || null,
+        pairIndices: rgn.pairIndices || [],
+        localBboxes: rgn.localBboxes || {},
+        containerRect: rgn.containerRect || null,
+        hasExtractedData: !!rgn.extractedData,
+        extractedPairCount: rgn.extractedData && rgn.extractedData.colors ? (rgn.extractedData.colors.contrastPairs || []).length : 0,
+        hasRegionReport: !!rgn.regionReport,
+        regionScore: rgn.regionReport ? rgn.regionReport.overall : null,
+      }));
+
+      // Clipped pairs
+      const pairs = raw.colors ? raw.colors.contrastPairs || [] : [];
+      const clippedPairs = pairs.map((p, i) => ({
+        index: i,
+        isClipped: !!p._isClipped,
+        bbox: p.bbox,
+        selector: p.selector ? p.selector.substring(0, 80) : null,
+        text: p.text ? p.text.substring(0, 40) : null,
+        ratio: p.ratio,
+        passes: p.passes,
+      })).filter(p => p.isClipped);
+
+      // All pairs with bboxes (for bbox identity check)
+      const allPairsWithBbox = pairs.filter(p => p.bbox).length;
+
+      // screenshotMeta vs cleanMeta
+      const screenshotMeta = raw.screenshotMeta || null;
+      const cleanMeta = raw.screenshotCleanMeta || null;
+      const hasCleanScreenshot = !!raw.screenshotClean;
+      const hasExpandedScreenshot = !!raw.screenshotFull;
+
+      return {
+        regionCount: regions.length,
+        regions,
+        clippedPairCount: clippedPairs.length,
+        clippedPairs,
+        totalPairs: pairs.length,
+        allPairsWithBbox,
+        screenshotMeta,
+        cleanMeta,
+        hasCleanScreenshot,
+        hasExpandedScreenshot,
+      };
+    });
+
+    // Write the report dump
+    fs.writeFileSync(path.join(OUT_DIR, 'report-dump.json'), JSON.stringify(reportDump, null, 2));
+    console.log('\n=== REPORT DUMP ===');
+    console.log('Region count:', reportDump.regionCount);
+    console.log('Clipped pairs:', reportDump.clippedPairCount, '/', reportDump.totalPairs);
+    console.log('Has clean screenshot:', reportDump.hasCleanScreenshot);
+    console.log('Has expanded screenshot:', reportDump.hasExpandedScreenshot);
+    console.log('Clean meta:', JSON.stringify(reportDump.cleanMeta));
+    console.log('Screenshot meta:', JSON.stringify(reportDump.screenshotMeta));
+    if (reportDump.regions) {
+      reportDump.regions.forEach(r => {
+        console.log(`Region ${r.index}: screenshot=${r.screenshotLen}bytes, meta=${JSON.stringify(r.screenshotMeta)}, containerRect=${JSON.stringify(r.containerRect)}, pairIndices=[${r.pairIndices.join(',')}]`);
+      });
+    }
+    if (reportDump.clippedPairs) {
+      reportDump.clippedPairs.forEach(p => {
+        console.log(`Clipped pair ${p.index}: bbox=${JSON.stringify(p.bbox)} text="${p.text}" ratio=${p.ratio} passes=${p.passes}`);
+      });
+    }
+
+    // 3. Save region screenshot images
+    const regionImages = await page.evaluate(() => {
+      const report = window.__milgLastReport;
+      if (!report || !report.raw || !report.raw.regionScreenshots) return [];
+      return report.raw.regionScreenshots.map((rgn, i) => ({
+        index: i,
+        dataUri: rgn.screenshot || null,
+      }));
+    });
+    regionImages.forEach(ri => {
+      if (ri.dataUri) {
+        const match = ri.dataUri.match(/^data:image\/\w+;base64,(.+)$/);
+        if (match) {
+          fs.writeFileSync(path.join(OUT_DIR, `region-${ri.index}.webp`), Buffer.from(match[1], 'base64'));
+          console.log(`Saved region-${ri.index}.webp`);
+        }
+      }
+    });
+
+    // 4. Save clean screenshot
+    const cleanScreenshot = await page.evaluate(() => {
+      const report = window.__milgLastReport;
+      if (!report || !report.raw) return null;
+      return report.raw.screenshotClean || null;
+    });
+    if (cleanScreenshot) {
+      const match = cleanScreenshot.match(/^data:image\/\w+;base64,(.+)$/);
+      if (match) {
+        fs.writeFileSync(path.join(OUT_DIR, 'clean-screenshot.webp'), Buffer.from(match[1], 'base64'));
+        console.log('Saved clean-screenshot.webp');
+      }
+    }
+
+    // 5. Open viewer and check what renders
+    const screenshotDetails = page.locator('details.report-screenshots');
+    if (await screenshotDetails.count() > 0) {
+      await screenshotDetails.locator('summary').click();
+      const screenshotImg = page.locator('.screenshot-img').first();
+      await screenshotImg.waitFor({ state: 'visible', timeout: 5000 });
+      await screenshotImg.click();
+      await page.waitForSelector('.milg-viewer-overlay.visible', { timeout: 10000 });
+
+      // Click "All" filter
+      const allBtn = page.locator('.milg-viewer-filter-btn[data-filter-value="all"]');
+      if (await allBtn.count() > 0) {
+        await allBtn.click();
+        await page.waitForTimeout(500);
+      }
+
+      // Check SVG overlay state
+      const svgState = await page.evaluate(() => {
+        const svg = document.querySelector('svg.milg-viewer-svg');
+        if (!svg) return { error: 'no SVG found' };
+        const rects = svg.querySelectorAll('rect');
+        const regionIndicators = svg.querySelectorAll('rect[data-region]');
+        const texts = svg.querySelectorAll('text');
+        return {
+          totalRects: rects.length,
+          regionIndicatorCount: regionIndicators.length,
+          regionIndicators: Array.from(regionIndicators).map(r => ({
+            class: r.getAttribute('class'),
+            x: r.getAttribute('x'),
+            y: r.getAttribute('y'),
+            width: r.getAttribute('width'),
+            height: r.getAttribute('height'),
+            stroke: r.getAttribute('stroke'),
+          })),
+          textCount: texts.length,
+          texts: Array.from(texts).map(t => ({
+            x: t.getAttribute('x'),
+            y: t.getAttribute('y'),
+            fontSize: t.getAttribute('font-size'),
+            content: t.textContent.substring(0, 50),
+          })),
+          viewBox: svg.getAttribute('viewBox'),
+          svgWidth: svg.getBoundingClientRect().width,
+          svgHeight: svg.getBoundingClientRect().height,
+        };
+      });
+
+      fs.writeFileSync(path.join(OUT_DIR, 'svg-state.json'), JSON.stringify(svgState, null, 2));
+      console.log('\n=== SVG OVERLAY STATE ===');
+      console.log('viewBox:', svgState.viewBox);
+      console.log('SVG display size:', svgState.svgWidth, 'x', svgState.svgHeight);
+      console.log('Total rects:', svgState.totalRects);
+      console.log('Region indicators:', svgState.regionIndicatorCount);
+      if (svgState.regionIndicators) {
+        svgState.regionIndicators.forEach(ind => {
+          console.log('  Indicator:', JSON.stringify(ind));
+        });
+      }
+      console.log('Texts:', svgState.textCount);
+      if (svgState.texts) {
+        svgState.texts.forEach(t => console.log('  Text:', JSON.stringify(t)));
+      }
+
+      // Check region sections in DOM
+      const regionSections = await page.evaluate(() => {
+        const sections = document.querySelectorAll('.milg-viewer-region-section');
+        return Array.from(sections).map((s, i) => {
+          const img = s.querySelector('img');
+          const rgnSvg = s.querySelector('svg');
+          const rects = rgnSvg ? rgnSvg.querySelectorAll('rect') : [];
+          return {
+            id: s.id,
+            width: s.getBoundingClientRect().width,
+            height: s.getBoundingClientRect().height,
+            imgNaturalWidth: img ? img.naturalWidth : null,
+            imgNaturalHeight: img ? img.naturalHeight : null,
+            imgDisplayWidth: img ? img.getBoundingClientRect().width : null,
+            imgDisplayHeight: img ? img.getBoundingClientRect().height : null,
+            imgStyleWidth: img ? img.style.width : null,
+            svgViewBox: rgnSvg ? rgnSvg.getAttribute('viewBox') : null,
+            svgRectCount: rects.length,
+          };
+        });
+      });
+
+      console.log('\n=== REGION SECTIONS IN DOM ===');
+      regionSections.forEach(s => {
+        console.log(`${s.id}: section=${Math.round(s.width)}x${Math.round(s.height)}px, img=${Math.round(s.imgDisplayWidth)}x${Math.round(s.imgDisplayHeight)}px (natural: ${s.imgNaturalWidth}x${s.imgNaturalHeight}), style.width=${s.imgStyleWidth}, svgViewBox=${s.svgViewBox}, rects=${s.svgRectCount}`);
+      });
+
+      // Take a screenshot of the viewer top
+      await page.screenshot({ path: path.join(OUT_DIR, 'viewer-with-overlays.png'), fullPage: false });
+      console.log('Saved viewer-with-overlays.png');
+
+      // Scroll the viewer content to show the container indicator area
+      const indicatorRect = page.locator('svg.milg-viewer-svg rect[data-region="0"]');
+      if (await indicatorRect.count() > 0) {
+        await indicatorRect.scrollIntoViewIfNeeded();
+        await page.waitForTimeout(300);
+        await page.screenshot({ path: path.join(OUT_DIR, 'viewer-indicator-area.png'), fullPage: false });
+        console.log('Saved viewer-indicator-area.png');
+      }
+
+      // Scroll to first region section and screenshot
+      const firstRegion = page.locator('.milg-viewer-region-section').first();
+      if (await firstRegion.count() > 0) {
+        await firstRegion.scrollIntoViewIfNeeded();
+        await page.waitForTimeout(300);
+        await page.screenshot({ path: path.join(OUT_DIR, 'viewer-region-section.png'), fullPage: false });
+        console.log('Saved viewer-region-section.png');
+      }
+
+      // Grab console logs with milg-viewer prefix
+      const viewerLogs = consoleLogs.filter(l => l.includes('[milg-viewer]'));
+      console.log('\n=== VIEWER CONSOLE LOGS ===');
+      viewerLogs.forEach(l => console.log(l));
+    }
+
+    // Write all console logs
+    fs.writeFileSync(path.join(OUT_DIR, 'console-logs.txt'), consoleLogs.join('\n'));
+
+    // Assertions (loose — this is a diagnostic test)
+    expect(reportDump.regionCount).toBeGreaterThanOrEqual(0);
+    expect(reportDump.hasCleanScreenshot).toBe(true);
+  });
+});
 </file>
 
 <file path="docs/analyzer-snippet.js">
@@ -39482,21 +39494,66 @@ window.MilgViewer = (function() {
         rgnHeader.appendChild(backLink);
         rgnSection.appendChild(rgnHeader);
 
-        // Region image container — display at natural CSS-pixel size, scrollable
+        // Region sub-report: screenshot with SVG bbox overlays + findings summary
         var rgnScale = rgn.screenshotMeta.scale || 1.5;
-        var rgnDisplayW = Math.round(rgn.screenshotMeta.canvasWidth / rgnScale);
-        var rgnDisplayH = Math.round(rgn.screenshotMeta.canvasHeight / rgnScale);
         var rgnFrame = document.createElement('div');
-        rgnFrame.style.cssText = 'overflow:auto;max-height:600px;';
+        rgnFrame.style.cssText = 'position:relative;overflow:auto;max-height:600px;';
 
         var rgnImg = document.createElement('img');
         rgnImg.src = rgn.screenshot;
         rgnImg.alt = 'Hidden content region ' + (rIdx + 1);
-        // Display at natural size, capped at container width. If wider → horizontal scroll.
         rgnImg.style.cssText = 'display:block;max-width:100%;height:auto;';
-
         rgnFrame.appendChild(rgnImg);
+
+        // SVG overlay with bbox findings from region extraction
+        if (rgn.regionReport && rgn.regionReport.categories) {
+          var rgnSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+          rgnSvg.setAttribute('viewBox', '0 0 ' + rgn.screenshotMeta.canvasWidth + ' ' + rgn.screenshotMeta.canvasHeight);
+          rgnSvg.setAttribute('preserveAspectRatio', 'xMinYMin meet');
+          rgnSvg.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;';
+          var rgnSc = rgnScale;
+          rgn.regionReport.categories.forEach(function(cat) {
+            (cat.findings || []).forEach(function(f) {
+              if (!f.locator || !f.locator.bboxes) return;
+              var fColor = COLORS[f.severity] || COLORS.info;
+              f.locator.bboxes.forEach(function(bb) {
+                if (!bb) return;
+                var rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                rect.setAttribute('x', Math.round(bb.left * rgnSc));
+                rect.setAttribute('y', Math.round(bb.top * rgnSc));
+                rect.setAttribute('width', Math.max(Math.round(bb.width * rgnSc), 4));
+                rect.setAttribute('height', Math.max(Math.round(bb.height * rgnSc), 4));
+                rect.setAttribute('fill', fColor.fill);
+                rect.setAttribute('stroke', fColor.stroke);
+                rect.setAttribute('stroke-width', '1.5');
+                rect.setAttribute('rx', '2');
+                rgnSvg.appendChild(rect);
+              });
+            });
+          });
+          rgnFrame.appendChild(rgnSvg);
+        }
+
         rgnSection.appendChild(rgnFrame);
+
+        // Findings summary bar
+        if (rgn.regionReport) {
+          var errCount = 0, warnCount = 0, infoCount = 0;
+          (rgn.regionReport.categories || []).forEach(function(cat) {
+            (cat.findings || []).forEach(function(f) {
+              if (f.severity === 'error') errCount++;
+              else if (f.severity === 'warning') warnCount++;
+              else if (f.severity === 'info') infoCount++;
+            });
+          });
+          var summaryBar = document.createElement('div');
+          summaryBar.style.cssText = 'padding:6px 12px;font-size:11px;color:rgba(255,255,255,0.8);background:rgba(0,0,0,0.4);border-top:1px solid rgba(59,130,246,0.2);display:flex;gap:12px;align-items:center;';
+          summaryBar.innerHTML = '<span style="font-weight:600;color:#93c5fd">Score: ' + (rgn.regionReport.overall || 0) + '/100 (' + (rgn.regionReport.grade || '?') + ')</span>' +
+            (errCount ? '<span style="color:#ef4444">' + errCount + ' error' + (errCount !== 1 ? 's' : '') + '</span>' : '') +
+            (warnCount ? '<span style="color:#eab308">' + warnCount + ' warning' + (warnCount !== 1 ? 's' : '') + '</span>' : '') +
+            (infoCount ? '<span style="color:#3b82f6">' + infoCount + ' info</span>' : '');
+          rgnSection.appendChild(summaryBar);
+        }
         regionSection.appendChild(rgnSection);
       });
 
@@ -42995,12 +43052,13 @@ window.MilgIframe = (function() {
     '};';
     var screenshotScript = captureScreenshots ? '<script>window.__milgDoScreenshots=function(){' + buildScreenshotScript('milg-screenshots-result') + '};' + unhiddenScreenshotFn + '</' + 'script>' : '';
     var srcdoc;
+    var _extractFnSrc = extractFromDocument.toString();
     if (isFullDoc) {
       // Wait for window load (CSS/fonts loaded), then extra delay for rendering
       // JS-enabled mode needs longer delays for React/Vue hydration
       var postLoadDelay = jsEnabled ? 2000 : 1000;
       var fallbackDelay = jsEnabled ? 8000 : 8000;
-      var extractScript = idVar + excludeVar + fragmentVar + screenshotScript + '<script>window.addEventListener("load",function(){setTimeout(function(){(' + extractFromDocument.toString() + ')()},' + postLoadDelay + ')});setTimeout(function(){(' + extractFromDocument.toString() + ')()},' + fallbackDelay + ');</' + 'script>';
+      var extractScript = idVar + excludeVar + fragmentVar + screenshotScript + '<script>window.MilgExtract=(' + _extractFnSrc + ');window.addEventListener("load",function(){setTimeout(function(){window.MilgExtract()},' + postLoadDelay + ')});setTimeout(function(){window.MilgExtract()},' + fallbackDelay + ');</' + 'script>';
       if (/<\/body>/i.test(html)) {
         srcdoc = html.replace(/<\/body>/i, extractScript + '</body>');
       } else {
@@ -43016,7 +43074,7 @@ window.MilgIframe = (function() {
         darkVariantTag + effectTag +
         '<style>body{margin:0}</style></head><body>' +
         html + idVar + excludeVar + fragmentVar + screenshotScript +
-        '<script>setTimeout(function(){(' + extractFromDocument.toString() + ')()}, 1500);</' + 'script>' +
+        '<script>window.MilgExtract=(' + _extractFnSrc + ');setTimeout(function(){window.MilgExtract()}, 1500);</' + 'script>' +
         '</body></html>';
     }
     iframe.srcdoc = srcdoc;
@@ -43056,7 +43114,7 @@ window.MilgIframe = (function() {
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.5 loaded');
+console.log('[milg] analyzer.js v3.6 loaded');
 
 (function() {
   "use strict";
@@ -43779,6 +43837,18 @@ console.log('[milg] analyzer.js v3.5 loaded');
       reportData = MilgScoring.runScoring(data);
       if (_isTabSwitch) data._cachedReportData = reportData;
     }
+    // Score region sub-pages independently
+    var _regionScreenshots = reportData.raw && reportData.raw.regionScreenshots || [];
+    _regionScreenshots.forEach(function(rgn) {
+      if (!rgn.extractedData) return;
+      try {
+        rgn.regionReport = MilgScoring.runScoring(rgn.extractedData);
+        _log('[milg] Region scored:', rgn.regionReport.overall + '/100', rgn.regionReport.grade);
+      } catch (e) {
+        _log('[milg] Region scoring failed:', e.message);
+      }
+    });
+
     window.__milgLastReport = reportData; // Expose for diagnostics/testing
     var reportContainer = document.getElementById('reportContainer');
     var inputSection = document.getElementById('inputSection');
@@ -43989,6 +44059,26 @@ console.log('[milg] analyzer.js v3.5 loaded');
           div.innerHTML = summaryHtml;
           if (screenshotDetails) screenshotDetails.parentNode.insertBefore(div, screenshotDetails.nextSibling);
           else _verifyContainer.insertBefore(div, _verifyContainer.firstChild);
+          // Run pixel verification on region sub-pages sequentially
+          var _rgnList = (_verifyReportData.raw && _verifyReportData.raw.regionScreenshots || []).filter(function(r) { return r.extractedData && r.screenshot; });
+          (function _verifyNextRegion(idx) {
+            if (idx >= _rgnList.length) return;
+            var rgn = _rgnList[idx];
+            var miniReport = {
+              raw: {
+                screenshots: [rgn.screenshot],
+                screenshotMeta: rgn.screenshotMeta,
+                colors: rgn.extractedData.colors || { contrastPairs: [] }
+              },
+              categories: rgn.regionReport ? rgn.regionReport.categories : []
+            };
+            MilgContrastVerify.verify(miniReport, function(rgnResults) {
+              rgn.regionVerifyResults = rgnResults || [];
+              _log('[milg] Region pixel verify:', rgnResults ? rgnResults.length : 0, 'results');
+              _verifyNextRegion(idx + 1);
+            });
+          })(0);
+
           // Update viewport cache if this was a viewport switch
           if (_verifyData._vpCacheIdx !== undefined) {
             _viewportCache[_verifyData._vpCacheIdx] = {
@@ -44799,7 +44889,7 @@ console.log('[milg] analyzer.js v3.5 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.4</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.6</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 

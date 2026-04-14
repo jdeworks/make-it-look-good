@@ -386,21 +386,66 @@ window.MilgViewer = (function() {
         rgnHeader.appendChild(backLink);
         rgnSection.appendChild(rgnHeader);
 
-        // Region image container — display at natural CSS-pixel size, scrollable
+        // Region sub-report: screenshot with SVG bbox overlays + findings summary
         var rgnScale = rgn.screenshotMeta.scale || 1.5;
-        var rgnDisplayW = Math.round(rgn.screenshotMeta.canvasWidth / rgnScale);
-        var rgnDisplayH = Math.round(rgn.screenshotMeta.canvasHeight / rgnScale);
         var rgnFrame = document.createElement('div');
-        rgnFrame.style.cssText = 'overflow:auto;max-height:600px;';
+        rgnFrame.style.cssText = 'position:relative;overflow:auto;max-height:600px;';
 
         var rgnImg = document.createElement('img');
         rgnImg.src = rgn.screenshot;
         rgnImg.alt = 'Hidden content region ' + (rIdx + 1);
-        // Display at natural size, capped at container width. If wider → horizontal scroll.
         rgnImg.style.cssText = 'display:block;max-width:100%;height:auto;';
-
         rgnFrame.appendChild(rgnImg);
+
+        // SVG overlay with bbox findings from region extraction
+        if (rgn.regionReport && rgn.regionReport.categories) {
+          var rgnSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+          rgnSvg.setAttribute('viewBox', '0 0 ' + rgn.screenshotMeta.canvasWidth + ' ' + rgn.screenshotMeta.canvasHeight);
+          rgnSvg.setAttribute('preserveAspectRatio', 'xMinYMin meet');
+          rgnSvg.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;';
+          var rgnSc = rgnScale;
+          rgn.regionReport.categories.forEach(function(cat) {
+            (cat.findings || []).forEach(function(f) {
+              if (!f.locator || !f.locator.bboxes) return;
+              var fColor = COLORS[f.severity] || COLORS.info;
+              f.locator.bboxes.forEach(function(bb) {
+                if (!bb) return;
+                var rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                rect.setAttribute('x', Math.round(bb.left * rgnSc));
+                rect.setAttribute('y', Math.round(bb.top * rgnSc));
+                rect.setAttribute('width', Math.max(Math.round(bb.width * rgnSc), 4));
+                rect.setAttribute('height', Math.max(Math.round(bb.height * rgnSc), 4));
+                rect.setAttribute('fill', fColor.fill);
+                rect.setAttribute('stroke', fColor.stroke);
+                rect.setAttribute('stroke-width', '1.5');
+                rect.setAttribute('rx', '2');
+                rgnSvg.appendChild(rect);
+              });
+            });
+          });
+          rgnFrame.appendChild(rgnSvg);
+        }
+
         rgnSection.appendChild(rgnFrame);
+
+        // Findings summary bar
+        if (rgn.regionReport) {
+          var errCount = 0, warnCount = 0, infoCount = 0;
+          (rgn.regionReport.categories || []).forEach(function(cat) {
+            (cat.findings || []).forEach(function(f) {
+              if (f.severity === 'error') errCount++;
+              else if (f.severity === 'warning') warnCount++;
+              else if (f.severity === 'info') infoCount++;
+            });
+          });
+          var summaryBar = document.createElement('div');
+          summaryBar.style.cssText = 'padding:6px 12px;font-size:11px;color:rgba(255,255,255,0.8);background:rgba(0,0,0,0.4);border-top:1px solid rgba(59,130,246,0.2);display:flex;gap:12px;align-items:center;';
+          summaryBar.innerHTML = '<span style="font-weight:600;color:#93c5fd">Score: ' + (rgn.regionReport.overall || 0) + '/100 (' + (rgn.regionReport.grade || '?') + ')</span>' +
+            (errCount ? '<span style="color:#ef4444">' + errCount + ' error' + (errCount !== 1 ? 's' : '') + '</span>' : '') +
+            (warnCount ? '<span style="color:#eab308">' + warnCount + ' warning' + (warnCount !== 1 ? 's' : '') + '</span>' : '') +
+            (infoCount ? '<span style="color:#3b82f6">' + infoCount + ' info</span>' : '');
+          rgnSection.appendChild(summaryBar);
+        }
         regionSection.appendChild(rgnSection);
       });
 

@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.5 loaded');
+console.log('[milg] analyzer.js v3.6 loaded');
 
 (function() {
   "use strict";
@@ -725,6 +725,18 @@ console.log('[milg] analyzer.js v3.5 loaded');
       reportData = MilgScoring.runScoring(data);
       if (_isTabSwitch) data._cachedReportData = reportData;
     }
+    // Score region sub-pages independently
+    var _regionScreenshots = reportData.raw && reportData.raw.regionScreenshots || [];
+    _regionScreenshots.forEach(function(rgn) {
+      if (!rgn.extractedData) return;
+      try {
+        rgn.regionReport = MilgScoring.runScoring(rgn.extractedData);
+        _log('[milg] Region scored:', rgn.regionReport.overall + '/100', rgn.regionReport.grade);
+      } catch (e) {
+        _log('[milg] Region scoring failed:', e.message);
+      }
+    });
+
     window.__milgLastReport = reportData; // Expose for diagnostics/testing
     var reportContainer = document.getElementById('reportContainer');
     var inputSection = document.getElementById('inputSection');
@@ -935,6 +947,26 @@ console.log('[milg] analyzer.js v3.5 loaded');
           div.innerHTML = summaryHtml;
           if (screenshotDetails) screenshotDetails.parentNode.insertBefore(div, screenshotDetails.nextSibling);
           else _verifyContainer.insertBefore(div, _verifyContainer.firstChild);
+          // Run pixel verification on region sub-pages sequentially
+          var _rgnList = (_verifyReportData.raw && _verifyReportData.raw.regionScreenshots || []).filter(function(r) { return r.extractedData && r.screenshot; });
+          (function _verifyNextRegion(idx) {
+            if (idx >= _rgnList.length) return;
+            var rgn = _rgnList[idx];
+            var miniReport = {
+              raw: {
+                screenshots: [rgn.screenshot],
+                screenshotMeta: rgn.screenshotMeta,
+                colors: rgn.extractedData.colors || { contrastPairs: [] }
+              },
+              categories: rgn.regionReport ? rgn.regionReport.categories : []
+            };
+            MilgContrastVerify.verify(miniReport, function(rgnResults) {
+              rgn.regionVerifyResults = rgnResults || [];
+              _log('[milg] Region pixel verify:', rgnResults ? rgnResults.length : 0, 'results');
+              _verifyNextRegion(idx + 1);
+            });
+          })(0);
+
           // Update viewport cache if this was a viewport switch
           if (_verifyData._vpCacheIdx !== undefined) {
             _viewportCache[_verifyData._vpCacheIdx] = {
