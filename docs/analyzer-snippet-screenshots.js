@@ -283,8 +283,14 @@
           _clipList.forEach(function(rgn, rIdx) {
             var container = rgn.el, cr = container.getBoundingClientRect();
             var clone = container.cloneNode(true);
-            clone.style.cssText += ';overflow:visible !important;max-height:none !important;';
-            clone.querySelectorAll('*').forEach(function(d) { d.style.cssText += ';transform:none !important;overflow:visible !important;'; });
+            clone.style.cssText += ';overflow:visible !important;max-height:none !important;height:auto !important;clip-path:none !important;';
+            clone.querySelectorAll('*').forEach(function(d) {
+              d.style.cssText += ';transform:none !important;overflow:visible !important;clip-path:none !important;visibility:visible !important;opacity:1 !important;max-height:none !important;height:auto !important;';
+              if (d.style.display === 'none' || d.getAttribute('aria-hidden') === 'true' || d.hidden) d.style.cssText += ';display:block !important;';
+            });
+            for (var ci = 0; ci < clone.children.length; ci++) {
+              clone.children[ci].style.cssText += ';transform:none !important;display:block !important;visibility:visible !important;opacity:1 !important;position:relative !important;';
+            }
             var miniHtml = '<!DOCTYPE html><html><head><meta charset=UTF-8><base href="' + baseHref.replace(/"/g, '&quot;') + '">' + allLinks + allStyles +
               '<style>*,*::before,*::after{transition:none !important;animation:none !important;}</style></head><body style="margin:0;padding:0;overflow:visible">' + clone.outerHTML + '</body></html>';
             var mf = document.createElement('iframe');

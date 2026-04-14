@@ -278,14 +278,14 @@ window.MilgViewer = (function() {
     if (regions.length > 0) {
       var regionSection = document.createElement('div');
       regionSection.className = 'milg-viewer-regions';
-      regionSection.style.cssText = 'padding:16px 0 8px;width:100%;max-width:95vw;display:flex;flex-direction:column;align-items:center;';
+      regionSection.style.cssText = 'padding:16px 0 8px;width:100%;max-width:95vw;';
 
       regions.forEach(function(rgn, rIdx) {
         if (!rgn.screenshot || !rgn.screenshotMeta) return;
         var rgnSection = document.createElement('div');
         rgnSection.className = 'milg-viewer-region-section';
         rgnSection.id = 'milg-region-' + rIdx;
-        rgnSection.style.cssText = 'margin:0 0 20px;border:1px solid rgba(59,130,246,0.3);border-radius:6px;overflow:hidden;background:rgba(0,0,0,0.3);max-width:100%;';
+        rgnSection.style.cssText = 'margin:0 0 20px;border:1px solid rgba(59,130,246,0.3);border-radius:6px;overflow:hidden;background:rgba(0,0,0,0.3);';
 
         // Region header with label and back-to-main link
         var rgnHeader = document.createElement('div');
@@ -325,23 +325,23 @@ window.MilgViewer = (function() {
         rgnHeader.appendChild(backLink);
         rgnSection.appendChild(rgnHeader);
 
-        // Region image container with scroll support
+        // Region image container — display at natural CSS-pixel size, scroll if wider than container
         var rgnScale = rgn.screenshotMeta.scale || 1.5;
-        var rgnNaturalW = Math.round(rgn.screenshotMeta.canvasWidth / rgnScale);
-        var rgnNaturalH = Math.round(rgn.screenshotMeta.canvasHeight / rgnScale);
+        var rgnDisplayW = Math.round(rgn.screenshotMeta.canvasWidth / rgnScale);
+        var rgnDisplayH = Math.round(rgn.screenshotMeta.canvasHeight / rgnScale);
         var rgnFrame = document.createElement('div');
-        rgnFrame.style.cssText = 'position:relative;overflow:auto;max-height:500px;width:' + rgnNaturalW + 'px;max-width:100%;';
+        rgnFrame.style.cssText = 'position:relative;overflow:auto;max-height:500px;';
 
         var rgnImg = document.createElement('img');
         rgnImg.src = rgn.screenshot;
         rgnImg.alt = 'Hidden content region ' + (rIdx + 1);
-        rgnImg.style.cssText = 'display:block;width:100%;height:auto;';
+        rgnImg.style.cssText = 'display:block;width:' + rgnDisplayW + 'px;height:' + rgnDisplayH + 'px;max-width:none;';
 
         var rgnSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         rgnSvg.setAttribute('class', 'milg-viewer-region-svg');
         rgnSvg.setAttribute('viewBox', '0 0 ' + rgn.screenshotMeta.canvasWidth + ' ' + rgn.screenshotMeta.canvasHeight);
         rgnSvg.setAttribute('preserveAspectRatio', 'xMinYMin meet');
-        rgnSvg.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:auto;';
+        rgnSvg.style.cssText = 'position:absolute;top:0;left:0;width:' + rgnDisplayW + 'px;height:' + rgnDisplayH + 'px;pointer-events:auto;';
 
         // Render local bboxes for this region's contrast pairs
         if (rgn.localBboxes && rgn.pairIndices && _reportData && _reportData.raw && _reportData.raw.colors) {
@@ -534,20 +534,30 @@ window.MilgViewer = (function() {
     var scaleX = _meta.scale;
     var scaleY = _meta.scale;
 
-    // Build set of clipped bbox positions and region container indicators
-    var _clippedBboxKeys = {};
-    var _regionContainersRendered = {};
+    // Build WeakSet of bbox objects that belong to regional (clipped) pairs.
+    // Uses object identity — the scoring module copies bbox references from contrastPairs
+    // into findings, so finding.bboxes[j] === contrastPairs[k].bbox for the same pair.
+    var _regionalBboxes = typeof WeakSet !== 'undefined' ? new WeakSet() : null;
+    var _regionalBboxKeys = {}; // fallback for environments without WeakSet
     var regions = (_reportData && _reportData.raw && _reportData.raw.regionScreenshots) || [];
     if (!_showExpanded && _reportData && _reportData.raw && _reportData.raw.colors) {
-      (_reportData.raw.colors.contrastPairs || []).forEach(function(cp) {
+      var _contrastPairs = _reportData.raw.colors.contrastPairs || [];
+      regions.forEach(function(rgn) {
+        (rgn.pairIndices || []).forEach(function(pi) {
+          var pair = _contrastPairs[pi];
+          if (pair && pair.bbox) {
+            if (_regionalBboxes) _regionalBboxes.add(pair.bbox);
+            _regionalBboxKeys[Math.round(pair.bbox.left) + ',' + Math.round(pair.bbox.top) + ',' + Math.round(pair.bbox.width) + ',' + Math.round(pair.bbox.height)] = true;
+          }
+        });
+      });
+      // Also add all _isClipped pairs (some may not be in regionScreenshots if capture timed out)
+      _contrastPairs.forEach(function(cp) {
         if (cp._isClipped && cp.bbox) {
-          _clippedBboxKeys[Math.round(cp.bbox.left) + ',' + Math.round(cp.bbox.top) + ',' + Math.round(cp.bbox.width) + ',' + Math.round(cp.bbox.height)] = true;
+          if (_regionalBboxes) _regionalBboxes.add(cp.bbox);
+          _regionalBboxKeys[Math.round(cp.bbox.left) + ',' + Math.round(cp.bbox.top) + ',' + Math.round(cp.bbox.width) + ',' + Math.round(cp.bbox.height)] = true;
         }
       });
-    }
-    if (regions.length > 0) {
-      console.log('[milg-viewer] Regions: ' + regions.length + ', clippedBboxKeys: ' + Object.keys(_clippedBboxKeys).length);
-      regions.forEach(function(r, i) { console.log('[milg-viewer] Region ' + i + ': containerRect=' + JSON.stringify(r.containerRect) + ' pairIndices=' + JSON.stringify(r.pairIndices)); });
     }
 
     // Build pixel verification lookups: by selector AND by bbox position+size
@@ -571,65 +581,12 @@ window.MilgViewer = (function() {
       finding.bboxes.forEach(function(bbox, bbIdx) {
         // For single-bbox filter (magnifying glass), skip other bboxes in this finding
         if (_activeFilter.type === 'findingBbox' && bbIdx !== _activeFilter.bboxIdx) return;
-        // For clipped bboxes on clean screenshot: show container indicator instead of normal bbox
+        // Skip clipped bboxes on clean screenshot — these belong to region sections, not main overlay.
+        // Uses WeakSet (object identity) with string-key fallback for robustness.
         if (!_showExpanded && bbox) {
-          var _bk = Math.round(bbox.left) + ',' + Math.round(bbox.top) + ',' + Math.round(bbox.width) + ',' + Math.round(bbox.height);
-          if (_clippedBboxKeys[_bk]) {
-            // Find which region this clipped bbox belongs to and render container indicator
-            for (var ri = 0; ri < regions.length; ri++) {
-              var rgn = regions[ri];
-              if (!rgn.containerRect || !rgn.pairIndices) continue;
-              // Check if this bbox matches any pair in this region
-              var inRegion = rgn.pairIndices.some(function(pi) {
-                var pair = (_reportData.raw.colors.contrastPairs || [])[pi];
-                if (!pair || !pair.bbox) return false;
-                return Math.round(pair.bbox.left) + ',' + Math.round(pair.bbox.top) + ',' + Math.round(pair.bbox.width) + ',' + Math.round(pair.bbox.height) === _bk;
-              });
-              if (inRegion && !_regionContainersRendered[ri]) {
-                _regionContainersRendered[ri] = true;
-                var cr = rgn.containerRect;
-                var cx = Math.round(cr.left * scaleX);
-                var cy = Math.round(cr.top * scaleY) - _calibrationOffsetY;
-                var cw = Math.round(cr.width * scaleX);
-                var ch = Math.round(cr.height * scaleY);
-                console.log('[milg-viewer] Drawing region indicator ' + ri + ': cx=' + cx + ' cy=' + cy + ' cw=' + cw + ' ch=' + ch + ' containerRect=' + JSON.stringify(cr) + ' scaleX=' + scaleX);
-                var indicator = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-                indicator.setAttribute('class', 'milg-region-indicator-' + ri);
-                indicator.setAttribute('x', cx);
-                indicator.setAttribute('y', cy);
-                indicator.setAttribute('width', Math.max(cw, 20));
-                indicator.setAttribute('height', Math.max(ch, 20));
-                indicator.setAttribute('fill', 'rgba(59,130,246,0.08)');
-                indicator.setAttribute('stroke', '#3b82f6');
-                indicator.setAttribute('stroke-width', Math.max(2, Math.round(scaleX)));
-                indicator.setAttribute('stroke-dasharray', Math.round(8 * scaleX) + ' ' + Math.round(4 * scaleX));
-                indicator.setAttribute('rx', '3');
-                indicator.setAttribute('data-region', ri);
-                indicator.style.cursor = 'pointer';
-                // Label — font-size must be in canvas coordinates (SVG viewBox units)
-                var labelSize = Math.max(11, Math.round(12 * scaleX));
-                var label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-                label.setAttribute('x', cx + Math.round(6 * scaleX));
-                label.setAttribute('y', cy + Math.round(labelSize * 1.3));
-                label.setAttribute('fill', '#60a5fa');
-                label.setAttribute('font-size', labelSize);
-                label.setAttribute('font-family', 'system-ui, sans-serif');
-                label.setAttribute('pointer-events', 'none');
-                label.textContent = 'Hidden content \u2014 click to see analysis \u2193';
-                svg.appendChild(indicator);
-                svg.appendChild(label);
-                // Click → scroll to region section
-                indicator.addEventListener('click', function(regionIdx) {
-                  return function(e) {
-                    e.stopPropagation();
-                    var regionEl = document.getElementById('milg-region-' + regionIdx);
-                    if (regionEl) regionEl.scrollIntoView({ behavior: 'smooth' });
-                  };
-                }(ri));
-              }
-            }
-            return; // Don't render normal bbox for clipped element
-          }
+          var _isRegional = (_regionalBboxes && _regionalBboxes.has(bbox)) ||
+            _regionalBboxKeys[Math.round(bbox.left) + ',' + Math.round(bbox.top) + ',' + Math.round(bbox.width) + ',' + Math.round(bbox.height)];
+          if (_isRegional) return; // Don't render — container indicator is drawn separately
         }
         var x = Math.round(bbox.left * scaleX);
         var y = Math.round(bbox.top * scaleY) - _calibrationOffsetY;
@@ -694,42 +651,57 @@ window.MilgViewer = (function() {
       });
     });
 
-    // Fallback: render region indicators that weren't matched via bbox key path.
-    // This handles cases where flow-position bboxes have drifted from finding bboxes.
+    // Render container indicators for ALL regions on the main screenshot.
+    // Unconditional — not dependent on bbox matching. Each region with a containerRect
+    // gets a dashed blue indicator showing where hidden content exists.
     if (!_showExpanded && regions.length > 0) {
+      var _labelSize = Math.max(14, Math.round(14 * scaleX));
+      var _strokeW = Math.max(2, Math.round(2 * scaleX));
+      var _dashOn = Math.round(8 * scaleX);
+      var _dashOff = Math.round(4 * scaleX);
       regions.forEach(function(rgn, ri) {
-        if (_regionContainersRendered[ri]) return;
-        if (!rgn.containerRect || !rgn.pairIndices || rgn.pairIndices.length === 0) return;
-        _regionContainersRendered[ri] = true;
+        if (!rgn.containerRect) return;
         var cr = rgn.containerRect;
         var cx = Math.round(cr.left * scaleX);
         var cy = Math.round(cr.top * scaleY) - _calibrationOffsetY;
-        var cw = Math.round(cr.width * scaleX);
-        var ch = Math.round(cr.height * scaleY);
-        console.log('[milg-viewer] Fallback region indicator ' + ri + ': cx=' + cx + ' cy=' + cy + ' cw=' + cw + ' ch=' + ch);
+        var cw = Math.max(Math.round(cr.width * scaleX), 40);
+        var ch = Math.max(Math.round(cr.height * scaleY), 40);
         var indicator = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
         indicator.setAttribute('class', 'milg-region-indicator-' + ri);
         indicator.setAttribute('x', cx);
         indicator.setAttribute('y', cy);
-        indicator.setAttribute('width', Math.max(cw, 20));
-        indicator.setAttribute('height', Math.max(ch, 20));
-        indicator.setAttribute('fill', 'rgba(59,130,246,0.08)');
+        indicator.setAttribute('width', cw);
+        indicator.setAttribute('height', ch);
+        indicator.setAttribute('fill', 'rgba(59,130,246,0.12)');
         indicator.setAttribute('stroke', '#3b82f6');
-        indicator.setAttribute('stroke-width', Math.max(2, Math.round(scaleX)));
-        indicator.setAttribute('stroke-dasharray', Math.round(8 * scaleX) + ' ' + Math.round(4 * scaleX));
-        indicator.setAttribute('rx', '3');
+        indicator.setAttribute('stroke-width', _strokeW);
+        indicator.setAttribute('stroke-dasharray', _dashOn + ' ' + _dashOff);
+        indicator.setAttribute('rx', '4');
         indicator.setAttribute('data-region', ri);
         indicator.style.cursor = 'pointer';
-        var labelSize = Math.max(11, Math.round(12 * scaleX));
+        svg.appendChild(indicator);
+        // Label background for readability
+        var labelText = 'Hidden content \u2014 click to see ' + ((rgn.pairIndices || []).length || '') + ' pairs \u2193';
+        var labelBg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        var lx = cx + Math.round(4 * scaleX);
+        var ly = cy + Math.round(4 * scaleX);
+        labelBg.setAttribute('x', lx);
+        labelBg.setAttribute('y', ly);
+        labelBg.setAttribute('width', Math.min(cw - Math.round(8 * scaleX), Math.round(labelText.length * _labelSize * 0.55)));
+        labelBg.setAttribute('height', Math.round(_labelSize * 1.6));
+        labelBg.setAttribute('fill', 'rgba(30,58,138,0.85)');
+        labelBg.setAttribute('rx', '3');
+        labelBg.setAttribute('pointer-events', 'none');
+        svg.appendChild(labelBg);
         var label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        label.setAttribute('x', cx + Math.round(6 * scaleX));
-        label.setAttribute('y', cy + Math.round(labelSize * 1.3));
-        label.setAttribute('fill', '#60a5fa');
-        label.setAttribute('font-size', labelSize);
+        label.setAttribute('x', lx + Math.round(4 * scaleX));
+        label.setAttribute('y', ly + Math.round(_labelSize * 1.15));
+        label.setAttribute('fill', '#93c5fd');
+        label.setAttribute('font-size', _labelSize);
+        label.setAttribute('font-weight', '600');
         label.setAttribute('font-family', 'system-ui, sans-serif');
         label.setAttribute('pointer-events', 'none');
-        label.textContent = 'Hidden content \u2014 click to see analysis \u2193';
-        svg.appendChild(indicator);
+        label.textContent = labelText;
         svg.appendChild(label);
         indicator.addEventListener('click', function(regionIdx) {
           return function(e) {

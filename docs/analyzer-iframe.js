@@ -431,13 +431,20 @@ window.MilgIframe = (function() {
       _clipContainerList.forEach(function(rgn, rIdx) {
         var container = rgn.el, cr = container.getBoundingClientRect();
         var clone = container.cloneNode(true);
-        clone.style.cssText += ';overflow:visible !important;max-height:none !important;';
-        // Neutralize transforms on all descendants (carousel slides)
+        clone.style.cssText += ';overflow:visible !important;max-height:none !important;height:auto !important;clip-path:none !important;';
+        // Force-reveal all descendants: neutralize transforms, overflow, display, visibility, clip
         clone.querySelectorAll('*').forEach(function(d) {
-          d.style.cssText += ';transform:none !important;overflow:visible !important;';
+          var ds = d.style;
+          ds.cssText += ';transform:none !important;overflow:visible !important;clip-path:none !important;';
+          // Unhide inactive carousel slides (display:none, visibility:hidden, opacity:0)
+          if (ds.display === 'none' || d.getAttribute('aria-hidden') === 'true' || d.hidden) {
+            ds.cssText += ';display:block !important;';
+          }
+          ds.cssText += ';visibility:visible !important;opacity:1 !important;max-height:none !important;height:auto !important;';
         });
         for (var ci = 0; ci < clone.children.length; ci++) {
-          clone.children[ci].style.cssText += ';transform:none !important;';
+          var child = clone.children[ci];
+          child.style.cssText += ';transform:none !important;display:block !important;visibility:visible !important;opacity:1 !important;position:relative !important;';
         }
 
         var miniHtml = '<!DOCTYPE html><html><head><meta charset=UTF-8>' +
