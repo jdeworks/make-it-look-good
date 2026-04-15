@@ -777,7 +777,7 @@ window.MilgIframe = (function() {
                   'if(!ref.el||!ref.obj||ref.key!=="bbox")return;' +
                   'var anc=ref.el;' +
                   'while(anc){' +
-                    'if(anc._mrc){ref.obj._regionContainerId=anc._mrc;break}' +
+                    'if(anc._mrc){ref.obj._regionContainerId=anc._mrc;if(ref.obj[ref.key])ref.obj[ref.key]._rcid=anc._mrc;break}' +
                     'anc=anc.parentElement' +
                   '}' +
                 '});' +
@@ -793,7 +793,7 @@ window.MilgIframe = (function() {
               'var _savedBboxes=[];' +
               'if(window.__milgBboxRefs){window.__milgBboxRefs.forEach(function(ref){' +
                 'if(ref.obj&&ref.obj[ref.key]){var b=ref.obj[ref.key];' +
-                '_savedBboxes.push({obj:ref.obj,key:ref.key,left:b.left,top:b.top,width:b.width,height:b.height})}' +
+                '_savedBboxes.push({obj:ref.obj,key:ref.key,left:b.left,top:b.top,width:b.width,height:b.height,_rcid:b._rcid})}' +
               '})}' +
               // Phase B: Expand overflow:hidden containers with transformed descendants (carousels/sliders)
               'var _expanded=0;' +
@@ -838,7 +838,7 @@ window.MilgIframe = (function() {
               // Update send helper with actual canvas dimensions
               'var _cw=fc.width,_ch=fc.height;' +
               // Restore clean-screenshot bbox coordinates so updatedData matches the displayed image
-              '_savedBboxes.forEach(function(s){s.obj[s.key]={left:s.left,top:s.top,width:s.width,height:s.height}});' +
+              '_savedBboxes.forEach(function(s){var nb={left:s.left,top:s.top,width:s.width,height:s.height};if(s._rcid)nb._rcid=s._rcid;s.obj[s.key]=nb});' +
               'var _maskResults={};' + // Defined HERE so _sendFinal can access it (same scope)
               'function _sendFinal(maskUri){' +
                 'var _raw=window.__milgData||null;' +

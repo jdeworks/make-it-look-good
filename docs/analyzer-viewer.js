@@ -662,8 +662,10 @@ window.MilgViewer = (function() {
         // For single-bbox filter (magnifying glass), skip other bboxes in this finding
         if (_activeFilter.type === 'findingBbox' && bbIdx !== _activeFilter.bboxIdx) return;
         // Skip bboxes that belong to region containers — shown in region section, not main overlay.
-        // Uses _regionContainerId (DOM hierarchy-based) plus WeakSet/string-key fallback.
+        // Primary: _rcid on the bbox itself (set on ALL tracked types during extraction).
+        // Fallback: WeakSet/string-key from contrastPairs/headings/touchTargets.
         if (!_showExpanded && bbox) {
+          if (bbox._rcid) return;
           var _isRegional = (_regionalBboxes && _regionalBboxes.has(bbox)) ||
             _regionalBboxKeys[Math.round(bbox.left) + ',' + Math.round(bbox.top) + ',' + Math.round(bbox.width) + ',' + Math.round(bbox.height)];
           if (_isRegional) return;
