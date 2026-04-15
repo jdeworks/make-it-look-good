@@ -51,27 +51,36 @@ window.MilgRegion = (function() {
         if (parseFloat(cs.opacity) < 0.1) el.style.setProperty('opacity', '1', 'important');
         if (cs.position === 'absolute' || cs.position === 'fixed') el.style.setProperty('position', 'relative', 'important');
       });
-      // Height cleanup: only on container (body > first child) and its direct children.
-      // Resetting ALL descendants caused massive height inflation.
+      // Layout cleanup: convert horizontal layouts to vertical stacking.
+      // Height reset on container + direct children only (deeper reset causes inflation).
+      // Flex/grid → column on ALL descendants (carousel tracks are often grandchildren).
       var container = mDoc.body.firstElementChild;
       if (container) {
         container.style.setProperty('height', 'auto', 'important');
         container.style.setProperty('max-height', 'none', 'important');
         container.style.setProperty('min-height', '0', 'important');
         container.style.setProperty('overflow', 'visible', 'important');
+        // Height reset on direct children only
         for (var ci = 0; ci < container.children.length; ci++) {
           var child = container.children[ci];
           child.style.setProperty('height', 'auto', 'important');
           child.style.setProperty('max-height', 'none', 'important');
           child.style.setProperty('min-height', '0', 'important');
           child.style.setProperty('position', 'relative', 'important');
-          // Flex children of carousel track: force to column layout
-          var cs = dv.getComputedStyle(child);
-          if (cs.display.indexOf('flex') !== -1) {
-            child.style.setProperty('flex-direction', 'column', 'important');
-            child.style.setProperty('gap', '0', 'important');
-          }
         }
+        // Flex/grid → column on ALL descendants (catches nested carousel tracks)
+        container.querySelectorAll('*').forEach(function(desc) {
+          var dcs = dv.getComputedStyle(desc);
+          if (dcs.display.indexOf('flex') !== -1) {
+            desc.style.setProperty('flex-direction', 'column', 'important');
+            desc.style.setProperty('gap', '0', 'important');
+            desc.style.setProperty('flex-wrap', 'nowrap', 'important');
+          }
+          if (dcs.display.indexOf('grid') !== -1) {
+            desc.style.setProperty('grid-template-columns', '1fr', 'important');
+            desc.style.setProperty('gap', '0', 'important');
+          }
+        });
       }
     } catch (_e) {
       console.warn('[milg-region] DOM cleanup failed:', _e.message);
@@ -254,12 +263,19 @@ window.MilgRegion = (function() {
                     _ch.style.setProperty('height', 'auto', 'important');
                     _ch.style.setProperty('max-height', 'none', 'important');
                     _ch.style.setProperty('position', 'relative', 'important');
-                    var _ccs = dv.getComputedStyle(_ch);
-                    if (_ccs.display.indexOf('flex') !== -1) {
-                      _ch.style.setProperty('flex-direction', 'column', 'important');
-                      _ch.style.setProperty('gap', '0', 'important');
-                    }
                   }
+                  _cont.querySelectorAll('*').forEach(function(_desc) {
+                    var _dcs = dv.getComputedStyle(_desc);
+                    if (_dcs.display.indexOf('flex') !== -1) {
+                      _desc.style.setProperty('flex-direction', 'column', 'important');
+                      _desc.style.setProperty('gap', '0', 'important');
+                      _desc.style.setProperty('flex-wrap', 'nowrap', 'important');
+                    }
+                    if (_dcs.display.indexOf('grid') !== -1) {
+                      _desc.style.setProperty('grid-template-columns', '1fr', 'important');
+                      _desc.style.setProperty('gap', '0', 'important');
+                    }
+                  });
                 }
               } catch (_e) {}
 
@@ -277,11 +293,57 @@ window.MilgRegion = (function() {
               var pms = window.modernScreenshot;
               if (!pms || !pms.domToCanvas) { _rgnFinish(rIdx, mf, null); return; }
               pms.domToCanvas(mDoc.documentElement, { scale: _sc, timeout: 12000 }).then(function(rc) {
-                var rUri; try { rUri = rc.toDataURL('image/webp', _quality); } catch (e) { rUri = ''; }
+                // Crop whitespace from region screenshot
+                var finalCanvas = rc;
+                try {
+                  var _ctx = rc.getContext('2d'), _w = rc.width, _h = rc.height;
+                  if (_w > 0 && _h > 200) {
+                    var _ss = Math.max(1, Math.floor(_w / 30)), _ck = 200;
+                    var _ft = -1, _fb = -1;
+                    // Scan from top for first non-empty row
+                    for (var _y0 = 0; _y0 < _h && _ft < 0; _y0 += _ck) {
+                      var _ch2 = Math.min(_ck, _h - _y0);
+                      var _pd = _ctx.getImageData(0, _y0, _w, _ch2).data;
+                      for (var _r = 0; _r < _ch2 && _ft < 0; _r++) {
+                        for (var _x = 0; _x < _w; _x += _ss) {
+                          var _pi = (_r * _w + _x) * 4;
+                          if (_pd[_pi + 3] > 10 && (_pd[_pi] < 248 || _pd[_pi + 1] < 248 || _pd[_pi + 2] < 248)) {
+                            _ft = _y0 + _r; break;
+                          }
+                        }
+                      }
+                    }
+                    // Scan from bottom for last non-empty row
+                    for (var _y0 = Math.floor((_h - 1) / _ck) * _ck; _y0 >= 0 && _fb < 0; _y0 -= _ck) {
+                      var _ch2 = Math.min(_ck, _h - _y0);
+                      var _pd = _ctx.getImageData(0, _y0, _w, _ch2).data;
+                      for (var _r = _ch2 - 1; _r >= 0 && _fb < 0; _r--) {
+                        for (var _x = 0; _x < _w; _x += _ss) {
+                          var _pi = (_r * _w + _x) * 4;
+                          if (_pd[_pi + 3] > 10 && (_pd[_pi] < 248 || _pd[_pi + 1] < 248 || _pd[_pi + 2] < 248)) {
+                            _fb = _y0 + _r; break;
+                          }
+                        }
+                      }
+                    }
+                    if (_ft >= 0 && _fb > _ft) {
+                      var _ct = Math.max(0, _ft - 20);
+                      var _cb = Math.min(_h, _fb + 20);
+                      var _cch = _cb - _ct;
+                      if (_cch < _h * 0.85) {
+                        finalCanvas = document.createElement('canvas');
+                        finalCanvas.width = _w; finalCanvas.height = _cch;
+                        finalCanvas.getContext('2d').drawImage(rc, 0, _ct, _w, _cch, 0, 0, _w, _cch);
+                        console.log('[milg-region] Cropped canvas ' + _h + ' → ' + _cch + 'px (top=' + _ct + ')');
+                      }
+                    }
+                  }
+                } catch (_ce) { console.warn('[milg-region] Canvas crop failed:', _ce.message); finalCanvas = rc; }
+                var rUri; try { rUri = finalCanvas.toDataURL('image/webp', _quality); } catch (e) { rUri = ''; }
                 clearTimeout(rgnTimer);
                 _rgnFinish(rIdx, mf, {
                   screenshot: rUri,
-                  screenshotMeta: { scale: _sc, canvasWidth: rc.width, canvasHeight: rc.height },
+                  screenshotMeta: { scale: _sc, canvasWidth: finalCanvas.width, canvasHeight: finalCanvas.height },
                   pairIndices: rgn.pairIndices,
                   containerRect: { left: Math.round(cr.left), top: Math.round(cr.top), width: Math.round(cr.width), height: Math.round(cr.height) },
                   extractedData: extractedData
