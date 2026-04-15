@@ -212,7 +212,8 @@ window.MilgContrastVerify = (function() {
     if (!pair.bbox || !meta) return null;
     var scale = meta.scale;
     var sectionH = Math.round(meta.viewportHeight * scale);
-    var canvasX = pair.bbox.left * scale, canvasY = pair.bbox.top * scale;
+    var cropOX = meta.cropOffsetX || 0, cropOY = meta.cropOffsetY || 0;
+    var canvasX = pair.bbox.left * scale - cropOX, canvasY = pair.bbox.top * scale - cropOY;
     var canvasW = pair.bbox.width * scale, canvasH = pair.bbox.height * scale;
     if (canvasW < 4 || canvasH < 4) return null;
     var sectionIdx, yInSection;

@@ -191,9 +191,9 @@ window.MilgRegion = (function() {
 
       var _rgnResults = [], _rgnDone = 0, _rgnTotal = _clipContainerList.length;
       var _rgnOverall = setTimeout(function() {
-        console.warn('[milg-region] Overall timeout (30s)');
+        console.warn('[milg-region] Overall timeout (90s)');
         rgnCb(_rgnResults);
-      }, 30000);
+      }, 90000);
 
       // Collect styles for mini-pages
       var allStyles = ''; document.querySelectorAll('style').forEach(function(s) { allStyles += s.outerHTML; });
@@ -244,7 +244,7 @@ window.MilgRegion = (function() {
         var rgnTimer = setTimeout(function() {
           console.warn('[milg-region] Region ' + rIdx + ' timed out');
           _rgnFinish(rIdx, mf, null);
-        }, 15000);
+        }, 45000);
 
         mf.srcdoc = miniHtml;
         mf.addEventListener('load', function() {
@@ -357,14 +357,239 @@ window.MilgRegion = (function() {
                   } catch (_ce) { console.warn('[milg-region] Crop failed:', _ce.message); finalCanvas = rc; }
                 }
                 var rUri; try { rUri = finalCanvas.toDataURL('image/webp', _quality); } catch (e) { rUri = ''; }
-                clearTimeout(rgnTimer);
-                _rgnFinish(rIdx, mf, {
+                var _rgnResult = {
                   screenshot: rUri,
                   screenshotMeta: { scale: _sc, canvasWidth: finalCanvas.width, canvasHeight: finalCanvas.height, cropOffsetX: _cropOX, cropOffsetY: _cropOY },
                   pairIndices: rgn.pairIndices,
                   containerRect: { left: Math.round(cr.left), top: Math.round(cr.top), width: Math.round(cr.width), height: Math.round(cr.height) },
                   extractedData: extractedData
+                };
+
+                // --- Mask capture pipeline (same as main page Phase A-D) ---
+                var _mRefs; try { _mRefs = mf.contentWindow.__milgBboxRefs || []; } catch (_e) { _mRefs = []; }
+                var _mPairs = extractedData && extractedData.colors ? extractedData.colors.contrastPairs || [] : [];
+
+                // Build pair-element list (contrast pairs with DOM elements)
+                var _mPairEls = [];
+                _mRefs.forEach(function(ref) {
+                  if (!ref.el || !ref.obj || ref.obj.ratio === undefined) return;
+                  var idx = _mPairs.indexOf(ref.obj);
+                  if (idx >= 0) _mPairEls.push({ el: ref.el, pair: ref.obj, idx: idx });
                 });
+                console.log('[milg-region] Mask: ' + _mPairEls.length + '/' + _mRefs.length + ' pair elements');
+
+                if (_mPairEls.length === 0) {
+                  clearTimeout(rgnTimer);
+                  _rgnFinish(rIdx, mf, _rgnResult);
+                  return;
+                }
+
+                // Phase A: Kill ALL transitions before color changes
+                var _mDv = mDoc.defaultView;
+                mDoc.querySelectorAll('*').forEach(function(el) {
+                  el.style.setProperty('transition-duration', '0s', 'important');
+                  el.style.setProperty('transition', 'none', 'important');
+                });
+                void mDoc.body.offsetHeight;
+
+                // Neutralize absolute/fixed overlays (same logic as main pipeline)
+                var _mNeutralized = 0;
+                mDoc.querySelectorAll('*').forEach(function(el) {
+                  var cs = _mDv.getComputedStyle(el);
+                  if (cs.position === 'absolute' || cs.position === 'fixed') {
+                    if (!el.textContent.trim()) {
+                      el.style.setProperty('display', 'none', 'important'); _mNeutralized++;
+                    } else if (cs.pointerEvents === 'none') {
+                      el.style.setProperty('background', 'transparent', 'important');
+                      el.style.setProperty('background-image', 'none', 'important'); _mNeutralized++;
+                    }
+                  }
+                });
+                if (_mNeutralized) console.log('[milg-region] Neutralized ' + _mNeutralized + ' overlays');
+                void mDoc.body.offsetHeight;
+
+                // Re-read bboxes after neutralization (hiding overlays can shift layout)
+                if (typeof mf.contentWindow.__milgReReadBboxes === 'function') {
+                  try { mf.contentWindow.__milgReReadBboxes(); } catch (_e) {}
+                }
+
+                // Phase B: Global mask style — white bg, white text, hide media
+                var _mMask = mDoc.createElement('style');
+                _mMask.setAttribute('data-milg-mask', '1');
+                _mMask.textContent = '*,*::before,*::after{color:#fff !important;background-color:transparent !important;background-image:none !important;background:transparent !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;-webkit-text-fill-color:#fff !important;opacity:1 !important;transition:none !important;animation:none !important;}html{background:#fff !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}';
+                mDoc.head.appendChild(_mMask);
+                void mDoc.body.offsetHeight;
+
+                // Re-read bboxes after mask style (layout may shift)
+                if (typeof mf.contentWindow.__milgReReadBboxes === 'function') {
+                  try { mf.contentWindow.__milgReReadBboxes(); } catch (_e) {}
+                }
+
+                // Build overlap layers (use pair.bbox which __milgReReadBboxes keeps current)
+                function _mOverlaps(a, b) {
+                  var ab = a.pair.bbox, bb = b.pair.bbox;
+                  if (!ab || !bb) return false;
+                  return ab.left < bb.left + bb.width && ab.left + ab.width > bb.left &&
+                    ab.top < bb.top + bb.height && ab.top + ab.height > bb.top;
+                }
+                var _mLayers = [], _mRemaining = _mPairEls.slice();
+                while (_mRemaining.length > 0) {
+                  var _mLayer = [], _mNext = [];
+                  _mRemaining.forEach(function(pe) {
+                    if (_mLayer.some(function(l) { return _mOverlaps(pe, l); })) _mNext.push(pe);
+                    else _mLayer.push(pe);
+                  });
+                  _mLayers.push(_mLayer); _mRemaining = _mNext;
+                }
+                console.log('[milg-region] ' + _mPairEls.length + ' elements in ' + _mLayers.length + ' mask layers');
+
+                // Bake text-transform into actual text (domToCanvas doesn't always preserve it)
+                var _mTtFixed = 0;
+                mDoc.querySelectorAll('*').forEach(function(el) {
+                  var tt = _mDv.getComputedStyle(el).textTransform;
+                  if (tt === 'uppercase' || tt === 'lowercase' || tt === 'capitalize') {
+                    var walker = mDoc.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
+                    var tn; while (tn = walker.nextNode()) {
+                      var orig = tn.textContent; if (!orig.trim()) continue;
+                      if (tt === 'uppercase') tn.textContent = orig.toUpperCase();
+                      else if (tt === 'lowercase') tn.textContent = orig.toLowerCase();
+                      else if (tt === 'capitalize') tn.textContent = orig.replace(/\b\w/g, function(c) { return c.toUpperCase(); });
+                      _mTtFixed++;
+                    }
+                  }
+                });
+                if (_mTtFixed) console.log('[milg-region] Baked text-transform for ' + _mTtFixed + ' text nodes');
+
+                // Phase D: Capture one mask per layer
+                var _mLi = 0;
+                function _mNextLayer() {
+                  if (_mLi >= _mLayers.length) {
+                    var _maskCount = _mPairs.filter(function(p) { return !!p._maskBmp; }).length;
+                    console.log('[milg-region] All ' + _mLayers.length + ' mask layers done, ' + _maskCount + '/' + _mPairs.length + ' pairs masked');
+                    clearTimeout(rgnTimer);
+                    _rgnFinish(rIdx, mf, _rgnResult);
+                    return;
+                  }
+                  var layer = _mLayers[_mLi]; _mLi++;
+                  _prog('Region ' + (rIdx + 1) + ': mask layer ' + _mLi + '/' + _mLayers.length + '...');
+
+                  // Set layer elements to black via inline style
+                  layer.forEach(function(pe) {
+                    pe.el.style.setProperty('color', '#000', 'important');
+                    pe.el.style.setProperty('-webkit-text-fill-color', '#000', 'important');
+                    pe.el.querySelectorAll('*').forEach(function(ch) {
+                      ch.style.setProperty('color', '#000', 'important');
+                      ch.style.setProperty('-webkit-text-fill-color', '#000', 'important');
+                    });
+                  });
+                  void mDoc.body.offsetHeight;
+
+                  var _mLayerDone = false;
+                  var _mLayerTimer = setTimeout(function() {
+                    if (!_mLayerDone) { _mLayerDone = true; console.warn('[milg-region] Mask layer ' + _mLi + ' timed out'); setTimeout(_mNextLayer, 0); }
+                  }, 15000);
+
+                  pms.domToCanvas(mDoc.documentElement, { scale: _sc, timeout: 12000 }).then(function(mc) {
+                    if (_mLayerDone) return; _mLayerDone = true; clearTimeout(_mLayerTimer);
+                    var mCtx = mc.getContext('2d', { willReadFrequently: true });
+                    var _fillFallbacks = 0;
+                    layer.forEach(function(pe) {
+                      var bbox = pe.pair.bbox;
+                      if (!bbox) return;
+                      var bx = Math.max(0, Math.round(bbox.left * _sc));
+                      var by = Math.max(0, Math.round(bbox.top * _sc));
+                      var bw = Math.min(Math.round(bbox.width * _sc), mc.width - bx);
+                      var bh = Math.min(Math.round(bbox.height * _sc), mc.height - by);
+                      if (bw < 2 || bh < 2) return;
+                      try {
+                        var px = mCtx.getImageData(bx, by, bw, bh).data;
+                        var bmp = new Uint8Array(bw * bh);
+                        for (var y = 0; y < bh; y++) for (var x = 0; x < bw; x++) {
+                          var i = (y * bw + x) * 4;
+                          if ((px[i] + px[i + 1] + px[i + 2]) / 3 < 240) bmp[y * bw + x] = 1;
+                        }
+                        var _dk = 0; for (var _b = 0; _b < bmp.length; _b++) if (bmp[_b]) _dk++;
+
+                        // fillText fallback when domToCanvas didn't render text
+                        if (_dk === 0 && bw > 3 && pe.pair.text) {
+                          try {
+                            var cs = _mDv.getComputedStyle(pe.el);
+                            var _fc = document.createElement('canvas'); _fc.width = bw; _fc.height = bh;
+                            var _fx = _fc.getContext('2d'); _fx.fillStyle = '#fff'; _fx.fillRect(0, 0, bw, bh);
+                            var _fs = parseFloat(cs.fontSize) * _sc;
+                            _fx.fillStyle = '#000';
+                            _fx.font = cs.fontStyle + ' ' + cs.fontWeight + ' ' + _fs + 'px ' + cs.fontFamily;
+                            _fx.textBaseline = 'top';
+                            var _pl = (parseFloat(cs.paddingLeft) || 0) * _sc;
+                            var _pt2 = (parseFloat(cs.paddingTop) || 0) * _sc;
+                            var _pr = (parseFloat(cs.paddingRight) || 0) * _sc;
+                            var _ta = cs.textAlign;
+                            var _txt = pe.pair.text.replace(/\[placeholder\] /, '');
+                            var _lh = parseFloat(cs.lineHeight) * _sc || _fs * 1.2;
+                            var _contentW = bw - _pl - _pr;
+                            var _words = _txt.split(/\s+/); var _lines = []; var _line = '';
+                            for (var _w = 0; _w < _words.length; _w++) {
+                              var _test = _line ? _line + ' ' + _words[_w] : _words[_w];
+                              if (_fx.measureText(_test).width > _contentW && _line) { _lines.push(_line); _line = _words[_w]; }
+                              else _line = _test;
+                            }
+                            _lines.push(_line);
+                            var _totalH = _lines.length * _lh;
+                            var _tyStart = _pt2;
+                            var _par = pe.el.parentElement; var _pcs = _par ? _mDv.getComputedStyle(_par) : null;
+                            if (_pcs) {
+                              if (_pcs.display.indexOf('flex') >= 0 && _pcs.alignItems === 'center') _tyStart = Math.max(0, (bh - _totalH) / 2);
+                              else if (bh > _totalH + _pt2 * 2) _tyStart = _pt2;
+                            }
+                            for (var _li2 = 0; _li2 < _lines.length; _li2++) {
+                              var _lw = _fx.measureText(_lines[_li2]).width;
+                              var _tx = _pl;
+                              if (_ta === 'center') _tx = (_contentW - _lw) / 2 + _pl;
+                              else if (_ta === 'right' || _ta === 'end') _tx = _contentW - _lw + _pl;
+                              _fx.fillText(_lines[_li2], _tx, _tyStart + _li2 * _lh);
+                            }
+                            var _fpx = _fx.getImageData(0, 0, bw, bh).data;
+                            bmp = new Uint8Array(bw * bh);
+                            for (var _fy = 0; _fy < bh; _fy++) for (var _fxx = 0; _fxx < bw; _fxx++) {
+                              var _fi = (_fy * bw + _fxx) * 4;
+                              if ((_fpx[_fi] + _fpx[_fi + 1] + _fpx[_fi + 2]) / 3 < 240) bmp[_fy * bw + _fxx] = 1;
+                            }
+                            _dk = 0; for (var _fb = 0; _fb < bmp.length; _fb++) if (bmp[_fb]) _dk++;
+                            _fillFallbacks++;
+                          } catch (_fe) {}
+                        }
+
+                        // Bit-pack bitmap: 8 pixels per byte, then base64 encode
+                        var _byteLen = Math.ceil(bmp.length / 8);
+                        var _packed = new Uint8Array(_byteLen);
+                        for (var _bi = 0; _bi < bmp.length; _bi++) if (bmp[_bi]) _packed[_bi >> 3] |= (1 << (_bi & 7));
+                        var _binStr = ''; for (var _bi2 = 0; _bi2 < _packed.length; _bi2++) _binStr += String.fromCharCode(_packed[_bi2]);
+                        pe.pair._maskBmp = btoa(_binStr);
+                        pe.pair._maskPacked = true;
+                        pe.pair._maskW = bw;
+                        pe.pair._maskH = bh;
+                        pe.pair._maskLayer = _mLi;
+                        pe.pair._maskDark = _dk;
+                      } catch (_me) {}
+                    });
+                    if (_fillFallbacks > 0) console.log('[milg-region] Mask layer ' + _mLi + ': ' + _fillFallbacks + ' fillText fallbacks');
+                    // Reset layer elements
+                    layer.forEach(function(pe) {
+                      pe.el.style.removeProperty('color');
+                      pe.el.style.removeProperty('-webkit-text-fill-color');
+                      pe.el.querySelectorAll('*').forEach(function(ch) {
+                        ch.style.removeProperty('color');
+                        ch.style.removeProperty('-webkit-text-fill-color');
+                      });
+                    });
+                    setTimeout(_mNextLayer, 0);
+                  }).catch(function(e) {
+                    if (_mLayerDone) return; _mLayerDone = true; clearTimeout(_mLayerTimer);
+                    console.warn('[milg-region] Mask layer ' + _mLi + ' failed:', e);
+                    setTimeout(_mNextLayer, 0);
+                  });
+                }
+                _mNextLayer();
               }).catch(function(e) { clearTimeout(rgnTimer); _rgnFinish(rIdx, mf, null); });
             } catch (e) { clearTimeout(rgnTimer); _rgnFinish(rIdx, mf, null); }
           }, 800); // 800ms: allow DOMContentLoaded + extraction to complete
