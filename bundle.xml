@@ -40918,6 +40918,9 @@ window.MilgViewer = (function() {
           }
         }
       });
+      rect.addEventListener('contextmenu', function(e) {
+        showDebugMenu(e, svg, { findings: _allFindings, verifyResults: null, scale: scaleX, cropOX: 0, cropOY: 0, meta: _meta, context: 'main', calibrationOffsetY: _calibrationOffsetY });
+      });
     });
   }
 
@@ -41031,6 +41034,9 @@ window.MilgViewer = (function() {
               flashRectsInSvg(rdSvg, fIdx);
             }
           }
+        });
+        rect.addEventListener('contextmenu', function(e) {
+          showDebugMenu(e, rdSvg, { findings: rdFindings, verifyResults: null, scale: rdScale, cropOX: cox, cropOY: coy, meta: rd.meta, context: 'region' });
         });
       });
     });
@@ -41376,7 +41382,9 @@ window.MilgViewer = (function() {
           showDebugLayer(rect, svg, 'zones', null);
         }
       }
-      rect.addEventListener('contextmenu', _cycleDebug);
+      rect.addEventListener('contextmenu', function(e) {
+        showDebugMenu(e, svg, { findings: _allFindings, verifyResults: results, scale: _meta.scale, cropOX: 0, cropOY: 0, meta: _meta, context: 'main', calibrationOffsetY: _calibrationOffsetY });
+      });
       rect.addEventListener('dblclick', _cycleDebug);
       rect.addEventListener('click', function(e) {
         e.preventDefault(); e.stopPropagation();
@@ -41775,6 +41783,14 @@ window.MilgViewer = (function() {
       }
     });
     console.log('[milg-viewer] Region verify overlays: ' + results.length + ' results, ' + rd.svg.querySelectorAll('rect[data-verify]').length + ' rects');
+    // Context menu on region verify rects
+    var _rvSvg = rd.svg, _rvResults = results, _rvScale = scale, _rvCox = cox, _rvCoy = coy, _rvMeta = rd.meta, _rvFindings = rd.findings;
+    rd.svg.querySelectorAll('rect[data-verify]').forEach(function(rect) {
+      rect.style.cursor = 'pointer';
+      rect.addEventListener('contextmenu', function(e) {
+        showDebugMenu(e, _rvSvg, { findings: _rvFindings, verifyResults: _rvResults, scale: _rvScale, cropOX: _rvCox, cropOY: _rvCoy, meta: _rvMeta, context: 'region' });
+      });
+    });
   }
 
   var _tooltipHideTimer = null;
@@ -42109,6 +42125,116 @@ window.MilgViewer = (function() {
           hideOverlapPicker();
           document.removeEventListener('click', onClickAway);
         }
+      });
+    }, 0);
+  }
+
+  // --- Debug context menu (right-click on any overlay rect) ---
+  // Reusable for all overlay types: findings, verify, region findings, region verify.
+  // opts: { findings, verifyResults, scale, cropOX, cropOY, meta, context, calibrationOffsetY }
+  function showDebugMenu(e, svgEl, opts) {
+    e.preventDefault();
+    e.stopPropagation();
+    hideOverlapPicker();
+    hideTooltip();
+
+    // Hit-test: find all rects at click point (SVG coords)
+    var svgR = svgEl.getBoundingClientRect();
+    var cx = (e.clientX - svgR.left) * (svgEl.viewBox.baseVal.width / svgR.width);
+    var cy = (e.clientY - svgR.top) * (svgEl.viewBox.baseVal.height / svgR.height);
+    var scale = opts.scale || 1.5;
+    var cropOX = opts.cropOX || 0;
+    var cropOY = opts.cropOY || 0;
+    var ctxLabel = opts.context || 'main';
+
+    var items = [];
+    svgEl.querySelectorAll('rect[data-finding], rect[data-verify]').forEach(function(r) {
+      var rx = parseFloat(r.getAttribute('x')), ry = parseFloat(r.getAttribute('y'));
+      var rw = parseFloat(r.getAttribute('width')), rh = parseFloat(r.getAttribute('height'));
+      if (cx < rx || cx > rx + rw || cy < ry || cy > ry + rh) return;
+
+      var rectAttrs = { x: r.getAttribute('x'), y: r.getAttribute('y'), width: r.getAttribute('width'), height: r.getAttribute('height') };
+
+      if (r.hasAttribute('data-finding') && opts.findings) {
+        var fi = parseInt(r.getAttribute('data-finding'));
+        var f = opts.findings[fi];
+        if (!f) return;
+        var bboxIdx = 0;
+        f.bboxes.forEach(function(bb, bi) {
+          if (Math.round(bb.left * scale) - cropOX === rx && Math.round(bb.top * scale) - cropOY === ry) bboxIdx = bi;
+        });
+        var bb = f.bboxes[bboxIdx];
+        items.push({
+          type: 'finding',
+          label: f.title.substring(0, 55),
+          severity: f.severity,
+          color: (COLORS[f.severity] || COLORS.info).stroke,
+          data: {
+            context: ctxLabel, type: 'finding',
+            finding: f.title.substring(0, 80), severity: f.severity, category: f.category,
+            bbox_dom: bb,
+            bbox_canvas: bb ? { x: Math.round(bb.left * scale) - cropOX, y: Math.round(bb.top * scale) - cropOY, w: Math.round(bb.width * scale), h: Math.round(bb.height * scale) } : null,
+            scale: scale, cropOffset: { x: cropOX, y: cropOY },
+            rect_attrs: rectAttrs, meta: opts.meta
+          }
+        });
+      } else if (r.hasAttribute('data-verify') && opts.verifyResults) {
+        var vi = parseInt(r.getAttribute('data-verify'));
+        var vr = opts.verifyResults[vi];
+        if (!vr) return;
+        items.push({
+          type: 'verify',
+          label: (vr.text || vr.selector || '').substring(0, 40) + ' ' + (vr.pixelRatio || '?') + ':1',
+          severity: vr.pixelPasses ? 'pass' : 'error',
+          color: vr.pixelPasses ? '#22c55e' : '#ef4444',
+          data: {
+            context: ctxLabel, type: 'verify',
+            selector: vr.selector, text: (vr.text || '').substring(0, 60),
+            cssRatio: vr.cssRatio, pixelRatio: vr.pixelRatio, pixelRatioP10: vr.pixelRatioP10,
+            pixelPasses: vr.pixelPasses, cssPasses: vr.cssPasses,
+            crossesBoundary: vr.crossesBoundary, isVariableBg: vr.isVariableBg,
+            maskBmp: !!vr.maskBmp, maskDark: vr.maskDark, maskLayer: vr.maskLayer,
+            fgSamples: vr.sampleCount ? vr.sampleCount.fg : undefined,
+            bgSamples: vr.sampleCount ? vr.sampleCount.bg : undefined,
+            bbox_dom: vr.bbox,
+            bbox_canvas: vr.bbox ? { x: Math.round(vr.bbox.left * scale) - cropOX, y: Math.round(vr.bbox.top * scale) - cropOY, w: Math.round(vr.bbox.width * scale), h: Math.round(vr.bbox.height * scale) } : null,
+            scale: scale, cropOffset: { x: cropOX, y: cropOY },
+            rect_attrs: rectAttrs
+          }
+        });
+      }
+    });
+    if (items.length === 0) return;
+
+    // Build picker popup (reuse overlap picker styling)
+    var picker = document.createElement('div');
+    picker.className = 'milg-viewer-overlap-picker';
+    picker.innerHTML = '<div class="milg-viewer-overlap-header">' + items.length + ' overlay' + (items.length !== 1 ? 's' : '') + ' \u2014 click to copy debug</div>';
+    items.forEach(function(item) {
+      var row = document.createElement('div');
+      row.className = 'milg-viewer-overlap-item';
+      row.innerHTML = '<span class="milg-viewer-overlap-dot" style="background:' + item.color + '"></span>' +
+        '<span class="milg-viewer-overlap-text">' + item.label + '</span>' +
+        '<span class="milg-viewer-overlap-cat">' + item.type + '</span>';
+      row.addEventListener('click', function(ev) {
+        ev.stopPropagation();
+        navigator.clipboard.writeText(JSON.stringify(item.data, null, 2)).then(function() {
+          row.style.background = 'rgba(34,197,94,0.3)';
+          row.querySelector('.milg-viewer-overlap-cat').textContent = 'copied!';
+          setTimeout(function() { hideOverlapPicker(); }, 600);
+        });
+      });
+      picker.appendChild(row);
+    });
+    document.body.appendChild(picker);
+    var px = Math.min(e.clientX + 8, window.innerWidth - 340);
+    var py = Math.min(e.clientY + 8, window.innerHeight - 200);
+    picker.style.left = px + 'px';
+    picker.style.top = py + 'px';
+    _overlapPicker = picker;
+    setTimeout(function() {
+      document.addEventListener('click', function _dbgAway(ev) {
+        if (_overlapPicker && !_overlapPicker.contains(ev.target)) { hideOverlapPicker(); document.removeEventListener('click', _dbgAway); }
       });
     }, 0);
   }
@@ -43767,7 +43893,7 @@ window.MilgIframe = (function() {
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.10 loaded');
+console.log('[milg] analyzer.js v3.10.1 loaded');
 
 (function() {
   "use strict";
@@ -44536,6 +44662,17 @@ console.log('[milg] analyzer.js v3.10 loaded');
     _regionScreenshots.forEach(function(rgn, ri) {
       if (!rgn.extractedData) return;
       try {
+        // Sanitize: force-reveal artifacts are not real layout issues
+        var _ed = rgn.extractedData;
+        if (_ed.structure) {
+          _ed.structure.hasHorizontalOverflow = false;
+          _ed.structure.overflowCulprits = [];
+        }
+        if (_ed.layout) {
+          _ed.layout.horizontalScrollContainers = [];
+          _ed.layout.offscreenElements = [];
+          _ed.layout.hiddenPanelIssues = [];
+        }
         rgn.regionReport = MilgScoring.runScoring(rgn.extractedData);
         var _rgnFindings = 0;
         (rgn.regionReport.categories || []).forEach(function(c) { (c.findings || []).forEach(function(f) { if (f.locator && f.locator.bboxes && f.locator.bboxes.length) _rgnFindings++; }); });
@@ -45589,7 +45726,7 @@ console.log('[milg] analyzer.js v3.10 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.10</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.10.1</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -46026,32 +46163,32 @@ console.log('[milg] analyzer.js v3.10 loaded');
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=3.10"></script>
-  <script src="scoring/contrast.js?v=3.10"></script>
-  <script src="scoring/typography.js?v=3.10"></script>
-  <script src="scoring/spacing.js?v=3.10"></script>
-  <script src="scoring/touch.js?v=3.10"></script>
-  <script src="scoring/accessibility.js?v=3.10"></script>
-  <script src="scoring/responsive.js?v=3.10"></script>
-  <script src="scoring/consistency.js?v=3.10"></script>
-  <script src="scoring/cognitive.js?v=3.10"></script>
-  <script src="scoring/layout.js?v=3.10"></script>
-  <script src="scoring/performance.js?v=3.10"></script>
-  <script src="scoring/readability.js?v=3.10"></script>
-  <script src="scoring/filters.js?v=3.10"></script>
-  <script src="scoring/balance.js?v=3.10"></script>
+  <script src="scoring/registry.js?v=3.10.1"></script>
+  <script src="scoring/contrast.js?v=3.10.1"></script>
+  <script src="scoring/typography.js?v=3.10.1"></script>
+  <script src="scoring/spacing.js?v=3.10.1"></script>
+  <script src="scoring/touch.js?v=3.10.1"></script>
+  <script src="scoring/accessibility.js?v=3.10.1"></script>
+  <script src="scoring/responsive.js?v=3.10.1"></script>
+  <script src="scoring/consistency.js?v=3.10.1"></script>
+  <script src="scoring/cognitive.js?v=3.10.1"></script>
+  <script src="scoring/layout.js?v=3.10.1"></script>
+  <script src="scoring/performance.js?v=3.10.1"></script>
+  <script src="scoring/readability.js?v=3.10.1"></script>
+  <script src="scoring/filters.js?v=3.10.1"></script>
+  <script src="scoring/balance.js?v=3.10.1"></script>
   <!-- Queue + Report rendering + UI -->
-  <script src="analyzer-queue.js?v=3.10"></script>
-  <script src="analyzer-report.js?v=3.10"></script>
-  <script src="analyzer-crawl.js?v=3.10"></script>
-  <script src="analyzer-extract.js?v=3.10"></script>
-  <script src="analyzer-region.js?v=3.10"></script>
-  <script src="analyzer-iframe.js?v=3.10"></script>
-  <script src="analyzer-proxy.js?v=3.10"></script>
-  <script src="analyzer-crawl-ui.js?v=3.10"></script>
-  <script src="analyzer-contrast-verify.js?v=3.10"></script>
-  <script src="analyzer-viewer.js?v=3.10"></script>
-  <script src="analyzer.js?v=3.10"></script>
+  <script src="analyzer-queue.js?v=3.10.1"></script>
+  <script src="analyzer-report.js?v=3.10.1"></script>
+  <script src="analyzer-crawl.js?v=3.10.1"></script>
+  <script src="analyzer-extract.js?v=3.10.1"></script>
+  <script src="analyzer-region.js?v=3.10.1"></script>
+  <script src="analyzer-iframe.js?v=3.10.1"></script>
+  <script src="analyzer-proxy.js?v=3.10.1"></script>
+  <script src="analyzer-crawl-ui.js?v=3.10.1"></script>
+  <script src="analyzer-contrast-verify.js?v=3.10.1"></script>
+  <script src="analyzer-viewer.js?v=3.10.1"></script>
+  <script src="analyzer.js?v=3.10.1"></script>
 </body>
 </html>
 </file>

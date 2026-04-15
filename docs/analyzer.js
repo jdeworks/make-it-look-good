@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.10 loaded');
+console.log('[milg] analyzer.js v3.10.1 loaded');
 
 (function() {
   "use strict";
@@ -771,6 +771,17 @@ console.log('[milg] analyzer.js v3.10 loaded');
     _regionScreenshots.forEach(function(rgn, ri) {
       if (!rgn.extractedData) return;
       try {
+        // Sanitize: force-reveal artifacts are not real layout issues
+        var _ed = rgn.extractedData;
+        if (_ed.structure) {
+          _ed.structure.hasHorizontalOverflow = false;
+          _ed.structure.overflowCulprits = [];
+        }
+        if (_ed.layout) {
+          _ed.layout.horizontalScrollContainers = [];
+          _ed.layout.offscreenElements = [];
+          _ed.layout.hiddenPanelIssues = [];
+        }
         rgn.regionReport = MilgScoring.runScoring(rgn.extractedData);
         var _rgnFindings = 0;
         (rgn.regionReport.categories || []).forEach(function(c) { (c.findings || []).forEach(function(f) { if (f.locator && f.locator.bboxes && f.locator.bboxes.length) _rgnFindings++; }); });
