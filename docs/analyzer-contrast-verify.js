@@ -1233,10 +1233,10 @@ window.MilgContrastVerify = (function() {
     var allPairsWithBbox = raw.colors.contrastPairs.filter(function(p) { return p.bbox; });
     if (allPairsWithBbox.length === 0) { callback([]); return; }
 
-    // Separate clipped pairs (hidden in overflow containers) — skip pixel verification
+    // Separate clipped/region pairs (hidden in overflow containers) — skip pixel verification
     var clippedResults = [];
     var pairs = allPairsWithBbox.filter(function(p) {
-      if (p._isClipped) {
+      if (p._isClipped || p._regionContainerId) {
         clippedResults.push({
           selector: p.selector,
           text: p.text,
