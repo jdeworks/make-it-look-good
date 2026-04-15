@@ -640,7 +640,27 @@ window.MilgViewer = (function() {
       var _raw = _reportData.raw || {};
       (_raw.typography && _raw.typography.headings || []).forEach(_addRegionalBbox);
       (_raw.interaction && _raw.interaction.touchTargets || []).forEach(_addRegionalBbox);
-      console.log('[D] viewer exclusion keys=' + Object.keys(_regionalBboxKeys).length + ' findings=' + _allFindings.length);
+      // Build bounding rect from ALL clipped/region bboxes — covers the full hidden area
+      var _regionBounds = [];
+      _contrastPairs.forEach(function(cp) {
+        if ((cp._isClipped || cp._regionContainerId) && cp.bbox) {
+          var found = false;
+          _regionBounds.forEach(function(rb) {
+            // Merge into existing bound if overlapping Y range (±50px tolerance)
+            if (Math.abs(cp.bbox.top - rb.top) < rb.height + 50 || (cp.bbox.top >= rb.top && cp.bbox.top <= rb.top + rb.height + 50)) {
+              var newTop = Math.min(rb.top, cp.bbox.top);
+              var newLeft = Math.min(rb.left, cp.bbox.left);
+              var newBottom = Math.max(rb.top + rb.height, cp.bbox.top + cp.bbox.height);
+              var newRight = Math.max(rb.left + rb.width, cp.bbox.left + cp.bbox.width);
+              rb.top = newTop; rb.left = newLeft;
+              rb.width = newRight - newLeft; rb.height = newBottom - newTop;
+              found = true;
+            }
+          });
+          if (!found) _regionBounds.push({ left: cp.bbox.left, top: cp.bbox.top, width: cp.bbox.width, height: cp.bbox.height });
+        }
+      });
+      console.log('[D] viewer exclusion keys=' + Object.keys(_regionalBboxKeys).length + ' regionBounds=' + _regionBounds.length + ' ' + JSON.stringify(_regionBounds.map(function(b) { return Math.round(b.left) + ',' + Math.round(b.top) + ',' + Math.round(b.width) + ',' + Math.round(b.height); })) + ' findings=' + _allFindings.length);
     }
 
     // Build pixel verification lookups: by selector AND by bbox position+size
@@ -672,10 +692,15 @@ window.MilgViewer = (function() {
           var _isRegional = (_regionalBboxes && _regionalBboxes.has(bbox)) ||
             _regionalBboxKeys[Math.round(bbox.left) + ',' + Math.round(bbox.top) + ',' + Math.round(bbox.width) + ',' + Math.round(bbox.height)];
           if (_isRegional) return;
-          // Container-rect fallback: exclude bboxes whose center falls within a region container
+          // Region-bounds fallback: exclude bboxes whose center falls within merged region bounds
           var _bcx = bbox.left + bbox.width / 2, _bcy = bbox.top + bbox.height / 2;
-          for (var _ri = 0; _ri < _regionContainerRects.length; _ri++) {
-            var _rc = _regionContainerRects[_ri];
+          for (var _ri = 0; _ri < _regionBounds.length; _ri++) {
+            var _rb = _regionBounds[_ri];
+            if (_bcx >= _rb.left && _bcx <= _rb.left + _rb.width && _bcy >= _rb.top && _bcy <= _rb.top + _rb.height) return;
+          }
+          // Also check container rects (original geometry from getBoundingClientRect)
+          for (var _ri2 = 0; _ri2 < _regionContainerRects.length; _ri2++) {
+            var _rc = _regionContainerRects[_ri2];
             if (_bcx >= _rc.left && _bcx <= _rc.left + _rc.width && _bcy >= _rc.top && _bcy <= _rc.top + _rc.height) return;
           }
         }

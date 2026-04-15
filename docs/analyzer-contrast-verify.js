@@ -1105,8 +1105,9 @@ window.MilgContrastVerify = (function() {
     if (!entry.bbox || !meta) return null;
     var scale = meta.scale;
     var sectionH = Math.round(meta.viewportHeight * scale);
-    var bx = Math.round(entry.bbox.left * scale);
-    var by = Math.round(entry.bbox.top * scale);
+    var cropOX = meta.cropOffsetX || 0, cropOY = meta.cropOffsetY || 0;
+    var bx = Math.round(entry.bbox.left * scale - cropOX);
+    var by = Math.round(entry.bbox.top * scale - cropOY);
     var bw = Math.round(entry.bbox.width * scale);
     var bh = Math.round(entry.bbox.height * scale);
     if (bw < 8 || bh < 8) return null;
@@ -1339,13 +1340,17 @@ window.MilgContrastVerify = (function() {
 
         // BBox edge contrast verification
         var bboxEdgeResults = [];
-        var bgEdgePairs = (raw.colors && raw.colors.bgEdgePairs) || [];
-        bgEdgePairs.forEach(function(entry) {
-          if (!entry.bbox) return;
-          var r = verifyBboxEdge(entry, sectionCanvases, meta);
-          if (r) bboxEdgeResults.push(r);
-        });
-        bboxEdgeResults.sort(function(a, b) { return a.pixelRatio - b.pixelRatio; });
+        try {
+          var bgEdgePairs = (raw.colors && raw.colors.bgEdgePairs) || [];
+          bgEdgePairs.forEach(function(entry) {
+            if (!entry.bbox) return;
+            var r = verifyBboxEdge(entry, sectionCanvases, meta);
+            if (r) bboxEdgeResults.push(r);
+          });
+          bboxEdgeResults.sort(function(a, b) { return a.pixelRatio - b.pixelRatio; });
+        } catch (_bboxErr) {
+          console.warn('[milg-verify] bboxEdge error:', _bboxErr.message || _bboxErr);
+        }
 
         callback(results, bboxEdgeResults);
       }
