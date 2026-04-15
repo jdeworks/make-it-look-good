@@ -752,6 +752,37 @@ window.MilgIframe = (function() {
                   '}' +
                 '})' +
               '}' +
+              // Tag ALL contrast pairs inside clipping containers with _regionContainerId.
+              // This uses the DOM hierarchy (not coordinate heuristics) so the viewer can
+              // reliably exclude carousel/tab content from the main overlay.
+              'if(window.__milgBboxRefs){' +
+                // Pass 2: Identify clipping containers that have at least one _isClipped pair
+                'var _rcc=0;' +
+                'window.__milgBboxRefs.forEach(function(ref){' +
+                  'if(!ref.el||!ref.obj||ref.key!=="bbox"||!ref.obj._isClipped)return;' +
+                  'var anc=ref.el.parentElement;' +
+                  'while(anc&&anc!==document.documentElement){' +
+                    'var as=getComputedStyle(anc);' +
+                    'var aov=as.overflow||"";var aovx=as.overflowX||"";var aovy=as.overflowY||"";' +
+                    'if(aov==="hidden"||aov==="clip"||aovx==="hidden"||aovx==="clip"||aovy==="hidden"||aovy==="clip"){' +
+                      'var ar=anc.getBoundingClientRect();' +
+                      'if(ar.width>=100&&ar.height>=30&&!anc._mrc){anc._mrc="rgn-"+(++_rcc)}' +
+                      'break' +
+                    '}' +
+                    'anc=anc.parentElement' +
+                  '}' +
+                '});' +
+                // Pass 3: Tag ALL pairs whose element is a descendant of an identified container
+                'window.__milgBboxRefs.forEach(function(ref){' +
+                  'if(!ref.el||!ref.obj||ref.key!=="bbox")return;' +
+                  'var anc=ref.el;' +
+                  'while(anc){' +
+                    'if(anc._mrc){ref.obj._regionContainerId=anc._mrc;break}' +
+                    'anc=anc.parentElement' +
+                  '}' +
+                '});' +
+                'console.log("[iframe-ss] Tagged "+_rcc+" clipping containers for region exclusion")' +
+              '}' +
               // Inject and run region screenshot function (serialized to avoid escaping issues)
               'var _cp2=window.__milgData&&window.__milgData.colors?window.__milgData.colors.contrastPairs||[]:[];' +
               'var _buildRegionScreenshots=(' + _regionScreenshotFn.toString() + ')(_sc,' + ss.quality + ',_prog,_cp2);' +

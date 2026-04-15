@@ -103,6 +103,7 @@ window.MilgRegion = (function() {
   function getClipDetectionScript() {
     return 'if(window.__milgBboxRefs&&window.__milgData&&window.__milgData.colors){' +
       'var _cp=window.__milgData.colors.contrastPairs||[];' +
+      // Pass 1: Mark _isClipped pairs (element completely outside overflow:hidden ancestor)
       'window.__milgBboxRefs.forEach(function(ref){' +
         'if(!ref.el||!ref.obj||ref.key!=="bbox")return;' +
         'var el=ref.el;var pair=ref.obj;' +
@@ -117,6 +118,30 @@ window.MilgRegion = (function() {
               'pair._isClipped=true;break' +
             '}' +
           '}' +
+          'anc=anc.parentElement' +
+        '}' +
+      '});' +
+      // Pass 2: Identify containers with clipped content and tag ALL their descendant pairs
+      'var _rcc=0;' +
+      'window.__milgBboxRefs.forEach(function(ref){' +
+        'if(!ref.el||!ref.obj||ref.key!=="bbox"||!ref.obj._isClipped)return;' +
+        'var anc=ref.el.parentElement;' +
+        'while(anc&&anc!==document.documentElement){' +
+          'var as=getComputedStyle(anc);' +
+          'var aov=as.overflow||"";var aovx=as.overflowX||"";var aovy=as.overflowY||"";' +
+          'if(aov==="hidden"||aov==="clip"||aovx==="hidden"||aovx==="clip"||aovy==="hidden"||aovy==="clip"){' +
+            'var ar=anc.getBoundingClientRect();' +
+            'if(ar.width>=100&&ar.height>=30&&!anc._mrc){anc._mrc="rgn-"+(++_rcc)}' +
+            'break' +
+          '}' +
+          'anc=anc.parentElement' +
+        '}' +
+      '});' +
+      'window.__milgBboxRefs.forEach(function(ref){' +
+        'if(!ref.el||!ref.obj||ref.key!=="bbox")return;' +
+        'var anc=ref.el;' +
+        'while(anc){' +
+          'if(anc._mrc){ref.obj._regionContainerId=anc._mrc;break}' +
           'anc=anc.parentElement' +
         '}' +
       '})' +

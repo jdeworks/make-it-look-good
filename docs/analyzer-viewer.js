@@ -604,11 +604,11 @@ window.MilgViewer = (function() {
     var scaleY = _meta.scale;
 
     // Build set of bboxes that belong to region containers — hidden from main overlay.
-    // Three filters: WeakSet (object identity), string-key fallback, and containerRect overlap.
+    // Primary: _regionContainerId (DOM hierarchy-based, set during clip detection).
+    // Fallback: WeakSet (object identity), string-key, _isClipped flag.
     var _regionalBboxes = typeof WeakSet !== 'undefined' ? new WeakSet() : null;
     var _regionalBboxKeys = {};
     var regions = (_reportData && _reportData.raw && _reportData.raw.regionScreenshots) || [];
-    var _containerRects = regions.map(function(rgn) { return rgn.containerRect; }).filter(Boolean);
     if (!_showExpanded && _reportData && _reportData.raw && _reportData.raw.colors) {
       var _contrastPairs = _reportData.raw.colors.contrastPairs || [];
       regions.forEach(function(rgn) {
@@ -621,7 +621,7 @@ window.MilgViewer = (function() {
         });
       });
       _contrastPairs.forEach(function(cp) {
-        if (cp._isClipped && cp.bbox) {
+        if ((cp._isClipped || cp._regionContainerId) && cp.bbox) {
           if (_regionalBboxes) _regionalBboxes.add(cp.bbox);
           _regionalBboxKeys[Math.round(cp.bbox.left) + ',' + Math.round(cp.bbox.top) + ',' + Math.round(cp.bbox.width) + ',' + Math.round(cp.bbox.height)] = true;
         }
@@ -650,22 +650,10 @@ window.MilgViewer = (function() {
         // For single-bbox filter (magnifying glass), skip other bboxes in this finding
         if (_activeFilter.type === 'findingBbox' && bbIdx !== _activeFilter.bboxIdx) return;
         // Skip bboxes that belong to region containers — shown in region section, not main overlay.
-        // Three checks: WeakSet identity, string-key fallback, and containerRect overlap.
+        // Uses _regionContainerId (DOM hierarchy-based) plus WeakSet/string-key fallback.
         if (!_showExpanded && bbox) {
           var _isRegional = (_regionalBboxes && _regionalBboxes.has(bbox)) ||
             _regionalBboxKeys[Math.round(bbox.left) + ',' + Math.round(bbox.top) + ',' + Math.round(bbox.width) + ',' + Math.round(bbox.height)];
-          if (!_isRegional) {
-            // Expand horizontally to catch adjacent carousel slides (hidden panels are
-            // positioned left/right of the visible container via transform/position).
-            for (var _ri = 0; _ri < _containerRects.length; _ri++) {
-              var _cr = _containerRects[_ri];
-              var _exW = _cr.width * 3; // 3× container width on each side
-              if (bbox.left + bbox.width > _cr.left - _exW && bbox.left < _cr.left + _cr.width + _exW &&
-                  bbox.top + bbox.height > _cr.top && bbox.top < _cr.top + _cr.height) {
-                _isRegional = true; break;
-              }
-            }
-          }
           if (_isRegional) return;
         }
         var x = Math.round(bbox.left * scaleX);
@@ -794,7 +782,7 @@ window.MilgViewer = (function() {
 
   // Render bbox overlays on all region screenshots — same filter behavior as main overlay
   function renderRegionOverlays() {
-    _regionData.forEach(function(rd) {
+    _regionData.forEach(function(rd, rIdx) {
       if (!rd.svg || !rd.findings) return;
       while (rd.svg.firstChild) rd.svg.removeChild(rd.svg.firstChild);
       // No filter active → no overlays (matches main renderOverlays behavior)
@@ -807,6 +795,7 @@ window.MilgViewer = (function() {
       var cox = rd.meta.cropOffsetX || 0;
       var coy = rd.meta.cropOffsetY || 0;
 
+      var bboxCount = 0;
       rd.findings.forEach(function(finding, fIdx) {
         if (_activeFilter.type === 'category' && finding.icon !== _activeFilter.value) return;
         if (_activeFilter.type === 'severity' && _activeFilter.value !== 'all' && finding.severity !== _activeFilter.value) return;
@@ -829,34 +818,74 @@ window.MilgViewer = (function() {
           rect.setAttribute('rx', '2');
           rect.setAttribute('data-finding', fIdx);
           rd.svg.appendChild(rect);
+          bboxCount++;
         });
       });
+      console.log('[milg-viewer] Region ' + rIdx + ' overlays: ' + rd.findings.length + ' findings, ' + bboxCount + ' rects, filter=' + _activeFilter.type + ':' + _activeFilter.value + ', scale=' + scale + ', crop=' + cox + ',' + coy + ', viewBox=' + rd.svg.getAttribute('viewBox'));
 
-      // Interactive handlers — tooltip, click (same UX as main overlay)
+      // Interactive handlers — full parity with main overlay (tooltip, click overlap picker, shift+click debug)
       var rdFindings = rd.findings;
+      var rdSvg = rd.svg;
+      var rdScale = scale;
+      var rdScaleInfo = { scale: scale, offsetY: 0, cropOffsetX: cox, cropOffsetY: coy, svg: rdSvg };
       rd.svg.querySelectorAll('rect[data-finding]').forEach(function(rect) {
         rect.style.cursor = 'pointer';
         rect.addEventListener('mouseenter', function(e) {
-          var fIdx = parseInt(rect.getAttribute('data-finding'));
-          var f = rdFindings[fIdx];
-          if (!f) return;
-          clearTimeout(_tooltipHideTimer);
-          hideTooltip();
-          _tooltip = document.createElement('div');
-          _tooltip.className = 'milg-viewer-tooltip';
-          _tooltip.addEventListener('mouseenter', function() { clearTimeout(_tooltipHideTimer); });
-          _tooltip.addEventListener('mouseleave', function() { scheduleHideTooltip(); });
-          var sevClass = 'milg-viewer-sev-' + f.severity;
-          var shortTitle = f.title.length > 60 ? f.title.substring(0, 57) + '...' : f.title;
-          _tooltip.innerHTML =
-            '<div style="display:flex;align-items:baseline;gap:6px;padding:3px 0">' +
-            '<span class="milg-viewer-tooltip-badge ' + sevClass + '" style="flex-shrink:0;font-size:9px;padding:1px 5px">' + f.severity + '</span>' +
-            '<span style="font-size:11px;color:#e2e8f0;line-height:1.3">' + shortTitle + '</span></div>' +
-            (f.detail ? '<div style="padding:2px 0 0 36px;font-size:10px;color:rgba(255,255,255,0.5);line-height:1.4">' + f.detail.substring(0, 200) + '</div>' : '') +
-            '<div style="padding:2px 0 0 36px;font-size:9px;color:rgba(255,255,255,0.3)">' + f.category + '</div>';
-          positionTooltip(e);
+          showFindingTooltip(e, parseInt(rect.getAttribute('data-finding')), rdFindings, rdScaleInfo);
         });
         rect.addEventListener('mouseleave', function() { scheduleHideTooltip(); });
+        rect.addEventListener('click', function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          var fIdx = parseInt(rect.getAttribute('data-finding'));
+          if (e.shiftKey) {
+            // Shift+click: copy debug info (region context)
+            window.getSelection().removeAllRanges();
+            var f = rdFindings[fIdx];
+            if (f) {
+              var rx = parseInt(rect.getAttribute('x')), ry = parseInt(rect.getAttribute('y'));
+              var bboxIdx = 0;
+              f.bboxes.forEach(function(bb, bi) {
+                if (Math.round(bb.left * rdScale) - cox === rx && Math.round(bb.top * rdScale) - coy === ry) bboxIdx = bi;
+              });
+              var bb = f.bboxes[bboxIdx];
+              var info = {
+                context: 'region',
+                finding: f.title.substring(0, 60),
+                severity: f.severity,
+                category: f.category,
+                bbox_dom: bb,
+                bbox_canvas: { x: Math.round(bb.left * rdScale) - cox, y: Math.round(bb.top * rdScale) - coy, w: Math.round(bb.width * rdScale), h: Math.round(bb.height * rdScale) },
+                scale: rdScale,
+                cropOffset: { x: cox, y: coy },
+                rect_attrs: { x: rect.getAttribute('x'), y: rect.getAttribute('y'), width: rect.getAttribute('width'), height: rect.getAttribute('height') },
+                meta: rd.meta
+              };
+              navigator.clipboard.writeText(JSON.stringify(info, null, 2)).then(function() {
+                alert('Region element debug info copied!');
+              });
+            }
+          } else {
+            // Check for overlapping rects at click point
+            var _svgR = rdSvg.getBoundingClientRect();
+            var _cx = (e.clientX - _svgR.left) * (rdSvg.viewBox.baseVal.width / _svgR.width);
+            var _cy = (e.clientY - _svgR.top) * (rdSvg.viewBox.baseVal.height / _svgR.height);
+            var overlapping = [];
+            rdSvg.querySelectorAll('rect[data-finding]').forEach(function(r) {
+              var rrx = parseFloat(r.getAttribute('x')), rry = parseFloat(r.getAttribute('y'));
+              var rrw = parseFloat(r.getAttribute('width')), rrh = parseFloat(r.getAttribute('height'));
+              if (_cx >= rrx && _cx <= rrx + rrw && _cy >= rry && _cy <= rry + rrh) {
+                var fi = parseInt(r.getAttribute('data-finding'));
+                if (overlapping.indexOf(fi) === -1) overlapping.push(fi);
+              }
+            });
+            if (overlapping.length > 1) {
+              showOverlapPicker(e, overlapping, rdFindings, rdSvg);
+            } else {
+              flashRectsInSvg(rdSvg, fIdx);
+            }
+          }
+        });
       });
     });
   }
@@ -1521,10 +1550,20 @@ window.MilgViewer = (function() {
     _tooltipHideTimer = setTimeout(function() { hideTooltip(); }, 300);
   }
 
-  function showFindingTooltip(e, findingIdx) {
+  // Show tooltip for a finding rect. Accepts optional findingsArr and scaleInfo for region parity.
+  // scaleInfo: { scale, offsetY, cropOffsetX, cropOffsetY, svg } — defaults to main overlay values.
+  function showFindingTooltip(e, findingIdx, findingsArr, scaleInfo) {
+    var findings = findingsArr || _allFindings;
+    var isRegion = !!findingsArr;
+    var scale = (scaleInfo && scaleInfo.scale) || (_meta ? _meta.scale : 1);
+    var offsetY = (scaleInfo && scaleInfo.offsetY !== undefined) ? scaleInfo.offsetY : _calibrationOffsetY;
+    var cropOX = (scaleInfo && scaleInfo.cropOffsetX) || 0;
+    var cropOY = (scaleInfo && scaleInfo.cropOffsetY) || 0;
+    var svgEl = (scaleInfo && scaleInfo.svg) || null;
+
     clearTimeout(_tooltipHideTimer);
     hideTooltip();
-    var finding = _allFindings[findingIdx];
+    var finding = findings[findingIdx];
     if (!finding) return;
 
     // Find ALL findings that overlap this bbox position
@@ -1532,15 +1571,15 @@ window.MilgViewer = (function() {
     var rx = parseFloat(rect.getAttribute('x')), ry = parseFloat(rect.getAttribute('y'));
     var rw = parseFloat(rect.getAttribute('width')), rh = parseFloat(rect.getAttribute('height'));
     var overlapping = [{ f: finding, viewerIdx: findingIdx }];
-    _allFindings.forEach(function(f, fi) {
+    findings.forEach(function(f, fi) {
       if (fi === findingIdx) return;
       var matched = false;
       f.bboxes.forEach(function(bb) {
         if (matched) return;
-        var bx = Math.round(bb.left * (_meta ? _meta.scale : 1));
-        var by = Math.round(bb.top * (_meta ? _meta.scale : 1)) - _calibrationOffsetY;
-        if (bx < rx + rw && bx + Math.round(bb.width * (_meta ? _meta.scale : 1)) > rx &&
-            by < ry + rh && by + Math.round(bb.height * (_meta ? _meta.scale : 1)) > ry) {
+        var bx = Math.round(bb.left * scale) - cropOX;
+        var by = Math.round(bb.top * scale) - offsetY - cropOY;
+        if (bx < rx + rw && bx + Math.round(bb.width * scale) > rx &&
+            by < ry + rh && by + Math.round(bb.height * scale) > ry) {
           overlapping.push({ f: f, viewerIdx: fi });
           matched = true;
         }
@@ -1549,11 +1588,9 @@ window.MilgViewer = (function() {
 
     _tooltip = document.createElement('div');
     _tooltip.className = 'milg-viewer-tooltip';
-    // Keep tooltip alive when user hovers over it
     _tooltip.addEventListener('mouseenter', function() { clearTimeout(_tooltipHideTimer); });
     _tooltip.addEventListener('mouseleave', function() { scheduleHideTooltip(); });
 
-    // Compact view: severity badge + short title, click to expand detail
     var html = '';
     overlapping.forEach(function(entry, oi) {
       var f = entry.f;
@@ -1562,16 +1599,13 @@ window.MilgViewer = (function() {
       html += '<div class="milg-tt-row" data-tt-idx="' + oi + '" style="padding:3px 0;cursor:pointer;display:flex;align-items:baseline;gap:6px' + (oi > 0 ? ';border-top:1px solid rgba(255,255,255,0.1)' : '') + '">';
       html += '<span class="milg-viewer-tooltip-badge ' + sevClass + '" style="flex-shrink:0;font-size:9px;padding:1px 5px">' + f.severity + '</span>';
       html += '<span style="font-size:11px;color:#e2e8f0;line-height:1.3;flex:1">' + shortTitle + '</span>';
-      // "Show group" button — filters to show all bboxes of this finding
       html += '<span class="milg-tt-showgroup" data-viewer-idx="' + entry.viewerIdx + '" title="Show all elements in this group" style="flex-shrink:0;cursor:pointer;font-size:12px;opacity:0.5;padding:0 2px">&#9678;</span>';
       html += '</div>';
-      // Expandable detail (hidden by default)
       html += '<div class="milg-tt-detail" data-tt-idx="' + oi + '" style="display:none;padding:4px 0 4px 36px;font-size:10px;color:rgba(255,255,255,0.6);line-height:1.5">';
       if (f.detail) html += '<div style="color:rgba(255,255,255,0.5)">' + f.detail.substring(0, 300) + '</div>';
       html += '<div style="margin-top:2px;color:rgba(255,255,255,0.35)">' + f.category + '</div>';
       html += '</div>';
     });
-    // Copy all + count
     html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;padding-top:4px;border-top:1px solid rgba(255,255,255,0.1)">';
     if (overlapping.length > 1) html += '<span style="font-size:9px;color:rgba(255,255,255,0.3)">' + overlapping.length + ' findings</span>';
     else html += '<span></span>';
@@ -1579,7 +1613,6 @@ window.MilgViewer = (function() {
     html += '</div>';
     _tooltip.innerHTML = html;
 
-    // Click to toggle detail expansion + reposition tooltip
     var _tooltipEvent = e;
     _tooltip.querySelectorAll('.milg-tt-row').forEach(function(row) {
       row.addEventListener('click', function(ev) {
@@ -1588,12 +1621,10 @@ window.MilgViewer = (function() {
         var detail = _tooltip.querySelector('.milg-tt-detail[data-tt-idx="' + idx + '"]');
         if (detail) {
           detail.style.display = detail.style.display === 'none' ? '' : 'none';
-          // Reposition after size change
           setTimeout(function() { if (_tooltip && _tooltip.parentNode) positionTooltip(_tooltipEvent); }, 10);
         }
       });
     });
-    // Copy button
     var copyBtn = _tooltip.querySelector('.milg-tt-copy');
     if (copyBtn) {
       copyBtn.addEventListener('click', function(ev) {
@@ -1605,16 +1636,20 @@ window.MilgViewer = (function() {
         navigator.clipboard.writeText(text).then(function() { copyBtn.textContent = 'Copied!'; setTimeout(function() { copyBtn.textContent = 'Copy'; }, 1500); });
       });
     }
-    // "Show group" buttons — filter to show all bboxes of that finding
+    // "Show group" buttons — for main: filter globally; for region: flash rects in region SVG
     _tooltip.querySelectorAll('.milg-tt-showgroup').forEach(function(btn) {
       btn.addEventListener('click', function(ev) {
         ev.stopPropagation();
         var vIdx = parseInt(btn.getAttribute('data-viewer-idx'));
         hideTooltip();
-        _activeFilter = { type: 'finding', value: vIdx };
-        updateFilterButtons();
-        renderOverlays();
-        renderRegionOverlays();
+        if (isRegion && svgEl) {
+          flashRectsInSvg(svgEl, vIdx);
+        } else {
+          _activeFilter = { type: 'finding', value: vIdx };
+          updateFilterButtons();
+          renderOverlays();
+          renderRegionOverlays();
+        }
       });
     });
 
@@ -1750,31 +1785,32 @@ window.MilgViewer = (function() {
     _tooltip.style.top = y + 'px';
   }
 
+  // Flash all rects in a given SVG that match findingIdx
+  function flashRectsInSvg(svg, findingIdx) {
+    if (!svg) return;
+    svg.querySelectorAll('rect[data-finding]').forEach(function(rect) {
+      if (parseInt(rect.getAttribute('data-finding')) === findingIdx) {
+        var origFill = rect.getAttribute('fill');
+        var origStroke = rect.getAttribute('stroke');
+        var flash = 0;
+        (function pulse() {
+          var on = flash % 2 === 0;
+          rect.setAttribute('fill', on ? 'rgba(245,158,11,0.4)' : origFill);
+          rect.setAttribute('stroke', on ? '#f59e0b' : origStroke);
+          flash++;
+          if (flash < 6) setTimeout(pulse, 250);
+          else { rect.setAttribute('fill', origFill); rect.setAttribute('stroke', origStroke); }
+        })();
+      }
+    });
+  }
+
   function scrollToFinding(findingIdx) {
-    // Don't close the viewer — just filter to show only this finding
     _activeFilter = { type: 'finding', value: findingIdx };
     updateFilterButtons();
     renderOverlays();
     renderRegionOverlays();
-    // Flash the finding's rects
-    var svg = _overlay && _overlay.querySelector('.milg-viewer-svg');
-    if (svg) {
-      svg.querySelectorAll('rect[data-finding]').forEach(function(rect) {
-        if (parseInt(rect.getAttribute('data-finding')) === findingIdx) {
-          var origFill = rect.getAttribute('fill');
-          var origStroke = rect.getAttribute('stroke');
-          var flash = 0;
-          (function pulse() {
-            var on = flash % 2 === 0;
-            rect.setAttribute('fill', on ? 'rgba(245,158,11,0.4)' : origFill);
-            rect.setAttribute('stroke', on ? '#f59e0b' : origStroke);
-            flash++;
-            if (flash < 6) setTimeout(pulse, 250);
-            else { rect.setAttribute('fill', origFill); rect.setAttribute('stroke', origStroke); }
-          })();
-        }
-      });
-    }
+    flashRectsInSvg(_overlay && _overlay.querySelector('.milg-viewer-svg'), findingIdx);
   }
 
   function hideTooltip() {
@@ -1789,14 +1825,18 @@ window.MilgViewer = (function() {
     _overlapPicker = null;
   }
 
-  function showOverlapPicker(e, findingIndices) {
+  // Overlap picker. Accepts optional findingsArr and svgEl for region parity.
+  function showOverlapPicker(e, findingIndices, findingsArr, svgEl) {
+    var findings = findingsArr || _allFindings;
+    var isRegion = !!findingsArr;
+    var targetSvg = svgEl || (_overlay && _overlay.querySelector('.milg-viewer-svg'));
     hideOverlapPicker();
     hideTooltip();
     _overlapPicker = document.createElement('div');
     _overlapPicker.className = 'milg-viewer-overlap-picker';
     _overlapPicker.innerHTML = '<div class="milg-viewer-overlap-header">' + findingIndices.length + ' overlapping findings</div>';
     findingIndices.forEach(function(fIdx) {
-      var f = _allFindings[fIdx];
+      var f = findings[fIdx];
       if (!f) return;
       var sevColor = COLORS[f.severity] || COLORS.info;
       var item = document.createElement('div');
@@ -1807,16 +1847,17 @@ window.MilgViewer = (function() {
       item.addEventListener('click', function(ev) {
         ev.stopPropagation();
         hideOverlapPicker();
-        scrollToFinding(fIdx);
+        if (isRegion) {
+          flashRectsInSvg(targetSvg, fIdx);
+        } else {
+          scrollToFinding(fIdx);
+        }
       });
       item.addEventListener('mouseenter', function() {
-        // Highlight the corresponding rect(s)
-        var svg = _overlay && _overlay.querySelector('.milg-viewer-svg');
-        if (svg) svg.querySelectorAll('rect[data-finding="' + fIdx + '"]').forEach(function(r) { r.setAttribute('stroke-width', '3'); });
+        if (targetSvg) targetSvg.querySelectorAll('rect[data-finding="' + fIdx + '"]').forEach(function(r) { r.setAttribute('stroke-width', '3'); });
       });
       item.addEventListener('mouseleave', function() {
-        var svg = _overlay && _overlay.querySelector('.milg-viewer-svg');
-        if (svg) svg.querySelectorAll('rect[data-finding="' + fIdx + '"]').forEach(function(r) { r.setAttribute('stroke-width', '1.5'); });
+        if (targetSvg) targetSvg.querySelectorAll('rect[data-finding="' + fIdx + '"]').forEach(function(r) { r.setAttribute('stroke-width', '1.5'); });
       });
       _overlapPicker.appendChild(item);
     });
@@ -1829,7 +1870,6 @@ window.MilgViewer = (function() {
     _overlapPicker.style.left = x + 'px';
     _overlapPicker.style.top = y + 'px';
 
-    // Close picker on outside click
     setTimeout(function() {
       document.addEventListener('click', function onClickAway(ev) {
         if (_overlapPicker && !_overlapPicker.contains(ev.target)) {
