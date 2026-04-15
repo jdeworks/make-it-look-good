@@ -634,8 +634,9 @@ window.MilgViewer = (function() {
           _regionalBboxKeys[Math.round(item.bbox.left) + ',' + Math.round(item.bbox.top) + ',' + Math.round(item.bbox.width) + ',' + Math.round(item.bbox.height)] = true;
         }
       }
-      (raw.typography && raw.typography.headings || []).forEach(_addRegionalBbox);
-      (raw.interaction && raw.interaction.touchTargets || []).forEach(_addRegionalBbox);
+      var _raw = _reportData.raw || {};
+      (_raw.typography && _raw.typography.headings || []).forEach(_addRegionalBbox);
+      (_raw.interaction && _raw.interaction.touchTargets || []).forEach(_addRegionalBbox);
       console.log('[D] viewer exclusion keys=' + Object.keys(_regionalBboxKeys).length + ' findings=' + _allFindings.length);
     }
 
